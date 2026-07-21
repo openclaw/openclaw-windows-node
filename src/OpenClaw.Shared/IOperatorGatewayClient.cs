@@ -77,8 +77,20 @@ public interface IOperatorGatewayClient
     Task RequestSessionPreviewAsync(string[] keys, int limit = 12, int maxChars = 240);
     Task<bool> PatchSessionAsync(string key, string? model = null, string? thinkingLevel = null, string? verboseLevel = null);
     Task<bool> ResetSessionAsync(string key);
+    Task<SessionResetResult> ResetSessionDetailedAsync(string key, int timeoutMs = 15000) =>
+        Task.FromResult(new SessionResetResult
+        {
+            Ok = false,
+            Error = "Response-aware sessions.reset is not supported by this gateway client."
+        });
     Task<bool> DeleteSessionAsync(string key, bool deleteTranscript = true);
     Task<bool> CompactSessionAsync(string key, int maxLines = 400);
+    Task<SessionCompactResult> CompactSessionDetailedAsync(string key, int timeoutMs = 120000) =>
+        Task.FromResult(new SessionCompactResult
+        {
+            Ok = false,
+            Error = "Response-aware sessions.compact is not supported by this gateway client."
+        });
     Task RequestCronListAsync();
     Task RequestCronStatusAsync();
     Task<bool> RunCronJobAsync(string jobId, bool force = true);
@@ -163,6 +175,14 @@ public interface IOperatorGatewayClient
     /// <summary>Restore a session to a compaction checkpoint (<c>sessions.compaction.restore</c>).</summary>
     Task<SessionCompactionMutationResult> RestoreCompactionCheckpointAsync(string key, string checkpointId, int timeoutMs = 15000)
         => Task.FromResult(new SessionCompactionMutationResult { Key = key, CheckpointId = checkpointId, IsSupported = false });
+    /// <summary>Create a distinct session through <c>sessions.create</c>.</summary>
+    Task<SessionCreateResult> CreateSessionAsync(SessionCreateRequest request, int timeoutMs = 15000)
+        => Task.FromResult(new SessionCreateResult
+        {
+            Ok = false,
+            IsSupported = false,
+            Error = "sessions.create is not supported by this gateway client."
+        });
 }
 
 public sealed record CronRunRequestResult(

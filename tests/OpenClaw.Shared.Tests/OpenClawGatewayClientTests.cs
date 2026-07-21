@@ -1182,6 +1182,96 @@ public class OpenClawGatewayClientTests
     }
 
     [Fact]
+    public void ParseChatHistoryPayload_CompactionMetadata_PreservesBoundaryDetails()
+    {
+        var helper = new GatewayClientTestHelper();
+
+        var history = helper.ParseChatHistoryPayload("""
+        {
+          "messages": [
+            {
+              "role": "system",
+              "content": "Context compacted",
+              "timestamp": 1,
+              "__openclaw": {
+                "id": "compact-1",
+                "seq": 8,
+                "kind": "compaction",
+                "tokensBefore": 42000,
+                "tokensAfter": 12000
+              }
+            }
+          ]
+        }
+        """);
+
+        var message = Assert.Single(history.Messages);
+        Assert.Equal("compaction", message.OpenClawKind);
+        Assert.Equal(42000, message.CompactionTokensBefore);
+        Assert.Equal(12000, message.CompactionTokensAfter);
+    }
+
+    [Fact]
+    public void ParseChatHistoryPayload_MalformedCompactionMetadata_IsIgnored()
+    {
+        var helper = new GatewayClientTestHelper();
+
+        var history = helper.ParseChatHistoryPayload("""
+        {
+          "messages": [
+            {
+              "role": "system",
+              "content": "Context compacted",
+              "__openclaw": {
+                "kind": 42,
+                "tokensBefore": "many",
+                "tokensAfter": false
+              }
+            }
+          ]
+        }
+        """);
+
+        var message = Assert.Single(history.Messages);
+        Assert.Null(message.OpenClawKind);
+        Assert.Null(message.CompactionTokensBefore);
+        Assert.Null(message.CompactionTokensAfter);
+    }
+
+    [Fact]
+    public void ProcessRawMessage_LiveCompaction_PreservesBoundaryDetails()
+    {
+        var helper = new GatewayClientTestHelper();
+        ChatMessageInfo? received = null;
+        helper.Client.ChatMessageReceived += (_, message) => received = message;
+
+        helper.ProcessRawMessage("""
+        {
+          "type": "event",
+          "event": "chat",
+          "payload": {
+            "sessionKey": "main",
+            "state": "final",
+            "message": {
+              "role": "system",
+              "content": "Context compacted",
+              "__openclaw": {
+                "kind": "compaction",
+                "tokensBefore": 42000,
+                "tokensAfter": 12000
+              }
+            }
+          }
+        }
+        """);
+
+        Assert.NotNull(received);
+        Assert.Equal("compaction", received!.OpenClawKind);
+        Assert.Equal(42000, received.CompactionTokensBefore);
+        Assert.Equal(12000, received.CompactionTokensAfter);
+    }
+
+    [Fact]
     public void ProcessRawMessage_SessionMessageWithMalformedMessage_DropsFrame()
     {
         var logger = new TestLogger();

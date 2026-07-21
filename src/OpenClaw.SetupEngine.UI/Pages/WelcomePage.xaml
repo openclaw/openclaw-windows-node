@@ -22,70 +22,86 @@
                        Text="OpenClaw runs your agent through a gateway. Choose how to set it up on this PC. You can change this later." />
         </StackPanel>
 
-        <StackPanel Grid.Row="1" VerticalAlignment="Top" Margin="0,24,0,0" Spacing="12"
-                    MaxWidth="560" HorizontalAlignment="Stretch">
-
-            <Border x:Name="InstallCard"
-                    HorizontalAlignment="Stretch"
-                    Padding="16" CornerRadius="4"
-                    Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
-                    BorderBrush="{ThemeResource AccentFillColorDefaultBrush}"
-                    BorderThickness="2"
-                    PointerPressed="InstallCard_Pressed"
-                    AutomationProperties.Name="Install a local gateway (WSL), recommended">
-                <Grid ColumnDefinitions="Auto,*" ColumnSpacing="16">
-                    <Border Grid.Column="0" Width="44" Height="44" CornerRadius="6"
-                            Background="{ThemeResource AccentFillColorDefaultBrush}" VerticalAlignment="Top">
-                        <FontIcon Glyph="&#xE756;" FontSize="20" IsTextScaleFactorEnabled="False"
-                                  Foreground="{ThemeResource TextOnAccentFillColorPrimaryBrush}" />
-                    </Border>
-                    <StackPanel Grid.Column="1" Spacing="3">
-                        <StackPanel Orientation="Horizontal" Spacing="8">
-                            <TextBlock x:Name="InstallTitle"
-                                       Text="Install a local gateway (WSL)"
-                                       Style="{StaticResource BodyStrongTextBlockStyle}"
-                                       VerticalAlignment="Center" />
-                            <Border CornerRadius="4" Padding="7,1" VerticalAlignment="Center"
-                                    BorderBrush="{ThemeResource AccentTextFillColorPrimaryBrush}" BorderThickness="1">
-                                <TextBlock Text="Recommended"
-                                           Style="{StaticResource CaptionTextBlockStyle}"
-                                           Foreground="{ThemeResource AccentTextFillColorPrimaryBrush}" />
+        <ScrollViewer Grid.Row="1" Margin="0,24,0,0"
+                      IsTabStop="False"
+                      VerticalScrollBarVisibility="Auto"
+                      HorizontalScrollBarVisibility="Disabled">
+            <RadioButtons x:Name="GatewayChoiceSelector"
+                          AutomationProperties.Name="Gateway setup method"
+                          MaxWidth="560"
+                          MaxColumns="1"
+                          HorizontalAlignment="Stretch"
+                          SelectionChanged="GatewayChoice_SelectionChanged">
+                <RadioButton x:Name="InstallChoice"
+                             AutomationProperties.AutomationId="WelcomeInstallLocalGatewayChoice"
+                             AutomationProperties.Name="Install a local gateway (WSL), recommended"
+                             Margin="0,0,0,12"
+                             HorizontalAlignment="Stretch"
+                             HorizontalContentAlignment="Stretch">
+                    <Border x:Name="InstallCard"
+                            HorizontalAlignment="Stretch"
+                            Padding="16" CornerRadius="4"
+                            Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                            BorderBrush="{ThemeResource AccentFillColorDefaultBrush}"
+                            BorderThickness="2">
+                        <Grid ColumnDefinitions="Auto,*" ColumnSpacing="16">
+                            <Border Grid.Column="0" Width="44" Height="44" CornerRadius="6"
+                                    Background="{ThemeResource AccentFillColorDefaultBrush}" VerticalAlignment="Top">
+                                <FontIcon Glyph="&#xE756;" FontSize="20" IsTextScaleFactorEnabled="False"
+                                          Foreground="{ThemeResource TextOnAccentFillColorPrimaryBrush}" />
                             </Border>
-                        </StackPanel>
-                        <TextBlock TextWrapping="Wrap"
-                                   Style="{StaticResource CaptionTextBlockStyle}"
-                                   Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                                   Text="A private, self-hosted OpenClaw gateway in an isolated Ubuntu WSL instance. We'll show exactly what gets installed before anything runs." />
-                    </StackPanel>
-                </Grid>
-            </Border>
-
-            <Border x:Name="ConnectCard"
-                    HorizontalAlignment="Stretch"
-                    Padding="16" CornerRadius="4"
-                    Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
-                    BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
-                    BorderThickness="1"
-                    PointerPressed="ConnectCard_Pressed"
-                    AutomationProperties.Name="Connect to an existing gateway">
-                <Grid ColumnDefinitions="Auto,*" ColumnSpacing="16">
-                    <Border Grid.Column="0" Width="44" Height="44" CornerRadius="6"
-                            Background="{ThemeResource SubtleFillColorSecondaryBrush}" VerticalAlignment="Top">
-                        <FontIcon Glyph="&#xE71B;" FontSize="20" IsTextScaleFactorEnabled="False"
-                                  Foreground="{ThemeResource TextFillColorPrimaryBrush}" />
+                            <StackPanel Grid.Column="1" Spacing="3">
+                                <StackPanel Orientation="Horizontal" Spacing="8">
+                                    <TextBlock x:Name="InstallTitle"
+                                               Text="Install a local gateway (WSL)"
+                                               Style="{StaticResource BodyStrongTextBlockStyle}"
+                                               VerticalAlignment="Center" />
+                                    <Border CornerRadius="4" Padding="7,1" VerticalAlignment="Center"
+                                            BorderBrush="{ThemeResource AccentTextFillColorPrimaryBrush}" BorderThickness="1">
+                                        <TextBlock Text="Recommended"
+                                                   Style="{StaticResource CaptionTextBlockStyle}"
+                                                   Foreground="{ThemeResource AccentTextFillColorPrimaryBrush}" />
+                                    </Border>
+                                </StackPanel>
+                                <TextBlock TextWrapping="Wrap"
+                                           Style="{StaticResource CaptionTextBlockStyle}"
+                                           Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                           Text="A private, self-hosted OpenClaw gateway in an isolated Ubuntu WSL instance. We'll show exactly what gets installed before anything runs." />
+                            </StackPanel>
+                        </Grid>
                     </Border>
-                    <StackPanel Grid.Column="1" Spacing="3">
-                        <TextBlock Text="Connect to an existing gateway"
-                                   Style="{StaticResource BodyStrongTextBlockStyle}" />
-                        <TextBlock TextWrapping="Wrap"
-                                   Style="{StaticResource CaptionTextBlockStyle}"
-                                   Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                                   Text="Already run an OpenClaw gateway: here, on another machine, or remote? Pair without installing anything." />
-                    </StackPanel>
-                </Grid>
-            </Border>
+                </RadioButton>
 
-        </StackPanel>
+                <RadioButton x:Name="ConnectChoice"
+                             AutomationProperties.AutomationId="WelcomeConnectExistingGatewayChoice"
+                             AutomationProperties.Name="Connect to an existing gateway"
+                             HorizontalAlignment="Stretch"
+                             HorizontalContentAlignment="Stretch">
+                    <Border x:Name="ConnectCard"
+                            HorizontalAlignment="Stretch"
+                            Padding="16" CornerRadius="4"
+                            Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                            BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                            BorderThickness="1">
+                        <Grid ColumnDefinitions="Auto,*" ColumnSpacing="16">
+                            <Border Grid.Column="0" Width="44" Height="44" CornerRadius="6"
+                                    Background="{ThemeResource SubtleFillColorSecondaryBrush}" VerticalAlignment="Top">
+                                <FontIcon Glyph="&#xE71B;" FontSize="20" IsTextScaleFactorEnabled="False"
+                                          Foreground="{ThemeResource TextFillColorPrimaryBrush}" />
+                            </Border>
+                            <StackPanel Grid.Column="1" Spacing="3">
+                                <TextBlock Text="Connect to an existing gateway"
+                                           Style="{StaticResource BodyStrongTextBlockStyle}" />
+                                <TextBlock TextWrapping="Wrap"
+                                           Style="{StaticResource CaptionTextBlockStyle}"
+                                           Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                           Text="Already run an OpenClaw gateway: here, on another machine, or remote? Pair without installing anything." />
+                            </StackPanel>
+                        </Grid>
+                    </Border>
+                </RadioButton>
+            </RadioButtons>
+        </ScrollViewer>
 
         <Grid Grid.Row="2" ColumnDefinitions="*,Auto" Margin="0,16,0,0">
             <StackPanel Grid.ColumnSpan="2" Orientation="Horizontal" Spacing="8"
@@ -98,10 +114,12 @@
                 <Border Width="8" Height="8" CornerRadius="4" VerticalAlignment="Center" Background="{ThemeResource SetupInactiveDotBrush}" />
                 <Border Width="8" Height="8" CornerRadius="4" VerticalAlignment="Center" Background="{ThemeResource SetupInactiveDotBrush}" />
             </StackPanel>
-            <Button x:Name="BackButton" Grid.Column="0" Content="Back"
+            <Button x:Name="BackButton" AutomationProperties.AutomationId="WelcomeBackButton"
+                    Grid.Column="0" Content="Back"
                     MinWidth="100" HorizontalAlignment="Left"
                     Click="Back_Click" />
-            <Button x:Name="NextButton" Grid.Column="1" Content="Next"
+            <Button x:Name="NextButton" AutomationProperties.AutomationId="WelcomeNextButton"
+                    Grid.Column="1" Content="Next"
                     MinWidth="100" HorizontalAlignment="Right"
                     Style="{StaticResource AccentButtonStyle}"
                     Click="Next_Click" />

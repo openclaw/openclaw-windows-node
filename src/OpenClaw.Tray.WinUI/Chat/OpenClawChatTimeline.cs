@@ -2340,6 +2340,44 @@ public class OpenClawChatTimeline : Component<OpenClawChatTimelineProps>
                });
         }
 
+        Element RenderCompactionEntry(ChatTimelineItem entry)
+        {
+            var entryMeta = MetaFor(entry.Id);
+            var presentation = ChatCompactionPresenter.Create(
+                entryMeta?.CompactionTokensBefore,
+                entryMeta?.CompactionTokensAfter,
+                LocalizationHelper.GetString("Chat_Compaction_Title"),
+                LocalizationHelper.GetString("Chat_Compaction_MetricsFormat"),
+                LocalizationHelper.GetString("Chat_Compaction_FallbackDetail"));
+            var borderThickness = TryDetectHighContrast() ? 2 : 1;
+
+            return TimelineInset(
+                Border(
+                    VStack(3,
+                        TextBlock(presentation.Title).Set(t =>
+                        {
+                            t.FontSize = 13;
+                            t.FontWeight = Microsoft.UI.Text.FontWeights.SemiBold;
+                            t.HorizontalAlignment = HorizontalAlignment.Center;
+                        }).Foreground(themeBrush("TextFillColorPrimaryBrush")),
+                        Caption(presentation.Detail).Set(t =>
+                        {
+                            t.FontSize = 12;
+                            t.TextWrapping = TextWrapping.Wrap;
+                            t.HorizontalAlignment = HorizontalAlignment.Center;
+                            t.TextAlignment = TextAlignment.Center;
+                        }).Foreground(themeBrush("TextFillColorSecondaryBrush"))
+                    )
+                ).Background(themeBrush("CardBackgroundFillColorDefaultBrush"))
+                 .WithBorder(themeBrush("ControlStrokeColorDefaultBrush"), borderThickness)
+                 .CornerRadius(8)
+                 .Padding(16, 10, 16, 10)
+                 .HAlign(HorizontalAlignment.Stretch)
+                 .AutomationName(presentation.AutomationName),
+                top: 8,
+                bottom: 8);
+        }
+
         Element RenderEntry(ChatTimelineItem entry, bool startsBurst, bool endsBurst, bool showAvatar) => entry.Kind switch
         {
             ChatTimelineItemKind.User => RenderUserEntry(entry, startsBurst, endsBurst),
@@ -2388,6 +2426,12 @@ public class OpenClawChatTimeline : Component<OpenClawChatTimelineProps>
             // of a conversation are preserved in chronological order.
             ChatTimelineItemKind.PermissionRequest =>
                 RenderPermissionEntry(entry),
+
+            ChatTimelineItemKind.Status when string.Equals(
+                MetaFor(entry.Id)?.OpenClawKind,
+                "compaction",
+                StringComparison.OrdinalIgnoreCase) =>
+                RenderCompactionEntry(entry),
 
             // Filtered status — drop transient connection chatter.
             ChatTimelineItemKind.Status when entry.Text.Contains("Restored") || entry.Text.Contains("Connecting to") || entry.Text.Contains("Connected") || entry.Text.Contains("Resuming") => Empty(),

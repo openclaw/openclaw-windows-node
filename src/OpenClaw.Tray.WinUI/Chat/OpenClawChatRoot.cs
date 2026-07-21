@@ -52,12 +52,15 @@ public sealed class OpenClawChatRoot : Component
     private readonly Action? _onAttachClick;
     private readonly Action? _onSettingsClick;
     private readonly Action<bool>? _onSpeakerMuteChanged;
+    private readonly Func<string, string?, Task<bool>>? _confirmResetAsync;
     private readonly bool _initialMuted;
     private readonly bool _isCompact;
     private Action<IReadOnlyList<ChatAttachment>>? _onFilesAttached;
     private Action<string?>? _setVoiceTranscript;
     private Action<float>? _setVoiceAudioLevel;
     private Action? _scrollToBottomToken;
+    private Action<string>? _selectThread;
+    private string? _pendingSelectedThreadId;
     /// <summary>
     /// Programmatically start voice recording from outside the composer.
     /// Set by the composer during render.
@@ -108,6 +111,7 @@ public sealed class OpenClawChatRoot : Component
         Action? onAttachClick = null,
         Action? onSettingsClick = null,
         Action<bool>? onSpeakerMuteChanged = null,
+        Func<string, string?, Task<bool>>? confirmResetAsync = null,
         bool initialMuted = false,
         bool isCompact = false)
     {
@@ -119,6 +123,7 @@ public sealed class OpenClawChatRoot : Component
         _onAttachClick = onAttachClick;
         _onSettingsClick = onSettingsClick;
         _onSpeakerMuteChanged = onSpeakerMuteChanged;
+        _confirmResetAsync = confirmResetAsync;
         _initialMuted = initialMuted;
         _isCompact = isCompact;
     }
@@ -167,6 +172,12 @@ public sealed class OpenClawChatRoot : Component
         // inside UseEffect always read the latest value (UseState structs go stale).
         var selectedIdRef = UseRef<string?>(initialSelectedId);
         selectedIdRef.Current = selectedIdState.Value;
+        _selectThread = threadId =>
+        {
+            _pendingSelectedThreadId = threadId;
+            selectedIdState.Set(threadId);
+            selectedIdRef.Current = threadId;
+        };
 
         UseEffect((Func<Action>)(() =>
         {
@@ -245,10 +256,18 @@ public sealed class OpenClawChatRoot : Component
         var selectedThread = selectedId is { } id
             ? Array.Find(snapshot.Threads, t => t.Id == id)
             : null;
+        if (selectedThread is not null &&
+            string.Equals(_pendingSelectedThreadId, selectedThread.Id, StringComparison.Ordinal))
+        {
+            _pendingSelectedThreadId = null;
+        }
         if (selectedThread is null
             && selectedIdState.Value is { } staleSelectedId
             && snapshot.DefaultThreadId is { } fallbackThreadId
-            && !string.Equals(staleSelectedId, fallbackThreadId, StringComparison.Ordinal))
+            && ChatLifecycleSelectionPolicy.ShouldFallback(
+                staleSelectedId,
+                _pendingSelectedThreadId,
+                fallbackThreadId))
         {
             selectedId = fallbackThreadId;
             selectedThread = Array.Find(snapshot.Threads, t => t.Id == fallbackThreadId);
@@ -265,9 +284,12 @@ public sealed class OpenClawChatRoot : Component
         // same Id and `selectedThread` resolves to it on the next render
         // without any re-keying or migration.
         ChatThread? composeOnlyThread = null;
-        if (selectedThread is null
-            && snapshot.ComposeTarget.IsReady
-            && snapshot.ComposeTarget.SessionKey is { } composeKey)
+        var pendingComposeKey = ChatLifecycleSelectionPolicy.RetainPendingForSelection(
+            _pendingSelectedThreadId,
+            selectedIdState.Value);
+        var composeKey = pendingComposeKey ??
+            (snapshot.ComposeTarget.IsReady ? snapshot.ComposeTarget.SessionKey : null);
+        if (selectedThread is null && composeKey is not null)
         {
             // Use last-known state from the data provider so the composer shows
             // the previous session title/model while reconnecting instead of
@@ -277,7 +299,9 @@ public sealed class OpenClawChatRoot : Component
             {
                 Id = composeKey,
                 AgentId = snapshot.ComposeTarget.AgentId,
-                Title = lastState?.ThreadTitle ?? "OpenClaw Windows Tray",
+                Title = _pendingSelectedThreadId is not null
+                    ? LocalizationHelper.GetString("Chat_PendingNewSessionTitle")
+                    : lastState?.ThreadTitle ?? "OpenClaw Windows Tray",
                 Model = lastState?.Model,
                 ModelProvider = lastState?.ModelProvider,
                 Status = ChatThreadStatus.Running,
@@ -290,11 +314,18 @@ public sealed class OpenClawChatRoot : Component
         // exists yet so the zero-state still shows; `composeOnlyThread` exists
         // so the composer can be wired up.
         var effectiveThread = selectedThread ?? composeOnlyThread;
+        var connectedRaw = snapshot.ConnectionStatus;
+        var hostConnected = connectedRaw is not null
+            && connectedRaw.StartsWith("Connected", StringComparison.OrdinalIgnoreCase);
 
         // Lazy-load history the first time a real (materialized) thread is
         // selected. Don't fire for the compose-only synthetic thread — it
-        // doesn't exist server-side yet, so chat.history would 404.
-        if (selectedThread is not null && _provider is OpenClawChatDataProvider native)
+        // doesn't exist server-side yet, so chat.history would 404. A
+        // disconnected render must not replace a request canceled by the
+        // connection-generation boundary.
+        if (hostConnected &&
+            selectedThread is not null &&
+            _provider is OpenClawChatDataProvider native)
         {
             var threadId = selectedThread.Id;
             RunFireAndForget(ct => native.LoadHistoryAsync(threadId, force: false, ct));
@@ -323,9 +354,6 @@ public sealed class OpenClawChatRoot : Component
             message.SendState is ChatQueuedMessageSendState.Queued or ChatQueuedMessageSendState.Sending);
 
         var entries = (IReadOnlyList<ChatTimelineItem>)timeline.Entries;
-        var connectedRaw = snapshot.ConnectionStatus;
-        var hostConnected = connectedRaw is not null
-            && connectedRaw.StartsWith("Connected", StringComparison.OrdinalIgnoreCase);
         var connState = (connectedRaw is not null && connectedRaw.StartsWith("Incompatible", StringComparison.OrdinalIgnoreCase))
             ? "incompatible-gateway"
             : hostConnected ? "connected"
@@ -502,7 +530,7 @@ public sealed class OpenClawChatRoot : Component
                     if (effectiveThread is { } t)
                     {
                         firstSendInFlight.Set(true);
-                        OnSend(t.Id, suggestion, Array.Empty<ChatAttachment>());
+                        ObserveFireAndForget(SendSuggestionAsync(t.Id, t.Title, suggestion));
                     }
                 }, suggestionsDisabled: firstSendInFlight.Value);
         }
@@ -582,14 +610,27 @@ public sealed class OpenClawChatRoot : Component
                 CurrentThinkingLevel: composerThread.ThinkingLevel,
                 MessageOptionsDisabled: turnActiveOverride || hasPendingQueuedSend,
                 ModelChoices: snapshot.ModelChoices,
-                OnSend: (msg, attachments) =>
+                OnSend: async (msg, attachments) =>
                 {
-                    SetPendingAttachments(Array.Empty<ChatAttachment>());
-                    OnSend(composerThread.Id!, msg, attachments);
+                    var accepted = await OnSend(
+                        composerThread.Id!,
+                        composerThread.Title,
+                        msg,
+                        attachments);
+                    if (accepted)
+                    {
+                        SetPendingAttachments(ChatComposerSubmissionPolicy.RemoveSubmittedAttachments(
+                            pendingAttachmentsRef.Current,
+                            attachments));
+                    }
+                    return accepted;
                 },
                 OnStop: () => OnStop(composerThread.Id!),
                 OnChannelChanged: id =>
                 {
+                    _pendingSelectedThreadId = ChatLifecycleSelectionPolicy.RetainPendingForSelection(
+                        _pendingSelectedThreadId,
+                        id);
                     selectedIdState.Set(id);
                     selectedIdRef.Current = id;
                     if (_provider is OpenClawChatDataProvider nativeProvider)
@@ -934,13 +975,50 @@ public sealed class OpenClawChatRoot : Component
         );
     }
 
-    private void OnSend(string threadId, string message, IReadOnlyList<ChatAttachment> attachments)
+    private async Task<bool> OnSend(
+        string threadId,
+        string? displayName,
+        string message,
+        IReadOnlyList<ChatAttachment> attachments)
     {
         _scrollToBottomToken?.Invoke();
-        if (attachments.Count > 0)
-            RunFireAndForget(ct => _provider.SendMessageAsync(threadId, message, ct, attachments.ToArray()));
-        else
-            RunFireAndForget(ct => _provider.SendMessageAsync(threadId, message, ct));
+        if (_provider is OpenClawChatDataProvider native &&
+            ChatLifecycleCommandParser.TryParse(message, attachments.Count > 0, out var command))
+        {
+            if (ChatLifecycleCommandExecutionPolicy.ShouldQueue(command))
+                return await native.EnqueueCompactCommandAsync(threadId);
+
+            if (command == ChatLifecycleCommandKind.Reset &&
+                _confirmResetAsync is not null &&
+                !await _confirmResetAsync(threadId, displayName))
+            {
+                return false;
+            }
+
+            var result = await native.ExecuteLifecycleCommandAsync(threadId, command);
+            if (result.Succeeded && result.NewSessionKey is { } newSessionKey)
+                _selectThread?.Invoke(newSessionKey);
+            return result.Succeeded;
+        }
+
+        try
+        {
+            if (attachments.Count > 0)
+                await _provider.SendMessageAsync(threadId, message, CancellationToken.None, attachments.ToArray());
+            else
+                await _provider.SendMessageAsync(threadId, message);
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Trace.WriteLine($"[chat] send failed: {ex}");
+            return false;
+        }
+        return true;
+    }
+
+    private async Task SendSuggestionAsync(string threadId, string? displayName, string suggestion)
+    {
+        await OnSend(threadId, displayName, suggestion, Array.Empty<ChatAttachment>());
     }
 
     private static IReadOnlyList<ChatAttachment> RemoveAttachment(

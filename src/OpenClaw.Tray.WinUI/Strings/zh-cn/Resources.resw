@@ -2904,6 +2904,18 @@
   <data name="Chat_Status_Done" xml:space="preserve">
     <value>完成</value>
   </data>
+  <data name="Chat_Compaction_Title" xml:space="preserve">
+    <value>上下文已压缩</value>
+  </data>
+  <data name="Chat_Compaction_MetricsFormat" xml:space="preserve">
+    <value>{0} → {1} 个令牌 · 节省 {2}</value>
+  </data>
+  <data name="Chat_Compaction_FallbackDetail" xml:space="preserve">
+    <value>较早的上下文已汇总到检查点中。</value>
+  </data>
+  <data name="Chat_PendingNewSessionTitle" xml:space="preserve">
+    <value>新会话</value>
+  </data>
   <data name="Chat_Status_Running" xml:space="preserve">
     <value>运行中</value>
   </data>
