@@ -93,7 +93,7 @@ public sealed partial class SetupWindow : Window
         var hwnd = WinRT.Interop.WindowNative.GetWindowHandle(this);
         var dpi = GetDpiForWindow(hwnd);
         var scale = dpi / 96.0;
-        AppWindow.Resize(new Windows.Graphics.SizeInt32((int)(720 * scale), (int)(820 * scale)));
+        AppWindow.Resize(new Windows.Graphics.SizeInt32((int)(720 * scale), (int)(560 * scale)));
 
         // Extend into title bar for modern look
         ExtendsContentIntoTitleBar = true;
