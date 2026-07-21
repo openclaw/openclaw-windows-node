@@ -287,17 +287,20 @@ internal sealed class TrayMenuStateBuilder
         }
 
         // ── Sessions (now below Devices) ──
-        if (_snapshot.Sessions.Length > 0)
+        var foregroundSessions = _snapshot.Sessions
+            .Where(session => !SessionPresentationResolver.IsBackground(session))
+            .ToArray();
+        if (foregroundSessions.Length > 0)
         {
             menu.AddSeparator();
 
-            var sessionCount = _snapshot.Sessions.Length;
-            var activeCount = _snapshot.Sessions.Count(s => string.Equals(s.Status, "active", StringComparison.OrdinalIgnoreCase));
-            var totalTokensAll = _snapshot.Sessions.Sum(TrayDashboardSummaryBuilder.SessionUsedTokens);
+            var sessionCount = foregroundSessions.Length;
+            var activeCount = foregroundSessions.Count(s => string.Equals(s.Status, "active", StringComparison.OrdinalIgnoreCase));
+            var totalTokensAll = foregroundSessions.Sum(TrayDashboardSummaryBuilder.SessionUsedTokens);
 
             // Single collapsed entry whose hover flyout reveals the session list.
             var sessionsRow = BuildSessionsListRow(sessionCount, activeCount, totalTokensAll, secondaryText);
-            var sessionsFlyout = BuildSessionsListFlyoutItems(secondaryText, successBrush, cautionBrush, neutralBrush);
+            var sessionsFlyout = BuildSessionsListFlyoutItems(foregroundSessions, secondaryText, successBrush, cautionBrush, neutralBrush);
             menu.AddFlyoutCustomItem(sessionsRow, sessionsFlyout, action: "sessions");
         }
 
@@ -348,8 +351,8 @@ internal sealed class TrayMenuStateBuilder
 
     private static string FormatTokenCount(long n)
     {
-        if (n >= 1_000_000) return $"{n / 1_000_000.0:F1}M";
-        if (n >= 1_000) return $"{n / 1_000.0:F1}K";
+        if (n >= 1_000_000) return $"{(n / 1_000_000.0).ToString("F1", CultureInfo.InvariantCulture)}M";
+        if (n >= 1_000) return $"{(n / 1_000.0).ToString("F1", CultureInfo.InvariantCulture)}K";
         return n.ToString();
     }
 
@@ -854,7 +857,7 @@ internal sealed class TrayMenuStateBuilder
         var usageText = ChatUsageFormatter.Format(new ChatThread
         {
             Id = session.Key,
-            Title = session.DisplayName ?? session.Key,
+            Title = SessionTitleFormatter.Format(session),
             InputTokens = session.InputTokens,
             OutputTokens = session.OutputTokens,
             TotalTokens = session.TotalTokens,
@@ -884,7 +887,7 @@ internal sealed class TrayMenuStateBuilder
         var nameRow = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 6, VerticalAlignment = VerticalAlignment.Center };
         nameRow.Children.Add(new TextBlock
         {
-            Text = session.DisplayName ?? session.Key,
+            Text = SessionTitleFormatter.Format(session),
             FontWeight = Microsoft.UI.Text.FontWeights.SemiBold,
             FontSize = 13,
             TextTrimming = TextTrimming.CharacterEllipsis,
@@ -1192,6 +1195,7 @@ internal sealed class TrayMenuStateBuilder
     // ── Instance helpers (Grupo B) ────────────────────────────────────────
 
     private List<TrayMenuFlyoutItem> BuildSessionsListFlyoutItems(
+        IReadOnlyList<SessionInfo> sessions,
         Microsoft.UI.Xaml.Media.Brush secondaryText,
         Microsoft.UI.Xaml.Media.Brush successBrush,
         Microsoft.UI.Xaml.Media.Brush cautionBrush,
@@ -1199,16 +1203,16 @@ internal sealed class TrayMenuStateBuilder
     {
         var items = new List<TrayMenuFlyoutItem>
         {
-            new() { Text = $"Sessions ({_snapshot.Sessions.Length})", IsHeader = true }
+            new() { Text = $"Sessions ({sessions.Count})", IsHeader = true }
         };
 
-        if (_snapshot.Sessions.Length == 0)
+        if (sessions.Count == 0)
         {
             items.Add(new() { Text = "No active sessions" });
             return items;
         }
 
-        foreach (var session in _snapshot.Sessions.Take(8))
+        foreach (var session in sessions.Take(8))
         {
             var card = BuildSessionListCard(session, secondaryText);
             items.Add(new() { CustomContent = card });

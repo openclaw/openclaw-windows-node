@@ -114,7 +114,12 @@ public class GatewayProtocolDriftTests
 
         var pinned = snapshot.Methods.Single(m => m.Method == "sessions.list").ResponseFields.ToHashSet(StringComparer.Ordinal);
 
-        var signatures = new[] { "void PopulateSessionFromObject(", "string? ParseSessionItem(" };
+        var signatures = new[]
+        {
+            "void PopulateSessionFromObject(",
+            "string? ParseSessionItem(",
+            "void UpdateSessionMainStatus(",
+        };
         var readByClient = new HashSet<string>(StringComparer.Ordinal);
         var missingSignatures = new List<string>();
 

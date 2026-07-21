@@ -137,7 +137,7 @@ public sealed partial class ConnectionStatusWindow : WindowEx
         OpDetailText.Text = snapshot.OperatorState switch
         {
             RoleConnectionState.Connected => $"✓ {elapsedStr}  device={snapshot.OperatorDeviceId ?? "—"}",
-            RoleConnectionState.Error => $"✗ {elapsedStr} — {snapshot.OperatorError ?? "unknown"}",
+            RoleConnectionState.Error => $"✗ {elapsedStr}: {snapshot.OperatorError ?? "unknown"}",
             RoleConnectionState.PairingRequired => $"⏳ {LocalizationHelper.GetString("ConnectionStatus_AwaitingApproval")}",
             _ => elapsedStr
         };

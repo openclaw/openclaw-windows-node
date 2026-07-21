@@ -48,6 +48,20 @@ internal static class ExecShellWrapperParser
                 if (string.IsNullOrWhiteSpace(segment))
                     continue;
 
+                // Fail closed on an execution-introducing construct the parser cannot safely
+                // decompose: an unquoted subexpression/subshell `(` (PowerShell and POSIX shells
+                // EXECUTE it), or — for POSIX shells — an unquoted command-substitution backtick.
+                // $(...) is exempt (decomposed into its own target below); cmd is exempt (no
+                // $()/backtick, and its `(...)` grouping chains via ; & | which are already split —
+                // so `C:\Program Files (x86)` paths stay valid).
+                if (HasUndecomposableExec(segment, currentShell))
+                {
+                    return new ExecShellParseResult
+                    {
+                        Error = "Command contains a shell subexpression or substitution that policy cannot evaluate"
+                    };
+                }
+
                 if ((depth > 0 || hasMultipleSegments) && seen.Add($"{currentShell}|{segment}"))
                 {
                     result.Targets.Add(new ExecShellEvaluationTarget
@@ -66,6 +80,15 @@ internal static class ExecShellWrapperParser
                 if (!string.IsNullOrWhiteSpace(wrapped.Payload))
                 {
                     pending.Enqueue((wrapped.Payload!, wrapped.Shell ?? currentShell, depth + 1));
+                }
+
+                // Command substitution / subexpression — $(...), @(...), `...` — runs the enclosed
+                // command and splices its output, so the shell executes it. Surface each inner
+                // command for approval too; otherwise `echo $(Remove-Item ...)` runs a denied
+                // command that never appears as a target.
+                foreach (var inner in ExtractCommandSubstitutions(segment))
+                {
+                    pending.Enqueue((inner, currentShell, depth + 1));
                 }
             }
         }
@@ -221,6 +244,10 @@ internal static class ExecShellWrapperParser
         var current = new StringBuilder();
         var inSingleQuotes = false;
         var inDoubleQuotes = false;
+        // Depth of unquoted parentheses. Separators inside a $(...) / @(...) / (...) group belong
+        // to that sub-expression, not the top level, so they must not split here — the group's
+        // contents are surfaced separately via ExtractCommandSubstitutions and re-expanded.
+        var parenDepth = 0;
 
         for (var i = 0; i < command.Length; i++)
         {
@@ -242,19 +269,36 @@ internal static class ExecShellWrapperParser
 
             if (!inSingleQuotes && !inDoubleQuotes)
             {
-                if (c == ';' || c == '&')
+                if (c == '(')
                 {
-                    FlushCurrent(parts, current);
-                    if (c == '&' && i + 1 < command.Length && command[i + 1] == '&')
-                        i++;
-                    continue;
+                    parenDepth++;
                 }
-
-                if (c == '|' && i + 1 < command.Length && command[i + 1] == '|')
+                else if (c == ')')
                 {
-                    FlushCurrent(parts, current);
-                    i++;
-                    continue;
+                    if (parenDepth > 0)
+                        parenDepth--;
+                }
+                else if (parenDepth == 0)
+                {
+                    if (c == ';' || c == '&')
+                    {
+                        FlushCurrent(parts, current);
+                        if (c == '&' && i + 1 < command.Length && command[i + 1] == '&')
+                            i++;
+                        continue;
+                    }
+
+                    // A pipeline stage is a distinct command the shell runs — `a | b` executes both
+                    // `a` and `b` — so `|` is a top-level separator like `;`/`&&`/`||`. Splitting it
+                    // surfaces every stage for approval; without this a denied executor
+                    // (`... | iex`, `... | Remove-Item`) hides behind a benign first stage.
+                    if (c == '|')
+                    {
+                        FlushCurrent(parts, current);
+                        if (i + 1 < command.Length && command[i + 1] == '|')
+                            i++; // consume the second '|' of a "||" operator
+                        continue;
+                    }
                 }
             }
 
@@ -263,6 +307,144 @@ internal static class ExecShellWrapperParser
 
         FlushCurrent(parts, current);
         return parts;
+    }
+
+    // True when `segment` contains an execution-introducing construct the parser does not decompose,
+    // for a shell that evaluates it: an unquoted `(` subexpression/subshell not part of a `$(` or
+    // `@(` command substitution, or — for POSIX shells only — an unquoted backtick substitution. cmd
+    // is exempt (no $()/backtick, and its `(...)` grouping chains via ; & | which are already split
+    // — so `C:\Program Files (x86)` paths stay valid). Single/double quote state is tracked so a `(`
+    // or backtick inside a quoted argument is treated as a literal and not flagged.
+    private static bool HasUndecomposableExec(string segment, string? shell)
+    {
+        var s = (shell ?? "powershell").ToLowerInvariant();
+        if (s is "cmd" or "cmd.exe")
+            return false;
+        var posix = s is "sh" or "bash" or "zsh" or "dash" or "ash" or "ksh" or "fish";
+
+        var inSingle = false;
+        var inDouble = false;
+        for (var i = 0; i < segment.Length; i++)
+        {
+            var c = segment[i];
+            if (c == '"' && !inSingle) { inDouble = !inDouble; continue; }
+            if (c == '\'' && !inDouble) { inSingle = !inSingle; continue; }
+            if (inSingle || inDouble) continue;
+
+            if (c == '`' && posix)
+                return true; // POSIX command substitution
+            if (c == '(' && (i == 0 || (segment[i - 1] != '$' && segment[i - 1] != '@')))
+                return true; // bare subexpression / subshell (not a decomposed `$(` or `@(`)
+        }
+        return false;
+    }
+
+    /// <summary>
+    /// Extracts the inner command of every command-substitution / subexpression the shell will
+    /// execute inside <paramref name="s"/> — <c>$(...)</c>, <c>@(...)</c>, and <c>`...`</c>
+    /// (backticks). Spans inside single quotes are literal in both POSIX shells and PowerShell and
+    /// are skipped; double-quoted and unquoted spans are surfaced. The paren forms are nesting- and
+    /// quote-aware; nested substitutions are re-discovered when the extracted command is itself
+    /// expanded.
+    /// </summary>
+    private static List<string> ExtractCommandSubstitutions(string s)
+    {
+        var found = new List<string>();
+        var inSingleQuotes = false;
+        var inDoubleQuotes = false;
+
+        for (var i = 0; i < s.Length; i++)
+        {
+            var c = s[i];
+
+            if (c == '\'' && !inDoubleQuotes)
+            {
+                inSingleQuotes = !inSingleQuotes;
+                continue;
+            }
+            if (c == '"' && !inSingleQuotes)
+            {
+                inDoubleQuotes = !inDoubleQuotes;
+                continue;
+            }
+            if (inSingleQuotes)
+                continue; // literal — the shell performs no expansion inside single quotes
+
+            // $(...) / @(...) subexpression: find the matching ')' with nesting + quote awareness.
+            if ((c == '$' || c == '@') && i + 1 < s.Length && s[i + 1] == '(')
+            {
+                var inner = ExtractBalancedParen(s, i + 1, out var closeIndex);
+                if (inner != null)
+                {
+                    if (!string.IsNullOrWhiteSpace(inner))
+                        found.Add(inner);
+                    i = closeIndex; // resume after the matching ')'
+                    continue;
+                }
+            }
+
+            // `...` backtick command substitution (POSIX). Paired, no nesting.
+            if (c == '`')
+            {
+                var close = s.IndexOf('`', i + 1);
+                if (close > i)
+                {
+                    var inner = s.Substring(i + 1, close - i - 1);
+                    if (!string.IsNullOrWhiteSpace(inner))
+                        found.Add(inner);
+                    i = close;
+                }
+            }
+        }
+
+        return found;
+    }
+
+    /// <summary>
+    /// Given the index of an opening '(', returns the text strictly inside its matching ')'
+    /// (respecting nested parens and quotes) and sets <paramref name="closeIndex"/> to that ')'.
+    /// Returns null when the parenthesis is unbalanced.
+    /// </summary>
+    private static string? ExtractBalancedParen(string s, int openIndex, out int closeIndex)
+    {
+        closeIndex = openIndex;
+        var depth = 0;
+        var inSingleQuotes = false;
+        var inDoubleQuotes = false;
+
+        for (var i = openIndex; i < s.Length; i++)
+        {
+            var c = s[i];
+
+            if (c == '\'' && !inDoubleQuotes)
+            {
+                inSingleQuotes = !inSingleQuotes;
+                continue;
+            }
+            if (c == '"' && !inSingleQuotes)
+            {
+                inDoubleQuotes = !inDoubleQuotes;
+                continue;
+            }
+            if (inSingleQuotes || inDoubleQuotes)
+                continue;
+
+            if (c == '(')
+            {
+                depth++;
+            }
+            else if (c == ')')
+            {
+                depth--;
+                if (depth == 0)
+                {
+                    closeIndex = i;
+                    return s.Substring(openIndex + 1, i - openIndex - 1);
+                }
+            }
+        }
+
+        return null; // unbalanced — leave the span untouched
     }
 
     private static string[] Tokenize(string command)

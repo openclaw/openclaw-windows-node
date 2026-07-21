@@ -55,7 +55,7 @@
   },
   "clientFoundationCommit": "2cae69ba",
   "_clientFoundationCommitNote": "The commit on main that introduced the typed gateway protocol client (OpenClawGatewayClient.Protocol.cs + GatewayProtocolModels.cs) this guard cross-checks.",
-  "snapshotUpdated": "2026-06-24",
+  "snapshotUpdated": "2026-07-13",
   "scopePrefixes": ["sessions.", "agents.files.", "commands."],
   "methods": [
     {
@@ -66,8 +66,10 @@
       "responseEnvelope": ["sessions"],
       "responseEnvelopeSource": "TryGetSessionsPayload(JsonElement payload",
       "responseFields": [
-        "key", "isMain", "status", "model", "channel", "displayName", "provider",
-        "subject", "room", "space", "sessionId", "thinkingLevel", "verboseLevel",
+        "key", "isMain", "status", "model", "label", "channel", "displayName",
+        "derivedTitle", "modelProvider", "provider", "subject", "groupChannel", "room",
+        "space", "chatType", "execNode", "parentSessionKey", "spawnDepth", "origin",
+        "worktree", "presentation", "sessionId", "thinkingLevel", "verboseLevel",
         "systemSent", "abortedLastRun", "inputTokens", "outputTokens", "totalTokens",
         "contextTokens", "updatedAt", "startedAt"
       ]

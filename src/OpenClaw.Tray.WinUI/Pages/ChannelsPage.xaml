@@ -77,7 +77,7 @@
                          IsClosable="False"
                          Visibility="Collapsed"
                          Title="Your gateway didn't list any channels"
-                         Message="Channels are configured on your gateway. To add one, expand it below and fill in its credentials — the form saves directly to your gateway's config. The setup guide walks through each channel end-to-end.">
+                         Message="Channels are configured on your gateway. To add one, expand it below and fill in its credentials. The form saves directly to your gateway's config. The setup guide walks through each channel end-to-end.">
                     <InfoBar.ActionButton>
                         <HyperlinkButton x:Uid="ChannelsPage_DocsLink"
                                          Content="Read the channels guide"

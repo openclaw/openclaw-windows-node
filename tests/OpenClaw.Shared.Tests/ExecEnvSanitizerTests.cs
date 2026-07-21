@@ -100,6 +100,32 @@ public class ExecEnvSanitizerTests
         Assert.True(ExecEnvSanitizer.IsBlocked(name));
     }
 
+    // ── interpreter/tool code-injection variables ─────────────────────────────
+    // Regression: env-based git config injection (GIT_CONFIG_*), git command hooks, .NET startup
+    // hooks, and JVM tool options make an allow-listed tool run an attacker command. They must be
+    // blocked before reaching the child process.
+
+    [Theory]
+    [InlineData("GIT_CONFIG_COUNT")]
+    [InlineData("GIT_CONFIG_KEY_0")]
+    [InlineData("GIT_CONFIG_VALUE_0")]
+    [InlineData("GIT_CONFIG_GLOBAL")]
+    [InlineData("GIT_CONFIG_SYSTEM")]
+    [InlineData("git_config_count")]        // case-insensitive prefix
+    [InlineData("GIT_PAGER")]
+    [InlineData("GIT_EDITOR")]
+    [InlineData("GIT_SEQUENCE_EDITOR")]
+    [InlineData("GIT_EXTERNAL_DIFF")]
+    [InlineData("DOTNET_STARTUP_HOOKS")]
+    [InlineData("DOTNET_ADDITIONAL_DEPS")]
+    [InlineData("JAVA_TOOL_OPTIONS")]
+    [InlineData("_JAVA_OPTIONS")]
+    [InlineData("JDK_JAVA_OPTIONS")]
+    public void IsBlocked_CodeInjectionEnvVars_ReturnsTrue(string name)
+    {
+        Assert.True(ExecEnvSanitizer.IsBlocked(name));
+    }
+
     [Theory]
     [InlineData("MY_TOKEN")]
     [InlineData("APP_SECRET")]

@@ -57,22 +57,22 @@ public sealed class PiperVoiceManager
     /// </summary>
     public static readonly PiperVoiceInfo[] AvailableVoices =
     [
-        new("en_US-amy-low",     "English (US) — Amy (low quality, fast)",   "en-US",
+        new("en_US-amy-low",     "English (US): Amy (low quality, fast)",   "en-US",
             "https://github.com/k2-fsa/sherpa-onnx/releases/download/tts-models/vits-piper-en_US-amy-low.tar.bz2",
             "c70f5284a09a7fd4ed203b39b2ff51cac1432b422b852eb647b481dade3cf639"),
-        new("en_US-libritts-high","English (US) — LibriTTS (high quality)",  "en-US",
+        new("en_US-libritts-high","English (US): LibriTTS (high quality)",  "en-US",
             "https://github.com/k2-fsa/sherpa-onnx/releases/download/tts-models/vits-piper-en_US-libritts-high.tar.bz2",
             "d9d35056703fd38ed38e95c202a50f603fefdc8a92a7b6332c4f1a41616eac72"),
-        new("en_GB-alan-low",    "English (GB) — Alan (low quality, fast)",  "en-GB",
+        new("en_GB-alan-low",    "English (GB): Alan (low quality, fast)",  "en-GB",
             "https://github.com/k2-fsa/sherpa-onnx/releases/download/tts-models/vits-piper-en_GB-alan-low.tar.bz2",
             "1308e730b7a12c3b64b669d65daa0138fcb83b1a086edee92fa9fa68cb0290dd"),
-        new("fr_FR-siwis-low",   "Français (FR) — Siwis (low quality, fast)","fr-FR",
+        new("fr_FR-siwis-low",   "Français (FR): Siwis (low quality, fast)","fr-FR",
             "https://github.com/k2-fsa/sherpa-onnx/releases/download/tts-models/vits-piper-fr_FR-siwis-low.tar.bz2",
             "3d69170c160c8375c4123901a72a3845222b39456d39ab74f5bbd7310952b5af"),
-        new("de_DE-thorsten-low","Deutsch (DE) — Thorsten (low quality)",    "de-DE",
+        new("de_DE-thorsten-low","Deutsch (DE): Thorsten (low quality)",    "de-DE",
             "https://github.com/k2-fsa/sherpa-onnx/releases/download/tts-models/vits-piper-de_DE-thorsten-low.tar.bz2",
             "41fab35910fdcec4696b031951d8fd6c262e594cf77b35e1068fadbeb5a091a6"),
-        new("zh_CN-huayan-medium","中文 (CN) — Huayan (medium quality)",      "zh-CN",
+        new("zh_CN-huayan-medium","中文 (CN): Huayan (medium quality)",      "zh-CN",
             "https://github.com/k2-fsa/sherpa-onnx/releases/download/tts-models/vits-piper-zh_CN-huayan-medium.tar.bz2",
             "dbdfec42b91d9cee31cce9ff4b3e9c305eb6fbf60546d071f7e46273554cce6b"),
     ];

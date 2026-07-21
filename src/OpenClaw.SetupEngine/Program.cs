@@ -164,9 +164,22 @@ public static class Program
         }
         Console.WriteLine();
 
+        if (!uninstall &&
+            !wizardOnly &&
+            !DistroInstallPathPolicy.TryGetNewInstallPath(
+                localDataDir ?? SetupContext.ResolveLocalDataDir(),
+                config.DistroName,
+                out _,
+                out var distroPathError))
+        {
+            Console.Error.WriteLine(
+                $"ERROR: {DistroInstallPathPolicy.WithLegacyReplacementGuidance(config.DistroName, distroPathError)}");
+            return 2;
+        }
+
         if (dryRun && !uninstall)
         {
-            Console.WriteLine("DRY RUN — config validated, exiting.");
+            Console.WriteLine("DRY RUN: config validated, exiting.");
             return 0;
         }
 
@@ -251,13 +264,10 @@ public static class Program
             result = await pipeline.UninstallAsync(ctx);
 
             // Post-rollback tray-artifact cleanup (autostart, run.marker, settings, logs)
-            if (result.Outcome == PipelineOutcome.Success || result.Outcome == PipelineOutcome.Failed || result.Outcome == PipelineOutcome.Cancelled)
+            if (SetupPipeline.ShouldRunTrayArtifactCleanup(result, config.DryRun))
             {
-                if (!config.DryRun)
-                {
-                    logger.Info("Running tray-artifact cleanup...");
-                    TrayArtifactCleanup.Run(ctx, preserveLogs, autoStartName, startupTaskName);
-                }
+                logger.Info("Running tray-artifact cleanup...");
+                TrayArtifactCleanup.Run(ctx, preserveLogs, autoStartName, startupTaskName);
             }
         }
         else

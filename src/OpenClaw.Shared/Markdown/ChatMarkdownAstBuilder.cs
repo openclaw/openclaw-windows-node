@@ -129,7 +129,7 @@ public sealed class ChatMarkdownAstBuilder
                 new MdParagraph(new MdInline[]
                 {
                     new MdInlineText(
-                        truncated + "\n\n[truncated — input exceeded "
+                        truncated + "\n\n[truncated: input exceeded "
                                   + MaxInputBytes.ToString("N0") + " chars]"),
                 }),
             });

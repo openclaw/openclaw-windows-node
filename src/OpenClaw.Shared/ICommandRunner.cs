@@ -115,3 +115,20 @@ public interface IHostFallbackAwareCommandRunner : ICommandRunner
     /// </summary>
     string? ResolveHostFallbackShellForApproval(string? requestedShell, string effectiveShell);
 }
+
+/// <summary>
+/// Optional contract for runners whose active transport may not support the
+/// direct-argv execution form (<see cref="CommandRequest.Argv"/>). Callers that
+/// must deliver an already-approved argv verbatim probe this before submitting,
+/// so an incompatible transport produces an explicit up-front error instead of
+/// a rejected execution after approval.
+/// </summary>
+public interface IDirectArgvSupportAwareCommandRunner : ICommandRunner
+{
+    /// <summary>
+    /// True when a direct-argv request submitted now would reach a runner that
+    /// executes <see cref="CommandRequest.Argv"/> verbatim. False when the
+    /// active transport cannot carry an argv faithfully and would fail closed.
+    /// </summary>
+    bool CanExecuteDirectArgv();
+}

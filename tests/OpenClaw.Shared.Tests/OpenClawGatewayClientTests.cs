@@ -282,6 +282,12 @@ public class OpenClawGatewayClientTests
             InvokePrivatePayloadParser("ParseSessions", payloadJson);
         }
 
+        public void SetMainSessionKey(string key, bool isCanonical = true)
+        {
+            SetPrivateField("_mainSessionKeyIsCanonical", isCanonical);
+            SetPrivateField("_mainSessionKey", key);
+        }
+
         public ModelsListInfo ParseModelsListPayload(string payloadJson)
         {
             ModelsListInfo? parsed = null;
@@ -1778,6 +1784,265 @@ public class OpenClawGatewayClientTests
     }
 
     [Fact]
+    public void ParseSessions_ProjectsGatewayPresentationContract()
+    {
+        var helper = new GatewayClientTestHelper();
+        helper.ParseSessionsPayload("""
+        [
+          {
+            "key": "agent:main:telegram:main:direct:491234567890",
+            "label": "Family chat",
+            "displayName": "Telegram:491234567890",
+            "derivedTitle": "Latest plans",
+            "modelProvider": "openai",
+            "model": "gpt-5.4",
+            "channel": "telegram",
+            "groupChannel": "family",
+            "chatType": "direct",
+            "origin": { "label": "Tony" },
+            "worktree": { "id": "wt-1", "branch": "openclaw/session-ux", "repoRoot": "C:\\src\\openclaw" },
+            "execNode": "windows-dev",
+            "parentSessionKey": "agent:main:main",
+            "spawnDepth": 1,
+            "presentation": {
+              "title": "Family chat",
+              "titleSource": "label",
+              "subtitle": "Telegram · account main · agent main",
+              "family": "direct",
+              "agentId": "main",
+              "channel": "telegram",
+              "accountId": "main",
+              "peerKind": "direct",
+              "isMain": false,
+              "isBackground": false
+            }
+          }
+        ]
+        """);
+
+        var session = Assert.Single(helper.GetSessionList());
+        Assert.Equal("Family chat", session.Label);
+        Assert.Equal("Latest plans", session.DerivedTitle);
+        Assert.Equal("openai", session.Provider);
+        Assert.Equal("family", session.Room);
+        Assert.Equal("direct", session.ChatType);
+        Assert.Equal("Tony", session.OriginLabel);
+        Assert.Equal("openclaw/session-ux", session.Worktree?.Branch);
+        Assert.Equal("windows-dev", session.ExecNode);
+        Assert.Equal("agent:main:main", session.ParentSessionKey);
+        Assert.Equal(1, session.SpawnDepth);
+        Assert.False(session.IsMain);
+        Assert.Equal("Family chat", session.Presentation?.Title);
+        Assert.Equal("label", session.Presentation?.TitleSource);
+        Assert.Equal("direct", session.Presentation?.Family);
+        Assert.Equal("main", session.Presentation?.AccountId);
+    }
+
+    [Fact]
+    public void ParseSessions_UsesHandshakeMainSessionKeyInsteadOfKeyShapeGuessing()
+    {
+        var helper = new GatewayClientTestHelper();
+        helper.SetMainSessionKey("global");
+        helper.ParseSessionsPayload("""
+        [
+          {
+            "key": "agent:main:main",
+            "displayName": "Named non-main session",
+            "presentation": {
+              "title": "Named non-main session",
+              "titleSource": "displayName",
+              "family": "custom",
+              "isMain": true,
+              "isBackground": false
+            }
+          },
+          {
+            "key": "global",
+            "displayName": "Global main",
+            "presentation": {
+              "title": "Global session",
+              "titleSource": "generated",
+              "family": "global",
+              "isMain": false,
+              "isBackground": false
+            }
+          }
+        ]
+        """);
+
+        var sessions = helper.GetSessionList();
+        Assert.True(Assert.Single(sessions, session => session.Key == "global").IsMain);
+        Assert.False(Assert.Single(sessions, session => session.Key == "agent:main:main").IsMain);
+    }
+
+    [Fact]
+    public void ParseSessions_LegacyHandshakeAliasUsesRowMetadataAndBoundedCanonicalFallback()
+    {
+        var withPresentation = new GatewayClientTestHelper();
+        withPresentation.SetMainSessionKey("main", isCanonical: false);
+        withPresentation.ParseSessionsPayload("""
+        [
+          {
+            "key": "agent:main:main",
+            "presentation": {
+              "title": "Main session",
+              "titleSource": "generated",
+              "family": "main",
+              "isMain": true,
+              "isBackground": false
+            }
+          }
+        ]
+        """);
+        Assert.True(Assert.Single(withPresentation.GetSessionList()).IsMain);
+
+        var withoutPresentation = new GatewayClientTestHelper();
+        withoutPresentation.SetMainSessionKey("main", isCanonical: false);
+        withoutPresentation.ParseSessionsPayload("""
+        [ { "key": "agent:main:main", "status": "active" } ]
+        """);
+        Assert.True(Assert.Single(withoutPresentation.GetSessionList()).IsMain);
+    }
+
+    [Fact]
+    public void ParseSessions_UsesPresentationMainBeforeHandshakeAuthority()
+    {
+        var helper = new GatewayClientTestHelper();
+        helper.ParseSessionsPayload("""
+        [
+          {
+            "key": "global",
+            "isMain": false,
+            "presentation": {
+              "title": "Global session",
+              "titleSource": "generated",
+              "family": "global",
+              "isMain": true,
+              "isBackground": false
+            }
+          }
+        ]
+        """);
+
+        Assert.True(Assert.Single(helper.GetSessionList()).IsMain);
+    }
+
+    [Fact]
+    public void ParseSessions_RejectsPartialPresentationObjects()
+    {
+        var helper = new GatewayClientTestHelper();
+        helper.ParseSessionsPayload("""
+        [
+          {
+            "key": "agent:main:subagent:child",
+            "presentation": {
+              "title": "Subagent",
+              "family": "subagent"
+            }
+          }
+        ]
+        """);
+
+        var session = Assert.Single(helper.GetSessionList());
+        Assert.Null(session.Presentation);
+        Assert.True(SessionPresentationResolver.IsBackground(session));
+    }
+
+    [Fact]
+    public void ParseSessions_MapPayloadUsesRowMainOnlyBeforeHandshakeAuthority()
+    {
+        var legacy = new GatewayClientTestHelper();
+        legacy.ParseSessionsPayload("""
+        { "session-custom": { "isMain": true, "displayName": "Legacy main" } }
+        """);
+        Assert.True(Assert.Single(legacy.GetSessionList()).IsMain);
+
+        var connected = new GatewayClientTestHelper();
+        connected.SetMainSessionKey("global");
+        connected.ParseSessionsPayload("""
+        {
+          "session-custom": { "isMain": true, "displayName": "Not main" },
+          "global": { "isMain": false, "displayName": "Global main" }
+        }
+        """);
+        Assert.False(Assert.Single(connected.GetSessionList(), session => session.Key == "session-custom").IsMain);
+        Assert.True(Assert.Single(connected.GetSessionList(), session => session.Key == "global").IsMain);
+    }
+
+    [Fact]
+    public void ParseSessions_SparseUpdatesPreserveExplicitFalseMainStatus()
+    {
+        var helper = new GatewayClientTestHelper();
+        helper.ParseSessionsPayload("""
+        [
+          {
+            "key": "agent:main:main",
+            "presentation": {
+              "title": "Not main",
+              "titleSource": "label",
+              "family": "custom",
+              "isMain": false,
+              "isBackground": false
+            }
+          },
+          { "key": "main", "isMain": false }
+        ]
+        """);
+        helper.ParseSessionsPayload("""
+        [
+          { "key": "agent:main:main", "status": "active" },
+          { "key": "main", "status": "active" }
+        ]
+        """);
+
+        Assert.All(helper.GetSessionList(), session => Assert.False(session.IsMain));
+    }
+
+    [Fact]
+    public void ParseSessions_SparseUpdatesPreservePresentationMetadata()
+    {
+        var helper = new GatewayClientTestHelper();
+        helper.ParseSessionsPayload("""
+        [
+          {
+            "key": "agent:main:subagent:child",
+            "channel": "telegram",
+            "presentation": {
+              "title": "Research",
+              "titleSource": "label",
+              "family": "subagent",
+              "agentId": "main",
+              "isMain": false,
+              "isBackground": true
+            }
+          }
+        ]
+        """);
+        helper.ParseSessionsPayload("""
+        [{ "key": "agent:main:subagent:child", "status": "active" }]
+        """);
+
+        var session = Assert.Single(helper.GetSessionList());
+        Assert.Equal("telegram", session.Channel);
+        Assert.Equal("Research", session.Presentation?.Title);
+        Assert.True(session.Presentation?.IsBackground == true);
+    }
+
+    [Fact]
+    public void ParseSessions_SparseUpdatesPreserveLegacyRowMainStatus()
+    {
+        var helper = new GatewayClientTestHelper();
+        helper.ParseSessionsPayload("""
+        [{ "key": "session-custom", "isMain": true, "displayName": "Legacy main" }]
+        """);
+        helper.ParseSessionsPayload("""
+        [{ "key": "session-custom", "status": "active" }]
+        """);
+
+        Assert.True(Assert.Single(helper.GetSessionList()).IsMain);
+    }
+
+    [Fact]
     public void ParseSessions_EmptyArray_ClearsPreviousSessions()
     {
         var helper = new GatewayClientTestHelper();
@@ -2144,6 +2409,99 @@ public class OpenClawGatewayClientTests
         var llama = info.Models[2];
         Assert.False(llama.IsAvailable); // unavailable:true inverts to false
         Assert.Equal("local-llama", llama.DisplayName); // name omitted → id
+    }
+
+    [Fact]
+    public void ParseModelsList_PreservesRuntimeAndNativeContextMetadata()
+    {
+        var helper = new GatewayClientTestHelper();
+        var info = helper.ParseModelsListPayload("""
+            {
+              "models": [
+                {
+                  "id": "gpt-5.4",
+                  "contextWindow": 1000000,
+                  "contextTokens": 272000
+                },
+                {
+                  "id": "legacy-model",
+                  "contextWindow": 128000
+                }
+              ]
+            }
+            """);
+
+        Assert.Collection(
+            info.Models,
+            current =>
+            {
+                Assert.Equal(1000000, current.ContextWindow);
+                Assert.Equal(272000, current.ContextTokens);
+            },
+            legacy =>
+            {
+                Assert.Equal(128000, legacy.ContextWindow);
+                Assert.Null(legacy.ContextTokens);
+            });
+    }
+
+    [Fact]
+    public void ParseModelsList_InvalidContextMetadata_DoesNotDropModelsOrValidFields()
+    {
+        var helper = new GatewayClientTestHelper();
+        var info = helper.ParseModelsListPayload("""
+            {
+              "models": [
+                {
+                  "id": "valid-native",
+                  "contextWindow": 128000,
+                  "contextTokens": 128000.5
+                },
+                {
+                  "id": "valid-runtime",
+                  "contextWindow": 2147483648,
+                  "contextTokens": 272000
+                },
+                {
+                  "id": "non-positive",
+                  "contextWindow": 0,
+                  "contextTokens": -1
+                },
+                {
+                  "id": "unaffected",
+                  "contextWindow": 64000,
+                  "contextTokens": 32000
+                }
+              ]
+            }
+            """);
+
+        Assert.Collection(
+            info.Models,
+            native =>
+            {
+                Assert.Equal("valid-native", native.Id);
+                Assert.Equal(128000, native.ContextWindow);
+                Assert.Null(native.ContextTokens);
+            },
+            runtime =>
+            {
+                Assert.Equal("valid-runtime", runtime.Id);
+                Assert.Null(runtime.ContextWindow);
+                Assert.Equal(272000, runtime.ContextTokens);
+            },
+            nonPositive =>
+            {
+                Assert.Equal("non-positive", nonPositive.Id);
+                Assert.Null(nonPositive.ContextWindow);
+                Assert.Null(nonPositive.ContextTokens);
+            },
+            unaffected =>
+            {
+                Assert.Equal("unaffected", unaffected.Id);
+                Assert.Equal(64000, unaffected.ContextWindow);
+                Assert.Equal(32000, unaffected.ContextTokens);
+            });
     }
 
     [Fact]

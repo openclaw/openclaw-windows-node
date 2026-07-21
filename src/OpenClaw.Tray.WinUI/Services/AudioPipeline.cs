@@ -147,7 +147,7 @@ public sealed class AudioPipeline : IAsyncDisposable
         {
             _logger.Error("Microphone access denied", ex);
             SetState(AudioPipelineState.Error);
-            DiagnosticMessage?.Invoke("⚠️ Microphone access denied — check Windows Settings → Privacy → Microphone");
+            DiagnosticMessage?.Invoke("⚠️ Microphone access denied: check Windows Settings → Privacy → Microphone");
             // Release the partially-initialised capture device.
             CleanupCapture();
             throw new InvalidOperationException(
@@ -393,7 +393,7 @@ public sealed class AudioPipeline : IAsyncDisposable
                     var durationSec = (float)samples.Length / PipelineSampleRate;
                     if (_speechChunkCount < 10) // less than ~320ms of actual speech
                     {
-                        SafeRaiseDiag("Speak now — I'm listening");
+                        SafeRaiseDiag("Speak now: I'm listening");
                     }
                     else
                     {
@@ -405,7 +405,7 @@ public sealed class AudioPipeline : IAsyncDisposable
                         if (Interlocked.Increment(ref _inFlightTranscriptions) > MaxConcurrentTranscriptions)
                         {
                             Interlocked.Decrement(ref _inFlightTranscriptions);
-                            SafeRaiseDiag("⚠️ Transcription backlog — segment dropped");
+                            SafeRaiseDiag("⚠️ Transcription backlog: segment dropped");
                         }
                         else
                         {

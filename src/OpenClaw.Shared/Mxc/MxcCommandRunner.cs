@@ -19,7 +19,7 @@ namespace OpenClaw.Shared.Mxc;
 /// <item><c>false</c> — bypass MXC; route through the host runner.</item>
 /// </list>
 /// </remarks>
-public sealed class MxcCommandRunner : IHostFallbackAwareCommandRunner
+public sealed class MxcCommandRunner : IHostFallbackAwareCommandRunner, IDirectArgvSupportAwareCommandRunner
 {
     public string Name => "mxc";
     private const string DefaultSandboxShell = "cmd";
@@ -78,6 +78,30 @@ public sealed class MxcCommandRunner : IHostFallbackAwareCommandRunner
         return string.Equals(hostShell, effectiveShell, StringComparison.OrdinalIgnoreCase)
             ? null
             : hostShell;
+    }
+
+    /// <summary>
+    /// A direct-argv request can only be honored by the host runner: the sandbox
+    /// protocol carries the legacy command/shell/args fields and cannot transport
+    /// an argv faithfully yet. This reports which transport a request submitted
+    /// now would reach, so callers that must execute an approved argv verbatim
+    /// can fail closed up front instead of after approval. It never disables or
+    /// bypasses the sandbox: when the sandbox would run the request, the answer
+    /// is simply "not supported".
+    /// </summary>
+    public bool CanExecuteDirectArgv()
+    {
+        var settings = _settingsProvider();
+        if (!settings.SystemRunSandboxEnabled)
+            return true;
+
+        // Sandbox enabled but unavailable: the compatibility host fallback honors
+        // Argv, and the strict-blocking variant rejects every request with its own
+        // explicit denial, so neither case needs the up-front argv gate.
+        if (!_isSandboxAvailable())
+            return true;
+
+        return false;
     }
 
     public async Task<CommandResult> RunAsync(CommandRequest request, CancellationToken ct = default)

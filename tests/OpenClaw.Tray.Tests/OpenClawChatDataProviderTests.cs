@@ -625,6 +625,86 @@ public class OpenClawChatDataProviderTests
             .Distinct(StringComparer.OrdinalIgnoreCase).Count());
         Assert.Equal("agent:main:subagent:uuid-b", snapshot.Threads[0].Id);
         Assert.Equal("agent:main:subagent:uuid-a", snapshot.Threads[1].Id);
+        Assert.All(snapshot.Threads, thread => Assert.True(thread.IsBackground));
+        Assert.All(snapshot.Threads, thread => Assert.Equal("main", thread.AgentId));
+    }
+
+    [Fact]
+    public async Task LoadAsync_PreservesRawKeyAsId_EvenWithPresentationTitle()
+    {
+        // Gateway keys must round-trip untouched: the resolver only derives display fields.
+        var rawKey = "agent:main:tui-847241c7-3f9a-4a2b-b123-abcdef123456";
+        var sessions = new[]
+        {
+            new SessionInfo
+            {
+                Key = rawKey,
+                Presentation = new SessionPresentationInfo
+                {
+                    Title = "Terminal session",
+                    Family = "tui",
+                    AgentId = "main",
+                },
+            },
+        };
+        var (_, provider, _, _) = CreateProvider(sessions);
+        var snapshot = await provider.LoadAsync();
+
+        Assert.Equal(rawKey, snapshot.Threads[0].Id);
+        Assert.Equal("Terminal session", snapshot.Threads[0].Title);
+    }
+
+    [Fact]
+    public async Task LoadAsync_EndedAndBackgroundFiltering_ComposesCorrectly()
+    {
+        // Verifies the full filtering pipeline: ended sessions get Status=Ended,
+        // background sessions get IsBackground=true, and both properties coexist.
+        var sessions = new[]
+        {
+            new SessionInfo { Key = "agent:main:main", IsMain = true, Status = "active" },
+            new SessionInfo { Key = "agent:main:cron:daily", Status = "completed" },
+            new SessionInfo { Key = "agent:main:explicit:task", Status = "done" },
+            new SessionInfo { Key = "agent:main:hook:pr-check", Status = "active" },
+        };
+        var (_, provider, _, _) = CreateProvider(sessions);
+        var snapshot = await provider.LoadAsync();
+
+        var main = Assert.Single(snapshot.Threads, t => t.Id == "agent:main:main");
+        Assert.Equal(ChatThreadStatus.Running, main.Status);
+        Assert.False(main.IsBackground);
+
+        var cron = Assert.Single(snapshot.Threads, t => t.Id == "agent:main:cron:daily");
+        Assert.Equal(ChatThreadStatus.Ended, cron.Status);
+        Assert.True(cron.IsBackground);
+
+        var task = Assert.Single(snapshot.Threads, t => t.Id == "agent:main:explicit:task");
+        Assert.Equal(ChatThreadStatus.Ended, task.Status);
+        Assert.False(task.IsBackground);
+
+        var hook = Assert.Single(snapshot.Threads, t => t.Id == "agent:main:hook:pr-check");
+        Assert.Equal(ChatThreadStatus.Running, hook.Status);
+        Assert.True(hook.IsBackground);
+    }
+
+    [Fact]
+    public async Task LoadAsync_GatewayPresentationAgentId_OverridesKeyParsing()
+    {
+        // When Presentation.AgentId is set, it takes precedence over key parsing.
+        var sessions = new[]
+        {
+            new SessionInfo
+            {
+                Key = "agent:main:explicit:work",
+                Presentation = new SessionPresentationInfo
+                {
+                    Title = "Work", Family = "explicit", AgentId = "custom-agent",
+                },
+            },
+        };
+        var (_, provider, _, _) = CreateProvider(sessions);
+        var snapshot = await provider.LoadAsync();
+
+        Assert.Equal("custom-agent", snapshot.Threads[0].AgentId);
     }
 
     [Fact]
@@ -2879,6 +2959,7 @@ public class OpenClawChatDataProviderTests
         Assert.Empty(snap.Threads);
         Assert.True(snap.ComposeTarget.IsReady);
         Assert.Equal("agent:main:main", snap.ComposeTarget.SessionKey);
+        Assert.Equal("main", snap.ComposeTarget.AgentId);
         Assert.Equal("agent:main:main", snap.DefaultThreadId);
     }
 
@@ -7145,7 +7226,7 @@ public class OpenClawChatDataProviderTests
 
         Assert.Equal("agent:main:review", reloaded.DefaultThreadId);
         Assert.Equal("agent:main:review", provider.CachedLastChatState?.DefaultThreadId);
-        Assert.Equal("Review (main/review)", provider.CachedLastChatState?.ThreadTitle);
+        Assert.Equal("Review", provider.CachedLastChatState?.ThreadTitle);
         Assert.Equal("gpt-5.1", provider.CachedLastChatState?.Model);
         Assert.Equal("openai", provider.CachedLastChatState?.ModelProvider);
     }

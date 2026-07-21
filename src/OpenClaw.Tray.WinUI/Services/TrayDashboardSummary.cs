@@ -208,6 +208,13 @@ internal sealed class TrayDashboardSummaryBuilder
         if (sessions == null || sessions.Count == 0)
             return null;
 
+        var foregroundSessions = sessions
+            .Where(session => !SessionPresentationResolver.IsBackground(session))
+            .ToArray();
+        if (foregroundSessions.Length == 0)
+            return null;
+        sessions = foregroundSessions;
+
         static bool IsActive(SessionInfo s) =>
             string.Equals(s.Status, "active", StringComparison.OrdinalIgnoreCase);
 
@@ -223,6 +230,14 @@ internal sealed class TrayDashboardSummaryBuilder
         var main = sessions.FirstOrDefault(s => s.IsMain);
         if (main != null) return main;
 
+        // Prefer non-ended sessions as the dashboard fallback so a completed/failed
+        // session does not appear as "current" when live sessions remain.
+        var nonEnded = sessions
+            .Where(s => !SessionVisibilityFilter.IsEnded(s))
+            .OrderByDescending(s => s.UpdatedAt ?? s.LastSeen)
+            .FirstOrDefault();
+        if (nonEnded != null) return nonEnded;
+
         return sessions.OrderByDescending(s => s.UpdatedAt ?? s.LastSeen).First();
     }
 
@@ -235,9 +250,7 @@ internal sealed class TrayDashboardSummaryBuilder
         var isActive = string.Equals(session.Status, "active", StringComparison.OrdinalIgnoreCase);
         var label = isActive ? "Active" : (session.IsMain ? "Main" : "Session");
 
-        var title = !string.IsNullOrWhiteSpace(session.DisplayName)
-            ? session.DisplayName!
-            : (session.IsMain ? "Main session" : (string.IsNullOrEmpty(session.Key) ? "Session" : session.ShortKey));
+        var title = SessionTitleFormatter.Format(session);
 
         var usedTokens = SessionUsedTokens(session);
         var contextTokens = session.ContextTokens > 0 ? session.ContextTokens : 200_000;
@@ -261,8 +274,8 @@ internal sealed class TrayDashboardSummaryBuilder
 
     private static string FormatTokenCount(long n)
     {
-        if (n >= 1_000_000) return $"{n / 1_000_000.0:F1}M";
-        if (n >= 1_000) return $"{n / 1_000.0:F1}K";
+        if (n >= 1_000_000) return $"{(n / 1_000_000.0).ToString("F1", CultureInfo.InvariantCulture)}M";
+        if (n >= 1_000) return $"{(n / 1_000.0).ToString("F1", CultureInfo.InvariantCulture)}K";
         return n.ToString(CultureInfo.InvariantCulture);
     }
 

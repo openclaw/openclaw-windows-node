@@ -919,6 +919,147 @@ public class SystemCapabilityExecApprovalsTests
         }
     }
 
+    [Fact]
+    public async Task SystemRun_WithPipedChain_DeniesBlockedSegment()
+    {
+        // Regression (policy bypass): a single pipe chains commands, so a denied stage piped behind an
+        // allowed one must be caught.
+        var tempDir = Path.Combine(Path.GetTempPath(), $"test-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(tempDir);
+        try
+        {
+            var policy = new ExecApprovalPolicy(tempDir, _logger);
+            policy.SetRules(
+                new[]
+                {
+                    new ExecApprovalRule { Pattern = "echo *", Action = ExecApprovalAction.Allow },
+                    new ExecApprovalRule { Pattern = "del *", Action = ExecApprovalAction.Deny }
+                },
+                ExecApprovalAction.Deny);
+
+            var cap = CreateCapability(policy);
+            var request = new NodeInvokeRequest
+            {
+                Command = "system.run",
+                Args = JsonDocument.Parse("{\"command\":\"echo ok | del /s /q C:\\\\important\\\\*\",\"shell\":\"cmd\"}").RootElement
+            };
+
+            var result = await cap.ExecuteAsync(request);
+            Assert.False(result.Ok);
+            Assert.Contains("denied", result.Error!, StringComparison.OrdinalIgnoreCase);
+        }
+        finally
+        {
+            // slopwatch-ignore: SW003 Test cleanup or fixture teardown is best-effort and must not hide the test outcome.
+            try { Directory.Delete(tempDir, true); } catch { }
+        }
+    }
+
+    [Fact]
+    public async Task SystemRun_WithCommandSubstitution_DeniesBlockedInnerCommand()
+    {
+        // Regression (policy bypass): $(...) executes its inner command, so a denied command inside a
+        // substitution behind an allowed head must be caught.
+        var tempDir = Path.Combine(Path.GetTempPath(), $"test-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(tempDir);
+        try
+        {
+            var policy = new ExecApprovalPolicy(tempDir, _logger);
+            policy.SetRules(
+                new[]
+                {
+                    new ExecApprovalRule { Pattern = "echo *", Action = ExecApprovalAction.Allow },
+                    new ExecApprovalRule { Pattern = "Remove-Item *", Action = ExecApprovalAction.Deny }
+                },
+                ExecApprovalAction.Deny);
+
+            var cap = CreateCapability(policy);
+            var request = new NodeInvokeRequest
+            {
+                Command = "system.run",
+                Args = JsonDocument.Parse("{\"command\":\"echo hi $(Remove-Item -Recurse -Force C:\\\\important)\",\"shell\":\"powershell\"}").RootElement
+            };
+
+            var result = await cap.ExecuteAsync(request);
+            Assert.False(result.Ok);
+            Assert.Contains("denied", result.Error!, StringComparison.OrdinalIgnoreCase);
+        }
+        finally
+        {
+            // slopwatch-ignore: SW003 Test cleanup or fixture teardown is best-effort and must not hide the test outcome.
+            try { Directory.Delete(tempDir, true); } catch { }
+        }
+    }
+
+    [Fact]
+    public async Task SystemRun_WithBenignPipe_AllowsWhenEverySegmentAllowed()
+    {
+        // The split must not over-deny: a pipe whose every stage is individually allowed still runs.
+        var tempDir = Path.Combine(Path.GetTempPath(), $"test-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(tempDir);
+        try
+        {
+            var policy = new ExecApprovalPolicy(tempDir, _logger);
+            policy.SetRules(
+                new[]
+                {
+                    new ExecApprovalRule { Pattern = "echo *", Action = ExecApprovalAction.Allow }
+                },
+                ExecApprovalAction.Deny);
+
+            var cap = CreateCapability(policy);
+            var request = new NodeInvokeRequest
+            {
+                Command = "system.run",
+                Args = JsonDocument.Parse("{\"command\":\"echo a | echo b\",\"shell\":\"cmd\"}").RootElement
+            };
+
+            var result = await cap.ExecuteAsync(request);
+            Assert.True(result.Ok);
+        }
+        finally
+        {
+            // slopwatch-ignore: SW003 Test cleanup or fixture teardown is best-effort and must not hide the test outcome.
+            try { Directory.Delete(tempDir, true); } catch { }
+        }
+    }
+
+    [Fact]
+    public async Task SystemRun_WithPowershellSubexpression_Denied()
+    {
+        // Regression (residual policy bypass): PowerShell evaluates a bare `(...)` subexpression, so
+        // `echo hi (Start-Process …)` must be denied.
+        var tempDir = Path.Combine(Path.GetTempPath(), $"test-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(tempDir);
+        try
+        {
+            var policy = new ExecApprovalPolicy(tempDir, _logger);
+            policy.SetRules(
+                new[]
+                {
+                    new ExecApprovalRule { Pattern = "echo *", Action = ExecApprovalAction.Allow },
+                    new ExecApprovalRule { Pattern = "*Start-Process*", Action = ExecApprovalAction.Deny }
+                },
+                ExecApprovalAction.Deny);
+
+            var cap = CreateCapability(policy);
+            var request = new NodeInvokeRequest
+            {
+                Command = "system.run",
+                Args = JsonDocument.Parse("{\"command\":\"echo hi (Start-Process calc.exe)\",\"shell\":\"powershell\"}").RootElement
+            };
+
+            var result = await cap.ExecuteAsync(request);
+            Assert.False(result.Ok);
+            Assert.Contains("denied", result.Error!, StringComparison.OrdinalIgnoreCase);
+        }
+        finally
+        {
+            // slopwatch-ignore: SW003 Test cleanup or fixture teardown is best-effort and must not hide the test outcome.
+            try { Directory.Delete(tempDir, true); } catch { }
+        }
+    }
+
     /// <summary>
     /// Verifies that exec-approvals.set rejects Allow rules where a dangerous command stem
     /// is immediately followed by a wildcard (e.g. "rm*"), which would bypass the trailing-
@@ -956,6 +1097,56 @@ public class SystemCapabilityExecApprovalsTests
             };
 
             var result = await cap.ExecuteAsync(request);
+            Assert.False(result.Ok);
+            Assert.Contains("Dangerous allow rule is not permitted", result.Error!, StringComparison.OrdinalIgnoreCase);
+        }
+        finally
+        {
+            // slopwatch-ignore: SW003 Test cleanup or fixture teardown is best-effort and must not hide the test outcome.
+            try { Directory.Delete(tempDir, true); } catch { }
+        }
+    }
+
+    [Theory]
+    [InlineData("mshta *")]
+    [InlineData("rundll32 *")]
+    [InlineData("regsvr32 *")]
+    [InlineData("certutil *")]
+    [InlineData("bitsadmin *")]
+    [InlineData("wmic *")]
+    [InlineData("curl *")]
+    [InlineData("iex *")]
+    [InlineData("iex\t*")]       // tab bypass
+    [InlineData("invoke-expression *")]
+    [InlineData("invoke-command *")]
+    [InlineData("icm *")]
+    [InlineData("icm\t*")]       // tab bypass
+    public async Task ExecApprovalsSet_RejectsLolbinAllowRule(string lolbinPattern)
+    {
+        // Regression (policy-weakening bypass): a remote .set must not whitelist a living-off-the-land
+        // binary the fragment list missed and then invoke it — the "compromise token -> whitelist ->
+        // invoke" EoP the validator exists to stop. These are the native forms of the download /
+        // exec-spawn intent already blocked for invoke-webrequest / start-process.
+        var tempDir = Path.Combine(Path.GetTempPath(), $"test-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(tempDir);
+        try
+        {
+            var policy = new ExecApprovalPolicy(tempDir, _logger);
+            var cap = CreateCapability(policy);
+
+            // Escape control chars for valid JSON (e.g. tab -> \t in JSON string)
+            var jsonSafePattern = lolbinPattern.Replace("\t", "\\t");
+            var json = JsonDocument.Parse($@"{{
+                ""baseHash"": ""{policy.GetPolicyHash()}"",
+                ""rules"": [ {{""pattern"": ""{jsonSafePattern}"", ""action"": ""allow""}} ],
+                ""defaultAction"": ""deny""
+            }}");
+            var result = await cap.ExecuteAsync(new NodeInvokeRequest
+            {
+                Command = "system.execApprovals.set",
+                Args = json.RootElement
+            });
+
             Assert.False(result.Ok);
             Assert.Contains("Dangerous allow rule is not permitted", result.Error!, StringComparison.OrdinalIgnoreCase);
         }

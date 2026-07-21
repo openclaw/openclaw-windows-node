@@ -426,6 +426,7 @@ public sealed class OpenClawComposer : Component<OpenClawComposerProps>
                     b.Padding = new Thickness(8, 6, 8, 6);
                     b.MinWidth = 240;
                     b.CornerRadius = controlCornerRadius;
+                    ToolTipService.SetToolTip(b, session.Title);
                     Microsoft.UI.Xaml.Automation.AutomationProperties.SetItemStatus(
                         b,
                         isCurrent

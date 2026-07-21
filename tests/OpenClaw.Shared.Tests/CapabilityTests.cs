@@ -187,6 +187,96 @@ public class SystemCapabilityTests
         }
     }
 
+    // REGRESSION (fix for the exec-approval broad-pattern bypass): a caller-set broad allow pattern
+    // ("*.*") whose executable is wildcarded must be REJECTED by execApprovals.set, so an otherwise-
+    // denied command stays gated. Pre-fix this rule was accepted and granted blanket exec.
+    [Fact]
+    public async Task ExecApprovals_BroadDotStar_IsRejected_ExecStaysGated()
+    {
+        var tempDir = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(tempDir);
+        try
+        {
+            var cap = new SystemCapability(NullLogger.Instance);
+            var runner = new FakeCommandRunner();
+            var policy = new ExecApprovalPolicy(tempDir, NullLogger.Instance);
+            cap.SetCommandRunner(runner);
+            cap.SetApprovalPolicy(policy);
+
+            // Control: default policy action is Deny; a bare arbitrary exe is NOT executed.
+            _ = await cap.ExecuteAsync(new NodeInvokeRequest
+            {
+                Id = "run-before",
+                Command = "system.run",
+                Args = Parse("""{"command":["notepad.exe"]}""")
+            });
+            Assert.Null(runner.LastRequest);
+
+            // Attacker (gateway) sets a broad allow rule the validator SHOULD reject but does not.
+            var baseHash = policy.GetPolicyHash();
+            var setRes = await cap.ExecuteAsync(new NodeInvokeRequest
+            {
+                Id = "set",
+                Command = "system.execApprovals.set",
+                Args = Parse("{\"baseHash\":\"" + baseHash + "\",\"rules\":[{\"pattern\":\"*.*\",\"action\":\"allow\"}]}")
+            });
+            Assert.False(setRes.Ok, "broad '*.*' allow rule must be rejected by the validator");
+
+            // The exe stays gated — the rule was rejected, so the default-deny still blocks it.
+            _ = await cap.ExecuteAsync(new NodeInvokeRequest
+            {
+                Id = "run-after",
+                Command = "system.run",
+                Args = Parse("""{"command":["notepad.exe"]}""")
+            });
+            Assert.Null(runner.LastRequest);
+        }
+        finally
+        {
+            Directory.Delete(tempDir, true);
+        }
+    }
+
+    // Sets a single allow rule via the gateway-reachable execApprovals.set path; returns whether the
+    // validator accepted it. Used to map the broad-allow-pattern gap and guard the fix.
+    private static async Task<bool> TrySetAllowRuleAsync(string pattern)
+    {
+        var tempDir = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(tempDir);
+        try
+        {
+            var cap = new SystemCapability(NullLogger.Instance);
+            cap.SetCommandRunner(new FakeCommandRunner());
+            var policy = new ExecApprovalPolicy(tempDir, NullLogger.Instance);
+            cap.SetApprovalPolicy(policy);
+            var esc = pattern.Replace("\\", "\\\\").Replace("\"", "\\\"");
+            var json = "{\"baseHash\":\"" + policy.GetPolicyHash() + "\",\"rules\":[{\"pattern\":\"" + esc + "\",\"action\":\"allow\"}]}";
+            var res = await cap.ExecuteAsync(new NodeInvokeRequest { Id = "set", Command = "system.execApprovals.set", Args = Parse(json) });
+            return res.Ok;
+        }
+        finally { Directory.Delete(tempDir, true); }
+    }
+
+    // ROOT CAUSE: an allow pattern whose executable/first token is wildcarded matches nearly every
+    // command (*->.* glob), yet ValidateExecApprovalRules only blocks pure-wildcard/shell-blanket
+    // shapes. The whole class must be rejected, not just "*".
+    [Theory]
+    [InlineData("*.*")]
+    [InlineData("*e*")]
+    [InlineData("*.exe")]
+    [InlineData("*x*")]
+    [InlineData("c*")]
+    public async Task ExecApprovals_BroadAllowPattern_IsRejected(string pattern)
+        => Assert.False(await TrySetAllowRuleAsync(pattern), $"broad allow pattern '{pattern}' must be rejected");
+
+    // Guard against over-blocking: legitimate rules that pin a concrete command must still be accepted.
+    [Theory]
+    [InlineData("git *")]
+    [InlineData("npm run *")]
+    [InlineData("node *.js")]
+    public async Task ExecApprovals_SpecificAllowPattern_IsAccepted(string pattern)
+        => Assert.True(await TrySetAllowRuleAsync(pattern), $"specific allow pattern '{pattern}' must be accepted");
+
     [Fact]
     public async Task Run_GatewayCmdWrapper_ExplicitOuterDenyStillWins()
     {

@@ -10,7 +10,7 @@ namespace OpenClaw.Shared.ExecApprovals;
 // Full coordinator pipeline: validate → normalize → buildContext → evaluate(pass1) →
 // prompt/fallback → evaluate(pass2) → side effects → final decision.
 // UI-free: no WinUI types. A SemaphoreSlim serializes the prompt+pass2 block.
-// Not wired in production src — verified by ProductionWiring_CoordinatorNotReferencedInSrc test.
+// Wired in production by NodeService behind an explicit opt-in setting, default off.
 // Must be registered as singleton when wired: the SemaphoreSlim is per-instance.
 public sealed class ExecApprovalsCoordinator : IExecApprovalV2Handler
 {

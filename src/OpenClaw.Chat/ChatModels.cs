@@ -96,6 +96,10 @@ public record ChatThread
 {
     public required string Id { get; init; }
     public required string Title { get; init; }
+    public string? AgentId { get; init; }
+    public bool IsBackground { get; init; }
+    public bool IsVisibleInSessionPicker(string? activeThreadId) =>
+        !IsBackground || string.Equals(Id, activeThreadId, StringComparison.Ordinal);
     public ChatThreadStatus Status { get; init; }
     public ChatActivity Activity { get; init; }
     public string? Cwd { get; init; }
@@ -231,9 +235,9 @@ public record ChatDataSnapshot(
 /// and accepts <see cref="IChatDataProvider.SendMessageAsync"/> calls keyed by
 /// <see cref="SessionKey"/>.
 /// </param>
-public sealed record ChatComposeTarget(string? SessionKey, bool IsReady)
+public sealed record ChatComposeTarget(string? SessionKey, bool IsReady, string? AgentId = null)
 {
-    public static ChatComposeTarget NotReady { get; } = new(null, false);
+    public static ChatComposeTarget NotReady { get; } = new(null, false, null);
 }
 
 public sealed class ChatDataChangedEventArgs(ChatDataSnapshot snapshot) : EventArgs

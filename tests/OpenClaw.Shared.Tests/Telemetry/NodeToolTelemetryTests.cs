@@ -223,6 +223,88 @@ public sealed class NodeToolTelemetryTests
             approval.GetTagItem(OpenClawTelemetryTagKey.ErrorCategory.ToTelemetryName()));
     }
 
+    [Fact]
+    public async Task SystemRun_V2Allow_EmitsAuthorizeAndRunSpans()
+    {
+        using var activities = new ActivityCollector();
+        using var invocation = new NodeToolInvocation(NodeToolTransport.Gateway);
+        invocation.SetCommand("system.run");
+        var execute = invocation.StartChild(NodeToolInvocation.ExecuteSpanName);
+        var capability = new SystemCapability(NullLogger.Instance);
+        capability.SetCommandRunner(new FixedCommandRunner(new CommandResult
+        {
+            ExitCode = 7,
+            ExecutionMode = NodeToolExecutionMode.Host,
+        }));
+        capability.SetV2Handler(new FixedV2Handler(ExecApprovalV2Result.Allow(
+            new ExecApprovedExecution([@"C:\tools\fail.exe"], null, 1000, null))));
+        using var args = JsonDocument.Parse("""{"command":"ignored"}""");
+
+        var response = await capability.ExecuteAsync(new NodeInvokeRequest
+        {
+            Command = "system.run",
+            Args = args.RootElement.Clone(),
+            Telemetry = invocation,
+            TelemetryParentContext = execute?.Context ?? invocation.Context,
+        });
+        NodeToolInvocation.CompleteChild(execute, NodeToolOutcome.Failure);
+
+        Assert.True(response.Ok);
+        Assert.Equal(NodeToolErrorCategory.CommandFailed, response.Diagnostic?.ErrorCategory);
+        var authorize = Assert.Single(
+            activities.Stopped,
+            activity => activity.OperationName == NodeToolInvocation.SystemRunAuthorizeSpanName);
+        var run = Assert.Single(
+            activities.Stopped,
+            activity => activity.OperationName == NodeToolInvocation.SystemRunRunSpanName);
+        var executeActivity = Assert.Single(
+            activities.Stopped,
+            activity => activity.OperationName == NodeToolInvocation.ExecuteSpanName);
+        Assert.Equal(executeActivity.SpanId, authorize.ParentSpanId);
+        Assert.Equal(executeActivity.SpanId, run.ParentSpanId);
+        Assert.Equal("success", authorize.GetTagItem(OpenClawTelemetryTagKey.Outcome.ToTelemetryName()));
+        Assert.Equal("failure", run.GetTagItem(OpenClawTelemetryTagKey.Outcome.ToTelemetryName()));
+        Assert.Equal(
+            "command_failed",
+            run.GetTagItem(OpenClawTelemetryTagKey.ErrorCategory.ToTelemetryName()));
+    }
+
+    [Fact]
+    public async Task SystemRun_V2DirectArgvGate_ReportsCapabilityUnavailable()
+    {
+        using var activities = new ActivityCollector();
+        using var invocation = new NodeToolInvocation(NodeToolTransport.Gateway);
+        invocation.SetCommand("system.run");
+        var execute = invocation.StartChild(NodeToolInvocation.ExecuteSpanName);
+        var capability = new SystemCapability(NullLogger.Instance);
+        capability.SetCommandRunner(new DirectArgvUnsupportedRunner());
+        capability.SetV2Handler(new FixedV2Handler(ExecApprovalV2Result.Allow(
+            new ExecApprovedExecution([@"C:\tools\test.exe"], null, 1000, null))));
+        using var args = JsonDocument.Parse("""{"command":"ignored"}""");
+
+        var response = await capability.ExecuteAsync(new NodeInvokeRequest
+        {
+            Command = "system.run",
+            Args = args.RootElement.Clone(),
+            Telemetry = invocation,
+            TelemetryParentContext = execute?.Context ?? invocation.Context,
+        });
+        NodeToolInvocation.CompleteChild(execute, NodeToolOutcome.Failure);
+
+        Assert.False(response.Ok);
+        Assert.Equal(NodeToolErrorCategory.CapabilityUnavailable, response.Diagnostic?.ErrorCategory);
+        var authorize = Assert.Single(
+            activities.Stopped,
+            activity => activity.OperationName == NodeToolInvocation.SystemRunAuthorizeSpanName);
+        Assert.Equal("failure", authorize.GetTagItem(OpenClawTelemetryTagKey.Outcome.ToTelemetryName()));
+        Assert.Equal(
+            "capability_unavailable",
+            authorize.GetTagItem(OpenClawTelemetryTagKey.ErrorCategory.ToTelemetryName()));
+        Assert.DoesNotContain(
+            activities.Stopped,
+            activity => activity.OperationName == NodeToolInvocation.SystemRunRunSpanName);
+    }
+
     private static ExecApprovalV2Result CreateV2Result(ExecApprovalV2Code code) =>
         code switch
         {
@@ -243,6 +325,16 @@ public sealed class NodeToolTelemetryTests
 
         public Task<CommandResult> RunAsync(CommandRequest request, CancellationToken ct = default) =>
             Task.FromResult(result);
+    }
+
+    private sealed class DirectArgvUnsupportedRunner : IDirectArgvSupportAwareCommandRunner
+    {
+        public string Name => "unsupported";
+
+        public bool CanExecuteDirectArgv() => false;
+
+        public Task<CommandResult> RunAsync(CommandRequest request, CancellationToken ct = default) =>
+            throw new InvalidOperationException("The direct-argv gate must prevent execution.");
     }
 
     private sealed class FixedV2Handler(ExecApprovalV2Result result) : IExecApprovalV2Handler

@@ -151,20 +151,6 @@ public class ExecApprovalV2PromptAdapterTests
         Assert.Equal("OpenClaw.Shared", asm);
     }
 
-    // Delete once real production wiring of IExecApprovalV2PromptHandler lands in src/.
-    [Fact]
-    public void ProductionWiring_NullPromptHandler_NotReferencedInSrc()
-    {
-        var violations = ProductionSourceFiles.All
-            .Where(f => !f.Path.EndsWith("ExecApprovalV2NullPromptHandler.cs",
-                                     StringComparison.OrdinalIgnoreCase))
-            .Where(f => f.Text.Contains("ExecApprovalV2NullPromptHandler", StringComparison.Ordinal))
-            .Select(f => f.Path)
-            .ToList();
-
-        Assert.Empty(violations);
-    }
-
     private static ExecApprovalV2PromptRequest MinimalRequest() =>
         new()
         {

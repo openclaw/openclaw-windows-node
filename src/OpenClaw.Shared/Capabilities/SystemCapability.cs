@@ -50,10 +50,35 @@ public class SystemCapability : NodeCapabilityBase
         "shutdown",
         "invoke-webrequest",
         "invoke-restmethod",
+        "invoke-expression",
+        "iex ",
+        "invoke-command",
+        "icm ",
         "start-process",
         "set-executionpolicy",
         "reg ",
-        "net "
+        "net ",
+        // Living-off-the-land binaries: native tools whose purpose here is code execution or remote
+        // download-and-run — the same intent already blocked for the PowerShell downloaders
+        // (invoke-webrequest/-restmethod) and process spawning (start-process), but in native-binary
+        // form the fragments above miss. A remote .set must not be able to whitelist one and invoke
+        // it (mshta/regsvr32/rundll32 run remote script; certutil/bitsadmin/curl/wget download). A
+        // denylist cannot be exhaustive against the LOLBAS set — the local Permissions UI, not a
+        // remote caller, is the place to allow anything broader than the read-only defaults.
+        "mshta",
+        "rundll32",
+        "regsvr32",
+        "regsvcs",
+        "regasm",
+        "installutil",
+        "msbuild",
+        "wmic",
+        "cscript",
+        "wscript",
+        "certutil",
+        "bitsadmin",
+        "curl",
+        "wget"
     ];
     
     private readonly bool _includeRunCommands;
@@ -331,39 +356,50 @@ public class SystemCapability : NodeCapabilityBase
                 GetTelemetryParentContext(request));
             ExecApprovalV2Result v2Result;
             var approvalCategory = NodeToolErrorCategory.None;
-            var approvalSpanCompleted = false;
-            try
+            Type? approvalErrorType = null;
+            if (_commandRunner is IDirectArgvSupportAwareCommandRunner argvAware
+                && !argvAware.CanExecuteDirectArgv())
             {
-                v2Result = await _v2Handler.HandleAsync(request, correlationId);
-                approvalCategory = MapV2ErrorCategory(v2Result.Code);
+                // Approved commands execute as a direct argv, which the active
+                // sandbox transport cannot carry yet. Fail closed before any
+                // evaluation or prompt so nothing gets approved that cannot
+                // execute. The sandbox is never bypassed or disabled from here.
+                v2Result = ExecApprovalV2Result.Unavailable(
+                    "sandboxed system.run cannot execute the approved command form yet; " +
+                    "keep the sandbox on and disable the new approvals path, or turn the sandbox off, to run commands");
             }
-            catch (Exception ex)
+            else
             {
-                // Rail 1: no silent fallback — handler exceptions become typed denies.
-                Logger.Error($"[system.run] corr={correlationId} path=v2 handler threw", ex);
-                v2Result = ExecApprovalV2Result.ValidationFailed("Handler exception");
-                approvalCategory = NodeToolErrorCategory.InternalFailure;
-                NodeToolInvocation.CompleteChild(
-                    approvalSpan,
-                    NodeToolOutcome.Failure,
-                    approvalCategory,
-                    errorType: ex.GetType());
-                approvalSpanCompleted = true;
+                try
+                {
+                    v2Result = await _v2Handler.HandleAsync(request, correlationId);
+                }
+                catch (Exception ex)
+                {
+                    // Rail 1: no silent fallback — handler exceptions become typed denies.
+                    Logger.Error($"[system.run] corr={correlationId} path=v2 handler threw", ex);
+                    v2Result = ExecApprovalV2Result.ValidationFailed("Handler exception");
+                    approvalErrorType = ex.GetType();
+                }
             }
 
+            approvalCategory = approvalErrorType == null
+                ? MapV2ErrorCategory(v2Result.Code)
+                : NodeToolErrorCategory.InternalFailure;
             Logger.Info($"[system.run] corr={correlationId} decision={v2Result.Code} reason={v2Result.Reason}");
-            if (!approvalSpanCompleted)
-            {
-                NodeToolInvocation.CompleteChild(
-                    approvalSpan,
-                    approvalCategory == NodeToolErrorCategory.None
-                        ? NodeToolOutcome.Success
-                        : NodeToolOutcome.Failure,
-                    approvalCategory);
-            }
-            // Rail 1: no silent fallback to legacy regardless of result code.
-            // In PR1 only ExecApprovalV2NullHandler exists (always unavailable); the real
-            // coordinator that can produce an allow decision is wired in PR7/PR8.
+            NodeToolInvocation.CompleteChild(
+                approvalSpan,
+                approvalCategory == NodeToolErrorCategory.None
+                    ? NodeToolOutcome.Success
+                    : NodeToolOutcome.Failure,
+                approvalCategory,
+                errorType: approvalErrorType);
+
+            if (v2Result.IsAllow && v2Result.Execution is { } approvedExecution)
+                return await RunApprovedAsync(approvedExecution, correlationId, request);
+
+            // No fallback to legacy regardless of result code: any non-allow
+            // outcome from the approval handler is a terminal, typed error.
             var response = Error($"exec-approvals-v2: {v2Result.Code} ({v2Result.Reason})");
             if (approvalCategory != NodeToolErrorCategory.None)
                 response.Diagnostic = new NodeToolDiagnostic(approvalCategory);
@@ -619,6 +655,84 @@ public class SystemCapability : NodeCapabilityBase
             ExecApprovalV2Code.Allow => NodeToolErrorCategory.None,
             _ => NodeToolErrorCategory.InternalFailure
         };
+
+    /// <summary>
+    /// Execute a command the V2 approval handler allowed. The request is built
+    /// from the approved payload only — validated argv plus sanitized env — so
+    /// the process receives exactly what was approved, with no shell re-parsing
+    /// and nothing re-derived from the raw request. The payload's constructor
+    /// already clamps the timeout to the system.run maximum.
+    /// </summary>
+    private async Task<NodeInvokeResponse> RunApprovedAsync(
+        ExecApprovedExecution execution,
+        string correlationId,
+        NodeInvokeRequest request)
+    {
+        var runSpan = request.Telemetry?.StartChild(
+            NodeToolInvocation.SystemRunRunSpanName,
+            GetTelemetryParentContext(request));
+        if (_commandRunner == null)
+        {
+            NodeToolInvocation.CompleteChild(
+                runSpan,
+                NodeToolOutcome.Failure,
+                NodeToolErrorCategory.CapabilityUnavailable);
+            return ErrorWithDiagnostic(
+                "Command execution not available",
+                NodeToolErrorCategory.CapabilityUnavailable);
+        }
+
+        try
+        {
+            var commandRequest = execution.ToCommandRequest();
+            commandRequest.Telemetry = request.Telemetry;
+            commandRequest.TelemetryParentContext =
+                runSpan?.Context ?? request.Telemetry?.Context ?? default;
+            var result = await _commandRunner.RunAsync(commandRequest);
+            Logger.Info($"[system.run] corr={correlationId} path=v2 executed exit={result.ExitCode} timedOut={result.TimedOut}");
+
+            var executionMode = result.ExecutionMode ?? NodeToolExecutionMode.Host;
+            var errorCategory = ClassifyCommandResult(result);
+            if (result.SandboxDenialReason.HasValue)
+                request.Telemetry?.SetSandboxDenialReason(result.SandboxDenialReason.Value);
+            NodeToolInvocation.CompleteChild(
+                runSpan,
+                errorCategory == NodeToolErrorCategory.None
+                    ? NodeToolOutcome.Success
+                    : NodeToolOutcome.Failure,
+                errorCategory,
+                executionMode,
+                sandboxDenialReason: result.SandboxDenialReason);
+
+            var response = Success(new
+            {
+                stdout = result.Stdout,
+                stderr = result.Stderr,
+                exitCode = result.ExitCode,
+                timedOut = result.TimedOut,
+                success = result.ExitCode == 0 && !result.TimedOut,
+                durationMs = result.DurationMs
+            });
+            if (errorCategory != NodeToolErrorCategory.None)
+            {
+                response.Diagnostic = new NodeToolDiagnostic(
+                    errorCategory,
+                    executionMode,
+                    result.SandboxDenialReason);
+            }
+            return response;
+        }
+        catch (Exception ex)
+        {
+            Logger.Error($"[system.run] corr={correlationId} path=v2 execution failed", ex);
+            NodeToolInvocation.CompleteChild(
+                runSpan,
+                NodeToolOutcome.Failure,
+                NodeToolErrorCategory.InternalFailure,
+                errorType: ex.GetType());
+            return ErrorWithDiagnostic("Execution failed", NodeToolErrorCategory.InternalFailure);
+        }
+    }
 
     private async Task<ExecApprovalCheckResult> EnsureApprovedAsync(
         string command,
@@ -960,7 +1074,11 @@ public class SystemCapability : NodeCapabilityBase
             if (string.IsNullOrWhiteSpace(pattern))
                 return "Empty allow rule patterns are not permitted.";
 
-            var normalized = pattern.ToLowerInvariant();
+            // Normalize to lowercase and collapse all whitespace runs (including tabs,
+            // non-breaking spaces) to a single ASCII space so fragment checks cannot be
+            // bypassed with alternate whitespace characters.
+            var normalized = System.Text.RegularExpressions.Regex.Replace(
+                pattern.ToLowerInvariant(), @"\s+", " ");
 
             // Catch all-wildcard patterns (e.g. *, **, ?*, * ?) that match any command.
             // Strip every wildcard character and whitespace; if nothing remains the pattern
@@ -1009,6 +1127,15 @@ public class SystemCapability : NodeCapabilityBase
                     return $"Dangerous allow rule is not permitted: {pattern}";
                 }
             }
+
+            // Finally: the executable (first whitespace-delimited token) must be a concrete literal. A
+            // wildcard there lets a NON-dangerous pattern match ANY command (MatchesPattern globs
+            // * -> .* over the whole command line), e.g. "*.*", "*e*", "*.exe", "c*" — the broad-allow
+            // class the earlier shape checks miss. Runs after the dangerous-fragment check so a
+            // dangerous stem keeps its specific message. Legit rules pin the command ("git *").
+            var firstToken = normalized.Split(new[] { ' ', '\t' }, 2)[0];
+            if (firstToken.Contains('*') || firstToken.Contains('?'))
+                return $"Allow rule must name a concrete command (no wildcard in the executable): {pattern}";
         }
 
         return null;

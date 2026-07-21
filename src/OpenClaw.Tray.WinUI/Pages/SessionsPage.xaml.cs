@@ -10,6 +10,7 @@ using OpenClawTray.Windows;
 using System;
 using System.Collections.Generic;
 using System.ComponentModel;
+using System.Globalization;
 using System.Linq;
 using Windows.Storage;
 using Windows.Storage.Pickers;
@@ -27,6 +28,7 @@ public sealed partial class SessionsPage : Page
     private IOperatorGatewayClient? _subscribedClient;
     private bool _unloaded;
     private bool _syncingShowCompletedToggle;
+    private bool _showBackgroundSessions;
 
     public SessionsPage()
     {
@@ -127,31 +129,24 @@ public sealed partial class SessionsPage : Page
 
     public void UpdateSessions(SessionInfo[] sessions)
     {
-        // Drop cron-spawned sessions (key shape "agent:<id>:cron" — slot is
-        // the third ":"-separated part). They have their own home on the
-        // Cron page; surfacing them here overcrowds the conversation list.
-        _allSessions = sessions
-            .Where(s => !IsCronSession(s))
-            .ToArray();
+        _allSessions = sessions;
         _sessionLoading.Complete(_allSessions.Length);
         RebuildChannelTabs();
         ApplyFilter();
     }
 
-    private static bool IsCronSession(SessionInfo s)
-    {
-        if (string.IsNullOrEmpty(s.Key)) return false;
-        var parts = s.Key.Split(':');
-        return parts.Length >= 3
-               && string.Equals(parts[2], "cron", StringComparison.OrdinalIgnoreCase);
-    }
+    private IEnumerable<SessionInfo> SessionsForCurrentBackgroundScope() =>
+        (_allSessions ?? Array.Empty<SessionInfo>())
+        .Where(session => SessionPresentationResolver.IsVisible(session, _showBackgroundSessions));
 
     private void RebuildChannelTabs()
     {
         if (_allSessions == null) return;
 
         var requestedChannel = _activeChannel;
-        var visibleSessions = SessionVisibilityFilter.VisibleSessions(_allSessions, ShowCompletedSessions);
+        var visibleSessions = SessionVisibilityFilter.VisibleSessions(
+            SessionsForCurrentBackgroundScope(),
+            ShowCompletedSessions);
         var channels = visibleSessions
             .Where(s => !string.IsNullOrWhiteSpace(s.Channel))
             .Select(s => s.Channel!)
@@ -191,7 +186,7 @@ public sealed partial class SessionsPage : Page
         }
 
         var activeSessions = SessionVisibilityFilter.VisibleSessions(
-                _allSessions ?? Array.Empty<SessionInfo>(),
+                SessionsForCurrentBackgroundScope(),
                 ShowCompletedSessions)
             .ToList();
         var activeTitles = SessionTitleFormatter.FormatUnique(activeSessions);
@@ -256,6 +251,13 @@ public sealed partial class SessionsPage : Page
         ApplyFilter();
     }
 
+    private void OnShowBackgroundToggled(object sender, RoutedEventArgs e)
+    {
+        _showBackgroundSessions = ShowBackgroundToggle.IsOn;
+        RebuildChannelTabs();
+        ApplyFilter();
+    }
+
     private void OnAppStateChanged(object? sender, PropertyChangedEventArgs e)
     {
         switch (e.PropertyName)
@@ -268,10 +270,13 @@ public sealed partial class SessionsPage : Page
 
     private SessionViewModel ToViewModel(SessionInfo s, string displayName)
     {
-        var parts = new List<string>(3);
+        var subtitle = SessionTitleFormatter.FormatSubtitle(s);
+        var parts = new List<string>(4);
+        if (!string.IsNullOrWhiteSpace(subtitle)) parts.Add(subtitle!);
         if (!string.IsNullOrWhiteSpace(s.Provider)) parts.Add(s.Provider!);
         if (!string.IsNullOrWhiteSpace(s.Model)) parts.Add(s.Model!);
-        if (!string.IsNullOrWhiteSpace(s.Channel)) parts.Add(s.Channel!);
+        if (string.IsNullOrWhiteSpace(subtitle) && !string.IsNullOrWhiteSpace(s.Channel))
+            parts.Add(s.Channel!);
 
         var hasTokens = s.InputTokens > 0 || s.OutputTokens > 0;
         var tokensText = hasTokens
@@ -884,8 +889,8 @@ public sealed partial class SessionsPage : Page
 
     private static string FormatTokenCount(long n)
     {
-        if (n >= 1_000_000) return $"{n / 1_000_000.0:0.#}M";
-        if (n >= 1_000) return $"{n / 1_000.0:0.#}K";
+        if (n >= 1_000_000) return $"{(n / 1_000_000.0).ToString("0.#", CultureInfo.InvariantCulture)}M";
+        if (n >= 1_000) return $"{(n / 1_000.0).ToString("0.#", CultureInfo.InvariantCulture)}K";
         return n.ToString();
     }
 

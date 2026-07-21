@@ -579,7 +579,7 @@ internal sealed record ConnectionPagePlan
                 StripGlyph = OpenClawTray.Helpers.FluentIconCatalog.StatusErr,
                 StripAccent = ConnectionAccent.Critical,
                 StripHeadline = "Can't reach gateway",
-                StripSub = "SSH tunnel is down — " + (err.Length > 0 ? err : "last attempt failed."),
+                StripSub = "SSH tunnel is down: " + (err.Length > 0 ? err : "last attempt failed."),
                 StripPrimaryLabel = "Restart tunnel",
                 StripPrimaryAction = ConnectionPrimaryAction.RestartTunnel,
                 RecoveryDetail = err,
