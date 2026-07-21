@@ -26,6 +26,137 @@ jobs:
           exit 1
         fi
 
+  gateway-candidate:
+    needs: repo-hygiene
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    outputs:
+      sha256: ${{ steps.package.outputs.sha256 }}
+    steps:
+    - name: Fail if repo hygiene failed
+      if: ${{ needs.repo-hygiene.result != 'success' }}
+      shell: bash
+      run: |
+        echo "repo-hygiene failed; see the repo-hygiene job output." >&2
+        exit 1
+
+    - name: Checkout frozen OpenClaw main source
+      uses: actions/checkout@v7
+      with:
+        repository: openclaw/openclaw
+        ref: 0f8a87ad6f1281bc4d69cd9f6d9e3d56ce6011a3
+        fetch-depth: 0
+
+    - name: Setup Node 24
+      uses: actions/setup-node@v6
+      with:
+        node-version: 24
+
+    - name: Activate pinned pnpm
+      shell: bash
+      run: |
+        corepack enable
+        corepack prepare pnpm@11.2.2 --activate
+
+    - name: Compose main with exact PR 110382 and PR 111956 patches
+      shell: bash
+      run: |
+        set -euo pipefail
+        base_sha=0f8a87ad6f1281bc4d69cd9f6d9e3d56ce6011a3
+        wizard_base=5abcad51c81daa4ba4b570cccde06eecd8a437f1
+        wizard_head=8287e118f593f10f55a7419d27b28f739652f774
+        package_base=9e0c5f94b5cdf0090a17b3f36c5a74c5b36a1c71
+        package_head=c2770d527a29a65ad8bb3decc27f35ab528ca224
+        wizard_paths="$RUNNER_TEMP/pr110382-expected-paths.txt"
+        package_paths="$RUNNER_TEMP/pr111956-expected-paths.txt"
+        combined_paths="$RUNNER_TEMP/combined-expected-paths.txt"
+        staged_paths="$RUNNER_TEMP/combined-staged-paths.txt"
+        wizard_patch="$RUNNER_TEMP/pr110382.patch"
+        package_patch="$RUNNER_TEMP/pr111956.patch"
+
+        cat >"$wizard_paths" <<'EOF'
+        apps/shared/OpenClawKit/Sources/OpenClawProtocol/GatewayModels.swift
+        packages/gateway-protocol/src/schema/wizard.ts
+        src/gateway/gateway.test.ts
+        src/gateway/server-methods/wizard.test.ts
+        src/gateway/server-methods/wizard.ts
+        src/gateway/server-wizard-sessions.test.ts
+        src/gateway/server-wizard-sessions.ts
+        src/wizard/session.ts
+        src/wizard/setup.finalize.test.ts
+        src/wizard/setup.finalize.ts
+        EOF
+        cat >"$package_paths" <<'EOF'
+        scripts/package-openclaw-for-docker.d.mts
+        scripts/package-openclaw-for-docker.mjs
+        test/e2e/qa-lab/runtime/package-openclaw-for-docker.e2e.test.ts
+        EOF
+        cat "$wizard_paths" "$package_paths" | sort >"$combined_paths"
+
+        test "$(git rev-parse HEAD)" = "$base_sha"
+        git fetch --no-tags origin \
+          "+refs/pull/110382/head:refs/remotes/origin/pr-110382" \
+          "+refs/pull/111956/head:refs/remotes/origin/pr-111956"
+        test "$(git rev-parse refs/remotes/origin/pr-110382)" = "$wizard_head"
+        test "$(git rev-parse refs/remotes/origin/pr-111956)" = "$package_head"
+        git merge-base --is-ancestor "$wizard_base" "$wizard_head"
+        git merge-base --is-ancestor "$package_base" "$package_head"
+        git diff --name-only "$wizard_base" "$wizard_head" | sort | diff -u "$wizard_paths" -
+        git diff --name-only "$package_base" "$package_head" | sort | diff -u "$package_paths" -
+        git diff --binary "$wizard_base" "$wizard_head" -- $(cat "$wizard_paths") >"$wizard_patch"
+        git diff --binary "$package_base" "$package_head" -- $(cat "$package_paths") >"$package_patch"
+        test -s "$wizard_patch"
+        test -s "$package_patch"
+        sha256sum "$wizard_patch" >"$RUNNER_TEMP/pr110382-patch.SHA256SUM"
+        sha256sum "$package_patch" >"$RUNNER_TEMP/pr111956-patch.SHA256SUM"
+        git apply --index "$wizard_patch"
+        git apply --index "$package_patch"
+        git diff --cached --name-only | sort >"$staged_paths"
+        diff -u "$combined_paths" "$staged_paths"
+        git diff --cached --check
+
+    - name: Build immutable composed gateway package
+      id: package
+      shell: bash
+      run: |
+        set -euo pipefail
+        test "$(node -p "require('./package.json').version")" = "2026.7.2"
+        pnpm install --frozen-lockfile --ignore-scripts=false --config.engine-strict=false --config.enable-pre-post-scripts=true
+        node scripts/package-openclaw-for-docker.mjs \
+          --allow-unreleased-changelog \
+          --source-dir . \
+          --output-dir "$RUNNER_TEMP/gateway-candidate" \
+          --output-name openclaw-2026.7.2-main-pr110382-pr111956.tgz
+        tarball="$RUNNER_TEMP/gateway-candidate/openclaw-2026.7.2-main-pr110382-pr111956.tgz"
+        sha256="$(sha256sum "$tarball" | awk '{print $1}')"
+        packaged_version="$(tar -xOf "$tarball" package/package.json | node -e "let s='';process.stdin.on('data',c=>s+=c).on('end',()=>process.stdout.write(JSON.parse(s).version))")"
+        test "$packaged_version" = "2026.7.2"
+        wizard_patch_sha256="$(awk '{print $1}' "$RUNNER_TEMP/pr110382-patch.SHA256SUM")"
+        package_patch_sha256="$(awk '{print $1}' "$RUNNER_TEMP/pr111956-patch.SHA256SUM")"
+        test "${#sha256}" -eq 64
+        test "${#wizard_patch_sha256}" -eq 64
+        test "${#package_patch_sha256}" -eq 64
+        printf '%s  %s\n' "$sha256" "$(basename "$tarball")" >"$RUNNER_TEMP/gateway-candidate/SHA256SUMS"
+        printf '{"source_ref":"main","source_sha":"%s","fixes":[{"pr":110382,"base":"%s","head":"%s","patch_sha256":"%s"},{"pr":111956,"base":"%s","head":"%s","patch_sha256":"%s"}],"changed_paths":["apps/shared/OpenClawKit/Sources/OpenClawProtocol/GatewayModels.swift","packages/gateway-protocol/src/schema/wizard.ts","scripts/package-openclaw-for-docker.d.mts","scripts/package-openclaw-for-docker.mjs","src/gateway/gateway.test.ts","src/gateway/server-methods/wizard.test.ts","src/gateway/server-methods/wizard.ts","src/gateway/server-wizard-sessions.test.ts","src/gateway/server-wizard-sessions.ts","src/wizard/session.ts","src/wizard/setup.finalize.test.ts","src/wizard/setup.finalize.ts","test/e2e/qa-lab/runtime/package-openclaw-for-docker.e2e.test.ts"],"package_version":"%s","package_sha256":"%s"}\n' \
+          0f8a87ad6f1281bc4d69cd9f6d9e3d56ce6011a3 \
+          5abcad51c81daa4ba4b570cccde06eecd8a437f1 \
+          8287e118f593f10f55a7419d27b28f739652f774 \
+          "$wizard_patch_sha256" \
+          9e0c5f94b5cdf0090a17b3f36c5a74c5b36a1c71 \
+          c2770d527a29a65ad8bb3decc27f35ab528ca224 \
+          "$package_patch_sha256" \
+          "$packaged_version" \
+          "$sha256" >"$RUNNER_TEMP/gateway-candidate/provenance.json"
+        echo "sha256=$sha256" >>"$GITHUB_OUTPUT"
+
+    - name: Upload composed gateway candidate
+      uses: actions/upload-artifact@v7
+      with:
+        name: openclaw-main-pr110382-pr111956-candidate
+        path: ${{ runner.temp }}/gateway-candidate/
+        if-no-files-found: error
+        retention-days: 7
+
   test:
     needs: repo-hygiene
     if: ${{ !cancelled() }}
@@ -338,8 +469,8 @@ jobs:
       majorMinorPatch: ${{ steps.gitversion.outputs.majorMinorPatch }}
 
   e2etests:
-    needs: repo-hygiene
-    if: ${{ !cancelled() }}
+    needs: [repo-hygiene, gateway-candidate]
+    if: ${{ needs.repo-hygiene.result == 'success' && needs.gateway-candidate.result == 'success' }}
     runs-on: windows-latest
     timeout-minutes: ${{ matrix.timeout_minutes }}
     strategy:
@@ -348,7 +479,7 @@ jobs:
         include:
           - name: setup-connect
             timeout_minutes: 45
-            filter: "FullyQualifiedName~OpenClaw.E2ETests.Setup.SetupAndConnectTests|FullyQualifiedName~OpenClaw.E2ETests.Setup.MxcSetupAndConnectTests"
+            filter: "FullyQualifiedName~OpenClaw.E2ETests.Setup.SetupAndConnectTests|FullyQualifiedName~OpenClaw.E2ETests.Setup.MxcSetupAndConnectTests|FullyQualifiedName~OpenClaw.E2ETests.Setup.GatewayE2EPackageSpecTests"
           - name: revocation-recovery
             timeout_minutes: 25
             filter: FullyQualifiedName~OpenClaw.E2ETests.Setup.RevocationAndRecoveryTests
@@ -357,10 +488,10 @@ jobs:
             filter: FullyQualifiedName~OpenClaw.E2ETests.Setup.NetworkRecoveryTests
     steps:
     - name: Fail if repo hygiene failed
-      if: ${{ needs.repo-hygiene.result != 'success' }}
+      if: ${{ needs.repo-hygiene.result != 'success' || needs.gateway-candidate.result != 'success' }}
       shell: pwsh
       run: |
-        Write-Error "repo-hygiene failed; see the repo-hygiene job output."
+        Write-Error "A prerequisite failed; see repo-hygiene and gateway-candidate job output."
         exit 1
 
     - uses: actions/checkout@v7
@@ -395,9 +526,28 @@ jobs:
     - name: Build E2E Tests
       run: dotnet build tests/OpenClaw.E2ETests -c Debug -r win-x64
 
+    - name: Download composed gateway candidate
+      uses: actions/download-artifact@v8
+      with:
+        name: openclaw-main-pr110382-pr111956-candidate
+        path: TestResults/GatewayCandidate
+
+    - name: Start disposable WSL package host
+      id: gateway_package_host
+      shell: pwsh
+      run: |
+        .\scripts\Start-E2EGatewayPackageHost.ps1 `
+          -PackagePath "TestResults\GatewayCandidate\openclaw-2026.7.2-main-pr110382-pr111956.tgz" `
+          -ExpectedSha256 "${{ needs.gateway-candidate.outputs.sha256 }}" `
+          -DistroName "OpenClawE2EPackageHost-${{ matrix.name }}" `
+          -InstallLocation "${{ runner.temp }}\OpenClawE2EPackageHost-${{ matrix.name }}" `
+          -OwnershipToken "${{ github.run_id }}-${{ github.run_attempt }}-${{ matrix.name }}" `
+          -GitHubOutput $env:GITHUB_OUTPUT
+
     - name: Run E2E Tests (${{ matrix.name }})
       env:
         OPENCLAW_RUN_E2E: 1
+        OPENCLAW_E2E_GATEWAY_PACKAGE_SPEC: ${{ steps.gateway_package_host.outputs.package_spec }}
       shell: pwsh
       run: |
         dotnet test tests/OpenClaw.E2ETests `
@@ -447,6 +597,15 @@ jobs:
             }
           }
         }
+
+    - name: Stop disposable WSL package host
+      if: always()
+      shell: pwsh
+      run: |
+        .\scripts\Stop-E2EGatewayPackageHost.ps1 `
+          -DistroName "OpenClawE2EPackageHost-${{ matrix.name }}" `
+          -InstallLocation "${{ runner.temp }}\OpenClawE2EPackageHost-${{ matrix.name }}" `
+          -OwnershipToken "${{ github.run_id }}-${{ github.run_attempt }}-${{ matrix.name }}"
 
     - name: Upload E2E Test Results & Logs
       if: always()

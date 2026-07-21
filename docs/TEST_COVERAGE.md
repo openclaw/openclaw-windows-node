@@ -93,6 +93,7 @@ dotnet test
 
 # Explicit local E2E run
 $env:OPENCLAW_RUN_E2E = "1"
+$env:OPENCLAW_E2E_GATEWAY_PACKAGE_SPEC = "http://<wsl-host>:38677/openclaw-candidate.tgz"
 dotnet test .\tests\OpenClaw.E2ETests\OpenClaw.E2ETests.csproj -r win-x64
 
 # Formal MXC validation path. This sets the required integration/E2E env vars

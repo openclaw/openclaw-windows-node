@@ -40,6 +40,7 @@ public static class SetupStepFactory
 {
     public static List<SetupStep> BuildWizardOnlySteps() =>
     [
+        new RecoverGatewayReloadStep(),
         new RunGatewayWizardStep(),
         new WindowsNodeBootstrapContextStep(),
     ];
@@ -61,9 +62,11 @@ public static class SetupStepFactory
             new InstallCliStep(),
             new InstallTailscaleStep(),
             new AuthorizeTailscaleStep(),
+            new RecoverGatewayReloadStep(),
             new ConfigureGatewayStep(),
             new InstallGatewayServiceStep(),
-            new StartGatewayStep(),
+            new WaitForGatewayHealthStep(),
+            new StartKeepaliveStep(),
             new FinalizeTailscaleServeStep(),
             new MintBootstrapTokenStep(),
             new PairOperatorStep(),
@@ -71,7 +74,6 @@ public static class SetupStepFactory
             new VerifyEndToEndStep(),
             new RunGatewayWizardStep(),
             new WindowsNodeBootstrapContextStep(),
-            new StartKeepaliveStep(),
         ];
     }
 }
