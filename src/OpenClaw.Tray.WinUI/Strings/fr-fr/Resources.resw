@@ -3635,7 +3635,7 @@ Les commandes sont bloquées tant que le sandboxing est indisponible, car le blo
     <value>Welcome to OpenClaw gateway</value>
   </data>
   <data name="V2_Gateway_CardBody1" xml:space="preserve">
-    <value>Your local OpenClaw gateway is running at http://localhost:18789: visit it to add your first AI provider and configure your agent.</value>
+    <value>Your local OpenClaw gateway is running at http://localhost:18789. Visit it to add your first AI provider and configure your agent.</value>
   </data>
   <data name="V2_Gateway_CardBody2" xml:space="preserve">
     <value>All requests are processed on this PC. Your data stays local.</value>
@@ -5571,7 +5571,7 @@ Assurez-vous que la passerelle est en cours d'exécution.</value>
     <value>Application en cours…</value>
   </data>
   <data name="ConnectionPage_AppliedGateway" xml:space="preserve">
-    <value>Appliqué: passerelle : {0}</value>
+    <value>Passerelle appliquée : {0}</value>
   </data>
   <data name="ConnectionPage_InvalidSetupCode" xml:space="preserve">
     <value>Code de configuration invalide</value>
@@ -5955,7 +5955,7 @@ Assurez-vous que la passerelle est en cours d'exécution.</value>
     <value>Échec de l’enregistrement pour {0}</value>
   </data>
   <data name="ChannelsPage_BannerStaleConfigMessage" xml:space="preserve">
-    <value>La configuration de votre passerelle a été modifiée ailleurs (p. ex., depuis la page de configuration). Nous avons actualisé le cache: réessayez d’enregistrer. Détails : {0}</value>
+    <value>La configuration de votre passerelle a été modifiée ailleurs (p. ex., depuis la page de configuration). Nous avons actualisé le cache. Réessayez d’enregistrer. Détails : {0}</value>
   </data>
   <data name="ChannelsPage_BannerSaveFailedMessage" xml:space="preserve">
     <value>{0} Si cela ressemble à une incompatibilité de format filaire, ouvrez la page de configuration pour modifier directement le JSON.</value>

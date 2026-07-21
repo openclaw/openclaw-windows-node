@@ -3636,7 +3636,7 @@ Opdrachten worden geblokkeerd zolang sandboxing niet beschikbaar is, omdat strik
     <value>Welcome to OpenClaw gateway</value>
   </data>
   <data name="V2_Gateway_CardBody1" xml:space="preserve">
-    <value>Your local OpenClaw gateway is running at http://localhost:18789: visit it to add your first AI provider and configure your agent.</value>
+    <value>Your local OpenClaw gateway is running at http://localhost:18789. Visit it to add your first AI provider and configure your agent.</value>
   </data>
   <data name="V2_Gateway_CardBody2" xml:space="preserve">
     <value>All requests are processed on this PC. Your data stays local.</value>
@@ -5572,7 +5572,7 @@ Controleer of de gateway actief is.</value>
     <value>Toepassen…</value>
   </data>
   <data name="ConnectionPage_AppliedGateway" xml:space="preserve">
-    <value>Toegepast: gateway: {0}</value>
+    <value>Gateway toegepast: {0}</value>
   </data>
   <data name="ConnectionPage_InvalidSetupCode" xml:space="preserve">
     <value>Ongeldige installatiecode</value>
@@ -5956,7 +5956,7 @@ Controleer of de gateway actief is.</value>
     <value>Opslaan mislukt voor {0}</value>
   </data>
   <data name="ChannelsPage_BannerStaleConfigMessage" xml:space="preserve">
-    <value>Uw gatewayconfiguratie is elders gewijzigd (bijv. vanaf de configuratiepagina). We hebben de cache vernieuwd: probeer opnieuw op te slaan. Details: {0}</value>
+    <value>Uw gatewayconfiguratie is elders gewijzigd (bijv. vanaf de configuratiepagina). We hebben de cache vernieuwd. Probeer opnieuw op te slaan. Details: {0}</value>
   </data>
   <data name="ChannelsPage_BannerSaveFailedMessage" xml:space="preserve">
     <value>{0} Als dit lijkt op een mismatch in het draadformaat, open dan de configuratiepagina voor directe JSON-bewerking.</value>

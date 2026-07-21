@@ -3682,7 +3682,7 @@ Commands are blocked while sandboxing is unavailable because strict fallback blo
     <value>Welcome to OpenClaw gateway</value>
   </data>
   <data name="V2_Gateway_CardBody1" xml:space="preserve">
-    <value>Your local OpenClaw gateway is running at http://localhost:18789: visit it to add your first AI provider and configure your agent.</value>
+    <value>Your local OpenClaw gateway is running at http://localhost:18789. Visit it to add your first AI provider and configure your agent.</value>
   </data>
   <data name="V2_Gateway_CardBody2" xml:space="preserve">
     <value>All requests are processed on this PC. Your data stays local.</value>
@@ -5575,7 +5575,7 @@ Make sure the gateway is running.</value>
     <value>Applying…</value>
   </data>
   <data name="ConnectionPage_AppliedGateway" xml:space="preserve">
-    <value>Applied: gateway: {0}</value>
+    <value>Gateway applied: {0}</value>
   </data>
   <data name="ConnectionPage_InvalidSetupCode" xml:space="preserve">
     <value>Invalid setup code</value>
@@ -5959,7 +5959,7 @@ Make sure the gateway is running.</value>
     <value>Save failed for {0}</value>
   </data>
   <data name="ChannelsPage_BannerStaleConfigMessage" xml:space="preserve">
-    <value>Your gateway config changed elsewhere (e.g., from the Config page). We refreshed the cache: try Save again. Details: {0}</value>
+    <value>Your gateway config changed elsewhere (e.g., from the Config page). We refreshed the cache. Try Save again. Details: {0}</value>
   </data>
   <data name="ChannelsPage_BannerSaveFailedMessage" xml:space="preserve">
     <value>{0} If this looks like a wire-format mismatch, open the Config page for direct JSON editing.</value>
