@@ -253,6 +253,15 @@ public sealed class ExecApprovalsCoordinator : IExecApprovalV2Handler
             || resolvedPath.EndsWith(".cmd", StringComparison.OrdinalIgnoreCase))
             return null;
 
+        // Same failure mode one level up: a shell interpreter invoked directly
+        // (cmd.exe, powershell, bash -c, …) re-parses its own argument tail, so the
+        // approved argv would not reach a single process verbatim — the shell can run
+        // commands the user never saw approved. Argument quoting cannot be trusted to
+        // neutralize this (cmd.exe has its own splitting rules), so fail closed rather
+        // than execute a command whose real effect differs from the approved text.
+        if (ExecCommandToken.IsShellInterpreter(resolvedPath))
+            return null;
+
         // If any env wrapper in the chain carries modifiers (VAR=val assignments or
         // flags), the direct-argv payload cannot faithfully carry those semantics: the
         // modifier would be silently dropped, and the process would run in a different

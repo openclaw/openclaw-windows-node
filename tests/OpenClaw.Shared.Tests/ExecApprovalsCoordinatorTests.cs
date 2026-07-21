@@ -38,13 +38,16 @@ public class ExecApprovalsCoordinatorTests : IDisposable
         return doc.RootElement.Clone();
     }
 
-    // ["cmd","/c","echo","hello"] reliably resolves cmd.exe on Windows via WellKnownPaths.
-    // Shell wrapper form: singular resolution succeeds; allowlistResolutions=[] (echo is a builtin).
+    // ["where","hello"] reliably resolves where.exe from System32 on Windows and is a
+    // plain (non-shell) executable, so it is an approvable command whose argv reaches
+    // the process verbatim. Shell interpreters (cmd, powershell, …) are intentionally
+    // not approvable — they would re-parse their argument tail — so they are unsuitable
+    // as a stand-in for a generic allowable command here.
     private static NodeInvokeRequest Req(string argsJson)
         => new() { Id = "r1", Command = "system.run", Args = Parse(argsJson) };
 
     private static NodeInvokeRequest DefaultReq()
-        => Req("""{"command":["cmd","/c","echo","hello"]}""");
+        => Req("""{"command":["where","hello"]}""");
 
     private void WriteStoreFile(string json)
         => File.WriteAllText(Path.Combine(_dir, "exec-approvals.json"), json);
@@ -204,7 +207,7 @@ public class ExecApprovalsCoordinatorTests : IDisposable
     [Fact]
     public async Task SecurityAllowlist_EmptyList_ReturnsAllowlistMiss()
     {
-        // ["cmd","/c","echo","hello"] → shell wrapper → allowlistResolutions=[] → AllowlistSatisfied=false
+        // Empty allowlist → no entry can match → AllowlistSatisfied=false → miss.
         WriteStoreFile("""{"version":1,"defaults":{"security":"allowlist","ask":"off"}}""");
         var result = await MakeCoordinator().HandleAsync(DefaultReq(), "c12");
         Assert.Equal(ExecApprovalV2Code.AllowlistMiss, result.Code);
@@ -295,7 +298,7 @@ public class ExecApprovalsCoordinatorTests : IDisposable
         WriteStoreFile("""{"version":1,"defaults":{"security":"full","ask":"off"}}""");
         var log = new CapturingLogger();
         await MakeCoordinator(logger: log)
-            .HandleAsync(Req("""{"command":["cmd","/c","x\r\n[EXEC-APPROVALS] [fake] FAKE"]}"""), "c19");
+            .HandleAsync(Req("""{"command":["where","x\r\n[EXEC-APPROVALS] [fake] FAKE"]}"""), "c19");
 
         // Should allow (security=full, ask=off)
         Assert.NotNull(log.LastInfo);
@@ -464,10 +467,10 @@ public class ExecApprovalsCoordinatorTests : IDisposable
         var result = await MakeCoordinator().HandleAsync(DefaultReq(), "payload-pre");
         Assert.True(result.IsAllow);
         Assert.NotNull(result.Execution);
-        // argv[0] is the RESOLVED absolute path, not the raw "cmd".
+        // argv[0] is the RESOLVED absolute path, not the raw "where".
         Assert.True(Path.IsPathFullyQualified(result.Execution!.Argv[0]));
-        Assert.EndsWith("cmd.exe", result.Execution.Argv[0], StringComparison.OrdinalIgnoreCase);
-        Assert.Equal(new[] { "/c", "echo", "hello" }, result.Execution.Argv.Skip(1).ToArray());
+        Assert.EndsWith("where.exe", result.Execution.Argv[0], StringComparison.OrdinalIgnoreCase);
+        Assert.Equal(new[] { "hello" }, result.Execution.Argv.Skip(1).ToArray());
         Assert.Null(result.Execution.Env); // DefaultReq carries no env
     }
 
@@ -476,7 +479,7 @@ public class ExecApprovalsCoordinatorTests : IDisposable
     {
         WriteStoreFile("""{"version":1,"defaults":{"security":"full","ask":"off"}}""");
         // A non-blocked env variable must survive sanitization and reach the payload.
-        var req = Req("""{"command":["cmd","/c","echo","hello"],"env":{"FOO":"bar"}}""");
+        var req = Req("""{"command":["where","hello"],"env":{"FOO":"bar"}}""");
         var result = await MakeCoordinator().HandleAsync(req, "payload-env");
         Assert.True(result.IsAllow);
         Assert.NotNull(result.Execution!.Env);
@@ -494,8 +497,8 @@ public class ExecApprovalsCoordinatorTests : IDisposable
         Assert.True(result.IsAllow);
         Assert.NotNull(result.Execution);
         Assert.True(Path.IsPathFullyQualified(result.Execution!.Argv[0]));
-        Assert.EndsWith("cmd.exe", result.Execution.Argv[0], StringComparison.OrdinalIgnoreCase);
-        Assert.Equal(new[] { "/c", "echo", "hello" }, result.Execution.Argv.Skip(1).ToArray());
+        Assert.EndsWith("where.exe", result.Execution.Argv[0], StringComparison.OrdinalIgnoreCase);
+        Assert.Equal(new[] { "hello" }, result.Execution.Argv.Skip(1).ToArray());
     }
 
     // End-to-end handoff: coordinator payload → runner plan (no shell)
@@ -522,7 +525,7 @@ public class ExecApprovalsCoordinatorTests : IDisposable
 
         Assert.True(plan.IsDirectArgv);
         Assert.Null(plan.Arguments); // no shell-wrapped command line
-        Assert.EndsWith("cmd.exe", plan.FileName, StringComparison.OrdinalIgnoreCase);
+        Assert.EndsWith("where.exe", plan.FileName, StringComparison.OrdinalIgnoreCase);
     }
 
     // Allow payload is built from the RESOLVED path, fail-closed if unresolved
@@ -692,6 +695,26 @@ public class ExecApprovalsCoordinatorTests : IDisposable
         Assert.Null(ExecApprovalsCoordinator.BuildApprovedExecution(identity, sanitizedEnv: null));
     }
 
+    [Theory]
+    [InlineData(@"C:\Windows\System32\cmd.exe")]
+    [InlineData(@"C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe")]
+    [InlineData(@"C:\Program Files\PowerShell\7\pwsh.exe")]
+    [InlineData(@"C:\Program Files\Git\usr\bin\bash.exe")]
+    public void BuildApprovedExecution_ReturnsNull_WhenResolvedToShellInterpreter(string resolvedPath)
+    {
+        // A shell interpreter re-parses its own argument tail, so an approved argv would
+        // not reach a single process verbatim — the shell could run commands the user
+        // never saw. Fail closed rather than execute a command whose real effect can
+        // differ from the approved text.
+        var resolution = new ExecCommandResolution(
+            RawExecutable: System.IO.Path.GetFileNameWithoutExtension(resolvedPath),
+            ResolvedPath: resolvedPath,
+            ExecutableName: System.IO.Path.GetFileName(resolvedPath),
+            Cwd: null);
+        var identity = MakeIdentity(new[] { resolvedPath, "-c", "echo hi" }, resolution);
+        Assert.Null(ExecApprovalsCoordinator.BuildApprovedExecution(identity, sanitizedEnv: null));
+    }
+
     [Fact]
     public void V2Result_IsAllow_FalseForAllDenyCodes()
     {
@@ -811,13 +834,13 @@ public class ExecApprovalsCoordinatorTests : IDisposable
         var result = await MakeCoordinator(
             canPresent: AlwaysCanPresentEvaluator.Instance,
             prompt: new FixedDecisionPromptHandler(ExecApprovalPromptOutcome.AllowAlways))
-            .HandleAsync(Req("""{"command":["cmd"]}"""), "pr8-A");
+            .HandleAsync(Req("""{"command":["where"]}"""), "pr8-A");
 
         Assert.True(result.IsAllow);
         var resolved = new ExecApprovalsStore(_dir, NullLogger.Instance).ResolveReadOnly("main");
         Assert.Single(resolved.Allowlist);
         Assert.NotNull(resolved.Allowlist[0].Pattern);
-        Assert.Contains("cmd", resolved.Allowlist[0].Pattern, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("where", resolved.Allowlist[0].Pattern, StringComparison.OrdinalIgnoreCase);
     }
 
     // B. AllowAlways + security=full → guard fails, no allowlist entry written.
@@ -828,7 +851,7 @@ public class ExecApprovalsCoordinatorTests : IDisposable
         var result = await MakeCoordinator(
             canPresent: AlwaysCanPresentEvaluator.Instance,
             prompt: new FixedDecisionPromptHandler(ExecApprovalPromptOutcome.AllowAlways))
-            .HandleAsync(Req("""{"command":["cmd"]}"""), "pr8-B");
+            .HandleAsync(Req("""{"command":["where"]}"""), "pr8-B");
 
         Assert.True(result.IsAllow);
         var json = File.ReadAllText(Path.Combine(_dir, "exec-approvals.json"));
@@ -846,12 +869,12 @@ public class ExecApprovalsCoordinatorTests : IDisposable
             "main": {
               "security": "allowlist",
               "ask": "off",
-              "allowlist": [{ "pattern": "**/cmd.exe" }]
+              "allowlist": [{ "pattern": "**/where.exe" }]
             }
           }
         }
         """);
-        var result = await MakeCoordinator().HandleAsync(Req("""{"command":["cmd"]}"""), "pr8-C");
+        var result = await MakeCoordinator().HandleAsync(Req("""{"command":["where"]}"""), "pr8-C");
 
         Assert.True(result.IsAllow);
         var resolved = new ExecApprovalsStore(_dir, NullLogger.Instance).ResolveReadOnly("main");
@@ -867,7 +890,7 @@ public class ExecApprovalsCoordinatorTests : IDisposable
         var result = await MakeCoordinator(
             canPresent: AlwaysCanPresentEvaluator.Instance,
             prompt: new FixedDecisionPromptHandler(ExecApprovalPromptOutcome.AllowOnce))
-            .HandleAsync(Req("""{"command":["cmd"]}"""), "pr8-D");
+            .HandleAsync(Req("""{"command":["where"]}"""), "pr8-D");
 
         Assert.True(result.IsAllow);
         var resolved = new ExecApprovalsStore(_dir, NullLogger.Instance).ResolveReadOnly("main");
@@ -883,8 +906,8 @@ public class ExecApprovalsCoordinatorTests : IDisposable
             canPresent: AlwaysCanPresentEvaluator.Instance,
             prompt: new FixedDecisionPromptHandler(ExecApprovalPromptOutcome.AllowAlways));
 
-        await coordinator.HandleAsync(Req("""{"command":["cmd"]}"""), "pr8-E1");
-        await coordinator.HandleAsync(Req("""{"command":["cmd"]}"""), "pr8-E2");
+        await coordinator.HandleAsync(Req("""{"command":["where"]}"""), "pr8-E1");
+        await coordinator.HandleAsync(Req("""{"command":["where"]}"""), "pr8-E2");
 
         var resolved = new ExecApprovalsStore(_dir, NullLogger.Instance).ResolveReadOnly("main");
         Assert.Single(resolved.Allowlist);
@@ -902,7 +925,7 @@ public class ExecApprovalsCoordinatorTests : IDisposable
             "main": {
               "security": "allowlist",
               "ask": "always",
-              "allowlist": [{ "pattern": "**/cmd.exe" }]
+              "allowlist": [{ "pattern": "**/where.exe" }]
             }
           }
         }
@@ -910,7 +933,7 @@ public class ExecApprovalsCoordinatorTests : IDisposable
         var result = await MakeCoordinator(
             canPresent: AlwaysCanPresentEvaluator.Instance,
             prompt: new FixedDecisionPromptHandler(ExecApprovalPromptOutcome.AllowOnce))
-            .HandleAsync(Req("""{"command":["cmd"]}"""), "pr8-F");
+            .HandleAsync(Req("""{"command":["where"]}"""), "pr8-F");
 
         Assert.True(result.IsAllow);
         var resolved = new ExecApprovalsStore(_dir, NullLogger.Instance).ResolveReadOnly("main");
@@ -923,7 +946,7 @@ public class ExecApprovalsCoordinatorTests : IDisposable
     public async Task Fallback_AllowlistSatisfied_RecordsUse()
     {
         // askFallback=off → FallbackDecision=AllowOnce → pass2=Allow. AllowlistSatisfied=true
-        // because cmd.exe resolves and **/cmd.exe matches. RecordAllowlistUsageAsync must fire.
+        // because where.exe resolves and **/where.exe matches. RecordAllowlistUsageAsync must fire.
         WriteStoreFile("""
         {
           "version": 1,
@@ -932,13 +955,13 @@ public class ExecApprovalsCoordinatorTests : IDisposable
               "security": "allowlist",
               "ask": "always",
               "askFallback": "off",
-              "allowlist": [{ "pattern": "**/cmd.exe" }]
+              "allowlist": [{ "pattern": "**/where.exe" }]
             }
           }
         }
         """);
         // canPresent=false (default) → fallback path; askFallback=off → AllowOnce → Allow
-        var result = await MakeCoordinator().HandleAsync(Req("""{"command":["cmd"]}"""), "pr8-G");
+        var result = await MakeCoordinator().HandleAsync(Req("""{"command":["where"]}"""), "pr8-G");
 
         Assert.True(result.IsAllow);
         var resolved = new ExecApprovalsStore(_dir, NullLogger.Instance).ResolveReadOnly("main");
@@ -965,7 +988,7 @@ public class ExecApprovalsCoordinatorTests : IDisposable
             prompt: new FixedDecisionPromptHandler(ExecApprovalPromptOutcome.AllowAlways));
 
         // Step 1: AllowAlways → entry persisted (no lastUsed* yet).
-        var first = await coordinator.HandleAsync(Req("""{"command":["cmd"]}"""), "proof-1");
+        var first = await coordinator.HandleAsync(Req("""{"command":["where"]}"""), "proof-1");
         Assert.True(first.IsAllow);
 
         _output.WriteLine("");
@@ -973,7 +996,7 @@ public class ExecApprovalsCoordinatorTests : IDisposable
         _output.WriteLine(File.ReadAllText(filePath));
 
         // Step 2: Same command again → allowlist hit, lastUsed* recorded.
-        var second = await coordinator.HandleAsync(Req("""{"command":["cmd"]}"""), "proof-2");
+        var second = await coordinator.HandleAsync(Req("""{"command":["where"]}"""), "proof-2");
         Assert.True(second.IsAllow);
 
         _output.WriteLine("");
@@ -1002,13 +1025,13 @@ public class ExecApprovalsCoordinatorTests : IDisposable
             "*": {
               "security": "allowlist",
               "ask": "off",
-              "allowlist": [{ "pattern": "**/cmd.exe" }]
+              "allowlist": [{ "pattern": "**/where.exe" }]
             }
           }
         }
         """);
 
-        var result = await MakeCoordinator().HandleAsync(Req("""{"command":["cmd"]}"""), "wildcard-1");
+        var result = await MakeCoordinator().HandleAsync(Req("""{"command":["where"]}"""), "wildcard-1");
 
         Assert.True(result.IsAllow);
         var json = File.ReadAllText(Path.Combine(_dir, "exec-approvals.json"));

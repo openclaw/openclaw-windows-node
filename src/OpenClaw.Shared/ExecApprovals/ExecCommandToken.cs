@@ -25,4 +25,18 @@ internal static class ExecCommandToken
 
     internal static bool IsEnv(string token) =>
         NormalizedBasename(token) == "env";
+
+    // Shell interpreters re-parse their own argument tail (metacharacters like &, |, ;),
+    // so an approved argv passed to one of these does NOT reach a single process verbatim:
+    // the shell can split it into additional commands the user never saw. Any executable
+    // in this set therefore cannot honor the approve-what-you-see guarantee.
+    private static readonly System.Collections.Generic.HashSet<string> s_shellInterpreters =
+        new(StringComparer.Ordinal)
+        {
+            "sh", "bash", "zsh", "dash", "ash", "ksh", "fish",
+            "cmd", "powershell", "pwsh",
+        };
+
+    internal static bool IsShellInterpreter(string token) =>
+        s_shellInterpreters.Contains(NormalizedBasename(token));
 }
