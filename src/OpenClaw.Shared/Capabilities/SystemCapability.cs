@@ -848,7 +848,11 @@ public class SystemCapability : NodeCapabilityBase
             if (string.IsNullOrWhiteSpace(pattern))
                 return "Empty allow rule patterns are not permitted.";
 
-            var normalized = pattern.ToLowerInvariant();
+            // Normalize to lowercase and collapse all whitespace runs (including tabs,
+            // non-breaking spaces) to a single ASCII space so fragment checks cannot be
+            // bypassed with alternate whitespace characters.
+            var normalized = System.Text.RegularExpressions.Regex.Replace(
+                pattern.ToLowerInvariant(), @"\s+", " ");
 
             // Catch all-wildcard patterns (e.g. *, **, ?*, * ?) that match any command.
             // Strip every wildcard character and whitespace; if nothing remains the pattern

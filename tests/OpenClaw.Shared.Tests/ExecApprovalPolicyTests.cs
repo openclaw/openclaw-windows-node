@@ -1116,9 +1116,11 @@ public class SystemCapabilityExecApprovalsTests
     [InlineData("wmic *")]
     [InlineData("curl *")]
     [InlineData("iex *")]
+    [InlineData("iex\t*")]       // tab bypass
     [InlineData("invoke-expression *")]
     [InlineData("invoke-command *")]
     [InlineData("icm *")]
+    [InlineData("icm\t*")]       // tab bypass
     public async Task ExecApprovalsSet_RejectsLolbinAllowRule(string lolbinPattern)
     {
         // Regression (policy-weakening bypass): a remote .set must not whitelist a living-off-the-land
@@ -1132,9 +1134,11 @@ public class SystemCapabilityExecApprovalsTests
             var policy = new ExecApprovalPolicy(tempDir, _logger);
             var cap = CreateCapability(policy);
 
+            // Escape control chars for valid JSON (e.g. tab -> \t in JSON string)
+            var jsonSafePattern = lolbinPattern.Replace("\t", "\\t");
             var json = JsonDocument.Parse($@"{{
                 ""baseHash"": ""{policy.GetPolicyHash()}"",
-                ""rules"": [ {{""pattern"": ""{lolbinPattern}"", ""action"": ""allow""}} ],
+                ""rules"": [ {{""pattern"": ""{jsonSafePattern}"", ""action"": ""allow""}} ],
                 ""defaultAction"": ""deny""
             }}");
             var result = await cap.ExecuteAsync(new NodeInvokeRequest
