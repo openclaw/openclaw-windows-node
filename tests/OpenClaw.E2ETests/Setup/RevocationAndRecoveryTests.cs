@@ -79,7 +79,7 @@ public class RevocationAndRecoveryTests
             Assert.True(credentials.HasOperatorToken, $"Expected replacement operator token in {credentials.IdentityDir}");
             Assert.True(credentials.HasNodeToken, $"Expected replacement node token in {credentials.IdentityDir}");
 
-            await _fixture.WaitForConnectionReady(TimeSpan.FromSeconds(120));
+            await ApprovePendingNodeTrustAndReconnectAsync(deviceId);
             await _fixture.WaitForNodeListReady(TimeSpan.FromSeconds(90));
             using var statusDoc = await _fixture.Client!.CallToolExpectSuccessAsync("app.status");
             AssertReadyStatus(statusDoc.RootElement);
@@ -92,6 +92,66 @@ public class RevocationAndRecoveryTests
             if (removed && !recovered)
                 await TryRecoverDeviceAfterRemovalAsync(gateway, env);
         }
+    }
+
+    private async Task ApprovePendingNodeTrustAndReconnectAsync(string nodeId)
+    {
+        var deadline = DateTime.UtcNow.AddSeconds(30);
+        string lastOutput = "<none>";
+        string? requestId = null;
+
+        while (DateTime.UtcNow < deadline && requestId is null)
+        {
+            using var approvals = await _fixture.Client!.CallToolExpectSuccessAsync(
+                "app.connection.pendingApprovals");
+            lastOutput = approvals.RootElement.GetRawText();
+            requestId = ReadPendingNodeTrustRequestId(approvals.RootElement, nodeId);
+            if (requestId is null)
+                await Task.Delay(500);
+        }
+
+        Assert.False(
+            string.IsNullOrWhiteSpace(requestId),
+            $"Expected a pending node-trust request for {nodeId} after device recovery. Last output: {lastOutput}");
+
+        using (var approve = await _fixture.Client!.CallToolExpectSuccessAsync(
+                   "app.connection.approveNodePairing",
+                   new { requestId }))
+        {
+            var decision = approve.RootElement.GetProperty("decision");
+            Assert.Equal("node", decision.GetProperty("kind").GetString());
+            Assert.Equal("approve", decision.GetProperty("action").GetString());
+            Assert.Equal(requestId, decision.GetProperty("requestId").GetString());
+            Assert.True(decision.GetProperty("succeeded").GetBoolean());
+        }
+
+        using var reconnect = await _fixture.Client!.CallToolExpectSuccessAsync(
+            "app.connection.reconnectNode");
+        Assert.True(reconnect.RootElement.GetProperty("reconnected").GetBoolean());
+        await _fixture.WaitForConnectionReady(TimeSpan.FromSeconds(120));
+    }
+
+    private static string? ReadPendingNodeTrustRequestId(JsonElement root, string nodeId)
+    {
+        if (!root.TryGetProperty("nodePending", out var pending) ||
+            pending.ValueKind != JsonValueKind.Array)
+        {
+            return null;
+        }
+
+        foreach (var request in pending.EnumerateArray())
+        {
+            if (!request.TryGetProperty("nodeId", out var requestNodeId) ||
+                !string.Equals(requestNodeId.GetString(), nodeId, StringComparison.OrdinalIgnoreCase) ||
+                !request.TryGetProperty("requestId", out var requestId))
+            {
+                continue;
+            }
+
+            return requestId.GetString();
+        }
+
+        return null;
     }
 
     private static void AssertCommandSucceeded(CommandResult result, string description)
