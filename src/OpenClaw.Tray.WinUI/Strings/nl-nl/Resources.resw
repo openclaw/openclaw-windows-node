@@ -3162,7 +3162,7 @@ Opdrachten worden geblokkeerd zolang sandboxing niet beschikbaar is, omdat strik
     <value>De gateway heeft de cron.run-aanvraag geweigerd.</value>
   </data>
   <data name="AppNotification_CronRunFailed_MessageFormat" xml:space="preserve">
-    <value>{0}: {1}</value>
+    <value>Kan {0} niet starten: {1}</value>
   </data>
   <data name="NotificationsPage_Title.Text" xml:space="preserve">
     <value>Meldingen</value>
@@ -6278,7 +6278,7 @@ Controleer of de gateway actief is.</value>
     <value>Validatiefouten oplossen</value>
   </data>
   <data name="ConfigPage_StatusValidationErrorMessageFormat" xml:space="preserve">
-    <value>{0}: {1}</value>
+    <value>Validatiefout bij {0}: {1}</value>
   </data>
   <data name="ConfigPage_StatusNotConnectedTitle" xml:space="preserve">
     <value>Niet verbonden</value>
