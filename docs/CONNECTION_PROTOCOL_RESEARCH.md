@@ -47,7 +47,7 @@ Public upstream gateway sources reviewed:
 - `https://github.com/openclaw/openclaw/blob/main/src/gateway/server-methods/nodes.ts`
 - `https://github.com/openclaw/openclaw/blob/main/packages/gateway-protocol/src/schema/frames.ts`
 
-The setup engine currently pins gateway LKG `2026.6.11` in
+The setup engine currently pins gateway LKG `2026.7.1` in
 `src/OpenClaw.SetupEngine/GatewayLkgVersion.cs`. Before implementing behavior
 that depends on newer upstream `main`, compare the installed LKG against the
 reviewed upstream docs/code.
