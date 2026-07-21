@@ -277,6 +277,8 @@ public sealed class OpenTelemetryEndpointConnectionTests
         var gate = typeof(OpenTelemetryEndpointConnection)
             .GetField("_gate", BindingFlags.Instance | BindingFlags.NonPublic)!
             .GetValue(connection)!;
+        var queuedCountField = typeof(OpenTelemetryEndpointConnection)
+            .GetField("_nodeToolCompletionCount", BindingFlags.Instance | BindingFlags.NonPublic)!;
         var stopwatch = Stopwatch.StartNew();
 
         Monitor.Enter(gate);
@@ -284,6 +286,11 @@ public sealed class OpenTelemetryEndpointConnectionTests
         {
             for (var i = 0; i < OpenTelemetryEndpointConnection.NodeToolLogQueueCapacity + 1; i++)
                 connection.SendNodeToolCompletion(FailureCompletion());
+
+            Assert.InRange(
+                (int)queuedCountField.GetValue(connection)!,
+                OpenTelemetryEndpointConnection.NodeToolLogQueueCapacity - 1,
+                OpenTelemetryEndpointConnection.NodeToolLogQueueCapacity);
         }
         finally
         {
@@ -294,9 +301,15 @@ public sealed class OpenTelemetryEndpointConnectionTests
         Assert.True(
             stopwatch.Elapsed < TimeSpan.FromSeconds(1),
             $"Node tool completion producers blocked for {stopwatch.Elapsed}.");
-        Assert.True(SpinWait.SpinUntil(
-            () => sink.SendNodeToolCompletionCount == OpenTelemetryEndpointConnection.NodeToolLogQueueCapacity,
-            TimeSpan.FromSeconds(5)));
+        Assert.True(
+            SpinWait.SpinUntil(
+                () => (int)queuedCountField.GetValue(connection)! == 0,
+                TimeSpan.FromSeconds(5)),
+            "Node tool completion queue did not drain.");
+        Assert.InRange(
+            sink.SendNodeToolCompletionCount,
+            OpenTelemetryEndpointConnection.NodeToolLogQueueCapacity,
+            OpenTelemetryEndpointConnection.NodeToolLogQueueCapacity + 1);
     }
 
     [Fact]
@@ -342,6 +355,63 @@ public sealed class OpenTelemetryEndpointConnectionTests
             TimeSpan.FromSeconds(5)));
         Assert.Equal(0, sinks[0].SendNodeToolCompletionCount);
         Assert.Equal(NodeToolErrorCategory.Timeout, sinks[1].LastNodeToolCompletion?.ErrorCategory);
+    }
+
+    [Fact]
+    public async Task SendNodeToolCompletion_ReplacementAfterReservation_DoesNotUseNewSink()
+    {
+        using var reserved = new ManualResetEventSlim();
+        using var releaseReservation = new ManualResetEventSlim();
+        var firstSink = new FakeProbeSink();
+        var replacementSink = new FakeProbeSink();
+        var sinkCount = 0;
+        var pauseReservation = 1;
+        using var connection = new OpenTelemetryEndpointConnection(
+            _ => Interlocked.Increment(ref sinkCount) == 1 ? firstSink : replacementSink,
+            _ => { },
+            _ => { },
+            () =>
+            {
+                if (Interlocked.Exchange(ref pauseReservation, 0) != 1)
+                    return;
+
+                reserved.Set();
+                Assert.True(releaseReservation.Wait(TimeSpan.FromSeconds(5)));
+            });
+        connection.Apply(OpenTelemetryEndpointOptions.Create(
+            "http://localhost:4317",
+            OpenTelemetryEndpointProtocol.Grpc));
+
+        var sendTask = Task.Factory.StartNew(
+            () => connection.SendNodeToolCompletion(FailureCompletion()),
+            CancellationToken.None,
+            TaskCreationOptions.LongRunning,
+            TaskScheduler.Default);
+        Assert.True(reserved.Wait(TimeSpan.FromSeconds(5)));
+        try
+        {
+            connection.Apply(OpenTelemetryEndpointOptions.Create(
+                "http://localhost:4318",
+                OpenTelemetryEndpointProtocol.HttpProtobuf));
+        }
+        finally
+        {
+            releaseReservation.Set();
+        }
+
+        await sendTask;
+        Assert.Equal(0, firstSink.SendNodeToolCompletionCount);
+        Assert.Equal(0, replacementSink.SendNodeToolCompletionCount);
+
+        connection.SendNodeToolCompletion(FailureCompletion() with
+        {
+            ErrorCategory = NodeToolErrorCategory.Timeout,
+        });
+
+        Assert.True(SpinWait.SpinUntil(
+            () => replacementSink.SendNodeToolCompletionCount == 1,
+            TimeSpan.FromSeconds(5)));
+        Assert.Equal(NodeToolErrorCategory.Timeout, replacementSink.LastNodeToolCompletion?.ErrorCategory);
     }
 
     [Fact]

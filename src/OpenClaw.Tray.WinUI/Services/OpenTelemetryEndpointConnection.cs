@@ -42,6 +42,8 @@ internal sealed class OpenTelemetryEndpointConnection : IDisposable
     private readonly Func<OpenTelemetryEndpointOptions, IOpenTelemetryProbeSink> _sinkFactory;
     private readonly Action<string> _logInfo;
     private readonly Action<string> _logWarn;
+    // Test-only seam for forcing an exporter replacement after queue reservation.
+    private readonly Action? _onNodeToolCompletionReserved;
     private readonly ConcurrentQueue<PendingConnectionState> _pendingConnectionStates = new();
     private readonly ConcurrentQueue<PendingNodeToolCompletion> _pendingNodeToolCompletions = new();
     private IOpenTelemetryProbeSink? _sink;
@@ -65,11 +67,13 @@ internal sealed class OpenTelemetryEndpointConnection : IDisposable
     internal OpenTelemetryEndpointConnection(
         Func<OpenTelemetryEndpointOptions, IOpenTelemetryProbeSink> sinkFactory,
         Action<string> logInfo,
-        Action<string> logWarn)
+        Action<string> logWarn,
+        Action? onNodeToolCompletionReserved = null)
     {
         _sinkFactory = sinkFactory ?? throw new ArgumentNullException(nameof(sinkFactory));
         _logInfo = logInfo ?? throw new ArgumentNullException(nameof(logInfo));
         _logWarn = logWarn ?? throw new ArgumentNullException(nameof(logWarn));
+        _onNodeToolCompletionReserved = onNodeToolCompletionReserved;
     }
 
     public OpenTelemetryEndpointConnectionState State { get; private set; } =
@@ -120,6 +124,7 @@ internal sealed class OpenTelemetryEndpointConnection : IDisposable
     public void SendNodeToolCompletion(NodeToolTelemetryCompletion completion)
     {
         ArgumentNullException.ThrowIfNull(completion);
+        var sinkGeneration = Volatile.Read(ref _sinkGeneration);
         if (_disposed || !_sinkAvailable || completion.Outcome == NodeToolOutcome.Success)
             return;
 
@@ -129,9 +134,27 @@ internal sealed class OpenTelemetryEndpointConnection : IDisposable
             return;
         }
 
+        try
+        {
+            _onNodeToolCompletionReserved?.Invoke();
+        }
+        catch
+        {
+            Interlocked.Decrement(ref _nodeToolCompletionCount);
+            throw;
+        }
+
+        if (_disposed ||
+            !_sinkAvailable ||
+            sinkGeneration != Volatile.Read(ref _sinkGeneration))
+        {
+            Interlocked.Decrement(ref _nodeToolCompletionCount);
+            return;
+        }
+
         _pendingNodeToolCompletions.Enqueue(new PendingNodeToolCompletion(
             completion,
-            Volatile.Read(ref _sinkGeneration)));
+            sinkGeneration));
         ScheduleNodeToolCompletionDrain();
     }
 
