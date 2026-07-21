@@ -182,7 +182,7 @@ public class OpenClawChatDataProviderTests
             string? attachmentMetaCachePath = null,
             string? lastChatStatePath = null,
             TimeSpan? lastChatStateSaveDelay = null,
-            Func<TimeSpan, Func<Task>, Task>? historyRetryScheduler = null)
+            Func<TimeSpan, CancellationToken, Func<Task>, Task>? historyRetryScheduler = null)
     {
         var bridge = new FakeBridge { Sessions = initial ?? Array.Empty<SessionInfo>() };
         var provider = toolMetaCachePath is null && attachmentMetaCachePath is null && lastChatStatePath is null &&
@@ -5088,6 +5088,154 @@ public class OpenClawChatDataProviderTests
     }
 
     [Fact]
+    public async Task LoadHistoryAsync_ConcurrentCallsIssueOneRequestPerSessionGeneration()
+    {
+        var firstHistory = new TaskCompletionSource<ChatHistoryInfo>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var secondHistory = new TaskCompletionSource<ChatHistoryInfo>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var historyCalls = 0;
+        var (bridge, provider, _, _) = CreateProvider(new[] { MainSession() });
+        bridge.HistoryBehavior = _ => ++historyCalls == 1 ? firstHistory.Task : secondHistory.Task;
+
+        await provider.LoadAsync();
+        bridge.RaiseStatus(ConnectionStatus.Connected);
+
+        var firstLoad = provider.LoadHistoryAsync("main");
+        await provider.LoadHistoryAsync("main");
+        Assert.Equal(1, historyCalls);
+
+        firstHistory.SetResult(new ChatHistoryInfo { SessionKey = "main" });
+        await firstLoad;
+        await provider.LoadHistoryAsync("main");
+        Assert.Equal(1, historyCalls);
+
+        bridge.RaiseStatus(ConnectionStatus.Disconnected);
+        bridge.RaiseStatus(ConnectionStatus.Connected);
+        var secondLoad = provider.LoadHistoryAsync("main");
+        await provider.LoadHistoryAsync("main");
+        Assert.Equal(2, historyCalls);
+
+        secondHistory.SetResult(new ChatHistoryInfo { SessionKey = "main" });
+        await secondLoad;
+        await provider.DisposeAsync();
+    }
+
+    [Fact]
+    public async Task LoadHistoryAsync_ConcurrentSessionsCompleteIndependently()
+    {
+        var mainHistory = new TaskCompletionSource<ChatHistoryInfo>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var secondaryHistory = new TaskCompletionSource<ChatHistoryInfo>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var calls = new List<string?>();
+        var sessions = new[]
+        {
+            MainSession(),
+            new SessionInfo { Key = "agent:main:secondary", DisplayName = "Secondary" },
+        };
+        var (bridge, provider, snapshots, _) = CreateProvider(sessions);
+        bridge.HistoryBehavior = key =>
+        {
+            calls.Add(key);
+            return key == "main" ? mainHistory.Task : secondaryHistory.Task;
+        };
+
+        await provider.LoadAsync();
+        bridge.RaiseStatus(ConnectionStatus.Connected);
+        snapshots.Clear();
+
+        var mainLoad = provider.LoadHistoryAsync("main");
+        var secondaryLoad = provider.LoadHistoryAsync("agent:main:secondary");
+        secondaryHistory.SetResult(new ChatHistoryInfo
+        {
+            SessionKey = "agent:main:secondary",
+            Messages = new[] { new ChatMessageInfo { Role = "assistant", Text = "secondary", Ts = 2 } },
+        });
+        await secondaryLoad;
+        mainHistory.SetResult(new ChatHistoryInfo
+        {
+            SessionKey = "main",
+            Messages = new[] { new ChatMessageInfo { Role = "assistant", Text = "main", Ts = 1 } },
+        });
+        await mainLoad;
+
+        Assert.Equal(new[] { "main", "agent:main:secondary" }, calls);
+        var snapshot = snapshots[^1];
+        Assert.Contains(snapshot.Timelines["main"].Entries, entry => entry.Text == "main");
+        Assert.Contains(snapshot.Timelines["agent:main:secondary"].Entries, entry => entry.Text == "secondary");
+        await provider.DisposeAsync();
+    }
+
+    [Fact]
+    public async Task Disconnect_CancelsInFlightHistoryWithoutPublishingStaleContent()
+    {
+        using var activities = new ChatActivityCollector();
+        var pendingHistory = new TaskCompletionSource<ChatHistoryInfo>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var (bridge, provider, snapshots, notifications) = CreateProvider(new[] { MainSession() });
+        bridge.HistoryBehavior = _ => pendingHistory.Task;
+
+        await provider.LoadAsync();
+        bridge.RaiseStatus(ConnectionStatus.Connected);
+        snapshots.Clear();
+
+        var load = provider.LoadHistoryAsync("main");
+        bridge.RaiseStatus(ConnectionStatus.Disconnected);
+        await load.WaitAsync(TimeSpan.FromSeconds(1));
+
+        pendingHistory.SetResult(new ChatHistoryInfo
+        {
+            SessionKey = "main",
+            Messages = new[] { new ChatMessageInfo { Role = "assistant", Text = "stale", Ts = 1 } },
+        });
+        await Task.Yield();
+
+        Assert.DoesNotContain(snapshots, snapshot =>
+            snapshot.Timelines["main"].Entries.Any(entry => entry.Text == "stale"));
+        Assert.Empty(notifications);
+        var history = Assert.Single(
+            activities.Stopped,
+            activity => activity.OperationName == ChatTelemetryTracker.HistoryLoadSpanName);
+        Assert.Equal("canceled", history.GetTagItem(OpenClawTelemetryTagKey.Outcome.ToTelemetryName()));
+        Assert.Null(history.GetTagItem(OpenClawTelemetryTagKey.ErrorType.ToTelemetryName()));
+        await provider.DisposeAsync();
+    }
+
+    [Fact]
+    public async Task Disconnect_DropsHistoryDeliveryQueuedAfterNewerStatusSnapshot()
+    {
+        var deliveries = new List<Action>();
+        var bridge = new FakeBridge
+        {
+            Sessions = new[] { MainSession() },
+            CurrentStatus = ConnectionStatus.Connected,
+            HistoryBehavior = _ => Task.FromResult(new ChatHistoryInfo
+            {
+                SessionKey = "main",
+                Messages = new[] { new ChatMessageInfo { Role = "assistant", Text = "loaded", Ts = 1 } },
+            }),
+        };
+        var provider = new OpenClawChatDataProvider(
+            bridge,
+            post: action => deliveries.Add(action),
+            toolMetaCacheFilePath: Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N"), "tool-metadata.json"));
+        var snapshots = new List<ChatDataSnapshot>();
+        provider.Changed += (_, args) => snapshots.Add(args.Snapshot);
+
+        await provider.LoadAsync();
+        await provider.LoadHistoryAsync("main");
+        Assert.Single(deliveries);
+
+        bridge.RaiseStatus(ConnectionStatus.Disconnected);
+        Assert.Equal(2, deliveries.Count);
+
+        // Model a dispatcher race where disconnect is delivered before the
+        // history callback that was queued from an earlier connection state.
+        deliveries[1]();
+        deliveries[0]();
+
+        var snapshot = Assert.Single(snapshots);
+        Assert.Equal(ConnectionStatus.Disconnected.ToString(), snapshot.ConnectionStatus);
+        await provider.DisposeAsync();
+    }
+
+    [Fact]
     public async Task ModelsListUpdated_PopulatesAvailableModelsInSnapshot()
     {
         var (bridge, provider, snapshots, _) = CreateProvider(new[] { MainSession() });
@@ -6934,7 +7082,7 @@ public class OpenClawChatDataProviderTests
         Func<Task>? retry = null;
         var (bridge, provider, snapshots, notifications) = CreateProvider(
             new[] { MainSession() },
-            historyRetryScheduler: (_, callback) =>
+            historyRetryScheduler: (_, _, callback) =>
             {
                 retry = callback;
                 return Task.CompletedTask;
@@ -6985,7 +7133,7 @@ public class OpenClawChatDataProviderTests
         Func<Task>? retry = null;
         var (bridge, provider, _, _) = CreateProvider(
             new[] { MainSession() },
-            historyRetryScheduler: (_, callback) =>
+            historyRetryScheduler: (_, _, callback) =>
             {
                 retry = callback;
                 return Task.CompletedTask;
@@ -7017,11 +7165,12 @@ public class OpenClawChatDataProviderTests
     [Fact]
     public async Task LoadHistoryAsync_ReconnectDuringFailureNotification_PreservesNewGenerationRetryBudget()
     {
+        using var activities = new ChatActivityCollector();
         var calls = 0;
         var retries = new List<Func<Task>>();
         var (bridge, provider, _, _) = CreateProvider(
             new[] { MainSession() },
-            historyRetryScheduler: (_, callback) =>
+            historyRetryScheduler: (_, _, callback) =>
             {
                 retries.Add(callback);
                 return Task.CompletedTask;
@@ -7047,20 +7196,84 @@ public class OpenClawChatDataProviderTests
 
         await provider.LoadHistoryAsync("main");
 
-        // The retry reserved before notification belongs to the old generation
-        // and exits without calling the gateway.
-        Assert.Single(retries);
-        await retries[0]();
+        // Reconnect during notification invalidates the old reservation before
+        // it can enqueue delayed work or consume the new generation's budget.
+        Assert.Empty(retries);
+        var staleFailure = Assert.Single(
+            activities.Stopped,
+            activity => activity.OperationName == ChatTelemetryTracker.HistoryLoadSpanName);
+        Assert.Equal("canceled", staleFailure.GetTagItem(OpenClawTelemetryTagKey.Outcome.ToTelemetryName()));
+        Assert.Null(staleFailure.GetTagItem(OpenClawTelemetryTagKey.ErrorType.ToTelemetryName()));
         Assert.Equal(1, calls);
 
         // A fresh failure still receives the full three-retry budget.
         await provider.LoadHistoryAsync("main");
-        for (var retryIndex = 1; retryIndex < retries.Count; retryIndex++)
+        for (var retryIndex = 0; retryIndex < retries.Count; retryIndex++)
             await retries[retryIndex]();
 
-        Assert.Equal(4, retries.Count);
+        Assert.Equal(3, retries.Count);
         Assert.Equal(5, calls);
         await provider.DisposeAsync();
+    }
+
+    [Fact]
+    public async Task Dispose_CancelsInFlightHistoryAndDelayedRetry()
+    {
+        using var activities = new ChatActivityCollector();
+        var pendingHistory = new TaskCompletionSource<ChatHistoryInfo>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var calls = 0;
+        Func<Task>? retry = null;
+        CancellationToken retryCancellation = default;
+        var (bridge, provider, snapshots, notifications) = CreateProvider(
+            new[] { MainSession() },
+            historyRetryScheduler: (_, cancellationToken, callback) =>
+            {
+                retryCancellation = cancellationToken;
+                retry = callback;
+                return Task.CompletedTask;
+            });
+        bridge.HistoryBehavior = _ =>
+        {
+            calls++;
+            if (calls == 1)
+                throw new InvalidOperationException("gateway not ready");
+            return pendingHistory.Task;
+        };
+        await provider.LoadAsync();
+        bridge.RaiseStatus(ConnectionStatus.Connected);
+        snapshots.Clear();
+
+        await provider.LoadHistoryAsync("main");
+        Assert.NotNull(retry);
+        Assert.False(retryCancellation.IsCancellationRequested);
+
+        var inFlightRetry = retry();
+        Assert.Equal(2, calls);
+        await provider.DisposeAsync();
+        await inFlightRetry.WaitAsync(TimeSpan.FromSeconds(1));
+
+        Assert.True(retryCancellation.IsCancellationRequested);
+        pendingHistory.SetResult(new ChatHistoryInfo
+        {
+            SessionKey = "main",
+            Messages = new[] { new ChatMessageInfo { Role = "assistant", Text = "stale", Ts = 1 } },
+        });
+        await Task.Yield();
+
+        Assert.Equal(2, calls);
+        Assert.DoesNotContain(snapshots, snapshot =>
+            snapshot.Timelines["main"].Entries.Any(entry => entry.Text == "stale"));
+        Assert.Single(notifications);
+        var historySpans = activities.Stopped
+            .Where(activity => activity.OperationName == ChatTelemetryTracker.HistoryLoadSpanName)
+            .ToArray();
+        Assert.Equal(2, historySpans.Length);
+        Assert.Contains(historySpans, history =>
+            Equals("failure", history.GetTagItem(OpenClawTelemetryTagKey.Outcome.ToTelemetryName())));
+        Assert.Contains(historySpans, history =>
+            Equals("canceled", history.GetTagItem(OpenClawTelemetryTagKey.Outcome.ToTelemetryName())));
+        Assert.Single(historySpans, history =>
+            history.GetTagItem(OpenClawTelemetryTagKey.ErrorType.ToTelemetryName()) is not null);
     }
 
     // ─────────────────────────────────────────────────────────────────────

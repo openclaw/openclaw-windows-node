@@ -240,7 +240,9 @@ session's transcript is loaded when that session is selected. Reconnect
 invalidates transcript freshness and refreshes the selected session through the
 same demand-driven path rather than loading every known session. Explicit
 single-session reset, abort, and remote-turn reconciliation may still issue
-targeted history requests.
+targeted history requests. Disconnect and provider disposal cancel pending
+history waits and delayed retries; their spans complete as `canceled` without
+exporting an exception type or scheduling work into a later connection.
 
 Chat attributes are restricted to:
 
