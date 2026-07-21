@@ -73,8 +73,6 @@ public class SystemCapability : NodeCapabilityBase
         "installutil",
         "msbuild",
         "wmic",
-        "cscript",
-        "wscript",
         "certutil",
         "bitsadmin",
         "curl",
@@ -1101,21 +1099,23 @@ public class SystemCapability : NodeCapabilityBase
             // A remote .set call should never be able to whitelist a specific binary
             // by path — that would be a two-step EoP (compromise MCP token → whitelist
             // attacker binary → invoke it). Legitimate rules name commands, not paths.
-            // Strip one layer of matching surrounding quotes first so quoted forms
-            // ("C:\evil.exe", 'C:\evil.exe') are caught alongside bare paths.
+            // Parse the executable token first so quoted paths remain one token even
+            // when the rule includes arguments.
             // Covers: drive-rooted paths (C:\, C:/), UNC/long-path (\\, //), and
             // forward-slash UNC namespace forms (//server/share, //?/C:/evil.exe).
-            var unquoted = normalized;
-            if (normalized.Length >= 2 &&
-                ((normalized[0] == '"' && normalized[^1] == '"') ||
-                 (normalized[0] == '\'' && normalized[^1] == '\'')))
-                unquoted = normalized[1..^1];
+            var executableToken = ExecCommandToken.ParseFirstToken(normalized);
+            if (executableToken is null)
+                return $"Allow rule must begin with a valid executable token: {pattern}";
 
-            if (unquoted.Length >= 3 &&
-                ((char.IsLetter(unquoted[0]) && unquoted[1] == ':' && (unquoted[2] == '\\' || unquoted[2] == '/')) ||
-                 unquoted.StartsWith(@"\\", StringComparison.Ordinal) ||
-                 unquoted.StartsWith("//", StringComparison.Ordinal)))
+            var pathToken = executableToken;
+            if (pathToken.Length >= 3 &&
+                ((char.IsLetter(pathToken[0]) && pathToken[1] == ':' && (pathToken[2] == '\\' || pathToken[2] == '/')) ||
+                 pathToken.StartsWith(@"\\", StringComparison.Ordinal) ||
+                 pathToken.StartsWith("//", StringComparison.Ordinal)))
                 return $"Absolute path allow rule is not permitted: {pattern}";
+
+            if (ExecCommandToken.IsIndirectCommandHost(executableToken))
+                return $"Allow rules cannot target shell interpreters or command hosts: {pattern}";
 
             foreach (var dangerous in DangerousAllowPatternFragments)
             {
@@ -1138,8 +1138,7 @@ public class SystemCapability : NodeCapabilityBase
             // * -> .* over the whole command line), e.g. "*.*", "*e*", "*.exe", "c*" — the broad-allow
             // class the earlier shape checks miss. Runs after the dangerous-fragment check so a
             // dangerous stem keeps its specific message. Legit rules pin the command ("git *").
-            var firstToken = normalized.Split(new[] { ' ', '\t' }, 2)[0];
-            if (firstToken.Contains('*') || firstToken.Contains('?'))
+            if (executableToken.Contains('*') || executableToken.Contains('?'))
                 return $"Allow rule must name a concrete command (no wildcard in the executable): {pattern}";
         }
 
