@@ -277,6 +277,46 @@ public class SystemCapabilityTests
     public async Task ExecApprovals_SpecificAllowPattern_IsAccepted(string pattern)
         => Assert.True(await TrySetAllowRuleAsync(pattern), $"specific allow pattern '{pattern}' must be accepted");
 
+    [Theory]
+    [InlineData("cmd /c echo ok")]
+    [InlineData("CMD.EXE /c echo ok")]
+    [InlineData(@"""cmd.exe"" /c echo ok")]
+    [InlineData(@".\cmd.exe /c echo ok")]
+    [InlineData("powershell.exe -Command Get-Date")]
+    [InlineData("pwsh -c Get-Date")]
+    [InlineData("wsl.exe --exec bash -c id")]
+    [InlineData("bash -c id")]
+    [InlineData("sh -c id")]
+    [InlineData("cscript.exe test.js")]
+    [InlineData("wscript test.vbs")]
+    public async Task ExecApprovals_CommandHostAllowRule_IsRejected(string pattern)
+        => Assert.False(
+            await TrySetAllowRuleAsync(pattern),
+            $"command host allow pattern '{pattern}' must be rejected");
+
+    [Theory]
+    [InlineData(@"""cmd /c echo ok")]
+    [InlineData(@"""C:\Program Files\Tools\evil.exe --run")]
+    [InlineData("'' --run")]
+    public async Task ExecApprovals_MalformedQuotedExecutable_IsRejected(string pattern)
+        => Assert.False(
+            await TrySetAllowRuleAsync(pattern),
+            $"malformed executable pattern '{pattern}' must be rejected");
+
+    [Theory]
+    [InlineData("mycmd.exe *")]
+    [InlineData("pwsh-helper.exe *")]
+    [InlineData("bashful.exe *")]
+    [InlineData("wsl-helper.exe *")]
+    [InlineData("cscript-runner.exe *")]
+    [InlineData("wscript-helper.exe *")]
+    [InlineData("node *.js")]
+    [InlineData("python *.py")]
+    public async Task ExecApprovals_CommandHostSubstring_IsAccepted(string pattern)
+        => Assert.True(
+            await TrySetAllowRuleAsync(pattern),
+            $"non-host executable pattern '{pattern}' must be accepted");
+
     [Fact]
     public async Task Run_GatewayCmdWrapper_ExplicitOuterDenyStillWins()
     {
@@ -894,6 +934,7 @@ public class SystemCapabilityTests
     [InlineData(@"\\server\share\tool.exe")]
     [InlineData(@"\\?\C:\evil.exe")]
     [InlineData(@"""C:\Users\Public\evil.exe""")]
+    [InlineData(@"""C:\Program Files\Tools\evil.exe"" --run")]
     [InlineData(@"'C:\Users\Public\evil.exe'")]
     [InlineData(@"""\\server\share\tool.exe""")]
     [InlineData(@"""\\?\C:\evil.exe""")]

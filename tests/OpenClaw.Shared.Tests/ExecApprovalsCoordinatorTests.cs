@@ -696,23 +696,152 @@ public class ExecApprovalsCoordinatorTests : IDisposable
     }
 
     [Theory]
+    [InlineData("cmd")]
+    [InlineData("CMD.EXE")]
+    [InlineData(@"""C:\Windows\System32\cmd.exe""")]
+    [InlineData(@".\pwsh.exe")]
+    [InlineData(@"C:\Program Files\Git\usr\bin\bash.exe")]
+    [InlineData("/usr/bin/sh")]
+    [InlineData("wsl.exe")]
+    [InlineData("cscript.exe")]
+    [InlineData("wscript")]
+    public void IndirectCommandHost_RecognizesAliasesPathsQuotesAndCasing(string token)
+        => Assert.True(ExecCommandToken.IsIndirectCommandHost(token));
+
+    [Theory]
+    [InlineData("mycmd.exe")]
+    [InlineData("pwsh-helper.exe")]
+    [InlineData("bashful.exe")]
+    [InlineData("wsl-helper.exe")]
+    [InlineData("cscript-runner.exe")]
+    [InlineData("wscript-helper.exe")]
+    [InlineData("node.exe")]
+    [InlineData("python.exe")]
+    public void IndirectCommandHost_DoesNotMatchExecutableNameSubstrings(string token)
+        => Assert.False(ExecCommandToken.IsIndirectCommandHost(token));
+
+    [Theory]
     [InlineData(@"C:\Windows\System32\cmd.exe")]
     [InlineData(@"C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe")]
     [InlineData(@"C:\Program Files\PowerShell\7\pwsh.exe")]
     [InlineData(@"C:\Program Files\Git\usr\bin\bash.exe")]
-    public void BuildApprovedExecution_ReturnsNull_WhenResolvedToShellInterpreter(string resolvedPath)
+    [InlineData(@"C:\Windows\System32\wsl.exe")]
+    [InlineData(@"C:\Windows\System32\cscript.exe")]
+    [InlineData(@"C:\Windows\System32\wscript.exe")]
+    public void BuildApprovedExecution_AllowsCommandHostAfterExplicitOneTimeApproval(string resolvedPath)
     {
-        // A shell interpreter re-parses its own argument tail, so an approved argv would
-        // not reach a single process verbatim — the shell could run commands the user
-        // never saw. Fail closed rather than execute a command whose real effect can
-        // differ from the approved text.
         var resolution = new ExecCommandResolution(
             RawExecutable: System.IO.Path.GetFileNameWithoutExtension(resolvedPath),
             ResolvedPath: resolvedPath,
             ExecutableName: System.IO.Path.GetFileName(resolvedPath),
             Cwd: null);
         var identity = MakeIdentity(new[] { resolvedPath, "-c", "echo hi" }, resolution);
-        Assert.Null(ExecApprovalsCoordinator.BuildApprovedExecution(identity, sanitizedEnv: null));
+        var execution = ExecApprovalsCoordinator.BuildApprovedExecution(identity, sanitizedEnv: null);
+        Assert.NotNull(execution);
+        Assert.Equal(resolvedPath, execution!.Argv[0]);
+    }
+
+    [Fact]
+    public async Task AllowOnce_CommandHost_RemainsAllowedWithoutPersistence()
+    {
+        const string initialStore =
+            """{"version":1,"defaults":{"security":"allowlist","ask":"always"}}""";
+        WriteStoreFile(initialStore);
+        var result = await MakeCoordinator(
+            canPresent: AlwaysCanPresentEvaluator.Instance,
+            prompt: new FixedDecisionPromptHandler(ExecApprovalPromptOutcome.AllowOnce))
+            .HandleAsync(
+                Req("""{"command":["C:\\Windows\\System32\\wsl.exe","--exec","echo","ok"]}"""),
+                "command-host-once");
+
+        Assert.True(result.IsAllow);
+        Assert.Equal(initialStore, File.ReadAllText(Path.Combine(_dir, "exec-approvals.json")));
+    }
+
+    [Fact]
+    public async Task AllowAlways_CommandHost_IsDeniedWithoutPersistence()
+    {
+        const string initialStore =
+            """{"version":1,"defaults":{"security":"allowlist","ask":"always"}}""";
+        WriteStoreFile(initialStore);
+        var result = await MakeCoordinator(
+            canPresent: AlwaysCanPresentEvaluator.Instance,
+            prompt: new FixedDecisionPromptHandler(ExecApprovalPromptOutcome.AllowAlways))
+            .HandleAsync(
+                Req("""{"command":["C:\\Windows\\System32\\wsl.exe","--exec","echo","ok"]}"""),
+                "command-host-always");
+
+        Assert.Equal(ExecApprovalV2Code.ValidationFailed, result.Code);
+        Assert.Equal("persistent-approval-not-permitted-for-command-host", result.Reason);
+        Assert.Equal(initialStore, File.ReadAllText(Path.Combine(_dir, "exec-approvals.json")));
+    }
+
+    [Fact]
+    public async Task StoredAllowlist_CommandHost_IsDeniedWithoutMutatingPolicy()
+    {
+        const string initialStore =
+            """{"version":1,"defaults":{"security":"allowlist","ask":"off"},"agents":{"main":{"allowlist":[{"pattern":"**/wsl.exe"}]}}}""";
+        WriteStoreFile(initialStore);
+        var result = await MakeCoordinator().HandleAsync(
+            Req("""{"command":["C:\\Windows\\System32\\wsl.exe","--exec","echo","ok"]}"""),
+            "command-host-stored");
+
+        Assert.Equal(ExecApprovalV2Code.ValidationFailed, result.Code);
+        Assert.Equal("persistent-approval-not-permitted-for-command-host", result.Reason);
+        Assert.Equal(initialStore, File.ReadAllText(Path.Combine(_dir, "exec-approvals.json")));
+    }
+
+    [Fact]
+    public async Task HeadlessAllowlistFallback_CommandHost_IsDeniedWithoutMutatingPolicy()
+    {
+        const string initialStore =
+            """{"version":1,"defaults":{"security":"allowlist","ask":"always","askFallback":"allowlist"},"agents":{"main":{"allowlist":[{"pattern":"**/wsl.exe"}]}}}""";
+        WriteStoreFile(initialStore);
+        var result = await MakeCoordinator().HandleAsync(
+            Req("""{"command":["C:\\Windows\\System32\\wsl.exe","--exec","echo","ok"]}"""),
+            "command-host-fallback");
+
+        Assert.Equal(ExecApprovalV2Code.ValidationFailed, result.Code);
+        Assert.Equal("persistent-approval-not-permitted-for-command-host", result.Reason);
+        Assert.Equal(initialStore, File.ReadAllText(Path.Combine(_dir, "exec-approvals.json")));
+    }
+
+    [Fact]
+    public async Task HeadlessFullWithAllowlistFallback_CommandHost_IsDeniedWhenMatchDependent()
+    {
+        const string initialStore =
+            """{"version":1,"defaults":{"security":"full","ask":"always","askFallback":"allowlist"},"agents":{"main":{"allowlist":[{"pattern":"**/wsl.exe"}]}}}""";
+        WriteStoreFile(initialStore);
+        var result = await MakeCoordinator().HandleAsync(
+            Req("""{"command":["C:\\Windows\\System32\\wsl.exe","--exec","echo","ok"]}"""),
+            "command-host-full-allowlist-fallback");
+
+        Assert.Equal(ExecApprovalV2Code.ValidationFailed, result.Code);
+        Assert.Equal("persistent-approval-not-permitted-for-command-host", result.Reason);
+        Assert.Equal(initialStore, File.ReadAllText(Path.Combine(_dir, "exec-approvals.json")));
+    }
+
+    [Fact]
+    public async Task HeadlessFullFallback_CommandHost_RemainsAllowedWhenNotMatchDependent()
+    {
+        WriteStoreFile(
+            """{"version":1,"defaults":{"security":"full","ask":"always","askFallback":"full"}}""");
+        var result = await MakeCoordinator().HandleAsync(
+            Req("""{"command":["C:\\Windows\\System32\\wsl.exe","--exec","echo","ok"]}"""),
+            "command-host-full-fallback");
+
+        Assert.True(result.IsAllow);
+    }
+
+    [Fact]
+    public async Task SecurityFull_CommandHost_RemainsAllowed()
+    {
+        WriteStoreFile("""{"version":1,"defaults":{"security":"full","ask":"off"}}""");
+        var result = await MakeCoordinator().HandleAsync(
+            Req("""{"command":["C:\\Windows\\System32\\wsl.exe","--exec","echo","ok"]}"""),
+            "command-host-full");
+
+        Assert.True(result.IsAllow);
     }
 
     [Fact]
