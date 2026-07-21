@@ -8,6 +8,7 @@ public sealed class GatewayLkgVersionTests
     {
         var version = GatewayLkgVersion.ResolveLkgVersion();
 
+        Assert.Equal("2026.7.1", version);
         Assert.Equal(GatewayLkgVersion.LkgVersion, version);
     }
 
@@ -30,5 +31,6 @@ public sealed class GatewayLkgVersionTests
         GatewayLkgVersion.ApplyToConfig(config);
 
         Assert.Null(config.Gateway.Version);
+        Assert.Equal("https://contoso.example/install-cli.sh", config.Gateway.InstallUrl);
     }
 }
