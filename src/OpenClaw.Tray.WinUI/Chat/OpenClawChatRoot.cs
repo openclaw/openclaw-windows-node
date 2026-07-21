@@ -840,6 +840,17 @@ public sealed class OpenClawChatRoot : Component
                     b.Padding = new Thickness(12, 10, 12, 10);
                     b.CornerRadius = new CornerRadius(8);
                     b.IsEnabled = !suggestionsDisabled;
+
+                    // Subtle style: drop the default button stroke and elevation
+                    // "depth", keeping only a light, low-opacity fill at rest.
+                    b.BorderThickness = new Thickness(0);
+                    b.BorderBrush = null;
+                    if (Application.Current?.Resources is { } appResources
+                        && appResources.TryGetValue("SubtleFillColorSecondaryBrush", out var subtleFill)
+                        && subtleFill is Brush subtleBrush)
+                    {
+                        b.Background = subtleBrush;
+                    }
                 });
 
         return Border(
