@@ -230,8 +230,17 @@ the metric timestamp is the turn completion time, not the instant queue congesti
 occurred.
 
 Full transcript loads and targeted remote-message backfills are separate
-operations. Full loads use source `initial` or `forced`. Backfills use the finite
-reason `remote_turn` or `reset_reconciliation`.
+operations. Full loads use source `initial` for the first load of that transcript
+in the current connection generation or `forced` when deliberately bypassing
+the loaded-history cache. Backfills use the finite reason `remote_turn` or
+`reset_reconciliation`. Receiving `sessions.list`
+hydrates session-picker metadata only and does not emit a history-load operation.
+At startup the tray loads the current/default session transcript; another
+session's transcript is loaded when that session is selected. Reconnect
+invalidates transcript freshness and refreshes the selected session through the
+same demand-driven path rather than loading every known session. Explicit
+single-session reset, abort, and remote-turn reconciliation may still issue
+targeted history requests.
 
 Chat attributes are restricted to:
 

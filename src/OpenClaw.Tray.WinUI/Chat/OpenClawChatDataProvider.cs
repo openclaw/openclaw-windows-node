@@ -97,6 +97,7 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
     private readonly string _attachmentMetaCacheFilePath;
     private readonly string _lastChatStateFilePath;
     private readonly TimeSpan _lastChatStateSaveDelay;
+    private readonly Func<TimeSpan, Func<Task>, Task> _scheduleHistoryRetry;
     private System.Threading.Timer? _toolMetaSaveTimer; // debounce cache writes
     private long _toolMetaSaveVersion;
     private bool _toolMetaCacheDirty;
@@ -116,6 +117,7 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
     private readonly Dictionary<string, string> _sessionIds = new();      // sessionKey → immutable sessionId
     private readonly HashSet<string> _historyLoaded = new();              // sessionKey
     private readonly HashSet<string> _historyInFlight = new();            // sessionKey
+    private long _historyConnectionVersion;
     private readonly Dictionary<string, Task> _pendingModelPatches = new(); // sessionKey -> in-flight model set/clear
     private readonly Dictionary<string, long> _resetVersions = new(); // sessionKey -> reset generation
     private readonly Dictionary<string, long> _resetCutoffUtcMs = new(); // sessionKey -> local reset time
@@ -155,6 +157,7 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
     // Per-thread retry count for LoadHistoryAsync to prevent unbounded retry loops.
     private readonly Dictionary<string, int> _historyRetryCount = new();
     private const int MaxHistoryRetries = 3;
+    private static readonly TimeSpan HistoryRetryDelay = TimeSpan.FromSeconds(2);
     private const int MaxDeferredAdmissionRetries = 8;
     private static readonly TimeSpan LocalEchoSuppressionWindow = TimeSpan.FromSeconds(30);
     private static readonly TimeSpan DeferredQueueDrainDelay = TimeSpan.FromMilliseconds(100);
@@ -248,7 +251,8 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
         string toolMetaCacheFilePath,
         string? attachmentMetaCacheFilePath = null,
         string? lastChatStateFilePath = null,
-        TimeSpan? lastChatStateSaveDelay = null)
+        TimeSpan? lastChatStateSaveDelay = null,
+        Func<TimeSpan, Func<Task>, Task>? historyRetryScheduler = null)
     {
         _bridge = bridge ?? throw new ArgumentNullException(nameof(bridge));
         _post = post;
@@ -262,6 +266,12 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
             ? lastChatStateFilePath
             : LastChatStateFilePath;
         _lastChatStateSaveDelay = lastChatStateSaveDelay ?? TimeSpan.FromSeconds(2);
+        _scheduleHistoryRetry = historyRetryScheduler ?? (static (delay, retry) =>
+            Task.Run(async () =>
+            {
+                await Task.Delay(delay).ConfigureAwait(false);
+                await retry().ConfigureAwait(false);
+            }));
         _status = bridge.CurrentStatus;
         _persistedAbortedIds = LoadAbortedIds();
         _toolMetaCache = LoadToolMetaCache(_toolMetaCacheFilePath);
@@ -819,11 +829,13 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
         if (string.IsNullOrEmpty(threadId)) return;
 
         long requestResetVersion;
+        long requestConnectionVersion;
         lock (_gate)
         {
             if (!force && _historyLoaded.Contains(threadId)) return;
             if (!_historyInFlight.Add(threadId)) return; // another loader already in progress
             requestResetVersion = GetResetVersionLocked(threadId);
+            requestConnectionVersion = _historyConnectionVersion;
         }
 
         var historyOperation = _telemetry.StartHistoryLoad(
@@ -837,9 +849,11 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
             ChatDataSnapshot snapshot;
             lock (_gate)
             {
-                if (GetResetVersionLocked(threadId) != requestResetVersion)
+                if (_historyConnectionVersion != requestConnectionVersion ||
+                    GetResetVersionLocked(threadId) != requestResetVersion)
                 {
-                    Logger.Info($"[ChatHistory] Ignoring stale history for reset thread '{threadId}'");
+                    Logger.Info($"[ChatHistory] Ignoring stale history for thread '{threadId}'");
+                    historyOutcome = ChatTelemetryOutcome.Canceled;
                     return;
                 }
 
@@ -1259,6 +1273,15 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
         }
         catch (Exception ex)
         {
+            lock (_gate)
+            {
+                if (_historyConnectionVersion != requestConnectionVersion)
+                {
+                    historyOutcome = ChatTelemetryOutcome.Canceled;
+                    return;
+                }
+            }
+
             historyOutcome = ex is OperationCanceledException
                 ? ChatTelemetryOutcome.Canceled
                 : ChatTelemetryOutcome.Failure;
@@ -1281,16 +1304,27 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
             }
             if (shouldRetry)
             {
-                _ = Task.Run(async () =>
+                _ = _scheduleHistoryRetry(HistoryRetryDelay, async () =>
                 {
-                    await Task.Delay(2000);
+                    lock (_gate)
+                    {
+                        if (_historyConnectionVersion != requestConnectionVersion ||
+                            _status != ConnectionStatus.Connected)
+                        {
+                            return;
+                        }
+                    }
                     await LoadHistoryAsync(threadId, force: true);
                 });
             }
         }
         finally
         {
-            lock (_gate) { _historyInFlight.Remove(threadId); }
+            lock (_gate)
+            {
+                if (_historyConnectionVersion == requestConnectionVersion)
+                    _historyInFlight.Remove(threadId);
+            }
             _telemetry.FinishHistoryLoad(historyOperation, historyOutcome, historyException);
         }
     }
@@ -1806,7 +1840,6 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
     {
         ChatDataSnapshot snapshot;
         bool justReconnected;
-        string[] threadsToReload;
         string[] threadsToInterrupt;
         lock (_gate)
         {
@@ -1844,22 +1877,15 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
             if (justDisconnected)
                 ResetApprovalDedupe();
 
-            // On (re)connect, reload any thread that either previously loaded
-            // successfully or has a timeline but never completed loading.
-            // The second case covers initial connect: the UI may have created
-            // timeline entries while the WebSocket was still negotiating, and
-            // the first LoadHistoryAsync attempt likely timed out or returned
-            // empty. Clear _historyInFlight too in case a previous load is
-            // still pending (the request ID is stale after reconnect).
+            // On (re)connect, invalidate transcript freshness without fetching
+            // every session. The selected-thread render path requests the one
+            // transcript the user is viewing; other sessions remain metadata-only
+            // until selected. Bumping the version also prevents responses from
+            // the prior connection from overwriting a newly selected transcript.
             if (justReconnected)
             {
                 _telemetry.FinishAll(ChatTelemetryOutcome.Canceled, ChatTurnTelemetryReason.Disconnected);
-                var reload = new HashSet<string>(_historyLoaded);
-                foreach (var key in _timelines.Keys)
-                    reload.Add(key);
-                threadsToReload = reload.Count > 0
-                    ? reload.ToArray()
-                    : Array.Empty<string>();
+                _historyConnectionVersion++;
                 _historyLoaded.Clear();
                 _historyInFlight.Clear();
                 _locallyInitiatedThreads.Clear();
@@ -1878,11 +1904,6 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
                 // still-broken gateway surfaces the notification again.
                 System.Threading.Interlocked.Exchange(ref _keylessEventDiagnosticRaised, 0);
             }
-            else
-            {
-                threadsToReload = Array.Empty<string>();
-            }
-
             if (justDisconnected)
             {
                 _telemetry.FinishAll(ChatTelemetryOutcome.Canceled, ChatTurnTelemetryReason.Disconnected);
@@ -1916,18 +1937,11 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
             ApplyEventAndPublish(threadId, new ChatTurnEndEvent());
         }
 
-        // Eagerly re-issue history loads off the lock so the UI sees fresh
-        // transcripts without waiting for the user to re-select the thread.
-        foreach (var threadId in threadsToReload)
-        {
-            _ = LoadHistoryAsync(threadId, force: true);
-        }
     }
 
     private void OnSessionsUpdated(object? sender, SessionInfo[] sessions)
     {
         ChatDataSnapshot snapshot;
-        string[] newThreadsToLoad;
         string[] queuedThreadsToDrain;
         lock (_gate)
         {
@@ -1950,34 +1964,17 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
             }
             snapshot = BuildSnapshotLocked();
 
-            // When sessions arrive while connected, eagerly load history
-            // for any thread that hasn't been loaded yet. This covers the
-            // initial connect scenario: Connected fires before sessions
-            // arrive, so OnStatusChanged can't reload (no threads exist
-            // yet). Once sessions come in, trigger the history fetch.
             if (_status == ConnectionStatus.Connected)
             {
-                var toLoad = new List<string>();
-                foreach (var key in _timelines.Keys)
-                {
-                    if (!_historyLoaded.Contains(key) && !_historyInFlight.Contains(key))
-                        toLoad.Add(key);
-                }
-                newThreadsToLoad = toLoad.Count > 0 ? toLoad.ToArray() : Array.Empty<string>();
                 queuedThreadsToDrain = _queuedMessages.Keys.ToArray();
             }
             else
             {
-                newThreadsToLoad = Array.Empty<string>();
                 queuedThreadsToDrain = Array.Empty<string>();
             }
         }
         Publish(snapshot);
 
-        foreach (var threadId in newThreadsToLoad)
-        {
-            _ = LoadHistoryAsync(threadId, force: false);
-        }
         foreach (var threadId in queuedThreadsToDrain)
         {
             TryDispatchNextQueuedSend(threadId);
