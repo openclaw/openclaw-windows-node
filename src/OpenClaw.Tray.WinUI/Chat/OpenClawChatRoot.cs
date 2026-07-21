@@ -675,10 +675,44 @@ public sealed class OpenClawChatRoot : Component
             chatSurfaceHeight.Set(Math.Round(height));
         }
 
+        // Copilot-style scrim: instead of a hard divider line, the timeline
+        // dissolves into the composer dock via a vertical gradient that runs
+        // from transparent at the top to the solid theme-base fill at the
+        // bottom. The composer dock uses that same base fill, so the fade lands
+        // seamlessly. The color is resolved from the element's ActualTheme (not
+        // Application.Resources, which snapshots the default theme) so it flips
+        // live on a runtime light/dark switch. It never captures pointer input,
+        // so scrolling and the last message stay live.
+        static Brush BuildComposerFadeBrush(ElementTheme theme)
+        {
+            // Resolve the fade as a WHOLE brush per theme rather than reading a
+            // color off a walked brush. Reading .Color out of the visual tree
+            // re-resolves any {ThemeResource} against the ambient (light) app
+            // theme, which is why the fade previously read white on a dark page.
+            // ChatComposerFadeBrush is declared with literal colors per theme in
+            // App.xaml ThemeDictionaries (which the FunctionalUI walk can reach),
+            // so it flips correctly and stays aligned with the composer dock fill.
+            // A not-yet-loaded element can report ElementTheme.Default; coerce it
+            // to Dark so resolution never falls through to a missing app-root key
+            // (Loaded/ActualThemeChanged re-apply with the real theme).
+            var resolved = theme == ElementTheme.Light ? ElementTheme.Light : ElementTheme.Dark;
+            return Theme.ResolveBrush("ChatComposerFadeBrush", resolved);
+        }
+
+        var composerFade = Border(Empty())
+            .Set(f =>
+            {
+                f.Height = 28;
+                f.VerticalAlignment = VerticalAlignment.Bottom;
+                f.IsHitTestVisible = false;
+                Theme.EnsureThemeCallback(f, () => f.Background = BuildComposerFadeBrush(f.ActualTheme));
+            });
+
         return Grid([GridSize.Star()], [GridSize.Auto, GridSize.Auto, GridSize.Star(), GridSize.Auto],
             header.Grid(row: 0, column: 0),
             divider.Grid(row: 1, column: 0),
             body.Grid(row: 2, column: 0),
+            composerFade.Grid(row: 2, column: 0),
             composer.Grid(row: 3, column: 0)
         ).OnMount(root =>
         {
@@ -881,7 +915,10 @@ public sealed class OpenClawChatRoot : Component
                     b.Padding = new Thickness(12, 10, 12, 10);
                     b.CornerRadius = new CornerRadius(8);
                     b.IsEnabled = !suggestionsDisabled;
-                });
+                    b.BorderThickness = new Thickness(0);
+                    b.BorderBrush = null;
+                })
+                .BackgroundResource("SubtleFillColorSecondaryBrush");
 
         return Border(
             VStack(12,

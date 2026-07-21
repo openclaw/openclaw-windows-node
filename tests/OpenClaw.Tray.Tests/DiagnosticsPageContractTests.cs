@@ -470,8 +470,14 @@ public sealed class DiagnosticsPageContractTests
         Assert.Contains("BorderThickness=\"0\"", xaml);
         Assert.Contains("FontSize=\"16\"", xaml);
         Assert.Contains("xmlns:controls=\"using:OpenClawTray.Controls\"", xaml);
-        Assert.Contains("<controls:BrandMark Grid.Column=\"1\"", xaml);
+        // The brand mark is merged into the pane toggle: hovering swaps the lobster for the toggle glyph.
+        Assert.Contains("<controls:BrandMark x:Name=\"BrandToggleMark\"", xaml);
         Assert.Contains("MarkSize=\"18\"", xaml);
+        Assert.Contains("x:Name=\"BrandToggleGlyph\"", xaml);
+        // The reveal glyph is the Fluent DockLeft (panel-left) icon, not the hamburger.
+        Assert.Contains("Glyph=\"&#xE90C;\"", xaml);
+        Assert.Contains("PointerEntered=\"OnBrandTogglePointerEntered\"", xaml);
+        Assert.Contains("PointerExited=\"OnBrandTogglePointerExited\"", xaml);
         Assert.DoesNotContain("Translation=\"0,-1,0\"", xaml);
         Assert.Contains("IsPaneToggleButtonVisible=\"False\"", xaml);
         Assert.Contains("x:Name=\"NavContentHost\"", xaml);
@@ -481,16 +487,32 @@ public sealed class DiagnosticsPageContractTests
 
         var titleBarIndex = xaml.IndexOf("x:Name=\"AppTitleBar\"", StringComparison.Ordinal);
         var toggleIndex = xaml.IndexOf("x:Name=\"NavPaneToggleButton\"", StringComparison.Ordinal);
-        var iconIndex = xaml.IndexOf("<controls:BrandMark Grid.Column=\"1\"", StringComparison.Ordinal);
+        var iconIndex = xaml.IndexOf("<controls:BrandMark x:Name=\"BrandToggleMark\"", StringComparison.Ordinal);
         var navViewIndex = xaml.IndexOf("x:Name=\"NavView\"", StringComparison.Ordinal);
         Assert.True(titleBarIndex >= 0, "The hub title bar must exist.");
         Assert.True(toggleIndex > titleBarIndex, "The nav pane toggle must live inside the title bar block.");
-        Assert.True(toggleIndex < iconIndex, "The nav pane toggle must appear before the app icon/title.");
+        Assert.True(toggleIndex < iconIndex, "The brand mark must live inside the nav pane toggle button.");
         Assert.True(toggleIndex < navViewIndex, "The nav pane toggle must be outside the NavigationView pane.");
+
+        // The back button now sits directly left of the search box (Teams style),
+        // after the title and before the search field.
+        // The back button uses the Fluent ChevronLeft glyph and shares the search's centered group.
+        Assert.Contains("Glyph=\"&#xE76B;\"", xaml);
+        // Both title-bar icon buttons carry a subtle hover/pressed affordance.
+        Assert.Contains("<SolidColorBrush x:Key=\"ButtonBackgroundPointerOver\" Color=\"{ThemeResource SubtleFillColorSecondary}\"/>", xaml);
+        Assert.Contains("<SolidColorBrush x:Key=\"ButtonBackgroundPressed\" Color=\"{ThemeResource SubtleFillColorTertiary}\"/>", xaml);
+
+        var backIndex = xaml.IndexOf("x:Name=\"NavBackButton\"", StringComparison.Ordinal);
+        var titleTextIndex = xaml.IndexOf("x:Name=\"TitleText\"", StringComparison.Ordinal);
+        var searchIndex = xaml.IndexOf("x:Name=\"TitleSearchBox\"", StringComparison.Ordinal);
+        Assert.True(backIndex > titleTextIndex, "The back button must appear after the title.");
+        Assert.True(backIndex < searchIndex, "The back button must appear directly before the search box.");
 
         var cs = Read("src", "OpenClaw.Tray.WinUI", "Windows", "HubWindow.xaml.cs");
         Assert.Contains("private void OnNavPaneToggleButtonClick", cs);
         Assert.Contains("NavView.IsPaneOpen = !NavView.IsPaneOpen;", cs);
+        Assert.Contains("private void OnBrandTogglePointerEntered", cs);
+        Assert.Contains("private void OnBrandTogglePointerExited", cs);
         Assert.Contains("private void OnNavContentHostSizeChanged", cs);
         Assert.Contains("NavContentClip.Rect = new global::Windows.Foundation.Rect(0, 0, e.NewSize.Width, e.NewSize.Height);", cs);
     }

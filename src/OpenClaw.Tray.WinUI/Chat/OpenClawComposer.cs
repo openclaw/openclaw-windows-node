@@ -399,9 +399,9 @@ public sealed class OpenClawComposer : Component<OpenClawComposerProps>
         // the model picker (which patches the current session) is reflected here.
         // A leading checkmark column marks the active session. Rows use the same
         // subtle hover/press theme resources as the other pickers.
-        var sessionPrimaryBrush = (Brush)Microsoft.UI.Xaml.Application.Current.Resources["TextFillColorPrimaryBrush"];
-        var sessionMutedBrush = (Brush)Microsoft.UI.Xaml.Application.Current.Resources["TextFillColorSecondaryBrush"];
-
+        // Session rows resolve their text foregrounds through the reactive
+        // FunctionalUI modifier path (PrimaryText / SecondaryText) so they follow
+        // the flyout's ActualTheme instead of snapshotting the app default theme.
         string ResolveSessionModelCaption(string? modelId, string? provider)
         {
             // Mirror ChatModelLabels.BuildDefaultEntryLabel's un-localized
@@ -420,28 +420,28 @@ public sealed class OpenClawComposer : Component<OpenClawComposerProps>
         {
             var sessionId = session.Id;
             var check = TextBlock(isCurrent ? "\uE73E" : "") // CheckMark
+                .Foreground(PrimaryText)
                 .Set(t =>
                 {
                     t.FontFamily = FluentIconCatalog.SymbolThemeFontFamily;
                     t.FontSize = 12;
                     t.Width = 16;
-                    t.Foreground = sessionPrimaryBrush;
                     t.VerticalAlignment = VerticalAlignment.Center;
                     t.HorizontalAlignment = HorizontalAlignment.Center;
                 });
             var titleBlock = TextBlock(session.Title)
+                .Foreground(PrimaryText)
                 .Set(t =>
                 {
                     t.FontSize = 14;
-                    t.Foreground = sessionPrimaryBrush;
                     t.TextTrimming = TextTrimming.CharacterEllipsis;
                     t.TextWrapping = TextWrapping.NoWrap;
                 });
             var modelBlock = TextBlock(ResolveSessionModelCaption(session.Model, session.ModelProvider))
+                .Foreground(SecondaryText)
                 .Set(t =>
                 {
                     t.FontSize = 12;
-                    t.Foreground = sessionMutedBrush;
                     t.TextTrimming = TextTrimming.CharacterEllipsis;
                     t.TextWrapping = TextWrapping.NoWrap;
                 });
@@ -483,11 +483,11 @@ public sealed class OpenClawComposer : Component<OpenClawComposerProps>
         {
             if (channelGroupsForPicker.Length > 1)
                 sessionRows.Add(TextBlock(group.AgentLabel)
+                    .Foreground(SecondaryText)
                     .Set(t =>
                     {
                         t.FontSize = 12;
                         t.FontWeight = Microsoft.UI.Text.FontWeights.SemiBold;
-                        t.Foreground = sessionMutedBrush;
                         t.Margin = new Thickness(8, 6, 8, 2);
                     }));
             foreach (var session in group.Sessions)
@@ -1258,17 +1258,21 @@ public sealed class OpenClawComposer : Component<OpenClawComposerProps>
         // tighter ControlCornerRadius. Mirrors the design-system
         // ComposerIconButton.
         Element IconButton(string glyph, string tip, Action onClick, Brush? foreground = null)
-            => Button(
-                TextBlock(glyph)
-                    .Set(t =>
-                    {
-                        t.FontFamily = FluentIconCatalog.SymbolThemeFontFamily;
-                        t.FontSize = composerIconSize;
-                        // Always set foreground explicitly so element diffing resets it.
-                        t.Foreground = foreground
-                            ?? (Brush)Microsoft.UI.Xaml.Application.Current.Resources["TextFillColorPrimaryBrush"];
-                    }),
-                onClick)
+        {
+            var glyphBlock = TextBlock(glyph)
+                .Set(t =>
+                {
+                    t.FontFamily = FluentIconCatalog.SymbolThemeFontFamily;
+                    t.FontSize = composerIconSize;
+                    // An explicit foreground (e.g. red while recording) wins; the
+                    // setter runs after modifiers so assign it here. Otherwise the
+                    // reactive PrimaryText modifier below drives it so the glyph
+                    // flips with the element's ActualTheme.
+                    if (foreground is { } fg) t.Foreground = fg;
+                });
+            if (foreground is null)
+                glyphBlock = glyphBlock.Foreground(PrimaryText);
+            return Button(glyphBlock, onClick)
             .Set(b =>
             {
                 b.Padding = new Thickness(0);
@@ -1285,6 +1289,7 @@ public sealed class OpenClawComposer : Component<OpenClawComposerProps>
                 .Set("ButtonBorderBrushPressed", new SolidColorBrush(Colors.Transparent)))
             .AutomationName(tip)
             .SetToolTip(tip);
+        }
 
         // Subtle inline picker — text label + chevron with the same
         // SubtleButton hover/press treatment as the icon buttons. Reads as a
@@ -1293,25 +1298,24 @@ public sealed class OpenClawComposer : Component<OpenClawComposerProps>
         // ComposerPicker.
         Element PickerButton(string label, string automationName, double? maxLabelWidth, FlyoutElement menu, bool enabled = true)
         {
-            var mutedBrush = (Brush)Microsoft.UI.Xaml.Application.Current.Resources["TextFillColorSecondaryBrush"];
             var labelBlock = TextBlock(label)
                 .Set(t =>
                 {
                     t.FontSize = 13;
-                    t.Foreground = mutedBrush;
                     t.TextTrimming = TextTrimming.CharacterEllipsis;
                     t.TextWrapping = TextWrapping.NoWrap;
                     t.VerticalAlignment = VerticalAlignment.Center;
                     if (maxLabelWidth is { } mw) t.MaxWidth = mw;
-                });
+                })
+                .Foreground(SecondaryText);
             var chevron = TextBlock("\uE70D") // ChevronDown
                 .Set(t =>
                 {
                     t.FontFamily = FluentIconCatalog.SymbolThemeFontFamily;
                     t.FontSize = 10;
-                    t.Foreground = mutedBrush;
                     t.VerticalAlignment = VerticalAlignment.Center;
-                });
+                })
+                .Foreground(SecondaryText);
             // Fold the current selection into the accessible name so assistive
             // tech announces "<field>: <value>" (e.g. "Session: <title>"), the
             // way the legacy ComboBox surfaced its selected item. The visible
@@ -1447,7 +1451,6 @@ public sealed class OpenClawComposer : Component<OpenClawComposerProps>
         // the Stop button while the assistant is responding. Keeping one slot
         // (identical geometry) means the toolbar never reflows between states.
         // Follow-up messages can still be queued mid-turn via Enter.
-        var sendBrush = (Brush)Microsoft.UI.Xaml.Application.Current.Resources["AccentFillColorDefaultBrush"];
         const string sendGlyph = "\uE724";
         const string stopGlyph = "\uE71A";
 
@@ -1456,10 +1459,10 @@ public sealed class OpenClawComposer : Component<OpenClawComposerProps>
         // Send is the ONE accent affordance in the composer. Its glyph sits on
         // the accent fill, so use the Fluent "text on accent" brush (white in
         // both themes) rather than a hard-coded color. When empty it drops to a
-        // subtle transparent button with muted glyph.
-        var glyphBrush = hasText
-            ? (Brush)Microsoft.UI.Xaml.Application.Current.Resources["TextOnAccentFillColorPrimaryBrush"]
-            : (Brush)Microsoft.UI.Xaml.Application.Current.Resources["TextFillColorSecondaryBrush"];
+        // subtle transparent button with muted glyph. Both the glyph and accent
+        // fill resolve from the button's ActualTheme (re-applied on a runtime
+        // theme switch) so the accent tone and muted glyph follow light/dark.
+        var glyphKey = hasText ? "TextOnAccentFillColorPrimaryBrush" : "TextFillColorSecondaryBrush";
         var actionBtn = Button(
             TextBlock(sendGlyph)
                 .Set(t =>
@@ -1467,7 +1470,7 @@ public sealed class OpenClawComposer : Component<OpenClawComposerProps>
                     t.FontFamily = FluentIconCatalog.SymbolThemeFontFamily;
                     t.FontSize = composerIconSize;
                 })
-                .Foreground(glyphBrush),
+                .Foreground(Ref(glyphKey)),
             sendAction
         ).Set(b =>
         {
@@ -1475,7 +1478,9 @@ public sealed class OpenClawComposer : Component<OpenClawComposerProps>
             b.MinWidth = 40; b.MinHeight = 32; b.Height = 32;
             b.CornerRadius = controlCornerRadius;
             b.IsEnabled = isConnected;
-            b.Background = hasText ? sendBrush : new SolidColorBrush(Colors.Transparent);
+            Theme.EnsureThemeCallback(b, () => b.Background = hasText
+                ? Theme.ResolveBrush("AccentFillColorDefaultBrush", b.ActualTheme)
+                : new SolidColorBrush(Colors.Transparent));
         })
         .Resources(r =>
         {
@@ -1516,15 +1521,15 @@ public sealed class OpenClawComposer : Component<OpenClawComposerProps>
                         t.FontFamily = FluentIconCatalog.SymbolThemeFontFamily;
                         t.FontSize = composerIconSize;
                     })
-                    .Foreground((Brush)Microsoft.UI.Xaml.Application.Current.Resources["SolidBackgroundFillColorBaseBrush"]),
+                    .Foreground(Ref("SolidBackgroundFillColorBaseBrush")),
                 Props.OnStop
             ).Set(b =>
             {
                 b.Padding = new Thickness(0);
                 b.MinWidth = 40; b.MinHeight = 32; b.Height = 32;
                 b.CornerRadius = controlCornerRadius;
-                b.Background = (Brush)Microsoft.UI.Xaml.Application.Current.Resources["TextFillColorPrimaryBrush"];
             })
+            .BackgroundResource("TextFillColorPrimaryBrush")
             .Resources(r =>
             {
                 r.Set("ButtonBackgroundPointerOver", Ref("TextFillColorSecondaryBrush"));
@@ -1580,19 +1585,22 @@ public sealed class OpenClawComposer : Component<OpenClawComposerProps>
             VStack(8, composerInput, voiceIndicator, bottomToolbar)
         ).Set(b =>
         {
-            b.Background = (Brush)Microsoft.UI.Xaml.Application.Current.Resources["TextControlBackground"];
-            if (recording)
-            {
-                b.BorderBrush = (Brush)Microsoft.UI.Xaml.Application.Current.Resources["AccentFillColorDefaultBrush"];
-                b.BorderThickness = new Thickness(2);
-            }
-            else
-            {
-                b.BorderBrush = (Brush)Microsoft.UI.Xaml.Application.Current.Resources["TextControlBorderBrush"];
-                b.BorderThickness = new Thickness(1);
-            }
             b.CornerRadius = composerCornerRadius;
             b.Padding = new Thickness(8);
+            Theme.EnsureThemeCallback(b, () =>
+            {
+                b.Background = Theme.ResolveBrush("ControlFillColorDefaultBrush", b.ActualTheme);
+                if (recording)
+                {
+                    b.BorderBrush = Theme.ResolveBrush("AccentFillColorDefaultBrush", b.ActualTheme);
+                    b.BorderThickness = new Thickness(2);
+                }
+                else
+                {
+                    b.BorderBrush = Theme.ResolveBrush("ControlStrokeColorDefaultBrush", b.ActualTheme);
+                    b.BorderThickness = new Thickness(1);
+                }
+            });
         });
 
         // Queued messages sit above the surface (outside the input card).
@@ -1609,10 +1617,9 @@ public sealed class OpenClawComposer : Component<OpenClawComposerProps>
             Border(composerCore).Padding(16, 12, 16, 12)
              .Set(b =>
              {
-                 // Top divider separates the composer region from the timeline.
-                 b.BorderThickness = new Thickness(0, 1, 0, 0);
-                 b.BorderBrush = (Brush)Microsoft.UI.Xaml.Application.Current.Resources["SurfaceStrokeColorDefaultBrush"];
+                 b.BorderThickness = new Thickness(0);
              })
+             .BackgroundResource("SolidBackgroundFillColorBaseBrush")
         );
     }
 

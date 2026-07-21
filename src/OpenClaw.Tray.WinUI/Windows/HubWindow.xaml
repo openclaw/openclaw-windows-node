@@ -15,7 +15,6 @@
     <Grid x:Name="RootGrid" PreviewKeyDown="OnRootPreviewKeyDown">
         <Grid.RowDefinitions>
             <RowDefinition Height="48"/>
-            <RowDefinition Height="Auto"/>
             <RowDefinition Height="*"/>
         </Grid.RowDefinitions>
 
@@ -24,84 +23,108 @@
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="Auto"/>
                 <ColumnDefinition Width="Auto"/>
-                <ColumnDefinition Width="Auto"/>
                 <ColumnDefinition Width="*"/>
                 <ColumnDefinition Width="Auto"/>
             </Grid.ColumnDefinitions>
 
-            <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center">
+            <!-- Lobster logo doubles as the nav pane toggle; hovering reveals the panel-left glyph (GitHub Copilot style) -->
+            <Button x:Uid="NavPaneToggleButton" x:Name="NavPaneToggleButton"
+                    Grid.Column="0"
+                    AutomationProperties.Name="Toggle navigation pane"
+                    MinWidth="32" MinHeight="32"
+                    Padding="0" VerticalAlignment="Center"
+                    CornerRadius="6"
+                    Background="Transparent"
+                    BorderBrush="Transparent"
+                    BorderThickness="0"
+                    ToolTipService.ToolTip="Toggle navigation pane"
+                    PointerEntered="OnBrandTogglePointerEntered"
+                    PointerExited="OnBrandTogglePointerExited"
+                    Click="OnNavPaneToggleButtonClick">
+                <Button.Resources>
+                    <SolidColorBrush x:Key="ButtonBackgroundPointerOver" Color="{ThemeResource SubtleFillColorSecondary}"/>
+                    <SolidColorBrush x:Key="ButtonBackgroundPressed" Color="{ThemeResource SubtleFillColorTertiary}"/>
+                </Button.Resources>
+                <Grid Width="18" Height="18">
+                    <controls:BrandMark x:Name="BrandToggleMark"
+                                        MarkSize="18"
+                                        VerticalAlignment="Center"
+                                        HorizontalAlignment="Center"/>
+                    <FontIcon x:Name="BrandToggleGlyph"
+                              Glyph="&#xE90C;"
+                              FontFamily="{ThemeResource SymbolThemeFontFamily}"
+                              FontSize="16"
+                              Opacity="0"
+                              VerticalAlignment="Center"
+                              HorizontalAlignment="Center"/>
+                </Grid>
+            </Button>
+
+            <TextBlock x:Uid="TitleText" Grid.Column="1" x:Name="TitleText" Text="OpenClaw Windows Companion"
+                        FontSize="13" VerticalAlignment="Center"
+                        Margin="8,0,0,0"
+                        Style="{StaticResource CaptionTextBlockStyle}"/>
+
+            <!-- Back button + search travel together, centered, with the back chevron directly left of the search box (Teams style) -->
+            <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="6"
+                        HorizontalAlignment="Center" VerticalAlignment="Center">
                 <Button x:Uid="NavBackButton" x:Name="NavBackButton"
                         AutomationProperties.Name="Back"
                         MinWidth="32" MinHeight="32"
                         Padding="0" VerticalAlignment="Center"
+                        CornerRadius="6"
                         IsEnabled="False"
                         Background="Transparent"
                         BorderBrush="Transparent"
                         BorderThickness="0"
                         ToolTipService.ToolTip="Back"
                         Click="OnBackRequested">
-                    <FontIcon Glyph="&#xE72B;"
+                    <Button.Resources>
+                        <SolidColorBrush x:Key="ButtonBackgroundPointerOver" Color="{ThemeResource SubtleFillColorSecondary}"/>
+                        <SolidColorBrush x:Key="ButtonBackgroundPressed" Color="{ThemeResource SubtleFillColorTertiary}"/>
+                    </Button.Resources>
+                    <FontIcon Glyph="&#xE76B;"
                               FontFamily="{ThemeResource SymbolThemeFontFamily}"
                               FontSize="16"/>
                 </Button>
 
-                <Button x:Uid="NavPaneToggleButton" x:Name="NavPaneToggleButton"
-                        AutomationProperties.Name="Toggle navigation pane"
-                        MinWidth="32" MinHeight="32"
-                        Padding="0" VerticalAlignment="Center"
-                        Background="Transparent"
-                        BorderBrush="Transparent"
-                        BorderThickness="0"
-                        ToolTipService.ToolTip="Toggle navigation pane"
-                        Click="OnNavPaneToggleButtonClick">
-                    <FontIcon Glyph="&#xE700;"
-                              FontFamily="{ThemeResource SymbolThemeFontFamily}"
-                              FontSize="16"/>
-                </Button>
+                <!-- Search box -->
+                <AutoSuggestBox x:Uid="TitleSearchBox" x:Name="TitleSearchBox"
+                                 PlaceholderText="Search… (Ctrl+E)"
+                                 QueryIcon="Find"
+                                 Width="420"
+                                Height="32" VerticalAlignment="Center"
+                                TextChanged="OnSearchTextChanged"
+                                SuggestionChosen="OnSearchSuggestionChosen"
+                                QuerySubmitted="OnSearchQuerySubmitted">
+                    <AutoSuggestBox.ItemTemplate>
+                        <DataTemplate>
+                            <StackPanel Orientation="Horizontal" Spacing="8" Padding="4,4">
+                                <TextBlock Text="{Binding Icon}" FontSize="14" VerticalAlignment="Center"/>
+                                <StackPanel Spacing="0">
+                                    <TextBlock Text="{Binding Title}" FontSize="12"/>
+                                    <TextBlock Text="{Binding Subtitle}" FontSize="10"
+                                               Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
+                                </StackPanel>
+                            </StackPanel>
+                        </DataTemplate>
+                    </AutoSuggestBox.ItemTemplate>
+                </AutoSuggestBox>
             </StackPanel>
 
-            <!-- Icon + Title -->
-            <controls:BrandMark Grid.Column="1"
-                                MarkSize="18"
-                                VerticalAlignment="Center"
-                                Margin="8,0,8,0"/>
-            <TextBlock x:Uid="TitleText" Grid.Column="2" x:Name="TitleText" Text="OpenClaw Windows Companion"
-                        FontSize="13" VerticalAlignment="Center"
-                        Style="{StaticResource CaptionTextBlockStyle}"/>
-
-            <!-- Search box -->
-            <AutoSuggestBox x:Uid="TitleSearchBox" Grid.Column="3" x:Name="TitleSearchBox"
-                             PlaceholderText="Search… (Ctrl+E)"
-                             QueryIcon="Find"
-                             HorizontalAlignment="Stretch"
-                             MinWidth="200" MaxWidth="600"
-                            Height="32" VerticalAlignment="Center"
-                            Margin="16,0,16,0"
-                            TextChanged="OnSearchTextChanged"
-                            SuggestionChosen="OnSearchSuggestionChosen"
-                            QuerySubmitted="OnSearchQuerySubmitted">
-                <AutoSuggestBox.ItemTemplate>
-                    <DataTemplate>
-                        <StackPanel Orientation="Horizontal" Spacing="8" Padding="4,4">
-                            <TextBlock Text="{Binding Icon}" FontSize="14" VerticalAlignment="Center"/>
-                            <StackPanel Spacing="0">
-                                <TextBlock Text="{Binding Title}" FontSize="12"/>
-                                <TextBlock Text="{Binding Subtitle}" FontSize="10"
-                                           Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
-                            </StackPanel>
-                        </StackPanel>
-                    </DataTemplate>
-                </AutoSuggestBox.ItemTemplate>
-            </AutoSuggestBox>
-
-            <StackPanel Grid.Column="4" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+            <StackPanel Grid.Column="3" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
 
                 <Button x:Name="StatusPillButton"
                         Height="30"
                         Padding="11,0"
                         CornerRadius="15"
+                        Background="Transparent"
                         VerticalAlignment="Center"
                         AutomationProperties.Name="Connection status">
+                    <Button.Resources>
+                        <SolidColorBrush x:Key="ButtonBackgroundPointerOver" Color="{ThemeResource SubtleFillColorSecondary}"/>
+                        <SolidColorBrush x:Key="ButtonBackgroundPressed" Color="{ThemeResource SubtleFillColorTertiary}"/>
+                    </Button.Resources>
                     <StackPanel Orientation="Horizontal" Spacing="7" VerticalAlignment="Center">
                         <Ellipse x:Name="StatusPillDot" Width="10" Height="10" VerticalAlignment="Center" Fill="Gray"/>
                         <TextBlock x:Name="StatusPillText" Text="Disconnected"
@@ -187,8 +210,15 @@
                 <Button x:Name="NotificationsBellButton"
                         MinWidth="36" Height="30"
                         Padding="0"
+                        Background="Transparent"
+                        BorderThickness="0"
+                        BorderBrush="Transparent"
                         VerticalAlignment="Center"
                         AutomationProperties.Name="Notifications">
+                    <Button.Resources>
+                        <SolidColorBrush x:Key="ButtonBackgroundPointerOver" Color="{ThemeResource SubtleFillColorSecondary}"/>
+                        <SolidColorBrush x:Key="ButtonBackgroundPressed" Color="{ThemeResource SubtleFillColorTertiary}"/>
+                    </Button.Resources>
                     <Grid>
                         <FontIcon Glyph="&#xE7E7;" FontSize="16"
                                   FontFamily="{ThemeResource SymbolThemeFontFamily}"/>
@@ -331,40 +361,9 @@
             </StackPanel>
         </Grid>
 
-        <InfoBar x:Name="AppNotificationInfoBar"
-                 Grid.Row="1"
-                 Margin="12,8,12,0"
-                 IsOpen="False"
-                 Visibility="Collapsed"
-                 IsClosable="True"
-                 Closed="OnAppNotificationInfoBarClosed">
-            <InfoBar.Content>
-                <Grid ColumnSpacing="12" Margin="0,0,0,4" VerticalAlignment="Center">
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="*"/>
-                        <ColumnDefinition Width="Auto"/>
-                    </Grid.ColumnDefinitions>
-                    <!-- Single-line message: bold headline + regular detail
-                         (Runs set in RenderAppNotification). Trims rather than
-                         wrapping so the banner stays one line tall. -->
-                    <TextBlock x:Name="AppNotificationMessageText"
-                               VerticalAlignment="Center"
-                               TextWrapping="NoWrap"
-                               TextTrimming="CharacterEllipsis"/>
-                    <!-- Action sits at the far right of the banner, before the
-                         close button — mirrors the prior Connection-page bar. -->
-                    <HyperlinkButton x:Name="AppNotificationActionButton"
-                            Grid.Column="1"
-                            Visibility="Collapsed"
-                            VerticalAlignment="Center"
-                            Click="OnAppNotificationActionButtonClick"/>
-                </Grid>
-            </InfoBar.Content>
-        </InfoBar>
-
         <!-- Main Content -->
         <Grid x:Name="NavContentHost"
-              Grid.Row="2"
+              Grid.Row="1"
               SizeChanged="OnNavContentHostSizeChanged">
             <Grid.Clip>
                 <RectangleGeometry x:Name="NavContentClip"/>
@@ -480,14 +479,14 @@
             <NavigationViewItem x:Uid="HubWindow_NavigationViewItem_Sandbox" Tag="sandbox" Content="Sandbox">
                 <NavigationViewItem.Icon><ImageIcon Source="{StaticResource Sandbox_Icon}" AutomationProperties.AccessibilityView="Raw"/></NavigationViewItem.Icon>
             </NavigationViewItem>
-            <NavigationViewItem x:Uid="HubWindow_NavigationViewItem_133" Tag="settings" Content="Settings">
-                <NavigationViewItem.Icon><ImageIcon Source="{StaticResource Settings_Icon}" AutomationProperties.AccessibilityView="Raw"/></NavigationViewItem.Icon>
-            </NavigationViewItem>
         </NavigationView.MenuItems>
 
         <NavigationView.FooterMenuItems>
             <NavigationViewItem x:Uid="HubWindow_NavigationViewItem_145" x:Name="NavDiagnostics" Tag="debug" Content="Debug">
                 <NavigationViewItem.Icon><ImageIcon Source="{StaticResource Debug_Icon}" AutomationProperties.AccessibilityView="Raw"/></NavigationViewItem.Icon>
+            </NavigationViewItem>
+            <NavigationViewItem x:Uid="HubWindow_NavigationViewItem_133" Tag="settings" Content="Settings">
+                <NavigationViewItem.Icon><ImageIcon Source="{StaticResource Settings_Icon}" AutomationProperties.AccessibilityView="Raw"/></NavigationViewItem.Icon>
             </NavigationViewItem>
             </NavigationView.FooterMenuItems>
 
@@ -499,6 +498,34 @@
                 </Frame.ContentTransitions>
             </Frame>
         </NavigationView>
+        </Grid>
+
+        <!-- Floating notification banner: lives in the content row (Row 2) and is
+             declared after NavContentHost so it overlays the top of the content
+             area instead of pushing the title bar / content down. The wrapper grid
+             pins it to the right ~2/5 of the content width so it never reaches into
+             the navigation pane. Multi-line messages grow the banner taller. -->
+        <Grid Grid.Row="1" VerticalAlignment="Top">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="3*"/>
+                <ColumnDefinition Width="2*"/>
+            </Grid.ColumnDefinitions>
+            <InfoBar x:Name="AppNotificationInfoBar"
+                     Grid.Column="1"
+                     Margin="12,8,12,0"
+                     IsOpen="False"
+                     Visibility="Collapsed"
+                     IsClosable="True"
+                     Closed="OnAppNotificationInfoBarClosed">
+                <!-- Native InfoBar Title/Message (set in RenderAppNotification) plus
+                     a standard ActionButton. The InfoBar itself wraps long messages
+                     and moves the action button below the text responsively. -->
+                <InfoBar.ActionButton>
+                    <Button x:Name="AppNotificationActionButton"
+                            Visibility="Collapsed"
+                            Click="OnAppNotificationActionButtonClick"/>
+                </InfoBar.ActionButton>
+            </InfoBar>
         </Grid>
 
     </Grid>

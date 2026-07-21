@@ -20,14 +20,66 @@
                 <ResourceDictionary x:Key="Default">
                     <SolidColorBrush x:Key="SetupIndicatorAccentBrush" Color="{ThemeResource SystemAccentColorLight2}" />
                     <SolidColorBrush x:Key="SetupInactiveDotBrush" Color="{ThemeResource ControlStrongFillColorDefault}" />
+
+                    <!-- FunctionalUI resolves a brush for a target ElementTheme by walking the
+                         app-level ThemeDictionaries; the framework's XamlControlsResources
+                         brushes are not surfaced through that enumerable walk, so a control
+                         rendering dark kept the light snapshot (the composer read as light on
+                         a dark page). Re-declaring the exact framework keys here materializes
+                         them per theme with identical values (each aliases its built-in color
+                         token), so the walk flips them correctly. No hardcoded colors. -->
+                    <SolidColorBrush x:Key="SolidBackgroundFillColorBaseBrush" Color="{ThemeResource SolidBackgroundFillColorBase}" />
+                    <SolidColorBrush x:Key="ControlFillColorDefaultBrush" Color="{ThemeResource ControlFillColorDefault}" />
+                    <SolidColorBrush x:Key="ControlStrokeColorDefaultBrush" Color="{ThemeResource ControlStrokeColorDefault}" />
+                    <SolidColorBrush x:Key="SubtleFillColorSecondaryBrush" Color="{ThemeResource SubtleFillColorSecondary}" />
+                    <SolidColorBrush x:Key="SubtleFillColorTertiaryBrush" Color="{ThemeResource SubtleFillColorTertiary}" />
+                    <SolidColorBrush x:Key="TextFillColorSecondaryBrush" Color="{ThemeResource TextFillColorSecondary}" />
+
+                    <!-- Composer scrim: the chat timeline dissolves into the composer dock via a
+                         vertical fade from transparent to the base surface fill. FunctionalUI
+                         resolves this as a whole brush per ElementTheme and reads it out of the
+                         visual tree, so the stops use LITERAL colors (a {ThemeResource} color
+                         would re-resolve against the ambient app theme and read light on a dark
+                         page). The values mirror SolidBackgroundFillColorBase (dark #202020) so
+                         the fade lands seamlessly on the dock. -->
+                    <LinearGradientBrush x:Key="ChatComposerFadeBrush" StartPoint="0,0" EndPoint="0,1">
+                        <GradientStop Offset="0" Color="#00202020" />
+                        <GradientStop Offset="1" Color="#FF202020" />
+                    </LinearGradientBrush>
                 </ResourceDictionary>
                 <ResourceDictionary x:Key="Light">
                     <SolidColorBrush x:Key="SetupIndicatorAccentBrush" Color="{ThemeResource SystemAccentColorDark1}" />
                     <SolidColorBrush x:Key="SetupInactiveDotBrush" Color="{ThemeResource ControlStrongFillColorDefault}" />
+
+                    <SolidColorBrush x:Key="SolidBackgroundFillColorBaseBrush" Color="{ThemeResource SolidBackgroundFillColorBase}" />
+                    <SolidColorBrush x:Key="ControlFillColorDefaultBrush" Color="{ThemeResource ControlFillColorDefault}" />
+                    <SolidColorBrush x:Key="ControlStrokeColorDefaultBrush" Color="{ThemeResource ControlStrokeColorDefault}" />
+                    <SolidColorBrush x:Key="SubtleFillColorSecondaryBrush" Color="{ThemeResource SubtleFillColorSecondary}" />
+                    <SolidColorBrush x:Key="SubtleFillColorTertiaryBrush" Color="{ThemeResource SubtleFillColorTertiary}" />
+                    <SolidColorBrush x:Key="TextFillColorSecondaryBrush" Color="{ThemeResource TextFillColorSecondary}" />
+
+                    <!-- Light mirror of ChatComposerFadeBrush (SolidBackgroundFillColorBase light #F3F3F3). -->
+                    <LinearGradientBrush x:Key="ChatComposerFadeBrush" StartPoint="0,0" EndPoint="0,1">
+                        <GradientStop Offset="0" Color="#00F3F3F3" />
+                        <GradientStop Offset="1" Color="#FFF3F3F3" />
+                    </LinearGradientBrush>
                 </ResourceDictionary>
                 <ResourceDictionary x:Key="HighContrast">
                     <SolidColorBrush x:Key="SetupIndicatorAccentBrush" Color="{ThemeResource SystemColorHighlightColor}" />
                     <SolidColorBrush x:Key="SetupInactiveDotBrush" Color="{ThemeResource SystemColorGrayTextColor}" />
+
+                    <SolidColorBrush x:Key="SolidBackgroundFillColorBaseBrush" Color="{ThemeResource SolidBackgroundFillColorBase}" />
+                    <SolidColorBrush x:Key="ControlFillColorDefaultBrush" Color="{ThemeResource ControlFillColorDefault}" />
+                    <SolidColorBrush x:Key="ControlStrokeColorDefaultBrush" Color="{ThemeResource ControlStrokeColorDefault}" />
+                    <SolidColorBrush x:Key="SubtleFillColorSecondaryBrush" Color="{ThemeResource SubtleFillColorSecondary}" />
+                    <SolidColorBrush x:Key="SubtleFillColorTertiaryBrush" Color="{ThemeResource SubtleFillColorTertiary}" />
+                    <SolidColorBrush x:Key="TextFillColorSecondaryBrush" Color="{ThemeResource TextFillColorSecondary}" />
+
+                    <!-- High-contrast follows the system window color so the scrim stays legible. -->
+                    <LinearGradientBrush x:Key="ChatComposerFadeBrush" StartPoint="0,0" EndPoint="0,1">
+                        <GradientStop Offset="0" Color="Transparent" />
+                        <GradientStop Offset="1" Color="{ThemeResource SystemColorWindowColor}" />
+                    </LinearGradientBrush>
                 </ResourceDictionary>
             </ResourceDictionary.ThemeDictionaries>
 

@@ -1004,7 +1004,14 @@ public class OpenClawChatTimeline : Component<OpenClawChatTimelineProps>
         // window backdrop. On Mica/Acrylic the system tint is translucent,
         // so Tertiary text can fall below WCAG AA. Bump to Secondary when
         // the chat surface is transparent over a host backdrop.
-        var chatStampFg         = themeBrush("TextFillColorSecondaryBrush");
+        // Timestamps / helper captions sit directly on the window backdrop (no
+        // bubble behind them), so a snapshot from Application.Resources renders
+        // the light-theme secondary color and vanishes in dark mode. Drive this
+        // brush from the built-in TextFillColorSecondary token for the timeline
+        // root's ActualTheme instead (wired below) so it stays legible after a
+        // runtime light/dark switch.
+        var chatStampFg         = new SolidColorBrush(
+            Theme.ResolveColor("TextFillColorSecondary", ElementTheme.Default));
         var chatTextFg          = themeBrush("TextFillColorPrimaryBrush");
         // Tool chips: very subtle background tint + light border so they
         // read as a secondary surface distinct from the filled assistant
@@ -3006,7 +3013,11 @@ public class OpenClawChatTimeline : Component<OpenClawChatTimelineProps>
                 prevLastEntryIdRef.Current = lastEntryId;
                 prevEntryCountRef.Current = entryCount;
             })
-            ).Background(chatPageBg).Grid(row: 0, column: 0)
+            ).Set(rootBorder =>
+             {
+                 Theme.EnsureThemeCallback(rootBorder, () =>
+                     chatStampFg.Color = Theme.ResolveColor("TextFillColorSecondary", rootBorder.ActualTheme));
+             }).Background(chatPageBg).Grid(row: 0, column: 0)
         );
     }
 }
