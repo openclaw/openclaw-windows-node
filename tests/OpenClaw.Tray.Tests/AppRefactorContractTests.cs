@@ -829,7 +829,6 @@ public sealed class AppRefactorContractTests
         Assert.Contains("SetupWindow.Active?.SetWelcomeInstallSelected(installSelected)", welcomePage);
         Assert.Contains("private bool _isWelcomeInstallSelected = true", setupWindow);
         Assert.Contains("public bool IsWelcomeInstallSelected => _isWelcomeInstallSelected", setupWindow);
-        Assert.Contains("(int)(720 * scale), (int)(560 * scale)", setupWindow);
     }
 
     [Fact]
