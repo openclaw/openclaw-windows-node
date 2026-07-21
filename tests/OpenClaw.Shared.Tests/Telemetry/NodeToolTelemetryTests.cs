@@ -133,6 +133,50 @@ public sealed class NodeToolTelemetryTests
             tag => tag.Key == NodeToolInvocation.ApprovalPipelineTag);
     }
 
+    [Theory]
+    [InlineData(
+        NodeToolOutcome.Success,
+        NodeToolErrorCategory.None,
+        ActivityStatusCode.Ok,
+        "success",
+        null)]
+    [InlineData(
+        NodeToolOutcome.Failure,
+        NodeToolErrorCategory.InternalFailure,
+        ActivityStatusCode.Error,
+        "failure",
+        "internal_failure")]
+    [InlineData(
+        NodeToolOutcome.Canceled,
+        NodeToolErrorCategory.Timeout,
+        ActivityStatusCode.Unset,
+        "canceled",
+        "timeout")]
+    public void Invocation_MapsTerminalOutcomeToActivityStatus(
+        NodeToolOutcome outcome,
+        NodeToolErrorCategory errorCategory,
+        ActivityStatusCode expectedStatus,
+        string expectedOutcome,
+        string? expectedErrorCategory)
+    {
+        using var activities = new ActivityCollector();
+        var invocation = new NodeToolInvocation(NodeToolTransport.Mcp);
+        invocation.SetCommand("system.run");
+
+        invocation.Complete(outcome, errorCategory);
+
+        var root = Assert.Single(
+            activities.Stopped,
+            activity => activity.OperationName == NodeToolInvocation.InvokeSpanName);
+        Assert.Equal(expectedStatus, root.Status);
+        Assert.Equal(
+            expectedOutcome,
+            root.GetTagItem(OpenClawTelemetryTagKey.Outcome.ToTelemetryName()));
+        Assert.Equal(
+            expectedErrorCategory,
+            root.GetTagItem(OpenClawTelemetryTagKey.ErrorCategory.ToTelemetryName()));
+    }
+
     [Fact]
     public void InternalDiagnostics_AreNotSerialized()
     {

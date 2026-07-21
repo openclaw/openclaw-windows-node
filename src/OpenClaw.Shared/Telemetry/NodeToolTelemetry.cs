@@ -298,8 +298,13 @@ public sealed class NodeToolInvocation : IDisposable
         if (errorType != null)
             activity.SetTag(OpenClawTelemetryTagKey.ErrorType.ToTelemetryName(), errorType);
 
-        activity.SetStatus(
-            outcome == NodeToolOutcome.Failure ? ActivityStatusCode.Error : ActivityStatusCode.Ok);
+        activity.SetStatus(outcome switch
+        {
+            NodeToolOutcome.Success => ActivityStatusCode.Ok,
+            NodeToolOutcome.Failure => ActivityStatusCode.Error,
+            NodeToolOutcome.Canceled => ActivityStatusCode.Unset,
+            _ => ActivityStatusCode.Unset,
+        });
     }
 
     private static void ApplySandboxTags(
