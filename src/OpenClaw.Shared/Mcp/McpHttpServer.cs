@@ -65,6 +65,7 @@ public sealed class McpHttpServer : IDisposable, IAsyncDisposable
     private readonly int _port;
     private readonly IOpenClawLogger _logger;
     private readonly HttpListener _listener;
+    private readonly Action<HttpListenerResponse, HttpStatusCode, string, string> _writeText;
     /// <summary>
     /// Required bearer token for HTTP requests. Empty/null disables auth (the
     /// pre-auth contract — kept so existing dev configs keep working). When set,
@@ -86,9 +87,20 @@ public sealed class McpHttpServer : IDisposable, IAsyncDisposable
     public string Endpoint => $"http://127.0.0.1:{_port}/";
 
     public McpHttpServer(McpToolBridge bridge, int port, IOpenClawLogger logger, string? authToken = null)
+        : this(bridge, port, logger, authToken, WriteText)
+    {
+    }
+
+    internal McpHttpServer(
+        McpToolBridge bridge,
+        int port,
+        IOpenClawLogger logger,
+        string? authToken,
+        Action<HttpListenerResponse, HttpStatusCode, string, string> writeText)
     {
         _bridge = bridge ?? throw new ArgumentNullException(nameof(bridge));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
+        _writeText = writeText ?? throw new ArgumentNullException(nameof(writeText));
         _port = port;
         _authToken = string.IsNullOrEmpty(authToken) ? null : authToken;
         _listener = new HttpListener();
@@ -207,6 +219,7 @@ public sealed class McpHttpServer : IDisposable, IAsyncDisposable
         // values (e.g. enter the auth branch with the old token, then compare
         // against the new one — or vice versa).
         var authToken = Volatile.Read(ref _authToken);
+        McpToolBridge.McpTransportResponse? transportResponse = null;
         try
         {
             // CSRF/browser gate — reject anything carrying a browser Origin.
@@ -254,7 +267,7 @@ public sealed class McpHttpServer : IDisposable, IAsyncDisposable
             {
                 // Friendly probe response — useful for confirming the server is up
                 // from a curl/browser without hitting the JSON-RPC endpoint.
-                WriteText(ctx.Response, HttpStatusCode.OK,
+                _writeText(ctx.Response, HttpStatusCode.OK,
                     $"OpenClaw MCP server. POST JSON-RPC to {Endpoint}", "text/plain");
                 return;
             }
@@ -302,10 +315,11 @@ public sealed class McpHttpServer : IDisposable, IAsyncDisposable
                 return;
             }
 
-            string? responseBody;
             try
             {
-                responseBody = await _bridge.HandleRequestAsync(body, ct).ConfigureAwait(false);
+                transportResponse = await _bridge
+                    .HandleTransportRequestAsync(body, ct)
+                    .ConfigureAwait(false);
             }
             catch (OperationCanceledException) when (ct.IsCancellationRequested)
             {
@@ -313,18 +327,21 @@ public sealed class McpHttpServer : IDisposable, IAsyncDisposable
                 return;
             }
 
-            if (responseBody == null)
+            if (transportResponse.Body == null)
             {
                 // Notification — JSON-RPC says no body. 204 is the most honest signal.
                 ctx.Response.StatusCode = (int)HttpStatusCode.NoContent;
                 ctx.Response.Close();
+                transportResponse.CompleteDelivery();
                 return;
             }
 
-            WriteText(ctx.Response, HttpStatusCode.OK, responseBody, "application/json");
+            _writeText(ctx.Response, HttpStatusCode.OK, transportResponse.Body, "application/json");
+            transportResponse.CompleteDelivery();
         }
         catch (Exception ex)
         {
+            transportResponse?.CompleteDelivery(ex.GetType());
             _logger.Error("[MCP] Request failed", ex);
             // Response may already be partially written or closed; swallow.
             try { Reject(ctx, HttpStatusCode.InternalServerError, "internal error"); }
@@ -396,9 +413,9 @@ public sealed class McpHttpServer : IDisposable, IAsyncDisposable
         }
     }
 
-    private static void Reject(HttpListenerContext ctx, HttpStatusCode status, string reason)
+    private void Reject(HttpListenerContext ctx, HttpStatusCode status, string reason)
     {
-        try { WriteText(ctx.Response, status, reason, "text/plain"); }
+        try { _writeText(ctx.Response, status, reason, "text/plain"); }
         catch (Exception ex)
         {
             // Response may already be disposed; a failed write means the client

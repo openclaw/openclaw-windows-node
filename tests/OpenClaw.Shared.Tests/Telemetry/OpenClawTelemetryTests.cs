@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.Diagnostics.Metrics;
 using OpenClaw.Shared.Telemetry;
@@ -53,7 +54,9 @@ public sealed class OpenClawTelemetryTests
     [Fact]
     public void StartActivity_WithListener_AllowsManualMarking()
     {
-        using var collector = ActivityCollector.Listen(OpenClawActivitySourceName.OpenClaw.ToTelemetryName());
+        using var collector = ActivityCollector.Listen(
+            OpenClawActivitySourceName.OpenClaw.ToTelemetryName(),
+            "test.manual");
         using var activity = OpenClawTelemetry.StartActivity(
             "test.manual",
             [OpenClawTelemetryTag.String(OpenClawTelemetryTagKey.Source, "unit-test")]);
@@ -69,7 +72,9 @@ public sealed class OpenClawTelemetryTests
     [Fact]
     public void StartDetachedActivity_PreservesAmbientActivity()
     {
-        using var collector = ActivityCollector.Listen(OpenClawActivitySourceName.OpenClaw.ToTelemetryName());
+        using var collector = ActivityCollector.Listen(
+            OpenClawActivitySourceName.OpenClaw.ToTelemetryName(),
+            "test.detached");
         using var parent = new Activity("parent").Start();
 
         using var detached = OpenClawTelemetry.StartDetachedActivity("test.detached");
@@ -81,7 +86,10 @@ public sealed class OpenClawTelemetryTests
     [Fact]
     public void StartDetachedActivity_WithExplicitParent_CreatesChildAndPreservesAmbientActivity()
     {
-        using var collector = ActivityCollector.Listen(OpenClawActivitySourceName.OpenClaw.ToTelemetryName());
+        using var collector = ActivityCollector.Listen(
+            OpenClawActivitySourceName.OpenClaw.ToTelemetryName(),
+            "test.parent",
+            "test.child");
         using var ambient = new Activity("ambient").Start();
         using var parent = OpenClawTelemetry.StartDetachedActivity("test.parent");
 
@@ -96,7 +104,9 @@ public sealed class OpenClawTelemetryTests
     [Fact]
     public void StartDetachedActivity_WithEmptyExplicitParent_CreatesRootAndPreservesAmbientActivity()
     {
-        using var collector = ActivityCollector.Listen(OpenClawActivitySourceName.OpenClaw.ToTelemetryName());
+        using var collector = ActivityCollector.Listen(
+            OpenClawActivitySourceName.OpenClaw.ToTelemetryName(),
+            "test.root");
         using var ambient = new Activity("ambient").Start();
 
         using var root = OpenClawTelemetry.StartDetachedActivity(
@@ -112,7 +122,9 @@ public sealed class OpenClawTelemetryTests
     [Fact]
     public void StopDetachedActivity_PreservesNewerAmbientActivity()
     {
-        using var collector = ActivityCollector.Listen(OpenClawActivitySourceName.OpenClaw.ToTelemetryName());
+        using var collector = ActivityCollector.Listen(
+            OpenClawActivitySourceName.OpenClaw.ToTelemetryName(),
+            "test.detached");
         using var original = new Activity("original").Start();
         var detached = OpenClawTelemetry.StartDetachedActivity("test.detached");
         using var newer = new Activity("newer").Start();
@@ -137,7 +149,9 @@ public sealed class OpenClawTelemetryTests
     [Fact]
     public void Trace_WithListener_RecordsSuccessAndTags()
     {
-        using var collector = ActivityCollector.Listen(OpenClawActivitySourceName.OpenClaw.ToTelemetryName());
+        using var collector = ActivityCollector.Listen(
+            OpenClawActivitySourceName.OpenClaw.ToTelemetryName(),
+            "test.success");
 
         OpenClawTelemetry.Trace(
             "test.success",
@@ -158,7 +172,9 @@ public sealed class OpenClawTelemetryTests
     [Fact]
     public void Trace_Exception_MarksErrorAndRethrowsOriginal()
     {
-        using var collector = ActivityCollector.Listen(OpenClawActivitySourceName.OpenClaw.ToTelemetryName());
+        using var collector = ActivityCollector.Listen(
+            OpenClawActivitySourceName.OpenClaw.ToTelemetryName(),
+            "test.error");
         var expected = new InvalidOperationException("boom");
 
         var thrown = Assert.Throws<InvalidOperationException>(() =>
@@ -177,7 +193,9 @@ public sealed class OpenClawTelemetryTests
     [Fact]
     public async Task TraceAsync_WithListener_RecordsSuccessAndReturnsResult()
     {
-        using var collector = ActivityCollector.Listen(OpenClawActivitySourceName.OpenClaw.ToTelemetryName());
+        using var collector = ActivityCollector.Listen(
+            OpenClawActivitySourceName.OpenClaw.ToTelemetryName(),
+            "test.async.success");
 
         var result = await OpenClawTelemetry.TraceAsync(
             "test.async.success",
@@ -193,7 +211,9 @@ public sealed class OpenClawTelemetryTests
     [Fact]
     public async Task TraceAsync_CanceledTask_MarksCanceledAndPreservesCancellation()
     {
-        using var collector = ActivityCollector.Listen(OpenClawActivitySourceName.OpenClaw.ToTelemetryName());
+        using var collector = ActivityCollector.Listen(
+            OpenClawActivitySourceName.OpenClaw.ToTelemetryName(),
+            "test.async.cancel");
         using var cts = new CancellationTokenSource();
         await cts.CancelAsync();
 
@@ -211,7 +231,9 @@ public sealed class OpenClawTelemetryTests
     [Fact]
     public void Trace_OperationCanceled_MarksCanceledAndRethrowsOriginal()
     {
-        using var collector = ActivityCollector.Listen(OpenClawActivitySourceName.OpenClaw.ToTelemetryName());
+        using var collector = ActivityCollector.Listen(
+            OpenClawActivitySourceName.OpenClaw.ToTelemetryName(),
+            "test.sync.cancel");
         var expected = new OperationCanceledException();
 
         var thrown = Assert.Throws<OperationCanceledException>(() =>
@@ -298,20 +320,28 @@ public sealed class OpenClawTelemetryTests
     {
         private readonly ActivityListener _listener;
 
-        private ActivityCollector(string sourceName)
+        private ActivityCollector(string sourceName, IReadOnlySet<string> operationNames)
         {
             _listener = new ActivityListener
             {
                 ShouldListenTo = source => source.Name == sourceName,
-                Sample = (ref ActivityCreationOptions<ActivityContext> _) => ActivitySamplingResult.AllDataAndRecorded,
-                ActivityStopped = activity => Stopped.Add(activity)
+                Sample = (ref ActivityCreationOptions<ActivityContext> options) =>
+                    operationNames.Contains(options.Name)
+                        ? ActivitySamplingResult.AllDataAndRecorded
+                        : ActivitySamplingResult.None,
+                ActivityStopped = activity =>
+                {
+                    if (operationNames.Contains(activity.OperationName))
+                        Stopped.Enqueue(activity);
+                }
             };
             ActivitySource.AddActivityListener(_listener);
         }
 
-        public List<Activity> Stopped { get; } = new();
+        public ConcurrentQueue<Activity> Stopped { get; } = new();
 
-        public static ActivityCollector Listen(string sourceName) => new(sourceName);
+        public static ActivityCollector Listen(string sourceName, params string[] operationNames) =>
+            new(sourceName, operationNames.ToHashSet(StringComparer.Ordinal));
 
         public void Dispose() => _listener.Dispose();
     }
