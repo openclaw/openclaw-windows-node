@@ -31,6 +31,15 @@ public class WindowsNodeClientTests
         }
     }
 
+    private sealed class ThrowingWindowsNodeClient(
+        string gatewayUrl,
+        string token,
+        string dataPath) : WindowsNodeClient(gatewayUrl, token, dataPath)
+    {
+        protected override Task SendRawAsync(string message) =>
+            Task.FromException(new IOException("simulated gateway send failure"));
+    }
+
     [Theory]
     [InlineData("http://localhost:18789", "ws://localhost:18789")]
     [InlineData("https://host.tailnet.ts.net", "wss://host.tailnet.ts.net")]
@@ -2085,6 +2094,47 @@ public class WindowsNodeClientTests
             Assert.Equal(NodeToolOutcome.Failure, completion.Outcome);
             Assert.Equal(NodeToolErrorCategory.Timeout, completion.ErrorCategory);
             Assert.Equal(NodeToolExecutionMode.Host, completion.ExecutionMode);
+        }
+        finally
+        {
+            if (Directory.Exists(dataPath))
+                Directory.Delete(dataPath, true);
+        }
+    }
+
+    [Fact]
+    public async Task CommandDispatch_ReqPath_SendFailure_CompletesTransportFailureExactlyOnce()
+    {
+        var dataPath = Path.Combine(Path.GetTempPath(), $"openclaw-node-test-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(dataPath);
+
+        try
+        {
+            using var client = new ThrowingWindowsNodeClient(
+                "ws://localhost:18789",
+                "test-token",
+                dataPath);
+            var capability = new MockCapability("mock", "mock.ping");
+            client.RegisterCapability(capability);
+            var completionSource = new TaskCompletionSource<NodeToolTelemetryCompletion>(
+                TaskCreationOptions.RunContinuationsAsynchronously);
+            var completionCount = 0;
+            client.ToolTelemetryCompleted += (_, completion) =>
+            {
+                Interlocked.Increment(ref completionCount);
+                completionSource.TrySetResult(completion);
+            };
+
+            await InvokeProcessMessageAsync(
+                client,
+                BuildNodeInvokeRequest("invoke-send-failure", "mock.ping"));
+            var completion = await completionSource.Task.WaitAsync(TimeSpan.FromSeconds(5));
+
+            Assert.Equal(1, Volatile.Read(ref completionCount));
+            Assert.Equal("mock.ping", completion.Command);
+            Assert.Equal(NodeToolOutcome.Failure, completion.Outcome);
+            Assert.Equal(NodeToolErrorCategory.TransportFailure, completion.ErrorCategory);
+            Assert.Equal(typeof(IOException).FullName, completion.ErrorType);
         }
         finally
         {

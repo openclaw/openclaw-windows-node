@@ -110,8 +110,27 @@ public sealed class NodeToolTelemetryTests
             "windows_appcontainer",
             root.GetTagItem(NodeToolInvocation.SandboxTechnologyTag));
 
-        Assert.Single(metrics.LongMeasurements, m => m.Name == NodeToolInvocation.InvocationsMetricName);
-        Assert.Single(metrics.DoubleMeasurements, m => m.Name == NodeToolInvocation.DurationMetricName);
+        var invocationMeasurement = Assert.Single(
+            metrics.LongMeasurements,
+            measurement => measurement.Name == NodeToolInvocation.InvocationsMetricName);
+        var durationMeasurement = Assert.Single(
+            metrics.DoubleMeasurements,
+            measurement => measurement.Name == NodeToolInvocation.DurationMetricName);
+        string[] expectedMetricTags =
+        [
+            NodeToolInvocation.CommandTag,
+            NodeToolInvocation.TransportTag,
+            OpenClawTelemetryTagKey.Outcome.ToTelemetryName(),
+            OpenClawTelemetryTagKey.ErrorCategory.ToTelemetryName(),
+        ];
+        Assert.Equal(expectedMetricTags, invocationMeasurement.Tags.Select(tag => tag.Key));
+        Assert.Equal(expectedMetricTags, durationMeasurement.Tags.Select(tag => tag.Key));
+        Assert.DoesNotContain(
+            invocationMeasurement.Tags,
+            tag => tag.Key == NodeToolInvocation.ApprovalPipelineTag);
+        Assert.DoesNotContain(
+            durationMeasurement.Tags,
+            tag => tag.Key == NodeToolInvocation.ApprovalPipelineTag);
     }
 
     [Fact]
@@ -390,15 +409,15 @@ public sealed class NodeToolTelemetryTests
                         listener.EnableMeasurementEvents(instrument);
                 }
             };
-            _listener.SetMeasurementEventCallback<long>((instrument, value, _, _) =>
-                LongMeasurements.Add((instrument.Name, value)));
-            _listener.SetMeasurementEventCallback<double>((instrument, value, _, _) =>
-                DoubleMeasurements.Add((instrument.Name, value)));
+            _listener.SetMeasurementEventCallback<long>((instrument, value, tags, _) =>
+                LongMeasurements.Add((instrument.Name, value, tags.ToArray())));
+            _listener.SetMeasurementEventCallback<double>((instrument, value, tags, _) =>
+                DoubleMeasurements.Add((instrument.Name, value, tags.ToArray())));
             _listener.Start();
         }
 
-        public List<(string Name, long Value)> LongMeasurements { get; } = [];
-        public List<(string Name, double Value)> DoubleMeasurements { get; } = [];
+        public List<(string Name, long Value, KeyValuePair<string, object?>[] Tags)> LongMeasurements { get; } = [];
+        public List<(string Name, double Value, KeyValuePair<string, object?>[] Tags)> DoubleMeasurements { get; } = [];
 
         public void Dispose() => _listener.Dispose();
     }
