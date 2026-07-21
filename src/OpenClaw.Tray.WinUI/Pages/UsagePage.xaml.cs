@@ -282,8 +282,8 @@ public sealed partial class UsagePage : Page
         _currentPeriodDays = days;
         _lastAppliedUsageCostUpdatedAtUtc = DateTime.MinValue;
         DailyListView.ItemsSource = null;
-        TotalCostText.Text = "Not available";
-        TokenCountText.Text = "Not available";
+        TotalCostText.Text = "—";
+        TokenCountText.Text = "—";
         _dailyCostLoading.BeginInitialRefresh();
         UpdateDailyCostLoadingVisuals();
 

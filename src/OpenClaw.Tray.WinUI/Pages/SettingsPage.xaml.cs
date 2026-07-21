@@ -311,10 +311,10 @@ public sealed partial class SettingsPage : Page
         {
             _sampledGatewayUptimeMs = null;
             _gatewayUptimeRefreshTimer.Stop();
-            GatewayVersionText.Text = "Not available";
-            GatewayProtocolText.Text = "Not available";
-            GatewayAuthText.Text = "Not available";
-            GatewayUptimeText.Text = "Not available";
+            GatewayVersionText.Text = "—";
+            GatewayProtocolText.Text = "—";
+            GatewayAuthText.Text = "—";
+            GatewayUptimeText.Text = "—";
         }
     }
 
@@ -348,7 +348,7 @@ public sealed partial class SettingsPage : Page
             !_sampledGatewayUptimeMs.HasValue)
         {
             _gatewayUptimeRefreshTimer.Stop();
-            GatewayUptimeText.Text = "Not available";
+            GatewayUptimeText.Text = "—";
             return;
         }
 

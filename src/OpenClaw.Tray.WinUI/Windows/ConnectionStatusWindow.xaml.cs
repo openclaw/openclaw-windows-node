@@ -136,7 +136,7 @@ public sealed partial class ConnectionStatusWindow : WindowEx
         var elapsedStr = elapsed.TotalSeconds < 60 ? $"{elapsed.TotalSeconds:F0}s" : $"{elapsed.TotalMinutes:F0}m";
         OpDetailText.Text = snapshot.OperatorState switch
         {
-            RoleConnectionState.Connected => $"✓ {elapsedStr}  device={snapshot.OperatorDeviceId ?? "Not available"}",
+            RoleConnectionState.Connected => $"✓ {elapsedStr}  device={snapshot.OperatorDeviceId ?? "—"}",
             RoleConnectionState.Error => $"✗ {elapsedStr}: {snapshot.OperatorError ?? "unknown"}",
             RoleConnectionState.PairingRequired => $"⏳ {LocalizationHelper.GetString("ConnectionStatus_AwaitingApproval")}",
             _ => elapsedStr
@@ -221,7 +221,7 @@ public sealed partial class ConnectionStatusWindow : WindowEx
             });
             sp.Children.Add(new TextBlock
             {
-                Text = $"  {gw.Id[..Math.Min(8, gw.Id.Length)]}…  {(hasIdentity ? "🔑" : "Not available")}  [{tokens}]  {(gw.SshTunnel != null ? "🔒SSH" : "")}",
+                Text = $"  {gw.Id[..Math.Min(8, gw.Id.Length)]}…  {(hasIdentity ? "🔑" : "—")}  [{tokens}]  {(gw.SshTunnel != null ? "🔒SSH" : "")}",
                 FontSize = 9.5,
                 Foreground = DimTextBrush
             });

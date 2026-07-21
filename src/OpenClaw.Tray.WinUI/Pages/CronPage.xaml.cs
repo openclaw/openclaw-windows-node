@@ -859,7 +859,7 @@ public sealed partial class CronPage : Page
             }
             else
             {
-                vm.LastRunTime = "Not available";
+                vm.LastRunTime = "—";
             }
 
             // Infer running state: if scheduled time has passed but lastRunAtMs hasn't caught up
@@ -1005,7 +1005,7 @@ public sealed partial class CronPage : Page
         if (payload.TryGetProperty("storePath", out var storeEl))
             storePath = storeEl.GetString() ?? storePath;
 
-        string nextWake = "Not available";
+        string nextWake = "—";
         if (payload.TryGetProperty("nextWakeAtMs", out var wakeEl) && wakeEl.ValueKind == JsonValueKind.Number)
         {
             var ms = wakeEl.GetInt64();
@@ -2048,7 +2048,7 @@ public sealed partial class CronPage : Page
         grid.Children.Add(contentPanel);
 
         // Duration
-        var durText = durationMs > 0 ? $"{durationMs / 1000.0:F1}s" : "Not available";
+        var durText = durationMs > 0 ? $"{durationMs / 1000.0:F1}s" : "—";
         var durBlock = new TextBlock
         {
             Text = durText,
@@ -2061,7 +2061,7 @@ public sealed partial class CronPage : Page
         grid.Children.Add(durBlock);
 
         // Timestamp
-        var timeText = "Not available";
+        var timeText = "—";
         if (tsMs > 0)
         {
             var dt = DateTimeOffset.FromUnixTimeMilliseconds(tsMs).LocalDateTime;
@@ -2170,11 +2170,11 @@ public sealed partial class CronPage : Page
             LastRunAtMs > 0 &&
             NextRunAtMs <= 0;
         public bool HasRunHistory => LastRunAtMs > 0;
-        public string LastRunTime { get; set; } = "Not available";
+        public string LastRunTime { get; set; } = "—";
         public string LastResult { get; set; } = "";
         public SolidColorBrush ResultBadgeForeground { get; set; } = new(Colors.White);
         public Visibility ResultBadgeVisibility { get; set; } = Visibility.Collapsed;
-        public string NextRunTime { get; set; } = "Not available";
+        public string NextRunTime { get; set; } = "—";
         public string LastDuration { get; set; } = "";
         public Visibility DurationVisibility { get; set; } = Visibility.Collapsed;
         public long LastRunAtMs { get; set; } = 0;

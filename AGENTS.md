@@ -52,7 +52,7 @@ Use `.agents/skills/openclaw-proof-validation/SKILL.md` when a change touches tr
 
 ## User-Facing Copy
 
-Never include em dashes in user-facing copy, including UI text, error messages, CLI output, notifications, and agent-facing help. Use a period, colon, comma, parentheses, or a simple hyphen instead.
+Do not use em dashes in user-facing prose, including UI text, error messages, CLI output, notifications, and agent-facing help. Use a period, colon, comma, parentheses, or a simple hyphen instead. A standalone em dash is allowed as an unavailable-value or status placeholder.
 
 Policy:
 
