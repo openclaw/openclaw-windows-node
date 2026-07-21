@@ -1273,6 +1273,7 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
         }
         catch (Exception ex)
         {
+            bool shouldRetry;
             lock (_gate)
             {
                 if (_historyConnectionVersion != requestConnectionVersion)
@@ -1280,21 +1281,11 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
                     historyOutcome = ChatTelemetryOutcome.Canceled;
                     return;
                 }
-            }
 
-            historyOutcome = ex is OperationCanceledException
-                ? ChatTelemetryOutcome.Canceled
-                : ChatTelemetryOutcome.Failure;
-            historyException = ex;
-            RaiseNotification(new ChatProviderNotification(
-                ChatProviderNotificationKind.Error, threadId, LocalizationHelper.GetString("Chat_Notification_LoadHistoryFailed"), ex.Message));
-
-            // If still connected and under the retry limit, retry after a
-            // short delay so the UI auto-recovers when the gateway becomes
-            // ready to serve history.
-            bool shouldRetry;
-            lock (_gate)
-            {
+                historyOutcome = ex is OperationCanceledException
+                    ? ChatTelemetryOutcome.Canceled
+                    : ChatTelemetryOutcome.Failure;
+                historyException = ex;
                 _historyRetryCount.TryGetValue(threadId, out var retries);
                 shouldRetry = _status == ConnectionStatus.Connected
                               && !_historyLoaded.Contains(threadId)
@@ -1302,6 +1293,13 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
                 if (shouldRetry)
                     _historyRetryCount[threadId] = retries + 1;
             }
+
+            RaiseNotification(new ChatProviderNotification(
+                ChatProviderNotificationKind.Error, threadId, LocalizationHelper.GetString("Chat_Notification_LoadHistoryFailed"), ex.Message));
+
+            // If still connected and under the retry limit, retry after a
+            // short delay so the UI auto-recovers when the gateway becomes
+            // ready to serve history.
             if (shouldRetry)
             {
                 _ = _scheduleHistoryRetry(HistoryRetryDelay, async () =>

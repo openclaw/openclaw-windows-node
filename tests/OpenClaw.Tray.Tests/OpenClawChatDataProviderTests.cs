@@ -6933,6 +6933,55 @@ public class OpenClawChatDataProviderTests
         await provider.DisposeAsync();
     }
 
+    [Fact]
+    public async Task LoadHistoryAsync_ReconnectDuringFailureNotification_PreservesNewGenerationRetryBudget()
+    {
+        var calls = 0;
+        var retries = new List<Func<Task>>();
+        var (bridge, provider, _, _) = CreateProvider(
+            new[] { MainSession() },
+            historyRetryScheduler: (_, callback) =>
+            {
+                retries.Add(callback);
+                return Task.CompletedTask;
+            });
+        bridge.HistoryBehavior = _ =>
+        {
+            calls++;
+            throw new InvalidOperationException("gateway not ready");
+        };
+        await provider.LoadAsync();
+        bridge.RaiseStatus(ConnectionStatus.Connected);
+
+        var reconnectOnNextNotification = true;
+        provider.NotificationRequested += (_, _) =>
+        {
+            if (!reconnectOnNextNotification)
+                return;
+
+            reconnectOnNextNotification = false;
+            bridge.RaiseStatus(ConnectionStatus.Disconnected);
+            bridge.RaiseStatus(ConnectionStatus.Connected);
+        };
+
+        await provider.LoadHistoryAsync("main");
+
+        // The retry reserved before notification belongs to the old generation
+        // and exits without calling the gateway.
+        Assert.Single(retries);
+        await retries[0]();
+        Assert.Equal(1, calls);
+
+        // A fresh failure still receives the full three-retry budget.
+        await provider.LoadHistoryAsync("main");
+        for (var retryIndex = 1; retryIndex < retries.Count; retryIndex++)
+            await retries[retryIndex]();
+
+        Assert.Equal(4, retries.Count);
+        Assert.Equal(5, calls);
+        await provider.DisposeAsync();
+    }
+
     // ─────────────────────────────────────────────────────────────────────
     //  Compose-target fix: covers the "fresh install, zero sessions" path
     //  that previously stranded optimistic state under a synthetic "main"
