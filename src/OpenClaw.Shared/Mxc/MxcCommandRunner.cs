@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using OpenClaw.Shared.Telemetry;
 
 namespace OpenClaw.Shared.Mxc;
 
@@ -113,7 +114,7 @@ public sealed class MxcCommandRunner : IHostFallbackAwareCommandRunner, IDirectA
         if (!settings.SystemRunSandboxEnabled)
         {
             _logger.Info("[mxc] sandbox=disabled; routing system.run through host runner");
-            return await RunHostFallbackAsync(request, effectiveShell, ct);
+            return await RunHostFallbackAsync(request, effectiveShell, NodeToolExecutionMode.Host, ct);
         }
 
         // Custom env changes the execution boundary. Until MXC can enforce it
@@ -135,7 +136,11 @@ public sealed class MxcCommandRunner : IHostFallbackAwareCommandRunner, IDirectA
             _logger.Warn(
                 "[mxc] system.run UNCONTAINED: sandbox unavailable on this host; " +
                 "routing through host runner for compatibility.");
-            return await RunHostFallbackAsync(request, effectiveShell, ct);
+            return await RunHostFallbackAsync(
+                request,
+                effectiveShell,
+                NodeToolExecutionMode.HostFallback,
+                ct);
         }
 
         // A direct-argv request reaching the sandbox cannot be honored: the sandbox
@@ -154,6 +159,9 @@ public sealed class MxcCommandRunner : IHostFallbackAwareCommandRunner, IDirectA
                 ExitCode = -1,
                 TimedOut = false,
                 DurationMs = 0,
+                ExecutionMode = NodeToolExecutionMode.Sandbox,
+                ErrorCategory = NodeToolErrorCategory.SandboxDenied,
+                SandboxDenialReason = NodeToolSandboxDenialReason.DirectArgvUnsupported,
             };
         }
 
@@ -182,14 +190,17 @@ public sealed class MxcCommandRunner : IHostFallbackAwareCommandRunner, IDirectA
             LogSandboxRequest(sandboxRequest, request, effectiveShell, settings, settingsDirectoryPath, policy);
             var sandboxed = await _executor.ExecuteAsync(sandboxRequest, ct);
             LogSandboxResult(sandboxed);
-            return new CommandResult
+            var result = new CommandResult
             {
                 Stdout = sandboxed.Stdout,
                 Stderr = sandboxed.Stderr,
                 ExitCode = sandboxed.ExitCode,
                 TimedOut = sandboxed.TimedOut,
                 DurationMs = sandboxed.DurationMs,
+                ExecutionMode = NodeToolExecutionMode.Sandbox,
             };
+            result.ErrorCategory = ClassifyProcessResult(result);
+            return result;
         }
         catch (SandboxUnavailableException ex)
         {
@@ -211,7 +222,11 @@ public sealed class MxcCommandRunner : IHostFallbackAwareCommandRunner, IDirectA
             if (!TryResolveApprovedHostFallbackShell(request, effectiveShell, out var hostShell, out var deny))
                 return deny!;
 
-            return await RunHostFallbackAsync(request, hostShell, ct);
+            return await RunHostFallbackAsync(
+                request,
+                hostShell,
+                NodeToolExecutionMode.HostFallback,
+                ct);
         }
         catch (OperationCanceledException)
         {
@@ -237,6 +252,9 @@ public sealed class MxcCommandRunner : IHostFallbackAwareCommandRunner, IDirectA
                 ExitCode = -1,
                 TimedOut = false,
                 DurationMs = 0,
+                ExecutionMode = NodeToolExecutionMode.Sandbox,
+                ErrorCategory = NodeToolErrorCategory.SandboxDenied,
+                SandboxDenialReason = NodeToolSandboxDenialReason.UnsupportedSandboxRequest,
             };
         }
         catch (Exception ex)
@@ -255,6 +273,8 @@ public sealed class MxcCommandRunner : IHostFallbackAwareCommandRunner, IDirectA
                 ExitCode = -1,
                 TimedOut = false,
                 DurationMs = 0,
+                ExecutionMode = NodeToolExecutionMode.Sandbox,
+                ErrorCategory = NodeToolErrorCategory.SandboxFailure,
             };
         }
     }
@@ -269,10 +289,16 @@ public sealed class MxcCommandRunner : IHostFallbackAwareCommandRunner, IDirectA
             ExitCode = -1,
             TimedOut = false,
             DurationMs = 0,
+            ExecutionMode = NodeToolExecutionMode.Sandbox,
+            ErrorCategory = NodeToolErrorCategory.SandboxUnavailable,
         };
     }
 
-    private Task<CommandResult> RunHostFallbackAsync(CommandRequest request, string effectiveShell, CancellationToken ct)
+    private async Task<CommandResult> RunHostFallbackAsync(
+        CommandRequest request,
+        string effectiveShell,
+        NodeToolExecutionMode executionMode,
+        CancellationToken ct)
     {
         var fallbackRequest = new CommandRequest
         {
@@ -285,8 +311,13 @@ public sealed class MxcCommandRunner : IHostFallbackAwareCommandRunner, IDirectA
             Env = request.Env,
             ApprovedEffectiveShell = request.ApprovedEffectiveShell,
             ApprovedHostFallbackShell = request.ApprovedHostFallbackShell,
+            Telemetry = request.Telemetry,
+            TelemetryParentContext = request.TelemetryParentContext,
         };
-        return _hostFallback.RunAsync(fallbackRequest, ct);
+        var result = await _hostFallback.RunAsync(fallbackRequest, ct);
+        result.ExecutionMode = executionMode;
+        result.ErrorCategory = ClassifyProcessResult(result);
+        return result;
     }
 
     private static string ResolveSandboxShell(string requestedShell) =>
@@ -355,6 +386,9 @@ public sealed class MxcCommandRunner : IHostFallbackAwareCommandRunner, IDirectA
             ExitCode = -1,
             TimedOut = false,
             DurationMs = 0,
+            ExecutionMode = NodeToolExecutionMode.Sandbox,
+            ErrorCategory = NodeToolErrorCategory.SandboxDenied,
+            SandboxDenialReason = NodeToolSandboxDenialReason.EffectiveShellChanged,
         };
     }
 
@@ -372,6 +406,9 @@ public sealed class MxcCommandRunner : IHostFallbackAwareCommandRunner, IDirectA
             ExitCode = -1,
             TimedOut = false,
             DurationMs = 0,
+            ExecutionMode = NodeToolExecutionMode.Sandbox,
+            ErrorCategory = NodeToolErrorCategory.SandboxDenied,
+            SandboxDenialReason = NodeToolSandboxDenialReason.CustomEnvironmentUnsupported,
         };
     }
 
@@ -390,7 +427,21 @@ public sealed class MxcCommandRunner : IHostFallbackAwareCommandRunner, IDirectA
             ExitCode = -1,
             TimedOut = false,
             DurationMs = 0,
+            ExecutionMode = NodeToolExecutionMode.Sandbox,
+            ErrorCategory = NodeToolErrorCategory.SandboxDenied,
+            SandboxDenialReason = NodeToolSandboxDenialReason.FallbackShellUnapproved,
         };
+    }
+
+    private static NodeToolErrorCategory ClassifyProcessResult(CommandResult result)
+    {
+        if (result.ErrorCategory != NodeToolErrorCategory.None)
+            return result.ErrorCategory;
+        if (result.TimedOut)
+            return NodeToolErrorCategory.Timeout;
+        return result.ExitCode == 0
+            ? NodeToolErrorCategory.None
+            : NodeToolErrorCategory.CommandFailed;
     }
 
     private static JsonElement SerializeArgs(CommandRequest request, string effectiveShell)

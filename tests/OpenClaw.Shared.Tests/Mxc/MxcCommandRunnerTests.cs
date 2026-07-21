@@ -2,6 +2,7 @@ using System.Text.Json;
 using Xunit;
 using OpenClaw.Shared;
 using OpenClaw.Shared.Mxc;
+using OpenClaw.Shared.Telemetry;
 
 namespace OpenClaw.Shared.Tests.Mxc;
 
@@ -111,6 +112,8 @@ public class MxcCommandRunnerTests
 
         Assert.Equal(0, result.ExitCode);
         Assert.Equal("host-ran", result.Stdout);
+        Assert.Equal(NodeToolExecutionMode.HostFallback, result.ExecutionMode);
+        Assert.Equal(NodeToolErrorCategory.None, result.ErrorCategory);
         Assert.NotNull(fallback.LastRequest);
         Assert.Equal("powershell", fallback.LastRequest!.Shell);
     }
@@ -162,6 +165,9 @@ public class MxcCommandRunnerTests
 
         Assert.Equal(-1, result.ExitCode);
         Assert.Contains("without prior approval", result.Stderr);
+        Assert.Equal(
+            NodeToolSandboxDenialReason.FallbackShellUnapproved,
+            result.SandboxDenialReason);
         Assert.Null(fallback.LastRequest);
     }
 
@@ -184,6 +190,9 @@ public class MxcCommandRunnerTests
 
         Assert.Equal(-1, result.ExitCode);
         Assert.Contains("effective shell changed after approval", result.Stderr);
+        Assert.Equal(
+            NodeToolSandboxDenialReason.EffectiveShellChanged,
+            result.SandboxDenialReason);
         Assert.Null(executor.LastRequest);
         Assert.Null(fallback.LastRequest);
     }
@@ -213,6 +222,7 @@ public class MxcCommandRunnerTests
         var result = await runner.RunAsync(new CommandRequest { Command = "echo hi" });
 
         Assert.Equal("host", result.Stdout);
+        Assert.Equal(NodeToolExecutionMode.Host, result.ExecutionMode);
         Assert.NotNull(fallback.LastRequest);
         Assert.Equal(0, availabilityChecks);
         // Executor must not have been touched.
@@ -234,6 +244,9 @@ public class MxcCommandRunnerTests
 
         Assert.Equal(-1, result.ExitCode);
         Assert.Contains("custom environment variables", result.Stderr);
+        Assert.Equal(
+            NodeToolSandboxDenialReason.CustomEnvironmentUnsupported,
+            result.SandboxDenialReason);
         Assert.Null(executor.LastRequest);
         Assert.Null(fallback.LastRequest);
     }
@@ -283,6 +296,7 @@ public class MxcCommandRunnerTests
 
         Assert.Equal(0, result.ExitCode);
         Assert.Equal("host", result.Stdout);
+        Assert.Equal(NodeToolExecutionMode.Host, result.ExecutionMode);
         Assert.NotNull(fallback.LastRequest);
         Assert.Null(executor.LastRequest);
     }
@@ -307,6 +321,7 @@ public class MxcCommandRunnerTests
 
         Assert.Equal(0, result.ExitCode);
         Assert.Equal("host", result.Stdout);
+        Assert.Equal(NodeToolExecutionMode.HostFallback, result.ExecutionMode);
         Assert.NotNull(fallback.LastRequest);
         Assert.Equal("powershell", fallback.LastRequest!.Shell);
         Assert.Null(executor.LastRequest);
@@ -328,6 +343,8 @@ public class MxcCommandRunnerTests
         var result = await runner.RunAsync(new CommandRequest { Command = "echo hi" });
 
         Assert.Equal(-1, result.ExitCode);
+        Assert.Equal(NodeToolExecutionMode.Sandbox, result.ExecutionMode);
+        Assert.Equal(NodeToolErrorCategory.SandboxUnavailable, result.ErrorCategory);
         Assert.Contains("host fallback is blocked", result.Stderr);
         Assert.Null(executor.LastRequest);
         Assert.Null(fallback.LastRequest);
@@ -358,6 +375,8 @@ public class MxcCommandRunnerTests
         });
 
         Assert.Equal(0, result.ExitCode);
+        Assert.Equal(NodeToolExecutionMode.Sandbox, result.ExecutionMode);
+        Assert.Equal(NodeToolErrorCategory.None, result.ErrorCategory);
         Assert.Equal("hello world", result.Stdout);
         Assert.Equal(123, result.DurationMs);
         Assert.False(result.TimedOut);
@@ -415,6 +434,8 @@ public class MxcCommandRunnerTests
         var result = await runner.RunAsync(new CommandRequest { Command = "fail-me" });
 
         Assert.Equal(7, result.ExitCode);
+        Assert.Equal(NodeToolExecutionMode.Sandbox, result.ExecutionMode);
+        Assert.Equal(NodeToolErrorCategory.CommandFailed, result.ErrorCategory);
         Assert.Contains("sandboxed command failed", result.Stderr);
         // Fallback must NOT have been used.
         Assert.Null(fallback.LastRequest);
@@ -592,6 +613,9 @@ public class MxcCommandRunnerTests
 
         Assert.Equal(-1, result.ExitCode);
         Assert.Contains("Explicit environment variables are not supported", result.Stderr);
+        Assert.Equal(
+            NodeToolSandboxDenialReason.UnsupportedSandboxRequest,
+            result.SandboxDenialReason);
         Assert.DoesNotContain("unexpected", result.Stderr, StringComparison.OrdinalIgnoreCase);
         Assert.Null(fallback.LastRequest);
     }
@@ -631,6 +655,9 @@ public class MxcCommandRunnerTests
         });
 
         Assert.Equal(-1, result.ExitCode);
+        Assert.Equal(
+            NodeToolSandboxDenialReason.DirectArgvUnsupported,
+            result.SandboxDenialReason);
         // Neither the sandbox executor nor the host fallback ran the command.
         Assert.Null(executor.LastRequest);
         Assert.Null(fallback.LastRequest);

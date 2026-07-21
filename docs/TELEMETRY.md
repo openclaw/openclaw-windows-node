@@ -255,6 +255,97 @@ model/provider names, attachment metadata, filenames, tool names, token usage,
 URLs, error messages, or local chat log text. No chat log category is added to
 the OpenTelemetry log allowlist.
 
+## Windows node tool calls
+
+Gateway `node.invoke` and local MCP `tools/call` share one node-side telemetry
+contract:
+
+- root trace: `openclaw.node.tool.invoke`
+- dispatch child: `openclaw.node.tool.execute`
+- `system.run` children of the dispatch span:
+  `openclaw.node.tool.system_run.authorize` and
+  `openclaw.node.tool.system_run.run`
+- counter: `openclaw.node.tool.invocations`
+- duration histogram: `openclaw.node.tool.duration`
+- dropped failure-log counter: `openclaw.node.tool.logs.dropped`
+- failure/cancellation log category: `OpenClaw.Telemetry.NodeTool`
+
+The root begins when a recognized invocation reaches node dispatch and ends
+after its gateway or MCP response is delivered or delivery fails. Gateway
+background execution and MCP HTTP delivery use explicit activity contexts; they
+do not depend on ambient activity flowing across those boundaries. The
+invocation tracker uses one monotonic clock for the root and duration metric and
+completes exactly once.
+
+Reviewed attributes are:
+
+- `openclaw.node.tool.name`: a registered command or `unknown`
+- `openclaw.node.tool.transport`: `gateway` or `mcp`
+- `openclaw.outcome`: `success`, `failure`, or `canceled`
+- `openclaw.error.category`: a finite typed category
+- `openclaw.node.tool.system_run.approval.pipeline`: `legacy` for the existing
+  approval policy or `v2` for the opt-in direct-argv approval pipeline; present
+  only for `system.run` traces and failure/cancellation logs
+- `openclaw.node.tool.sandbox.requested`: whether sandboxing was configured
+- `openclaw.node.tool.sandbox.applied`: whether the command was known to run
+  inside the sandbox; omitted when an infrastructure failure makes that unknown
+- `openclaw.node.tool.sandbox.provider`: `mxc` when MXC was selected
+- `openclaw.node.tool.sandbox.technology`: `windows_appcontainer` for the
+  currently wired MXC backend
+- `openclaw.node.tool.sandbox.denial.reason`: a finite host-side pre-execution
+  reason: `direct_argv_unsupported`, `custom_environment_unsupported`,
+  `effective_shell_changed`, `fallback_shell_unapproved`, or
+  `unsupported_sandbox_request`
+- `openclaw.node.tool.sandbox.fallback.target`: `unsandboxed` when an unavailable
+  MXC backend caused compatibility fallback
+- `openclaw.node.tool.sandbox.fallback.reason`: `mxc_unavailable` for that
+  fallback
+- `error.type`: exception type only
+
+Failure categories are `invalid_request`, `unsupported_command`, `node_busy`,
+`permission_denied`, `exec_policy_denied`, `command_unavailable`,
+`capability_unavailable`, `sandbox_denied`, `sandbox_unavailable`,
+`sandbox_failure`, `command_failed`, `timeout`, `capability_failure`,
+`transport_failure`, `internal_failure`, and `other`. Metrics use only command,
+transport, outcome, and error category.
+
+Classification uses typed control flow only. An explicit capability diagnostic
+wins, followed by typed command-runner diagnostics; an otherwise unsuccessful
+capability response becomes `capability_failure`. Error messages, exception
+messages, command output, and payload text are never parsed to infer a category.
+V2 exec approval results map as follows:
+
+- `SecurityDeny`, `AskDeny`, `AllowlistMiss`, and `UserDenied`:
+  `exec_policy_denied`
+- `ValidationFailed`: `invalid_request`
+- `ResolutionFailed`: `command_unavailable`
+- `Unavailable`: `capability_unavailable`
+- `InternalError`: `internal_failure`
+- `Allow`: no approval failure category
+
+Telemetry does not change protocol semantics. In particular, a nonzero or
+timed-out `system.run` remains a successful gateway/MCP RPC whose payload has
+`success=false`; telemetry records `command_failed` or `timeout`. A contained
+nonzero exit is `command_failed` with `sandbox.requested=true` and
+`sandbox.applied=true`, not a sandbox denial. The current MXC result contract
+cannot distinguish a command failure caused by an in-container policy from
+other nonzero process exits without unsafe message parsing or a sandbox
+protocol change.
+
+The tray exports one structured log only for a failed or canceled invocation.
+Forwarding uses a nonblocking queue capped at 256 entries. Full queues drop the
+newest entry and increment `openclaw.node.tool.logs.dropped` with
+`openclaw.node.tool.log.drop.reason=queue_full`. Entries are stamped with the
+current exporter generation and are discarded rather than sent to a replacement
+sink. Disabled-endpoint and stale-generation drops are expected lifecycle
+behavior and do not increment the dropped-log counter.
+
+Node tool telemetry never exports request, node, session, or gateway IDs;
+arguments; command lines; shell input; paths; environment names or values;
+payloads; stdout or stderr; error or exception messages; credentials; URLs; or
+gateway details. Unsupported caller-provided command names are reported as
+`unknown`, preventing user-controlled metric cardinality.
+
 ## Endpoint handling
 
 The endpoint setting is a collector endpoint, not a credential or request-parameter store. Accept plain `http` and `https` collector URLs with optional path prefixes. Reject URLs with embedded user info, query strings, or fragments.

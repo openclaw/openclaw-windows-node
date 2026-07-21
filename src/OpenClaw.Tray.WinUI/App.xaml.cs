@@ -8,6 +8,7 @@ using OpenClaw.Shared;
 using OpenClaw.Shared.Capabilities;
 using OpenClaw.Shared.Sessions;
 using OpenClaw.Shared.Mxc;
+using OpenClaw.Shared.Telemetry;
 using OpenClawTray.Dialogs;
 using OpenClawTray.Helpers;
 using OpenClawTray.Services;
@@ -2098,6 +2099,7 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
             _nodeService.PairingStatusChanged += OnPairingStatusChanged;
             _nodeService.ChannelHealthUpdated += _gatewayService.OnChannelHealthUpdated;
             _nodeService.InvokeCompleted += OnNodeInvokeCompleted;
+            _nodeService.ToolTelemetryCompleted += OnNodeToolTelemetryCompleted;
             _nodeService.GatewaySelfUpdated += _gatewayService.OnGatewaySelfUpdated;
             _nodeService.LocalExecApprovalRequested += OnLocalExecApprovalRequested;
             _nodeService.LocalExecApprovalDecided += OnLocalExecApprovalDecided;
@@ -2750,6 +2752,13 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
             nodeId: args.NodeId);
 
         OnUiThread(UpdateStatusDetailWindow);
+    }
+
+    private void OnNodeToolTelemetryCompleted(
+        object? sender,
+        NodeToolTelemetryCompletion completion)
+    {
+        _openTelemetryConnection?.SendNodeToolCompletion(completion);
     }
 
     private static string GetNodeInvokePrivacyClass(string command)

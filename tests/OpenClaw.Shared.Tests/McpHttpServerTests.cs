@@ -9,6 +9,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using OpenClaw.Shared;
 using OpenClaw.Shared.Mcp;
+using OpenClaw.Shared.Telemetry;
 using Xunit;
 
 namespace OpenClaw.Shared.Tests;
@@ -104,6 +105,55 @@ public class McpHttpServerTests
             Assert.Equal("application/json", resp.Content.Headers.ContentType?.MediaType);
         }
         finally { server.Dispose(); http.Dispose(); }
+    }
+
+    [Fact]
+    public async Task Post_ToolCallResponseWriteFailure_CompletesTransportFailureExactlyOnce()
+    {
+        var port = FreePort();
+        var bridge = new McpToolBridge(() => new INodeCapability[] { new FakeCapability() });
+        var completionSource = new TaskCompletionSource<NodeToolTelemetryCompletion>(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        var completionCount = 0;
+        bridge.ToolTelemetryCompleted += (_, completion) =>
+        {
+            Interlocked.Increment(ref completionCount);
+            completionSource.TrySetResult(completion);
+        };
+        using var server = new McpHttpServer(
+            bridge,
+            port,
+            NullLogger.Instance,
+            authToken: null,
+            static (response, _, _, _) =>
+            {
+                response.Close();
+                throw new IOException("simulated response write failure");
+            });
+        server.Start();
+        using var http = new HttpClient { BaseAddress = new Uri($"http://127.0.0.1:{port}/") };
+
+        var requestTask = http.PostAsync(
+            "/",
+            new StringContent(
+                """{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"alpha.echo"}}""",
+                Encoding.UTF8,
+                "application/json"));
+        var completion = await completionSource.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        try
+        {
+            using var response = await requestTask;
+        }
+        catch (HttpRequestException)
+        {
+            // The injected writer closes the response to simulate a disconnected client.
+        }
+
+        Assert.Equal(1, Volatile.Read(ref completionCount));
+        Assert.Equal("alpha.echo", completion.Command);
+        Assert.Equal(NodeToolOutcome.Failure, completion.Outcome);
+        Assert.Equal(NodeToolErrorCategory.TransportFailure, completion.ErrorCategory);
+        Assert.Equal(typeof(IOException).FullName, completion.ErrorType);
     }
 
     [Fact]
