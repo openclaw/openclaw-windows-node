@@ -764,6 +764,12 @@ internal sealed class OpenTelemetryOtlpProbeSink : IOpenTelemetryProbeSink
             new(OpenClawTelemetryTagKey.ErrorCategory.ToTelemetryName(), completion.ErrorCategory.ToTelemetryValue()),
             new("openclaw.node.tool.duration_ms", completion.DurationMilliseconds),
         };
+        if (completion.ApprovalPipeline.HasValue)
+        {
+            attributes.Add(new(
+                NodeToolInvocation.ApprovalPipelineTag,
+                completion.ApprovalPipeline.Value.ToTelemetryValue()));
+        }
         var sandbox = NodeToolInvocation.GetSandboxTelemetry(
             completion.ExecutionMode,
             completion.ErrorCategory);

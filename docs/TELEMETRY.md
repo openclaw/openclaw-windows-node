@@ -283,6 +283,9 @@ Reviewed attributes are:
 - `openclaw.node.tool.transport`: `gateway` or `mcp`
 - `openclaw.outcome`: `success`, `failure`, or `canceled`
 - `openclaw.error.category`: a finite typed category
+- `openclaw.node.tool.system_run.approval.pipeline`: `legacy` for the existing
+  approval policy or `v2` for the opt-in direct-argv approval pipeline; present
+  only for `system.run` traces and failure/cancellation logs
 - `openclaw.node.tool.sandbox.requested`: whether sandboxing was configured
 - `openclaw.node.tool.sandbox.applied`: whether the command was known to run
   inside the sandbox; omitted when an infrastructure failure makes that unknown

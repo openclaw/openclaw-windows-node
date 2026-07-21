@@ -346,9 +346,14 @@ public class SystemCapability : NodeCapabilityBase
     private async Task<NodeInvokeResponse> HandleRunAsync(NodeInvokeRequest request)
     {
         var correlationId = Guid.NewGuid().ToString("N")[..8];
+        var v2Handler = _v2Handler;
+        request.Telemetry?.SetApprovalPipeline(
+            v2Handler != null
+                ? NodeToolApprovalPipeline.V2
+                : NodeToolApprovalPipeline.Legacy);
 
         // Routing seam (rail 2): select path, delegate — no approval logic here.
-        if (_v2Handler != null)
+        if (v2Handler != null)
         {
             Logger.Info($"[system.run] corr={correlationId} path=v2");
             var approvalSpan = request.Telemetry?.StartChild(
@@ -372,7 +377,7 @@ public class SystemCapability : NodeCapabilityBase
             {
                 try
                 {
-                    v2Result = await _v2Handler.HandleAsync(request, correlationId);
+                    v2Result = await v2Handler.HandleAsync(request, correlationId);
                 }
                 catch (Exception ex)
                 {

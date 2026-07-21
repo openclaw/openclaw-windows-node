@@ -25,8 +25,13 @@ public sealed class NodeToolTelemetryTests
         Assert.Equal("openclaw.node.tool.system_run.run", NodeToolInvocation.SystemRunRunSpanName);
         Assert.Equal("openclaw.node.tool.invocations", NodeToolInvocation.InvocationsMetricName);
         Assert.Equal("openclaw.node.tool.duration", NodeToolInvocation.DurationMetricName);
+        Assert.Equal(
+            "openclaw.node.tool.system_run.approval.pipeline",
+            NodeToolInvocation.ApprovalPipelineTag);
         Assert.Equal("gateway", NodeToolTransport.Gateway.ToTelemetryValue());
         Assert.Equal("mcp", NodeToolTransport.Mcp.ToTelemetryValue());
+        Assert.Equal("legacy", NodeToolApprovalPipeline.Legacy.ToTelemetryValue());
+        Assert.Equal("v2", NodeToolApprovalPipeline.V2.ToTelemetryValue());
         Assert.Equal("exec_policy_denied", NodeToolErrorCategory.ExecPolicyDenied.ToTelemetryValue());
         Assert.Equal("sandbox_failure", NodeToolErrorCategory.SandboxFailure.ToTelemetryValue());
         Assert.Equal(
@@ -73,6 +78,7 @@ public sealed class NodeToolTelemetryTests
         var invocation = new NodeToolInvocation(NodeToolTransport.Gateway);
         invocation.SetCommand("system.run");
         var child = invocation.StartChild(NodeToolInvocation.ExecuteSpanName);
+        invocation.SetApprovalPipeline(NodeToolApprovalPipeline.V2);
 
         NodeToolInvocation.CompleteChild(child, NodeToolOutcome.Success);
         var completion = invocation.Complete(
@@ -82,6 +88,7 @@ public sealed class NodeToolTelemetryTests
         var duplicate = invocation.Complete(NodeToolOutcome.Success);
 
         Assert.NotNull(completion);
+        Assert.Equal(NodeToolApprovalPipeline.V2, completion.ApprovalPipeline);
         Assert.Null(duplicate);
         Assert.Same(ambient, Activity.Current);
 
@@ -92,6 +99,8 @@ public sealed class NodeToolTelemetryTests
         Assert.Equal(root.SpanId, execute.ParentSpanId);
         Assert.Equal("system.run", root.GetTagItem(NodeToolInvocation.CommandTag));
         Assert.Equal("gateway", root.GetTagItem(NodeToolInvocation.TransportTag));
+        Assert.Equal("v2", root.GetTagItem(NodeToolInvocation.ApprovalPipelineTag));
+        Assert.Null(execute.GetTagItem(NodeToolInvocation.ApprovalPipelineTag));
         Assert.Equal("failure", root.GetTagItem(OpenClawTelemetryTagKey.Outcome.ToTelemetryName()));
         Assert.Equal("command_failed", root.GetTagItem(OpenClawTelemetryTagKey.ErrorCategory.ToTelemetryName()));
         Assert.Equal(true, root.GetTagItem(NodeToolInvocation.SandboxRequestedTag));
@@ -169,6 +178,7 @@ public sealed class NodeToolTelemetryTests
         Assert.Equal(executeActivity.SpanId, run.ParentSpanId);
         Assert.Equal("failure", run.GetTagItem(OpenClawTelemetryTagKey.Outcome.ToTelemetryName()));
         Assert.Equal("command_failed", run.GetTagItem(OpenClawTelemetryTagKey.ErrorCategory.ToTelemetryName()));
+        Assert.Equal("legacy", run.GetTagItem(NodeToolInvocation.ApprovalPipelineTag));
         Assert.Equal(true, run.GetTagItem(NodeToolInvocation.SandboxRequestedTag));
         Assert.Equal(true, run.GetTagItem(NodeToolInvocation.SandboxAppliedTag));
         Assert.Equal("mxc", run.GetTagItem(NodeToolInvocation.SandboxProviderTag));
@@ -263,7 +273,9 @@ public sealed class NodeToolTelemetryTests
         Assert.Equal(executeActivity.SpanId, authorize.ParentSpanId);
         Assert.Equal(executeActivity.SpanId, run.ParentSpanId);
         Assert.Equal("success", authorize.GetTagItem(OpenClawTelemetryTagKey.Outcome.ToTelemetryName()));
+        Assert.Equal("v2", authorize.GetTagItem(NodeToolInvocation.ApprovalPipelineTag));
         Assert.Equal("failure", run.GetTagItem(OpenClawTelemetryTagKey.Outcome.ToTelemetryName()));
+        Assert.Equal("v2", run.GetTagItem(NodeToolInvocation.ApprovalPipelineTag));
         Assert.Equal(
             "command_failed",
             run.GetTagItem(OpenClawTelemetryTagKey.ErrorCategory.ToTelemetryName()));
@@ -297,6 +309,7 @@ public sealed class NodeToolTelemetryTests
             activities.Stopped,
             activity => activity.OperationName == NodeToolInvocation.SystemRunAuthorizeSpanName);
         Assert.Equal("failure", authorize.GetTagItem(OpenClawTelemetryTagKey.Outcome.ToTelemetryName()));
+        Assert.Equal("v2", authorize.GetTagItem(NodeToolInvocation.ApprovalPipelineTag));
         Assert.Equal(
             "capability_unavailable",
             authorize.GetTagItem(OpenClawTelemetryTagKey.ErrorCategory.ToTelemetryName()));

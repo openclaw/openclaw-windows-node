@@ -433,6 +433,7 @@ public sealed class OpenTelemetryEndpointConnectionTests
                 OpenClawTelemetryTagKey.Outcome.ToTelemetryName(),
                 OpenClawTelemetryTagKey.ErrorCategory.ToTelemetryName(),
                 "openclaw.node.tool.duration_ms",
+                NodeToolInvocation.ApprovalPipelineTag,
                 NodeToolInvocation.SandboxRequestedTag,
                 NodeToolInvocation.SandboxAppliedTag,
                 NodeToolInvocation.SandboxProviderTag,
@@ -484,6 +485,36 @@ public sealed class OpenTelemetryEndpointConnectionTests
         Assert.Equal(
             "custom_environment_unsupported",
             attributes[NodeToolInvocation.SandboxDenialReasonTag]);
+    }
+
+    [Fact]
+    public void NodeToolLogAttributes_IncludeFiniteApprovalPipeline()
+    {
+        var completion = FailureCompletion() with
+        {
+            ApprovalPipeline = NodeToolApprovalPipeline.V2,
+        };
+
+        var attributes = OpenTelemetryOtlpProbeSink.CreateNodeToolLogAttributes(completion)
+            .ToDictionary(attribute => attribute.Key, attribute => attribute.Value);
+
+        Assert.Equal("v2", attributes[NodeToolInvocation.ApprovalPipelineTag]);
+    }
+
+    [Fact]
+    public void NodeToolLogAttributes_OmitApprovalPipelineForOtherTools()
+    {
+        var completion = FailureCompletion() with
+        {
+            Command = "device.info",
+            ApprovalPipeline = null,
+        };
+
+        var attributes = OpenTelemetryOtlpProbeSink.CreateNodeToolLogAttributes(completion);
+
+        Assert.DoesNotContain(
+            attributes,
+            attribute => attribute.Key == NodeToolInvocation.ApprovalPipelineTag);
     }
 
     [Fact]
@@ -854,7 +885,8 @@ public sealed class OpenTelemetryEndpointConnectionTests
             NodeToolErrorCategory.CommandFailed,
             NodeToolExecutionMode.Sandbox,
             null,
-            12.5);
+            12.5,
+            ApprovalPipeline: NodeToolApprovalPipeline.Legacy);
 
     private sealed class FakeProbeSink : IOpenTelemetryProbeSink
     {

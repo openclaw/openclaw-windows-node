@@ -44,6 +44,12 @@ public enum NodeToolExecutionMode
     HostFallback
 }
 
+public enum NodeToolApprovalPipeline
+{
+    Legacy,
+    V2
+}
+
 public enum NodeToolSandboxDenialReason
 {
     DirectArgvUnsupported,
@@ -66,7 +72,8 @@ public sealed record NodeToolTelemetryCompletion(
     NodeToolExecutionMode? ExecutionMode,
     string? ErrorType,
     double DurationMilliseconds,
-    NodeToolSandboxDenialReason? SandboxDenialReason = null);
+    NodeToolSandboxDenialReason? SandboxDenialReason = null,
+    NodeToolApprovalPipeline? ApprovalPipeline = null);
 
 public sealed record NodeToolSandboxTelemetry(
     bool Requested,
@@ -91,6 +98,7 @@ public sealed class NodeToolInvocation : IDisposable
 
     public const string CommandTag = "openclaw.node.tool.name";
     public const string TransportTag = "openclaw.node.tool.transport";
+    public const string ApprovalPipelineTag = "openclaw.node.tool.system_run.approval.pipeline";
     public const string SandboxRequestedTag = "openclaw.node.tool.sandbox.requested";
     public const string SandboxAppliedTag = "openclaw.node.tool.sandbox.applied";
     public const string SandboxProviderTag = "openclaw.node.tool.sandbox.provider";
@@ -118,6 +126,7 @@ public sealed class NodeToolInvocation : IDisposable
     private readonly Stopwatch _stopwatch = Stopwatch.StartNew();
     private readonly NodeToolTransport _transport;
     private string _command = UnknownCommand;
+    private NodeToolApprovalPipeline? _approvalPipeline;
     private NodeToolSandboxDenialReason? _sandboxDenialReason;
     private int _completed;
 
@@ -151,14 +160,25 @@ public sealed class NodeToolInvocation : IDisposable
         _activity?.SetTag(SandboxDenialReasonTag, reason.ToTelemetryValue());
     }
 
-    public Activity? StartChild(string spanName, ActivityContext? parentContext = null) =>
-        OpenClawTelemetry.StartDetachedActivity(
+    public void SetApprovalPipeline(NodeToolApprovalPipeline pipeline)
+    {
+        _approvalPipeline = pipeline;
+        _activity?.SetTag(ApprovalPipelineTag, pipeline.ToTelemetryValue());
+    }
+
+    public Activity? StartChild(string spanName, ActivityContext? parentContext = null)
+    {
+        var activity = OpenClawTelemetry.StartDetachedActivity(
             spanName,
             parentContext ?? Context,
             [
                 OpenClawTelemetryTag.String(CommandTag, _command),
                 OpenClawTelemetryTag.String(TransportTag, _transport.ToTelemetryValue())
             ]);
+        if (_approvalPipeline.HasValue)
+            activity?.SetTag(ApprovalPipelineTag, _approvalPipeline.Value.ToTelemetryValue());
+        return activity;
+    }
 
     public NodeToolTelemetryCompletion? Complete(
         NodeToolOutcome outcome,
@@ -192,7 +212,8 @@ public sealed class NodeToolInvocation : IDisposable
             executionMode,
             errorTypeName,
             _stopwatch.Elapsed.TotalMilliseconds,
-            _sandboxDenialReason);
+            _sandboxDenialReason,
+            _approvalPipeline);
     }
 
     public static void CompleteChild(
@@ -342,6 +363,14 @@ public static class NodeToolTelemetryValues
             NodeToolExecutionMode.Sandbox => "sandbox",
             NodeToolExecutionMode.HostFallback => "host_fallback",
             _ => "host"
+        };
+
+    public static string ToTelemetryValue(this NodeToolApprovalPipeline value) =>
+        value switch
+        {
+            NodeToolApprovalPipeline.Legacy => "legacy",
+            NodeToolApprovalPipeline.V2 => "v2",
+            _ => "legacy"
         };
 
     public static string ToTelemetryValue(this NodeToolSandboxDenialReason value) =>
