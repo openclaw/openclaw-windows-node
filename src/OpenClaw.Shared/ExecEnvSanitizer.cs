@@ -51,7 +51,20 @@ internal static class ExecEnvSanitizer
             "GITHUB_TOKEN",
             "GH_TOKEN",
             "NPM_TOKEN",
-            "OPENAI_API_KEY"
+            "OPENAI_API_KEY",
+            // Interpreter/tool code-injection variables: they make an allow-listed tool run an
+            // attacker command without the command string ever changing — the same intent as the
+            // NODE_OPTIONS / PYTHONSTARTUP / GIT_SSH_COMMAND / BASH_ENV entries above, for the
+            // native-tool forms those miss. (GIT_CONFIG_* is prefix-blocked in IsBlocked.)
+            "GIT_PAGER",              // git runs the pager command on paged output
+            "GIT_EDITOR",             // git runs the editor
+            "GIT_SEQUENCE_EDITOR",    // git runs the rebase sequence editor
+            "GIT_EXTERNAL_DIFF",      // git runs the external diff command
+            "DOTNET_STARTUP_HOOKS",   // loads an assembly into every spawned .NET process
+            "DOTNET_ADDITIONAL_DEPS", // injects deps into .NET runtime resolution
+            "JAVA_TOOL_OPTIONS",      // injects JVM args (-javaagent) into every spawned JVM
+            "_JAVA_OPTIONS",
+            "JDK_JAVA_OPTIONS"
         }.ToFrozenSet(StringComparer.OrdinalIgnoreCase);
 
     internal static ExecEnvSanitizeResult Sanitize(Dictionary<string, string>? env)
@@ -110,7 +123,11 @@ internal static class ExecEnvSanitizer
         return _blockedNames.Contains(name)
             || HasCredentialMarker(name)
             || name.StartsWith("LD_", StringComparison.OrdinalIgnoreCase)
-            || name.StartsWith("DYLD_", StringComparison.OrdinalIgnoreCase);
+            || name.StartsWith("DYLD_", StringComparison.OrdinalIgnoreCase)
+            // GIT_CONFIG* is env-based git config injection: GIT_CONFIG_COUNT/_KEY_n/_VALUE_n set
+            // core.pager / core.sshCommand / alias.* -> command execution, and GIT_CONFIG_GLOBAL/
+            // _SYSTEM redirect the config files. Prefix-block the whole family like LD_/DYLD_.
+            || name.StartsWith("GIT_CONFIG", StringComparison.OrdinalIgnoreCase);
     }
 
     private static bool HasCredentialMarker(string name)

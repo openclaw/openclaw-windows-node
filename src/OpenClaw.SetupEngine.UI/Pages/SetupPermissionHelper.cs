@@ -86,7 +86,7 @@ internal static class SetupPermissionHelper
             var pill = Pill(granted ? "Ask every time" : "Unavailable", subFg);
             if (granted)
                 ToolTipService.SetToolTip(pill,
-                    "Windows has no on/off setting for screen capture. Each time the agent captures your screen, Windows shows a picker so you choose exactly what to share — there's nothing to allow in advance.");
+                    "Windows has no on/off setting for screen capture. Each time the agent captures your screen, Windows shows a picker so you choose exactly what to share. There is nothing to allow in advance.");
             actionCol = pill;
         }
         else if (granted)

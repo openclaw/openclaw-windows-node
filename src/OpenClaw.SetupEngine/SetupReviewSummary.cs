@@ -34,11 +34,11 @@ public static class SetupReviewSummaryBuilder
             : $"wss://{config.Tailscale.EffectiveHostname}.{tailnetDnsSuffix}";
         var gatewayDescription = tailscaleEnabled
             ? config.Tailscale.TrustTailscaleAuth
-                ? "Tailscale Serve enabled — the gateway stays loopback-only, trusts tailnet identity authentication, and Companion connects over private HTTPS/WSS."
-                : "Tailscale Serve enabled — the gateway stays loopback-only, requires existing Companion token or device authentication, and connects over private HTTPS/WSS."
+                ? "Tailscale Serve enabled: the gateway stays loopback-only, trusts tailnet identity authentication, and Companion connects over private HTTPS/WSS."
+                : "Tailscale Serve enabled: the gateway stays loopback-only, requires existing Companion token or device authentication, and connects over private HTTPS/WSS."
             : isLanBind
-            ? "LAN bind enabled — reachable from this PC and your local network according to Windows firewall/routing."
-            : "Loopback only — not reachable from your network or the internet.";
+            ? "LAN bind enabled: reachable from this PC and your local network according to Windows firewall/routing."
+            : "Loopback only. It is not reachable from your network or the internet.";
         var gatewayEndpoint = tailscaleEnabled
             ? tailscaleEndpoint
             : isLanBind ? $"LAN:{gatewayPort}" : $"127.0.0.1:{gatewayPort}";

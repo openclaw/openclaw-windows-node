@@ -104,6 +104,16 @@ public sealed partial class CanvasWindow : WindowEx
         {
             return true;
         }
+        // Host-normalizing private/loopback guard. The DangerousUrlPattern regex only blocks the
+        // literal dotted-decimal spelling, so encoded IPv4 (2130706433 / 0x7f000001 / 0177.0.0.1),
+        // IPv6 (::1, ::ffff:127.0.0.1, fd00::/fe80::), 0.0.0.0, and CGNAT/Tailscale (100.64/10)
+        // slip through — this is the load-bearing SSRF check for canvas.present, which reaches the
+        // WebView through IsUrlSafe without the navigate command's HttpUrlRiskEvaluator.
+        if (Uri.TryCreate(url, UriKind.Absolute, out var parsedUri) &&
+            OpenClaw.Shared.CanvasUrlSafety.IsPrivateOrLoopbackHost(parsedUri.Host))
+        {
+            return false;
+        }
         return !DangerousUrlPattern.IsMatch(url);
     }
     

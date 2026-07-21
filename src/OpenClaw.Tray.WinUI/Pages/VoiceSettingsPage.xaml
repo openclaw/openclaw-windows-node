@@ -132,9 +132,9 @@
 
                     <ComboBox x:Uid="VoiceSettingsPage_ModelCombo" x:Name="ModelCombo" Header="Model Size"
                               SelectionChanged="OnModelChanged" Width="320">
-                        <ComboBoxItem x:Uid="VoiceSettingsPage_ModelTiny"  Content="Tiny (~75 MB) — Fast, basic accuracy" Tag="tiny"/>
-                        <ComboBoxItem x:Uid="VoiceSettingsPage_ModelBase"  Content="Base (~142 MB) — Good balance"        Tag="base"/>
-                        <ComboBoxItem x:Uid="VoiceSettingsPage_ModelSmall" Content="Small (~466 MB) — High accuracy"      Tag="small"/>
+                        <ComboBoxItem x:Uid="VoiceSettingsPage_ModelTiny"  Content="Tiny (~75 MB): Fast, basic accuracy" Tag="tiny"/>
+                        <ComboBoxItem x:Uid="VoiceSettingsPage_ModelBase"  Content="Base (~142 MB): Good balance"        Tag="base"/>
+                        <ComboBoxItem x:Uid="VoiceSettingsPage_ModelSmall" Content="Small (~466 MB): High accuracy"      Tag="small"/>
                     </ComboBox>
 
                     <StackPanel Orientation="Horizontal" Spacing="12">

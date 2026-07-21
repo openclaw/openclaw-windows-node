@@ -75,8 +75,33 @@ public record OpenClawChatTimelineProps(
 public class OpenClawChatTimeline : Component<OpenClawChatTimelineProps>
 {
     const double FollowThreshold = 60;
-    const int FollowToBottomMaxStabilizationPasses = 4;
-    const double FollowToBottomExtentEpsilon = 0.5;
+    // Bounded settle used by QueueScrollToBottom to catch LATE virtualization extent
+    // corrections: after a discrete scroll-to-bottom, a row can realize below the fold a few
+    // frames later, growing the extent with NO ViewChanged/SizeChanged to drive a re-pin. A
+    // short self-terminating timer keeps chasing the true bottom until the extent is stable
+    // for a couple of ticks (or the hard cap elapses), then restores bottom anchoring. Re-pins
+    // are ChangeView-only (they never grow the extent) so this converges and cannot storm.
+    const int FollowToBottomSettleTickMs = 16;
+    const int FollowToBottomMaxSettleTicks = 24;
+    const int FollowToBottomSettleStableTicks = 2;
+    // While the settle timer is chasing the true bottom, an offset that lands below the bottom is
+    // either post-jump virtualization re-estimation (a BOUNDED band — keep chasing) or a genuine
+    // user scroll-up to read earlier history (MANY viewports away — abandon and don't fight). The
+    // abandon gap is the larger of an absolute floor and a viewport-relative band so it scales
+    // with window size while never dipping below the floor on short viewports.
+    const double FollowToBottomMinAbandonGap = 900;
+    const double FollowToBottomAbandonViewportFactor = 1.5;
+    // Follow-to-bottom during in-place streaming growth is handled by WinUI ScrollViewer scroll
+    // anchoring (sv.VerticalAnchorRatio = 1.0), NOT by a reactive post-layout re-pin. With the
+    // bottom row pinned as an anchor, the ScrollViewer keeps it glued to the viewport bottom
+    // BEFORE each frame is painted as the ItemsRepeater's extent estimate climbs during
+    // realization — so there is no intermediate short frame (no jitter) and no programmatic
+    // ChangeView fighting the user's own scrolling. Discrete events (new entry, session switch,
+    // initial load, ScrollToBottom token) use QueueScrollToBottom, which briefly turns anchoring
+    // OFF while it drives ChangeView to the true bottom then restores 1.0 — otherwise anchoring
+    // would re-pin the stale bottom row mid-growth and the view would land one row short.
+    // Anchoring alone covers the in-place growth case that fires no reliable SizeChanged. See
+    // issue #996 for the upstream (Reactor) port context.
 
     /// <summary>
     /// Static scroll-offset store shared across all timeline instances so that
@@ -500,6 +525,14 @@ public class OpenClawChatTimeline : Component<OpenClawChatTimelineProps>
         var suppressAutoFollowRef = UseRef(false);
         var sessionOffsetsRef = UseRef<Dictionary<string, double>>(new());
         var prevScrollToBottomTokenRef = UseRef(0);
+        var scrollSettleTimerRef = UseRef<Microsoft.UI.Xaml.DispatcherTimer?>(null);
+        // A reactive follow (SizeChanged) enqueues a pin on the dispatcher. Without a guard,
+        // the many SizeChanged notifications fired across an ItemsRepeater realization pass pile
+        // up dozens of enqueued pins; each re-pins to the bottom and CANCELS a user scroll issued
+        // in between (their ChangeView never gets a frame to apply), so the view can never leave
+        // the bottom — the "fighting the scrollbar" bug. This flag coalesces reactive follows to a
+        // single in-flight pin/settle at a time. Explicit scroll-to-bottom requests bypass it.
+        var scrollPinPendingRef = UseRef(false);
         var hasMoreHistoryRef = UseRef(Props.HasMoreHistory);
         var loadMoreHistoryRef = UseRef<Action?>(Props.OnLoadMoreHistory);
         var loadMoreRequestedForCountRef = UseRef(-1);
@@ -660,46 +693,245 @@ public class OpenClawChatTimeline : Component<OpenClawChatTimelineProps>
             StoreSessionOffset(prevSessionIdRef.Current, sv.VerticalOffset);
         }
 
-        void QueueScrollToBottom(Microsoft.UI.Xaml.Controls.ScrollViewer sv, string? sessionId, bool disableAnimation)
+        void QueueScrollToBottom(
+            Microsoft.UI.Xaml.Controls.ScrollViewer sv,
+            string? sessionId,
+            bool disableAnimation,
+            bool respectUserScrollPosition = false)
         {
             isFollowingRef.Current = true;
 
-            void QueuePass(int pass, double previousScrollableHeight, bool passDisableAnimation)
+            // Bottom scroll anchoring (VerticalAnchorRatio = 1.0) keeps whatever row currently
+            // sits at the viewport bottom pinned there. During a DISCRETE scroll-to-bottom the
+            // extent is still growing — rows below the current anchor keep realizing — so if
+            // anchoring stays on the platform re-pins the STALE anchor row after each ChangeView
+            // and the view settles ~one row short of the true bottom and never converges (this is
+            // the LargeNative gap=240 and ThinkingAndStreaming 30%-stick regression; see PR #1014
+            // / issue #996). Turn anchoring OFF while we drive the view to the real bottom, then
+            // restore 1.0 once the extent settles so subsequent IN-PLACE streaming growth of the
+            // newest row keeps following. This also stops anchoring and the SizeChanged-driven
+            // QueueScrollToBottom from fighting each other mid-stream (the residual streaming
+            // jitter noted on #996).
+            sv.VerticalAnchorRatio = double.NaN;
+            var anchoringRestored = false;
+            void RestoreAnchoring()
             {
-                sv.DispatcherQueue.TryEnqueue(() =>
-                {
-                    sv.UpdateLayout();
-                    var bottom = sv.ScrollableHeight;
-                    sv.ChangeView(null, bottom, null, passDisableAnimation);
-                    lastVerticalOffsetRef.Current = bottom;
-                    lastScrollableHeightRef.Current = sv.ScrollableHeight;
-                    isFollowingRef.Current = true;
-                    StoreSessionOffset(sessionId, bottom);
-
-                    var extentStable = Math.Abs(bottom - previousScrollableHeight) <= FollowToBottomExtentEpsilon;
-                    var atBottom = sv.ScrollableHeight - sv.VerticalOffset <= FollowThreshold;
-                    if (pass < FollowToBottomMaxStabilizationPasses && (!extentStable || !atBottom))
-                        QueuePass(pass + 1, sv.ScrollableHeight, passDisableAnimation: true);
-                });
+                if (anchoringRestored)
+                    return;
+                anchoringRestored = true;
+                sv.VerticalAnchorRatio = 1.0;
             }
 
-            QueuePass(0, double.NaN, disableAnimation);
+            void PinToBottom(bool passDisableAnimation)
+            {
+                sv.UpdateLayout();
+                var bottom = sv.ScrollableHeight;
+                sv.ChangeView(null, bottom, null, passDisableAnimation);
+                lastVerticalOffsetRef.Current = bottom;
+                lastScrollableHeightRef.Current = sv.ScrollableHeight;
+                isFollowingRef.Current = true;
+                StoreSessionOffset(sessionId, bottom);
+            }
+
+            // Only one settle timer runs at a time: a later discrete scroll-to-bottom (e.g. a
+            // token bump mid-stream) restarts the settle window instead of spawning parallel
+            // timers that would fight over ChangeView. Null the ref too (not just Stop) so a
+            // subsequently rejected enqueue can't leave a stopped-but-non-null timer that makes the
+            // follow gates believe a settle is still in flight and suppress follow forever.
+            scrollSettleTimerRef.Current?.Stop();
+            scrollSettleTimerRef.Current = null;
+
+            // A scroll-to-bottom is a FOLLOW intent, but it can be triggered by a layout growth
+            // (thinking indicator / new row) that fires while the user has ALREADY scrolled far up
+            // to read earlier history. Re-pinning then would yank them back down (the reported
+            // "fighting the scrollbar" bug). Distinguish the two by how far the live offset sits
+            // from the bottom: content-growth follow stays within a bounded band of the bottom,
+            // while a reader has scrolled MANY viewports away. The gap is measured on a FRESH
+            // layout (below), after any in-flight user ChangeView has been applied, so the decision
+            // never races a scroll the user just issued.
+            bool UserScrolledAway()
+            {
+                var abandonGap = Math.Max(
+                    FollowToBottomMinAbandonGap,
+                    sv.ViewportHeight * FollowToBottomAbandonViewportFactor);
+                return sv.ScrollableHeight - sv.VerticalOffset > abandonGap;
+            }
+
+            // Coalesce reactive follows: mark a pin in flight so the SizeChanged storm does not
+            // pile up dozens of enqueued pins. Held across the enqueued callback's SYNCHRONOUS
+            // layout/pin work (during which our own UpdateLayout/ChangeView can re-enter
+            // SizeChanged) and released only in a terminal path: after the settle timer is started
+            // and owns the chase, on the abandon bail, or below if the enqueue is rejected.
+            scrollPinPendingRef.Current = true;
+
+            if (!sv.DispatcherQueue.TryEnqueue(() =>
+            {
+                // Stop any timer that a concurrently-enqueued QueueScrollToBottom may have created
+                // and left in the ref, so we never leak an orphaned timer that keeps pinning.
+                scrollSettleTimerRef.Current?.Stop();
+                scrollSettleTimerRef.Current = null;
+
+                // Flush any pending user ChangeView, then bail before pinning if this is a REACTIVE
+                // follow (layout growth) and the user has scrolled away — do NOT clobber their
+                // reading position with a bottom pin. Explicit scroll-to-bottom requests (session
+                // switch, token bump, user sent a message) pass respectUserScrollPosition = false
+                // and always pin, since they ARE the user asking to jump to the newest row.
+                sv.UpdateLayout();
+                if ((respectUserScrollPosition && UserScrolledAway()) || suppressAutoFollowRef.Current)
+                {
+                    // Abandoning the follow: we are NOT at the bottom, so DISABLE anchoring rather
+                    // than restore it to 1.0 — pinning the bottom row here would let post-remount
+                    // extent re-estimation drift the reader's held position. The coalescing guard is
+                    // released as this pin is now resolved (no timer will run).
+                    isFollowingRef.Current = false;
+                    sv.VerticalAnchorRatio = double.NaN;
+                    scrollPinPendingRef.Current = false;
+                    return;
+                }
+
+                // First pin immediately for responsiveness.
+                PinToBottom(disableAnimation);
+
+                var ticks = 0;
+                var stableTicks = 0;
+                var timer = new Microsoft.UI.Xaml.DispatcherTimer
+                {
+                    Interval = TimeSpan.FromMilliseconds(FollowToBottomSettleTickMs)
+                };
+                scrollSettleTimerRef.Current = timer;
+                timer.Tick += (_, _) =>
+                {
+                    // Bail out if the ScrollViewer was swapped/detached (unmount) so we never
+                    // keep pinning a dead visual or leave anchoring disabled.
+                    if (scrollViewRef.Current != sv || sv.XamlRoot is null)
+                    {
+                        timer.Stop();
+                        scrollSettleTimerRef.Current = null;
+                        RestoreAnchoring();
+                        return;
+                    }
+
+                    ticks++;
+
+                    // Honor user-scroll intent detected by ViewChanged between ticks.
+                    // When the user scrolls, their ChangeView fires ViewChanged which calls
+                    // UpdateScrollMetrics → sets isFollowingRef=false (gap > FollowThreshold).
+                    // Check BEFORE UpdateLayout so we never call PinToBottom after a user scroll.
+                    if (!isFollowingRef.Current)
+                    {
+                        timer.Stop();
+                        scrollSettleTimerRef.Current = null;
+                        sv.VerticalAnchorRatio = double.NaN;
+                        return;
+                    }
+
+                    sv.UpdateLayout();
+
+                    // Re-check after layout: UpdateLayout can flush pending ViewChanged events
+                    // (e.g. a user ChangeView that was queued but not yet dispatched).
+                    if (!isFollowingRef.Current)
+                    {
+                        timer.Stop();
+                        scrollSettleTimerRef.Current = null;
+                        sv.VerticalAnchorRatio = double.NaN;
+                        return;
+                    }
+
+                    // Yield to a real user scroll away from the bottom (bounded-band vs. many-
+                    // viewports discriminator described on UserScrolledAway above). The settle
+                    // timer ALWAYS yields — even for an explicit scroll-to-bottom, once the initial
+                    // jump has landed we must not keep fighting a user who then drags up to read.
+                    if (UserScrolledAway() || suppressAutoFollowRef.Current)
+                    {
+                        // Same abandon rule as the first pin: disable anchoring (do not restore
+                        // 1.0) so the held reading position is not dragged by extent re-estimation.
+                        isFollowingRef.Current = false;
+                        timer.Stop();
+                        scrollSettleTimerRef.Current = null;
+                        sv.VerticalAnchorRatio = double.NaN;
+                        return;
+                    }
+
+                    PinToBottom(passDisableAnimation: true);
+
+                    // Converge on being AT the bottom for a couple of ticks, then hand off to
+                    // scroll anchoring (VerticalAnchorRatio = 1.0, restored below). We deliberately
+                    // do NOT require the extent to be stable: WinUI's ItemsRepeater keeps re-
+                    // estimating row heights as rows realize, so the extent wobbles for many frames
+                    // even once we are visually pinned. Waiting for extent stability made this timer
+                    // run its full hard cap (~384ms) re-pinning every tick, which clobbered a user
+                    // scroll issued during that window (the offset never dropped because our own
+                    // ChangeView superseded theirs every 16ms). Once we are at the bottom, restored
+                    // anchoring keeps the bottom row glued as the extent estimate settles, so the
+                    // timer's job is done — terminate quickly and stop fighting user input.
+                    var atBottom = sv.ScrollableHeight - sv.VerticalOffset <= FollowThreshold;
+                    stableTicks = atBottom ? stableTicks + 1 : 0;
+
+                    if (stableTicks >= FollowToBottomSettleStableTicks || ticks >= FollowToBottomMaxSettleTicks)
+                    {
+                        timer.Stop();
+                        scrollSettleTimerRef.Current = null;
+                        RestoreAnchoring();
+                    }
+                };
+                timer.Start();
+                // The settle timer now owns the chase; release the coalescing guard. Further
+                // SizeChanged notifications are gated by scrollSettleTimerRef being non-null while
+                // it runs, and by scrollPinPendingRef only during the synchronous window above.
+                scrollPinPendingRef.Current = false;
+            }))
+            {
+                // Dispatcher rejected the enqueue (e.g. teardown): never leave anchoring disabled
+                // or the coalescing guard stuck on.
+                scrollPinPendingRef.Current = false;
+                RestoreAnchoring();
+            }
         }
 
         void QueuePreservePrependOffset(Microsoft.UI.Xaml.Controls.ScrollViewer sv, string? sessionId, double oldOffset, double oldScrollableHeight)
         {
+            // Content is inserted ABOVE the current viewport ("load earlier history"). In a stock
+            // WinUI ItemsRepeater, bottom scroll anchoring (VerticalAnchorRatio = 1.0) would
+            // natively preserve the on-screen position by shifting VerticalOffset down by the
+            // inserted height. Our FunctionalUI reconciler, however, FULL-REMOUNTS every Entry on
+            // this render (the #996 limitation): the element the platform had chosen as the
+            // anchor is destroyed, so leaving anchoring at 1.0 just re-pins to the NEW bottom and
+            // yanks a scrolled-up reader down to the newest row (observed: offset 2528 -> 8531,
+            // gap 0). So for the prepend pass we DISABLE anchoring and manually re-seat the offset
+            // by the inserted height instead. Exact pixel preservation isn't achievable under the
+            // full remount, but this keeps the reader in the middle band — not reset to the top,
+            // not dragged to the bottom (see the KNOWN LIMITATION note on the prepend proof test).
             suppressAutoFollowRef.Current = true;
-            sv.DispatcherQueue.TryEnqueue(() =>
+            sv.VerticalAnchorRatio = double.NaN;
+
+            // A prior scroll-to-bottom settle timer would keep pinning to the bottom and defeat
+            // the preserved reading position — cancel it for this prepend. Clear the coalescing
+            // guard too so the anchoring gate/SizeChanged follow path isn't left believing a pin
+            // is still in flight.
+            scrollSettleTimerRef.Current?.Stop();
+            scrollSettleTimerRef.Current = null;
+            scrollPinPendingRef.Current = false;
+
+            void RestoreOffset()
             {
+                // Re-seat by the ACTUAL inserted height measured after layout (ScrollableHeight
+                // delta), not a stale precomputed value, so estimated-extent wobble during row
+                // realization can't leave the reader clamped to the bottom.
+                sv.UpdateLayout();
                 var delta = sv.ScrollableHeight - oldScrollableHeight;
-                var target = ClampOffset(oldOffset + delta, sv.ScrollableHeight);
+                var target = ClampOffset(oldOffset + Math.Max(0, delta), sv.ScrollableHeight);
                 sv.ChangeView(null, target, null, disableAnimation: true);
                 lastVerticalOffsetRef.Current = target;
                 lastScrollableHeightRef.Current = sv.ScrollableHeight;
                 isFollowingRef.Current = sv.ScrollableHeight - target <= FollowThreshold;
                 StoreSessionOffset(sessionId, target);
-                sv.DispatcherQueue.TryEnqueue(() => suppressAutoFollowRef.Current = false);
-            });
+                suppressAutoFollowRef.Current = false;
+            }
+
+            if (!sv.DispatcherQueue.TryEnqueue(RestoreOffset))
+            {
+                RestoreOffset();
+            }
         }
 
         // Load more button — outside the repeated items
@@ -2067,7 +2299,7 @@ public class OpenClawChatTimeline : Component<OpenClawChatTimelineProps>
                     snippet = detail.Substring(0, cut) + "…";
                 }
                 body = VStack(4,
-                    TextBlock($"{glyph} {kind} — {label}")
+                    TextBlock($"{glyph} {kind}: {label}")
                         .Set(t =>
                         {
                             t.FontWeight = Microsoft.UI.Text.FontWeights.SemiBold;
@@ -2549,9 +2781,23 @@ public class OpenClawChatTimeline : Component<OpenClawChatTimelineProps>
                                         return;
                                     }
 
-                                    if (!suppressAutoFollowRef.Current && isFollowingRef.Current)
+                                    // Follow-to-bottom during layout-driven growth (streaming into
+                                    // the newest row, thinking indicator, tool expand) needs a re-
+                                    // pin: WinUI scroll anchoring (VerticalAnchorRatio = 1.0) keeps
+                                    // an EXISTING bottom row glued as it grows, but NEW content that
+                                    // appears below the anchor (the thinking indicator, an appended
+                                    // row) is not followed by anchoring alone. Re-pin on the sticky
+                                    // follow intent only; QueueScrollToBottom itself re-checks the
+                                    // live offset on a fresh layout and BAILS if the user has since
+                                    // scrolled away (see UserScrolledAway there), so this cannot yank
+                                    // a scrolled-up reader back down even though SizeChanged fires on
+                                    // the same realization pass as their scroll.
+                                    if (!suppressAutoFollowRef.Current
+                                        && isFollowingRef.Current
+                                        && scrollSettleTimerRef.Current is null
+                                        && !scrollPinPendingRef.Current)
                                     {
-                                        QueueScrollToBottom(sv, prevSessionIdRef.Current, disableAnimation: true);
+                                        QueueScrollToBottom(sv, prevSessionIdRef.Current, disableAnimation: true, respectUserScrollPosition: true);
                                     }
                                     else if (suppressAutoFollowRef.Current)
                                     {
@@ -2571,9 +2817,69 @@ public class OpenClawChatTimeline : Component<OpenClawChatTimelineProps>
                 if (scrollViewRef.Current != sv)
                 {
                     scrollViewRef.Current = sv;
+                    // Option B: WinUI scroll anchoring pins the bottom row to the viewport bottom
+                    // pre-paint as the ItemsRepeater extent grows during streaming (see the
+                    // constants note above). This replaces the old reactive ViewChanged re-pin.
+                    sv.VerticalAnchorRatio = 1.0;
                     sv.ViewChanged += (_, _) =>
                     {
+                        // Follow-to-bottom during in-place streaming growth is handled by scroll
+                        // anchoring (VerticalAnchorRatio = 1.0), so there is NO reactive re-pin
+                        // here. The old re-pin produced an intermediate short frame (jitter) and
+                        // fought the user's own scrolling. We just refresh follow/offset metrics
+                        // and drive the load-earlier trigger.
                         UpdateScrollMetrics(sv);
+
+                        // A genuine user scroll far away from the bottom is authoritative: cancel
+                        // any in-flight follow so it can't drag the reader back down. Without this,
+                        // an initial-load / append settle timer (which keeps re-pinning while the
+                        // ItemsRepeater extent estimate is still climbing) or a coalesced reactive
+                        // pin can supersede the user's own ChangeView a frame later, and the view
+                        // snaps back to the bottom (the reported "fighting the scrollbar" bug).
+                        // Disable bottom anchoring too, so extent re-estimation below the viewport
+                        // doesn't nudge the held reading position.
+                        var abandonGap = Math.Max(
+                            FollowToBottomMinAbandonGap,
+                            sv.ViewportHeight * FollowToBottomAbandonViewportFactor);
+                        if (sv.ScrollableHeight - sv.VerticalOffset > abandonGap)
+                        {
+                            isFollowingRef.Current = false;
+                            scrollPinPendingRef.Current = false;
+                            if (scrollSettleTimerRef.Current is not null)
+                            {
+                                scrollSettleTimerRef.Current.Stop();
+                                scrollSettleTimerRef.Current = null;
+                            }
+                            sv.VerticalAnchorRatio = double.NaN;
+                        }
+                        else if (!isFollowingRef.Current
+                            && scrollSettleTimerRef.Current is not null)
+                        {
+                            // Moderate user scroll above FollowThreshold (but below the large
+                            // abandonGap) during an active settle timer: the user's reading intent
+                            // is authoritative. After our own PinToBottom the gap is ~0 (offset
+                            // equals ScrollableHeight), so isFollowingRef stays true across the
+                            // pin's ViewChanged. If isFollowingRef is false here, the VIEW moved
+                            // because the USER scrolled between ticks — cancel the timer so
+                            // subsequent ticks cannot re-pin their position back to the bottom.
+                            // This closes the 61–900px band where the old design tolerated noise
+                            // at the cost of fighting a deliberate scroll.
+                            scrollPinPendingRef.Current = false;
+                            scrollSettleTimerRef.Current.Stop();
+                            scrollSettleTimerRef.Current = null;
+                            sv.VerticalAnchorRatio = double.NaN;
+                        }
+                        else if (isFollowingRef.Current
+                            && scrollSettleTimerRef.Current is null
+                            && !scrollPinPendingRef.Current)
+                        {
+                            // The user (or a settled pin) returned to the bottom band: re-arm bottom
+                            // anchoring immediately so in-place streaming growth follows again,
+                            // without waiting for the next render. Skipped while an explicit pin is
+                            // in flight — that path deliberately drives to the true bottom with
+                            // anchoring off and restores 1.0 itself once the extent settles.
+                            sv.VerticalAnchorRatio = 1.0;
+                        }
 
                         if (sv.ScrollableHeight > 0
                             && sv.VerticalOffset <= FollowThreshold
@@ -2588,6 +2894,17 @@ public class OpenClawChatTimeline : Component<OpenClawChatTimelineProps>
 
                 if (entryCount != previousEntryCount)
                     loadMoreRequestedForCountRef.Current = -1;
+
+                // Keep bottom scroll anchoring active only while actually following. When the user
+                // has scrolled up to read history, anchoring the viewport-bottom row lets extent
+                // re-estimation — and the full remount FunctionalUI performs on every streamed
+                // revision — nudge their offset (observed ~40px drift per revision). Disabling it
+                // holds the reading position steady; it is re-enabled the moment they return to the
+                // bottom band (isFollowing flips true on the next render). Explicit pins
+                // (QueueScrollToBottom) and prepend (QueuePreservePrependOffset) own the ratio for
+                // their own async windows, so defer to them while one is in flight.
+                if (scrollSettleTimerRef.Current is null && !scrollPinPendingRef.Current)
+                    sv.VerticalAnchorRatio = isFollowingRef.Current ? 1.0 : double.NaN;
 
                 if (sessionChanged && !isFirstMount)
                 {

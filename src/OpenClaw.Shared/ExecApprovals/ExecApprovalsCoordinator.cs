@@ -10,7 +10,7 @@ namespace OpenClaw.Shared.ExecApprovals;
 // Full coordinator pipeline: validate → normalize → buildContext → evaluate(pass1) →
 // prompt/fallback → evaluate(pass2) → side effects → final decision.
 // UI-free: no WinUI types. A SemaphoreSlim serializes the prompt+pass2 block.
-// Not wired in production src — verified by ProductionWiring_CoordinatorNotReferencedInSrc test.
+// Wired in production by NodeService behind an explicit opt-in setting, default off.
 // Must be registered as singleton when wired: the SemaphoreSlim is per-instance.
 public sealed class ExecApprovalsCoordinator : IExecApprovalV2Handler
 {
@@ -99,6 +99,18 @@ public sealed class ExecApprovalsCoordinator : IExecApprovalV2Handler
                 promptAttempted: false, fallbackUsed: false, canonical: context.DisplayCommand);
         if (pass1 is ExecHostPolicyDecision.AllowOutcome)
         {
+            // A stored executable-level rule must not authorize a command host whose
+            // argument tail selects a different command or script. Preserve the store
+            // verbatim, but refuse to consume that rule for this invocation.
+            if (context.Security == ExecSecurity.Allowlist
+                && context.AllowlistSatisfied
+                && IsIndirectCommandHost(identity))
+                return LogAndReturn(
+                    ExecApprovalV2Result.ValidationFailed(
+                        "persistent-approval-not-permitted-for-command-host"),
+                    correlationId, promptAttempted: false, fallbackUsed: false,
+                    canonical: context.DisplayCommand);
+
             // Pre-approved path (security=Full, ask=Off or allowlist satisfied): skip prompt.
             // Fail closed if the approved executable cannot be pinned to a resolved path.
             var preApprovedExecution = BuildApprovedExecution(identity, sanitizedEnv);
@@ -119,6 +131,7 @@ public sealed class ExecApprovalsCoordinator : IExecApprovalV2Handler
         // Steps 5-8: prompt/fallback + second pass (critical section) + side effect flag
         bool promptAttempted = false;
         bool fallbackUsed = false;
+        bool fallbackAllowWasMatchDependent = false;
         bool persistAllowlistEntry = false;
 
         await _promptLock.WaitAsync().ConfigureAwait(false);
@@ -169,7 +182,10 @@ public sealed class ExecApprovalsCoordinator : IExecApprovalV2Handler
             else
             {
                 fallbackUsed = true;
-                followupDecision = FallbackDecision(context, resolved.Defaults.AskFallback);
+                followupDecision = FallbackDecision(
+                    context,
+                    resolved.Defaults.AskFallback,
+                    out fallbackAllowWasMatchDependent);
             }
 
             // Step 7: second pass — must never return RequiresPrompt
@@ -198,6 +214,15 @@ public sealed class ExecApprovalsCoordinator : IExecApprovalV2Handler
         if (execution is null)
             return LogAndReturn(ExecApprovalV2Result.InternalError("unresolved-executable-on-allow"),
                 correlationId, promptAttempted, fallbackUsed, canonical: context.DisplayCommand);
+
+        var durableCommandHostAuthorization =
+            persistAllowlistEntry || fallbackAllowWasMatchDependent;
+        if (durableCommandHostAuthorization && IsIndirectCommandHost(identity))
+            return LogAndReturn(
+                ExecApprovalV2Result.ValidationFailed(
+                    "persistent-approval-not-permitted-for-command-host"),
+                correlationId, promptAttempted, fallbackUsed,
+                canonical: context.DisplayCommand);
 
         // Step 9: side effects — only reached when the payload is valid.
         // Each side effect is independently best-effort so a failure in one does not skip the other.
@@ -274,6 +299,13 @@ public sealed class ExecApprovalsCoordinator : IExecApprovalV2Handler
         return new ExecApprovedExecution(argv, identity.Cwd, identity.TimeoutMs, sanitizedEnv);
     }
 
+    private static bool IsIndirectCommandHost(CanonicalCommandIdentity identity)
+    {
+        var resolvedPath = identity.Resolution?.ResolvedPath;
+        return !string.IsNullOrWhiteSpace(resolvedPath)
+            && ExecCommandToken.IsIndirectCommandHost(resolvedPath);
+    }
+
     // Persists allowAlways patterns after an AllowAlways prompt decision (non-empty only).
     // Caller guarantees Security == Allowlist (guard is in HandleAsync step 8).
     private async Task PersistAllowlistEntriesAsync(ExecApprovalEvaluation context)
@@ -309,15 +341,22 @@ public sealed class ExecApprovalsCoordinator : IExecApprovalV2Handler
     // ask=Always → Deny: human approval is a precondition; without UI the only safe outcome is deny.
     private static ExecApprovalDecision FallbackDecision(
         ExecApprovalEvaluation context,
-        ExecSecurity askFallback)
+        ExecSecurity askFallback,
+        out bool allowWasMatchDependent)
     {
+        allowWasMatchDependent = false;
         var effectiveFallback = (ExecSecurity)Math.Min((int)context.Security, (int)askFallback);
+        if (effectiveFallback == ExecSecurity.Allowlist
+            && context.AllAllowlistResolutionsMatched)
+        {
+            allowWasMatchDependent = true;
+            return ExecApprovalDecision.AllowOnce;
+        }
+
         return effectiveFallback switch
         {
             ExecSecurity.Full => ExecApprovalDecision.AllowOnce,
-            ExecSecurity.Allowlist => context.AllAllowlistResolutionsMatched
-                ? ExecApprovalDecision.AllowOnce
-                : ExecApprovalDecision.Deny,
+            ExecSecurity.Allowlist => ExecApprovalDecision.Deny,
             ExecSecurity.Deny => ExecApprovalDecision.Deny,
             _ => ExecApprovalDecision.Deny,  // defensive
         };

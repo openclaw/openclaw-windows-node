@@ -1303,7 +1303,7 @@ public sealed partial class ConnectionPage : Page
             Foreground = textBrush,
             VerticalAlignment = VerticalAlignment.Center,
         };
-        AutomationProperties.SetName(labelText, $"{label} — {stateText}");
+        AutomationProperties.SetName(labelText, $"{label}: {stateText}");
         content.Children.Add(labelText);
 
         if (stateGlyph != null)

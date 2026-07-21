@@ -159,7 +159,7 @@ public class McpHttpServerIntegrationTests : IClassFixture<TrayAppFixture>
             defaultAction = "deny",
             rules = new object[]
             {
-                new { pattern = marker + "*", action = "allow", description = marker, enabled = true },
+                new { pattern = marker + " *", action = "allow", description = marker, enabled = true },
             },
         });
         Assert.True(setDoc.RootElement.GetProperty("updated").GetBoolean());
@@ -167,7 +167,7 @@ public class McpHttpServerIntegrationTests : IClassFixture<TrayAppFixture>
         using var afterDoc = await _fixture.Client.CallToolExpectSuccessAsync("system.execApprovals.get");
         var rules = afterDoc.RootElement.GetProperty("rules");
         Assert.Contains(rules.EnumerateArray(),
-            r => r.GetProperty("pattern").GetString() == marker + "*");
+            r => r.GetProperty("pattern").GetString() == marker + " *");
     }
 
     // ---- screen.* ----

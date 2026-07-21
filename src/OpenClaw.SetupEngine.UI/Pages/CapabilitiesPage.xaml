@@ -37,7 +37,7 @@
                                 <TextBlock TextWrapping="Wrap"
                                            Style="{StaticResource BodyTextBlockStyle}"
                                            Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                                           Text="OpenClaw runs your agent in a private, self-hosted gateway on this PC. Pick what it's allowed to do — you can change this later in Companion Settings." />
+                                           Text="OpenClaw runs your agent in a private, self-hosted gateway on this PC. Pick what it's allowed to do. You can change this later in Companion Settings." />
                                 <RadioButtons x:Name="ProfileRadio" SelectionChanged="Profile_Changed" MaxColumns="1">
                                     <RadioButton AutomationProperties.Name="Read-only">
                                         <StackPanel Spacing="1">
@@ -94,7 +94,7 @@
                                 <TextBlock TextWrapping="Wrap"
                                            Style="{StaticResource BodyTextBlockStyle}"
                                            Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                                           Text="Grant the Windows permissions your selected capabilities need — now, or later from Settings. The agent only uses what you allow." />
+                                           Text="Grant the Windows permissions your selected capabilities need: now, or later from Settings. The agent only uses what you allow." />
                                 <StackPanel x:Name="PermRows" Spacing="4" />
                             </StackPanel>
 
@@ -146,7 +146,7 @@
                                         <FontIcon Grid.Column="0" Glyph="&#xE968;" FontSize="18" VerticalAlignment="Center" />
                                         <StackPanel Grid.Column="1" Spacing="2">
                                             <TextBlock Text="Run a local gateway service" Style="{StaticResource BodyStrongTextBlockStyle}" />
-                                            <TextBlock x:Name="GatewayServiceDetailText" TextWrapping="Wrap" Style="{StaticResource CaptionTextBlockStyle}" Foreground="{ThemeResource TextFillColorSecondaryBrush}" Text="Loopback only — not reachable from your network or the internet." />
+                                            <TextBlock x:Name="GatewayServiceDetailText" TextWrapping="Wrap" Style="{StaticResource CaptionTextBlockStyle}" Foreground="{ThemeResource TextFillColorSecondaryBrush}" Text="Loopback only. It is not reachable from your network or the internet." />
                                         </StackPanel>
                                         <TextBlock x:Name="GatewayEndpointText" Grid.Column="2" Text="127.0.0.1:18789" Style="{StaticResource CaptionTextBlockStyle}" Foreground="{ThemeResource TextFillColorTertiaryBrush}" FontFamily="Cascadia Mono, Consolas" VerticalAlignment="Center" />
                                     </Grid>

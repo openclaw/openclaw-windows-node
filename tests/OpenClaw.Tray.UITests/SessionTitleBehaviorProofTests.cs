@@ -14,7 +14,7 @@ namespace OpenClaw.Tray.UITests;
 public sealed class SessionTitleBehaviorProofTests
 {
     private const string RawTitle = "OpenClaw Windows Tray";
-    private const string ForkTitle = "OpenClaw Windows Tray (main/fork)";
+    private const string ForkTitle = "OpenClaw Windows Tray (2)";
     private static readonly TimeSpan UiTimeout = TimeSpan.FromSeconds(15);
 
     private readonly AccessibilityAppFixture _app;

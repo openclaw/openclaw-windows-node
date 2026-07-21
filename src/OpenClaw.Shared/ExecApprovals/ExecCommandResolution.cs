@@ -67,7 +67,7 @@ internal static class ExecCommandResolver
             var resolutions = new List<ExecCommandResolution>(segments.Count);
             foreach (var segment in segments)
             {
-                var token = ParseFirstToken(segment);
+                var token = ExecCommandToken.ParseFirstToken(segment);
                 if (token is null) return [];
                 // -EncodedCommand and aliases in segment position: fail-closed.
                 if (SegmentUsesEncodedCommand(segment, token)) return [];
@@ -110,7 +110,7 @@ internal static class ExecCommandResolver
         // Prefer first token of evaluationRawCommand when present.
         if (!string.IsNullOrWhiteSpace(rawCommand))
         {
-            var token = ParseFirstToken(rawCommand);
+            var token = ExecCommandToken.ParseFirstToken(rawCommand);
             if (token is not null) return ResolveExecutable(token, cwd, env);
         }
         return Resolve(command, cwd, env);
@@ -227,30 +227,6 @@ internal static class ExecCommandResolver
         return null;
     }
 
-    // Extracts the first shell-tokenized word from a command string.
-    private static string? ParseFirstToken(string command)
-    {
-        var trimmed = command.Trim();
-        if (trimmed.Length == 0) return null;
-        var first = trimmed[0];
-        if (first == '"' || first == '\'')
-        {
-            var rest = trimmed.AsSpan(1);
-            var end = rest.IndexOf(first);
-            if (end < 0) return null; // unclosed quote — fail-closed; do not guess the token
-            var inner = rest[..end].ToString();
-            if (inner.Length == 0) return null;
-            // Preserve any suffix after the closing quote up to the next whitespace.
-            // Handles `"git".exe` → "git.exe" and `"C:\Program Files\Git\bin\git".exe` → *.exe.
-            var afterClose = rest[(end + 1)..];
-            var suffixEnd = afterClose.IndexOfAny(' ', '\t');
-            var suffix = suffixEnd >= 0 ? afterClose[..suffixEnd].ToString() : afterClose.ToString();
-            return suffix.Length > 0 ? inner + suffix : inner;
-        }
-        var space = trimmed.AsSpan().IndexOfAny(' ', '\t');
-        return space >= 0 ? trimmed[..space] : trimmed;
-    }
-
     // ── allowAlwaysPatterns collection ───────────────────────────────────────
 
     private static void CollectPatterns(
@@ -271,7 +247,7 @@ internal static class ExecCommandResolver
             foreach (var seg in segments)
             {
                 // allowAlwaysPatterns does NOT fail-closed on -EncodedCommand: it's UX only.
-                var token = ParseFirstToken(seg);
+                var token = ExecCommandToken.ParseFirstToken(seg);
                 if (token is null) continue;
                 var res = ResolveExecutable(token, cwd, env);
                 if (res is null) continue;

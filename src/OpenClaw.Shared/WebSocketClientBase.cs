@@ -214,6 +214,21 @@ public abstract class WebSocketClientBase : IDisposable
         try { ws.Dispose(); } catch { }
     }
 
+    // Cap on a single accumulated inbound message. A peer that streams an unbounded multi-frame text
+    // message (never setting EndOfMessage) would otherwise grow the StringBuilder without limit —
+    // a memory-exhaustion DoS (CWE-770 / CWE-400). 32M UTF-16 chars (~64 MB) is generous for large
+    // payloads (e.g. base64 attachments) yet bounded; on overflow the receive loop closes the socket.
+    internal const int MaxInboundMessageChars = 32 * 1024 * 1024;
+
+    // Appends a decoded frame to the accumulation buffer unless it would exceed the cap; returns
+    // false (leaving sb unchanged) when the limit would be crossed, so the caller can close the socket.
+    internal static bool TryAppendWithinLimit(StringBuilder sb, char[] chars, int count, int maxChars)
+    {
+        if ((long)sb.Length + count > maxChars) return false;
+        sb.Append(chars, 0, count);
+        return true;
+    }
+
     private async Task ListenForMessagesAsync(ClientWebSocket ws, long connectionGeneration)
     {
         // Rent a pooled buffer — consistent with the SendRawAsync hot path; avoids a large
@@ -246,14 +261,23 @@ public abstract class WebSocketClientBase : IDisposable
                         // Encoding.UTF8.GetString would produce.
                         var maxCharCount = Encoding.UTF8.GetMaxCharCount(result.Count);
                         var charBuffer = ArrayPool<char>.Shared.Rent(maxCharCount);
+                        bool withinLimit;
                         try
                         {
                             var charCount = Encoding.UTF8.GetChars(buffer, 0, result.Count, charBuffer, 0);
-                            sb.Append(charBuffer, 0, charCount);
+                            withinLimit = TryAppendWithinLimit(sb, charBuffer, charCount, MaxInboundMessageChars);
                         }
                         finally
                         {
                             ArrayPool<char>.Shared.Return(charBuffer);
+                        }
+
+                        if (!withinLimit)
+                        {
+                            _logger.Warn($"[{ClientRole}] inbound message exceeded {MaxInboundMessageChars} chars; closing connection (memory-exhaustion guard)");
+                            try { await ws.CloseAsync(WebSocketCloseStatus.MessageTooBig, "message too large", CancellationToken.None); }
+                            catch { /* best-effort close */ }
+                            break;
                         }
 
                         if (result.EndOfMessage)

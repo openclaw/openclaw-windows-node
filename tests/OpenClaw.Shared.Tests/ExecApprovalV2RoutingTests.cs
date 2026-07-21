@@ -7,6 +7,7 @@ using Xunit;
 using OpenClaw.Shared;
 using OpenClaw.Shared.Capabilities;
 using OpenClaw.Shared.ExecApprovals;
+using OpenClaw.Shared.Mxc;
 
 namespace OpenClaw.Shared.Tests;
 
@@ -359,24 +360,278 @@ public class ExecApprovalV2RoutingTests
     }
 
     // -------------------------------------------------------------------------
-    // I-3. SetV2Handler not present in any production source file
+    // Approved execution: allow results execute the approved payload
     // -------------------------------------------------------------------------
 
-    [Fact]
-    public void ProductionWiring_SetV2Handler_NotCalledInSrc()
-    {
-        var violations = ProductionSourceFiles.All
-            .Where(f => !f.Path.EndsWith("SystemCapability.cs", StringComparison.OrdinalIgnoreCase))
-            .Where(f => f.Text.Contains("SetV2Handler", StringComparison.Ordinal))
-            .Select(f => f.Path)
-            .ToList();
+    private static ExecApprovedExecution ApprovedEcho()
+        => new(new[] { "cmd", "/c", "echo hi" }, cwd: @"C:\work", timeoutMs: 5000,
+            env: new Dictionary<string, string> { ["FOO"] = "bar" });
 
-        Assert.Empty(violations);
+    [Fact]
+    public async Task V2Allow_ExecutesApprovedArgv_WithLegacyResponseShape()
+    {
+        var runner = new FakeRunner();
+        var logger = new CapturingLogger();
+        var cap = new SystemCapability(logger);
+        cap.SetCommandRunner(runner);
+        var approved = ApprovedEcho();
+        cap.SetV2Handler(new FixedResultHandler(ExecApprovalV2Result.Allow(approved)));
+
+        var res = await cap.ExecuteAsync(RunRequest());
+
+        Assert.True(res.Ok);
+        Assert.NotNull(runner.LastRequest);
+        Assert.Equal(approved.Argv, runner.LastRequest!.Argv);
+        Assert.Equal(approved.Cwd, runner.LastRequest.Cwd);
+        Assert.Equal(approved.TimeoutMs, runner.LastRequest.TimeoutMs);
+        Assert.Equal("bar", runner.LastRequest.Env!["FOO"]);
+        Assert.True(logger.HasInfoContaining("path=v2 executed exit=0"),
+            "execution outcome not logged on V2 path");
+    }
+
+    [Fact]
+    public async Task V2Allow_ShellAndLegacyFieldsDoNotTravel()
+    {
+        var runner = new FakeRunner();
+        var cap = new SystemCapability(NullLogger.Instance);
+        cap.SetCommandRunner(runner);
+        cap.SetV2Handler(new FixedResultHandler(ExecApprovalV2Result.Allow(ApprovedEcho())));
+
+        await cap.ExecuteAsync(RunRequest());
+
+        // The approved argv must reach the runner verbatim: no shell wrapper,
+        // no legacy command/args re-derivation from the raw request.
+        Assert.NotNull(runner.LastRequest);
+        Assert.Empty(runner.LastRequest!.Command);
+        Assert.Null(runner.LastRequest.Args);
+        Assert.Null(runner.LastRequest.Shell);
+    }
+
+    [Fact]
+    public async Task V2Allow_NullRunner_ReturnsNotAvailableError()
+    {
+        var cap = new SystemCapability(NullLogger.Instance);
+        cap.SetV2Handler(new FixedResultHandler(ExecApprovalV2Result.Allow(ApprovedEcho())));
+
+        var res = await cap.ExecuteAsync(RunRequest());
+
+        Assert.False(res.Ok);
+        Assert.Contains("not available", res.Error!, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task V2Allow_RunnerException_ReturnsExecutionFailed()
+    {
+        var cap = new SystemCapability(NullLogger.Instance);
+        cap.SetCommandRunner(new ThrowingRunner());
+        cap.SetV2Handler(new FixedResultHandler(ExecApprovalV2Result.Allow(ApprovedEcho())));
+
+        var res = await cap.ExecuteAsync(RunRequest());
+
+        Assert.False(res.Ok);
+        Assert.Contains("Execution failed", res.Error!, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task V2Deny_DoesNotInvokeRunner()
+    {
+        var runner = new FakeRunner();
+        var cap = new SystemCapability(NullLogger.Instance);
+        cap.SetCommandRunner(runner);
+        cap.SetV2Handler(new FixedResultHandler(ExecApprovalV2Result.SecurityDeny("blocked")));
+
+        var res = await cap.ExecuteAsync(RunRequest());
+
+        Assert.False(res.Ok);
+        Assert.Null(runner.LastRequest);
+    }
+
+    // -------------------------------------------------------------------------
+    // Sandbox flag matrix: the V2 path against the real MXC runner, driven by
+    // SystemRunSandboxEnabled / availability / strict fallback blocking.
+    // -------------------------------------------------------------------------
+
+    private static ExecApprovedExecution ApprovedEchoNoEnv()
+        => new(new[] { "cmd", "/c", "echo hi" }, cwd: @"C:\work", timeoutMs: 5000, env: null);
+
+    private static MxcCommandRunner BuildMxcRunner(
+        SettingsData settings,
+        bool sandboxAvailable,
+        FakeRunner hostFallback,
+        FakeSandboxExecutor sandboxExecutor)
+        => new(
+            sandboxExecutor,
+            hostFallback,
+            () => settings,
+            () => System.IO.Path.GetTempPath(),
+            () => sandboxAvailable);
+
+    [Theory]
+    [InlineData(false, false, false, true)]  // sandbox off → host runner honors argv
+    [InlineData(false, true, false, true)]
+    [InlineData(true, true, false, false)]   // sandbox on + available → no argv transport
+    [InlineData(true, true, true, false)]
+    [InlineData(true, false, false, true)]   // on + unavailable + fallback → host honors argv
+    [InlineData(true, false, true, true)]    // on + unavailable + strict → runner denies on its own
+    public void MxcRunner_CanExecuteDirectArgv_FollowsSandboxFlags(
+        bool sandboxEnabled, bool sandboxAvailable, bool strictBlock, bool expected)
+    {
+        var settings = new SettingsData
+        {
+            SystemRunSandboxEnabled = sandboxEnabled,
+            SystemRunBlockHostFallbackWhenMxcUnavailable = strictBlock,
+        };
+        var runner = BuildMxcRunner(settings, sandboxAvailable, new FakeRunner(), new FakeSandboxExecutor());
+
+        Assert.Equal(expected, runner.CanExecuteDirectArgv());
+    }
+
+    [Fact]
+    public async Task V2_SandboxEnabledAndAvailable_TypedUnavailable_NothingEvaluatesOrExecutes()
+    {
+        var settings = new SettingsData { SystemRunSandboxEnabled = true };
+        var host = new FakeRunner();
+        var sandbox = new FakeSandboxExecutor();
+        var handler = new TrackingHandler();
+        var logger = new CapturingLogger();
+        var cap = new SystemCapability(logger);
+        cap.SetCommandRunner(BuildMxcRunner(settings, sandboxAvailable: true, host, sandbox));
+        cap.SetV2Handler(handler);
+
+        var res = await cap.ExecuteAsync(RunRequest());
+
+        Assert.False(res.Ok);
+        Assert.Contains("Unavailable", res.Error!);
+        Assert.False(handler.WasCalled, "gate must fire before any evaluation or prompt");
+        Assert.Null(host.LastRequest);
+        Assert.Equal(0, sandbox.Calls);
+        Assert.True(logger.HasInfoContaining("decision=Unavailable"),
+            "typed gate outcome must flow through the standard decision log");
+    }
+
+    [Fact]
+    public async Task V2Allow_SandboxUnavailable_FallbackAllowed_ExecutesApprovedArgvOnHost()
+    {
+        var settings = new SettingsData
+        {
+            SystemRunSandboxEnabled = true,
+            SystemRunBlockHostFallbackWhenMxcUnavailable = false,
+        };
+        var host = new FakeRunner();
+        var sandbox = new FakeSandboxExecutor();
+        var approved = ApprovedEchoNoEnv();
+        var cap = new SystemCapability(NullLogger.Instance);
+        cap.SetCommandRunner(BuildMxcRunner(settings, sandboxAvailable: false, host, sandbox));
+        cap.SetV2Handler(new FixedResultHandler(ExecApprovalV2Result.Allow(approved)));
+
+        var res = await cap.ExecuteAsync(RunRequest());
+
+        Assert.True(res.Ok);
+        Assert.Equal(0, sandbox.Calls);
+        Assert.NotNull(host.LastRequest);
+        Assert.Equal(approved.Argv, host.LastRequest!.Argv);
+        Assert.Equal(approved.Cwd, host.LastRequest.Cwd);
+        Assert.Equal(approved.TimeoutMs, host.LastRequest.TimeoutMs);
+    }
+
+    [Fact]
+    public async Task V2Allow_SandboxUnavailable_StrictBlocking_DeniesWithoutExecuting()
+    {
+        var settings = new SettingsData
+        {
+            SystemRunSandboxEnabled = true,
+            SystemRunBlockHostFallbackWhenMxcUnavailable = true,
+        };
+        var host = new FakeRunner();
+        var sandbox = new FakeSandboxExecutor();
+        var cap = new SystemCapability(NullLogger.Instance);
+        cap.SetCommandRunner(BuildMxcRunner(settings, sandboxAvailable: false, host, sandbox));
+        cap.SetV2Handler(new FixedResultHandler(ExecApprovalV2Result.Allow(ApprovedEchoNoEnv())));
+
+        var res = await cap.ExecuteAsync(RunRequest());
+
+        // The strict sandbox settings deny execution with their own explicit
+        // result (exit -1), exactly as they do for the legacy path.
+        Assert.True(res.Ok);
+        Assert.Null(host.LastRequest);
+        Assert.Equal(0, sandbox.Calls);
+        var payload = JsonSerializer.Serialize(res.Payload);
+        Assert.Contains("\"exitCode\":-1", payload);
+    }
+
+    [Fact]
+    public async Task V2Allow_SandboxDisabled_ExecutesApprovedArgvOnHost_EnvIntact()
+    {
+        var settings = new SettingsData { SystemRunSandboxEnabled = false };
+        var host = new FakeRunner();
+        var sandbox = new FakeSandboxExecutor();
+        var approved = ApprovedEcho();
+        var cap = new SystemCapability(NullLogger.Instance);
+        cap.SetCommandRunner(BuildMxcRunner(settings, sandboxAvailable: true, host, sandbox));
+        cap.SetV2Handler(new FixedResultHandler(ExecApprovalV2Result.Allow(approved)));
+
+        var res = await cap.ExecuteAsync(RunRequest());
+
+        Assert.True(res.Ok);
+        Assert.Equal(0, sandbox.Calls);
+        Assert.NotNull(host.LastRequest);
+        Assert.Equal(approved.Argv, host.LastRequest!.Argv);
+        Assert.Equal("bar", host.LastRequest.Env!["FOO"]);
+    }
+
+    [Fact]
+    public async Task V2_RunnerWithoutArgvSupportContract_IsNeverGated()
+    {
+        // A plain ICommandRunner that does not implement the argv-support
+        // contract (e.g. the host-only LocalCommandRunner) must never trip the
+        // gate: the handler runs and the approved argv executes.
+        var runner = new FakeRunner();
+        var handler = new TrackingHandler();
+        var cap = new SystemCapability(NullLogger.Instance);
+        cap.SetCommandRunner(runner);
+        cap.SetV2Handler(handler);
+
+        await cap.ExecuteAsync(RunRequest());
+
+        Assert.True(handler.WasCalled);
+    }
+
+    [Fact]
+    public async Task V2Deny_WithRealMxcRunner_NeverReachesAnyTransport()
+    {
+        var settings = new SettingsData { SystemRunSandboxEnabled = true };
+        var host = new FakeRunner();
+        var sandbox = new FakeSandboxExecutor();
+        var cap = new SystemCapability(NullLogger.Instance);
+        // Sandbox unavailable + fallback allowed: the gate lets the handler run,
+        // and the deny must still stop before any transport is touched.
+        cap.SetCommandRunner(BuildMxcRunner(settings, sandboxAvailable: false, host, sandbox));
+        cap.SetV2Handler(new FixedResultHandler(ExecApprovalV2Result.SecurityDeny("blocked")));
+
+        var res = await cap.ExecuteAsync(RunRequest());
+
+        Assert.False(res.Ok);
+        Assert.Null(host.LastRequest);
+        Assert.Equal(0, sandbox.Calls);
     }
 
     // -------------------------------------------------------------------------
     // Helpers
     // -------------------------------------------------------------------------
+
+    private sealed class FakeSandboxExecutor : ISandboxExecutor
+    {
+        public int Calls { get; private set; }
+        public string Name => "fake-sandbox";
+        public bool IsContained => true;
+
+        public Task<SandboxExecutionResult> ExecuteAsync(
+            SandboxExecutionRequest request, System.Threading.CancellationToken ct = default)
+        {
+            Calls++;
+            return Task.FromResult(new SandboxExecutionResult(0, "sandboxed", "", false, 1, "fake"));
+        }
+    }
 
     private sealed class FakeRunner : ICommandRunner
     {
@@ -388,6 +643,14 @@ public class ExecApprovalV2RoutingTests
             LastRequest = request;
             return Task.FromResult(new CommandResult { Stdout = "ok", ExitCode = 0 });
         }
+    }
+
+    private sealed class ThrowingRunner : ICommandRunner
+    {
+        public string Name => "throwing";
+
+        public Task<CommandResult> RunAsync(CommandRequest request, System.Threading.CancellationToken ct = default)
+            => throw new InvalidOperationException("runner exploded");
     }
 
     private sealed class TrackingHandler : IExecApprovalV2Handler

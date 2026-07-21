@@ -6,6 +6,7 @@ using System.Numerics;
 using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
+using OpenClaw.Shared.Telemetry;
 
 namespace OpenClaw.Shared.Mcp;
 
@@ -26,6 +27,8 @@ public class McpToolBridge
     private readonly string _serverName;
     private readonly string _serverVersion;
     private readonly InvocationCancellationRegistry _activeRequests;
+
+    public event EventHandler<NodeToolTelemetryCompletion>? ToolTelemetryCompleted;
 
     private static readonly JsonSerializerOptions PayloadJsonOptions = new()
     {
@@ -81,6 +84,15 @@ public class McpToolBridge
     /// </summary>
     public async Task<string?> HandleRequestAsync(string requestBody, CancellationToken cancellationToken)
     {
+        var response = await HandleTransportRequestAsync(requestBody, cancellationToken);
+        response.CompleteDelivery();
+        return response.Body;
+    }
+
+    internal async Task<McpTransportResponse> HandleTransportRequestAsync(
+        string requestBody,
+        CancellationToken cancellationToken)
+    {
         JsonDocument doc;
         try
         {
@@ -88,27 +100,43 @@ public class McpToolBridge
         }
         catch (JsonException ex)
         {
-            return WriteError(null, JsonRpcErrorCode.ParseError, $"Parse error: {ex.Message}");
+            return new McpTransportResponse(
+                WriteError(null, JsonRpcErrorCode.ParseError, $"Parse error: {ex.Message}"),
+                null);
         }
 
         using (doc)
         {
             var root = doc.RootElement;
             if (root.ValueKind != JsonValueKind.Object)
-                return WriteError(null, JsonRpcErrorCode.InvalidRequest, "Request must be a JSON object");
+            {
+                return new McpTransportResponse(
+                    WriteError(null, JsonRpcErrorCode.InvalidRequest, "Request must be a JSON object"),
+                    null);
+            }
 
             var idElement = root.TryGetProperty("id", out var idProp) ? idProp : (JsonElement?)null;
             var hasId = idElement.HasValue && idElement.Value.ValueKind != JsonValueKind.Null;
 
             if (!root.TryGetProperty("method", out var methodProp) || methodProp.ValueKind != JsonValueKind.String)
             {
-                return hasId
-                    ? WriteError(idElement, JsonRpcErrorCode.InvalidRequest, "Missing 'method'")
-                    : null;
+                return new McpTransportResponse(
+                    hasId
+                        ? WriteError(idElement, JsonRpcErrorCode.InvalidRequest, "Missing 'method'")
+                        : null,
+                    null);
             }
 
             var method = methodProp.GetString()!;
             var paramsElement = root.TryGetProperty("params", out var p) ? p : default;
+            var invocation = string.Equals(method, "tools/call", StringComparison.Ordinal)
+                ? new NodeToolInvocation(NodeToolTransport.Mcp)
+                : null;
+            NodeToolOutcome terminalOutcome = NodeToolOutcome.Success;
+            NodeToolErrorCategory terminalCategory = NodeToolErrorCategory.None;
+            NodeToolExecutionMode? terminalExecutionMode = null;
+            Type? terminalErrorType = null;
+            string? responseBody;
             var requestKey = hasId ? GetRequestKey(idElement!.Value) : null;
 
             try
@@ -123,7 +151,8 @@ public class McpToolBridge
                     "tools/call" => await HandleToolsCallAsync(
                         paramsElement,
                         requestKey,
-                        cancellationToken),
+                        cancellationToken,
+                        invocation!),
                     // Some clients (notably Cursor) probe these on startup. Returning
                     // empty lists is friendlier than MethodNotFound — both feature sets
                     // are deferred but compatible by being absent rather than failing.
@@ -132,30 +161,68 @@ public class McpToolBridge
                     _ => throw new McpMethodNotFoundException(method),
                 };
 
-                if (!hasId) return null; // notification — no response
-                return WriteResult(idElement, result ?? new { });
+                if (result is McpToolCallResult toolCall)
+                {
+                    result = toolCall.Result;
+                    if (toolCall.Diagnostic != null)
+                    {
+                        terminalOutcome = NodeToolOutcome.Failure;
+                        terminalCategory = toolCall.Diagnostic.ErrorCategory;
+                        terminalExecutionMode = toolCall.Diagnostic.ExecutionMode;
+                    }
+                }
+
+                responseBody = hasId ? WriteResult(idElement, result ?? new { }) : null;
             }
             catch (McpMethodNotFoundException ex)
             {
-                return hasId
+                responseBody = hasId
                     ? WriteError(idElement, JsonRpcErrorCode.MethodNotFound, ex.Message)
                     : null;
             }
             catch (McpToolException ex)
             {
-                return hasId
+                terminalOutcome = ex.Outcome;
+                terminalCategory = ex.ErrorCategory;
+                terminalExecutionMode = ex.ExecutionMode;
+                terminalErrorType = ex.ErrorType;
+                responseBody = hasId
                     ? WriteToolError(idElement, ex.Message)
+                    : null;
+            }
+            catch (McpCapabilityException ex)
+            {
+                terminalOutcome = NodeToolOutcome.Failure;
+                terminalCategory = NodeToolErrorCategory.CapabilityFailure;
+                terminalErrorType = ex.InnerException?.GetType() ?? ex.GetType();
+                _logger.Error($"[MCP] Handler error for {method}", ex.InnerException ?? ex);
+                responseBody = hasId
+                    ? WriteError(idElement, JsonRpcErrorCode.InternalError, "internal error")
                     : null;
             }
             catch (Exception ex)
             {
+                terminalOutcome = NodeToolOutcome.Failure;
+                terminalCategory = NodeToolErrorCategory.InternalFailure;
+                terminalErrorType = ex.GetType();
                 // Full exception with stack goes to the log; the wire response
                 // gets a generic message so we don't leak internals to clients.
                 _logger.Error($"[MCP] Handler error for {method}", ex);
-                return hasId
+                responseBody = hasId
                     ? WriteError(idElement, JsonRpcErrorCode.InternalError, "internal error")
                     : null;
             }
+
+            var pending = invocation == null
+                ? null
+                : new McpPendingToolTelemetry(
+                    this,
+                    invocation,
+                    terminalOutcome,
+                    terminalCategory,
+                    terminalExecutionMode,
+                    terminalErrorType);
+            return new McpTransportResponse(responseBody, pending);
         }
     }
 
@@ -376,27 +443,32 @@ public class McpToolBridge
         return null;
     }
 
-    private async Task<object> HandleToolsCallAsync(
+    private async Task<McpToolCallResult> HandleToolsCallAsync(
         JsonElement parameters,
         string? requestKey,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        NodeToolInvocation telemetry)
     {
         if (parameters.ValueKind != JsonValueKind.Object)
-            throw new McpToolException("Invalid params: expected object");
+            throw new McpToolException(
+                "Invalid params: expected object",
+                NodeToolErrorCategory.InvalidRequest);
 
         if (!parameters.TryGetProperty("name", out var nameProp) || nameProp.ValueKind != JsonValueKind.String)
-            throw new McpToolException("Missing 'name'");
+            throw new McpToolException("Missing 'name'", NodeToolErrorCategory.InvalidRequest);
 
         var name = nameProp.GetString()!;
         if (string.IsNullOrWhiteSpace(name))
-            throw new McpToolException("Empty tool name");
+            throw new McpToolException("Empty tool name", NodeToolErrorCategory.InvalidRequest);
 
         var args = parameters.TryGetProperty("arguments", out var argsProp) ? argsProp : default;
         if (args.ValueKind != JsonValueKind.Undefined
             && args.ValueKind != JsonValueKind.Null
             && args.ValueKind != JsonValueKind.Object)
         {
-            throw new McpToolException("'arguments' must be a JSON object if present");
+            throw new McpToolException(
+                "'arguments' must be a JSON object if present",
+                NodeToolErrorCategory.InvalidRequest);
         }
 
         var caps = _capabilityProvider();
@@ -408,13 +480,21 @@ public class McpToolBridge
             break;
         }
         if (capability == null)
-            throw new McpToolException($"Unknown tool: {name}");
+        {
+            throw new McpToolException(
+                $"Unknown tool: {name}",
+                NodeToolErrorCategory.UnsupportedCommand);
+        }
+        var canonicalName = capability.Commands.FirstOrDefault(
+            command => string.Equals(command, name, StringComparison.OrdinalIgnoreCase));
+        telemetry.SetCommand(canonicalName ?? "unknown");
 
         var request = new NodeInvokeRequest
         {
             Id = Guid.NewGuid().ToString(),
             Command = name,
             Args = args,
+            Telemetry = telemetry,
         };
 
         _logger.Debug($"[MCP] tools/call {name}");
@@ -427,35 +507,80 @@ public class McpToolBridge
         if (requestKey != null &&
             !_activeRequests.TryRegister(requestKey, cancellationToken, out invocation))
         {
-            throw new McpToolException("duplicate active request id");
+            throw new McpToolException(
+                "duplicate active request id",
+                NodeToolErrorCategory.InvalidRequest);
         }
 
         var executionToken = invocation?.Token ?? cancellationToken;
         var cancelledByCaller = false;
         NodeInvokeResponse response;
+        var executeActivity = telemetry.StartChild(NodeToolInvocation.ExecuteSpanName);
+        request.TelemetryParentContext = executeActivity?.Context ?? telemetry.Context;
         try
         {
             if (invocation?.CancelledByCaller == true)
             {
-                throw new McpToolException("cancelled");
+                NodeToolInvocation.CompleteChild(
+                    executeActivity,
+                    NodeToolOutcome.Canceled,
+                    NodeToolErrorCategory.Other);
+                throw new McpToolException(
+                    "cancelled",
+                    NodeToolErrorCategory.Other,
+                    outcome: NodeToolOutcome.Canceled);
             }
 
             response = await capability.ExecuteAsync(request, executionToken).WaitAsync(executionToken);
             if (invocation != null && !invocation.TryComplete())
             {
+                var callerCancelled = invocation.CancelledByCaller;
+                NodeToolInvocation.CompleteChild(
+                    executeActivity,
+                    NodeToolOutcome.Canceled,
+                    callerCancelled ? NodeToolErrorCategory.Other : NodeToolErrorCategory.Timeout);
                 throw new McpToolException(
-                    invocation.CancelledByCaller ? "cancelled" : "request timed out");
+                    callerCancelled ? "cancelled" : "request timed out",
+                    callerCancelled ? NodeToolErrorCategory.Other : NodeToolErrorCategory.Timeout,
+                    outcome: NodeToolOutcome.Canceled);
             }
         }
         catch (OperationCanceledException) when (invocation?.CancelledByCaller == true)
         {
+            NodeToolInvocation.CompleteChild(
+                executeActivity,
+                NodeToolOutcome.Canceled,
+                NodeToolErrorCategory.Other);
             _logger.Info($"[MCP] tools/call {name} cancelled");
-            throw new McpToolException("cancelled");
+            throw new McpToolException(
+                "cancelled",
+                NodeToolErrorCategory.Other,
+                outcome: NodeToolOutcome.Canceled);
         }
         catch (OperationCanceledException) when (executionToken.IsCancellationRequested)
         {
+            NodeToolInvocation.CompleteChild(
+                executeActivity,
+                NodeToolOutcome.Canceled,
+                NodeToolErrorCategory.Timeout);
             _logger.Warn($"[MCP] tools/call {name} timed out");
-            throw new McpToolException("request timed out");
+            throw new McpToolException(
+                "request timed out",
+                NodeToolErrorCategory.Timeout,
+                outcome: NodeToolOutcome.Canceled);
+        }
+        catch (McpToolException)
+        {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            NodeToolInvocation.CompleteChild(
+                executeActivity,
+                NodeToolOutcome.Failure,
+                NodeToolErrorCategory.CapabilityFailure,
+                errorType: ex.GetType());
+            throw new McpCapabilityException(ex);
         }
         finally
         {
@@ -465,29 +590,59 @@ public class McpToolBridge
 
         if (!response.Ok)
         {
+            var diagnostic = response.Diagnostic ??
+                new NodeToolDiagnostic(NodeToolErrorCategory.CapabilityFailure);
             var error = response.Error ?? "tool execution failed";
+            var outcome = NodeToolOutcome.Failure;
             if (error == "cancelled" &&
                 executionToken.IsCancellationRequested &&
                 !cancelledByCaller)
             {
                 error = "request timed out";
+                outcome = NodeToolOutcome.Canceled;
+                diagnostic = new NodeToolDiagnostic(
+                    NodeToolErrorCategory.Timeout,
+                    diagnostic.ExecutionMode,
+                    diagnostic.SandboxDenialReason);
             }
 
-            throw new McpToolException(error);
+            NodeToolInvocation.CompleteChild(
+                executeActivity,
+                outcome,
+                diagnostic.ErrorCategory,
+                diagnostic.ExecutionMode,
+                sandboxDenialReason: diagnostic.SandboxDenialReason);
+            throw new McpToolException(
+                error,
+                diagnostic.ErrorCategory,
+                diagnostic.ExecutionMode,
+                outcome);
         }
+
+        var responseOutcome = response.Diagnostic == null
+            ? NodeToolOutcome.Success
+            : NodeToolOutcome.Failure;
+        NodeToolInvocation.CompleteChild(
+            executeActivity,
+            responseOutcome,
+            response.Diagnostic?.ErrorCategory ?? NodeToolErrorCategory.None,
+            response.Diagnostic?.ExecutionMode,
+            sandboxDenialReason: response.Diagnostic?.SandboxDenialReason);
 
         var payloadJson = response.Payload is null
             ? "null"
             : JsonSerializer.Serialize(response.Payload, PayloadJsonOptions);
 
-        return new
-        {
-            content = new[]
+        return new McpToolCallResult(
+            new
             {
-                new { type = "text", text = payloadJson },
+                content = new[]
+                {
+                    new { type = "text", text = payloadJson },
+                },
+                isError = false,
             },
-            isError = false,
-        };
+            response.Diagnostic);
     }
 
     private static string GetRequestKey(JsonElement requestId) =>
@@ -628,6 +783,96 @@ public class McpToolBridge
 
     private sealed class McpToolException : Exception
     {
-        public McpToolException(string message) : base(message) { }
+        public McpToolException(
+            string message,
+            NodeToolErrorCategory errorCategory,
+            NodeToolExecutionMode? executionMode = null,
+            NodeToolOutcome outcome = NodeToolOutcome.Failure,
+            Type? errorType = null)
+            : base(message)
+        {
+            ErrorCategory = errorCategory;
+            ExecutionMode = executionMode;
+            Outcome = outcome;
+            ErrorType = errorType;
+        }
+
+        public NodeToolErrorCategory ErrorCategory { get; }
+        public NodeToolExecutionMode? ExecutionMode { get; }
+        public NodeToolOutcome Outcome { get; }
+        public Type? ErrorType { get; }
+    }
+
+    private sealed class McpCapabilityException : Exception
+    {
+        public McpCapabilityException(Exception innerException)
+            : base("Capability execution failed.", innerException)
+        {
+        }
+    }
+
+    private sealed record McpToolCallResult(object Result, NodeToolDiagnostic? Diagnostic);
+
+    private void CompleteToolTelemetry(
+        NodeToolInvocation telemetry,
+        NodeToolOutcome outcome,
+        NodeToolErrorCategory category,
+        NodeToolExecutionMode? executionMode,
+        Type? errorType)
+    {
+        var completion = telemetry.Complete(outcome, category, executionMode, errorType);
+        if (completion == null)
+            return;
+
+        try
+        {
+            ToolTelemetryCompleted?.Invoke(this, completion);
+        }
+        catch (Exception ex)
+        {
+            _logger.Warn($"[MCP] Tool telemetry completion handler failed: {ex.GetType().Name}");
+        }
+    }
+
+    internal sealed class McpPendingToolTelemetry
+    {
+        private readonly McpToolBridge _owner;
+        private readonly NodeToolInvocation _telemetry;
+        private readonly NodeToolOutcome _outcome;
+        private readonly NodeToolErrorCategory _category;
+        private readonly NodeToolExecutionMode? _executionMode;
+        private readonly Type? _errorType;
+
+        public McpPendingToolTelemetry(
+            McpToolBridge owner,
+            NodeToolInvocation telemetry,
+            NodeToolOutcome outcome,
+            NodeToolErrorCategory category,
+            NodeToolExecutionMode? executionMode,
+            Type? errorType)
+        {
+            _owner = owner;
+            _telemetry = telemetry;
+            _outcome = outcome;
+            _category = category;
+            _executionMode = executionMode;
+            _errorType = errorType;
+        }
+
+        public void CompleteDelivery(Type? deliveryError = null) =>
+            _owner.CompleteToolTelemetry(
+                _telemetry,
+                deliveryError == null ? _outcome : NodeToolOutcome.Failure,
+                deliveryError == null ? _category : NodeToolErrorCategory.TransportFailure,
+                _executionMode,
+                deliveryError ?? _errorType);
+    }
+
+    internal sealed record McpTransportResponse(
+        string? Body,
+        McpPendingToolTelemetry? PendingTelemetry)
+    {
+        public void CompleteDelivery(Type? deliveryError = null) =>
+            PendingTelemetry?.CompleteDelivery(deliveryError);
     }
 }

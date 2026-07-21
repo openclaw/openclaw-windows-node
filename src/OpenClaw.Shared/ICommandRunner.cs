@@ -1,7 +1,9 @@
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Threading;
 using System.Threading.Tasks;
+using OpenClaw.Shared.Telemetry;
 
 namespace OpenClaw.Shared;
 
@@ -49,6 +51,9 @@ public class CommandRequest
     /// a different host shell than the sandbox effective shell.
     /// </summary>
     public string? ApprovedHostFallbackShell { get; set; }
+
+    internal NodeToolInvocation? Telemetry { get; set; }
+    internal ActivityContext TelemetryParentContext { get; set; }
 }
 
 /// <summary>
@@ -61,6 +66,9 @@ public class CommandResult
     public int ExitCode { get; set; }
     public bool TimedOut { get; set; }
     public long DurationMs { get; set; }
+    public NodeToolExecutionMode? ExecutionMode { get; set; }
+    public NodeToolErrorCategory ErrorCategory { get; set; }
+    public NodeToolSandboxDenialReason? SandboxDenialReason { get; set; }
 }
 
 /// <summary>
@@ -106,4 +114,21 @@ public interface IHostFallbackAwareCommandRunner : ICommandRunner
     /// fallback cannot change the already-approved effective shell.
     /// </summary>
     string? ResolveHostFallbackShellForApproval(string? requestedShell, string effectiveShell);
+}
+
+/// <summary>
+/// Optional contract for runners whose active transport may not support the
+/// direct-argv execution form (<see cref="CommandRequest.Argv"/>). Callers that
+/// must deliver an already-approved argv verbatim probe this before submitting,
+/// so an incompatible transport produces an explicit up-front error instead of
+/// a rejected execution after approval.
+/// </summary>
+public interface IDirectArgvSupportAwareCommandRunner : ICommandRunner
+{
+    /// <summary>
+    /// True when a direct-argv request submitted now would reach a runner that
+    /// executes <see cref="CommandRequest.Argv"/> verbatim. False when the
+    /// active transport cannot carry an argv faithfully and would fail closed.
+    /// </summary>
+    bool CanExecuteDirectArgv();
 }

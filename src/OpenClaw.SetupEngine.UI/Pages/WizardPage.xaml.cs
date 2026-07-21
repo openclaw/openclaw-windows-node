@@ -66,8 +66,8 @@ public sealed partial class WizardPage : Page
         BusyRing.Visibility = Visibility.Collapsed;
         BusyRing.IsActive = false;
         ShowRecoveryActions();
-        AppendTranscriptTurn("Welcome — let's connect your agent", null);
-        AppendTranscriptTurn("Choose your AI provider", "Anthropic — Claude");
+        AppendTranscriptTurn("Welcome: let's connect your agent", null);
+        AppendTranscriptTurn("Choose your AI provider", "Anthropic: Claude");
         AppendTranscriptTurn("Paste your API key", "••••••");
 
         if (SetupPreview.RequestedPage == "wizard-error")

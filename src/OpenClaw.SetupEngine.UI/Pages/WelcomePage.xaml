@@ -19,7 +19,7 @@
                        Style="{StaticResource BodyTextBlockStyle}"
                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"
                        HorizontalAlignment="Center"
-                       Text="OpenClaw runs your agent through a gateway. Choose how to set it up on this PC — you can change this later." />
+                       Text="OpenClaw runs your agent through a gateway. Choose how to set it up on this PC. You can change this later." />
         </StackPanel>
 
         <StackPanel Grid.Row="1" VerticalAlignment="Top" Margin="0,24,0,0" Spacing="12"
@@ -80,7 +80,7 @@
                         <TextBlock TextWrapping="Wrap"
                                    Style="{StaticResource CaptionTextBlockStyle}"
                                    Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                                   Text="Already run an OpenClaw gateway — here, on another machine, or remote? Pair without installing anything." />
+                                   Text="Already run an OpenClaw gateway: here, on another machine, or remote? Pair without installing anything." />
                     </StackPanel>
                 </Grid>
             </Border>

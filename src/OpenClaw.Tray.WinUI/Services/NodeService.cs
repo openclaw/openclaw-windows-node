@@ -11,6 +11,7 @@ using OpenClaw.Shared.Capabilities;
 using OpenClaw.Shared.ExecApprovals;
 using OpenClaw.Shared.Mcp;
 using OpenClaw.Shared.Mxc;
+using OpenClaw.Shared.Telemetry;
 using OpenClawTray.Chat;
 using OpenClawTray.A2UI.Actions;
 using OpenClawTray.A2UI.Rendering;
@@ -79,6 +80,12 @@ public sealed class NodeService : IDisposable, IAsyncDisposable
     
     // Capabilities
     private SystemCapability? _systemCapability;
+
+    // Created once per NodeService lifetime and reused across capability
+    // rebuilds. The coordinator serializes approvals with a per-instance
+    // semaphore, so a fresh instance per rebuild would let an in-flight
+    // approval on the old instance overlap with one on the new instance.
+    private IExecApprovalV2Handler? _execApprovalsV2Handler;
     private CanvasCapability? _canvasCapability;
     private ScreenCapability? _screenCapability;
     private CameraCapability? _cameraCapability;
@@ -154,6 +161,7 @@ public sealed class NodeService : IDisposable, IAsyncDisposable
         System.IO.Path.Combine(SettingsManager.SettingsDirectoryPath, "mcp-token.txt");
     private volatile bool _enableMcpServer;
     private McpHttpServer? _mcpServer;
+    private McpToolBridge? _mcpToolBridge;
     private string? _mcpStartupError;
     public bool IsMcpRunning => _mcpServer != null;
     public VoiceService? VoiceService => _voiceService;
@@ -169,6 +177,7 @@ public sealed class NodeService : IDisposable, IAsyncDisposable
     public event EventHandler<PairingStatusEventArgs>? PairingStatusChanged;
     public event EventHandler<ChannelHealth[]>? ChannelHealthUpdated;
     public event EventHandler<NodeInvokeCompletedEventArgs>? InvokeCompleted;
+    public event EventHandler<NodeToolTelemetryCompletion>? ToolTelemetryCompleted;
     public event EventHandler<GatewaySelfInfo>? GatewaySelfUpdated;
     public event EventHandler<RecordingStateEventArgs>? RecordingStateChanged;
     public event EventHandler<NodeToastRequestedEventArgs>? ToastRequested;
@@ -299,7 +308,11 @@ public sealed class NodeService : IDisposable, IAsyncDisposable
     
     private void RegisterCapabilities()
     {
-        new ExecApprovalsStore(_dataPath, _logger).MigrateLegacyFileIfNeeded();
+        // With the new approvals path enabled the migration runs on the same
+        // store instance handed to the coordinator below; the legacy-file
+        // migration itself is independent of which path handles system.run.
+        if (_settings?.ExecApprovalsNewPathEnabled != true)
+            new ExecApprovalsStore(_dataPath, _logger).MigrateLegacyFileIfNeeded();
 
         // Hold the lock across the entire rebuild. The body is sync construction
         // (no awaits), so the lock is held briefly and an MCP tools/list arriving
@@ -329,6 +342,19 @@ public sealed class NodeService : IDisposable, IAsyncDisposable
         execPrompt.InlineApprovalRequested += OnLocalExecApprovalRequested;
         execPrompt.Decided += OnLocalExecApprovalDecided;
         _systemCapability.SetPromptHandler(execPrompt);
+
+        // New exec approvals path: explicit opt-in, default off.
+        if (_settings?.ExecApprovalsNewPathEnabled == true)
+        {
+            // One coordinator per service lifetime (it serializes approvals with
+            // a per-instance semaphore), but a failed construction must not be
+            // sticky: only a real coordinator is cached, so the next capability
+            // rebuild retries a transient initialization fault instead of
+            // pinning the fail-closed handler until restart.
+            _execApprovalsV2Handler ??= TryBuildExecApprovalsV2Coordinator();
+            _systemCapability.SetV2Handler(_execApprovalsV2Handler ?? ExecApprovalV2NullHandler.Instance);
+        }
+
         Register(_systemCapability);
 
         if (NodeCapabilityGating.ShouldRegisterCanvas(_settings))
@@ -533,11 +559,13 @@ public sealed class NodeService : IDisposable, IAsyncDisposable
             client.HealthReceived -= OnNodeHealthReceived;
             client.GatewaySelfUpdated -= OnGatewaySelfUpdated;
             client.InvokeCompleted -= OnNodeInvokeCompleted;
+            client.ToolTelemetryCompleted -= OnToolTelemetryCompleted;
             client.StatusChanged += OnNodeStatusChanged;
             client.PairingStatusChanged += OnPairingStatusChanged;
             client.HealthReceived += OnNodeHealthReceived;
             client.GatewaySelfUpdated += OnGatewaySelfUpdated;
             client.InvokeCompleted += OnNodeInvokeCompleted;
+            client.ToolTelemetryCompleted += OnToolTelemetryCompleted;
         }
 
         bool capabilitiesBuilt;
@@ -571,6 +599,39 @@ public sealed class NodeService : IDisposable, IAsyncDisposable
         client.HealthReceived -= OnNodeHealthReceived;
         client.GatewaySelfUpdated -= OnGatewaySelfUpdated;
         client.InvokeCompleted -= OnNodeInvokeCompleted;
+        client.ToolTelemetryCompleted -= OnToolTelemetryCompleted;
+    }
+
+    /// <summary>
+    /// Build the handler for the new exec approvals path. Fail closed: if the
+    /// coordinator cannot be built, return the null handler (typed unavailable
+    /// deny) rather than falling back silently to the legacy path. The result
+    /// is cached for the NodeService lifetime so the coordinator stays a
+    /// singleton across capability rebuilds. The approval prompt UI is not
+    /// wired yet, so prompt-required decisions resolve through the store's
+    /// ask fallback.
+    /// </summary>
+    private IExecApprovalV2Handler? TryBuildExecApprovalsV2Coordinator()
+    {
+        try
+        {
+            var store = new ExecApprovalsStore(_dataPath, _logger);
+            store.MigrateLegacyFileIfNeeded();
+            var coordinator = new ExecApprovalsCoordinator(
+                store,
+                AlwaysCannotPresentEvaluator.Instance,
+                ExecApprovalV2NullPromptHandler.Instance,
+                _logger);
+            _logger.Info("[EXEC-APPROVALS] new path enabled (prompt UI not wired; fallback-only)");
+            return coordinator;
+        }
+        catch (Exception ex)
+        {
+            _logger.Error(
+                "[EXEC-APPROVALS] new path enabled but coordinator unavailable; " +
+                "failing closed until the next capability rebuild retries", ex);
+            return null;
+        }
     }
 
     /// <summary>
@@ -798,6 +859,7 @@ public sealed class NodeService : IDisposable, IAsyncDisposable
                 _logger,
                 serverName: "openclaw-tray-mcp",
                 serverVersion: AppVersionInfo.Version);
+            bridge.ToolTelemetryCompleted += OnToolTelemetryCompleted;
             // Bearer-token auth. Token is created on first start and persists
             // alongside other build-specific app data (so OPENCLAW_TRAY_DATA_DIR
             // isolation in tests scopes the token too); CLI/agent registration
@@ -815,6 +877,7 @@ public sealed class NodeService : IDisposable, IAsyncDisposable
             attempt = new McpHttpServer(bridge, McpPort, _logger, authToken);
             attempt.Start();
             _mcpServer = attempt;
+            _mcpToolBridge = bridge;
             _mcpStartupError = null;
             return true;
         }
@@ -869,7 +932,9 @@ public sealed class NodeService : IDisposable, IAsyncDisposable
         // Awaited shutdown callers depend on this drain finishing before
         // capability-backing services are torn down.
         var server = _mcpServer;
+        var bridge = _mcpToolBridge;
         _mcpServer = null;
+        _mcpToolBridge = null;
         _mcpStartupError = null;
 
         if (server == null)
@@ -882,6 +947,11 @@ public sealed class NodeService : IDisposable, IAsyncDisposable
         catch (Exception ex)
         {
             _logger.Warn($"[MCP] Dispose error: {ex.Message}");
+        }
+        finally
+        {
+            if (bridge != null)
+                bridge.ToolTelemetryCompleted -= OnToolTelemetryCompleted;
         }
     }
 
@@ -1048,6 +1118,11 @@ public sealed class NodeService : IDisposable, IAsyncDisposable
     private void OnNodeInvokeCompleted(object? sender, NodeInvokeCompletedEventArgs args)
     {
         InvokeCompleted?.Invoke(this, args);
+    }
+
+    private void OnToolTelemetryCompleted(object? sender, NodeToolTelemetryCompletion completion)
+    {
+        ToolTelemetryCompleted?.Invoke(this, completion);
     }
     
     #region System Capability Handlers

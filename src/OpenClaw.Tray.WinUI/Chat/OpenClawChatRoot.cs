@@ -276,6 +276,7 @@ public sealed class OpenClawChatRoot : Component
             composeOnlyThread = new ChatThread
             {
                 Id = composeKey,
+                AgentId = snapshot.ComposeTarget.AgentId,
                 Title = lastState?.ThreadTitle ?? "OpenClaw Windows Tray",
                 Model = lastState?.Model,
                 ModelProvider = lastState?.ModelProvider,
@@ -529,18 +530,14 @@ public sealed class OpenClawChatRoot : Component
                 OnPermissionResponse: (rid, action) => OnPermission(effectiveThread.Id!, rid, action)));
         }
 
-        // Session list for the composer dropdown — grouped by agent, keyed by
-        // ID so every session gets its own entry regardless of display name.
-        // Exclude cron sessions which are automated/background.
+        // Session list for the composer dropdown — grouped by the Gateway's
+        // agent presentation metadata. Background sessions stay hidden unless
+        // the user explicitly navigated to one, in which case it remains usable.
+        // Exclude ended sessions (completed/failed/killed/timeout) from the picker.
         var channelGroups = SessionVisibilityFilter.VisibleChatPickerThreads(snapshot.Threads)
             .Where(t => !string.IsNullOrEmpty(t.Title)
-                     && !t.Id.Contains(":cron:", StringComparison.Ordinal))
-            .GroupBy(t =>
-            {
-                // Parse agent ID from key like "agent:{agentId}:{slot}"
-                var parts = (t.Id ?? "").Split(':');
-                return parts.Length >= 3 && parts[0] == "agent" ? parts[1] : "other";
-            })
+                     && t.IsVisibleInSessionPicker(effectiveThread?.Id))
+            .GroupBy(t => string.IsNullOrWhiteSpace(t.AgentId) ? "other" : t.AgentId!)
             // "main" first (sort key 0), then alphabetical
             .OrderBy(g => g.Key.Equals("main", StringComparison.OrdinalIgnoreCase) ? 0 : 1)
             .ThenBy(g => g.Key, StringComparer.OrdinalIgnoreCase)
@@ -553,19 +550,14 @@ public sealed class OpenClawChatRoot : Component
         // (e.g. fresh install: the gateway has no real sessions yet), inject a
         // single-entry "Main" group so the composer's channel combo isn't blank.
         //
-        // Thread-id format (see OpenClawChatDataProvider): the canonical key
-        // is ``agent:<agentId>:<slot>`` (e.g. ``agent:main:default``). The
-        // first segment is always literal ``agent``; the second is the
-        // agent identifier we use to label the channel group; the third is
-        // the slot/session-instance within that agent. When the key
-        // doesn't match this layout we fall back to a generic "Main"
-        // label rather than mis-parsing some other id shape.
+        // Keep routing ids opaque here too. The provider carries the Gateway's
+        // agent identity separately, including for compose-only threads.
+        // Don't inject ended sessions into the synthetic group.
         if (effectiveThread is not null
             && SessionVisibilityFilter.IsVisibleInChatPicker(effectiveThread)
             && !ChannelGroupsContain(channelGroups, effectiveThread.Id))
         {
-            var parts = (effectiveThread.Id ?? "").Split(':');
-            var agentId = parts.Length >= 3 && parts[0] == "agent" ? parts[1] : "main";
+            var agentId = string.IsNullOrWhiteSpace(effectiveThread.AgentId) ? "main" : effectiveThread.AgentId!;
             var agentLabel = agentId.Length > 0 ? char.ToUpperInvariant(agentId[0]) + agentId[1..] : "Main";
             var syntheticGroup = new ChannelGroup(
                 AgentLabel: agentLabel,
