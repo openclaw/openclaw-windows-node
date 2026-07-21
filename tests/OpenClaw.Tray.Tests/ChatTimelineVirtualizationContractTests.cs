@@ -34,10 +34,15 @@ public sealed class ChatTimelineVirtualizationContractTests
         Assert.Contains("FollowToBottomMaxSettleTicks", timeline);
         Assert.Contains("FollowToBottomSettleStableTicks", timeline);
         Assert.Contains("scrollSettleTimerRef", timeline);
-        //   3. Reactive follows are coalesced and a genuine user scroll-away is authoritative, so
-        //      the follow machinery never clobbers the user's own scroll ("fighting the scrollbar").
+        //   3. Reactive follows are coalesced and unowned ViewChanging transitions are authoritative
+        //      user intent, so follow machinery never clobbers a wheel/drag transition.
         Assert.Contains("scrollPinPendingRef", timeline);
-        Assert.Contains("UserScrolledAway", timeline);
+        Assert.Contains("programmaticScrollRef", timeline);
+        Assert.Contains("sv.ViewChanging +=", timeline);
+        Assert.Contains("CancelAutoFollowForUser", timeline);
+        Assert.Contains("TimelineScrollIntent.NotifyUserIntent", timeline);
+        Assert.Contains("UIElement.PointerWheelChangedEvent", timeline);
+        Assert.Contains("handledEventsToo: true", timeline);
         Assert.Contains("sv.UpdateLayout();", timeline);
     }
 

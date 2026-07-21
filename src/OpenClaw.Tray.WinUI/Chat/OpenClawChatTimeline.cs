@@ -84,13 +84,7 @@ public class OpenClawChatTimeline : Component<OpenClawChatTimelineProps>
     const int FollowToBottomSettleTickMs = 16;
     const int FollowToBottomMaxSettleTicks = 24;
     const int FollowToBottomSettleStableTicks = 2;
-    // While the settle timer is chasing the true bottom, an offset that lands below the bottom is
-    // either post-jump virtualization re-estimation (a BOUNDED band — keep chasing) or a genuine
-    // user scroll-up to read earlier history (MANY viewports away — abandon and don't fight). The
-    // abandon gap is the larger of an absolute floor and a viewport-relative band so it scales
-    // with window size while never dipping below the floor on short viewports.
-    const double FollowToBottomMinAbandonGap = 900;
-    const double FollowToBottomAbandonViewportFactor = 1.5;
+    const double ScrollTargetEpsilon = 0.5;
     // Follow-to-bottom during in-place streaming growth is handled by WinUI ScrollViewer scroll
     // anchoring (sv.VerticalAnchorRatio = 1.0), NOT by a reactive post-layout re-pin. With the
     // bottom row pinned as an anchor, the ScrollViewer keeps it glued to the viewport bottom
@@ -110,6 +104,17 @@ public class OpenClawChatTimeline : Component<OpenClawChatTimelineProps>
     /// </summary>
     private static readonly Dictionary<string, double> s_sessionOffsets = new();
     private const int MaxSessionOffsets = 50;
+
+    private sealed class ProgrammaticScrollTransition(
+        long generation,
+        double requestedTargetOffset,
+        bool followOnCompletion)
+    {
+        public long Generation { get; } = generation;
+        public double RequestedTargetOffset { get; } = requestedTargetOffset;
+        public bool FollowOnCompletion { get; } = followOnCompletion;
+        public double? PlatformTargetOffset { get; set; }
+    }
 
     // SECURITY (chat-rubber-duck HIGH 1 / MEDIUM 3): chat-bubble Markdown is
     // rendered as sanitized inert text that:
@@ -526,6 +531,9 @@ public class OpenClawChatTimeline : Component<OpenClawChatTimelineProps>
         var sessionOffsetsRef = UseRef<Dictionary<string, double>>(new());
         var prevScrollToBottomTokenRef = UseRef(0);
         var scrollSettleTimerRef = UseRef<Microsoft.UI.Xaml.DispatcherTimer?>(null);
+        var scrollGenerationRef = UseRef(0L);
+        var programmaticScrollRef = UseRef<ProgrammaticScrollTransition?>(null);
+        var userScrollActiveRef = UseRef(false);
         // A reactive follow (SizeChanged) enqueues a pin on the dispatcher. Without a guard,
         // the many SizeChanged notifications fired across an ItemsRepeater realization pass pile
         // up dozens of enqueued pins; each re-pins to the bottom and CANCELS a user scroll issued
@@ -689,8 +697,83 @@ public class OpenClawChatTimeline : Component<OpenClawChatTimelineProps>
 
             lastVerticalOffsetRef.Current = sv.VerticalOffset;
             lastScrollableHeightRef.Current = sv.ScrollableHeight;
-            isFollowingRef.Current = sv.ScrollableHeight - sv.VerticalOffset <= FollowThreshold;
             StoreSessionOffset(prevSessionIdRef.Current, sv.VerticalOffset);
+        }
+
+        long StartProgrammaticScrollOperation()
+        {
+            programmaticScrollRef.Current = null;
+            userScrollActiveRef.Current = false;
+            return ++scrollGenerationRef.Current;
+        }
+
+        void CancelAutoFollowForUser(Microsoft.UI.Xaml.Controls.ScrollViewer sv)
+        {
+            ++scrollGenerationRef.Current;
+            programmaticScrollRef.Current = null;
+            userScrollActiveRef.Current = true;
+            pendingRestoreOffsetRef.Current = null;
+            isFollowingRef.Current = false;
+            scrollPinPendingRef.Current = false;
+            scrollSettleTimerRef.Current?.Stop();
+            scrollSettleTimerRef.Current = null;
+            sv.VerticalAnchorRatio = double.NaN;
+        }
+
+        void CompleteUserScroll(Microsoft.UI.Xaml.Controls.ScrollViewer sv)
+        {
+            if (!userScrollActiveRef.Current)
+                return;
+
+            userScrollActiveRef.Current = false;
+            var reachedBottom = sv.ScrollableHeight - sv.VerticalOffset <= ScrollTargetEpsilon;
+            isFollowingRef.Current = reachedBottom;
+            sv.VerticalAnchorRatio = reachedBottom ? 1.0 : double.NaN;
+        }
+
+        void NotifyDiscreteUserIntent(Microsoft.UI.Xaml.Controls.ScrollViewer sv)
+        {
+            var originOffset = sv.VerticalOffset;
+            if (!TimelineScrollIntent.NotifyUserIntent(sv))
+                return;
+
+            var intentGeneration = scrollGenerationRef.Current;
+            sv.DispatcherQueue.TryEnqueue(
+                Microsoft.UI.Dispatching.DispatcherQueuePriority.Low,
+                () =>
+                {
+                    if (scrollGenerationRef.Current == intentGeneration
+                        && userScrollActiveRef.Current
+                        && Math.Abs(sv.VerticalOffset - originOffset) <= ScrollTargetEpsilon)
+                    {
+                        CompleteUserScroll(sv);
+                    }
+                });
+        }
+
+        bool ChangeViewProgrammatically(
+            Microsoft.UI.Xaml.Controls.ScrollViewer sv,
+            long generation,
+            double targetOffset,
+            bool disableAnimation,
+            bool followOnCompletion)
+        {
+            if (scrollGenerationRef.Current != generation)
+                return false;
+
+            var transition = new ProgrammaticScrollTransition(
+                generation,
+                targetOffset,
+                followOnCompletion);
+            programmaticScrollRef.Current = transition;
+            var accepted = sv.ChangeView(null, targetOffset, null, disableAnimation);
+            if (!accepted && ReferenceEquals(programmaticScrollRef.Current, transition))
+            {
+                programmaticScrollRef.Current = null;
+                isFollowingRef.Current = followOnCompletion;
+            }
+
+            return accepted;
         }
 
         void QueueScrollToBottom(
@@ -699,6 +782,7 @@ public class OpenClawChatTimeline : Component<OpenClawChatTimelineProps>
             bool disableAnimation,
             bool respectUserScrollPosition = false)
         {
+            var generation = StartProgrammaticScrollOperation();
             isFollowingRef.Current = true;
 
             // Bottom scroll anchoring (VerticalAnchorRatio = 1.0) keeps whatever row currently
@@ -716,17 +800,22 @@ public class OpenClawChatTimeline : Component<OpenClawChatTimelineProps>
             var anchoringRestored = false;
             void RestoreAnchoring()
             {
-                if (anchoringRestored)
+                if (anchoringRestored || scrollGenerationRef.Current != generation)
                     return;
                 anchoringRestored = true;
-                sv.VerticalAnchorRatio = 1.0;
+                sv.VerticalAnchorRatio = isFollowingRef.Current ? 1.0 : double.NaN;
             }
 
             void PinToBottom(bool passDisableAnimation)
             {
                 sv.UpdateLayout();
                 var bottom = sv.ScrollableHeight;
-                sv.ChangeView(null, bottom, null, passDisableAnimation);
+                ChangeViewProgrammatically(
+                    sv,
+                    generation,
+                    bottom,
+                    passDisableAnimation,
+                    followOnCompletion: true);
                 lastVerticalOffsetRef.Current = bottom;
                 lastScrollableHeightRef.Current = sv.ScrollableHeight;
                 isFollowingRef.Current = true;
@@ -741,22 +830,6 @@ public class OpenClawChatTimeline : Component<OpenClawChatTimelineProps>
             scrollSettleTimerRef.Current?.Stop();
             scrollSettleTimerRef.Current = null;
 
-            // A scroll-to-bottom is a FOLLOW intent, but it can be triggered by a layout growth
-            // (thinking indicator / new row) that fires while the user has ALREADY scrolled far up
-            // to read earlier history. Re-pinning then would yank them back down (the reported
-            // "fighting the scrollbar" bug). Distinguish the two by how far the live offset sits
-            // from the bottom: content-growth follow stays within a bounded band of the bottom,
-            // while a reader has scrolled MANY viewports away. The gap is measured on a FRESH
-            // layout (below), after any in-flight user ChangeView has been applied, so the decision
-            // never races a scroll the user just issued.
-            bool UserScrolledAway()
-            {
-                var abandonGap = Math.Max(
-                    FollowToBottomMinAbandonGap,
-                    sv.ViewportHeight * FollowToBottomAbandonViewportFactor);
-                return sv.ScrollableHeight - sv.VerticalOffset > abandonGap;
-            }
-
             // Coalesce reactive follows: mark a pin in flight so the SizeChanged storm does not
             // pile up dozens of enqueued pins. Held across the enqueued callback's SYNCHRONOUS
             // layout/pin work (during which our own UpdateLayout/ChangeView can re-enter
@@ -766,6 +839,9 @@ public class OpenClawChatTimeline : Component<OpenClawChatTimelineProps>
 
             if (!sv.DispatcherQueue.TryEnqueue(() =>
             {
+                if (scrollGenerationRef.Current != generation)
+                    return;
+
                 // Stop any timer that a concurrently-enqueued QueueScrollToBottom may have created
                 // and left in the ref, so we never leak an orphaned timer that keeps pinning.
                 scrollSettleTimerRef.Current?.Stop();
@@ -777,7 +853,7 @@ public class OpenClawChatTimeline : Component<OpenClawChatTimelineProps>
                 // switch, token bump, user sent a message) pass respectUserScrollPosition = false
                 // and always pin, since they ARE the user asking to jump to the newest row.
                 sv.UpdateLayout();
-                if ((respectUserScrollPosition && UserScrolledAway()) || suppressAutoFollowRef.Current)
+                if ((respectUserScrollPosition && !isFollowingRef.Current) || suppressAutoFollowRef.Current)
                 {
                     // Abandoning the follow: we are NOT at the bottom, so DISABLE anchoring rather
                     // than restore it to 1.0 — pinning the bottom row here would let post-remount
@@ -813,11 +889,9 @@ public class OpenClawChatTimeline : Component<OpenClawChatTimelineProps>
 
                     ticks++;
 
-                    // Honor user-scroll intent detected by ViewChanged between ticks.
-                    // When the user scrolls, their ChangeView fires ViewChanged which calls
-                    // UpdateScrollMetrics → sets isFollowingRef=false (gap > FollowThreshold).
-                    // Check BEFORE UpdateLayout so we never call PinToBottom after a user scroll.
-                    if (!isFollowingRef.Current)
+                    // ViewChanging invalidates this generation before any user transition can
+                    // compete with the next programmatic pin.
+                    if (scrollGenerationRef.Current != generation || !isFollowingRef.Current)
                     {
                         timer.Stop();
                         scrollSettleTimerRef.Current = null;
@@ -837,11 +911,7 @@ public class OpenClawChatTimeline : Component<OpenClawChatTimelineProps>
                         return;
                     }
 
-                    // Yield to a real user scroll away from the bottom (bounded-band vs. many-
-                    // viewports discriminator described on UserScrolledAway above). The settle
-                    // timer ALWAYS yields — even for an explicit scroll-to-bottom, once the initial
-                    // jump has landed we must not keep fighting a user who then drags up to read.
-                    if (UserScrolledAway() || suppressAutoFollowRef.Current)
+                    if (suppressAutoFollowRef.Current)
                     {
                         // Same abandon rule as the first pin: disable anchoring (do not restore
                         // 1.0) so the held reading position is not dragged by extent re-estimation.
@@ -890,6 +960,7 @@ public class OpenClawChatTimeline : Component<OpenClawChatTimelineProps>
 
         void QueuePreservePrependOffset(Microsoft.UI.Xaml.Controls.ScrollViewer sv, string? sessionId, double oldOffset, double oldScrollableHeight)
         {
+            var generation = StartProgrammaticScrollOperation();
             // Content is inserted ABOVE the current viewport ("load earlier history"). In a stock
             // WinUI ItemsRepeater, bottom scroll anchoring (VerticalAnchorRatio = 1.0) would
             // natively preserve the on-screen position by shifting VerticalOffset down by the
@@ -914,13 +985,21 @@ public class OpenClawChatTimeline : Component<OpenClawChatTimelineProps>
 
             void RestoreOffset()
             {
+                if (scrollGenerationRef.Current != generation)
+                    return;
+
                 // Re-seat by the ACTUAL inserted height measured after layout (ScrollableHeight
                 // delta), not a stale precomputed value, so estimated-extent wobble during row
                 // realization can't leave the reader clamped to the bottom.
                 sv.UpdateLayout();
                 var delta = sv.ScrollableHeight - oldScrollableHeight;
                 var target = ClampOffset(oldOffset + Math.Max(0, delta), sv.ScrollableHeight);
-                sv.ChangeView(null, target, null, disableAnimation: true);
+                ChangeViewProgrammatically(
+                    sv,
+                    generation,
+                    target,
+                    disableAnimation: true,
+                    followOnCompletion: sv.ScrollableHeight - target <= FollowThreshold);
                 lastVerticalOffsetRef.Current = target;
                 lastScrollableHeightRef.Current = sv.ScrollableHeight;
                 isFollowingRef.Current = sv.ScrollableHeight - target <= FollowThreshold;
@@ -2824,8 +2903,14 @@ public class OpenClawChatTimeline : Component<OpenClawChatTimelineProps>
                                     {
                                         pendingRestoreOffsetRef.Current = null;
                                         var target = ClampOffset(pendingOffset, sv.ScrollableHeight);
+                                        var generation = StartProgrammaticScrollOperation();
                                         isFollowingRef.Current = sv.ScrollableHeight - target <= FollowThreshold;
-                                        sv.ChangeView(null, target, null, disableAnimation: true);
+                                        ChangeViewProgrammatically(
+                                            sv,
+                                            generation,
+                                            target,
+                                            disableAnimation: true,
+                                            followOnCompletion: isFollowingRef.Current);
                                         lastVerticalOffsetRef.Current = target;
                                         lastScrollableHeightRef.Current = sv.ScrollableHeight;
                                         suppressAutoFollowRef.Current = false;
@@ -2839,10 +2924,10 @@ public class OpenClawChatTimeline : Component<OpenClawChatTimelineProps>
                                     // appears below the anchor (the thinking indicator, an appended
                                     // row) is not followed by anchoring alone. Re-pin on the sticky
                                     // follow intent only; QueueScrollToBottom itself re-checks the
-                                    // live offset on a fresh layout and BAILS if the user has since
-                                    // scrolled away (see UserScrolledAway there), so this cannot yank
-                                    // a scrolled-up reader back down even though SizeChanged fires on
-                                    // the same realization pass as their scroll.
+                                    // sticky user-intent state on a fresh layout and bails if the user
+                                    // has since scrolled away, so this cannot yank a scrolled-up reader
+                                    // back down even though SizeChanged fires on the same realization
+                                    // pass as their scroll.
                                     if (!suppressAutoFollowRef.Current
                                         && isFollowingRef.Current
                                         && scrollSettleTimerRef.Current is null
@@ -2872,7 +2957,69 @@ public class OpenClawChatTimeline : Component<OpenClawChatTimelineProps>
                     // pre-paint as the ItemsRepeater extent grows during streaming (see the
                     // constants note above). This replaces the old reactive ViewChanged re-pin.
                     sv.VerticalAnchorRatio = 1.0;
-                    sv.ViewChanged += (_, _) =>
+                    TimelineScrollIntent.Register(sv, () => CancelAutoFollowForUser(sv));
+                    sv.AddHandler(
+                        UIElement.PointerWheelChangedEvent,
+                        new Microsoft.UI.Xaml.Input.PointerEventHandler((_, _) => NotifyDiscreteUserIntent(sv)),
+                        handledEventsToo: true);
+                    sv.AddHandler(
+                        UIElement.PointerPressedEvent,
+                        new Microsoft.UI.Xaml.Input.PointerEventHandler((_, args) =>
+                        {
+                            if (IsScrollBarInteraction(args.OriginalSource as DependencyObject))
+                                TimelineScrollIntent.NotifyUserIntent(sv);
+                        }),
+                        handledEventsToo: true);
+                    sv.AddHandler(
+                        UIElement.PointerReleasedEvent,
+                        new Microsoft.UI.Xaml.Input.PointerEventHandler((_, args) =>
+                        {
+                            if (IsScrollBarInteraction(args.OriginalSource as DependencyObject))
+                                CompleteUserScroll(sv);
+                        }),
+                        handledEventsToo: true);
+                    sv.DirectManipulationStarted += (_, _) => TimelineScrollIntent.NotifyUserIntent(sv);
+                    sv.DirectManipulationCompleted += (_, _) => CompleteUserScroll(sv);
+                    sv.KeyDown += (_, args) =>
+                    {
+                        if (args.Key is global::Windows.System.VirtualKey.Up
+                            or global::Windows.System.VirtualKey.Down
+                            or global::Windows.System.VirtualKey.PageUp
+                            or global::Windows.System.VirtualKey.PageDown
+                            or global::Windows.System.VirtualKey.Home
+                            or global::Windows.System.VirtualKey.End)
+                        {
+                            NotifyDiscreteUserIntent(sv);
+                        }
+                    };
+                    sv.ViewChanging += (_, args) =>
+                    {
+                        if (userScrollActiveRef.Current)
+                            return;
+
+                        var ownedTransition = programmaticScrollRef.Current;
+                        if (ownedTransition is not null
+                            && ownedTransition.Generation == scrollGenerationRef.Current)
+                        {
+                            if (ownedTransition.PlatformTargetOffset is null)
+                            {
+                                // ChangeView raises its first ViewChanging synchronously on the UI
+                                // thread, before external input can interleave. Capture WinUI's
+                                // clamped target because a virtualizing extent may not yet make the
+                                // full requested offset reachable.
+                                ownedTransition.PlatformTargetOffset = args.FinalView.VerticalOffset;
+                                return;
+                            }
+
+                            if (Math.Abs(
+                                    args.FinalView.VerticalOffset
+                                    - ownedTransition.PlatformTargetOffset.Value) <= ScrollTargetEpsilon)
+                            {
+                                return;
+                            }
+                        }
+                    };
+                    sv.ViewChanged += (_, args) =>
                     {
                         // Follow-to-bottom during in-place streaming growth is handled by scroll
                         // anchoring (VerticalAnchorRatio = 1.0), so there is NO reactive re-pin
@@ -2881,55 +3028,17 @@ public class OpenClawChatTimeline : Component<OpenClawChatTimelineProps>
                         // and drive the load-earlier trigger.
                         UpdateScrollMetrics(sv);
 
-                        // A genuine user scroll far away from the bottom is authoritative: cancel
-                        // any in-flight follow so it can't drag the reader back down. Without this,
-                        // an initial-load / append settle timer (which keeps re-pinning while the
-                        // ItemsRepeater extent estimate is still climbing) or a coalesced reactive
-                        // pin can supersede the user's own ChangeView a frame later, and the view
-                        // snaps back to the bottom (the reported "fighting the scrollbar" bug).
-                        // Disable bottom anchoring too, so extent re-estimation below the viewport
-                        // doesn't nudge the held reading position.
-                        var abandonGap = Math.Max(
-                            FollowToBottomMinAbandonGap,
-                            sv.ViewportHeight * FollowToBottomAbandonViewportFactor);
-                        if (sv.ScrollableHeight - sv.VerticalOffset > abandonGap)
+                        var ownedTransition = programmaticScrollRef.Current;
+                        if (ownedTransition is not null
+                            && ownedTransition.Generation == scrollGenerationRef.Current
+                            && !args.IsIntermediate)
                         {
-                            isFollowingRef.Current = false;
-                            scrollPinPendingRef.Current = false;
-                            if (scrollSettleTimerRef.Current is not null)
-                            {
-                                scrollSettleTimerRef.Current.Stop();
-                                scrollSettleTimerRef.Current = null;
-                            }
-                            sv.VerticalAnchorRatio = double.NaN;
+                            isFollowingRef.Current = ownedTransition.FollowOnCompletion;
+                            programmaticScrollRef.Current = null;
                         }
-                        else if (!isFollowingRef.Current
-                            && scrollSettleTimerRef.Current is not null)
+                        else if (userScrollActiveRef.Current && !args.IsIntermediate)
                         {
-                            // Moderate user scroll above FollowThreshold (but below the large
-                            // abandonGap) during an active settle timer: the user's reading intent
-                            // is authoritative. After our own PinToBottom the gap is ~0 (offset
-                            // equals ScrollableHeight), so isFollowingRef stays true across the
-                            // pin's ViewChanged. If isFollowingRef is false here, the VIEW moved
-                            // because the USER scrolled between ticks — cancel the timer so
-                            // subsequent ticks cannot re-pin their position back to the bottom.
-                            // This closes the 61–900px band where the old design tolerated noise
-                            // at the cost of fighting a deliberate scroll.
-                            scrollPinPendingRef.Current = false;
-                            scrollSettleTimerRef.Current.Stop();
-                            scrollSettleTimerRef.Current = null;
-                            sv.VerticalAnchorRatio = double.NaN;
-                        }
-                        else if (isFollowingRef.Current
-                            && scrollSettleTimerRef.Current is null
-                            && !scrollPinPendingRef.Current)
-                        {
-                            // The user (or a settled pin) returned to the bottom band: re-arm bottom
-                            // anchoring immediately so in-place streaming growth follows again,
-                            // without waiting for the next render. Skipped while an explicit pin is
-                            // in flight — that path deliberately drives to the true bottom with
-                            // anchoring off and restores 1.0 itself once the extent settles.
-                            sv.VerticalAnchorRatio = 1.0;
+                            CompleteUserScroll(sv);
                         }
 
                         if (sv.ScrollableHeight > 0
@@ -2951,7 +3060,7 @@ public class OpenClawChatTimeline : Component<OpenClawChatTimelineProps>
                 // re-estimation — and the full remount FunctionalUI performs on every streamed
                 // revision — nudge their offset (observed ~40px drift per revision). Disabling it
                 // holds the reading position steady; it is re-enabled the moment they return to the
-                // bottom band (isFollowing flips true on the next render). Explicit pins
+                // exact bottom (isFollowing flips true when the user transition completes). Explicit pins
                 // (QueueScrollToBottom) and prepend (QueuePreservePrependOffset) own the ratio for
                 // their own async windows, so defer to them while one is in flight.
                 if (scrollSettleTimerRef.Current is null && !scrollPinPendingRef.Current)
@@ -3019,5 +3128,18 @@ public class OpenClawChatTimeline : Component<OpenClawChatTimelineProps>
                      chatStampFg.Color = Theme.ResolveColor("TextFillColorSecondary", rootBorder.ActualTheme));
              }).Background(chatPageBg).Grid(row: 0, column: 0)
         );
+    }
+
+    private static bool IsScrollBarInteraction(DependencyObject? source)
+    {
+        while (source is not null)
+        {
+            if (source is Microsoft.UI.Xaml.Controls.Primitives.ScrollBar)
+                return true;
+
+            source = Microsoft.UI.Xaml.Media.VisualTreeHelper.GetParent(source);
+        }
+
+        return false;
     }
 }

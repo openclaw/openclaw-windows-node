@@ -299,6 +299,7 @@ public sealed class ChatTimelineVirtualizationProofTests
             _ui.Container.UpdateLayout();
             Assert.True(scrollViewer.ScrollableHeight > 0, "timeline should overflow and be scrollable");
             // ~30% from the top => a large gap from the bottom, unambiguously "scrolled up".
+            Assert.True(TimelineScrollIntent.NotifyUserIntent(scrollViewer));
             scrollViewer.ChangeView(null, scrollViewer.ScrollableHeight * 0.3, null, disableAnimation: true);
             _ui.Container.UpdateLayout();
         });
@@ -352,15 +353,182 @@ public sealed class ChatTimelineVirtualizationProofTests
         await _ui.RunOnUIAsync(() => host!.Dispose());
     }
 
-    // Regression proof for the moderate-scroll band: a user who scrolls JUST above
-    // FollowThreshold (gap = 61–900px, well below the large abandonGap) during an ACTIVE settle
-    // timer must not be re-pinned to the bottom by subsequent timer ticks or streaming revisions.
-    // This is the fix for the "61–900px re-pin" band identified in review: the ViewChanged
-    // handler now cancels the settle timer immediately when isFollowing flips false, regardless
-    // of whether the gap also exceeds the large abandon threshold. The test uses a bottom-follow
-    // starting state with a ScrollToBottomToken (which starts a settle timer), then simulates a
-    // user scroll to a gap of ~FollowThreshold+100px (well below abandonGap), and asserts the
-    // view is NOT re-pinned across multiple streaming revisions.
+    [Fact]
+    public async Task IdlePopulatedTimeline_UserScrollDeltasRemainMonotonicAndReachBothEnds()
+    {
+        await _ui.ResetContainerAsync();
+
+        const int rows = 120;
+        const double wheelDelta = 48;
+        FunctionalHostControl? host = null;
+        ScrollViewer? scrollViewer = null;
+
+        var props = BuildProps(rows, scrollToBottomToken: 0, sessionId: "ui-proof-idle-user-scroll");
+        await _ui.RunOnUIAsync(() =>
+        {
+            TestApp.EnsureFluentBrushFallbacks(Application.Current.Resources);
+            _ui.TestWindow.AppWindow.MoveAndResize(new RectInt32(-32000, -32000, 960, 720));
+            _ui.Container.Width = 900;
+            _ui.Container.Height = 640;
+
+            host = new FunctionalHostControl { Width = 860, Height = 560, SuppressAutoDispose = true };
+            _ui.Container.Children.Add(host);
+            host.Mount(_ => Component<OpenClawChatTimeline, OpenClawChatTimelineProps>(props));
+        });
+
+        await DrainRenderQueueAsync();
+        await DrainRenderQueueAsync();
+
+        var userRequests = 0;
+        var viewChangingEvents = 0;
+        var viewChangedEvents = 0;
+        var userDirection = 0;
+        var upwardOffsets = new List<double>();
+        var downwardOffsets = new List<double>();
+        await _ui.RunOnUIAsync(() =>
+        {
+            scrollViewer = FindLogical<ScrollViewer>(host!).Single();
+            _ui.Container.UpdateLayout();
+            Assert.True(scrollViewer.ScrollableHeight > wheelDelta * 20,
+                $"precondition: idle timeline must be long enough for repeated wheel deltas; scrollable={scrollViewer.ScrollableHeight:0.0}");
+            Assert.True(scrollViewer.ScrollableHeight - scrollViewer.VerticalOffset <= 4,
+                $"precondition: idle timeline should start at bottom; offset={scrollViewer.VerticalOffset:0.0}, scrollable={scrollViewer.ScrollableHeight:0.0}");
+            Assert.Equal(1.0, scrollViewer.VerticalAnchorRatio);
+
+            scrollViewer.ViewChanging += (_, _) => viewChangingEvents++;
+            scrollViewer.ViewChanged += (_, _) =>
+            {
+                viewChangedEvents++;
+                if (userDirection < 0)
+                    upwardOffsets.Add(scrollViewer.VerticalOffset);
+                else if (userDirection > 0)
+                    downwardOffsets.Add(scrollViewer.VerticalOffset);
+            };
+        });
+
+        async Task<double> ApplyUserDeltaAsync(double delta)
+        {
+            var before = 0.0;
+            var target = 0.0;
+            await _ui.RunOnUIAsync(() =>
+            {
+                before = scrollViewer!.VerticalOffset;
+                target = Math.Clamp(before + delta, 0, scrollViewer.ScrollableHeight);
+                userDirection = Math.Sign(delta);
+                userRequests++;
+                Assert.True(
+                    TimelineScrollIntent.NotifyUserIntent(scrollViewer),
+                    "external ChangeView must be marked as user intent, not a timeline-owned transition");
+                Assert.True(
+                    scrollViewer.ChangeView(null, target, null, disableAnimation: false),
+                    $"user ChangeView request should be accepted; before={before:0.0}, target={target:0.0}");
+                _ui.Container.UpdateLayout();
+            });
+            await _ui.YieldToRenderAsync();
+            await Task.Delay(20);
+            await _ui.RunOnUIAsync(() => _ui.Container.UpdateLayout());
+
+            var after = 0.0;
+            await _ui.RunOnUIAsync(() => after = scrollViewer!.VerticalOffset);
+            if (delta < 0)
+            {
+                Assert.True(
+                    after <= before + 0.5,
+                    $"upward user delta must not reverse toward the bottom; before={before:0.0}, target={target:0.0}, after={after:0.0}");
+            }
+            else
+            {
+                Assert.True(
+                    after >= before - 0.5,
+                    $"downward user delta must not reverse toward the top; before={before:0.0}, target={target:0.0}, after={after:0.0}");
+            }
+
+            return after;
+        }
+
+        async Task<(double Offset, double ScrollableHeight)> ReadScrollPositionAsync()
+        {
+            var position = (Offset: 0.0, ScrollableHeight: 0.0);
+            await _ui.RunOnUIAsync(() =>
+            {
+                position = (scrollViewer!.VerticalOffset, scrollViewer.ScrollableHeight);
+            });
+            return position;
+        }
+
+        var crossedFollowThreshold = false;
+        for (var step = 0; step < 2000; step++)
+        {
+            var before = await ReadScrollPositionAsync();
+            if (before.Offset <= 0.5)
+                break;
+
+            var after = await ApplyUserDeltaAsync(-wheelDelta);
+            var current = await ReadScrollPositionAsync();
+            crossedFollowThreshold |= before.ScrollableHeight - before.Offset <= FollowThreshold
+                && current.ScrollableHeight - after > FollowThreshold;
+        }
+
+        await _ui.RunOnUIAsync(() =>
+        {
+            userDirection = 0;
+            Assert.True(crossedFollowThreshold,
+                "precondition: repeated upward user deltas must cross the follow threshold");
+            Assert.InRange(scrollViewer!.VerticalOffset, 0, 0.5);
+            Assert.True(upwardOffsets.Count > 20,
+                $"upward proof must observe many real ViewChanged offsets; count={upwardOffsets.Count}");
+            for (var i = 1; i < upwardOffsets.Count; i++)
+            {
+                Assert.True(
+                    upwardOffsets[i] <= upwardOffsets[i - 1] + 0.5,
+                    "upward user movement must be monotonic across every WinUI ViewChanged event; " +
+                    $"index={i}, previous={upwardOffsets[i - 1]:0.0}, current={upwardOffsets[i]:0.0}");
+            }
+        });
+
+        for (var step = 0; step < 2000; step++)
+        {
+            var position = await ReadScrollPositionAsync();
+            var gap = position.ScrollableHeight - position.Offset;
+            if (gap <= 0.5)
+                break;
+
+            await ApplyUserDeltaAsync(wheelDelta);
+        }
+
+        await _ui.RunOnUIAsync(() =>
+        {
+            userDirection = 0;
+            var gap = scrollViewer!.ScrollableHeight - scrollViewer.VerticalOffset;
+            Assert.InRange(gap, 0, 0.5);
+            Assert.True(downwardOffsets.Count > 20,
+                $"downward proof must observe many real ViewChanged offsets; count={downwardOffsets.Count}");
+            for (var i = 1; i < downwardOffsets.Count; i++)
+            {
+                Assert.True(
+                    downwardOffsets[i] >= downwardOffsets[i - 1] - 0.5,
+                    "downward user movement must be monotonic across every WinUI ViewChanged event; " +
+                    $"index={i}, previous={downwardOffsets[i - 1]:0.0}, current={downwardOffsets[i]:0.0}");
+            }
+            Assert.True(userRequests > 40,
+                $"proof must issue many small user deltas, not one endpoint jump; requests={userRequests}");
+            Assert.True(viewChangingEvents > 0,
+                "external user ChangeView requests must produce real WinUI ViewChanging transitions");
+            Assert.True(viewChangedEvents > 0,
+                "external user ChangeView requests must produce real WinUI ViewChanged transitions");
+            Console.WriteLine(
+                "CHAT_TIMELINE_IDLE_USER_SCROLL_PROOF " +
+                $"requests={userRequests} viewChanging={viewChangingEvents} viewChanged={viewChangedEvents} " +
+                $"topReached=true bottomReached=true finalOffset={scrollViewer.VerticalOffset:0.0} " +
+                $"scrollable={scrollViewer.ScrollableHeight:0.0}");
+        });
+
+        await _ui.RunOnUIAsync(() => host!.Dispose());
+    }
+
+    // A user who scrolls just above FollowThreshold during an active settle must not be re-pinned
+    // by later timer ticks or streaming revisions. The explicit user-intent signal cancels the
+    // owned programmatic generation immediately, independent of the user's distance from bottom.
     [Fact]
     public async Task ModerateScrollUpDuringSettleTimer_IsNotRepinned()
     {
@@ -424,19 +592,19 @@ public sealed class ChatTimelineVirtualizationProofTests
         Assert.True(timerWasActive,
             "precondition: settle timer must be active (anchoring disabled) before user scroll");
 
-        // User scrolls up a MODERATE amount: above FollowThreshold (60px) but well below the
-        // abandonGap (900px/1.5 viewports). This is the critical band.
+        // User scrolls up a moderate amount, just above FollowThreshold.
         var userOffset = 0.0;
         await _ui.RunOnUIAsync(() =>
         {
             var scrollViewer = FindLogical<ScrollViewer>(host!).Single();
             _ui.Container.UpdateLayout();
             var targetOffset = Math.Max(0, scrollViewer.ScrollableHeight - 400);
+            Assert.True(TimelineScrollIntent.NotifyUserIntent(scrollViewer));
             scrollViewer.ChangeView(null, targetOffset, null, disableAnimation: true);
             _ui.Container.UpdateLayout();
         });
 
-        // Let ViewChanged fire and propagate (the fix: moderate-cancel stops the timer).
+        // Let the user-owned ViewChanged transition propagate after canceling the settle.
         await DrainRenderQueueAsync();
 
         await _ui.RunOnUIAsync(() =>
@@ -447,13 +615,11 @@ public sealed class ChatTimelineVirtualizationProofTests
             var gap = scrollViewer.ScrollableHeight - userOffset;
             Assert.True(
                 gap > FollowThreshold && gap < 840,
-                "precondition: user should be in the moderate band (above FollowThreshold, below abandonGap); " +
+                "precondition: user should be in the moderate band above FollowThreshold; " +
                 $"gap={gap:0.0}, threshold={FollowThreshold}");
         });
 
-        // Stream multiple revisions. If the fix works, the timer was cancelled by ViewChanged's
-        // moderate-cancel clause and subsequent streaming won't re-pin. Without the fix, the
-        // timer would keep calling PinToBottom every 16ms, overriding the user's scroll.
+        // Stream multiple revisions. The invalidated generation must not resume pinning.
         props = props with { ShowThinkingIndicator = true };
         for (var revision = 1; revision <= 4; revision++)
         {
@@ -548,6 +714,7 @@ public sealed class ChatTimelineVirtualizationProofTests
             var scrollViewer = FindLogical<ScrollViewer>(host!).Single();
             _ui.Container.UpdateLayout();
             Assert.True(scrollViewer.ScrollableHeight > 0, "timeline should overflow and be scrollable");
+            Assert.True(TimelineScrollIntent.NotifyUserIntent(scrollViewer));
             scrollViewer.ChangeView(null, scrollViewer.ScrollableHeight * 0.4, null, disableAnimation: true);
             _ui.Container.UpdateLayout();
         });
