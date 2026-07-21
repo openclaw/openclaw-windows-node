@@ -607,9 +607,9 @@ public sealed class NodeService : IDisposable, IAsyncDisposable
     /// coordinator cannot be built, return the null handler (typed unavailable
     /// deny) rather than falling back silently to the legacy path. The result
     /// is cached for the NodeService lifetime so the coordinator stays a
-    /// singleton across capability rebuilds. The approval prompt UI is not
-    /// wired yet, so prompt-required decisions resolve through the store's
-    /// ask fallback.
+    /// singleton across capability rebuilds. The approval prompt dialog is
+    /// wired, but presentation is still gated off, so prompt-required
+    /// decisions resolve through the store's ask fallback.
     /// </summary>
     private IExecApprovalV2Handler? TryBuildExecApprovalsV2Coordinator()
     {
@@ -620,9 +620,9 @@ public sealed class NodeService : IDisposable, IAsyncDisposable
             var coordinator = new ExecApprovalsCoordinator(
                 store,
                 AlwaysCannotPresentEvaluator.Instance,
-                ExecApprovalV2NullPromptHandler.Instance,
+                new ExecApprovalV2DialogPromptHandler(_dispatcherQueue, _logger),
                 _logger);
-            _logger.Info("[EXEC-APPROVALS] new path enabled (prompt UI not wired; fallback-only)");
+            _logger.Info("[EXEC-APPROVALS] new path enabled (prompt dialog wired; presentation gated off)");
             return coordinator;
         }
         catch (Exception ex)
