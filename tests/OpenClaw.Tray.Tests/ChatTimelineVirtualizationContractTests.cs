@@ -24,11 +24,21 @@ public sealed class ChatTimelineVirtualizationContractTests
     {
         var timeline = Read("src", "OpenClaw.Tray.WinUI", "Chat", "OpenClawChatTimeline.cs");
 
-        Assert.Contains("FollowToBottomMaxStabilizationPasses", timeline);
-        Assert.Contains("FollowToBottomExtentEpsilon", timeline);
-        Assert.Contains("void QueuePass(", timeline);
+        // Follow-to-bottom for the virtualized ItemsRepeater is delivered by three cooperating
+        // mechanisms; guard that all three stay present so a refactor can't silently drop back to
+        // the old scroll-fighting behavior (PR #1014 / issue #996):
+        //   1. WinUI scroll anchoring pins the bottom row pre-paint as the extent grows in place.
+        Assert.Contains("sv.VerticalAnchorRatio = 1.0", timeline);
+        //   2. A self-terminating settle timer chases LATE extent corrections, converging on being
+        //      at the bottom rather than requiring an (never-settling) stable extent estimate.
+        Assert.Contains("FollowToBottomMaxSettleTicks", timeline);
+        Assert.Contains("FollowToBottomSettleStableTicks", timeline);
+        Assert.Contains("scrollSettleTimerRef", timeline);
+        //   3. Reactive follows are coalesced and a genuine user scroll-away is authoritative, so
+        //      the follow machinery never clobbers the user's own scroll ("fighting the scrollbar").
+        Assert.Contains("scrollPinPendingRef", timeline);
+        Assert.Contains("UserScrolledAway", timeline);
         Assert.Contains("sv.UpdateLayout();", timeline);
-        Assert.Contains("QueuePass(pass + 1", timeline);
     }
 
     [Fact]
