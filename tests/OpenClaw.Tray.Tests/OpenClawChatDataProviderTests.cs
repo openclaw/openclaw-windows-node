@@ -6195,7 +6195,7 @@ public class OpenClawChatDataProviderTests
     }
 
     [Fact]
-    public async Task ModelsListUpdated_FiltersExplicitlyUnconfiguredModels()
+    public async Task ModelsListUpdated_KeepsExplicitlyUnconfiguredModelsDisabled()
     {
         var (bridge, provider, snapshots, _) = CreateProvider(new[] { MainSession() });
         await provider.LoadAsync();
@@ -6215,9 +6215,9 @@ public class OpenClawChatDataProviderTests
         Assert.Equal(
             new[] { "gpt-5.4", "needs-auth", "legacy-gateway-model" },
             snapshots[^1].AvailableModels);
-        Assert.True(snapshots[^1].ModelChoices!.Single(c => c.Id == "needs-auth").RequiresAuth);
+        Assert.False(snapshots[^1].ModelChoices!.Single(c => c.Id == "gpt-5.5").IsSelectable);
+        Assert.True(snapshots[^1].ModelChoices!.Single(c => c.Id == "needs-auth").IsSelectable);
     }
-
     [Fact]
     public async Task ModelsListUpdated_DedupesDisplayNames()
     {
@@ -6557,8 +6557,8 @@ public class OpenClawChatDataProviderTests
         Assert.False(choices[2].IsAvailable);
         Assert.False(choices[2].IsSelectable);
 
-        // AvailableModels stays a parallel id list for back-compat.
-        Assert.Equal(new[] { "claude-opus-4.8", "gemini-3.1-pro", "local-llama" }, snapshots[^1].AvailableModels);
+        // AvailableModels stays a selectable id list for safe reconnect persistence.
+        Assert.Equal(new[] { "claude-opus-4.8", "gemini-3.1-pro" }, snapshots[^1].AvailableModels);
     }
 
     [Fact]

@@ -21,6 +21,7 @@ using OpenClaw.Shared;
 /// the model is usable.
 /// </param>
 /// <param name="IsDefault">True when the gateway marks this model as the default.</param>
+/// <param name="HasConfiguredFlag">True when the gateway explicitly reported configuration state.</param>
 public sealed record ChatModelChoice(
     string Id,
     string DisplayName,
@@ -30,7 +31,8 @@ public sealed record ChatModelChoice(
     bool IsConfigured = true,
     bool IsAvailable = true,
     bool RequiresAuth = false,
-    bool IsDefault = false)
+    bool IsDefault = false,
+    bool HasConfiguredFlag = false)
 {
     /// <summary>
     /// Provider-qualified identity used for picker tags and <c>sessions.patch</c>
@@ -40,11 +42,11 @@ public sealed record ChatModelChoice(
 
     /// <summary>
     /// True when the user may switch the session to this model. Auth-needed
-    /// models remain selectable (selecting one routes the user toward the
-    /// gateway's provider-auth flow); only explicitly unavailable models are
-    /// blocked.
+    /// models remain selectable so the provider-auth flow can run. Catalog-only
+    /// and explicitly unavailable models remain visible but disabled.
     /// </summary>
-    public bool IsSelectable => IsAvailable;
+    public bool IsSelectable =>
+        IsAvailable && (!HasConfiguredFlag || IsConfigured || RequiresAuth);
 
     /// <summary>
     /// Maps gateway models into ordered, selection-deduplicated picker entries.
@@ -58,9 +60,6 @@ public sealed record ChatModelChoice(
         foreach (var m in info.Models)
         {
             if (m is null || string.IsNullOrEmpty(m.Id)) continue;
-            // Hide explicitly unconfigured models unless the gateway reports an
-            // auth flow for them; auth-needed rows are useful picker actions.
-            if (m.HasConfiguredFlag && !m.IsConfigured && !m.RequiresAuth) continue;
             var choice = new ChatModelChoice(
                 Id: m.Id,
                 DisplayName: m.DisplayName,
@@ -70,7 +69,8 @@ public sealed record ChatModelChoice(
                 IsConfigured: m.IsConfigured,
                 IsAvailable: m.IsAvailable,
                 RequiresAuth: m.RequiresAuth,
-                IsDefault: m.IsDefault);
+                IsDefault: m.IsDefault,
+                HasConfiguredFlag: m.HasConfiguredFlag);
             if (!seen.Add(choice.SelectionId)) continue;
             list.Add(choice);
         }
@@ -253,14 +253,14 @@ public static class ChatModelLabels
 
     /// <summary>
     /// Trailing state marker for a model: "default", "auth needed",
-    /// "unavailable", or empty. Unavailable takes precedence over auth-needed,
-    /// which takes precedence over default. Only explicit gateway signals drive
-    /// the markers — a missing <see cref="ChatModelChoice.IsConfigured"/> flag is
-    /// not treated as "auth needed" because the gateway's <c>configured</c> view
-    /// often omits the field entirely.
+    /// "not configured", "unavailable", or empty. Explicit configuration state
+    /// is shown first so catalog-only rows explain why they are disabled. Missing
+    /// configuration metadata remains neutral for older gateways.
     /// </summary>
     public static string BuildStateMarker(ChatModelChoice choice)
     {
+        if (choice.HasConfiguredFlag && !choice.IsConfigured && !choice.RequiresAuth)
+            return "not configured";
         if (!choice.IsAvailable) return "unavailable";
         if (choice.RequiresAuth) return "auth needed";
         if (choice.IsDefault) return "default";
@@ -269,8 +269,8 @@ public static class ChatModelLabels
 
     /// <summary>
     /// Full menu/combo label, e.g. "Claude Opus 4.8 · Anthropic · 200K · default".
-    /// State marker is appended last so default/auth-needed/unavailable reads at
-    /// the end of the row.
+    /// State marker is appended last so default/auth-needed/not-configured/unavailable
+    /// reads at the end of the row.
     /// </summary>
     public static string BuildMenuLabel(ChatModelChoice choice)
     {
