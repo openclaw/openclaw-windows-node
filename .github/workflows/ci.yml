@@ -477,13 +477,24 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - name: setup-connect
+          - name: lkg-setup-connect
+            gateway_source: lkg
+            scenario: setup-connect
             timeout_minutes: 45
             filter: "FullyQualifiedName~OpenClaw.E2ETests.Setup.SetupAndConnectTests|FullyQualifiedName~OpenClaw.E2ETests.Setup.MxcSetupAndConnectTests|FullyQualifiedName~OpenClaw.E2ETests.Setup.GatewayE2EPackageSpecTests"
-          - name: revocation-recovery
+          - name: candidate-setup-connect
+            gateway_source: candidate
+            scenario: setup-connect
+            timeout_minutes: 45
+            filter: "FullyQualifiedName~OpenClaw.E2ETests.Setup.SetupAndConnectTests|FullyQualifiedName~OpenClaw.E2ETests.Setup.MxcSetupAndConnectTests|FullyQualifiedName~OpenClaw.E2ETests.Setup.GatewayE2EPackageSpecTests"
+          - name: candidate-revocation-recovery
+            gateway_source: candidate
+            scenario: revocation-recovery
             timeout_minutes: 25
             filter: FullyQualifiedName~OpenClaw.E2ETests.Setup.RevocationAndRecoveryTests
-          - name: network-recovery
+          - name: candidate-network-recovery
+            gateway_source: candidate
+            scenario: network-recovery
             timeout_minutes: 25
             filter: FullyQualifiedName~OpenClaw.E2ETests.Setup.NetworkRecoveryTests
     steps:
@@ -527,12 +538,14 @@ jobs:
       run: dotnet build tests/OpenClaw.E2ETests -c Debug -r win-x64
 
     - name: Download composed gateway candidate
+      if: ${{ matrix.gateway_source == 'candidate' }}
       uses: actions/download-artifact@v8
       with:
         name: openclaw-main-pr110382-pr111956-candidate
         path: TestResults/GatewayCandidate
 
     - name: Start disposable WSL package host
+      if: ${{ matrix.gateway_source == 'candidate' }}
       id: gateway_package_host
       shell: pwsh
       run: |
@@ -547,7 +560,7 @@ jobs:
     - name: Run E2E Tests (${{ matrix.name }})
       env:
         OPENCLAW_RUN_E2E: 1
-        OPENCLAW_E2E_GATEWAY_PACKAGE_SPEC: ${{ steps.gateway_package_host.outputs.package_spec }}
+        OPENCLAW_E2E_GATEWAY_PACKAGE_SPEC: ${{ matrix.gateway_source == 'candidate' && steps.gateway_package_host.outputs.package_spec || '' }}
       shell: pwsh
       run: |
         dotnet test tests/OpenClaw.E2ETests `
@@ -567,7 +580,7 @@ jobs:
           Write-Error "E2E shard '${{ matrix.name }}' executed zero tests. Check OPENCLAW_RUN_E2E gating/filter before merging."
           exit 1
         }
-        if ("${{ matrix.name }}" -eq "setup-connect") {
+        if ("${{ matrix.scenario }}" -eq "setup-connect") {
           $mxcProofNames = @(
             "RealGateway_SystemRun_ExecutesThroughWindowsNodeMxcSandbox",
             "RealGateway_SystemRun_BlocksWritesToTrayDataDirectoryInMxcSandbox"
@@ -599,7 +612,7 @@ jobs:
         }
 
     - name: Stop disposable WSL package host
-      if: always()
+      if: ${{ always() && matrix.gateway_source == 'candidate' }}
       shell: pwsh
       run: |
         .\scripts\Stop-E2EGatewayPackageHost.ps1 `

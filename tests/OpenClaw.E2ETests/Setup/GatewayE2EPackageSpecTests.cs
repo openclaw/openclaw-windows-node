@@ -27,21 +27,22 @@ public sealed class GatewayE2EPackageSpecTests
     }
 
     [Fact]
-    public void Resolve_RejectsMissingPackageSpec()
+    public void Resolve_UsesLkgWhenPackageSpecIsMissing()
     {
-        var error = Assert.Throws<InvalidOperationException>(() => GatewayE2EPackageSpec.Resolve(null));
-        Assert.Contains(GatewayE2EPackageSpec.EnvVar, error.Message, StringComparison.Ordinal);
+        const string lkg = "2026.7.1";
+        Assert.Equal(lkg, GatewayE2EPackageSpec.Resolve(null, lkg));
+        Assert.Equal(lkg, GatewayE2EPackageSpec.Resolve("", lkg));
+        Assert.Equal(lkg, GatewayE2EPackageSpec.Resolve("  ", lkg));
     }
 
     [Fact]
     public void Resolve_AcceptsBuiltPackageUrl()
     {
         const string packageSpec = "http://127.0.0.1:38677/openclaw-candidate.tgz";
-        Assert.Equal(packageSpec, GatewayE2EPackageSpec.Resolve(packageSpec));
+        Assert.Equal(packageSpec, GatewayE2EPackageSpec.Resolve(packageSpec, "2026.7.1"));
     }
 
     [Theory]
-    [InlineData("")]
     [InlineData("2026.7.2")]
     [InlineData("file:///tmp/openclaw-candidate.tgz")]
     [InlineData("https://user:secret@example.test/openclaw-candidate.tgz")]
@@ -49,7 +50,8 @@ public sealed class GatewayE2EPackageSpecTests
     [InlineData("https://example.test/openclaw-candidate.tgz\n--dangerous")]
     public void Resolve_RejectsUnsafeOrNonPackageOverrides(string packageSpec)
     {
-        Assert.Throws<InvalidOperationException>(() => GatewayE2EPackageSpec.Resolve(packageSpec));
+        Assert.Throws<InvalidOperationException>(() =>
+            GatewayE2EPackageSpec.Resolve(packageSpec, "2026.7.1"));
     }
 
     private static string RepositoryRoot()

@@ -4,17 +4,16 @@ internal static class GatewayE2EPackageSpec
 {
     internal const string EnvVar = "OPENCLAW_E2E_GATEWAY_PACKAGE_SPEC";
 
-    internal static string Resolve() => Resolve(Environment.GetEnvironmentVariable(EnvVar));
+    internal static string Resolve() => Resolve(
+        Environment.GetEnvironmentVariable(EnvVar),
+        OpenClaw.SetupEngine.GatewayLkgVersion.ResolveLkgVersion());
 
-    internal static string Resolve(string? raw)
+    internal static string Resolve(string? raw, string defaultSpec)
     {
-        if (raw is null)
-            throw new InvalidOperationException(
-                $"{EnvVar} is required so E2E cannot silently install a different gateway package.");
+        if (string.IsNullOrWhiteSpace(raw))
+            return defaultSpec;
 
         var value = raw.Trim();
-        if (value.Length == 0)
-            throw new InvalidOperationException($"{EnvVar} cannot be empty when set.");
         if (value.Contains('\r') || value.Contains('\n'))
             throw new InvalidOperationException($"{EnvVar} cannot contain newlines.");
         if (!Uri.TryCreate(value, UriKind.Absolute, out var uri) ||
