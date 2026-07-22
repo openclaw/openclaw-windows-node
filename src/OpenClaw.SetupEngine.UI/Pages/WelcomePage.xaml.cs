@@ -2,7 +2,6 @@ using Microsoft.UI.Composition;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Hosting;
-using Microsoft.UI.Xaml.Media;
 using Microsoft.UI.Xaml.Navigation;
 using OpenClaw.SetupEngine;
 using OpenClaw.SetupEngine.UI;
@@ -23,8 +22,6 @@ public sealed partial class WelcomePage : Page
     {
         InitializeComponent();
         Loaded += OnLoaded;
-        ActualThemeChanged += (_, _) => UpdateCardSelection();
-        UpdateCardSelection();
     }
 
     protected override void OnNavigatedTo(NavigationEventArgs e)
@@ -40,7 +37,6 @@ public sealed partial class WelcomePage : Page
         {
             _suppressSelectionWrite = false;
         }
-        UpdateCardSelection();
     }
 
     private void OnLoaded(object sender, RoutedEventArgs e)
@@ -68,7 +64,25 @@ public sealed partial class WelcomePage : Page
 
     private void GatewayChoice_SelectionChanged(object sender, SelectionChangedEventArgs e)
     {
-        if (!_suppressSelectionWrite && GatewayChoiceSelector.SelectedIndex is 0 or 1)
+        // A single-select ListView can be cleared to no selection (Ctrl+click / automation).
+        // The Welcome choice must always have exactly one option selected, so restore the last
+        // known selection instead of leaving the persisted value stale behind an empty list.
+        if (GatewayChoiceSelector.SelectedIndex is not (0 or 1))
+        {
+            _suppressSelectionWrite = true;
+            try
+            {
+                GatewayChoiceSelector.SelectedIndex = _installSelected ? 0 : 1;
+            }
+            finally
+            {
+                _suppressSelectionWrite = false;
+            }
+
+            return;
+        }
+
+        if (!_suppressSelectionWrite)
             SetInstallSelected(GatewayChoiceSelector.SelectedIndex == 0);
     }
 
@@ -76,20 +90,6 @@ public sealed partial class WelcomePage : Page
     {
         _installSelected = installSelected;
         SetupWindow.Active?.SetWelcomeInstallSelected(installSelected);
-        UpdateCardSelection();
-    }
-
-    private void UpdateCardSelection()
-    {
-        InstallCard.BorderBrush = _installSelected
-            ? (Brush)Application.Current.Resources["AccentFillColorDefaultBrush"]
-            : (Brush)Application.Current.Resources["CardStrokeColorDefaultBrush"];
-        InstallCard.BorderThickness = new Thickness(_installSelected ? 2 : 1);
-
-        ConnectCard.BorderBrush = !_installSelected
-            ? (Brush)Application.Current.Resources["AccentFillColorDefaultBrush"]
-            : (Brush)Application.Current.Resources["CardStrokeColorDefaultBrush"];
-        ConnectCard.BorderThickness = new Thickness(!_installSelected ? 2 : 1);
     }
 
     private void Back_Click(object sender, RoutedEventArgs e)

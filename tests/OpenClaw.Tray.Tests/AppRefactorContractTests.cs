@@ -825,10 +825,17 @@ public sealed class AppRefactorContractTests
 
         Assert.Contains("<ScrollViewer Grid.Row=\"1\"", xaml);
         Assert.Contains("VerticalScrollBarVisibility=\"Auto\"", xaml);
-        Assert.Contains("<RadioButtons x:Name=\"GatewayChoiceSelector\"", xaml);
+        Assert.Contains("<ListView x:Name=\"GatewayChoiceSelector\"", xaml);
+        Assert.Contains("SelectionMode=\"Single\"", xaml);
+        Assert.Contains("ScrollViewer.VerticalScrollMode=\"Disabled\"", xaml);
+        Assert.Contains("SelectionChanged=\"GatewayChoice_SelectionChanged\"", xaml);
         Assert.Contains("AutomationProperties.AutomationId=\"WelcomeInstallLocalGatewayChoice\"", xaml);
         Assert.Contains("AutomationProperties.AutomationId=\"WelcomeConnectExistingGatewayChoice\"", xaml);
         Assert.DoesNotContain("PointerPressed=", xaml);
+        // The old duplicate card-selection chrome and its border-swap logic must not return.
+        Assert.DoesNotContain("x:Name=\"InstallCard\"", xaml);
+        Assert.DoesNotContain("x:Name=\"ConnectCard\"", xaml);
+        Assert.DoesNotContain("UpdateCardSelection", welcomePage);
         AssertInOrder(xaml, "<ScrollViewer Grid.Row=\"1\"", "</ScrollViewer>", "<Grid Grid.Row=\"2\"");
         Assert.DoesNotContain("GatewayChoiceSelector.SelectedIndex = 0;", welcomePage);
         Assert.Contains("_suppressSelectionWrite = true", welcomePage);
