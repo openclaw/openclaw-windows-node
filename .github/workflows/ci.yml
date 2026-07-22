@@ -481,12 +481,12 @@ jobs:
             gateway_source: lkg
             scenario: setup-connect
             timeout_minutes: 45
-            filter: "FullyQualifiedName~OpenClaw.E2ETests.Setup.SetupAndConnectTests|FullyQualifiedName~OpenClaw.E2ETests.Setup.MxcSetupAndConnectTests|FullyQualifiedName~OpenClaw.E2ETests.Setup.GatewayE2EPackageSpecTests"
+            filter: "FullyQualifiedName~OpenClaw.E2ETests.Setup.SetupAndConnectTests|FullyQualifiedName~OpenClaw.E2ETests.Setup.MxcSetupAndConnectTests"
           - name: candidate-setup-connect
             gateway_source: candidate
             scenario: setup-connect
             timeout_minutes: 45
-            filter: "FullyQualifiedName~OpenClaw.E2ETests.Setup.SetupAndConnectTests|FullyQualifiedName~OpenClaw.E2ETests.Setup.MxcSetupAndConnectTests|FullyQualifiedName~OpenClaw.E2ETests.Setup.GatewayE2EPackageSpecTests"
+            filter: "FullyQualifiedName~OpenClaw.E2ETests.Setup.SetupAndConnectTests|FullyQualifiedName~OpenClaw.E2ETests.Setup.MxcSetupAndConnectTests"
           - name: candidate-revocation-recovery
             gateway_source: candidate
             scenario: revocation-recovery
@@ -536,6 +536,18 @@ jobs:
 
     - name: Build E2E Tests
       run: dotnet build tests/OpenClaw.E2ETests -c Debug -r win-x64
+
+    - name: Run gateway package selector tests
+      if: ${{ matrix.name == 'candidate-setup-connect' }}
+      shell: pwsh
+      run: |
+        dotnet test tests/OpenClaw.E2ETests `
+          --no-build `
+          -c Debug `
+          -r win-x64 `
+          --verbosity normal `
+          --filter "FullyQualifiedName~OpenClaw.E2ETests.Setup.GatewayE2EPackageSpecTests"
+        if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
     - name: Download composed gateway candidate
       if: ${{ matrix.gateway_source == 'candidate' }}
