@@ -34,8 +34,8 @@ public sealed class ChatTimelineVirtualizationContractTests
         Assert.Contains("FollowToBottomMaxSettleTicks", timeline);
         Assert.Contains("FollowToBottomSettleStableTicks", timeline);
         Assert.Contains("scrollSettleTimerRef", timeline);
-        //   3. Reactive follows are coalesced and unowned ViewChanging transitions are authoritative
-        //      user intent, so follow machinery never clobbers a wheel/drag transition.
+        //   3. Reactive follows are coalesced, native user intent invalidates the active generation,
+        //      and ViewChanging verifies that programmatic ownership stays scoped to its target.
         Assert.Contains("scrollPinPendingRef", timeline);
         Assert.Contains("programmaticScrollRef", timeline);
         Assert.Contains("sv.ViewChanging +=", timeline);

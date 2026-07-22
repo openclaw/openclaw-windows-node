@@ -107,11 +107,9 @@ public class OpenClawChatTimeline : Component<OpenClawChatTimelineProps>
 
     private sealed class ProgrammaticScrollTransition(
         long generation,
-        double requestedTargetOffset,
         bool followOnCompletion)
     {
         public long Generation { get; } = generation;
-        public double RequestedTargetOffset { get; } = requestedTargetOffset;
         public bool FollowOnCompletion { get; } = followOnCompletion;
         public double? PlatformTargetOffset { get; set; }
     }
@@ -751,7 +749,7 @@ public class OpenClawChatTimeline : Component<OpenClawChatTimelineProps>
                 });
         }
 
-        bool ChangeViewProgrammatically(
+        void ChangeViewProgrammatically(
             Microsoft.UI.Xaml.Controls.ScrollViewer sv,
             long generation,
             double targetOffset,
@@ -759,11 +757,18 @@ public class OpenClawChatTimeline : Component<OpenClawChatTimelineProps>
             bool followOnCompletion)
         {
             if (scrollGenerationRef.Current != generation)
-                return false;
+                return;
+
+            var platformTarget = ClampOffset(targetOffset, sv.ScrollableHeight);
+            if (Math.Abs(sv.VerticalOffset - platformTarget) <= ScrollTargetEpsilon)
+            {
+                programmaticScrollRef.Current = null;
+                isFollowingRef.Current = followOnCompletion;
+                return;
+            }
 
             var transition = new ProgrammaticScrollTransition(
                 generation,
-                targetOffset,
                 followOnCompletion);
             programmaticScrollRef.Current = transition;
             var accepted = sv.ChangeView(null, targetOffset, null, disableAnimation);
@@ -772,8 +777,6 @@ public class OpenClawChatTimeline : Component<OpenClawChatTimelineProps>
                 programmaticScrollRef.Current = null;
                 isFollowingRef.Current = followOnCompletion;
             }
-
-            return accepted;
         }
 
         void QueueScrollToBottom(
@@ -889,7 +892,7 @@ public class OpenClawChatTimeline : Component<OpenClawChatTimelineProps>
 
                     ticks++;
 
-                    // ViewChanging invalidates this generation before any user transition can
+                    // Native input invalidates this generation before a user transition can
                     // compete with the next programmatic pin.
                     if (scrollGenerationRef.Current != generation || !isFollowingRef.Current)
                     {
@@ -3017,6 +3020,12 @@ public class OpenClawChatTimeline : Component<OpenClawChatTimelineProps>
                             {
                                 return;
                             }
+
+                            // A later transition with a different target is not the ChangeView this
+                            // generation owns. Drop ownership without classifying it as user input:
+                            // WinUI anchoring and virtualization also produce unowned transitions.
+                            if (ReferenceEquals(programmaticScrollRef.Current, ownedTransition))
+                                programmaticScrollRef.Current = null;
                         }
                     };
                     sv.ViewChanged += (_, args) =>

@@ -465,8 +465,7 @@ public sealed class ChatTimelineVirtualizationProofTests
 
             var after = await ApplyUserDeltaAsync(-wheelDelta);
             var current = await ReadScrollPositionAsync();
-            crossedFollowThreshold |= before.ScrollableHeight - before.Offset <= FollowThreshold
-                && current.ScrollableHeight - after > FollowThreshold;
+            crossedFollowThreshold |= current.ScrollableHeight - after > FollowThreshold;
         }
 
         await _ui.RunOnUIAsync(() =>
@@ -521,6 +520,101 @@ public sealed class ChatTimelineVirtualizationProofTests
                 $"requests={userRequests} viewChanging={viewChangingEvents} viewChanged={viewChangedEvents} " +
                 $"topReached=true bottomReached=true finalOffset={scrollViewer.VerticalOffset:0.0} " +
                 $"scrollable={scrollViewer.ScrollableHeight:0.0}");
+        });
+
+        await _ui.RunOnUIAsync(() => host!.Dispose());
+    }
+
+    [Fact]
+    public async Task ResizeWhileFollowingAndDetached_PreservesScrollIntent()
+    {
+        await _ui.ResetContainerAsync();
+
+        const int rows = 120;
+        FunctionalHostControl? host = null;
+        var props = BuildProps(rows, scrollToBottomToken: 0, sessionId: "ui-proof-resize-scroll");
+
+        await _ui.RunOnUIAsync(() =>
+        {
+            TestApp.EnsureFluentBrushFallbacks(Application.Current.Resources);
+            _ui.TestWindow.AppWindow.MoveAndResize(new RectInt32(-32000, -32000, 960, 720));
+            _ui.Container.Width = 900;
+            _ui.Container.Height = 640;
+
+            host = new FunctionalHostControl { Width = 860, Height = 560, SuppressAutoDispose = true };
+            _ui.Container.Children.Add(host);
+            host.Mount(_ => Component<OpenClawChatTimeline, OpenClawChatTimelineProps>(props));
+        });
+
+        await DrainRenderQueueAsync();
+        await DrainRenderQueueAsync();
+
+        await _ui.RunOnUIAsync(() =>
+        {
+            var scrollViewer = FindLogical<ScrollViewer>(host!).Single();
+            _ui.Container.UpdateLayout();
+            Assert.True(scrollViewer.ScrollableHeight - scrollViewer.VerticalOffset <= 4,
+                $"precondition: following view must start at bottom; gap={scrollViewer.ScrollableHeight - scrollViewer.VerticalOffset:0.0}");
+            host!.Height = 440;
+            _ui.Container.UpdateLayout();
+        });
+        await DrainRenderQueueAsync();
+
+        await _ui.RunOnUIAsync(() =>
+        {
+            var scrollViewer = FindLogical<ScrollViewer>(host!).Single();
+            Assert.True(scrollViewer.ScrollableHeight - scrollViewer.VerticalOffset <= 4,
+                $"shrinking a following viewport must preserve bottom follow; gap={scrollViewer.ScrollableHeight - scrollViewer.VerticalOffset:0.0}");
+            Assert.True(TimelineScrollIntent.NotifyUserIntent(scrollViewer));
+            Assert.True(scrollViewer.ChangeView(
+                null,
+                scrollViewer.ScrollableHeight * 0.35,
+                null,
+                disableAnimation: true));
+            _ui.Container.UpdateLayout();
+        });
+        await DrainRenderQueueAsync();
+
+        var detachedOffset = 0.0;
+        await _ui.RunOnUIAsync(() =>
+        {
+            var scrollViewer = FindLogical<ScrollViewer>(host!).Single();
+            detachedOffset = scrollViewer.VerticalOffset;
+            Assert.True(scrollViewer.ScrollableHeight - detachedOffset > FollowThreshold,
+                "precondition: resize proof must detach from bottom follow");
+            Assert.True(double.IsNaN(scrollViewer.VerticalAnchorRatio),
+                "user-detached view must disable bottom anchoring before resize");
+            host!.Height = 600;
+            _ui.Container.UpdateLayout();
+        });
+        await DrainRenderQueueAsync();
+
+        await _ui.RunOnUIAsync(() =>
+        {
+            var scrollViewer = FindLogical<ScrollViewer>(host!).Single();
+            var drift = Math.Abs(scrollViewer.VerticalOffset - detachedOffset);
+            Assert.True(scrollViewer.ScrollableHeight - scrollViewer.VerticalOffset > FollowThreshold,
+                "growing a detached viewport must not re-enter follow mode");
+            Assert.True(drift <= 4,
+                $"growing a detached viewport must preserve reading position; drift={drift:0.0}");
+        });
+
+        props = props with { ScrollToBottomToken = 1 };
+        await _ui.RunOnUIAsync(() =>
+            host!.Mount(_ => Component<OpenClawChatTimeline, OpenClawChatTimelineProps>(props)));
+        await DrainRenderQueueAsync();
+        await DrainRenderQueueAsync();
+
+        await _ui.RunOnUIAsync(() =>
+        {
+            var scrollViewer = FindLogical<ScrollViewer>(host!).Single();
+            var gap = scrollViewer.ScrollableHeight - scrollViewer.VerticalOffset;
+            Assert.True(gap <= 4,
+                $"explicit follow after resize must reach bottom; gap={gap:0.0}");
+            Console.WriteLine(
+                "CHAT_TIMELINE_RESIZE_SCROLL_PROOF " +
+                $"detachedOffset={detachedOffset:0.0} finalOffset={scrollViewer.VerticalOffset:0.0} " +
+                $"scrollable={scrollViewer.ScrollableHeight:0.0} gap={gap:0.0}");
         });
 
         await _ui.RunOnUIAsync(() => host!.Dispose());
