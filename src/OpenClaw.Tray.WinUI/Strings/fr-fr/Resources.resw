@@ -2940,6 +2940,18 @@ Utilisez l'une de ces options :
   <data name="Chat_Status_Done" xml:space="preserve">
     <value>Terminé</value>
   </data>
+  <data name="Chat_Compaction_Title" xml:space="preserve">
+    <value>Contexte compacté</value>
+  </data>
+  <data name="Chat_Compaction_MetricsFormat" xml:space="preserve">
+    <value>{0} → {1} jetons · {2} économisés</value>
+  </data>
+  <data name="Chat_Compaction_FallbackDetail" xml:space="preserve">
+    <value>Le contexte antérieur a été résumé dans un point de contrôle.</value>
+  </data>
+  <data name="Chat_PendingNewSessionTitle" xml:space="preserve">
+    <value>Nouvelle session</value>
+  </data>
   <data name="Chat_Status_Running" xml:space="preserve">
     <value>En cours</value>
   </data>

@@ -470,27 +470,6 @@ public sealed partial class ChatWindow : WindowEx
             app.SetTrayNativeChatSurfaceActive(_shownNearTray && !_webViewMode && _functionalHost is not null);
     }
 
-    private void EagerlyLoadChatHistory()
-    {
-        var provider = (App.Current as App)?.ChatProvider;
-        if (provider is null) return;
-
-        _ = Task.Run(async () =>
-        {
-            try
-            {
-                // LoadAsync seeds from cached sessions; the important thing is
-                // it triggers the Changed event with the current snapshot.
-                var snap = await provider.LoadAsync();
-                // If there's a default thread, load its history so the
-                // timeline has entries to render on the very first show.
-                if (snap.DefaultThreadId is { } threadId)
-                    await provider.LoadHistoryAsync(threadId);
-            }
-            catch (Exception ex) { Logger.Debug($"ChatWindow: eager chat history load failed (mount path will retry): {ex.Message}"); }
-        });
-    }
-
     private void OnAttachClicked()
     {
         _ = PickAndAttachFileAsync();
@@ -831,9 +810,6 @@ public sealed partial class ChatWindow : WindowEx
         // a native-mode window swaps placeholder → live tree on first show.
         ApplyChatSurface();
 
-        // Eagerly load chat history so the tray popup renders messages
-        // immediately instead of showing the zero-state while history loads.
-        EagerlyLoadChatHistory();
         this.Show();
         SetForegroundWindow(hwnd);
         RequestChatInputFocus();

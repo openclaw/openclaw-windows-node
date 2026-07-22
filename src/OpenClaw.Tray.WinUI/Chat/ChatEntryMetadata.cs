@@ -71,5 +71,8 @@ public sealed record ChatEntryMetadata(
     int? UsageContributionTokens = null,
     string? GatewayMessageId = null,
     int? OpenClawSeq = null,
+    string? OpenClawKind = null,
+    long? CompactionTokensBefore = null,
+    long? CompactionTokensAfter = null,
     bool IsLocalQueuedSend = false,
     string? LocalQueuedMessageId = null);

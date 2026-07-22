@@ -81,6 +81,15 @@
       "requestFields": []
     },
     {
+      "method": "sessions.create",
+      "kind": "request",
+      "windowsUsage": "used",
+      "requestFields": [
+        "key", "agentId", "parentSessionKey", "emitCommandHooks", "succeedsParent"
+      ],
+      "requestFieldsSource": "internal static Dictionary<string, object?> BuildSessionCreateParameters("
+    },
+    {
       "method": "sessions.changed",
       "kind": "notification",
       "windowsUsage": "used",

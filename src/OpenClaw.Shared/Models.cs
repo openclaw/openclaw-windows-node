@@ -1855,6 +1855,15 @@ public class ChatMessageInfo
     /// <summary>Monotonic sequence number within the session from <c>__openclaw.seq</c>.</summary>
     public int? OpenClawSeq { get; set; }
 
+    /// <summary>Structured gateway message kind from <c>__openclaw.kind</c>.</summary>
+    public string? OpenClawKind { get; set; }
+
+    /// <summary>Context token count before a structured compaction boundary.</summary>
+    public long? CompactionTokensBefore { get; set; }
+
+    /// <summary>Context token count after a structured compaction boundary.</summary>
+    public long? CompactionTokensAfter { get; set; }
+
     /// <summary>
     /// Stop reason for assistant messages (e.g. "stop", "toolUse", possibly "abort").
     /// Only present on assistant messages in <c>chat.history</c>.

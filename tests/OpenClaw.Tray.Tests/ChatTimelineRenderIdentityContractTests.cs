@@ -109,6 +109,18 @@ public sealed class ChatTimelineRenderIdentityContractTests
     }
 
     [Fact]
+    public void Composer_PreservesInputAndAttachmentsWhenSendThrows()
+    {
+        var root = Read("src", "OpenClaw.Tray.WinUI", "Chat", "OpenClawChatRoot.cs");
+
+        Assert.Matches(
+            new Regex(
+                @"catch \(Exception ex\)\s*\{\s*System\.Diagnostics\.Trace\.WriteLine\(\$""\[chat\] send failed: \{ex\}""\);\s*return false;\s*\}\s*return true;",
+                RegexOptions.Multiline),
+            root);
+    }
+
+    [Fact]
     public void Timeline_DoesNotRenderTemporaryDebugMetadata()
     {
         var timeline = Read("src", "OpenClaw.Tray.WinUI", "Chat", "OpenClawChatTimeline.cs");

@@ -1,5 +1,7 @@
 using OpenClaw.Chat;
 using OpenClaw.Shared;
+using OpenClaw.Shared.Sessions;
+using OpenClawTray.Helpers;
 using Microsoft.UI.Dispatching;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
@@ -63,7 +65,45 @@ public static class FunctionalChatHostExtensions
         ArgumentNullException.ThrowIfNull(target);
         ArgumentNullException.ThrowIfNull(provider);
 
-        var root = new OpenClawChatRoot(provider, initialThreadId, onReadAloud, onStopSpeaking, onVoiceRequest, onAttachClick, onSettingsClick, onSpeakerMuteChanged, initialMuted, isCompact);
+        async Task<bool> ConfirmResetAsync(string sessionKey, string? displayName)
+        {
+            if (target.XamlRoot is null)
+                return false;
+
+            var prompt = SessionActionPlanner.BuildPrompt(
+                SessionActionKind.Reset,
+                sessionKey,
+                displayName,
+                SessionActionPlanner.IsMainSessionKeyShape(sessionKey));
+            if (prompt is null)
+                return true;
+
+            var localized = SessionActionPromptLocalizer.Localize(prompt);
+            var dialog = new ContentDialog
+            {
+                Title = localized.Title,
+                Content = localized.Body,
+                PrimaryButtonText = localized.ConfirmLabel,
+                CloseButtonText = LocalizationHelper.GetString("SessionActionPrompt_CancelLabel"),
+                DefaultButton = ContentDialogButton.None,
+                XamlRoot = target.XamlRoot,
+            };
+            dialog.PrimaryButtonStyle = (Style)Application.Current.Resources["AccentButtonStyle"];
+            return await dialog.ShowAsync() == ContentDialogResult.Primary;
+        }
+
+        var root = new OpenClawChatRoot(
+            provider,
+            initialThreadId,
+            onReadAloud,
+            onStopSpeaking,
+            onVoiceRequest,
+            onAttachClick,
+            onSettingsClick,
+            onSpeakerMuteChanged,
+            ConfirmResetAsync,
+            initialMuted,
+            isCompact);
         var host = new FunctionalHostControl();
         host.SuppressAutoDispose = suppressAutoDispose;
         host.Mount(root);

@@ -7,6 +7,7 @@ using Microsoft.UI.Xaml.Input;
 using Microsoft.UI.Xaml.Media;
 using Microsoft.UI.Xaml.Media.Imaging;
 using System.Globalization;
+using System.Runtime.CompilerServices;
 using Windows.UI;
 using Windows.UI.Text;
 using WinGrid = Microsoft.UI.Xaml.Controls.Grid;
@@ -76,6 +77,110 @@ internal static class ThemeResources
 
         throw new InvalidOperationException($"Brush resource '{resourceKey}' was not found.");
     }
+
+    /// <summary>
+    /// Resolves a built-in WinUI theme brush (e.g. <c>TextFillColorSecondaryBrush</c>)
+    /// for a specific <paramref name="theme"/> rather than the application's fixed
+    /// theme. <c>Application.Current.Resources[key]</c> snapshots the app/system
+    /// theme, so a brush pulled that way stays light while an element renders dark.
+    /// This walks the merged <c>ThemeDictionaries</c> and returns the token defined
+    /// for the requested theme, so callers can re-resolve on <c>ActualThemeChanged</c>
+    /// and stay correct after a runtime light/dark switch. Falls back to the
+    /// application-level lookup when the token is not theme-scoped.
+    /// </summary>
+    public static Brush ResolveBrush(string resourceKey, ElementTheme theme)
+    {
+        if (FindThemedResource(resourceKey, theme) is Brush themed)
+            return themed;
+        return ResolveBrush(resourceKey);
+    }
+
+    /// <summary>
+    /// Resolves a built-in WinUI theme color token (e.g. <c>SolidBackgroundFillColorBase</c>)
+    /// for a specific <paramref name="theme"/>. See <see cref="ResolveBrush(string, ElementTheme)"/>
+    /// for why the per-theme lookup is needed. Useful when a gradient stop needs a
+    /// <see cref="Color"/> rather than a brush.
+    /// </summary>
+    public static Color ResolveColor(string resourceKey, ElementTheme theme)
+    {
+        if (FindThemedResource(resourceKey, theme) is Color themed)
+            return themed;
+        if (Application.Current is { Resources: { } resources }
+            && resources.TryGetValue(resourceKey, out var resource) && resource is Color color)
+            return color;
+        // WinUI color tokens are paired with a "<key>Brush" SolidColorBrush. Some
+        // hosts (including minimal test surfaces) register only the brush form, so
+        // fall back to the paired brush's color before giving up. In production
+        // both forms resolve to the same value, so this stays correct while
+        // keeping rendering resilient instead of throwing mid-render.
+        var brushKey = resourceKey + "Brush";
+        if (FindThemedResource(brushKey, theme) is SolidColorBrush themedBrush)
+            return themedBrush.Color;
+        if (Application.Current is { Resources: { } brushResources }
+            && brushResources.TryGetValue(brushKey, out var brushResource)
+            && brushResource is SolidColorBrush appBrush)
+            return appBrush.Color;
+        throw new InvalidOperationException($"Color resource '{resourceKey}' was not found.");
+    }
+
+    private static object? FindThemedResource(string resourceKey, ElementTheme theme)
+    {
+        if (Application.Current is not { Resources: { } root })
+            return null;
+
+        // WinUI stores the dark palette under the "Default" theme-dictionary key
+        // (with "Dark" also accepted); light lives under "Light".
+        string[] themeNames = theme switch
+        {
+            ElementTheme.Dark => new[] { "Dark", "Default" },
+            ElementTheme.Light => new[] { "Light" },
+            _ => Array.Empty<string>()
+        };
+
+        foreach (var name in themeNames)
+        {
+            if (SearchThemeDictionaries(root, resourceKey, name, 0) is { } found)
+                return found;
+        }
+        return null;
+    }
+
+    private static object? SearchThemeDictionaries(ResourceDictionary dict, string key, string themeName, int depth)
+    {
+        if (depth > 6) return null;
+        try
+        {
+            if (dict.ThemeDictionaries is { } themeDictionaries
+                && themeDictionaries.TryGetValue(themeName, out var entry)
+                && entry is ResourceDictionary themed
+                && LookupKey(themed, key) is { } value)
+                return value;
+
+            foreach (var merged in dict.MergedDictionaries)
+            {
+                if (SearchThemeDictionaries(merged, key, themeName, depth + 1) is { } found)
+                    return found;
+            }
+        }
+        catch
+        {
+            // Defensive: a malformed dictionary must never break rendering. Fall
+            // back to the application-level lookup handled by the caller.
+        }
+        return null;
+    }
+
+    private static object? LookupKey(ResourceDictionary dict, string key)
+    {
+        if (dict.TryGetValue(key, out var value))
+            return value;
+        foreach (var merged in dict.MergedDictionaries)
+        {
+            if (LookupKey(merged, key) is { } found)
+                return found;
+        }
+        return null;
+    }
 }
 
 public readonly record struct ThemeRef(string ResourceKey);
@@ -90,6 +195,59 @@ public static class Theme
     public static ThemeRef CardBackground => new("CardBackgroundFillColorDefaultBrush");
     public static ThemeRef DividerStroke => new("DividerStrokeColorDefaultBrush");
     public static ThemeRef Ref(string resourceKey) => new(resourceKey);
+
+    /// <summary>
+    /// Resolves a built-in WinUI theme brush for a specific element theme, so
+    /// callers can react to <c>ActualThemeChanged</c> instead of snapshotting the
+    /// application's fixed theme via <c>Application.Current.Resources[key]</c>.
+    /// </summary>
+    public static Brush ResolveBrush(string resourceKey, ElementTheme theme) =>
+        ThemeResources.ResolveBrush(resourceKey, theme);
+
+    /// <summary>
+    /// Resolves a built-in WinUI theme color token for a specific element theme
+    /// (e.g. for a gradient stop that needs a <see cref="Color"/>).
+    /// </summary>
+    public static Color ResolveColor(string resourceKey, ElementTheme theme) =>
+        ThemeResources.ResolveColor(resourceKey, theme);
+
+    /// <summary>
+    /// Registers a one-time <c>ActualThemeChanged</c> + <c>Loaded</c> subscription
+    /// on <paramref name="control"/> and stores <paramref name="applyNow"/> as the
+    /// latest callback. On each subsequent call for the same control, the stored
+    /// callback is replaced (so it captures the latest per-render state) without
+    /// adding additional event subscriptions. The callback is invoked immediately
+    /// and again whenever the element's theme changes.
+    /// </summary>
+    /// <remarks>
+    /// Use this for imperative theme-aware assignments that cannot be expressed as
+    /// a <see cref="ThemeRef"/>-backed modifier (e.g. custom gradients or shared
+    /// brush mutations). For simple resource-key backgrounds/borders, prefer the
+    /// built-in modifier path (<c>.Background(Ref(...))</c>) instead.
+    /// </remarks>
+    public static void EnsureThemeCallback(FrameworkElement control, Action applyNow)
+    {
+        applyNow();
+        if (ThemeCallbackTable.TryGetValue(control, out var box))
+        {
+            box.Value = applyNow;
+            return;
+        }
+        box = new StrongBox<Action>(applyNow);
+        ThemeCallbackTable.AddOrUpdate(control, box);
+        control.ActualThemeChanged += static (s, _) =>
+        {
+            if (s is FrameworkElement fe && ThemeCallbackTable.TryGetValue(fe, out var b))
+                b.Value?.Invoke();
+        };
+        control.Loaded += static (s, _) =>
+        {
+            if (s is FrameworkElement fe && ThemeCallbackTable.TryGetValue(fe, out var b))
+                b.Value?.Invoke();
+        };
+    }
+
+    internal static readonly ConditionalWeakTable<FrameworkElement, StrongBox<Action>> ThemeCallbackTable = new();
 }
 
 public sealed record ResourceOverrides(IReadOnlyDictionary<string, object> Values);
@@ -2133,7 +2291,7 @@ internal sealed class UiRenderer(Action requestRender)
                 else tb.ClearValue(TextBlock.TextWrappingProperty);
                 if (m.Padding is { } textPadding) tb.Padding = textPadding;
                 else tb.ClearValue(TextBlock.PaddingProperty);
-                if (m.ForegroundResourceKey is { } textFgResource) tb.Foreground = ThemeResources.ResolveBrush(textFgResource);
+                if (m.ForegroundResourceKey is { } textFgResource) tb.Foreground = ThemeResources.ResolveBrush(textFgResource, control.ActualTheme);
                 else if (m.Foreground is { } textFg) tb.Foreground = textFg;
                 else tb.ClearValue(TextBlock.ForegroundProperty);
                 tb.ClearValue(TextBlock.TextTrimmingProperty);
@@ -2152,7 +2310,7 @@ internal sealed class UiRenderer(Action requestRender)
                 else rtb.ClearValue(RichTextBlock.TextWrappingProperty);
                 if (m.Padding is { } richPadding) rtb.Padding = richPadding;
                 else rtb.ClearValue(RichTextBlock.PaddingProperty);
-                if (m.ForegroundResourceKey is { } richFgResource) rtb.Foreground = ThemeResources.ResolveBrush(richFgResource);
+                if (m.ForegroundResourceKey is { } richFgResource) rtb.Foreground = ThemeResources.ResolveBrush(richFgResource, control.ActualTheme);
                 else if (m.Foreground is { } richFg) rtb.Foreground = richFg;
                 else rtb.ClearValue(RichTextBlock.ForegroundProperty);
                 rtb.ClearValue(RichTextBlock.TextTrimmingProperty);
@@ -2169,10 +2327,13 @@ internal sealed class UiRenderer(Action requestRender)
                 else c.ClearValue(Control.FontWeightProperty);
                 if (m.FontFamily is { } controlFamily) c.FontFamily = controlFamily;
                 else c.ClearValue(Control.FontFamilyProperty);
-                if (m.ForegroundResourceKey is { } controlFgResource) c.Foreground = ThemeResources.ResolveBrush(controlFgResource);
+                if (m.ForegroundResourceKey is { } controlFgResource) c.Foreground = ThemeResources.ResolveBrush(controlFgResource, control.ActualTheme);
                 else if (m.Foreground is { } controlFg) c.Foreground = controlFg;
                 else c.ClearValue(Control.ForegroundProperty);
-                if (m.BorderBrushResourceKey is { } controlBorderResource) c.BorderBrush = ThemeResources.ResolveBrush(controlBorderResource);
+                if (m.BackgroundResourceKey is { } controlBgResource) c.Background = ThemeResources.ResolveBrush(controlBgResource, control.ActualTheme);
+                else if (m.Background is { } controlBg) c.Background = controlBg;
+                // else: leave Control.Background as-is (default chrome or .Set() override)
+                if (m.BorderBrushResourceKey is { } controlBorderResource) c.BorderBrush = ThemeResources.ResolveBrush(controlBorderResource, control.ActualTheme);
                 else if (m.BorderBrush is { } controlBorder) c.BorderBrush = controlBorder;
                 else c.ClearValue(Control.BorderBrushProperty);
                 if (m.BorderThickness is { } controlThickness) c.BorderThickness = controlThickness;
@@ -2182,12 +2343,12 @@ internal sealed class UiRenderer(Action requestRender)
                 if (m.Padding is { } borderPadding) b.Padding = borderPadding;
                 else b.ClearValue(Border.PaddingProperty);
                 if (m.BackgroundResourceKey is { } backgroundResourceKey)
-                    b.Background = ThemeResources.ResolveBrush(backgroundResourceKey);
+                    b.Background = ThemeResources.ResolveBrush(backgroundResourceKey, control.ActualTheme);
                 else if (m.Background is { } bg)
                     b.Background = bg;
                 else b.ClearValue(Border.BackgroundProperty);
                 if (m.BorderBrushResourceKey is { } borderResourceKey)
-                    b.BorderBrush = ThemeResources.ResolveBrush(borderResourceKey);
+                    b.BorderBrush = ThemeResources.ResolveBrush(borderResourceKey, control.ActualTheme);
                 else if (m.BorderBrush is { } borderBrush)
                     b.BorderBrush = borderBrush;
                 else b.ClearValue(Border.BorderBrushProperty);
@@ -2198,9 +2359,23 @@ internal sealed class UiRenderer(Action requestRender)
                 else b.ClearValue(Border.CornerRadiusProperty);
                 break;
         }
+
+        // Keep every theme-resource-backed brush correct after a runtime
+        // light/dark switch. Application.Resources snapshots the startup theme, so
+        // the resolves above use control.ActualTheme and this subscribes once so
+        // they re-resolve when the element's ActualTheme changes.
+        TrackThemedBrushes(control, element);
     }
 
-    private static void ApplyResourceOverrides(FrameworkElement control, ResourceOverrides? overrides)
+    // Elements whose brushes are driven by theme resources (foreground/background/
+    // border resource keys or ThemeRef resource overrides). Weakly held so a
+    // control that is discarded drops its tracking without a leak.
+    private static readonly ConditionalWeakTable<FrameworkElement, Element> _themedElements = new();
+
+    private static void ApplyResourceOverrides(FrameworkElement control, ResourceOverrides? overrides) =>
+        ApplyThemedOverrides(control, overrides, control.ActualTheme);
+
+    private static void ApplyThemedOverrides(FrameworkElement control, ResourceOverrides? overrides, ElementTheme theme)
     {
         if (overrides is null)
             return;
@@ -2208,9 +2383,86 @@ internal sealed class UiRenderer(Action requestRender)
         foreach (var (key, value) in overrides.Values)
         {
             control.Resources[key] = value is ThemeRef themeRef
-                ? ThemeResources.ResolveBrush(themeRef.ResourceKey)
+                ? ThemeResources.ResolveBrush(themeRef.ResourceKey, theme)
                 : value;
         }
+    }
+
+    private static bool HasThemeRefOverride(ResourceOverrides? overrides)
+    {
+        if (overrides is null)
+            return false;
+        foreach (var value in overrides.Values.Values)
+        {
+            if (value is ThemeRef)
+                return true;
+        }
+        return false;
+    }
+
+    private static void TrackThemedBrushes(FrameworkElement control, Element element)
+    {
+        var m = element.Modifiers;
+        var needsTracking =
+            m.ForegroundResourceKey is not null ||
+            m.BackgroundResourceKey is not null ||
+            m.BorderBrushResourceKey is not null ||
+            HasThemeRefOverride(m.ResourceOverrides);
+
+        if (!needsTracking)
+        {
+            if (_themedElements.TryGetValue(control, out _))
+            {
+                _themedElements.Remove(control);
+                control.ActualThemeChanged -= ReapplyThemedBrushes;
+                control.Loaded -= ReapplyThemedBrushesOnLoad;
+            }
+            return;
+        }
+
+        // Store the latest element so re-application uses current modifiers, and
+        // subscribe exactly once per control instance (reused across renders).
+        var firstTime = !_themedElements.TryGetValue(control, out _);
+        _themedElements.AddOrUpdate(control, element);
+        if (firstTime)
+        {
+            control.ActualThemeChanged += ReapplyThemedBrushes;
+            control.Loaded += ReapplyThemedBrushesOnLoad;
+        }
+    }
+
+    private static void ReapplyThemedBrushesOnLoad(object sender, RoutedEventArgs e)
+    {
+        if (sender is FrameworkElement fe)
+            ReapplyThemedBrushes(fe, null!);
+    }
+
+    private static void ReapplyThemedBrushes(FrameworkElement sender, object args)
+    {
+        if (!_themedElements.TryGetValue(sender, out var element))
+            return;
+
+        var m = element.Modifiers;
+        var theme = sender.ActualTheme;
+        switch (sender)
+        {
+            case TextBlock tb when m.ForegroundResourceKey is { } key:
+                tb.Foreground = ThemeResources.ResolveBrush(key, theme);
+                break;
+            case RichTextBlock rtb when m.ForegroundResourceKey is { } key:
+                rtb.Foreground = ThemeResources.ResolveBrush(key, theme);
+                break;
+            case Control c:
+                if (m.ForegroundResourceKey is { } cf) c.Foreground = ThemeResources.ResolveBrush(cf, theme);
+                if (m.BackgroundResourceKey is { } cbg) c.Background = ThemeResources.ResolveBrush(cbg, theme);
+                if (m.BorderBrushResourceKey is { } cb) c.BorderBrush = ThemeResources.ResolveBrush(cb, theme);
+                break;
+            case Border b:
+                if (m.BackgroundResourceKey is { } bg) b.Background = ThemeResources.ResolveBrush(bg, theme);
+                if (m.BorderBrushResourceKey is { } bb) b.BorderBrush = ThemeResources.ResolveBrush(bb, theme);
+                break;
+        }
+        ApplyThemedOverrides(sender, m.ResourceOverrides, theme);
     }
 
     private static void ApplySetters(FrameworkElement control, Element element)
