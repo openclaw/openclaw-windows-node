@@ -560,6 +560,7 @@ jobs:
     - name: Run E2E Tests (${{ matrix.name }})
       env:
         OPENCLAW_RUN_E2E: 1
+        OPENCLAW_E2E_GATEWAY_SOURCE: ${{ matrix.gateway_source }}
         OPENCLAW_E2E_GATEWAY_PACKAGE_SPEC: ${{ matrix.gateway_source == 'candidate' && steps.gateway_package_host.outputs.package_spec || '' }}
       shell: pwsh
       run: |

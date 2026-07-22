@@ -1720,8 +1720,26 @@ public class SetupStepsTests : IDisposable
         var result = await StartGatewayStep.RestartAndWaitForHealthAsync(ctx, CancellationToken.None);
 
         Assert.True(result.IsSuccess, result.Message);
-        Assert.DoesNotContain(commands.WslCalls, call => call.Command.Contains("ss -tlnp"));
+        Assert.Contains(commands.WslCalls, call => call.Command.Contains("ss -tlnp"));
         Assert.Contains(commands.WslCalls, call => call.Command.Contains("openclaw gateway restart"));
+    }
+
+    [Fact]
+    public async Task StartGateway_RestartRejectsUnrelatedPortOwner()
+    {
+        var commands = new FakeCommandRunner(
+            _ => Ok(),
+            (_, command, _) => command.Contains("ss -tlnp")
+                ? Ok("LISTEN 0 4096 127.0.0.1:18789 users:((\"python\",pid=42,fd=3))")
+                : Fail($"Unexpected command: {command}"));
+        var ctx = CreateContext(commands: commands);
+        ctx.DistroName = "test-distro";
+
+        var result = await StartGatewayStep.RestartAndWaitForHealthAsync(ctx, CancellationToken.None);
+
+        Assert.False(result.IsSuccess);
+        Assert.Contains("already in use by another process", result.Message, StringComparison.Ordinal);
+        Assert.DoesNotContain(commands.WslCalls, call => call.Command.Contains("openclaw gateway restart"));
     }
 
     [Fact]
@@ -1758,6 +1776,7 @@ public class SetupStepsTests : IDisposable
             {
                 var value when value.Contains("config get gateway.reload.mode --json") => Ok("\"restart\""),
                 var value when value.Contains("config set gateway.reload.mode off") => Ok(),
+                var value when value.Contains("ss -tlnp") => Ok(),
                 var value when value.Contains("openclaw gateway restart") => Ok(),
                 var value when value.Contains("curl -s") => Ok("200"),
                 _ => Fail($"Unexpected command: {command}"),
@@ -1768,11 +1787,12 @@ public class SetupStepsTests : IDisposable
         var result = await new SetupWizardRunner(ctx).SuspendReloadModeAsync();
 
         Assert.True(result.IsSuccess, result.Message);
-        Assert.Equal(4, commands.WslCalls.Count);
+        Assert.Equal(5, commands.WslCalls.Count);
         Assert.Contains("config get gateway.reload.mode --json", commands.WslCalls[0].Command);
         Assert.Contains("config set gateway.reload.mode off", commands.WslCalls[1].Command);
-        Assert.Contains("openclaw gateway restart", commands.WslCalls[2].Command);
-        Assert.Contains("curl -s", commands.WslCalls[3].Command);
+        Assert.Contains("ss -tlnp", commands.WslCalls[2].Command);
+        Assert.Contains("openclaw gateway restart", commands.WslCalls[3].Command);
+        Assert.Contains("curl -s", commands.WslCalls[4].Command);
         var recovery = GatewayReloadRecoveryStore.Load(ctx);
         Assert.NotNull(recovery);
         Assert.Equal("restart", recovery.ReloadMode);

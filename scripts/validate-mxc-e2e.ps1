@@ -151,7 +151,8 @@ function Set-ProcessEnv {
 $trackedEnvVars = @(
     "OPENCLAW_REPO_ROOT",
     "OPENCLAW_RUN_E2E",
-    "OPENCLAW_RUN_MXC_E2E"
+    "OPENCLAW_RUN_MXC_E2E",
+    "OPENCLAW_E2E_GATEWAY_SOURCE"
 )
 $previousEnv = @{}
 foreach ($name in $trackedEnvVars) {
@@ -159,9 +160,14 @@ foreach ($name in $trackedEnvVars) {
 }
 
 try {
+    if ([string]::IsNullOrWhiteSpace($env:OPENCLAW_E2E_GATEWAY_PACKAGE_SPEC)) {
+        throw "OPENCLAW_E2E_GATEWAY_PACKAGE_SPEC must name the reviewed HTTP(S) .tgz candidate before formal MXC validation."
+    }
+
     Set-ProcessEnv -Name "OPENCLAW_REPO_ROOT" -Value $repoRoot
     Set-ProcessEnv -Name "OPENCLAW_RUN_E2E" -Value "1"
     Set-ProcessEnv -Name "OPENCLAW_RUN_MXC_E2E" -Value "1"
+    Set-ProcessEnv -Name "OPENCLAW_E2E_GATEWAY_SOURCE" -Value "candidate"
 
     Write-Host "OpenClaw MXC validation"
     Write-Host "  Repo: $repoRoot"
