@@ -6,6 +6,8 @@
     <RootNamespace>OpenClaw.WinNode.Cli</RootNamespace>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
+    <PublishTrimmed>true</PublishTrimmed>
+    <TrimMode>partial</TrimMode>
   </PropertyGroup>
 
   <ItemGroup>
@@ -22,4 +24,17 @@
   <ItemGroup>
     <InternalsVisibleTo Include="OpenClaw.WinNode.Cli.Tests" />
   </ItemGroup>
+
+  <!-- Shared owns reflection-heavy tray/node code. Copy it unchanged until
+       those surfaces are independently trim-safe; only trim the CLI/framework. -->
+  <Target Name="PreserveOpenClawSharedDuringTrim"
+          BeforeTargets="_ComputeManagedAssemblyToLink"
+          Condition="'$(PublishTrimmed)' == 'true'">
+    <ItemGroup>
+      <ResolvedFileToPublish Update="@(ResolvedFileToPublish)"
+                             Condition="'%(Filename)' == 'OpenClaw.Shared'">
+        <PostprocessAssembly>false</PostprocessAssembly>
+      </ResolvedFileToPublish>
+    </ItemGroup>
+  </Target>
 </Project>
