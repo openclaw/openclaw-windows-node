@@ -1638,13 +1638,9 @@ public sealed class StartGatewayStep : SetupStep
         var pathCmd = ctx.WslPathPrefix;
         var action = restart ? "restart" : "start";
 
-        // A restart intentionally targets the service already holding this port.
-        if (!restart)
-        {
-            var portConflict = await CheckPortOwnershipAsync(ctx, ct);
-            if (portConflict is not null)
-                return portConflict;
-        }
+        var portConflict = await CheckPortOwnershipAsync(ctx, ct);
+        if (portConflict is not null)
+            return portConflict;
 
         var start = await ctx.Commands.RunInWslAsync(
             distro, $"{pathCmd} && openclaw gateway {action}", TimeSpan.FromSeconds(30), ct: ct);

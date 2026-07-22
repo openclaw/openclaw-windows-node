@@ -27,19 +27,31 @@ public sealed class GatewayE2EPackageSpecTests
     }
 
     [Fact]
-    public void Resolve_UsesLkgWhenPackageSpecIsMissing()
+    public void Resolve_UsesLkgOnlyWhenExplicitlySelected()
     {
         const string lkg = "2026.7.1";
-        Assert.Equal(lkg, GatewayE2EPackageSpec.Resolve(null, lkg));
-        Assert.Equal(lkg, GatewayE2EPackageSpec.Resolve("", lkg));
-        Assert.Equal(lkg, GatewayE2EPackageSpec.Resolve("  ", lkg));
+        Assert.Equal(lkg, GatewayE2EPackageSpec.Resolve("lkg", null, lkg));
+        Assert.Equal(lkg, GatewayE2EPackageSpec.Resolve(" LKG ", "", lkg));
     }
 
     [Fact]
     public void Resolve_AcceptsBuiltPackageUrl()
     {
         const string packageSpec = "http://127.0.0.1:38677/openclaw-candidate.tgz";
-        Assert.Equal(packageSpec, GatewayE2EPackageSpec.Resolve(packageSpec, "2026.7.1"));
+        Assert.Equal(packageSpec, GatewayE2EPackageSpec.Resolve("candidate", packageSpec, "2026.7.1"));
+    }
+
+    [Theory]
+    [InlineData(null, null)]
+    [InlineData("", null)]
+    [InlineData("other", null)]
+    [InlineData("candidate", null)]
+    [InlineData("candidate", "")]
+    [InlineData("lkg", "https://example.test/openclaw-candidate.tgz")]
+    public void Resolve_RejectsAmbiguousSourceOrSpec(string? source, string? packageSpec)
+    {
+        Assert.Throws<InvalidOperationException>(() =>
+            GatewayE2EPackageSpec.Resolve(source, packageSpec, "2026.7.1"));
     }
 
     [Theory]
@@ -51,7 +63,7 @@ public sealed class GatewayE2EPackageSpecTests
     public void Resolve_RejectsUnsafeOrNonPackageOverrides(string packageSpec)
     {
         Assert.Throws<InvalidOperationException>(() =>
-            GatewayE2EPackageSpec.Resolve(packageSpec, "2026.7.1"));
+            GatewayE2EPackageSpec.Resolve("candidate", packageSpec, "2026.7.1"));
     }
 
     private static string RepositoryRoot()
