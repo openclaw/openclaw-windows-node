@@ -142,7 +142,7 @@ rerun setup with a supported new name.
     "Version": null,
     "ExpectedPackageSha256": null,
     "HealthTimeoutSeconds": 90,
-    "ReloadMode": "hot",
+    "ReloadMode": "hybrid",
     "AuthMode": "token",
     "ExtraConfig": null
   },
