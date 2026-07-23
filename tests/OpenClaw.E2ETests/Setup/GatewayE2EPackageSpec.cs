@@ -16,6 +16,9 @@ internal static class GatewayE2EPackageSpec
         Environment.GetEnvironmentVariable(VersionEnvVar),
         OpenClaw.SetupEngine.GatewayLkgVersion.ResolveLkgVersion());
 
+    internal static string ResolveNodeCommandAllowConfigKey()
+        => OpenClaw.Shared.GatewayNodeCommandPolicyConfig.ResolveAllowKey(Resolve());
+
     internal static string? ResolveExpectedSha256() => ResolveExpectedSha256(
         Environment.GetEnvironmentVariable(SourceEnvVar),
         Environment.GetEnvironmentVariable(Sha256EnvVar));

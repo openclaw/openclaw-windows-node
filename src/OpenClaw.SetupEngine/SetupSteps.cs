@@ -4,6 +4,7 @@ using System.Net.Http;
 using System.Net.Sockets;
 using System.Runtime.InteropServices;
 using System.Text.Json;
+using System.Text.RegularExpressions;
 using OpenClaw.Connection;
 using OpenClaw.Shared;
 
@@ -1453,6 +1454,8 @@ public sealed class RecoverGatewayReloadStep : SetupStep
 public sealed class ConfigureGatewayStep : SetupStep
 {
     internal const string DevicePairPublicUrlKey = "plugins.entries.device-pair.config.publicUrl";
+    internal const string CurrentNodeCommandAllowConfigKey = GatewayNodeCommandPolicyConfig.CurrentAllowKey;
+    internal const string LegacyNodeCommandAllowConfigKey = GatewayNodeCommandPolicyConfig.LegacyAllowKey;
     internal const string DevicePairEnabledKey = "plugins.entries.device-pair.enabled";
     // Each `openclaw config set` emitted below spawns the Node CLI fresh inside WSL; on a
     // newly created distro with a cold cache that is ~4-5s apiece. Budget the step by how
@@ -1485,7 +1488,9 @@ public sealed class ConfigureGatewayStep : SetupStep
 
         var allowedCommandsJson = JsonSerializer.Serialize(ctx.Config.Capabilities.GetEnabledCommandIds());
         var escapedAllowedCommands = WslShellQuoting.QuotePosixSingleQuote(allowedCommandsJson);
-        var extraConfigOverridesAllowCommands = gw.ExtraConfig?.ContainsKey("gateway.nodes.allowCommands") == true;
+        var nodeCommandAllowConfigKey = ResolveNodeCommandAllowConfigKey(gw);
+        var extraConfigOverridesAllowCommands =
+            gw.ExtraConfig?.ContainsKey(nodeCommandAllowConfigKey) == true;
         if (gw.ExtraConfig is { Count: > 0 })
         {
             foreach (var key in gw.ExtraConfig.Keys)
@@ -1497,9 +1502,10 @@ public sealed class ConfigureGatewayStep : SetupStep
 
         var configCommands = BuildConfigCommands(gw, port, escapedAllowedCommands, ctx.Config.Tailscale);
 
-        ctx.Logger.Info($"Gateway node allowCommands derived from setup capabilities: {allowedCommandsJson}");
+        ctx.Logger.Info(
+            $"Gateway node command allowlist ({nodeCommandAllowConfigKey}) derived from setup capabilities: {allowedCommandsJson}");
         if (extraConfigOverridesAllowCommands)
-            ctx.Logger.Warn("Gateway.ExtraConfig overrides derived gateway.nodes.allowCommands");
+            ctx.Logger.Warn($"Gateway.ExtraConfig overrides derived {nodeCommandAllowConfigKey}");
         if (GetDefaultDevicePairPublicUrl(gw, port, ctx.Config.Tailscale.Enabled) is { } defaultPublicUrl &&
             gw.ExtraConfig?.ContainsKey(DevicePairPublicUrlKey) != true)
         {
@@ -1538,13 +1544,14 @@ public sealed class ConfigureGatewayStep : SetupStep
         string escapedAllowedCommands,
         TailscaleConfig? tailscale = null)
     {
+        var nodeCommandAllowConfigKey = ResolveNodeCommandAllowConfigKey(gw);
         var configCommands = $"""
             openclaw config set gateway.mode local
             openclaw config set gateway.port {port}
             openclaw config set gateway.bind {gw.Bind}
             openclaw config set gateway.auth.mode {gw.AuthMode}
             openclaw config set gateway.auth.token "$OPENCLAW_GATEWAY_TOKEN"
-            openclaw config set gateway.nodes.allowCommands {escapedAllowedCommands}
+            openclaw config set {nodeCommandAllowConfigKey} {escapedAllowedCommands}
             """;
 
         if (tailscale?.Enabled == true)
@@ -1600,6 +1607,9 @@ public sealed class ConfigureGatewayStep : SetupStep
 
         return configCommands;
     }
+
+    internal static string ResolveNodeCommandAllowConfigKey(GatewayConfig gw)
+        => GatewayNodeCommandPolicyConfig.ResolveAllowKey(gw.Version);
 
     // Budget = base + per-command, floored. Scales the WSL timeout with the number of
     // `openclaw config set` invocations the step emits so it cannot silently regress as
@@ -1665,13 +1675,17 @@ public sealed class WaitForGatewayHealthStep : SetupStep
 
     public override async Task<StepResult> ExecuteAsync(SetupContext ctx, CancellationToken ct)
     {
-        var portConflict = await StartGatewayStep.CheckPortOwnershipAsync(ctx, ct);
-        return portConflict ?? await StartGatewayStep.WaitForHealthAsync(ctx, ct);
+        var portOwnership = await StartGatewayStep.CheckPortOwnershipAsync(ctx, ct);
+        return portOwnership.Failure ?? await StartGatewayStep.WaitForHealthAsync(ctx, ct);
     }
 }
 
 public sealed class StartGatewayStep : SetupStep
 {
+    internal sealed record PortOwnershipCheck(
+        bool IsManagedGateway,
+        StepResult? Failure);
+
     public override string Id => "start-gateway";
     public override string DisplayName => "Start gateway";
     public override RetryPolicy Retry => new(MaxAttempts: 3, InitialDelay: TimeSpan.FromSeconds(3));
@@ -1691,9 +1705,22 @@ public sealed class StartGatewayStep : SetupStep
         var pathCmd = ctx.WslPathPrefix;
         var action = restart ? "restart" : "start";
 
-        var portConflict = await CheckPortOwnershipAsync(ctx, ct);
-        if (portConflict is not null)
-            return portConflict;
+        var portOwnership = await CheckPortOwnershipAsync(ctx, ct);
+        if (portOwnership.Failure is not null)
+            return portOwnership.Failure;
+
+        if (!restart && portOwnership.IsManagedGateway)
+        {
+            ctx.Logger.Info(
+                $"Managed OpenClaw Gateway already owns port {ctx.Config.GatewayPort}; reusing it instead of issuing a redundant start");
+            return await WaitForHealthAsync(ctx, ct);
+        }
+
+        if (restart && portOwnership.IsManagedGateway)
+        {
+            ctx.Logger.Info(
+                $"Managed OpenClaw Gateway owns port {ctx.Config.GatewayPort}; delegating its stop/start lifecycle to openclaw gateway restart");
+        }
 
         var start = await ctx.Commands.RunInWslAsync(
             distro, $"{pathCmd} && openclaw gateway {action}", TimeSpan.FromSeconds(30), ct: ct);
@@ -1723,24 +1750,88 @@ public sealed class StartGatewayStep : SetupStep
         return await WaitForHealthAsync(ctx, ct);
     }
 
-    internal static async Task<StepResult?> CheckPortOwnershipAsync(SetupContext ctx, CancellationToken ct)
+    internal static async Task<PortOwnershipCheck> CheckPortOwnershipAsync(
+        SetupContext ctx,
+        CancellationToken ct)
     {
         var portCheck = await ctx.Commands.RunInWslAsync(
-            ctx.DistroName!, $"ss -tlnp 2>/dev/null | grep ':{ctx.Config.GatewayPort}\\b' || true",
+            ctx.DistroName!, "ss -tlnp",
             TimeSpan.FromSeconds(10), ct: ct);
 
-        if (string.IsNullOrWhiteSpace(portCheck.Stdout) || !portCheck.Stdout.Contains($":{ctx.Config.GatewayPort}"))
-            return null;
-
-        if (!portCheck.Stdout.Contains("openclaw", StringComparison.OrdinalIgnoreCase))
+        if (portCheck.ExitCode != 0)
         {
-            ctx.Logger.Warn($"Port {ctx.Config.GatewayPort} is in use by another process:\n{portCheck.Stdout.Trim()}");
-            return StepResult.Fail(
-                $"Port {ctx.Config.GatewayPort} is already in use by another process. Either stop the conflicting process or change GatewayPort in the setup config.");
+            var probeError = string.IsNullOrWhiteSpace(portCheck.Stderr)
+                ? portCheck.Stdout.Trim()
+                : portCheck.Stderr.Trim();
+            ctx.Logger.Warn(
+                $"Could not inspect port {ctx.Config.GatewayPort} ownership with ss (exit {portCheck.ExitCode}): {probeError}");
+            return new PortOwnershipCheck(
+                false,
+                StepResult.Fail(
+                    $"Gateway could not inspect port ownership for port {ctx.Config.GatewayPort}. Refusing to start or restart without listener ownership proof."));
         }
 
-        ctx.Logger.Info($"Port {ctx.Config.GatewayPort} appears to be in use by openclaw — proceeding");
-        return null;
+        var selectedPortListeners = portCheck.Stdout
+            .Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .Where(line =>
+            {
+                var columns = line.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries);
+                return columns.Length >= 4 &&
+                    string.Equals(columns[0], "LISTEN", StringComparison.OrdinalIgnoreCase) &&
+                    columns[3].EndsWith($":{ctx.Config.GatewayPort}", StringComparison.Ordinal);
+            })
+            .ToArray();
+        if (selectedPortListeners.Length == 0)
+            return new PortOwnershipCheck(false, null);
+
+        var selectedPortOutput = string.Join('\n', selectedPortListeners);
+        var listenerPidsByLine = selectedPortListeners
+            .Select(line => Regex.Matches(line, @"\bpid=(\d+)\b")
+                .Select(match => int.TryParse(match.Groups[1].Value, out var pid) ? pid : 0)
+                .Where(pid => pid > 0)
+                .Distinct()
+                .ToArray())
+            .ToArray();
+        if (listenerPidsByLine.Any(pids => pids.Length == 0))
+        {
+            ctx.Logger.Warn(
+                $"Port {ctx.Config.GatewayPort} has a listener whose process ownership could not be attributed:\n{selectedPortOutput}");
+            return new PortOwnershipCheck(
+                false,
+                StepResult.Fail(
+                    $"Port {ctx.Config.GatewayPort} is already in use, but its owning process could not be attributed. Refusing to stop or replace an unknown listener."));
+        }
+
+        var listenerPids = listenerPidsByLine
+            .SelectMany(pids => pids)
+            .Distinct()
+            .ToArray();
+        var servicePidResult = await ctx.Commands.RunInWslAsync(
+            ctx.DistroName!,
+            "systemctl --user show openclaw-gateway.service --property=MainPID --value",
+            TimeSpan.FromSeconds(10),
+            ct: ct);
+        var managedServicePid = 0;
+        var hasManagedServicePid =
+            servicePidResult.ExitCode == 0 &&
+            int.TryParse(servicePidResult.Stdout.Trim(), out managedServicePid) &&
+            managedServicePid > 0;
+        var allListenersBelongToManagedGateway =
+            hasManagedServicePid && listenerPids.All(pid => pid == managedServicePid);
+
+        if (!allListenersBelongToManagedGateway)
+        {
+            ctx.Logger.Warn(
+                $"Port {ctx.Config.GatewayPort} is in use by a listener not owned by the managed OpenClaw Gateway service:\n{selectedPortOutput}");
+            return new PortOwnershipCheck(
+                false,
+                StepResult.Fail(
+                    $"Port {ctx.Config.GatewayPort} is already in use by another or unattributable process. Either stop the conflicting process through its owner or change GatewayPort in the setup config."));
+        }
+
+        ctx.Logger.Info(
+            $"Port {ctx.Config.GatewayPort} is owned by managed OpenClaw Gateway service PID {managedServicePid}");
+        return new PortOwnershipCheck(true, null);
     }
 
     internal static async Task<StepResult> WaitForHealthAsync(SetupContext ctx, CancellationToken ct)
