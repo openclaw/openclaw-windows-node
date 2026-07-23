@@ -52,6 +52,8 @@ internal sealed class SettingsStore : ISettingsStore
         NotifyInfo = _settings.NotifyInfo,
         ScreenRecordingConsentGiven = _settings.ScreenRecordingConsentGiven,
         CameraRecordingConsentGiven = _settings.CameraRecordingConsentGiven,
+        GatewayRollbackRetentionCount = _settings.GatewayRollbackRetentionCount,
+        GatewayRollbackRetentionAgeDays = _settings.GatewayRollbackRetentionAgeDays,
         VoiceTtsEnabled = _settings.VoiceTtsEnabled,
         ShowChatToolCalls = _settings.ShowChatToolCalls,
     };
@@ -133,6 +135,8 @@ internal sealed class SettingsStore : ISettingsStore
         public bool NotifyInfo { set => _settings.NotifyInfo = value; }
         public bool ScreenRecordingConsentGiven { set => _settings.ScreenRecordingConsentGiven = value; }
         public bool CameraRecordingConsentGiven { set => _settings.CameraRecordingConsentGiven = value; }
+        public int GatewayRollbackRetentionCount { set => _settings.GatewayRollbackRetentionCount = value; }
+        public int GatewayRollbackRetentionAgeDays { set => _settings.GatewayRollbackRetentionAgeDays = value; }
         public bool ShowChatToolCalls { set => _settings.ShowChatToolCalls = value; }
     }
 }

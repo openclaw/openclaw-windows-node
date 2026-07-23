@@ -18,7 +18,7 @@ public class SettingsManager
     private readonly string _settingsDirectory;
     private readonly string _settingsFilePath;
     private const string ProtectedSecretPrefix = "dpapi:";
-    private const int CurrentSettingsSchemaVersion = 1;
+    private const int CurrentSettingsSchemaVersion = 2;
     private static readonly byte[] ProtectedSecretEntropy = Encoding.UTF8.GetBytes("OpenClawTray.Settings.v1");
     public const string AppThemeSystem = "System";
     public const string AppThemeLight = "Light";
@@ -49,6 +49,16 @@ public class SettingsManager
     public bool HasLegacyGatewayCredentials =>
         !string.IsNullOrWhiteSpace(LegacyToken) ||
         !string.IsNullOrWhiteSpace(LegacyBootstrapToken);
+    public int GatewayRollbackRetentionCount
+    {
+        get => NormalizeRollbackRetentionCount(_data.GatewayRollbackRetentionCount);
+        set => _data = _data with { GatewayRollbackRetentionCount = NormalizeRollbackRetentionCount(value) };
+    }
+    public int GatewayRollbackRetentionAgeDays
+    {
+        get => Math.Clamp(_data.GatewayRollbackRetentionAgeDays, 0, 3650);
+        set => _data = _data with { GatewayRollbackRetentionAgeDays = Math.Clamp(value, 0, 3650) };
+    }
 
     // Startup
     public bool AutoStart { get => _data.AutoStart; set => _data = _data with { AutoStart = value }; }
@@ -282,6 +292,8 @@ public class SettingsManager
         HasSeenActivityStreamTip = false,
         SkippedUpdateTag = "",
         PreferredGatewayId = null,
+        GatewayRollbackRetentionCount = 1,
+        GatewayRollbackRetentionAgeDays = 0,
         SystemRunSandboxEnabled = true,
         SystemRunBlockHostFallbackWhenMxcUnavailable = false,
         SystemRunAllowOutbound = false,
@@ -320,6 +332,8 @@ public class SettingsManager
             A2UIImageHosts = loaded.A2UIImageHosts is { Count: > 0 } hosts ? new List<string>(hosts) : new(),
             SkippedUpdateTag = loaded.SkippedUpdateTag ?? defaults.SkippedUpdateTag,
             PreferredGatewayId = loaded.PreferredGatewayId ?? defaults.PreferredGatewayId,
+            GatewayRollbackRetentionCount = NormalizeRollbackRetentionCount(loaded.GatewayRollbackRetentionCount),
+            GatewayRollbackRetentionAgeDays = Math.Clamp(loaded.GatewayRollbackRetentionAgeDays, 0, 3650),
             AppTheme = NormalizeAppTheme(loaded.AppTheme),
             ShowDiagnostics = loaded.ShowDiagnostics,
             OpenTelemetryEndpoint = NormalizeOptionalString(loaded.OpenTelemetryEndpoint),
@@ -348,6 +362,8 @@ public class SettingsManager
     }
 
     private static bool IsValidPort(int port) => port is >= 1 and <= 65535;
+
+    private static int NormalizeRollbackRetentionCount(int value) => value is 1 or 2 or -1 ? value : 1;
 
     private static List<SandboxCustomFolder> CloneSandboxCustomFolders(IEnumerable<SandboxCustomFolder>? folders) =>
         folders is null

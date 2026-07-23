@@ -293,7 +293,7 @@ public class SettingsRoundTripTests
             settings.Save();
 
             using var saved = JsonDocument.Parse(File.ReadAllText(Path.Combine(dir, "settings.json")));
-            Assert.Equal(1, saved.RootElement.GetProperty(nameof(SettingsData.SettingsSchemaVersion)).GetInt32());
+            Assert.Equal(2, saved.RootElement.GetProperty(nameof(SettingsData.SettingsSchemaVersion)).GetInt32());
             Assert.False(saved.RootElement.GetProperty(nameof(SettingsData.SystemRunBlockHostFallbackWhenMxcUnavailable)).GetBoolean());
         }
         finally
@@ -356,6 +356,85 @@ public class SettingsRoundTripTests
         {
             if (Directory.Exists(dir))
                 Directory.Delete(dir, recursive: true);
+        }
+    }
+
+    [Fact]
+    public void SettingsManager_MigratesMissingRollbackRetentionToSafeDefaults()
+    {
+        var dir = Path.Combine(Path.GetTempPath(), "OpenClaw.Tray.Tests", Guid.NewGuid().ToString("N"));
+        try
+        {
+            Directory.CreateDirectory(dir);
+            File.WriteAllText(Path.Combine(dir, "settings.json"), """
+            {
+                "SettingsSchemaVersion": 1
+            }
+            """);
+
+            var settings = new SettingsManager(dir);
+
+            Assert.Equal(1, settings.GatewayRollbackRetentionCount);
+            Assert.Equal(0, settings.GatewayRollbackRetentionAgeDays);
+            settings.Save();
+            using var saved = JsonDocument.Parse(File.ReadAllText(Path.Combine(dir, "settings.json")));
+            Assert.Equal(2, saved.RootElement.GetProperty(nameof(SettingsData.SettingsSchemaVersion)).GetInt32());
+        }
+        finally
+        {
+            if (Directory.Exists(dir)) Directory.Delete(dir, recursive: true);
+        }
+    }
+
+    [Theory]
+    [InlineData(1, 0)]
+    [InlineData(2, 30)]
+    [InlineData(-1, 3650)]
+    public void SettingsManager_RoundTripsSupportedRollbackRetention(int count, int ageDays)
+    {
+        var dir = Path.Combine(Path.GetTempPath(), "OpenClaw.Tray.Tests", Guid.NewGuid().ToString("N"));
+        try
+        {
+            var settings = new SettingsManager(dir)
+            {
+                GatewayRollbackRetentionCount = count,
+                GatewayRollbackRetentionAgeDays = ageDays
+            };
+            settings.Save();
+
+            var restored = new SettingsManager(dir);
+
+            Assert.Equal(count, restored.GatewayRollbackRetentionCount);
+            Assert.Equal(ageDays, restored.GatewayRollbackRetentionAgeDays);
+        }
+        finally
+        {
+            if (Directory.Exists(dir)) Directory.Delete(dir, recursive: true);
+        }
+    }
+
+    [Fact]
+    public void SettingsManager_NormalizesInvalidRollbackRetention()
+    {
+        var dir = Path.Combine(Path.GetTempPath(), "OpenClaw.Tray.Tests", Guid.NewGuid().ToString("N"));
+        try
+        {
+            Directory.CreateDirectory(dir);
+            File.WriteAllText(Path.Combine(dir, "settings.json"), """
+            {
+                "GatewayRollbackRetentionCount": 99,
+                "GatewayRollbackRetentionAgeDays": -10
+            }
+            """);
+
+            var settings = new SettingsManager(dir);
+
+            Assert.Equal(1, settings.GatewayRollbackRetentionCount);
+            Assert.Equal(0, settings.GatewayRollbackRetentionAgeDays);
+        }
+        finally
+        {
+            if (Directory.Exists(dir)) Directory.Delete(dir, recursive: true);
         }
     }
 

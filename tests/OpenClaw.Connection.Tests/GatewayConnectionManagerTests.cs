@@ -488,7 +488,8 @@ public class GatewayConnectionManagerTests : IDisposable
             _factory,
             _registry,
             NullLogger.Instance,
-            tunnelManager: tunnel);
+            tunnelManager: tunnel,
+            sharedTokenValidationTimeout: TimeSpan.FromMilliseconds(250));
         var connectTask = manager.ConnectAsync("gw-1");
         await tunnel.Started.Task.WaitAsync(TimeSpan.FromSeconds(2));
 
@@ -500,7 +501,7 @@ public class GatewayConnectionManagerTests : IDisposable
         tunnel.AllowStart.SetResult(true);
         await connectTask.WaitAsync(TimeSpan.FromSeconds(2));
 
-        var result = await replaceTask.WaitAsync(TimeSpan.FromSeconds(10));
+        var result = await replaceTask.WaitAsync(TimeSpan.FromSeconds(2));
 
         Assert.Equal(SetupCodeOutcome.ConnectionFailed, result.Outcome);
         Assert.Null(_registry.GetById("gw-1")?.SharedGatewayToken);
@@ -2169,7 +2170,7 @@ public class GatewayConnectionManagerTests : IDisposable
 
         public IGatewayClientLifecycle Create(string gatewayUrl, GatewayCredential credential, string identityPath, IOpenClawLogger logger)
         {
-            var mock = new MockLifecycle(gatewayUrl);
+            var mock = new MockLifecycle(gatewayUrl, identityPath);
             CreatedClients.Add(mock);
             CreatedCredentials.Add(credential);
             CreatedIdentityPaths.Add(identityPath);
@@ -2195,9 +2196,9 @@ public class GatewayConnectionManagerTests : IDisposable
     {
         private readonly MockGatewayClient _client;
 
-        public MockLifecycle(string url)
+        public MockLifecycle(string url, string identityPath)
         {
-            _client = new MockGatewayClient(url);
+            _client = new MockGatewayClient(url, identityPath);
         }
 
         public OpenClawGatewayClient DataClient => _client;
@@ -2230,8 +2231,8 @@ public class GatewayConnectionManagerTests : IDisposable
 
     private sealed class MockGatewayClient : OpenClawGatewayClient
     {
-        public MockGatewayClient(string url)
-            : base(url, "mock-token", NullLogger.Instance) { }
+        public MockGatewayClient(string url, string identityPath)
+            : base(url, "mock-token", NullLogger.Instance, identityPath: identityPath) { }
 
         public void SimulateTransportConnected() =>
             RaiseTransportConnected();

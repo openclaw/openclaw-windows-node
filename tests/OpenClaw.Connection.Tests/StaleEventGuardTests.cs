@@ -212,7 +212,7 @@ public class StaleEventGuardTests : IDisposable
 
         public IGatewayClientLifecycle Create(string gatewayUrl, GatewayCredential credential, string identityPath, IOpenClawLogger logger)
         {
-            var lifecycle = new TrackingLifecycle(gatewayUrl);
+            var lifecycle = new TrackingLifecycle(gatewayUrl, identityPath);
             CreatedClients.Add(lifecycle);
             return lifecycle;
         }
@@ -222,9 +222,9 @@ public class StaleEventGuardTests : IDisposable
     {
         private readonly MockGatewayClient _client;
 
-        public TrackingLifecycle(string url)
+        public TrackingLifecycle(string url, string identityPath)
         {
-            _client = new MockGatewayClient(url);
+            _client = new MockGatewayClient(url, identityPath);
         }
 
         public bool IsDisposed { get; private set; }
@@ -245,7 +245,7 @@ public class StaleEventGuardTests : IDisposable
 
     private sealed class MockGatewayClient : OpenClawGatewayClient
     {
-        public MockGatewayClient(string url)
-            : base(url, "mock-token", NullLogger.Instance) { }
+        public MockGatewayClient(string url, string identityPath)
+            : base(url, "mock-token", NullLogger.Instance, identityPath: identityPath) { }
     }
 }
