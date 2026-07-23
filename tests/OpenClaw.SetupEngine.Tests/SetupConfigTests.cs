@@ -85,6 +85,26 @@ public class SetupConfigTests : IDisposable
     }
 
     [Fact]
+    public void GatewayExpectedPackageSha256_RoundTripsThroughConfigFile()
+    {
+        var path = Path.Combine(_tempDir, "digest-config.json");
+        var expectedSha256 = new string('a', 64);
+        var config = new SetupConfig
+        {
+            Gateway = new GatewayConfig
+            {
+                Version = "https://example.test/openclaw.tgz",
+                ExpectedPackageSha256 = expectedSha256
+            }
+        };
+        File.WriteAllText(path, JsonSerializer.Serialize(config, SetupConfig.JsonWriteOptions));
+
+        var loaded = SetupConfig.LoadFromFile(path);
+
+        Assert.Equal(expectedSha256, loaded.Gateway.ExpectedPackageSha256);
+    }
+
+    [Fact]
     public void TailscaleConfig_NormalizesHostnameAndRejectsIncompatibleGatewaySettings()
     {
         var config = new SetupConfig

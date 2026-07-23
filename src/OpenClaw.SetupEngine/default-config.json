@@ -85,10 +85,13 @@
     "InstallUrl": null,
     // Pin gateway version (null = use GatewayLkgVersion.cs embedded LKG)
     "Version": null,
+    // Expected SHA-256 for an HTTP(S) .tgz Version; verified before the package is installed
+    "ExpectedPackageSha256": null,
     // Seconds to wait for gateway health endpoint before failing
     "HealthTimeoutSeconds": 90,
-    // Config reload strategy: "hot" (no restart), "restart"
-    "ReloadMode": "hot",
+    // Config reload strategy. "hybrid" and "off" work on current and legacy gateways.
+    // Legacy 2026.6.11 and 2026.7.2-beta.3 also accept "hot" and "restart".
+    "ReloadMode": "hybrid",
     // Auth mode: "token" (shared secret)
     "AuthMode": "token",
     // Additional gateway config key/value pairs (applied via `openclaw config set`)

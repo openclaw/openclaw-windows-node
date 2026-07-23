@@ -217,7 +217,7 @@ public class PairingFlowTests : IDisposable
         public IGatewayClientLifecycle Create(string gatewayUrl, GatewayCredential credential,
             string identityPath, IOpenClawLogger logger)
         {
-            return new MockLifecycle(gatewayUrl);
+            return new MockLifecycle(gatewayUrl, identityPath);
         }
     }
 
@@ -225,9 +225,9 @@ public class PairingFlowTests : IDisposable
     {
         private readonly MockGatewayClient _client;
 
-        public MockLifecycle(string url)
+        public MockLifecycle(string url, string identityPath)
         {
-            _client = new MockGatewayClient(url);
+            _client = new MockGatewayClient(url, identityPath);
         }
 
         public OpenClawGatewayClient DataClient => _client;
@@ -243,8 +243,8 @@ public class PairingFlowTests : IDisposable
 
     private sealed class MockGatewayClient : OpenClawGatewayClient
     {
-        public MockGatewayClient(string url)
-            : base(url, "mock-token", NullLogger.Instance) { }
+        public MockGatewayClient(string url, string identityPath)
+            : base(url, "mock-token", NullLogger.Instance, identityPath: identityPath) { }
     }
 
     private sealed class ScriptedNodeConnector : INodeConnector

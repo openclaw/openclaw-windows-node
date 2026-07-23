@@ -1,3 +1,4 @@
+using System.Globalization;
 using OpenClaw.Chat;
 using OpenClaw.Shared;
 
@@ -189,6 +190,24 @@ public class ChatModelChoiceTests
     [InlineData(0, "")]
     public void FormatContextWindow_FormatsCompactly(int contextWindow, string expected) =>
         Assert.Equal(expected, ChatModelLabels.FormatContextWindow(contextWindow));
+
+    [Fact]
+    public void FormatContextWindow_UsesInvariantDecimalSeparatorUnderPtPt()
+    {
+        var originalCulture = CultureInfo.CurrentCulture;
+        var originalUiCulture = CultureInfo.CurrentUICulture;
+        try
+        {
+            CultureInfo.CurrentCulture = new CultureInfo("pt-PT");
+            CultureInfo.CurrentUICulture = new CultureInfo("pt-PT");
+            Assert.Equal("1.5M", ChatModelLabels.FormatContextWindow(1_500_000));
+        }
+        finally
+        {
+            CultureInfo.CurrentCulture = originalCulture;
+            CultureInfo.CurrentUICulture = originalUiCulture;
+        }
+    }
 
     // ── Meta segment ─────────────────────────────────────────────────────
 

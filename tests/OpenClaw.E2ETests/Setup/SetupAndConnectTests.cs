@@ -8,7 +8,7 @@ namespace OpenClaw.E2ETests.Setup;
 /// Defines the xUnit test collection that shares the E2ESetupFixture.
 /// All tests in this collection run against a single setup pipeline execution.
 /// </summary>
-[CollectionDefinition("E2E Setup")]
+[CollectionDefinition("E2E Setup", DisableParallelization = true)]
 public class E2ESetupCollection : ICollectionFixture<E2ESetupFixture> { }
 
 /// <summary>
@@ -113,6 +113,7 @@ public class SetupAndConnectTests
             TimeSpan.FromSeconds(15));
         AssertCommandSucceeded(openClawJsonProbe, "probe WSL openclaw.json");
         Console.WriteLine($"[E2E] WSL openclaw.json probe:\n{openClawJsonProbe.Stdout}");
+        var nodeCommandAllowConfigKey = GatewayE2EPackageSpec.ResolveNodeCommandAllowConfigKey();
 
         if (openClawJsonProbe.Stdout.Contains('{', StringComparison.Ordinal))
         {
@@ -123,7 +124,9 @@ public class SetupAndConnectTests
             AssertJsonPath(root, ["gateway", "bind"], "loopback");
             AssertJsonPath(root, ["gateway", "auth", "mode"], "token");
 
-            var allowCommands = ReadStringArray(GetJsonPath(root, ["gateway", "nodes", "allowCommands"]));
+            var allowCommands = nodeCommandAllowConfigKey == "gateway.nodes.allowCommands"
+                ? ReadStringArray(GetJsonPath(root, ["gateway", "nodes", "allowCommands"]))
+                : ReadStringArray(GetJsonPath(root, ["gateway", "nodes", "commands", "allow"]));
             Assert.Equal(new CapabilitiesConfig().GetEnabledCommandIds().ToArray(), allowCommands.Order(StringComparer.OrdinalIgnoreCase).ToArray());
         }
 
@@ -140,10 +143,10 @@ public class SetupAndConnectTests
         Assert.Contains("token", gatewayAuthMode.Stdout);
 
         var cliAllowCommands = await _fixture.RunInWslAsync(
-            "openclaw config get gateway.nodes.allowCommands",
+            $"openclaw config get {nodeCommandAllowConfigKey}",
             TimeSpan.FromSeconds(15));
-        AssertCommandSucceeded(cliAllowCommands, "read gateway.nodes.allowCommands");
-        Console.WriteLine($"[E2E] gateway.nodes.allowCommands: {cliAllowCommands.Stdout}");
+        AssertCommandSucceeded(cliAllowCommands, $"read {nodeCommandAllowConfigKey}");
+        Console.WriteLine($"[E2E] {nodeCommandAllowConfigKey}: {cliAllowCommands.Stdout}");
         var expectedCommands = new CapabilitiesConfig().GetEnabledCommandIds().ToArray();
         var effectiveCommands = ParseJsonArrayFromOutput(cliAllowCommands.Stdout);
         Assert.Equal(expectedCommands, effectiveCommands.Order(StringComparer.OrdinalIgnoreCase).ToArray());

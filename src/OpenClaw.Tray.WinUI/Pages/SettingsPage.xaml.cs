@@ -15,6 +15,7 @@ using System.Runtime.InteropServices;
 using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
+using System.Linq;
 
 namespace OpenClawTray.Pages;
 
@@ -110,6 +111,17 @@ public sealed partial class SettingsPage : Page
                 Persist(s => s.AppTheme = item.Tag?.ToString() ?? SettingsManager.AppThemeSystem);
         };
         ShowDiagnosticsToggle.Toggled += (_, _) => Persist(s => s.ShowDiagnosticsOverride = ShowDiagnosticsToggle.IsOn);
+        GatewayRollbackRetentionComboBox.SelectionChanged += (_, _) =>
+        {
+            if (GatewayRollbackRetentionComboBox.SelectedItem is ComboBoxItem item &&
+                int.TryParse(item.Tag?.ToString(), NumberStyles.Integer, CultureInfo.InvariantCulture, out var count))
+            {
+                Persist(s => s.GatewayRollbackRetentionCount = count);
+            }
+        };
+        GatewayRollbackAgeDaysNumberBox.ValueChanged += (_, args) =>
+            Persist(s => s.GatewayRollbackRetentionAgeDays =
+                double.IsNaN(args.NewValue) ? 0 : (int)Math.Clamp(args.NewValue, 0, 3650));
 
         WireCheckBox(NotifyHealthCb, v => CurrentApp.Settings!.NotifyHealth = v);
         WireCheckBox(NotifyUrgentCb, v => CurrentApp.Settings!.NotifyUrgent = v);
@@ -231,6 +243,10 @@ public sealed partial class SettingsPage : Page
         SelectComboBoxItemByTag(NotificationSoundComboBox, settings.NotificationSound);
         SelectComboBoxItemByTag(AppThemeComboBox, settings.AppTheme);
         ShowDiagnosticsToggle.IsOn = settings.ShowDiagnosticsEffective;
+        SelectComboBoxItemByTag(
+            GatewayRollbackRetentionComboBox,
+            settings.GatewayRollbackRetentionCount.ToString(CultureInfo.InvariantCulture));
+        GatewayRollbackAgeDaysNumberBox.Value = settings.GatewayRollbackRetentionAgeDays;
 
         NotifyHealthCb.IsChecked = settings.NotifyHealth;
         NotifyUrgentCb.IsChecked = settings.NotifyUrgent;
@@ -439,6 +455,176 @@ public sealed partial class SettingsPage : Page
     private void OnCheckUpdates(object sender, RoutedEventArgs e)
     {
         ((IAppCommands)CurrentApp).CheckForUpdates();
+    }
+
+    private void OnManageGatewayRollbackPoints(object sender, RoutedEventArgs e) =>
+        AsyncEventHandlerGuard.Run(
+            ManageGatewayRollbackPointsAsync,
+            new OpenClawTray.AppLogger(),
+            nameof(OnManageGatewayRollbackPoints));
+
+    private async Task ManageGatewayRollbackPointsAsync()
+    {
+        GatewayRollbackResultBar.IsOpen = false;
+        var points = CurrentApp.GetGatewayRollbackPoints();
+        if (points.Count == 0)
+        {
+            GatewayRollbackResultBar.Severity = InfoBarSeverity.Informational;
+            GatewayRollbackResultBar.Title = "No rollback points";
+            GatewayRollbackResultBar.Message = "A verified rollback point will be created before the next local Gateway update.";
+            GatewayRollbackResultBar.IsOpen = true;
+            return;
+        }
+
+        var choices = points.Select(point => new GatewayRollbackPointChoice(point)).ToArray();
+        var mandatoryChoices = choices
+            .Where(choice => IsMandatoryRecoveryPhase(choice.Point.Phase))
+            .ToArray();
+        if (mandatoryChoices.Length > 1)
+        {
+            GatewayRollbackResultBar.Severity = InfoBarSeverity.Error;
+            GatewayRollbackResultBar.Title = "Gateway recovery is ambiguous";
+            GatewayRollbackResultBar.Message =
+                "Multiple mandatory recovery receipts exist: " +
+                string.Join(", ", mandatoryChoices.Select(choice => choice.Point.Id)) +
+                ". No rollback action was started.";
+            GatewayRollbackResultBar.IsOpen = true;
+            return;
+        }
+        var preferredChoice = mandatoryChoices.SingleOrDefault()
+            ?? choices.FirstOrDefault(choice => choice.Point.RestoreEligible);
+        var selector = new ComboBox
+        {
+            ItemsSource = choices,
+            DisplayMemberPath = nameof(GatewayRollbackPointChoice.DisplayText),
+            SelectedIndex = preferredChoice is null ? -1 : Array.IndexOf(choices, preferredChoice),
+            HorizontalAlignment = HorizontalAlignment.Stretch,
+            MinWidth = 520
+        };
+        var content = new StackPanel { Spacing = 10 };
+        content.Children.Add(new TextBlock
+        {
+            Text = "Rollback points show metadata only. Their private contents are never displayed.",
+            TextWrapping = TextWrapping.Wrap
+        });
+        content.Children.Add(selector);
+
+        var selectDialog = new ContentDialog
+        {
+            Title = "Select a Gateway rollback point",
+            Content = content,
+            PrimaryButtonText = "Continue",
+            CloseButtonText = "Cancel",
+            DefaultButton = ContentDialogButton.Close,
+            XamlRoot = XamlRoot
+        };
+        if (await selectDialog.ShowAsync() != ContentDialogResult.Primary ||
+            selector.SelectedItem is not GatewayRollbackPointChoice selected)
+        {
+            return;
+        }
+
+        if (!selected.Point.RestoreEligible)
+        {
+            GatewayRollbackResultBar.Severity = InfoBarSeverity.Warning;
+            GatewayRollbackResultBar.Title = "Rollback point is not eligible";
+            GatewayRollbackResultBar.Message = "Verification or transaction state prevents restoring this point.";
+            GatewayRollbackResultBar.IsOpen = true;
+            return;
+        }
+
+        var canCancelStagedRestore =
+            selected.Point.Phase == GatewayRollbackPointPhase.RestoreStaged;
+        var confirmation = new ContentDialog
+        {
+            Title = $"Restore OpenClaw {selected.Point.OpenClawVersion}?",
+            Content =
+                "Emergency restore will stop and unregister the current Companion-owned WSL distro, then import a verified copy " +
+                $"of rollback point {selected.Point.Id} under the same distro name. The complete retained filesystem and runtime state " +
+                "will replace the current state. Companion will then verify Gateway, Windows Node, and pairing health." +
+                (canCancelStagedRestore
+                    ? $" Alternatively, cancel the staged restore for exact point {selected.Point.Id} before any destructive boundary."
+                    : string.Empty),
+            PrimaryButtonText = canCancelStagedRestore
+                ? "Resume this rollback point"
+                : "Restore this rollback point",
+            SecondaryButtonText = canCancelStagedRestore
+                ? "Cancel staged restore"
+                : null,
+            CloseButtonText = "Cancel",
+            DefaultButton = ContentDialogButton.Close,
+            XamlRoot = XamlRoot
+        };
+        var confirmationResult = await confirmation.ShowAsync();
+        if (confirmationResult == ContentDialogResult.Secondary && canCancelStagedRestore)
+        {
+            var cancelled = CurrentApp.CancelGatewayRollbackPointRestore(
+                selected.Point.Id, selected.Point.Id);
+            GatewayRollbackResultBar.Severity =
+                cancelled.State == GatewayVersionAlignmentState.RestoreCancelled
+                    ? InfoBarSeverity.Success
+                    : InfoBarSeverity.Error;
+            GatewayRollbackResultBar.Title =
+                cancelled.State == GatewayVersionAlignmentState.RestoreCancelled
+                    ? "Staged restore cancelled"
+                    : "Staged restore cancellation needs attention";
+            GatewayRollbackResultBar.Message =
+                cancelled.State == GatewayVersionAlignmentState.RestoreCancelled
+                    ? "The staged copy was removed before the destructive boundary. Fresh Gateway updates are unblocked."
+                    : cancelled.FailureSummary ?? "The durable recovery receipt was preserved.";
+            GatewayRollbackResultBar.IsOpen = true;
+            return;
+        }
+        if (confirmationResult != ContentDialogResult.Primary)
+            return;
+
+        GatewayRollbackResultBar.Severity = InfoBarSeverity.Informational;
+        GatewayRollbackResultBar.Title = "Restoring local Gateway";
+        GatewayRollbackResultBar.Message = "Do not close Companion while the WSL registration and health checks are being restored.";
+        GatewayRollbackResultBar.IsOpen = true;
+
+        var result = await CurrentApp.RestoreGatewayRollbackPointAsync(selected.Point.Id);
+        GatewayRollbackResultBar.Severity = result.State == GatewayVersionAlignmentState.Restored
+            ? InfoBarSeverity.Success
+            : InfoBarSeverity.Error;
+        GatewayRollbackResultBar.Title = result.State == GatewayVersionAlignmentState.Restored
+            ? "Gateway rollback restored"
+            : "Gateway rollback needs attention";
+        GatewayRollbackResultBar.Message = result.State == GatewayVersionAlignmentState.Restored
+            ? $"OpenClaw {result.InstalledVersion} and its retained state are healthy and synchronized."
+            : result.RollbackPointId is { } requiredPointId &&
+              !string.Equals(requiredPointId, selected.Point.Id, StringComparison.Ordinal)
+                ? $"Recovery must resume exact rollback point {requiredPointId}. " +
+                  (result.FailureSummary ?? "The mandatory receipt was preserved.")
+                : result.FailureSummary ?? "The durable recovery receipt and verified rollback point were preserved for retry.";
+        GatewayRollbackResultBar.IsOpen = true;
+    }
+
+    private static bool IsMandatoryRecoveryPhase(GatewayRollbackPointPhase phase) =>
+        phase is GatewayRollbackPointPhase.UpdateInProgress
+            or GatewayRollbackPointPhase.RestoreStaged
+            or GatewayRollbackPointPhase.UnregisterPending
+            or GatewayRollbackPointPhase.DistroUnregistered
+            or GatewayRollbackPointPhase.ImportPending
+            or GatewayRollbackPointPhase.Imported;
+
+    private sealed record GatewayRollbackPointChoice(GatewayRollbackPointInfo Point)
+    {
+        public string DisplayText =>
+            $"Point {Point.Id} | {Point.Phase} | OpenClaw {Point.OpenClawVersion} | {Point.CreatedAtUtc.ToLocalTime():g} | " +
+            $"{Point.VerificationStatus} | {FormatByteSize(Point.ApproximateSizeBytes)} | " +
+            $"{(Point.RestoreEligible ? "restore eligible" : "not restore eligible")}";
+    }
+
+    private static string FormatByteSize(long bytes)
+    {
+        if (bytes >= 1024L * 1024 * 1024)
+            return $"{bytes / (1024d * 1024 * 1024):0.0} GB";
+        if (bytes >= 1024L * 1024)
+            return $"{bytes / (1024d * 1024):0.0} MB";
+        if (bytes >= 1024)
+            return $"{bytes / 1024d:0.0} KB";
+        return $"{bytes} B";
     }
 
     private void OnDocumentationLink(object sender, RoutedEventArgs e)

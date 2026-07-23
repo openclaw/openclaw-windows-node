@@ -154,8 +154,9 @@ public sealed class GatewayConfig
     public string Bind { get; set; } = "loopback";
     public string? InstallUrl { get; set; }
     public string? Version { get; set; }
+    public string? ExpectedPackageSha256 { get; set; }
     public int HealthTimeoutSeconds { get; set; } = 90;
-    public string ReloadMode { get; set; } = "hot";
+    public string ReloadMode { get; set; } = "hybrid";
     public string AuthMode { get; set; } = "token";
     public Dictionary<string, string>? ExtraConfig { get; set; }
 }

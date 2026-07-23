@@ -613,6 +613,54 @@
                         <FontIcon Glyph="{x:Bind helpers:FluentIconCatalog.ServerEnvironment, Mode=OneTime}"
                                   FontFamily="{ThemeResource SymbolThemeFontFamily}"/>
                     </toolkit:SettingsExpander.HeaderIcon>
+                    <toolkit:SettingsExpander.Content>
+                        <StackPanel Spacing="12" Padding="16,8,16,16">
+                            <TextBlock Text="Gateway rollback points"
+                                       Style="{StaticResource BodyStrongTextBlockStyle}"/>
+                            <TextBlock Text="Companion creates a complete verified offline WSL rollback point before each in-place Gateway update. Emergency restore always requires confirmation."
+                                       TextWrapping="Wrap"
+                                       Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
+                            <Grid ColumnSpacing="16" RowSpacing="8">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="180"/>
+                                    <ColumnDefinition Width="*"/>
+                                </Grid.ColumnDefinitions>
+                                <Grid.RowDefinitions>
+                                    <RowDefinition Height="Auto"/>
+                                    <RowDefinition Height="Auto"/>
+                                </Grid.RowDefinitions>
+                                <TextBlock Grid.Row="0" Grid.Column="0"
+                                           Text="Keep previous versions"
+                                           VerticalAlignment="Center"/>
+                                <ComboBox x:Name="GatewayRollbackRetentionComboBox"
+                                          Grid.Row="0" Grid.Column="1"
+                                          HorizontalAlignment="Stretch"
+                                          AutomationProperties.AutomationId="GatewayRollbackRetentionComboBox">
+                                    <ComboBoxItem Content="1 version (recommended)" Tag="1"/>
+                                    <ComboBoxItem Content="2 versions" Tag="2"/>
+                                    <ComboBoxItem Content="Indefinitely" Tag="-1"/>
+                                </ComboBox>
+                                <TextBlock Grid.Row="1" Grid.Column="0"
+                                           Text="Also keep younger than"
+                                           VerticalAlignment="Center"/>
+                                <StackPanel Grid.Row="1" Grid.Column="1" Orientation="Horizontal" Spacing="8">
+                                    <NumberBox x:Name="GatewayRollbackAgeDaysNumberBox"
+                                               Minimum="0" Maximum="3650" SmallChange="1"
+                                               SpinButtonPlacementMode="Compact"
+                                               Width="120"
+                                               AutomationProperties.AutomationId="GatewayRollbackAgeDaysNumberBox"/>
+                                    <TextBlock Text="days (0 is off)" VerticalAlignment="Center"/>
+                                </StackPanel>
+                            </Grid>
+                            <Button Content="View or restore rollback points"
+                                    HorizontalAlignment="Left"
+                                    Click="OnManageGatewayRollbackPoints"
+                                    AutomationProperties.AutomationId="ManageGatewayRollbackPointsButton"/>
+                            <InfoBar x:Name="GatewayRollbackResultBar"
+                                     IsOpen="False"
+                                     IsClosable="True"/>
+                        </StackPanel>
+                    </toolkit:SettingsExpander.Content>
                     <toolkit:SettingsExpander.ItemsHeader>
                         <Grid Padding="16" ColumnSpacing="24" RowSpacing="6">
                             <Grid.ColumnDefinitions>

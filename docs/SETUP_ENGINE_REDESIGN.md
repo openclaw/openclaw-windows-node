@@ -140,8 +140,9 @@ rerun setup with a supported new name.
     "Bind": "loopback",
     "InstallUrl": null,
     "Version": null,
+    "ExpectedPackageSha256": null,
     "HealthTimeoutSeconds": 90,
-    "ReloadMode": "hot",
+    "ReloadMode": "hybrid",
     "AuthMode": "token",
     "ExtraConfig": null
   },
@@ -194,9 +195,9 @@ Executed sequentially. Each step is a small class (30–120 lines) in `SetupStep
 | 7 | `ConfigureWslInstanceStep` | Write wsl.conf, create user, set dirs |
 | 8 | `ValidateWslLockdownStep` | Verify WSL isolation settings are applied |
 | 9 | `InstallCliStep` | Run install script inside WSL |
-| 10 | `ConfigureGatewayStep` | Write gateway config (bind, port, auth) |
-| 11 | `InstallGatewayServiceStep` | `openclaw gateway install --force` |
-| 12 | `StartGatewayStep` | Start service, poll health endpoint (90s timeout) |
+| 10 | `ConfigureGatewayStep` | Write gateway config (bind, port, auth, and explicit node-command allowlist). Current/custom packages use `gateway.nodes.commands.allow`; the pinned `2026.6.11` LKG and CI-pinned `2026.7.2-beta.3` retain their schema-compatible `gateway.nodes.allowCommands` key. |
+| 11 | `InstallGatewayServiceStep` | Run supported `openclaw gateway install --force`, which installs and activates or restarts the service |
+| 12 | `WaitForGatewayHealthStep` | Verify the selected port is free or owned by the managed systemd Gateway service, then perform a separate retryable health-only wait (90s timeout) |
 | 13 | `MintBootstrapTokenStep` | Generate bootstrap token via CLI |
 | 14 | `PairOperatorStep` | WebSocket operator connection + device approval |
 | 15 | `PairNodeStep` | WebSocket node connection + capability registration |
