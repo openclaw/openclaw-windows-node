@@ -1735,6 +1735,48 @@ public class SetupStepsTests : IDisposable
     }
 
     [Fact]
+    public void ConfigureGateway_WritesCurrentNestedNodeCommandAllowlist()
+    {
+        var commands = ConfigureGatewayStep.BuildConfigCommands(
+            new GatewayConfig(),
+            18789,
+            "'[\"system.run\"]'");
+
+        Assert.Contains(
+            "openclaw config set gateway.nodes.commands.allow '[\"system.run\"]'",
+            commands);
+        Assert.DoesNotContain("gateway.nodes.allowCommands", commands, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void ConfigureGateway_PreservesPinnedLkgNodeCommandAllowlistContract()
+    {
+        var commands = ConfigureGatewayStep.BuildConfigCommands(
+            new GatewayConfig { Version = GatewayLkgVersion.LkgVersion },
+            18789,
+            "'[\"system.run\"]'");
+
+        Assert.Contains(
+            "openclaw config set gateway.nodes.allowCommands '[\"system.run\"]'",
+            commands);
+        Assert.DoesNotContain("gateway.nodes.commands.allow", commands, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void ConfigureGateway_PreservesOfficialBetaNodeCommandAllowlistContract()
+    {
+        var commands = ConfigureGatewayStep.BuildConfigCommands(
+            new GatewayConfig { Version = "2026.7.2-beta.3" },
+            18789,
+            "'[\"system.run\"]'");
+
+        Assert.Contains(
+            "openclaw config set gateway.nodes.allowCommands '[\"system.run\"]'",
+            commands);
+        Assert.DoesNotContain("gateway.nodes.commands.allow", commands, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void ConfigureGateway_ExtraConfigOverridesReloadMode()
     {
         var commands = ConfigureGatewayStep.BuildConfigCommands(
@@ -1795,8 +1837,30 @@ public class SetupStepsTests : IDisposable
     {
         var commands = new FakeCommandRunner(
             _ => Ok(),
+            (_, command, _) => command switch
+            {
+                var value when value.Contains("ss -tlnp") =>
+                    Ok("LISTEN 0 4096 127.0.0.1:18789 users:((\"python\",pid=42,fd=3))"),
+                var value when value.Contains("systemctl --user show openclaw-gateway.service") => Ok("967"),
+                _ => Fail($"Unexpected command: {command}"),
+            });
+        var ctx = CreateContext(commands: commands);
+        ctx.DistroName = "test-distro";
+
+        var result = await StartGatewayStep.RestartAndWaitForHealthAsync(ctx, CancellationToken.None);
+
+        Assert.False(result.IsSuccess);
+        Assert.Contains("already in use by another or unattributable process", result.Message, StringComparison.Ordinal);
+        Assert.DoesNotContain(commands.WslCalls, call => call.Command.Contains("openclaw gateway restart"));
+    }
+
+    [Fact]
+    public async Task StartGateway_RestartRejectsPortOwnershipProbeFailure()
+    {
+        var commands = new FakeCommandRunner(
+            _ => Ok(),
             (_, command, _) => command.Contains("ss -tlnp")
-                ? Ok("LISTEN 0 4096 127.0.0.1:18789 users:((\"python\",pid=42,fd=3))")
+                ? Fail("ss unavailable")
                 : Fail($"Unexpected command: {command}"));
         var ctx = CreateContext(commands: commands);
         ctx.DistroName = "test-distro";
@@ -1804,8 +1868,134 @@ public class SetupStepsTests : IDisposable
         var result = await StartGatewayStep.RestartAndWaitForHealthAsync(ctx, CancellationToken.None);
 
         Assert.False(result.IsSuccess);
-        Assert.Contains("already in use by another process", result.Message, StringComparison.Ordinal);
+        Assert.Contains("could not inspect port ownership", result.Message, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain(
+            commands.WslCalls,
+            call => call.Command.Contains("systemctl --user show openclaw-gateway.service"));
         Assert.DoesNotContain(commands.WslCalls, call => call.Command.Contains("openclaw gateway restart"));
+    }
+
+    [Fact]
+    public async Task StartGateway_RestartRejectsUnattributableListener()
+    {
+        var commands = new FakeCommandRunner(
+            _ => Ok(),
+            (_, command, _) => command.Contains("ss -tlnp")
+                ? Ok("LISTEN 0 4096 127.0.0.1:18789 0.0.0.0:*")
+                : Fail($"Unexpected command: {command}"));
+        var ctx = CreateContext(commands: commands);
+        ctx.DistroName = "test-distro";
+
+        var result = await StartGatewayStep.RestartAndWaitForHealthAsync(ctx, CancellationToken.None);
+
+        Assert.False(result.IsSuccess);
+        Assert.Contains("could not be attributed", result.Message, StringComparison.Ordinal);
+        Assert.DoesNotContain(
+            commands.WslCalls,
+            call => call.Command.Contains("systemctl --user show openclaw-gateway.service"));
+        Assert.DoesNotContain(commands.WslCalls, call => call.Command.Contains("openclaw gateway restart"));
+    }
+
+    [Fact]
+    public async Task StartGateway_RestartAcceptsListenerOwnedByManagedGatewayService()
+    {
+        var commands = new FakeCommandRunner(
+            _ => Ok(),
+            (_, command, _) => command switch
+            {
+                var value when value.Contains("ss -tlnp") =>
+                    Ok("LISTEN 0 511 0.0.0.0:18789 0.0.0.0:* users:((\"MainThread\",pid=967,fd=27))"),
+                var value when value.Contains("systemctl --user show openclaw-gateway.service") => Ok("967"),
+                var value when value.Contains("openclaw gateway restart") => Ok(),
+                var value when value.Contains("curl -s") => Ok("200"),
+                _ => Fail($"Unexpected command: {command}"),
+            });
+        var ctx = CreateContext(commands: commands);
+        ctx.DistroName = "test-distro";
+
+        var result = await StartGatewayStep.RestartAndWaitForHealthAsync(ctx, CancellationToken.None);
+
+        Assert.True(result.IsSuccess, result.Message);
+        Assert.Contains(
+            commands.WslCalls,
+            call => call.Command.Contains("systemctl --user show openclaw-gateway.service"));
+        Assert.Contains(commands.WslCalls, call => call.Command.Contains("openclaw gateway restart"));
+    }
+
+    [Fact]
+    public async Task StartGateway_RestartRejectsUnattributableListenerAlongsideManagedListener()
+    {
+        var commands = new FakeCommandRunner(
+            _ => Ok(),
+            (_, command, _) => command switch
+            {
+                var value when value.Contains("ss -tlnp") =>
+                    Ok(
+                        """
+                        LISTEN 0 511 0.0.0.0:18789 0.0.0.0:* users:(("MainThread",pid=967,fd=27))
+                        LISTEN 0 511 [::]:18789 [::]:*
+                        """),
+                var value when value.Contains("systemctl --user show openclaw-gateway.service") => Ok("967"),
+                _ => Fail($"Unexpected command: {command}"),
+            });
+        var ctx = CreateContext(commands: commands);
+        ctx.DistroName = "test-distro";
+
+        var result = await StartGatewayStep.RestartAndWaitForHealthAsync(ctx, CancellationToken.None);
+
+        Assert.False(result.IsSuccess);
+        Assert.Contains("could not be attributed", result.Message, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain(commands.WslCalls, call => call.Command.Contains("openclaw gateway restart"));
+    }
+
+    [Fact]
+    public async Task StartGateway_RestartIgnoresListenersOnOtherPorts()
+    {
+        var commands = new FakeCommandRunner(
+            _ => Ok(),
+            (_, command, _) => command switch
+            {
+                var value when value.Contains("ss -tlnp") =>
+                    Ok(
+                        """
+                        LISTEN 0 511 0.0.0.0:18789 0.0.0.0:* users:(("MainThread",pid=967,fd=27))
+                        LISTEN 0 511 127.0.0.1:18888 0.0.0.0:* users:(("python",pid=42,fd=3))
+                        """),
+                var value when value.Contains("systemctl --user show openclaw-gateway.service") => Ok("967"),
+                var value when value.Contains("openclaw gateway restart") => Ok(),
+                var value when value.Contains("curl -s") => Ok("200"),
+                _ => Fail($"Unexpected command: {command}"),
+            });
+        var ctx = CreateContext(commands: commands);
+        ctx.DistroName = "test-distro";
+
+        var result = await StartGatewayStep.RestartAndWaitForHealthAsync(ctx, CancellationToken.None);
+
+        Assert.True(result.IsSuccess, result.Message);
+        Assert.Contains(commands.WslCalls, call => call.Command.Contains("openclaw gateway restart"));
+    }
+
+    [Fact]
+    public async Task StartGateway_ReusesListenerOwnedByManagedGatewayService()
+    {
+        var commands = new FakeCommandRunner(
+            _ => Ok(),
+            (_, command, _) => command switch
+            {
+                var value when value.Contains("ss -tlnp") =>
+                    Ok("LISTEN 0 511 0.0.0.0:18789 0.0.0.0:* users:((\"MainThread\",pid=967,fd=27))"),
+                var value when value.Contains("systemctl --user show openclaw-gateway.service") => Ok("967"),
+                var value when value.Contains("curl -s") => Ok("200"),
+                _ => Fail($"Unexpected command: {command}"),
+            });
+        var ctx = CreateContext(commands: commands);
+        ctx.DistroName = "test-distro";
+
+        var result = await new StartGatewayStep().ExecuteAsync(ctx, CancellationToken.None);
+
+        Assert.True(result.IsSuccess, result.Message);
+        Assert.DoesNotContain(commands.WslCalls, call => call.Command.Contains("openclaw gateway start"));
+        Assert.Contains(commands.WslCalls, call => call.Command.Contains("curl -s"));
     }
 
     [Fact]
@@ -1876,6 +2066,7 @@ public class SetupStepsTests : IDisposable
                     Fail("Config path not found: gateway.reload.mode"),
                 var value when value.Contains("config set gateway.reload.mode off") => Ok(),
                 var value when value.Contains("config unset gateway.reload.mode") => Ok(),
+                var value when value.Contains("ss -tlnp") => Ok(),
                 var value when value.Contains("openclaw gateway restart") => Ok(),
                 var value when value.Contains("curl -s") => Ok("200"),
                 _ => Fail($"Unexpected command: {command}"),
@@ -1908,6 +2099,7 @@ public class SetupStepsTests : IDisposable
             {
                 var value when value.Contains("config unset gateway.reload.mode") =>
                     Fail("Config path not found: gateway.reload.mode. Nothing was changed."),
+                var value when value.Contains("ss -tlnp") => Ok(),
                 var value when value.Contains("openclaw gateway restart") => Ok(),
                 var value when value.Contains("curl -s") => Ok("200"),
                 _ => Fail($"Unexpected command: {command}"),
@@ -1944,6 +2136,8 @@ public class SetupStepsTests : IDisposable
                     };
                     return Ok();
                 }
+                if (command.Contains("ss -tlnp"))
+                    return Ok();
                 if (command.Contains("openclaw gateway restart"))
                     return Ok();
                 if (command.Contains("curl -s"))
@@ -2020,6 +2214,8 @@ public class SetupStepsTests : IDisposable
                 if (command.Contains("config get gateway.reload.mode --json"))
                     return Ok("\"hot\"");
                 if (command.Contains("config set gateway.reload.mode off"))
+                    return Ok();
+                if (command.Contains("ss -tlnp"))
                     return Ok();
                 if (command.Contains("openclaw gateway restart"))
                     return Ok();
@@ -2100,6 +2296,8 @@ public class SetupStepsTests : IDisposable
                     return Fail("suspension failed");
                 if (command.Contains("config set gateway.reload.mode 'hot'"))
                     return allowRestore ? Ok() : Fail("restore failed");
+                if (command.Contains("ss -tlnp"))
+                    return Ok();
                 if (command.Contains("openclaw gateway restart"))
                     return Ok();
                 if (command.Contains("curl -s"))
@@ -2248,6 +2446,8 @@ public class SetupStepsTests : IDisposable
                 if (command.Contains("config set gateway.reload.mode off"))
                     return Fail("reload suspension failed");
                 if (command.Contains("config set gateway.reload.mode 'hot'"))
+                    return Ok();
+                if (command.Contains("ss -tlnp"))
                     return Ok();
                 if (command.Contains("openclaw gateway restart"))
                     return Ok();
@@ -2506,6 +2706,7 @@ public class SetupStepsTests : IDisposable
             (_, command, _) => command switch
             {
                 var value when value.Contains("config set gateway.reload.mode 'hot'") => Ok(),
+                var value when value.Contains("ss -tlnp") => Ok(),
                 var value when value.Contains("openclaw gateway restart") => Ok(),
                 var value when value.Contains("curl -s") => Ok("200"),
                 _ => Fail($"Unexpected command: {command}"),

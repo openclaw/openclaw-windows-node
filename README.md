@@ -251,40 +251,50 @@ Packaged installs declare camera, microphone, and location capabilities. Windows
    openclaw devices list          # Find your Windows device
    openclaw devices approve <id>  # Approve it
    ```
-4. **Configure gateway allowCommands** - Add the commands you want to allow under `gateway.nodes` in `~/.openclaw/openclaw.json`:
+4. **Configure the gateway node-command allowlist** - Match the key to the Gateway version reported by `openclaw --version`. Current/frozen packages use `gateway.nodes.commands.allow`; the supported legacy versions `2026.6.11` and `2026.7.2-beta.3` use `gateway.nodes.allowCommands`.
+
+   Current/frozen schema:
    ```json
    {
      "gateway": {
        "nodes": {
-         "allowCommands": [
-           "system.notify",
-           "system.run",
-           "system.run.prepare",
-           "system.which",
-           "system.execApprovals.get",
-           "system.execApprovals.set",
-           "canvas.present",
-           "canvas.hide",
-           "canvas.navigate",
-           "canvas.eval",
-           "canvas.snapshot",
-           "canvas.a2ui.push",
-           "canvas.a2ui.pushJSONL",
-           "canvas.a2ui.reset",
-           "screen.snapshot",
-           "camera.list",
-           "camera.snap",
-           "camera.clip",
-           "location.get",
-           "device.info",
-           "device.status",
-           "tts.speak"
-         ]
+         "commands": {
+           "allow": [
+             "system.notify",
+             "system.run",
+             "system.run.prepare",
+             "system.which",
+             "system.execApprovals.get",
+             "system.execApprovals.set",
+             "canvas.present",
+             "canvas.hide",
+             "canvas.navigate",
+             "canvas.eval",
+             "canvas.snapshot",
+             "canvas.a2ui.push",
+             "canvas.a2ui.pushJSONL",
+             "canvas.a2ui.reset",
+             "screen.snapshot",
+             "camera.list",
+             "camera.snap",
+             "camera.clip",
+             "location.get",
+             "device.info",
+             "device.status",
+             "tts.speak"
+           ]
+         }
        }
      }
    }
    ```
-    > ⚠️ **Important**: The gateway has a server-side allowlist. Commands must be listed explicitly - wildcards like `canvas.*` don't work! Privacy-sensitive commands such as `screen.record` and agent-driven audio playback via `tts.speak` should only be added to `allowCommands` when you explicitly want to allow them.
+
+   For `2026.6.11` or `2026.7.2-beta.3`, preserve the complete array above but
+   move it directly to `gateway.nodes.allowCommands`: remove the `commands`
+   wrapper and rename its `allow` property to `allowCommands`. Do not shorten
+   the array when applying this legacy key transformation.
+
+    > ⚠️ **Important**: The gateway has a server-side allowlist. Commands must be listed explicitly - wildcards like `canvas.*` don't work! Privacy-sensitive commands such as `screen.record` and agent-driven audio playback via `tts.speak` should only be added to the version-appropriate allowlist when you explicitly want to allow them.
 
 5. **Test it** from your Mac/gateway:
    ```bash

@@ -50,7 +50,10 @@ REMINDERS_DANGEROUS_COMMANDS = ["reminders.add"]
 SMS_DANGEROUS_COMMANDS = ["sms.send", "sms.search"]
 ```
 
-Even macOS doesn't get `camera.snap` or `camera.clip` by default! They must be added via `gateway.nodes.allowCommands`.
+Even macOS doesn't get `camera.snap` or `camera.clip` by default! They must be
+added through the version-appropriate allowlist: current/frozen
+`gateway.nodes.commands.allow`, or legacy `gateway.nodes.allowCommands` on
+`2026.6.11` and `2026.7.2-beta.3`.
 
 ### 1.3 How to Enable Privacy-Sensitive Commands for Windows
 
@@ -63,15 +66,21 @@ allow camera capture or screen recording:
 {
   gateway: {
     nodes: {
-      allowCommands: [
-        "camera.snap",
-        "camera.clip",
-        "screen.record",
-      ]
+      commands: {
+        allow: [
+          "camera.snap",
+          "camera.clip",
+          "screen.record",
+        ]
+      }
     }
   }
 }
 ```
+
+The example above is the current/frozen schema. On `2026.6.11` or
+`2026.7.2-beta.3`, put the same array directly under
+`gateway.nodes.allowCommands`.
 
 After changing config:
 ```bash
@@ -98,13 +107,16 @@ openclaw nodes approve <pendingRequestId>
 
 Then reconnect the node and verify the effective command and capability counts update. Pending declarations are never effective before approval. Older gateways that do not report pending reapproval fields may still require rejecting and re-pairing the node.
 
-### 1.5 `denyCommands`
+### 1.5 Explicit deny list
 
 You can also explicitly deny commands:
 ```json5
-{ gateway: { nodes: { denyCommands: ["system.run"] } } }
+{ gateway: { nodes: { commands: { deny: ["system.run"] } } } }
 ```
-`denyCommands` wins over `allowCommands`.
+The current/frozen `gateway.nodes.commands.deny` key wins over
+`gateway.nodes.commands.allow`. On `2026.6.11` and `2026.7.2-beta.3`, use the
+legacy equivalents `gateway.nodes.denyCommands` and
+`gateway.nodes.allowCommands`.
 
 ---
 
@@ -195,9 +207,12 @@ defaults as a stricter, canonical-platform path:
    conservative allowlist.
 
 Our node should therefore send canonical Windows metadata. SetupEngine also
-writes `gateway.nodes.allowCommands` from its enabled capability configuration
+writes `gateway.nodes.commands.allow` from its enabled capability configuration
 for local WSL gateway installs so the first-party Windows companion flow has an
 explicit gateway policy matching the node's advertised commands.
+The production-pinned `2026.6.11` LKG and CI-pinned `2026.7.2-beta.3` predate
+that schema migration, so SetupEngine writes their equivalent
+`gateway.nodes.allowCommands` key only when either exact version is selected.
 
 ---
 
@@ -314,7 +329,7 @@ Recommended gateway defaults:
 | Command bucket | Windows default? | Reason |
 |----------------|------------------|--------|
 | Safe declared companion commands: `canvas.*`, `camera.list`, `location.get`, `screen.snapshot`, `device.info`, `device.status` | Yes | Matches macOS parity and only applies when declared by the node |
-| Dangerous/privacy-heavy commands: `camera.snap`, `camera.clip`, `screen.record`, write commands like `contacts.add` | No | Existing gateway model already requires explicit `gateway.nodes.allowCommands` |
+| Dangerous/privacy-heavy commands: `camera.snap`, `camera.clip`, `screen.record`, write commands like `contacts.add` | No | Existing gateway model already requires the version-appropriate explicit allowlist |
 | Exec commands: `system.run`, `system.run.prepare`, `system.which`, `system.notify`, `browser.proxy` | Yes | Existing Windows headless-host behavior |
 
 For the first-party Windows companion node, the practical local solution is:
@@ -326,13 +341,17 @@ For the first-party Windows companion node, the practical local solution is:
 
 ### 5.1 Gateway Node Allowlist Configuration
 
-`gateway.nodes.allowCommands` is the explicit opt-in list the gateway uses after
-platform defaults. It should contain exact command names, not broad wildcard
-grants, and should not be needed for the normal first-party Windows companion
-commands that are allowed by canonical Windows platform policy and declared by
-the live node.
+`gateway.nodes.commands.allow` is the current/frozen explicit opt-in list the
+gateway uses after platform defaults. Exact legacy versions `2026.6.11` and
+`2026.7.2-beta.3` use `gateway.nodes.allowCommands` instead. Either form should
+contain exact command names, not broad wildcard grants, and should not be needed
+for normal first-party Windows companion commands allowed by canonical Windows
+platform policy and declared by the live node.
 
-`gateway.nodes.denyCommands` can be used as a final explicit blocklist when you want to suppress a command even if a platform default or allowlist entry would otherwise allow it.
+The current/frozen `gateway.nodes.commands.deny` key can be used as a final
+explicit blocklist; those two legacy versions use `gateway.nodes.denyCommands`.
+The deny list suppresses a command even if a platform default or allowlist entry
+would otherwise allow it.
 
 Privacy-sensitive commands should stay out of the default safe list and should only be added deliberately:
 
@@ -342,7 +361,12 @@ camera.clip
 screen.record
 ```
 
-After changing either `gateway.nodes.allowCommands` or `gateway.nodes.denyCommands`, check Command Center for `pending-reapproval`. Copy and run its exact `openclaw nodes approve <pendingRequestId>` command, reconnect the Windows node, and verify the effective command and capability counts update. A gateway restart alone does not approve pending declarations. Older gateways without pending reapproval diagnostics may still require re-pairing.
+After changing the version-appropriate allow or deny key, check Command Center
+for `pending-reapproval`. Copy and run its exact
+`openclaw nodes approve <pendingRequestId>` command, reconnect the Windows node,
+and verify the effective command and capability counts update. A gateway restart
+alone does not approve pending declarations. Older gateways without pending
+reapproval diagnostics may still require re-pairing.
 
 ### 5.2 Immediate Code Fixes (This Branch)
 
@@ -365,7 +389,8 @@ After changing either `gateway.nodes.allowCommands` or `gateway.nodes.denyComman
   `platform: "windows"` and `deviceFamily: "Windows"` so the gateway can apply
   desktop command policy without a global allowlist workaround.
 - [x] **Keep privacy-sensitive commands explicit opt-in** — `camera.snap`,
-  `camera.clip`, and `screen.record` remain behind `gateway.nodes.allowCommands`.
+  `camera.clip`, and `screen.record` remain behind the version-appropriate
+  explicit allowlist.
 - [x] **Add `canvas.a2ui.pushJSONL`** — current Mac supports it as a legacy JSONL alias; Windows routes it through the same A2UI push handler
 
 The gateway still enforces both gates: the node must declare a command in
@@ -377,8 +402,8 @@ only declare `system.run` / `system.which` remain exec-only.
 When shipping the Windows node, README/wiki should tell users that normal
 first-party companion commands are available after pairing when the node reports
 canonical Windows metadata. Users should add `camera.snap`, `camera.clip`, and
-`screen.record` to `gateway.nodes.allowCommands` only when they explicitly want
-to allow privacy-sensitive camera or screen capture.
+`screen.record` to the version-appropriate explicit allowlist only when they
+want to allow privacy-sensitive camera or screen capture.
 > The Windows tray Command Center (`openclaw://commandcenter`) surfaces policy
 > problems directly, including pending pairing approval and privacy-sensitive
 > opt-ins.

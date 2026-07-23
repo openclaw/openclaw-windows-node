@@ -19,10 +19,13 @@ internal sealed class CommandCenterStateBuilder
 
     internal GatewayCommandCenterState Build()
     {
-        var nodes = _snapshot.Nodes.Select(NodeCapabilityHealthInfo.FromNode).ToList();
+        var gatewayVersion = _snapshot.GatewaySelf?.ServerVersion;
+        var nodes = _snapshot.Nodes
+            .Select(node => NodeCapabilityHealthInfo.FromNode(node, gatewayVersion))
+            .ToList();
         if (nodes.Count == 0 && _snapshot.NodeService?.GetLocalNodeInfo() is { } localNode)
         {
-            nodes.Add(NodeCapabilityHealthInfo.FromLocalDeclarations(localNode));
+            nodes.Add(NodeCapabilityHealthInfo.FromLocalDeclarations(localNode, gatewayVersion));
         }
 
         var tunnelInputs = CommandCenterTopologyTunnelResolver.Derive(

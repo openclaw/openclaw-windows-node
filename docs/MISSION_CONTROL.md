@@ -83,7 +83,7 @@ Gateway/browser facts:
 
 - `browser.proxy` is a canonical node command and included in Windows platform defaults at the gateway policy level.
 - Gateway policy still requires both gates:
-  - command allowed by platform defaults or `gateway.nodes.allowCommands`
+  - command allowed by platform defaults or the version-appropriate explicit allowlist: current/frozen `gateway.nodes.commands.allow`; legacy `2026.6.11` and `2026.7.2-beta.3` `gateway.nodes.allowCommands`
   - command declared by the node
 - The browser plugin/node-host contract is:
   - input: `method`, `path`, optional `query`, `body`, `timeoutMs`, `profile`
