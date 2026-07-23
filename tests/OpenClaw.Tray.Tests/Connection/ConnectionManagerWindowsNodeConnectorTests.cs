@@ -174,14 +174,14 @@ public sealed class ConnectionManagerWindowsNodeConnectorTests : IDisposable
     private sealed class StubClientFactory : IGatewayClientFactory
     {
         public IGatewayClientLifecycle Create(string gatewayUrl, GatewayCredential credential, string identityPath, IOpenClawLogger logger)
-            => new StubLifecycle(gatewayUrl);
+            => new StubLifecycle(gatewayUrl, identityPath);
     }
 
     private sealed class StubLifecycle : IGatewayClientLifecycle
     {
-        public StubLifecycle(string url)
+        public StubLifecycle(string url, string identityPath)
         {
-            DataClient = new StubGatewayClient(url);
+            DataClient = new StubGatewayClient(url, identityPath);
         }
 
         public OpenClawGatewayClient DataClient { get; }
@@ -196,7 +196,8 @@ public sealed class ConnectionManagerWindowsNodeConnectorTests : IDisposable
 
     private sealed class StubGatewayClient : OpenClawGatewayClient
     {
-        public StubGatewayClient(string url) : base(url, "stub-tok", NullLogger.Instance) { }
+        public StubGatewayClient(string url, string identityPath)
+            : base(url, "stub-tok", NullLogger.Instance, identityPath: identityPath) { }
     }
 
     private sealed class StubNodeConnector : INodeConnector

@@ -2481,7 +2481,7 @@ public class SetupStepsTests : IDisposable
                     return Ok();
                 if (command.Contains("openclaw gateway restart"))
                     return Ok();
-                if (command.Contains("curl -s") && command.Contains("/health"))
+                if (command.Contains("curl -s"))
                     return Ok("200");
                 return Fail($"Unexpected command: {command}");
             });
@@ -2760,6 +2760,54 @@ public class SetupStepsTests : IDisposable
         Assert.Contains(
             "openclaw config set plugins.entries.device-pair.config.publicUrl 'http://127.0.0.1:18789'",
             commands);
+    }
+
+    [Theory]
+    [InlineData(null, "gateway.nodes.commands.allow")]
+    [InlineData("2026.7.22", "gateway.nodes.commands.allow")]
+    [InlineData("2026.6.11", "gateway.nodes.allowCommands")]
+    [InlineData("2026.7.2-beta.3", "gateway.nodes.allowCommands")]
+    public void ConfigureGateway_UsesVersionAppropriateCompleteAllowlistPath(
+        string? version,
+        string expectedPath)
+    {
+        var commands = ConfigureGatewayStep.BuildConfigCommands(
+            new GatewayConfig { Version = version },
+            18789,
+            "'[\"canvas.present\",\"system.run\"]'");
+
+        Assert.Contains(
+            $"openclaw config set {expectedPath} '[\"canvas.present\",\"system.run\"]'",
+            commands);
+    }
+
+    [Fact]
+    public void ConfigureGateway_ExtraConfigReloadModeUsesVersionSchemaAndAvoidsDuplicate()
+    {
+        var commands = ConfigureGatewayStep.BuildConfigCommands(
+            new GatewayConfig
+            {
+                Version = "2026.7.22",
+                ReloadMode = "off",
+                ExtraConfig = new Dictionary<string, string>
+                {
+                    ["gateway.reload.mode"] = "restart",
+                },
+            },
+            18789,
+            "'[]'");
+
+        Assert.Equal(1, commands.Split("gateway.reload.mode", StringSplitOptions.None).Length - 1);
+        Assert.Contains("openclaw config set gateway.reload.mode 'hybrid'", commands);
+        Assert.Equal("hybrid", ConfigureGatewayStep.GetEffectiveReloadMode(
+            new GatewayConfig
+            {
+                Version = "2026.7.22",
+                ExtraConfig = new Dictionary<string, string>
+                {
+                    ["gateway.reload.mode"] = "restart",
+                },
+            }));
     }
 
     // Issue: device-pair plugin must be enabled, not just configured. Otherwise

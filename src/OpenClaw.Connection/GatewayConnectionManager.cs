@@ -57,6 +57,7 @@ public sealed class GatewayConnectionManager : IGatewayConnectionManager
     private readonly IClock _clock;
     private readonly Func<GatewayRecord, string, bool>? _shouldStartNodeConnection;
     private readonly Func<TimeSpan, Task> _reconnectDelay;
+    private readonly TimeSpan _sharedTokenValidationTimeout;
     private readonly SemaphoreSlim _transitionSemaphore = new(1, 1);
     private readonly SemaphoreSlim _nodeStartSemaphore = new(1, 1);
     private readonly object _nodeOperationLock = new();
@@ -117,7 +118,8 @@ public sealed class GatewayConnectionManager : IGatewayConnectionManager
         ConnectionDiagnostics? diagnostics = null,
         ISshTunnelManager? tunnelManager = null,
         Func<GatewayRecord, string, bool>? shouldStartNodeConnection = null,
-        Func<TimeSpan, Task>? reconnectDelay = null)
+        Func<TimeSpan, Task>? reconnectDelay = null,
+        TimeSpan? sharedTokenValidationTimeout = null)
     {
         _credentialResolver = credentialResolver ?? throw new ArgumentNullException(nameof(credentialResolver));
         _clientFactory = clientFactory ?? throw new ArgumentNullException(nameof(clientFactory));
@@ -130,6 +132,7 @@ public sealed class GatewayConnectionManager : IGatewayConnectionManager
         _clock = clock ?? SystemClock.Instance;
         _shouldStartNodeConnection = shouldStartNodeConnection;
         _reconnectDelay = reconnectDelay ?? Task.Delay;
+        _sharedTokenValidationTimeout = sharedTokenValidationTimeout ?? TimeSpan.FromSeconds(15);
         _diagnostics = diagnostics ?? new ConnectionDiagnostics(clock: clock);
         _diagnostics.EventRecorded += (_, e) => DiagnosticEvent?.Invoke(this, e);
 
@@ -832,10 +835,19 @@ public sealed class GatewayConnectionManager : IGatewayConnectionManager
 
         try
         {
-            await client.ConnectAsync();
-            var completed = await Task.WhenAny(completion.Task, Task.Delay(TimeSpan.FromSeconds(15)));
-            if (completed != completion.Task)
+            var connectTask = client.ConnectAsync();
+            var timeoutTask = Task.Delay(_sharedTokenValidationTimeout);
+            var completed = await Task.WhenAny(connectTask, completion.Task, timeoutTask);
+            if (completed == timeoutTask)
                 return new SetupCodeResult(SetupCodeOutcome.ConnectionFailed, "Timed out validating shared gateway token");
+
+            if (completed == connectTask)
+            {
+                await connectTask;
+                completed = await Task.WhenAny(completion.Task, timeoutTask);
+                if (completed == timeoutTask)
+                    return new SetupCodeResult(SetupCodeOutcome.ConnectionFailed, "Timed out validating shared gateway token");
+            }
 
             return await completion.Task;
         }

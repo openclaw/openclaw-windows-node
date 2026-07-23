@@ -1437,9 +1437,8 @@ public class CommandCenterModelTests
                 "openclaw config get gateway.nodes.commands.allow --json",
                 StringComparison.Ordinal) == true &&
             w.CopyText.Contains("Preserve every existing entry", StringComparison.Ordinal) &&
-            !w.CopyText.Contains(
-                "openclaw config set gateway.nodes.commands.allow '[\"browser.proxy\"]'",
-                StringComparison.Ordinal));
+            w.CopyText.Contains("Preserve every existing entry and add only: browser.proxy", StringComparison.Ordinal) &&
+            w.CopyText.Contains("openclaw config set gateway.nodes.commands.allow '<complete-updated-array>'", StringComparison.Ordinal));
         Assert.DoesNotContain(info.Warnings, w => w.Title == "Some node commands are filtered");
     }
 
@@ -1491,7 +1490,7 @@ public class CommandCenterModelTests
     }
 
     [Fact]
-    public void BuildAllowCommandsMergeGuidance_PreservesExistingArray()
+    public void BuildAllowCommandsMergeGuidance_PreservesCompleteExistingArray()
     {
         var guidance = CommandCenterDiagnostics.BuildAllowCommandsMergeGuidance(
             ["screen.snapshot", "canvas.present", "screen.snapshot"]);
@@ -1563,6 +1562,20 @@ public class CommandCenterModelTests
             warning.Title == "Privacy-sensitive commands are currently blocked" &&
             warning.CopyText?.Contains("gateway.nodes.allowCommands", StringComparison.Ordinal) == true &&
             warning.CopyText?.Contains("gateway.nodes.commands.allow", StringComparison.Ordinal) == false);
+    }
+
+    [Theory]
+    [InlineData("2026.6.11")]
+    [InlineData("2026.7.2-beta.3")]
+    public void GatewayNodeCommandPolicyConfig_UsesLegacyPathOnlyForExactSupportedVersions(
+        string version)
+    {
+        Assert.Equal(
+            "gateway.nodes.allowCommands",
+            GatewayNodeCommandPolicyConfig.ResolveAllowKey(version));
+        Assert.Equal(
+            "gateway.nodes.commands.allow",
+            GatewayNodeCommandPolicyConfig.ResolveAllowKey(version + "+newer"));
     }
 
     [Theory]

@@ -190,6 +190,10 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
     private AppState? _appState;
     internal AppState? AppState => _appState;
     private UpdateCoordinator? _updateCoordinator;
+    private GatewayVersionAlignmentCoordinator? _gatewayVersionAlignmentCoordinator;
+    private string? _gatewayVersionAlignmentPromptKey;
+    private int _gatewayVersionAlignmentInFlight;
+    private int _gatewayVersionAlignmentFollowUpQueued;
     private GatewayService? _gatewayService;
     private PairingApprovalCoordinator? _pairingApprovalCoordinator;
     private OpenClawTray.Dialogs.PairingApprovalDialog? _pairingApprovalDialog;
@@ -779,6 +783,17 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
             tunnelManager: _sshTunnelService);
         _connectionManager.OperatorClientChanged += OnOperatorClientChanged;
         _connectionManager.StateChanged += OnManagerStateChanged;
+        var gatewayAlignmentRunner = new WslExeCommandRunner(appLogger, defaultTimeout: TimeSpan.FromMinutes(35));
+        var gatewayRollbackPoints = new GatewayRollbackPointManager(
+            gatewayAlignmentRunner,
+            AppIdentity.ResolveSetupLocalDataDirectory(),
+            AppIdentity.SetupDistroName);
+        _gatewayVersionAlignmentCoordinator = new GatewayVersionAlignmentCoordinator(
+            gatewayAlignmentRunner,
+            OpenClaw.SetupEngine.GatewayLkgVersion.ResolveLkgVersion(),
+            gatewayRollbackPoints,
+            SynchronizeCompanionGatewayAsync,
+            ResolveGatewayRollbackRetentionPolicy);
 
         // First-run check (also supports forced onboarding for testing).
         // Wrapped in try/catch so a wizard construction failure cannot tear
@@ -820,6 +835,7 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
         var wslKeepAlive = new WslGatewayKeepAliveService(() => _settings, () => _gatewayRegistry);
         _ = Task.Run(wslKeepAlive.TryEnsureAsync);
         InitializeGatewayClient();
+        _ = CheckCompanionGatewayVersionAsync(_gatewayRegistry.GetActive()?.Id);
 
         // Pre-warm chat window (WebView2 init takes 1-3s, do it now so left-click is instant)
         if (_settings != null &&
@@ -2055,11 +2071,346 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
                 _lastManagerConnectedSideEffectsKey = connectedSideEffectsKey;
                 _ = RunHealthCheckAsync();
                 _ = TryConnectLocalNodeServiceAsync();
+                _ = CheckCompanionGatewayVersionAsync(snap.GatewayId);
             }
         }
         else
         {
             _lastManagerConnectedSideEffectsKey = null;
+        }
+    }
+
+    private async Task CheckCompanionGatewayVersionAsync(string? connectedGatewayId)
+    {
+        if (Interlocked.CompareExchange(ref _gatewayVersionAlignmentInFlight, 1, 0) != 0)
+        {
+            Interlocked.Exchange(ref _gatewayVersionAlignmentFollowUpQueued, 1);
+            return;
+        }
+
+        try
+        {
+            var activeRecord = _gatewayRegistry?.GetActive();
+            if (activeRecord == null ||
+                !string.Equals(activeRecord.Id, connectedGatewayId, StringComparison.Ordinal) ||
+                _gatewayVersionAlignmentCoordinator == null)
+            {
+                return;
+            }
+
+            var accessPlan = GatewayHostAccessClassifier.Classify(activeRecord);
+            var probe = await _gatewayVersionAlignmentCoordinator.ProbeAsync(accessPlan);
+            if (probe.State is GatewayVersionAlignmentState.RecoveryAvailable
+                or GatewayVersionAlignmentState.VerificationFailed
+                or GatewayVersionAlignmentState.VersionOrderUnknown)
+            {
+                var blockedKey = $"blocked|{activeRecord.Id}|{probe.State}|{probe.RollbackPointId}|{probe.InstalledVersion}|{probe.RequiredVersion}";
+                if (!string.Equals(_gatewayVersionAlignmentPromptKey, blockedKey, StringComparison.Ordinal))
+                {
+                    _gatewayVersionAlignmentPromptKey = blockedKey;
+                    ReportGatewayAlignmentResult(probe);
+                }
+                return;
+            }
+            if (probe.State == GatewayVersionAlignmentState.NewerThanRequired &&
+                probe.InstalledVersion != null)
+            {
+                var newerKey = $"newer|{activeRecord.Id}|{probe.InstalledVersion}|{probe.RequiredVersion}";
+                if (!string.Equals(_gatewayVersionAlignmentPromptKey, newerKey, StringComparison.Ordinal))
+                {
+                    _gatewayVersionAlignmentPromptKey = newerKey;
+                    ShowGatewayAlignmentToast(
+                        "Local Gateway is newer than Companion",
+                        $"OpenClaw {probe.InstalledVersion} was not downgraded to {probe.RequiredVersion}. Your existing WSL installation was left unchanged.");
+                }
+                return;
+            }
+
+            if (probe.State == GatewayVersionAlignmentState.Aligned &&
+                _gatewayVersionAlignmentCoordinator.HasVerifiedPendingUpdate(activeRecord.Id))
+            {
+                var resumed = await _gatewayVersionAlignmentCoordinator.UpdateAsync(accessPlan);
+                ReportGatewayAlignmentResult(resumed);
+                if (!resumed.IsAligned)
+                    _gatewayVersionAlignmentPromptKey = null;
+                return;
+            }
+
+            if (probe.State != GatewayVersionAlignmentState.Mismatch || probe.InstalledVersion == null)
+                return;
+
+            var promptKey = $"{activeRecord.Id}|{probe.InstalledVersion}|{probe.RequiredVersion}";
+            if (string.Equals(_gatewayVersionAlignmentPromptKey, promptKey, StringComparison.Ordinal))
+                return;
+
+            var accepted = await ConfirmCompanionGatewayUpdateAsync(probe);
+            if (!accepted)
+            {
+                _gatewayVersionAlignmentPromptKey = null;
+                return;
+            }
+
+            var confirmedRecord = _gatewayRegistry?.GetActive();
+            var confirmedPlan = GatewayHostAccessClassifier.Classify(confirmedRecord);
+            if (confirmedRecord == null ||
+                !string.Equals(confirmedRecord.Id, activeRecord.Id, StringComparison.Ordinal) ||
+                confirmedPlan.TerminalTarget != GatewayTerminalTarget.Wsl ||
+                !confirmedPlan.CanControlWslGateway ||
+                !string.Equals(confirmedPlan.DistroName, accessPlan.DistroName, StringComparison.Ordinal))
+            {
+                Logger.Warn("Local Gateway update canceled because the active Companion-owned Gateway changed while confirmation was open.");
+                ShowGatewayAlignmentToast(
+                    "Local Gateway update canceled",
+                    "The active Gateway changed before the update started. No package change was made.");
+                return;
+            }
+
+            _gatewayVersionAlignmentPromptKey = promptKey;
+
+            ShowGatewayAlignmentToast(
+                "Updating local OpenClaw Gateway",
+                "Creating a verified offline rollback point, updating the existing WSL installation, and reconnecting Companion.");
+
+            var result = await _gatewayVersionAlignmentCoordinator.UpdateAsync(confirmedPlan);
+            ReportGatewayAlignmentResult(result);
+            if (!result.IsAligned)
+                _gatewayVersionAlignmentPromptKey = null;
+        }
+        catch (Exception ex)
+        {
+            _gatewayVersionAlignmentPromptKey = null;
+            Logger.Warn($"Companion-owned Gateway version alignment failed: {ex.GetType().Name}: {ex.Message}");
+            ShowGatewayAlignmentToast(
+                "Local Gateway update failed",
+                "OpenClaw could not complete the in-place update. The existing distro was not recreated.");
+        }
+        finally
+        {
+            Interlocked.Exchange(ref _gatewayVersionAlignmentInFlight, 0);
+            if (Interlocked.Exchange(ref _gatewayVersionAlignmentFollowUpQueued, 0) != 0)
+            {
+                _ = CheckCompanionGatewayVersionAsync(_gatewayRegistry?.GetActive()?.Id);
+            }
+        }
+    }
+
+    private async Task<bool> ConfirmCompanionGatewayUpdateAsync(GatewayVersionAlignmentResult probe)
+    {
+        if (_dispatcherQueue == null)
+        {
+            Logger.Warn("Cannot prompt for local Gateway update without the UI dispatcher.");
+            return false;
+        }
+
+        return await RunOnUiThreadAsync(async () =>
+        {
+            ShowHub("settings");
+            var hubWindow = _hubWindow
+                ?? throw new InvalidOperationException("The Hub window could not be created.");
+            await hubWindow.WaitForCurrentContentReadyAsync();
+            var root = hubWindow.Content as FrameworkElement;
+            if (root?.XamlRoot == null)
+                throw new InvalidOperationException("The Hub window has no active XAML root.");
+
+            var dialog = new ContentDialog
+            {
+                Title = "Update local OpenClaw Gateway",
+                Content =
+                    $"This Companion requires OpenClaw {probe.RequiredVersion}, but its existing WSL Gateway " +
+                    $"is {probe.InstalledVersion}. Update this same installation now?\n\n" +
+                    "Companion will stop this distro briefly, export and verify a complete offline VHD rollback point, " +
+                    "then update OpenClaw in place and reconnect the Gateway and Windows Node. The distro is never " +
+                    "recreated during update. Emergency restore remains a separate explicit action.",
+                PrimaryButtonText = "Update now",
+                CloseButtonText = "Later",
+                DefaultButton = ContentDialogButton.Primary,
+                XamlRoot = root.XamlRoot
+            };
+            return await dialog.ShowAsync() == ContentDialogResult.Primary;
+        });
+    }
+
+    private Task<T> RunOnUiThreadAsync<T>(Func<Task<T>> action)
+    {
+        if (_dispatcherQueue?.HasThreadAccess == true)
+            return action();
+
+        var completion = new TaskCompletionSource<T>(TaskCreationOptions.RunContinuationsAsynchronously);
+        if (_dispatcherQueue?.TryEnqueue(async () =>
+            {
+                try { completion.SetResult(await action()); }
+                catch (Exception ex) { completion.SetException(ex); }
+            }) != true)
+        {
+            completion.SetException(new InvalidOperationException("The UI dispatcher is unavailable."));
+        }
+
+        return completion.Task;
+    }
+
+    private async Task SynchronizeCompanionGatewayAsync(
+        string expectedGatewayId,
+        CancellationToken cancellationToken)
+    {
+        var connectionManager = _connectionManager
+            ?? throw new InvalidOperationException("Gateway connection manager is unavailable.");
+        var activeRecord = _gatewayRegistry?.GetActive();
+        if (activeRecord == null ||
+            !string.Equals(activeRecord.Id, expectedGatewayId, StringComparison.Ordinal))
+        {
+            throw new InvalidOperationException("The active Gateway changed during version alignment.");
+        }
+
+        var operatorReady = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        void ObserveState(object? _, GatewayConnectionSnapshot snapshot)
+        {
+            if (!string.Equals(snapshot.GatewayId, expectedGatewayId, StringComparison.Ordinal))
+                return;
+
+            switch (snapshot.OperatorState)
+            {
+                case RoleConnectionState.Connected:
+                    operatorReady.TrySetResult(true);
+                    break;
+                case RoleConnectionState.Error:
+                case RoleConnectionState.PairingRejected:
+                case RoleConnectionState.PairingRequired:
+                case RoleConnectionState.RateLimited:
+                    operatorReady.TrySetException(new InvalidOperationException(
+                        snapshot.OperatorError ?? $"Gateway operator connection reached {snapshot.OperatorState}."));
+                    break;
+            }
+        }
+
+        connectionManager.StateChanged += ObserveState;
+        try
+        {
+            await connectionManager.ReconnectAsync();
+            ObserveState(connectionManager, connectionManager.CurrentSnapshot);
+            await operatorReady.Task.WaitAsync(TimeSpan.FromSeconds(45), cancellationToken);
+
+            if (_settings?.EnableNodeMode == true)
+                await connectionManager.EnsureNodeConnectedAsync(cancellationToken);
+
+            var synchronized = connectionManager.CurrentSnapshot;
+            if (!string.Equals(synchronized.GatewayId, expectedGatewayId, StringComparison.Ordinal) ||
+                synchronized.OperatorState != RoleConnectionState.Connected ||
+                (_settings?.EnableNodeMode == true &&
+                 (synchronized.NodeState != RoleConnectionState.Connected ||
+                  synchronized.NodePairingStatus != PairingStatus.Paired)))
+            {
+                throw new InvalidOperationException("Companion connection state changed before synchronization completed.");
+            }
+        }
+        finally
+        {
+            connectionManager.StateChanged -= ObserveState;
+        }
+    }
+
+    private void ReportGatewayAlignmentResult(GatewayVersionAlignmentResult result)
+    {
+        switch (result.State)
+        {
+            case GatewayVersionAlignmentState.Updated:
+                ShowGatewayAlignmentToast(
+                    "Local OpenClaw Gateway updated",
+                    $"Companion, Windows Node, and Gateway are synchronized on {result.RequiredVersion}.");
+                break;
+            case GatewayVersionAlignmentState.Restored:
+                ShowGatewayAlignmentToast(
+                    "Local Gateway rollback restored",
+                    $"OpenClaw {result.InstalledVersion} and its complete retained state were restored and resynchronized.");
+                break;
+            case GatewayVersionAlignmentState.RestoreCancelled:
+                ShowGatewayAlignmentToast(
+                    "Staged Gateway restore cancelled",
+                    "The non-destructive staged restore was cancelled. No WSL registration or installed Gateway state was changed.");
+                break;
+            case GatewayVersionAlignmentState.RollbackPointFailed:
+                ShowGatewayAlignmentToast(
+                    "Local Gateway update not started",
+                    "The required verified offline rollback point could not be created, so Companion made no package change.");
+                break;
+            case GatewayVersionAlignmentState.RecoveryAvailable:
+                ShowGatewayAlignmentToast(
+                    "Local Gateway needs attention",
+                    "The update did not complete healthy. A verified rollback point is available in Settings for explicit emergency restore.");
+                break;
+            default:
+                ShowGatewayAlignmentToast(
+                    "Local Gateway update failed",
+                    result.FailureSummary ?? "The existing WSL installation was left in place.");
+                break;
+        }
+    }
+
+    private GatewayRollbackRetentionPolicy ResolveGatewayRollbackRetentionPolicy()
+    {
+        var count = _settings?.GatewayRollbackRetentionCount ?? 1;
+        var ageDays = _settings?.GatewayRollbackRetentionAgeDays ?? 0;
+        return new GatewayRollbackRetentionPolicy(
+            count,
+            ageDays > 0 ? TimeSpan.FromDays(ageDays) : null);
+    }
+
+    internal IReadOnlyList<GatewayRollbackPointInfo> GetGatewayRollbackPoints() =>
+        _gatewayVersionAlignmentCoordinator?.ListRollbackPoints() ?? [];
+
+    internal async Task<GatewayVersionAlignmentResult> RestoreGatewayRollbackPointAsync(
+        string rollbackPointId,
+        CancellationToken cancellationToken = default)
+    {
+        var coordinator = _gatewayVersionAlignmentCoordinator;
+        var activeRecord = _gatewayRegistry?.GetActive();
+        var accessPlan = GatewayHostAccessClassifier.Classify(activeRecord);
+        if (coordinator == null || activeRecord == null)
+        {
+            return new GatewayVersionAlignmentResult(
+                GatewayVersionAlignmentState.Ineligible,
+                OpenClaw.SetupEngine.GatewayLkgVersion.ResolveLkgVersion(),
+                FailureSummary: "No active Companion-owned Gateway is available.");
+        }
+
+        var result = await coordinator.RestoreAsync(
+            accessPlan,
+            rollbackPointId,
+            rollbackPointId,
+            cancellationToken);
+        ReportGatewayAlignmentResult(result);
+        return result;
+    }
+
+    internal GatewayVersionAlignmentResult CancelGatewayRollbackPointRestore(
+        string rollbackPointId,
+        string confirmedRollbackPointId)
+    {
+        var coordinator = _gatewayVersionAlignmentCoordinator;
+        var activeRecord = _gatewayRegistry?.GetActive();
+        var accessPlan = GatewayHostAccessClassifier.Classify(activeRecord);
+        if (coordinator == null || activeRecord == null)
+        {
+            return new GatewayVersionAlignmentResult(
+                GatewayVersionAlignmentState.Ineligible,
+                OpenClaw.SetupEngine.GatewayLkgVersion.ResolveLkgVersion(),
+                FailureSummary: "No active Companion-owned Gateway is available.");
+        }
+
+        var result = coordinator.CancelRestore(
+            accessPlan, rollbackPointId, confirmedRollbackPointId);
+        ReportGatewayAlignmentResult(result);
+        return result;
+    }
+
+    private void ShowGatewayAlignmentToast(string title, string detail)
+    {
+        try
+        {
+            _toastService?.ShowToast(new ToastContentBuilder().AddText(title).AddText(detail));
+        }
+        catch (Exception ex)
+        {
+            Logger.Debug($"Gateway alignment toast suppressed: {ex.Message}");
         }
     }
 

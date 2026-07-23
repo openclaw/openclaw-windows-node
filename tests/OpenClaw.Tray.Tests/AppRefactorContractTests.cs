@@ -1018,6 +1018,116 @@ public sealed class AppRefactorContractTests
         Assert.DoesNotContain("var slashLoading = Props.AvailableCommands is null;", source);
     }
 
+    [Fact]
+    public void GatewayUpdatePrompt_AllowsRetryAfterNonAlignedResult()
+    {
+        var source = ReadAppSources();
+        var method = ExtractMethod(source, "CheckCompanionGatewayVersionAsync");
+
+        AssertInOrder(
+            method,
+            "var result = await _gatewayVersionAlignmentCoordinator.UpdateAsync(confirmedPlan);",
+            "ReportGatewayAlignmentResult(result);",
+            "if (!result.IsAligned)",
+            "_gatewayVersionAlignmentPromptKey = null;");
+    }
+
+    [Fact]
+    public void GatewayUpdatePrompt_ResumesVerifiedAlignedPendingReceipt()
+    {
+        var source = ReadAppSources();
+        var method = ExtractMethod(source, "CheckCompanionGatewayVersionAsync");
+
+        AssertInOrder(
+            method,
+            "probe.State == GatewayVersionAlignmentState.Aligned",
+            "_gatewayVersionAlignmentCoordinator.HasVerifiedPendingUpdate(activeRecord.Id)",
+            "var resumed = await _gatewayVersionAlignmentCoordinator.UpdateAsync(accessPlan);",
+            "ReportGatewayAlignmentResult(resumed);",
+            "return;");
+    }
+
+    [Fact]
+    public void GatewayUpdatePrompt_CachesPromptOnlyAfterGatewayRevalidation()
+    {
+        var source = ReadAppSources();
+        var method = ExtractMethod(source, "CheckCompanionGatewayVersionAsync");
+
+        AssertInOrder(
+            method,
+            "var confirmedRecord = _gatewayRegistry?.GetActive();",
+            "!string.Equals(confirmedPlan.DistroName, accessPlan.DistroName, StringComparison.Ordinal)",
+            "_gatewayVersionAlignmentPromptKey = promptKey;",
+            "ShowGatewayAlignmentToast(");
+    }
+
+    [Fact]
+    public void GatewayUpdatePrompt_ReportsRecoveryGateBeforeAnyUpdatePrompt()
+    {
+        var source = ReadAppSources();
+        var method = ExtractMethod(source, "CheckCompanionGatewayVersionAsync");
+
+        AssertInOrder(
+            method,
+            "var probe = await _gatewayVersionAlignmentCoordinator.ProbeAsync(accessPlan);",
+            "probe.State is GatewayVersionAlignmentState.RecoveryAvailable",
+            "ReportGatewayAlignmentResult(probe);",
+            "return;",
+            "ConfirmCompanionGatewayUpdateAsync(probe)");
+    }
+
+    [Fact]
+    public void GatewayUpdateCheck_QueuesOneFollowUpWhenSingleFlightIsBusy()
+    {
+        var source = ReadAppSources();
+        var method = ExtractMethod(source, "CheckCompanionGatewayVersionAsync");
+
+        AssertInOrder(
+            method,
+            "Interlocked.CompareExchange(ref _gatewayVersionAlignmentInFlight, 1, 0) != 0",
+            "Interlocked.Exchange(ref _gatewayVersionAlignmentFollowUpQueued, 1);",
+            "return;");
+        AssertInOrder(
+            method,
+            "Interlocked.Exchange(ref _gatewayVersionAlignmentInFlight, 0);",
+            "Interlocked.Exchange(ref _gatewayVersionAlignmentFollowUpQueued, 0) != 0",
+            "_ = CheckCompanionGatewayVersionAsync(_gatewayRegistry?.GetActive()?.Id);");
+    }
+
+    [Fact]
+    public void GatewayRollbackSettings_ExposesConfirmedRestoreStagedCancellation()
+    {
+        var appSource = ReadAppSources();
+        var settingsSource = ReadSettingsPageSource();
+
+        Assert.Contains("CancelGatewayRollbackPointRestore(", appSource);
+        AssertInOrder(
+            settingsSource,
+            "selected.Point.Phase == GatewayRollbackPointPhase.RestoreStaged",
+            "SecondaryButtonText = canCancelStagedRestore",
+            "\"Cancel staged restore\"",
+            "confirmationResult == ContentDialogResult.Secondary",
+            "CurrentApp.CancelGatewayRollbackPointRestore(",
+            "selected.Point.Id, selected.Point.Id");
+    }
+
+    [Fact]
+    public void GatewayRollbackSettings_PrefersUniqueMandatoryReceiptAndShowsExactIdentity()
+    {
+        var settingsSource = ReadSettingsPageSource();
+
+        AssertInOrder(
+            settingsSource,
+            "var mandatoryChoices = choices",
+            "IsMandatoryRecoveryPhase(choice.Point.Phase)",
+            "if (mandatoryChoices.Length > 1)",
+            "\"Gateway recovery is ambiguous\"",
+            "var preferredChoice = mandatoryChoices.SingleOrDefault()",
+            "SelectedIndex = preferredChoice is null ? -1 : Array.IndexOf(choices, preferredChoice)");
+        Assert.Contains("\"Point {Point.Id} | {Point.Phase} | OpenClaw", settingsSource);
+        Assert.Contains("Recovery must resume exact rollback point {requiredPointId}", settingsSource);
+    }
+
     private static string ReadCoordinatorSource()
     {
         var root = TestRepositoryPaths.GetRepositoryRoot();
@@ -1049,6 +1159,13 @@ public sealed class AppRefactorContractTests
         var root = TestRepositoryPaths.GetRepositoryRoot();
         return File.ReadAllText(Path.Combine(
             root, "src", "OpenClaw.Tray.WinUI", "Pages", "SandboxPage.xaml.cs"));
+    }
+
+    private static string ReadSettingsPageSource()
+    {
+        var root = TestRepositoryPaths.GetRepositoryRoot();
+        return File.ReadAllText(Path.Combine(
+            root, "src", "OpenClaw.Tray.WinUI", "Pages", "SettingsPage.xaml.cs"));
     }
 
     private static string ReadOpenClawComposerSource()
