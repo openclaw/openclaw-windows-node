@@ -1451,6 +1451,22 @@ public sealed class RecoverGatewayReloadStep : SetupStep
         new SetupWizardRunner(ctx).ReconcilePendingReloadRecoveryAsync();
 }
 
+internal static class GatewayReloadModeConfig
+{
+    internal static string Resolve(string? gatewayVersion, string configuredMode)
+    {
+        var version = gatewayVersion?.Trim();
+        var usesLegacySchema =
+            string.Equals(version, GatewayLkgVersion.LkgVersion, StringComparison.OrdinalIgnoreCase) ||
+            string.Equals(version, "2026.7.2-beta.3", StringComparison.OrdinalIgnoreCase);
+
+        if (usesLegacySchema)
+            return configuredMode;
+
+        return configuredMode is "hot" or "restart" ? "hybrid" : configuredMode;
+    }
+}
+
 public sealed class ConfigureGatewayStep : SetupStep
 {
     internal const string DevicePairPublicUrlKey = "plugins.entries.device-pair.config.publicUrl";
@@ -1595,14 +1611,18 @@ public sealed class ConfigureGatewayStep : SetupStep
                 if (!IsSafeExtraConfigKey(key))
                     throw new ArgumentException($"Invalid Gateway.ExtraConfig key '{key}'. Keys may contain only letters, digits, '.', '_', and '-'.", nameof(gw));
 
-                var escapedValue = WslShellQuoting.QuotePosixSingleQuote(value);
+                var compatibleValue = string.Equals(key, "gateway.reload.mode", StringComparison.Ordinal)
+                    ? GatewayReloadModeConfig.Resolve(gw.Version, value)
+                    : value;
+                var escapedValue = WslShellQuoting.QuotePosixSingleQuote(compatibleValue);
                 configCommands += $"\n            openclaw config set {key} {escapedValue}";
             }
         }
 
         if (gw.ExtraConfig?.ContainsKey("gateway.reload.mode") != true)
         {
-            configCommands += $"\n            openclaw config set gateway.reload.mode {WslShellQuoting.QuotePosixSingleQuote(gw.ReloadMode)}";
+            var reloadMode = GatewayReloadModeConfig.Resolve(gw.Version, gw.ReloadMode);
+            configCommands += $"\n            openclaw config set gateway.reload.mode {WslShellQuoting.QuotePosixSingleQuote(reloadMode)}";
         }
 
         return configCommands;
@@ -1636,9 +1656,11 @@ public sealed class ConfigureGatewayStep : SetupStep
         gw.Bind == "loopback" && !tailscaleEnabled ? $"http://127.0.0.1:{port}" : null;
 
     internal static string GetEffectiveReloadMode(GatewayConfig gw) =>
-        gw.ExtraConfig?.TryGetValue("gateway.reload.mode", out var overrideMode) == true
-            ? overrideMode
-            : gw.ReloadMode;
+        GatewayReloadModeConfig.Resolve(
+            gw.Version,
+            gw.ExtraConfig?.TryGetValue("gateway.reload.mode", out var overrideMode) == true
+                ? overrideMode
+                : gw.ReloadMode);
 
     internal static bool IsSafeExtraConfigKey(string value)
         => System.Text.RegularExpressions.Regex.IsMatch(value, "^[A-Za-z0-9._-]+$");
