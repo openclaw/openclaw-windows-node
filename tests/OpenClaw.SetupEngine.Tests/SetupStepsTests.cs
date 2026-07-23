@@ -1028,6 +1028,72 @@ public class SetupStepsTests : IDisposable
     }
 
     [Fact]
+    public void InstallCli_BuildInstallCommand_VerifiesDownloadedPackageBeforeInstallerConsumesIt()
+    {
+        const string packageUrl = "http://172.24.1.2:38677/openclaw-composed.tgz";
+        const string expectedSha256 =
+            "0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF";
+
+        var command = InstallCliStep.BuildInstallCommand(
+            "https://openclaw.ai/install-cli.sh",
+            packageUrl,
+            expectedSha256);
+
+        var packageDownload = command.IndexOf(packageUrl, StringComparison.Ordinal);
+        var digestCheck = command.IndexOf("sha256sum --check --strict -", StringComparison.Ordinal);
+        var installerInvocation = command.IndexOf(
+            "bash \"$installer_path\" --version \"$package_path\"",
+            StringComparison.Ordinal);
+
+        Assert.True(packageDownload >= 0 && packageDownload < digestCheck);
+        Assert.True(digestCheck >= 0 && digestCheck < installerInvocation);
+        Assert.Contains("&& printf '%s  %s\\n' '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef'", command, StringComparison.Ordinal);
+        Assert.Contains("&& curl -fsSL --proto '=http'", command, StringComparison.Ordinal);
+        Assert.DoesNotContain($"--version '{packageUrl}'", command, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task InstallCli_DigestMismatchFailsBeforePostInstallVerification()
+    {
+        var commands = new FakeCommandRunner(
+            _ => Fail("Windows commands are not expected"),
+            (_, command, _) => command.Contains("sha256sum --check", StringComparison.Ordinal)
+                ? Fail("openclaw.tgz: FAILED")
+                : Fail($"unexpected post-install command: {command}"));
+        var ctx = CreateContext(new SetupConfig
+        {
+            Gateway = new GatewayConfig
+            {
+                Version = "http://172.24.1.2:38677/openclaw-composed.tgz",
+                ExpectedPackageSha256 = new string('a', 64)
+            }
+        }, commands);
+
+        var result = await new InstallCliStep().ExecuteAsync(ctx, CancellationToken.None);
+
+        Assert.Equal(StepOutcome.Failed, result.Outcome);
+        Assert.Contains("CLI install failed", result.Message, StringComparison.Ordinal);
+        var installCall = Assert.Single(commands.WslCalls);
+        Assert.Contains("sha256sum --check --strict -", installCall.Command, StringComparison.Ordinal);
+        Assert.Contains("&& bash \"$installer_path\" --version \"$package_path\"", installCall.Command, StringComparison.Ordinal);
+        Assert.True(installCall.InputViaStdin);
+    }
+
+    [Theory]
+    [InlineData("not-a-digest", "http://example.test/openclaw.tgz")]
+    [InlineData("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "2026.7.2-beta.3")]
+    [InlineData("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "http://user:secret@example.test/openclaw.tgz")]
+    public void InstallCli_BuildInstallCommand_RejectsInvalidDigestContract(
+        string expectedSha256,
+        string packageSpec)
+    {
+        Assert.Throws<ArgumentException>(() => InstallCliStep.BuildInstallCommand(
+            "https://openclaw.ai/install-cli.sh",
+            packageSpec,
+            expectedSha256));
+    }
+
+    [Fact]
     public async Task PreflightWsl_FailsForUnsupportedDirectInstallVersion()
     {
         var commands = new FakeCommandRunner(args =>

@@ -81,7 +81,7 @@ function Read-OwnershipMarker {
 $package = Get-Item -LiteralPath $PackagePath
 $actualSha256 = (Get-FileHash -LiteralPath $package.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
 if ($actualSha256 -ne $ExpectedSha256.ToLowerInvariant()) {
-    throw "Gateway candidate SHA-256 mismatch: expected $ExpectedSha256, got $actualSha256."
+    throw "Gateway composed package SHA-256 mismatch: expected $ExpectedSha256, got $actualSha256."
 }
 
 $existingDistros = @(& wsl.exe --list --quiet) -replace "`0", "" | ForEach-Object { $_.Trim() }
@@ -133,12 +133,25 @@ try {
     $tail = $package.FullName.Substring(2).Replace("\", "/")
     $mountedPackagePath = "/mnt/$drive$tail"
     $hostDirectory = "/tmp/openclaw-e2e-package-host"
-    $hostPackagePath = "$hostDirectory/$($package.Name)"
+    $hostPackageName = "openclaw-composed-$actualSha256.tgz"
+    $hostPackagePath = "$hostDirectory/$hostPackageName"
 
     & wsl.exe -d $DistroName -u root -- mkdir -p $hostDirectory
     if ($LASTEXITCODE -ne 0) { throw "Failed to create package-host directory." }
     & wsl.exe -d $DistroName -u root -- cp -- $mountedPackagePath $hostPackagePath
-    if ($LASTEXITCODE -ne 0) { throw "Failed to copy the gateway candidate into the package-host distro." }
+    if ($LASTEXITCODE -ne 0) { throw "Failed to copy the composed gateway package into the package-host distro." }
+    $hostHashOutput = [string](& wsl.exe -d $DistroName -u root -- sha256sum -- $hostPackagePath)
+    if ($LASTEXITCODE -ne 0 -or $hostHashOutput -notmatch "^([a-fA-F0-9]{64})\s") {
+        throw "Failed to verify the copied composed gateway package inside the package-host distro."
+    }
+    $hostSha256 = $Matches[1].ToLowerInvariant()
+    if ($hostSha256 -ne $actualSha256) {
+        throw "Copied composed gateway package SHA-256 mismatch: expected $actualSha256, got $hostSha256."
+    }
+    & wsl.exe -d $DistroName -u root -- chmod 0444 $hostPackagePath
+    if ($LASTEXITCODE -ne 0) { throw "Failed to make the hosted composed gateway package read-only." }
+    & wsl.exe -d $DistroName -u root -- chmod 0555 $hostDirectory
+    if ($LASTEXITCODE -ne 0) { throw "Failed to make the composed gateway package host directory read-only." }
 
     $hostAddresses = @(
         ((& wsl.exe -d $DistroName -u root -- hostname -I) -split "\s+") |
@@ -157,7 +170,7 @@ try {
     & wsl.exe -d $DistroName -u root -- bash -lc $serverCommand
     if ($LASTEXITCODE -ne 0) { throw "Failed to start the package-host HTTP server." }
 
-    $packageSpec = "http://${hostAddress}:$Port/$($package.Name)"
+    $packageSpec = "http://${hostAddress}:$Port/$hostPackageName"
     $readinessDeadline = [DateTime]::UtcNow.AddSeconds(30)
     $lastReadinessError = $null
     do {
@@ -178,8 +191,9 @@ try {
     }
 
     "package_spec=$packageSpec" | Out-File -FilePath $GitHubOutput -Encoding utf8 -Append
+    "package_sha256=$actualSha256" | Out-File -FilePath $GitHubOutput -Encoding utf8 -Append
     "distro_name=$DistroName" | Out-File -FilePath $GitHubOutput -Encoding utf8 -Append
-    Write-Host "Gateway E2E candidate host ready: distro=$DistroName sha256=$actualSha256"
+    Write-Host "Gateway E2E composed-package host ready: distro=$DistroName sha256=$actualSha256"
 } catch {
     $startupError = $_
     $cleanupComplete = $false

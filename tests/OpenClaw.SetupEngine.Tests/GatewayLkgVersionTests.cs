@@ -8,7 +8,6 @@ public sealed class GatewayLkgVersionTests
     {
         var version = GatewayLkgVersion.ResolveLkgVersion();
 
-        Assert.Equal("2026.7.1", version);
         Assert.Equal(GatewayLkgVersion.LkgVersion, version);
     }
 

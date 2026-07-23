@@ -26,7 +26,7 @@ jobs:
           exit 1
         fi
 
-  gateway-candidate:
+  gateway-composed:
     needs: repo-hygiene
     runs-on: ubuntu-latest
     timeout-minutes: 45
@@ -41,14 +41,14 @@ jobs:
         exit 1
 
     - name: Checkout frozen OpenClaw main source
-      uses: actions/checkout@v7
+      uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
       with:
         repository: openclaw/openclaw
-        ref: 0f8a87ad6f1281bc4d69cd9f6d9e3d56ce6011a3
+        ref: b9a28cde42872cfe13051ddd8f1667e34bf59b17
         fetch-depth: 0
 
     - name: Setup Node 24
-      uses: actions/setup-node@v6
+      uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
       with:
         node-version: 24
 
@@ -62,11 +62,14 @@ jobs:
       shell: bash
       run: |
         set -euo pipefail
-        base_sha=0f8a87ad6f1281bc4d69cd9f6d9e3d56ce6011a3
-        wizard_base=5abcad51c81daa4ba4b570cccde06eecd8a437f1
-        wizard_head=8287e118f593f10f55a7419d27b28f739652f774
-        package_base=9e0c5f94b5cdf0090a17b3f36c5a74c5b36a1c71
-        package_head=c2770d527a29a65ad8bb3decc27f35ab528ca224
+        base_sha=b9a28cde42872cfe13051ddd8f1667e34bf59b17
+        wizard_base=b9a28cde42872cfe13051ddd8f1667e34bf59b17
+        wizard_head=4ef65f07940a601a8bf7ef18fae72270f4843ccb
+        package_base=b9a28cde42872cfe13051ddd8f1667e34bf59b17
+        package_head=070527ddfe32f0156a6258a638e226f731458ecd
+        fork_repository=https://github.com/TheAngryPit/openclaw.git
+        wizard_fetch_ref=refs/heads/codex/fix-gateway-wizard-rpc-exits
+        package_fetch_ref=refs/heads/codex/windows-package-runner-tree-timeout
         wizard_paths="$RUNNER_TEMP/pr110382-expected-paths.txt"
         package_paths="$RUNNER_TEMP/pr111956-expected-paths.txt"
         combined_paths="$RUNNER_TEMP/combined-expected-paths.txt"
@@ -94,11 +97,13 @@ jobs:
         cat "$wizard_paths" "$package_paths" | sort >"$combined_paths"
 
         test "$(git rev-parse HEAD)" = "$base_sha"
-        git fetch --no-tags origin \
-          "+refs/pull/110382/head:refs/remotes/origin/pr-110382" \
-          "+refs/pull/111956/head:refs/remotes/origin/pr-111956"
-        test "$(git rev-parse refs/remotes/origin/pr-110382)" = "$wizard_head"
-        test "$(git rev-parse refs/remotes/origin/pr-111956)" = "$package_head"
+        # Fetch immutable reviewed commits from the operator fork. The upstream
+        # PR 111956 object was stale at freeze time, so it is not an authority.
+        git fetch --no-tags "$fork_repository" \
+          "+${wizard_fetch_ref}:refs/remotes/fork/pr-110382" \
+          "+${package_fetch_ref}:refs/remotes/fork/pr-111956"
+        test "$(git rev-parse refs/remotes/fork/pr-110382)" = "$wizard_head"
+        test "$(git rev-parse refs/remotes/fork/pr-111956)" = "$package_head"
         git merge-base --is-ancestor "$wizard_base" "$wizard_head"
         git merge-base --is-ancestor "$package_base" "$package_head"
         git diff --name-only "$wizard_base" "$wizard_head" | sort | diff -u "$wizard_paths" -
@@ -125,9 +130,9 @@ jobs:
         node scripts/package-openclaw-for-docker.mjs \
           --allow-unreleased-changelog \
           --source-dir . \
-          --output-dir "$RUNNER_TEMP/gateway-candidate" \
+          --output-dir "$RUNNER_TEMP/gateway-composed" \
           --output-name openclaw-2026.7.2-main-pr110382-pr111956.tgz
-        tarball="$RUNNER_TEMP/gateway-candidate/openclaw-2026.7.2-main-pr110382-pr111956.tgz"
+        tarball="$RUNNER_TEMP/gateway-composed/openclaw-2026.7.2-main-pr110382-pr111956.tgz"
         sha256="$(sha256sum "$tarball" | awk '{print $1}')"
         packaged_version="$(tar -xOf "$tarball" package/package.json | node -e "let s='';process.stdin.on('data',c=>s+=c).on('end',()=>process.stdout.write(JSON.parse(s).version))")"
         test "$packaged_version" = "2026.7.2"
@@ -136,24 +141,24 @@ jobs:
         test "${#sha256}" -eq 64
         test "${#wizard_patch_sha256}" -eq 64
         test "${#package_patch_sha256}" -eq 64
-        printf '%s  %s\n' "$sha256" "$(basename "$tarball")" >"$RUNNER_TEMP/gateway-candidate/SHA256SUMS"
-        printf '{"source_ref":"main","source_sha":"%s","fixes":[{"pr":110382,"base":"%s","head":"%s","patch_sha256":"%s"},{"pr":111956,"base":"%s","head":"%s","patch_sha256":"%s"}],"changed_paths":["apps/shared/OpenClawKit/Sources/OpenClawProtocol/GatewayModels.swift","packages/gateway-protocol/src/schema/wizard.ts","scripts/package-openclaw-for-docker.d.mts","scripts/package-openclaw-for-docker.mjs","src/gateway/gateway.test.ts","src/gateway/server-methods/wizard.test.ts","src/gateway/server-methods/wizard.ts","src/gateway/server-wizard-sessions.test.ts","src/gateway/server-wizard-sessions.ts","src/wizard/session.ts","src/wizard/setup.finalize.test.ts","src/wizard/setup.finalize.ts","test/e2e/qa-lab/runtime/package-openclaw-for-docker.e2e.test.ts"],"package_version":"%s","package_sha256":"%s"}\n' \
-          0f8a87ad6f1281bc4d69cd9f6d9e3d56ce6011a3 \
-          5abcad51c81daa4ba4b570cccde06eecd8a437f1 \
-          8287e118f593f10f55a7419d27b28f739652f774 \
+        printf '%s  %s\n' "$sha256" "$(basename "$tarball")" >"$RUNNER_TEMP/gateway-composed/SHA256SUMS"
+        printf '{"source_ref":"main","source_sha":"%s","fixes":[{"pr":110382,"base":"%s","head":"%s","fetch_repository":"TheAngryPit/openclaw","fetch_ref":"codex/fix-gateway-wizard-rpc-exits","patch_sha256":"%s"},{"pr":111956,"base":"%s","head":"%s","fetch_repository":"TheAngryPit/openclaw","fetch_ref":"codex/windows-package-runner-tree-timeout","upstream_pr_object_state_at_freeze":"stale","patch_sha256":"%s"}],"changed_paths":["apps/shared/OpenClawKit/Sources/OpenClawProtocol/GatewayModels.swift","packages/gateway-protocol/src/schema/wizard.ts","scripts/package-openclaw-for-docker.d.mts","scripts/package-openclaw-for-docker.mjs","src/gateway/gateway.test.ts","src/gateway/server-methods/wizard.test.ts","src/gateway/server-methods/wizard.ts","src/gateway/server-wizard-sessions.test.ts","src/gateway/server-wizard-sessions.ts","src/wizard/session.ts","src/wizard/setup.finalize.test.ts","src/wizard/setup.finalize.ts","test/e2e/qa-lab/runtime/package-openclaw-for-docker.e2e.test.ts"],"package_version":"%s","package_sha256":"%s"}\n' \
+          b9a28cde42872cfe13051ddd8f1667e34bf59b17 \
+          b9a28cde42872cfe13051ddd8f1667e34bf59b17 \
+          4ef65f07940a601a8bf7ef18fae72270f4843ccb \
           "$wizard_patch_sha256" \
-          9e0c5f94b5cdf0090a17b3f36c5a74c5b36a1c71 \
-          c2770d527a29a65ad8bb3decc27f35ab528ca224 \
+          b9a28cde42872cfe13051ddd8f1667e34bf59b17 \
+          070527ddfe32f0156a6258a638e226f731458ecd \
           "$package_patch_sha256" \
           "$packaged_version" \
-          "$sha256" >"$RUNNER_TEMP/gateway-candidate/provenance.json"
+          "$sha256" >"$RUNNER_TEMP/gateway-composed/provenance.json"
         echo "sha256=$sha256" >>"$GITHUB_OUTPUT"
 
-    - name: Upload composed gateway candidate
-      uses: actions/upload-artifact@v7
+    - name: Upload composed gateway package
+      uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
       with:
-        name: openclaw-main-pr110382-pr111956-candidate
-        path: ${{ runner.temp }}/gateway-candidate/
+        name: openclaw-main-pr110382-pr111956-composed
+        path: ${{ runner.temp }}/gateway-composed/
         if-no-files-found: error
         retention-days: 7
 
@@ -469,8 +474,8 @@ jobs:
       majorMinorPatch: ${{ steps.gitversion.outputs.majorMinorPatch }}
 
   e2etests:
-    needs: [repo-hygiene, gateway-candidate]
-    if: ${{ needs.repo-hygiene.result == 'success' && needs.gateway-candidate.result == 'success' }}
+    needs: [repo-hygiene, gateway-composed]
+    if: ${{ needs.repo-hygiene.result == 'success' && needs.gateway-composed.result == 'success' }}
     runs-on: windows-latest
     timeout-minutes: ${{ matrix.timeout_minutes }}
     strategy:
@@ -479,30 +484,40 @@ jobs:
         include:
           - name: lkg-setup-connect
             gateway_source: lkg
+            gateway_version: ""
             scenario: setup-connect
             timeout_minutes: 45
             filter: "FullyQualifiedName~OpenClaw.E2ETests.Setup.SetupAndConnectTests|FullyQualifiedName~OpenClaw.E2ETests.Setup.MxcSetupAndConnectTests"
-          - name: candidate-setup-connect
-            gateway_source: candidate
+          - name: official-beta-setup-connect
+            gateway_source: official
+            gateway_version: 2026.7.2-beta.3
             scenario: setup-connect
             timeout_minutes: 45
             filter: "FullyQualifiedName~OpenClaw.E2ETests.Setup.SetupAndConnectTests|FullyQualifiedName~OpenClaw.E2ETests.Setup.MxcSetupAndConnectTests"
-          - name: candidate-revocation-recovery
-            gateway_source: candidate
+          - name: composed-setup-connect
+            gateway_source: composed
+            gateway_version: ""
+            scenario: setup-connect
+            timeout_minutes: 45
+            filter: "FullyQualifiedName~OpenClaw.E2ETests.Setup.SetupAndConnectTests|FullyQualifiedName~OpenClaw.E2ETests.Setup.MxcSetupAndConnectTests"
+          - name: composed-revocation-recovery
+            gateway_source: composed
+            gateway_version: ""
             scenario: revocation-recovery
             timeout_minutes: 25
             filter: FullyQualifiedName~OpenClaw.E2ETests.Setup.RevocationAndRecoveryTests
-          - name: candidate-network-recovery
-            gateway_source: candidate
+          - name: composed-network-recovery
+            gateway_source: composed
+            gateway_version: ""
             scenario: network-recovery
             timeout_minutes: 25
             filter: FullyQualifiedName~OpenClaw.E2ETests.Setup.NetworkRecoveryTests
     steps:
     - name: Fail if repo hygiene failed
-      if: ${{ needs.repo-hygiene.result != 'success' || needs.gateway-candidate.result != 'success' }}
+      if: ${{ needs.repo-hygiene.result != 'success' || needs.gateway-composed.result != 'success' }}
       shell: pwsh
       run: |
-        Write-Error "A prerequisite failed; see repo-hygiene and gateway-candidate job output."
+        Write-Error "A prerequisite failed; see repo-hygiene and gateway-composed job output."
         exit 1
 
     - uses: actions/checkout@v7
@@ -538,7 +553,7 @@ jobs:
       run: dotnet build tests/OpenClaw.E2ETests -c Debug -r win-x64
 
     - name: Run gateway package selector tests
-      if: ${{ matrix.name == 'candidate-setup-connect' }}
+      if: ${{ matrix.name == 'official-beta-setup-connect' }}
       shell: pwsh
       run: |
         dotnet test tests/OpenClaw.E2ETests `
@@ -549,21 +564,21 @@ jobs:
           --filter "FullyQualifiedName~OpenClaw.E2ETests.Setup.GatewayE2EPackageSpecTests"
         if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
-    - name: Download composed gateway candidate
-      if: ${{ matrix.gateway_source == 'candidate' }}
-      uses: actions/download-artifact@v8
+    - name: Download composed gateway package
+      if: ${{ matrix.gateway_source == 'composed' }}
+      uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
       with:
-        name: openclaw-main-pr110382-pr111956-candidate
-        path: TestResults/GatewayCandidate
+        name: openclaw-main-pr110382-pr111956-composed
+        path: TestResults/GatewayComposed
 
     - name: Start disposable WSL package host
-      if: ${{ matrix.gateway_source == 'candidate' }}
+      if: ${{ matrix.gateway_source == 'composed' }}
       id: gateway_package_host
       shell: pwsh
       run: |
         .\scripts\Start-E2EGatewayPackageHost.ps1 `
-          -PackagePath "TestResults\GatewayCandidate\openclaw-2026.7.2-main-pr110382-pr111956.tgz" `
-          -ExpectedSha256 "${{ needs.gateway-candidate.outputs.sha256 }}" `
+          -PackagePath "TestResults\GatewayComposed\openclaw-2026.7.2-main-pr110382-pr111956.tgz" `
+          -ExpectedSha256 "${{ needs.gateway-composed.outputs.sha256 }}" `
           -DistroName "OpenClawE2EPackageHost-${{ matrix.name }}" `
           -InstallLocation "${{ runner.temp }}\OpenClawE2EPackageHost-${{ matrix.name }}" `
           -OwnershipToken "${{ github.run_id }}-${{ github.run_attempt }}-${{ matrix.name }}" `
@@ -573,7 +588,10 @@ jobs:
       env:
         OPENCLAW_RUN_E2E: 1
         OPENCLAW_E2E_GATEWAY_SOURCE: ${{ matrix.gateway_source }}
-        OPENCLAW_E2E_GATEWAY_PACKAGE_SPEC: ${{ matrix.gateway_source == 'candidate' && steps.gateway_package_host.outputs.package_spec || '' }}
+        OPENCLAW_E2E_GATEWAY_VERSION: ${{ matrix.gateway_version }}
+        OPENCLAW_E2E_GATEWAY_PACKAGE_SPEC: ${{ matrix.gateway_source == 'composed' && steps.gateway_package_host.outputs.package_spec || '' }}
+        OPENCLAW_E2E_GATEWAY_PACKAGE_SHA256: ${{ matrix.gateway_source == 'composed' && steps.gateway_package_host.outputs.package_sha256 || '' }}
+        OPENCLAW_E2E_GATEWAY_PACKAGE_HOST_DISTRO: ${{ matrix.gateway_source == 'composed' && steps.gateway_package_host.outputs.distro_name || '' }}
       shell: pwsh
       run: |
         dotnet test tests/OpenClaw.E2ETests `
@@ -625,7 +643,7 @@ jobs:
         }
 
     - name: Stop disposable WSL package host
-      if: ${{ always() && matrix.gateway_source == 'candidate' }}
+      if: ${{ always() && matrix.gateway_source == 'composed' }}
       shell: pwsh
       run: |
         .\scripts\Stop-E2EGatewayPackageHost.ps1 `

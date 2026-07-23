@@ -140,6 +140,7 @@ rerun setup with a supported new name.
     "Bind": "loopback",
     "InstallUrl": null,
     "Version": null,
+    "ExpectedPackageSha256": null,
     "HealthTimeoutSeconds": 90,
     "ReloadMode": "hot",
     "AuthMode": "token",
@@ -195,8 +196,8 @@ Executed sequentially. Each step is a small class (30–120 lines) in `SetupStep
 | 8 | `ValidateWslLockdownStep` | Verify WSL isolation settings are applied |
 | 9 | `InstallCliStep` | Run install script inside WSL |
 | 10 | `ConfigureGatewayStep` | Write gateway config (bind, port, auth) |
-| 11 | `InstallGatewayServiceStep` | `openclaw gateway install --force` |
-| 12 | `StartGatewayStep` | Start service, poll health endpoint (90s timeout) |
+| 11 | `InstallGatewayServiceStep` | Run supported `openclaw gateway install --force`, which installs and activates or restarts the service |
+| 12 | `WaitForGatewayHealthStep` | Separate retryable health-only wait for the activated service (90s timeout); do not issue a redundant start or restart |
 | 13 | `MintBootstrapTokenStep` | Generate bootstrap token via CLI |
 | 14 | `PairOperatorStep` | WebSocket operator connection + device approval |
 | 15 | `PairNodeStep` | WebSocket node connection + capability registration |

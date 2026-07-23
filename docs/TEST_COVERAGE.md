@@ -93,12 +93,18 @@ dotnet test
 
 # Explicit local E2E run
 $env:OPENCLAW_RUN_E2E = "1"
-$env:OPENCLAW_E2E_GATEWAY_SOURCE = "candidate"
-$env:OPENCLAW_E2E_GATEWAY_PACKAGE_SPEC = "http://<wsl-host>:38677/openclaw-candidate.tgz"
+$env:OPENCLAW_E2E_GATEWAY_SOURCE = "official"
+$env:OPENCLAW_E2E_GATEWAY_VERSION = "2026.7.2-beta.3"
 dotnet test .\tests\OpenClaw.E2ETests\OpenClaw.E2ETests.csproj -r win-x64
 
-# Formal MXC validation path. This sets the required integration/E2E env vars
-# itself and fails when MXC proofs skip unless -AllowSkip is explicitly supplied.
+# Formal composed-main MXC path. Start-E2EGatewayPackageHost.ps1 provides the
+# exact content-addressed package URL, SHA-256, and host distro required below.
+# The E2E config carries that digest into Setup Engine, which verifies the
+# downloaded HTTP response before invoking the official installer on the same .tgz.
+$env:OPENCLAW_E2E_GATEWAY_SOURCE = "composed"
+$env:OPENCLAW_E2E_GATEWAY_PACKAGE_SPEC = "http://<wsl-host>:38677/openclaw-composed-<sha256>.tgz"
+$env:OPENCLAW_E2E_GATEWAY_PACKAGE_SHA256 = "<sha256>"
+$env:OPENCLAW_E2E_GATEWAY_PACKAGE_HOST_DISTRO = "OpenClawE2EPackageHost-<name>"
 .\scripts\validate-mxc-e2e.ps1
 
 # Accessibility scan, matching the CI quality gate.

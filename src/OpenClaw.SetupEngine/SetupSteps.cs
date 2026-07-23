@@ -1279,14 +1279,23 @@ public sealed class InstallCliStep : SetupStep
         string installScript;
         try
         {
-            installScript = BuildInstallCommand(installUrl, ctx.Config.Gateway.Version);
+            installScript = BuildInstallCommand(
+                installUrl,
+                ctx.Config.Gateway.Version,
+                ctx.Config.Gateway.ExpectedPackageSha256);
         }
         catch (ArgumentException ex)
         {
             return StepResult.Fail(ex.Message);
         }
 
-        var result = await ctx.Commands.RunInWslAsync(distro, installScript, TimeSpan.FromMinutes(5), ct: ct);
+        var inputViaStdin = !string.IsNullOrWhiteSpace(ctx.Config.Gateway.ExpectedPackageSha256);
+        var result = await ctx.Commands.RunInWslAsync(
+            distro,
+            installScript,
+            TimeSpan.FromMinutes(5),
+            ct: ct,
+            inputViaStdin: inputViaStdin);
 
         if (result.ExitCode != 0)
             return StepResult.Fail($"CLI install failed (exit {result.ExitCode}): {result.Stderr}");
@@ -1319,9 +1328,15 @@ public sealed class InstallCliStep : SetupStep
         return StepResult.Fail("CLI installed but not found in any known location");
     }
 
-    internal static string BuildInstallCommand(string installUrl, string? requestedVersion)
+    internal static string BuildInstallCommand(
+        string installUrl,
+        string? requestedVersion,
+        string? expectedPackageSha256 = null)
     {
         var escapedUrl = WslShellQuoting.EscapePosixSingleQuoteInner(installUrl);
+        if (!string.IsNullOrWhiteSpace(expectedPackageSha256))
+            return BuildVerifiedPackageInstallCommand(escapedUrl, requestedVersion, expectedPackageSha256);
+
         if (string.IsNullOrWhiteSpace(requestedVersion))
             return $"curl -fsSL --proto '=https' --tlsv1.2 '{escapedUrl}' | bash";
 
@@ -1331,6 +1346,44 @@ public sealed class InstallCliStep : SetupStep
 
         var escapedVersion = WslShellQuoting.EscapePosixSingleQuoteInner(trimmedVersion);
         return $"curl -fsSL --proto '=https' --tlsv1.2 '{escapedUrl}' | bash -s -- --version '{escapedVersion}'";
+    }
+
+    private static string BuildVerifiedPackageInstallCommand(
+        string escapedInstallUrl,
+        string? requestedVersion,
+        string expectedPackageSha256)
+    {
+        var normalizedSha256 = expectedPackageSha256.Trim().ToLowerInvariant();
+        if (normalizedSha256.Length != 64 || !normalizedSha256.All(Uri.IsHexDigit))
+            throw new ArgumentException("Expected gateway package SHA-256 must contain exactly 64 hexadecimal characters.");
+
+        var packageSpec = requestedVersion?.Trim();
+        if (string.IsNullOrWhiteSpace(packageSpec) ||
+            packageSpec.Contains('\n') ||
+            packageSpec.Contains('\r') ||
+            !Uri.TryCreate(packageSpec, UriKind.Absolute, out var packageUri) ||
+            (packageUri.Scheme != Uri.UriSchemeHttp && packageUri.Scheme != Uri.UriSchemeHttps) ||
+            !packageUri.AbsolutePath.EndsWith(".tgz", StringComparison.OrdinalIgnoreCase) ||
+            !string.IsNullOrEmpty(packageUri.UserInfo))
+        {
+            throw new ArgumentException(
+                "Expected gateway package SHA-256 requires Version to be a credential-free HTTP(S) .tgz URL.");
+        }
+
+        var escapedPackageSpec = WslShellQuoting.EscapePosixSingleQuoteInner(packageSpec);
+        var packageCurlOptions = packageUri.Scheme == Uri.UriSchemeHttps
+            ? "--proto '=https' --tlsv1.2"
+            : "--proto '=http'";
+
+        return
+            "download_dir=\"$(mktemp -d /tmp/openclaw-install.XXXXXX)\"" +
+            " && trap 'rm -rf -- \"$download_dir\"' EXIT" +
+            " && package_path=\"$download_dir/openclaw.tgz\"" +
+            " && installer_path=\"$download_dir/install-cli.sh\"" +
+            $" && curl -fsSL {packageCurlOptions} '{escapedPackageSpec}' -o \"$package_path\"" +
+            $" && printf '%s  %s\\n' '{normalizedSha256}' \"$package_path\" | sha256sum --check --strict -" +
+            $" && curl -fsSL --proto '=https' --tlsv1.2 '{escapedInstallUrl}' -o \"$installer_path\"" +
+            " && bash \"$installer_path\" --version \"$package_path\"";
     }
 
     private static async Task<StepResult> EnsureCliOnDefaultPathAsync(
