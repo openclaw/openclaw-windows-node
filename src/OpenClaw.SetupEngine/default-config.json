@@ -85,6 +85,8 @@
     "InstallUrl": null,
     // Pin gateway version (null = use GatewayLkgVersion.cs embedded LKG)
     "Version": null,
+    // Expected SHA-256 for an HTTP(S) .tgz Version; verified before the package is installed
+    "ExpectedPackageSha256": null,
     // Seconds to wait for gateway health endpoint before failing
     "HealthTimeoutSeconds": 90,
     // Config reload strategy: "hot" (no restart), "restart"

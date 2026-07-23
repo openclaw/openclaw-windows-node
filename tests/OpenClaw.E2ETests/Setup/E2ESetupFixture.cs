@@ -222,6 +222,7 @@ public sealed class E2ESetupFixture : IAsyncLifetime
     private void WriteConfig()
     {
         var gatewayPackageSpec = GatewayE2EPackageSpec.Resolve();
+        var expectedGatewayPackageSha256 = GatewayE2EPackageSpec.ResolveExpectedSha256();
         var config = new
         {
             DistroName = _distroName,
@@ -258,7 +259,8 @@ public sealed class E2ESetupFixture : IAsyncLifetime
             },
             Gateway = new
             {
-                Version = gatewayPackageSpec
+                Version = gatewayPackageSpec,
+                ExpectedPackageSha256 = expectedGatewayPackageSha256
             }
         };
 
