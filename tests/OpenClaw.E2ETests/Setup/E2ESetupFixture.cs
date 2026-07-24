@@ -677,10 +677,11 @@ public sealed class E2ESetupFixture : IAsyncLifetime
             $"Timed out waiting for durable paired credentials. Last={last?.ToString() ?? "<none>"}; error={lastError?.Message}");
     }
 
-    public async Task<string> WaitForTrayKeepAliveStartedAsync(TimeSpan? timeout = null)
+    public async Task<string> WaitForTrayKeepAliveReadyAsync(TimeSpan? timeout = null)
     {
         var logPath = Path.Combine(DataDir, "openclaw-tray.log");
-        var expected = $"[WslKeepAlive] Started keepalive for {_distroName}";
+        var expectedStarted = $"[WslKeepAlive] Started keepalive for {_distroName}";
+        var expectedExisting = $"[WslKeepAlive] Keepalive already running for {_distroName}";
         var deadline = DateTime.UtcNow.Add(timeout ?? TimeSpan.FromSeconds(30));
         string lastLogTail = "";
 
@@ -698,7 +699,9 @@ public sealed class E2ESetupFixture : IAsyncLifetime
             {
                 var lines = await File.ReadAllLinesAsync(logPath);
                 lastLogTail = string.Join(Environment.NewLine, lines.TakeLast(20));
-                var match = lines.LastOrDefault(line => line.Contains(expected, StringComparison.Ordinal));
+                var match = lines.LastOrDefault(line =>
+                    line.Contains(expectedStarted, StringComparison.Ordinal) ||
+                    line.Contains(expectedExisting, StringComparison.Ordinal));
                 if (match is not null)
                 {
                     Log($"Tray keepalive verified from log: {match}");
@@ -713,7 +716,8 @@ public sealed class E2ESetupFixture : IAsyncLifetime
         CopyDataDirLogs();
         throw new TimeoutException(
             $"Tray did not log WSL keepalive startup within {timeout?.TotalSeconds ?? 30}s. " +
-            $"Expected: {expected}. Log tail: {lastLogTail}. Logs: {ArtifactDir}");
+            $"Expected: {expectedStarted} or {expectedExisting}. " +
+            $"Log tail: {lastLogTail}. Logs: {ArtifactDir}");
     }
 
     private static bool TryGetPropertyIgnoreCase(JsonElement element, string propertyName, out JsonElement value)

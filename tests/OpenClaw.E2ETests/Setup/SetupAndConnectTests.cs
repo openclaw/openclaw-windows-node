@@ -199,9 +199,9 @@ public class SetupAndConnectTests
     }
 
     [E2EFact]
-    public async Task FullSetup_TrayStartsWslKeepAlive()
+    public async Task FullSetup_TrayEnsuresWslKeepAlive()
     {
-        var logLine = await _fixture.WaitForTrayKeepAliveStartedAsync();
+        var logLine = await _fixture.WaitForTrayKeepAliveReadyAsync();
         Assert.Contains(_fixture.DistroName, logLine);
 
         var keepAlive = await _fixture.RunInWslAsync(

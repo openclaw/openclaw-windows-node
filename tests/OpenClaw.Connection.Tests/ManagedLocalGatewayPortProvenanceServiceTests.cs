@@ -15,6 +15,41 @@ public class ManagedLocalGatewayPortProvenanceServiceTests
     };
 
     [Fact]
+    public void CreateWslRelaySignatureProbe_DoesNotInheritPwshModulePath()
+    {
+        const string relayPath = @"C:\Program Files\WSL\wslrelay.exe";
+
+        var startInfo =
+            WindowsManagedLocalGatewayPortPlatform.CreateWslRelaySignatureProbe(relayPath);
+
+        Assert.False(startInfo.Environment.ContainsKey("PSModulePath"));
+        Assert.Equal(relayPath, startInfo.Environment["OPENCLAW_VERIFY_PATH"]);
+        Assert.Contains(
+            "Get-AuthenticodeSignature",
+            startInfo.ArgumentList[^1],
+            StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void CreateExpectedWslGatewayProbe_UsesStdinAndDoesNotAssumeRelayFamilyParity()
+    {
+        var probe = WindowsManagedLocalGatewayPortPlatform.CreateExpectedWslGatewayProbe(
+            "OpenClawE2E-test",
+            18789);
+
+        Assert.True(probe.StartInfo.RedirectStandardInput);
+        Assert.Equal(
+            ["-d", "OpenClawE2E-test", "--", "bash", "-s"],
+            probe.StartInfo.ArgumentList);
+        Assert.Contains("pid=$(systemctl", probe.StandardInput, StringComparison.Ordinal);
+        Assert.Contains("ss -ltnp", probe.StandardInput, StringComparison.Ordinal);
+        Assert.DoesNotContain("ss -4", probe.StandardInput, StringComparison.Ordinal);
+        Assert.DoesNotContain("ss -6", probe.StandardInput, StringComparison.Ordinal);
+        Assert.Contains("pid=$pid,", probe.StandardInput, StringComparison.Ordinal);
+        Assert.DoesNotContain("$pid", string.Join(" ", probe.StartInfo.ArgumentList), StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void Inspect_WslRelayOnTargetAddress_IsExpectedManagedGateway()
     {
         var platform = new FakePlatform();

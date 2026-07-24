@@ -69,18 +69,7 @@ internal sealed class WindowsManagedLocalGatewayPortPlatform : IManagedLocalGate
             if (!isCanonical)
                 return false;
 
-            var psi = new ProcessStartInfo
-            {
-                FileName = "powershell.exe",
-                UseShellExecute = false,
-                CreateNoWindow = true,
-            };
-            psi.Environment["OPENCLAW_VERIFY_PATH"] = fullPath;
-            psi.ArgumentList.Add("-NoProfile");
-            psi.ArgumentList.Add("-Command");
-            psi.ArgumentList.Add(
-                "$s=Get-AuthenticodeSignature -LiteralPath $env:OPENCLAW_VERIFY_PATH; " +
-                "if($s.Status -eq 'Valid' -and $s.SignerCertificate.Subject -match 'Microsoft'){exit 0}; exit 1");
+            var psi = CreateWslRelaySignatureProbe(fullPath);
             using var process = Process.Start(psi);
             if (process is null)
                 return false;
@@ -97,34 +86,41 @@ internal sealed class WindowsManagedLocalGatewayPortPlatform : IManagedLocalGate
         }
     }
 
+    internal static ProcessStartInfo CreateWslRelaySignatureProbe(string fullPath)
+    {
+        var startInfo = new ProcessStartInfo
+        {
+            FileName = "powershell.exe",
+            UseShellExecute = false,
+            CreateNoWindow = true,
+        };
+
+        // A pwsh parent can prepend PowerShell 7 modules that Windows PowerShell
+        // 5.1 cannot load. Let the child rebuild its native module path so the
+        // built-in Authenticode cmdlet remains available.
+        startInfo.Environment.Remove("PSModulePath");
+        startInfo.Environment["OPENCLAW_VERIFY_PATH"] = fullPath;
+        startInfo.ArgumentList.Add("-NoProfile");
+        startInfo.ArgumentList.Add("-Command");
+        startInfo.ArgumentList.Add(
+            "$s=Get-AuthenticodeSignature -LiteralPath $env:OPENCLAW_VERIFY_PATH; " +
+            "if($s.Status -eq 'Valid' -and $s.SignerCertificate.Subject -match 'Microsoft'){exit 0}; exit 1");
+        return startInfo;
+    }
+
     public bool IsExpectedWslGatewayListening(
         string distroName,
         int port,
-        IPAddress listenerAddress)
+        IPAddress _)
     {
         try
         {
-            var psi = new ProcessStartInfo
-            {
-                FileName = ResolveWslExePath(),
-                UseShellExecute = false,
-                CreateNoWindow = true,
-            };
-            psi.ArgumentList.Add("-d");
-            psi.ArgumentList.Add(distroName);
-            psi.ArgumentList.Add("--");
-            psi.ArgumentList.Add("bash");
-            psi.ArgumentList.Add("-lc");
-            var familyFlag = listenerAddress.AddressFamily ==
-                System.Net.Sockets.AddressFamily.InterNetworkV6 ? "-6" : "-4";
-            psi.ArgumentList.Add(
-                "pid=$(systemctl --user show openclaw-gateway -p MainPID --value 2>/dev/null); " +
-                "test \"${pid:-0}\" -gt 0 && " +
-                $"ss {familyFlag} -ltnp 2>/dev/null | grep -E ':{port}([^0-9]|$)' | " +
-                "grep -F \"pid=$pid,\" >/dev/null");
-            using var process = Process.Start(psi);
+            var probe = CreateExpectedWslGatewayProbe(distroName, port);
+            using var process = Process.Start(probe.StartInfo);
             if (process is null)
                 return false;
+            process.StandardInput.Write(probe.StandardInput);
+            process.StandardInput.Close();
             if (!process.WaitForExit(5_000))
             {
                 try { process.Kill(entireProcessTree: true); } catch { }
@@ -136,6 +132,34 @@ internal sealed class WindowsManagedLocalGatewayPortPlatform : IManagedLocalGate
         {
             return false;
         }
+    }
+
+    internal static (ProcessStartInfo StartInfo, string StandardInput) CreateExpectedWslGatewayProbe(
+        string distroName,
+        int port)
+    {
+        var startInfo = new ProcessStartInfo
+        {
+            FileName = ResolveWslExePath(),
+            RedirectStandardInput = true,
+            UseShellExecute = false,
+            CreateNoWindow = true,
+        };
+        startInfo.ArgumentList.Add("-d");
+        startInfo.ArgumentList.Add(distroName);
+        startInfo.ArgumentList.Add("--");
+        startInfo.ArgumentList.Add("bash");
+        startInfo.ArgumentList.Add("-s");
+
+        // WSL relay can project one distro socket onto both Windows loopback
+        // families. Verify the service-owned port inside the expected distro
+        // without assuming family parity across that relay boundary.
+        var script =
+            "pid=$(systemctl --user show openclaw-gateway -p MainPID --value 2>/dev/null); " +
+            "test \"${pid:-0}\" -gt 0 && " +
+            $"ss -ltnp 2>/dev/null | grep -E ':{port}([^0-9]|$)' | " +
+            "grep -F \"pid=$pid,\" >/dev/null";
+        return (startInfo, script);
     }
 
     public string? ReadScheduledTaskXml(string taskName) =>
