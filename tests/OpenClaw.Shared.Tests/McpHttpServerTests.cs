@@ -10,6 +10,7 @@ using System.Threading.Tasks;
 using OpenClaw.Shared;
 using OpenClaw.Shared.Mcp;
 using OpenClaw.Shared.Telemetry;
+using OpenClaw.Shared.Tests.Telemetry;
 using Xunit;
 
 namespace OpenClaw.Shared.Tests;
@@ -19,6 +20,7 @@ namespace OpenClaw.Shared.Tests;
 /// boots the server on an ephemeral port so they can run in parallel and we
 /// don't collide with the production 8765.
 /// </summary>
+[Collection(McpServerTelemetryCollection.Name)]
 public class McpHttpServerTests
 {
     private sealed class FakeCapability : INodeCapability
