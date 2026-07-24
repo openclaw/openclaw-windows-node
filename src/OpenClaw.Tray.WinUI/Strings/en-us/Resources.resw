@@ -761,6 +761,42 @@ Use one of these options:
   <data name="PairingApproval_UnknownPlatform" xml:space="preserve">
     <value>Unknown platform</value>
   </data>
+  <data name="ExecApproval_WindowTitle" xml:space="preserve">
+    <value>Command Approval</value>
+  </data>
+  <data name="ExecApproval_Heading" xml:space="preserve">
+    <value>Allow Command?</value>
+  </data>
+  <data name="ExecApproval_Body" xml:space="preserve">
+    <value>The following command is requesting permission to run:</value>
+  </data>
+  <data name="ExecApproval_AgentLabel" xml:space="preserve">
+    <value>Agent:</value>
+  </data>
+  <data name="ExecApproval_CwdLabel" xml:space="preserve">
+    <value>Working directory:</value>
+  </data>
+  <data name="ExecApproval_ExecutableLabel" xml:space="preserve">
+    <value>Executable:</value>
+  </data>
+  <data name="ExecApproval_AllowOnce" xml:space="preserve">
+    <value>Allow Once</value>
+  </data>
+  <data name="ExecApproval_AllowAlways" xml:space="preserve">
+    <value>Allow Always</value>
+  </data>
+  <data name="ExecApproval_Deny" xml:space="preserve">
+    <value>Deny</value>
+  </data>
+  <data name="ExecApproval_ArmHint" xml:space="preserve">
+    <value>Allow becomes available in a moment</value>
+  </data>
+  <data name="ExecApproval_ScrollHint" xml:space="preserve">
+    <value>Scroll to the end of the command before allowing</value>
+  </data>
+  <data name="ExecApproval_ConfusableWarning" xml:space="preserve">
+    <value>This command mixes character sets and may not read the way it looks. Check it carefully.</value>
+  </data>
   <data name="Toast_NodePaired" xml:space="preserve">
     <value>✅ Node Paired!</value>
   </data>
