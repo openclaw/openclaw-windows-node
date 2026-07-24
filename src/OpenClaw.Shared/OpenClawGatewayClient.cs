@@ -1028,7 +1028,47 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
     public async Task RequestModelsListAsync()
     {
         if (_modelsListUnsupported) return;
-        await SendTrackedRequestAsync("models.list", new { view = "configured" });
+
+        ModelsListInfo configured;
+        try
+        {
+            var configuredPayload = await SendWizardRequestAsync(
+                "models.list",
+                new { view = "configured" },
+                timeoutMs: 10000);
+            configured = ParseModelsListPayload(configuredPayload);
+        }
+        catch (Exception ex)
+        {
+            // Preserve the legacy fire-and-forget path for older gateways and
+            // transient response-aware request failures.
+            _logger.Warn($"Configured models.list request failed; using legacy request path: {ex.Message}");
+            await SendTrackedRequestAsync("models.list", new { view = "configured" });
+            return;
+        }
+
+        // Populate the existing safe choices immediately, then enhance the picker
+        // when the broader catalog response arrives.
+        ModelsListUpdated?.Invoke(this, configured);
+
+        ModelsListInfo catalog;
+        try
+        {
+            var catalogPayload = await SendWizardRequestAsync(
+                "models.list",
+                new { view = "all" },
+                timeoutMs: 10000);
+            catalog = ParseModelsListPayload(catalogPayload);
+        }
+        catch (Exception ex)
+        {
+            // A full catalog is an enhancement. The configured list remains a
+            // safe, selectable fallback when discovery is unsupported or slow.
+            _logger.Warn($"Full models.list catalog request failed; keeping configured models only: {ex.Message}");
+            return;
+        }
+
+        ModelsListUpdated?.Invoke(this, MergeModelCatalog(configured, catalog));
     }
 
     // Node/Device pairing
@@ -4420,49 +4460,128 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
     {
         try
         {
-            var info = new ModelsListInfo();
-            // Gateway returns { models: [...] } or just an array
-            var modelsArray = payload.ValueKind == JsonValueKind.Array
-                ? payload
-                : payload.TryGetProperty("models", out var m) ? m : default;
-
-            if (modelsArray.ValueKind == JsonValueKind.Array)
-            {
-                foreach (var item in modelsArray.EnumerateArray())
-                {
-                    if (item.ValueKind != JsonValueKind.Object) continue;
-
-                    // Read readiness flags defensively; older gateways may omit
-                    // them, and the UI only uses them for labels/selectability.
-                    var hasConfiguredFlag = item.TryGetProperty("configured", out var cfg)
-                                            && (cfg.ValueKind == JsonValueKind.True || cfg.ValueKind == JsonValueKind.False);
-                    bool available = true;
-                    if (TryReadBool(item, out var av, "available")) available = av;
-                    else if (TryReadBool(item, out var un, "unavailable")) available = !un;
-
-                    var model = new ModelInfo
-                    {
-                        Id = item.TryGetProperty("id", out var id) ? id.GetString() ?? "" : "",
-                        Name = item.TryGetProperty("name", out var name) ? name.GetString() : null,
-                        Provider = item.TryGetProperty("provider", out var prov) ? prov.GetString() : null,
-                        ContextWindow = ReadPositiveInt32(item, "contextWindow"),
-                        ContextTokens = ReadPositiveInt32(item, "contextTokens"),
-                        IsConfigured = hasConfiguredFlag && cfg.ValueKind == JsonValueKind.True,
-                        HasConfiguredFlag = hasConfiguredFlag,
-                        IsDefault = ReadBool(item, "default", "isDefault"),
-                        IsAvailable = available,
-                        RequiresAuth = ReadBool(item, "requiresAuth", "authRequired", "needsAuth", "authNeeded")
-                    };
-                    if (!string.IsNullOrEmpty(model.Id))
-                        info.Models.Add(model);
-                }
-            }
-            ModelsListUpdated?.Invoke(this, info);
+            ModelsListUpdated?.Invoke(this, ParseModelsListPayload(payload));
         }
         catch (Exception ex)
         {
             _logger.Warn($"Failed to parse models.list: {ex.Message}");
         }
+    }
+
+    internal static ModelsListInfo ParseModelsListPayload(JsonElement payload)
+    {
+        var info = new ModelsListInfo();
+        // Gateway returns { models: [...] } or just an array.
+        var modelsArray = payload.ValueKind == JsonValueKind.Array
+            ? payload
+            : payload.TryGetProperty("models", out var m) ? m : default;
+
+        if (modelsArray.ValueKind != JsonValueKind.Array)
+            return info;
+
+        foreach (var item in modelsArray.EnumerateArray())
+        {
+            if (item.ValueKind != JsonValueKind.Object) continue;
+
+            // Read readiness flags defensively; older gateways may omit
+            // them, and the UI only uses them for labels/selectability.
+            var hasConfiguredFlag = item.TryGetProperty("configured", out var cfg)
+                                    && (cfg.ValueKind == JsonValueKind.True || cfg.ValueKind == JsonValueKind.False);
+            bool available = true;
+            if (TryReadBool(item, out var av, "available")) available = av;
+            else if (TryReadBool(item, out var un, "unavailable")) available = !un;
+
+            var model = new ModelInfo
+            {
+                Id = item.TryGetProperty("id", out var id) ? id.GetString() ?? "" : "",
+                Name = item.TryGetProperty("name", out var name) ? name.GetString() : null,
+                Provider = item.TryGetProperty("provider", out var prov) ? prov.GetString() : null,
+                ContextWindow = ReadPositiveInt32(item, "contextWindow"),
+                ContextTokens = ReadPositiveInt32(item, "contextTokens"),
+                IsConfigured = hasConfiguredFlag && cfg.ValueKind == JsonValueKind.True,
+                HasConfiguredFlag = hasConfiguredFlag,
+                IsDefault = ReadBool(item, "default", "isDefault"),
+                IsAvailable = available,
+                RequiresAuth = ReadBool(item, "requiresAuth", "authRequired", "needsAuth", "authNeeded")
+            };
+            if (!string.IsNullOrEmpty(model.Id))
+                info.Models.Add(model);
+        }
+
+        return info;
+    }
+
+    internal static ModelsListInfo MergeModelCatalog(ModelsListInfo configured, ModelsListInfo catalog)
+    {
+        var result = new ModelsListInfo();
+        var byIdentity = new Dictionary<string, ModelInfo>(StringComparer.OrdinalIgnoreCase);
+
+        foreach (var source in configured.Models)
+        {
+            if (source is null || string.IsNullOrWhiteSpace(source.Id)) continue;
+
+            var identity = GetModelIdentity(source);
+            if (!byIdentity.TryAdd(identity, CloneModelInfo(source))) continue;
+
+            var configuredModel = byIdentity[identity];
+            configuredModel.HasConfiguredFlag = true;
+            configuredModel.IsConfigured = true;
+            result.Models.Add(configuredModel);
+        }
+
+        foreach (var source in catalog.Models)
+        {
+            if (source is null || string.IsNullOrWhiteSpace(source.Id)) continue;
+            if (!source.IsAvailable && !source.RequiresAuth) continue;
+
+            var identity = GetModelIdentity(source);
+            if (byIdentity.TryGetValue(identity, out var configuredModel))
+            {
+                configuredModel.Name ??= source.Name;
+                configuredModel.Provider ??= source.Provider;
+                configuredModel.ContextWindow ??= source.ContextWindow;
+                configuredModel.ContextTokens ??= source.ContextTokens;
+                configuredModel.IsDefault |= source.IsDefault;
+                configuredModel.RequiresAuth |= source.RequiresAuth;
+                continue;
+            }
+
+            var catalogModel = CloneModelInfo(source);
+            catalogModel.HasConfiguredFlag = true;
+            catalogModel.IsConfigured = false;
+            // Catalog-only entries stay visible for discovery, while the explicit
+            // configuration flag keeps them disabled until they are allowlisted.
+            byIdentity.Add(identity, catalogModel);
+            result.Models.Add(catalogModel);
+        }
+
+        return result;
+    }
+
+    private static ModelInfo CloneModelInfo(ModelInfo source) => new()
+    {
+        Id = source.Id,
+        Name = source.Name,
+        Provider = source.Provider,
+        ContextWindow = source.ContextWindow,
+        ContextTokens = source.ContextTokens,
+        IsConfigured = source.IsConfigured,
+        HasConfiguredFlag = source.HasConfiguredFlag,
+        IsDefault = source.IsDefault,
+        IsAvailable = source.IsAvailable,
+        RequiresAuth = source.RequiresAuth
+    };
+
+    private static string GetModelIdentity(ModelInfo model)
+    {
+        var id = model.Id.Trim();
+        var provider = model.Provider?.Trim();
+        if (string.IsNullOrEmpty(provider)) return id;
+
+        var prefix = provider + "/";
+        return id.StartsWith(prefix, StringComparison.OrdinalIgnoreCase)
+            ? id
+            : prefix + id;
     }
 
     private static int? ReadPositiveInt32(JsonElement obj, string key)

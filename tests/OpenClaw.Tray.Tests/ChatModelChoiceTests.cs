@@ -82,40 +82,46 @@ public class ChatModelChoiceTests
     }
 
     [Fact]
-    public void FromModelsList_HidesExplicitlyUnconfiguredModels()
+    public void FromModelsList_ShowsExplicitlyUnconfiguredModelsAsDisabled()
     {
         var info = new ModelsListInfo
         {
             Models =
             {
-                // Provider explicitly reported as not configured with no auth path → hidden.
                 new ModelInfo { Id = "unconfigured", HasConfiguredFlag = true, IsConfigured = false },
-                // Auth-needed rows stay visible so users can choose the provider-auth path.
                 new ModelInfo { Id = "needs-key", HasConfiguredFlag = true, IsConfigured = false, RequiresAuth = true },
-                // Configured → kept.
                 new ModelInfo { Id = "ready", HasConfiguredFlag = true, IsConfigured = true },
-                // Flag omitted entirely → kept (we don't know, so don't hide).
                 new ModelInfo { Id = "unknown" },
             }
         };
 
         var choices = ChatModelChoice.FromModelsList(info);
-        Assert.Equal(new[] { "needs-key", "ready", "unknown" }, choices.Select(c => c.Id).ToArray());
-        Assert.True(choices[0].RequiresAuth);
-        Assert.True(choices[0].IsSelectable);
+
+        Assert.Equal(
+            new[] { "unconfigured", "needs-key", "ready", "unknown" },
+            choices.Select(c => c.Id).ToArray());
+
+        var unconfigured = choices[0];
+        Assert.False(unconfigured.IsSelectable);
+        Assert.Equal("not configured", ChatModelLabels.BuildStateMarker(unconfigured));
+
+        Assert.True(choices[1].RequiresAuth);
+        Assert.True(choices[1].IsSelectable);
     }
 
-    // ── Selectability ────────────────────────────────────────────────────
-
+    // Selectability
     [Fact]
-    public void IsSelectable_FalseOnlyWhenUnavailable()
+    public void IsSelectable_BlocksExplicitlyUnconfiguredModels()
     {
         Assert.True(new ChatModelChoice("x", "X").IsSelectable);
-        // Auth-needed stays selectable (routes to provider auth).
         Assert.True(new ChatModelChoice("x", "X", RequiresAuth: true).IsSelectable);
+        Assert.False(new ChatModelChoice(
+            "x",
+            "X",
+            IsConfigured: false,
+            HasConfiguredFlag: true).IsSelectable);
         Assert.False(new ChatModelChoice("x", "X", IsAvailable: false).IsSelectable);
     }
-
     [Theory]
     [InlineData("gpt-5.4", "openai", "openai/gpt-5.4")]
     [InlineData("openai/gpt-5.4", "openai", "openai/gpt-5.4")]
@@ -307,6 +313,16 @@ public class ChatModelChoiceTests
         Assert.Equal("auth needed", ChatModelLabels.BuildStateMarker(c));
     }
 
+    [Fact]
+    public void BuildStateMarker_NotConfigured()
+    {
+        var c = new ChatModelChoice(
+            "x",
+            "X",
+            IsConfigured: false,
+            HasConfiguredFlag: true);
+        Assert.Equal("not configured", ChatModelLabels.BuildStateMarker(c));
+    }
     [Fact]
     public void BuildStateMarker_Default()
     {

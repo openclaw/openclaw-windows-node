@@ -2455,9 +2455,9 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
         Publish(snapshot);
     }
 
-    // Wire ids (e.g. "claude-opus-4.5") in gateway order, used by the composer
-    // to match against SessionInfo.Model. Kept as a parallel string[] for
-    // back-compat with callers/persistence that only need the id list.
+    // Selectable wire ids (e.g. "claude-opus-4.5") in gateway order, used by
+    // the composer to match against SessionInfo.Model. Kept as a parallel
+    // string[] for back-compat and safe reconnect persistence.
     private static string[] ModelIdsFromChoices(IReadOnlyList<ChatModelChoice> choices)
     {
         if (choices.Count == 0) return Array.Empty<string>();
@@ -2465,6 +2465,7 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
         var ids = new List<string>(choices.Count);
         foreach (var choice in choices)
         {
+            if (!choice.IsSelectable) continue;
             if (seen.Add(choice.Id))
                 ids.Add(choice.Id);
         }
