@@ -212,6 +212,9 @@ public sealed partial class ChatPage : Page
             settings.GetEffectiveGatewayUrl(),
             settings.LegacyToken,
             settings.LegacyBootstrapToken,
+            (record, candidate) =>
+                (App.Current as App)?.ManagedLocalPortProvenance
+                    ?.IsStrongCredentialAllowed(record, candidate) == true,
             out var credential) &&
             credential is { IsBootstrapToken: false }
             ? ChatSurfaceResolver.BuildChatUrl(credential.GatewayUrl, credential.Token)
@@ -569,6 +572,9 @@ public sealed partial class ChatPage : Page
                 settings.GetEffectiveGatewayUrl(),
                 settings.LegacyToken,
                 settings.LegacyBootstrapToken,
+                (record, candidate) =>
+                    CurrentApp.ManagedLocalPortProvenance
+                        ?.IsStrongCredentialAllowed(record, candidate) == true,
                 out var credential) ||
                 credential == null)
             {

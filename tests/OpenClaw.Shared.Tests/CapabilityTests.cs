@@ -1231,6 +1231,28 @@ public class BrowserProxyCapabilityTests
     }
 
     [Fact]
+    public async Task BrowserProxy_UnverifiedControlListener_DoesNotSendBearerToken()
+    {
+        var handler = new CapturingHandler("""{"ok":true}""");
+        var cap = new BrowserProxyCapability(
+            NullLogger.Instance,
+            "ws://127.0.0.1:18789",
+            "secret-token",
+            handler,
+            authorizeEndpointAsync: (_, _) => Task.FromResult(false));
+
+        var res = await cap.ExecuteAsync(new NodeInvokeRequest
+        {
+            Id = "browser-blocked",
+            Command = "browser.proxy",
+            Args = Parse("""{"method":"GET","path":"/snapshot"}""")
+        });
+
+        Assert.False(res.Ok);
+        Assert.Null(handler.LastRequest);
+    }
+
+    [Fact]
     public async Task BrowserProxy_RemoteGatewayWithoutOverride_DoesNotSendTokenToLocalFallback()
     {
         var handler = new CapturingHandler("""{"ok":true}""");

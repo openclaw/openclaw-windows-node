@@ -50,6 +50,111 @@ public class GatewayRegistryMigrationTests : IDisposable
     }
 
     [Fact]
+    public void MigrateFromSettings_LocalhostWithSetupState_BackfillsManagedDistro()
+    {
+        var localRoot = Path.Combine(_tempDir, "local-root");
+        var stateDir = Path.Combine(localRoot, "OpenClawTray");
+        Directory.CreateDirectory(stateDir);
+        File.WriteAllText(
+            Path.Combine(stateDir, "setup-state.json"),
+            """{"DistroName":"OpenClawGateway"}""");
+        var previous = Environment.GetEnvironmentVariable("OPENCLAW_TRAY_LOCALAPPDATA_DIR");
+        try
+        {
+            Environment.SetEnvironmentVariable("OPENCLAW_TRAY_LOCALAPPDATA_DIR", localRoot);
+
+            Assert.True(_registry.MigrateFromSettings(
+                "ws://localhost:18789",
+                "shared-token",
+                null,
+                false,
+                null,
+                null,
+                0,
+                0,
+                _tempDir));
+
+            var record = _registry.GetActive()!;
+            Assert.Equal("OpenClawGateway", record.SetupManagedDistroName);
+            Assert.Equal("Local (OpenClawGateway)", record.FriendlyName);
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable("OPENCLAW_TRAY_LOCALAPPDATA_DIR", previous);
+        }
+    }
+
+    [Fact]
+    public void MigrateFromSettings_DirectLocalDataOverride_BackfillsManagedDistro()
+    {
+        var direct = Path.Combine(_tempDir, "direct-setup-data");
+        Directory.CreateDirectory(direct);
+        File.WriteAllText(
+            Path.Combine(direct, "setup-state.json"),
+            """{"DistroName":"OpenClawGateway-Dev"}""");
+        var previous = Environment.GetEnvironmentVariable("OPENCLAW_TRAY_LOCAL_DATA_DIR");
+        try
+        {
+            Environment.SetEnvironmentVariable("OPENCLAW_TRAY_LOCAL_DATA_DIR", direct);
+            Assert.True(_registry.MigrateFromSettings(
+                "ws://localhost:18789",
+                "shared-token",
+                null,
+                false,
+                null,
+                null,
+                0,
+                0,
+                _tempDir));
+            Assert.Equal(
+                "OpenClawGateway-Dev",
+                _registry.GetActive()!.SetupManagedDistroName);
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable("OPENCLAW_TRAY_LOCAL_DATA_DIR", previous);
+        }
+    }
+
+    [Fact]
+    public void MigrateFromSettings_DevSettingsPreferDevSetupState()
+    {
+        var localRoot = Path.Combine(_tempDir, "side-by-side-local");
+        Directory.CreateDirectory(Path.Combine(localRoot, "OpenClawTray"));
+        Directory.CreateDirectory(Path.Combine(localRoot, "OpenClawTray-Dev"));
+        File.WriteAllText(
+            Path.Combine(localRoot, "OpenClawTray", "setup-state.json"),
+            """{"DistroName":"OpenClawGateway"}""");
+        File.WriteAllText(
+            Path.Combine(localRoot, "OpenClawTray-Dev", "setup-state.json"),
+            """{"DistroName":"OpenClawGateway-Dev"}""");
+        var previous = Environment.GetEnvironmentVariable("OPENCLAW_TRAY_LOCALAPPDATA_DIR");
+        try
+        {
+            Environment.SetEnvironmentVariable("OPENCLAW_TRAY_LOCALAPPDATA_DIR", localRoot);
+            var devSettingsDir = Path.Combine(_tempDir, "OpenClawTray-Dev");
+            Directory.CreateDirectory(devSettingsDir);
+            Assert.True(_registry.MigrateFromSettings(
+                "ws://localhost:18789",
+                "shared-token",
+                null,
+                false,
+                null,
+                null,
+                0,
+                0,
+                devSettingsDir));
+            Assert.Equal(
+                "OpenClawGateway-Dev",
+                _registry.GetActive()!.SetupManagedDistroName);
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable("OPENCLAW_TRAY_LOCALAPPDATA_DIR", previous);
+        }
+    }
+
+    [Fact]
     public void MigrateFromSettings_WithSshTunnel()
     {
         var result = _registry.MigrateFromSettings(

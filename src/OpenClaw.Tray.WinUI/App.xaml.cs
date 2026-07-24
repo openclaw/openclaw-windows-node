@@ -52,6 +52,8 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
     private TrayIconCoordinator? _trayIconCoordinator;
     private GatewayConnectionManager? _connectionManager;
     private GatewayRegistry? _gatewayRegistry;
+    private OpenClawTray.Services.ManagedLocalGatewayAutoRepairMonitor? _managedLocalAutoRepairMonitor;
+    private ManagedLocalGatewayPortProvenanceService? _managedLocalPortProvenance;
     private OpenClawTray.Chat.OpenClawChatCoordinator? _chatCoordinator;
 
     /// <summary>
@@ -92,6 +94,8 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
     public IOperatorGatewayClient? GatewayClient => _connectionManager?.OperatorClient;
     public GatewayRegistry? Registry => _gatewayRegistry;
     public GatewayConnectionManager? ConnectionManager => _connectionManager;
+    internal ManagedLocalGatewayPortProvenanceService? ManagedLocalPortProvenance =>
+        _managedLocalPortProvenance;
     internal SettingsManager Settings => _settings ?? throw new InvalidOperationException("Settings are not initialized.");
     internal SettingsManager? SettingsOrNull => _settings;
     internal string DataDirectoryPath => DataPath;
@@ -776,13 +780,16 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
             }
         };
         // SshTunnelService implements ISshTunnelManager directly — no shim needed
+        var managedLocalPortProvenance = _managedLocalPortProvenance =
+            new ManagedLocalGatewayPortProvenanceService(appLogger);
         _connectionManager = new GatewayConnectionManager(
             credentialResolver, clientFactory, _gatewayRegistry, appLogger,
             identityStore: new DeviceIdentityFileStore(appLogger),
             nodeConnector: nodeConnector,
             isNodeEnabled: IsGatewayNodeEnabled,
             diagnostics: diagnostics,
-            tunnelManager: _sshTunnelService);
+            tunnelManager: _sshTunnelService,
+            endpointProvenanceProbe: managedLocalPortProvenance.InspectAsync);
         _connectionManager.OperatorClientChanged += OnOperatorClientChanged;
         _connectionManager.StateChanged += OnManagerStateChanged;
 
@@ -825,6 +832,57 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
         // runs detached from the tray — see WslDistroKeepAlive in LocalGatewaySetup.cs.
         var wslKeepAlive = new WslGatewayKeepAliveService(() => _settings, () => _gatewayRegistry);
         _ = Task.Run(wslKeepAlive.TryEnsureAsync);
+
+        // Automatic self-repair for app-owned setup-managed local WSL gateways: if the local
+        // gateway process goes down, probe it and (only if actually unreachable) restart the WSL
+        // distro, re-arm the keepalive, and reconnect — without user action. Strictly gated to
+        // setup-managed local WSL gateways; the reconnect is gateway-pinned + cancellable so a
+        // gateway switch or shutdown mid-repair cannot disrupt another gateway. Kill switch:
+        // Settings.EnableManagedLocalGatewayAutoRepair.
+        var managedLocalRestarter = new OpenClawTray.Services.WslManagedLocalGatewayRestarter(
+            new WslGatewayController(new WslExeCommandRunner(new AppLogger(), defaultTimeout: TimeSpan.FromSeconds(30)), appLogger));
+        var managedLocalRepairCoordinator = new OpenClawTray.Services.ManagedLocalGatewayRepairCoordinator(
+            _gatewayRegistry,
+            managedLocalRestarter,
+            (url, ct) => OpenClawTray.Services.GatewayReachabilityProbe.IsReachableAsync(url, ct),
+            (gatewayId, ct) => _connectionManager?.ReconnectIfCurrentAsync(gatewayId, ct) ?? Task.FromResult(false),
+            () => _connectionManager?.CurrentSnapshot.OperatorState == RoleConnectionState.Connected,
+            _ => wslKeepAlive.TryEnsureAsync(),
+            diagnostics,
+            appLogger,
+            tryAcquireLifecycleLease: () => _connectionManager?.TryAcquireGatewayLifecycleLease(),
+            isRestartStillWarranted: () => OpenClawTray.Services.ManagedLocalGatewayAutoRepairMonitor.IsRepairCandidate(
+                _connectionManager?.CurrentSnapshot ?? GatewayConnectionSnapshot.Idle),
+            isAutomaticRepairAllowed: gatewayId => _connectionManager?.IsAutomaticReconnectAllowed(gatewayId) ?? false,
+            repairPortConflictAsync: (record, ct) =>
+                OpenClawTray.Services.ManagedLocalGatewayAutoRepairMonitor.IsRepairCandidate(
+                    _connectionManager?.CurrentSnapshot ?? GatewayConnectionSnapshot.Idle) &&
+                _connectionManager?.CurrentSnapshot.OperatorErrorKind == GatewayErrorKind.LocalPortConflict
+                    ? managedLocalPortProvenance.RepairConflictAsync(
+                        record,
+                        ct,
+                        canContinue: () =>
+                            string.Equals(
+                                _gatewayRegistry?.ActiveGatewayId,
+                                record.Id,
+                                StringComparison.Ordinal) &&
+                            (_connectionManager?.IsAutomaticReconnectAllowed(record.Id) ?? false))
+                    : Task.FromResult(new ManagedLocalPortConflictRepairResult(
+                        ManagedLocalPortConflictRepairOutcome.NotNeeded)),
+            isPortConflictCandidate: () =>
+                _connectionManager?.CurrentSnapshot.OperatorErrorKind == GatewayErrorKind.LocalPortConflict);
+        _managedLocalAutoRepairMonitor = new OpenClawTray.Services.ManagedLocalGatewayAutoRepairMonitor(
+            () => _connectionManager?.CurrentSnapshot ?? GatewayConnectionSnapshot.Idle,
+            _gatewayRegistry,
+            ct => managedLocalRepairCoordinator.TryRepairActiveGatewayAsync(ct),
+            id => managedLocalRepairCoordinator.ResetAttemptBudget(id),
+            () => (_settings?.EnableManagedLocalGatewayAutoRepair ?? true)
+                  && !(_connectionManager?.IsManualGatewayLifecycleInProgress ?? false),
+            diagnostics,
+            appLogger,
+            isAutomaticRepairAllowed: gatewayId => _connectionManager?.IsAutomaticReconnectAllowed(gatewayId) ?? false);
+        _managedLocalAutoRepairMonitor.Start();
+
         InitializeGatewayClient();
 
         // Pre-warm chat window (WebView2 init takes 1-3s, do it now so left-click is instant)
@@ -1140,7 +1198,7 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
             case "status": ShowStatusDetail(); break;
             case "reconnect": ReconnectWithSyncedBrowserProxyForward(); break;
             case "disconnect":
-                _ = _connectionManager?.DisconnectAsync();
+                _ = _connectionManager?.DisconnectByUserAsync();
                 LocalDisconnectCleanup();
                 break;
             case "connection": ShowHub("connection"); break;
@@ -2098,7 +2156,29 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
                 sharedGatewayTokenResolver: () => _gatewayRegistry?.GetActive()?.SharedGatewayToken,
                 browserControlPortResolver: () => _gatewayRegistry?.GetActive()?.BrowserControlPort,
                 activeGatewayTunnelResolver: () => _gatewayRegistry?.GetActive()?.SshTunnel,
-                activeGatewayUrlResolver: () => _gatewayRegistry?.GetActive()?.Url);
+                activeGatewayUrlResolver: () => _gatewayRegistry?.GetActive()?.Url,
+                browserControlAuthorization: async (uri, cancellationToken) =>
+                {
+                    var record = _gatewayRegistry?.GetActive();
+                    if (record is null || !uri.IsLoopback)
+                        return false;
+                    if (record.SshTunnel is not null)
+                        return _sshTunnelService?.IsActive == true;
+                    if (_managedLocalPortProvenance is null ||
+                        GatewayRecordEditing.ResolveManagedDistroName(record) is null)
+                    {
+                        return false;
+                    }
+
+                    var controlRecord = record with
+                    {
+                        Url = $"ws://localhost:{uri.Port}",
+                        IsLocal = true,
+                    };
+                    return (await _managedLocalPortProvenance.InspectAsync(
+                        controlRecord,
+                        cancellationToken)).Kind == GatewayEndpointProvenanceKind.ExpectedManagedGateway;
+                });
             _nodeService.StatusChanged += OnNodeStatusChanged;
             _nodeService.NotificationRequested += OnNodeNotificationRequested;
             _nodeService.ToastRequested += OnNodeToastRequested;
@@ -3386,7 +3466,7 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
             };
             _hubWindow.DisconnectAction = () =>
             {
-                _ = _connectionManager?.DisconnectAsync();
+                _ = _connectionManager?.DisconnectByUserAsync();
                 // Status is updated by OnManagerStateChanged when disconnect completes.
                 UpdateTrayIcon();
             };
@@ -4093,6 +4173,8 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
             _settings.GetEffectiveGatewayUrl(),
             _settings.LegacyToken,
             _settings.LegacyBootstrapToken,
+            (record, candidate) =>
+                _managedLocalPortProvenance?.IsStrongCredentialAllowed(record, candidate) == true,
             out var credential) ||
             credential == null)
         {
@@ -4150,7 +4232,7 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
     void IAppCommands.Reconnect() => ReconnectWithSyncedBrowserProxyForward();
     void IAppCommands.Disconnect()
     {
-        _ = _connectionManager?.DisconnectAsync();
+        _ = _connectionManager?.DisconnectByUserAsync();
         UpdateTrayIcon();
     }
     void IAppCommands.ShowVoiceOverlay() => ShowHub("voice");
@@ -4639,7 +4721,18 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
             _chatCoordinator = null;
         });
 
-        // Dispose runtime services
+        // Dispose runtime services. Stop the auto-repair monitor BEFORE the connection manager so an
+        // in-flight repair cannot drive a reconnect into a disposing manager.
+        var autoRepairMonitor = _managedLocalAutoRepairMonitor;
+        if (autoRepairMonitor != null)
+        {
+            await SafeShutdownStepAsync("managed-local auto-repair monitor", async () =>
+            {
+                await autoRepairMonitor.DisposeAsync();
+            });
+            _managedLocalAutoRepairMonitor = null;
+        }
+
         var connectionManager = _connectionManager;
         if (connectionManager != null)
         {

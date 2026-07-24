@@ -1,6 +1,7 @@
 using System.Diagnostics.CodeAnalysis;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using OpenClaw.Connection;
 
 namespace OpenClaw.SetupEngine;
 
@@ -444,6 +445,8 @@ public sealed class SetupContext
     public string? WindowsTailnetDnsSuffix { get; set; }
     public string? TailscaleDnsName { get; set; }
     public IExternalAuthorizationPresenter? ExternalAuthorizationPresenter { get; set; }
+    public Func<GatewayRecord, CancellationToken, Task<GatewayEndpointProvenance>>?
+        EndpointProvenanceProbe { get; set; }
 
     // Data directory for gateway registry and identity files
     public string DataDir { get; }

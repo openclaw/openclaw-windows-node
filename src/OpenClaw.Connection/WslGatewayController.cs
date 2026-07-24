@@ -98,4 +98,33 @@ public sealed class WslGatewayController(IWslCommandRunner commandRunner, IOpenC
             result.StandardOutput,
             result.StandardError);
     }
+
+    /// <summary>
+    /// Forcefully restarts a distro that could not be controlled in-place: it issues a host-side
+    /// <c>wsl.exe --terminate</c> (which succeeds even when the distro/VM is wedged and cannot run an
+    /// in-distro command), then cold-restarts the gateway. The follow-up in-distro command re-boots a
+    /// fresh VM (systemd), so this recovers a hung WSL instance that a plain <c>gateway restart</c>
+    /// cannot reach. Used only as an escalation after an in-place restart fails.
+    /// </summary>
+    public async Task<WslGatewayControlResult> ForceRestartAsync(
+        string distroName,
+        CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(distroName))
+        {
+            throw new ArgumentException("WSL distro name is required.", nameof(distroName));
+        }
+
+        var normalizedDistroName = distroName.Trim();
+        logger.Info($"Force-terminating WSL distro '{normalizedDistroName}' before restart (in-place restart failed).");
+
+        // Terminate is best-effort: a "not running" distro still returns success, and any failure here
+        // should not stop the cold restart below from surfacing the real error.
+        // slopwatch-ignore: SW003 Terminate is best-effort; its failure cannot improve the caller state and the restart below is authoritative.
+        try { await commandRunner.TerminateDistroAsync(normalizedDistroName, cancellationToken).ConfigureAwait(false); }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { throw; }
+        catch (Exception ex) { logger.Warn($"Force-terminate of '{normalizedDistroName}' failed (continuing to restart): {ex.Message}"); }
+
+        return await RunAsync(normalizedDistroName, WslGatewayControlAction.Restart, cancellationToken).ConfigureAwait(false);
+    }
 }

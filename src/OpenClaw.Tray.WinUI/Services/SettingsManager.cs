@@ -139,6 +139,8 @@ public class SettingsManager
     public string TtsPiperVoiceId { get => string.IsNullOrWhiteSpace(_data.TtsPiperVoiceId) ? "en_US-amy-low" : _data.TtsPiperVoiceId; set => _data = _data with { TtsPiperVoiceId = value }; }
     // Local MCP HTTP server (independent of EnableNodeMode)
     public bool EnableMcpServer { get => _data.EnableMcpServer; set => _data = _data with { EnableMcpServer = value }; }
+    // Automatic self-repair of app-owned setup-managed local WSL gateways (kill switch).
+    public bool EnableManagedLocalGatewayAutoRepair { get => _data.EnableManagedLocalGatewayAutoRepair; set => _data = _data with { EnableManagedLocalGatewayAutoRepair = value }; }
     /// <summary>
     /// Hostnames the A2UI image renderer is allowed to fetch over HTTPS.
     /// Empty by default — agents can still ship inline data: images. The

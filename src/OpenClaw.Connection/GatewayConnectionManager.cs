@@ -57,12 +57,22 @@ public sealed class GatewayConnectionManager : IGatewayConnectionManager
     private readonly IClock _clock;
     private readonly Func<GatewayRecord, string, bool>? _shouldStartNodeConnection;
     private readonly Func<TimeSpan, Task> _reconnectDelay;
+    private readonly Func<GatewayRecord, CancellationToken, Task<GatewayEndpointProvenance>>?
+        _endpointProvenanceProbe;
     private readonly SemaphoreSlim _transitionSemaphore = new(1, 1);
     private readonly SemaphoreSlim _nodeStartSemaphore = new(1, 1);
     private readonly object _nodeOperationLock = new();
     private readonly object _devicePairReconnectLock = new();
     private readonly object _disposeLock = new();
     private readonly object _telemetryLock = new();
+    private readonly object _operatorFailureLock = new();
+    private readonly object _connectionIntentLock = new();
+    private readonly HashSet<string> _userDisconnectedGatewayIds = new(StringComparer.Ordinal);
+    // Shared exclusive lease serializing destructive gateway lifecycle operations (manual WSL
+    // start/stop/restart vs auto-repair distro restart). _manualLeaseHolders counts manual holders so
+    // the monitor can additionally suppress starting new repairs while a manual action runs.
+    private readonly SemaphoreSlim _gatewayLifecycleLease = new(1, 1);
+    private int _manualLeaseHolders;
 
     private long _generation;
     private CancellationTokenSource? _operationCts;
@@ -76,6 +86,7 @@ public sealed class GatewayConnectionManager : IGatewayConnectionManager
     private Task? _disposeTask;
     private bool _gatewayNeedsV2Signature; // remembered across reconnects
     private string? _operatorTokenRecoveryAttemptedGatewayId;
+    private string? _nodeTokenRecoveryAttemptedGatewayId;
     private string? _lastAutoApprovedDevicePairRequestId; // prevent role-upgrade auto-approve loops
     private string? _devicePairAutoApproveInFlight; // atomic guard against concurrent approval of same requestId
     private bool _devicePairReconnectInFlight;
@@ -89,6 +100,8 @@ public sealed class GatewayConnectionManager : IGatewayConnectionManager
     private TelemetryAttempt? _operatorTelemetryAttempt;
     private TelemetryAttempt? _nodeTelemetryAttempt;
     private GatewayConnectionSnapshot _lastTelemetrySnapshot = GatewayConnectionSnapshot.Idle;
+    private long _pendingOperatorFailureGeneration;
+    private GatewayErrorKind? _pendingOperatorFailureKind;
 
     private const string MissingNodeCredentialMessage =
         "No node credential available. Re-pair this PC or add a shared/bootstrap gateway token.";
@@ -117,7 +130,9 @@ public sealed class GatewayConnectionManager : IGatewayConnectionManager
         ConnectionDiagnostics? diagnostics = null,
         ISshTunnelManager? tunnelManager = null,
         Func<GatewayRecord, string, bool>? shouldStartNodeConnection = null,
-        Func<TimeSpan, Task>? reconnectDelay = null)
+        Func<TimeSpan, Task>? reconnectDelay = null,
+        Func<GatewayRecord, CancellationToken, Task<GatewayEndpointProvenance>>?
+            endpointProvenanceProbe = null)
     {
         _credentialResolver = credentialResolver ?? throw new ArgumentNullException(nameof(credentialResolver));
         _clientFactory = clientFactory ?? throw new ArgumentNullException(nameof(clientFactory));
@@ -130,6 +145,7 @@ public sealed class GatewayConnectionManager : IGatewayConnectionManager
         _clock = clock ?? SystemClock.Instance;
         _shouldStartNodeConnection = shouldStartNodeConnection;
         _reconnectDelay = reconnectDelay ?? Task.Delay;
+        _endpointProvenanceProbe = endpointProvenanceProbe;
         _diagnostics = diagnostics ?? new ConnectionDiagnostics(clock: clock);
         _diagnostics.EventRecorded += (_, e) => DiagnosticEvent?.Invoke(this, e);
 
@@ -163,6 +179,9 @@ public sealed class GatewayConnectionManager : IGatewayConnectionManager
         await _transitionSemaphore.WaitAsync();
         try
         {
+            var targetId = gatewayId ?? _registry.ActiveGatewayId;
+            if (targetId is not null)
+                SetGatewayConnectionIntent(targetId, shouldBeConnected: true);
             await ConnectCoreAsync(gatewayId, "connect");
         }
         finally
@@ -286,6 +305,37 @@ public sealed class GatewayConnectionManager : IGatewayConnectionManager
                 return;
             }
 
+            var endpointAuthorization = await AuthorizeCredentialForEndpointAsync(
+                    record,
+                    credential,
+                    _operationCts!.Token).ConfigureAwait(false);
+            if (_disposed ||
+                Interlocked.Read(ref _generation) != gen ||
+                _operationCts?.IsCancellationRequested != false)
+            {
+                return;
+            }
+            if (!endpointAuthorization.Allowed)
+            {
+                _stateMachine.TryTransition(ConnectionTrigger.ConnectRequested);
+                _stateMachine.SetOperatorCredentialResolution(credentialResolution);
+                _stateMachine.SetOperatorErrorKind(endpointAuthorization.FailureKind);
+                _stateMachine.TryTransition(
+                    endpointAuthorization.FailureKind == GatewayErrorKind.Network
+                        ? ConnectionTrigger.WebSocketError
+                        : ConnectionTrigger.AuthenticationFailed,
+                    endpointAuthorization.Detail);
+                _diagnostics.Record("setup", "Blocked strong credential before managed-local endpoint ownership was proven", endpointAuthorization.Detail);
+                CompleteOperatorTelemetryAttempt(
+                    gen,
+                    "failure",
+                    endpointAuthorization.FailureKind == GatewayErrorKind.Network
+                        ? ConnectionErrorCategory.NetworkUnreachable
+                        : ConnectionErrorCategory.AuthFailure);
+                EmitStateChanged();
+                return;
+            }
+
             // Transition to Connecting
             var prevState = _stateMachine.Current.OverallState;
             _stateMachine.TryTransition(ConnectionTrigger.ConnectRequested);
@@ -339,6 +389,25 @@ public sealed class GatewayConnectionManager : IGatewayConnectionManager
             }
             var diagLogger = new DiagnosticTeeLogger(_logger, _diagnostics);
             var lifecycle = _clientFactory.Create(connectUrl, credential, perGatewayIdentityDir, diagLogger);
+            lifecycle.DataClient.ReconnectAuthorizationAsync = async cancellationToken =>
+            {
+                if (!IsCurrentGatewayAttempt(gen, record.Id) ||
+                    !IsAutomaticReconnectAllowed(record.Id))
+                {
+                    return new ReconnectAuthorizationResult(
+                        false,
+                        GatewayErrorKind.Unknown,
+                        "Connection attempt was superseded or explicitly disconnected.");
+                }
+                var authorization = await AuthorizeCredentialForEndpointAsync(
+                    record,
+                    credential,
+                    cancellationToken).ConfigureAwait(false);
+                return new ReconnectAuthorizationResult(
+                    authorization.Allowed,
+                    authorization.FailureKind,
+                    authorization.Detail);
+            };
             _activeLifecycle = lifecycle;
             OperatorClientChanged?.Invoke(this, new OperatorClientChangedEventArgs
             {
@@ -357,6 +426,11 @@ public sealed class GatewayConnectionManager : IGatewayConnectionManager
             {
                 if (!IsCurrentGatewayAttempt(gen, subscribedGatewayId)) return;
                 _ = HandleAuthenticationFailedAsync(msg, gen);
+            };
+            lifecycle.DataClient.ConnectionFailure += (s, kind) =>
+            {
+                if (!IsCurrentGatewayAttempt(gen, subscribedGatewayId)) return;
+                RecordOperatorFailureKind(gen, kind);
             };
             lifecycle.DataClient.TransportConnected += (s, e) =>
             {
@@ -490,6 +564,26 @@ public sealed class GatewayConnectionManager : IGatewayConnectionManager
             return null;
         }
 
+        var nodeEndpointAuthorization = await AuthorizeCredentialForEndpointAsync(
+                record,
+                nodeCredential,
+                _operationCts?.Token ?? CancellationToken.None).ConfigureAwait(false);
+        if (_disposed ||
+            Interlocked.Read(ref _generation) != gen ||
+            _operationCts?.IsCancellationRequested != false)
+        {
+            return null;
+        }
+        if (!nodeEndpointAuthorization.Allowed)
+        {
+            _diagnostics.Record("setup", "Blocked node credential before managed-local endpoint ownership was proven", nodeEndpointAuthorization.Detail);
+            _stateMachine.SetNodeCredentialResolution(nodeCredentialResolution);
+            _stateMachine.BlockNodeStart(nodeEndpointAuthorization.Detail, preserveCredentialResolution: true);
+            EmitStateChanged();
+            RecordNodePreflightTelemetryFailure(ConnectionErrorCategory.AuthFailure);
+            return null;
+        }
+
         _diagnostics.RecordCredentialResolutionResult(nodeCredentialResolution);
         if (!preservesOperatorConnection)
             _stateMachine.SetOperatorCredentialSource(null);
@@ -558,6 +652,23 @@ public sealed class GatewayConnectionManager : IGatewayConnectionManager
         }
     }
 
+    public async Task DisconnectByUserAsync()
+    {
+        ThrowIfDisposed();
+        await _transitionSemaphore.WaitAsync();
+        try
+        {
+            var gatewayId = _registry.ActiveGatewayId;
+            if (gatewayId is not null)
+                SetGatewayConnectionIntent(gatewayId, shouldBeConnected: false);
+            await DisconnectCoreAsync();
+        }
+        finally
+        {
+            _transitionSemaphore.Release();
+        }
+    }
+
     /// <summary>Core disconnect logic. Caller must hold <see cref="_transitionSemaphore"/>.</summary>
     private async Task DisconnectCoreAsync()
     {
@@ -582,12 +693,141 @@ public sealed class GatewayConnectionManager : IGatewayConnectionManager
         await _transitionSemaphore.WaitAsync();
         try
         {
+            var gatewayId = _registry.ActiveGatewayId;
+            if (gatewayId is not null)
+                SetGatewayConnectionIntent(gatewayId, shouldBeConnected: true);
             await DisconnectCoreAsync();
             await ConnectCoreAsync(operation: "reconnect");
         }
         finally
         {
             _transitionSemaphore.Release();
+        }
+    }
+
+    /// <summary>
+    /// Reconnects the active gateway ONLY if <paramref name="gatewayId"/> is still the active
+    /// gateway, and honors cancellation. Used by managed-local auto-repair so a gateway switch
+    /// during a repair cannot disrupt the newly selected gateway, and so a shutdown-cancelled
+    /// repair does not drive a reconnect into a disposing manager. Returns true if it reconnected,
+    /// false if the active gateway changed (no-op).
+    /// </summary>
+    public async Task<bool> ReconnectIfCurrentAsync(string gatewayId, CancellationToken cancellationToken = default)
+    {
+        ThrowIfDisposed();
+        await _transitionSemaphore.WaitAsync(cancellationToken);
+        try
+        {
+            if (!IsAutomaticReconnectAllowed(gatewayId))
+                return false;
+
+            if (!string.Equals(_registry.ActiveGatewayId, gatewayId, StringComparison.Ordinal))
+                return false;
+
+            cancellationToken.ThrowIfCancellationRequested();
+            await DisconnectCoreAsync();
+            cancellationToken.ThrowIfCancellationRequested();
+
+            // Re-validate under the same semaphore hold before connecting: an out-of-band SetActive
+            // (e.g. a UI gateway switch that mutates the registry outside this manager) could have
+            // changed the active gateway while we were disconnecting. Fail closed if so.
+            if (!string.Equals(_registry.ActiveGatewayId, gatewayId, StringComparison.Ordinal))
+                return false;
+            if (!IsAutomaticReconnectAllowed(gatewayId))
+                return false;
+
+            // Connect the PINNED gateway id, not "whatever is active now" — ConnectCoreAsync otherwise
+            // re-reads ActiveGatewayId, which the UI can mutate outside this semaphore, so an
+            // unpinned connect could bring up a different gateway than the one this repair targeted.
+            await ConnectCoreAsync(gatewayId, operation: "reconnect");
+
+            // Report whether a connection was actually LAUNCHED for the pinned gateway. ConnectCoreAsync
+            // bails to the Error state (without creating a client) when the record was removed mid-flight
+            // or credential resolution failed — returning true there would let auto-repair treat a
+            // credential failure as "reconnected, just unverified" and restart WSL, which cannot fix
+            // credentials. Require a non-Error operator state AND the pinned record still active.
+            return _stateMachine.Current.OperatorState is not RoleConnectionState.Error
+                && _registry.GetById(gatewayId) is not null
+                && string.Equals(_registry.ActiveGatewayId, gatewayId, StringComparison.Ordinal);
+        }
+        finally
+        {
+            _transitionSemaphore.Release();
+        }
+    }
+
+    public void SetGatewayConnectionIntent(string gatewayId, bool shouldBeConnected)
+    {
+        if (string.IsNullOrWhiteSpace(gatewayId))
+            return;
+
+        lock (_connectionIntentLock)
+        {
+            if (shouldBeConnected)
+                _userDisconnectedGatewayIds.Remove(gatewayId);
+            else
+                _userDisconnectedGatewayIds.Add(gatewayId);
+        }
+    }
+
+    public bool IsAutomaticReconnectAllowed(string gatewayId)
+    {
+        if (string.IsNullOrWhiteSpace(gatewayId))
+            return false;
+        lock (_connectionIntentLock)
+        {
+            return !_userDisconnectedGatewayIds.Contains(gatewayId);
+        }
+    }
+
+    /// <summary>
+    /// True while a user-initiated gateway lifecycle action (manual WSL start/stop/restart) is in
+    /// progress. Managed-local auto-repair observes this to suppress STARTING a new repair.
+    /// </summary>
+    public bool IsManualGatewayLifecycleInProgress => Volatile.Read(ref _manualLeaseHolders) > 0;
+
+    /// <summary>
+    /// Acquires the shared gateway-lifecycle lease for a user-initiated manual WSL operation, awaiting
+    /// it so the manual op is MUTUALLY EXCLUSIVE with an in-flight auto-repair distro restart (whose
+    /// host-side terminate could otherwise kill the manual op's freshly booted VM). Also marks a manual
+    /// holder so the monitor additionally suppresses starting new repairs. Dispose releases the lease.
+    /// </summary>
+    public async Task<IDisposable> BeginManualGatewayLifecycleOperationAsync(CancellationToken cancellationToken = default)
+    {
+        await _gatewayLifecycleLease.WaitAsync(cancellationToken).ConfigureAwait(false);
+        Interlocked.Increment(ref _manualLeaseHolders);
+        return new LeaseScope(this, isManual: true);
+    }
+
+    /// <summary>
+    /// Non-blocking attempt to acquire the shared gateway-lifecycle lease for an automatic repair's
+    /// destructive restart. Returns null if a manual (or another) operation holds it, so the coordinator
+    /// aborts instead of running a concurrent restart. Dispose releases the lease.
+    /// </summary>
+    public IDisposable? TryAcquireGatewayLifecycleLease()
+        => _gatewayLifecycleLease.Wait(0) ? new LeaseScope(this, isManual: false) : null;
+
+    private void ReleaseGatewayLifecycleLease(bool isManual)
+    {
+        if (isManual)
+            Interlocked.Decrement(ref _manualLeaseHolders);
+
+        // Guard against a shutdown dispose-race: the manager may dispose the lease while a manual op
+        // still holds a scope, so releasing here can hit a disposed semaphore. The manual-holder count
+        // is already decremented above, so the monitor cannot get stuck-suppressed.
+        // slopwatch-ignore: SW003 Shutdown dispose-race is expected; the count is already corrected and no caller state improves by surfacing it.
+        try { _gatewayLifecycleLease.Release(); }
+        catch (ObjectDisposedException) { }
+        catch (SemaphoreFullException) { }
+    }
+
+    private sealed class LeaseScope(GatewayConnectionManager owner, bool isManual) : IDisposable
+    {
+        private int _disposed;
+        public void Dispose()
+        {
+            if (Interlocked.Exchange(ref _disposed, 1) == 0)
+                owner.ReleaseGatewayLifecycleLease(isManual);
         }
     }
 
@@ -606,6 +846,7 @@ public sealed class GatewayConnectionManager : IGatewayConnectionManager
 
             var previousActiveId = _registry.ActiveGatewayId;
             _diagnostics.Record("state", $"Switching active gateway to {gatewayId}");
+            SetGatewayConnectionIntent(gatewayId, shouldBeConnected: true);
             _registry.SetActive(gatewayId);
             try
             {
@@ -691,6 +932,7 @@ public sealed class GatewayConnectionManager : IGatewayConnectionManager
                 _logger.Warn($"[ConnMgr] Failed to persist setup-code gateway update: {ex.Message}");
                 return new SetupCodeResult(SetupCodeOutcome.ConnectionFailed, ex.Message);
             }
+            SetGatewayConnectionIntent(recordId, shouldBeConnected: true);
 
             // 3. Disconnect current gateway only after the new active gateway is persisted.
             await DisconnectCoreAsync();
@@ -740,6 +982,27 @@ public sealed class GatewayConnectionManager : IGatewayConnectionManager
 
                 if (existing != null && hasDurableTokens)
                 {
+                    var validationRecord = existing with
+                    {
+                        Url = gatewayUrl,
+                        SharedGatewayToken = token,
+                        SshTunnel = sshTunnel,
+                    };
+                    var validationCredential = new GatewayCredential(
+                        token,
+                        IsBootstrapToken: false,
+                        CredentialResolver.SourceSharedGatewayToken);
+                    var validationAuthorization = await AuthorizeCredentialForEndpointAsync(
+                            validationRecord,
+                            validationCredential,
+                            CancellationToken.None).ConfigureAwait(false);
+                    if (!validationAuthorization.Allowed)
+                    {
+                        return new SetupCodeResult(
+                            SetupCodeOutcome.ConnectionFailed,
+                            validationAuthorization.Detail);
+                    }
+
                     var validation = await ValidateSharedTokenBeforeReplacementAsync(
                         gatewayUrl,
                         token,
@@ -774,6 +1037,7 @@ public sealed class GatewayConnectionManager : IGatewayConnectionManager
                     _logger.Warn($"[ConnMgr] Failed to persist shared-token gateway update: {ex.Message}");
                     return new SetupCodeResult(SetupCodeOutcome.ConnectionFailed, ex.Message);
                 }
+                SetGatewayConnectionIntent(recordId, shouldBeConnected: true);
 
                 // Disconnect current gateway only after replacement credentials have been validated and persisted.
                 await DisconnectCoreAsync();
@@ -818,6 +1082,14 @@ public sealed class GatewayConnectionManager : IGatewayConnectionManager
         {
             UseV2Signature = existing.IsLocal || existing.RequiresV2Signature
         };
+        // This is a one-shot validation client. A reconnect would reuse the strong shared token after
+        // ownership may have changed; fail the validation instead and let the caller retry from a new
+        // provenance preflight.
+        client.ReconnectAuthorizationAsync = _ => Task.FromResult(
+            new ReconnectAuthorizationResult(
+                false,
+                GatewayErrorKind.Auth,
+                "Shared-token validation is one-shot."));
 
         var completion = new TaskCompletionSource<SetupCodeResult>(TaskCreationOptions.RunContinuationsAsynchronously);
         client.HandshakeSucceeded += (_, _) =>
@@ -826,7 +1098,7 @@ public sealed class GatewayConnectionManager : IGatewayConnectionManager
             completion.TrySetResult(new SetupCodeResult(SetupCodeOutcome.ConnectionFailed, message));
         client.StatusChanged += (_, status) =>
         {
-            if (status == ConnectionStatus.Error)
+            if (status is ConnectionStatus.Error or ConnectionStatus.Disconnected)
                 completion.TrySetResult(new SetupCodeResult(SetupCodeOutcome.ConnectionFailed, "Shared token validation failed"));
         };
 
@@ -869,6 +1141,7 @@ public sealed class GatewayConnectionManager : IGatewayConnectionManager
             {
                 case ConnectionStatus.Connected:
                     _diagnostics.RecordWebSocketEvent("WebSocket connected");
+                    ClearOperatorFailureKind(gen);
                     _stateMachine.TryTransition(ConnectionTrigger.WebSocketConnected);
                     break;
                 case ConnectionStatus.Disconnected:
@@ -884,7 +1157,18 @@ public sealed class GatewayConnectionManager : IGatewayConnectionManager
                 case ConnectionStatus.Error:
                     _diagnostics.RecordWebSocketEvent("WebSocket error");
                     if (_stateMachine.Current.OperatorState != RoleConnectionState.PairingRequired)
+                    {
+                        // AuthenticationFailed and Status=Error are raised back-to-back and handled
+                        // asynchronously. If the auth handler already promoted the failure to a more
+                        // specific terminal kind (for example LocalPortConflict), never let the later
+                        // generic status handler overwrite it with the original token/transport kind.
+                        if (_stateMachine.Current.OperatorState != RoleConnectionState.Error ||
+                            _stateMachine.Current.OperatorErrorKind is null)
+                        {
+                            _stateMachine.SetOperatorErrorKind(ReadOperatorFailureKind(gen));
+                        }
                         _stateMachine.TryTransition(ConnectionTrigger.WebSocketError, "Transport error");
+                    }
                     CompleteOperatorTelemetryAttempt(
                         gen,
                         "failure",
@@ -909,10 +1193,42 @@ public sealed class GatewayConnectionManager : IGatewayConnectionManager
         {
             if (Interlocked.Read(ref _generation) != gen) return;
 
-            if (TryScheduleOperatorTokenRecovery(message, gen))
+            var failureKind =
+                ReadOperatorFailureKind(gen) ?? GatewayErrorClassifier.ClassifyWithCode(message);
+            var activeRecord = _activeGatewayRecordId is null
+                ? null
+                : _registry.GetById(_activeGatewayRecordId);
+            var provenance = activeRecord is not null &&
+                GatewayRecordEditing.ResolveManagedDistroName(activeRecord) is not null &&
+                _endpointProvenanceProbe is not null
+                    ? await _endpointProvenanceProbe(activeRecord, CancellationToken.None).ConfigureAwait(false)
+                    : null;
+            var unexpectedManagedLocalOwner =
+                provenance?.Kind is GatewayEndpointProvenanceKind.ConflictingOpenClawGateway
+                    or GatewayEndpointProvenanceKind.UnknownListener;
+
+            // A wrong local process may report either shared-token mismatch OR device-token mismatch.
+            // In both cases the real failure is endpoint identity, not credentials: never disclose the
+            // shared/bootstrap fallback and let the provenance-gated collision repair own recovery.
+            if (activeRecord is not null &&
+                unexpectedManagedLocalOwner &&
+                failureKind is GatewayErrorKind.DeviceTokenMismatch or GatewayErrorKind.Auth)
+            {
+                failureKind = GatewayErrorKind.LocalPortConflict;
+                _diagnostics.Record(
+                    "setup",
+                    "Managed local gateway port is owned by a different or unverified process",
+                    $"gatewayId={activeRecord.Id}");
+            }
+
+            if (failureKind == GatewayErrorKind.DeviceTokenMismatch &&
+                await TryScheduleOperatorTokenRecoveryAsync(message, gen).ConfigureAwait(false))
+            {
                 return;
+            }
 
             _diagnostics.Record("error", "Authentication failed", message);
+            _stateMachine.SetOperatorErrorKind(failureKind);
             _stateMachine.TryTransition(ConnectionTrigger.AuthenticationFailed, message);
             CompleteOperatorTelemetryAttempt(
                 gen,
@@ -926,7 +1242,36 @@ public sealed class GatewayConnectionManager : IGatewayConnectionManager
         }
     }
 
-    private bool TryScheduleOperatorTokenRecovery(string message, long gen)
+    private void RecordOperatorFailureKind(long generation, GatewayErrorKind kind)
+    {
+        lock (_operatorFailureLock)
+        {
+            _pendingOperatorFailureGeneration = generation;
+            _pendingOperatorFailureKind = kind;
+        }
+    }
+
+    private GatewayErrorKind? ReadOperatorFailureKind(long generation)
+    {
+        lock (_operatorFailureLock)
+        {
+            return _pendingOperatorFailureGeneration == generation
+                ? _pendingOperatorFailureKind
+                : null;
+        }
+    }
+
+    private void ClearOperatorFailureKind(long generation)
+    {
+        lock (_operatorFailureLock)
+        {
+            if (_pendingOperatorFailureGeneration != generation)
+                return;
+            _pendingOperatorFailureKind = null;
+        }
+    }
+
+    private async Task<bool> TryScheduleOperatorTokenRecoveryAsync(string message, long gen)
     {
         if (!IsOperatorDeviceTokenMismatch(message) ||
             _activeGatewayRecordId == null ||
@@ -937,23 +1282,231 @@ public sealed class GatewayConnectionManager : IGatewayConnectionManager
         }
 
         var record = _registry.GetById(_activeGatewayRecordId);
-        if (record == null || string.IsNullOrWhiteSpace(record.BootstrapToken))
+        if (record == null)
             return false;
+
+        // Recovery clears the rejected device token and reconnects, letting CredentialResolver
+        // fall back to the shared gateway token (preferred) or bootstrap token. Setup clears the
+        // bootstrap token once pairing is durable but leaves the shared token, so a later stale
+        // device token can still self-recover without asking the user for a new token. With no
+        // fallback at all, clearing would only loop, so leave the gateway in Error for manual re-pair.
+        var hasSharedToken = !string.IsNullOrWhiteSpace(record.SharedGatewayToken);
+        var hasBootstrapToken = !string.IsNullOrWhiteSpace(record.BootstrapToken);
+        if (!hasSharedToken && !hasBootstrapToken)
+            return false;
+
+        // SECURITY: clearing the device token downgrades to the more powerful shared/bootstrap
+        // credential. Only do this over a trusted endpoint so a hostile cleartext endpoint cannot
+        // return a device-token-mismatch to induce disclosure of the shared credential.
+        if (!await IsRecoverySafeEndpointAsync(record, CancellationToken.None).ConfigureAwait(false))
+        {
+            _diagnostics.Record("credential", "Skipped operator token recovery: endpoint not trusted for credential fallback");
+            return false;
+        }
 
         if (!DeviceIdentity.TryClearDeviceToken(_activeIdentityPath, _logger))
             return false;
 
         _operatorTokenRecoveryAttemptedGatewayId = _activeGatewayRecordId;
-        _diagnostics.Record("credential", "Cleared stale operator device token; reconnecting with bootstrap token");
+        var fallbackLabel = hasSharedToken ? "shared gateway token" : "bootstrap token";
+        _diagnostics.Record("credential", $"Cleared stale operator device token; reconnecting with {fallbackLabel}");
 
-        ScheduleDelayedReconnect(gen, "[ConnMgr] Operator token recovery reconnect failed");
+        ScheduleDelayedReconnect(gen, "[ConnMgr] Operator token recovery reconnect failed", gatewayId: record.Id);
 
         return true;
     }
 
     private static bool IsOperatorDeviceTokenMismatch(string message) =>
-        message.Contains("device token mismatch", StringComparison.OrdinalIgnoreCase) ||
-        message.Contains("AUTH_DEVICE_TOKEN_MISMATCH", StringComparison.OrdinalIgnoreCase);
+        GatewayErrorClassifier.ClassifyWithCode(message) == GatewayErrorKind.DeviceTokenMismatch;
+
+    // Auto credential recovery clears a device token and falls back to a stronger shared/bootstrap
+    // credential. Restrict that to trusted endpoints (mirrors the Mac app, which only retries
+    // credentials on loopback or explicitly trusted transport): a loopback/local endpoint (traffic
+    // never leaves the machine), an owned SSH tunnel (encrypted, user-configured), or a validated
+    // TLS endpoint (wss/https). A plain ws:// remote endpoint is never eligible.
+    private async Task<bool> IsRecoverySafeEndpointAsync(
+        GatewayRecord record,
+        CancellationToken cancellationToken)
+    {
+        if (GatewayRecordEditing.IsLoopbackEndpoint(record.Url))
+        {
+            if (record.IsLocal || GatewayRecordEditing.ResolveManagedDistroName(record) is not null)
+            {
+                if (_endpointProvenanceProbe is null)
+                    return false;
+                return (await _endpointProvenanceProbe(record, cancellationToken).ConfigureAwait(false)).Kind ==
+                    GatewayEndpointProvenanceKind.ExpectedManagedGateway;
+            }
+            return true;
+        }
+        if (record.SshTunnel is not null)
+            return true;
+        if (string.IsNullOrWhiteSpace(record.Url))
+            return false;
+        return Uri.TryCreate(record.Url, UriKind.Absolute, out var uri) &&
+            (string.Equals(uri.Scheme, "wss", StringComparison.OrdinalIgnoreCase) ||
+             string.Equals(uri.Scheme, "https", StringComparison.OrdinalIgnoreCase));
+    }
+
+    private async Task<EndpointCredentialAuthorization> AuthorizeCredentialForEndpointAsync(
+        GatewayRecord record,
+        GatewayCredential credential,
+        CancellationToken cancellationToken)
+    {
+        var isStrongCredential =
+            credential.IsBootstrapToken ||
+            string.Equals(
+                credential.Source,
+                CredentialResolver.SourceSharedGatewayToken,
+                StringComparison.Ordinal) ||
+            string.Equals(
+                credential.Source,
+                CredentialResolver.SourceBootstrapToken,
+                StringComparison.Ordinal);
+        var isManagedLoopback =
+            record.SshTunnel is null &&
+            (record.IsLocal || GatewayRecordEditing.ResolveManagedDistroName(record) is not null) &&
+            GatewayRecordEditing.IsLoopbackEndpoint(record.Url);
+        if (!isManagedLoopback)
+            return EndpointCredentialAuthorization.AllowedResult;
+        if (!isStrongCredential)
+        {
+            // Still populate the shared provenance cache used by Chat/Dashboard, but a device token
+            // does not need the stronger-credential gate.
+            if (_endpointProvenanceProbe is not null)
+                _ = await _endpointProvenanceProbe(record, cancellationToken).ConfigureAwait(false);
+            return EndpointCredentialAuthorization.AllowedResult;
+        }
+        if (_endpointProvenanceProbe is null)
+        {
+            return new EndpointCredentialAuthorization(
+                false,
+                GatewayErrorKind.LocalPortConflict,
+                "Managed-local endpoint ownership could not be verified, so OpenClaw did not send the shared or bootstrap token.");
+        }
+
+        var provenance = await _endpointProvenanceProbe(record, cancellationToken).ConfigureAwait(false);
+        if (provenance.Kind == GatewayEndpointProvenanceKind.ExpectedManagedGateway)
+            return EndpointCredentialAuthorization.AllowedResult;
+
+        if (provenance.Kind == GatewayEndpointProvenanceKind.NoListener)
+        {
+            return new EndpointCredentialAuthorization(
+                false,
+                GatewayErrorKind.Network,
+                "The managed WSL gateway is not listening yet. Automatic repair can restart it without sending credentials.");
+        }
+
+        return new EndpointCredentialAuthorization(
+            false,
+            GatewayErrorKind.LocalPortConflict,
+            provenance.Detail ??
+                "The managed gateway address is owned by an unverified process. OpenClaw did not send the shared or bootstrap token.");
+    }
+
+    private readonly record struct EndpointCredentialAuthorization(
+        bool Allowed,
+        GatewayErrorKind FailureKind,
+        string Detail)
+    {
+        public static EndpointCredentialAuthorization AllowedResult { get; } =
+            new(true, GatewayErrorKind.Unknown, string.Empty);
+    }
+
+    // Node device-token recovery mirrors operator recovery but clears ONLY the node token and
+    // reconnects the node, leaving operator credentials untouched. Queued off the connection-failure
+    // handler (which runs under the connector's client-lifecycle lock) so the disk clear + reconnect
+    // never run under that lock. Generations captured at failure time are pinned so a newer node
+    // attempt supersedes this recovery.
+    private async Task HandleNodeDeviceTokenMismatchAsync(long lifecycleGeneration, long nodeGeneration)
+    {
+        try
+        {
+            if (!IsCurrentNodeAttempt(lifecycleGeneration, nodeGeneration))
+                return;
+
+            await _transitionSemaphore.WaitAsync();
+            try
+            {
+                if (!IsCurrentNodeAttempt(lifecycleGeneration, nodeGeneration))
+                    return;
+
+                var gatewayRecordId = _activeGatewayRecordId;
+                var identityPath = _activeIdentityPath;
+                if (gatewayRecordId == null ||
+                    identityPath == null ||
+                    _nodeTokenRecoveryAttemptedGatewayId == gatewayRecordId)
+                {
+                    return;
+                }
+
+                // The node reconnect needs a live operator; if the operator is down the operator
+                // recovery path drives the full reconnect instead.
+                if (_stateMachine.Current.OperatorState != RoleConnectionState.Connected)
+                    return;
+
+                var record = _registry.GetById(gatewayRecordId);
+                if (record == null)
+                    return;
+
+                var hasSharedToken = !string.IsNullOrWhiteSpace(record.SharedGatewayToken);
+                var hasBootstrapToken = !string.IsNullOrWhiteSpace(record.BootstrapToken);
+                if (!hasSharedToken && !hasBootstrapToken)
+                    return;
+
+                if (!await IsRecoverySafeEndpointAsync(record, CancellationToken.None).ConfigureAwait(false))
+                {
+                    _diagnostics.Record("credential", "Skipped node token recovery: endpoint not trusted for credential fallback");
+                    return;
+                }
+
+                if (!DeviceIdentity.TryClearDeviceTokenForRole(identityPath, "node", _logger))
+                    return;
+
+                _nodeTokenRecoveryAttemptedGatewayId = gatewayRecordId;
+                var fallbackLabel = hasSharedToken ? "shared gateway token" : "bootstrap token";
+                _diagnostics.Record("credential", $"Cleared stale node device token; reconnecting node with {fallbackLabel}");
+            }
+            finally
+            {
+                _transitionSemaphore.Release();
+            }
+
+            ScheduleDelayedNodeReconnect(lifecycleGeneration, nodeGeneration);
+        }
+        // slopwatch-ignore: SW003 Shutdown/disposal is expected; caller preserves safe state.
+        catch (ObjectDisposedException) { }
+        catch (Exception ex)
+        {
+            _logger.Warn($"[ConnMgr] Node token recovery failed: {ex.Message}");
+            _diagnostics.Record("credential", "Node token recovery failed", ex.Message);
+        }
+    }
+
+    // Reconnects the node outside the transition semaphore, pinning BOTH the lifecycle and node
+    // generations so a newer node attempt started during the delay wins and this superseded
+    // recovery is dropped.
+    private void ScheduleDelayedNodeReconnect(long lifecycleGeneration, long nodeGeneration)
+    {
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                await _reconnectDelay(TimeSpan.FromMilliseconds(200));
+                if (_disposed || !IsCurrentNodeAttempt(lifecycleGeneration, nodeGeneration))
+                    return;
+
+                await StartNodeConnectionAsync(lifecycleGeneration, nodeGeneration);
+            }
+            // slopwatch-ignore: SW003 Shutdown cancellation or disposal is expected; caller preserves safe state.
+            catch (ObjectDisposedException) { }
+            catch (Exception ex)
+            {
+                _logger.Warn($"[ConnMgr] Node token recovery reconnect failed: {ex.Message}");
+                _diagnostics.Record("credential", "Node token recovery reconnect failed", ex.Message);
+            }
+        });
+    }
 
     private async Task HandleHandshakeSucceededAsync(long gen)
     {
@@ -1168,13 +1721,15 @@ public sealed class GatewayConnectionManager : IGatewayConnectionManager
         ScheduleDelayedReconnect(
             gen,
             "[ConnMgr] Post-bootstrap operator reconnect failed",
-            ex => _diagnostics.Record("credential", "Post-bootstrap operator reconnect failed", ex.Message));
+            ex => _diagnostics.Record("credential", "Post-bootstrap operator reconnect failed", ex.Message),
+            gatewayId: gatewayRecordId);
     }
 
     private void ScheduleDelayedReconnect(
         long generation,
         string warningPrefix,
-        Action<Exception>? onFailure = null)
+        Action<Exception>? onFailure = null,
+        string? gatewayId = null)
     {
         _ = Task.Run(async () =>
         {
@@ -1184,7 +1739,14 @@ public sealed class GatewayConnectionManager : IGatewayConnectionManager
                 if (_disposed || Interlocked.Read(ref _generation) != generation)
                     return;
 
-                await ReconnectAsync();
+                // Pin the reconnect to the gateway this recovery was scheduled for. The generation
+                // check above does not cover an out-of-band SetActive (the UI sets the active gateway
+                // before calling SwitchGatewayAsync, which is what bumps the generation), so a global
+                // ReconnectAsync() could reconnect/disrupt a different gateway the user just switched to.
+                if (gatewayId is not null)
+                    await ReconnectIfCurrentAsync(gatewayId);
+                else
+                    await ReconnectAsync();
             }
             // slopwatch-ignore: SW003 Shutdown cancellation or disposal is expected and the caller already preserves the safe state.
             catch (ObjectDisposedException) { }
@@ -1662,6 +2224,25 @@ public sealed class GatewayConnectionManager : IGatewayConnectionManager
             return false;
         }
 
+        var nodeEndpointAuthorization = await AuthorizeCredentialForEndpointAsync(
+            record,
+            nodeCredential,
+            cancellationToken).ConfigureAwait(false);
+        if (!nodeEndpointAuthorization.Allowed)
+        {
+            _diagnostics.Record(
+                "setup",
+                "Blocked node credential before managed-local endpoint ownership was proven",
+                nodeEndpointAuthorization.Detail);
+            await BlockNodeStartAsync(
+                nodeEndpointAuthorization.Detail,
+                cancellationToken,
+                expectedLifecycleGeneration,
+                nodeGeneration);
+            CompleteNodeTelemetryAttempt(nodeGeneration, "failure", ConnectionErrorCategory.AuthFailure);
+            return false;
+        }
+
         await _transitionSemaphore.WaitAsync(cancellationToken);
         try
         {
@@ -1688,6 +2269,26 @@ public sealed class GatewayConnectionManager : IGatewayConnectionManager
 
         _diagnostics.Record("node", $"Starting node connection to {nodeConnectUrl}",
             $"Credential source: {nodeCredential.Source}");
+
+        if (_nodeConnector is INodeConnectorReconnectPolicy reconnectPolicy)
+        {
+            reconnectPolicy.ReconnectAuthorizationAsync = async reconnectCancellationToken =>
+            {
+                if (!IsExpectedNodeStartCurrent(expectedLifecycleGeneration, nodeGeneration))
+                    return new ReconnectAuthorizationResult(
+                        false,
+                        GatewayErrorKind.Unknown,
+                        "Node attempt was superseded.");
+                var authorization = await AuthorizeCredentialForEndpointAsync(
+                    record,
+                    nodeCredential,
+                    reconnectCancellationToken).ConfigureAwait(false);
+                return new ReconnectAuthorizationResult(
+                    authorization.Allowed,
+                    authorization.FailureKind,
+                    authorization.Detail);
+            };
+        }
 
         try
         {
@@ -1757,6 +2358,13 @@ public sealed class GatewayConnectionManager : IGatewayConnectionManager
             nodeGeneration,
             "failure",
             MapNodeConnectionErrorCategory(errorKind));
+
+        // A stale node DEVICE token is the one node failure we can self-recover: clear only the
+        // node device token and reconnect with the still-valid shared/bootstrap credential. Queue
+        // it off this handler — it is invoked under the connector's client-lifecycle lock, which
+        // requires prompt, non-reentrant subscribers, so the disk clear + reconnect must not run here.
+        if (errorKind == GatewayErrorKind.DeviceTokenMismatch)
+            _ = Task.Run(() => HandleNodeDeviceTokenMismatchAsync(lifecycleGeneration, nodeGeneration));
     }
 
     private void OnNodeDeviceTokenReceived(object? sender, DeviceTokenReceivedEventArgs e)
@@ -1785,6 +2393,7 @@ public sealed class GatewayConnectionManager : IGatewayConnectionManager
             {
                 case ConnectionStatus.Connected:
                     _stateMachine.TryTransition(ConnectionTrigger.NodeConnected);
+                    _nodeTokenRecoveryAttemptedGatewayId = null;
                     break;
                 case ConnectionStatus.Connecting:
                     _stateMachine.StartNodeConnecting();
@@ -1877,6 +2486,7 @@ public sealed class GatewayConnectionManager : IGatewayConnectionManager
             {
                 case PairingStatus.Paired:
                     _stateMachine.TryTransition(ConnectionTrigger.NodePaired);
+                    _nodeTokenRecoveryAttemptedGatewayId = null;
                     Interlocked.Exchange(ref _lastAutoApprovedDevicePairRequestId, null);
                     lock (_devicePairReconnectLock)
                     {
@@ -2546,6 +3156,7 @@ public sealed class GatewayConnectionManager : IGatewayConnectionManager
         {
             GatewayErrorKind.Auth or
             GatewayErrorKind.TokenDrift or
+            GatewayErrorKind.DeviceTokenMismatch or
             GatewayErrorKind.ScopeMismatch => ConnectionErrorCategory.AuthFailure,
             GatewayErrorKind.PairingRequired => ConnectionErrorCategory.PairingPending,
             GatewayErrorKind.PairingRejected => ConnectionErrorCategory.PairingRejected,
@@ -2804,6 +3415,10 @@ public sealed class GatewayConnectionManager : IGatewayConnectionManager
                 catch (Exception ex) { _logger.Debug($"[ConnMgr] Dispose: transition semaphore release failed: {ex.Message}"); }
                 _transitionSemaphore.Dispose();
             }
+
+            // slopwatch-ignore: SW003 Best-effort disposal of the lifecycle lease; failure cannot improve caller state.
+            try { _gatewayLifecycleLease.Dispose(); }
+            catch (Exception ex) { _logger.Debug($"[ConnMgr] Dispose: lifecycle lease dispose failed: {ex.Message}"); }
 
             GC.SuppressFinalize(this);
         }

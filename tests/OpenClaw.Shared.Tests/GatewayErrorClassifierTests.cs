@@ -156,4 +156,95 @@ public class GatewayErrorClassifierTests
             GatewayErrorKind.TokenDrift,
             GatewayErrorClassifier.Classify("auth failed: device token no longer valid, re-pair required"));
     }
+
+    [Fact]
+    public void Classify_LiveGatewayTokenMismatch_IsAuth_NotDeviceTokenDrift()
+    {
+        const string error =
+            "unauthorized: gateway token mismatch (set gateway.remote.token to match gateway.auth.token)";
+
+        Assert.Equal(GatewayErrorKind.Auth, GatewayErrorClassifier.Classify(error));
+        Assert.True(GatewayErrorClassifier.IsSharedGatewayTokenMismatch(error));
+    }
+
+    // ─── ClassifyWithCode: exact device-vs-shared token distinction ───
+
+    [Theory]
+    [InlineData("AUTH_DEVICE_TOKEN_MISMATCH", null)]
+    [InlineData(null, "AUTH_DEVICE_TOKEN_MISMATCH")]
+    [InlineData("auth_device_token_mismatch", null)]
+    public void ClassifyWithCode_DeviceTokenMismatchCode_IsDeviceTokenMismatch(string? topLevel, string? detailsCode)
+    {
+        // The structured device-token code is authoritative and must yield the exact
+        // auto-recoverable kind even when the human message is generic.
+        Assert.Equal(
+            GatewayErrorKind.DeviceTokenMismatch,
+            GatewayErrorClassifier.ClassifyWithCode("unauthorized", topLevel, detailsCode));
+    }
+
+    [Theory]
+    [InlineData("AUTH_TOKEN_MISMATCH")]
+    [InlineData("AUTH_BOOTSTRAP_TOKEN_INVALID")]
+    public void ClassifyWithCode_SharedOrBootstrapCode_IsNotDeviceTokenMismatch(string code)
+    {
+        // A wrong SHARED/gateway or bootstrap token must never be treated as a recoverable
+        // device-token drift — clearing the device token would just loop.
+        var kind = GatewayErrorClassifier.ClassifyWithCode("token mismatch", code, null);
+        Assert.NotEqual(GatewayErrorKind.DeviceTokenMismatch, kind);
+    }
+
+    [Fact]
+    public void ClassifyWithCode_SharedTokenCodeEmbeddedInMessage_IsAuth()
+    {
+        Assert.Equal(
+            GatewayErrorKind.Auth,
+            GatewayErrorClassifier.ClassifyWithCode("AUTH_TOKEN_MISMATCH: unauthorized"));
+    }
+
+    [Fact]
+    public void ClassifyWithCode_ExplicitDevicePhrase_IsDeviceTokenMismatch()
+    {
+        Assert.Equal(
+            GatewayErrorKind.DeviceTokenMismatch,
+            GatewayErrorClassifier.ClassifyWithCode("device token mismatch — rotate/reissue", null, null));
+    }
+
+    [Fact]
+    public void ClassifyWithCode_BareTokenMismatch_StaysBroadTokenDrift_NotDeviceExact()
+    {
+        // A bare "token mismatch" is device-vs-shared ambiguous: it must NOT be the exact
+        // auto-recoverable kind; it falls through to broad TokenDrift (manual re-pair).
+        Assert.Equal(
+            GatewayErrorKind.TokenDrift,
+            GatewayErrorClassifier.ClassifyWithCode("token mismatch", null, null));
+    }
+
+    [Fact]
+    public void ClassifyWithCode_NoCode_FallsBackToTextHeuristic()
+    {
+        Assert.Equal(
+            GatewayErrorKind.Network,
+            GatewayErrorClassifier.ClassifyWithCode("connection refused", null, null));
+    }
+
+    [Fact]
+    public void ClassifyWithCode_NonTokenStructuredCode_FoldsCodeIntoClassification()
+    {
+        // A non-token reason carried only in the structured code (with a generic "unauthorized"
+        // message) must keep the precision main had via Classify(code + " " + message) rather than
+        // dropping the code and mis-classifying as generic Auth.
+        Assert.Equal(
+            GatewayErrorKind.RateLimited,
+            GatewayErrorClassifier.ClassifyWithCode("unauthorized", "AUTH_RATE_LIMITED", null));
+    }
+
+    [Fact]
+    public void ClassifyWithCode_NonTokenCode_DoesNotOverrideDeviceMismatchCode()
+    {
+        // When both a device-token code and another code are present, the device code stays
+        // authoritative (checked first) and is not diluted by folding.
+        Assert.Equal(
+            GatewayErrorKind.DeviceTokenMismatch,
+            GatewayErrorClassifier.ClassifyWithCode("unauthorized", "AUTH_RATE_LIMITED", "AUTH_DEVICE_TOKEN_MISMATCH"));
+    }
 }

@@ -61,12 +61,86 @@ public static class GatewayRecordEditing
     /// Carries forward advanced per-gateway fields that the edit/connect forms don't expose,
     /// so editing name / token / URL / SSH settings can't silently drop them. A value already
     /// set on the rebuilt record wins (the form changed it); otherwise the existing record's
-    /// value is preserved. Currently scoped to <see cref="GatewayRecord.BrowserControlPort"/>.
+    /// value is preserved. Covers <see cref="GatewayRecord.BrowserControlPort"/> and — when the
+    /// gateway is still the same managed-local WSL gateway — the setup-managed ownership fields
+    /// (<see cref="GatewayRecord.IsLocal"/>, <see cref="GatewayRecord.SetupManagedDistroName"/>,
+    /// <see cref="GatewayRecord.RequiresV2Signature"/>). Preserving those keeps a managed gateway's
+    /// keepalive and auto-repair working across an edit; dropping them silently disabled self-healing.
+    /// "Same gateway" means the endpoint URL is unchanged (a name/token-only edit) or still loopback,
+    /// and no SSH tunnel was added — this covers both localhost WSL and non-loopback managed gateways
+    /// (e.g. Tailscale <c>wss://…ts.net</c>). If the user repoints the URL at a DIFFERENT remote host
+    /// or adds a tunnel, the record is no longer that managed WSL gateway, so ownership is dropped.
     /// </summary>
     public static GatewayRecord PreserveAdvancedFields(this GatewayRecord rebuilt, GatewayRecord? existing)
-        => existing is null
-            ? rebuilt
-            : rebuilt with { BrowserControlPort = rebuilt.BrowserControlPort ?? existing.BrowserControlPort };
+    {
+        if (existing is null)
+            return rebuilt;
+
+        var result = rebuilt with { BrowserControlPort = rebuilt.BrowserControlPort ?? existing.BrowserControlPort };
+
+        var stillSameManagedEndpoint =
+            string.Equals(rebuilt.Url, existing.Url, StringComparison.OrdinalIgnoreCase) ||
+            AreEquivalentLoopbackEndpoints(rebuilt.Url, existing.Url);
+        var managedDistroName =
+            rebuilt.SetupManagedDistroName ??
+            ResolveManagedDistroName(existing);
+
+        if (existing.IsLocal &&
+            managedDistroName is not null &&
+            rebuilt.SshTunnel is null &&
+            stillSameManagedEndpoint)
+        {
+            result = result with
+            {
+                IsLocal = true,
+                // Migrate legacy "Local (<distro>)" ownership to the explicit durable marker.
+                SetupManagedDistroName = managedDistroName,
+                RequiresV2Signature = rebuilt.RequiresV2Signature || existing.RequiresV2Signature,
+            };
+        }
+
+        return result;
+    }
+
+    private static bool AreEquivalentLoopbackEndpoints(string? left, string? right)
+    {
+        if (!Uri.TryCreate(left, UriKind.Absolute, out var leftUri) ||
+            !Uri.TryCreate(right, UriKind.Absolute, out var rightUri) ||
+            !leftUri.IsLoopback ||
+            !rightUri.IsLoopback)
+        {
+            return false;
+        }
+
+        return string.Equals(leftUri.Scheme, rightUri.Scheme, StringComparison.OrdinalIgnoreCase) &&
+            leftUri.Port == rightUri.Port &&
+            string.Equals(leftUri.AbsolutePath, rightUri.AbsolutePath, StringComparison.Ordinal) &&
+            string.Equals(leftUri.Query, rightUri.Query, StringComparison.Ordinal);
+    }
+
+    public static bool IsLoopbackEndpoint(string? url) =>
+        Uri.TryCreate(url, UriKind.Absolute, out var uri) && uri.IsLoopback;
+
+    public static string? ResolveManagedDistroName(GatewayRecord record)
+    {
+        if (!string.IsNullOrWhiteSpace(record.SetupManagedDistroName))
+            return record.SetupManagedDistroName;
+
+        const string prefix = "Local (";
+        var name = record.FriendlyName;
+        if (!record.IsLocal ||
+            !OpenClaw.Shared.LocalGatewayUrlClassifier.IsLocalGatewayUrl(record.Url) ||
+            name is null ||
+            string.IsNullOrWhiteSpace(name) ||
+            !name.StartsWith(prefix, StringComparison.Ordinal) ||
+            !name.EndsWith(')'))
+        {
+            return null;
+        }
+
+        var distro = name[prefix.Length..^1].Trim();
+        return string.IsNullOrWhiteSpace(distro) ? null : distro;
+    }
 }
 
 /// <summary>Per-gateway SSH tunnel configuration.</summary>

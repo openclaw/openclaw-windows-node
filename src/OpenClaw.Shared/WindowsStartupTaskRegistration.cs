@@ -74,7 +74,7 @@ public static class WindowsStartupTaskRegistration
         }
     }
 
-    internal static string ResolveSchtasksPath()
+    public static string ResolveSchtasksPath()
     {
         var systemRoot = Environment.GetFolderPath(Environment.SpecialFolder.Windows);
         if (string.IsNullOrWhiteSpace(systemRoot))

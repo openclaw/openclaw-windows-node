@@ -107,7 +107,7 @@ public class WindowsNodeClientTests
     [Theory]
     [InlineData("rate limit exceeded", GatewayErrorKind.RateLimited)]
     [InlineData("too many failed authentication attempts", GatewayErrorKind.RateLimited)]
-    [InlineData("device token mismatch", GatewayErrorKind.TokenDrift)]
+    [InlineData("device token mismatch", GatewayErrorKind.DeviceTokenMismatch)]
     [InlineData("origin not allowed", GatewayErrorKind.Auth)]
     [InlineData("gateway internal error", GatewayErrorKind.Server)]
     public void HandleResponse_TerminalError_EmitsFiniteFailureClassification(
@@ -136,6 +136,78 @@ public class WindowsNodeClientTests
             client.HandleResponse(document.RootElement);
 
             Assert.Equal(expectedKind, actualKind);
+        }
+        finally
+        {
+            Directory.Delete(dataPath, true);
+        }
+    }
+
+    [Theory]
+    [InlineData("AUTH_DEVICE_TOKEN_MISMATCH", "\"code\": \"AUTH_DEVICE_TOKEN_MISMATCH\"")]
+    [InlineData("details", "\"code\": \"none\", \"details\": { \"code\": \"AUTH_DEVICE_TOKEN_MISMATCH\" }")]
+    public void HandleResponse_NodeDeviceTokenMismatchByStructuredCode_GenericMessage_EmitsDeviceTokenMismatch(
+        string _, string codeJson)
+    {
+        // A stale node DEVICE token may arrive as a structured code (top-level error.code OR
+        // error.details.code) with a generic message. The node client must classify it as the exact
+        // DeviceTokenMismatch (so the manager can self-recover) regardless of message wording.
+        var dataPath = Path.Combine(Path.GetTempPath(), $"openclaw-node-test-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(dataPath);
+
+        try
+        {
+            using var client = new WindowsNodeClient("ws://localhost:18789", "test-token", dataPath);
+            GatewayErrorKind? actualKind = null;
+            client.ConnectionFailure += (_, kind) => actualKind = kind;
+            using var document = JsonDocument.Parse(
+                $$"""
+                  {
+                    "type": "res",
+                    "ok": false,
+                    "error": { "message": "unauthorized", {{codeJson}} }
+                  }
+                  """);
+            client.HandleResponse(document.RootElement);
+
+            Assert.Equal(GatewayErrorKind.DeviceTokenMismatch, actualKind);
+        }
+        finally
+        {
+            Directory.Delete(dataPath, true);
+        }
+    }
+
+    [Fact]
+    public void HandleResponse_SharedTokenMismatchByStructuredCode_GenericMessage_StopsReconnectAndIsNotDeviceMismatch()
+    {
+        // A wrong SHARED token delivered as a structured code (AUTH_TOKEN_MISMATCH) with a generic
+        // message is permanent for this connection: the node client must set _rateLimited to stop its
+        // OWN auto-reconnect loop, and must NOT classify it as a recoverable device-token mismatch.
+        var dataPath = Path.Combine(Path.GetTempPath(), $"openclaw-node-test-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(dataPath);
+
+        try
+        {
+            using var client = new WindowsNodeClient("ws://localhost:18789", "test-token", dataPath);
+            GatewayErrorKind? actualKind = null;
+            client.ConnectionFailure += (_, kind) => actualKind = kind;
+            using var document = JsonDocument.Parse(
+                """
+                {
+                  "type": "res",
+                  "ok": false,
+                  "error": { "message": "unauthorized", "code": "AUTH_TOKEN_MISMATCH" }
+                }
+                """);
+            client.HandleResponse(document.RootElement);
+
+            Assert.NotEqual(GatewayErrorKind.DeviceTokenMismatch, actualKind);
+
+            var rateLimited = (bool)typeof(WindowsNodeClient)
+                .GetField("_rateLimited", BindingFlags.NonPublic | BindingFlags.Instance)!
+                .GetValue(client)!;
+            Assert.True(rateLimited);
         }
         finally
         {

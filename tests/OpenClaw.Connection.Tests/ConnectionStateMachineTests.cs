@@ -133,6 +133,18 @@ public class ConnectionStateMachineTests
     }
 
     [Fact]
+    public void TypedOperatorFailureKind_IsPreservedInSnapshot_AndClearedOnReconnect()
+    {
+        _sm.TryTransition(ConnectionTrigger.ConnectRequested);
+        _sm.SetOperatorErrorKind(OpenClaw.Shared.GatewayErrorKind.Tls);
+        Assert.True(_sm.TryTransition(ConnectionTrigger.WebSocketError, "Transport error"));
+        Assert.Equal(OpenClaw.Shared.GatewayErrorKind.Tls, _sm.Current.OperatorErrorKind);
+
+        Assert.True(_sm.TryTransition(ConnectionTrigger.ReconnectScheduled));
+        Assert.Null(_sm.Current.OperatorErrorKind);
+    }
+
+    [Fact]
     public void Connecting_RateLimited_TransitionsToError()
     {
         _sm.TryTransition(ConnectionTrigger.ConnectRequested);

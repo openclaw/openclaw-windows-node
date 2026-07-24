@@ -150,7 +150,8 @@ public sealed partial class WizardPage : Page
         var record = registry.GetActive() ?? throw new InvalidOperationException("No active gateway record found.");
         _hostAccessPlan = GatewayHostAccessClassifier.Classify(record);
         var identityPath = registry.GetIdentityDirectory(record.Id);
-        var token = DeviceIdentity.TryReadStoredDeviceToken(identityPath)
+        var deviceToken = DeviceIdentity.TryReadStoredDeviceToken(identityPath);
+        var token = deviceToken
             ?? record.SharedGatewayToken
             ?? record.BootstrapToken
             ?? throw new InvalidOperationException("No gateway credential found.");
@@ -158,9 +159,38 @@ public sealed partial class WizardPage : Page
         // The active record owns the endpoint as well as the credential identity. Resolve
         // tunnel-backed records to their Windows-side local forward instead of bypassing SSH.
         var gatewayUrl = GatewayClientEndpointResolver.Resolve(record);
+        var provenanceService = new ManagedLocalGatewayPortProvenanceService(NullLogger.Instance);
+        if (deviceToken is null &&
+            record.SshTunnel is null &&
+            GatewayRecordEditing.ResolveManagedDistroName(record) is not null &&
+            GatewayRecordEditing.IsLoopbackEndpoint(record.Url))
+        {
+            var provenance = await provenanceService.InspectAsync(record);
+            if (provenance.Kind != GatewayEndpointProvenanceKind.ExpectedManagedGateway)
+            {
+                throw new InvalidOperationException(
+                    "The managed gateway address is not owned by the verified WSL gateway; no credential was sent.");
+            }
+        }
         var client = new OpenClawGatewayClient(gatewayUrl, token, logger: NullLogger.Instance, identityPath: identityPath)
         {
             UseV2Signature = true
+        };
+        client.ReconnectAuthorizationAsync = async cancellationToken =>
+        {
+            if (record.SshTunnel is not null ||
+                GatewayRecordEditing.ResolveManagedDistroName(record) is null ||
+                !GatewayRecordEditing.IsLoopbackEndpoint(record.Url))
+            {
+                return ReconnectAuthorizationResult.AllowedResult;
+            }
+            var provenance = await provenanceService.InspectAsync(record, cancellationToken);
+            return provenance.Kind == GatewayEndpointProvenanceKind.ExpectedManagedGateway
+                ? ReconnectAuthorizationResult.AllowedResult
+                : new ReconnectAuthorizationResult(
+                    false,
+                    GatewayErrorKind.LocalPortConflict,
+                    provenance.Detail);
         };
 
         var outcome = await WaitForConnectAsync(client, TimeSpan.FromSeconds(20));

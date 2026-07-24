@@ -22,8 +22,25 @@ public interface IGatewayConnectionManager : IDisposable, IAsyncDisposable
     Task ConnectAsync(string? gatewayId = null);
     Task ConnectNodeOnlyAsync(string? gatewayId = null);
     Task DisconnectAsync();
+    Task DisconnectByUserAsync();
     Task ReconnectAsync();
+    Task<bool> ReconnectIfCurrentAsync(string gatewayId, CancellationToken cancellationToken = default);
     Task SwitchGatewayAsync(string gatewayId);
+    void SetGatewayConnectionIntent(string gatewayId, bool shouldBeConnected);
+    bool IsAutomaticReconnectAllowed(string gatewayId);
+
+    /// <summary>
+    /// True while a user-initiated gateway lifecycle action (manual WSL start/stop/restart) is in
+    /// progress. Managed-local auto-repair observes this to suppress itself so a manual restart and an
+    /// automatic repair cannot run concurrent distro restarts.
+    /// </summary>
+    bool IsManualGatewayLifecycleInProgress { get; }
+
+    /// <summary>
+    /// Acquires the shared gateway-lifecycle lease for a manual WSL operation (awaiting it so it is
+    /// mutually exclusive with an in-flight auto-repair restart). Dispose the returned scope to release.
+    /// </summary>
+    Task<IDisposable> BeginManualGatewayLifecycleOperationAsync(CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Drive the node connection for the active gateway and await its terminal state.

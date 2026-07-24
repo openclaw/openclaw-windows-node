@@ -28,8 +28,9 @@ internal static class WslKeepAlivePolicy
         string? setupStateDistroName,
         string? environmentOverride)
     {
-        if (!string.IsNullOrWhiteSpace(activeRecord?.SetupManagedDistroName))
-            return activeRecord.SetupManagedDistroName;
+        if (activeRecord is not null &&
+            GatewayRecordEditing.ResolveManagedDistroName(activeRecord) is { } managedDistroName)
+            return managedDistroName;
 
         if (!string.IsNullOrWhiteSpace(setupStateDistroName))
             return setupStateDistroName;
@@ -75,6 +76,17 @@ internal static class WslKeepAlivePolicy
         return WslCommandLineMatcher.IsKeepaliveForDistro(commandLine, distroName);
     }
 
+    public static bool IsMarkedKeepaliveProcessIdentity(
+        string? processName,
+        DateTime processStartTimeUtc,
+        DateTime markerStartTimeUtc)
+    {
+        return string.Equals(processName, "wsl", StringComparison.OrdinalIgnoreCase) &&
+            Math.Abs(
+                (processStartTimeUtc -
+                 DateTime.SpecifyKind(markerStartTimeUtc, DateTimeKind.Utc)).TotalSeconds) <= 5;
+    }
+
     public static bool TryGetMarkerDistroName(string markerJson, out string distroName)
     {
         distroName = string.Empty;
@@ -99,21 +111,14 @@ internal static class WslKeepAlivePolicy
         if (record.SshTunnel is not null)
             return false;
 
-        if (!string.IsNullOrWhiteSpace(record.SetupManagedDistroName))
+        if (GatewayRecordEditing.ResolveManagedDistroName(record) is not null)
             return record.IsLocal || LocalGatewayUrlClassifier.IsLocalGatewayUrl(record.Url);
 
         return IsLegacyDefaultSetupManagedLocalRecord(record);
     }
 
     private static string? GetSetupManagedDistroName(GatewayRecord record)
-    {
-        if (!string.IsNullOrWhiteSpace(record.SetupManagedDistroName))
-            return record.SetupManagedDistroName;
-
-        return IsLegacyDefaultSetupManagedLocalRecord(record)
-            ? DefaultSetupManagedDistroName
-            : null;
-    }
+        => GatewayRecordEditing.ResolveManagedDistroName(record);
 
     private static bool IsLegacyDefaultSetupManagedLocalRecord(GatewayRecord record) =>
         record.IsLocal

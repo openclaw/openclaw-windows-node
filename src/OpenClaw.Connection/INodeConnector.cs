@@ -59,6 +59,11 @@ public interface INodeConnectorTelemetryEvents
     event EventHandler<GatewayErrorKind> ConnectionFailure;
 }
 
+public interface INodeConnectorReconnectPolicy
+{
+    Func<CancellationToken, Task<ReconnectAuthorizationResult>>? ReconnectAuthorizationAsync { get; set; }
+}
+
 public sealed class NodeClientCreatedEventArgs : EventArgs
 {
     public NodeClientCreatedEventArgs(WindowsNodeClient client, string? bearerToken)

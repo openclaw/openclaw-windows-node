@@ -51,6 +51,29 @@ public class SetupStepsTests : IDisposable
         return new SetupContext(cfg, logger, journal, commands ?? new CommandRunner(logger), CancellationToken.None);
     }
 
+    [Fact]
+    public async Task PairingEndpointTrust_UnknownLoopbackOwner_BlocksBeforeCredentialUse()
+    {
+        var context = CreateContext(new SetupConfig
+        {
+            DistroName = "OpenClawGateway",
+            GatewayUrl = "ws://localhost:18789"
+        });
+        context.EndpointProvenanceProbe = (_, _) => Task.FromResult(
+            new GatewayEndpointProvenance(
+                GatewayEndpointProvenanceKind.UnknownListener,
+                18789,
+                Detail: "unknown owner"));
+
+        var result = await PairOperatorStep.EnsurePairingEndpointTrustedAsync(
+            context,
+            CancellationToken.None);
+
+        Assert.NotNull(result);
+        Assert.Equal(StepOutcome.FailedTerminal, result!.Outcome);
+        Assert.Contains("unknown owner", result.Message);
+    }
+
     [Theory]
     [InlineData(null)]
     [InlineData("")]

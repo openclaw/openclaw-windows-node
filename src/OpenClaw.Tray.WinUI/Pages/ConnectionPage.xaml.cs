@@ -1077,6 +1077,7 @@ public sealed partial class ConnectionPage : Page
             RecoveryCategory.Tls => LocalizationHelper.GetString("ConnectionPage_RecoveryHeaderTls"),
             RecoveryCategory.RateLimited => LocalizationHelper.GetString("ConnectionPage_RecoveryHeaderRateLimited"),
             RecoveryCategory.Tailscale => "Check Tailscale access",
+            RecoveryCategory.LocalPortConflict => "Resolve the local gateway port conflict:",
             _ => LocalizationHelper.GetString("ConnectionPage_RecoveryHeaderServer"),
         };
 
@@ -1128,6 +1129,12 @@ public sealed partial class ConnectionPage : Page
                 "Confirm Tailscale is running and signed in on this Windows PC.",
                 "Confirm this PC and the generated WSL gateway belong to the same tailnet.",
                 "Open the managed WSL gateway terminal as root and check tailscaled, Tailscale Serve, and the OpenClaw gateway service. Funnel is unsupported; remove any Funnel route. Companion keeps using WSS and never falls back to localhost.",
+            },
+            RecoveryCategory.LocalPortConflict => new[]
+            {
+                "Another process is listening on the managed WSL gateway's local address.",
+                "OpenClaw automatically removes only a fully verified obsolete OpenClaw gateway. Unknown processes are never stopped.",
+                "Stop the conflicting app or run Reconfigure… to choose a different gateway address, then retry.",
             },
             _ => new[]
             {
@@ -2034,7 +2041,7 @@ public sealed partial class ConnectionPage : Page
                 ((IAppCommands)CurrentApp).Reconnect();
                 break;
             case ConnectionPrimaryAction.Cancel:
-                _ = _connectionManager?.DisconnectAsync();
+                _ = _connectionManager?.DisconnectByUserAsync();
                 break;
             case ConnectionPrimaryAction.RestartTunnel:
                 OnRestartTunnel(sender, e);
@@ -2116,6 +2123,11 @@ public sealed partial class ConnectionPage : Page
             return;
         }
 
+        // Stop is explicit user intent. Record it before waiting for the lifecycle lease so an
+        // in-flight automatic repair cannot reconnect/restart this gateway while Stop is queued.
+        if (action == WslGatewayControlAction.Stop && activeRecord is not null)
+            _connectionManager?.SetGatewayConnectionIntent(activeRecord.Id, shouldBeConnected: false);
+
         var cts = new CancellationTokenSource();
         _gatewayHostActionCts = cts;
         var cancellationToken = cts.Token;
@@ -2124,8 +2136,39 @@ public sealed partial class ConnectionPage : Page
         var verb = WslGatewayControlCommandBuilder.ToVerb(action);
         SetGatewayHostActionStatus($"{ActionInProgressLabel(action)} gateway in {accessPlan.DistroName}…");
 
+        // Suppress managed-local auto-repair from STARTING a new repair while this manual action runs,
+        // so the two paths don't kick off concurrent distro restarts (an already-in-flight repair is
+        // single-flighted and re-checks the active gateway, so it self-reconciles). Acquired as the
+        // first statement inside the try so the finally always disposes it — a throw before this point
+        // cannot leak the suppression and permanently wedge self-healing.
+        IDisposable? manualLifecycleScope = null;
+
         try
         {
+            manualLifecycleScope = _connectionManager is null
+                ? null
+                : await _connectionManager.BeginManualGatewayLifecycleOperationAsync(cancellationToken);
+
+            // The lease await above can block for seconds while an auto-repair distro restart holds it.
+            // If the user switched OR edited the active gateway during that wait, this action's captured
+            // target (activeRecord/accessPlan) is stale. Re-read and RE-CLASSIFY the active gateway and
+            // require the same id, WSL controllability, and resolved distro as when we started —
+            // otherwise a Stop/Restart could disconnect the switched-to gateway or operate on a stale
+            // distro after a same-id edit repointed the record.
+            var activeNow = _gatewayRegistry?.GetActive();
+            var planNow = GatewayHostAccessClassifier.Classify(activeNow);
+            if (activeRecord is null || activeNow is null ||
+                !string.Equals(activeNow.Id, activeRecord.Id, StringComparison.Ordinal) ||
+                !planNow.CanControlWslGateway ||
+                !string.Equals(planNow.DistroName, accessPlan.DistroName, StringComparison.OrdinalIgnoreCase))
+            {
+                SetGatewayHostActionStatus("Active gateway changed; cancelled this action.");
+                return;
+            }
+
+            if (action is WslGatewayControlAction.Start or WslGatewayControlAction.Restart)
+                _connectionManager?.SetGatewayConnectionIntent(activeRecord.Id, shouldBeConnected: true);
+
             if (action == WslGatewayControlAction.Stop && _connectionManager != null)
             {
                 try
@@ -2157,9 +2200,29 @@ public sealed partial class ConnectionPage : Page
                 return;
             }
 
+            var activeAfterAction = _gatewayRegistry?.GetActive();
+            var planAfterAction = GatewayHostAccessClassifier.Classify(activeAfterAction);
+            if (activeRecord is null || activeAfterAction is null ||
+                !string.Equals(activeAfterAction.Id, activeRecord.Id, StringComparison.Ordinal) ||
+                !planAfterAction.CanControlWslGateway ||
+                !string.Equals(
+                    planAfterAction.DistroName,
+                    accessPlan.DistroName,
+                    StringComparison.OrdinalIgnoreCase))
+            {
+                SetGatewayHostActionStatus($"Gateway {PastTense(action)}. Active gateway changed; not reconnecting.");
+                return;
+            }
+
+            if (_connectionManager is null ||
+                !await _connectionManager.ReconnectIfCurrentAsync(activeRecord.Id, cancellationToken))
+            {
+                SetGatewayHostActionStatus($"Gateway {PastTense(action)}. Reconnect skipped because the gateway was switched or disconnected.");
+                return;
+            }
+
             SetGatewayHostActionStatus($"Gateway {PastTense(action)}. Reconnecting…");
             BeginReconnectMask();
-            ((IAppCommands)CurrentApp).Reconnect();
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
@@ -2173,6 +2236,7 @@ public sealed partial class ConnectionPage : Page
         finally
         {
             _gatewayHostActionInProgress = false;
+            manualLifecycleScope?.Dispose();
             if (ReferenceEquals(_gatewayHostActionCts, cts))
             {
                 _gatewayHostActionCts = null;
@@ -2401,19 +2465,43 @@ public sealed partial class ConnectionPage : Page
         }
     }
 
-    private void OnSavedRowOpenDashboard(object sender, RoutedEventArgs e)
+    private void OnSavedRowOpenDashboard(object sender, RoutedEventArgs e) =>
+        AsyncEventHandlerGuard.Run(
+            () => OnSavedRowOpenDashboardAsync(sender),
+            new AppLogger(),
+            nameof(OnSavedRowOpenDashboard));
+
+    private async Task OnSavedRowOpenDashboardAsync(object sender)
     {
         if (sender is not MenuFlyoutItem item || item.Tag is not string gwId) return;
         var rec = _gatewayRegistry?.GetById(gwId);
         if (rec == null) return;
         try
         {
+            if (!string.IsNullOrWhiteSpace(rec.SharedGatewayToken))
+            {
+                var provenanceService = CurrentApp.ManagedLocalPortProvenance;
+                if (provenanceService is null)
+                    return;
+                _ = await provenanceService.InspectAsync(rec);
+                var candidate = new GatewayCredential(
+                    rec.SharedGatewayToken!,
+                    IsBootstrapToken: false,
+                    CredentialResolver.SourceSharedGatewayToken);
+                if (!provenanceService.IsStrongCredentialAllowed(rec, candidate))
+                {
+                    CurrentApp.ShowTransientConnectionError(
+                        "Dashboard blocked because the saved gateway address is not owned by the verified managed gateway.");
+                    return;
+                }
+            }
+
             var url = GatewayDashboardUrlBuilder.Build(
                 rec.Url,
                 path: null,
                 rec.SharedGatewayToken,
                 appendSharedGatewayToken: !string.IsNullOrWhiteSpace(rec.SharedGatewayToken));
-            _ = global::Windows.System.Launcher.LaunchUriAsync(new Uri(url));
+            await global::Windows.System.Launcher.LaunchUriAsync(new Uri(url));
         }
         catch (Exception ex)
         {

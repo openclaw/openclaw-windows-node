@@ -53,6 +53,51 @@ public class InteractiveGatewayCredentialResolverTests : IDisposable
     }
 
     [Fact]
+    public void TryResolve_ManagedLoopbackUnknownOwner_DoesNotReturnTokenBearingCredential()
+    {
+        var record = new GatewayRecord
+        {
+            Id = "gw-local",
+            Url = "ws://localhost:18789",
+            IsLocal = true,
+            SetupManagedDistroName = "OpenClawGateway",
+            SharedGatewayToken = "shared-token"
+        };
+        _registry.AddOrUpdate(record);
+        _registry.SetActive(record.Id);
+
+        var resolved = InteractiveGatewayCredentialResolver.TryResolve(
+            _registry,
+            _tempDir,
+            _identityReader,
+            record.Url,
+            null,
+            null,
+            authorizeCredential: (_, _) => false,
+            out var credential);
+
+        Assert.False(resolved);
+        Assert.Null(credential);
+    }
+
+    [Fact]
+    public void TryResolve_LegacyLoopbackUnknownOwner_DoesNotReturnTokenBearingCredential()
+    {
+        var resolved = InteractiveGatewayCredentialResolver.TryResolve(
+            registry: null,
+            settingsDirectory: _tempDir,
+            identityReader: _identityReader,
+            effectiveGatewayUrl: "ws://localhost:18789",
+            legacyToken: "legacy-shared-token",
+            legacyBootstrapToken: null,
+            authorizeCredential: (_, _) => false,
+            out var credential);
+
+        Assert.False(resolved);
+        Assert.Null(credential);
+    }
+
+    [Fact]
     public void TryResolve_PreservesBootstrapPairingState()
     {
         var record = new GatewayRecord

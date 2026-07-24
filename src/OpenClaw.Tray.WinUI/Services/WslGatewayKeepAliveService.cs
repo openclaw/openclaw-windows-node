@@ -4,6 +4,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Text.Json;
 using System.Threading.Tasks;
 
 namespace OpenClawTray.Services;
@@ -52,7 +53,18 @@ internal sealed class WslGatewayKeepAliveService(
                 return;
             }
 
-            // Spawn a detached wsl sleep process to keep the VM alive
+            // Spawn a detached wsl sleep process to keep the VM alive. Idempotent: TryEnsureAsync runs
+            // at startup AND on every managed-local auto-repair (re-arm after a distro restart), so a
+            // gateway-only outage where the VM stays up would otherwise leak a new detached wsl.exe sleep
+            // process on each repair. Skip the spawn when a keepalive for this distro already exists.
+            var localDataDir = SetupExistingGatewayClassifier.ResolveLocalDataPath();
+            var markerPath = Path.Combine(localDataDir, "wsl-keepalive", $"{distroName}.json");
+            if (IsKeepAliveRunningForDistro(distroName, markerPath))
+            {
+                Logger.Info($"[WslKeepAlive] Keepalive already running for {distroName}; skipping spawn.");
+                return;
+            }
+
             var psi = new System.Diagnostics.ProcessStartInfo
             {
                 FileName = ResolveWslExePath(),
@@ -69,6 +81,11 @@ internal sealed class WslGatewayKeepAliveService(
             if (proc is not null)
             {
                 Logger.Info($"[WslKeepAlive] Started keepalive for {distroName} (PID {proc.Id}).");
+                WriteKeepAliveMarker(
+                    markerPath,
+                    distroName,
+                    proc.Id,
+                    proc.StartTime.ToUniversalTime());
             }
         }
         catch (Exception ex)
@@ -128,6 +145,122 @@ internal sealed class WslGatewayKeepAliveService(
         return doc.RootElement.TryGetProperty("DistroName", out var distroElement)
             ? distroElement.GetString()
             : null;
+    }
+
+    private static bool IsKeepAliveRunningForDistro(string distroName, string markerPath)
+    {
+        if (TryGetMarkedKeepAlive(markerPath, distroName))
+            return true;
+
+        var procs = System.Diagnostics.Process.GetProcessesByName("wsl")
+            .Concat(System.Diagnostics.Process.GetProcessesByName("wsl.exe"))
+            .ToArray();
+
+        try
+        {
+            foreach (var proc in procs)
+            {
+                try
+                {
+                    var commandLine = GetProcessCommandLine(proc.Id);
+
+                    // Unreadable unrelated WSL processes are not proof that our keepalive exists.
+                    // Owned keepalives have a PID marker, checked above.
+                    if (commandLine is null)
+                        continue;
+                    if (WslKeepAlivePolicy.IsKeepaliveCommandLine(commandLine, distroName))
+                        return true; // positively found
+                }
+                // slopwatch-ignore: SW003 Inspection is best-effort; a process may exit mid-enumeration and that cannot improve caller state.
+                catch
+                {
+                    // Process exited or is protected; continue looking for a positive match.
+                }
+            }
+
+            // Every live wsl process was readable and none was a keepalive for this distro — safe to
+            // spawn. A genuinely idled-out VM has no wsl processes at all and also lands here.
+            return false;
+        }
+        finally
+        {
+            foreach (var proc in procs)
+            {
+                // slopwatch-ignore: SW003 Best-effort disposal of enumerated process handles.
+                try { proc.Dispose(); } catch { }
+            }
+        }
+    }
+
+    private static bool TryGetMarkedKeepAlive(string markerPath, string distroName)
+    {
+        if (!File.Exists(markerPath))
+            return false;
+
+        try
+        {
+            using var doc = JsonDocument.Parse(File.ReadAllText(markerPath));
+            if (!doc.RootElement.TryGetProperty("DistroName", out var distroElement) ||
+                !string.Equals(distroElement.GetString(), distroName, StringComparison.OrdinalIgnoreCase) ||
+                !doc.RootElement.TryGetProperty("Pid", out var pidElement) ||
+                !pidElement.TryGetInt32(out var pid) ||
+                !doc.RootElement.TryGetProperty("StartTimeUtc", out var startElement) ||
+                !startElement.TryGetDateTime(out var markerStartTimeUtc))
+            {
+                return false;
+            }
+
+            using var process = System.Diagnostics.Process.GetProcessById(pid);
+            if (process.HasExited ||
+                !WslKeepAlivePolicy.IsMarkedKeepaliveProcessIdentity(
+                    process.ProcessName,
+                    process.StartTime.ToUniversalTime(),
+                    markerStartTimeUtc))
+                return false;
+
+            // The marker was written only after this service/setup spawned the process. A transient
+            // CIM failure therefore remains safe to treat as running for this exact owned PID.
+            var commandLine = GetProcessCommandLine(pid);
+            return commandLine is null ||
+                WslKeepAlivePolicy.IsKeepaliveCommandLine(commandLine, distroName);
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
+    private static void WriteKeepAliveMarker(
+        string markerPath,
+        string distroName,
+        int pid,
+        DateTime processStartTimeUtc)
+    {
+        try
+        {
+            Directory.CreateDirectory(Path.GetDirectoryName(markerPath)!);
+            var json = JsonSerializer.Serialize(new
+            {
+                DistroName = distroName,
+                Pid = pid,
+                StartTimeUtc = processStartTimeUtc,
+                ProcessName = "wsl"
+            });
+            var tempPath = markerPath + ".tmp-" + Guid.NewGuid().ToString("N");
+            try
+            {
+                File.WriteAllText(tempPath, json);
+                File.Move(tempPath, markerPath, overwrite: true);
+            }
+            finally
+            {
+                try { File.Delete(tempPath); } catch { }
+            }
+        }
+        catch (Exception ex)
+        {
+            Logger.Warn($"[WslKeepAlive] Could not persist keepalive marker: {ex.Message}");
+        }
     }
 
     private static void StopKeepAliveProcessesForDistro(string distroName)
@@ -195,9 +328,19 @@ internal sealed class WslGatewayKeepAliveService(
             };
             using var p = System.Diagnostics.Process.Start(psi);
             if (p == null) return null;
-            var output = p.StandardOutput.ReadToEnd();
-            p.WaitForExit(5000);
-            return output.Trim();
+
+            // Drain stdout asynchronously so a large command line cannot deadlock the fixed-size pipe,
+            // and bound the whole inspection: WaitForExit(5000) returns before ReadToEnd could block
+            // forever on a hung CIM/PowerShell. On timeout, kill and report indeterminate (null).
+            var readTask = p.StandardOutput.ReadToEndAsync();
+            if (!p.WaitForExit(5000))
+            {
+                // slopwatch-ignore: SW003 Best-effort kill of a stuck inspection process; failure cannot improve caller state.
+                try { p.Kill(entireProcessTree: true); } catch { }
+                return null;
+            }
+
+            return readTask.GetAwaiter().GetResult()?.Trim();
         }
         catch { return null; }
     }

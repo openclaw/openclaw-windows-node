@@ -495,6 +495,13 @@ public class OpenClawGatewayClientTests
             return events;
         }
 
+        public List<GatewayErrorKind> CaptureConnectionFailures()
+        {
+            var events = new List<GatewayErrorKind>();
+            _client.ConnectionFailure += (_, kind) => events.Add(kind);
+            return events;
+        }
+
         public (int WizardResponses, int RequestMethods) GetPendingRequestCounts()
         {
             var wizardField = typeof(OpenClawGatewayClient).GetField(
@@ -3608,6 +3615,79 @@ public class OpenClawGatewayClientTests
 
         Assert.Single(authEvents);
         Assert.Contains("token mismatch", authEvents[0], StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void HandleRequestError_DeviceTokenMismatchTopLevelCode_GenericMessage_RaisesRecognizableAuthFailure()
+    {
+        // The gateway may deliver the device-token mismatch as a TOP-LEVEL error.code with a generic
+        // message. The raised AuthenticationFailed string must still be recognizable as a device-token
+        // mismatch so the connection manager can self-recover.
+        var helper = new GatewayClientTestHelper();
+        var authEvents = helper.CaptureAuthenticationFailedEvents();
+        helper.TrackPendingRequest("req-auth-toplevel", "connect");
+
+        helper.ProcessRawMessage("""
+        {
+            "type": "res",
+            "id": "req-auth-toplevel",
+            "ok": false,
+            "error": { "message": "unauthorized", "code": "AUTH_DEVICE_TOKEN_MISMATCH" }
+        }
+        """);
+
+        Assert.Single(authEvents);
+        Assert.Equal(
+            OpenClaw.Shared.GatewayErrorKind.DeviceTokenMismatch,
+            OpenClaw.Shared.GatewayErrorClassifier.ClassifyWithCode(authEvents[0]));
+    }
+
+    [Fact]
+    public void HandleRequestError_SharedTokenMismatchTopLevelCode_DoesNotLookLikeDeviceMismatch()
+    {
+        // A wrong SHARED token (top-level AUTH_TOKEN_MISMATCH) is terminal auth but must NOT be
+        // enriched into a recoverable device-token mismatch.
+        var helper = new GatewayClientTestHelper();
+        var authEvents = helper.CaptureAuthenticationFailedEvents();
+        var failures = helper.CaptureConnectionFailures();
+        helper.TrackPendingRequest("req-auth-shared", "connect");
+
+        helper.ProcessRawMessage("""
+        {
+            "type": "res",
+            "id": "req-auth-shared",
+            "ok": false,
+            "error": { "message": "unauthorized", "code": "AUTH_TOKEN_MISMATCH" }
+        }
+        """);
+
+        Assert.Single(authEvents);
+        Assert.Equal([GatewayErrorKind.Auth], failures);
+        Assert.NotEqual(
+            OpenClaw.Shared.GatewayErrorKind.DeviceTokenMismatch,
+            OpenClaw.Shared.GatewayErrorClassifier.ClassifyWithCode(authEvents[0]));
+    }
+
+    [Fact]
+    public void HandleRequestError_SharedTokenMismatchNestedCode_RaisesTypedAuthFailure()
+    {
+        var helper = new GatewayClientTestHelper();
+        var failures = helper.CaptureConnectionFailures();
+        helper.TrackPendingRequest("req-auth-shared-nested", "connect");
+
+        helper.ProcessRawMessage("""
+        {
+            "type": "res",
+            "id": "req-auth-shared-nested",
+            "ok": false,
+            "error": {
+                "message": "unauthorized",
+                "details": { "code": "AUTH_TOKEN_MISMATCH" }
+            }
+        }
+        """);
+
+        Assert.Equal([GatewayErrorKind.Auth], failures);
     }
 
     [Fact]

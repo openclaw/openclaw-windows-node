@@ -79,6 +79,12 @@ public class WindowsNodeClient : WebSocketClientBase
     public event EventHandler? TransportConnected;
     /// <summary>Raised with a finite classification before a terminal handshake error is published.</summary>
     public event EventHandler<GatewayErrorKind>? ConnectionFailure;
+
+    protected override void OnReconnectAuthorizationDenied(
+        ReconnectAuthorizationResult authorization)
+    {
+        ConnectionFailure?.Invoke(this, authorization.FailureKind);
+    }
     
     public new bool IsConnected => _isConnected;
     public string? NodeId => _nodeId;
@@ -861,6 +867,7 @@ public class WindowsNodeClient : WebSocketClientBase
     {
         var error = "Unknown error";
         var errorCode = "none";
+        string? detailsCode = null;
         string? pairingReason = null;
         string? pairingRequestId = null;
 
@@ -879,6 +886,10 @@ public class WindowsNodeClient : WebSocketClientBase
                 if (TryGetString(detailsProp, "reason", out var reason))
                 {
                     pairingReason = reason;
+                }
+                if (TryGetString(detailsProp, "code", out var dc))
+                {
+                    detailsCode = dc;
                 }
                 pairingRequestId = TryGetSafePairingRequestId(detailsProp);
             }
@@ -912,15 +923,32 @@ public class WindowsNodeClient : WebSocketClientBase
             return;
         }
 
+        // Stale/rotated node DEVICE token — terminal, but the connection manager can
+        // self-recover by clearing only the node device token and reconnecting with a
+        // still-valid shared/bootstrap credential. Detected from the structured code
+        // (top-level or details.code) or explicit device phrasing, independent of generic
+        // message wording. _rateLimited stops this client's own auto-reconnect so the
+        // manager owns the single recovery reconnect (no dueling loops).
+        if (ClassifyConnectionFailure(error, errorCode, detailsCode) == GatewayErrorKind.DeviceTokenMismatch)
+        {
+            _rateLimited = true;
+            _logger.Warn($"[NODE] Node device token mismatch; stopping reconnect for recovery. Error: {TokenSanitizer.Sanitize(error)}");
+            ConnectionFailure?.Invoke(this, GatewayErrorKind.DeviceTokenMismatch);
+            RaiseStatusChanged(ConnectionStatus.Error);
+            return;
+        }
+
         // Rate-limit / terminal auth errors — stop reconnecting
         if (error.Contains("too many failed", StringComparison.OrdinalIgnoreCase) ||
             error.Contains("rate limit", StringComparison.OrdinalIgnoreCase) ||
             error.Contains("origin not allowed", StringComparison.OrdinalIgnoreCase) ||
-            error.Contains("token mismatch", StringComparison.OrdinalIgnoreCase))
+            error.Contains("token mismatch", StringComparison.OrdinalIgnoreCase) ||
+            IsTerminalAuthCode(errorCode) ||
+            IsTerminalAuthCode(detailsCode))
         {
             _rateLimited = true;
             _logger.Warn($"[NODE] Terminal auth error; stopping reconnect. Error: {TokenSanitizer.Sanitize(error)}");
-            ConnectionFailure?.Invoke(this, ClassifyConnectionFailure(error, errorCode));
+            ConnectionFailure?.Invoke(this, ClassifyConnectionFailure(error, errorCode, detailsCode));
             RaiseStatusChanged(ConnectionStatus.Error);
             return;
         }
@@ -937,19 +965,26 @@ public class WindowsNodeClient : WebSocketClientBase
         }
 
         _logger.Error($"Node registration failed: {TokenSanitizer.Sanitize(error)} (code: {errorCode})");
-        ConnectionFailure?.Invoke(this, ClassifyConnectionFailure(error, errorCode));
+        ConnectionFailure?.Invoke(this, ClassifyConnectionFailure(error, errorCode, detailsCode));
         RaiseStatusChanged(ConnectionStatus.Error);
     }
 
-    private static GatewayErrorKind ClassifyConnectionFailure(string error, string errorCode)
+    private static GatewayErrorKind ClassifyConnectionFailure(string error, string errorCode, string? detailsCode = null)
     {
         if (error.Contains("too many failed", StringComparison.OrdinalIgnoreCase))
             return GatewayErrorKind.RateLimited;
         if (error.Contains("origin not allowed", StringComparison.OrdinalIgnoreCase))
             return GatewayErrorKind.Auth;
 
-        return GatewayErrorClassifier.Classify($"{errorCode} {error}");
+        return GatewayErrorClassifier.ClassifyWithCode(error, errorCode, detailsCode);
     }
+
+    // Structured terminal-auth codes (wrong shared/bootstrap token, rate limit, token not
+    // configured, device-token mismatch). These are permanent for the current connection, so the
+    // node client must stop its own auto-reconnect even when the human message is generic.
+    private static bool IsTerminalAuthCode(string? code) => code is
+        "AUTH_TOKEN_MISMATCH" or "AUTH_BOOTSTRAP_TOKEN_INVALID" or
+        "AUTH_DEVICE_TOKEN_MISMATCH" or "AUTH_RATE_LIMITED" or "AUTH_TOKEN_NOT_CONFIGURED";
 
     private bool PayloadTargetsCurrentDevice(JsonElement payload)
     {

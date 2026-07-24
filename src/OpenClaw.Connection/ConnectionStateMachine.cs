@@ -12,6 +12,7 @@ internal sealed class ConnectionStateMachine
     private RoleConnectionState _operatorState = RoleConnectionState.Idle;
     private RoleConnectionState _nodeState = RoleConnectionState.Idle;
     private string? _operatorError;
+    private OpenClaw.Shared.GatewayErrorKind? _operatorErrorKind;
     private string? _nodeError;
     private string? _operatorCredentialSource;
     private string? _nodeCredentialSource;
@@ -154,6 +155,7 @@ internal sealed class ConnectionStateMachine
         _operatorState = RoleConnectionState.Idle;
         _nodeState = _nodeEnabled ? RoleConnectionState.Idle : RoleConnectionState.Disabled;
         _operatorError = null;
+        _operatorErrorKind = null;
         _nodeError = null;
         _operatorCredentialSource = null;
         _nodeCredentialSource = null;
@@ -204,6 +206,12 @@ internal sealed class ConnectionStateMachine
         _operatorCredentialFallbackUsed = resolution.FallbackUsed;
         _operatorCredentialBootstrapRequired = resolution.BootstrapRequired;
         _operatorCredentialDetail = resolution.Detail;
+        RebuildSnapshot();
+    }
+
+    internal void SetOperatorErrorKind(OpenClaw.Shared.GatewayErrorKind? kind)
+    {
+        _operatorErrorKind = kind;
         RebuildSnapshot();
     }
 
@@ -293,6 +301,7 @@ internal sealed class ConnectionStateMachine
             case ConnectionTrigger.ConnectRequested:
                 _operatorState = RoleConnectionState.Connecting;
                 _operatorError = null;
+                _operatorErrorKind = null;
                 break;
 
             case ConnectionTrigger.ConnectRequestSent:
@@ -304,6 +313,7 @@ internal sealed class ConnectionStateMachine
             case ConnectionTrigger.HandshakeSucceeded:
                 _operatorState = RoleConnectionState.Connected;
                 _operatorError = null;
+                _operatorErrorKind = null;
                 break;
 
             case ConnectionTrigger.PairingPending:
@@ -317,16 +327,19 @@ internal sealed class ConnectionStateMachine
             case ConnectionTrigger.PairingRejected:
                 _operatorState = RoleConnectionState.Error;
                 _operatorError = detail ?? "Pairing rejected";
+                _operatorErrorKind = OpenClaw.Shared.GatewayErrorKind.PairingRejected;
                 break;
 
             case ConnectionTrigger.AuthenticationFailed:
                 _operatorState = RoleConnectionState.Error;
                 _operatorError = detail ?? "Authentication failed";
+                _operatorErrorKind ??= OpenClaw.Shared.GatewayErrorClassifier.ClassifyWithCode(_operatorError);
                 break;
 
             case ConnectionTrigger.RateLimited:
                 _operatorState = RoleConnectionState.Error;
                 _operatorError = detail ?? "Rate limited";
+                _operatorErrorKind = OpenClaw.Shared.GatewayErrorKind.RateLimited;
                 break;
 
             case ConnectionTrigger.WebSocketDisconnected:
@@ -339,12 +352,14 @@ internal sealed class ConnectionStateMachine
                 {
                     _operatorState = RoleConnectionState.Connecting;
                     _operatorError = null;
+                    _operatorErrorKind = null;
                 }
                 break;
 
             case ConnectionTrigger.WebSocketError:
                 _operatorState = RoleConnectionState.Error;
                 _operatorError = detail ?? "WebSocket error";
+                _operatorErrorKind ??= OpenClaw.Shared.GatewayErrorClassifier.Classify(_operatorError);
                 break;
 
             case ConnectionTrigger.DisconnectRequested:
@@ -352,6 +367,7 @@ internal sealed class ConnectionStateMachine
                 _operatorState = RoleConnectionState.Idle;
                 _nodeState = _nodeEnabled ? RoleConnectionState.Idle : RoleConnectionState.Disabled;
                 _operatorError = null;
+                _operatorErrorKind = null;
                 _nodeError = null;
                 _operatorCredentialSource = null;
                 _nodeCredentialSource = null;
@@ -368,6 +384,7 @@ internal sealed class ConnectionStateMachine
             case ConnectionTrigger.ReconnectScheduled:
                 _operatorState = RoleConnectionState.Connecting;
                 _operatorError = null;
+                _operatorErrorKind = null;
                 break;
 
             case ConnectionTrigger.ReconnectSuppressed:
@@ -377,6 +394,7 @@ internal sealed class ConnectionStateMachine
             case ConnectionTrigger.Cancelled:
                 _operatorState = RoleConnectionState.Idle;
                 _operatorError = null;
+                _operatorErrorKind = null;
                 break;
 
             // ─── Node transitions ───
@@ -424,6 +442,7 @@ internal sealed class ConnectionStateMachine
             OverallState = GatewayConnectionSnapshot.DeriveOverall(_operatorState, _nodeState, _nodeEnabled),
             OperatorState = _operatorState,
             OperatorError = _operatorError,
+            OperatorErrorKind = _operatorErrorKind,
             OperatorCredentialSource = _operatorCredentialSource,
             OperatorCredentialStatus = _operatorCredentialStatus,
             OperatorCredentialFallbackUsed = _operatorCredentialFallbackUsed,
