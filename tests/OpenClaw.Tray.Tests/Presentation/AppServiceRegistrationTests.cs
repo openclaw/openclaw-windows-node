@@ -71,9 +71,13 @@ public sealed class AppServiceRegistrationTests
             var second = scope.ServiceProvider.GetRequiredService<SettingsPageViewModel>();
 
             Assert.NotSame(first, second);
-            Assert.Same(dispatcher, first.Dispatcher);
-            Assert.Same(commands, first.AppCommands);
-            Assert.Same(settings, first.Settings);
+
+            // The placeholder permissions view model still exposes its injected services, so use it
+            // to prove the transient page view models receive the registered singleton instances.
+            var permissions = scope.ServiceProvider.GetRequiredService<PermissionsPageViewModel>();
+            Assert.Same(dispatcher, permissions.Dispatcher);
+            Assert.Same(commands, permissions.AppCommands);
+            Assert.Same(settings, permissions.Settings);
         }
     }
 

@@ -33,6 +33,12 @@ internal static class AppServiceRegistration
         services.AddSingleton(context.AppCommands);
         services.AddSingleton(context.Settings);
 
+        // Settings facade over the App-owned SettingsManager. Constructed eagerly from the
+        // already-owned singletons so presentation code depends on ISettingsStore, never the
+        // concrete manager. It subscribes to the manager (which App owns) and is not disposed
+        // by the container.
+        services.AddSingleton<ISettingsStore>(new SettingsStore(context.Settings, context.Dispatcher));
+
         // Container-owned navigation lifetime manager (disposed with the root provider).
         services.AddSingleton<NavigationScopeManager>();
 

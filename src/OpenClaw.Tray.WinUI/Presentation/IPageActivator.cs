@@ -8,10 +8,9 @@ namespace OpenClawTray.Presentation;
 /// page's <c>DataContext</c>.
 /// </summary>
 /// <remarks>
-/// No page is mapped to a view model yet, so <see cref="OnNavigatedTo"/> only advances
-/// the navigation scope (deactivating and disposing any prior view model) and never
-/// touches a page's data context. The seam therefore has no observable runtime effect
-/// today; it is proven by unit tests.
+/// Pages mapped to a view model (currently the Settings page) have it resolved, activated, and
+/// assigned as their <c>DataContext</c> by <see cref="OnNavigatedTo"/>. Unmapped pages only advance
+/// the navigation scope (deactivating and disposing any prior view model) with no data-context change.
 /// </remarks>
 public interface IPageActivator
 {

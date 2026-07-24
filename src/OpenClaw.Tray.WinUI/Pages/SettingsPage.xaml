@@ -52,6 +52,7 @@
                                        TextWrapping="Wrap"/>
                         </StackPanel>
                         <ToggleSwitch Grid.Column="1" x:Name="AutoStartToggle" MinWidth="0" OnContent="" OffContent=""
+                                      IsOn="{Binding AutoStart, Mode=TwoWay}"
                                       AutomationProperties.AutomationId="SettingsPageAutoStart"
                                       AutomationProperties.Name="Start with Windows"/>
                     </Grid>
@@ -74,6 +75,8 @@
                                        TextWrapping="Wrap"/>
                         </StackPanel>
                         <ComboBox Grid.Column="1" x:Name="AppThemeComboBox" MinWidth="160"
+                                  SelectedValuePath="Tag"
+                                  SelectedValue="{Binding AppTheme, Mode=TwoWay}"
                                   AutomationProperties.AutomationId="SettingsPageAppTheme"
                                   AutomationProperties.Name="App theme">
                             <ComboBoxItem x:Uid="SettingsPage_AppTheme_System" Content="System" Tag="System"/>
@@ -100,6 +103,7 @@
                                        TextWrapping="Wrap"/>
                         </StackPanel>
                         <ToggleSwitch Grid.Column="1" x:Name="GlobalHotkeyToggle" MinWidth="0" OnContent="" OffContent=""
+                                      IsOn="{Binding GlobalHotkeyEnabled, Mode=TwoWay}"
                                       AutomationProperties.AutomationId="SettingsPageHotkey"
                                       AutomationProperties.Name="Global hotkey"/>
                     </Grid>
@@ -122,6 +126,7 @@
                                        TextWrapping="Wrap"/>
                         </StackPanel>
                         <ToggleSwitch Grid.Column="1" x:Name="UseLegacyWebChatToggle" MinWidth="0" OnContent="" OffContent=""
+                                      IsOn="{Binding UseLegacyWebChat, Mode=TwoWay}"
                                       AutomationProperties.AutomationId="SettingsPageUseLegacyWebChat"
                                       AutomationProperties.Name="Use gateway chat interface"/>
                     </Grid>
@@ -149,6 +154,7 @@
                                        TextWrapping="Wrap"/>
                         </StackPanel>
                         <ToggleSwitch Grid.Column="1" x:Name="ReadResponsesAloudToggle" MinWidth="0" OnContent="" OffContent=""
+                                      IsOn="{Binding ReadResponsesAloud, Mode=TwoWay}"
                                       AutomationProperties.AutomationId="SettingsPageReadAloud"
                                       AutomationProperties.LabeledBy="{Binding ElementName=ReadResponsesAloudLabel}"/>
                     </Grid>
@@ -172,6 +178,7 @@
                                        TextWrapping="Wrap"/>
                         </StackPanel>
                         <ToggleSwitch Grid.Column="1" x:Name="ShowToolCallsToggle" MinWidth="0" OnContent="" OffContent=""
+                                      IsOn="{Binding ShowChatToolCalls, Mode=TwoWay}"
                                       AutomationProperties.AutomationId="SettingsPageShowToolCalls"
                                       AutomationProperties.LabeledBy="{Binding ElementName=ShowToolCallsLabel}"/>
                     </Grid>
@@ -198,6 +205,7 @@
                                        TextWrapping="Wrap"/>
                         </StackPanel>
                         <ToggleSwitch Grid.Column="1" x:Name="NotificationsToggle" MinWidth="0" OnContent="" OffContent=""
+                                      IsOn="{Binding ShowNotifications, Mode=TwoWay}"
                                       AutomationProperties.AutomationId="SettingsPageNotifications"
                                       AutomationProperties.Name="Show notifications"/>
                     </Grid>
@@ -221,6 +229,8 @@
                         </StackPanel>
                         <ComboBox Grid.Column="1" x:Uid="SettingsPage_NotificationSoundComboBox"
                                   x:Name="NotificationSoundComboBox" MinWidth="140"
+                                  SelectedValuePath="Tag"
+                                  SelectedValue="{Binding NotificationSound, Mode=TwoWay}"
                                   AutomationProperties.AutomationId="SettingsPageSound">
                             <ComboBoxItem x:Uid="SettingsPage_ComboBoxItem_48" Content="Default" Tag="Default"/>
                             <ComboBoxItem x:Uid="SettingsPage_ComboBoxItem_49" Content="None" Tag="None"/>
@@ -248,28 +258,28 @@
                                 <RowDefinition Height="Auto"/>
                             </Grid.RowDefinitions>
                             <CheckBox Grid.Row="0" Grid.Column="0" x:Uid="NotifyHealthCb" x:Name="NotifyHealthCb"
-                                      Content="Health alerts"
+                                      Content="Health alerts" IsChecked="{Binding NotifyHealth, Mode=TwoWay}"
                                       AutomationProperties.AutomationId="SettingsPageNotifyHealth"/>
                             <CheckBox Grid.Row="0" Grid.Column="1" x:Uid="NotifyUrgentCb" x:Name="NotifyUrgentCb"
-                                      Content="Urgent messages"
+                                      Content="Urgent messages" IsChecked="{Binding NotifyUrgent, Mode=TwoWay}"
                                       AutomationProperties.AutomationId="SettingsPageNotifyUrgent"/>
                             <CheckBox Grid.Row="1" Grid.Column="0" x:Uid="NotifyReminderCb" x:Name="NotifyReminderCb"
-                                      Content="Reminders"
+                                      Content="Reminders" IsChecked="{Binding NotifyReminder, Mode=TwoWay}"
                                       AutomationProperties.AutomationId="SettingsPageNotifyReminder"/>
                             <CheckBox Grid.Row="1" Grid.Column="1" x:Uid="NotifyEmailCb" x:Name="NotifyEmailCb"
-                                      Content="Email summaries"
+                                      Content="Email summaries" IsChecked="{Binding NotifyEmail, Mode=TwoWay}"
                                       AutomationProperties.AutomationId="SettingsPageNotifyEmail"/>
                             <CheckBox Grid.Row="2" Grid.Column="0" x:Uid="NotifyCalendarCb" x:Name="NotifyCalendarCb"
-                                      Content="Calendar events"
+                                      Content="Calendar events" IsChecked="{Binding NotifyCalendar, Mode=TwoWay}"
                                       AutomationProperties.AutomationId="SettingsPageNotifyCalendar"/>
                             <CheckBox Grid.Row="2" Grid.Column="1" x:Uid="NotifyBuildCb" x:Name="NotifyBuildCb"
-                                      Content="Build notifications"
+                                      Content="Build notifications" IsChecked="{Binding NotifyBuild, Mode=TwoWay}"
                                       AutomationProperties.AutomationId="SettingsPageNotifyBuild"/>
                             <CheckBox Grid.Row="3" Grid.Column="0" x:Uid="NotifyStockCb" x:Name="NotifyStockCb"
-                                      Content="Stock alerts"
+                                      Content="Stock alerts" IsChecked="{Binding NotifyStock, Mode=TwoWay}"
                                       AutomationProperties.AutomationId="SettingsPageNotifyStock"/>
                             <CheckBox Grid.Row="3" Grid.Column="1" x:Uid="NotifyInfoCb" x:Name="NotifyInfoCb"
-                                      Content="Info messages"
+                                      Content="Info messages" IsChecked="{Binding NotifyInfo, Mode=TwoWay}"
                                       AutomationProperties.AutomationId="SettingsPageNotifyInfo"/>
                         </Grid>
                         <Button x:Uid="TestNotificationButton" x:Name="TestNotificationButton"
@@ -304,6 +314,7 @@
                                        TextWrapping="Wrap"/>
                         </StackPanel>
                         <ToggleSwitch Grid.Column="1" x:Name="ScreenRecordingToggle" MinWidth="0" OnContent="" OffContent=""
+                                      IsOn="{Binding ScreenRecordingConsentGiven, Mode=TwoWay}"
                                       AutomationProperties.AutomationId="SettingsPageScreenRecording"
                                       AutomationProperties.Name="Allow screen recording"/>
                     </Grid>
@@ -326,6 +337,7 @@
                                        TextWrapping="Wrap"/>
                         </StackPanel>
                         <ToggleSwitch Grid.Column="1" x:Name="CameraRecordingToggle" MinWidth="0" OnContent="" OffContent=""
+                                      IsOn="{Binding CameraRecordingConsentGiven, Mode=TwoWay}"
                                       AutomationProperties.AutomationId="SettingsPageCameraRecording"
                                       AutomationProperties.Name="Allow camera recording"/>
                     </Grid>
@@ -453,6 +465,7 @@
                                       MinWidth="0"
                                       OnContent=""
                                       OffContent=""
+                                      IsOn="{Binding ShowDiagnostics, Mode=TwoWay}"
                                       AutomationProperties.AutomationId="SettingsPageShowDiagnostics"
                                       AutomationProperties.Name="Enable Diagnostics"/>
                     </Grid>

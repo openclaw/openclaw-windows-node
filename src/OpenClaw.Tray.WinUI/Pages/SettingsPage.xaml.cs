@@ -4,6 +4,7 @@ using Microsoft.UI.Xaml.Controls;
 using OpenClaw.Connection;
 using OpenClaw.Shared;
 using OpenClawTray.Helpers;
+using OpenClawTray.Presentation;
 using OpenClawTray.Services;
 using System;
 using System.ComponentModel;
@@ -12,7 +13,6 @@ using System.Globalization;
 using System.IO;
 using System.Reflection;
 using System.Runtime.InteropServices;
-using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -21,9 +21,7 @@ namespace OpenClawTray.Pages;
 public sealed partial class SettingsPage : Page
 {
     private static App CurrentApp => (App)Microsoft.UI.Xaml.Application.Current!;
-    private bool _initialized;
-    private bool _saving;
-    private bool _loading;
+    private SettingsPageViewModel? _viewModel;
     private bool _localGatewayInstalled;
     private bool _uninstallInitiatedThisSession;
     private CancellationTokenSource? _uninstallCts;
@@ -48,7 +46,7 @@ public sealed partial class SettingsPage : Page
             $"Launches setup to install the app-owned {AppIdentity.SetupDistroName} WSL distro or re-run provider and model setup for an existing one. Existing local gateways are only replaced after confirmation.";
         GatewayBodyText.Text = GatewayIdleBodyText;
         _gatewayUptimeRefreshTimer.Tick += OnGatewayUptimeRefreshTimerTick;
-        Loaded += OnLoaded;
+        DataContextChanged += OnDataContextChanged;
         Unloaded += OnUnloaded;
     }
 
@@ -56,139 +54,54 @@ public sealed partial class SettingsPage : Page
     {
         PopulateAppInfo();
         InitializeGatewayInfo();
+        if (CurrentApp.Settings is { } settings)
+            LoadGatewaySection(settings);
+    }
 
-        var settings = CurrentApp.Settings;
-        if (!_initialized && settings != null)
+    /// <summary>
+    /// The Settings view model is assigned as the page DataContext by the navigation activation
+    /// hook. The two-way bindings handle load/persist; the page only subscribes to the view-only
+    /// side effects it applies on the UI thread: the saved indicator, and refreshing the
+    /// view-owned gateway section when settings change externally.
+    /// </summary>
+    private void OnDataContextChanged(FrameworkElement sender, DataContextChangedEventArgs args)
+    {
+        if (_viewModel != null)
         {
-            _loading = true;
-            LoadSettings(settings);
-            _loading = false;
-            WireAutoSaveHandlers();
-            _initialized = true;
+            _viewModel.SavedIndicated -= OnViewModelSavedIndicated;
+            _viewModel.ExternalChanged -= OnViewModelExternalChanged;
         }
-        else if (_initialized && settings != null)
+
+        _viewModel = args.NewValue as SettingsPageViewModel;
+
+        if (_viewModel != null)
         {
-            _loading = true;
-            ScreenRecordingToggle.IsOn = settings.ScreenRecordingConsentGiven;
-            CameraRecordingToggle.IsOn = settings.CameraRecordingConsentGiven;
-            _loading = false;
+            _viewModel.SavedIndicated += OnViewModelSavedIndicated;
+            _viewModel.ExternalChanged += OnViewModelExternalChanged;
         }
     }
 
-    private void OnLoaded(object sender, RoutedEventArgs e)
+    private void OnViewModelSavedIndicated(object? sender, EventArgs e) => ShowSavedIndicator();
+
+    /// <summary>
+    /// The gateway management section is view-owned (not settings-bound), so it must be refreshed
+    /// when settings change from another source, matching the page's previous live-refresh behavior.
+    /// </summary>
+    private void OnViewModelExternalChanged(object? sender, EventArgs e)
     {
-        if (CurrentApp.Settings != null)
-            CurrentApp.Settings.Saved += OnExternalSettingsChanged;
+        if (CurrentApp.Settings is { } settings)
+            LoadGatewaySection(settings);
     }
 
     private void OnUnloaded(object sender, RoutedEventArgs e)
     {
-        if (CurrentApp.Settings != null)
-            CurrentApp.Settings.Saved -= OnExternalSettingsChanged;
         if (_appState != null)
             _appState.PropertyChanged -= OnAppStateChanged;
         _appState = null;
         _gatewayUptimeRefreshTimer.Stop();
     }
 
-    // ── Auto-save wiring ──
-
-    private void WireAutoSaveHandlers()
-    {
-        AutoStartToggle.Toggled += (_, _) => PersistAutoStart();
-        GlobalHotkeyToggle.Toggled += (_, _) => Persist(s => s.GlobalHotkeyEnabled = GlobalHotkeyToggle.IsOn);
-        UseLegacyWebChatToggle.Toggled += (_, _) => Persist(s => s.UseLegacyWebChat = UseLegacyWebChatToggle.IsOn);
-        NotificationsToggle.Toggled += (_, _) => Persist(s => s.ShowNotifications = NotificationsToggle.IsOn);
-        NotificationSoundComboBox.SelectionChanged += (_, _) =>
-        {
-            if (NotificationSoundComboBox.SelectedItem is ComboBoxItem item)
-                Persist(s => s.NotificationSound = item.Tag?.ToString() ?? "Default");
-        };
-        AppThemeComboBox.SelectionChanged += (_, _) =>
-        {
-            if (AppThemeComboBox.SelectedItem is ComboBoxItem item)
-                Persist(s => s.AppTheme = item.Tag?.ToString() ?? SettingsManager.AppThemeSystem);
-        };
-        ShowDiagnosticsToggle.Toggled += (_, _) => Persist(s => s.ShowDiagnosticsOverride = ShowDiagnosticsToggle.IsOn);
-
-        WireCheckBox(NotifyHealthCb, v => CurrentApp.Settings!.NotifyHealth = v);
-        WireCheckBox(NotifyUrgentCb, v => CurrentApp.Settings!.NotifyUrgent = v);
-        WireCheckBox(NotifyReminderCb, v => CurrentApp.Settings!.NotifyReminder = v);
-        WireCheckBox(NotifyEmailCb, v => CurrentApp.Settings!.NotifyEmail = v);
-        WireCheckBox(NotifyCalendarCb, v => CurrentApp.Settings!.NotifyCalendar = v);
-        WireCheckBox(NotifyBuildCb, v => CurrentApp.Settings!.NotifyBuild = v);
-        WireCheckBox(NotifyStockCb, v => CurrentApp.Settings!.NotifyStock = v);
-        WireCheckBox(NotifyInfoCb, v => CurrentApp.Settings!.NotifyInfo = v);
-
-        ScreenRecordingToggle.Toggled += (_, _) => Persist(s => s.ScreenRecordingConsentGiven = ScreenRecordingToggle.IsOn);
-        CameraRecordingToggle.Toggled += (_, _) => Persist(s => s.CameraRecordingConsentGiven = CameraRecordingToggle.IsOn);
-
-        // "Read responses aloud" reuses App.SetChatSpeakerMuted, which persists
-        // VoiceTtsEnabled (as the inverse of mute), updates the chat coordinator,
-        // and broadcasts the change to any open chat surface.
-        ReadResponsesAloudToggle.Toggled += (_, _) =>
-        {
-            if (_loading || CurrentApp.Settings == null) return;
-            CurrentApp.SetChatSpeakerMuted(!ReadResponsesAloudToggle.IsOn);
-            ShowSavedIndicator();
-        };
-        // "Show tool calls and usage" persists the setting and pushes the new
-        // visibility into the live chat timeline via the shared static writer.
-        ShowToolCallsToggle.Toggled += (_, _) =>
-        {
-            if (_loading || CurrentApp.Settings == null) return;
-            Persist(s => s.ShowChatToolCalls = ShowToolCallsToggle.IsOn);
-            OpenClawTray.Chat.OpenClawChatRoot.SetToolCallsVisible(ShowToolCallsToggle.IsOn);
-        };
-    }
-
-    private void WireCheckBox(CheckBox cb, Action<bool> mutate)
-    {
-        RoutedEventHandler handler = (_, _) => Persist(_ => mutate(cb.IsChecked ?? false));
-        cb.Checked += handler;
-        cb.Unchecked += handler;
-    }
-
-    private void Persist(Action<SettingsManager> mutate)
-    {
-        if (_loading || CurrentApp.Settings == null) return;
-        _saving = true;
-        try
-        {
-            mutate(CurrentApp.Settings);
-            CurrentApp.Settings.Save();
-            ((IAppCommands)CurrentApp).NotifySettingsSaved();
-            ShowSavedIndicator();
-        }
-        finally
-        {
-            _saving = false;
-        }
-    }
-
-    private void PersistAutoStart() =>
-        AsyncEventHandlerGuard.Run(
-            PersistAutoStartAsync,
-            new OpenClawTray.AppLogger(),
-            nameof(PersistAutoStart));
-
-    private async Task PersistAutoStartAsync()
-    {
-        if (_loading || CurrentApp.Settings == null) return;
-        _saving = true;
-        try
-        {
-            CurrentApp.Settings.AutoStart = AutoStartToggle.IsOn;
-            CurrentApp.Settings.Save();
-            await AutoStartManager.SetAutoStartAsync(CurrentApp.Settings.AutoStart);
-            ((IAppCommands)CurrentApp).NotifySettingsSaved();
-            ShowSavedIndicator();
-        }
-        finally
-        {
-            _saving = false;
-        }
-    }
+    // ── Saved indicator ──
 
     private Microsoft.UI.Dispatching.DispatcherQueueTimer? _savedIndicatorTimer;
     private void ShowSavedIndicator()
@@ -204,63 +117,21 @@ public sealed partial class SettingsPage : Page
         _savedIndicatorTimer.Start();
     }
 
-    private void OnExternalSettingsChanged(object? sender, EventArgs e)
-    {
-        if (CurrentApp.Settings == null || _saving) return;
-        DispatcherQueue.TryEnqueue(() =>
-        {
-            _loading = true;
-            try
-            {
-                LoadSettings(CurrentApp.Settings);
-            }
-            finally
-            {
-                _loading = false;
-            }
-        });
-    }
-
-    private void LoadSettings(SettingsManager settings)
-    {
-        AutoStartToggle.IsOn = settings.AutoStart;
-        GlobalHotkeyToggle.IsOn = settings.GlobalHotkeyEnabled;
-        UseLegacyWebChatToggle.IsOn = settings.UseLegacyWebChat;
-        NotificationsToggle.IsOn = settings.ShowNotifications;
-
-        SelectComboBoxItemByTag(NotificationSoundComboBox, settings.NotificationSound);
-        SelectComboBoxItemByTag(AppThemeComboBox, settings.AppTheme);
-        ShowDiagnosticsToggle.IsOn = settings.ShowDiagnosticsEffective;
-
-        NotifyHealthCb.IsChecked = settings.NotifyHealth;
-        NotifyUrgentCb.IsChecked = settings.NotifyUrgent;
-        NotifyReminderCb.IsChecked = settings.NotifyReminder;
-        NotifyEmailCb.IsChecked = settings.NotifyEmail;
-        NotifyCalendarCb.IsChecked = settings.NotifyCalendar;
-        NotifyBuildCb.IsChecked = settings.NotifyBuild;
-        NotifyStockCb.IsChecked = settings.NotifyStock;
-        NotifyInfoCb.IsChecked = settings.NotifyInfo;
-
-        ScreenRecordingToggle.IsOn = settings.ScreenRecordingConsentGiven;
-        CameraRecordingToggle.IsOn = settings.CameraRecordingConsentGiven;
-
-        // Chat section: "Read responses aloud" mirrors VoiceTtsEnabled (mute is
-        // its inverse). "Show tool calls and usage" mirrors ShowChatToolCalls.
-        ReadResponsesAloudToggle.IsOn = settings.VoiceTtsEnabled;
-        ShowToolCallsToggle.IsOn = settings.ShowChatToolCalls;
-        LoadGatewaySection(settings);
-    }
-
     private void PopulateAppInfo()
     {
         AppInfoVersionText.Text = AppVersionInfo.DisplayVersion;
-        AppInfoRuntimeText.Text = BuildRuntimeStackDisplayText();
+        var windowsAppSdk = SettingsAppInfoProjection.ResolveWindowsAppSdkDisplayName(
+            Assembly.GetEntryAssembly()?.GetName().Name, AppContext.BaseDirectory);
+        AppInfoRuntimeText.Text = SettingsAppInfoProjection.BuildRuntimeStack(
+            RuntimeInformation.FrameworkDescription, ResolveWinUiDisplayName(), windowsAppSdk);
         AppInfoArchText.Text = RuntimeInformation.ProcessArchitecture.ToString();
         AppInfoWindowsText.Text = Environment.OSVersion.Version.ToString();
-        AppInfoInstallText.Text = PackageHelper.IsPackaged ? "Packaged (MSIX)" : "Unpackaged (developer)";
-        AppInfoChannelText.Text = ResolveUpdateChannelDisplayText();
+        AppInfoInstallText.Text = SettingsAppInfoProjection.InstallKind(PackageHelper.IsPackaged);
+        AppInfoChannelText.Text = SettingsAppInfoProjection.ResolveUpdateChannel(
+            Environment.GetEnvironmentVariable("OPENCLAW_UPDATE_CHANNEL"));
 
-        var buildDate = TryResolveBuildDateDisplayText();
+        var buildDate = SettingsAppInfoProjection.FormatBuildDate(
+            Assembly.GetEntryAssembly()?.Location, CultureInfo.CurrentCulture);
         if (string.IsNullOrWhiteSpace(buildDate))
         {
             AppInfoBuildLabel.Visibility = Visibility.Collapsed;
@@ -353,33 +224,8 @@ public sealed partial class SettingsPage : Page
         }
 
         var elapsedMs = Math.Max(0, (DateTime.UtcNow - _sampledGatewayUptimeUtc).TotalMilliseconds);
-        GatewayUptimeText.Text = FormatDuration(TimeSpan.FromMilliseconds(_sampledGatewayUptimeMs.Value + elapsedMs));
-    }
-
-    private static string FormatDuration(TimeSpan duration)
-    {
-        if (duration.TotalDays >= 1)
-            return $"{(int)duration.TotalDays}d {duration.Hours}h";
-        if (duration.TotalHours >= 1)
-            return $"{(int)duration.TotalHours}h {duration.Minutes}m";
-        if (duration.TotalMinutes >= 1)
-            return $"{(int)duration.TotalMinutes}m {duration.Seconds}s";
-        return $"{Math.Max(0, (int)duration.TotalSeconds)}s";
-    }
-
-    private static void SelectComboBoxItemByTag(ComboBox comboBox, string? tag)
-    {
-        for (int i = 0; i < comboBox.Items.Count; i++)
-        {
-            if (comboBox.Items[i] is ComboBoxItem item &&
-                string.Equals(item.Tag?.ToString(), tag, StringComparison.OrdinalIgnoreCase))
-            {
-                comboBox.SelectedIndex = i;
-                return;
-            }
-        }
-
-        comboBox.SelectedIndex = 0;
+        GatewayUptimeText.Text = SettingsAppInfoProjection.FormatDuration(
+            TimeSpan.FromMilliseconds(_sampledGatewayUptimeMs.Value + elapsedMs));
     }
 
     private void LoadGatewaySection(SettingsManager settings)
@@ -474,119 +320,12 @@ public sealed partial class SettingsPage : Page
         }
     }
 
-    private static string BuildRuntimeStackDisplayText()
-    {
-        var dotNet = RuntimeInformation.FrameworkDescription;
-        var winUi = ResolveWinUiDisplayName();
-        var windowsAppSdk = ResolveWindowsAppSdkDisplayName();
-
-        return $"{dotNet} / {winUi} / {windowsAppSdk}";
-    }
-
-    private static string ResolveUpdateChannelDisplayText()
-    {
-        var channel = Environment.GetEnvironmentVariable("OPENCLAW_UPDATE_CHANNEL");
-        return string.IsNullOrWhiteSpace(channel) ? "stable" : channel.Trim();
-    }
-
-    private static string? TryResolveBuildDateDisplayText()
-    {
-        try
-        {
-            var location = Assembly.GetEntryAssembly()?.Location;
-            if (string.IsNullOrWhiteSpace(location) || !File.Exists(location))
-                return null;
-
-            return File.GetLastWriteTime(location).ToString("MMM d, yyyy", CultureInfo.CurrentCulture);
-        }
-        catch (Exception ex) when (ex is ArgumentException or IOException or UnauthorizedAccessException or NotSupportedException)
-        {
-            Logger.Debug($"SettingsPage: Failed to resolve app build date: {ex.Message}");
-            return null;
-        }
-    }
-
     private static string ResolveWinUiDisplayName()
     {
         var version = typeof(Microsoft.UI.Xaml.Application).Assembly.GetName().Version;
         return version is { Major: > 0 }
             ? $"WinUI {version.Major}"
             : "WinUI";
-    }
-
-    private static string ResolveWindowsAppSdkDisplayName()
-    {
-        if (TryResolveWindowsAppSdkPackageVersionFromDeps() is { Length: > 0 } packageVersion)
-        {
-            return $"Windows App SDK {packageVersion}";
-        }
-
-        return ResolveWindowsAppSdkDisplayNameFromFileVersion();
-    }
-
-    private static string ResolveWindowsAppSdkDisplayNameFromFileVersion()
-    {
-        var xamlNativePath = Path.Combine(AppContext.BaseDirectory, "Microsoft.ui.xaml.dll");
-        if (File.Exists(xamlNativePath))
-        {
-            try
-            {
-                var productVersion = FileVersionInfo.GetVersionInfo(xamlNativePath).ProductVersion;
-                if (!string.IsNullOrWhiteSpace(productVersion))
-                {
-                    return $"Windows App SDK {StripBuildMetadata(productVersion)}";
-                }
-            }
-            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or ArgumentException)
-            {
-                Logger.Warn($"Failed to read Windows App SDK version from {xamlNativePath}: {ex.Message}");
-            }
-        }
-
-        return "Windows App SDK";
-    }
-
-    private static string? TryResolveWindowsAppSdkPackageVersionFromDeps()
-    {
-        var assemblyName = Assembly.GetEntryAssembly()?.GetName().Name;
-        if (string.IsNullOrWhiteSpace(assemblyName))
-            return null;
-
-        var depsPath = Path.Combine(AppContext.BaseDirectory, $"{assemblyName}.deps.json");
-        if (!File.Exists(depsPath))
-            return null;
-
-        try
-        {
-            using var stream = File.OpenRead(depsPath);
-            using var document = JsonDocument.Parse(stream);
-            if (!document.RootElement.TryGetProperty("libraries", out var libraries) ||
-                libraries.ValueKind != JsonValueKind.Object)
-            {
-                return null;
-            }
-
-            foreach (var library in libraries.EnumerateObject())
-            {
-                const string packagePrefix = "Microsoft.WindowsAppSDK/";
-                if (library.Name.StartsWith(packagePrefix, StringComparison.OrdinalIgnoreCase))
-                {
-                    return StripBuildMetadata(library.Name[packagePrefix.Length..]);
-                }
-            }
-        }
-        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or JsonException or ArgumentException)
-        {
-            Logger.Warn($"Failed to read Windows App SDK package version from {depsPath}: {ex.Message}");
-        }
-
-        return null;
-    }
-
-    private static string StripBuildMetadata(string version)
-    {
-        var plus = version.IndexOf('+', StringComparison.Ordinal);
-        return plus >= 0 ? version[..plus] : version;
     }
 
     private void OnRemoveGateway(object sender, RoutedEventArgs e) =>
