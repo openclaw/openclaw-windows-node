@@ -4,6 +4,7 @@ using System.Net.Http;
 using System.Net.Sockets;
 using System.Runtime.InteropServices;
 using System.Text.Json;
+using System.Text.RegularExpressions;
 using OpenClaw.Connection;
 using OpenClaw.Shared;
 
@@ -287,6 +288,9 @@ public sealed class CleanupStaleDistroStep : SetupStep
                     return delete;
             }
             ctx.Logger.Decision("No stale distro found", "skip cleanup");
+            var recoveryResult = DiscardRecoveryForRemovedDistro(ctx);
+            if (!recoveryResult.IsSuccess)
+                return recoveryResult;
             return StepResult.Ok("No stale distro to clean");
         }
 
@@ -315,10 +319,37 @@ public sealed class CleanupStaleDistroStep : SetupStep
             // Wait for port to be released
             ctx.Logger.Info("Waiting for port release after distro termination...");
             await PreflightPortStep.WaitForPortFreeAsync(ctx.Config.GatewayPort, ctx.Config.Gateway.Bind, ctx.Logger, ct);
+            var recoveryResult = DiscardRecoveryForRemovedDistro(ctx);
+            if (!recoveryResult.IsSuccess)
+                return recoveryResult;
             return StepResult.Ok($"Unregistered stale distro '{distro}'");
         }
 
         return StepResult.Fail($"Failed to unregister distro: {unregister.Stderr}");
+    }
+
+    private static StepResult DiscardRecoveryForRemovedDistro(SetupContext ctx)
+    {
+        GatewayReloadRecoveryState? recovery;
+        try
+        {
+            recovery = GatewayReloadRecoveryStore.Load(ctx);
+        }
+        catch (Exception ex)
+        {
+            return StepResult.Fail($"Cannot inspect gateway reload recovery state during cleanup: {ex.Message}", ex);
+        }
+
+        if (recovery is not null &&
+            !string.Equals(recovery.DistroName, ctx.DistroName, StringComparison.OrdinalIgnoreCase))
+        {
+            return StepResult.Fail(
+                $"Gateway reload recovery marker targets distro '{recovery.DistroName}', " +
+                $"but cleanup targets '{ctx.DistroName}'. Refusing to discard recovery state.");
+        }
+
+        GatewayReloadRecoveryStore.Clear(ctx);
+        return StepResult.Ok("Gateway reload recovery state discarded for removed distro");
     }
 
     internal static async Task<StepResult> DeleteDistroDirectoryWithRetries(
@@ -1249,14 +1280,23 @@ public sealed class InstallCliStep : SetupStep
         string installScript;
         try
         {
-            installScript = BuildInstallCommand(installUrl, ctx.Config.Gateway.Version);
+            installScript = BuildInstallCommand(
+                installUrl,
+                ctx.Config.Gateway.Version,
+                ctx.Config.Gateway.ExpectedPackageSha256);
         }
         catch (ArgumentException ex)
         {
             return StepResult.Fail(ex.Message);
         }
 
-        var result = await ctx.Commands.RunInWslAsync(distro, installScript, TimeSpan.FromMinutes(5), ct: ct);
+        var inputViaStdin = !string.IsNullOrWhiteSpace(ctx.Config.Gateway.ExpectedPackageSha256);
+        var result = await ctx.Commands.RunInWslAsync(
+            distro,
+            installScript,
+            TimeSpan.FromMinutes(5),
+            ct: ct,
+            inputViaStdin: inputViaStdin);
 
         if (result.ExitCode != 0)
             return StepResult.Fail($"CLI install failed (exit {result.ExitCode}): {result.Stderr}");
@@ -1289,9 +1329,15 @@ public sealed class InstallCliStep : SetupStep
         return StepResult.Fail("CLI installed but not found in any known location");
     }
 
-    internal static string BuildInstallCommand(string installUrl, string? requestedVersion)
+    internal static string BuildInstallCommand(
+        string installUrl,
+        string? requestedVersion,
+        string? expectedPackageSha256 = null)
     {
         var escapedUrl = WslShellQuoting.EscapePosixSingleQuoteInner(installUrl);
+        if (!string.IsNullOrWhiteSpace(expectedPackageSha256))
+            return BuildVerifiedPackageInstallCommand(escapedUrl, requestedVersion, expectedPackageSha256);
+
         if (string.IsNullOrWhiteSpace(requestedVersion))
             return $"curl -fsSL --proto '=https' --tlsv1.2 '{escapedUrl}' | bash";
 
@@ -1301,6 +1347,44 @@ public sealed class InstallCliStep : SetupStep
 
         var escapedVersion = WslShellQuoting.EscapePosixSingleQuoteInner(trimmedVersion);
         return $"curl -fsSL --proto '=https' --tlsv1.2 '{escapedUrl}' | bash -s -- --version '{escapedVersion}'";
+    }
+
+    private static string BuildVerifiedPackageInstallCommand(
+        string escapedInstallUrl,
+        string? requestedVersion,
+        string expectedPackageSha256)
+    {
+        var normalizedSha256 = expectedPackageSha256.Trim().ToLowerInvariant();
+        if (normalizedSha256.Length != 64 || !normalizedSha256.All(Uri.IsHexDigit))
+            throw new ArgumentException("Expected gateway package SHA-256 must contain exactly 64 hexadecimal characters.");
+
+        var packageSpec = requestedVersion?.Trim();
+        if (string.IsNullOrWhiteSpace(packageSpec) ||
+            packageSpec.Contains('\n') ||
+            packageSpec.Contains('\r') ||
+            !Uri.TryCreate(packageSpec, UriKind.Absolute, out var packageUri) ||
+            (packageUri.Scheme != Uri.UriSchemeHttp && packageUri.Scheme != Uri.UriSchemeHttps) ||
+            !packageUri.AbsolutePath.EndsWith(".tgz", StringComparison.OrdinalIgnoreCase) ||
+            !string.IsNullOrEmpty(packageUri.UserInfo))
+        {
+            throw new ArgumentException(
+                "Expected gateway package SHA-256 requires Version to be a credential-free HTTP(S) .tgz URL.");
+        }
+
+        var escapedPackageSpec = WslShellQuoting.EscapePosixSingleQuoteInner(packageSpec);
+        var packageCurlOptions = packageUri.Scheme == Uri.UriSchemeHttps
+            ? "--proto '=https' --tlsv1.2"
+            : "--proto '=http'";
+
+        return
+            "download_dir=\"$(mktemp -d /tmp/openclaw-install.XXXXXX)\"" +
+            " && trap 'rm -rf -- \"$download_dir\"' EXIT" +
+            " && package_path=\"$download_dir/openclaw.tgz\"" +
+            " && installer_path=\"$download_dir/install-cli.sh\"" +
+            $" && curl -fsSL {packageCurlOptions} '{escapedPackageSpec}' -o \"$package_path\"" +
+            $" && printf '%s  %s\\n' '{normalizedSha256}' \"$package_path\" | sha256sum --check --strict -" +
+            $" && curl -fsSL --proto '=https' --tlsv1.2 '{escapedInstallUrl}' -o \"$installer_path\"" +
+            " && bash \"$installer_path\" --version \"$package_path\"";
     }
 
     private static async Task<StepResult> EnsureCliOnDefaultPathAsync(
@@ -1357,9 +1441,37 @@ public sealed class InstallCliStep : SetupStep
     }
 }
 
+public sealed class RecoverGatewayReloadStep : SetupStep
+{
+    public override string Id => "recover-gateway-reload";
+    public override string DisplayName => "Recover gateway reload state";
+    public override bool CanRetry => false;
+
+    public override Task<StepResult> ExecuteAsync(SetupContext ctx, CancellationToken ct) =>
+        new SetupWizardRunner(ctx).ReconcilePendingReloadRecoveryAsync();
+}
+
+internal static class GatewayReloadModeConfig
+{
+    internal static string Resolve(string? gatewayVersion, string configuredMode)
+    {
+        var version = gatewayVersion?.Trim();
+        var usesLegacySchema =
+            string.Equals(version, GatewayLkgVersion.LkgVersion, StringComparison.OrdinalIgnoreCase) ||
+            string.Equals(version, "2026.7.2-beta.3", StringComparison.OrdinalIgnoreCase);
+
+        if (usesLegacySchema)
+            return configuredMode;
+
+        return configuredMode is "hot" or "restart" ? "hybrid" : configuredMode;
+    }
+}
+
 public sealed class ConfigureGatewayStep : SetupStep
 {
     internal const string DevicePairPublicUrlKey = "plugins.entries.device-pair.config.publicUrl";
+    internal const string CurrentNodeCommandAllowConfigKey = GatewayNodeCommandPolicyConfig.CurrentAllowKey;
+    internal const string LegacyNodeCommandAllowConfigKey = GatewayNodeCommandPolicyConfig.LegacyAllowKey;
     internal const string DevicePairEnabledKey = "plugins.entries.device-pair.enabled";
     // Each `openclaw config set` emitted below spawns the Node CLI fresh inside WSL; on a
     // newly created distro with a cold cache that is ~4-5s apiece. Budget the step by how
@@ -1392,7 +1504,9 @@ public sealed class ConfigureGatewayStep : SetupStep
 
         var allowedCommandsJson = JsonSerializer.Serialize(ctx.Config.Capabilities.GetEnabledCommandIds());
         var escapedAllowedCommands = WslShellQuoting.QuotePosixSingleQuote(allowedCommandsJson);
-        var extraConfigOverridesAllowCommands = gw.ExtraConfig?.ContainsKey("gateway.nodes.allowCommands") == true;
+        var nodeCommandAllowConfigKey = ResolveNodeCommandAllowConfigKey(gw);
+        var extraConfigOverridesAllowCommands =
+            gw.ExtraConfig?.ContainsKey(nodeCommandAllowConfigKey) == true;
         if (gw.ExtraConfig is { Count: > 0 })
         {
             foreach (var key in gw.ExtraConfig.Keys)
@@ -1404,9 +1518,10 @@ public sealed class ConfigureGatewayStep : SetupStep
 
         var configCommands = BuildConfigCommands(gw, port, escapedAllowedCommands, ctx.Config.Tailscale);
 
-        ctx.Logger.Info($"Gateway node allowCommands derived from setup capabilities: {allowedCommandsJson}");
+        ctx.Logger.Info(
+            $"Gateway node command allowlist ({nodeCommandAllowConfigKey}) derived from setup capabilities: {allowedCommandsJson}");
         if (extraConfigOverridesAllowCommands)
-            ctx.Logger.Warn("Gateway.ExtraConfig overrides derived gateway.nodes.allowCommands");
+            ctx.Logger.Warn($"Gateway.ExtraConfig overrides derived {nodeCommandAllowConfigKey}");
         if (GetDefaultDevicePairPublicUrl(gw, port, ctx.Config.Tailscale.Enabled) is { } defaultPublicUrl &&
             gw.ExtraConfig?.ContainsKey(DevicePairPublicUrlKey) != true)
         {
@@ -1445,14 +1560,14 @@ public sealed class ConfigureGatewayStep : SetupStep
         string escapedAllowedCommands,
         TailscaleConfig? tailscale = null)
     {
+        var nodeCommandAllowConfigKey = ResolveNodeCommandAllowConfigKey(gw);
         var configCommands = $"""
             openclaw config set gateway.mode local
             openclaw config set gateway.port {port}
             openclaw config set gateway.bind {gw.Bind}
             openclaw config set gateway.auth.mode {gw.AuthMode}
             openclaw config set gateway.auth.token "$OPENCLAW_GATEWAY_TOKEN"
-            openclaw config set gateway.reload.mode {gw.ReloadMode}
-            openclaw config set gateway.nodes.allowCommands {escapedAllowedCommands}
+            openclaw config set {nodeCommandAllowConfigKey} {escapedAllowedCommands}
             """;
 
         if (tailscale?.Enabled == true)
@@ -1496,13 +1611,25 @@ public sealed class ConfigureGatewayStep : SetupStep
                 if (!IsSafeExtraConfigKey(key))
                     throw new ArgumentException($"Invalid Gateway.ExtraConfig key '{key}'. Keys may contain only letters, digits, '.', '_', and '-'.", nameof(gw));
 
-                var escapedValue = WslShellQuoting.QuotePosixSingleQuote(value);
+                var compatibleValue = string.Equals(key, "gateway.reload.mode", StringComparison.Ordinal)
+                    ? GatewayReloadModeConfig.Resolve(gw.Version, value)
+                    : value;
+                var escapedValue = WslShellQuoting.QuotePosixSingleQuote(compatibleValue);
                 configCommands += $"\n            openclaw config set {key} {escapedValue}";
             }
         }
 
+        if (gw.ExtraConfig?.ContainsKey("gateway.reload.mode") != true)
+        {
+            var reloadMode = GatewayReloadModeConfig.Resolve(gw.Version, gw.ReloadMode);
+            configCommands += $"\n            openclaw config set gateway.reload.mode {WslShellQuoting.QuotePosixSingleQuote(reloadMode)}";
+        }
+
         return configCommands;
     }
+
+    internal static string ResolveNodeCommandAllowConfigKey(GatewayConfig gw)
+        => GatewayNodeCommandPolicyConfig.ResolveAllowKey(gw.Version);
 
     // Budget = base + per-command, floored. Scales the WSL timeout with the number of
     // `openclaw config set` invocations the step emits so it cannot silently regress as
@@ -1527,6 +1654,13 @@ public sealed class ConfigureGatewayStep : SetupStep
 
     internal static string? GetDefaultDevicePairPublicUrl(GatewayConfig gw, int port, bool tailscaleEnabled = false) =>
         gw.Bind == "loopback" && !tailscaleEnabled ? $"http://127.0.0.1:{port}" : null;
+
+    internal static string GetEffectiveReloadMode(GatewayConfig gw) =>
+        GatewayReloadModeConfig.Resolve(
+            gw.Version,
+            gw.ExtraConfig?.TryGetValue("gateway.reload.mode", out var overrideMode) == true
+                ? overrideMode
+                : gw.ReloadMode);
 
     internal static bool IsSafeExtraConfigKey(string value)
         => System.Text.RegularExpressions.Regex.IsMatch(value, "^[A-Za-z0-9._-]+$");
@@ -1556,37 +1690,62 @@ public sealed class InstallGatewayServiceStep : SetupStep
     }
 }
 
+public sealed class WaitForGatewayHealthStep : SetupStep
+{
+    public override string Id => "wait-gateway-health";
+    public override string DisplayName => "Wait for gateway health";
+
+    public override async Task<StepResult> ExecuteAsync(SetupContext ctx, CancellationToken ct)
+    {
+        var portOwnership = await StartGatewayStep.CheckPortOwnershipAsync(ctx, ct);
+        return portOwnership.Failure ?? await StartGatewayStep.WaitForHealthAsync(ctx, ct);
+    }
+}
+
 public sealed class StartGatewayStep : SetupStep
 {
+    internal sealed record PortOwnershipCheck(
+        bool IsManagedGateway,
+        StepResult? Failure);
+
     public override string Id => "start-gateway";
     public override string DisplayName => "Start gateway";
     public override RetryPolicy Retry => new(MaxAttempts: 3, InitialDelay: TimeSpan.FromSeconds(3));
 
-    public override async Task<StepResult> ExecuteAsync(SetupContext ctx, CancellationToken ct)
+    public override Task<StepResult> ExecuteAsync(SetupContext ctx, CancellationToken ct) =>
+        StartOrRestartAndWaitForHealthAsync(ctx, restart: false, ct);
+
+    internal static Task<StepResult> RestartAndWaitForHealthAsync(SetupContext ctx, CancellationToken ct) =>
+        StartOrRestartAndWaitForHealthAsync(ctx, restart: true, ct);
+
+    private static async Task<StepResult> StartOrRestartAndWaitForHealthAsync(
+        SetupContext ctx,
+        bool restart,
+        CancellationToken ct)
     {
         var distro = ctx.DistroName!;
         var pathCmd = ctx.WslPathPrefix;
+        var action = restart ? "restart" : "start";
 
-        // Check for port conflicts before starting
-        var portCheck = await ctx.Commands.RunInWslAsync(
-            distro, $"ss -tlnp 2>/dev/null | grep ':{ctx.Config.GatewayPort}\\b' || true",
-            TimeSpan.FromSeconds(10), ct: ct);
+        var portOwnership = await CheckPortOwnershipAsync(ctx, ct);
+        if (portOwnership.Failure is not null)
+            return portOwnership.Failure;
 
-        if (!string.IsNullOrWhiteSpace(portCheck.Stdout) && portCheck.Stdout.Contains($":{ctx.Config.GatewayPort}"))
+        if (!restart && portOwnership.IsManagedGateway)
         {
-            if (!portCheck.Stdout.Contains("openclaw", StringComparison.OrdinalIgnoreCase))
-            {
-                ctx.Logger.Warn($"Port {ctx.Config.GatewayPort} is in use by another process:\n{portCheck.Stdout.Trim()}");
-                return StepResult.Fail(
-                    $"Port {ctx.Config.GatewayPort} is already in use by another process. Either stop the conflicting process or change GatewayPort in the setup config.");
-            }
-
-            ctx.Logger.Info($"Port {ctx.Config.GatewayPort} appears to be in use by openclaw — proceeding");
+            ctx.Logger.Info(
+                $"Managed OpenClaw Gateway already owns port {ctx.Config.GatewayPort}; reusing it instead of issuing a redundant start");
+            return await WaitForHealthAsync(ctx, ct);
         }
 
-        // Start the service
+        if (restart && portOwnership.IsManagedGateway)
+        {
+            ctx.Logger.Info(
+                $"Managed OpenClaw Gateway owns port {ctx.Config.GatewayPort}; delegating its stop/start lifecycle to openclaw gateway restart");
+        }
+
         var start = await ctx.Commands.RunInWslAsync(
-            distro, $"{pathCmd} && openclaw gateway start", TimeSpan.FromSeconds(30), ct: ct);
+            distro, $"{pathCmd} && openclaw gateway {action}", TimeSpan.FromSeconds(30), ct: ct);
 
         if (start.ExitCode != 0)
         {
@@ -1600,17 +1759,106 @@ public sealed class StartGatewayStep : SetupStep
                     TimeSpan.FromSeconds(10),
                     ct: ct);
                 await Task.Delay(2000, ct);
-                start = await ctx.Commands.RunInWslAsync(distro, $"{pathCmd} && openclaw gateway start", TimeSpan.FromSeconds(30), ct: ct);
+                start = await ctx.Commands.RunInWslAsync(distro, $"{pathCmd} && openclaw gateway {action}", TimeSpan.FromSeconds(30), ct: ct);
                 if (start.ExitCode != 0)
-                    return StepResult.Fail($"Gateway start failed after reset: {start.Stderr}");
+                    return StepResult.Fail($"Gateway {action} failed after reset: {start.Stderr}");
             }
             else
             {
-                return StepResult.Fail($"Gateway start failed (exit {start.ExitCode}): {start.Stderr}");
+                return StepResult.Fail($"Gateway {action} failed (exit {start.ExitCode}): {start.Stderr}");
             }
         }
 
-        // Wait for health endpoint
+        return await WaitForHealthAsync(ctx, ct);
+    }
+
+    internal static async Task<PortOwnershipCheck> CheckPortOwnershipAsync(
+        SetupContext ctx,
+        CancellationToken ct)
+    {
+        var portCheck = await ctx.Commands.RunInWslAsync(
+            ctx.DistroName!, "ss -tlnp",
+            TimeSpan.FromSeconds(10), ct: ct);
+
+        if (portCheck.ExitCode != 0)
+        {
+            var probeError = string.IsNullOrWhiteSpace(portCheck.Stderr)
+                ? portCheck.Stdout.Trim()
+                : portCheck.Stderr.Trim();
+            ctx.Logger.Warn(
+                $"Could not inspect port {ctx.Config.GatewayPort} ownership with ss (exit {portCheck.ExitCode}): {probeError}");
+            return new PortOwnershipCheck(
+                false,
+                StepResult.Fail(
+                    $"Gateway could not inspect port ownership for port {ctx.Config.GatewayPort}. Refusing to start or restart without listener ownership proof."));
+        }
+
+        var selectedPortListeners = portCheck.Stdout
+            .Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .Where(line =>
+            {
+                var columns = line.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries);
+                return columns.Length >= 4 &&
+                    string.Equals(columns[0], "LISTEN", StringComparison.OrdinalIgnoreCase) &&
+                    columns[3].EndsWith($":{ctx.Config.GatewayPort}", StringComparison.Ordinal);
+            })
+            .ToArray();
+        if (selectedPortListeners.Length == 0)
+            return new PortOwnershipCheck(false, null);
+
+        var selectedPortOutput = string.Join('\n', selectedPortListeners);
+        var listenerPidsByLine = selectedPortListeners
+            .Select(line => Regex.Matches(line, @"\bpid=(\d+)\b")
+                .Select(match => int.TryParse(match.Groups[1].Value, out var pid) ? pid : 0)
+                .Where(pid => pid > 0)
+                .Distinct()
+                .ToArray())
+            .ToArray();
+        if (listenerPidsByLine.Any(pids => pids.Length == 0))
+        {
+            ctx.Logger.Warn(
+                $"Port {ctx.Config.GatewayPort} has a listener whose process ownership could not be attributed:\n{selectedPortOutput}");
+            return new PortOwnershipCheck(
+                false,
+                StepResult.Fail(
+                    $"Port {ctx.Config.GatewayPort} is already in use, but its owning process could not be attributed. Refusing to stop or replace an unknown listener."));
+        }
+
+        var listenerPids = listenerPidsByLine
+            .SelectMany(pids => pids)
+            .Distinct()
+            .ToArray();
+        var servicePidResult = await ctx.Commands.RunInWslAsync(
+            ctx.DistroName!,
+            "systemctl --user show openclaw-gateway.service --property=MainPID --value",
+            TimeSpan.FromSeconds(10),
+            ct: ct);
+        var managedServicePid = 0;
+        var hasManagedServicePid =
+            servicePidResult.ExitCode == 0 &&
+            int.TryParse(servicePidResult.Stdout.Trim(), out managedServicePid) &&
+            managedServicePid > 0;
+        var allListenersBelongToManagedGateway =
+            hasManagedServicePid && listenerPids.All(pid => pid == managedServicePid);
+
+        if (!allListenersBelongToManagedGateway)
+        {
+            ctx.Logger.Warn(
+                $"Port {ctx.Config.GatewayPort} is in use by a listener not owned by the managed OpenClaw Gateway service:\n{selectedPortOutput}");
+            return new PortOwnershipCheck(
+                false,
+                StepResult.Fail(
+                    $"Port {ctx.Config.GatewayPort} is already in use by another or unattributable process. Either stop the conflicting process through its owner or change GatewayPort in the setup config."));
+        }
+
+        ctx.Logger.Info(
+            $"Port {ctx.Config.GatewayPort} is owned by managed OpenClaw Gateway service PID {managedServicePid}");
+        return new PortOwnershipCheck(true, null);
+    }
+
+    internal static async Task<StepResult> WaitForHealthAsync(SetupContext ctx, CancellationToken ct)
+    {
+        var distro = ctx.DistroName!;
         ctx.Logger.Info("Waiting for gateway health endpoint...");
         var healthDeadline = DateTimeOffset.UtcNow.Add(TimeSpan.FromSeconds(ctx.Config.Gateway.HealthTimeoutSeconds));
 
@@ -2090,25 +2338,24 @@ public sealed class PairOperatorStep : SetupStep
     internal enum ConnectionOutcome { Connected, PairingRequired, Error, Timeout }
 
     internal static async Task<ConnectionOutcome> WaitForConnectionOrPairing(
-        OpenClawGatewayClient client, SetupContext ctx, TimeSpan timeout, CancellationToken ct)
+        OpenClawGatewayClient client,
+        SetupContext ctx,
+        TimeSpan timeout,
+        CancellationToken ct,
+        bool waitThroughTransientErrors = false)
     {
         var tcs = new TaskCompletionSource<ConnectionOutcome>();
 
         void OnStatusChanged(object? sender, ConnectionStatus status)
         {
             ctx.Logger.Debug($"Operator connection status: {status}");
-            if (status == ConnectionStatus.Connected)
-                tcs.TrySetResult(ConnectionOutcome.Connected);
-            else if (status == ConnectionStatus.Error)
-                tcs.TrySetResult(ConnectionOutcome.Error);
-            else if (status == ConnectionStatus.Disconnected)
-            {
-                // Check if pairing was required — client sets IsPairingRequired before disconnect
-                if (client.IsPairingRequired)
-                    tcs.TrySetResult(ConnectionOutcome.PairingRequired);
-                else
-                    tcs.TrySetResult(ConnectionOutcome.Error);
-            }
+            var outcome = ConnectionOutcomeForStatus(
+                status,
+                client.IsPairingRequired,
+                client.IsAuthFailed,
+                waitThroughTransientErrors);
+            if (outcome is not null)
+                tcs.TrySetResult(outcome.Value);
         }
 
         client.StatusChanged += OnStatusChanged;
@@ -2140,6 +2387,23 @@ public sealed class PairOperatorStep : SetupStep
             client.StatusChanged -= OnStatusChanged;
             client.DeviceTokenReceived -= onDeviceToken;
         }
+    }
+
+    internal static ConnectionOutcome? ConnectionOutcomeForStatus(
+        ConnectionStatus status,
+        bool pairingRequired,
+        bool authFailed,
+        bool waitThroughTransientErrors)
+    {
+        return status switch
+        {
+            ConnectionStatus.Connected => ConnectionOutcome.Connected,
+            ConnectionStatus.Disconnected when pairingRequired => ConnectionOutcome.PairingRequired,
+            ConnectionStatus.Error or ConnectionStatus.Disconnected when authFailed => ConnectionOutcome.Error,
+            ConnectionStatus.Error or ConnectionStatus.Disconnected when waitThroughTransientErrors => null,
+            ConnectionStatus.Error or ConnectionStatus.Disconnected => ConnectionOutcome.Error,
+            _ => null,
+        };
     }
 
     public override async Task RollbackAsync(SetupContext ctx, CancellationToken ct)

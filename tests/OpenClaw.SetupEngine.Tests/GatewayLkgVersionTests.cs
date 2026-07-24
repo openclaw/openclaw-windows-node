@@ -30,5 +30,6 @@ public sealed class GatewayLkgVersionTests
         GatewayLkgVersion.ApplyToConfig(config);
 
         Assert.Null(config.Gateway.Version);
+        Assert.Equal("https://contoso.example/install-cli.sh", config.Gateway.InstallUrl);
     }
 }

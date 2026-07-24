@@ -1,3 +1,4 @@
+using System.Globalization;
 using OpenClaw.Shared;
 using OpenClaw.Connection;
 using OpenClawTray.Services;
@@ -657,6 +658,27 @@ public sealed class TrayDashboardSummaryBuilderTests
         var summary = Build(Base(ConnectionStatus.Connected, usage: usage));
 
         Assert.Contains("2.5M tokens", summary.MetricsLine);
+    }
+
+    [Fact]
+    public void MetricsLine_UsesInvariantDecimalSeparatorUnderPtPt()
+    {
+        var originalCulture = CultureInfo.CurrentCulture;
+        var originalUiCulture = CultureInfo.CurrentUICulture;
+        try
+        {
+            CultureInfo.CurrentCulture = new CultureInfo("pt-PT");
+            CultureInfo.CurrentUICulture = new CultureInfo("pt-PT");
+            var usage = new GatewayUsageInfo { CostUsd = 0, TotalTokens = 2_500_000 };
+            var summary = Build(Base(ConnectionStatus.Connected, usage: usage));
+            Assert.Contains("2.5M tokens", summary.MetricsLine);
+            Assert.DoesNotContain("2,5M tokens", summary.MetricsLine);
+        }
+        finally
+        {
+            CultureInfo.CurrentCulture = originalCulture;
+            CultureInfo.CurrentUICulture = originalUiCulture;
+        }
     }
 
     [Fact]

@@ -163,7 +163,11 @@ Paths outside the allowed set are silently dropped from the action envelope. If 
 
 ## Capability gate
 
-Three RPCs are involved, all of which must be on the gateway's `gateway.nodes.allowCommands` list (and the node must advertise them via `node.describe`):
+Three RPCs are involved, all of which must be on the gateway's
+version-appropriate allowlist (and the node must advertise them via
+`node.describe`): use `gateway.nodes.commands.allow` for current/frozen
+packages, or `gateway.nodes.allowCommands` for exact legacy versions
+`2026.6.11` and `2026.7.2-beta.3`.
 
 ```
 canvas.a2ui.push

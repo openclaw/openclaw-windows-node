@@ -801,6 +801,102 @@ public class SetupStepsTests : IDisposable
         Assert.True(step.CanSkip(ctx));
     }
 
+    [Fact]
+    public async Task CleanupStaleDistro_DiscardsReloadRecoveryAfterProvingDistroAbsent()
+    {
+        var commands = new FakeCommandRunner(_ => Ok());
+        var ctx = CreateContext(commands: commands);
+        GatewayReloadRecoveryStore.Save(ctx, "hot");
+
+        var result = await new CleanupStaleDistroStep().ExecuteAsync(ctx, CancellationToken.None);
+
+        Assert.True(result.IsSuccess, result.Message);
+        Assert.False(File.Exists(GatewayReloadRecoveryStore.GetPath(ctx)));
+    }
+
+    [Fact]
+    public async Task CleanupStaleDistro_SucceedsWhenRecoveryDirectoryNeverExisted()
+    {
+        var commands = new FakeCommandRunner(_ => Ok());
+        var ctx = CreateContext(commands: commands);
+        Directory.Delete(ctx.LocalDataDir, recursive: true);
+        Assert.False(Directory.Exists(ctx.LocalDataDir));
+
+        var result = await new CleanupStaleDistroStep().ExecuteAsync(ctx, CancellationToken.None);
+
+        Assert.True(result.IsSuccess, result.Message);
+        Assert.False(Directory.Exists(ctx.LocalDataDir));
+    }
+
+    [Fact]
+    public async Task CleanupStaleDistro_PreservesReloadRecoveryForDifferentDistro()
+    {
+        var commands = new FakeCommandRunner(_ => Ok());
+        var ctx = CreateContext(commands: commands);
+        ctx.DistroName = "old-distro";
+        GatewayReloadRecoveryStore.Save(ctx, "hot");
+        ctx.DistroName = "new-distro";
+
+        var result = await new CleanupStaleDistroStep().ExecuteAsync(ctx, CancellationToken.None);
+
+        Assert.False(result.IsSuccess);
+        Assert.Contains("Refusing to discard recovery state", result.Message);
+        Assert.True(File.Exists(GatewayReloadRecoveryStore.GetPath(ctx)));
+    }
+
+    [Fact]
+    public async Task CleanupStaleDistro_PreservesReloadRecoveryWhenDistroListFails()
+    {
+        var commands = new FakeCommandRunner(_ => Fail("WSL list failed"));
+        var ctx = CreateContext(commands: commands);
+        GatewayReloadRecoveryStore.Save(ctx, "hot");
+
+        var result = await new CleanupStaleDistroStep().ExecuteAsync(ctx, CancellationToken.None);
+
+        Assert.True(result.IsSuccess, result.Message);
+        Assert.True(File.Exists(GatewayReloadRecoveryStore.GetPath(ctx)));
+    }
+
+    [Fact]
+    public async Task RecoverGatewayReload_RestoresPendingModeBeforeApplyingCurrentConfiguration()
+    {
+        var commands = new FakeCommandRunner(
+            _ => Ok(),
+            (_, command, _) => command switch
+            {
+                var value when value.Contains("GATEWAY_CONFIGURED") => Ok("GATEWAY_CONFIGURED"),
+                var value when value.Contains("config set gateway.reload.mode 'hybrid'") => Ok(),
+                var value when value.Contains("ss -tlnp") => Ok(),
+                var value when value.Contains("openclaw gateway restart") => Ok(),
+                var value when value.Contains("curl -s") => Ok("200"),
+                _ => Fail($"Unexpected command: {command}"),
+            });
+        var ctx = CreateContext(
+            new SetupConfig
+            {
+                CleanBeforeRun = false,
+                Gateway = new GatewayConfig
+                {
+                    Version = "https://127.0.0.1/openclaw-composed.tgz",
+                    ReloadMode = "hot",
+                },
+            },
+            commands);
+        ctx.DistroName = "test-distro";
+        GatewayReloadRecoveryStore.Save(ctx, "restart");
+
+        var result = await new SetupPipeline(
+            [new RecoverGatewayReloadStep(), new ConfigureGatewayStep()],
+            rollbackOnFailureOverride: false).RunAsync(ctx);
+
+        Assert.Equal(PipelineOutcome.Success, result.Outcome);
+        Assert.Contains("config set gateway.reload.mode 'hybrid'", commands.WslCalls[0].Command);
+        var configureCall = Assert.Single(commands.WslCalls, call => call.Command.Contains("GATEWAY_CONFIGURED"));
+        Assert.Contains("config set gateway.reload.mode 'hybrid'", configureCall.Command);
+        Assert.True(commands.WslCalls.IndexOf(configureCall) > 0);
+        Assert.False(File.Exists(GatewayReloadRecoveryStore.GetPath(ctx)));
+    }
+
     // ─── InstallCliStep: URL validation and quoting ───
 
     [Fact]
@@ -934,6 +1030,72 @@ public class SetupStepsTests : IDisposable
         var command = InstallCliStep.BuildInstallCommand("https://openclaw.ai/install-cli's.sh", "2026.5.22'a");
 
         Assert.Equal("curl -fsSL --proto '=https' --tlsv1.2 'https://openclaw.ai/install-cli'\\''s.sh' | bash -s -- --version '2026.5.22'\\''a'", command);
+    }
+
+    [Fact]
+    public void InstallCli_BuildInstallCommand_VerifiesDownloadedPackageBeforeInstallerConsumesIt()
+    {
+        const string packageUrl = "http://172.24.1.2:38677/openclaw-composed.tgz";
+        const string expectedSha256 =
+            "0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF";
+
+        var command = InstallCliStep.BuildInstallCommand(
+            "https://openclaw.ai/install-cli.sh",
+            packageUrl,
+            expectedSha256);
+
+        var packageDownload = command.IndexOf(packageUrl, StringComparison.Ordinal);
+        var digestCheck = command.IndexOf("sha256sum --check --strict -", StringComparison.Ordinal);
+        var installerInvocation = command.IndexOf(
+            "bash \"$installer_path\" --version \"$package_path\"",
+            StringComparison.Ordinal);
+
+        Assert.True(packageDownload >= 0 && packageDownload < digestCheck);
+        Assert.True(digestCheck >= 0 && digestCheck < installerInvocation);
+        Assert.Contains("&& printf '%s  %s\\n' '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef'", command, StringComparison.Ordinal);
+        Assert.Contains("&& curl -fsSL --proto '=http'", command, StringComparison.Ordinal);
+        Assert.DoesNotContain($"--version '{packageUrl}'", command, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task InstallCli_DigestMismatchFailsBeforePostInstallVerification()
+    {
+        var commands = new FakeCommandRunner(
+            _ => Fail("Windows commands are not expected"),
+            (_, command, _) => command.Contains("sha256sum --check", StringComparison.Ordinal)
+                ? Fail("openclaw.tgz: FAILED")
+                : Fail($"unexpected post-install command: {command}"));
+        var ctx = CreateContext(new SetupConfig
+        {
+            Gateway = new GatewayConfig
+            {
+                Version = "http://172.24.1.2:38677/openclaw-composed.tgz",
+                ExpectedPackageSha256 = new string('a', 64)
+            }
+        }, commands);
+
+        var result = await new InstallCliStep().ExecuteAsync(ctx, CancellationToken.None);
+
+        Assert.Equal(StepOutcome.Failed, result.Outcome);
+        Assert.Contains("CLI install failed", result.Message, StringComparison.Ordinal);
+        var installCall = Assert.Single(commands.WslCalls);
+        Assert.Contains("sha256sum --check --strict -", installCall.Command, StringComparison.Ordinal);
+        Assert.Contains("&& bash \"$installer_path\" --version \"$package_path\"", installCall.Command, StringComparison.Ordinal);
+        Assert.True(installCall.InputViaStdin);
+    }
+
+    [Theory]
+    [InlineData("not-a-digest", "http://example.test/openclaw.tgz")]
+    [InlineData("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "2026.7.2-beta.3")]
+    [InlineData("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "http://user:secret@example.test/openclaw.tgz")]
+    public void InstallCli_BuildInstallCommand_RejectsInvalidDigestContract(
+        string expectedSha256,
+        string packageSpec)
+    {
+        Assert.Throws<ArgumentException>(() => InstallCliStep.BuildInstallCommand(
+            "https://openclaw.ai/install-cli.sh",
+            packageSpec,
+            expectedSha256));
     }
 
     [Fact]
@@ -1563,6 +1725,1028 @@ public class SetupStepsTests : IDisposable
     public void ConfigureGateway_RejectsUnsafeExtraConfigKeys(string key)
     {
         Assert.False(ConfigureGatewayStep.IsSafeExtraConfigKey(key));
+    }
+
+    [Theory]
+    [InlineData("hot")]
+    [InlineData("restart")]
+    public void ConfigureGateway_MapsLegacyReloadModesToHybridForCurrentSchema(string reloadMode)
+    {
+        var commands = ConfigureGatewayStep.BuildConfigCommands(
+            new GatewayConfig
+            {
+                Version = "https://127.0.0.1/openclaw-composed.tgz",
+                ReloadMode = reloadMode,
+            },
+            18789,
+            "'[]'");
+
+        Assert.Contains("openclaw config set gateway.reload.mode 'hybrid'", commands);
+        Assert.DoesNotContain($"gateway.reload.mode '{reloadMode}'", commands);
+    }
+
+    [Theory]
+    [InlineData("2026.6.11", "hot")]
+    [InlineData("2026.6.11", "restart")]
+    [InlineData("2026.7.2-beta.3", "hot")]
+    [InlineData("2026.7.2-beta.3", "restart")]
+    public void ConfigureGateway_PreservesLegacyReloadModesForLegacySchemas(
+        string version,
+        string reloadMode)
+    {
+        var commands = ConfigureGatewayStep.BuildConfigCommands(
+            new GatewayConfig { Version = version, ReloadMode = reloadMode },
+            18789,
+            "'[]'");
+
+        Assert.Contains($"openclaw config set gateway.reload.mode '{reloadMode}'", commands);
+    }
+
+    [Fact]
+    public void ConfigureGateway_WritesCurrentNestedNodeCommandAllowlist()
+    {
+        var commands = ConfigureGatewayStep.BuildConfigCommands(
+            new GatewayConfig(),
+            18789,
+            "'[\"system.run\"]'");
+
+        Assert.Contains(
+            "openclaw config set gateway.nodes.commands.allow '[\"system.run\"]'",
+            commands);
+        Assert.DoesNotContain("gateway.nodes.allowCommands", commands, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void ConfigureGateway_PreservesPinnedLkgNodeCommandAllowlistContract()
+    {
+        var commands = ConfigureGatewayStep.BuildConfigCommands(
+            new GatewayConfig { Version = GatewayLkgVersion.LkgVersion },
+            18789,
+            "'[\"system.run\"]'");
+
+        Assert.Contains(
+            "openclaw config set gateway.nodes.allowCommands '[\"system.run\"]'",
+            commands);
+        Assert.DoesNotContain("gateway.nodes.commands.allow", commands, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void ConfigureGateway_PreservesOfficialBetaNodeCommandAllowlistContract()
+    {
+        var commands = ConfigureGatewayStep.BuildConfigCommands(
+            new GatewayConfig { Version = "2026.7.2-beta.3" },
+            18789,
+            "'[\"system.run\"]'");
+
+        Assert.Contains(
+            "openclaw config set gateway.nodes.allowCommands '[\"system.run\"]'",
+            commands);
+        Assert.DoesNotContain("gateway.nodes.commands.allow", commands, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void ConfigureGateway_ExtraConfigOverridesReloadMode()
+    {
+        var commands = ConfigureGatewayStep.BuildConfigCommands(
+            new GatewayConfig
+            {
+                Version = "https://127.0.0.1/openclaw-composed.tgz",
+                ExtraConfig = new Dictionary<string, string>
+                {
+                    ["gateway.reload.mode"] = "restart",
+                },
+            },
+            18789,
+            "'[]'");
+
+        Assert.DoesNotContain("openclaw config set gateway.reload.mode off", commands);
+        Assert.Equal(1, commands.Split("gateway.reload.mode", StringSplitOptions.None).Length - 1);
+        Assert.Contains("openclaw config set gateway.reload.mode 'hybrid'", commands);
+    }
+
+    [Fact]
+    public void ConfigureGateway_EffectiveReloadModeUsesExtraConfigOverride()
+    {
+        var config = new GatewayConfig
+        {
+            Version = "https://127.0.0.1/openclaw-composed.tgz",
+            ReloadMode = "hot",
+            ExtraConfig = new Dictionary<string, string>
+            {
+                ["gateway.reload.mode"] = "restart",
+            },
+        };
+
+        Assert.Equal("hybrid", ConfigureGatewayStep.GetEffectiveReloadMode(config));
+    }
+
+    [Fact]
+    public async Task StartGateway_RestartUsesRestartCommandAndWaitsForHealth()
+    {
+        var commands = new FakeCommandRunner(
+            _ => Ok(),
+            (_, command, _) => command switch
+            {
+                var value when value.Contains("ss -tlnp") => Ok(),
+                var value when value.Contains("openclaw gateway restart") => Ok(),
+                var value when value.Contains("curl -s") => Ok("200"),
+                _ => Fail($"Unexpected command: {command}"),
+            });
+        var ctx = CreateContext(commands: commands);
+        ctx.DistroName = "test-distro";
+
+        var result = await StartGatewayStep.RestartAndWaitForHealthAsync(ctx, CancellationToken.None);
+
+        Assert.True(result.IsSuccess, result.Message);
+        Assert.Contains(commands.WslCalls, call => call.Command.Contains("ss -tlnp"));
+        Assert.Contains(commands.WslCalls, call => call.Command.Contains("openclaw gateway restart"));
+    }
+
+    [Fact]
+    public async Task StartGateway_RestartRejectsUnrelatedPortOwner()
+    {
+        var commands = new FakeCommandRunner(
+            _ => Ok(),
+            (_, command, _) => command switch
+            {
+                var value when value.Contains("ss -tlnp") =>
+                    Ok("LISTEN 0 4096 127.0.0.1:18789 users:((\"python\",pid=42,fd=3))"),
+                var value when value.Contains("systemctl --user show openclaw-gateway.service") => Ok("967"),
+                _ => Fail($"Unexpected command: {command}"),
+            });
+        var ctx = CreateContext(commands: commands);
+        ctx.DistroName = "test-distro";
+
+        var result = await StartGatewayStep.RestartAndWaitForHealthAsync(ctx, CancellationToken.None);
+
+        Assert.False(result.IsSuccess);
+        Assert.Contains("already in use by another or unattributable process", result.Message, StringComparison.Ordinal);
+        Assert.DoesNotContain(commands.WslCalls, call => call.Command.Contains("openclaw gateway restart"));
+    }
+
+    [Fact]
+    public async Task StartGateway_RestartRejectsPortOwnershipProbeFailure()
+    {
+        var commands = new FakeCommandRunner(
+            _ => Ok(),
+            (_, command, _) => command.Contains("ss -tlnp")
+                ? Fail("ss unavailable")
+                : Fail($"Unexpected command: {command}"));
+        var ctx = CreateContext(commands: commands);
+        ctx.DistroName = "test-distro";
+
+        var result = await StartGatewayStep.RestartAndWaitForHealthAsync(ctx, CancellationToken.None);
+
+        Assert.False(result.IsSuccess);
+        Assert.Contains("could not inspect port ownership", result.Message, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain(
+            commands.WslCalls,
+            call => call.Command.Contains("systemctl --user show openclaw-gateway.service"));
+        Assert.DoesNotContain(commands.WslCalls, call => call.Command.Contains("openclaw gateway restart"));
+    }
+
+    [Fact]
+    public async Task StartGateway_RestartRejectsUnattributableListener()
+    {
+        var commands = new FakeCommandRunner(
+            _ => Ok(),
+            (_, command, _) => command.Contains("ss -tlnp")
+                ? Ok("LISTEN 0 4096 127.0.0.1:18789 0.0.0.0:*")
+                : Fail($"Unexpected command: {command}"));
+        var ctx = CreateContext(commands: commands);
+        ctx.DistroName = "test-distro";
+
+        var result = await StartGatewayStep.RestartAndWaitForHealthAsync(ctx, CancellationToken.None);
+
+        Assert.False(result.IsSuccess);
+        Assert.Contains("could not be attributed", result.Message, StringComparison.Ordinal);
+        Assert.DoesNotContain(
+            commands.WslCalls,
+            call => call.Command.Contains("systemctl --user show openclaw-gateway.service"));
+        Assert.DoesNotContain(commands.WslCalls, call => call.Command.Contains("openclaw gateway restart"));
+    }
+
+    [Fact]
+    public async Task StartGateway_RestartAcceptsListenerOwnedByManagedGatewayService()
+    {
+        var commands = new FakeCommandRunner(
+            _ => Ok(),
+            (_, command, _) => command switch
+            {
+                var value when value.Contains("ss -tlnp") =>
+                    Ok("LISTEN 0 511 0.0.0.0:18789 0.0.0.0:* users:((\"MainThread\",pid=967,fd=27))"),
+                var value when value.Contains("systemctl --user show openclaw-gateway.service") => Ok("967"),
+                var value when value.Contains("openclaw gateway restart") => Ok(),
+                var value when value.Contains("curl -s") => Ok("200"),
+                _ => Fail($"Unexpected command: {command}"),
+            });
+        var ctx = CreateContext(commands: commands);
+        ctx.DistroName = "test-distro";
+
+        var result = await StartGatewayStep.RestartAndWaitForHealthAsync(ctx, CancellationToken.None);
+
+        Assert.True(result.IsSuccess, result.Message);
+        Assert.Contains(
+            commands.WslCalls,
+            call => call.Command.Contains("systemctl --user show openclaw-gateway.service"));
+        Assert.Contains(commands.WslCalls, call => call.Command.Contains("openclaw gateway restart"));
+    }
+
+    [Fact]
+    public async Task StartGateway_RestartRejectsUnattributableListenerAlongsideManagedListener()
+    {
+        var commands = new FakeCommandRunner(
+            _ => Ok(),
+            (_, command, _) => command switch
+            {
+                var value when value.Contains("ss -tlnp") =>
+                    Ok(
+                        """
+                        LISTEN 0 511 0.0.0.0:18789 0.0.0.0:* users:(("MainThread",pid=967,fd=27))
+                        LISTEN 0 511 [::]:18789 [::]:*
+                        """),
+                var value when value.Contains("systemctl --user show openclaw-gateway.service") => Ok("967"),
+                _ => Fail($"Unexpected command: {command}"),
+            });
+        var ctx = CreateContext(commands: commands);
+        ctx.DistroName = "test-distro";
+
+        var result = await StartGatewayStep.RestartAndWaitForHealthAsync(ctx, CancellationToken.None);
+
+        Assert.False(result.IsSuccess);
+        Assert.Contains("could not be attributed", result.Message, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain(commands.WslCalls, call => call.Command.Contains("openclaw gateway restart"));
+    }
+
+    [Fact]
+    public async Task StartGateway_RestartIgnoresListenersOnOtherPorts()
+    {
+        var commands = new FakeCommandRunner(
+            _ => Ok(),
+            (_, command, _) => command switch
+            {
+                var value when value.Contains("ss -tlnp") =>
+                    Ok(
+                        """
+                        LISTEN 0 511 0.0.0.0:18789 0.0.0.0:* users:(("MainThread",pid=967,fd=27))
+                        LISTEN 0 511 127.0.0.1:18888 0.0.0.0:* users:(("python",pid=42,fd=3))
+                        """),
+                var value when value.Contains("systemctl --user show openclaw-gateway.service") => Ok("967"),
+                var value when value.Contains("openclaw gateway restart") => Ok(),
+                var value when value.Contains("curl -s") => Ok("200"),
+                _ => Fail($"Unexpected command: {command}"),
+            });
+        var ctx = CreateContext(commands: commands);
+        ctx.DistroName = "test-distro";
+
+        var result = await StartGatewayStep.RestartAndWaitForHealthAsync(ctx, CancellationToken.None);
+
+        Assert.True(result.IsSuccess, result.Message);
+        Assert.Contains(commands.WslCalls, call => call.Command.Contains("openclaw gateway restart"));
+    }
+
+    [Fact]
+    public async Task StartGateway_ReusesListenerOwnedByManagedGatewayService()
+    {
+        var commands = new FakeCommandRunner(
+            _ => Ok(),
+            (_, command, _) => command switch
+            {
+                var value when value.Contains("ss -tlnp") =>
+                    Ok("LISTEN 0 511 0.0.0.0:18789 0.0.0.0:* users:((\"MainThread\",pid=967,fd=27))"),
+                var value when value.Contains("systemctl --user show openclaw-gateway.service") => Ok("967"),
+                var value when value.Contains("curl -s") => Ok("200"),
+                _ => Fail($"Unexpected command: {command}"),
+            });
+        var ctx = CreateContext(commands: commands);
+        ctx.DistroName = "test-distro";
+
+        var result = await new StartGatewayStep().ExecuteAsync(ctx, CancellationToken.None);
+
+        Assert.True(result.IsSuccess, result.Message);
+        Assert.DoesNotContain(commands.WslCalls, call => call.Command.Contains("openclaw gateway start"));
+        Assert.Contains(commands.WslCalls, call => call.Command.Contains("curl -s"));
+    }
+
+    [Fact]
+    public async Task SetupWizard_RestoreReloadModeRestartsAndVerifiesGateway()
+    {
+        var commands = new FakeCommandRunner(
+            _ => Ok(),
+            (_, command, _) => command switch
+            {
+                var value when value.Contains("config set gateway.reload.mode 'hybrid'") => Ok(),
+                var value when value.Contains("ss -tlnp") => Ok(),
+                var value when value.Contains("openclaw gateway restart") => Ok(),
+                var value when value.Contains("curl -s") => Ok("200"),
+                _ => Fail($"Unexpected command: {command}"),
+            });
+        var ctx = CreateContext(
+            new SetupConfig { Gateway = new GatewayConfig { ReloadMode = "hot" } },
+            commands);
+        ctx.DistroName = "test-distro";
+
+        var result = await new SetupWizardRunner(ctx).RestoreReloadModeAsync();
+
+        Assert.True(result.IsSuccess, result.Message);
+        Assert.Contains(commands.WslCalls, call => call.Command.Contains("config set gateway.reload.mode 'hybrid'"));
+        Assert.Contains(commands.WslCalls, call => call.Command.Contains("openclaw gateway restart"));
+    }
+
+    [Fact]
+    public async Task SetupWizard_SuspendReloadModeRestartsAndVerifiesGateway()
+    {
+        var commands = new FakeCommandRunner(
+            _ => Ok(),
+            (_, command, _) => command switch
+            {
+                var value when value.Contains("config get gateway.reload.mode --json") => Ok("\"restart\""),
+                var value when value.Contains("config set gateway.reload.mode off") => Ok(),
+                var value when value.Contains("ss -tlnp") => Ok(),
+                var value when value.Contains("openclaw gateway restart") => Ok(),
+                var value when value.Contains("curl -s") => Ok("200"),
+                _ => Fail($"Unexpected command: {command}"),
+            });
+        var ctx = CreateContext(commands: commands);
+        ctx.DistroName = "test-distro";
+
+        var result = await new SetupWizardRunner(ctx).SuspendReloadModeAsync();
+
+        Assert.True(result.IsSuccess, result.Message);
+        Assert.Equal(5, commands.WslCalls.Count);
+        Assert.Contains("config get gateway.reload.mode --json", commands.WslCalls[0].Command);
+        Assert.Contains("config set gateway.reload.mode off", commands.WslCalls[1].Command);
+        Assert.Contains("ss -tlnp", commands.WslCalls[2].Command);
+        Assert.Contains("openclaw gateway restart", commands.WslCalls[3].Command);
+        Assert.Contains("curl -s", commands.WslCalls[4].Command);
+        var recovery = GatewayReloadRecoveryStore.Load(ctx);
+        Assert.NotNull(recovery);
+        Assert.Equal("restart", recovery.ReloadMode);
+        Assert.Equal("test-distro", recovery.DistroName);
+    }
+
+    [Fact]
+    public async Task SetupWizard_SuspendReloadModePreservesAbsentConfigPath()
+    {
+        var commands = new FakeCommandRunner(
+            _ => Ok(),
+            (_, command, _) => command switch
+            {
+                var value when value.Contains("config get gateway.reload.mode --json") =>
+                    Fail("Config path not found: gateway.reload.mode"),
+                var value when value.Contains("config set gateway.reload.mode off") => Ok(),
+                var value when value.Contains("config unset gateway.reload.mode") => Ok(),
+                var value when value.Contains("ss -tlnp") => Ok(),
+                var value when value.Contains("openclaw gateway restart") => Ok(),
+                var value when value.Contains("curl -s") => Ok("200"),
+                _ => Fail($"Unexpected command: {command}"),
+            });
+        var ctx = CreateContext(commands: commands);
+        ctx.DistroName = "test-distro";
+
+        var runner = new SetupWizardRunner(ctx);
+        var result = await runner.SuspendReloadModeAsync();
+
+        Assert.True(result.IsSuccess, result.Message);
+        var recovery = GatewayReloadRecoveryStore.Load(ctx);
+        Assert.NotNull(recovery);
+        Assert.Null(recovery.ReloadMode);
+
+        var restoreResult = await runner.RestoreReloadModeAsync();
+
+        Assert.True(restoreResult.IsSuccess, restoreResult.Message);
+        Assert.Contains(commands.WslCalls, call => call.Command.Contains("config unset gateway.reload.mode"));
+        Assert.DoesNotContain(commands.WslCalls, call => call.Command.Contains("config set gateway.reload.mode 'hybrid'"));
+        Assert.False(File.Exists(GatewayReloadRecoveryStore.GetPath(ctx)));
+    }
+
+    [Fact]
+    public async Task SetupWizard_RestoreAbsentReloadModeIsIdempotentAfterUnsetSucceeded()
+    {
+        var commands = new FakeCommandRunner(
+            _ => Ok(),
+            (_, command, _) => command switch
+            {
+                var value when value.Contains("config unset gateway.reload.mode") =>
+                    Fail("Config path not found: gateway.reload.mode. Nothing was changed."),
+                var value when value.Contains("ss -tlnp") => Ok(),
+                var value when value.Contains("openclaw gateway restart") => Ok(),
+                var value when value.Contains("curl -s") => Ok("200"),
+                _ => Fail($"Unexpected command: {command}"),
+            });
+        var ctx = CreateContext(commands: commands);
+        ctx.DistroName = "test-distro";
+        GatewayReloadRecoveryStore.Save(ctx, reloadMode: null);
+
+        var result = await new SetupWizardRunner(ctx).RestoreReloadModeAsync();
+
+        Assert.True(result.IsSuccess, result.Message);
+        Assert.Contains(commands.WslCalls, call => call.Command.Contains("config unset gateway.reload.mode"));
+        Assert.Contains(commands.WslCalls, call => call.Command.Contains("openclaw gateway restart"));
+        Assert.False(File.Exists(GatewayReloadRecoveryStore.GetPath(ctx)));
+    }
+
+    [Fact]
+    public async Task SetupWizard_WritesRecoveryMarkerBeforeSuspendingReload()
+    {
+        var markerObserved = false;
+        SetupContext? ctx = null;
+        var commands = new FakeCommandRunner(
+            _ => Ok(),
+            (_, command, _) =>
+            {
+                if (command.Contains("config get gateway.reload.mode --json"))
+                    return Ok("\"hot\"");
+                if (command.Contains("config set gateway.reload.mode off"))
+                {
+                    markerObserved = GatewayReloadRecoveryStore.Load(ctx!) is
+                    {
+                        DistroName: "test-distro",
+                        ReloadMode: "hot",
+                    };
+                    return Ok();
+                }
+                if (command.Contains("ss -tlnp"))
+                    return Ok();
+                if (command.Contains("openclaw gateway restart"))
+                    return Ok();
+                if (command.Contains("curl -s"))
+                    return Ok("200");
+                return Fail($"Unexpected command: {command}");
+            });
+        ctx = CreateContext(commands: commands);
+        ctx.DistroName = "test-distro";
+
+        var result = await new SetupWizardRunner(ctx).SuspendReloadModeAsync();
+
+        Assert.True(result.IsSuccess, result.Message);
+        Assert.True(markerObserved);
+    }
+
+    [Fact]
+    public async Task SetupWizard_DoesNotMutateWslWhenRecoveryMarkerCannotBePersisted()
+    {
+        var blockedLocalDataDir = Path.Combine(_localTempDir, "blocked");
+        await File.WriteAllTextAsync(blockedLocalDataDir, "not-a-directory");
+        var commands = new FakeCommandRunner(
+            _ => Fail("Unexpected local command"),
+            (_, command, _) => command.Contains("config get gateway.reload.mode --json")
+                ? Ok("\"hot\"")
+                : Fail($"Unexpected WSL command: {command}"));
+        var logger = new SetupLogger(filePath: null, LogLevel.Trace);
+        var ctx = new SetupContext(
+            new SetupConfig(),
+            logger,
+            new TransactionJournal(filePath: null),
+            commands,
+            CancellationToken.None,
+            dataDir: _tempDir,
+            localDataDir: blockedLocalDataDir);
+        ctx.DistroName = "test-distro";
+
+        var result = await new SetupWizardRunner(ctx).BeginReloadSuspensionAsync();
+
+        Assert.False(result.IsSuccess);
+        Assert.Contains("Failed to suspend gateway reload", result.Message);
+        Assert.Single(commands.WslCalls);
+        Assert.DoesNotContain(commands.WslCalls, call => call.Command.Contains("config set"));
+    }
+
+    [Fact]
+    public async Task SetupWizard_ReconcilesRecoveryBeforeSkippingWizard()
+    {
+        var commands = CreateReloadRestorationRunner();
+        var ctx = CreateContext(new SetupConfig
+        {
+            SkipWizard = true,
+            Gateway = new GatewayConfig { ReloadMode = "restart" },
+        }, commands);
+        ctx.DistroName = "test-distro";
+        GatewayReloadRecoveryStore.Save(ctx, "hot");
+
+        var result = await new SetupWizardRunner(ctx).RunAsync(CancellationToken.None);
+
+        Assert.Equal(StepOutcome.Skipped, result.Outcome);
+        Assert.Contains(commands.WslCalls, call => call.Command.Contains("config set gateway.reload.mode 'hybrid'"));
+        Assert.DoesNotContain(commands.WslCalls, call => call.Command.Contains("gateway.reload.mode off"));
+        Assert.False(File.Exists(GatewayReloadRecoveryStore.GetPath(ctx)));
+    }
+
+    [Fact]
+    public async Task SetupWizard_BeginSuspensionReconcilesPreviousRecoveryFirst()
+    {
+        var commands = new FakeCommandRunner(
+            _ => Ok(),
+            (_, command, _) =>
+            {
+                if (command.Contains("config set gateway.reload.mode 'hybrid'"))
+                    return Ok();
+                if (command.Contains("config get gateway.reload.mode --json"))
+                    return Ok("\"hot\"");
+                if (command.Contains("config set gateway.reload.mode off"))
+                    return Ok();
+                if (command.Contains("ss -tlnp"))
+                    return Ok();
+                if (command.Contains("openclaw gateway restart"))
+                    return Ok();
+                if (command.Contains("curl -s"))
+                    return Ok("200");
+                return Fail($"Unexpected command: {command}");
+            });
+        var ctx = CreateContext(new SetupConfig
+        {
+            Gateway = new GatewayConfig { ReloadMode = "hot" },
+        }, commands);
+        ctx.DistroName = "test-distro";
+        GatewayReloadRecoveryStore.Save(ctx, "restart");
+
+        var result = await new SetupWizardRunner(ctx).BeginReloadSuspensionAsync();
+
+        Assert.True(result.IsSuccess, result.Message);
+        Assert.Contains("config set gateway.reload.mode 'hybrid'", commands.WslCalls[0].Command);
+        var offCall = commands.WslCalls.FindIndex(call => call.Command.Contains("gateway.reload.mode off"));
+        Assert.True(offCall > 0);
+        var recovery = GatewayReloadRecoveryStore.Load(ctx);
+        Assert.NotNull(recovery);
+        Assert.Equal("hot", recovery.ReloadMode);
+    }
+
+    [Fact]
+    public async Task SetupWizard_FailedRecoveryLeavesMarkerForRetry()
+    {
+        var commands = new FakeCommandRunner(
+            _ => Ok(),
+            (_, command, _) => command.Contains("config set gateway.reload.mode 'hybrid'")
+                ? Fail("restore failed")
+                : Fail($"Unexpected command: {command}"));
+        var ctx = CreateContext(commands: commands);
+        ctx.DistroName = "test-distro";
+        GatewayReloadRecoveryStore.Save(ctx, "hot");
+
+        var result = await new SetupWizardRunner(ctx).ReconcilePendingReloadRecoveryAsync();
+
+        Assert.False(result.IsSuccess);
+        Assert.True(File.Exists(GatewayReloadRecoveryStore.GetPath(ctx)));
+    }
+
+    [Fact]
+    public async Task SetupWizard_FailedRecoveryRestartLeavesMarkerForRetry()
+    {
+        var commands = new FakeCommandRunner(
+            _ => Ok(),
+            (_, command, _) =>
+            {
+                if (command.Contains("config set gateway.reload.mode 'hybrid'"))
+                    return Ok();
+                if (command.Contains("openclaw gateway restart"))
+                    return Fail("restart failed");
+                return Fail($"Unexpected command: {command}");
+            });
+        var ctx = CreateContext(commands: commands);
+        ctx.DistroName = "test-distro";
+        GatewayReloadRecoveryStore.Save(ctx, "hot");
+
+        var result = await new SetupWizardRunner(ctx).ReconcilePendingReloadRecoveryAsync();
+
+        Assert.False(result.IsSuccess);
+        Assert.True(File.Exists(GatewayReloadRecoveryStore.GetPath(ctx)));
+    }
+
+    [Fact]
+    public async Task SetupWizard_SuccessfulRetryClearsInMemoryRecoveryState()
+    {
+        var allowRestore = false;
+        var commands = new FakeCommandRunner(
+            _ => Ok(),
+            (_, command, _) =>
+            {
+                if (command.Contains("config get gateway.reload.mode --json"))
+                    return Ok("\"hot\"");
+                if (command.Contains("config set gateway.reload.mode off"))
+                    return Fail("suspension failed");
+                if (command.Contains("config set gateway.reload.mode 'hybrid'"))
+                    return allowRestore ? Ok() : Fail("restore failed");
+                if (command.Contains("ss -tlnp"))
+                    return Ok();
+                if (command.Contains("openclaw gateway restart"))
+                    return Ok();
+                if (command.Contains("curl -s"))
+                    return Ok("200");
+                return Fail($"Unexpected command: {command}");
+            });
+        var ctx = CreateContext(commands: commands);
+        ctx.DistroName = "test-distro";
+        var runner = new SetupWizardRunner(ctx);
+
+        var failedSuspension = await runner.BeginReloadSuspensionAsync();
+        Assert.False(failedSuspension.IsSuccess);
+        Assert.True(File.Exists(GatewayReloadRecoveryStore.GetPath(ctx)));
+
+        allowRestore = true;
+        var recovered = await runner.ReconcilePendingReloadRecoveryAsync();
+        Assert.True(recovered.IsSuccess, recovered.Message);
+
+        Directory.CreateDirectory(GatewayReloadRecoveryStore.GetPath(ctx));
+        commands.WslCalls.Clear();
+        var failedMarkerWrite = await runner.BeginReloadSuspensionAsync();
+
+        Assert.False(failedMarkerWrite.IsSuccess);
+        Assert.Empty(commands.WslCalls);
+    }
+
+    [Fact]
+    public void SetupWizard_RecoveryMarkerContainsOnlyBoundedMetadata()
+    {
+        var ctx = CreateContext();
+        ctx.DistroName = "test-distro";
+
+        GatewayReloadRecoveryStore.Save(ctx, "hot");
+
+        using var marker = JsonDocument.Parse(File.ReadAllText(GatewayReloadRecoveryStore.GetPath(ctx)));
+        var propertyNames = marker.RootElement.EnumerateObject()
+            .Select(property => property.Name)
+            .Order(StringComparer.Ordinal)
+            .ToArray();
+        Assert.Equal(["CreatedAtUtc", "DistroName", "ReloadMode", "Version"], propertyNames);
+    }
+
+    [Fact]
+    public async Task SetupWizard_MalformedRecoveryFailsClosedWithoutWslMutation()
+    {
+        var commands = new FakeCommandRunner(
+            _ => Fail("Unexpected local command"),
+            (_, command, _) => Fail($"Unexpected WSL command: {command}"));
+        var ctx = CreateContext(new SetupConfig { SkipWizard = true }, commands);
+        await File.WriteAllTextAsync(GatewayReloadRecoveryStore.GetPath(ctx), "{not-json");
+
+        var result = await new SetupWizardRunner(ctx).RunAsync(CancellationToken.None);
+
+        Assert.False(result.IsSuccess);
+        Assert.Contains("Cannot reconcile gateway reload recovery state", result.Message);
+        Assert.Empty(commands.WslCalls);
+        Assert.True(File.Exists(GatewayReloadRecoveryStore.GetPath(ctx)));
+    }
+
+    [Fact]
+    public async Task SetupWizard_UnreadableRecoveryPathFailsClosedWithoutWslMutation()
+    {
+        var commands = new FakeCommandRunner(
+            _ => Fail("Unexpected local command"),
+            (_, command, _) => Fail($"Unexpected WSL command: {command}"));
+        var ctx = CreateContext(new SetupConfig { SkipWizard = true }, commands);
+        Directory.CreateDirectory(GatewayReloadRecoveryStore.GetPath(ctx));
+
+        var result = await new SetupWizardRunner(ctx).RunAsync(CancellationToken.None);
+
+        Assert.False(result.IsSuccess);
+        Assert.Contains("Cannot reconcile gateway reload recovery state", result.Message);
+        Assert.Empty(commands.WslCalls);
+        Assert.True(Directory.Exists(GatewayReloadRecoveryStore.GetPath(ctx)));
+    }
+
+    [Fact]
+    public async Task SetupWizard_UnsupportedRecoveryModeFailsClosedWithoutWslMutation()
+    {
+        var commands = new FakeCommandRunner(
+            _ => Fail("Unexpected local command"),
+            (_, command, _) => Fail($"Unexpected WSL command: {command}"));
+        var ctx = CreateContext(new SetupConfig { SkipWizard = true }, commands);
+        await File.WriteAllTextAsync(
+            GatewayReloadRecoveryStore.GetPath(ctx),
+            """
+            {
+              "Version": 1,
+              "DistroName": "OpenClawGateway",
+              "ReloadMode": "bogus",
+              "CreatedAtUtc": "2026-07-18T00:00:00Z"
+            }
+            """);
+
+        var result = await new SetupWizardRunner(ctx).RunAsync(CancellationToken.None);
+
+        Assert.False(result.IsSuccess);
+        Assert.Contains("unsupported reload mode", result.Message);
+        Assert.Empty(commands.WslCalls);
+        Assert.True(File.Exists(GatewayReloadRecoveryStore.GetPath(ctx)));
+    }
+
+    [Fact]
+    public async Task SetupWizard_RecoveryForDifferentDistroFailsClosed()
+    {
+        var commands = new FakeCommandRunner(
+            _ => Fail("Unexpected local command"),
+            (_, command, _) => Fail($"Unexpected WSL command: {command}"));
+        var ctx = CreateContext(commands: commands);
+        ctx.DistroName = "old-distro";
+        GatewayReloadRecoveryStore.Save(ctx, "hot");
+        ctx.DistroName = "new-distro";
+
+        var result = await new SetupWizardRunner(ctx).ReconcilePendingReloadRecoveryAsync();
+
+        Assert.False(result.IsSuccess);
+        Assert.Contains("Refusing to mutate either distro", result.Message);
+        Assert.Empty(commands.WslCalls);
+        Assert.True(File.Exists(GatewayReloadRecoveryStore.GetPath(ctx)));
+    }
+
+    [Fact]
+    public async Task SetupWizard_RecoveryAcceptsEquivalentDistroNameCasing()
+    {
+        var commands = CreateReloadRestorationRunner();
+        var ctx = CreateContext(commands: commands);
+        ctx.DistroName = "test-distro";
+        GatewayReloadRecoveryStore.Save(ctx, "hot");
+        ctx.DistroName = "TEST-DISTRO";
+
+        var result = await new SetupWizardRunner(ctx).ReconcilePendingReloadRecoveryAsync();
+
+        Assert.True(result.IsSuccess, result.Message);
+        Assert.False(File.Exists(GatewayReloadRecoveryStore.GetPath(ctx)));
+    }
+
+    [Fact]
+    public async Task SetupWizard_BeginReloadSuspensionRestoresWhenSuspensionFails()
+    {
+        var commands = new FakeCommandRunner(
+            _ => Ok(),
+            (_, command, _) =>
+            {
+                if (command.Contains("config get gateway.reload.mode --json"))
+                    return Ok("\"hot\"");
+                if (command.Contains("config set gateway.reload.mode off"))
+                    return Fail("reload suspension failed");
+                if (command.Contains("config set gateway.reload.mode 'hybrid'"))
+                    return Ok();
+                if (command.Contains("ss -tlnp"))
+                    return Ok();
+                if (command.Contains("openclaw gateway restart"))
+                    return Ok();
+                if (command.Contains("curl -s") && command.Contains("/health"))
+                    return Ok("200");
+                return Fail($"Unexpected command: {command}");
+            });
+        var ctx = CreateContext(commands: commands);
+        ctx.DistroName = "test-distro";
+
+        var result = await new SetupWizardRunner(ctx).BeginReloadSuspensionAsync();
+
+        Assert.False(result.IsSuccess);
+        Assert.Contains(commands.WslCalls, call => call.Command.Contains("config set gateway.reload.mode 'hybrid'"));
+        Assert.Contains(commands.WslCalls, call => call.Command.Contains("openclaw gateway restart"));
+    }
+
+    [Fact]
+    public async Task InstallGatewayService_ActivatesOnceWithoutStartingOrPolling()
+    {
+        var commands = new FakeCommandRunner(
+            _ => Ok(),
+            (_, command, _) => command switch
+            {
+                var value when value.Contains("openclaw gateway install --force") => Ok(),
+                _ => Fail($"Unexpected command: {command}"),
+            });
+        var ctx = CreateContext(commands: commands);
+        ctx.DistroName = "test-distro";
+
+        var result = await new InstallGatewayServiceStep().ExecuteAsync(ctx, CancellationToken.None);
+
+        Assert.True(result.IsSuccess, result.Message);
+        Assert.Single(commands.WslCalls, call => call.Command.Contains("openclaw gateway install --force"));
+        Assert.DoesNotContain(commands.WslCalls, call => call.Command.Contains("openclaw gateway start"));
+        Assert.DoesNotContain(commands.WslCalls, call => call.Command.Contains("curl -s"));
+    }
+
+    [Fact]
+    public async Task WaitForGatewayHealth_PollsWithoutStartingOrInstalling()
+    {
+        var commands = new FakeCommandRunner(
+            _ => Ok(),
+            (_, command, _) => command switch
+            {
+                var value when value.Contains("ss -tlnp") => Ok(),
+                var value when value.Contains("curl -s") => Ok("200"),
+                _ => Fail($"Unexpected command: {command}"),
+            });
+        var ctx = CreateContext(commands: commands);
+        ctx.DistroName = "test-distro";
+
+        var result = await new WaitForGatewayHealthStep().ExecuteAsync(ctx, CancellationToken.None);
+
+        Assert.True(result.IsSuccess, result.Message);
+        Assert.Contains(commands.WslCalls, call => call.Command.Contains("curl -s"));
+        Assert.DoesNotContain(commands.WslCalls, call => call.Command.Contains("gateway install"));
+        Assert.DoesNotContain(commands.WslCalls, call => call.Command.Contains("gateway start"));
+    }
+
+    [Fact]
+    public async Task WaitForGatewayHealth_RejectsUnrelatedPortOwnerBeforePolling()
+    {
+        var commands = new FakeCommandRunner(
+            _ => Ok(),
+            (_, command, _) => command.Contains("ss -tlnp")
+                ? Ok("LISTEN 0 4096 127.0.0.1:18789 users:((\"other-service\",pid=42,fd=7))")
+                : Fail($"Unexpected command: {command}"));
+        var ctx = CreateContext(commands: commands);
+        ctx.DistroName = "test-distro";
+
+        var result = await new WaitForGatewayHealthStep().ExecuteAsync(ctx, CancellationToken.None);
+
+        Assert.False(result.IsSuccess);
+        Assert.Contains("already in use by another or unattributable process", result.Message);
+        Assert.DoesNotContain(commands.WslCalls, call => call.Command.Contains("curl -s"));
+    }
+
+    [Fact]
+    public async Task SetupWizard_DoesNotSuspendReloadWhenRegistryLoadThrows()
+    {
+        var commands = new FakeCommandRunner(
+            _ => Ok(),
+            (_, command, _) => Fail($"Unexpected command: {command}"));
+        var ctx = CreateContext(commands: commands);
+        ctx.DistroName = "test-distro";
+
+        var registryPath = Path.Combine(_tempDir, "gateways.json");
+        await using var registryLock = new FileStream(
+            registryPath,
+            FileMode.Create,
+            FileAccess.ReadWrite,
+            FileShare.None);
+
+        await Assert.ThrowsAsync<IOException>(() => new SetupWizardRunner(ctx).RunAsync(CancellationToken.None));
+
+        Assert.Empty(commands.WslCalls);
+    }
+
+    [Fact]
+    public async Task SetupWizard_SkipWizardDoesNotRunOrSuspendGateway()
+    {
+        var commands = new FakeCommandRunner(
+            _ => Fail("Unexpected local command"),
+            (_, command, _) => Fail($"Unexpected WSL command: {command}"));
+        var ctx = CreateContext(new SetupConfig { SkipWizard = true }, commands);
+
+        var result = await new SetupWizardRunner(ctx).RunAsync(CancellationToken.None);
+
+        Assert.Equal(StepOutcome.Skipped, result.Outcome);
+        Assert.Empty(commands.WslCalls);
+    }
+
+    [Theory]
+    [InlineData(ConnectionStatus.Error)]
+    [InlineData(ConnectionStatus.Disconnected)]
+    public void SetupWizard_ReconnectWaitIgnoresTransientConnectionFailures(ConnectionStatus status)
+    {
+        var outcome = PairOperatorStep.ConnectionOutcomeForStatus(
+            status,
+            pairingRequired: false,
+            authFailed: false,
+            waitThroughTransientErrors: true);
+
+        Assert.Null(outcome);
+    }
+
+    [Theory]
+    [InlineData(ConnectionStatus.Error)]
+    [InlineData(ConnectionStatus.Disconnected)]
+    public void SetupWizard_NormalConnectionWaitStillFailsFast(ConnectionStatus status)
+    {
+        var outcome = PairOperatorStep.ConnectionOutcomeForStatus(
+            status,
+            pairingRequired: false,
+            authFailed: false,
+            waitThroughTransientErrors: false);
+
+        Assert.Equal(PairOperatorStep.ConnectionOutcome.Error, outcome);
+    }
+
+    [Fact]
+    public void SetupWizard_ReconnectWaitStillSurfacesPairingRequired()
+    {
+        var outcome = PairOperatorStep.ConnectionOutcomeForStatus(
+            ConnectionStatus.Disconnected,
+            pairingRequired: true,
+            authFailed: false,
+            waitThroughTransientErrors: true);
+
+        Assert.Equal(PairOperatorStep.ConnectionOutcome.PairingRequired, outcome);
+    }
+
+    [Theory]
+    [InlineData(ConnectionStatus.Error)]
+    [InlineData(ConnectionStatus.Disconnected)]
+    public void SetupWizard_ReconnectWaitFailsFastOnAuthenticationError(ConnectionStatus status)
+    {
+        var outcome = PairOperatorStep.ConnectionOutcomeForStatus(
+            status,
+            pairingRequired: false,
+            authFailed: true,
+            waitThroughTransientErrors: true);
+
+        Assert.Equal(PairOperatorStep.ConnectionOutcome.Error, outcome);
+    }
+
+    [Fact]
+    public async Task SetupWizard_OrchestratorRestoresAfterSuccessfulWizard()
+    {
+        var commands = CreateReloadRestorationRunner();
+        var ctx = CreateContext(commands: commands);
+        ctx.DistroName = "test-distro";
+        var runner = new SetupWizardRunner(ctx);
+
+        var result = await runner.RunWithReloadRestorationAsync(() =>
+        {
+            runner.MarkReloadSuspended();
+            return Task.FromResult(StepResult.Ok("wizard complete"));
+        });
+
+        Assert.True(result.IsSuccess, result.Message);
+        AssertReloadRestorationCompleted(commands);
+    }
+
+    [Fact]
+    public async Task SetupWizard_OrchestratorRestoresBeforePropagatingCancellation()
+    {
+        var commands = CreateReloadRestorationRunner();
+        var ctx = CreateContext(commands: commands);
+        ctx.DistroName = "test-distro";
+        var runner = new SetupWizardRunner(ctx);
+
+        await Assert.ThrowsAsync<OperationCanceledException>(() =>
+            runner.RunWithReloadRestorationAsync(async () =>
+            {
+                runner.MarkReloadSuspended();
+                await Task.Yield();
+                throw new OperationCanceledException();
+            }));
+
+        AssertReloadRestorationCompleted(commands);
+    }
+
+    [Fact]
+    public async Task SetupWizard_OrchestratorReturnsRestorationFailure()
+    {
+        var commands = new FakeCommandRunner(
+            _ => Ok(),
+            (_, command, _) => command.Contains("config set gateway.reload.mode 'hybrid'")
+                ? Fail("restore failed")
+                : Fail($"Unexpected command: {command}"));
+        var ctx = CreateContext(commands: commands);
+        ctx.DistroName = "test-distro";
+        var runner = new SetupWizardRunner(ctx);
+
+        var result = await runner.RunWithReloadRestorationAsync(() =>
+        {
+            runner.MarkReloadSuspended();
+            return Task.FromResult(StepResult.Ok("wizard complete"));
+        });
+
+        Assert.False(result.IsSuccess);
+        Assert.Contains("Failed to restore gateway.reload.mode", result.Message);
+        Assert.DoesNotContain(commands.WslCalls, call => call.Command.Contains("openclaw gateway restart"));
+    }
+
+    [Fact]
+    public async Task SetupWizard_OrchestratorPrioritizesRestorationFailureOverCancellation()
+    {
+        var commands = new FakeCommandRunner(
+            _ => Ok(),
+            (_, command, _) => command.Contains("config set gateway.reload.mode 'hybrid'")
+                ? Fail("restore failed")
+                : Fail($"Unexpected command: {command}"));
+        var ctx = CreateContext(commands: commands);
+        ctx.DistroName = "test-distro";
+        var runner = new SetupWizardRunner(ctx);
+
+        var result = await runner.RunWithReloadRestorationAsync(async () =>
+        {
+            runner.MarkReloadSuspended();
+            await Task.Yield();
+            throw new OperationCanceledException();
+        });
+
+        Assert.False(result.IsSuccess);
+        Assert.Contains("Failed to restore gateway.reload.mode", result.Message);
+        var aggregate = Assert.IsType<AggregateException>(result.Error);
+        Assert.Contains(aggregate.InnerExceptions, error => error is OperationCanceledException);
+    }
+
+    private static FakeCommandRunner CreateReloadRestorationRunner() =>
+        new(
+            _ => Ok(),
+            (_, command, _) => command switch
+            {
+                var value when value.Contains("config set gateway.reload.mode 'hybrid'") => Ok(),
+                var value when value.Contains("ss -tlnp") => Ok(),
+                var value when value.Contains("openclaw gateway restart") => Ok(),
+                var value when value.Contains("curl -s") => Ok("200"),
+                _ => Fail($"Unexpected command: {command}"),
+            });
+
+    private static void AssertReloadRestorationCompleted(FakeCommandRunner commands)
+    {
+        Assert.Contains(commands.WslCalls, call => call.Command.Contains("config set gateway.reload.mode 'hybrid'"));
+        Assert.Contains(commands.WslCalls, call => call.Command.Contains("openclaw gateway restart"));
+        Assert.Contains(commands.WslCalls, call => call.Command.Contains("curl -s"));
     }
 
     [Fact]

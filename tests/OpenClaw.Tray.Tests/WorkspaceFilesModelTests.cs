@@ -1,4 +1,5 @@
 using System;
+using System.Globalization;
 using System.Text.Json;
 using OpenClaw.Shared;
 using OpenClawTray.Pages;
@@ -370,6 +371,24 @@ public class WorkspaceFilesModelTests
     public void FormatSize_ProducesHumanReadable(long bytes, string expected)
     {
         Assert.Equal(expected, WorkspaceFilesModel.FormatSize(bytes));
+    }
+
+    [Fact]
+    public void FormatSize_UsesInvariantDecimalSeparatorUnderPtPt()
+    {
+        var originalCulture = CultureInfo.CurrentCulture;
+        var originalUiCulture = CultureInfo.CurrentUICulture;
+        try
+        {
+            CultureInfo.CurrentCulture = new CultureInfo("pt-PT");
+            CultureInfo.CurrentUICulture = new CultureInfo("pt-PT");
+            Assert.Equal("2.0 KB", WorkspaceFilesModel.FormatSize(2048));
+        }
+        finally
+        {
+            CultureInfo.CurrentCulture = originalCulture;
+            CultureInfo.CurrentUICulture = originalUiCulture;
+        }
     }
 
     [Fact]
