@@ -3,6 +3,8 @@ namespace OpenClaw.SetupEngine.Tests;
 [Collection(EnvironmentVariableCollection.Name)]
 public sealed class GatewayLkgVersionTests
 {
+    private const string ExpectedLkgVersion = "2026.7.1";
+
     [Fact]
     public void ResolveLkgVersion_ReturnsEmbeddedLkg()
     {
@@ -18,6 +20,7 @@ public sealed class GatewayLkgVersionTests
         config.Gateway.Version = null;
         GatewayLkgVersion.ApplyToConfig(config);
 
+        Assert.Equal(ExpectedLkgVersion, GatewayLkgVersion.LkgVersion);
         Assert.Equal(GatewayLkgVersion.LkgVersion, config.Gateway.Version);
     }
 

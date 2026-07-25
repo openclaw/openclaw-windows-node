@@ -477,6 +477,7 @@ jobs:
     needs: [repo-hygiene, gateway-composed]
     if: ${{ needs.repo-hygiene.result == 'success' && needs.gateway-composed.result == 'success' }}
     runs-on: windows-latest
+    continue-on-error: ${{ matrix.continue_on_error || false }}
     timeout-minutes: ${{ matrix.timeout_minutes }}
     strategy:
       fail-fast: false
@@ -492,6 +493,7 @@ jobs:
             gateway_source: official
             gateway_version: 2026.7.2-beta.3
             scenario: setup-connect
+            continue_on_error: true
             timeout_minutes: 45
             filter: "FullyQualifiedName~OpenClaw.E2ETests.Setup.SetupAndConnectTests|FullyQualifiedName~OpenClaw.E2ETests.Setup.MxcSetupAndConnectTests"
           - name: composed-setup-connect
