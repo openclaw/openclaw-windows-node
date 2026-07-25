@@ -841,10 +841,13 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
         // hosts. Fire-and-forget on a background task so a slow LxssManager at
         // cold logon never delays InitializeGatewayClient. The keepalive itself
         // runs detached from the tray — see WslDistroKeepAlive in LocalGatewaySetup.cs.
-        var wslKeepAlive = new WslGatewayKeepAliveService(() => _settings, () => _gatewayRegistry);
-        _ = Task.Run(wslKeepAlive.TryEnsureAsync);
+        var wslKeepAlive = new WslGatewayKeepAliveService(
+            () => _settings,
+            () => _gatewayRegistry,
+            gatewayId => RunOnUiThreadAsync(
+                () => CheckCompanionGatewayVersionAsync(gatewayId)));
         InitializeGatewayClient();
-        _ = CheckCompanionGatewayVersionAsync(_gatewayRegistry.GetActive()?.Id);
+        _ = Task.Run(wslKeepAlive.TryEnsureAsync);
 
         // Pre-warm chat window (WebView2 init takes 1-3s, do it now so left-click is instant)
         if (_settings != null &&
@@ -2086,10 +2089,11 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
         else
         {
             _lastManagerConnectedSideEffectsKey = null;
+            _gatewayVersionAlignmentPromptKey = null;
         }
     }
 
-    private async Task CheckCompanionGatewayVersionAsync(string? connectedGatewayId)
+    private async Task CheckCompanionGatewayVersionAsync(string? gatewayId)
     {
         if (Interlocked.CompareExchange(ref _gatewayVersionAlignmentInFlight, 1, 0) != 0)
         {
@@ -2101,7 +2105,7 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
         {
             var activeRecord = _gatewayRegistry?.GetActive();
             if (activeRecord == null ||
-                !string.Equals(activeRecord.Id, connectedGatewayId, StringComparison.Ordinal) ||
+                !string.Equals(activeRecord.Id, gatewayId, StringComparison.Ordinal) ||
                 _gatewayVersionAlignmentCoordinator == null)
             {
                 return;
@@ -2122,7 +2126,7 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
                 return;
             }
             if (probe.State == GatewayVersionAlignmentState.Aligned &&
-                _gatewayVersionAlignmentCoordinator.HasVerifiedPendingUpdate(activeRecord.Id))
+                _gatewayVersionAlignmentCoordinator.HasVerifiedPendingUpdate())
             {
                 var resumed = await _gatewayVersionAlignmentCoordinator.UpdateAsync(accessPlan);
                 ReportGatewayAlignmentResult(resumed);
@@ -2143,7 +2147,7 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
             var accepted = await ConfirmCompanionGatewayUpdateAsync(probe);
             if (!accepted)
             {
-                _gatewayVersionAlignmentPromptKey = null;
+                _gatewayVersionAlignmentPromptKey = promptKey;
                 return;
             }
 
@@ -2237,6 +2241,31 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
             {
                 try { completion.SetResult(await action()); }
                 catch (Exception ex) { completion.SetException(ex); }
+            }) != true)
+        {
+            completion.SetException(new InvalidOperationException("The UI dispatcher is unavailable."));
+        }
+
+        return completion.Task;
+    }
+
+    private Task RunOnUiThreadAsync(Func<Task> action)
+    {
+        if (_dispatcherQueue?.HasThreadAccess == true)
+            return action();
+
+        var completion = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        if (_dispatcherQueue?.TryEnqueue(async () =>
+            {
+                try
+                {
+                    await action();
+                    completion.SetResult();
+                }
+                catch (Exception ex)
+                {
+                    completion.SetException(ex);
+                }
             }) != true)
         {
             completion.SetException(new InvalidOperationException("The UI dispatcher is unavailable."));

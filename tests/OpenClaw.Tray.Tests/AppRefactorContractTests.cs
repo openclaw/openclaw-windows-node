@@ -40,6 +40,8 @@ public sealed class AppRefactorContractTests
             "EnsureNodeService(_settings);",
             "InitializeGatewayClient();",
             "StartDeepLinkServer();");
+        var startup = ExtractMethod(source, "OnLaunchedAsync");
+        Assert.DoesNotContain("_ = CheckCompanionGatewayVersionAsync(", startup, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -49,8 +51,14 @@ public sealed class AppRefactorContractTests
         var startup = ExtractMethod(source, "OnLaunchedAsync");
         var service = ReadWslKeepAliveServiceSource();
 
-        Assert.Contains("new WslGatewayKeepAliveService(() => _settings, () => _gatewayRegistry)", startup);
+        Assert.Contains("new WslGatewayKeepAliveService(", startup);
+        Assert.Contains("gatewayId => RunOnUiThreadAsync(", startup);
+        Assert.Contains("() => CheckCompanionGatewayVersionAsync(gatewayId)", startup);
         Assert.Contains("Task.Run(wslKeepAlive.TryEnsureAsync)", startup);
+        AssertInOrder(
+            startup,
+            "InitializeGatewayClient();",
+            "Task.Run(wslKeepAlive.TryEnsureAsync)");
 
         foreach (var duplicateMethod in new[]
         {
@@ -1040,6 +1048,57 @@ public sealed class AppRefactorContractTests
     }
 
     [Fact]
+    public void GatewayUpdatePrompt_StartsAfterKeepAliveConfirmsTheLocalDistro()
+    {
+        var source = ReadAppSources();
+        var startup = ExtractMethod(source, "OnLaunchedAsync");
+        var service = ReadWslKeepAliveServiceSource();
+        var method = ExtractMethod(source, "CheckCompanionGatewayVersionAsync");
+
+        Assert.Contains("gatewayId => RunOnUiThreadAsync(", startup);
+        Assert.Contains("() => CheckCompanionGatewayVersionAsync(gatewayId)", startup);
+        AssertInOrder(
+            service,
+            "var distros = await runner.ListDistrosAsync();",
+            "if (!distros.Any",
+            "Process.Start(psi)",
+            "Could not start keepalive",
+            "await _onLocalDistroReady(activeRecord?.Id);");
+        AssertInOrder(
+            method,
+            "var activeRecord = _gatewayRegistry?.GetActive();",
+            "!string.Equals(activeRecord.Id, gatewayId, StringComparison.Ordinal)",
+            "var accessPlan = GatewayHostAccessClassifier.Classify(activeRecord);");
+        Assert.DoesNotContain("OperatorState", method, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Startup_WslKeepAlive_MarshalsVersionAlignmentToUiThread()
+    {
+        var source = ReadAppSources();
+        var dispatcher = ExtractMethod(source, "RunOnUiThreadAsync");
+
+        Assert.Contains("_dispatcherQueue?.HasThreadAccess == true", dispatcher);
+        Assert.Contains("_dispatcherQueue?.TryEnqueue(async () =>", dispatcher);
+        Assert.Contains("await action();", dispatcher);
+        Assert.Contains("completion.SetException", dispatcher);
+    }
+
+    [Fact]
+    public void GatewayUpdatePrompt_LaterSuppressesSameConnectedMismatch()
+    {
+        var source = ReadAppSources();
+        var method = ExtractMethod(source, "CheckCompanionGatewayVersionAsync");
+
+        AssertInOrder(
+            method,
+            "var accepted = await ConfirmCompanionGatewayUpdateAsync(probe);",
+            "if (!accepted)",
+            "_gatewayVersionAlignmentPromptKey = promptKey;",
+            "return;");
+    }
+
+    [Fact]
     public void GatewayUpdatePrompt_ResumesVerifiedAlignedPendingReceipt()
     {
         var source = ReadAppSources();
@@ -1048,7 +1107,7 @@ public sealed class AppRefactorContractTests
         AssertInOrder(
             method,
             "probe.State == GatewayVersionAlignmentState.Aligned",
-            "_gatewayVersionAlignmentCoordinator.HasVerifiedPendingUpdate(activeRecord.Id)",
+            "_gatewayVersionAlignmentCoordinator.HasVerifiedPendingUpdate()",
             "var resumed = await _gatewayVersionAlignmentCoordinator.UpdateAsync(accessPlan);",
             "ReportGatewayAlignmentResult(resumed);",
             "return;");

@@ -152,6 +152,7 @@ function Assert-ReviewedComposedGatewayPackage {
     param(
         [Parameter(Mandatory = $true)][string]$PackageSpec,
         [Parameter(Mandatory = $true)][string]$ExpectedSha256,
+        [Parameter(Mandatory = $true)][string]$ExpectedVersion,
         [Parameter(Mandatory = $true)][string]$HostDistroName
     )
 
@@ -166,6 +167,9 @@ function Assert-ReviewedComposedGatewayPackage {
     }
     if ($ExpectedSha256 -notmatch "^[a-fA-F0-9]{64}$") {
         throw "OPENCLAW_E2E_GATEWAY_PACKAGE_SHA256 must be the reviewed composed-package SHA-256."
+    }
+    if ($ExpectedVersion -notmatch "^\d{4}\.\d+\.\d+(?:-[0-9A-Za-z]+(?:[.-][0-9A-Za-z-]+)*)?$") {
+        throw "OPENCLAW_E2E_GATEWAY_VERSION must be the exact composed-package semantic version."
     }
     if ($HostDistroName -notmatch "^OpenClawE2EPackageHost-[A-Za-z0-9-]+$") {
         throw "OPENCLAW_E2E_GATEWAY_PACKAGE_HOST_DISTRO must identify the disposable package host."
@@ -190,6 +194,14 @@ function Assert-ReviewedComposedGatewayPackage {
     if ($LASTEXITCODE -ne 0 -or $hostMode.Trim() -ne "444") {
         throw "The reviewed composed gateway package is not read-only in the disposable package host."
     }
+    $packageJson = [string](& wsl.exe -d $HostDistroName -u root -- tar -xOf $hostPackagePath package/package.json)
+    if ($LASTEXITCODE -ne 0) {
+        throw "The reviewed composed gateway package does not contain package/package.json."
+    }
+    $packageVersion = ($packageJson | ConvertFrom-Json).version
+    if (-not [string]::Equals($packageVersion, $ExpectedVersion, [StringComparison]::Ordinal)) {
+        throw "OPENCLAW_E2E_GATEWAY_VERSION does not match the reviewed composed package."
+    }
     $hostAddresses = @(
         ((& wsl.exe -d $HostDistroName -u root -- hostname -I) -split "\s+") |
             Where-Object { -not [string]::IsNullOrWhiteSpace($_) }
@@ -198,7 +210,7 @@ function Assert-ReviewedComposedGatewayPackage {
         throw "The composed gateway package URL is not served by the proven disposable package host."
     }
 
-    Write-Host "Composed gateway package identity proven: distro=$HostDistroName sha256=$normalizedSha256" -ForegroundColor Green
+    Write-Host "Composed gateway package identity proven: distro=$HostDistroName version=$ExpectedVersion sha256=$normalizedSha256" -ForegroundColor Green
 }
 
 $trackedEnvVars = @(
@@ -223,16 +235,19 @@ try {
     if ([string]::IsNullOrWhiteSpace($env:OPENCLAW_E2E_GATEWAY_PACKAGE_HOST_DISTRO)) {
         throw "OPENCLAW_E2E_GATEWAY_PACKAGE_HOST_DISTRO must identify the disposable package host before formal MXC validation."
     }
+    if ([string]::IsNullOrWhiteSpace($env:OPENCLAW_E2E_GATEWAY_VERSION)) {
+        throw "OPENCLAW_E2E_GATEWAY_VERSION must identify the reviewed composed package version before formal MXC validation."
+    }
 
     Assert-ReviewedComposedGatewayPackage `
         -PackageSpec $env:OPENCLAW_E2E_GATEWAY_PACKAGE_SPEC `
         -ExpectedSha256 $env:OPENCLAW_E2E_GATEWAY_PACKAGE_SHA256 `
+        -ExpectedVersion $env:OPENCLAW_E2E_GATEWAY_VERSION `
         -HostDistroName $env:OPENCLAW_E2E_GATEWAY_PACKAGE_HOST_DISTRO
 
     Set-ProcessEnv -Name "OPENCLAW_REPO_ROOT" -Value $repoRoot
     Set-ProcessEnv -Name "OPENCLAW_RUN_E2E" -Value "1"
     Set-ProcessEnv -Name "OPENCLAW_RUN_MXC_E2E" -Value "1"
-    Set-ProcessEnv -Name "OPENCLAW_E2E_GATEWAY_VERSION" -Value $null
     Set-ProcessEnv -Name "OPENCLAW_E2E_GATEWAY_SOURCE" -Value "composed"
 
     Write-Host "OpenClaw MXC validation"

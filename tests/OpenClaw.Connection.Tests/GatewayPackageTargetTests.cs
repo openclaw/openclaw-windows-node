@@ -106,6 +106,16 @@ public sealed class GatewayPackageTargetTests
     }
 
     [Fact]
+    public void VerifiedInstallerCommand_RejectsHostlessHttpPackageUri()
+    {
+        Assert.Throws<ArgumentException>(() =>
+            GatewayPackageInstallCommandBuilder.Build(
+                GatewayPackageInstallCommandBuilder.DefaultInstallUrl,
+                "https:/packages/openclaw.tgz",
+                Digest));
+    }
+
+    [Fact]
     public void RoutePolicy_PreRoutesLegacyAndUnprovenSources()
     {
         var target = GatewayPackageTarget.Official("2026.7.22");

@@ -227,7 +227,9 @@ internal sealed class SettingsPageViewModel : INavigationAware, IDisposable, INo
         get => _gatewayRollbackRetentionAgeDays;
         set
         {
-            var normalized = double.IsNaN(value) ? 0 : Math.Clamp(value, 0, 3650);
+            var normalized = double.IsNaN(value)
+                ? 0
+                : Math.Round(Math.Clamp(value, 0, 3650), MidpointRounding.AwayFromZero);
             if (SetField(ref _gatewayRollbackRetentionAgeDays, normalized) && !_loading)
             {
                 Persist(e => e.GatewayRollbackRetentionAgeDays = (int)normalized);

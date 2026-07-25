@@ -54,7 +54,7 @@ public sealed class GatewayE2EPackageSpecTests
         Assert.Contains("OPENCLAW_E2E_GATEWAY_PACKAGE_HOST_DISTRO", script, StringComparison.Ordinal);
         Assert.Contains("\"OPENCLAW_E2E_GATEWAY_VERSION\"", script, StringComparison.Ordinal);
         Assert.Contains(
-            "Set-ProcessEnv -Name \"OPENCLAW_E2E_GATEWAY_VERSION\" -Value $null",
+            "-ExpectedVersion $env:OPENCLAW_E2E_GATEWAY_VERSION",
             script,
             StringComparison.Ordinal);
         Assert.Contains("openclaw-composed-$normalizedSha256.tgz", script, StringComparison.Ordinal);
@@ -76,6 +76,21 @@ public sealed class GatewayE2EPackageSpecTests
         Assert.Contains(
             "ExpectedPackageSha256 = expectedGatewayPackageSha256",
             fixture,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "ExpectedInstalledVersion = expectedGatewayInstalledVersion",
+            fixture,
+            StringComparison.Ordinal);
+
+        var workflow = File.ReadAllText(Path.Combine(
+            RepositoryRoot(), ".github", "workflows", "ci.yml"));
+        Assert.Contains(
+            "version: ${{ steps.package.outputs.version }}",
+            workflow,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "OPENCLAW_E2E_GATEWAY_VERSION: ${{ matrix.gateway_source == 'composed' && needs.gateway-composed.outputs.version || matrix.gateway_version }}",
+            workflow,
             StringComparison.Ordinal);
     }
 
@@ -153,7 +168,13 @@ public sealed class GatewayE2EPackageSpecTests
         const string packageSpec =
             "http://127.0.0.1:38677/openclaw-composed-0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef.tgz";
         Assert.Equal(packageSpec, GatewayE2EPackageSpec.Resolve(
-            "composed", packageSpec, ComposedSha256, ComposedHostDistro, null, FallbackLkg));
+            "composed", packageSpec, ComposedSha256, ComposedHostDistro, "2099.1.3", FallbackLkg));
+        Assert.Equal(
+            "2099.1.3",
+            GatewayE2EPackageSpec.ResolveExpectedInstalledVersion(
+                "composed",
+                "2099.1.3",
+                FallbackLkg));
     }
 
     [Fact]
@@ -165,6 +186,23 @@ public sealed class GatewayE2EPackageSpecTests
         Assert.Null(GatewayE2EPackageSpec.ResolveExpectedSha256("official", null));
         Assert.Throws<InvalidOperationException>(() =>
             GatewayE2EPackageSpec.ResolveExpectedSha256("composed", "not-a-digest"));
+    }
+
+    [Theory]
+    [InlineData("lkg", null, FallbackLkg)]
+    [InlineData("official", OfficialVersion, OfficialVersion)]
+    [InlineData("composed", "2099.1.3", "2099.1.3")]
+    public void ResolveExpectedInstalledVersion_UsesReviewedSourceVersion(
+        string source,
+        string? version,
+        string expected)
+    {
+        Assert.Equal(
+            expected,
+            GatewayE2EPackageSpec.ResolveExpectedInstalledVersion(
+                source,
+                version,
+                FallbackLkg));
     }
 
     [Fact]
@@ -182,13 +220,14 @@ public sealed class GatewayE2EPackageSpecTests
     [InlineData(null, null, null, null, null)]
     [InlineData("", null, null, null, null)]
     [InlineData("other", null, null, null, null)]
-    [InlineData("composed", null, ComposedSha256, ComposedHostDistro, null)]
-    [InlineData("composed", "", ComposedSha256, ComposedHostDistro, null)]
-    [InlineData("composed", "https://example.test/openclaw-composed.tgz", null, ComposedHostDistro, null)]
-    [InlineData("composed", "https://example.test/openclaw-composed.tgz", "abc", ComposedHostDistro, null)]
-    [InlineData("composed", "https://example.test/openclaw-composed.tgz", ComposedSha256, ComposedHostDistro, OfficialVersion)]
-    [InlineData("composed", "https://example.test/openclaw-composed.tgz", ComposedSha256, null, null)]
-    [InlineData("composed", "https://example.test/openclaw-composed.tgz", ComposedSha256, "Ubuntu", null)]
+    [InlineData("composed", null, ComposedSha256, ComposedHostDistro, OfficialVersion)]
+    [InlineData("composed", "", ComposedSha256, ComposedHostDistro, OfficialVersion)]
+    [InlineData("composed", "https://example.test/openclaw-composed.tgz", null, ComposedHostDistro, OfficialVersion)]
+    [InlineData("composed", "https://example.test/openclaw-composed.tgz", "abc", ComposedHostDistro, OfficialVersion)]
+    [InlineData("composed", "https://example.test/openclaw-composed.tgz", ComposedSha256, ComposedHostDistro, null)]
+    [InlineData("composed", "https://example.test/openclaw-composed.tgz", ComposedSha256, ComposedHostDistro, "beta")]
+    [InlineData("composed", "https://example.test/openclaw-composed.tgz", ComposedSha256, null, OfficialVersion)]
+    [InlineData("composed", "https://example.test/openclaw-composed.tgz", ComposedSha256, "Ubuntu", OfficialVersion)]
     [InlineData("official", "https://example.test/openclaw-composed.tgz", null, null, OfficialVersion)]
     [InlineData("official", null, ComposedSha256, null, OfficialVersion)]
     [InlineData("official", null, null, ComposedHostDistro, OfficialVersion)]
@@ -221,7 +260,7 @@ public sealed class GatewayE2EPackageSpecTests
     {
         Assert.Throws<InvalidOperationException>(() =>
             GatewayE2EPackageSpec.Resolve(
-                "composed", packageSpec, ComposedSha256, ComposedHostDistro, null, FallbackLkg));
+                "composed", packageSpec, ComposedSha256, ComposedHostDistro, OfficialVersion, FallbackLkg));
     }
 
     private static string RepositoryRoot()

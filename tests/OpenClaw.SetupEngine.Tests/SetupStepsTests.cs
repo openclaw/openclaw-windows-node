@@ -1085,6 +1085,55 @@ public class SetupStepsTests : IDisposable
         Assert.True(installCall.InputViaStdin);
     }
 
+    [Fact]
+    public async Task InstallCli_ComposedPackageRequiresExactReviewedVersionAfterInstall()
+    {
+        var commands = new FakeCommandRunner(
+            _ => Fail("Windows commands are not expected"),
+            (_, command, _) => command.Contains("sha256sum --check", StringComparison.Ordinal)
+                ? Ok()
+                : Ok("OpenClaw 2099.1.2 (different)"));
+        var ctx = CreateContext(new SetupConfig
+        {
+            Gateway = new GatewayConfig
+            {
+                Version = "https://example.test/openclaw-composed.tgz",
+                ExpectedInstalledVersion = "2099.1.3",
+                ExpectedPackageSha256 = new string('a', 64)
+            }
+        }, commands);
+
+        var result = await new InstallCliStep().ExecuteAsync(ctx, CancellationToken.None);
+
+        Assert.Equal(StepOutcome.Failed, result.Outcome);
+        Assert.Contains("exact OpenClaw 2099.1.3", result.Message, StringComparison.Ordinal);
+        Assert.Equal(5, commands.WslCalls.Count);
+    }
+
+    [Fact]
+    public async Task InstallCli_OfficialPackageRequiresExactReviewedVersionAfterInstall()
+    {
+        var commands = new FakeCommandRunner(
+            _ => Fail("Windows commands are not expected"),
+            (_, command, _) => command.Contains("install-cli.sh", StringComparison.Ordinal)
+                ? Ok()
+                : Ok("OpenClaw 2099.1.3-beta.1 (different)"));
+        var ctx = CreateContext(new SetupConfig
+        {
+            Gateway = new GatewayConfig
+            {
+                Version = "2099.1.3-beta.2",
+                ExpectedInstalledVersion = "2099.1.3-beta.2"
+            }
+        }, commands);
+
+        var result = await new InstallCliStep().ExecuteAsync(ctx, CancellationToken.None);
+
+        Assert.Equal(StepOutcome.Failed, result.Outcome);
+        Assert.Contains("exact OpenClaw 2099.1.3-beta.2", result.Message, StringComparison.Ordinal);
+        Assert.Equal(5, commands.WslCalls.Count);
+    }
+
     [Theory]
     [InlineData("not-a-digest", "http://example.test/openclaw.tgz")]
     [InlineData("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "2026.7.2-beta.3")]
@@ -2088,6 +2137,40 @@ public class SetupStepsTests : IDisposable
         Assert.True(result.IsSuccess, result.Message);
         Assert.Contains(commands.WslCalls, call => call.Command.Contains("config set gateway.reload.mode 'hot'"));
         Assert.Contains(commands.WslCalls, call => call.Command.Contains("openclaw gateway restart"));
+    }
+
+    [Fact]
+    public async Task SetupWizard_RestoreReloadModeUsesComposedSemanticVersion()
+    {
+        var commands = new FakeCommandRunner(
+            _ => Ok(),
+            (_, command, _) => command switch
+            {
+                var value when value.Contains("config set gateway.reload.mode 'hot'") => Ok(),
+                var value when value.Contains("ss -tlnp") => Ok(),
+                var value when value.Contains("openclaw gateway restart") => Ok(),
+                var value when value.Contains("curl -s") => Ok("200"),
+                _ => Fail($"Unexpected command: {command}"),
+            });
+        var ctx = CreateContext(
+            new SetupConfig
+            {
+                Gateway = new GatewayConfig
+                {
+                    Version = "https://example.test/openclaw-composed.tgz",
+                    ExpectedInstalledVersion = "2026.7.2-beta.3",
+                    ReloadMode = "hot"
+                }
+            },
+            commands);
+        ctx.DistroName = "test-distro";
+
+        var result = await new SetupWizardRunner(ctx).RestoreReloadModeAsync();
+
+        Assert.True(result.IsSuccess, result.Message);
+        Assert.Contains(
+            commands.WslCalls,
+            call => call.Command.Contains("config set gateway.reload.mode 'hot'"));
     }
 
     [Fact]

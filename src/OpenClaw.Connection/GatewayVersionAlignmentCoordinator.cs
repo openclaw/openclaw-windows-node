@@ -113,9 +113,10 @@ public sealed partial class GatewayVersionAlignmentCoordinator
 
     public IReadOnlyList<GatewayRollbackPointInfo> ListRollbackPoints() => _rollbackPoints.List();
 
-    public bool HasVerifiedPendingUpdate(string gatewayId) =>
-        !string.IsNullOrWhiteSpace(gatewayId) &&
-        _rollbackPoints.FindPendingUpdates().Count > 0;
+    public bool HasVerifiedPendingUpdate() =>
+        _rollbackPoints.FindPendingUpdates().Any(point =>
+            point.VerificationStatus == GatewayRollbackPointVerificationStatus.Verified &&
+            point.RestoreEligible);
 
     public async Task<GatewayVersionAlignmentResult> ProbeAsync(
         GatewayHostAccessPlan accessPlan,

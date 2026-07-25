@@ -869,9 +869,11 @@ public sealed class GatewayVersionAlignmentCoordinatorTests : IDisposable
         Assert.False(invalid.RestoreEligible);
         Assert.Equal(GatewayRollbackPointPhase.UpdateInProgress, invalid.Phase);
         Assert.Equal(created.Point.Id, Assert.Single(manager.FindPendingUpdates()).Id);
+        Assert.False(new GatewayVersionAlignmentCoordinator(runner, RequiredVersion, manager)
+            .HasVerifiedPendingUpdate());
     }
 
-    [Fact]
+    [ReparsePointFact]
     public async Task CreateVerifiedAsync_RejectsReparseBackedPointsRootBeforeExport()
     {
         var redirected = Path.Combine(_tempRoot, "redirected-points");
@@ -879,14 +881,7 @@ public sealed class GatewayVersionAlignmentCoordinatorTests : IDisposable
         var pointsRoot = Path.Combine(pointsParent, "OpenClawGateway");
         Directory.CreateDirectory(redirected);
         Directory.CreateDirectory(pointsParent);
-        try
-        {
-            Directory.CreateSymbolicLink(pointsRoot, redirected);
-        }
-        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or PlatformNotSupportedException)
-        {
-            return;
-        }
+        Directory.CreateSymbolicLink(pointsRoot, redirected);
 
         var runner = new FakeWslCommandRunner();
         var manager = CreateManager(runner);
@@ -949,7 +944,7 @@ public sealed class GatewayVersionAlignmentCoordinatorTests : IDisposable
 
         Assert.Equal(GatewayVersionAlignmentState.RollbackPointFailed, result.State);
         Assert.Equal(2, synchronizations);
-        Assert.DoesNotContain("secret", result.FailureSummary);
+        Assert.DoesNotContain("private detail", result.FailureSummary);
         Assert.DoesNotContain(runner.Calls, call => call.Kind == "distro" && call.Arguments.Contains("update --tag"));
         Assert.Equal(0, runner.UnregisterCalls);
     }
@@ -1058,7 +1053,7 @@ public sealed class GatewayVersionAlignmentCoordinatorTests : IDisposable
 
         Assert.Equal(GatewayVersionAlignmentState.VerificationFailed, result.State);
         Assert.Equal(GatewayRollbackPointPhase.UpdateInProgress, Assert.Single(coordinator.ListRollbackPoints()).Phase);
-        Assert.True(coordinator.HasVerifiedPendingUpdate("local-gateway"));
+        Assert.True(coordinator.HasVerifiedPendingUpdate());
     }
 
     [Fact]
@@ -1103,7 +1098,7 @@ public sealed class GatewayVersionAlignmentCoordinatorTests : IDisposable
 
         Assert.Equal(GatewayVersionAlignmentState.VerificationFailed, result.State);
         Assert.Equal(GatewayRollbackPointPhase.UpdateInProgress, Assert.Single(manager.List()).Phase);
-        Assert.True(coordinator.HasVerifiedPendingUpdate("local-gateway"));
+        Assert.True(coordinator.HasVerifiedPendingUpdate());
         Assert.Equal(0, retentionPolicyCalls);
     }
 
@@ -1157,7 +1152,7 @@ public sealed class GatewayVersionAlignmentCoordinatorTests : IDisposable
         var failedHealth = await coordinator.UpdateAsync(EligiblePlan());
         Assert.Equal(GatewayVersionAlignmentState.RecoveryAvailable, failedHealth.State);
         Assert.Equal(GatewayRollbackPointPhase.UpdateInProgress, Assert.Single(coordinator.ListRollbackPoints()).Phase);
-        Assert.True(coordinator.HasVerifiedPendingUpdate("local-gateway"));
+        Assert.True(coordinator.HasVerifiedPendingUpdate());
 
         runner.EnqueueDistro(Ok(RequiredVersion));
         EnqueuePendingAttestation(runner, RequiredVersion);
@@ -1166,7 +1161,7 @@ public sealed class GatewayVersionAlignmentCoordinatorTests : IDisposable
         var resumed = await coordinator.UpdateAsync(EligiblePlan());
 
         Assert.Equal(GatewayVersionAlignmentState.VerificationFailed, resumed.State);
-        Assert.True(coordinator.HasVerifiedPendingUpdate("local-gateway"));
+        Assert.True(coordinator.HasVerifiedPendingUpdate());
         Assert.Equal(3, syncCalls);
         Assert.Equal(GatewayRollbackPointPhase.UpdateInProgress, Assert.Single(coordinator.ListRollbackPoints()).Phase);
         var runCalls = updateRpc.Calls.Where(call => call.Method == "update.run").ToArray();
@@ -1499,6 +1494,42 @@ public sealed class GatewayVersionAlignmentCoordinatorTests : IDisposable
         Assert.Equal(GatewayVersionAlignmentState.RecoveryAvailable, result.State);
         Assert.Equal(point.Point.Id, result.RollbackPointId);
         Assert.Empty(runner.Calls);
+    }
+
+    [Theory]
+    [InlineData(GatewayRollbackPointPhase.RestoreStaged, true)]
+    [InlineData(GatewayRollbackPointPhase.UnregisterPending, true)]
+    [InlineData(GatewayRollbackPointPhase.DistroUnregistered, true)]
+    [InlineData(GatewayRollbackPointPhase.ImportPending, true)]
+    [InlineData(GatewayRollbackPointPhase.Imported, true)]
+    [InlineData(GatewayRollbackPointPhase.RestoreCancelled, false)]
+    [InlineData(GatewayRollbackPointPhase.RestoreHealthy, false)]
+    public async Task DispatchReceipt_RemainsOwnedAcrossRestorePhases(
+        GatewayRollbackPointPhase phase,
+        bool unresolved)
+    {
+        var runner = new FakeWslCommandRunner();
+        var manager = CreateManager(runner);
+        EnqueueCreateAttestation(runner, PreviousVersion);
+        var point = await manager.CreateVerifiedAsync(
+            "OpenClawGateway", "previous-gateway-record", PreviousVersion, RequiredVersion);
+        manager.ArmUpdateDispatch(
+            point.Point!.Id,
+            GatewayPackageTarget.Official(RequiredVersion),
+            GatewayPackageUpdateRoute.CompanionInstaller,
+            requestId: null);
+        manager.MarkInstallerDispatchAccepted(point.Point.Id);
+        SetPointPhase(point.Point.Id, phase);
+
+        var restarted = CreateManager(runner);
+
+        Assert.False(restarted.HasUnreadableReceipt());
+        Assert.Equal(point.Point.Id, Assert.Single(restarted.List()).Id);
+        Assert.Empty(restarted.FindPendingUpdates());
+        if (unresolved)
+            Assert.Equal(point.Point.Id, Assert.Single(restarted.FindUnresolvedRestores()).Id);
+        else
+            Assert.Empty(restarted.FindUnresolvedRestores());
     }
 
     [Fact]
@@ -1894,7 +1925,12 @@ public sealed class GatewayVersionAlignmentCoordinatorTests : IDisposable
         var created = await manager.CreateVerifiedAsync(
             "OpenClawGateway", "historical-gateway-record", LegacyVersion, RequiredVersion);
         manager.RecordNodeCommandAllowSnapshot(created.Point!.Id, completeArray);
-        manager.MarkUpdateInProgress(created.Point.Id);
+        manager.ArmUpdateDispatch(
+            created.Point.Id,
+            GatewayPackageTarget.Official(RequiredVersion),
+            GatewayPackageUpdateRoute.CompanionInstaller,
+            requestId: null);
+        manager.MarkInstallerDispatchAccepted(created.Point.Id);
         runner.ClearCalls();
         runner.Distros = [new("OpenClawGateway", "Running", 2)];
         WriteFakeVhd(Path.Combine(runner.InstallDirectory!, "ext4.vhdx"), marker: 211);
@@ -2063,7 +2099,7 @@ public sealed class GatewayVersionAlignmentCoordinatorTests : IDisposable
         Assert.Equal(1, runner.UnregisterCalls);
     }
 
-    [Fact]
+    [ReparsePointFact]
     public async Task RestoreAsync_RejectsReparseBackedStageBeforeUnregister()
     {
         var runner = new FakeWslCommandRunner();
@@ -2072,19 +2108,14 @@ public sealed class GatewayVersionAlignmentCoordinatorTests : IDisposable
         var created = await manager.CreateVerifiedAsync("OpenClawGateway", "local-gateway", PreviousVersion, RequiredVersion);
         runner.ClearCalls();
         WriteFakeVhd(Path.Combine(runner.InstallDirectory!, "ext4.vhdx"), marker: 209);
-        var stagePath = Path.Combine(
-            _tempRoot, "gateway-rollback-staging", "OpenClawGateway", $"{created.Point!.Id}.vhdx");
-        var rollbackPath = Path.Combine(
-            _tempRoot, "gateway-rollback-points", "OpenClawGateway", created.Point.Id, "rollback.vhdx");
-        Directory.CreateDirectory(Path.GetDirectoryName(stagePath)!);
-        try
-        {
-            File.CreateSymbolicLink(stagePath, rollbackPath);
-        }
-        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or PlatformNotSupportedException)
-        {
-            return;
-        }
+        var stagingRoot = Path.Combine(_tempRoot, "gateway-rollback-staging");
+        var stageDirectory = Path.Combine(stagingRoot, "OpenClawGateway");
+        var redirected = Path.Combine(_tempRoot, "redirected-staging");
+        var stagePath = Path.Combine(stageDirectory, $"{created.Point!.Id}.vhdx");
+        Directory.CreateDirectory(stagingRoot);
+        Directory.CreateDirectory(redirected);
+        Directory.CreateSymbolicLink(stageDirectory, redirected);
+        File.WriteAllBytes(Path.Combine(redirected, Path.GetFileName(stagePath)), [1, 2, 3]);
 
         var result = await manager.RestoreExplicitAsync(
             "OpenClawGateway", "local-gateway", created.Point.Id, created.Point.Id);

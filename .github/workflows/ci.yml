@@ -32,6 +32,7 @@ jobs:
     timeout-minutes: 45
     outputs:
       sha256: ${{ steps.package.outputs.sha256 }}
+      version: ${{ steps.package.outputs.version }}
     steps:
     - name: Fail if repo hygiene failed
       if: ${{ needs.repo-hygiene.result != 'success' }}
@@ -126,6 +127,7 @@ jobs:
           "$packaged_version" \
           "$sha256" >"$RUNNER_TEMP/gateway-composed/provenance.json"
         echo "sha256=$sha256" >>"$GITHUB_OUTPUT"
+        echo "version=$packaged_version" >>"$GITHUB_OUTPUT"
 
     - name: Upload composed gateway package
       uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
@@ -563,7 +565,7 @@ jobs:
       env:
         OPENCLAW_RUN_E2E: 1
         OPENCLAW_E2E_GATEWAY_SOURCE: ${{ matrix.gateway_source }}
-        OPENCLAW_E2E_GATEWAY_VERSION: ${{ matrix.gateway_version }}
+        OPENCLAW_E2E_GATEWAY_VERSION: ${{ matrix.gateway_source == 'composed' && needs.gateway-composed.outputs.version || matrix.gateway_version }}
         OPENCLAW_E2E_GATEWAY_PACKAGE_SPEC: ${{ matrix.gateway_source == 'composed' && steps.gateway_package_host.outputs.package_spec || '' }}
         OPENCLAW_E2E_GATEWAY_PACKAGE_SHA256: ${{ matrix.gateway_source == 'composed' && steps.gateway_package_host.outputs.package_sha256 || '' }}
         OPENCLAW_E2E_GATEWAY_PACKAGE_HOST_DISTRO: ${{ matrix.gateway_source == 'composed' && steps.gateway_package_host.outputs.distro_name || '' }}

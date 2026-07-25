@@ -1376,8 +1376,7 @@ public sealed partial class GatewayRollbackPointManager
             manifest.UpdateCompletionObservedVersion is not null;
         if (!hasAnyDispatchMetadata)
             return true;
-        if (manifest.Phase != GatewayRollbackPointPhase.UpdateInProgress &&
-            manifest.Phase != GatewayRollbackPointPhase.PostUpdateHealthy)
+        if (!IsUpdateReceiptPhase(manifest.Phase))
         {
             return false;
         }
@@ -1433,6 +1432,17 @@ public sealed partial class GatewayRollbackPointManager
                !string.IsNullOrWhiteSpace(manifest.UpdateCompletionRequestId) &&
                manifest.UpdateCompletionOutcome is "healthy" or "failed";
     }
+
+    private static bool IsUpdateReceiptPhase(GatewayRollbackPointPhase phase) =>
+        phase is GatewayRollbackPointPhase.UpdateInProgress
+            or GatewayRollbackPointPhase.PostUpdateHealthy
+            or GatewayRollbackPointPhase.RestoreStaged
+            or GatewayRollbackPointPhase.UnregisterPending
+            or GatewayRollbackPointPhase.DistroUnregistered
+            or GatewayRollbackPointPhase.ImportPending
+            or GatewayRollbackPointPhase.Imported
+            or GatewayRollbackPointPhase.RestoreCancelled
+            or GatewayRollbackPointPhase.RestoreHealthy;
 
     private static bool IsCompleteCommandArrayJson(string value)
     {

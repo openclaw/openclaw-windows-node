@@ -355,6 +355,25 @@ public sealed class ProgramArgumentTests : IDisposable
     }
 
     [Fact]
+    public async Task Main_ReportsImmutablePackageDigestMismatchAsConfigurationError()
+    {
+        var configPath = Path.Combine(_tempDir, "digest-mismatch.json");
+        await File.WriteAllTextAsync(
+            configPath,
+            $$"""
+            {
+              "Gateway": {
+                "ExpectedPackageSha256": "{{new string('a', 64)}}"
+              }
+            }
+            """);
+
+        var exitCode = await Program.Main(["--config", configPath, "--dry-run"]);
+
+        Assert.Equal(2, exitCode);
+    }
+
+    [Fact]
     public async Task Main_RejectsExplicitUnreadableConfig()
     {
         var configPath = Path.Combine(_tempDir, "locked.json");

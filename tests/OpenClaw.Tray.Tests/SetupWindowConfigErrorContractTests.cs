@@ -11,6 +11,9 @@ public sealed class SetupWindowConfigErrorContractTests
 
         Assert.Contains("SetupWindowCommandLine.TryParse(", source);
         Assert.Contains("SetupConfig.TryLoadFromFile(configPath", source);
+        Assert.Contains("GatewayLkgVersion.ApplyToConfig(_config)", source);
+        Assert.Contains("catch (InvalidOperationException ex)", source);
+        Assert.Contains("ShowConfigurationError(ex.Message)", source);
         Assert.Contains("could not be loaded", source);
         Assert.Contains("new CompletePageArgs(", source);
         Assert.Contains("Success: false", source);
@@ -25,6 +28,7 @@ public sealed class SetupWindowConfigErrorContractTests
             "SetupWindowCommandLine.TryParse(",
             "if (configPath == null)",
             "SetupConfig.TryLoadFromFile(configPath",
+            "GatewayLkgVersion.ApplyToConfig(_config)",
             "SetupRunLock.TryAcquire(_dataDir");
     }
 

@@ -1278,20 +1278,21 @@ public sealed class InstallCliStep : SetupStep
         }
 
         string installScript;
+        string? expectedInstalledVersion;
         try
         {
             installScript = BuildInstallCommand(
                 installUrl,
                 ctx.Config.Gateway.Version,
                 ctx.Config.Gateway.ExpectedPackageSha256);
+            expectedInstalledVersion = GatewayLkgVersion.ResolveExpectedInstalledVersion(ctx.Config);
         }
-        catch (ArgumentException ex)
+        catch (Exception ex) when (ex is ArgumentException or InvalidOperationException)
         {
             return StepResult.Fail(ex.Message);
         }
 
         var inputViaStdin = !string.IsNullOrWhiteSpace(ctx.Config.Gateway.ExpectedPackageSha256);
-        var expectedInstalledVersion = GatewayLkgVersion.ResolveExpectedInstalledVersion(ctx.Config);
         var result = await ctx.Commands.RunInWslAsync(
             distro,
             installScript,
@@ -1619,7 +1620,8 @@ public sealed class ConfigureGatewayStep : SetupStep
     }
 
     internal static string ResolveNodeCommandAllowConfigKey(GatewayConfig gw)
-        => GatewayNodeCommandPolicyConfig.ResolveAllowKey(gw.Version)
+        => GatewayNodeCommandPolicyConfig.ResolveAllowKey(
+               GatewayLkgVersion.ResolveSchemaVersion(gw))
            ?? GatewayNodeCommandPolicyConfig.CurrentAllowKey;
 
     // Budget = base + per-command, floored. Scales the WSL timeout with the number of

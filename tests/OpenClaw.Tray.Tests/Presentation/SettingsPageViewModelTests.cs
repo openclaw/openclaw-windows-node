@@ -250,6 +250,22 @@ public sealed class SettingsPageViewModelTests
     }
 
     [Fact]
+    public void GatewayRollbackRetentionAge_NormalizesFractionBeforeDisplayAndPersist()
+    {
+        var vm = NewVm(out var settings, out var appCommands, out _, out var temp);
+        using (temp)
+        {
+            vm.Activate(null);
+
+            vm.GatewayRollbackRetentionAgeDays = 0.5;
+
+            Assert.Equal(1d, vm.GatewayRollbackRetentionAgeDays);
+            Assert.Equal(1, settings.GatewayRollbackRetentionAgeDays);
+            Assert.Equal(1, appCommands.NotifySettingsSavedCount);
+        }
+    }
+
+    [Fact]
     public void ExternalChange_ReloadsWithoutRePersisting()
     {
         var vm = NewVm(out var settings, out var appCommands, out _, out var temp);

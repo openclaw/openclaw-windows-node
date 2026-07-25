@@ -17,12 +17,42 @@ internal static class GatewayE2EPackageSpec
         OpenClaw.SetupEngine.GatewayLkgVersion.ResolveLkgVersion());
 
     internal static string ResolveNodeCommandAllowConfigKey()
-        => OpenClaw.Shared.GatewayNodeCommandPolicyConfig.ResolveAllowKey(Resolve())
+        => OpenClaw.Shared.GatewayNodeCommandPolicyConfig.ResolveAllowKey(
+               ResolveExpectedInstalledVersion())
            ?? OpenClaw.Shared.GatewayNodeCommandPolicyConfig.CurrentAllowKey;
 
     internal static string? ResolveExpectedSha256() => ResolveExpectedSha256(
         Environment.GetEnvironmentVariable(SourceEnvVar),
         Environment.GetEnvironmentVariable(Sha256EnvVar));
+
+    internal static string ResolveExpectedInstalledVersion() => ResolveExpectedInstalledVersion(
+        Environment.GetEnvironmentVariable(SourceEnvVar),
+        Environment.GetEnvironmentVariable(VersionEnvVar),
+        OpenClaw.SetupEngine.GatewayLkgVersion.ResolveLkgVersion());
+
+    internal static string ResolveExpectedInstalledVersion(
+        string? sourceRaw,
+        string? versionRaw,
+        string lkgVersion)
+    {
+        var source = sourceRaw?.Trim();
+        if (string.Equals(source, "lkg", StringComparison.OrdinalIgnoreCase))
+        {
+            return lkgVersion;
+        }
+
+        var version = versionRaw?.Trim();
+        if (string.IsNullOrWhiteSpace(version) ||
+            !System.Text.RegularExpressions.Regex.IsMatch(
+                version,
+                "^\\d{4}\\.\\d+\\.\\d+(?:-[0-9A-Za-z]+(?:[.-][0-9A-Za-z-]+)*)?$"))
+        {
+            throw new InvalidOperationException(
+                $"{VersionEnvVar} must be an exact semantic version when {SourceEnvVar}={source}.");
+        }
+
+        return version;
+    }
 
     internal static string? ResolveExpectedSha256(string? sourceRaw, string? sha256Raw)
     {
@@ -87,8 +117,7 @@ internal static class GatewayE2EPackageSpec
         if (!string.Equals(source, "composed", StringComparison.OrdinalIgnoreCase))
             throw new InvalidOperationException(
                 $"{SourceEnvVar} must be 'lkg', 'official', or 'composed'.");
-        if (!string.IsNullOrWhiteSpace(versionRaw))
-            throw new InvalidOperationException($"{VersionEnvVar} must be empty when {SourceEnvVar}=composed.");
+        _ = ResolveExpectedInstalledVersion(source, versionRaw, lkgSpec);
         if (string.IsNullOrWhiteSpace(packageRaw))
             throw new InvalidOperationException($"{EnvVar} is required when {SourceEnvVar}=composed.");
         if (string.IsNullOrWhiteSpace(sha256Raw) ||

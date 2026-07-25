@@ -68,7 +68,9 @@ public sealed partial record GatewayPackageTarget
     {
         ArgumentNullException.ThrowIfNull(packageUri);
         if (!packageUri.IsAbsoluteUri ||
+            !packageUri.IsWellFormedOriginalString() ||
             (packageUri.Scheme != Uri.UriSchemeHttp && packageUri.Scheme != Uri.UriSchemeHttps) ||
+            string.IsNullOrEmpty(packageUri.Host) ||
             !packageUri.AbsolutePath.EndsWith(".tgz", StringComparison.OrdinalIgnoreCase) ||
             !string.IsNullOrEmpty(packageUri.UserInfo) ||
             !string.IsNullOrEmpty(packageUri.Query) ||
@@ -277,7 +279,9 @@ public static class GatewayPackageInstallCommandBuilder
             packageSpec.Contains('\n') ||
             packageSpec.Contains('\r') ||
             !Uri.TryCreate(packageSpec, UriKind.Absolute, out var packageUri) ||
+            !packageUri.IsWellFormedOriginalString() ||
             (packageUri.Scheme != Uri.UriSchemeHttp && packageUri.Scheme != Uri.UriSchemeHttps) ||
+            string.IsNullOrEmpty(packageUri.Host) ||
             !packageUri.AbsolutePath.EndsWith(".tgz", StringComparison.OrdinalIgnoreCase) ||
             !string.IsNullOrEmpty(packageUri.UserInfo) ||
             !string.IsNullOrEmpty(packageUri.Query) ||
