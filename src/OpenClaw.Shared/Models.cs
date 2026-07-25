@@ -1237,9 +1237,12 @@ public static class GatewayNodeCommandPolicyConfig
     public const string CurrentAllowKey = "gateway.nodes.commands.allow";
     public const string LegacyAllowKey = "gateway.nodes.allowCommands";
 
-    public static string ResolveAllowKey(string? gatewayVersion)
+    public static string? ResolveAllowKey(string? gatewayVersion)
     {
         var version = gatewayVersion?.Trim();
+        if (string.IsNullOrEmpty(version))
+            return null;
+
         return string.Equals(version, "2026.6.11", StringComparison.OrdinalIgnoreCase) ||
                string.Equals(version, "2026.7.1", StringComparison.OrdinalIgnoreCase) ||
                string.Equals(version, "2026.7.2-beta.3", StringComparison.OrdinalIgnoreCase)
@@ -1279,6 +1282,16 @@ public static class CommandCenterDiagnostics
         if (string.IsNullOrWhiteSpace(commandList))
             commandList = "none";
         var allowKey = GatewayNodeCommandPolicyConfig.ResolveAllowKey(gatewayVersion);
+        if (allowKey is null)
+        {
+            return string.Join(Environment.NewLine, [
+                "Gateway version unavailable; the node command allowlist key cannot be determined safely.",
+                "Refresh or reconnect the gateway before changing its command policy.",
+                "After the version is known:",
+                $"Preserve every existing entry and add only: {commandList}"
+            ]);
+        }
+
         return string.Join(Environment.NewLine, [
             "Read the complete current allowlist before changing it:",
             $"openclaw config get {allowKey} --json",
@@ -1299,6 +1312,15 @@ public static class CommandCenterDiagnostics
         if (string.IsNullOrWhiteSpace(commandList))
             commandList = "none";
         var allowKey = GatewayNodeCommandPolicyConfig.ResolveAllowKey(gatewayVersion);
+        if (allowKey is null)
+        {
+            return string.Join(Environment.NewLine, [
+                "Privacy-sensitive OpenClaw command opt-in guidance",
+                $"Commands: {commandList}",
+                "Gateway version unavailable; refresh or reconnect the gateway before changing its command policy.",
+                "Leave these commands blocked until the allowlist key can be determined safely."
+            ]);
+        }
 
         return string.Join(Environment.NewLine, [
             "Privacy-sensitive OpenClaw command opt-in guidance",
@@ -1433,6 +1455,8 @@ public static class CommandCenterDiagnostics
     {
         var warnings = new List<GatewayDiagnosticWarning>();
         var nodeCommandAllowKey = GatewayNodeCommandPolicyConfig.ResolveAllowKey(gatewayVersion);
+        var nodeCommandAllowlistReference = nodeCommandAllowKey ??
+            "the gateway node command allowlist (key unavailable until the gateway version is known)";
         var isPendingApproval = node.ApprovalState is
             GatewayNodeApprovalState.PendingApproval or
             GatewayNodeApprovalState.PendingReapproval;
@@ -1518,11 +1542,13 @@ public static class CommandCenterDiagnostics
                 Severity = GatewayDiagnosticSeverity.Warning,
                 Category = "allowlist",
                 Title = "Safe node commands are filtered by gateway policy",
-                Detail = $"{missing} {(node.MissingSafeAllowlistCommands.Count == 1 ? "is" : "are")} approved for the node but denied by current gateway permissions. After changing {nodeCommandAllowKey}, re-approve or re-pair the device if the gateway keeps an older command snapshot.",
-                RepairAction = "Copy safe allowlist merge guidance",
-                CopyText = BuildAllowCommandsMergeGuidance(
-                    CommandCenterCommandGroups.SafeCompanionCommands,
-                    gatewayVersion)
+                Detail = $"{missing} {(node.MissingSafeAllowlistCommands.Count == 1 ? "is" : "are")} approved for the node but denied by current gateway permissions. After changing {nodeCommandAllowlistReference}, re-approve or re-pair the device if the gateway keeps an older command snapshot.",
+                RepairAction = nodeCommandAllowKey is null ? null : "Copy safe allowlist merge guidance",
+                CopyText = nodeCommandAllowKey is null
+                    ? null
+                    : BuildAllowCommandsMergeGuidance(
+                        CommandCenterCommandGroups.SafeCompanionCommands,
+                        gatewayVersion)
             });
         }
 
@@ -1533,11 +1559,13 @@ public static class CommandCenterDiagnostics
                 Severity = GatewayDiagnosticSeverity.Info,
                 Category = "allowlist",
                 Title = "Privacy-sensitive commands require explicit opt-in",
-                Detail = string.Join(", ", node.PrivacySensitiveApprovedCommands) + $" should only be available when explicitly allowed by {nodeCommandAllowKey}.",
-                RepairAction = "Copy opt-in guidance",
-                CopyText = BuildDangerousCommandOptInGuidance(
-                    node.PrivacySensitiveApprovedCommands,
-                    gatewayVersion)
+                Detail = string.Join(", ", node.PrivacySensitiveApprovedCommands) + $" should only be available when explicitly allowed by {nodeCommandAllowlistReference}.",
+                RepairAction = nodeCommandAllowKey is null ? null : "Copy opt-in guidance",
+                CopyText = nodeCommandAllowKey is null
+                    ? null
+                    : BuildDangerousCommandOptInGuidance(
+                        node.PrivacySensitiveApprovedCommands,
+                        gatewayVersion)
             });
         }
 
@@ -1550,10 +1578,12 @@ public static class CommandCenterDiagnostics
                 Category = "allowlist",
                 Title = "Privacy-sensitive commands are currently blocked",
                 Detail = $"{blocked} {(node.MissingDangerousAllowlistCommands.Count == 1 ? "is" : "are")} approved for the node but denied by current gateway permissions. Leave blocked unless you explicitly want camera, microphone, or screen recording access for this node.",
-                RepairAction = "Copy opt-in guidance",
-                CopyText = BuildDangerousCommandOptInGuidance(
-                    node.MissingDangerousAllowlistCommands,
-                    gatewayVersion)
+                RepairAction = nodeCommandAllowKey is null ? null : "Copy opt-in guidance",
+                CopyText = nodeCommandAllowKey is null
+                    ? null
+                    : BuildDangerousCommandOptInGuidance(
+                        node.MissingDangerousAllowlistCommands,
+                        gatewayVersion)
             });
         }
 
@@ -1566,10 +1596,12 @@ public static class CommandCenterDiagnostics
                 Category = "allowlist",
                 Title = "Browser proxy command is filtered by gateway policy",
                 Detail = $"{blocked} {(node.MissingBrowserAllowlistCommands.Count == 1 ? "is" : "are")} approved for the node but denied by current gateway permissions. Add the exact browser command and re-approve or re-pair the node if the gateway keeps an older command snapshot.",
-                RepairAction = "Copy browser proxy allowlist merge guidance",
-                CopyText = BuildAllowCommandsMergeGuidance(
-                    node.MissingBrowserAllowlistCommands,
-                    gatewayVersion)
+                RepairAction = nodeCommandAllowKey is null ? null : "Copy browser proxy allowlist merge guidance",
+                CopyText = nodeCommandAllowKey is null
+                    ? null
+                    : BuildAllowCommandsMergeGuidance(
+                        node.MissingBrowserAllowlistCommands,
+                        gatewayVersion)
             });
         }
 

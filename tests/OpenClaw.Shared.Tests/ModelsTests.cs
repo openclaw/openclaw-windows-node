@@ -1380,7 +1380,7 @@ public class CommandCenterModelTests
             }
         };
 
-        var info = NodeCapabilityHealthInfo.FromNode(node);
+        var info = NodeCapabilityHealthInfo.FromNode(node, "2026.7.3");
 
         Assert.Contains("canvas.present", info.MissingSafeAllowlistCommands);
         Assert.Contains("screen.snapshot", info.MissingSafeAllowlistCommands);
@@ -1425,7 +1425,7 @@ public class CommandCenterModelTests
             }
         };
 
-        var info = NodeCapabilityHealthInfo.FromNode(node);
+        var info = NodeCapabilityHealthInfo.FromNode(node, "2026.7.3");
 
         Assert.Contains("browser.proxy", info.BrowserApprovedCommands);
         Assert.Contains("browser.proxy", info.MissingBrowserAllowlistCommands);
@@ -1494,7 +1494,8 @@ public class CommandCenterModelTests
     public void BuildAllowCommandsMergeGuidance_PreservesExistingArray()
     {
         var guidance = CommandCenterDiagnostics.BuildAllowCommandsMergeGuidance(
-            ["screen.snapshot", "canvas.present", "screen.snapshot"]);
+            ["screen.snapshot", "canvas.present", "screen.snapshot"],
+            "2026.7.3");
 
         Assert.Contains(
             "openclaw config get gateway.nodes.commands.allow --json",
@@ -1506,6 +1507,28 @@ public class CommandCenterModelTests
             "openclaw config set gateway.nodes.commands.allow '[\"canvas.present\",\"screen.snapshot\"]'",
             guidance,
             StringComparison.Ordinal);
+    }
+
+    [Theory]
+    [InlineData(null)]
+    [InlineData("")]
+    [InlineData("   ")]
+    public void ResolveAllowKey_ReturnsNullWhenGatewayVersionUnavailable(string? gatewayVersion)
+    {
+        Assert.Null(GatewayNodeCommandPolicyConfig.ResolveAllowKey(gatewayVersion));
+    }
+
+    [Fact]
+    public void BuildAllowCommandsMergeGuidance_OmitsVersionSpecificCommandsWithoutGatewayVersion()
+    {
+        var guidance = CommandCenterDiagnostics.BuildAllowCommandsMergeGuidance(
+            ["browser.proxy"]);
+
+        Assert.Contains("Gateway version unavailable", guidance, StringComparison.Ordinal);
+        Assert.Contains("Preserve every existing entry", guidance, StringComparison.Ordinal);
+        Assert.DoesNotContain("gateway.nodes.", guidance, StringComparison.Ordinal);
+        Assert.DoesNotContain("openclaw config get", guidance, StringComparison.Ordinal);
+        Assert.DoesNotContain("openclaw config set", guidance, StringComparison.Ordinal);
     }
 
     [Theory]
@@ -1624,11 +1647,55 @@ public class CommandCenterModelTests
     public void BuildDangerousCommandOptInGuidance_IsStableAndDoesNotEmitRepairCommand()
     {
         var guidance = CommandCenterDiagnostics.BuildDangerousCommandOptInGuidance(
-            ["screen.record", "camera.snap", "screen.record"]);
+            ["screen.record", "camera.snap", "screen.record"],
+            "2026.7.3");
 
         Assert.Contains("camera.snap, screen.record", guidance);
         Assert.Contains("Do not use wildcards", guidance);
         Assert.DoesNotContain("openclaw config set", guidance, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void BuildDangerousCommandOptInGuidance_OmitsAllowlistKeyWithoutGatewayVersion()
+    {
+        var guidance = CommandCenterDiagnostics.BuildDangerousCommandOptInGuidance(
+            ["screen.record"]);
+
+        Assert.Contains("Gateway version unavailable", guidance, StringComparison.Ordinal);
+        Assert.DoesNotContain("gateway.nodes.", guidance, StringComparison.Ordinal);
+        Assert.DoesNotContain("openclaw config", guidance, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void NodeCapabilityHealthInfo_DoesNotOfferAllowlistRepairWithoutGatewayVersion()
+    {
+        var node = new GatewayNodeInfo
+        {
+            NodeId = "node-unknown-gateway",
+            DisplayName = "Windows Node",
+            Platform = "windows",
+            IsOnline = true,
+            Commands = ["canvas.present", "browser.proxy", "screen.record"],
+            Permissions = new Dictionary<string, bool>(StringComparer.OrdinalIgnoreCase)
+            {
+                ["canvas.present"] = false,
+                ["browser.proxy"] = false,
+                ["screen.record"] = false
+            }
+        };
+
+        var info = NodeCapabilityHealthInfo.FromNode(node);
+        var allowlistWarnings = info.Warnings
+            .Where(warning => warning.Category == "allowlist")
+            .ToList();
+
+        Assert.NotEmpty(allowlistWarnings);
+        Assert.All(allowlistWarnings, warning =>
+        {
+            Assert.Null(warning.RepairAction);
+            Assert.Null(warning.CopyText);
+            Assert.DoesNotContain("gateway.nodes.", warning.Detail, StringComparison.Ordinal);
+        });
     }
 
     [Fact]

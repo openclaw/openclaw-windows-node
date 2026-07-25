@@ -865,7 +865,8 @@ public class SetupStepsTests : IDisposable
             (_, command, _) => command switch
             {
                 var value when value.Contains("GATEWAY_CONFIGURED") => Ok("GATEWAY_CONFIGURED"),
-                var value when value.Contains("config set gateway.reload.mode 'hybrid'") => Ok(),
+                var value when value.Contains("config set gateway.reload.mode 'restart'") => Ok(),
+                var value when value.Contains("config set gateway.reload.mode 'hot'") => Ok(),
                 var value when value.Contains("ss -tlnp") => Ok(),
                 var value when value.Contains("openclaw gateway restart") => Ok(),
                 var value when value.Contains("curl -s") => Ok("200"),
@@ -890,9 +891,9 @@ public class SetupStepsTests : IDisposable
             rollbackOnFailureOverride: false).RunAsync(ctx);
 
         Assert.Equal(PipelineOutcome.Success, result.Outcome);
-        Assert.Contains("config set gateway.reload.mode 'hybrid'", commands.WslCalls[0].Command);
+        Assert.Contains("config set gateway.reload.mode 'restart'", commands.WslCalls[0].Command);
         var configureCall = Assert.Single(commands.WslCalls, call => call.Command.Contains("GATEWAY_CONFIGURED"));
-        Assert.Contains("config set gateway.reload.mode 'hybrid'", configureCall.Command);
+        Assert.Contains("config set gateway.reload.mode 'hot'", configureCall.Command);
         Assert.True(commands.WslCalls.IndexOf(configureCall) > 0);
         Assert.False(File.Exists(GatewayReloadRecoveryStore.GetPath(ctx)));
     }
@@ -1730,7 +1731,7 @@ public class SetupStepsTests : IDisposable
     [Theory]
     [InlineData("https://127.0.0.1/openclaw-composed.tgz", "hot")]
     [InlineData("https://127.0.0.1/openclaw-composed.tgz", "restart")]
-    public void ConfigureGateway_MapsLegacyReloadModesToHybridForCurrentSchema(
+    public void ConfigureGateway_PreservesSupportedReloadModesForCurrentSchema(
         string version,
         string reloadMode)
     {
@@ -1743,8 +1744,7 @@ public class SetupStepsTests : IDisposable
             18789,
             "'[]'");
 
-        Assert.Contains("openclaw config set gateway.reload.mode 'hybrid'", commands);
-        Assert.DoesNotContain($"gateway.reload.mode '{reloadMode}'", commands);
+        Assert.Contains($"openclaw config set gateway.reload.mode '{reloadMode}'", commands);
     }
 
     [Theory]
@@ -1839,7 +1839,7 @@ public class SetupStepsTests : IDisposable
 
         Assert.DoesNotContain("openclaw config set gateway.reload.mode off", commands);
         Assert.Equal(1, commands.Split("gateway.reload.mode", StringSplitOptions.None).Length - 1);
-        Assert.Contains("openclaw config set gateway.reload.mode 'hybrid'", commands);
+        Assert.Contains("openclaw config set gateway.reload.mode 'restart'", commands);
     }
 
     [Fact]
@@ -1855,7 +1855,7 @@ public class SetupStepsTests : IDisposable
             },
         };
 
-        Assert.Equal("hybrid", ConfigureGatewayStep.GetEffectiveReloadMode(config));
+        Assert.Equal("restart", ConfigureGatewayStep.GetEffectiveReloadMode(config));
     }
 
     [Fact]
@@ -2053,7 +2053,7 @@ public class SetupStepsTests : IDisposable
             _ => Ok(),
             (_, command, _) => command switch
             {
-                var value when value.Contains("config set gateway.reload.mode 'hybrid'") => Ok(),
+                var value when value.Contains("config set gateway.reload.mode 'hot'") => Ok(),
                 var value when value.Contains("ss -tlnp") => Ok(),
                 var value when value.Contains("openclaw gateway restart") => Ok(),
                 var value when value.Contains("curl -s") => Ok("200"),
@@ -2067,7 +2067,7 @@ public class SetupStepsTests : IDisposable
         var result = await new SetupWizardRunner(ctx).RestoreReloadModeAsync();
 
         Assert.True(result.IsSuccess, result.Message);
-        Assert.Contains(commands.WslCalls, call => call.Command.Contains("config set gateway.reload.mode 'hybrid'"));
+        Assert.Contains(commands.WslCalls, call => call.Command.Contains("config set gateway.reload.mode 'hot'"));
         Assert.Contains(commands.WslCalls, call => call.Command.Contains("openclaw gateway restart"));
     }
 
@@ -2245,7 +2245,7 @@ public class SetupStepsTests : IDisposable
         var result = await new SetupWizardRunner(ctx).RunAsync(CancellationToken.None);
 
         Assert.Equal(StepOutcome.Skipped, result.Outcome);
-        Assert.Contains(commands.WslCalls, call => call.Command.Contains("config set gateway.reload.mode 'hybrid'"));
+        Assert.Contains(commands.WslCalls, call => call.Command.Contains("config set gateway.reload.mode 'hot'"));
         Assert.DoesNotContain(commands.WslCalls, call => call.Command.Contains("gateway.reload.mode off"));
         Assert.False(File.Exists(GatewayReloadRecoveryStore.GetPath(ctx)));
     }
@@ -2257,7 +2257,7 @@ public class SetupStepsTests : IDisposable
             _ => Ok(),
             (_, command, _) =>
             {
-                if (command.Contains("config set gateway.reload.mode 'hybrid'"))
+                if (command.Contains("config set gateway.reload.mode 'restart'"))
                     return Ok();
                 if (command.Contains("config get gateway.reload.mode --json"))
                     return Ok("\"hot\"");
@@ -2281,7 +2281,7 @@ public class SetupStepsTests : IDisposable
         var result = await new SetupWizardRunner(ctx).BeginReloadSuspensionAsync();
 
         Assert.True(result.IsSuccess, result.Message);
-        Assert.Contains("config set gateway.reload.mode 'hybrid'", commands.WslCalls[0].Command);
+        Assert.Contains("config set gateway.reload.mode 'restart'", commands.WslCalls[0].Command);
         var offCall = commands.WslCalls.FindIndex(call => call.Command.Contains("gateway.reload.mode off"));
         Assert.True(offCall > 0);
         var recovery = GatewayReloadRecoveryStore.Load(ctx);
@@ -2294,7 +2294,7 @@ public class SetupStepsTests : IDisposable
     {
         var commands = new FakeCommandRunner(
             _ => Ok(),
-            (_, command, _) => command.Contains("config set gateway.reload.mode 'hybrid'")
+            (_, command, _) => command.Contains("config set gateway.reload.mode 'hot'")
                 ? Fail("restore failed")
                 : Fail($"Unexpected command: {command}"));
         var ctx = CreateContext(commands: commands);
@@ -2314,7 +2314,7 @@ public class SetupStepsTests : IDisposable
             _ => Ok(),
             (_, command, _) =>
             {
-                if (command.Contains("config set gateway.reload.mode 'hybrid'"))
+                if (command.Contains("config set gateway.reload.mode 'hot'"))
                     return Ok();
                 if (command.Contains("openclaw gateway restart"))
                     return Fail("restart failed");
@@ -2342,7 +2342,7 @@ public class SetupStepsTests : IDisposable
                     return Ok("\"hot\"");
                 if (command.Contains("config set gateway.reload.mode off"))
                     return Fail("suspension failed");
-                if (command.Contains("config set gateway.reload.mode 'hybrid'"))
+                if (command.Contains("config set gateway.reload.mode 'hot'"))
                     return allowRestore ? Ok() : Fail("restore failed");
                 if (command.Contains("ss -tlnp"))
                     return Ok();
@@ -2493,7 +2493,7 @@ public class SetupStepsTests : IDisposable
                     return Ok("\"hot\"");
                 if (command.Contains("config set gateway.reload.mode off"))
                     return Fail("reload suspension failed");
-                if (command.Contains("config set gateway.reload.mode 'hybrid'"))
+                if (command.Contains("config set gateway.reload.mode 'hot'"))
                     return Ok();
                 if (command.Contains("ss -tlnp"))
                     return Ok();
@@ -2509,7 +2509,7 @@ public class SetupStepsTests : IDisposable
         var result = await new SetupWizardRunner(ctx).BeginReloadSuspensionAsync();
 
         Assert.False(result.IsSuccess);
-        Assert.Contains(commands.WslCalls, call => call.Command.Contains("config set gateway.reload.mode 'hybrid'"));
+        Assert.Contains(commands.WslCalls, call => call.Command.Contains("config set gateway.reload.mode 'hot'"));
         Assert.Contains(commands.WslCalls, call => call.Command.Contains("openclaw gateway restart"));
     }
 
@@ -2754,6 +2754,7 @@ public class SetupStepsTests : IDisposable
             (_, command, _) => command switch
             {
                 var value when value.Contains("config set gateway.reload.mode 'hybrid'") => Ok(),
+                var value when value.Contains("config set gateway.reload.mode 'hot'") => Ok(),
                 var value when value.Contains("ss -tlnp") => Ok(),
                 var value when value.Contains("openclaw gateway restart") => Ok(),
                 var value when value.Contains("curl -s") => Ok("200"),
