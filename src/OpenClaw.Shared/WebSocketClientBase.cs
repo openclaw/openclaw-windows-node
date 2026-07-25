@@ -430,13 +430,27 @@ public abstract class WebSocketClientBase : IDisposable
             or WebSocketState.Aborted;
 
     /// <summary>Send a text message over the WebSocket. Thread-safe.</summary>
-    protected virtual async Task SendRawAsync(string message)
+    protected virtual Task SendRawAsync(string message) =>
+        SendRawAsync(message, CancellationToken.None);
+
+    /// <summary>
+    /// Send a text message while observing a caller-owned deadline.
+    /// Subclasses that replace the transport should override this contract as
+    /// well as the legacy one-argument hook.
+    /// </summary>
+    protected virtual Task SendRawAsync(string message, CancellationToken cancellationToken) =>
+        SendRawCoreAsync(message, cancellationToken);
+
+    private async Task SendRawCoreAsync(string message, CancellationToken cancellationToken)
     {
+        using var linkedCancellation = CancellationTokenSource.CreateLinkedTokenSource(
+            _cts.Token,
+            cancellationToken);
         try
         {
-            await _sendLock.WaitAsync(_cts.Token);
+            await _sendLock.WaitAsync(linkedCancellation.Token);
         }
-        catch (OperationCanceledException)
+        catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
         {
             // Shutdown canceled the wait; drop the send silently.
             return;
@@ -463,7 +477,7 @@ public abstract class WebSocketClientBase : IDisposable
                 {
                     var written = Encoding.UTF8.GetBytes(message, buffer);
                     await ws.SendAsync(buffer.AsMemory(0, written),
-                        WebSocketMessageType.Text, true, _cts.Token);
+                        WebSocketMessageType.Text, true, linkedCancellation.Token);
                 }
                 finally
                 {

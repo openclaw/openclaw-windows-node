@@ -1089,6 +1089,8 @@ public class SetupStepsTests : IDisposable
     [InlineData("not-a-digest", "http://example.test/openclaw.tgz")]
     [InlineData("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "2026.7.2-beta.3")]
     [InlineData("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "http://user:secret@example.test/openclaw.tgz")]
+    [InlineData("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "https://example.test/openclaw.tgz?token=secret")]
+    [InlineData("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "https://example.test/openclaw.tgz#package")]
     public void InstallCli_BuildInstallCommand_RejectsInvalidDigestContract(
         string expectedSha256,
         string packageSpec)
@@ -1097,6 +1099,23 @@ public class SetupStepsTests : IDisposable
             "https://openclaw.ai/install-cli.sh",
             packageSpec,
             expectedSha256));
+    }
+
+    [Theory]
+    [InlineData("OpenClaw 2026.7.22+proof.1 (abc123)", "2026.7.22+proof.1", true)]
+    [InlineData("2026.7.22+proof.1", "2026.7.22+proof.1", true)]
+    [InlineData("OpenClaw 2026.7.22+proof.10 (abc123)", "2026.7.22+proof.1", false)]
+    [InlineData("OpenClaw 2026.7.21 (abc123)", "2026.7.22+proof.1", false)]
+    [InlineData("2026.7.21", "2026.7.22+proof.1", false)]
+    [InlineData("OpenClaw 2026.7.22+proof.1 (abc123)\nOpenClaw 2026.7.21 (def456)", "2026.7.22+proof.1", false)]
+    [InlineData("2026.7.22+proof.1\nOpenClaw 2026.7.21 (def456)", "2026.7.22+proof.1", false)]
+    [InlineData("warning: OpenClaw 2026.7.22+proof.1\nOpenClaw 2026.7.21 (def456)", "2026.7.22+proof.1", false)]
+    public void InstallCli_ExactVersionVerificationRejectsDifferentPackages(
+        string output,
+        string expectedVersion,
+        bool expected)
+    {
+        Assert.Equal(expected, InstallCliStep.IsExpectedOpenClawVersion(output, expectedVersion));
     }
 
     [Fact]
@@ -2785,6 +2804,7 @@ public class SetupStepsTests : IDisposable
     [InlineData(null, "gateway.nodes.commands.allow")]
     [InlineData("2026.7.22", "gateway.nodes.commands.allow")]
     [InlineData("2026.6.11", "gateway.nodes.allowCommands")]
+    [InlineData("2026.7.1", "gateway.nodes.allowCommands")]
     [InlineData("2026.7.2-beta.3", "gateway.nodes.allowCommands")]
     public void ConfigureGateway_UsesVersionAppropriateCompleteAllowlistPath(
         string? version,

@@ -650,6 +650,7 @@
                                           HorizontalAlignment="Stretch"
                                           SelectedValuePath="Tag"
                                           SelectedValue="{Binding GatewayRollbackRetentionCount, Mode=TwoWay}"
+                                          AutomationProperties.Name="Rollback point retention"
                                           AutomationProperties.AutomationId="GatewayRollbackRetentionComboBox">
                                     <ComboBoxItem Content="1 version (recommended)" Tag="1"/>
                                     <ComboBoxItem Content="2 versions" Tag="2"/>
@@ -664,6 +665,7 @@
                                                SpinButtonPlacementMode="Compact"
                                                Width="120"
                                                Value="{Binding GatewayRollbackRetentionAgeDays, Mode=TwoWay}"
+                                               AutomationProperties.Name="Rollback point maximum age in days"
                                                AutomationProperties.AutomationId="GatewayRollbackAgeDaysNumberBox"/>
                                     <TextBlock Text="days (0 is off)" VerticalAlignment="Center"/>
                                 </StackPanel>

@@ -55,6 +55,18 @@ public sealed record GatewayRollbackPointManifest
     public required bool WasKnownGood { get; init; }
     public required bool RestoreEligible { get; init; }
     public string? NodeCommandAllowSnapshotJson { get; init; }
+    public GatewayPackageSource? UpdateTargetSource { get; init; }
+    public string? UpdateTargetPackageUri { get; init; }
+    public string? UpdateTargetSha256 { get; init; }
+    public GatewayPackageUpdateRoute? UpdateRoute { get; init; }
+    public GatewayUpdateDispatchState? UpdateDispatchState { get; init; }
+    public string? UpdateRequestId { get; init; }
+    public string? UpdateTransactionId { get; init; }
+    public DateTimeOffset? UpdateConfirmationDeadlineUtc { get; init; }
+    public GatewayUpdateCompletionState? UpdateCompletionState { get; init; }
+    public string? UpdateCompletionRequestId { get; init; }
+    public string? UpdateCompletionOutcome { get; init; }
+    public string? UpdateCompletionObservedVersion { get; init; }
     public string? LastFailureCode { get; init; }
 }
 
@@ -489,6 +501,180 @@ public sealed partial class GatewayRollbackPointManager
         };
         WriteManifest(updated);
         return updated;
+    }
+
+    public GatewayRollbackPointManifest ArmUpdateDispatch(
+        string pointId,
+        GatewayPackageTarget target,
+        GatewayPackageUpdateRoute route,
+        string? requestId)
+    {
+        ArgumentNullException.ThrowIfNull(target);
+        if (!TryLoadPoint(pointId, out var manifest) || manifest is null || !IsManifestOwned(manifest))
+            throw new InvalidOperationException("Rollback point is missing or is not owned by this Companion distro.");
+        if (manifest.Phase != GatewayRollbackPointPhase.Verified ||
+            !string.Equals(manifest.TargetOpenClawVersion, target.ExpectedVersion, StringComparison.Ordinal) ||
+            (route == GatewayPackageUpdateRoute.CoreTransaction && string.IsNullOrWhiteSpace(requestId)) ||
+            (route == GatewayPackageUpdateRoute.CompanionInstaller && requestId is not null))
+        {
+            throw new InvalidOperationException("The update dispatch cannot be armed for this rollback point and target.");
+        }
+
+        var updated = manifest with
+        {
+            Phase = GatewayRollbackPointPhase.UpdateInProgress,
+            UpdateTargetSource = target.Source,
+            UpdateTargetPackageUri = target.PackageUri?.AbsoluteUri,
+            UpdateTargetSha256 = target.Sha256,
+            UpdateRoute = route,
+            UpdateDispatchState = GatewayUpdateDispatchState.Prepared,
+            UpdateRequestId = requestId,
+            UpdateTransactionId = null,
+            UpdateConfirmationDeadlineUtc = null,
+            UpdateCompletionState = null,
+            UpdateCompletionRequestId = null,
+            UpdateCompletionOutcome = null,
+            UpdateCompletionObservedVersion = null,
+            UpdatedAtUtc = _utcNow(),
+            LastFailureCode = null
+        };
+        WriteManifest(updated);
+        return updated;
+    }
+
+    public GatewayRollbackPointManifest MarkUpdateDispatchAmbiguous(string pointId)
+    {
+        return UpdateDispatch(
+            pointId,
+            GatewayUpdateDispatchState.Ambiguous,
+            transactionId: null,
+            confirmationDeadlineUtc: null);
+    }
+
+    public GatewayRollbackPointManifest RecordCoreUpdateAccepted(
+        string pointId,
+        string transactionId,
+        DateTimeOffset confirmationDeadlineUtc)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(transactionId);
+        return UpdateDispatch(
+            pointId,
+            GatewayUpdateDispatchState.Accepted,
+            transactionId.Trim(),
+            confirmationDeadlineUtc);
+    }
+
+    public GatewayRollbackPointManifest MarkInstallerDispatchAccepted(string pointId)
+    {
+        return UpdateDispatch(
+            pointId,
+            GatewayUpdateDispatchState.Accepted,
+            transactionId: null,
+            confirmationDeadlineUtc: null);
+    }
+
+    public GatewayRollbackPointManifest ArmCoreUpdateCompletion(
+        string pointId,
+        string completionRequestId,
+        string outcome,
+        string? observedVersion)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(completionRequestId);
+        var normalizedOutcome = NormalizeCompletionOutcome(outcome);
+        if (!TryLoadPoint(pointId, out var manifest) || manifest is null || !IsManifestOwned(manifest) ||
+            manifest.Phase != GatewayRollbackPointPhase.UpdateInProgress ||
+            manifest.UpdateRoute != GatewayPackageUpdateRoute.CoreTransaction ||
+            manifest.UpdateDispatchState != GatewayUpdateDispatchState.Accepted ||
+            string.IsNullOrWhiteSpace(manifest.UpdateTransactionId) ||
+            manifest.UpdateConfirmationDeadlineUtc is null ||
+            manifest.UpdateCompletionState is not null)
+        {
+            throw new InvalidOperationException("The Core update completion cannot be armed for this rollback point.");
+        }
+
+        var updated = manifest with
+        {
+            UpdateCompletionState = GatewayUpdateCompletionState.Prepared,
+            UpdateCompletionRequestId = completionRequestId.Trim(),
+            UpdateCompletionOutcome = normalizedOutcome,
+            UpdateCompletionObservedVersion = observedVersion?.Trim(),
+            UpdatedAtUtc = _utcNow(),
+            LastFailureCode = null
+        };
+        WriteManifest(updated);
+        return updated;
+    }
+
+    public GatewayRollbackPointManifest MarkCoreUpdateCompletionAmbiguous(string pointId) =>
+        UpdateCoreCompletion(pointId, GatewayUpdateCompletionState.Ambiguous);
+
+    public GatewayRollbackPointManifest MarkCoreUpdateCompletionAccepted(string pointId) =>
+        UpdateCoreCompletion(pointId, GatewayUpdateCompletionState.Accepted);
+
+    private GatewayRollbackPointManifest UpdateCoreCompletion(
+        string pointId,
+        GatewayUpdateCompletionState state)
+    {
+        if (!TryLoadPoint(pointId, out var manifest) || manifest is null || !IsManifestOwned(manifest) ||
+            manifest.Phase != GatewayRollbackPointPhase.UpdateInProgress ||
+            manifest.UpdateRoute != GatewayPackageUpdateRoute.CoreTransaction ||
+            manifest.UpdateDispatchState != GatewayUpdateDispatchState.Accepted ||
+            manifest.UpdateCompletionState != GatewayUpdateCompletionState.Prepared)
+        {
+            throw new InvalidOperationException("The armed Core update completion receipt is missing or invalid.");
+        }
+
+        var updated = manifest with
+        {
+            UpdateCompletionState = state,
+            UpdatedAtUtc = _utcNow(),
+            LastFailureCode = null
+        };
+        WriteManifest(updated);
+        return updated;
+    }
+
+    private GatewayRollbackPointManifest UpdateDispatch(
+        string pointId,
+        GatewayUpdateDispatchState state,
+        string? transactionId,
+        DateTimeOffset? confirmationDeadlineUtc)
+    {
+        if (!TryLoadPoint(pointId, out var manifest) || manifest is null || !IsManifestOwned(manifest) ||
+            manifest.Phase != GatewayRollbackPointPhase.UpdateInProgress ||
+            manifest.UpdateRoute is null ||
+            manifest.UpdateDispatchState is null)
+        {
+            throw new InvalidOperationException("The armed update dispatch receipt is missing or invalid.");
+        }
+
+        var isCore = manifest.UpdateRoute == GatewayPackageUpdateRoute.CoreTransaction;
+        if ((isCore && state == GatewayUpdateDispatchState.Accepted &&
+             (string.IsNullOrWhiteSpace(transactionId) || confirmationDeadlineUtc is null)) ||
+            (!isCore && (transactionId is not null || confirmationDeadlineUtc is not null)))
+        {
+            throw new InvalidOperationException("The update dispatch result does not match its durable route.");
+        }
+
+        var updated = manifest with
+        {
+            UpdateDispatchState = state,
+            UpdateTransactionId = transactionId,
+            UpdateConfirmationDeadlineUtc = confirmationDeadlineUtc,
+            UpdatedAtUtc = _utcNow(),
+            LastFailureCode = null
+        };
+        WriteManifest(updated);
+        return updated;
+    }
+
+    private static string NormalizeCompletionOutcome(string outcome)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(outcome);
+        var normalized = outcome.Trim();
+        return normalized is "healthy" or "failed"
+            ? normalized
+            : throw new ArgumentException("Core update completion outcome must be healthy or failed.", nameof(outcome));
     }
 
     public GatewayRollbackOperationResult CancelRestore(
@@ -1170,7 +1356,83 @@ public sealed partial class GatewayRollbackPointManager
         DefaultUserNameRegex().IsMatch(manifest.DefaultUserName) &&
         (manifest.NodeCommandAllowSnapshotJson is null ||
          IsCompleteCommandArrayJson(manifest.NodeCommandAllowSnapshotJson)) &&
-        (string.IsNullOrEmpty(manifest.VhdSha256) || Sha256Regex().IsMatch(manifest.VhdSha256));
+        (string.IsNullOrEmpty(manifest.VhdSha256) || Sha256Regex().IsMatch(manifest.VhdSha256)) &&
+        IsUpdateDispatchReceiptValid(manifest);
+
+    private static bool IsUpdateDispatchReceiptValid(GatewayRollbackPointManifest manifest)
+    {
+        var hasAnyDispatchMetadata =
+            manifest.UpdateTargetSource is not null ||
+            manifest.UpdateTargetPackageUri is not null ||
+            manifest.UpdateTargetSha256 is not null ||
+            manifest.UpdateRoute is not null ||
+            manifest.UpdateDispatchState is not null ||
+            manifest.UpdateRequestId is not null ||
+            manifest.UpdateTransactionId is not null ||
+            manifest.UpdateConfirmationDeadlineUtc is not null ||
+            manifest.UpdateCompletionState is not null ||
+            manifest.UpdateCompletionRequestId is not null ||
+            manifest.UpdateCompletionOutcome is not null ||
+            manifest.UpdateCompletionObservedVersion is not null;
+        if (!hasAnyDispatchMetadata)
+            return true;
+        if (manifest.Phase != GatewayRollbackPointPhase.UpdateInProgress &&
+            manifest.Phase != GatewayRollbackPointPhase.PostUpdateHealthy)
+        {
+            return false;
+        }
+        if (manifest.UpdateTargetSource is not { } source ||
+            manifest.UpdateRoute is not { } route ||
+            manifest.UpdateDispatchState is not { } state ||
+            !GatewayPackageTarget.TryRestore(
+                source,
+                manifest.TargetOpenClawVersion,
+                manifest.UpdateTargetPackageUri,
+                manifest.UpdateTargetSha256,
+                out _))
+        {
+            return false;
+        }
+
+        if (route == GatewayPackageUpdateRoute.CompanionInstaller)
+        {
+            return manifest.UpdateRequestId is null &&
+                   manifest.UpdateTransactionId is null &&
+                   manifest.UpdateConfirmationDeadlineUtc is null &&
+                   manifest.UpdateCompletionState is null &&
+                   manifest.UpdateCompletionRequestId is null &&
+                   manifest.UpdateCompletionOutcome is null &&
+                   manifest.UpdateCompletionObservedVersion is null;
+        }
+
+        if (string.IsNullOrWhiteSpace(manifest.UpdateRequestId))
+            return false;
+        if (state != GatewayUpdateDispatchState.Accepted)
+        {
+            return manifest.UpdateCompletionState is null &&
+                   manifest.UpdateCompletionRequestId is null &&
+                   manifest.UpdateCompletionOutcome is null &&
+                   manifest.UpdateCompletionObservedVersion is null;
+        }
+
+        if (string.IsNullOrWhiteSpace(manifest.UpdateTransactionId) ||
+            manifest.UpdateConfirmationDeadlineUtc is null)
+        {
+            return false;
+        }
+
+        var hasAnyCompletionMetadata =
+            manifest.UpdateCompletionState is not null ||
+            manifest.UpdateCompletionRequestId is not null ||
+            manifest.UpdateCompletionOutcome is not null ||
+            manifest.UpdateCompletionObservedVersion is not null;
+        if (!hasAnyCompletionMetadata)
+            return true;
+
+        return manifest.UpdateCompletionState is not null &&
+               !string.IsNullOrWhiteSpace(manifest.UpdateCompletionRequestId) &&
+               manifest.UpdateCompletionOutcome is "healthy" or "failed";
+    }
 
     private static bool IsCompleteCommandArrayJson(string value)
     {

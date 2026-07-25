@@ -42,17 +42,23 @@ public sealed record GatewayVersionAlignmentResult(
 
 /// <summary>
 /// Aligns OpenClaw inside an existing Companion-owned WSL distro. Normal update
-/// exports an offline rollback point and runs only the native pinned updater in
-/// the existing distro. WSL unregister/import is isolated to RestoreAsync and
-/// requires an explicit rollback-point confirmation.
+/// exports an offline rollback point, durably arms one route, and dispatches
+/// either the shared Companion installer or an explicitly audited Core
+/// transaction. WSL unregister/import is isolated to RestoreAsync and requires
+/// an explicit rollback-point confirmation.
 /// </summary>
 public sealed partial class GatewayVersionAlignmentCoordinator
 {
     private readonly IWslCommandRunner _commandRunner;
     private readonly GatewayRollbackPointManager _rollbackPoints;
+    private readonly GatewayPackageTarget _target;
+    private readonly GatewayPackageUpdateRoutePolicy _routePolicy;
     private readonly string _requiredVersion;
     private readonly Func<string, CancellationToken, Task> _synchronizeAsync;
     private readonly Func<GatewayRollbackRetentionPolicy> _retentionPolicy;
+    private readonly Func<string, string, string, object?, int, CancellationToken, Task<JsonElement>>? _gatewayRequestAsync;
+    private readonly Func<string?> _connectedGatewayId;
+    private readonly Func<DateTimeOffset> _utcNow;
     private readonly SemaphoreSlim _operationGate = new(1, 1);
 
     public GatewayVersionAlignmentCoordinator(
@@ -60,24 +66,47 @@ public sealed partial class GatewayVersionAlignmentCoordinator
         string requiredVersion,
         GatewayRollbackPointManager rollbackPoints,
         Func<string, CancellationToken, Task>? synchronizeAsync = null,
-        Func<GatewayRollbackRetentionPolicy>? retentionPolicy = null)
+        Func<GatewayRollbackRetentionPolicy>? retentionPolicy = null,
+        Func<string, string, string, object?, int, CancellationToken, Task<JsonElement>>? gatewayRequestAsync = null,
+        Func<string?>? connectedGatewayId = null,
+        Func<DateTimeOffset>? utcNow = null)
+        : this(
+            commandRunner,
+            GatewayPackageTarget.Official(requiredVersion),
+            rollbackPoints,
+            synchronizeAsync,
+            retentionPolicy,
+            gatewayRequestAsync,
+            connectedGatewayId,
+            utcNow: utcNow)
+    {
+    }
+
+    public GatewayVersionAlignmentCoordinator(
+        IWslCommandRunner commandRunner,
+        GatewayPackageTarget target,
+        GatewayRollbackPointManager rollbackPoints,
+        Func<string, CancellationToken, Task>? synchronizeAsync = null,
+        Func<GatewayRollbackRetentionPolicy>? retentionPolicy = null,
+        Func<string, string, string, object?, int, CancellationToken, Task<JsonElement>>? gatewayRequestAsync = null,
+        Func<string?>? connectedGatewayId = null,
+        GatewayPackageUpdateRoutePolicy? routePolicy = null,
+        Func<DateTimeOffset>? utcNow = null)
     {
         ArgumentNullException.ThrowIfNull(commandRunner);
+        ArgumentNullException.ThrowIfNull(target);
         ArgumentNullException.ThrowIfNull(rollbackPoints);
 
-        var normalizedVersion = requiredVersion?.Trim();
-        if (normalizedVersion is null || !ExactVersionRegex().IsMatch(normalizedVersion))
-        {
-            throw new ArgumentException(
-                "Required gateway version must be a strict exact semantic version without a leading 'v'.",
-                nameof(requiredVersion));
-        }
-
         _commandRunner = commandRunner;
+        _target = target;
+        _routePolicy = routePolicy ?? new GatewayPackageUpdateRoutePolicy();
         _rollbackPoints = rollbackPoints;
-        _requiredVersion = normalizedVersion;
+        _requiredVersion = target.ExpectedVersion;
         _synchronizeAsync = synchronizeAsync ?? ((_, _) => Task.CompletedTask);
         _retentionPolicy = retentionPolicy ?? (() => GatewayRollbackRetentionPolicy.Default);
+        _gatewayRequestAsync = gatewayRequestAsync;
+        _connectedGatewayId = connectedGatewayId ?? (() => null);
+        _utcNow = utcNow ?? (() => DateTimeOffset.UtcNow);
     }
 
     public string RequiredVersion => _requiredVersion;
@@ -168,6 +197,31 @@ public sealed partial class GatewayVersionAlignmentCoordinator
                     before.ExitCode,
                     $"A verified pending update targets OpenClaw {pending.TargetOpenClawVersion}; explicit recovery is required before aligning to {_requiredVersion}.");
             }
+            var pendingRoute = default(GatewayPackageUpdateRoute);
+            var pendingState = default(GatewayUpdateDispatchState);
+            CoreUpdateTransaction? pendingTransaction = null;
+            if (pending is not null &&
+                !TryGetPendingDispatch(pending, out pendingRoute, out pendingState, out pendingTransaction))
+            {
+                return Result(
+                    GatewayVersionAlignmentState.RecoveryAvailable,
+                    before.InstalledVersion,
+                    pending.OpenClawVersion,
+                    pending.Id,
+                    before.ExitCode,
+                    "The pending update predates durable package-target and dispatch provenance. A second dispatch or cross-lane fallback was blocked; explicit recovery is required.");
+            }
+            if (pending is not null &&
+                pendingRoute != _routePolicy.Select(pending.OpenClawVersion, _target))
+            {
+                return Result(
+                    GatewayVersionAlignmentState.RecoveryAvailable,
+                    before.InstalledVersion,
+                    pending.OpenClawVersion,
+                    pending.Id,
+                    before.ExitCode,
+                    "The pending update route no longer matches the immutable package target policy. Cross-lane fallback was blocked; explicit recovery is required.");
+            }
             if (before.State == GatewayVersionAlignmentState.Aligned && pending is not null)
             {
                 if (!await _rollbackPoints.VerifyAsync(pending.Id, cancellationToken).ConfigureAwait(false) ||
@@ -182,15 +236,30 @@ public sealed partial class GatewayVersionAlignmentCoordinator
                         before.ExitCode,
                         "The aligned Companion-owned distro no longer matches its pending rollback receipt, so finalization was blocked.");
                 }
+                if (pendingRoute == GatewayPackageUpdateRoute.CoreTransaction &&
+                    (pendingState != GatewayUpdateDispatchState.Accepted || pendingTransaction is null))
+                {
+                    return Result(
+                        GatewayVersionAlignmentState.RecoveryAvailable,
+                        before.InstalledVersion,
+                        pending.OpenClawVersion,
+                        pending.Id,
+                        before.ExitCode,
+                        "The aligned Core update receipt has no accepted transaction provenance. A second update.run was blocked because the earlier response may have been lost; explicit recovery is required.");
+                }
                 return await FinalizePostUpdateAsync(
                     distroName, gatewayId, before.InstalledVersion!, pending.OpenClawVersion, pending.Id,
-                    pending.NodeCommandAllowSnapshotJson, before.ExitCode, cancellationToken)
+                    pending.NodeCommandAllowSnapshotJson, pendingTransaction,
+                    before.ExitCode, cancellationToken)
                     .ConfigureAwait(false);
             }
-            if (before.State != GatewayVersionAlignmentState.Mismatch || before.InstalledVersion is null)
+            if ((before.State is not GatewayVersionAlignmentState.Mismatch
+                 and not GatewayVersionAlignmentState.NewerThanRequired) ||
+                before.InstalledVersion is null)
                 return before;
 
             var previousVersion = pending?.OpenClawVersion ?? before.InstalledVersion;
+            var route = _routePolicy.Select(before.InstalledVersion, _target);
 
             GatewayRollbackPointManifest rollbackPoint;
             if (pending is not null)
@@ -215,12 +284,20 @@ public sealed partial class GatewayVersionAlignmentCoordinator
                         failureSummary: "The live Companion-owned distro no longer matches the pending rollback receipt, so retry was blocked.");
                 }
                 rollbackPoint = pending;
+                return Result(
+                    GatewayVersionAlignmentState.RecoveryAvailable,
+                    before.InstalledVersion,
+                    previousVersion,
+                    pending.Id,
+                    before.ExitCode,
+                    "The pending update receipt proves update dispatch was armed, but the installed version is not aligned. A second non-idempotent update.run was blocked; explicit recovery is required.");
             }
             else
             {
                 try
                 {
-                    await _synchronizeAsync(gatewayId, cancellationToken).ConfigureAwait(false);
+                    if (route == GatewayPackageUpdateRoute.CoreTransaction)
+                        await _synchronizeAsync(gatewayId, cancellationToken).ConfigureAwait(false);
                 }
                 catch (Exception ex) when (ex is not OperationCanceledException)
                 {
@@ -285,8 +362,6 @@ public sealed partial class GatewayVersionAlignmentCoordinator
             }
 
             var pointId = rollbackPoint.Id;
-            if (pending is null)
-                _rollbackPoints.MarkUpdateInProgress(pointId);
             if (!await _rollbackPoints.AttestLiveDistroAsync(
                     pointId, distroName, before.InstalledVersion, cancellationToken).ConfigureAwait(false))
             {
@@ -312,41 +387,94 @@ public sealed partial class GatewayVersionAlignmentCoordinator
                         failureSummary: "The complete Gateway node command allowlist changed before package mutation. The update receipt was preserved and no updater command was invoked.");
                 }
             }
-            var update = await _commandRunner.RunInDistroAsync(
-                distroName,
-                GatewayVersionAlignmentCommandBuilder.BuildUpdate(_requiredVersion),
-                cancellationToken).ConfigureAwait(false);
-            if (!update.Success || !IsStructuredUpdateSuccess(update.StandardOutput, _requiredVersion))
+
+            var requestId = route == GatewayPackageUpdateRoute.CoreTransaction
+                ? $"windows-companion-gateway-update-{pointId}"
+                : null;
+            _rollbackPoints.ArmUpdateDispatch(pointId, _target, route, requestId);
+            if (!await _rollbackPoints.AttestLiveDistroAsync(
+                    pointId, distroName, before.InstalledVersion, cancellationToken).ConfigureAwait(false))
             {
-                var current = await ProbeInstalledVersionAsync(distroName, cancellationToken).ConfigureAwait(false);
-                await TrySynchronizeAsync(gatewayId, cancellationToken).ConfigureAwait(false);
                 return Result(
-                    GatewayVersionAlignmentState.RecoveryAvailable,
-                    current.Version,
+                    GatewayVersionAlignmentState.VerificationFailed,
+                    before.InstalledVersion,
                     previousVersion,
                     pointId,
-                    update.ExitCode,
-                    update.Success
-                        ? "The updater did not return a trusted exact-version result. The verified rollback point is available for explicit recovery."
-                        : $"The update failed with exit code {update.ExitCode}. The verified rollback point is available for explicit recovery.");
+                    failureSummary: "The live Companion-owned distro changed after update dispatch was durably armed. The receipt was preserved and no package mutation was invoked.");
+            }
+
+            CoreUpdateTransaction? transaction = null;
+            if (route == GatewayPackageUpdateRoute.CoreTransaction)
+            {
+                var transactionStart = await BeginCoreUpdateTransactionAsync(
+                    gatewayId, requestId!, cancellationToken).ConfigureAwait(false);
+                if (transactionStart.Transaction is null)
+                {
+                    _rollbackPoints.MarkUpdateDispatchAmbiguous(pointId);
+                    var current = await ProbeInstalledVersionAsync(distroName, cancellationToken).ConfigureAwait(false);
+                    await TrySynchronizeAsync(gatewayId, cancellationToken).ConfigureAwait(false);
+                    return Result(
+                        GatewayVersionAlignmentState.RecoveryAvailable,
+                        current.Version,
+                        previousVersion,
+                        pointId,
+                        current.ExitCode,
+                        transactionStart.Failure);
+                }
+                transaction = transactionStart.Transaction;
+                _rollbackPoints.RecordCoreUpdateAccepted(
+                    pointId,
+                    transaction.TransactionId,
+                    transaction.ConfirmDeadline);
+            }
+            else
+            {
+                var install = await _commandRunner.RunInDistroAsync(
+                    distroName,
+                    GatewayVersionAlignmentCommandBuilder.BuildVerifiedInstaller(_target),
+                    cancellationToken).ConfigureAwait(false);
+                _rollbackPoints.MarkInstallerDispatchAccepted(pointId);
+                if (!install.Success)
+                {
+                    var current = await ProbeInstalledVersionAsync(distroName, cancellationToken).ConfigureAwait(false);
+                    await TrySynchronizeAsync(gatewayId, cancellationToken).ConfigureAwait(false);
+                    return Result(
+                        GatewayVersionAlignmentState.RecoveryAvailable,
+                        current.Version,
+                        previousVersion,
+                        pointId,
+                        install.ExitCode,
+                        $"The Companion installer failed with exit code {install.ExitCode}. The armed receipt and rollback point block a second install until explicit recovery.");
+                }
             }
 
             var after = await ProbeInstalledVersionAsync(distroName, cancellationToken).ConfigureAwait(false);
             if (after.Failure is not null || !string.Equals(after.Version, _requiredVersion, StringComparison.Ordinal))
             {
                 await TrySynchronizeAsync(gatewayId, cancellationToken).ConfigureAwait(false);
+                var completionFailure = await TryCompleteCoreUpdateAsync(
+                    gatewayId,
+                    distroName,
+                    pointId,
+                    transaction,
+                    "failed",
+                    after.Version,
+                    cancellationToken).ConfigureAwait(false);
                 return Result(
                     GatewayVersionAlignmentState.RecoveryAvailable,
                     after.Version,
                     previousVersion,
                     pointId,
                     after.ExitCode,
-                    "The installed version could not be verified exactly after update. The verified rollback point is available for explicit recovery.");
+                    AppendCompletionFailure(
+                        "The installed version could not be verified exactly after update. The verified rollback point is available for explicit recovery.",
+                        completionFailure));
             }
 
             return await FinalizePostUpdateAsync(
                 distroName, gatewayId, after.Version!, previousVersion, pointId,
-                rollbackPoint.NodeCommandAllowSnapshotJson, after.ExitCode, cancellationToken).ConfigureAwait(false);
+                rollbackPoint.NodeCommandAllowSnapshotJson, transaction,
+                after.ExitCode, cancellationToken).ConfigureAwait(false);
         }
         finally
         {
@@ -531,6 +659,7 @@ public sealed partial class GatewayVersionAlignmentCoordinator
         string previousVersion,
         string pointId,
         string? nodeCommandAllowSnapshotJson,
+        CoreUpdateTransaction? transaction,
         int? exitCode,
         CancellationToken cancellationToken)
     {
@@ -542,13 +671,15 @@ public sealed partial class GatewayVersionAlignmentCoordinator
             cancellationToken).ConfigureAwait(false);
         if (policyMigration is not null)
         {
+            var completionFailure = await TryCompleteCoreUpdateAsync(
+                gatewayId, distroName, pointId, transaction, "failed", installedVersion, cancellationToken).ConfigureAwait(false);
             return Result(
                 GatewayVersionAlignmentState.RecoveryAvailable,
                 installedVersion,
                 previousVersion,
                 pointId,
                 exitCode,
-                policyMigration);
+                AppendCompletionFailure(policyMigration, completionFailure));
         }
 
         try
@@ -557,28 +688,53 @@ public sealed partial class GatewayVersionAlignmentCoordinator
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
+            var completionFailure = await TryCompleteCoreUpdateAsync(
+                gatewayId, distroName, pointId, transaction, "failed", installedVersion, cancellationToken).ConfigureAwait(false);
             return Result(
                 GatewayVersionAlignmentState.RecoveryAvailable,
                 installedVersion,
                 previousVersion,
                 pointId,
                 exitCode,
-                $"Post-update synchronization failed: {ex.GetType().Name}. The verified rollback point is available for explicit recovery.");
+                AppendCompletionFailure(
+                    $"Post-update synchronization failed: {ex.GetType().Name}. The verified rollback point is available for explicit recovery.",
+                    completionFailure));
         }
 
         if (!await _rollbackPoints.VerifyAsync(pointId, cancellationToken).ConfigureAwait(false))
         {
+            var completionFailure = await TryCompleteCoreUpdateAsync(
+                gatewayId, distroName, pointId, transaction, "failed", installedVersion, cancellationToken).ConfigureAwait(false);
             return Result(
                 GatewayVersionAlignmentState.VerificationFailed,
                 installedVersion,
                 previousVersion,
                 pointId,
                 exitCode,
-                "Post-update health passed, but the rollback point no longer verifies. Retention cleanup was not run.");
+                AppendCompletionFailure(
+                    "Post-update health passed, but the rollback point no longer verifies. Retention cleanup was not run.",
+                    completionFailure));
         }
 
         if (!await _rollbackPoints.AttestLiveDistroAsync(
                 pointId, distroName, installedVersion, cancellationToken).ConfigureAwait(false))
+        {
+            var completionFailure = await TryCompleteCoreUpdateAsync(
+                gatewayId, distroName, pointId, transaction, "failed", installedVersion, cancellationToken).ConfigureAwait(false);
+            return Result(
+                GatewayVersionAlignmentState.VerificationFailed,
+                installedVersion,
+                previousVersion,
+                pointId,
+                exitCode,
+                AppendCompletionFailure(
+                    "Post-update health passed, but the live distro no longer matches the exact expected version and rollback receipt. Finalization and cleanup were blocked.",
+                    completionFailure));
+        }
+
+        var healthyCompletionFailure = await TryCompleteCoreUpdateAsync(
+            gatewayId, distroName, pointId, transaction, "healthy", installedVersion, cancellationToken).ConfigureAwait(false);
+        if (healthyCompletionFailure is not null)
         {
             return Result(
                 GatewayVersionAlignmentState.VerificationFailed,
@@ -586,14 +742,12 @@ public sealed partial class GatewayVersionAlignmentCoordinator
                 previousVersion,
                 pointId,
                 exitCode,
-                "Post-update health passed, but the live distro no longer matches the exact expected version and rollback receipt. Finalization and cleanup were blocked.");
+                $"Core did not accept healthy completion for update transaction {transaction!.TransactionId}. The UpdateInProgress receipt and verified rollback point were preserved: {healthyCompletionFailure}");
         }
 
-        _rollbackPoints.MarkPostUpdateHealthy(pointId);
         if (!await _rollbackPoints.AttestLiveDistroAsync(
                 pointId, distroName, installedVersion, cancellationToken).ConfigureAwait(false))
         {
-            _rollbackPoints.MarkUpdateInProgress(pointId);
             return Result(
                 GatewayVersionAlignmentState.VerificationFailed,
                 installedVersion,
@@ -602,9 +756,248 @@ public sealed partial class GatewayVersionAlignmentCoordinator
                 exitCode,
                 "The live distro changed immediately before retention cleanup. The update receipt was preserved and cleanup was blocked.");
         }
+        _rollbackPoints.MarkPostUpdateHealthy(pointId);
         await _rollbackPoints.CleanupAsync(_retentionPolicy(), cancellationToken).ConfigureAwait(false);
         return Result(GatewayVersionAlignmentState.Updated, installedVersion, previousVersion, pointId, exitCode);
     }
+
+    private async Task<CoreUpdateTransactionStart> BeginCoreUpdateTransactionAsync(
+        string expectedGatewayId,
+        string requestId,
+        CancellationToken cancellationToken)
+    {
+        if (_gatewayRequestAsync is null)
+        {
+            return new(
+                null,
+                "The connected Gateway client does not expose the transactional update RPC. The UpdateInProgress receipt and verified rollback point were preserved.");
+        }
+
+        var identityFailure = GetGatewayIdentityFailure(expectedGatewayId);
+        if (identityFailure is not null)
+            return new(null, identityFailure);
+
+        JsonElement payload;
+        try
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            payload = await _gatewayRequestAsync(
+                expectedGatewayId,
+                requestId,
+                "update.run",
+                new
+                {
+                    target = new { package = "openclaw", version = _requiredVersion },
+                    confirmationTier = "external"
+                },
+                (int)TimeSpan.FromMinutes(35).TotalMilliseconds,
+                cancellationToken).ConfigureAwait(false);
+            cancellationToken.ThrowIfCancellationRequested();
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            return new(
+                null,
+                $"Transactional update.run failed: {ex.GetType().Name}. The UpdateInProgress receipt and verified rollback point were preserved.");
+        }
+
+        if (!TryParseCoreUpdateTransaction(payload, requestId, _utcNow(), out var transaction))
+        {
+            return new(
+                null,
+                "Transactional update.run did not return a trusted transactionId and confirmDeadline. The UpdateInProgress receipt and verified rollback point were preserved.");
+        }
+        return new(transaction, null);
+    }
+
+    private async Task<string?> TryCompleteCoreUpdateAsync(
+        string expectedGatewayId,
+        string distroName,
+        string pointId,
+        CoreUpdateTransaction? transaction,
+        string outcome,
+        string? observedVersion,
+        CancellationToken cancellationToken)
+    {
+        if (transaction is null)
+            return null;
+        if (_gatewayRequestAsync is null)
+            return "the connected Gateway client no longer exposes update.complete";
+
+        var pending = _rollbackPoints.FindPendingUpdate(expectedGatewayId, _requiredVersion);
+        if (pending is null || !string.Equals(pending.Id, pointId, StringComparison.Ordinal))
+            return "the durable update receipt is missing or no longer identifies this transaction";
+        if (pending.UpdateCompletionState is { } priorCompletion)
+        {
+            return priorCompletion == GatewayUpdateCompletionState.Accepted &&
+                   string.Equals(pending.UpdateCompletionOutcome, outcome, StringComparison.Ordinal)
+                ? null
+                : $"update.complete was already attempted with outcome '{pending.UpdateCompletionOutcome ?? "<unknown>"}' and state {priorCompletion}; automatic redispatch is blocked";
+        }
+        if (_utcNow() >= transaction.ConfirmDeadline)
+            return $"the update confirmation deadline {transaction.ConfirmDeadline:O} has expired; update.complete was not dispatched";
+
+        var identityFailure = GetGatewayIdentityFailure(expectedGatewayId);
+        if (identityFailure is not null)
+            return identityFailure;
+
+        var completionRequestId = $"windows-companion-gateway-complete-{pointId}";
+        _rollbackPoints.ArmCoreUpdateCompletion(
+            pointId,
+            completionRequestId,
+            outcome,
+            observedVersion);
+        if (string.Equals(outcome, "healthy", StringComparison.Ordinal) &&
+            (observedVersion is null ||
+             !await _rollbackPoints.AttestLiveDistroAsync(
+                 pointId, distroName, observedVersion, cancellationToken).ConfigureAwait(false)))
+        {
+            return "the live Companion-owned distro changed after healthy completion was durably armed; update.complete was not dispatched";
+        }
+
+        var remaining = transaction.ConfirmDeadline - _utcNow();
+        if (remaining <= TimeSpan.Zero)
+            return $"the update confirmation deadline {transaction.ConfirmDeadline:O} expired before update.complete dispatch";
+
+        var timeoutMs = (int)Math.Max(
+            1,
+            Math.Min(
+                TimeSpan.FromMinutes(2).TotalMilliseconds,
+                Math.Ceiling(remaining.TotalMilliseconds)));
+        using var deadlineCancellation = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        deadlineCancellation.CancelAfter(TimeSpan.FromMilliseconds(timeoutMs));
+
+        try
+        {
+            object parameters = observedVersion is null
+                ? new
+                {
+                    transactionId = transaction.TransactionId,
+                    requestId = transaction.RequestId,
+                    outcome
+                }
+                : new
+                {
+                    transactionId = transaction.TransactionId,
+                    requestId = transaction.RequestId,
+                    outcome,
+                    observedVersion
+                };
+            await _gatewayRequestAsync(
+                expectedGatewayId,
+                completionRequestId,
+                "update.complete",
+                parameters,
+                timeoutMs,
+                deadlineCancellation.Token).ConfigureAwait(false);
+            _rollbackPoints.MarkCoreUpdateCompletionAccepted(pointId);
+            return null;
+        }
+        catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
+        {
+            _rollbackPoints.MarkCoreUpdateCompletionAmbiguous(pointId);
+            return $"update.complete did not finish before confirmation deadline {transaction.ConfirmDeadline:O}";
+        }
+        catch (OperationCanceledException)
+        {
+            _rollbackPoints.MarkCoreUpdateCompletionAmbiguous(pointId);
+            throw;
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            _rollbackPoints.MarkCoreUpdateCompletionAmbiguous(pointId);
+            return $"update.complete failed with {ex.GetType().Name}";
+        }
+    }
+
+    private string? GetGatewayIdentityFailure(string expectedGatewayId)
+    {
+        var connectedGatewayId = _connectedGatewayId()?.Trim();
+        return string.Equals(connectedGatewayId, expectedGatewayId, StringComparison.Ordinal)
+            ? null
+            : $"The active Gateway identity changed before privileged update RPC dispatch. Expected '{expectedGatewayId}', but the live connection reports '{connectedGatewayId ?? "<none>"}'. The UpdateInProgress receipt and verified rollback point were preserved.";
+    }
+
+    private bool TryGetPendingDispatch(
+        GatewayRollbackPointManifest pending,
+        out GatewayPackageUpdateRoute route,
+        out GatewayUpdateDispatchState state,
+        out CoreUpdateTransaction? transaction)
+    {
+        route = default;
+        state = default;
+        transaction = null;
+        if (pending.UpdateTargetSource is not { } source ||
+            pending.UpdateRoute is not { } persistedRoute ||
+            pending.UpdateDispatchState is not { } persistedState ||
+            !GatewayPackageTarget.TryRestore(
+                source,
+                pending.TargetOpenClawVersion,
+                pending.UpdateTargetPackageUri,
+                pending.UpdateTargetSha256,
+                out var persistedTarget) ||
+            persistedTarget != _target)
+        {
+            return false;
+        }
+
+        route = persistedRoute;
+        state = persistedState;
+        if (route == GatewayPackageUpdateRoute.CoreTransaction &&
+            state == GatewayUpdateDispatchState.Accepted)
+        {
+            if (string.IsNullOrWhiteSpace(pending.UpdateRequestId) ||
+                string.IsNullOrWhiteSpace(pending.UpdateTransactionId) ||
+                pending.UpdateConfirmationDeadlineUtc is not { } deadline)
+            {
+                return false;
+            }
+            transaction = new(
+                pending.UpdateTransactionId,
+                deadline,
+                pending.UpdateRequestId);
+        }
+
+        return true;
+    }
+
+    private static bool TryParseCoreUpdateTransaction(
+        JsonElement payload,
+        string requestId,
+        DateTimeOffset now,
+        out CoreUpdateTransaction transaction)
+    {
+        transaction = default!;
+        if (payload.ValueKind != JsonValueKind.Object ||
+            !payload.TryGetProperty("transactionId", out var transactionIdValue) ||
+            transactionIdValue.ValueKind != JsonValueKind.String ||
+            !payload.TryGetProperty("confirmDeadline", out var confirmDeadlineValue) ||
+            confirmDeadlineValue.ValueKind != JsonValueKind.String)
+        {
+            return false;
+        }
+
+        var transactionId = transactionIdValue.GetString()?.Trim();
+        var confirmDeadlineText = confirmDeadlineValue.GetString()?.Trim();
+        if (string.IsNullOrWhiteSpace(transactionId) ||
+            !DateTimeOffset.TryParse(
+                confirmDeadlineText,
+                System.Globalization.CultureInfo.InvariantCulture,
+                System.Globalization.DateTimeStyles.RoundtripKind,
+                out var confirmDeadline) ||
+            confirmDeadline <= now)
+        {
+            return false;
+        }
+
+        transaction = new(transactionId, confirmDeadline, requestId);
+        return true;
+    }
+
+    private static string AppendCompletionFailure(string failure, string? completionFailure) =>
+        completionFailure is null
+            ? failure
+            : $"{failure} Core failure completion was not acknowledged: {completionFailure}.";
 
     private async Task<NodeCommandPolicySnapshot> CaptureNodeCommandPolicyAsync(
         string distroName,
@@ -858,25 +1251,6 @@ public sealed partial class GatewayVersionAlignmentCoordinator
                distroName.Length > 0;
     }
 
-    private static bool IsStructuredUpdateSuccess(string output, string requiredVersion)
-    {
-        try
-        {
-            using var document = JsonDocument.Parse(output);
-            var root = document.RootElement;
-            return root.ValueKind == JsonValueKind.Object &&
-                   root.TryGetProperty("status", out var status) && status.ValueKind == JsonValueKind.String &&
-                   string.Equals(status.GetString(), "ok", StringComparison.Ordinal) &&
-                   root.TryGetProperty("after", out var after) && after.ValueKind == JsonValueKind.Object &&
-                   after.TryGetProperty("version", out var version) && version.ValueKind == JsonValueKind.String &&
-                   string.Equals(version.GetString(), requiredVersion, StringComparison.Ordinal);
-        }
-        catch (JsonException)
-        {
-            return false;
-        }
-    }
-
     private static int? CompareSemanticVersions(string left, string right)
     {
         var leftParts = ParseSemanticVersion(left);
@@ -947,6 +1321,13 @@ public sealed partial class GatewayVersionAlignmentCoordinator
 
     private sealed record InstalledVersionProbe(string? Version, int ExitCode, string? Failure);
     private sealed record NodeCommandPolicySnapshot(string? NormalizedArrayJson, string? Failure);
+    private sealed record CoreUpdateTransaction(
+        string TransactionId,
+        DateTimeOffset ConfirmDeadline,
+        string RequestId);
+    private sealed record CoreUpdateTransactionStart(
+        CoreUpdateTransaction? Transaction,
+        string? Failure);
     private sealed record SemanticVersionParts(
         IReadOnlyList<BigInteger> Core,
         IReadOnlyList<string> PreRelease,
@@ -954,9 +1335,9 @@ public sealed partial class GatewayVersionAlignmentCoordinator
 
     private const string ExactVersionPattern =
         @"(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)" +
-        @"(?:-[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?" +
+        @"(?:-(?:(?:0|[1-9]\d*)|(?:[0-9A-Za-z-]*[A-Za-z-][0-9A-Za-z-]*))" +
+        @"(?:\.(?:(?:0|[1-9]\d*)|(?:[0-9A-Za-z-]*[A-Za-z-][0-9A-Za-z-]*)))*)?" +
         @"(?:\+[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?";
-
     [GeneratedRegex(@"\A" + ExactVersionPattern + @"\z", RegexOptions.CultureInvariant)]
     private static partial Regex ExactVersionRegex();
 
@@ -971,11 +1352,14 @@ internal static class GatewayVersionAlignmentCommandBuilder
     public static IReadOnlyList<string> BuildProbe() =>
         ["bash", "-lc", $"{WslGatewayControlCommandBuilder.OpenClawWslPathPrefix} && openclaw --version"];
 
-    public static IReadOnlyList<string> BuildUpdate(string requiredVersion) =>
+    public static IReadOnlyList<string> BuildVerifiedInstaller(GatewayPackageTarget target) =>
         [
             "bash",
             "-lc",
-            $"{WslGatewayControlCommandBuilder.OpenClawWslPathPrefix} && openclaw update --tag {requiredVersion} --yes --json"
+            $"{WslGatewayControlCommandBuilder.OpenClawWslPathPrefix} && " +
+            GatewayPackageInstallCommandBuilder.Build(
+                GatewayPackageInstallCommandBuilder.DefaultInstallUrl,
+                target)
         ];
 
     public static IReadOnlyList<string> BuildGetNodeCommandAllow(string gatewayVersion) =>
@@ -986,7 +1370,8 @@ internal static class GatewayVersionAlignmentCommandBuilder
 
     public static IReadOnlyList<string> BuildSetNodeCommandAllow(string gatewayVersion, string completeArrayJson) =>
         BuildConfigCommand(
-            $"set {GatewayNodeCommandPolicyConfig.ResolveAllowKey(gatewayVersion)} {QuotePosix(completeArrayJson)}");
+            $"set {GatewayNodeCommandPolicyConfig.ResolveAllowKey(gatewayVersion)} " +
+            WslShellQuoting.QuotePosixSingleQuote(completeArrayJson));
 
     private static IReadOnlyList<string> BuildConfigCommand(string operation) =>
         [
@@ -995,5 +1380,4 @@ internal static class GatewayVersionAlignmentCommandBuilder
             $"{WslGatewayControlCommandBuilder.OpenClawWslPathPrefix} && openclaw config {operation}"
         ];
 
-    private static string QuotePosix(string value) => $"'{value.Replace("'", "'\\''", StringComparison.Ordinal)}'";
 }

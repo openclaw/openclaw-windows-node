@@ -143,4 +143,5 @@ public sealed class WebSocketCloseSerializationTests
         public Task SendAsync(string message) => SendRawAsync(message);
         public Task CloseAsync() => CloseWebSocketAsync();
     }
+
 }

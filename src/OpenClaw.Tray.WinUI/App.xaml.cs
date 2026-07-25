@@ -794,12 +794,15 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
             gatewayAlignmentRunner,
             AppIdentity.ResolveSetupLocalDataDirectory(),
             AppIdentity.SetupDistroName);
+        var gatewayPackageTarget = GatewayPackageBuildTargetResolver.Resolve();
         _gatewayVersionAlignmentCoordinator = new GatewayVersionAlignmentCoordinator(
             gatewayAlignmentRunner,
-            OpenClaw.SetupEngine.GatewayLkgVersion.ResolveLkgVersion(),
+            gatewayPackageTarget,
             gatewayRollbackPoints,
             SynchronizeCompanionGatewayAsync,
-            ResolveGatewayRollbackRetentionPolicy);
+            ResolveGatewayRollbackRetentionPolicy,
+            SendGatewayVersionAlignmentRequestAsync,
+            () => _connectionManager?.CurrentSnapshot.GatewayId);
 
         // First-run check (also supports forced onboarding for testing).
         // Wrapped in try/catch so a wizard construction failure cannot tear
@@ -2118,20 +2121,6 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
                 }
                 return;
             }
-            if (probe.State == GatewayVersionAlignmentState.NewerThanRequired &&
-                probe.InstalledVersion != null)
-            {
-                var newerKey = $"newer|{activeRecord.Id}|{probe.InstalledVersion}|{probe.RequiredVersion}";
-                if (!string.Equals(_gatewayVersionAlignmentPromptKey, newerKey, StringComparison.Ordinal))
-                {
-                    _gatewayVersionAlignmentPromptKey = newerKey;
-                    ShowGatewayAlignmentToast(
-                        "Local Gateway is newer than Companion",
-                        $"OpenClaw {probe.InstalledVersion} was not downgraded to {probe.RequiredVersion}. Your existing WSL installation was left unchanged.");
-                }
-                return;
-            }
-
             if (probe.State == GatewayVersionAlignmentState.Aligned &&
                 _gatewayVersionAlignmentCoordinator.HasVerifiedPendingUpdate(activeRecord.Id))
             {
@@ -2142,7 +2131,9 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
                 return;
             }
 
-            if (probe.State != GatewayVersionAlignmentState.Mismatch || probe.InstalledVersion == null)
+            if ((probe.State is not GatewayVersionAlignmentState.Mismatch
+                 and not GatewayVersionAlignmentState.NewerThanRequired) ||
+                probe.InstalledVersion == null)
                 return;
 
             var promptKey = $"{activeRecord.Id}|{probe.InstalledVersion}|{probe.RequiredVersion}";
@@ -2312,6 +2303,46 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
         {
             connectionManager.StateChanged -= ObserveState;
         }
+    }
+
+    private Task<JsonElement> SendGatewayVersionAlignmentRequestAsync(
+        string expectedGatewayId,
+        string requestId,
+        string method,
+        object? parameters,
+        int timeoutMs,
+        CancellationToken cancellationToken)
+    {
+        var connectionManager = _connectionManager
+            ?? throw new InvalidOperationException("Gateway connection manager is unavailable.");
+        if (!string.Equals(
+                connectionManager.CurrentSnapshot.GatewayId,
+                expectedGatewayId,
+                StringComparison.Ordinal))
+        {
+            throw new InvalidOperationException(
+                "The active Gateway identity changed before privileged update RPC dispatch.");
+        }
+
+        var client = connectionManager.OperatorClient
+            ?? throw new InvalidOperationException("Gateway operator client is unavailable.");
+        if (!client.IsConnectedToGateway)
+            throw new InvalidOperationException("Gateway operator client is not connected.");
+        if (!ReferenceEquals(client, connectionManager.OperatorClient) ||
+            !string.Equals(
+                connectionManager.CurrentSnapshot.GatewayId,
+                expectedGatewayId,
+                StringComparison.Ordinal))
+        {
+            throw new InvalidOperationException(
+                "The active Gateway connection changed before privileged update RPC dispatch.");
+        }
+        return client.SendCorrelatedRequestAsync(
+            requestId,
+            method,
+            parameters,
+            timeoutMs,
+            cancellationToken);
     }
 
     private void ReportGatewayAlignmentResult(GatewayVersionAlignmentResult result)

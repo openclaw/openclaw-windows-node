@@ -1,5 +1,6 @@
 using System.Collections.Concurrent;
 using OpenClaw.Connection;
+using OpenClaw.Shared;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 
@@ -19,6 +20,8 @@ public sealed class GatewayVersionAlignmentCoordinatorTests : IDisposable
     [InlineData("latest")]
     [InlineData("2026.07.22")]
     [InlineData("2026.7")]
+    [InlineData("2026.7.22-01")]
+    [InlineData("2026.7.22-alpha.01")]
     public void Constructor_RejectsNonExactRequiredVersion(string version)
     {
         var runner = new FakeWslCommandRunner();
@@ -103,6 +106,18 @@ public sealed class GatewayVersionAlignmentCoordinatorTests : IDisposable
     }
 
     [Fact]
+    public async Task ProbeAsync_RejectsNumericPrereleaseIdentifierWithLeadingZero()
+    {
+        var runner = new FakeWslCommandRunner();
+        runner.EnqueueDistro(Ok("2026.7.21-01"));
+
+        var result = await CreateCoordinator(runner).ProbeAsync(EligiblePlan());
+
+        Assert.Equal(GatewayVersionAlignmentState.ProbeFailed, result.State);
+        Assert.Contains("unrecognized version", result.FailureSummary, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public async Task ProbeAsync_ValidatesLaterMetadataNamespaceBeforeUsingEarlierNumericOrder()
     {
         var runner = new FakeWslCommandRunner();
@@ -117,15 +132,43 @@ public sealed class GatewayVersionAlignmentCoordinatorTests : IDisposable
     }
 
     [Fact]
-    public async Task UpdateAsync_BlocksAutomaticDowngrade()
+    public async Task UpdateAsync_AlignsNewerUnauditedVersionThroughVerifiedInstallerWithoutPreSync()
     {
         var runner = new FakeWslCommandRunner();
         runner.EnqueueDistro(Ok("2026.7.23"));
+        EnqueueCreateAttestation(runner, "2026.7.23");
+        EnqueuePendingAttestation(runner, "2026.7.23");
+        EnqueuePendingAttestation(runner, "2026.7.23");
+        runner.EnqueueDistro(Ok());
+        runner.EnqueueDistro(Ok(RequiredVersion));
+        EnqueuePendingAttestation(runner, RequiredVersion);
+        EnqueuePendingAttestation(runner, RequiredVersion);
+        var synchronizations = 0;
+        var coordinator = CreateCoordinator(
+            runner,
+            (_, _) =>
+            {
+                synchronizations++;
+                Assert.Contains(
+                    runner.Calls,
+                    call => call.Kind == "distro" &&
+                            call.Arguments.SequenceEqual(VerifiedInstallerCommand(
+                                GatewayPackageTarget.Official(RequiredVersion))));
+                return Task.CompletedTask;
+            });
 
-        var result = await CreateCoordinator(runner).UpdateAsync(EligiblePlan());
+        var result = await coordinator.UpdateAsync(EligiblePlan());
 
-        Assert.Equal(GatewayVersionAlignmentState.NewerThanRequired, result.State);
-        Assert.DoesNotContain(runner.Calls, call => call.Kind is "terminate" or "unregister" or "direct");
+        Assert.Equal(GatewayVersionAlignmentState.Updated, result.State);
+        Assert.Equal(1, synchronizations);
+        Assert.Single(
+            runner.Calls,
+            call => call.Kind == "distro" &&
+                    call.Arguments.SequenceEqual(VerifiedInstallerCommand(
+                        GatewayPackageTarget.Official(RequiredVersion))));
+        Assert.Equal(
+            GatewayRollbackPointPhase.PostUpdateHealthy,
+            Assert.Single(coordinator.ListRollbackPoints()).Phase);
     }
 
     [Fact]
@@ -135,12 +178,17 @@ public sealed class GatewayVersionAlignmentCoordinatorTests : IDisposable
         runner.EnqueueDistro(Ok(PreviousVersion));
         EnqueueCreateAttestation(runner, PreviousVersion);
         EnqueuePendingAttestation(runner, PreviousVersion);
-        runner.EnqueueDistro(Ok(UpdateJson(RequiredVersion)));
+        EnqueuePendingAttestation(runner, PreviousVersion);
         runner.EnqueueDistro(Ok(RequiredVersion));
         EnqueuePendingAttestation(runner, RequiredVersion);
         EnqueuePendingAttestation(runner, RequiredVersion);
+        EnqueuePendingAttestation(runner, RequiredVersion);
         var synchronizations = 0;
-        var coordinator = CreateCoordinator(runner, (_, _) => { synchronizations++; return Task.CompletedTask; });
+        var updateRpc = new FakeGatewayUpdateRpc();
+        var coordinator = CreateCoordinator(
+            runner,
+            (_, _) => { synchronizations++; return Task.CompletedTask; },
+            updateRpc);
 
         var result = await coordinator.UpdateAsync(EligiblePlan());
 
@@ -170,7 +218,16 @@ public sealed class GatewayVersionAlignmentCoordinatorTests : IDisposable
             call => AssertDistro(call, IdentityCommand()),
             call => AssertDistro(call, DefaultUserCommand()),
             call => AssertDistro(call, ProbeCommand()),
-            call => AssertDistro(call, UpdateCommand(RequiredVersion)),
+            call => Assert.Equal("registrations", call.Kind),
+            call => Assert.Equal("get-configuration", call.Kind),
+            call => AssertDistro(call, IdentityCommand()),
+            call => AssertDistro(call, DefaultUserCommand()),
+            call => AssertDistro(call, ProbeCommand()),
+            call => AssertDistro(call, ProbeCommand()),
+            call => Assert.Equal("registrations", call.Kind),
+            call => Assert.Equal("get-configuration", call.Kind),
+            call => AssertDistro(call, IdentityCommand()),
+            call => AssertDistro(call, DefaultUserCommand()),
             call => AssertDistro(call, ProbeCommand()),
             call => Assert.Equal("registrations", call.Kind),
             call => Assert.Equal("get-configuration", call.Kind),
@@ -183,6 +240,250 @@ public sealed class GatewayVersionAlignmentCoordinatorTests : IDisposable
             call => AssertDistro(call, DefaultUserCommand()),
             call => AssertDistro(call, ProbeCommand()));
         Assert.DoesNotContain(runner.Calls, call => call.Kind == "unregister");
+        Assert.Collection(
+            updateRpc.Calls,
+            call =>
+            {
+                Assert.Equal("update.run", call.Method);
+                var target = call.Parameters.GetProperty("target");
+                Assert.Equal("openclaw", target.GetProperty("package").GetString());
+                Assert.Equal(RequiredVersion, target.GetProperty("version").GetString());
+                Assert.Equal("external", call.Parameters.GetProperty("confirmationTier").GetString());
+                Assert.Equal(
+                    $"windows-companion-gateway-update-{result.RollbackPointId}",
+                    call.RequestId);
+                Assert.False(call.Parameters.TryGetProperty("requestId", out _));
+            },
+            call =>
+            {
+                Assert.Equal("update.complete", call.Method);
+                Assert.Equal("healthy", call.Parameters.GetProperty("outcome").GetString());
+                Assert.Equal(RequiredVersion, call.Parameters.GetProperty("observedVersion").GetString());
+                Assert.StartsWith("transaction-", call.Parameters.GetProperty("transactionId").GetString());
+                Assert.Equal(updateRpc.Calls[0].RequestId, call.Parameters.GetProperty("requestId").GetString());
+            });
+    }
+
+    [Fact]
+    public async Task UpdateAsync_FailsClosedBeforePrivilegedRpcWhenConnectedGatewayIdentityDiffers()
+    {
+        var runner = new FakeWslCommandRunner();
+        runner.EnqueueDistro(Ok(PreviousVersion));
+        EnqueueCreateAttestation(runner, PreviousVersion);
+        EnqueuePendingAttestation(runner, PreviousVersion);
+        EnqueuePendingAttestation(runner, PreviousVersion);
+        runner.EnqueueDistro(Ok(PreviousVersion));
+        var updateRpc = new FakeGatewayUpdateRpc();
+        var coordinator = CreateCoordinator(
+            runner,
+            updateRpc: updateRpc,
+            connectedGatewayId: () => "different-gateway");
+
+        var result = await coordinator.UpdateAsync(EligiblePlan());
+
+        Assert.Equal(GatewayVersionAlignmentState.RecoveryAvailable, result.State);
+        Assert.Contains("active Gateway identity changed", result.FailureSummary, StringComparison.Ordinal);
+        Assert.Empty(updateRpc.Calls);
+        Assert.Equal(
+            GatewayRollbackPointPhase.UpdateInProgress,
+            Assert.Single(coordinator.ListRollbackPoints()).Phase);
+    }
+
+    [Theory]
+    [InlineData("2026.6.11")]
+    [InlineData("2026.7.2-beta.3")]
+    [InlineData("2026.7.2")]
+    public async Task UpdateAsync_RoutesLegacyVersionsToVerifiedInstallerWithoutUpdateRun(
+        string firstAdoptionVersion)
+    {
+        const string completeArray = """["system.run","system.which","camera.snap"]""";
+        var requiresPolicyMigration =
+            GatewayNodeCommandPolicyConfig.ResolveAllowKey(firstAdoptionVersion) !=
+            GatewayNodeCommandPolicyConfig.ResolveAllowKey(RequiredVersion);
+        var runner = new FakeWslCommandRunner();
+        runner.EnqueueDistro(Ok(firstAdoptionVersion));
+        if (requiresPolicyMigration)
+            runner.EnqueueDistro(Ok(completeArray));
+        EnqueueCreateAttestation(runner, firstAdoptionVersion);
+        EnqueuePendingAttestation(runner, firstAdoptionVersion);
+        if (requiresPolicyMigration)
+            runner.EnqueueDistro(Ok(completeArray));
+        EnqueuePendingAttestation(runner, firstAdoptionVersion);
+        runner.EnqueueDistro(Ok());
+        runner.EnqueueDistro(Ok(RequiredVersion));
+        if (requiresPolicyMigration)
+        {
+            runner.EnqueueDistro(Ok());
+            runner.EnqueueDistro(Ok(completeArray));
+            runner.EnqueueDistro(Ok());
+        }
+        EnqueuePendingAttestation(runner, RequiredVersion);
+        EnqueuePendingAttestation(runner, RequiredVersion);
+        var updateRpc = new FakeGatewayUpdateRpc();
+        var coordinator = new GatewayVersionAlignmentCoordinator(
+            runner,
+            GatewayPackageTarget.Official(RequiredVersion),
+            CreateManager(runner),
+            gatewayRequestAsync: updateRpc.SendAsync,
+            connectedGatewayId: () => "local-gateway",
+            routePolicy: new GatewayPackageUpdateRoutePolicy(
+                [firstAdoptionVersion, PreviousVersion]));
+
+        var result = await coordinator.UpdateAsync(EligiblePlan());
+
+        Assert.Equal(GatewayVersionAlignmentState.Updated, result.State);
+        Assert.Single(runner.Calls, call =>
+            call.Kind == "distro" &&
+            call.Arguments.SequenceEqual(VerifiedInstallerCommand(
+                GatewayPackageTarget.Official(RequiredVersion))));
+        Assert.Empty(updateRpc.Calls);
+        Assert.Equal(
+            GatewayRollbackPointPhase.PostUpdateHealthy,
+            Assert.Single(coordinator.ListRollbackPoints()).Phase);
+    }
+
+    [Fact]
+    public void BuildSetNodeCommandAllow_UsesCanonicalPosixQuoting()
+    {
+        const string json = """["system.run","owner's.command"]""";
+
+        var command = GatewayVersionAlignmentCommandBuilder.BuildSetNodeCommandAllow(
+            RequiredVersion,
+            json);
+
+        Assert.Equal(
+            ConfigCommand(
+                "set gateway.nodes.commands.allow '[\"system.run\",\"owner'\\''s.command\"]'"),
+            command);
+    }
+
+    [Theory]
+    [InlineData("update service unavailable")]
+    [InlineData("missing scope: operator.admin")]
+    [InlineData("invalid update.run params: at root: unexpected property 'target'")]
+    [InlineData("invalid update.run params: at root: unexpected property 'confirmationTier'; at root: unexpected property 'target'")]
+    public async Task UpdateAsync_DoesNotUseVanillaUpdaterForOtherUpdateRunFailures(string failure)
+    {
+        var runner = new FakeWslCommandRunner();
+        runner.EnqueueDistro(Ok(PreviousVersion));
+        EnqueueCreateAttestation(runner, PreviousVersion);
+        EnqueuePendingAttestation(runner, PreviousVersion);
+        EnqueuePendingAttestation(runner, PreviousVersion);
+        runner.EnqueueDistro(Ok(PreviousVersion));
+        var updateRpc = new FakeGatewayUpdateRpc();
+        updateRpc.Enqueue((_, _, _, _, _) => Task.FromException<JsonElement>(
+            new InvalidOperationException(failure)));
+        var coordinator = CreateCoordinator(runner, updateRpc: updateRpc);
+
+        var result = await coordinator.UpdateAsync(EligiblePlan());
+
+        Assert.Equal(GatewayVersionAlignmentState.RecoveryAvailable, result.State);
+        Assert.Contains("InvalidOperationException", result.FailureSummary, StringComparison.Ordinal);
+        Assert.DoesNotContain(runner.Calls, call =>
+            call.Kind == "distro" &&
+            call.Arguments.SequenceEqual(UpdateCommand(RequiredVersion)));
+        Assert.Single(updateRpc.Calls, call => call.Method == "update.run");
+        Assert.DoesNotContain(updateRpc.Calls, call => call.Method == "update.complete");
+        Assert.Equal(
+            GatewayRollbackPointPhase.UpdateInProgress,
+            Assert.Single(coordinator.ListRollbackPoints()).Phase);
+    }
+
+    [Fact]
+    public async Task UpdateAsync_DoesNotUseVanillaUpdaterForUpdateRunTimeout()
+    {
+        var runner = new FakeWslCommandRunner();
+        runner.EnqueueDistro(Ok(PreviousVersion));
+        EnqueueCreateAttestation(runner, PreviousVersion);
+        EnqueuePendingAttestation(runner, PreviousVersion);
+        EnqueuePendingAttestation(runner, PreviousVersion);
+        runner.EnqueueDistro(Ok(PreviousVersion));
+        var updateRpc = new FakeGatewayUpdateRpc();
+        updateRpc.Enqueue((_, _, _, _, _) => Task.FromException<JsonElement>(
+            new TimeoutException("Timed out waiting for update.run response")));
+        var coordinator = CreateCoordinator(runner, updateRpc: updateRpc);
+
+        var result = await coordinator.UpdateAsync(EligiblePlan());
+
+        Assert.Equal(GatewayVersionAlignmentState.RecoveryAvailable, result.State);
+        Assert.Contains("TimeoutException", result.FailureSummary, StringComparison.Ordinal);
+        Assert.DoesNotContain(runner.Calls, call =>
+            call.Kind == "distro" &&
+            call.Arguments.SequenceEqual(UpdateCommand(RequiredVersion)));
+        Assert.Single(updateRpc.Calls, call => call.Method == "update.run");
+        Assert.DoesNotContain(updateRpc.Calls, call => call.Method == "update.complete");
+    }
+
+    [Fact]
+    public async Task UpdateAsync_RestartedCoordinatorBlocksArmedExternalInstallerReceipt()
+    {
+        var runner = new FakeWslCommandRunner();
+        var manager = CreateManager(runner);
+        EnqueueCreateAttestation(runner, PreviousVersion);
+        var created = await manager.CreateVerifiedAsync(
+            "OpenClawGateway", "local-gateway", PreviousVersion, RequiredVersion);
+        var target = GatewayPackageTarget.Official(RequiredVersion);
+        manager.ArmUpdateDispatch(
+            created.Point!.Id,
+            target,
+            GatewayPackageUpdateRoute.CompanionInstaller,
+            requestId: null);
+        runner.ClearCalls();
+        runner.EnqueueDistro(Ok(PreviousVersion));
+        EnqueuePendingAttestation(runner, PreviousVersion);
+        var updateRpc = new FakeGatewayUpdateRpc();
+        var restartedManager = CreateManager(runner);
+        var restartedCoordinator = new GatewayVersionAlignmentCoordinator(
+            runner,
+            target,
+            restartedManager,
+            gatewayRequestAsync: updateRpc.SendAsync,
+            connectedGatewayId: () => "local-gateway");
+
+        var blocked = await restartedCoordinator.UpdateAsync(EligiblePlan());
+
+        Assert.Equal(GatewayVersionAlignmentState.RecoveryAvailable, blocked.State);
+        Assert.Contains("second non-idempotent", blocked.FailureSummary, StringComparison.Ordinal);
+        Assert.Empty(updateRpc.Calls);
+        Assert.DoesNotContain(runner.Calls, call =>
+            call.Kind == "distro" &&
+            call.Arguments.SequenceEqual(VerifiedInstallerCommand(target)));
+        Assert.Equal(
+            GatewayUpdateDispatchState.Prepared,
+            Assert.Single(ReadOwnedManifests()).UpdateDispatchState);
+    }
+
+    [Fact]
+    public async Task UpdateAsync_CancellationDuringGatewayRpcPreservesReceiptAndReleasesGate()
+    {
+        var runner = new FakeWslCommandRunner();
+        runner.EnqueueDistro(Ok(PreviousVersion));
+        EnqueueCreateAttestation(runner, PreviousVersion);
+        EnqueuePendingAttestation(runner, PreviousVersion);
+        EnqueuePendingAttestation(runner, PreviousVersion);
+        var requestStarted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var updateRpc = new FakeGatewayUpdateRpc();
+        updateRpc.Enqueue(async (_, _, _, _, cancellationToken) =>
+        {
+            Assert.True(cancellationToken.CanBeCanceled);
+            requestStarted.TrySetResult();
+            await Task.Delay(Timeout.InfiniteTimeSpan, cancellationToken);
+            return default;
+        });
+        var coordinator = CreateCoordinator(runner, updateRpc: updateRpc);
+        using var cancellation = new CancellationTokenSource();
+
+        var updateTask = coordinator.UpdateAsync(EligiblePlan(), cancellation.Token);
+        await requestStarted.Task.WaitAsync(TimeSpan.FromSeconds(2));
+        cancellation.Cancel();
+
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => updateTask);
+        Assert.Equal(
+            GatewayRollbackPointPhase.UpdateInProgress,
+            Assert.Single(coordinator.ListRollbackPoints()).Phase);
+        runner.EnqueueDistro(Ok(PreviousVersion));
+        var probe = await coordinator.ProbeAsync(EligiblePlan());
+        Assert.NotEqual(GatewayVersionAlignmentState.Busy, probe.State);
     }
 
     [Fact]
@@ -195,7 +496,8 @@ public sealed class GatewayVersionAlignmentCoordinatorTests : IDisposable
         EnqueueCreateAttestation(runner, LegacyVersion);
         EnqueuePendingAttestation(runner, LegacyVersion);
         runner.EnqueueDistro(Ok(completeArray));
-        runner.EnqueueDistro(Ok(UpdateJson(RequiredVersion)));
+        EnqueuePendingAttestation(runner, LegacyVersion);
+        runner.EnqueueDistro(Ok());
         runner.EnqueueDistro(Ok(RequiredVersion));
         runner.EnqueueDistro(Ok());
         runner.EnqueueDistro(Ok(completeArray));
@@ -232,6 +534,243 @@ public sealed class GatewayVersionAlignmentCoordinatorTests : IDisposable
     }
 
     [Fact]
+    public async Task UpdateAsync_PreservesReceiptWhenCoreTransactionEnvelopeIsInvalid()
+    {
+        var runner = new FakeWslCommandRunner();
+        runner.EnqueueDistro(Ok(PreviousVersion));
+        EnqueueCreateAttestation(runner, PreviousVersion);
+        EnqueuePendingAttestation(runner, PreviousVersion);
+        EnqueuePendingAttestation(runner, PreviousVersion);
+        runner.EnqueueDistro(Ok(PreviousVersion));
+        var updateRpc = new FakeGatewayUpdateRpc();
+        updateRpc.Enqueue((_, _, _, _, _) => Task.FromResult(JsonSerializer.SerializeToElement(new
+        {
+            transactionId = "transaction-without-deadline"
+        })));
+        var coordinator = CreateCoordinator(runner, updateRpc: updateRpc);
+
+        var result = await coordinator.UpdateAsync(EligiblePlan());
+
+        Assert.Equal(GatewayVersionAlignmentState.RecoveryAvailable, result.State);
+        Assert.Contains("confirmDeadline", result.FailureSummary, StringComparison.Ordinal);
+        Assert.Equal(
+            GatewayRollbackPointPhase.UpdateInProgress,
+            Assert.Single(coordinator.ListRollbackPoints()).Phase);
+        Assert.Single(updateRpc.Calls, call => call.Method == "update.run");
+        Assert.DoesNotContain(updateRpc.Calls, call => call.Method == "update.complete");
+        Assert.DoesNotContain(runner.Calls, call =>
+            call.Kind == "distro" && call.Arguments.Any(argument =>
+                argument.Contains("openclaw update", StringComparison.Ordinal)));
+    }
+
+    [Fact]
+    public async Task UpdateAsync_RejectsAlreadyExpiredCoreConfirmationDeadline()
+    {
+        var now = new DateTimeOffset(2026, 7, 25, 12, 0, 0, TimeSpan.Zero);
+        var runner = new FakeWslCommandRunner();
+        runner.EnqueueDistro(Ok(PreviousVersion));
+        EnqueueCreateAttestation(runner, PreviousVersion);
+        EnqueuePendingAttestation(runner, PreviousVersion);
+        EnqueuePendingAttestation(runner, PreviousVersion);
+        runner.EnqueueDistro(Ok(PreviousVersion));
+        var updateRpc = new FakeGatewayUpdateRpc();
+        updateRpc.Enqueue((_, requestId, _, _, _) => Task.FromResult(JsonSerializer.SerializeToElement(new
+        {
+            transactionId = $"transaction-{requestId}",
+            confirmDeadline = now.ToString("O")
+        })));
+        var coordinator = CreateCoordinator(runner, updateRpc: updateRpc, clock: () => now);
+
+        var result = await coordinator.UpdateAsync(EligiblePlan());
+
+        Assert.Equal(GatewayVersionAlignmentState.RecoveryAvailable, result.State);
+        Assert.Contains("confirmDeadline", result.FailureSummary, StringComparison.Ordinal);
+        Assert.Single(updateRpc.Calls, call => call.Method == "update.run");
+        Assert.DoesNotContain(updateRpc.Calls, call => call.Method == "update.complete");
+    }
+
+    [Fact]
+    public async Task UpdateAsync_RechecksDeadlineAfterPersistingCompletionAndBeforeDispatch()
+    {
+        var now = new DateTimeOffset(2026, 7, 25, 12, 0, 0, TimeSpan.Zero);
+        var deadline = now.AddSeconds(1);
+        var clockValues = new Queue<DateTimeOffset>([now, now, deadline]);
+        var runner = new FakeWslCommandRunner();
+        runner.EnqueueDistro(Ok(PreviousVersion));
+        EnqueueCreateAttestation(runner, PreviousVersion);
+        EnqueuePendingAttestation(runner, PreviousVersion);
+        EnqueuePendingAttestation(runner, PreviousVersion);
+        runner.EnqueueDistro(Ok(RequiredVersion));
+        EnqueuePendingAttestation(runner, RequiredVersion);
+        EnqueuePendingAttestation(runner, RequiredVersion);
+        var updateRpc = new FakeGatewayUpdateRpc();
+        updateRpc.Enqueue((_, requestId, _, _, _) => Task.FromResult(JsonSerializer.SerializeToElement(new
+        {
+            transactionId = $"transaction-{requestId}",
+            confirmDeadline = deadline.ToString("O")
+        })));
+        var coordinator = CreateCoordinator(
+            runner,
+            updateRpc: updateRpc,
+            clock: () => clockValues.Count > 0 ? clockValues.Dequeue() : deadline);
+
+        var result = await coordinator.UpdateAsync(EligiblePlan());
+
+        Assert.Equal(GatewayVersionAlignmentState.VerificationFailed, result.State);
+        Assert.Contains("expired before", result.FailureSummary, StringComparison.OrdinalIgnoreCase);
+        Assert.Single(updateRpc.Calls);
+        Assert.Equal("update.run", updateRpc.Calls[0].Method);
+        var receipt = Assert.Single(ReadOwnedManifests());
+        Assert.Equal(GatewayUpdateCompletionState.Prepared, receipt.UpdateCompletionState);
+        Assert.Equal("healthy", receipt.UpdateCompletionOutcome);
+    }
+
+    [Fact]
+    public async Task UpdateAsync_BoundsCompletionRpcTimeoutToRemainingDeadline()
+    {
+        var now = new DateTimeOffset(2026, 7, 25, 12, 0, 0, TimeSpan.Zero);
+        var deadline = now.AddMilliseconds(500);
+        var runner = new FakeWslCommandRunner();
+        runner.EnqueueDistro(Ok(PreviousVersion));
+        EnqueueCreateAttestation(runner, PreviousVersion);
+        EnqueuePendingAttestation(runner, PreviousVersion);
+        EnqueuePendingAttestation(runner, PreviousVersion);
+        runner.EnqueueDistro(Ok(RequiredVersion));
+        EnqueuePendingAttestation(runner, RequiredVersion);
+        EnqueuePendingAttestation(runner, RequiredVersion);
+        EnqueuePendingAttestation(runner, RequiredVersion);
+        var updateRpc = new FakeGatewayUpdateRpc();
+        updateRpc.Enqueue((_, requestId, _, _, _) => Task.FromResult(JsonSerializer.SerializeToElement(new
+        {
+            transactionId = $"transaction-{requestId}",
+            confirmDeadline = deadline.ToString("O")
+        })));
+        var coordinator = CreateCoordinator(runner, updateRpc: updateRpc, clock: () => now);
+
+        var result = await coordinator.UpdateAsync(EligiblePlan());
+
+        Assert.Equal(GatewayVersionAlignmentState.Updated, result.State);
+        var completion = Assert.Single(updateRpc.Calls, call => call.Method == "update.complete");
+        Assert.InRange(completion.TimeoutMs, 1, 500);
+    }
+
+    [Fact]
+    public async Task UpdateAsync_PreservesReceiptWhenHealthyCoreCompletionIsRejected()
+    {
+        var runner = new FakeWslCommandRunner();
+        runner.EnqueueDistro(Ok(PreviousVersion));
+        EnqueueCreateAttestation(runner, PreviousVersion);
+        EnqueuePendingAttestation(runner, PreviousVersion);
+        EnqueuePendingAttestation(runner, PreviousVersion);
+        runner.EnqueueDistro(Ok(RequiredVersion));
+        EnqueuePendingAttestation(runner, RequiredVersion);
+        EnqueuePendingAttestation(runner, RequiredVersion);
+        var updateRpc = new FakeGatewayUpdateRpc();
+        updateRpc.Enqueue((_, requestId, _, _, _) => Task.FromResult(JsonSerializer.SerializeToElement(new
+        {
+            transactionId = $"transaction-{requestId}",
+            confirmDeadline = "2030-01-01T00:00:00Z"
+        })));
+        updateRpc.Enqueue((_, _, _, _, _) => Task.FromException<JsonElement>(
+            new InvalidOperationException("completion rejected")));
+        var coordinator = CreateCoordinator(runner, updateRpc: updateRpc);
+
+        var result = await coordinator.UpdateAsync(EligiblePlan());
+
+        Assert.Equal(GatewayVersionAlignmentState.VerificationFailed, result.State);
+        Assert.Contains("did not accept healthy completion", result.FailureSummary, StringComparison.Ordinal);
+        Assert.Equal(
+            GatewayRollbackPointPhase.UpdateInProgress,
+            Assert.Single(coordinator.ListRollbackPoints()).Phase);
+        Assert.Equal(
+            ["update.run", "update.complete"],
+            updateRpc.Calls.Select(call => call.Method).ToArray());
+        Assert.Equal("healthy", updateRpc.Calls[1].Parameters.GetProperty("outcome").GetString());
+        Assert.Equal(RequiredVersion, updateRpc.Calls[1].Parameters.GetProperty("observedVersion").GetString());
+        var receipt = Assert.Single(ReadOwnedManifests());
+        Assert.Equal(GatewayUpdateCompletionState.Ambiguous, receipt.UpdateCompletionState);
+        Assert.Equal(updateRpc.Calls[1].RequestId, receipt.UpdateCompletionRequestId);
+
+        runner.EnqueueDistro(Ok(RequiredVersion));
+        EnqueuePendingAttestation(runner, RequiredVersion);
+        EnqueuePendingAttestation(runner, RequiredVersion);
+        EnqueuePendingAttestation(runner, RequiredVersion);
+        var resumed = await coordinator.UpdateAsync(EligiblePlan());
+
+        Assert.Equal(GatewayVersionAlignmentState.VerificationFailed, resumed.State);
+        Assert.Equal(2, updateRpc.Calls.Count);
+    }
+
+    [Fact]
+    public async Task UpdateAsync_DoesNotCompleteAcceptedCoreTransactionAfterDeadlineExpires()
+    {
+        var runner = new FakeWslCommandRunner();
+        var manager = CreateManager(runner);
+        EnqueueCreateAttestation(runner, PreviousVersion);
+        var created = await manager.CreateVerifiedAsync(
+            "OpenClawGateway", "local-gateway", PreviousVersion, RequiredVersion);
+        var target = GatewayPackageTarget.Official(RequiredVersion);
+        var requestId = $"windows-companion-gateway-update-{created.Point!.Id}";
+        manager.ArmUpdateDispatch(
+            created.Point.Id,
+            target,
+            GatewayPackageUpdateRoute.CoreTransaction,
+            requestId);
+        manager.RecordCoreUpdateAccepted(
+            created.Point.Id,
+            $"transaction-{requestId}",
+            new DateTimeOffset(2026, 7, 25, 12, 0, 0, TimeSpan.Zero));
+        runner.ClearCalls();
+        runner.EnqueueDistro(Ok(RequiredVersion));
+        EnqueuePendingAttestation(runner, RequiredVersion);
+        EnqueuePendingAttestation(runner, RequiredVersion);
+        EnqueuePendingAttestation(runner, RequiredVersion);
+        var updateRpc = new FakeGatewayUpdateRpc();
+        var coordinator = new GatewayVersionAlignmentCoordinator(
+            runner,
+            target,
+            manager,
+            gatewayRequestAsync: updateRpc.SendAsync,
+            connectedGatewayId: () => "local-gateway",
+            routePolicy: new GatewayPackageUpdateRoutePolicy([PreviousVersion]),
+            utcNow: () => new DateTimeOffset(2026, 7, 25, 12, 0, 1, TimeSpan.Zero));
+
+        var result = await coordinator.UpdateAsync(EligiblePlan());
+
+        Assert.Equal(GatewayVersionAlignmentState.VerificationFailed, result.State);
+        Assert.Contains("deadline", result.FailureSummary, StringComparison.OrdinalIgnoreCase);
+        Assert.Empty(updateRpc.Calls);
+        var receipt = Assert.Single(ReadOwnedManifests());
+        Assert.Null(receipt.UpdateCompletionState);
+    }
+
+    [Fact]
+    public async Task UpdateAsync_FailedCompletionOmitsObservedVersionWhenProbeIsUnavailable()
+    {
+        var runner = new FakeWslCommandRunner();
+        runner.EnqueueDistro(Ok(PreviousVersion));
+        EnqueueCreateAttestation(runner, PreviousVersion);
+        EnqueuePendingAttestation(runner, PreviousVersion);
+        EnqueuePendingAttestation(runner, PreviousVersion);
+        runner.EnqueueDistro(new WslCommandResult(7, "", "probe unavailable"));
+        var updateRpc = new FakeGatewayUpdateRpc();
+        var coordinator = CreateCoordinator(runner, updateRpc: updateRpc);
+
+        var result = await coordinator.UpdateAsync(EligiblePlan());
+
+        Assert.Equal(GatewayVersionAlignmentState.RecoveryAvailable, result.State);
+        var completion = Assert.Single(updateRpc.Calls, call => call.Method == "update.complete");
+        Assert.Equal("failed", completion.Parameters.GetProperty("outcome").GetString());
+        Assert.False(completion.Parameters.TryGetProperty("observedVersion", out _));
+        Assert.Equal(
+            updateRpc.Calls.Single(call => call.Method == "update.run").RequestId,
+            completion.Parameters.GetProperty("requestId").GetString());
+        Assert.Equal(
+            GatewayRollbackPointPhase.UpdateInProgress,
+            Assert.Single(coordinator.ListRollbackPoints()).Phase);
+    }
+
+    [Fact]
     public async Task UpdateAsync_BlocksWhenCompleteAllowlistCannotBeReadAtFinalBoundary()
     {
         const string capturedArray = """["system.run","system.which","camera.snap"]""";
@@ -247,9 +786,10 @@ public sealed class GatewayVersionAlignmentCoordinatorTests : IDisposable
 
         Assert.Equal(GatewayVersionAlignmentState.VerificationFailed, result.State);
         Assert.DoesNotContain(runner.Calls, call =>
-            call.Kind == "distro" && call.Arguments.SequenceEqual(UpdateCommand(RequiredVersion)));
+            call.Kind == "distro" && call.Arguments.Any(argument =>
+                argument.Contains("openclaw update", StringComparison.Ordinal)));
         var point = Assert.Single(coordinator.ListRollbackPoints());
-        Assert.Equal(GatewayRollbackPointPhase.UpdateInProgress, point.Phase);
+        Assert.Equal(GatewayRollbackPointPhase.Verified, point.Phase);
         Assert.Equal(GatewayRollbackPointVerificationStatus.Verified, point.VerificationStatus);
         Assert.True(point.RestoreEligible);
     }
@@ -271,9 +811,10 @@ public sealed class GatewayVersionAlignmentCoordinatorTests : IDisposable
 
         Assert.Equal(GatewayVersionAlignmentState.VerificationFailed, result.State);
         Assert.DoesNotContain(runner.Calls, call =>
-            call.Kind == "distro" && call.Arguments.SequenceEqual(UpdateCommand(RequiredVersion)));
+            call.Kind == "distro" && call.Arguments.Any(argument =>
+                argument.Contains("openclaw update", StringComparison.Ordinal)));
         var point = Assert.Single(coordinator.ListRollbackPoints());
-        Assert.Equal(GatewayRollbackPointPhase.UpdateInProgress, point.Phase);
+        Assert.Equal(GatewayRollbackPointPhase.Verified, point.Phase);
         Assert.True(point.RestoreEligible);
     }
 
@@ -287,7 +828,8 @@ public sealed class GatewayVersionAlignmentCoordinatorTests : IDisposable
         EnqueueCreateAttestation(runner, LegacyVersion);
         EnqueuePendingAttestation(runner, LegacyVersion);
         runner.EnqueueDistro(Ok(completeArray));
-        runner.EnqueueDistro(Ok(UpdateJson(RequiredVersion)));
+        EnqueuePendingAttestation(runner, LegacyVersion);
+        runner.EnqueueDistro(Ok());
         runner.EnqueueDistro(Ok(RequiredVersion));
         runner.EnqueueDistro(Ok());
         runner.EnqueueDistro(new WslCommandResult(1, "", "set failed"));
@@ -419,9 +961,12 @@ public sealed class GatewayVersionAlignmentCoordinatorTests : IDisposable
         runner.EnqueueDistro(Ok(PreviousVersion));
         EnqueueCreateAttestation(runner, PreviousVersion);
         EnqueuePendingAttestation(runner, PreviousVersion);
-        runner.EnqueueDistro(new WslCommandResult(12, "token=secret", "token=secret"));
+        EnqueuePendingAttestation(runner, PreviousVersion);
         runner.EnqueueDistro(Ok(PreviousVersion));
-        var coordinator = CreateCoordinator(runner);
+        var updateRpc = new FakeGatewayUpdateRpc();
+        updateRpc.Enqueue((_, _, _, _, _) => Task.FromException<JsonElement>(
+            new InvalidOperationException("private detail")));
+        var coordinator = CreateCoordinator(runner, updateRpc: updateRpc);
 
         var result = await coordinator.UpdateAsync(EligiblePlan());
 
@@ -447,8 +992,33 @@ public sealed class GatewayVersionAlignmentCoordinatorTests : IDisposable
 
         Assert.Equal(GatewayVersionAlignmentState.VerificationFailed, result.State);
         Assert.DoesNotContain(runner.Calls, call =>
-            call.Kind == "distro" && call.Arguments.SequenceEqual(UpdateCommand(RequiredVersion)));
-        Assert.Equal(GatewayRollbackPointPhase.UpdateInProgress, Assert.Single(coordinator.ListRollbackPoints()).Phase);
+            call.Kind == "distro" && call.Arguments.Any(argument =>
+                argument.Contains("openclaw update", StringComparison.Ordinal)));
+        Assert.Equal(GatewayRollbackPointPhase.Verified, Assert.Single(coordinator.ListRollbackPoints()).Phase);
+    }
+
+    [Fact]
+    public async Task UpdateAsync_BlocksWhenLiveIdentityChangesAfterDispatchReceiptIsArmed()
+    {
+        var runner = new FakeWslCommandRunner();
+        runner.EnqueueDistro(Ok(PreviousVersion));
+        EnqueueCreateAttestation(runner, PreviousVersion);
+        EnqueuePendingAttestation(runner, PreviousVersion);
+        runner.EnqueueDistro(Ok("fedcba9876543210fedcba9876543210"));
+        var updateRpc = new FakeGatewayUpdateRpc();
+        var coordinator = CreateCoordinator(runner, updateRpc: updateRpc);
+
+        var result = await coordinator.UpdateAsync(EligiblePlan());
+
+        Assert.Equal(GatewayVersionAlignmentState.VerificationFailed, result.State);
+        Assert.Contains("after update dispatch was durably armed", result.FailureSummary, StringComparison.Ordinal);
+        Assert.Empty(updateRpc.Calls);
+        Assert.Equal(
+            GatewayRollbackPointPhase.UpdateInProgress,
+            Assert.Single(coordinator.ListRollbackPoints()).Phase);
+        Assert.Equal(
+            GatewayUpdateDispatchState.Prepared,
+            Assert.Single(ReadOwnedManifests()).UpdateDispatchState);
     }
 
     [Theory]
@@ -467,8 +1037,9 @@ public sealed class GatewayVersionAlignmentCoordinatorTests : IDisposable
 
         Assert.Equal(GatewayVersionAlignmentState.VerificationFailed, result.State);
         Assert.DoesNotContain(runner.Calls, call =>
-            call.Kind == "distro" && call.Arguments.SequenceEqual(UpdateCommand(RequiredVersion)));
-        Assert.Equal(GatewayRollbackPointPhase.UpdateInProgress, Assert.Single(coordinator.ListRollbackPoints()).Phase);
+            call.Kind == "distro" && call.Arguments.Any(argument =>
+                argument.Contains("openclaw update", StringComparison.Ordinal)));
+        Assert.Equal(GatewayRollbackPointPhase.Verified, Assert.Single(coordinator.ListRollbackPoints()).Phase);
     }
 
     [Fact]
@@ -478,7 +1049,7 @@ public sealed class GatewayVersionAlignmentCoordinatorTests : IDisposable
         runner.EnqueueDistro(Ok(PreviousVersion));
         EnqueueCreateAttestation(runner, PreviousVersion);
         EnqueuePendingAttestation(runner, PreviousVersion);
-        runner.EnqueueDistro(Ok(UpdateJson(RequiredVersion)));
+        EnqueuePendingAttestation(runner, PreviousVersion);
         runner.EnqueueDistro(Ok(RequiredVersion));
         EnqueuePendingAttestation(runner, "2026.7.22+companion.3");
         var coordinator = CreateCoordinator(runner);
@@ -491,41 +1062,97 @@ public sealed class GatewayVersionAlignmentCoordinatorTests : IDisposable
     }
 
     [Fact]
-    public async Task UpdateAsync_BlocksCleanupWhenExactVersionChangesAfterHealthyMarking()
+    public async Task UpdateAsync_BlocksHealthyMarkAndCleanupWhenReceiptDriftsDuringHealthyCompletion()
     {
         var runner = new FakeWslCommandRunner();
         runner.EnqueueDistro(Ok(PreviousVersion));
         EnqueueCreateAttestation(runner, PreviousVersion);
         EnqueuePendingAttestation(runner, PreviousVersion);
-        runner.EnqueueDistro(Ok(UpdateJson(RequiredVersion)));
+        EnqueuePendingAttestation(runner, PreviousVersion);
         runner.EnqueueDistro(Ok(RequiredVersion));
         EnqueuePendingAttestation(runner, RequiredVersion);
-        EnqueuePendingAttestation(runner, "2026.7.22+companion.3");
-        var coordinator = CreateCoordinator(runner);
+        EnqueuePendingAttestation(runner, RequiredVersion);
+        var updateRpc = new FakeGatewayUpdateRpc();
+        updateRpc.Enqueue((_, requestId, _, _, _) => Task.FromResult(JsonSerializer.SerializeToElement(new
+        {
+            transactionId = $"transaction-{requestId}",
+            confirmDeadline = "2030-01-01T00:00:00Z"
+        })));
+        updateRpc.Enqueue((_, _, method, _, _) =>
+        {
+            Assert.Equal("update.complete", method);
+            EnqueuePendingAttestation(runner, "2026.7.22+companion.3");
+            return Task.FromResult(JsonSerializer.SerializeToElement(new { ok = true }));
+        });
+        var retentionPolicyCalls = 0;
+        var manager = CreateManager(runner);
+        var coordinator = new GatewayVersionAlignmentCoordinator(
+            runner,
+            GatewayPackageTarget.Official(RequiredVersion),
+            manager,
+            retentionPolicy: () =>
+            {
+                retentionPolicyCalls++;
+                return GatewayRollbackRetentionPolicy.Default;
+            },
+            gatewayRequestAsync: updateRpc.SendAsync,
+            connectedGatewayId: () => "local-gateway",
+            routePolicy: new GatewayPackageUpdateRoutePolicy([PreviousVersion]));
 
         var result = await coordinator.UpdateAsync(EligiblePlan());
 
         Assert.Equal(GatewayVersionAlignmentState.VerificationFailed, result.State);
+        Assert.Equal(GatewayRollbackPointPhase.UpdateInProgress, Assert.Single(manager.List()).Phase);
         Assert.True(coordinator.HasVerifiedPendingUpdate("local-gateway"));
+        Assert.Equal(0, retentionPolicyCalls);
     }
 
     [Fact]
-    public async Task UpdateAsync_ResumesPendingPostUpdateHealthWhenVersionIsAlreadyAligned()
+    public async Task UpdateAsync_BlocksHealthyCompletionWhenIdentityChangesAfterCompletionIsArmed()
     {
         var runner = new FakeWslCommandRunner();
         runner.EnqueueDistro(Ok(PreviousVersion));
         EnqueueCreateAttestation(runner, PreviousVersion);
         EnqueuePendingAttestation(runner, PreviousVersion);
-        runner.EnqueueDistro(Ok(UpdateJson(RequiredVersion)));
+        EnqueuePendingAttestation(runner, PreviousVersion);
         runner.EnqueueDistro(Ok(RequiredVersion));
+        EnqueuePendingAttestation(runner, RequiredVersion);
+        runner.EnqueueDistro(Ok("fedcba9876543210fedcba9876543210"));
+        var updateRpc = new FakeGatewayUpdateRpc();
+        var coordinator = CreateCoordinator(runner, updateRpc: updateRpc);
+
+        var result = await coordinator.UpdateAsync(EligiblePlan());
+
+        Assert.Equal(GatewayVersionAlignmentState.VerificationFailed, result.State);
+        Assert.Contains("after healthy completion was durably armed", result.FailureSummary, StringComparison.Ordinal);
+        Assert.Single(updateRpc.Calls, call => call.Method == "update.run");
+        Assert.DoesNotContain(updateRpc.Calls, call => call.Method == "update.complete");
+        var receipt = Assert.Single(ReadOwnedManifests());
+        Assert.Equal(GatewayUpdateCompletionState.Prepared, receipt.UpdateCompletionState);
+        Assert.Equal("healthy", receipt.UpdateCompletionOutcome);
+    }
+
+    [Fact]
+    public async Task UpdateAsync_DoesNotReplaceAcceptedFailedCompletionWithHealthyOutcome()
+    {
+        var runner = new FakeWslCommandRunner();
+        runner.EnqueueDistro(Ok(PreviousVersion));
+        EnqueueCreateAttestation(runner, PreviousVersion);
+        EnqueuePendingAttestation(runner, PreviousVersion);
+        EnqueuePendingAttestation(runner, PreviousVersion);
+        runner.EnqueueDistro(Ok(RequiredVersion));
+        var updateRpc = new FakeGatewayUpdateRpc();
         var syncCalls = 0;
-        var coordinator = CreateCoordinator(runner, (_, _) =>
-        {
-            syncCalls++;
-            return syncCalls == 2
-                ? Task.FromException(new InvalidOperationException("transient"))
-                : Task.CompletedTask;
-        });
+        var coordinator = CreateCoordinator(
+            runner,
+            (_, _) =>
+            {
+                syncCalls++;
+                return syncCalls == 2
+                    ? Task.FromException(new InvalidOperationException("transient"))
+                    : Task.CompletedTask;
+            },
+            updateRpc);
 
         var failedHealth = await coordinator.UpdateAsync(EligiblePlan());
         Assert.Equal(GatewayVersionAlignmentState.RecoveryAvailable, failedHealth.State);
@@ -538,11 +1165,139 @@ public sealed class GatewayVersionAlignmentCoordinatorTests : IDisposable
         EnqueuePendingAttestation(runner, RequiredVersion);
         var resumed = await coordinator.UpdateAsync(EligiblePlan());
 
-        Assert.Equal(GatewayVersionAlignmentState.Updated, resumed.State);
-        Assert.False(coordinator.HasVerifiedPendingUpdate("local-gateway"));
+        Assert.Equal(GatewayVersionAlignmentState.VerificationFailed, resumed.State);
+        Assert.True(coordinator.HasVerifiedPendingUpdate("local-gateway"));
         Assert.Equal(3, syncCalls);
-        Assert.Equal(GatewayRollbackPointPhase.PostUpdateHealthy, Assert.Single(coordinator.ListRollbackPoints()).Phase);
-        Assert.Single(runner.Calls, call => call.Kind == "distro" && call.Arguments.SequenceEqual(UpdateCommand(RequiredVersion)));
+        Assert.Equal(GatewayRollbackPointPhase.UpdateInProgress, Assert.Single(coordinator.ListRollbackPoints()).Phase);
+        var runCalls = updateRpc.Calls.Where(call => call.Method == "update.run").ToArray();
+        Assert.Single(runCalls);
+        var completionCalls = updateRpc.Calls.Where(call => call.Method == "update.complete").ToArray();
+        var completion = Assert.Single(completionCalls);
+        Assert.Equal(runCalls[0].RequestId, completion.Parameters.GetProperty("requestId").GetString());
+        Assert.Equal(
+            $"transaction-{runCalls[0].RequestId}",
+            completion.Parameters.GetProperty("transactionId").GetString());
+        Assert.Equal("failed", completionCalls[0].Parameters.GetProperty("outcome").GetString());
+        Assert.Equal(RequiredVersion, completionCalls[0].Parameters.GetProperty("observedVersion").GetString());
+        var receipt = Assert.Single(ReadOwnedManifests());
+        Assert.Equal(GatewayUpdateCompletionState.Accepted, receipt.UpdateCompletionState);
+        Assert.Equal("failed", receipt.UpdateCompletionOutcome);
+    }
+
+    [Fact]
+    public async Task UpdateAsync_FreshCoordinatorDoesNotRedispatchAcceptedFailedCompletion()
+    {
+        var runner = new FakeWslCommandRunner();
+        runner.EnqueueDistro(Ok(PreviousVersion));
+        EnqueueCreateAttestation(runner, PreviousVersion);
+        EnqueuePendingAttestation(runner, PreviousVersion);
+        EnqueuePendingAttestation(runner, PreviousVersion);
+        runner.EnqueueDistro(Ok(RequiredVersion));
+        var firstRpc = new FakeGatewayUpdateRpc();
+        var synchronizationCalls = 0;
+        var firstCoordinator = CreateCoordinator(
+            runner,
+            (_, _) =>
+            {
+                synchronizationCalls++;
+                return synchronizationCalls == 2
+                    ? Task.FromException(new InvalidOperationException("transient"))
+                    : Task.CompletedTask;
+            },
+            firstRpc);
+
+        var interrupted = await firstCoordinator.UpdateAsync(EligiblePlan());
+
+        Assert.Equal(GatewayVersionAlignmentState.RecoveryAvailable, interrupted.State);
+        var originalRun = Assert.Single(firstRpc.Calls, call => call.Method == "update.run");
+        var persisted = Assert.Single(ReadOwnedManifests());
+        Assert.Equal(GatewayUpdateDispatchState.Accepted, persisted.UpdateDispatchState);
+        Assert.Equal(originalRun.RequestId, persisted.UpdateRequestId);
+        Assert.Equal($"transaction-{originalRun.RequestId}", persisted.UpdateTransactionId);
+
+        runner.EnqueueDistro(Ok(RequiredVersion));
+        EnqueuePendingAttestation(runner, RequiredVersion);
+        EnqueuePendingAttestation(runner, RequiredVersion);
+        EnqueuePendingAttestation(runner, RequiredVersion);
+        var restartedRpc = new FakeGatewayUpdateRpc();
+        var restartedCoordinator = new GatewayVersionAlignmentCoordinator(
+            runner,
+            GatewayPackageTarget.Official(RequiredVersion),
+            CreateManager(runner),
+            gatewayRequestAsync: restartedRpc.SendAsync,
+            connectedGatewayId: () => "local-gateway",
+            routePolicy: new GatewayPackageUpdateRoutePolicy([PreviousVersion]));
+
+        var resumed = await restartedCoordinator.UpdateAsync(EligiblePlan());
+
+        Assert.Equal(GatewayVersionAlignmentState.VerificationFailed, resumed.State);
+        Assert.DoesNotContain(restartedRpc.Calls, call => call.Method == "update.run");
+        Assert.DoesNotContain(restartedRpc.Calls, call => call.Method == "update.complete");
+        var receipt = Assert.Single(ReadOwnedManifests());
+        Assert.Equal(GatewayUpdateCompletionState.Accepted, receipt.UpdateCompletionState);
+        Assert.Equal("failed", receipt.UpdateCompletionOutcome);
+    }
+
+    [Fact]
+    public async Task UpdateAsync_BlocksAlignedPendingReceiptWithoutLiveDispatchProvenance()
+    {
+        var runner = new FakeWslCommandRunner();
+        var manager = CreateManager(runner);
+        EnqueueCreateAttestation(runner, PreviousVersion);
+        var created = await manager.CreateVerifiedAsync(
+            "OpenClawGateway", "local-gateway", PreviousVersion, RequiredVersion);
+        manager.MarkUpdateInProgress(created.Point!.Id);
+        runner.ClearCalls();
+        runner.EnqueueDistro(Ok(RequiredVersion));
+        EnqueuePendingAttestation(runner, RequiredVersion);
+        var updateRpc = new FakeGatewayUpdateRpc();
+        var coordinator = new GatewayVersionAlignmentCoordinator(
+            runner,
+            RequiredVersion,
+            manager,
+            gatewayRequestAsync: updateRpc.SendAsync,
+            connectedGatewayId: () => "local-gateway");
+
+        var result = await coordinator.UpdateAsync(EligiblePlan());
+
+        Assert.Equal(GatewayVersionAlignmentState.RecoveryAvailable, result.State);
+        Assert.Contains("predates durable package-target", result.FailureSummary, StringComparison.Ordinal);
+        Assert.Empty(updateRpc.Calls);
+        Assert.DoesNotContain(runner.Calls, call =>
+            call.Kind == "distro" &&
+            call.Arguments.SequenceEqual(UpdateCommand(RequiredVersion)));
+        Assert.Equal(
+            GatewayRollbackPointPhase.UpdateInProgress,
+            Assert.Single(manager.List()).Phase);
+    }
+
+    [Fact]
+    public async Task UpdateAsync_LostUpdateRunResponseDoesNotRedispatchWhenReceiptLaterAppearsAligned()
+    {
+        var runner = new FakeWslCommandRunner();
+        runner.EnqueueDistro(Ok(PreviousVersion));
+        EnqueueCreateAttestation(runner, PreviousVersion);
+        EnqueuePendingAttestation(runner, PreviousVersion);
+        EnqueuePendingAttestation(runner, PreviousVersion);
+        runner.EnqueueDistro(Ok(RequiredVersion));
+        var updateRpc = new FakeGatewayUpdateRpc();
+        updateRpc.Enqueue((_, _, _, _, _) => Task.FromException<JsonElement>(
+            new TimeoutException("response lost after dispatch")));
+        var coordinator = CreateCoordinator(runner, updateRpc: updateRpc);
+
+        var lostResponse = await coordinator.UpdateAsync(EligiblePlan());
+
+        Assert.Equal(GatewayVersionAlignmentState.RecoveryAvailable, lostResponse.State);
+        Assert.Equal(RequiredVersion, lostResponse.InstalledVersion);
+
+        runner.EnqueueDistro(Ok(RequiredVersion));
+        EnqueuePendingAttestation(runner, RequiredVersion);
+        var resumed = await coordinator.UpdateAsync(EligiblePlan());
+
+        Assert.Equal(GatewayVersionAlignmentState.RecoveryAvailable, resumed.State);
+        Assert.Contains("no accepted transaction provenance", resumed.FailureSummary, StringComparison.Ordinal);
+        Assert.Single(updateRpc.Calls, call => call.Method == "update.run");
+        Assert.DoesNotContain(updateRpc.Calls, call => call.Method == "update.complete");
     }
 
     [Fact]
@@ -563,77 +1318,76 @@ public sealed class GatewayVersionAlignmentCoordinatorTests : IDisposable
 
         var result = await coordinator.UpdateAsync(EligiblePlan());
 
-        Assert.Equal(GatewayVersionAlignmentState.VerificationFailed, result.State);
+        Assert.Equal(GatewayVersionAlignmentState.RecoveryAvailable, result.State);
+        Assert.Contains("predates durable package-target", result.FailureSummary, StringComparison.Ordinal);
         Assert.Equal(0, synchronizations);
         Assert.Equal(GatewayRollbackPointPhase.UpdateInProgress, Assert.Single(manager.List()).Phase);
     }
 
     [Fact]
-    public async Task UpdateAsync_RetriesFailedMismatchedUpdateUsingSameVerifiedPoint()
+    public async Task UpdateAsync_DoesNotRedispatchAfterFailedMismatchedUpdate()
     {
         var runner = new FakeWslCommandRunner();
         runner.EnqueueDistro(Ok(PreviousVersion));
         EnqueueCreateAttestation(runner, PreviousVersion);
         EnqueuePendingAttestation(runner, PreviousVersion);
-        runner.EnqueueDistro(new WslCommandResult(12, "", ""));
+        EnqueuePendingAttestation(runner, PreviousVersion);
         runner.EnqueueDistro(Ok(PreviousVersion));
-        var coordinator = CreateCoordinator(runner);
+        var updateRpc = new FakeGatewayUpdateRpc();
+        updateRpc.Enqueue((_, _, _, _, _) => Task.FromException<JsonElement>(
+            new InvalidOperationException("transient")));
+        var coordinator = CreateCoordinator(runner, updateRpc: updateRpc);
 
         var failed = await coordinator.UpdateAsync(EligiblePlan());
         Assert.Equal(GatewayVersionAlignmentState.RecoveryAvailable, failed.State);
 
         runner.EnqueueDistro(Ok(PreviousVersion));
         EnqueuePendingAttestation(runner, PreviousVersion);
-        EnqueuePendingAttestation(runner, PreviousVersion);
-        runner.EnqueueDistro(Ok(UpdateJson(RequiredVersion)));
-        runner.EnqueueDistro(Ok(RequiredVersion));
-        EnqueuePendingAttestation(runner, RequiredVersion);
-        EnqueuePendingAttestation(runner, RequiredVersion);
         var retried = await coordinator.UpdateAsync(EligiblePlan());
 
-        Assert.Equal(GatewayVersionAlignmentState.Updated, retried.State);
+        Assert.Equal(GatewayVersionAlignmentState.RecoveryAvailable, retried.State);
+        Assert.Contains("second non-idempotent update.run was blocked", retried.FailureSummary, StringComparison.Ordinal);
         Assert.Equal(failed.RollbackPointId, retried.RollbackPointId);
         Assert.Single(runner.Calls, call => call.Kind == "direct" && call.Arguments.FirstOrDefault() == "--export");
-        Assert.Equal(2, runner.Calls.Count(call => call.Kind == "distro" && call.Arguments.SequenceEqual(UpdateCommand(RequiredVersion))));
+        var runCalls = updateRpc.Calls.Where(call => call.Method == "update.run").ToArray();
+        Assert.Single(runCalls);
     }
 
     [Fact]
-    public async Task UpdateAsync_RetriesPendingUpdateWithoutRequiringBrokenRuntimePreHealth()
+    public async Task UpdateAsync_BlocksPendingRedispatchWithoutRequiringBrokenRuntimePreHealth()
     {
         var runtimeBroken = false;
         var runner = new FakeWslCommandRunner();
         runner.EnqueueDistro(Ok(PreviousVersion));
         EnqueueCreateAttestation(runner, PreviousVersion);
         EnqueuePendingAttestation(runner, PreviousVersion);
-        runner.EnqueueDistro(_ =>
+        EnqueuePendingAttestation(runner, PreviousVersion);
+        runner.EnqueueDistro(Ok(PreviousVersion));
+        var updateRpc = new FakeGatewayUpdateRpc();
+        updateRpc.Enqueue((_, _, _, _, _) =>
         {
             runtimeBroken = true;
-            return Task.FromResult(new WslCommandResult(12, "", ""));
+            return Task.FromException<JsonElement>(new InvalidOperationException("update failed"));
         });
-        runner.EnqueueDistro(Ok(PreviousVersion));
-        var coordinator = CreateCoordinator(runner, (_, _) =>
-            runtimeBroken
-                ? Task.FromException(new InvalidOperationException("runtime unavailable"))
-                : Task.CompletedTask);
+        var coordinator = CreateCoordinator(
+            runner,
+            (_, _) =>
+                runtimeBroken
+                    ? Task.FromException(new InvalidOperationException("runtime unavailable"))
+                    : Task.CompletedTask,
+            updateRpc);
 
         var failed = await coordinator.UpdateAsync(EligiblePlan());
         Assert.Equal(GatewayVersionAlignmentState.RecoveryAvailable, failed.State);
 
         runner.EnqueueDistro(Ok(PreviousVersion));
         EnqueuePendingAttestation(runner, PreviousVersion);
-        EnqueuePendingAttestation(runner, PreviousVersion);
-        runner.EnqueueDistro(_ =>
-        {
-            runtimeBroken = false;
-            return Task.FromResult(Ok(UpdateJson(RequiredVersion)));
-        });
-        runner.EnqueueDistro(Ok(RequiredVersion));
-        EnqueuePendingAttestation(runner, RequiredVersion);
-        EnqueuePendingAttestation(runner, RequiredVersion);
         var retried = await coordinator.UpdateAsync(EligiblePlan());
 
-        Assert.Equal(GatewayVersionAlignmentState.Updated, retried.State);
+        Assert.Equal(GatewayVersionAlignmentState.RecoveryAvailable, retried.State);
+        Assert.Contains("second non-idempotent update.run was blocked", retried.FailureSummary, StringComparison.Ordinal);
         Assert.Equal(failed.RollbackPointId, retried.RollbackPointId);
+        Assert.Single(updateRpc.Calls, call => call.Method == "update.run");
     }
 
     [Fact]
@@ -643,9 +1397,12 @@ public sealed class GatewayVersionAlignmentCoordinatorTests : IDisposable
         runner.EnqueueDistro(Ok(PreviousVersion));
         EnqueueCreateAttestation(runner, PreviousVersion);
         EnqueuePendingAttestation(runner, PreviousVersion);
-        runner.EnqueueDistro(new WslCommandResult(12, "", ""));
+        EnqueuePendingAttestation(runner, PreviousVersion);
         runner.EnqueueDistro(Ok(PreviousVersion));
-        var coordinator = CreateCoordinator(runner);
+        var updateRpc = new FakeGatewayUpdateRpc();
+        updateRpc.Enqueue((_, _, _, _, _) => Task.FromException<JsonElement>(
+            new InvalidOperationException("transient")));
+        var coordinator = CreateCoordinator(runner, updateRpc: updateRpc);
         var failed = await coordinator.UpdateAsync(EligiblePlan());
         Assert.Equal(GatewayVersionAlignmentState.RecoveryAvailable, failed.State);
 
@@ -654,9 +1411,9 @@ public sealed class GatewayVersionAlignmentCoordinatorTests : IDisposable
         var blocked = await coordinator.UpdateAsync(EligiblePlan());
 
         Assert.Equal(GatewayVersionAlignmentState.VerificationFailed, blocked.State);
+        Assert.Contains("no longer matches the pending rollback receipt", blocked.FailureSummary, StringComparison.Ordinal);
         Assert.Equal(failed.RollbackPointId, blocked.RollbackPointId);
-        Assert.Equal(1, runner.Calls.Count(call =>
-            call.Kind == "distro" && call.Arguments.SequenceEqual(UpdateCommand(RequiredVersion))));
+        Assert.Single(updateRpc.Calls, call => call.Method == "update.run");
     }
 
     [Fact]
@@ -676,10 +1433,12 @@ public sealed class GatewayVersionAlignmentCoordinatorTests : IDisposable
 
         var blocked = await coordinator.UpdateAsync(EligiblePlan());
 
-        Assert.Equal(GatewayVersionAlignmentState.VerificationFailed, blocked.State);
+        Assert.Equal(GatewayVersionAlignmentState.RecoveryAvailable, blocked.State);
+        Assert.Contains("predates durable package-target", blocked.FailureSummary, StringComparison.Ordinal);
         Assert.Equal(created.Point.Id, blocked.RollbackPointId);
         Assert.DoesNotContain(runner.Calls, call =>
-            call.Kind == "distro" && call.Arguments.SequenceEqual(UpdateCommand(RequiredVersion)));
+            call.Kind == "distro" && call.Arguments.Any(argument =>
+                argument.Contains("openclaw update", StringComparison.Ordinal)));
         Assert.Equal(GatewayRollbackPointPhase.UpdateInProgress, Assert.Single(manager.List()).Phase);
     }
 
@@ -710,7 +1469,8 @@ public sealed class GatewayVersionAlignmentCoordinatorTests : IDisposable
         Assert.Equal(created.Point.Id, blocked.RollbackPointId);
         Assert.Equal(0, syncCalls);
         Assert.DoesNotContain(runner.Calls, call =>
-            call.Kind == "distro" && call.Arguments.SequenceEqual(UpdateCommand(RequiredVersion)));
+            call.Kind == "distro" && call.Arguments.Any(argument =>
+                argument.Contains("openclaw update", StringComparison.Ordinal)));
     }
 
     [Theory]
@@ -783,7 +1543,8 @@ public sealed class GatewayVersionAlignmentCoordinatorTests : IDisposable
         Assert.Equal(GatewayVersionAlignmentState.RecoveryAvailable, result.State);
         Assert.Equal(point.Point.Id, result.RollbackPointId);
         Assert.DoesNotContain(runner.Calls, call =>
-            call.Kind == "distro" && call.Arguments.SequenceEqual(UpdateCommand(RequiredVersion)));
+            call.Kind == "distro" && call.Arguments.Any(argument =>
+                argument.Contains("openclaw update", StringComparison.Ordinal)));
         Assert.Single(manager.List());
     }
 
@@ -1613,8 +2374,22 @@ public sealed class GatewayVersionAlignmentCoordinatorTests : IDisposable
 
     private GatewayVersionAlignmentCoordinator CreateCoordinator(
         FakeWslCommandRunner runner,
-        Func<string, CancellationToken, Task>? synchronize = null) =>
-        new(runner, RequiredVersion, CreateManager(runner), synchronize);
+        Func<string, CancellationToken, Task>? synchronize = null,
+        FakeGatewayUpdateRpc? updateRpc = null,
+        Func<string?>? connectedGatewayId = null,
+        Func<DateTimeOffset>? clock = null)
+    {
+        updateRpc ??= new FakeGatewayUpdateRpc();
+        return new(
+            runner,
+            GatewayPackageTarget.Official(RequiredVersion),
+            CreateManager(runner),
+            synchronize,
+            gatewayRequestAsync: updateRpc.SendAsync,
+            connectedGatewayId: connectedGatewayId ?? (() => "local-gateway"),
+            routePolicy: new GatewayPackageUpdateRoutePolicy([PreviousVersion, LegacyVersion]),
+            utcNow: clock);
+    }
 
     private GatewayRollbackPointManager CreateManager(
         FakeWslCommandRunner runner,
@@ -1673,6 +2448,16 @@ public sealed class GatewayVersionAlignmentCoordinatorTests : IDisposable
     private static IReadOnlyList<string> UpdateCommand(string version) =>
         ["bash", "-lc", $"{WslGatewayControlCommandBuilder.OpenClawWslPathPrefix} && openclaw update --tag {version} --yes --json"];
 
+    private static IReadOnlyList<string> VerifiedInstallerCommand(GatewayPackageTarget target) =>
+        [
+            "bash",
+            "-lc",
+            $"{WslGatewayControlCommandBuilder.OpenClawWslPathPrefix} && " +
+            GatewayPackageInstallCommandBuilder.Build(
+                GatewayPackageInstallCommandBuilder.DefaultInstallUrl,
+                target)
+        ];
+
     private static IReadOnlyList<string> ConfigCommand(string operation) =>
         ["bash", "-lc", $"{WslGatewayControlCommandBuilder.OpenClawWslPathPrefix} && openclaw config {operation}"];
 
@@ -1691,6 +2476,50 @@ public sealed class GatewayVersionAlignmentCoordinatorTests : IDisposable
     }
 
     private sealed record CommandCall(string Kind, string? DistroName, IReadOnlyList<string> Arguments);
+    private sealed record GatewayRpcCall(
+        string ExpectedGatewayId,
+        string RequestId,
+        string Method,
+        JsonElement Parameters,
+        int TimeoutMs);
+
+    private sealed class FakeGatewayUpdateRpc
+    {
+        private readonly Queue<Func<string, string, string, JsonElement, CancellationToken, Task<JsonElement>>> _responses = new();
+        public List<GatewayRpcCall> Calls { get; } = [];
+
+        public void Enqueue(
+            Func<string, string, string, JsonElement, CancellationToken, Task<JsonElement>> response) =>
+            _responses.Enqueue(response);
+
+        public Task<JsonElement> SendAsync(
+            string expectedGatewayId,
+            string requestId,
+            string method,
+            object? parameters,
+            int timeoutMs,
+            CancellationToken cancellationToken)
+        {
+            var serialized = JsonSerializer.SerializeToElement(parameters);
+            Calls.Add(new(expectedGatewayId, requestId, method, serialized, timeoutMs));
+            if (_responses.Count > 0)
+                return _responses.Dequeue()(
+                    expectedGatewayId,
+                    requestId,
+                    method,
+                    serialized,
+                    cancellationToken);
+            if (string.Equals(method, "update.run", StringComparison.Ordinal))
+            {
+                return Task.FromResult(JsonSerializer.SerializeToElement(new
+                {
+                    transactionId = $"transaction-{requestId}",
+                    confirmDeadline = "2030-01-01T00:00:00Z"
+                }));
+            }
+            return Task.FromResult(JsonSerializer.SerializeToElement(new { ok = true }));
+        }
+    }
 
     private sealed class FakeWslCommandRunner : IWslCommandRunner
     {

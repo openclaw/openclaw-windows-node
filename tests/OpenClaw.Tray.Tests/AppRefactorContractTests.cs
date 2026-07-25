@@ -1084,6 +1084,24 @@ public sealed class AppRefactorContractTests
     }
 
     [Fact]
+    public void GatewayUpdatePrompt_OffersExactAlignmentForOlderAndNewerVersions()
+    {
+        var source = ReadAppSources();
+        var method = ExtractMethod(source, "CheckCompanionGatewayVersionAsync");
+
+        Assert.Contains(
+            "probe.State is not GatewayVersionAlignmentState.Mismatch",
+            method,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "and not GatewayVersionAlignmentState.NewerThanRequired",
+            method,
+            StringComparison.Ordinal);
+        Assert.Contains("ConfirmCompanionGatewayUpdateAsync(probe)", method, StringComparison.Ordinal);
+        Assert.DoesNotContain("was not downgraded", method, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void GatewayUpdateCheck_QueuesOneFollowUpWhenSingleFlightIsBusy()
     {
         var source = ReadAppSources();

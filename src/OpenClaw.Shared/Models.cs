@@ -1237,17 +1237,24 @@ public static class GatewayNodeCommandPolicyConfig
     public const string CurrentAllowKey = "gateway.nodes.commands.allow";
     public const string LegacyAllowKey = "gateway.nodes.allowCommands";
 
+    public static bool UsesLegacySchema(string? gatewayVersion)
+    {
+        var version = gatewayVersion?.Trim();
+        if (string.IsNullOrEmpty(version))
+            return false;
+
+        return string.Equals(version, "2026.6.11", StringComparison.OrdinalIgnoreCase) ||
+               string.Equals(version, "2026.7.1", StringComparison.OrdinalIgnoreCase) ||
+               string.Equals(version, "2026.7.2-beta.3", StringComparison.OrdinalIgnoreCase);
+    }
+
     public static string? ResolveAllowKey(string? gatewayVersion)
     {
         var version = gatewayVersion?.Trim();
         if (string.IsNullOrEmpty(version))
             return null;
 
-        return string.Equals(version, "2026.6.11", StringComparison.OrdinalIgnoreCase) ||
-               string.Equals(version, "2026.7.1", StringComparison.OrdinalIgnoreCase) ||
-               string.Equals(version, "2026.7.2-beta.3", StringComparison.OrdinalIgnoreCase)
-            ? LegacyAllowKey
-            : CurrentAllowKey;
+        return UsesLegacySchema(version) ? LegacyAllowKey : CurrentAllowKey;
     }
 }
 
