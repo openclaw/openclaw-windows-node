@@ -44,7 +44,7 @@ jobs:
       uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
       with:
         repository: openclaw/openclaw
-        ref: b9a28cde42872cfe13051ddd8f1667e34bf59b17
+        ref: ec7f8e9dd1c34b1cff244eac4dbce469a9d1cd3a
         fetch-depth: 0
 
     - name: Setup Node 24
@@ -56,17 +56,17 @@ jobs:
       shell: bash
       run: |
         corepack enable
-        corepack prepare pnpm@11.2.2 --activate
+        corepack prepare pnpm@11.15.1 --activate
 
     - name: Compose main with exact PR 110382 and PR 111956 patches
       shell: bash
       run: |
         set -euo pipefail
-        base_sha=b9a28cde42872cfe13051ddd8f1667e34bf59b17
-        wizard_base=b9a28cde42872cfe13051ddd8f1667e34bf59b17
-        wizard_head=4ef65f07940a601a8bf7ef18fae72270f4843ccb
-        package_base=b9a28cde42872cfe13051ddd8f1667e34bf59b17
-        package_head=070527ddfe32f0156a6258a638e226f731458ecd
+        base_sha=ec7f8e9dd1c34b1cff244eac4dbce469a9d1cd3a
+        wizard_base=b3b9e691bd599e34e0ebd93c924b5de45629380b
+        wizard_head=2edd42450533be9f7a463d55bab41fd16cf319cb
+        package_base=ec7f8e9dd1c34b1cff244eac4dbce469a9d1cd3a
+        package_head=d4e05a616e39a28635b048a291166384287e6d02
         fork_repository=https://github.com/TheAngryPit/openclaw.git
         wizard_fetch_ref=refs/heads/codex/fix-gateway-wizard-rpc-exits
         package_fetch_ref=refs/heads/codex/windows-package-runner-tree-timeout
@@ -143,12 +143,12 @@ jobs:
         test "${#package_patch_sha256}" -eq 64
         printf '%s  %s\n' "$sha256" "$(basename "$tarball")" >"$RUNNER_TEMP/gateway-composed/SHA256SUMS"
         printf '{"source_ref":"main","source_sha":"%s","fixes":[{"pr":110382,"base":"%s","head":"%s","fetch_repository":"TheAngryPit/openclaw","fetch_ref":"codex/fix-gateway-wizard-rpc-exits","patch_sha256":"%s"},{"pr":111956,"base":"%s","head":"%s","fetch_repository":"TheAngryPit/openclaw","fetch_ref":"codex/windows-package-runner-tree-timeout","upstream_pr_object_state_at_freeze":"stale","patch_sha256":"%s"}],"changed_paths":["apps/shared/OpenClawKit/Sources/OpenClawProtocol/GatewayModels.swift","packages/gateway-protocol/src/schema/wizard.ts","scripts/package-openclaw-for-docker.d.mts","scripts/package-openclaw-for-docker.mjs","src/gateway/gateway.test.ts","src/gateway/server-methods/wizard.test.ts","src/gateway/server-methods/wizard.ts","src/gateway/server-wizard-sessions.test.ts","src/gateway/server-wizard-sessions.ts","src/wizard/session.ts","src/wizard/setup.finalize.test.ts","src/wizard/setup.finalize.ts","test/e2e/qa-lab/runtime/package-openclaw-for-docker.e2e.test.ts"],"package_version":"%s","package_sha256":"%s"}\n' \
-          b9a28cde42872cfe13051ddd8f1667e34bf59b17 \
-          b9a28cde42872cfe13051ddd8f1667e34bf59b17 \
-          4ef65f07940a601a8bf7ef18fae72270f4843ccb \
+          ec7f8e9dd1c34b1cff244eac4dbce469a9d1cd3a \
+          b3b9e691bd599e34e0ebd93c924b5de45629380b \
+          2edd42450533be9f7a463d55bab41fd16cf319cb \
           "$wizard_patch_sha256" \
-          b9a28cde42872cfe13051ddd8f1667e34bf59b17 \
-          070527ddfe32f0156a6258a638e226f731458ecd \
+          ec7f8e9dd1c34b1cff244eac4dbce469a9d1cd3a \
+          d4e05a616e39a28635b048a291166384287e6d02 \
           "$package_patch_sha256" \
           "$packaged_version" \
           "$sha256" >"$RUNNER_TEMP/gateway-composed/provenance.json"

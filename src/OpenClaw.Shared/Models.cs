@@ -1241,6 +1241,7 @@ public static class GatewayNodeCommandPolicyConfig
     {
         var version = gatewayVersion?.Trim();
         return string.Equals(version, "2026.6.11", StringComparison.OrdinalIgnoreCase) ||
+               string.Equals(version, "2026.7.1", StringComparison.OrdinalIgnoreCase) ||
                string.Equals(version, "2026.7.2-beta.3", StringComparison.OrdinalIgnoreCase)
             ? LegacyAllowKey
             : CurrentAllowKey;

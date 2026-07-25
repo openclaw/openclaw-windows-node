@@ -1457,7 +1457,8 @@ internal static class GatewayReloadModeConfig
     {
         var version = gatewayVersion?.Trim();
         var usesLegacySchema =
-            string.Equals(version, GatewayLkgVersion.LkgVersion, StringComparison.OrdinalIgnoreCase) ||
+            string.Equals(version, "2026.6.11", StringComparison.OrdinalIgnoreCase) ||
+            string.Equals(version, "2026.7.1", StringComparison.OrdinalIgnoreCase) ||
             string.Equals(version, "2026.7.2-beta.3", StringComparison.OrdinalIgnoreCase);
 
         if (usesLegacySchema)

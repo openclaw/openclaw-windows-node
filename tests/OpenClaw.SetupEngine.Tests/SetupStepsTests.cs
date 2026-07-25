@@ -1728,14 +1728,16 @@ public class SetupStepsTests : IDisposable
     }
 
     [Theory]
-    [InlineData("hot")]
-    [InlineData("restart")]
-    public void ConfigureGateway_MapsLegacyReloadModesToHybridForCurrentSchema(string reloadMode)
+    [InlineData("https://127.0.0.1/openclaw-composed.tgz", "hot")]
+    [InlineData("https://127.0.0.1/openclaw-composed.tgz", "restart")]
+    public void ConfigureGateway_MapsLegacyReloadModesToHybridForCurrentSchema(
+        string version,
+        string reloadMode)
     {
         var commands = ConfigureGatewayStep.BuildConfigCommands(
             new GatewayConfig
             {
-                Version = "https://127.0.0.1/openclaw-composed.tgz",
+                Version = version,
                 ReloadMode = reloadMode,
             },
             18789,
@@ -1748,6 +1750,8 @@ public class SetupStepsTests : IDisposable
     [Theory]
     [InlineData("2026.6.11", "hot")]
     [InlineData("2026.6.11", "restart")]
+    [InlineData("2026.7.1", "hot")]
+    [InlineData("2026.7.1", "restart")]
     [InlineData("2026.7.2-beta.3", "hot")]
     [InlineData("2026.7.2-beta.3", "restart")]
     public void ConfigureGateway_PreservesLegacyReloadModesForLegacySchemas(
@@ -1795,6 +1799,20 @@ public class SetupStepsTests : IDisposable
     {
         var commands = ConfigureGatewayStep.BuildConfigCommands(
             new GatewayConfig { Version = "2026.7.2-beta.3" },
+            18789,
+            "'[\"system.run\"]'");
+
+        Assert.Contains(
+            "openclaw config set gateway.nodes.allowCommands '[\"system.run\"]'",
+            commands);
+        Assert.DoesNotContain("gateway.nodes.commands.allow", commands, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void ConfigureGateway_PreservesLegacyNodeCommandAllowlistContract()
+    {
+        var commands = ConfigureGatewayStep.BuildConfigCommands(
+            new GatewayConfig { Version = "2026.6.11" },
             18789,
             "'[\"system.run\"]'");
 
