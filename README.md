@@ -251,7 +251,7 @@ Packaged installs declare camera, microphone, and location capabilities. Windows
    openclaw devices list          # Find your Windows device
    openclaw devices approve <id>  # Approve it
    ```
-4. **Configure the gateway node-command allowlist** - Match the key to the Gateway version reported by `openclaw --version`. Current/frozen packages use `gateway.nodes.commands.allow`; the supported legacy versions `2026.6.11` and `2026.7.2-beta.3` use `gateway.nodes.allowCommands`.
+4. **Configure the gateway node-command allowlist** - Match the key to the Gateway version reported by `openclaw --version`. Current/frozen packages use `gateway.nodes.commands.allow`; the supported legacy versions `2026.6.11`, `2026.7.1`, and `2026.7.2-beta.3` use `gateway.nodes.allowCommands`.
 
    Current/frozen schema:
    ```json
@@ -289,7 +289,7 @@ Packaged installs declare camera, microphone, and location capabilities. Windows
    }
    ```
 
-   For `2026.6.11` or `2026.7.2-beta.3`, preserve the complete array above but
+   For `2026.6.11`, `2026.7.1`, or `2026.7.2-beta.3`, preserve the complete array above but
    move it directly to `gateway.nodes.allowCommands`: remove the `commands`
    wrapper and rename its `allow` property to `allowCommands`. Do not shorten
    the array when applying this legacy key transformation.
