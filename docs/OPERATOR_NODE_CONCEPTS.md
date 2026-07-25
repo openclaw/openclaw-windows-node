@@ -62,9 +62,9 @@ so a new or changed node capability is visible before the gateway can use it.
 
 Node Mode advertises available Windows commands, but the gateway decides which
 commands it may call through the explicit allowlist in
-`~/.openclaw/openclaw.json`. Current/frozen packages use
-`gateway.nodes.commands.allow`; exact legacy versions `2026.6.11` and
-`2026.7.2-beta.3` use `gateway.nodes.allowCommands`. Add exact command names
+`~/.openclaw/openclaw.json`. Current/custom packages use
+`gateway.nodes.commands.allow`; exact legacy versions `2026.6.11`, `2026.7.1`,
+and `2026.7.2-beta.3` use `gateway.nodes.allowCommands`. Add exact command names
 such as `screen.snapshot`, `canvas.present`, or `system.run`; wildcard entries
 are not expanded by the gateway.
 

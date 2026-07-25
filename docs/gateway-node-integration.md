@@ -51,9 +51,9 @@ SMS_DANGEROUS_COMMANDS = ["sms.send", "sms.search"]
 ```
 
 Even macOS doesn't get `camera.snap` or `camera.clip` by default! They must be
-added through the version-appropriate allowlist: current/frozen
+added through the version-appropriate allowlist: current/custom
 `gateway.nodes.commands.allow`, or legacy `gateway.nodes.allowCommands` on
-`2026.6.11` and `2026.7.2-beta.3`.
+`2026.6.11`, `2026.7.1`, and `2026.7.2-beta.3`.
 
 ### 1.3 How to Enable Privacy-Sensitive Commands for Windows
 
@@ -78,7 +78,7 @@ allow camera capture or screen recording:
 }
 ```
 
-The example above is the current/frozen schema. On `2026.6.11` or
+The example above is the current/custom schema. On `2026.6.11`, `2026.7.1`, or
 `2026.7.2-beta.3`, put the same array directly under
 `gateway.nodes.allowCommands`.
 
@@ -113,8 +113,8 @@ You can also explicitly deny commands:
 ```json5
 { gateway: { nodes: { commands: { deny: ["system.run"] } } } }
 ```
-The current/frozen `gateway.nodes.commands.deny` key wins over
-`gateway.nodes.commands.allow`. On `2026.6.11` and `2026.7.2-beta.3`, use the
+The current/custom `gateway.nodes.commands.deny` key wins over
+`gateway.nodes.commands.allow`. On `2026.6.11`, `2026.7.1`, and `2026.7.2-beta.3`, use the
 legacy equivalents `gateway.nodes.denyCommands` and
 `gateway.nodes.allowCommands`.
 
@@ -210,9 +210,10 @@ Our node should therefore send canonical Windows metadata. SetupEngine also
 writes `gateway.nodes.commands.allow` from its enabled capability configuration
 for local WSL gateway installs so the first-party Windows companion flow has an
 explicit gateway policy matching the node's advertised commands.
-The production-pinned `2026.6.11` LKG and CI-pinned `2026.7.2-beta.3` predate
-that schema migration, so SetupEngine writes their equivalent
-`gateway.nodes.allowCommands` key only when either exact version is selected.
+The production-pinned `2026.7.1` LKG, supported legacy `2026.6.11`, and
+CI-pinned `2026.7.2-beta.3` predate that schema migration, so SetupEngine writes
+their equivalent `gateway.nodes.allowCommands` key only when one of those exact
+versions is selected.
 
 ---
 
@@ -341,15 +342,15 @@ For the first-party Windows companion node, the practical local solution is:
 
 ### 5.1 Gateway Node Allowlist Configuration
 
-`gateway.nodes.commands.allow` is the current/frozen explicit opt-in list the
-gateway uses after platform defaults. Exact legacy versions `2026.6.11` and
-`2026.7.2-beta.3` use `gateway.nodes.allowCommands` instead. Either form should
+`gateway.nodes.commands.allow` is the current/custom explicit opt-in list the
+gateway uses after platform defaults. Exact legacy versions `2026.6.11`,
+`2026.7.1`, and `2026.7.2-beta.3` use `gateway.nodes.allowCommands` instead. Either form should
 contain exact command names, not broad wildcard grants, and should not be needed
 for normal first-party Windows companion commands allowed by canonical Windows
 platform policy and declared by the live node.
 
-The current/frozen `gateway.nodes.commands.deny` key can be used as a final
-explicit blocklist; those two legacy versions use `gateway.nodes.denyCommands`.
+The current/custom `gateway.nodes.commands.deny` key can be used as a final
+explicit blocklist; those three legacy versions use `gateway.nodes.denyCommands`.
 The deny list suppresses a command even if a platform default or allowlist entry
 would otherwise allow it.
 

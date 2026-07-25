@@ -251,9 +251,9 @@ Packaged installs declare camera, microphone, and location capabilities. Windows
    openclaw devices list          # Find your Windows device
    openclaw devices approve <id>  # Approve it
    ```
-4. **Configure the gateway node-command allowlist** - Match the key to the Gateway version reported by `openclaw --version`. Current/frozen packages use `gateway.nodes.commands.allow`; the supported legacy versions `2026.6.11`, `2026.7.1`, and `2026.7.2-beta.3` use `gateway.nodes.allowCommands`.
+4. **Configure the gateway node-command allowlist** - Match the key to the Gateway version reported by `openclaw --version`. Current/custom packages use `gateway.nodes.commands.allow`; the supported legacy versions `2026.6.11`, `2026.7.1`, and `2026.7.2-beta.3` use `gateway.nodes.allowCommands`.
 
-   Current/frozen schema:
+   Current/custom schema:
    ```json
    {
      "gateway": {
