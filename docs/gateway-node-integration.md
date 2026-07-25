@@ -210,7 +210,7 @@ Our node should therefore send canonical Windows metadata. SetupEngine also
 writes `gateway.nodes.commands.allow` from its enabled capability configuration
 for local WSL gateway installs so the first-party Windows companion flow has an
 explicit gateway policy matching the node's advertised commands.
-The production-pinned `2026.7.1` LKG, supported legacy `2026.6.11`, and
+The pinned `2026.6.11` LKG, schema-compatible legacy `2026.7.1`, and
 CI-pinned `2026.7.2-beta.3` predate that schema migration, so SetupEngine writes
 their equivalent `gateway.nodes.allowCommands` key only when one of those exact
 versions is selected.
