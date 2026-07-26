@@ -84,7 +84,6 @@ jobs:
         src/wizard/setup.finalize.test.ts
         src/wizard/setup.finalize.ts
         EOF
-
         test "$(git rev-parse HEAD)" = "$base_sha"
         git fetch --no-tags "$fork_repository" \
           "+${wizard_fetch_ref}:refs/remotes/fork/pr-110382"

@@ -3301,7 +3301,7 @@ public sealed class GatewayVersionAlignmentCoordinatorTests : IDisposable
             "OpenClawGateway", "local-gateway", created.Point!.Id, created.Point.Id);
 
         Assert.Equal(GatewayRollbackOperationState.InstallPathCollision, result.State);
-        Assert.Equal("restore_path_reparse_boundary", result.FailureCode);
+        Assert.Equal("restore_stage_reparse_boundary", result.FailureCode);
         Assert.Equal(0, runner.UnregisterCalls);
     }
 
