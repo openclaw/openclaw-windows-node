@@ -197,6 +197,7 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
     internal AppState? AppState => _appState;
     private UpdateCoordinator? _updateCoordinator;
     private GatewayVersionAlignmentCoordinator? _gatewayVersionAlignmentCoordinator;
+    private GatewayRollbackPointManager? _gatewayRollbackPoints;
     private string? _gatewayVersionAlignmentPromptKey;
     private int _gatewayVersionAlignmentInFlight;
     private int _gatewayVersionAlignmentFollowUpQueued;
@@ -790,19 +791,23 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
         _connectionManager.OperatorClientChanged += OnOperatorClientChanged;
         _connectionManager.StateChanged += OnManagerStateChanged;
         var gatewayAlignmentRunner = new WslExeCommandRunner(appLogger, defaultTimeout: TimeSpan.FromMinutes(35));
-        var gatewayRollbackPoints = new GatewayRollbackPointManager(
+        _gatewayRollbackPoints = new GatewayRollbackPointManager(
             gatewayAlignmentRunner,
             AppIdentity.ResolveSetupLocalDataDirectory(),
             AppIdentity.SetupDistroName);
         var gatewayPackageTarget = GatewayPackageBuildTargetResolver.Resolve();
+        var rollbackPoints = _gatewayRollbackPoints;
+        if (rollbackPoints is null)
+            throw new InvalidOperationException("Gateway rollback point manager was not initialized.");
         _gatewayVersionAlignmentCoordinator = new GatewayVersionAlignmentCoordinator(
             gatewayAlignmentRunner,
             gatewayPackageTarget,
-            gatewayRollbackPoints,
+            rollbackPoints,
             SynchronizeCompanionGatewayAsync,
             ResolveGatewayRollbackRetentionPolicy,
             SendGatewayVersionAlignmentRequestAsync,
-            () => _connectionManager?.CurrentSnapshot.GatewayId);
+            () => _connectionManager?.CurrentSnapshot.GatewayId,
+            protectionModeResolver: ResolveGatewayRollbackProtectionMode);
 
         // First-run check (also supports forced onboarding for testing).
         // Wrapped in try/catch so a wizard construction failure cannot tear
@@ -2170,7 +2175,7 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
 
             ShowGatewayAlignmentToast(
                 "Updating local OpenClaw Gateway",
-                "Creating a verified offline rollback point, updating the existing WSL installation, and reconnecting Companion.");
+                "Creating a verified protection point, updating the existing WSL installation, and reconnecting Companion.");
 
             var result = await _gatewayVersionAlignmentCoordinator.UpdateAsync(confirmedPlan);
             ReportGatewayAlignmentResult(result);
@@ -2213,15 +2218,22 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
             if (root?.XamlRoot == null)
                 throw new InvalidOperationException("The Hub window has no active XAML root.");
 
+            var effectiveProtectionMode =
+                probe.InstalledVersion is { Length: > 0 } sourceVersion &&
+                _gatewayVersionAlignmentCoordinator is { } coordinator
+                    ? coordinator.ResolveProtectionMode(sourceVersion)
+                    : ResolveGatewayRollbackProtectionMode();
             var dialog = new ContentDialog
             {
                 Title = "Update local OpenClaw Gateway",
                 Content =
                     $"This Companion requires OpenClaw {probe.RequiredVersion}, but its existing WSL Gateway " +
                     $"is {probe.InstalledVersion}. Update this same installation now?\n\n" +
-                    "Companion will stop this distro briefly, export and verify a complete offline VHD rollback point, " +
-                    "then update OpenClaw in place and reconnect the Gateway and Windows Node. The distro is never " +
-                    "recreated during update. Emergency restore remains a separate explicit action.",
+                    (effectiveProtectionMode == GatewayUpdateProtectionMode.FullVhd
+                        ? "Companion will briefly stop this distro and verify a complete offline VHD rollback point. "
+                        : "Companion will create and verify a native OpenClaw backup without stopping the distro. ") +
+                    "It will then update OpenClaw in place and reconnect the Gateway and Windows Node. The distro is never " +
+                    "recreated during update. Companion emergency restore is available only for Full VHD points.",
                 PrimaryButtonText = "Update now",
                 CloseButtonText = "Later",
                 DefaultButton = ContentDialogButton.Primary,
@@ -2393,15 +2405,20 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
                     "Staged Gateway restore cancelled",
                     "The non-destructive staged restore was cancelled. No WSL registration or installed Gateway state was changed.");
                 break;
+            case GatewayVersionAlignmentState.RecoveryResolved:
+                ShowGatewayAlignmentToast(
+                    "Native Gateway recovery resolved",
+                    $"The retained backup, OpenClaw {result.InstalledVersion}, Gateway, Windows Node, and pairing state were verified without restoring or recreating the distro.");
+                break;
             case GatewayVersionAlignmentState.RollbackPointFailed:
                 ShowGatewayAlignmentToast(
                     "Local Gateway update not started",
-                    "The required verified offline rollback point could not be created, so Companion made no package change.");
+                    "The required verified protection point could not be created, so Companion made no package change.");
                 break;
             case GatewayVersionAlignmentState.RecoveryAvailable:
                 ShowGatewayAlignmentToast(
                     "Local Gateway needs attention",
-                    "The update did not complete healthy. A verified rollback point is available in Settings for explicit emergency restore.");
+                    "The update did not complete healthy. Review the verified protection point in Settings; Companion restore is available only for Full VHD points.");
                 break;
             default:
                 ShowGatewayAlignmentToast(
@@ -2414,7 +2431,7 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
     private GatewayRollbackRetentionPolicy ResolveGatewayRollbackRetentionPolicy()
     {
         var count = _settings?.GatewayRollbackRetentionCount ?? 1;
-        var ageDays = _settings?.GatewayRollbackRetentionAgeDays ?? 0;
+        var ageDays = _settings?.GatewayRollbackRetentionAgeDays ?? 7;
         return new GatewayRollbackRetentionPolicy(
             count,
             ageDays > 0 ? TimeSpan.FromDays(ageDays) : null);
@@ -2422,6 +2439,22 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
 
     internal IReadOnlyList<GatewayRollbackPointInfo> GetGatewayRollbackPoints() =>
         _gatewayVersionAlignmentCoordinator?.ListRollbackPoints() ?? [];
+
+    internal bool HasUnreadableGatewayRollbackReceipt() =>
+        _gatewayVersionAlignmentCoordinator?.HasUnreadableRollbackReceipt() == true;
+
+    internal async Task<int> CleanupGatewayRollbackPointsAsync(CancellationToken cancellationToken = default)
+    {
+        var coordinator = _gatewayVersionAlignmentCoordinator;
+        return coordinator is null
+            ? 0
+            : await coordinator.CleanupRollbackPointsAsync(cancellationToken).ConfigureAwait(false);
+    }
+
+    private GatewayUpdateProtectionMode ResolveGatewayRollbackProtectionMode() =>
+        string.Equals(_settings?.GatewayRollbackProtectionMode, SettingsManager.GatewayRollbackProtectionFullVhd, StringComparison.OrdinalIgnoreCase)
+            ? GatewayUpdateProtectionMode.FullVhd
+            : GatewayUpdateProtectionMode.NativeBackup;
 
     internal async Task<GatewayVersionAlignmentResult> RestoreGatewayRollbackPointAsync(
         string rollbackPointId,
@@ -2439,6 +2472,30 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
         }
 
         var result = await coordinator.RestoreAsync(
+            accessPlan,
+            rollbackPointId,
+            rollbackPointId,
+            cancellationToken);
+        ReportGatewayAlignmentResult(result);
+        return result;
+    }
+
+    internal async Task<GatewayVersionAlignmentResult> ResolveNativeGatewayRecoveryAsync(
+        string rollbackPointId,
+        CancellationToken cancellationToken = default)
+    {
+        var coordinator = _gatewayVersionAlignmentCoordinator;
+        var activeRecord = _gatewayRegistry?.GetActive();
+        var accessPlan = GatewayHostAccessClassifier.Classify(activeRecord);
+        if (coordinator == null || activeRecord == null)
+        {
+            return new GatewayVersionAlignmentResult(
+                GatewayVersionAlignmentState.Ineligible,
+                OpenClaw.SetupEngine.GatewayLkgVersion.ResolveLkgVersion(),
+                FailureSummary: "No active Companion-owned Gateway is available.");
+        }
+
+        var result = await coordinator.ResolveNativeRecoveryAsync(
             accessPlan,
             rollbackPointId,
             rollbackPointId,

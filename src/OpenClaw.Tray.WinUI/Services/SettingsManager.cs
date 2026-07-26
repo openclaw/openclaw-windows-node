@@ -23,6 +23,8 @@ public class SettingsManager
     public const string AppThemeSystem = "System";
     public const string AppThemeLight = "Light";
     public const string AppThemeDark = "Dark";
+    public const string GatewayRollbackProtectionNativeBackup = "NativeBackup";
+    public const string GatewayRollbackProtectionFullVhd = "FullVhd";
 
     public static string SettingsDirectoryPath => GetDefaultSettingsDirectory();
     public static string SettingsPath => Path.Combine(SettingsDirectoryPath, "settings.json");
@@ -58,6 +60,11 @@ public class SettingsManager
     {
         get => Math.Clamp(_data.GatewayRollbackRetentionAgeDays, 0, 3650);
         set => _data = _data with { GatewayRollbackRetentionAgeDays = Math.Clamp(value, 0, 3650) };
+    }
+    public string GatewayRollbackProtectionMode
+    {
+        get => NormalizeGatewayRollbackProtectionMode(_data.GatewayRollbackProtectionMode);
+        set => _data = _data with { GatewayRollbackProtectionMode = NormalizeGatewayRollbackProtectionMode(value) };
     }
 
     // Startup
@@ -293,7 +300,8 @@ public class SettingsManager
         SkippedUpdateTag = "",
         PreferredGatewayId = null,
         GatewayRollbackRetentionCount = 1,
-        GatewayRollbackRetentionAgeDays = 0,
+        GatewayRollbackRetentionAgeDays = 7,
+        GatewayRollbackProtectionMode = GatewayRollbackProtectionNativeBackup,
         SystemRunSandboxEnabled = true,
         SystemRunBlockHostFallbackWhenMxcUnavailable = false,
         SystemRunAllowOutbound = false,
@@ -334,6 +342,7 @@ public class SettingsManager
             PreferredGatewayId = loaded.PreferredGatewayId ?? defaults.PreferredGatewayId,
             GatewayRollbackRetentionCount = NormalizeRollbackRetentionCount(loaded.GatewayRollbackRetentionCount),
             GatewayRollbackRetentionAgeDays = Math.Clamp(loaded.GatewayRollbackRetentionAgeDays, 0, 3650),
+            GatewayRollbackProtectionMode = NormalizeGatewayRollbackProtectionMode(loaded.GatewayRollbackProtectionMode),
             AppTheme = NormalizeAppTheme(loaded.AppTheme),
             ShowDiagnostics = loaded.ShowDiagnostics,
             OpenTelemetryEndpoint = NormalizeOptionalString(loaded.OpenTelemetryEndpoint),
@@ -364,6 +373,11 @@ public class SettingsManager
     private static bool IsValidPort(int port) => port is >= 1 and <= 65535;
 
     private static int NormalizeRollbackRetentionCount(int value) => value is 1 or 2 or -1 ? value : 1;
+
+    private static string NormalizeGatewayRollbackProtectionMode(string? value) =>
+        string.Equals(value, GatewayRollbackProtectionFullVhd, StringComparison.OrdinalIgnoreCase)
+            ? GatewayRollbackProtectionFullVhd
+            : GatewayRollbackProtectionNativeBackup;
 
     private static List<SandboxCustomFolder> CloneSandboxCustomFolders(IEnumerable<SandboxCustomFolder>? folders) =>
         folders is null

@@ -55,6 +55,7 @@ internal sealed class SettingsPageViewModel : INavigationAware, IDisposable, INo
     private bool _cameraRecordingConsentGiven;
     private string _gatewayRollbackRetentionCount = "1";
     private double _gatewayRollbackRetentionAgeDays;
+    private string _gatewayRollbackProtectionMode = SettingsManager.GatewayRollbackProtectionNativeBackup;
     private bool _readResponsesAloud;
     private bool _showChatToolCalls;
 
@@ -237,6 +238,19 @@ internal sealed class SettingsPageViewModel : INavigationAware, IDisposable, INo
         }
     }
 
+    public string GatewayRollbackProtectionMode
+    {
+        get => _gatewayRollbackProtectionMode;
+        set
+        {
+            var normalized = string.Equals(value, SettingsManager.GatewayRollbackProtectionFullVhd, StringComparison.OrdinalIgnoreCase)
+                ? SettingsManager.GatewayRollbackProtectionFullVhd
+                : SettingsManager.GatewayRollbackProtectionNativeBackup;
+            if (SetField(ref _gatewayRollbackProtectionMode, normalized) && !_loading)
+                Persist(e => e.GatewayRollbackProtectionMode = normalized);
+        }
+    }
+
     /// <summary>
     /// "Read responses aloud" mirrors <c>VoiceTtsEnabled</c> (mute is its inverse). Routed through
     /// the app command that persists + broadcasts, exactly like before; it does not go through the
@@ -336,6 +350,10 @@ internal sealed class SettingsPageViewModel : INavigationAware, IDisposable, INo
                 ref _gatewayRollbackRetentionAgeDays,
                 (double)Math.Clamp(s.GatewayRollbackRetentionAgeDays, 0, 3650),
                 nameof(GatewayRollbackRetentionAgeDays));
+            SetField(
+                ref _gatewayRollbackProtectionMode,
+                NormalizeProtectionMode(s.GatewayRollbackProtectionMode),
+                nameof(GatewayRollbackProtectionMode));
             SetField(ref _readResponsesAloud, s.VoiceTtsEnabled, nameof(ReadResponsesAloud));
             SetField(ref _showChatToolCalls, s.ShowChatToolCalls, nameof(ShowChatToolCalls));
         }
@@ -349,6 +367,11 @@ internal sealed class SettingsPageViewModel : INavigationAware, IDisposable, INo
         value is 1 or 2 or -1
             ? value.ToString(CultureInfo.InvariantCulture)
             : "1";
+
+    private static string NormalizeProtectionMode(string? value) =>
+        string.Equals(value, SettingsManager.GatewayRollbackProtectionFullVhd, StringComparison.OrdinalIgnoreCase)
+            ? SettingsManager.GatewayRollbackProtectionFullVhd
+            : SettingsManager.GatewayRollbackProtectionNativeBackup;
 
     private void Persist(Action<ISettingsEditor> edit)
     {

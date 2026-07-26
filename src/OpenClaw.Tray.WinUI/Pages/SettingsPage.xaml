@@ -630,7 +630,7 @@
                         <StackPanel Spacing="12" Padding="16,8,16,16">
                             <TextBlock Text="Gateway rollback points"
                                        Style="{StaticResource BodyStrongTextBlockStyle}"/>
-                            <TextBlock Text="Companion creates a complete verified offline WSL rollback point before each in-place Gateway update. Emergency restore always requires confirmation."
+                             <TextBlock Text="Companion protects the local Gateway before each update. Native backup is the default and is not a restorable WSL image. Full WSL VHD is optional, uses more storage, and may require downtime."
                                        TextWrapping="Wrap"
                                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
                             <Grid ColumnSpacing="16" RowSpacing="8">
@@ -638,10 +638,11 @@
                                     <ColumnDefinition Width="180"/>
                                     <ColumnDefinition Width="*"/>
                                 </Grid.ColumnDefinitions>
-                                <Grid.RowDefinitions>
-                                    <RowDefinition Height="Auto"/>
-                                    <RowDefinition Height="Auto"/>
-                                </Grid.RowDefinitions>
+                                 <Grid.RowDefinitions>
+                                     <RowDefinition Height="Auto"/>
+                                     <RowDefinition Height="Auto"/>
+                                     <RowDefinition Height="Auto"/>
+                                 </Grid.RowDefinitions>
                                 <TextBlock Grid.Row="0" Grid.Column="0"
                                            Text="Keep previous versions"
                                            VerticalAlignment="Center"/>
@@ -667,13 +668,33 @@
                                                Value="{Binding GatewayRollbackRetentionAgeDays, Mode=TwoWay}"
                                                AutomationProperties.Name="Rollback point maximum age in days"
                                                AutomationProperties.AutomationId="GatewayRollbackAgeDaysNumberBox"/>
-                                    <TextBlock Text="days (0 is off)" VerticalAlignment="Center"/>
-                                </StackPanel>
-                            </Grid>
-                            <Button Content="View or restore rollback points"
+                                     <TextBlock Text="days (0 is off)" VerticalAlignment="Center"/>
+                                 </StackPanel>
+                                 <TextBlock Grid.Row="2" Grid.Column="0"
+                                            Text="Protection mode"
+                                            VerticalAlignment="Center"/>
+                                 <ComboBox Grid.Row="2" Grid.Column="1"
+                                           HorizontalAlignment="Stretch"
+                                           SelectedValuePath="Tag"
+                                           SelectedValue="{Binding GatewayRollbackProtectionMode, Mode=TwoWay}"
+                                           AutomationProperties.Name="Gateway rollback protection mode"
+                                           AutomationProperties.AutomationId="GatewayRollbackProtectionModeComboBox">
+                                     <ComboBoxItem Content="Native OpenClaw backup (recommended)" Tag="NativeBackup"/>
+                                     <ComboBoxItem Content="Full WSL VHD (opt in)" Tag="FullVhd"/>
+                                 </ComboBox>
+                             </Grid>
+                             <TextBlock x:Name="GatewayRollbackStorageText"
+                                        Text="Stored rollback protection: —"
+                                        TextWrapping="Wrap"
+                                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
+                             <Button Content="View or restore rollback points"
                                     HorizontalAlignment="Left"
                                     Click="OnManageGatewayRollbackPoints"
                                     AutomationProperties.AutomationId="ManageGatewayRollbackPointsButton"/>
+                             <Button Content="Clean up now"
+                                     HorizontalAlignment="Left"
+                                     Click="OnCleanupGatewayRollbackPoints"
+                                     AutomationProperties.AutomationId="CleanupGatewayRollbackPointsButton"/>
                             <InfoBar x:Name="GatewayRollbackResultBar"
                                      IsOpen="False"
                                      IsClosable="True"/>

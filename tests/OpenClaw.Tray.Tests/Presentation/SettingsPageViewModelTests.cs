@@ -266,6 +266,36 @@ public sealed class SettingsPageViewModelTests
     }
 
     [Fact]
+    public void GatewayRollbackProtectionMode_DefaultsToNativeAndPersistsFullVhdOptIn()
+    {
+        var vm = NewVm(out var settings, out var appCommands, out _, out var temp);
+        using (temp)
+        {
+            vm.Activate(null);
+
+            Assert.Equal(SettingsManager.GatewayRollbackProtectionNativeBackup, vm.GatewayRollbackProtectionMode);
+
+            vm.GatewayRollbackProtectionMode = SettingsManager.GatewayRollbackProtectionFullVhd;
+
+            Assert.Equal(SettingsManager.GatewayRollbackProtectionFullVhd, settings.GatewayRollbackProtectionMode);
+            Assert.Equal(1, appCommands.NotifySettingsSavedCount);
+        }
+    }
+
+    [Fact]
+    public void GatewayRollbackProtectionMode_UnknownValueFallsBackToNative()
+    {
+        var vm = NewVm(out var settings, out _, out _, out var temp);
+        using (temp)
+        {
+            settings.GatewayRollbackProtectionMode = "unexpected";
+            vm.Activate(null);
+
+            Assert.Equal(SettingsManager.GatewayRollbackProtectionNativeBackup, vm.GatewayRollbackProtectionMode);
+        }
+    }
+
+    [Fact]
     public void ExternalChange_ReloadsWithoutRePersisting()
     {
         var vm = NewVm(out var settings, out var appCommands, out _, out var temp);

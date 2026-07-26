@@ -1,3 +1,4 @@
+using OpenClaw.Shared;
 using OpenClaw.Shared.Mcp;
 using System.Security.Cryptography;
 using System.Security;
@@ -15,6 +16,7 @@ public enum GatewayRollbackPointPhase
     Verified,
     UpdateInProgress,
     PostUpdateHealthy,
+    RecoveryResolved,
     RestoreStaged,
     UnregisterPending,
     DistroUnregistered,
@@ -32,9 +34,15 @@ public enum GatewayRollbackPointVerificationStatus
     Failed
 }
 
+public enum GatewayUpdateProtectionMode
+{
+    FullVhd,
+    NativeBackup
+}
+
 public sealed record GatewayRollbackPointManifest
 {
-    public int SchemaVersion { get; init; } = 3;
+    public int SchemaVersion { get; init; } = 4;
     public required string Id { get; init; }
     public required string DistroName { get; init; }
     public required string GatewayId { get; init; }
@@ -54,6 +62,9 @@ public sealed record GatewayRollbackPointManifest
     public required GatewayRollbackPointPhase Phase { get; init; }
     public required bool WasKnownGood { get; init; }
     public required bool RestoreEligible { get; init; }
+    public GatewayUpdateProtectionMode ProtectionMode { get; init; } = GatewayUpdateProtectionMode.FullVhd;
+    public string? NativeBackupSha256 { get; init; }
+    public long NativeBackupSizeBytes { get; init; }
     public string? NodeCommandAllowSnapshotJson { get; init; }
     public GatewayPackageSource? UpdateTargetSource { get; init; }
     public string? UpdateTargetPackageUri { get; init; }
@@ -77,13 +88,14 @@ public sealed record GatewayRollbackPointInfo(
     DateTimeOffset CreatedAtUtc,
     GatewayRollbackPointVerificationStatus VerificationStatus,
     GatewayRollbackPointPhase Phase,
+    GatewayUpdateProtectionMode ProtectionMode,
     long ApproximateSizeBytes,
     bool RestoreEligible,
     string? FailureCode);
 
 public sealed record GatewayRollbackRetentionPolicy(int RetainPreviousVersions, TimeSpan? RetainYoungerThan)
 {
-    public static GatewayRollbackRetentionPolicy Default { get; } = new(1, null);
+    public static GatewayRollbackRetentionPolicy Default { get; } = new(1, TimeSpan.FromDays(7));
 
     public bool RetainIndefinitely => RetainPreviousVersions == -1;
 
@@ -127,22 +139,26 @@ public sealed record GatewayRollbackOperationResult(
 }
 
 /// <summary>
-/// Owns immutable, offline VHD rollback points for one Companion-owned WSL distro.
-/// Normal update never unregisters or imports. Those lifecycle operations are
-/// reachable only through the explicit restore method and a matching point id.
+/// Owns verified native-backup protection and optional immutable offline VHD
+/// rollback points for one Companion-owned WSL distro. Normal update never
+/// unregisters or imports. Those lifecycle operations are reachable only for
+/// restore-eligible VHD points through the explicit restore method.
 /// </summary>
 public sealed partial class GatewayRollbackPointManager
 {
     private const string ManifestFileName = "manifest.json";
     private const string RollbackVhdFileName = "rollback.vhdx";
+    private const string NativeBackupFileName = "openclaw-backup.tar.gz";
     private const string LiveVhdFileName = "ext4.vhdx";
     private const string VhdxSignature = "vhdxfile";
+    private const long MinimumVhdExportSafetyMarginBytes = 1024L * 1024 * 1024;
     private readonly IWslCommandRunner _commandRunner;
     private readonly string _ownedDistroName;
     private readonly string _localDataRoot;
     private readonly string _pointsRoot;
     private readonly string _stagingRoot;
     private readonly Func<DateTimeOffset> _utcNow;
+    private readonly Func<string, long> _availableFreeSpaceBytes;
     private readonly JsonSerializerOptions _jsonOptions = new()
     {
         WriteIndented = true,
@@ -153,7 +169,8 @@ public sealed partial class GatewayRollbackPointManager
         IWslCommandRunner commandRunner,
         string localDataRoot,
         string ownedDistroName,
-        Func<DateTimeOffset>? utcNow = null)
+        Func<DateTimeOffset>? utcNow = null,
+        Func<string, long>? availableFreeSpaceBytes = null)
     {
         ArgumentNullException.ThrowIfNull(commandRunner);
         ArgumentException.ThrowIfNullOrWhiteSpace(localDataRoot);
@@ -167,6 +184,7 @@ public sealed partial class GatewayRollbackPointManager
         _pointsRoot = NormalizePath(Path.Combine(_localDataRoot, "gateway-rollback-points", ownedDistroName));
         _stagingRoot = NormalizePath(Path.Combine(_localDataRoot, "gateway-rollback-staging", ownedDistroName));
         _utcNow = utcNow ?? (() => DateTimeOffset.UtcNow);
+        _availableFreeSpaceBytes = availableFreeSpaceBytes ?? GetAvailableFreeSpaceBytes;
     }
 
     public string OwnedDistroName => _ownedDistroName;
@@ -214,23 +232,33 @@ public sealed partial class GatewayRollbackPointManager
             !HasSafePathBoundary(_localDataRoot, _pointsRoot))
             return [];
 
-        var points = new List<GatewayRollbackPointInfo>();
-        foreach (var pointDirectory in Directory.EnumerateDirectories(_pointsRoot, "*", SearchOption.TopDirectoryOnly))
+        try
         {
-            if (!PointIdRegex().IsMatch(Path.GetFileName(pointDirectory)) ||
-                !HasSafePathBoundary(_pointsRoot, pointDirectory))
+            var points = new List<GatewayRollbackPointInfo>();
+            foreach (var pointDirectory in Directory.EnumerateDirectories(_pointsRoot, "*", SearchOption.TopDirectoryOnly))
             {
-                continue;
+                if (!PointIdRegex().IsMatch(Path.GetFileName(pointDirectory)) ||
+                    !HasSafePathBoundary(_pointsRoot, pointDirectory))
+                {
+                    continue;
+                }
+                var manifestPath = Path.Combine(pointDirectory, ManifestFileName);
+                if (!File.Exists(manifestPath) || IsReparsePoint(manifestPath))
+                    continue;
+                if (!TryReadManifest(manifestPath, out var manifest) || manifest is null)
+                    continue;
+                points.Add(ToInfo(manifest));
             }
-            var manifestPath = Path.Combine(pointDirectory, ManifestFileName);
-            if (!File.Exists(manifestPath) || IsReparsePoint(manifestPath))
-                continue;
-            if (!TryReadManifest(manifestPath, out var manifest) || manifest is null)
-                continue;
-            points.Add(ToInfo(manifest));
-        }
 
-        return points.OrderByDescending(point => point.CreatedAtUtc).ThenByDescending(point => point.Id, StringComparer.Ordinal).ToArray();
+            return points
+                .OrderByDescending(point => point.CreatedAtUtc)
+                .ThenByDescending(point => point.Id, StringComparer.Ordinal)
+                .ToArray();
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or SecurityException)
+        {
+            return [];
+        }
     }
 
     public async Task<GatewayRollbackOperationResult> CreateVerifiedAsync(
@@ -238,6 +266,7 @@ public sealed partial class GatewayRollbackPointManager
         string gatewayId,
         string openClawVersion,
         string targetOpenClawVersion,
+        GatewayUpdateProtectionMode protectionMode,
         CancellationToken cancellationToken = default)
     {
         if (!IsOwnedDistro(distroName) || string.IsNullOrWhiteSpace(gatewayId))
@@ -265,6 +294,14 @@ public sealed partial class GatewayRollbackPointManager
         var versionBeforeStop = await ProbeExactVersionAsync(distroName, cancellationToken).ConfigureAwait(false);
         if (!string.Equals(versionBeforeStop, openClawVersion, StringComparison.Ordinal))
             return new(GatewayRollbackOperationState.VerificationFailed, FailureCode: "version_attestation_changed");
+        if (!Enum.IsDefined(protectionMode))
+            return new(GatewayRollbackOperationState.VerificationFailed, FailureCode: "protection_mode_invalid");
+        if (protectionMode == GatewayUpdateProtectionMode.FullVhd)
+        {
+            var capacity = ValidateVhdExportCapacity();
+            if (!capacity.Sufficient)
+                return new(GatewayRollbackOperationState.VerificationFailed, FailureCode: capacity.FailureCode);
+        }
 
         if (!HasSafePathBoundary(_localDataRoot, _pointsRoot))
             return new(GatewayRollbackOperationState.InstallPathCollision, FailureCode: "rollback_points_reparse_boundary");
@@ -303,9 +340,13 @@ public sealed partial class GatewayRollbackPointManager
             VerificationStatus = GatewayRollbackPointVerificationStatus.Pending,
             Phase = GatewayRollbackPointPhase.Creating,
             WasKnownGood = true,
-            RestoreEligible = false
+            RestoreEligible = false,
+            ProtectionMode = protectionMode
         };
         WriteManifest(manifest);
+        if (protectionMode == GatewayUpdateProtectionMode.NativeBackup)
+            return await CreateVerifiedNativeBackupAsync(manifest, cancellationToken).ConfigureAwait(false);
+
         var verifiedManifestCommitted = false;
 
         try
@@ -372,6 +413,194 @@ public sealed partial class GatewayRollbackPointManager
         }
     }
 
+    private async Task<GatewayRollbackOperationResult> CreateVerifiedNativeBackupAsync(
+        GatewayRollbackPointManifest manifest,
+        CancellationToken cancellationToken)
+    {
+        var archivePath = GetNativeBackupPath(manifest.Id);
+        var partialPath = archivePath + ".partial";
+        if (!HasSafePathBoundary(GetPointDirectory(manifest.Id), archivePath))
+            return Fail(manifest, GatewayRollbackOperationState.InstallPathCollision, "native_backup_reparse_boundary");
+        var distroStagePath = $"/tmp/openclaw-windows-companion-{manifest.Id}";
+        var distroArchivePath = $"{distroStagePath}/{NativeBackupFileName}";
+
+        var verifiedManifestCommitted = false;
+        try
+        {
+            var backup = await _commandRunner.RunInDistroAsync(
+                manifest.DistroName,
+                BuildNativeBackupCommand(
+                    distroArchivePath,
+                    manifest.DefaultUserName,
+                    manifest.DefaultUserUid),
+                cancellationToken).ConfigureAwait(false);
+            if (!backup.Success)
+                return Fail(manifest, GatewayRollbackOperationState.VerificationFailed, "native_backup_command_failed", backup.ExitCode);
+            if (!TryParseVerifiedNativeBackup(
+                    backup.StandardOutput,
+                    distroArchivePath,
+                    out var expectedSha256,
+                    out var expectedSizeBytes))
+                return Fail(manifest, GatewayRollbackOperationState.VerificationFailed, "native_backup_receipt_invalid");
+
+            var transfer = await _commandRunner.CopyFileFromDistroAsync(
+                manifest.DistroName,
+                distroArchivePath,
+                partialPath,
+                cancellationToken).ConfigureAwait(false);
+            if (!transfer.Success)
+                return Fail(manifest, GatewayRollbackOperationState.VerificationFailed, "native_backup_transfer_failed", transfer.ExitCode);
+
+            var verification = await VerifyNativeBackupAsync(
+                partialPath, expectedSha256, expectedSizeBytes, cancellationToken).ConfigureAwait(false);
+            if (!verification.Verified)
+                return Fail(manifest, GatewayRollbackOperationState.VerificationFailed, verification.FailureCode ?? "native_backup_verify_failed");
+            File.Move(partialPath, archivePath);
+
+            var versionAfterBackup = await ProbeExactVersionAsync(manifest.DistroName, cancellationToken).ConfigureAwait(false);
+            var identityAfterBackup = await ProbeInternalIdentityHashAsync(manifest.DistroName, cancellationToken).ConfigureAwait(false);
+            var defaultUserAfterBackup = await ProbeDefaultUserAsync(manifest.DistroName, cancellationToken).ConfigureAwait(false);
+            if (!string.Equals(versionAfterBackup, manifest.OpenClawVersion, StringComparison.Ordinal) ||
+                !string.Equals(identityAfterBackup, manifest.InternalIdentitySha256, StringComparison.Ordinal) ||
+                defaultUserAfterBackup is null ||
+                defaultUserAfterBackup.Name != manifest.DefaultUserName ||
+                defaultUserAfterBackup.Uid != manifest.DefaultUserUid)
+            {
+                return Fail(manifest, GatewayRollbackOperationState.VerificationFailed, "native_backup_state_attestation_changed");
+            }
+
+            manifest = manifest with
+            {
+                UpdatedAtUtc = _utcNow(),
+                NativeBackupSha256 = verification.Sha256,
+                NativeBackupSizeBytes = verification.SizeBytes,
+                VerificationStatus = GatewayRollbackPointVerificationStatus.Verified,
+                Phase = GatewayRollbackPointPhase.Verified,
+                RestoreEligible = false,
+                LastFailureCode = null
+            };
+            WriteManifest(manifest);
+            verifiedManifestCommitted = true;
+            return new(GatewayRollbackOperationState.Created, manifest);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or JsonException or CryptographicException)
+        {
+            return Fail(manifest, GatewayRollbackOperationState.Failed, ex.GetType().Name.ToLowerInvariant());
+        }
+        finally
+        {
+            TryDeleteGeneratedFile(partialPath);
+            if (!verifiedManifestCommitted)
+                DeleteGeneratedFile(archivePath, GetPointDirectory(manifest.Id));
+            try
+            {
+                await _commandRunner.RunInDistroAsync(
+                    manifest.DistroName,
+                    BuildNativeBackupCleanupCommand(distroStagePath),
+                    CancellationToken.None).ConfigureAwait(false);
+            }
+            catch
+            {
+                // The host copy is authoritative; stale in-distro staging is bounded to this receipt id.
+            }
+        }
+    }
+
+    private (bool Sufficient, string? FailureCode) ValidateVhdExportCapacity()
+    {
+        var liveVhdPath = Path.Combine(GetInstallDirectory(), LiveVhdFileName);
+        try
+        {
+            if (!HasSafePathBoundary(_localDataRoot, liveVhdPath) ||
+                !File.Exists(liveVhdPath) ||
+                IsReparsePoint(liveVhdPath))
+            {
+                return (false, "vhd_live_path_unavailable");
+            }
+
+            var liveSizeBytes = new FileInfo(liveVhdPath).Length;
+            if (liveSizeBytes <= 0)
+                return (false, "vhd_live_size_invalid");
+            var proportionalMargin = checked((liveSizeBytes + 9) / 10);
+            var safetyMargin = Math.Max(MinimumVhdExportSafetyMarginBytes, proportionalMargin);
+            var requiredBytes = checked(liveSizeBytes + safetyMargin);
+            var availableBytes = _availableFreeSpaceBytes(_pointsRoot);
+            return availableBytes >= requiredBytes
+                ? (true, null)
+                : (false, "vhd_export_insufficient_space");
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or ArgumentException
+                                   or NotSupportedException or PathTooLongException or OverflowException)
+        {
+            return (false, "vhd_export_capacity_probe_failed");
+        }
+    }
+
+    private static IReadOnlyList<string> BuildNativeBackupCommand(
+        string wslArchivePath,
+        string expectedUserName,
+        uint expectedUserUid) =>
+        [
+            "bash",
+            "-lc",
+            $"expected_user={WslShellQuoting.QuotePosixSingleQuote(expectedUserName)} && " +
+            $"expected_uid={WslShellQuoting.QuotePosixSingleQuote(expectedUserUid.ToString())} && " +
+            "test \"$(id -un)\" = \"$expected_user\" && test \"$(id -u)\" = \"$expected_uid\" && " +
+            $"archive={WslShellQuoting.QuotePosixSingleQuote(wslArchivePath)} && " +
+            "stage=\"$(dirname -- \"$archive\")\" && " +
+            "mkdir -m 700 -- \"$stage\" && test ! -L \"$stage\" && test -O \"$stage\" && " +
+            $"{WslGatewayControlCommandBuilder.OpenClawWslPathPrefix} && " +
+            "receipt=\"$(openclaw backup create --output \"$archive\" --verify --json)\" && " +
+            "digest=\"$(sha256sum -- \"$archive\" | cut -d ' ' -f 1)\" && " +
+            "size=\"$(stat -c %s -- \"$archive\")\" && " +
+            "OPENCLAW_BACKUP_RECEIPT=\"$receipt\" OPENCLAW_BACKUP_SHA256=\"$digest\" OPENCLAW_BACKUP_SIZE=\"$size\" " +
+            "node -e 'const receipt=JSON.parse(process.env.OPENCLAW_BACKUP_RECEIPT); " +
+            "if(receipt.verified!==true||receipt.archivePath!==process.argv[1])process.exit(2); " +
+            "const size=Number(process.env.OPENCLAW_BACKUP_SIZE); " +
+            "if(!/^[0-9a-f]{64}$/.test(process.env.OPENCLAW_BACKUP_SHA256)||!Number.isSafeInteger(size)||size<=0)process.exit(3); " +
+            "process.stdout.write(JSON.stringify({...receipt,sha256:process.env.OPENCLAW_BACKUP_SHA256,sizeBytes:size}));' \"$archive\""
+        ];
+
+    private static IReadOnlyList<string> BuildNativeBackupCleanupCommand(string wslStagePath) =>
+        ["rm", "-rf", "--", wslStagePath];
+
+    private static bool TryParseVerifiedNativeBackup(
+        string? output,
+        string expectedArchivePath,
+        out string expectedSha256,
+        out long expectedSizeBytes)
+    {
+        expectedSha256 = string.Empty;
+        expectedSizeBytes = 0;
+        try
+        {
+            using var document = JsonDocument.Parse(output ?? string.Empty);
+            var root = document.RootElement;
+            if (root.ValueKind != JsonValueKind.Object ||
+                !root.TryGetProperty("verified", out var verified) ||
+                verified.ValueKind != JsonValueKind.True ||
+                !root.TryGetProperty("archivePath", out var archivePath) ||
+                archivePath.ValueKind != JsonValueKind.String ||
+                !string.Equals(archivePath.GetString(), expectedArchivePath, StringComparison.Ordinal) ||
+                !root.TryGetProperty("sha256", out var sha256) ||
+                sha256.ValueKind != JsonValueKind.String ||
+                !Sha256Regex().IsMatch(sha256.GetString() ?? string.Empty) ||
+                !root.TryGetProperty("sizeBytes", out var sizeBytes) ||
+                !sizeBytes.TryGetInt64(out expectedSizeBytes) ||
+                expectedSizeBytes <= 0)
+            {
+                return false;
+            }
+
+            expectedSha256 = sha256.GetString()!;
+            return true;
+        }
+        catch (JsonException)
+        {
+            return false;
+        }
+    }
+
     public IReadOnlyList<GatewayRollbackPointManifest> FindPendingUpdates(string? targetOpenClawVersion = null) =>
         LoadOwnedManifests()
             .Where(point =>
@@ -398,11 +627,22 @@ public sealed partial class GatewayRollbackPointManager
         if (!TryLoadPoint(pointId, out var manifest) || manifest is null || !IsManifestOwned(manifest))
             return false;
         if (manifest.VerificationStatus != GatewayRollbackPointVerificationStatus.Verified ||
-            !manifest.WasKnownGood || !manifest.RestoreEligible)
+            !manifest.WasKnownGood)
             return false;
 
-        var result = await VerifyVhdAsync(
-            GetRollbackVhdPath(pointId), manifest.VhdSha256, manifest.VhdSizeBytes, cancellationToken).ConfigureAwait(false);
+        var result = manifest.ProtectionMode switch
+        {
+            GatewayUpdateProtectionMode.FullVhd when manifest.RestoreEligible =>
+                await VerifyVhdAsync(
+                    GetRollbackVhdPath(pointId), manifest.VhdSha256, manifest.VhdSizeBytes, cancellationToken).ConfigureAwait(false),
+            GatewayUpdateProtectionMode.NativeBackup when !manifest.RestoreEligible =>
+                await VerifyNativeBackupAsync(
+                    GetNativeBackupPath(pointId),
+                    manifest.NativeBackupSha256,
+                    manifest.NativeBackupSizeBytes,
+                    cancellationToken).ConfigureAwait(false),
+            _ => new VhdVerification(false, null, 0, "point_protection_metadata_invalid")
+        };
         if (!result.Verified)
         {
             WriteManifest(manifest with
@@ -433,6 +673,23 @@ public sealed partial class GatewayRollbackPointManager
             return false;
         }
 
+        if (!await AttestLiveDistroOwnershipAsync(
+                manifest,
+                distroName,
+                cancellationToken).ConfigureAwait(false))
+        {
+            return false;
+        }
+
+        var exactVersion = await ProbeExactVersionAsync(distroName, cancellationToken).ConfigureAwait(false);
+        return string.Equals(exactVersion, normalizedExpectedVersion, StringComparison.Ordinal);
+    }
+
+    private async Task<bool> AttestLiveDistroOwnershipAsync(
+        GatewayRollbackPointManifest manifest,
+        string distroName,
+        CancellationToken cancellationToken)
+    {
         var registrations = await _commandRunner.ListRegistrationsAsync(cancellationToken).ConfigureAwait(false);
         var matching = registrations
             .Where(registration => string.Equals(registration.Name, distroName, StringComparison.OrdinalIgnoreCase))
@@ -471,13 +728,46 @@ public sealed partial class GatewayRollbackPointManager
             return false;
         }
 
-        var exactVersion = await ProbeExactVersionAsync(distroName, cancellationToken).ConfigureAwait(false);
-        return string.Equals(exactVersion, normalizedExpectedVersion, StringComparison.Ordinal);
+        return true;
     }
 
     public void MarkUpdateInProgress(string pointId) => UpdatePhase(pointId, GatewayRollbackPointPhase.UpdateInProgress);
 
     public void MarkPostUpdateHealthy(string pointId) => UpdatePhase(pointId, GatewayRollbackPointPhase.PostUpdateHealthy);
+
+    public GatewayRollbackPointManifest MarkNativeRecoveryResolved(
+        string pointId,
+        bool cancelUnacceptedInstallerDispatch = false)
+    {
+        if (!TryLoadPoint(pointId, out var manifest) ||
+            manifest is null ||
+            !IsManifestOwned(manifest) ||
+            manifest.ProtectionMode != GatewayUpdateProtectionMode.NativeBackup ||
+            manifest.Phase != GatewayRollbackPointPhase.UpdateInProgress)
+        {
+            throw new InvalidOperationException("The native recovery receipt is not eligible for resolution.");
+        }
+
+        if (cancelUnacceptedInstallerDispatch &&
+            (manifest.UpdateRoute != GatewayPackageUpdateRoute.CompanionInstaller ||
+             manifest.UpdateDispatchState is not (
+                 GatewayUpdateDispatchState.Prepared or GatewayUpdateDispatchState.Ambiguous)))
+        {
+            throw new InvalidOperationException("Only an unaccepted Companion installer dispatch can be cancelled.");
+        }
+
+        var updated = manifest with
+        {
+            Phase = GatewayRollbackPointPhase.RecoveryResolved,
+            UpdateDispatchState = cancelUnacceptedInstallerDispatch
+                ? GatewayUpdateDispatchState.Cancelled
+                : manifest.UpdateDispatchState,
+            UpdatedAtUtc = _utcNow(),
+            LastFailureCode = null
+        };
+        WriteManifest(updated);
+        return updated;
+    }
 
     public void MarkRestoreHealthy(string pointId) => UpdatePhase(pointId, GatewayRollbackPointPhase.RestoreHealthy);
 
@@ -730,6 +1020,8 @@ public sealed partial class GatewayRollbackPointManager
             (!IsRecoveryReceiptPhase(manifest.Phase) &&
              !string.Equals(manifest.GatewayId, gatewayId, StringComparison.Ordinal)))
             return new(GatewayRollbackOperationState.OwnershipMismatch, manifest, "point_ownership_mismatch");
+        if (manifest.ProtectionMode != GatewayUpdateProtectionMode.FullVhd || !manifest.RestoreEligible)
+            return new(GatewayRollbackOperationState.VerificationFailed, manifest, "point_not_vhd_restore_eligible");
 
         var pendingUpdates = FindPendingUpdates();
         if (pendingUpdates.Count > 1)
@@ -759,6 +1051,9 @@ public sealed partial class GatewayRollbackPointManager
 
         try
         {
+            if (!HasSafeStagingBoundary(stagePath))
+                return Fail(manifest, GatewayRollbackOperationState.InstallPathCollision, "restore_stage_reparse_boundary");
+
             var distroList = await ListDistroNamesAsync(cancellationToken).ConfigureAwait(false);
             if (!distroList.Success)
                 return Fail(manifest, GatewayRollbackOperationState.VerificationFailed, "distro_list_failed", distroList.ExitCode);
@@ -782,7 +1077,7 @@ public sealed partial class GatewayRollbackPointManager
             if (sameNameExists && manifest.Phase == GatewayRollbackPointPhase.DistroUnregistered)
                 return Fail(manifest, GatewayRollbackOperationState.SameNameCollision, "registration_reappeared_after_unregister");
 
-            if (PathExists(stagePath) && !HasSafePathBoundary(_stagingRoot, stagePath))
+            if (PathExists(stagePath) && !HasSafeStagingBoundary(stagePath))
                 return Fail(manifest, GatewayRollbackOperationState.InstallPathCollision, "restore_stage_reparse_boundary");
 
             if (File.Exists(stagePath))
@@ -829,7 +1124,7 @@ public sealed partial class GatewayRollbackPointManager
                 if (!destructivePreflight.Valid)
                     return Fail(manifest, destructivePreflight.State, destructivePreflight.FailureCode);
 
-                if (!HasSafePathBoundary(_stagingRoot, stagePath))
+                if (!HasSafeStagingBoundary(stagePath))
                     return Fail(manifest, GatewayRollbackOperationState.InstallPathCollision, "restore_stage_reparse_boundary");
                 var destructiveStage = await VerifyVhdAsync(
                     stagePath, manifest.VhdSha256, manifest.VhdSizeBytes, cancellationToken).ConfigureAwait(false);
@@ -881,20 +1176,29 @@ public sealed partial class GatewayRollbackPointManager
         CancellationToken cancellationToken = default)
     {
         policy.Validate();
+        if (HasUnreadableReceipt())
+            return 0;
+
         var ownedManifests = LoadOwnedManifests();
         foreach (var unverified in ownedManifests.Where(point =>
-                     point.VerificationStatus != GatewayRollbackPointVerificationStatus.Verified ||
-                     !point.RestoreEligible))
+                     point.VerificationStatus != GatewayRollbackPointVerificationStatus.Verified &&
+                     point.Phase != GatewayRollbackPointPhase.UpdateInProgress &&
+                     !IsUnresolvedRestorePhase(point.Phase)))
         {
             cancellationToken.ThrowIfCancellationRequested();
             var pointDirectory = GetPointDirectory(unverified.Id);
             var rollbackVhdPath = GetRollbackVhdPath(unverified.Id);
             DeleteGeneratedFile(rollbackVhdPath, pointDirectory);
             DeleteGeneratedFile(rollbackVhdPath + ".partial", pointDirectory);
+            var nativeBackupPath = GetNativeBackupPath(unverified.Id);
+            DeleteGeneratedFile(nativeBackupPath, pointDirectory);
+            DeleteGeneratedFile(nativeBackupPath + ".partial", pointDirectory);
         }
 
         var manifests = ownedManifests
-            .Where(point => point.VerificationStatus == GatewayRollbackPointVerificationStatus.Verified && point.RestoreEligible)
+            .Where(point =>
+                point.VerificationStatus == GatewayRollbackPointVerificationStatus.Verified &&
+                point.WasKnownGood)
             .OrderByDescending(point => point.CreatedAtUtc)
             .ThenByDescending(point => point.Id, StringComparer.Ordinal)
             .ToArray();
@@ -904,6 +1208,12 @@ public sealed partial class GatewayRollbackPointManager
         var keep = new HashSet<string>(StringComparer.Ordinal) { manifests[0].Id };
         foreach (var point in manifests.Take(policy.RetainPreviousVersions))
             keep.Add(point.Id);
+        foreach (var point in manifests.Where(point =>
+                     point.Phase == GatewayRollbackPointPhase.UpdateInProgress ||
+                     IsUnresolvedRestorePhase(point.Phase)))
+        {
+            keep.Add(point.Id);
+        }
         if (policy.RetainYoungerThan is { } age)
         {
             var cutoff = _utcNow() - age;
@@ -915,7 +1225,10 @@ public sealed partial class GatewayRollbackPointManager
         foreach (var point in manifests)
         {
             cancellationToken.ThrowIfCancellationRequested();
-            if (keep.Contains(point.Id) || point.Phase is not (GatewayRollbackPointPhase.PostUpdateHealthy or GatewayRollbackPointPhase.RestoreHealthy))
+            if (keep.Contains(point.Id) ||
+                point.Phase is not (GatewayRollbackPointPhase.PostUpdateHealthy
+                    or GatewayRollbackPointPhase.RecoveryResolved
+                    or GatewayRollbackPointPhase.RestoreHealthy))
                 continue;
             if (DeletePointFilesOnly(point.Id))
                 removed++;
@@ -975,7 +1288,7 @@ public sealed partial class GatewayRollbackPointManager
         CancellationToken cancellationToken)
     {
         EnsurePrivateDirectory(_stagingRoot);
-        if (!HasSafePathBoundary(_stagingRoot, stagePath))
+        if (!HasSafeStagingBoundary(stagePath))
             return false;
 
         var partialPath = stagePath + ".partial";
@@ -1010,7 +1323,6 @@ public sealed partial class GatewayRollbackPointManager
     {
         if (!HasSafePathBoundary(_localDataRoot, installDirectory) ||
             !HasSafePathBoundary(_localDataRoot, liveVhdPath) ||
-            !HasSafePathBoundary(_localDataRoot, _stagingRoot) ||
             !HasSafePathBoundary(_localDataRoot, _pointsRoot))
         {
             return (false, GatewayRollbackOperationState.InstallPathCollision, "restore_path_reparse_boundary");
@@ -1091,7 +1403,10 @@ public sealed partial class GatewayRollbackPointManager
                 ? manifest.VerificationStatus
                 : GatewayRollbackPointVerificationStatus.Failed,
             Phase = keepRecoveryPhase ? manifest.Phase : GatewayRollbackPointPhase.Failed,
-            RestoreEligible = manifest.VerificationStatus == GatewayRollbackPointVerificationStatus.Verified && manifest.WasKnownGood,
+            RestoreEligible =
+                manifest.ProtectionMode == GatewayUpdateProtectionMode.FullVhd &&
+                manifest.VerificationStatus == GatewayRollbackPointVerificationStatus.Verified &&
+                manifest.WasKnownGood,
             LastFailureCode = failureCode
         };
         WriteManifest(failed);
@@ -1259,6 +1574,42 @@ public sealed partial class GatewayRollbackPointManager
         return new(true, hash, size, null);
     }
 
+    private static async Task<VhdVerification> VerifyNativeBackupAsync(
+        string path,
+        string? expectedSha256,
+        long? expectedSize,
+        CancellationToken cancellationToken)
+    {
+        if (!File.Exists(path) || IsReparsePoint(path))
+            return new(false, null, 0, "native_backup_missing");
+
+        await using var stream = new FileStream(
+            path,
+            FileMode.Open,
+            FileAccess.Read,
+            FileShare.Read,
+            1024 * 1024,
+            FileOptions.Asynchronous | FileOptions.SequentialScan);
+        var size = stream.Length;
+        if (size <= 0 || (expectedSize.HasValue && size != expectedSize.Value))
+            return new(false, null, size, "native_backup_size_mismatch");
+        var hash = Convert.ToHexString(await SHA256.HashDataAsync(stream, cancellationToken).ConfigureAwait(false))
+            .ToLowerInvariant();
+        if (stream.Length != size)
+            return new(false, hash, stream.Length, "native_backup_size_changed");
+        if (expectedSha256 is not null && !string.Equals(hash, expectedSha256, StringComparison.Ordinal))
+            return new(false, hash, size, "native_backup_hash_mismatch");
+        return new(true, hash, size, null);
+    }
+
+    private static long GetAvailableFreeSpaceBytes(string destinationPath)
+    {
+        var root = Path.GetPathRoot(NormalizePath(destinationPath));
+        if (string.IsNullOrWhiteSpace(root))
+            throw new IOException("The rollback destination has no volume root.");
+        return new DriveInfo(root).AvailableFreeSpace;
+    }
+
     private static async Task CopyAndFlushAsync(string source, string destination, CancellationToken cancellationToken)
     {
         await using var input = new FileStream(source, FileMode.Open, FileAccess.Read, FileShare.Read, 1024 * 1024, FileOptions.Asynchronous | FileOptions.SequentialScan);
@@ -1334,7 +1685,9 @@ public sealed partial class GatewayRollbackPointManager
         var allowed = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
         {
             NormalizePath(Path.Combine(directory, ManifestFileName)),
-            NormalizePath(Path.Combine(directory, RollbackVhdFileName))
+            NormalizePath(Path.Combine(directory, RollbackVhdFileName)),
+            NormalizePath(Path.Combine(directory, NativeBackupFileName)),
+            NormalizePath(Path.Combine(directory, NativeBackupFileName + ".partial"))
         };
         var entries = Directory.GetFileSystemEntries(directory).Select(NormalizePath).ToArray();
         if (entries.Any(entry => !allowed.Contains(entry) || IsReparsePoint(entry)))
@@ -1346,7 +1699,7 @@ public sealed partial class GatewayRollbackPointManager
     }
 
     private bool IsManifestOwned(GatewayRollbackPointManifest manifest) =>
-        manifest.SchemaVersion == 3 &&
+        manifest.SchemaVersion is 3 or 4 &&
         IsOwnedDistro(manifest.DistroName) &&
         PointIdRegex().IsMatch(manifest.Id) &&
         ExactVersionRegex().IsMatch(manifest.OpenClawVersion) &&
@@ -1357,7 +1710,42 @@ public sealed partial class GatewayRollbackPointManager
         (manifest.NodeCommandAllowSnapshotJson is null ||
          IsCompleteCommandArrayJson(manifest.NodeCommandAllowSnapshotJson)) &&
         (string.IsNullOrEmpty(manifest.VhdSha256) || Sha256Regex().IsMatch(manifest.VhdSha256)) &&
+        IsProtectionMetadataValid(manifest) &&
         IsUpdateDispatchReceiptValid(manifest);
+
+    private static bool IsProtectionMetadataValid(GatewayRollbackPointManifest manifest)
+    {
+        if (manifest.SchemaVersion == 3)
+        {
+            return manifest.ProtectionMode == GatewayUpdateProtectionMode.FullVhd &&
+                   manifest.NativeBackupSha256 is null &&
+                   manifest.NativeBackupSizeBytes == 0 &&
+                   (manifest.VerificationStatus != GatewayRollbackPointVerificationStatus.Verified ||
+                    (manifest.RestoreEligible &&
+                     Sha256Regex().IsMatch(manifest.VhdSha256) &&
+                     manifest.VhdSizeBytes > 0));
+        }
+
+        return manifest.ProtectionMode switch
+        {
+            GatewayUpdateProtectionMode.FullVhd =>
+                manifest.NativeBackupSha256 is null &&
+                manifest.NativeBackupSizeBytes == 0 &&
+                (manifest.VerificationStatus != GatewayRollbackPointVerificationStatus.Verified ||
+                 (manifest.RestoreEligible &&
+                  Sha256Regex().IsMatch(manifest.VhdSha256) &&
+                  manifest.VhdSizeBytes > 0)),
+            GatewayUpdateProtectionMode.NativeBackup =>
+                !manifest.RestoreEligible &&
+                string.IsNullOrEmpty(manifest.VhdSha256) &&
+                manifest.VhdSizeBytes == 0 &&
+                (manifest.VerificationStatus != GatewayRollbackPointVerificationStatus.Verified ||
+                 (manifest.NativeBackupSha256 is not null &&
+                  Sha256Regex().IsMatch(manifest.NativeBackupSha256) &&
+                  manifest.NativeBackupSizeBytes > 0)),
+            _ => false
+        };
+    }
 
     private static bool IsUpdateDispatchReceiptValid(GatewayRollbackPointManifest manifest)
     {
@@ -1436,6 +1824,7 @@ public sealed partial class GatewayRollbackPointManager
     private static bool IsUpdateReceiptPhase(GatewayRollbackPointPhase phase) =>
         phase is GatewayRollbackPointPhase.UpdateInProgress
             or GatewayRollbackPointPhase.PostUpdateHealthy
+            or GatewayRollbackPointPhase.RecoveryResolved
             or GatewayRollbackPointPhase.RestoreStaged
             or GatewayRollbackPointPhase.UnregisterPending
             or GatewayRollbackPointPhase.DistroUnregistered
@@ -1475,6 +1864,7 @@ public sealed partial class GatewayRollbackPointManager
     }
 
     private string GetRollbackVhdPath(string pointId) => Path.Combine(GetPointDirectory(pointId), RollbackVhdFileName);
+    private string GetNativeBackupPath(string pointId) => Path.Combine(GetPointDirectory(pointId), NativeBackupFileName);
     private string GetStageVhdPath(string pointId) => NormalizePath(Path.Combine(_stagingRoot, $"{pointId}.vhdx"));
     private string GetInstallDirectory() => NormalizePath(Path.Combine(_localDataRoot, "wsl", _ownedDistroName));
 
@@ -1485,7 +1875,10 @@ public sealed partial class GatewayRollbackPointManager
         manifest.CreatedAtUtc,
         manifest.VerificationStatus,
         manifest.Phase,
-        manifest.VhdSizeBytes,
+        manifest.ProtectionMode,
+        manifest.ProtectionMode == GatewayUpdateProtectionMode.NativeBackup
+            ? manifest.NativeBackupSizeBytes
+            : manifest.VhdSizeBytes,
         manifest.RestoreEligible && manifest.VerificationStatus == GatewayRollbackPointVerificationStatus.Verified,
         manifest.LastFailureCode);
 
@@ -1542,6 +1935,10 @@ public sealed partial class GatewayRollbackPointManager
         }
         return true;
     }
+
+    private bool HasSafeStagingBoundary(string stagePath) =>
+        HasSafePathBoundary(_localDataRoot, _stagingRoot) &&
+        HasSafePathBoundary(_stagingRoot, stagePath);
 
     private static bool PathExists(string path) => File.Exists(path) || Directory.Exists(path);
 

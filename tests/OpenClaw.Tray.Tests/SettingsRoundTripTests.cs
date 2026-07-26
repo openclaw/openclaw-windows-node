@@ -375,7 +375,8 @@ public class SettingsRoundTripTests
             var settings = new SettingsManager(dir);
 
             Assert.Equal(1, settings.GatewayRollbackRetentionCount);
-            Assert.Equal(0, settings.GatewayRollbackRetentionAgeDays);
+            Assert.Equal(7, settings.GatewayRollbackRetentionAgeDays);
+            Assert.Equal(SettingsManager.GatewayRollbackProtectionNativeBackup, settings.GatewayRollbackProtectionMode);
             settings.Save();
             using var saved = JsonDocument.Parse(File.ReadAllText(Path.Combine(dir, "settings.json")));
             Assert.Equal(2, saved.RootElement.GetProperty(nameof(SettingsData.SettingsSchemaVersion)).GetInt32());

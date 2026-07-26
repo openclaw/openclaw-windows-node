@@ -57,6 +57,7 @@ public sealed partial class SettingsPage : Page
         InitializeGatewayInfo();
         if (CurrentApp.Settings is { } settings)
             LoadGatewaySection(settings);
+        RefreshGatewayRollbackStorage();
     }
 
     /// <summary>
@@ -355,6 +356,49 @@ public sealed partial class SettingsPage : Page
             return;
         }
 
+        if (selected.Point.ProtectionMode == GatewayUpdateProtectionMode.NativeBackup)
+        {
+            if (selected.Point.Phase == GatewayRollbackPointPhase.UpdateInProgress)
+            {
+                var resolveDialog = new ContentDialog
+                {
+                    Title = "Resolve native update recovery?",
+                    Content =
+                        "Companion will not restore this native backup automatically. It will verify the retained backup, " +
+                        "the exact currently installed OpenClaw version, distro identity, Gateway, Windows Node, and pairing health. " +
+                        "The receipt is resolved only when the live installation exactly matches either the pre-update version or the intended target.",
+                    PrimaryButtonText = "Verify and resolve",
+                    CloseButtonText = "Cancel",
+                    DefaultButton = ContentDialogButton.Close,
+                    XamlRoot = XamlRoot
+                };
+                if (await resolveDialog.ShowAsync() != ContentDialogResult.Primary)
+                    return;
+
+                var resolved = await CurrentApp.ResolveNativeGatewayRecoveryAsync(selected.Point.Id);
+                GatewayRollbackResultBar.Severity =
+                    resolved.State is GatewayVersionAlignmentState.RecoveryResolved or GatewayVersionAlignmentState.Updated
+                        ? InfoBarSeverity.Success
+                        : InfoBarSeverity.Error;
+                GatewayRollbackResultBar.Title =
+                    resolved.State is GatewayVersionAlignmentState.RecoveryResolved or GatewayVersionAlignmentState.Updated
+                        ? "Native update recovery resolved"
+                        : "Native update recovery needs attention";
+                GatewayRollbackResultBar.Message =
+                    resolved.FailureSummary ??
+                    "The live Gateway state was verified and the pending recovery receipt was resolved.";
+                GatewayRollbackResultBar.IsOpen = true;
+                RefreshGatewayRollbackStorage();
+                return;
+            }
+
+            GatewayRollbackResultBar.Severity = InfoBarSeverity.Informational;
+            GatewayRollbackResultBar.Title = "Native backup is not restorable here";
+            GatewayRollbackResultBar.Message = "This point uses OpenClaw's native backup. It can be retained or cleaned up, but Companion cannot restore it as a full WSL VHD.";
+            GatewayRollbackResultBar.IsOpen = true;
+            return;
+        }
+
         if (!selected.Point.RestoreEligible)
         {
             GatewayRollbackResultBar.Severity = InfoBarSeverity.Warning;
@@ -443,8 +487,55 @@ public sealed partial class SettingsPage : Page
     {
         public string DisplayText =>
             $"Point {Point.Id} | {Point.Phase} | OpenClaw {Point.OpenClawVersion} | {Point.CreatedAtUtc.ToLocalTime():g} | " +
-            $"{Point.VerificationStatus} | {FormatByteSize(Point.ApproximateSizeBytes)} | " +
-            $"{(Point.RestoreEligible ? "restore eligible" : "not restore eligible")}";
+            $"{Point.ProtectionMode} | {Point.VerificationStatus} | {FormatByteSize(Point.ApproximateSizeBytes)} | " +
+            $"{(Point.RestoreEligible ? "restore eligible" : "not restorable by Companion")}";
+    }
+
+    private void OnCleanupGatewayRollbackPoints(object sender, RoutedEventArgs e) =>
+        AsyncEventHandlerGuard.Run(
+            CleanupGatewayRollbackPointsAsync,
+            new OpenClawTray.AppLogger(),
+            nameof(OnCleanupGatewayRollbackPoints));
+
+    private async Task CleanupGatewayRollbackPointsAsync()
+    {
+        int deleted;
+        try
+        {
+            deleted = await CurrentApp.CleanupGatewayRollbackPointsAsync();
+        }
+        catch (InvalidOperationException ex)
+        {
+            RefreshGatewayRollbackStorage();
+            GatewayRollbackResultBar.Severity = InfoBarSeverity.Error;
+            GatewayRollbackResultBar.Title = "Rollback cleanup blocked";
+            GatewayRollbackResultBar.Message = ex.Message;
+            GatewayRollbackResultBar.IsOpen = true;
+            return;
+        }
+
+        RefreshGatewayRollbackStorage();
+        GatewayRollbackResultBar.Severity = InfoBarSeverity.Informational;
+        GatewayRollbackResultBar.Title = "Rollback cleanup finished";
+        GatewayRollbackResultBar.Message = deleted == 0
+            ? "No rollback protection files matched the current retention settings."
+            : $"Removed {deleted} rollback protection item{(deleted == 1 ? string.Empty : "s")} using the current retention settings.";
+        GatewayRollbackResultBar.IsOpen = true;
+    }
+
+    private void RefreshGatewayRollbackStorage()
+    {
+        if (CurrentApp.HasUnreadableGatewayRollbackReceipt())
+        {
+            GatewayRollbackStorageText.Text =
+                "Stored rollback protection is unavailable because a receipt cannot be read or validated.";
+            return;
+        }
+
+        var points = CurrentApp.GetGatewayRollbackPoints();
+        var totalBytes = points.Sum(point => Math.Max(0, point.ApproximateSizeBytes));
+        GatewayRollbackStorageText.Text =
+            $"Stored rollback protection: {points.Count} point{(points.Count == 1 ? string.Empty : "s")}, {FormatByteSize(totalBytes)} total.";
     }
 
     private static string FormatByteSize(long bytes)

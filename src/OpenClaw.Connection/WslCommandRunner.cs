@@ -7,9 +7,13 @@ using System.Text;
 
 namespace OpenClaw.Connection;
 
-public sealed record WslCommandResult(int ExitCode, string StandardOutput, string StandardError)
+public sealed record WslCommandResult(
+    int ExitCode,
+    string StandardOutput,
+    string StandardError,
+    bool TimedOut = false)
 {
-    public bool Success => ExitCode == 0;
+    public bool Success => ExitCode == 0 && !TimedOut;
 }
 
 public sealed record WslDistroInfo(string Name, string State, int Version);
@@ -52,6 +56,13 @@ public interface IWslCommandRunner
         string name, IReadOnlyList<string> command,
         CancellationToken cancellationToken = default,
         IReadOnlyDictionary<string, string>? environment = null);
+
+    Task<WslCommandResult> CopyFileFromDistroAsync(
+        string name,
+        string sourcePath,
+        string destinationPath,
+        CancellationToken cancellationToken = default) =>
+        Task.FromResult(new WslCommandResult(-1, string.Empty, "WSL file transfer is unavailable."));
 }
 
 /// <summary>
@@ -185,6 +196,92 @@ public sealed class WslExeCommandRunner : IWslCommandRunner
         return RunAsync(args, cancellationToken, environment);
     }
 
+    public async Task<WslCommandResult> CopyFileFromDistroAsync(
+        string name,
+        string sourcePath,
+        string destinationPath,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(name);
+        ArgumentException.ThrowIfNullOrWhiteSpace(sourcePath);
+        ArgumentException.ThrowIfNullOrWhiteSpace(destinationPath);
+
+        var psi = new ProcessStartInfo
+        {
+            FileName = "wsl.exe",
+            RedirectStandardOutput = true,
+            RedirectStandardError = true,
+            UseShellExecute = false,
+            CreateNoWindow = true,
+            StandardErrorEncoding = Encoding.UTF8
+        };
+        foreach (var argument in new[] { "-d", name, "--", "cat", "--", sourcePath })
+            psi.ArgumentList.Add(argument);
+
+        _logger.Info($"[WSL] Copy file from distro {name} to a host-managed destination.");
+
+        using var process = new Process { StartInfo = psi };
+        try
+        {
+            process.Start();
+        }
+        catch (Exception ex)
+        {
+            return new WslCommandResult(-1, string.Empty, $"Failed to start wsl.exe: {ex.Message}");
+        }
+
+        using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        timeoutCts.CancelAfter(_defaultTimeout);
+        var stderrTask = process.StandardError.ReadToEndAsync(timeoutCts.Token);
+        var timedOut = false;
+        try
+        {
+            await using var destination = new FileStream(
+                destinationPath,
+                FileMode.CreateNew,
+                FileAccess.Write,
+                FileShare.None,
+                bufferSize: 81920,
+                FileOptions.Asynchronous | FileOptions.WriteThrough);
+            var copyTask = process.StandardOutput.BaseStream.CopyToAsync(destination, timeoutCts.Token);
+            await Task.WhenAll(process.WaitForExitAsync(timeoutCts.Token), copyTask).ConfigureAwait(false);
+            await destination.FlushAsync(timeoutCts.Token).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
+        {
+            timedOut = true;
+            // slopwatch-ignore: SW003 Timeout cleanup preserves the source and removes only the partial host copy.
+            try { process.Kill(entireProcessTree: true); } catch { }
+        }
+        catch (OperationCanceledException)
+        {
+            // slopwatch-ignore: SW003 Cancellation cleanup preserves the source and removes only the partial host copy.
+            try { process.Kill(entireProcessTree: true); } catch { }
+            TryDeletePartial(destinationPath);
+            throw;
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            // slopwatch-ignore: SW003 Transfer failure cleanup preserves the source and removes only the partial host copy.
+            try { process.Kill(entireProcessTree: true); } catch { }
+            TryDeletePartial(destinationPath);
+            return new WslCommandResult(-1, string.Empty, $"WSL file transfer failed: {ex.Message}");
+        }
+
+        string stderr;
+        try { stderr = await stderrTask.ConfigureAwait(false); } catch { stderr = string.Empty; }
+        if (timedOut || process.ExitCode != 0)
+            TryDeletePartial(destinationPath);
+        return timedOut
+            ? new WslCommandResult(-1, string.Empty, "wsl.exe file transfer timed out", TimedOut: true)
+            : new WslCommandResult(process.ExitCode, string.Empty, stderr);
+    }
+
+    private static void TryDeletePartial(string path)
+    {
+        try { File.Delete(path); } catch { }
+    }
+
     public Task<WslCommandResult> TerminateDistroAsync(string name, CancellationToken cancellationToken = default) =>
         RunAsync(["--terminate", name], cancellationToken);
 
@@ -286,7 +383,7 @@ public sealed class WslExeCommandRunner : IWslCommandRunner
         try { stderr = await stderrTask; } catch { stderr = string.Empty; }
 
         return timedOut
-            ? new WslCommandResult(-1, stdout, "wsl.exe timed out")
+            ? new WslCommandResult(-1, stdout, "wsl.exe timed out", TimedOut: true)
             : new WslCommandResult(process.ExitCode, stdout, stderr);
     }
 

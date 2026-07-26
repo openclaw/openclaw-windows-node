@@ -20,7 +20,8 @@ public enum GatewayUpdateDispatchState
 {
     Prepared,
     Ambiguous,
-    Accepted
+    Accepted,
+    Cancelled
 }
 
 public enum GatewayUpdateCompletionState

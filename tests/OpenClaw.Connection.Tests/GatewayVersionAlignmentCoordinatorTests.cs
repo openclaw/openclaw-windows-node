@@ -3,6 +3,7 @@ using OpenClaw.Connection;
 using OpenClaw.Shared;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using System.Text.Json.Nodes;
 
 namespace OpenClaw.Connection.Tests;
 
@@ -12,6 +13,8 @@ public sealed class GatewayVersionAlignmentCoordinatorTests : IDisposable
     private const string PreviousVersion = "2026.7.21+companion.1";
     private const string LegacyVersion = "2026.7.2-beta.3";
     private const string MachineId = "0123456789abcdef0123456789abcdef";
+    private const string NativeBackupSha256 = "66840dda154e8a113c31dd0ad32f7f3a366a80e8136979d8f5a101d3d29d6f72";
+    private const long NativeBackupSizeBytes = 8;
     private readonly string _tempRoot = Path.Combine(Path.GetTempPath(), $"openclaw-rollback-tests-{Guid.NewGuid():N}");
 
     [Theory]
@@ -152,8 +155,9 @@ public sealed class GatewayVersionAlignmentCoordinatorTests : IDisposable
                 Assert.Contains(
                     runner.Calls,
                     call => call.Kind == "distro" &&
-                            call.Arguments.SequenceEqual(VerifiedInstallerCommand(
-                                GatewayPackageTarget.Official(RequiredVersion))));
+                            IsVerifiedInstallerCommand(
+                                call.Arguments,
+                                GatewayPackageTarget.Official(RequiredVersion)));
                 return Task.CompletedTask;
             });
 
@@ -164,8 +168,9 @@ public sealed class GatewayVersionAlignmentCoordinatorTests : IDisposable
         Assert.Single(
             runner.Calls,
             call => call.Kind == "distro" &&
-                    call.Arguments.SequenceEqual(VerifiedInstallerCommand(
-                        GatewayPackageTarget.Official(RequiredVersion))));
+                    IsVerifiedInstallerCommand(
+                        call.Arguments,
+                        GatewayPackageTarget.Official(RequiredVersion)));
         Assert.Equal(
             GatewayRollbackPointPhase.PostUpdateHealthy,
             Assert.Single(coordinator.ListRollbackPoints()).Phase);
@@ -292,8 +297,7 @@ public sealed class GatewayVersionAlignmentCoordinatorTests : IDisposable
     [Theory]
     [InlineData("2026.6.11")]
     [InlineData("2026.7.2-beta.3")]
-    [InlineData("2026.7.2")]
-    public async Task UpdateAsync_RoutesLegacyVersionsToVerifiedInstallerWithoutUpdateRun(
+    public async Task UpdateAsync_LegacySourceDefaultsToFullVhdAndVerifiedInstallerWithoutUpdateRun(
         string firstAdoptionVersion)
     {
         const string completeArray = """["system.run","system.which","camera.snap"]""";
@@ -334,12 +338,16 @@ public sealed class GatewayVersionAlignmentCoordinatorTests : IDisposable
         Assert.Equal(GatewayVersionAlignmentState.Updated, result.State);
         Assert.Single(runner.Calls, call =>
             call.Kind == "distro" &&
-            call.Arguments.SequenceEqual(VerifiedInstallerCommand(
-                GatewayPackageTarget.Official(RequiredVersion))));
+            IsVerifiedInstallerCommand(
+                call.Arguments,
+                GatewayPackageTarget.Official(RequiredVersion)));
         Assert.Empty(updateRpc.Calls);
         Assert.Equal(
             GatewayRollbackPointPhase.PostUpdateHealthy,
             Assert.Single(coordinator.ListRollbackPoints()).Phase);
+        Assert.Equal(
+            GatewayUpdateProtectionMode.FullVhd,
+            Assert.Single(ReadOwnedManifests()).ProtectionMode);
     }
 
     [Fact]
@@ -447,10 +455,52 @@ public sealed class GatewayVersionAlignmentCoordinatorTests : IDisposable
         Assert.Empty(updateRpc.Calls);
         Assert.DoesNotContain(runner.Calls, call =>
             call.Kind == "distro" &&
-            call.Arguments.SequenceEqual(VerifiedInstallerCommand(target)));
+            IsVerifiedInstallerCommand(call.Arguments, target));
         Assert.Equal(
             GatewayUpdateDispatchState.Prepared,
             Assert.Single(ReadOwnedManifests()).UpdateDispatchState);
+    }
+
+    [Fact]
+    public async Task UpdateAsync_RestartedCoordinatorRejectsDifferentArmedPackageTarget()
+    {
+        var runner = new FakeWslCommandRunner();
+        var manager = CreateManager(runner);
+        EnqueueCreateAttestation(runner, PreviousVersion);
+        var created = await manager.CreateVerifiedAsync(
+            "OpenClawGateway", "local-gateway", PreviousVersion, RequiredVersion);
+        var composedTarget = GatewayPackageTarget.Composed(
+            RequiredVersion,
+            new Uri("https://example.invalid/openclaw-composed.tgz"),
+            new string('a', 64));
+        manager.ArmUpdateDispatch(
+            created.Point!.Id,
+            composedTarget,
+            GatewayPackageUpdateRoute.CompanionInstaller,
+            requestId: null);
+        runner.ClearCalls();
+        runner.EnqueueDistro(Ok(PreviousVersion));
+        var updateRpc = new FakeGatewayUpdateRpc();
+        var restartedCoordinator = new GatewayVersionAlignmentCoordinator(
+            runner,
+            GatewayPackageTarget.Official(RequiredVersion),
+            CreateManager(runner),
+            gatewayRequestAsync: updateRpc.SendAsync,
+            connectedGatewayId: () => "local-gateway");
+
+        var blocked = await restartedCoordinator.UpdateAsync(EligiblePlan());
+
+        Assert.Equal(GatewayVersionAlignmentState.RecoveryAvailable, blocked.State);
+        Assert.Contains("provenance", blocked.FailureSummary, StringComparison.Ordinal);
+        Assert.Empty(updateRpc.Calls);
+        Assert.DoesNotContain(runner.Calls, call =>
+            call.Kind == "distro" &&
+            IsVerifiedInstallerCommand(
+                call.Arguments,
+                GatewayPackageTarget.Official(RequiredVersion)));
+        var receipt = Assert.Single(ReadOwnedManifests());
+        Assert.Equal(GatewayPackageSource.Composed, receipt.UpdateTargetSource);
+        Assert.Equal(composedTarget.PackageUri!.AbsoluteUri, receipt.UpdateTargetPackageUri);
     }
 
     [Fact]
@@ -1092,7 +1142,8 @@ public sealed class GatewayVersionAlignmentCoordinatorTests : IDisposable
             },
             gatewayRequestAsync: updateRpc.SendAsync,
             connectedGatewayId: () => "local-gateway",
-            routePolicy: new GatewayPackageUpdateRoutePolicy([PreviousVersion]));
+            routePolicy: new GatewayPackageUpdateRoutePolicy([PreviousVersion]),
+            protectionModeResolver: () => GatewayUpdateProtectionMode.FullVhd);
 
         var result = await coordinator.UpdateAsync(EligiblePlan());
 
@@ -1496,6 +1547,1027 @@ public sealed class GatewayVersionAlignmentCoordinatorTests : IDisposable
         Assert.Empty(runner.Calls);
     }
 
+    [Fact]
+    public async Task UpdateAsync_InstallerTimeoutPersistsAmbiguousDispatch()
+    {
+        var runner = new FakeWslCommandRunner();
+        runner.EnqueueDistro(Ok("2026.7.23"));
+        EnqueueCreateAttestation(runner, "2026.7.23");
+        EnqueuePendingAttestation(runner, "2026.7.23");
+        EnqueuePendingAttestation(runner, "2026.7.23");
+        runner.EnqueueDistro(new WslCommandResult(
+            -1,
+            string.Empty,
+            "wsl.exe timed out",
+            TimedOut: true));
+        runner.EnqueueDistro(Ok("2026.7.23"));
+        var coordinator = CreateCoordinator(runner);
+
+        var result = await coordinator.UpdateAsync(EligiblePlan());
+
+        Assert.Equal(GatewayVersionAlignmentState.RecoveryAvailable, result.State);
+        Assert.Contains("state is ambiguous", result.FailureSummary, StringComparison.Ordinal);
+        var receipt = Assert.Single(ReadOwnedManifests());
+        Assert.Equal(GatewayRollbackPointPhase.UpdateInProgress, receipt.Phase);
+        Assert.Equal(GatewayUpdateDispatchState.Ambiguous, receipt.UpdateDispatchState);
+    }
+
+    [Fact]
+    public async Task UpdateAsync_DefaultProtectionCreatesNativeBackupWithoutTerminateOrExport()
+    {
+        var runner = new FakeWslCommandRunner();
+        runner.EnqueueDistro(Ok(PreviousVersion));
+        EnqueueNativeBackupAttestation(runner, PreviousVersion);
+        runner.EnqueueDistro(Ok("fedcba9876543210fedcba9876543210"));
+        var manager = CreateManager(runner);
+        var coordinator = new GatewayVersionAlignmentCoordinator(
+            runner,
+            GatewayPackageTarget.Official(RequiredVersion),
+            manager,
+            gatewayRequestAsync: new FakeGatewayUpdateRpc().SendAsync,
+            connectedGatewayId: () => "local-gateway",
+            routePolicy: new GatewayPackageUpdateRoutePolicy([PreviousVersion]));
+
+        var result = await coordinator.UpdateAsync(EligiblePlan());
+
+        Assert.Equal(GatewayVersionAlignmentState.VerificationFailed, result.State);
+        var manifest = Assert.Single(ReadOwnedManifests());
+        Assert.Equal(GatewayUpdateProtectionMode.NativeBackup, manifest.ProtectionMode);
+        Assert.False(manifest.RestoreEligible);
+        Assert.Equal(GatewayRollbackPointVerificationStatus.Verified, manifest.VerificationStatus);
+        var listedPoint = Assert.Single(manager.List());
+        Assert.Equal(GatewayUpdateProtectionMode.NativeBackup, listedPoint.ProtectionMode);
+        Assert.False(listedPoint.RestoreEligible);
+        Assert.True(listedPoint.ApproximateSizeBytes > 0);
+        Assert.DoesNotContain(runner.Calls, call => call.Kind == "terminate");
+        Assert.DoesNotContain(runner.Calls, call =>
+            call.Kind == "direct" && call.Arguments.Contains("--export"));
+        Assert.Contains(runner.Calls, call =>
+            call.Kind == "distro" &&
+            call.Arguments.Count == 3 &&
+            call.Arguments[2].Contains(
+                "openclaw backup create --output ",
+                StringComparison.Ordinal) &&
+            call.Arguments[2].Contains(" --verify --json", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task NativeBackup_UsesDistroLocalStagingIndependentOfDefaultUserHome()
+    {
+        var runner = new FakeWslCommandRunner();
+        runner.EnqueueDistro(Ok("openclaw\n1000"));
+        runner.EnqueueDistro(Ok(MachineId));
+        runner.EnqueueDistro(Ok(PreviousVersion));
+        runner.EnqueueDistro(Ok(PreviousVersion));
+        runner.EnqueueDistro(Ok(MachineId));
+        runner.EnqueueDistro(Ok("openclaw\n1000"));
+        var manager = CreateManager(runner);
+
+        var result = await manager.CreateVerifiedAsync(
+            "OpenClawGateway",
+            "local-gateway",
+            PreviousVersion,
+            RequiredVersion,
+            GatewayUpdateProtectionMode.NativeBackup);
+
+        Assert.Equal(GatewayRollbackOperationState.Created, result.State);
+        var backupCall = Assert.Single(runner.Calls, call =>
+            call.Kind == "distro" &&
+            call.Arguments.Count == 3 &&
+            call.Arguments[2].Contains("openclaw backup create", StringComparison.Ordinal));
+        Assert.Contains(
+            "archive='/tmp/openclaw-windows-companion-",
+            backupCall.Arguments[2],
+            StringComparison.Ordinal);
+        Assert.Contains("/openclaw-backup.tar.gz'", backupCall.Arguments[2], StringComparison.Ordinal);
+        Assert.Contains("mkdir -m 700 -- \"$stage\"", backupCall.Arguments[2], StringComparison.Ordinal);
+        Assert.DoesNotContain("mkdir -p", backupCall.Arguments[2], StringComparison.Ordinal);
+        Assert.DoesNotContain("archive='/home/", backupCall.Arguments[2], StringComparison.Ordinal);
+        Assert.DoesNotContain("$HOME/.local", backupCall.Arguments[2], StringComparison.Ordinal);
+        var copyCall = Assert.Single(runner.Calls, call => call.Kind == "copy");
+        Assert.StartsWith(
+            "/tmp/openclaw-windows-companion-",
+            copyCall.Arguments[0],
+            StringComparison.Ordinal);
+        Assert.EndsWith("/openclaw-backup.tar.gz", copyCall.Arguments[0], StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task NativeBackup_DefaultUserDriftFailsBeforeVerification()
+    {
+        var runner = new FakeWslCommandRunner();
+        runner.EnqueueDistro(Ok("openclaw\n1000"));
+        runner.EnqueueDistro(Ok(MachineId));
+        runner.EnqueueDistro(Ok(PreviousVersion));
+        runner.EnqueueDistro(Ok(PreviousVersion));
+        runner.EnqueueDistro(Ok(MachineId));
+        runner.EnqueueDistro(Ok("other-user\n1001"));
+        var manager = CreateManager(runner);
+
+        var result = await manager.CreateVerifiedAsync(
+            "OpenClawGateway",
+            "local-gateway",
+            PreviousVersion,
+            RequiredVersion,
+            GatewayUpdateProtectionMode.NativeBackup);
+
+        Assert.Equal(GatewayRollbackOperationState.VerificationFailed, result.State);
+        Assert.Equal("native_backup_state_attestation_changed", result.FailureCode);
+        Assert.Equal(
+            GatewayRollbackPointVerificationStatus.Failed,
+            Assert.Single(ReadOwnedManifests()).VerificationStatus);
+    }
+
+    [Fact]
+    public async Task UpdateAsync_DefaultNativeProtectionCompletesHealthyTransaction()
+    {
+        var runner = new FakeWslCommandRunner();
+        runner.EnqueueDistro(Ok(PreviousVersion));
+        EnqueueNativeBackupAttestation(runner, PreviousVersion);
+        EnqueuePendingAttestation(runner, PreviousVersion);
+        EnqueuePendingAttestation(runner, PreviousVersion);
+        runner.EnqueueDistro(Ok(RequiredVersion));
+        EnqueuePendingAttestation(runner, RequiredVersion);
+        EnqueuePendingAttestation(runner, RequiredVersion);
+        EnqueuePendingAttestation(runner, RequiredVersion);
+        var synchronizations = 0;
+        var updateRpc = new FakeGatewayUpdateRpc();
+        var manager = CreateManager(runner);
+        var coordinator = new GatewayVersionAlignmentCoordinator(
+            runner,
+            GatewayPackageTarget.Official(RequiredVersion),
+            manager,
+            (_, _) =>
+            {
+                synchronizations++;
+                return Task.CompletedTask;
+            },
+            gatewayRequestAsync: updateRpc.SendAsync,
+            connectedGatewayId: () => "local-gateway",
+            routePolicy: new GatewayPackageUpdateRoutePolicy([PreviousVersion]));
+
+        var result = await coordinator.UpdateAsync(EligiblePlan());
+
+        Assert.Equal(GatewayVersionAlignmentState.Updated, result.State);
+        Assert.Equal(2, synchronizations);
+        var point = Assert.Single(manager.List());
+        Assert.Equal(GatewayUpdateProtectionMode.NativeBackup, point.ProtectionMode);
+        Assert.Equal(GatewayRollbackPointPhase.PostUpdateHealthy, point.Phase);
+        Assert.False(point.RestoreEligible);
+        Assert.True(point.ApproximateSizeBytes > 0);
+        Assert.DoesNotContain(runner.Calls, call => call.Kind == "terminate");
+        Assert.DoesNotContain(runner.Calls, call =>
+            call.Kind == "direct" && call.Arguments.Contains("--export"));
+        Assert.Collection(
+            updateRpc.Calls,
+            call => Assert.Equal("update.run", call.Method),
+            call => Assert.Equal("update.complete", call.Method));
+    }
+
+    [Theory]
+    [InlineData("2026.6.11", GatewayUpdateProtectionMode.FullVhd)]
+    [InlineData("2026.7.2-beta.3", GatewayUpdateProtectionMode.FullVhd)]
+    [InlineData("2026.7.2", GatewayUpdateProtectionMode.NativeBackup)]
+    [InlineData("2026.7.22+companion.1", GatewayUpdateProtectionMode.NativeBackup)]
+    public void ResolveProtectionMode_UsesFullVhdUntilNativeBackupCliIsAvailable(
+        string sourceVersion,
+        GatewayUpdateProtectionMode expected)
+    {
+        var runner = new FakeWslCommandRunner();
+        var coordinator = CreateCoordinator(
+            runner,
+            protectionMode: GatewayUpdateProtectionMode.NativeBackup);
+
+        Assert.Equal(expected, coordinator.ResolveProtectionMode(sourceVersion));
+    }
+
+    [Fact]
+    public async Task ResolveNativeRecovery_PreUpdateVersionHealthyClosesReceiptWithoutVhdMutation()
+    {
+        var runner = new FakeWslCommandRunner();
+        var manager = CreateManager(runner);
+        EnqueueNativeBackupAttestation(runner, PreviousVersion);
+        var created = await manager.CreateVerifiedAsync(
+            "OpenClawGateway",
+            "local-gateway",
+            PreviousVersion,
+            RequiredVersion,
+            GatewayUpdateProtectionMode.NativeBackup);
+        manager.ArmUpdateDispatch(
+            created.Point!.Id,
+            GatewayPackageTarget.Official(RequiredVersion),
+            GatewayPackageUpdateRoute.CompanionInstaller,
+            requestId: null);
+        manager.MarkInstallerDispatchAccepted(created.Point.Id);
+        manager.MarkUpdateInProgress(created.Point.Id);
+        runner.ClearCalls();
+        runner.EnqueueDistro(Ok(PreviousVersion));
+        EnqueuePendingAttestation(runner, PreviousVersion);
+        EnqueuePendingAttestation(runner, PreviousVersion);
+        var synchronizations = 0;
+        var coordinator = new GatewayVersionAlignmentCoordinator(
+            runner,
+            GatewayPackageTarget.Official(RequiredVersion),
+            manager,
+            (_, _) =>
+            {
+                synchronizations++;
+                return Task.CompletedTask;
+            },
+            gatewayRequestAsync: new FakeGatewayUpdateRpc().SendAsync,
+            connectedGatewayId: () => "local-gateway",
+            routePolicy: new GatewayPackageUpdateRoutePolicy([PreviousVersion]),
+            protectionModeResolver: () => GatewayUpdateProtectionMode.NativeBackup);
+
+        var result = await coordinator.ResolveNativeRecoveryAsync(
+            EligiblePlan(),
+            created.Point.Id,
+            created.Point.Id);
+
+        Assert.Equal(GatewayVersionAlignmentState.RecoveryResolved, result.State);
+        Assert.Equal(PreviousVersion, result.InstalledVersion);
+        Assert.Equal(1, synchronizations);
+        Assert.Equal(
+            GatewayRollbackPointPhase.RecoveryResolved,
+            Assert.Single(manager.List()).Phase);
+        Assert.Empty(manager.FindPendingUpdates());
+        Assert.DoesNotContain(runner.Calls, call => call.Kind == "terminate");
+        Assert.Equal(0, runner.UnregisterCalls);
+        Assert.DoesNotContain(runner.Calls, call =>
+            call.Kind == "direct" &&
+            (call.Arguments.Contains("--export") || call.Arguments.Contains("--import-in-place")));
+    }
+
+    [Fact]
+    public async Task ResolveNativeRecovery_AllowsReceiptFromReplacedGatewayRecord()
+    {
+        var runner = new FakeWslCommandRunner();
+        var manager = CreateManager(runner);
+        EnqueueNativeBackupAttestation(runner, PreviousVersion);
+        var created = await manager.CreateVerifiedAsync(
+            "OpenClawGateway",
+            "previous-gateway-record",
+            PreviousVersion,
+            RequiredVersion,
+            GatewayUpdateProtectionMode.NativeBackup);
+        manager.ArmUpdateDispatch(
+            created.Point!.Id,
+            GatewayPackageTarget.Official(RequiredVersion),
+            GatewayPackageUpdateRoute.CompanionInstaller,
+            requestId: null);
+        manager.MarkInstallerDispatchAccepted(created.Point.Id);
+        runner.ClearCalls();
+        runner.EnqueueDistro(Ok(PreviousVersion));
+        EnqueuePendingAttestation(runner, PreviousVersion);
+        EnqueuePendingAttestation(runner, PreviousVersion);
+        var coordinator = new GatewayVersionAlignmentCoordinator(
+            runner,
+            GatewayPackageTarget.Official(RequiredVersion),
+            manager,
+            gatewayRequestAsync: new FakeGatewayUpdateRpc().SendAsync,
+            connectedGatewayId: () => "local-gateway",
+            routePolicy: new GatewayPackageUpdateRoutePolicy([PreviousVersion]),
+            protectionModeResolver: () => GatewayUpdateProtectionMode.NativeBackup);
+
+        var result = await coordinator.ResolveNativeRecoveryAsync(
+            EligiblePlan(),
+            created.Point.Id,
+            created.Point.Id);
+
+        Assert.Equal(GatewayVersionAlignmentState.RecoveryResolved, result.State);
+        Assert.Equal(
+            GatewayRollbackPointPhase.RecoveryResolved,
+            Assert.Single(manager.List()).Phase);
+        Assert.Empty(manager.FindPendingUpdates());
+    }
+
+    [Fact]
+    public async Task ResolveNativeRecovery_AcceptedCoreTransactionBlocksAfterGatewayReplacement()
+    {
+        var runner = new FakeWslCommandRunner();
+        var manager = CreateManager(runner);
+        EnqueueNativeBackupAttestation(runner, PreviousVersion);
+        var created = await manager.CreateVerifiedAsync(
+            "OpenClawGateway",
+            "previous-gateway-record",
+            PreviousVersion,
+            RequiredVersion,
+            GatewayUpdateProtectionMode.NativeBackup);
+        const string requestId = "windows-companion-native-recovery";
+        manager.ArmUpdateDispatch(
+            created.Point!.Id,
+            GatewayPackageTarget.Official(RequiredVersion),
+            GatewayPackageUpdateRoute.CoreTransaction,
+            requestId);
+        manager.RecordCoreUpdateAccepted(
+            created.Point.Id,
+            $"transaction-{requestId}",
+            new DateTimeOffset(2030, 1, 1, 0, 0, 0, TimeSpan.Zero));
+        runner.ClearCalls();
+        runner.EnqueueDistro(Ok(PreviousVersion));
+        EnqueuePendingAttestation(runner, PreviousVersion);
+        EnqueuePendingAttestation(runner, PreviousVersion);
+        var updateRpc = new FakeGatewayUpdateRpc();
+        var coordinator = new GatewayVersionAlignmentCoordinator(
+            runner,
+            GatewayPackageTarget.Official(RequiredVersion),
+            manager,
+            gatewayRequestAsync: updateRpc.SendAsync,
+            connectedGatewayId: () => "replacement-gateway-record",
+            routePolicy: new GatewayPackageUpdateRoutePolicy([PreviousVersion]),
+            utcNow: () => new DateTimeOffset(2026, 7, 25, 12, 0, 0, TimeSpan.Zero),
+            protectionModeResolver: () => GatewayUpdateProtectionMode.NativeBackup);
+
+        var result = await coordinator.ResolveNativeRecoveryAsync(
+            EligiblePlan() with { GatewayId = "replacement-gateway-record" },
+            created.Point.Id,
+            created.Point.Id);
+
+        Assert.Equal(GatewayVersionAlignmentState.RecoveryAvailable, result.State);
+        Assert.Contains("Gateway", result.FailureSummary, StringComparison.OrdinalIgnoreCase);
+        Assert.Empty(updateRpc.Calls);
+        var receipt = Assert.Single(ReadOwnedManifests());
+        Assert.Null(receipt.UpdateCompletionState);
+        Assert.Equal(GatewayRollbackPointPhase.UpdateInProgress, receipt.Phase);
+    }
+
+    [Fact]
+    public async Task ResolveNativeRecovery_CoreCompletionFailurePreservesPendingReceipt()
+    {
+        var runner = new FakeWslCommandRunner();
+        var manager = CreateManager(runner);
+        EnqueueNativeBackupAttestation(runner, PreviousVersion);
+        var created = await manager.CreateVerifiedAsync(
+            "OpenClawGateway",
+            "local-gateway",
+            PreviousVersion,
+            RequiredVersion,
+            GatewayUpdateProtectionMode.NativeBackup);
+        const string requestId = "windows-companion-native-recovery-failure";
+        manager.ArmUpdateDispatch(
+            created.Point!.Id,
+            GatewayPackageTarget.Official(RequiredVersion),
+            GatewayPackageUpdateRoute.CoreTransaction,
+            requestId);
+        manager.RecordCoreUpdateAccepted(
+            created.Point.Id,
+            $"transaction-{requestId}",
+            new DateTimeOffset(2030, 1, 1, 0, 0, 0, TimeSpan.Zero));
+        runner.ClearCalls();
+        runner.EnqueueDistro(Ok(PreviousVersion));
+        EnqueuePendingAttestation(runner, PreviousVersion);
+        var updateRpc = new FakeGatewayUpdateRpc();
+        updateRpc.Enqueue((_, _, _, _, _) =>
+            Task.FromException<JsonElement>(new InvalidOperationException("completion failed")));
+        var coordinator = new GatewayVersionAlignmentCoordinator(
+            runner,
+            GatewayPackageTarget.Official(RequiredVersion),
+            manager,
+            gatewayRequestAsync: updateRpc.SendAsync,
+            connectedGatewayId: () => "local-gateway",
+            routePolicy: new GatewayPackageUpdateRoutePolicy([PreviousVersion]),
+            utcNow: () => new DateTimeOffset(2026, 7, 25, 12, 0, 0, TimeSpan.Zero),
+            protectionModeResolver: () => GatewayUpdateProtectionMode.NativeBackup);
+
+        var result = await coordinator.ResolveNativeRecoveryAsync(
+            EligiblePlan(),
+            created.Point.Id,
+            created.Point.Id);
+
+        Assert.Equal(GatewayVersionAlignmentState.RecoveryAvailable, result.State);
+        Assert.Contains("Core did not accept failed completion", result.FailureSummary, StringComparison.Ordinal);
+        Assert.Equal(
+            GatewayRollbackPointPhase.UpdateInProgress,
+            Assert.Single(manager.List()).Phase);
+        Assert.Single(manager.FindPendingUpdates());
+        Assert.Equal(
+            GatewayUpdateCompletionState.Ambiguous,
+            Assert.Single(ReadOwnedManifests()).UpdateCompletionState);
+    }
+
+    [Fact]
+    public async Task ResolveNativeRecovery_PostSynchronizationDriftPreservesPendingReceipt()
+    {
+        var runner = new FakeWslCommandRunner();
+        var manager = CreateManager(runner);
+        EnqueueNativeBackupAttestation(runner, PreviousVersion);
+        var created = await manager.CreateVerifiedAsync(
+            "OpenClawGateway",
+            "local-gateway",
+            PreviousVersion,
+            RequiredVersion,
+            GatewayUpdateProtectionMode.NativeBackup);
+        manager.ArmUpdateDispatch(
+            created.Point!.Id,
+            GatewayPackageTarget.Official(RequiredVersion),
+            GatewayPackageUpdateRoute.CompanionInstaller,
+            requestId: null);
+        manager.MarkInstallerDispatchAccepted(created.Point.Id);
+        runner.ClearCalls();
+        runner.EnqueueDistro(Ok(PreviousVersion));
+        EnqueuePendingAttestation(runner, PreviousVersion);
+        runner.EnqueueDistro(Ok("fedcba9876543210fedcba9876543210"));
+        var coordinator = new GatewayVersionAlignmentCoordinator(
+            runner,
+            GatewayPackageTarget.Official(RequiredVersion),
+            manager,
+            gatewayRequestAsync: new FakeGatewayUpdateRpc().SendAsync,
+            connectedGatewayId: () => "local-gateway",
+            routePolicy: new GatewayPackageUpdateRoutePolicy([PreviousVersion]),
+            protectionModeResolver: () => GatewayUpdateProtectionMode.NativeBackup);
+
+        var result = await coordinator.ResolveNativeRecoveryAsync(
+            EligiblePlan(),
+            created.Point.Id,
+            created.Point.Id);
+
+        Assert.Equal(GatewayVersionAlignmentState.VerificationFailed, result.State);
+        Assert.Contains("changed after synchronization", result.FailureSummary, StringComparison.Ordinal);
+        Assert.Equal(
+            GatewayRollbackPointPhase.UpdateInProgress,
+            Assert.Single(manager.List()).Phase);
+        Assert.Single(manager.FindPendingUpdates());
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task ResolveNativeRecovery_UncertainInstallerDispatchPreservesPendingReceipt(
+        bool ambiguous)
+    {
+        var runner = new FakeWslCommandRunner();
+        var manager = CreateManager(runner);
+        EnqueueNativeBackupAttestation(runner, PreviousVersion);
+        var created = await manager.CreateVerifiedAsync(
+            "OpenClawGateway",
+            "local-gateway",
+            PreviousVersion,
+            RequiredVersion,
+            GatewayUpdateProtectionMode.NativeBackup);
+        manager.ArmUpdateDispatch(
+            created.Point!.Id,
+            GatewayPackageTarget.Official(RequiredVersion),
+            GatewayPackageUpdateRoute.CompanionInstaller,
+            requestId: null);
+        if (ambiguous)
+            manager.MarkUpdateDispatchAmbiguous(created.Point.Id);
+        runner.ClearCalls();
+        runner.EnqueueDistro(Ok(PreviousVersion));
+        EnqueuePendingAttestation(runner, PreviousVersion);
+        runner.EnqueueDistro(Ok(PreviousVersion));
+        EnqueuePendingAttestation(runner, PreviousVersion);
+        var coordinator = new GatewayVersionAlignmentCoordinator(
+            runner,
+            GatewayPackageTarget.Official(RequiredVersion),
+            manager,
+            gatewayRequestAsync: new FakeGatewayUpdateRpc().SendAsync,
+            connectedGatewayId: () => "local-gateway",
+            routePolicy: new GatewayPackageUpdateRoutePolicy([PreviousVersion]),
+            protectionModeResolver: () => GatewayUpdateProtectionMode.NativeBackup);
+
+        var result = await coordinator.ResolveNativeRecoveryAsync(
+            EligiblePlan(),
+            created.Point.Id,
+            created.Point.Id);
+
+        Assert.Equal(GatewayVersionAlignmentState.RecoveryAvailable, result.State);
+        Assert.Contains(
+            ambiguous ? "Ambiguous" : "Prepared",
+            result.FailureSummary,
+            StringComparison.Ordinal);
+        Assert.Equal(
+            GatewayRollbackPointPhase.UpdateInProgress,
+            Assert.Single(manager.List()).Phase);
+        Assert.Single(manager.FindPendingUpdates());
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task ResolveNativeRecovery_SettledNeverStartedInstallerDispatchIsCancelled(
+        bool ambiguous)
+    {
+        var armedAt = new DateTimeOffset(2026, 7, 25, 12, 0, 0, TimeSpan.Zero);
+        var runner = new FakeWslCommandRunner();
+        var manager = CreateManager(runner, () => armedAt);
+        EnqueueNativeBackupAttestation(runner, PreviousVersion);
+        var created = await manager.CreateVerifiedAsync(
+            "OpenClawGateway",
+            "local-gateway",
+            PreviousVersion,
+            RequiredVersion,
+            GatewayUpdateProtectionMode.NativeBackup);
+        manager.ArmUpdateDispatch(
+            created.Point!.Id,
+            GatewayPackageTarget.Official(RequiredVersion),
+            GatewayPackageUpdateRoute.CompanionInstaller,
+            requestId: null);
+        if (ambiguous)
+            manager.MarkUpdateDispatchAmbiguous(created.Point.Id);
+        runner.ClearCalls();
+        runner.EnqueueDistro(Ok(PreviousVersion));
+        EnqueuePendingAttestation(runner, PreviousVersion);
+        runner.EnqueueDistro(Ok(PreviousVersion));
+        EnqueuePendingAttestation(runner, PreviousVersion);
+        runner.EnqueueDistro(Ok());
+        EnqueuePendingAttestation(runner, PreviousVersion);
+        var coordinator = new GatewayVersionAlignmentCoordinator(
+            runner,
+            GatewayPackageTarget.Official(RequiredVersion),
+            manager,
+            gatewayRequestAsync: new FakeGatewayUpdateRpc().SendAsync,
+            connectedGatewayId: () => "local-gateway",
+            routePolicy: new GatewayPackageUpdateRoutePolicy([PreviousVersion]),
+            utcNow: () => armedAt.AddMinutes(3),
+            protectionModeResolver: () => GatewayUpdateProtectionMode.NativeBackup);
+
+        var result = await coordinator.ResolveNativeRecoveryAsync(
+            EligiblePlan(),
+            created.Point.Id,
+            created.Point.Id);
+
+        Assert.Equal(GatewayVersionAlignmentState.RecoveryResolved, result.State);
+        var receipt = Assert.Single(ReadOwnedManifests());
+        Assert.Equal(GatewayRollbackPointPhase.RecoveryResolved, receipt.Phase);
+        Assert.Equal(GatewayUpdateDispatchState.Cancelled, receipt.UpdateDispatchState);
+        Assert.Single(runner.Calls, call => call.Kind == "terminate");
+        Assert.Contains(
+            runner.Calls,
+            call => call.Kind == "distro" &&
+                    call.Arguments.SequenceEqual(
+                        GatewayVersionAlignmentCommandBuilder.BuildInstallerNotStartedProbe(created.Point.Id)));
+    }
+
+    [Fact]
+    public async Task ResolveNativeRecovery_StartedInstallerPreservesPendingReceipt()
+    {
+        var armedAt = new DateTimeOffset(2026, 7, 25, 12, 0, 0, TimeSpan.Zero);
+        var runner = new FakeWslCommandRunner();
+        var manager = CreateManager(runner, () => armedAt);
+        EnqueueNativeBackupAttestation(runner, PreviousVersion);
+        var created = await manager.CreateVerifiedAsync(
+            "OpenClawGateway",
+            "local-gateway",
+            PreviousVersion,
+            RequiredVersion,
+            GatewayUpdateProtectionMode.NativeBackup);
+        manager.ArmUpdateDispatch(
+            created.Point!.Id,
+            GatewayPackageTarget.Official(RequiredVersion),
+            GatewayPackageUpdateRoute.CompanionInstaller,
+            requestId: null);
+        runner.ClearCalls();
+        runner.EnqueueDistro(Ok(PreviousVersion));
+        EnqueuePendingAttestation(runner, PreviousVersion);
+        runner.EnqueueDistro(Ok(PreviousVersion));
+        EnqueuePendingAttestation(runner, PreviousVersion);
+        runner.EnqueueDistro(new WslCommandResult(1, string.Empty, string.Empty));
+        var synchronizations = 0;
+        var coordinator = new GatewayVersionAlignmentCoordinator(
+            runner,
+            GatewayPackageTarget.Official(RequiredVersion),
+            manager,
+            (_, _) =>
+            {
+                synchronizations++;
+                return Task.CompletedTask;
+            },
+            gatewayRequestAsync: new FakeGatewayUpdateRpc().SendAsync,
+            connectedGatewayId: () => "local-gateway",
+            routePolicy: new GatewayPackageUpdateRoutePolicy([PreviousVersion]),
+            utcNow: () => armedAt.AddMinutes(3),
+            protectionModeResolver: () => GatewayUpdateProtectionMode.NativeBackup);
+
+        var result = await coordinator.ResolveNativeRecoveryAsync(
+            EligiblePlan(),
+            created.Point.Id,
+            created.Point.Id);
+
+        Assert.Equal(GatewayVersionAlignmentState.RecoveryAvailable, result.State);
+        Assert.Contains("started before interruption", result.FailureSummary, StringComparison.Ordinal);
+        Assert.Equal(0, synchronizations);
+        Assert.Single(runner.Calls, call => call.Kind == "terminate");
+        var receipt = Assert.Single(ReadOwnedManifests());
+        Assert.Equal(GatewayRollbackPointPhase.UpdateInProgress, receipt.Phase);
+        Assert.Equal(GatewayUpdateDispatchState.Prepared, receipt.UpdateDispatchState);
+    }
+
+    [Fact]
+    public async Task ResolveNativeRecovery_OwnershipDriftBlocksBeforeDistroTermination()
+    {
+        var armedAt = new DateTimeOffset(2026, 7, 25, 12, 0, 0, TimeSpan.Zero);
+        var runner = new FakeWslCommandRunner();
+        var manager = CreateManager(runner, () => armedAt);
+        EnqueueNativeBackupAttestation(runner, PreviousVersion);
+        var created = await manager.CreateVerifiedAsync(
+            "OpenClawGateway",
+            "local-gateway",
+            PreviousVersion,
+            RequiredVersion,
+            GatewayUpdateProtectionMode.NativeBackup);
+        manager.ArmUpdateDispatch(
+            created.Point!.Id,
+            GatewayPackageTarget.Official(RequiredVersion),
+            GatewayPackageUpdateRoute.CompanionInstaller,
+            requestId: null);
+        runner.RegisteredBasePath = Path.Combine(_tempRoot, "wsl", "replacement");
+        runner.ClearCalls();
+        runner.EnqueueDistro(Ok(PreviousVersion));
+        var coordinator = new GatewayVersionAlignmentCoordinator(
+            runner,
+            GatewayPackageTarget.Official(RequiredVersion),
+            manager,
+            gatewayRequestAsync: new FakeGatewayUpdateRpc().SendAsync,
+            connectedGatewayId: () => "local-gateway",
+            routePolicy: new GatewayPackageUpdateRoutePolicy([PreviousVersion]),
+            utcNow: () => armedAt.AddMinutes(3),
+            protectionModeResolver: () => GatewayUpdateProtectionMode.NativeBackup);
+
+        var result = await coordinator.ResolveNativeRecoveryAsync(
+            EligiblePlan(),
+            created.Point.Id,
+            created.Point.Id);
+
+        Assert.Equal(GatewayVersionAlignmentState.VerificationFailed, result.State);
+        Assert.Contains("re-attested", result.FailureSummary, StringComparison.Ordinal);
+        Assert.DoesNotContain(runner.Calls, call => call.Kind == "terminate");
+        var receipt = Assert.Single(ReadOwnedManifests());
+        Assert.Equal(GatewayRollbackPointPhase.UpdateInProgress, receipt.Phase);
+        Assert.Equal(GatewayUpdateDispatchState.Prepared, receipt.UpdateDispatchState);
+    }
+
+    [Fact]
+    public async Task ResolveNativeRecovery_MultiplePendingReceiptsBlocksBeforeMutation()
+    {
+        var runner = new FakeWslCommandRunner();
+        var manager = CreateManager(runner);
+        EnqueueNativeBackupAttestation(runner, PreviousVersion);
+        var first = await manager.CreateVerifiedAsync(
+            "OpenClawGateway",
+            "first-gateway-record",
+            PreviousVersion,
+            RequiredVersion,
+            GatewayUpdateProtectionMode.NativeBackup);
+        EnqueueNativeBackupAttestation(runner, PreviousVersion);
+        var second = await manager.CreateVerifiedAsync(
+            "OpenClawGateway",
+            "second-gateway-record",
+            PreviousVersion,
+            RequiredVersion,
+            GatewayUpdateProtectionMode.NativeBackup);
+        foreach (var point in new[] { first.Point!, second.Point! })
+        {
+            manager.ArmUpdateDispatch(
+                point.Id,
+                GatewayPackageTarget.Official(RequiredVersion),
+                GatewayPackageUpdateRoute.CompanionInstaller,
+                requestId: null);
+        }
+        runner.ClearCalls();
+        var coordinator = new GatewayVersionAlignmentCoordinator(
+            runner,
+            GatewayPackageTarget.Official(RequiredVersion),
+            manager,
+            gatewayRequestAsync: new FakeGatewayUpdateRpc().SendAsync,
+            connectedGatewayId: () => "local-gateway",
+            routePolicy: new GatewayPackageUpdateRoutePolicy([PreviousVersion]),
+            protectionModeResolver: () => GatewayUpdateProtectionMode.NativeBackup);
+
+        var result = await coordinator.ResolveNativeRecoveryAsync(
+            EligiblePlan(),
+            first.Point!.Id,
+            first.Point.Id);
+
+        Assert.Equal(GatewayVersionAlignmentState.RecoveryAvailable, result.State);
+        Assert.Contains("ambiguous", result.FailureSummary, StringComparison.OrdinalIgnoreCase);
+        Assert.Empty(runner.Calls);
+        Assert.All(ReadOwnedManifests(), receipt =>
+        {
+            Assert.Equal(GatewayRollbackPointPhase.UpdateInProgress, receipt.Phase);
+            Assert.Equal(GatewayUpdateDispatchState.Prepared, receipt.UpdateDispatchState);
+        });
+    }
+
+    [Fact]
+    public async Task ResolveNativeRecovery_SettledUncertainInstallerAtTargetFinalizesAfterDistroStop()
+    {
+        var armedAt = new DateTimeOffset(2026, 7, 25, 12, 0, 0, TimeSpan.Zero);
+        var runner = new FakeWslCommandRunner();
+        var manager = CreateManager(runner, () => armedAt);
+        EnqueueNativeBackupAttestation(runner, PreviousVersion);
+        var created = await manager.CreateVerifiedAsync(
+            "OpenClawGateway",
+            "local-gateway",
+            PreviousVersion,
+            RequiredVersion,
+            GatewayUpdateProtectionMode.NativeBackup);
+        manager.ArmUpdateDispatch(
+            created.Point!.Id,
+            GatewayPackageTarget.Official(RequiredVersion),
+            GatewayPackageUpdateRoute.CompanionInstaller,
+            requestId: null);
+        runner.ClearCalls();
+        runner.EnqueueDistro(Ok(RequiredVersion));
+        EnqueuePendingAttestation(runner, RequiredVersion);
+        runner.EnqueueDistro(Ok(RequiredVersion));
+        EnqueuePendingAttestation(runner, RequiredVersion);
+        EnqueuePendingAttestation(runner, RequiredVersion);
+        var synchronizations = 0;
+        var coordinator = new GatewayVersionAlignmentCoordinator(
+            runner,
+            GatewayPackageTarget.Official(RequiredVersion),
+            manager,
+            (_, _) =>
+            {
+                synchronizations++;
+                return Task.CompletedTask;
+            },
+            gatewayRequestAsync: new FakeGatewayUpdateRpc().SendAsync,
+            connectedGatewayId: () => "local-gateway",
+            routePolicy: new GatewayPackageUpdateRoutePolicy([PreviousVersion]),
+            utcNow: () => armedAt.AddMinutes(3),
+            protectionModeResolver: () => GatewayUpdateProtectionMode.NativeBackup);
+
+        var result = await coordinator.ResolveNativeRecoveryAsync(
+            EligiblePlan(),
+            created.Point.Id,
+            created.Point.Id);
+
+        Assert.Equal(GatewayVersionAlignmentState.Updated, result.State);
+        Assert.Equal(1, synchronizations);
+        Assert.Single(runner.Calls, call => call.Kind == "terminate");
+        Assert.DoesNotContain(
+            runner.Calls,
+            call => call.Kind == "distro" &&
+                    call.Arguments.SequenceEqual(
+                        GatewayVersionAlignmentCommandBuilder.BuildInstallerNotStartedProbe(created.Point.Id)));
+        var receipt = Assert.Single(ReadOwnedManifests());
+        Assert.Equal(GatewayRollbackPointPhase.PostUpdateHealthy, receipt.Phase);
+        Assert.Equal(GatewayUpdateDispatchState.Accepted, receipt.UpdateDispatchState);
+    }
+
+    [Fact]
+    public async Task ResolveNativeRecovery_HistoricalInstalledTargetDoesNotClaimCurrentAlignment()
+    {
+        const string historicalTarget = "2026.7.22+companion.1";
+        var runner = new FakeWslCommandRunner();
+        var manager = CreateManager(runner);
+        EnqueueNativeBackupAttestation(runner, PreviousVersion);
+        var created = await manager.CreateVerifiedAsync(
+            "OpenClawGateway",
+            "local-gateway",
+            PreviousVersion,
+            historicalTarget,
+            GatewayUpdateProtectionMode.NativeBackup);
+        manager.ArmUpdateDispatch(
+            created.Point!.Id,
+            GatewayPackageTarget.Official(historicalTarget),
+            GatewayPackageUpdateRoute.CompanionInstaller,
+            requestId: null);
+        manager.MarkInstallerDispatchAccepted(created.Point.Id);
+        runner.ClearCalls();
+        runner.EnqueueDistro(Ok(historicalTarget));
+        EnqueuePendingAttestation(runner, historicalTarget);
+        EnqueuePendingAttestation(runner, historicalTarget);
+        var synchronizations = 0;
+        var coordinator = new GatewayVersionAlignmentCoordinator(
+            runner,
+            GatewayPackageTarget.Official(RequiredVersion),
+            manager,
+            (_, _) =>
+            {
+                synchronizations++;
+                return Task.CompletedTask;
+            },
+            gatewayRequestAsync: new FakeGatewayUpdateRpc().SendAsync,
+            connectedGatewayId: () => "local-gateway",
+            routePolicy: new GatewayPackageUpdateRoutePolicy([PreviousVersion]),
+            protectionModeResolver: () => GatewayUpdateProtectionMode.NativeBackup);
+
+        var result = await coordinator.ResolveNativeRecoveryAsync(
+            EligiblePlan(),
+            created.Point.Id,
+            created.Point.Id);
+
+        Assert.Equal(GatewayVersionAlignmentState.RecoveryResolved, result.State);
+        Assert.Equal(historicalTarget, result.InstalledVersion);
+        Assert.Equal(1, synchronizations);
+        Assert.Equal(
+            GatewayRollbackPointPhase.RecoveryResolved,
+            Assert.Single(manager.List()).Phase);
+        Assert.Empty(manager.FindPendingUpdates());
+    }
+
+    [Fact]
+    public async Task ResolveNativeRecovery_UnexpectedVersionPreservesPendingReceipt()
+    {
+        const string unexpectedVersion = "2026.7.20+companion.9";
+        var runner = new FakeWslCommandRunner();
+        var manager = CreateManager(runner);
+        EnqueueNativeBackupAttestation(runner, PreviousVersion);
+        var created = await manager.CreateVerifiedAsync(
+            "OpenClawGateway",
+            "local-gateway",
+            PreviousVersion,
+            RequiredVersion,
+            GatewayUpdateProtectionMode.NativeBackup);
+        manager.ArmUpdateDispatch(
+            created.Point!.Id,
+            GatewayPackageTarget.Official(RequiredVersion),
+            GatewayPackageUpdateRoute.CompanionInstaller,
+            requestId: null);
+        manager.MarkInstallerDispatchAccepted(created.Point.Id);
+        manager.MarkUpdateInProgress(created.Point.Id);
+        runner.ClearCalls();
+        runner.EnqueueDistro(Ok(unexpectedVersion));
+        var synchronizations = 0;
+        var coordinator = new GatewayVersionAlignmentCoordinator(
+            runner,
+            GatewayPackageTarget.Official(RequiredVersion),
+            manager,
+            (_, _) =>
+            {
+                synchronizations++;
+                return Task.CompletedTask;
+            },
+            gatewayRequestAsync: new FakeGatewayUpdateRpc().SendAsync,
+            connectedGatewayId: () => "local-gateway",
+            routePolicy: new GatewayPackageUpdateRoutePolicy([PreviousVersion]),
+            protectionModeResolver: () => GatewayUpdateProtectionMode.NativeBackup);
+
+        var result = await coordinator.ResolveNativeRecoveryAsync(
+            EligiblePlan(),
+            created.Point.Id,
+            created.Point.Id);
+
+        Assert.Equal(GatewayVersionAlignmentState.VerificationFailed, result.State);
+        Assert.Equal(unexpectedVersion, result.InstalledVersion);
+        Assert.Equal(0, synchronizations);
+        Assert.Equal(
+            GatewayRollbackPointPhase.UpdateInProgress,
+            Assert.Single(manager.List()).Phase);
+        Assert.Single(manager.FindPendingUpdates());
+        Assert.DoesNotContain(runner.Calls, call => call.Kind == "terminate");
+        Assert.Equal(0, runner.UnregisterCalls);
+    }
+
+    [Theory]
+    [InlineData(1)]
+    [InlineData(2)]
+    [InlineData(3)]
+    [InlineData(4)]
+    [InlineData(5)]
+    [InlineData(6)]
+    [InlineData(7)]
+    public async Task NativeBackup_InvalidReceiptOrExitFailsClosedBeforeMutation(int failureKind)
+    {
+        var runner = new FakeWslCommandRunner();
+        runner.NativeBackupResponse = path => failureKind switch
+        {
+            1 => Ok("{not-json"),
+            2 => Ok(JsonSerializer.Serialize(new { archivePath = path, verified = false })),
+            4 => Ok(JsonSerializer.Serialize(new
+            {
+                archivePath = path + ".other",
+                verified = true,
+                sha256 = NativeBackupSha256,
+                sizeBytes = NativeBackupSizeBytes
+            })),
+            5 => Ok(JsonSerializer.Serialize(new
+            {
+                archivePath = path,
+                verified = true,
+                sha256 = NativeBackupSha256,
+                sizeBytes = NativeBackupSizeBytes
+            })),
+            6 => Ok(JsonSerializer.Serialize(new
+            {
+                archivePath = path,
+                verified = true,
+                sha256 = new string('0', 64),
+                sizeBytes = NativeBackupSizeBytes
+            })),
+            7 => Ok(JsonSerializer.Serialize(new
+            {
+                archivePath = path,
+                verified = true,
+                sha256 = NativeBackupSha256,
+                sizeBytes = NativeBackupSizeBytes + 1
+            })),
+            _ => new WslCommandResult(17, "", "backup failed")
+        };
+        if (failureKind == 5)
+            runner.NativeBackupTransferResult = new WslCommandResult(23, "", "transfer failed");
+        var manager = CreateManager(runner);
+        runner.EnqueueDistro(Ok("openclaw\n1000"));
+        runner.EnqueueDistro(Ok(MachineId));
+        runner.EnqueueDistro(Ok(PreviousVersion));
+
+        var result = await manager.CreateVerifiedAsync(
+            "OpenClawGateway",
+            "local-gateway",
+            PreviousVersion,
+            RequiredVersion,
+            GatewayUpdateProtectionMode.NativeBackup);
+
+        Assert.Equal(GatewayRollbackOperationState.VerificationFailed, result.State);
+        Assert.Equal(
+            failureKind switch
+            {
+                3 => "native_backup_command_failed",
+                5 => "native_backup_transfer_failed",
+                6 => "native_backup_hash_mismatch",
+                7 => "native_backup_size_mismatch",
+                _ => "native_backup_receipt_invalid"
+            },
+            result.FailureCode);
+        Assert.DoesNotContain(runner.Calls, call => call.Kind == "terminate");
+        Assert.DoesNotContain(runner.Calls, call =>
+            call.Kind == "direct" && call.Arguments.Contains("--export"));
+    }
+
+    [Fact]
+    public async Task NativeBackup_CannotEnterCompanionVhdRestoreLifecycle()
+    {
+        var runner = new FakeWslCommandRunner();
+        var manager = CreateManager(runner);
+        EnqueueNativeBackupAttestation(runner, PreviousVersion);
+        var created = await manager.CreateVerifiedAsync(
+            "OpenClawGateway",
+            "local-gateway",
+            PreviousVersion,
+            RequiredVersion,
+            GatewayUpdateProtectionMode.NativeBackup);
+        runner.ClearCalls();
+
+        var restored = await manager.RestoreExplicitAsync(
+            "OpenClawGateway",
+            "local-gateway",
+            created.Point!.Id,
+            created.Point.Id);
+
+        Assert.Equal(GatewayRollbackOperationState.VerificationFailed, restored.State);
+        Assert.Equal("point_not_vhd_restore_eligible", restored.FailureCode);
+        Assert.DoesNotContain(runner.Calls, call => call.Kind == "terminate");
+        Assert.Equal(0, runner.UnregisterCalls);
+        Assert.DoesNotContain(runner.Calls, call =>
+            call.Kind == "direct" && call.Arguments.Contains("--import-in-place"));
+    }
+
+    [Fact]
+    public void RetentionDefault_KeepsOnePreviousVersionAndSevenDays()
+    {
+        Assert.Equal(1, GatewayRollbackRetentionPolicy.Default.RetainPreviousVersions);
+        Assert.Equal(TimeSpan.FromDays(7), GatewayRollbackRetentionPolicy.Default.RetainYoungerThan);
+    }
+
+    [Fact]
+    public async Task FullVhd_PreflightsCapacityBeforeTerminateAndExport()
+    {
+        var runner = new FakeWslCommandRunner();
+        var manager = CreateManager(runner, availableFreeSpaceBytes: _ => 2L * 1024 * 1024 * 1024);
+        EnqueueCreateAttestation(runner, PreviousVersion);
+
+        var result = await manager.CreateVerifiedAsync(
+            "OpenClawGateway",
+            "local-gateway",
+            PreviousVersion,
+            RequiredVersion,
+            GatewayUpdateProtectionMode.FullVhd);
+
+        Assert.Equal(GatewayRollbackOperationState.Created, result.State);
+        Assert.Equal(GatewayUpdateProtectionMode.FullVhd, result.Point!.ProtectionMode);
+        var terminateIndex = runner.Calls.FindIndex(call => call.Kind == "terminate");
+        var exportIndex = runner.Calls.FindIndex(call =>
+            call.Kind == "direct" && call.Arguments.Contains("--export"));
+        var registrationIndex = runner.Calls.FindIndex(call => call.Kind == "registrations");
+        Assert.True(registrationIndex >= 0 && registrationIndex < terminateIndex);
+        Assert.True(terminateIndex >= 0 && terminateIndex < exportIndex);
+    }
+
+    [Fact]
+    public async Task FullVhd_InsufficientDiskFailsBeforeTerminate()
+    {
+        var runner = new FakeWslCommandRunner();
+        var manager = CreateManager(runner, availableFreeSpaceBytes: _ => 0);
+        runner.EnqueueDistro(Ok("openclaw\n1000"));
+        runner.EnqueueDistro(Ok(MachineId));
+        runner.EnqueueDistro(Ok(PreviousVersion));
+
+        var result = await manager.CreateVerifiedAsync(
+            "OpenClawGateway",
+            "local-gateway",
+            PreviousVersion,
+            RequiredVersion,
+            GatewayUpdateProtectionMode.FullVhd);
+
+        Assert.Equal(GatewayRollbackOperationState.VerificationFailed, result.State);
+        Assert.Equal("vhd_export_insufficient_space", result.FailureCode);
+        Assert.DoesNotContain(runner.Calls, call => call.Kind == "terminate");
+        Assert.DoesNotContain(runner.Calls, call =>
+            call.Kind == "direct" && call.Arguments.Contains("--export"));
+    }
+
     [Theory]
     [InlineData(GatewayRollbackPointPhase.RestoreStaged, true)]
     [InlineData(GatewayRollbackPointPhase.UnregisterPending, true)]
@@ -1654,6 +2726,7 @@ public sealed class GatewayVersionAlignmentCoordinatorTests : IDisposable
         Assert.Equal(GatewayVersionAlignmentState.VerificationFailed, update.State);
         Assert.Equal(GatewayRollbackOperationState.VerificationFailed, create.State);
         Assert.Equal("rollback_receipt_unreadable", create.FailureCode);
+        Assert.True(coordinator.HasUnreadableRollbackReceipt());
         Assert.Empty(runner.Calls);
     }
 
@@ -1911,8 +2984,93 @@ public sealed class GatewayVersionAlignmentCoordinatorTests : IDisposable
         Assert.Equal(1, runner.ConfigureCalls);
         Assert.Equal(new WslDistroConfiguration(2, 0, 5), runner.Configuration);
         Assert.Equal(1, syncCalls);
-        Assert.Equal(GatewayRollbackPointPhase.RestoreHealthy, Assert.Single(coordinator.ListRollbackPoints()).Phase);
-        Assert.DoesNotContain(coordinator.ListRollbackPoints(), point => point.Id == older.Id);
+        Assert.Equal(
+            GatewayRollbackPointPhase.RestoreHealthy,
+            coordinator.ListRollbackPoints().Single(point => point.Id == createdPointId).Phase);
+        Assert.Contains(coordinator.ListRollbackPoints(), point => point.Id == older.Id);
+    }
+
+    [Fact]
+    public async Task SchemaV3Manifest_RemainsVerifiableAndVhdRestoreable()
+    {
+        var runner = new FakeWslCommandRunner();
+        var manager = CreateManager(runner);
+        EnqueueCreateAttestation(runner, PreviousVersion);
+        var created = await manager.CreateVerifiedAsync(
+            "OpenClawGateway",
+            "local-gateway",
+            PreviousVersion,
+            RequiredVersion,
+            GatewayUpdateProtectionMode.FullVhd);
+        var manifestPath = Path.Combine(
+            _tempRoot,
+            "gateway-rollback-points",
+            "OpenClawGateway",
+            created.Point!.Id,
+            "manifest.json");
+        var manifestJson = JsonNode.Parse(File.ReadAllText(manifestPath))!.AsObject();
+        manifestJson["SchemaVersion"] = 3;
+        manifestJson.Remove("ProtectionMode");
+        manifestJson.Remove("NativeBackupSha256");
+        manifestJson.Remove("NativeBackupSizeBytes");
+        File.WriteAllText(manifestPath, manifestJson.ToJsonString(new JsonSerializerOptions { WriteIndented = true }));
+
+        Assert.True(await manager.VerifyAsync(created.Point.Id));
+
+        runner.ClearCalls();
+        WriteFakeVhd(Path.Combine(runner.InstallDirectory!, "ext4.vhdx"), marker: 221);
+        runner.EnqueueDistro(Ok(MachineId));
+        runner.EnqueueDistro(Ok(MachineId));
+        runner.EnqueueDistro(Ok("openclaw\n1000"));
+        var restored = await manager.RestoreExplicitAsync(
+            "OpenClawGateway",
+            "local-gateway",
+            created.Point.Id,
+            created.Point.Id);
+
+        Assert.Equal(GatewayRollbackOperationState.Restored, restored.State);
+        Assert.Equal(1, runner.UnregisterCalls);
+    }
+
+    [Theory]
+    [InlineData(GatewayUpdateProtectionMode.NativeBackup)]
+    [InlineData(GatewayUpdateProtectionMode.FullVhd)]
+    public async Task TransactionReceiptPersistsForBothProtectionModes(
+        GatewayUpdateProtectionMode protectionMode)
+    {
+        var runner = new FakeWslCommandRunner();
+        var manager = CreateManager(runner);
+        if (protectionMode == GatewayUpdateProtectionMode.NativeBackup)
+            EnqueueNativeBackupAttestation(runner, PreviousVersion);
+        else
+            EnqueueCreateAttestation(runner, PreviousVersion);
+        var created = await manager.CreateVerifiedAsync(
+            "OpenClawGateway",
+            "local-gateway",
+            PreviousVersion,
+            RequiredVersion,
+            protectionMode);
+        var requestId = $"request-{protectionMode}";
+
+        manager.ArmUpdateDispatch(
+            created.Point!.Id,
+            GatewayPackageTarget.Official(RequiredVersion),
+            GatewayPackageUpdateRoute.CoreTransaction,
+            requestId);
+        manager.RecordCoreUpdateAccepted(
+            created.Point.Id,
+            $"transaction-{protectionMode}",
+            new DateTimeOffset(2030, 1, 1, 0, 0, 0, TimeSpan.Zero));
+
+        var receipt = Assert.Single(manager.FindPendingUpdates());
+        Assert.Equal(protectionMode, receipt.ProtectionMode);
+        Assert.Equal(GatewayUpdateDispatchState.Accepted, receipt.UpdateDispatchState);
+        Assert.Equal(requestId, receipt.UpdateRequestId);
+        Assert.Equal($"transaction-{protectionMode}", receipt.UpdateTransactionId);
+        Assert.True(new GatewayVersionAlignmentCoordinator(
+            runner,
+            RequiredVersion,
+            manager).HasVerifiedPendingUpdate());
     }
 
     [Fact]
@@ -2125,6 +3283,28 @@ public sealed class GatewayVersionAlignmentCoordinatorTests : IDisposable
         Assert.Equal(0, runner.UnregisterCalls);
     }
 
+    [ReparsePointFact]
+    public async Task RestoreAsync_RejectsReparseBackedStagingRootBeforeUnregister()
+    {
+        var runner = new FakeWslCommandRunner();
+        var manager = CreateManager(runner);
+        EnqueueCreateAttestation(runner, PreviousVersion);
+        var created = await manager.CreateVerifiedAsync(
+            "OpenClawGateway", "local-gateway", PreviousVersion, RequiredVersion);
+        runner.ClearCalls();
+        var stagingRoot = Path.Combine(_tempRoot, "gateway-rollback-staging");
+        var redirected = Path.Combine(_tempRoot, "redirected-staging-root");
+        Directory.CreateDirectory(redirected);
+        Directory.CreateSymbolicLink(stagingRoot, redirected);
+
+        var result = await manager.RestoreExplicitAsync(
+            "OpenClawGateway", "local-gateway", created.Point!.Id, created.Point.Id);
+
+        Assert.Equal(GatewayRollbackOperationState.InstallPathCollision, result.State);
+        Assert.Equal("restore_path_reparse_boundary", result.FailureCode);
+        Assert.Equal(0, runner.UnregisterCalls);
+    }
+
     [Fact]
     public async Task RestoreAsync_RevalidatesStageImmediatelyBeforeUnregister()
     {
@@ -2330,12 +3510,102 @@ public sealed class GatewayVersionAlignmentCoordinatorTests : IDisposable
             "OpenClawGateway",
             failed.Point!.Id,
             "rollback.vhdx.partial");
+        var nativePartialPath = Path.Combine(
+            _tempRoot,
+            "gateway-rollback-points",
+            "OpenClawGateway",
+            failed.Point.Id,
+            "openclaw-backup.tar.gz.partial");
         WriteFakeVhd(partialPath);
+        File.WriteAllBytes(nativePartialPath, [1, 2, 3, 4]);
 
         await manager.CleanupAsync(GatewayRollbackRetentionPolicy.Default);
 
         Assert.False(File.Exists(partialPath));
+        Assert.False(File.Exists(nativePartialPath));
         Assert.Equal(failed.Point.Id, Assert.Single(manager.List()).Id);
+    }
+
+    [Fact]
+    public async Task Cleanup_PreservesFailedNativeArtifactForPendingUpdateReceipt()
+    {
+        var runner = new FakeWslCommandRunner();
+        var manager = CreateManager(runner);
+        EnqueueNativeBackupAttestation(runner, PreviousVersion);
+        var created = await manager.CreateVerifiedAsync(
+            "OpenClawGateway",
+            "local-gateway",
+            PreviousVersion,
+            RequiredVersion,
+            GatewayUpdateProtectionMode.NativeBackup);
+        manager.ArmUpdateDispatch(
+            created.Point!.Id,
+            GatewayPackageTarget.Official(RequiredVersion),
+            GatewayPackageUpdateRoute.CompanionInstaller,
+            requestId: null);
+        manager.MarkInstallerDispatchAccepted(created.Point.Id);
+        var archivePath = Path.Combine(
+            _tempRoot,
+            "gateway-rollback-points",
+            "OpenClawGateway",
+            created.Point.Id,
+            "openclaw-backup.tar.gz");
+        File.WriteAllBytes(archivePath, [9, 9, 9]);
+        Assert.False(await manager.VerifyAsync(created.Point.Id));
+
+        var removed = await manager.CleanupAsync(GatewayRollbackRetentionPolicy.Default);
+
+        Assert.Equal(0, removed);
+        Assert.True(File.Exists(archivePath));
+        var pending = Assert.Single(manager.FindPendingUpdates());
+        Assert.Equal(created.Point.Id, pending.Id);
+        Assert.Equal(GatewayRollbackPointVerificationStatus.Failed, pending.VerificationStatus);
+    }
+
+    [Fact]
+    public async Task NativeRecoveryAndCleanup_BlockUnreadableReceiptWithoutMutation()
+    {
+        var runner = new FakeWslCommandRunner();
+        var manager = CreateManager(runner);
+        EnqueueNativeBackupAttestation(runner, PreviousVersion);
+        var created = await manager.CreateVerifiedAsync(
+            "OpenClawGateway",
+            "local-gateway",
+            PreviousVersion,
+            RequiredVersion,
+            GatewayUpdateProtectionMode.NativeBackup);
+        manager.ArmUpdateDispatch(
+            created.Point!.Id,
+            GatewayPackageTarget.Official(RequiredVersion),
+            GatewayPackageUpdateRoute.CompanionInstaller,
+            requestId: null);
+        manager.MarkInstallerDispatchAccepted(created.Point.Id);
+        manager.MarkUpdateInProgress(created.Point.Id);
+
+        const string unreadablePointId = "20260726T120000000Z-0123456789abcdef0123456789abcdef";
+        Directory.CreateDirectory(Path.Combine(
+            _tempRoot,
+            "gateway-rollback-points",
+            "OpenClawGateway",
+            unreadablePointId));
+        runner.ClearCalls();
+        var coordinator = new GatewayVersionAlignmentCoordinator(runner, RequiredVersion, manager);
+
+        var recovery = await coordinator.ResolveNativeRecoveryAsync(
+            EligiblePlan(),
+            created.Point.Id,
+            created.Point.Id);
+        var cleanup = await manager.CleanupAsync(GatewayRollbackRetentionPolicy.Default);
+
+        Assert.Equal(GatewayVersionAlignmentState.VerificationFailed, recovery.State);
+        Assert.Contains("cannot be read", recovery.FailureSummary, StringComparison.OrdinalIgnoreCase);
+        Assert.Equal(0, cleanup);
+        Assert.Equal(
+            GatewayRollbackPointPhase.UpdateInProgress,
+            Assert.Single(manager.FindPendingUpdates()).Phase);
+        Assert.Empty(runner.Calls);
+        await Assert.ThrowsAsync<InvalidOperationException>(
+            () => coordinator.CleanupRollbackPointsAsync());
     }
 
     [Fact]
@@ -2354,6 +3624,31 @@ public sealed class GatewayVersionAlignmentCoordinatorTests : IDisposable
         Assert.Equal(GatewayVersionAlignmentState.Busy, duplicate.State);
         release.SetResult();
         Assert.Equal(GatewayVersionAlignmentState.Aligned, (await first).State);
+    }
+
+    [Fact]
+    public async Task CleanupRollbackPointsAsync_WaitsForActiveAlignmentOperation()
+    {
+        var runner = new FakeWslCommandRunner();
+        var started = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        runner.EnqueueDistro(async _ =>
+        {
+            started.SetResult();
+            await release.Task;
+            return Ok(RequiredVersion);
+        });
+        var coordinator = CreateCoordinator(runner);
+
+        var probe = coordinator.ProbeAsync(EligiblePlan());
+        await started.Task.WaitAsync(TimeSpan.FromSeconds(2));
+        var cleanup = coordinator.CleanupRollbackPointsAsync();
+
+        Assert.NotSame(cleanup, await Task.WhenAny(cleanup, Task.Delay(100)));
+        release.SetResult();
+
+        Assert.Equal(GatewayVersionAlignmentState.Aligned, (await probe).State);
+        Assert.Equal(0, await cleanup);
     }
 
     private void SetPointPhase(string pointId, GatewayRollbackPointPhase phase)
@@ -2408,7 +3703,8 @@ public sealed class GatewayVersionAlignmentCoordinatorTests : IDisposable
         Func<string, CancellationToken, Task>? synchronize = null,
         FakeGatewayUpdateRpc? updateRpc = null,
         Func<string?>? connectedGatewayId = null,
-        Func<DateTimeOffset>? clock = null)
+        Func<DateTimeOffset>? clock = null,
+        GatewayUpdateProtectionMode protectionMode = GatewayUpdateProtectionMode.FullVhd)
     {
         updateRpc ??= new FakeGatewayUpdateRpc();
         return new(
@@ -2419,15 +3715,21 @@ public sealed class GatewayVersionAlignmentCoordinatorTests : IDisposable
             gatewayRequestAsync: updateRpc.SendAsync,
             connectedGatewayId: connectedGatewayId ?? (() => "local-gateway"),
             routePolicy: new GatewayPackageUpdateRoutePolicy([PreviousVersion, LegacyVersion]),
-            utcNow: clock);
+            utcNow: clock,
+            protectionModeResolver: () => protectionMode);
     }
 
     private GatewayRollbackPointManager CreateManager(
         FakeWslCommandRunner runner,
-        Func<DateTimeOffset>? clock = null)
+        Func<DateTimeOffset>? clock = null,
+        Func<string, long>? availableFreeSpaceBytes = null)
     {
         runner.InstallDirectory = Path.Combine(_tempRoot, "wsl", "OpenClawGateway");
-        return new(runner, _tempRoot, "OpenClawGateway", clock);
+        Directory.CreateDirectory(runner.InstallDirectory);
+        var liveVhdPath = Path.Combine(runner.InstallDirectory, "ext4.vhdx");
+        if (!File.Exists(liveVhdPath))
+            WriteFakeVhd(liveVhdPath);
+        return new(runner, _tempRoot, "OpenClawGateway", clock, availableFreeSpaceBytes);
     }
 
     private static GatewayHostAccessPlan EligiblePlan() => new(
@@ -2469,6 +3771,16 @@ public sealed class GatewayVersionAlignmentCoordinatorTests : IDisposable
         runner.EnqueueDistro(Ok("openclaw\n1000"));
     }
 
+    private static void EnqueueNativeBackupAttestation(FakeWslCommandRunner runner, string version)
+    {
+        runner.EnqueueDistro(Ok("openclaw\n1000"));
+        runner.EnqueueDistro(Ok(MachineId));
+        runner.EnqueueDistro(Ok(version));
+        runner.EnqueueDistro(Ok(version));
+        runner.EnqueueDistro(Ok(MachineId));
+        runner.EnqueueDistro(Ok("openclaw\n1000"));
+    }
+
     private static void EnqueuePendingAttestation(FakeWslCommandRunner runner, string exactVersion)
     {
         runner.EnqueueDistro(Ok(MachineId));
@@ -2479,15 +3791,21 @@ public sealed class GatewayVersionAlignmentCoordinatorTests : IDisposable
     private static IReadOnlyList<string> UpdateCommand(string version) =>
         ["bash", "-lc", $"{WslGatewayControlCommandBuilder.OpenClawWslPathPrefix} && openclaw update --tag {version} --yes --json"];
 
-    private static IReadOnlyList<string> VerifiedInstallerCommand(GatewayPackageTarget target) =>
-        [
-            "bash",
-            "-lc",
-            $"{WslGatewayControlCommandBuilder.OpenClawWslPathPrefix} && " +
-            GatewayPackageInstallCommandBuilder.Build(
-                GatewayPackageInstallCommandBuilder.DefaultInstallUrl,
-                target)
-        ];
+    private static bool IsVerifiedInstallerCommand(
+        IReadOnlyList<string> command,
+        GatewayPackageTarget target)
+    {
+        if (command.Count != 3 || command[0] != "bash" || command[1] != "-lc")
+            return false;
+        var installer = GatewayPackageInstallCommandBuilder.Build(
+            GatewayPackageInstallCommandBuilder.DefaultInstallUrl,
+            target);
+        return command[2].StartsWith(
+                   $"{WslGatewayControlCommandBuilder.OpenClawWslPathPrefix} && mkdir -p \"$HOME/.local/state/openclaw-windows-companion/update-receipts\" ",
+                   StringComparison.Ordinal) &&
+               command[2].Contains(".started\" && sync -f \"", StringComparison.Ordinal) &&
+               command[2].EndsWith(installer, StringComparison.Ordinal);
+    }
 
     private static IReadOnlyList<string> ConfigCommand(string operation) =>
         ["bash", "-lc", $"{WslGatewayControlCommandBuilder.OpenClawWslPathPrefix} && openclaw config {operation}"];
@@ -2570,6 +3888,8 @@ public sealed class GatewayVersionAlignmentCoordinatorTests : IDisposable
         public Action? BeforeUnregister { get; set; }
         public Action? BeforeImport { get; set; }
         public Action? BeforeListRegistrations { get; set; }
+        public Func<string, WslCommandResult>? NativeBackupResponse { get; set; }
+        public WslCommandResult NativeBackupTransferResult { get; set; } = Ok();
 
         public void EnqueueDistro(WslCommandResult result) => EnqueueDistro(_ => Task.FromResult(result));
         public void EnqueueDistro(Func<CancellationToken, Task<WslCommandResult>> result) => _distroResponses.Enqueue(result);
@@ -2673,10 +3993,74 @@ public sealed class GatewayVersionAlignmentCoordinatorTests : IDisposable
             CancellationToken cancellationToken = default,
             IReadOnlyDictionary<string, string>? environment = null)
         {
+            if (command.Count == 4 &&
+                command[0] == "rm" &&
+                command[1] == "-rf" &&
+                command[2] == "--")
+            {
+                Calls.Add(new("cleanup", name, [.. command]));
+                return Task.FromResult(Ok());
+            }
+
             Calls.Add(new("distro", name, [.. command]));
+            if (command.Count == 3 &&
+                command[0] == "bash" &&
+                command[2].Contains("openclaw backup create", StringComparison.Ordinal))
+            {
+                const string prefix = "archive='";
+                const string suffix = "' && ";
+                var start = command[2].IndexOf(prefix, StringComparison.Ordinal);
+                var end = start < 0
+                    ? -1
+                    : command[2].IndexOf(suffix, start + prefix.Length, StringComparison.Ordinal);
+                if (start < 0 || end < 0)
+                    throw new InvalidOperationException($"Malformed native backup command: {command[2]}");
+                var wslArchivePath = command[2].Substring(start + prefix.Length, end - start - prefix.Length);
+                return Task.FromResult(
+                    NativeBackupResponse?.Invoke(wslArchivePath) ??
+                    Ok(JsonSerializer.Serialize(new
+                    {
+                        archivePath = wslArchivePath,
+                        verified = true,
+                        sha256 = NativeBackupSha256,
+                        sizeBytes = NativeBackupSizeBytes
+                    })));
+            }
             if (!_distroResponses.TryDequeue(out var response))
                 throw new InvalidOperationException($"No response queued for: {string.Join(' ', command)}");
             return response(cancellationToken);
         }
+
+        public Task<WslCommandResult> CopyFileFromDistroAsync(
+            string name,
+            string sourcePath,
+            string destinationPath,
+            CancellationToken cancellationToken = default)
+        {
+            Calls.Add(new("copy", name, [sourcePath, destinationPath]));
+            if (!NativeBackupTransferResult.Success)
+                return Task.FromResult(NativeBackupTransferResult);
+            Directory.CreateDirectory(Path.GetDirectoryName(destinationPath)!);
+            File.WriteAllBytes(destinationPath, [1, 2, 3, 4, 5, 6, 7, 8]);
+            return Task.FromResult(NativeBackupTransferResult);
+        }
     }
+}
+
+internal static class GatewayRollbackPointManagerTestExtensions
+{
+    public static Task<GatewayRollbackOperationResult> CreateVerifiedAsync(
+        this GatewayRollbackPointManager manager,
+        string distroName,
+        string gatewayId,
+        string openClawVersion,
+        string targetOpenClawVersion,
+        CancellationToken cancellationToken = default) =>
+        manager.CreateVerifiedAsync(
+            distroName,
+            gatewayId,
+            openClawVersion,
+            targetOpenClawVersion,
+            GatewayUpdateProtectionMode.FullVhd,
+            cancellationToken);
 }

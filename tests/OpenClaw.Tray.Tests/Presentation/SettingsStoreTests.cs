@@ -35,6 +35,7 @@ public sealed class SettingsStoreTests
             Assert.Equal("Subtle", snapshot.NotificationSound);
             Assert.Equal(2, snapshot.GatewayRollbackRetentionCount);
             Assert.Equal(7, snapshot.GatewayRollbackRetentionAgeDays);
+            Assert.Equal(SettingsManager.GatewayRollbackProtectionNativeBackup, snapshot.GatewayRollbackProtectionMode);
         }
     }
 
