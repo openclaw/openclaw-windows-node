@@ -1445,13 +1445,7 @@ public sealed class RecoverGatewayReloadStep : SetupStep
 
 internal static class GatewayReloadModeConfig
 {
-    internal static string Resolve(string? gatewayVersion, string configuredMode)
-    {
-        if (GatewayNodeCommandPolicyConfig.UsesLegacySchema(gatewayVersion))
-            return configuredMode;
-
-        return configuredMode is "hot" or "restart" ? "hybrid" : configuredMode;
-    }
+    internal static string Resolve(string configuredMode) => configuredMode;
 }
 
 public sealed class ConfigureGatewayStep : SetupStep
@@ -1599,9 +1593,7 @@ public sealed class ConfigureGatewayStep : SetupStep
                     throw new ArgumentException($"Invalid Gateway.ExtraConfig key '{key}'. Keys may contain only letters, digits, '.', '_', and '-'.", nameof(gw));
 
                 var compatibleValue = string.Equals(key, "gateway.reload.mode", StringComparison.Ordinal)
-                    ? GatewayReloadModeConfig.Resolve(
-                        GatewayLkgVersion.ResolveSchemaVersion(gw),
-                        value)
+                    ? GatewayReloadModeConfig.Resolve(value)
                     : value;
                 var escapedValue = WslShellQuoting.QuotePosixSingleQuote(compatibleValue);
                 configCommands += $"\n            openclaw config set {key} {escapedValue}";
@@ -1610,9 +1602,7 @@ public sealed class ConfigureGatewayStep : SetupStep
 
         if (gw.ExtraConfig?.ContainsKey("gateway.reload.mode") != true)
         {
-            var reloadMode = GatewayReloadModeConfig.Resolve(
-                GatewayLkgVersion.ResolveSchemaVersion(gw),
-                gw.ReloadMode);
+            var reloadMode = GatewayReloadModeConfig.Resolve(gw.ReloadMode);
             configCommands += $"\n            openclaw config set gateway.reload.mode {WslShellQuoting.QuotePosixSingleQuote(reloadMode)}";
         }
 
@@ -1650,7 +1640,6 @@ public sealed class ConfigureGatewayStep : SetupStep
 
     internal static string GetEffectiveReloadMode(GatewayConfig gw) =>
         GatewayReloadModeConfig.Resolve(
-            GatewayLkgVersion.ResolveSchemaVersion(gw),
             gw.ExtraConfig?.TryGetValue("gateway.reload.mode", out var overrideMode) == true
                 ? overrideMode
                 : gw.ReloadMode);

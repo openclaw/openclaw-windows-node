@@ -12,7 +12,6 @@ public sealed class GatewayLkgVersionTests
     {
         var version = GatewayLkgVersion.ResolveLkgVersion();
 
-        Assert.Equal("2026.7.1", version);
         Assert.Equal(GatewayLkgVersion.LkgVersion, version);
     }
 
@@ -105,9 +104,7 @@ public sealed class GatewayLkgVersionTests
         Assert.Equal(
             "gateway.nodes.allowCommands",
             ConfigureGatewayStep.ResolveNodeCommandAllowConfigKey(config));
-        Assert.Equal("hot", GatewayReloadModeConfig.Resolve(
-            GatewayLkgVersion.ResolveSchemaVersion(config),
-            "hot"));
+        Assert.Equal("hot", GatewayReloadModeConfig.Resolve("hot"));
     }
 
     [Fact]

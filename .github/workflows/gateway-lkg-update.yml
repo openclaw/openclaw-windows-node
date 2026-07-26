@@ -38,11 +38,16 @@ jobs:
         import pathlib, re
         lkg_path = pathlib.Path("src/OpenClaw.SetupEngine/GatewayLkgVersion.cs")
         metadata_path = pathlib.Path("src/OpenClaw.Shared/OpenClaw.Shared.csproj")
+        lkg_test_path = pathlib.Path("tests/OpenClaw.SetupEngine.Tests/GatewayLkgVersionTests.cs")
         target_test_path = pathlib.Path("tests/OpenClaw.Connection.Tests/GatewayPackageTargetTests.cs")
         lkg_match = re.search(r'LkgVersion\s*=\s*"([^"]+)"', lkg_path.read_text(encoding="utf-8"))
         metadata_match = re.search(
             r'<OpenClawGatewayPackageExpectedVersion[^>]*>([^<]+)</OpenClawGatewayPackageExpectedVersion>',
             metadata_path.read_text(encoding="utf-8"),
+        )
+        lkg_test_match = re.search(
+            r'ExpectedLkgVersion\s*=\s*"([^"]+)"',
+            lkg_test_path.read_text(encoding="utf-8"),
         )
         target_test_match = re.search(
             r'BuildTargetResolver_UsesOrdinaryUpstreamAssemblyDefault\(\).*?'
@@ -54,15 +59,19 @@ jobs:
             raise SystemExit("Could not parse LkgVersion constant from GatewayLkgVersion.cs")
         if not metadata_match:
             raise SystemExit("Could not parse OpenClawGatewayPackageExpectedVersion from OpenClaw.Shared.csproj")
+        if not lkg_test_match:
+            raise SystemExit("Could not parse ExpectedLkgVersion from GatewayLkgVersionTests.cs")
         if not target_test_match:
             raise SystemExit("Could not parse ordinary upstream target version assertion")
         pinned = lkg_match.group(1)
         metadata_version = metadata_match.group(1)
+        lkg_test_version = lkg_test_match.group(1)
         target_test_version = target_test_match.group(1)
-        if metadata_version != pinned or target_test_version != pinned:
+        if metadata_version != pinned or lkg_test_version != pinned or target_test_version != pinned:
             raise SystemExit(
                 "Gateway package defaults disagree: "
                 f"LkgVersion={pinned}, metadata={metadata_version}, "
+                f"lkg-test={lkg_test_version}, "
                 f"target-test={target_test_version}"
             )
         if not re.fullmatch(r'[0-9]+\.[0-9]+\.[0-9]+', pinned):

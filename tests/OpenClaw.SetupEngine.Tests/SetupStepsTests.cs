@@ -2904,7 +2904,7 @@ public class SetupStepsTests : IDisposable
     }
 
     [Fact]
-    public void ConfigureGateway_ExtraConfigReloadModeUsesVersionSchemaAndAvoidsDuplicate()
+    public void ConfigureGateway_ExtraConfigReloadModePreservesValueAndAvoidsDuplicate()
     {
         var commands = ConfigureGatewayStep.BuildConfigCommands(
             new GatewayConfig
@@ -2920,8 +2920,8 @@ public class SetupStepsTests : IDisposable
             "'[]'");
 
         Assert.Equal(1, commands.Split("gateway.reload.mode", StringSplitOptions.None).Length - 1);
-        Assert.Contains("openclaw config set gateway.reload.mode 'hybrid'", commands);
-        Assert.Equal("hybrid", ConfigureGatewayStep.GetEffectiveReloadMode(
+        Assert.Contains("openclaw config set gateway.reload.mode 'restart'", commands);
+        Assert.Equal("restart", ConfigureGatewayStep.GetEffectiveReloadMode(
             new GatewayConfig
             {
                 Version = "2026.7.22",

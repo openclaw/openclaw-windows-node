@@ -496,9 +496,7 @@ public sealed class SetupWizardRunner
 
             var hadExplicitReloadMode = recovery is null || recovery.ReloadMode is not null;
             var reloadMode = recovery?.ReloadMode is { } recoveredReloadMode
-                ? GatewayReloadModeConfig.Resolve(
-                    GatewayLkgVersion.ResolveSchemaVersion(_ctx.Config.Gateway),
-                    recoveredReloadMode)
+                ? GatewayReloadModeConfig.Resolve(recoveredReloadMode)
                 : ConfigureGatewayStep.GetEffectiveReloadMode(_ctx.Config.Gateway);
             var restoreCommand = hadExplicitReloadMode
                 ? $"openclaw config set gateway.reload.mode {WslShellQuoting.QuotePosixSingleQuote(reloadMode)}"

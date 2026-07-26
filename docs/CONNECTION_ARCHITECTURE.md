@@ -107,7 +107,7 @@ Settings changes are classified by `SettingsChangeClassifier.Classify()` which c
 
 ## Companion-owned Gateway update and rollback
 
-`GatewayVersionAlignmentCoordinator` resolves one immutable `GatewayPackageTarget` for the process: package source (`Official` or `Composed`), exact expected version, optional credential-free HTTP(S) `.tgz` URI, and SHA-256. The target is embedded as shared-assembly build metadata. Ordinary upstream builds resolve to Official `2026.7.1`; a composed build must supply all composed-package fields without placing a private URI or digest in source.
+`GatewayVersionAlignmentCoordinator` resolves one immutable `GatewayPackageTarget` for the process: package source (`Official` or `Composed`), exact expected version, optional credential-free HTTP(S) `.tgz` URI, and SHA-256. The target is embedded as shared-assembly build metadata. Ordinary upstream builds resolve to the repository's Official `2026.7.1` LKG; a composed build must supply all composed-package fields without placing a private URI or digest in source.
 
 Update routing is a pure, immutable two-lane decision made before package dispatch:
 
