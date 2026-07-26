@@ -1712,7 +1712,7 @@ public class OpenClawChatDataProviderTests
     }
 
     [Fact]
-    public async Task LoadAsync_MapsOnlyEndedSessionsToEndedThreads()
+    public async Task LoadAsync_MapsRunLivenessWithoutEndingReusableThreads()
     {
         var sessions = new[]
         {
@@ -1732,16 +1732,16 @@ public class OpenClawChatDataProviderTests
         var snapshot = await provider.LoadAsync();
 
         Assert.Equal(
-            ChatThreadStatus.Ended,
+            ChatThreadStatus.Created,
             Assert.Single(snapshot.Threads, thread => thread.Id == "done").Status);
         Assert.Equal(
-            ChatThreadStatus.Ended,
+            ChatThreadStatus.Created,
             Assert.Single(snapshot.Threads, thread => thread.Id == "killed").Status);
         Assert.Equal(
-            ChatThreadStatus.Running,
+            ChatThreadStatus.Created,
             Assert.Single(snapshot.Threads, thread => thread.Id == "aborted").Status);
         Assert.Equal(
-            ChatThreadStatus.Running,
+            ChatThreadStatus.Created,
             Assert.Single(snapshot.Threads, thread => thread.Id == "unknown").Status);
     }
 

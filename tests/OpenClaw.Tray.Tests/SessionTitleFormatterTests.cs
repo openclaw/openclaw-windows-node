@@ -217,7 +217,7 @@ public sealed class SessionTitleFormatterTests
             "Pages",
             "SessionsPage.xaml.cs"));
 
-        var formatIndex = source.IndexOf("SessionTitleFormatter.FormatUnique(activeSessions)", StringComparison.Ordinal);
+        var formatIndex = source.IndexOf("SessionTitleFormatter.FormatUnique(visibleSessions)", StringComparison.Ordinal);
         var channelFilterIndex = source.IndexOf("if (_activeChannel != \"all\")", StringComparison.Ordinal);
 
         Assert.True(formatIndex >= 0);
@@ -267,5 +267,28 @@ public sealed class SessionTitleFormatterTests
 
         Assert.False(thread.IsVisibleInSessionPicker("agent:main:main"));
         Assert.True(thread.IsVisibleInSessionPicker(thread.Id));
+    }
+
+    [Fact]
+    public void SessionsPage_UsesCanonicalCompactSessionPresentation()
+    {
+        var source = File.ReadAllText(Path.Combine(
+            TestRepositoryPaths.GetRepositoryRoot(),
+            "src",
+            "OpenClaw.Tray.WinUI",
+            "Pages",
+            "SessionsPage.xaml.cs"));
+
+        Assert.Contains("SessionRunState.GetDisplaySortOrder(item.Session)", source, StringComparison.Ordinal);
+        Assert.Contains("StatusText = ResolveStatusText(s)", source, StringComparison.Ordinal);
+        Assert.Contains("SessionRunState.HasStoppedLastRun(s)", source, StringComparison.Ordinal);
+
+        var xaml = File.ReadAllText(Path.Combine(
+            TestRepositoryPaths.GetRepositoryRoot(),
+            "src",
+            "OpenClaw.Tray.WinUI",
+            "Pages",
+            "SessionsPage.xaml"));
+        Assert.Contains("Text=\"{Binding StatusText}\"", xaml, StringComparison.Ordinal);
     }
 }

@@ -302,6 +302,11 @@ public class SessionInfo
     public string? VerboseLevel { get; set; }
     public bool SystemSent { get; set; }
     public bool AbortedLastRun { get; set; }
+    /// <summary>
+    /// Gateway-provided liveness for the session's current run. Null means an
+    /// older Gateway did not provide the field, so callers may use legacy status.
+    /// </summary>
+    public bool? HasActiveRun { get; set; }
     public long InputTokens { get; set; }
     public long OutputTokens { get; set; }
     public long TotalTokens { get; set; }

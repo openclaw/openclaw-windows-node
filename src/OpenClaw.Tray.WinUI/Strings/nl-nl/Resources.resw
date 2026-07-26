@@ -4638,7 +4638,7 @@ Opdrachten worden geblokkeerd zolang sandboxing niet beschikbaar is, omdat strik
     <value>Alle</value>
   </data>
   <data name="SessionsPage_ShowCompleted.Header" xml:space="preserve">
-    <value>Beëindigde sessies tonen</value>
+    <value>Voltooide sessies weergeven</value>
   </data>
   <data name="SessionsPage_ShowBackground.Header" xml:space="preserve">
     <value>Achtergrondsessies tonen</value>
@@ -4681,7 +4681,7 @@ Opdrachten worden geblokkeerd zolang sandboxing niet beschikbaar is, omdat strik
     <value>Sessies worden geladen…</value>
   </data>
   <data name="SessionsPage_NoActiveSessions.Text" xml:space="preserve">
-    <value>Geen actieve sessies</value>
+    <value>Geen sessies</value>
   </data>
   <data name="SessionsPage_Reset.Text" xml:space="preserve">
     <value>Resetten</value>
@@ -6879,5 +6879,16 @@ Het binaire bestand wxc-exec is niet gevonden. {1} Als dit een ontwikkelaarsbuil
   </data>
   <data name="PermissionsPage_ExecPolicySaveFailed" xml:space="preserve">
     <value>Opslaan mislukt</value>
+  <data name="SessionsPage_Status_Working" xml:space="preserve">
+    <value>Bezig</value>
+  </data>
+  <data name="SessionsPage_Status_Ready" xml:space="preserve">
+    <value>Gereed</value>
+  </data>
+  <data name="SessionsPage_Status_NeedsAttention" xml:space="preserve">
+    <value>Heeft aandacht nodig</value>
+  </data>
+  <data name="SessionsPage_LastRunStopped" xml:space="preserve">
+    <value>Laatste uitvoering gestopt</value>
   </data>
 </root>
