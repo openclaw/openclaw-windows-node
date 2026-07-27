@@ -356,7 +356,9 @@ public sealed class GatewayRegistry
         var id = Guid.NewGuid().ToString();
         var isLocal = LocalGatewayUrlClassifier.IsLocalGatewayUrl(gatewayUrl);
         var setupManagedDistroName =
-            isLocal && !useSshTunnel ? TryReadSetupManagedDistroName(settingsDir) : null;
+            isLocal && !useSshTunnel
+                ? TryReadSetupManagedDistroName(settingsDir, gatewayUrl)
+                : null;
         var record = new GatewayRecord
         {
             Id = id,
@@ -407,7 +409,9 @@ public sealed class GatewayRegistry
         return true;
     }
 
-    private static string? TryReadSetupManagedDistroName(string settingsDir)
+    private static string? TryReadSetupManagedDistroName(
+        string settingsDir,
+        string gatewayUrl)
     {
         try
         {
@@ -437,7 +441,11 @@ public sealed class GatewayRegistry
                     continue;
                 using var document = System.Text.Json.JsonDocument.Parse(File.ReadAllText(statePath));
                 if (document.RootElement.TryGetProperty("DistroName", out var distroElement) &&
-                    !string.IsNullOrWhiteSpace(distroElement.GetString()))
+                    !string.IsNullOrWhiteSpace(distroElement.GetString()) &&
+                    document.RootElement.TryGetProperty("GatewayUrl", out var gatewayUrlElement) &&
+                    GatewayRecordEditing.AreEquivalentLoopbackEndpoints(
+                        gatewayUrl,
+                        gatewayUrlElement.GetString()))
                 {
                     return distroElement.GetString();
                 }

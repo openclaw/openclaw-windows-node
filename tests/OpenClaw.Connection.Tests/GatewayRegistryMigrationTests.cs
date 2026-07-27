@@ -57,7 +57,7 @@ public class GatewayRegistryMigrationTests : IDisposable
         Directory.CreateDirectory(stateDir);
         File.WriteAllText(
             Path.Combine(stateDir, "setup-state.json"),
-            """{"DistroName":"OpenClawGateway"}""");
+            """{"DistroName":"OpenClawGateway","GatewayUrl":"ws://127.0.0.1:18789"}""");
         var previous = Environment.GetEnvironmentVariable("OPENCLAW_TRAY_LOCALAPPDATA_DIR");
         try
         {
@@ -91,7 +91,7 @@ public class GatewayRegistryMigrationTests : IDisposable
         Directory.CreateDirectory(direct);
         File.WriteAllText(
             Path.Combine(direct, "setup-state.json"),
-            """{"DistroName":"OpenClawGateway-Dev"}""");
+            """{"DistroName":"OpenClawGateway-Dev","GatewayUrl":"ws://localhost:18789"}""");
         var previous = Environment.GetEnvironmentVariable("OPENCLAW_TRAY_LOCAL_DATA_DIR");
         try
         {
@@ -117,6 +117,73 @@ public class GatewayRegistryMigrationTests : IDisposable
     }
 
     [Fact]
+    public void MigrateFromSettings_ManualLocalhostWithDifferentSetupEndpoint_RemainsManual()
+    {
+        var direct = Path.Combine(_tempDir, "manual-localhost-setup-data");
+        Directory.CreateDirectory(direct);
+        File.WriteAllText(
+            Path.Combine(direct, "setup-state.json"),
+            """{"DistroName":"OpenClawGateway","GatewayUrl":"ws://localhost:18789"}""");
+        var previous = Environment.GetEnvironmentVariable("OPENCLAW_TRAY_LOCAL_DATA_DIR");
+        try
+        {
+            Environment.SetEnvironmentVariable("OPENCLAW_TRAY_LOCAL_DATA_DIR", direct);
+
+            Assert.True(_registry.MigrateFromSettings(
+                "ws://localhost:19999",
+                "shared-token",
+                null,
+                false,
+                null,
+                null,
+                0,
+                0,
+                _tempDir));
+
+            var record = _registry.GetActive()!;
+            Assert.True(record.IsLocal);
+            Assert.Null(record.SetupManagedDistroName);
+            Assert.Null(record.FriendlyName);
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable("OPENCLAW_TRAY_LOCAL_DATA_DIR", previous);
+        }
+    }
+
+    [Fact]
+    public void MigrateFromSettings_SetupStateWithoutGatewayUrl_RemainsManual()
+    {
+        var direct = Path.Combine(_tempDir, "url-less-setup-data");
+        Directory.CreateDirectory(direct);
+        File.WriteAllText(
+            Path.Combine(direct, "setup-state.json"),
+            """{"DistroName":"OpenClawGateway"}""");
+        var previous = Environment.GetEnvironmentVariable("OPENCLAW_TRAY_LOCAL_DATA_DIR");
+        try
+        {
+            Environment.SetEnvironmentVariable("OPENCLAW_TRAY_LOCAL_DATA_DIR", direct);
+
+            Assert.True(_registry.MigrateFromSettings(
+                "ws://localhost:18789",
+                "shared-token",
+                null,
+                false,
+                null,
+                null,
+                0,
+                0,
+                _tempDir));
+
+            Assert.Null(_registry.GetActive()!.SetupManagedDistroName);
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable("OPENCLAW_TRAY_LOCAL_DATA_DIR", previous);
+        }
+    }
+
+    [Fact]
     public void MigrateFromSettings_DevSettingsPreferDevSetupState()
     {
         var localRoot = Path.Combine(_tempDir, "side-by-side-local");
@@ -124,10 +191,10 @@ public class GatewayRegistryMigrationTests : IDisposable
         Directory.CreateDirectory(Path.Combine(localRoot, "OpenClawTray-Dev"));
         File.WriteAllText(
             Path.Combine(localRoot, "OpenClawTray", "setup-state.json"),
-            """{"DistroName":"OpenClawGateway"}""");
+            """{"DistroName":"OpenClawGateway","GatewayUrl":"ws://localhost:18789"}""");
         File.WriteAllText(
             Path.Combine(localRoot, "OpenClawTray-Dev", "setup-state.json"),
-            """{"DistroName":"OpenClawGateway-Dev"}""");
+            """{"DistroName":"OpenClawGateway-Dev","GatewayUrl":"ws://localhost:18790"}""");
         var previous = Environment.GetEnvironmentVariable("OPENCLAW_TRAY_LOCALAPPDATA_DIR");
         try
         {
@@ -135,7 +202,7 @@ public class GatewayRegistryMigrationTests : IDisposable
             var devSettingsDir = Path.Combine(_tempDir, "OpenClawTray-Dev");
             Directory.CreateDirectory(devSettingsDir);
             Assert.True(_registry.MigrateFromSettings(
-                "ws://localhost:18789",
+                "ws://localhost:18790",
                 "shared-token",
                 null,
                 false,
@@ -166,6 +233,41 @@ public class GatewayRegistryMigrationTests : IDisposable
         Assert.NotNull(record.SshTunnel);
         Assert.Equal("user", record.SshTunnel.User);
         Assert.Equal("host.com", record.SshTunnel.Host);
+    }
+
+    [Fact]
+    public void MigrateFromSettings_LocalSshTunnelWithMatchingSetupState_RemainsManual()
+    {
+        var direct = Path.Combine(_tempDir, "ssh-setup-data");
+        Directory.CreateDirectory(direct);
+        File.WriteAllText(
+            Path.Combine(direct, "setup-state.json"),
+            """{"DistroName":"OpenClawGateway","GatewayUrl":"ws://localhost:18789"}""");
+        var previous = Environment.GetEnvironmentVariable("OPENCLAW_TRAY_LOCAL_DATA_DIR");
+        try
+        {
+            Environment.SetEnvironmentVariable("OPENCLAW_TRAY_LOCAL_DATA_DIR", direct);
+
+            Assert.True(_registry.MigrateFromSettings(
+                "ws://localhost:18789",
+                "shared-token",
+                null,
+                true,
+                "user",
+                "host.example",
+                22,
+                18789,
+                _tempDir));
+
+            var record = _registry.GetActive()!;
+            Assert.NotNull(record.SshTunnel);
+            Assert.Null(record.SetupManagedDistroName);
+            Assert.Null(record.FriendlyName);
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable("OPENCLAW_TRAY_LOCAL_DATA_DIR", previous);
+        }
     }
 
     [Fact]

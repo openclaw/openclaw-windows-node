@@ -102,7 +102,7 @@ public static class GatewayRecordEditing
         return result;
     }
 
-    private static bool AreEquivalentLoopbackEndpoints(string? left, string? right)
+    internal static bool AreEquivalentLoopbackEndpoints(string? left, string? right)
     {
         if (!Uri.TryCreate(left, UriKind.Absolute, out var leftUri) ||
             !Uri.TryCreate(right, UriKind.Absolute, out var rightUri) ||

@@ -29,10 +29,7 @@ internal interface IManagedLocalGatewayPortPlatform
     WindowsTcpListenerSnapshotResult CaptureListeners();
     string? GetProcessCommandLine(int processId);
     bool IsTrustedWslRelayBinary(string processPath);
-    bool IsExpectedWslGatewayListening(
-        string distroName,
-        int port,
-        IPAddress listenerAddress);
+    bool IsExpectedWslGatewayListening(string distroName, int port);
     string? ReadScheduledTaskXml(string taskName);
     string? ReadFile(string path);
     Task<bool> DisableScheduledTaskAsync(string taskName, CancellationToken cancellationToken);
@@ -69,16 +66,18 @@ internal sealed class WindowsManagedLocalGatewayPortPlatform : IManagedLocalGate
             if (!isCanonical)
                 return false;
 
-            var psi = CreateWslRelaySignatureProbe(fullPath);
-            using var process = Process.Start(psi);
-            if (process is null)
-                return false;
-            if (!process.WaitForExit(5_000))
+            for (var attempt = 0; attempt < 2; attempt++)
             {
+                var psi = CreateWslRelaySignatureProbe(fullPath);
+                using var process = Process.Start(psi);
+                if (process is null)
+                    return false;
+                if (process.WaitForExit(5_000))
+                    return process.ExitCode == 0;
+
                 try { process.Kill(entireProcessTree: true); } catch { }
-                return false;
             }
-            return process.ExitCode == 0;
+            return false;
         }
         catch
         {
@@ -101,6 +100,7 @@ internal sealed class WindowsManagedLocalGatewayPortPlatform : IManagedLocalGate
         startInfo.Environment.Remove("PSModulePath");
         startInfo.Environment["OPENCLAW_VERIFY_PATH"] = fullPath;
         startInfo.ArgumentList.Add("-NoProfile");
+        startInfo.ArgumentList.Add("-NonInteractive");
         startInfo.ArgumentList.Add("-Command");
         startInfo.ArgumentList.Add(
             "$s=Get-AuthenticodeSignature -LiteralPath $env:OPENCLAW_VERIFY_PATH; " +
@@ -108,10 +108,7 @@ internal sealed class WindowsManagedLocalGatewayPortPlatform : IManagedLocalGate
         return startInfo;
     }
 
-    public bool IsExpectedWslGatewayListening(
-        string distroName,
-        int port,
-        IPAddress _)
+    public bool IsExpectedWslGatewayListening(string distroName, int port)
     {
         try
         {
@@ -340,18 +337,19 @@ public sealed class ManagedLocalGatewayPortProvenanceService
         var current = currentSnapshot.Listeners
             .Where(listener => listener.Port == uri.Port && AcceptsHost(listener.Address, uri.Host))
             .ToArray();
-        return current.Length > 0 &&
-            current.All(listener =>
+        if (current.Length == 0 ||
+            !current.All(listener =>
                 listener.ProcessId == expectedPid &&
                 listener.ProcessStartTimeUtc == expectedStart &&
                 string.Equals(
                     listener.ProcessPath,
                     cached.ProcessPath,
-                    StringComparison.OrdinalIgnoreCase) &&
-                _platform.IsExpectedWslGatewayListening(
-                    managedDistroName,
-                    uri.Port,
-                    listener.Address));
+                    StringComparison.OrdinalIgnoreCase)))
+        {
+            return false;
+        }
+
+        return _platform.IsExpectedWslGatewayListening(managedDistroName, uri.Port);
     }
 
     private GatewayEndpointProvenance InspectCore(GatewayRecord record)
@@ -380,8 +378,26 @@ public sealed class ManagedLocalGatewayPortProvenanceService
         if (listeners.Length == 0)
             return new GatewayEndpointProvenance(GatewayEndpointProvenanceKind.NoListener, uri.Port);
 
+        var relayTrustByPath = listeners
+            .Where(listener =>
+                string.Equals(listener.ProcessName, "wslrelay", StringComparison.OrdinalIgnoreCase) &&
+                listener.ProcessPath is not null)
+            .Select(listener => listener.ProcessPath!)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(
+                path => path,
+                path => _platform.IsTrustedWslRelayBinary(path),
+                StringComparer.OrdinalIgnoreCase);
+        var expectedDistroListening =
+            relayTrustByPath.Values.Any(trusted => trusted) &&
+            _platform.IsExpectedWslGatewayListening(managedDistroName, uri.Port);
         var classified = listeners
-            .Select(listener => ClassifyListener(managedDistroName, uri.Port, listener))
+            .Select(listener => ClassifyListener(
+                managedDistroName,
+                uri.Port,
+                listener,
+                relayTrustByPath,
+                expectedDistroListening))
             .ToArray();
 
         if (!ListenerSnapshotStillCurrent(listeners, uri))
@@ -405,12 +421,16 @@ public sealed class ManagedLocalGatewayPortProvenanceService
         }
 
         var ownerSummary = string.Join(
-            ", ",
-            classified.Select(item => $"{item.ProcessName ?? "unknown"} (PID {item.ProcessId?.ToString() ?? "?"})"));
+            "; ",
+            classified
+                .Where(item => item.Kind != GatewayEndpointProvenanceKind.ExpectedManagedGateway)
+                .Select(item =>
+                    $"{item.ProcessName ?? "unknown"} (PID {item.ProcessId?.ToString() ?? "?"}): " +
+                    (item.Detail ?? "listener verification failed")));
         return new GatewayEndpointProvenance(
             GatewayEndpointProvenanceKind.UnknownListener,
             uri.Port,
-            Detail: $"Loopback port {uri.Port} has an unverified listener: {ownerSummary}.");
+            Detail: $"Loopback port {uri.Port} listener verification failed: {ownerSummary}.");
     }
 
     public async Task<ManagedLocalPortConflictRepairResult> RepairConflictAsync(
@@ -512,12 +532,18 @@ public sealed class ManagedLocalGatewayPortProvenanceService
     private GatewayEndpointProvenance ClassifyListener(
         string managedDistroName,
         int port,
-        WindowsTcpListenerInfo listener)
+        WindowsTcpListenerInfo listener,
+        IReadOnlyDictionary<string, bool> relayTrustByPath,
+        bool expectedDistroListening)
     {
-        if (string.Equals(listener.ProcessName, "wslrelay", StringComparison.OrdinalIgnoreCase) &&
-            listener.ProcessPath is { } relayPath &&
-            _platform.IsTrustedWslRelayBinary(relayPath) &&
-            _platform.IsExpectedWslGatewayListening(managedDistroName, port, listener.Address))
+        var isWslRelay =
+            string.Equals(listener.ProcessName, "wslrelay", StringComparison.OrdinalIgnoreCase);
+        var relayPath = listener.ProcessPath;
+        var trustedRelay =
+            relayPath is not null &&
+            relayTrustByPath.TryGetValue(relayPath, out var trusted) &&
+            trusted;
+        if (isWslRelay && trustedRelay && expectedDistroListening)
         {
             return new GatewayEndpointProvenance(
                 GatewayEndpointProvenanceKind.ExpectedManagedGateway,
@@ -542,6 +568,13 @@ public sealed class ManagedLocalGatewayPortProvenanceService
                 $"Proven obsolete native OpenClaw gateway '{taskName}' owns loopback port {port}.");
         }
 
+        var detail = isWslRelay
+            ? relayPath is null
+                ? "WSL relay executable path could not be read."
+                : !trustedRelay
+                    ? "WSL relay is not the canonical Microsoft-signed binary."
+                    : $"Expected distro '{managedDistroName}' does not report its systemd gateway MainPID owning port {port}."
+            : "Process is not a verified managed WSL relay or proven obsolete OpenClaw gateway.";
         return new GatewayEndpointProvenance(
             GatewayEndpointProvenanceKind.UnknownListener,
             port,
@@ -549,7 +582,7 @@ public sealed class ManagedLocalGatewayPortProvenanceService
             listener.ProcessName,
             listener.ProcessStartTimeUtc,
             listener.ProcessPath,
-            Detail: $"Unverified process owns loopback port {port}.");
+            Detail: detail);
     }
 
     private bool IsProvenObsoleteNativeGateway(

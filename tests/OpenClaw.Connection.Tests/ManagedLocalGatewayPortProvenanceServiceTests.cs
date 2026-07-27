@@ -67,6 +67,34 @@ public class ManagedLocalGatewayPortProvenanceServiceTests
     }
 
     [Fact]
+    public void Inspect_DualStackWslRelay_VerifiesExternalProofsOnce()
+    {
+        var platform = new FakePlatform();
+        var start = new DateTime(2026, 7, 24, 1, 0, 0, DateTimeKind.Utc);
+        platform.Listeners.Add(new WindowsTcpListenerInfo(
+            IPAddress.Loopback,
+            18789,
+            100,
+            "wslrelay",
+            @"C:\Program Files\WSL\wslrelay.exe",
+            start));
+        platform.Listeners.Add(new WindowsTcpListenerInfo(
+            IPAddress.IPv6Loopback,
+            18789,
+            100,
+            "wslrelay",
+            @"C:\Program Files\WSL\wslrelay.exe",
+            start));
+        var service = new ManagedLocalGatewayPortProvenanceService(platform, NullLogger.Instance);
+
+        var result = service.Inspect(ManagedRecord());
+
+        Assert.Equal(GatewayEndpointProvenanceKind.ExpectedManagedGateway, result.Kind);
+        Assert.Equal(1, platform.TrustedWslRelayChecks);
+        Assert.Equal(1, platform.ExpectedDistroChecks);
+    }
+
+    [Fact]
     public void Inspect_SpoofedWslRelayPath_IsUnknown()
     {
         var platform = new FakePlatform { TrustedWslRelay = false };
@@ -81,6 +109,7 @@ public class ManagedLocalGatewayPortProvenanceServiceTests
         var result = service.Inspect(ManagedRecord());
 
         Assert.Equal(GatewayEndpointProvenanceKind.UnknownListener, result.Kind);
+        Assert.Contains("not the canonical Microsoft-signed binary", result.Detail);
     }
 
     [Fact]
@@ -95,9 +124,10 @@ public class ManagedLocalGatewayPortProvenanceServiceTests
             @"C:\Program Files\WSL\wslrelay.exe"));
         var service = new ManagedLocalGatewayPortProvenanceService(platform, NullLogger.Instance);
 
-        Assert.Equal(
-            GatewayEndpointProvenanceKind.UnknownListener,
-            service.Inspect(ManagedRecord()).Kind);
+        var result = service.Inspect(ManagedRecord());
+
+        Assert.Equal(GatewayEndpointProvenanceKind.UnknownListener, result.Kind);
+        Assert.Contains("does not report its systemd gateway MainPID owning port", result.Detail);
     }
 
     [Fact]
@@ -332,6 +362,8 @@ public class ManagedLocalGatewayPortProvenanceServiceTests
         public bool ReplaceOwnerOnSecondCapture { get; set; }
         public bool Ipv4Complete { get; set; } = true;
         public bool Ipv6Complete { get; set; } = true;
+        public int TrustedWslRelayChecks { get; private set; }
+        public int ExpectedDistroChecks { get; private set; }
         private int _captureCount;
 
         public static FakePlatform WithProvenNativeGateway(string? userProfilePath = null)
@@ -393,12 +425,17 @@ public class ManagedLocalGatewayPortProvenanceServiceTests
         }
         public string? GetProcessCommandLine(int processId) =>
             CommandLines.GetValueOrDefault(processId);
-        public bool IsTrustedWslRelayBinary(string processPath) => TrustedWslRelay;
-        public bool IsExpectedWslGatewayListening(
-            string distroName,
-            int port,
-            IPAddress listenerAddress) =>
-            ExpectedDistroListening;
+        public bool IsTrustedWslRelayBinary(string processPath)
+        {
+            TrustedWslRelayChecks++;
+            return TrustedWslRelay;
+        }
+
+        public bool IsExpectedWslGatewayListening(string distroName, int port)
+        {
+            ExpectedDistroChecks++;
+            return ExpectedDistroListening;
+        }
         public string? ReadScheduledTaskXml(string taskName) => TaskXml;
         public string? ReadFile(string path) => Files.GetValueOrDefault(path);
 

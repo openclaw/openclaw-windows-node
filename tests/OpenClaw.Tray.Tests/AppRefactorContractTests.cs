@@ -80,6 +80,34 @@ public sealed class AppRefactorContractTests
     }
 
     [Fact]
+    public void ManagedLocalGatewayRepair_StaysDelegatedToDedicatedOwners()
+    {
+        var root = TestRepositoryPaths.GetRepositoryRoot();
+        var app = ReadAppSources();
+        var startup = ExtractMethod(app, "OnLaunchedAsync");
+        var monitor = File.ReadAllText(Path.Combine(
+            root,
+            "src",
+            "OpenClaw.Tray.WinUI",
+            "Services",
+            "ManagedLocalGatewayAutoRepairMonitor.cs"));
+        var coordinator = File.ReadAllText(Path.Combine(
+            root,
+            "src",
+            "OpenClaw.Tray.WinUI",
+            "Services",
+            "ManagedLocalGatewayRepairCoordinator.cs"));
+
+        Assert.Contains("new OpenClawTray.Services.ManagedLocalGatewayRepairCoordinator(", startup);
+        Assert.Contains("new OpenClawTray.Services.ManagedLocalGatewayAutoRepairMonitor(", startup);
+        Assert.Contains("private async Task RunAsync(CancellationToken cancellationToken)", monitor);
+        Assert.Contains("private async Task<bool> SafeProbeAsync", coordinator);
+        Assert.Contains("private async Task<bool> VerifyAsync", coordinator);
+        Assert.DoesNotContain("private async Task<bool> SafeProbeAsync", app);
+        Assert.DoesNotContain("private async Task<bool> VerifyAsync", app);
+    }
+
+    [Fact]
     public void McpOnlyStartup_DoesNotRequireGatewayCredentials()
     {
         var source = ReadAppSources();
