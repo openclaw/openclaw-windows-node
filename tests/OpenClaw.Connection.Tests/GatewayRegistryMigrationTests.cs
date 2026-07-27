@@ -152,6 +152,38 @@ public class GatewayRegistryMigrationTests : IDisposable
     }
 
     [Fact]
+    public void MigrateFromSettings_NonstandardLoopbackAliasWithSetupState_RemainsManual()
+    {
+        var direct = Path.Combine(_tempDir, "loopback-alias-setup-data");
+        Directory.CreateDirectory(direct);
+        File.WriteAllText(
+            Path.Combine(direct, "setup-state.json"),
+            """{"DistroName":"OpenClawGateway","GatewayUrl":"ws://localhost:18789"}""");
+        var previous = Environment.GetEnvironmentVariable("OPENCLAW_TRAY_LOCAL_DATA_DIR");
+        try
+        {
+            Environment.SetEnvironmentVariable("OPENCLAW_TRAY_LOCAL_DATA_DIR", direct);
+
+            Assert.True(_registry.MigrateFromSettings(
+                "ws://127.0.0.2:18789",
+                "shared-token",
+                null,
+                false,
+                null,
+                null,
+                0,
+                0,
+                _tempDir));
+
+            Assert.Null(_registry.GetActive()!.SetupManagedDistroName);
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable("OPENCLAW_TRAY_LOCAL_DATA_DIR", previous);
+        }
+    }
+
+    [Fact]
     public void MigrateFromSettings_SetupStateWithoutGatewayUrl_RemainsManual()
     {
         var direct = Path.Combine(_tempDir, "url-less-setup-data");

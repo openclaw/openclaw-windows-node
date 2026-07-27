@@ -516,19 +516,55 @@ public class GatewayRegistryTests : IDisposable
         {
             IsLocal = true,
             SetupManagedDistroName = "OpenClawGateway",
+            FriendlyName = "Local (OpenClawGateway)",
+            RequiresV2Signature = true,
         };
 
         var rebuilt = new GatewayRecord
         {
             Id = "gw-1",
             Url = "ws://127.0.0.1:18800",
+            IsLocal = true,
+            SetupManagedDistroName = "OpenClawGateway",
+            FriendlyName = "Local ( OpenClawGateway )",
+            RequiresV2Signature = true,
         }.PreserveAdvancedFields(existing);
 
+        Assert.True(rebuilt.IsLocal);
         Assert.Null(rebuilt.SetupManagedDistroName);
+        Assert.Null(rebuilt.FriendlyName);
+        Assert.False(rebuilt.RequiresV2Signature);
+        Assert.Null(GatewayRecordEditing.ResolveManagedDistroName(rebuilt));
     }
 
     [Fact]
-    public void PreserveAdvancedFields_EquivalentLoopbackAlias_KeepsManagedOwnership()
+    public void PreserveAdvancedFields_DifferentLoopbackHost_DropsManagedOwnership()
+    {
+        var existing = MakeRecord("gw-1", "ws://localhost:18789") with
+        {
+            IsLocal = true,
+            SetupManagedDistroName = "OpenClawGateway",
+            FriendlyName = "Local (OpenClawGateway)",
+        };
+
+        var rebuilt = new GatewayRecord
+        {
+            Id = "gw-1",
+            Url = "ws://127.0.0.2:18789",
+            IsLocal = true,
+            FriendlyName = "Local (OpenClawGateway)",
+        }.PreserveAdvancedFields(existing);
+
+        Assert.False(rebuilt.IsLocal);
+        Assert.Null(rebuilt.SetupManagedDistroName);
+        Assert.Null(rebuilt.FriendlyName);
+        Assert.Null(GatewayRecordEditing.ResolveManagedDistroName(rebuilt));
+    }
+
+    [Theory]
+    [InlineData("ws://127.0.0.1:18789/")]
+    [InlineData("ws://[::1]:18789/")]
+    public void PreserveAdvancedFields_EquivalentLoopbackAlias_KeepsManagedOwnership(string editedUrl)
     {
         var existing = MakeRecord("gw-1", "ws://localhost:18789/") with
         {
@@ -539,10 +575,35 @@ public class GatewayRegistryTests : IDisposable
         var rebuilt = new GatewayRecord
         {
             Id = "gw-1",
-            Url = "ws://127.0.0.1:18789/",
+            Url = editedUrl,
         }.PreserveAdvancedFields(existing);
 
         Assert.Equal("OpenClawGateway", rebuilt.SetupManagedDistroName);
+    }
+
+    [Fact]
+    public void PreserveAdvancedFields_PathOrQueryCaseChange_DropsManagedOwnership()
+    {
+        var existing = MakeRecord("gw-1", "ws://localhost:18789/Case?Token=A") with
+        {
+            IsLocal = true,
+            SetupManagedDistroName = "OpenClawGateway",
+            FriendlyName = "Local (OpenClawGateway)",
+        };
+
+        var rebuilt = new GatewayRecord
+        {
+            Id = "gw-1",
+            Url = "ws://LOCALHOST:18789/case?token=a",
+            IsLocal = true,
+            SetupManagedDistroName = "OpenClawGateway",
+            FriendlyName = "Local (OpenClawGateway)",
+        }.PreserveAdvancedFields(existing);
+
+        Assert.True(rebuilt.IsLocal);
+        Assert.Null(rebuilt.SetupManagedDistroName);
+        Assert.Null(rebuilt.FriendlyName);
+        Assert.Null(GatewayRecordEditing.ResolveManagedDistroName(rebuilt));
     }
 
     [Fact]

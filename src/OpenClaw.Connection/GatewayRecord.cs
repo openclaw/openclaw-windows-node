@@ -66,10 +66,10 @@ public static class GatewayRecordEditing
     /// (<see cref="GatewayRecord.IsLocal"/>, <see cref="GatewayRecord.SetupManagedDistroName"/>,
     /// <see cref="GatewayRecord.RequiresV2Signature"/>). Preserving those keeps a managed gateway's
     /// keepalive and auto-repair working across an edit; dropping them silently disabled self-healing.
-    /// "Same gateway" means the endpoint URL is unchanged (a name/token-only edit) or still loopback,
-    /// and no SSH tunnel was added — this covers both localhost WSL and non-loopback managed gateways
-    /// (e.g. Tailscale <c>wss://…ts.net</c>). If the user repoints the URL at a DIFFERENT remote host
-    /// or adds a tunnel, the record is no longer that managed WSL gateway, so ownership is dropped.
+    /// "Same gateway" means the endpoint URL is unchanged (a name/token-only edit) or differs only by
+    /// the standard localhost aliases <c>localhost</c>, <c>127.0.0.1</c>, and <c>::1</c>, with scheme,
+    /// port, path, and query unchanged. If the user repoints the URL or adds a tunnel, the record becomes
+    /// manual and all managed-ownership metadata is removed.
     /// </summary>
     public static GatewayRecord PreserveAdvancedFields(this GatewayRecord rebuilt, GatewayRecord? existing)
     {
@@ -78,12 +78,11 @@ public static class GatewayRecordEditing
 
         var result = rebuilt with { BrowserControlPort = rebuilt.BrowserControlPort ?? existing.BrowserControlPort };
 
-        var stillSameManagedEndpoint =
-            string.Equals(rebuilt.Url, existing.Url, StringComparison.OrdinalIgnoreCase) ||
-            AreEquivalentLoopbackEndpoints(rebuilt.Url, existing.Url);
+        var stillSameManagedEndpoint = AreEquivalentManagedEndpoints(rebuilt.Url, existing.Url);
+        var existingManagedDistroName = ResolveManagedDistroName(existing);
         var managedDistroName =
             rebuilt.SetupManagedDistroName ??
-            ResolveManagedDistroName(existing);
+            existingManagedDistroName;
 
         if (existing.IsLocal &&
             managedDistroName is not null &&
@@ -96,6 +95,18 @@ public static class GatewayRecordEditing
                 // Migrate legacy "Local (<distro>)" ownership to the explicit durable marker.
                 SetupManagedDistroName = managedDistroName,
                 RequiresV2Signature = rebuilt.RequiresV2Signature || existing.RequiresV2Signature,
+            };
+        }
+        else if (existingManagedDistroName is not null)
+        {
+            result = result with
+            {
+                IsLocal = OpenClaw.Shared.LocalGatewayUrlClassifier.IsLocalGatewayUrl(rebuilt.Url),
+                SetupManagedDistroName = null,
+                RequiresV2Signature = false,
+                FriendlyName = ParseLegacyManagedDistroName(result.FriendlyName) is not null
+                        ? null
+                        : result.FriendlyName,
             };
         }
 
@@ -112,11 +123,45 @@ public static class GatewayRecordEditing
             return false;
         }
 
-        return string.Equals(leftUri.Scheme, rightUri.Scheme, StringComparison.OrdinalIgnoreCase) &&
-            leftUri.Port == rightUri.Port &&
-            string.Equals(leftUri.AbsolutePath, rightUri.AbsolutePath, StringComparison.Ordinal) &&
-            string.Equals(leftUri.Query, rightUri.Query, StringComparison.Ordinal);
+        return AreEquivalentManagedEndpoints(leftUri, rightUri);
     }
+
+    private static bool AreEquivalentManagedEndpoints(string? left, string? right) =>
+        Uri.TryCreate(left, UriKind.Absolute, out var leftUri) &&
+        Uri.TryCreate(right, UriKind.Absolute, out var rightUri) &&
+        AreEquivalentManagedEndpoints(leftUri, rightUri);
+
+    private static bool AreEquivalentManagedEndpoints(Uri leftUri, Uri rightUri)
+    {
+        var hostsEquivalent =
+            string.Equals(
+                NormalizeHost(leftUri.Host),
+                NormalizeHost(rightUri.Host),
+                StringComparison.OrdinalIgnoreCase) ||
+            (leftUri.IsLoopback &&
+             rightUri.IsLoopback &&
+             IsStandardLoopbackAlias(leftUri.Host) &&
+             IsStandardLoopbackAlias(rightUri.Host));
+
+        return hostsEquivalent &&
+            string.Equals(leftUri.Scheme, rightUri.Scheme, StringComparison.OrdinalIgnoreCase) &&
+            leftUri.Port == rightUri.Port &&
+            string.Equals(leftUri.UserInfo, rightUri.UserInfo, StringComparison.Ordinal) &&
+            string.Equals(leftUri.AbsolutePath, rightUri.AbsolutePath, StringComparison.Ordinal) &&
+            string.Equals(leftUri.Query, rightUri.Query, StringComparison.Ordinal) &&
+            string.Equals(leftUri.Fragment, rightUri.Fragment, StringComparison.Ordinal);
+    }
+
+    private static bool IsStandardLoopbackAlias(string host)
+    {
+        var normalized = NormalizeHost(host);
+        return string.Equals(normalized, "localhost", StringComparison.OrdinalIgnoreCase) ||
+            string.Equals(normalized, "127.0.0.1", StringComparison.Ordinal) ||
+            string.Equals(normalized, "::1", StringComparison.Ordinal);
+    }
+
+    private static string NormalizeHost(string host) =>
+        host.Trim().TrimStart('[').TrimEnd(']').TrimEnd('.');
 
     public static bool IsLoopbackEndpoint(string? url) =>
         Uri.TryCreate(url, UriKind.Absolute, out var uri) && uri.IsLoopback;
@@ -126,19 +171,27 @@ public static class GatewayRecordEditing
         if (!string.IsNullOrWhiteSpace(record.SetupManagedDistroName))
             return record.SetupManagedDistroName;
 
-        const string prefix = "Local (";
-        var name = record.FriendlyName;
         if (!record.IsLocal ||
             !OpenClaw.Shared.LocalGatewayUrlClassifier.IsLocalGatewayUrl(record.Url) ||
-            name is null ||
-            string.IsNullOrWhiteSpace(name) ||
-            !name.StartsWith(prefix, StringComparison.Ordinal) ||
-            !name.EndsWith(')'))
+            ParseLegacyManagedDistroName(record.FriendlyName) is not { } distro)
         {
             return null;
         }
 
-        var distro = name[prefix.Length..^1].Trim();
+        return distro;
+    }
+
+    private static string? ParseLegacyManagedDistroName(string? friendlyName)
+    {
+        const string prefix = "Local (";
+        if (string.IsNullOrWhiteSpace(friendlyName) ||
+            !friendlyName.StartsWith(prefix, StringComparison.Ordinal) ||
+            !friendlyName.EndsWith(')'))
+        {
+            return null;
+        }
+
+        var distro = friendlyName[prefix.Length..^1].Trim();
         return string.IsNullOrWhiteSpace(distro) ? null : distro;
     }
 }
