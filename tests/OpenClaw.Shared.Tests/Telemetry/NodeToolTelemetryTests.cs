@@ -95,6 +95,7 @@ public sealed class NodeToolTelemetryTests
         var root = Assert.Single(activities.Stopped, a => a.OperationName == NodeToolInvocation.InvokeSpanName);
         var execute = Assert.Single(activities.Stopped, a => a.OperationName == NodeToolInvocation.ExecuteSpanName);
         Assert.Equal(default, root.ParentSpanId);
+        Assert.Empty(root.Links);
         Assert.Equal(root.TraceId, execute.TraceId);
         Assert.Equal(root.SpanId, execute.ParentSpanId);
         Assert.Equal("system.run", root.GetTagItem(NodeToolInvocation.CommandTag));
@@ -131,6 +132,50 @@ public sealed class NodeToolTelemetryTests
         Assert.DoesNotContain(
             durationMeasurement.Tags,
             tag => tag.Key == NodeToolInvocation.ApprovalPipelineTag);
+    }
+
+    [Fact]
+    public void Invocation_WithLinkedContext_RemainsRootAndCreatesLink()
+    {
+        using var activities = new ActivityCollector();
+        var linkedContext = new ActivityContext(
+            ActivityTraceId.CreateRandom(),
+            ActivitySpanId.CreateRandom(),
+            ActivityTraceFlags.Recorded);
+        var invocation = new NodeToolInvocation(NodeToolTransport.Mcp, linkedContext);
+
+        invocation.Complete(NodeToolOutcome.Success);
+
+        var root = Assert.Single(
+            activities.Stopped,
+            activity => activity.OperationName == NodeToolInvocation.InvokeSpanName);
+        Assert.Equal(default, root.ParentSpanId);
+        Assert.NotEqual(linkedContext.TraceId, root.TraceId);
+        var link = Assert.Single(root.Links);
+        Assert.Equal(linkedContext, link.Context);
+    }
+
+    [Fact]
+    public void McpInvocation_WithoutRecordedLinkedContext_RemainsUnlinked()
+    {
+        using var activities = new ActivityCollector();
+        var unrecordedContext = new ActivityContext(
+            ActivityTraceId.CreateRandom(),
+            ActivitySpanId.CreateRandom(),
+            ActivityTraceFlags.None);
+        var withoutContext = new NodeToolInvocation(NodeToolTransport.Mcp);
+        var withUnrecordedContext = new NodeToolInvocation(
+            NodeToolTransport.Mcp,
+            unrecordedContext);
+
+        withoutContext.Complete(NodeToolOutcome.Success);
+        withUnrecordedContext.Complete(NodeToolOutcome.Success);
+
+        var roots = activities.Stopped
+            .Where(activity => activity.OperationName == NodeToolInvocation.InvokeSpanName)
+            .ToList();
+        Assert.Equal(2, roots.Count);
+        Assert.All(roots, root => Assert.Empty(root.Links));
     }
 
     [Theory]

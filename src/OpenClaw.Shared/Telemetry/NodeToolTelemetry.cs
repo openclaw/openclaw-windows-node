@@ -130,9 +130,18 @@ public sealed class NodeToolInvocation : IDisposable
     private NodeToolSandboxDenialReason? _sandboxDenialReason;
     private int _completed;
 
-    public NodeToolInvocation(NodeToolTransport transport)
+    public NodeToolInvocation(
+        NodeToolTransport transport,
+        ActivityContext linkedContext = default)
     {
         _transport = transport;
+        ActivityLink[]? links =
+            transport == NodeToolTransport.Mcp &&
+            linkedContext.TraceId != default &&
+            linkedContext.SpanId != default &&
+            (linkedContext.TraceFlags & ActivityTraceFlags.Recorded) != 0
+            ? [new ActivityLink(linkedContext)]
+            : null;
         _activity = OpenClawTelemetry.StartDetachedActivity(
             InvokeSpanName,
             default(ActivityContext),
@@ -140,7 +149,8 @@ public sealed class NodeToolInvocation : IDisposable
                 OpenClawTelemetryTag.String(CommandTag, UnknownCommand),
                 OpenClawTelemetryTag.String(TransportTag, transport.ToTelemetryValue())
             ],
-            System.Diagnostics.ActivityKind.Server);
+            System.Diagnostics.ActivityKind.Server,
+            links: links);
     }
 
     public ActivityContext Context => _activity?.Context ?? default;

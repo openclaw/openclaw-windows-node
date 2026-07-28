@@ -196,6 +196,49 @@ public sealed class McpHttpServerTelemetryTests
     }
 
     [Fact]
+    public async Task ToolsCall_LinksNodeInvocationToIndependentMcpRequest()
+    {
+        using var activities = new ActivityCollector();
+        var release = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        release.TrySetResult(true);
+        var capability = new GatedCapability(release);
+        var port = FreePort();
+        var bridge = new McpToolBridge(() => new INodeCapability[] { capability });
+        await using var server = new McpHttpServer(
+            bridge,
+            port,
+            NullLogger.Instance,
+            authToken: null);
+        server.Start();
+        using var http = new HttpClient { BaseAddress = new Uri(server.Endpoint) };
+
+        using var response = await http.PostAsync(
+            "",
+            Json("""{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"gate.wait"}}"""));
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        await EventuallyAsync(() =>
+            activities.Stopped.Any(activity =>
+                activity.OperationName == McpServerTelemetry.RequestSpanName) &&
+            activities.Stopped.Any(activity =>
+                activity.OperationName == NodeToolInvocation.InvokeSpanName &&
+                Equals(activity.GetTagItem(NodeToolInvocation.CommandTag), "gate.wait")));
+
+        var request = Assert.Single(
+            activities.Stopped,
+            activity => activity.OperationName == McpServerTelemetry.RequestSpanName);
+        var invocation = Assert.Single(
+            activities.Stopped,
+            activity =>
+                activity.OperationName == NodeToolInvocation.InvokeSpanName &&
+                Equals(activity.GetTagItem(NodeToolInvocation.CommandTag), "gate.wait"));
+        Assert.Equal(default, request.ParentSpanId);
+        Assert.Equal(default, invocation.ParentSpanId);
+        Assert.NotEqual(request.TraceId, invocation.TraceId);
+        var link = Assert.Single(invocation.Links);
+        Assert.Equal(request.Context, link.Context);
+    }
+
+    [Fact]
     public async Task HandlerSaturation_RecordsBusy()
     {
         using var metrics = new MetricCollector();
@@ -668,14 +711,16 @@ public sealed class McpHttpServerTelemetryTests
                 ShouldListenTo = source =>
                     source.Name == OpenClawActivitySourceName.OpenClaw.ToTelemetryName(),
                 Sample = (ref ActivityCreationOptions<ActivityContext> options) =>
-                    options.Name.StartsWith("openclaw.mcp.server.", StringComparison.Ordinal)
+                    options.Name.StartsWith("openclaw.mcp.server.", StringComparison.Ordinal) ||
+                    options.Name == NodeToolInvocation.InvokeSpanName
                         ? ActivitySamplingResult.AllDataAndRecorded
                         : ActivitySamplingResult.None,
                 ActivityStopped = activity =>
                 {
                     if (activity.OperationName.StartsWith(
                         "openclaw.mcp.server.",
-                        StringComparison.Ordinal))
+                        StringComparison.Ordinal) ||
+                        activity.OperationName == NodeToolInvocation.InvokeSpanName)
                     {
                         Stopped.Enqueue(activity);
                     }

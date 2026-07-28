@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.IO;
 using System.Net;
 using System.Security.Cryptography;
@@ -364,7 +365,8 @@ public sealed class McpHttpServer : IDisposable, IAsyncDisposable
                     requestCts.Token,
                     cancellationState,
                     timeoutCancellation,
-                    shutdownCancellation)
+                    shutdownCancellation,
+                    requestTelemetry.Context)
                 .ConfigureAwait(false);
             requestTelemetry.Complete(result.Outcome, result.ErrorCategory, result.ErrorType);
         }
@@ -427,7 +429,8 @@ public sealed class McpHttpServer : IDisposable, IAsyncDisposable
         CancellationToken ct,
         McpRequestCancellationState cancellationState,
         CancellationToken timeoutCancellation,
-        CancellationToken shutdownCancellation)
+        CancellationToken shutdownCancellation,
+        ActivityContext requestTelemetryContext)
     {
         // Snapshot the auth token once. UpdateAuthToken can rotate _authToken
         // on another thread, and reading the field separately for the null-test
@@ -573,7 +576,7 @@ public sealed class McpHttpServer : IDisposable, IAsyncDisposable
             try
             {
                 transportResponse = await _bridge
-                    .HandleTransportRequestAsync(body, ct)
+                    .HandleTransportRequestAsync(body, ct, requestTelemetryContext)
                     .ConfigureAwait(false);
             }
             catch (OperationCanceledException) when (ct.IsCancellationRequested)

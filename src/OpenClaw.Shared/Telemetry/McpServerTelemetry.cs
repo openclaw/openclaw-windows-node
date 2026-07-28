@@ -234,6 +234,8 @@ public sealed class McpServerRequestOperation : IDisposable
             System.Diagnostics.ActivityKind.Server);
     }
 
+    public ActivityContext Context => _activity?.Context ?? default;
+
     public McpServerTelemetryCompletion? Complete(
         McpServerOutcome outcome,
         McpServerErrorCategory errorCategory = McpServerErrorCategory.None,

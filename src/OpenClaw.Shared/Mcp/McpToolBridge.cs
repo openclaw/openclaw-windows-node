@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Globalization;
 using System.IO;
 using System.Numerics;
@@ -91,7 +92,8 @@ public class McpToolBridge
 
     internal async Task<McpTransportResponse> HandleTransportRequestAsync(
         string requestBody,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        ActivityContext linkedContext = default)
     {
         JsonDocument doc;
         try
@@ -130,7 +132,7 @@ public class McpToolBridge
             var method = methodProp.GetString()!;
             var paramsElement = root.TryGetProperty("params", out var p) ? p : default;
             var invocation = string.Equals(method, "tools/call", StringComparison.Ordinal)
-                ? new NodeToolInvocation(NodeToolTransport.Mcp)
+                ? new NodeToolInvocation(NodeToolTransport.Mcp, linkedContext)
                 : null;
             NodeToolOutcome terminalOutcome = NodeToolOutcome.Success;
             NodeToolErrorCategory terminalCategory = NodeToolErrorCategory.None;

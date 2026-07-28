@@ -294,11 +294,18 @@ context is accepted.
 
 The MCP request span is an independent transport-level root. A `tools/call`
 request also creates the existing independent `openclaw.node.tool.invoke` root,
-which measures node dispatch through response delivery. The overlap is
-intentional: the MCP request signal diagnoses local HTTP transport behavior,
-while node-tool telemetry diagnoses command execution. A successfully delivered
-JSON-RPC error envelope is a successful MCP transport request; response text is
-never parsed to classify telemetry.
+which measures node dispatch through response delivery. When both spans are
+sampled, the node-tool root contains an OpenTelemetry span link to the MCP
+request. The link provides structural correlation without changing either
+root's parentage or making tool sampling inherit the request's sampling decision,
+and without adding a request identifier attribute. A custom link-aware sampler
+may still consider links when making its own decision. Gateway tool invocations
+and MCP invocations whose request span was not recorded have no link. The overlap
+is intentional: the MCP request signal
+diagnoses local HTTP transport behavior, while node-tool telemetry diagnoses
+command execution. A successfully delivered JSON-RPC error envelope is a
+successful MCP transport request; response text is never parsed to classify
+telemetry.
 
 Reviewed MCP attributes are:
 
@@ -350,6 +357,13 @@ background execution and MCP HTTP delivery use explicit activity contexts; they
 do not depend on ambient activity flowing across those boundaries. The
 invocation tracker uses one monotonic clock for the root and duration metric and
 completes exactly once.
+
+For local MCP `tools/call`, a sampled root links to the sampled
+`openclaw.mcp.server.request` span that caused it. The link carries only the
+standard OpenTelemetry trace and span context. It does not add request IDs,
+JSON-RPC fields, tool arguments, or metric tags. The tool invocation remains a
+separate root so gateway and MCP command traces retain the same topology and
+sampling contract.
 
 Reviewed attributes are:
 
