@@ -14,6 +14,9 @@ public static class SetupReviewSummaryBuilder
 {
     public static SetupReviewSummary Build(SetupConfig config, string? dataDir = null, string? localDataDir = null)
     {
+        if (config.InstallMode == GatewayInstallMode.NativeWindows)
+            return BuildNativeWindows(config, dataDir);
+
         var distroName = Display(config.DistroName, "OpenClawGateway");
         var baseDistro = Display(config.BaseDistro, "Ubuntu-24.04");
         var gatewayBind = Display(config.Gateway.Bind, "loopback");
@@ -71,6 +74,45 @@ public static class SetupReviewSummaryBuilder
                     $"writes -> {gatewayDataPath} + identity"
                 }.Where(line => line is not null)),
             CompletionGatewaySummary: $"{distroName} · {gatewayEndpoint}");
+    }
+
+    private static SetupReviewSummary BuildNativeWindows(SetupConfig config, string? dataDir)
+    {
+        var gatewayBind = Display(config.Gateway.Bind, "loopback");
+        var gatewayPort = config.GatewayPort;
+        var installUrl = config.Gateway.WindowsInstallUrl ?? GatewayLkgVersion.DefaultWindowsInstallUrl;
+        var installerHost = TryGetHttpsHost(installUrl);
+        var usesManagedRuntime = GatewayLkgVersion.ShouldUseManagedWindowsInstaller(installUrl);
+        var gatewayDataPath = Path.Combine(dataDir ?? SetupContext.ResolveDataDir(), "gateways.json");
+        var openClawStatePath = GatewayCliRunner.GetManagedNativeStateDir(config);
+        var openClawCliPrefix = GatewayCliRunner.GetManagedNativeCliPrefix(SetupContext.ResolveLocalDataDir());
+        var isLanBind = gatewayBind.Equals("lan", StringComparison.OrdinalIgnoreCase);
+        var gatewayEndpoint = isLanBind ? $"LAN:{gatewayPort}" : $"127.0.0.1:{gatewayPort}";
+        var versionArgument = string.IsNullOrWhiteSpace(config.Gateway.Version)
+            ? ""
+            : $" -Tag {config.Gateway.Version.Trim()}";
+
+        return new SetupReviewSummary(
+            DistroTitle: "Install directly on Windows",
+            DistroDescription: "No WSL or virtual machine. OpenClaw runs under your Windows account and stores its gateway state in your user profile.",
+            InstallerDescription: usesManagedRuntime
+                ? $"App-private Node {GatewayLkgVersion.ManagedNodeVersion} and OpenClaw {GatewayLkgVersion.LkgVersion}; downloads are version-pinned and SHA-256 verified."
+                : installerHost is null
+                ? "Installer URL is not HTTPS; setup will stop before downloading anything."
+                : $"Official PowerShell installer fetched over HTTPS from {installerHost}; installs Node.js when needed and keeps the OpenClaw CLI app-owned.",
+            InstallerBadge: usesManagedRuntime ? "App-private" : installerHost is null ? "Invalid URL" : "HTTPS",
+            GatewayDescription: isLanBind
+                ? "LAN bind enabled — reachable from this PC and your local network according to Windows firewall/routing."
+                : "Loopback only — not reachable from your network or the internet.",
+            GatewayEndpoint: gatewayEndpoint,
+            ExactCommands: string.Join(
+                Environment.NewLine,
+                $"NPM_CONFIG_PREFIX={openClawCliPrefix} · install.ps1 -NoOnboard{versionArgument}",
+                $"openclaw config set gateway.bind {gatewayBind} · port {gatewayPort}",
+                "openclaw gateway install --force   (Windows Scheduled Task)",
+                $"writes -> {openClawStatePath}",
+                $"writes -> {gatewayDataPath} + identity"),
+            CompletionGatewaySummary: $"Windows native · {gatewayEndpoint}");
     }
 
     private static string Display(string? value, string fallback)

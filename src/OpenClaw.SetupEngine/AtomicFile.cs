@@ -44,6 +44,59 @@ internal static class AtomicFile
         }
     }
 
+    public static async Task WriteAllBytesAsync(string path, byte[] contents, CancellationToken ct = default)
+    {
+        var directory = Path.GetDirectoryName(path);
+        if (!string.IsNullOrEmpty(directory))
+            Directory.CreateDirectory(directory);
+
+        var tempPath = Path.Combine(
+            directory ?? Directory.GetCurrentDirectory(),
+            $".{Path.GetFileName(path)}.{Guid.NewGuid():N}.tmp");
+
+        try
+        {
+            await File.WriteAllBytesAsync(tempPath, contents, ct);
+            File.Move(tempPath, path, overwrite: true);
+        }
+        finally
+        {
+            TryDeleteTemp(tempPath);
+        }
+    }
+
+    public static void MoveDirectory(string source, string destination)
+    {
+        var sourceInfo = new DirectoryInfo(source);
+        if (!sourceInfo.Exists)
+            throw new DirectoryNotFoundException($"Source directory not found: '{source}'.");
+        if (sourceInfo.Attributes.HasFlag(FileAttributes.ReparsePoint))
+            throw new InvalidOperationException($"Refusing to move reparse point '{source}'.");
+        if (Directory.Exists(destination) || File.Exists(destination))
+            throw new InvalidOperationException($"Destination already exists: '{destination}'.");
+        if (!string.Equals(
+                Path.GetPathRoot(Path.GetFullPath(source)),
+                Path.GetPathRoot(Path.GetFullPath(destination)),
+                StringComparison.OrdinalIgnoreCase))
+        {
+            throw new InvalidOperationException(
+                $"Atomic directory move requires same-volume paths: '{source}' and '{destination}'.");
+        }
+
+        Directory.Move(source, destination);
+    }
+
+    public static void DeleteDirectoryStrict(string path)
+    {
+        if (!Directory.Exists(path))
+            return;
+
+        var info = new DirectoryInfo(path);
+        if (info.Attributes.HasFlag(FileAttributes.ReparsePoint))
+            throw new InvalidOperationException($"Refusing to delete reparse point '{path}'.");
+        Directory.Delete(path, recursive: true);
+    }
+
     private static void TryDeleteTemp(string tempPath)
     {
         try

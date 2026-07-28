@@ -12,12 +12,7 @@ internal static class WslKeepAlivePolicy
     {
         if (activeRecord is not null)
         {
-            if (activeRecord.SshTunnel is not null)
-                return false;
-
-            return activeRecord.IsLocal
-                || !string.IsNullOrWhiteSpace(activeRecord.SetupManagedDistroName)
-                || LocalGatewayUrlClassifier.IsLocalGatewayUrl(activeRecord.Url);
+            return IsSetupManagedLocalRecord(activeRecord);
         }
 
         return LocalGatewayUrlClassifier.IsLocalGatewayUrl(legacyGatewayUrl ?? string.Empty);

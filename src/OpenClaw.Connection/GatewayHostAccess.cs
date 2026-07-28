@@ -1,4 +1,5 @@
 using System;
+using OpenClaw.Shared;
 
 namespace OpenClaw.Connection;
 
@@ -6,7 +7,8 @@ public enum GatewayTerminalTarget
 {
     None,
     Wsl,
-    Ssh
+    Ssh,
+    Native
 }
 
 /// <summary>
@@ -28,6 +30,7 @@ public sealed record GatewayHostAccessPlan(
     string? SshUser,
     string? SshHost,
     bool CanControlWslGateway,
+    string? NativeTaskName,
     string TerminalLabel,
     string TerminalTooltip,
     string? DisabledReason)
@@ -35,6 +38,8 @@ public sealed record GatewayHostAccessPlan(
     public bool CanOpenTerminal => TerminalTarget != GatewayTerminalTarget.None;
 
     public bool IsWslManaged => !string.IsNullOrWhiteSpace(DistroName);
+
+    public bool CanControlNativeGateway => !string.IsNullOrWhiteSpace(NativeTaskName);
 
     public static GatewayHostAccessPlan None(string? gatewayId = null, string? disabledReason = null)
     {
@@ -46,6 +51,7 @@ public sealed record GatewayHostAccessPlan(
             null,
             null,
             false,
+            null,
             GatewayHostAccessLocalization.GetString("GatewayHostAccess_OpenTerminalLabel"),
             defaultReason,
             defaultReason);
@@ -64,8 +70,9 @@ public static class GatewayHostAccessClassifier
         var distroName = Normalize(record.SetupManagedDistroName);
         var sshUser = Normalize(record.SshTunnel?.User);
         var sshHost = Normalize(record.SshTunnel?.Host);
+        var isManagedLocal = record.IsLocal || LocalGatewayUrlClassifier.IsLocalGatewayUrl(record.Url);
 
-        if (distroName is not null)
+        if (isManagedLocal && record.SshTunnel is null && distroName is not null)
         {
             return new GatewayHostAccessPlan(
                 record.Id,
@@ -74,8 +81,25 @@ public static class GatewayHostAccessClassifier
                 sshUser,
                 sshHost,
                 true,
+                null,
                 GatewayHostAccessLocalization.GetString("GatewayHostAccess_OpenTerminalLabel"),
                 GatewayHostAccessLocalization.Format("GatewayHostAccess_OpenTerminalInWslTooltip_Format", new object?[] { distroName }),
+                null);
+        }
+
+        var nativeTaskName = Normalize(record.SetupManagedNativeTaskName);
+        if (isManagedLocal && record.SshTunnel is null && nativeTaskName is not null)
+        {
+            return new GatewayHostAccessPlan(
+                record.Id,
+                GatewayTerminalTarget.Native,
+                null,
+                sshUser,
+                sshHost,
+                false,
+                nativeTaskName,
+                GatewayHostAccessLocalization.GetString("GatewayHostAccess_OpenTerminalLabel"),
+                GatewayHostAccessLocalization.Format("GatewayHostAccess_OpenTerminalNativeTooltip_Format", new object?[] { nativeTaskName }),
                 null);
         }
 
@@ -88,6 +112,7 @@ public static class GatewayHostAccessClassifier
                 sshUser,
                 sshHost,
                 false,
+                null,
                 GatewayHostAccessLocalization.GetString("GatewayHostAccess_OpenSshTerminalLabel"),
                 GatewayHostAccessLocalization.Format("GatewayHostAccess_OpenSshTerminalTooltip_Format", new object?[] { sshUser, sshHost }),
                 null);

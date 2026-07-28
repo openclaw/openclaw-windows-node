@@ -17,6 +17,8 @@ public static partial class TailscaleSetupPolicy
         if (!tailscale.Enabled)
             return null;
 
+        if (config.InstallMode != GatewayInstallMode.Wsl)
+            return "Tailscale setup is currently supported only for the WSL gateway mode.";
         if (!string.Equals(config.BaseDistro?.Trim(), SupportedBaseDistro, StringComparison.OrdinalIgnoreCase))
             return $"Tailscale setup currently requires BaseDistro '{SupportedBaseDistro}'. Choose that distro before replacing the generated gateway.";
         if (!string.IsNullOrWhiteSpace(config.GatewayUrl))

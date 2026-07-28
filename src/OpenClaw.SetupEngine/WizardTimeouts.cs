@@ -64,6 +64,16 @@ public static class WizardTimeouts
         string? answer = null)
     {
         var category = WizardStepClassifier.Categorize(stepType, options.Count > 0);
+
+        // Note/acknowledge steps carry no user input, so their request timeout is only
+        // a ceiling -- a fast reply still returns immediately. Acking a note can trigger
+        // heavy backend work before the gateway emits the next step: the finalize
+        // "Security" note is followed by Windows shell-completion cache generation
+        // (Node cold start + PowerShell $PROFILE write), which can exceed the 30s default.
+        // Give acknowledgements the slow ceiling so post-ack work cannot trip the timeout.
+        if (category == WizardStepCategory.Acknowledge)
+            return SlowStepTimeoutMs;
+
         IReadOnlyCollection<WizardOptionValue>? selectedOptions =
             category == WizardStepCategory.RequiresAnswer && options.Count > 0 ? [] : null;
 

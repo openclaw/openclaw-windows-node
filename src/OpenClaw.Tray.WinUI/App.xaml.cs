@@ -17,6 +17,7 @@ using OpenClaw.Connection;
 using Microsoft.Extensions.DependencyInjection;
 using OpenClawTray.Presentation;
 using OpenClawTray.Presentation.Adapters;
+using OpenClaw.SetupEngine;
 using System;
 using System.Collections.Frozen;
 using System.Collections.Generic;
@@ -52,6 +53,7 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
     private TrayIconCoordinator? _trayIconCoordinator;
     private GatewayConnectionManager? _connectionManager;
     private GatewayRegistry? _gatewayRegistry;
+    private NativeGatewayLifecycleCoordinator? _nativeGatewayLifecycle;
     private OpenClawTray.Chat.OpenClawChatCoordinator? _chatCoordinator;
 
     /// <summary>
@@ -95,6 +97,11 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
     internal SettingsManager Settings => _settings ?? throw new InvalidOperationException("Settings are not initialized.");
     internal SettingsManager? SettingsOrNull => _settings;
     internal string DataDirectoryPath => DataPath;
+    internal NativeGatewayLifecycleCoordinator NativeGatewayLifecycle =>
+        _nativeGatewayLifecycle ??= new NativeGatewayLifecycleCoordinator(
+            new ManagedNativeGatewayController(
+                AppIdentity.ResolveRoamingDataDirectory(),
+                AppIdentity.ResolveSetupLocalDataDirectory()));
 
     /// <summary>The active hub window, exposed so pages can obtain an HWND for file pickers.</summary>
     internal Microsoft.UI.Xaml.Window? ActiveHubWindow => _hubWindow;
@@ -202,6 +209,7 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
     private Microsoft.UI.Dispatching.DispatcherQueueTimer? _pairingApprovalPollTimer;
     private CancellationTokenSource? _deepLinkCts;
     private bool _isExiting;
+    private bool _nativeGatewayRestartInProgress;
     
     /// <summary>
     /// Cached connection status — sole writer is OnManagerStateChanged.
@@ -825,6 +833,10 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
         // runs detached from the tray — see WslDistroKeepAlive in LocalGatewaySetup.cs.
         var wslKeepAlive = new WslGatewayKeepAliveService(() => _settings, () => _gatewayRegistry);
         _ = Task.Run(wslKeepAlive.TryEnsureAsync);
+        var nativeKeepAlive = new NativeGatewayKeepAliveService(
+            () => _gatewayRegistry,
+            NativeGatewayLifecycle);
+        _ = Task.Run(nativeKeepAlive.TryEnsureAsync);
         InitializeGatewayClient();
 
         // Pre-warm chat window (WebView2 init takes 1-3s, do it now so left-click is instant)
@@ -1183,6 +1195,7 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
             case "activitysummary": _diagnosticsClipboard!.CopyActivitySummary(); break;
             case "extensibilitysummary": _diagnosticsClipboard!.CopyExtensibilitySummary(); break;
             case "restartsshtunnel": RestartSshTunnel(); break;
+            case "restartlocalgateway": _ = RestartLocalGatewayAsync(); break;
             case "copydeviceid": CopyDeviceIdToClipboard(); break;
             case "copynodesummary": CopyNodeSummaryToClipboard(); break;
             case "exit": ExitApplication(); break;
@@ -1478,14 +1491,18 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
             ? LocalizationHelper.GetString("Menu_Reconfigure")
             : LocalizationHelper.GetString("Menu_SetupGuide");
 
+        var activeGateway = _gatewayRegistry?.GetActive();
         return new TrayMenuSnapshot
         {
             CurrentStatus = _appState!.Status,
             OverallState = _connectionManager?.CurrentSnapshot.OverallState,
             AuthFailureMessage = _appState?.AuthFailureMessage,
-            GatewayUrl = _gatewayRegistry?.GetActive()?.Url ?? _settings?.GetEffectiveGatewayUrl(),
+            GatewayUrl = activeGateway?.Url ?? _settings?.GetEffectiveGatewayUrl(),
             GatewaySelf = _appState?.GatewaySelf,
             Presence = _appState?.Presence,
+            ActiveGatewayNativeTaskName = activeGateway is { IsLocal: true }
+                ? activeGateway.SetupManagedNativeTaskName
+                : null,
             EnableNodeMode = _settings?.EnableNodeMode == true && _nodeService != null,
             NodeIsPaired = _nodeService?.IsPaired ?? false,
             NodeIsPendingApproval = _nodeService?.IsPendingApproval ?? false,
@@ -3797,6 +3814,63 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
             _toastService!.ShowToast(new ToastContentBuilder()
                 .AddText("SSH tunnel restart failed")
                 .AddText(ex.Message));
+        }
+    }
+
+    private async Task RestartLocalGatewayAsync()
+    {
+        if (_nativeGatewayRestartInProgress)
+            return;
+
+        var activeGateway = _gatewayRegistry?.GetActive();
+        if (activeGateway is not { IsLocal: true } ||
+            string.IsNullOrWhiteSpace(activeGateway.SetupManagedNativeTaskName))
+        {
+            _toastService!.ShowToast(new ToastContentBuilder()
+                .AddText("Local gateway")
+                .AddText("No setup-managed native Windows gateway is active."));
+            return;
+        }
+
+        try
+        {
+            _nativeGatewayRestartInProgress = true;
+            Logger.Info("Restarting setup-managed native Windows gateway from tray menu");
+            DiagnosticsJsonlService.Write("native_gateway.restart_requested", new
+            {
+                taskName = activeGateway.SetupManagedNativeTaskName
+            });
+
+            var result = await NativeGatewayLifecycle.RunAsync(
+                activeGateway.SetupManagedNativeTaskName,
+                NativeGatewayControlAction.Restart);
+
+            if (!result.Success)
+            {
+                _toastService!.ShowToast(new ToastContentBuilder()
+                    .AddText("Local gateway restart failed")
+                    .AddText(string.IsNullOrWhiteSpace(result.OutputSummary)
+                        ? $"openclaw gateway restart exited with code {result.ExitCode}."
+                        : result.OutputSummary));
+                return;
+            }
+
+            ReconnectWithSyncedBrowserProxyForward();
+            _toastService!.ShowToast(new ToastContentBuilder()
+                .AddText("Local gateway")
+                .AddText("Restarted; reconnecting to gateway."));
+        }
+        catch (Exception ex)
+        {
+            Logger.Error($"Native local gateway restart request failed: {ex.Message}");
+            DiagnosticsJsonlService.Write("native_gateway.restart_request_failed", new { ex.Message });
+            _toastService!.ShowToast(new ToastContentBuilder()
+                .AddText("Local gateway restart failed")
+                .AddText(ex.Message));
+        }
+        finally
+        {
+            _nativeGatewayRestartInProgress = false;
         }
     }
 

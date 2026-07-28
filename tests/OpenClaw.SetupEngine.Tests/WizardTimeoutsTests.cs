@@ -123,4 +123,34 @@ public class WizardTimeoutsTests
         Assert.True(
             totalBudget >= TimeSpan.FromMinutes(20));
     }
+
+    [Theory]
+    [InlineData("Security", "Running agents on your computer is risky — harden your setup", "note-security")]
+    [InlineData("Workspace backup", "Back up your agent workspace.", "note-backup")]
+    [InlineData("Dashboard ready", "", "note-dashboard")]
+    public void NoteSteps_GetExtendedTimeout(string title, string message, string stepId)
+    {
+        // Acking a note can trigger heavy post-ack backend work (e.g. Windows shell-
+        // completion generation after the Security note) before the gateway returns the
+        // next step, so note acks must use the slow ceiling rather than the 30s default.
+        Assert.Equal(
+            WizardTimeouts.SlowStepTimeoutMs,
+            WizardTimeouts.ForGatewayStep(title, message, stepId, "note", []));
+    }
+
+    [Fact]
+    public void ConfirmStep_WithoutSlowHints_KeepsDefaultTimeout()
+    {
+        Assert.Equal(
+            WizardTimeouts.DefaultTimeoutMs,
+            WizardTimeouts.ForGatewayStep("Proceed?", "Continue setup", "confirm-continue", "confirm", []));
+    }
+
+    [Fact]
+    public void TextStep_WithoutSlowHints_KeepsDefaultTimeout()
+    {
+        Assert.Equal(
+            WizardTimeouts.DefaultTimeoutMs,
+            WizardTimeouts.ForGatewayStep("Enter a friendly name", "", "text-name", "text", []));
+    }
 }

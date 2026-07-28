@@ -38,20 +38,48 @@ public sealed record StepProgressEvent(string StepId, string DisplayName, StepOu
 
 public static class SetupStepFactory
 {
+    internal const string UninstallOwnershipValidationStepId = "validate-install-ownership";
+
     public static List<SetupStep> BuildWizardOnlySteps() =>
     [
         new RunGatewayWizardStep(),
         new WindowsNodeBootstrapContextStep(),
     ];
 
-    public static List<SetupStep> BuildDefaultSteps()
+    public static List<SetupStep> BuildDefaultSteps(SetupConfig? config = null)
     {
+        config ??= new SetupConfig();
+        if (config.InstallMode == GatewayInstallMode.NativeWindows)
+        {
+            return
+            [
+                new PreflightOsStep(),
+                new BeginNativeGatewayInstallStep(),
+                new StopConflictingLocalGatewaysStep(),
+                new InstallNativeCliStep(),
+                new NativeGatewayServiceCleanupStep(),
+                new CleanupStaleGatewayStep(),
+                new PreflightPortStep(),
+                new ConfigureGatewayStep(),
+                new InstallGatewayServiceStep(),
+                new NativeGatewayTaskHardeningStep(),
+                new StartGatewayStep(),
+                new MintBootstrapTokenStep(),
+                new PairOperatorStep(),
+                new PairNodeStep(),
+                new VerifyEndToEndStep(),
+                new RunGatewayWizardStep(),
+            ];
+        }
+
         return
         [
             new ValidateDistroInstallPathStep(),
             new PreflightOsStep(),
             new PreflightWslStep(),
             new PreflightWindowsTailscaleStep(),
+            new StopConflictingLocalGatewaysStep(),
+            new NativeGatewayServiceCleanupStep(),
             new CleanupStaleDistroStep(),
             new CleanupStaleGatewayStep(),
             new PreflightPortStep(),
@@ -73,6 +101,64 @@ public static class SetupStepFactory
             new WindowsNodeBootstrapContextStep(),
             new StartKeepaliveStep(),
         ];
+    }
+
+    public static List<SetupStep> BuildUninstallSteps(SetupContext ctx)
+    {
+        var steps = new List<SetupStep>();
+        if (GatewayInstallModeDetector.HasManagedWslInstallation(
+                ctx.DataDir,
+                ctx.LocalDataDir,
+                ctx.Config))
+        {
+            steps.AddRange(BuildDefaultSteps(new SetupConfig { InstallMode = GatewayInstallMode.Wsl })
+                .Select(step => (SetupStep)new InstallModeUninstallStep(step, GatewayInstallMode.Wsl)));
+        }
+
+        if (GatewayInstallModeDetector.HasManagedNativeInstallation(
+                ctx.DataDir,
+                ctx.LocalDataDir,
+                ctx.Config))
+        {
+            steps.AddRange(BuildDefaultSteps(new SetupConfig { InstallMode = GatewayInstallMode.NativeWindows })
+                .Select(step => (SetupStep)new InstallModeUninstallStep(
+                    step,
+                    GatewayInstallMode.NativeWindows)));
+        }
+
+        return steps;
+    }
+}
+
+internal sealed class InstallModeUninstallStep : SetupStep
+{
+    internal SetupStep InnerStep { get; }
+    internal GatewayInstallMode InstallMode { get; }
+
+    public InstallModeUninstallStep(SetupStep innerStep, GatewayInstallMode installMode)
+    {
+        InnerStep = innerStep;
+        InstallMode = installMode;
+    }
+
+    public override string Id => $"{InstallMode.ToString().ToLowerInvariant()}:{InnerStep.Id}";
+    public override string DisplayName => $"{InnerStep.DisplayName} ({InstallMode})";
+
+    public override Task<StepResult> ExecuteAsync(SetupContext ctx, CancellationToken ct) =>
+        throw new NotSupportedException("InstallModeUninstallStep can only be used for uninstall rollback.");
+
+    public override async Task RollbackAsync(SetupContext ctx, CancellationToken ct)
+    {
+        var previousMode = ctx.Config.InstallMode;
+        ctx.Config.InstallMode = InstallMode;
+        try
+        {
+            await InnerStep.RollbackAsync(ctx, ct);
+        }
+        finally
+        {
+            ctx.Config.InstallMode = previousMode;
+        }
     }
 }
 
@@ -97,6 +183,10 @@ public sealed class SetupPipeline
            !string.Equals(
                result.FailedStepId,
                ValidateDistroInstallPathStep.StepId,
+               StringComparison.Ordinal) &&
+           !string.Equals(
+               result.FailedStepId,
+               SetupStepFactory.UninstallOwnershipValidationStepId,
                StringComparison.Ordinal);
 
     public async Task<PipelineResult> RunAsync(SetupContext ctx)
@@ -111,10 +201,7 @@ public sealed class SetupPipeline
         foreach (var step in _steps)
         {
             if (ct.IsCancellationRequested)
-            {
-                ctx.Journal.RecordPipelineEvent("pipeline_cancelled");
-                return new PipelineResult(PipelineOutcome.Cancelled);
-            }
+                return await CancelAndRollbackAsync(ctx, currentStep: null);
 
             // Check if step can be skipped
             if (step.CanSkip(ctx))
@@ -146,8 +233,7 @@ public sealed class SetupPipeline
                 }
                 catch (OperationCanceledException) when (ct.IsCancellationRequested)
                 {
-                    ctx.Journal.RecordPipelineEvent("pipeline_cancelled", $"during step {step.Id}");
-                    return new PipelineResult(PipelineOutcome.Cancelled);
+                    return await CancelAndRollbackAsync(ctx, step);
                 }
             }
             else
@@ -158,8 +244,7 @@ public sealed class SetupPipeline
                 }
                 catch (OperationCanceledException) when (ct.IsCancellationRequested)
                 {
-                    ctx.Journal.RecordPipelineEvent("pipeline_cancelled", $"during step {step.Id}");
-                    return new PipelineResult(PipelineOutcome.Cancelled);
+                    return await CancelAndRollbackAsync(ctx, step);
                 }
                 catch (Exception ex)
                 {
@@ -191,21 +276,79 @@ public sealed class SetupPipeline
 
             if (_rollbackOnFailureOverride ?? ctx.Config.RollbackOnFailure)
             {
-                await RollbackFailedStep(step, ctx);
-                await RollbackCompletedSteps(ctx);
+                // A step can report failure as cancellation races with its final
+                // attempt. Rollback still gets its own bounded timeout token.
+                await RollbackFailedStep(step, ctx, CancellationToken.None);
+                await RollbackCompletedSteps(ctx, CancellationToken.None);
             }
 
             ctx.Journal.RecordPipelineEvent("pipeline_failed", $"step={step.Id}, message={result.Message}");
             return new PipelineResult(PipelineOutcome.Failed, step.Id, result.Message);
         }
 
+        CommitNativeStaging(ctx);
         pipelineSw.Stop();
         ctx.Journal.RecordPipelineEvent("pipeline_completed", $"elapsed={pipelineSw.Elapsed.TotalSeconds:F1}s");
         ctx.Logger.Info($"Pipeline completed successfully in {pipelineSw.Elapsed.TotalSeconds:F1}s");
         return new PipelineResult(PipelineOutcome.Success);
     }
 
-    private async Task RollbackCompletedSteps(SetupContext ctx)
+    internal static void CommitNativeStaging(SetupContext ctx)
+    {
+        CommitStagingDirectory(
+            ctx.NativeProfileStagingDir,
+            () => ctx.NativeProfileStagingDir = null,
+            "native profile",
+            ctx.Logger);
+        CommitStagingDirectory(
+            ctx.NativeCliPrefixStagingDir,
+            () =>
+            {
+                ctx.NativeCliPrefixStagingDir = null;
+                ctx.NativeCliInstallMutated = false;
+            },
+            "native CLI",
+            ctx.Logger);
+    }
+
+    private static void CommitStagingDirectory(
+        string? path,
+        Action clear,
+        string label,
+        SetupLogger logger)
+    {
+        if (string.IsNullOrWhiteSpace(path))
+            return;
+
+        try
+        {
+            AtomicFile.DeleteDirectoryStrict(path);
+            clear();
+            logger.Info($"Committed {label} update and removed rollback staging");
+        }
+        catch (Exception ex) when (ex is IOException or InvalidOperationException or UnauthorizedAccessException)
+        {
+            logger.Warn($"Could not remove {label} rollback staging '{path}': {ex.Message}");
+        }
+    }
+
+    private async Task<PipelineResult> CancelAndRollbackAsync(SetupContext ctx, SetupStep? currentStep)
+    {
+        if (_rollbackOnFailureOverride ?? ctx.Config.RollbackOnFailure)
+        {
+            // The run token is already cancelled. Use independent bounded tokens so
+            // interrupted mode switches can restore the gateway they stopped.
+            if (currentStep is not null)
+                await RollbackFailedStep(currentStep, ctx, CancellationToken.None);
+            await RollbackCompletedSteps(ctx, CancellationToken.None);
+        }
+
+        var detail = currentStep is null ? null : $"during step {currentStep.Id}";
+        ctx.Journal.RecordPipelineEvent("pipeline_cancelled", detail);
+        return new PipelineResult(PipelineOutcome.Cancelled);
+    }
+
+    private async Task RollbackCompletedSteps(SetupContext ctx, CancellationToken rollbackToken)
     {
         ctx.Logger.Warn($"Rolling back {_completedSteps.Count} completed steps");
         for (int i = _completedSteps.Count - 1; i >= 0; i--)
@@ -214,10 +357,10 @@ public sealed class SetupPipeline
             try
             {
                 ctx.Logger.Info($"Rolling back: {step.DisplayName}");
-                await RunRollbackWithTimeout(step, ctx, ctx.CancellationToken);
+                await RunRollbackWithTimeout(step, ctx, rollbackToken);
                 ctx.Journal.RecordRollback(step.Id, success: true);
             }
-            catch (OperationCanceledException) when (ctx.CancellationToken.IsCancellationRequested)
+            catch (OperationCanceledException) when (rollbackToken.IsCancellationRequested)
             {
                 throw;
             }
@@ -229,16 +372,19 @@ public sealed class SetupPipeline
         }
     }
 
-    private static async Task RollbackFailedStep(SetupStep step, SetupContext ctx)
+    private static async Task RollbackFailedStep(
+        SetupStep step,
+        SetupContext ctx,
+        CancellationToken rollbackToken)
     {
         ctx.Logger.Warn($"Attempting cleanup for failed step: {step.DisplayName}");
 
         try
         {
-            await RunRollbackWithTimeout(step, ctx, ctx.CancellationToken);
+            await RunRollbackWithTimeout(step, ctx, rollbackToken);
             ctx.Journal.RecordRollback(step.Id, success: true);
         }
-        catch (OperationCanceledException) when (ctx.CancellationToken.IsCancellationRequested)
+        catch (OperationCanceledException) when (rollbackToken.IsCancellationRequested)
         {
             throw;
         }
@@ -259,7 +405,20 @@ public sealed class SetupPipeline
         _completedSteps.Clear();
         var ct = ctx.CancellationToken;
 
-        if (!DistroInstallPathPolicy.TryGetManagedInstallPath(
+        if (GatewayInstallModeDetector.GetUninstallOwnershipError(ctx.LocalDataDir, ctx.Config) is { } ownershipError)
+        {
+            ctx.Logger.Error(ownershipError);
+            return new PipelineResult(
+                PipelineOutcome.Failed,
+                FailedStepId: SetupStepFactory.UninstallOwnershipValidationStepId,
+                Message: ownershipError);
+        }
+
+        var modeScopedSteps = _steps.OfType<InstallModeUninstallStep>().ToArray();
+        var includesWslUninstall = modeScopedSteps.Length == 0
+            || modeScopedSteps.Any(step => step.InstallMode == GatewayInstallMode.Wsl);
+        if (includesWslUninstall &&
+            !DistroInstallPathPolicy.TryGetManagedInstallPath(
                 ctx.LocalDataDir,
                 ctx.DistroName,
                 out _,
@@ -281,67 +440,75 @@ public sealed class SetupPipeline
         ctx.Journal.RecordPipelineEvent("uninstall_started", $"steps={_steps.Count}, dry_run={ctx.Config.DryRun}");
         ctx.Logger.Info($"Uninstall starting — {_steps.Count} steps in reverse order (dry_run={ctx.Config.DryRun})");
 
-        var pipelineSw = Stopwatch.StartNew();
-        var failures = new List<(string StepId, string Message)>();
-
-        // Run rollbacks in reverse order
-        for (int i = _steps.Count - 1; i >= 0; i--)
+        ctx.IsUninstalling = true;
+        try
         {
-            if (ct.IsCancellationRequested)
+            var pipelineSw = Stopwatch.StartNew();
+            var failures = new List<(string StepId, string Message)>();
+
+            // Run rollbacks in reverse order
+            for (int i = _steps.Count - 1; i >= 0; i--)
             {
-                ctx.Journal.RecordPipelineEvent("uninstall_cancelled");
-                return new PipelineResult(PipelineOutcome.Cancelled);
+                if (ct.IsCancellationRequested)
+                {
+                    ctx.Journal.RecordPipelineEvent("uninstall_cancelled");
+                    return new PipelineResult(PipelineOutcome.Cancelled);
+                }
+
+                var step = _steps[i];
+                ctx.Logger.Info($"Uninstalling: {step.DisplayName}");
+                StepProgress?.Invoke(this, new(step.Id, $"Uninstall: {step.DisplayName}", null, null));
+
+                var sw = Stopwatch.StartNew();
+                try
+                {
+                    if (ctx.Config.DryRun)
+                    {
+                        ctx.Logger.Info($"[DRY RUN] Would rollback: {step.Id}");
+                        ctx.Journal.RecordRollback(step.Id, success: true);
+                    }
+                    else
+                    {
+                        await RunRollbackWithTimeout(step, ctx, ct);
+                        ctx.Journal.RecordRollback(step.Id, success: true);
+                    }
+                    sw.Stop();
+                    StepProgress?.Invoke(this, new(step.Id, $"Uninstall: {step.DisplayName}", StepOutcome.Success, sw.Elapsed));
+                }
+                catch (OperationCanceledException) when (ct.IsCancellationRequested)
+                {
+                    ctx.Journal.RecordPipelineEvent("uninstall_cancelled", $"during rollback of {step.Id}");
+                    return new PipelineResult(PipelineOutcome.Cancelled);
+                }
+                catch (Exception ex)
+                {
+                    sw.Stop();
+                    ctx.Logger.Error($"Rollback failed for {step.Id}: {ex.Message}");
+                    ctx.Journal.RecordRollback(step.Id, success: false);
+                    failures.Add((step.Id, ex.Message));
+                    StepProgress?.Invoke(this, new(step.Id, $"Uninstall: {step.DisplayName}", StepOutcome.Failed, sw.Elapsed));
+                    // Continue past failures — best-effort cleanup
+                }
             }
 
-            var step = _steps[i];
-            ctx.Logger.Info($"Uninstalling: {step.DisplayName}");
-            StepProgress?.Invoke(this, new(step.Id, $"Uninstall: {step.DisplayName}", null, null));
+            pipelineSw.Stop();
 
-            var sw = Stopwatch.StartNew();
-            try
+            if (failures.Count > 0)
             {
-                if (ctx.Config.DryRun)
-                {
-                    ctx.Logger.Info($"[DRY RUN] Would rollback: {step.Id}");
-                    ctx.Journal.RecordRollback(step.Id, success: true);
-                }
-                else
-                {
-                    await RunRollbackWithTimeout(step, ctx, ct);
-                    ctx.Journal.RecordRollback(step.Id, success: true);
-                }
-                sw.Stop();
-                StepProgress?.Invoke(this, new(step.Id, $"Uninstall: {step.DisplayName}", StepOutcome.Success, sw.Elapsed));
+                var failMsg = $"{failures.Count} rollback(s) failed: {string.Join(", ", failures.Select(f => f.StepId))}";
+                ctx.Journal.RecordPipelineEvent("uninstall_completed_with_errors", failMsg);
+                ctx.Logger.Warn($"Uninstall completed with errors in {pipelineSw.Elapsed.TotalSeconds:F1}s — {failMsg}");
+                return new PipelineResult(PipelineOutcome.Failed, Message: failMsg);
             }
-            catch (OperationCanceledException) when (ct.IsCancellationRequested)
-            {
-                ctx.Journal.RecordPipelineEvent("uninstall_cancelled", $"during rollback of {step.Id}");
-                return new PipelineResult(PipelineOutcome.Cancelled);
-            }
-            catch (Exception ex)
-            {
-                sw.Stop();
-                ctx.Logger.Error($"Rollback failed for {step.Id}: {ex.Message}");
-                ctx.Journal.RecordRollback(step.Id, success: false);
-                failures.Add((step.Id, ex.Message));
-                StepProgress?.Invoke(this, new(step.Id, $"Uninstall: {step.DisplayName}", StepOutcome.Failed, sw.Elapsed));
-                // Continue past failures — best-effort cleanup
-            }
+
+            ctx.Journal.RecordPipelineEvent("uninstall_completed", $"elapsed={pipelineSw.Elapsed.TotalSeconds:F1}s");
+            ctx.Logger.Info($"Uninstall completed successfully in {pipelineSw.Elapsed.TotalSeconds:F1}s");
+            return new PipelineResult(PipelineOutcome.Success);
         }
-
-        pipelineSw.Stop();
-
-        if (failures.Count > 0)
+        finally
         {
-            var failMsg = $"{failures.Count} rollback(s) failed: {string.Join(", ", failures.Select(f => f.StepId))}";
-            ctx.Journal.RecordPipelineEvent("uninstall_completed_with_errors", failMsg);
-            ctx.Logger.Warn($"Uninstall completed with errors in {pipelineSw.Elapsed.TotalSeconds:F1}s — {failMsg}");
-            return new PipelineResult(PipelineOutcome.Failed, Message: failMsg);
+            ctx.IsUninstalling = false;
         }
-
-        ctx.Journal.RecordPipelineEvent("uninstall_completed", $"elapsed={pipelineSw.Elapsed.TotalSeconds:F1}s");
-        ctx.Logger.Info($"Uninstall completed successfully in {pipelineSw.Elapsed.TotalSeconds:F1}s");
-        return new PipelineResult(PipelineOutcome.Success);
     }
 
     private static async Task RunRollbackWithTimeout(SetupStep step, SetupContext ctx, CancellationToken ct)

@@ -1,5 +1,4 @@
 using System;
-using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Runtime.InteropServices;
@@ -18,9 +17,12 @@ namespace OpenClawTray.Services;
 public class DeviceStatusProvider : IDeviceStatusProvider
 {
     private readonly IOpenClawLogger _logger;
+    private readonly object _cpuLock = new();
     private double? _lastCpuUsage;
     private Timer? _cpuSampler;
-    private PerformanceCounter? _cpuCounter;
+    private ulong? _lastIdleTime;
+    private ulong? _lastKernelTime;
+    private ulong? _lastUserTime;
     private bool _disposed;
 
     public DeviceStatusProvider(IOpenClawLogger logger)
@@ -34,22 +36,49 @@ public class DeviceStatusProvider : IDeviceStatusProvider
     /// </summary>
     public void StartCpuSampling()
     {
+        if (_disposed || _cpuSampler != null)
+            return;
+
+        SampleCpuUsage(updateUsage: false);
+        _cpuSampler = new Timer(_ =>
+        {
+            if (_disposed) return;
+            SampleCpuUsage(updateUsage: true);
+        }, null, TimeSpan.FromSeconds(1), TimeSpan.FromSeconds(2));
+    }
+
+    private void SampleCpuUsage(bool updateUsage)
+    {
         try
         {
-            _cpuCounter = new PerformanceCounter("Processor", "% Processor Time", "_Total");
-            _cpuCounter.NextValue(); // Prime the counter (first read is always 0)
-            _cpuSampler = new Timer(_ =>
+            if (!GetSystemTimes(out var idleTime, out var kernelTime, out var userTime))
+                return;
+
+            var idle = ToUInt64(idleTime);
+            var kernel = ToUInt64(kernelTime);
+            var user = ToUInt64(userTime);
+
+            lock (_cpuLock)
             {
-                if (_disposed) return;
-                try
+                if (_lastIdleTime is { } previousIdle
+                    && _lastKernelTime is { } previousKernel
+                    && _lastUserTime is { } previousUser
+                    && updateUsage)
                 {
-                    var counter = _cpuCounter;
-                    if (counter != null)
-                        _lastCpuUsage = Math.Round(counter.NextValue(), 1);
+                    var idleDelta = idle - previousIdle;
+                    var kernelDelta = kernel - previousKernel;
+                    var userDelta = user - previousUser;
+                    var totalDelta = kernelDelta + userDelta;
+                    if (totalDelta > 0 && idleDelta <= totalDelta)
+                    {
+                        _lastCpuUsage = Math.Round((1.0 - (double)idleDelta / totalDelta) * 100, 1);
+                    }
                 }
-                // slopwatch-ignore: SW003 Cleanup is best-effort; failure cannot improve caller state and the original outcome is preserved.
-                catch { /* counter unavailable or disposed */ }
-            }, null, TimeSpan.FromSeconds(1), TimeSpan.FromSeconds(2));
+
+                _lastIdleTime = idle;
+                _lastKernelTime = kernel;
+                _lastUserTime = user;
+            }
         }
         catch (Exception ex)
         {
@@ -83,11 +112,15 @@ public class DeviceStatusProvider : IDeviceStatusProvider
             // Registry access may be restricted
         }
 
+        double? usagePercent;
+        lock (_cpuLock)
+            usagePercent = _lastCpuUsage;
+
         object result = new
         {
             name = cpuName?.Trim(),
             logicalProcessors = Environment.ProcessorCount,
-            usagePercent = _lastCpuUsage
+            usagePercent
         };
 
         return Task.FromResult(result);
@@ -215,7 +248,7 @@ public class DeviceStatusProvider : IDeviceStatusProvider
         _disposed = true;
 
         // Drain the timer: wait for any in-flight callback to complete
-        // before disposing the counter it reads.
+        // before disposing the system-time sampler state it reads.
         using var timerDrained = new ManualResetEvent(false);
         if (_cpuSampler != null)
         {
@@ -224,8 +257,13 @@ public class DeviceStatusProvider : IDeviceStatusProvider
         }
         _cpuSampler = null;
 
-        _cpuCounter?.Dispose();
-        _cpuCounter = null;
+        lock (_cpuLock)
+        {
+            _lastIdleTime = null;
+            _lastKernelTime = null;
+            _lastUserTime = null;
+            _lastCpuUsage = null;
+        }
     }
 
     #region P/Invoke
@@ -247,6 +285,20 @@ public class DeviceStatusProvider : IDeviceStatusProvider
     [DllImport("kernel32.dll", SetLastError = true)]
     [return: MarshalAs(UnmanagedType.Bool)]
     private static extern bool GlobalMemoryStatusEx(ref MEMORYSTATUSEX lpBuffer);
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct FILETIME
+    {
+        public uint dwLowDateTime;
+        public uint dwHighDateTime;
+    }
+
+    [DllImport("kernel32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool GetSystemTimes(out FILETIME lpIdleTime, out FILETIME lpKernelTime, out FILETIME lpUserTime);
+
+    private static ulong ToUInt64(FILETIME value) =>
+        ((ulong)value.dwHighDateTime << 32) | value.dwLowDateTime;
 
     #endregion
 }

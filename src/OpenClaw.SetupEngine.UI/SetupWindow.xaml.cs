@@ -13,6 +13,7 @@ public sealed partial class SetupWindow : Window
 {
     private SetupConfig _config = null!;
     private bool _isWelcomeInstallSelected = true;
+    private GatewayInstallMode _welcomeInstallMode = GatewayInstallMode.Wsl;
     private SetupRunLock? _setupLock;
     private readonly CancellationTokenSource _lifetimeCts = new();
     private Task<StepResult>? _contextApplyTask;
@@ -146,7 +147,14 @@ public sealed partial class SetupWindow : Window
 
         _config = loadedConfig;
         _config.UsesBundledDefaultConfig = explicitConfigPath == null;
+        if (startAtGatewayInstalledMilestone)
+        {
+            _config.InstallMode = GatewayInstallModeDetector.Detect(
+                _dataDir,
+                _config.InstallMode);
+        }
         _config = SetupConfig.FromEnvironment(_config);
+        _welcomeInstallMode = _config.InstallMode;
         if (!string.IsNullOrWhiteSpace(distroNameOverride))
             _config.DistroName = distroNameOverride;
         if (gatewayPortOverride is > 0 and <= 65535)
@@ -185,6 +193,8 @@ public sealed partial class SetupWindow : Window
     public void NavigateToWelcome(bool back = false) => NavigateTo(typeof(WelcomePage), _config, back);
     public bool IsWelcomeInstallSelected => _isWelcomeInstallSelected;
     public void SetWelcomeInstallSelected(bool installSelected) => _isWelcomeInstallSelected = installSelected;
+    public GatewayInstallMode WelcomeInstallMode => _welcomeInstallMode;
+    public void SetWelcomeInstallMode(GatewayInstallMode installMode) => _welcomeInstallMode = installMode;
     public void NavigateToAdvancedSetup() => NavigateTo(typeof(AdvancedSetupPage), _config);
     public void NavigateToCapabilities() => NavigateTo(typeof(CapabilitiesPage), _config);
     public void NavigateToProgress() => NavigateTo(typeof(ProgressPage), CreateProgressPageArgs(showMilestoneOnly: false));

@@ -12,10 +12,10 @@ namespace OpenClaw.SetupEngine.UI.Pages;
 
 public sealed partial class WelcomePage : Page
 {
-    private const string InstallButtonText = "Install a local gateway (WSL)";
     private const string CheckingButtonText = "Checking existing setup...";
     private SetupConfig? _config;
     private bool _installSelected = true; // default selection
+    private GatewayInstallMode _installMode = GatewayInstallMode.Wsl;
     private bool _suppressSelectionWrite;
 
     public WelcomePage()
@@ -28,10 +28,13 @@ public sealed partial class WelcomePage : Page
     {
         _config = e.Parameter as SetupConfig ?? new SetupConfig();
         _installSelected = SetupWindow.Active?.IsWelcomeInstallSelected ?? true;
+        _installMode = SetupWindow.Active?.WelcomeInstallMode ?? _config.InstallMode;
         _suppressSelectionWrite = true;
         try
         {
-            GatewayChoiceSelector.SelectedIndex = _installSelected ? 0 : 1;
+            GatewayChoiceSelector.SelectedIndex = !_installSelected
+                ? 2
+                : _installMode == GatewayInstallMode.NativeWindows ? 1 : 0;
         }
         finally
         {
@@ -67,12 +70,14 @@ public sealed partial class WelcomePage : Page
         // A single-select ListView can be cleared to no selection (Ctrl+click / automation).
         // The Welcome choice must always have exactly one option selected, so restore the last
         // known selection instead of leaving the persisted value stale behind an empty list.
-        if (GatewayChoiceSelector.SelectedIndex is not (0 or 1))
+        if (GatewayChoiceSelector.SelectedIndex is not (0 or 1 or 2))
         {
             _suppressSelectionWrite = true;
             try
             {
-                GatewayChoiceSelector.SelectedIndex = _installSelected ? 0 : 1;
+                GatewayChoiceSelector.SelectedIndex = !_installSelected
+                    ? 2
+                    : _installMode == GatewayInstallMode.NativeWindows ? 1 : 0;
             }
             finally
             {
@@ -83,13 +88,17 @@ public sealed partial class WelcomePage : Page
         }
 
         if (!_suppressSelectionWrite)
-            SetInstallSelected(GatewayChoiceSelector.SelectedIndex == 0);
+            SetSelection(GatewayChoiceSelector.SelectedIndex);
     }
 
-    private void SetInstallSelected(bool installSelected)
+    private void SetSelection(int selectedIndex)
     {
-        _installSelected = installSelected;
-        SetupWindow.Active?.SetWelcomeInstallSelected(installSelected);
+        _installSelected = selectedIndex is 0 or 1;
+        _installMode = selectedIndex == 1
+            ? GatewayInstallMode.NativeWindows
+            : GatewayInstallMode.Wsl;
+        SetupWindow.Active?.SetWelcomeInstallSelected(_installSelected);
+        SetupWindow.Active?.SetWelcomeInstallMode(_installMode);
     }
 
     private void Back_Click(object sender, RoutedEventArgs e)
@@ -99,42 +108,50 @@ public sealed partial class WelcomePage : Page
 
     private void Next_Click(object sender, RoutedEventArgs e)
     {
-        if (_installSelected)
-        {
-            AsyncEventHandlerGuard.Run(
-                StartInstallAsync,
-                NullLogger.Instance,
-                nameof(Next_Click));
-        }
-        else
+        if (!_installSelected)
         {
             SetupWindow.Active?.NavigateToAdvancedSetup();
+            return;
         }
+
+        AsyncEventHandlerGuard.Run(
+            StartInstallWithConfirmationAsync,
+            NullLogger.Instance,
+            nameof(Next_Click));
     }
 
-    private async Task StartInstallAsync()
+    private Task StartInstallAsync(GatewayInstallMode installMode)
+    {
+        var config = _config ?? throw new InvalidOperationException("Setup configuration has not been loaded.");
+
+        config.ApplyInstallMode(installMode);
+        GatewayLkgVersion.ApplyToConfig(config);
+        SetupWindow.Active?.NavigateToCapabilities();
+        return Task.CompletedTask;
+    }
+
+    private async Task StartInstallWithConfirmationAsync()
     {
         var config = _config ?? throw new InvalidOperationException("Setup configuration has not been loaded.");
         var setupWindow = SetupWindow.Active;
         var dataDir = setupWindow?.DataDir ?? SetupContext.ResolveDataDir();
+        var localDataDir = setupWindow?.LocalDataDir ?? SetupContext.ResolveLocalDataDir();
+        config.InstallMode = _installMode;
 
         NextButton.IsEnabled = false;
-        InstallTitle.Text = CheckingButtonText;
+        NextButton.Content = CheckingButtonText;
         var navigating = false;
         try
         {
-            var existing = await Task.Run(() => ExistingConfigDetector.Detect(dataDir, config.DistroName));
+            var existing = await Task.Run(() => ExistingConfigDetector.Detect(dataDir, localDataDir, config));
             var xamlRoot = XamlRoot;
             if (setupWindow is null or { IsClosed: true } || xamlRoot is null)
                 return;
 
-            var summary = ExistingConfigDetector.BuildReplacementSummary(existing);
-
+            var summary = ExistingConfigDetector.BuildReplacementSummary(existing, _installMode);
             var dialog = new ContentDialog
             {
-                Title = existing.HasLocalGateway || existing.HasDistro
-                    ? "Replace existing WSL gateway?"
-                    : "Install a new WSL gateway?",
+                Title = ExistingConfigDetector.BuildReplacementTitle(existing, _installMode),
                 Content = summary,
                 PrimaryButtonText = "Continue",
                 CloseButtonText = "Cancel",
@@ -142,20 +159,25 @@ public sealed partial class WelcomePage : Page
                 XamlRoot = xamlRoot,
             };
 
-            var result = await dialog.ShowAsync();
-            if (result != ContentDialogResult.Primary)
+            if (await dialog.ShowAsync() != ContentDialogResult.Primary)
                 return;
 
             navigating = true;
-            setupWindow.NavigateToCapabilities();
+            await StartInstallAsync(_installMode);
         }
         finally
         {
             if (!navigating && setupWindow is { IsClosed: false })
             {
-                InstallTitle.Text = InstallButtonText;
+                NextButton.Content = "Next";
                 NextButton.IsEnabled = true;
             }
         }
+    }
+
+    private void AdvancedSetup_Click(object sender, RoutedEventArgs e)
+    {
+        // Show quick connect instructions before handing off to the companion app.
+        SetupWindow.Active?.NavigateToAdvancedSetup();
     }
 }

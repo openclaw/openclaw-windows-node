@@ -175,6 +175,17 @@ public sealed class NodeModeUiStateTests
     }
 
     [Fact]
+    public void DeviceStatusProvider_AvoidsSynchronousPerformanceCounterSampling()
+    {
+        var provider = ReadSource("src", "OpenClaw.Tray.WinUI", "Services", "DeviceStatusProvider.cs");
+        var nodeService = ReadSource("src", "OpenClaw.Tray.WinUI", "Services", "NodeService.cs");
+
+        Assert.DoesNotContain("PerformanceCounter", provider);
+        Assert.Contains("GetSystemTimes", provider);
+        Assert.DoesNotContain("new PerformanceCounter", nodeService);
+    }
+
+    [Fact]
     public void NewNodeStateStrings_ExistInEnUsResources()
     {
         var resw = ReadSource(

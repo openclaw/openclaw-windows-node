@@ -11,7 +11,7 @@
             <Image Source="ms-appx:///OpenClaw.SetupEngine.UI/Assets/Setup/OpenClawMascot.png" Width="44" Height="44"
                    HorizontalAlignment="Center" Margin="0,0,0,2"
                    AutomationProperties.AccessibilityView="Raw" />
-            <TextBlock Text="Setting up WSL gateway"
+            <TextBlock x:Name="HeaderTitleText" Text="Setting up WSL gateway"
                        Style="{StaticResource TitleTextBlockStyle}"
                        HorizontalAlignment="Center" />
             <TextBlock x:Name="SubtitleText"

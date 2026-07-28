@@ -69,6 +69,30 @@
                     </Grid>
                 </ListViewItem>
 
+                <ListViewItem x:Name="NativeInstallChoice"
+                              AutomationProperties.AutomationId="WelcomeInstallNativeGatewayChoice"
+                              AutomationProperties.Name="Install on Windows natively"
+                              HorizontalContentAlignment="Stretch"
+                              VerticalContentAlignment="Center"
+                              Padding="16,12">
+                    <Grid ColumnDefinitions="Auto,*" ColumnSpacing="16">
+                        <Border Grid.Column="0" Width="44" Height="44" CornerRadius="6"
+                                Background="{ThemeResource SubtleFillColorSecondaryBrush}" VerticalAlignment="Center">
+                            <FontIcon Glyph="&#xE756;" FontSize="20" IsTextScaleFactorEnabled="False"
+                                      Foreground="{ThemeResource TextFillColorPrimaryBrush}" />
+                        </Border>
+                        <StackPanel Grid.Column="1" Spacing="3">
+                            <TextBlock x:Name="NativeInstallTitle"
+                                       Text="Install on Windows (native)"
+                                       Style="{StaticResource BodyStrongTextBlockStyle}" />
+                            <TextBlock TextWrapping="Wrap"
+                                       Style="{StaticResource CaptionTextBlockStyle}"
+                                       Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                       Text="Installs OpenClaw directly on Windows with managed startup. Simpler setup, with a weaker isolation boundary." />
+                        </StackPanel>
+                    </Grid>
+                </ListViewItem>
+
                 <ListViewItem x:Name="ConnectChoice"
                               AutomationProperties.AutomationId="WelcomeConnectExistingGatewayChoice"
                               AutomationProperties.Name="Connect to an existing gateway"

@@ -57,6 +57,22 @@ public sealed class ProgramArgumentTests : IDisposable
     public static TheoryData<string> EmptyConfigContents
         => new("", " \t\r\n");
 
+    [Theory]
+    [InlineData(GatewayInstallMode.Wsl, false, false, true)]
+    [InlineData(GatewayInstallMode.NativeWindows, false, false, false)]
+    [InlineData(GatewayInstallMode.Wsl, true, false, false)]
+    [InlineData(GatewayInstallMode.Wsl, false, true, false)]
+    public void ShouldValidateDistroInstallPath_IsWslSetupOnly(
+        GatewayInstallMode installMode,
+        bool uninstall,
+        bool wizardOnly,
+        bool expected)
+    {
+        Assert.Equal(
+            expected,
+            Program.ShouldValidateDistroInstallPath(installMode, uninstall, wizardOnly));
+    }
+
     public static TheoryData<string, string> WhitespaceValueCases
     {
         get

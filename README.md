@@ -26,7 +26,7 @@ This monorepo contains the Windows hub, shared client libraries, and CLI utiliti
 | **OpenClaw.Chat** | Native chat model and timeline reducer |
 | **OpenClaw.Cli** | CLI validator for WebSocket connect/send/probe using tray settings |
 | **OpenClaw.WinNode.Cli** | `winnode` CLI for invoking local Windows node/MCP capabilities |
-| **OpenClaw.SetupEngine** | Local gateway setup, WSL installation, and setup-code support |
+| **OpenClaw.SetupEngine** | Native Windows and WSL gateway setup plus setup-code support |
 | **OpenClaw.SetupEngine.UI** | WinUI setup wizard pages hosted by the tray app |
 | **OpenClawTray.FunctionalUI** | In-repo declarative WinUI helper used by native chat and newer UI surfaces |
 
@@ -34,7 +34,7 @@ This monorepo contains the Windows hub, shared client libraries, and CLI utiliti
 
 > **End-user installer?** Download the latest stable x64 or ARM64 installer from the [OpenClaw Windows docs](https://docs.openclaw.ai/platforms/windows), or see [docs/SETUP.md](docs/SETUP.md) for step-by-step installation (no build required).
 >
-> **Managed WSL gateway?** Local setup creates a locked-down app-owned `OpenClawGateway` distro. See [docs/WSL_GATEWAY_ADMIN.md](docs/WSL_GATEWAY_ADMIN.md) for editing `openclaw.json` as the `openclaw` user and using root for protected-file administration.
+> **Native or WSL gateway?** First-run setup recommends the isolated app-owned `OpenClawGateway` WSL 2 distro for the safest local boundary. A native Windows gateway remains available as the simpler setup path. See [docs/WSL_GATEWAY_ADMIN.md](docs/WSL_GATEWAY_ADMIN.md) for WSL administration.
 >
 > **Operator or node?** Start with [Operator and node concepts](docs/OPERATOR_NODE_CONCEPTS.md) for the beginner-facing glossary of gateway, operator, node, pairing, reapproval, and allowlisted node capabilities.
 
@@ -162,7 +162,7 @@ Modern Windows 11-style system tray companion that connects to your local OpenCl
 - ⏱ **Cron Jobs** - Quick access to scheduled tasks
 - 🚀 **Auto-start** - Launch with Windows
 - ⚙️ **Settings** - Full configuration page
-- 🎯 **First-run onboarding** — native WSL gateway setup with capability, permission, install, onboard, and completion screens
+- 🎯 **First-run onboarding** — choose native Windows or isolated WSL gateway setup, then complete capability, permission, install, onboard, and completion screens
 
 #### Quick Send scope requirement
 
@@ -421,10 +421,10 @@ Default gateway: `ws://localhost:18789`
 On first run, Molty launches a guided setup flow:
 
 1. **Security notice** — confirms this is a trusted PC before local setup starts.
-2. **Welcome** — choose **Install a local gateway (WSL)** or connect to an existing gateway from Connections.
+2. **Welcome** — choose the recommended **Install in WSL** path, the simpler **Install on Windows (native)** path, or connect to an existing gateway from Connections.
 3. **Capabilities** — choose a profile, review matching Windows permission status, and see exactly what setup will install.
-4. **Progress** — installs the app-owned `OpenClawGateway` WSL instance and keeps Live activity available but collapsed by default.
-5. **Gateway installed** — confirms the WSL gateway is running before moving into OpenClaw onboard.
+4. **Progress** — installs the native Windows gateway or app-owned `OpenClawGateway` WSL instance and keeps Live activity available but collapsed by default.
+5. **Gateway installed** — confirms the selected local gateway is running before moving into OpenClaw onboard.
 6. **OpenClaw onboard** — gateway-driven provider/model/key setup rendered as a transcript.
 7. **All set** — summary of available features, startup preference, and Finish.
 

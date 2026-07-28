@@ -4,6 +4,7 @@ using Microsoft.UI.Xaml.Documents;
 using Microsoft.UI.Xaml.Media;
 using Microsoft.UI.Xaml.Navigation;
 using OpenClaw.Connection;
+using OpenClaw.SetupEngine;
 using OpenClaw.Shared;
 using OpenClawTray.Chat;
 using OpenClawTray.Helpers;
@@ -48,7 +49,10 @@ public sealed partial class DebugPage : Page
     private GatewayHostAccessPlan _doctorAccessPlan = GatewayHostAccessPlan.None();
 
     private IGatewayTerminalLauncher TerminalLauncher =>
-        _terminalLauncher ??= new GatewayTerminalLauncher(new OpenClawTray.AppLogger());
+        _terminalLauncher ??= new GatewayTerminalLauncher(
+            new OpenClawTray.AppLogger(),
+            Path.Combine(AppIdentity.ResolveSetupLocalDataDirectory(), "native-cli"),
+            Path.Combine(AppIdentity.ResolveSetupLocalDataDirectory(), "native-cli", "tools", "node"));
 
     private static readonly string LocalAppData = AppIdentity.ResolveLocalDataDirectory();
     private static readonly string LogPath = Path.Combine(LocalAppData, "openclaw-tray.log");

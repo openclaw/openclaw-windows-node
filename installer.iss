@@ -9,6 +9,8 @@
   #define MyAutoStartName "OpenClawTray-Dev"
   #define MyStartupTaskName "OpenClaw Companion (Dev)"
   #define MyDistroName "OpenClawGateway-Dev"
+  #define MyGatewayPort "18790"
+  #define MyGatewayTaskName "OpenClaw Gateway (OpenClawGateway-Dev)"
   #define MyProtocol "openclaw-dev"
   #define MyOutputSuffix "-Dev"
 #else
@@ -20,6 +22,8 @@
   #define MyAutoStartName "OpenClawTray"
   #define MyStartupTaskName "OpenClaw Companion"
   #define MyDistroName "OpenClawGateway"
+  #define MyGatewayPort "18789"
+  #define MyGatewayTaskName "OpenClaw Gateway (OpenClawGateway)"
   #define MyProtocol "openclaw"
   #define MyOutputSuffix ""
 #endif
@@ -101,7 +105,7 @@ Name: "startupicon"; Description: "Start {#MyAppName} when Windows starts"; Grou
 [Files]
 ; WinUI Tray app - include all files (WinUI needs DLLs, not single-file)
 Source: "{#publish}\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs
-; WSL gateway uninstall helper copied to {tmp} by [Code] during uninstall.
+; Native/WSL gateway uninstall helper copied to {tmp} by [Code] during uninstall.
 Source: "scripts\Uninstall-LocalGateway.ps1"; DestDir: "{app}"; Flags: ignoreversion
 #if vcRedist != ""
 Source: "{#vcRedist}"; DestDir: "{tmp}"; DestName: "vc_redist.exe"; Flags: deleteafterinstall; AfterInstall: InstallVCRuntime
@@ -191,8 +195,8 @@ begin
   begin
     LocalGatewayCleanupRequested :=
       MsgBox(
-        'Do you also want to remove the OpenClaw local WSL gateway?' + #13#10#13#10 +
-        'Choose Yes to unregister the {#MyDistroName} WSL distro and remove generated local gateway state.' + #13#10 +
+        'Do you also want to remove the OpenClaw local gateway?' + #13#10#13#10 +
+        'Choose Yes to remove its native Windows service or {#MyDistroName} WSL distro, plus generated local gateway state.' + #13#10 +
         'Choose No to leave the local gateway and generated local state on this computer.',
         mbConfirmation,
         MB_YESNO) = IDYES;
@@ -238,6 +242,8 @@ begin
     ' -DataDirectoryName ' + AddQuotes('{#MyInstallDir}') +
     ' -AutoStartName ' + AddQuotes('{#MyAutoStartName}') +
     ' -StartupTaskName ' + AddQuotes('{#MyStartupTaskName}') +
+    ' -GatewayTaskName ' + AddQuotes('{#MyGatewayTaskName}') +
+    ' -GatewayPort {#MyGatewayPort}' +
     ' -DistroName ' + AddQuotes('{#MyDistroName}');
 
   Log('Running local gateway cleanup script from {tmp}.');
