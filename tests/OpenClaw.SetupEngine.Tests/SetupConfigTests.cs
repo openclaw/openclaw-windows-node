@@ -289,9 +289,45 @@ public class SetupConfigTests : IDisposable
 
         var result = JsonDocument.Parse(File.ReadAllText(settingsPath));
         Assert.True(result.RootElement.GetProperty("EnableNodeMode").GetBoolean());
+        Assert.True(result.RootElement.GetProperty("EnableManagedLocalGatewayAutoRepair").GetBoolean());
         Assert.False(result.RootElement.GetProperty("AutoStart").GetBoolean());
         Assert.False(result.RootElement.GetProperty("NodeCameraEnabled").GetBoolean());
         Assert.Equal("custom_value", result.RootElement.GetProperty("CustomKey").GetString());
+    }
+
+    [Fact]
+    public void TraySettingsConfig_ExplicitAutoRepairChoice_IsPersistedForFreshSetup()
+    {
+        var settingsPath = Path.Combine(_tempDir, "settings.json");
+        var traySettings = new TraySettingsConfig
+        {
+            EnableManagedLocalGatewayAutoRepair = false,
+        };
+
+        traySettings.MergeIntoSettingsFile(settingsPath);
+
+        using var result = JsonDocument.Parse(File.ReadAllText(settingsPath));
+        Assert.False(
+            result.RootElement
+                .GetProperty("EnableManagedLocalGatewayAutoRepair")
+                .GetBoolean());
+    }
+
+    [Fact]
+    public void TraySettingsConfig_SetupRerun_PreservesExistingAutoRepairKillSwitch()
+    {
+        var settingsPath = Path.Combine(_tempDir, "settings.json");
+        File.WriteAllText(
+            settingsPath,
+            """{"EnableManagedLocalGatewayAutoRepair":false}""");
+
+        new TraySettingsConfig().MergeIntoSettingsFile(settingsPath);
+
+        using var result = JsonDocument.Parse(File.ReadAllText(settingsPath));
+        Assert.False(
+            result.RootElement
+                .GetProperty("EnableManagedLocalGatewayAutoRepair")
+                .GetBoolean());
     }
 
     [Fact]

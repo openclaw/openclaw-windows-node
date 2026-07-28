@@ -209,6 +209,7 @@ public sealed class CapabilitiesConfig
 public sealed class TraySettingsConfig
 {
     public bool EnableNodeMode { get; set; } = true;
+    public bool? EnableManagedLocalGatewayAutoRepair { get; set; }
     public bool AutoStart { get; set; } = false;
     public bool NodeSystemRunEnabled { get; set; } = true;
     public bool NodeCanvasEnabled { get; set; } = true;
@@ -263,6 +264,12 @@ public sealed class TraySettingsConfig
 
         foreach (var kvp in setupOwnedSettings)
             settings[kvp.Key] = kvp.Value;
+
+        const string autoRepairKey = "EnableManagedLocalGatewayAutoRepair";
+        if (EnableManagedLocalGatewayAutoRepair is { } configuredAutoRepair)
+            settings[autoRepairKey] = configuredAutoRepair;
+        else if (!settings.ContainsKey(autoRepairKey))
+            settings[autoRepairKey] = true;
 
         Directory.CreateDirectory(Path.GetDirectoryName(settingsPath)!);
         var json = JsonSerializer.Serialize(settings, SetupConfig.JsonWriteOptions);
