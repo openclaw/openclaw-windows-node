@@ -749,10 +749,10 @@ public sealed class TrayDashboardSummaryBuilderTests
     }
 
     [Fact]
-    public void SelectActiveSession_FallsBackToEndedWhenAllEnded()
+    public void SelectActiveSession_PrefersNeedsAttentionOverSuccessfulCompletion()
     {
-        // When every session is ended, still return the most recent one
-        // rather than null (the tray should show something if sessions exist).
+        // Failed work remains actionable, so it should win over a newer successful
+        // completion when there is no working or main session.
         var failed = new SessionInfo
         {
             Key = "agent:main:explicit:task-a",
@@ -767,7 +767,7 @@ public sealed class TrayDashboardSummaryBuilderTests
         };
 
         var result = TrayDashboardSummaryBuilder.SelectActiveSession([failed, done]);
-        Assert.Same(done, result);
+        Assert.Same(failed, result);
     }
 
     [Fact]
