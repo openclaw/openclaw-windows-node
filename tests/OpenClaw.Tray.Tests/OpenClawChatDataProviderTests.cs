@@ -1787,10 +1787,10 @@ public class OpenClawChatDataProviderTests
     }
 
     [Fact]
-    public async Task LoadAsync_EndedAndBackgroundFiltering_ComposesCorrectly()
+    public async Task LoadAsync_RunLivenessAndBackgroundFiltering_ComposesCorrectly()
     {
-        // Verifies the full filtering pipeline: ended sessions get Status=Ended,
-        // background sessions get IsBackground=true, and both properties coexist.
+        // Verifies the full filtering pipeline: only live runs get Status=Running,
+        // ready sessions stay selectable, and background sessions get IsBackground=true.
         var sessions = new[]
         {
             new SessionInfo { Key = "agent:main:main", IsMain = true, Status = "active" },
@@ -1806,11 +1806,11 @@ public class OpenClawChatDataProviderTests
         Assert.False(main.IsBackground);
 
         var cron = Assert.Single(snapshot.Threads, t => t.Id == "agent:main:cron:daily");
-        Assert.Equal(ChatThreadStatus.Ended, cron.Status);
+        Assert.Equal(ChatThreadStatus.Created, cron.Status);
         Assert.True(cron.IsBackground);
 
         var task = Assert.Single(snapshot.Threads, t => t.Id == "agent:main:explicit:task");
-        Assert.Equal(ChatThreadStatus.Ended, task.Status);
+        Assert.Equal(ChatThreadStatus.Created, task.Status);
         Assert.False(task.IsBackground);
 
         var hook = Assert.Single(snapshot.Threads, t => t.Id == "agent:main:hook:pr-check");
