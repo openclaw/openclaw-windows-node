@@ -18,8 +18,9 @@ public class ExecApprovalV2NormalizationTests
         string? cwd = null,
         IReadOnlyDictionary<string, string>? env = null,
         string? agentId = null,
-        string? sessionKey = null) =>
-        new(argv, shell: null, cwd, timeoutMs: 30_000, env, agentId, sessionKey);
+        string? sessionKey = null,
+        string? commandPreview = null) =>
+        new(argv, shell: null, cwd, timeoutMs: 30_000, env, agentId, sessionKey, commandPreview);
 
     // ── ExecShellWrapperNormalizer ────────────────────────────────────────────
 
@@ -330,7 +331,13 @@ public class ExecApprovalV2NormalizationTests
     public void Normalize_ContextFieldsCarriedThrough()
     {
         var env = new Dictionary<string, string> { ["FOO"] = "bar" };
-        var req = Req(["echo"], cwd: @"C:\tmp", env: env, agentId: "a1", sessionKey: "s1");
+        var req = Req(
+            ["echo"],
+            cwd: @"C:\tmp",
+            env: env,
+            agentId: "a1",
+            sessionKey: "s1",
+            commandPreview: "Inspect environment");
         var outcome = ExecApprovalV2Normalizer.Normalize(req);
 
         Assert.True(outcome.IsResolved);
@@ -338,6 +345,7 @@ public class ExecApprovalV2NormalizationTests
         Assert.Equal(@"C:\tmp", id.Cwd);
         Assert.Equal("a1", id.AgentId);
         Assert.Equal("s1", id.SessionKey);
+        Assert.Equal("Inspect environment", id.CommandPreview);
         Assert.Equal(30_000, id.TimeoutMs);
         Assert.Equal("bar", id.Env!["FOO"]);
     }

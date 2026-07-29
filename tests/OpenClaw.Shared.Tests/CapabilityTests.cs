@@ -667,7 +667,15 @@ public class SystemCapabilityTests
         {
             Id = "p3",
             Command = "system.run.prepare",
-            Args = Parse("""{"command":["ls","-la"],"cwd":"/tmp","agentId":"agent1","sessionKey":"sk1"}""")
+            Args = Parse("""
+                {
+                    "command": ["ls", "-la"],
+                    "cwd": "/tmp",
+                    "agentId": "agent1",
+                    "sessionKey": "sk1",
+                    "commandPreview": "List directory contents without modifying them."
+                }
+                """)
         };
 
         var res = await cap.ExecuteAsync(req);
@@ -680,6 +688,9 @@ public class SystemCapabilityTests
         Assert.Equal("/tmp", cwd.GetString());
         Assert.True(plan.TryGetProperty("agentId", out var agentId));
         Assert.Equal("agent1", agentId.GetString());
+        Assert.Equal(
+            "List directory contents without modifying them.",
+            plan.GetProperty("commandPreview").GetString());
     }
 
     [Fact]

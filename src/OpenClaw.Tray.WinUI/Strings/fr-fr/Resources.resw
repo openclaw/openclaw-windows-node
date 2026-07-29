@@ -729,6 +729,9 @@ Utilisez l'une de ces options :
   <data name="ExecApproval_Body" xml:space="preserve">
     <value>La commande suivante demande l'autorisation de s'exécuter :</value>
   </data>
+  <data name="ExecApproval_RequestContextLabel" xml:space="preserve">
+    <value>Contexte de la demande (fourni par l’agent)</value>
+  </data>
   <data name="ExecApproval_AgentLabel" xml:space="preserve">
     <value>Agent :</value>
   </data>
@@ -754,7 +757,7 @@ Utilisez l'une de ces options :
     <value>Faites défiler jusqu'à la fin de la commande avant d'autoriser</value>
   </data>
   <data name="ExecApproval_ConfusableWarning" xml:space="preserve">
-    <value>Cette commande mélange des jeux de caractères et peut ne pas être ce qu'elle paraît. Vérifiez-la attentivement.</value>
+    <value>Le contenu affiché mélange des jeux de caractères et peut ne pas être ce qu’il paraît. Vérifiez-le attentivement.</value>
   </data>
   <data name="Toast_NodePaired" xml:space="preserve">
     <value>✅ Noeud appairé!</value>

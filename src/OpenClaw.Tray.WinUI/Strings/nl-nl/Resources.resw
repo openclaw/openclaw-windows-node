@@ -730,6 +730,9 @@ Gebruik een van deze opties:
   <data name="ExecApproval_Body" xml:space="preserve">
     <value>De volgende opdracht vraagt toestemming om te worden uitgevoerd:</value>
   </data>
+  <data name="ExecApproval_RequestContextLabel" xml:space="preserve">
+    <value>Context van het verzoek (aangeleverd door de AI-agent)</value>
+  </data>
   <data name="ExecApproval_AgentLabel" xml:space="preserve">
     <value>AI-agent:</value>
   </data>
@@ -755,7 +758,7 @@ Gebruik een van deze opties:
     <value>Scroll naar het einde van de opdracht voordat u toestaat</value>
   </data>
   <data name="ExecApproval_ConfusableWarning" xml:space="preserve">
-    <value>Deze opdracht mengt tekensets en is mogelijk niet wat het lijkt. Controleer hem zorgvuldig.</value>
+    <value>De weergegeven inhoud mengt tekensets en is mogelijk niet wat het lijkt. Controleer deze zorgvuldig.</value>
   </data>
   <data name="Toast_NodePaired" xml:space="preserve">
     <value>✅ Node gekoppeld!</value>

@@ -78,7 +78,8 @@ public static class ExecApprovalV2InputValidator
             timeoutMs,
             env,
             TryGetString(request.Args, "agentId"),
-            TryGetString(request.Args, "sessionKey")));
+            TryGetString(request.Args, "sessionKey"),
+            TryGetCommandPreview(request.Args)));
     }
 
     private static ExecApprovalV2ValidationOutcome Deny(string reason)
@@ -133,5 +134,22 @@ public static class ExecApprovalV2InputValidator
             el.ValueKind != JsonValueKind.String)
             return null;
         return el.GetString();
+    }
+
+    private static string? TryGetCommandPreview(JsonElement args)
+    {
+        var preview = TryGetString(args, "commandPreview");
+        if (!string.IsNullOrWhiteSpace(preview))
+            return preview;
+
+        if (args.ValueKind != JsonValueKind.Object ||
+            !args.TryGetProperty("systemRunPlan", out var plan) ||
+            plan.ValueKind != JsonValueKind.Object)
+        {
+            return null;
+        }
+
+        preview = TryGetString(plan, "commandPreview");
+        return string.IsNullOrWhiteSpace(preview) ? null : preview;
     }
 }

@@ -111,6 +111,30 @@ public class ExecApprovalV2PipelineIntegrationTests : IDisposable
     }
 
     [Fact]
+    public async Task CommandPreview_ReachesDialogAsAdditiveContext()
+    {
+        var request = Req("""
+            {
+                "command": ["where", "hello"],
+                "systemRunPlan": {
+                    "commandPreview": "Purpose: locate an executable. Risk: read-only."
+                }
+            }
+            """);
+
+        ExecApprovalPromptView? captured = null;
+        await MakeCoordinator(
+            dialog: _ => ExecApprovalPromptOutcome.Deny,
+            onView: v => captured = v).HandleAsync(request, "preview-1");
+
+        Assert.NotNull(captured);
+        Assert.Contains("where", captured!.CommandText);
+        Assert.Equal(
+            "Purpose: locate an executable. Risk: read-only.",
+            captured.CommandPreviewText);
+    }
+
+    [Fact]
     public async Task DialogDenies_ReturnsUserDenied()
     {
         var result = await MakeCoordinator(dialog: _ => ExecApprovalPromptOutcome.Deny)

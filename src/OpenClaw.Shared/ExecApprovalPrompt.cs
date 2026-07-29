@@ -14,6 +14,12 @@ public enum ExecApprovalPromptDecisionKind
 public sealed class ExecApprovalPromptRequest
 {
     public string Command { get; init; } = "";
+    /// <summary>
+     /// Optional human-readable summary supplied through OpenClaw's canonical
+     /// <c>commandPreview</c> field. This is presentation context, not a policy
+    /// decision; <see cref="Command"/> remains the exact authoritative command.
+     /// </summary>
+    public string? CommandPreview { get; init; }
     public string? Shell { get; init; }
     public string? MatchedPattern { get; init; }
     public string Reason { get; init; } = "";

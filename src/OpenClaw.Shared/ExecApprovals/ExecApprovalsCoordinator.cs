@@ -374,6 +374,7 @@ public sealed class ExecApprovalsCoordinator : IExecApprovalV2Handler
             Ask = context.Ask,
             AgentId = context.AgentId ?? "main",
             ResolvedPath = context.Resolution?.ResolvedPath,
+            CommandPreview = identity.CommandPreview,
             SessionKey = identity.SessionKey,
             CorrelationId = correlationId,
             // Host omitted (no gateway wiring yet)

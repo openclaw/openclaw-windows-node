@@ -14,10 +14,11 @@ public class ExecApprovalV2UiPromptHandlerTests
 
     private static ExecApprovalV2PromptRequest Request(
         string command = "echo hello", string? cwd = null, string? resolvedPath = null,
-        string agentId = "agent-1") =>
+        string agentId = "agent-1", string? commandPreview = null) =>
         new()
         {
             DisplayCommand = command,
+            CommandPreview = commandPreview,
             Cwd = cwd,
             ResolvedPath = resolvedPath,
             Security = ExecSecurity.Full,
@@ -152,13 +153,38 @@ public class ExecApprovalV2UiPromptHandlerTests
         await handler.PromptAsync(Request(
             command: "echo " + U(0x202E) + "gpj.exe",
             cwd: "C:\\work" + U(0x200B) + "dir",
-            resolvedPath: "C:\\bin\\echo\nfake.exe"));
+            resolvedPath: "C:\\bin\\echo\nfake.exe",
+            commandPreview: "Read only" + U(0x2066) + "context"));
 
         Assert.NotNull(seen);
         Assert.Equal(@"echo \u{202E}gpj.exe", seen!.CommandText);
         Assert.Equal("agent-1", seen.AgentLabel);
         Assert.Equal(@"C:\work\u{200B}dir", seen.CwdText);
         Assert.Equal("C:\\bin\\echo" + @"\u{A}" + "fake.exe", seen.ExecutablePathText);
+        Assert.Equal(@"Read only\u{2066}context", seen.CommandPreviewText);
+    }
+
+    [Fact]
+    public async Task PreviewIsAdditive_ExactCommandRemainsAuthoritative()
+    {
+        ExecApprovalPromptView? seen = null;
+        var handler = Handler((view, _) =>
+        {
+            seen = view;
+            return Task.FromResult(ExecApprovalPromptOutcome.Deny);
+        });
+
+        await handler.PromptAsync(Request(
+            command: "powershell.exe -NoProfile -Command Get-ComputerInfo",
+            commandPreview: "Purpose: read system information. Risk: low."));
+
+        Assert.NotNull(seen);
+        Assert.Equal(
+            "powershell.exe -NoProfile -Command Get-ComputerInfo",
+            seen!.CommandText);
+        Assert.Equal(
+            "Purpose: read system information. Risk: low.",
+            seen.CommandPreviewText);
     }
 
     [Fact]

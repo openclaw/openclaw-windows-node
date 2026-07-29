@@ -64,7 +64,8 @@ public class ExecApprovalV2InputValidationTests
                 "timeoutMs": 5000,
                 "env": {"MY_VAR": "value"},
                 "agentId": "agent-1",
-                "sessionKey": "sess-abc"
+                "sessionKey": "sess-abc",
+                "commandPreview": "Read the current repository status."
             }
             """));
 
@@ -77,6 +78,42 @@ public class ExecApprovalV2InputValidationTests
         Assert.Equal("value", r.Env!["MY_VAR"]);
         Assert.Equal("agent-1", r.AgentId);
         Assert.Equal("sess-abc", r.SessionKey);
+        Assert.Equal("Read the current repository status.", r.CommandPreview);
+    }
+
+    [Fact]
+    public void Valid_CommandPreviewFromSystemRunPlan_IsParsed()
+    {
+        var outcome = ExecApprovalV2InputValidator.Validate(Req("""
+            {
+                "command": ["git", "status"],
+                "systemRunPlan": {
+                    "commandPreview": "Inspect working-tree changes without modifying files."
+                }
+            }
+            """));
+
+        Assert.True(outcome.IsValid);
+        Assert.Equal(
+            "Inspect working-tree changes without modifying files.",
+            outcome.Request!.CommandPreview);
+    }
+
+    [Fact]
+    public void Valid_TopLevelCommandPreview_TakesPrecedenceOverPlanFallback()
+    {
+        var outcome = ExecApprovalV2InputValidator.Validate(Req("""
+            {
+                "command": ["git", "status"],
+                "commandPreview": "Top-level context",
+                "systemRunPlan": {
+                    "commandPreview": "Stale plan context"
+                }
+            }
+            """));
+
+        Assert.True(outcome.IsValid);
+        Assert.Equal("Top-level context", outcome.Request!.CommandPreview);
     }
 
     [Fact]
@@ -267,6 +304,7 @@ public class ExecApprovalV2InputValidationTests
         Assert.Null(r.Env);
         Assert.Null(r.AgentId);
         Assert.Null(r.SessionKey);
+        Assert.Null(r.CommandPreview);
     }
 
     // -------------------------------------------------------------------------

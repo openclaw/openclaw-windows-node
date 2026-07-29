@@ -770,6 +770,9 @@ Use one of these options:
   <data name="ExecApproval_Body" xml:space="preserve">
     <value>The following command is requesting permission to run:</value>
   </data>
+  <data name="ExecApproval_RequestContextLabel" xml:space="preserve">
+    <value>Request context (provided by the agent)</value>
+  </data>
   <data name="ExecApproval_AgentLabel" xml:space="preserve">
     <value>Agent:</value>
   </data>
@@ -795,7 +798,7 @@ Use one of these options:
     <value>Scroll to the end of the command before allowing</value>
   </data>
   <data name="ExecApproval_ConfusableWarning" xml:space="preserve">
-    <value>This command mixes character sets and may not read the way it looks. Check it carefully.</value>
+    <value>The displayed content mixes character sets and may not read the way it looks. Check it carefully.</value>
   </data>
   <data name="Toast_NodePaired" xml:space="preserve">
     <value>✅ Node Paired!</value>

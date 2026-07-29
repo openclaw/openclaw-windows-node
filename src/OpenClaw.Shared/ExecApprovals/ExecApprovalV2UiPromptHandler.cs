@@ -13,7 +13,10 @@ public sealed record ExecApprovalPromptView(
     string AgentLabel,
     string? CwdText,
     string? ExecutablePathText,
-    bool HasConfusableWarning);
+    bool HasConfusableWarning)
+{
+    public string? CommandPreviewText { get; init; }
+}
 
 /// <summary>
 /// Prompt-handler core behind the approval dialog. UI-free: the dispatcher hop and the
@@ -49,6 +52,9 @@ public sealed class ExecApprovalV2UiPromptHandler : IExecApprovalV2PromptHandler
             // including the agent label, so all of them go through the display sanitizer
             // before any UI binding to neutralize BiDi and control-character spoofing.
             var commandText = ExecApprovalCommandDisplaySanitizer.Sanitize(request.DisplayCommand);
+            var commandPreviewText = string.IsNullOrWhiteSpace(request.CommandPreview)
+                ? null
+                : ExecApprovalContextDisplaySanitizer.Sanitize(request.CommandPreview);
             var agentLabel = ExecApprovalCommandDisplaySanitizer.Sanitize(request.AgentId);
             var cwdText = request.Cwd is null ? null : ExecApprovalCommandDisplaySanitizer.Sanitize(request.Cwd);
             var pathText = request.ResolvedPath is null ? null : ExecApprovalCommandDisplaySanitizer.Sanitize(request.ResolvedPath);
@@ -58,10 +64,19 @@ public sealed class ExecApprovalV2UiPromptHandler : IExecApprovalV2PromptHandler
             // instead so the user knows the command may not read the way it looks.
             var hasConfusable =
                 ExecApprovalConfusableDetector.HasMixedScriptConfusable(commandText)
+                || ExecApprovalConfusableDetector.HasMixedScriptConfusable(commandPreviewText)
                 || ExecApprovalConfusableDetector.HasMixedScriptConfusable(cwdText)
                 || ExecApprovalConfusableDetector.HasMixedScriptConfusable(pathText);
 
-            var view = new ExecApprovalPromptView(commandText, agentLabel, cwdText, pathText, hasConfusable);
+            var view = new ExecApprovalPromptView(
+                commandText,
+                agentLabel,
+                cwdText,
+                pathText,
+                hasConfusable)
+            {
+                CommandPreviewText = commandPreviewText
+            };
 
             var tcs = new TaskCompletionSource<ExecApprovalPromptOutcome>(
                 TaskCreationOptions.RunContinuationsAsynchronously);
@@ -127,4 +142,5 @@ public sealed class ExecApprovalV2UiPromptHandler : IExecApprovalV2PromptHandler
             tcs.TrySetResult(ExecApprovalPromptOutcome.Deny);
         }
     }
+
 }

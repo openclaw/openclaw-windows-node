@@ -301,6 +301,7 @@ public class SystemCapability : NodeCapabilityBase
         
         var command = argv[0];
         var rawCommand = GetStringArg(request.Args, "rawCommand");
+        var commandPreview = GetCommandPreviewArg(request.Args);
         var requestedShell = GetStringArg(request.Args, "shell");
         var effectiveShell = _commandRunner?.ResolveEffectiveShell(requestedShell)
             ?? ResolveDefaultEffectiveShell(requestedShell);
@@ -319,6 +320,7 @@ public class SystemCapability : NodeCapabilityBase
                 argv,
                 cwd,
                 rawCommand,
+                commandPreview,
                 requestedShell = string.IsNullOrWhiteSpace(requestedShell) ? null : requestedShell.Trim(),
                 effectiveShell,
                 agentId,
@@ -446,6 +448,7 @@ public class SystemCapability : NodeCapabilityBase
         
         var shell = GetStringArg(request.Args, "shell");
         var cwd = GetStringArg(request.Args, "cwd");
+        var commandPreview = GetCommandPreviewArg(request.Args);
         var sessionKey = request.SessionKey ?? GetStringArg(request.Args, "sessionKey");
         var timeoutMs = GetIntArg(request.Args, "timeoutMs",
             GetIntArg(request.Args, "timeout", DefaultRunTimeoutMs));
@@ -510,6 +513,7 @@ public class SystemCapability : NodeCapabilityBase
                 var approvalError = await EnsureCommandAndNestedTargetsApprovedAsync(
                     fullCommand,
                     effectiveShell,
+                    commandPreview,
                     sessionKey,
                     correlationId);
                 if (approvalError != null)
@@ -528,6 +532,7 @@ public class SystemCapability : NodeCapabilityBase
                     approvalError = await EnsureCommandAndNestedTargetsApprovedAsync(
                         fullCommand,
                         approvedHostFallbackShell,
+                        commandPreview,
                         sessionKey,
                         correlationId);
                     if (approvalError != null)
@@ -740,6 +745,7 @@ public class SystemCapability : NodeCapabilityBase
     private async Task<ExecApprovalCheckResult> EnsureApprovedAsync(
         string command,
         string? shell,
+        string? commandPreview,
         ExecApprovalResult approval,
         string? sessionKey,
         string correlationId,
@@ -757,6 +763,7 @@ public class SystemCapability : NodeCapabilityBase
         var decision = await _promptHandler.RequestAsync(new ExecApprovalPromptRequest
         {
             Command = command,
+            CommandPreview = commandPreview,
             Shell = shell,
             MatchedPattern = approval.MatchedPattern,
             Reason = approval.Reason ?? "Command requires approval",
@@ -796,6 +803,7 @@ public class SystemCapability : NodeCapabilityBase
     private async Task<NodeInvokeResponse?> EnsureCommandAndNestedTargetsApprovedAsync(
         string fullCommand,
         string? shell,
+        string? commandPreview,
         string? sessionKey,
         string correlationId)
     {
@@ -820,7 +828,13 @@ public class SystemCapability : NodeCapabilityBase
         var approvalCheck = new ExecApprovalCheckResult(false, null);
         if (evaluateOuter)
         {
-            approvalCheck = await EnsureApprovedAsync(fullCommand, shell, approval, sessionKey, correlationId);
+            approvalCheck = await EnsureApprovedAsync(
+                fullCommand,
+                shell,
+                commandPreview,
+                approval,
+                sessionKey,
+                correlationId);
             if (!approvalCheck.Allowed)
             {
                 Logger.Warn($"system.run DENIED: {fullCommand} ({approval.Reason})");
@@ -851,6 +865,7 @@ public class SystemCapability : NodeCapabilityBase
             var innerApprovalCheck = await EnsureApprovedAsync(
                 target.Command,
                 target.Shell,
+                commandPreview,
                 innerApproval,
                 sessionKey,
                 correlationId);
@@ -876,6 +891,23 @@ public class SystemCapability : NodeCapabilityBase
     private static bool CanPersistExactAllowRule(string command) =>
         !string.IsNullOrWhiteSpace(command) &&
         command.IndexOfAny(['*', '?']) < 0;
+
+    private string? GetCommandPreviewArg(System.Text.Json.JsonElement args)
+    {
+        var preview = GetStringArg(args, "commandPreview");
+        if (!string.IsNullOrWhiteSpace(preview))
+            return preview;
+
+        if (args.ValueKind != System.Text.Json.JsonValueKind.Object ||
+            !args.TryGetProperty("systemRunPlan", out var plan) ||
+            plan.ValueKind != System.Text.Json.JsonValueKind.Object)
+        {
+            return null;
+        }
+
+        preview = GetStringArg(plan, "commandPreview");
+        return string.IsNullOrWhiteSpace(preview) ? null : preview;
+    }
 
     private static bool IsExactAllowRuleForCommand(ExecApprovalResult approval, string command) =>
         approval.Allowed &&
