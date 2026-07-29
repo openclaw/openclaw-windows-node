@@ -272,22 +272,22 @@ internal sealed class CommandCenterStateBuilder
 
     private IEnumerable<GatewayDiagnosticWarning> BuildBrowserProxyAuthWarnings(IReadOnlyList<NodeCapabilityHealthInfo> nodes)
     {
+        _ = nodes;
         if (!CommandCenterBrowserProxyAuthWarningPolicy.ShouldShow(
                 _snapshot.Settings?.NodeBrowserProxyEnabled != false,
-                _snapshot.ActiveGatewayHasSharedToken,
-                nodes))
+                _snapshot.ActiveGatewayHasSharedToken))
         {
             yield break;
         }
 
         yield return new GatewayDiagnosticWarning
         {
-            Severity = GatewayDiagnosticSeverity.Info,
+            Severity = GatewayDiagnosticSeverity.Warning,
             Category = "browser",
             Title = LocalizationHelper.GetString("CommandCenter_BrowserProxyAuthMayNeed"),
-            Detail = "This Windows node reports or declares browser.proxy without a saved gateway shared token. QR/bootstrap pairing can connect the node, but an authenticated browser-control host may still require the same gateway token in Settings.",
+            Detail = "Browser control is enabled, but the active gateway has no saved shared token, so this node will not declare the browser capability. Setup-code or QR pairing can connect with a device token alone. Enter the gateway shared token in Settings, then reconnect.",
             RepairAction = "Copy browser proxy auth guidance",
-            CopyText = "If browser.proxy returns an auth error, enter the gateway shared token in Settings > Gateway Token, or configure the browser-control host to use auth compatible with the Windows node. Do not paste QR bootstrap tokens into the normal gateway token field."
+            CopyText = "Enter the gateway shared token in Settings > Gateway Token, save, and reconnect node mode. Setup-code/QR bootstrap tokens are not the shared gateway token and will not activate browser.proxy. Do not paste bootstrap tokens into the normal gateway token field."
         };
     }
 

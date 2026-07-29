@@ -27,9 +27,19 @@ internal static class NodeCapabilityGating
     public static bool ShouldRegisterLocation(SettingsManager? s)     => s?.NodeLocationEnabled     != false;
     public static bool ShouldRegisterBrowserProxy(SettingsManager? s) => s?.NodeBrowserProxyEnabled != false;
     public static bool ShouldRegisterBrowserProxy(SettingsManager? s, string? sharedGatewayToken, bool hasGatewayClient) =>
-        hasGatewayClient &&
-        !string.IsNullOrWhiteSpace(sharedGatewayToken) &&
-        ShouldRegisterBrowserProxy(s);
+        BrowserProxyActivation.ShouldRegister(
+            toggleEnabled: ShouldRegisterBrowserProxy(s),
+            sharedGatewayToken,
+            hasGatewayClient);
+
+    public static BrowserProxyActivation.RegistrationBlock ResolveBrowserProxyRegistrationBlock(
+        SettingsManager? s,
+        string? sharedGatewayToken,
+        bool hasGatewayClient)
+        => BrowserProxyActivation.ResolveRegistrationBlock(
+            toggleEnabled: ShouldRegisterBrowserProxy(s),
+            sharedGatewayToken,
+            hasGatewayClient);
     public static bool ShouldRegisterTts(SettingsManager? s)          => s?.NodeTtsEnabled          == true;
     public static bool ShouldRegisterStt(SettingsManager? s)          => s?.NodeSttEnabled          == true;
 

@@ -33,8 +33,9 @@ public sealed class ConnectionPageNodeApprovalSourceTests
             "PairingApprovalKind.NodePair => CommandCenterDiagnostics.BuildNodeApprovalRepairCommand(_snapshot.NodePairingRequestId)",
             builderSource);
         Assert.Contains("_ => CommandCenterDiagnostics.BuildUnknownPairingDiscoveryCommands()", builderSource);
-        Assert.Contains("node.UnverifiedDeclaredCommands.Contains(\"browser.proxy\"", browserProxyPolicySource);
-        Assert.Contains("node.LocalDeclaredCommands.Contains(\"browser.proxy\"", browserProxyPolicySource);
+        Assert.Contains("BrowserProxyActivation.ShouldShowMissingSharedTokenWarning", browserProxyPolicySource);
+        Assert.DoesNotContain("node.UnverifiedDeclaredCommands.Contains(\"browser.proxy\"", browserProxyPolicySource);
+        Assert.DoesNotContain("node.LocalDeclaredCommands.Contains(\"browser.proxy\"", browserProxyPolicySource);
         Assert.Contains(
             "NodePairingApprovalKind = _connectionManager?.CurrentSnapshot.NodePairingApprovalKind",
             appSource);

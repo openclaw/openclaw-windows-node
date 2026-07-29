@@ -143,6 +143,11 @@ Local MCP clients also see MCP-only `app.*` commands such as `app.navigate`, `ap
 - Ensure Windows notifications are enabled for the app
 - Check if notification settings in the app are enabled
 
+### Browser control stays enabled but never declares `browser`
+- Setup-code / QR pairing can connect with a device token and leave `GatewayRecord.SharedGatewayToken` empty. Browser control will not declare `browser` / `browser.proxy` until a shared gateway token is saved for that gateway.
+- Expect Connection capability pills to say **Needs gateway shared token** (not "Enabled, not active yet"), Command Center to warn, and tray logs to include `browser capability not declared: active gateway has no shared gateway token`.
+- Enter the gateway shared token in Settings, save, and reconnect node mode. Bootstrap tokens are not the shared gateway token.
+
 ### `browser.proxy` reports no browser-control host
 - Confirm the Browser proxy bridge toggle is enabled in Settings, then save and reconnect or re-pair if the gateway keeps an older command snapshot.
 - The bridge is local-only: it calls `http://127.0.0.1:<gateway-port+2>` from Windows. For a gateway on `ws://127.0.0.1:18789`, the browser-control host must listen on `127.0.0.1:18791`.

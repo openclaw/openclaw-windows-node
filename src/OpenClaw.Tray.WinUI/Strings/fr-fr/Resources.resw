@@ -1,4 +1,4 @@
-﻿<?xml version="1.0" encoding="utf-8"?>
+<?xml version="1.0" encoding="utf-8"?>
 <root xmlns:ns1="urn:schemas-microsoft-com:xml-msdata" xmlns:xs="http://www.w3.org/2001/XMLSchema">
   <xs:schema id="root">
     <xs:element name="root" ns1:IsDataSet="true">
@@ -6145,7 +6145,7 @@ Assurez-vous que la passerelle est en cours d'exécution.</value>
     <value>Gateway authentication failed</value>
   </data>
   <data name="CommandCenter_BrowserProxyAuthMayNeed" xml:space="preserve">
-    <value>Browser proxy auth may need a gateway token</value>
+    <value>Browser control needs a gateway shared token</value>
   </data>
   <data name="CommandCenter_BrowserProxyHostNotDetected" xml:space="preserve">
     <value>Browser proxy host not detected</value>
@@ -6632,6 +6632,9 @@ Le binaire wxc-exec est introuvable. {1} S'il s'agit d'une build développeur, c
   </data>
   <data name="ConnectionPage_NodePillState_Pending" xml:space="preserve">
     <value>Enabled, not active yet</value>
+  </data>
+  <data name="ConnectionPage_NodePillState_NeedsGatewayToken" xml:space="preserve">
+    <value>Needs gateway shared token</value>
   </data>
   <data name="ConnectionPage_NodePillState_Off" xml:space="preserve">
     <value>Off</value>

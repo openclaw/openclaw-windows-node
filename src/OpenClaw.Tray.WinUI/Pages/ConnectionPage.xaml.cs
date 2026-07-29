@@ -930,18 +930,22 @@ public sealed partial class ConnectionPage : Page
 
             if (showSurfaces && settings is not null)
             {
+                var hasSharedGatewayToken = !string.IsNullOrWhiteSpace(
+                    _gatewayRegistry?.GetActive()?.SharedGatewayToken);
                 var pillFp = BuildCapabilityPillFingerprint(
                     plan.NodeCard,
                     plan.NodeEffectiveCapabilities,
                     plan.NodePendingDeclaredCapabilities,
-                    settings);
+                    settings,
+                    hasSharedGatewayToken);
                 if (_capabilityPillsFingerprint != pillFp)
                 {
                     _capabilityPillsFingerprint = pillFp;
                     NodeCapabilityPillsHost.Child = BuildCapabilityPills(
                         plan.NodeEffectiveCapabilities,
                         plan.NodePendingDeclaredCapabilities,
-                        settings);
+                        settings,
+                        hasSharedGatewayToken);
                 }
 
                 NodeCapabilityPillsHost.Visibility =
@@ -1187,12 +1191,13 @@ public sealed partial class ConnectionPage : Page
         return new Border { Child = grid };
     }
 
-    private enum CapabilityPillState { Active, Pending, Off }
+    private enum CapabilityPillState { Active, Pending, NeedsSharedToken, Off }
 
     private WrapPanel BuildCapabilityPills(
         IReadOnlyList<string> effective,
         IReadOnlyList<string> pendingDeclared,
-        SettingsManager settings)
+        SettingsManager settings,
+        bool hasSharedGatewayToken)
     {
         var panel = new WrapPanel { HorizontalSpacing = 6, VerticalSpacing = 6 };
         var effectiveSet = new HashSet<string>(
@@ -1217,11 +1222,24 @@ public sealed partial class ConnectionPage : Page
         var shown = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         foreach (var (name, labelKey, glyph, enabled) in canonical)
         {
-            var state = effectiveSet.Contains(name)
-                ? CapabilityPillState.Active
-                : (pendingSet.Contains(name) || enabled)
-                    ? CapabilityPillState.Pending
-                    : CapabilityPillState.Off;
+            var kind = name.Equals("browser", StringComparison.OrdinalIgnoreCase)
+                ? BrowserProxyActivation.ResolveCapabilityPillKind(
+                    toggleEnabled: enabled,
+                    effective: effectiveSet.Contains(name),
+                    pendingDeclared: pendingSet.Contains(name),
+                    hasSharedGatewayToken: hasSharedGatewayToken)
+                : effectiveSet.Contains(name)
+                    ? BrowserProxyActivation.CapabilityPillKind.Active
+                    : (pendingSet.Contains(name) || enabled)
+                        ? BrowserProxyActivation.CapabilityPillKind.PendingApproval
+                        : BrowserProxyActivation.CapabilityPillKind.Off;
+            var state = kind switch
+            {
+                BrowserProxyActivation.CapabilityPillKind.Active => CapabilityPillState.Active,
+                BrowserProxyActivation.CapabilityPillKind.NeedsSharedToken => CapabilityPillState.NeedsSharedToken,
+                BrowserProxyActivation.CapabilityPillKind.PendingApproval => CapabilityPillState.Pending,
+                _ => CapabilityPillState.Off,
+            };
             panel.Children.Add(MakeCapabilityPill(LocalizationHelper.GetString(labelKey), glyph, state, isHighContrast));
             shown.Add(name);
         }
@@ -1269,6 +1287,16 @@ public sealed partial class ConnectionPage : Page
                 ResolveBrush("SystemFillColorCautionBrush"),
                 ResolveBrush("SystemFillColorCautionBrush"),
                 "ConnectionPage_NodePillState_Pending",
+                FluentIconCatalog.StatusWarn),
+            CapabilityPillState.NeedsSharedToken => (
+                TintBrush(
+                    "SystemFillColorCriticalBrush",
+                    "SystemFillColorCriticalBackgroundBrush",
+                    CapabilityPillFillOpacity,
+                    isHighContrast),
+                ResolveBrush("SystemFillColorCriticalBrush"),
+                ResolveBrush("SystemFillColorCriticalBrush"),
+                "ConnectionPage_NodePillState_NeedsGatewayToken",
                 FluentIconCatalog.StatusWarn),
             _ => (
                 ResolveBrush("SubtleFillColorTertiaryBrush"),
@@ -1359,7 +1387,8 @@ public sealed partial class ConnectionPage : Page
         NodeCardState state,
         IReadOnlyList<string> effective,
         IReadOnlyList<string> pendingDeclared,
-        SettingsManager settings)
+        SettingsManager settings,
+        bool hasSharedGatewayToken)
     {
         var eff = string.Join(
             ",",
@@ -1377,7 +1406,7 @@ public sealed partial class ConnectionPage : Page
             settings.NodeLocationEnabled ? '1' : '0',
             settings.NodeTtsEnabled ? '1' : '0',
             settings.NodeSttEnabled ? '1' : '0');
-        return $"{state}|{eff}|{pend}|{toggles}";
+        return $"{state}|{eff}|{pend}|{toggles}|{(hasSharedGatewayToken ? '1' : '0')}";
     }
 
     /// <summary>

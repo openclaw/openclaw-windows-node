@@ -168,7 +168,7 @@ internal static class ConnectionDiagnosticsProjection
             return null;
         }
 
-        return "browser.proxy may need a saved shared gateway token for browser-control authentication; QR/bootstrap pairing alone can leave this token absent.";
+        return "browser.proxy is not declared until this gateway has a saved shared token; setup-code/QR pairing alone leaves that token absent. Enter the gateway shared token in Settings, then reconnect.";
     }
 
     private static ConnectionPendingActionDiagnostics[] BuildPendingActions(GatewayConnectionSnapshot snapshot)

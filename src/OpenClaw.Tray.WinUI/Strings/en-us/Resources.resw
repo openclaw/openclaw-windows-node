@@ -6149,7 +6149,7 @@ Make sure the gateway is running.</value>
     <value>Gateway authentication failed</value>
   </data>
   <data name="CommandCenter_BrowserProxyAuthMayNeed" xml:space="preserve">
-    <value>Browser proxy auth may need a gateway token</value>
+    <value>Browser control needs a gateway shared token</value>
   </data>
   <data name="CommandCenter_BrowserProxyHostNotDetected" xml:space="preserve">
     <value>Browser proxy host not detected</value>
@@ -6630,6 +6630,9 @@ Make sure the gateway is running.</value>
   </data>
   <data name="ConnectionPage_NodePillState_Pending" xml:space="preserve">
     <value>Enabled, not active yet</value>
+  </data>
+  <data name="ConnectionPage_NodePillState_NeedsGatewayToken" xml:space="preserve">
+    <value>Needs gateway shared token</value>
   </data>
   <data name="ConnectionPage_NodePillState_Off" xml:space="preserve">
     <value>Off</value>
