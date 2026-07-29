@@ -108,6 +108,20 @@ public sealed partial class SessionsPage : Page
                 },
                 new SessionInfo
                 {
+                    Key = "agent:main:cron:nightly-cleanup",
+                    Status = "active",
+                    HasActiveRun = true,
+                    DisplayName = "Nightly cleanup",
+                    Presentation = new SessionPresentationInfo
+                    {
+                        Title = "Nightly cleanup",
+                        Family = "cron",
+                        IsBackground = true,
+                    },
+                    UpdatedAt = DateTime.UtcNow.AddMinutes(-7),
+                },
+                new SessionInfo
+                {
                     Key = "agent:main:completed-cleanup",
                     Status = "done",
                     DisplayName = "Completed cleanup",
