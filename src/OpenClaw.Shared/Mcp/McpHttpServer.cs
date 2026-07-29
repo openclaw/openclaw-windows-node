@@ -68,6 +68,7 @@ public sealed class McpHttpServer : IDisposable, IAsyncDisposable
     private Task? _acceptLoop;
     private Task? _stopTask;
     private Task? _disposeTask;
+    private int _started;
     private int _disposed;
     private bool _resourcesDisposed;
 
@@ -188,6 +189,7 @@ public sealed class McpHttpServer : IDisposable, IAsyncDisposable
             {
                 _acceptLoop = Task.Run(() => AcceptLoopAsync(_cts.Token));
                 _logger.Info($"[MCP] HTTP server listening on {Endpoint}");
+                Volatile.Write(ref _started, 1);
                 telemetry.Complete(McpServerOutcome.Success);
             }
             catch (Exception ex)
@@ -286,6 +288,14 @@ public sealed class McpHttpServer : IDisposable, IAsyncDisposable
                 handlerSlotAcquired = false;
             }
             catch (OperationCanceledException) when (ct.IsCancellationRequested)
+            {
+                requestTelemetry?.Complete(
+                    McpServerOutcome.Canceled,
+                    McpServerErrorCategory.Shutdown);
+                break;
+            }
+            catch (ObjectDisposedException) when (
+                Volatile.Read(ref _disposed) != 0 || ct.IsCancellationRequested)
             {
                 requestTelemetry?.Complete(
                     McpServerOutcome.Canceled,
@@ -850,6 +860,12 @@ public sealed class McpHttpServer : IDisposable, IAsyncDisposable
 
     private async Task StopCoreAsync(TimeSpan drainTimeout)
     {
+        lock (_startLock)
+        {
+            if (Interlocked.Exchange(ref _started, 0) == 0)
+                return;
+        }
+
         using var telemetry = McpServerTelemetry.StartLifecycle(McpServerOperation.Stop);
         var outcome = McpServerOutcome.Success;
         var errorCategory = McpServerErrorCategory.None;

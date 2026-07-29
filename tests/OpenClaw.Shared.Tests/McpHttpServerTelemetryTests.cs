@@ -49,6 +49,44 @@ public sealed class McpHttpServerTelemetryTests
     }
 
     [Fact]
+    public async Task StopWhileStartIsInProgress_WaitsForStartupAndStopsServer()
+    {
+        using var metrics = new MetricCollector();
+        var listener = new TestMcpHttpListener(blockStart: true);
+        await using var server = CreateServer(listener);
+        var stopInvoked = new TaskCompletionSource<bool>(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+
+        var start = Task.Run(server.Start);
+        await listener.StartEntered.Task.WaitAsync(TimeSpan.FromSeconds(2));
+        var stop = Task.Run(async () =>
+        {
+            stopInvoked.TrySetResult(true);
+            await server.StopAsync(TimeSpan.FromSeconds(1));
+        });
+        await stopInvoked.Task.WaitAsync(TimeSpan.FromSeconds(2));
+        Assert.NotSame(stop, await Task.WhenAny(stop, Task.Delay(100)));
+
+        listener.ReleaseStart();
+        await Task.WhenAll(start, stop);
+
+        Assert.Equal(1, listener.StartCount);
+        Assert.Equal(1, listener.StopCount);
+        Assert.Single(
+            FindMeasurements(metrics, McpServerTelemetry.LifecycleOperationsMetricName),
+            measurement => HasTags(
+                measurement.Tags,
+                (McpServerTelemetry.OperationTag, "start"),
+                (OpenClawTelemetryTagKey.Outcome.ToTelemetryName(), "success")));
+        Assert.Single(
+            FindMeasurements(metrics, McpServerTelemetry.LifecycleOperationsMetricName),
+            measurement => HasTags(
+                measurement.Tags,
+                (McpServerTelemetry.OperationTag, "stop"),
+                (OpenClawTelemetryTagKey.Outcome.ToTelemetryName(), "success")));
+    }
+
+    [Fact]
     public async Task ListenerFailures_AreFiniteAndCloseDoesNotOverwriteStop()
     {
         using var activities = new ActivityCollector();
@@ -107,6 +145,33 @@ public sealed class McpHttpServerTelemetryTests
             typeof(HttpListenerException).FullName,
             start.GetTagItem(OpenClawTelemetryTagKey.ErrorType.ToTelemetryName()));
         await server.DisposeAsync();
+        Assert.DoesNotContain(
+            activities.Stopped,
+            activity => activity.OperationName == McpServerTelemetry.StopSpanName);
+        Assert.DoesNotContain(
+            FindMeasurements(metrics, McpServerTelemetry.LifecycleOperationsMetricName),
+            measurement => HasTags(
+                measurement.Tags,
+                (McpServerTelemetry.OperationTag, "stop")));
+    }
+
+    [Fact]
+    public async Task DisposeWithoutStart_DoesNotEmitStopLifecycle()
+    {
+        using var activities = new ActivityCollector();
+        using var metrics = new MetricCollector();
+        var server = CreateServer(new TestMcpHttpListener());
+
+        await server.DisposeAsync();
+
+        Assert.DoesNotContain(
+            activities.Stopped,
+            activity => activity.OperationName == McpServerTelemetry.StopSpanName);
+        Assert.DoesNotContain(
+            FindMeasurements(metrics, McpServerTelemetry.LifecycleOperationsMetricName),
+            measurement => HasTags(
+                measurement.Tags,
+                (McpServerTelemetry.OperationTag, "stop")));
     }
 
     [Fact]
@@ -313,6 +378,41 @@ public sealed class McpHttpServerTelemetryTests
         await EventuallyAsync(() => HasRequestCategory(metrics, "shutdown"));
         Assert.False(HasRequestCategory(metrics, "busy"));
         Assert.False(HasRequestCategory(metrics, "timeout"));
+    }
+
+    [Fact]
+    public async Task AdmissionDisposedDuringShutdown_RecordsShutdownNotInternalFailure()
+    {
+        using var metrics = new MetricCollector();
+        var admissionEntered = new TaskCompletionSource<bool>(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        using var releaseAdmission = new ManualResetEventSlim();
+        var port = FreePort();
+        var bridge = new McpToolBridge(() => Array.Empty<INodeCapability>());
+        var options = CreateOptions(
+            handlerAdmissionStarted: () =>
+            {
+                admissionEntered.TrySetResult(true);
+                releaseAdmission.Wait();
+            });
+        var server = new McpHttpServer(
+            bridge,
+            port,
+            NullLogger.Instance,
+            authToken: null,
+            options);
+        server.Start();
+        using var http = new HttpClient { BaseAddress = new Uri(server.Endpoint) };
+
+        var request = http.GetAsync("");
+        await admissionEntered.Task.WaitAsync(TimeSpan.FromSeconds(2));
+        var disposeTask = server.DisposeAsync().AsTask();
+        await disposeTask.WaitAsync(TimeSpan.FromSeconds(3));
+        releaseAdmission.Set();
+        await IgnoreRequestFailureAsync(request);
+
+        await EventuallyAsync(() => HasRequestCategory(metrics, "shutdown"));
+        Assert.False(HasRequestCategory(metrics, "internal_failure"));
     }
 
     [Fact]

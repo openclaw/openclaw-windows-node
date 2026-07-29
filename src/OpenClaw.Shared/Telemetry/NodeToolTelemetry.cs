@@ -130,9 +130,14 @@ public sealed class NodeToolInvocation : IDisposable
     private NodeToolSandboxDenialReason? _sandboxDenialReason;
     private int _completed;
 
+    public NodeToolInvocation(NodeToolTransport transport)
+        : this(transport, default)
+    {
+    }
+
     public NodeToolInvocation(
         NodeToolTransport transport,
-        ActivityContext linkedContext = default)
+        ActivityContext linkedContext)
     {
         _transport = transport;
         ActivityLink[]? links =
@@ -150,6 +155,7 @@ public sealed class NodeToolInvocation : IDisposable
                 OpenClawTelemetryTag.String(TransportTag, transport.ToTelemetryValue())
             ],
             System.Diagnostics.ActivityKind.Server,
+            OpenClawActivitySourceName.OpenClaw,
             links: links);
     }
 
