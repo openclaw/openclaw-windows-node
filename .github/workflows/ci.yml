@@ -98,6 +98,9 @@ jobs:
       shell: bash
       run: |
         set -euo pipefail
+        source_sha=ee929dbb857c717a60f3b2b502db5a6dd31b5c11
+        wizard_base=ee929dbb857c717a60f3b2b502db5a6dd31b5c11
+        wizard_head=2a3612054f6cacce893526c16ce37daa94ba9abf
         test "$(node -p "require('./package.json').version")" = "2026.7.2-beta.5"
         pnpm install --frozen-lockfile --ignore-scripts=false --config.engine-strict=false --config.enable-pre-post-scripts=true
         node scripts/package-openclaw-for-docker.mjs \
@@ -114,9 +117,9 @@ jobs:
         test "${#wizard_patch_sha256}" -eq 64
         printf '%s  %s\n' "$sha256" "$(basename "$tarball")" >"$RUNNER_TEMP/gateway-composed/SHA256SUMS"
         printf '{"source_ref":"v2026.7.2-beta.5","source_sha":"%s","fixes":[{"upstream_pr":115671,"upstream_commit":"c6b4e912eb103fe8ceb89ffc2a60411624163b4b"},{"compatibility_commit":"%s"}],"compatibility_base":"%s","compatibility_head":"%s","fetch_repository":"TheAngryPit/openclaw","fetch_ref":"codex/beta5-peter-115671-compat-20260729","patch_sha256":"%s","changed_paths":["src/gateway/gateway.test.ts","src/gateway/server-methods/wizard.test.ts","src/gateway/server-methods/wizard.ts","src/wizard/setup.finalize.test.ts","src/wizard/setup.finalize.ts"],"package_version":"%s","package_sha256":"%s"}\n' \
-          ee929dbb857c717a60f3b2b502db5a6dd31b5c11 \
+          "$source_sha" \
           "$wizard_head" \
-          ee929dbb857c717a60f3b2b502db5a6dd31b5c11 \
+          "$wizard_base" \
           "$wizard_head" \
           "$wizard_patch_sha256" \
           "$packaged_version" \
