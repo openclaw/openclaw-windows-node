@@ -1085,10 +1085,61 @@ public class SetupStepsTests : IDisposable
         Assert.True(installCall.InputViaStdin);
     }
 
+    [Fact]
+    public async Task InstallCli_ComposedPackageRequiresExactReviewedVersionAfterInstall()
+    {
+        var commands = new FakeCommandRunner(
+            _ => Fail("Windows commands are not expected"),
+            (_, command, _) => command.Contains("sha256sum --check", StringComparison.Ordinal)
+                ? Ok()
+                : Ok("OpenClaw 2099.1.2 (different)"));
+        var ctx = CreateContext(new SetupConfig
+        {
+            Gateway = new GatewayConfig
+            {
+                Version = "https://example.test/openclaw-composed.tgz",
+                ExpectedInstalledVersion = "2099.1.3",
+                ExpectedPackageSha256 = new string('a', 64)
+            }
+        }, commands);
+
+        var result = await new InstallCliStep().ExecuteAsync(ctx, CancellationToken.None);
+
+        Assert.Equal(StepOutcome.Failed, result.Outcome);
+        Assert.Contains("exact OpenClaw 2099.1.3", result.Message, StringComparison.Ordinal);
+        Assert.Equal(5, commands.WslCalls.Count);
+    }
+
+    [Fact]
+    public async Task InstallCli_OfficialPackageRequiresExactReviewedVersionAfterInstall()
+    {
+        var commands = new FakeCommandRunner(
+            _ => Fail("Windows commands are not expected"),
+            (_, command, _) => command.Contains("install-cli.sh", StringComparison.Ordinal)
+                ? Ok()
+                : Ok("OpenClaw 2099.1.3-beta.1 (different)"));
+        var ctx = CreateContext(new SetupConfig
+        {
+            Gateway = new GatewayConfig
+            {
+                Version = "2099.1.3-beta.2",
+                ExpectedInstalledVersion = "2099.1.3-beta.2"
+            }
+        }, commands);
+
+        var result = await new InstallCliStep().ExecuteAsync(ctx, CancellationToken.None);
+
+        Assert.Equal(StepOutcome.Failed, result.Outcome);
+        Assert.Contains("exact OpenClaw 2099.1.3-beta.2", result.Message, StringComparison.Ordinal);
+        Assert.Equal(5, commands.WslCalls.Count);
+    }
+
     [Theory]
     [InlineData("not-a-digest", "http://example.test/openclaw.tgz")]
     [InlineData("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "2026.7.2-beta.3")]
     [InlineData("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "http://user:secret@example.test/openclaw.tgz")]
+    [InlineData("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "https://example.test/openclaw.tgz?token=secret")]
+    [InlineData("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "https://example.test/openclaw.tgz#package")]
     public void InstallCli_BuildInstallCommand_RejectsInvalidDigestContract(
         string expectedSha256,
         string packageSpec)
@@ -1097,6 +1148,23 @@ public class SetupStepsTests : IDisposable
             "https://openclaw.ai/install-cli.sh",
             packageSpec,
             expectedSha256));
+    }
+
+    [Theory]
+    [InlineData("OpenClaw 2026.7.22+proof.1 (abc123)", "2026.7.22+proof.1", true)]
+    [InlineData("2026.7.22+proof.1", "2026.7.22+proof.1", true)]
+    [InlineData("OpenClaw 2026.7.22+proof.10 (abc123)", "2026.7.22+proof.1", false)]
+    [InlineData("OpenClaw 2026.7.21 (abc123)", "2026.7.22+proof.1", false)]
+    [InlineData("2026.7.21", "2026.7.22+proof.1", false)]
+    [InlineData("OpenClaw 2026.7.22+proof.1 (abc123)\nOpenClaw 2026.7.21 (def456)", "2026.7.22+proof.1", false)]
+    [InlineData("2026.7.22+proof.1\nOpenClaw 2026.7.21 (def456)", "2026.7.22+proof.1", false)]
+    [InlineData("warning: OpenClaw 2026.7.22+proof.1\nOpenClaw 2026.7.21 (def456)", "2026.7.22+proof.1", false)]
+    public void InstallCli_ExactVersionVerificationRejectsDifferentPackages(
+        string output,
+        string expectedVersion,
+        bool expected)
+    {
+        Assert.Equal(expected, InstallCliStep.IsExpectedOpenClawVersion(output, expectedVersion));
     }
 
     [Fact]
@@ -2072,6 +2140,40 @@ public class SetupStepsTests : IDisposable
     }
 
     [Fact]
+    public async Task SetupWizard_RestoreReloadModeUsesComposedSemanticVersion()
+    {
+        var commands = new FakeCommandRunner(
+            _ => Ok(),
+            (_, command, _) => command switch
+            {
+                var value when value.Contains("config set gateway.reload.mode 'hot'") => Ok(),
+                var value when value.Contains("ss -tlnp") => Ok(),
+                var value when value.Contains("openclaw gateway restart") => Ok(),
+                var value when value.Contains("curl -s") => Ok("200"),
+                _ => Fail($"Unexpected command: {command}"),
+            });
+        var ctx = CreateContext(
+            new SetupConfig
+            {
+                Gateway = new GatewayConfig
+                {
+                    Version = "https://example.test/openclaw-composed.tgz",
+                    ExpectedInstalledVersion = "2026.7.2-beta.3",
+                    ReloadMode = "hot"
+                }
+            },
+            commands);
+        ctx.DistroName = "test-distro";
+
+        var result = await new SetupWizardRunner(ctx).RestoreReloadModeAsync();
+
+        Assert.True(result.IsSuccess, result.Message);
+        Assert.Contains(
+            commands.WslCalls,
+            call => call.Command.Contains("config set gateway.reload.mode 'hot'"));
+    }
+
+    [Fact]
     public async Task SetupWizard_SuspendReloadModeRestartsAndVerifiesGateway()
     {
         var commands = new FakeCommandRunner(
@@ -2499,7 +2601,7 @@ public class SetupStepsTests : IDisposable
                     return Ok();
                 if (command.Contains("openclaw gateway restart"))
                     return Ok();
-                if (command.Contains("curl -s") && command.Contains("/health"))
+                if (command.Contains("curl -s"))
                     return Ok("200");
                 return Fail($"Unexpected command: {command}");
             });
@@ -2779,6 +2881,55 @@ public class SetupStepsTests : IDisposable
         Assert.Contains(
             "openclaw config set plugins.entries.device-pair.config.publicUrl 'http://127.0.0.1:18789'",
             commands);
+    }
+
+    [Theory]
+    [InlineData(null, "gateway.nodes.commands.allow")]
+    [InlineData("2026.7.22", "gateway.nodes.commands.allow")]
+    [InlineData("2026.6.11", "gateway.nodes.allowCommands")]
+    [InlineData("2026.7.1", "gateway.nodes.allowCommands")]
+    [InlineData("2026.7.2-beta.3", "gateway.nodes.allowCommands")]
+    public void ConfigureGateway_UsesVersionAppropriateCompleteAllowlistPath(
+        string? version,
+        string expectedPath)
+    {
+        var commands = ConfigureGatewayStep.BuildConfigCommands(
+            new GatewayConfig { Version = version },
+            18789,
+            "'[\"canvas.present\",\"system.run\"]'");
+
+        Assert.Contains(
+            $"openclaw config set {expectedPath} '[\"canvas.present\",\"system.run\"]'",
+            commands);
+    }
+
+    [Fact]
+    public void ConfigureGateway_ExtraConfigReloadModePreservesValueAndAvoidsDuplicate()
+    {
+        var commands = ConfigureGatewayStep.BuildConfigCommands(
+            new GatewayConfig
+            {
+                Version = "2026.7.22",
+                ReloadMode = "off",
+                ExtraConfig = new Dictionary<string, string>
+                {
+                    ["gateway.reload.mode"] = "restart",
+                },
+            },
+            18789,
+            "'[]'");
+
+        Assert.Equal(1, commands.Split("gateway.reload.mode", StringSplitOptions.None).Length - 1);
+        Assert.Contains("openclaw config set gateway.reload.mode 'restart'", commands);
+        Assert.Equal("restart", ConfigureGatewayStep.GetEffectiveReloadMode(
+            new GatewayConfig
+            {
+                Version = "2026.7.22",
+                ExtraConfig = new Dictionary<string, string>
+                {
+                    ["gateway.reload.mode"] = "restart",
+                },
+            }));
     }
 
     // Issue: device-pair plugin must be enabled, not just configured. Otherwise

@@ -228,6 +228,74 @@ public sealed class SettingsPageViewModelTests
     }
 
     [Fact]
+    public void GatewayRollbackRetention_LoadsAndPersistsThroughSettingsStore()
+    {
+        var vm = NewVm(out var settings, out var appCommands, out _, out var temp);
+        using (temp)
+        {
+            settings.GatewayRollbackRetentionCount = -1;
+            settings.GatewayRollbackRetentionAgeDays = 14;
+            vm.Activate(null);
+
+            Assert.Equal("-1", vm.GatewayRollbackRetentionCount);
+            Assert.Equal(14d, vm.GatewayRollbackRetentionAgeDays);
+
+            vm.GatewayRollbackRetentionCount = "2";
+            vm.GatewayRollbackRetentionAgeDays = 30;
+
+            Assert.Equal(2, settings.GatewayRollbackRetentionCount);
+            Assert.Equal(30, settings.GatewayRollbackRetentionAgeDays);
+            Assert.Equal(2, appCommands.NotifySettingsSavedCount);
+        }
+    }
+
+    [Fact]
+    public void GatewayRollbackRetentionAge_NormalizesFractionBeforeDisplayAndPersist()
+    {
+        var vm = NewVm(out var settings, out var appCommands, out _, out var temp);
+        using (temp)
+        {
+            vm.Activate(null);
+
+            vm.GatewayRollbackRetentionAgeDays = 0.5;
+
+            Assert.Equal(1d, vm.GatewayRollbackRetentionAgeDays);
+            Assert.Equal(1, settings.GatewayRollbackRetentionAgeDays);
+            Assert.Equal(1, appCommands.NotifySettingsSavedCount);
+        }
+    }
+
+    [Fact]
+    public void GatewayRollbackProtectionMode_DefaultsToNativeAndPersistsFullVhdOptIn()
+    {
+        var vm = NewVm(out var settings, out var appCommands, out _, out var temp);
+        using (temp)
+        {
+            vm.Activate(null);
+
+            Assert.Equal(SettingsManager.GatewayRollbackProtectionNativeBackup, vm.GatewayRollbackProtectionMode);
+
+            vm.GatewayRollbackProtectionMode = SettingsManager.GatewayRollbackProtectionFullVhd;
+
+            Assert.Equal(SettingsManager.GatewayRollbackProtectionFullVhd, settings.GatewayRollbackProtectionMode);
+            Assert.Equal(1, appCommands.NotifySettingsSavedCount);
+        }
+    }
+
+    [Fact]
+    public void GatewayRollbackProtectionMode_UnknownValueFallsBackToNative()
+    {
+        var vm = NewVm(out var settings, out _, out _, out var temp);
+        using (temp)
+        {
+            settings.GatewayRollbackProtectionMode = "unexpected";
+            vm.Activate(null);
+
+            Assert.Equal(SettingsManager.GatewayRollbackProtectionNativeBackup, vm.GatewayRollbackProtectionMode);
+        }
+    }
+
+    [Fact]
     public void ExternalChange_ReloadsWithoutRePersisting()
     {
         var vm = NewVm(out var settings, out var appCommands, out _, out var temp);

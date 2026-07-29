@@ -40,6 +40,8 @@ public sealed class AppRefactorContractTests
             "EnsureNodeService(_settings);",
             "InitializeGatewayClient();",
             "StartDeepLinkServer();");
+        var startup = ExtractMethod(source, "OnLaunchedAsync");
+        Assert.DoesNotContain("_ = CheckCompanionGatewayVersionAsync(", startup, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -49,8 +51,23 @@ public sealed class AppRefactorContractTests
         var startup = ExtractMethod(source, "OnLaunchedAsync");
         var service = ReadWslKeepAliveServiceSource();
 
-        Assert.Contains("new WslGatewayKeepAliveService(() => _settings, () => _gatewayRegistry)", startup);
+        Assert.Contains("new WslGatewayKeepAliveService(", startup);
+        Assert.Contains("gatewayId => RunOnUiThreadAsync(", startup);
+        Assert.Contains("_gatewayVersionAlignmentWorkflow?.CheckAsync(gatewayId)", startup);
         Assert.Contains("Task.Run(wslKeepAlive.TryEnsureAsync)", startup);
+        AssertInOrder(
+            startup,
+            "_wslKeepAliveStartupTask = Task.Run(wslKeepAlive.TryEnsureAsync);",
+            "InitializeGatewayClient();");
+
+        var managerHandler = ExtractMethod(source, "OnManagerStateChanged");
+        var alignmentGate = ExtractMethod(source, "CheckGatewayVersionAlignmentAfterKeepAliveAsync");
+        Assert.Contains("CheckGatewayVersionAlignmentAfterKeepAliveAsync(snap.GatewayId)", managerHandler);
+        Assert.DoesNotContain("_gatewayVersionAlignmentWorkflow?.CheckAsync(snap.GatewayId)", managerHandler);
+        AssertInOrder(
+            alignmentGate,
+            "await _wslKeepAliveStartupTask.ConfigureAwait(false);",
+            "await workflow.CheckAsync(gatewayId).ConfigureAwait(false);");
 
         foreach (var duplicateMethod in new[]
         {
@@ -1025,6 +1042,209 @@ public sealed class AppRefactorContractTests
         Assert.DoesNotContain("var slashLoading = Props.AvailableCommands is null;", source);
     }
 
+    [Fact]
+    public void GatewayUpdatePrompt_AllowsRetryAfterNonAlignedResult()
+    {
+        var source = ReadGatewayVersionAlignmentWorkflowSource();
+        var method = ExtractMethod(source, "CheckAsync");
+
+        AssertInOrder(
+            method,
+            "var result = await _operations.UpdateAsync(confirmedPlan)",
+            "ReportResult(result);",
+            "if (!result.IsAligned)",
+            "_promptKey = null;");
+    }
+
+    [Fact]
+    public void GatewayUpdatePrompt_StartsAfterKeepAliveConfirmsTheLocalDistro()
+    {
+        var source = ReadAppSources();
+        var startup = ExtractMethod(source, "OnLaunchedAsync");
+        var service = ReadWslKeepAliveServiceSource();
+        var workflow = ReadGatewayVersionAlignmentWorkflowSource();
+        var method = ExtractMethod(workflow, "CheckAsync");
+
+        Assert.Contains("gatewayId => RunOnUiThreadAsync(", startup);
+        Assert.Contains("_gatewayVersionAlignmentWorkflow?.CheckAsync(gatewayId)", startup);
+        AssertInOrder(
+            service,
+            "var distros = await runner.ListDistrosAsync();",
+            "if (!distros.Any",
+            "Process.Start(psi)",
+            "Could not start keepalive",
+            "await _onLocalDistroReady(activeRecord?.Id);");
+        AssertInOrder(
+            method,
+            "var activeRecord = _getActiveGateway();",
+            "!string.Equals(activeRecord.Id, gatewayId, StringComparison.Ordinal)",
+            "var accessPlan = GatewayHostAccessClassifier.Classify(activeRecord);");
+        Assert.DoesNotContain("OperatorState", method, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Startup_WslKeepAlive_MarshalsVersionAlignmentToUiThread()
+    {
+        var source = ReadAppSources();
+        var dispatcher = ExtractMethod(source, "RunOnUiThreadAsync");
+
+        Assert.Contains("_dispatcherQueue?.HasThreadAccess == true", dispatcher);
+        Assert.Contains("_dispatcherQueue?.TryEnqueue(async () =>", dispatcher);
+        Assert.Contains("await action();", dispatcher);
+        Assert.Contains("completion.SetException", dispatcher);
+    }
+
+    [Fact]
+    public void GatewayUpdatePrompt_LaterSuppressesSameConnectedMismatch()
+    {
+        var source = ReadGatewayVersionAlignmentWorkflowSource();
+        var method = ExtractMethod(source, "CheckAsync");
+
+        AssertInOrder(
+            method,
+            "if (!await _confirmUpdateAsync(probe, effectiveProtectionMode)",
+            "_promptKey = promptKey;",
+            "return;");
+    }
+
+    [Fact]
+    public void GatewayUpdatePrompt_ResumesVerifiedAlignedPendingReceipt()
+    {
+        var source = ReadGatewayVersionAlignmentWorkflowSource();
+        var method = ExtractMethod(source, "CheckAsync");
+
+        AssertInOrder(
+            method,
+            "probe.State == GatewayVersionAlignmentState.Aligned",
+            "_operations.HasVerifiedPendingUpdate()",
+            "var resumed = await _operations.UpdateAsync(accessPlan)",
+            "ReportResult(resumed);",
+            "return;");
+    }
+
+    [Fact]
+    public void GatewayUpdatePrompt_CachesPromptOnlyAfterGatewayRevalidation()
+    {
+        var source = ReadGatewayVersionAlignmentWorkflowSource();
+        var method = ExtractMethod(source, "CheckAsync");
+
+        AssertInOrder(
+            method,
+            "var confirmedRecord = _getActiveGateway();",
+            "!string.Equals(confirmedPlan.DistroName, accessPlan.DistroName, StringComparison.Ordinal)",
+            "_promptKey = promptKey;",
+            "_showToast(");
+    }
+
+    [Fact]
+    public void GatewayUpdatePrompt_ReportsRecoveryGateBeforeAnyUpdatePrompt()
+    {
+        var source = ReadGatewayVersionAlignmentWorkflowSource();
+        var method = ExtractMethod(source, "CheckAsync");
+
+        AssertInOrder(
+            method,
+            "var probe = await _operations.ProbeAsync(accessPlan)",
+            "probe.State is GatewayVersionAlignmentState.RecoveryAvailable",
+            "ReportResult(probe);",
+            "return;",
+            "_confirmUpdateAsync(probe, effectiveProtectionMode)");
+    }
+
+    [Fact]
+    public void GatewayUpdatePrompt_OffersExactAlignmentForOlderAndNewerVersions()
+    {
+        var source = ReadGatewayVersionAlignmentWorkflowSource();
+        var method = ExtractMethod(source, "CheckAsync");
+
+        Assert.Contains(
+            "probe.State is not GatewayVersionAlignmentState.Mismatch",
+            method,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "and not GatewayVersionAlignmentState.NewerThanRequired",
+            method,
+            StringComparison.Ordinal);
+        Assert.Contains("_confirmUpdateAsync(probe, effectiveProtectionMode)", method, StringComparison.Ordinal);
+        Assert.DoesNotContain("was not downgraded", method, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void GatewayUpdateCheck_QueuesOneFollowUpWhenSingleFlightIsBusy()
+    {
+        var source = ReadGatewayVersionAlignmentWorkflowSource();
+        var method = ExtractMethod(source, "CheckAsync");
+
+        AssertInOrder(
+            method,
+            "Interlocked.CompareExchange(ref _inFlight, 1, 0) != 0",
+            "Interlocked.Exchange(ref _followUpQueued, 1);",
+            "return;");
+        AssertInOrder(
+            method,
+            "Interlocked.Exchange(ref _inFlight, 0);",
+            "Interlocked.Exchange(ref _followUpQueued, 0) != 0",
+            "_ = CheckAsync(_getActiveGateway()?.Id);");
+    }
+
+    [Fact]
+    public void GatewayVersionAlignment_AppIsCompositionAndPresentationOnly()
+    {
+        var app = ReadAppSources();
+        var workflow = ReadGatewayVersionAlignmentWorkflowSource();
+
+        Assert.Contains("GatewayVersionAlignmentWorkflow.Create(", app);
+        Assert.Contains("ConfirmCompanionGatewayUpdateAsync", app);
+        Assert.Contains("ShowGatewayAlignmentToast", app);
+        Assert.DoesNotContain("GatewayVersionAlignmentCoordinator", app);
+        Assert.DoesNotContain("SendGatewayVersionAlignmentRequestAsync", app);
+        Assert.DoesNotContain("SynchronizeCompanionGatewayAsync", app);
+        Assert.DoesNotContain("CheckCompanionGatewayVersionAsync", app);
+        Assert.Contains("internal sealed class GatewayVersionAlignmentWorkflow", workflow);
+        Assert.Contains("internal Task<JsonElement> SendRequestAsync(", workflow);
+        Assert.Contains("internal async Task SynchronizeAsync(", workflow);
+    }
+
+    [Fact]
+    public void GatewayRollbackSettings_ExposesConfirmedRestoreStagedCancellation()
+    {
+        var appSource = ReadAppSources();
+        var settingsSource = ReadSettingsPageSource();
+        var presentationSource = ReadGatewayRollbackPresentationSource();
+
+        Assert.Contains("CancelGatewayRollbackPointRestore(", appSource);
+        Assert.Contains(
+            "CanCancelStagedRestore: point.Phase == GatewayRollbackPointPhase.RestoreStaged",
+            presentationSource);
+        Assert.Contains("\"Cancel staged restore\"", presentationSource);
+        Assert.Contains("ProjectCancellationResult", presentationSource);
+        AssertInOrder(
+            settingsSource,
+            "confirmationResult == ContentDialogResult.Secondary",
+            "actionPlan.CanCancelStagedRestore",
+            "CurrentApp.CancelGatewayRollbackPointRestore(",
+            "selected.Point.Id, selected.Point.Id");
+    }
+
+    [Fact]
+    public void GatewayRollbackSettings_PrefersUniqueMandatoryReceiptAndShowsExactIdentity()
+    {
+        var settingsSource = ReadSettingsPageSource();
+        var presentationSource = ReadGatewayRollbackPresentationSource();
+
+        AssertInOrder(
+            presentationSource,
+            "var mandatoryChoices = choices",
+            "IsMandatoryRecoveryPhase(choice.Point.Phase)",
+            "if (mandatoryChoices.Length > 1)",
+            "\"Gateway recovery is ambiguous\"",
+            "var preferredChoice = mandatoryChoices.SingleOrDefault()",
+            "Array.IndexOf(choices, preferredChoice)");
+        Assert.Contains("\"Point {Point.Id} | {Point.Phase} | OpenClaw", presentationSource);
+        Assert.Contains("Recovery must resume exact rollback point {requiredPointId}", presentationSource);
+        Assert.Contains("GatewayRollbackPresentation.PlanSelection(", settingsSource);
+    }
+
     private static string ReadCoordinatorSource()
     {
         var root = TestRepositoryPaths.GetRepositoryRoot();
@@ -1037,6 +1257,13 @@ public sealed class AppRefactorContractTests
         var root = TestRepositoryPaths.GetRepositoryRoot();
         return File.ReadAllText(Path.Combine(
             root, "src", "OpenClaw.Tray.WinUI", "Services", "WslGatewayKeepAliveService.cs"));
+    }
+
+    private static string ReadGatewayVersionAlignmentWorkflowSource()
+    {
+        var root = TestRepositoryPaths.GetRepositoryRoot();
+        return File.ReadAllText(Path.Combine(
+            root, "src", "OpenClaw.Tray.WinUI", "Services", "GatewayVersionAlignmentWorkflow.cs"));
     }
 
     private static string ReadAppSources()
@@ -1056,6 +1283,20 @@ public sealed class AppRefactorContractTests
         var root = TestRepositoryPaths.GetRepositoryRoot();
         return File.ReadAllText(Path.Combine(
             root, "src", "OpenClaw.Tray.WinUI", "Pages", "SandboxPage.xaml.cs"));
+    }
+
+    private static string ReadSettingsPageSource()
+    {
+        var root = TestRepositoryPaths.GetRepositoryRoot();
+        return File.ReadAllText(Path.Combine(
+            root, "src", "OpenClaw.Tray.WinUI", "Pages", "SettingsPage.xaml.cs"));
+    }
+
+    private static string ReadGatewayRollbackPresentationSource()
+    {
+        var root = TestRepositoryPaths.GetRepositoryRoot();
+        return File.ReadAllText(Path.Combine(
+            root, "src", "OpenClaw.Tray.WinUI", "Presentation", "GatewayRollbackPresentation.cs"));
     }
 
     private static string ReadOpenClawComposerSource()

@@ -196,6 +196,8 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
     private AppState? _appState;
     internal AppState? AppState => _appState;
     private UpdateCoordinator? _updateCoordinator;
+    private GatewayVersionAlignmentWorkflow? _gatewayVersionAlignmentWorkflow;
+    private Task _wslKeepAliveStartupTask = Task.CompletedTask;
     private GatewayService? _gatewayService;
     private PairingApprovalCoordinator? _pairingApprovalCoordinator;
     private OpenClawTray.Dialogs.PairingApprovalDialog? _pairingApprovalDialog;
@@ -785,6 +787,36 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
             tunnelManager: _sshTunnelService);
         _connectionManager.OperatorClientChanged += OnOperatorClientChanged;
         _connectionManager.StateChanged += OnManagerStateChanged;
+        var gatewayAlignmentRunner = new WslExeCommandRunner(appLogger, defaultTimeout: TimeSpan.FromMinutes(35));
+        var gatewayRollbackPoints = new GatewayRollbackPointManager(
+            gatewayAlignmentRunner,
+            AppIdentity.ResolveSetupLocalDataDirectory(),
+            AppIdentity.SetupDistroName);
+        var gatewayPackageTarget = GatewayPackageBuildTargetResolver.Resolve();
+        _gatewayVersionAlignmentWorkflow = GatewayVersionAlignmentWorkflow.Create(
+            gatewayAlignmentRunner,
+            gatewayPackageTarget,
+            gatewayRollbackPoints,
+            _gatewayRegistry,
+            _connectionManager,
+            () => _settings?.EnableNodeMode == true,
+            () =>
+            {
+                var count = _settings?.GatewayRollbackRetentionCount ?? 1;
+                var ageDays = _settings?.GatewayRollbackRetentionAgeDays ?? 7;
+                return new GatewayRollbackRetentionPolicy(
+                    count,
+                    ageDays > 0 ? TimeSpan.FromDays(ageDays) : null);
+            },
+            () => string.Equals(
+                    _settings?.GatewayRollbackProtectionMode,
+                    SettingsManager.GatewayRollbackProtectionFullVhd,
+                    StringComparison.OrdinalIgnoreCase)
+                ? GatewayUpdateProtectionMode.FullVhd
+                : GatewayUpdateProtectionMode.NativeBackup,
+            ConfirmCompanionGatewayUpdateAsync,
+            ShowGatewayAlignmentToast,
+            Logger.Warn);
 
         // First-run check (also supports forced onboarding for testing).
         // Wrapped in try/catch so a wizard construction failure cannot tear
@@ -823,8 +855,12 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
         // hosts. Fire-and-forget on a background task so a slow LxssManager at
         // cold logon never delays InitializeGatewayClient. The keepalive itself
         // runs detached from the tray — see WslDistroKeepAlive in LocalGatewaySetup.cs.
-        var wslKeepAlive = new WslGatewayKeepAliveService(() => _settings, () => _gatewayRegistry);
-        _ = Task.Run(wslKeepAlive.TryEnsureAsync);
+        var wslKeepAlive = new WslGatewayKeepAliveService(
+            () => _settings,
+            () => _gatewayRegistry,
+            gatewayId => RunOnUiThreadAsync(
+                () => _gatewayVersionAlignmentWorkflow?.CheckAsync(gatewayId) ?? Task.CompletedTask));
+        _wslKeepAliveStartupTask = Task.Run(wslKeepAlive.TryEnsureAsync);
         InitializeGatewayClient();
 
         // Pre-warm chat window (WebView2 init takes 1-3s, do it now so left-click is instant)
@@ -2061,11 +2097,178 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
                 _lastManagerConnectedSideEffectsKey = connectedSideEffectsKey;
                 _ = RunHealthCheckAsync();
                 _ = TryConnectLocalNodeServiceAsync();
+                _ = CheckGatewayVersionAlignmentAfterKeepAliveAsync(snap.GatewayId);
             }
         }
         else
         {
             _lastManagerConnectedSideEffectsKey = null;
+            _gatewayVersionAlignmentWorkflow?.ResetPrompt();
+        }
+    }
+
+    private async Task CheckGatewayVersionAlignmentAfterKeepAliveAsync(string? gatewayId)
+    {
+        await _wslKeepAliveStartupTask.ConfigureAwait(false);
+        var workflow = _gatewayVersionAlignmentWorkflow;
+        if (workflow is not null)
+            await workflow.CheckAsync(gatewayId).ConfigureAwait(false);
+    }
+
+    private async Task<bool> ConfirmCompanionGatewayUpdateAsync(
+        GatewayVersionAlignmentResult probe,
+        GatewayUpdateProtectionMode effectiveProtectionMode)
+    {
+        if (_dispatcherQueue == null)
+        {
+            Logger.Warn("Cannot prompt for local Gateway update without the UI dispatcher.");
+            return false;
+        }
+
+        return await RunOnUiThreadAsync(async () =>
+        {
+            ShowHub("settings");
+            var hubWindow = _hubWindow
+                ?? throw new InvalidOperationException("The Hub window could not be created.");
+            await hubWindow.WaitForCurrentContentReadyAsync();
+            var root = hubWindow.Content as FrameworkElement;
+            if (root?.XamlRoot == null)
+                throw new InvalidOperationException("The Hub window has no active XAML root.");
+
+            var dialog = new ContentDialog
+            {
+                Title = "Update local OpenClaw Gateway",
+                Content =
+                    $"This Companion requires OpenClaw {probe.RequiredVersion}, but its existing WSL Gateway " +
+                    $"is {probe.InstalledVersion}. Update this same installation now?\n\n" +
+                    (effectiveProtectionMode == GatewayUpdateProtectionMode.FullVhd
+                        ? "Companion will briefly stop this distro and verify a complete offline VHD rollback point. "
+                        : "Companion will create and verify a native OpenClaw backup without stopping the distro. ") +
+                    "It will then update OpenClaw in place and reconnect the Gateway and Windows Node. The distro is never " +
+                    "recreated during update. Companion emergency restore is available only for Full VHD points.",
+                PrimaryButtonText = "Update now",
+                CloseButtonText = "Later",
+                DefaultButton = ContentDialogButton.Primary,
+                XamlRoot = root.XamlRoot
+            };
+            return await dialog.ShowAsync() == ContentDialogResult.Primary;
+        });
+    }
+
+    private Task<T> RunOnUiThreadAsync<T>(Func<Task<T>> action)
+    {
+        if (_dispatcherQueue?.HasThreadAccess == true)
+            return action();
+
+        var completion = new TaskCompletionSource<T>(TaskCreationOptions.RunContinuationsAsynchronously);
+        if (_dispatcherQueue?.TryEnqueue(async () =>
+            {
+                try { completion.SetResult(await action()); }
+                catch (Exception ex) { completion.SetException(ex); }
+            }) != true)
+        {
+            completion.SetException(new InvalidOperationException("The UI dispatcher is unavailable."));
+        }
+
+        return completion.Task;
+    }
+
+    private Task RunOnUiThreadAsync(Func<Task> action)
+    {
+        if (_dispatcherQueue?.HasThreadAccess == true)
+            return action();
+
+        var completion = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        if (_dispatcherQueue?.TryEnqueue(async () =>
+            {
+                try
+                {
+                    await action();
+                    completion.SetResult();
+                }
+                catch (Exception ex)
+                {
+                    completion.SetException(ex);
+                }
+            }) != true)
+        {
+            completion.SetException(new InvalidOperationException("The UI dispatcher is unavailable."));
+        }
+
+        return completion.Task;
+    }
+
+    internal IReadOnlyList<GatewayRollbackPointInfo> GetGatewayRollbackPoints() =>
+        _gatewayVersionAlignmentWorkflow?.ListRollbackPoints() ?? [];
+
+    internal bool HasUnreadableGatewayRollbackReceipt() =>
+        _gatewayVersionAlignmentWorkflow?.HasUnreadableRollbackReceipt() == true;
+
+    internal async Task<int> CleanupGatewayRollbackPointsAsync(CancellationToken cancellationToken = default)
+    {
+        var workflow = _gatewayVersionAlignmentWorkflow;
+        return workflow is null
+            ? 0
+            : await workflow.CleanupRollbackPointsAsync(cancellationToken).ConfigureAwait(false);
+    }
+
+    internal async Task<GatewayVersionAlignmentResult> RestoreGatewayRollbackPointAsync(
+        string rollbackPointId,
+        CancellationToken cancellationToken = default)
+    {
+        var workflow = _gatewayVersionAlignmentWorkflow;
+        if (workflow == null)
+        {
+            return new GatewayVersionAlignmentResult(
+                GatewayVersionAlignmentState.Ineligible,
+                OpenClaw.SetupEngine.GatewayLkgVersion.ResolveLkgVersion(),
+                FailureSummary: "No active Companion-owned Gateway is available.");
+        }
+
+        return await workflow.RestoreAsync(rollbackPointId, cancellationToken);
+    }
+
+    internal async Task<GatewayVersionAlignmentResult> ResolveNativeGatewayRecoveryAsync(
+        string rollbackPointId,
+        CancellationToken cancellationToken = default)
+    {
+        var workflow = _gatewayVersionAlignmentWorkflow;
+        if (workflow == null)
+        {
+            return new GatewayVersionAlignmentResult(
+                GatewayVersionAlignmentState.Ineligible,
+                OpenClaw.SetupEngine.GatewayLkgVersion.ResolveLkgVersion(),
+                FailureSummary: "No active Companion-owned Gateway is available.");
+        }
+
+        return await workflow.ResolveNativeRecoveryAsync(rollbackPointId, cancellationToken);
+    }
+
+    internal GatewayVersionAlignmentResult CancelGatewayRollbackPointRestore(
+        string rollbackPointId,
+        string confirmedRollbackPointId)
+    {
+        var workflow = _gatewayVersionAlignmentWorkflow;
+        if (workflow == null)
+        {
+            return new GatewayVersionAlignmentResult(
+                GatewayVersionAlignmentState.Ineligible,
+                OpenClaw.SetupEngine.GatewayLkgVersion.ResolveLkgVersion(),
+                FailureSummary: "No active Companion-owned Gateway is available.");
+        }
+
+        return workflow.CancelRestore(rollbackPointId, confirmedRollbackPointId);
+    }
+
+    private void ShowGatewayAlignmentToast(string title, string detail)
+    {
+        try
+        {
+            _toastService?.ShowToast(new ToastContentBuilder().AddText(title).AddText(detail));
+        }
+        catch (Exception ex)
+        {
+            Logger.Debug($"Gateway alignment toast suppressed: {ex.Message}");
         }
     }
 

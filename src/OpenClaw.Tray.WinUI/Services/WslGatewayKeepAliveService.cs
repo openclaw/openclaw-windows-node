@@ -16,10 +16,12 @@ namespace OpenClawTray.Services;
 /// </summary>
 internal sealed class WslGatewayKeepAliveService(
     Func<SettingsManager?> getSettings,
-    Func<GatewayRegistry?> getRegistry)
+    Func<GatewayRegistry?> getRegistry,
+    Func<string?, Task>? onLocalDistroReady = null)
 {
     private readonly Func<SettingsManager?> _getSettings = getSettings;
     private readonly Func<GatewayRegistry?> _getRegistry = getRegistry;
+    private readonly Func<string?, Task>? _onLocalDistroReady = onLocalDistroReady;
 
     /// <summary>
     /// Ensures a WSL keepalive process is running for the local gateway distro
@@ -65,10 +67,22 @@ internal sealed class WslGatewayKeepAliveService(
             psi.ArgumentList.Add("sleep");
             psi.ArgumentList.Add("infinity");
 
-            var proc = System.Diagnostics.Process.Start(psi);
-            if (proc is not null)
+            try
             {
-                Logger.Info($"[WslKeepAlive] Started keepalive for {distroName} (PID {proc.Id}).");
+                var proc = System.Diagnostics.Process.Start(psi);
+                if (proc is not null)
+                {
+                    Logger.Info($"[WslKeepAlive] Started keepalive for {distroName} (PID {proc.Id}).");
+                }
+            }
+            catch (Exception ex)
+            {
+                Logger.Warn($"[WslKeepAlive] Could not start keepalive for {distroName} (non-fatal): {ex.Message}");
+            }
+
+            if (_onLocalDistroReady is not null)
+            {
+                await _onLocalDistroReady(activeRecord?.Id);
             }
         }
         catch (Exception ex)

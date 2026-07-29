@@ -15,6 +15,7 @@ using System.Reflection;
 using System.Runtime.InteropServices;
 using System.Threading;
 using System.Threading.Tasks;
+using System.Linq;
 
 namespace OpenClawTray.Pages;
 
@@ -56,6 +57,7 @@ public sealed partial class SettingsPage : Page
         InitializeGatewayInfo();
         if (CurrentApp.Settings is { } settings)
             LoadGatewaySection(settings);
+        RefreshGatewayRollbackStorage();
     }
 
     /// <summary>
@@ -285,6 +287,124 @@ public sealed partial class SettingsPage : Page
     private void OnCheckUpdates(object sender, RoutedEventArgs e)
     {
         ((IAppCommands)CurrentApp).CheckForUpdates();
+    }
+
+    private void OnManageGatewayRollbackPoints(object sender, RoutedEventArgs e) =>
+        AsyncEventHandlerGuard.Run(
+            ManageGatewayRollbackPointsAsync,
+            new OpenClawTray.AppLogger(),
+            nameof(OnManageGatewayRollbackPoints));
+
+    private async Task ManageGatewayRollbackPointsAsync()
+    {
+        GatewayRollbackResultBar.IsOpen = false;
+        var selectionPlan = GatewayRollbackPresentation.PlanSelection(
+            CurrentApp.GetGatewayRollbackPoints());
+        if (!selectionPlan.CanSelect)
+        {
+            ApplyGatewayRollbackNotice(selectionPlan.Notice!);
+            return;
+        }
+
+        GatewayRollbackPointSelector.ItemsSource = selectionPlan.Choices;
+        GatewayRollbackPointSelector.SelectedIndex = selectionPlan.PreferredIndex;
+        GatewayRollbackSelectionDialog.XamlRoot = XamlRoot;
+        if (await GatewayRollbackSelectionDialog.ShowAsync() != ContentDialogResult.Primary ||
+            GatewayRollbackPointSelector.SelectedItem is not GatewayRollbackPointChoice selected)
+        {
+            return;
+        }
+
+        var actionPlan = GatewayRollbackPresentation.PlanAction(selected.Point);
+        if (actionPlan.Kind == GatewayRollbackActionKind.ShowNotice)
+        {
+            ApplyGatewayRollbackNotice(actionPlan.Notice!);
+            return;
+        }
+
+        ApplyGatewayRollbackActionDialog(actionPlan);
+        var confirmationResult = await GatewayRollbackActionDialog.ShowAsync();
+        if (confirmationResult == ContentDialogResult.Secondary &&
+            actionPlan.CanCancelStagedRestore)
+        {
+            var cancelled = CurrentApp.CancelGatewayRollbackPointRestore(
+                selected.Point.Id, selected.Point.Id);
+            ApplyGatewayRollbackNotice(
+                GatewayRollbackPresentation.ProjectCancellationResult(cancelled));
+            return;
+        }
+        if (confirmationResult != ContentDialogResult.Primary)
+            return;
+
+        if (actionPlan.Kind == GatewayRollbackActionKind.ResolveNativeRecovery)
+        {
+            var resolved = await CurrentApp.ResolveNativeGatewayRecoveryAsync(selected.Point.Id);
+            ApplyGatewayRollbackNotice(
+                GatewayRollbackPresentation.ProjectNativeRecoveryResult(resolved));
+            RefreshGatewayRollbackStorage();
+            return;
+        }
+
+        ApplyGatewayRollbackNotice(GatewayRollbackPresentation.RestoringNotice());
+        var result = await CurrentApp.RestoreGatewayRollbackPointAsync(selected.Point.Id);
+        ApplyGatewayRollbackNotice(
+            GatewayRollbackPresentation.ProjectRestoreResult(result, selected.Point.Id));
+    }
+
+    private void OnCleanupGatewayRollbackPoints(object sender, RoutedEventArgs e) =>
+        AsyncEventHandlerGuard.Run(
+            CleanupGatewayRollbackPointsAsync,
+            new OpenClawTray.AppLogger(),
+            nameof(OnCleanupGatewayRollbackPoints));
+
+    private async Task CleanupGatewayRollbackPointsAsync()
+    {
+        int deleted;
+        try
+        {
+            deleted = await CurrentApp.CleanupGatewayRollbackPointsAsync();
+        }
+        catch (InvalidOperationException ex)
+        {
+            RefreshGatewayRollbackStorage();
+            ApplyGatewayRollbackNotice(
+                GatewayRollbackPresentation.ProjectCleanupBlocked(ex.Message));
+            return;
+        }
+
+        RefreshGatewayRollbackStorage();
+        ApplyGatewayRollbackNotice(
+            GatewayRollbackPresentation.ProjectCleanupResult(deleted));
+    }
+
+    private void RefreshGatewayRollbackStorage()
+    {
+        GatewayRollbackStorageText.Text = GatewayRollbackPresentation.ProjectStorage(
+            CurrentApp.GetGatewayRollbackPoints(),
+            CurrentApp.HasUnreadableGatewayRollbackReceipt());
+    }
+
+    private void ApplyGatewayRollbackActionDialog(GatewayRollbackActionPlan plan)
+    {
+        GatewayRollbackActionDialog.Title = plan.ConfirmationTitle;
+        GatewayRollbackActionMessage.Text = plan.ConfirmationMessage;
+        GatewayRollbackActionDialog.PrimaryButtonText = plan.PrimaryButtonText;
+        GatewayRollbackActionDialog.SecondaryButtonText = plan.SecondaryButtonText;
+        GatewayRollbackActionDialog.XamlRoot = XamlRoot;
+    }
+
+    private void ApplyGatewayRollbackNotice(GatewayRollbackNotice notice)
+    {
+        GatewayRollbackResultBar.Severity = notice.Severity switch
+        {
+            GatewayRollbackNoticeSeverity.Success => InfoBarSeverity.Success,
+            GatewayRollbackNoticeSeverity.Warning => InfoBarSeverity.Warning,
+            GatewayRollbackNoticeSeverity.Error => InfoBarSeverity.Error,
+            _ => InfoBarSeverity.Informational
+        };
+        GatewayRollbackResultBar.Title = notice.Title;
+        GatewayRollbackResultBar.Message = notice.Message;
+        GatewayRollbackResultBar.IsOpen = true;
     }
 
     private void OnDocumentationLink(object sender, RoutedEventArgs e)

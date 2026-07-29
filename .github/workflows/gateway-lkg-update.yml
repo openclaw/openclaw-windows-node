@@ -30,11 +30,43 @@ jobs:
       run: |
         pinned="$(python3 - <<'PY'
         import pathlib, re
-        source = pathlib.Path("src/OpenClaw.SetupEngine/GatewayLkgVersion.cs").read_text(encoding="utf-8")
-        match = re.search(r'LkgVersion\s*=\s*"([^"]+)"', source)
-        if not match:
+        lkg_path = pathlib.Path("src/OpenClaw.SetupEngine/GatewayLkgVersion.cs")
+        metadata_path = pathlib.Path("src/OpenClaw.Shared/OpenClaw.Shared.csproj")
+        lkg_test_path = pathlib.Path("tests/OpenClaw.SetupEngine.Tests/GatewayLkgVersionTests.cs")
+        target_test_path = pathlib.Path("tests/OpenClaw.Connection.Tests/GatewayPackageTargetTests.cs")
+        lkg_match = re.search(r'LkgVersion\s*=\s*"([^"]+)"', lkg_path.read_text(encoding="utf-8"))
+        metadata_match = re.search(
+            r'<OpenClawGatewayPackageExpectedVersion[^>]*>([^<]+)</OpenClawGatewayPackageExpectedVersion>',
+            metadata_path.read_text(encoding="utf-8"),
+        )
+        lkg_test_match = re.search(
+            r'ExpectedLkgVersion\s*=\s*"([^"]+)"',
+            lkg_test_path.read_text(encoding="utf-8"),
+        )
+        target_test_match = re.search(
+            r'BuildTargetResolver_UsesOrdinaryUpstreamAssemblyDefault\(\).*?'
+            r'Assert\.Equal\("([^"]+)", target\.ExpectedVersion\);',
+            target_test_path.read_text(encoding="utf-8"),
+            re.DOTALL,
+        )
+        if not lkg_match:
             raise SystemExit("Could not parse LkgVersion constant from GatewayLkgVersion.cs")
-        pinned = match.group(1)
+        if not metadata_match:
+            raise SystemExit("Could not parse OpenClawGatewayPackageExpectedVersion from OpenClaw.Shared.csproj")
+        if not lkg_test_match:
+            raise SystemExit("Could not parse ExpectedLkgVersion from GatewayLkgVersionTests.cs")
+        if not target_test_match:
+            raise SystemExit("Could not parse ordinary upstream target version assertion")
+        pinned = lkg_match.group(1)
+        metadata_version = metadata_match.group(1)
+        lkg_test_version = lkg_test_match.group(1)
+        target_test_version = target_test_match.group(1)
+        if metadata_version != pinned or lkg_test_version != pinned or target_test_version != pinned:
+            raise SystemExit(
+                "Gateway package defaults disagree: "
+                f"LkgVersion={pinned}, metadata={metadata_version}, "
+                f"lkg-test={lkg_test_version}, target-test={target_test_version}"
+            )
         if not re.fullmatch(r'[0-9]+\.[0-9]+\.[0-9]+', pinned):
             raise SystemExit(f"Pinned LkgVersion must be an exact stable version: {pinned}")
         print(pinned)
@@ -101,6 +133,17 @@ jobs:
                 r'(ExpectedLkgVersion\s*=\s*")([^"]+)(")',
                 "ExpectedLkgVersion constant",
             ),
+            (
+                pathlib.Path("src/OpenClaw.Shared/OpenClaw.Shared.csproj"),
+                r'(<OpenClawGatewayPackageExpectedVersion[^>]*>)([^<]+)(</OpenClawGatewayPackageExpectedVersion>)',
+                "OpenClawGatewayPackageExpectedVersion",
+            ),
+            (
+                pathlib.Path("tests/OpenClaw.Connection.Tests/GatewayPackageTargetTests.cs"),
+                r'(?s)(BuildTargetResolver_UsesOrdinaryUpstreamAssemblyDefault\(\).*?'
+                r'Assert\.Equal\(")([^"]+)(", target\.ExpectedVersion\);)',
+                "ordinary upstream target assertion",
+            ),
         )
         for path, pattern, label in replacements:
             source = path.read_text(encoding="utf-8")
@@ -121,6 +164,8 @@ jobs:
       run: |
         update_paths=(
           src/OpenClaw.SetupEngine/GatewayLkgVersion.cs
+          src/OpenClaw.Shared/OpenClaw.Shared.csproj
+          tests/OpenClaw.Connection.Tests/GatewayPackageTargetTests.cs
           tests/OpenClaw.SetupEngine.Tests/GatewayLkgVersionTests.cs
         )
         if git diff --quiet -- "${update_paths[@]}"; then
@@ -147,7 +192,7 @@ jobs:
 
         - Previous pinned LKG: \`${{ steps.versions.outputs.pinned }}\`
         - Candidate latest: \`${{ steps.versions.outputs.latest }}\`
-        - Updated files: LKG source and its contract test
+        - Updated files: LKG source, package metadata, and both LKG contract tests
 
         The automation only proposes exact stable versions newer than the current pin.
 

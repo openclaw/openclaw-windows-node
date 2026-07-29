@@ -1,16 +1,28 @@
 using OpenClaw.Shared;
+using Microsoft.Win32;
 using System.Diagnostics;
 using System.Globalization;
+using System.Runtime.InteropServices;
 using System.Text;
 
 namespace OpenClaw.Connection;
 
-public sealed record WslCommandResult(int ExitCode, string StandardOutput, string StandardError)
+public sealed record WslCommandResult(
+    int ExitCode,
+    string StandardOutput,
+    string StandardError,
+    bool TimedOut = false)
 {
-    public bool Success => ExitCode == 0;
+    public bool Success => ExitCode == 0 && !TimedOut;
 }
 
 public sealed record WslDistroInfo(string Name, string State, int Version);
+public sealed record WslDistroRegistration(string Name, string BasePath);
+public sealed record WslDistroConfiguration(uint Version, uint DefaultUid, uint Flags);
+public sealed record WslDistroConfigurationResult(
+    bool Success,
+    WslDistroConfiguration? Configuration,
+    int HResult = 0);
 
 public interface IWslCommandRunner
 {
@@ -21,6 +33,21 @@ public interface IWslCommandRunner
 
     Task<IReadOnlyList<WslDistroInfo>> ListDistrosAsync(CancellationToken cancellationToken = default);
 
+    Task<IReadOnlyList<WslDistroRegistration>> ListRegistrationsAsync(CancellationToken cancellationToken = default) =>
+        Task.FromResult<IReadOnlyList<WslDistroRegistration>>([]);
+
+    Task<WslDistroConfigurationResult> GetDistroConfigurationAsync(
+        string name,
+        CancellationToken cancellationToken = default) =>
+        Task.FromResult(new WslDistroConfigurationResult(false, null, -1));
+
+    Task<WslCommandResult> ConfigureDistroRegistrationAsync(
+        string name,
+        uint defaultUid,
+        uint flags,
+        CancellationToken cancellationToken = default) =>
+        Task.FromResult(new WslCommandResult(-1, string.Empty, "WSL registration configuration is unavailable."));
+
     Task<WslCommandResult> TerminateDistroAsync(string name, CancellationToken cancellationToken = default);
 
     Task<WslCommandResult> UnregisterDistroAsync(string name, CancellationToken cancellationToken = default);
@@ -29,6 +56,13 @@ public interface IWslCommandRunner
         string name, IReadOnlyList<string> command,
         CancellationToken cancellationToken = default,
         IReadOnlyDictionary<string, string>? environment = null);
+
+    Task<WslCommandResult> CopyFileFromDistroAsync(
+        string name,
+        string sourcePath,
+        string destinationPath,
+        CancellationToken cancellationToken = default) =>
+        Task.FromResult(new WslCommandResult(-1, string.Empty, "WSL file transfer is unavailable."));
 }
 
 /// <summary>
@@ -37,6 +71,7 @@ public interface IWslCommandRunner
 /// </summary>
 public sealed class WslExeCommandRunner : IWslCommandRunner
 {
+    private const string LxssRegistryPath = @"Software\Microsoft\Windows\CurrentVersion\Lxss";
     private readonly IOpenClawLogger _logger;
     private readonly TimeSpan _defaultTimeout;
 
@@ -54,6 +89,97 @@ public sealed class WslExeCommandRunner : IWslCommandRunner
         return result.Success ? ParseDistroList(result.StandardOutput) : [];
     }
 
+    public Task<IReadOnlyList<WslDistroRegistration>> ListRegistrationsAsync(CancellationToken cancellationToken = default)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        var registrations = new List<WslDistroRegistration>();
+        if (!OperatingSystem.IsWindows())
+            return Task.FromResult<IReadOnlyList<WslDistroRegistration>>(registrations);
+        using var root = Registry.CurrentUser.OpenSubKey(LxssRegistryPath, writable: false);
+        if (root is null)
+            return Task.FromResult<IReadOnlyList<WslDistroRegistration>>(registrations);
+
+        foreach (var subKeyName in root.GetSubKeyNames())
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            using var distro = root.OpenSubKey(subKeyName, writable: false);
+            if (distro?.GetValue("DistributionName") is not string name ||
+                distro.GetValue("BasePath") is not string basePath ||
+                string.IsNullOrWhiteSpace(name) ||
+                string.IsNullOrWhiteSpace(basePath))
+            {
+                continue;
+            }
+
+            registrations.Add(new(name.Trim(), Environment.ExpandEnvironmentVariables(basePath.Trim())));
+        }
+
+        return Task.FromResult<IReadOnlyList<WslDistroRegistration>>(registrations);
+    }
+
+    public Task<WslDistroConfigurationResult> GetDistroConfigurationAsync(
+        string name,
+        CancellationToken cancellationToken = default)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        if (!OperatingSystem.IsWindows())
+            return Task.FromResult(new WslDistroConfigurationResult(false, null, -1));
+
+        IntPtr environmentVariables = IntPtr.Zero;
+        uint environmentVariableCount = 0;
+        try
+        {
+            var hresult = WslGetDistributionConfiguration(
+                name,
+                out var version,
+                out var defaultUid,
+                out var flags,
+                out environmentVariables,
+                out environmentVariableCount);
+            return Task.FromResult(hresult >= 0
+                ? new WslDistroConfigurationResult(true, new(version, defaultUid, flags), hresult)
+                : new WslDistroConfigurationResult(false, null, hresult));
+        }
+        catch (Exception ex) when (ex is DllNotFoundException or EntryPointNotFoundException)
+        {
+            return Task.FromResult(new WslDistroConfigurationResult(false, null, -1));
+        }
+        finally
+        {
+            for (uint index = 0; environmentVariables != IntPtr.Zero && index < environmentVariableCount; index++)
+            {
+                var value = Marshal.ReadIntPtr(environmentVariables, checked((int)(index * IntPtr.Size)));
+                if (value != IntPtr.Zero)
+                    Marshal.FreeCoTaskMem(value);
+            }
+            if (environmentVariables != IntPtr.Zero)
+                Marshal.FreeCoTaskMem(environmentVariables);
+        }
+    }
+
+    public Task<WslCommandResult> ConfigureDistroRegistrationAsync(
+        string name,
+        uint defaultUid,
+        uint flags,
+        CancellationToken cancellationToken = default)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        if (!OperatingSystem.IsWindows())
+            return Task.FromResult(new WslCommandResult(-1, string.Empty, "WSL registration configuration requires Windows."));
+
+        try
+        {
+            var hresult = WslConfigureDistribution(name, defaultUid, flags);
+            return Task.FromResult(hresult >= 0
+                ? new WslCommandResult(0, string.Empty, string.Empty)
+                : new WslCommandResult(hresult, string.Empty, "WslConfigureDistribution failed."));
+        }
+        catch (Exception ex) when (ex is DllNotFoundException or EntryPointNotFoundException)
+        {
+            return Task.FromResult(new WslCommandResult(-1, string.Empty, "WslConfigureDistribution is unavailable."));
+        }
+    }
+
     public Task<WslCommandResult> RunAsync(
         IReadOnlyList<string> arguments,
         CancellationToken cancellationToken = default,
@@ -68,6 +194,92 @@ public sealed class WslExeCommandRunner : IWslCommandRunner
         var args = new List<string> { "-d", name, "--" };
         args.AddRange(command);
         return RunAsync(args, cancellationToken, environment);
+    }
+
+    public async Task<WslCommandResult> CopyFileFromDistroAsync(
+        string name,
+        string sourcePath,
+        string destinationPath,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(name);
+        ArgumentException.ThrowIfNullOrWhiteSpace(sourcePath);
+        ArgumentException.ThrowIfNullOrWhiteSpace(destinationPath);
+
+        var psi = new ProcessStartInfo
+        {
+            FileName = "wsl.exe",
+            RedirectStandardOutput = true,
+            RedirectStandardError = true,
+            UseShellExecute = false,
+            CreateNoWindow = true,
+            StandardErrorEncoding = Encoding.UTF8
+        };
+        foreach (var argument in new[] { "-d", name, "--", "cat", "--", sourcePath })
+            psi.ArgumentList.Add(argument);
+
+        _logger.Info($"[WSL] Copy file from distro {name} to a host-managed destination.");
+
+        using var process = new Process { StartInfo = psi };
+        try
+        {
+            process.Start();
+        }
+        catch (Exception ex)
+        {
+            return new WslCommandResult(-1, string.Empty, $"Failed to start wsl.exe: {ex.Message}");
+        }
+
+        using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        timeoutCts.CancelAfter(_defaultTimeout);
+        var stderrTask = process.StandardError.ReadToEndAsync(timeoutCts.Token);
+        var timedOut = false;
+        try
+        {
+            await using var destination = new FileStream(
+                destinationPath,
+                FileMode.CreateNew,
+                FileAccess.Write,
+                FileShare.None,
+                bufferSize: 81920,
+                FileOptions.Asynchronous | FileOptions.WriteThrough);
+            var copyTask = process.StandardOutput.BaseStream.CopyToAsync(destination, timeoutCts.Token);
+            await Task.WhenAll(process.WaitForExitAsync(timeoutCts.Token), copyTask).ConfigureAwait(false);
+            await destination.FlushAsync(timeoutCts.Token).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
+        {
+            timedOut = true;
+            // slopwatch-ignore: SW003 Timeout cleanup preserves the source and removes only the partial host copy.
+            try { process.Kill(entireProcessTree: true); } catch { }
+        }
+        catch (OperationCanceledException)
+        {
+            // slopwatch-ignore: SW003 Cancellation cleanup preserves the source and removes only the partial host copy.
+            try { process.Kill(entireProcessTree: true); } catch { }
+            TryDeletePartial(destinationPath);
+            throw;
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            // slopwatch-ignore: SW003 Transfer failure cleanup preserves the source and removes only the partial host copy.
+            try { process.Kill(entireProcessTree: true); } catch { }
+            TryDeletePartial(destinationPath);
+            return new WslCommandResult(-1, string.Empty, $"WSL file transfer failed: {ex.Message}");
+        }
+
+        string stderr;
+        try { stderr = await stderrTask.ConfigureAwait(false); } catch { stderr = string.Empty; }
+        if (timedOut || process.ExitCode != 0)
+            TryDeletePartial(destinationPath);
+        return timedOut
+            ? new WslCommandResult(-1, string.Empty, "wsl.exe file transfer timed out", TimedOut: true)
+            : new WslCommandResult(process.ExitCode, string.Empty, stderr);
+    }
+
+    private static void TryDeletePartial(string path)
+    {
+        try { File.Delete(path); } catch { }
     }
 
     public Task<WslCommandResult> TerminateDistroAsync(string name, CancellationToken cancellationToken = default) =>
@@ -171,7 +383,22 @@ public sealed class WslExeCommandRunner : IWslCommandRunner
         try { stderr = await stderrTask; } catch { stderr = string.Empty; }
 
         return timedOut
-            ? new WslCommandResult(-1, stdout, "wsl.exe timed out")
+            ? new WslCommandResult(-1, stdout, "wsl.exe timed out", TimedOut: true)
             : new WslCommandResult(process.ExitCode, stdout, stderr);
     }
+
+    [DllImport("api-ms-win-wsl-api-l1-1-0.dll", CharSet = CharSet.Unicode, ExactSpelling = true)]
+    private static extern int WslGetDistributionConfiguration(
+        string distributionName,
+        out uint distributionVersion,
+        out uint defaultUid,
+        out uint wslDistributionFlags,
+        out IntPtr defaultEnvironmentVariables,
+        out uint defaultEnvironmentVariableCount);
+
+    [DllImport("api-ms-win-wsl-api-l1-1-0.dll", CharSet = CharSet.Unicode, ExactSpelling = true)]
+    private static extern int WslConfigureDistribution(
+        string distributionName,
+        uint defaultUid,
+        uint wslDistributionFlags);
 }

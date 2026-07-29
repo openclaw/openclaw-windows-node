@@ -1278,14 +1278,16 @@ public sealed class InstallCliStep : SetupStep
         }
 
         string installScript;
+        string? expectedInstalledVersion;
         try
         {
             installScript = BuildInstallCommand(
                 installUrl,
                 ctx.Config.Gateway.Version,
                 ctx.Config.Gateway.ExpectedPackageSha256);
+            expectedInstalledVersion = GatewayLkgVersion.ResolveExpectedInstalledVersion(ctx.Config);
         }
-        catch (ArgumentException ex)
+        catch (Exception ex) when (ex is ArgumentException or InvalidOperationException)
         {
             return StepResult.Fail(ex.Message);
         }
@@ -1314,6 +1316,12 @@ public sealed class InstallCliStep : SetupStep
             var verify = await ctx.Commands.RunInWslAsync(distro, cmd, TimeSpan.FromSeconds(15), ct: ct);
             if (verify.ExitCode == 0 && !string.IsNullOrWhiteSpace(verify.Stdout))
             {
+                if (expectedInstalledVersion is not null &&
+                    !IsExpectedOpenClawVersion(verify.Stdout, expectedInstalledVersion))
+                {
+                    continue;
+                }
+
                 if (executablePath != null)
                 {
                     var pathResult = await EnsureCliOnDefaultPathAsync(ctx, distro, executablePath, ct);
@@ -1326,65 +1334,49 @@ public sealed class InstallCliStep : SetupStep
             }
         }
 
-        return StepResult.Fail("CLI installed but not found in any known location");
+        return expectedInstalledVersion is null
+            ? StepResult.Fail("CLI installed but not found in any known location")
+            : StepResult.Fail($"CLI installed but exact OpenClaw {expectedInstalledVersion} was not found in any known location");
     }
 
     internal static string BuildInstallCommand(
         string installUrl,
         string? requestedVersion,
         string? expectedPackageSha256 = null)
+        => GatewayPackageInstallCommandBuilder.Build(
+            installUrl,
+            requestedVersion,
+            expectedPackageSha256);
+
+    internal static bool IsExpectedOpenClawVersion(string output, string expectedVersion)
     {
-        var escapedUrl = WslShellQuoting.EscapePosixSingleQuoteInner(installUrl);
-        if (!string.IsNullOrWhiteSpace(expectedPackageSha256))
-            return BuildVerifiedPackageInstallCommand(escapedUrl, requestedVersion, expectedPackageSha256);
+        if (string.IsNullOrWhiteSpace(output) || string.IsNullOrWhiteSpace(expectedVersion))
+            return false;
 
-        if (string.IsNullOrWhiteSpace(requestedVersion))
-            return $"curl -fsSL --proto '=https' --tlsv1.2 '{escapedUrl}' | bash";
-
-        var trimmedVersion = requestedVersion.Trim();
-        if (trimmedVersion.Contains('\n') || trimmedVersion.Contains('\r'))
-            throw new ArgumentException("Gateway version cannot contain newlines.");
-
-        var escapedVersion = WslShellQuoting.EscapePosixSingleQuoteInner(trimmedVersion);
-        return $"curl -fsSL --proto '=https' --tlsv1.2 '{escapedUrl}' | bash -s -- --version '{escapedVersion}'";
-    }
-
-    private static string BuildVerifiedPackageInstallCommand(
-        string escapedInstallUrl,
-        string? requestedVersion,
-        string expectedPackageSha256)
-    {
-        var normalizedSha256 = expectedPackageSha256.Trim().ToLowerInvariant();
-        if (normalizedSha256.Length != 64 || !normalizedSha256.All(Uri.IsHexDigit))
-            throw new ArgumentException("Expected gateway package SHA-256 must contain exactly 64 hexadecimal characters.");
-
-        var packageSpec = requestedVersion?.Trim();
-        if (string.IsNullOrWhiteSpace(packageSpec) ||
-            packageSpec.Contains('\n') ||
-            packageSpec.Contains('\r') ||
-            !Uri.TryCreate(packageSpec, UriKind.Absolute, out var packageUri) ||
-            (packageUri.Scheme != Uri.UriSchemeHttp && packageUri.Scheme != Uri.UriSchemeHttps) ||
-            !packageUri.AbsolutePath.EndsWith(".tgz", StringComparison.OrdinalIgnoreCase) ||
-            !string.IsNullOrEmpty(packageUri.UserInfo))
+        var candidates = new List<string>();
+        foreach (var rawLine in output.Split(['\r', '\n'], StringSplitOptions.RemoveEmptyEntries))
         {
-            throw new ArgumentException(
-                "Expected gateway package SHA-256 requires Version to be a credential-free HTTP(S) .tgz URL.");
+            var line = rawLine.Trim();
+            var candidate = line.StartsWith("OpenClaw ", StringComparison.Ordinal)
+                ? line["OpenClaw ".Length..].Split([' ', '\t', '('], 2)[0]
+                : line.Any(char.IsWhiteSpace)
+                    ? null
+                    : line;
+            if (candidate is null)
+                continue;
+
+            try
+            {
+                candidates.Add(GatewayPackageTarget.Official(candidate).ExpectedVersion);
+            }
+            catch (ArgumentException)
+            {
+                // Ignore unrelated output; exactly one valid OpenClaw version must remain.
+            }
         }
 
-        var escapedPackageSpec = WslShellQuoting.EscapePosixSingleQuoteInner(packageSpec);
-        var packageCurlOptions = packageUri.Scheme == Uri.UriSchemeHttps
-            ? "--proto '=https' --tlsv1.2"
-            : "--proto '=http'";
-
-        return
-            "download_dir=\"$(mktemp -d /tmp/openclaw-install.XXXXXX)\"" +
-            " && trap 'rm -rf -- \"$download_dir\"' EXIT" +
-            " && package_path=\"$download_dir/openclaw.tgz\"" +
-            " && installer_path=\"$download_dir/install-cli.sh\"" +
-            $" && curl -fsSL {packageCurlOptions} '{escapedPackageSpec}' -o \"$package_path\"" +
-            $" && printf '%s  %s\\n' '{normalizedSha256}' \"$package_path\" | sha256sum --check --strict -" +
-            $" && curl -fsSL --proto '=https' --tlsv1.2 '{escapedInstallUrl}' -o \"$installer_path\"" +
-            " && bash \"$installer_path\" --version \"$package_path\"";
+        return candidates.Count == 1 &&
+               string.Equals(candidates[0], expectedVersion.Trim(), StringComparison.Ordinal);
     }
 
     private static async Task<StepResult> EnsureCliOnDefaultPathAsync(
@@ -1618,7 +1610,8 @@ public sealed class ConfigureGatewayStep : SetupStep
     }
 
     internal static string ResolveNodeCommandAllowConfigKey(GatewayConfig gw)
-        => GatewayNodeCommandPolicyConfig.ResolveAllowKey(gw.Version)
+        => GatewayNodeCommandPolicyConfig.ResolveAllowKey(
+               GatewayLkgVersion.ResolveSchemaVersion(gw))
            ?? GatewayNodeCommandPolicyConfig.CurrentAllowKey;
 
     // Budget = base + per-command, floored. Scales the WSL timeout with the number of

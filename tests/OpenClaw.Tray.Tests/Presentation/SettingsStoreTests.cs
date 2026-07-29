@@ -26,11 +26,16 @@ public sealed class SettingsStoreTests
         {
             settings.GlobalHotkeyEnabled = true;
             settings.NotificationSound = "Subtle";
+            settings.GatewayRollbackRetentionCount = 2;
+            settings.GatewayRollbackRetentionAgeDays = 7;
 
             var snapshot = store.Current;
 
             Assert.True(snapshot.GlobalHotkeyEnabled);
             Assert.Equal("Subtle", snapshot.NotificationSound);
+            Assert.Equal(2, snapshot.GatewayRollbackRetentionCount);
+            Assert.Equal(7, snapshot.GatewayRollbackRetentionAgeDays);
+            Assert.Equal(SettingsManager.GatewayRollbackProtectionNativeBackup, snapshot.GatewayRollbackProtectionMode);
         }
     }
 

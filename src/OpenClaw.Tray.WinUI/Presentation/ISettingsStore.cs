@@ -1,3 +1,5 @@
+using OpenClawTray.Services;
+
 namespace OpenClawTray.Presentation;
 
 /// <summary>
@@ -74,6 +76,9 @@ public interface ISettingsEditor
     bool ScreenRecordingConsentGiven { set; }
     bool CameraRecordingConsentGiven { set; }
 
+    int GatewayRollbackRetentionCount { set; }
+    int GatewayRollbackRetentionAgeDays { set; }
+    string GatewayRollbackProtectionMode { set; }
     bool ShowChatToolCalls { set; }
 }
 
@@ -104,6 +109,10 @@ public sealed record SettingsSnapshot
 
     public bool ScreenRecordingConsentGiven { get; init; }
     public bool CameraRecordingConsentGiven { get; init; }
+
+    public int GatewayRollbackRetentionCount { get; init; }
+    public int GatewayRollbackRetentionAgeDays { get; init; }
+    public string GatewayRollbackProtectionMode { get; init; } = SettingsManager.GatewayRollbackProtectionNativeBackup;
 
     /// <summary>Reflects <c>VoiceTtsEnabled</c>; the "read responses aloud" toggle mirrors it.</summary>
     public bool VoiceTtsEnabled { get; init; }
