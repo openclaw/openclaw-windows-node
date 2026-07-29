@@ -73,15 +73,45 @@ public sealed partial class SessionsPage : Page
                     Key = "agent:main:main",
                     IsMain = true,
                     Status = "active",
+                    HasActiveRun = true,
                     DisplayName = "OpenClaw Windows Tray",
                     UpdatedAt = DateTime.UtcNow,
                 },
                 new SessionInfo
                 {
                     Key = "agent:main:fork",
-                    Status = "active",
+                    Status = "running",
+                    HasActiveRun = false,
                     DisplayName = "OpenClaw Windows Tray",
                     UpdatedAt = DateTime.UtcNow.AddSeconds(-1),
+                },
+                new SessionInfo
+                {
+                    Key = "agent:main:deploy-migration",
+                    Status = "failed",
+                    DisplayName = "Deploy migration",
+                    UpdatedAt = DateTime.UtcNow.AddMinutes(-2),
+                },
+                new SessionInfo
+                {
+                    Key = "agent:main:research-labels",
+                    Status = "timeout",
+                    DisplayName = "Research status labels",
+                    UpdatedAt = DateTime.UtcNow.AddMinutes(-4),
+                },
+                new SessionInfo
+                {
+                    Key = "agent:main:release-notes",
+                    Status = "killed",
+                    DisplayName = "Draft release notes",
+                    UpdatedAt = DateTime.UtcNow.AddMinutes(-6),
+                },
+                new SessionInfo
+                {
+                    Key = "agent:main:completed-cleanup",
+                    Status = "done",
+                    DisplayName = "Completed cleanup",
+                    UpdatedAt = DateTime.UtcNow.AddMinutes(-8),
                 },
             ]);
             return;
