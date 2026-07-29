@@ -932,12 +932,15 @@ public sealed partial class ConnectionPage : Page
             {
                 var hasSharedGatewayToken = !string.IsNullOrWhiteSpace(
                     _gatewayRegistry?.GetActive()?.SharedGatewayToken);
+                // Same attach signal NodeService uses for RegistrationBlock.
+                var hasGatewayClient = CurrentApp.ActiveNodeService?.HasAttachedGatewayClient == true;
                 var pillFp = BuildCapabilityPillFingerprint(
                     plan.NodeCard,
                     plan.NodeEffectiveCapabilities,
                     plan.NodePendingDeclaredCapabilities,
                     settings,
-                    hasSharedGatewayToken);
+                    hasSharedGatewayToken,
+                    hasGatewayClient);
                 if (_capabilityPillsFingerprint != pillFp)
                 {
                     _capabilityPillsFingerprint = pillFp;
@@ -945,7 +948,8 @@ public sealed partial class ConnectionPage : Page
                         plan.NodeEffectiveCapabilities,
                         plan.NodePendingDeclaredCapabilities,
                         settings,
-                        hasSharedGatewayToken);
+                        hasSharedGatewayToken,
+                        hasGatewayClient);
                 }
 
                 NodeCapabilityPillsHost.Visibility =
@@ -1197,7 +1201,8 @@ public sealed partial class ConnectionPage : Page
         IReadOnlyList<string> effective,
         IReadOnlyList<string> pendingDeclared,
         SettingsManager settings,
-        bool hasSharedGatewayToken)
+        bool hasSharedGatewayToken,
+        bool hasGatewayClient)
     {
         var panel = new WrapPanel { HorizontalSpacing = 6, VerticalSpacing = 6 };
         var effectiveSet = new HashSet<string>(
@@ -1227,7 +1232,8 @@ public sealed partial class ConnectionPage : Page
                     toggleEnabled: enabled,
                     effective: effectiveSet.Contains(name),
                     pendingDeclared: pendingSet.Contains(name),
-                    hasSharedGatewayToken: hasSharedGatewayToken)
+                    hasSharedGatewayToken: hasSharedGatewayToken,
+                    hasGatewayClient: hasGatewayClient)
                 : effectiveSet.Contains(name)
                     ? BrowserProxyActivation.CapabilityPillKind.Active
                     : (pendingSet.Contains(name) || enabled)
@@ -1388,7 +1394,8 @@ public sealed partial class ConnectionPage : Page
         IReadOnlyList<string> effective,
         IReadOnlyList<string> pendingDeclared,
         SettingsManager settings,
-        bool hasSharedGatewayToken)
+        bool hasSharedGatewayToken,
+        bool hasGatewayClient)
     {
         var eff = string.Join(
             ",",
@@ -1406,7 +1413,7 @@ public sealed partial class ConnectionPage : Page
             settings.NodeLocationEnabled ? '1' : '0',
             settings.NodeTtsEnabled ? '1' : '0',
             settings.NodeSttEnabled ? '1' : '0');
-        return $"{state}|{eff}|{pend}|{toggles}|{(hasSharedGatewayToken ? '1' : '0')}";
+        return $"{state}|{eff}|{pend}|{toggles}|{(hasSharedGatewayToken ? '1' : '0')}|{(hasGatewayClient ? '1' : '0')}";
     }
 
     /// <summary>

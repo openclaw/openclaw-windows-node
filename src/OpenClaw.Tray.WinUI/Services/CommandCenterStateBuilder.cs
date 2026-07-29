@@ -275,7 +275,8 @@ internal sealed class CommandCenterStateBuilder
         _ = nodes;
         if (!CommandCenterBrowserProxyAuthWarningPolicy.ShouldShow(
                 _snapshot.Settings?.NodeBrowserProxyEnabled != false,
-                _snapshot.ActiveGatewayHasSharedToken))
+                _snapshot.ActiveGatewayHasSharedToken,
+                _snapshot.NodeService?.HasAttachedGatewayClient == true))
         {
             yield break;
         }

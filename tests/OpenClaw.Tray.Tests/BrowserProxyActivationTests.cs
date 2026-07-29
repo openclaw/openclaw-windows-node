@@ -42,21 +42,28 @@ public sealed class BrowserProxyActivationTests
     }
 
     [Fact]
-    public void MissingSharedTokenWarning_DoesNotRequireDeclaredBrowserProxy()
+    public void MissingSharedTokenWarning_RequiresAttachedClient()
     {
         Assert.True(BrowserProxyActivation.ShouldShowMissingSharedTokenWarning(
             nodeBrowserProxyEnabled: true,
-            activeGatewayHasSharedToken: false));
+            activeGatewayHasSharedToken: false,
+            hasGatewayClient: true));
         Assert.False(BrowserProxyActivation.ShouldShowMissingSharedTokenWarning(
             nodeBrowserProxyEnabled: true,
-            activeGatewayHasSharedToken: true));
+            activeGatewayHasSharedToken: false,
+            hasGatewayClient: false));
+        Assert.False(BrowserProxyActivation.ShouldShowMissingSharedTokenWarning(
+            nodeBrowserProxyEnabled: true,
+            activeGatewayHasSharedToken: true,
+            hasGatewayClient: true));
         Assert.False(BrowserProxyActivation.ShouldShowMissingSharedTokenWarning(
             nodeBrowserProxyEnabled: false,
-            activeGatewayHasSharedToken: false));
+            activeGatewayHasSharedToken: false,
+            hasGatewayClient: true));
     }
 
     [Fact]
-    public void CapabilityPill_UsesNeedsSharedTokenInsteadOfPendingWhenTokenMissing()
+    public void CapabilityPill_UsesNeedsSharedTokenOnlyWhenClientAttached()
     {
         Assert.Equal(
             BrowserProxyActivation.CapabilityPillKind.NeedsSharedToken,
@@ -64,27 +71,39 @@ public sealed class BrowserProxyActivationTests
                 toggleEnabled: true,
                 effective: false,
                 pendingDeclared: false,
-                hasSharedGatewayToken: false));
+                hasSharedGatewayToken: false,
+                hasGatewayClient: true));
+        Assert.Equal(
+            BrowserProxyActivation.CapabilityPillKind.PendingApproval,
+            BrowserProxyActivation.ResolveCapabilityPillKind(
+                toggleEnabled: true,
+                effective: false,
+                pendingDeclared: false,
+                hasSharedGatewayToken: false,
+                hasGatewayClient: false));
         Assert.Equal(
             BrowserProxyActivation.CapabilityPillKind.PendingApproval,
             BrowserProxyActivation.ResolveCapabilityPillKind(
                 toggleEnabled: true,
                 effective: false,
                 pendingDeclared: true,
-                hasSharedGatewayToken: true));
+                hasSharedGatewayToken: true,
+                hasGatewayClient: true));
         Assert.Equal(
             BrowserProxyActivation.CapabilityPillKind.Active,
             BrowserProxyActivation.ResolveCapabilityPillKind(
                 toggleEnabled: true,
                 effective: true,
                 pendingDeclared: false,
-                hasSharedGatewayToken: false));
+                hasSharedGatewayToken: false,
+                hasGatewayClient: false));
         Assert.Equal(
             BrowserProxyActivation.CapabilityPillKind.Off,
             BrowserProxyActivation.ResolveCapabilityPillKind(
                 toggleEnabled: false,
                 effective: false,
                 pendingDeclared: false,
-                hasSharedGatewayToken: false));
+                hasSharedGatewayToken: false,
+                hasGatewayClient: false));
     }
 }

@@ -50,20 +50,27 @@ internal static class BrowserProxyActivation
            RegistrationBlock.None;
 
     /// <summary>
-    /// Warn whenever Browser control is enabled on a gateway that has no shared
-    /// token. Do not wait for browser.proxy to already be declared: the missing
-    /// token is exactly what prevents declaration.
+    /// Warn only for the registration block that is specifically a missing
+    /// shared token. Do not wait for browser.proxy to already be declared: the
+    /// missing token is exactly what prevents declaration. A disconnected or
+    /// unselected gateway (<see cref="RegistrationBlock.NoGatewayClient"/>)
+    /// must not tell the operator to paste a token.
     /// </summary>
     internal static bool ShouldShowMissingSharedTokenWarning(
         bool nodeBrowserProxyEnabled,
-        bool activeGatewayHasSharedToken)
-        => nodeBrowserProxyEnabled && !activeGatewayHasSharedToken;
+        bool activeGatewayHasSharedToken,
+        bool hasGatewayClient)
+        => ResolveRegistrationBlock(
+               toggleEnabled: nodeBrowserProxyEnabled,
+               sharedGatewayToken: activeGatewayHasSharedToken ? "present" : null,
+               hasGatewayClient) == RegistrationBlock.MissingSharedGatewayToken;
 
     internal static CapabilityPillKind ResolveCapabilityPillKind(
         bool toggleEnabled,
         bool effective,
         bool pendingDeclared,
-        bool hasSharedGatewayToken)
+        bool hasSharedGatewayToken,
+        bool hasGatewayClient)
     {
         if (effective)
             return CapabilityPillKind.Active;
@@ -71,7 +78,11 @@ internal static class BrowserProxyActivation
         if (!toggleEnabled && !pendingDeclared)
             return CapabilityPillKind.Off;
 
-        if (toggleEnabled && !hasSharedGatewayToken)
+        // Mirror RegistrationBlock: NeedsSharedToken only when a node client is
+        // attached and the shared token is what blocks browser.proxy.
+        if (toggleEnabled &&
+            ResolveRegistrationBlock(toggleEnabled, hasSharedGatewayToken ? "present" : null, hasGatewayClient) ==
+            RegistrationBlock.MissingSharedGatewayToken)
             return CapabilityPillKind.NeedsSharedToken;
 
         if (pendingDeclared || toggleEnabled)

@@ -188,6 +188,12 @@ public sealed class NodeService : IDisposable, IAsyncDisposable
     public bool IsCameraRecording { get; private set; }
     public bool IsAnyRecording => IsScreenRecording || IsCameraRecording;
 
+    /// <summary>
+    /// True when a gateway node client is attached for capability registration.
+    /// Distinct from <see cref="IsConnected"/>: attach can precede a live session.
+    /// </summary>
+    public bool HasAttachedGatewayClient => _nodeClient != null;
+
     public bool IsConnected => _nodeClient?.IsConnected ?? false;
     public string? NodeId => _nodeClient?.NodeId;
     public bool IsPendingApproval => _nodeClient?.IsPendingApproval ?? false;
