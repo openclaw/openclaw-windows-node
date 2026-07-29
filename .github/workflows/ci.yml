@@ -58,13 +58,13 @@ jobs:
         corepack enable
         corepack prepare pnpm@11.15.1 --activate
 
-    - name: Compose beta 5 with the hosted wizard exit fix
+    - name: Compose beta 5 with reviewed wizard compatibility fixes
       shell: bash
       run: |
         set -euo pipefail
         base_sha=ee929dbb857c717a60f3b2b502db5a6dd31b5c11
         wizard_base=ee929dbb857c717a60f3b2b502db5a6dd31b5c11
-        wizard_head=b735ca427c48d2dc3a888a3ea86bf1e4a263538f
+        wizard_head=2a3612054f6cacce893526c16ce37daa94ba9abf
         fork_repository=https://github.com/TheAngryPit/openclaw.git
         wizard_fetch_ref=refs/heads/codex/beta5-peter-115671-compat-20260729
         wizard_paths="$RUNNER_TEMP/hosted-wizard-expected-paths.txt"
@@ -75,6 +75,8 @@ jobs:
         src/gateway/gateway.test.ts
         src/gateway/server-methods/wizard.test.ts
         src/gateway/server-methods/wizard.ts
+        src/wizard/setup.finalize.test.ts
+        src/wizard/setup.finalize.ts
         EOF
 
         test "$(git rev-parse HEAD)" = "$base_sha"
@@ -111,13 +113,30 @@ jobs:
         test "${#sha256}" -eq 64
         test "${#wizard_patch_sha256}" -eq 64
         printf '%s  %s\n' "$sha256" "$(basename "$tarball")" >"$RUNNER_TEMP/gateway-composed/SHA256SUMS"
-        printf '{"source_ref":"v2026.7.2-beta.5","source_sha":"%s","fixes":[{"upstream_pr":115671,"upstream_commit":"c6b4e912eb103fe8ceb89ffc2a60411624163b4b","compatibility_base":"%s","compatibility_head":"%s","fetch_repository":"TheAngryPit/openclaw","fetch_ref":"codex/beta5-peter-115671-compat-20260729","patch_sha256":"%s"}],"changed_paths":["src/gateway/gateway.test.ts","src/gateway/server-methods/wizard.test.ts","src/gateway/server-methods/wizard.ts"],"package_version":"%s","package_sha256":"%s"}\n' \
+        printf '{"source_ref":"v2026.7.2-beta.5","source_sha":"%s","fixes":[{"upstream_pr":115671,"upstream_commit":"c6b4e912eb103fe8ceb89ffc2a60411624163b4b"},{"compatibility_commit":"%s"}],"compatibility_base":"%s","compatibility_head":"%s","fetch_repository":"TheAngryPit/openclaw","fetch_ref":"codex/beta5-peter-115671-compat-20260729","patch_sha256":"%s","changed_paths":["src/gateway/gateway.test.ts","src/gateway/server-methods/wizard.test.ts","src/gateway/server-methods/wizard.ts","src/wizard/setup.finalize.test.ts","src/wizard/setup.finalize.ts"],"package_version":"%s","package_sha256":"%s"}\n' \
           ee929dbb857c717a60f3b2b502db5a6dd31b5c11 \
+          "$wizard_head" \
           ee929dbb857c717a60f3b2b502db5a6dd31b5c11 \
-          b735ca427c48d2dc3a888a3ea86bf1e4a263538f \
+          "$wizard_head" \
           "$wizard_patch_sha256" \
           "$packaged_version" \
           "$sha256" >"$RUNNER_TEMP/gateway-composed/provenance.json"
+        node -e '
+          const fs = require("node:fs");
+          const provenance = JSON.parse(fs.readFileSync(process.argv[1], "utf8"));
+          if (
+            provenance.fixes[1]?.compatibility_commit !== process.argv[2]
+            || provenance.compatibility_base !== process.argv[3]
+            || provenance.compatibility_head !== process.argv[2]
+            || provenance.package_sha256 !== process.argv[4]
+          ) {
+            throw new Error("composed package provenance does not match frozen inputs");
+          }
+        ' \
+          "$RUNNER_TEMP/gateway-composed/provenance.json" \
+          "$wizard_head" \
+          "$wizard_base" \
+          "$sha256"
         echo "sha256=$sha256" >>"$GITHUB_OUTPUT"
 
     - name: Upload composed gateway package

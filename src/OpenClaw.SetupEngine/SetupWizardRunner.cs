@@ -10,7 +10,10 @@ public sealed class SetupWizardRunner
 {
     private const int MaxWizardSteps = 50;
     private const int MaxSameStepVisits = 3;
+    private const string TerminalDisconnectCompatibilityVersion = "2026.7.1";
     private static readonly Regex s_normalizeKeyRegex = new("[^a-z0-9]+", RegexOptions.Compiled);
+    private static readonly JsonElement s_completedWizardPayload =
+        JsonSerializer.SerializeToElement(new { done = true });
 
     // Progress steps can repeat while background work runs; keep bounded caps
     // so setup fails with a diagnostic instead of hanging.
@@ -287,11 +290,23 @@ public sealed class SetupWizardRunner
 
             // A reconnect restarts the wizard session, so reset replay-scoped
             // counters before processing the replacement start payload.
-            async Task<JsonElement> SendWizardNextAsync(object parameters, int timeoutMs)
+            async Task<JsonElement> SendWizardNextAsync(
+                object parameters,
+                int timeoutMs,
+                string? answerKey = null)
             {
                 try
                 {
                     return await client!.SendWizardRequestAsync("wizard.next", parameters, timeoutMs);
+                }
+                catch (Exception ex) when (
+                    !ct.IsCancellationRequested &&
+                    IsKnownLkgTerminalDisconnect(_ctx.Config.Gateway.Version, answerKey, ex))
+                {
+                    _ctx.Logger.Warn(
+                        "OpenClaw 2026.7.1 restarted after applying the terminal wizard answer; " +
+                        "continuing with managed reload restoration and health validation.");
+                    return s_completedWizardPayload;
                 }
                 catch (Exception ex) when (!ct.IsCancellationRequested && IsRestartLikeWizardDisconnect(ex) && restartAttempts < 2)
                 {
@@ -414,8 +429,9 @@ public sealed class SetupWizardRunner
                     return StepResult.Fail($"{answerResult.Error} A wizard answer template was written to: {templatePath}");
                 }
 
+                var answerKey = StableAnswerKey(parsed.Title, parsed.Message, parsed.StepId);
                 _ctx.Logger.Info(answerResult.HasAnswer
-                    ? $"Wizard step '{parsed.StepId}' ({parsed.StepType}, key={StableAnswerKey(parsed.Title, parsed.Message, parsed.StepId)}) answered with {(parsed.Sensitive ? "[sensitive]" : $"'{answerResult.Answer}'")}"
+                    ? $"Wizard step '{parsed.StepId}' ({parsed.StepType}, key={answerKey}) answered with {(parsed.Sensitive ? "[sensitive]" : $"'{answerResult.Answer}'")}"
                     : $"Wizard step '{parsed.StepId}' ({parsed.StepType}, {category}) continuing without explicit answer");
 
                 object parameters = answerResult.HasAnswer
@@ -430,7 +446,10 @@ public sealed class SetupWizardRunner
                     }
                     : WizardNextPayload.Acknowledge(sessionId, parsed.StepId);
 
-                payload = await SendWizardNextAsync(parameters, TimeoutFor(parsed, answerResult.Answer));
+                payload = await SendWizardNextAsync(
+                    parameters,
+                    TimeoutFor(parsed, answerResult.Answer),
+                    answerResult.HasAnswer ? answerKey : null);
             }
         }
         catch (OperationCanceledException)
@@ -724,6 +743,19 @@ public sealed class SetupWizardRunner
         return ex.Message.Contains("connection lost", StringComparison.OrdinalIgnoreCase)
             || ex.Message.Contains("gateway restarting", StringComparison.OrdinalIgnoreCase)
             || ex.Message.Contains("service restart", StringComparison.OrdinalIgnoreCase);
+    }
+
+    internal static bool IsKnownLkgTerminalDisconnect(
+        string? gatewayVersion,
+        string? answerKey,
+        Exception ex)
+    {
+        return string.Equals(
+                gatewayVersion,
+                TerminalDisconnectCompatibilityVersion,
+                StringComparison.OrdinalIgnoreCase)
+            && string.Equals(answerKey, "done", StringComparison.OrdinalIgnoreCase)
+            && IsRestartLikeWizardDisconnect(ex);
     }
 
     private static bool IsKnownGatewayFinalizationPromptBug(string error)
