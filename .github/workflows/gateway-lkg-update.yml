@@ -20,9 +20,15 @@ jobs:
       BRANCH_NAME: automation/gateway-lkg-update
       DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
     steps:
-    - uses: actions/checkout@v7
+    - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
       with:
         fetch-depth: 0
+
+    - name: Check out exact default-branch head
+      shell: bash
+      run: |
+        git fetch origin "${DEFAULT_BRANCH}"
+        git checkout --detach "origin/${DEFAULT_BRANCH}"
 
     - name: Resolve pinned and latest gateway versions
       id: versions
@@ -30,13 +36,46 @@ jobs:
       run: |
         pinned="$(python3 - <<'PY'
         import pathlib, re
-        source = pathlib.Path("src/OpenClaw.SetupEngine/GatewayLkgVersion.cs").read_text(encoding="utf-8")
-        match = re.search(r'LkgVersion\s*=\s*"([^"]+)"', source)
-        if not match:
+        lkg_path = pathlib.Path("src/OpenClaw.SetupEngine/GatewayLkgVersion.cs")
+        metadata_path = pathlib.Path("src/OpenClaw.Shared/OpenClaw.Shared.csproj")
+        lkg_test_path = pathlib.Path("tests/OpenClaw.SetupEngine.Tests/GatewayLkgVersionTests.cs")
+        target_test_path = pathlib.Path("tests/OpenClaw.Connection.Tests/GatewayPackageTargetTests.cs")
+        lkg_match = re.search(r'LkgVersion\s*=\s*"([^"]+)"', lkg_path.read_text(encoding="utf-8"))
+        metadata_match = re.search(
+            r'<OpenClawGatewayPackageExpectedVersion[^>]*>([^<]+)</OpenClawGatewayPackageExpectedVersion>',
+            metadata_path.read_text(encoding="utf-8"),
+        )
+        lkg_test_match = re.search(
+            r'ExpectedLkgVersion\s*=\s*"([^"]+)"',
+            lkg_test_path.read_text(encoding="utf-8"),
+        )
+        target_test_match = re.search(
+            r'BuildTargetResolver_UsesOrdinaryUpstreamAssemblyDefault\(\).*?'
+            r'Assert\.Equal\("([^"]+)", target\.ExpectedVersion\);',
+            target_test_path.read_text(encoding="utf-8"),
+            re.DOTALL,
+        )
+        if not lkg_match:
             raise SystemExit("Could not parse LkgVersion constant from GatewayLkgVersion.cs")
-        pinned = match.group(1)
-        if not re.fullmatch(r'[0-9]+\.[0-9]+\.[0-9]+([.\-+][A-Za-z0-9.\-]+)*', pinned):
-            raise SystemExit(f"Pinned LkgVersion has unexpected format: {pinned}")
+        if not metadata_match:
+            raise SystemExit("Could not parse OpenClawGatewayPackageExpectedVersion from OpenClaw.Shared.csproj")
+        if not lkg_test_match:
+            raise SystemExit("Could not parse ExpectedLkgVersion from GatewayLkgVersionTests.cs")
+        if not target_test_match:
+            raise SystemExit("Could not parse ordinary upstream target version assertion")
+        pinned = lkg_match.group(1)
+        metadata_version = metadata_match.group(1)
+        lkg_test_version = lkg_test_match.group(1)
+        target_test_version = target_test_match.group(1)
+        if metadata_version != pinned or lkg_test_version != pinned or target_test_version != pinned:
+            raise SystemExit(
+                "Gateway package defaults disagree: "
+                f"LkgVersion={pinned}, metadata={metadata_version}, "
+                f"lkg-test={lkg_test_version}, "
+                f"target-test={target_test_version}"
+            )
+        if not re.fullmatch(r'[0-9]+\.[0-9]+\.[0-9]+', pinned):
+            raise SystemExit(f"Pinned LkgVersion must be an exact stable version: {pinned}")
         print(pinned)
         PY
         )"
@@ -45,8 +84,8 @@ jobs:
         with urllib.request.urlopen('https://registry.npmjs.org/openclaw/latest', timeout=30) as r:
             payload = json.load(r)
         latest = payload['version']
-        if not re.fullmatch(r'[0-9]+\.[0-9]+\.[0-9]+([.\-+][A-Za-z0-9.\-]+)*', latest):
-            raise SystemExit(f"Resolved npm latest version has unexpected format: {latest}")
+        if not re.fullmatch(r'[0-9]+\.[0-9]+\.[0-9]+', latest):
+            raise SystemExit(f"Resolved npm latest must be an exact stable version: {latest}")
         print(latest)
         PY
         )"
@@ -56,7 +95,13 @@ jobs:
           echo "latest=${latest}"
         } >> "$GITHUB_OUTPUT"
 
-        if [[ "$pinned" != "$latest" ]]; then
+        if python3 - "$pinned" "$latest" <<'PY'
+        import sys
+        pinned = tuple(map(int, sys.argv[1].split(".")))
+        latest = tuple(map(int, sys.argv[2].split(".")))
+        raise SystemExit(0 if latest > pinned else 1)
+        PY
+        then
           echo "drifted=true" >> "$GITHUB_OUTPUT"
         else
           echo "drifted=false" >> "$GITHUB_OUTPUT"
@@ -84,32 +129,76 @@ jobs:
         import os
         import pathlib, re
         latest = os.environ["LATEST_VERSION"]
-        path = pathlib.Path("src/OpenClaw.SetupEngine/GatewayLkgVersion.cs")
-        source = path.read_text(encoding="utf-8")
-        pattern = r'(LkgVersion\s*=\s*")([^"]+)(")'
-        updated, count = re.subn(pattern, lambda m: f"{m.group(1)}{latest}{m.group(3)}", source, count=1)
-        if count != 1:
-            raise SystemExit("Failed to rewrite LkgVersion constant")
-        path.write_text(updated, encoding="utf-8")
+        replacements = (
+            (
+                pathlib.Path("src/OpenClaw.SetupEngine/GatewayLkgVersion.cs"),
+                r'(LkgVersion\s*=\s*")([^"]+)(")',
+                "LkgVersion constant",
+            ),
+            (
+                pathlib.Path("src/OpenClaw.Shared/OpenClaw.Shared.csproj"),
+                r'(<OpenClawGatewayPackageExpectedVersion[^>]*>)([^<]+)(</OpenClawGatewayPackageExpectedVersion>)',
+                "OpenClawGatewayPackageExpectedVersion",
+            ),
+            (
+                pathlib.Path("tests/OpenClaw.SetupEngine.Tests/GatewayLkgVersionTests.cs"),
+                r'(ExpectedLkgVersion\s*=\s*")([^"]+)(")',
+                "ExpectedLkgVersion constant",
+            ),
+            (
+                pathlib.Path("tests/OpenClaw.Connection.Tests/GatewayPackageTargetTests.cs"),
+                r'(?s)(BuildTargetResolver_UsesOrdinaryUpstreamAssemblyDefault\(\).*?'
+                r'Assert\.Equal\(")([^"]+)(", target\.ExpectedVersion\);)',
+                "ordinary upstream target assertion",
+            ),
+        )
+        for path, pattern, label in replacements:
+            source = path.read_text(encoding="utf-8")
+            updated, count = re.subn(
+                pattern,
+                lambda m: f"{m.group(1)}{latest}{m.group(3)}",
+                source,
+                count=1,
+            )
+            if count != 1:
+                raise SystemExit(f"Failed to rewrite {label} in {path}")
+            path.write_text(updated, encoding="utf-8")
         PY
 
     - name: Commit and push branch
+      id: push_update
       if: ${{ steps.versions.outputs.drifted == 'true' }}
       shell: bash
       run: |
-        if git diff --quiet -- src/OpenClaw.SetupEngine/GatewayLkgVersion.cs; then
+        update_paths=(
+          src/OpenClaw.SetupEngine/GatewayLkgVersion.cs
+          src/OpenClaw.Shared/OpenClaw.Shared.csproj
+          tests/OpenClaw.Connection.Tests/GatewayPackageTargetTests.cs
+          tests/OpenClaw.SetupEngine.Tests/GatewayLkgVersionTests.cs
+        )
+        if git diff --quiet -- "${update_paths[@]}"; then
           echo "No LKG change detected after update write."
+          echo "changed_and_pushed=false" >> "$GITHUB_OUTPUT"
           exit 0
         fi
 
         git config user.name "github-actions[bot]"
         git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-        git add src/OpenClaw.SetupEngine/GatewayLkgVersion.cs
+        git add "${update_paths[@]}"
         git commit -m "chore(setup): bump gateway LKG to ${{ steps.versions.outputs.latest }}"
-        git push --force-with-lease origin "${BRANCH_NAME}"
+        remote_head="$(git ls-remote --heads origin "refs/heads/${BRANCH_NAME}" | awk '{print $1}')"
+        if [[ -n "${remote_head}" ]]; then
+          git push \
+            --force-with-lease="refs/heads/${BRANCH_NAME}:${remote_head}" \
+            origin \
+            "HEAD:refs/heads/${BRANCH_NAME}"
+        else
+          git push origin "HEAD:refs/heads/${BRANCH_NAME}"
+        fi
+        echo "changed_and_pushed=true" >> "$GITHUB_OUTPUT"
 
     - name: Create or update standing draft PR
-      if: ${{ steps.versions.outputs.drifted == 'true' }}
+      if: ${{ steps.versions.outputs.drifted == 'true' && steps.push_update.outputs.changed_and_pushed == 'true' }}
       shell: bash
       env:
         GH_TOKEN: ${{ github.token }}
@@ -121,7 +210,9 @@ jobs:
 
         - Previous pinned LKG: \`${{ steps.versions.outputs.pinned }}\`
         - Candidate latest: \`${{ steps.versions.outputs.latest }}\`
-        - Updated file: \`src/OpenClaw.SetupEngine/GatewayLkgVersion.cs\`
+        - Updated files: LKG source, package metadata, and both LKG contract tests
+
+        The automation only proposes exact stable versions newer than the current pin.
 
         This is the standing automation PR used to review and validate gateway LKG bumps before merge.
         EOF

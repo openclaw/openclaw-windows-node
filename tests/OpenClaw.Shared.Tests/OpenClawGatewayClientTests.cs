@@ -11,6 +11,43 @@ namespace OpenClaw.Shared.Tests;
 
 public class OpenClawGatewayClientTests
 {
+    private sealed class LegacySendOverrideGatewayClient(
+        string gatewayUrl,
+        string identityPath)
+        : OpenClawGatewayClient(
+            gatewayUrl,
+            "test-token",
+            new TestLogger(),
+            identityPath: identityPath)
+    {
+        public bool CaptureEnabled { get; set; }
+        public List<string> CapturedMessages { get; } = [];
+        public List<CancellationToken> CapturedCancellationTokens { get; } = [];
+        public int LegacySendOverrideCalls { get; private set; }
+        public int CancellationAwareSendOverrideCalls { get; private set; }
+
+        protected override Task SendRawAsync(string message)
+        {
+            if (!CaptureEnabled)
+                return base.SendRawAsync(message);
+
+            LegacySendOverrideCalls++;
+            CapturedMessages.Add(message);
+            return Task.CompletedTask;
+        }
+
+        protected override Task SendRawAsync(string message, CancellationToken cancellationToken)
+        {
+            if (!CaptureEnabled)
+                return base.SendRawAsync(message, cancellationToken);
+
+            cancellationToken.ThrowIfCancellationRequested();
+            CancellationAwareSendOverrideCalls++;
+            CapturedCancellationTokens.Add(cancellationToken);
+            return SendRawAsync(message);
+        }
+    }
+
     // Test helper to access private methods through reflection
     private class GatewayClientTestHelper
     {
@@ -514,6 +551,199 @@ public class OpenClawGatewayClientTests
 
     private static string CreateTempIdentityPath() =>
         Path.Combine(Path.GetTempPath(), "OpenClawGatewayClientTests", Guid.NewGuid().ToString("N"));
+
+    [Fact]
+    public async Task SendCorrelatedRequestAsync_UsesCallerRequestIdAndReturnsPayload()
+    {
+        using var server = new LoopbackWebSocketServer();
+        using var identity = new TempDirectory("correlated-request-");
+        await server.StartAsync();
+        var helper = new GatewayClientTestHelper(
+            gatewayUrl: server.WebSocketUrl,
+            identityPath: identity.Path);
+        using var client = helper.Client;
+        await client.ConnectAsync();
+        const string requestId = "windows-companion-update-point-1";
+
+        var responseTask = client.SendCorrelatedRequestAsync(
+            requestId,
+            "update.run",
+            new
+            {
+                target = new { package = "openclaw", version = "2026.7.22+companion.2" },
+                confirmationTier = "external"
+            },
+            timeoutMs: 10_000);
+        var request = await server.ReceiveTextAsync().WaitAsync(TimeSpan.FromSeconds(2));
+        Assert.Equal(requestId, ReadRequestId(request));
+
+        await server.SendTextAsync(
+            JsonSerializer.Serialize(new
+            {
+                type = "res",
+                id = requestId,
+                ok = true,
+                payload = new
+                {
+                    transactionId = "transaction-1",
+                    confirmDeadline = "2030-01-01T00:00:00Z"
+                }
+            }));
+
+        var payload = await responseTask.WaitAsync(TimeSpan.FromSeconds(2));
+
+        Assert.Equal("transaction-1", payload.GetProperty("transactionId").GetString());
+        Assert.Equal((0, 0), helper.GetPendingRequestCounts());
+    }
+
+    [Fact]
+    public async Task SendWizardRequestAsync_PreservesLegacyVirtualTransportHook()
+    {
+        using var server = new LoopbackWebSocketServer();
+        using var identity = new TempDirectory("wizard-legacy-send-hook-");
+        await server.StartAsync();
+        using var client = new LegacySendOverrideGatewayClient(
+            server.WebSocketUrl,
+            identity.Path);
+        await client.ConnectAsync();
+        client.CaptureEnabled = true;
+
+        await Assert.ThrowsAsync<TimeoutException>(() =>
+            client.SendWizardRequestAsync(
+                "wizard.status",
+                timeoutMs: 100));
+
+        var frame = Assert.Single(client.CapturedMessages);
+        Assert.Contains("\"method\":\"wizard.status\"", frame, StringComparison.Ordinal);
+        Assert.Equal(1, client.LegacySendOverrideCalls);
+        Assert.Equal(0, client.CancellationAwareSendOverrideCalls);
+        Assert.Empty(client.CapturedCancellationTokens);
+    }
+
+    [Fact]
+    public async Task SendCorrelatedRequestAsync_PreservesCancellationAwareVirtualTransportHook()
+    {
+        using var server = new LoopbackWebSocketServer();
+        using var identity = new TempDirectory("correlated-cancellable-send-hook-");
+        await server.StartAsync();
+        using var client = new LegacySendOverrideGatewayClient(
+            server.WebSocketUrl,
+            identity.Path);
+        await client.ConnectAsync();
+        client.CaptureEnabled = true;
+        using var cancellation = new CancellationTokenSource();
+
+        var responseTask = client.SendCorrelatedRequestAsync(
+            "windows-companion-update-cancellable-send-hook",
+            "update.run",
+            parameters: null,
+            timeoutMs: 10_000,
+            cancellationToken: cancellation.Token);
+
+        var frame = Assert.Single(client.CapturedMessages);
+        Assert.Contains("\"method\":\"update.run\"", frame, StringComparison.Ordinal);
+        Assert.Equal(1, client.LegacySendOverrideCalls);
+        Assert.Equal(1, client.CancellationAwareSendOverrideCalls);
+        Assert.True(Assert.Single(client.CapturedCancellationTokens).CanBeCanceled);
+
+        cancellation.Cancel();
+
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => responseTask);
+        await Assert.ThrowsAsync<TimeoutException>(() =>
+            server.ReceiveTextAsync().WaitAsync(TimeSpan.FromMilliseconds(200)));
+    }
+
+    [Fact]
+    public async Task SendCorrelatedRequestAsync_CancellationCleansPendingCorrelationState()
+    {
+        using var server = new LoopbackWebSocketServer();
+        using var identity = new TempDirectory("correlated-request-cancellation-");
+        await server.StartAsync();
+        var helper = new GatewayClientTestHelper(
+            gatewayUrl: server.WebSocketUrl,
+            identityPath: identity.Path);
+        using var client = helper.Client;
+        await client.ConnectAsync();
+        using var cancellation = new CancellationTokenSource();
+
+        var responseTask = client.SendCorrelatedRequestAsync(
+            "windows-companion-update-cancel",
+            "update.run",
+            parameters: null,
+            timeoutMs: (int)TimeSpan.FromMinutes(35).TotalMilliseconds,
+            cancellationToken: cancellation.Token);
+        await server.ReceiveTextAsync().WaitAsync(TimeSpan.FromSeconds(2));
+        cancellation.Cancel();
+
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => responseTask);
+        Assert.Equal((0, 0), helper.GetPendingRequestCounts());
+    }
+
+    [Fact]
+    public async Task SendCorrelatedRequestAsync_PreCancelledRequestDoesNotTransmitFrame()
+    {
+        using var server = new LoopbackWebSocketServer();
+        using var identity = new TempDirectory("correlated-request-pre-cancelled-");
+        await server.StartAsync();
+        var helper = new GatewayClientTestHelper(
+            gatewayUrl: server.WebSocketUrl,
+            identityPath: identity.Path);
+        using var client = helper.Client;
+        await client.ConnectAsync();
+        using var cancellation = new CancellationTokenSource();
+        cancellation.Cancel();
+
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() =>
+            client.SendCorrelatedRequestAsync(
+                "windows-companion-update-pre-cancelled",
+                "update.complete",
+                parameters: null,
+                timeoutMs: 10_000,
+                cancellationToken: cancellation.Token));
+
+        await Assert.ThrowsAsync<TimeoutException>(() =>
+            server.ReceiveTextAsync().WaitAsync(TimeSpan.FromMilliseconds(200)));
+        Assert.Equal((0, 0), helper.GetPendingRequestCounts());
+    }
+
+    [Fact]
+    public async Task SendCorrelatedRequestAsync_CancelledWhileQueuedDoesNotTransmitFrame()
+    {
+        using var server = new LoopbackWebSocketServer();
+        using var identity = new TempDirectory("correlated-request-queued-cancellation-");
+        await server.StartAsync();
+        var helper = new GatewayClientTestHelper(
+            gatewayUrl: server.WebSocketUrl,
+            identityPath: identity.Path);
+        using var client = helper.Client;
+        await client.ConnectAsync();
+        var sendLock = (SemaphoreSlim)typeof(WebSocketClientBase)
+            .GetField("_sendLock", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!
+            .GetValue(client)!;
+        await sendLock.WaitAsync();
+        using var cancellation = new CancellationTokenSource();
+
+        try
+        {
+            var responseTask = client.SendCorrelatedRequestAsync(
+                "windows-companion-update-queued-cancel",
+                "update.run",
+                parameters: null,
+                timeoutMs: 10_000,
+                cancellationToken: cancellation.Token);
+            cancellation.Cancel();
+
+            await Assert.ThrowsAnyAsync<OperationCanceledException>(() => responseTask);
+        }
+        finally
+        {
+            sendLock.Release();
+        }
+
+        await Assert.ThrowsAsync<TimeoutException>(() =>
+            server.ReceiveTextAsync().WaitAsync(TimeSpan.FromMilliseconds(200)));
+        Assert.Equal((0, 0), helper.GetPendingRequestCounts());
+    }
 
     [Fact]
     public async Task SendWizardRequestAsync_ResponseBeforeDispose_ReturnsPayloadAndCleansTracking()

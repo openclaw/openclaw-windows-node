@@ -486,7 +486,7 @@ public class NodePairAutoApproveTests : IDisposable
             string identityPath,
             IOpenClawLogger logger)
         {
-            var mock = new TrackingLifecycle(gatewayUrl);
+            var mock = new TrackingLifecycle(gatewayUrl, identityPath);
             CreatedClients.Add(mock);
             return mock;
         }
@@ -503,9 +503,9 @@ public class NodePairAutoApproveTests : IDisposable
         public Task ConnectAsync(CancellationToken ct) => Task.CompletedTask;
         public void Dispose() { }
 
-        public TrackingLifecycle(string url)
+        public TrackingLifecycle(string url, string identityPath)
         {
-            TrackingClient = new TrackingGatewayClient(url);
+            TrackingClient = new TrackingGatewayClient(url, identityPath);
         }
     }
 
@@ -518,8 +518,8 @@ public class NodePairAutoApproveTests : IDisposable
         public IReadOnlyList<string> ApprovalMethodsCalled => _approvalMethodsCalled;
         public Func<string, Task<bool>>? DevicePairApproveOverride { get; set; }
 
-        public TrackingGatewayClient(string url)
-            : base(url, "mock-token", NullLogger.Instance) { }
+        public TrackingGatewayClient(string url, string identityPath)
+            : base(url, "mock-token", NullLogger.Instance, identityPath: identityPath) { }
 
         public void SetGrantedScopes(string[] scopes)
         {

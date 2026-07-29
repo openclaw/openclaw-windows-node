@@ -145,6 +145,19 @@ public interface IOperatorGatewayClient
     /// <summary>Long-poll for QR linking completion. Sends web.login.wait { currentQrDataUrl, timeoutMs }.</summary>
     Task<WebLoginWaitResult?> WebLoginWaitAsync(string? currentQrDataUrl = null, int timeoutMs = 30000);
     Task<JsonElement> SendWizardRequestAsync(string method, object? parameters = null, int timeoutMs = 30000);
+    /// <summary>
+    /// Sends a Gateway RPC request with a caller-supplied correlation id.
+    /// Intended for protocols that durably bind their transaction to the
+    /// original request envelope.
+    /// </summary>
+    Task<JsonElement> SendCorrelatedRequestAsync(
+        string requestId,
+        string method,
+        object? parameters = null,
+        int timeoutMs = 30000,
+        CancellationToken cancellationToken = default)
+        => Task.FromException<JsonElement>(
+            new NotSupportedException("Caller-correlated Gateway requests are not supported by this client."));
 
     // ─── Gateway protocol APIs ───
     // These ship with default implementations so adding them does not source-break

@@ -132,7 +132,15 @@ public static class Program
         }
         if (!string.IsNullOrWhiteSpace(tailscaleHostname))
             config.Tailscale.Hostname = tailscaleHostname;
-        GatewayLkgVersion.ApplyToConfig(config);
+        try
+        {
+            GatewayLkgVersion.ApplyToConfig(config);
+        }
+        catch (InvalidOperationException ex)
+        {
+            Console.Error.WriteLine($"ERROR: {ex.Message}");
+            return 2;
+        }
         if (headless) config.Headless = true;
         if (rollback) config.RollbackOnFailure = true;
         if (noRollback) config.RollbackOnFailure = false;

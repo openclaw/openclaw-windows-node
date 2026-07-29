@@ -197,17 +197,18 @@ public sealed class MxcSetupAndConnectTests
         AssertNoPendingRequests(nodes.Stdout);
         Assert.Contains("windows", nodes.Stdout, StringComparison.OrdinalIgnoreCase);
 
+        var nodeCommandAllowConfigKey = GatewayE2EPackageSpec.ResolveNodeCommandAllowConfigKey();
         var allowCommands = await _fixture.RunInWslAsync(
-            "openclaw config get gateway.nodes.allowCommands --json",
+            $"openclaw config get {nodeCommandAllowConfigKey} --json",
             TimeSpan.FromSeconds(30),
             env);
-        AssertCommandSucceeded(allowCommands, "read gateway.nodes.allowCommands before MXC proof");
+        AssertCommandSucceeded(allowCommands, $"read {nodeCommandAllowConfigKey} before MXC proof");
         using var allowCommandsDoc = JsonDocument.Parse(ExtractJsonValue(allowCommands.Stdout));
         var allowed = ReadStringArray(allowCommandsDoc.RootElement);
         Assert.Contains(allowed, command => command == "system.run");
         Assert.Contains(allowed, command => command == "system.run.prepare");
         Assert.Contains(allowed, command => command == "system.which");
-        Console.WriteLine("[E2E] gateway.nodes.allowCommands includes system.run/system.run.prepare/system.which");
+        Console.WriteLine($"[E2E] {nodeCommandAllowConfigKey} includes system.run/system.run.prepare/system.which");
 
         using var statusDoc = await _fixture.Client!.CallToolExpectSuccessAsync("app.status");
         AssertReadyStatus(statusDoc.RootElement);

@@ -118,6 +118,12 @@ public record class SettingsData
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public bool? McpOnlyMode { get; set; }
     public string? PreferredGatewayId { get; set; }
+    /// <summary>Rollback points retained by count: 1 (default), 2, or -1 for indefinitely.</summary>
+    public int GatewayRollbackRetentionCount { get; set; } = 1;
+    /// <summary>Optional additional age window in days. Seven days is the default; zero disables age retention.</summary>
+    public int GatewayRollbackRetentionAgeDays { get; set; } = 7;
+    /// <summary>Gateway rollback protection mode. NativeBackup is the default; FullVhd is explicit opt-in.</summary>
+    public string GatewayRollbackProtectionMode { get; set; } = "NativeBackup";
     public bool HasSeenActivityStreamTip { get; set; } = false;
     public string? SkippedUpdateTag { get; set; }
     public bool NotifyChatResponses { get; set; } = true;

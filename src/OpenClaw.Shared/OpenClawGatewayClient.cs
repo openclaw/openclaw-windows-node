@@ -652,21 +652,63 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
     /// Sends a wizard RPC request and waits for the response payload.
     /// Used for wizard.start, wizard.next, wizard.cancel, wizard.status.
     /// </summary>
-    public async Task<JsonElement> SendWizardRequestAsync(string method, object? parameters = null, int timeoutMs = 30000)
+    public Task<JsonElement> SendWizardRequestAsync(string method, object? parameters = null, int timeoutMs = 30000) =>
+        SendCorrelatedRequestCoreAsync(
+            Guid.NewGuid().ToString(),
+            method,
+            parameters,
+            timeoutMs,
+            cancellationToken: default,
+            useLegacyTransportHook: true);
+
+    public Task<JsonElement> SendCorrelatedRequestAsync(
+        string requestId,
+        string method,
+        object? parameters = null,
+        int timeoutMs = 30000,
+        CancellationToken cancellationToken = default) =>
+        SendCorrelatedRequestCoreAsync(
+            requestId,
+            method,
+            parameters,
+            timeoutMs,
+            cancellationToken,
+            useLegacyTransportHook: false);
+
+    private async Task<JsonElement> SendCorrelatedRequestCoreAsync(
+        string requestId,
+        string method,
+        object? parameters,
+        int timeoutMs,
+        CancellationToken cancellationToken,
+        bool useLegacyTransportHook)
     {
         if (!IsConnected)
             throw new InvalidOperationException("Gateway connection is not open");
+        if (!s_pairingRequestIdRegex.IsMatch(requestId))
+            throw new ArgumentException("Gateway request id is invalid.", nameof(requestId));
+        if (string.IsNullOrWhiteSpace(method))
+            throw new ArgumentException("Gateway request method is required.", nameof(method));
 
         _logger.Info($"[GatewayClient] Sending frame: {method}");
-        var requestId = Guid.NewGuid().ToString();
         var completion = new TaskCompletionSource<JsonElement>(TaskCreationOptions.RunContinuationsAsynchronously);
-        _pendingWizardResponses[requestId] = completion;
+        if (!_pendingWizardResponses.TryAdd(requestId, completion))
+            throw new InvalidOperationException("A Gateway request with this id is already pending.");
         TrackPendingRequest(requestId, method);
 
         try
         {
-            await SendRawAsync(SerializeRequest(requestId, method, parameters));
-            return await completion.Task.WaitAsync(TimeSpan.FromMilliseconds(timeoutMs), CancellationToken);
+            using var linkedCancellation = CancellationTokenSource.CreateLinkedTokenSource(
+                CancellationToken,
+                cancellationToken);
+            var frame = SerializeRequest(requestId, method, parameters);
+            if (useLegacyTransportHook)
+                await SendRawAsync(frame);
+            else
+                await SendRawAsync(frame, linkedCancellation.Token);
+            return await completion.Task.WaitAsync(
+                TimeSpan.FromMilliseconds(timeoutMs),
+                linkedCancellation.Token);
         }
         catch (TimeoutException ex)
         {

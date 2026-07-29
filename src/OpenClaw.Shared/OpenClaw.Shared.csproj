@@ -5,10 +5,55 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
     <RootNamespace>OpenClaw.Shared</RootNamespace>
+    <OpenClawGatewayPackageSource Condition="'$(OpenClawGatewayPackageSource)' == ''">Official</OpenClawGatewayPackageSource>
+    <OpenClawGatewayPackageExpectedVersion Condition="'$(OpenClawGatewayPackageExpectedVersion)' == ''">2026.7.1</OpenClawGatewayPackageExpectedVersion>
   </PropertyGroup>
 
   <ItemGroup>
+    <AssemblyAttribute Include="System.Reflection.AssemblyMetadataAttribute">
+      <_Parameter1>OpenClawGatewayPackageSource</_Parameter1>
+      <_Parameter2>$(OpenClawGatewayPackageSource)</_Parameter2>
+    </AssemblyAttribute>
+    <AssemblyAttribute Include="System.Reflection.AssemblyMetadataAttribute">
+      <_Parameter1>OpenClawGatewayPackageExpectedVersion</_Parameter1>
+      <_Parameter2>$(OpenClawGatewayPackageExpectedVersion)</_Parameter2>
+    </AssemblyAttribute>
+    <AssemblyAttribute Include="System.Reflection.AssemblyMetadataAttribute"
+                       Condition="'$(OpenClawGatewayPackageUri)' != ''">
+      <_Parameter1>OpenClawGatewayPackageUri</_Parameter1>
+      <_Parameter2>$(OpenClawGatewayPackageUri)</_Parameter2>
+    </AssemblyAttribute>
+    <AssemblyAttribute Include="System.Reflection.AssemblyMetadataAttribute"
+                       Condition="'$(OpenClawGatewayPackageSha256)' != ''">
+      <_Parameter1>OpenClawGatewayPackageSha256</_Parameter1>
+      <_Parameter2>$(OpenClawGatewayPackageSha256)</_Parameter2>
+    </AssemblyAttribute>
+  </ItemGroup>
+
+  <Target Name="ValidateOpenClawGatewayPackageMetadata" BeforeTargets="CoreCompile">
+    <Error
+      Condition="'$(OpenClawGatewayPackageSource)' != 'Official' and '$(OpenClawGatewayPackageSource)' != 'Composed'"
+      Text="OpenClawGatewayPackageSource must be Official or Composed." />
+    <Error
+      Condition="!$([System.Text.RegularExpressions.Regex]::IsMatch('$(OpenClawGatewayPackageExpectedVersion)', '^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(-((0|[1-9]\d*)|([0-9A-Za-z-]*[A-Za-z-][0-9A-Za-z-]*))(\.((0|[1-9]\d*)|([0-9A-Za-z-]*[A-Za-z-][0-9A-Za-z-]*)))*)?(\+[0-9A-Za-z-]+(\.[0-9A-Za-z-]+)*)?$'))"
+      Text="OpenClawGatewayPackageExpectedVersion must be an exact semantic version." />
+    <Error
+      Condition="'$(OpenClawGatewayPackageSource)' == 'Official' and ('$(OpenClawGatewayPackageUri)' != '' or '$(OpenClawGatewayPackageSha256)' != '')"
+      Text="Official Gateway package metadata cannot include OpenClawGatewayPackageUri or OpenClawGatewayPackageSha256." />
+    <Error
+      Condition="'$(OpenClawGatewayPackageSource)' == 'Composed' and '$(OpenClawGatewayPackageUri)' == ''"
+      Text="Composed Gateway package metadata requires OpenClawGatewayPackageUri." />
+    <Error
+      Condition="'$(OpenClawGatewayPackageSource)' == 'Composed' and '$(OpenClawGatewayPackageUri)' != '' and !$([System.Text.RegularExpressions.Regex]::IsMatch('$(OpenClawGatewayPackageUri)', '^https?://[^/?#@\s]+/[^?#\s]*\.tgz$', System.Text.RegularExpressions.RegexOptions.IgnoreCase))"
+      Text="OpenClawGatewayPackageUri must be a credential-free HTTP(S) .tgz URI without query or fragment." />
+    <Error
+      Condition="'$(OpenClawGatewayPackageSource)' == 'Composed' and !$([System.Text.RegularExpressions.Regex]::IsMatch('$(OpenClawGatewayPackageSha256)', '^[0-9A-Fa-f]{64}$'))"
+      Text="OpenClawGatewayPackageSha256 must contain exactly 64 hexadecimal characters for a Composed Gateway package." />
+  </Target>
+
+  <ItemGroup>
     <InternalsVisibleTo Include="OpenClaw.SetupEngine" />
+    <InternalsVisibleTo Include="OpenClaw.Connection" />
     <InternalsVisibleTo Include="OpenClaw.Shared.Tests" />
     <InternalsVisibleTo Include="OpenClaw.Tray.WinUI" />
   </ItemGroup>

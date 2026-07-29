@@ -626,6 +626,80 @@
                         <FontIcon Glyph="{x:Bind helpers:FluentIconCatalog.ServerEnvironment, Mode=OneTime}"
                                   FontFamily="{ThemeResource SymbolThemeFontFamily}"/>
                     </toolkit:SettingsExpander.HeaderIcon>
+                    <toolkit:SettingsExpander.Content>
+                        <StackPanel Spacing="12" Padding="16,8,16,16">
+                            <TextBlock Text="Gateway rollback points"
+                                       Style="{StaticResource BodyStrongTextBlockStyle}"/>
+                             <TextBlock Text="Companion protects the local Gateway before each update. Native backup is the default and is not a restorable WSL image. Full WSL VHD is optional, uses more storage, and may require downtime."
+                                       TextWrapping="Wrap"
+                                       Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
+                            <Grid ColumnSpacing="16" RowSpacing="8">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="180"/>
+                                    <ColumnDefinition Width="*"/>
+                                </Grid.ColumnDefinitions>
+                                 <Grid.RowDefinitions>
+                                     <RowDefinition Height="Auto"/>
+                                     <RowDefinition Height="Auto"/>
+                                     <RowDefinition Height="Auto"/>
+                                 </Grid.RowDefinitions>
+                                <TextBlock Grid.Row="0" Grid.Column="0"
+                                           Text="Keep previous versions"
+                                           VerticalAlignment="Center"/>
+                                <ComboBox x:Name="GatewayRollbackRetentionComboBox"
+                                          Grid.Row="0" Grid.Column="1"
+                                          HorizontalAlignment="Stretch"
+                                          SelectedValuePath="Tag"
+                                          SelectedValue="{Binding GatewayRollbackRetentionCount, Mode=TwoWay}"
+                                          AutomationProperties.Name="Rollback point retention"
+                                          AutomationProperties.AutomationId="GatewayRollbackRetentionComboBox">
+                                    <ComboBoxItem Content="1 version (recommended)" Tag="1"/>
+                                    <ComboBoxItem Content="2 versions" Tag="2"/>
+                                    <ComboBoxItem Content="Indefinitely" Tag="-1"/>
+                                </ComboBox>
+                                <TextBlock Grid.Row="1" Grid.Column="0"
+                                           Text="Also keep younger than"
+                                           VerticalAlignment="Center"/>
+                                <StackPanel Grid.Row="1" Grid.Column="1" Orientation="Horizontal" Spacing="8">
+                                    <NumberBox x:Name="GatewayRollbackAgeDaysNumberBox"
+                                               Minimum="0" Maximum="3650" SmallChange="1"
+                                               SpinButtonPlacementMode="Compact"
+                                               Width="120"
+                                               Value="{Binding GatewayRollbackRetentionAgeDays, Mode=TwoWay}"
+                                               AutomationProperties.Name="Rollback point maximum age in days"
+                                               AutomationProperties.AutomationId="GatewayRollbackAgeDaysNumberBox"/>
+                                     <TextBlock Text="days (0 is off)" VerticalAlignment="Center"/>
+                                 </StackPanel>
+                                 <TextBlock Grid.Row="2" Grid.Column="0"
+                                            Text="Protection mode"
+                                            VerticalAlignment="Center"/>
+                                 <ComboBox Grid.Row="2" Grid.Column="1"
+                                           HorizontalAlignment="Stretch"
+                                           SelectedValuePath="Tag"
+                                           SelectedValue="{Binding GatewayRollbackProtectionMode, Mode=TwoWay}"
+                                           AutomationProperties.Name="Gateway rollback protection mode"
+                                           AutomationProperties.AutomationId="GatewayRollbackProtectionModeComboBox">
+                                     <ComboBoxItem Content="Native OpenClaw backup (recommended)" Tag="NativeBackup"/>
+                                     <ComboBoxItem Content="Full WSL VHD (opt in)" Tag="FullVhd"/>
+                                 </ComboBox>
+                             </Grid>
+                             <TextBlock x:Name="GatewayRollbackStorageText"
+                                        Text="Stored rollback protection: —"
+                                        TextWrapping="Wrap"
+                                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
+                             <Button Content="View or restore rollback points"
+                                    HorizontalAlignment="Left"
+                                    Click="OnManageGatewayRollbackPoints"
+                                    AutomationProperties.AutomationId="ManageGatewayRollbackPointsButton"/>
+                             <Button Content="Clean up now"
+                                     HorizontalAlignment="Left"
+                                     Click="OnCleanupGatewayRollbackPoints"
+                                     AutomationProperties.AutomationId="CleanupGatewayRollbackPointsButton"/>
+                            <InfoBar x:Name="GatewayRollbackResultBar"
+                                     IsOpen="False"
+                                     IsClosable="True"/>
+                        </StackPanel>
+                    </toolkit:SettingsExpander.Content>
                     <toolkit:SettingsExpander.ItemsHeader>
                         <Grid Padding="16" ColumnSpacing="24" RowSpacing="6">
                             <Grid.ColumnDefinitions>

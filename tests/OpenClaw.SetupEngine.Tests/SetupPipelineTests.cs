@@ -60,7 +60,7 @@ public class SetupPipelineTests
     {
         var steps = SetupStepFactory.BuildDefaultSteps();
 
-        Assert.Equal(24, steps.Count);
+        Assert.Equal(25, steps.Count);
         Assert.IsType<ValidateDistroInstallPathStep>(steps[0]);
         Assert.IsType<PreflightOsStep>(steps[1]);
         Assert.IsType<PreflightWslStep>(steps[2]);
@@ -73,15 +73,19 @@ public class SetupPipelineTests
         Assert.Equal(lockdownIndex + 1, cliInstallIndex);
         Assert.IsType<InstallTailscaleStep>(steps[cliInstallIndex + 1]);
         Assert.IsType<AuthorizeTailscaleStep>(steps[cliInstallIndex + 2]);
+        var configureGatewayIndex = steps.FindIndex(s => s is ConfigureGatewayStep);
+        Assert.IsType<RecoverGatewayReloadStep>(steps[configureGatewayIndex - 1]);
         var installServiceIndex = steps.FindIndex(s => s is InstallGatewayServiceStep);
-        Assert.IsType<StartGatewayStep>(steps[installServiceIndex + 1]);
-        Assert.IsType<FinalizeTailscaleServeStep>(steps[installServiceIndex + 2]);
+        Assert.IsType<WaitForGatewayHealthStep>(steps[installServiceIndex + 1]);
+        Assert.IsType<StartKeepaliveStep>(steps[installServiceIndex + 2]);
+        Assert.IsType<FinalizeTailscaleServeStep>(steps[installServiceIndex + 3]);
+        Assert.DoesNotContain(steps, s => s is StartGatewayStep);
         Assert.Contains(steps, s => s is RunGatewayWizardStep);
         var pairNodeIndex = steps.FindIndex(s => s is PairNodeStep);
         Assert.IsType<VerifyEndToEndStep>(steps[pairNodeIndex + 1]);
         var wizardIndex = steps.FindIndex(s => s is RunGatewayWizardStep);
         Assert.IsType<WindowsNodeBootstrapContextStep>(steps[wizardIndex + 1]);
-        Assert.IsType<StartKeepaliveStep>(steps[^1]);
+        Assert.True(installServiceIndex < wizardIndex);
     }
 
     [Theory]
@@ -127,6 +131,7 @@ public class SetupPipelineTests
 
         Assert.Collection(
             steps,
+            step => Assert.IsType<RecoverGatewayReloadStep>(step),
             step => Assert.IsType<RunGatewayWizardStep>(step),
             step => Assert.IsType<WindowsNodeBootstrapContextStep>(step));
     }

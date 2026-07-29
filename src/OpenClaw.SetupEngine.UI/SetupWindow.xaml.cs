@@ -154,7 +154,15 @@ public sealed partial class SetupWindow : Window
             _config.GatewayPort = gatewayPortOverride.Value;
             _config.GatewayUrl = null;
         }
-        GatewayLkgVersion.ApplyToConfig(_config);
+        try
+        {
+            GatewayLkgVersion.ApplyToConfig(_config);
+        }
+        catch (InvalidOperationException ex)
+        {
+            ShowConfigurationError(ex.Message);
+            return;
+        }
         _config.ApplyUiDefaults(rollbackOnFailure: setupArguments.RollbackOnFailure);
         if (startAtGatewayInstalledMilestone)
         {
