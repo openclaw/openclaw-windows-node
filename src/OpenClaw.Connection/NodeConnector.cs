@@ -3,7 +3,7 @@ using OpenClaw.Shared;
 namespace OpenClaw.Connection;
 
 /// <summary>
-/// Lightweight node connector that creates and manages a WindowsNodeClient.
+/// Lightweight node connector that creates and manages a node runtime client.
 /// Capability setup (canvas, screen capture, etc.) is handled by NodeService,
 /// which has WinUI dependencies and remains in App.xaml.cs for now.
 /// </summary>
@@ -11,9 +11,10 @@ public sealed class NodeConnector : INodeConnector, INodeConnectorTelemetryEvent
 {
     private readonly IOpenClawLogger _logger;
     private readonly ConnectionDiagnostics? _diagnostics;
+    private readonly INodeRuntimeClientFactory _clientFactory;
     private readonly SemaphoreSlim _connectSemaphore = new(1, 1);
     private readonly object _clientLifecycleLock = new();
-    private WindowsNodeClient? _client;
+    private INodeRuntimeClient? _client;
     private long _clientGeneration;
     private bool _disposed;
     public Func<CancellationToken, Task<ReconnectAuthorizationResult>>? HandshakeAuthorizationAsync { get; set; }
@@ -26,10 +27,14 @@ public sealed class NodeConnector : INodeConnector, INodeConnectorTelemetryEvent
     public event EventHandler? TransportConnected;
     public event EventHandler<GatewayErrorKind>? ConnectionFailure;
 
-    public NodeConnector(IOpenClawLogger logger, ConnectionDiagnostics? diagnostics = null)
+    public NodeConnector(
+        IOpenClawLogger logger,
+        ConnectionDiagnostics? diagnostics = null,
+        INodeRuntimeClientFactory? clientFactory = null)
     {
         _logger = logger;
         _diagnostics = diagnostics;
+        _clientFactory = clientFactory ?? new WindowsNodeRuntimeClientFactory();
     }
 
     public bool IsConnected => _client?.IsConnected ?? false;
@@ -43,8 +48,8 @@ public sealed class NodeConnector : INodeConnector, INodeConnectorTelemetryEvent
     public string? NodeDeviceId => _client?.FullDeviceId;
     public NodeConnectionMode Mode { get; private set; } = NodeConnectionMode.Disabled;
 
-    /// <summary>The underlying node client, for capability registration by NodeService.</summary>
-    public WindowsNodeClient? Client => _client;
+    /// <summary>The underlying node runtime, for capability registration by NodeService.</summary>
+    public INodeRuntimeClient? Client => _client;
 
     public Task ConnectAsync(
         string gatewayUrl,
@@ -97,12 +102,7 @@ public sealed class NodeConnector : INodeConnector, INodeConnectorTelemetryEvent
             ? new DiagnosticTeeLogger(_logger, _diagnostics)
             : _logger;
 
-        var client = new WindowsNodeClient(
-            gatewayUrl,
-            credential.IsBootstrapToken ? "" : credential.Token,
-            identityPath,
-            nodeLogger,
-            bootstrapToken: credential.IsBootstrapToken ? credential.Token : null);
+        var client = _clientFactory.Create(gatewayUrl, credential, identityPath, nodeLogger);
         client.HandshakeAuthorizationAsync = HandshakeAuthorizationAsync;
         client.ReconnectAuthorizationAsync = ReconnectAuthorizationAsync;
 
@@ -130,11 +130,10 @@ public sealed class NodeConnector : INodeConnector, INodeConnectorTelemetryEvent
             () => DisconnectIfCurrent(generation));
         cancellationToken.ThrowIfCancellationRequested();
 
-        // CRITICAL: fire ClientCreated BEFORE await _client.ConnectAsync() so subscribers
-        // (NodeService) can register capabilities synchronously. WindowsNodeClient
-        // serializes _registration.Capabilities/Commands into the outbound "connect"
-        // message during the connect handshake — registering after that point means
-        // the gateway sees an empty caps array for this session.
+        // CRITICAL: fire ClientCreated BEFORE await client.ConnectAsync() so subscribers
+        // (NodeService) can register capabilities synchronously. Runtime implementations
+        // serialize the registration into their outbound connect handshake; registering
+        // after that point means the gateway sees an empty caps array for this session.
         try
         {
             lock (_clientLifecycleLock)
@@ -302,7 +301,7 @@ public sealed class NodeConnector : INodeConnector, INodeConnectorTelemetryEvent
     }
 
     private void ThrowIfNotCurrent(
-        WindowsNodeClient client,
+        INodeRuntimeClient client,
         long generation,
         CancellationToken cancellationToken)
     {

@@ -4,7 +4,7 @@ namespace OpenClaw.Connection;
 
 /// <summary>
 /// Manages the node-side connection for a given gateway.
-/// Owns the WindowsNodeClient lifecycle but delegates capability
+/// Owns the node runtime lifecycle but delegates capability
 /// setup to NodeService (which has WinUI dependencies).
 /// </summary>
 public interface INodeConnector : IDisposable
@@ -21,7 +21,7 @@ public interface INodeConnector : IDisposable
     event EventHandler<DeviceTokenReceivedEventArgs> DeviceTokenReceived;
 
     /// <summary>
-    /// Raised right after a new <see cref="WindowsNodeClient"/> is constructed
+    /// Raised right after a new <see cref="INodeRuntimeClient"/> is constructed
     /// but BEFORE its <c>ConnectAsync()</c> call. Subscribers (typically
     /// <c>NodeService</c>) must register the node's capabilities on the new
     /// client synchronously so the outbound "connect" handshake includes
@@ -67,12 +67,12 @@ public interface INodeConnectorReconnectPolicy
 
 public sealed class NodeClientCreatedEventArgs : EventArgs
 {
-    public NodeClientCreatedEventArgs(WindowsNodeClient client, string? bearerToken)
+    public NodeClientCreatedEventArgs(INodeRuntimeClient client, string? bearerToken)
     {
         Client = client;
         BearerToken = bearerToken;
     }
 
-    public WindowsNodeClient Client { get; }
+    public INodeRuntimeClient Client { get; }
     public string? BearerToken { get; }
 }

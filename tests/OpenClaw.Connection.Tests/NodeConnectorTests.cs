@@ -14,6 +14,81 @@ public class NodeConnectorTests
         public void Error(string message, Exception? ex = null) { }
     }
 
+    private sealed class StubNodeRuntimeClientFactory(INodeRuntimeClient client)
+        : INodeRuntimeClientFactory
+    {
+        public string? GatewayUrl { get; private set; }
+        public GatewayCredential? Credential { get; private set; }
+        public string? IdentityPath { get; private set; }
+
+        public INodeRuntimeClient Create(
+            string gatewayUrl,
+            GatewayCredential credential,
+            string identityPath,
+            IOpenClawLogger logger)
+        {
+            GatewayUrl = gatewayUrl;
+            Credential = credential;
+            IdentityPath = identityPath;
+            return client;
+        }
+    }
+
+    private sealed class StubNodeRuntimeClient : INodeRuntimeClient
+    {
+        private readonly Dictionary<string, bool> _permissions = [];
+
+        public bool UseV2Signature { get; set; }
+        public Func<CancellationToken, Task<ReconnectAuthorizationResult>>?
+            ReconnectAuthorizationAsync { get; set; }
+        public bool IsConnected { get; private set; }
+        public string? NodeId => null;
+        public string GatewayUrl => "ws://runtime.example";
+        public IReadOnlyList<INodeCapability> Capabilities => [];
+        public bool IsPendingApproval => false;
+        public bool IsPaired => false;
+        public string ShortDeviceId => "stub";
+        public string FullDeviceId => "stub-runtime-client";
+        public string DisplayName => "Stub runtime client";
+        public int RegisteredCapabilityCount => 0;
+        public int RegisteredCommandCount => 0;
+        public IEnumerable<string> RegisteredCommandsSample => [];
+        public bool PermissionWasSetBeforeConnect { get; private set; }
+
+        public event EventHandler<ConnectionStatus> StatusChanged { add { } remove { } }
+        public event EventHandler<NodeInvokeCompletedEventArgs> InvokeCompleted { add { } remove { } }
+        public event EventHandler<OpenClaw.Shared.Telemetry.NodeToolTelemetryCompletion> ToolTelemetryCompleted { add { } remove { } }
+        public event EventHandler<PairingStatusEventArgs> PairingStatusChanged { add { } remove { } }
+        public event EventHandler<System.Text.Json.JsonElement> HealthReceived { add { } remove { } }
+        public event EventHandler<GatewaySelfInfo> GatewaySelfUpdated { add { } remove { } }
+        public event EventHandler<DeviceTokenReceivedEventArgs> DeviceTokenReceived { add { } remove { } }
+        public event EventHandler TransportConnected { add { } remove { } }
+        public event EventHandler<GatewayErrorKind> ConnectionFailure { add { } remove { } }
+        public event EventHandler Disposed { add { } remove { } }
+
+        public void RegisterCapability(INodeCapability capability) { }
+        public void SetPermission(string permission, bool value) => _permissions[permission] = value;
+
+        public Task ConnectAsync()
+        {
+            PermissionWasSetBeforeConnect = _permissions.GetValueOrDefault("test.permission");
+            IsConnected = true;
+            return Task.CompletedTask;
+        }
+
+        public Task DisconnectAsync()
+        {
+            IsConnected = false;
+            return Task.CompletedTask;
+        }
+
+        public Task<bool> SendNodeEventAsync(
+            string eventName,
+            System.Text.Json.Nodes.JsonObject payload) => Task.FromResult(true);
+
+        public void Dispose() => IsConnected = false;
+    }
+
     [Fact]
     public void InitialState_IsConnected_IsFalse()
     {
@@ -121,6 +196,39 @@ public class NodeConnectorTests
     }
 
     [Fact]
+    public async Task ConnectAsync_UsesInjectedRuntimeClientBeforeHandshake()
+    {
+        var runtimeClient = new StubNodeRuntimeClient();
+        var factory = new StubNodeRuntimeClientFactory(runtimeClient);
+        using var connector = new NodeConnector(new StubLogger(), clientFactory: factory);
+        Func<CancellationToken, Task<ReconnectAuthorizationResult>> reconnectAuthorization =
+            _ => Task.FromResult(ReconnectAuthorizationResult.AllowedResult);
+        connector.ReconnectAuthorizationAsync = reconnectAuthorization;
+        INodeRuntimeClient? createdClient = null;
+        connector.ClientCreated += (_, args) =>
+        {
+            createdClient = args.Client;
+            args.Client.SetPermission("test.permission", true);
+        };
+
+        var credential = new GatewayCredential("token", false, "test");
+        await connector.ConnectAsync(
+            "ws://gateway.example",
+            credential,
+            "identity-path",
+            useV2Signature: true);
+
+        Assert.Same(runtimeClient, connector.Client);
+        Assert.Same(runtimeClient, createdClient);
+        Assert.Equal("ws://gateway.example", factory.GatewayUrl);
+        Assert.Equal(credential, factory.Credential);
+        Assert.Equal("identity-path", factory.IdentityPath);
+        Assert.True(runtimeClient.UseV2Signature);
+        Assert.Same(reconnectAuthorization, runtimeClient.ReconnectAuthorizationAsync);
+        Assert.True(runtimeClient.PermissionWasSetBeforeConnect);
+    }
+
+    [Fact]
     public async Task DisconnectAsync_WhenNotConnected_CompletesWithoutError()
     {
         using var connector = new NodeConnector(new StubLogger());
@@ -149,15 +257,13 @@ public class NodeConnectorTests
             "ws://127.0.0.1:1",
             new GatewayCredential("tok", false, "test"),
             "id-path");
-        var clientA = connector.Client;
-        Assert.NotNull(clientA);
+        var clientA = Assert.IsType<WindowsNodeClient>(connector.Client);
 
         await connector.ConnectAsync(
             "ws://127.0.0.1:2",
             new GatewayCredential("tok2", false, "test"),
             "id-path");
-        var clientB = connector.Client;
-        Assert.NotNull(clientB);
+        var clientB = Assert.IsType<WindowsNodeClient>(connector.Client);
         Assert.NotSame(clientA, clientB);
         statuses.Clear();
 
@@ -180,8 +286,7 @@ public class NodeConnectorTests
             "ws://127.0.0.1:1",
             new GatewayCredential("tok", false, "test"),
             "id-path");
-        var retiredClient = connector.Client;
-        Assert.NotNull(retiredClient);
+        var retiredClient = Assert.IsType<WindowsNodeClient>(connector.Client);
 
         await connector.DisconnectAsync();
 
@@ -202,14 +307,13 @@ public class NodeConnectorTests
         bool? wasConnected = null;
         PairingStatus? pairingStatus = null;
         NodeConnectionMode? mode = null;
-        WindowsNodeClient? clientRef = null;
+        INodeRuntimeClient? clientRef = null;
 
         await connector.ConnectAsync(
             "ws://127.0.0.1:1",
             new GatewayCredential("tok", false, "test"),
             "id-path");
-        var currentClient = connector.Client;
-        Assert.NotNull(currentClient);
+        var currentClient = Assert.IsType<WindowsNodeClient>(connector.Client);
 
         connector.StatusChanged += (_, status) =>
         {
