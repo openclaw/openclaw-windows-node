@@ -110,25 +110,31 @@ public sealed class NodeConnector : INodeConnector, INodeConnectorTelemetryEvent
         if (useV2Signature)
             client.UseV2Signature = true;
 
-        long generation;
+        long generation = 0;
+        bool rejectCandidate;
         lock (_clientLifecycleLock)
         {
-            if (_disposed || cancellationToken.IsCancellationRequested)
+            rejectCandidate = _disposed || cancellationToken.IsCancellationRequested;
+            if (!rejectCandidate)
             {
-                try { client.Dispose(); }
-                catch (Exception ex) { _logger.Warn($"[NodeConnector] Candidate dispose error: {ex.Message}"); }
-                cancellationToken.ThrowIfCancellationRequested();
-                return;
+                generation = Interlocked.Increment(ref _clientGeneration);
+                _client = client;
+                Mode = NodeConnectionMode.Gateway;
             }
-
-            generation = Interlocked.Increment(ref _clientGeneration);
-            _client = client;
-            Mode = NodeConnectionMode.Gateway;
         }
 
-        using var cancellationRegistration = cancellationToken.Register(
-            () => DisconnectIfCurrent(generation));
-        cancellationToken.ThrowIfCancellationRequested();
+        if (rejectCandidate)
+        {
+            DisposeClient(client);
+            cancellationToken.ThrowIfCancellationRequested();
+            return;
+        }
+
+        if (cancellationToken.IsCancellationRequested)
+        {
+            RetireIfCurrent(client, generation);
+            cancellationToken.ThrowIfCancellationRequested();
+        }
 
         // CRITICAL: fire ClientCreated BEFORE await client.ConnectAsync() so subscribers
         // (NodeService) can register capabilities synchronously. Runtime implementations
@@ -150,12 +156,17 @@ public sealed class NodeConnector : INodeConnector, INodeConnectorTelemetryEvent
             cancellationToken.IsCancellationRequested ||
             !IsCurrentClient(client, generation))
         {
+            RetireIfCurrent(client, generation);
             throw;
         }
         catch (Exception ex)
         {
-            if (cancellationToken.IsCancellationRequested ||
-                !IsCurrentClient(client, generation))
+            if (cancellationToken.IsCancellationRequested)
+            {
+                RetireIfCurrent(client, generation);
+                cancellationToken.ThrowIfCancellationRequested();
+            }
+            if (!IsCurrentClient(client, generation))
             {
                 return;
             }
@@ -180,24 +191,25 @@ public sealed class NodeConnector : INodeConnector, INodeConnectorTelemetryEvent
 
         try
         {
-            Task connectTask;
             lock (_clientLifecycleLock)
-            {
                 ThrowIfNotCurrent(client, generation, cancellationToken);
-                connectTask = client.ConnectAsync();
-            }
-            await connectTask;
+            await client.ConnectAsync(cancellationToken);
             lock (_clientLifecycleLock)
                 ThrowIfNotCurrent(client, generation, cancellationToken);
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
+            RetireIfCurrent(client, generation);
             throw;
         }
         catch (Exception ex)
         {
-            if (cancellationToken.IsCancellationRequested ||
-                !IsCurrentClient(client, generation))
+            if (cancellationToken.IsCancellationRequested)
+            {
+                RetireIfCurrent(client, generation);
+                cancellationToken.ThrowIfCancellationRequested();
+            }
+            if (!IsCurrentClient(client, generation))
             {
                 return;
             }
@@ -267,15 +279,6 @@ public sealed class NodeConnector : INodeConnector, INodeConnectorTelemetryEvent
         }
     }
 
-    private void DisconnectIfCurrent(long generation)
-    {
-        lock (_clientLifecycleLock)
-        {
-            if (Interlocked.Read(ref _clientGeneration) == generation)
-                DisconnectInternalCore();
-        }
-    }
-
     private void DisconnectCurrentClient()
     {
         DisconnectInternal();
@@ -283,21 +286,42 @@ public sealed class NodeConnector : INodeConnector, INodeConnectorTelemetryEvent
 
     private void DisconnectInternal()
     {
+        INodeRuntimeClient? old;
         lock (_clientLifecycleLock)
-            DisconnectInternalCore();
+            old = RetireCurrentClientCore();
+        DisposeClient(old);
     }
 
-    private void DisconnectInternalCore()
+    private void RetireIfCurrent(INodeRuntimeClient client, long generation)
+    {
+        INodeRuntimeClient? retired = null;
+        lock (_clientLifecycleLock)
+        {
+            if (Interlocked.Read(ref _clientGeneration) == generation &&
+                ReferenceEquals(client, _client))
+            {
+                retired = RetireCurrentClientCore();
+            }
+        }
+        DisposeClient(retired);
+    }
+
+    private INodeRuntimeClient? RetireCurrentClientCore()
     {
         Interlocked.Increment(ref _clientGeneration);
         var old = _client;
         _client = null;
-        if (old != null)
-        {
-            try { old.Dispose(); }
-            catch (Exception ex) { _logger.Warn($"[NodeConnector] Dispose error: {ex.Message}"); }
-        }
         Mode = NodeConnectionMode.Disabled;
+        return old;
+    }
+
+    private void DisposeClient(INodeRuntimeClient? client)
+    {
+        if (client == null)
+            return;
+
+        try { client.Dispose(); }
+        catch (Exception ex) { _logger.Warn($"[NodeConnector] Dispose error: {ex.Message}"); }
     }
 
     private void ThrowIfNotCurrent(
@@ -315,11 +339,13 @@ public sealed class NodeConnector : INodeConnector, INodeConnectorTelemetryEvent
 
     public void Dispose()
     {
+        INodeRuntimeClient? old;
         lock (_clientLifecycleLock)
         {
             if (_disposed) return;
             _disposed = true;
-            DisconnectInternalCore();
+            old = RetireCurrentClientCore();
         }
+        DisposeClient(old);
     }
 }

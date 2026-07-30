@@ -15,8 +15,9 @@ This change introduces the first executable seam:
   permissions are registered before the selected runtime begins its handshake.
 - `NodeCapabilityDispatcher` is the shared Windows-owned execution path for
   command lookup, concurrency, cancellation, telemetry, and completion. The
-  C# client now uses it, and the Rust adapter will reuse it instead of copying
-  capability policy.
+  C# client now uses it. A Rust adapter is not eligible for runtime selection
+  until adapter-level conformance proves it routes every decoded invocation
+  through this dispatcher instead of copying capability policy.
 
 ## Intended follow-up slices
 
@@ -27,8 +28,9 @@ This change introduces the first executable seam:
    connection, registration, invoke/result/progress/cancellation, reconnect, and
    runtime lifecycle.
 3. Run the C# and Rust implementations through the same registration and
-   invocation conformance fixtures. Keep the existing C# runtime as the default
-   while the Rust path gathers real Gateway proof.
+   invocation conformance fixtures, including cancellable blocked-connect and
+   adapter-to-dispatcher routing tests. Keep the existing C# runtime as the
+   default while the Rust path gathers real Gateway proof.
 4. Switch the Windows node role to the Rust adapter behind an explicit rollout
    gate. C# continues to execute Windows-native capabilities and return results
    through the runtime contract.

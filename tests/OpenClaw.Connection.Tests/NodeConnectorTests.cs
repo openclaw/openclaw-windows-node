@@ -34,6 +34,16 @@ public class NodeConnectorTests
         }
     }
 
+    private sealed class DelegateNodeRuntimeClientFactory(Func<INodeRuntimeClient> create)
+        : INodeRuntimeClientFactory
+    {
+        public INodeRuntimeClient Create(
+            string gatewayUrl,
+            GatewayCredential credential,
+            string identityPath,
+            IOpenClawLogger logger) => create();
+    }
+
     private sealed class StubNodeRuntimeClient : INodeRuntimeClient
     {
         private readonly Dictionary<string, bool> _permissions = [];
@@ -54,6 +64,9 @@ public class NodeConnectorTests
         public int RegisteredCommandCount => 0;
         public IEnumerable<string> RegisteredCommandsSample => [];
         public bool PermissionWasSetBeforeConnect { get; private set; }
+        public Func<CancellationToken, Task>? ConnectOverride { get; init; }
+        public bool WasDisposed { get; private set; }
+        public bool ConnectWasCalled { get; private set; }
 
         public event EventHandler<ConnectionStatus> StatusChanged { add { } remove { } }
         public event EventHandler<NodeInvokeCompletedEventArgs> InvokeCompleted { add { } remove { } }
@@ -69,11 +82,14 @@ public class NodeConnectorTests
         public void RegisterCapability(INodeCapability capability) { }
         public void SetPermission(string permission, bool value) => _permissions[permission] = value;
 
-        public Task ConnectAsync()
+        public async Task ConnectAsync(CancellationToken cancellationToken)
         {
+            ConnectWasCalled = true;
             PermissionWasSetBeforeConnect = _permissions.GetValueOrDefault("test.permission");
+            if (ConnectOverride != null)
+                await ConnectOverride(cancellationToken);
+            cancellationToken.ThrowIfCancellationRequested();
             IsConnected = true;
-            return Task.CompletedTask;
         }
 
         public Task DisconnectAsync()
@@ -86,7 +102,11 @@ public class NodeConnectorTests
             string eventName,
             System.Text.Json.Nodes.JsonObject payload) => Task.FromResult(true);
 
-        public void Dispose() => IsConnected = false;
+        public void Dispose()
+        {
+            WasDisposed = true;
+            IsConnected = false;
+        }
     }
 
     [Fact]
@@ -226,6 +246,114 @@ public class NodeConnectorTests
         Assert.True(runtimeClient.UseV2Signature);
         Assert.Same(reconnectAuthorization, runtimeClient.ReconnectAuthorizationAsync);
         Assert.True(runtimeClient.PermissionWasSetBeforeConnect);
+    }
+
+    [Fact]
+    public async Task ConnectAsync_CancelledBlockedRuntime_ReleasesConnectorForNextAttempt()
+    {
+        var connectStarted = new TaskCompletionSource(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        var blockedRuntime = new StubNodeRuntimeClient
+        {
+            ConnectOverride = async cancellationToken =>
+            {
+                connectStarted.TrySetResult();
+                await Task.Delay(Timeout.InfiniteTimeSpan, cancellationToken);
+            }
+        };
+        var nextRuntime = new StubNodeRuntimeClient();
+        var clients = new Queue<INodeRuntimeClient>([blockedRuntime, nextRuntime]);
+        var factory = new DelegateNodeRuntimeClientFactory(() => clients.Dequeue());
+        using var connector = new NodeConnector(new StubLogger(), clientFactory: factory);
+        using var cts = new CancellationTokenSource();
+
+        var blockedAttempt = connector.ConnectAsync(
+            "ws://gateway.example",
+            new GatewayCredential("token", false, "test"),
+            "identity-path",
+            useV2Signature: false,
+            cancellationToken: cts.Token);
+        await connectStarted.Task.WaitAsync(TimeSpan.FromSeconds(5));
+
+        cts.Cancel();
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(
+            () => blockedAttempt.WaitAsync(TimeSpan.FromSeconds(5)));
+
+        Assert.True(blockedRuntime.WasDisposed);
+        Assert.Null(connector.Client);
+        Assert.Equal(NodeConnectionMode.Disabled, connector.Mode);
+
+        await connector.ConnectAsync(
+            "ws://gateway.example",
+            new GatewayCredential("token", false, "test"),
+            "identity-path");
+
+        Assert.Same(nextRuntime, connector.Client);
+        Assert.True(nextRuntime.IsConnected);
+    }
+
+    [Fact]
+    public async Task ConnectAsync_CancelledDuringClientCreated_RetiresBeforeHandshake()
+    {
+        var runtime = new StubNodeRuntimeClient();
+        var factory = new StubNodeRuntimeClientFactory(runtime);
+        using var connector = new NodeConnector(new StubLogger(), clientFactory: factory);
+        using var cts = new CancellationTokenSource();
+        connector.ClientCreated += (_, _) => cts.Cancel();
+
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() =>
+            connector.ConnectAsync(
+                "ws://gateway.example",
+                new GatewayCredential("token", false, "test"),
+                "identity-path",
+                useV2Signature: false,
+                cancellationToken: cts.Token));
+
+        Assert.True(runtime.WasDisposed);
+        Assert.False(runtime.ConnectWasCalled);
+        Assert.Null(connector.Client);
+        Assert.Equal(NodeConnectionMode.Disabled, connector.Mode);
+    }
+
+    [Fact]
+    public async Task ConnectAsync_CancelledRuntimeThrowsTransportError_StillRetiresCandidate()
+    {
+        var connectStarted = new TaskCompletionSource(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        var runtime = new StubNodeRuntimeClient
+        {
+            ConnectOverride = async cancellationToken =>
+            {
+                connectStarted.TrySetResult();
+                try
+                {
+                    await Task.Delay(Timeout.InfiniteTimeSpan, cancellationToken);
+                }
+                catch (OperationCanceledException)
+                {
+                    throw new IOException("transport aborted during cancellation");
+                }
+            }
+        };
+        var factory = new StubNodeRuntimeClientFactory(runtime);
+        using var connector = new NodeConnector(new StubLogger(), clientFactory: factory);
+        using var cts = new CancellationTokenSource();
+
+        var attempt = connector.ConnectAsync(
+            "ws://gateway.example",
+            new GatewayCredential("token", false, "test"),
+            "identity-path",
+            useV2Signature: false,
+            cancellationToken: cts.Token);
+        await connectStarted.Task.WaitAsync(TimeSpan.FromSeconds(5));
+
+        cts.Cancel();
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(
+            () => attempt.WaitAsync(TimeSpan.FromSeconds(5)));
+
+        Assert.True(runtime.WasDisposed);
+        Assert.Null(connector.Client);
+        Assert.Equal(NodeConnectionMode.Disabled, connector.Mode);
     }
 
     [Fact]
