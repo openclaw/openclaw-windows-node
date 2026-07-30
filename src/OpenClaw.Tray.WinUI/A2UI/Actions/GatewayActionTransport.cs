@@ -43,7 +43,7 @@ public sealed class A2UIActionStatusEventArgs : EventArgs
 /// </summary>
 public sealed class GatewayActionTransport : IA2UIActionTransport
 {
-    private readonly Func<WindowsNodeClient?> _clientProvider;
+    private readonly Func<INodeRuntimeClient?> _clientProvider;
     private readonly IGatewayActionContext _context;
     private readonly IOpenClawLogger _logger;
 
@@ -51,7 +51,7 @@ public sealed class GatewayActionTransport : IA2UIActionTransport
     public event EventHandler<A2UIActionStatusEventArgs>? ActionStatus;
 
     public GatewayActionTransport(
-        Func<WindowsNodeClient?> clientProvider,
+        Func<INodeRuntimeClient?> clientProvider,
         IGatewayActionContext context,
         IOpenClawLogger logger)
     {

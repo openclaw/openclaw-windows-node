@@ -15,7 +15,7 @@ namespace OpenClaw.Shared;
 /// Windows Node client - extends gateway connection to act as a node
 /// Supports both operator (existing) and node (new) roles
 /// </summary>
-public class WindowsNodeClient : WebSocketClientBase
+public class WindowsNodeClient : WebSocketClientBase, INodeRuntimeClient
 {
     private readonly DeviceIdentity _deviceIdentity;
     
