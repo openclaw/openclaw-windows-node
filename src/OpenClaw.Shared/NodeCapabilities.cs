@@ -26,7 +26,10 @@ public class NodeInvokeRequest
     public string Id { get; set; } = "";
     public string Command { get; set; } = "";
     public JsonElement Args { get; set; }
-    public string? SessionKey { get; set; }
+
+    /// <summary>Gateway-stamped run correlation; capability callers may read but not assign it.</summary>
+    [JsonIgnore]
+    public string? SessionKey { get; internal set; }
 
     [JsonIgnore]
     public NodeToolInvocation? Telemetry { get; set; }

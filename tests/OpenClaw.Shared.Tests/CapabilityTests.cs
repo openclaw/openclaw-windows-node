@@ -241,7 +241,8 @@ public class SystemCapabilityTests
         {
             Id = "p3",
             Command = "system.run.prepare",
-            Args = Parse("""{"command":["ls","-la"],"cwd":"/tmp","agentId":"agent1","sessionKey":"sk1"}""")
+            Args = Parse("""{"command":["ls","-la"],"cwd":"/tmp","agentId":"agent1","sessionKey":"spoofed"}"""),
+            SessionKey = "trusted-session"
         };
 
         var res = await cap.ExecuteAsync(req);
@@ -254,6 +255,7 @@ public class SystemCapabilityTests
         Assert.Equal("/tmp", cwd.GetString());
         Assert.True(plan.TryGetProperty("agentId", out var agentId));
         Assert.Equal("agent1", agentId.GetString());
+        Assert.Equal("trusted-session", plan.GetProperty("sessionKey").GetString());
     }
 
     [Fact]

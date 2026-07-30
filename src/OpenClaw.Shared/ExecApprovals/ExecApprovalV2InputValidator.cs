@@ -101,7 +101,7 @@ public static class ExecApprovalV2InputValidator
             timeoutMs,
             env,
             TryGetString(request.Args, "agentId"),
-            TryGetString(request.Args, "sessionKey"),
+            request.SessionKey,
             rawCommand));
     }
 

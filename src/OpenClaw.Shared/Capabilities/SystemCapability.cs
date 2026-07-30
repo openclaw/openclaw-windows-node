@@ -206,7 +206,6 @@ public class SystemCapability : NodeCapabilityBase
         var validated = validation.Request!;
         var argv = validated.Argv;
         var rawCommand = GetStringArg(request.Args, "rawCommand");
-        var sessionKey = request.SessionKey ?? validated.SessionKey;
 
         Logger.Info(
             $"system.run.prepare: {rawCommand ?? FormatExecCommand(argv)} (cwd={validated.Cwd ?? "default"})");
@@ -220,7 +219,7 @@ public class SystemCapability : NodeCapabilityBase
                 cwd = validated.Cwd,
                 rawCommand,
                 agentId = validated.AgentId,
-                sessionKey
+                sessionKey = validated.SessionKey
             }
         });
     }
