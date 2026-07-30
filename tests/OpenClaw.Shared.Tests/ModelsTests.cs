@@ -713,8 +713,6 @@ public class SessionInfoTests
         Assert.Equal("main", original.Worktree.Branch);
         Assert.Equal("/home/user/repo", original.Worktree.RepoRoot);
     }
-
-    [Fact]
 }
 
 public class GatewayUsageInfoTests
