@@ -25,6 +25,7 @@ public interface IGatewayConnectionManager : IDisposable, IAsyncDisposable
     Task DisconnectByUserAsync();
     Task ReconnectAsync();
     Task<bool> ReconnectIfCurrentAsync(string gatewayId, CancellationToken cancellationToken = default);
+    Task<bool> RecoverSshTunnelAsync(SshTunnelExit tunnelExit);
     Task SwitchGatewayAsync(string gatewayId);
     void SetGatewayConnectionIntent(string gatewayId, bool shouldBeConnected);
     bool IsAutomaticReconnectAllowed(string gatewayId);

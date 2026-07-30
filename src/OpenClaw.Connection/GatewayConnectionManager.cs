@@ -877,6 +877,44 @@ public sealed class GatewayConnectionManager : IGatewayConnectionManager
         }
     }
 
+    public async Task<bool> RecoverSshTunnelAsync(SshTunnelExit tunnelExit)
+    {
+        ThrowIfDisposed();
+        await _transitionSemaphore.WaitAsync();
+        try
+        {
+            var activeGateway = _registry.GetActive();
+            if (activeGateway?.SshTunnel != tunnelExit.Tunnel ||
+                !IsAutomaticReconnectAllowed(activeGateway.Id) ||
+                _tunnelManager?.IsRestartPending(tunnelExit) != true)
+            {
+                return false;
+            }
+
+            // DisconnectCoreAsync retires the gateway clients but deliberately leaves the
+            // tunnel alone. Keep its generation token valid until ConnectCoreAsync replaces
+            // the failed process, while preventing a delayed callback from reviving an old gateway.
+            await DisconnectCoreAsync();
+
+            var currentGateway = _registry.GetActive();
+            if (currentGateway?.Id != activeGateway.Id ||
+                currentGateway.SshTunnel != tunnelExit.Tunnel ||
+                !IsAutomaticReconnectAllowed(activeGateway.Id) ||
+                _tunnelManager?.IsRestartPending(tunnelExit) != true)
+            {
+                return false;
+            }
+
+            await ConnectCoreAsync(activeGateway.Id, "reconnect");
+            return _stateMachine.Current.OperatorState is not RoleConnectionState.Error
+                && string.Equals(_registry.ActiveGatewayId, activeGateway.Id, StringComparison.Ordinal);
+        }
+        finally
+        {
+            _transitionSemaphore.Release();
+        }
+    }
+
     public void SetGatewayConnectionIntent(string gatewayId, bool shouldBeConnected)
     {
         if (string.IsNullOrWhiteSpace(gatewayId))

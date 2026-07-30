@@ -4818,39 +4818,38 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
 
     #endregion
 
-    private void OnSshTunnelExited(object? sender, int exitCode) =>
+    private void OnSshTunnelExited(object? sender, SshTunnelExit tunnelExit) =>
         AsyncEventHandlerGuard.Run(
-            () => OnSshTunnelExitedAsync(exitCode),
+            () => OnSshTunnelExitedAsync(tunnelExit),
             new AppLogger(),
             nameof(OnSshTunnelExited));
 
-    private async Task OnSshTunnelExitedAsync(int exitCode)
+    private async Task OnSshTunnelExitedAsync(SshTunnelExit tunnelExit)
     {
-        Logger.Warn($"SSH tunnel exited unexpectedly (code {exitCode}); restarting in 3s...");
-        _sshTunnelService?.MarkRestarting(exitCode);
+        var connectionManager = _connectionManager;
+        if (_sshTunnelService?.TryMarkRestarting(tunnelExit) != true)
+            return;
+
+        Logger.Warn($"SSH tunnel exited unexpectedly (code {tunnelExit.ExitCode}); restarting in 3s...");
         DiagnosticsJsonlService.Write("tunnel.restart_scheduled", new
         {
-            exitCode,
+            exitCode = tunnelExit.ExitCode,
             localEndpoint = _sshTunnelService?.CurrentLocalPort > 0
                 ? $"127.0.0.1:{_sshTunnelService.CurrentLocalPort}"
                 : null
         });
         await Task.Delay(3000);
-        if (_sshTunnelService != null && _settings?.UseSshTunnel == true)
+
+        if (_sshTunnelService != null && connectionManager != null)
         {
             try
             {
-                var restartBrowserProxy = BrowserProxySshTunnelForwardPolicy.ShouldInclude(
-                    _settings.NodeBrowserProxyEnabled,
-                    _settings.SshTunnelRemotePort,
-                    _settings.SshTunnelLocalPort);
-                _sshTunnelService.EnsureStarted(
-                    _settings.SshTunnelUser,
-                    _settings.SshTunnelHost,
-                    _settings.SshTunnelRemotePort,
-                    _settings.SshTunnelLocalPort,
-                    restartBrowserProxy,
-                    _settings.SshTunnelSshPort);
+                // The connection manager owns the registry-backed tunnel and both
+                // gateway clients. Reconnect through it so recovery cannot drift
+                // back to the legacy global SSH settings.
+                if (!await connectionManager.RecoverSshTunnelAsync(tunnelExit))
+                    return;
+
                 Logger.Info("SSH tunnel restarted successfully");
                 DiagnosticsJsonlService.Write("tunnel.restart_succeeded", new
                 {

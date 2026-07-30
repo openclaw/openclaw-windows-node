@@ -58,6 +58,23 @@ public sealed class SshTunnelServiceTests
     }
 
     [Fact]
+    public void TryMarkRestarting_RejectsUnknownTunnelGeneration()
+    {
+        using var service = new SshTunnelService(NullLogger.Instance);
+        var tunnelExit = new SshTunnelExit(
+            ExitCode: 42,
+            Tunnel: new SshTunnelConfig("user", "host", 18789, 18789),
+            Generation: 1);
+
+        var accepted = service.TryMarkRestarting(tunnelExit);
+
+        Assert.False(accepted);
+        Assert.False(service.IsRestartPending(tunnelExit));
+        Assert.Equal(TunnelStatus.NotConfigured, service.Status);
+        Assert.Null(service.LastError);
+    }
+
+    [Fact]
     public void Stop_FromNotConfigured_StatusRemainsNotConfigured()
     {
         // Stop() when no process has been started and state is NotConfigured
