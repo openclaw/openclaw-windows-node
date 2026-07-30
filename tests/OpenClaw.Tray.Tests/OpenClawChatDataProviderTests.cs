@@ -1534,7 +1534,7 @@ public class OpenClawChatDataProviderTests
     }
 
     [Fact]
-    public async Task LoadAsync_PreservesRawKeyAsId_EvenWithPresentationTitle()
+    public async Task LoadAsync_PreservesRawKeyAsIdWithFlattenedClassification()
     {
         // Gateway keys must round-trip untouched: the resolver only derives display fields.
         var rawKey = "agent:main:tui-847241c7-3f9a-4a2b-b123-abcdef123456";
@@ -1543,12 +1543,8 @@ public class OpenClawChatDataProviderTests
             new SessionInfo
             {
                 Key = rawKey,
-                Presentation = new SessionPresentationInfo
-                {
-                    Title = "Terminal session",
-                    Family = "tui",
-                    AgentId = "main",
-                },
+                Classification = "tui",
+                AgentId = "main",
             },
         };
         var (_, provider, _, _) = CreateProvider(sessions);
@@ -1591,18 +1587,16 @@ public class OpenClawChatDataProviderTests
     }
 
     [Fact]
-    public async Task LoadAsync_GatewayPresentationAgentId_OverridesKeyParsing()
+    public async Task LoadAsync_FlatAgentId_OverridesKeyParsing()
     {
-        // When Presentation.AgentId is set, it takes precedence over key parsing.
+        // A Gateway-provided agent id takes precedence over key parsing.
         var sessions = new[]
         {
             new SessionInfo
             {
                 Key = "agent:main:explicit:work",
-                Presentation = new SessionPresentationInfo
-                {
-                    Title = "Work", Family = "explicit", AgentId = "custom-agent",
-                },
+                Classification = "explicit",
+                AgentId = "custom-agent",
             },
         };
         var (_, provider, _, _) = CreateProvider(sessions);

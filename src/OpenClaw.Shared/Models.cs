@@ -251,20 +251,6 @@ public static class ChannelHealthParser
     }
 }
 
-public sealed class SessionPresentationInfo
-{
-    public string Title { get; set; } = "";
-    public string TitleSource { get; set; } = "generated";
-    public string? Subtitle { get; set; }
-    public string Family { get; set; } = "custom";
-    public string? AgentId { get; set; }
-    public string? Channel { get; set; }
-    public string? AccountId { get; set; }
-    public string? PeerKind { get; set; }
-    public bool IsMain { get; set; }
-    public bool IsBackground { get; set; }
-}
-
 public sealed class SessionWorktreeInfo
 {
     public string? Id { get; set; }
@@ -279,14 +265,6 @@ public class SessionInfo
     public SessionInfo Clone()
     {
         var copy = (SessionInfo)MemberwiseClone();
-        if (copy.Presentation is { } p)
-            copy.Presentation = new SessionPresentationInfo
-            {
-                Title = p.Title, TitleSource = p.TitleSource, Subtitle = p.Subtitle,
-                Family = p.Family, AgentId = p.AgentId, Channel = p.Channel,
-                AccountId = p.AccountId, PeerKind = p.PeerKind,
-                IsMain = p.IsMain, IsBackground = p.IsBackground,
-            };
         if (copy.Worktree is { } w)
             copy.Worktree = new SessionWorktreeInfo
             {
@@ -309,12 +287,16 @@ public class SessionInfo
     public string? Room { get; set; }
     public string? Space { get; set; }
     public string? ChatType { get; set; }
+    public string? Classification { get; set; }
+    public string? AgentId { get; set; }
+    public string? AccountId { get; set; }
+    public string? PeerKind { get; set; }
+    public bool? IsBackground { get; set; }
     public string? OriginLabel { get; set; }
     public SessionWorktreeInfo? Worktree { get; set; }
     public string? ExecNode { get; set; }
     public string? ParentSessionKey { get; set; }
     public int? SpawnDepth { get; set; }
-    public SessionPresentationInfo? Presentation { get; set; }
     public string? SessionId { get; set; }
     public string? ThinkingLevel { get; set; }
     public string? VerboseLevel { get; set; }
@@ -352,7 +334,7 @@ public class SessionInfo
     {
         get
         {
-            var title = SessionPresentationResolver.Resolve(this).Title;
+            var title = SessionDisplayResolver.Resolve(this).Title;
 
             // Fixed-size array avoids List<string> allocation; at most 9 detail slots.
             var details = new string?[9];
@@ -395,7 +377,7 @@ public class SessionInfo
     /// <summary>Gets a shortened, user-friendly version of the session key.</summary>
     public string ShortKey
     {
-        get => SessionPresentationResolver.Resolve(this).Title;
+        get => SessionDisplayResolver.Resolve(this).Title;
     }
 
 }

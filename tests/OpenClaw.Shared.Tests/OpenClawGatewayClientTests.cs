@@ -1926,7 +1926,7 @@ public class OpenClawGatewayClientTests
     }
 
     [Fact]
-    public void ParseSessions_ProjectsGatewayPresentationContract()
+    public void ParseSessions_ProjectsFlattenedSessionFacts()
     {
         var helper = new GatewayClientTestHelper();
         helper.ParseSessionsPayload("""
@@ -1946,18 +1946,12 @@ public class OpenClawGatewayClientTests
             "execNode": "windows-dev",
             "parentSessionKey": "agent:main:main",
             "spawnDepth": 1,
-            "presentation": {
-              "title": "Family chat",
-              "titleSource": "label",
-              "subtitle": "Telegram · account main · agent main",
-              "family": "direct",
-              "agentId": "main",
-              "channel": "telegram",
-              "accountId": "main",
-              "peerKind": "direct",
-              "isMain": false,
-              "isBackground": false
-            }
+            "classification": "direct",
+            "agentId": "main",
+            "accountId": "main",
+            "peerKind": "direct",
+            "isMain": false,
+            "isBackground": false
           }
         ]
         """);
@@ -1974,10 +1968,10 @@ public class OpenClawGatewayClientTests
         Assert.Equal("agent:main:main", session.ParentSessionKey);
         Assert.Equal(1, session.SpawnDepth);
         Assert.False(session.IsMain);
-        Assert.Equal("Family chat", session.Presentation?.Title);
-        Assert.Equal("label", session.Presentation?.TitleSource);
-        Assert.Equal("direct", session.Presentation?.Family);
-        Assert.Equal("main", session.Presentation?.AccountId);
+        Assert.Equal("direct", session.Classification);
+        Assert.Equal("main", session.AgentId);
+        Assert.Equal("main", session.AccountId);
+        Assert.Equal("direct", session.PeerKind);
     }
 
     [Fact]
@@ -1990,24 +1984,12 @@ public class OpenClawGatewayClientTests
           {
             "key": "agent:main:main",
             "displayName": "Named non-main session",
-            "presentation": {
-              "title": "Named non-main session",
-              "titleSource": "displayName",
-              "family": "custom",
-              "isMain": true,
-              "isBackground": false
-            }
+            "isMain": true
           },
           {
             "key": "global",
             "displayName": "Global main",
-            "presentation": {
-              "title": "Global session",
-              "titleSource": "generated",
-              "family": "global",
-              "isMain": false,
-              "isBackground": false
-            }
+            "isMain": false
           }
         ]
         """);
@@ -2020,23 +2002,17 @@ public class OpenClawGatewayClientTests
     [Fact]
     public void ParseSessions_LegacyHandshakeAliasUsesRowMetadataAndBoundedCanonicalFallback()
     {
-        var withPresentation = new GatewayClientTestHelper();
-        withPresentation.SetMainSessionKey("main", isCanonical: false);
-        withPresentation.ParseSessionsPayload("""
+        var withRowFacts = new GatewayClientTestHelper();
+        withRowFacts.SetMainSessionKey("main", isCanonical: false);
+        withRowFacts.ParseSessionsPayload("""
         [
           {
             "key": "agent:main:main",
-            "presentation": {
-              "title": "Main session",
-              "titleSource": "generated",
-              "family": "main",
-              "isMain": true,
-              "isBackground": false
-            }
+            "isMain": true
           }
         ]
         """);
-        Assert.True(Assert.Single(withPresentation.GetSessionList()).IsMain);
+        Assert.True(Assert.Single(withRowFacts.GetSessionList()).IsMain);
 
         var withoutPresentation = new GatewayClientTestHelper();
         withoutPresentation.SetMainSessionKey("main", isCanonical: false);
@@ -2047,21 +2023,14 @@ public class OpenClawGatewayClientTests
     }
 
     [Fact]
-    public void ParseSessions_UsesPresentationMainBeforeHandshakeAuthority()
+    public void ParseSessions_UsesRowMainBeforeHandshakeAuthority()
     {
         var helper = new GatewayClientTestHelper();
         helper.ParseSessionsPayload("""
         [
           {
             "key": "global",
-            "isMain": false,
-            "presentation": {
-              "title": "Global session",
-              "titleSource": "generated",
-              "family": "global",
-              "isMain": true,
-              "isBackground": false
-            }
+            "isMain": true
           }
         ]
         """);
@@ -2070,24 +2039,20 @@ public class OpenClawGatewayClientTests
     }
 
     [Fact]
-    public void ParseSessions_RejectsPartialPresentationObjects()
+    public void ParseSessions_FallsBackWhenFlatFactsAreAbsent()
     {
         var helper = new GatewayClientTestHelper();
         helper.ParseSessionsPayload("""
         [
           {
             "key": "agent:main:subagent:child",
-            "presentation": {
-              "title": "Subagent",
-              "family": "subagent"
-            }
+            "status": "active"
           }
         ]
         """);
 
         var session = Assert.Single(helper.GetSessionList());
-        Assert.Null(session.Presentation);
-        Assert.True(SessionPresentationResolver.IsBackground(session));
+        Assert.True(SessionDisplayResolver.IsBackground(session));
     }
 
     [Fact]
@@ -2119,13 +2084,7 @@ public class OpenClawGatewayClientTests
         [
           {
             "key": "agent:main:main",
-            "presentation": {
-              "title": "Not main",
-              "titleSource": "label",
-              "family": "custom",
-              "isMain": false,
-              "isBackground": false
-            }
+            "isMain": false
           },
           { "key": "main", "isMain": false }
         ]
@@ -2141,7 +2100,7 @@ public class OpenClawGatewayClientTests
     }
 
     [Fact]
-    public void ParseSessions_SparseUpdatesPreservePresentationMetadata()
+    public void ParseSessions_SparseUpdatesPreserveFlattenedFacts()
     {
         var helper = new GatewayClientTestHelper();
         helper.ParseSessionsPayload("""
@@ -2149,14 +2108,10 @@ public class OpenClawGatewayClientTests
           {
             "key": "agent:main:subagent:child",
             "channel": "telegram",
-            "presentation": {
-              "title": "Research",
-              "titleSource": "label",
-              "family": "subagent",
-              "agentId": "main",
-              "isMain": false,
-              "isBackground": true
-            }
+            "classification": "subagent",
+            "agentId": "main",
+            "isMain": false,
+            "isBackground": true
           }
         ]
         """);
@@ -2166,8 +2121,9 @@ public class OpenClawGatewayClientTests
 
         var session = Assert.Single(helper.GetSessionList());
         Assert.Equal("telegram", session.Channel);
-        Assert.Equal("Research", session.Presentation?.Title);
-        Assert.True(session.Presentation?.IsBackground == true);
+        Assert.Equal("subagent", session.Classification);
+        Assert.Equal("main", session.AgentId);
+        Assert.True(session.IsBackground == true);
     }
 
     [Fact]

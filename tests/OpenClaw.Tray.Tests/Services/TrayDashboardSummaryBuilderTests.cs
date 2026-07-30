@@ -716,12 +716,8 @@ public sealed class TrayDashboardSummaryBuilderTests
         {
             Key = "agent:main:tui-id:heartbeat",
             Status = "active",
-            Presentation = new SessionPresentationInfo
-            {
-                Title = "Heartbeat",
-                Family = "heartbeat",
-                IsBackground = true,
-            },
+            Classification = "heartbeat",
+            IsBackground = true,
         };
         var main = new SessionInfo { Key = "agent:main:main", IsMain = true, Status = "idle" };
 

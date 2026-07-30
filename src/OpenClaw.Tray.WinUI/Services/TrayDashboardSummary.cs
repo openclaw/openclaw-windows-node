@@ -209,7 +209,7 @@ internal sealed class TrayDashboardSummaryBuilder
             return null;
 
         var foregroundSessions = sessions
-            .Where(session => !SessionPresentationResolver.IsBackground(session))
+            .Where(session => !SessionDisplayResolver.IsBackground(session))
             .ToArray();
         if (foregroundSessions.Length == 0)
             return null;

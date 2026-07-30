@@ -6165,7 +6165,7 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
         var composeKey = _bridge.MainSessionKey;
         var composeAgentId = _sessions
             .FirstOrDefault(session => string.Equals(session.Key, composeKey, StringComparison.Ordinal)) is { } mainSession
-                ? SessionPresentationResolver.Resolve(mainSession).AgentId ?? "main"
+                ? SessionDisplayResolver.Resolve(mainSession).AgentId ?? "main"
                 : "main";
         var composeReady = _bridge.HasHandshakeSnapshot
             && !string.IsNullOrWhiteSpace(composeKey)
@@ -6319,13 +6319,13 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
 
     private static ChatThread ToThread(SessionInfo s, string title)
     {
-        var presentation = SessionPresentationResolver.Resolve(s);
+        var display = SessionDisplayResolver.Resolve(s);
         return new ChatThread
         {
             Id = s.Key ?? string.Empty,
             Title = title,
-            AgentId = presentation.AgentId,
-            IsBackground = presentation.IsBackground,
+            AgentId = display.AgentId,
+            IsBackground = display.IsBackground,
             Status = SessionVisibilityFilter.ToChatThreadStatus(s),
             Activity = string.IsNullOrEmpty(s.CurrentActivity) ? ChatActivity.Idle : ChatActivity.Working,
             Workspace = s.Channel,

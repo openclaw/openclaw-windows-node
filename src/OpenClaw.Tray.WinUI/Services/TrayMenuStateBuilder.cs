@@ -288,7 +288,7 @@ internal sealed class TrayMenuStateBuilder
 
         // ── Sessions (now below Devices) ──
         var foregroundSessions = _snapshot.Sessions
-            .Where(session => !SessionPresentationResolver.IsBackground(session))
+            .Where(session => !SessionDisplayResolver.IsBackground(session))
             .ToArray();
         if (foregroundSessions.Length > 0)
         {

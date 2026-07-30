@@ -137,7 +137,7 @@ public sealed partial class SessionsPage : Page
 
     private IEnumerable<SessionInfo> SessionsForCurrentBackgroundScope() =>
         (_allSessions ?? Array.Empty<SessionInfo>())
-        .Where(session => SessionPresentationResolver.IsVisible(session, _showBackgroundSessions));
+        .Where(session => SessionDisplayResolver.IsVisible(session, _showBackgroundSessions));
 
     private void RebuildChannelTabs()
     {
