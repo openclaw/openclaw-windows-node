@@ -5,9 +5,9 @@ internal static class CommandCenterBrowserProxyAuthWarningPolicy
     internal static bool ShouldShow(
         bool nodeBrowserProxyEnabled,
         bool activeGatewayHasSharedToken,
-        bool hasGatewayClient)
+        bool nodeSessionLive)
         => BrowserProxyActivation.ShouldShowMissingSharedTokenWarning(
             nodeBrowserProxyEnabled,
             activeGatewayHasSharedToken,
-            hasGatewayClient);
+            nodeSessionLive);
 }

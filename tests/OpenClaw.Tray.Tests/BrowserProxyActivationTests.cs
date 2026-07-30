@@ -1,3 +1,4 @@
+using OpenClaw.Connection;
 using OpenClawTray.Services;
 
 namespace OpenClaw.Tray.Tests;
@@ -42,28 +43,29 @@ public sealed class BrowserProxyActivationTests
     }
 
     [Fact]
-    public void MissingSharedTokenWarning_RequiresAttachedClient()
+    public void MissingSharedTokenWarning_RequiresLiveNodeSession()
     {
         Assert.True(BrowserProxyActivation.ShouldShowMissingSharedTokenWarning(
             nodeBrowserProxyEnabled: true,
             activeGatewayHasSharedToken: false,
-            hasGatewayClient: true));
+            nodeSessionLive: true));
         Assert.False(BrowserProxyActivation.ShouldShowMissingSharedTokenWarning(
             nodeBrowserProxyEnabled: true,
             activeGatewayHasSharedToken: false,
-            hasGatewayClient: false));
+            nodeSessionLive: false));
+        // Token present must not ask for a token paste even when the session is live.
         Assert.False(BrowserProxyActivation.ShouldShowMissingSharedTokenWarning(
             nodeBrowserProxyEnabled: true,
             activeGatewayHasSharedToken: true,
-            hasGatewayClient: true));
+            nodeSessionLive: true));
         Assert.False(BrowserProxyActivation.ShouldShowMissingSharedTokenWarning(
             nodeBrowserProxyEnabled: false,
             activeGatewayHasSharedToken: false,
-            hasGatewayClient: true));
+            nodeSessionLive: true));
     }
 
     [Fact]
-    public void CapabilityPill_UsesNeedsSharedTokenOnlyWhenClientAttached()
+    public void CapabilityPill_UsesNeedsSharedTokenOnlyWhenNodeSessionLive()
     {
         Assert.Equal(
             BrowserProxyActivation.CapabilityPillKind.NeedsSharedToken,
@@ -72,7 +74,7 @@ public sealed class BrowserProxyActivationTests
                 effective: false,
                 pendingDeclared: false,
                 hasSharedGatewayToken: false,
-                hasGatewayClient: true));
+                nodeSessionLive: true));
         Assert.Equal(
             BrowserProxyActivation.CapabilityPillKind.PendingApproval,
             BrowserProxyActivation.ResolveCapabilityPillKind(
@@ -80,7 +82,8 @@ public sealed class BrowserProxyActivationTests
                 effective: false,
                 pendingDeclared: false,
                 hasSharedGatewayToken: false,
-                hasGatewayClient: false));
+                nodeSessionLive: false));
+        // Attached-but-disconnected must not claim NeedsSharedToken.
         Assert.Equal(
             BrowserProxyActivation.CapabilityPillKind.PendingApproval,
             BrowserProxyActivation.ResolveCapabilityPillKind(
@@ -88,7 +91,7 @@ public sealed class BrowserProxyActivationTests
                 effective: false,
                 pendingDeclared: true,
                 hasSharedGatewayToken: true,
-                hasGatewayClient: true));
+                nodeSessionLive: true));
         Assert.Equal(
             BrowserProxyActivation.CapabilityPillKind.Active,
             BrowserProxyActivation.ResolveCapabilityPillKind(
@@ -96,7 +99,7 @@ public sealed class BrowserProxyActivationTests
                 effective: true,
                 pendingDeclared: false,
                 hasSharedGatewayToken: false,
-                hasGatewayClient: false));
+                nodeSessionLive: false));
         Assert.Equal(
             BrowserProxyActivation.CapabilityPillKind.Off,
             BrowserProxyActivation.ResolveCapabilityPillKind(
@@ -104,6 +107,118 @@ public sealed class BrowserProxyActivationTests
                 effective: false,
                 pendingDeclared: false,
                 hasSharedGatewayToken: false,
-                hasGatewayClient: false));
+                nodeSessionLive: false));
+    }
+
+    [Fact]
+    public void RemoteEndpointRequirement_IgnoresLocalAndConfiguredRemotes()
+    {
+        Assert.False(BrowserProxyActivation.RequiresRemoteBrowserEndpoint(
+            isLocalGateway: true,
+            gatewayUrl: "wss://remote.example",
+            browserControlPort: null,
+            hasSshTunnelConfigured: false,
+            sshBrowserProxyForwardEnabled: false));
+        Assert.False(BrowserProxyActivation.RequiresRemoteBrowserEndpoint(
+            isLocalGateway: false,
+            gatewayUrl: "ws://127.0.0.1:18789",
+            browserControlPort: null,
+            hasSshTunnelConfigured: false,
+            sshBrowserProxyForwardEnabled: false));
+        Assert.False(BrowserProxyActivation.RequiresRemoteBrowserEndpoint(
+            isLocalGateway: false,
+            gatewayUrl: "wss://remote.example",
+            browserControlPort: 18791,
+            hasSshTunnelConfigured: false,
+            sshBrowserProxyForwardEnabled: false));
+        Assert.False(BrowserProxyActivation.RequiresRemoteBrowserEndpoint(
+            isLocalGateway: false,
+            gatewayUrl: "wss://remote.example",
+            browserControlPort: null,
+            hasSshTunnelConfigured: true,
+            sshBrowserProxyForwardEnabled: true));
+        Assert.True(BrowserProxyActivation.RequiresRemoteBrowserEndpoint(
+            isLocalGateway: false,
+            gatewayUrl: "wss://remote.example",
+            browserControlPort: null,
+            hasSshTunnelConfigured: false,
+            sshBrowserProxyForwardEnabled: false));
+        // SSH local forward URL still needs remote endpoint guidance when forward is off.
+        Assert.True(BrowserProxyActivation.RequiresRemoteBrowserEndpoint(
+            isLocalGateway: false,
+            gatewayUrl: "ws://127.0.0.1:18789",
+            browserControlPort: null,
+            hasSshTunnelConfigured: true,
+            sshBrowserProxyForwardEnabled: false));
+    }
+
+    [Fact]
+    public void MissingSharedTokenGuidance_MentionsRemoteEndpointWhenNeeded()
+    {
+        var local = BrowserProxyActivation.BuildMissingSharedTokenCaveat(requiresRemoteBrowserEndpoint: false);
+        var remote = BrowserProxyActivation.BuildMissingSharedTokenCaveat(requiresRemoteBrowserEndpoint: true);
+        Assert.Contains("shared token", local, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("browser-control port", local, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("browser-control port", remote, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("SSH browser-proxy forward", remote, StringComparison.OrdinalIgnoreCase);
+
+        Assert.Contains(
+            "browser-control port",
+            BrowserProxyActivation.BuildMissingSharedTokenWarningDetail(true),
+            StringComparison.OrdinalIgnoreCase);
+        Assert.Contains(
+            "SSH browser-proxy forward",
+            BrowserProxyActivation.BuildMissingSharedTokenCopyText(true),
+            StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void CapabilityPillTooltip_UsesSharedRemediationDetailForRemoteTopologies()
+    {
+        const string shortLabel = "Needs gateway shared token";
+        var localTooltip = BrowserProxyActivation.ResolveCapabilityPillTooltip(
+            BrowserProxyActivation.CapabilityPillKind.NeedsSharedToken,
+            shortLabel,
+            requiresRemoteBrowserEndpoint: false);
+        var remoteTooltip = BrowserProxyActivation.ResolveCapabilityPillTooltip(
+            BrowserProxyActivation.CapabilityPillKind.NeedsSharedToken,
+            shortLabel,
+            requiresRemoteBrowserEndpoint: true);
+
+        Assert.Equal(
+            BrowserProxyActivation.BuildMissingSharedTokenWarningDetail(false),
+            localTooltip);
+        Assert.Equal(
+            BrowserProxyActivation.BuildMissingSharedTokenWarningDetail(true),
+            remoteTooltip);
+        Assert.Contains("browser-control port", remoteTooltip, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("browser-control port", localTooltip, StringComparison.OrdinalIgnoreCase);
+
+        Assert.Equal(
+            shortLabel,
+            BrowserProxyActivation.ResolveCapabilityPillTooltip(
+                BrowserProxyActivation.CapabilityPillKind.PendingApproval,
+                shortLabel,
+                requiresRemoteBrowserEndpoint: true));
+
+        Assert.True(BrowserProxyActivation.RequiresRemoteBrowserEndpoint(new GatewayRecord
+        {
+            Id = "gw-remote",
+            Url = "wss://gateway.example.com",
+            IsLocal = false,
+        }));
+        Assert.True(BrowserProxyActivation.RequiresRemoteBrowserEndpoint(new GatewayRecord
+        {
+            Id = "gw-ssh",
+            Url = "ws://127.0.0.1:18789",
+            IsLocal = false,
+            SshTunnel = new SshTunnelConfig("dev", "remote.example", 22, 18789, IncludeBrowserProxyForward: false),
+        }));
+        Assert.False(BrowserProxyActivation.RequiresRemoteBrowserEndpoint(new GatewayRecord
+        {
+            Id = "gw-local",
+            Url = "ws://127.0.0.1:18789",
+            IsLocal = true,
+        }));
     }
 }

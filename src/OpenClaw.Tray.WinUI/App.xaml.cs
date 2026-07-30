@@ -3845,6 +3845,8 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
             EffectiveBrowserControlPort = activeGateway?.BrowserControlPort,
             HasActiveGatewayRecord = activeGateway != null,
             ActiveGatewayHasSharedToken = !string.IsNullOrWhiteSpace(activeGateway?.SharedGatewayToken),
+            NodeConnectionState = _connectionManager?.CurrentSnapshot.NodeState
+                ?? OpenClaw.Connection.RoleConnectionState.Idle,
             ActiveGatewaySshTunnel = activeGateway?.SshTunnel
         };
     }

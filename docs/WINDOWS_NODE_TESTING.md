@@ -146,7 +146,8 @@ Local MCP clients also see MCP-only `app.*` commands such as `app.navigate`, `ap
 
 ### Browser control stays enabled but never declares `browser`
 - Setup-code / QR pairing can connect with a device token and leave `GatewayRecord.SharedGatewayToken` empty. Browser control will not declare `browser` / `browser.proxy` until a shared gateway token is saved for that gateway.
-- Expect Connection capability pills to say **Needs gateway shared token** (not "Enabled, not active yet"), Command Center to warn, and tray logs to include `browser capability not declared: active gateway has no shared gateway token`.
+- Expect Connection capability pills to say **Needs gateway shared token** (not "Enabled, not active yet") only while the node WebSocket session is live and the shared token is missing. Disconnected or attached-but-disconnected states should ask for reconnect, not a token paste. The pill keeps that short label; its tooltip matches Command Center remediation detail.
+- Command Center, Connection pill tooltips, and `app.connection.status` / `app.connection.gateways` use the same live-session rule for the shared-token caveat. For a remote (non-loopback) gateway without an explicit `BrowserControlPort` or SSH browser-proxy forward — including SSH tunnels whose effective URL is `127.0.0.1` — that caveat also mentions the endpoint/forward requirement; the shared token alone is not enough for usable remote browser.proxy.
 - Enter the gateway shared token in Settings, save, and reconnect node mode. Bootstrap tokens are not the shared gateway token.
 
 ### `browser.proxy` reports no browser-control host
