@@ -50,12 +50,15 @@ public sealed class ExecApprovalDialog : WindowEx
     private ScrollViewer? _bodyScroll;
     private bool _delayElapsed;
     private bool _commandFullySeen;
+    private readonly bool _allowAlwaysAvailable;
 
     public bool IsClosed { get; private set; }
 
     public ExecApprovalDialog(ExecApprovalPromptView view)
     {
         ArgumentNullException.ThrowIfNull(view);
+
+        _allowAlwaysAvailable = view.AllowAlwaysAvailable;
 
         var windowTitle = $"{AppIdentity.DisplayName} - {LocalizationHelper.GetString("ExecApproval_WindowTitle")}";
         Title = windowTitle;
@@ -186,6 +189,11 @@ public sealed class ExecApprovalDialog : WindowEx
         _allowAlwaysButton.Click += (_, _) => Decide(ExecApprovalPromptOutcome.AllowAlways);
         Grid.SetColumn(_allowAlwaysButton, 2);
         buttonGrid.Children.Add(_allowAlwaysButton);
+        // Allow Always is hidden when the policy would not persist a reusable rule
+        // (ask=always or a one-shot command), matching the macOS decision set. Deny and
+        // Allow Once always remain.
+        if (!_allowAlwaysAvailable)
+            _allowAlwaysButton.Visibility = Visibility.Collapsed;
 
         _allowOnceButton = new Button
         {
@@ -275,8 +283,15 @@ public sealed class ExecApprovalDialog : WindowEx
     private void UpdateCommandSeen()
     {
         if (_commandFullySeen || _bodyScroll is null) return;
-        var atEnd = _bodyScroll.ScrollableHeight <= 0.5
-            || _bodyScroll.VerticalOffset >= _bodyScroll.ScrollableHeight - 2.0;
+        // Ignore pre-layout passes: until the ScrollViewer has actually measured its content
+        // (non-zero viewport AND extent), a zero ScrollableHeight means "not laid out yet", not
+        // "everything fits". Latching on that would arm the allow buttons for a long command the
+        // user never scrolled to the end of. A later ViewChanged/SizeChanged/Loaded re-evaluates.
+        if (_bodyScroll.ViewportHeight <= 0 || _bodyScroll.ExtentHeight <= 0)
+            return;
+        var scrollable = _bodyScroll.ScrollableHeight;
+        var atEnd = scrollable <= 0.5
+            || _bodyScroll.VerticalOffset >= scrollable - 2.0;
         if (atEnd)
         {
             _commandFullySeen = true;
@@ -290,16 +305,20 @@ public sealed class ExecApprovalDialog : WindowEx
         if (_delayElapsed && _commandFullySeen)
         {
             _allowOnceButton.IsEnabled = true;
-            _allowAlwaysButton.IsEnabled = true;
             ToolTipService.SetToolTip(_allowOnceButton, null);
-            ToolTipService.SetToolTip(_allowAlwaysButton, null);
+            if (_allowAlwaysAvailable)
+            {
+                _allowAlwaysButton.IsEnabled = true;
+                ToolTipService.SetToolTip(_allowAlwaysButton, null);
+            }
             return;
         }
 
         var hintKey = _commandFullySeen ? "ExecApproval_ArmHint" : "ExecApproval_ScrollHint";
         var hint = LocalizationHelper.GetString(hintKey);
         ToolTipService.SetToolTip(_allowOnceButton, hint);
-        ToolTipService.SetToolTip(_allowAlwaysButton, hint);
+        if (_allowAlwaysAvailable)
+            ToolTipService.SetToolTip(_allowAlwaysButton, hint);
     }
 
     private static Border BuildConfusableWarning()

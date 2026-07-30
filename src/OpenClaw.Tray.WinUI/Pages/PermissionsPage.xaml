@@ -187,7 +187,7 @@
             <TextBlock x:Uid="PermissionsPage_TextBlock_14" Text="Exec policy" Style="{StaticResource BodyStrongTextBlockStyle}"
                        Margin="{StaticResource PermSectionHeaderMargin}"/>
             <TextBlock x:Uid="PermissionsPage_TextBlock_17"
-                       Text="Controls which shell commands agents can execute on this node. Rules match against the full command line."
+                       Text="Controls which executables agents can launch on this node. Allowlist entries match resolved executable paths."
                        Style="{StaticResource CaptionTextBlockStyle}"
                        Foreground="{ThemeResource TextFillColorSecondaryBrush}" TextWrapping="Wrap"
                        Margin="4,0,4,4"/>
@@ -203,7 +203,7 @@
                     </Grid.ColumnDefinitions>
                     <StackPanel Grid.Column="0" VerticalAlignment="Center" Spacing="2">
                         <TextBlock x:Uid="PermissionsPage_DefaultAction" Text="Default action" Style="{StaticResource BodyTextBlockStyle}"/>
-                        <TextBlock x:Uid="PermissionsPage_WhatHappensWhenA" Text="What happens when a command doesn't match any rule below."
+                        <TextBlock x:Uid="PermissionsPage_WhatHappensWhenA" Text="What happens when a command doesn't match the allowlist below."
                                    Style="{StaticResource CaptionTextBlockStyle}"
                                    Foreground="{ThemeResource TextFillColorSecondaryBrush}"
                                    TextWrapping="Wrap"/>
@@ -232,7 +232,7 @@
                         </Grid.ColumnDefinitions>
                         <StackPanel Grid.Column="0" Spacing="2">
                             <TextBlock x:Uid="PermissionsPage_TextBlock_28" Text="Rules" Style="{StaticResource BodyStrongTextBlockStyle}"/>
-                            <TextBlock x:Uid="PermissionsPage_PatternsAreMatchedLeft" Text="Patterns are matched left-to-right against the full command line. Use * as a wildcard. Changes save automatically."
+                            <TextBlock x:Uid="PermissionsPage_PatternsAreMatchedLeft" Text="Allowlist patterns match resolved executable paths. Use wildcards such as **/git.exe. Changes save automatically."
                                        Style="{StaticResource CaptionTextBlockStyle}"
                                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"
                                        TextWrapping="Wrap"/>
@@ -324,13 +324,11 @@
                             <ColumnDefinition Width="Auto"/>
                         </Grid.ColumnDefinitions>
                         <TextBox Grid.Column="0" x:Uid="NewRulePattern" x:Name="NewRulePattern"
-                                 PlaceholderText="Command pattern (e.g. echo *)"
+                                 PlaceholderText="Executable path pattern (e.g. **/git.exe)"
                                  FontFamily="Consolas"/>
                         <ComboBox Grid.Column="1" x:Uid="PermissionsPage_NewRuleAction" x:Name="NewRuleAction"
                                   MinWidth="100" SelectedIndex="0">
-                           <ComboBoxItem x:Uid="PermissionsPage_ComboBoxItem_54" Content="Deny" Tag="deny"/>
                            <ComboBoxItem x:Uid="PermissionsPage_ComboBoxItem_55" Content="Allow" Tag="allow"/>
-                           <ComboBoxItem x:Uid="PermissionsPage_ComboBoxItem_56" Content="Ask" Tag="prompt"/>
                         </ComboBox>
                         <Button Grid.Column="2" x:Uid="PermissionsPage_Button_57" Content="Add" Click="OnAddRule"/>
                     </Grid>

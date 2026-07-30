@@ -480,6 +480,12 @@ public class OpenClawGatewayClientTests
         public bool GetAuthFailedFlag() =>
             GetPrivateField<bool>("_authFailed");
 
+        public bool GetUseV2Signature() =>
+            GetPrivateField<bool>("_useV2Signature");
+
+        public long? GetChallengeTimestampMs() =>
+            GetPrivateField<long?>("_challengeTimestampMs");
+
         public string? GetLastSkillsStatusAgentId()
         {
             var field = typeof(OpenClawGatewayClient).GetField(
@@ -935,6 +941,45 @@ public class OpenClawGatewayClientTests
 
         Assert.Equal("operator-token", helper.GetStoredOperatorDeviceToken());
         Assert.Equal("node-token", helper.GetStoredNodeDeviceToken());
+    }
+
+    [Fact]
+    public void HelloOkWhenTokenWriteFails_CompletesHandshakeAndPublishesToken()
+    {
+        var identityPath = CreateTempIdentityPath();
+        var helper = new GatewayClientTestHelper(
+            tokenIsBootstrapToken: true,
+            identityPath: identityPath);
+        var handshakeSucceeded = false;
+        DeviceTokenReceivedEventArgs? receivedToken = null;
+        helper.Client.HandshakeSucceeded += (_, _) => handshakeSucceeded = true;
+        helper.Client.DeviceTokenReceived += (_, e) => receivedToken = e;
+
+        using (new FileStream(
+            Path.Combine(identityPath, "device-key-ed25519.json"),
+            FileMode.Open,
+            FileAccess.Read,
+            FileShare.Read))
+        {
+            helper.ProcessRawMessage("""
+            {
+              "type": "res",
+              "id": "req-hello-operator",
+              "payload": {
+                "type": "hello-ok",
+                "auth": {
+                  "deviceToken": "operator-token",
+                  "role": "operator",
+                  "scopes": ["operator.read"]
+                }
+              }
+            }
+            """);
+        }
+
+        Assert.True(handshakeSucceeded);
+        Assert.Equal("operator-token", receivedToken?.Token);
+        Assert.Equal("operator", receivedToken?.Role);
     }
 
     [Fact]
@@ -3401,6 +3446,35 @@ public class OpenClawGatewayClientTests
         Assert.Equal("abc-123", helper.GetPairingRequiredRequestId());
     }
 
+    [Fact]
+    public void HandleRequestError_PairingRequired_MergesFieldsAcrossDetailObjects()
+    {
+        var helper = new GatewayClientTestHelper();
+        helper.TrackPendingRequest("req-pairing-split", "connect");
+
+        helper.ProcessRawMessage("""
+        {
+            "type": "res",
+            "id": "req-pairing-split",
+            "ok": false,
+            "error": {
+                "message": "approval is needed for this device",
+                "details": {
+                    "code": "PAIRING_REQUIRED"
+                },
+                "data": {
+                    "details": {
+                        "requestId": "nested-123"
+                    }
+                }
+            }
+        }
+        """);
+
+        Assert.True(helper.GetPairingRequiredFlag());
+        Assert.Equal("nested-123", helper.GetPairingRequiredRequestId());
+    }
+
     [Theory]
     [InlineData("{}")]
     [InlineData("{\"code\":\"PAIRING_REQUIRED\"}")]
@@ -3450,6 +3524,33 @@ public class OpenClawGatewayClientTests
 
         Assert.False(helper.GetAuthFailedFlag());
         Assert.Empty(authEvents);
+        Assert.True(helper.GetUseV2Signature());
+    }
+
+    [Fact]
+    public void HandleRequestError_StructuredDeviceSignatureInvalid_FirstRejectionFallsBackToV2()
+    {
+        var helper = new GatewayClientTestHelper();
+        var authEvents = helper.CaptureAuthenticationFailedEvents();
+        helper.TrackPendingRequest("req-sig-structured", "connect");
+
+        helper.ProcessRawMessage("""
+        {
+            "type": "res",
+            "id": "req-sig-structured",
+            "ok": false,
+            "error": {
+                "message": "device authentication failed",
+                "details": {
+                    "code": "DEVICE_AUTH_SIGNATURE_INVALID"
+                }
+            }
+        }
+        """);
+
+        Assert.False(helper.GetAuthFailedFlag());
+        Assert.Empty(authEvents);
+        Assert.True(helper.GetUseV2Signature());
     }
 
     [Fact]
@@ -3595,6 +3696,118 @@ public class OpenClawGatewayClientTests
         """);
 
         Assert.True(helper.GetAuthFailedFlag());
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void HandleRequestError_NestedExpiredSignature_IsTerminalWithoutV2Fallback(bool nestedUnderData)
+    {
+        var helper = new GatewayClientTestHelper();
+        var authEvents = helper.CaptureAuthenticationFailedEvents();
+        helper.TrackPendingRequest("req-auth-expired", "connect");
+        var detailContainer = nestedUnderData
+            ? "\"data\":{\"details\":{\"code\":\"DEVICE_AUTH_SIGNATURE_EXPIRED\"}}"
+            : "\"details\":{\"code\":\"DEVICE_AUTH_SIGNATURE_EXPIRED\"}";
+
+        helper.ProcessRawMessage(
+            $$"""
+              {
+                "type": "res",
+                "id": "req-auth-expired",
+                "ok": false,
+                "error": {
+                  "message": "device signature expired",
+                  {{detailContainer}}
+                }
+              }
+              """);
+
+        Assert.True(helper.GetAuthFailedFlag());
+        Assert.Single(authEvents);
+        Assert.Contains("device signature expired", authEvents[0], StringComparison.OrdinalIgnoreCase);
+        Assert.False(helper.GetUseV2Signature());
+    }
+
+    [Fact]
+    public void HandleRequestError_ExpiredDetailOverridesGenericInvalidSignatureFallback()
+    {
+        var helper = new GatewayClientTestHelper();
+        var authEvents = helper.CaptureAuthenticationFailedEvents();
+        helper.TrackPendingRequest("req-auth-expired-mixed", "connect");
+
+        helper.ProcessRawMessage("""
+        {
+            "type": "res",
+            "id": "req-auth-expired-mixed",
+            "ok": false,
+            "error": {
+                "message": "device signature invalid",
+                "details": {
+                    "code": "DEVICE_AUTH_SIGNATURE_EXPIRED"
+                }
+            }
+        }
+        """);
+
+        Assert.True(helper.GetAuthFailedFlag());
+        Assert.Single(authEvents);
+        Assert.Contains("DEVICE_AUTH_SIGNATURE_EXPIRED", authEvents[0], StringComparison.Ordinal);
+        Assert.Contains("device signature invalid", authEvents[0], StringComparison.OrdinalIgnoreCase);
+        Assert.Equal(GatewayErrorKind.Auth, GatewayErrorClassifier.Classify(authEvents[0]));
+        Assert.False(helper.GetUseV2Signature());
+    }
+
+    [Fact]
+    public void HandleRequestError_IncompleteTopLevelDetails_UsesNestedExpiredCode()
+    {
+        var helper = new GatewayClientTestHelper();
+        var authEvents = helper.CaptureAuthenticationFailedEvents();
+        helper.TrackPendingRequest("req-auth-expired-nested-fallback", "connect");
+
+        helper.ProcessRawMessage("""
+        {
+            "type": "res",
+            "id": "req-auth-expired-nested-fallback",
+            "ok": false,
+            "error": {
+                "message": "device signature invalid",
+                "details": {
+                    "requestId": "abc"
+                },
+                "data": {
+                    "details": {
+                        "code": "DEVICE_AUTH_SIGNATURE_EXPIRED"
+                    }
+                }
+            }
+        }
+        """);
+
+        Assert.True(helper.GetAuthFailedFlag());
+        Assert.Single(authEvents);
+        Assert.Contains("DEVICE_AUTH_SIGNATURE_EXPIRED", authEvents[0], StringComparison.Ordinal);
+        Assert.False(helper.GetUseV2Signature());
+    }
+
+    [Fact]
+    public void HandleConnectChallenge_ValidTimestampWithoutNonce_IsRetained()
+    {
+        var helper = new GatewayClientTestHelper();
+        const long challengeTimestampMs = 1_716_480_000_000;
+
+        helper.ProcessRawMessage(
+            $$"""
+              {
+                "type": "event",
+                "event": "connect.challenge",
+                "payload": {
+                  "ts": {{challengeTimestampMs}}
+                }
+              }
+              """);
+
+        Assert.Equal(challengeTimestampMs, helper.GetChallengeTimestampMs());
     }
 
     [Fact]

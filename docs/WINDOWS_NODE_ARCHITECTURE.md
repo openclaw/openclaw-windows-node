@@ -254,8 +254,8 @@ Niche scenario. If the "server" must be Windows for some reason, this works but 
 | `camera.clip` | ✅ | ✅ | ✅ | ❌ | **✅** | MediaCapture + MediaEncoding |
 | `camera.list` | ✅ | ✅ | ✅ | ❌ | **✅** | DeviceInformation.FindAllAsync |
 | `screen.record` | ✅ CGWindowListCreateImage | ✅ ReplayKit | ✅ MediaProjection | ❌ | **✅** | Windows.Graphics.Capture |
-| `system.run` | ✅ | ❌ | ❌ | ✅ | **✅** | Process.Start (cmd/pwsh) + ExecApprovalPolicy |
-| `system.execApprovals` | ❌ | ❌ | ❌ | ❌ | **✅** | JSON policy file (exec-policy.json) |
+| `system.run` | ✅ | ❌ | ❌ | ✅ | **✅** | Process.Start + V2 exec-approval coordinator |
+| `system.execApprovals` | ❌ | ❌ | ❌ | ❌ | **✅** | V2 store (`exec-approvals.json`) with base-hash CAS |
 | `system.notify` | ✅ NSUserNotification | ✅ UNUserNotification | ✅ NotificationManager | ❌ | **✅** | ToastNotificationManager |
 | `location.get` | ✅ CLLocationManager | ✅ CLLocationManager | ✅ FusedLocation | ❌ | **✅** | Windows.Devices.Geolocation |
 | `device.info/status` | ✅ shared schema | ✅ shared schema | ✅ shared schema | ❌ | **✅** | .NET runtime, storage, network |
@@ -453,7 +453,51 @@ string stderr = await process.StandardError.ReadToEndAsync();
 await process.WaitForExitAsync();
 ```
 
-**Critical:** Exec approvals must be enforced locally, same as macOS/headless nodes. Store in `%APPDATA%\OpenClaw\exec-approvals.json`.
+**Critical:** Exec approvals must be enforced locally, same as macOS/headless nodes. The default store is `%APPDATA%\OpenClawTray\exec-approvals.json`; `OPENCLAW_STATE_DIR` overrides that location.
+
+#### Decision: retire Windows V1 exec policy without migration
+
+Windows V1 `exec-policy.json` command-text globs are not evaluated or converted after the
+V2 cutover. When no valid V2 policy exists, the node uses an empty allowlist with
+prompt-on-miss and deny fallback.
+
+**Consequences:**
+
+- Existing V1 files remain untouched during normal runtime but no longer authorize or deny execution.
+- Prior V1 allows require attended V2 reapproval; unattended calls deny.
+- Prior V1 denies are not imported and may be explicitly superseded through an attended V2 prompt.
+- Malformed or untrusted V2 state remains hard deny and is never replaced from V1 state.
+
+This compatibility break is accepted because V1 matched shell command text while V2 binds
+resolved executable identity and canonical argv. Mechanical conversion could widen a narrow
+command rule into a reusable `cmd.exe` or PowerShell grant, while retaining both evaluators
+would preserve parallel authorization paths and bypass drift.
+
+**Rejected alternatives:** V1 runtime fallback, mechanical rule conversion, and file-triggered
+migration UI. Revisit this decision only if measured support impact justifies a separate
+compatibility feature.
+
+#### Decision: version the low-level `system.run` boundary as canonical argv
+
+The V2 low-level node contract accepts `command` only as `string[]` canonical argv.
+String-form `command`, implicit `shell`, separate `args`, and non-empty custom `env`
+are intentional breaking changes. The normal gateway `exec host=node` flow already
+constructs canonical Windows argv, so this affects raw MCP, direct `node.invoke`,
+plugins, and other callers that bypass gateway exec orchestration.
+
+Migration example:
+
+```json
+// Before
+{"command":"echo hello","shell":"cmd"}
+
+// V2
+{"command":["cmd.exe","/d","/s","/c","echo hello"],"rawCommand":"echo hello"}
+```
+
+The node returns `command-array-required` for a string command and
+`custom-env-not-supported` for a non-empty environment. This explicit boundary
+keeps approval identity and process execution on one argv representation.
 
 ### Location → Windows.Devices.Geolocation
 

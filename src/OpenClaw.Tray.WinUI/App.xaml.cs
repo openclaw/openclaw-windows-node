@@ -6,6 +6,7 @@ using Microsoft.UI.Xaml.Media.Imaging;
 using Microsoft.UI.Xaml.Controls.Primitives;
 using OpenClaw.Shared;
 using OpenClaw.Shared.Capabilities;
+using OpenClaw.Shared.ExecApprovals;
 using OpenClaw.Shared.Sessions;
 using OpenClaw.Shared.Mxc;
 using OpenClaw.Shared.Telemetry;
@@ -108,6 +109,10 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
     internal string? NodeFullDeviceId => _nodeService?.FullDeviceId;
     /// <summary>Live node service instance used by settings surfaces for MCP status.</summary>
     internal NodeService? ActiveNodeService => _nodeService;
+    internal ExecApprovalsStore ExecApprovalsStore =>
+        _execApprovalsStore ??= new ExecApprovalsStore(
+            AppIdentity.ResolveRoamingDataDirectory(),
+            new AppLogger());
 
     /// <summary>
     /// Session key that the chat surface should select on its next mount.
@@ -258,6 +263,7 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
     
     // Node service (optional, enabled in settings)
     private NodeService? _nodeService;
+    private ExecApprovalsStore? _execApprovalsStore;
     // Keep-alive window to anchor WinUI runtime (prevents GC/threading issues)
     private Window? _keepAliveWindow;
     private SetupWindow? _setupWindow;
@@ -805,6 +811,11 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
                 await ShowOnboardingAsync();
                 setupShownDuringStartup = true;
             }
+        }
+        catch (DeviceIdentityLoadException ex)
+        {
+            Logger.Error($"Stored device identity load failed during launch setup detection: {ex.InnerException?.Message}");
+            ShowTransientConnectionError(ex.Message);
         }
         catch (Exception ex)
         {
@@ -1529,8 +1540,24 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
     private TrayMenuSnapshot CaptureTrayMenuSnapshot()
     {
         // Show "Reconfigure" if there's an existing setup, "Setup Guide" if fresh
-        var hasExistingConfig = _settings != null
-            && !StartupSetupState.RequiresSetup(_settings, IdentityDataPath, _gatewayRegistry);
+        var hasExistingConfig = false;
+        if (_settings != null)
+        {
+            try
+            {
+                hasExistingConfig = !StartupSetupState.RequiresSetup(
+                    _settings,
+                    IdentityDataPath,
+                    _gatewayRegistry);
+            }
+            catch (DeviceIdentityLoadException ex)
+            {
+                Logger.Error($"Stored device identity load failed while opening the tray menu: {ex.InnerException?.Message}");
+                ShowTransientConnectionError(ex.Message);
+                hasExistingConfig = true;
+            }
+        }
+
         var hasSetupManagedLocalWslGateway = WslKeepAlivePolicy.HasSetupManagedLocalGateway(_gatewayRegistry?.GetAll());
         var setupMenuLabel = hasExistingConfig
             ? LocalizationHelper.GetString("Menu_Reconfigure")
@@ -1708,8 +1735,20 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
         else
         {
             // No record yet — create one from settings URL if we have a stored device token.
-            var hasStoredDeviceToken = DeviceIdentity.HasStoredDeviceToken(
-                Path.Combine(SettingsManager.SettingsDirectoryPath));
+            bool hasStoredDeviceToken;
+            try
+            {
+                hasStoredDeviceToken = DeviceIdentity.HasStoredDeviceToken(
+                    Path.Combine(SettingsManager.SettingsDirectoryPath));
+            }
+            catch (DeviceIdentityLoadException ex)
+            {
+                Logger.Error($"Stored device identity load failed during startup: {ex.InnerException?.Message}");
+                ShowTransientConnectionError(ex.Message);
+                TryStartLocalMcpOnlyNode();
+                return;
+            }
+
             if (!hasStoredDeviceToken)
             {
                 if (TryStartLocalMcpOnlyNode())
@@ -1781,10 +1820,32 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
         record = SyncGatewayBrowserProxyForward(record);
         var resolver = new CredentialResolver(DeviceIdentityFileReader.Instance);
         var identityDir = _gatewayRegistry.GetIdentityDirectory(record.Id);
-        var credential = ResolveStartupOperatorCredential(record, resolver, identityDir);
+        OpenClaw.Connection.GatewayCredential? credential;
+        try
+        {
+            credential = ResolveStartupOperatorCredential(record, resolver, identityDir);
+        }
+        catch (DeviceIdentityLoadException ex)
+        {
+            Logger.Error($"Stored device identity load failed during {context}: {ex.InnerException?.Message}");
+            ShowTransientConnectionError(ex.Message);
+            return false;
+        }
+
         if (credential == null)
         {
-            var nodeCredential = ResolveStartupNodeCredential(record, resolver, identityDir);
+            OpenClaw.Connection.GatewayCredential? nodeCredential;
+            try
+            {
+                nodeCredential = ResolveStartupNodeCredential(record, resolver, identityDir);
+            }
+            catch (DeviceIdentityLoadException ex)
+            {
+                Logger.Error($"Stored node identity load failed during {context}: {ex.InnerException?.Message}");
+                ShowTransientConnectionError(ex.Message);
+                return false;
+            }
+
             if (nodeCredential != null && IsGatewayNodeEnabled())
             {
                 Logger.Info(
@@ -1897,7 +1958,8 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
         if (_gatewayRegistry == null)
             return null;
 
-        var credential = resolver.ResolveOperator(record, identityDir);
+        var resolution = resolver.ResolveOperatorDetailed(record, identityDir);
+        var credential = ResolveStartupCredentialOrThrow(resolution, identityDir);
         if (credential != null)
             return credential;
 
@@ -1907,7 +1969,8 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
         if (!string.IsNullOrWhiteSpace(effectiveUrl) &&
             string.Equals(record.Url, effectiveUrl, StringComparison.OrdinalIgnoreCase))
         {
-            return resolver.ResolveOperator(record, SettingsManager.SettingsDirectoryPath);
+            resolution = resolver.ResolveOperatorDetailed(record, SettingsManager.SettingsDirectoryPath);
+            return ResolveStartupCredentialOrThrow(resolution, SettingsManager.SettingsDirectoryPath);
         }
 
         return null;
@@ -1918,7 +1981,8 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
         CredentialResolver resolver,
         string identityDir)
     {
-        var credential = resolver.ResolveNode(record, identityDir);
+        var resolution = resolver.ResolveNodeDetailed(record, identityDir);
+        var credential = ResolveStartupCredentialOrThrow(resolution, identityDir);
         if (credential != null)
             return credential;
 
@@ -1929,12 +1993,33 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
             return null;
         }
 
-        credential = resolver.ResolveNode(record, SettingsManager.SettingsDirectoryPath);
+        resolution = resolver.ResolveNodeDetailed(record, SettingsManager.SettingsDirectoryPath);
+        credential = ResolveStartupCredentialOrThrow(resolution, SettingsManager.SettingsDirectoryPath);
         if (credential == null)
             return null;
 
         TryCopyLegacyIdentityToGateway(record.Id, identityDir);
         return credential;
+    }
+
+    private static OpenClaw.Connection.GatewayCredential? ResolveStartupCredentialOrThrow(
+        GatewayCredentialResolution resolution,
+        string identityDir)
+    {
+        var failureStatus = resolution.PrimaryStatus ?? resolution.Status;
+        if (failureStatus is not (
+            GatewayCredentialResolutionStatus.Unreadable
+            or GatewayCredentialResolutionStatus.Corrupt))
+        {
+            return resolution.Credential;
+        }
+
+        Exception cause = failureStatus == GatewayCredentialResolutionStatus.Unreadable
+            ? new IOException(resolution.Detail ?? "Identity file could not be read.")
+            : new InvalidDataException(resolution.Detail ?? "Identity file is invalid.");
+        throw new DeviceIdentityLoadException(
+            Path.Combine(identityDir, "device-key-ed25519.json"),
+            cause);
     }
 
     private static void TryCopyLegacyIdentityToGateway(string gatewayId, string identityDir)
@@ -2147,9 +2232,6 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
                 new AppLogger(),
                 _dispatcherQueue,
                 DataPath,
-                rootProvider: () => _keepAliveWindow?.Content as FrameworkElement,
-                chatProviderProvider: () => _chatCoordinator?.Provider,
-                inlineApprovalAvailable: _ => IsNativeChatSurfaceActive,
                 settings: settings,
                 enableMcpServer: settings.EnableMcpServer,
                 identityDataPath: IdentityDataPath,
@@ -2178,7 +2260,8 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
                     return (await _managedLocalPortProvenance.InspectAsync(
                         controlRecord,
                         cancellationToken)).Kind == GatewayEndpointProvenanceKind.ExpectedManagedGateway;
-                });
+                },
+                execApprovalsStore: ExecApprovalsStore);
             _nodeService.StatusChanged += OnNodeStatusChanged;
             _nodeService.NotificationRequested += OnNodeNotificationRequested;
             _nodeService.ToastRequested += OnNodeToastRequested;
@@ -2187,8 +2270,6 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
             _nodeService.InvokeCompleted += OnNodeInvokeCompleted;
             _nodeService.ToolTelemetryCompleted += OnNodeToolTelemetryCompleted;
             _nodeService.GatewaySelfUpdated += _gatewayService.OnGatewaySelfUpdated;
-            _nodeService.LocalExecApprovalRequested += OnLocalExecApprovalRequested;
-            _nodeService.LocalExecApprovalDecided += OnLocalExecApprovalDecided;
             return _nodeService;
         }
         catch (Exception ex)
@@ -2642,185 +2723,8 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
                         args.ToastDeviceId)),
                 msg => Logger.Warn($"Failed to show node toast: {msg}")));
 
-    private void OnLocalExecApprovalRequested(object? sender, ExecApprovalPromptRequestedEventArgs args)
-    {
-        if (string.IsNullOrWhiteSpace(args.Request.SessionKey))
-            return;
-
-        try
-        {
-            _appNotificationService?.Show(new AppNotification
-            {
-                Id = BuildLocalApprovalPendingNotificationId(args.Request),
-                Title = LocalizationHelper.GetString("AppNotification_ExecApprovalPending_Title"),
-                Message = BuildLocalApprovalPendingNotificationMessage(args.Request),
-                Source = "exec-approval",
-                Category = "node.invoke",
-                Severity = AppNotificationSeverity.Warning,
-                DedupeKey = BuildLocalApprovalPendingDedupeKey(args.Request),
-                ActionLabel = LocalizationHelper.GetString("AppNotification_ExecApprovalPending_OpenChatAction"),
-                ActionRoute = AppNotificationActionRoutes.Chat(args.Request.SessionKey!)
-            });
-        }
-        catch (Exception ex)
-        {
-            Logger.Warn($"Failed to post pending exec-approval app notification: {ex.Message}");
-        }
-    }
-
-    private void OnLocalExecApprovalDecided(object? sender, ExecApprovalPromptDecidedEventArgs args)
-    {
-        try { _appNotificationService?.Dismiss(BuildLocalApprovalPendingNotificationId(args.Request)); }
-        catch (Exception ex) { Logger.Debug($"Failed to dismiss pending exec-approval notification: {ex.Message}"); }
-
-        if (args.Source is ExecApprovalPromptDecisionSource.UserAllowOnce
-            or ExecApprovalPromptDecisionSource.UserAlwaysAllow)
-        {
-            try { _appNotificationService?.DismissByDedupeKey(BuildLocalDenyDedupeKey(args.Request)); }
-            catch (Exception ex) { Logger.Debug($"Failed to dismiss stale denied exec-approval notification: {ex.Message}"); }
-            return;
-        }
-
-        if (args.Source is not (ExecApprovalPromptDecisionSource.UserDeny
-            or ExecApprovalPromptDecisionSource.PolicyAutoDeny))
-            return;
-        try
-        {
-            _appNotificationService?.Show(new AppNotification
-            {
-                Title = LocalizationHelper.GetString("AppNotification_LocalCommandDenied_Title"),
-                Message = BuildLocalDenyNotificationMessage(args.Request),
-                Source = "exec-approval",
-                Category = "node.invoke",
-                Severity = AppNotificationSeverity.Warning,
-                DedupeKey = BuildLocalDenyDedupeKey(args.Request)
-            });
-        }
-        catch (Exception ex)
-        {
-            Logger.Warn($"Failed to post local-deny app notification: {ex.Message}");
-        }
-    }
-
-    private static string BuildLocalApprovalPendingNotificationMessage(ExecApprovalPromptRequest request)
-    {
-        var session = FormatSessionKeyForNotification(request.SessionKey);
-        var command = string.IsNullOrWhiteSpace(request.Command)
-            ? LocalizationHelper.GetString("AppNotification_LocalCommandDenied_UnknownCommandSubject")
-            : CompactNotificationText(request.Command.Trim());
-        return LocalizationHelper.Format(
-            "AppNotification_ExecApprovalPending_MessageFormat",
-            session,
-            command);
-    }
-
-    private static string FormatSessionKeyForNotification(string? sessionKey)
-    {
-        if (string.IsNullOrWhiteSpace(sessionKey))
-            return LocalizationHelper.GetString("AppNotification_ExecApprovalPending_UnknownChatLabel");
-
-        var parts = sessionKey.Split(':', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
-        if (parts.Length >= 3 && string.Equals(parts[0], "agent", StringComparison.OrdinalIgnoreCase))
-        {
-            var agent = FormatSessionSegment(parts[1]);
-            var slot = FormatSessionSegment(parts[2]);
-            var main = LocalizationHelper.GetString("AppNotification_ExecApprovalPending_MainSessionLabel");
-            var isMainAgent = string.Equals(parts[1], "main", StringComparison.OrdinalIgnoreCase);
-            var isMainSlot = string.Equals(parts[2], "main", StringComparison.OrdinalIgnoreCase);
-            var isDefaultSlot = string.Equals(parts[2], "default", StringComparison.OrdinalIgnoreCase);
-
-            if (isMainAgent && isMainSlot)
-                return LocalizationHelper.GetString("AppNotification_ExecApprovalPending_MainChatLabel");
-
-            if (isMainSlot || isDefaultSlot)
-            {
-                return LocalizationHelper.Format(
-                    "AppNotification_ExecApprovalPending_AgentChatLabelFormat",
-                    isMainAgent ? main : agent);
-            }
-
-            return LocalizationHelper.Format(
-                "AppNotification_ExecApprovalPending_AgentSlotLabelFormat",
-                isMainAgent ? main : agent,
-                slot);
-        }
-
-        return CompactNotificationText(sessionKey);
-    }
-
-    private static string FormatSessionSegment(string value)
-    {
-        if (string.IsNullOrWhiteSpace(value))
-            return LocalizationHelper.GetString("AppNotification_ExecApprovalPending_UnknownChatLabel");
-
-        var words = value.Replace('-', ' ').Replace('_', ' ');
-        return CultureInfo.CurrentCulture.TextInfo.ToTitleCase(words.ToLower(CultureInfo.CurrentCulture));
-    }
-
-    private static string BuildLocalApprovalPendingNotificationId(ExecApprovalPromptRequest request) =>
-        "exec-approval-pending-" + HashNotificationKey(BuildLocalApprovalPendingDedupeKey(request));
-
-    private static string BuildLocalApprovalPendingDedupeKey(ExecApprovalPromptRequest request)
-    {
-        return string.Join("|",
-            "exec-approval-pending",
-            request.SessionKey ?? "",
-            request.CorrelationId ?? "",
-            request.Command ?? "",
-            request.Shell ?? "");
-    }
-
     private static string HashNotificationKey(string value) =>
         Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(value))).ToLowerInvariant();
-
-    private static string BuildLocalDenyNotificationMessage(ExecApprovalPromptRequest request)
-    {
-        var subject = string.IsNullOrWhiteSpace(request.Command)
-            ? LocalizationHelper.GetString("AppNotification_LocalCommandDenied_UnknownCommandSubject")
-            : LocalizationHelper.Format(
-                "AppNotification_LocalCommandDenied_CommandSubjectFormat",
-                CompactNotificationText(request.Command.Trim()));
-
-        string message;
-        if (!string.IsNullOrWhiteSpace(request.Reason))
-        {
-            message = LocalizationHelper.Format(
-                "AppNotification_LocalCommandDenied_MessageFormat",
-                subject,
-                CompactNotificationText(request.Reason.Trim()));
-        }
-        else
-        {
-            message = LocalizationHelper.Format(
-                "AppNotification_LocalCommandDenied_MessageNoReasonFormat",
-                subject);
-        }
-
-        if (!string.IsNullOrWhiteSpace(request.MatchedPattern))
-        {
-            message += " " + LocalizationHelper.Format(
-                "AppNotification_LocalCommandDenied_PatternSuffixFormat",
-                CompactNotificationText(request.MatchedPattern.Trim()));
-        }
-
-        return message;
-    }
-
-    private static string CompactNotificationText(string text)
-    {
-        const int maxLength = 240;
-        if (text.Length <= maxLength)
-            return text;
-        return text[..(maxLength - 1)] + "…";
-    }
-
-    private static string BuildLocalDenyDedupeKey(ExecApprovalPromptRequest request)
-    {
-        var command = request.Command?.Trim() ?? string.Empty;
-        var reason = request.Reason?.Trim() ?? string.Empty;
-        var pattern = request.MatchedPattern?.Trim() ?? string.Empty;
-        return $"exec-denied:{command}:{reason}:{pattern}";
-    }
 
     private void OnNodeInvokeCompleted(object? sender, NodeInvokeCompletedEventArgs args)
     {

@@ -60,15 +60,19 @@ public sealed class GatewayConnectionManagerConnectTests : IDisposable
 
         public IGatewayClientLifecycle Create(string gatewayUrl, GatewayCredential credential, string identityPath, IOpenClawLogger logger)
         {
-            var lifecycle = new FakeLifecycle(gatewayUrl);
+            var lifecycle = new FakeLifecycle(gatewayUrl, identityPath);
             CreatedClients.Add(lifecycle);
             return lifecycle;
         }
     }
 
-    private sealed class FakeLifecycle(string gatewayUrl) : IGatewayClientLifecycle
+    private sealed class FakeLifecycle(string gatewayUrl, string identityPath) : IGatewayClientLifecycle
     {
-        public OpenClawGatewayClient DataClient { get; } = new(gatewayUrl, "mock-token", NullLogger.Instance);
+        public OpenClawGatewayClient DataClient { get; } = new(
+            gatewayUrl,
+            "mock-token",
+            NullLogger.Instance,
+            identityPath: identityPath);
         public bool IsDisposed { get; private set; }
 
 #pragma warning disable CS0067 // Events required by interface but not fired in this regression test.

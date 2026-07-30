@@ -357,9 +357,6 @@ public class LocalizationValidationTests
         "SandboxPage_DownloadsAccessCombo.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name",
         "SandboxPage_DesktopAccessCombo.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name",
         "SettingsPage_NotificationSoundComboBox.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name",
-        "VoiceSettingsPage_AssistantRefreshButton.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name",
-        "VoiceSettingsPage_AssistantStartButton.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name",
-        "VoiceSettingsPage_AssistantStopButton.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name",
         "VoiceSettingsPage_LanguageCombo.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name",
         "HubWindow_MainNavigation.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name",
     ];

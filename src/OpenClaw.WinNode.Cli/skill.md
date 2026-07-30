@@ -88,18 +88,40 @@ Show a Windows toast notification.
 Returns `{ "sent": true }`. All fields optional except `body` in practice.
 
 ### system.run
-Execute a shell command. Subject to the local exec approval policy at
-`%LOCALAPPDATA%\OpenClawTray\exec-policy.json`.
+Execute canonical argv. Subject to the local exec approval policy at
+`%APPDATA%\OpenClawTray\exec-approvals.json`.
 ```
 {
-  "command": "string OR string[]",   // required
-  "args":    ["string", ...],         // optional, appended to command
-  "shell":   "powershell|pwsh|cmd|bash",
+  "command": ["executable", "arg", ...], // required
+  "rawCommand": "string",                // optional display metadata
   "cwd":     "string",
-  "timeoutMs": 30000,
-  "env":     { "KEY": "VALUE" }
+  "timeoutMs": 30000
 }
 ```
+Shell behavior must be explicit in the argv, for example
+`{"command":["cmd.exe","/d","/s","/c","echo hello"],"rawCommand":"echo hello"}`.
+The gateway's `exec host=node` path performs this wrapping automatically.
+Non-empty custom `env` is rejected until environment values can be identity-bound
+and shown safely during approval.
+
+#### Migration from the pre-V2 low-level contract
+
+The V2 node boundary intentionally rejects string-form `command` with
+`command-array-required`. Update raw MCP, `node.invoke`, plugin, and direct
+`winnode` callers to send the shell transport explicitly:
+
+```json
+// Before
+{"command":"echo hello","shell":"cmd"}
+
+// V2
+{"command":["cmd.exe","/d","/s","/c","echo hello"],"rawCommand":"echo hello"}
+```
+
+PowerShell callers must likewise name `powershell.exe` or `pwsh.exe` and its
+`-Command` arguments explicitly. Remove custom `env` from the request; V2 rejects
+non-empty environments rather than approving an executable under hidden process
+configuration.
 Returns `{ stdout, stderr, exitCode, timedOut, durationMs }`.
 
 ### system.run.prepare
@@ -115,17 +137,41 @@ Resolve binary names to absolute paths.
 Returns `{ "bins": { "git": "C:\\...", ... } }`. Names not found are omitted.
 
 ### system.execApprovals.get
-No params. Returns the active exec policy:
-`{ enabled, defaultAction, rules: [{pattern, action, shells?, description?, enabled}] }`.
+No params. Returns the active V2 snapshot:
+`{ path, exists, hash, baseHash, file: { version, defaults: { security, ask, askFallback, autoAllowSkills }, agents: { "<agentId>": { security, ask, askFallback, autoAllowSkills, allowlist: [{ id, pattern, lastUsedAt?, lastResolvedPath? }] } } } }`.
+`security` is `deny|allowlist|full`; `ask` is `off|on-miss|always|deny`;
+`askFallback` is `deny|allowlist|full`. Socket credentials are never returned.
 
 ### system.execApprovals.set
-Replace the exec policy.
+Replace the full V2 file using compare-and-swap. `baseHash` is required and must
+equal the latest hash returned by `system.execApprovals.get`.
 ```
 {
-  "rules": [{"pattern": "echo *", "action": "allow"}, ...],
-  "defaultAction": "allow|deny|prompt"
+  "baseHash": "<hash-from-get>",
+  "file": {
+    "version": 1,
+    "defaults": {
+      "security": "allowlist",
+      "ask": "on-miss",
+      "askFallback": "deny",
+      "autoAllowSkills": false
+    },
+    "agents": {
+      "main": {
+        "security": "allowlist",
+        "ask": "on-miss",
+        "askFallback": "deny",
+        "autoAllowSkills": false,
+        "allowlist": []
+      }
+    }
+  }
 }
 ```
+Returns the updated snapshot. A remote update may preserve or remove existing
+allowlist grants, but it cannot add or change grants or set full access. Missing or
+stale hashes are rejected. This command changes future `system.run` authorization
+decisions and requires the gateway admin scope.
 
 ### canvas.present
 Open the WebView2 canvas window.

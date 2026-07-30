@@ -57,7 +57,9 @@ public sealed class E2ESetupFixture : IAsyncLifetime
     {
     }
 
-    internal E2ESetupFixture(Action<Dictionary<string, object>>? settingsPatch)
+    internal E2ESetupFixture(
+        Action<Dictionary<string, object>>? settingsPatch,
+        bool useProductionLikeDataRoot = false)
     {
         _settingsPatch = settingsPatch;
 
@@ -73,15 +75,22 @@ public sealed class E2ESetupFixture : IAsyncLifetime
 
         var runId = Guid.NewGuid().ToString("N")[..8];
         _distroName = $"OpenClawE2E-{runId}";
+        var repoRoot = FindRepoRoot();
 
-        // Data dir in temp — this is what the tray and setup engine use
-        DataDir = Path.Combine(Path.GetTempPath(), $"openclaw-e2e-{runId}");
+        // MXC containment proofs need the same default-deny boundary as the production
+        // %APPDATA%\OpenClawTray directory. %TEMP% is AppContainer-writable and cannot
+        // prove that the settings directory remains protected.
+        DataDir = useProductionLikeDataRoot
+            ? Path.Combine(
+                Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
+                "OpenClawE2E",
+                runId)
+            : Path.Combine(Path.GetTempPath(), $"openclaw-e2e-{runId}");
         LocalAppDataRoot = Path.Combine(Path.GetTempPath(), $"openclaw-e2e-localappdata-{runId}");
         Directory.CreateDirectory(DataDir);
         Directory.CreateDirectory(LocalAppDataRoot);
 
         // Artifact dir under repo TestResults — persists after cleanup for CI upload
-        var repoRoot = FindRepoRoot();
         ArtifactDir = Path.Combine(repoRoot, "TestResults", "E2E", runId);
         Directory.CreateDirectory(ArtifactDir);
 

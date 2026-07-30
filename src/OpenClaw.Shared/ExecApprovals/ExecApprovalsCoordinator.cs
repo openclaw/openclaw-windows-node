@@ -18,6 +18,13 @@ public sealed class ExecApprovalsCoordinator : IExecApprovalV2Handler
     private readonly ICanPresentEvaluator _canPresent;
     private readonly IExecApprovalV2PromptHandler _prompt;
     private readonly IOpenClawLogger _logger;
+    private readonly TimeSpan _promptTimeout;
+
+    // Bounded lifetime for an approval dialog: if the owner does not respond within this window
+    // the prompt is cancelled and resolves to Deny, so a request never hangs forever (the
+    // requester has its own independent timeout). Mirrors the spirit of the macOS approval
+    // timeout, shortened for the node's synchronous invoke path.
+    private static readonly TimeSpan DefaultPromptTimeout = TimeSpan.FromMinutes(5);
 
     // Serializes the prompt call + second-pass block.
     // Does NOT protect validate/normalize/buildContext — those are stateless.
@@ -27,12 +34,14 @@ public sealed class ExecApprovalsCoordinator : IExecApprovalV2Handler
         ExecApprovalsStore store,
         ICanPresentEvaluator canPresentEvaluator,
         IExecApprovalV2PromptHandler promptHandler,
-        IOpenClawLogger logger)
+        IOpenClawLogger logger,
+        TimeSpan? promptTimeout = null)
     {
         _store = store;
         _canPresent = canPresentEvaluator;
         _prompt = promptHandler;
         _logger = logger;
+        _promptTimeout = promptTimeout ?? DefaultPromptTimeout;
     }
 
     public async Task<ExecApprovalV2Result> HandleAsync(NodeInvokeRequest request, string correlationId)
@@ -58,23 +67,17 @@ public sealed class ExecApprovalsCoordinator : IExecApprovalV2Handler
         // Step 3: buildContext
         var resolved = _store.ResolveReadOnly(identity.AgentId);
 
-        // Env injection guard — preserves SystemCapability.HandleRunAsync:343-351 behavior.
-        // identity.Env is IReadOnlyDictionary; copy to Dictionary for Sanitize.
-        var envInput = identity.Env is null
-            ? null
-            : new Dictionary<string, string>(identity.Env, StringComparer.OrdinalIgnoreCase);
-        var envResult = ExecEnvSanitizer.Sanitize(envInput);
+        // Snapshot the authorizing policy so a human-approved command can be re-checked
+        // against the live policy before execution (mirrors macOS
+        // policy-snapshot currency guard): if the owner tightens security, raises the
+        // ask mode, or revokes a relied-on allowlist entry while the prompt is open, the
+        // stale approval fails closed.
+        var policyCurrency = ExecApprovalsCurrency.Capture(resolved);
 
-        if (envResult.Blocked.Length > 0)
-        {
-            var blockedNames = (string[])envResult.Blocked.Clone();
-            Array.Sort(blockedNames, StringComparer.OrdinalIgnoreCase);
-            _logger.Warn($"[EXEC-APPROVALS] [{correlationId}] env-blocked: [{string.Join(", ", blockedNames)}]");
-            return LogAndReturn(ExecApprovalV2Result.ValidationFailed("env-blocked"),
-                correlationId, promptAttempted: false, fallbackUsed: false);
-        }
-
-        var sanitizedEnv = envResult.Allowed as IReadOnlyDictionary<string, string>;
+        // Non-empty custom environments are rejected during structural validation.
+        // Keep the execution payload environment-free until env is identity-bound and
+        // displayed to the approving operator.
+        IReadOnlyDictionary<string, string>? sanitizedEnv = null;
         var needsAllowlistMatches = resolved.Defaults.Security == ExecSecurity.Allowlist
             || resolved.Defaults.AskFallback == ExecSecurity.Allowlist;
         IReadOnlyList<ExecAllowlistEntry> matches = needsAllowlistMatches
@@ -97,6 +100,17 @@ public sealed class ExecApprovalsCoordinator : IExecApprovalV2Handler
         if (pass1 is ExecHostPolicyDecision.DenyOutcome denyPass1)
             return LogAndReturn(denyPass1.Error, correlationId,
                 promptAttempted: false, fallbackUsed: false, canonical: context.DisplayCommand);
+
+        // Security-audit-suppression changes must never be auto-allowed (even under
+        // security=full/ask=off or a satisfied allowlist): force an explicit decision. Read-only
+        // inspections are exempt. Mirrors macOS commandRequiresSecurityAuditSuppressionApproval.
+        var auditForcedApproval =
+            ExecApprovalAuditSuppressionGate.RequiresExtraApproval(
+                identity.Command,
+                context.DisplayCommand);
+        if (auditForcedApproval && pass1 is ExecHostPolicyDecision.AllowOutcome)
+            pass1 = ExecHostPolicyDecision.RequiresPrompt;
+
         if (pass1 is ExecHostPolicyDecision.AllowOutcome)
         {
             // A stored executable-level rule must not authorize a command host whose
@@ -113,7 +127,11 @@ public sealed class ExecApprovalsCoordinator : IExecApprovalV2Handler
 
             // Pre-approved path (security=Full, ask=Off or allowlist satisfied): skip prompt.
             // Fail closed if the approved executable cannot be pinned to a resolved path.
-            var preApprovedExecution = BuildApprovedExecution(identity, sanitizedEnv);
+            var preApprovedExecution = BuildApprovedExecution(
+                identity,
+                sanitizedEnv,
+                policyCurrency,
+                resolved.AgentId);
             if (preApprovedExecution is null)
                 return LogAndReturn(ExecApprovalV2Result.InternalError("unresolved-executable-on-allow"),
                     correlationId, promptAttempted: false, fallbackUsed: false, canonical: context.DisplayCommand);
@@ -145,9 +163,13 @@ public sealed class ExecApprovalsCoordinator : IExecApprovalV2Handler
                 ExecApprovalPromptOutcome promptResult;
                 try
                 {
+                    // Bound the dialog's lifetime: on timeout the token cancels, the prompt
+                    // handler tears the window down and resolves Deny, so an unanswered prompt
+                    // never hangs the request forever.
+                    using var promptCts = new CancellationTokenSource(_promptTimeout);
                     promptResult = await _prompt.PromptAsync(
                         BuildPromptRequest(context, identity, correlationId),
-                        cancellationToken: default).ConfigureAwait(false);
+                        promptCts.Token).ConfigureAwait(false);
                 }
                 catch
                 {
@@ -182,6 +204,13 @@ public sealed class ExecApprovalsCoordinator : IExecApprovalV2Handler
             else
             {
                 fallbackUsed = true;
+                // An audit-suppression change requires explicit human approval; with no UI
+                // available, deny rather than delegate to askFallback (which may be permissive).
+                if (auditForcedApproval)
+                    return LogAndReturn(
+                        ExecApprovalV2Result.UserDenied("audit-suppression-requires-approval"),
+                        correlationId, promptAttempted, fallbackUsed: true,
+                        canonical: context.DisplayCommand);
                 followupDecision = FallbackDecision(
                     context,
                     resolved.Defaults.AskFallback,
@@ -210,9 +239,25 @@ public sealed class ExecApprovalsCoordinator : IExecApprovalV2Handler
 
         // Step 8: build payload before any store writes — a fail-closed payload result
         // must not leave persistent allowlist state behind.
-        var execution = BuildApprovedExecution(identity, sanitizedEnv);
+        var execution = BuildApprovedExecution(
+            identity,
+            sanitizedEnv,
+            policyCurrency,
+            resolved.AgentId);
         if (execution is null)
             return LogAndReturn(ExecApprovalV2Result.InternalError("unresolved-executable-on-allow"),
+                correlationId, promptAttempted, fallbackUsed, canonical: context.DisplayCommand);
+
+        // Step 8.5: policy-currency re-check. Both the prompt path (owner deciding) and the
+        // fallback path (which can queue behind another request's prompt on _promptLock) accrue
+        // a delay between the policy read and this point, so re-read and fail closed if the owner
+        // tightened the policy meanwhile. Runs before any persistence so a stale approval never
+        // writes an allowlist entry. Residual: actual process launch happens after HandleAsync
+        // returns (SystemCapability), so a change in that final window is not caught here; closing
+        // it fully requires revalidating the snapshot at the execution boundary.
+        if (!policyCurrency.IsStillCurrent(_store.ResolveReadOnly(identity.AgentId)))
+            return LogAndReturn(
+                ExecApprovalV2Result.ValidationFailed("policy-changed-before-execution"),
                 correlationId, promptAttempted, fallbackUsed, canonical: context.DisplayCommand);
 
         var durableCommandHostAuthorization =
@@ -242,6 +287,7 @@ public sealed class ExecApprovalsCoordinator : IExecApprovalV2Handler
         // Step 10: return Allow
         return ExecApprovalV2Result.Allow(execution);
         }
+
         catch (Exception ex)
         {
             // Outer safety net: any unhandled exception in buildContext, CanPresent, FallbackDecision,
@@ -255,6 +301,37 @@ public sealed class ExecApprovalsCoordinator : IExecApprovalV2Handler
         }
     }
 
+    public ValueTask<ExecApprovalRevalidationResult> RevalidateAsync(
+        ExecApprovedExecution execution,
+        string correlationId,
+        CancellationToken cancellationToken = default)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        if (execution.PolicyCurrency is null)
+        {
+            return ValueTask.FromResult(
+                ExecApprovalRevalidationResult.NotCurrent("missing-policy-currency"));
+        }
+
+        try
+        {
+            var fresh = _store.ResolveReadOnly(execution.PolicyAgentId);
+            return ValueTask.FromResult(
+                execution.PolicyCurrency.IsStillCurrent(fresh)
+                    ? ExecApprovalRevalidationResult.Current
+                    : ExecApprovalRevalidationResult.NotCurrent(
+                        "policy-changed-before-execution"));
+        }
+        catch (Exception ex)
+        {
+            _logger.Error(
+                $"[EXEC-APPROVALS] [{correlationId}] execution-boundary revalidation failed",
+                ex);
+            return ValueTask.FromResult(
+                ExecApprovalRevalidationResult.NotCurrent("policy-revalidation-failed"));
+        }
+    }
+
     // Builds the approved execution payload from the RESOLVED executable path, never
     // the raw argv[0]. The command must execute with the same canonical identity it
     // was evaluated under: a relative argv[0] in the payload would let Windows
@@ -264,7 +341,9 @@ public sealed class ExecApprovalsCoordinator : IExecApprovalV2Handler
     // rather than execute a command whose identity we cannot pin.
     internal static ExecApprovedExecution? BuildApprovedExecution(
         CanonicalCommandIdentity identity,
-        IReadOnlyDictionary<string, string>? sanitizedEnv)
+        IReadOnlyDictionary<string, string>? sanitizedEnv,
+        ExecApprovalsCurrency? policyCurrency = null,
+        string? policyAgentId = null)
     {
         var resolvedPath = identity.Resolution?.ResolvedPath;
         if (string.IsNullOrEmpty(resolvedPath))
@@ -296,7 +375,11 @@ public sealed class ExecApprovalsCoordinator : IExecApprovalV2Handler
         for (var i = 1; i < effective.Count; i++)
             argv[i] = effective[i];
 
-        return new ExecApprovedExecution(argv, identity.Cwd, identity.TimeoutMs, sanitizedEnv);
+        return new ExecApprovedExecution(argv, identity.Cwd, identity.TimeoutMs, sanitizedEnv)
+        {
+            PolicyCurrency = policyCurrency,
+            PolicyAgentId = policyAgentId,
+        };
     }
 
     private static bool IsIndirectCommandHost(CanonicalCommandIdentity identity)
@@ -372,8 +455,15 @@ public sealed class ExecApprovalsCoordinator : IExecApprovalV2Handler
             Cwd = identity.Cwd,
             Security = context.Security,
             Ask = context.Ask,
+            // Allow-always is offered only when a reusable allowlist pattern exists and the
+            // policy is not ask=always (which would re-add without a fresh decision). Mirrors
+            // macOS resolveExecApprovalAllowedDecisions; empty patterns == one-shot.
+            AllowAlwaysAvailable =
+                context.Ask != ExecAsk.Always
+                && context.AllowAlwaysPatterns.Count > 0
+                && !IsIndirectCommandHost(identity),
             AgentId = context.AgentId ?? "main",
-            ResolvedPath = context.Resolution?.ResolvedPath,
+            ResolvedPath = ExecApprovalPathDisplay.ExpandShortPath(context.Resolution?.ResolvedPath),
             SessionKey = identity.SessionKey,
             CorrelationId = correlationId,
             // Host omitted (no gateway wiring yet)

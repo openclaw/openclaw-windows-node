@@ -266,6 +266,76 @@ model/provider names, attachment metadata, filenames, tool names, token usage,
 URLs, error messages, or local chat log text. No chat log category is added to
 the OpenTelemetry log allowlist.
 
+## Local MCP server lifecycle
+
+The local MCP HTTP server exports transport lifecycle diagnostics for both
+MCP-only mode and gateway-enabled local MCP:
+
+- lifecycle traces: `openclaw.mcp.server.start` and
+  `openclaw.mcp.server.stop`
+- request trace: `openclaw.mcp.server.request`
+- lifecycle counter: `openclaw.mcp.server.lifecycle.operations`
+- request counter: `openclaw.mcp.server.requests`
+- listener-error counter: `openclaw.mcp.server.listener.errors`
+- request-duration histogram: `openclaw.mcp.server.request.duration`
+
+Lifecycle operations are emitted once per real start or stop attempt. Concurrent
+or repeated successful starts do not create duplicate operations. Repeated stop
+and disposal calls share the first stop operation. The stop span covers listener
+stop and in-flight handler drain. Listener close happens later during resource
+disposal, so a close failure increments the listener-error counter but does not
+retroactively change the completed stop result.
+
+Request duration is post-accept handling time. It starts after
+`HttpListener.GetContextAsync` returns, includes handler-limiter admission, body
+read, bridge dispatch, and response delivery, and ends at successful delivery or
+rejection. It does not include time spent in the HTTP.sys backlog before a
+context is accepted.
+
+The MCP request span is an independent transport-level root. A `tools/call`
+request also creates the existing independent `openclaw.node.tool.invoke` root,
+which measures node dispatch through response delivery. When both spans are
+sampled, the node-tool root contains an OpenTelemetry span link to the MCP
+request. The link provides structural correlation without changing either
+root's parentage or making tool sampling inherit the request's sampling decision,
+and without adding a request identifier attribute. A custom link-aware sampler
+may still consider links when making its own decision. Gateway tool invocations
+and MCP invocations whose request span was not recorded have no link. The overlap
+is intentional: the MCP request signal
+diagnoses local HTTP transport behavior, while node-tool telemetry diagnoses
+command execution. A successfully delivered JSON-RPC error envelope is a
+successful MCP transport request; response text is never parsed to classify
+telemetry.
+
+Reviewed MCP attributes are:
+
+- `openclaw.mcp.server.operation`: `start` or `stop`
+- `openclaw.mcp.server.request.kind`: `probe`, `json_rpc`, or `other`
+- `openclaw.outcome`: `success`, `failure`, or `canceled`
+- `openclaw.error.category`: `none`, `listener_start`, `listener_accept`,
+  `listener_stop`, `listener_close`, `authentication_failed`, `busy`, `timeout`,
+  `shutdown`, `drain_timeout`, `invalid_request`, `transport_failure`, or
+  `internal_failure`
+- `error.type`: exception type on spans only
+
+Metrics always include the finite error category, including `none` on success,
+and never include exception types. Authentication rejection, handler saturation,
+invalid HTTP requests, request deadlines, shutdown cancellation, response
+delivery failures, and unexpected internal failures are classified through typed
+control flow. Deadline and shutdown cancellation use first-wins attribution, so
+a later shutdown cannot turn a timeout into cancellation and a later deadline
+cannot turn shutdown into timeout. Each source records its cause before
+canceling the request token, so request handling cannot observe cancellation
+before attribution. If multiple failures occur during stop, the first failure
+owns the lifecycle result; later listener failures remain visible through the
+listener-error counter.
+
+MCP server telemetry never exports listener ports or endpoints, local or remote
+addresses, HTTP scheme or version, headers, user agents, content lengths, bearer
+tokens, request or response bodies, JSON-RPC methods or IDs, tool names, command
+arguments, or error and exception messages. Existing detailed MCP logs remain
+local. No MCP category is added to the OpenTelemetry log allowlist.
+
 ## Windows node tool calls
 
 Gateway `node.invoke` and local MCP `tools/call` share one node-side telemetry
@@ -288,14 +358,23 @@ do not depend on ambient activity flowing across those boundaries. The
 invocation tracker uses one monotonic clock for the root and duration metric and
 completes exactly once.
 
+For local MCP `tools/call`, a sampled root links to the sampled
+`openclaw.mcp.server.request` span that caused it. The link carries only the
+standard OpenTelemetry trace and span context. It does not add request IDs,
+JSON-RPC fields, tool arguments, or metric tags. The tool invocation remains a
+separate root so gateway and MCP command traces retain the same topology and
+sampling contract.
+
 Reviewed attributes are:
 
 - `openclaw.node.tool.name`: a registered command or `unknown`
 - `openclaw.node.tool.transport`: `gateway` or `mcp`
 - `openclaw.outcome`: `success`, `failure`, or `canceled`
 - `openclaw.error.category`: a finite typed category
-- `openclaw.node.tool.system_run.approval.pipeline`: `legacy` for the existing
-  approval policy or `v2` for the opt-in direct-argv approval pipeline; present
+- `openclaw.node.tool.system_run.approval.pipeline`: `v2` for the authoritative
+  canonical-argv approval pipeline; current `system.run` always emits this value.
+  `legacy` remains a finite historical value for backward-compatible telemetry
+  readers, but the runtime no longer selects the legacy approval path. Present
   only for `system.run` traces and failure/cancellation logs
 - `openclaw.node.tool.sandbox.requested`: whether sandboxing was configured
 - `openclaw.node.tool.sandbox.applied`: whether the command was known to run

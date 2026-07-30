@@ -27,8 +27,9 @@ namespace OpenClaw.Shared.Mxc;
 ///   directory, and adds an explicit request cwd as readonly when not already
 ///   covered by an allow grant. AppContainer does NOT auto-grant cwd.</item>
 /// <item>Defensive re-filter of allow lists against the deny list.</item>
-/// <item>Shell command-line construction (cmd <c>/S /C</c>, powershell
-///   <c>-EncodedCommand</c>).</item>
+/// <item>Command-line construction: direct argv uses Win32-reversible escaping;
+///   legacy commands use cmd <c>/S /C</c> or powershell
+///   <c>-EncodedCommand</c>.</item>
 /// </list>
 /// Env scrubbing happens upstream in <c>SystemCapability.HandleRunAsync</c>
 /// via <c>ExecEnvSanitizer.Sanitize</c>; this class rejects explicit env until
@@ -71,11 +72,15 @@ public static class MxcConfigBuilder
         var policy = request.Policy;
         var workingDirectory = string.IsNullOrWhiteSpace(request.Cwd) ? scratchDir : request.Cwd;
         var args = ParseSystemRunArgs(request.Args);
-        var shell = NormalizeSupportedShell(args.Shell);
-        if (IsPowerShellFamilyShell(shell) && policy?.Ui?.AllowWindows != true)
+        string? shell = null;
+        if (args.DirectArgv is null)
         {
-            throw new NotSupportedException(
-                "PowerShell-family shells require UI access with the Windows MXC 0.7 processcontainer backend.");
+            shell = NormalizeSupportedShell(args.Shell);
+            if (IsPowerShellFamilyShell(shell) && policy?.Ui?.AllowWindows != true)
+            {
+                throw new NotSupportedException(
+                    "PowerShell-family shells require UI access with the Windows MXC 0.7 processcontainer backend.");
+            }
         }
 
         if (request.Env is { Count: > 0 })
@@ -97,9 +102,14 @@ public static class MxcConfigBuilder
                 roFromPolicy.Add(dir);
         }
 
-        // commandLine — shell-quoted, with PATH/TEMP/TMP/TMPDIR bootstrapped
-        // inside the shell because MXC 0.7 rejects non-empty process.env.
-        var commandLine = ShellCommandLine.Build(shell, args.Command, args.Argv, scratchDir, pathDirs);
+        // Normal direct argv is passed straight to CreateProcessW with reversible
+        // Win32 escaping. cmd.exe /C is special: cmd parses its raw command line
+        // instead of CommandLineToArgvW, so the canonical gateway wrapper must use
+        // the cmd-aware serializer. It also carries the PATH/temp bootstrap because
+        // MXC 0.7 rejects non-empty process.env.
+        var commandLine = args.DirectArgv is not null
+            ? BuildDirectArgvCommandLine(args.DirectArgv, scratchDir, pathDirs)
+            : ShellCommandLine.Build(shell!, args.Command, args.Arguments, scratchDir, pathDirs);
         var allowWindows = policy?.Ui?.AllowWindows == true;
 
         // readwrite = UI grants + scratch dir.
@@ -455,6 +465,63 @@ public static class MxcConfigBuilder
         _ => "none",
     };
 
+    private static string BuildDirectArgvCommandLine(
+        IReadOnlyList<string> argv,
+        string scratchDir,
+        IReadOnlyList<string> pathDirs)
+    {
+        if (!IsCmdExecutable(argv.Count > 0 ? argv[0] : null))
+            return DirectArgvCommandLine.Build(argv);
+
+        if (!SelectsCmdCommandMode(argv))
+            return DirectArgvCommandLine.Build(argv);
+
+        if (argv.Count != 5
+            || !string.Equals(argv[1], "/d", StringComparison.OrdinalIgnoreCase)
+            || !string.Equals(argv[2], "/s", StringComparison.OrdinalIgnoreCase)
+            || !string.Equals(argv[3], "/c", StringComparison.OrdinalIgnoreCase))
+        {
+            throw new NotSupportedException(
+                "Direct cmd.exe command wrappers must use canonical argv: cmd.exe /d /s /c <command>.");
+        }
+
+        return ShellCommandLine.BuildCanonicalCmdWrapper(
+            argv[0],
+            argv[4],
+            scratchDir,
+            pathDirs);
+    }
+
+    private static bool SelectsCmdCommandMode(IReadOnlyList<string> argv)
+    {
+        for (var i = 1; i < argv.Count; i++)
+        {
+            var argument = argv[i].Trim();
+            if (!argument.StartsWith("/", StringComparison.Ordinal))
+                continue;
+
+            if (argument.StartsWith("/c", StringComparison.OrdinalIgnoreCase)
+                || argument.StartsWith("/k", StringComparison.OrdinalIgnoreCase)
+                || argument.Contains("/c", StringComparison.OrdinalIgnoreCase)
+                || argument.Contains("/k", StringComparison.OrdinalIgnoreCase))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private static bool IsCmdExecutable(string? executable)
+    {
+        if (string.IsNullOrWhiteSpace(executable))
+            return false;
+
+        var fileName = Path.GetFileName(executable.Trim());
+        return string.Equals(fileName, "cmd", StringComparison.OrdinalIgnoreCase)
+            || string.Equals(fileName, "cmd.exe", StringComparison.OrdinalIgnoreCase);
+    }
+
     /// <summary>
     /// Capability args envelope for system.run. Other capability shapes can add
     /// their own parser here as they're rehosted.
@@ -462,21 +529,36 @@ public static class MxcConfigBuilder
     private static SystemRunArgs ParseSystemRunArgs(System.Text.Json.JsonElement args)
     {
         if (args.ValueKind != System.Text.Json.JsonValueKind.Object)
-            return new SystemRunArgs("", DefaultShell, Array.Empty<string>());
+            return new SystemRunArgs("", DefaultShell, Array.Empty<string>(), null);
 
         string command = args.TryGetProperty("command", out var c) && c.ValueKind == System.Text.Json.JsonValueKind.String
             ? (c.GetString() ?? "") : "";
         string shell = args.TryGetProperty("shell", out var s) && s.ValueKind == System.Text.Json.JsonValueKind.String
             ? (s.GetString() ?? DefaultShell) : DefaultShell;
-        string[] argv = Array.Empty<string>();
+        string[] arguments = Array.Empty<string>();
         if (args.TryGetProperty("args", out var a) && a.ValueKind == System.Text.Json.JsonValueKind.Array)
         {
-            argv = a.EnumerateArray()
+            arguments = a.EnumerateArray()
                 .Where(e => e.ValueKind == System.Text.Json.JsonValueKind.String)
                 .Select(e => e.GetString() ?? "")
                 .ToArray();
         }
-        return new SystemRunArgs(command, shell, argv);
+
+        string[]? directArgv = null;
+        if (args.TryGetProperty("argv", out var direct)
+            && direct.ValueKind != System.Text.Json.JsonValueKind.Null)
+        {
+            if (direct.ValueKind != System.Text.Json.JsonValueKind.Array)
+                throw new NotSupportedException("Direct argv must be an array of strings.");
+
+            directArgv = direct.EnumerateArray()
+                .Select(e => e.ValueKind == System.Text.Json.JsonValueKind.String
+                    ? e.GetString()!
+                    : throw new NotSupportedException("Direct argv entries must be strings."))
+                .ToArray();
+        }
+
+        return new SystemRunArgs(command, shell, arguments, directArgv);
     }
 
     private static bool IsPowerShellFamilyShell(string shell)
@@ -498,7 +580,11 @@ public static class MxcConfigBuilder
         };
     }
 
-    private sealed record SystemRunArgs(string Command, string Shell, IReadOnlyList<string> Argv);
+    private sealed record SystemRunArgs(
+        string Command,
+        string Shell,
+        IReadOnlyList<string> Arguments,
+        IReadOnlyList<string>? DirectArgv);
 }
 
 internal sealed record MxcConfigBuildContext(
@@ -507,6 +593,72 @@ internal sealed record MxcConfigBuildContext(
     Func<string, bool>? ReadonlyGrantIsBackendSafe = null)
 {
     public static MxcConfigBuildContext Default { get; } = new();
+}
+
+/// <summary>
+/// Builds a Windows process command line whose arguments round-trip through
+/// <c>CommandLineToArgvW</c> without a shell parsing the approved argv.
+/// </summary>
+internal static class DirectArgvCommandLine
+{
+    private static readonly char[] QuoteRequiredChars = [' ', '\t', '\n', '\v', '"'];
+
+    public static string Build(IReadOnlyList<string> argv)
+    {
+        ArgumentNullException.ThrowIfNull(argv);
+        if (argv.Count == 0)
+            throw new ArgumentException("Direct argv requires an executable.", nameof(argv));
+
+        var commandLine = new StringBuilder();
+        for (var i = 0; i < argv.Count; i++)
+        {
+            var argument = argv[i]
+                ?? throw new ArgumentException("Direct argv entries cannot be null.", nameof(argv));
+            if (argument.Contains('\0'))
+                throw new ArgumentException("Direct argv entries cannot contain NUL.", nameof(argv));
+
+            if (i > 0)
+                commandLine.Append(' ');
+            AppendArgument(commandLine, argument);
+        }
+
+        return commandLine.ToString();
+    }
+
+    private static void AppendArgument(StringBuilder commandLine, string argument)
+    {
+        if (argument.Length > 0 && argument.IndexOfAny(QuoteRequiredChars) < 0)
+        {
+            commandLine.Append(argument);
+            return;
+        }
+
+        commandLine.Append('"');
+        var index = 0;
+        while (index < argument.Length)
+        {
+            var backslashStart = index;
+            while (index < argument.Length && argument[index] == '\\')
+                index++;
+
+            var backslashCount = index - backslashStart;
+            if (index == argument.Length)
+            {
+                commandLine.Append('\\', backslashCount * 2);
+                break;
+            }
+
+            if (argument[index] == '"')
+                commandLine.Append('\\', backslashCount * 2 + 1);
+            else
+                commandLine.Append('\\', backslashCount);
+
+            commandLine.Append(argument[index]);
+            index++;
+        }
+
+        commandLine.Append('"');
+    }
 }
 
 /// <summary>
@@ -543,6 +695,23 @@ internal static class ShellCommandLine
         };
     }
 
+    public static string BuildCanonicalCmdWrapper(
+        string executable,
+        string command,
+        string scratchDir,
+        IReadOnlyList<string> pathDirs)
+    {
+        if (string.IsNullOrWhiteSpace(executable))
+            throw new ArgumentException("Canonical cmd wrapper requires an executable.", nameof(executable));
+
+        return BuildCmd(
+            command,
+            Array.Empty<string>(),
+            scratchDir,
+            LimitPathDirsForCommandLine(pathDirs),
+            executable);
+    }
+
     private static IReadOnlyList<string> LimitPathDirsForCommandLine(IReadOnlyList<string> pathDirs)
     {
         if (pathDirs.Count == 0)
@@ -567,11 +736,16 @@ internal static class ShellCommandLine
         string command,
         IReadOnlyList<string> argv,
         string scratchDir,
-        IReadOnlyList<string> pathDirs)
+        IReadOnlyList<string> pathDirs,
+        string? executable = null)
     {
         ThrowIfCmdContainsLineBreak(command, nameof(command));
         foreach (var arg in argv)
             ThrowIfCmdContainsLineBreak(arg, "argv");
+        var containsDelayedExpansionSyntax =
+            command.Contains('!') || argv.Any(arg => arg.Contains('!'));
+        var bootstrapContainsDelayedExpansionSyntax =
+            scratchDir.Contains('!') || pathDirs.Any(path => path.Contains('!'));
 
         // cmd /S /C "<command> [args]" — /S strips outer quotes so cmd treats
         // everything after /C as the command line verbatim. If the payload
@@ -585,11 +759,17 @@ internal static class ShellCommandLine
             rewrittenArgv.Add(RewriteCmdBootstrapEnvRefs(arg, pathDirs, out var argNeedsDelayedExpansion));
             needsDelayedExpansion |= argNeedsDelayedExpansion;
         }
+        if (needsDelayedExpansion
+            && (containsDelayedExpansionSyntax || bootstrapContainsDelayedExpansionSyntax))
+        {
+            throw new NotSupportedException(
+                "cmd payloads cannot combine MXC bootstrap environment references with '!' delayed-expansion syntax in the payload or bootstrap paths.");
+        }
 
-        var sb = new StringBuilder(QuoteProcessPath(ResolveCmdExe()));
+        var sb = new StringBuilder(QuoteProcessPath(executable ?? ResolveCmdExe()));
         if (needsDelayedExpansion)
             sb.Append(" /V:ON");
-        sb.Append(" /S /C \"");
+        sb.Append(" /D /S /C \"");
         AppendCmdEnvironmentBootstrap(sb, scratchDir, pathDirs);
         sb.Append(rewrittenCommand);
         foreach (var a in rewrittenArgv)

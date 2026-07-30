@@ -103,7 +103,6 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
     private long _toolMetaSaveVersion;
     private bool _toolMetaCacheDirty;
     private readonly Dictionary<string, ChatTimelineState> _timelines = new();
-    private readonly Dictionary<string, LocalInlineApproval> _localInlineApprovals = new(StringComparer.Ordinal);
     private readonly Dictionary<string, string> _activeRunIds = new();   // sessionKey → runId
     private readonly Dictionary<string, long> _activeRunStartSequences = new(); // sessionKey → lifecycle.start sequence
     private readonly Dictionary<string, int> _pendingAbortCounts = new(); // threads → count of pending aborts waiting for lifecycle.start
@@ -190,12 +189,6 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
         Render,
         Drop,
     }
-    private sealed record LocalInlineApproval(
-        string ThreadId,
-        string RequestId,
-        string Detail,
-        TaskCompletionSource<ExecApprovalPromptDecision> Response);
-    private static readonly TimeSpan LocalInlineApprovalTimeout = TimeSpan.FromSeconds(30);
     // Per-thread, per-entry metadata: timestamp + model snapshot at the
     // moment the entry was created. Built up as events are applied so the
     // timeline renderer can show a "<sender> · <local time> · <model>" footer
@@ -1905,9 +1898,6 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
             return;
 
         var decision = NormalizeApprovalAction(action);
-        if (TryResolveLocalInlineApproval(threadId, requestId, decision))
-            return;
-
         // Use the operator-approvals gateway RPC (``exec.approval.resolve``)
         // rather than the ``/approve <id> <decision>`` chat slash command.
         //
@@ -1936,129 +1926,6 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
         ClearPendingPermissionAndPublish(threadId, expectedRequestId: requestId,
             decision: ChatDecisionForApprovalAction(decision));
     }
-
-    internal async Task<ExecApprovalPromptDecision?> RequestLocalExecApprovalAsync(
-        ExecApprovalPromptRequest request,
-        CancellationToken cancellationToken = default,
-        TimeSpan? approvalTimeout = null)
-    {
-        cancellationToken.ThrowIfCancellationRequested();
-        if (string.IsNullOrWhiteSpace(request.SessionKey) || _disposed)
-            return null;
-
-        var threadId = request.SessionKey!;
-        var requestId = !string.IsNullOrWhiteSpace(request.CorrelationId)
-            ? $"local-{request.CorrelationId}"
-            : $"local-{Guid.NewGuid():N}";
-        var response = new TaskCompletionSource<ExecApprovalPromptDecision>(TaskCreationOptions.RunContinuationsAsynchronously);
-        var detail = request.Command ?? string.Empty;
-        var inline = new LocalInlineApproval(threadId, requestId, detail, response);
-
-        ChatDataSnapshot snapshot;
-        lock (_gate)
-        {
-            if (_disposed)
-                return null;
-
-            _localInlineApprovals[requestId] = inline;
-            var meta = BuildLiveMetaLocked(threadId);
-            snapshot = ApplyEventLocked(
-                threadId,
-                new ChatPermissionRequestEvent(
-                    requestId,
-                    LocalizationHelper.GetString("Chat_Permission_CommandApprovalTitle"),
-                    request.Shell ?? "exec",
-                    detail,
-                    ChatPermissionActionKeys.ExecApprovalDefaults),
-                meta);
-        }
-        Publish(snapshot);
-
-        using var registration = cancellationToken.Register(() =>
-            TryResolveLocalInlineApproval(threadId, requestId, ChatPermissionActionKeys.Deny));
-
-        _ = ExpireLocalInlineApprovalAfterDelayAsync(threadId, requestId, approvalTimeout ?? LocalInlineApprovalTimeout);
-
-        return await response.Task.ConfigureAwait(false);
-    }
-
-    private async Task ExpireLocalInlineApprovalAfterDelayAsync(string threadId, string requestId, TimeSpan delay)
-    {
-        try
-        {
-            await Task.Delay(delay).ConfigureAwait(false);
-            TryExpireLocalInlineApproval(threadId, requestId);
-        }
-        catch (Exception ex)
-        {
-            Logger.Debug($"[Approval] inline approval timeout task failed: {ex.Message}");
-        }
-    }
-
-    private bool TryExpireLocalInlineApproval(string threadId, string requestId)
-    {
-        LocalInlineApproval inline;
-        ChatDataSnapshot snapshot;
-        lock (_gate)
-        {
-            if (!_localInlineApprovals.TryGetValue(requestId, out var found) ||
-                !string.Equals(found.ThreadId, threadId, StringComparison.Ordinal))
-            {
-                return false;
-            }
-
-            inline = found;
-            _localInlineApprovals.Remove(requestId);
-            var current = GetOrCreateTimelineLocked(threadId);
-            _timelines[threadId] = ChatTimelineReducer.ResolvePermission(
-                current,
-                requestId,
-                ChatPermissionDecision.Expired);
-            snapshot = BuildSnapshotLocked();
-        }
-
-        Publish(snapshot);
-        inline.Response.TrySetResult(ExecApprovalPromptDecision.TimedOut());
-        return true;
-    }
-
-    private bool TryResolveLocalInlineApproval(string threadId, string requestId, string decision)
-    {
-        LocalInlineApproval inline;
-        ChatDataSnapshot snapshot;
-        lock (_gate)
-        {
-            if (!_localInlineApprovals.TryGetValue(requestId, out var found) ||
-                !string.Equals(found.ThreadId, threadId, StringComparison.Ordinal))
-            {
-                return false;
-            }
-
-            inline = found;
-            _localInlineApprovals.Remove(requestId);
-            var current = GetOrCreateTimelineLocked(threadId);
-            _timelines[threadId] = ChatTimelineReducer.ResolvePermission(
-                current,
-                requestId,
-                ChatDecisionForApprovalAction(decision));
-            var meta = BuildLiveMetaLocked(threadId);
-            snapshot = ApplyEventLocked(
-                threadId,
-                new ChatStatusEvent(FormatApprovalResult(decision, inline.Detail, requestId), ApprovalToneForDecision(decision)),
-                meta);
-        }
-
-        Publish(snapshot);
-        inline.Response.TrySetResult(DecisionForApprovalAction(decision));
-        return true;
-    }
-
-    private static ExecApprovalPromptDecision DecisionForApprovalAction(string decision) =>
-        string.Equals(decision, ChatPermissionActionKeys.AllowAlways, StringComparison.OrdinalIgnoreCase)
-            ? ExecApprovalPromptDecision.AlwaysAllow()
-            : string.Equals(decision, ChatPermissionActionKeys.AllowOnce, StringComparison.OrdinalIgnoreCase)
-                ? ExecApprovalPromptDecision.AllowOnce()
-                : ExecApprovalPromptDecision.Deny();
 
     private static string FormatApprovalResult(string decision, string detail, string requestId)
         => string.Format(
@@ -2139,7 +2006,6 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
     {
         System.Threading.Timer? timerToDispose;
         System.Threading.Timer? chatStateTimerToDispose;
-        List<LocalInlineApproval> pendingLocalApprovals;
         CancellationTokenSource historyGenerationToCancel;
         lock (_gate)
         {
@@ -2152,8 +2018,6 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
             _toolMetaSaveVersion++;
             chatStateTimerToDispose = _lastChatStateSaveTimer;
             _lastChatStateSaveTimer = null;
-            pendingLocalApprovals = _localInlineApprovals.Values.ToList();
-            _localInlineApprovals.Clear();
             _queuedMessages.Clear();
             _queuedSendRequests.Clear();
             _queuedDrainScheduledThreads.Clear();
@@ -2164,8 +2028,6 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
             _resetSubmittedLocalEchoTexts.Clear();
         }
         CancelAndDisposeHistoryGeneration(historyGenerationToCancel);
-        foreach (var approval in pendingLocalApprovals)
-            approval.Response.TrySetResult(ExecApprovalPromptDecision.Deny());
         timerToDispose?.Dispose();
         chatStateTimerToDispose?.Dispose();
         SaveToolMetaCache();
@@ -6334,22 +6196,6 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
                 ModelProvider = _lastChatState?.ModelProvider,
                 Status = ChatThreadStatus.Running,
                 Activity = ChatActivity.Idle,
-            });
-        }
-
-        foreach (var approval in _localInlineApprovals.Values)
-        {
-            if (threadList.Any(s => string.Equals(s.Id, approval.ThreadId, StringComparison.Ordinal)))
-                continue;
-
-            threadList.Add(new ChatThread
-            {
-                Id = approval.ThreadId,
-                Title = _lastChatState?.ThreadTitle ?? "OpenClaw Windows Tray",
-                Status = ChatThreadStatus.Running,
-                Activity = ChatActivity.AwaitingPermission,
-                Model = _lastChatState?.Model,
-                ModelProvider = _lastChatState?.ModelProvider,
             });
         }
 

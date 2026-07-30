@@ -2296,6 +2296,119 @@ public class SetupStepsTests : IDisposable
     }
 
     [Fact]
+    public async Task PairOperatorStep_WhenSavedIdentityIsCorrupt_ReturnsTerminalWithoutMutation()
+    {
+        var config = new SetupConfig { GatewayPort = GetFreeTcpPort() };
+        var context = CreateContext(config);
+        context.GatewayUrl = $"ws://127.0.0.1:{config.GatewayPort}";
+        context.SharedGatewayToken = "shared-token";
+        context.DistroName = "OpenClawGateway";
+        var registry = new GatewayRegistry(_tempDir);
+        var record = registry.AddOrUpdate(new GatewayRecord
+        {
+            Id = "identity-failure",
+            Url = context.GatewayUrl,
+            SharedGatewayToken = context.SharedGatewayToken,
+            IsLocal = true,
+            SetupManagedDistroName = context.DistroName
+        });
+        registry.SetActive(record.Id);
+        registry.Save();
+        context.GatewayRecordId = record.Id;
+        var identityDirectory = registry.GetIdentityDirectory(record.Id);
+        Directory.CreateDirectory(identityDirectory);
+        var identityPath = Path.Combine(identityDirectory, "device-key-ed25519.json");
+        File.WriteAllText(
+            identityPath,
+            JsonSerializer.Serialize(new
+            {
+                PrivateKeyBase64 = Convert.ToBase64String(new byte[31]),
+                PublicKeyBase64 = Convert.ToBase64String(new byte[32]),
+                DeviceId = new string('0', 64),
+                Algorithm = "Ed25519"
+            }));
+        var originalBytes = File.ReadAllBytes(identityPath);
+
+        var result = await new PairOperatorStep().ExecuteAsync(context, CancellationToken.None);
+
+        Assert.Equal(StepOutcome.FailedTerminal, result.Outcome);
+        Assert.Equal(DeviceIdentityLoadException.RecoveryMessage, result.Message);
+        Assert.IsType<DeviceIdentityLoadException>(result.Error);
+        Assert.Equal(originalBytes, File.ReadAllBytes(identityPath));
+        Assert.Empty(Directory.GetFiles(identityDirectory, ".device-key-ed25519.json.*.tmp"));
+    }
+
+    [Fact]
+    public async Task VerifyEndToEnd_WhenSavedIdentityIsCorrupt_ReturnsTerminalWithoutMutation()
+    {
+        var commands = new FakeCommandRunner(
+            _ => Fail("Windows commands are not expected"),
+            (_, command, _) => command.Contains("gateway status", StringComparison.Ordinal)
+                ? Ok("""{"status":"running"}""")
+                : Fail($"Unexpected WSL command: {command}"));
+        var context = CreateContext(commands: commands);
+        context.DistroName = "test-distro";
+
+        var registry = new GatewayRegistry(_tempDir);
+        registry.Load();
+        var record = registry.AddOrUpdate(new GatewayRecord
+        {
+            Id = "verify-corrupt-identity",
+            Url = context.GatewayUrl!,
+            IsLocal = true,
+        });
+        registry.Save();
+        context.GatewayRecordId = record.Id;
+
+        var identityDirectory = registry.GetIdentityDirectory(record.Id);
+        Directory.CreateDirectory(identityDirectory);
+        var identityPath = Path.Combine(identityDirectory, "device-key-ed25519.json");
+        File.WriteAllText(identityPath, "{");
+        var originalBytes = File.ReadAllBytes(identityPath);
+
+        var result = await new VerifyEndToEndStep().ExecuteAsync(context, CancellationToken.None);
+
+        Assert.Equal(StepOutcome.FailedTerminal, result.Outcome);
+        Assert.Equal(DeviceIdentityLoadException.RecoveryMessage, result.Message);
+        Assert.IsType<DeviceIdentityLoadException>(result.Error);
+        Assert.Equal(originalBytes, File.ReadAllBytes(identityPath));
+        Assert.Empty(Directory.GetFiles(identityDirectory, ".device-key-ed25519.json.*.tmp"));
+    }
+
+    [Fact]
+    public async Task SetupWizardRunner_WhenSavedIdentityIsCorrupt_ReturnsTerminalWithoutStartingFreshPairing()
+    {
+        var context = CreateContext();
+        var registry = new GatewayRegistry(_tempDir);
+        registry.Load();
+        var record = registry.AddOrUpdate(new GatewayRecord
+        {
+            Id = "wizard-corrupt-identity",
+            Url = context.GatewayUrl!,
+            SharedGatewayToken = "shared-token",
+            IsLocal = true,
+        });
+        registry.SetActive(record.Id);
+        registry.Save();
+        context.GatewayRecordId = record.Id;
+
+        var identityDirectory = registry.GetIdentityDirectory(record.Id);
+        Directory.CreateDirectory(identityDirectory);
+        var identityPath = Path.Combine(identityDirectory, "device-key-ed25519.json");
+        File.WriteAllText(identityPath, "{");
+        var originalBytes = File.ReadAllBytes(identityPath);
+
+        var result = await new SetupWizardRunner(context).RunAsync(CancellationToken.None);
+
+        Assert.Equal(StepOutcome.FailedTerminal, result.Outcome);
+        Assert.Equal(DeviceIdentityLoadException.RecoveryMessage, result.Message);
+        Assert.IsType<DeviceIdentityLoadException>(result.Error);
+        Assert.Equal(originalBytes, File.ReadAllBytes(identityPath));
+        Assert.False(Directory.Exists(Path.Combine(identityDirectory, "setup-wizard")));
+        Assert.Empty(Directory.GetFiles(identityDirectory, ".device-key-ed25519.json.*.tmp"));
+    }
+
+    [Fact]
     public void WindowsNodeContext_CanSkipWhenDisabled()
     {
         var ctx = CreateContext(new SetupConfig

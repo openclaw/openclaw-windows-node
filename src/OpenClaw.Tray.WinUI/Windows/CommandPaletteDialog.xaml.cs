@@ -99,4 +99,7 @@ public class CommandItem
     public string Tag { get; set; } = "";
     /// <summary>Optional custom action (overrides tag-based navigation).</summary>
     public Action? Execute { get; set; }
+
+    // AutoSuggestBox derives each suggestion's default accessible name from the item string.
+    public override string ToString() => Title;
 }

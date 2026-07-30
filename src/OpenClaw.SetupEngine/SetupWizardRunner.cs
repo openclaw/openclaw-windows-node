@@ -34,7 +34,18 @@ public sealed class SetupWizardRunner
             return StepResult.Fail("Cannot run gateway wizard because no active gateway record was found.");
 
         var identityPath = registry.GetIdentityDirectory(record.Id);
-        var storedDeviceToken = DeviceIdentity.TryReadStoredDeviceToken(identityPath, new SetupOpenClawLogger(_ctx.Logger));
+        string? storedDeviceToken;
+        try
+        {
+            storedDeviceToken = DeviceIdentity.TryReadStoredDeviceToken(
+                identityPath,
+                new SetupOpenClawLogger(_ctx.Logger));
+        }
+        catch (DeviceIdentityLoadException ex)
+        {
+            return SetupIdentityFailure.Terminal(_ctx, "gateway wizard startup", ex);
+        }
+
         var credential = storedDeviceToken
             ?? _ctx.SharedGatewayToken
             ?? record.SharedGatewayToken

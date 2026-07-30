@@ -66,7 +66,8 @@
     Mirrors LocalGatewayUninstallOptions.PreserveLogs.
 
 .PARAMETER PreserveExecPolicy
-    When $true (default), exec-policy.json is not deleted in Full mode.
+    When $true (default), exec-approvals.json and the retired exec-policy.json
+    are not deleted in Full mode.
     Mirrors LocalGatewayUninstallOptions.PreserveExecPolicy.
 
 .PARAMETER OutputDir
@@ -97,7 +98,7 @@
     .\validate-wsl-gateway-uninstall.ps1 -Mode PostconditionOnly
 
 .EXAMPLE
-    # Full uninstall preserving logs but deleting exec-policy:
+    # Full uninstall preserving logs but deleting exec approval files:
     .\validate-wsl-gateway-uninstall.ps1 -Mode Full -ConfirmDestructive -PreserveExecPolicy $false
 
 .NOTES
@@ -166,7 +167,7 @@ OPTIONS:
   -ConfirmDestructive     Required for Full mode (unless -DryRun is also set).
   -DistroName <name>      Default: OpenClawGateway (must be exact match)
   -PreserveLogs <bool>    Default: $true  (do not delete gateway logs)
-  -PreserveExecPolicy <bool>  Default: $true  (do not delete exec-policy.json)
+  -PreserveExecPolicy <bool>  Default: $true  (do not delete exec approval files)
   -OutputDir <path>       Default: .\uninstall-validation-output\<utc-timestamp>\
   -DryRun                 Full mode records steps without any destruction.
   -NoCli                  Full mode: skip CLI delegate; use inline PS replication.
@@ -223,14 +224,67 @@ if ($Mode -eq 'Full' -and (-not $DryRun) -and (-not $ConfirmDestructive)) {
 # Path constants
 # ---------------------------------------------------------------------------
 
+function Resolve-UsablePathValue {
+    param([string]$Value)
+    $trimmed = if ($null -eq $Value) { '' } else { $Value.Trim() }
+    if ([string]::IsNullOrEmpty($trimmed) -or $trimmed -in @('undefined', 'null')) {
+        return $null
+    }
+    return $trimmed
+}
+
+function Expand-ExecApprovalsHomePath {
+    param([string]$Path, [string]$Home)
+    if ($Path -eq '~') { return $Home }
+    if ($Path.StartsWith('~\') -or $Path.StartsWith('~/')) {
+        return Join-Path $Home $Path.Substring(2)
+    }
+    return $Path
+}
+
+function Resolve-ExecApprovalsPaths {
+    param([string]$DataDir)
+
+    $legacyPath = Join-Path $DataDir 'exec-approvals.json'
+    $stateDir = Resolve-UsablePathValue $env:OPENCLAW_STATE_DIR
+    if (-not $stateDir) { return @($legacyPath) }
+
+    $osHome = Resolve-UsablePathValue $env:HOME
+    if (-not $osHome) { $osHome = Resolve-UsablePathValue $env:USERPROFILE }
+    if (-not $osHome) {
+        $osHome = [Environment]::GetFolderPath([Environment+SpecialFolder]::UserProfile)
+    }
+    if (-not $osHome) { $osHome = (Get-Location).Path }
+
+    $openClawHome = Resolve-UsablePathValue $env:OPENCLAW_HOME
+    $effectiveHome = if ($openClawHome) {
+        [IO.Path]::GetFullPath((Expand-ExecApprovalsHomePath $openClawHome $osHome))
+    } else {
+        [IO.Path]::GetFullPath($osHome)
+    }
+    $resolvedStateDir = [IO.Path]::GetFullPath(
+        (Expand-ExecApprovalsHomePath $stateDir $effectiveHome))
+    $activePath = Join-Path $resolvedStateDir 'exec-approvals.json'
+    return @($activePath, $legacyPath) | Select-Object -Unique
+}
+
 $appData        = $env:APPDATA
 $localAppData   = $env:LOCALAPPDATA
+$trayDataDir    = if ($env:OPENCLAW_TRAY_DATA_DIR) {
+    $env:OPENCLAW_TRAY_DATA_DIR
+} else {
+    Join-Path $appData 'OpenClawTray'
+}
 
 $setupStatePath  = Join-Path $localAppData "OpenClawTray\setup-state.json"
 $deviceKeyPath   = Join-Path $appData      "OpenClawTray\device-key-ed25519.json"
 $mcpTokenPath    = Join-Path $appData      "OpenClawTray\mcp-token.txt"
 $settingsPath    = Join-Path $appData      "OpenClawTray\settings.json"
 $logsDir         = Join-Path $localAppData "OpenClawTray\Logs"
+$execApprovalsPaths = @(Resolve-ExecApprovalsPaths -DataDir $trayDataDir)
+$execApprovalsPaths += Join-Path $localAppData "OpenClawTray\exec-approvals.json"
+$execApprovalsPaths = @($execApprovalsPaths | Select-Object -Unique)
+$execApprovalsPath = $execApprovalsPaths[0]
 $execPolicyPath  = Join-Path $localAppData "OpenClawTray\exec-policy.json"
 $vhdDirPath      = Join-Path $localAppData "OpenClawTray\wsl\$DistroName"
 $wslParentDirPath = Join-Path $localAppData "OpenClawTray\wsl"
@@ -373,6 +427,7 @@ function Get-StateSnapshot {
             device_key_exists    = (Test-Path -LiteralPath $deviceKeyPath)
             mcp_token_exists     = (Test-Path -LiteralPath $mcpTokenPath)
             settings_exists      = (Test-Path -LiteralPath $settingsPath)
+            exec_approvals_exists = (Test-Path -LiteralPath $execApprovalsPath)
             exec_policy_exists   = (Test-Path -LiteralPath $execPolicyPath)
             vhd_dir_exists       = (Test-Path -LiteralPath $vhdDirPath)
             wsl_parent_dir_exists = (Test-Path -LiteralPath $wslParentDirPath)
@@ -767,24 +822,31 @@ function Invoke-UninstallSteps {
     }
 
     # ----------------------------------------------------------------- Step 10
-    # Delete exec-policy.json (unless PreserveExecPolicy=true).
+    # Delete current and retired exec approval files (unless PreserveExecPolicy=true).
     # ----------------------------------------------------------------- Step 10
     try {
         if ($PreserveExecPolicy) {
-            Add-Step -Name 'delete-exec-policy' -Status 'Skipped' -Message 'PreserveExecPolicy=true.'
-        } elseif (-not (Test-Path -LiteralPath $execPolicyPath)) {
-            Add-Step -Name 'delete-exec-policy' -Status 'Skipped' -Message 'exec-policy.json not found.'
+            Add-Step -Name 'delete-exec-approvals' -Status 'Skipped' -Message 'PreserveExecPolicy=true.'
+        } elseif (-not ($execApprovalsPaths | Where-Object { Test-Path -LiteralPath $_ }) -and -not (Test-Path -LiteralPath $execPolicyPath)) {
+            Add-Step -Name 'delete-exec-approvals' -Status 'Skipped' -Message 'Exec approval files not found.'
         } elseif ($IsDryRun) {
-            Add-Step -Name 'delete-exec-policy' -Status 'DryRun' `
-                -Message "Would delete: $execPolicyPath"
+            Add-Step -Name 'delete-exec-approvals' -Status 'DryRun' `
+                -Message "Would delete: $($execApprovalsPaths -join ', ') and retired $execPolicyPath"
         } else {
-            Remove-Item -LiteralPath $execPolicyPath -Force
-            Add-Step -Name 'delete-exec-policy' -Status 'Executed' `
-                -Message "Deleted $execPolicyPath."
+            foreach ($path in $execApprovalsPaths) {
+                if (Test-Path -LiteralPath $path) {
+                    Remove-Item -LiteralPath $path -Force
+                }
+            }
+            if (Test-Path -LiteralPath $execPolicyPath) {
+                Remove-Item -LiteralPath $execPolicyPath -Force
+            }
+            Add-Step -Name 'delete-exec-approvals' -Status 'Executed' `
+                -Message "Deleted exec approval files."
         }
     } catch {
-        $stepErrors.Add("delete-exec-policy: $($_.Exception.Message)")
-        Add-Step -Name 'delete-exec-policy' -Status 'Failed' -Message $_.Exception.Message
+        $stepErrors.Add("delete-exec-approvals: $($_.Exception.Message)")
+        Add-Step -Name 'delete-exec-approvals' -Status 'Failed' -Message $_.Exception.Message
     }
 
     # ----------------------------------------------------------------- Step 11

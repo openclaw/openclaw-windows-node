@@ -6,12 +6,15 @@ namespace OpenClawTray.Pages;
 
 internal sealed class ExecPolicyRule
 {
+    public Guid? Id { get; set; }
     public string Pattern { get; set; } = "";
     public string Action { get; set; } = "deny";
     public int Index { get; set; }
     public string[]? Shells { get; set; }
     public string? Description { get; set; }
     public bool Enabled { get; set; } = true;
+    public double? LastUsedAt { get; set; }
+    public string? LastResolvedPath { get; set; }
 }
 
 internal static class ExecPolicyRuleList

@@ -77,6 +77,8 @@ public sealed class GatewayConnectionManager : IGatewayConnectionManager
     private long _generation;
     private CancellationTokenSource? _operationCts;
     private long _nodeConnectionGeneration;
+    private long _nodeStartLifecycleGeneration = -1;
+    private long _nodeStartGuardVersion;
     private CancellationTokenSource? _nodeOperationCts;
     private IGatewayClientLifecycle? _activeLifecycle;
     private string? _activeIdentityPath; // identity directory for the active connection
@@ -210,7 +212,43 @@ public sealed class GatewayConnectionManager : IGatewayConnectionManager
 
         var startedGeneration = await StartNodeConnectionAsync(preparedGeneration.Value);
         if (startedGeneration.HasValue)
+        {
             EmitStateChanged();
+        }
+        else
+        {
+            if (Interlocked.Read(ref _generation) != preparedGeneration.Value ||
+                _tunnelManager?.IsActive != true)
+            {
+                return;
+            }
+
+            var enteredTransition = await _transitionSemaphore
+                .WaitAsync(TimeSpan.FromSeconds(1))
+                .ConfigureAwait(false);
+            if (!enteredTransition)
+            {
+                _logger.Warn("[ConnMgr] Timed out waiting to clean up failed node-only tunnel");
+                _diagnostics.Record(
+                    "tunnel",
+                    "Timed out waiting to clean up failed node-only tunnel");
+                return;
+            }
+
+            try
+            {
+                if (Interlocked.Read(ref _generation) == preparedGeneration.Value &&
+                    _activeLifecycle == null &&
+                    _tunnelManager?.IsActive == true)
+                {
+                    await StopTunnelAfterFailedConnectionAsync("node-only connection failure");
+                }
+            }
+            finally
+            {
+                _transitionSemaphore.Release();
+            }
+        }
     }
 
     /// <summary>Core connect logic. Caller must hold <see cref="_transitionSemaphore"/>.</summary>
@@ -261,6 +299,26 @@ public sealed class GatewayConnectionManager : IGatewayConnectionManager
 
             var credentialResolution = _credentialResolver.ResolveOperatorDetailed(record, perGatewayIdentityDir);
             var credential = credentialResolution.Credential;
+            if (HasPersistedIdentityFailure(credentialResolution))
+            {
+                _diagnostics.RecordCredentialResolutionResult(credentialResolution);
+                _diagnostics.Record(
+                    "identity",
+                    "Stored device identity could not be loaded for operator connection",
+                    credentialResolution.Detail);
+                _stateMachine.TryTransition(ConnectionTrigger.ConnectRequested);
+                _stateMachine.SetOperatorCredentialResolution(credentialResolution);
+                _stateMachine.TryTransition(
+                    ConnectionTrigger.WebSocketError,
+                    DeviceIdentityLoadException.RecoveryMessage);
+                CompleteOperatorTelemetryAttempt(
+                    gen,
+                    "failure",
+                    ConnectionErrorCategory.InternalError);
+                EmitStateChanged();
+                return;
+            }
+
             if (_forceBootstrapForGatewayRecordId == record.Id &&
                 !string.IsNullOrWhiteSpace(record.BootstrapToken))
             {
@@ -388,7 +446,31 @@ public sealed class GatewayConnectionManager : IGatewayConnectionManager
                 connectUrl = $"ws://localhost:{record.SshTunnel.LocalPort}";
             }
             var diagLogger = new DiagnosticTeeLogger(_logger, _diagnostics);
-            var lifecycle = _clientFactory.Create(connectUrl, credential, perGatewayIdentityDir, diagLogger);
+            IGatewayClientLifecycle lifecycle;
+            try
+            {
+                lifecycle = _clientFactory.Create(connectUrl, credential, perGatewayIdentityDir, diagLogger);
+            }
+            catch (DeviceIdentityLoadException ex)
+            {
+                var detail = BuildIdentityFailureDetail(ex);
+                _logger.Error($"[ConnMgr] Stored device identity load failed: {detail}");
+                _diagnostics.Record(
+                    "identity",
+                    "Stored device identity could not be loaded",
+                    detail);
+                _stateMachine.TryTransition(
+                    ConnectionTrigger.WebSocketError,
+                    DeviceIdentityLoadException.RecoveryMessage);
+                await StopTunnelAfterFailedConnectionAsync("operator identity load failure");
+                CompleteOperatorTelemetryAttempt(
+                    gen,
+                    "failure",
+                    ConnectionErrorCategory.InternalError);
+                EmitStateChanged();
+                return;
+            }
+
             lifecycle.DataClient.ReconnectAuthorizationAsync = async cancellationToken =>
             {
                 if (!IsCurrentGatewayAttempt(gen, record.Id) ||
@@ -551,6 +633,21 @@ public sealed class GatewayConnectionManager : IGatewayConnectionManager
 
         var nodeCredentialResolution = _credentialResolver.ResolveNodeDetailed(record, perGatewayIdentityDir);
         var nodeCredential = nodeCredentialResolution.Credential;
+        if (HasPersistedIdentityFailure(nodeCredentialResolution))
+        {
+            _diagnostics.RecordCredentialResolutionResult(nodeCredentialResolution);
+            _diagnostics.Record(
+                "identity",
+                "Stored device identity could not be loaded for node-only connection",
+                nodeCredentialResolution.Detail);
+            _stateMachine.SetNodeCredentialResolution(nodeCredentialResolution);
+            _stateMachine.BlockNodeStart(
+                DeviceIdentityLoadException.RecoveryMessage,
+                preserveCredentialResolution: true);
+            EmitStateChanged();
+            RecordNodePreflightTelemetryFailure(ConnectionErrorCategory.InternalError);
+            return null;
+        }
         if (nodeCredential == null)
         {
             _logger.Warn("[ConnMgr] No node credential available for node-only connect");
@@ -635,6 +732,30 @@ public sealed class GatewayConnectionManager : IGatewayConnectionManager
             _logger.Error($"[ConnMgr] SSH tunnel start failed for node-only connect: {ex.Message}");
             _diagnostics.Record("tunnel", "SSH tunnel start failed for node-only connect", ex.Message);
             return false;
+        }
+    }
+
+    private async Task StopTunnelAfterFailedConnectionAsync(string operation)
+    {
+        if (_tunnelManager?.IsActive != true)
+            return;
+
+        try
+        {
+            var stopTask = _tunnelManager.StopAsync();
+            if (await Task.WhenAny(stopTask, Task.Delay(TimeSpan.FromSeconds(5))) != stopTask)
+            {
+                _logger.Warn($"[ConnMgr] Tunnel stop timed out after {operation}");
+                return;
+            }
+
+            await stopTask;
+            _diagnostics.Record("tunnel", $"SSH tunnel stopped after {operation}");
+        }
+        catch (Exception ex)
+        {
+            _logger.Warn($"[ConnMgr] Tunnel stop failed after {operation}: {ex.Message}");
+            _diagnostics.Record("tunnel", $"SSH tunnel stop failed after {operation}", ex.Message);
         }
     }
 
@@ -1055,6 +1176,18 @@ public sealed class GatewayConnectionManager : IGatewayConnectionManager
                 _transitionSemaphore.Release();
             }
             return new SetupCodeResult(SetupCodeOutcome.Success, GatewayUrl: gatewayUrl);
+        }
+        catch (DeviceIdentityLoadException ex)
+        {
+            var detail = BuildIdentityFailureDetail(ex);
+            _logger.Error($"[ConnMgr] Stored device identity load failed while updating shared credentials: {detail}");
+            _diagnostics.Record(
+                "identity",
+                "Stored device identity could not be loaded while updating shared credentials",
+                detail);
+            return new SetupCodeResult(
+                SetupCodeOutcome.ConnectionFailed,
+                DeviceIdentityLoadException.RecoveryMessage);
         }
         catch (Exception ex)
         {
@@ -1514,6 +1647,7 @@ public sealed class GatewayConnectionManager : IGatewayConnectionManager
         bool missingGatewayRecordForNode = false;
         bool missingActiveGatewayForNode = false;
         bool missingNodeConnector = false;
+        NodeStartGuardLease? automaticNodeStartGuard = null;
         await _transitionSemaphore.WaitAsync();
         try
         {
@@ -1546,6 +1680,23 @@ public sealed class GatewayConnectionManager : IGatewayConnectionManager
                 !missingGatewayRecordForNode &&
                 ShouldStartNodeConnection();
             missingNodeConnector = shouldStartNodeConnection && _nodeConnector == null;
+            if (shouldStartNodeConnection && !missingNodeConnector)
+            {
+                lock (_nodeOperationLock)
+                {
+                    if (Interlocked.Read(ref _nodeStartLifecycleGeneration) == gen)
+                    {
+                        shouldStartNodeConnection = false;
+                    }
+                    else
+                    {
+                        automaticNodeStartGuard = new NodeStartGuardLease
+                        {
+                            Version = AcquireNodeStartGuard(gen)
+                        };
+                    }
+                }
+            }
             if (missingActiveGatewayForNode)
             {
                 _stateMachine.BlockNodeStart(MissingActiveGatewayForNodeMessage);
@@ -1603,7 +1754,7 @@ public sealed class GatewayConnectionManager : IGatewayConnectionManager
         if (shouldStartNodeConnection)
         {
             if (_nodeConnector != null)
-                await StartNodeConnectionAsync(gen);
+                await StartNodeConnectionAsync(gen, guardLease: automaticNodeStartGuard);
         }
     }
 
@@ -1629,9 +1780,28 @@ public sealed class GatewayConnectionManager : IGatewayConnectionManager
                     _identityStore.StoreToken(identityPath, e.Token, e.Scopes, e.Role);
                     _logger.Info($"[ConnMgr] Persisted {e.Role} device token via identity store");
                 }
+                catch (DeviceIdentityLoadException ex)
+                {
+                    var detail = BuildIdentityFailureDetail(ex);
+                    _logger.Error($"[ConnMgr] Stored device identity load failed while persisting {e.Role} token: {detail}");
+                    _diagnostics.Record(
+                        "identity",
+                        "Stored device identity could not be loaded while persisting a device token",
+                        detail);
+                    _stateMachine.TryTransition(
+                        ConnectionTrigger.WebSocketError,
+                        DeviceIdentityLoadException.RecoveryMessage);
+                    EmitStateChanged();
+                    return;
+                }
                 catch (Exception ex)
                 {
                     _logger.Warn($"[ConnMgr] Failed to persist {e.Role} device token: {ex.Message}");
+                    _diagnostics.Record(
+                        "identity",
+                        $"Failed to persist {e.Role} device token",
+                        ex.Message);
+                    return;
                 }
             }
 
@@ -1660,8 +1830,12 @@ public sealed class GatewayConnectionManager : IGatewayConnectionManager
         if (record?.BootstrapToken == null)
             return;
 
-        var hasOperatorToken = DeviceIdentity.HasStoredDeviceTokenForRole(identityPath, "operator", _logger);
-        var hasNodeToken = DeviceIdentity.HasStoredDeviceTokenForRole(identityPath, "node", _logger);
+        if (!TryReadStoredTokenPresence(identityPath, "operator", "clearing bootstrap credentials", out var hasOperatorToken)
+            || !TryReadStoredTokenPresence(identityPath, "node", "clearing bootstrap credentials", out var hasNodeToken))
+        {
+            return;
+        }
+
         if (!hasOperatorToken || !hasNodeToken)
         {
             _diagnostics.Record(
@@ -1700,8 +1874,15 @@ public sealed class GatewayConnectionManager : IGatewayConnectionManager
             return;
         }
 
-        var hasOperatorToken = !string.IsNullOrWhiteSpace(
-            DeviceIdentity.TryReadStoredDeviceTokenForRole(identityPath, "operator", _logger));
+        if (!TryReadStoredTokenPresence(
+                identityPath,
+                "operator",
+                "scheduling the post-bootstrap operator reconnect",
+                out var hasOperatorToken))
+        {
+            return;
+        }
+
         var record = _registry.GetById(gatewayRecordId);
         var canReconnectWithSharedToken = !string.IsNullOrWhiteSpace(record?.SharedGatewayToken);
 
@@ -1952,7 +2133,36 @@ public sealed class GatewayConnectionManager : IGatewayConnectionManager
 
     private async Task<long?> StartNodeConnectionAsync(
         long expectedLifecycleGeneration,
-        long? expectedNodeGeneration = null)
+        long? expectedNodeGeneration = null,
+        NodeStartGuardLease? guardLease = null)
+    {
+        guardLease ??= new NodeStartGuardLease();
+
+        var startedGeneration = await StartNodeConnectionAttemptAsync(
+            expectedLifecycleGeneration,
+            expectedNodeGeneration,
+            guardLease);
+        if (!startedGeneration.HasValue && guardLease.Version.HasValue)
+        {
+            lock (_nodeOperationLock)
+            {
+                if (Interlocked.Read(ref _nodeStartGuardVersion) == guardLease.Version.Value)
+                {
+                    Interlocked.CompareExchange(
+                        ref _nodeStartLifecycleGeneration,
+                        -1,
+                        expectedLifecycleGeneration);
+                }
+            }
+        }
+
+        return startedGeneration;
+    }
+
+    private async Task<long?> StartNodeConnectionAttemptAsync(
+        long expectedLifecycleGeneration,
+        long? expectedNodeGeneration,
+        NodeStartGuardLease guardLease)
     {
         CancellationTokenSource? nodeOperationCts = null;
         CancellationToken nodeOperationToken = CancellationToken.None;
@@ -1968,6 +2178,19 @@ public sealed class GatewayConnectionManager : IGatewayConnectionManager
             {
                 if (!IsExpectedNodeStartCurrent(expectedLifecycleGeneration, expectedNodeGeneration))
                     return null;
+
+                if (guardLease.Version.HasValue)
+                {
+                    if (Interlocked.Read(ref _nodeStartGuardVersion) != guardLease.Version.Value ||
+                        Interlocked.Read(ref _nodeStartLifecycleGeneration) != expectedLifecycleGeneration)
+                    {
+                        return null;
+                    }
+                }
+                else
+                {
+                    guardLease.Version = AcquireNodeStartGuard(expectedLifecycleGeneration);
+                }
 
                 oldNodeOperationCts = _nodeOperationCts;
                 _nodeOperationCts = null;
@@ -2096,6 +2319,44 @@ public sealed class GatewayConnectionManager : IGatewayConnectionManager
         };
     }
 
+    private static string BuildIdentityFailureDetail(DeviceIdentityLoadException ex)
+    {
+        var cause = ex.InnerException;
+        return cause == null
+            ? ex.GetType().Name
+            : $"{cause.GetType().Name}: {cause.Message}";
+    }
+
+    private static bool HasPersistedIdentityFailure(GatewayCredentialResolution resolution) =>
+        resolution.PrimaryStatus is GatewayCredentialResolutionStatus.Unreadable
+            or GatewayCredentialResolutionStatus.Corrupt
+        || resolution.Status is GatewayCredentialResolutionStatus.Unreadable
+            or GatewayCredentialResolutionStatus.Corrupt;
+
+    private bool TryReadStoredTokenPresence(
+        string identityPath,
+        string role,
+        string operation,
+        out bool hasToken)
+    {
+        try
+        {
+            hasToken = DeviceIdentity.HasStoredDeviceTokenForRole(identityPath, role, _logger);
+            return true;
+        }
+        catch (DeviceIdentityLoadException ex)
+        {
+            hasToken = false;
+            var detail = BuildIdentityFailureDetail(ex);
+            _logger.Error($"[ConnMgr] Stored device identity load failed while {operation}: {detail}");
+            _diagnostics.Record(
+                "identity",
+                $"Stored device identity could not be loaded while {operation}",
+                detail);
+            return false;
+        }
+    }
+
     private async Task BlockNodeStartAsync(
         string detail,
         CancellationToken cancellationToken,
@@ -2200,6 +2461,37 @@ public sealed class GatewayConnectionManager : IGatewayConnectionManager
 
         var nodeCredentialResolution = _credentialResolver.ResolveNodeDetailed(record, activeIdentityPath);
         var nodeCredential = nodeCredentialResolution.Credential;
+        if (HasPersistedIdentityFailure(nodeCredentialResolution))
+        {
+            _diagnostics.RecordCredentialResolutionResult(nodeCredentialResolution);
+            _diagnostics.Record(
+                "identity",
+                "Stored device identity could not be loaded for node connection",
+                nodeCredentialResolution.Detail);
+            await _transitionSemaphore.WaitAsync(cancellationToken);
+            try
+            {
+                if (!IsExpectedNodeStartCurrent(expectedLifecycleGeneration, nodeGeneration))
+                    return false;
+
+                _stateMachine.SetNodeCredentialResolution(nodeCredentialResolution);
+                _stateMachine.BlockNodeStart(
+                    DeviceIdentityLoadException.RecoveryMessage,
+                    preserveCredentialResolution: true);
+                EmitStateChanged();
+            }
+            finally
+            {
+                _transitionSemaphore.Release();
+            }
+
+            CompleteNodeTelemetryAttempt(
+                nodeGeneration,
+                "failure",
+                ConnectionErrorCategory.InternalError);
+            return false;
+        }
+
         if (nodeCredential == null)
         {
             _logger.Warn("[ConnMgr] No node credential available — skipping node connection");
@@ -2304,6 +2596,31 @@ public sealed class GatewayConnectionManager : IGatewayConnectionManager
                 ConnectionErrorCategory.Cancelled);
             return false;
         }
+        catch (DeviceIdentityLoadException ex)
+        {
+            if (cancellationToken.IsCancellationRequested ||
+                Interlocked.Read(ref _nodeConnectionGeneration) != nodeGeneration)
+            {
+                return false;
+            }
+
+            var detail = BuildIdentityFailureDetail(ex);
+            _logger.Error($"[ConnMgr] Stored device identity load failed for node connection: {detail}");
+            _diagnostics.Record(
+                "identity",
+                "Stored device identity could not be loaded for node connection",
+                detail);
+            await BlockNodeStartAsync(
+                DeviceIdentityLoadException.RecoveryMessage,
+                cancellationToken,
+                expectedLifecycleGeneration,
+                nodeGeneration);
+            CompleteNodeTelemetryAttempt(
+                nodeGeneration,
+                "failure",
+                ConnectionErrorCategory.InternalError);
+            return false;
+        }
         catch (Exception ex)
         {
             if (cancellationToken.IsCancellationRequested ||
@@ -2353,6 +2670,14 @@ public sealed class GatewayConnectionManager : IGatewayConnectionManager
         var nodeGeneration = Interlocked.Read(ref _nodeConnectionGeneration);
         if (!IsCurrentNodeAttempt(lifecycleGeneration, nodeGeneration))
             return;
+
+        lock (_nodeOperationLock)
+        {
+            Interlocked.CompareExchange(
+                ref _nodeStartLifecycleGeneration,
+                -1,
+                lifecycleGeneration);
+        }
 
         CompleteNodeTelemetryAttempt(
             nodeGeneration,
@@ -3433,6 +3758,18 @@ public sealed class GatewayConnectionManager : IGatewayConnectionManager
         public Activity? PhaseActivity { get; set; }
         public string? PhaseName { get; set; }
         public long PhaseGeneration { get; set; }
+    }
+
+    private sealed class NodeStartGuardLease
+    {
+        public long? Version { get; set; }
+    }
+
+    private long AcquireNodeStartGuard(long lifecycleGeneration)
+    {
+        var version = Interlocked.Increment(ref _nodeStartGuardVersion);
+        Interlocked.Exchange(ref _nodeStartLifecycleGeneration, lifecycleGeneration);
+        return version;
     }
 
     private void ObserveBackgroundFault(Task task, string message)

@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Globalization;
 using System.IO;
 using System.Numerics;
@@ -91,7 +92,8 @@ public class McpToolBridge
 
     internal async Task<McpTransportResponse> HandleTransportRequestAsync(
         string requestBody,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        ActivityContext linkedContext = default)
     {
         JsonDocument doc;
         try
@@ -130,7 +132,7 @@ public class McpToolBridge
             var method = methodProp.GetString()!;
             var paramsElement = root.TryGetProperty("params", out var p) ? p : default;
             var invocation = string.Equals(method, "tools/call", StringComparison.Ordinal)
-                ? new NodeToolInvocation(NodeToolTransport.Mcp)
+                ? new NodeToolInvocation(NodeToolTransport.Mcp, linkedContext)
                 : null;
             NodeToolOutcome terminalOutcome = NodeToolOutcome.Success;
             NodeToolErrorCategory terminalCategory = NodeToolErrorCategory.None;
@@ -286,15 +288,15 @@ public class McpToolBridge
         ["system.notify"] =
             "Show a Windows toast notification on the node. Args: title (string, default 'OpenClaw'), body (string), subtitle (string), sound (bool, default true). Returns { sent: true }.",
         ["system.run"] =
-            "Execute a shell command on the Windows node host. Args: command (string or string[] argv, required), args (string[]), shell (string), cwd (string), timeoutMs (int, default 30000), env (object). Subject to the local exec approval policy. Returns { stdout, stderr, exitCode, timedOut, success, durationMs }.",
+            "Execute canonical argv on the Windows node host. Args: command (string[] argv, required), rawCommand (string, optional display metadata), cwd (string), timeoutMs (int, default 30000). Non-empty custom env is not supported. Shell commands must name their wrapper explicitly, for example [\"cmd.exe\",\"/d\",\"/s\",\"/c\",\"echo hello\"]. Subject to the local exec approval policy. Returns { stdout, stderr, exitCode, timedOut, success, durationMs }.",
         ["system.run.prepare"] =
             "Pre-flight a system.run invocation: returns the parsed execution plan (argv, cwd, rawCommand, agentId, sessionKey) without running anything. The gateway uses this to build its approval context before the actual run.",
         ["system.which"] =
             "Resolve executable names to absolute paths by searching PATH (PATHEXT-aware on Windows). Args: bins (string[], required). Returns { bins: { name: resolvedPath, ... } } including only names that were found.",
         ["system.execApprovals.get"] =
-            "Return the current exec approval policy: { enabled, defaultAction ('allow'|'deny'|'prompt'), rules: [{ pattern, action, shells, description, enabled }, ...] }.",
+            "Return the V2 exec approvals snapshot: { path, exists, hash, baseHash, file: { version, defaults: { security, ask, askFallback, autoAllowSkills }, agents: { agentId: { security, ask, askFallback, autoAllowSkills, allowlist: [{ id, pattern, lastUsedAt?, lastResolvedPath? }] } } } }. Socket credentials are redacted.",
         ["system.execApprovals.set"] =
-            "Replace the exec approval policy. Args: rules (array of { pattern, action, shells?, description?, enabled? }), defaultAction (string, optional). Persisted to disk; used by future system.run calls.",
+            "Replace the V2 exec approvals file using compare-and-swap. Args: baseHash (required hash from system.execApprovals.get), file (required full { version, defaults, agents } object). Remote updates may preserve or remove existing allowlist grants but cannot add or change grants or set full access. Returns the updated { path, exists, hash, baseHash, file } snapshot.",
 
         // canvas.* — agent-controlled WebView2 panel for HTML/CSS/JS, A2UI, and small interactive UI surfaces.
         ["canvas.present"] =

@@ -4,6 +4,7 @@ using Microsoft.UI.Xaml.Media;
 using OpenClaw.Connection;
 using OpenClaw.Shared;
 using OpenClaw.Shared.Audio;
+using OpenClaw.Shared.ExecApprovals;
 using OpenClawTray.Helpers;
 using OpenClawTray.Services;
 using OpenClawTray.Windows;
@@ -15,6 +16,7 @@ using System.Linq;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using System.Threading;
+using System.Threading.Tasks;
 
 namespace OpenClawTray.Pages;
 
@@ -24,6 +26,9 @@ public sealed partial class PermissionsPage : Page
     private bool _suppressMcpToggle;
     private readonly List<ToggleSwitch> _featureToggles = new();
     private List<ExecPolicyRule> _policyRules = new();
+    private string? _execPolicyBaseHash;
+    private enum ExecPolicyMutationKind { DefaultAction, AddRule, RemoveRule }
+    private sealed record ExecPolicyMutation(ExecPolicyMutationKind Kind, ExecPolicyRule? Rule = null);
     private const int BrowserProxyToggleIndex = 1;
 
     public PermissionsPage()
@@ -486,60 +491,43 @@ public sealed partial class PermissionsPage : Page
         McpStatusText.Text = LocalizationHelper.GetString("PermissionsPage_McpStatus_UrlCopied");
     }
 
-    // ── Exec Policy ──────────────────────────────────────────────────
+    // ── Exec approvals ───────────────────────────────────────────────
 
-    private void LoadExecPolicy()
+    private void LoadExecPolicy() => _ = LoadExecPolicyAsync();
+
+    private async Task LoadExecPolicyAsync()
     {
         _loadingExecPolicy = true;
         try
         {
-            var policyPath = ExecPolicyPath;
-
-            if (File.Exists(policyPath))
+            var snapshot = await CurrentApp.ExecApprovalsStore.GetSnapshotAsync();
+            _execPolicyBaseHash = snapshot.Hash;
+            var file = snapshot.File;
+            var defaults = file.Defaults;
+            ExecApprovalsAgent? main = null;
+            file.Agents?.TryGetValue("main", out main);
+            var security = main?.Security ?? defaults?.Security ?? ExecSecurity.Deny;
+            var ask = main?.Ask ?? defaults?.Ask ?? ExecAsk.OnMiss;
+            var action = security switch
             {
-                var json = File.ReadAllText(policyPath);
-                using var doc = JsonDocument.Parse(json);
-                var root = doc.RootElement;
-
-                if (root.TryGetProperty("defaultAction", out var da))
-                {
-                    var action = NormalizeExecPolicyAction(da);
-                    for (int i = 0; i < DefaultActionCombo.Items.Count; i++)
-                    {
-                        if (DefaultActionCombo.Items[i] is ComboBoxItem item && item.Tag?.ToString() == action)
-                        { DefaultActionCombo.SelectedIndex = i; break; }
-                    }
-                }
-
-                _policyRules.Clear();
-                if (root.TryGetProperty("rules", out var rules) && rules.ValueKind == JsonValueKind.Array)
-                {
-                    int idx = 0;
-                    foreach (var rule in rules.EnumerateArray())
-                    {
-                        _policyRules.Add(new ExecPolicyRule
-                        {
-                            // Accept either case — earlier saves wrote "Pattern" capitalized
-                            // due to an anonymous-type property name leak.
-                            Pattern = TryGetStringCaseInsensitive(rule, "pattern", "Pattern") ?? "",
-                            Action = ExecPolicyRuleList.TryGetActionCaseInsensitive(rule, "action", "Action") ?? "deny",
-                            Shells = TryGetStringArrayCaseInsensitive(rule, "shells", "Shells"),
-                            Description = TryGetStringCaseInsensitive(rule, "description", "Description"),
-                            Enabled = TryGetBoolCaseInsensitive(rule, "enabled", "Enabled") ?? true,
-                            Index = idx++
-                        });
-                    }
-                }
-
-                RefreshPolicyRulesList();
-            }
-            else
+                ExecSecurity.Full => "allow",
+                ExecSecurity.Allowlist when ask is ExecAsk.OnMiss or ExecAsk.Always => "prompt",
+                _ => "deny",
+            };
+            for (int i = 0; i < DefaultActionCombo.Items.Count; i++)
             {
-                DefaultActionCombo.SelectedIndex = 0; // deny
-                RefreshPolicyRulesList();
+                if (DefaultActionCombo.Items[i] is ComboBoxItem item && item.Tag?.ToString() == action)
+                { DefaultActionCombo.SelectedIndex = i; break; }
             }
+
+            RefreshPolicyRulesFromFile(file);
         }
-        catch { DefaultActionCombo.SelectedIndex = 0; }
+        catch (Exception ex)
+        {
+            Debug.WriteLine($"Failed to load exec approvals: {ex.Message}");
+            DefaultActionCombo.SelectedIndex = 0;
+            RefreshPolicyRulesList();
+        }
         finally { _loadingExecPolicy = false; }
     }
 
@@ -547,8 +535,6 @@ public sealed partial class PermissionsPage : Page
     {
         for (int i = 0; i < _policyRules.Count; i++) _policyRules[i].Index = i;
         var allowBrush = (Microsoft.UI.Xaml.Media.Brush)Application.Current.Resources["SystemFillColorSuccessBrush"];
-        var denyBrush = (Microsoft.UI.Xaml.Media.Brush)Application.Current.Resources["SystemFillColorCriticalBrush"];
-        var askBrush = (Microsoft.UI.Xaml.Media.Brush)Application.Current.Resources["SystemFillColorCautionBrush"];
         PolicyRulesList.ItemsSource = null;
         PolicyRulesList.ItemsSource = _policyRules.Select(r => new
         {
@@ -557,9 +543,7 @@ public sealed partial class PermissionsPage : Page
             r.Index,
             RemoveRuleAutomationName = $"Remove rule {r.Pattern}",
             RemoveRuleAutomationId = $"RemoveExecPolicyRuleButton_{r.Index}",
-            ActionBrush = r.Action == "allow"
-                ? allowBrush
-                : r.Action == "prompt" ? askBrush : denyBrush
+            ActionBrush = allowBrush
         }).ToList();
 
         // Header badge + empty state
@@ -578,126 +562,199 @@ public sealed partial class PermissionsPage : Page
     {
         var pattern = NewRulePattern.Text.Trim();
         if (string.IsNullOrEmpty(pattern)) return;
-        // Read .Tag (invariant identifier) instead of .Content so future localization
-        // of the allow/deny strings can't break the JSON contract on disk.
-        var action = NormalizeExecPolicyAction((NewRuleAction.SelectedItem as ComboBoxItem)?.Tag?.ToString());
-        ExecPolicyRuleList.UpsertByPattern(_policyRules, pattern, action);
+        if (!ExecApprovalsStore.IsValidAllowlistPattern(pattern))
+        {
+            NewRulePattern.Focus(FocusState.Programmatic);
+            return;
+        }
+        ExecPolicyRuleList.UpsertByPattern(_policyRules, pattern, "allow");
+        var rule = CloneExecPolicyRule(_policyRules.First(r =>
+            string.Equals(r.Pattern, pattern, StringComparison.OrdinalIgnoreCase)));
         NewRulePattern.Text = "";
         RefreshPolicyRulesList();
-        SaveExecPolicyToDisk();
+        SaveExecPolicyToDisk(new ExecPolicyMutation(ExecPolicyMutationKind.AddRule, rule));
     }
 
     private void OnRemoveRule(object sender, RoutedEventArgs e)
     {
         if (sender is Button btn && btn.Tag is int index && index < _policyRules.Count)
         {
+            var removed = CloneExecPolicyRule(_policyRules[index]);
             _policyRules.RemoveAt(index);
             RefreshPolicyRulesList();
-            SaveExecPolicyToDisk();
+            SaveExecPolicyToDisk(new ExecPolicyMutation(ExecPolicyMutationKind.RemoveRule, removed));
         }
     }
 
     private void OnDefaultActionChanged(object sender, SelectionChangedEventArgs e)
     {
         // Skip the selection-changed events that fire while LoadExecPolicy is populating the combo.
-        if (!_loadingExecPolicy) SaveExecPolicyToDisk();
+        if (!_loadingExecPolicy)
+            SaveExecPolicyToDisk(new ExecPolicyMutation(ExecPolicyMutationKind.DefaultAction));
     }
 
     private bool _loadingExecPolicy;
     private Microsoft.UI.Dispatching.DispatcherQueueTimer? _execSavedHintTimer;
-    private static string ExecPolicyPath => Path.Combine(CurrentApp.DataDirectoryPath, "exec-policy.json");
 
-    private void SaveExecPolicyToDisk(bool showSavedHint = true)
+    private void SaveExecPolicyToDisk(
+        ExecPolicyMutation mutation,
+        bool showSavedHint = true) =>
+        _ = SaveExecPolicyToDiskAsync(mutation, showSavedHint);
+
+    private async Task SaveExecPolicyToDiskAsync(
+        ExecPolicyMutation mutation,
+        bool showSavedHint)
     {
-        string? tmpPath = null;
         try
         {
-            var policyPath = ExecPolicyPath;
-
-            var defaultAction = NormalizeExecPolicyAction((DefaultActionCombo.SelectedItem as ComboBoxItem)?.Tag?.ToString());
-            var policy = new
+            var defaultAction = mutation.Kind == ExecPolicyMutationKind.DefaultAction
+                ? NormalizeExecPolicyAction(
+                    (DefaultActionCombo.SelectedItem as ComboBoxItem)?.Tag?.ToString())
+                : null;
+            for (var attempt = 0; attempt < 3; attempt++)
             {
-                defaultAction,
-                rules = _policyRules.Select(r => new
+                var current = await CurrentApp.ExecApprovalsStore.GetSnapshotAsync();
+                var expectedHash = attempt == 0 && !string.IsNullOrWhiteSpace(_execPolicyBaseHash)
+                    ? _execPolicyBaseHash
+                    : current.Hash;
+                var file = current.File;
+                file.Version = 1;
+                file.Defaults ??= new ExecApprovalsDefaults();
+                file.Agents ??= new Dictionary<string, ExecApprovalsAgent>(StringComparer.Ordinal);
+                if (!file.Agents.TryGetValue("main", out var main))
                 {
-                    pattern = r.Pattern,
-                    action = r.Action,
-                    shells = r.Shells,
-                    description = r.Description,
-                    enabled = ExecPolicyRuleList.PersistedEnabled(r.Enabled)
-                }).ToArray()
+                    main = new ExecApprovalsAgent();
+                    file.Agents["main"] = main;
+                }
+
+                if (mutation.Kind == ExecPolicyMutationKind.DefaultAction)
+                {
+                    var (security, ask) = defaultAction switch
+                    {
+                        "allow" => (ExecSecurity.Full, ExecAsk.Off),
+                        "prompt" => (ExecSecurity.Allowlist, ExecAsk.OnMiss),
+                        _ => (ExecSecurity.Allowlist, ExecAsk.Off),
+                    };
+                    file.Defaults.Security = security;
+                    file.Defaults.Ask = ask;
+                    file.Defaults.AskFallback = ExecSecurity.Deny;
+                    file.Defaults.AutoAllowSkills ??= false;
+                    main.Security = security;
+                    main.Ask = ask;
+                    main.AskFallback = ExecSecurity.Deny;
+                    main.AutoAllowSkills ??= false;
+                }
+                else if (mutation is { Kind: ExecPolicyMutationKind.AddRule, Rule: { } added })
+                {
+                    var allowlist = main.Allowlist ??= [];
+                    if (!allowlist.Any(entry => string.Equals(
+                            entry.Pattern?.Trim(),
+                            added.Pattern.Trim(),
+                            StringComparison.OrdinalIgnoreCase)))
+                    {
+                        allowlist.Add(new ExecAllowlistEntry
+                        {
+                            Id = added.Id ?? Guid.NewGuid(),
+                            Pattern = added.Pattern,
+                            LastUsedAt = added.LastUsedAt,
+                            LastResolvedPath = added.LastResolvedPath,
+                        });
+                    }
+                }
+                else if (mutation is { Kind: ExecPolicyMutationKind.RemoveRule, Rule: { } removed })
+                {
+                    main.Allowlist?.RemoveAll(entry =>
+                        (removed.Id.HasValue && entry.Id == removed.Id)
+                        || string.Equals(
+                            entry.Pattern?.Trim(),
+                            removed.Pattern.Trim(),
+                            StringComparison.OrdinalIgnoreCase));
+                }
+
+                var updated = await CurrentApp.ExecApprovalsStore.ReplaceAsync(expectedHash, file);
+                if (updated is null)
+                {
+                    _execPolicyBaseHash = current.Hash;
+                    continue;
+                }
+
+                _execPolicyBaseHash = updated.Hash;
+                RefreshPolicyRulesFromFile(updated.File);
+                if (!showSavedHint)
+                    return;
+
+                ShowExecPolicySaveStatus(succeeded: true);
+                return;
+            }
+
+            Debug.WriteLine("Failed to save exec approvals after concurrent updates.");
+            var latest = await CurrentApp.ExecApprovalsStore.GetSnapshotAsync();
+            _execPolicyBaseHash = latest.Hash;
+            RefreshPolicyRulesFromFile(latest.File);
+            ShowExecPolicySaveStatus(succeeded: false);
+        }
+        catch (Exception ex)
+        {
+            Debug.WriteLine($"Failed to save exec approvals: {ex.Message}");
+            ShowExecPolicySaveStatus(succeeded: false);
+        }
+    }
+
+    private void ShowExecPolicySaveStatus(bool succeeded)
+    {
+        ExecPolicySavedHint.Text = LocalizationHelper.GetString(
+            succeeded
+                ? "PermissionsPage_ExecPolicySaved"
+                : "PermissionsPage_ExecPolicySaveFailed");
+        ExecPolicySavedHint.Visibility = Visibility.Visible;
+        if (_execSavedHintTimer == null)
+        {
+            _execSavedHintTimer = DispatcherQueue.CreateTimer();
+            _execSavedHintTimer.Interval = TimeSpan.FromSeconds(1.5);
+            _execSavedHintTimer.Tick += (t, _) =>
+            {
+                ExecPolicySavedHint.Visibility = Visibility.Collapsed;
+                t.Stop();
             };
-
-            var json = JsonSerializer.Serialize(policy, new JsonSerializerOptions
-            {
-                WriteIndented = true,
-                DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull
-            });
-            Directory.CreateDirectory(Path.GetDirectoryName(policyPath)!);
-
-            // Atomic write: serialize to a sibling .tmp first, then replace.
-            // The engine hot-reloads exec-policy.json on mtime/length change;
-            // a non-atomic write could expose a partial file to a concurrent
-            // Evaluate() and the engine would skip the (broken) update.
-            tmpPath = $"{policyPath}.{Guid.NewGuid():N}.tmp";
-            File.WriteAllText(tmpPath, json);
-            MoveFileWithRetry(tmpPath, policyPath);
-            tmpPath = null;
-
-            if (!showSavedHint)
-                return;
-
-            // Brief inline "Saved" pill in the rules-card header. Reuses a single
-            // DispatcherQueueTimer instance so rapid saves don't orphan timers.
-            ExecPolicySavedHint.Visibility = Visibility.Visible;
-            if (_execSavedHintTimer == null)
-            {
-                _execSavedHintTimer = DispatcherQueue.CreateTimer();
-                _execSavedHintTimer.Interval = TimeSpan.FromSeconds(1.5);
-                _execSavedHintTimer.Tick += (t, _) => { ExecPolicySavedHint.Visibility = Visibility.Collapsed; t.Stop(); };
-            }
-            _execSavedHintTimer.Stop();
-            _execSavedHintTimer.Start();
         }
-        // slopwatch-ignore: SW003 Cleanup is best-effort; failure cannot improve caller state and the original outcome is preserved.
-        catch
-        {
-            TryDeleteTempFile(tmpPath);
-        }
+        _execSavedHintTimer.Stop();
+        _execSavedHintTimer.Start();
     }
 
-    private static void MoveFileWithRetry(string sourcePath, string destinationPath)
+    private void RefreshPolicyRulesFromFile(ExecApprovalsFile file)
     {
-        for (var attempt = 0; ; attempt++)
+        ExecApprovalsAgent? main = null;
+        file.Agents?.TryGetValue("main", out main);
+        _policyRules.Clear();
+        if (main?.Allowlist is { } allowlist)
         {
-            try
+            var index = 0;
+            foreach (var entry in allowlist)
             {
-                File.Move(sourcePath, destinationPath, overwrite: true);
-                return;
-            }
-            catch (Exception ex) when (IsTransientReplaceException(ex) && attempt < 20)
-            {
-                Thread.Sleep(5);
+                _policyRules.Add(new ExecPolicyRule
+                {
+                    Id = entry.Id,
+                    Pattern = entry.Pattern ?? "",
+                    Action = "allow",
+                    LastUsedAt = entry.LastUsedAt,
+                    LastResolvedPath = entry.LastResolvedPath,
+                    Index = index++,
+                });
             }
         }
+        RefreshPolicyRulesList();
     }
 
-    private static bool IsTransientReplaceException(Exception ex) =>
-        ex is IOException or UnauthorizedAccessException;
-
-    private static void TryDeleteTempFile(string? path)
-    {
-        if (string.IsNullOrWhiteSpace(path))
-            return;
-
-        try
+    private static ExecPolicyRule CloneExecPolicyRule(ExecPolicyRule rule) =>
+        new()
         {
-            if (File.Exists(path))
-                File.Delete(path);
-        }
-        // slopwatch-ignore: SW003 Cleanup is best-effort after save failure.
-        catch { }
-    }
+            Id = rule.Id,
+            Pattern = rule.Pattern,
+            Action = rule.Action,
+            LastUsedAt = rule.LastUsedAt,
+            LastResolvedPath = rule.LastResolvedPath,
+            Index = rule.Index,
+        };
 
     private static string? TryGetStringCaseInsensitive(JsonElement element, params string[] names)
     {

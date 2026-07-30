@@ -19,6 +19,18 @@ internal sealed class CliOptions
     public bool Verbose { get; set; }
 }
 
+internal sealed class DeferredLogger(IOpenClawLogger inner) : IOpenClawLogger
+{
+    private bool _enabled;
+
+    public void Enable() => _enabled = true;
+    public void Info(string message) { if (_enabled) inner.Info(message); }
+    public void Debug(string message) { if (_enabled) inner.Debug(message); }
+    public void Warn(string message) { if (_enabled) inner.Warn(message); }
+    public void Error(string message, Exception? ex = null) { if (_enabled) inner.Error(message, ex); }
+    public void Trace(string message) { if (_enabled) inner.Trace(message); }
+}
+
 internal static class Program
 {
     private static async Task<int> Main(string[] args)
@@ -55,6 +67,30 @@ internal static class Program
             return 2;
         }
 
+        var deferredLogger = options.Verbose
+            ? new DeferredLogger(new ConsoleLogger())
+            : null;
+        IOpenClawLogger logger = deferredLogger is null
+            ? NullLogger.Instance
+            : deferredLogger;
+        OpenClawGatewayClient client;
+        try
+        {
+            client = new OpenClawGatewayClient(
+                gatewayUrl,
+                token,
+                logger,
+                identityPath: options.IdentityDataPath);
+        }
+        catch (DeviceIdentityLoadException)
+        {
+            Console.Error.WriteLine(DeviceIdentityLoadException.RecoveryMessage);
+            return 1;
+        }
+
+        using var clientLifetime = client;
+        deferredLogger?.Enable();
+
         Console.WriteLine($"Settings file: {options.SettingsPath}");
         Console.WriteLine($"Gateway URL: {GatewayUrlHelper.SanitizeForDisplay(gatewayUrl)}");
         Console.WriteLine($"Token source: {(options.TokenOverride is null ? "settings" : "--token override")}");
@@ -63,13 +99,6 @@ internal static class Program
             Console.WriteLine($"Node mode in settings: {loaded.EnableNodeMode}");
             Console.WriteLine($"SSH tunnel in settings: {loaded.UseSshTunnel} (local port {loaded.SshTunnelLocalPort})");
         }
-
-        IOpenClawLogger logger = options.Verbose ? new ConsoleLogger() : NullLogger.Instance;
-        using var client = new OpenClawGatewayClient(
-            gatewayUrl,
-            token,
-            logger,
-            identityPath: options.IdentityDataPath);
 
         var lastStatus = ConnectionStatus.Disconnected;
         var connectedTcs = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);

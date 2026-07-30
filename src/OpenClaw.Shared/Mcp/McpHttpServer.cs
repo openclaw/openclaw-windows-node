@@ -1,11 +1,13 @@
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.IO;
 using System.Net;
 using System.Security.Cryptography;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
+using OpenClaw.Shared.Telemetry;
 
 namespace OpenClaw.Shared.Mcp;
 
@@ -36,7 +38,7 @@ namespace OpenClaw.Shared.Mcp;
 /// but anything sandboxed away from <c>%APPDATA%\OpenClawTray\</c> cannot.
 ///
 /// Stability defenses (CR-003/CR-005):
-///   - Per-request hard deadline (RequestTimeoutMs) bounds body-read and
+///   - Per-request hard deadline bounds body-read and
 ///     bridge dispatch so a slow or hung client cannot pin a handler slot
 ///     forever.
 ///   - Active handler tasks are tracked so Stop/Dispose can drain in-flight
@@ -45,26 +47,11 @@ namespace OpenClaw.Shared.Mcp;
 public sealed class McpHttpServer : IDisposable, IAsyncDisposable
 {
     private const long MaxRequestBodyBytes = 4L * 1024 * 1024; // 4 MiB
-    // 16 leaves headroom for parallel tool callers (e.g. an editor + Claude
-    // Desktop + a CLI script) without making each connection cheap enough to
-    // become a DoS lever — request size cap + per-handler timeout still bound
-    // memory. Bumped from 8 after queue-stall reports under multi-IDE use.
-    private const int MaxConcurrentHandlers = 16;
-    // Sized to cover the longest legitimate capability: screen.record up to
-    // 300s plus encoding + serialization. Earlier 90s deadline silently abort
-    // ed valid recording requests while the OS capture pipeline kept running
-    // unobserved (unified review H10). Cancellation now flows through the
-    // capability via INodeCapability.ExecuteAsync(NodeInvokeRequest, CT) so
-    // tools that opt in actually stop the underlying work.
-    private const int RequestTimeoutMs = 360_000;
-    // How long Dispose waits for in-flight handlers to drain before forcing
-    // tear-down. Past this point handlers may observe disposed services.
-    private static readonly TimeSpan DrainTimeout = TimeSpan.FromSeconds(5);
-
     private readonly McpToolBridge _bridge;
     private readonly int _port;
     private readonly IOpenClawLogger _logger;
-    private readonly HttpListener _listener;
+    private readonly IMcpHttpListener _listener;
+    private readonly McpHttpServerOptions _options;
     private readonly Action<HttpListenerResponse, HttpStatusCode, string, string> _writeText;
     /// <summary>
     /// Required bearer token for HTTP requests. Empty/null disables auth (the
@@ -73,13 +60,15 @@ public sealed class McpHttpServer : IDisposable, IAsyncDisposable
     /// </summary>
     private string? _authToken;
     private readonly CancellationTokenSource _cts = new();
-    private readonly SemaphoreSlim _handlerLimiter = new(MaxConcurrentHandlers, MaxConcurrentHandlers);
+    private readonly SemaphoreSlim _handlerLimiter;
     private readonly object _activeLock = new();
     private readonly HashSet<Task> _activeHandlers = new();
+    private readonly object _startLock = new();
     private readonly object _shutdownLock = new();
     private Task? _acceptLoop;
     private Task? _stopTask;
     private Task? _disposeTask;
+    private int _started;
     private int _disposed;
     private bool _resourcesDisposed;
 
@@ -87,7 +76,14 @@ public sealed class McpHttpServer : IDisposable, IAsyncDisposable
     public string Endpoint => $"http://127.0.0.1:{_port}/";
 
     public McpHttpServer(McpToolBridge bridge, int port, IOpenClawLogger logger, string? authToken = null)
-        : this(bridge, port, logger, authToken, WriteText)
+        : this(
+            bridge,
+            port,
+            logger,
+            authToken,
+            WriteText,
+            McpHttpServerOptions.Default,
+            new SystemMcpHttpListener(port))
     {
     }
 
@@ -97,25 +93,120 @@ public sealed class McpHttpServer : IDisposable, IAsyncDisposable
         IOpenClawLogger logger,
         string? authToken,
         Action<HttpListenerResponse, HttpStatusCode, string, string> writeText)
+        : this(
+            bridge,
+            port,
+            logger,
+            authToken,
+            writeText,
+            McpHttpServerOptions.Default,
+            new SystemMcpHttpListener(port))
+    {
+    }
+
+    internal McpHttpServer(
+        McpToolBridge bridge,
+        int port,
+        IOpenClawLogger logger,
+        string? authToken,
+        McpHttpServerOptions options)
+        : this(
+            bridge,
+            port,
+            logger,
+            authToken,
+            WriteText,
+            options,
+            new SystemMcpHttpListener(port))
+    {
+    }
+
+    internal McpHttpServer(
+        McpToolBridge bridge,
+        int port,
+        IOpenClawLogger logger,
+        string? authToken,
+        McpHttpServerOptions options,
+        IMcpHttpListener listener)
+        : this(
+            bridge,
+            port,
+            logger,
+            authToken,
+            WriteText,
+            options,
+            listener)
+    {
+    }
+
+    internal McpHttpServer(
+        McpToolBridge bridge,
+        int port,
+        IOpenClawLogger logger,
+        string? authToken,
+        Action<HttpListenerResponse, HttpStatusCode, string, string> writeText,
+        McpHttpServerOptions options,
+        IMcpHttpListener? listener = null)
     {
         _bridge = bridge ?? throw new ArgumentNullException(nameof(bridge));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
         _writeText = writeText ?? throw new ArgumentNullException(nameof(writeText));
+        _options = options ?? throw new ArgumentNullException(nameof(options));
         _port = port;
         _authToken = string.IsNullOrEmpty(authToken) ? null : authToken;
-        _listener = new HttpListener();
+        _listener = listener ?? new SystemMcpHttpListener(port);
+        _handlerLimiter = new SemaphoreSlim(
+            _options.MaxConcurrentHandlers,
+            _options.MaxConcurrentHandlers);
         // Loopback binding — not reachable from other machines. Use only the
         // numeric host on Windows so non-elevated startup does not require a
         // separate netsh http urlacl reservation for http://localhost:port/.
-        _listener.Prefixes.Add($"http://127.0.0.1:{port}/");
     }
 
     public void Start()
     {
-        if (_listener.IsListening) return;
-        _listener.Start();
-        _acceptLoop = Task.Run(() => AcceptLoopAsync(_cts.Token));
-        _logger.Info($"[MCP] HTTP server listening on {Endpoint}");
+        lock (_startLock)
+        {
+            if (_listener.IsListening)
+                return;
+
+            using var telemetry = McpServerTelemetry.StartLifecycle(McpServerOperation.Start);
+            try
+            {
+                _listener.Start();
+            }
+            catch (Exception ex)
+            {
+                McpServerTelemetry.RecordListenerError(McpServerErrorCategory.ListenerStart);
+                telemetry.Complete(
+                    McpServerOutcome.Failure,
+                    McpServerErrorCategory.ListenerStart,
+                    ex.GetType());
+                throw;
+            }
+
+            try
+            {
+                _acceptLoop = Task.Run(() => AcceptLoopAsync(_cts.Token));
+                _logger.Info($"[MCP] HTTP server listening on {Endpoint}");
+                Volatile.Write(ref _started, 1);
+                telemetry.Complete(McpServerOutcome.Success);
+            }
+            catch (Exception ex)
+            {
+                telemetry.Complete(
+                    McpServerOutcome.Failure,
+                    McpServerErrorCategory.InternalFailure,
+                    ex.GetType());
+                try { _listener.Stop(); }
+                catch (Exception stopEx)
+                {
+                    McpServerTelemetry.RecordListenerError(McpServerErrorCategory.ListenerStop);
+                    _logger.Debug($"[MCP] Listener cleanup after start failure threw: {stopEx.Message}");
+                }
+                throw;
+            }
+        }
     }
 
     public void UpdateAuthToken(string? authToken)
@@ -143,49 +234,181 @@ public sealed class McpHttpServer : IDisposable, IAsyncDisposable
             catch (Exception ex)
             {
                 if (ct.IsCancellationRequested) break;
+                McpServerTelemetry.RecordListenerError(McpServerErrorCategory.ListenerAccept);
                 _logger.Error("[MCP] Accept failed", ex);
                 continue;
             }
 
-            // Defensive: even though the prefix is loopback-only, double-check.
-            if (!IPAddress.IsLoopback(ctx.Request.RemoteEndPoint.Address))
+            McpServerRequestOperation? requestTelemetry = McpServerTelemetry.StartRequest(
+                GetRequestKind(ctx.Request.HttpMethod));
+            var handlerSlotAcquired = false;
+            try
             {
-                Reject(ctx, HttpStatusCode.Forbidden, "loopback only");
-                continue;
-            }
+                // Defensive: even though the prefix is loopback-only, double-check.
+                if (!IPAddress.IsLoopback(ctx.Request.RemoteEndPoint.Address))
+                {
+                    CompleteRejection(
+                        requestTelemetry,
+                        ctx,
+                        HttpStatusCode.Forbidden,
+                        "loopback only",
+                        McpServerOutcome.Failure,
+                        McpServerErrorCategory.InvalidRequest);
+                    continue;
+                }
 
-            // Cap concurrent handlers — a misbehaving local client can otherwise
-            // pin every threadpool thread on long-running screen/camera calls.
-            // Wait briefly: a slot freed during typical request handoff is well
-            // under 50ms, so a small queue here turns transient spikes into
-            // success rather than 503s without inviting unbounded queueing.
-            if (!await _handlerLimiter.WaitAsync(50, ct).ConfigureAwait(false))
+                // Cap concurrent handlers — a misbehaving local client can otherwise
+                // pin every threadpool thread on long-running screen/camera calls.
+                // Wait briefly so transient handoff spikes can succeed without
+                // introducing unbounded queueing.
+                _options.HandlerAdmissionStarted?.Invoke();
+                if (!await _handlerLimiter
+                        .WaitAsync(_options.HandlerAdmissionTimeout, ct)
+                        .ConfigureAwait(false))
+                {
+                    CompleteRejection(
+                        requestTelemetry,
+                        ctx,
+                        HttpStatusCode.ServiceUnavailable,
+                        "server busy",
+                        McpServerOutcome.Failure,
+                        McpServerErrorCategory.Busy);
+                    continue;
+                }
+                handlerSlotAcquired = true;
+
+                // NOTE: do not pass `ct` to Task.Run. If the token is cancelled
+                // between WaitAsync returning and the delegate starting, Task.Run
+                // skips the delegate and the finally never runs — leaking a
+                // semaphore slot. Let the delegate observe cancellation itself.
+                var handlerTelemetry = requestTelemetry;
+                var handlerTask = Task.Run(() => RunHandlerAsync(ctx, handlerTelemetry));
+                TrackHandler(handlerTask);
+                requestTelemetry = null;
+                handlerSlotAcquired = false;
+            }
+            catch (OperationCanceledException) when (ct.IsCancellationRequested)
             {
-                Reject(ctx, (HttpStatusCode)503, "server busy");
-                continue;
+                requestTelemetry?.Complete(
+                    McpServerOutcome.Canceled,
+                    McpServerErrorCategory.Shutdown);
+                break;
             }
-
-            // NOTE: do not pass `ct` to Task.Run. If the token is cancelled
-            // between WaitAsync returning and the delegate starting, Task.Run
-            // skips the delegate and the finally never runs — leaking a
-            // semaphore slot. Let the delegate observe cancellation itself.
-            var handlerTask = Task.Run(() => RunHandlerAsync(ctx));
-            TrackHandler(handlerTask);
+            catch (ObjectDisposedException) when (
+                Volatile.Read(ref _disposed) != 0 || ct.IsCancellationRequested)
+            {
+                requestTelemetry?.Complete(
+                    McpServerOutcome.Canceled,
+                    McpServerErrorCategory.Shutdown);
+                break;
+            }
+            catch (Exception ex)
+            {
+                requestTelemetry?.Complete(
+                    McpServerOutcome.Failure,
+                    McpServerErrorCategory.InternalFailure,
+                    ex.GetType());
+                _logger.Error("[MCP] Failed to admit request", ex);
+                Reject(ctx, HttpStatusCode.InternalServerError, "internal error");
+            }
+            finally
+            {
+                if (handlerSlotAcquired)
+                {
+                    try { _handlerLimiter.Release(); }
+                    catch (ObjectDisposedException) { }
+                }
+                requestTelemetry?.Dispose();
+            }
         }
     }
 
-    private async Task RunHandlerAsync(HttpListenerContext ctx)
+    private async Task RunHandlerAsync(
+        HttpListenerContext ctx,
+        McpServerRequestOperation requestTelemetry)
     {
-        // Per-request linked CTS: server shutdown OR per-request deadline.
-        // The bridge call observes this so a wedged tool cannot pin the slot.
-        using var requestCts = CancellationTokenSource.CreateLinkedTokenSource(_cts.Token);
-        requestCts.CancelAfter(RequestTimeoutMs);
+        var cancellationState = new McpRequestCancellationState();
+        CancellationTokenSource? timeoutCts = null;
+        CancellationTokenSource? requestCts = null;
+        CancellationTokenRegistration shutdownRegistration = default;
+        CancellationTokenRegistration timeoutRegistration = default;
+        CancellationToken shutdownCancellation = default;
+        CancellationToken timeoutCancellation = default;
         try
         {
-            await HandleAsync(ctx, requestCts.Token).ConfigureAwait(false);
+            _options.HandlerExecutionStarting?.Invoke();
+            timeoutCts = new CancellationTokenSource();
+            shutdownCancellation = _cts.Token;
+            timeoutCancellation = timeoutCts.Token;
+            requestCts = new CancellationTokenSource();
+            var requestCancellation = requestCts;
+            shutdownRegistration = shutdownCancellation.Register(
+                static state =>
+                {
+                    var propagation = (McpRequestCancellationPropagation)state!;
+                    PropagateCancellation(
+                        propagation.State,
+                        propagation.RequestCancellation,
+                        propagation.Cause);
+                },
+                new McpRequestCancellationPropagation(
+                    cancellationState,
+                    requestCancellation,
+                    McpRequestCancellationCause.Shutdown));
+            timeoutRegistration = timeoutCancellation.Register(
+                static state =>
+                {
+                    var propagation = (McpRequestCancellationPropagation)state!;
+                    PropagateCancellation(
+                        propagation.State,
+                        propagation.RequestCancellation,
+                        propagation.Cause);
+                },
+                new McpRequestCancellationPropagation(
+                    cancellationState,
+                    requestCancellation,
+                    McpRequestCancellationCause.Timeout));
+            timeoutCts.CancelAfter(_options.RequestTimeout);
+
+            var result = await HandleAsync(
+                    ctx,
+                    requestCts.Token,
+                    cancellationState,
+                    timeoutCancellation,
+                    shutdownCancellation,
+                    requestTelemetry.Context)
+                .ConfigureAwait(false);
+            requestTelemetry.Complete(result.Outcome, result.ErrorCategory, result.ErrorType);
+        }
+        catch (OperationCanceledException) when (requestCts?.IsCancellationRequested == true)
+        {
+            var result = GetCancellationResult(
+                cancellationState,
+                timeoutCancellation,
+                shutdownCancellation);
+            requestTelemetry.Complete(result.Outcome, result.ErrorCategory);
+        }
+        catch (ObjectDisposedException) when (Volatile.Read(ref _disposed) != 0)
+        {
+            requestTelemetry.Complete(
+                McpServerOutcome.Canceled,
+                McpServerErrorCategory.Shutdown);
+        }
+        catch (Exception ex)
+        {
+            requestTelemetry.Complete(
+                McpServerOutcome.Failure,
+                McpServerErrorCategory.InternalFailure,
+                ex.GetType());
+            _logger.Error("[MCP] Request handler failed outside transport handling", ex);
         }
         finally
         {
+            timeoutRegistration.Dispose();
+            shutdownRegistration.Dispose();
+            requestCts?.Dispose();
+            timeoutCts?.Dispose();
+            requestTelemetry.Dispose();
             // Defensive: if Dispose has already disposed the limiter, swallow.
             // Without this guard, a handler racing with shutdown can throw
             // ObjectDisposedException into an unobserved task, which surfaces
@@ -211,7 +434,13 @@ public sealed class McpHttpServer : IDisposable, IAsyncDisposable
         }, CancellationToken.None, TaskContinuationOptions.ExecuteSynchronously, TaskScheduler.Default);
     }
 
-    private async Task HandleAsync(HttpListenerContext ctx, CancellationToken ct)
+    private async Task<McpRequestResult> HandleAsync(
+        HttpListenerContext ctx,
+        CancellationToken ct,
+        McpRequestCancellationState cancellationState,
+        CancellationToken timeoutCancellation,
+        CancellationToken shutdownCancellation,
+        ActivityContext requestTelemetryContext)
     {
         // Snapshot the auth token once. UpdateAuthToken can rotate _authToken
         // on another thread, and reading the field separately for the null-test
@@ -228,8 +457,12 @@ public sealed class McpHttpServer : IDisposable, IAsyncDisposable
             var origin = ctx.Request.Headers["Origin"];
             if (!string.IsNullOrEmpty(origin))
             {
-                Reject(ctx, HttpStatusCode.Forbidden, "origin not allowed");
-                return;
+                return RejectRequest(
+                    ctx,
+                    HttpStatusCode.Forbidden,
+                    "origin not allowed",
+                    McpServerOutcome.Failure,
+                    McpServerErrorCategory.InvalidRequest);
             }
             // Belt-and-suspenders: a browser may strip Origin (e.g. via a
             // privacy extension) but still send Sec-Fetch-Site / Sec-Fetch-Mode
@@ -239,16 +472,24 @@ public sealed class McpHttpServer : IDisposable, IAsyncDisposable
                 !string.IsNullOrEmpty(ctx.Request.Headers["Sec-Fetch-Mode"]) ||
                 !string.IsNullOrEmpty(ctx.Request.Headers["Referer"]))
             {
-                Reject(ctx, HttpStatusCode.Forbidden, "browser context not allowed");
-                return;
+                return RejectRequest(
+                    ctx,
+                    HttpStatusCode.Forbidden,
+                    "browser context not allowed",
+                    McpServerOutcome.Failure,
+                    McpServerErrorCategory.InvalidRequest);
             }
 
             // Host header must match our loopback bind. Defends against DNS
             // rebinding pivots that route a public hostname to 127.0.0.1.
             if (!IsHostAllowed(ctx.Request.Headers["Host"]))
             {
-                Reject(ctx, HttpStatusCode.Forbidden, "host not allowed");
-                return;
+                return RejectRequest(
+                    ctx,
+                    HttpStatusCode.Forbidden,
+                    "host not allowed",
+                    McpServerOutcome.Failure,
+                    McpServerErrorCategory.InvalidRequest);
             }
 
             // Bearer-token check. Defends against untrusted local processes
@@ -259,8 +500,12 @@ public sealed class McpHttpServer : IDisposable, IAsyncDisposable
             // so alternate verbs cannot bypass the configured token gate.
             if (authToken != null && !IsAuthorized(authToken, ctx.Request.Headers["Authorization"]))
             {
-                Reject(ctx, HttpStatusCode.Unauthorized, "missing or invalid bearer token");
-                return;
+                return RejectRequest(
+                    ctx,
+                    HttpStatusCode.Unauthorized,
+                    "missing or invalid bearer token",
+                    McpServerOutcome.Failure,
+                    McpServerErrorCategory.AuthenticationFailed);
             }
 
             if (ctx.Request.HttpMethod == "GET")
@@ -269,13 +514,17 @@ public sealed class McpHttpServer : IDisposable, IAsyncDisposable
                 // from a curl/browser without hitting the JSON-RPC endpoint.
                 _writeText(ctx.Response, HttpStatusCode.OK,
                     $"OpenClaw MCP server. POST JSON-RPC to {Endpoint}", "text/plain");
-                return;
+                return McpRequestResult.Success;
             }
 
             if (ctx.Request.HttpMethod != "POST")
             {
-                Reject(ctx, HttpStatusCode.MethodNotAllowed, "POST only");
-                return;
+                return RejectRequest(
+                    ctx,
+                    HttpStatusCode.MethodNotAllowed,
+                    "POST only",
+                    McpServerOutcome.Failure,
+                    McpServerErrorCategory.InvalidRequest);
             }
 
             // Force application/json on POST. Combined with the Origin check,
@@ -286,45 +535,67 @@ public sealed class McpHttpServer : IDisposable, IAsyncDisposable
             var contentTypeBase = (semi >= 0 ? contentType.Substring(0, semi) : contentType).Trim();
             if (!string.Equals(contentTypeBase, "application/json", StringComparison.OrdinalIgnoreCase))
             {
-                Reject(ctx, HttpStatusCode.UnsupportedMediaType, "application/json required");
-                return;
+                return RejectRequest(
+                    ctx,
+                    HttpStatusCode.UnsupportedMediaType,
+                    "application/json required",
+                    McpServerOutcome.Failure,
+                    McpServerErrorCategory.InvalidRequest);
             }
 
             // Reject bodies that exceed our cap *before* reading them — a
             // multi-GB POST would otherwise OOM the tray.
             if (ctx.Request.ContentLength64 > MaxRequestBodyBytes)
             {
-                Reject(ctx, HttpStatusCode.RequestEntityTooLarge, "request body too large");
-                return;
+                return RejectRequest(
+                    ctx,
+                    HttpStatusCode.RequestEntityTooLarge,
+                    "request body too large",
+                    McpServerOutcome.Failure,
+                    McpServerErrorCategory.InvalidRequest);
             }
 
             string body;
             try
             {
-                body = await ReadBodyAsync(ctx.Request, MaxRequestBodyBytes, ct).ConfigureAwait(false);
+                body = await (_options.RequestBodyReader ?? ReadBodyAsync)(
+                        ctx.Request,
+                        MaxRequestBodyBytes,
+                        ct)
+                    .ConfigureAwait(false);
             }
             catch (InvalidDataException)
             {
-                Reject(ctx, HttpStatusCode.RequestEntityTooLarge, "request body too large");
-                return;
+                return RejectRequest(
+                    ctx,
+                    HttpStatusCode.RequestEntityTooLarge,
+                    "request body too large",
+                    McpServerOutcome.Failure,
+                    McpServerErrorCategory.InvalidRequest);
             }
             catch (OperationCanceledException) when (ct.IsCancellationRequested)
             {
                 // Slow-body or stuck client — free the slot rather than blocking forever.
-                Reject(ctx, HttpStatusCode.RequestTimeout, "request timed out");
-                return;
+                return RejectCancellation(
+                    ctx,
+                    cancellationState,
+                    timeoutCancellation,
+                    shutdownCancellation);
             }
 
             try
             {
                 transportResponse = await _bridge
-                    .HandleTransportRequestAsync(body, ct)
+                    .HandleTransportRequestAsync(body, ct, requestTelemetryContext)
                     .ConfigureAwait(false);
             }
             catch (OperationCanceledException) when (ct.IsCancellationRequested)
             {
-                Reject(ctx, HttpStatusCode.RequestTimeout, "request timed out");
-                return;
+                return RejectCancellation(
+                    ctx,
+                    cancellationState,
+                    timeoutCancellation,
+                    shutdownCancellation);
             }
 
             if (transportResponse.Body == null)
@@ -333,21 +604,149 @@ public sealed class McpHttpServer : IDisposable, IAsyncDisposable
                 ctx.Response.StatusCode = (int)HttpStatusCode.NoContent;
                 ctx.Response.Close();
                 transportResponse.CompleteDelivery();
-                return;
+                return McpRequestResult.Success;
             }
 
             _writeText(ctx.Response, HttpStatusCode.OK, transportResponse.Body, "application/json");
             transportResponse.CompleteDelivery();
+            return McpRequestResult.Success;
         }
         catch (Exception ex)
         {
             transportResponse?.CompleteDelivery(ex.GetType());
             _logger.Error("[MCP] Request failed", ex);
-            // Response may already be partially written or closed; swallow.
-            try { Reject(ctx, HttpStatusCode.InternalServerError, "internal error"); }
-            catch (Exception rejEx) { _logger.Debug($"[MCP] Reject after handler error failed (response already disposed?): {rejEx.Message}"); }
+            Reject(ctx, HttpStatusCode.InternalServerError, "internal error");
+
+            if (ct.IsCancellationRequested)
+            {
+                return GetCancellationResult(
+                    cancellationState,
+                    timeoutCancellation,
+                    shutdownCancellation,
+                    ex.GetType());
+            }
+
+            return new McpRequestResult(
+                McpServerOutcome.Failure,
+                IsTransportException(ex)
+                    ? McpServerErrorCategory.TransportFailure
+                    : McpServerErrorCategory.InternalFailure,
+                ex.GetType());
         }
     }
+
+    private McpRequestResult RejectCancellation(
+        HttpListenerContext ctx,
+        McpRequestCancellationState cancellationState,
+        CancellationToken timeoutCancellation,
+        CancellationToken shutdownCancellation)
+    {
+        var result = GetCancellationResult(
+            cancellationState,
+            timeoutCancellation,
+            shutdownCancellation);
+        var writeError = Reject(ctx, HttpStatusCode.RequestTimeout, "request timed out");
+        return writeError == null
+            ? result
+            : new McpRequestResult(
+                McpServerOutcome.Failure,
+                McpServerErrorCategory.TransportFailure,
+                writeError);
+    }
+
+    private McpRequestResult RejectRequest(
+        HttpListenerContext ctx,
+        HttpStatusCode status,
+        string reason,
+        McpServerOutcome outcome,
+        McpServerErrorCategory errorCategory)
+    {
+        var writeError = Reject(ctx, status, reason);
+        return writeError == null
+            ? new McpRequestResult(outcome, errorCategory)
+            : new McpRequestResult(
+                McpServerOutcome.Failure,
+                McpServerErrorCategory.TransportFailure,
+                writeError);
+    }
+
+    private void CompleteRejection(
+        McpServerRequestOperation telemetry,
+        HttpListenerContext ctx,
+        HttpStatusCode status,
+        string reason,
+        McpServerOutcome outcome,
+        McpServerErrorCategory errorCategory)
+    {
+        var result = RejectRequest(ctx, status, reason, outcome, errorCategory);
+        telemetry.Complete(result.Outcome, result.ErrorCategory, result.ErrorType);
+    }
+
+    private static McpServerRequestKind GetRequestKind(string method) =>
+        method switch
+        {
+            "GET" => McpServerRequestKind.Probe,
+            "POST" => McpServerRequestKind.JsonRpc,
+            _ => McpServerRequestKind.Other
+        };
+
+    private static McpRequestResult GetCancellationResult(
+        McpRequestCancellationState cancellationState,
+        CancellationToken timeoutCancellation,
+        CancellationToken shutdownCancellation,
+        Type? errorType = null) =>
+        ResolveCancellationCause(
+            cancellationState,
+            timeoutCancellation,
+            shutdownCancellation) switch
+        {
+            McpRequestCancellationCause.Shutdown => new McpRequestResult(
+                McpServerOutcome.Canceled,
+                McpServerErrorCategory.Shutdown,
+                errorType),
+            McpRequestCancellationCause.Timeout => new McpRequestResult(
+                McpServerOutcome.Failure,
+                McpServerErrorCategory.Timeout,
+                errorType),
+            _ => new McpRequestResult(
+                McpServerOutcome.Failure,
+                McpServerErrorCategory.InternalFailure,
+                errorType)
+        };
+
+    internal static McpRequestCancellationCause ResolveCancellationCause(
+        McpRequestCancellationState cancellationState,
+        CancellationToken timeoutCancellation,
+        CancellationToken shutdownCancellation)
+    {
+        var cause = cancellationState.Cause;
+        if (cause != McpRequestCancellationCause.None)
+            return cause;
+
+        var timeoutRequested = timeoutCancellation.IsCancellationRequested;
+        var shutdownRequested = shutdownCancellation.IsCancellationRequested;
+        if (timeoutRequested == shutdownRequested)
+            return McpRequestCancellationCause.None;
+
+        cancellationState.TrySet(
+            timeoutRequested
+                ? McpRequestCancellationCause.Timeout
+                : McpRequestCancellationCause.Shutdown);
+
+        return cancellationState.Cause;
+    }
+
+    internal static void PropagateCancellation(
+        McpRequestCancellationState cancellationState,
+        CancellationTokenSource requestCancellation,
+        McpRequestCancellationCause cause)
+    {
+        cancellationState.TrySet(cause);
+        requestCancellation.Cancel();
+    }
+
+    private static bool IsTransportException(Exception exception) =>
+        exception is IOException or HttpListenerException or ObjectDisposedException;
 
     private static bool IsAuthorized(string authToken, string? authHeader)
     {
@@ -399,7 +798,9 @@ public sealed class McpHttpServer : IDisposable, IAsyncDisposable
             long total = 0;
             while (true)
             {
-                var n = await request.InputStream.ReadAsync(buffer.AsMemory(0, buffer.Length), ct).ConfigureAwait(false);
+                var n = await request.InputStream
+                    .ReadAsync(buffer.AsMemory(0, buffer.Length), ct)
+                    .ConfigureAwait(false);
                 if (n <= 0) break;
                 total += n;
                 if (total > maxBytes) throw new InvalidDataException("request body exceeds cap");
@@ -413,9 +814,13 @@ public sealed class McpHttpServer : IDisposable, IAsyncDisposable
         }
     }
 
-    private void Reject(HttpListenerContext ctx, HttpStatusCode status, string reason)
+    private Type? Reject(HttpListenerContext ctx, HttpStatusCode status, string reason)
     {
-        try { _writeText(ctx.Response, status, reason, "text/plain"); }
+        try
+        {
+            _writeText(ctx.Response, status, reason, "text/plain");
+            return null;
+        }
         catch (Exception ex)
         {
             // Response may already be disposed; a failed write means the client
@@ -423,6 +828,7 @@ public sealed class McpHttpServer : IDisposable, IAsyncDisposable
             // outside a catch block, so emit a Trace breadcrumb here rather than
             // relying on a (non-existent) outer log.
             System.Diagnostics.Trace.WriteLine($"McpHttpServer.Reject: failed to write {(int)status} '{reason}': {ex.GetType().Name}: {ex.Message}");
+            return ex.GetType();
         }
     }
 
@@ -454,30 +860,89 @@ public sealed class McpHttpServer : IDisposable, IAsyncDisposable
 
     private async Task StopCoreAsync(TimeSpan drainTimeout)
     {
-        try { _cts.Cancel(); }
-        catch (Exception ex) { _logger.Debug($"[MCP] StopCore cts.Cancel threw: {ex.Message}"); }
-        try { if (_listener.IsListening) _listener.Stop(); }
-        catch (Exception ex) { _logger.Debug($"[MCP] StopCore listener.Stop threw: {ex.Message}"); }
-
-        // Snapshot before awaiting — handlers remove themselves on completion,
-        // and we don't want enumeration to race the continuation.
-        Task[] toAwait;
-        lock (_activeLock) { toAwait = new Task[_activeHandlers.Count]; _activeHandlers.CopyTo(toAwait); }
-
-        var allHandlers = Task.WhenAll(toAwait);
-        var deadline = Task.Delay(drainTimeout);
-        var winner = await Task.WhenAny(allHandlers, deadline).ConfigureAwait(false);
-        if (winner == deadline && toAwait.Length > 0)
+        lock (_startLock)
         {
-            int still;
-            lock (_activeLock) { still = _activeHandlers.Count; }
-            _logger.Warn($"[MCP] Drain timeout ({drainTimeout.TotalSeconds:F1}s); {still} handler(s) still running");
+            if (Interlocked.Exchange(ref _started, 0) == 0)
+                return;
         }
 
-        if (_acceptLoop != null)
+        using var telemetry = McpServerTelemetry.StartLifecycle(McpServerOperation.Stop);
+        var outcome = McpServerOutcome.Success;
+        var errorCategory = McpServerErrorCategory.None;
+        Type? errorType = null;
+
+        void SetFailure(McpServerErrorCategory category, Type? type = null)
         {
-            try { await Task.WhenAny(_acceptLoop, Task.Delay(TimeSpan.FromSeconds(1))).ConfigureAwait(false); }
-            catch (Exception ex) { _logger.Debug($"[MCP] Accept loop final await threw (loop may have errored): {ex.Message}"); }
+            if (outcome != McpServerOutcome.Success)
+                return;
+
+            outcome = McpServerOutcome.Failure;
+            errorCategory = category;
+            errorType = type;
+        }
+
+        try
+        {
+            try { _cts.Cancel(); }
+            catch (Exception ex)
+            {
+                SetFailure(McpServerErrorCategory.InternalFailure, ex.GetType());
+                _logger.Debug($"[MCP] StopCore cts.Cancel threw: {ex.Message}");
+            }
+
+            try
+            {
+                if (_listener.IsListening)
+                    _listener.Stop();
+            }
+            catch (Exception ex)
+            {
+                SetFailure(McpServerErrorCategory.ListenerStop, ex.GetType());
+                McpServerTelemetry.RecordListenerError(McpServerErrorCategory.ListenerStop);
+                _logger.Debug($"[MCP] StopCore listener.Stop threw: {ex.Message}");
+            }
+
+            // Snapshot before awaiting — handlers remove themselves on completion,
+            // and we don't want enumeration to race the continuation.
+            Task[] toAwait;
+            lock (_activeLock)
+            {
+                toAwait = new Task[_activeHandlers.Count];
+                _activeHandlers.CopyTo(toAwait);
+            }
+
+            var allHandlers = Task.WhenAll(toAwait);
+            var deadline = Task.Delay(drainTimeout);
+            var winner = await Task.WhenAny(allHandlers, deadline).ConfigureAwait(false);
+            if (winner == deadline && toAwait.Length > 0)
+            {
+                SetFailure(McpServerErrorCategory.DrainTimeout);
+                int still;
+                lock (_activeLock) { still = _activeHandlers.Count; }
+                _logger.Warn($"[MCP] Drain timeout ({drainTimeout.TotalSeconds:F1}s); {still} handler(s) still running");
+            }
+
+            if (_acceptLoop != null)
+            {
+                try
+                {
+                    await Task.WhenAny(_acceptLoop, Task.Delay(TimeSpan.FromSeconds(1)))
+                        .ConfigureAwait(false);
+                }
+                catch (Exception ex)
+                {
+                    _logger.Debug($"[MCP] Accept loop final await threw (loop may have errored): {ex.Message}");
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            SetFailure(McpServerErrorCategory.InternalFailure, ex.GetType());
+            throw;
+        }
+        finally
+        {
+            telemetry.Complete(outcome, errorCategory, errorType);
         }
     }
 
@@ -511,7 +976,7 @@ public sealed class McpHttpServer : IDisposable, IAsyncDisposable
     {
         try
         {
-            await StopAsync(DrainTimeout).ConfigureAwait(false);
+            await StopAsync(_options.DrainTimeout).ConfigureAwait(false);
         }
         catch (Exception ex)
         {
@@ -537,7 +1002,11 @@ public sealed class McpHttpServer : IDisposable, IAsyncDisposable
         }
 
         try { _listener.Close(); }
-        catch (Exception ex) { _logger.Debug($"[MCP] listener.Close during dispose threw: {ex.Message}"); }
+        catch (Exception ex)
+        {
+            McpServerTelemetry.RecordListenerError(McpServerErrorCategory.ListenerClose);
+            _logger.Debug($"[MCP] listener.Close during dispose threw: {ex.Message}");
+        }
         _cts.Dispose();
         _handlerLimiter.Dispose();
     }
@@ -565,4 +1034,37 @@ public sealed class McpHttpServer : IDisposable, IAsyncDisposable
                 TaskScheduler.Default);
         }
     }
+
+    private readonly record struct McpRequestResult(
+        McpServerOutcome Outcome,
+        McpServerErrorCategory ErrorCategory,
+        Type? ErrorType = null)
+    {
+        public static McpRequestResult Success { get; } = new(
+            McpServerOutcome.Success,
+            McpServerErrorCategory.None);
+    }
+
+    internal enum McpRequestCancellationCause
+    {
+        None,
+        Timeout,
+        Shutdown
+    }
+
+    internal sealed class McpRequestCancellationState
+    {
+        private int _cause;
+
+        public McpRequestCancellationCause Cause =>
+            (McpRequestCancellationCause)Volatile.Read(ref _cause);
+
+        public void TrySet(McpRequestCancellationCause cause) =>
+            Interlocked.CompareExchange(ref _cause, (int)cause, (int)McpRequestCancellationCause.None);
+    }
+
+    private sealed record McpRequestCancellationPropagation(
+        McpRequestCancellationState State,
+        CancellationTokenSource RequestCancellation,
+        McpRequestCancellationCause Cause);
 }

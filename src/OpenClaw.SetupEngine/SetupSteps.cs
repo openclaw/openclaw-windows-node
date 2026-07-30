@@ -1866,7 +1866,14 @@ public sealed class PairOperatorStep : SetupStep
         // Initialize device identity
         Directory.CreateDirectory(identityPath);
         var identity = new DeviceIdentity(identityPath);
-        identity.Initialize();
+        try
+        {
+            identity.Initialize();
+        }
+        catch (DeviceIdentityLoadException ex)
+        {
+            return SetupIdentityFailure.Terminal(ctx, "operator pairing", ex);
+        }
         ctx.Logger.Info($"Device identity initialized: {identity.DeviceId[..16]}...");
         ctx.OperatorDeviceId = identity.DeviceId;
 
@@ -1943,6 +1950,10 @@ public sealed class PairOperatorStep : SetupStep
 
             return StepResult.Fail($"Operator connection failed: {phase1Result}");
         }
+        catch (DeviceIdentityLoadException ex)
+        {
+            return SetupIdentityFailure.Terminal(ctx, "operator pairing", ex);
+        }
         catch (Exception ex)
         {
             return StepResult.Fail($"Operator pairing failed: {ex.Message}", ex);
@@ -2012,7 +2023,14 @@ public sealed class PairOperatorStep : SetupStep
 
         // Read the device token we just stored
         var identity = new DeviceIdentity(identityPath);
-        identity.Initialize();
+        try
+        {
+            identity.Initialize();
+        }
+        catch (DeviceIdentityLoadException ex)
+        {
+            return SetupIdentityFailure.Terminal(ctx, "operator finalization", ex);
+        }
         var deviceToken = identity.DeviceToken;
 
         if (string.IsNullOrEmpty(deviceToken))
@@ -2409,6 +2427,10 @@ public sealed class PairNodeStep : SetupStep
             // into StepResult.Fail (same idiom as the other steps' cancel rethrow).
             throw;
         }
+        catch (DeviceIdentityLoadException ex)
+        {
+            return SetupIdentityFailure.Terminal(ctx, "node pairing", ex);
+        }
         catch (Exception ex)
         {
             return StepResult.Fail($"Node pairing failed: {ex.Message}", ex);
@@ -2433,7 +2455,14 @@ public sealed class PairNodeStep : SetupStep
         ctx.Logger.Info("Finalizing node: reconnect with node device token");
 
         var identity = new DeviceIdentity(identityPath);
-        identity.Initialize();
+        try
+        {
+            identity.Initialize();
+        }
+        catch (DeviceIdentityLoadException ex)
+        {
+            return SetupIdentityFailure.Terminal(ctx, "node finalization", ex);
+        }
         var nodeToken = identity.NodeDeviceToken;
 
         if (string.IsNullOrEmpty(nodeToken))
@@ -3294,21 +3323,36 @@ public sealed class VerifyEndToEndStep : SetupStep
         if (record == null)
             return StepResult.Fail("Gateway record missing from registry");
 
-        var identityPath = registry.GetIdentityDirectory(record.Id);
-        if (!DeviceIdentity.HasStoredDeviceToken(identityPath))
+        var identityDirectory = registry.GetIdentityDirectory(record.Id);
+        var tokenRead = DeviceIdentity.ReadStoredDeviceToken(
+            identityDirectory,
+            new SetupOpenClawLogger(ctx.Logger));
+        if (tokenRead.Status is DeviceTokenReadStatus.Unreadable or DeviceTokenReadStatus.Corrupt)
         {
-            ctx.Logger.Warn("No stored device token found — tray app may need to re-pair");
+            var identityPath = Path.Combine(identityDirectory, "device-key-ed25519.json");
+            Exception cause = tokenRead.Status == DeviceTokenReadStatus.Unreadable
+                ? new IOException(tokenRead.Detail ?? "Identity file could not be read.")
+                : new InvalidDataException(tokenRead.Detail ?? "Identity file is invalid.");
+            return SetupIdentityFailure.Terminal(
+                ctx,
+                "end-to-end verification",
+                new DeviceIdentityLoadException(identityPath, cause));
+        }
+
+        if (tokenRead.Status != DeviceTokenReadStatus.Resolved)
+        {
+            ctx.Logger.Warn("No stored device token found. Tray app may need to re-pair.");
         }
         else
         {
-            ctx.Logger.Info("Device token present — performing final operator handshake");
+            ctx.Logger.Info("Device token present. Performing final operator handshake.");
 
             // CRITICAL: The operator finalization must happen AFTER node pairing.
             // Node pairing changes the device's "current metadata" to node-host/node.
             // The tray connects as operator (cli/cli), so we must re-establish operator
             // as the device's last-seen metadata. This prevents "metadata-upgrade" errors.
             var wsLogger = new SetupOpenClawLogger(ctx.Logger);
-            var finalResult = await FinalizeOperatorForTray(ctx, ctx.GatewayUrl!, identityPath, wsLogger, ct);
+            var finalResult = await FinalizeOperatorForTray(ctx, ctx.GatewayUrl!, identityDirectory, wsLogger, ct);
             if (!finalResult.IsSuccess)
                 return finalResult;
         }
@@ -3485,7 +3529,14 @@ public sealed class VerifyEndToEndStep : SetupStep
         SetupContext ctx, string gatewayUrl, string identityPath, IOpenClawLogger wsLogger, CancellationToken ct)
     {
         var identity = new DeviceIdentity(identityPath);
-        identity.Initialize();
+        try
+        {
+            identity.Initialize();
+        }
+        catch (DeviceIdentityLoadException ex)
+        {
+            return SetupIdentityFailure.Terminal(ctx, "operator finalization", ex);
+        }
         var deviceToken = identity.DeviceToken;
 
         if (string.IsNullOrEmpty(deviceToken))

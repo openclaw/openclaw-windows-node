@@ -1,3 +1,4 @@
+using System.Threading;
 using System.Threading.Tasks;
 
 namespace OpenClaw.Shared.ExecApprovals;
@@ -13,4 +14,11 @@ public sealed class ExecApprovalV2NullHandler : IExecApprovalV2Handler
 
     public Task<ExecApprovalV2Result> HandleAsync(OpenClaw.Shared.NodeInvokeRequest request, string correlationId)
         => Task.FromResult(ExecApprovalV2Result.Unavailable());
+
+    public ValueTask<ExecApprovalRevalidationResult> RevalidateAsync(
+        ExecApprovedExecution execution,
+        string correlationId,
+        CancellationToken cancellationToken = default)
+        => ValueTask.FromResult(
+            ExecApprovalRevalidationResult.NotCurrent("handler-not-available"));
 }

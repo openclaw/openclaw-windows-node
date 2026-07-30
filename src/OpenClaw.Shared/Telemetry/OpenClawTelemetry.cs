@@ -74,7 +74,19 @@ public static class OpenClawTelemetry
         ActivityContext parentContext,
         IEnumerable<OpenClawTelemetryTag>? tags = null,
         System.Diagnostics.ActivityKind kind = System.Diagnostics.ActivityKind.Internal,
-        OpenClawActivitySourceName source = OpenClawActivitySourceName.OpenClaw)
+        OpenClawActivitySourceName source = OpenClawActivitySourceName.OpenClaw) =>
+        StartDetachedActivity(spanName, parentContext, tags, kind, source, links: null);
+
+    /// <summary>
+    /// Starts a manually-controlled child span with optional links without leaving it as the ambient activity.
+    /// </summary>
+    public static Activity? StartDetachedActivity(
+        string spanName,
+        ActivityContext parentContext,
+        IEnumerable<OpenClawTelemetryTag>? tags,
+        System.Diagnostics.ActivityKind kind,
+        OpenClawActivitySourceName source,
+        IEnumerable<ActivityLink>? links = null)
     {
         if (string.IsNullOrWhiteSpace(spanName))
             throw new ArgumentException("Span name cannot be empty.", nameof(spanName));
@@ -83,7 +95,11 @@ public static class OpenClawTelemetry
         try
         {
             Activity.Current = null;
-            var activity = source.ToActivitySource().StartActivity(spanName, kind, parentContext);
+            var activity = source.ToActivitySource().StartActivity(
+                spanName,
+                kind,
+                parentContext,
+                links: links);
             ApplyTags(activity, tags);
             return activity;
         }

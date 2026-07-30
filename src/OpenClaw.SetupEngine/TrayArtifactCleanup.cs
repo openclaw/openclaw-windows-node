@@ -2,6 +2,7 @@ using System.Runtime.Versioning;
 using Microsoft.Win32;
 using OpenClaw.Connection;
 using OpenClaw.Shared;
+using OpenClaw.Shared.ExecApprovals;
 
 namespace OpenClaw.SetupEngine;
 
@@ -52,8 +53,27 @@ public static class TrayArtifactCleanup
         // 2. Delete run.marker
         DeleteFileIfExists(Path.Combine(localDataDir, "run.marker"), "run.marker", logger);
 
-        // 3. Delete exec-policy.json
+        // 3. Delete current exec approvals (including an alternate OPENCLAW_STATE_DIR)
+        // and the retired policy file.
+        var activeExecApprovalsPath = ExecApprovalsStore.ResolveFilePath(appDataDir);
+        DeleteFileIfExists(activeExecApprovalsPath, "exec-approvals.json", logger);
+        var legacyExecApprovalsPath = Path.Combine(appDataDir, "exec-approvals.json");
+        if (!string.Equals(
+                Path.GetFullPath(activeExecApprovalsPath),
+                Path.GetFullPath(legacyExecApprovalsPath),
+                StringComparison.OrdinalIgnoreCase))
+        {
+            DeleteFileIfExists(
+                legacyExecApprovalsPath,
+                "legacy exec-approvals.json",
+                logger);
+        }
+        DeleteFileIfExists(
+            Path.Combine(localDataDir, "exec-approvals.json"),
+            "local legacy exec-approvals.json",
+            logger);
         DeleteFileIfExists(Path.Combine(appDataDir, "exec-policy.json"), "exec-policy.json", logger);
+        DeleteFileIfExists(Path.Combine(localDataDir, "exec-policy.json"), "local exec-policy.json", logger);
 
         // 4. Reset onboarding settings in settings.json
         ResetOnboardingSettings(appDataDir, logger, preserveNodeSettings: HasRemainingGatewayRecords(appDataDir, logger));

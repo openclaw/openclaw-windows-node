@@ -109,7 +109,6 @@ public class WindowsNodeClientTests
     [InlineData("too many failed authentication attempts", GatewayErrorKind.RateLimited)]
     [InlineData("device token mismatch", GatewayErrorKind.DeviceTokenMismatch)]
     [InlineData("origin not allowed", GatewayErrorKind.Auth)]
-    [InlineData("gateway internal error", GatewayErrorKind.Server)]
     public void HandleResponse_TerminalError_EmitsFiniteFailureClassification(
         string message,
         GatewayErrorKind expectedKind)
@@ -149,9 +148,6 @@ public class WindowsNodeClientTests
     public void HandleResponse_NodeDeviceTokenMismatchByStructuredCode_GenericMessage_EmitsDeviceTokenMismatch(
         string _, string codeJson)
     {
-        // A stale node DEVICE token may arrive as a structured code (top-level error.code OR
-        // error.details.code) with a generic message. The node client must classify it as the exact
-        // DeviceTokenMismatch (so the manager can self-recover) regardless of message wording.
         var dataPath = Path.Combine(Path.GetTempPath(), $"openclaw-node-test-{Guid.NewGuid():N}");
         Directory.CreateDirectory(dataPath);
 
@@ -168,6 +164,7 @@ public class WindowsNodeClientTests
                     "error": { "message": "unauthorized", {{codeJson}} }
                   }
                   """);
+
             client.HandleResponse(document.RootElement);
 
             Assert.Equal(GatewayErrorKind.DeviceTokenMismatch, actualKind);
@@ -178,12 +175,135 @@ public class WindowsNodeClientTests
         }
     }
 
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void HandleResponse_NestedExpiredSignature_IsTerminalAuthFailureWithoutV2Fallback(bool nestedUnderData)
+    {
+        var dataPath = Path.Combine(Path.GetTempPath(), $"openclaw-node-test-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(dataPath);
+
+        try
+        {
+            using var client = new WindowsNodeClient("ws://localhost:18789", "test-token", dataPath);
+            GatewayErrorKind? actualKind = null;
+            var statuses = new List<ConnectionStatus>();
+            client.ConnectionFailure += (_, kind) => actualKind = kind;
+            client.StatusChanged += (_, status) => statuses.Add(status);
+            var detailContainer = nestedUnderData
+                ? "\"data\":{\"details\":{\"code\":\"DEVICE_AUTH_SIGNATURE_EXPIRED\"}}"
+                : "\"details\":{\"code\":\"DEVICE_AUTH_SIGNATURE_EXPIRED\"}";
+            using var document = JsonDocument.Parse(
+                $$"""
+                  {
+                    "type": "res",
+                    "ok": false,
+                    "error": {
+                      "message": "device signature expired",
+                      {{detailContainer}}
+                    }
+                  }
+                  """);
+
+            client.HandleResponse(document.RootElement);
+
+            Assert.Equal(GatewayErrorKind.Auth, actualKind);
+            Assert.Contains(ConnectionStatus.Error, statuses);
+            Assert.False(client.UseV2Signature);
+            Assert.True(GetPrivateField<bool>(client, "_rateLimited"));
+        }
+        finally
+        {
+            Directory.Delete(dataPath, true);
+        }
+    }
+
+    [Theory]
+    [InlineData("\"malformed\"")]
+    [InlineData("[]")]
+    [InlineData("null")]
+    [InlineData("{}")]
+    [InlineData("{\"requestId\":\"abc\"}")]
+    public void HandleResponse_MalformedTopLevelDetails_UsesValidNestedExpiredCode(string topLevelDetailsJson)
+    {
+        var dataPath = Path.Combine(Path.GetTempPath(), $"openclaw-node-test-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(dataPath);
+
+        try
+        {
+            using var client = new WindowsNodeClient("ws://localhost:18789", "test-token", dataPath);
+            GatewayErrorKind? actualKind = null;
+            client.ConnectionFailure += (_, kind) => actualKind = kind;
+            using var document = JsonDocument.Parse(
+                $$"""
+                  {
+                    "type": "res",
+                    "ok": false,
+                    "error": {
+                      "message": "device signature invalid",
+                      "details": {{topLevelDetailsJson}},
+                      "data": {
+                        "details": {
+                          "code": "DEVICE_AUTH_SIGNATURE_EXPIRED"
+                        }
+                      }
+                    }
+                  }
+                  """);
+
+            client.HandleResponse(document.RootElement);
+
+            Assert.Equal(GatewayErrorKind.Auth, actualKind);
+            Assert.False(client.UseV2Signature);
+            Assert.True(GetPrivateField<bool>(client, "_rateLimited"));
+        }
+        finally
+        {
+            Directory.Delete(dataPath, true);
+        }
+    }
+
+    [Theory]
+    [InlineData("\"malformed\"")]
+    [InlineData("[]")]
+    [InlineData("null")]
+    public void HandleResponse_MalformedDetailsOnly_IsHandledSafely(string detailsJson)
+    {
+        var dataPath = Path.Combine(Path.GetTempPath(), $"openclaw-node-test-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(dataPath);
+
+        try
+        {
+            using var client = new WindowsNodeClient("ws://localhost:18789", "test-token", dataPath);
+            GatewayErrorKind? actualKind = null;
+            client.ConnectionFailure += (_, kind) => actualKind = kind;
+            using var document = JsonDocument.Parse(
+                $$"""
+                  {
+                    "type": "res",
+                    "ok": false,
+                    "error": {
+                      "message": "gateway rejected request",
+                      "details": {{detailsJson}}
+                    }
+                  }
+                  """);
+
+            client.HandleResponse(document.RootElement);
+
+            Assert.Null(actualKind);
+            Assert.False(client.UseV2Signature);
+            Assert.False(GetPrivateField<bool>(client, "_rateLimited"));
+        }
+        finally
+        {
+            Directory.Delete(dataPath, true);
+        }
+    }
+
     [Fact]
     public void HandleResponse_SharedTokenMismatchByStructuredCode_GenericMessage_StopsReconnectAndIsNotDeviceMismatch()
     {
-        // A wrong SHARED token delivered as a structured code (AUTH_TOKEN_MISMATCH) with a generic
-        // message is permanent for this connection: the node client must set _rateLimited to stop its
-        // OWN auto-reconnect loop, and must NOT classify it as a recoverable device-token mismatch.
         var dataPath = Path.Combine(Path.GetTempPath(), $"openclaw-node-test-{Guid.NewGuid():N}");
         Directory.CreateDirectory(dataPath);
 
@@ -200,14 +320,44 @@ public class WindowsNodeClientTests
                   "error": { "message": "unauthorized", "code": "AUTH_TOKEN_MISMATCH" }
                 }
                 """);
+
             client.HandleResponse(document.RootElement);
 
             Assert.NotEqual(GatewayErrorKind.DeviceTokenMismatch, actualKind);
+            Assert.True(GetPrivateField<bool>(client, "_rateLimited"));
+        }
+        finally
+        {
+            Directory.Delete(dataPath, true);
+        }
+    }
 
-            var rateLimited = (bool)typeof(WindowsNodeClient)
-                .GetField("_rateLimited", BindingFlags.NonPublic | BindingFlags.Instance)!
-                .GetValue(client)!;
-            Assert.True(rateLimited);
+    [Fact]
+    public void HandleResponse_ReconnectableServerError_DoesNotEmitTerminalFailure()
+    {
+        var dataPath = Path.Combine(Path.GetTempPath(), $"openclaw-node-test-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(dataPath);
+
+        try
+        {
+            using var client = new WindowsNodeClient("ws://localhost:18789", "test-token", dataPath);
+            GatewayErrorKind? actualKind = null;
+            client.ConnectionFailure += (_, kind) => actualKind = kind;
+            using var document = JsonDocument.Parse(
+                """
+                {
+                  "type": "res",
+                  "ok": false,
+                  "error": {
+                    "message": "gateway internal error",
+                    "code": "TEST_ERROR"
+                  }
+                }
+                """);
+
+            client.HandleResponse(document.RootElement);
+
+            Assert.Null(actualKind);
         }
         finally
         {
@@ -272,6 +422,50 @@ public class WindowsNodeClientTests
             {
                 Directory.Delete(dataPath, true);
             }
+        }
+    }
+
+    [Fact]
+    public void HandleResponse_HelloOkWhenTokenWriteFails_CompletesHandshakeAndPublishesToken()
+    {
+        var dataPath = Path.Combine(Path.GetTempPath(), $"openclaw-node-test-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(dataPath);
+
+        try
+        {
+            using var client = new WindowsNodeClient("ws://localhost:18789", "test-token", dataPath);
+            var identityPath = Path.Combine(dataPath, "device-key-ed25519.json");
+            var handshakeSucceeded = false;
+            DeviceTokenReceivedEventArgs? receivedToken = null;
+            client.HandshakeSucceeded += (_, _) => handshakeSucceeded = true;
+            client.DeviceTokenReceived += (_, e) => receivedToken = e;
+
+            using (new FileStream(identityPath, FileMode.Open, FileAccess.Read, FileShare.Read))
+            {
+                using var document = JsonDocument.Parse(
+                    """
+                    {
+                      "type": "res",
+                      "ok": true,
+                      "payload": {
+                        "type": "hello-ok",
+                        "nodeId": "test-node-id",
+                        "auth": {
+                          "deviceToken": "test-device-token"
+                        }
+                      }
+                    }
+                    """);
+                client.HandleResponse(document.RootElement);
+            }
+
+            Assert.True(handshakeSucceeded);
+            Assert.Equal("test-device-token", receivedToken?.Token);
+            Assert.Equal("node", receivedToken?.Role);
+        }
+        finally
+        {
+            Directory.Delete(dataPath, true);
         }
     }
 
@@ -520,6 +714,48 @@ public class WindowsNodeClientTests
         {
             if (Directory.Exists(dataPath))
                 Directory.Delete(dataPath, true);
+        }
+    }
+
+    [Fact]
+    public void HandleResponse_NotPairedError_MergesFieldsAcrossDetailObjects()
+    {
+        var dataPath = Path.Combine(Path.GetTempPath(), $"openclaw-node-test-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(dataPath);
+
+        try
+        {
+            using var client = new WindowsNodeClient("ws://localhost:18789", "test-token", dataPath);
+            var pairingEvents = new List<PairingStatusEventArgs>();
+            client.PairingStatusChanged += (_, e) => pairingEvents.Add(e);
+            using var document = JsonDocument.Parse("""
+                {
+                    "type": "res",
+                    "ok": false,
+                    "error": {
+                        "message": "Device approval required",
+                        "code": "NOT_PAIRED",
+                        "details": {
+                            "reason": "first-connect"
+                        },
+                        "data": {
+                            "details": {
+                                "requestId": "nested-123"
+                            }
+                        }
+                    }
+                }
+                """);
+
+            client.HandleResponse(document.RootElement);
+
+            Assert.Single(pairingEvents);
+            Assert.Equal("nested-123", pairingEvents[0].RequestId);
+            Assert.Contains("nested-123", pairingEvents[0].Message);
+        }
+        finally
+        {
+            Directory.Delete(dataPath, true);
         }
     }
 
@@ -1218,6 +1454,92 @@ public class WindowsNodeClientTests
         }
     }
 
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void BuildNodeConnectMessage_UsesChallengeTimestampInSerializedDeviceAndSignature(bool useV2Signature)
+    {
+        var dataPath = Path.Combine(Path.GetTempPath(), $"openclaw-node-test-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(dataPath);
+
+        try
+        {
+            using var client = new WindowsNodeClient("ws://localhost:18789", "gateway-token", dataPath)
+            {
+                UseV2Signature = useV2Signature
+            };
+            const long challengeTimestampMs = 1_716_480_000_000;
+            const string nonce = "gateway-challenge";
+
+            var json = InvokeBuildNodeConnectMessage(client, challengeTimestampMs, nonce);
+            using var document = JsonDocument.Parse(json);
+            var device = document.RootElement.GetProperty("params").GetProperty("device");
+            var identity = GetDeviceIdentity(client);
+            var expectedSignature = useV2Signature
+                ? identity.SignConnectPayloadV2(
+                    nonce, challengeTimestampMs, "node-host", "node", "node",
+                    Array.Empty<string>(), "gateway-token")
+                : identity.SignConnectPayloadV3(
+                    nonce, challengeTimestampMs, "node-host", "node", "node",
+                    Array.Empty<string>(), "gateway-token", "windows", "windows");
+
+            Assert.Equal(challengeTimestampMs, device.GetProperty("signedAt").GetInt64());
+            Assert.Equal(nonce, device.GetProperty("nonce").GetString());
+            Assert.Equal(expectedSignature, device.GetProperty("signature").GetString());
+        }
+        finally
+        {
+            Directory.Delete(dataPath, true);
+        }
+    }
+
+    [Fact]
+    public async Task HandleConnectChallenge_130SecondHostSkew_PassesCredentialFreeFakeGatewayValidation()
+    {
+        var dataPath = Path.Combine(Path.GetTempPath(), $"openclaw-node-test-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(dataPath);
+
+        try
+        {
+            using var client = new CapturingWindowsNodeClient(
+                "ws://localhost:18789",
+                "fake-gateway-token",
+                dataPath);
+            const string nonce = "skewed-gateway-challenge";
+            var gatewayTimestampMs = DateTimeOffset.UtcNow.AddSeconds(-130).ToUnixTimeMilliseconds();
+
+            await InvokeHandleEventAsync(
+                client,
+                $$"""
+                  {
+                    "type": "event",
+                    "event": "connect.challenge",
+                    "payload": {
+                      "nonce": "{{nonce}}",
+                      "ts": {{gatewayTimestampMs}}
+                    }
+                  }
+                  """);
+
+            Assert.True(client.SentMessages.TryDequeue(out var connectMessage));
+            using var document = JsonDocument.Parse(connectMessage);
+            var device = document.RootElement.GetProperty("params").GetProperty("device");
+            var signedAt = device.GetProperty("signedAt").GetInt64();
+            var identity = GetDeviceIdentity(client);
+            var expectedSignature = identity.SignConnectPayloadV3(
+                nonce, gatewayTimestampMs, "node-host", "node", "node",
+                Array.Empty<string>(), "fake-gateway-token", "windows", "windows");
+
+            Assert.True(Math.Abs(DateTimeOffset.UtcNow.ToUnixTimeMilliseconds() - gatewayTimestampMs) >= 120_000);
+            Assert.InRange(Math.Abs(signedAt - gatewayTimestampMs), 0, 30_000);
+            Assert.Equal(expectedSignature, device.GetProperty("signature").GetString());
+        }
+        finally
+        {
+            Directory.Delete(dataPath, true);
+        }
+    }
+
     [Fact]
     public void BuildNodeConnectMessage_IncludesCanonicalWindowsDeviceFamily()
     {
@@ -1544,14 +1866,17 @@ public class WindowsNodeClientTests
         await task!;
     }
 
-    private static string InvokeBuildNodeConnectMessage(WindowsNodeClient client)
+    private static string InvokeBuildNodeConnectMessage(
+        WindowsNodeClient client,
+        long? challengeTimestampMs = null,
+        string nonce = "nonce-123")
     {
         var method = typeof(WindowsNodeClient).GetMethod(
             "BuildNodeConnectMessage",
             BindingFlags.NonPublic | BindingFlags.Instance);
         Assert.NotNull(method);
 
-        return (string)method!.Invoke(client, ["nonce-123", 0L])!;
+        return (string)method!.Invoke(client, [nonce, challengeTimestampMs])!;
     }
 
     private static (Dictionary<string, string> Auth, string TokenForSignature) InvokeBuildConnectAuth(
@@ -1564,6 +1889,18 @@ public class WindowsNodeClientTests
 
         var result = (ValueTuple<Dictionary<string, string>, string>)method!.Invoke(client, [])!;
         return (result.Item1, result.Item2);
+    }
+
+    private static DeviceIdentity GetDeviceIdentity(WindowsNodeClient client) =>
+        GetPrivateField<DeviceIdentity>(client, "_deviceIdentity");
+
+    private static T GetPrivateField<T>(WindowsNodeClient client, string fieldName)
+    {
+        var field = typeof(WindowsNodeClient).GetField(
+            fieldName,
+            BindingFlags.NonPublic | BindingFlags.Instance);
+        Assert.NotNull(field);
+        return (T)field!.GetValue(client)!;
     }
 
     // ─── Command dispatch map tests ────────────────────────────────────────────

@@ -24,6 +24,10 @@ public sealed class DeviceIdentityStore : IDeviceIdentityStore
             identity.StoreDeviceTokenForRole(role, token, scopes);
             _logger.Info($"[IdentityStore] Stored {role} device token at {identityPath}");
         }
+        catch (DeviceIdentityLoadException)
+        {
+            throw;
+        }
         catch (Exception ex)
         {
             _logger.Error($"[IdentityStore] Failed to store {role} device token: {ex.Message}");

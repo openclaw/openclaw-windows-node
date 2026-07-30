@@ -35,14 +35,15 @@ public sealed class MxcSetupAndConnectTests
         var env = GatewayTokenEnv(gateway.SharedGatewayToken);
         var nodeId = _fixture.ReadActiveGatewayDeviceId();
         var logCursor = GetTrayLogCursor();
+        var commandText = $"echo {marker}";
         var invokeParams = JsonSerializer.Serialize(new
         {
             nodeId,
             command = "system.run",
             @params = new
             {
-                command = $"echo {marker}",
-                shell = "cmd",
+                command = new[] { "cmd.exe", "/d", "/s", "/c", commandText },
+                rawCommand = commandText,
                 timeoutMs = SystemRunProofTimeoutMs
             },
             timeoutMs = NodeInvokeProofTimeoutMs,
@@ -52,7 +53,8 @@ public sealed class MxcSetupAndConnectTests
         var invoke = await _fixture.RunInWslAsync(
             $"openclaw gateway call node.invoke --params {ShellSingleQuote(invokeParams)} --json --timeout {GatewayCliProofTimeoutMs}",
             GatewayCliProofProcessTimeout,
-            env);
+            env,
+            inputViaStdin: true);
 
         AssertCommandSucceeded(invoke, "invoke Windows node system.run through real gateway");
         Assert.Contains(marker, invoke.Stdout, StringComparison.Ordinal);
@@ -83,7 +85,7 @@ public sealed class MxcSetupAndConnectTests
             "[mxc] system.run sandbox request",
             "executor=mxc-direct-appc",
             "contained=True",
-            "shell=cmd");
+            "shell=<direct-argv>");
         var resultLog = await WaitForTrayLogLineContainingAsync(
             TimeSpan.FromSeconds(30),
             logCursor,
@@ -101,26 +103,31 @@ public sealed class MxcSetupAndConnectTests
         const string sourcePayload = "OPENCLAW_GATEWAY_SYSTEM_RUN_MXC_DENIED_PAYLOAD";
         const string sourceReadyMarker = "OPENCLAW_GATEWAY_SYSTEM_RUN_MXC_SOURCE_READY";
         var blockedPath = Path.Combine(_fixture.DataDir, $"mxc-denied-write-{Guid.NewGuid():N}.txt");
-        var blockedPathForCmd = blockedPath.Replace(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
-        var sourcePathForCmd = "%TEMP%/openclaw-mxc-denied-source.txt";
+        var blockedPathForCmd = blockedPath;
 
         await AssertPrimaryTrayReadyAndGatewayCliHealthyAsync();
         await SetExecApprovalForSystemRunProofAsync();
 
         Assert.False(File.Exists(blockedPath), $"Unexpected pre-existing MXC deny proof file: {blockedPath}");
+        await File.WriteAllTextAsync(blockedPath, sourcePayload);
+        Assert.Equal(sourcePayload, await File.ReadAllTextAsync(blockedPath));
+        File.Delete(blockedPath);
+        Assert.False(File.Exists(blockedPath), $"Failed to remove host-writable preflight file: {blockedPath}");
 
         var gateway = _fixture.ReadActiveGatewayRecord();
         var env = GatewayTokenEnv(gateway.SharedGatewayToken);
         var nodeId = _fixture.ReadActiveGatewayDeviceId();
         var logCursor = GetTrayLogCursor();
+        var commandText =
+            $"echo {sourceReadyMarker} && echo {sourcePayload} > {CmdQuote(blockedPathForCmd)}";
         var invokeParams = JsonSerializer.Serialize(new
         {
             nodeId,
             command = "system.run",
             @params = new
             {
-                command = $"echo {sourcePayload} > {CmdQuote(sourcePathForCmd)} && echo {sourceReadyMarker} && copy /Y {CmdQuote(sourcePathForCmd)} {CmdQuote(blockedPathForCmd)}",
-                shell = "cmd",
+                command = new[] { "cmd.exe", "/d", "/s", "/c", commandText },
+                rawCommand = commandText,
                 timeoutMs = SystemRunProofTimeoutMs
             },
             timeoutMs = NodeInvokeProofTimeoutMs,
@@ -130,7 +137,8 @@ public sealed class MxcSetupAndConnectTests
         var invoke = await _fixture.RunInWslAsync(
             $"openclaw gateway call node.invoke --params {ShellSingleQuote(invokeParams)} --json --timeout {GatewayCliProofTimeoutMs}",
             GatewayCliProofProcessTimeout,
-            env);
+            env,
+            inputViaStdin: true);
 
         AssertCommandSucceeded(invoke, "invoke Windows node system.run denied-write proof through real gateway");
 
@@ -150,15 +158,16 @@ public sealed class MxcSetupAndConnectTests
             ? stderrElement.GetString() ?? ""
             : "";
         var combinedOutput = stdout + stderr;
+        var blockedFileExists = File.Exists(blockedPath);
 
-        // The shell's access-denied text is localized; sourceReadyMarker proves the
-        // scratch source was created before the denied destination copy was attempted.
-        Assert.NotEqual(0, exitCode);
-        Assert.True(combinedOutput.Length > 0, $"Expected denied write to emit output; payload: {payload.GetRawText()}");
+        // The shell's access-denied text is localized. sourceReadyMarker proves the
+        // command reached the denied destination write.
         Assert.Contains(sourceReadyMarker, combinedOutput, StringComparison.Ordinal);
         Assert.DoesNotContain(sourcePayload, combinedOutput, StringComparison.Ordinal);
-        Assert.False(File.Exists(blockedPath),
+        Assert.False(blockedFileExists,
             $"MXC sandbox should not create files inside the tray data/settings directory: {blockedPath}");
+        Assert.Equal(1, exitCode);
+        Assert.False(string.IsNullOrWhiteSpace(stderr), $"Expected denied write to emit stderr; payload: {payload.GetRawText()}");
 
         var requestLog = await WaitForTrayLogLineContainingAsync(
             TimeSpan.FromSeconds(30),
@@ -166,7 +175,7 @@ public sealed class MxcSetupAndConnectTests
             "[mxc] system.run sandbox request",
             "executor=mxc-direct-appc",
             "contained=True",
-            "shell=cmd");
+            "shell=<direct-argv>");
         var resultLog = await WaitForTrayLogLineContainingAsync(
             TimeSpan.FromSeconds(30),
             logCursor,
@@ -175,7 +184,7 @@ public sealed class MxcSetupAndConnectTests
             "containment=mxc");
 
         Console.WriteLine(
-            $"[E2E] MXC denied-write payload: exitCode={exitCode}; stdoutLength={stdout.Length}; stderrLength={stderr.Length}; fileExists={File.Exists(blockedPath)}");
+            $"[E2E] MXC denied-write payload: exitCode={exitCode}; stdoutLength={stdout.Length}; stderrLength={stderr.Length}; fileExists={blockedFileExists}");
         Console.WriteLine($"[E2E] MXC denied-write request diagnostic: {requestLog}");
         Console.WriteLine($"[E2E] MXC denied-write result diagnostic: {resultLog}");
     }
@@ -217,62 +226,34 @@ public sealed class MxcSetupAndConnectTests
     private async Task SetExecApprovalForSystemRunProofAsync()
     {
         using var policy = await _fixture.Client!.CallToolExpectSuccessAsync("system.execApprovals.get");
-        var baseHash = policy.RootElement.GetProperty("hash").GetString();
-        Assert.False(string.IsNullOrWhiteSpace(baseHash));
+        var approvalsPath = policy.RootElement.GetProperty("path").GetString();
+        Assert.False(string.IsNullOrWhiteSpace(approvalsPath));
 
-        using var updated = await _fixture.Client!.CallToolExpectSuccessAsync("system.execApprovals.set", new
+        // The gateway's canonical Windows command is an explicit cmd.exe argv. The approval model
+        // treats that shell host as an indirect command host that a remote allowlist cannot
+        // authorize, and
+        // system.execApprovals.set refuses to grant full access remotely so a gateway can never
+        // escalate the node's exec authority. Full access is a LOCAL node-owner decision, so this
+        // proof writes the approvals file directly (as an owner would via the tray) and then relies
+        // on the MXC sandbox for containment.
+        var fileObject = new
         {
-            baseHash,
-            defaultAction = "deny",
-            rules = new object[]
-            {
-                new
-                {
-                    pattern = "echo OPENCLAW_GATEWAY_SYSTEM_RUN_MXC_OK",
-                    action = "allow",
-                    shells = new[] { "cmd" },
-                    description = "E2E Gateway system.run MXC success proof",
-                    enabled = true
-                },
-                new
-                {
-                    pattern = "echo OPENCLAW_GATEWAY_SYSTEM_RUN_MXC_DENIED_PAYLOAD > *openclaw-mxc-denied-source.txt\"" +
-                              " && echo OPENCLAW_GATEWAY_SYSTEM_RUN_MXC_SOURCE_READY" +
-                              " && copy /Y *openclaw-mxc-denied-source.txt\" *mxc-denied-write-*.txt\"",
-                    action = "allow",
-                    shells = new[] { "cmd" },
-                    description = "E2E Gateway system.run MXC denied-write wrapper proof",
-                    enabled = true
-                },
-                new
-                {
-                    pattern = "echo OPENCLAW_GATEWAY_SYSTEM_RUN_MXC_DENIED_PAYLOAD > *openclaw-mxc-denied-source.txt\"",
-                    action = "allow",
-                    shells = new[] { "cmd" },
-                    description = "E2E Gateway system.run MXC denied-write source prep",
-                    enabled = true
-                },
-                new
-                {
-                    pattern = "echo OPENCLAW_GATEWAY_SYSTEM_RUN_MXC_SOURCE_READY",
-                    action = "allow",
-                    shells = new[] { "cmd" },
-                    description = "E2E Gateway system.run MXC denied-write source marker",
-                    enabled = true
-                },
-                new
-                {
-                    pattern = "copy /Y *openclaw-mxc-denied-source.txt\" *mxc-denied-write-*.txt\"",
-                    action = "allow",
-                    shells = new[] { "cmd" },
-                    description = "E2E Gateway system.run MXC denied-write proof",
-                    enabled = true
-                },
-            },
-        });
+            version = 1,
+            defaults = new { security = "full", ask = "off", askFallback = "deny", autoAllowSkills = false },
+            agents = new Dictionary<string, object>(),
+        };
+        var json = JsonSerializer.Serialize(
+            fileObject,
+            new JsonSerializerOptions { PropertyNamingPolicy = JsonNamingPolicy.CamelCase, WriteIndented = true });
+        Directory.CreateDirectory(Path.GetDirectoryName(approvalsPath!)!);
+        await File.WriteAllTextAsync(approvalsPath!, json);
 
-        Assert.True(updated.RootElement.GetProperty("updated").GetBoolean());
-        Console.WriteLine("[E2E] exec approval policy prepared for Gateway system.run proof: defaultAction=deny; allow=scoped cmd MXC proof commands");
+        // Confirm the node reads the locally-written full-access policy before running the proof.
+        using var confirm = await _fixture.Client!.CallToolExpectSuccessAsync("system.execApprovals.get");
+        var security = confirm.RootElement
+            .GetProperty("file").GetProperty("defaults").GetProperty("security").GetString();
+        Assert.Equal("full", security);
+        Console.WriteLine($"[E2E] V2 exec approvals set LOCALLY to full at {approvalsPath} (remote full is guarded; MXC sandbox enforces containment)");
     }
 
     private TrayLogCursor GetTrayLogCursor()

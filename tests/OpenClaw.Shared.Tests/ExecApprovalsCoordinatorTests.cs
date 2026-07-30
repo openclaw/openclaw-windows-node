@@ -52,26 +52,110 @@ public class ExecApprovalsCoordinatorTests : IDisposable
     private void WriteStoreFile(string json)
         => File.WriteAllText(Path.Combine(_dir, "exec-approvals.json"), json);
 
+    private string LegacyPolicyPath => Path.Combine(_dir, "exec-policy.json");
+
     private ExecApprovalsCoordinator MakeCoordinator(
         ICanPresentEvaluator? canPresent = null,
         IExecApprovalV2PromptHandler? prompt = null,
-        IOpenClawLogger? logger = null)
+        IOpenClawLogger? logger = null,
+        TimeSpan? promptTimeout = null)
     {
         var log = logger ?? NullLogger.Instance;
         return new(
             new ExecApprovalsStore(_dir, log),
             canPresent ?? AlwaysCannotPresentEvaluator.Instance,
             prompt ?? ExecApprovalV2NullPromptHandler.Instance,
-            log);
+            log,
+            promptTimeout);
     }
 
-    // ── 1. No file → SecurityDeny (default-deny on first activation) ──────────
+    // ── 1. No file → prompt on miss; unattended fallback denies ───────────────
 
     [Fact]
-    public async Task NoFile_ReturnsSecurityDeny()
+    public async Task NoFile_UnattendedPromptMiss_ReturnsUserDenied()
     {
         var result = await MakeCoordinator().HandleAsync(DefaultReq(), "c1");
+        Assert.Equal(ExecApprovalV2Code.UserDenied, result.Code);
+    }
+
+    [Fact]
+    public async Task NoFile_AttendedPrompt_AllowsOnce()
+    {
+        var result = await MakeCoordinator(
+            canPresent: AlwaysCanPresentEvaluator.Instance,
+            prompt: new FixedDecisionPromptHandler(ExecApprovalPromptOutcome.AllowOnce))
+            .HandleAsync(DefaultReq(), "c1-attended");
+
+        Assert.True(result.IsAllow);
+    }
+
+    [Theory]
+    [InlineData("allow")]
+    [InlineData("deny")]
+    public async Task LegacyV1Rule_IsIgnoredAndRequiresFreshV2Decision(string action)
+    {
+        var legacy = $$"""
+        {
+          "defaultAction": "deny",
+          "rules": [
+            { "pattern": "where *", "action": "{{action}}" }
+          ]
+        }
+        """;
+        File.WriteAllText(LegacyPolicyPath, legacy);
+
+        var unattended = await MakeCoordinator().HandleAsync(DefaultReq(), $"v1-{action}-unattended");
+        var attended = await MakeCoordinator(
+            canPresent: AlwaysCanPresentEvaluator.Instance,
+            prompt: new FixedDecisionPromptHandler(ExecApprovalPromptOutcome.AllowOnce))
+            .HandleAsync(DefaultReq(), $"v1-{action}-attended");
+
+        Assert.Equal(ExecApprovalV2Code.UserDenied, unattended.Code);
+        Assert.True(attended.IsAllow);
+        Assert.Equal(legacy, File.ReadAllText(LegacyPolicyPath));
+        Assert.False(File.Exists(Path.Combine(_dir, "exec-approvals.json")));
+    }
+
+    [Fact]
+    public async Task MalformedLegacyV1_IsUntouchedAndUsesFreshV2Behavior()
+    {
+        const string legacy = "{ this is not valid json";
+        File.WriteAllText(LegacyPolicyPath, legacy);
+
+        var result = await MakeCoordinator().HandleAsync(DefaultReq(), "v1-malformed");
+
+        Assert.Equal(ExecApprovalV2Code.UserDenied, result.Code);
+        Assert.Equal(legacy, File.ReadAllText(LegacyPolicyPath));
+    }
+
+    [Fact]
+    public async Task ExistingValidV2_WinsOverLegacyV1()
+    {
+        const string legacy =
+            """{"defaultAction":"deny","rules":[{"pattern":"where *","action":"deny"}]}""";
+        File.WriteAllText(LegacyPolicyPath, legacy);
+        WriteStoreFile("""{"version":1,"defaults":{"security":"full","ask":"off"}}""");
+
+        var result = await MakeCoordinator().HandleAsync(DefaultReq(), "v1-v2-wins");
+
+        Assert.True(result.IsAllow);
+        Assert.Equal(legacy, File.ReadAllText(LegacyPolicyPath));
+    }
+
+    [Fact]
+    public async Task InvalidV2_WithLegacyV1_RemainsHardDenyAndPreservesBothFiles()
+    {
+        const string legacy =
+            """{"defaultAction":"allow","rules":[{"pattern":"where *","action":"allow"}]}""";
+        const string invalidV2 = "{ invalid v2 json";
+        File.WriteAllText(LegacyPolicyPath, legacy);
+        WriteStoreFile(invalidV2);
+
+        var result = await MakeCoordinator().HandleAsync(DefaultReq(), "v1-invalid-v2");
+
         Assert.Equal(ExecApprovalV2Code.SecurityDeny, result.Code);
+        Assert.Equal(legacy, File.ReadAllText(LegacyPolicyPath));
+        Assert.Equal(invalidV2, File.ReadAllText(Path.Combine(_dir, "exec-approvals.json")));
     }
 
     // ── 2. security=full → Allow ──────────────────────────────────────────────
@@ -129,6 +213,162 @@ public class ExecApprovalsCoordinatorTests : IDisposable
             canPresent: AlwaysCanPresentEvaluator.Instance,
             prompt: ExecApprovalV2NullPromptHandler.Instance).HandleAsync(DefaultReq(), "c6");
         Assert.Equal(ExecApprovalV2Code.UserDenied, result.Code);
+    }
+
+    // ── AllowAlways availability plumbed into the prompt request (macOS parity) ──
+
+    [Fact]
+    public async Task Prompt_AskAlways_MarksAllowAlwaysUnavailable()
+    {
+        // ask=always always re-prompts, so allow-always is never offered (macOS rule).
+        WriteStoreFile("""{"version":1,"defaults":{"security":"full","ask":"always"}}""");
+        var capturing = new CapturingPromptHandler(ExecApprovalPromptOutcome.Deny);
+        await MakeCoordinator(
+            canPresent: AlwaysCanPresentEvaluator.Instance,
+            prompt: capturing).HandleAsync(DefaultReq(), "caa1");
+        Assert.NotNull(capturing.Captured);
+        Assert.False(capturing.Captured!.AllowAlwaysAvailable);
+    }
+
+    [Fact]
+    public async Task Prompt_AskOnMissAllowlistMiss_MarksAllowAlwaysAvailable()
+    {
+        // ask=on-miss + allowlist + no match reaches the prompt; a resolvable executable
+        // yields a reusable pattern, so allow-always is offered.
+        WriteStoreFile("""{"version":1,"defaults":{"security":"allowlist","ask":"on-miss"}}""");
+        var capturing = new CapturingPromptHandler(ExecApprovalPromptOutcome.Deny);
+        await MakeCoordinator(
+            canPresent: AlwaysCanPresentEvaluator.Instance,
+            prompt: capturing).HandleAsync(DefaultReq(), "caa2");
+        Assert.NotNull(capturing.Captured);
+        Assert.True(capturing.Captured!.AllowAlwaysAvailable);
+    }
+
+    [Fact]
+    public async Task Prompt_CanonicalCmdWrapper_MarksAllowAlwaysUnavailable()
+    {
+        WriteStoreFile("""{"version":1,"defaults":{"security":"allowlist","ask":"on-miss"}}""");
+        var capturing = new CapturingPromptHandler(ExecApprovalPromptOutcome.Deny);
+
+        await MakeCoordinator(
+            canPresent: AlwaysCanPresentEvaluator.Instance,
+            prompt: capturing).HandleAsync(
+                Req("""{"command":["cmd.exe","/d","/s","/c","where hello"]}"""),
+                "caa3");
+
+        Assert.NotNull(capturing.Captured);
+        Assert.False(capturing.Captured!.AllowAlwaysAvailable);
+    }
+
+    // ── Policy-currency re-check on the prompt path (macOS parity) ──
+
+    [Fact]
+    public async Task Prompt_PolicyTightenedDuringPrompt_FailsClosed()
+    {
+        WriteStoreFile("""{"version":1,"defaults":{"security":"allowlist","ask":"on-miss"}}""");
+        // The owner tightens the policy to deny while the prompt is open.
+        var handler = new StoreMutatingPromptHandler(
+            () => WriteStoreFile("""{"version":1,"defaults":{"security":"deny"}}"""),
+            ExecApprovalPromptOutcome.AllowOnce);
+        var result = await MakeCoordinator(
+            canPresent: AlwaysCanPresentEvaluator.Instance,
+            prompt: handler).HandleAsync(DefaultReq(), "cur1");
+        Assert.Equal(ExecApprovalV2Code.ValidationFailed, result.Code);
+        Assert.Equal("policy-changed-before-execution", result.Reason);
+    }
+
+    [Fact]
+    public async Task Prompt_PolicyUnchanged_AllowsAfterCurrencyRecheck()
+    {
+        WriteStoreFile("""{"version":1,"defaults":{"security":"allowlist","ask":"on-miss"}}""");
+        var result = await MakeCoordinator(
+            canPresent: AlwaysCanPresentEvaluator.Instance,
+            prompt: new FixedDecisionPromptHandler(ExecApprovalPromptOutcome.AllowOnce)).HandleAsync(DefaultReq(), "cur2");
+        Assert.True(result.IsAllow);
+    }
+
+    [Fact]
+    public async Task PreApproved_AskFallbackTightenedBeforeLaunch_FailsRevalidation()
+    {
+        WriteStoreFile(
+            """{"version":1,"defaults":{"security":"full","ask":"off","askFallback":"full"}}""");
+        var coordinator = MakeCoordinator();
+        var approval = await coordinator.HandleAsync(DefaultReq(), "cur3");
+        Assert.True(approval.IsAllow);
+
+        WriteStoreFile(
+            """{"version":1,"defaults":{"security":"full","ask":"off","askFallback":"deny"}}""");
+        var revalidation = await coordinator.RevalidateAsync(approval.Execution!, "cur3");
+
+        Assert.False(revalidation.IsCurrent);
+        Assert.Equal("policy-changed-before-execution", revalidation.Reason);
+    }
+
+    [Fact]
+    public async Task PreApproved_UnchangedPolicy_PassesExecutionBoundaryRevalidation()
+    {
+        WriteStoreFile("""{"version":1,"defaults":{"security":"full","ask":"off"}}""");
+        var coordinator = MakeCoordinator();
+        var approval = await coordinator.HandleAsync(DefaultReq(), "cur4");
+        Assert.True(approval.IsAllow);
+
+        var revalidation = await coordinator.RevalidateAsync(approval.Execution!, "cur4");
+
+        Assert.True(revalidation.IsCurrent);
+    }
+
+    [Fact]
+    public async Task Prompt_Timeout_ResolvesDeny()
+    {
+        // A dialog the owner never answers must not hang the request: the prompt timeout
+        // cancels it and the coordinator denies.
+        WriteStoreFile("""{"version":1,"defaults":{"security":"full","ask":"always"}}""");
+        var result = await MakeCoordinator(
+            canPresent: AlwaysCanPresentEvaluator.Instance,
+            prompt: new TokenAwaitingPromptHandler(),
+            promptTimeout: TimeSpan.FromMilliseconds(50)).HandleAsync(DefaultReq(), "to1");
+        Assert.False(result.IsAllow);
+    }
+
+    // ── Security-audit-suppression gate (macOS parity) ──
+
+    [Fact]
+    public async Task AuditSuppression_NotAutoAllowed_UnderSecurityFullAskOff()
+    {
+        WriteStoreFile("""{"version":1,"defaults":{"security":"full","ask":"off"}}""");
+        // Control: an unrelated command is pre-approved (no prompt) under security=full/ask=off.
+        Assert.True((await MakeCoordinator().HandleAsync(DefaultReq(), "aud0")).IsAllow);
+
+        // A command referencing security.audit.suppressions is forced to an explicit decision;
+        // with no UI available it fails closed instead of auto-allowing.
+        var req = Req("""{"command":["where","security.audit.suppressions"]}""");
+        var result = await MakeCoordinator().HandleAsync(req, "aud1");
+        Assert.False(result.IsAllow);
+    }
+
+    [Fact]
+    public async Task AuditSuppression_PermissiveFallback_StillDeniedWithoutUi()
+    {
+        // Even with askFallback=full, an audit-suppression change must never auto-allow without
+        // an explicit decision: the audit gate denies rather than delegating to askFallback.
+        WriteStoreFile("""{"version":1,"defaults":{"security":"full","ask":"off","askFallback":"full"}}""");
+        var req = Req("""{"command":["where","security.audit.suppressions"]}""");
+        var result = await MakeCoordinator().HandleAsync(req, "audf1");
+        Assert.False(result.IsAllow);
+        Assert.Equal("audit-suppression-requires-approval", result.Reason);
+    }
+
+    [Fact]
+    public async Task AuditSuppression_AskAlwaysPermissiveFallback_StillDeniedWithoutUi()
+    {
+        WriteStoreFile(
+            """{"version":1,"defaults":{"security":"full","ask":"always","askFallback":"full"}}""");
+        var req = Req("""{"command":["where","security.audit.suppressions"]}""");
+
+        var result = await MakeCoordinator().HandleAsync(req, "audf2");
+
+        Assert.False(result.IsAllow);
+        Assert.Equal("audit-suppression-requires-approval", result.Reason);
     }
 
     // ── 7. canPresent=true, AllowOnce → Allow ────────────────────────────────
@@ -273,20 +513,15 @@ public class ExecApprovalsCoordinatorTests : IDisposable
     // ── 18. Env injection → ValidationFailed("env-blocked") ──────────────────
 
     [Fact]
-    public async Task EnvInjection_BlockedEnvVar_ReturnsValidationFailed()
+    public async Task CustomEnv_ReturnsValidationFailed()
     {
         // security=full,ask=off rules out other denies; env PATH is always blocked
         WriteStoreFile("""{"version":1,"defaults":{"security":"full","ask":"off"}}""");
-        var log = new CapturingLogger();
-        var result = await MakeCoordinator(logger: log)
+        var result = await MakeCoordinator()
             .HandleAsync(Req("""{"command":["cmd","/c","echo","hello"],"env":{"PATH":"C:\\evil"}}"""), "c18");
 
         Assert.Equal(ExecApprovalV2Code.ValidationFailed, result.Code);
-        Assert.Equal("env-blocked", result.Reason);
-        // Separate Warn with blocked names (emitted before LogAndReturn)
-        Assert.Contains(log.Warns, w =>
-            w.Contains("env-blocked", StringComparison.Ordinal) &&
-            w.Contains("PATH", StringComparison.Ordinal));
+        Assert.Equal("custom-env-not-supported", result.Reason);
     }
 
     // ── 19. Log injection — DisplayCommand control chars replaced in log ───────
@@ -475,15 +710,13 @@ public class ExecApprovalsCoordinatorTests : IDisposable
     }
 
     [Fact]
-    public async Task Allow_CarriesSanitizedEnvInPayload()
+    public async Task Allow_CustomEnvIsRejectedBeforePayload()
     {
         WriteStoreFile("""{"version":1,"defaults":{"security":"full","ask":"off"}}""");
-        // A non-blocked env variable must survive sanitization and reach the payload.
         var req = Req("""{"command":["where","hello"],"env":{"FOO":"bar"}}""");
         var result = await MakeCoordinator().HandleAsync(req, "payload-env");
-        Assert.True(result.IsAllow);
-        Assert.NotNull(result.Execution!.Env);
-        Assert.Equal("bar", result.Execution.Env!["FOO"]);
+        Assert.False(result.IsAllow);
+        Assert.Equal("custom-env-not-supported", result.Reason);
     }
 
     [Fact]
@@ -705,6 +938,16 @@ public class ExecApprovalsCoordinatorTests : IDisposable
     [InlineData("wsl.exe")]
     [InlineData("cscript.exe")]
     [InlineData("wscript")]
+    [InlineData("node.exe")]
+    [InlineData("python.exe")]
+    [InlineData("python3.12.exe")]
+    [InlineData("pypy3.exe")]
+    [InlineData("ruby.exe")]
+    [InlineData("perl.exe")]
+    [InlineData("php.exe")]
+    [InlineData("java.exe")]
+    [InlineData("dotnet.exe")]
+    [InlineData("rscript.exe")]
     public void IndirectCommandHost_RecognizesAliasesPathsQuotesAndCasing(string token)
         => Assert.True(ExecCommandToken.IsIndirectCommandHost(token));
 
@@ -715,8 +958,10 @@ public class ExecApprovalsCoordinatorTests : IDisposable
     [InlineData("wsl-helper.exe")]
     [InlineData("cscript-runner.exe")]
     [InlineData("wscript-helper.exe")]
-    [InlineData("node.exe")]
-    [InlineData("python.exe")]
+    [InlineData("node-helper.exe")]
+    [InlineData("python-helper.exe")]
+    [InlineData("pythonista.exe")]
+    [InlineData("pypython.exe")]
     public void IndirectCommandHost_DoesNotMatchExecutableNameSubstrings(string token)
         => Assert.False(ExecCommandToken.IsIndirectCommandHost(token));
 
@@ -1178,6 +1423,54 @@ public class ExecApprovalsCoordinatorTests : IDisposable
             ExecApprovalV2PromptRequest _,
             CancellationToken cancellationToken = default)
             => Task.FromResult(_outcome);
+    }
+
+    private sealed class CapturingPromptHandler : IExecApprovalV2PromptHandler
+    {
+        private readonly ExecApprovalPromptOutcome _outcome;
+        public CapturingPromptHandler(ExecApprovalPromptOutcome o) => _outcome = o;
+        public ExecApprovalV2PromptRequest? Captured { get; private set; }
+        public Task<ExecApprovalPromptOutcome> PromptAsync(
+            ExecApprovalV2PromptRequest request,
+            CancellationToken cancellationToken = default)
+        {
+            Captured = request;
+            return Task.FromResult(_outcome);
+        }
+    }
+
+    // Simulates the node owner tightening the policy while the approval prompt is open by
+    // running a mutation before returning the decision.
+    private sealed class StoreMutatingPromptHandler : IExecApprovalV2PromptHandler
+    {
+        private readonly Action _mutate;
+        private readonly ExecApprovalPromptOutcome _outcome;
+        public StoreMutatingPromptHandler(Action mutate, ExecApprovalPromptOutcome o)
+        {
+            _mutate = mutate;
+            _outcome = o;
+        }
+        public Task<ExecApprovalPromptOutcome> PromptAsync(
+            ExecApprovalV2PromptRequest _,
+            CancellationToken cancellationToken = default)
+        {
+            _mutate();
+            return Task.FromResult(_outcome);
+        }
+    }
+
+    // Never resolves on its own; only the coordinator's prompt-timeout token ends the wait,
+    // then it denies (mirroring the real dialog's cancellation-to-Deny behavior).
+    private sealed class TokenAwaitingPromptHandler : IExecApprovalV2PromptHandler
+    {
+        public async Task<ExecApprovalPromptOutcome> PromptAsync(
+            ExecApprovalV2PromptRequest _,
+            CancellationToken cancellationToken = default)
+        {
+            try { await Task.Delay(Timeout.Infinite, cancellationToken).ConfigureAwait(false); }
+            catch (OperationCanceledException) { }
+            return ExecApprovalPromptOutcome.Deny;
+        }
     }
 
     private sealed class ThrowingCanPresentEvaluator : ICanPresentEvaluator

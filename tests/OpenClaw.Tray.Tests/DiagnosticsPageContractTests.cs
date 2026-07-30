@@ -455,6 +455,23 @@ public sealed class DiagnosticsPageContractTests
     }
 
     [Fact]
+    public void HubWindow_TitleSearchBox_ProjectsCommandTitles()
+    {
+        var xaml = Read("src", "OpenClaw.Tray.WinUI", "Windows", "HubWindow.xaml");
+        var searchStart = xaml.IndexOf("<AutoSuggestBox x:Uid=\"TitleSearchBox\"", StringComparison.Ordinal);
+        Assert.True(searchStart >= 0, "The title search box must exist.");
+
+        var searchEnd = xaml.IndexOf('>', searchStart);
+        Assert.True(searchEnd > searchStart, "The title search box opening tag must be complete.");
+
+        var searchTag = xaml.Substring(searchStart, searchEnd - searchStart);
+        Assert.Contains("TextMemberPath=\"Title\"", searchTag);
+
+        var commandItem = Read("src", "OpenClaw.Tray.WinUI", "Windows", "CommandPaletteDialog.xaml.cs");
+        Assert.Contains("public override string ToString() => Title;", commandItem);
+    }
+
+    [Fact]
     public void HubWindow_NavPaneToggle_LivesInTitleBarAndHidesBuiltInToggle()
     {
         var xaml = Read("src", "OpenClaw.Tray.WinUI", "Windows", "HubWindow.xaml");
