@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Frozen;
 using System.Collections.Generic;
 using System.Diagnostics;
@@ -17,6 +18,11 @@ namespace OpenClaw.Shared;
 /// </summary>
 public class WindowsNodeClient : WebSocketClientBase
 {
+    private const string NodeInvokeSessionKeyEnvelopeProtocolFeature =
+        "node-invoke-session-key-envelope-v1";
+    private static readonly TimeSpan s_protocolFeatureNegotiationTimeout =
+        TimeSpan.FromSeconds(5);
+
     private readonly DeviceIdentity _deviceIdentity;
     
     // Node capabilities registry
@@ -62,6 +68,14 @@ public class WindowsNodeClient : WebSocketClientBase
     // at 8. When full, the gateway receives an immediate "node busy, retry" error response.
     private readonly SemaphoreSlim _invokeSemaphore = new(8, 8);
     private readonly InvocationCancellationRegistry _activeInvocations = new();
+    private readonly ConcurrentDictionary<
+        string,
+        TaskCompletionSource<NodeInvokeSessionEnvelopeMode>> _protocolFeatureRequests = new();
+    private Task<NodeInvokeSessionEnvelopeMode> _nodeInvokeSessionEnvelopeMode =
+        Task.FromResult(NodeInvokeSessionEnvelopeMode.Authoritative);
+    private int _gatewayConnectionGeneration;
+    private readonly object _nodeInvokeEventDispatchLock = new();
+    private Task _nodeInvokeEventDispatch = Task.CompletedTask;
 
     // Events
     public event EventHandler<NodeInvokeRequest>? InvokeReceived;
@@ -340,10 +354,18 @@ public class WindowsNodeClient : WebSocketClientBase
                 await HandlePairingResolvedEventAsync(root, eventType);
                 break;
             case "node.invoke.request":
-                await HandleNodeInvokeEventAsync(root);
+                QueueNodeInvokeMessage(
+                    root.Clone(),
+                    QueuedNodeInvokeKind.Invoke,
+                    containerName: "payload",
+                    responseId: null);
                 break;
             case "node.invoke.cancel":
-                await HandleNodeInvokeCancelAsync(root, "payload", responseId: null);
+                QueueNodeInvokeMessage(
+                    root.Clone(),
+                    QueuedNodeInvokeKind.Cancel,
+                    containerName: "payload",
+                    responseId: null);
                 break;
             case "health":
                 if (root.TryGetProperty("payload", out var payload))
@@ -444,7 +466,67 @@ public class WindowsNodeClient : WebSocketClientBase
         }
     }
     
-    private async Task HandleNodeInvokeEventAsync(JsonElement root)
+    private void QueueNodeInvokeMessage(
+        JsonElement root,
+        QueuedNodeInvokeKind kind,
+        string containerName,
+        string? responseId)
+    {
+        var envelopeModeTask = _nodeInvokeSessionEnvelopeMode;
+        var connectionGeneration = _gatewayConnectionGeneration;
+        lock (_nodeInvokeEventDispatchLock)
+        {
+            _nodeInvokeEventDispatch = _nodeInvokeEventDispatch
+                .ContinueWith(
+                    _ => DispatchNodeInvokeEventAsync(
+                        root,
+                        kind,
+                        containerName,
+                        responseId,
+                        envelopeModeTask,
+                        connectionGeneration),
+                    CancellationToken.None,
+                    TaskContinuationOptions.ExecuteSynchronously,
+                    TaskScheduler.Default)
+                .Unwrap();
+        }
+    }
+
+    private async Task DispatchNodeInvokeEventAsync(
+        JsonElement root,
+        QueuedNodeInvokeKind kind,
+        string containerName,
+        string? responseId,
+        Task<NodeInvokeSessionEnvelopeMode> envelopeModeTask,
+        int connectionGeneration)
+    {
+        try
+        {
+            var envelopeMode = await envelopeModeTask;
+            if (connectionGeneration != _gatewayConnectionGeneration)
+                return;
+
+            switch (kind)
+            {
+                case QueuedNodeInvokeKind.Invoke:
+                    // This returns after active-invocation registration and Task.Run handoff;
+                    // the next queued cancel is not serialized behind capability execution.
+                    await StartNodeInvokeEventAsync(root, envelopeMode);
+                    break;
+                case QueuedNodeInvokeKind.Cancel:
+                    await HandleNodeInvokeCancelAsync(root, containerName, responseId);
+                    break;
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.Error("Node invoke event dispatch failed", ex);
+        }
+    }
+
+    private async Task StartNodeInvokeEventAsync(
+        JsonElement root,
+        NodeInvokeSessionEnvelopeMode envelopeMode)
     {
         var telemetry = new NodeToolInvocation(NodeToolTransport.Gateway);
         _logger.Info("[NODE] Received node.invoke.request event");
@@ -530,7 +612,7 @@ public class WindowsNodeClient : WebSocketClientBase
             }
         }
 
-        var sessionKey = ExtractGatewayNodeInvokeSessionKey(payload);
+        var sessionKey = ExtractGatewayNodeInvokeSessionKey(payload, args, envelopeMode);
         
         _logger.Info($"[NODE] Invoking command: {command}");
         
@@ -787,6 +869,22 @@ public class WindowsNodeClient : WebSocketClientBase
     
     internal void HandleResponse(JsonElement root)
     {
+        if (root.TryGetProperty("id", out var featureIdProp) &&
+            featureIdProp.ValueKind == JsonValueKind.String &&
+            featureIdProp.GetString() is { } featureResponseId &&
+            _protocolFeatureRequests.TryRemove(featureResponseId, out var negotiation))
+        {
+            var mode = IsUnsupportedNodeProtocolFeaturesResponse(root)
+                ? NodeInvokeSessionEnvelopeMode.Legacy
+                : NodeInvokeSessionEnvelopeMode.Authoritative;
+            negotiation.TrySetResult(mode);
+            if (mode == NodeInvokeSessionEnvelopeMode.Legacy)
+            {
+                _logger.Debug("[NODE] Gateway does not accept node protocol feature publication");
+            }
+            return;
+        }
+
         var responseId = root.TryGetProperty("id", out var idProp)
             ? idProp.GetString()
             : null;
@@ -821,6 +919,7 @@ public class WindowsNodeClient : WebSocketClientBase
 
             Volatile.Write(ref _pendingConnectRequestId, null);
             _logger.Info("[HANDSHAKE] Received hello-ok!");
+            _gatewayConnectionGeneration++;
             PublishGatewaySelf(GatewaySelfInfo.FromHelloOk(payload));
             var reconnectingAfterApproval = _pairingApprovedAwaitingReconnect;
             _isConnected = true;
@@ -900,8 +999,73 @@ public class WindowsNodeClient : WebSocketClientBase
             }
 
             RaiseStatusChanged(ConnectionStatus.Connected);
+            _ = PublishNodeProtocolFeaturesAsync();
             HandshakeSucceeded?.Invoke(this, EventArgs.Empty);
         }
+    }
+
+    private async Task PublishNodeProtocolFeaturesAsync()
+    {
+        var requestId = Guid.NewGuid().ToString();
+        var negotiation = new TaskCompletionSource<NodeInvokeSessionEnvelopeMode>(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        _nodeInvokeSessionEnvelopeMode = negotiation.Task;
+        var request = new
+        {
+            type = "req",
+            id = requestId,
+            method = "node.protocolFeatures.update",
+            @params = new
+            {
+                features = new[] { NodeInvokeSessionKeyEnvelopeProtocolFeature }
+            }
+        };
+
+        try
+        {
+            _protocolFeatureRequests.TryAdd(requestId, negotiation);
+            _ = ResolveNodeProtocolFeaturesTimeoutAsync(requestId, negotiation);
+            await SendRawAsync(JsonSerializer.Serialize(request));
+        }
+        catch (Exception ex)
+        {
+            _protocolFeatureRequests.TryRemove(requestId, out _);
+            negotiation.TrySetResult(NodeInvokeSessionEnvelopeMode.Authoritative);
+            // Only an explicit unknown-method response enables legacy attribution.
+            // Transport failures keep omitted envelopes fail-closed.
+            _logger.Warn($"[NODE] Failed to publish protocol features: {ex.Message}");
+        }
+    }
+
+    private async Task ResolveNodeProtocolFeaturesTimeoutAsync(
+        string requestId,
+        TaskCompletionSource<NodeInvokeSessionEnvelopeMode> negotiation)
+    {
+        await Task.Delay(s_protocolFeatureNegotiationTimeout);
+        if (_protocolFeatureRequests.TryGetValue(requestId, out var pending) &&
+            ReferenceEquals(pending, negotiation))
+        {
+            _logger.Warn("[NODE] Protocol feature publication timed out; using fail-closed envelopes");
+            negotiation.TrySetResult(NodeInvokeSessionEnvelopeMode.Authoritative);
+        }
+    }
+
+    private static bool IsUnsupportedNodeProtocolFeaturesResponse(JsonElement response)
+    {
+        if (!response.TryGetProperty("ok", out var ok) ||
+            ok.ValueKind != JsonValueKind.False ||
+            !response.TryGetProperty("error", out var error) ||
+            error.ValueKind != JsonValueKind.Object)
+        {
+            return false;
+        }
+
+        return error.TryGetProperty("code", out var code) &&
+            string.Equals(code.GetString(), "INVALID_REQUEST", StringComparison.OrdinalIgnoreCase) &&
+            error.TryGetProperty("message", out var message) &&
+            message.GetString()?.Contains(
+                "unknown method: node.protocolFeatures.update",
+                StringComparison.Ordinal) == true;
     }
 
     private void TryStoreHandshakeDeviceToken(string token, string[]? scopes)
@@ -1198,7 +1362,11 @@ public class WindowsNodeClient : WebSocketClientBase
                 await HandleNodeInvokeAsync(root, id);
                 break;
             case "node.invoke.cancel":
-                await HandleNodeInvokeCancelAsync(root, "params", id);
+                QueueNodeInvokeMessage(
+                    root.Clone(),
+                    QueuedNodeInvokeKind.Cancel,
+                    containerName: "params",
+                    responseId: id);
                 break;
             case "ping":
                 await SendPongAsync(id);
@@ -1647,17 +1815,46 @@ public class WindowsNodeClient : WebSocketClientBase
         return false;
     }
 
-    private static string? ExtractGatewayNodeInvokeSessionKey(JsonElement envelope)
+    private static string? ExtractGatewayNodeInvokeSessionKey(
+        JsonElement envelope,
+        JsonElement args,
+        NodeInvokeSessionEnvelopeMode envelopeMode)
     {
-        if (envelope.TryGetProperty("sessionKey", out var envelopeSessionKey) &&
-            envelopeSessionKey.ValueKind == JsonValueKind.String)
+        if (envelope.TryGetProperty("sessionKey", out var envelopeSessionKey))
         {
-            var sessionKey = envelopeSessionKey.GetString();
+            if (envelopeSessionKey.ValueKind == JsonValueKind.String)
+            {
+                var sessionKey = envelopeSessionKey.GetString();
+                if (!string.IsNullOrWhiteSpace(sessionKey))
+                    return sessionKey;
+            }
+
+            return null;
+        }
+
+        if (envelopeMode == NodeInvokeSessionEnvelopeMode.Legacy &&
+            args.ValueKind == JsonValueKind.Object &&
+            args.TryGetProperty("sessionKey", out var legacySessionKey) &&
+            legacySessionKey.ValueKind == JsonValueKind.String)
+        {
+            var sessionKey = legacySessionKey.GetString();
             if (!string.IsNullOrWhiteSpace(sessionKey))
                 return sessionKey;
         }
 
         return null;
+    }
+
+    private enum NodeInvokeSessionEnvelopeMode
+    {
+        Authoritative,
+        Legacy
+    }
+
+    private enum QueuedNodeInvokeKind
+    {
+        Invoke,
+        Cancel
     }
 
     private sealed record CommandDispatchEntry(
@@ -1811,6 +2008,7 @@ public class WindowsNodeClient : WebSocketClientBase
     protected override void OnDisconnected()
     {
         _activeInvocations.CancelAll();
+        ResetNodeInvokeSessionEnvelopeNegotiation();
         _isConnected = false;
         Volatile.Write(ref _pendingConnectRequestId, null);
         // Don't reset pairing state when disconnected due to pairing — gateway
@@ -1825,6 +2023,7 @@ public class WindowsNodeClient : WebSocketClientBase
     protected override void OnError(Exception ex)
     {
         _activeInvocations.CancelAll();
+        ResetNodeInvokeSessionEnvelopeNegotiation();
         _isConnected = false;
         if (!_pairingBlocked)
         {
@@ -1836,5 +2035,22 @@ public class WindowsNodeClient : WebSocketClientBase
     protected override void OnDisposing()
     {
         _activeInvocations.CancelAll();
+        ResetNodeInvokeSessionEnvelopeNegotiation();
+    }
+
+    private void ResetNodeInvokeSessionEnvelopeNegotiation()
+    {
+        _gatewayConnectionGeneration++;
+        foreach (var request in _protocolFeatureRequests.Values)
+        {
+            request.TrySetResult(NodeInvokeSessionEnvelopeMode.Authoritative);
+        }
+        _protocolFeatureRequests.Clear();
+        _nodeInvokeSessionEnvelopeMode =
+            Task.FromResult(NodeInvokeSessionEnvelopeMode.Authoritative);
+        lock (_nodeInvokeEventDispatchLock)
+        {
+            _nodeInvokeEventDispatch = Task.CompletedTask;
+        }
     }
 }
