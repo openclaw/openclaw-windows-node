@@ -15,7 +15,8 @@ public static partial class SessionDisplayResolver
         ArgumentNullException.ThrowIfNull(session);
 
         var fallback = ResolveKey(session.Key, session.IsMain, session.Channel, session.Worktree);
-        var classification = NonEmpty(session.Classification) ?? fallback.Classification;
+        var gatewayClassification = NonEmpty(session.Classification);
+        var classification = gatewayClassification ?? fallback.Classification;
         var agentId = NonEmpty(session.AgentId) ?? fallback.AgentId;
         var channel = NonEmpty(session.Channel) ?? fallback.Channel;
         var accountId = NonEmpty(session.AccountId) ?? fallback.AccountId;
@@ -25,7 +26,9 @@ public static partial class SessionDisplayResolver
         var title = UsefulTitle(session.Key, session.Label)
             ?? (isDirect ? null : SafeLegacyDisplayName(session.DisplayName))
             ?? UsefulTitle(session.Key, session.DerivedTitle)
-            ?? TitleForClassification(classification, channel, session.Worktree, fallback.Title);
+            ?? (gatewayClassification is null
+                ? fallback.Title
+                : TitleForClassification(classification, channel, session.Worktree, fallback.Title));
 
         return new SessionDisplayInfo
         {
