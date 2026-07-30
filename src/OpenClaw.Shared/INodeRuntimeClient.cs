@@ -44,7 +44,11 @@ public interface INodeRuntimeClient : IDisposable
 
     void RegisterCapability(INodeCapability capability);
     void SetPermission(string permission, bool value);
-    Task ConnectAsync();
+    /// <summary>
+    /// Connects the runtime. Cancellation must promptly abort the in-progress
+    /// attempt and make the client safe to retire.
+    /// </summary>
+    Task ConnectAsync(CancellationToken cancellationToken);
     Task DisconnectAsync();
     Task<bool> SendNodeEventAsync(string eventName, JsonObject payload);
 }

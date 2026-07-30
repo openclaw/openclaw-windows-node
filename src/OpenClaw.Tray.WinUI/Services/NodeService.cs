@@ -1091,7 +1091,7 @@ public sealed class NodeService : IDisposable, IAsyncDisposable
         var retired = false;
         lock (_clientLock)
         {
-            if (sender is WindowsNodeClient client && ReferenceEquals(_nodeClient, client))
+            if (sender is INodeRuntimeClient client && ReferenceEquals(_nodeClient, client))
             {
                 DetachClientHandlers(client);
                 _nodeClient = null;

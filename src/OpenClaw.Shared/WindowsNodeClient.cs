@@ -41,6 +41,18 @@ public class WindowsNodeClient : WebSocketClientBase, INodeRuntimeClient
     private readonly string _gatewayToken;
     private readonly string? _bootstrapToken;
 
+    /// <summary>
+    /// Connects this candidate runtime for a connector-owned attempt. Cancelling
+    /// the attempt retires the candidate and interrupts the underlying socket.
+    /// </summary>
+    public async Task ConnectAsync(CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        using var registration = cancellationToken.Register(Dispose);
+        await base.ConnectAsync();
+        cancellationToken.ThrowIfCancellationRequested();
+    }
+
     // Cached serialization/validation — reused on every message instead of allocating per-call
     private static readonly JsonSerializerOptions s_ignoreNullOptions = new()
     {
