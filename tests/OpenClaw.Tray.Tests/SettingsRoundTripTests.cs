@@ -271,6 +271,30 @@ public class SettingsRoundTripTests
     }
 
     [Fact]
+    public void ManagedLocalAutoRepair_DefaultsOn_ForExistingSettingsWithoutField()
+    {
+        var settings = SettingsData.FromJson(
+            """{"SettingsSchemaVersion":1,"EnableNodeMode":true}""");
+
+        Assert.NotNull(settings);
+        Assert.True(settings!.EnableManagedLocalGatewayAutoRepair);
+    }
+
+    [Fact]
+    public void ManagedLocalAutoRepair_ExplicitFalse_RoundTrips()
+    {
+        var original = new SettingsData
+        {
+            EnableManagedLocalGatewayAutoRepair = false,
+        };
+
+        var restored = SettingsData.FromJson(original.ToJson());
+
+        Assert.NotNull(restored);
+        Assert.False(restored!.EnableManagedLocalGatewayAutoRepair);
+    }
+
+    [Fact]
     public void SettingsManager_PreservesLegacySandboxFallbackDefault()
     {
         var dir = Path.Combine(Path.GetTempPath(), "OpenClaw.Tray.Tests", Guid.NewGuid().ToString("N"));

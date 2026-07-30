@@ -1866,13 +1866,23 @@ public sealed class PairOperatorStep : SetupStep
         // Initialize device identity
         Directory.CreateDirectory(identityPath);
         var identity = new DeviceIdentity(identityPath);
-        identity.Initialize();
+        try
+        {
+            identity.Initialize();
+        }
+        catch (DeviceIdentityLoadException ex)
+        {
+            return SetupIdentityFailure.Terminal(ctx, "operator pairing", ex);
+        }
         ctx.Logger.Info($"Device identity initialized: {identity.DeviceId[..16]}...");
         ctx.OperatorDeviceId = identity.DeviceId;
 
         var reachability = await WindowsGatewayReachability.VerifyAsync(ctx, "operator", ct);
         if (!reachability.IsSuccess)
             return reachability;
+        var provenanceCheck = await EnsurePairingEndpointTrustedAsync(ctx, ct);
+        if (provenanceCheck is not null)
+            return provenanceCheck;
 
         // Connect operator WebSocket — handle pairing-required flow
         var wsLogger = new SetupOpenClawLogger(ctx.Logger);
@@ -1882,6 +1892,7 @@ public sealed class PairOperatorStep : SetupStep
         {
             // Phase 1: Initial connect (may get PAIRING_REQUIRED)
             client = new OpenClawGatewayClient(gatewayUrl, token, logger: wsLogger, identityPath: identityPath);
+            ApplyReconnectAuthorization(client, ctx);
             client.UseV2Signature = true; // Local gateway uses v2 signature format
             var phase1Result = await WaitForConnectionOrPairing(client, ctx, TimeSpan.FromSeconds(15), ct);
 
@@ -1911,7 +1922,11 @@ public sealed class PairOperatorStep : SetupStep
                 await Task.Delay(2000, ct);
 
                 // Phase 2: Reconnect — the device should now be approved
+                provenanceCheck = await EnsurePairingEndpointTrustedAsync(ctx, ct);
+                if (provenanceCheck is not null)
+                    return provenanceCheck;
                 client = new OpenClawGatewayClient(gatewayUrl, token, logger: wsLogger, identityPath: identityPath);
+                ApplyReconnectAuthorization(client, ctx);
                 client.UseV2Signature = true;
                 var phase2Result = await WaitForConnectionOrPairing(client, ctx, TimeSpan.FromSeconds(20), ct);
 
@@ -1935,6 +1950,10 @@ public sealed class PairOperatorStep : SetupStep
 
             return StepResult.Fail($"Operator connection failed: {phase1Result}");
         }
+        catch (DeviceIdentityLoadException ex)
+        {
+            return SetupIdentityFailure.Terminal(ctx, "operator pairing", ex);
+        }
         catch (Exception ex)
         {
             return StepResult.Fail($"Operator pairing failed: {ex.Message}", ex);
@@ -1949,6 +1968,49 @@ public sealed class PairOperatorStep : SetupStep
         }
     }
 
+    internal static async Task<StepResult?> EnsurePairingEndpointTrustedAsync(
+        SetupContext ctx,
+        CancellationToken cancellationToken)
+    {
+        var record = new GatewayRecord
+        {
+            Id = ctx.GatewayRecordId ?? "setup-managed-gateway",
+            Url = ctx.GatewayUrl ?? ctx.Config.EffectiveGatewayUrl,
+            IsLocal = true,
+            SetupManagedDistroName = ctx.DistroName,
+        };
+        var probe = ctx.EndpointProvenanceProbe ??
+            new ManagedLocalGatewayPortProvenanceService(
+                new SetupOpenClawLogger(ctx.Logger)).InspectAsync;
+        var provenance = await probe(record, cancellationToken).ConfigureAwait(false);
+        return provenance.Kind switch
+        {
+            GatewayEndpointProvenanceKind.ExpectedManagedGateway or
+            GatewayEndpointProvenanceKind.NotApplicable => null,
+            GatewayEndpointProvenanceKind.NoListener =>
+                StepResult.Fail("The managed WSL gateway is not listening; no pairing credential was sent."),
+            _ => StepResult.Terminal(
+                provenance.Detail ??
+                "The managed gateway address is owned by an unverified process; no pairing credential was sent."),
+        };
+    }
+
+    internal static void ApplyReconnectAuthorization(
+        WebSocketClientBase client,
+        SetupContext ctx)
+    {
+        client.ReconnectAuthorizationAsync = async cancellationToken =>
+        {
+            var failure = await EnsurePairingEndpointTrustedAsync(ctx, cancellationToken).ConfigureAwait(false);
+            return failure is null
+                ? ReconnectAuthorizationResult.AllowedResult
+                : new ReconnectAuthorizationResult(
+                    false,
+                    GatewayErrorKind.LocalPortConflict,
+                    failure.Message);
+        };
+    }
+
     /// <summary>
     /// After initial pairing, the gateway knows us via auth.token (shared gateway token).
     /// The tray will connect using auth.deviceToken (the token we just received).
@@ -1961,7 +2023,14 @@ public sealed class PairOperatorStep : SetupStep
 
         // Read the device token we just stored
         var identity = new DeviceIdentity(identityPath);
-        identity.Initialize();
+        try
+        {
+            identity.Initialize();
+        }
+        catch (DeviceIdentityLoadException ex)
+        {
+            return SetupIdentityFailure.Terminal(ctx, "operator finalization", ex);
+        }
         var deviceToken = identity.DeviceToken;
 
         if (string.IsNullOrEmpty(deviceToken))
@@ -1978,6 +2047,7 @@ public sealed class PairOperatorStep : SetupStep
 
         // Connect exactly as the tray would: pass deviceToken as the credential
         var finalClient = new OpenClawGatewayClient(gatewayUrl, deviceToken, logger: wsLogger, identityPath: identityPath);
+        ApplyReconnectAuthorization(finalClient, ctx);
         finalClient.UseV2Signature = true;
 
         try
@@ -2007,6 +2077,7 @@ public sealed class PairOperatorStep : SetupStep
 
                 // One more connect to confirm
                 finalClient = new OpenClawGatewayClient(gatewayUrl, deviceToken, logger: wsLogger, identityPath: identityPath);
+                ApplyReconnectAuthorization(finalClient, ctx);
                 finalClient.UseV2Signature = true;
                 var finalResult = await WaitForConnectionOrPairing(finalClient, ctx, TimeSpan.FromSeconds(15), ct);
 
@@ -2270,10 +2341,16 @@ public sealed class PairNodeStep : SetupStep
         var reachability = await WindowsGatewayReachability.VerifyAsync(ctx, "node", ct);
         if (!reachability.IsSuccess)
             return reachability;
+        var provenanceCheck = await PairOperatorStep.EnsurePairingEndpointTrustedAsync(ctx, ct);
+        if (provenanceCheck is not null)
+            return provenanceCheck;
 
         var drainResult = await VerifyEndToEndStep.DrainPendingDeviceApprovalsAsync(ctx, ct);
         if (!drainResult.IsSuccess)
             return drainResult;
+        provenanceCheck = await PairOperatorStep.EnsurePairingEndpointTrustedAsync(ctx, ct);
+        if (provenanceCheck is not null)
+            return provenanceCheck;
 
         var wsLogger = new SetupOpenClawLogger(ctx.Logger);
         WindowsNodeClient? client = null;
@@ -2282,6 +2359,7 @@ public sealed class PairNodeStep : SetupStep
         {
             // Phase 1: Connect (may get PAIRING_REQUIRED)
             client = new WindowsNodeClient(gatewayUrl, token, identityPath, logger: wsLogger);
+            PairOperatorStep.ApplyReconnectAuthorization(client, ctx);
             client.UseV2Signature = true;
 
             // Register capabilities BEFORE connect — gateway stores them from hello message
@@ -2313,7 +2391,11 @@ public sealed class PairNodeStep : SetupStep
                 await Task.Delay(2000, ct);
 
                 // Phase 2: Reconnect after approval
+                provenanceCheck = await PairOperatorStep.EnsurePairingEndpointTrustedAsync(ctx, ct);
+                if (provenanceCheck is not null)
+                    return provenanceCheck;
                 client = new WindowsNodeClient(gatewayUrl, token, identityPath, logger: wsLogger);
+                PairOperatorStep.ApplyReconnectAuthorization(client, ctx);
                 client.UseV2Signature = true;
                 RegisterCapabilitiesFromConfig(client, ctx);
 
@@ -2345,6 +2427,10 @@ public sealed class PairNodeStep : SetupStep
             // into StepResult.Fail (same idiom as the other steps' cancel rethrow).
             throw;
         }
+        catch (DeviceIdentityLoadException ex)
+        {
+            return SetupIdentityFailure.Terminal(ctx, "node pairing", ex);
+        }
         catch (Exception ex)
         {
             return StepResult.Fail($"Node pairing failed: {ex.Message}", ex);
@@ -2369,7 +2455,14 @@ public sealed class PairNodeStep : SetupStep
         ctx.Logger.Info("Finalizing node: reconnect with node device token");
 
         var identity = new DeviceIdentity(identityPath);
-        identity.Initialize();
+        try
+        {
+            identity.Initialize();
+        }
+        catch (DeviceIdentityLoadException ex)
+        {
+            return SetupIdentityFailure.Terminal(ctx, "node finalization", ex);
+        }
         var nodeToken = identity.NodeDeviceToken;
 
         if (string.IsNullOrEmpty(nodeToken))
@@ -2383,6 +2476,7 @@ public sealed class PairNodeStep : SetupStep
         await Task.Delay(TimeSpan.FromSeconds(5), ct);
 
         var finalClient = new WindowsNodeClient(gatewayUrl, nodeToken, identityPath, logger: wsLogger);
+        PairOperatorStep.ApplyReconnectAuthorization(finalClient, ctx);
         finalClient.UseV2Signature = true;
 
         try
@@ -2409,6 +2503,7 @@ public sealed class PairNodeStep : SetupStep
                 await Task.Delay(2000, ct);
 
                 finalClient = new WindowsNodeClient(gatewayUrl, nodeToken, identityPath, logger: wsLogger);
+                PairOperatorStep.ApplyReconnectAuthorization(finalClient, ctx);
                 finalClient.UseV2Signature = true;
                 var finalResult = await WaitForNodeConnection(finalClient, ctx, TimeSpan.FromSeconds(15), ct);
 
@@ -3228,21 +3323,36 @@ public sealed class VerifyEndToEndStep : SetupStep
         if (record == null)
             return StepResult.Fail("Gateway record missing from registry");
 
-        var identityPath = registry.GetIdentityDirectory(record.Id);
-        if (!DeviceIdentity.HasStoredDeviceToken(identityPath))
+        var identityDirectory = registry.GetIdentityDirectory(record.Id);
+        var tokenRead = DeviceIdentity.ReadStoredDeviceToken(
+            identityDirectory,
+            new SetupOpenClawLogger(ctx.Logger));
+        if (tokenRead.Status is DeviceTokenReadStatus.Unreadable or DeviceTokenReadStatus.Corrupt)
         {
-            ctx.Logger.Warn("No stored device token found — tray app may need to re-pair");
+            var identityPath = Path.Combine(identityDirectory, "device-key-ed25519.json");
+            Exception cause = tokenRead.Status == DeviceTokenReadStatus.Unreadable
+                ? new IOException(tokenRead.Detail ?? "Identity file could not be read.")
+                : new InvalidDataException(tokenRead.Detail ?? "Identity file is invalid.");
+            return SetupIdentityFailure.Terminal(
+                ctx,
+                "end-to-end verification",
+                new DeviceIdentityLoadException(identityPath, cause));
+        }
+
+        if (tokenRead.Status != DeviceTokenReadStatus.Resolved)
+        {
+            ctx.Logger.Warn("No stored device token found. Tray app may need to re-pair.");
         }
         else
         {
-            ctx.Logger.Info("Device token present — performing final operator handshake");
+            ctx.Logger.Info("Device token present. Performing final operator handshake.");
 
             // CRITICAL: The operator finalization must happen AFTER node pairing.
             // Node pairing changes the device's "current metadata" to node-host/node.
             // The tray connects as operator (cli/cli), so we must re-establish operator
             // as the device's last-seen metadata. This prevents "metadata-upgrade" errors.
             var wsLogger = new SetupOpenClawLogger(ctx.Logger);
-            var finalResult = await FinalizeOperatorForTray(ctx, ctx.GatewayUrl!, identityPath, wsLogger, ct);
+            var finalResult = await FinalizeOperatorForTray(ctx, ctx.GatewayUrl!, identityDirectory, wsLogger, ct);
             if (!finalResult.IsSuccess)
                 return finalResult;
         }
@@ -3419,7 +3529,14 @@ public sealed class VerifyEndToEndStep : SetupStep
         SetupContext ctx, string gatewayUrl, string identityPath, IOpenClawLogger wsLogger, CancellationToken ct)
     {
         var identity = new DeviceIdentity(identityPath);
-        identity.Initialize();
+        try
+        {
+            identity.Initialize();
+        }
+        catch (DeviceIdentityLoadException ex)
+        {
+            return SetupIdentityFailure.Terminal(ctx, "operator finalization", ex);
+        }
         var deviceToken = identity.DeviceToken;
 
         if (string.IsNullOrEmpty(deviceToken))
@@ -3430,6 +3547,7 @@ public sealed class VerifyEndToEndStep : SetupStep
         await Task.Delay(TimeSpan.FromSeconds(5), ct);
 
         var client = new OpenClawGatewayClient(gatewayUrl, deviceToken, logger: wsLogger, identityPath: identityPath);
+        PairOperatorStep.ApplyReconnectAuthorization(client, ctx);
         client.UseV2Signature = true;
 
         try
@@ -3463,7 +3581,11 @@ public sealed class VerifyEndToEndStep : SetupStep
 
                 // Reconnect with the SHARED GATEWAY TOKEN to get a fresh device token.
                 ctx.Logger.Info("Reconnecting with shared token to get fresh device token after approval");
+                var provenanceCheck = await PairOperatorStep.EnsurePairingEndpointTrustedAsync(ctx, ct);
+                if (provenanceCheck is not null)
+                    return provenanceCheck;
                 client = new OpenClawGatewayClient(gatewayUrl, ctx.SharedGatewayToken!, logger: wsLogger, identityPath: identityPath);
+                PairOperatorStep.ApplyReconnectAuthorization(client, ctx);
                 client.UseV2Signature = true;
                 var confirmResult = await PairOperatorStep.WaitForConnectionOrPairing(client, ctx, TimeSpan.FromSeconds(15), ct);
 

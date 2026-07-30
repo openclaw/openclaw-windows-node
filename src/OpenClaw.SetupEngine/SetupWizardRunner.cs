@@ -34,7 +34,18 @@ public sealed class SetupWizardRunner
             return StepResult.Fail("Cannot run gateway wizard because no active gateway record was found.");
 
         var identityPath = registry.GetIdentityDirectory(record.Id);
-        var storedDeviceToken = DeviceIdentity.TryReadStoredDeviceToken(identityPath, new SetupOpenClawLogger(_ctx.Logger));
+        string? storedDeviceToken;
+        try
+        {
+            storedDeviceToken = DeviceIdentity.TryReadStoredDeviceToken(
+                identityPath,
+                new SetupOpenClawLogger(_ctx.Logger));
+        }
+        catch (DeviceIdentityLoadException ex)
+        {
+            return SetupIdentityFailure.Terminal(_ctx, "gateway wizard startup", ex);
+        }
+
         var credential = storedDeviceToken
             ?? _ctx.SharedGatewayToken
             ?? record.SharedGatewayToken
@@ -62,6 +73,9 @@ public sealed class SetupWizardRunner
 
         try
         {
+            var provenanceCheck = await PairOperatorStep.EnsurePairingEndpointTrustedAsync(_ctx, ct);
+            if (provenanceCheck is not null)
+                return provenanceCheck;
             client = CreateWizardClient(credential, identityPath, wsLogger);
             var connection = await PairOperatorStep.WaitForConnectionOrPairing(client, _ctx, TimeSpan.FromSeconds(20), ct);
             if (connection == PairOperatorStep.ConnectionOutcome.PairingRequired && _ctx.Config.AutoApprovePairing)
@@ -75,6 +89,9 @@ public sealed class SetupWizardRunner
                     return approval;
 
                 await Task.Delay(2000, ct);
+                provenanceCheck = await PairOperatorStep.EnsurePairingEndpointTrustedAsync(_ctx, ct);
+                if (provenanceCheck is not null)
+                    return provenanceCheck;
                 client = CreateWizardClient(credential, identityPath, wsLogger);
                 connection = await PairOperatorStep.WaitForConnectionOrPairing(client, _ctx, TimeSpan.FromSeconds(20), ct);
             }
@@ -110,6 +127,10 @@ public sealed class SetupWizardRunner
                     client!.Dispose();
 
                     await Task.Delay(TimeSpan.FromSeconds(3), ct);
+                    var restartProvenance =
+                        await PairOperatorStep.EnsurePairingEndpointTrustedAsync(_ctx, ct);
+                    if (restartProvenance is not null)
+                        throw new WizardFatalException(restartProvenance.Message ?? "Gateway ownership changed.");
                     client = CreateWizardClient(credential, identityPath, wsLogger);
                     var reconnect = await PairOperatorStep.WaitForConnectionOrPairing(client, _ctx, TimeSpan.FromSeconds(30), ct);
                     if (reconnect != PairOperatorStep.ConnectionOutcome.Connected)
@@ -266,10 +287,12 @@ public sealed class SetupWizardRunner
 
     private OpenClawGatewayClient CreateWizardClient(string credential, string identityPath, IOpenClawLogger wsLogger)
     {
-        return new OpenClawGatewayClient(_ctx.GatewayUrl!, credential, logger: wsLogger, identityPath: identityPath)
+        var client = new OpenClawGatewayClient(_ctx.GatewayUrl!, credential, logger: wsLogger, identityPath: identityPath)
         {
             UseV2Signature = true
         };
+        PairOperatorStep.ApplyReconnectAuthorization(client, _ctx);
+        return client;
     }
 
     private async Task TryCancelWizardAsync(OpenClawGatewayClient client, string sessionId)

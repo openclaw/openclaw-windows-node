@@ -2,6 +2,8 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Security.Cryptography;
+using System.Text;
 using System.Text.Json;
 using System.Threading.Tasks;
 using OpenClaw.Shared;
@@ -35,19 +37,45 @@ public class ExecApprovalsStoreTests : IDisposable
 
     private void WriteFile(string json) => File.WriteAllText(FilePath, json);
 
-    // ── Default-deny when file absent ────────────────────────────────────────
+    private static string Hash(string raw) =>
+        Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(raw))).ToLowerInvariant();
+
+    // ── Prompt-on-miss when file absent ──────────────────────────────────────
 
     [Fact]
-    public void ResolveReadOnly_NoFile_ReturnsDefaultDeny()
+    public void ResolveReadOnly_NoFile_ReturnsAllowlistOnMiss()
     {
         var resolved = Store().ResolveReadOnly(null);
 
         Assert.Equal("main", resolved.AgentId);
-        Assert.Equal(ExecSecurity.Deny, resolved.Defaults.Security);
+        Assert.Equal(ExecSecurity.Allowlist, resolved.Defaults.Security);
         Assert.Equal(ExecAsk.OnMiss, resolved.Defaults.Ask);
         Assert.Equal(ExecSecurity.Deny, resolved.Defaults.AskFallback);
         Assert.False(resolved.Defaults.AutoAllowSkills);
         Assert.Empty(resolved.Allowlist);
+    }
+
+    [Fact]
+    public void ResolveReadOnly_DirectoryAtFilePath_ReturnsDefaultDeny()
+    {
+        Directory.CreateDirectory(FilePath);
+
+        var resolved = Store().ResolveReadOnly("main");
+
+        Assert.Equal(ExecSecurity.Deny, resolved.Defaults.Security);
+        Assert.Contains(_log.Warnings, warning => warning.Contains("path is a directory"));
+    }
+
+    [Fact]
+    public void ResolveReadOnly_DirectoryAtLegacyPathWithStateOverride_ReturnsDefaultDeny()
+    {
+        var stateDir = Path.Combine(_dir, "state");
+        Directory.CreateDirectory(FilePath);
+
+        var resolved = Store(stateDir).ResolveReadOnly("main");
+
+        Assert.Equal(ExecSecurity.Deny, resolved.Defaults.Security);
+        Assert.False(File.Exists(Path.Combine(stateDir, "exec-approvals.json")));
         Assert.Null(resolved.SocketToken);
     }
 
@@ -67,6 +95,42 @@ public class ExecApprovalsStoreTests : IDisposable
         Assert.Equal("main", resolved.AgentId);
     }
 
+    [Fact]
+    public async Task Snapshot_HashMatchesExactPersistedBytes()
+    {
+        var snapshot = await Store().GetSnapshotAsync();
+        var raw = File.ReadAllText(FilePath);
+
+        Assert.Equal(Hash(raw), snapshot.Hash);
+    }
+
+    [Fact]
+    public async Task Replace_HashMatchesExactPersistedBytes()
+    {
+        var store = Store();
+        var before = await store.GetSnapshotAsync();
+        before.File.Defaults!.Ask = ExecAsk.Always;
+
+        var after = await store.ReplaceAsync(before.Hash, before.File);
+
+        Assert.NotNull(after);
+        Assert.Equal(Hash(File.ReadAllText(FilePath)), after!.Hash);
+    }
+
+    [Fact]
+    public void ResolveFilePath_StateDirOverrideWins()
+    {
+        var stateDir = Path.Combine(_dir, "state");
+
+        var path = ExecApprovalsStore.ResolveFilePath(
+            _dir,
+            stateDir,
+            openClawHomeOverride: null,
+            osHomeOverride: _dir);
+
+        Assert.Equal(Path.Combine(stateDir, "exec-approvals.json"), path);
+    }
+
     // ── Malformed JSON → default-deny + warning ───────────────────────────────
 
     [Fact]
@@ -77,6 +141,18 @@ public class ExecApprovalsStoreTests : IDisposable
 
         Assert.Equal(ExecSecurity.Deny, resolved.Defaults.Security);
         Assert.Contains(_log.Warnings, w => w.Contains("malformed"));
+    }
+
+    [Fact]
+    public void ResolveReadOnly_NumericEnumValue_ReturnsDefaultDenyAndWarns()
+    {
+        WriteFile(
+            """{"version":1,"defaults":{"security":-1},"agents":{}}""");
+
+        var resolved = Store().ResolveReadOnly("main");
+
+        Assert.Equal(ExecSecurity.Deny, resolved.Defaults.Security);
+        Assert.Contains(_log.Warnings, warning => warning.Contains("malformed"));
     }
 
     // ── Unsupported version → default-deny + warning ─────────────────────────
@@ -214,7 +290,7 @@ public class ExecApprovalsStoreTests : IDisposable
 
         var resolved = Store().ResolveReadOnly("main");
 
-        Assert.Equal(ExecSecurity.Deny, resolved.Defaults.Security);
+        Assert.Equal(ExecSecurity.Allowlist, resolved.Defaults.Security);
         Assert.Equal(ExecAsk.OnMiss, resolved.Defaults.Ask);
         Assert.Equal(ExecSecurity.Deny, resolved.Defaults.AskFallback);
         Assert.False(resolved.Defaults.AutoAllowSkills);
@@ -418,13 +494,13 @@ public class ExecApprovalsStoreTests : IDisposable
     // ── EnsureFile (ResolveAsync) ─────────────────────────────────────────────
 
     [Fact]
-    public async Task ResolveAsync_NoFile_CreatesFileAndReturnsDefaultDeny()
+    public async Task ResolveAsync_NoFile_CreatesFileAndReturnsAllowlistOnMiss()
     {
         var resolved = await Store().ResolveAsync(null);
 
         Assert.True(File.Exists(FilePath));
         Assert.Equal("main", resolved.AgentId);
-        Assert.Equal(ExecSecurity.Deny, resolved.Defaults.Security);
+        Assert.Equal(ExecSecurity.Allowlist, resolved.Defaults.Security);
         Assert.Contains(_log.Infos, i => i.Contains("Created"));
     }
 
@@ -800,7 +876,8 @@ public class ExecApprovalsStoreTests : IDisposable
 
         var json = File.ReadAllText(FilePath);
         Assert.DoesNotContain("\"socket\"", json);
-        Assert.DoesNotContain("\"defaults\"", json);
+        Assert.Contains("\"defaults\"", json);
+        Assert.Contains("\"security\": \"allowlist\"", json);
         Assert.DoesNotContain("null", json);
     }
 

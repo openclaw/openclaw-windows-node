@@ -335,7 +335,7 @@ public sealed partial class ConnectionStatusWindow : WindowEx
     private async Task OnDisconnectClickAsync()
     {
         if (_manager == null) return;
-        await _manager.DisconnectAsync();
+        await _manager.DisconnectByUserAsync();
         SetupCodeResult.Text = LocalizationHelper.GetString("ConnectionStatus_Disconnected");
     }
 

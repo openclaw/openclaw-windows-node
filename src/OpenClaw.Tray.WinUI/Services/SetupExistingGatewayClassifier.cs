@@ -53,11 +53,31 @@ public static class SetupExistingGatewayClassifier
     {
         if (registry is not null)
         {
+            var activeGatewayId = registry.ActiveGatewayId;
+            var activeRecord = registry.GetAll().FirstOrDefault(record =>
+                string.Equals(record.Id, activeGatewayId, StringComparison.Ordinal));
+            if (activeRecord is not null && HasUsableGatewayRecord(registry, activeRecord))
+            {
+                return true;
+            }
+
             foreach (var record in registry.GetAll())
             {
-                if (HasUsableGatewayRecord(registry, record))
+                if (string.Equals(record.Id, activeGatewayId, StringComparison.Ordinal))
                 {
-                    return true;
+                    continue;
+                }
+
+                try
+                {
+                    if (HasUsableGatewayRecord(registry, record))
+                    {
+                        return true;
+                    }
+                }
+                catch (DeviceIdentityLoadException)
+                {
+                    Logger.Debug($"Skipping unusable inactive gateway identity during setup inventory: {record.Id}");
                 }
             }
         }
@@ -67,15 +87,21 @@ public static class SetupExistingGatewayClassifier
 
     public static bool HasUsableGatewayRecord(GatewayRegistry registry, GatewayRecord record)
     {
+        var identityDir = registry.GetIdentityDirectory(record.Id);
+        var hasOperatorDeviceToken = DeviceIdentity.HasStoredDeviceTokenForRole(
+            identityDir,
+            "operator",
+            NullLogger.Instance);
+        var hasNodeDeviceToken = !hasOperatorDeviceToken
+            && DeviceIdentity.HasStoredDeviceTokenForRole(identityDir, "node", NullLogger.Instance);
+
         if (!string.IsNullOrWhiteSpace(record.SharedGatewayToken)
             || !string.IsNullOrWhiteSpace(record.BootstrapToken))
         {
             return true;
         }
 
-        var identityDir = registry.GetIdentityDirectory(record.Id);
-        return DeviceIdentity.HasStoredDeviceTokenForRole(identityDir, "operator", NullLogger.Instance)
-            || DeviceIdentity.HasStoredDeviceTokenForRole(identityDir, "node", NullLogger.Instance);
+        return hasOperatorDeviceToken || hasNodeDeviceToken;
     }
 
     private static async Task<bool> HasAppOwnedLocalWslGatewayAsync(

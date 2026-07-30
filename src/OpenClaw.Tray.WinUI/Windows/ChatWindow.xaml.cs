@@ -25,7 +25,7 @@ public sealed partial class ChatWindow : WindowEx
     private string _gatewayUrl;
     private string _token;
     private string? _chatUrl;
-    private MountedFunctionalChat? _functionalHost;
+    private MountedReactorChat? _reactorHost;
     private IChatDataProvider? _mountedProvider;
     private bool _webViewInitialized;
     private bool _webViewMode;
@@ -143,7 +143,7 @@ public sealed partial class ChatWindow : WindowEx
 
     private void OnSpeakerMuteChanged(bool muted)
     {
-        DispatcherQueue?.TryEnqueue(() => _functionalHost?.SetSpeakerMuted(muted));
+        DispatcherQueue?.TryEnqueue(() => _reactorHost?.SetSpeakerMuted(muted));
     }
 
     private void OnAppChatProviderChanged(object? sender, EventArgs e)
@@ -181,10 +181,10 @@ public sealed partial class ChatWindow : WindowEx
         if (decision.UseLegacyWebChat)
             ShowWebViewSurface();
         else
-            ShowFunctionalSurface();
+            ShowReactorSurface();
     }
 
-    private void ShowFunctionalSurface()
+    private void ShowReactorSurface()
     {
         _webViewMode = false;
         StopWebViewNavigation();
@@ -192,7 +192,7 @@ public sealed partial class ChatWindow : WindowEx
         LoadingRing.IsActive = false;
         LoadingRing.Visibility = Visibility.Collapsed;
         ErrorPanel.Visibility = Visibility.Collapsed;
-        TryMountFunctionalChat();
+        TryMountReactorChat();
         UpdateNativeChatSurfaceActive();
     }
 
@@ -202,7 +202,7 @@ public sealed partial class ChatWindow : WindowEx
         UpdateNativeChatSurfaceActive();
 
         // Tear down native chat so the WebView2 owns the row.
-        DisposeFunctionalHost();
+        DisposeReactorHost();
 
         ChatHost.Visibility = Visibility.Collapsed;
         PlaceholderPanel.Visibility = Visibility.Collapsed;
@@ -400,13 +400,13 @@ public sealed partial class ChatWindow : WindowEx
         WebView.CoreWebView2?.Navigate(_chatUrl);
     }
 
-    private void TryMountFunctionalChat()
+    private void TryMountReactorChat()
     {
         var app = App.Current as App;
         var provider = app?.ChatProvider;
         Func<string, Task>? readAloud = app is null ? null : ReadChatTextAloudAsync;
 
-        if (_functionalHost is not null && ReferenceEquals(_mountedProvider, provider))
+        if (_reactorHost is not null && ReferenceEquals(_mountedProvider, provider))
         {
             PlaceholderPanel.Visibility = Visibility.Collapsed;
             ChatHost.Visibility = Visibility.Visible;
@@ -414,7 +414,7 @@ public sealed partial class ChatWindow : WindowEx
             return;
         }
 
-        DisposeFunctionalHost();
+        DisposeReactorHost();
 
         if (provider is null)
         {
@@ -427,7 +427,7 @@ public sealed partial class ChatWindow : WindowEx
         PlaceholderPanel.Visibility = Visibility.Collapsed;
         ChatHost.Visibility = Visibility.Visible;
         var appInstance = App.Current as App;
-        _functionalHost = ((Window)this).MountFunctionalChat(
+        _reactorHost = ((Window)this).MountReactorChat(
             ChatHost,
             provider,
             onReadAloud: readAloud,
@@ -442,14 +442,14 @@ public sealed partial class ChatWindow : WindowEx
         UpdateNativeChatSurfaceActive();
     }
 
-    private void DisposeFunctionalHost()
+    private void DisposeReactorHost()
     {
-        var host = _functionalHost;
-        _functionalHost = null;
+        var host = _reactorHost;
+        _reactorHost = null;
         _mountedProvider = null;
         UpdateNativeChatSurfaceActive();
         try { host?.Dispose(); }
-        catch (Exception ex) { Logger.Debug($"ChatWindow: functional host dispose tear-down race: {ex.Message}"); }
+        catch (Exception ex) { Logger.Debug($"ChatWindow: Reactor host dispose tear-down race: {ex.Message}"); }
     }
 
     private void SetShownNearTray(bool shown)
@@ -467,7 +467,7 @@ public sealed partial class ChatWindow : WindowEx
     private void UpdateNativeChatSurfaceActive()
     {
         if (App.Current is App app)
-            app.SetTrayNativeChatSurfaceActive(_shownNearTray && !_webViewMode && _functionalHost is not null);
+            app.SetTrayNativeChatSurfaceActive(_shownNearTray && !_webViewMode && _reactorHost is not null);
     }
 
     private void OnAttachClicked()
@@ -489,7 +489,7 @@ public sealed partial class ChatWindow : WindowEx
         }
 
         var voiceService = app.VoiceServiceInstance;
-        var host = _functionalHost;
+        var host = _reactorHost;
         if (voiceService is null)
         {
             await ShowVoiceSettingsDialogAsync(
@@ -568,7 +568,7 @@ public sealed partial class ChatWindow : WindowEx
             }
 
             app.SetChatSpeakerMuted(true);
-            _functionalHost?.SetSpeakerMuted(true);
+            _reactorHost?.SetSpeakerMuted(true);
             await ShowTtsUnavailableDialogAsync();
         }
         catch (Exception ex)
@@ -689,7 +689,7 @@ public sealed partial class ChatWindow : WindowEx
                 Logger.Info($"[ChatWindow] File selected: {path}");
                 attachments.Add(await ChatAttachment.FromFileAsync(path));
             }
-            _functionalHost?.AttachFiles(attachments);
+            _reactorHost?.AttachFiles(attachments);
         }
         catch (InvalidOperationException ex)
         {
@@ -741,7 +741,7 @@ public sealed partial class ChatWindow : WindowEx
 
             // a11y: place keyboard focus on the composer text box so the user
             // can start typing immediately. Defer to next dispatcher pass so
-            // FunctionalUI has finished mounting the composer.
+            // Reactor has finished mounting the composer.
             DispatcherQueue?.TryEnqueue(() =>
             {
                 if (this.Content is FrameworkElement root && FindFirstFocusableTextBox(root) is { } tb)
@@ -838,7 +838,7 @@ public sealed partial class ChatWindow : WindowEx
         OpenClawTray.Chat.DebugChatSurfaceOverrides.Changed -= OnDebugOverrideChanged;
         IsClosed = true;
         SetShownNearTray(false);
-        DisposeFunctionalHost();
+        DisposeReactorHost();
         Close();
     }
 

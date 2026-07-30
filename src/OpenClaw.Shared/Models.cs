@@ -1803,7 +1803,7 @@ public class ChatMessageInfo
 
     public static bool IsSilentAssistantDirective(string? role, string? text) =>
         string.Equals(role, "assistant", StringComparison.OrdinalIgnoreCase) &&
-        string.Equals(text?.Trim(), SilentAssistantDirective, StringComparison.Ordinal);
+        string.Equals(text?.Trim(), SilentAssistantDirective, StringComparison.OrdinalIgnoreCase);
 
     /// <summary>Session this message belongs to (e.g. "main").</summary>
     public string SessionKey { get; set; } = "";

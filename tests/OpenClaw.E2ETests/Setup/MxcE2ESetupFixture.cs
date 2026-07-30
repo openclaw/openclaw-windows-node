@@ -28,7 +28,7 @@ public sealed class MxcE2ESetupFixture : IAsyncLifetime
         {
             settings["SandboxTimeoutMs"] = 120_000;
             settings["SystemRunBlockHostFallbackWhenMxcUnavailable"] = true;
-        });
+        }, useProductionLikeDataRoot: true);
         await _inner.InitializeAsync();
     }
 

@@ -1950,7 +1950,7 @@ Use one of these options:
     <value>Exec Policy</value>
   </data>
   <data name="PermissionsPage_TextBlock_17.Text" xml:space="preserve">
-    <value>Controls which commands the agent can execute on this node. Rules are matched against the full command line.</value>
+    <value>Controls which executables the agent can launch on this node. Rules match resolved executable paths.</value>
   </data>
   <data name="DefaultActionCombo.Header" xml:space="preserve">
     <value>Default Action</value>
@@ -1968,7 +1968,7 @@ Use one of these options:
     <value>Rules</value>
   </data>
   <data name="NewRulePattern.PlaceholderText" xml:space="preserve">
-    <value>Command pattern (e.g. echo *)</value>
+    <value>Executable path pattern (e.g. **/git.exe)</value>
   </data>
   <data name="PermissionsPage_ComboBoxItem_54.Content" xml:space="preserve">
     <value>Deny</value>
@@ -4474,7 +4474,7 @@ Commands are blocked while sandboxing is unavailable because strict fallback blo
     <value>What happens when a command doesn't match any rule below.</value>
   </data>
   <data name="PermissionsPage_PatternsAreMatchedLeft.Text" xml:space="preserve">
-    <value>Patterns are matched left-to-right against the full command line. Use * as a wildcard. Changes save automatically.</value>
+    <value>Allowlist patterns match resolved executable paths. Use wildcards such as **/git.exe. Changes save automatically.</value>
   </data>
   <data name="PermissionsPage_Saved.Text" xml:space="preserve">
     <value>Saved</value>
@@ -4809,12 +4809,6 @@ Commands are blocked while sandboxing is unavailable because strict fallback blo
   </data>
   <data name="SettingsPage_Chat.Text" xml:space="preserve">
     <value>Chat</value>
-  </data>
-  <data name="SettingsRow_ReadAloud_Header.Text" xml:space="preserve">
-    <value>Read responses aloud</value>
-  </data>
-  <data name="SettingsRow_ReadAloud_Description.Text" xml:space="preserve">
-    <value>Play assistant replies through text-to-speech during chat.</value>
   </data>
   <data name="SettingsRow_ShowToolCalls_Header.Text" xml:space="preserve">
     <value>Show tool calls and usage</value>
@@ -6912,5 +6906,11 @@ Make sure the gateway is running.</value>
   </data>
   <data name="JsonPreviewSplitter.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.LocalizedControlType" xml:space="preserve">
     <value>splitter</value>
+  </data>
+  <data name="PermissionsPage_ExecPolicySaved" xml:space="preserve">
+    <value>Saved</value>
+  </data>
+  <data name="PermissionsPage_ExecPolicySaveFailed" xml:space="preserve">
+    <value>Save failed</value>
   </data>
 </root>

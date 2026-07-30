@@ -6,6 +6,25 @@ namespace OpenClaw.Tray.Tests;
 public class WslKeepAlivePolicyTests
 {
     [Fact]
+    public void MarkedKeepaliveIdentity_RejectsReusedPidProcessNameOrStartTime()
+    {
+        var markerStart = new DateTime(2026, 7, 24, 1, 2, 3, DateTimeKind.Utc);
+
+        Assert.True(WslKeepAlivePolicy.IsMarkedKeepaliveProcessIdentity(
+            "wsl",
+            markerStart.AddSeconds(1),
+            markerStart));
+        Assert.False(WslKeepAlivePolicy.IsMarkedKeepaliveProcessIdentity(
+            "svchost",
+            markerStart,
+            markerStart));
+        Assert.False(WslKeepAlivePolicy.IsMarkedKeepaliveProcessIdentity(
+            "wsl",
+            markerStart.AddMinutes(1),
+            markerStart));
+    }
+
+    [Fact]
     public void ShouldStart_UsesActiveLocalRegistryRecord_WhenLegacySettingsAreEmpty()
     {
         var record = new GatewayRecord

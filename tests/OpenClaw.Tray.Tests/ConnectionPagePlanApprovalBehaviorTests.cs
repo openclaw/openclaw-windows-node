@@ -76,6 +76,45 @@ public sealed class ConnectionPagePlanApprovalBehaviorTests : IDisposable
     }
 
     [Fact]
+    public void SharedGatewayTokenMismatch_IsAuth_NotDeviceRePair()
+    {
+        var plan = Build(
+            new GatewayConnectionSnapshot
+            {
+                OverallState = OverallConnectionState.Error,
+                OperatorState = RoleConnectionState.Error,
+                OperatorError =
+                    "unauthorized: gateway token mismatch (set gateway.remote.token to match gateway.auth.token)",
+                OperatorErrorKind = GatewayErrorKind.Auth,
+                GatewayUrl = "ws://localhost:18789",
+            },
+            localNode: null);
+
+        Assert.Equal(RecoveryCategory.Auth, plan.Recovery);
+        Assert.Equal("Authentication failed", plan.StripHeadline);
+        Assert.NotEqual("Device needs re-pairing", plan.StripHeadline);
+    }
+
+    [Fact]
+    public void UnknownManagedLocalPortOwner_ShowsPortConflictRecovery()
+    {
+        var plan = Build(
+            new GatewayConnectionSnapshot
+            {
+                OverallState = OverallConnectionState.Error,
+                OperatorState = RoleConnectionState.Error,
+                OperatorError = "gateway token mismatch",
+                OperatorErrorKind = GatewayErrorKind.LocalPortConflict,
+                GatewayUrl = "ws://localhost:18789",
+            },
+            localNode: null);
+
+        Assert.Equal(RecoveryCategory.LocalPortConflict, plan.Recovery);
+        Assert.Equal("Local gateway port conflict", plan.StripHeadline);
+        Assert.Equal(ConnectionPrimaryAction.Retry, plan.StripPrimaryAction);
+    }
+
+    [Fact]
     public void NodeListTrust_OverridesNodeConnectingWaitState()
     {
         var plan = Build(

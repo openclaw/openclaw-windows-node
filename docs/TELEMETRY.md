@@ -371,8 +371,10 @@ Reviewed attributes are:
 - `openclaw.node.tool.transport`: `gateway` or `mcp`
 - `openclaw.outcome`: `success`, `failure`, or `canceled`
 - `openclaw.error.category`: a finite typed category
-- `openclaw.node.tool.system_run.approval.pipeline`: `legacy` for the existing
-  approval policy or `v2` for the opt-in direct-argv approval pipeline; present
+- `openclaw.node.tool.system_run.approval.pipeline`: `v2` for the authoritative
+  canonical-argv approval pipeline; current `system.run` always emits this value.
+  `legacy` remains a finite historical value for backward-compatible telemetry
+  readers, but the runtime no longer selects the legacy approval path. Present
   only for `system.run` traces and failure/cancellation logs
 - `openclaw.node.tool.sandbox.requested`: whether sandboxing was configured
 - `openclaw.node.tool.sandbox.applied`: whether the command was known to run

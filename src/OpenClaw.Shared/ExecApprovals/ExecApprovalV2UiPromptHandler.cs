@@ -13,7 +13,8 @@ public sealed record ExecApprovalPromptView(
     string AgentLabel,
     string? CwdText,
     string? ExecutablePathText,
-    bool HasConfusableWarning);
+    bool HasConfusableWarning,
+    bool AllowAlwaysAvailable);
 
 /// <summary>
 /// Prompt-handler core behind the approval dialog. UI-free: the dispatcher hop and the
@@ -48,7 +49,20 @@ public sealed class ExecApprovalV2UiPromptHandler : IExecApprovalV2PromptHandler
             // Every field shown in the dialog originates from agent-controlled input,
             // including the agent label, so all of them go through the display sanitizer
             // before any UI binding to neutralize BiDi and control-character spoofing.
-            var commandText = ExecApprovalCommandDisplaySanitizer.Sanitize(request.DisplayCommand);
+            var commandStatus = ExecApprovalCommandDisplaySanitizer.SanitizeWithStatus(request.DisplayCommand);
+            // A command that cannot be shown in full (oversized, or truncated at the display cap)
+            // must not be approvable: the owner cannot review a hidden tail. Fail closed.
+            if (commandStatus.Truncated || commandStatus.Oversized)
+            {
+                _logger.Warn("[EXEC-APPROVALS] prompt: command exceeds display limit; denying (cannot review in full)");
+                return ExecApprovalPromptOutcome.Deny;
+            }
+            if (commandStatus.UnsafeConcealment)
+            {
+                _logger.Warn("[EXEC-APPROVALS] prompt: redaction would hide command syntax; denying (cannot review in full)");
+                return ExecApprovalPromptOutcome.Deny;
+            }
+            var commandText = commandStatus.Text;
             var agentLabel = ExecApprovalCommandDisplaySanitizer.Sanitize(request.AgentId);
             var cwdText = request.Cwd is null ? null : ExecApprovalCommandDisplaySanitizer.Sanitize(request.Cwd);
             var pathText = request.ResolvedPath is null ? null : ExecApprovalCommandDisplaySanitizer.Sanitize(request.ResolvedPath);
@@ -58,10 +72,11 @@ public sealed class ExecApprovalV2UiPromptHandler : IExecApprovalV2PromptHandler
             // instead so the user knows the command may not read the way it looks.
             var hasConfusable =
                 ExecApprovalConfusableDetector.HasMixedScriptConfusable(commandText)
+                || ExecApprovalConfusableDetector.HasMixedScriptConfusable(agentLabel)
                 || ExecApprovalConfusableDetector.HasMixedScriptConfusable(cwdText)
                 || ExecApprovalConfusableDetector.HasMixedScriptConfusable(pathText);
 
-            var view = new ExecApprovalPromptView(commandText, agentLabel, cwdText, pathText, hasConfusable);
+            var view = new ExecApprovalPromptView(commandText, agentLabel, cwdText, pathText, hasConfusable, request.AllowAlwaysAvailable);
 
             var tcs = new TaskCompletionSource<ExecApprovalPromptOutcome>(
                 TaskCreationOptions.RunContinuationsAsynchronously);

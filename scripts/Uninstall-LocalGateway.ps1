@@ -99,6 +99,50 @@ function Resolve-AppDataDir {
         return Join-Path ([Environment]::GetFolderPath([Environment+SpecialFolder]::LocalApplicationData)) $DataDirectoryName
     }
 
+    function Resolve-UsablePathValue {
+        param([string]$Value)
+        $trimmed = if ($null -eq $Value) { '' } else { $Value.Trim() }
+        if ([string]::IsNullOrEmpty($trimmed) -or $trimmed -in @('undefined', 'null')) {
+            return $null
+        }
+        return $trimmed
+    }
+
+    function Expand-ExecApprovalsHomePath {
+        param([string]$Path, [string]$Home)
+        if ($Path -eq '~') { return $Home }
+        if ($Path.StartsWith('~\') -or $Path.StartsWith('~/')) {
+            return Join-Path $Home $Path.Substring(2)
+        }
+        return $Path
+    }
+
+    function Resolve-ExecApprovalsPaths {
+        param([string]$DataDir)
+
+        $legacyPath = Join-Path $DataDir 'exec-approvals.json'
+        $stateDir = Resolve-UsablePathValue $env:OPENCLAW_STATE_DIR
+        if (-not $stateDir) { return @($legacyPath) }
+
+        $osHome = Resolve-UsablePathValue $env:HOME
+        if (-not $osHome) { $osHome = Resolve-UsablePathValue $env:USERPROFILE }
+        if (-not $osHome) {
+            $osHome = [Environment]::GetFolderPath([Environment+SpecialFolder]::UserProfile)
+        }
+        if (-not $osHome) { $osHome = (Get-Location).Path }
+
+        $openClawHome = Resolve-UsablePathValue $env:OPENCLAW_HOME
+        $effectiveHome = if ($openClawHome) {
+            [IO.Path]::GetFullPath((Expand-ExecApprovalsHomePath $openClawHome $osHome))
+        } else {
+            [IO.Path]::GetFullPath($osHome)
+        }
+        $resolvedStateDir = [IO.Path]::GetFullPath(
+            (Expand-ExecApprovalsHomePath $stateDir $effectiveHome))
+        $activePath = Join-Path $resolvedStateDir 'exec-approvals.json'
+        return @($activePath, $legacyPath) | Select-Object -Unique
+    }
+
     function Get-JsonPropertyValue {
         param(
             [object]$Object,
@@ -451,7 +495,12 @@ function Resolve-AppDataDir {
         Remove-FileIfExists -Path (Join-Path $dataDir 'setup-state.json') -Label 'legacy setup-state.json'
         Remove-FileIfExists -Path (Join-Path $localDataDir 'setup-state.json') -Label 'setup-state.json'
         Remove-FileIfExists -Path (Join-Path $localDataDir 'run.marker') -Label 'run.marker'
+        foreach ($execApprovalsPath in (Resolve-ExecApprovalsPaths -DataDir $dataDir)) {
+            Remove-FileIfExists -Path $execApprovalsPath -Label 'exec-approvals.json'
+        }
+        Remove-FileIfExists -Path (Join-Path $localDataDir 'exec-approvals.json') -Label 'local legacy exec-approvals.json'
         Remove-FileIfExists -Path (Join-Path $dataDir 'exec-policy.json') -Label 'exec-policy.json'
+        Remove-FileIfExists -Path (Join-Path $localDataDir 'exec-policy.json') -Label 'local exec-policy.json'
         Remove-KeepaliveMarker -LocalDataDir $localDataDir
 
         $registryCleanup = Remove-SetupManagedGatewayRecords -DataDir $dataDir

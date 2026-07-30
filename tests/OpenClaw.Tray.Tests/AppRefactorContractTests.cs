@@ -80,6 +80,34 @@ public sealed class AppRefactorContractTests
     }
 
     [Fact]
+    public void ManagedLocalGatewayRepair_StaysDelegatedToDedicatedOwners()
+    {
+        var root = TestRepositoryPaths.GetRepositoryRoot();
+        var app = ReadAppSources();
+        var startup = ExtractMethod(app, "OnLaunchedAsync");
+        var monitor = File.ReadAllText(Path.Combine(
+            root,
+            "src",
+            "OpenClaw.Tray.WinUI",
+            "Services",
+            "ManagedLocalGatewayAutoRepairMonitor.cs"));
+        var coordinator = File.ReadAllText(Path.Combine(
+            root,
+            "src",
+            "OpenClaw.Tray.WinUI",
+            "Services",
+            "ManagedLocalGatewayRepairCoordinator.cs"));
+
+        Assert.Contains("new OpenClawTray.Services.ManagedLocalGatewayRepairCoordinator(", startup);
+        Assert.Contains("new OpenClawTray.Services.ManagedLocalGatewayAutoRepairMonitor(", startup);
+        Assert.Contains("private async Task RunAsync(CancellationToken cancellationToken)", monitor);
+        Assert.Contains("private async Task<bool> SafeProbeAsync", coordinator);
+        Assert.Contains("private async Task<bool> VerifyAsync", coordinator);
+        Assert.DoesNotContain("private async Task<bool> SafeProbeAsync", app);
+        Assert.DoesNotContain("private async Task<bool> VerifyAsync", app);
+    }
+
+    [Fact]
     public void McpOnlyStartup_DoesNotRequireGatewayCredentials()
     {
         var source = ReadAppSources();
@@ -97,6 +125,14 @@ public sealed class AppRefactorContractTests
         var init = ExtractMethod(source, "InitializeGatewayClient");
         AssertInOrder(init, "TryStartLocalMcpOnlyNode();", "Gateway URL not configured");
         AssertInOrder(init, "TryStartLocalMcpOnlyNode()", "No stored device token");
+        Assert.Contains("catch (DeviceIdentityLoadException ex)", init);
+        Assert.Contains("ShowTransientConnectionError(ex.Message)", init);
+        AssertInOrder(
+            init,
+            "catch (DeviceIdentityLoadException ex)",
+            "ShowTransientConnectionError(ex.Message)",
+            "TryStartLocalMcpOnlyNode()",
+            "return;");
         Assert.Contains("Active gateway has no usable credential", source);
     }
 
@@ -269,8 +305,51 @@ public sealed class AppRefactorContractTests
 
         Assert.Contains("ResolveStartupNodeCredential(record, resolver, identityDir)", connectMethod);
         Assert.Contains("_connectionManager.ConnectNodeOnlyAsync(record.Id)", connectMethod);
-        Assert.Contains("resolver.ResolveNode(record, SettingsManager.SettingsDirectoryPath)", nodeCredentialMethod);
+        Assert.Contains("resolver.ResolveNodeDetailed(record, SettingsManager.SettingsDirectoryPath)", nodeCredentialMethod);
+        Assert.Contains("ResolveStartupCredentialOrThrow", nodeCredentialMethod);
         Assert.Contains("TryCopyLegacyIdentityToGateway(record.Id, identityDir)", nodeCredentialMethod);
+    }
+
+    [Fact]
+    public void Startup_CorruptActiveIdentity_StopsBeforeMcpFallbackAndShowsConnectionError()
+    {
+        var source = ReadAppSources();
+        var connectMethod = ExtractMethod(source, "TryConnectGatewayIfCredentialAvailable");
+        var resolutionMethod = ExtractMethod(source, "ResolveStartupCredentialOrThrow");
+
+        Assert.Contains("catch (DeviceIdentityLoadException ex)", connectMethod);
+        Assert.Contains("ShowTransientConnectionError(ex.Message)", connectMethod);
+        Assert.Equal(2, Regex.Matches(connectMethod, "catch \\(DeviceIdentityLoadException ex\\)").Count);
+        Assert.Equal(2, Regex.Matches(connectMethod, "ShowTransientConnectionError\\(ex.Message\\);\\s*return false;").Count);
+        Assert.Contains("GatewayCredentialResolutionStatus.Unreadable", resolutionMethod);
+        Assert.Contains("GatewayCredentialResolutionStatus.Corrupt", resolutionMethod);
+        Assert.Contains("throw new DeviceIdentityLoadException", resolutionMethod);
+    }
+
+    [Fact]
+    public void TrayMenu_CorruptIdentity_StillBuildsReconfigureSnapshotAndShowsConnectionError()
+    {
+        var source = ReadAppSources();
+        var captureMethod = ExtractMethod(source, "CaptureTrayMenuSnapshot");
+
+        Assert.Contains("catch (DeviceIdentityLoadException ex)", captureMethod);
+        Assert.Contains("ShowTransientConnectionError(ex.Message)", captureMethod);
+        Assert.Contains("hasExistingConfig = true", captureMethod);
+        Assert.Contains("return new TrayMenuSnapshot", captureMethod);
+    }
+
+    [Fact]
+    public void LaunchSetupProbe_CorruptIdentity_ShowsConnectionErrorWithoutStartingOnboarding()
+    {
+        var source = ReadAppSources();
+        var launchMethod = ExtractMethod(source, "OnLaunchedAsync");
+
+        Assert.Contains("catch (DeviceIdentityLoadException ex)", launchMethod);
+        Assert.Contains("ShowTransientConnectionError(ex.Message)", launchMethod);
+        AssertInOrder(
+            launchMethod,
+            "catch (DeviceIdentityLoadException ex)",
+            "catch (Exception ex)");
     }
 
     [Fact]
@@ -325,14 +404,41 @@ public sealed class AppRefactorContractTests
     }
 
     [Fact]
-    public void PermissionsPage_ExecPolicy_UsesAppDataDirectory()
+    public void PermissionsPage_ExecApprovals_UsesAppOwnedStoreWithCas()
     {
         var root = TestRepositoryPaths.GetRepositoryRoot();
         var source = File.ReadAllText(Path.Combine(root, "src", "OpenClaw.Tray.WinUI", "Pages", "PermissionsPage.xaml.cs"));
 
-        Assert.Contains("Path.Combine(CurrentApp.DataDirectoryPath, \"exec-policy.json\")", source);
-        Assert.DoesNotContain("SpecialFolder.LocalApplicationData", source);
-        Assert.DoesNotContain("SettingsManager.SettingsDirectoryPath, \"exec-policy.json\"", source);
+        Assert.Contains("CurrentApp.ExecApprovalsStore.GetSnapshotAsync()", source);
+        Assert.Contains("CurrentApp.ExecApprovalsStore.ReplaceAsync(expectedHash, file)", source);
+        Assert.Contains("ExecPolicyMutationKind.AddRule", source);
+        Assert.Contains("ExecPolicyMutationKind.RemoveRule", source);
+        Assert.DoesNotContain("main.Allowlist = _policyRules", source);
+        Assert.DoesNotContain("Path.Combine(CurrentApp.DataDirectoryPath, \"exec-approvals.json\")", source);
+        Assert.DoesNotContain("File.WriteAllText(tmpPath", source);
+    }
+
+    [Fact]
+    public void App_ExecApprovalsStore_UsesRoamingProductionDataRoot()
+    {
+        var source = ReadAppSources();
+
+        Assert.Contains("_execApprovalsStore ??= new ExecApprovalsStore(", source);
+        Assert.Contains("AppIdentity.ResolveRoamingDataDirectory()", source);
+    }
+
+    [Fact]
+    public void TrayArtifactCleanup_UsesActiveExecApprovalsStatePath()
+    {
+        var root = TestRepositoryPaths.GetRepositoryRoot();
+        var source = File.ReadAllText(Path.Combine(
+            root,
+            "src",
+            "OpenClaw.SetupEngine",
+            "TrayArtifactCleanup.cs"));
+
+        Assert.Contains("ExecApprovalsStore.ResolveFilePath(appDataDir)", source);
+        Assert.Contains("legacyExecApprovalsPath", source);
     }
 
     [Fact]
@@ -1069,7 +1175,7 @@ public sealed class AppRefactorContractTests
     {
         var match = Regex.Match(
             source,
-            $@"(?m)^\s*(?:private|protected|public|internal)\s+(?:static\s+)?(?:async\s+)?(?:Task(?:<[^>]+>)?|System\.Threading\.Tasks\.Task|void|bool|int|string\??|object\??|IntPtr|OpenClaw\.Connection\.GatewayCredential\?)\s+{Regex.Escape(methodName)}\s*\(");
+            $@"(?m)^\s*(?:private|protected|public|internal)\s+(?:static\s+)?(?:async\s+)?(?:Task(?:<[^>]+>)?|System\.Threading\.Tasks\.Task|void|bool|int|string\??|object\??|IntPtr|TrayMenuSnapshot|OpenClaw\.Connection\.GatewayCredential\?)\s+{Regex.Escape(methodName)}\s*\(");
         Assert.True(match.Success, $"Could not find method {methodName}.");
 
         var brace = source.IndexOf('{', match.Index);

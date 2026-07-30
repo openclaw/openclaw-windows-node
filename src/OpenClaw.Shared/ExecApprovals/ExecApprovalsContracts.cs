@@ -75,6 +75,12 @@ public sealed class ExecApprovalsFile
     public Dictionary<string, ExecApprovalsAgent>? Agents { get; set; }
 }
 
+public sealed record ExecApprovalsSnapshot(
+    string Path,
+    bool Exists,
+    string Hash,
+    ExecApprovalsFile File);
+
 internal sealed class ExecSecurityFallbackConverter : JsonConverter<ExecSecurity?>
 {
     public override ExecSecurity? Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)

@@ -42,8 +42,8 @@ public static class ExecApprovalV2Normalizer
         // displayCommand is always derived from argv, never from rawCommand.
         var displayCommand = ShellQuoting.FormatExecCommand(argv);
 
-        // rawCommand is null in Windows v1 (system.run does not carry it).
-        // EvaluationRawCommand stays null — correct and documented conservative output.
+        // rawCommand is display/consistency metadata, never executable input.
+        // Evaluation stays argv-only so approval and execution share one canonical command.
         string? evaluationRawCommand = null;
 
         // Singular resolution for state machine.

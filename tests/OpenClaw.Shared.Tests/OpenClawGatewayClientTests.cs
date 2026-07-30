@@ -480,6 +480,12 @@ public class OpenClawGatewayClientTests
         public bool GetAuthFailedFlag() =>
             GetPrivateField<bool>("_authFailed");
 
+        public bool GetUseV2Signature() =>
+            GetPrivateField<bool>("_useV2Signature");
+
+        public long? GetChallengeTimestampMs() =>
+            GetPrivateField<long?>("_challengeTimestampMs");
+
         public string? GetLastSkillsStatusAgentId()
         {
             var field = typeof(OpenClawGatewayClient).GetField(
@@ -492,6 +498,13 @@ public class OpenClawGatewayClientTests
         {
             var events = new List<string>();
             _client.AuthenticationFailed += (_, msg) => events.Add(msg);
+            return events;
+        }
+
+        public List<GatewayErrorKind> CaptureConnectionFailures()
+        {
+            var events = new List<GatewayErrorKind>();
+            _client.ConnectionFailure += (_, kind) => events.Add(kind);
             return events;
         }
 
@@ -931,6 +944,45 @@ public class OpenClawGatewayClientTests
     }
 
     [Fact]
+    public void HelloOkWhenTokenWriteFails_CompletesHandshakeAndPublishesToken()
+    {
+        var identityPath = CreateTempIdentityPath();
+        var helper = new GatewayClientTestHelper(
+            tokenIsBootstrapToken: true,
+            identityPath: identityPath);
+        var handshakeSucceeded = false;
+        DeviceTokenReceivedEventArgs? receivedToken = null;
+        helper.Client.HandshakeSucceeded += (_, _) => handshakeSucceeded = true;
+        helper.Client.DeviceTokenReceived += (_, e) => receivedToken = e;
+
+        using (new FileStream(
+            Path.Combine(identityPath, "device-key-ed25519.json"),
+            FileMode.Open,
+            FileAccess.Read,
+            FileShare.Read))
+        {
+            helper.ProcessRawMessage("""
+            {
+              "type": "res",
+              "id": "req-hello-operator",
+              "payload": {
+                "type": "hello-ok",
+                "auth": {
+                  "deviceToken": "operator-token",
+                  "role": "operator",
+                  "scopes": ["operator.read"]
+                }
+              }
+            }
+            """);
+        }
+
+        Assert.True(handshakeSucceeded);
+        Assert.Equal("operator-token", receivedToken?.Token);
+        Assert.Equal("operator", receivedToken?.Role);
+    }
+
+    [Fact]
     public void BootstrapNodeHandoff_PrefersOperatorTokenFromAdditionalDeviceTokens()
     {
         var helper = new GatewayClientTestHelper();
@@ -1097,7 +1149,7 @@ public class OpenClawGatewayClientTests
             "sessionKey": "main",
             "message": {
               "role": "assistant",
-              "content": "  NO_REPLY\n",
+              "content": "  no_reply\n",
               "timestamp": 1781631280633
             },
             "state": "final"
@@ -1124,7 +1176,7 @@ public class OpenClawGatewayClientTests
             "sessionKey": "main",
             "message": {
               "role": "user",
-              "content": "NO_REPLY",
+              "content": "no_reply",
               "timestamp": 1781631280633
             },
             "state": "final"
@@ -1134,7 +1186,7 @@ public class OpenClawGatewayClientTests
 
         Assert.NotNull(received);
         Assert.Equal("user", received!.Role);
-        Assert.Equal("NO_REPLY", received.Text);
+        Assert.Equal("no_reply", received.Text);
     }
 
     [Fact]
@@ -1146,7 +1198,7 @@ public class OpenClawGatewayClientTests
         {
           "messages": [
             { "role": "user", "content": "before", "timestamp": 1 },
-            { "role": "assistant", "content": "NO_REPLY", "timestamp": 2 },
+            { "role": "assistant", "content": "no_reply", "timestamp": 2 },
             { "role": "assistant", "content": "visible reply", "timestamp": 3 }
           ]
         }
@@ -3394,6 +3446,35 @@ public class OpenClawGatewayClientTests
         Assert.Equal("abc-123", helper.GetPairingRequiredRequestId());
     }
 
+    [Fact]
+    public void HandleRequestError_PairingRequired_MergesFieldsAcrossDetailObjects()
+    {
+        var helper = new GatewayClientTestHelper();
+        helper.TrackPendingRequest("req-pairing-split", "connect");
+
+        helper.ProcessRawMessage("""
+        {
+            "type": "res",
+            "id": "req-pairing-split",
+            "ok": false,
+            "error": {
+                "message": "approval is needed for this device",
+                "details": {
+                    "code": "PAIRING_REQUIRED"
+                },
+                "data": {
+                    "details": {
+                        "requestId": "nested-123"
+                    }
+                }
+            }
+        }
+        """);
+
+        Assert.True(helper.GetPairingRequiredFlag());
+        Assert.Equal("nested-123", helper.GetPairingRequiredRequestId());
+    }
+
     [Theory]
     [InlineData("{}")]
     [InlineData("{\"code\":\"PAIRING_REQUIRED\"}")]
@@ -3443,6 +3524,33 @@ public class OpenClawGatewayClientTests
 
         Assert.False(helper.GetAuthFailedFlag());
         Assert.Empty(authEvents);
+        Assert.True(helper.GetUseV2Signature());
+    }
+
+    [Fact]
+    public void HandleRequestError_StructuredDeviceSignatureInvalid_FirstRejectionFallsBackToV2()
+    {
+        var helper = new GatewayClientTestHelper();
+        var authEvents = helper.CaptureAuthenticationFailedEvents();
+        helper.TrackPendingRequest("req-sig-structured", "connect");
+
+        helper.ProcessRawMessage("""
+        {
+            "type": "res",
+            "id": "req-sig-structured",
+            "ok": false,
+            "error": {
+                "message": "device authentication failed",
+                "details": {
+                    "code": "DEVICE_AUTH_SIGNATURE_INVALID"
+                }
+            }
+        }
+        """);
+
+        Assert.False(helper.GetAuthFailedFlag());
+        Assert.Empty(authEvents);
+        Assert.True(helper.GetUseV2Signature());
     }
 
     [Fact]
@@ -3590,6 +3698,118 @@ public class OpenClawGatewayClientTests
         Assert.True(helper.GetAuthFailedFlag());
     }
 
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void HandleRequestError_NestedExpiredSignature_IsTerminalWithoutV2Fallback(bool nestedUnderData)
+    {
+        var helper = new GatewayClientTestHelper();
+        var authEvents = helper.CaptureAuthenticationFailedEvents();
+        helper.TrackPendingRequest("req-auth-expired", "connect");
+        var detailContainer = nestedUnderData
+            ? "\"data\":{\"details\":{\"code\":\"DEVICE_AUTH_SIGNATURE_EXPIRED\"}}"
+            : "\"details\":{\"code\":\"DEVICE_AUTH_SIGNATURE_EXPIRED\"}";
+
+        helper.ProcessRawMessage(
+            $$"""
+              {
+                "type": "res",
+                "id": "req-auth-expired",
+                "ok": false,
+                "error": {
+                  "message": "device signature expired",
+                  {{detailContainer}}
+                }
+              }
+              """);
+
+        Assert.True(helper.GetAuthFailedFlag());
+        Assert.Single(authEvents);
+        Assert.Contains("device signature expired", authEvents[0], StringComparison.OrdinalIgnoreCase);
+        Assert.False(helper.GetUseV2Signature());
+    }
+
+    [Fact]
+    public void HandleRequestError_ExpiredDetailOverridesGenericInvalidSignatureFallback()
+    {
+        var helper = new GatewayClientTestHelper();
+        var authEvents = helper.CaptureAuthenticationFailedEvents();
+        helper.TrackPendingRequest("req-auth-expired-mixed", "connect");
+
+        helper.ProcessRawMessage("""
+        {
+            "type": "res",
+            "id": "req-auth-expired-mixed",
+            "ok": false,
+            "error": {
+                "message": "device signature invalid",
+                "details": {
+                    "code": "DEVICE_AUTH_SIGNATURE_EXPIRED"
+                }
+            }
+        }
+        """);
+
+        Assert.True(helper.GetAuthFailedFlag());
+        Assert.Single(authEvents);
+        Assert.Contains("DEVICE_AUTH_SIGNATURE_EXPIRED", authEvents[0], StringComparison.Ordinal);
+        Assert.Contains("device signature invalid", authEvents[0], StringComparison.OrdinalIgnoreCase);
+        Assert.Equal(GatewayErrorKind.Auth, GatewayErrorClassifier.Classify(authEvents[0]));
+        Assert.False(helper.GetUseV2Signature());
+    }
+
+    [Fact]
+    public void HandleRequestError_IncompleteTopLevelDetails_UsesNestedExpiredCode()
+    {
+        var helper = new GatewayClientTestHelper();
+        var authEvents = helper.CaptureAuthenticationFailedEvents();
+        helper.TrackPendingRequest("req-auth-expired-nested-fallback", "connect");
+
+        helper.ProcessRawMessage("""
+        {
+            "type": "res",
+            "id": "req-auth-expired-nested-fallback",
+            "ok": false,
+            "error": {
+                "message": "device signature invalid",
+                "details": {
+                    "requestId": "abc"
+                },
+                "data": {
+                    "details": {
+                        "code": "DEVICE_AUTH_SIGNATURE_EXPIRED"
+                    }
+                }
+            }
+        }
+        """);
+
+        Assert.True(helper.GetAuthFailedFlag());
+        Assert.Single(authEvents);
+        Assert.Contains("DEVICE_AUTH_SIGNATURE_EXPIRED", authEvents[0], StringComparison.Ordinal);
+        Assert.False(helper.GetUseV2Signature());
+    }
+
+    [Fact]
+    public void HandleConnectChallenge_ValidTimestampWithoutNonce_IsRetained()
+    {
+        var helper = new GatewayClientTestHelper();
+        const long challengeTimestampMs = 1_716_480_000_000;
+
+        helper.ProcessRawMessage(
+            $$"""
+              {
+                "type": "event",
+                "event": "connect.challenge",
+                "payload": {
+                  "ts": {{challengeTimestampMs}}
+                }
+              }
+              """);
+
+        Assert.Equal(challengeTimestampMs, helper.GetChallengeTimestampMs());
+    }
+
     [Fact]
     public void HandleRequestError_TerminalAuthError_RaisesAuthenticationFailedEvent()
     {
@@ -3608,6 +3828,79 @@ public class OpenClawGatewayClientTests
 
         Assert.Single(authEvents);
         Assert.Contains("token mismatch", authEvents[0], StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void HandleRequestError_DeviceTokenMismatchTopLevelCode_GenericMessage_RaisesRecognizableAuthFailure()
+    {
+        // The gateway may deliver the device-token mismatch as a TOP-LEVEL error.code with a generic
+        // message. The raised AuthenticationFailed string must still be recognizable as a device-token
+        // mismatch so the connection manager can self-recover.
+        var helper = new GatewayClientTestHelper();
+        var authEvents = helper.CaptureAuthenticationFailedEvents();
+        helper.TrackPendingRequest("req-auth-toplevel", "connect");
+
+        helper.ProcessRawMessage("""
+        {
+            "type": "res",
+            "id": "req-auth-toplevel",
+            "ok": false,
+            "error": { "message": "unauthorized", "code": "AUTH_DEVICE_TOKEN_MISMATCH" }
+        }
+        """);
+
+        Assert.Single(authEvents);
+        Assert.Equal(
+            OpenClaw.Shared.GatewayErrorKind.DeviceTokenMismatch,
+            OpenClaw.Shared.GatewayErrorClassifier.ClassifyWithCode(authEvents[0]));
+    }
+
+    [Fact]
+    public void HandleRequestError_SharedTokenMismatchTopLevelCode_DoesNotLookLikeDeviceMismatch()
+    {
+        // A wrong SHARED token (top-level AUTH_TOKEN_MISMATCH) is terminal auth but must NOT be
+        // enriched into a recoverable device-token mismatch.
+        var helper = new GatewayClientTestHelper();
+        var authEvents = helper.CaptureAuthenticationFailedEvents();
+        var failures = helper.CaptureConnectionFailures();
+        helper.TrackPendingRequest("req-auth-shared", "connect");
+
+        helper.ProcessRawMessage("""
+        {
+            "type": "res",
+            "id": "req-auth-shared",
+            "ok": false,
+            "error": { "message": "unauthorized", "code": "AUTH_TOKEN_MISMATCH" }
+        }
+        """);
+
+        Assert.Single(authEvents);
+        Assert.Equal([GatewayErrorKind.Auth], failures);
+        Assert.NotEqual(
+            OpenClaw.Shared.GatewayErrorKind.DeviceTokenMismatch,
+            OpenClaw.Shared.GatewayErrorClassifier.ClassifyWithCode(authEvents[0]));
+    }
+
+    [Fact]
+    public void HandleRequestError_SharedTokenMismatchNestedCode_RaisesTypedAuthFailure()
+    {
+        var helper = new GatewayClientTestHelper();
+        var failures = helper.CaptureConnectionFailures();
+        helper.TrackPendingRequest("req-auth-shared-nested", "connect");
+
+        helper.ProcessRawMessage("""
+        {
+            "type": "res",
+            "id": "req-auth-shared-nested",
+            "ok": false,
+            "error": {
+                "message": "unauthorized",
+                "details": { "code": "AUTH_TOKEN_MISMATCH" }
+            }
+        }
+        """);
+
+        Assert.Equal([GatewayErrorKind.Auth], failures);
     }
 
     [Fact]

@@ -8,6 +8,7 @@ using System.Text.Json;
 using Xunit;
 using OpenClaw.Shared;
 using OpenClaw.Shared.Capabilities;
+using OpenClaw.Shared.ExecApprovals;
 
 namespace OpenClaw.Shared.Tests;
 
@@ -90,431 +91,6 @@ public class SystemCapabilityTests
         var res = await cap.ExecuteAsync(req);
         Assert.False(res.Ok);
         Assert.Contains("Unknown command", res.Error);
-    }
-
-    [Fact]
-    public async Task Run_AcceptsCommandAsArray()
-    {
-        var cap = new SystemCapability(NullLogger.Instance);
-        var runner = new FakeCommandRunner();
-        cap.SetCommandRunner(runner);
-
-        var req = new NodeInvokeRequest
-        {
-            Id = "r1",
-            Command = "system.run",
-            Args = Parse("""{"command":["echo","hello","world"]}""")
-        };
-
-        var res = await cap.ExecuteAsync(req);
-        Assert.True(res.Ok);
-        Assert.Equal("echo", runner.LastRequest!.Command);
-        Assert.Equal(new[] { "hello", "world" }, runner.LastRequest.Args);
-        var payload = JsonSerializer.SerializeToElement(res.Payload);
-        Assert.True(payload.GetProperty("success").GetBoolean());
-    }
-
-    [Fact]
-    public async Task Run_ReportsUnsuccessfulExit()
-    {
-        var cap = new SystemCapability(NullLogger.Instance);
-        cap.SetCommandRunner(new FakeCommandRunner
-        {
-            Result = new CommandResult { ExitCode = 1, TimedOut = false }
-        });
-
-        var res = await cap.ExecuteAsync(new NodeInvokeRequest
-        {
-            Id = "r1-failed",
-            Command = "system.run",
-            Args = Parse("""{"command":["cmd.exe","/d","/s","/c","exit 1"]}""")
-        });
-
-        Assert.True(res.Ok);
-        var payload = JsonSerializer.SerializeToElement(res.Payload);
-        Assert.False(payload.GetProperty("success").GetBoolean());
-    }
-
-    [Fact]
-    public async Task Run_PassesApprovedEffectiveShellToRunner()
-    {
-        var cap = new SystemCapability(NullLogger.Instance);
-        var runner = new FakeCommandRunner { ForcedEffectiveShell = "cmd" };
-        cap.SetCommandRunner(runner);
-
-        var req = new NodeInvokeRequest
-        {
-            Id = "r1-shell",
-            Command = "system.run",
-            Args = Parse("""{"command":"hostname"}""")
-        };
-
-        var res = await cap.ExecuteAsync(req);
-
-        Assert.True(res.Ok);
-        Assert.Equal("cmd", runner.LastRequest!.ApprovedEffectiveShell);
-        Assert.Null(runner.LastRequest.Shell);
-    }
-
-    [Fact]
-    public async Task Run_GatewayCmdWrapper_UsesAllowedInnerCommand()
-    {
-        var tempDir = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N"));
-        Directory.CreateDirectory(tempDir);
-        try
-        {
-            var cap = new SystemCapability(NullLogger.Instance);
-            var runner = new FakeCommandRunner();
-            cap.SetCommandRunner(runner);
-            cap.SetApprovalPolicy(new ExecApprovalPolicy(tempDir, NullLogger.Instance));
-
-            var req = new NodeInvokeRequest
-            {
-                Id = "gateway-cmd-wrapper",
-                Command = "system.run",
-                Args = Parse("""{"command":["cmd.exe","/d","/s","/c","hostname"],"rawCommand":"hostname"}""")
-            };
-
-            var res = await cap.ExecuteAsync(req);
-
-            Assert.True(res.Ok);
-            Assert.Equal("cmd.exe", runner.LastRequest!.Command);
-            Assert.Equal(new[] { "/d", "/s", "/c", "hostname" }, runner.LastRequest.Args);
-        }
-        finally
-        {
-            Directory.Delete(tempDir, true);
-        }
-    }
-
-    // REGRESSION (fix for the exec-approval broad-pattern bypass): a caller-set broad allow pattern
-    // ("*.*") whose executable is wildcarded must be REJECTED by execApprovals.set, so an otherwise-
-    // denied command stays gated. Pre-fix this rule was accepted and granted blanket exec.
-    [Fact]
-    public async Task ExecApprovals_BroadDotStar_IsRejected_ExecStaysGated()
-    {
-        var tempDir = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N"));
-        Directory.CreateDirectory(tempDir);
-        try
-        {
-            var cap = new SystemCapability(NullLogger.Instance);
-            var runner = new FakeCommandRunner();
-            var policy = new ExecApprovalPolicy(tempDir, NullLogger.Instance);
-            cap.SetCommandRunner(runner);
-            cap.SetApprovalPolicy(policy);
-
-            // Control: default policy action is Deny; a bare arbitrary exe is NOT executed.
-            _ = await cap.ExecuteAsync(new NodeInvokeRequest
-            {
-                Id = "run-before",
-                Command = "system.run",
-                Args = Parse("""{"command":["notepad.exe"]}""")
-            });
-            Assert.Null(runner.LastRequest);
-
-            // Attacker (gateway) sets a broad allow rule the validator SHOULD reject but does not.
-            var baseHash = policy.GetPolicyHash();
-            var setRes = await cap.ExecuteAsync(new NodeInvokeRequest
-            {
-                Id = "set",
-                Command = "system.execApprovals.set",
-                Args = Parse("{\"baseHash\":\"" + baseHash + "\",\"rules\":[{\"pattern\":\"*.*\",\"action\":\"allow\"}]}")
-            });
-            Assert.False(setRes.Ok, "broad '*.*' allow rule must be rejected by the validator");
-
-            // The exe stays gated — the rule was rejected, so the default-deny still blocks it.
-            _ = await cap.ExecuteAsync(new NodeInvokeRequest
-            {
-                Id = "run-after",
-                Command = "system.run",
-                Args = Parse("""{"command":["notepad.exe"]}""")
-            });
-            Assert.Null(runner.LastRequest);
-        }
-        finally
-        {
-            Directory.Delete(tempDir, true);
-        }
-    }
-
-    // Sets a single allow rule via the gateway-reachable execApprovals.set path; returns whether the
-    // validator accepted it. Used to map the broad-allow-pattern gap and guard the fix.
-    private static async Task<bool> TrySetAllowRuleAsync(string pattern)
-    {
-        var tempDir = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N"));
-        Directory.CreateDirectory(tempDir);
-        try
-        {
-            var cap = new SystemCapability(NullLogger.Instance);
-            cap.SetCommandRunner(new FakeCommandRunner());
-            var policy = new ExecApprovalPolicy(tempDir, NullLogger.Instance);
-            cap.SetApprovalPolicy(policy);
-            var esc = pattern.Replace("\\", "\\\\").Replace("\"", "\\\"");
-            var json = "{\"baseHash\":\"" + policy.GetPolicyHash() + "\",\"rules\":[{\"pattern\":\"" + esc + "\",\"action\":\"allow\"}]}";
-            var res = await cap.ExecuteAsync(new NodeInvokeRequest { Id = "set", Command = "system.execApprovals.set", Args = Parse(json) });
-            return res.Ok;
-        }
-        finally { Directory.Delete(tempDir, true); }
-    }
-
-    // ROOT CAUSE: an allow pattern whose executable/first token is wildcarded matches nearly every
-    // command (*->.* glob), yet ValidateExecApprovalRules only blocks pure-wildcard/shell-blanket
-    // shapes. The whole class must be rejected, not just "*".
-    [Theory]
-    [InlineData("*.*")]
-    [InlineData("*e*")]
-    [InlineData("*.exe")]
-    [InlineData("*x*")]
-    [InlineData("c*")]
-    public async Task ExecApprovals_BroadAllowPattern_IsRejected(string pattern)
-        => Assert.False(await TrySetAllowRuleAsync(pattern), $"broad allow pattern '{pattern}' must be rejected");
-
-    // Guard against over-blocking: legitimate rules that pin a concrete command must still be accepted.
-    [Theory]
-    [InlineData("git *")]
-    [InlineData("npm run *")]
-    [InlineData("node *.js")]
-    public async Task ExecApprovals_SpecificAllowPattern_IsAccepted(string pattern)
-        => Assert.True(await TrySetAllowRuleAsync(pattern), $"specific allow pattern '{pattern}' must be accepted");
-
-    [Theory]
-    [InlineData("cmd /c echo ok")]
-    [InlineData("CMD.EXE /c echo ok")]
-    [InlineData(@"""cmd.exe"" /c echo ok")]
-    [InlineData(@".\cmd.exe /c echo ok")]
-    [InlineData("powershell.exe -Command Get-Date")]
-    [InlineData("pwsh -c Get-Date")]
-    [InlineData("wsl.exe --exec bash -c id")]
-    [InlineData("bash -c id")]
-    [InlineData("sh -c id")]
-    [InlineData("cscript.exe test.js")]
-    [InlineData("wscript test.vbs")]
-    public async Task ExecApprovals_CommandHostAllowRule_IsRejected(string pattern)
-        => Assert.False(
-            await TrySetAllowRuleAsync(pattern),
-            $"command host allow pattern '{pattern}' must be rejected");
-
-    [Theory]
-    [InlineData(@"""cmd /c echo ok")]
-    [InlineData(@"""C:\Program Files\Tools\evil.exe --run")]
-    [InlineData("'' --run")]
-    public async Task ExecApprovals_MalformedQuotedExecutable_IsRejected(string pattern)
-        => Assert.False(
-            await TrySetAllowRuleAsync(pattern),
-            $"malformed executable pattern '{pattern}' must be rejected");
-
-    [Theory]
-    [InlineData("mycmd.exe *")]
-    [InlineData("pwsh-helper.exe *")]
-    [InlineData("bashful.exe *")]
-    [InlineData("wsl-helper.exe *")]
-    [InlineData("cscript-runner.exe *")]
-    [InlineData("wscript-helper.exe *")]
-    [InlineData("node *.js")]
-    [InlineData("python *.py")]
-    public async Task ExecApprovals_CommandHostSubstring_IsAccepted(string pattern)
-        => Assert.True(
-            await TrySetAllowRuleAsync(pattern),
-            $"non-host executable pattern '{pattern}' must be accepted");
-
-    [Fact]
-    public async Task Run_GatewayCmdWrapper_ExplicitOuterDenyStillWins()
-    {
-        var tempDir = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N"));
-        Directory.CreateDirectory(tempDir);
-        try
-        {
-            var cap = new SystemCapability(NullLogger.Instance);
-            var runner = new FakeCommandRunner();
-            var policy = new ExecApprovalPolicy(tempDir, NullLogger.Instance);
-            policy.InsertRule(0, new ExecApprovalRule
-            {
-                Pattern = "cmd.exe /d /s /c hostname",
-                Action = ExecApprovalAction.Deny,
-                Description = "Explicit wrapper deny"
-            });
-            cap.SetCommandRunner(runner);
-            cap.SetApprovalPolicy(policy);
-
-            var req = new NodeInvokeRequest
-            {
-                Id = "gateway-cmd-wrapper-deny",
-                Command = "system.run",
-                Args = Parse("""{"command":["cmd.exe","/d","/s","/c","hostname"],"rawCommand":"hostname"}""")
-            };
-
-            var res = await cap.ExecuteAsync(req);
-
-            Assert.False(res.Ok);
-            Assert.Contains("Explicit wrapper deny", res.Error);
-            Assert.Null(runner.LastRequest);
-        }
-        finally
-        {
-            Directory.Delete(tempDir, true);
-        }
-    }
-
-    [Fact]
-    public async Task Run_GatewayCmdWrapper_ExplicitInnerDenyStillWins()
-    {
-        var tempDir = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N"));
-        Directory.CreateDirectory(tempDir);
-        try
-        {
-            var cap = new SystemCapability(NullLogger.Instance);
-            var runner = new FakeCommandRunner();
-            var policy = new ExecApprovalPolicy(tempDir, NullLogger.Instance);
-            policy.InsertRule(0, new ExecApprovalRule
-            {
-                Pattern = "hostname",
-                Action = ExecApprovalAction.Deny,
-                Description = "Explicit inner deny"
-            });
-            cap.SetCommandRunner(runner);
-            cap.SetApprovalPolicy(policy);
-
-            var req = new NodeInvokeRequest
-            {
-                Id = "gateway-cmd-inner-deny",
-                Command = "system.run",
-                Args = Parse("""{"command":["cmd.exe","/d","/s","/c","hostname"],"rawCommand":"hostname"}""")
-            };
-
-            var res = await cap.ExecuteAsync(req);
-
-            Assert.False(res.Ok);
-            Assert.Contains("Explicit inner deny", res.Error);
-            Assert.Null(runner.LastRequest);
-        }
-        finally
-        {
-            Directory.Delete(tempDir, true);
-        }
-    }
-
-    [Fact]
-    public async Task Run_GatewayCmdWrapper_BroadInnerAllowCannotHidePipeTarget()
-    {
-        var tempDir = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N"));
-        Directory.CreateDirectory(tempDir);
-        try
-        {
-            var cap = new SystemCapability(NullLogger.Instance);
-            var runner = new FakeCommandRunner();
-            cap.SetCommandRunner(runner);
-            cap.SetApprovalPolicy(new ExecApprovalPolicy(tempDir, NullLogger.Instance));
-
-            var req = new NodeInvokeRequest
-            {
-                Id = "gateway-cmd-pipe-deny",
-                Command = "system.run",
-                Args = Parse("""{"command":["cmd.exe","/d","/s","/c","echo ok | del C:\\victim"],"rawCommand":"echo ok | del C:\\victim"}""")
-            };
-
-            var res = await cap.ExecuteAsync(req);
-
-            Assert.False(res.Ok);
-            Assert.Contains("exact allow rule", res.Error);
-            Assert.Null(runner.LastRequest);
-        }
-        finally
-        {
-            Directory.Delete(tempDir, true);
-        }
-    }
-
-    [Fact]
-    public async Task Run_AcceptsCommandAsString()
-    {
-        var cap = new SystemCapability(NullLogger.Instance);
-        var runner = new FakeCommandRunner();
-        cap.SetCommandRunner(runner);
-
-        var req = new NodeInvokeRequest
-        {
-            Id = "r2",
-            Command = "system.run",
-            Args = Parse("""{"command":"hostname"}""")
-        };
-
-        var res = await cap.ExecuteAsync(req);
-        Assert.True(res.Ok);
-        Assert.Equal("hostname", runner.LastRequest!.Command);
-        Assert.Null(runner.LastRequest.Args);
-    }
-
-    [Fact]
-    public async Task Run_AcceptsSingleElementArray()
-    {
-        var cap = new SystemCapability(NullLogger.Instance);
-        var runner = new FakeCommandRunner();
-        cap.SetCommandRunner(runner);
-
-        var req = new NodeInvokeRequest
-        {
-            Id = "r3",
-            Command = "system.run",
-            Args = Parse("""{"command":["hostname"]}""")
-        };
-
-        var res = await cap.ExecuteAsync(req);
-        Assert.True(res.Ok);
-        Assert.Equal("hostname", runner.LastRequest!.Command);
-        Assert.Null(runner.LastRequest.Args);
-    }
-
-    [Fact]
-    public async Task Run_ReturnsError_WhenNoCommand()
-    {
-        var cap = new SystemCapability(NullLogger.Instance);
-        cap.SetCommandRunner(new FakeCommandRunner());
-
-        var req = new NodeInvokeRequest
-        {
-            Id = "r4",
-            Command = "system.run",
-            Args = Parse("""{}""")
-        };
-
-        var res = await cap.ExecuteAsync(req);
-        Assert.False(res.Ok);
-        Assert.Contains("Missing command", res.Error);
-    }
-
-    [Fact]
-    public async Task Run_ReturnsError_WhenNoRunner()
-    {
-        var cap = new SystemCapability(NullLogger.Instance);
-        var req = new NodeInvokeRequest
-        {
-            Id = "r5",
-            Command = "system.run",
-            Args = Parse("""{"command":["echo","test"]}""")
-        };
-
-        var res = await cap.ExecuteAsync(req);
-        Assert.False(res.Ok);
-        Assert.Contains("not available", res.Error);
-    }
-
-    [Fact]
-    public async Task Run_ReadsTimeoutMs()
-    {
-        var cap = new SystemCapability(NullLogger.Instance);
-        var runner = new FakeCommandRunner();
-        cap.SetCommandRunner(runner);
-
-        var req = new NodeInvokeRequest
-        {
-            Id = "r6",
-            Command = "system.run",
-            Args = Parse("""{"command":["test"],"timeoutMs":60000}""")
-        };
-
-        var res = await cap.ExecuteAsync(req);
-        Assert.True(res.Ok);
-        Assert.Equal(60000, runner.LastRequest!.TimeoutMs);
     }
 
     [Fact]
@@ -642,7 +218,7 @@ public class SystemCapabilityTests
     }
 
     [Fact]
-    public async Task RunPrepare_ReturnsCommandText_ForString()
+    public async Task RunPrepare_RejectsStringCommand()
     {
         var cap = new SystemCapability(NullLogger.Instance);
         var req = new NodeInvokeRequest
@@ -653,10 +229,8 @@ public class SystemCapabilityTests
         };
 
         var res = await cap.ExecuteAsync(req);
-        Assert.True(res.Ok);
-        var payload = JsonSerializer.Deserialize<JsonElement>(JsonSerializer.Serialize(res.Payload));
-        Assert.True(payload.TryGetProperty("cmdText", out var cmdText));
-        Assert.Equal("hostname", cmdText.GetString());
+        Assert.False(res.Ok);
+        Assert.Contains("command-array-required", res.Error);
     }
 
     [Fact]
@@ -683,26 +257,28 @@ public class SystemCapabilityTests
     }
 
     [Fact]
-    public async Task RunPrepare_ReturnsRequestedAndEffectiveShellFromRunner()
+    public async Task RunPrepare_PreservesCanonicalWrapperArgv()
     {
-        var runner = new FakeCommandRunner { ForcedEffectiveShell = "cmd" };
         var cap = new SystemCapability(NullLogger.Instance);
-        cap.SetCommandRunner(runner);
         var req = new NodeInvokeRequest
         {
             Id = "p-shell",
             Command = "system.run.prepare",
-            Args = Parse("""{"command":"echo hi","shell":"bash"}""")
+            Args = Parse(
+                """{"command":["cmd.exe","/d","/s","/c","echo hi"],"rawCommand":"echo hi"}""")
         };
 
         var res = await cap.ExecuteAsync(req);
 
         Assert.True(res.Ok);
-        Assert.Equal("bash", runner.LastResolvedShell);
         var payload = JsonSerializer.Deserialize<JsonElement>(JsonSerializer.Serialize(res.Payload));
+        Assert.Equal("echo hi", payload.GetProperty("cmdText").GetString());
         var plan = payload.GetProperty("plan");
-        Assert.Equal("bash", plan.GetProperty("requestedShell").GetString());
-        Assert.Equal("cmd", plan.GetProperty("effectiveShell").GetString());
+        Assert.Equal(
+            ["cmd.exe", "/d", "/s", "/c", "echo hi"],
+            plan.GetProperty("argv").EnumerateArray().Select(item => item.GetString()!).ToArray());
+        Assert.False(plan.TryGetProperty("requestedShell", out _));
+        Assert.False(plan.TryGetProperty("effectiveShell", out _));
     }
 
     [Fact]
@@ -718,369 +294,13 @@ public class SystemCapabilityTests
 
         var res = await cap.ExecuteAsync(req);
         Assert.False(res.Ok);
-        Assert.Contains("Missing command", res.Error);
-    }
-
-    [Fact]
-    public async Task ExecApprovalsGet_WhenNoPolicyConfigured_ReturnsDisabled()
-    {
-        var cap = new SystemCapability(NullLogger.Instance);
-        var req = new NodeInvokeRequest
-        {
-            Id = "ea1",
-            Command = "system.execApprovals.get",
-            Args = Parse("""{}""")
-        };
-
-        var res = await cap.ExecuteAsync(req);
-        Assert.True(res.Ok);
-        var payload = JsonSerializer.Deserialize<JsonElement>(JsonSerializer.Serialize(res.Payload));
-        Assert.True(payload.TryGetProperty("enabled", out var enabled));
-        Assert.False(enabled.GetBoolean());
-    }
-
-    [Fact]
-    public async Task ExecApprovalsGet_WhenPolicySet_ReturnsRules()
-    {
-        var tempDir = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N"));
-        Directory.CreateDirectory(tempDir);
-        try
-        {
-            var cap = new SystemCapability(NullLogger.Instance);
-            var policy = new ExecApprovalPolicy(tempDir, NullLogger.Instance);
-            cap.SetApprovalPolicy(policy);
-
-            var req = new NodeInvokeRequest
-            {
-                Id = "ea2",
-                Command = "system.execApprovals.get",
-                Args = Parse("""{}""")
-            };
-
-            var res = await cap.ExecuteAsync(req);
-            Assert.True(res.Ok);
-            var payload = JsonSerializer.Deserialize<JsonElement>(JsonSerializer.Serialize(res.Payload));
-            Assert.True(payload.TryGetProperty("enabled", out var enabled));
-            Assert.True(enabled.GetBoolean());
-            Assert.True(payload.TryGetProperty("hash", out var hash));
-            Assert.StartsWith("sha256:", hash.GetString());
-            Assert.True(payload.TryGetProperty("baseHash", out var baseHash));
-            Assert.Equal(hash.GetString(), baseHash.GetString());
-            Assert.True(payload.TryGetProperty("rules", out _));
-        }
-        finally
-        {
-            Directory.Delete(tempDir, true);
-        }
-    }
-
-    [Fact]
-    public async Task ExecApprovalsSet_WhenNoPolicyConfigured_ReturnsError()
-    {
-        var cap = new SystemCapability(NullLogger.Instance);
-        var req = new NodeInvokeRequest
-        {
-            Id = "ea3",
-            Command = "system.execApprovals.set",
-            Args = Parse("""{"rules":[]}""")
-        };
-
-        var res = await cap.ExecuteAsync(req);
-        Assert.False(res.Ok);
-        Assert.Contains("No exec policy configured", res.Error);
-    }
-
-    [Fact]
-    public async Task ExecApprovalsSet_UpdatesRules()
-    {
-        var tempDir = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N"));
-        Directory.CreateDirectory(tempDir);
-        try
-        {
-            var cap = new SystemCapability(NullLogger.Instance);
-            var policy = new ExecApprovalPolicy(tempDir, NullLogger.Instance);
-            cap.SetApprovalPolicy(policy);
-
-            var req = new NodeInvokeRequest
-            {
-                Id = "ea4",
-                Command = "system.execApprovals.set",
-                Args = Parse($$"""{"baseHash":"{{policy.GetPolicyHash()}}","rules":[{"pattern":"git *","action":"allow","description":"Allow git","enabled":true}],"defaultAction":"deny"}""")
-            };
-
-            var res = await cap.ExecuteAsync(req);
-            Assert.True(res.Ok);
-            var payload = JsonSerializer.Deserialize<JsonElement>(JsonSerializer.Serialize(res.Payload));
-            Assert.True(payload.TryGetProperty("updated", out var updated));
-            Assert.True(updated.GetBoolean());
-            Assert.True(payload.TryGetProperty("ruleCount", out var ruleCount));
-            Assert.Equal(1, ruleCount.GetInt32());
-            Assert.True(payload.TryGetProperty("hash", out var hash));
-            Assert.NotEqual(req.Args.GetProperty("baseHash").GetString(), hash.GetString());
-        }
-        finally
-        {
-            Directory.Delete(tempDir, true);
-        }
-    }
-
-    [Fact]
-    public async Task ExecApprovalsGet_ReturnsRemoteMutationConstraints()
-    {
-        var tempDir = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N"));
-        Directory.CreateDirectory(tempDir);
-        try
-        {
-            var cap = new SystemCapability(NullLogger.Instance);
-            var policy = new ExecApprovalPolicy(tempDir, NullLogger.Instance);
-            cap.SetApprovalPolicy(policy);
-
-            var req = new NodeInvokeRequest
-            {
-                Id = "ea-constraints",
-                Command = "system.execApprovals.get",
-                Args = Parse("""{}""")
-            };
-
-            var res = await cap.ExecuteAsync(req);
-
-            Assert.True(res.Ok);
-            var payload = JsonSerializer.Deserialize<JsonElement>(JsonSerializer.Serialize(res.Payload));
-            Assert.True(payload.TryGetProperty("constraints", out var constraints));
-            Assert.True(constraints.GetProperty("baseHashRequired").GetBoolean());
-            Assert.False(constraints.GetProperty("defaultAllowAllowed").GetBoolean());
-            Assert.False(constraints.GetProperty("broadAllowRulesAllowed").GetBoolean());
-            Assert.False(constraints.GetProperty("dangerousAllowRulesAllowed").GetBoolean());
-        }
-        finally
-        {
-            Directory.Delete(tempDir, true);
-        }
-    }
-
-    [Fact]
-    public async Task ExecApprovalsSet_RejectsDefaultAllow()
-    {
-        var tempDir = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N"));
-        Directory.CreateDirectory(tempDir);
-        try
-        {
-            var cap = new SystemCapability(NullLogger.Instance);
-            var policy = new ExecApprovalPolicy(tempDir, NullLogger.Instance);
-            cap.SetApprovalPolicy(policy);
-
-            var req = new NodeInvokeRequest
-            {
-                Id = "ea-default-allow",
-                Command = "system.execApprovals.set",
-                Args = Parse($$"""{"baseHash":"{{policy.GetPolicyHash()}}","rules":[],"defaultAction":"allow"}""")
-            };
-
-            var res = await cap.ExecuteAsync(req);
-
-            Assert.False(res.Ok);
-            Assert.Contains("Default allow", res.Error);
-            Assert.Equal(ExecApprovalAction.Deny, policy.DefaultAction);
-        }
-        finally
-        {
-            Directory.Delete(tempDir, true);
-        }
-    }
-
-    [Theory]
-    [InlineData("*")]
-    [InlineData("**")]
-    [InlineData("***")]
-    [InlineData("?")]
-    [InlineData("? *")]
-    [InlineData("* ?")]
-    [InlineData("cmd *")]
-    [InlineData("Remove-Item *")]
-    [InlineData("Invoke-WebRequest *")]
-    [InlineData("Start-Process *")]
-    public async Task ExecApprovalsSet_RejectsUnsafeAllowRules(string pattern)
-    {
-        var tempDir = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N"));
-        Directory.CreateDirectory(tempDir);
-        try
-        {
-            var cap = new SystemCapability(NullLogger.Instance);
-            var policy = new ExecApprovalPolicy(tempDir, NullLogger.Instance);
-            cap.SetApprovalPolicy(policy);
-
-            var req = new NodeInvokeRequest
-            {
-                Id = "ea-unsafe-allow",
-                Command = "system.execApprovals.set",
-                Args = Parse($$"""{"baseHash":"{{policy.GetPolicyHash()}}","rules":[{"pattern":"{{pattern}}","action":"allow","enabled":true}],"defaultAction":"deny"}""")
-            };
-
-            var res = await cap.ExecuteAsync(req);
-
-            Assert.False(res.Ok);
-            Assert.Contains("allow rule", res.Error, StringComparison.OrdinalIgnoreCase);
-        }
-        finally
-        {
-            Directory.Delete(tempDir, true);
-        }
-    }
-
-    [Theory]
-    [InlineData(@"C:\Users\Public\evil.exe")]
-    [InlineData(@"C:\Windows\System32\cmd.exe")]
-    [InlineData(@"D:/tools/run.exe")]
-    [InlineData(@"\\server\share\tool.exe")]
-    [InlineData(@"\\?\C:\evil.exe")]
-    [InlineData(@"""C:\Users\Public\evil.exe""")]
-    [InlineData(@"""C:\Program Files\Tools\evil.exe"" --run")]
-    [InlineData(@"'C:\Users\Public\evil.exe'")]
-    [InlineData(@"""\\server\share\tool.exe""")]
-    [InlineData(@"""\\?\C:\evil.exe""")]
-    [InlineData(@"//server/share/tool.exe")]
-    [InlineData(@"//?/C:/evil.exe")]
-    public async Task ExecApprovalsSet_RejectsAbsolutePathAllowRules(string pattern)
-    {
-        var tempDir = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N"));
-        Directory.CreateDirectory(tempDir);
-        try
-        {
-            var cap = new SystemCapability(NullLogger.Instance);
-            var policy = new ExecApprovalPolicy(tempDir, NullLogger.Instance);
-            cap.SetApprovalPolicy(policy);
-
-            var jsonPattern = System.Text.Json.JsonSerializer.Serialize(pattern)[1..^1];
-            var req = new NodeInvokeRequest
-            {
-                Id = "ea-path-allow",
-                Command = "system.execApprovals.set",
-                Args = Parse($$"""{"baseHash":"{{policy.GetPolicyHash()}}","rules":[{"pattern":"{{jsonPattern}}","action":"allow","enabled":true}],"defaultAction":"deny"}""")
-            };
-
-            var res = await cap.ExecuteAsync(req);
-
-            Assert.False(res.Ok);
-            Assert.Contains("allow rule", res.Error, StringComparison.OrdinalIgnoreCase);
-        }
-        finally
-        {
-            Directory.Delete(tempDir, true);
-        }
-    }
-
-    [Fact]
-    public async Task Run_BlockedEnvVar_ReturnsError()
-    {
-        var cap = new SystemCapability(NullLogger.Instance);
-        cap.SetCommandRunner(new FakeCommandRunner());
-
-        var req = new NodeInvokeRequest
-        {
-            Id = "e1",
-            Command = "system.run",
-            Args = Parse("""{"command":["echo","test"],"env":{"PATH":"C:\\evil"}}""")
-        };
-
-        var res = await cap.ExecuteAsync(req);
-        Assert.False(res.Ok);
-        Assert.Contains("PATH", res.Error);
-    }
-
-    [Fact]
-    public async Task Run_AllowedEnvVar_Passes()
-    {
-        var cap = new SystemCapability(NullLogger.Instance);
-        var runner = new FakeCommandRunner();
-        cap.SetCommandRunner(runner);
-
-        var req = new NodeInvokeRequest
-        {
-            Id = "e2",
-            Command = "system.run",
-            Args = Parse("""{"command":["echo","test"],"env":{"MY_CUSTOM_VAR":"hello"}}""")
-        };
-
-        var res = await cap.ExecuteAsync(req);
-        Assert.True(res.Ok);
-        Assert.NotNull(runner.LastRequest!.Env);
-        Assert.True(runner.LastRequest.Env!.ContainsKey("MY_CUSTOM_VAR"));
-    }
-
-    [Fact]
-    public async Task ExecApprovalsSet_RequiresBaseHash()
-    {
-        var tempDir = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N"));
-        Directory.CreateDirectory(tempDir);
-        try
-        {
-            var cap = new SystemCapability(NullLogger.Instance);
-            var policy = new ExecApprovalPolicy(tempDir, NullLogger.Instance);
-            cap.SetApprovalPolicy(policy);
-
-            var req = new NodeInvokeRequest
-            {
-                Id = "ea-missing-base-hash",
-                Command = "system.execApprovals.set",
-                Args = Parse("""{"rules":[],"defaultAction":"deny"}""")
-            };
-
-            var res = await cap.ExecuteAsync(req);
-
-            Assert.False(res.Ok);
-            Assert.Contains("baseHash", res.Error);
-            Assert.NotEmpty(policy.Rules);
-        }
-        finally
-        {
-            Directory.Delete(tempDir, true);
-        }
-    }
-
-    [Fact]
-    public async Task ExecApprovalsSet_RejectsStaleBaseHash()
-    {
-        var tempDir = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N"));
-        Directory.CreateDirectory(tempDir);
-        try
-        {
-            var cap = new SystemCapability(NullLogger.Instance);
-            var policy = new ExecApprovalPolicy(tempDir, NullLogger.Instance);
-            cap.SetApprovalPolicy(policy);
-
-            var staleHash = policy.GetPolicyHash();
-            policy.InsertRule(0, new ExecApprovalRule
-            {
-                Pattern = "hostname",
-                Action = ExecApprovalAction.Allow,
-                Description = "Local edit after remote read"
-            });
-
-            var req = new NodeInvokeRequest
-            {
-                Id = "ea-stale-base-hash",
-                Command = "system.execApprovals.set",
-                Args = Parse($$"""{"baseHash":"{{staleHash}}","rules":[],"defaultAction":"deny"}""")
-            };
-
-            var res = await cap.ExecuteAsync(req);
-
-            Assert.False(res.Ok);
-            Assert.Contains("Refresh policy", res.Error);
-            Assert.Contains(policy.Rules, rule => rule.Description == "Local edit after remote read");
-        }
-        finally
-        {
-            Directory.Delete(tempDir, true);
-        }
+        Assert.Contains("missing-command", res.Error);
     }
 
     private class FakeCommandRunner : ICommandRunner
     {
         public string Name => "fake";
         public CommandRequest? LastRequest { get; private set; }
-        public string? LastResolvedShell { get; private set; }
-        public string? ForcedEffectiveShell { get; set; }
         public CommandResult Result { get; set; } = new()
         {
             Stdout = "ok",
@@ -1089,24 +309,6 @@ public class SystemCapabilityTests
             TimedOut = false,
             DurationMs = 1
         };
-
-        public string ResolveEffectiveShell(string? requestedShell)
-        {
-            LastResolvedShell = requestedShell;
-            if (ForcedEffectiveShell != null)
-                return ForcedEffectiveShell;
-
-            if (string.IsNullOrWhiteSpace(requestedShell))
-                return "powershell";
-
-            return requestedShell.Trim().ToLowerInvariant() switch
-            {
-                "cmd" => "cmd",
-                "pwsh" => "pwsh",
-                "powershell" => "powershell",
-                _ => "powershell",
-            };
-        }
 
         public Task<CommandResult> RunAsync(CommandRequest request, CancellationToken ct = default)
         {
@@ -1149,7 +351,7 @@ public class SystemCapabilityTests
     {
         // Even if a stale gateway allowlist still routes system.run to us
         // (commands are snapshotted at pairing-approval time), the capability
-        // must refuse before any V2/legacy dispatch runs.
+        // must refuse before V2 dispatch runs.
         var cap = new SystemCapability(NullLogger.Instance, includeRunCommands: false);
         var resp = await cap.ExecuteAsync(new NodeInvokeRequest
         {
@@ -1191,6 +393,531 @@ public class SystemCapabilityTests
         });
         Assert.True(resp.Ok);
     }
+
+    [Fact]
+    public async Task ExecApprovalsGet_ReturnsV2NodeHostShape()
+    {
+        var tempDir = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(tempDir);
+        try
+        {
+            var cap = new SystemCapability(NullLogger.Instance);
+            cap.SetApprovalsStore(new ExecApprovalsStore(tempDir, NullLogger.Instance));
+
+            var response = await cap.ExecuteAsync(new NodeInvokeRequest
+            {
+                Id = "get-v2",
+                Command = "system.execApprovals.get",
+                Args = Parse("""{}""")
+            });
+
+            Assert.True(response.Ok);
+            var payload = JsonSerializer.SerializeToElement(response.Payload);
+            Assert.EndsWith("exec-approvals.json", payload.GetProperty("path").GetString());
+            Assert.True(payload.GetProperty("exists").GetBoolean());
+            Assert.Equal(payload.GetProperty("hash").GetString(), payload.GetProperty("baseHash").GetString());
+            var file = payload.GetProperty("file");
+            Assert.Equal(1, file.GetProperty("version").GetInt32());
+            var defaults = file.GetProperty("defaults");
+            Assert.Equal("allowlist", defaults.GetProperty("security").GetString());
+            Assert.Equal("on-miss", defaults.GetProperty("ask").GetString());
+            Assert.Equal("deny", defaults.GetProperty("askFallback").GetString());
+            Assert.False(defaults.GetProperty("autoAllowSkills").GetBoolean());
+            Assert.Equal(JsonValueKind.Object, file.GetProperty("agents").ValueKind);
+        }
+        finally
+        {
+            Directory.Delete(tempDir, true);
+        }
+    }
+
+    [Fact]
+    public async Task ExecApprovalsSet_UpdatesPolicyWithoutAddingRemoteGrant()
+    {
+        var tempDir = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(tempDir);
+        try
+        {
+            var store = new ExecApprovalsStore(tempDir, NullLogger.Instance);
+            var cap = new SystemCapability(NullLogger.Instance);
+            cap.SetApprovalsStore(store);
+            var before = await store.GetSnapshotAsync();
+            var file = V2File();
+
+            var response = await cap.ExecuteAsync(new NodeInvokeRequest
+            {
+                Id = "set-v2",
+                Command = "system.execApprovals.set",
+                Args = JsonSerializer.SerializeToElement(
+                    new { baseHash = before.Hash, file },
+                    ExecApprovalsStore.JsonOptions)
+            });
+
+            Assert.True(response.Ok);
+            var payload = JsonSerializer.SerializeToElement(response.Payload);
+            Assert.NotEqual(before.Hash, payload.GetProperty("hash").GetString());
+            Assert.Equal(payload.GetProperty("hash").GetString(), payload.GetProperty("baseHash").GetString());
+            var defaults = payload.GetProperty("file").GetProperty("defaults");
+            Assert.Equal("allowlist", defaults.GetProperty("security").GetString());
+        }
+        finally
+        {
+            Directory.Delete(tempDir, true);
+        }
+    }
+
+    [Fact]
+    public async Task ExecApprovalsSet_RequiresBaseHash()
+    {
+        var tempDir = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(tempDir);
+        try
+        {
+            var cap = new SystemCapability(NullLogger.Instance);
+            cap.SetApprovalsStore(new ExecApprovalsStore(tempDir, NullLogger.Instance));
+
+            var response = await cap.ExecuteAsync(new NodeInvokeRequest
+            {
+                Id = "set-no-hash",
+                Command = "system.execApprovals.set",
+                Args = JsonSerializer.SerializeToElement(new { file = V2File("git *") }, ExecApprovalsStore.JsonOptions)
+            });
+
+            Assert.False(response.Ok);
+            Assert.Contains("baseHash", response.Error);
+        }
+        finally
+        {
+            Directory.Delete(tempDir, true);
+        }
+    }
+
+    [Fact]
+    public async Task ExecApprovalsSet_RejectsStaleBaseHash()
+    {
+        var tempDir = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(tempDir);
+        try
+        {
+            var store = new ExecApprovalsStore(tempDir, NullLogger.Instance);
+            var cap = new SystemCapability(NullLogger.Instance);
+            cap.SetApprovalsStore(store);
+            _ = await store.GetSnapshotAsync();
+
+            var response = await cap.ExecuteAsync(new NodeInvokeRequest
+            {
+                Id = "set-stale",
+                Command = "system.execApprovals.set",
+                Args = JsonSerializer.SerializeToElement(
+                    new { baseHash = new string('0', 64), file = V2File("git *") },
+                    ExecApprovalsStore.JsonOptions)
+            });
+
+            Assert.False(response.Ok);
+            Assert.Contains("changed", response.Error);
+        }
+        finally
+        {
+            Directory.Delete(tempDir, true);
+        }
+    }
+
+    [Theory]
+    [InlineData("*")]
+    [InlineData("*.*")]
+    [InlineData("cmd *")]
+    [InlineData("Remove-Item *")]
+    [InlineData(@"C:\Windows\System32\cmd.exe")]
+    public async Task ExecApprovalsSet_RejectsUnsafeV2AllowlistEntries(string pattern)
+    {
+        var tempDir = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(tempDir);
+        try
+        {
+            var store = new ExecApprovalsStore(tempDir, NullLogger.Instance);
+            var cap = new SystemCapability(NullLogger.Instance);
+            cap.SetApprovalsStore(store);
+            var before = await store.GetSnapshotAsync();
+
+            var response = await cap.ExecuteAsync(new NodeInvokeRequest
+            {
+                Id = "set-unsafe",
+                Command = "system.execApprovals.set",
+                Args = JsonSerializer.SerializeToElement(
+                    new { baseHash = before.Hash, file = V2File(pattern) },
+                    ExecApprovalsStore.JsonOptions)
+            });
+
+            Assert.False(response.Ok);
+        }
+        finally
+        {
+            Directory.Delete(tempDir, true);
+        }
+    }
+
+    [Fact]
+    public async Task ExecApprovalsSet_RejectsRemoteFullSecurity()
+    {
+        var tempDir = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(tempDir);
+        try
+        {
+            var store = new ExecApprovalsStore(tempDir, NullLogger.Instance);
+            var cap = new SystemCapability(NullLogger.Instance);
+            cap.SetApprovalsStore(store);
+            var before = await store.GetSnapshotAsync();
+            var file = V2File("git *");
+            file.Defaults!.Security = ExecSecurity.Full;
+
+            var response = await cap.ExecuteAsync(new NodeInvokeRequest
+            {
+                Id = "set-full",
+                Command = "system.execApprovals.set",
+                Args = JsonSerializer.SerializeToElement(
+                    new { baseHash = before.Hash, file },
+                    ExecApprovalsStore.JsonOptions)
+            });
+
+            Assert.False(response.Ok);
+            Assert.Contains("less restrictive", response.Error);
+        }
+        finally
+        {
+            Directory.Delete(tempDir, true);
+        }
+    }
+
+    [Fact]
+    public async Task ExecApprovalsSet_UnchangedAbsoluteGrant_RoundTrips()
+    {
+        var tempDir = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(tempDir);
+        try
+        {
+            var store = new ExecApprovalsStore(tempDir, NullLogger.Instance);
+            Assert.True(await store.AddAllowlistEntryAsync(
+                "main",
+                @"C:\Program Files\Git\cmd\git.exe"));
+            var before = await store.GetSnapshotAsync();
+            var cap = new SystemCapability(NullLogger.Instance);
+            cap.SetApprovalsStore(store);
+
+            var response = await cap.ExecuteAsync(new NodeInvokeRequest
+            {
+                Id = "set-roundtrip",
+                Command = "system.execApprovals.set",
+                Args = JsonSerializer.SerializeToElement(
+                    new { baseHash = before.Hash, file = before.File },
+                    ExecApprovalsStore.JsonOptions)
+            });
+
+            Assert.True(response.Ok);
+        }
+        finally
+        {
+            Directory.Delete(tempDir, true);
+        }
+    }
+
+    [Fact]
+    public async Task ExecApprovalsSet_RemovingExistingGrant_IsAllowed()
+    {
+        var tempDir = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(tempDir);
+        try
+        {
+            var store = new ExecApprovalsStore(tempDir, NullLogger.Instance);
+            Assert.True(await store.AddAllowlistEntryAsync(
+                "main",
+                @"C:\Program Files\Git\cmd\git.exe"));
+            var before = await store.GetSnapshotAsync();
+            before.File.Agents!["main"].Allowlist = [];
+            var cap = new SystemCapability(NullLogger.Instance);
+            cap.SetApprovalsStore(store);
+
+            var response = await cap.ExecuteAsync(new NodeInvokeRequest
+            {
+                Id = "set-remove",
+                Command = "system.execApprovals.set",
+                Args = JsonSerializer.SerializeToElement(
+                    new { baseHash = before.Hash, file = before.File },
+                    ExecApprovalsStore.JsonOptions)
+            });
+
+            Assert.True(response.Ok);
+            Assert.Empty(store.ResolveReadOnly("main").Allowlist);
+        }
+        finally
+        {
+            Directory.Delete(tempDir, true);
+        }
+    }
+
+        [Theory]
+        [InlineData(ExecSecurity.Deny, ExecAsk.OnMiss, ExecSecurity.Deny, false,
+            ExecSecurity.Allowlist, ExecAsk.OnMiss, ExecSecurity.Deny, false, "security")]
+        [InlineData(ExecSecurity.Allowlist, ExecAsk.Always, ExecSecurity.Deny, false,
+            ExecSecurity.Allowlist, ExecAsk.OnMiss, ExecSecurity.Deny, false, "ask")]
+        [InlineData(ExecSecurity.Allowlist, ExecAsk.OnMiss, ExecSecurity.Deny, false,
+            ExecSecurity.Allowlist, ExecAsk.OnMiss, ExecSecurity.Allowlist, false, "askFallback")]
+        [InlineData(ExecSecurity.Allowlist, ExecAsk.OnMiss, ExecSecurity.Deny, false,
+            ExecSecurity.Allowlist, ExecAsk.OnMiss, ExecSecurity.Deny, true, "autoAllowSkills")]
+        public async Task ExecApprovalsSet_RejectsLessRestrictivePolicy(
+            ExecSecurity currentSecurity,
+            ExecAsk currentAsk,
+            ExecSecurity currentFallback,
+            bool currentAutoAllowSkills,
+            ExecSecurity desiredSecurity,
+            ExecAsk desiredAsk,
+            ExecSecurity desiredFallback,
+            bool desiredAutoAllowSkills,
+            string expectedField)
+        {
+            var tempDir = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N"));
+            Directory.CreateDirectory(tempDir);
+            try
+            {
+                var store = new ExecApprovalsStore(tempDir, NullLogger.Instance);
+                var initial = await store.GetSnapshotAsync();
+                var current = V2File("**/where.exe");
+                SetPolicy(
+                    current,
+                    currentSecurity,
+                    currentAsk,
+                    currentFallback,
+                    currentAutoAllowSkills);
+                Assert.NotNull(await store.ReplaceAsync(initial.Hash, current));
+                var before = await store.GetSnapshotAsync();
+                var desired = before.File;
+                SetPolicy(
+                    desired,
+                    desiredSecurity,
+                    desiredAsk,
+                    desiredFallback,
+                    desiredAutoAllowSkills);
+
+                var cap = new SystemCapability(NullLogger.Instance);
+                cap.SetApprovalsStore(store);
+                var response = await cap.ExecuteAsync(new NodeInvokeRequest
+                {
+                    Id = "set-weaker",
+                    Command = "system.execApprovals.set",
+                    Args = JsonSerializer.SerializeToElement(
+                        new { baseHash = before.Hash, file = desired },
+                        ExecApprovalsStore.JsonOptions)
+                });
+
+                Assert.False(response.Ok);
+                Assert.Contains(expectedField, response.Error, StringComparison.OrdinalIgnoreCase);
+                Assert.Contains("less restrictive", response.Error, StringComparison.OrdinalIgnoreCase);
+            }
+            finally
+            {
+                Directory.Delete(tempDir, true);
+            }
+        }
+
+        [Fact]
+        public async Task ExecApprovalsSet_AllowsMoreRestrictivePolicy()
+        {
+            var tempDir = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N"));
+            Directory.CreateDirectory(tempDir);
+            try
+            {
+                var store = new ExecApprovalsStore(tempDir, NullLogger.Instance);
+                var initial = await store.GetSnapshotAsync();
+                var current = V2File("**/where.exe");
+                SetPolicy(
+                    current,
+                    ExecSecurity.Allowlist,
+                    ExecAsk.OnMiss,
+                    ExecSecurity.Allowlist,
+                    currentAutoAllowSkills: true);
+                Assert.NotNull(await store.ReplaceAsync(initial.Hash, current));
+                var before = await store.GetSnapshotAsync();
+                var desired = before.File;
+                SetPolicy(
+                    desired,
+                    ExecSecurity.Deny,
+                    ExecAsk.Always,
+                    ExecSecurity.Deny,
+                    currentAutoAllowSkills: false);
+
+                var cap = new SystemCapability(NullLogger.Instance);
+                cap.SetApprovalsStore(store);
+                var response = await cap.ExecuteAsync(new NodeInvokeRequest
+                {
+                    Id = "set-tighter",
+                    Command = "system.execApprovals.set",
+                    Args = JsonSerializer.SerializeToElement(
+                        new { baseHash = before.Hash, file = desired },
+                        ExecApprovalsStore.JsonOptions)
+                });
+
+                Assert.True(response.Ok);
+            }
+            finally
+            {
+                Directory.Delete(tempDir, true);
+            }
+        }
+
+            [Fact]
+            public async Task ExecApprovalsSet_PreservesExistingFullWhileTighteningAsk()
+            {
+                var tempDir = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N"));
+                Directory.CreateDirectory(tempDir);
+                try
+                {
+                    var store = new ExecApprovalsStore(tempDir, NullLogger.Instance);
+                    var initial = await store.GetSnapshotAsync();
+                    var current = V2File("**/where.exe");
+                    SetPolicy(
+                        current,
+                        ExecSecurity.Full,
+                        ExecAsk.OnMiss,
+                        ExecSecurity.Full,
+                        currentAutoAllowSkills: true);
+                    Assert.NotNull(await store.ReplaceAsync(initial.Hash, current));
+                    var before = await store.GetSnapshotAsync();
+                    var desired = before.File;
+                    SetPolicy(
+                        desired,
+                        ExecSecurity.Full,
+                        ExecAsk.Always,
+                        ExecSecurity.Full,
+                        currentAutoAllowSkills: false);
+
+                    var cap = new SystemCapability(NullLogger.Instance);
+                    cap.SetApprovalsStore(store);
+                    var response = await cap.ExecuteAsync(new NodeInvokeRequest
+                    {
+                        Id = "set-preserve-full",
+                        Command = "system.execApprovals.set",
+                        Args = JsonSerializer.SerializeToElement(
+                            new { baseHash = before.Hash, file = desired },
+                            ExecApprovalsStore.JsonOptions)
+                    });
+
+                    Assert.True(response.Ok);
+                }
+                finally
+                {
+                    Directory.Delete(tempDir, true);
+                }
+            }
+
+            [Theory]
+            [InlineData("defaults", "security", -1)]
+            [InlineData("defaults", "ask", 99)]
+            [InlineData("defaults", "askFallback", 99)]
+            [InlineData("wildcard", "security", -1)]
+            [InlineData("wildcard", "ask", 99)]
+            [InlineData("wildcard", "askFallback", 99)]
+            [InlineData("agent", "security", -1)]
+            [InlineData("agent", "ask", 99)]
+            [InlineData("agent", "askFallback", 99)]
+            public async Task ExecApprovalsSet_RejectsNumericEnumValues(
+                string scope,
+                string field,
+                int value)
+            {
+                var tempDir = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N"));
+                Directory.CreateDirectory(tempDir);
+                try
+                {
+                    var store = new ExecApprovalsStore(tempDir, NullLogger.Instance);
+                    var before = await store.GetSnapshotAsync();
+                    var policy = $"\"{field}\":{value}";
+                    var fileJson = scope switch
+                    {
+                        "defaults" =>
+                            $"{{\"version\":1,\"defaults\":{{{policy}}},\"agents\":{{}}}}",
+                        "wildcard" =>
+                            $"{{\"version\":1,\"defaults\":{{}},\"agents\":{{\"*\":{{{policy}}}}}}}",
+                        _ =>
+                            $"{{\"version\":1,\"defaults\":{{}},\"agents\":{{\"main\":{{{policy}}}}}}}",
+                    };
+                    var argsJson =
+                        $"{{\"baseHash\":\"{before.Hash}\",\"file\":{fileJson}}}";
+
+                    var cap = new SystemCapability(NullLogger.Instance);
+                    cap.SetApprovalsStore(store);
+                    var response = await cap.ExecuteAsync(new NodeInvokeRequest
+                    {
+                        Id = "set-numeric-enum",
+                        Command = "system.execApprovals.set",
+                        Args = Parse(argsJson),
+                    });
+
+                    Assert.False(response.Ok);
+                    Assert.Contains(
+                        "Invalid exec approvals file",
+                        response.Error,
+                        StringComparison.OrdinalIgnoreCase);
+                }
+                finally
+                {
+                    Directory.Delete(tempDir, true);
+                }
+            }
+
+            private static ExecApprovalsFile V2File(string? pattern = null) => new()
+    {
+        Version = 1,
+        Defaults = new ExecApprovalsDefaults
+        {
+            Security = ExecSecurity.Allowlist,
+            Ask = ExecAsk.OnMiss,
+            AskFallback = ExecSecurity.Deny,
+            AutoAllowSkills = false,
+        },
+        Agents = new Dictionary<string, ExecApprovalsAgent>
+        {
+            ["main"] = new()
+            {
+                Security = ExecSecurity.Allowlist,
+                Ask = ExecAsk.OnMiss,
+                AskFallback = ExecSecurity.Deny,
+                AutoAllowSkills = false,
+                Allowlist = pattern is null
+                    ? []
+                    :
+                    [
+                        new ExecAllowlistEntry
+                        {
+                            Id = Guid.Parse("11111111-1111-1111-1111-111111111111"),
+                            Pattern = pattern,
+                        },
+                    ],
+            },
+        },
+    };
+
+    private static void SetPolicy(
+        ExecApprovalsFile file,
+        ExecSecurity security,
+        ExecAsk ask,
+        ExecSecurity askFallback,
+        bool currentAutoAllowSkills)
+    {
+        file.Defaults ??= new ExecApprovalsDefaults();
+        file.Defaults.Security = security;
+        file.Defaults.Ask = ask;
+        file.Defaults.AskFallback = askFallback;
+        file.Defaults.AutoAllowSkills = currentAutoAllowSkills;
+        file.Agents ??= new Dictionary<string, ExecApprovalsAgent>();
+        if (!file.Agents.TryGetValue("main", out var main))
+        {
+            main = new ExecApprovalsAgent();
+            file.Agents["main"] = main;
+        }
+        main.Security = security;
+        main.Ask = ask;
+        main.AskFallback = askFallback;
+        main.AutoAllowSkills = currentAutoAllowSkills;
+    }
 }
 
 public class BrowserProxyCapabilityTests
@@ -1228,6 +955,28 @@ public class BrowserProxyCapabilityTests
         var payload = JsonSerializer.Deserialize<JsonElement>(JsonSerializer.Serialize(res.Payload));
         Assert.True(payload.TryGetProperty("result", out var result));
         Assert.True(result.GetProperty("ok").GetBoolean());
+    }
+
+    [Fact]
+    public async Task BrowserProxy_UnverifiedControlListener_DoesNotSendBearerToken()
+    {
+        var handler = new CapturingHandler("""{"ok":true}""");
+        var cap = new BrowserProxyCapability(
+            NullLogger.Instance,
+            "ws://127.0.0.1:18789",
+            "secret-token",
+            handler,
+            authorizeEndpointAsync: (_, _) => Task.FromResult(false));
+
+        var res = await cap.ExecuteAsync(new NodeInvokeRequest
+        {
+            Id = "browser-blocked",
+            Command = "browser.proxy",
+            Args = Parse("""{"method":"GET","path":"/snapshot"}""")
+        });
+
+        Assert.False(res.Ok);
+        Assert.Null(handler.LastRequest);
     }
 
     [Fact]

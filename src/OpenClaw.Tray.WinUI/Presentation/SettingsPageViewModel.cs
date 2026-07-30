@@ -52,7 +52,6 @@ internal sealed class SettingsPageViewModel : INavigationAware, IDisposable, INo
     private bool _notifyInfo;
     private bool _screenRecordingConsentGiven;
     private bool _cameraRecordingConsentGiven;
-    private bool _readResponsesAloud;
     private bool _showChatToolCalls;
 
     public SettingsPageViewModel(ISettingsStore store, IAppCommands appCommands)
@@ -206,24 +205,9 @@ internal sealed class SettingsPageViewModel : INavigationAware, IDisposable, INo
     }
 
     /// <summary>
-    /// "Read responses aloud" mirrors <c>VoiceTtsEnabled</c> (mute is its inverse). Routed through
-    /// the app command that persists + broadcasts, exactly like before; it does not go through the
-    /// normal persist/notify path.
+    /// "Show tool calls and usage" persists the setting. App's settings-save path
+    /// applies it to every live Reactor chat host.
     /// </summary>
-    public bool ReadResponsesAloud
-    {
-        get => _readResponsesAloud;
-        set
-        {
-            if (SetField(ref _readResponsesAloud, value) && !_loading)
-            {
-                _appCommands.SetChatSpeakerMuted(!value);
-                RaiseSaved();
-            }
-        }
-    }
-
-    /// <summary>"Show tool calls and usage" persists the setting and pushes visibility to the live timeline.</summary>
     public bool ShowChatToolCalls
     {
         get => _showChatToolCalls;
@@ -232,7 +216,6 @@ internal sealed class SettingsPageViewModel : INavigationAware, IDisposable, INo
             if (SetField(ref _showChatToolCalls, value) && !_loading)
             {
                 Persist(e => e.ShowChatToolCalls = value);
-                _appCommands.SetChatToolCallsVisible(value);
             }
         }
     }
@@ -296,7 +279,6 @@ internal sealed class SettingsPageViewModel : INavigationAware, IDisposable, INo
             SetField(ref _notifyInfo, s.NotifyInfo, nameof(NotifyInfo));
             SetField(ref _screenRecordingConsentGiven, s.ScreenRecordingConsentGiven, nameof(ScreenRecordingConsentGiven));
             SetField(ref _cameraRecordingConsentGiven, s.CameraRecordingConsentGiven, nameof(CameraRecordingConsentGiven));
-            SetField(ref _readResponsesAloud, s.VoiceTtsEnabled, nameof(ReadResponsesAloud));
             SetField(ref _showChatToolCalls, s.ShowChatToolCalls, nameof(ShowChatToolCalls));
         }
         finally

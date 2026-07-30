@@ -77,13 +77,13 @@ public sealed class AppUserModelIdIdentityTests
         var root = TestRepositoryPaths.GetRepositoryRoot();
         var pairingDialog = File.ReadAllText(Path.Combine(root, "src", "OpenClaw.Tray.WinUI", "Dialogs", "PairingApprovalDialog.cs"));
         var recordingDialog = File.ReadAllText(Path.Combine(root, "src", "OpenClaw.Tray.WinUI", "Dialogs", "RecordingConsentDialog.cs"));
-        var execPrompt = File.ReadAllText(Path.Combine(root, "src", "OpenClaw.Tray.WinUI", "Services", "ExecApprovalPromptService.cs"));
+        var execPrompt = File.ReadAllText(Path.Combine(root, "src", "OpenClaw.Tray.WinUI", "Dialogs", "ExecApprovalDialog.cs"));
 
         Assert.Contains("AppIdentity.DisplayName", pairingDialog);
         Assert.Contains("AppIdentity.DisplayName", recordingDialog);
         Assert.Contains("AppIdentity.DisplayName", execPrompt);
         Assert.DoesNotContain("OpenClaw · Permission Request", File.ReadAllText(Path.Combine(root, "src", "OpenClaw.Tray.WinUI", "Strings", "en-us", "Resources.resw")));
-        Assert.Contains("NativePromptTitle", execPrompt);
+        Assert.Contains("ExecApproval_WindowTitle", execPrompt);
         Assert.DoesNotContain("OpenClaw.Tray.WinUI", pairingDialog);
         Assert.DoesNotContain("OpenClaw.Tray.WinUI", recordingDialog);
         Assert.DoesNotContain("OpenClaw.Tray.WinUI", execPrompt);

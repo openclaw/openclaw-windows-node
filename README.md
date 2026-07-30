@@ -315,20 +315,22 @@ Packaged installs declare camera, microphone, and location capabilities. Windows
     # Speak text aloud on the Windows node (requires TTS enabled in Settings and tts.speak allowed on the gateway)
     openclaw nodes invoke --node <id> --command tts.speak --params '{"text":"Hello from OpenClaw","provider":"windows"}'
 
-    # Execute a command on the Windows node
-    openclaw nodes invoke --node <id> --command system.run --params '{"command":"Get-Process | Select -First 5","shell":"powershell","timeoutMs":10000}'
+    # Execute a command on the Windows node (raw node.invoke requires canonical argv)
+    openclaw gateway call node.invoke --params '{"nodeId":"<id>","command":"system.run","params":{"command":["cmd.exe","/d","/s","/c","echo hello"],"rawCommand":"echo hello","timeoutMs":10000}}' --json
 
     # View exec approval policy
     openclaw nodes invoke --node <id> --command system.execApprovals.get
 
-    # Update exec approval policy (add custom rules)
-    openclaw nodes invoke --node <id> --command system.execApprovals.set --params '{"rules":[{"pattern":"echo *","action":"allow"},{"pattern":"*","action":"deny"}],"defaultAction":"deny"}'
+    # Update exec approvals using baseHash from the preceding get response
+    openclaw nodes invoke --node <id> --command system.execApprovals.set --params '{"baseHash":"<hash-from-get>","file":{"version":1,"defaults":{"security":"allowlist","ask":"on-miss","askFallback":"deny","autoAllowSkills":false},"agents":{"main":{"security":"allowlist","ask":"on-miss","askFallback":"deny","autoAllowSkills":false,"allowlist":[]}}}}'
     ```
     > 📷 **Camera permission**: Desktop builds rely on Windows Privacy settings. Packaged MSIX builds will show the system consent prompt.
     
-    > 🔒 **Exec Policy**: `system.run` is gated by an approval policy on the Windows node at `%LOCALAPPDATA%\OpenClawTray\exec-policy.json` (schema: `{ "defaultAction": "...", "rules": [...] }`). This is separate from gateway-side `~/.openclaw/exec-approvals.json`.
+    > 🔒 **Exec approvals**: `system.run` is gated by the V2 approval coordinator and `%APPDATA%\OpenClawTray\exec-approvals.json`. The file uses the same `defaults`/`agents`/`allowlist` model as the macOS node host. `system.execApprovals.set` requires the current `baseHash` and rejects stale or unsafe remote updates.
     >
-    > Rules are matched against the full command line. Known wrapper payloads such as `cmd /c ...`, `powershell -Command ...`, `pwsh -EncodedCommand ...`, and `bash -c ...` are also evaluated before execution. Dangerous environment overrides like `PATH`, `PATHEXT`, `NODE_OPTIONS`, `GIT_SSH_COMMAND`, `LD_*`, and `DYLD_*` are rejected.
+    > Allowlist rules match resolved executable paths, using path-aware wildcards such as `**/git.exe`. Script interpreters and command hosts cannot receive reusable grants. Non-empty custom environments are rejected until they can be identity-bound and displayed safely.
+    >
+    > **V2 caller migration**: raw MCP, direct `node.invoke`, plugin, and `winnode` callers must replace string-form `{"command":"echo hello","shell":"cmd"}` with canonical `{"command":["cmd.exe","/d","/s","/c","echo hello"],"rawCommand":"echo hello"}`. The normal gateway `exec host=node` path already performs this wrapping. Remove custom `env`; non-empty environments are rejected.
 
 #### Command Center diagnostics
 
@@ -341,7 +343,7 @@ Open the status detail/Command Center from the tray menu or with `openclaw://com
 - recent activity and node invoke results through the Activity Stream, storing command names/status/duration only (not payloads, screenshots, recordings, or secrets)
     >
     > ```bash
-    > openclaw nodes invoke --node <id> --command system.execApprovals.set --params '{"rules":[{"pattern":"powershell.exe","action":"allow"},{"pattern":"pwsh.exe","action":"allow"},{"pattern":"echo *","action":"allow"},{"pattern":"*","action":"deny"}],"defaultAction":"deny"}'
+    > openclaw nodes invoke --node <id> --command system.execApprovals.set --params '{"baseHash":"<hash-from-get>","file":{"version":1,"defaults":{"security":"allowlist","ask":"off","askFallback":"deny","autoAllowSkills":false},"agents":{"main":{"security":"allowlist","ask":"off","askFallback":"deny","autoAllowSkills":false,"allowlist":[]}}}}'
     > ```
 
     > 🔐 **Web Chat secure context**: Remote web chat requires `https://` (or localhost). If using a self-signed cert, trust it in Windows (Trusted Root Certification Authorities) or use an SSH tunnel to localhost.

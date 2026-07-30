@@ -138,3 +138,70 @@ dotnet_naming_style.s_camel_case.required_prefix = s_
 # source files and suppress it only for the generated type-info file.
 [**/XamlTypeInfo.g.cs]
 dotnet_diagnostic.CS0612.severity = none
+
+# Reactor analyzers apply project-wide, but the existing imperative WinUI/XAML
+# surfaces are not Reactor render trees. Keep their compatibility exceptions
+# local so new Reactor-owned surfaces remain checked by default.
+[src/OpenClaw.Tray.WinUI/A2UI/**/*.cs]
+dotnet_diagnostic.REACTOR_DIALOG_001.severity = none
+
+[src/OpenClaw.Tray.WinUI/App.xaml.cs]
+dotnet_diagnostic.REACTOR_DIALOG_001.severity = none
+
+[src/OpenClaw.Tray.WinUI/Helpers/**/*.cs]
+dotnet_diagnostic.REACTOR_DIALOG_001.severity = none
+
+[src/OpenClaw.Tray.WinUI/Helpers/InstanceManagementControls.cs]
+dotnet_diagnostic.REACTOR_DIALOG_001.severity = none
+
+[src/OpenClaw.Tray.WinUI/Pages/**/*.cs]
+dotnet_diagnostic.REACTOR_DIALOG_001.severity = none
+
+[src/OpenClaw.Tray.WinUI/Services/**/*.cs]
+dotnet_diagnostic.REACTOR_DIALOG_001.severity = none
+
+[src/OpenClaw.Tray.WinUI/Services/UpdateCoordinator.cs]
+dotnet_diagnostic.REACTOR_DIALOG_001.severity = none
+
+[src/OpenClaw.Tray.WinUI/Windows/**/*.cs]
+dotnet_diagnostic.REACTOR_DIALOG_001.severity = none
+
+[src/OpenClaw.Tray.WinUI/Chat/ReactorChatHostExtensions.cs]
+dotnet_diagnostic.REACTOR_DIALOG_001.severity = none
+
+[src/OpenClaw.Tray.WinUI/Pages/SettingsPage.xaml.cs]
+dotnet_diagnostic.REACTOR_DIALOG_001.severity = none
+
+[src/OpenClaw.Tray.WinUI/Pages/ChatPage.xaml.cs]
+dotnet_diagnostic.REACTOR_DIALOG_001.severity = none
+
+[src/OpenClaw.Tray.WinUI/Pages/ConfigPage.xaml.cs]
+dotnet_diagnostic.REACTOR_DIALOG_001.severity = none
+
+[src/OpenClaw.Tray.WinUI/Pages/ChannelsPage.xaml.cs]
+dotnet_diagnostic.REACTOR_DIALOG_001.severity = none
+
+[src/OpenClaw.Tray.WinUI/Pages/ConnectionPage.xaml.cs]
+dotnet_diagnostic.REACTOR_DIALOG_001.severity = none
+
+[src/OpenClaw.Tray.WinUI/Pages/DebugPage.xaml.cs]
+dotnet_diagnostic.REACTOR_DIALOG_001.severity = none
+
+[src/OpenClaw.Tray.WinUI/Pages/SandboxPage.xaml.cs]
+dotnet_diagnostic.REACTOR_DIALOG_001.severity = none
+
+[src/OpenClaw.Tray.WinUI/Pages/SessionsPage.xaml.cs]
+dotnet_diagnostic.REACTOR_DIALOG_001.severity = none
+
+[src/OpenClaw.Tray.WinUI/Windows/ChatWindow.xaml.cs]
+dotnet_diagnostic.REACTOR_DIALOG_001.severity = none
+
+[src/OpenClaw.Tray.WinUI/Chat/OpenClawChatRoot.cs]
+dotnet_diagnostic.REACTOR_THEME_004.severity = none
+
+[src/OpenClaw.Tray.WinUI/Chat/OpenClawComposer.cs]
+dotnet_diagnostic.REACTOR_A11Y_001.severity = none
+
+[src/OpenClaw.Tray.WinUI/Chat/OpenClawChatTimeline.cs]
+dotnet_diagnostic.REACTOR_A11Y_001.severity = none
+dotnet_diagnostic.REACTOR_THEME_004.severity = none

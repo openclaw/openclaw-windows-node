@@ -24,21 +24,17 @@ public class IdentityFileMigrationTests
         var perGatewayDir = CreateTempDir();
         try
         {
+            var legacyIdentity = new DeviceIdentity(legacyDir);
+            legacyIdentity.Initialize();
+            legacyIdentity.StoreDeviceTokenForRole(
+                "operator",
+                "operator-tok",
+                ["operator.read", "operator.write"]);
+            legacyIdentity.StoreDeviceTokenForRole(
+                "node",
+                "node-tok",
+                ["node.connect", "node.reconnect"]);
             var legacyKeyPath = Path.Combine(legacyDir, "device-key-ed25519.json");
-            // Construct the minimal JSON shape DeviceIdentity expects. We only need the
-            // token fields to assert the migration invariant; the keypair is irrelevant
-            // to the read paths the credential resolver uses.
-            File.WriteAllText(legacyKeyPath, """
-                {
-                    "Algorithm": "ed25519",
-                    "PrivateKeyBase64": "AAAA",
-                    "PublicKeyBase64": "AAAA",
-                    "DeviceToken": "operator-tok",
-                    "DeviceTokenScopes": ["operator.read","operator.write"],
-                    "NodeDeviceToken": "node-tok",
-                    "NodeDeviceTokenScopes": ["node.connect","node.reconnect"]
-                }
-                """);
 
             // Mirror the production migration step (App.xaml.cs:2746-2753).
             var newKeyPath = Path.Combine(perGatewayDir, "device-key-ed25519.json");
@@ -72,16 +68,10 @@ public class IdentityFileMigrationTests
         var perGatewayDir = CreateTempDir();
         try
         {
+            var legacyIdentity = new DeviceIdentity(legacyDir);
+            legacyIdentity.Initialize();
+            legacyIdentity.StoreDeviceTokenForRole("node", "node-only-tok", ["node.connect"]);
             var legacyKeyPath = Path.Combine(legacyDir, "device-key-ed25519.json");
-            File.WriteAllText(legacyKeyPath, """
-                {
-                    "Algorithm": "ed25519",
-                    "PrivateKeyBase64": "AAAA",
-                    "PublicKeyBase64": "AAAA",
-                    "NodeDeviceToken": "node-only-tok",
-                    "NodeDeviceTokenScopes": ["node.connect"]
-                }
-                """);
 
             File.Copy(legacyKeyPath, Path.Combine(perGatewayDir, "device-key-ed25519.json"), overwrite: false);
 

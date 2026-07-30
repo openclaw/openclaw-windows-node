@@ -67,12 +67,8 @@ internal sealed class FakeAppCommands : IAppCommands, IDisposable
         AutoStartApplyCount++;
         return Task.FromResult(AutoStartResult);
     }
-    public void SetChatSpeakerMuted(bool muted) => SpeakerMuted = muted;
-    public void SetChatToolCallsVisible(bool visible) => ToolCallsVisible = visible;
     public Task<bool> ResendOpenTelemetryProbeAsync() => Task.FromResult(true);
 
-    public bool? SpeakerMuted { get; private set; }
-    public bool? ToolCallsVisible { get; private set; }
     public bool? AutoStartApplied { get; private set; }
     public int AutoStartApplyCount { get; private set; }
 
@@ -122,16 +118,6 @@ internal sealed class SelfWritingAppCommands : IAppCommands
         return Task.FromResult(true);
     }
 
-    public void SetChatSpeakerMuted(bool muted)
-    {
-        _settings.VoiceTtsEnabled = !muted;
-        using (_store.BeginSelfWrite())
-        {
-            _settings.Save();
-        }
-    }
-
-    public void SetChatToolCallsVisible(bool visible) { }
     public Task<bool> ResendOpenTelemetryProbeAsync() => Task.FromResult(true);
 }
 

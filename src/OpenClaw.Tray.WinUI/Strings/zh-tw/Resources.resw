@@ -1903,7 +1903,7 @@
     <value>執行原則</value>
   </data>
   <data name="PermissionsPage_TextBlock_17.Text" xml:space="preserve">
-    <value>控制代理程式可在此節點上執行哪些命令。規則會比對完整命令列。</value>
+    <value>控制代理程式可在此節點上啟動哪些可執行檔。規則會比對解析後的可執行檔路徑。</value>
   </data>
   <data name="DefaultActionCombo.Header" xml:space="preserve">
     <value>預設動作</value>
@@ -1921,7 +1921,7 @@
     <value>規則</value>
   </data>
   <data name="NewRulePattern.PlaceholderText" xml:space="preserve">
-    <value>命令模式 (例如 echo *)</value>
+    <value>可執行檔路徑模式 (例如 **/git.exe)</value>
   </data>
   <data name="PermissionsPage_ComboBoxItem_54.Content" xml:space="preserve">
     <value>拒絕</value>
@@ -4427,7 +4427,7 @@
     <value>當命令不符合下列任何規則時會發生什麼。</value>
   </data>
   <data name="PermissionsPage_PatternsAreMatchedLeft.Text" xml:space="preserve">
-    <value>模式由左至右與完整命令列比對。使用 * 作為萬用字元。變更會自動儲存。</value>
+    <value>允許清單模式會比對解析後的可執行檔路徑。可使用 **/git.exe 等萬用字元模式。變更會自動儲存。</value>
   </data>
   <data name="PermissionsPage_Saved.Text" xml:space="preserve">
     <value>已儲存</value>
@@ -4762,12 +4762,6 @@
   </data>
   <data name="SettingsPage_Chat.Text" xml:space="preserve">
     <value>聊天</value>
-  </data>
-  <data name="SettingsRow_ReadAloud_Header.Text" xml:space="preserve">
-    <value>朗讀回覆</value>
-  </data>
-  <data name="SettingsRow_ReadAloud_Description.Text" xml:space="preserve">
-    <value>在聊天期間透過文字轉語音播放助理回覆。</value>
   </data>
   <data name="SettingsRow_ShowToolCalls_Header.Text" xml:space="preserve">
     <value>顯示工具呼叫和用量</value>
@@ -6872,5 +6866,11 @@
   </data>
   <data name="JsonPreviewSplitter.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.LocalizedControlType" xml:space="preserve">
     <value>分隔線</value>
+  </data>
+  <data name="PermissionsPage_ExecPolicySaved" xml:space="preserve">
+    <value>已儲存</value>
+  </data>
+  <data name="PermissionsPage_ExecPolicySaveFailed" xml:space="preserve">
+    <value>儲存失敗</value>
   </data>
 </root>

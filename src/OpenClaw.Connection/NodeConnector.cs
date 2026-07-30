@@ -7,7 +7,7 @@ namespace OpenClaw.Connection;
 /// Capability setup (canvas, screen capture, etc.) is handled by NodeService,
 /// which has WinUI dependencies and remains in App.xaml.cs for now.
 /// </summary>
-public sealed class NodeConnector : INodeConnector, INodeConnectorTelemetryEvents
+public sealed class NodeConnector : INodeConnector, INodeConnectorTelemetryEvents, INodeConnectorReconnectPolicy
 {
     private readonly IOpenClawLogger _logger;
     private readonly ConnectionDiagnostics? _diagnostics;
@@ -16,6 +16,7 @@ public sealed class NodeConnector : INodeConnector, INodeConnectorTelemetryEvent
     private WindowsNodeClient? _client;
     private long _clientGeneration;
     private bool _disposed;
+    public Func<CancellationToken, Task<ReconnectAuthorizationResult>>? ReconnectAuthorizationAsync { get; set; }
 
     public event EventHandler<ConnectionStatus>? StatusChanged;
     public event EventHandler<PairingStatusEventArgs>? PairingStatusChanged;
@@ -101,6 +102,7 @@ public sealed class NodeConnector : INodeConnector, INodeConnectorTelemetryEvent
             identityPath,
             nodeLogger,
             bootstrapToken: credential.IsBootstrapToken ? credential.Token : null);
+        client.ReconnectAuthorizationAsync = ReconnectAuthorizationAsync;
 
         // Share v2 signature flag from operator — avoid wasting a roundtrip on v3
         if (useV2Signature)

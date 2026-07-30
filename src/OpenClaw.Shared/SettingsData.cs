@@ -106,6 +106,13 @@ public record class SettingsData
     /// <summary>Run the local MCP HTTP server. Independent of EnableNodeMode.</summary>
     public bool EnableMcpServer { get; set; } = false;
     /// <summary>
+    /// Automatically self-repair an app-owned local WSL gateway when it becomes unreachable:
+    /// probe it and, if the gateway process is down, restart the managed WSL distro, re-arm the
+    /// keepalive, and reconnect — without user action. Strictly limited to setup-managed local
+    /// WSL gateways (never SSH/remote). Kill switch: set false to disable automatic repair.
+    /// </summary>
+    public bool EnableManagedLocalGatewayAutoRepair { get; set; } = true;
+    /// <summary>
     /// Hostnames the A2UI image renderer is allowed to fetch over HTTPS.
     /// Empty by default — agents can still ship inline data: images. Add hosts
     /// (e.g., "cdn.example.com") via the Settings window.
@@ -173,29 +180,6 @@ public record class SettingsData
     /// Default false — most shell commands are local-only.
     /// </summary>
     public bool SystemRunAllowOutbound { get; set; } = false;
-
-    /// <summary>
-    /// Route system.run through the new exec approvals pipeline instead of the
-    /// legacy policy. Default <c>false</c>. When enabled, any failure inside
-    /// the new pipeline produces a typed deny — it never falls back silently
-    /// to the legacy path. No Settings UI yet; enabled by editing settings.json.
-    /// <para>
-    /// Interaction with <see cref="SystemRunSandboxEnabled"/> (intentional, not
-    /// a misconfiguration): the pipeline executes approved commands as a direct
-    /// argv, and the sandbox transport cannot carry that form yet, so
-    /// system.run behaves as follows while this setting is on:
-    /// <list type="bullet">
-    /// <item>sandbox enabled and available — every request returns a typed
-    /// unavailable error before evaluation; the sandbox is never bypassed.</item>
-    /// <item>sandbox enabled, unavailable, host fallback allowed — the approved
-    /// argv executes uncontained on the host.</item>
-    /// <item>sandbox enabled, unavailable, strict fallback blocking — the
-    /// sandbox settings deny execution, as they do for the legacy path.</item>
-    /// <item>sandbox disabled — the approved argv executes on the host.</item>
-    /// </list>
-    /// </para>
-    /// </summary>
-    public bool ExecApprovalsNewPathEnabled { get; set; } = false;
 
     /// <summary>
     /// Clipboard access policy inside the sandbox. Default <c>None</c> — the

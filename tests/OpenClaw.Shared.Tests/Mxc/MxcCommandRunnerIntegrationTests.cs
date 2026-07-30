@@ -108,6 +108,23 @@ public class MxcCommandRunnerIntegrationTests
     }
 
     [IntegrationFact]
+    public async Task SystemRun_DirectArgv_ExecutesInsideAppContainer()
+    {
+        var runner = TryBuildRunner();
+        if (runner is null) return;
+
+        var result = await runner.RunAsync(new CommandRequest
+        {
+            Argv = [Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.System), "whoami.exe")],
+            TimeoutMs = 30_000,
+        });
+
+        Assert.True(
+            result.ExitCode == 0 && !string.IsNullOrWhiteSpace(result.Stdout),
+            $"ExitCode={result.ExitCode}\nStdout={result.Stdout}\nStderr={result.Stderr}\nTimedOut={result.TimedOut}\nDurationMs={result.DurationMs}");
+    }
+
+    [IntegrationFact]
     public async Task SystemRun_PipelineSmokeTest_WithDenyPaths_ReturnsResult()
     {
         // NOTE: This is a SMOKE TEST, not a deny-paths assertion. The actual

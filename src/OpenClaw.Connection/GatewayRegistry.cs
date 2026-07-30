@@ -354,11 +354,20 @@ public sealed class GatewayRegistry
         }
 
         var id = Guid.NewGuid().ToString();
+        var isLocal = LocalGatewayUrlClassifier.IsLocalGatewayUrl(gatewayUrl);
+        var setupManagedDistroName =
+            isLocal && !useSshTunnel
+                ? TryReadSetupManagedDistroName(settingsDir, gatewayUrl)
+                : null;
         var record = new GatewayRecord
         {
             Id = id,
             Url = gatewayUrl,
-            IsLocal = LocalGatewayUrlClassifier.IsLocalGatewayUrl(gatewayUrl),
+            IsLocal = isLocal,
+            FriendlyName = setupManagedDistroName is null
+                ? null
+                : $"Local ({setupManagedDistroName})",
+            SetupManagedDistroName = setupManagedDistroName,
             SharedGatewayToken = string.IsNullOrWhiteSpace(bootstrapToken) ? token : null,
             BootstrapToken = !string.IsNullOrWhiteSpace(bootstrapToken) ? bootstrapToken : null,
             SshTunnel = useSshTunnel
@@ -398,6 +407,55 @@ public sealed class GatewayRegistry
         Save();
         logger?.Info($"[Registry] Migrated gateway {gatewayUrl} → record {id}");
         return true;
+    }
+
+    private static string? TryReadSetupManagedDistroName(
+        string settingsDir,
+        string gatewayUrl)
+    {
+        try
+        {
+            var direct = Environment.GetEnvironmentVariable("OPENCLAW_TRAY_LOCAL_DATA_DIR");
+            var localRoot = Environment.GetEnvironmentVariable("OPENCLAW_TRAY_LOCALAPPDATA_DIR")
+                ?? Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
+            var settingsDirectoryName = Path.GetFileName(
+                settingsDir.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar));
+            var preferredDataDirectory = settingsDirectoryName.EndsWith(
+                "-Dev",
+                StringComparison.OrdinalIgnoreCase)
+                    ? "OpenClawTray-Dev"
+                    : "OpenClawTray";
+            var alternateDataDirectory = preferredDataDirectory == "OpenClawTray"
+                ? "OpenClawTray-Dev"
+                : "OpenClawTray";
+            var candidates = string.IsNullOrWhiteSpace(direct)
+                ? new[]
+                {
+                    Path.Combine(localRoot, preferredDataDirectory, "setup-state.json"),
+                    Path.Combine(localRoot, alternateDataDirectory, "setup-state.json"),
+                }
+                : [Path.Combine(direct, "setup-state.json")];
+            foreach (var statePath in candidates)
+            {
+                if (!File.Exists(statePath))
+                    continue;
+                using var document = System.Text.Json.JsonDocument.Parse(File.ReadAllText(statePath));
+                if (document.RootElement.TryGetProperty("DistroName", out var distroElement) &&
+                    !string.IsNullOrWhiteSpace(distroElement.GetString()) &&
+                    document.RootElement.TryGetProperty("GatewayUrl", out var gatewayUrlElement) &&
+                    GatewayRecordEditing.AreEquivalentLoopbackEndpoints(
+                        gatewayUrl,
+                        gatewayUrlElement.GetString()))
+                {
+                    return distroElement.GetString();
+                }
+            }
+            return null;
+        }
+        catch
+        {
+            return null;
+        }
     }
 
     private sealed class RegistryData

@@ -437,6 +437,216 @@ public class GatewayRegistryTests : IDisposable
         Assert.Same(fresh, preserved);
     }
 
+    [Fact]
+    public void PreserveAdvancedFields_KeepsManagedLocalOwnership_WhenEditedEndpointStaysLoopback()
+    {
+        // A setup-managed local gateway edited (name/token) but still pointing at loopback must keep
+        // its managed-local ownership so keepalive + auto-repair keep working across the edit.
+        var existing = MakeRecord("gw-1", "ws://localhost:18789") with
+        {
+            IsLocal = true,
+            SetupManagedDistroName = "OpenClawGateway",
+            RequiresV2Signature = true,
+        };
+
+        var rebuilt = new GatewayRecord
+        {
+            Id = "gw-1",
+            Url = "ws://localhost:18789",
+            FriendlyName = "renamed",
+            SharedGatewayToken = "rotated",
+        }.PreserveAdvancedFields(existing);
+
+        Assert.True(rebuilt.IsLocal);
+        Assert.Equal("OpenClawGateway", rebuilt.SetupManagedDistroName);
+        Assert.True(rebuilt.RequiresV2Signature);
+    }
+
+    [Fact]
+    public void PreserveAdvancedFields_KeepsManagedOwnership_ForNonLoopbackManagedGateway_WhenUrlUnchanged()
+    {
+        // A setup-managed gateway can have a NON-loopback URL (e.g. Tailscale wss://…ts.net) while
+        // still being IsLocal + WSL-managed. Editing only its name/token (URL unchanged) must keep its
+        // managed ownership so keepalive + auto-repair keep working.
+        var existing = MakeRecord("gw-ts", "wss://host.tailnet.ts.net") with
+        {
+            IsLocal = true,
+            SetupManagedDistroName = "OpenClawGateway",
+        };
+
+        var rebuilt = new GatewayRecord
+        {
+            Id = "gw-ts",
+            Url = "wss://host.tailnet.ts.net", // unchanged
+            FriendlyName = "renamed",
+            SharedGatewayToken = "rotated",
+        }.PreserveAdvancedFields(existing);
+
+        Assert.True(rebuilt.IsLocal);
+        Assert.Equal("OpenClawGateway", rebuilt.SetupManagedDistroName);
+    }
+
+    [Fact]
+    public void PreserveAdvancedFields_MigratesLegacyManagedRecord_ToExplicitDistroName()
+    {
+        // Legacy setup-managed records carry IsLocal=true but NO SetupManagedDistroName (managed status
+        // is recognized downstream via the default friendly name). A token-only edit migrates that
+        // implicit ownership to the explicit durable distro marker.
+        var existing = MakeRecord("gw-legacy", "ws://localhost:18789") with
+        {
+            IsLocal = true,
+            FriendlyName = "Local (OpenClawGateway)"
+        };
+
+        var rebuilt = new GatewayRecord
+        {
+            Id = "gw-legacy",
+            Url = "ws://localhost:18789",
+            SharedGatewayToken = "rotated",
+        }.PreserveAdvancedFields(existing);
+
+        Assert.True(rebuilt.IsLocal);
+        Assert.Equal("OpenClawGateway", rebuilt.SetupManagedDistroName);
+    }
+
+    [Fact]
+    public void PreserveAdvancedFields_ChangedLoopbackPort_DropsManagedOwnership()
+    {
+        var existing = MakeRecord("gw-1", "ws://localhost:18789") with
+        {
+            IsLocal = true,
+            SetupManagedDistroName = "OpenClawGateway",
+            FriendlyName = "Local (OpenClawGateway)",
+            RequiresV2Signature = true,
+        };
+
+        var rebuilt = new GatewayRecord
+        {
+            Id = "gw-1",
+            Url = "ws://127.0.0.1:18800",
+            IsLocal = true,
+            SetupManagedDistroName = "OpenClawGateway",
+            FriendlyName = "Local ( OpenClawGateway )",
+            RequiresV2Signature = true,
+        }.PreserveAdvancedFields(existing);
+
+        Assert.True(rebuilt.IsLocal);
+        Assert.Null(rebuilt.SetupManagedDistroName);
+        Assert.Null(rebuilt.FriendlyName);
+        Assert.False(rebuilt.RequiresV2Signature);
+        Assert.Null(GatewayRecordEditing.ResolveManagedDistroName(rebuilt));
+    }
+
+    [Fact]
+    public void PreserveAdvancedFields_DifferentLoopbackHost_DropsManagedOwnership()
+    {
+        var existing = MakeRecord("gw-1", "ws://localhost:18789") with
+        {
+            IsLocal = true,
+            SetupManagedDistroName = "OpenClawGateway",
+            FriendlyName = "Local (OpenClawGateway)",
+        };
+
+        var rebuilt = new GatewayRecord
+        {
+            Id = "gw-1",
+            Url = "ws://127.0.0.2:18789",
+            IsLocal = true,
+            FriendlyName = "Local (OpenClawGateway)",
+        }.PreserveAdvancedFields(existing);
+
+        Assert.False(rebuilt.IsLocal);
+        Assert.Null(rebuilt.SetupManagedDistroName);
+        Assert.Null(rebuilt.FriendlyName);
+        Assert.Null(GatewayRecordEditing.ResolveManagedDistroName(rebuilt));
+    }
+
+    [Theory]
+    [InlineData("ws://127.0.0.1:18789/")]
+    [InlineData("ws://[::1]:18789/")]
+    public void PreserveAdvancedFields_EquivalentLoopbackAlias_KeepsManagedOwnership(string editedUrl)
+    {
+        var existing = MakeRecord("gw-1", "ws://localhost:18789/") with
+        {
+            IsLocal = true,
+            SetupManagedDistroName = "OpenClawGateway",
+        };
+
+        var rebuilt = new GatewayRecord
+        {
+            Id = "gw-1",
+            Url = editedUrl,
+        }.PreserveAdvancedFields(existing);
+
+        Assert.Equal("OpenClawGateway", rebuilt.SetupManagedDistroName);
+    }
+
+    [Fact]
+    public void PreserveAdvancedFields_PathOrQueryCaseChange_DropsManagedOwnership()
+    {
+        var existing = MakeRecord("gw-1", "ws://localhost:18789/Case?Token=A") with
+        {
+            IsLocal = true,
+            SetupManagedDistroName = "OpenClawGateway",
+            FriendlyName = "Local (OpenClawGateway)",
+        };
+
+        var rebuilt = new GatewayRecord
+        {
+            Id = "gw-1",
+            Url = "ws://LOCALHOST:18789/case?token=a",
+            IsLocal = true,
+            SetupManagedDistroName = "OpenClawGateway",
+            FriendlyName = "Local (OpenClawGateway)",
+        }.PreserveAdvancedFields(existing);
+
+        Assert.True(rebuilt.IsLocal);
+        Assert.Null(rebuilt.SetupManagedDistroName);
+        Assert.Null(rebuilt.FriendlyName);
+        Assert.Null(GatewayRecordEditing.ResolveManagedDistroName(rebuilt));
+    }
+
+    [Fact]
+    public void PreserveAdvancedFields_DropsManagedLocalOwnership_WhenRepointedToRemote()
+    {
+        // If the user repoints a managed-local gateway at a remote host, it is no longer a managed WSL
+        // gateway — the ownership fields must NOT be carried (auto-repair must not restart a WSL distro
+        // for a remote endpoint).
+        var existing = MakeRecord("gw-1", "ws://localhost:18789") with
+        {
+            IsLocal = true,
+            SetupManagedDistroName = "OpenClawGateway",
+        };
+
+        var rebuilt = new GatewayRecord
+        {
+            Id = "gw-1",
+            Url = "wss://remote.example:443",
+        }.PreserveAdvancedFields(existing);
+
+        Assert.False(rebuilt.IsLocal);
+        Assert.Null(rebuilt.SetupManagedDistroName);
+    }
+
+    [Fact]
+    public void PreserveAdvancedFields_DropsManagedLocalOwnership_WhenSshTunnelAdded()
+    {
+        var existing = MakeRecord("gw-1", "ws://localhost:18789") with
+        {
+            IsLocal = true,
+            SetupManagedDistroName = "OpenClawGateway",
+        };
+
+        var rebuilt = new GatewayRecord
+        {
+            Id = "gw-1",
+            Url = "ws://localhost:18789",
+            SshTunnel = new SshTunnelConfig("user", "host.example", 18789, 45678),
+        }.PreserveAdvancedFields(existing);
+
+        Assert.Null(rebuilt.SetupManagedDistroName);
+    }
+
     private static GatewayRecord MakeRecord(string id, string url) => new()
     {
         Id = id,

@@ -148,10 +148,9 @@ public sealed class SettingsPageViewModelTests
         var externalChanges = 0;
         vm.ExternalChanged += (_, _) => externalChanges++;
 
-        // These persist directly to settings.Save() but mark a store self-write, so the store must
-        // suppress Changed and the view model must not treat them as an external change.
+        // This persists directly to settings.Save() but marks a store self-write, so the store must
+        // suppress Changed and the view model must not treat it as an external change.
         vm.AutoStart = !vm.AutoStart;
-        vm.ReadResponsesAloud = !vm.ReadResponsesAloud;
 
         Assert.Equal(0, externalChanges);
 
@@ -195,23 +194,7 @@ public sealed class SettingsPageViewModelTests
     }
 
     [Fact]
-    public void ReadResponsesAloud_RoutesThroughSpeakerMute_WithoutNotify()
-    {
-        var vm = NewVm(out _, out var appCommands, out _, out var temp);
-        using (temp)
-        {
-            vm.Activate(null);
-
-            var target = !vm.ReadResponsesAloud;
-            vm.ReadResponsesAloud = target;
-
-            Assert.Equal((bool?)(!target), appCommands.SpeakerMuted);  // mute is the inverse
-            Assert.Equal(0, appCommands.NotifySettingsSavedCount);     // does not use the persist/notify path
-        }
-    }
-
-    [Fact]
-    public void ShowChatToolCalls_Persists_AndPushesVisibility()
+    public void ShowChatToolCalls_Persists_AndNotifies()
     {
         var vm = NewVm(out var settings, out var appCommands, out _, out var temp);
         using (temp)
@@ -222,7 +205,6 @@ public sealed class SettingsPageViewModelTests
             vm.ShowChatToolCalls = target;
 
             Assert.Equal(target, settings.ShowChatToolCalls);
-            Assert.Equal((bool?)target, appCommands.ToolCallsVisible);
             Assert.Equal(1, appCommands.NotifySettingsSavedCount);
         }
     }

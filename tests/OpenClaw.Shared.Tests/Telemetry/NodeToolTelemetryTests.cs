@@ -249,55 +249,6 @@ public sealed class NodeToolTelemetryTests
         Assert.DoesNotContain("exec_policy_denied", responseJson, StringComparison.Ordinal);
     }
 
-    [Fact]
-    public async Task SystemRun_NonzeroSandboxExit_EmitsNestedRunSpanAndSandboxAttributes()
-    {
-        using var activities = new ActivityCollector();
-        using var invocation = new NodeToolInvocation(NodeToolTransport.Mcp);
-        invocation.SetCommand("system.run");
-        var execute = invocation.StartChild(NodeToolInvocation.ExecuteSpanName);
-        var capability = new SystemCapability(NullLogger.Instance);
-        capability.SetCommandRunner(new FixedCommandRunner(new CommandResult
-        {
-            ExitCode = 7,
-            Stderr = "private stderr",
-            ExecutionMode = NodeToolExecutionMode.Sandbox,
-        }));
-        using var args = JsonDocument.Parse("""{"command":"fail"}""");
-
-        var response = await capability.ExecuteAsync(new NodeInvokeRequest
-        {
-            Command = "system.run",
-            Args = args.RootElement.Clone(),
-            Telemetry = invocation,
-            TelemetryParentContext = execute?.Context ?? invocation.Context,
-        });
-        NodeToolInvocation.CompleteChild(execute, NodeToolOutcome.Failure);
-
-        Assert.True(response.Ok);
-        Assert.Equal(NodeToolErrorCategory.CommandFailed, response.Diagnostic?.ErrorCategory);
-        Assert.Equal(NodeToolExecutionMode.Sandbox, response.Diagnostic?.ExecutionMode);
-        var run = Assert.Single(
-            activities.Stopped,
-            activity => activity.OperationName == NodeToolInvocation.SystemRunRunSpanName);
-        var executeActivity = Assert.Single(
-            activities.Stopped,
-            activity => activity.OperationName == NodeToolInvocation.ExecuteSpanName);
-        Assert.Equal(executeActivity.SpanId, run.ParentSpanId);
-        Assert.Equal("failure", run.GetTagItem(OpenClawTelemetryTagKey.Outcome.ToTelemetryName()));
-        Assert.Equal("command_failed", run.GetTagItem(OpenClawTelemetryTagKey.ErrorCategory.ToTelemetryName()));
-        Assert.Equal("legacy", run.GetTagItem(NodeToolInvocation.ApprovalPipelineTag));
-        Assert.Equal(true, run.GetTagItem(NodeToolInvocation.SandboxRequestedTag));
-        Assert.Equal(true, run.GetTagItem(NodeToolInvocation.SandboxAppliedTag));
-        Assert.Equal("mxc", run.GetTagItem(NodeToolInvocation.SandboxProviderTag));
-        Assert.Equal(
-            "windows_appcontainer",
-            run.GetTagItem(NodeToolInvocation.SandboxTechnologyTag));
-        Assert.DoesNotContain(
-            activities.Stopped.SelectMany(activity => activity.TagObjects),
-            tag => Equals(tag.Value, "private stderr"));
-    }
-
     [Theory]
     [InlineData(ExecApprovalV2Code.SecurityDeny, NodeToolErrorCategory.ExecPolicyDenied)]
     [InlineData(ExecApprovalV2Code.AskDeny, NodeToolErrorCategory.ExecPolicyDenied)]
@@ -462,6 +413,12 @@ public sealed class NodeToolTelemetryTests
     {
         public Task<ExecApprovalV2Result> HandleAsync(NodeInvokeRequest request, string correlationId) =>
             Task.FromResult(result);
+
+        public ValueTask<ExecApprovalRevalidationResult> RevalidateAsync(
+            ExecApprovedExecution execution,
+            string correlationId,
+            CancellationToken cancellationToken = default) =>
+            ValueTask.FromResult(ExecApprovalRevalidationResult.Current);
     }
 
     private sealed class ActivityCollector : IDisposable

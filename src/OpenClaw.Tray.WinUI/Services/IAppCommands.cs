@@ -19,7 +19,5 @@ internal interface IAppCommands
     void ShowConnectionStatus();
     void NotifySettingsSaved();
     Task<bool> ApplyAutoStart(bool autoStart);
-    void SetChatSpeakerMuted(bool muted);
-    void SetChatToolCallsVisible(bool visible);
     Task<bool> ResendOpenTelemetryProbeAsync();
 }

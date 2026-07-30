@@ -119,6 +119,8 @@ internal enum RecoveryCategory
     RateLimited,
     /// <summary>A managed Tailscale endpoint cannot be reached from this Companion.</summary>
     Tailscale,
+    /// <summary>A different or unverified local process owns the managed gateway port.</summary>
+    LocalPortConflict,
 }
 
 /// <summary>
@@ -442,7 +444,7 @@ internal sealed record ConnectionPagePlan
     {
         var errRaw = snap.OperatorError ?? snap.NodeError ?? "";
         var err = ConnectionCardPlanSanitizer.Sanitize(errRaw);
-        var category = ClassifyError(err);
+        var category = ClassifyError(snap, err);
         var url = ConnectionCardPlanSanitizer.SanitizeGatewayUrl(rec?.Url ?? snap.GatewayUrl);
 
         if (category == RecoveryCategory.Network &&
@@ -470,6 +472,22 @@ internal sealed record ConnectionPagePlan
 
         return category switch
         {
+            RecoveryCategory.LocalPortConflict => new ConnectionPagePlan
+            {
+                Mode = ConnectionPageMode.Recovery,
+                Recovery = RecoveryCategory.LocalPortConflict,
+                StripGlyph = OpenClawTray.Helpers.FluentIconCatalog.StatusWarn,
+                StripAccent = ConnectionAccent.Caution,
+                StripHeadline = "Local gateway port conflict",
+                StripSub = "Another process is using this managed gateway address. OpenClaw will not send gateway credentials to an unverified listener.",
+                StripPrimaryLabel = "Retry",
+                StripPrimaryAction = ConnectionPrimaryAction.Retry,
+                ActiveGatewayDisplayName = name,
+                ActiveGatewayDetailLine = url,
+                ActiveGatewayHasSshTunnel = false,
+                RelevantGatewayId = rec?.Id,
+            },
+
             RecoveryCategory.Auth => new ConnectionPagePlan
             {
                 Mode = ConnectionPageMode.Recovery,
@@ -861,17 +879,20 @@ internal sealed record ConnectionPagePlan
         return n;
     }
 
-    private static RecoveryCategory ClassifyError(string err)
+    private static RecoveryCategory ClassifyError(GatewayConnectionSnapshot snapshot, string err)
     {
         // Delegate the heuristic matching to the pure, unit-tested Shared
         // classifier so the same kinds drive both setup and recovery copy.
-        return OpenClaw.Shared.GatewayErrorClassifier.Classify(err) switch
+        return (snapshot.OperatorErrorKind ??
+                OpenClaw.Shared.GatewayErrorClassifier.Classify(err)) switch
         {
             OpenClaw.Shared.GatewayErrorKind.ScopeMismatch => RecoveryCategory.Scope,
             OpenClaw.Shared.GatewayErrorKind.TokenDrift => RecoveryCategory.TokenDrift,
+            OpenClaw.Shared.GatewayErrorKind.DeviceTokenMismatch => RecoveryCategory.TokenDrift,
             OpenClaw.Shared.GatewayErrorKind.Auth => RecoveryCategory.Auth,
             OpenClaw.Shared.GatewayErrorKind.Tls => RecoveryCategory.Tls,
             OpenClaw.Shared.GatewayErrorKind.Tunnel => RecoveryCategory.Tunnel,
+            OpenClaw.Shared.GatewayErrorKind.LocalPortConflict => RecoveryCategory.LocalPortConflict,
             OpenClaw.Shared.GatewayErrorKind.Server => RecoveryCategory.Server,
             OpenClaw.Shared.GatewayErrorKind.RateLimited => RecoveryCategory.RateLimited,
             OpenClaw.Shared.GatewayErrorKind.PairingRejected => RecoveryCategory.Auth,

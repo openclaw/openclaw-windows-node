@@ -154,7 +154,16 @@ public sealed partial class CanvasWindow : WindowEx
     /// </summary>
     public void SetTrustedGatewayOrigin(string? gatewayUrl, string? token = null, string? configuredGatewayUrl = null)
     {
-        if (string.IsNullOrEmpty(gatewayUrl)) return;
+        if (string.IsNullOrEmpty(gatewayUrl))
+        {
+            _gatewayToken = null;
+            _trustedGatewayOrigin = null;
+            _configuredGatewayOrigin = null;
+            _gatewayOriginForRewrite = null;
+            if (CanvasWebView.CoreWebView2 != null)
+                RemoveGatewayAuthHeaderInjection(CanvasWebView.CoreWebView2);
+            return;
+        }
         _gatewayToken = token;
         try
         {

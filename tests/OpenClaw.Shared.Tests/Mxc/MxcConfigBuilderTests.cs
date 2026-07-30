@@ -1,5 +1,6 @@
 using System.Security.AccessControl;
 using System.Security.Principal;
+using System.Runtime.InteropServices;
 using System.Runtime.Versioning;
 using System.Text;
 using System.Text.Json;
@@ -518,7 +519,7 @@ public class MxcConfigBuilderTests
 
             var config = BuildConfig(request, pathEnvVar: tempDir);
 
-            Assert.Contains(" /V:ON /S /C \"", config.Process.CommandLine, StringComparison.Ordinal);
+            Assert.Contains(" /V:ON /D /S /C \"", config.Process.CommandLine, StringComparison.Ordinal);
             Assert.Contains("echo !TEMP! !TMP! !TMPDIR! !PATH!", config.Process.CommandLine, StringComparison.Ordinal);
             Assert.Contains("!TEMP!\\out.txt", config.Process.CommandLine, StringComparison.Ordinal);
             Assert.DoesNotContain("%TEMP%", config.Process.CommandLine, StringComparison.OrdinalIgnoreCase);
@@ -661,10 +662,161 @@ public class MxcConfigBuilderTests
         var config = BuildConfig(request, pathEnvVar: "");
 
         Assert.StartsWith(ExpectedSystemCmdExe(), config.Process.CommandLine, StringComparison.OrdinalIgnoreCase);
-        Assert.Contains(" /S /C \"set \"TEMP=", config.Process.CommandLine, StringComparison.Ordinal);
+        Assert.Contains(" /D /S /C \"set \"TEMP=", config.Process.CommandLine, StringComparison.Ordinal);
         Assert.Contains("echo hi\"", config.Process.CommandLine, StringComparison.Ordinal);
         Assert.True(config.Ui!.Disable);
         Assert.Equal("container", config.ProcessContainer!.Ui!.Isolation);
+    }
+
+    [Fact]
+    public void DirectArgvCommandLine_RoundTripsExactlyThroughCommandLineToArgvW()
+    {
+        string[] argv =
+        [
+            @"C:\path with space\x.exe",
+            "",
+            "plain",
+            "two words",
+            "embedded\"quote",
+            "a\\\"b",
+            @"trailing\",
+            @"slashes\\before quote""",
+            "\t",
+            "\n",
+            "\v",
+        ];
+
+        var commandLine = DirectArgvCommandLine.Build(argv);
+
+        Assert.Equal(argv, ParseCommandLine(commandLine));
+    }
+
+    [Fact]
+    public void Build_DirectArgv_CanonicalCmdWrapper_UsesCmdAwareSerializer()
+    {
+        var command = @"echo READY && echo payload > ""C:\Users\owner\AppData\Roaming\OpenClaw\blocked.txt""";
+        string[] argv = [ExpectedSystemCmdExe(), "/d", "/s", "/c", command];
+        using var argsDoc = JsonDocument.Parse(JsonSerializer.Serialize(new { argv }));
+        var request = RequestFor(BalancedPolicy()) with { Args = argsDoc.RootElement.Clone() };
+
+        var config = BuildConfig(request, pathEnvVar: "");
+
+        Assert.StartsWith(
+            ExpectedSystemCmdExe(),
+            config.Process.CommandLine,
+            StringComparison.OrdinalIgnoreCase);
+        Assert.Contains(" /D /S /C \"set \"TEMP=", config.Process.CommandLine, StringComparison.Ordinal);
+        Assert.Contains(command, config.Process.CommandLine, StringComparison.Ordinal);
+        Assert.DoesNotContain("\\\"", config.Process.CommandLine, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Build_DirectArgv_NonCanonicalCmdCommandWrapper_FailsClosed()
+    {
+        string[] argv = [ExpectedSystemCmdExe(), "/c", "echo hi"];
+        using var argsDoc = JsonDocument.Parse(JsonSerializer.Serialize(new { argv }));
+        var request = RequestFor(BalancedPolicy()) with { Args = argsDoc.RootElement.Clone() };
+
+        var error = Assert.Throws<NotSupportedException>(
+            () => BuildConfig(request, pathEnvVar: ""));
+
+        Assert.Contains("canonical argv", error.Message, StringComparison.Ordinal);
+    }
+
+    [Theory]
+    [InlineData("/cecho hi")]
+    [InlineData("/d/s/cecho hi")]
+    [InlineData("/kecho hi")]
+    public void Build_DirectArgv_AttachedCmdCommandMode_FailsClosed(string commandMode)
+    {
+        string[] argv = [ExpectedSystemCmdExe(), commandMode];
+        using var argsDoc = JsonDocument.Parse(JsonSerializer.Serialize(new { argv }));
+        var request = RequestFor(BalancedPolicy()) with { Args = argsDoc.RootElement.Clone() };
+
+        var error = Assert.Throws<NotSupportedException>(
+            () => BuildConfig(request, pathEnvVar: ""));
+
+        Assert.Contains("canonical argv", error.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Build_DirectArgv_LateCmdCommandMode_FailsClosed()
+    {
+        string[] argv = [ExpectedSystemCmdExe(), "/d", "ignored", "/c", "echo hi"];
+        using var argsDoc = JsonDocument.Parse(JsonSerializer.Serialize(new { argv }));
+        var request = RequestFor(BalancedPolicy()) with { Args = argsDoc.RootElement.Clone() };
+
+        var error = Assert.Throws<NotSupportedException>(
+            () => BuildConfig(request, pathEnvVar: ""));
+
+        Assert.Contains("canonical argv", error.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Build_CmdBootstrapRefsWithDelayedExpansionSyntax_FailsClosed()
+    {
+        using var argsDoc = JsonDocument.Parse(
+            """{"command":"echo %TEMP% && echo !PATH!","shell":"cmd"}""");
+        var request = RequestFor(BalancedPolicy()) with { Args = argsDoc.RootElement.Clone() };
+
+        var error = Assert.Throws<NotSupportedException>(
+            () => BuildConfig(request, pathEnvVar: @"C:\Windows\System32"));
+
+        Assert.Contains("delayed-expansion syntax", error.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Build_CmdBootstrapRefsWithBangInScratchPath_FailsClosed()
+    {
+        using var argsDoc = JsonDocument.Parse(
+            """{"command":"echo %TEMP%","shell":"cmd"}""");
+        var request = RequestFor(BalancedPolicy()) with { Args = argsDoc.RootElement.Clone() };
+
+        var error = Assert.Throws<NotSupportedException>(
+            () => BuildConfig(
+                request,
+                scratchDir: @"C:\Bang!PATH!\scratch",
+                pathEnvVar: ""));
+
+        Assert.Contains("bootstrap paths", error.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Build_DirectArgv_UsesDirectCommandLineWithoutShellWrapper()
+    {
+        string[] argv = [@"C:\Program Files\Tool\tool.exe", "alpha", "two words"];
+        using var argsDoc = JsonDocument.Parse(JsonSerializer.Serialize(new
+        {
+            command = "should-be-ignored",
+            shell = "powershell",
+            args = new[] { "should-be-ignored" },
+            argv,
+        }));
+        var request = RequestFor(BalancedPolicy()) with { Args = argsDoc.RootElement.Clone() };
+
+        var config = BuildConfig(request, pathEnvVar: "");
+
+        Assert.Equal(
+            "\"C:\\Program Files\\Tool\\tool.exe\" alpha \"two words\"",
+            config.Process.CommandLine);
+        Assert.DoesNotContain(" /S /C ", config.Process.CommandLine, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("-EncodedCommand", config.Process.CommandLine, StringComparison.OrdinalIgnoreCase);
+        Assert.Empty(config.Process.Env!);
+        Assert.Contains(P.Scratch, config.Filesystem!.ReadwritePaths!);
+        Assert.True(config.Ui!.Disable);
+        Assert.Equal("container", config.ProcessContainer!.Ui!.Isolation);
+    }
+
+    [Fact]
+    public void Build_MalformedDirectArgv_FailsClosedInsteadOfUsingLegacyShellFields()
+    {
+        using var argsDoc = JsonDocument.Parse(
+            """{"command":"should-not-run","shell":"cmd","argv":"not-an-array"}""");
+        var request = RequestFor(BalancedPolicy()) with { Args = argsDoc.RootElement.Clone() };
+
+        var ex = Assert.Throws<NotSupportedException>(() => BuildConfig(request, pathEnvVar: ""));
+
+        Assert.Contains("Direct argv must be an array", ex.Message);
     }
 
     [Fact]
@@ -937,6 +1089,28 @@ public class MxcConfigBuilderTests
         var encoded = commandLine[(markerIndex + marker.Length)..].Trim();
         return Encoding.Unicode.GetString(Convert.FromBase64String(encoded));
     }
+
+    private static string[] ParseCommandLine(string commandLine)
+    {
+        var argv = CommandLineToArgvW(commandLine, out var argc);
+        Assert.NotEqual(IntPtr.Zero, argv);
+        try
+        {
+            return Enumerable.Range(0, argc)
+                .Select(i => Marshal.PtrToStringUni(Marshal.ReadIntPtr(argv, i * IntPtr.Size))!)
+                .ToArray();
+        }
+        finally
+        {
+            Assert.Equal(IntPtr.Zero, LocalFree(argv));
+        }
+    }
+
+    [DllImport("shell32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
+    private static extern IntPtr CommandLineToArgvW(string commandLine, out int argc);
+
+    [DllImport("kernel32.dll", SetLastError = true)]
+    private static extern IntPtr LocalFree(IntPtr memory);
 
     private static void AssertJsonEqual(JsonObjectNode expected, JsonObjectNode actual, string path)
     {

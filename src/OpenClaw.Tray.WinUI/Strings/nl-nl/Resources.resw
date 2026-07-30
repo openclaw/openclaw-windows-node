@@ -1904,7 +1904,7 @@ Gebruik een van deze opties:
     <value>Uitvoeringsbeleid</value>
   </data>
   <data name="PermissionsPage_TextBlock_17.Text" xml:space="preserve">
-    <value>Bepaalt welke opdrachten de agent op dit knooppunt kan uitvoeren. Regels worden vergeleken met de volledige opdrachtregel.</value>
+    <value>Bepaalt welke uitvoerbare bestanden de agent op dit knooppunt kan starten. Regels worden vergeleken met opgeloste paden van uitvoerbare bestanden.</value>
   </data>
   <data name="DefaultActionCombo.Header" xml:space="preserve">
     <value>Standaardactie</value>
@@ -1922,7 +1922,7 @@ Gebruik een van deze opties:
     <value>Regels</value>
   </data>
   <data name="NewRulePattern.PlaceholderText" xml:space="preserve">
-    <value>Opdrachtpatroon (bijv. echo *)</value>
+    <value>Padpatroon voor uitvoerbaar bestand (bijv. **/git.exe)</value>
   </data>
   <data name="PermissionsPage_ComboBoxItem_54.Content" xml:space="preserve">
     <value>Weigeren</value>
@@ -4428,7 +4428,7 @@ Opdrachten worden geblokkeerd zolang sandboxing niet beschikbaar is, omdat strik
     <value>Wat gebeurt er als een opdracht aan geen enkele regel hieronder voldoet.</value>
   </data>
   <data name="PermissionsPage_PatternsAreMatchedLeft.Text" xml:space="preserve">
-    <value>Patronen worden van links naar rechts vergeleken met de volledige opdrachtregel. Gebruik * als jokerteken. Wijzigingen worden automatisch opgeslagen.</value>
+    <value>Allowlistpatronen worden vergeleken met opgeloste paden van uitvoerbare bestanden. Gebruik jokertekens zoals **/git.exe. Wijzigingen worden automatisch opgeslagen.</value>
   </data>
   <data name="PermissionsPage_Saved.Text" xml:space="preserve">
     <value>Opgeslagen</value>
@@ -4763,12 +4763,6 @@ Opdrachten worden geblokkeerd zolang sandboxing niet beschikbaar is, omdat strik
   </data>
   <data name="SettingsPage_Chat.Text" xml:space="preserve">
     <value>Gesprek</value>
-  </data>
-  <data name="SettingsRow_ReadAloud_Header.Text" xml:space="preserve">
-    <value>Antwoorden hardop voorlezen</value>
-  </data>
-  <data name="SettingsRow_ReadAloud_Description.Text" xml:space="preserve">
-    <value>Lees antwoorden van de assistent hardop voor tijdens het gesprek.</value>
   </data>
   <data name="SettingsRow_ShowToolCalls_Header.Text" xml:space="preserve">
     <value>Toolaanroepen en gebruik weergeven</value>
@@ -6873,5 +6867,11 @@ Het binaire bestand wxc-exec is niet gevonden. {1} Als dit een ontwikkelaarsbuil
   </data>
   <data name="JsonPreviewSplitter.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.LocalizedControlType" xml:space="preserve">
     <value>scheidingslijn</value>
+  </data>
+  <data name="PermissionsPage_ExecPolicySaved" xml:space="preserve">
+    <value>Opgeslagen</value>
+  </data>
+  <data name="PermissionsPage_ExecPolicySaveFailed" xml:space="preserve">
+    <value>Opslaan mislukt</value>
   </data>
 </root>

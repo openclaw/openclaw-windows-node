@@ -7,6 +7,14 @@ using System.Threading.Tasks;
 
 namespace OpenClaw.Shared;
 
+public readonly record struct ReconnectAuthorizationResult(
+    bool Allowed,
+    GatewayErrorKind FailureKind = GatewayErrorKind.Unknown,
+    string? Detail = null)
+{
+    public static ReconnectAuthorizationResult AllowedResult { get; } = new(true);
+}
+
 /// <summary>
 /// Abstract base class for WebSocket-based gateway clients.
 /// Extracts shared connection lifecycle: connect, listen, reconnect, send, dispose.
@@ -43,6 +51,13 @@ public abstract class WebSocketClientBase : IDisposable
     // Events
     public event EventHandler<ConnectionStatus>? StatusChanged;
     public event EventHandler<string>? AuthenticationFailed;
+    public event EventHandler? Disposed;
+    /// <summary>
+    /// Optional fail-closed authorization invoked immediately before every client-owned reconnect.
+    /// Managed-local callers use it to re-check endpoint provenance and explicit user intent.
+    /// </summary>
+    public Func<CancellationToken, Task<ReconnectAuthorizationResult>>?
+        ReconnectAuthorizationAsync { get; set; }
 
     /// <summary>Reset reconnect backoff counter. Call after successful application-level handshake.</summary>
     protected void ResetReconnectAttempts() => _reconnectAttempts = 0;
@@ -189,6 +204,7 @@ public abstract class WebSocketClientBase : IDisposable
                 DisposeStaleSocket(ws);
             }
             _logger.Error($"{ClientRole} connection failed", ex);
+            OnConnectionException(ex);
             RaiseStatusChanged(ConnectionStatus.Error);
 
             if (!_disposed && !_cts.Token.IsCancellationRequested && ShouldAutoReconnect())
@@ -196,6 +212,14 @@ public abstract class WebSocketClientBase : IDisposable
                 _ = ReconnectWithBackoffAsync();
             }
         }
+    }
+
+    /// <summary>
+    /// Lets a concrete client preserve a typed transport failure before the generic status event is
+    /// raised. The base class deliberately does not expose exception text to consumers.
+    /// </summary>
+    protected virtual void OnConnectionException(Exception exception)
+    {
     }
 
     private bool IsCurrentConnection(ClientWebSocket ws, long generation) =>
@@ -376,6 +400,21 @@ public abstract class WebSocketClientBase : IDisposable
                     break;
                 }
 
+                if (ReconnectAuthorizationAsync is not null)
+                {
+                    var authorization =
+                        await ReconnectAuthorizationAsync(_cts.Token).ConfigureAwait(false);
+                    if (!authorization.Allowed)
+                    {
+                        _logger.Warn(
+                            $"{ClientRole} reconnect blocked by endpoint authorization policy: " +
+                            (authorization.Detail ?? authorization.FailureKind.ToString()));
+                        OnReconnectAuthorizationDenied(authorization);
+                        RaiseStatusChanged(ConnectionStatus.Error);
+                        break;
+                    }
+                }
+
                 // Safely dispose old socket
                 var oldSocket = expectedSocket ?? _webSocket;
                 if (oldSocket != null)
@@ -410,6 +449,11 @@ public abstract class WebSocketClientBase : IDisposable
         {
             Interlocked.Exchange(ref _reconnectLoopActive, 0);
         }
+    }
+
+    protected virtual void OnReconnectAuthorizationDenied(
+        ReconnectAuthorizationResult authorization)
+    {
     }
 
     private bool IsReconnectOwner(ClientWebSocket? expectedSocket, long expectedGeneration)
@@ -553,5 +597,7 @@ public abstract class WebSocketClientBase : IDisposable
 
         // Don't dispose _cts immediately — listen loop or reconnect may still reference it.
         // It will be GC'd after all pending tasks complete.
+        try { Disposed?.Invoke(this, EventArgs.Empty); }
+        catch (Exception ex) { _logger.Debug($"{ClientRole} Disposed handler threw: {ex.Message}"); }
     }
 }

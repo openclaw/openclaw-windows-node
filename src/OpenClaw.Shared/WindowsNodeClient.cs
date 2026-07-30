@@ -76,6 +76,12 @@ public class WindowsNodeClient : WebSocketClientBase
     public event EventHandler? TransportConnected;
     /// <summary>Raised with a finite classification before a terminal handshake error is published.</summary>
     public event EventHandler<GatewayErrorKind>? ConnectionFailure;
+
+    protected override void OnReconnectAuthorizationDenied(
+        ReconnectAuthorizationResult authorization)
+    {
+        ConnectionFailure?.Invoke(this, authorization.FailureKind);
+    }
     
     public new bool IsConnected => _isConnected;
     public string? NodeId => _nodeId;
@@ -151,9 +157,7 @@ public class WindowsNodeClient : WebSocketClientBase
     {
         var storedNodeToken = TryLoadStoredNodeToken(dataPath, logger);
         if (!string.IsNullOrEmpty(storedNodeToken))
-        {
             return storedNodeToken;
-        }
 
         var gatewayToken = NormalizeOptionalCredential(token);
         if (!string.IsNullOrEmpty(gatewayToken))
@@ -177,16 +181,7 @@ public class WindowsNodeClient : WebSocketClientBase
 
     private static string? TryLoadStoredNodeToken(string dataPath, IOpenClawLogger? logger)
     {
-        try
-        {
-            var identity = new DeviceIdentity(dataPath, logger);
-            identity.Initialize();
-            return string.IsNullOrWhiteSpace(identity.NodeDeviceToken) ? null : identity.NodeDeviceToken;
-        }
-        catch
-        {
-            return null;
-        }
+        return DeviceIdentity.TryReadStoredDeviceTokenForRole(dataPath, "node", logger);
     }
     
     /// <summary>
@@ -612,7 +607,7 @@ public class WindowsNodeClient : WebSocketClientBase
     private async Task HandleConnectChallengeAsync(JsonElement root)
     {
         string? nonce = null;
-        long ts = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+        long? challengeTimestampMs = null;
         
         if (root.TryGetProperty("payload", out var payload))
         {
@@ -620,21 +615,18 @@ public class WindowsNodeClient : WebSocketClientBase
             {
                 nonce = nonceProp.GetString();
             }
-            if (payload.TryGetProperty("ts", out var tsProp))
-            {
-                ts = tsProp.GetInt64();
-            }
+            challengeTimestampMs = ConnectAuthTimestamp.ReadChallengeTimestamp(payload);
         }
 
-        _logger.Info($"[HANDSHAKE] Received connect.challenge: nonce={nonce}, ts={ts}");
+        _logger.Info($"[HANDSHAKE] Received connect.challenge: nonce={nonce}, ts={challengeTimestampMs?.ToString() ?? "missing"}");
         
         _pendingNonce = nonce;
-        await SendNodeConnectAsync(nonce, ts);
+        await SendNodeConnectAsync(nonce, challengeTimestampMs);
     }
     
     private const string ClientId = "node-host";  // Must be "node-host" for nodes
     
-    private async Task SendNodeConnectAsync(string? nonce, long ts)
+    private async Task SendNodeConnectAsync(string? nonce, long? challengeTimestampMs)
     {
         var isPaired = !string.IsNullOrEmpty(_deviceIdentity.NodeDeviceToken);
         var usingBootstrap = !isPaired && !string.IsNullOrEmpty(_bootstrapToken);
@@ -652,14 +644,14 @@ public class WindowsNodeClient : WebSocketClientBase
         _logger.Info($"[HANDSHAKE]   signature format={(_useV2Signature ? "v2" : "v3")}, platform={_registration.Platform}, family={_registration.DeviceFamily}");
         _logger.Info($"[HANDSHAKE]   auth: {{{authType}}}");
 
-        await SendRawAsync(BuildNodeConnectMessage(nonce, ts));
+        await SendRawAsync(BuildNodeConnectMessage(nonce, challengeTimestampMs));
     }
 
-    private string BuildNodeConnectMessage(string? nonce, long ts)
+    private string BuildNodeConnectMessage(string? nonce, long? challengeTimestampMs)
     {
         // Sign the full payload with Ed25519 - this is how device pairing works
         string? signature = null;
-        var signedAt = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+        var signedAt = ConnectAuthTimestamp.ResolveSignedAt(challengeTimestampMs);
         var (auth, tokenForSignature) = BuildConnectAuth();
         
         if (!string.IsNullOrEmpty(nonce))
@@ -784,15 +776,16 @@ public class WindowsNodeClient : WebSocketClientBase
                     _isPaired = true;
                     _pairingApprovedAwaitingReconnect = false;
                     _logger.Info("Received device token - we are now paired!");
-                    _deviceIdentity.StoreDeviceTokenForRole("node", deviceToken, TryGetAuthScopes(authPayload));
-                    DeviceTokenReceived?.Invoke(this, new DeviceTokenReceivedEventArgs(deviceToken, TryGetAuthScopes(authPayload), "node"));
+                    var scopes = TryGetAuthScopes(authPayload);
+                    TryStoreHandshakeDeviceToken(deviceToken, scopes);
+                    DeviceTokenReceived?.Invoke(this, new DeviceTokenReceivedEventArgs(deviceToken, scopes, "node"));
                     EmitPairingStatusOnTransition(new PairingStatusEventArgs(
                         PairingStatus.Paired,
                         _deviceIdentity.DeviceId,
                         wasWaiting ? "Pairing approved!" : null));
                 }
             }
-            
+
             _logger.Info($"Node registered successfully! ID: {_nodeId ?? _deviceIdentity.DeviceId[..16]}");
             
             // Pairing happens at connect time via device identity, no separate request needed.
@@ -832,9 +825,22 @@ public class WindowsNodeClient : WebSocketClientBase
                         _deviceIdentity.DeviceId));
                 }
             }
-            
+
             RaiseStatusChanged(ConnectionStatus.Connected);
             HandshakeSucceeded?.Invoke(this, EventArgs.Empty);
+        }
+    }
+
+    private void TryStoreHandshakeDeviceToken(string token, string[]? scopes)
+    {
+        try
+        {
+            _deviceIdentity.StoreDeviceTokenForRole("node", token, scopes);
+        }
+        catch (DeviceIdentityLoadException ex)
+        {
+            _logger.Error(
+                $"Failed to persist node device token during handshake; connection remains active: {ex.InnerException?.Message}");
         }
     }
 
@@ -858,10 +864,12 @@ public class WindowsNodeClient : WebSocketClientBase
     {
         var error = "Unknown error";
         var errorCode = "none";
+        string? detailCode = null;
         string? pairingReason = null;
         string? pairingRequestId = null;
 
-        if (root.TryGetProperty("error", out var errorProp))
+        if (root.TryGetProperty("error", out var errorProp) &&
+            errorProp.ValueKind == JsonValueKind.Object)
         {
             if (errorProp.TryGetProperty("message", out var msgProp))
             {
@@ -871,17 +879,16 @@ public class WindowsNodeClient : WebSocketClientBase
             {
                 errorCode = codeProp.ToString();
             }
-            if (errorProp.TryGetProperty("details", out var detailsProp))
+            detailCode = TryGetErrorDetailString(errorProp, "code", out var code) ? code : null;
+            if (TryGetErrorDetailString(errorProp, "reason", out var reason))
             {
-                if (TryGetString(detailsProp, "reason", out var reason))
-                {
-                    pairingReason = reason;
-                }
-                pairingRequestId = TryGetSafePairingRequestId(detailsProp);
+                pairingReason = reason;
             }
+            pairingRequestId = TryGetSafeErrorDetailRequestId(errorProp);
         }
 
-        _logger.Info($"[HANDSHAKE] Connect error: message=\"{error}\", code={errorCode}");
+        var effectiveErrorCode = detailCode ?? errorCode;
+        _logger.Info($"[HANDSHAKE] Connect error: message=\"{error}\", code={errorCode}, detailCode={detailCode ?? "none"}");
 
         if (string.Equals(errorCode, "NOT_PAIRED", StringComparison.OrdinalIgnoreCase))
         {
@@ -909,22 +916,39 @@ public class WindowsNodeClient : WebSocketClientBase
             return;
         }
 
+        // Stale/rotated node DEVICE token — terminal, but the connection manager can
+        // self-recover by clearing only the node device token and reconnecting with a
+        // still-valid shared/bootstrap credential. Detected from the structured code
+        // (top-level or details.code) or explicit device phrasing, independent of generic
+        // message wording. _rateLimited stops this client's own auto-reconnect so the
+        // manager owns the single recovery reconnect (no dueling loops).
+        if (ClassifyConnectionFailure(error, errorCode, detailCode) == GatewayErrorKind.DeviceTokenMismatch)
+        {
+            _rateLimited = true;
+            _logger.Warn($"[NODE] Node device token mismatch; stopping reconnect for recovery. Error: {TokenSanitizer.Sanitize(error)}");
+            ConnectionFailure?.Invoke(this, GatewayErrorKind.DeviceTokenMismatch);
+            RaiseStatusChanged(ConnectionStatus.Error);
+            return;
+        }
+
         // Rate-limit / terminal auth errors — stop reconnecting
         if (error.Contains("too many failed", StringComparison.OrdinalIgnoreCase) ||
             error.Contains("rate limit", StringComparison.OrdinalIgnoreCase) ||
             error.Contains("origin not allowed", StringComparison.OrdinalIgnoreCase) ||
-            error.Contains("token mismatch", StringComparison.OrdinalIgnoreCase))
+            error.Contains("token mismatch", StringComparison.OrdinalIgnoreCase) ||
+            IsTerminalAuthCode(errorCode) ||
+            IsTerminalAuthCode(detailCode))
         {
             _rateLimited = true;
             _logger.Warn($"[NODE] Terminal auth error; stopping reconnect. Error: {TokenSanitizer.Sanitize(error)}");
-            ConnectionFailure?.Invoke(this, ClassifyConnectionFailure(error, errorCode));
+            ConnectionFailure?.Invoke(this, ClassifyConnectionFailure(error, errorCode, detailCode));
             RaiseStatusChanged(ConnectionStatus.Error);
             return;
         }
 
         // v3 signature rejected — fall back to v2 for this session
         if (error.Contains("device signature invalid", StringComparison.OrdinalIgnoreCase) ||
-            errorCode == "DEVICE_AUTH_SIGNATURE_INVALID")
+            effectiveErrorCode == "DEVICE_AUTH_SIGNATURE_INVALID")
         {
             if (!_useV2Signature)
             {
@@ -934,19 +958,26 @@ public class WindowsNodeClient : WebSocketClientBase
         }
 
         _logger.Error($"Node registration failed: {TokenSanitizer.Sanitize(error)} (code: {errorCode})");
-        ConnectionFailure?.Invoke(this, ClassifyConnectionFailure(error, errorCode));
         RaiseStatusChanged(ConnectionStatus.Error);
     }
 
-    private static GatewayErrorKind ClassifyConnectionFailure(string error, string errorCode)
+    private static GatewayErrorKind ClassifyConnectionFailure(string error, string errorCode, string? detailsCode = null)
     {
         if (error.Contains("too many failed", StringComparison.OrdinalIgnoreCase))
             return GatewayErrorKind.RateLimited;
         if (error.Contains("origin not allowed", StringComparison.OrdinalIgnoreCase))
             return GatewayErrorKind.Auth;
 
-        return GatewayErrorClassifier.Classify($"{errorCode} {error}");
+        return GatewayErrorClassifier.ClassifyWithCode(error, errorCode, detailsCode);
     }
+
+    // Structured terminal-auth codes (wrong shared/bootstrap token, rate limit, token not
+    // configured, device-token mismatch). These are permanent for the current connection, so the
+    // node client must stop its own auto-reconnect even when the human message is generic.
+    private static bool IsTerminalAuthCode(string? code) => code is
+        "AUTH_TOKEN_MISMATCH" or "AUTH_BOOTSTRAP_TOKEN_INVALID" or
+        "AUTH_DEVICE_TOKEN_MISMATCH" or "AUTH_RATE_LIMITED" or "AUTH_TOKEN_NOT_CONFIGURED" or
+        "DEVICE_AUTH_SIGNATURE_EXPIRED";
 
     private bool PayloadTargetsCurrentDevice(JsonElement payload)
     {
@@ -992,10 +1023,56 @@ public class WindowsNodeClient : WebSocketClientBase
         return s_pairingRequestIdValidator.IsMatch(requestId) ? requestId : null;
     }
 
+    private static bool TryGetErrorDetailString(
+        JsonElement error,
+        string propertyName,
+        out string? value)
+    {
+        if (error.TryGetProperty("details", out var details) &&
+            TryGetString(details, propertyName, out value))
+        {
+            return true;
+        }
+
+        if (error.TryGetProperty("data", out var data) &&
+            data.ValueKind == JsonValueKind.Object &&
+            data.TryGetProperty("details", out details) &&
+            TryGetString(details, propertyName, out value))
+        {
+            return true;
+        }
+
+        value = null;
+        return false;
+    }
+
+    private static string? TryGetSafeErrorDetailRequestId(JsonElement error)
+    {
+        if (error.TryGetProperty("details", out var details) &&
+            details.ValueKind == JsonValueKind.Object)
+        {
+            var requestId = TryGetSafePairingRequestId(details);
+            if (requestId is not null)
+                return requestId;
+        }
+
+        if (error.TryGetProperty("data", out var data) &&
+            data.ValueKind == JsonValueKind.Object &&
+            data.TryGetProperty("details", out details) &&
+            details.ValueKind == JsonValueKind.Object)
+        {
+            return TryGetSafePairingRequestId(details);
+        }
+
+        return null;
+    }
+
     private static bool TryGetString(JsonElement element, string propertyName, out string? value)
     {
         value = null;
-        if (!element.TryGetProperty(propertyName, out var prop) || prop.ValueKind != JsonValueKind.String)
+        if (element.ValueKind != JsonValueKind.Object ||
+            !element.TryGetProperty(propertyName, out var prop) ||
+            prop.ValueKind != JsonValueKind.String)
         {
             return false;
         }

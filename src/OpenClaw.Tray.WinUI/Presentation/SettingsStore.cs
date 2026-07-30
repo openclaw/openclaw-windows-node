@@ -52,7 +52,6 @@ internal sealed class SettingsStore : ISettingsStore
         NotifyInfo = _settings.NotifyInfo,
         ScreenRecordingConsentGiven = _settings.ScreenRecordingConsentGiven,
         CameraRecordingConsentGiven = _settings.CameraRecordingConsentGiven,
-        VoiceTtsEnabled = _settings.VoiceTtsEnabled,
         ShowChatToolCalls = _settings.ShowChatToolCalls,
     };
 

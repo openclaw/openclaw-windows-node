@@ -9,7 +9,6 @@ namespace OpenClaw.Shared.ExecApprovals;
 public sealed class ValidatedRunRequest
 {
     public string[] Argv { get; }
-    public string? Shell { get; }
     public string? Cwd { get; }
     public int TimeoutMs { get; }
     public IReadOnlyDictionary<string, string>? Env { get; }
@@ -18,7 +17,6 @@ public sealed class ValidatedRunRequest
 
     internal ValidatedRunRequest(
         string[] argv,
-        string? shell,
         string? cwd,
         int timeoutMs,
         IReadOnlyDictionary<string, string>? env,
@@ -26,7 +24,6 @@ public sealed class ValidatedRunRequest
         string? sessionKey)
     {
         Argv = argv;
-        Shell = shell;
         Cwd = cwd;
         TimeoutMs = timeoutMs;
         Env = env;

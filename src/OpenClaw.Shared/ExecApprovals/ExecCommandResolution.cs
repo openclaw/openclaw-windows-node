@@ -242,11 +242,25 @@ internal static class ExecCommandResolver
         var wrapper = ExecShellWrapperNormalizer.Extract(command);
         if (wrapper.IsWrapper && wrapper.InlineCommand is not null)
         {
+            // A runtime shell payload (variable, subexpression, backtick, script block,
+            // encoded command, Invoke-Expression) cannot be pinned to a stable reusable rule,
+            // so it is one-shot: surface no allow-always pattern. Mirrors the macOS one-shot
+            // classification ($VAR/backtick/$(...)), extended for PowerShell forms.
+            if (IsOneShotShellPayload(wrapper.InlineCommand))
+                return;
+
             var segments = SplitShellCommandChain(wrapper.InlineCommand);
             if (segments is null) return;
+            // A segment invoking PowerShell with an encoded command (-EncodedCommand or any
+            // unambiguous alias: -e, -ec, -enc, ...) carries an opaque payload → one-shot.
             foreach (var seg in segments)
             {
-                // allowAlwaysPatterns does NOT fail-closed on -EncodedCommand: it's UX only.
+                var t = ExecCommandToken.ParseFirstToken(seg);
+                if (t is not null && SegmentUsesEncodedCommand(seg, t))
+                    return;
+            }
+            foreach (var seg in segments)
+            {
                 var token = ExecCommandToken.ParseFirstToken(seg);
                 if (token is null) continue;
                 var res = ResolveExecutable(token, cwd, env);
@@ -260,12 +274,45 @@ internal static class ExecCommandResolver
         // For direct exec, unwrap env including with-modifier cases for pattern discovery.
         var effective = ExecEnvInvocationUnwrapper.UnwrapForResolution(command);
         if (effective.Count == 0) return;
+        // A direct PowerShell invocation carrying an encoded or dynamic payload is one-shot:
+        // it must not surface an allow-always pattern (which the command-host guard would reject).
+        if (IsDirectPowerShellOneShot(effective)) return;
         var rawToken = effective[0].Trim();
         if (rawToken.Length == 0) return;
         var resolution = ResolveExecutable(rawToken, cwd, env);
         if (resolution is null) return;
         var pat = resolution.Value.ResolvedPath ?? resolution.Value.RawExecutable;
         if (seen.Add(pat)) patterns.Add(pat);
+    }
+
+    // ── one-shot payload detection ────────────────────────────────────────────
+
+    // Runtime shell payloads cannot be pinned to a stable allowlist rule, so a command that
+    // contains one is one-shot and must not offer allow-always. Flags variables, subexpressions,
+    // braced expansions, backticks, script blocks, encoded commands, and Invoke-Expression across
+    // PowerShell and POSIX shells. Mirrors the macOS one-shot classification ($VAR/backtick/$(...)).
+    private static readonly System.Text.RegularExpressions.Regex OneShotPayloadRe =
+        new(@"\$\(|\$\{|\$\w|`|&\s*\{|-enc(?:odedcommand)?\b|\b(?:iex|invoke-expression)\b",
+            System.Text.RegularExpressions.RegexOptions.IgnoreCase
+            | System.Text.RegularExpressions.RegexOptions.CultureInvariant);
+
+    private static bool IsOneShotShellPayload(string inlineCommand)
+        => !string.IsNullOrEmpty(inlineCommand) && OneShotPayloadRe.IsMatch(inlineCommand);
+
+    // A direct (non-shell-wrapped) PowerShell invocation is one-shot when it carries an encoded
+    // command (any -EncodedCommand alias) or a dynamic payload (variable/subexpression/etc.).
+    private static bool IsDirectPowerShellOneShot(IReadOnlyList<string> command)
+    {
+        if (command.Count == 0) return false;
+        var basename = ExecCommandToken.NormalizedBasename(command[0]);
+        if (basename is not ("powershell" or "pwsh")) return false;
+
+        for (var i = 1; i < command.Count; i++)
+        {
+            if (IsEncodedCommandFlag(command[i]))
+                return true;
+        }
+        return OneShotPayloadRe.IsMatch(string.Join(' ', command));
     }
 
     // ── -EncodedCommand detection ─────────────────────────────────────────────

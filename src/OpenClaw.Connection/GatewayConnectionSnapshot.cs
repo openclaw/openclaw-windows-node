@@ -12,6 +12,7 @@ public sealed record GatewayConnectionSnapshot
     // ─── Operator ───
     public RoleConnectionState OperatorState { get; init; }
     public string? OperatorError { get; init; }
+    public OpenClaw.Shared.GatewayErrorKind? OperatorErrorKind { get; init; }
     public bool OperatorPairingRequired { get; init; }
     public string? OperatorDeviceId { get; init; }
     public string? OperatorCredentialSource { get; init; }

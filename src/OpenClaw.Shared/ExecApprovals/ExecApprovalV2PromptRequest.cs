@@ -14,6 +14,12 @@ public sealed class ExecApprovalV2PromptRequest
     public string? Host { get; init; }
     public required ExecSecurity Security { get; init; }
     public required ExecAsk Ask { get; init; }
+    /// <summary>
+    /// Whether the prompt may offer "Allow Always". False when ask=always, or when the
+    /// command yields no reusable allowlist pattern (one-shot), mirroring macOS
+    /// resolveExecApprovalAllowedDecisions. Defaults false (fail-safe: allow-once/deny only).
+    /// </summary>
+    public bool AllowAlwaysAvailable { get; init; }
     public required string AgentId { get; init; }
     public string? ResolvedPath { get; init; }
     /// <summary>

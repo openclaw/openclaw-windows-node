@@ -17,6 +17,7 @@ public class DeviceIdentity
 {
     private readonly string _keyPath;
     private readonly IOpenClawLogger _logger;
+    private readonly IDeviceIdentityFileSystem _fileSystem;
     private byte[]? _privateKey;
     private byte[]? _publicKey;
     private string? _deviceId;
@@ -33,46 +34,50 @@ public class DeviceIdentity
     public IReadOnlyList<string>? NodeDeviceTokenScopes => _nodeDeviceTokenScopes;
 
     public static string? TryReadStoredDeviceToken(string dataPath, IOpenClawLogger? logger = null) =>
-        ReadStoredDeviceToken(dataPath, logger).Token;
+        ResolveStoredToken(dataPath, ReadStoredDeviceToken(dataPath, logger));
 
     public static DeviceTokenReadResult ReadStoredDeviceToken(string dataPath, IOpenClawLogger? logger = null) =>
         ReadStoredDeviceTokenForRole(dataPath, "operator", logger);
 
     public static string? TryReadStoredDeviceTokenForRole(string dataPath, string role, IOpenClawLogger? logger = null) =>
-        ReadStoredDeviceTokenForRole(dataPath, role, logger).Token;
+        ResolveStoredToken(dataPath, ReadStoredDeviceTokenForRole(dataPath, role, logger));
 
-    public static DeviceTokenReadResult ReadStoredDeviceTokenForRole(string dataPath, string role, IOpenClawLogger? logger = null)
+    public static DeviceTokenReadResult ReadStoredDeviceTokenForRole(
+        string dataPath,
+        string role,
+        IOpenClawLogger? logger = null) =>
+        ReadStoredDeviceTokenForRole(dataPath, role, logger, DeviceIdentityFileSystem.Instance);
+
+    internal static DeviceTokenReadResult ReadStoredDeviceTokenForRole(
+        string dataPath,
+        string role,
+        IOpenClawLogger? logger,
+        IDeviceIdentityFileSystem fileSystem)
     {
         var tokenRole = ParseDeviceTokenRole(role);
         var keyPath = Path.Combine(dataPath, "device-key-ed25519.json");
-        if (!File.Exists(keyPath))
-        {
-            return DeviceTokenReadResult.Missing("Identity file is missing.");
-        }
 
         try
         {
-            using var doc = JsonDocument.Parse(File.ReadAllText(keyPath));
-            if (doc.RootElement.ValueKind != JsonValueKind.Object)
-            {
-                logger?.Warn("Failed to read stored device token: device-key-ed25519.json root is not a JSON object.");
-                return DeviceTokenReadResult.Corrupt("Identity file root is not a JSON object.");
-            }
+            if (!fileSystem.IdentityFileExists(keyPath))
+                return DeviceTokenReadResult.Missing("Identity file is missing.");
 
-            var tokenPropertyName = tokenRole == DeviceTokenRole.Node
-                ? nameof(DeviceKeyData.NodeDeviceToken)
-                : nameof(DeviceKeyData.DeviceToken);
+            var json = fileSystem.ReadAllText(keyPath);
+            using var document = JsonDocument.Parse(json);
+            if (document.RootElement.ValueKind != JsonValueKind.Object)
+                throw new InvalidDataException("Identity file root is not a JSON object.");
 
-            if (doc.RootElement.TryGetProperty(tokenPropertyName, out var deviceToken) &&
-                deviceToken.ValueKind == JsonValueKind.String)
-            {
-                var value = deviceToken.GetString();
-                return string.IsNullOrWhiteSpace(value)
-                    ? DeviceTokenReadResult.Missing($"No stored {role} device token.")
-                    : DeviceTokenReadResult.Resolved(value!);
-            }
+            var data = document.RootElement.Deserialize<DeviceKeyData>()
+                ?? throw new InvalidDataException("Identity JSON did not contain an object.");
+            _ = ValidateAndReconstruct(data);
 
-            return DeviceTokenReadResult.Missing($"No stored {role} device token.");
+            var token = tokenRole == DeviceTokenRole.Node
+                ? data.NodeDeviceToken
+                : data.DeviceToken;
+
+            return string.IsNullOrWhiteSpace(token)
+                ? DeviceTokenReadResult.Missing($"No stored {role} device token.")
+                : DeviceTokenReadResult.Resolved(token);
         }
         catch (IOException ex)
         {
@@ -89,7 +94,12 @@ public class DeviceIdentity
             logger?.Warn($"Failed to read stored device token: {ex.Message}");
             return DeviceTokenReadResult.Corrupt(ex.Message);
         }
-        catch (InvalidOperationException ex)
+        catch (Exception ex) when (
+            ex is FormatException
+                or ArgumentException
+                or InvalidDataException
+                or InvalidOperationException
+                or CryptographicException)
         {
             logger?.Warn($"Failed to read stored device token: {ex.Message}");
             return DeviceTokenReadResult.Corrupt(ex.Message);
@@ -101,6 +111,20 @@ public class DeviceIdentity
 
     public static bool HasStoredDeviceTokenForRole(string dataPath, string role, IOpenClawLogger? logger = null) =>
         !string.IsNullOrWhiteSpace(TryReadStoredDeviceTokenForRole(dataPath, role, logger));
+
+    private static string? ResolveStoredToken(string dataPath, DeviceTokenReadResult result)
+    {
+        if (result.Status == DeviceTokenReadStatus.Resolved)
+            return result.Token;
+        if (result.Status == DeviceTokenReadStatus.Missing)
+            return null;
+
+        var keyPath = Path.Combine(dataPath, "device-key-ed25519.json");
+        Exception cause = result.Status == DeviceTokenReadStatus.Unreadable
+            ? new IOException(result.Detail ?? "Identity file could not be read.")
+            : new InvalidDataException(result.Detail ?? "Identity file is invalid.");
+        throw new DeviceIdentityLoadException(keyPath, cause);
+    }
 
     /// <summary>
     /// Sets the operator <c>DeviceToken</c> field to <c>null</c> in
@@ -145,6 +169,14 @@ public class DeviceIdentity
                 return false;
             }
 
+            var data = root.Deserialize<DeviceKeyData>();
+            if (data == null)
+            {
+                logger?.Warn("Failed to clear all device tokens: device-key-ed25519.json did not contain an object.");
+                return false;
+            }
+            _ = ValidateAndReconstruct(data);
+
             bool hadTokens = false;
             using var ms = new MemoryStream();
             using (var writer = new System.Text.Json.Utf8JsonWriter(ms, new System.Text.Json.JsonWriterOptions { Indented = true }))
@@ -181,6 +213,16 @@ public class DeviceIdentity
             return false;
         }
         catch (JsonException ex)
+        {
+            logger?.Warn($"Failed to clear all device tokens: {ex.Message}");
+            return false;
+        }
+        catch (Exception ex) when (
+            ex is FormatException
+                or ArgumentException
+                or InvalidDataException
+                or InvalidOperationException
+                or CryptographicException)
         {
             logger?.Warn($"Failed to clear all device tokens: {ex.Message}");
             return false;
@@ -249,101 +291,269 @@ public class DeviceIdentity
     }
     
     public DeviceIdentity(string dataPath, IOpenClawLogger? logger = null)
+        : this(dataPath, logger, DeviceIdentityFileSystem.Instance)
+    {
+    }
+
+    internal DeviceIdentity(
+        string dataPath,
+        IOpenClawLogger? logger,
+        IDeviceIdentityFileSystem fileSystem)
     {
         _keyPath = Path.Combine(dataPath, "device-key-ed25519.json");
         _logger = logger ?? NullLogger.Instance;
+        _fileSystem = fileSystem;
     }
     
     /// <summary>
-    /// Initialize the device identity - loads existing or generates new keypair
+    /// Initialize the device identity. Existing files load fail-closed; a new
+    /// identity is published only when the path is conclusively absent.
     /// </summary>
     public void Initialize()
     {
-        if (File.Exists(_keyPath))
+        bool identityExists;
+        try
+        {
+            identityExists = _fileSystem.IdentityFileExists(_keyPath);
+        }
+        catch (Exception ex) when (IsIdentityLoadFailure(ex))
+        {
+            throw CreateLoadException(ex);
+        }
+
+        if (identityExists)
         {
             LoadExisting();
+            return;
         }
-        else
-        {
-            GenerateNew();
-        }
+
+        GenerateNewOrLoadWinner();
     }
-    
+
     private void LoadExisting()
     {
         try
         {
-            var json = File.ReadAllText(_keyPath);
-            var data = JsonSerializer.Deserialize<DeviceKeyData>(json);
-            
-            if (data == null || string.IsNullOrEmpty(data.PrivateKeyBase64))
-            {
-                _logger.Warn("Invalid device key file, generating new");
-                GenerateNew();
-                return;
-            }
-            
-            _privateKey = Convert.FromBase64String(data.PrivateKeyBase64);
-            _publicKey = new byte[Ed25519.PublicKeySize];
-            Ed25519.GeneratePublicKey(_privateKey, 0, _publicKey, 0);
-            _deviceId = data.DeviceId;
-            _deviceToken = data.DeviceToken;
-            _deviceTokenScopes = NormalizeScopes(data.DeviceTokenScopes);
-            _nodeDeviceToken = data.NodeDeviceToken;
-            _nodeDeviceTokenScopes = NormalizeScopes(data.NodeDeviceTokenScopes);
-            
-            _logger.Info($"Loaded Ed25519 device identity: {_deviceId?[..16]}...");
+            var json = _fileSystem.ReadAllText(_keyPath);
+            var data = JsonSerializer.Deserialize<DeviceKeyData>(json)
+                ?? throw new InvalidDataException("Identity JSON did not contain an object.");
+
+            var material = ValidateAndReconstruct(data);
+            ApplyIdentity(data, material.PrivateKey, material.PublicKey, material.DeviceId);
+
+            _logger.Info($"Loaded Ed25519 device identity: {_deviceId![..16]}...");
         }
-        catch (Exception ex)
+        catch (DeviceIdentityLoadException)
         {
-            _logger.Error($"Failed to load device key: {DescribeException(ex)}");
-            GenerateNew();
+            throw;
+        }
+        catch (Exception ex) when (IsIdentityLoadFailure(ex))
+        {
+            throw CreateLoadException(ex);
         }
     }
-    
-    private void GenerateNew()
+
+    private static IdentityMaterial ValidateAndReconstruct(DeviceKeyData data)
+    {
+        if (string.IsNullOrWhiteSpace(data.PrivateKeyBase64))
+            throw new InvalidDataException("Identity private key is missing.");
+
+        var privateKey = Convert.FromBase64String(data.PrivateKeyBase64);
+        if (privateKey.Length != Ed25519.SecretKeySize)
+        {
+            throw new InvalidDataException(
+                $"Identity private key must be {Ed25519.SecretKeySize} bytes.");
+        }
+
+        var publicKey = new byte[Ed25519.PublicKeySize];
+        Ed25519.GeneratePublicKey(privateKey, 0, publicKey, 0);
+
+        if (!string.IsNullOrWhiteSpace(data.PublicKeyBase64))
+        {
+            var storedPublicKey = Convert.FromBase64String(data.PublicKeyBase64);
+            if (!CryptographicOperations.FixedTimeEquals(publicKey, storedPublicKey))
+                throw new InvalidDataException("Identity public key does not match the private key.");
+        }
+
+        var deviceId = ComputeDeviceId(publicKey);
+        if (string.IsNullOrWhiteSpace(data.DeviceId))
+            throw new InvalidDataException("Identity device ID is missing.");
+        if (!string.Equals(data.DeviceId, deviceId, StringComparison.OrdinalIgnoreCase))
+            throw new InvalidDataException("Identity device ID does not match the keypair.");
+        if (!string.IsNullOrWhiteSpace(data.Algorithm) &&
+            !string.Equals(data.Algorithm, "Ed25519", StringComparison.OrdinalIgnoreCase))
+        {
+            throw new InvalidDataException("Identity algorithm is not Ed25519.");
+        }
+
+        return new IdentityMaterial(privateKey, publicKey, deviceId);
+    }
+
+    private void GenerateNewOrLoadWinner()
+    {
+        try
+        {
+            GenerateNewOrLoadWinnerCore();
+        }
+        catch (DeviceIdentityLoadException)
+        {
+            throw;
+        }
+        catch (Exception ex) when (IsIdentityLoadFailure(ex))
+        {
+            throw CreateLoadException(ex);
+        }
+    }
+
+    private void GenerateNewOrLoadWinnerCore()
     {
         _logger.Info("Generating new Ed25519 device keypair...");
-        
-        _privateKey = new byte[Ed25519.SecretKeySize];
-        RandomNumberGenerator.Fill(_privateKey);
-        _publicKey = new byte[Ed25519.PublicKeySize];
-        Ed25519.GeneratePublicKey(_privateKey, 0, _publicKey, 0);
-        
-        // Get raw 32-byte public key
-        var publicKeyBytes = _publicKey;
-        
-        // Device ID is SHA256 hash of raw 32-byte public key (hex encoded)
-        using var sha256 = SHA256.Create();
-        var hashBytes = sha256.ComputeHash(publicKeyBytes);
-        _deviceId = Convert.ToHexString(hashBytes).ToLowerInvariant();
-        
-        // Export private key for storage
-        var privateKeyBytes = _privateKey;
-        
-        // Save to disk
+
+        var privateKey = new byte[Ed25519.SecretKeySize];
+        RandomNumberGenerator.Fill(privateKey);
+        var publicKey = new byte[Ed25519.PublicKeySize];
+        Ed25519.GeneratePublicKey(privateKey, 0, publicKey, 0);
+        var deviceId = ComputeDeviceId(publicKey);
+
         var data = new DeviceKeyData
         {
-            PrivateKeyBase64 = Convert.ToBase64String(privateKeyBytes),
-            PublicKeyBase64 = Convert.ToBase64String(publicKeyBytes),
-            DeviceId = _deviceId,
+            PrivateKeyBase64 = Convert.ToBase64String(privateKey),
+            PublicKeyBase64 = Convert.ToBase64String(publicKey),
+            DeviceId = deviceId,
             Algorithm = "Ed25519",
             CreatedAt = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()
         };
-        
+
         var dir = Path.GetDirectoryName(_keyPath);
-        if (!string.IsNullOrEmpty(dir) && !Directory.Exists(dir))
+        if (!string.IsNullOrEmpty(dir) && !_fileSystem.DirectoryExists(dir))
         {
-            Directory.CreateDirectory(dir);
+            _fileSystem.CreateDirectory(dir);
         }
         if (!string.IsNullOrEmpty(dir))
             McpAuthToken.TryRestrictDataDirectoryAcl(dir);
-        
-        // Save to disk via atomic temp+rename so a process-kill or power-loss
-        // mid-write cannot leave a torn/zero-byte key file that the next
-        // LoadOrCreate would treat as invalid and silently rotate the identity.
-        AtomicWriteKeyFile(_keyPath, data);
-        _logger.Info($"Generated new Ed25519 device identity: {_deviceId}");
+
+        if (!TryCreateKeyFile(data))
+        {
+            _logger.Info("Another process created the Ed25519 device identity; loading the persisted identity.");
+            LoadCreateWinner();
+            return;
+        }
+
+        ApplyIdentity(data, privateKey, publicKey, deviceId);
+        _logger.Info($"Generated new Ed25519 device identity: {deviceId}");
+    }
+
+    private void LoadCreateWinner()
+    {
+        const int maxAttempts = 5;
+        for (var attempt = 1; ; attempt++)
+        {
+            try
+            {
+                LoadExisting();
+                return;
+            }
+            catch (DeviceIdentityLoadException ex) when (
+                attempt < maxAttempts &&
+                IsTransientSharingFailure(ex.InnerException))
+            {
+                Thread.Sleep(TimeSpan.FromMilliseconds(attempt * 10));
+            }
+        }
+    }
+
+    private bool TryCreateKeyFile(DeviceKeyData data)
+    {
+        var json = JsonSerializer.Serialize(data, JsonSerializerOptionsCache.WriteIndented);
+        var dir = Path.GetDirectoryName(_keyPath);
+        var tempDir = string.IsNullOrEmpty(dir) ? Environment.CurrentDirectory : dir;
+        var tempPath = Path.Combine(
+            tempDir,
+            $".{Path.GetFileName(_keyPath)}.{Guid.NewGuid():N}.tmp");
+
+        try
+        {
+            _fileSystem.WriteAllText(tempPath, json);
+            McpAuthToken.TryRestrictSensitiveFileAcl(tempPath);
+
+            try
+            {
+                _fileSystem.MoveFileNoOverwrite(tempPath, _keyPath);
+            }
+            catch (IOException ex) when (IsAlreadyExists(ex))
+            {
+                return false;
+            }
+
+            McpAuthToken.TryRestrictSensitiveFileAcl(_keyPath);
+            return true;
+        }
+        finally
+        {
+            try
+            {
+                if (_fileSystem.FileExists(tempPath))
+                    _fileSystem.DeleteFile(tempPath);
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Trace.WriteLine(
+                    $"DeviceIdentity.TryCreateKeyFile: temp cleanup failed: {ex.GetType().Name}: {ex.Message}");
+            }
+        }
+    }
+
+    private void ApplyIdentity(
+        DeviceKeyData data,
+        byte[] privateKey,
+        byte[] publicKey,
+        string deviceId)
+    {
+        _privateKey = privateKey;
+        _publicKey = publicKey;
+        _deviceId = deviceId;
+        _deviceToken = data.DeviceToken;
+        _deviceTokenScopes = NormalizeScopes(data.DeviceTokenScopes);
+        _nodeDeviceToken = data.NodeDeviceToken;
+        _nodeDeviceTokenScopes = NormalizeScopes(data.NodeDeviceTokenScopes);
+    }
+
+    private DeviceIdentityLoadException CreateLoadException(Exception ex)
+    {
+        _logger.Error(
+            $"Failed to load device key. Identity path left unchanged: {DescribeException(ex)}");
+        return new DeviceIdentityLoadException(_keyPath, ex);
+    }
+
+    private static bool IsIdentityLoadFailure(Exception ex) =>
+        ex is IOException
+            or UnauthorizedAccessException
+            or JsonException
+            or FormatException
+            or ArgumentException
+            or InvalidDataException
+            or InvalidOperationException
+            or CryptographicException;
+
+    private static bool IsAlreadyExists(IOException ex)
+    {
+        var nativeError = ex.HResult & 0xFFFF;
+        return nativeError is 17 or 80 or 183;
+    }
+
+    private static bool IsTransientSharingFailure(Exception? ex)
+    {
+        if (ex is not IOException ioException)
+            return false;
+
+        var nativeError = ioException.HResult & 0xFFFF;
+        return nativeError is 32 or 33;
+    }
+
+    private static string ComputeDeviceId(byte[] publicKey)
+    {
+        var hashBytes = SHA256.HashData(publicKey);
+        return Convert.ToHexString(hashBytes).ToLowerInvariant();
     }
     
     /// <summary>
@@ -549,28 +759,23 @@ public class DeviceIdentity
         if (string.IsNullOrWhiteSpace(token))
             throw new ArgumentException("Device token cannot be empty.", nameof(token));
 
-        _deviceToken = token;
-        _deviceTokenScopes = scopes;
-        
-        // Update the key file with the token
         try
         {
-            if (File.Exists(_keyPath))
-            {
-                var json = File.ReadAllText(_keyPath);
-                var data = JsonSerializer.Deserialize<DeviceKeyData>(json);
-                if (data != null)
-                {
-                    data.DeviceToken = token;
-                    data.DeviceTokenScopes = scopes;
-                    AtomicWriteKeyFile(_keyPath, data);
-                    _logger.Info("Device token stored");
-                }
-            }
+            var data = ReadCurrentIdentityForTokenUpdate();
+            data.DeviceToken = token;
+            data.DeviceTokenScopes = scopes;
+            AtomicWriteKeyFile(_keyPath, data);
+            _deviceToken = token;
+            _deviceTokenScopes = scopes;
+            _logger.Info("Device token stored");
         }
-        catch (Exception ex)
+        catch (DeviceIdentityLoadException)
         {
-            _logger.Error($"Failed to store device token: {ex.Message}");
+            throw;
+        }
+        catch (Exception ex) when (IsIdentityLoadFailure(ex))
+        {
+            throw CreateLoadException(ex);
         }
     }
 
@@ -579,28 +784,41 @@ public class DeviceIdentity
         if (string.IsNullOrWhiteSpace(token))
             throw new ArgumentException("Device token cannot be empty.", nameof(token));
 
-        _nodeDeviceToken = token;
-        _nodeDeviceTokenScopes = scopes;
-
         try
         {
-            if (File.Exists(_keyPath))
-            {
-                var json = File.ReadAllText(_keyPath);
-                var data = JsonSerializer.Deserialize<DeviceKeyData>(json);
-                if (data != null)
-                {
-                    data.NodeDeviceToken = token;
-                    data.NodeDeviceTokenScopes = scopes;
-                    AtomicWriteKeyFile(_keyPath, data);
-                    _logger.Info("Node device token stored");
-                }
-            }
+            var data = ReadCurrentIdentityForTokenUpdate();
+            data.NodeDeviceToken = token;
+            data.NodeDeviceTokenScopes = scopes;
+            AtomicWriteKeyFile(_keyPath, data);
+            _nodeDeviceToken = token;
+            _nodeDeviceTokenScopes = scopes;
+            _logger.Info("Node device token stored");
         }
-        catch (Exception ex)
+        catch (DeviceIdentityLoadException)
         {
-            _logger.Error($"Failed to store node device token: {ex.Message}");
+            throw;
         }
+        catch (Exception ex) when (IsIdentityLoadFailure(ex))
+        {
+            throw CreateLoadException(ex);
+        }
+    }
+
+    private DeviceKeyData ReadCurrentIdentityForTokenUpdate()
+    {
+        if (_deviceId == null)
+            throw new InvalidOperationException("Device not initialized");
+        if (!File.Exists(_keyPath))
+            throw new FileNotFoundException("Device identity file is missing.", _keyPath);
+
+        var json = File.ReadAllText(_keyPath);
+        var data = JsonSerializer.Deserialize<DeviceKeyData>(json)
+            ?? throw new InvalidDataException("Identity file was empty or invalid.");
+        var material = ValidateAndReconstruct(data);
+        if (!string.Equals(material.DeviceId, _deviceId, StringComparison.Ordinal))
+            throw new InvalidDataException("Identity file changed while updating its device token.");
+
+        return data;
     }
 
     /// <summary>
@@ -689,6 +907,11 @@ public class DeviceIdentity
         Operator,
         Node
     }
+
+    private sealed record IdentityMaterial(
+        byte[] PrivateKey,
+        byte[] PublicKey,
+        string DeviceId);
 
     private class DeviceKeyData
     {

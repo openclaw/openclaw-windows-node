@@ -22,6 +22,8 @@ public sealed record ExecApprovedExecution
     public string? Cwd { get; }
     public int TimeoutMs { get; }
     public IReadOnlyDictionary<string, string>? Env { get; }
+    internal ExecApprovalsCurrency? PolicyCurrency { get; init; }
+    internal string? PolicyAgentId { get; init; }
 
     public ExecApprovedExecution(
         IReadOnlyList<string> argv,

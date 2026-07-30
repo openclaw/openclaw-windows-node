@@ -1903,7 +1903,7 @@ Utilisez l'une de ces options :
     <value>Stratégie d’exécution</value>
   </data>
   <data name="PermissionsPage_TextBlock_17.Text" xml:space="preserve">
-    <value>Contrôle les commandes que l’agent peut exécuter sur ce nœud. Les règles sont comparées à la ligne de commande complète.</value>
+    <value>Contrôle les exécutables que l’agent peut lancer sur ce nœud. Les règles correspondent aux chemins d’accès résolus des exécutables.</value>
   </data>
   <data name="DefaultActionCombo.Header" xml:space="preserve">
     <value>Action par défaut</value>
@@ -1921,7 +1921,7 @@ Utilisez l'une de ces options :
     <value>Règles</value>
   </data>
   <data name="NewRulePattern.PlaceholderText" xml:space="preserve">
-    <value>Modèle de commande (par ex. echo *)</value>
+    <value>Motif de chemin d’exécutable (p. ex. **/git.exe)</value>
   </data>
   <data name="PermissionsPage_ComboBoxItem_54.Content" xml:space="preserve">
     <value>Refuser</value>
@@ -4427,7 +4427,7 @@ Les commandes sont bloquées tant que le sandboxing est indisponible, car le blo
     <value>Ce qui se passe lorsqu'une commande ne correspond à aucune règle ci-dessous.</value>
   </data>
   <data name="PermissionsPage_PatternsAreMatchedLeft.Text" xml:space="preserve">
-    <value>Les motifs sont comparés de gauche à droite à la ligne de commande complète. Utilisez * comme caractère générique. Les modifications sont enregistrées automatiquement.</value>
+    <value>Les motifs de liste d’autorisation correspondent aux chemins d’accès résolus des exécutables. Utilisez des caractères génériques tels que **/git.exe. Les modifications sont enregistrées automatiquement.</value>
   </data>
   <data name="PermissionsPage_Saved.Text" xml:space="preserve">
     <value>Enregistré</value>
@@ -4762,12 +4762,6 @@ Les commandes sont bloquées tant que le sandboxing est indisponible, car le blo
   </data>
   <data name="SettingsPage_Chat.Text" xml:space="preserve">
     <value>Conversation</value>
-  </data>
-  <data name="SettingsRow_ReadAloud_Header.Text" xml:space="preserve">
-    <value>Lire les réponses à voix haute</value>
-  </data>
-  <data name="SettingsRow_ReadAloud_Description.Text" xml:space="preserve">
-    <value>Lire les réponses de l’assistant à voix haute pendant la conversation.</value>
   </data>
   <data name="SettingsRow_ShowToolCalls_Header.Text" xml:space="preserve">
     <value>Afficher les appels d’outils et l’utilisation</value>
@@ -6872,5 +6866,11 @@ Le binaire wxc-exec est introuvable. {1} S'il s'agit d'une build développeur, c
   </data>
   <data name="JsonPreviewSplitter.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.LocalizedControlType" xml:space="preserve">
     <value>séparateur</value>
+  </data>
+  <data name="PermissionsPage_ExecPolicySaved" xml:space="preserve">
+    <value>Enregistré</value>
+  </data>
+  <data name="PermissionsPage_ExecPolicySaveFailed" xml:space="preserve">
+    <value>Échec de l’enregistrement</value>
   </data>
 </root>

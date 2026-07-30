@@ -27,11 +27,17 @@ public static class SessionVisibilityFilter
     public static ChatThreadStatus ToChatThreadStatus(SessionInfo session)
         => IsEnded(session) ? ChatThreadStatus.Ended : ChatThreadStatus.Running;
 
-    public static IEnumerable<ChatThread> VisibleChatPickerThreads(IEnumerable<ChatThread> threads)
-        => threads.Where(IsVisibleInChatPicker);
+    public static IEnumerable<ChatThread> VisibleChatPickerThreads(
+        IEnumerable<ChatThread> threads,
+        string? activeThreadId = null)
+        => threads.Where(thread => IsVisibleInChatPicker(thread, activeThreadId));
 
-    public static bool IsVisibleInChatPicker(ChatThread thread)
-        => thread.Status != ChatThreadStatus.Ended;
+    public static bool IsVisibleInChatPicker(ChatThread thread, string? activeThreadId = null)
+        => string.Equals(thread.Id, activeThreadId, StringComparison.Ordinal)
+            || thread.Activity != ChatActivity.Idle
+            || thread.InputTokens > 0
+            || thread.OutputTokens > 0
+            || thread.TotalTokens > 0;
 
     public static string ResolveActiveChannel(string activeChannel, IEnumerable<string> visibleChannels)
     {

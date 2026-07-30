@@ -81,13 +81,8 @@ public sealed class MxcCommandRunner : IHostFallbackAwareCommandRunner, IDirectA
     }
 
     /// <summary>
-    /// A direct-argv request can only be honored by the host runner: the sandbox
-    /// protocol carries the legacy command/shell/args fields and cannot transport
-    /// an argv faithfully yet. This reports which transport a request submitted
-    /// now would reach, so callers that must execute an approved argv verbatim
-    /// can fail closed up front instead of after approval. It never disables or
-    /// bypasses the sandbox: when the sandbox would run the request, the answer
-    /// is simply "not supported".
+    /// Every active route preserves direct argv: host runners use ArgumentList,
+    /// and MXC uses a CommandLineToArgvW-reversible process command line.
     /// </summary>
     public bool CanExecuteDirectArgv()
     {
@@ -95,20 +90,20 @@ public sealed class MxcCommandRunner : IHostFallbackAwareCommandRunner, IDirectA
         if (!settings.SystemRunSandboxEnabled)
             return true;
 
-        // Sandbox enabled but unavailable: the compatibility host fallback honors
-        // Argv, and the strict-blocking variant rejects every request with its own
-        // explicit denial, so neither case needs the up-front argv gate.
         if (!_isSandboxAvailable())
             return true;
 
-        return false;
+        return true;
     }
 
     public async Task<CommandResult> RunAsync(CommandRequest request, CancellationToken ct = default)
     {
         var settings = _settingsProvider();
-        var effectiveShell = ResolveEffectiveShell(request.Shell);
-        if (!TryValidateApprovedEffectiveShell(request, effectiveShell, out var approvalDeny))
+        var effectiveShell = request.Argv is null
+            ? ResolveEffectiveShell(request.Shell)
+            : null;
+        if (effectiveShell is not null
+            && !TryValidateApprovedEffectiveShell(request, effectiveShell, out var approvalDeny))
             return approvalDeny!;
 
         if (!settings.SystemRunSandboxEnabled)
@@ -141,28 +136,6 @@ public sealed class MxcCommandRunner : IHostFallbackAwareCommandRunner, IDirectA
                 effectiveShell,
                 NodeToolExecutionMode.HostFallback,
                 ct);
-        }
-
-        // A direct-argv request reaching the sandbox cannot be honored: the sandbox
-        // protocol only carries the legacy command/shell/args fields, so serializing
-        // would silently run something other than the approved argv. Fail closed until
-        // the sandbox transport carries argv faithfully. The host-fallback branches
-        // above keep working because the host runner does honor Argv.
-        if (request.Argv is not null)
-        {
-            _logger.Warn("[mxc] system.run BLOCKED: direct-argv request reached the sandbox, " +
-                "which has no argv transport yet. Failing closed rather than running the legacy fields.");
-            return new CommandResult
-            {
-                Stdout = string.Empty,
-                Stderr = "Sandboxed system.run cannot execute a direct-argv command yet.",
-                ExitCode = -1,
-                TimedOut = false,
-                DurationMs = 0,
-                ExecutionMode = NodeToolExecutionMode.Sandbox,
-                ErrorCategory = NodeToolErrorCategory.SandboxDenied,
-                SandboxDenialReason = NodeToolSandboxDenialReason.DirectArgvUnsupported,
-            };
         }
 
         var settingsDirectoryPath = _settingsDirectoryPathProvider();
@@ -219,8 +192,12 @@ public sealed class MxcCommandRunner : IHostFallbackAwareCommandRunner, IDirectA
             _logger.Warn(
                 $"[mxc] system.run UNCONTAINED: sandbox became unavailable at runtime ({ex.Message}); " +
                 "routing through host runner for compatibility.");
-            if (!TryResolveApprovedHostFallbackShell(request, effectiveShell, out var hostShell, out var deny))
+            string? hostShell = null;
+            if (request.Argv is null
+                && !TryResolveApprovedHostFallbackShell(request, effectiveShell!, out hostShell, out var deny))
+            {
                 return deny!;
+            }
 
             return await RunHostFallbackAsync(
                 request,
@@ -296,7 +273,7 @@ public sealed class MxcCommandRunner : IHostFallbackAwareCommandRunner, IDirectA
 
     private async Task<CommandResult> RunHostFallbackAsync(
         CommandRequest request,
-        string effectiveShell,
+        string? effectiveShell,
         NodeToolExecutionMode executionMode,
         CancellationToken ct)
     {
@@ -444,13 +421,14 @@ public sealed class MxcCommandRunner : IHostFallbackAwareCommandRunner, IDirectA
             : NodeToolErrorCategory.CommandFailed;
     }
 
-    private static JsonElement SerializeArgs(CommandRequest request, string effectiveShell)
+    private static JsonElement SerializeArgs(CommandRequest request, string? effectiveShell)
     {
         var payload = new
         {
             command = request.Command,
             shell = effectiveShell,
             args = request.Args ?? Array.Empty<string>(),
+            argv = request.Argv,
             cwd = request.Cwd,
             env = request.Env,
             timeoutMs = request.TimeoutMs,
@@ -463,7 +441,7 @@ public sealed class MxcCommandRunner : IHostFallbackAwareCommandRunner, IDirectA
     private void LogSandboxRequest(
         SandboxExecutionRequest sandboxRequest,
         CommandRequest commandRequest,
-        string effectiveShell,
+        string? effectiveShell,
         SettingsData settings,
         string settingsDirectoryPath,
         SandboxPolicy policy)
@@ -479,7 +457,7 @@ public sealed class MxcCommandRunner : IHostFallbackAwareCommandRunner, IDirectA
             $"downloads={settings.SandboxDownloadsAccess?.ToString() ?? "<null>"},desktop={settings.SandboxDesktopAccess?.ToString() ?? "<null>"}," +
             $"customFolderCount={settings.SandboxCustomFolders?.Count ?? 0},timeoutMs={settings.SandboxTimeoutMs},maxOutputBytes={settings.SandboxMaxOutputBytes}," +
             $"settingsDirectoryPath={(string.IsNullOrWhiteSpace(settingsDirectoryPath) ? "<null>" : "<set>")}}}; " +
-            $"shell={effectiveShell}; requestedShell={(string.IsNullOrWhiteSpace(commandRequest.Shell) ? "<auto>" : "<set>")}; " +
+            $"shell={effectiveShell ?? "<direct-argv>"}; requestedShell={(string.IsNullOrWhiteSpace(commandRequest.Shell) ? "<auto>" : "<set>")}; " +
             $"commandLength={commandRequest.Command?.Length ?? 0}; " +
             $"cwd={(string.IsNullOrEmpty(commandRequest.Cwd) ? "<null>" : "<set>")}; " +
             $"envKeys=[{string.Join(",", envKeys)}]; " +

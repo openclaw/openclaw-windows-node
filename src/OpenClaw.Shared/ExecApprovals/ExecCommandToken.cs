@@ -40,10 +40,46 @@ internal static class ExecCommandToken
             "sh", "bash", "zsh", "dash", "ash", "ksh", "fish",
             "cmd", "powershell", "pwsh",
             "wsl", "cscript", "wscript",
+            "py", "pyw", "python", "pythonw", "pypy",
+            "node", "nodejs", "deno", "bun", "qjs",
+            "ruby", "jruby", "perl", "php", "lua", "luajit",
+            "java", "javaw", "jshell", "dotnet", "csi", "fsi", "fsharpi",
+            "r", "rscript", "tclsh", "wish", "groovy",
         };
 
-    internal static bool IsIndirectCommandHost(string token) =>
-        s_indirectCommandHosts.Contains(NormalizedBasename(token));
+    internal static bool IsIndirectCommandHost(string token)
+    {
+        var basename = NormalizedBasename(token);
+        return s_indirectCommandHosts.Contains(basename)
+            || IsVersionedInterpreter(basename, "python")
+            || IsVersionedInterpreter(basename, "pythonw")
+            || IsVersionedInterpreter(basename, "pypy");
+    }
+
+    private static bool IsVersionedInterpreter(string basename, string prefix)
+    {
+        if (!basename.StartsWith(prefix, StringComparison.Ordinal)
+            || basename.Length == prefix.Length)
+        {
+            return false;
+        }
+
+        var suffix = basename.AsSpan(prefix.Length);
+        var sawDigit = false;
+        foreach (var ch in suffix)
+        {
+            if (char.IsDigit(ch))
+            {
+                sawDigit = true;
+                continue;
+            }
+
+            if (ch != '.')
+                return false;
+        }
+
+        return sawDigit;
+    }
 
     // Extracts the first shell-tokenized word from a command pattern. Quoted paths
     // remain one token, and a suffix after the closing quote is preserved so

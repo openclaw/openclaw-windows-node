@@ -79,23 +79,15 @@ public sealed class PresentationSeamContractTests
     }
 
     [Fact]
-    public void App_SuppressesOnlySettingsOriginatedSpeakerMute()
+    public void App_AppliesToolCallVisibilityFromPersistedSettings()
     {
         var source = ReadAppSources();
 
-        // The Settings-page-originated mute (explicit IAppCommands impl) suppresses its own echo
-        // by wrapping the shared write in a store self-write...
-        var explicitIdx = source.IndexOf("void IAppCommands.SetChatSpeakerMuted", StringComparison.Ordinal);
-        Assert.True(explicitIdx >= 0, "Expected an explicit IAppCommands.SetChatSpeakerMuted for the Settings-originated path.");
-        var explicitBlock = source.Substring(explicitIdx, Math.Min(300, source.Length - explicitIdx));
-        Assert.Contains("BeginSelfWrite", explicitBlock);
-
-        // ...while the public method (used by chat window / chat page / voice settings) persists
-        // WITHOUT a self-write scope, so an open Settings page still reflects a mute toggled there.
-        var publicIdx = source.IndexOf("public void SetChatSpeakerMuted", StringComparison.Ordinal);
-        Assert.True(publicIdx >= 0, "Expected a public SetChatSpeakerMuted for other surfaces.");
-        var publicBlock = source.Substring(publicIdx, Math.Min(300, source.Length - publicIdx));
-        Assert.DoesNotContain("BeginSelfWrite", publicBlock);
+        var settingsSavedIdx = source.IndexOf("private void OnSettingsSaved", StringComparison.Ordinal);
+        Assert.True(settingsSavedIdx >= 0, "Expected App to handle persisted settings saves.");
+        var settingsSavedBlock = source.Substring(settingsSavedIdx, Math.Min(500, source.Length - settingsSavedIdx));
+        Assert.Contains("SetToolCallsVisible", settingsSavedBlock);
+        Assert.Contains("_settings.ShowChatToolCalls", settingsSavedBlock);
     }
 
     [Fact]

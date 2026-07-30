@@ -69,6 +69,7 @@ public class TestWebSocketClient : WebSocketClientBase
     public string TestGatewayUrlForDisplay => GatewayUrlForDisplay;
     public string TestToken => _token;
     public IOpenClawLogger TestLogger => _logger;
+    public Task TestReconnectWithBackoffAsync() => ReconnectWithBackoffAsync();
 }
 
 [Collection("WebSocketClientBase")]
@@ -95,6 +96,26 @@ public class WebSocketClientBaseTests
         var client = new TestWebSocketClient("ws://localhost:18789", "my-token", _logger);
         Assert.Equal("my-token", client.TestToken);
         client.Dispose();
+    }
+
+    [Fact]
+    public async Task AutoReconnect_AuthorizationDenied_DoesNotOpenSocket()
+    {
+        using var client = new TestWebSocketClient("ws://127.0.0.1:1", "strong-token", _logger);
+        var authorizationCalls = 0;
+        client.ReconnectAuthorizationAsync = _ =>
+        {
+            authorizationCalls++;
+            return Task.FromResult(new ReconnectAuthorizationResult(
+                false,
+                GatewayErrorKind.LocalPortConflict,
+                "blocked"));
+        };
+
+        await client.TestReconnectWithBackoffAsync();
+
+        Assert.Equal(1, authorizationCalls);
+        Assert.Equal(0, client.OnConnectedCallCount);
     }
 
     [Fact]
@@ -155,9 +176,12 @@ public class WebSocketClientBaseTests
     public void Dispose_IsIdempotent()
     {
         var client = new TestWebSocketClient("ws://localhost:18789", "token", _logger);
+        var disposedEvents = 0;
+        client.Disposed += (_, _) => disposedEvents++;
         client.Dispose();
         client.Dispose(); // second call should not throw
         Assert.True(client.TestIsDisposed);
+        Assert.Equal(1, disposedEvents);
         Assert.Equal(1, client.OnDisposingCallCount); // hook called only once
     }
 

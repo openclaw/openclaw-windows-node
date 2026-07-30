@@ -24,6 +24,8 @@ public class BrowserProxyCapability : NodeCapabilityBase
     private readonly int? _sshTunnelLocalPort;
     private readonly bool _allowGatewayPortFallback;
     private readonly HttpClient _httpClient;
+    private readonly Func<Uri, System.Threading.CancellationToken, Task<bool>>?
+        _authorizeEndpointAsync;
 
     public BrowserProxyCapability(
         IOpenClawLogger logger,
@@ -34,7 +36,9 @@ public class BrowserProxyCapability : NodeCapabilityBase
         int? controlPortOverride = null,
         bool useSshTunnel = false,
         int? sshTunnelLocalPort = null,
-        bool? allowGatewayPortFallback = null) : base(logger)
+        bool? allowGatewayPortFallback = null,
+        Func<Uri, System.Threading.CancellationToken, Task<bool>>?
+            authorizeEndpointAsync = null) : base(logger)
     {
         _gatewayUrl = gatewayUrl;
         _bearerToken = bearerToken ?? "";
@@ -44,6 +48,7 @@ public class BrowserProxyCapability : NodeCapabilityBase
         _sshTunnelLocalPort = sshTunnelLocalPort;
         _allowGatewayPortFallback = allowGatewayPortFallback ??
             BrowserControlEndpoint.AllowsGatewayPortFallback(gatewayUrl);
+        _authorizeEndpointAsync = authorizeEndpointAsync;
         _httpClient = handler == null ? new HttpClient() : new HttpClient(handler);
     }
 
@@ -72,6 +77,13 @@ public class BrowserProxyCapability : NodeCapabilityBase
         var uri = BuildUri(controlPort, path, request.Args);
         try
         {
+            if (!string.IsNullOrWhiteSpace(_bearerToken) &&
+                _authorizeEndpointAsync is not null &&
+                !await _authorizeEndpointAsync(uri, timeoutCts.Token).ConfigureAwait(false))
+            {
+                return Error("Browser control authentication was blocked because the local listener owner could not be verified.");
+            }
+
             using var httpRequest = CreateHttpRequest(method, uri, request.Args, usePasswordAuth: false);
             using var response = await _httpClient.SendAsync(httpRequest, timeoutCts.Token);
             var responseText = await response.Content.ReadAsStringAsync(timeoutCts.Token);

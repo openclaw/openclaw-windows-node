@@ -500,69 +500,41 @@ public sealed class OpenClawChatRoot : Component
 
         var emptyConversationIsAuthoritative = welcomeEligibleRaw && welcomeSettledState.Value;
 
-        Element body;
-        var bodyIsSkeleton = false;
-        if (effectiveThread is null)
-        {
-            // Pre-connect window: no real session and no compose target
-            // ready yet. Skip the welcome zero-state so returning users
-            // don't get the prompt suggestion screen while the node is
-            // still connecting. Show skeleton placeholders instead of a
-            // spinner so the surface visually resembles the chat that
-            // will land in a moment.
-            body = RenderSkeletonTimeline();
-            bodyIsSkeleton = true;
-        }
-        else if (isEmptyConversation && !emptyConversationIsAuthoritative)
-        {
-            // Real session selected but its history hasn't finished
-            // loading yet. Render skeleton message bubbles so the user
-            // sees the chat's structural shape forming up; the real
-            // entries replace the skeleton once chat.history lands.
-            body = RenderSkeletonTimeline();
-            bodyIsSkeleton = true;
-        }
-        else if (isEmptyConversation)
-        {
-            body = RenderZeroState(suggestion =>
-                {
-                    if (firstSendInFlight.Value) return; // debounce double-click
-                    if (effectiveThread is { } t)
-                    {
-                        firstSendInFlight.Set(true);
-                        ObserveFireAndForget(SendSuggestionAsync(t.Id, t.Title, suggestion));
-                    }
-                }, suggestionsDisabled: firstSendInFlight.Value);
-        }
-        else
-        {
-            body = Component<OpenClawChatTimeline, OpenClawChatTimelineProps>(new(
-                SessionId: effectiveThread.Id,
-                Entries: entries,
-                HasMoreHistory: false,
-                OnLoadMoreHistory: null,
-                EntryMetadata: entryMeta,
-                TimelineGeneration: timelineGeneration,
-                UserSenderLabel: "OpenClaw Windows Tray",
-                AssistantSenderLabel: assistantSenderLabel,
-                DefaultModel: effectiveThread.Model,
-                DefaultUsageSummary: usageSummary,
-                ShowThinkingIndicator: showThinking,
-                ShowToolCalls: showToolCalls.Value,
-                ToolCallsCollapseVersion: toolCallsCollapseVersion.Value,
-                OnReadAloud: _onReadAloud is not null
-                    ? (text => _onReadAloud(text))
-                    : null,
-                OnStopSpeaking: _onStopSpeaking,
-                ScrollToBottomToken: scrollToBottomToken.Value,
-                OnPermissionResponse: (rid, action) => OnPermission(effectiveThread.Id!, rid, action)));
-        }
+        var timelineProps = new OpenClawChatTimelineProps(
+            SessionId: effectiveThread?.Id,
+            Entries: entries,
+            HasMoreHistory: false,
+            OnLoadMoreHistory: null,
+            EntryMetadata: entryMeta,
+            TimelineGeneration: timelineGeneration,
+            UserSenderLabel: "OpenClaw Windows Tray",
+            AssistantSenderLabel: assistantSenderLabel,
+            DefaultModel: effectiveThread?.Model,
+            DefaultUsageSummary: usageSummary,
+            ShowThinkingIndicator: showThinking,
+            ShowToolCalls: showToolCalls.Value,
+            ToolCallsCollapseVersion: toolCallsCollapseVersion.Value,
+            OnReadAloud: _onReadAloud is not null
+                ? (text => _onReadAloud(text))
+                : null,
+            OnStopSpeaking: _onStopSpeaking,
+            ScrollToBottomToken: scrollToBottomToken.Value,
+            OnPermissionResponse: effectiveThread?.Id is { } permissionThreadId
+                ? (rid, action) => OnPermission(permissionThreadId, rid, action)
+                : null);
+
+        var bodyIsSkeleton = effectiveThread is null
+            || (isEmptyConversation && !emptyConversationIsAuthoritative);
+        Element body = Component<OpenClawChatTimeline, OpenClawChatTimelineProps>(timelineProps);
 
         // Session list for the composer dropdown — grouped by the Gateway's
         // agent presentation metadata. Background sessions stay hidden unless
         // the user explicitly navigated to one, in which case it remains usable.
-        // Exclude ended sessions (completed/failed/killed/timeout) from the picker.
-        var channelGroups = SessionVisibilityFilter.VisibleChatPickerThreads(snapshot.Threads)
+        // Keep sessions with conversation activity regardless of lifecycle state.
+        // Empty gateway placeholders stay hidden unless explicitly selected.
+        var channelGroups = SessionVisibilityFilter.VisibleChatPickerThreads(
+                snapshot.Threads,
+                effectiveThread?.Id)
             .Where(t => !string.IsNullOrEmpty(t.Title)
                      && t.IsVisibleInSessionPicker(effectiveThread?.Id))
             .GroupBy(t => string.IsNullOrWhiteSpace(t.AgentId) ? "other" : t.AgentId!)
@@ -580,9 +552,8 @@ public sealed class OpenClawChatRoot : Component
         //
         // Keep routing ids opaque here too. The provider carries the Gateway's
         // agent identity separately, including for compose-only threads.
-        // Don't inject ended sessions into the synthetic group.
         if (effectiveThread is not null
-            && SessionVisibilityFilter.IsVisibleInChatPicker(effectiveThread)
+            && SessionVisibilityFilter.IsVisibleInChatPicker(effectiveThread, effectiveThread.Id)
             && !ChannelGroupsContain(channelGroups, effectiveThread.Id))
         {
             var agentId = string.IsNullOrWhiteSpace(effectiveThread.AgentId) ? "main" : effectiveThread.AgentId!;
@@ -737,74 +708,6 @@ public sealed class OpenClawChatRoot : Component
     }
 
     /// <summary>
-    /// Skeleton timeline shown in place of the welcome zero-state and the
-    /// snapshot-null loading screen while the gateway/node handshake is in
-    /// flight or <c>chat.history</c> is still being fetched. Renders a
-    /// short stack of muted, message-shaped placeholder bubbles that
-    /// alternate left/right alignment so the surface visually resembles
-    /// the timeline that will replace it once entries arrive. A returning
-    /// user therefore sees a clearly intentional "messages are loading"
-    /// affordance instead of either the first-launch prompt suggestions or
-    /// a centered spinner that has no relationship to the chat structure.
-    /// Uses a fixed 8px bubble corner radius so the skeleton matches the
-    /// composer placeholder; this is loading chrome, not the live timeline.
-    /// </summary>
-    private static Element RenderSkeletonTimeline()
-    {
-        // Two-tier palette: a softer "bubble" fill and a marginally stronger
-        // "text line" stripe so each bubble reads as a real message with
-        // text inside. Both lean subtle — the line alpha is ~20%, the bubble
-        // ~22%, so the placeholders read on light/dark/acrylic without
-        // competing with the real timeline's visual weight.
-        var bubbleBrush = (Microsoft.UI.Xaml.Media.Brush)new Microsoft.UI.Xaml.Media.SolidColorBrush(
-            global::Windows.UI.Color.FromArgb(0x38, 0x80, 0x80, 0x80));
-        var lineBrush = (Microsoft.UI.Xaml.Media.Brush)new Microsoft.UI.Xaml.Media.SolidColorBrush(
-            global::Windows.UI.Color.FromArgb(0x35, 0x80, 0x80, 0x80));
-
-        Element Line(double width) =>
-            Border()
-                .Background(lineBrush)
-                .Set(b =>
-                {
-                    b.CornerRadius = new CornerRadius(4);
-                    b.Width = width;
-                    b.Height = 8;
-                    b.HorizontalAlignment = HorizontalAlignment.Left;
-                });
-
-        // Bubble with N subtle text-line stripes inside. lineWidths drives
-        // both line count and width variation so each bubble reads like a
-        // different message length. phaseMs staggers the shimmer pulse so
-        // the bubbles breathe one after another instead of in unison.
-        Element Bubble(double[] lineWidths, HorizontalAlignment align, double phaseMs)
-        {
-            var lines = new Element?[lineWidths.Length];
-            for (int i = 0; i < lineWidths.Length; i++) lines[i] = Line(lineWidths[i]);
-            return Border(
-                VStack(8, lines)
-            ).Background(bubbleBrush)
-             .Set(b =>
-             {
-                 b.CornerRadius = new CornerRadius(8);
-                 b.Padding = new Thickness(16, 12, 16, 12);
-                 b.HorizontalAlignment = align;
-                 b.Margin = new Thickness(16, 8, 16, 8);
-             })
-             .OnMount(MakeShimmer(phaseMs));
-        }
-
-        return Border(
-            VStack(0,
-                Bubble(new[] { 240.0, 180.0 }, HorizontalAlignment.Left, 0),
-                Bubble(new[] { 140.0 }, HorizontalAlignment.Right, 140),
-                Bubble(new[] { 280.0, 240.0, 160.0 }, HorizontalAlignment.Left, 280),
-                Bubble(new[] { 120.0 }, HorizontalAlignment.Right, 420),
-                Bubble(new[] { 200.0 }, HorizontalAlignment.Left, 560)
-            )
-        ).Set(b => b.Padding = new Thickness(0, 16, 0, 16));
-    }
-
-    /// <summary>
     /// Skeleton composer shown at the bottom of the chat surface while the
     /// real composer is still gated. Renders a rounded input-field placeholder
     /// and a circular send-button placeholder, both pulsing in sync with the
@@ -884,80 +787,6 @@ public sealed class OpenClawChatRoot : Component
                 OpenClawTray.Services.Logger.Debug($"ChatRoot: skeleton storyboard animation failed (non-essential): {ex.Message}");
             }
         };
-    }
-
-    /// <summary>
-    /// Unified zero-state for the chat surface — shown when there is no
-    /// thread selected OR the selected thread has no messages yet. Renders
-    /// the app icon, a welcome message, and three prompt suggestions that
-    /// invoke <paramref name="onSuggestionPicked"/> when clicked. The caller
-    /// is responsible for routing the suggestion text into a send (typically
-    /// via the active thread's OnSend handler).
-    /// </summary>
-    private static Element RenderZeroState(Action<string> onSuggestionPicked, bool suggestionsDisabled = false)
-    {
-        var welcomeTitle = LocalizedOrDefault("Chat_ZeroState_WelcomeTitle", "Welcome to OpenClaw");
-        var welcomeSubtitle = LocalizedOrDefault("Chat_ZeroState_WelcomeSubtitle", "How can I help you today?");
-
-        var suggestions = new[]
-        {
-            "Say hi 👋",
-            "What can you do?",
-            "Give me a quick tour of OpenClaw",
-        };
-
-        Element SuggestionButton(string text) =>
-            Button(text, () => onSuggestionPicked(text))
-                .Set(b =>
-                {
-                    b.HorizontalAlignment = HorizontalAlignment.Stretch;
-                    b.HorizontalContentAlignment = HorizontalAlignment.Left;
-                    b.Padding = new Thickness(12, 10, 12, 10);
-                    b.CornerRadius = new CornerRadius(8);
-                    b.IsEnabled = !suggestionsDisabled;
-                    b.BorderThickness = new Thickness(0);
-                    b.BorderBrush = null;
-                })
-                .BackgroundResource("SubtleFillColorSecondaryBrush");
-
-        return Border(
-            VStack(12,
-                Image("ms-appx:///Assets/Square44x44Logo.targetsize-256_altform-unplated.png")
-                    .Set(im =>
-                    {
-                        im.Width = 64;
-                        im.Height = 64;
-                        im.Stretch = Microsoft.UI.Xaml.Media.Stretch.Uniform;
-                        im.HorizontalAlignment = HorizontalAlignment.Center;
-                    }),
-                TextBlock(welcomeTitle)
-                    .Set(t =>
-                    {
-                        t.FontSize = 20;
-                        t.FontWeight = Microsoft.UI.Text.FontWeights.SemiBold;
-                        t.HorizontalAlignment = HorizontalAlignment.Center;
-                    }),
-                Caption(welcomeSubtitle).Foreground(SecondaryText).HAlign(HorizontalAlignment.Center),
-                VStack(6,
-                    SuggestionButton(suggestions[0]),
-                    SuggestionButton(suggestions[1]),
-                    SuggestionButton(suggestions[2])
-                ).Set(s =>
-                {
-                    s.HorizontalAlignment = HorizontalAlignment.Stretch;
-                    s.MaxWidth = 360;
-                    s.Margin = new Thickness(0, 8, 0, 0);
-                })
-            ).VAlign(VerticalAlignment.Center).HAlign(HorizontalAlignment.Center)
-        ).Padding(24, 24, 24, 24);
-    }
-
-    private static string LocalizedOrDefault(string key, string fallback)
-    {
-        var value = LocalizationHelper.GetString(key);
-        return string.IsNullOrWhiteSpace(value) || string.Equals(value, key, StringComparison.Ordinal)
-            ? fallback
-            : value;
     }
 
     private static Element PlaceholderEmptyThreadState(string connectionState)

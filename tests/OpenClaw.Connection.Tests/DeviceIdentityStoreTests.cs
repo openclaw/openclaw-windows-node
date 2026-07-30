@@ -1,5 +1,7 @@
 using System.Text.Json;
+using System.Text.Json.Nodes;
 using OpenClaw.Connection;
+using OpenClaw.Shared;
 
 namespace OpenClaw.Connection.Tests;
 
@@ -31,6 +33,32 @@ public class DeviceIdentityStoreTests : IDisposable
         return _tempDir;
     }
 
+    private DeviceIdentity CreateIdentity()
+    {
+        var identity = new DeviceIdentity(_tempDir);
+        identity.Initialize();
+        return identity;
+    }
+
+    private void AddCustomProperty(string name, string value)
+    {
+        var path = Path.Combine(_tempDir, "device-key-ed25519.json");
+        var root = JsonNode.Parse(File.ReadAllText(path))!.AsObject();
+        root[name] = value;
+        DeviceIdentity.AtomicWriteKeyFileRaw(path, root.ToJsonString(new JsonSerializerOptions { WriteIndented = true }));
+    }
+
+    private void RemoveTokenProperties()
+    {
+        var path = Path.Combine(_tempDir, "device-key-ed25519.json");
+        var root = JsonNode.Parse(File.ReadAllText(path))!.AsObject();
+        root.Remove("DeviceToken");
+        root.Remove("DeviceTokenScopes");
+        root.Remove("NodeDeviceToken");
+        root.Remove("NodeDeviceTokenScopes");
+        DeviceIdentity.AtomicWriteKeyFileRaw(path, root.ToJsonString(new JsonSerializerOptions { WriteIndented = true }));
+    }
+
     private JsonElement ReadIdentityFile()
     {
         var path = Path.Combine(_tempDir, "device-key-ed25519.json");
@@ -40,53 +68,39 @@ public class DeviceIdentityStoreTests : IDisposable
     [Fact]
     public void ClearStoredTokens_RemovesDeviceToken()
     {
-        WriteIdentityFile(new
-        {
-            DeviceId = "dev-123",
-            PublicKey = "abc",
-            DeviceToken = "tok-operator"
-        });
+        var identity = CreateIdentity();
+        identity.StoreDeviceTokenForRole("operator", "tok-operator");
+        AddCustomProperty("CustomField", "abc");
 
         DeviceIdentityStore.ClearStoredTokens(_tempDir);
 
         var doc = ReadIdentityFile();
         Assert.False(doc.TryGetProperty("DeviceToken", out _));
-        Assert.Equal("dev-123", doc.GetProperty("DeviceId").GetString());
-        Assert.Equal("abc", doc.GetProperty("PublicKey").GetString());
+        Assert.Equal(identity.DeviceId, doc.GetProperty("DeviceId").GetString());
+        Assert.Equal("abc", doc.GetProperty("CustomField").GetString());
     }
 
     [Fact]
     public void ClearStoredTokens_RemovesNodeDeviceToken()
     {
-        WriteIdentityFile(new
-        {
-            DeviceId = "dev-456",
-            NodeDeviceToken = "tok-node",
-            NodeDeviceTokenScopes = new[] { "node.connect" }
-        });
+        var identity = CreateIdentity();
+        identity.StoreDeviceTokenForRole("node", "tok-node", ["node.connect"]);
 
         DeviceIdentityStore.ClearStoredTokens(_tempDir);
 
         var doc = ReadIdentityFile();
         Assert.False(doc.TryGetProperty("NodeDeviceToken", out _));
         Assert.False(doc.TryGetProperty("NodeDeviceTokenScopes", out _));
-        Assert.Equal("dev-456", doc.GetProperty("DeviceId").GetString());
+        Assert.Equal(identity.DeviceId, doc.GetProperty("DeviceId").GetString());
     }
 
     [Fact]
     public void ClearStoredTokens_RemovesAllFourTokenFields()
     {
-        WriteIdentityFile(new
-        {
-            DeviceId = "dev-789",
-            Algorithm = "Ed25519",
-            PublicKey = "pubkey",
-            PrivateKey = "privkey",
-            DeviceToken = "operator-tok",
-            DeviceTokenScopes = new[] { "operator.connect" },
-            NodeDeviceToken = "node-tok",
-            NodeDeviceTokenScopes = new[] { "node.connect" }
-        });
+        var identity = CreateIdentity();
+        identity.StoreDeviceTokenForRole("operator", "operator-tok", ["operator.connect"]);
+        identity.StoreDeviceTokenForRole("node", "node-tok", ["node.connect"]);
+        AddCustomProperty("CustomField", "preserved");
 
         DeviceIdentityStore.ClearStoredTokens(_tempDir);
 
@@ -97,10 +111,9 @@ public class DeviceIdentityStoreTests : IDisposable
         Assert.False(doc.TryGetProperty("NodeDeviceTokenScopes", out _));
 
         // Non-token fields are preserved.
-        Assert.Equal("dev-789", doc.GetProperty("DeviceId").GetString());
+        Assert.Equal(identity.DeviceId, doc.GetProperty("DeviceId").GetString());
         Assert.Equal("Ed25519", doc.GetProperty("Algorithm").GetString());
-        Assert.Equal("pubkey", doc.GetProperty("PublicKey").GetString());
-        Assert.Equal("privkey", doc.GetProperty("PrivateKey").GetString());
+        Assert.Equal("preserved", doc.GetProperty("CustomField").GetString());
     }
 
     [Fact]
@@ -126,37 +139,47 @@ public class DeviceIdentityStoreTests : IDisposable
     [Fact]
     public void ClearStoredTokens_WhenNoTokenFields_PreservesAllProperties()
     {
-        WriteIdentityFile(new
-        {
-            DeviceId = "dev-clean",
-            Algorithm = "Ed25519",
-            PublicKey = "pubkey2"
-        });
+        var identity = CreateIdentity();
+        AddCustomProperty("CustomField", "clean");
+        RemoveTokenProperties();
+        var path = Path.Combine(_tempDir, "device-key-ed25519.json");
+        var originalBytes = File.ReadAllBytes(path);
 
         DeviceIdentityStore.ClearStoredTokens(_tempDir);
 
         var doc = ReadIdentityFile();
-        Assert.Equal("dev-clean", doc.GetProperty("DeviceId").GetString());
+        Assert.Equal(identity.DeviceId, doc.GetProperty("DeviceId").GetString());
         Assert.Equal("Ed25519", doc.GetProperty("Algorithm").GetString());
-        Assert.Equal("pubkey2", doc.GetProperty("PublicKey").GetString());
+        Assert.Equal("clean", doc.GetProperty("CustomField").GetString());
+        Assert.Equal(originalBytes, File.ReadAllBytes(path));
     }
 
     [Fact]
     public void ClearStoredTokens_IsIdempotent()
     {
-        WriteIdentityFile(new
-        {
-            DeviceId = "dev-idem",
-            DeviceToken = "tok",
-            PublicKey = "pk"
-        });
+        var identity = CreateIdentity();
+        identity.StoreDeviceTokenForRole("operator", "tok");
 
         DeviceIdentityStore.ClearStoredTokens(_tempDir);
         DeviceIdentityStore.ClearStoredTokens(_tempDir); // second call must not throw or corrupt
 
         var doc = ReadIdentityFile();
         Assert.False(doc.TryGetProperty("DeviceToken", out _));
-        Assert.Equal("dev-idem", doc.GetProperty("DeviceId").GetString());
-        Assert.Equal("pk", doc.GetProperty("PublicKey").GetString());
+        Assert.Equal(identity.DeviceId, doc.GetProperty("DeviceId").GetString());
+    }
+
+    [Fact]
+    public void StoreToken_WhenExistingIdentityIsCorrupt_PropagatesTypedFailureWithoutMutation()
+    {
+        var path = Path.Combine(_tempDir, "device-key-ed25519.json");
+        File.WriteAllText(path, "{");
+        var originalBytes = File.ReadAllBytes(path);
+        var store = new DeviceIdentityStore();
+
+        Assert.Throws<DeviceIdentityLoadException>(
+            () => store.StoreToken(_tempDir, "device-token", null, "operator"));
+
+        Assert.Equal(originalBytes, File.ReadAllBytes(path));
+        Assert.Empty(Directory.GetFiles(_tempDir, ".device-key-ed25519.json.*.tmp"));
     }
 }

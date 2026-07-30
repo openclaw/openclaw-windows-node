@@ -25,7 +25,7 @@ public sealed partial class ChatPage : Page
 {
     private static App CurrentApp => (App)Microsoft.UI.Xaml.Application.Current!;
     private HubWindow? _hub;
-    private MountedFunctionalChat? _functionalHost;
+    private MountedReactorChat? _reactorHost;
     private IChatDataProvider? _mountedProvider;
     private IChatDataProvider? _accessibilityTestProvider;
     private string? _mountedThreadId;
@@ -61,9 +61,9 @@ public sealed partial class ChatPage : Page
 
         // Don't tear down the native chat host — preserve it across page
         // navigations so that scroll position, selected session, and loaded
-        // history survive. ShowFunctionalSurface's _mountedProvider check
+        // history survive. ShowReactorSurface's _mountedProvider check
         // will reuse the existing host when the page reloads.
-        // DisposeFunctionalHost() is intentionally NOT called here.
+        // DisposeReactorHost() is intentionally NOT called here.
 
         _navigationCts?.Cancel();
         if (WebView.CoreWebView2 != null)
@@ -91,9 +91,9 @@ public sealed partial class ChatPage : Page
     /// <summary>Trigger voice recording programmatically (e.g. from V hotkey).</summary>
     public void TriggerAutoStartVoice()
     {
-        if (_functionalHost?.HasVoiceTrigger == true)
+        if (_reactorHost?.HasVoiceTrigger == true)
         {
-            _functionalHost.TriggerVoiceRecording();
+            _reactorHost.TriggerVoiceRecording();
             return;
         }
         // Composer may not have rendered yet — retry until trigger is registered
@@ -106,9 +106,9 @@ public sealed partial class ChatPage : Page
         DispatcherQueue?.TryEnqueue(async () =>
         {
             await Task.Delay(delayMs);
-            if (_functionalHost?.HasVoiceTrigger == true)
+            if (_reactorHost?.HasVoiceTrigger == true)
             {
-                _functionalHost.TriggerVoiceRecording();
+                _reactorHost.TriggerVoiceRecording();
             }
             else
             {
@@ -159,7 +159,7 @@ public sealed partial class ChatPage : Page
 
     private void OnSpeakerMuteChanged(bool muted)
     {
-        DispatcherQueue?.TryEnqueue(() => _functionalHost?.SetSpeakerMuted(muted));
+        DispatcherQueue?.TryEnqueue(() => _reactorHost?.SetSpeakerMuted(muted));
     }
 
     private void OnAppChatProviderChanged(object? sender, EventArgs e)
@@ -200,7 +200,7 @@ public sealed partial class ChatPage : Page
         if (decision.UseLegacyWebChat)
             ShowWebViewSurface(forceNavigate: decision.ChatUrlChanged);
         else
-            ShowFunctionalSurface();
+            ShowReactorSurface();
     }
 
     private static string? TryComputeChatUrl(SettingsManager settings)
@@ -212,15 +212,18 @@ public sealed partial class ChatPage : Page
             settings.GetEffectiveGatewayUrl(),
             settings.LegacyToken,
             settings.LegacyBootstrapToken,
+            (record, candidate) =>
+                (App.Current as App)?.ManagedLocalPortProvenance
+                    ?.IsStrongCredentialAllowed(record, candidate) == true,
             out var credential) &&
             credential is { IsBootstrapToken: false }
             ? ChatSurfaceResolver.BuildChatUrl(credential.GatewayUrl, credential.Token)
             : null;
     }
 
-    private void ShowFunctionalSurface()
+    private void ShowReactorSurface()
     {
-        // Hide WebView2-specific UI; mount FunctionalUI host (idempotent).
+        // Hide WebView2-specific UI; mount the Reactor host (idempotent).
         _webViewMode = false;
         StopWebViewNavigation();
         WebView.Visibility = Visibility.Collapsed;
@@ -251,7 +254,7 @@ public sealed partial class ChatPage : Page
         var threadIdToMount = pendingSessionKey ?? _mountedThreadId;
         var forceRemount = !string.IsNullOrEmpty(pendingSessionKey);
 
-        if (_functionalHost is not null
+        if (_reactorHost is not null
             && ReferenceEquals(_mountedProvider, provider)
             && !forceRemount)
         {
@@ -262,19 +265,19 @@ public sealed partial class ChatPage : Page
             if (_hub?.PendingAutoStartVoice == true)
             {
                 _hub.PendingAutoStartVoice = false;
-                _functionalHost.TriggerVoiceRecording();
+                _reactorHost.TriggerVoiceRecording();
             }
             return;
         }
 
-        DisposeFunctionalHost();
+        DisposeReactorHost();
 
         if (provider is null)
         {
             // If we already have a mounted chat, keep it visible rather than
             // flashing the disconnected placeholder. The ChatProviderChanged
             // event will remount when the provider becomes available again.
-            if (_functionalHost is not null)
+            if (_reactorHost is not null)
                 return;
 
             PlaceholderPanel.Visibility = Visibility.Visible;
@@ -285,7 +288,7 @@ public sealed partial class ChatPage : Page
 
         PlaceholderPanel.Visibility = Visibility.Collapsed;
         ChatHost.Visibility = Visibility.Visible;
-        _functionalHost = CurrentApp.ActiveHubWindow!.MountFunctionalChat(
+        _reactorHost = CurrentApp.ActiveHubWindow!.MountReactorChat(
             ChatHost,
             provider,
             initialThreadId: threadIdToMount,
@@ -295,8 +298,7 @@ public sealed partial class ChatPage : Page
             onAttachClick: OnAttachClicked,
             onSettingsClick: () => _hub?.NavigateTo("voice"),
             onSpeakerMuteChanged: muted => _ = OnSpeakerMuteChangedAsync(muted),
-            initialMuted: ShouldStartSpeakerMuted(CurrentApp.Settings),
-            suppressAutoDispose: true);
+            initialMuted: ShouldStartSpeakerMuted(CurrentApp.Settings));
         _mountedProvider = provider;
         _mountedThreadId = threadIdToMount;
         UpdateNativeChatSurfaceActive();
@@ -309,7 +311,7 @@ public sealed partial class ChatPage : Page
             _hub.PendingAutoStartVoice = false;
             DispatcherQueue?.TryEnqueue(Microsoft.UI.Dispatching.DispatcherQueuePriority.Low, () =>
             {
-                _functionalHost?.TriggerVoiceRecording();
+                _reactorHost?.TriggerVoiceRecording();
             });
         }
     }
@@ -321,7 +323,7 @@ public sealed partial class ChatPage : Page
 
         // The accessibility suite launches an isolated app process without a
         // gateway. Mount a deterministic provider only under its explicit
-        // test flag so Axe scans the real FunctionalUI timeline and composer,
+        // test flag so Axe scans the real Reactor timeline and composer,
         // not merely the disconnected page shell.
         if (Environment.GetEnvironmentVariable("OPENCLAW_ACCESSIBILITY_TEST_CHAT") == "1"
             && Environment.GetEnvironmentVariable("OPENCLAW_TRAY_DATA_DIR") is { Length: > 0 })
@@ -464,7 +466,7 @@ public sealed partial class ChatPage : Page
 
         // Tear down native chat (so the WebView2 owns the row) and (re)init WebView2.
         _webViewMode = true;
-        DisposeFunctionalHost();
+        DisposeReactorHost();
 
         ChatHost.Visibility = Visibility.Collapsed;
         UpdateNativeChatSurfaceActive();
@@ -541,21 +543,21 @@ public sealed partial class ChatPage : Page
         }
     }
 
-    private void DisposeFunctionalHost()
+    private void DisposeReactorHost()
     {
-        var host = _functionalHost;
-        _functionalHost = null;
+        var host = _reactorHost;
+        _reactorHost = null;
         _mountedProvider = null;
         _mountedThreadId = null;
         UpdateNativeChatSurfaceActive();
         try { host?.Dispose(); }
-        catch (Exception ex) { Logger.Debug($"ChatPage: functional host dispose tear-down race: {ex.Message}"); }
+        catch (Exception ex) { Logger.Debug($"ChatPage: Reactor host dispose tear-down race: {ex.Message}"); }
     }
 
     private void UpdateNativeChatSurfaceActive()
     {
         if (App.Current is App app)
-            app.SetHubNativeChatSurfaceActive(_pageActive && !_webViewMode && _functionalHost is not null);
+            app.SetHubNativeChatSurfaceActive(_pageActive && !_webViewMode && _reactorHost is not null);
     }
 
     private async Task InitializeWebViewAsync(SettingsManager settings)
@@ -569,6 +571,9 @@ public sealed partial class ChatPage : Page
                 settings.GetEffectiveGatewayUrl(),
                 settings.LegacyToken,
                 settings.LegacyBootstrapToken,
+                (record, candidate) =>
+                    CurrentApp.ManagedLocalPortProvenance
+                        ?.IsStrongCredentialAllowed(record, candidate) == true,
                 out var credential) ||
                 credential == null)
             {
@@ -859,7 +864,7 @@ public sealed partial class ChatPage : Page
         }
 
         var voiceService = _hub?.VoiceServiceInstance;
-        var host = _functionalHost;
+        var host = _reactorHost;
         if (voiceService is null)
         {
             await ShowVoiceSettingsDialogAsync(
@@ -935,7 +940,7 @@ public sealed partial class ChatPage : Page
             }
 
             (App.Current as App)?.SetChatSpeakerMuted(true);
-            _functionalHost?.SetSpeakerMuted(true);
+            _reactorHost?.SetSpeakerMuted(true);
             await ShowTtsUnavailableDialogAsync();
         }
         catch (Exception ex)
@@ -1084,7 +1089,7 @@ public sealed partial class ChatPage : Page
                 Logger.Info($"[ChatPage] File selected: {path}");
                 attachments.Add(await ChatAttachment.FromFileAsync(path));
             }
-            _functionalHost?.AttachFiles(attachments);
+            _reactorHost?.AttachFiles(attachments);
         }
         catch (InvalidOperationException ex)
         {

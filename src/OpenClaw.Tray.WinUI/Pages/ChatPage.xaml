@@ -58,7 +58,7 @@
             </StackPanel>
         </Border>
 
-        <!-- Native chat host: the FunctionalUI tree mounts into this Border (default UI). -->
+        <!-- Native chat host: the Reactor tree mounts into this Border (default UI). -->
         <Border x:Name="ChatHost" Grid.Row="1"/>
 
         <!-- WebView2 host: only created/used when "Use standard Gateway Chat interface" is enabled. -->

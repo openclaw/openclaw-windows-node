@@ -111,6 +111,47 @@ public sealed class OnboardingChatBootstrapperTests : IDisposable
     }
 
     [Fact]
+    public async Task BootstrapAsync_SkipsInactiveCorruptIdentityAndUsesHealthyActiveGateway()
+    {
+        var settings = new SettingsManager(_settingsDir);
+        var client = new FakeOperatorGatewayClient
+        {
+            IsConnectedToGateway = true,
+            AgentFilesListResponse = CreateAgentFilesList("SOUL.md")
+        };
+        var registryDir = Path.Combine(_settingsDir, "registry-stale-corrupt");
+        Directory.CreateDirectory(registryDir);
+        var registry = new GatewayRegistry(registryDir);
+        registry.AddOrUpdate(new GatewayRecord
+        {
+            Id = "stale-corrupt",
+            Url = "wss://stale.example.com"
+        });
+        var staleIdentityDir = registry.GetIdentityDirectory("stale-corrupt");
+        Directory.CreateDirectory(staleIdentityDir);
+        File.WriteAllText(Path.Combine(staleIdentityDir, "device-key-ed25519.json"), "{");
+        registry.AddOrUpdate(new GatewayRecord
+        {
+            Id = "healthy-active",
+            Url = "wss://healthy.example.com"
+        });
+        var healthyIdentity = new DeviceIdentity(registry.GetIdentityDirectory("healthy-active"));
+        healthyIdentity.Initialize();
+        healthyIdentity.StoreDeviceTokenForRole("operator", "healthy-device-token");
+        registry.SetActive("healthy-active");
+
+        var result = await OnboardingChatBootstrapper.BootstrapAsync(
+            client,
+            settings,
+            TimeSpan.FromSeconds(5),
+            registry: registry);
+
+        Assert.True(result);
+        Assert.Equal(0, client.SendCount);
+        Assert.True(settings.HasInjectedFirstRunBootstrap);
+    }
+
+    [Fact]
     public async Task BootstrapAsync_SkipsPromptAndMarksBootstrapped_WhenRegistryHasExistingGatewayWithBootstrapToken()
     {
         var settings = new SettingsManager(_settingsDir);

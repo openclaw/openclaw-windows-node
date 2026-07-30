@@ -139,6 +139,8 @@ public class SettingsManager
     public string TtsPiperVoiceId { get => string.IsNullOrWhiteSpace(_data.TtsPiperVoiceId) ? "en_US-amy-low" : _data.TtsPiperVoiceId; set => _data = _data with { TtsPiperVoiceId = value }; }
     // Local MCP HTTP server (independent of EnableNodeMode)
     public bool EnableMcpServer { get => _data.EnableMcpServer; set => _data = _data with { EnableMcpServer = value }; }
+    // Automatic self-repair of app-owned setup-managed local WSL gateways (kill switch).
+    public bool EnableManagedLocalGatewayAutoRepair { get => _data.EnableManagedLocalGatewayAutoRepair; set => _data = _data with { EnableManagedLocalGatewayAutoRepair = value }; }
     /// <summary>
     /// Hostnames the A2UI image renderer is allowed to fetch over HTTPS.
     /// Empty by default — agents can still ship inline data: images. The
@@ -161,9 +163,6 @@ public class SettingsManager
     public bool SystemRunBlockHostFallbackWhenMxcUnavailable { get => _data.SystemRunBlockHostFallbackWhenMxcUnavailable; set => _data = _data with { SystemRunBlockHostFallbackWhenMxcUnavailable = value }; }
     /// <summary>When sandboxed, allow system.run commands to reach the public internet. Default false.</summary>
     public bool SystemRunAllowOutbound { get => _data.SystemRunAllowOutbound; set => _data = _data with { SystemRunAllowOutbound = value }; }
-    /// <summary>Route system.run through the new exec approvals pipeline. Default false; no Settings UI yet.</summary>
-    public bool ExecApprovalsNewPathEnabled { get => _data.ExecApprovalsNewPathEnabled; set => _data = _data with { ExecApprovalsNewPathEnabled = value }; }
-
     // ── MXC sandbox: additional knobs (Sandbox page) ─────────────────
     public SandboxClipboardMode SandboxClipboard { get => _data.SandboxClipboard; set => _data = _data with { SandboxClipboard = value }; }
     public SandboxFolderAccess? SandboxDocumentsAccess { get => _data.SandboxDocumentsAccess; set => _data = _data with { SandboxDocumentsAccess = value }; }
@@ -285,7 +284,6 @@ public class SettingsManager
         SystemRunSandboxEnabled = true,
         SystemRunBlockHostFallbackWhenMxcUnavailable = false,
         SystemRunAllowOutbound = false,
-        ExecApprovalsNewPathEnabled = false,
         SandboxClipboard = SandboxClipboardMode.None,
         SandboxDocumentsAccess = null,
         SandboxDownloadsAccess = null,

@@ -24,7 +24,12 @@ public class ExecApprovalV2RoutingTests
     }
 
     private static NodeInvokeRequest RunRequest(string id = "r1")
-        => new() { Id = id, Command = "system.run", Args = Parse("""{"command":"echo hello"}""") };
+        => new()
+        {
+            Id = id,
+            Command = "system.run",
+            Args = Parse("""{"command":["cmd.exe","/d","/s","/c","echo hello"]}""")
+        };
 
     // -------------------------------------------------------------------------
     // 1. ExecApprovalV2Result — all 6 codes constructible (rail 7)
@@ -93,54 +98,7 @@ public class ExecApprovalV2RoutingTests
     }
 
     // -------------------------------------------------------------------------
-    // 3. Legacy path unchanged when _v2Handler is null (rail 3, 19)
-    // -------------------------------------------------------------------------
-
-    [Fact]
-    public async Task LegacyPath_UsedWhen_V2HandlerIsNull()
-    {
-        var runner = new FakeRunner();
-        var cap = new SystemCapability(NullLogger.Instance);
-        cap.SetCommandRunner(runner);
-        // No SetV2Handler — legacy must run
-
-        var res = await cap.ExecuteAsync(RunRequest());
-
-        Assert.True(res.Ok);
-        Assert.NotNull(runner.LastRequest); // runner was called → legacy path
-    }
-
-    [Fact]
-    public async Task LegacyPath_DenyPolicy_StillDenies_WhenNoV2Handler()
-    {
-        var tempDir = System.IO.Path.Combine(System.IO.Path.GetTempPath(), $"pr1test-{Guid.NewGuid():N}");
-        System.IO.Directory.CreateDirectory(tempDir);
-        try
-        {
-            var logger = new CapturingLogger();
-            var policy = new ExecApprovalPolicy(tempDir, logger);
-            policy.SetRules(new[] { new ExecApprovalRule { Pattern = "*", Action = ExecApprovalAction.Deny } },
-                ExecApprovalAction.Deny);
-
-            var cap = new SystemCapability(logger);
-            cap.SetCommandRunner(new FakeRunner());
-            cap.SetApprovalPolicy(policy);
-            // No SetV2Handler
-
-            var res = await cap.ExecuteAsync(RunRequest());
-
-            Assert.False(res.Ok);
-            Assert.Contains("denied", res.Error!, StringComparison.OrdinalIgnoreCase);
-        }
-        finally
-        {
-            // slopwatch-ignore: SW003 Test cleanup or fixture teardown is best-effort and must not hide the test outcome.
-            try { System.IO.Directory.Delete(tempDir, true); } catch { }
-        }
-    }
-
-    // -------------------------------------------------------------------------
-    // 4. V2 path entered when handler is set; legacy NOT invoked (rail 2, 3)
+    // 3. Configured V2 handler is used for every request
     // -------------------------------------------------------------------------
 
     [Fact]
@@ -158,7 +116,7 @@ public class ExecApprovalV2RoutingTests
     }
 
     [Fact]
-    public async Task V2Path_DoesNotCallLegacyRunner()
+    public async Task V2Path_DoesNotExecuteWhenApprovalIsUnavailable()
     {
         var runner = new FakeRunner();
         var cap = new SystemCapability(NullLogger.Instance);
@@ -167,7 +125,7 @@ public class ExecApprovalV2RoutingTests
 
         await cap.ExecuteAsync(RunRequest());
 
-        Assert.Null(runner.LastRequest); // runner was NOT called
+        Assert.Null(runner.LastRequest);
     }
 
     // -------------------------------------------------------------------------
@@ -212,60 +170,12 @@ public class ExecApprovalV2RoutingTests
 
         Assert.False(res.Ok);
         Assert.Contains("exec-approvals-v2", res.Error!, StringComparison.OrdinalIgnoreCase);
-        Assert.Null(runner.LastRequest); // no silent fallback to legacy
+        Assert.Null(runner.LastRequest);
     }
 
     // -------------------------------------------------------------------------
     // 6–9. Observability: correlation ID, selected path, decision, reason logged
     // -------------------------------------------------------------------------
-
-    [Fact]
-    public async Task Observability_LegacyPath_LogsCorrelationId()
-    {
-        var logger = new CapturingLogger();
-        var cap = new SystemCapability(logger);
-        cap.SetCommandRunner(new FakeRunner());
-
-        await cap.ExecuteAsync(RunRequest());
-
-        Assert.True(logger.HasInfoContaining("corr="), "correlation ID not logged");
-    }
-
-    [Fact]
-    public async Task Observability_LegacyPath_LogsPathLegacy()
-    {
-        var logger = new CapturingLogger();
-        var cap = new SystemCapability(logger);
-        cap.SetCommandRunner(new FakeRunner());
-
-        await cap.ExecuteAsync(RunRequest());
-
-        Assert.True(logger.HasInfoContaining("path=legacy"), "selected path not logged as 'legacy'");
-    }
-
-    [Fact]
-    public async Task Observability_LegacyPath_LogsDecisionLegacy()
-    {
-        var logger = new CapturingLogger();
-        var cap = new SystemCapability(logger);
-        cap.SetCommandRunner(new FakeRunner());
-
-        await cap.ExecuteAsync(RunRequest());
-
-        Assert.True(logger.HasInfoContaining("decision=legacy"), "decision not logged as 'legacy'");
-    }
-
-    [Fact]
-    public async Task Observability_LegacyPath_LogsReasonLegacy()
-    {
-        var logger = new CapturingLogger();
-        var cap = new SystemCapability(logger);
-        cap.SetCommandRunner(new FakeRunner());
-
-        await cap.ExecuteAsync(RunRequest());
-
-        Assert.True(logger.HasInfoContaining("reason=legacy"), "reason code not logged as 'legacy'");
-    }
 
     [Fact]
     public async Task Observability_V2Path_LogsCorrelationId()
@@ -342,30 +252,12 @@ public class ExecApprovalV2RoutingTests
     }
 
     // -------------------------------------------------------------------------
-    // I-2. Legacy path with null runner — no V2 activation, error unchanged
-    // -------------------------------------------------------------------------
-
-    [Fact]
-    public async Task LegacyPath_NullRunner_NoV2Handler_ReturnsNotAvailableError()
-    {
-        var logger = new CapturingLogger();
-        var cap = new SystemCapability(logger);
-        // Neither SetCommandRunner nor SetV2Handler called — legacy path, runner null
-
-        var res = await cap.ExecuteAsync(RunRequest());
-
-        Assert.False(res.Ok);
-        Assert.Contains("not available", res.Error!, StringComparison.OrdinalIgnoreCase);
-        Assert.False(logger.HasInfoContaining("path=v2"), "V2 path must not activate when no handler is set");
-    }
-
-    // -------------------------------------------------------------------------
     // Approved execution: allow results execute the approved payload
     // -------------------------------------------------------------------------
 
     private static ExecApprovedExecution ApprovedEcho()
         => new(new[] { "cmd", "/c", "echo hi" }, cwd: @"C:\work", timeoutMs: 5000,
-            env: new Dictionary<string, string> { ["FOO"] = "bar" });
+            env: null);
 
     [Fact]
     public async Task V2Allow_ExecutesApprovedArgv_WithLegacyResponseShape()
@@ -384,7 +276,7 @@ public class ExecApprovalV2RoutingTests
         Assert.Equal(approved.Argv, runner.LastRequest!.Argv);
         Assert.Equal(approved.Cwd, runner.LastRequest.Cwd);
         Assert.Equal(approved.TimeoutMs, runner.LastRequest.TimeoutMs);
-        Assert.Equal("bar", runner.LastRequest.Env!["FOO"]);
+        Assert.Null(runner.LastRequest.Env);
         Assert.True(logger.HasInfoContaining("path=v2 executed exit=0"),
             "execution outcome not logged on V2 path");
     }
@@ -446,6 +338,23 @@ public class ExecApprovalV2RoutingTests
         Assert.Null(runner.LastRequest);
     }
 
+    [Fact]
+    public async Task V2Allow_RevalidationRejects_DoesNotInvokeRunner()
+    {
+        var runner = new FakeRunner();
+        var cap = new SystemCapability(NullLogger.Instance);
+        cap.SetCommandRunner(runner);
+        cap.SetV2Handler(new FixedResultHandler(
+            ExecApprovalV2Result.Allow(ApprovedEchoNoEnv()),
+            ExecApprovalRevalidationResult.NotCurrent("policy-changed-before-execution")));
+
+        var res = await cap.ExecuteAsync(RunRequest());
+
+        Assert.False(res.Ok);
+        Assert.Contains("policy-changed-before-execution", res.Error);
+        Assert.Null(runner.LastRequest);
+    }
+
     // -------------------------------------------------------------------------
     // Sandbox flag matrix: the V2 path against the real MXC runner, driven by
     // SystemRunSandboxEnabled / availability / strict fallback blocking.
@@ -469,8 +378,8 @@ public class ExecApprovalV2RoutingTests
     [Theory]
     [InlineData(false, false, false, true)]  // sandbox off → host runner honors argv
     [InlineData(false, true, false, true)]
-    [InlineData(true, true, false, false)]   // sandbox on + available → no argv transport
-    [InlineData(true, true, true, false)]
+    [InlineData(true, true, false, true)]    // sandbox on + available → direct MXC argv transport
+    [InlineData(true, true, true, true)]
     [InlineData(true, false, false, true)]   // on + unavailable + fallback → host honors argv
     [InlineData(true, false, true, true)]    // on + unavailable + strict → runner denies on its own
     public void MxcRunner_CanExecuteDirectArgv_FollowsSandboxFlags(
@@ -487,26 +396,29 @@ public class ExecApprovalV2RoutingTests
     }
 
     [Fact]
-    public async Task V2_SandboxEnabledAndAvailable_TypedUnavailable_NothingEvaluatesOrExecutes()
+    public async Task V2Allow_SandboxEnabledAndAvailable_ExecutesApprovedArgvInSandbox()
     {
         var settings = new SettingsData { SystemRunSandboxEnabled = true };
         var host = new FakeRunner();
         var sandbox = new FakeSandboxExecutor();
-        var handler = new TrackingHandler();
-        var logger = new CapturingLogger();
-        var cap = new SystemCapability(logger);
+        var approved = ApprovedEchoNoEnv();
+        var handler = new FixedResultHandler(ExecApprovalV2Result.Allow(approved));
+        var cap = new SystemCapability(NullLogger.Instance);
         cap.SetCommandRunner(BuildMxcRunner(settings, sandboxAvailable: true, host, sandbox));
         cap.SetV2Handler(handler);
 
         var res = await cap.ExecuteAsync(RunRequest());
 
-        Assert.False(res.Ok);
-        Assert.Contains("Unavailable", res.Error!);
-        Assert.False(handler.WasCalled, "gate must fire before any evaluation or prompt");
+        Assert.True(res.Ok);
         Assert.Null(host.LastRequest);
-        Assert.Equal(0, sandbox.Calls);
-        Assert.True(logger.HasInfoContaining("decision=Unavailable"),
-            "typed gate outcome must flow through the standard decision log");
+        Assert.Equal(1, sandbox.Calls);
+        Assert.NotNull(sandbox.LastRequest);
+        Assert.Equal(
+            approved.Argv,
+            sandbox.LastRequest!.Args.GetProperty("argv")
+                .EnumerateArray()
+                .Select(value => value.GetString()!)
+                .ToArray());
     }
 
     [Fact]
@@ -551,7 +463,7 @@ public class ExecApprovalV2RoutingTests
         var res = await cap.ExecuteAsync(RunRequest());
 
         // The strict sandbox settings deny execution with their own explicit
-        // result (exit -1), exactly as they do for the legacy path.
+        // result (exit -1) before the host runner can execute.
         Assert.True(res.Ok);
         Assert.Null(host.LastRequest);
         Assert.Equal(0, sandbox.Calls);
@@ -560,7 +472,7 @@ public class ExecApprovalV2RoutingTests
     }
 
     [Fact]
-    public async Task V2Allow_SandboxDisabled_ExecutesApprovedArgvOnHost_EnvIntact()
+    public async Task V2Allow_SandboxDisabled_ExecutesApprovedArgvOnHost()
     {
         var settings = new SettingsData { SystemRunSandboxEnabled = false };
         var host = new FakeRunner();
@@ -576,7 +488,7 @@ public class ExecApprovalV2RoutingTests
         Assert.Equal(0, sandbox.Calls);
         Assert.NotNull(host.LastRequest);
         Assert.Equal(approved.Argv, host.LastRequest!.Argv);
-        Assert.Equal("bar", host.LastRequest.Env!["FOO"]);
+        Assert.Null(host.LastRequest.Env);
     }
 
     [Fact]
@@ -622,6 +534,7 @@ public class ExecApprovalV2RoutingTests
     private sealed class FakeSandboxExecutor : ISandboxExecutor
     {
         public int Calls { get; private set; }
+        public SandboxExecutionRequest? LastRequest { get; private set; }
         public string Name => "fake-sandbox";
         public bool IsContained => true;
 
@@ -629,6 +542,7 @@ public class ExecApprovalV2RoutingTests
             SandboxExecutionRequest request, System.Threading.CancellationToken ct = default)
         {
             Calls++;
+            LastRequest = request;
             return Task.FromResult(new SandboxExecutionResult(0, "sandboxed", "", false, 1, "fake"));
         }
     }
@@ -667,10 +581,24 @@ public class ExecApprovalV2RoutingTests
     private sealed class FixedResultHandler : IExecApprovalV2Handler
     {
         private readonly ExecApprovalV2Result _result;
-        public FixedResultHandler(ExecApprovalV2Result result) => _result = result;
+        private readonly ExecApprovalRevalidationResult _revalidation;
+
+        public FixedResultHandler(
+            ExecApprovalV2Result result,
+            ExecApprovalRevalidationResult? revalidation = null)
+        {
+            _result = result;
+            _revalidation = revalidation ?? ExecApprovalRevalidationResult.Current;
+        }
 
         public Task<ExecApprovalV2Result> HandleAsync(NodeInvokeRequest request, string correlationId)
             => Task.FromResult(_result);
+
+        public ValueTask<ExecApprovalRevalidationResult> RevalidateAsync(
+            ExecApprovedExecution execution,
+            string correlationId,
+            CancellationToken cancellationToken = default)
+            => ValueTask.FromResult(_revalidation);
     }
 
     private sealed class ThrowingHandler : IExecApprovalV2Handler

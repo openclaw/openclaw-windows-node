@@ -216,6 +216,7 @@ public record ChatDataSnapshot(
     IReadOnlyList<OpenClaw.Shared.GatewayCommand>? AvailableCommands = null,
     bool CommandsSupported = true,
     IReadOnlyDictionary<string, long>? TimelineGenerations = null,
+    IReadOnlyDictionary<string, long>? HistoryRevisions = null,
     IReadOnlyDictionary<string, IReadOnlyList<ChatQueuedMessage>>? QueuedMessagesByThread = null);
 
 /// <summary>

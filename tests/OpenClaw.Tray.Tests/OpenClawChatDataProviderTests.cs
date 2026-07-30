@@ -2255,7 +2255,7 @@ public class OpenClawChatDataProviderTests
         {
             SessionKey = "main",
             Role = "assistant",
-            Text = "NO_REPLY",
+            Text = "no_reply",
             State = "final"
         });
 
@@ -5475,7 +5475,7 @@ public class OpenClawChatDataProviderTests
             Messages = new[]
             {
                 new ChatMessageInfo { Role = "user", Text = "Hi", State = "final" },
-                new ChatMessageInfo { Role = "assistant", Text = "NO_REPLY", State = "final" },
+                new ChatMessageInfo { Role = "assistant", Text = "no_reply", State = "final" },
                 new ChatMessageInfo { Role = "assistant", Text = "Visible", State = "final" }
             }
         });
@@ -9008,105 +9008,6 @@ public class OpenClawChatDataProviderTests
             e => e.Kind == ChatTimelineItemKind.PermissionRequest);
         Assert.Equal(ChatPermissionDecision.Allowed, entry.PermissionDecision);
         Assert.Null(snapshots[^1].Timelines["main"].PendingPermission);
-    }
-
-    [Fact]
-    public async Task LocalExecApproval_InlineDecisionCompletesPromptAndAddsHistoryResult()
-    {
-        var (_, provider, snapshots, _) = CreateProvider(new[] { MainSession() });
-        await provider.LoadAsync();
-        snapshots.Clear();
-
-        var promptTask = provider.RequestLocalExecApprovalAsync(new ExecApprovalPromptRequest
-        {
-            Command = "del \"E:\\Temp\\sample.txt\"",
-            Shell = "auto",
-            Reason = "No matching rule; default policy applied",
-            SessionKey = "main",
-            CorrelationId = "abc12345"
-        });
-
-        Assert.False(promptTask.IsCompleted);
-        var pendingTimeline = snapshots[^1].Timelines["main"];
-        var pendingEntry = Assert.Single(pendingTimeline.Entries,
-            e => e.Kind == ChatTimelineItemKind.PermissionRequest);
-        Assert.Equal("local-abc12345", pendingEntry.PermissionRequestId);
-        Assert.Contains(ChatPermissionActionKeys.AllowOnce, pendingEntry.PermissionActions!);
-        Assert.Contains(ChatPermissionActionKeys.AllowAlways, pendingEntry.PermissionActions!);
-        Assert.Contains(ChatPermissionActionKeys.Deny, pendingEntry.PermissionActions!);
-
-        await provider.RespondToPermissionAsync("main", "local-abc12345", ChatPermissionActionKeys.AllowAlways);
-
-        var decision = await promptTask;
-        Assert.Equal(ExecApprovalPromptDecisionKind.AlwaysAllow, decision!.Kind);
-
-        var decidedTimeline = snapshots[^1].Timelines["main"];
-        var decidedEntry = Assert.Single(decidedTimeline.Entries,
-            e => e.Kind == ChatTimelineItemKind.PermissionRequest);
-        Assert.Equal(ChatPermissionDecision.AllowedAlways, decidedEntry.PermissionDecision);
-        Assert.Contains(decidedTimeline.Entries, e =>
-            e.Kind == ChatTimelineItemKind.Status &&
-            e.Text.Contains("Always allow", StringComparison.Ordinal) &&
-            e.Text.Contains("del \"E:\\Temp\\sample.txt\"", StringComparison.Ordinal));
-    }
-
-    [Fact]
-    public async Task LocalExecApproval_SyntheticThreadUsesCachedModelProvider()
-    {
-        var session = MainSession();
-        session.Model = "gpt-5.4";
-        session.Provider = "openrouter";
-        var (bridge, provider, snapshots, _) = CreateProvider(new[] { session });
-        await provider.LoadAsync();
-        Assert.Equal("gpt-5.4", provider.CachedLastChatState?.Model);
-        Assert.Equal("openrouter", provider.CachedLastChatState?.ModelProvider);
-        bridge.RaiseSessions(Array.Empty<SessionInfo>());
-        Assert.Equal("gpt-5.4", provider.CachedLastChatState?.Model);
-        Assert.Equal("openrouter", provider.CachedLastChatState?.ModelProvider);
-        snapshots.Clear();
-
-        var promptTask = provider.RequestLocalExecApprovalAsync(new ExecApprovalPromptRequest
-        {
-            Command = "tasklist",
-            Shell = "cmd",
-            SessionKey = "main",
-            CorrelationId = "provider-context"
-        });
-
-        var synthetic = Assert.Single(snapshots[^1].Threads, t => t.Id == "main");
-        Assert.Equal("gpt-5.4", synthetic.Model);
-        Assert.Equal("openrouter", synthetic.ModelProvider);
-
-        await provider.RespondToPermissionAsync("main", "local-provider-context", ChatPermissionActionKeys.Deny);
-        await promptTask;
-    }
-
-    [Fact]
-    public async Task LocalExecApproval_TimeoutExpiresEntryAndCompletesAsTimedOutDeny()
-    {
-        var (_, provider, snapshots, _) = CreateProvider(new[] { MainSession() });
-        await provider.LoadAsync();
-        snapshots.Clear();
-
-        var promptTask = provider.RequestLocalExecApprovalAsync(new ExecApprovalPromptRequest
-        {
-            Command = "tasklist",
-            Shell = "cmd",
-            SessionKey = "main",
-            CorrelationId = "timeout1"
-        }, approvalTimeout: TimeSpan.FromMilliseconds(10));
-
-        var decision = await promptTask.WaitAsync(TimeSpan.FromSeconds(2));
-
-        Assert.NotNull(decision);
-        Assert.Equal(ExecApprovalPromptDecisionKind.Deny, decision!.Kind);
-        Assert.Equal(ExecApprovalPromptDecision.TimedOutReason, decision.Reason);
-
-        var timedOutTimeline = snapshots[^1].Timelines["main"];
-        var timedOutEntry = Assert.Single(timedOutTimeline.Entries,
-            e => e.Kind == ChatTimelineItemKind.PermissionRequest);
-        Assert.Equal(ChatPermissionDecision.Expired, timedOutEntry.PermissionDecision);
-        Assert.Null(timedOutTimeline.PendingPermission);
     }
 
     private static async Task WaitForConditionAsync(Func<bool> condition, int attempts = 50)

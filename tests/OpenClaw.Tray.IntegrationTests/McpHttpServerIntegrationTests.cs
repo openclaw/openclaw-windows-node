@@ -80,38 +80,16 @@ public class McpHttpServerIntegrationTests : IClassFixture<TrayAppFixture>
     }
 
     [IntegrationFact]
-    public async Task SystemRun_Echo_ReturnsExpectedOutput()
+    public async Task SystemRun_Where_ReturnsExpectedOutput()
     {
-        // Set up an explicit allow rule so this test does not depend on the
-        // default policy (which other tests in the class may have replaced —
-        // xUnit does not guarantee execution order). execApprovals.set
-        // requires the current policy hash as baseHash to prevent stale writes.
-        var baseHash = await GetExecApprovalsHashAsync();
-        await _fixture.Client.CallToolExpectSuccessAsync("system.execApprovals.set", new
-        {
-            baseHash,
-            defaultAction = "deny",
-            rules = new object[]
-            {
-                new { pattern = "echo *", action = "allow", description = "test", enabled = true },
-            },
-        });
-
         using var payload = await _fixture.Client.CallToolExpectSuccessAsync("system.run", new
         {
-            command = new[] { "echo", "hello-from-mcp" },
+            command = new[] { "where.exe", "cmd.exe" },
             timeoutMs = 10_000,
         });
         var stdout = payload.RootElement.GetProperty("stdout").GetString() ?? "";
-        Assert.Contains("hello-from-mcp", stdout);
+        Assert.Contains("cmd.exe", stdout, StringComparison.OrdinalIgnoreCase);
         Assert.Equal(0, payload.RootElement.GetProperty("exitCode").GetInt32());
-    }
-
-    private async Task<string> GetExecApprovalsHashAsync()
-    {
-        using var doc = await _fixture.Client.CallToolExpectSuccessAsync("system.execApprovals.get");
-        return doc.RootElement.GetProperty("hash").GetString()
-            ?? throw new InvalidOperationException("system.execApprovals.get did not return a hash");
     }
 
     [IntegrationFact]
@@ -143,31 +121,68 @@ public class McpHttpServerIntegrationTests : IClassFixture<TrayAppFixture>
     }
 
     [IntegrationFact]
-    public async Task SystemExecApprovals_GetThenSet_PersistsRule()
+    public async Task SystemExecApprovals_GetThenSet_RoundTripsExistingRule()
     {
         using var beforeDoc = await _fixture.Client.CallToolExpectSuccessAsync("system.execApprovals.get");
-        Assert.True(beforeDoc.RootElement.GetProperty("enabled").GetBoolean());
+        Assert.Equal(1, beforeDoc.RootElement.GetProperty("file").GetProperty("version").GetInt32());
         var baseHash = beforeDoc.RootElement.GetProperty("hash").GetString()!;
 
-        // Set a single deterministic rule and verify it round-trips. The
-        // server requires baseHash to match the current policy hash so it
-        // can refuse stale writes.
-        var marker = "integration-marker-" + System.Guid.NewGuid().ToString("N").Substring(0, 8);
+        var beforeFile = beforeDoc.RootElement.GetProperty("file").Clone();
+        var beforeAllowlist = beforeFile.GetProperty("agents")
+            .GetProperty("main").GetProperty("allowlist");
+        Assert.Contains(
+            beforeAllowlist.EnumerateArray(),
+            rule => rule.GetProperty("pattern").GetString() == TrayAppFixture.SeededExecApprovalPattern);
+
         using var setDoc = await _fixture.Client.CallToolExpectSuccessAsync("system.execApprovals.set", new
         {
             baseHash,
-            defaultAction = "deny",
-            rules = new object[]
-            {
-                new { pattern = marker + " *", action = "allow", description = marker, enabled = true },
-            },
+            file = beforeFile,
         });
-        Assert.True(setDoc.RootElement.GetProperty("updated").GetBoolean());
+        Assert.False(string.IsNullOrWhiteSpace(setDoc.RootElement.GetProperty("hash").GetString()));
 
         using var afterDoc = await _fixture.Client.CallToolExpectSuccessAsync("system.execApprovals.get");
-        var rules = afterDoc.RootElement.GetProperty("rules");
-        Assert.Contains(rules.EnumerateArray(),
-            r => r.GetProperty("pattern").GetString() == marker + " *");
+        var allowlist = afterDoc.RootElement.GetProperty("file")
+            .GetProperty("agents").GetProperty("main").GetProperty("allowlist");
+        Assert.Contains(allowlist.EnumerateArray(),
+            rule => rule.GetProperty("pattern").GetString() == TrayAppFixture.SeededExecApprovalPattern);
+    }
+
+    [IntegrationFact]
+    public async Task SystemExecApprovals_SetRejectsAddedRemoteGrant()
+    {
+        using var beforeDoc = await _fixture.Client.CallToolExpectSuccessAsync("system.execApprovals.get");
+        var baseHash = beforeDoc.RootElement.GetProperty("hash").GetString()!;
+
+        var (isError, text) = await _fixture.Client.CallToolAcceptingFailureAsync(
+            "system.execApprovals.set",
+            new
+            {
+                baseHash,
+                file = new
+                {
+                    version = 1,
+                    defaults = new { security = "allowlist", ask = "off", askFallback = "deny", autoAllowSkills = false },
+                    agents = new Dictionary<string, object>
+                    {
+                        ["main"] = new
+                        {
+                            security = "allowlist",
+                            ask = "off",
+                            askFallback = "deny",
+                            autoAllowSkills = false,
+                            allowlist = new[]
+                            {
+                                new { id = TrayAppFixture.SeededExecApprovalId, pattern = TrayAppFixture.SeededExecApprovalPattern },
+                                new { id = Guid.NewGuid().ToString(), pattern = "**/cmd.exe" },
+                            },
+                        },
+                    },
+                },
+            });
+
+        Assert.True(isError);
+        Assert.Contains("cannot add or change allowlist entries", text, StringComparison.OrdinalIgnoreCase);
     }
 
     // ---- screen.* ----

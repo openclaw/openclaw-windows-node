@@ -1,6 +1,7 @@
 using System.Diagnostics.CodeAnalysis;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using OpenClaw.Connection;
 
 namespace OpenClaw.SetupEngine;
 
@@ -208,6 +209,7 @@ public sealed class CapabilitiesConfig
 public sealed class TraySettingsConfig
 {
     public bool EnableNodeMode { get; set; } = true;
+    public bool? EnableManagedLocalGatewayAutoRepair { get; set; }
     public bool AutoStart { get; set; } = false;
     public bool NodeSystemRunEnabled { get; set; } = true;
     public bool NodeCanvasEnabled { get; set; } = true;
@@ -262,6 +264,12 @@ public sealed class TraySettingsConfig
 
         foreach (var kvp in setupOwnedSettings)
             settings[kvp.Key] = kvp.Value;
+
+        const string autoRepairKey = "EnableManagedLocalGatewayAutoRepair";
+        if (EnableManagedLocalGatewayAutoRepair is { } configuredAutoRepair)
+            settings[autoRepairKey] = configuredAutoRepair;
+        else if (!settings.ContainsKey(autoRepairKey))
+            settings[autoRepairKey] = true;
 
         Directory.CreateDirectory(Path.GetDirectoryName(settingsPath)!);
         var json = JsonSerializer.Serialize(settings, SetupConfig.JsonWriteOptions);
@@ -444,6 +452,8 @@ public sealed class SetupContext
     public string? WindowsTailnetDnsSuffix { get; set; }
     public string? TailscaleDnsName { get; set; }
     public IExternalAuthorizationPresenter? ExternalAuthorizationPresenter { get; set; }
+    public Func<GatewayRecord, CancellationToken, Task<GatewayEndpointProvenance>>?
+        EndpointProvenanceProbe { get; set; }
 
     // Data directory for gateway registry and identity files
     public string DataDir { get; }

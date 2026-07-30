@@ -639,35 +639,39 @@ public class MxcCommandRunnerTests
     }
 
     [Fact]
-    public async Task RunAsync_SandboxEnabled_DirectArgv_FailsClosed_DoesNotSerializeLegacy()
+    public async Task RunAsync_SandboxEnabled_DirectArgv_ExecutesThroughSandbox()
     {
-        // A direct-argv request cannot be carried by the sandbox protocol yet, so the
-        // runner must fail closed rather than silently serialize the legacy command
-        // fields and run something other than the approved argv.
         var executor = new FakeSandboxExecutor();
         var fallback = new FakeCommandRunner { Result = new CommandResult { ExitCode = 0, Stdout = "host" } };
         var runner = NewRunner(executor, fallback, NewSettings(sandboxEnabled: true));
+        var argv = new[] { @"C:\Windows\System32\whoami.exe", "two words" };
 
         var result = await runner.RunAsync(new CommandRequest
         {
-            Argv = new[] { @"C:\Windows\System32\whoami.exe" },
+            Argv = argv,
             Command = "should-be-ignored",
+            Args = ["should-be-ignored"],
+            Shell = "powershell",
         });
 
-        Assert.Equal(-1, result.ExitCode);
+        Assert.Equal(0, result.ExitCode);
+        Assert.Equal(NodeToolExecutionMode.Sandbox, result.ExecutionMode);
+        Assert.NotNull(executor.LastRequest);
         Assert.Equal(
-            NodeToolSandboxDenialReason.DirectArgvUnsupported,
-            result.SandboxDenialReason);
-        // Neither the sandbox executor nor the host fallback ran the command.
-        Assert.Null(executor.LastRequest);
+            argv,
+            executor.LastRequest!.Args.GetProperty("argv")
+                .EnumerateArray()
+                .Select(value => value.GetString()!)
+                .ToArray());
+        Assert.Equal(JsonValueKind.Null, executor.LastRequest.Args.GetProperty("shell").ValueKind);
         Assert.Null(fallback.LastRequest);
     }
 
     [Fact]
     public async Task RunAsync_SandboxUnavailable_DirectArgv_FallsBackToHostThatHonorsArgv()
     {
-        // When the sandbox is unavailable the request routes to the host runner, which
-        // does honor Argv. The fail-closed guard must not interfere with that path.
+        // When the sandbox is unavailable the request routes to the host runner,
+        // which preserves the same direct argv.
         var executor = new FakeSandboxExecutor();
         var fallback = new FakeCommandRunner { Result = new CommandResult { ExitCode = 0, Stdout = "host" } };
         var runner = NewRunner(
@@ -683,10 +687,8 @@ public class MxcCommandRunnerTests
     }
 
     // -------------------------------------------------------------------------
-    // CanExecuteDirectArgv: the transport-capability probe the V2 path checks
-    // before approving. It must report false only in the one state where a
-    // submitted direct-argv request would reach MXC and hit the fail-closed
-    // block, and true wherever a runner actually honors Argv.
+    // CanExecuteDirectArgv: every MXC route either transports argv directly,
+    // uses a host runner that honors it, or applies its normal strict denial.
     // -------------------------------------------------------------------------
 
     [Fact]
@@ -702,12 +704,12 @@ public class MxcCommandRunnerTests
     }
 
     [Fact]
-    public void CanExecuteDirectArgv_SandboxEnabledAndAvailable_False()
+    public void CanExecuteDirectArgv_SandboxEnabledAndAvailable_True()
     {
         var runner = NewRunner(new FakeSandboxExecutor(), new FakeCommandRunner(),
             NewSettings(sandboxEnabled: true), sandboxAvailable: true);
 
-        Assert.False(runner.CanExecuteDirectArgv());
+        Assert.True(runner.CanExecuteDirectArgv());
     }
 
     [Theory]
@@ -719,8 +721,7 @@ public class MxcCommandRunnerTests
             NewSettings(sandboxEnabled: true, blockHostFallbackWhenMxcUnavailable: strictBlocking),
             sandboxAvailable: false);
 
-        // Neither unavailable path reaches the sandbox argv block, so the
-        // up-front gate must not pre-empt them.
+        // Neither unavailable route needs an up-front argv transport denial.
         Assert.True(runner.CanExecuteDirectArgv());
     }
 
@@ -731,7 +732,7 @@ public class MxcCommandRunnerTests
         var runner = NewRunner(new FakeSandboxExecutor(), new FakeCommandRunner(),
             settings, sandboxAvailable: true);
 
-        Assert.False(runner.CanExecuteDirectArgv());
+        Assert.True(runner.CanExecuteDirectArgv());
         settings.SystemRunSandboxEnabled = false;
         Assert.True(runner.CanExecuteDirectArgv());
     }
@@ -746,7 +747,7 @@ public class MxcCommandRunnerTests
             () => "C:\\test\\settings",
             () => available, invalidateAvailability: null, NullLogger.Instance);
 
-        Assert.False(runner.CanExecuteDirectArgv());
+        Assert.True(runner.CanExecuteDirectArgv());
         available = false;
         Assert.True(runner.CanExecuteDirectArgv());
     }
@@ -777,12 +778,11 @@ public class MxcCommandRunnerTests
 
     // -------------------------------------------------------------------------
     // Availability flip between the gate probe and RunAsync (TOCTOU). Both
-    // interleavings must stay fail-closed: nothing escapes the sandbox, and
-    // nothing but the approved argv executes.
+    // interleavings preserve the approved argv on the selected transport.
     // -------------------------------------------------------------------------
 
     [Fact]
-    public async Task DirectArgv_GateSaidTrueThenSandboxBecameAvailable_RunAsyncFailsClosed()
+    public async Task DirectArgv_GateSaidTrueThenSandboxBecameAvailable_RunAsyncUsesSandbox()
     {
         var available = false;
         var executor = new FakeSandboxExecutor();
@@ -801,15 +801,13 @@ public class MxcCommandRunnerTests
             Argv = new[] { @"C:\Windows\System32\whoami.exe" },
         });
 
-        // Reaches the sandbox, which cannot carry argv, so it fails closed
-        // instead of running the request uncontained on the host.
-        Assert.Equal(-1, result.ExitCode);
-        Assert.Null(executor.LastRequest);
+        Assert.Equal(0, result.ExitCode);
+        Assert.NotNull(executor.LastRequest);
         Assert.Null(fallback.LastRequest);
     }
 
     [Fact]
-    public async Task DirectArgv_GateSaidFalseThenSandboxDropped_RunAsyncHonorsApprovedArgvOnHost()
+    public async Task DirectArgv_GateSaidTrueThenSandboxDropped_RunAsyncHonorsApprovedArgvOnHost()
     {
         var available = true;
         var executor = new FakeSandboxExecutor();
@@ -820,7 +818,7 @@ public class MxcCommandRunnerTests
             () => "C:\\test\\settings",
             () => available, invalidateAvailability: null, NullLogger.Instance);
 
-        Assert.False(runner.CanExecuteDirectArgv());
+        Assert.True(runner.CanExecuteDirectArgv());
 
         available = false;
         var argv = new[] { @"C:\Windows\System32\whoami.exe" };

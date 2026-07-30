@@ -12,12 +12,10 @@ using OpenClaw.Shared.ExecApprovals;
 using OpenClaw.Shared.Mcp;
 using OpenClaw.Shared.Mxc;
 using OpenClaw.Shared.Telemetry;
-using OpenClawTray.Chat;
 using OpenClawTray.A2UI.Actions;
 using OpenClawTray.A2UI.Rendering;
 using OpenClawTray.Helpers;
 using OpenClawTray.Windows;
-using Microsoft.UI.Xaml;
 
 namespace OpenClawTray.Services;
 
@@ -28,9 +26,6 @@ public sealed class NodeService : IDisposable, IAsyncDisposable
 {
     private readonly IOpenClawLogger _logger;
     private readonly DispatcherQueue _dispatcherQueue;
-    private readonly Func<FrameworkElement?> _rootProvider;
-    private readonly Func<OpenClawChatDataProvider?> _chatProviderProvider;
-    private readonly Func<string, bool> _inlineApprovalAvailable;
     private readonly SettingsManager? _settings;
     private readonly SemaphoreSlim _consentLock = new(1, 1);
     private readonly object _disposeLock = new();
@@ -86,6 +81,7 @@ public sealed class NodeService : IDisposable, IAsyncDisposable
     // semaphore, so a fresh instance per rebuild would let an in-flight
     // approval on the old instance overlap with one on the new instance.
     private IExecApprovalV2Handler? _execApprovalsV2Handler;
+    private ExecApprovalsStore? _execApprovalsStore;
     private CanvasCapability? _canvasCapability;
     private ScreenCapability? _screenCapability;
     private CameraCapability? _cameraCapability;
@@ -109,6 +105,7 @@ public sealed class NodeService : IDisposable, IAsyncDisposable
     private readonly Func<int?>? _browserControlPortResolver;
     private readonly Func<SshTunnelConfig?>? _activeGatewayTunnelResolver;
     private readonly Func<string?>? _activeGatewayUrlResolver;
+    private readonly Func<Uri, CancellationToken, Task<bool>>? _browserControlAuthorization;
     private string? _token;
 
     // Authoritative capability list — populated by RegisterCapabilities and
@@ -181,8 +178,6 @@ public sealed class NodeService : IDisposable, IAsyncDisposable
     public event EventHandler<GatewaySelfInfo>? GatewaySelfUpdated;
     public event EventHandler<RecordingStateEventArgs>? RecordingStateChanged;
     public event EventHandler<NodeToastRequestedEventArgs>? ToastRequested;
-    public event EventHandler<ExecApprovalPromptRequestedEventArgs>? LocalExecApprovalRequested;
-    public event EventHandler<ExecApprovalPromptDecidedEventArgs>? LocalExecApprovalDecided;
     
     public bool IsScreenRecording { get; private set; }
     public bool IsCameraRecording { get; private set; }
@@ -212,16 +207,15 @@ public sealed class NodeService : IDisposable, IAsyncDisposable
         IOpenClawLogger logger,
         DispatcherQueue dispatcherQueue,
         string dataPath,
-        Func<FrameworkElement?>? rootProvider = null,
-        Func<OpenClawChatDataProvider?>? chatProviderProvider = null,
-        Func<string, bool>? inlineApprovalAvailable = null,
         SettingsManager? settings = null,
         bool enableMcpServer = false,
         string? identityDataPath = null,
         Func<string?>? sharedGatewayTokenResolver = null,
         Func<int?>? browserControlPortResolver = null,
         Func<SshTunnelConfig?>? activeGatewayTunnelResolver = null,
-        Func<string?>? activeGatewayUrlResolver = null)
+        Func<string?>? activeGatewayUrlResolver = null,
+        Func<Uri, CancellationToken, Task<bool>>? browserControlAuthorization = null,
+        ExecApprovalsStore? execApprovalsStore = null)
     {
         _logger = logger;
         _dispatcherQueue = dispatcherQueue;
@@ -231,9 +225,8 @@ public sealed class NodeService : IDisposable, IAsyncDisposable
         _browserControlPortResolver = browserControlPortResolver;
         _activeGatewayTunnelResolver = activeGatewayTunnelResolver;
         _activeGatewayUrlResolver = activeGatewayUrlResolver;
-        _rootProvider = rootProvider ?? (() => null);
-        _chatProviderProvider = chatProviderProvider ?? (() => null);
-        _inlineApprovalAvailable = inlineApprovalAvailable ?? (_ => false);
+        _browserControlAuthorization = browserControlAuthorization;
+        _execApprovalsStore = execApprovalsStore;
         _settings = settings;
         _enableMcpServer = enableMcpServer;
         _screenCaptureService = new ScreenCaptureService(logger);
@@ -314,12 +307,6 @@ public sealed class NodeService : IDisposable, IAsyncDisposable
     
     private void RegisterCapabilities()
     {
-        // With the new approvals path enabled the migration runs on the same
-        // store instance handed to the coordinator below; the legacy-file
-        // migration itself is independent of which path handles system.run.
-        if (_settings?.ExecApprovalsNewPathEnabled != true)
-            new ExecApprovalsStore(_dataPath, _logger).MigrateLegacyFileIfNeeded();
-
         // Hold the lock across the entire rebuild. The body is sync construction
         // (no awaits), so the lock is held briefly and an MCP tools/list arriving
         // mid-rebuild waits for a consistent snapshot rather than seeing a half-
@@ -336,30 +323,14 @@ public sealed class NodeService : IDisposable, IAsyncDisposable
             _logger,
             includeRunCommands: NodeCapabilityGating.ShouldRegisterSystemRun(_settings));
         _systemCapability.NotifyRequested += OnSystemNotify;
-        _systemCapability.PolicyAutoDecided += OnLocalExecApprovalDecided;
         _systemCapability.SetCommandRunner(BuildSystemRunRunner());
-        _systemCapability.SetApprovalPolicy(new ExecApprovalPolicy(_dataPath, _logger));
-        var execPrompt = new ExecApprovalPromptService(
-            _dispatcherQueue,
-            _rootProvider,
-            _logger,
-            _chatProviderProvider,
-            _inlineApprovalAvailable);
-        execPrompt.InlineApprovalRequested += OnLocalExecApprovalRequested;
-        execPrompt.Decided += OnLocalExecApprovalDecided;
-        _systemCapability.SetPromptHandler(execPrompt);
-
-        // New exec approvals path: explicit opt-in, default off.
-        if (_settings?.ExecApprovalsNewPathEnabled == true)
-        {
-            // One coordinator per service lifetime (it serializes approvals with
-            // a per-instance semaphore), but a failed construction must not be
-            // sticky: only a real coordinator is cached, so the next capability
-            // rebuild retries a transient initialization fault instead of
-            // pinning the fail-closed handler until restart.
-            _execApprovalsV2Handler ??= TryBuildExecApprovalsV2Coordinator();
-            _systemCapability.SetV2Handler(_execApprovalsV2Handler ?? ExecApprovalV2NullHandler.Instance);
-        }
+        // One coordinator per service lifetime (it serializes approvals with a
+        // per-instance semaphore). Construction failures are not sticky, so a
+        // later rebuild retries while this capability remains fail closed.
+        _execApprovalsV2Handler ??= TryBuildExecApprovalsV2Coordinator();
+        if (_execApprovalsStore is not null)
+            _systemCapability.SetApprovalsStore(_execApprovalsStore);
+        _systemCapability.SetV2Handler(_execApprovalsV2Handler ?? ExecApprovalV2NullHandler.Instance);
 
         Register(_systemCapability);
 
@@ -466,7 +437,8 @@ public sealed class NodeService : IDisposable, IAsyncDisposable
                 controlPortOverride: _browserControlPortResolver?.Invoke(),
                 useSshTunnel: tunnelState.Enabled,
                 sshTunnelLocalPort: tunnelState.LocalPort,
-                allowGatewayPortFallback: tunnelState.AllowGatewayPortFallback);
+                allowGatewayPortFallback: tunnelState.AllowGatewayPortFallback,
+                authorizeEndpointAsync: _browserControlAuthorization);
             Register(_browserProxyCapability);
         }
         else if (browserProxyBlock != BrowserProxyActivation.RegistrationBlock.ToggleDisabled)
@@ -569,18 +541,29 @@ public sealed class NodeService : IDisposable, IAsyncDisposable
             // -= before += so a re-attach of the same client (e.g. AttachClient called
             // again after a DisconnectAsync that nulled _nodeClient) doesn't double-subscribe.
             client.StatusChanged -= OnNodeStatusChanged;
+            client.Disposed -= OnNodeClientDisposed;
             client.PairingStatusChanged -= OnPairingStatusChanged;
             client.HealthReceived -= OnNodeHealthReceived;
             client.GatewaySelfUpdated -= OnGatewaySelfUpdated;
             client.InvokeCompleted -= OnNodeInvokeCompleted;
             client.ToolTelemetryCompleted -= OnToolTelemetryCompleted;
             client.StatusChanged += OnNodeStatusChanged;
+            client.Disposed += OnNodeClientDisposed;
             client.PairingStatusChanged += OnPairingStatusChanged;
             client.HealthReceived += OnNodeHealthReceived;
             client.GatewaySelfUpdated += OnGatewaySelfUpdated;
             client.InvokeCompleted += OnNodeInvokeCompleted;
             client.ToolTelemetryCompleted += OnToolTelemetryCompleted;
         }
+
+        var gatewayUrl = client.GatewayUrl;
+        var configuredGatewayUrl = GetConfiguredGatewayUrl();
+        var token = bearerToken;
+        _dispatcherQueue.TryEnqueue(() =>
+        {
+            if (_canvasWindow != null && !_canvasWindow.IsClosed)
+                _canvasWindow.SetTrustedGatewayOrigin(gatewayUrl, token, configuredGatewayUrl);
+        });
 
         bool capabilitiesBuilt;
         lock (_capabilitiesLock)
@@ -609,6 +592,7 @@ public sealed class NodeService : IDisposable, IAsyncDisposable
     private void DetachClientHandlers(WindowsNodeClient client)
     {
         client.StatusChanged -= OnNodeStatusChanged;
+        client.Disposed -= OnNodeClientDisposed;
         client.PairingStatusChanged -= OnPairingStatusChanged;
         client.HealthReceived -= OnNodeHealthReceived;
         client.GatewaySelfUpdated -= OnGatewaySelfUpdated;
@@ -617,32 +601,32 @@ public sealed class NodeService : IDisposable, IAsyncDisposable
     }
 
     /// <summary>
-    /// Build the handler for the new exec approvals path. Fail closed: if the
+    /// Build the exec approvals handler. Fail closed: if the
     /// coordinator cannot be built, return the null handler (typed unavailable
     /// deny) rather than falling back silently to the legacy path. The result
     /// is cached for the NodeService lifetime so the coordinator stays a
     /// singleton across capability rebuilds. The approval prompt dialog is
-    /// wired, but presentation is still gated off, so prompt-required
-    /// decisions resolve through the store's ask fallback.
+    /// wired and presentation is gated by the attended desktop evaluator.
     /// </summary>
     private IExecApprovalV2Handler? TryBuildExecApprovalsV2Coordinator()
     {
         try
         {
-            var store = new ExecApprovalsStore(_dataPath, _logger);
+            var store = _execApprovalsStore ?? new ExecApprovalsStore(_dataPath, _logger);
             store.MigrateLegacyFileIfNeeded();
             var coordinator = new ExecApprovalsCoordinator(
                 store,
-                AlwaysCannotPresentEvaluator.Instance,
+                new DesktopCanPresentEvaluator(),
                 new ExecApprovalV2DialogPromptHandler(_dispatcherQueue, _logger),
                 _logger);
-            _logger.Info("[EXEC-APPROVALS] new path enabled (prompt dialog wired; presentation gated off)");
+            _execApprovalsStore = store;
+            _logger.Info("[EXEC-APPROVALS] V2 path enabled (prompt dialog wired; attended desktop required)");
             return coordinator;
         }
         catch (Exception ex)
         {
             _logger.Error(
-                "[EXEC-APPROVALS] new path enabled but coordinator unavailable; " +
+                "[EXEC-APPROVALS] V2 coordinator unavailable; " +
                 "failing closed until the next capability rebuild retries", ex);
             return null;
         }
@@ -1097,7 +1081,47 @@ public sealed class NodeService : IDisposable, IAsyncDisposable
     private void OnNodeStatusChanged(object? sender, ConnectionStatus status)
     {
         _logger.Info($"Node status changed: {status}");
+        if (status == ConnectionStatus.Connected)
+        {
+            _dispatcherQueue.TryEnqueue(() =>
+            {
+                if (_canvasWindow != null && !_canvasWindow.IsClosed)
+                    _canvasWindow.SetTrustedGatewayOrigin(GatewayUrl, _token, GetConfiguredGatewayUrl());
+            });
+        }
+        else
+        {
+            _dispatcherQueue.TryEnqueue(() =>
+            {
+                if (_canvasWindow != null && !_canvasWindow.IsClosed)
+                    _canvasWindow.SetTrustedGatewayOrigin(null);
+            });
+        }
         StatusChanged?.Invoke(this, status);
+    }
+
+    private void OnNodeClientDisposed(object? sender, EventArgs args)
+    {
+        var retired = false;
+        lock (_clientLock)
+        {
+            if (sender is WindowsNodeClient client && ReferenceEquals(_nodeClient, client))
+            {
+                DetachClientHandlers(client);
+                _nodeClient = null;
+                _token = null;
+                retired = true;
+            }
+        }
+
+        if (!retired)
+            return;
+
+        _dispatcherQueue.TryEnqueue(() =>
+        {
+            if (_canvasWindow != null && !_canvasWindow.IsClosed)
+                _canvasWindow.SetTrustedGatewayOrigin(null);
+        });
     }
     
     private void OnPairingStatusChanged(object? sender, PairingStatusEventArgs args)
@@ -1149,22 +1173,6 @@ public sealed class NodeService : IDisposable, IAsyncDisposable
         });
     }
 
-    private void OnLocalExecApprovalDecided(object? sender, ExecApprovalPromptDecidedEventArgs args)
-    {
-        _dispatcherQueue.TryEnqueue(() =>
-        {
-            LocalExecApprovalDecided?.Invoke(this, args);
-        });
-    }
-
-    private void OnLocalExecApprovalRequested(object? sender, ExecApprovalPromptRequestedEventArgs args)
-    {
-        _dispatcherQueue.TryEnqueue(() =>
-        {
-            LocalExecApprovalRequested?.Invoke(this, args);
-        });
-    }
-    
     #endregion
     
     #region Canvas Capability Handlers

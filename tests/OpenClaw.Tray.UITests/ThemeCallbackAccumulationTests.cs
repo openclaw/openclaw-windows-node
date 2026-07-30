@@ -93,6 +93,7 @@ public sealed class ThemeCallbackAccumulationTests
             {
                 effects.Clear();
                 var element = Button(Empty(), () => { })
+                    .AutomationName("Theme callback test")
                     .BackgroundResource("ThemeCallbackTestBrush");
                 renderer.Render(element, "root", effects);
                 foreach (var fx in effects) fx();
@@ -101,7 +102,9 @@ public sealed class ThemeCallbackAccumulationTests
             // The rendered Button should exist and have the correct background.
             effects.Clear();
             var rendered = renderer.Render(
-                Button(Empty(), () => { }).BackgroundResource("ThemeCallbackTestBrush"),
+                Button(Empty(), () => { })
+                    .AutomationName("Theme callback test")
+                    .BackgroundResource("ThemeCallbackTestBrush"),
                 "root",
                 effects);
 
