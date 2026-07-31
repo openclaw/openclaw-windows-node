@@ -1,3 +1,4 @@
+using System.Text.Encodings.Web;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 
@@ -75,13 +76,15 @@ internal sealed record SidecarRuntimeConfiguration(
 internal static class SidecarJson
 {
     internal const ulong MaxPortableInteger = 9_007_199_254_740_991;
-    internal const int MaxDepth = 128;
+    // serde_json starts with 128 remaining levels and rejects the 128th container.
+    internal const int MaxDepth = 127;
 
     internal static readonly JsonSerializerOptions SerializerOptions = new()
     {
         PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
         WriteIndented = false,
-        MaxDepth = MaxDepth
+        MaxDepth = MaxDepth,
+        Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping
     };
 
     internal static byte[] Serialize(JsonNode node) =>
@@ -133,9 +136,32 @@ internal static class SidecarJson
 
     private static bool NumberEquals(JsonElement left, JsonElement right)
     {
-        if (left.TryGetInt64(out var leftInteger))
-            return right.TryGetInt64(out var rightInteger) && leftInteger == rightInteger;
-        return !right.TryGetInt64(out _) && left.GetDouble().Equals(right.GetDouble());
+        var leftKind = GetNumberKind(left);
+        if (leftKind != GetNumberKind(right))
+            return false;
+        return leftKind switch
+        {
+            JsonNumberKind.PositiveInteger =>
+                left.GetUInt64() == right.GetUInt64(),
+            JsonNumberKind.NegativeInteger =>
+                left.GetInt64() == right.GetInt64(),
+            _ => left.GetDouble().Equals(right.GetDouble())
+        };
+    }
+
+    private static JsonNumberKind GetNumberKind(JsonElement value)
+    {
+        var raw = value.GetRawText();
+        if (raw.Contains('.') || raw.Contains('e') || raw.Contains('E') || raw == "-0")
+            return JsonNumberKind.Float;
+        return raw[0] == '-' ? JsonNumberKind.NegativeInteger : JsonNumberKind.PositiveInteger;
+    }
+
+    private enum JsonNumberKind
+    {
+        PositiveInteger,
+        NegativeInteger,
+        Float
     }
 
     private sealed class JsonElementValueComparer : IEqualityComparer<JsonElement>

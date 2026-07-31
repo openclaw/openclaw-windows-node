@@ -177,7 +177,8 @@ public sealed class WindowsSidecarCapabilityAdapterTests
     [Fact]
     public void SidecarJson_UsesRustCompatibleDepthLimit()
     {
-        var supported = Encoding.UTF8.GetBytes(new string('[', 80) + "0" + new string(']', 80));
+        var supported = Encoding.UTF8.GetBytes(
+            new string('[', SidecarJson.MaxDepth) + "0" + new string(']', SidecarJson.MaxDepth));
         var tooDeep = Encoding.UTF8.GetBytes(
             new string('[', SidecarJson.MaxDepth + 1) + "0" + new string(']', SidecarJson.MaxDepth + 1));
 
@@ -540,6 +541,50 @@ public sealed class WindowsSidecarCapabilityAdapterTests
     }
 
     [Fact]
+    public async Task Adapter_CountsLogicalOutputUsingSerdeCompatibleUtf8()
+    {
+        var adapter = new WindowsSidecarCapabilityAdapter("node-1", new TestLogger());
+        adapter.RegisterCapability(new TestCapability(
+            "native.status",
+            "product.status",
+            (_, _) => Task.FromResult(new NodeInvokeResponse
+            {
+                Ok = false,
+                Error = new string('é', 40)
+            })));
+        Configure(adapter, maxOutputBytes: 128);
+        var invocation = ParseJson("""
+            {"id":"invoke-utf8-error","nodeId":"node-1","command":"product.status","params":{},"timeoutMs":1000,"idempotencyKey":null,"sessionKey":null}
+            """);
+        await AdmitAsync(adapter, invocation);
+
+        var result = await InvokeAsync(adapter, invocation);
+
+        Assert.Equal("WINDOWS_CAPABILITY", result["result"]!["code"]!.GetValue<string>());
+    }
+
+    [Fact]
+    public async Task Adapter_AllowsSerdeDepthCapabilityOutput()
+    {
+        var nested = new string('[', 80) + "0" + new string(']', 80);
+        var payload = SidecarJson.Parse(Encoding.UTF8.GetBytes(nested));
+        var adapter = new WindowsSidecarCapabilityAdapter("node-1", new TestLogger());
+        adapter.RegisterCapability(new TestCapability(
+            "native.status",
+            "product.status",
+            (_, _) => Task.FromResult(new NodeInvokeResponse { Ok = true, Payload = payload })));
+        Configure(adapter, maxOutputBytes: 1024);
+        var invocation = ParseJson("""
+            {"id":"invoke-deep-output","nodeId":"node-1","command":"product.status","params":{},"timeoutMs":1000,"idempotencyKey":null,"sessionKey":null}
+            """);
+        await AdmitAsync(adapter, invocation);
+
+        var result = await InvokeAsync(adapter, invocation);
+
+        Assert.Equal("success", result["result"]!["outcome"]!.GetValue<string>());
+    }
+
+    [Fact]
     public async Task Adapter_RejectsNonPortableIntegerCapabilityOutput()
     {
         var adapter = new WindowsSidecarCapabilityAdapter("node-1", new TestLogger());
@@ -885,6 +930,47 @@ public sealed class WindowsSidecarCapabilityAdapterTests
     }
 
     [Fact]
+    public async Task Adapter_DistinguishesSerdeNegativeZeroFromIntegerZero()
+    {
+        var adapter = new WindowsSidecarCapabilityAdapter("node-1", new TestLogger());
+        adapter.RegisterCapability(new TestCapability(
+            "native.status",
+            "product.status",
+            (_, _) => Task.FromResult(new NodeInvokeResponse { Ok = true })));
+        Configure(adapter);
+        var admission = ParseJson("""
+            {"type":"admission-request","invocation":{"id":"invoke-negative-zero","nodeId":"node-1","command":"product.status","params":{"value":-0},"timeoutMs":1000,"idempotencyKey":null,"sessionKey":null}}
+            """);
+        var invocation = ParseJson("""
+            {"type":"invoke","invocation":{"id":"invoke-negative-zero","nodeId":"node-1","command":"product.status","params":{"value":0},"timeoutMs":1000,"idempotencyKey":null,"sessionKey":null}}
+            """);
+
+        _ = await adapter.HandleRuntimeMessageAsync(admission, CancellationToken.None);
+        var result = await adapter.HandleRuntimeMessageAsync(invocation, CancellationToken.None);
+
+        Assert.Equal("ADMISSION_MISMATCH", result!["result"]!["code"]!.GetValue<string>());
+    }
+
+    [Fact]
+    public async Task Adapter_AllowsSerdeDepthAndUtf8InvocationInput()
+    {
+        var nested = new string('[', 80) + "\"" + new string('é', 40) + "\"" + new string(']', 80);
+        var adapter = new WindowsSidecarCapabilityAdapter("node-1", new TestLogger());
+        adapter.RegisterCapability(new TestCapability(
+            "native.status",
+            "product.status",
+            (_, _) => Task.FromResult(new NodeInvokeResponse { Ok = true })));
+        Configure(adapter, maxInputBytes: 256);
+        var admission = ParseJson("""
+            {"type":"admission-request","invocation":{"id":"invoke-deep-input","nodeId":"node-1","command":"product.status","params":__PARAMS__,"timeoutMs":1000,"idempotencyKey":null,"sessionKey":null}}
+            """.Replace("__PARAMS__", nested, StringComparison.Ordinal));
+
+        var decision = await adapter.HandleRuntimeMessageAsync(admission, CancellationToken.None);
+
+        Assert.Equal("allow", decision!["decision"]!["outcome"]!.GetValue<string>());
+    }
+
+    [Fact]
     public async Task Adapter_RejectsNonPortableInvocationTimeout()
     {
         var adapter = new WindowsSidecarCapabilityAdapter("node-1", new TestLogger());
@@ -1100,11 +1186,8 @@ public sealed class WindowsSidecarCapabilityAdapterTests
     private static JsonElement ParseCanonical(JsonElement canonical) =>
         ParseJson(canonical.GetString()!);
 
-    private static JsonElement ParseJson(string json)
-    {
-        using var document = JsonDocument.Parse(json);
-        return document.RootElement.Clone();
-    }
+    private static JsonElement ParseJson(string json) =>
+        SidecarJson.Parse(Encoding.UTF8.GetBytes(json));
 
     private static JsonDocument ReadFixture(string name) => JsonDocument.Parse(
         File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "RustSidecar", "Fixtures", name)));
