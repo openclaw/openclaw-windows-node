@@ -91,7 +91,8 @@ internal static class SidecarJson
         {
             SerdeDoubleConverter.Instance,
             SerdeSingleConverter.Instance,
-            SerdeJsonElementConverter.Instance
+            SerdeJsonElementConverter.Instance,
+            SerdeJsonNodeConverterFactory.Instance
         }
     };
 
@@ -233,17 +234,37 @@ internal static class SidecarJson
     {
         if (!double.IsFinite(value))
             throw new JsonException("Sidecar JSON cannot encode non-finite floating-point values.");
-        return FormatSerdeFloatText(value.ToString("R", CultureInfo.InvariantCulture));
+        var text = value.ToString("R", CultureInfo.InvariantCulture);
+        if (!double.TryParse(text, NumberStyles.Float, CultureInfo.InvariantCulture, out var parsed) ||
+            BitConverter.DoubleToInt64Bits(parsed) != BitConverter.DoubleToInt64Bits(value))
+            text = value.ToString("G17", CultureInfo.InvariantCulture);
+        return FormatSerdeFloatText(
+            text,
+            minimumFixedExponent: -5,
+            maximumFixedExponent: 15,
+            maximumFixedIntegerDigits: 16);
     }
 
     private static string FormatSerdeFloat(float value)
     {
         if (!float.IsFinite(value))
             throw new JsonException("Sidecar JSON cannot encode non-finite floating-point values.");
-        return FormatSerdeFloatText(value.ToString("R", CultureInfo.InvariantCulture));
+        var text = value.ToString("R", CultureInfo.InvariantCulture);
+        if (!float.TryParse(text, NumberStyles.Float, CultureInfo.InvariantCulture, out var parsed) ||
+            BitConverter.SingleToInt32Bits(parsed) != BitConverter.SingleToInt32Bits(value))
+            text = value.ToString("G9", CultureInfo.InvariantCulture);
+        return FormatSerdeFloatText(
+            text,
+            minimumFixedExponent: -6,
+            maximumFixedExponent: 12,
+            maximumFixedIntegerDigits: 13);
     }
 
-    private static string FormatSerdeFloatText(string text)
+    private static string FormatSerdeFloatText(
+        string text,
+        int minimumFixedExponent,
+        int maximumFixedExponent,
+        int maximumFixedIntegerDigits)
     {
         var exponentIndex = text.IndexOf('E');
         if (exponentIndex >= 0)
@@ -253,7 +274,7 @@ internal static class SidecarJson
                 NumberStyles.AllowLeadingSign,
                 CultureInfo.InvariantCulture);
             var mantissa = text[..exponentIndex];
-            if (exponent is >= -5 and <= 15)
+            if (exponent >= minimumFixedExponent && exponent <= maximumFixedExponent)
                 return ExpandSerdeFloat(mantissa, exponent);
             return string.Concat(
                 mantissa,
@@ -263,7 +284,7 @@ internal static class SidecarJson
         var unsigned = text[0] == '-' ? text[1..] : text;
         var decimalPoint = unsigned.IndexOf('.');
         var integerDigits = decimalPoint >= 0 ? decimalPoint : unsigned.Length;
-        if (integerDigits > 16)
+        if (integerDigits > maximumFixedIntegerDigits)
         {
             var digits = unsigned.Replace(".", string.Empty, StringComparison.Ordinal)
                 .TrimEnd('0');
@@ -369,7 +390,167 @@ internal static class SidecarJson
         public override void Write(
             Utf8JsonWriter writer,
             JsonElement value,
-            JsonSerializerOptions options) => NormalizeValue(value).WriteTo(writer);
+            JsonSerializerOptions options) => WriteNormalizedValue(writer, value);
+
+        internal static void WriteNormalizedValue(Utf8JsonWriter writer, JsonElement value)
+        {
+            switch (value.ValueKind)
+            {
+                case JsonValueKind.Object:
+                    writer.WriteStartObject();
+                    var properties = new Dictionary<string, JsonElement>(StringComparer.Ordinal);
+                    foreach (var property in value.EnumerateObject())
+                        properties[property.Name] = property.Value;
+                    foreach (var property in properties)
+                    {
+                        writer.WritePropertyName(property.Key);
+                        WriteNormalizedValue(writer, property.Value);
+                    }
+                    writer.WriteEndObject();
+                    return;
+                case JsonValueKind.Array:
+                    writer.WriteStartArray();
+                    foreach (var item in value.EnumerateArray())
+                        WriteNormalizedValue(writer, item);
+                    writer.WriteEndArray();
+                    return;
+                case JsonValueKind.String:
+                    writer.WriteStringValue(value.GetString());
+                    return;
+                case JsonValueKind.Number:
+                    WriteNormalizedNumber(writer, value);
+                    return;
+                case JsonValueKind.True:
+                    writer.WriteBooleanValue(true);
+                    return;
+                case JsonValueKind.False:
+                    writer.WriteBooleanValue(false);
+                    return;
+                case JsonValueKind.Null:
+                    writer.WriteNullValue();
+                    return;
+                default:
+                    throw new JsonException("Sidecar JSON contains an unsupported value kind.");
+            }
+        }
+
+        private static void WriteNormalizedNumber(Utf8JsonWriter writer, JsonElement value)
+        {
+            switch (GetNumberKind(value))
+            {
+                case JsonNumberKind.PositiveInteger when value.TryGetUInt64(out var unsigned):
+                    writer.WriteNumberValue(unsigned);
+                    return;
+                case JsonNumberKind.NegativeInteger when value.TryGetInt64(out var signed):
+                    writer.WriteNumberValue(signed);
+                    return;
+                case JsonNumberKind.Float when value.TryGetDouble(out var floating) &&
+                    double.IsFinite(floating):
+                    writer.WriteRawValue(FormatSerdeFloat(floating));
+                    return;
+                default:
+                    // Preserve integers outside the portable range so the caller's
+                    // post-serialization validation can return its stable error.
+                    writer.WriteRawValue(value.GetRawText());
+                    return;
+            }
+        }
+    }
+
+    private sealed class SerdeJsonNodeConverterFactory : JsonConverterFactory
+    {
+        internal static readonly SerdeJsonNodeConverterFactory Instance = new();
+
+        public override bool CanConvert(Type typeToConvert) =>
+            typeof(JsonNode).IsAssignableFrom(typeToConvert);
+
+        public override JsonConverter CreateConverter(
+            Type typeToConvert,
+            JsonSerializerOptions options) =>
+            (JsonConverter)Activator.CreateInstance(
+                typeof(SerdeJsonNodeConverter<>).MakeGenericType(typeToConvert))!;
+    }
+
+    private sealed class SerdeJsonNodeConverter<TNode> : JsonConverter<TNode>
+        where TNode : JsonNode
+    {
+        public override TNode? Read(
+            ref Utf8JsonReader reader,
+            Type typeToConvert,
+            JsonSerializerOptions options)
+        {
+            using var document = JsonDocument.ParseValue(ref reader);
+            return JsonNode.Parse(document.RootElement.GetRawText()) as TNode
+                ?? throw new JsonException($"JSON value is not a {typeToConvert.Name}.");
+        }
+
+        public override void Write(
+            Utf8JsonWriter writer,
+            TNode value,
+            JsonSerializerOptions options) => WriteNormalizedNode(writer, value);
+
+        private static void WriteNormalizedNode(Utf8JsonWriter writer, JsonNode? node)
+        {
+            switch (node)
+            {
+                case null:
+                    writer.WriteNullValue();
+                    return;
+                case JsonObject jsonObject:
+                    writer.WriteStartObject();
+                    foreach (var property in jsonObject)
+                    {
+                        writer.WritePropertyName(property.Key);
+                        WriteNormalizedNode(writer, property.Value);
+                    }
+                    writer.WriteEndObject();
+                    return;
+                case JsonArray jsonArray:
+                    writer.WriteStartArray();
+                    foreach (var item in jsonArray)
+                        WriteNormalizedNode(writer, item);
+                    writer.WriteEndArray();
+                    return;
+                case JsonValue jsonValue when jsonValue.TryGetValue<byte>(out var byteValue):
+                    writer.WriteNumberValue(byteValue);
+                    return;
+                case JsonValue jsonValue when jsonValue.TryGetValue<sbyte>(out var sbyteValue):
+                    writer.WriteNumberValue(sbyteValue);
+                    return;
+                case JsonValue jsonValue when jsonValue.TryGetValue<short>(out var shortValue):
+                    writer.WriteNumberValue(shortValue);
+                    return;
+                case JsonValue jsonValue when jsonValue.TryGetValue<ushort>(out var ushortValue):
+                    writer.WriteNumberValue(ushortValue);
+                    return;
+                case JsonValue jsonValue when jsonValue.TryGetValue<int>(out var intValue):
+                    writer.WriteNumberValue(intValue);
+                    return;
+                case JsonValue jsonValue when jsonValue.TryGetValue<uint>(out var uintValue):
+                    writer.WriteNumberValue(uintValue);
+                    return;
+                case JsonValue jsonValue when jsonValue.TryGetValue<long>(out var longValue):
+                    writer.WriteNumberValue(longValue);
+                    return;
+                case JsonValue jsonValue when jsonValue.TryGetValue<ulong>(out var ulongValue):
+                    writer.WriteNumberValue(ulongValue);
+                    return;
+                case JsonValue jsonValue when jsonValue.TryGetValue<double>(out var doubleValue):
+                    SerdeDoubleConverter.Instance.Write(writer, doubleValue, SerializerOptions);
+                    return;
+                case JsonValue jsonValue when jsonValue.TryGetValue<float>(out var singleValue):
+                    SerdeSingleConverter.Instance.Write(writer, singleValue, SerializerOptions);
+                    return;
+                case JsonValue jsonValue when jsonValue.TryGetValue<JsonElement>(out var element):
+                    SerdeJsonElementConverter.WriteNormalizedValue(writer, element);
+                    return;
+                case JsonValue jsonValue:
+                    jsonValue.WriteTo(writer);
+                    return;
+                default:
+                    throw new JsonException("Sidecar JSON contains an unsupported node type.");
+            }
+        }
     }
 
     private sealed unsafe class SerdeJsonEncoder : JavaScriptEncoder

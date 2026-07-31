@@ -693,7 +693,10 @@ public sealed class WindowsSidecarCapabilityAdapterTests
                     doubleIntegral = 1.0,
                     negativeZero = -0.0,
                     doubleExponent = 1.25e-7,
+                    doubleBoundary = Math.Pow(2, -25),
                     singleExponent = 1e-7f,
+                    singleFixedBoundary = 1e-6f,
+                    singleScientificBoundary = 1e13f,
                     nonFiniteDouble = double.NaN,
                     nonFiniteSingle = float.PositiveInfinity
                 }
@@ -711,7 +714,10 @@ public sealed class WindowsSidecarCapabilityAdapterTests
         Assert.Contains("\"doubleIntegral\":1.0", encoded);
         Assert.Contains("\"negativeZero\":-0.0", encoded);
         Assert.Contains("\"doubleExponent\":1.25e-7", encoded);
+        Assert.Contains("\"doubleBoundary\":2.9802322387695312e-8", encoded);
         Assert.Contains("\"singleExponent\":1e-7", encoded);
+        Assert.Contains("\"singleFixedBoundary\":1e-6", encoded);
+        Assert.Contains("\"singleScientificBoundary\":10000000000000.0", encoded);
         Assert.Contains("\"nonFiniteDouble\":null", encoded);
         Assert.Contains("\"nonFiniteSingle\":null", encoded);
         Assert.Equal(
@@ -726,7 +732,7 @@ public sealed class WindowsSidecarCapabilityAdapterTests
     {
         var redundantFraction = "1." + new string('0', 2048);
         var payload = SidecarJson.Parse(Encoding.UTF8.GetBytes(
-            $$"""{"integral":1e0,"rounded":1.0000000000000001,"fixedSmall":1e-5,"compacted":{{redundantFraction}}}"""));
+            $$"""{"integral":1e0,"rounded":1.0000000000000001,"fixedSmall":1e-5,"compacted":{{redundantFraction}},"duplicate":1,"duplicate":2}"""));
         var adapter = new WindowsSidecarCapabilityAdapter("node-1", new TestLogger());
         adapter.RegisterCapability(new TestCapability(
             "native.status",
@@ -741,7 +747,32 @@ public sealed class WindowsSidecarCapabilityAdapterTests
         var result = await InvokeAsync(adapter, invocation);
 
         Assert.Equal(
-            "{\"integral\":1.0,\"rounded\":1.0,\"fixedSmall\":0.00001,\"compacted\":1.0}",
+            "{\"integral\":1.0,\"rounded\":1.0,\"fixedSmall\":0.00001,\"compacted\":1.0,\"duplicate\":2}",
+            result["result"]!["payload"]!.ToJsonString(SidecarJson.SerializerOptions));
+    }
+
+    [Fact]
+    public async Task Adapter_NormalizesJsonNodeCapabilityNumbersLikeSerdeJson()
+    {
+        var redundantFraction = "1." + new string('0', 2048);
+        var payload = JsonNode.Parse($$"""{"compacted":{{redundantFraction}}}""")!.AsObject();
+        payload["nan"] = double.NaN;
+        payload["infinity"] = float.PositiveInfinity;
+        var adapter = new WindowsSidecarCapabilityAdapter("node-1", new TestLogger());
+        adapter.RegisterCapability(new TestCapability(
+            "native.status",
+            "product.status",
+            (_, _) => Task.FromResult(new NodeInvokeResponse { Ok = true, Payload = payload })));
+        Configure(adapter, maxOutputBytes: 1024);
+        var invocation = ParseJson("""
+            {"id":"invoke-json-node-numbers","nodeId":"node-1","command":"product.status","params":{},"timeoutMs":1000,"idempotencyKey":null,"sessionKey":null}
+            """);
+        await AdmitAsync(adapter, invocation);
+
+        var result = await InvokeAsync(adapter, invocation);
+
+        Assert.Equal(
+            "{\"compacted\":1.0,\"nan\":null,\"infinity\":null}",
             result["result"]!["payload"]!.ToJsonString(SidecarJson.SerializerOptions));
     }
 
