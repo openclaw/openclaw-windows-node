@@ -107,8 +107,13 @@ internal static class SidecarJson
 
     internal static ulong RequiredUInt64(JsonElement parent, string name)
     {
-        if (!parent.TryGetProperty(name, out var value) || !value.TryGetUInt64(out var result))
-            throw new SidecarProtocolException($"Sidecar field '{name}' must be an unsigned integer.");
+        if (!parent.TryGetProperty(name, out var value) ||
+            !value.TryGetUInt64(out var result) ||
+            result > MaxPortableInteger)
+        {
+            throw new SidecarProtocolException(
+                $"Sidecar field '{name}' must be a portable unsigned integer.");
+        }
         return result;
     }
 
@@ -139,7 +144,8 @@ internal static class SidecarJson
     private static bool IsPortableNumber(JsonElement value)
     {
         if (value.TryGetInt64(out var signed))
-            return signed >= -checked((long)MaxPortableInteger);
+            return signed >= -checked((long)MaxPortableInteger) &&
+                signed <= checked((long)MaxPortableInteger);
         if (value.TryGetUInt64(out var unsigned))
             return unsigned <= MaxPortableInteger;
         if (!value.TryGetDouble(out var floating) || !double.IsFinite(floating))
