@@ -142,11 +142,29 @@ internal static class SidecarJson
                 return new JsonArray(value.EnumerateArray().Select(NormalizeNode).ToArray());
             case JsonValueKind.Null:
                 return null;
+            case JsonValueKind.Number:
+                return NormalizeNumber(value);
             default:
                 return JsonNode.Parse(
                     value.GetRawText(),
                     documentOptions: new JsonDocumentOptions { MaxDepth = MaxDepth });
         }
+    }
+
+    private static JsonNode NormalizeNumber(JsonElement value)
+    {
+        return GetNumberKind(value) switch
+        {
+            JsonNumberKind.PositiveInteger when value.TryGetUInt64(out var unsigned) =>
+                JsonValue.Create(unsigned),
+            JsonNumberKind.NegativeInteger when value.TryGetInt64(out var signed) =>
+                JsonValue.Create(signed),
+            JsonNumberKind.Float when value.TryGetDouble(out var floating) &&
+                double.IsFinite(floating) => JsonNode.Parse(FormatSerdeFloat(floating))!,
+            _ => JsonNode.Parse(
+                value.GetRawText(),
+                documentOptions: new JsonDocumentOptions { MaxDepth = MaxDepth })!
+        };
     }
 
     private static bool ObjectEquals(JsonElement left, JsonElement right)
