@@ -641,7 +641,9 @@ internal sealed class WindowsSidecarCapabilityAdapter
                 throw new SidecarProtocolException($"Invalid sidecar manifest name '{name}'.");
             }
         }
-        if (commands.Any(command => command == "system" || command.StartsWith("system.", StringComparison.Ordinal)))
+        if (commands.Any(command =>
+                command.Equals("system", StringComparison.OrdinalIgnoreCase) ||
+                command.StartsWith("system.", StringComparison.OrdinalIgnoreCase)))
         {
             throw new SidecarProtocolException(
                 "The current OpenClaw sidecar bridge does not yet admit the system command namespace.");

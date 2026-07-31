@@ -1321,13 +1321,15 @@ public sealed class WindowsSidecarCapabilityAdapterTests
         _ = await active.WaitAsync(TimeSpan.FromSeconds(5));
     }
 
-    [Fact]
-    public void Adapter_RecordsCurrentRustSystemNamespaceGapInsteadOfSelectingIt()
+    [Theory]
+    [InlineData("system.run")]
+    [InlineData("System.Run")]
+    public void Adapter_RecordsCurrentRustSystemNamespaceGapInsteadOfSelectingIt(string command)
     {
         var adapter = new WindowsSidecarCapabilityAdapter("node-1", new TestLogger());
         adapter.RegisterCapability(new TestCapability(
             "system",
-            "system.run",
+            command,
             (_, _) => Task.FromResult(new NodeInvokeResponse { Ok = true })));
 
         var error = Assert.Throws<SidecarProtocolException>(() => adapter.BeginConfiguration(
