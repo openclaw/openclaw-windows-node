@@ -1,3 +1,4 @@
+using System.Text.Json;
 using System.Text.Json.Nodes;
 using System.Threading.Channels;
 
@@ -195,7 +196,18 @@ internal sealed class WindowsSidecarSupervisor : IDisposable
     {
         lock (_channelLock)
         {
-            var payload = SidecarJson.Serialize(response);
+            byte[] payload;
+            try
+            {
+                payload = SidecarJson.Serialize(response);
+            }
+            catch (JsonException) when (
+                response["type"]?.GetValue<string>() == "result" &&
+                response["invocationId"]?.GetValue<string>() is { Length: > 0 } invocationId)
+            {
+                payload = SidecarJson.Serialize(
+                    WindowsSidecarCapabilityAdapter.MessageTooLargeFailure(invocationId));
+            }
             if (payload.Length > _channel.MaxPayloadBytes)
             {
                 if (response["type"]?.GetValue<string>() != "result" ||

@@ -84,7 +84,7 @@ internal static class SidecarJson
         PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
         WriteIndented = false,
         MaxDepth = MaxDepth,
-        Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping
+        Encoder = SerdeJsonEncoder.Instance
     };
 
     internal static byte[] Serialize(JsonNode node) =>
@@ -169,6 +169,86 @@ internal static class SidecarJson
         internal static readonly JsonElementValueComparer Instance = new();
         public bool Equals(JsonElement x, JsonElement y) => ValueEquals(x, y);
         public int GetHashCode(JsonElement obj) => throw new NotSupportedException();
+    }
+
+    private sealed unsafe class SerdeJsonEncoder : JavaScriptEncoder
+    {
+        internal static readonly SerdeJsonEncoder Instance = new();
+
+        public override int MaxOutputCharactersPerInputCharacter => 6;
+
+        public override bool WillEncode(int unicodeScalar) =>
+            unicodeScalar is >= 0 and <= 0x1f or '"' or '\\';
+
+        public override int FindFirstCharacterToEncode(char* text, int textLength)
+        {
+            if (text == null)
+                throw new ArgumentNullException(nameof(text));
+            for (var index = 0; index < textLength; index++)
+            {
+                var character = text[index];
+                if (WillEncode(character))
+                    return index;
+                if (char.IsHighSurrogate(character))
+                {
+                    if (index + 1 < textLength && char.IsLowSurrogate(text[index + 1]))
+                    {
+                        index++;
+                        continue;
+                    }
+                    return index;
+                }
+                if (char.IsLowSurrogate(character))
+                    return index;
+            }
+            return -1;
+        }
+
+        public override bool TryEncodeUnicodeScalar(
+            int unicodeScalar,
+            char* buffer,
+            int bufferLength,
+            out int numberOfCharactersWritten)
+        {
+            if (buffer == null)
+                throw new ArgumentNullException(nameof(buffer));
+            ReadOnlySpan<char> escape = unicodeScalar switch
+            {
+                '"' => "\\\"",
+                '\\' => "\\\\",
+                '\b' => "\\b",
+                '\t' => "\\t",
+                '\n' => "\\n",
+                '\f' => "\\f",
+                '\r' => "\\r",
+                _ => default
+            };
+            if (!escape.IsEmpty)
+            {
+                if (bufferLength < escape.Length)
+                {
+                    numberOfCharactersWritten = 0;
+                    return false;
+                }
+                escape.CopyTo(new Span<char>(buffer, bufferLength));
+                numberOfCharactersWritten = escape.Length;
+                return true;
+            }
+            if (unicodeScalar is < 0 or > 0x1f || bufferLength < 6)
+            {
+                numberOfCharactersWritten = 0;
+                return false;
+            }
+            const string hex = "0123456789abcdef";
+            buffer[0] = '\\';
+            buffer[1] = 'u';
+            buffer[2] = '0';
+            buffer[3] = '0';
+            buffer[4] = hex[(unicodeScalar >> 4) & 0xf];
+            buffer[5] = hex[unicodeScalar & 0xf];
+            numberOfCharactersWritten = 6;
+            return true;
+        }
     }
 
     internal static JsonElement RequiredObject(JsonElement parent, string name)
