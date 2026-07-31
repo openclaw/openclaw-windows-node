@@ -447,6 +447,31 @@ internal static class SidecarJson
             rawWriter.Flush();
         }
 
+        internal static void PreflightRawNode(JsonNode value)
+        {
+            var budget = CurrentCanonicalizationBudget.Value;
+            if (budget is null)
+                return;
+            var buffer = new CanonicalizationBudgetBufferWriter(budget);
+            using var rawWriter = new Utf8JsonWriter(buffer, new JsonWriterOptions
+            {
+                Encoder = SerdeJsonEncoder.Instance,
+                MaxDepth = MaxDepth,
+                SkipValidation = true
+            });
+            try
+            {
+                value.WriteTo(rawWriter);
+                rawWriter.Flush();
+            }
+            catch (ArgumentException)
+            {
+                // Programmatically created JsonNode values may contain NaN or
+                // infinity. Their containers are already materialized; the
+                // normalized writer below maps those leaves to serde nulls.
+            }
+        }
+
         internal static void WriteNormalizedValue(Utf8JsonWriter writer, JsonElement value)
         {
             switch (value.ValueKind)
@@ -561,7 +586,11 @@ internal static class SidecarJson
         public override void Write(
             Utf8JsonWriter writer,
             TNode value,
-            JsonSerializerOptions options) => WriteNormalizedNode(writer, value);
+            JsonSerializerOptions options)
+        {
+            SerdeJsonElementConverter.PreflightRawNode(value);
+            WriteNormalizedNode(writer, value);
+        }
 
         private static void WriteNormalizedNode(Utf8JsonWriter writer, JsonNode? node)
         {
@@ -586,7 +615,6 @@ internal static class SidecarJson
                     writer.WriteEndArray();
                     return;
                 case JsonValue jsonValue when jsonValue.TryGetValue<JsonElement>(out var element):
-                    SerdeJsonElementConverter.PreflightRawValue(element);
                     SerdeJsonElementConverter.WriteNormalizedValue(writer, element);
                     return;
                 case JsonValue jsonValue when jsonValue.TryGetValue<byte>(out var byteValue):
