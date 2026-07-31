@@ -207,12 +207,12 @@ internal sealed class WindowsSidecarCapabilityAdapter
         var invocation = ParseInvocation(SidecarJson.RequiredObject(message, "invocation"));
         if (!SidecarJson.IsPortableJson(invocation.Parameters))
         {
-            ReleaseAdmission(invocation.Id);
+            ReleasePendingAdmission(invocation.Id);
             return NonPortableJsonFailure(invocation.Id);
         }
         if (!InputWithinLimit(invocation.Parameters))
         {
-            ReleaseAdmission(invocation.Id);
+            ReleasePendingAdmission(invocation.Id);
             return ResultFailure(
                 invocation.Id,
                 "INPUT_TOO_LARGE",
@@ -232,7 +232,7 @@ internal sealed class WindowsSidecarCapabilityAdapter
         if (executionTimeout == TimeSpan.Zero)
         {
             ReleaseAdmission(invocation.Id);
-            return ResultFailure(invocation.Id, "HANDLER_TIMEOUT", "command handler exceeded its deadline");
+            return ResultFailure(invocation.Id, "HANDLER_TIMEOUT", "command handler deadline already elapsed");
         }
 
         var completion = new TaskCompletionSource<JsonObject>(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -390,6 +390,15 @@ internal sealed class WindowsSidecarCapabilityAdapter
     {
         lock (_admissionLock)
             _admittedInvocations.Remove(invocationId);
+    }
+
+    private void ReleasePendingAdmission(string invocationId)
+    {
+        lock (_admissionLock)
+        {
+            if (_admittedInvocations.TryGetValue(invocationId, out var admission) && !admission.Active)
+                _admittedInvocations.Remove(invocationId);
+        }
     }
 
     private static bool InvocationEquals(SidecarInvocation left, SidecarInvocation right) =>

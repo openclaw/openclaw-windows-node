@@ -1197,6 +1197,78 @@ public sealed class WindowsSidecarCapabilityAdapterTests
     }
 
     [Fact]
+    public async Task Adapter_UsesRustMessageForElapsedPreDispatchDeadline()
+    {
+        var adapter = new WindowsSidecarCapabilityAdapter("node-1", new TestLogger());
+        adapter.RegisterCapability(new TestCapability(
+            "native.status",
+            "product.status",
+            (_, _) => Task.FromResult(new NodeInvokeResponse { Ok = true })));
+        Configure(
+            adapter,
+            defaultTimeoutMs: 100,
+            maxTimeoutMs: 100,
+            resultGraceMs: 10);
+        var invocation = ParseJson("""
+            {"id":"invoke-elapsed","nodeId":"node-1","command":"product.status","params":{},"timeoutMs":5,"idempotencyKey":null,"sessionKey":null}
+            """);
+        await AdmitAsync(adapter, invocation);
+
+        var result = await InvokeAsync(adapter, invocation);
+
+        Assert.Equal("HANDLER_TIMEOUT", result["result"]!["code"]!.GetValue<string>());
+        Assert.Equal(
+            "command handler deadline already elapsed",
+            result["result"]!["message"]!.GetValue<string>());
+    }
+
+    [Fact]
+    public async Task Adapter_MalformedDuplicateInvokeCannotBreakActiveCancellation()
+    {
+        var started = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var cancelled = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var adapter = new WindowsSidecarCapabilityAdapter("node-1", new TestLogger());
+        adapter.RegisterCapability(new TestCapability(
+            "native.blocking",
+            "product.blocking",
+            async (_, cancellationToken) =>
+            {
+                started.TrySetResult();
+                try
+                {
+                    await Task.Delay(Timeout.InfiniteTimeSpan, cancellationToken);
+                    return new NodeInvokeResponse { Ok = true };
+                }
+                finally
+                {
+                    cancelled.TrySetResult();
+                }
+            }));
+        Configure(adapter);
+        var admission = ParseJson("""
+            {"type":"admission-request","invocation":{"id":"invoke-active","nodeId":"node-1","command":"product.blocking","params":{},"timeoutMs":0,"idempotencyKey":null,"sessionKey":null}}
+            """);
+        var invocation = ParseJson("""
+            {"type":"invoke","invocation":{"id":"invoke-active","nodeId":"node-1","command":"product.blocking","params":{},"timeoutMs":0,"idempotencyKey":null,"sessionKey":null}}
+            """);
+        _ = await adapter.HandleRuntimeMessageAsync(admission, CancellationToken.None);
+        var active = adapter.HandleRuntimeMessageAsync(invocation, CancellationToken.None);
+        await started.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        var malformedDuplicate = ParseJson("""
+            {"type":"invoke","invocation":{"id":"invoke-active","nodeId":"node-1","command":"product.blocking","params":{"value":18446744073709551616},"timeoutMs":0,"idempotencyKey":null,"sessionKey":null}}
+            """);
+
+        var rejected = await adapter.HandleRuntimeMessageAsync(malformedDuplicate, CancellationToken.None);
+        _ = await adapter.HandleRuntimeMessageAsync(
+            ParseJson("""{"type":"cancel","invocationId":"invoke-active"}"""),
+            CancellationToken.None);
+
+        Assert.Equal("SIDECAR_NON_PORTABLE_JSON", rejected!["result"]!["code"]!.GetValue<string>());
+        await cancelled.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        _ = await active.WaitAsync(TimeSpan.FromSeconds(5));
+    }
+
+    [Fact]
     public void Adapter_RecordsCurrentRustSystemNamespaceGapInsteadOfSelectingIt()
     {
         var adapter = new WindowsSidecarCapabilityAdapter("node-1", new TestLogger());
