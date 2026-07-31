@@ -777,6 +777,29 @@ public sealed class WindowsSidecarCapabilityAdapterTests
     }
 
     [Fact]
+    public async Task Adapter_NormalizesJsonDocumentCapabilityNumbersLikeSerdeJson()
+    {
+        var redundantFraction = "1." + new string('0', 2048);
+        using var payload = JsonDocument.Parse($$"""{"compacted":{{redundantFraction}}}""");
+        var adapter = new WindowsSidecarCapabilityAdapter("node-1", new TestLogger());
+        adapter.RegisterCapability(new TestCapability(
+            "native.status",
+            "product.status",
+            (_, _) => Task.FromResult(new NodeInvokeResponse { Ok = true, Payload = payload })));
+        Configure(adapter, maxOutputBytes: 1024);
+        var invocation = ParseJson("""
+            {"id":"invoke-json-document-numbers","nodeId":"node-1","command":"product.status","params":{},"timeoutMs":1000,"idempotencyKey":null,"sessionKey":null}
+            """);
+        await AdmitAsync(adapter, invocation);
+
+        var result = await InvokeAsync(adapter, invocation);
+
+        Assert.Equal(
+            "{\"compacted\":1.0}",
+            result["result"]!["payload"]!.ToJsonString(SidecarJson.SerializerOptions));
+    }
+
+    [Fact]
     public async Task Adapter_DoesNotChargeResultSerializationToHandlerDeadline()
     {
         var adapter = new WindowsSidecarCapabilityAdapter("node-1", new TestLogger());
