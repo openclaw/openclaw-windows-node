@@ -1,4 +1,3 @@
-using System.Text;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 
@@ -177,12 +176,7 @@ internal sealed class WindowsSidecarCapabilityAdapter
         {
             decision = new JsonObject { ["outcome"] = "allow" };
         }
-        return new JsonObject
-        {
-            ["type"] = "admission-decision",
-            ["invocationId"] = invocation.Id,
-            ["decision"] = decision
-        };
+        return AdmissionDecision(invocation.Id, decision);
     }
 
     private async Task<JsonObject> HandleInvocationAsync(
@@ -369,6 +363,34 @@ internal sealed class WindowsSidecarCapabilityAdapter
         ["message"] = message
     };
 
+    private static JsonObject AdmissionDecision(string invocationId, JsonObject decision) => new()
+    {
+        ["type"] = "admission-decision",
+        ["invocationId"] = invocationId,
+        ["decision"] = decision
+    };
+
+    internal static int MaximumAdmissionDecisionBytes(string invocationId)
+    {
+        var decisions = new[]
+        {
+            new JsonObject { ["outcome"] = "allow" },
+            Denial("WRONG_NODE", "invocation targets another Windows node"),
+            Denial(
+                "SIDECAR_NON_PORTABLE_JSON",
+                "sidecar message contains an integer outside the exact JSON range"),
+            Denial("INPUT_TOO_LARGE", "command parameters exceed the runtime limit"),
+            Denial(
+                "COMMAND_NOT_ADVERTISED",
+                "command is not present in the authenticated Windows manifest"),
+            Denial(
+                "ADMISSION_SATURATED",
+                "invocation id is duplicated or the authenticated admission bound is full")
+        };
+        return decisions.Max(decision =>
+            SidecarJson.Serialize(AdmissionDecision(invocationId, decision)).Length);
+    }
+
     private async Task<JsonObject> BuildSuccessResultAsync(string invocationId, object? payload)
     {
         try
@@ -425,7 +447,8 @@ internal sealed class WindowsSidecarCapabilityAdapter
     private JsonObject BuildCapabilityFailure(string invocationId, string? error)
     {
         var message = error ?? "Windows capability failed";
-        return Encoding.UTF8.GetByteCount(message) > _configuration!.MaxOutputBytes
+        return JsonSerializer.SerializeToUtf8Bytes(message, SidecarJson.SerializerOptions).Length >
+            _configuration!.MaxOutputBytes
             ? OutputTooLargeFailure(invocationId)
             : ResultFailure(invocationId, "WINDOWS_CAPABILITY", message);
     }

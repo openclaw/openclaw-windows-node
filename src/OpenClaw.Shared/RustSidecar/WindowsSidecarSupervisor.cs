@@ -69,6 +69,7 @@ internal sealed class WindowsSidecarSupervisor : IDisposable
                 _manifestGeneration,
                 _channel.MaxPayloadBytes);
             ValidateResultFailureBudget(string.Empty, _channel.MaxPayloadBytes);
+            ValidateAdmissionDecisionBudget(string.Empty, _channel.MaxPayloadBytes);
             var configure = _adapter.BeginConfiguration(
                 _manifestGeneration,
                 _handshake.Selection!);
@@ -110,7 +111,14 @@ internal sealed class WindowsSidecarSupervisor : IDisposable
             }
 
             if (SidecarJson.RequiredString(message, "type") == "admission-request")
+            {
                 ValidateInvocationFailureBudget(message, _channel.MaxPayloadBytes);
+                ValidateAdmissionDecisionBudget(
+                    SidecarJson.RequiredString(
+                        SidecarJson.RequiredObject(message, "invocation"),
+                        "id"),
+                    _channel.MaxPayloadBytes);
+            }
 
             var response = await _adapter.HandleRuntimeMessageAsync(message, cancellationToken);
             if (response is not null)
@@ -250,6 +258,15 @@ internal sealed class WindowsSidecarSupervisor : IDisposable
         {
             throw new SidecarProtocolException(
                 "Sidecar invocation failure exceeds the authenticated payload bound.");
+        }
+    }
+
+    private static void ValidateAdmissionDecisionBudget(string invocationId, int maxPayloadBytes)
+    {
+        if (WindowsSidecarCapabilityAdapter.MaximumAdmissionDecisionBytes(invocationId) > maxPayloadBytes)
+        {
+            throw new SidecarProtocolException(
+                "Sidecar admission decision exceeds the authenticated payload bound.");
         }
     }
 
