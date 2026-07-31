@@ -228,6 +228,12 @@ internal sealed class WindowsSidecarCapabilityAdapter
             ReleaseAdmission(invocation.Id);
             return ResultFailure(invocation.Id, "COMMAND_NOT_ADVERTISED", "command is not present in the authenticated Windows manifest");
         }
+        var executionTimeout = ResolveTimeout(invocation.TimeoutMs);
+        if (executionTimeout == TimeSpan.Zero)
+        {
+            ReleaseAdmission(invocation.Id);
+            return ResultFailure(invocation.Id, "HANDLER_TIMEOUT", "command handler exceeded its deadline");
+        }
 
         var completion = new TaskCompletionSource<JsonObject>(TaskCreationOptions.RunContinuationsAsynchronously);
         var request = new NodeInvokeRequest
@@ -266,7 +272,17 @@ internal sealed class WindowsSidecarCapabilityAdapter
                     connectionCancellation);
             }
             await dispatch;
-            return await completion.Task.WaitAsync(connectionCancellation);
+            if (executionTimeout is null)
+                return await completion.Task.WaitAsync(connectionCancellation);
+            try
+            {
+                return await completion.Task.WaitAsync(executionTimeout.Value, connectionCancellation);
+            }
+            catch (TimeoutException)
+            {
+                _dispatcher.TryCancel(invocation.Id);
+                return ResultFailure(invocation.Id, "HANDLER_TIMEOUT", "command handler exceeded its deadline");
+            }
         }
         catch (OperationCanceledException)
         {
@@ -519,6 +535,19 @@ internal sealed class WindowsSidecarCapabilityAdapter
         JsonSerializer.SerializeToUtf8Bytes(parameters, SidecarJson.SerializerOptions).Length <=
             _configuration!.MaxInputBytes;
 
+    private TimeSpan? ResolveTimeout(ulong? requestedTimeoutMs)
+    {
+        if (requestedTimeoutMs == 0)
+            return null;
+        if (requestedTimeoutMs is null)
+            return TimeSpan.FromMilliseconds(_configuration!.DefaultTimeoutMs);
+        var bounded = Math.Min(requestedTimeoutMs.Value, _configuration!.MaxTimeoutMs);
+        var effective = bounded > _configuration.ResultGraceMs
+            ? bounded - _configuration.ResultGraceMs
+            : 0;
+        return TimeSpan.FromMilliseconds(effective);
+    }
+
     private static SidecarInvocation ParseInvocation(JsonElement invocation)
     {
         EnsureProperties(
@@ -526,7 +555,7 @@ internal sealed class WindowsSidecarCapabilityAdapter
             "id", "nodeId", "command", "params", "timeoutMs", "idempotencyKey", "sessionKey");
         if (!invocation.TryGetProperty("params", out var parameters))
             throw new SidecarProtocolException("Sidecar invocation is missing params.");
-        _ = OptionalUInt64(invocation, "timeoutMs");
+        var timeoutMs = OptionalUInt64(invocation, "timeoutMs");
         _ = OptionalString(invocation, "idempotencyKey");
         var id = SidecarJson.RequiredString(invocation, "id");
         var nodeId = SidecarJson.RequiredString(invocation, "nodeId");
@@ -538,6 +567,7 @@ internal sealed class WindowsSidecarCapabilityAdapter
             nodeId,
             command,
             parameters.Clone(),
+            timeoutMs,
             OptionalString(invocation, "sessionKey"),
             invocation.Clone());
     }
@@ -626,6 +656,7 @@ internal sealed class WindowsSidecarCapabilityAdapter
         string NodeId,
         string Command,
         JsonElement Parameters,
+        ulong? TimeoutMs,
         string? SessionKey,
         JsonElement CanonicalJson);
 
