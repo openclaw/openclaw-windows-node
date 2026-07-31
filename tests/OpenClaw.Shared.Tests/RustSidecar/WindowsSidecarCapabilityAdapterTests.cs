@@ -980,6 +980,34 @@ public sealed class WindowsSidecarCapabilityAdapterTests
     }
 
     [Fact]
+    public async Task Adapter_RejectsFloatingPointTokenChangedAfterAdmission()
+    {
+        var executions = 0;
+        var adapter = new WindowsSidecarCapabilityAdapter("node-1", new TestLogger());
+        adapter.RegisterCapability(new TestCapability(
+            "native.status",
+            "product.status",
+            (_, _) =>
+            {
+                executions++;
+                return Task.FromResult(new NodeInvokeResponse { Ok = true });
+            }));
+        Configure(adapter);
+        var admission = ParseJson("""
+            {"type":"admission-request","invocation":{"id":"invoke-float","nodeId":"node-1","command":"product.status","params":{"value":1.0},"timeoutMs":1000,"idempotencyKey":null,"sessionKey":null}}
+            """);
+        var invocation = ParseJson("""
+            {"type":"invoke","invocation":{"id":"invoke-float","nodeId":"node-1","command":"product.status","params":{"value":1.0000000000000001},"timeoutMs":1000,"idempotencyKey":null,"sessionKey":null}}
+            """);
+
+        _ = await adapter.HandleRuntimeMessageAsync(admission, CancellationToken.None);
+        var result = await adapter.HandleRuntimeMessageAsync(invocation, CancellationToken.None);
+
+        Assert.Equal("ADMISSION_MISMATCH", result!["result"]!["code"]!.GetValue<string>());
+        Assert.Equal(0, executions);
+    }
+
+    [Fact]
     public async Task Adapter_TreatsReorderedInvocationObjectsAsUnchanged()
     {
         var adapter = new WindowsSidecarCapabilityAdapter("node-1", new TestLogger());
