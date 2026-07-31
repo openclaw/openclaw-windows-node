@@ -92,6 +92,7 @@ internal static class SidecarJson
             SerdeDoubleConverter.Instance,
             SerdeSingleConverter.Instance,
             SerdeJsonElementConverter.Instance,
+            SerdeJsonDocumentConverter.Instance,
             SerdeJsonNodeConverterFactory.Instance
         }
     };
@@ -469,6 +470,22 @@ internal static class SidecarJson
             JsonSerializerOptions options) =>
             (JsonConverter)Activator.CreateInstance(
                 typeof(SerdeJsonNodeConverter<>).MakeGenericType(typeToConvert))!;
+    }
+
+    private sealed class SerdeJsonDocumentConverter : JsonConverter<JsonDocument>
+    {
+        internal static readonly SerdeJsonDocumentConverter Instance = new();
+
+        public override JsonDocument Read(
+            ref Utf8JsonReader reader,
+            Type typeToConvert,
+            JsonSerializerOptions options) => JsonDocument.ParseValue(ref reader);
+
+        public override void Write(
+            Utf8JsonWriter writer,
+            JsonDocument value,
+            JsonSerializerOptions options) =>
+            SerdeJsonElementConverter.WriteNormalizedValue(writer, value.RootElement);
     }
 
     private sealed class SerdeJsonNodeConverter<TNode> : JsonConverter<TNode>
