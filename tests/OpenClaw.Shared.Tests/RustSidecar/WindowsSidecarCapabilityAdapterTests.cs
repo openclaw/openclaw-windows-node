@@ -718,6 +718,34 @@ public sealed class WindowsSidecarCapabilityAdapterTests
     }
 
     [Fact]
+    public async Task Adapter_DoesNotChargeResultSerializationToHandlerDeadline()
+    {
+        var adapter = new WindowsSidecarCapabilityAdapter("node-1", new TestLogger());
+        adapter.RegisterCapability(new TestCapability(
+            "native.status",
+            "product.status",
+            (_, _) => Task.FromResult(new NodeInvokeResponse
+            {
+                Ok = true,
+                Payload = new SlowSerializationPayload(TimeSpan.FromMilliseconds(125))
+            })));
+        Configure(
+            adapter,
+            defaultTimeoutMs: 200,
+            maxTimeoutMs: 200,
+            resultGraceMs: 100);
+        var invocation = ParseJson("""
+            {"id":"invoke-slow-serialization","nodeId":"node-1","command":"product.status","params":{},"timeoutMs":200,"idempotencyKey":null,"sessionKey":null}
+            """);
+        await AdmitAsync(adapter, invocation);
+
+        var result = await InvokeAsync(adapter, invocation).WaitAsync(TimeSpan.FromSeconds(5));
+
+        Assert.Equal("success", result["result"]!["outcome"]!.GetValue<string>());
+        Assert.Equal("serialized", result["result"]!["payload"]!["value"]!.GetValue<string>());
+    }
+
+    [Fact]
     public async Task Adapter_RejectsNonPortableIntegerCapabilityOutput()
     {
         var adapter = new WindowsSidecarCapabilityAdapter("node-1", new TestLogger());
@@ -1626,6 +1654,18 @@ public sealed class WindowsSidecarCapabilityAdapterTests
                 limits.GetProperty("maxFrameBytes").GetUInt32(),
                 limits.GetProperty("maxInFlight").GetUInt16(),
                 limits.GetProperty("bootstrapTimeoutMs").GetUInt32()));
+    }
+
+    private sealed class SlowSerializationPayload(TimeSpan delay)
+    {
+        public string Value
+        {
+            get
+            {
+                Thread.Sleep(delay);
+                return "serialized";
+            }
+        }
     }
 
     private sealed class TestCapability(

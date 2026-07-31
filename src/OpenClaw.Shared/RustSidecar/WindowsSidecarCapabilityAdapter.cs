@@ -236,6 +236,7 @@ internal sealed class WindowsSidecarCapabilityAdapter
         }
 
         var completion = new TaskCompletionSource<JsonObject>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var handlerCompleted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var releaseAdmissionOnExit = true;
         var request = new NodeInvokeRequest
         {
@@ -261,6 +262,7 @@ internal sealed class WindowsSidecarCapabilityAdapter
                     request,
                     async response =>
                     {
+                        handlerCompleted.TrySetResult();
                         try
                         {
                             completion.TrySetResult(response.Ok
@@ -274,6 +276,7 @@ internal sealed class WindowsSidecarCapabilityAdapter
                     },
                     async error =>
                     {
+                        handlerCompleted.TrySetResult();
                         try
                         {
                             completion.TrySetResult(
@@ -291,7 +294,7 @@ internal sealed class WindowsSidecarCapabilityAdapter
                 return await completion.Task.WaitAsync(connectionCancellation);
             try
             {
-                return await completion.Task.WaitAsync(executionTimeout.Value, connectionCancellation);
+                await handlerCompleted.Task.WaitAsync(executionTimeout.Value, connectionCancellation);
             }
             catch (TimeoutException)
             {
@@ -299,6 +302,7 @@ internal sealed class WindowsSidecarCapabilityAdapter
                 _dispatcher.TryCancel(invocation.Id);
                 return ResultFailure(invocation.Id, "HANDLER_TIMEOUT", "command handler exceeded its deadline");
             }
+            return await completion.Task.WaitAsync(connectionCancellation);
         }
         catch (OperationCanceledException)
         {
