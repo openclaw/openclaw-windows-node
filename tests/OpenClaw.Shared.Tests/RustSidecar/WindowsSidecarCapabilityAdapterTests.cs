@@ -1248,6 +1248,33 @@ public sealed class WindowsSidecarCapabilityAdapterTests
     }
 
     [Fact]
+    public async Task Adapter_ReservesResultGraceFromDefaultInvocationTimeout()
+    {
+        var adapter = new WindowsSidecarCapabilityAdapter("node-1", new TestLogger());
+        adapter.RegisterCapability(new TestCapability(
+            "native.slow",
+            "product.slow",
+            async (_, _) =>
+            {
+                await Task.Delay(175);
+                return new NodeInvokeResponse { Ok = true };
+            }));
+        Configure(
+            adapter,
+            defaultTimeoutMs: 250,
+            maxTimeoutMs: 250,
+            resultGraceMs: 150);
+        var invocation = ParseJson("""
+            {"id":"invoke-default-timeout","nodeId":"node-1","command":"product.slow","params":{},"timeoutMs":null,"idempotencyKey":null,"sessionKey":null}
+            """);
+        await AdmitAsync(adapter, invocation);
+
+        var result = await InvokeAsync(adapter, invocation).WaitAsync(TimeSpan.FromSeconds(5));
+
+        Assert.Equal("HANDLER_TIMEOUT", result["result"]!["code"]!.GetValue<string>());
+    }
+
+    [Fact]
     public async Task Adapter_HoldsTimedOutAdmissionUntilNonCooperativeHandlerTerminates()
     {
         var started = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
