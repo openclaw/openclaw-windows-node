@@ -1103,6 +1103,42 @@ public sealed class WindowsSidecarCapabilityAdapterTests
     }
 
     [Fact]
+    public async Task Adapter_ClampsAndEnforcesNegotiatedInvocationTimeout()
+    {
+        var cancelled = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var adapter = new WindowsSidecarCapabilityAdapter("node-1", new TestLogger());
+        adapter.RegisterCapability(new TestCapability(
+            "native.blocking",
+            "product.blocking",
+            async (_, cancellationToken) =>
+            {
+                try
+                {
+                    await Task.Delay(Timeout.InfiniteTimeSpan, cancellationToken);
+                    return new NodeInvokeResponse { Ok = true };
+                }
+                finally
+                {
+                    cancelled.TrySetResult();
+                }
+            }));
+        Configure(
+            adapter,
+            defaultTimeoutMs: 100,
+            maxTimeoutMs: 100,
+            resultGraceMs: 10);
+        var invocation = ParseJson("""
+            {"id":"invoke-timeout","nodeId":"node-1","command":"product.blocking","params":{},"timeoutMs":10000,"idempotencyKey":null,"sessionKey":null}
+            """);
+        await AdmitAsync(adapter, invocation);
+
+        var result = await InvokeAsync(adapter, invocation).WaitAsync(TimeSpan.FromSeconds(5));
+
+        Assert.Equal("HANDLER_TIMEOUT", result["result"]!["code"]!.GetValue<string>());
+        await cancelled.Task.WaitAsync(TimeSpan.FromSeconds(5));
+    }
+
+    [Fact]
     public void Adapter_RecordsCurrentRustSystemNamespaceGapInsteadOfSelectingIt()
     {
         var adapter = new WindowsSidecarCapabilityAdapter("node-1", new TestLogger());
@@ -1123,13 +1159,19 @@ public sealed class WindowsSidecarCapabilityAdapterTests
         WindowsSidecarCapabilityAdapter adapter,
         ushort maxInFlight = 8,
         uint maxInputBytes = 1_048_576,
-        uint maxOutputBytes = 1_048_576)
+        uint maxOutputBytes = 1_048_576,
+        uint defaultTimeoutMs = 30_000,
+        uint maxTimeoutMs = 120_000,
+        uint resultGraceMs = 250)
     {
         var configure = adapter.BeginConfiguration(
             1,
             new SidecarProtocolSelection(1, 0, 0, new SidecarLimits(4096, maxInFlight, 1000)),
             maxInputBytes: maxInputBytes,
-            maxOutputBytes: maxOutputBytes);
+            maxOutputBytes: maxOutputBytes,
+            defaultTimeoutMs: defaultTimeoutMs,
+            maxTimeoutMs: maxTimeoutMs,
+            resultGraceMs: resultGraceMs);
         var configuration = configure["configuration"]!.AsObject();
         var manifest = new JsonObject
         {
