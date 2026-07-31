@@ -90,7 +90,8 @@ internal static class SidecarJson
         Converters =
         {
             SerdeDoubleConverter.Instance,
-            SerdeSingleConverter.Instance
+            SerdeSingleConverter.Instance,
+            SerdeJsonElementConverter.Instance
         }
     };
 
@@ -232,7 +233,18 @@ internal static class SidecarJson
     {
         if (!double.IsFinite(value))
             throw new JsonException("Sidecar JSON cannot encode non-finite floating-point values.");
-        var text = value.ToString("R", CultureInfo.InvariantCulture);
+        return FormatSerdeFloatText(value.ToString("R", CultureInfo.InvariantCulture));
+    }
+
+    private static string FormatSerdeFloat(float value)
+    {
+        if (!float.IsFinite(value))
+            throw new JsonException("Sidecar JSON cannot encode non-finite floating-point values.");
+        return FormatSerdeFloatText(value.ToString("R", CultureInfo.InvariantCulture));
+    }
+
+    private static string FormatSerdeFloatText(string text)
+    {
         var exponentIndex = text.IndexOf('E');
         if (exponentIndex >= 0)
         {
@@ -307,7 +319,15 @@ internal static class SidecarJson
         public override void Write(
             Utf8JsonWriter writer,
             double value,
-            JsonSerializerOptions options) => writer.WriteRawValue(FormatSerdeFloat(value));
+            JsonSerializerOptions options)
+        {
+            if (!double.IsFinite(value))
+            {
+                writer.WriteNullValue();
+                return;
+            }
+            writer.WriteRawValue(FormatSerdeFloat(value));
+        }
     }
 
     private sealed class SerdeSingleConverter : JsonConverter<float>
@@ -322,7 +342,34 @@ internal static class SidecarJson
         public override void Write(
             Utf8JsonWriter writer,
             float value,
-            JsonSerializerOptions options) => writer.WriteRawValue(FormatSerdeFloat(value));
+            JsonSerializerOptions options)
+        {
+            if (!float.IsFinite(value))
+            {
+                writer.WriteNullValue();
+                return;
+            }
+            writer.WriteRawValue(FormatSerdeFloat(value));
+        }
+    }
+
+    private sealed class SerdeJsonElementConverter : JsonConverter<JsonElement>
+    {
+        internal static readonly SerdeJsonElementConverter Instance = new();
+
+        public override JsonElement Read(
+            ref Utf8JsonReader reader,
+            Type typeToConvert,
+            JsonSerializerOptions options)
+        {
+            using var document = JsonDocument.ParseValue(ref reader);
+            return document.RootElement.Clone();
+        }
+
+        public override void Write(
+            Utf8JsonWriter writer,
+            JsonElement value,
+            JsonSerializerOptions options) => NormalizeValue(value).WriteTo(writer);
     }
 
     private sealed unsafe class SerdeJsonEncoder : JavaScriptEncoder

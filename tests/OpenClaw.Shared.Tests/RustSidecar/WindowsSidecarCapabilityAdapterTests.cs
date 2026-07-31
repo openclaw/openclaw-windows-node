@@ -693,7 +693,9 @@ public sealed class WindowsSidecarCapabilityAdapterTests
                     doubleIntegral = 1.0,
                     negativeZero = -0.0,
                     doubleExponent = 1.25e-7,
-                    singleExponent = 1e-7f
+                    singleExponent = 1e-7f,
+                    nonFiniteDouble = double.NaN,
+                    nonFiniteSingle = float.PositiveInfinity
                 }
             })));
         Configure(adapter, maxOutputBytes: 1024);
@@ -709,7 +711,9 @@ public sealed class WindowsSidecarCapabilityAdapterTests
         Assert.Contains("\"doubleIntegral\":1.0", encoded);
         Assert.Contains("\"negativeZero\":-0.0", encoded);
         Assert.Contains("\"doubleExponent\":1.25e-7", encoded);
-        Assert.Contains("\"singleExponent\":1.0000000116860974e-7", encoded);
+        Assert.Contains("\"singleExponent\":1e-7", encoded);
+        Assert.Contains("\"nonFiniteDouble\":null", encoded);
+        Assert.Contains("\"nonFiniteSingle\":null", encoded);
         Assert.Equal(
             "{\"fixedSmall\":0.00001,\"scientificLarge\":1e+16}",
             Encoding.UTF8.GetString(JsonSerializer.SerializeToUtf8Bytes(
@@ -720,8 +724,9 @@ public sealed class WindowsSidecarCapabilityAdapterTests
     [Fact]
     public async Task Adapter_NormalizesUntypedCapabilityNumbersLikeSerdeJson()
     {
-        var payload = SidecarJson.Parse(
-            """{"integral":1e0,"rounded":1.0000000000000001,"fixedSmall":1e-5}"""u8);
+        var redundantFraction = "1." + new string('0', 2048);
+        var payload = SidecarJson.Parse(Encoding.UTF8.GetBytes(
+            $$"""{"integral":1e0,"rounded":1.0000000000000001,"fixedSmall":1e-5,"compacted":{{redundantFraction}}}"""));
         var adapter = new WindowsSidecarCapabilityAdapter("node-1", new TestLogger());
         adapter.RegisterCapability(new TestCapability(
             "native.status",
@@ -736,7 +741,7 @@ public sealed class WindowsSidecarCapabilityAdapterTests
         var result = await InvokeAsync(adapter, invocation);
 
         Assert.Equal(
-            "{\"integral\":1.0,\"rounded\":1.0,\"fixedSmall\":0.00001}",
+            "{\"integral\":1.0,\"rounded\":1.0,\"fixedSmall\":0.00001,\"compacted\":1.0}",
             result["result"]!["payload"]!.ToJsonString(SidecarJson.SerializerOptions));
     }
 
