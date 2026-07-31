@@ -471,11 +471,14 @@ internal sealed class WindowsSidecarCapabilityAdapter
         try
         {
             using var output = new BoundedWriteStream(_configuration!.MaxOutputBytes);
-            await JsonSerializer.SerializeAsync(
-                output,
-                payload,
-                payload?.GetType() ?? typeof(object),
-                SidecarJson.SerializerOptions);
+            using (SidecarJson.BeginCanonicalizationBudget(_configuration.MaxOutputBytes))
+            {
+                await JsonSerializer.SerializeAsync(
+                    output,
+                    payload,
+                    payload?.GetType() ?? typeof(object),
+                    SidecarJson.SerializerOptions);
+            }
             var payloadJson = output.WrittenMemory.Span;
             var parsedPayload = SidecarJson.Parse(payloadJson);
             if (!SidecarJson.IsPortableJson(parsedPayload))
@@ -501,6 +504,10 @@ internal sealed class WindowsSidecarCapabilityAdapter
             };
         }
         catch (SidecarOutputLimitException)
+        {
+            return OutputTooLargeFailure(invocationId);
+        }
+        catch (SidecarCanonicalizationLimitException)
         {
             return OutputTooLargeFailure(invocationId);
         }

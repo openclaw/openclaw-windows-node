@@ -758,6 +758,9 @@ public sealed class WindowsSidecarCapabilityAdapterTests
         var payload = JsonNode.Parse($$"""{"compacted":{{redundantFraction}}}""")!.AsObject();
         payload["nan"] = double.NaN;
         payload["infinity"] = float.PositiveInfinity;
+        payload["decimals"] = new JsonArray(Enumerable.Range(0, 40)
+            .Select(_ => (JsonNode?)JsonValue.Create(1.0000000000000000000000000000m))
+            .ToArray());
         var adapter = new WindowsSidecarCapabilityAdapter("node-1", new TestLogger());
         adapter.RegisterCapability(new TestCapability(
             "native.status",
@@ -771,9 +774,12 @@ public sealed class WindowsSidecarCapabilityAdapterTests
 
         var result = await InvokeAsync(adapter, invocation);
 
-        Assert.Equal(
-            "{\"compacted\":1.0,\"nan\":null,\"infinity\":null}",
-            result["result"]!["payload"]!.ToJsonString(SidecarJson.SerializerOptions));
+        var resultPayload = result["result"]!["payload"]!;
+        Assert.Equal(1.0, resultPayload["compacted"]!.GetValue<double>());
+        Assert.Null(resultPayload["nan"]);
+        Assert.Null(resultPayload["infinity"]);
+        Assert.All(resultPayload["decimals"]!.AsArray(), value =>
+            Assert.Equal(1.0, value!.GetValue<double>()));
     }
 
     [Fact]
@@ -797,6 +803,27 @@ public sealed class WindowsSidecarCapabilityAdapterTests
         Assert.Equal(
             "{\"compacted\":1.0}",
             result["result"]!["payload"]!.ToJsonString(SidecarJson.SerializerOptions));
+    }
+
+    [Fact]
+    public async Task Adapter_BoundsUntypedCanonicalizationWork()
+    {
+        var redundantFraction = "1." + new string('0', 9000);
+        using var payload = JsonDocument.Parse($$"""{"compacted":{{redundantFraction}}}""");
+        var adapter = new WindowsSidecarCapabilityAdapter("node-1", new TestLogger());
+        adapter.RegisterCapability(new TestCapability(
+            "native.status",
+            "product.status",
+            (_, _) => Task.FromResult(new NodeInvokeResponse { Ok = true, Payload = payload })));
+        Configure(adapter, maxOutputBytes: 1024);
+        var invocation = ParseJson("""
+            {"id":"invoke-canonicalization-work","nodeId":"node-1","command":"product.status","params":{},"timeoutMs":1000,"idempotencyKey":null,"sessionKey":null}
+            """);
+        await AdmitAsync(adapter, invocation);
+
+        var result = await InvokeAsync(adapter, invocation);
+
+        Assert.Equal("OUTPUT_TOO_LARGE", result["result"]!["code"]!.GetValue<string>());
     }
 
     [Fact]
