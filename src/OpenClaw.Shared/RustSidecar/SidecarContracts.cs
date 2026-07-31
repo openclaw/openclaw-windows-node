@@ -75,11 +75,13 @@ internal sealed record SidecarRuntimeConfiguration(
 internal static class SidecarJson
 {
     internal const ulong MaxPortableInteger = 9_007_199_254_740_991;
+    internal const int MaxDepth = 128;
 
     internal static readonly JsonSerializerOptions SerializerOptions = new()
     {
         PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
-        WriteIndented = false
+        WriteIndented = false,
+        MaxDepth = MaxDepth
     };
 
     internal static byte[] Serialize(JsonNode node) =>
@@ -87,8 +89,60 @@ internal static class SidecarJson
 
     internal static JsonElement Parse(ReadOnlySpan<byte> json)
     {
-        using var document = JsonDocument.Parse(json.ToArray());
+        using var document = JsonDocument.Parse(
+            json.ToArray(),
+            new JsonDocumentOptions { MaxDepth = MaxDepth });
         return document.RootElement.Clone();
+    }
+
+    internal static bool ValueEquals(JsonElement left, JsonElement right)
+    {
+        if (left.ValueKind != right.ValueKind)
+            return false;
+        return left.ValueKind switch
+        {
+            JsonValueKind.Object => ObjectEquals(left, right),
+            JsonValueKind.Array => left.EnumerateArray().SequenceEqual(
+                right.EnumerateArray(),
+                JsonElementValueComparer.Instance),
+            JsonValueKind.String => left.GetString() == right.GetString(),
+            JsonValueKind.Number => NumberEquals(left, right),
+            JsonValueKind.True or JsonValueKind.False => left.GetBoolean() == right.GetBoolean(),
+            JsonValueKind.Null => true,
+            _ => false
+        };
+    }
+
+    private static bool ObjectEquals(JsonElement left, JsonElement right)
+    {
+        var leftProperties = ToPropertyMap(left);
+        var rightProperties = ToPropertyMap(right);
+        return leftProperties.Count == rightProperties.Count &&
+            leftProperties.All(property =>
+                rightProperties.TryGetValue(property.Key, out var value) &&
+                ValueEquals(property.Value, value));
+    }
+
+    private static Dictionary<string, JsonElement> ToPropertyMap(JsonElement value)
+    {
+        var properties = new Dictionary<string, JsonElement>(StringComparer.Ordinal);
+        foreach (var property in value.EnumerateObject())
+            properties[property.Name] = property.Value;
+        return properties;
+    }
+
+    private static bool NumberEquals(JsonElement left, JsonElement right)
+    {
+        if (left.TryGetInt64(out var leftInteger))
+            return right.TryGetInt64(out var rightInteger) && leftInteger == rightInteger;
+        return !right.TryGetInt64(out _) && left.GetDouble().Equals(right.GetDouble());
+    }
+
+    private sealed class JsonElementValueComparer : IEqualityComparer<JsonElement>
+    {
+        internal static readonly JsonElementValueComparer Instance = new();
+        public bool Equals(JsonElement x, JsonElement y) => ValueEquals(x, y);
+        public int GetHashCode(JsonElement obj) => throw new NotSupportedException();
     }
 
     internal static JsonElement RequiredObject(JsonElement parent, string name)

@@ -175,6 +175,57 @@ public sealed class WindowsSidecarCapabilityAdapterTests
     }
 
     [Fact]
+    public void SidecarJson_UsesRustCompatibleDepthLimit()
+    {
+        var supported = Encoding.UTF8.GetBytes(new string('[', 80) + "0" + new string(']', 80));
+        var tooDeep = Encoding.UTF8.GetBytes(
+            new string('[', SidecarJson.MaxDepth + 1) + "0" + new string(']', SidecarJson.MaxDepth + 1));
+
+        var parsed = SidecarJson.Parse(supported);
+
+        Assert.Equal(
+            supported,
+            JsonSerializer.SerializeToUtf8Bytes(parsed, SidecarJson.SerializerOptions));
+        Assert.ThrowsAny<JsonException>(() => SidecarJson.Parse(tooDeep));
+    }
+
+    [Fact]
+    public void Adapter_AcceptsReorderedConfiguredManifest()
+    {
+        var adapter = new WindowsSidecarCapabilityAdapter("node-1", new TestLogger());
+        adapter.RegisterCapability(new TestCapability(
+            "native.status",
+            "product.status",
+            (_, _) => Task.FromResult(new NodeInvokeResponse { Ok = true })));
+        _ = adapter.BeginConfiguration(
+            1,
+            new SidecarProtocolSelection(1, 0, 0, new SidecarLimits(4096, 8, 1000)));
+        var configured = ParseJson("""
+            {"type":"configured","manifest":{"commands":["product.status"],"manifestGeneration":1,"capabilities":["native.status"]}}
+            """);
+
+        adapter.ConfirmConfigured(configured);
+
+        Assert.True(adapter.IsConfigured);
+    }
+
+    [Fact]
+    public void Adapter_RejectsCaseInsensitiveWindowsCommandCollisions()
+    {
+        var adapter = new WindowsSidecarCapabilityAdapter("node-1", new TestLogger());
+        adapter.RegisterCapability(new TestCapability(
+            "native.first",
+            "product.status",
+            (_, _) => Task.FromResult(new NodeInvokeResponse { Ok = true })));
+
+        Assert.Throws<SidecarProtocolException>(() => adapter.RegisterCapability(new TestCapability(
+            "native.second",
+            "PRODUCT.STATUS",
+            (_, _) => Task.FromResult(new NodeInvokeResponse { Ok = true }))));
+        Assert.Single(adapter.Capabilities);
+    }
+
+    [Fact]
     public async Task Adapter_UsesExactConfigurationAndRoutesInvocationThroughDispatcher()
     {
         using var fixture = ReadFixture("node-sidecar-runtime-v1.json");
@@ -457,6 +508,29 @@ public sealed class WindowsSidecarCapabilityAdapterTests
         Configure(adapter, maxOutputBytes: 128);
         var invocation = ParseJson("""
             {"id":"invoke-escaped-error","nodeId":"node-1","command":"product.status","params":{},"timeoutMs":1000,"idempotencyKey":null,"sessionKey":null}
+            """);
+        await AdmitAsync(adapter, invocation);
+
+        var result = await InvokeAsync(adapter, invocation);
+
+        Assert.Equal("OUTPUT_TOO_LARGE", result["result"]!["code"]!.GetValue<string>());
+    }
+
+    [Fact]
+    public async Task Adapter_CountsFullCapabilityFailurePayloadAgainstOutputLimit()
+    {
+        var adapter = new WindowsSidecarCapabilityAdapter("node-1", new TestLogger());
+        adapter.RegisterCapability(new TestCapability(
+            "native.status",
+            "product.status",
+            (_, _) => Task.FromResult(new NodeInvokeResponse
+            {
+                Ok = false,
+                Error = new string('e', 100)
+            })));
+        Configure(adapter, maxOutputBytes: 128);
+        var invocation = ParseJson("""
+            {"id":"invoke-error-payload","nodeId":"node-1","command":"product.status","params":{},"timeoutMs":1000,"idempotencyKey":null,"sessionKey":null}
             """);
         await AdmitAsync(adapter, invocation);
 
@@ -786,6 +860,28 @@ public sealed class WindowsSidecarCapabilityAdapterTests
 
         Assert.Equal("ADMISSION_MISMATCH", mismatch!["result"]!["code"]!.GetValue<string>());
         Assert.Equal(0, executions);
+    }
+
+    [Fact]
+    public async Task Adapter_TreatsReorderedInvocationObjectsAsUnchanged()
+    {
+        var adapter = new WindowsSidecarCapabilityAdapter("node-1", new TestLogger());
+        adapter.RegisterCapability(new TestCapability(
+            "native.status",
+            "product.status",
+            (_, _) => Task.FromResult(new NodeInvokeResponse { Ok = true })));
+        Configure(adapter);
+        var admission = ParseJson("""
+            {"type":"admission-request","invocation":{"id":"invoke-reordered","nodeId":"node-1","command":"product.status","params":{"first":1,"nested":{"left":2,"right":3}},"timeoutMs":1000,"idempotencyKey":null,"sessionKey":null}}
+            """);
+        var invocation = ParseJson("""
+            {"type":"invoke","invocation":{"sessionKey":null,"idempotencyKey":null,"timeoutMs":1000,"params":{"nested":{"right":3,"left":2},"first":1},"command":"product.status","nodeId":"node-1","id":"invoke-reordered"}}
+            """);
+
+        _ = await adapter.HandleRuntimeMessageAsync(admission, CancellationToken.None);
+        var result = await adapter.HandleRuntimeMessageAsync(invocation, CancellationToken.None);
+
+        Assert.Equal("success", result!["result"]!["outcome"]!.GetValue<string>());
     }
 
     [Fact]
