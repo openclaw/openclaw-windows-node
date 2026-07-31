@@ -191,22 +191,29 @@ internal sealed class WindowsSidecarCapabilityAdapter
     {
         EnsureMessageShape(message, "invoke", "invocation");
         var invocation = ParseInvocation(SidecarJson.RequiredObject(message, "invocation"));
-        if (!SidecarJson.IsPortableJson(invocation.Parameters))
-            return NonPortableJsonFailure(invocation.Id);
-        if (!InputWithinLimit(invocation.Parameters))
-        {
-            return ResultFailure(
-                invocation.Id,
-                "INPUT_TOO_LARGE",
-                "command parameters exceed the runtime limit");
-        }
         var activation = TryActivateAdmission(invocation);
         if (activation == AdmissionActivation.Missing)
             return ResultFailure(invocation.Id, "ADMISSION_REQUIRED", "invocation was not admitted by the Windows host");
         if (activation == AdmissionActivation.Mismatch)
             return ResultFailure(invocation.Id, "ADMISSION_MISMATCH", "invocation changed after Windows admission");
+        if (!SidecarJson.IsPortableJson(invocation.Parameters))
+        {
+            ReleaseAdmission(invocation.Id);
+            return NonPortableJsonFailure(invocation.Id);
+        }
+        if (!InputWithinLimit(invocation.Parameters))
+        {
+            ReleaseAdmission(invocation.Id);
+            return ResultFailure(
+                invocation.Id,
+                "INPUT_TOO_LARGE",
+                "command parameters exceed the runtime limit");
+        }
         if (invocation.NodeId != _nodeId || !_commands.Contains(invocation.Command))
+        {
+            ReleaseAdmission(invocation.Id);
             return ResultFailure(invocation.Id, "COMMAND_NOT_ADVERTISED", "command is not present in the authenticated Windows manifest");
+        }
 
         var completion = new TaskCompletionSource<JsonObject>(TaskCreationOptions.RunContinuationsAsynchronously);
         var request = new NodeInvokeRequest

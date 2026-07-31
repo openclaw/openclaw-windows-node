@@ -732,6 +732,33 @@ public sealed class WindowsSidecarCapabilityAdapterTests
     }
 
     [Fact]
+    public async Task Adapter_ReleasesAdmissionWhenInvocationChangesToOversizedInput()
+    {
+        var adapter = new WindowsSidecarCapabilityAdapter("node-1", new TestLogger());
+        adapter.RegisterCapability(new TestCapability(
+            "native.status",
+            "product.status",
+            (_, _) => Task.FromResult(new NodeInvokeResponse { Ok = true })));
+        Configure(adapter, maxInFlight: 1, maxInputBytes: 32);
+        var admitted = ParseJson("""
+            {"type":"admission-request","invocation":{"id":"invoke-changed","nodeId":"node-1","command":"product.status","params":{},"timeoutMs":1000,"idempotencyKey":null,"sessionKey":null}}
+            """);
+        var changed = ParseJson("""
+            {"type":"invoke","invocation":{"id":"invoke-changed","nodeId":"node-1","command":"product.status","params":{"data":"__DATA__"},"timeoutMs":1000,"idempotencyKey":null,"sessionKey":null}}
+            """.Replace("__DATA__", new string('x', 100), StringComparison.Ordinal));
+        var next = ParseJson("""
+            {"type":"admission-request","invocation":{"id":"invoke-next","nodeId":"node-1","command":"product.status","params":{},"timeoutMs":1000,"idempotencyKey":null,"sessionKey":null}}
+            """);
+
+        _ = await adapter.HandleRuntimeMessageAsync(admitted, CancellationToken.None);
+        var mismatch = await adapter.HandleRuntimeMessageAsync(changed, CancellationToken.None);
+        var nextDecision = await adapter.HandleRuntimeMessageAsync(next, CancellationToken.None);
+
+        Assert.Equal("ADMISSION_MISMATCH", mismatch!["result"]!["code"]!.GetValue<string>());
+        Assert.Equal("allow", nextDecision!["decision"]!["outcome"]!.GetValue<string>());
+    }
+
+    [Fact]
     public async Task Adapter_HoldsAdmissionSlotAndIdUntilInvocationIsTerminal()
     {
         var started = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
