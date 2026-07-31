@@ -718,6 +718,29 @@ public sealed class WindowsSidecarCapabilityAdapterTests
     }
 
     [Fact]
+    public async Task Adapter_NormalizesUntypedCapabilityNumbersLikeSerdeJson()
+    {
+        var payload = SidecarJson.Parse(
+            """{"integral":1e0,"rounded":1.0000000000000001,"fixedSmall":1e-5}"""u8);
+        var adapter = new WindowsSidecarCapabilityAdapter("node-1", new TestLogger());
+        adapter.RegisterCapability(new TestCapability(
+            "native.status",
+            "product.status",
+            (_, _) => Task.FromResult(new NodeInvokeResponse { Ok = true, Payload = payload })));
+        Configure(adapter, maxOutputBytes: 1024);
+        var invocation = ParseJson("""
+            {"id":"invoke-untyped-numbers","nodeId":"node-1","command":"product.status","params":{},"timeoutMs":1000,"idempotencyKey":null,"sessionKey":null}
+            """);
+        await AdmitAsync(adapter, invocation);
+
+        var result = await InvokeAsync(adapter, invocation);
+
+        Assert.Equal(
+            "{\"integral\":1.0,\"rounded\":1.0,\"fixedSmall\":0.00001}",
+            result["result"]!["payload"]!.ToJsonString(SidecarJson.SerializerOptions));
+    }
+
+    [Fact]
     public async Task Adapter_DoesNotChargeResultSerializationToHandlerDeadline()
     {
         var adapter = new WindowsSidecarCapabilityAdapter("node-1", new TestLogger());

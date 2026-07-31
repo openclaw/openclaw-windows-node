@@ -477,10 +477,17 @@ internal sealed class WindowsSidecarCapabilityAdapter
                 payload?.GetType() ?? typeof(object),
                 SidecarJson.SerializerOptions);
             var payloadJson = output.WrittenMemory.Span;
-            if (!SidecarJson.IsPortableJson(SidecarJson.Parse(payloadJson)))
+            var parsedPayload = SidecarJson.Parse(payloadJson);
+            if (!SidecarJson.IsPortableJson(parsedPayload))
                 return NonPortableJsonFailure(invocationId);
+            var normalizedPayload = SidecarJson.NormalizeValue(parsedPayload);
+            var normalizedJson = JsonSerializer.SerializeToUtf8Bytes(
+                normalizedPayload,
+                SidecarJson.SerializerOptions);
+            if (normalizedJson.Length > _configuration.MaxOutputBytes)
+                return OutputTooLargeFailure(invocationId);
             var payloadNode = JsonNode.Parse(
-                payloadJson,
+                normalizedJson,
                 documentOptions: new JsonDocumentOptions { MaxDepth = SidecarJson.MaxDepth });
             return new JsonObject
             {
