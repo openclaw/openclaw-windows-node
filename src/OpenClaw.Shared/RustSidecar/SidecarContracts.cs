@@ -116,6 +116,32 @@ internal static class SidecarJson
         };
     }
 
+    internal static JsonElement NormalizeValue(JsonElement value)
+    {
+        var normalized = NormalizeNode(value);
+        return normalized is null ? Parse("null"u8) : Parse(Serialize(normalized));
+    }
+
+    private static JsonNode? NormalizeNode(JsonElement value)
+    {
+        switch (value.ValueKind)
+        {
+            case JsonValueKind.Object:
+                var jsonObject = new JsonObject();
+                foreach (var property in value.EnumerateObject())
+                    jsonObject[property.Name] = NormalizeNode(property.Value);
+                return jsonObject;
+            case JsonValueKind.Array:
+                return new JsonArray(value.EnumerateArray().Select(NormalizeNode).ToArray());
+            case JsonValueKind.Null:
+                return null;
+            default:
+                return JsonNode.Parse(
+                    value.GetRawText(),
+                    documentOptions: new JsonDocumentOptions { MaxDepth = MaxDepth });
+        }
+    }
+
     private static bool ObjectEquals(JsonElement left, JsonElement right)
     {
         var leftProperties = ToPropertyMap(left);
@@ -142,10 +168,16 @@ internal static class SidecarJson
         return leftKind switch
         {
             JsonNumberKind.PositiveInteger =>
-                left.GetUInt64() == right.GetUInt64(),
+                left.TryGetUInt64(out var leftUnsigned) &&
+                right.TryGetUInt64(out var rightUnsigned) &&
+                leftUnsigned == rightUnsigned,
             JsonNumberKind.NegativeInteger =>
-                left.GetInt64() == right.GetInt64(),
-            _ => left.GetDouble().Equals(right.GetDouble())
+                left.TryGetInt64(out var leftSigned) &&
+                right.TryGetInt64(out var rightSigned) &&
+                leftSigned == rightSigned,
+            _ => left.TryGetDouble(out var leftFloat) &&
+                right.TryGetDouble(out var rightFloat) &&
+                leftFloat.Equals(rightFloat)
         };
     }
 

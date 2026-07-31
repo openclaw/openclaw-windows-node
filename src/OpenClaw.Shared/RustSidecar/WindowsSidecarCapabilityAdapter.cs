@@ -205,11 +205,6 @@ internal sealed class WindowsSidecarCapabilityAdapter
     {
         EnsureMessageShape(message, "invoke", "invocation");
         var invocation = ParseInvocation(SidecarJson.RequiredObject(message, "invocation"));
-        var activation = TryActivateAdmission(invocation);
-        if (activation == AdmissionActivation.Missing)
-            return ResultFailure(invocation.Id, "ADMISSION_REQUIRED", "invocation was not admitted by the Windows host");
-        if (activation == AdmissionActivation.Mismatch)
-            return ResultFailure(invocation.Id, "ADMISSION_MISMATCH", "invocation changed after Windows admission");
         if (!SidecarJson.IsPortableJson(invocation.Parameters))
         {
             ReleaseAdmission(invocation.Id);
@@ -223,6 +218,11 @@ internal sealed class WindowsSidecarCapabilityAdapter
                 "INPUT_TOO_LARGE",
                 "command parameters exceed the runtime limit");
         }
+        var activation = TryActivateAdmission(invocation);
+        if (activation == AdmissionActivation.Missing)
+            return ResultFailure(invocation.Id, "ADMISSION_REQUIRED", "invocation was not admitted by the Windows host");
+        if (activation == AdmissionActivation.Mismatch)
+            return ResultFailure(invocation.Id, "ADMISSION_MISMATCH", "invocation changed after Windows admission");
         if (invocation.NodeId != _nodeId || !_commands.Contains(invocation.Command))
         {
             ReleaseAdmission(invocation.Id);
@@ -365,7 +365,7 @@ internal sealed class WindowsSidecarCapabilityAdapter
             {
                 return false;
             }
-            _admittedInvocations.Add(invocation.Id, new Admission(invocation.CanonicalJson));
+            _admittedInvocations.Add(invocation.Id, new Admission(invocation));
             return true;
         }
     }
@@ -376,7 +376,7 @@ internal sealed class WindowsSidecarCapabilityAdapter
         {
             if (!_admittedInvocations.TryGetValue(invocation.Id, out var admission) || admission.Active)
                 return AdmissionActivation.Missing;
-            if (!SidecarJson.ValueEquals(admission.CanonicalJson, invocation.CanonicalJson))
+            if (!InvocationEquals(admission.Invocation, invocation))
             {
                 _admittedInvocations.Remove(invocation.Id);
                 return AdmissionActivation.Mismatch;
@@ -391,6 +391,15 @@ internal sealed class WindowsSidecarCapabilityAdapter
         lock (_admissionLock)
             _admittedInvocations.Remove(invocationId);
     }
+
+    private static bool InvocationEquals(SidecarInvocation left, SidecarInvocation right) =>
+        left.Id == right.Id &&
+        left.NodeId == right.NodeId &&
+        left.Command == right.Command &&
+        left.TimeoutMs == right.TimeoutMs &&
+        left.IdempotencyKey == right.IdempotencyKey &&
+        left.SessionKey == right.SessionKey &&
+        SidecarJson.ValueEquals(left.Parameters, right.Parameters);
 
     private static JsonObject Denial(string code, string message) => new()
     {
@@ -556,7 +565,7 @@ internal sealed class WindowsSidecarCapabilityAdapter
         if (!invocation.TryGetProperty("params", out var parameters))
             throw new SidecarProtocolException("Sidecar invocation is missing params.");
         var timeoutMs = OptionalUInt64(invocation, "timeoutMs");
-        _ = OptionalString(invocation, "idempotencyKey");
+        var idempotencyKey = OptionalString(invocation, "idempotencyKey");
         var id = SidecarJson.RequiredString(invocation, "id");
         var nodeId = SidecarJson.RequiredString(invocation, "nodeId");
         var command = SidecarJson.RequiredString(invocation, "command");
@@ -566,10 +575,10 @@ internal sealed class WindowsSidecarCapabilityAdapter
             id,
             nodeId,
             command,
-            parameters.Clone(),
+            SidecarJson.NormalizeValue(parameters),
             timeoutMs,
-            OptionalString(invocation, "sessionKey"),
-            invocation.Clone());
+            idempotencyKey,
+            OptionalString(invocation, "sessionKey"));
     }
 
     private static string? OptionalString(JsonElement parent, string name)
@@ -657,12 +666,12 @@ internal sealed class WindowsSidecarCapabilityAdapter
         string Command,
         JsonElement Parameters,
         ulong? TimeoutMs,
-        string? SessionKey,
-        JsonElement CanonicalJson);
+        string? IdempotencyKey,
+        string? SessionKey);
 
-    private sealed class Admission(JsonElement canonicalJson)
+    private sealed class Admission(SidecarInvocation invocation)
     {
-        internal JsonElement CanonicalJson { get; } = canonicalJson;
+        internal SidecarInvocation Invocation { get; } = invocation;
         internal bool Active { get; set; }
         internal bool CancellationRequested { get; set; }
     }
