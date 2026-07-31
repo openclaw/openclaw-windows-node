@@ -698,7 +698,10 @@ public sealed class WindowsSidecarCapabilityAdapterTests
                     singleFixedBoundary = 1e-6f,
                     singleScientificBoundary = 1e13f,
                     nonFiniteDouble = double.NaN,
-                    nonFiniteSingle = float.PositiveInfinity
+                    nonFiniteSingle = float.PositiveInfinity,
+                    typedDecimals = Enumerable.Repeat(
+                        1.0000000000000000000000000000m,
+                        40).ToArray()
                 }
             })));
         Configure(adapter, maxOutputBytes: 1024);
@@ -720,6 +723,8 @@ public sealed class WindowsSidecarCapabilityAdapterTests
         Assert.Contains("\"singleScientificBoundary\":10000000000000.0", encoded);
         Assert.Contains("\"nonFiniteDouble\":null", encoded);
         Assert.Contains("\"nonFiniteSingle\":null", encoded);
+        Assert.All(result["result"]!["payload"]!["typedDecimals"]!.AsArray(), value =>
+            Assert.Equal(1.0, value!.GetValue<double>()));
         Assert.Equal(
             "{\"fixedSmall\":0.00001,\"scientificLarge\":1e+16}",
             Encoding.UTF8.GetString(JsonSerializer.SerializeToUtf8Bytes(
@@ -818,6 +823,27 @@ public sealed class WindowsSidecarCapabilityAdapterTests
         Configure(adapter, maxOutputBytes: 1024);
         var invocation = ParseJson("""
             {"id":"invoke-canonicalization-work","nodeId":"node-1","command":"product.status","params":{},"timeoutMs":1000,"idempotencyKey":null,"sessionKey":null}
+            """);
+        await AdmitAsync(adapter, invocation);
+
+        var result = await InvokeAsync(adapter, invocation);
+
+        Assert.Equal("OUTPUT_TOO_LARGE", result["result"]!["code"]!.GetValue<string>());
+    }
+
+    [Fact]
+    public async Task Adapter_BoundsJsonNodeCanonicalizationWork()
+    {
+        var redundantFraction = "1." + new string('0', 9000);
+        var payload = JsonNode.Parse($$"""{"compacted":{{redundantFraction}}}""");
+        var adapter = new WindowsSidecarCapabilityAdapter("node-1", new TestLogger());
+        adapter.RegisterCapability(new TestCapability(
+            "native.status",
+            "product.status",
+            (_, _) => Task.FromResult(new NodeInvokeResponse { Ok = true, Payload = payload })));
+        Configure(adapter, maxOutputBytes: 1024);
+        var invocation = ParseJson("""
+            {"id":"invoke-json-node-work","nodeId":"node-1","command":"product.status","params":{},"timeoutMs":1000,"idempotencyKey":null,"sessionKey":null}
             """);
         await AdmitAsync(adapter, invocation);
 
