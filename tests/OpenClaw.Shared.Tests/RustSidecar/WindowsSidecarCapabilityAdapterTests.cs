@@ -452,7 +452,7 @@ public sealed class WindowsSidecarCapabilityAdapterTests
             (_, _) => Task.FromResult(new NodeInvokeResponse
             {
                 Ok = true,
-                Payload = new { unsafeValue = ulong.MaxValue }
+                Payload = new { unsafeValue = long.MaxValue }
             })));
         Configure(adapter, maxOutputBytes: 1024);
         var invocation = ParseJson("""
@@ -465,6 +465,32 @@ public sealed class WindowsSidecarCapabilityAdapterTests
         Assert.Equal(
             "SIDECAR_NON_PORTABLE_JSON",
             result["result"]!["code"]!.GetValue<string>());
+    }
+
+    [Fact]
+    public async Task Adapter_RejectsOversizedParametersBeforeWindowsDispatch()
+    {
+        var invoked = false;
+        var adapter = new WindowsSidecarCapabilityAdapter("node-1", new TestLogger());
+        adapter.RegisterCapability(new TestCapability(
+            "native.status",
+            "product.status",
+            (_, _) =>
+            {
+                invoked = true;
+                return Task.FromResult(new NodeInvokeResponse { Ok = true });
+            }));
+        Configure(adapter, maxInputBytes: 16);
+        var invocation = ParseJson($$"""
+            {"id":"invoke-large-input","nodeId":"node-1","command":"product.status","params":{"data":"{{new string('x', 100)}}"},"timeoutMs":1000,"idempotencyKey":null,"sessionKey":null}
+            """);
+
+        var admission = await AdmitAsync(adapter, invocation);
+
+        Assert.Equal(
+            "INPUT_TOO_LARGE",
+            admission["decision"]!["code"]!.GetValue<string>());
+        Assert.False(invoked);
     }
 
     [Fact]
@@ -693,6 +719,19 @@ public sealed class WindowsSidecarCapabilityAdapterTests
     }
 
     [Fact]
+    public async Task Adapter_RejectsNonPortableInvocationTimeout()
+    {
+        var adapter = new WindowsSidecarCapabilityAdapter("node-1", new TestLogger());
+        Configure(adapter);
+        var admission = ParseJson("""
+            {"type":"admission-request","invocation":{"id":"invoke-unsafe-timeout","nodeId":"node-1","command":"product.status","params":{},"timeoutMs":9007199254740992,"idempotencyKey":null,"sessionKey":null}}
+            """);
+
+        await Assert.ThrowsAsync<SidecarProtocolException>(
+            () => adapter.HandleRuntimeMessageAsync(admission, CancellationToken.None));
+    }
+
+    [Fact]
     public async Task Adapter_HoldsAdmissionSlotAndIdUntilInvocationIsTerminal()
     {
         var started = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -755,11 +794,13 @@ public sealed class WindowsSidecarCapabilityAdapterTests
     private static void Configure(
         WindowsSidecarCapabilityAdapter adapter,
         ushort maxInFlight = 8,
+        uint maxInputBytes = 1_048_576,
         uint maxOutputBytes = 1_048_576)
     {
         var configure = adapter.BeginConfiguration(
             1,
             new SidecarProtocolSelection(1, 0, 0, new SidecarLimits(4096, maxInFlight, 1000)),
+            maxInputBytes: maxInputBytes,
             maxOutputBytes: maxOutputBytes);
         var configuration = configure["configuration"]!.AsObject();
         var manifest = new JsonObject

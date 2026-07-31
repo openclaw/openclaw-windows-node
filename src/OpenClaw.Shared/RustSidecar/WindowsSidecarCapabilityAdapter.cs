@@ -151,6 +151,16 @@ internal sealed class WindowsSidecarCapabilityAdapter
         {
             decision = Denial("WRONG_NODE", "invocation targets another Windows node");
         }
+        else if (!SidecarJson.IsPortableJson(invocation.Parameters))
+        {
+            decision = Denial(
+                "SIDECAR_NON_PORTABLE_JSON",
+                "sidecar message contains an integer outside the exact JSON range");
+        }
+        else if (!InputWithinLimit(invocation.Parameters))
+        {
+            decision = Denial("INPUT_TOO_LARGE", "command parameters exceed the runtime limit");
+        }
         else if (!_commands.Contains(invocation.Command))
         {
             decision = Denial(
@@ -181,6 +191,15 @@ internal sealed class WindowsSidecarCapabilityAdapter
     {
         EnsureMessageShape(message, "invoke", "invocation");
         var invocation = ParseInvocation(SidecarJson.RequiredObject(message, "invocation"));
+        if (!SidecarJson.IsPortableJson(invocation.Parameters))
+            return NonPortableJsonFailure(invocation.Id);
+        if (!InputWithinLimit(invocation.Parameters))
+        {
+            return ResultFailure(
+                invocation.Id,
+                "INPUT_TOO_LARGE",
+                "command parameters exceed the runtime limit");
+        }
         var activation = TryActivateAdmission(invocation);
         if (activation == AdmissionActivation.Missing)
             return ResultFailure(invocation.Id, "ADMISSION_REQUIRED", "invocation was not admitted by the Windows host");
@@ -431,6 +450,9 @@ internal sealed class WindowsSidecarCapabilityAdapter
         }).Length));
     }
 
+    private bool InputWithinLimit(JsonElement parameters) =>
+        JsonSerializer.SerializeToUtf8Bytes(parameters).Length <= _configuration!.MaxInputBytes;
+
     private static SidecarInvocation ParseInvocation(JsonElement invocation)
     {
         EnsureProperties(
@@ -472,9 +494,10 @@ internal sealed class WindowsSidecarCapabilityAdapter
         var value = parent.GetProperty(name);
         if (value.ValueKind == JsonValueKind.Null)
             return null;
-        if (value.TryGetUInt64(out var result))
+        if (value.TryGetUInt64(out var result) && result <= SidecarJson.MaxPortableInteger)
             return result;
-        throw new SidecarProtocolException($"Sidecar field '{name}' must be an unsigned integer or null.");
+        throw new SidecarProtocolException(
+            $"Sidecar field '{name}' must be a portable unsigned integer or null.");
     }
 
     private static void ValidateNames(IReadOnlyList<string> capabilities, IReadOnlyList<string> commands)
