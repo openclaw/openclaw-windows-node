@@ -74,6 +74,29 @@ public sealed class SshTunnelServiceTests
         Assert.Null(service.LastError);
     }
 
+    [Theory]
+    [InlineData(
+        SshTunnelOwner.Settings,
+        SshTunnelOwner.GatewayConnectionManager,
+        SshTunnelOwner.GatewayConnectionManager)]
+    [InlineData(
+        SshTunnelOwner.GatewayConnectionManager,
+        SshTunnelOwner.Settings,
+        SshTunnelOwner.GatewayConnectionManager)]
+    [InlineData(
+        SshTunnelOwner.Settings,
+        SshTunnelOwner.Settings,
+        SshTunnelOwner.Settings)]
+    public void ResolveOwnerForReuse_PreservesManagerOwnership(
+        SshTunnelOwner currentOwner,
+        SshTunnelOwner requestedOwner,
+        SshTunnelOwner expectedOwner)
+    {
+        Assert.Equal(
+            expectedOwner,
+            SshTunnelService.ResolveOwnerForReuse(currentOwner, requestedOwner));
+    }
+
     [Fact]
     public void Stop_FromNotConfigured_StatusRemainsNotConfigured()
     {

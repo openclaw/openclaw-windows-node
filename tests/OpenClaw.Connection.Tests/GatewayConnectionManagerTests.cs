@@ -150,7 +150,11 @@ public class GatewayConnectionManagerTests : IDisposable
 
         _registry.SetActive("gw-2");
         var recoveryTask = manager.RecoverSshTunnelAsync(
-            new SshTunnelExit(255, tunnelConfig, Generation: 7));
+            new SshTunnelExit(
+                255,
+                tunnelConfig,
+                Generation: 7,
+                SshTunnelOwner.GatewayConnectionManager));
         tunnel.AllowStart.SetResult(true);
 
         await connectTask.WaitAsync(TimeSpan.FromSeconds(2));
@@ -182,7 +186,11 @@ public class GatewayConnectionManagerTests : IDisposable
             tunnelManager: tunnel);
 
         var recovered = await manager.RecoverSshTunnelAsync(
-            new SshTunnelExit(255, tunnelConfig, Generation: 7));
+            new SshTunnelExit(
+                255,
+                tunnelConfig,
+                Generation: 7,
+                SshTunnelOwner.GatewayConnectionManager));
 
         Assert.True(recovered);
         Assert.Equal(1, tunnel.StartCount);
@@ -211,7 +219,42 @@ public class GatewayConnectionManagerTests : IDisposable
         manager.SetGatewayConnectionIntent("gw-1", shouldBeConnected: false);
 
         var recovered = await manager.RecoverSshTunnelAsync(
-            new SshTunnelExit(255, tunnelConfig, Generation: 7));
+            new SshTunnelExit(
+                255,
+                tunnelConfig,
+                Generation: 7,
+                SshTunnelOwner.GatewayConnectionManager));
+
+        Assert.False(recovered);
+        Assert.Empty(_factory.CreatedClients);
+        Assert.Equal(0, tunnel.StartCount);
+    }
+
+    [Fact]
+    public async Task RecoverSshTunnelAsync_SettingsOwnedTunnel_DoesNotReconnectGateway()
+    {
+        var tunnelConfig = new SshTunnelConfig("user", "host.example", 18789, 45678);
+        _registry.AddOrUpdate(new GatewayRecord
+        {
+            Id = "gw-1",
+            Url = "wss://test1",
+            SshTunnel = tunnelConfig
+        });
+        _registry.SetActive("gw-1");
+        var tunnel = new CountingTunnelManager { RestartPending = true };
+        using var manager = new GatewayConnectionManager(
+            _resolver,
+            _factory,
+            _registry,
+            NullLogger.Instance,
+            tunnelManager: tunnel);
+
+        var recovered = await manager.RecoverSshTunnelAsync(
+            new SshTunnelExit(
+                255,
+                tunnelConfig,
+                Generation: 7,
+                SshTunnelOwner.Settings));
 
         Assert.False(recovered);
         Assert.Empty(_factory.CreatedClients);

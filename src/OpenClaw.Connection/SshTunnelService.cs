@@ -15,6 +15,7 @@ public sealed class SshTunnelService : ISshTunnelManager
     private Process? _process;
     private bool _processStarted;
     private SshTunnelConfig? _currentConfig;
+    private SshTunnelOwner _currentOwner;
     private string? _lastSpec;
     private long _lifecycleGeneration;
 
@@ -98,8 +99,37 @@ public sealed class SshTunnelService : ISshTunnelManager
         {
             return tunnelExit.Generation == _lifecycleGeneration &&
                    Equals(_currentConfig, tunnelExit.Tunnel) &&
+                   tunnelExit.Owner == _currentOwner &&
                    !IsRunningLocked() &&
                    Status == TunnelStatus.Restarting;
+        }
+    }
+
+    public bool TryMarkRecoveryFailed(SshTunnelExit tunnelExit, string reason)
+    {
+        lock (_stateLock)
+        {
+            if (!IsRestartPendingLocked(tunnelExit))
+                return false;
+
+            Status = TunnelStatus.Failed;
+            LastError = reason;
+            return true;
+        }
+    }
+
+    public bool TryRestart(SshTunnelExit tunnelExit)
+    {
+        lock (_operationLock)
+        {
+            lock (_stateLock)
+            {
+                if (!IsRestartPendingLocked(tunnelExit))
+                    return false;
+            }
+
+            EnsureStartedCore(tunnelExit.Tunnel, tunnelExit.Owner);
+            return true;
         }
     }
 
@@ -110,18 +140,31 @@ public sealed class SshTunnelService : ISshTunnelManager
         => EnsureStarted(user, host, remotePort, localPort, includeBrowserProxyForward, sshPort: 22);
 
     public void EnsureStarted(string user, string host, int remotePort, int localPort, bool includeBrowserProxyForward, int sshPort)
+        => EnsureStartedCore(
+            new SshTunnelConfig(user, host, remotePort, localPort, includeBrowserProxyForward, sshPort),
+            SshTunnelOwner.Settings);
+
+    private void EnsureStartedCore(SshTunnelConfig tunnel, SshTunnelOwner owner)
     {
         lock (_operationLock)
         {
-            user = user.Trim();
-            host = host.Trim();
+            var user = tunnel.User.Trim();
+            var host = tunnel.Host.Trim();
+            tunnel = tunnel with { User = user, Host = host };
 
-            var spec = BuildSpec(user, host, remotePort, localPort, includeBrowserProxyForward, sshPort);
+            var spec = BuildSpec(
+                user,
+                host,
+                tunnel.RemotePort,
+                tunnel.LocalPort,
+                tunnel.IncludeBrowserProxyForward,
+                tunnel.SshPort);
 
             lock (_stateLock)
             {
                 if (IsRunningLocked() && string.Equals(_lastSpec, spec, StringComparison.Ordinal))
                 {
+                    _currentOwner = ResolveOwnerForReuse(_currentOwner, owner);
                     Status = TunnelStatus.Up;
                     return;
                 }
@@ -132,7 +175,7 @@ public sealed class SshTunnelService : ISshTunnelManager
             {
                 Status = TunnelStatus.Starting;
             }
-            StartProcess(user, host, remotePort, localPort, includeBrowserProxyForward, sshPort, spec);
+            StartProcess(tunnel, owner, spec);
         }
     }
 
@@ -156,6 +199,7 @@ public sealed class SshTunnelService : ISshTunnelManager
             _process = null;
             _processStarted = false;
             _currentConfig = null;
+            _currentOwner = SshTunnelOwner.Unspecified;
             _lastSpec = null;
             CurrentBrowserProxyLocalPort = 0;
             CurrentBrowserProxyRemotePort = 0;
@@ -200,22 +244,14 @@ public sealed class SshTunnelService : ISshTunnelManager
         }
     }
 
-    private void StartProcess(
-        string user,
-        string host,
-        int remotePort,
-        int localPort,
-        bool includeBrowserProxyForward,
-        int sshPort,
-        string spec)
+    private void StartProcess(SshTunnelConfig tunnel, SshTunnelOwner owner, string spec)
     {
-        var tunnel = new SshTunnelConfig(
-            user,
-            host,
-            remotePort,
-            localPort,
-            includeBrowserProxyForward,
-            sshPort);
+        var user = tunnel.User;
+        var host = tunnel.Host;
+        var remotePort = tunnel.RemotePort;
+        var localPort = tunnel.LocalPort;
+        var includeBrowserProxyForward = tunnel.IncludeBrowserProxyForward;
+        var sshPort = tunnel.SshPort;
         var psi = new ProcessStartInfo
         {
             FileName = "ssh",
@@ -250,13 +286,23 @@ public sealed class SshTunnelService : ISshTunnelManager
 
         process.Exited += (_, _) =>
         {
-            var exitCode = process.ExitCode;
             SshTunnelExit? tunnelExit = null;
             lock (_stateLock)
             {
                 if (generation == _lifecycleGeneration &&
                     ReferenceEquals(_process, process))
                 {
+                    int exitCode;
+                    try
+                    {
+                        exitCode = process.ExitCode;
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.Debug($"Ignoring SSH tunnel exit after process disposal: {ex.Message}");
+                        return;
+                    }
+
                     LastError = $"SSH tunnel exited unexpectedly with code {exitCode}.";
                     StartedAtUtc = null;
                     Status = TunnelStatus.Failed;
@@ -265,17 +311,17 @@ public sealed class SshTunnelService : ISshTunnelManager
                     _lastSpec = null;
                     CurrentBrowserProxyLocalPort = 0;
                     CurrentBrowserProxyRemotePort = 0;
-                    tunnelExit = new SshTunnelExit(exitCode, tunnel, generation);
+                    tunnelExit = new SshTunnelExit(exitCode, tunnel, generation, _currentOwner);
                 }
             }
 
             if (tunnelExit == null)
             {
-                _logger.Debug($"Ignoring stale SSH tunnel exit (code {exitCode})");
+                _logger.Debug("Ignoring stale SSH tunnel exit");
                 return;
             }
 
-            _logger.Warn($"SSH tunnel exited unexpectedly (code {exitCode})");
+            _logger.Warn($"SSH tunnel exited unexpectedly (code {tunnelExit.ExitCode})");
             try { process.Dispose(); }
             catch (Exception disposeEx) { _logger.Debug($"SshTunnelService: process dispose after unexpected exit failed: {disposeEx.Message}"); }
             TunnelExited?.Invoke(this, tunnelExit);
@@ -287,6 +333,7 @@ public sealed class SshTunnelService : ISshTunnelManager
             _process = process;
             _processStarted = false;
             _currentConfig = tunnel;
+            _currentOwner = owner;
             _lastSpec = spec;
         }
 
@@ -337,6 +384,7 @@ public sealed class SshTunnelService : ISshTunnelManager
                     _process = null;
                     _processStarted = false;
                     _currentConfig = null;
+                    _currentOwner = SshTunnelOwner.Unspecified;
                     _lastSpec = null;
                 }
             }
@@ -374,6 +422,20 @@ public sealed class SshTunnelService : ISshTunnelManager
 
     private bool IsRunningLocked() => _processStarted && _process is { HasExited: false };
 
+    private bool IsRestartPendingLocked(SshTunnelExit tunnelExit) =>
+        tunnelExit.Generation == _lifecycleGeneration &&
+        Equals(_currentConfig, tunnelExit.Tunnel) &&
+        tunnelExit.Owner == _currentOwner &&
+        !IsRunningLocked() &&
+        Status == TunnelStatus.Restarting;
+
+    internal static SshTunnelOwner ResolveOwnerForReuse(
+        SshTunnelOwner currentOwner,
+        SshTunnelOwner requestedOwner) =>
+        currentOwner == SshTunnelOwner.GatewayConnectionManager
+            ? currentOwner
+            : requestedOwner;
+
     private void MarkRestartingLocked(int exitCode)
     {
         Status = TunnelStatus.Restarting;
@@ -390,7 +452,7 @@ public sealed class SshTunnelService : ISshTunnelManager
 
     public Task<string> StartAsync(SshTunnelConfig config, CancellationToken ct)
     {
-        EnsureStarted(config.User, config.Host, config.RemotePort, config.LocalPort, config.IncludeBrowserProxyForward, config.SshPort);
+        EnsureStartedCore(config, SshTunnelOwner.GatewayConnectionManager);
         var localUrl = $"ws://localhost:{config.LocalPort}";
         return Task.FromResult(localUrl);
     }
@@ -405,4 +467,12 @@ public sealed class SshTunnelService : ISshTunnelManager
 public sealed record SshTunnelExit(
     int ExitCode,
     SshTunnelConfig Tunnel,
-    long Generation);
+    long Generation,
+    SshTunnelOwner Owner = SshTunnelOwner.Unspecified);
+
+public enum SshTunnelOwner
+{
+    Unspecified = 0,
+    Settings,
+    GatewayConnectionManager
+}

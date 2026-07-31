@@ -884,7 +884,8 @@ public sealed class GatewayConnectionManager : IGatewayConnectionManager
         try
         {
             var activeGateway = _registry.GetActive();
-            if (activeGateway?.SshTunnel != tunnelExit.Tunnel ||
+            if (tunnelExit.Owner != SshTunnelOwner.GatewayConnectionManager ||
+                activeGateway?.SshTunnel != tunnelExit.Tunnel ||
                 !IsAutomaticReconnectAllowed(activeGateway.Id) ||
                 _tunnelManager?.IsRestartPending(tunnelExit) != true)
             {
@@ -907,6 +908,8 @@ public sealed class GatewayConnectionManager : IGatewayConnectionManager
 
             await ConnectCoreAsync(activeGateway.Id, "reconnect");
             return _stateMachine.Current.OperatorState is not RoleConnectionState.Error
+                && _registry.GetById(activeGateway.Id) is not null
+                && _tunnelManager?.IsActive == true
                 && string.Equals(_registry.ActiveGatewayId, activeGateway.Id, StringComparison.Ordinal);
         }
         finally
