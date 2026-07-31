@@ -68,6 +68,7 @@ internal sealed class WindowsSidecarSupervisor : IDisposable
                 _handshake.RuntimeVersion!,
                 _manifestGeneration,
                 _channel.MaxPayloadBytes);
+            ValidateResultFailureBudget(string.Empty, _channel.MaxPayloadBytes);
             var configure = _adapter.BeginConfiguration(
                 _manifestGeneration,
                 _handshake.Selection!);
@@ -103,9 +104,13 @@ internal sealed class WindowsSidecarSupervisor : IDisposable
 
             if (SidecarJson.RequiredString(message, "type") == "invoke")
             {
+                ValidateInvocationFailureBudget(message, _channel.MaxPayloadBytes);
                 _ = ProcessInvocationAsync(message, cancellationToken);
                 return;
             }
+
+            if (SidecarJson.RequiredString(message, "type") == "admission-request")
+                ValidateInvocationFailureBudget(message, _channel.MaxPayloadBytes);
 
             var response = await _adapter.HandleRuntimeMessageAsync(message, cancellationToken);
             if (response is not null)
@@ -226,6 +231,26 @@ internal sealed class WindowsSidecarSupervisor : IDisposable
         };
         if (SidecarJson.Serialize(worstCaseStatus).Length > maxPayloadBytes)
             throw new SidecarProtocolException("Sidecar runtime status exceeds the authenticated payload bound.");
+    }
+
+    private static void ValidateInvocationFailureBudget(
+        System.Text.Json.JsonElement message,
+        int maxPayloadBytes)
+    {
+        var invocation = SidecarJson.RequiredObject(message, "invocation");
+        ValidateResultFailureBudget(
+            SidecarJson.RequiredString(invocation, "id"),
+            maxPayloadBytes);
+    }
+
+    private static void ValidateResultFailureBudget(string invocationId, int maxPayloadBytes)
+    {
+        if (SidecarJson.Serialize(
+                WindowsSidecarCapabilityAdapter.MessageTooLargeFailure(invocationId)).Length > maxPayloadBytes)
+        {
+            throw new SidecarProtocolException(
+                "Sidecar invocation failure exceeds the authenticated payload bound.");
+        }
     }
 
     private void ThrowIfDisposed()
