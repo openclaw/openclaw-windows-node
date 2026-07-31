@@ -581,9 +581,9 @@ internal sealed class WindowsSidecarCapabilityAdapter
     {
         if (requestedTimeoutMs == 0)
             return null;
-        if (requestedTimeoutMs is null)
-            return TimeSpan.FromMilliseconds(_configuration!.DefaultTimeoutMs);
-        var bounded = Math.Min(requestedTimeoutMs.Value, _configuration!.MaxTimeoutMs);
+        var bounded = requestedTimeoutMs is null
+            ? _configuration!.DefaultTimeoutMs
+            : Math.Min(requestedTimeoutMs.Value, _configuration!.MaxTimeoutMs);
         var effective = bounded > _configuration.ResultGraceMs
             ? bounded - _configuration.ResultGraceMs
             : 0;
