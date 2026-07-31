@@ -1,3 +1,4 @@
+using System.Buffers;
 using System.Globalization;
 using System.Text.Encodings.Web;
 using System.Text.Json;
@@ -80,6 +81,9 @@ internal static class SidecarJson
     internal const ulong MaxPortableInteger = 9_007_199_254_740_991;
     // serde_json starts with 128 remaining levels and rejects the 128th container.
     internal const int MaxDepth = 127;
+    private const long MinimumCanonicalizationHeadroomBytes = 4 * 1024;
+    private const long MaximumCanonicalizationHeadroomBytes = 64 * 1024 * 1024;
+    private static readonly AsyncLocal<CanonicalizationBudget?> CurrentCanonicalizationBudget = new();
 
     internal static readonly JsonSerializerOptions SerializerOptions = new()
     {
@@ -99,6 +103,19 @@ internal static class SidecarJson
 
     internal static byte[] Serialize(JsonNode node) =>
         JsonSerializer.SerializeToUtf8Bytes(node, SerializerOptions);
+
+    internal static IDisposable BeginCanonicalizationBudget(uint maxOutputBytes)
+    {
+        var previous = CurrentCanonicalizationBudget.Value;
+        var proportionalHeadroom = checked((long)maxOutputBytes * 7);
+        var headroom = Math.Clamp(
+            proportionalHeadroom,
+            MinimumCanonicalizationHeadroomBytes,
+            MaximumCanonicalizationHeadroomBytes);
+        CurrentCanonicalizationBudget.Value = new CanonicalizationBudget(
+            checked((long)maxOutputBytes + headroom));
+        return new CanonicalizationBudgetScope(previous);
+    }
 
     internal static JsonElement Parse(ReadOnlySpan<byte> json)
     {
@@ -391,7 +408,27 @@ internal static class SidecarJson
         public override void Write(
             Utf8JsonWriter writer,
             JsonElement value,
-            JsonSerializerOptions options) => WriteNormalizedValue(writer, value);
+            JsonSerializerOptions options)
+        {
+            PreflightRawValue(value);
+            WriteNormalizedValue(writer, value);
+        }
+
+        internal static void PreflightRawValue(JsonElement value)
+        {
+            var budget = CurrentCanonicalizationBudget.Value;
+            if (budget is null)
+                return;
+            var buffer = new CanonicalizationBudgetBufferWriter(budget);
+            using var rawWriter = new Utf8JsonWriter(buffer, new JsonWriterOptions
+            {
+                Encoder = SerdeJsonEncoder.Instance,
+                MaxDepth = MaxDepth,
+                SkipValidation = true
+            });
+            value.WriteTo(rawWriter);
+            rawWriter.Flush();
+        }
 
         internal static void WriteNormalizedValue(Utf8JsonWriter writer, JsonElement value)
         {
@@ -484,8 +521,11 @@ internal static class SidecarJson
         public override void Write(
             Utf8JsonWriter writer,
             JsonDocument value,
-            JsonSerializerOptions options) =>
+            JsonSerializerOptions options)
+        {
+            SerdeJsonElementConverter.PreflightRawValue(value.RootElement);
             SerdeJsonElementConverter.WriteNormalizedValue(writer, value.RootElement);
+        }
     }
 
     private sealed class SerdeJsonNodeConverter<TNode> : JsonConverter<TNode>
@@ -552,6 +592,9 @@ internal static class SidecarJson
                 case JsonValue jsonValue when jsonValue.TryGetValue<ulong>(out var ulongValue):
                     writer.WriteNumberValue(ulongValue);
                     return;
+                case JsonValue jsonValue when jsonValue.TryGetValue<decimal>(out var decimalValue):
+                    writer.WriteRawValue(FormatSerdeFloat(decimal.ToDouble(decimalValue)));
+                    return;
                 case JsonValue jsonValue when jsonValue.TryGetValue<double>(out var doubleValue):
                     SerdeDoubleConverter.Instance.Write(writer, doubleValue, SerializerOptions);
                     return;
@@ -559,6 +602,7 @@ internal static class SidecarJson
                     SerdeSingleConverter.Instance.Write(writer, singleValue, SerializerOptions);
                     return;
                 case JsonValue jsonValue when jsonValue.TryGetValue<JsonElement>(out var element):
+                    SerdeJsonElementConverter.PreflightRawValue(element);
                     SerdeJsonElementConverter.WriteNormalizedValue(writer, element);
                     return;
                 case JsonValue jsonValue:
@@ -568,6 +612,60 @@ internal static class SidecarJson
                     throw new JsonException("Sidecar JSON contains an unsupported node type.");
             }
         }
+    }
+
+    private sealed class CanonicalizationBudget(long remainingBytes)
+    {
+        internal long RemainingBytes { get; private set; } = remainingBytes;
+
+        internal void Consume(int bytes)
+        {
+            if (bytes < 0 || bytes > RemainingBytes)
+                throw new SidecarCanonicalizationLimitException();
+            RemainingBytes -= bytes;
+        }
+    }
+
+    private sealed class CanonicalizationBudgetScope(CanonicalizationBudget? previous) : IDisposable
+    {
+        private bool _disposed;
+
+        public void Dispose()
+        {
+            if (_disposed)
+                return;
+            CurrentCanonicalizationBudget.Value = previous;
+            _disposed = true;
+        }
+    }
+
+    private sealed class CanonicalizationBudgetBufferWriter(CanonicalizationBudget budget) : IBufferWriter<byte>
+    {
+        private byte[] _buffer = Array.Empty<byte>();
+        private int _available;
+
+        public void Advance(int count)
+        {
+            if (count < 0 || count > _available)
+                throw new ArgumentOutOfRangeException(nameof(count));
+            budget.Consume(count);
+            _available = 0;
+        }
+
+        public Memory<byte> GetMemory(int sizeHint = 0)
+        {
+            var requested = Math.Max(sizeHint, 256);
+            if (requested > budget.RemainingBytes)
+                requested = checked((int)budget.RemainingBytes);
+            if (requested == 0 || sizeHint > requested)
+                throw new SidecarCanonicalizationLimitException();
+            if (_buffer.Length < requested)
+                _buffer = new byte[requested];
+            _available = requested;
+            return _buffer.AsMemory(0, requested);
+        }
+
+        public Span<byte> GetSpan(int sizeHint = 0) => GetMemory(sizeHint).Span;
     }
 
     private sealed unsafe class SerdeJsonEncoder : JavaScriptEncoder
@@ -712,3 +810,5 @@ internal static class SidecarJson
         return floating != Math.Truncate(floating) || Math.Abs(floating) <= MaxPortableInteger;
     }
 }
+
+internal sealed class SidecarCanonicalizationLimitException : Exception;
