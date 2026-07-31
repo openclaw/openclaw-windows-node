@@ -95,6 +95,7 @@ internal static class SidecarJson
         {
             SerdeDoubleConverter.Instance,
             SerdeSingleConverter.Instance,
+            SerdeDecimalConverter.Instance,
             SerdeJsonElementConverter.Instance,
             SerdeJsonDocumentConverter.Instance,
             SerdeJsonNodeConverterFactory.Instance
@@ -392,6 +393,22 @@ internal static class SidecarJson
         }
     }
 
+    private sealed class SerdeDecimalConverter : JsonConverter<decimal>
+    {
+        internal static readonly SerdeDecimalConverter Instance = new();
+
+        public override decimal Read(
+            ref Utf8JsonReader reader,
+            Type typeToConvert,
+            JsonSerializerOptions options) => reader.GetDecimal();
+
+        public override void Write(
+            Utf8JsonWriter writer,
+            decimal value,
+            JsonSerializerOptions options) =>
+            writer.WriteRawValue(FormatSerdeFloat(decimal.ToDouble(value)));
+    }
+
     private sealed class SerdeJsonElementConverter : JsonConverter<JsonElement>
     {
         internal static readonly SerdeJsonElementConverter Instance = new();
@@ -568,6 +585,10 @@ internal static class SidecarJson
                         WriteNormalizedNode(writer, item);
                     writer.WriteEndArray();
                     return;
+                case JsonValue jsonValue when jsonValue.TryGetValue<JsonElement>(out var element):
+                    SerdeJsonElementConverter.PreflightRawValue(element);
+                    SerdeJsonElementConverter.WriteNormalizedValue(writer, element);
+                    return;
                 case JsonValue jsonValue when jsonValue.TryGetValue<byte>(out var byteValue):
                     writer.WriteNumberValue(byteValue);
                     return;
@@ -600,10 +621,6 @@ internal static class SidecarJson
                     return;
                 case JsonValue jsonValue when jsonValue.TryGetValue<float>(out var singleValue):
                     SerdeSingleConverter.Instance.Write(writer, singleValue, SerializerOptions);
-                    return;
-                case JsonValue jsonValue when jsonValue.TryGetValue<JsonElement>(out var element):
-                    SerdeJsonElementConverter.PreflightRawValue(element);
-                    SerdeJsonElementConverter.WriteNormalizedValue(writer, element);
                     return;
                 case JsonValue jsonValue:
                     jsonValue.WriteTo(writer);
