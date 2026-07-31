@@ -467,8 +467,34 @@ internal static class SidecarJson
             catch (ArgumentException)
             {
                 // Programmatically created JsonNode values may contain NaN or
-                // infinity. Their containers are already materialized; the
-                // normalized writer below maps those leaves to serde nulls.
+                // infinity. Their containers are already materialized; keep
+                // charging every remaining parsed subtree while the normalized
+                // writer below maps those non-finite leaves to serde nulls.
+                PreflightMaterializedNodeChildren(value);
+            }
+        }
+
+        private static void PreflightMaterializedNodeChildren(JsonNode value)
+        {
+            switch (value)
+            {
+                case JsonObject jsonObject:
+                    foreach (var property in jsonObject)
+                    {
+                        if (property.Value is not null)
+                            PreflightRawNode(property.Value);
+                    }
+                    return;
+                case JsonArray jsonArray:
+                    foreach (var item in jsonArray)
+                    {
+                        if (item is not null)
+                            PreflightRawNode(item);
+                    }
+                    return;
+                case JsonValue jsonValue when jsonValue.TryGetValue<JsonElement>(out var element):
+                    PreflightRawValue(element);
+                    return;
             }
         }
 
