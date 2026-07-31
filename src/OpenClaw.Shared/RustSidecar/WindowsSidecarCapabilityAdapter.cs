@@ -56,10 +56,11 @@ internal sealed class WindowsSidecarCapabilityAdapter
     {
         if (_configurationStarted)
             throw new InvalidOperationException("Sidecar configuration may be sent only once.");
-        if (manifestGeneration == 0)
+        if (manifestGeneration == 0 || manifestGeneration > SidecarJson.MaxPortableInteger)
             throw new ArgumentOutOfRangeException(nameof(manifestGeneration));
         if (selection.ProtocolMajor != AuthenticatedSidecarChannel.ProtocolMajor ||
             selection.ProtocolMinor > AuthenticatedSidecarChannel.ProtocolMinor ||
+            selection.FeatureBits > SidecarJson.MaxPortableInteger ||
             selection.Limits.MaxFrameBytes < 65 ||
             selection.Limits.MaxInFlight == 0 ||
             selection.Limits.BootstrapTimeoutMs == 0)
@@ -74,22 +75,30 @@ internal sealed class WindowsSidecarCapabilityAdapter
             .ToArray();
         var commands = _commands.Order(StringComparer.Ordinal).ToArray();
         ValidateNames(capabilities, commands);
+        if (maxInputBytes == 0)
+            throw new ArgumentOutOfRangeException(nameof(maxInputBytes));
+        if (maxOutputBytes == 0)
+            throw new ArgumentOutOfRangeException(nameof(maxOutputBytes));
+        var boundedInputBytes = Math.Min(maxInputBytes, selection.Limits.MaxFrameBytes);
+        var boundedOutputBytes = Math.Min(maxOutputBytes, selection.Limits.MaxFrameBytes);
+        if (boundedOutputBytes < MinimumBridgeFailureBytes())
+            throw new ArgumentOutOfRangeException(nameof(maxOutputBytes));
+        if (defaultTimeoutMs == 0 || maxTimeoutMs == 0 ||
+            defaultTimeoutMs > maxTimeoutMs || resultGraceMs >= defaultTimeoutMs)
+        {
+            throw new ArgumentOutOfRangeException(nameof(defaultTimeoutMs));
+        }
 
         _configuration = new SidecarRuntimeConfiguration(
             manifestGeneration,
             capabilities,
             commands,
             Math.Min((ushort)8, selection.Limits.MaxInFlight),
-            Math.Min(maxInputBytes, selection.Limits.MaxFrameBytes),
-            Math.Min(maxOutputBytes, selection.Limits.MaxFrameBytes),
+            boundedInputBytes,
+            boundedOutputBytes,
             defaultTimeoutMs,
             maxTimeoutMs,
             resultGraceMs);
-        if (defaultTimeoutMs == 0 || maxTimeoutMs == 0 ||
-            defaultTimeoutMs > maxTimeoutMs || resultGraceMs >= defaultTimeoutMs)
-        {
-            throw new ArgumentOutOfRangeException(nameof(defaultTimeoutMs));
-        }
         _configurationStarted = true;
         _maxAdmittedInvocations = _configuration.MaxConcurrency;
         return _configuration.ToConfigureMessage();
@@ -372,6 +381,12 @@ internal sealed class WindowsSidecarCapabilityAdapter
     internal static JsonObject OutputTooLargeFailure(string invocationId) =>
         ResultFailure(invocationId, "OUTPUT_TOO_LARGE", "Windows capability result exceeds the negotiated output bound");
 
+    internal static JsonObject MessageTooLargeFailure(string invocationId) =>
+        ResultFailure(
+            invocationId,
+            "SIDECAR_MESSAGE_TOO_LARGE",
+            "complete sidecar message exceeds the authenticated payload limit");
+
     private JsonObject BuildCapabilityFailure(string invocationId, string? error)
     {
         var message = error ?? "Windows capability failed";
@@ -391,6 +406,21 @@ internal sealed class WindowsSidecarCapabilityAdapter
             ["message"] = message
         }
     };
+
+    private static uint MinimumBridgeFailureBytes()
+    {
+        var failures = new[]
+        {
+            ("SIDECAR_MESSAGE_TOO_LARGE", "complete sidecar message exceeds the authenticated payload limit"),
+            ("SIDECAR_NON_PORTABLE_JSON", "sidecar message contains an integer outside the exact JSON range"),
+            ("SIDECAR_CHANNEL_RETIRED", "authenticated sidecar channel is no longer live")
+        };
+        return checked((uint)failures.Max(failure => SidecarJson.Serialize(new JsonObject
+        {
+            ["code"] = failure.Item1,
+            ["message"] = failure.Item2
+        }).Length));
+    }
 
     private static SidecarInvocation ParseInvocation(JsonElement invocation)
     {

@@ -112,6 +112,57 @@ public sealed class WindowsSidecarCapabilityAdapterTests
     }
 
     [Fact]
+    public void Handshake_RejectsUnknownFieldsAtEveryAcceptanceLevel()
+    {
+        using var fixture = ReadFixture("node-sidecar-handshake-v1.json");
+        var root = fixture.RootElement;
+        var session = root.GetProperty("session");
+        var key = Convert.FromBase64String(session.GetProperty("keyBase64").GetString()!);
+        foreach (var target in new[]
+        {
+            "message", "offer", "peer", "offerLimits", "selection", "selectionLimits"
+        })
+        {
+            using var supervisorChannel = new AuthenticatedSidecarChannel(
+                SidecarPeerRole.Supervisor,
+                session.GetProperty("id").GetString()!,
+                session.GetProperty("generation").GetUInt64(),
+                key,
+                4096);
+            using var runtimeChannel = new AuthenticatedSidecarChannel(
+                SidecarPeerRole.Runtime,
+                session.GetProperty("id").GetString()!,
+                session.GetProperty("generation").GetUInt64(),
+                key,
+                4096);
+            var handshake = new SidecarSupervisorHandshake(
+                supervisorChannel,
+                ParseOffer(root.GetProperty("supervisorOffer")));
+            _ = handshake.Start();
+            var acceptance = new JsonObject
+            {
+                ["type"] = "accept",
+                ["offer"] = JsonNode.Parse(root.GetProperty("runtimeOffer").GetRawText()),
+                ["selection"] = JsonNode.Parse(root.GetProperty("selection").GetRawText())
+            };
+            var parent = target switch
+            {
+                "message" => acceptance,
+                "offer" => acceptance["offer"]!.AsObject(),
+                "peer" => acceptance["offer"]!["peer"]!.AsObject(),
+                "offerLimits" => acceptance["offer"]!["limits"]!.AsObject(),
+                "selection" => acceptance["selection"]!.AsObject(),
+                _ => acceptance["selection"]!["limits"]!.AsObject()
+            };
+            parent["unexpected"] = "secret-bearing-extension";
+
+            Assert.Throws<SidecarProtocolException>(() =>
+                handshake.Accept(runtimeChannel.Seal(SidecarJson.Serialize(acceptance))));
+            Assert.True(supervisorChannel.IsRetired);
+        }
+    }
+
+    [Fact]
     public void RuntimeCorpus_RoundTripsEveryCanonicalRustMessageExactly()
     {
         using var fixture = ReadFixture("node-sidecar-runtime-v1.json");
@@ -392,7 +443,7 @@ public sealed class WindowsSidecarCapabilityAdapterTests
     }
 
     [Fact]
-    public async Task Supervisor_ReplacesOversizedResultEnvelopeWithoutRetiringSession()
+    public async Task Supervisor_UsesSidecarErrorForOversizedResultEnvelopeWithoutRetiringSession()
     {
         var adapter = new WindowsSidecarCapabilityAdapter("node-1", new TestLogger());
         adapter.RegisterCapability(new TestCapability(
@@ -427,8 +478,66 @@ public sealed class WindowsSidecarCapabilityAdapterTests
 
         var result = SidecarJson.Parse(runtime.Open(
             await supervisor.ReadOutboundAsync(CancellationToken.None)));
-        Assert.Equal("OUTPUT_TOO_LARGE", result.GetProperty("result").GetProperty("code").GetString());
+        Assert.Equal(
+            "SIDECAR_MESSAGE_TOO_LARGE",
+            result.GetProperty("result").GetProperty("code").GetString());
         Assert.False(supervisor.IsRetired);
+    }
+
+    [Fact]
+    public void Adapter_RejectsInvalidLogicalByteLimitsBeforeConfigurationStarts()
+    {
+        var selection = new SidecarProtocolSelection(
+            1, 0, 0, new SidecarLimits(4096, 8, 1000));
+        var adapter = new WindowsSidecarCapabilityAdapter("node-1", new TestLogger());
+
+        Assert.Throws<ArgumentOutOfRangeException>(() =>
+            adapter.BeginConfiguration(1, selection, maxInputBytes: 0));
+        Assert.Throws<ArgumentOutOfRangeException>(() =>
+            adapter.BeginConfiguration(1, selection, maxOutputBytes: 0));
+        Assert.Throws<ArgumentOutOfRangeException>(() =>
+            adapter.BeginConfiguration(1, selection, maxOutputBytes: 1));
+        Assert.False(adapter.IsConfigured);
+    }
+
+    [Fact]
+    public void Supervisor_RejectsConfigurationWhenWorstCaseStatusCannotFit()
+    {
+        using var fixture = ReadFixture("node-sidecar-handshake-v1.json");
+        var root = fixture.RootElement;
+        var session = root.GetProperty("session");
+        var key = Convert.FromBase64String(session.GetProperty("keyBase64").GetString()!);
+        var adapter = new WindowsSidecarCapabilityAdapter("node-1", new TestLogger());
+        using var supervisor = new WindowsSidecarSupervisor(
+            session.GetProperty("id").GetString()!,
+            session.GetProperty("generation").GetUInt64(),
+            key,
+            4096,
+            ParseOffer(root.GetProperty("supervisorOffer")),
+            adapter,
+            manifestGeneration: 3);
+        using var runtime = new AuthenticatedSidecarChannel(
+            SidecarPeerRole.Runtime,
+            session.GetProperty("id").GetString()!,
+            session.GetProperty("generation").GetUInt64(),
+            key,
+            4096);
+        _ = runtime.Open(supervisor.Start());
+        var runtimeOffer = JsonNode.Parse(root.GetProperty("runtimeOffer").GetRawText())!.AsObject();
+        runtimeOffer["peer"]!["version"] = new string('v', 900);
+        runtimeOffer["limits"]!["maxFrameBytes"] = 1024;
+        var selection = JsonNode.Parse(root.GetProperty("selection").GetRawText())!.AsObject();
+        selection["limits"]!["maxFrameBytes"] = 1024;
+        var acceptance = new JsonObject
+        {
+            ["type"] = "accept",
+            ["offer"] = runtimeOffer,
+            ["selection"] = selection
+        };
+
+        Assert.Throws<SidecarProtocolException>(() =>
+            supervisor.CompleteHandshake(runtime.Seal(SidecarJson.Serialize(acceptance))));
+        Assert.True(supervisor.IsRetired);
     }
 
     [Fact]
