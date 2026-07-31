@@ -980,7 +980,7 @@ public sealed class WindowsSidecarCapabilityAdapterTests
     }
 
     [Fact]
-    public async Task Adapter_RejectsFloatingPointTokenChangedAfterAdmission()
+    public async Task Adapter_UsesSerdeFloatingPointEqualityForAdmission()
     {
         var executions = 0;
         var adapter = new WindowsSidecarCapabilityAdapter("node-1", new TestLogger());
@@ -1003,8 +1003,8 @@ public sealed class WindowsSidecarCapabilityAdapterTests
         _ = await adapter.HandleRuntimeMessageAsync(admission, CancellationToken.None);
         var result = await adapter.HandleRuntimeMessageAsync(invocation, CancellationToken.None);
 
-        Assert.Equal("ADMISSION_MISMATCH", result!["result"]!["code"]!.GetValue<string>());
-        Assert.Equal(0, executions);
+        Assert.Equal("success", result!["result"]!["outcome"]!.GetValue<string>());
+        Assert.Equal(1, executions);
     }
 
     [Fact]
@@ -1248,7 +1248,7 @@ public sealed class WindowsSidecarCapabilityAdapterTests
     }
 
     [Fact]
-    public async Task Adapter_ReservesResultGraceFromDefaultInvocationTimeout()
+    public async Task Adapter_UsesFullDefaultInvocationTimeoutLikeRustRuntime()
     {
         var adapter = new WindowsSidecarCapabilityAdapter("node-1", new TestLogger());
         adapter.RegisterCapability(new TestCapability(
@@ -1271,7 +1271,7 @@ public sealed class WindowsSidecarCapabilityAdapterTests
 
         var result = await InvokeAsync(adapter, invocation).WaitAsync(TimeSpan.FromSeconds(5));
 
-        Assert.Equal("HANDLER_TIMEOUT", result["result"]!["code"]!.GetValue<string>());
+        Assert.Equal("success", result["result"]!["outcome"]!.GetValue<string>());
     }
 
     [Fact]

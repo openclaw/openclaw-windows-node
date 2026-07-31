@@ -175,9 +175,9 @@ internal static class SidecarJson
                 left.TryGetInt64(out var leftSigned) &&
                 right.TryGetInt64(out var rightSigned) &&
                 leftSigned == rightSigned,
-            // A Windows capability can observe both the decimal value and raw JSON token.
-            // Do not round distinct admitted tokens through double before dispatch.
-            _ => left.GetRawText() == right.GetRawText()
+            _ => left.TryGetDouble(out var leftFloat) &&
+                right.TryGetDouble(out var rightFloat) &&
+                leftFloat.Equals(rightFloat)
         };
     }
 
