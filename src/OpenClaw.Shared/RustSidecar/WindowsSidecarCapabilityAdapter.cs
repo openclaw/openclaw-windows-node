@@ -537,6 +537,13 @@ internal sealed class WindowsSidecarCapabilityAdapter
         {
             return OutputTooLargeFailure(invocationId);
         }
+        catch (Exception)
+        {
+            return ResultFailure(
+                invocationId,
+                "RESULT_SERIALIZATION",
+                "Windows capability result could not be serialized");
+        }
     }
 
     private static JsonObject ResultFailure(string invocationId, string code, string message) => new()
