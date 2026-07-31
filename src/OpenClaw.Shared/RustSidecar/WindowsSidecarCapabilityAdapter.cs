@@ -353,7 +353,10 @@ internal sealed class WindowsSidecarCapabilityAdapter
                 payload,
                 payload?.GetType() ?? typeof(object),
                 SidecarJson.SerializerOptions);
-            var payloadNode = JsonNode.Parse(output.WrittenMemory.Span);
+            var payloadJson = output.WrittenMemory.Span;
+            if (!SidecarJson.IsPortableJson(SidecarJson.Parse(payloadJson)))
+                return NonPortableJsonFailure(invocationId);
+            var payloadNode = JsonNode.Parse(payloadJson);
             return new JsonObject
             {
                 ["type"] = "result",
@@ -386,6 +389,12 @@ internal sealed class WindowsSidecarCapabilityAdapter
             invocationId,
             "SIDECAR_MESSAGE_TOO_LARGE",
             "complete sidecar message exceeds the authenticated payload limit");
+
+    internal static JsonObject NonPortableJsonFailure(string invocationId) =>
+        ResultFailure(
+            invocationId,
+            "SIDECAR_NON_PORTABLE_JSON",
+            "sidecar message contains an integer outside the exact JSON range");
 
     private JsonObject BuildCapabilityFailure(string invocationId, string? error)
     {

@@ -127,4 +127,23 @@ internal static class SidecarJson
         if (count != allowed.Count || allowed.Any(name => !value.TryGetProperty(name, out _)))
             throw new SidecarProtocolException("Sidecar value is missing a required field.");
     }
+
+    internal static bool IsPortableJson(JsonElement value) => value.ValueKind switch
+    {
+        JsonValueKind.Object => value.EnumerateObject().All(property => IsPortableJson(property.Value)),
+        JsonValueKind.Array => value.EnumerateArray().All(IsPortableJson),
+        JsonValueKind.Number => IsPortableNumber(value),
+        _ => true
+    };
+
+    private static bool IsPortableNumber(JsonElement value)
+    {
+        if (value.TryGetInt64(out var signed))
+            return signed >= -checked((long)MaxPortableInteger);
+        if (value.TryGetUInt64(out var unsigned))
+            return unsigned <= MaxPortableInteger;
+        if (!value.TryGetDouble(out var floating) || !double.IsFinite(floating))
+            return false;
+        return floating != Math.Truncate(floating) || Math.Abs(floating) <= MaxPortableInteger;
+    }
 }
