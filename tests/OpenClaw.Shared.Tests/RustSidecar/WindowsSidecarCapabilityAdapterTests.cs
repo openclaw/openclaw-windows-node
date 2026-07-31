@@ -443,6 +443,29 @@ public sealed class WindowsSidecarCapabilityAdapterTests
     }
 
     [Fact]
+    public async Task Adapter_CountsJsonEscapingAgainstCapabilityErrorLimit()
+    {
+        var adapter = new WindowsSidecarCapabilityAdapter("node-1", new TestLogger());
+        adapter.RegisterCapability(new TestCapability(
+            "native.status",
+            "product.status",
+            (_, _) => Task.FromResult(new NodeInvokeResponse
+            {
+                Ok = false,
+                Error = new string('\\', 100)
+            })));
+        Configure(adapter, maxOutputBytes: 128);
+        var invocation = ParseJson("""
+            {"id":"invoke-escaped-error","nodeId":"node-1","command":"product.status","params":{},"timeoutMs":1000,"idempotencyKey":null,"sessionKey":null}
+            """);
+        await AdmitAsync(adapter, invocation);
+
+        var result = await InvokeAsync(adapter, invocation);
+
+        Assert.Equal("OUTPUT_TOO_LARGE", result["result"]!["code"]!.GetValue<string>());
+    }
+
+    [Fact]
     public async Task Adapter_RejectsNonPortableIntegerCapabilityOutput()
     {
         var adapter = new WindowsSidecarCapabilityAdapter("node-1", new TestLogger());
@@ -617,6 +640,53 @@ public sealed class WindowsSidecarCapabilityAdapterTests
             WindowsSidecarCapabilityAdapter.MessageTooLargeFailure(string.Empty));
         Assert.True(stableFailure.Length > statusPayload.Length);
         var negotiatedFrameBytes = checked((uint)(31 + Encoding.UTF8.GetByteCount(sessionId) + 32 + statusPayload.Length));
+        var adapter = new WindowsSidecarCapabilityAdapter("node-1", new TestLogger());
+        using var supervisor = new WindowsSidecarSupervisor(
+            sessionId,
+            session.GetProperty("generation").GetUInt64(),
+            key,
+            4096,
+            ParseOffer(root.GetProperty("supervisorOffer")),
+            adapter,
+            manifestGeneration: 3);
+        using var runtime = new AuthenticatedSidecarChannel(
+            SidecarPeerRole.Runtime,
+            sessionId,
+            session.GetProperty("generation").GetUInt64(),
+            key,
+            4096);
+        _ = runtime.Open(supervisor.Start());
+        var runtimeOffer = JsonNode.Parse(root.GetProperty("runtimeOffer").GetRawText())!.AsObject();
+        runtimeOffer["limits"]!["maxFrameBytes"] = negotiatedFrameBytes;
+        var selection = JsonNode.Parse(root.GetProperty("selection").GetRawText())!.AsObject();
+        selection["limits"]!["maxFrameBytes"] = negotiatedFrameBytes;
+        var acceptance = new JsonObject
+        {
+            ["type"] = "accept",
+            ["offer"] = runtimeOffer,
+            ["selection"] = selection
+        };
+
+        Assert.Throws<SidecarProtocolException>(() =>
+            supervisor.CompleteHandshake(runtime.Seal(SidecarJson.Serialize(acceptance))));
+        Assert.True(supervisor.IsRetired);
+    }
+
+    [Fact]
+    public void Supervisor_RejectsConfigurationWhenAdmissionDecisionCannotFit()
+    {
+        using var fixture = ReadFixture("node-sidecar-handshake-v1.json");
+        var root = fixture.RootElement;
+        var session = root.GetProperty("session");
+        var sessionId = session.GetProperty("id").GetString()!;
+        var key = Convert.FromBase64String(session.GetProperty("keyBase64").GetString()!);
+        var stableFailureBytes = SidecarJson.Serialize(
+            WindowsSidecarCapabilityAdapter.MessageTooLargeFailure(string.Empty)).Length;
+        var admissionBytes = WindowsSidecarCapabilityAdapter.MaximumAdmissionDecisionBytes(string.Empty);
+        Assert.True(admissionBytes > stableFailureBytes);
+        var negotiatedPayloadBytes = admissionBytes - 1;
+        var negotiatedFrameBytes = checked((uint)(
+            31 + Encoding.UTF8.GetByteCount(sessionId) + 32 + negotiatedPayloadBytes));
         var adapter = new WindowsSidecarCapabilityAdapter("node-1", new TestLogger());
         using var supervisor = new WindowsSidecarSupervisor(
             sessionId,
