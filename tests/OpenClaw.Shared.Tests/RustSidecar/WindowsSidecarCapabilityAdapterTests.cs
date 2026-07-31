@@ -636,6 +636,28 @@ public sealed class WindowsSidecarCapabilityAdapterTests
     }
 
     [Fact]
+    public async Task Adapter_RoutesDispatcherErrorsThroughBoundedFailureBuilder()
+    {
+        var adapter = new WindowsSidecarCapabilityAdapter("node-1", new TestLogger());
+        adapter.RegisterCapability(new TestCapability(
+            "native.status",
+            "product.status",
+            (_, _) => throw new InvalidOperationException(new string('e', 4096))));
+        Configure(adapter, maxOutputBytes: 128);
+        var invocation = ParseJson("""
+            {"id":"invoke-dispatch-error","nodeId":"node-1","command":"product.status","params":{},"timeoutMs":1000,"idempotencyKey":null,"sessionKey":null}
+            """);
+        await AdmitAsync(adapter, invocation);
+
+        var result = await InvokeAsync(adapter, invocation);
+
+        Assert.Equal("WINDOWS_CAPABILITY", result["result"]!["code"]!.GetValue<string>());
+        Assert.Equal(
+            "Command execution failed",
+            result["result"]!["message"]!.GetValue<string>());
+    }
+
+    [Fact]
     public async Task Adapter_AllowsSerdeDepthCapabilityOutput()
     {
         var nested = new string('[', 80) + "0" + new string(']', 80);
@@ -654,6 +676,45 @@ public sealed class WindowsSidecarCapabilityAdapterTests
         var result = await InvokeAsync(adapter, invocation);
 
         Assert.Equal("success", result["result"]!["outcome"]!.GetValue<string>());
+    }
+
+    [Fact]
+    public async Task Adapter_EmitsCapabilityFloatsLikeSerdeJson()
+    {
+        var adapter = new WindowsSidecarCapabilityAdapter("node-1", new TestLogger());
+        adapter.RegisterCapability(new TestCapability(
+            "native.status",
+            "product.status",
+            (_, _) => Task.FromResult(new NodeInvokeResponse
+            {
+                Ok = true,
+                Payload = new
+                {
+                    doubleIntegral = 1.0,
+                    negativeZero = -0.0,
+                    doubleExponent = 1.25e-7,
+                    singleExponent = 1e-7f
+                }
+            })));
+        Configure(adapter, maxOutputBytes: 1024);
+        var invocation = ParseJson("""
+            {"id":"invoke-floats","nodeId":"node-1","command":"product.status","params":{},"timeoutMs":1000,"idempotencyKey":null,"sessionKey":null}
+            """);
+        await AdmitAsync(adapter, invocation);
+
+        var result = await InvokeAsync(adapter, invocation);
+        var encoded = Encoding.UTF8.GetString(SidecarJson.Serialize(result));
+
+        Assert.Equal("success", result["result"]!["outcome"]!.GetValue<string>());
+        Assert.Contains("\"doubleIntegral\":1.0", encoded);
+        Assert.Contains("\"negativeZero\":-0.0", encoded);
+        Assert.Contains("\"doubleExponent\":1.25e-7", encoded);
+        Assert.Contains("\"singleExponent\":1.0000000116860974e-7", encoded);
+        Assert.Equal(
+            "{\"fixedSmall\":0.00001,\"scientificLarge\":1e+16}",
+            Encoding.UTF8.GetString(JsonSerializer.SerializeToUtf8Bytes(
+                new { fixedSmall = 1e-5, scientificLarge = 1e16 },
+                SidecarJson.SerializerOptions)));
     }
 
     [Fact]

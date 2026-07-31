@@ -272,17 +272,17 @@ internal sealed class WindowsSidecarCapabilityAdapter
                             ReleaseAdmission(invocation.Id);
                         }
                     },
-                    error =>
+                    async error =>
                     {
                         try
                         {
-                            completion.TrySetResult(ResultFailure(invocation.Id, "WINDOWS_CAPABILITY", error));
+                            completion.TrySetResult(
+                                await BuildCapabilityFailureAsync(invocation.Id, error));
                         }
                         finally
                         {
                             ReleaseAdmission(invocation.Id);
                         }
-                        return Task.CompletedTask;
                     },
                     connectionCancellation);
             }

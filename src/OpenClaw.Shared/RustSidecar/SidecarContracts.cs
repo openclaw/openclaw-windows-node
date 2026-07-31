@@ -1,6 +1,8 @@
+using System.Globalization;
 using System.Text.Encodings.Web;
 using System.Text.Json;
 using System.Text.Json.Nodes;
+using System.Text.Json.Serialization;
 
 namespace OpenClaw.Shared.RustSidecar;
 
@@ -84,7 +86,12 @@ internal static class SidecarJson
         PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
         WriteIndented = false,
         MaxDepth = MaxDepth,
-        Encoder = SerdeJsonEncoder.Instance
+        Encoder = SerdeJsonEncoder.Instance,
+        Converters =
+        {
+            SerdeDoubleConverter.Instance,
+            SerdeSingleConverter.Instance
+        }
     };
 
     internal static byte[] Serialize(JsonNode node) =>
@@ -201,6 +208,103 @@ internal static class SidecarJson
         internal static readonly JsonElementValueComparer Instance = new();
         public bool Equals(JsonElement x, JsonElement y) => ValueEquals(x, y);
         public int GetHashCode(JsonElement obj) => throw new NotSupportedException();
+    }
+
+    private static string FormatSerdeFloat(double value)
+    {
+        if (!double.IsFinite(value))
+            throw new JsonException("Sidecar JSON cannot encode non-finite floating-point values.");
+        var text = value.ToString("R", CultureInfo.InvariantCulture);
+        var exponentIndex = text.IndexOf('E');
+        if (exponentIndex >= 0)
+        {
+            var exponent = int.Parse(
+                text.AsSpan(exponentIndex + 1),
+                NumberStyles.AllowLeadingSign,
+                CultureInfo.InvariantCulture);
+            var mantissa = text[..exponentIndex];
+            if (exponent is >= -5 and <= 15)
+                return ExpandSerdeFloat(mantissa, exponent);
+            return string.Concat(
+                mantissa,
+                exponent >= 0 ? "e+" : "e",
+                exponent.ToString(CultureInfo.InvariantCulture));
+        }
+        var unsigned = text[0] == '-' ? text[1..] : text;
+        var decimalPoint = unsigned.IndexOf('.');
+        var integerDigits = decimalPoint >= 0 ? decimalPoint : unsigned.Length;
+        if (integerDigits > 16)
+        {
+            var digits = unsigned.Replace(".", string.Empty, StringComparison.Ordinal)
+                .TrimEnd('0');
+            var mantissa = digits.Length == 1
+                ? digits
+                : string.Concat(digits.AsSpan(0, 1), ".", digits.AsSpan(1));
+            return string.Concat(
+                text[0] == '-' ? "-" : string.Empty,
+                mantissa,
+                "e+",
+                (integerDigits - 1).ToString(CultureInfo.InvariantCulture));
+        }
+        return text.Contains('.') ? text : string.Concat(text, ".0");
+    }
+
+    private static string ExpandSerdeFloat(string mantissa, int exponent)
+    {
+        var negative = mantissa[0] == '-';
+        var digits = (negative ? mantissa[1..] : mantissa)
+            .Replace(".", string.Empty, StringComparison.Ordinal);
+        var decimalPoint = 1 + exponent;
+        string expanded;
+        if (decimalPoint <= 0)
+        {
+            expanded = string.Concat("0.", new string('0', -decimalPoint), digits);
+        }
+        else if (decimalPoint >= digits.Length)
+        {
+            expanded = string.Concat(
+                digits,
+                new string('0', decimalPoint - digits.Length),
+                ".0");
+        }
+        else
+        {
+            expanded = string.Concat(
+                digits.AsSpan(0, decimalPoint),
+                ".",
+                digits.AsSpan(decimalPoint));
+        }
+        return negative ? string.Concat("-", expanded) : expanded;
+    }
+
+    private sealed class SerdeDoubleConverter : JsonConverter<double>
+    {
+        internal static readonly SerdeDoubleConverter Instance = new();
+
+        public override double Read(
+            ref Utf8JsonReader reader,
+            Type typeToConvert,
+            JsonSerializerOptions options) => reader.GetDouble();
+
+        public override void Write(
+            Utf8JsonWriter writer,
+            double value,
+            JsonSerializerOptions options) => writer.WriteRawValue(FormatSerdeFloat(value));
+    }
+
+    private sealed class SerdeSingleConverter : JsonConverter<float>
+    {
+        internal static readonly SerdeSingleConverter Instance = new();
+
+        public override float Read(
+            ref Utf8JsonReader reader,
+            Type typeToConvert,
+            JsonSerializerOptions options) => reader.GetSingle();
+
+        public override void Write(
+            Utf8JsonWriter writer,
+            float value,
+            JsonSerializerOptions options) => writer.WriteRawValue(FormatSerdeFloat(value));
     }
 
     private sealed unsafe class SerdeJsonEncoder : JavaScriptEncoder
