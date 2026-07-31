@@ -64,6 +64,10 @@ internal sealed class WindowsSidecarSupervisor : IDisposable
         {
             lock (_channelLock)
                 _handshake.Accept(runtimeAcceptance);
+            ValidateStatusBudget(
+                _handshake.RuntimeVersion!,
+                _manifestGeneration,
+                _channel.MaxPayloadBytes);
             var configure = _adapter.BeginConfiguration(
                 _manifestGeneration,
                 _handshake.Selection!);
@@ -187,7 +191,7 @@ internal sealed class WindowsSidecarSupervisor : IDisposable
                     throw new SidecarProtocolException("Sidecar response exceeds the authenticated payload bound.");
                 }
                 payload = SidecarJson.Serialize(
-                    WindowsSidecarCapabilityAdapter.OutputTooLargeFailure(invocationId));
+                    WindowsSidecarCapabilityAdapter.MessageTooLargeFailure(invocationId));
                 if (payload.Length > _channel.MaxPayloadBytes)
                     throw new SidecarProtocolException("Sidecar output failure exceeds the authenticated payload bound.");
             }
@@ -201,6 +205,27 @@ internal sealed class WindowsSidecarSupervisor : IDisposable
     {
         Retire();
         throw new SidecarProtocolException(message);
+    }
+
+    private static void ValidateStatusBudget(
+        string runtimeVersion,
+        ulong manifestGeneration,
+        int maxPayloadBytes)
+    {
+        var worstCaseStatus = new JsonObject
+        {
+            ["type"] = "status",
+            ["status"] = new JsonObject
+            {
+                ["state"] = "backing-off",
+                ["manifestGeneration"] = manifestGeneration,
+                ["runtimeVersion"] = runtimeVersion,
+                ["attempt"] = SidecarJson.MaxPortableInteger,
+                ["reason"] = "delivery-saturated"
+            }
+        };
+        if (SidecarJson.Serialize(worstCaseStatus).Length > maxPayloadBytes)
+            throw new SidecarProtocolException("Sidecar runtime status exceeds the authenticated payload bound.");
     }
 
     private void ThrowIfDisposed()

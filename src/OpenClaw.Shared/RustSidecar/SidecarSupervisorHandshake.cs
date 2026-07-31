@@ -34,6 +34,7 @@ internal sealed class SidecarSupervisorHandshake
 
     internal bool IsAuthenticated { get; private set; }
     internal SidecarProtocolSelection? Selection { get; private set; }
+    internal string? RuntimeVersion { get; private set; }
 
     internal byte[] Start()
     {
@@ -66,6 +67,7 @@ internal sealed class SidecarSupervisorHandshake
         try
         {
             var message = SidecarJson.Parse(_channel.Open(frame));
+            SidecarJson.EnsureObjectShape(message, "type", "offer", "selection");
             if (SidecarJson.RequiredString(message, "type") != "accept")
                 throw new SidecarProtocolException("Runtime did not return a sidecar acceptance.");
             var remote = ParseOffer(SidecarJson.RequiredObject(message, "offer"));
@@ -77,6 +79,7 @@ internal sealed class SidecarSupervisorHandshake
 
             _channel.LowerFrameLimit(negotiated.Limits.MaxFrameBytes);
             Selection = negotiated;
+            RuntimeVersion = remote.Peer.Version;
             IsAuthenticated = true;
         }
         catch
@@ -124,7 +127,8 @@ internal sealed class SidecarSupervisorHandshake
             string.IsNullOrWhiteSpace(offer.Peer.ArtifactIdentity) ||
             offer.Limits.MaxFrameBytes < 65 ||
             offer.Limits.MaxInFlight == 0 ||
-            offer.Limits.BootstrapTimeoutMs == 0)
+            offer.Limits.BootstrapTimeoutMs == 0 ||
+            offer.FeatureBits > SidecarJson.MaxPortableInteger)
         {
             throw new SidecarProtocolException("Invalid sidecar protocol offer.");
         }
@@ -155,7 +159,11 @@ internal sealed class SidecarSupervisorHandshake
 
     private static SidecarProtocolOffer ParseOffer(JsonElement json)
     {
+        SidecarJson.EnsureObjectShape(
+            json,
+            "protocolMajor", "protocolMinor", "peer", "featureBits", "limits");
         var peer = SidecarJson.RequiredObject(json, "peer");
+        SidecarJson.EnsureObjectShape(peer, "role", "name", "version", "artifactIdentity");
         var role = SidecarJson.RequiredString(peer, "role") switch
         {
             "supervisor" => SidecarPeerRole.Supervisor,
@@ -174,14 +182,26 @@ internal sealed class SidecarSupervisorHandshake
             ParseLimits(SidecarJson.RequiredObject(json, "limits")));
     }
 
-    private static SidecarProtocolSelection ParseSelection(JsonElement json) => new(
-        checked((ushort)SidecarJson.RequiredUInt64(json, "protocolMajor")),
-        checked((ushort)SidecarJson.RequiredUInt64(json, "protocolMinor")),
-        SidecarJson.RequiredUInt64(json, "featureBits"),
-        ParseLimits(SidecarJson.RequiredObject(json, "limits")));
+    private static SidecarProtocolSelection ParseSelection(JsonElement json)
+    {
+        SidecarJson.EnsureObjectShape(
+            json,
+            "protocolMajor", "protocolMinor", "featureBits", "limits");
+        return new SidecarProtocolSelection(
+            checked((ushort)SidecarJson.RequiredUInt64(json, "protocolMajor")),
+            checked((ushort)SidecarJson.RequiredUInt64(json, "protocolMinor")),
+            SidecarJson.RequiredUInt64(json, "featureBits"),
+            ParseLimits(SidecarJson.RequiredObject(json, "limits")));
+    }
 
-    private static SidecarLimits ParseLimits(JsonElement json) => new(
-        checked((uint)SidecarJson.RequiredUInt64(json, "maxFrameBytes")),
-        checked((ushort)SidecarJson.RequiredUInt64(json, "maxInFlight")),
-        checked((uint)SidecarJson.RequiredUInt64(json, "bootstrapTimeoutMs")));
+    private static SidecarLimits ParseLimits(JsonElement json)
+    {
+        SidecarJson.EnsureObjectShape(
+            json,
+            "maxFrameBytes", "maxInFlight", "bootstrapTimeoutMs");
+        return new SidecarLimits(
+            checked((uint)SidecarJson.RequiredUInt64(json, "maxFrameBytes")),
+            checked((ushort)SidecarJson.RequiredUInt64(json, "maxInFlight")),
+            checked((uint)SidecarJson.RequiredUInt64(json, "bootstrapTimeoutMs")));
+    }
 }

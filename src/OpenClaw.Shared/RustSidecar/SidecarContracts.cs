@@ -74,6 +74,8 @@ internal sealed record SidecarRuntimeConfiguration(
 
 internal static class SidecarJson
 {
+    internal const ulong MaxPortableInteger = 9_007_199_254_740_991;
+
     internal static readonly JsonSerializerOptions SerializerOptions = new()
     {
         PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
@@ -108,5 +110,21 @@ internal static class SidecarJson
         if (!parent.TryGetProperty(name, out var value) || !value.TryGetUInt64(out var result))
             throw new SidecarProtocolException($"Sidecar field '{name}' must be an unsigned integer.");
         return result;
+    }
+
+    internal static void EnsureObjectShape(JsonElement value, params string[] expected)
+    {
+        if (value.ValueKind != JsonValueKind.Object)
+            throw new SidecarProtocolException("Sidecar value must be an object.");
+        var allowed = expected.ToHashSet(StringComparer.Ordinal);
+        var count = 0;
+        foreach (var property in value.EnumerateObject())
+        {
+            count++;
+            if (!allowed.Contains(property.Name))
+                throw new SidecarProtocolException($"Unknown sidecar field '{property.Name}'.");
+        }
+        if (count != allowed.Count || allowed.Any(name => !value.TryGetProperty(name, out _)))
+            throw new SidecarProtocolException("Sidecar value is missing a required field.");
     }
 }
