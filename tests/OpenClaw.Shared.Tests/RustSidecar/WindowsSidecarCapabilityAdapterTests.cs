@@ -899,6 +899,33 @@ public sealed class WindowsSidecarCapabilityAdapterTests
     }
 
     [Fact]
+    public async Task Adapter_DoesNotDoubleChargeNodePrefixBeforeNonFiniteValue()
+    {
+        var redundantFraction = "1." + new string('0', 4100);
+        var payload = new JsonObject
+        {
+            ["compacted"] = JsonNode.Parse(redundantFraction),
+            ["nan"] = double.NaN
+        };
+        var adapter = new WindowsSidecarCapabilityAdapter("node-1", new TestLogger());
+        adapter.RegisterCapability(new TestCapability(
+            "native.status",
+            "product.status",
+            (_, _) => Task.FromResult(new NodeInvokeResponse { Ok = true, Payload = payload })));
+        Configure(adapter, maxOutputBytes: 1024);
+        var invocation = ParseJson("""
+            {"id":"invoke-nonfinite-prefix-work","nodeId":"node-1","command":"product.status","params":{},"timeoutMs":1000,"idempotencyKey":null,"sessionKey":null}
+            """);
+        await AdmitAsync(adapter, invocation);
+
+        var result = await InvokeAsync(adapter, invocation);
+
+        Assert.Equal("success", result["result"]!["outcome"]!.GetValue<string>());
+        Assert.Equal(1.0, result["result"]!["payload"]!["compacted"]!.GetValue<double>());
+        Assert.Null(result["result"]!["payload"]!["nan"]);
+    }
+
+    [Fact]
     public async Task Adapter_DoesNotChargeResultSerializationToHandlerDeadline()
     {
         var adapter = new WindowsSidecarCapabilityAdapter("node-1", new TestLogger());
