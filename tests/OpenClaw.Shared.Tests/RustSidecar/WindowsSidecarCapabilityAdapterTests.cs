@@ -1197,6 +1197,59 @@ public sealed class WindowsSidecarCapabilityAdapterTests
     }
 
     [Fact]
+    public async Task Adapter_HoldsTimedOutAdmissionUntilNonCooperativeHandlerTerminates()
+    {
+        var started = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var adapter = new WindowsSidecarCapabilityAdapter("node-1", new TestLogger());
+        adapter.RegisterCapability(new TestCapability(
+            "native.blocking",
+            "product.blocking",
+            async (_, _) =>
+            {
+                started.TrySetResult();
+                await release.Task;
+                return new NodeInvokeResponse { Ok = true };
+            }));
+        Configure(
+            adapter,
+            maxInFlight: 1,
+            defaultTimeoutMs: 50,
+            maxTimeoutMs: 50,
+            resultGraceMs: 10);
+        var invocation = ParseJson("""
+            {"id":"invoke-noncooperative","nodeId":"node-1","command":"product.blocking","params":{},"timeoutMs":50,"idempotencyKey":null,"sessionKey":null}
+            """);
+        await AdmitAsync(adapter, invocation);
+        var running = InvokeAsync(adapter, invocation);
+        await started.Task.WaitAsync(TimeSpan.FromSeconds(5));
+
+        var timeout = await running.WaitAsync(TimeSpan.FromSeconds(5));
+        var whileRunning = await AdmitAsync(
+            adapter,
+            ParseJson("""
+                {"id":"invoke-next","nodeId":"node-1","command":"product.blocking","params":{},"timeoutMs":50,"idempotencyKey":null,"sessionKey":null}
+                """));
+        release.TrySetResult();
+
+        Assert.Equal("HANDLER_TIMEOUT", timeout["result"]!["code"]!.GetValue<string>());
+        Assert.Equal("ADMISSION_SATURATED", whileRunning["decision"]!["code"]!.GetValue<string>());
+        JsonObject? afterTermination = null;
+        for (var attempt = 0; attempt < 50; attempt++)
+        {
+            afterTermination = await AdmitAsync(
+                adapter,
+                ParseJson("""
+                    {"id":"invoke-after","nodeId":"node-1","command":"product.blocking","params":{},"timeoutMs":50,"idempotencyKey":null,"sessionKey":null}
+                    """));
+            if (afterTermination["decision"]!["outcome"]!.GetValue<string>() == "allow")
+                break;
+            await Task.Delay(10);
+        }
+        Assert.Equal("allow", afterTermination!["decision"]!["outcome"]!.GetValue<string>());
+    }
+
+    [Fact]
     public async Task Adapter_UsesRustMessageForElapsedPreDispatchDeadline()
     {
         var adapter = new WindowsSidecarCapabilityAdapter("node-1", new TestLogger());
