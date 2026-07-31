@@ -191,6 +191,18 @@ public sealed class WindowsSidecarCapabilityAdapterTests
     }
 
     [Fact]
+    public void SidecarJson_EmitsAllValidUnicodeScalarsLikeSerdeJson()
+    {
+        const string scalars = "\u00a0\u2028\u2029\u3000😀";
+        var encoded = Encoding.UTF8.GetString(SidecarJson.Serialize(new JsonObject
+        {
+            ["value"] = scalars
+        }));
+
+        Assert.Equal($$"""{"value":"{{scalars}}"}""", encoded);
+    }
+
+    [Fact]
     public void Adapter_AcceptsReorderedConfiguredManifest()
     {
         var adapter = new WindowsSidecarCapabilityAdapter("node-1", new TestLogger());
@@ -345,6 +357,43 @@ public sealed class WindowsSidecarCapabilityAdapterTests
         var resultFrame = await supervisor.ReadOutboundAsync(CancellationToken.None);
         var result = SidecarJson.Parse(runtime.Open(resultFrame!));
         Assert.True(result.GetProperty("result").GetProperty("payload").GetProperty("ready").GetBoolean());
+    }
+
+    [Fact]
+    public async Task Supervisor_ReturnsStableFailureWhenResultEnvelopeExceedsDepthLimit()
+    {
+        var nested = new string('[', 126) + "0" + new string(']', 126);
+        var payload = SidecarJson.Parse(Encoding.UTF8.GetBytes(nested));
+        var adapter = new WindowsSidecarCapabilityAdapter("node-1", new TestLogger());
+        adapter.RegisterCapability(new TestCapability(
+            "native.status",
+            "product.status",
+            (_, _) => Task.FromResult(new NodeInvokeResponse { Ok = true, Payload = payload })));
+        var session = await CreateConfiguredSupervisorAsync(adapter);
+        using var supervisor = session.Supervisor;
+        using var runtime = session.Runtime;
+        var admission = ParseJson("""
+            {"type":"admission-request","invocation":{"id":"invoke-deep-envelope","nodeId":"node-1","command":"product.status","params":{},"timeoutMs":1000,"idempotencyKey":null,"sessionKey":null}}
+            """);
+        await supervisor.ReceiveAsync(
+            runtime.Seal(JsonSerializer.SerializeToUtf8Bytes(admission, SidecarJson.SerializerOptions)),
+            CancellationToken.None);
+        _ = SidecarJson.Parse(runtime.Open(
+            await supervisor.ReadOutboundAsync(CancellationToken.None)));
+        var invoke = ParseJson("""
+            {"type":"invoke","invocation":{"id":"invoke-deep-envelope","nodeId":"node-1","command":"product.status","params":{},"timeoutMs":1000,"idempotencyKey":null,"sessionKey":null}}
+            """);
+
+        await supervisor.ReceiveAsync(
+            runtime.Seal(JsonSerializer.SerializeToUtf8Bytes(invoke, SidecarJson.SerializerOptions)),
+            CancellationToken.None);
+        var resultFrame = await supervisor.ReadOutboundAsync(CancellationToken.None);
+        var result = SidecarJson.Parse(runtime.Open(resultFrame));
+
+        Assert.Equal(
+            "SIDECAR_MESSAGE_TOO_LARGE",
+            result.GetProperty("result").GetProperty("code").GetString());
+        Assert.False(supervisor.IsRetired);
     }
 
     [Fact]
