@@ -613,6 +613,29 @@ public sealed class WindowsSidecarCapabilityAdapterTests
     }
 
     [Fact]
+    public async Task Adapter_ReturnsStableFailureForInvalidUtf16CapabilityError()
+    {
+        var adapter = new WindowsSidecarCapabilityAdapter("node-1", new TestLogger());
+        adapter.RegisterCapability(new TestCapability(
+            "native.status",
+            "product.status",
+            (_, _) => Task.FromResult(new NodeInvokeResponse
+            {
+                Ok = false,
+                Error = "\ud800"
+            })));
+        Configure(adapter);
+        var invocation = ParseJson("""
+            {"id":"invoke-invalid-utf16","nodeId":"node-1","command":"product.status","params":{},"timeoutMs":0,"idempotencyKey":null,"sessionKey":null}
+            """);
+        await AdmitAsync(adapter, invocation);
+
+        var result = await InvokeAsync(adapter, invocation).WaitAsync(TimeSpan.FromSeconds(5));
+
+        Assert.Equal("RESULT_SERIALIZATION", result["result"]!["code"]!.GetValue<string>());
+    }
+
+    [Fact]
     public async Task Adapter_AllowsSerdeDepthCapabilityOutput()
     {
         var nested = new string('[', 80) + "0" + new string(']', 80);
