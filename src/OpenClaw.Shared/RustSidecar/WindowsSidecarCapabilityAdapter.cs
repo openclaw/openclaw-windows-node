@@ -236,6 +236,7 @@ internal sealed class WindowsSidecarCapabilityAdapter
         }
 
         var completion = new TaskCompletionSource<JsonObject>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var releaseAdmissionOnExit = true;
         var request = new NodeInvokeRequest
         {
             Id = invocation.Id,
@@ -260,13 +261,27 @@ internal sealed class WindowsSidecarCapabilityAdapter
                     request,
                     async response =>
                     {
-                        completion.TrySetResult(response.Ok
-                            ? await BuildSuccessResultAsync(invocation.Id, response.Payload)
-                            : await BuildCapabilityFailureAsync(invocation.Id, response.Error));
+                        try
+                        {
+                            completion.TrySetResult(response.Ok
+                                ? await BuildSuccessResultAsync(invocation.Id, response.Payload)
+                                : await BuildCapabilityFailureAsync(invocation.Id, response.Error));
+                        }
+                        finally
+                        {
+                            ReleaseAdmission(invocation.Id);
+                        }
                     },
                     error =>
                     {
-                        completion.TrySetResult(ResultFailure(invocation.Id, "WINDOWS_CAPABILITY", error));
+                        try
+                        {
+                            completion.TrySetResult(ResultFailure(invocation.Id, "WINDOWS_CAPABILITY", error));
+                        }
+                        finally
+                        {
+                            ReleaseAdmission(invocation.Id);
+                        }
                         return Task.CompletedTask;
                     },
                     connectionCancellation);
@@ -280,6 +295,7 @@ internal sealed class WindowsSidecarCapabilityAdapter
             }
             catch (TimeoutException)
             {
+                releaseAdmissionOnExit = false;
                 _dispatcher.TryCancel(invocation.Id);
                 return ResultFailure(invocation.Id, "HANDLER_TIMEOUT", "command handler exceeded its deadline");
             }
@@ -291,7 +307,8 @@ internal sealed class WindowsSidecarCapabilityAdapter
         }
         finally
         {
-            ReleaseAdmission(invocation.Id);
+            if (releaseAdmissionOnExit)
+                ReleaseAdmission(invocation.Id);
         }
     }
 
