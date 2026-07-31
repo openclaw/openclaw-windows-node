@@ -424,7 +424,9 @@ internal sealed class WindowsSidecarCapabilityAdapter
             var payloadJson = output.WrittenMemory.Span;
             if (!SidecarJson.IsPortableJson(SidecarJson.Parse(payloadJson)))
                 return NonPortableJsonFailure(invocationId);
-            var payloadNode = JsonNode.Parse(payloadJson);
+            var payloadNode = JsonNode.Parse(
+                payloadJson,
+                documentOptions: new JsonDocumentOptions { MaxDepth = SidecarJson.MaxDepth });
             return new JsonObject
             {
                 ["type"] = "result",
@@ -514,7 +516,8 @@ internal sealed class WindowsSidecarCapabilityAdapter
     }
 
     private bool InputWithinLimit(JsonElement parameters) =>
-        JsonSerializer.SerializeToUtf8Bytes(parameters).Length <= _configuration!.MaxInputBytes;
+        JsonSerializer.SerializeToUtf8Bytes(parameters, SidecarJson.SerializerOptions).Length <=
+            _configuration!.MaxInputBytes;
 
     private static SidecarInvocation ParseInvocation(JsonElement invocation)
     {
