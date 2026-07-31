@@ -12,6 +12,7 @@ internal sealed class WindowsSidecarCapabilityAdapter
     private readonly NodeCapabilityDispatcher _dispatcher;
     private readonly string _nodeId;
     private readonly HashSet<string> _commands = new(StringComparer.Ordinal);
+    private readonly HashSet<string> _dispatcherCommandIdentities = new(StringComparer.OrdinalIgnoreCase);
     private readonly object _admissionLock = new();
     private readonly Dictionary<string, Admission> _admittedInvocations = new(StringComparer.Ordinal);
     private int _maxAdmittedInvocations;
@@ -39,9 +40,21 @@ internal sealed class WindowsSidecarCapabilityAdapter
     {
         if (_configurationStarted)
             throw new InvalidOperationException("Sidecar capabilities are immutable after configuration starts.");
+        if (_dispatcher.Capabilities.Contains(capability))
+            return;
+        var commands = capability.Commands.ToArray();
+        if (commands.Distinct(StringComparer.OrdinalIgnoreCase).Count() != commands.Length ||
+            commands.Any(_dispatcherCommandIdentities.Contains))
+        {
+            throw new SidecarProtocolException(
+                "Sidecar capability commands collide in the Windows dispatcher.");
+        }
         _dispatcher.RegisterCapability(capability);
-        foreach (var command in capability.Commands)
+        foreach (var command in commands)
+        {
             _commands.Add(command);
+            _dispatcherCommandIdentities.Add(command);
+        }
     }
 
     internal JsonObject BeginConfiguration(
@@ -108,12 +121,19 @@ internal sealed class WindowsSidecarCapabilityAdapter
         EnsureMessageShape(message, "configured", "manifest");
         if (!_configurationStarted || _configured || _configuration is null)
             throw new SidecarProtocolException("Unexpected sidecar configuration acknowledgement.");
-        var expected = SidecarJson.Serialize(_configuration.ToManifest());
-        var received = JsonSerializer.SerializeToUtf8Bytes(
-            SidecarJson.RequiredObject(message, "manifest"),
-            SidecarJson.SerializerOptions);
-        if (!expected.AsSpan().SequenceEqual(received))
+        var manifest = SidecarJson.RequiredObject(message, "manifest");
+        EnsureProperties(manifest, "manifestGeneration", "capabilities", "commands");
+        if (SidecarJson.RequiredUInt64(manifest, "manifestGeneration") !=
+                _configuration.ManifestGeneration ||
+            !ReadStringArray(manifest, "capabilities").SequenceEqual(
+                _configuration.Capabilities,
+                StringComparer.Ordinal) ||
+            !ReadStringArray(manifest, "commands").SequenceEqual(
+                _configuration.Commands,
+                StringComparer.Ordinal))
+        {
             throw new SidecarProtocolException("Runtime acknowledged a different sidecar manifest.");
+        }
         _configured = true;
     }
 
@@ -236,7 +256,7 @@ internal sealed class WindowsSidecarCapabilityAdapter
                     {
                         completion.TrySetResult(response.Ok
                             ? await BuildSuccessResultAsync(invocation.Id, response.Payload)
-                            : BuildCapabilityFailure(invocation.Id, response.Error));
+                            : await BuildCapabilityFailureAsync(invocation.Id, response.Error));
                     },
                     error =>
                     {
@@ -340,7 +360,7 @@ internal sealed class WindowsSidecarCapabilityAdapter
         {
             if (!_admittedInvocations.TryGetValue(invocation.Id, out var admission) || admission.Active)
                 return AdmissionActivation.Missing;
-            if (!admission.CanonicalJson.AsSpan().SequenceEqual(invocation.CanonicalJson))
+            if (!SidecarJson.ValueEquals(admission.CanonicalJson, invocation.CanonicalJson))
             {
                 _admittedInvocations.Remove(invocation.Id);
                 return AdmissionActivation.Mismatch;
@@ -444,13 +464,26 @@ internal sealed class WindowsSidecarCapabilityAdapter
             "SIDECAR_NON_PORTABLE_JSON",
             "sidecar message contains an integer outside the exact JSON range");
 
-    private JsonObject BuildCapabilityFailure(string invocationId, string? error)
+    private async Task<JsonObject> BuildCapabilityFailureAsync(string invocationId, string? error)
     {
         var message = error ?? "Windows capability failed";
-        return JsonSerializer.SerializeToUtf8Bytes(message, SidecarJson.SerializerOptions).Length >
-            _configuration!.MaxOutputBytes
-            ? OutputTooLargeFailure(invocationId)
-            : ResultFailure(invocationId, "WINDOWS_CAPABILITY", message);
+        try
+        {
+            using var output = new BoundedWriteStream(_configuration!.MaxOutputBytes);
+            await JsonSerializer.SerializeAsync(
+                output,
+                new JsonObject
+                {
+                    ["code"] = "WINDOWS_CAPABILITY",
+                    ["message"] = message
+                },
+                SidecarJson.SerializerOptions);
+            return ResultFailure(invocationId, "WINDOWS_CAPABILITY", message);
+        }
+        catch (SidecarOutputLimitException)
+        {
+            return OutputTooLargeFailure(invocationId);
+        }
     }
 
     private static JsonObject ResultFailure(string invocationId, string code, string message) => new()
@@ -503,7 +536,7 @@ internal sealed class WindowsSidecarCapabilityAdapter
             command,
             parameters.Clone(),
             OptionalString(invocation, "sessionKey"),
-            JsonSerializer.SerializeToUtf8Bytes(invocation));
+            invocation.Clone());
     }
 
     private static string? OptionalString(JsonElement parent, string name)
@@ -547,6 +580,21 @@ internal sealed class WindowsSidecarCapabilityAdapter
         }
     }
 
+    private static IReadOnlyList<string> ReadStringArray(JsonElement parent, string name)
+    {
+        var value = parent.GetProperty(name);
+        if (value.ValueKind != JsonValueKind.Array)
+            throw new SidecarProtocolException($"Sidecar field '{name}' must be an array.");
+        var values = new List<string>();
+        foreach (var item in value.EnumerateArray())
+        {
+            if (item.ValueKind != JsonValueKind.String)
+                throw new SidecarProtocolException($"Sidecar field '{name}' must contain strings.");
+            values.Add(item.GetString()!);
+        }
+        return values;
+    }
+
     private static void EnsureMessageShape(JsonElement message, string type, params string[] fields)
     {
         EnsureProperties(message, ["type", .. fields]);
@@ -576,11 +624,11 @@ internal sealed class WindowsSidecarCapabilityAdapter
         string Command,
         JsonElement Parameters,
         string? SessionKey,
-        byte[] CanonicalJson);
+        JsonElement CanonicalJson);
 
-    private sealed class Admission(byte[] canonicalJson)
+    private sealed class Admission(JsonElement canonicalJson)
     {
-        internal byte[] CanonicalJson { get; } = canonicalJson;
+        internal JsonElement CanonicalJson { get; } = canonicalJson;
         internal bool Active { get; set; }
         internal bool CancellationRequested { get; set; }
     }
