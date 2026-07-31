@@ -83,6 +83,7 @@ internal static class SidecarJson
     internal const int MaxDepth = 127;
     private const long MinimumCanonicalizationHeadroomBytes = 4 * 1024;
     private const long MaximumCanonicalizationHeadroomBytes = 64 * 1024 * 1024;
+    private const int MaximumCanonicalizationBufferSlackBytes = 16 * 1024;
     private static readonly AsyncLocal<CanonicalizationBudget?> CurrentCanonicalizationBudget = new();
 
     internal static readonly JsonSerializerOptions SerializerOptions = new()
@@ -452,6 +453,7 @@ internal static class SidecarJson
             var budget = CurrentCanonicalizationBudget.Value;
             if (budget is null)
                 return;
+            var remainingBefore = budget.RemainingBytes;
             var buffer = new CanonicalizationBudgetBufferWriter(budget);
             using var rawWriter = new Utf8JsonWriter(buffer, new JsonWriterOptions
             {
@@ -470,6 +472,8 @@ internal static class SidecarJson
                 // infinity. Their containers are already materialized; keep
                 // charging every remaining parsed subtree while the normalized
                 // writer below maps those non-finite leaves to serde nulls.
+                rawWriter.Dispose();
+                budget.Restore(remainingBefore);
                 PreflightMaterializedNodeChildren(value);
             }
         }
@@ -695,6 +699,8 @@ internal static class SidecarJson
                 throw new SidecarCanonicalizationLimitException();
             RemainingBytes -= bytes;
         }
+
+        internal void Restore(long remainingBytes) => RemainingBytes = remainingBytes;
     }
 
     private sealed class CanonicalizationBudgetScope(CanonicalizationBudget? previous) : IDisposable
@@ -726,9 +732,8 @@ internal static class SidecarJson
         public Memory<byte> GetMemory(int sizeHint = 0)
         {
             var requested = Math.Max(sizeHint, 256);
-            if (requested > budget.RemainingBytes)
-                requested = checked((int)budget.RemainingBytes);
-            if (requested == 0 || sizeHint > requested)
+            if (requested > budget.RemainingBytes &&
+                requested > MaximumCanonicalizationBufferSlackBytes)
                 throw new SidecarCanonicalizationLimitException();
             if (_buffer.Length < requested)
                 _buffer = new byte[requested];
