@@ -979,6 +979,64 @@ public sealed class WindowsSidecarCapabilityAdapterTests
     }
 
     [Fact]
+    public async Task Adapter_NormalizesDuplicateParameterKeysBeforeAdmissionAndDispatch()
+    {
+        JsonElement? dispatchedParameters = null;
+        var adapter = new WindowsSidecarCapabilityAdapter("node-1", new TestLogger());
+        adapter.RegisterCapability(new TestCapability(
+            "native.status",
+            "product.status",
+            (request, _) =>
+            {
+                dispatchedParameters = request.Args;
+                return Task.FromResult(new NodeInvokeResponse { Ok = true });
+            }));
+        Configure(adapter);
+        var admission = ParseJson("""
+            {"type":"admission-request","invocation":{"id":"invoke-duplicates","nodeId":"node-1","command":"product.status","params":{"value":1,"value":2},"timeoutMs":1000,"idempotencyKey":null,"sessionKey":null}}
+            """);
+        var invocation = ParseJson("""
+            {"type":"invoke","invocation":{"id":"invoke-duplicates","nodeId":"node-1","command":"product.status","params":{"value":999,"value":2},"timeoutMs":1000,"idempotencyKey":null,"sessionKey":null}}
+            """);
+
+        _ = await adapter.HandleRuntimeMessageAsync(admission, CancellationToken.None);
+        var result = await adapter.HandleRuntimeMessageAsync(invocation, CancellationToken.None);
+
+        Assert.Equal("success", result!["result"]!["outcome"]!.GetValue<string>());
+        Assert.NotNull(dispatchedParameters);
+        Assert.Single(dispatchedParameters.Value.EnumerateObject());
+        Assert.Equal(2, dispatchedParameters.Value.GetProperty("value").GetInt32());
+    }
+
+    [Fact]
+    public async Task Adapter_RejectsOutOfRangeChangedParameterWithoutRetiringSession()
+    {
+        var adapter = new WindowsSidecarCapabilityAdapter("node-1", new TestLogger());
+        adapter.RegisterCapability(new TestCapability(
+            "native.status",
+            "product.status",
+            (_, _) => Task.FromResult(new NodeInvokeResponse { Ok = true })));
+        Configure(adapter, maxInFlight: 1);
+        var admission = ParseJson("""
+            {"type":"admission-request","invocation":{"id":"invoke-range","nodeId":"node-1","command":"product.status","params":{"value":1},"timeoutMs":1000,"idempotencyKey":null,"sessionKey":null}}
+            """);
+        var invocation = ParseJson("""
+            {"type":"invoke","invocation":{"id":"invoke-range","nodeId":"node-1","command":"product.status","params":{"value":18446744073709551616},"timeoutMs":1000,"idempotencyKey":null,"sessionKey":null}}
+            """);
+
+        _ = await adapter.HandleRuntimeMessageAsync(admission, CancellationToken.None);
+        var result = await adapter.HandleRuntimeMessageAsync(invocation, CancellationToken.None);
+        var next = await adapter.HandleRuntimeMessageAsync(
+            ParseJson("""
+                {"type":"admission-request","invocation":{"id":"invoke-next","nodeId":"node-1","command":"product.status","params":{},"timeoutMs":1000,"idempotencyKey":null,"sessionKey":null}}
+                """),
+            CancellationToken.None);
+
+        Assert.Equal("SIDECAR_NON_PORTABLE_JSON", result!["result"]!["code"]!.GetValue<string>());
+        Assert.Equal("allow", next!["decision"]!["outcome"]!.GetValue<string>());
+    }
+
+    [Fact]
     public async Task Adapter_DistinguishesSerdeNegativeZeroFromIntegerZero()
     {
         var adapter = new WindowsSidecarCapabilityAdapter("node-1", new TestLogger());
@@ -1055,7 +1113,7 @@ public sealed class WindowsSidecarCapabilityAdapterTests
         var mismatch = await adapter.HandleRuntimeMessageAsync(changed, CancellationToken.None);
         var nextDecision = await adapter.HandleRuntimeMessageAsync(next, CancellationToken.None);
 
-        Assert.Equal("ADMISSION_MISMATCH", mismatch!["result"]!["code"]!.GetValue<string>());
+        Assert.Equal("INPUT_TOO_LARGE", mismatch!["result"]!["code"]!.GetValue<string>());
         Assert.Equal("allow", nextDecision!["decision"]!["outcome"]!.GetValue<string>());
     }
 
