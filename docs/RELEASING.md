@@ -83,8 +83,10 @@ For the current alpha flow, ship only:
   - `OpenClawTray-<version>-win-arm64.zip`
 
 MSIX artifacts are intentionally paused for alpha while we focus on the Inno
-installer path and signed portable update payloads. Re-enable MSIX only when we
-explicitly want packaged camera/microphone consent validation again.
+installer path and signed portable update payloads.  The
+[MSIX lifecycle plan](MSIX_LIFECYCLE_PLAN.md) describes the proposed package
+boundary, servicing model, and validation gates that must be completed before
+MSIX is re-enabled.
 
 ## Executable signing policy
 
