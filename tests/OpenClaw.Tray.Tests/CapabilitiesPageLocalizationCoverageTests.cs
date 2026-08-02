@@ -115,7 +115,18 @@ public sealed class CapabilitiesPageLocalizationCoverageTests
     [Fact]
     public void PermissionsPage_ShowsSharedVoiceCard_WhenEitherSpeechCapabilityIsEnabled_AndSetupTextOnlyWhenNeeded()
     {
-        var source = File.ReadAllText(GetCapabilitiesCodeBehindPath());
+        var pageSource = File.ReadAllText(GetCapabilitiesCodeBehindPath());
+        var viewModelSource = File.ReadAllText(Path.Combine(
+            TestRepositoryPaths.GetRepositoryRoot(),
+            "src",
+            "OpenClaw.Tray.WinUI",
+            "Presentation",
+            "PermissionsPageViewModel.cs"));
+        var appSource = File.ReadAllText(Path.Combine(
+            TestRepositoryPaths.GetRepositoryRoot(),
+            "src",
+            "OpenClaw.Tray.WinUI",
+            "App.xaml.cs"));
         var readiness = File.ReadAllText(Path.Combine(
             TestRepositoryPaths.GetRepositoryRoot(),
             "src",
@@ -123,23 +134,25 @@ public sealed class CapabilitiesPageLocalizationCoverageTests
             "Services",
             "SpeechSetupReadiness.cs"));
 
-        Assert.Contains("settings?.NodeSttEnabled == true || settings?.NodeTtsEnabled == true", source);
-        Assert.Contains("VoiceSettingsCard.Visibility = enabled ? Visibility.Visible : Visibility.Collapsed;", source);
-        Assert.Contains("GetVoiceSetupRequirement(settings)", source);
-        Assert.Contains("VoiceSetupRequirement.SpeechModel", source);
-        Assert.Contains("VoiceSetupRequirement.VoiceSetup", source);
-        Assert.Contains("VoiceSetupRequirement.SpeechModelAndVoiceSetup", source);
-        Assert.Contains("var needsSpeechModel = settings.NodeSttEnabled && !IsConfiguredWhisperModelDownloaded(settings)", source);
-        Assert.Contains("var needsVoiceSetup = settings.NodeTtsEnabled && SpeechSetupReadiness.IsConfiguredTtsProviderSetupRequired(settings)", source);
-        Assert.Contains("PermissionsPage_VoiceSettingsHelp_SpeechModel", source);
-        Assert.Contains("PermissionsPage_VoiceSettingsHelp_VoiceSetup", source);
-        Assert.Contains("PermissionsPage_VoiceSettingsHelp_Both", source);
+        Assert.Contains("_nodeSttEnabled || _nodeTtsEnabled", viewModelSource);
+        Assert.Contains("VoiceSettingsCard.Visibility = _viewModel.VoiceSettingsVisible ? Visibility.Visible : Visibility.Collapsed;", pageSource);
+        Assert.Contains("VoiceSettingsHelpPanel.Visibility = _viewModel.VoiceSetupRequirement != PermissionsVoiceSetupRequirement.None", pageSource);
+        Assert.Contains("PermissionsVoiceSetupRequirement.SpeechModel", viewModelSource);
+        Assert.Contains("PermissionsVoiceSetupRequirement.VoiceSetup", viewModelSource);
+        Assert.Contains("PermissionsVoiceSetupRequirement.SpeechModelAndVoiceSetup", viewModelSource);
+        Assert.Contains("SpeechSetupReadiness.IsConfiguredSttModelSetupRequired(_settings)", appSource);
+        Assert.DoesNotContain("VoiceService?.IsModelDownloaded", appSource);
+        Assert.Contains("SpeechSetupReadiness.IsConfiguredTtsProviderSetupRequired(_settings)", appSource);
+        Assert.Contains("var needsVoiceSetup = _settings?.NodeTtsEnabled == true", appSource);
+        Assert.Contains("PermissionsPage_VoiceSettingsHelp_SpeechModel", viewModelSource);
+        Assert.Contains("PermissionsPage_VoiceSettingsHelp_VoiceSetup", viewModelSource);
+        Assert.Contains("PermissionsPage_VoiceSettingsHelp_Both", viewModelSource);
         Assert.Contains("TtsCapability.WindowsProvider", readiness);
         Assert.Contains("TtsCapability.PiperProvider", readiness);
         Assert.Contains("TtsCapability.ElevenLabsProvider", readiness);
-        Assert.DoesNotContain("EnsureWhisperModelDownloaded", source);
-        Assert.DoesNotContain("UpdateSttCard", source);
-        Assert.DoesNotContain("UpdateTtsCard", source);
+        Assert.DoesNotContain("EnsureWhisperModelDownloaded", pageSource);
+        Assert.DoesNotContain("UpdateSttCard", pageSource);
+        Assert.DoesNotContain("UpdateTtsCard", pageSource);
     }
 
     [Fact]

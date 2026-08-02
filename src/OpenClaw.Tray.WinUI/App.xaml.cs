@@ -41,7 +41,7 @@ using SetupWindow = OpenClaw.SetupEngine.UI.SetupWindow;
 
 namespace OpenClawTray;
 
-public partial class App : Application, OpenClawTray.Services.IAppCommands
+public partial class App : Application, OpenClawTray.Services.IAppCommands, IPermissionsPageRuntimeHost
 {
     internal static readonly UpdatumManager AppUpdater = new("openclaw", "openclaw-windows-node")
     {
@@ -75,6 +75,7 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
         new Dictionary<Type, Type>
         {
             [typeof(Pages.SettingsPage)] = typeof(SettingsPageViewModel),
+            [typeof(Pages.PermissionsPage)] = typeof(PermissionsPageViewModel),
         };
 
     /// <summary>The root service provider, or null before startup / after shutdown.</summary>
@@ -137,6 +138,7 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
     /// </summary>
     public event EventHandler? SettingsChanged;
     public event EventHandler? ChatProviderChanged;
+    private event EventHandler? PermissionsRuntimeChanged;
 
     /// <summary>
     /// Ensures the managed SSH tunnel is started using the current settings.
@@ -221,6 +223,8 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
     private WeakReference<ToggleSwitch>? _connectionToggleRef;
     private bool _suspendConnectionToggleEvent;
     private string? _lastManagerConnectedSideEffectsKey;
+    private SettingsWriteOrigin? _trayPermissionWriteOrigin;
+    private SettingsWriteOrigin? _appCapabilityPermissionWriteOrigin;
 
     // FrozenDictionary for O(1) case-insensitive notification type → setting lookup — no per-call allocation.
     private static readonly System.Collections.Frozen.FrozenDictionary<string, Func<SettingsManager, bool>> s_notifTypeMap =
@@ -471,7 +475,7 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
         }
 
         var dispatcher = new WinUIDispatcher(_dispatcherQueue);
-        var context = new AppServiceContext(dispatcher, this, _settings);
+        var context = new AppServiceContext(dispatcher, this, _settings, ExecApprovalsStore, this);
 
         var services = new ServiceCollection();
         services.AddOpenClawTrayCore(context);
@@ -1512,6 +1516,48 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
         _trayMenuWindow?.HideCascade();
     }
 
+    private SettingsWriteOrigin GetOrCreateSettingsWriteOrigin(
+        ref SettingsWriteOrigin? originField,
+        ISettingsStore store)
+        => originField ??= store.CreateOrigin();
+
+    private bool TryPersistPermissionSetting(
+        ref SettingsWriteOrigin? originField,
+        string writerName,
+        Action<ISettingsEditor> edit,
+        Action<SettingsManager> fallbackEdit,
+        out string? error)
+    {
+        try
+        {
+            if (SettingsStore is { } store)
+            {
+                store.Update(GetOrCreateSettingsWriteOrigin(ref originField, store), edit);
+                error = null;
+                return true;
+            }
+
+            if (_settings == null)
+            {
+                error = "Settings are not initialized";
+                Logger.Warn($"[App] {writerName} could not persist a permission setting because {error.ToLowerInvariant()}.");
+                return false;
+            }
+
+            Logger.Warn($"[App] {writerName} could not reach ISettingsStore. Falling back to SettingsManager.Save.");
+            fallbackEdit(_settings);
+            _settings.Save();
+            error = null;
+            return true;
+        }
+        catch (Exception ex)
+        {
+            error = ex.Message;
+            Logger.Warn($"[App] {writerName} failed to persist a permission setting: {ex.Message}");
+            return false;
+        }
+    }
+
     private void BuildTrayMenuPopup(TrayMenuWindow menu)
     {
         // Preview data must be applied before snapshot capture so the injected
@@ -1520,7 +1566,18 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
         var snapshot = CaptureTrayMenuSnapshot();
         var callbacks = new TrayMenuCallbacks(
             DispatchAction: action => OnTrayMenuItemClicked(null, action),
-            SaveAndReconnect: () => { _settings?.Save(); ReconnectWithSyncedBrowserProxyForward(); },
+            UpdatePermissionAndReconnect: (settingName, edit, fallbackEdit) =>
+            {
+                if (TryPersistPermissionSetting(
+                    ref _trayPermissionWriteOrigin,
+                    $"tray permissions flyout ({settingName})",
+                    edit,
+                    fallbackEdit,
+                    out _))
+                {
+                    ReconnectWithSyncedBrowserProxyForward();
+                }
+            },
             TrackConnectionToggle: toggle => _connectionToggleRef = new WeakReference<ToggleSwitch>(toggle),
             IsConnectionToggleSuspended: () => _suspendConnectionToggleEvent);
         var builder = new TrayMenuStateBuilder(snapshot, _permToggleActions, callbacks);
@@ -2192,6 +2249,7 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
             UpdateTrayIcon();
             SyncConnectionToggle(mapped, snap.OverallState);
             UpdateConnectionIssueNotification(snap);
+            PermissionsRuntimeChanged?.Invoke(this, EventArgs.Empty);
             if (mapped is ConnectionStatus.Connected or ConnectionStatus.Disconnected or ConnectionStatus.Error)
             {
                 // Dismiss the tray menu on state change — it will capture fresh data on next open
@@ -2314,7 +2372,11 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
         {
             // Status field is maintained by OnManagerStateChanged — no write needed here.
             UpdateTrayIcon();
-            OnUiThread(UpdateStatusDetailWindow);
+            OnUiThread(() =>
+            {
+                UpdateStatusDetailWindow();
+                PermissionsRuntimeChanged?.Invoke(this, EventArgs.Empty);
+            });
         }
         
         // Don't show "connected" toast if waiting for pairing - we'll show pairing status instead
@@ -2985,10 +3047,15 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
             case nameof(AppState.UsageCost):
             case nameof(AppState.Nodes):
                 UpdateStatusDetailWindow();
+                if (e.PropertyName == nameof(AppState.Nodes))
+                    PermissionsRuntimeChanged?.Invoke(this, EventArgs.Empty);
                 break;
             case nameof(AppState.Channels):
                 UpdateChannelIssueNotifications(_appState.Channels);
                 UpdateStatusDetailWindow();
+                break;
+            case nameof(AppState.Config):
+                PermissionsRuntimeChanged?.Invoke(this, EventArgs.Empty);
                 break;
             case nameof(AppState.CurrentActivity):
                 UpdateTrayIcon();
@@ -3566,6 +3633,7 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
             if (_hubWindow is { IsClosed: false })
                 _hubWindow.RefreshDiagnosticsNavVisibility();
             SettingsChanged?.Invoke(this, EventArgs.Empty);
+            PermissionsRuntimeChanged?.Invoke(this, EventArgs.Empty);
         }
 
         if (_dispatcherQueue != null && !_dispatcherQueue.HasThreadAccess)
@@ -4158,6 +4226,37 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
     void IAppCommands.ShowConnectionStatus() => ShowConnectionStatusWindow();
     void IAppCommands.NotifySettingsSaved() => OnSettingsSaved(this, EventArgs.Empty);
     Task<bool> IAppCommands.ResendOpenTelemetryProbeAsync() => ResendOpenTelemetryProbeAsync();
+    event EventHandler? IPermissionsPageRuntimeHost.Changed
+    {
+        add => PermissionsRuntimeChanged += value;
+        remove => PermissionsRuntimeChanged -= value;
+    }
+    GatewayConnectionSnapshot IPermissionsPageRuntimeHost.ConnectionSnapshot => _connectionManager?.CurrentSnapshot ?? GatewayConnectionSnapshot.Idle;
+    GatewayNodeInfo[] IPermissionsPageRuntimeHost.Nodes => _appState?.Nodes ?? Array.Empty<GatewayNodeInfo>();
+    string? IPermissionsPageRuntimeHost.LocalNodeDeviceId => _nodeService?.FullDeviceId;
+    JsonElement? IPermissionsPageRuntimeHost.GatewayConfig => _appState?.Config;
+    string? IPermissionsPageRuntimeHost.McpStartupError => _nodeService?.McpStartupError;
+    string IPermissionsPageRuntimeHost.McpEndpoint => NodeService.McpServerUrl;
+    bool IPermissionsPageRuntimeHost.IsMcpTokenReady => File.Exists(NodeService.McpTokenPath);
+    int IPermissionsPageRuntimeHost.McpServedCapabilityCount => NodeCapabilityGating.CountMcpServedCapabilities(_settings);
+    PermissionsVoiceSetupRequirement IPermissionsPageRuntimeHost.VoiceSetupRequirement => GetPermissionsVoiceSetupRequirement();
+
+    private PermissionsVoiceSetupRequirement GetPermissionsVoiceSetupRequirement()
+    {
+        var needsSpeechModel = _settings?.NodeSttEnabled == true
+            && SpeechSetupReadiness.IsConfiguredSttModelSetupRequired(_settings);
+        var needsVoiceSetup = _settings?.NodeTtsEnabled == true
+            && _settings is not null
+            && SpeechSetupReadiness.IsConfiguredTtsProviderSetupRequired(_settings);
+
+        return (needsSpeechModel, needsVoiceSetup) switch
+        {
+            (true, true) => PermissionsVoiceSetupRequirement.SpeechModelAndVoiceSetup,
+            (true, false) => PermissionsVoiceSetupRequirement.SpeechModel,
+            (false, true) => PermissionsVoiceSetupRequirement.VoiceSetup,
+            _ => PermissionsVoiceSetupRequirement.None,
+        };
+    }
 
     private void ToggleChannel(string channelName) =>
         AsyncEventHandlerGuard.Run(
@@ -4215,18 +4314,24 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
     /// Persists the auto-start setting and applies the Windows OS registration in the original
     /// order (save, then await the OS write, then notify). Returns true only when the OS write
     /// and notify complete, so the caller shows its saved confirmation only on success. The save
-    /// is marked as a store self-write so it does not echo an external-change reload.
+    /// is tagged with the originating writer so other active settings consumers refresh while the
+    /// triggering view model ignores its own change event.
     /// </summary>
-    public async Task<bool> ApplyAutoStart(bool autoStart)
+    public async Task<bool> ApplyAutoStart(SettingsWriteOrigin origin, bool autoStart)
     {
         if (_settings == null) return false;
         try
         {
-            _settings.AutoStart = autoStart;
-            using (SettingsStore?.BeginSelfWrite())
+            if (SettingsStore is { } store)
             {
+                store.Update(origin, edit => edit.AutoStart = autoStart);
+            }
+            else
+            {
+                _settings.AutoStart = autoStart;
                 _settings.Save();
             }
+
             await AutoStartManager.SetAutoStartAsync(autoStart);
             OnSettingsSaved(this, EventArgs.Empty);
             return true;
@@ -4523,17 +4628,26 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
 
     /// <summary>
     /// Sets speaker mute from any surface (chat window, chat page, voice settings) and persists it.
+    /// The public path publishes a null-origin settings change, so an open Settings page still
+    /// reflects a mute toggled elsewhere.
     /// </summary>
     public void SetChatSpeakerMuted(bool muted)
+        => SetChatSpeakerMuted(muted, origin: null);
+
+    private void SetChatSpeakerMuted(bool muted, SettingsWriteOrigin? origin)
     {
         if (_chatCoordinator is { } c) c.IsMuted = muted;
-        // Persist to settings
-        if (_settings != null)
+
+        if (_settings != null && SettingsStore is { } store)
+        {
+            store.Update(origin, edit => edit.VoiceTtsEnabled = !muted);
+        }
+        else if (_settings != null)
         {
             _settings.VoiceTtsEnabled = !muted;
             _settings.Save();
         }
-        // Broadcast to all subscribers
+
         SpeakerMuteChanged?.Invoke(muted);
     }
 
@@ -4673,6 +4787,13 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
             _pairingApprovalPollTimer = null;
             _pairingApprovalDialog?.Close();
             _pairingApprovalDialog = null;
+        });
+
+        SafeShutdownStep("app state observers", () =>
+        {
+            if (_appState != null)
+                _appState.PropertyChanged -= OnAppStateChanged;
+            PermissionsRuntimeChanged = null;
         });
 
         // Close windows explicitly for deterministic shutdown tracing.

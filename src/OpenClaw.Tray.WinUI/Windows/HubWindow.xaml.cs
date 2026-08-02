@@ -8,6 +8,7 @@ using OpenClaw.Connection;
 using OpenClaw.Shared;
 using OpenClawTray.Helpers;
 using OpenClawTray.Pages;
+using OpenClawTray.Presentation;
 using OpenClawTray.Services;
 using OpenClawTray.ViewModels;
 using System;
@@ -39,6 +40,7 @@ public sealed partial class HubWindow : WindowEx
     private readonly AppNotificationBannerState _appNotificationBannerState = new();
     private AppNotificationSnapshot? _lastAppNotificationSnapshot;
     private AppNotification? _currentAppNotification;
+    private SettingsWriteOrigin? _commandPaletteSettingsOrigin;
     private bool _suppressAppNotificationClosed;
     private bool _appNotificationActionShowsMore;
 
@@ -1116,7 +1118,7 @@ public sealed partial class HubWindow : WindowEx
                 }
                 break;
             case InstancesPage instances: instances.Initialize(); break;
-            case PermissionsPage permissions: permissions.Initialize(); break;
+            case PermissionsPage: break;
             case SandboxPage sandbox: sandbox.Initialize(); break;
             case VoiceSettingsPage voice: voice.Initialize(CurrentApp.VoiceService); break;
             case AgentEventsPage agentEvents:
@@ -1333,31 +1335,51 @@ public sealed partial class HubWindow : WindowEx
             {
                 Icon = "🔌", Title = LocalizationHelper.GetString("Command_ToggleNodeMode_Title"),
                 Subtitle = settings.EnableNodeMode ? on : off,
-                Execute = () => { settings.EnableNodeMode = !settings.EnableNodeMode; settings.Save(); RaiseSettingsSaved(); }
+                Execute = () => ToggleCommandPalettePermission(
+                    nameof(SettingsManager.EnableNodeMode),
+                    () => settings.EnableNodeMode,
+                    (edit, value) => edit.EnableNodeMode = value,
+                    (manager, value) => manager.EnableNodeMode = value)
             });
             commands.Add(new CommandItem
             {
                 Icon = "📷", Title = LocalizationHelper.GetString("Command_ToggleCamera_Title"),
                 Subtitle = settings.NodeCameraEnabled ? on : off,
-                Execute = () => { settings.NodeCameraEnabled = !settings.NodeCameraEnabled; settings.Save(); RaiseSettingsSaved(); }
+                Execute = () => ToggleCommandPalettePermission(
+                    nameof(SettingsManager.NodeCameraEnabled),
+                    () => settings.NodeCameraEnabled,
+                    (edit, value) => edit.NodeCameraEnabled = value,
+                    (manager, value) => manager.NodeCameraEnabled = value)
             });
             commands.Add(new CommandItem
             {
                 Icon = "🎨", Title = LocalizationHelper.GetString("Command_ToggleCanvas_Title"),
                 Subtitle = settings.NodeCanvasEnabled ? on : off,
-                Execute = () => { settings.NodeCanvasEnabled = !settings.NodeCanvasEnabled; settings.Save(); RaiseSettingsSaved(); }
+                Execute = () => ToggleCommandPalettePermission(
+                    nameof(SettingsManager.NodeCanvasEnabled),
+                    () => settings.NodeCanvasEnabled,
+                    (edit, value) => edit.NodeCanvasEnabled = value,
+                    (manager, value) => manager.NodeCanvasEnabled = value)
             });
             commands.Add(new CommandItem
             {
                 Icon = "🖥️", Title = LocalizationHelper.GetString("Command_ToggleScreenCapture_Title"),
                 Subtitle = settings.NodeScreenEnabled ? on : off,
-                Execute = () => { settings.NodeScreenEnabled = !settings.NodeScreenEnabled; settings.Save(); RaiseSettingsSaved(); }
+                Execute = () => ToggleCommandPalettePermission(
+                    nameof(SettingsManager.NodeScreenEnabled),
+                    () => settings.NodeScreenEnabled,
+                    (edit, value) => edit.NodeScreenEnabled = value,
+                    (manager, value) => manager.NodeScreenEnabled = value)
             });
             commands.Add(new CommandItem
             {
                 Icon = "🌐", Title = LocalizationHelper.GetString("Command_ToggleBrowserControl_Title"),
                 Subtitle = settings.NodeBrowserProxyEnabled ? on : off,
-                Execute = () => { settings.NodeBrowserProxyEnabled = !settings.NodeBrowserProxyEnabled; settings.Save(); RaiseSettingsSaved(); }
+                Execute = () => ToggleCommandPalettePermission(
+                    nameof(SettingsManager.NodeBrowserProxyEnabled),
+                    () => settings.NodeBrowserProxyEnabled,
+                    (edit, value) => edit.NodeBrowserProxyEnabled = value,
+                    (manager, value) => manager.NodeBrowserProxyEnabled = value)
             });
         }
 
@@ -1378,6 +1400,42 @@ public sealed partial class HubWindow : WindowEx
         }
 
         return commands;
+    }
+
+    private void ToggleCommandPalettePermission(
+        string settingName,
+        Func<bool> getCurrentValue,
+        Action<ISettingsEditor, bool> update,
+        Action<SettingsManager, bool> fallbackUpdate)
+    {
+        var nextValue = !getCurrentValue();
+        try
+        {
+            if (CurrentApp.SettingsStore is { } store)
+            {
+                _commandPaletteSettingsOrigin ??= store.CreateOrigin();
+                store.Update(_commandPaletteSettingsOrigin, edit => update(edit, nextValue));
+            }
+            else
+            {
+                var settings = CurrentApp.SettingsOrNull;
+                if (settings == null)
+                {
+                    Services.Logger.Warn($"[HubWindow] Could not persist {settingName} because settings are unavailable.");
+                    return;
+                }
+
+                Services.Logger.Warn($"[HubWindow] ISettingsStore unavailable for {settingName}. Falling back to SettingsManager.Save.");
+                fallbackUpdate(settings, nextValue);
+                settings.Save();
+            }
+
+            RaiseSettingsSaved();
+        }
+        catch (Exception ex)
+        {
+            Services.Logger.Warn($"[HubWindow] Failed to persist {settingName}: {ex.Message}");
+        }
     }
 
     private void ExecuteCommand(CommandItem cmd)
