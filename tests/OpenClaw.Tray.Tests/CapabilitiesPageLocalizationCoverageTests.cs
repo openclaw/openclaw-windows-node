@@ -137,6 +137,7 @@ public sealed class CapabilitiesPageLocalizationCoverageTests
         Assert.Contains("TtsCapability.WindowsProvider", readiness);
         Assert.Contains("TtsCapability.PiperProvider", readiness);
         Assert.Contains("TtsCapability.ElevenLabsProvider", readiness);
+        Assert.Contains("TtsCapability.MiniMaxProvider", readiness);
         Assert.DoesNotContain("EnsureWhisperModelDownloaded", source);
         Assert.DoesNotContain("UpdateSttCard", source);
         Assert.DoesNotContain("UpdateTtsCard", source);
