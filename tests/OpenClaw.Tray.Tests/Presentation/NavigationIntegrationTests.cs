@@ -63,6 +63,35 @@ public sealed class NavigationIntegrationTests
     }
 
     [Fact]
+    public void RegistryPermissionsRoute_UsesTransientActivationLifecycle()
+    {
+        using var provider = BuildRealContainer(out var temp);
+        using (temp)
+        {
+            Assert.Equal(HubPageKind.Permissions, HubPageRegistry.ResolvePage("permissions"));
+            Assert.Equal(HubPageKind.Permissions, HubPageRegistry.ResolvePage("capabilities"));
+
+            var manager = provider.GetRequiredService<NavigationScopeManager>();
+            var first = Assert.IsType<PermissionsPageViewModel>(
+                manager.Navigate(typeof(PermissionsPageViewModel), "permissions"));
+            Assert.True(first.IsActive);
+
+            manager.Navigate(typeof(SettingsPageViewModel), "settings");
+            Assert.False(first.IsActive);
+            Assert.True(first.IsDisposed);
+
+            var reopened = Assert.IsType<PermissionsPageViewModel>(
+                manager.Navigate(typeof(PermissionsPageViewModel), "capabilities"));
+            Assert.NotSame(first, reopened);
+            Assert.True(reopened.IsActive);
+
+            manager.Reset();
+            Assert.False(reopened.IsActive);
+            Assert.True(reopened.IsDisposed);
+        }
+    }
+
+    [Fact]
     public void FrameHandlerSimulation_ContainsActivationException_AndDisposesScope()
     {
         var created = new List<ThrowingActivateViewModel>();

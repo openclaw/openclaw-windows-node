@@ -1286,10 +1286,9 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands, IPer
             case "exit": ExitApplication(); break;
             case "about": ShowHub("about"); break;
             default:
-                if (action.StartsWith("perm-toggle|", StringComparison.Ordinal)
-                    && _permToggleActions.TryGetValue(action, out var permAction))
+                if (action.StartsWith("perm-toggle|", StringComparison.Ordinal))
                 {
-                    permAction();
+                    ToggleTrayPermission(action);
                 }
                 else if (action.StartsWith("session-reset|", StringComparison.Ordinal))
                     _ = ExecuteSessionActionAsync("reset", action["session-reset|".Length..]);
@@ -1581,29 +1580,108 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands, IPer
         }
     }
 
+    private void ToggleTrayPermission(string action)
+    {
+        if (_settings is null)
+            return;
+
+        switch (action)
+        {
+            case "perm-toggle|Windows node":
+                PersistTrayPermission(
+                    nameof(SettingsManager.EnableNodeMode),
+                    !_settings.EnableNodeMode,
+                    (edit, value) => edit.EnableNodeMode = value,
+                    (settings, value) => settings.EnableNodeMode = value);
+                break;
+            case "perm-toggle|System tools":
+                PersistTrayPermission(
+                    nameof(SettingsManager.NodeSystemRunEnabled),
+                    !_settings.NodeSystemRunEnabled,
+                    (edit, value) => edit.NodeSystemRunEnabled = value,
+                    (settings, value) => settings.NodeSystemRunEnabled = value);
+                break;
+            case "perm-toggle|Browser control":
+                PersistTrayPermission(
+                    nameof(SettingsManager.NodeBrowserProxyEnabled),
+                    !_settings.NodeBrowserProxyEnabled,
+                    (edit, value) => edit.NodeBrowserProxyEnabled = value,
+                    (settings, value) => settings.NodeBrowserProxyEnabled = value);
+                break;
+            case "perm-toggle|Camera":
+                PersistTrayPermission(
+                    nameof(SettingsManager.NodeCameraEnabled),
+                    !_settings.NodeCameraEnabled,
+                    (edit, value) => edit.NodeCameraEnabled = value,
+                    (settings, value) => settings.NodeCameraEnabled = value);
+                break;
+            case "perm-toggle|Canvas":
+                PersistTrayPermission(
+                    nameof(SettingsManager.NodeCanvasEnabled),
+                    !_settings.NodeCanvasEnabled,
+                    (edit, value) => edit.NodeCanvasEnabled = value,
+                    (settings, value) => settings.NodeCanvasEnabled = value);
+                break;
+            case "perm-toggle|Screen capture":
+                PersistTrayPermission(
+                    nameof(SettingsManager.NodeScreenEnabled),
+                    !_settings.NodeScreenEnabled,
+                    (edit, value) => edit.NodeScreenEnabled = value,
+                    (settings, value) => settings.NodeScreenEnabled = value);
+                break;
+            case "perm-toggle|Location":
+                PersistTrayPermission(
+                    nameof(SettingsManager.NodeLocationEnabled),
+                    !_settings.NodeLocationEnabled,
+                    (edit, value) => edit.NodeLocationEnabled = value,
+                    (settings, value) => settings.NodeLocationEnabled = value);
+                break;
+            case "perm-toggle|Voice (TTS)":
+                PersistTrayPermission(
+                    nameof(SettingsManager.NodeTtsEnabled),
+                    !_settings.NodeTtsEnabled,
+                    (edit, value) => edit.NodeTtsEnabled = value,
+                    (settings, value) => settings.NodeTtsEnabled = value);
+                break;
+            case "perm-toggle|Speech-to-text (STT)":
+                PersistTrayPermission(
+                    nameof(SettingsManager.NodeSttEnabled),
+                    !_settings.NodeSttEnabled,
+                    (edit, value) => edit.NodeSttEnabled = value,
+                    (settings, value) => settings.NodeSttEnabled = value);
+                break;
+        }
+    }
+
+    private void PersistTrayPermission(
+        string settingName,
+        bool value,
+        Action<ISettingsEditor, bool> edit,
+        Action<SettingsManager, bool> fallbackEdit)
+    {
+        if (TryPersistPermissionSetting(
+            ref _trayPermissionWriteOrigin,
+            $"tray permissions flyout ({settingName})",
+            settings => edit(settings, value),
+            settings => fallbackEdit(settings, value),
+            out _))
+        {
+            ReconnectWithSyncedBrowserProxyForward();
+        }
+    }
+
     private void BuildTrayMenuPopup(TrayMenuWindow menu)
     {
         // Preview data must be applied before snapshot capture so the injected
         // values are visible to the builder without coupling it to App state.
         ApplyTrayMenuPreviewDataIfRequested();
         var snapshot = CaptureTrayMenuSnapshot();
+        var presentation = new TrayMenuPresenter(snapshot).Present();
         var callbacks = new TrayMenuCallbacks(
             DispatchAction: action => OnTrayMenuItemClicked(null, action),
-            UpdatePermissionAndReconnect: (settingName, edit, fallbackEdit) =>
-            {
-                if (TryPersistPermissionSetting(
-                    ref _trayPermissionWriteOrigin,
-                    $"tray permissions flyout ({settingName})",
-                    edit,
-                    fallbackEdit,
-                    out _))
-                {
-                    ReconnectWithSyncedBrowserProxyForward();
-                }
-            },
             TrackConnectionToggle: toggle => _connectionToggleRef = new WeakReference<ToggleSwitch>(toggle),
             IsConnectionToggleSuspended: () => _suspendConnectionToggleEvent);
-        var builder = new TrayMenuStateBuilder(snapshot, _permToggleActions, callbacks);
+        var renderer = new TrayMenuRenderer(presentation, callbacks);
 
         // Render the whole menu inside a single update batch so layout
         // measures only once instead of once-per-row. Pair with EndUpdate
@@ -1611,7 +1689,7 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands, IPer
         menu.BeginUpdate();
         try
         {
-            builder.Build(menu);
+            renderer.Render(menu);
         }
         finally
         {
@@ -1651,20 +1729,44 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands, IPer
             OverallState = _connectionManager?.CurrentSnapshot.OverallState,
             AuthFailureMessage = _appState?.AuthFailureMessage,
             GatewayUrl = _gatewayRegistry?.GetActive()?.Url ?? _settings?.GetEffectiveGatewayUrl(),
-            GatewaySelf = _appState?.GatewaySelf,
-            Presence = _appState?.Presence,
+            GatewaySelf = TrayGatewaySelfSnapshot.From(_appState?.GatewaySelf),
+            Presence =
+            [
+                .. (_appState?.Presence ?? Array.Empty<PresenceEntry>())
+                    .Select(TrayPresenceSnapshot.From),
+            ],
             EnableNodeMode = _settings?.EnableNodeMode == true && _nodeService != null,
             NodeIsPaired = _nodeService?.IsPaired ?? false,
             NodeIsPendingApproval = _nodeService?.IsPendingApproval ?? false,
             NodeIsConnected = _nodeService?.IsConnected ?? false,
-            NodePairList = _appState?.NodePairList,
-            DevicePairList = _appState?.DevicePairList,
-            Nodes = _appState?.Nodes ?? Array.Empty<GatewayNodeInfo>(),
-            Sessions = _appState?.Sessions ?? Array.Empty<SessionInfo>(),
-            Usage = _appState?.Usage,
-            UsageStatus = _appState?.UsageStatus,
-            UsageCost = _appState?.UsageCost,
-            Settings = _settings,
+            NodePendingPairCount = _appState?.NodePairList?.Pending.Count ?? 0,
+            DevicePendingPairCount = _appState?.DevicePairList?.Pending.Count ?? 0,
+            Nodes =
+            [
+                .. (_appState?.Nodes ?? Array.Empty<GatewayNodeInfo>())
+                    .Select(TrayNodeSnapshot.From),
+            ],
+            Sessions =
+            [
+                .. (_appState?.Sessions ?? Array.Empty<SessionInfo>())
+                    .Select(TraySessionSnapshot.From),
+            ],
+            Usage = TrayUsageSnapshot.From(_appState?.Usage),
+            UsageStatus = TrayUsageStatusSnapshot.From(_appState?.UsageStatus),
+            UsageCost = TrayUsageCostSnapshot.From(_appState?.UsageCost),
+            Settings = _settings is null
+                ? null
+                : new TrayMenuSettingsSnapshot(
+                    _settings.EnableNodeMode,
+                    _settings.EnableMcpServer,
+                    _settings.NodeSystemRunEnabled,
+                    _settings.NodeBrowserProxyEnabled,
+                    _settings.NodeCameraEnabled,
+                    _settings.NodeCanvasEnabled,
+                    _settings.NodeScreenEnabled,
+                    _settings.NodeLocationEnabled,
+                    _settings.NodeTtsEnabled,
+                    _settings.NodeSttEnabled),
             SetupMenuLabel = setupMenuLabel,
             ShowSetupMenuEntry = !hasSetupManagedLocalWslGateway,
             LastUpdated = _appState?.LastCheckTime,
@@ -1763,8 +1865,6 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands, IPer
         }
     }
 
-
-    private readonly Dictionary<string, Action> _permToggleActions = new(StringComparer.Ordinal);
 
     #region Gateway Client
 
@@ -3318,22 +3418,12 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands, IPer
             return;
         }
 
-        var shouldBeOn = ConnectionStatusPresenter.IsLiveOrPending(overallState, status);
-        var canToggle = overallState switch
-        {
-            OverallConnectionState.Connecting or OverallConnectionState.Disconnecting => false,
-            null => status is ConnectionStatus.Connected or ConnectionStatus.Disconnected or ConnectionStatus.Error,
-            _ => true
-        };
-        var statusText = ConnectionStatusPresenter.PlainText(overallState, status);
+        var presentation = ConnectionTogglePresenter.Present(status, overallState);
         _suspendConnectionToggleEvent = true;
         try
         {
-            TrayMenuWindow.SetMenuToggleSwitchState(toggle, shouldBeOn, canToggle);
-            ToolTipService.SetToolTip(toggle,
-                shouldBeOn ? $"{statusText} - toggle off to disconnect"
-                    : status == ConnectionStatus.Connecting ? "Connecting..."
-                    : $"{statusText} - toggle on to connect");
+            TrayMenuWindow.SetMenuToggleSwitchState(toggle, presentation.IsOn, presentation.IsEnabled);
+            ToolTipService.SetToolTip(toggle, presentation.ToolTip);
         }
         finally
         {

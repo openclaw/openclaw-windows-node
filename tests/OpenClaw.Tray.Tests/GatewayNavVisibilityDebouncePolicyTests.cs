@@ -50,20 +50,4 @@ public class GatewayNavVisibilityDebouncePolicyTests
         Assert.True(GatewayNavVisibilityDebouncePolicy.ShouldHideAfterDelay(status));
     }
 
-    [Theory]
-    [InlineData("config")]
-    [InlineData("CONFIG")]
-    public void ConfigPage_RemainsVisibleDuringDisconnect(string tag)
-    {
-        Assert.True(GatewayNavVisibilityDebouncePolicy.ShouldKeepCurrentPageVisibleDuringDisconnect(tag));
-    }
-
-    [Theory]
-    [InlineData("connection")]
-    [InlineData("channels")]
-    [InlineData(null)]
-    public void OtherPages_DoNotOptOutOfDisconnectNavigation(string? tag)
-    {
-        Assert.False(GatewayNavVisibilityDebouncePolicy.ShouldKeepCurrentPageVisibleDuringDisconnect(tag));
-    }
 }
