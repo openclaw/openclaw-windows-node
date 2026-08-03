@@ -984,6 +984,7 @@ public sealed class NodeService : IDisposable, IAsyncDisposable
                     StartMcpServer();
                 }
             }
+
             catch (Exception ex)
             {
                 SetMcpStartupFailure(ex, "MCP enable");
@@ -1002,6 +1003,17 @@ public sealed class NodeService : IDisposable, IAsyncDisposable
             // if the server isn't running. StopMcpServer is lock-protected
             // and handles _mcpServer == null safely.
             StopMcpServer();
+        }
+    }
+
+    public void RefreshMcpOnlyCapabilities()
+    {
+        lock (_clientLock)
+        {
+            if (!_enableMcpServer || _mcpServer == null || _nodeClient != null)
+                return;
+
+            RegisterCapabilities();
         }
     }
 

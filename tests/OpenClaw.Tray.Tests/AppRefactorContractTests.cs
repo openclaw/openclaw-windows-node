@@ -258,6 +258,31 @@ public sealed class AppRefactorContractTests
     }
 
     [Fact]
+    public void McpOnlyCapabilityReload_RebuildsTheSharedCapabilityList()
+    {
+        var root = TestRepositoryPaths.GetRepositoryRoot();
+        var appSource = ReadAppSources();
+        var nodeServiceSource = File.ReadAllText(Path.Combine(
+            root,
+            "src",
+            "OpenClaw.Tray.WinUI",
+            "Services",
+            "NodeService.cs"));
+
+        var reconnect = ExtractMethod(appSource, "ReconnectWithSyncedBrowserProxyForward");
+        var refresh = ExtractMethod(nodeServiceSource, "RefreshMcpOnlyCapabilities");
+
+        AssertInOrder(
+            reconnect,
+            "SyncActiveGatewayBrowserProxyForward()",
+            "_nodeService?.RefreshMcpOnlyCapabilities()",
+            "_connectionManager?.ReconnectAsync()");
+        Assert.Contains("lock (_clientLock)", refresh);
+        Assert.Contains("if (!_enableMcpServer || _mcpServer == null || _nodeClient != null)", refresh);
+        Assert.Contains("RegisterCapabilities();", refresh);
+    }
+
+    [Fact]
     public void AppStatus_ReportsNodeStateFromManagerSnapshot()
     {
         var source = ReadAppSources();

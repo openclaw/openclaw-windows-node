@@ -1934,6 +1934,7 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands, IPer
     private void ReconnectWithSyncedBrowserProxyForward()
     {
         SyncActiveGatewayBrowserProxyForward();
+        _nodeService?.RefreshMcpOnlyCapabilities();
         _ = _connectionManager?.ReconnectAsync();
     }
 
