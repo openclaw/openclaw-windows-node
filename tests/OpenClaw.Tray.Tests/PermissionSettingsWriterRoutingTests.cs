@@ -6,11 +6,13 @@ public sealed class PermissionSettingsWriterRoutingTests
     public void HubCommandPalette_PermissionToggles_UseSettingsStore_AndRaiseSettingsSaved()
     {
         var source = ReadSource("src", "OpenClaw.Tray.WinUI", "Windows", "HubWindow.xaml.cs");
-        var buildCommandList = ExtractMethodBodyBySignature(source, "internal List<CommandItem> BuildCommandList()");
-        var toggleHelper = ExtractMethodBodyBySignature(source, "private void ToggleCommandPalettePermission(");
+        var buildCommandList = ExtractMethodBodyBySignature(source, "internal ImmutableArray<HubCommand> BuildCommandList()");
+        var toggleHelper = ExtractMethodBodyBySignature(source, "private void ToggleCommandPalettePermission(HubSettingToggle toggle)");
+        var executeCommand = ExtractMethodBodyBySignature(source, "private void ExecuteCommand(HubCommand command)");
 
-        Assert.Contains("ToggleCommandPalettePermission(", buildCommandList);
-        Assert.DoesNotContain("settings.Save(); RaiseSettingsSaved();", buildCommandList);
+        Assert.Contains("HubPageRegistry.BuildCommands", buildCommandList);
+        Assert.DoesNotContain("settings.Save();", buildCommandList);
+        Assert.Contains("ToggleCommandPalettePermission(toggle);", executeCommand);
 
         Assert.Contains("CurrentApp.SettingsStore", toggleHelper);
         Assert.Contains("_commandPaletteSettingsOrigin ??= store.CreateOrigin();", toggleHelper);
@@ -21,9 +23,8 @@ public sealed class PermissionSettingsWriterRoutingTests
     [Fact]
     public void TrayPermissionsFlyout_PreservesCurrentLabelsOrder_AndRoutesThroughStoreCallback()
     {
-        var source = ReadSource("src", "OpenClaw.Tray.WinUI", "Services", "TrayMenuStateBuilder.cs");
-        var buildPermissionsFlyout = ExtractMethodBodyBySignature(source, "private List<TrayMenuFlyoutItem> BuildPermissionsFlyoutItems(SettingsManager settings)");
-        var addPermToggle = ExtractMethodBodyBySignature(source, "private void AddPermToggle(");
+        var source = ReadSource("src", "OpenClaw.Tray.WinUI", "Presentation", "TrayMenuPresenter.cs");
+        var buildPermissionsFlyout = ExtractMethodBodyBySignature(source, "private static TrayMenuElement BuildPermissions(TrayMenuSettingsSnapshot settings)");
 
         AssertInOrder(
             buildPermissionsFlyout,
@@ -37,9 +38,8 @@ public sealed class PermissionSettingsWriterRoutingTests
             "\"Voice (TTS)\"",
             "\"Speech-to-text (STT)\"");
 
-        Assert.Contains("_callbacks.UpdatePermissionAndReconnect(", addPermToggle);
-        Assert.DoesNotContain("_callbacks.SaveAndReconnect();", addPermToggle);
-        Assert.DoesNotContain("set(!get());", addPermToggle);
+        Assert.Contains("ActionId = $\"perm-toggle|{text}\"", source);
+        Assert.DoesNotContain("SettingsManager", source);
     }
 
     [Fact]
@@ -47,14 +47,16 @@ public sealed class PermissionSettingsWriterRoutingTests
     {
         var source = ReadSource("src", "OpenClaw.Tray.WinUI", "App.xaml.cs");
         var helper = ExtractMethodBodyBySignature(source, "private bool TryPersistPermissionSetting(");
-        var trayPopup = ExtractMethodBodyBySignature(source, "private void BuildTrayMenuPopup(TrayMenuWindow menu)");
+        var persistToggle = ExtractMethodBodyBySignature(source, "private void PersistTrayPermission(");
 
         Assert.Contains("store.Update(GetOrCreateSettingsWriteOrigin", helper);
         Assert.Contains("_settings.Save();", helper);
 
-        Assert.Contains("UpdatePermissionAndReconnect:", trayPopup);
-        Assert.DoesNotContain("_settings?.Save(); ReconnectWithSyncedBrowserProxyForward();", trayPopup);
-        Assert.Contains("ReconnectWithSyncedBrowserProxyForward();", trayPopup);
+        AssertInOrder(
+            persistToggle,
+            "TryPersistPermissionSetting(",
+            "ReconnectWithSyncedBrowserProxyForward();");
+        Assert.DoesNotContain("_settings?.Save(); ReconnectWithSyncedBrowserProxyForward();", persistToggle);
     }
 
     [Fact]
