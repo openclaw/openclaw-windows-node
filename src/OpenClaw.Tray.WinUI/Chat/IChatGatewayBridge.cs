@@ -70,6 +70,17 @@ public interface IChatGatewayBridge : IDisposable
             Error = "Response-aware sessions.compact is not supported by this chat bridge."
         });
     Task RequestSessionsAsync() => Task.CompletedTask;
+    /// <summary>Typed, bounded session discovery API for picker consumers.</summary>
+    Task<SessionQuerySnapshot> QuerySessionsAsync(
+        SessionQuery query,
+        CancellationToken cancellationToken = default) =>
+        Task.FromResult(new SessionQuerySnapshot
+        {
+            Sessions = GetSessionList(),
+        });
+    /// <summary>Restores the last coherent recent snapshot without another RPC.</summary>
+    SessionQuerySnapshot ClearSessionSearch(SessionQuery? query = null) =>
+        new() { Sessions = GetSessionList() };
     Task PatchSessionModelAsync(string sessionKey, string model);
     /// <summary>
     /// Clears the session's model override (tri-state <c>sessions.patch</c> with
@@ -234,6 +245,14 @@ public sealed class GatewayClientChatBridge : IChatGatewayBridge
 
     public Task RequestSessionsAsync() =>
         _client.RequestSessionsAsync();
+
+    public Task<SessionQuerySnapshot> QuerySessionsAsync(
+        SessionQuery query,
+        CancellationToken cancellationToken = default) =>
+        _client.QuerySessionsAsync(query, cancellationToken);
+
+    public SessionQuerySnapshot ClearSessionSearch(SessionQuery? query = null) =>
+        _client.ClearSessionSearch(query);
 
     public Task<ChatHistoryInfo> RequestChatHistoryAsync(string? sessionKey) =>
         _client.RequestChatHistoryAsync(sessionKey);

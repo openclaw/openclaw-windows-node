@@ -62,9 +62,15 @@
       "method": "sessions.list",
       "kind": "request",
       "windowsUsage": "used",
-      "requestFields": ["agentId"],
+      "protocolVersion": "v2026.5.22",
+      "protocolProvenance": "openclaw/openclaw packages/gateway-protocol/src/schema/sessions.ts at stable tag v2026.5.22; blob 2dd4d546b434aa90de89763e212a5c62feb022d2",
+      "requestFields": ["agentId", "limit", "offset", "search", "configuredAgentsOnly"],
+      "requestFieldsSource": "internal Dictionary<string, object?> ToParameters()",
       "responseEnvelope": ["sessions"],
       "responseEnvelopeSource": "TryGetSessionsPayload(JsonElement payload",
+      "responseMetadataFields": [
+        "sessions", "count", "totalCount", "limitApplied", "offset", "nextOffset", "hasMore"
+      ],
       "responseFields": [
         "key", "isMain", "status", "model", "label", "channel", "displayName",
         "derivedTitle", "modelProvider", "provider", "subject", "groupChannel", "room",

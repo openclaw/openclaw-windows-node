@@ -156,6 +156,27 @@ public class GatewayProtocolDriftTests
         }
     }
 
+    [Fact]
+    public void SessionsList_responseMetadataDto_matches_snapshot()
+    {
+        var snapshot = LoadSnapshot();
+        var protocol = LoadProtocolSource();
+        var pinned = snapshot.Methods.Single(m => m.Method == "sessions.list")
+            .ResponseMetadataFields
+            .ToHashSet(StringComparer.Ordinal);
+        var region = ExtractMethodBody(protocol, "public sealed class SessionListResult");
+        Assert.NotNull(region);
+        var dtoFields = Regex.Matches(
+                region!.Code,
+                "\\[JsonPropertyName\\(\\s*\"([A-Za-z_][A-Za-z0-9_]*)\"\\s*\\)\\]")
+            .Select(match => match.Groups[1].Value)
+            .ToHashSet(StringComparer.Ordinal);
+
+        Assert.Equal(
+            pinned.OrderBy(value => value, StringComparer.Ordinal),
+            dtoFields.OrderBy(value => value, StringComparer.Ordinal));
+    }
+
     /// <summary>
     /// Guard C — request shapes, scoped and <b>bidirectional</b>. For each
     /// <c>used</c> request method, the set of wire keys the client actually
@@ -819,7 +840,9 @@ public class GatewayProtocolDriftTests
     /// <summary>The client surface plus the DTO/payload builders (GatewayProtocolModels.cs).</summary>
     private static Source LoadProtocolSource() =>
         ConcatSources(
-            f => FileNameMatches(f.Path, "OpenClawGatewayClient", ".cs") || EndsWith(f.Path, "GatewayProtocolModels.cs"),
+            f => FileNameMatches(f.Path, "OpenClawGatewayClient", ".cs") ||
+                 EndsWith(f.Path, "GatewayProtocolModels.cs") ||
+                 EndsWith(f.Path, "SessionListModels.cs"),
             "Could not locate the gateway protocol source under src/.");
 
     private static Source ConcatSources(Func<SourceFileSnapshot, bool> predicate, string notFound)
@@ -875,6 +898,7 @@ public class GatewayProtocolDriftTests
                 RequestFields: ReadStringArray(m, "requestFields"),
                 AllowedExtraRequestFields: ReadStringArray(m, "allowedExtraRequestFields"),
                 ResponseFields: ReadStringArray(m, "responseFields"),
+                ResponseMetadataFields: ReadStringArray(m, "responseMetadataFields"),
                 ResponseEnvelope: ReadStringArray(m, "responseEnvelope"),
                 RequestFieldsSource: m.TryGetProperty("requestFieldsSource", out var s) && s.ValueKind == JsonValueKind.String ? s.GetString() : null,
                 ResponseEnvelopeSource: m.TryGetProperty("responseEnvelopeSource", out var es) && es.ValueKind == JsonValueKind.String ? es.GetString() : null,
@@ -938,6 +962,7 @@ public class GatewayProtocolDriftTests
         IReadOnlyList<string> RequestFields,
         IReadOnlyList<string> AllowedExtraRequestFields,
         IReadOnlyList<string> ResponseFields,
+        IReadOnlyList<string> ResponseMetadataFields,
         IReadOnlyList<string> ResponseEnvelope,
         string? RequestFieldsSource,
         string? ResponseEnvelopeSource,
