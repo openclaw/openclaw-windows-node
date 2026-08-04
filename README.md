@@ -1,4 +1,4 @@
-# OpenClaw Windows Companion
+# OpenClaw Windows Hub
 
 ![OpenClaw Windows Node banner](docs/assets/readme-banner.jpg)
 
@@ -7,7 +7,7 @@
 [![License: MIT](https://img.shields.io/badge/license-MIT-green?style=flat-square)](LICENSE)
 [![Discord](https://img.shields.io/discord/1456350064065904867?label=discord&logo=discord&logoColor=white&color=5865F2&style=flat-square)](https://discord.gg/clawd)
 
-The native **Windows Hub** companion app for [OpenClaw](https://github.com/openclaw/openclaw). A desktop app with setup, tray status, chat, Command Center diagnostics, and Windows node capabilities. When connected to your gateway, the agent can act on your PC — running commands, capturing your screen, presenting UI, speaking aloud — all permission-gated and sandboxed.
+The native Windows companion for [OpenClaw](https://github.com/openclaw/openclaw). Connect your PC to your gateway and let the agent run commands, capture your screen, present UI, and speak aloud, all permission-gated and sandboxed.
 
 [Download](https://docs.openclaw.ai/platforms/windows) · [Docs](https://docs.openclaw.ai/platforms/windows) · [Setup Guide](docs/SETUP.md) · [Discord](https://discord.gg/clawd)
 
@@ -22,7 +22,7 @@ The native **Windows Hub** companion app for [OpenClaw](https://github.com/openc
 
 [Checksums](https://github.com/openclaw/openclaw-windows-node/releases/latest/download/OpenClawCompanion-SHA256SUMS.txt) · Windows 10 20H2+ or Windows 11 · No build required.
 
-On first launch, a setup wizard walks you through connecting to an existing gateway or installing one locally in WSL.
+On first launch, a setup wizard walks you through connecting to an existing gateway or installing one locally in WSL. No gateway yet? Choose "Set up locally" and the wizard handles everything.
 
 ---
 
@@ -43,7 +43,7 @@ Once paired with your gateway, the agent can act on your PC through these capabi
 
 1. **Enable Node Mode** in the app settings (on by default)
 2. **Approve the device** on your gateway: `openclaw devices approve <id>`
-3. **Allow capabilities** in your gateway's `allowCommands` config
+3. **Allow capabilities** on your gateway: `openclaw nodes allow <id> system.run canvas.present screen.capture`
 
 That's it. The agent can now use your PC. See [Node Concepts](docs/OPERATOR_NODE_CONCEPTS.md) for the full pairing and approval model, and [Windows Node Testing](docs/WINDOWS_NODE_TESTING.md) for the capabilities reference.
 
@@ -62,7 +62,7 @@ Choose a preset (Locked Down, Recommended, Unprotected) or configure each contro
 
 ---
 
-## Also included
+## Features
 
 - 💬 **Native chat** — WebView2 chat UI and Quick Send hotkey (Ctrl+Alt+Shift+C)
 - 🧭 **Command Center** — diagnostics hub for sessions, nodes, channels, and usage
@@ -110,14 +110,12 @@ dotnet test tests/OpenClaw.Tray.Tests
 
 | Topic | Link |
 |---|---|
-| Setup (no build required) | [docs/SETUP.md](docs/SETUP.md) |
-| Operator and node concepts | [docs/OPERATOR_NODE_CONCEPTS.md](docs/OPERATOR_NODE_CONCEPTS.md) |
-| Windows node testing | [docs/WINDOWS_NODE_TESTING.md](docs/WINDOWS_NODE_TESTING.md) |
-| MCP mode | [docs/MCP_MODE.md](docs/MCP_MODE.md) |
 | Connection architecture | [docs/CONNECTION_ARCHITECTURE.md](docs/CONNECTION_ARCHITECTURE.md) |
 | Onboarding wizard | [docs/ONBOARDING_WIZARD.md](docs/ONBOARDING_WIZARD.md) |
 | WSL gateway admin | [docs/WSL_GATEWAY_ADMIN.md](docs/WSL_GATEWAY_ADMIN.md) |
 | Development | [DEVELOPMENT.md](DEVELOPMENT.md) |
+
+**User-facing docs** (also linked above): [Setup](docs/SETUP.md) · [Node Concepts](docs/OPERATOR_NODE_CONCEPTS.md) · [Windows Node Testing](docs/WINDOWS_NODE_TESTING.md) · [MCP Mode](docs/MCP_MODE.md)
 
 ---
 
