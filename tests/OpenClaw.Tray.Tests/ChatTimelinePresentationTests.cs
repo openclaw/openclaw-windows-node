@@ -201,6 +201,7 @@ public sealed class ChatTimelinePresentationTests
         Assert.Contains("private const int ToolDetailMaxChars = 4000;", renderer);
         Assert.Contains("\"Chat_Tool_InputSection\"", renderer);
         Assert.Contains("\"Chat_Tool_OutputLabel\"", renderer);
+        Assert.Contains(".Padding(18, 8, 18, 10)", renderer);
         Assert.Contains(".MaxHeight(240)", renderer);
         Assert.Contains("text.IsTextSelectionEnabled = true", renderer);
         Assert.Contains("AutomationProperties.SetAutomationId(", renderer);

@@ -67,7 +67,8 @@ internal static class ToolCallCardRenderer
         var statusLabel = StatusLabel(entry.ToolResult);
         var expander = Expander(
                 $"{toolName} · {statusLabel}",
-                VStack(6, details.ToArray()))
+                Border(VStack(6, details.ToArray()))
+                    .Padding(18, 8, 18, 10))
             .Set(control =>
             {
                 control.HorizontalAlignment = HorizontalAlignment.Stretch;
