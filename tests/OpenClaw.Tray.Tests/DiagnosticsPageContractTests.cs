@@ -704,9 +704,11 @@ public sealed class DiagnosticsPageContractTests
     public void App_GetHubWindowHandle_GuardsAgainstClosedWindow()
     {
         var app = Read("src", "OpenClaw.Tray.WinUI", "App.xaml.cs");
+        var windowManager = Read("src", "OpenClaw.Tray.WinUI", "Services", "WindowManager.cs");
 
         Assert.Contains("public IntPtr GetHubWindowHandle()", app);
-        Assert.Contains("_hubWindow != null && !_hubWindow.IsClosed", app);
+        Assert.Contains("_windowManager?.GetHubWindowHandle() ?? IntPtr.Zero", app);
+        Assert.Contains("_hubWindow is { IsClosed: false }", windowManager);
     }
 
     [Fact]

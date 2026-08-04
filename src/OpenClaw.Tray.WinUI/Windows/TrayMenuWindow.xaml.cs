@@ -937,6 +937,21 @@ public sealed partial class TrayMenuWindow : WindowEx
         _isShown = false;
     }
 
+    internal void CloseCascadeForShutdown()
+    {
+        var flyout = _activeFlyoutWindow;
+        _activeFlyoutWindow = null;
+        _activeFlyoutOwner = null;
+        _activeFlyoutKey = null;
+        _activeFlyoutTag = null;
+        flyout?.CloseCascadeForShutdown();
+
+        Activated -= OnActivated;
+        MenuPanel.KeyDown -= OnMenuPanelKeyDown;
+        _isShown = false;
+        Close();
+    }
+
     public void SizeToContent() => SizeToContent(MenuWidthViewUnits);
 
     /// <summary>

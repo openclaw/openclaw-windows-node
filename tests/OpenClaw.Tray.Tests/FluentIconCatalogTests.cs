@@ -154,6 +154,14 @@ public sealed class TrayMenuPopupCompositionTests
         return File.ReadAllText(path);
     }
 
+    private static string ReadTrayController()
+    {
+        var path = Path.Combine(
+            TestRepositoryPaths.GetRepositoryRoot(),
+            "src", "OpenClaw.Tray.WinUI", "Services", "TrayController.cs");
+        return File.ReadAllText(path);
+    }
+
     private static string ReadPresenter()
     {
         var path = Path.Combine(
@@ -229,7 +237,7 @@ public sealed class TrayMenuPopupCompositionTests
     [Fact]
     public void BuildTrayMenuPopup_BatchesUpdates()
     {
-        var src = ReadAppXaml();
+        var src = ReadTrayController();
         Assert.Contains("menu.BeginUpdate();", src);
         Assert.Contains("menu.EndUpdate();", src);
     }

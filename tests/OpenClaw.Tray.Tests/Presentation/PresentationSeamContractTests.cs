@@ -71,11 +71,16 @@ public sealed class PresentationSeamContractTests
     [Fact]
     public void App_ResetsNavigationScope_OnHubClose()
     {
-        var source = ReadAppSources();
+        var source = File.ReadAllText(Path.Combine(
+            TestRepositoryPaths.GetRepositoryRoot(),
+            "src",
+            "OpenClaw.Tray.WinUI",
+            "Services",
+            "WindowManager.cs"));
 
         // Closing the hub must reset the navigation scope so page view models do not
         // outlive their window.
-        Assert.Contains("PageActivator?.Reset()", source);
+        Assert.Contains("_callbacks.GetPageActivator()?.Reset()", source);
     }
 
     [Fact]

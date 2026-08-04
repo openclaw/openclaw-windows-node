@@ -213,8 +213,8 @@ public partial class App
 
         app.SearchHandler = (query) =>
         {
-            if (_hubWindow == null) return Array.Empty<object>();
-            var commands = _hubWindow.BuildCommandList();
+            if (ActiveHubWindow is not OpenClawTray.Windows.HubWindow hubWindow) return Array.Empty<object>();
+            var commands = hubWindow.BuildCommandList();
             var matches = commands
                 .Where(c => c.Title.Contains(query, StringComparison.OrdinalIgnoreCase)
                     || (c.Subtitle?.Contains(query, StringComparison.OrdinalIgnoreCase) ?? false))
