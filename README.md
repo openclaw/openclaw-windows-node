@@ -39,13 +39,41 @@ Once paired with your gateway, the agent can act on your PC through these capabi
 | **Speak** | Text-to-speech via Windows SAPI or ElevenLabs |
 | **Know context** | Device info, geolocation, microphone transcription |
 
-### Connect in 3 steps
+### Connect in 4 steps
 
-1. **Enable Node Mode** in the app settings (on by default)
-2. **Approve the device** on your gateway: `openclaw devices approve <id>`
-3. **Allow capabilities** on your gateway: `openclaw nodes allow <id> system.run canvas.present screen.capture`
+1. **Enable Node Mode** in Settings (on by default).
+2. **Approve the device** on your gateway:
+   ```bash
+   openclaw devices list           # Find your Windows device
+   openclaw devices approve <id>   # Approve it
+   ```
+3. **Allow capabilities** in your gateway config (`~/.openclaw/openclaw.json`):
+   ```json
+   {
+     "gateway": {
+       "nodes": {
+         "allowCommands": [
+           "system.notify",
+           "system.run",
+           "canvas.present",
+           "canvas.hide",
+           "screen.snapshot",
+           "device.info",
+           "tts.speak"
+         ]
+       }
+     }
+   }
+   ```
+   > Commands must be listed explicitly. Wildcards like `canvas.*` don't work. Privacy-sensitive commands (`screen.record`, `camera.snap`, `camera.clip`, `stt.transcribe`) should only be added when you explicitly want to allow them.
 
-That's it. The agent can now use your PC. See [Node Concepts](docs/OPERATOR_NODE_CONCEPTS.md) for the full pairing and approval model, and [Windows Node Testing](docs/WINDOWS_NODE_TESTING.md) for the capabilities reference.
+4. **Verify from your gateway**:
+   ```bash
+   openclaw nodes notify --node <id> --title "Hello" --body "From gateway!"
+   openclaw nodes invoke --node <id> --command screen.snapshot --params '{"format":"png"}'
+   ```
+
+See [Node Concepts](docs/OPERATOR_NODE_CONCEPTS.md) for the full pairing and approval model, and [Windows Node Testing](docs/WINDOWS_NODE_TESTING.md) for the complete capabilities reference and test commands.
 
 ---
 
@@ -68,9 +96,37 @@ Choose a preset (Locked Down, Recommended, Unprotected) or configure each contro
 - 🧭 **Command Center** — diagnostics hub for sessions, nodes, channels, and usage
 - 🔔 **Toast notifications** — clickable Windows notifications with smart categorization
 - 🔄 **Auto-updates** — background updates from GitHub Releases
-- 🔗 **Deep links** — `openclaw://` URL scheme for automation
-- 📡 **Local MCP server** — Model Context Protocol endpoint for tool integration
+- 🔗 **Deep links** — `openclaw://` URL scheme for automation (see below)
+- 📡 **Local MCP server** — Model Context Protocol endpoint for tool integration ([MCP Mode](docs/MCP_MODE.md))
 - 🎯 **First-run setup** — guided WSL gateway install with permissions and onboarding
+
+### Deep links
+
+The app registers `openclaw://` for automation. Key links:
+
+| Link | What it does |
+|---|---|
+| `openclaw://settings` | Open Settings |
+| `openclaw://setup` | Open Setup Wizard |
+| `openclaw://chat` | Open Chat |
+| `openclaw://commandcenter` | Open Command Center diagnostics |
+| `openclaw://send?message=Hello` | Quick Send with pre-filled text |
+| `openclaw://logs` | Open current log file |
+| `openclaw://support-context` | Copy redacted support context |
+| `openclaw://capability-diagnostics` | Copy permissions and allowlist diagnostics |
+
+Deep links work when the app is already running (forwarded via IPC).
+
+### File paths
+
+| What | Where |
+|---|---|
+| Settings | `%APPDATA%\OpenClawTray\settings.json` |
+| Gateway registry | `%APPDATA%\OpenClawTray\gateways.json` |
+| Logs | `%LOCALAPPDATA%\OpenClawTray\openclaw-tray.log` |
+| Exec approvals | `%APPDATA%\OpenClawTray\exec-approvals.json` |
+
+Default gateway: `ws://localhost:18789`
 
 ---
 
