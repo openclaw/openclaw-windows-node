@@ -202,6 +202,7 @@ public sealed class ChatTimelinePresentationTests
         Assert.Contains("\"Chat_Tool_InputSection\"", renderer);
         Assert.Contains("\"Chat_Tool_OutputLabel\"", renderer);
         Assert.Contains(".Padding(18, 8, 18, 10)", renderer);
+        Assert.Contains("var body = RichTextBlock(content)", renderer);
         Assert.Contains(".MaxHeight(240)", renderer);
         Assert.Contains("text.IsTextSelectionEnabled = true", renderer);
         Assert.Contains("AutomationProperties.SetAutomationId(", renderer);

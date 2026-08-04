@@ -121,13 +121,13 @@ internal static class ToolCallCardRenderer
 
     private static Element BuildDetailSection(string label, string content)
     {
-        var body = Text(
-                content,
-                12,
-                FontWeights.Normal,
-                "TextFillColorSecondaryBrush")
+        var body = RichTextBlock(content)
             .Set(text =>
             {
+                text.TextWrapping = TextWrapping.Wrap;
+                text.FontSize = 12;
+                text.FontWeight = FontWeights.Normal;
+                text.Foreground = BrushFor("TextFillColorSecondaryBrush", Microsoft.UI.Colors.Black);
                 text.FontFamily = new FontFamily("Cascadia Code, Consolas");
                 text.IsTextSelectionEnabled = true;
             });
