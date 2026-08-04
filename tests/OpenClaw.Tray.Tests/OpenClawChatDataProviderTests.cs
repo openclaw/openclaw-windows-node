@@ -331,9 +331,14 @@ public class OpenClawChatDataProviderTests
         var presentation = ChatCompactionPresenter.TryCreateForEntry(entry, metadata);
 
         Assert.NotNull(presentation);
-        Assert.Contains("42", presentation.Detail);
-        Assert.Contains("12", presentation.Detail);
-        Assert.Contains("30", presentation.Detail);
+        Assert.Equal("COMPACTED HISTORY", presentation.Title);
+        Assert.Equal(
+            "The compacted transcript is preserved as a checkpoint. " +
+            "Open session checkpoints to branch or restore from that compacted view.",
+            presentation.Detail);
+        Assert.Equal("Open checkpoints", presentation.ActionLabel);
+        Assert.DoesNotContain("42", presentation.Detail);
+        Assert.DoesNotContain(presentation.ActionLabel, presentation.AutomationName);
     }
 
     [Theory]

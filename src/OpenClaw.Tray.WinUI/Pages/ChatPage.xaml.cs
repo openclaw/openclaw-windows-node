@@ -5,6 +5,7 @@ using OpenClaw.Chat;
 using OpenClaw.Shared;
 using OpenClaw.Shared.Capabilities;
 using OpenClawTray.Chat;
+using OpenClawTray.Dialogs;
 using OpenClawTray.Helpers;
 using OpenClawTray.Services;
 using OpenClawTray.Windows;
@@ -297,6 +298,7 @@ public sealed partial class ChatPage : Page
             onVoiceRequest: VoiceTranscribeAsync,
             onAttachClick: OnAttachClicked,
             onSettingsClick: () => _hub?.NavigateTo("voice"),
+            onOpenCheckpoints: OpenSessionCheckpoints,
             onSpeakerMuteChanged: muted => _ = OnSpeakerMuteChangedAsync(muted),
             initialMuted: ShouldStartSpeakerMuted(CurrentApp.Settings));
         _mountedProvider = provider;
@@ -315,6 +317,15 @@ public sealed partial class ChatPage : Page
             });
         }
     }
+
+    private void OpenSessionCheckpoints(string sessionKey) =>
+        AsyncEventHandlerGuard.Run(
+            () => SessionCheckpointDialogCoordinator.ShowAsync(
+                XamlRoot,
+                sessionKey,
+                isHostAvailable: () => _pageActive && XamlRoot is not null),
+            new OpenClawTray.AppLogger(),
+            nameof(OpenSessionCheckpoints));
 
     private IChatDataProvider? ResolveChatProvider(App? app)
     {

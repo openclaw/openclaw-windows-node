@@ -183,8 +183,9 @@ public sealed class ChatTimelinePresentationTests
         Assert.Contains("ChatTimelineItemKind.Status => BuildStatus(row, entry)", timeline);
         Assert.Contains("ChatCompactionPresenter.TryCreateForEntry(", timeline);
         Assert.Contains("Chat_Compaction_Title", timeline);
-        Assert.Contains("Chat_Compaction_MetricsFormat", timeline);
         Assert.Contains("Chat_Compaction_FallbackDetail", timeline);
+        Assert.Contains("Chat_Compaction_OpenCheckpoints", timeline);
+        Assert.Contains("row.Props.OnOpenCheckpoints!(sessionKey!)", timeline);
         Assert.Contains(".BorderThickness(ReactorChatComposer.IsHighContrast() ? 2 : 1)", timeline);
         Assert.Contains(".AutomationName(presentation.AutomationName)", timeline);
     }

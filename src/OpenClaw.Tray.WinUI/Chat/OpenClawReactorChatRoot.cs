@@ -29,6 +29,7 @@ public sealed record OpenClawReactorChatRootProps(
     Func<CancellationToken, Action?, Task<string?>>? OnVoiceRequest = null,
     Action? OnAttachClick = null,
     Action? OnSettingsClick = null,
+    Action<string>? OnOpenCheckpoints = null,
     Action<bool>? OnSpeakerMuteChanged = null,
     Func<string, string?, Task<bool>>? ConfirmResetAsync = null,
     bool InitialMuted = false,
@@ -318,6 +319,7 @@ public sealed class OpenClawReactorChatRoot : Component<OpenClawReactorChatRootP
             timelineProps,
             onSuggestionPicked,
             firstSendInFlight,
+            OnOpenCheckpoints: props.OnOpenCheckpoints,
             HistoryRevision: historyRevision));
         var composerElement = effectiveThread is null
             ? Empty()

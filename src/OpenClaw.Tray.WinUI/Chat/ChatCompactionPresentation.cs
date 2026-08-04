@@ -6,6 +6,7 @@ namespace OpenClawTray.Chat;
 internal sealed record ChatCompactionPresentation(
     string Title,
     string Detail,
+    string ActionLabel,
     string AutomationName);
 
 internal static class ChatCompactionPresenter
@@ -14,8 +15,8 @@ internal static class ChatCompactionPresenter
         ChatTimelineItem entry,
         IReadOnlyDictionary<string, ChatEntryMetadata>? entryMetadata,
         string? title = null,
-        string? metricsFormat = null,
-        string? fallbackDetail = null)
+        string? detail = null,
+        string? actionLabel = null)
     {
         if (entry.Kind != ChatTimelineItemKind.Status
             || entryMetadata?.TryGetValue(entry.Id, out var metadata) != true
@@ -25,12 +26,15 @@ internal static class ChatCompactionPresenter
             return null;
         }
 
-        return Create(
-            metadata.CompactionTokensBefore,
-            metadata.CompactionTokensAfter,
+        title ??= "COMPACTED HISTORY";
+        detail ??= "The compacted transcript is preserved as a checkpoint. " +
+            "Open session checkpoints to branch or restore from that compacted view.";
+        actionLabel ??= "Open checkpoints";
+        return new ChatCompactionPresentation(
             title,
-            metricsFormat,
-            fallbackDetail);
+            detail,
+            actionLabel,
+            $"{title}. {detail}");
     }
 
     public static ChatCompactionPresentation Create(
@@ -38,11 +42,13 @@ internal static class ChatCompactionPresenter
         long? tokensAfter,
         string? title = null,
         string? metricsFormat = null,
-        string? fallbackDetail = null)
+        string? fallbackDetail = null,
+        string? actionLabel = null)
     {
         title ??= "Context compacted";
         var detail = BuildDetail(tokensBefore, tokensAfter, metricsFormat, fallbackDetail);
-        return new ChatCompactionPresentation(title, detail, $"{title}. {detail}");
+        actionLabel ??= "Open checkpoints";
+        return new ChatCompactionPresentation(title, detail, actionLabel, $"{title}. {detail}");
     }
 
     private static string BuildDetail(

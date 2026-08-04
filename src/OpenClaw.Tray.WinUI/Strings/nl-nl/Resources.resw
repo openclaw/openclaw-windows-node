@@ -2843,13 +2843,16 @@ Gebruik een van deze opties:
     <value>Voltooid</value>
   </data>
   <data name="Chat_Compaction_Title" xml:space="preserve">
-    <value>Context gecomprimeerd</value>
+    <value>GECOMPRIMEERDE GESCHIEDENIS</value>
   </data>
   <data name="Chat_Compaction_MetricsFormat" xml:space="preserve">
     <value>{0} → {1} tokens · {2} bespaard</value>
   </data>
   <data name="Chat_Compaction_FallbackDetail" xml:space="preserve">
-    <value>Eerdere context is samengevat in een controlepunt.</value>
+    <value>Het gecomprimeerde transcript wordt bewaard als controlepunt. Open de sessiecontrolepunten om vanaf die gecomprimeerde weergave een vertakking te maken of deze te herstellen.</value>
+  </data>
+  <data name="Chat_Compaction_OpenCheckpoints" xml:space="preserve">
+    <value>Controlepunten openen</value>
   </data>
   <data name="Chat_PendingNewSessionTitle" xml:space="preserve">
     <value>Nieuwe sessie</value>

@@ -36,6 +36,7 @@ public static class ReactorChatHostExtensions
         Func<CancellationToken, Action?, Task<string?>>? onVoiceRequest = null,
         Action? onAttachClick = null,
         Action? onSettingsClick = null,
+        Action<string>? onOpenCheckpoints = null,
         Action<bool>? onSpeakerMuteChanged = null,
         bool initialMuted = false,
         bool isCompact = false)
@@ -81,6 +82,7 @@ public static class ReactorChatHostExtensions
             onVoiceRequest,
             onAttachClick,
             onSettingsClick,
+            onOpenCheckpoints,
             onSpeakerMuteChanged,
             ConfirmResetAsync,
             initialMuted,

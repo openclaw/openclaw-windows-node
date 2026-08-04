@@ -2842,13 +2842,16 @@
     <value>完成</value>
   </data>
   <data name="Chat_Compaction_Title" xml:space="preserve">
-    <value>上下文已压缩</value>
+    <value>已压缩的历史记录</value>
   </data>
   <data name="Chat_Compaction_MetricsFormat" xml:space="preserve">
     <value>{0} → {1} 个令牌 · 节省 {2}</value>
   </data>
   <data name="Chat_Compaction_FallbackDetail" xml:space="preserve">
-    <value>较早的上下文已汇总到检查点中。</value>
+    <value>压缩后的对话记录会保留为检查点。打开会话检查点，以便从该压缩视图创建分支或进行还原。</value>
+  </data>
+  <data name="Chat_Compaction_OpenCheckpoints" xml:space="preserve">
+    <value>打开检查点</value>
   </data>
   <data name="Chat_PendingNewSessionTitle" xml:space="preserve">
     <value>新会话</value>

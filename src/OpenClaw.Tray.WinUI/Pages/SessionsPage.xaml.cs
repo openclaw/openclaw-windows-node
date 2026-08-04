@@ -4,6 +4,7 @@ using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Media;
 using OpenClaw.Shared;
 using OpenClaw.Shared.Sessions;
+using OpenClawTray.Dialogs;
 using OpenClawTray.Helpers;
 using OpenClawTray.Services;
 using OpenClawTray.Windows;
@@ -558,253 +559,26 @@ public sealed partial class SessionsPage : Page
     {
         var vm = ResolveSessionVm(sender);
         var key = vm?.Key ?? ResolveSessionKey(sender);
-        if (string.IsNullOrEmpty(key)) return;
-        if (XamlRoot == null) return;
+        if (string.IsNullOrEmpty(key))
+            return;
 
-        var client = CurrentApp.GatewayClient;
-        if (client == null) { ShowDisconnected(); return; }
-
-        var name = SessionActionPlanner.Describe(key, vm?.DisplayName);
-        var isMainState = ResolveMainState(key, vm);
-        var isMain = isMainState == SessionMainState.Main;
-
-        SessionCompactionCheckpointList list;
-        try
+        if (CurrentApp.GatewayClient is null)
         {
-            list = await client.ListCompactionCheckpointsAsync(key);
-        }
-        catch (Exception ex)
-        {
-            ShowActionFailure("Couldn't load checkpoints", ex);
+            ShowDisconnected();
             return;
         }
 
-        if (!list.IsSupported)
-        {
-            ShowActionInfo("Not supported", "This gateway doesn't support session compaction checkpoints. Update the gateway to use this.", InfoBarSeverity.Informational);
-            return;
-        }
-
-        if (_unloaded || XamlRoot == null)
-            return;
-
-        var checkpoints = list.Checkpoints
-            .OrderByDescending(c => c.CreatedAt ?? DateTime.MinValue)
-            .ToList();
-
-        var branchTarget = checkpoints.FirstOrDefault(c => !string.IsNullOrWhiteSpace(c.Id));
-        var restoreTarget = SessionCheckpointSelection.ResolveUnambiguousLatest(checkpoints);
-        var canRestore = restoreTarget is not null
-            && SessionActionPlanner.IsAllowed(SessionActionKind.Restore, isMainState, out _);
-        var actionHint = BuildCheckpointActionHint(checkpoints.Count, branchTarget, restoreTarget, canRestore, isMainState);
-
-        var body = new StackPanel { Spacing = 12 };
-
-        if (checkpoints.Count == 0)
-        {
-            body.Children.Add(new TextBlock
+        await SessionCheckpointDialogCoordinator.ShowAsync(
+            XamlRoot,
+            key,
+            isHostAvailable: () => !_unloaded && XamlRoot is not null,
+            showStatusAsync: (title, message, severity) =>
             {
-                Text = "No compaction checkpoints yet. Compacting this session creates one you can branch from or restore to.",
-                TextWrapping = TextWrapping.Wrap,
-            });
-        }
-        else
-        {
-            body.Children.Add(new TextBlock
-            {
-                Text = $"{checkpoints.Count} checkpoint{(checkpoints.Count == 1 ? "" : "s")} \u00B7 newest first",
-                Style = (Style)Application.Current.Resources["CaptionTextBlockStyle"],
-            });
-
-            var listPanel = new StackPanel { Spacing = 4 };
-            foreach (var cp in checkpoints)
-            {
-                listPanel.Children.Add(new TextBlock
-                {
-                    Text = "\u2022 " + DescribeCheckpoint(cp),
-                    TextWrapping = TextWrapping.Wrap,
-                });
-            }
-            body.Children.Add(listPanel);
-
-            body.Children.Add(new TextBlock
-            {
-                Text = actionHint,
-                Style = (Style)Application.Current.Resources["CaptionTextBlockStyle"],
-                Foreground = (Brush)Application.Current.Resources["TextFillColorSecondaryBrush"],
-                TextWrapping = TextWrapping.Wrap,
-            });
-        }
-
-        var dialog = new ContentDialog
-        {
-            Title = $"Checkpoints \u2014 {name}",
-            Content = body,
-            PrimaryButtonText = branchTarget is not null
-                ? (restoreTarget is not null ? "Branch from latest" : "Branch from latest targetable")
-                : "",
-            SecondaryButtonText = canRestore ? "Restore latest" : "",
-            CloseButtonText = "Close",
-            DefaultButton = ContentDialogButton.Close,
-            XamlRoot = XamlRoot,
-        };
-
-        var result = await dialog.ShowAsync();
-        if (result == ContentDialogResult.Primary && branchTarget is not null)
-            await BranchCheckpointAsync(key, branchTarget.Id);
-        else if (result == ContentDialogResult.Secondary && restoreTarget is not null)
-            await RestoreCheckpointAsync(key, name, isMain, restoreTarget.Id);
-    }
-
-    private static string DescribeCheckpoint(SessionCompactionCheckpoint cp)
-    {
-        var parts = new List<string>(3);
-        if (cp.CreatedAt is { } ts) parts.Add(ts.ToLocalTime().ToString("g"));
-        if (!string.IsNullOrWhiteSpace(cp.Reason)) parts.Add(cp.Reason!);
-        if (cp.TokensBefore is { } tb && cp.TokensAfter is { } ta) parts.Add($"{tb:n0}\u2192{ta:n0} tokens");
-
-        var head = parts.Count > 0
-            ? string.Join(" \u00B7 ", parts)
-            : (string.IsNullOrEmpty(cp.Id) ? "checkpoint" : cp.Id);
-
-        if (!string.IsNullOrWhiteSpace(cp.Summary))
-            head += $" \u2014 {cp.Summary}";
-        return head;
-    }
-
-    private static string BuildCheckpointActionHint(
-        int checkpointCount,
-        SessionCompactionCheckpoint? branchTarget,
-        SessionCompactionCheckpoint? restoreTarget,
-        bool canRestore,
-        SessionMainState mainState)
-    {
-        if (checkpointCount <= 0)
-            return "";
-
-        if (canRestore)
-        {
-            return "Actions apply to the most recent checkpoint (top of the list). " +
-                   "Branch starts a new session from it; Restore rolls this session back to it.";
-        }
-
-        var reason = mainState == SessionMainState.Main
-            ? "Restore is unavailable for the main session."
-            : restoreTarget is null
-                ? "Restore is unavailable because the latest checkpoint can't be determined safely."
-                : "Restore is unavailable for this session.";
-
-        var branchText = branchTarget is null
-            ? "Branch is unavailable because no checkpoint has a checkpoint id."
-            : "Branch starts a new session from the latest targetable checkpoint.";
-        return branchText + " " + reason;
-    }
-
-    private async Task BranchCheckpointAsync(string key, string checkpointId)
-    {
-        if (string.IsNullOrWhiteSpace(checkpointId))
-        {
-            ShowActionInfo("Action unavailable", "This checkpoint can't be branched because it has no checkpoint id.", InfoBarSeverity.Informational);
-            return;
-        }
-
-        var client = CurrentApp.GatewayClient;
-        if (client == null) { ShowDisconnected(); return; }
-
-        SessionCompactionMutationResult result;
-        try
-        {
-            result = await client.BranchCompactionCheckpointAsync(key, checkpointId);
-        }
-        catch (Exception ex)
-        {
-            ShowActionFailure("Branch failed", ex);
-            return;
-        }
-
-        if (!result.IsSupported)
-            ShowActionInfo("Not supported", "This gateway doesn't support branching from a checkpoint. Update the gateway to use this.", InfoBarSeverity.Informational);
-        else if (result.Ok)
-        {
-            ShowActionInfo("Branched", result.ResultSessionKey is { Length: > 0 } nk ? $"Created session {nk}." : "Created a new session from the checkpoint.", InfoBarSeverity.Success);
-            _ = client.RequestSessionsAsync();
-        }
-        else
-            ShowActionInfo("Branch failed", result.Error ?? "Could not branch from the checkpoint.", InfoBarSeverity.Error);
-    }
-
-    private async Task RestoreCheckpointAsync(string key, string name, bool isMain, string checkpointId)
-    {
-        var mainState = ResolveMainState(key, null);
-        if (isMain && mainState == SessionMainState.NotMain)
-            mainState = SessionMainState.Main;
-
-        if (!SessionActionPlanner.IsAllowed(SessionActionKind.Restore, mainState, out var blockedReason))
-        {
-            ShowActionInfo("Action unavailable", blockedReason ?? "Restore isn't available for this session.", InfoBarSeverity.Informational);
-            return;
-        }
-
-        var prompt = SessionActionPlanner.BuildPrompt(SessionActionKind.Restore, key, name, mainState == SessionMainState.Main);
-        if (prompt is not null && !await ConfirmAsync(prompt))
-            return;
-
-        var client = CurrentApp.GatewayClient;
-        if (client == null) { ShowDisconnected(); return; }
-
-        mainState = ResolveMainState(key, null);
-        if (isMain && mainState == SessionMainState.NotMain)
-            mainState = SessionMainState.Main;
-        if (!SessionActionPlanner.IsAllowed(SessionActionKind.Restore, mainState, out blockedReason))
-        {
-            ShowActionInfo("Action unavailable", blockedReason ?? "Restore isn't available for this session.", InfoBarSeverity.Informational);
-            return;
-        }
-
-        // Re-check before restore so a concurrent compaction cannot make the
-        // confirmed "latest" checkpoint stale.
-        try
-        {
-            var fresh = await client.ListCompactionCheckpointsAsync(key);
-            if (!fresh.IsSupported)
-            {
-                ShowActionInfo("Not supported", "This gateway doesn't support restoring a checkpoint. Update the gateway to use this.", InfoBarSeverity.Informational);
-                return;
-            }
-
-            var freshLatest = SessionCheckpointSelection.ResolveUnambiguousLatest(fresh.Checkpoints);
-            if (freshLatest is null || !string.Equals(freshLatest.Id, checkpointId, StringComparison.Ordinal))
-            {
-                ShowActionInfo("Checkpoints changed", "The latest checkpoint changed since you opened this. Reopen Checkpoints and try again.", InfoBarSeverity.Warning);
-                return;
-            }
-        }
-        catch (Exception ex)
-        {
-            ShowActionFailure("Restore failed", ex);
-            return;
-        }
-
-        SessionCompactionMutationResult result;
-        try
-        {
-            result = await client.RestoreCompactionCheckpointAsync(key, checkpointId);
-        }
-        catch (Exception ex)
-        {
-            ShowActionFailure("Restore failed", ex);
-            return;
-        }
-
-        if (!result.IsSupported)
-            ShowActionInfo("Not supported", "This gateway doesn't support restoring a checkpoint. Update the gateway to use this.", InfoBarSeverity.Informational);
-        else if (result.Ok)
-        {
-            ShowActionInfo("Restored", "Rolled the session back to the checkpoint.", InfoBarSeverity.Success);
-            _ = client.RequestSessionsAsync();
-        }
-        else
-            ShowActionInfo("Restore failed", result.Error ?? "Could not restore the checkpoint.", InfoBarSeverity.Error);
+                ShowActionInfo(title, message, severity);
+                return Task.CompletedTask;
+            },
+            displayName: vm?.DisplayName,
+            rowIsMain: vm?.IsMain);
     }
 
     private async Task<bool> ConfirmAsync(SessionActionPrompt prompt)

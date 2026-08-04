@@ -2889,13 +2889,16 @@ Use one of these options:
     <value>Done</value>
   </data>
   <data name="Chat_Compaction_Title" xml:space="preserve">
-    <value>Context compacted</value>
+    <value>COMPACTED HISTORY</value>
   </data>
   <data name="Chat_Compaction_MetricsFormat" xml:space="preserve">
     <value>{0} → {1} tokens · {2} saved</value>
   </data>
   <data name="Chat_Compaction_FallbackDetail" xml:space="preserve">
-    <value>Earlier context was summarized into a checkpoint.</value>
+    <value>The compacted transcript is preserved as a checkpoint. Open session checkpoints to branch or restore from that compacted view.</value>
+  </data>
+  <data name="Chat_Compaction_OpenCheckpoints" xml:space="preserve">
+    <value>Open checkpoints</value>
   </data>
   <data name="Chat_PendingNewSessionTitle" xml:space="preserve">
     <value>New session</value>
