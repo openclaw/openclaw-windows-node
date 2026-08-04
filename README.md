@@ -90,13 +90,38 @@ Choose a preset (Locked Down, Recommended, Unprotected) or configure each contro
 | **OpenClaw.Cli** | CLI WebSocket validator |
 | **OpenClawTray.FunctionalUI** | Declarative WinUI helpers |
 
-### Build and run
+### Prerequisites
 
 ```powershell
-.\scripts\setup-dev.ps1       # One-time: install prerequisites
-.\build.ps1                   # Build all
-.\run-app-local.ps1           # Build and launch
-.\run-app-local.ps1 -Isolated # Separate settings per worktree
+.\scripts\setup-dev.ps1                # Install missing prerequisites (winget, .NET, etc.)
+.\scripts\setup-dev.ps1 -CheckOnly     # Verify without installing
+.\scripts\setup-dev.ps1 -RunValidation # Install + run full build/test validation
+```
+
+### Build
+
+```powershell
+.\build.ps1                            # Build all projects
+.\build.ps1 -Project WinUI            # Build only the tray app
+.\build.ps1 -CheckOnly                # Check prerequisites without building
+```
+
+Or build directly with `dotnet` (note: WinUI requires a runtime identifier):
+
+```powershell
+dotnet build src/OpenClaw.Tray.WinUI -r win-x64     # x64
+dotnet build src/OpenClaw.Tray.WinUI -r win-arm64   # ARM64
+dotnet build src/OpenClaw.Tray.WinUI -r win-x64 -p:PackageMsix=true  # MSIX package
+```
+
+### Run
+
+```powershell
+.\run-app-local.ps1                    # Build and launch
+.\run-app-local.ps1 -NoBuild          # Launch existing build (skip rebuild)
+.\run-app-local.ps1 -Isolated         # Separate settings per worktree
+.\run-app-local.ps1 -Dev -Isolated    # Side-by-side dev identity (own mutex, port, distro)
+.\run-app-local.ps1 -Configuration Release -Isolated -UpdateChannel alpha  # Test updates
 ```
 
 ### Test
