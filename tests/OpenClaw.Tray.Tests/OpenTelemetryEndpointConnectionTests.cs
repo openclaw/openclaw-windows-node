@@ -522,10 +522,12 @@ public sealed class OpenTelemetryEndpointConnectionTests
     {
         var root = TestRepositoryPaths.GetRepositoryRoot();
         var app = File.ReadAllText(Path.Combine(root, "src", "OpenClaw.Tray.WinUI", "App.xaml.cs"));
+        var settingsCoordinator = File.ReadAllText(Path.Combine(
+            root, "src", "OpenClaw.Tray.WinUI", "App.SettingsChangeCoordinator.cs"));
         var debugPage = File.ReadAllText(Path.Combine(root, "src", "OpenClaw.Tray.WinUI", "Pages", "DebugPage.xaml.cs"));
 
         Assert.Contains("_openTelemetryConnection = new OpenTelemetryEndpointConnection();", app);
-        Assert.Contains("ApplyOpenTelemetryEndpointSettings();", app);
+        Assert.Contains("ApplyOpenTelemetryEndpointSettings();", settingsCoordinator);
         Assert.Contains("OnSettingsSaved", app);
         Assert.DoesNotContain("new OpenTelemetryEndpointConnection", debugPage);
     }

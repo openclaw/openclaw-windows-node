@@ -40,7 +40,7 @@ public sealed class AppRefactorContractTests
             "await ShowOnboardingAsync();",
             "EnsureNodeService(_settings);",
             "InitializeGatewayClient();",
-            "StartDeepLinkServer();");
+            "await _activationRouter.StartForwardedActivationListenerAsync(this, CancellationToken.None);");
     }
 
     [Fact]
@@ -518,14 +518,14 @@ public sealed class AppRefactorContractTests
     public void OnSettingsSaved_AppliesMcpStartupNotificationPlan()
     {
         var source = ReadAppSources();
-        var method = ExtractMethod(source, "OnSettingsSaved");
+        var method = ExtractMethod(source, "ApplyMcpRuntime");
 
-        Assert.Contains("nodeService?.SetMcpEnabled(_settings.EnableMcpServer)", method);
+        Assert.Contains("nodeService?.SetMcpEnabled(settings.EnableMcpServer)", method);
         Assert.Contains("McpRuntimeStatePolicy.PlanStartupNotification", method);
         Assert.Contains("ApplyMcpStartupNotificationPlan", method);
         AssertInOrder(
             method,
-            "nodeService?.SetMcpEnabled(_settings.EnableMcpServer)",
+            "nodeService?.SetMcpEnabled(settings.EnableMcpServer)",
             "ApplyMcpStartupNotificationPlan",
             "McpRuntimeStatePolicy.PlanStartupNotification");
     }
@@ -720,14 +720,28 @@ public sealed class AppRefactorContractTests
         var source = ReadAppSources();
         var method = ExtractMethod(source, "OnToastActivated");
 
-        Assert.Contains("ToastArguments.Parse(args.Argument)", method);
-        Assert.Contains("OnUiThread(() =>", method);
-        Assert.Contains("ToastActivationRouter.Route", method);
-        Assert.Contains("OpenDashboard = () => OpenDashboard()", method);
-        Assert.Contains("OpenSettings = ShowSettings", method);
-        Assert.Contains("OpenChat = sessionKey => ShowWebChat(sessionKey)", method);
-        Assert.Contains("OpenActivity = () => ShowHub(\"channels\")", method);
-        Assert.Contains("CopyPairingCommand = command =>", method);
+        AssertInOrder(
+            method,
+            "var activationRouter = _activationRouter;",
+            "activationRouter.PlanToast(args.Argument)",
+            "activationRouter.DispatchPlanAsync(plan, this, CancellationToken.None)");
+        Assert.DoesNotContain("_activationRouter.PlanToast", method);
+        Assert.Contains("ObserveBackgroundFault(", method);
+
+        var routerSource = ReadActivationRouterServiceSource();
+        Assert.Contains("public ActivationPlan PlanToast(string? argument)", routerSource);
+
+        var toastRouteSource = ReadToastActivationRouterSource();
+        Assert.Contains("internal static ActivationRoute? PlanRoute(", toastRouteSource);
+        Assert.Contains("case \"open_dashboard\"", toastRouteSource);
+        Assert.Contains("case \"open_settings\"", toastRouteSource);
+        Assert.Contains("case \"open_chat\"", toastRouteSource);
+        Assert.Contains("case \"open_activity\"", toastRouteSource);
+        Assert.Contains("case \"copy_pairing_command\"", toastRouteSource);
+
+        var sinkSource = ReadAppActivationRouterSource();
+        Assert.Contains("Task IActivationPlanSink.DispatchAsync(ActivationRoute route, CancellationToken cancellationToken)", sinkSource);
+        Assert.Contains("_dispatcherQueue?.TryEnqueue(", sinkSource);
     }
 
     [Fact]
@@ -945,24 +959,88 @@ public sealed class AppRefactorContractTests
     public void Shutdown_Order_PreservesAwaitedTeardownBeforeExit()
     {
         var source = ReadAppSources();
-        var method = ExtractMethod(source, "ExitApplicationAsync");
+        var method = ExtractMethod(source, "BuildShutdownPlan");
 
         AssertInOrder(
             method,
-            "_deepLinkCts.Cancel()",
-            "global hotkey",
-            "chat coordinator",
-            "gateway client",
+            "\"activation router\"",
+            "ToastNotificationManagerCompat.OnActivated -= OnToastActivated",
+            "_activationRouter = null",
+            "activationRouter.DisposeAsync()",
+            "\"global hotkey\"",
+            "\"chat coordinator\"",
+            "\"managed-local auto-repair monitor\"",
+            "\"gateway client\"",
             "connectionManager.DisposeAsync()",
-            "node service",
+            "\"node service\"",
             "nodeService.DisposeAsync()",
-            "standalone voice service",
+            "\"standalone voice service\"",
             "standaloneVoiceService.DisposeAsync()",
-            "ssh tunnel service",
-            "tray icon",
-            "single-instance mutex",
-            "deep link token source",
-            "Exit();");
+            "\"ssh tunnel service\"",
+            "\"pairing approval\"",
+            "\"app state observers\"",
+            "\"window manager\"",
+            "\"tray menu window\"",
+            "\"settings coordinator\"",
+            "\"service provider\"",
+            "\"tray icon\"",
+            "\"single-instance mutex\"",
+            "ExitApplication: Exit");
+
+        var exitMethod = ExtractMethod(source, "ExitApplicationAsync");
+        Assert.Contains("var plan = BuildShutdownPlan();", exitMethod);
+        Assert.Contains("_shutdownCoordinator.ShutdownAsync(plan)", exitMethod);
+
+        var coordinatorSource = ReadAppShutdownCoordinatorServiceSource();
+        Assert.Contains("plan.BeginShutdown();", coordinatorSource);
+        AssertInOrder(
+            coordinatorSource,
+            "plan.BeginShutdown();",
+            "foreach (var step in plan.Steps)",
+            "plan.ExitApplication();");
+    }
+
+    [Fact]
+    public void Shutdown_AsyncResourceFieldsClearInFinally_AndActivationDetachesBeforeAwait()
+    {
+        var source = ReadAppSources();
+        var method = ExtractMethod(source, "BuildShutdownPlan");
+
+        AssertInOrder(
+            method,
+            "ToastNotificationManagerCompat.OnActivated -= OnToastActivated;",
+            "ReferenceEquals(_activationRouter, activationRouter)",
+            "_activationRouter = null;",
+            "await activationRouter.DisposeAsync();");
+
+        AssertAsyncResourceClearedInFinally(
+            method,
+            "var autoRepairMonitor = _managedLocalAutoRepairMonitor;",
+            "var connectionManager = _connectionManager;",
+            "await autoRepairMonitor.DisposeAsync();",
+            "ReferenceEquals(_managedLocalAutoRepairMonitor, autoRepairMonitor)",
+            "_managedLocalAutoRepairMonitor = null;");
+        AssertAsyncResourceClearedInFinally(
+            method,
+            "var connectionManager = _connectionManager;",
+            "steps.Add(new AppShutdownStep(\"OpenTelemetry endpoint\"",
+            "await connectionManager.DisposeAsync();",
+            "ReferenceEquals(_connectionManager, connectionManager)",
+            "_connectionManager = null;");
+        AssertAsyncResourceClearedInFinally(
+            method,
+            "var nodeService = _nodeService;",
+            "var standaloneVoiceService = _standaloneVoiceService;",
+            "await nodeService.DisposeAsync();",
+            "ReferenceEquals(_nodeService, nodeService)",
+            "_nodeService = null;");
+        AssertAsyncResourceClearedInFinally(
+            method,
+            "var standaloneVoiceService = _standaloneVoiceService;",
+            "steps.Add(new AppShutdownStep(\"ssh tunnel service\"",
+            "await standaloneVoiceService.DisposeAsync();",
+            "ReferenceEquals(_standaloneVoiceService, standaloneVoiceService)",
+            "_standaloneVoiceService = null;");
     }
 
     [Fact]
@@ -1046,7 +1124,9 @@ public sealed class AppRefactorContractTests
         Assert.Contains("\"--post-setup-restart\"", source);
         Assert.Contains("\"--wait-for-pid\"", source);
         Assert.Contains("\"--post-setup-launch\"", source);
-        Assert.Contains("$\"{AppIdentity.ProtocolScheme}://chat\"", source);
+        var activationRouterSource = ReadActivationRouterServiceSource();
+        Assert.Contains("$\"{_protocolScheme}://chat\"", activationRouterSource);
+        Assert.Contains("input.PostSetupLaunch, \"chat\"", activationRouterSource);
         Assert.Contains("WaitForRestartSourceIfRequested(Environment.GetCommandLineArgs())", source);
         AssertInOrder(source, "WaitForRestartSourceIfRequested(Environment.GetCommandLineArgs())", "_mutex = new Mutex");
         Assert.DoesNotContain("setupWindow.TryNavigateToWizard()", source);
@@ -1588,7 +1668,7 @@ public sealed class AppRefactorContractTests
     public void AppNotifications_SandboxRiskMessageReflectsStrictFallbackBlocking()
     {
         var source = ReadAppSources();
-        var method = ExtractMethod(source, "PublishSandboxRiskNotification");
+        var method = ExtractMethod(source, "PublishSandboxRiskNotification", parameterHint: "MxcAvailability");
 
         Assert.Contains("SystemRunBlockHostFallbackWhenMxcUnavailable", method);
         Assert.Contains("AppNotification_SandboxUnavailableBlocked_Title", method);
@@ -1721,14 +1801,72 @@ public sealed class AppRefactorContractTests
             "WindowManager.cs"));
     }
 
-    private static string ExtractMethod(string source, string methodName)
+    private static string ReadActivationRouterServiceSource()
     {
-        var match = Regex.Match(
-            source,
-            $@"(?m)^\s*(?:private|protected|public|internal)\s+(?:static\s+)?(?:async\s+)?(?:Task(?:<[^>]+>)?|System\.Threading\.Tasks\.Task|void|bool|int|string\??|object\??|IntPtr|TrayMenuSnapshot|RollbackResult|OpenClaw\.Connection\.GatewayCredential\?)\s+{Regex.Escape(methodName)}\s*\(");
-        Assert.True(match.Success, $"Could not find method {methodName}.");
+        var root = TestRepositoryPaths.GetRepositoryRoot();
+        return File.ReadAllText(Path.Combine(
+            root, "src", "OpenClaw.Tray.WinUI", "Services", "ActivationRouter.cs"));
+    }
 
-        var brace = source.IndexOf('{', match.Index);
+    private static string ReadToastActivationRouterSource()
+    {
+        var root = TestRepositoryPaths.GetRepositoryRoot();
+        return File.ReadAllText(Path.Combine(
+            root, "src", "OpenClaw.Tray.WinUI", "Services", "ToastActivationRouter.cs"));
+    }
+
+    private static string ReadAppActivationRouterSource()
+    {
+        var root = TestRepositoryPaths.GetRepositoryRoot();
+        return File.ReadAllText(Path.Combine(
+            root, "src", "OpenClaw.Tray.WinUI", "App.ActivationRouter.cs"));
+    }
+
+    private static string ReadAppShutdownCoordinatorServiceSource()
+    {
+        var root = TestRepositoryPaths.GetRepositoryRoot();
+        return File.ReadAllText(Path.Combine(
+            root, "src", "OpenClaw.Tray.WinUI", "Services", "AppShutdownCoordinator.cs"));
+    }
+
+    private static string ExtractMethod(string source, string methodName, string? parameterHint = null)
+    {
+        var pattern = $@"(?m)^\s*(?:(?:private|protected|public|internal)\s+)?(?:static\s+)?(?:async\s+)?(?:Task(?:<[^>]+>)?|System\.Threading\.Tasks\.Task|void|bool|int|string\??|object\??|IntPtr|TrayMenuSnapshot|RollbackResult|OpenClaw\.Connection\.GatewayCredential\?|AppShutdownPlan)\s+(?:[A-Za-z0-9_]+\.)?{Regex.Escape(methodName)}\s*\(";
+        var matches = Regex.Matches(source, pattern);
+        Assert.True(matches.Count > 0, $"Could not find method {methodName}.");
+
+        // Prefer a block-bodied candidate matching parameterHint (when given): thin
+        // expression-bodied forwarders sharing the same short name (e.g. explicit interface
+        // effect-port implementations) must not shadow the real implementation. Fall back to
+        // the first match when no block-bodied candidate qualifies, preserving prior behavior
+        // for single-match expression-bodied methods.
+        var methodStart = -1;
+        foreach (Match candidate in matches)
+        {
+            var paramStart = source.IndexOf('(', candidate.Index);
+            var paramEnd = source.IndexOf(')', paramStart);
+
+            var afterParams = paramEnd + 1;
+            while (afterParams < source.Length && char.IsWhiteSpace(source[afterParams]))
+                afterParams++;
+            if (afterParams >= source.Length || source[afterParams] != '{')
+                continue;
+
+            if (parameterHint != null)
+            {
+                var parameterList = source.Substring(paramStart, paramEnd - paramStart);
+                if (!parameterList.Contains(parameterHint, StringComparison.Ordinal))
+                    continue;
+            }
+
+            methodStart = candidate.Index;
+            break;
+        }
+
+        if (methodStart < 0)
+            methodStart = matches[0].Index;
+
+        var brace = source.IndexOf('{', methodStart);
         Assert.True(brace >= 0, $"Could not find body for method {methodName}.");
 
         var depth = 0;
@@ -1743,12 +1881,27 @@ public sealed class AppRefactorContractTests
                 depth--;
                 if (depth == 0)
                 {
-                    return source.Substring(match.Index, index - match.Index + 1);
+                    return source.Substring(methodStart, index - methodStart + 1);
                 }
             }
         }
 
         throw new InvalidOperationException($"Could not extract method {methodName}.");
+    }
+
+    private static void AssertAsyncResourceClearedInFinally(
+        string source,
+        string blockStart,
+        string blockEnd,
+        string disposeAwait,
+        string referenceCheck,
+        string fieldClear)
+    {
+        var start = source.IndexOf(blockStart, StringComparison.Ordinal);
+        var end = source.IndexOf(blockEnd, start + blockStart.Length, StringComparison.Ordinal);
+        Assert.True(start >= 0 && end > start, $"Could not isolate shutdown block starting with: {blockStart}");
+        var block = source.Substring(start, end - start);
+        AssertInOrder(block, "try", disposeAwait, "finally", referenceCheck, fieldClear);
     }
 
     private static void AssertInOrder(string source, params string[] markers)

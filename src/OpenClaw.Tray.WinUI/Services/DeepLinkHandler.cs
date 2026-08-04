@@ -49,11 +49,29 @@ public static class DeepLinkHandler
     private static bool IsPackagedApp() => OpenClawTray.Helpers.PackageHelper.IsPackaged;
 #endif
 
+    /// <summary>
+    /// Compatibility entry point kept for existing callback-based callers/tests. Production
+    /// activation goes through <see cref="PlanRoute"/> plus App's single
+    /// <c>IActivationPlanSink</c> switch; this method only translates the same plan into the
+    /// legacy <see cref="DeepLinkActions"/> shape so it must not gain its own route mapping.
+    /// </summary>
     public static void Handle(string uri, DeepLinkActions actions)
     {
-        var result = OpenClaw.Shared.DeepLinkParser.ParseDeepLink(uri, AppIdentity.ProtocolScheme);
+        var route = PlanRoute(uri, AppIdentity.ProtocolScheme);
+        if (route != null)
+            Apply(route, actions);
+    }
+
+    /// <summary>
+    /// The single deep-link route table. Parses <paramref name="uri"/> and returns the semantic
+    /// <see cref="ActivationRoute"/> for it, or <see langword="null"/> when the URI is invalid or
+    /// its path is unrecognized (both cases are logged here, matching prior behavior).
+    /// </summary>
+    internal static ActivationRoute? PlanRoute(string uri, string scheme)
+    {
+        var result = OpenClaw.Shared.DeepLinkParser.ParseDeepLink(uri, scheme);
         if (result == null)
-            return;
+            return null;
 
         var path = result.Path?.TrimEnd('/') ?? string.Empty;
 
@@ -62,12 +80,10 @@ public static class DeepLinkHandler
         switch (path.ToLowerInvariant())
         {
             case "settings":
-                actions.OpenHub?.Invoke("settings");
-                break;
+                return new ActivationRoute.OpenHub("settings");
 
             case "chat":
-                actions.OpenHub?.Invoke("chat");
-                break;
+                return new ActivationRoute.OpenHub("chat");
 
             case "activity":
                 // ActivityPage was removed. Redirect by filter: channel events
@@ -75,7 +91,7 @@ public static class DeepLinkHandler
                 // own dedicated pages; notifications fall through to Channels.
                 {
                     var filter = result.Parameters.GetValueOrDefault("filter");
-                    actions.OpenHub?.Invoke(filter switch
+                    return new ActivationRoute.OpenHub(filter switch
                     {
                         "session" => "sessions",
                         "usage" => "usage",
@@ -83,181 +99,233 @@ public static class DeepLinkHandler
                         _ => "channels",
                     });
                 }
-                break;
 
             case "history":
                 // Legacy notification-history alias — Channels page is the closest match.
-                actions.OpenHub?.Invoke("channels");
-                break;
+                return new ActivationRoute.OpenHub("channels");
 
             case "commandcenter":
-                actions.OpenHub?.Invoke("connection");
-                break;
+                return new ActivationRoute.OpenHub("connection");
 
             case "setup":
-                actions.OpenSetup?.Invoke();
-                break;
+                return new ActivationRoute.OpenSetup();
 
             case "health":
             case "healthcheck":
             case "health-check":
-                if (actions.RunHealthCheck != null)
-                {
-                    _ = RunDeepLinkActionAsync("health check", () => Task.Run(actions.RunHealthCheck));
-                }
-                break;
+                return new ActivationRoute.RunHealthCheck();
 
             case "updates":
             case "update":
             case "check-updates":
             case "update-check":
-                if (actions.CheckForUpdates != null)
-                {
-                    _ = RunDeepLinkActionAsync("update check", actions.CheckForUpdates);
-                }
-                break;
+                return new ActivationRoute.CheckForUpdates();
 
             case "log":
             case "logs":
             case "log-file":
-                actions.OpenLogFile?.Invoke();
-                break;
+                return new ActivationRoute.OpenLogFile();
 
             case "log-folder":
             case "logs-folder":
-                actions.OpenLogFolder?.Invoke();
-                break;
+                return new ActivationRoute.OpenLogFolder();
 
             case "config":
             case "config-folder":
             case "settings-folder":
-                actions.OpenConfigFolder?.Invoke();
-                break;
+                return new ActivationRoute.OpenConfigFolder();
 
             case "diagnostics":
             case "diagnostics-folder":
-                actions.OpenDiagnosticsFolder?.Invoke();
-                break;
+                return new ActivationRoute.OpenDiagnosticsFolder();
 
             case "support":
             case "support-context":
-                actions.CopySupportContext?.Invoke();
-                break;
+                return new ActivationRoute.CopyDiagnostics(DiagnosticsCopyKind.SupportContext);
 
             case "debug-bundle":
             case "diagnostics-bundle":
             case "support-bundle":
-                actions.CopyDebugBundle?.Invoke();
-                break;
+                return new ActivationRoute.CopyDiagnostics(DiagnosticsCopyKind.DebugBundle);
 
             case "browser-setup":
             case "browser-guidance":
             case "browser-proxy-setup":
-                actions.CopyBrowserSetupGuidance?.Invoke();
-                break;
+                return new ActivationRoute.CopyDiagnostics(DiagnosticsCopyKind.BrowserSetupGuidance);
 
             case "ports":
             case "port-diagnostics":
             case "copy-port-diagnostics":
-                actions.CopyPortDiagnostics?.Invoke();
-                break;
+                return new ActivationRoute.CopyDiagnostics(DiagnosticsCopyKind.PortDiagnostics);
 
             case "capabilities":
             case "capability-diagnostics":
             case "copy-capability-diagnostics":
-                actions.CopyCapabilityDiagnostics?.Invoke();
-                break;
+                return new ActivationRoute.CopyDiagnostics(DiagnosticsCopyKind.CapabilityDiagnostics);
 
             case "nodes":
             case "node-inventory":
             case "copy-node-inventory":
-                actions.CopyNodeInventory?.Invoke();
-                break;
+                return new ActivationRoute.CopyDiagnostics(DiagnosticsCopyKind.NodeInventory);
 
             case "channels":
             case "channel-summary":
             case "copy-channel-summary":
-                actions.CopyChannelSummary?.Invoke();
-                break;
+                return new ActivationRoute.CopyDiagnostics(DiagnosticsCopyKind.ChannelSummary);
 
             case "activity-summary":
             case "copy-activity-summary":
-                actions.CopyActivitySummary?.Invoke();
-                break;
+                return new ActivationRoute.CopyDiagnostics(DiagnosticsCopyKind.ActivitySummary);
 
             case "extensibility":
             case "extensibility-summary":
             case "copy-extensibility-summary":
-                actions.CopyExtensibilitySummary?.Invoke();
-                break;
+                return new ActivationRoute.CopyDiagnostics(DiagnosticsCopyKind.ExtensibilitySummary);
 
             case "ssh-restart":
             case "restart-ssh":
             case "restart-ssh-tunnel":
-                actions.RestartSshTunnel?.Invoke();
-                break;
+                return new ActivationRoute.RestartSshTunnel();
 
             case "status":
             case "command-center":
-                actions.OpenHub?.Invoke("connection");
-                break;
+                return new ActivationRoute.OpenHub("connection");
 
             case "tray":
             case "tray-menu":
             case "menu":
-                actions.OpenTrayMenu?.Invoke();
-                break;
+                return new ActivationRoute.OpenTrayMenu();
 
             case "notifications":
             case "notification-history":
             case "activity-stream":
                 // ActivityPage removed — channel events now live on the Channels page.
-                actions.OpenHub?.Invoke("channels");
-                break;
+                return new ActivationRoute.OpenHub("channels");
+
             case "dashboard":
-                actions.OpenDashboard?.Invoke(null);
-                break;
+                return new ActivationRoute.OpenDashboard(null);
 
             case var p when p.StartsWith("dashboard/"):
-                var dashboardPath = p["dashboard/".Length..];
-                actions.OpenDashboard?.Invoke(dashboardPath);
-                break;
+                return new ActivationRoute.OpenDashboard(p["dashboard/".Length..]);
 
             case "agent":
                 var agentMessage = result.Parameters.GetValueOrDefault("message");
-                if (!string.IsNullOrEmpty(agentMessage) && actions.SendMessage != null)
-                {
-                    _ = RunDeepLinkActionAsync("agent message", async () =>
-                    {
-                        await actions.SendMessage(agentMessage);
-                        Logger.Info("DeepLinkHandler: Sent message via deep link");
-                    });
-                }
-                else if (!string.IsNullOrEmpty(agentMessage))
-                {
-                    Logger.Warn("Deep link: agent message received but SendMessage handler is not registered");
-                }
-                break;
+                return string.IsNullOrEmpty(agentMessage) ? null : new ActivationRoute.SendMessage(agentMessage);
 
             case "voice":
             case "voice-start":
-                actions.OpenVoice?.Invoke();
-                break;
+                return new ActivationRoute.OpenVoice();
 
             case "voice-stop":
-                actions.StopVoice?.Invoke();
-                break;
+                return new ActivationRoute.StopVoice();
 
             default:
                 if (path == "hub" || path.StartsWith("hub/"))
                 {
                     var hubPage = path == "hub" ? null : path["hub/".Length..];
-                    actions.OpenHub?.Invoke(hubPage);
+                    return new ActivationRoute.OpenHub(hubPage);
+                }
+
+                Logger.Warn($"Unknown deep link path: {path}");
+                return null;
+        }
+    }
+
+    private static void Apply(ActivationRoute route, DeepLinkActions actions)
+    {
+        switch (route)
+        {
+            case ActivationRoute.OpenHub r:
+                actions.OpenHub?.Invoke(r.Page);
+                break;
+            case ActivationRoute.OpenSetup:
+                actions.OpenSetup?.Invoke();
+                break;
+            case ActivationRoute.RunHealthCheck:
+                if (actions.RunHealthCheck != null)
+                    _ = RunDeepLinkActionAsync("health check", () => Task.Run(actions.RunHealthCheck));
+                break;
+            case ActivationRoute.CheckForUpdates:
+                if (actions.CheckForUpdates != null)
+                    _ = RunDeepLinkActionAsync("update check", actions.CheckForUpdates);
+                break;
+            case ActivationRoute.OpenLogFile:
+                actions.OpenLogFile?.Invoke();
+                break;
+            case ActivationRoute.OpenLogFolder:
+                actions.OpenLogFolder?.Invoke();
+                break;
+            case ActivationRoute.OpenConfigFolder:
+                actions.OpenConfigFolder?.Invoke();
+                break;
+            case ActivationRoute.OpenDiagnosticsFolder:
+                actions.OpenDiagnosticsFolder?.Invoke();
+                break;
+            case ActivationRoute.CopyDiagnostics r:
+                ApplyCopyDiagnostics(r.Kind, actions);
+                break;
+            case ActivationRoute.RestartSshTunnel:
+                actions.RestartSshTunnel?.Invoke();
+                break;
+            case ActivationRoute.OpenTrayMenu:
+                actions.OpenTrayMenu?.Invoke();
+                break;
+            case ActivationRoute.OpenDashboard r:
+                actions.OpenDashboard?.Invoke(r.Path);
+                break;
+            case ActivationRoute.SendMessage r:
+                if (actions.SendMessage != null)
+                {
+                    _ = RunDeepLinkActionAsync("agent message", async () =>
+                    {
+                        await actions.SendMessage(r.Message);
+                        Logger.Info("DeepLinkHandler: Sent message via deep link");
+                    });
                 }
                 else
                 {
-                    Logger.Warn($"Unknown deep link path: {path}");
+                    Logger.Warn("Deep link: agent message received but SendMessage handler is not registered");
                 }
+                break;
+            case ActivationRoute.OpenVoice:
+                actions.OpenVoice?.Invoke();
+                break;
+            case ActivationRoute.StopVoice:
+                actions.StopVoice?.Invoke();
+                break;
+        }
+    }
+
+    private static void ApplyCopyDiagnostics(DiagnosticsCopyKind kind, DeepLinkActions actions)
+    {
+        switch (kind)
+        {
+            case DiagnosticsCopyKind.SupportContext:
+                actions.CopySupportContext?.Invoke();
+                break;
+            case DiagnosticsCopyKind.DebugBundle:
+                actions.CopyDebugBundle?.Invoke();
+                break;
+            case DiagnosticsCopyKind.BrowserSetupGuidance:
+                actions.CopyBrowserSetupGuidance?.Invoke();
+                break;
+            case DiagnosticsCopyKind.PortDiagnostics:
+                actions.CopyPortDiagnostics?.Invoke();
+                break;
+            case DiagnosticsCopyKind.CapabilityDiagnostics:
+                actions.CopyCapabilityDiagnostics?.Invoke();
+                break;
+            case DiagnosticsCopyKind.NodeInventory:
+                actions.CopyNodeInventory?.Invoke();
+                break;
+            case DiagnosticsCopyKind.ChannelSummary:
+                actions.CopyChannelSummary?.Invoke();
+                break;
+            case DiagnosticsCopyKind.ActivitySummary:
+                actions.CopyActivitySummary?.Invoke();
+                break;
+            case DiagnosticsCopyKind.ExtensibilitySummary:
+                actions.CopyExtensibilitySummary?.Invoke();
                 break;
         }
     }

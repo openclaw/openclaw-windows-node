@@ -196,7 +196,6 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands, IPer
         _windowManager?.GetHubWindowHandle() ?? IntPtr.Zero;
 
     private SettingsManager? _settings;
-    private ConnectionSettingsSnapshot? _previousSettingsSnapshot;
     private OpenTelemetryEndpointConnection? _openTelemetryConnection;
     private SshTunnelService? _sshTunnelService;
     private readonly SshTunnelRecoveryBudget _sshTunnelRecoveryBudget = new();
@@ -210,8 +209,6 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands, IPer
     private PairingApprovalCoordinator? _pairingApprovalCoordinator;
     private OpenClawTray.Dialogs.PairingApprovalDialog? _pairingApprovalDialog;
     private Microsoft.UI.Dispatching.DispatcherQueueTimer? _pairingApprovalPollTimer;
-    private CancellationTokenSource? _deepLinkCts;
-    private bool _isExiting;
     
     /// <summary>
     /// Cached connection status — sole writer is OnManagerStateChanged.
@@ -573,17 +570,19 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands, IPer
             }
         }
 
+        _activationRouter = new ActivationRouter(AppIdentity.ProtocolScheme, DeepLinkPipeName);
+
         if (!ownsMutex)
         {
             // Forward deep link args to running instance (command-line or protocol activation)
-            var deepLink = protocolUri
-                ?? (_startupArgs.Length > 1 && IsDeepLinkArg(_startupArgs[1])
-                    ? _startupArgs[1] : null)
-                ?? (string.Equals(_postSetupLaunch, "chat", StringComparison.OrdinalIgnoreCase)
-                    ? $"{AppIdentity.ProtocolScheme}://chat" : null);
+            var deepLink = _activationRouter.ResolveLaunchCandidate(new LaunchActivationInput(
+                protocolUri,
+                _startupArgs,
+                _postSetupLaunch,
+                SetupShownDuringStartup: false));
             if (deepLink != null)
             {
-                SendDeepLinkToRunningInstance(deepLink);
+                await _activationRouter.ForwardToPrimaryAsync(deepLink, CancellationToken.None);
             }
             Exit();
             return;
@@ -603,7 +602,7 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands, IPer
         // Seed chat tool-call visibility from persisted settings so the timeline
         // honors the Settings > Chat "Show tool calls and usage" toggle on launch.
         OpenClawTray.Chat.OpenClawReactorChatRoot.SetToolCallsVisible(_settings.ShowChatToolCalls);
-        _previousSettingsSnapshot = _settings.ToSettingsData().ToConnectionSnapshot();
+        _settingsChangeCoordinator = new SettingsChangeCoordinator(this, this, this, _settings.ToSettingsData());
         _openTelemetryConnection = new OpenTelemetryEndpointConnection();
         await _openTelemetryConnection.ApplyAsync(
             OpenTelemetryEndpointOptions.FromSettings(_settings));
@@ -928,8 +927,8 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands, IPer
             // Window is created but hidden — WebView2 initializes in the background
         }
 
-        // Start deep link server
-        StartDeepLinkServer();
+        // Start forwarded-activation listener (current-user IPC)
+        await _activationRouter.StartForwardedActivationListenerAsync(this, CancellationToken.None);
 
         // Register global hotkey if enabled
         if (_settings?.GlobalHotkeyEnabled == true)
@@ -940,18 +939,13 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands, IPer
             _globalHotkey.Register();
         }
 
-        // Process startup deep link (command-line or MSIX protocol activation)
-        var startupDeepLink = _pendingProtocolUri
-            ?? (_startupArgs.Length > 1 && IsDeepLinkArg(_startupArgs[1])
-                ? _startupArgs[1] : null);
-        if (!setupShownDuringStartup && startupDeepLink != null)
-        {
-            await HandleDeepLinkAsync(startupDeepLink);
-        }
-        else if (!setupShownDuringStartup && string.Equals(_postSetupLaunch, "chat", StringComparison.OrdinalIgnoreCase))
-        {
-            await HandleDeepLinkAsync($"{AppIdentity.ProtocolScheme}://chat");
-        }
+        // Process startup deep link (command-line, MSIX protocol activation, or post-setup chat)
+        var launchPlan = _activationRouter.PlanLaunch(new LaunchActivationInput(
+            _pendingProtocolUri,
+            _startupArgs,
+            _postSetupLaunch,
+            setupShownDuringStartup));
+        await _activationRouter.DispatchPlanAsync(launchPlan, this, CancellationToken.None);
 
         Logger.Info("Application started (WinUI 3)");
     }
@@ -1359,28 +1353,6 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands, IPer
         };
         var result = await dialog.ShowAsync();
         return result == ContentDialogResult.Primary;
-    }
-
-    private async Task<bool> ConfirmDeepLinkActionAsync(DeepLinkResult result)
-    {
-        var xamlRoot = _windowManager?.RuntimeAnchorXamlRoot;
-        if (xamlRoot == null)
-        {
-            Logger.Warn($"Cannot confirm deep link action without XAML root: {DeepLinkSecurityPolicy.RedactForLog($"{AppIdentity.ProtocolScheme}://{result.Path}")}");
-            return false;
-        }
-
-        var dialog = new ContentDialog
-        {
-            Title = "Confirm OpenClaw action",
-            Content = $"A deep link wants to {DeepLinkSecurityPolicy.GetActionDisplayName(result)}.",
-            PrimaryButtonText = "Allow",
-            CloseButtonText = "Cancel",
-            DefaultButton = ContentDialogButton.Close,
-            XamlRoot = xamlRoot
-        };
-        var dialogResult = await dialog.ShowAsync();
-        return dialogResult == ContentDialogResult.Primary;
     }
 
     private void AddRecentActivity(
@@ -3381,114 +3353,6 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands, IPer
         ShowStatusDetail();
     }
 
-    private void OnSettingsSaved(object? sender, EventArgs e)
-    {
-        if (_settings is not null)
-        {
-            OpenClawTray.Chat.OpenClawReactorChatRoot.SetToolCallsVisible(
-                _settings.ShowChatToolCalls);
-        }
-
-        var currentSnapshot = _settings?.ToSettingsData()?.ToConnectionSnapshot();
-        var impact = SettingsChangeClassifier.Classify(_previousSettingsSnapshot, currentSnapshot);
-        _previousSettingsSnapshot = currentSnapshot;
-        SyncActiveGatewayBrowserProxyForward();
-        Logger.Info($"[SETTINGS] Change impact: {impact}");
-        PublishSandboxRiskNotificationIfNeeded();
-
-        switch (impact)
-        {
-            case SettingsChangeImpact.FullReconnectRequired:
-            case SettingsChangeImpact.OperatorReconnectRequired:
-                // Full reconnect: tear down everything and rebuild
-                _appState!.GatewaySelf = null;
-                if (_settings?.UseSshTunnel != true)
-                {
-                    _sshTunnelService?.Stop();
-                }
-                // Status is updated by OnManagerStateChanged when reconnect starts.
-                UpdateTrayIcon();
-
-                // Reset chat window — it has a stale URL/token
-                _windowManager?.ResetChatForCredentialChange();
-
-                ReconnectWithSyncedBrowserProxyForward();
-                break;
-
-            case SettingsChangeImpact.NodeReconnectRequired:
-                ReconnectWithSyncedBrowserProxyForward();
-                break;
-
-            case SettingsChangeImpact.CapabilityReload:
-                ReconnectWithSyncedBrowserProxyForward();
-                break;
-
-            case SettingsChangeImpact.UiOnly:
-            case SettingsChangeImpact.NoOp:
-                // No connection changes needed
-                break;
-        }
-
-        // MCP server lifecycle — handled separately from gateway reconnects
-        // because MCP-only mode doesn't involve a gateway at all. SetMcpEnabled
-        // checks actual runtime state (_mcpServer != null), so it's safe to
-        // call unconditionally. Only create NodeService when MCP is being
-        // enabled or the service already exists.
-        if (_settings != null && (_nodeService != null || _settings.EnableMcpServer))
-        {
-            var nodeService = EnsureNodeService(_settings);
-            nodeService?.SetMcpEnabled(_settings.EnableMcpServer);
-            if (nodeService != null)
-            {
-                ApplyMcpStartupNotificationPlan(
-                    McpRuntimeStatePolicy.PlanStartupNotification(
-                        _settings.EnableMcpServer,
-                        nodeService.IsMcpRunning,
-                        nodeService.McpStartupError));
-            }
-            WireAppCapabilityHandlers();
-        }
-
-        if (_settings!.GlobalHotkeyEnabled)
-        {
-            _globalHotkey ??= new GlobalHotkeyService();
-            _globalHotkey.VoiceHotkeyPressed -= OnVoiceHotkeyPressed;
-            _globalHotkey.VoiceHotkeyPressed += OnVoiceHotkeyPressed;
-            _globalHotkey.SettingsHotkeyPressed -= OnSettingsHotkeyPressed;
-            _globalHotkey.SettingsHotkeyPressed += OnSettingsHotkeyPressed;
-            _globalHotkey.Register();
-        }
-        else
-        {
-            _globalHotkey?.Unregister();
-        }
-
-        ObserveBackgroundFault(
-            AutoStartManager.SetAutoStartAsync(_settings.AutoStart),
-            "[App] Failed to apply auto-start setting");
-        ApplyOpenTelemetryEndpointSettings();
-
-        // Apply UI-only settings and notify ad-hoc listeners. This public
-        // entry point can be invoked from background work, while existing
-        // listeners update UI directly.
-        void ApplyUiSettingsAndNotify()
-        {
-            ApplyThemePreferenceToOpenWindows();
-            _windowManager?.RefreshHubDiagnosticsNavigationVisibility();
-            SettingsChanged?.Invoke(this, EventArgs.Empty);
-            PermissionsRuntimeChanged?.Invoke(this, EventArgs.Empty);
-        }
-
-        if (_dispatcherQueue != null && !_dispatcherQueue.HasThreadAccess)
-        {
-            _dispatcherQueue.TryEnqueue(ApplyUiSettingsAndNotify);
-        }
-        else
-        {
-            ApplyUiSettingsAndNotify();
-        }
-    }
-
     private void ShowWebChat(string? sessionKey = null)
     {
         if (_settings == null) return;
@@ -4171,185 +4035,6 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands, IPer
 
     #region Deep Links
 
-    private void StartDeepLinkServer()
-    {
-        _deepLinkCts = new CancellationTokenSource();
-        var token = _deepLinkCts.Token;
-        
-        Task.Run(async () =>
-        {
-            while (!token.IsCancellationRequested)
-            {
-                try
-                {
-                    using var pipe = new NamedPipeServerStream(
-                        DeepLinkPipeName,
-                        PipeDirection.In,
-                        maxNumberOfServerInstances: 1,
-                        PipeTransmissionMode.Byte,
-                        PipeOptions.Asynchronous | PipeOptions.CurrentUserOnly,
-                        inBufferSize: DeepLinkSecurityPolicy.MaxIpcMessageBytes,
-                        outBufferSize: 0);
-                    await pipe.WaitForConnectionAsync(token);
-                    var uri = await ReadDeepLinkIpcPayloadAsync(pipe, token);
-                    if (!string.IsNullOrEmpty(uri))
-                    {
-                        Logger.Info($"Received deep link via IPC: {DeepLinkSecurityPolicy.RedactForLog(uri)}");
-                        OnUiThread(() => _ = HandleDeepLinkAsync(uri));
-                    }
-                }
-                catch (OperationCanceledException)
-                {
-                    Logger.Info("Deep link server stopping (canceled)");
-                    break; // Normal shutdown
-                }
-                catch (InvalidDataException ex)
-                {
-                    if (!token.IsCancellationRequested)
-                    {
-                        Logger.Warn($"Rejected deep link IPC payload: {ex.Message}");
-                    }
-                }
-                catch (TimeoutException ex)
-                {
-                    if (!token.IsCancellationRequested)
-                    {
-                        Logger.Warn($"Rejected deep link IPC payload: {ex.Message}");
-                    }
-                }
-                catch (Exception ex)
-                {
-                    if (!token.IsCancellationRequested)
-                    {
-                        Logger.Warn($"Deep link server error: {ex.Message}");
-                        try { await Task.Delay(1000, token); }
-                        catch (OperationCanceledException) { break; } // Expected: server cancelled, exit loop.
-                        catch (Exception delayEx)
-                        {
-                            // Defensive: keep the loop resilient even if future code adds awaits that throw other types.
-                            Logger.Debug($"App: Deep link server delay failed: {delayEx.GetType().Name}: {delayEx.Message}");
-                            break;
-                        }
-                    }
-                }
-            }
-        }, token);
-    }
-
-    private static async Task<string?> ReadDeepLinkIpcPayloadAsync(Stream stream, CancellationToken appToken)
-    {
-        using var readCts = CancellationTokenSource.CreateLinkedTokenSource(appToken);
-        readCts.CancelAfter(DeepLinkSecurityPolicy.IpcReadTimeout);
-
-        var scratch = new byte[1024];
-        var payload = new byte[DeepLinkSecurityPolicy.MaxIpcMessageBytes + 1];
-        var totalBytes = 0;
-
-        try
-        {
-            while (true)
-            {
-                var remaining = payload.Length - totalBytes;
-                if (remaining <= 0)
-                    throw new InvalidDataException("payload exceeds maximum size");
-
-                var read = await stream.ReadAsync(
-                    scratch.AsMemory(0, Math.Min(scratch.Length, remaining)),
-                    readCts.Token);
-                if (read == 0)
-                    break;
-
-                scratch.AsSpan(0, read).CopyTo(payload.AsSpan(totalBytes));
-                totalBytes += read;
-                if (totalBytes > DeepLinkSecurityPolicy.MaxIpcMessageBytes)
-                    throw new InvalidDataException("payload exceeds maximum size");
-            }
-        }
-        catch (OperationCanceledException) when (!appToken.IsCancellationRequested)
-        {
-            throw new TimeoutException("timed out while reading payload");
-        }
-
-        if (totalBytes == 0)
-            return null;
-
-        try
-        {
-            return new UTF8Encoding(encoderShouldEmitUTF8Identifier: false, throwOnInvalidBytes: true)
-                .GetString(payload, 0, totalBytes)
-                .TrimEnd('\r', '\n');
-        }
-        catch (DecoderFallbackException ex)
-        {
-            throw new InvalidDataException("payload is not valid UTF-8", ex);
-        }
-    }
-
-    private async Task HandleDeepLinkAsync(string uri)
-    {
-        var result = DeepLinkParser.ParseDeepLink(uri, AppIdentity.ProtocolScheme);
-        if (result == null)
-        {
-            Logger.Warn($"Rejected invalid deep link: {DeepLinkSecurityPolicy.RedactForLog(uri)}");
-            return;
-        }
-
-        if (DeepLinkSecurityPolicy.RequiresConfirmation(result))
-        {
-            var confirmed = await ConfirmDeepLinkActionAsync(result);
-            if (!confirmed)
-            {
-                Logger.Warn($"Rejected unconfirmed deep link action: {DeepLinkSecurityPolicy.RedactForLog(uri)}");
-                return;
-            }
-        }
-
-        HandleDeepLink(uri);
-    }
-
-    private void HandleDeepLink(string uri)
-    {
-        DeepLinkHandler.Handle(uri, new DeepLinkActions
-        {
-            OpenSettings = ShowSettings,
-            OpenSetup = () => _ = ShowOnboardingAsync(),
-            RunHealthCheck = () => RunHealthCheckAsync(userInitiated: true),
-            CheckForUpdates = _updateCoordinator!.CheckForUpdatesUserInitiatedAsync,
-            OpenLogFile = OpenLogFile,
-            OpenLogFolder = OpenLogFolder,
-            OpenConfigFolder = OpenConfigFolder,
-            OpenDiagnosticsFolder = OpenDiagnosticsFolder,
-            OpenConnectionStatus = ShowConnectionStatusWindow,
-            CopySupportContext = _diagnosticsClipboard!.CopySupportContext,
-            CopyDebugBundle = _diagnosticsClipboard!.CopyDebugBundle,
-            CopyBrowserSetupGuidance = _diagnosticsClipboard!.CopyBrowserSetupGuidance,
-            CopyPortDiagnostics = _diagnosticsClipboard!.CopyPortDiagnostics,
-            CopyCapabilityDiagnostics = _diagnosticsClipboard!.CopyCapabilityDiagnostics,
-            CopyNodeInventory = _diagnosticsClipboard!.CopyNodeInventory,
-            CopyChannelSummary = _diagnosticsClipboard!.CopyChannelSummary,
-            CopyActivitySummary = _diagnosticsClipboard!.CopyActivitySummary,
-            CopyExtensibilitySummary = _diagnosticsClipboard!.CopyExtensibilitySummary,
-            RestartSshTunnel = RestartSshTunnel,
-            OpenChat = () => ShowWebChat(),
-            OpenCommandCenter = ShowStatusDetail,
-            OpenTrayMenu = () => _trayController?.ShowMenu(),
-            OpenActivityStream = ShowActivityStream,
-            OpenNotificationHistory = ShowNotificationHistory,
-            OpenDashboard = OpenDashboard,
-            OpenHub = (page) => ShowHub(page),
-            OpenVoice = () => ShowHub("voice"), // was: ShowVoiceOverlay()
-            StopVoice = () => _ = StopVoiceAsync(),
-            SendMessage = async (msg) =>
-            {
-                var client = _connectionManager?.OperatorClient;
-                if (client != null)
-                {
-                    await client.SendChatMessageAsync(msg);
-                }
-            }
-        });
-    }
-
     private async Task StopVoiceAsync()
     {
         var voiceService = _nodeService?.VoiceService;
@@ -4390,229 +4075,7 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands, IPer
         SpeakerMuteChanged?.Invoke(muted);
     }
 
-    private static void SendDeepLinkToRunningInstance(string uri)
-    {
-        try
-        {
-            if (!DeepLinkSecurityPolicy.IsIpcPayloadWithinLimit(uri))
-            {
-                Logger.Warn($"Rejected oversized deep link before IPC forwarding: {DeepLinkSecurityPolicy.RedactForLog(uri)}");
-                return;
-            }
-
-            if (DeepLinkParser.ParseDeepLink(uri, AppIdentity.ProtocolScheme) == null)
-            {
-                Logger.Warn($"Rejected invalid deep link before IPC forwarding: {DeepLinkSecurityPolicy.RedactForLog(uri)}");
-                return;
-            }
-
-            var payload = new UTF8Encoding(encoderShouldEmitUTF8Identifier: false, throwOnInvalidBytes: true)
-                .GetBytes(uri);
-            using var pipe = new NamedPipeClientStream(
-                ".",
-                DeepLinkPipeName,
-                PipeDirection.Out,
-                PipeOptions.CurrentUserOnly);
-            pipe.Connect(1000);
-            pipe.Write(payload, 0, payload.Length);
-            pipe.Flush();
-            pipe.WaitForPipeDrain();
-        }
-        catch (Exception ex)
-        {
-            Logger.Warn($"Failed to forward deep link: {ex.Message}");
-        }
-    }
-
     #endregion
-
-    #region Exit
-
-    private void ExitApplication()
-    {
-        _ = ExitApplicationAsync();
-    }
-
-    private async Task ExitApplicationAsync()
-    {
-        if (_isExiting)
-        {
-            Logger.Info("Exit requested while shutdown already in progress");
-            return;
-        }
-
-        _isExiting = true;
-        _windowManager?.BeginShutdown();
-        _trayController?.BeginShutdown();
-        Logger.Info("Application exiting");
-
-        // Cancel background tasks
-        if (_deepLinkCts != null)
-        {
-            Logger.Info("Shutdown: canceling deep link server");
-            try { _deepLinkCts.Cancel(); } catch (Exception ex) { Logger.Warn($"Shutdown: deep link cancel failed: {ex.Message}"); }
-        }
-
-        // Cleanup hotkey
-        SafeShutdownStep("global hotkey", () =>
-        {
-            _globalHotkey?.Dispose();
-            _globalHotkey = null;
-        });
-
-        // Stop chat first so provider event handlers cannot drain client-only
-        // queued prompts while the gateway connection is shutting down.
-        SafeShutdownStep("chat coordinator", () =>
-        {
-            _chatCoordinator?.Dispose();
-            _chatCoordinator = null;
-        });
-
-        // Dispose runtime services. Stop the auto-repair monitor BEFORE the connection manager so an
-        // in-flight repair cannot drive a reconnect into a disposing manager.
-        var autoRepairMonitor = _managedLocalAutoRepairMonitor;
-        if (autoRepairMonitor != null)
-        {
-            await SafeShutdownStepAsync("managed-local auto-repair monitor", async () =>
-            {
-                await autoRepairMonitor.DisposeAsync();
-            });
-            _managedLocalAutoRepairMonitor = null;
-        }
-
-        var connectionManager = _connectionManager;
-        if (connectionManager != null)
-        {
-            await SafeShutdownStepAsync("gateway client", async () =>
-            {
-                await connectionManager.DisposeAsync();
-            });
-            _connectionManager = null;
-        }
-
-        SafeShutdownStep("OpenTelemetry endpoint", () =>
-        {
-            _openTelemetryConnection?.Dispose();
-            _openTelemetryConnection = null;
-        });
-
-        var nodeService = _nodeService;
-        if (nodeService != null)
-        {
-            await SafeShutdownStepAsync("node service", async () =>
-            {
-                await nodeService.DisposeAsync();
-            });
-            _nodeService = null;
-        }
-
-        var standaloneVoiceService = _standaloneVoiceService;
-        if (standaloneVoiceService != null)
-        {
-            await SafeShutdownStepAsync("standalone voice service", async () =>
-            {
-                await standaloneVoiceService.DisposeAsync();
-            });
-            _standaloneVoiceService = null;
-        }
-
-        SafeShutdownStep("ssh tunnel service", () =>
-        {
-            _sshTunnelService?.Dispose();
-            _sshTunnelService = null;
-        });
-
-        SafeShutdownStep("pairing approval", () =>
-        {
-            _pairingApprovalPollTimer?.Stop();
-            _pairingApprovalPollTimer = null;
-            _pairingApprovalDialog?.Close();
-            _pairingApprovalDialog = null;
-        });
-
-        SafeShutdownStep("app state observers", () =>
-        {
-            if (_appState != null)
-                _appState.PropertyChanged -= OnAppStateChanged;
-            PermissionsRuntimeChanged = null;
-        });
-
-        // Close windows explicitly for deterministic shutdown tracing.
-        var windowManager = _windowManager;
-        _windowManager = null;
-        if (windowManager is not null)
-        {
-            await SafeShutdownStepAsync("window manager", windowManager.CloseForShutdownAsync);
-        }
-        SafeShutdownStep("tray menu window", () => _trayController?.CloseMenuForShutdown());
-
-        // Dispose the DI composition root. The container only owns the presentation
-        // infrastructure it created (navigation scope manager + any open page-view-model
-        // scope). App-owned services were registered as pre-built instances, so this
-        // does not re-dispose them (no double-dispose). Null the field BEFORE awaiting
-        // disposal so a queued Frame.Navigated callback during shutdown cannot resolve
-        // the page activator against a disposing/disposed provider.
-        var services = _services;
-        _services = null;
-        if (services is not null)
-        {
-            await SafeShutdownStepAsync("service provider", async () =>
-            {
-                await services.DisposeAsync();
-            });
-        }
-
-        // Dispose tray and mutex
-        SafeShutdownStep("tray icon", () =>
-        {
-            _trayController?.Dispose();
-            _trayController = null;
-        });
-
-        SafeShutdownStep("single-instance mutex", () =>
-        {
-            _mutex?.Dispose();
-            _mutex = null;
-        });
-
-        // Dispose cancellation token source
-        SafeShutdownStep("deep link token source", () =>
-        {
-            _deepLinkCts?.Dispose();
-            _deepLinkCts = null;
-        });
-
-        Logger.Info("Shutdown complete; calling Exit() now");
-        Exit();
-    }
-
-    private static void SafeShutdownStep(string name, Action action)
-    {
-        try
-        {
-            Logger.Info($"Shutdown: disposing {name}");
-            action();
-            Logger.Info($"Shutdown: disposed {name}");
-        }
-        catch (Exception ex)
-        {
-            Logger.Warn($"Shutdown: failed disposing {name}: {ex.Message}");
-        }
-    }
-
-    private static async Task SafeShutdownStepAsync(string name, Func<Task> action)
-    {
-        try
-        {
-            Logger.Info($"Shutdown: disposing {name}");
-            await action();
-            Logger.Info($"Shutdown: disposed {name}");
-        }
-        catch (Exception ex)
-        {
-            Logger.Warn($"Shutdown: failed disposing {name}: {ex.Message}");
-        }
-    }
 
     private bool EnsureSshTunnelConfigured()
     {
@@ -4671,8 +4134,6 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands, IPer
 
         return true;
     }
-
-    #endregion
 
     private void OnSshTunnelExited(object? sender, SshTunnelExit tunnelExit) =>
         AsyncEventHandlerGuard.Run(

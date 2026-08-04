@@ -87,30 +87,48 @@ public sealed class AppSurfaceCharacterizationTests
     [Fact]
     public void Shutdown_PreservesSurfaceProviderAndTrayOrdering()
     {
-        var source = ReadAppSource();
+        var source = ReadShutdownCoordinatorSource();
 
         AssertInOrder(
             source,
             "\"app state observers\"",
             "var windowManager = _windowManager;",
-            "_windowManager = null;",
             "\"window manager\"",
+            "_windowManager = null;",
             "\"tray menu window\"",
+            "\"settings coordinator\"",
+            "_settingsChangeCoordinator = null;",
             "var services = _services;",
+            "\"service provider\"",
             "_services = null;",
             "await services.DisposeAsync()",
-            "\"tray icon\"",
-            "Exit();");
+            "\"tray icon\"");
+
+        var coordinatorSource = ReadAppShutdownCoordinatorServiceSource();
+        Assert.Contains("plan.BeginShutdown();", coordinatorSource);
+        Assert.Contains("Logger.Info(\"Shutdown complete; calling Exit() now\");", coordinatorSource);
+        Assert.Contains("plan.ExitApplication();", coordinatorSource);
     }
 
-    private static string ReadAppSource()
+    private static string ReadShutdownCoordinatorSource()
     {
         var root = TestRepositoryPaths.GetRepositoryRoot();
         return File.ReadAllText(Path.Combine(
             root,
             "src",
             "OpenClaw.Tray.WinUI",
-            "App.xaml.cs"));
+            "App.AppShutdownCoordinator.cs"));
+    }
+
+    private static string ReadAppShutdownCoordinatorServiceSource()
+    {
+        var root = TestRepositoryPaths.GetRepositoryRoot();
+        return File.ReadAllText(Path.Combine(
+            root,
+            "src",
+            "OpenClaw.Tray.WinUI",
+            "Services",
+            "AppShutdownCoordinator.cs"));
     }
 
     private static string ReadSurfaceSources()

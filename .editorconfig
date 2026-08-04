@@ -148,6 +148,9 @@ dotnet_diagnostic.REACTOR_DIALOG_001.severity = none
 [src/OpenClaw.Tray.WinUI/App.xaml.cs]
 dotnet_diagnostic.REACTOR_DIALOG_001.severity = none
 
+[src/OpenClaw.Tray.WinUI/App.ActivationRouter.cs]
+dotnet_diagnostic.REACTOR_DIALOG_001.severity = none
+
 [src/OpenClaw.Tray.WinUI/Helpers/**/*.cs]
 dotnet_diagnostic.REACTOR_DIALOG_001.severity = none
 
