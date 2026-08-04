@@ -2884,6 +2884,27 @@ Gebruik een van deze opties:
   <data name="Chat_Tool_FooterWithTimeFormat" xml:space="preserve">
     <value>Hulpmiddel · {0}</value>
   </data>
+  <data name="Chat_Activity_CommandOne" xml:space="preserve"><value>{0} opdracht uitgevoerd</value></data>
+  <data name="Chat_Activity_CommandMany" xml:space="preserve"><value>{0} opdrachten uitgevoerd</value></data>
+  <data name="Chat_Activity_ReadOne" xml:space="preserve"><value>{0} bestand gelezen</value></data>
+  <data name="Chat_Activity_ReadMany" xml:space="preserve"><value>{0} bestanden gelezen</value></data>
+  <data name="Chat_Activity_EditOne" xml:space="preserve"><value>{0} bestand bewerkt</value></data>
+  <data name="Chat_Activity_EditMany" xml:space="preserve"><value>{0} bestanden bewerkt</value></data>
+  <data name="Chat_Activity_WriteOne" xml:space="preserve"><value>{0} bestand geschreven</value></data>
+  <data name="Chat_Activity_WriteMany" xml:space="preserve"><value>{0} bestanden geschreven</value></data>
+  <data name="Chat_Activity_SearchOne" xml:space="preserve"><value>{0} zoekopdracht uitgevoerd</value></data>
+  <data name="Chat_Activity_SearchMany" xml:space="preserve"><value>{0} zoekopdrachten uitgevoerd</value></data>
+  <data name="Chat_Activity_FetchOne" xml:space="preserve"><value>{0} pagina opgehaald</value></data>
+  <data name="Chat_Activity_FetchMany" xml:space="preserve"><value>{0} pagina's opgehaald</value></data>
+  <data name="Chat_Activity_GenericOne" xml:space="preserve"><value>{0} hulpmiddel gebruikt</value></data>
+  <data name="Chat_Activity_GenericMany" xml:space="preserve"><value>{0} hulpmiddelen gebruikt</value></data>
+  <data name="Chat_Activity_GenericNamed" xml:space="preserve"><value>{1} gebruikt</value></data>
+  <data name="Chat_Activity_GenericNamedRepeated" xml:space="preserve"><value>{1} {0} keer gebruikt</value></data>
+  <data name="Chat_Activity_RunningFormat" xml:space="preserve"><value>{0} wordt uitgevoerd</value></data>
+  <data name="Chat_Activity_Complete" xml:space="preserve"><value>Voltooid</value></data>
+  <data name="Chat_Activity_Expanded" xml:space="preserve"><value>Uitgevouwen</value></data>
+  <data name="Chat_Activity_Collapsed" xml:space="preserve"><value>Samengevouwen</value></data>
+  <data name="Chat_Activity_AutomationFormat" xml:space="preserve"><value>Activiteit: {0}. {1} hulpmiddelen. {2}. {3}.</value></data>
   <data name="Chat_Reasoning_ThinkingHeader" xml:space="preserve">
     <value>🧠 Denken</value>
   </data>

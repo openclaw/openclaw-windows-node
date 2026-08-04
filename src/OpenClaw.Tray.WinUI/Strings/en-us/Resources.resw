@@ -2930,6 +2930,27 @@ Use one of these options:
   <data name="Chat_Tool_FooterWithTimeFormat" xml:space="preserve">
     <value>Tool · {0}</value>
   </data>
+  <data name="Chat_Activity_CommandOne" xml:space="preserve"><value>Ran {0} command</value></data>
+  <data name="Chat_Activity_CommandMany" xml:space="preserve"><value>Ran {0} commands</value></data>
+  <data name="Chat_Activity_ReadOne" xml:space="preserve"><value>read {0} file</value></data>
+  <data name="Chat_Activity_ReadMany" xml:space="preserve"><value>read {0} files</value></data>
+  <data name="Chat_Activity_EditOne" xml:space="preserve"><value>edited {0} file</value></data>
+  <data name="Chat_Activity_EditMany" xml:space="preserve"><value>edited {0} files</value></data>
+  <data name="Chat_Activity_WriteOne" xml:space="preserve"><value>wrote {0} file</value></data>
+  <data name="Chat_Activity_WriteMany" xml:space="preserve"><value>wrote {0} files</value></data>
+  <data name="Chat_Activity_SearchOne" xml:space="preserve"><value>ran {0} search</value></data>
+  <data name="Chat_Activity_SearchMany" xml:space="preserve"><value>ran {0} searches</value></data>
+  <data name="Chat_Activity_FetchOne" xml:space="preserve"><value>fetched {0} page</value></data>
+  <data name="Chat_Activity_FetchMany" xml:space="preserve"><value>fetched {0} pages</value></data>
+  <data name="Chat_Activity_GenericOne" xml:space="preserve"><value>used {0} tool</value></data>
+  <data name="Chat_Activity_GenericMany" xml:space="preserve"><value>used {0} tools</value></data>
+  <data name="Chat_Activity_GenericNamed" xml:space="preserve"><value>used {1}</value></data>
+  <data name="Chat_Activity_GenericNamedRepeated" xml:space="preserve"><value>used {1} {0} times</value></data>
+  <data name="Chat_Activity_RunningFormat" xml:space="preserve"><value>Running {0}</value></data>
+  <data name="Chat_Activity_Complete" xml:space="preserve"><value>Complete</value></data>
+  <data name="Chat_Activity_Expanded" xml:space="preserve"><value>Expanded</value></data>
+  <data name="Chat_Activity_Collapsed" xml:space="preserve"><value>Collapsed</value></data>
+  <data name="Chat_Activity_AutomationFormat" xml:space="preserve"><value>Activity: {0}. {1} tools. {2}. {3}.</value></data>
   <data name="Chat_Reasoning_ThinkingHeader" xml:space="preserve">
     <value>🧠 Thinking</value>
   </data>

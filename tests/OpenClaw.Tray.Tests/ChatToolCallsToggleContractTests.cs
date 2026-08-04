@@ -7,6 +7,7 @@ public sealed class ChatToolCallsToggleContractTests
     {
         var root = Read("src", "OpenClaw.Tray.WinUI", "Chat", "OpenClawReactorChatRoot.cs");
         var timeline = Read("src", "OpenClaw.Tray.WinUI", "Chat", "ReactorChatTimeline.cs");
+        var renderer = Read("src", "OpenClaw.Tray.WinUI", "Chat", "ToolCallCardRenderer.cs");
         var app = Read("src", "OpenClaw.Tray.WinUI", "App.xaml.cs");
         var settingsVm = Read("src", "OpenClaw.Tray.WinUI", "Presentation", "SettingsPageViewModel.cs");
 
@@ -34,9 +35,12 @@ public sealed class ChatToolCallsToggleContractTests
 
         // Timeline still consumes the props from the root.
         Assert.Contains("props.Timeline.ShowToolCalls", timeline);
-        Assert.Contains("ToolCallsCollapseVersion", timeline);
+        Assert.Contains("ToolCallsCollapseVersion", renderer);
         Assert.Contains("row.Props.Timeline.ShowToolCalls", timeline);
         Assert.Contains("row.IsAssistantRunEnd && row.Props.Timeline.ShowToolCalls", timeline);
+        Assert.Contains("ChatToolActivityPresentation.Project(", timeline);
+        Assert.Contains("props.Timeline.ShowToolCalls);", timeline);
+        Assert.Contains("ChatToolActivityExpansionState", timeline);
     }
 
     [Fact]

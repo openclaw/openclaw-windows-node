@@ -2883,6 +2883,27 @@
   <data name="Chat_Tool_FooterWithTimeFormat" xml:space="preserve">
     <value>工具 · {0}</value>
   </data>
+  <data name="Chat_Activity_CommandOne" xml:space="preserve"><value>執行了 {0} 個命令</value></data>
+  <data name="Chat_Activity_CommandMany" xml:space="preserve"><value>執行了 {0} 個命令</value></data>
+  <data name="Chat_Activity_ReadOne" xml:space="preserve"><value>讀取了 {0} 個檔案</value></data>
+  <data name="Chat_Activity_ReadMany" xml:space="preserve"><value>讀取了 {0} 個檔案</value></data>
+  <data name="Chat_Activity_EditOne" xml:space="preserve"><value>編輯了 {0} 個檔案</value></data>
+  <data name="Chat_Activity_EditMany" xml:space="preserve"><value>編輯了 {0} 個檔案</value></data>
+  <data name="Chat_Activity_WriteOne" xml:space="preserve"><value>寫入了 {0} 個檔案</value></data>
+  <data name="Chat_Activity_WriteMany" xml:space="preserve"><value>寫入了 {0} 個檔案</value></data>
+  <data name="Chat_Activity_SearchOne" xml:space="preserve"><value>執行了 {0} 次搜尋</value></data>
+  <data name="Chat_Activity_SearchMany" xml:space="preserve"><value>執行了 {0} 次搜尋</value></data>
+  <data name="Chat_Activity_FetchOne" xml:space="preserve"><value>擷取了 {0} 個頁面</value></data>
+  <data name="Chat_Activity_FetchMany" xml:space="preserve"><value>擷取了 {0} 個頁面</value></data>
+  <data name="Chat_Activity_GenericOne" xml:space="preserve"><value>使用了 {0} 個工具</value></data>
+  <data name="Chat_Activity_GenericMany" xml:space="preserve"><value>使用了 {0} 個工具</value></data>
+  <data name="Chat_Activity_GenericNamed" xml:space="preserve"><value>使用了 {1}</value></data>
+  <data name="Chat_Activity_GenericNamedRepeated" xml:space="preserve"><value>使用了 {1} {0} 次</value></data>
+  <data name="Chat_Activity_RunningFormat" xml:space="preserve"><value>正在執行 {0}</value></data>
+  <data name="Chat_Activity_Complete" xml:space="preserve"><value>已完成</value></data>
+  <data name="Chat_Activity_Expanded" xml:space="preserve"><value>已展開</value></data>
+  <data name="Chat_Activity_Collapsed" xml:space="preserve"><value>已摺疊</value></data>
+  <data name="Chat_Activity_AutomationFormat" xml:space="preserve"><value>活動：{0}。{1} 個工具。{2}。{3}。</value></data>
   <data name="Chat_Reasoning_ThinkingHeader" xml:space="preserve">
     <value>🧠 思考中</value>
   </data>
