@@ -1208,6 +1208,59 @@ public class OpenClawGatewayClientTests
     }
 
     [Fact]
+    public void ParseChatHistoryPayload_ToolBlocks_PreservesInputsAndOutputs()
+    {
+        var helper = new GatewayClientTestHelper();
+
+        var history = helper.ParseChatHistoryPayload("""
+        {
+          "messages": [
+            {
+              "role": "assistant",
+              "content": [
+                {
+                  "type": "tool_use",
+                  "id": "call-1",
+                  "name": "exec",
+                  "input": {
+                    "command": "pwd",
+                    "workdir": "/workspace",
+                    "yieldMs": 1000
+                  }
+                }
+              ],
+              "timestamp": 1
+            },
+            {
+              "role": "toolResult",
+              "toolCallId": "call-1",
+              "content": [
+                {
+                  "type": "tool_result",
+                  "name": "exec",
+                  "content": [{ "type": "text", "text": "/workspace" }]
+                }
+              ],
+              "timestamp": 2
+            }
+          ]
+        }
+        """);
+
+        Assert.Equal(2, history.Messages.Count);
+        var call = Assert.Single(history.Messages[0].ToolContent);
+        Assert.Equal(ChatToolContentKind.Call, call.Kind);
+        Assert.Equal("call-1", call.CallId);
+        Assert.Equal("exec", call.ToolName);
+        Assert.Equal("pwd", call.Args?.GetProperty("command").GetString());
+
+        var result = Assert.Single(history.Messages[1].ToolContent);
+        Assert.Equal(ChatToolContentKind.Result, result.Kind);
+        Assert.Equal("call-1", result.CallId);
+        Assert.Equal("/workspace", result.Text);
+    }
+
+    [Fact]
     public void ParseChatHistoryPayload_OpenClawMetadata_PreservesMessageIdentity()
     {
         var helper = new GatewayClientTestHelper();

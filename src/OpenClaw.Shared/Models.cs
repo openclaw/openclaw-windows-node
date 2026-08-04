@@ -1815,6 +1815,13 @@ public class ChatMessageInfo
     public string Text { get; set; } = "";
 
     /// <summary>
+    /// Structured tool call/result blocks retained from array-valued message
+    /// content so native clients can correlate inputs with outputs.
+    /// </summary>
+    public IReadOnlyList<ChatToolContentInfo> ToolContent { get; set; } =
+        Array.Empty<ChatToolContentInfo>();
+
+    /// <summary>
     /// Optional gateway-assigned message state. "final" indicates a complete
     /// terminal message; absent or other values indicate intermediate state.
     /// </summary>
@@ -1869,6 +1876,22 @@ public class ChatMessageInfo
     /// Only present on assistant messages in <c>chat.history</c>.
     /// </summary>
     public string? StopReason { get; set; }
+}
+
+public enum ChatToolContentKind
+{
+    Call,
+    Result,
+}
+
+public class ChatToolContentInfo
+{
+    public ChatToolContentKind Kind { get; set; }
+    public string? CallId { get; set; }
+    public string ToolName { get; set; } = "tool";
+    public JsonElement? Args { get; set; }
+    public string? Text { get; set; }
+    public bool IsError { get; set; }
 }
 
 /// <summary>

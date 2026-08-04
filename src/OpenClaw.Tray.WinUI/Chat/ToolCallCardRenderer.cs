@@ -1,4 +1,5 @@
 using System.Runtime.CompilerServices;
+using System.Text.Json;
 using Microsoft.UI.Reactor;
 using Microsoft.UI.Reactor.Core;
 using Microsoft.UI.Reactor.Hooks;
@@ -19,6 +20,12 @@ namespace OpenClawTray.Chat;
 /// </summary>
 internal static class ToolCallCardRenderer
 {
+    private const int ToolDetailMaxChars = 4000;
+    private static readonly JsonSerializerOptions s_indentedJson = new()
+    {
+        WriteIndented = true,
+    };
+
     private static readonly ConditionalWeakTable<Expander, ActivityExpanderBinding>
         s_activityBindings = new();
 
@@ -28,28 +35,30 @@ internal static class ToolCallCardRenderer
         bool isNested = false)
     {
         var details = new List<Element>();
-        if (!string.IsNullOrWhiteSpace(entry.Text))
-            details.Add(Text(entry.Text, 12, FontWeights.Normal, "TextFillColorSecondaryBrush"));
+        if (entry.ToolArgs is { Count: > 0 })
+        {
+            details.Add(BuildDetailSection(
+                LocalizedOrDefault("Chat_Tool_InputSection", "Tool input"),
+                FormatToolInput(entry.ToolArgs)));
+        }
+        else if (!string.IsNullOrWhiteSpace(entry.Text))
+        {
+            details.Add(BuildDetailSection(
+                LocalizedOrDefault("Chat_Tool_InputSection", "Tool input"),
+                entry.Text));
+        }
 
         if (!string.IsNullOrWhiteSpace(entry.ToolOutput))
         {
-            var output = Text(
-                    entry.ToolOutput,
-                    12,
-                    FontWeights.Normal,
-                    "TextFillColorSecondaryBrush")
-                .Set(text =>
-                {
-                    text.FontFamily = new FontFamily("Cascadia Code, Consolas");
-                    text.IsTextSelectionEnabled = true;
-                });
-            details.Add(ScrollViewer(output)
-                .Set(scrollViewer =>
-                {
-                    scrollViewer.VerticalScrollBarVisibility = ScrollBarVisibility.Auto;
-                    scrollViewer.HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled;
-                })
-                .MaxHeight(240));
+            details.Add(BuildDetailSection(
+                LocalizedOrDefault(
+                    entry.ToolResult == ChatToolCallStatus.Error
+                        ? "Chat_Tool_ErrorLabel"
+                        : "Chat_Tool_OutputLabel",
+                    entry.ToolResult == ChatToolCallStatus.Error
+                        ? "Tool error"
+                        : "Tool output"),
+                entry.ToolOutput));
         }
 
         var toolName = string.IsNullOrWhiteSpace(entry.ToolName)
@@ -107,6 +116,39 @@ internal static class ToolCallCardRenderer
                 isNested
                     ? Color.FromArgb(0, 0, 0, 0)
                     : Color.FromArgb(0x40, 0x80, 0x80, 0x80)));
+    }
+
+    private static Element BuildDetailSection(string label, string content)
+    {
+        var body = Text(
+                content,
+                12,
+                FontWeights.Normal,
+                "TextFillColorSecondaryBrush")
+            .Set(text =>
+            {
+                text.FontFamily = new FontFamily("Cascadia Code, Consolas");
+                text.IsTextSelectionEnabled = true;
+            });
+
+        return VStack(
+            4,
+            Text(label, 11, FontWeights.SemiBold, "TextFillColorSecondaryBrush"),
+            ScrollViewer(body)
+                .Set(scrollViewer =>
+                {
+                    scrollViewer.VerticalScrollBarVisibility = ScrollBarVisibility.Auto;
+                    scrollViewer.HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled;
+                })
+                .MaxHeight(240));
+    }
+
+    private static string FormatToolInput(System.Text.Json.Nodes.JsonObject args)
+    {
+        var json = args.ToJsonString(s_indentedJson);
+        return json.Length <= ToolDetailMaxChars
+            ? json
+            : json[..ToolDetailMaxChars] + "\n\u2026(truncated)";
     }
 
     public static Element BuildActivity(

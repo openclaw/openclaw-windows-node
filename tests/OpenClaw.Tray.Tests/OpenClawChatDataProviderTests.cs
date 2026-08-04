@@ -2561,6 +2561,7 @@ public class OpenClawChatDataProviderTests
         Assert.Equal("powershell", entry.ToolName);
         Assert.Equal("ls", entry.Text);
         Assert.Equal(ChatToolCallStatus.InProgress, entry.ToolResult);
+        Assert.Equal("ls", entry.ToolArgs?["command"]?.GetValue<string>());
     }
 
     [Fact]
@@ -5580,6 +5581,133 @@ public class OpenClawChatDataProviderTests
     }
 
     [Fact]
+    public async Task LoadHistoryAsync_StructuredToolBlocks_CorrelatesInputAndOutput()
+    {
+        var (bridge, provider, snapshots, _) = CreateProvider(new[] { MainSession() });
+        bridge.HistoryBehavior = _ => Task.FromResult(new ChatHistoryInfo
+        {
+            SessionKey = "main",
+            Messages =
+            [
+                new ChatMessageInfo
+                {
+                    Role = "assistant",
+                    Text = "",
+                    State = "final",
+                    Ts = 1,
+                    ToolContent =
+                    [
+                        new ChatToolContentInfo
+                        {
+                            Kind = ChatToolContentKind.Call,
+                            CallId = "call-1",
+                            ToolName = "exec",
+                            Args = JsonSerializer.Deserialize<JsonElement>(
+                                """{"command":"pwd","workdir":"/workspace","yieldMs":1000}"""),
+                        },
+                    ],
+                },
+                new ChatMessageInfo
+                {
+                    Role = "toolResult",
+                    Text = "",
+                    State = "final",
+                    Ts = 2,
+                    ToolContent =
+                    [
+                        new ChatToolContentInfo
+                        {
+                            Kind = ChatToolContentKind.Result,
+                            CallId = "call-1",
+                            ToolName = "exec",
+                            Text = "/workspace",
+                        },
+                    ],
+                },
+            ],
+        });
+
+        await provider.LoadHistoryAsync("main");
+
+        var entry = Assert.Single(snapshots[^1].Timelines["main"].Entries);
+        Assert.Equal(ChatTimelineItemKind.ToolCall, entry.Kind);
+        Assert.Equal(ChatToolCallStatus.Success, entry.ToolResult);
+        Assert.Equal("pwd", entry.ToolArgs?["command"]?.GetValue<string>());
+        Assert.Equal("/workspace", entry.ToolOutput);
+    }
+
+    [Fact]
+    public async Task LoadHistoryAsync_StructuredOrphanResult_SynthesizesCompletedTool()
+    {
+        var (bridge, provider, snapshots, _) = CreateProvider(new[] { MainSession() });
+        bridge.HistoryBehavior = _ => Task.FromResult(new ChatHistoryInfo
+        {
+            SessionKey = "main",
+            Messages =
+            [
+                new ChatMessageInfo
+                {
+                    Role = "toolResult",
+                    Text = "",
+                    State = "final",
+                    Ts = 1,
+                    ToolContent =
+                    [
+                        new ChatToolContentInfo
+                        {
+                            Kind = ChatToolContentKind.Result,
+                            CallId = "missing-call",
+                            ToolName = "exec",
+                            Text = "output",
+                        },
+                    ],
+                },
+            ],
+        });
+
+        await provider.LoadHistoryAsync("main");
+
+        var entry = Assert.Single(snapshots[^1].Timelines["main"].Entries);
+        Assert.Equal(ChatToolCallStatus.Success, entry.ToolResult);
+        Assert.Equal("output", entry.ToolOutput);
+    }
+
+    [Fact]
+    public async Task LoadHistoryAsync_StructuredCallWithoutResult_IsInterrupted()
+    {
+        var (bridge, provider, snapshots, _) = CreateProvider(new[] { MainSession() });
+        bridge.HistoryBehavior = _ => Task.FromResult(new ChatHistoryInfo
+        {
+            SessionKey = "main",
+            Messages =
+            [
+                new ChatMessageInfo
+                {
+                    Role = "assistant",
+                    Text = "",
+                    State = "final",
+                    Ts = 1,
+                    ToolContent =
+                    [
+                        new ChatToolContentInfo
+                        {
+                            Kind = ChatToolContentKind.Call,
+                            CallId = "call-1",
+                            ToolName = "exec",
+                            Args = JsonSerializer.Deserialize<JsonElement>("""{"command":"sleep 30"}"""),
+                        },
+                    ],
+                },
+            ],
+        });
+
+        await provider.LoadHistoryAsync("main");
+
+        var entry = Assert.Single(snapshots[^1].Timelines["main"].Entries);
+        Assert.Equal(ChatToolCallStatus.Interrupted, entry.ToolResult);
+    }
+
+    [Fact]
     public async Task LoadHistoryAsync_ToolRole_RendersAsDimStatusEntry()
     {
         var (bridge, provider, snapshots, _) = CreateProvider(new[] { MainSession() });
@@ -5798,7 +5926,7 @@ public class OpenClawChatDataProviderTests
         await provider.LoadAsync();
 
         bridge.RaiseAgent(MakeAgentEvent("item",
-            """{"phase":"start","kind":"tool","title":"exec run command echo hi","itemId":"tool-1"}"""));
+            """{"phase":"start","kind":"tool","title":"exec run command echo hi","itemId":"tool-1","input":{"command":"echo hi","workdir":"/workspace","yieldMs":1000}}"""));
         bridge.RaiseAgent(MakeAgentEvent("command_output",
             """{"phase":"end","itemId":"tool-1","output":"hi\n"}"""));
         bridge.RaiseAgent(MakeAgentEvent("item",
@@ -5808,6 +5936,9 @@ public class OpenClawChatDataProviderTests
         var entry = Assert.Single(timeline.Entries);
         Assert.Equal(ChatToolCallStatus.Success, entry.ToolResult);
         Assert.Equal("hi\n", entry.ToolOutput);
+        Assert.Equal("echo hi", entry.ToolArgs?["command"]?.GetValue<string>());
+        Assert.Equal("/workspace", entry.ToolArgs?["workdir"]?.GetValue<string>());
+        Assert.Equal(1000, entry.ToolArgs?["yieldMs"]?.GetValue<int>());
     }
 
     [Fact]
