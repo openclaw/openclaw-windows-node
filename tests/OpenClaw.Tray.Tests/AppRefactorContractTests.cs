@@ -431,8 +431,8 @@ public sealed class AppRefactorContractTests
         var rawHandler = ExtractMethod(source, "OnGatewayConnectionStatusChanged");
 
         Assert.Contains("ConnectionStatusPresenter.ToLegacyStatus(snap)", managerHandler);
-        Assert.Contains("SyncConnectionToggle(mapped, snap.OverallState)", managerHandler);
-        Assert.Contains("_hubWindow?.UpdateTitleBarStatus(snap, mapped)", managerHandler);
+        Assert.Contains("_trayController?.ApplyConnectionState(mapped, snap.OverallState)", managerHandler);
+        Assert.Contains("_windowManager?.UpdateHubTitleBarStatus(snap, mapped)", managerHandler);
         Assert.Contains("_appState.Status = mapped", managerHandler);
         Assert.DoesNotContain("_appState.Status =", rawHandler);
         Assert.DoesNotContain("SyncConnectionToggle(status)", rawHandler);
@@ -737,9 +737,9 @@ public sealed class AppRefactorContractTests
         var method = ExtractMethod(source, "ShowWebChat");
 
         Assert.Contains("PendingChatSessionKey = sessionKey;", method);
-        Assert.Contains("_hubWindow.PendingChatSessionKey = sessionKey;", method);
+        Assert.Contains("_windowManager?.SetPendingChatSessionKey(sessionKey);", method);
         Assert.Contains("PendingChatSessionKey = null;", method);
-        Assert.Contains("_hubWindow.PendingChatSessionKey = null;", method);
+        Assert.Contains("_windowManager?.SetPendingChatSessionKey(null);", method);
         AssertInOrder(
             method,
             "if (!string.IsNullOrEmpty(sessionKey))",
@@ -968,7 +968,7 @@ public sealed class AppRefactorContractTests
     [Fact]
     public void Setup_IsHostedInTrayAndUsesSelfRestartAfterCompletion()
     {
-        var source = ReadAppSources();
+        var source = ReadAppSources() + Environment.NewLine + ReadWindowManagerSource();
         var root = TestRepositoryPaths.GetRepositoryRoot();
         var setupWindow = File.ReadAllText(Path.Combine(root, "src", "OpenClaw.SetupEngine.UI", "SetupWindow.xaml.cs"));
         var welcomePage = File.ReadAllText(Path.Combine(root, "src", "OpenClaw.SetupEngine.UI", "Pages", "WelcomePage.xaml.cs"));
@@ -982,13 +982,13 @@ public sealed class AppRefactorContractTests
         var keepAlivePolicy = File.ReadAllText(Path.Combine(root, "src", "OpenClaw.Tray.WinUI", "Services", "WslKeepAlivePolicy.cs"));
         var setupClassifier = File.ReadAllText(Path.Combine(root, "src", "OpenClaw.Tray.WinUI", "Services", "SetupExistingGatewayClassifier.cs"));
 
-        Assert.Contains("var setupWindow = new SetupWindow(", source);
+        Assert.Contains("setupWindow = new SetupWindow(", source);
         Assert.Contains("dataDir: AppIdentity.ResolveRoamingDataDirectory()", source);
         Assert.Contains("localDataDir: AppIdentity.ResolveSetupLocalDataDirectory()", source);
         Assert.Contains("distroNameOverride: AppIdentity.SetupDistroName", source);
         Assert.Contains("gatewayPortOverride: AppIdentity.SetupGatewayPort", source);
         Assert.Contains("commandLineArgs: SetupWindowArgumentProjection.Project(", source);
-        Assert.Contains("IsDeepLinkArg,", source);
+        Assert.Contains("_callbacks.IsDeepLinkArg,", source);
         Assert.Contains("Environment.ProcessId)", source);
         Assert.Contains("SetupRunLock.TryAcquire(_dataDir", setupWindow);
         Assert.Contains("new SetupContext(", progressPage);
@@ -1021,9 +1021,9 @@ public sealed class AppRefactorContractTests
         Assert.Contains("AppIdentity.SetupDistroName", keepAlivePolicy);
         Assert.Contains("AppIdentity.SetupDistroName", setupClassifier);
         Assert.Contains("TrayArtifactCleanup.Run(ctx, preserveLogs, autoStartName, startupTaskName)", setupProgram);
-        Assert.Contains("setupWindow.SetupCompleted += OnSetupCompleted", source);
+        Assert.Contains("setupWindow.SetupCompleted += _callbacks.SetupCompleted", source);
         Assert.Contains("ShowGatewayWizardAsync", source);
-        Assert.Contains("EnsureSetupWindowAsync(startAtGatewayInstalledMilestone: true)", source);
+        Assert.Contains("startAtGatewayInstalledMilestone: true", source);
         Assert.Contains("startAtGatewayInstalledMilestone", setupWindow);
         Assert.Contains("_persistStartupPreferenceOnComplete = false", setupWindow);
         Assert.Contains("_showStartupPreferenceOnComplete = false", setupWindow);
@@ -1041,7 +1041,7 @@ public sealed class AppRefactorContractTests
         // Direct onboarding may reuse an already-open idle setup window, but
         // must not cancel an in-progress install running on ProgressPage.
         Assert.Contains("EnsureSetupWindowAsync", source);
-        Assert.Contains("if (!createdNew)", source);
+        Assert.Contains("!created && setupWindow is { IsClosed: false }", source);
         Assert.Contains("RestartAfterSetupAsync", source);
         Assert.Contains("\"--post-setup-restart\"", source);
         Assert.Contains("\"--wait-for-pid\"", source);
@@ -1093,7 +1093,7 @@ public sealed class AppRefactorContractTests
     public void SetupWindowOwnership_WaitsForCleanupBeforeAllowingAnotherRun()
     {
         var root = TestRepositoryPaths.GetRepositoryRoot();
-        var app = File.ReadAllText(Path.Combine(root, "src", "OpenClaw.Tray.WinUI", "App.xaml.cs"));
+        var windowManager = ReadWindowManagerSource();
         var setupWindow = File.ReadAllText(Path.Combine(root, "src", "OpenClaw.SetupEngine.UI", "SetupWindow.xaml.cs"));
 
         Assert.Contains("public Task CleanupCompleted => _cleanupCompleted.Task", setupWindow);
@@ -1106,16 +1106,17 @@ public sealed class AppRefactorContractTests
             "_cleanupCompleted.TrySetResult(true)");
         Assert.Contains("rollbackOnFailureOverride: false", setupWindow);
         AssertInOrder(
-            app,
-            "while (_setupWindow != null)",
+            windowManager,
+            "while (_setupWindow is not null)",
             "await existingSetupWindow.WaitForInitialContentReadyAsync()",
             "if (!existingSetupWindow.IsClosed)",
             "await existingSetupWindow.CleanupCompleted",
             "_setupWindow = null",
             "new SetupWindow(");
         AssertInOrder(
-            app,
-            "setupWindow.Closed += async",
+            windowManager,
+            "setupWindow.Closed += OnSetupClosed",
+            "CompleteSetupCloseAsync(setupWindow)",
             "await setupWindow.CleanupCompleted",
             "_setupWindow = null");
     }
@@ -1492,12 +1493,16 @@ public sealed class AppRefactorContractTests
     [Fact]
     public void TrayIcon_UpdateDelegatesToCoordinator()
     {
-        var source = ReadAppSources();
-        var method = ExtractMethod(source, "UpdateTrayIcon");
+        var appMethod = ExtractMethod(ReadAppSources(), "UpdateTrayIcon");
+        var controller = File.ReadAllText(Path.Combine(
+            TestRepositoryPaths.GetRepositoryRoot(),
+            "src", "OpenClaw.Tray.WinUI", "Services", "TrayController.cs"));
+        var controllerMethod = ExtractMethod(controller, "RefreshIcon");
 
-        Assert.Contains("_trayIconCoordinator?.UpdateTrayIcon()", method);
-        Assert.DoesNotContain("SetIcon(", method);
-        Assert.DoesNotContain("private void ApplyTrayTooltip", source);
+        Assert.Contains("_trayController?.RefreshIcon()", appMethod);
+        Assert.Contains("_trayIconCoordinator?.UpdateTrayIcon()", controllerMethod);
+        Assert.DoesNotContain("SetIcon(", controllerMethod);
+        Assert.DoesNotContain("private void ApplyTrayTooltip", controller);
     }
 
     [Fact]
@@ -1704,6 +1709,17 @@ public sealed class AppRefactorContractTests
                 element => element.Attribute("name")!.Value,
                 element => element.Element("value")?.Value ?? string.Empty,
                 StringComparer.Ordinal);
+
+    private static string ReadWindowManagerSource()
+    {
+        var root = TestRepositoryPaths.GetRepositoryRoot();
+        return File.ReadAllText(Path.Combine(
+            root,
+            "src",
+            "OpenClaw.Tray.WinUI",
+            "Services",
+            "WindowManager.cs"));
+    }
 
     private static string ExtractMethod(string source, string methodName)
     {

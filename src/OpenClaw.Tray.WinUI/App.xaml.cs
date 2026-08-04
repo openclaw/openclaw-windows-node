@@ -37,7 +37,6 @@ using System.Threading.Tasks;
 using Updatum;
 using WinUIEx;
 using SetupCompletedEventArgs = OpenClaw.SetupEngine.UI.SetupCompletedEventArgs;
-using SetupWindow = OpenClaw.SetupEngine.UI.SetupWindow;
 
 namespace OpenClawTray;
 
@@ -49,8 +48,8 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands, IPer
         InstallUpdateSingleFileExecutableName = "OpenClaw.Tray.WinUI",
     };
 
-    private TrayIcon? _trayIcon;
-    private TrayIconCoordinator? _trayIconCoordinator;
+    private ITrayController? _trayController;
+    private IWindowManager? _windowManager;
     private GatewayConnectionManager? _connectionManager;
     private GatewayDirectConnectService? _gatewayDirectConnectService;
     private GatewayRegistry? _gatewayRegistry;
@@ -106,7 +105,7 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands, IPer
     internal string DataDirectoryPath => DataPath;
 
     /// <summary>The active hub window, exposed so pages can obtain an HWND for file pickers.</summary>
-    internal Microsoft.UI.Xaml.Window? ActiveHubWindow => _hubWindow;
+    internal Microsoft.UI.Xaml.Window? ActiveHubWindow => _windowManager?.ActiveHubWindow;
     /// <summary>The current voice service instance (node or standalone).</summary>
     internal VoiceService? VoiceService => _nodeService?.VoiceService ?? _standaloneVoiceService;
     /// <summary>The full device ID of the local node service (if running).</summary>
@@ -181,10 +180,8 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands, IPer
     /// Returns the HWND of the active onboarding window, or IntPtr.Zero if none.
     /// Used by onboarding pages that need to host file pickers / dialogs.
     /// </summary>
-    public IntPtr GetOnboardingWindowHandle()
-        => _setupWindow is null
-            ? IntPtr.Zero
-            : WinRT.Interop.WindowNative.GetWindowHandle(_setupWindow);
+    public IntPtr GetOnboardingWindowHandle() =>
+        _windowManager?.GetOnboardingWindowHandle() ?? IntPtr.Zero;
 
     /// <summary>
     /// Returns the HWND of the Hub window, or IntPtr.Zero if it isn't open.
@@ -192,14 +189,11 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands, IPer
     /// or other Win32-style dialog. Pages should not hold a reference to
     /// the HubWindow directly (single-app-model rule); they call this
     /// when they need the handle and discard it afterwards.
-    /// Guards against the close-window race where `_hubWindow != null`
-    /// but the window is mid-teardown — every other call site in this
-    /// file pairs the null check with `!IsClosed` (Hanselman v2 #4).
+    /// The window manager guards against the close-window race where the
+    /// window is present but already in teardown.
     /// </summary>
-    public IntPtr GetHubWindowHandle()
-        => _hubWindow != null && !_hubWindow.IsClosed
-            ? WinRT.Interop.WindowNative.GetWindowHandle(_hubWindow)
-            : IntPtr.Zero;
+    public IntPtr GetHubWindowHandle() =>
+        _windowManager?.GetHubWindowHandle() ?? IntPtr.Zero;
 
     private SettingsManager? _settings;
     private ConnectionSettingsSnapshot? _previousSettingsSnapshot;
@@ -223,8 +217,6 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands, IPer
     /// Cached connection status — sole writer is OnManagerStateChanged.
     /// Reads are safe from any thread; derives from the connection manager's state machine.
     /// </summary>
-    private WeakReference<ToggleSwitch>? _connectionToggleRef;
-    private bool _suspendConnectionToggleEvent;
     private string? _lastManagerConnectedSideEffectsKey;
     private SettingsWriteOrigin? _trayPermissionWriteOrigin;
     private SettingsWriteOrigin? _appCapabilityPermissionWriteOrigin;
@@ -243,12 +235,6 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands, IPer
             ["info"]      = s => s.NotifyInfo,
             ["error"]     = s => s.NotifyUrgent,  // errors follow urgent setting
         }.ToFrozenDictionary(StringComparer.OrdinalIgnoreCase);
-
-    // Windows (created on demand)
-    private HubWindow? _hubWindow;
-    private TrayMenuWindow? _trayMenuWindow;
-    private ChatWindow? _chatWindow;
-    private ConnectionStatusWindow? _connectionStatusWindow;
 
     private DiagnosticsClipboardService? _diagnosticsClipboard;
     private ToastService? _toastService;
@@ -273,10 +259,6 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands, IPer
     // Node service (optional, enabled in settings)
     private NodeService? _nodeService;
     private ExecApprovalsStore? _execApprovalsStore;
-    // Keep-alive window to anchor WinUI runtime (prevents GC/threading issues)
-    private Window? _keepAliveWindow;
-    private SetupWindow? _setupWindow;
-
     private string[]? _startupArgs;
     private string? _pendingProtocolUri;
     private bool _isPostSetupRestart;
@@ -501,14 +483,8 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands, IPer
         services.AddSingleton<INavigationService>(new AppNavigationService(
             dispatcher,
             navigate: tag => ((IAppCommands)this).Navigate(tag),
-            canGoBack: () => _hubWindow is { IsClosed: false } hub && hub.CanGoBack,
-            goBack: () =>
-            {
-                if (_hubWindow is { IsClosed: false } hub)
-                {
-                    hub.NavigateBack();
-                }
-            }));
+            canGoBack: () => _windowManager?.CanNavigateHubBack() == true,
+            goBack: () => _windowManager?.NavigateHubBack()));
         services.AddSingleton<IPageActivator>(sp => new FramePageActivator(
             sp.GetRequiredService<NavigationScopeManager>(),
             PageViewModelMap));
@@ -642,17 +618,35 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands, IPer
 
         // Central observable model + gateway event handler.
         _appState = new AppState(_dispatcherQueue);
+        _windowManager = new OpenClawTray.Services.WindowManager(
+            _dispatcherQueue!,
+            new WindowManagerCallbacks(
+                GetAppState: () => _appState,
+                GetAppNotificationService: () => _appNotificationService,
+                GetConnectionManager: () => _connectionManager,
+                GetGatewayRegistry: () => _gatewayRegistry,
+                GetSettings: () => _settings,
+                GetNodeService: () => _nodeService,
+                GetVoiceService: () => _nodeService?.VoiceService ?? _standaloneVoiceService,
+                GetPageActivator: () => PageActivator,
+                GetPendingChatSessionKey: () => PendingChatSessionKey,
+                GetStartupArgs: () => _startupArgs,
+                IsDeepLinkArg: IsDeepLinkArg,
+                Connect: ReconnectWithSyncedBrowserProxyForward,
+                Disconnect: () =>
+                {
+                    _ = _connectionManager?.DisconnectByUserAsync();
+                    UpdateTrayIcon();
+                },
+                SettingsSaved: OnSettingsSaved,
+                AdvancedSetupRequested: OnSetupAdvancedSetupRequested,
+                SetupCompleted: OnSetupCompleted,
+                ApplyTheme: ApplyThemePreference));
         _updateCoordinator = new UpdateCoordinator(
             AppUpdater,
             _appState,
             _settings,
-            () =>
-            {
-                XamlRoot? r = null;
-                if (_hubWindow != null && !_hubWindow.IsClosed)
-                    r = (_hubWindow.Content as FrameworkElement)?.XamlRoot;
-                return r ?? (_keepAliveWindow?.Content as FrameworkElement)?.XamlRoot;
-            },
+            () => _windowManager?.DialogXamlRoot,
             refreshStatus: UpdateStatusDetailWindow,
             exit: Exit);
         _appState.UpdateInfo = UpdateCoordinator.BuildInitialInfo();
@@ -930,8 +924,7 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands, IPer
             TryResolveChatCredentials(out var prewarmUrl, out var prewarmToken, out _, out var prewarmIsBootstrapToken) &&
             !prewarmIsBootstrapToken)
         {
-            _chatWindow = new ChatWindow(prewarmUrl, prewarmToken);
-            ApplyThemePreference(_chatWindow);
+            _windowManager.PrewarmChat(new ChatWindowRequest(prewarmUrl, prewarmToken));
             // Window is created but hidden — WebView2 initializes in the background
         }
 
@@ -963,60 +956,31 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands, IPer
         Logger.Info("Application started (WinUI 3)");
     }
 
-    private void InitializeKeepAliveWindow()
-    {
-        // Create a hidden window to keep the WinUI runtime properly initialized
-        // This prevents GC/threading issues when creating windows after idle
-        _keepAliveWindow = new Window();
-        _keepAliveWindow.Content = new Microsoft.UI.Xaml.Controls.Grid();
-        ApplyThemePreference(_keepAliveWindow);
-        _keepAliveWindow.AppWindow.IsShownInSwitchers = false;
-        
-        // Move off-screen and set minimal size
-        _keepAliveWindow.AppWindow.MoveAndResize(new global::Windows.Graphics.RectInt32(-32000, -32000, 1, 1));
-    }
-
     private void InitializeTrayIcon()
     {
         // Initialize keep-alive window first to anchor WinUI runtime
-        InitializeKeepAliveWindow();
-        
-        // Pre-create tray menu window at startup to avoid creation crashes later
-        InitializeTrayMenuWindow();
-        
-        // Start with the status-badged lobster (neutral/gray dot) so the tray icon
-        // mirrors the companion-app status from first paint, even before the first
-        // connection-state update arrives.
-        var iconPath = StatusBadgeIconFactory.GetBadgedIconPath(ConnectionStatusAccent.Neutral);
-        _trayIcon = new TrayIcon(1, iconPath, BuildTrayTooltip());
-        _trayIconCoordinator = new TrayIconCoordinator(
-            _trayIcon,
-            hasThreadAccess: () => _dispatcherQueue == null || _dispatcherQueue.HasThreadAccess,
-            marshal: OnUiThread,
-            captureSnapshot: CaptureTraySnapshot,
-            isAlive: () => _trayIcon != null);
-        _trayIcon.IsVisible = true;
-        _trayIconCoordinator.ApplyTrayTooltip(BuildTrayTooltip());
-        _trayIcon.Selected += OnTrayIconSelected;
-        _trayIcon.ContextMenu += OnTrayContextMenu;
-    }
+        _windowManager?.InitializeRuntimeAnchor();
 
-    private void InitializeTrayMenuWindow()
-    {
-        // Pre-create menu window once - reuse to avoid crash on window creation after idle
-        _trayMenuWindow = new TrayMenuWindow();
-        ApplyThemePreference(_trayMenuWindow);
-        _trayMenuWindow.MenuItemClicked += OnTrayMenuItemClicked;
-        // Don't close - just hide
+        _trayController = new TrayController(new TrayControllerCallbacks(
+            CaptureMenuSnapshot: CaptureTrayMenuSnapshot,
+            CaptureIconSnapshot: CaptureTraySnapshot,
+            IsOperatorConnected: () =>
+                _connectionManager?.CurrentSnapshot.OperatorState == RoleConnectionState.Connected,
+            ShowChat: ShowChatWindow,
+            ShowConnection: () => ShowHub("connection"),
+            DispatchMenuAction: action => OnTrayMenuItemClicked(null, action),
+            ApplyTheme: ApplyThemePreference,
+            IsDispatcherAvailable: () => _dispatcherQueue != null,
+            HasThreadAccess: () => _dispatcherQueue == null || _dispatcherQueue.HasThreadAccess,
+            Marshal: OnUiThread,
+            LogCrash: _crashLogger.Log));
+        _trayController.Initialize();
     }
 
     internal void ApplyThemePreferenceToOpenWindows()
     {
-        ApplyThemePreference(_keepAliveWindow);
-        ApplyThemePreference(_hubWindow);
-        ApplyThemePreference(_trayMenuWindow);
-        ApplyThemePreference(_chatWindow);
-        ApplyThemePreference(_connectionStatusWindow);
+        _windowManager?.ApplyThemeToOpenWindows();
+        _trayController?.ApplyTheme();
     }
 
     private void ApplyThemePreference(Window? window)
@@ -1025,17 +989,6 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands, IPer
             return;
 
         ThemeHelper.ApplyTheme(window, _settings.AppTheme);
-    }
-
-    private void OnTrayIconSelected(TrayIcon sender, TrayIconEventArgs e)
-    {
-        if (_connectionManager?.CurrentSnapshot.OperatorState == RoleConnectionState.Connected)
-        {
-            ShowChatWindow();
-            return;
-        }
-
-        ShowHub("connection");
     }
 
     internal void ShowChatWindow()
@@ -1058,47 +1011,7 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands, IPer
         }
 
         Logger.Info($"[ChatWindow] Quick-chat credentials resolved from {credentialSource}");
-        if (_chatWindow == null)
-        {
-            _chatWindow = new ChatWindow(url, token);
-            ApplyThemePreference(_chatWindow);
-        }
-
-        // Bug 2: cached ChatWindow may have been pre-warmed with empty/stale credentials
-        // (built before pairing completed). Refresh on every tray click so quick-chat
-        // follows the same resolver path as the companion-app operator client.
-        _chatWindow.RefreshCredentials(url, token);
-
-        // Toggle: if visible, hide; if hidden, show near tray
-        if (_chatWindow.Visible)
-        {
-            _chatWindow.HideNearTray();
-        }
-        else
-        {
-            // Bug 1: When called from the wizard's close handler, OnboardingWindow.Close()
-            // steals focus on the same UI tick, deactivating ChatWindow → its
-            // OnWindowActivated auto-hides it immediately. Defer the show to a later
-            // dispatcher tick (Low priority) so the close + focus-loss cascade settles
-            // before we make the chat window visible.
-            var window = _chatWindow;
-            var dispatcher = _dispatcherQueue;
-            if (dispatcher != null)
-            {
-                dispatcher.TryEnqueue(
-                    Microsoft.UI.Dispatching.DispatcherQueuePriority.Low,
-                    () =>
-                    {
-                        try { window.ShowNearTrayAnimated(); }
-                        catch (Exception ex) { Logger.Warn($"ShowChatWindow deferred show failed: {ex.Message}"); }
-                    });
-            }
-            else
-            {
-                window.ShowNearTrayAnimated();
-            }
-        }
-
+        _windowManager?.ShowChat(new ChatWindowRequest(url, token));
     }
 
     private void ShowCanvasWindow()
@@ -1106,27 +1019,33 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands, IPer
         if (_settings?.NodeCanvasEnabled == false)
         {
             Logger.Warn("[Canvas] Canvas capability is disabled; opening capability settings");
-            ShowHub("capabilities");
+            _windowManager?.ShowCanvas(new CanvasWindowRequest(
+                CanvasSurfaceDestination.Capabilities,
+                ShowCanvas: null));
             return;
         }
 
         if (_nodeService == null)
         {
-            ShowConnectionSettingsForPairingIssue(
-                "Canvas",
-                "Windows node is not initialized");
+            Logger.Warn("[Canvas] Windows node is not initialized; opening connection settings");
+            _windowManager?.ShowCanvas(new CanvasWindowRequest(
+                CanvasSurfaceDestination.Connection,
+                ShowCanvas: null));
             return;
         }
 
         if (_nodeService.IsPendingApproval || !_nodeService.IsPaired)
         {
-            ShowConnectionSettingsForPairingIssue(
-                "Canvas",
-                "Windows node pairing is not complete");
+            Logger.Warn("[Canvas] Windows node pairing is not complete; opening connection settings");
+            _windowManager?.ShowCanvas(new CanvasWindowRequest(
+                CanvasSurfaceDestination.Connection,
+                ShowCanvas: null));
             return;
         }
 
-        _nodeService.ShowCanvasWindow();
+        _windowManager?.ShowCanvas(new CanvasWindowRequest(
+            CanvasSurfaceDestination.Canvas,
+            _nodeService.ShowCanvasWindow));
     }
 
     private void ShowConnectionSettingsForPairingIssue(string source, string reason)
@@ -1189,46 +1108,6 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands, IPer
             return null;
 
         return _standaloneVoiceService ??= new VoiceService(new AppLogger(), _settings);
-    }
-
-    private void OnTrayContextMenu(TrayIcon sender, TrayIconEventArgs e)
-    {
-        // Right-click: show menu
-        ShowTrayMenuPopup();
-    }
-
-    private void ShowTrayMenuPopup()
-    {
-        try
-        {
-            // Verify dispatcher is still valid
-            if (_dispatcherQueue == null)
-            {
-                Logger.Error("DispatcherQueue is null - cannot show menu");
-                return;
-            }
-
-            // Menu uses purely cached data — no gateway requests on open
-            // Data stays fresh via WebSocket event stream (session/health broadcasts)
-
-            // Reuse pre-created window - never create new ones after startup
-            if (_trayMenuWindow == null)
-            {
-                // This shouldn't happen, but recreate if needed
-                Logger.Warn("TrayMenuWindow was null, recreating");
-                InitializeTrayMenuWindow();
-            }
-
-            // Rebuild menu content
-            _trayMenuWindow!.ClearItems();
-            BuildTrayMenuPopup(_trayMenuWindow);
-            _trayMenuWindow.ShowAtCursor();
-        }
-        catch (Exception ex)
-        {
-            _crashLogger.Log("ShowTrayMenuPopup", ex);
-            Logger.Error($"Failed to show tray menu: {ex.Message}");
-        }
     }
 
     private void OnTrayMenuItemClicked(object? sender, string action)
@@ -1466,8 +1345,8 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands, IPer
 
     private async Task<bool> ConfirmSessionActionAsync(string title, string body, string actionLabel)
     {
-        var root = _keepAliveWindow?.Content as FrameworkElement;
-        if (root?.XamlRoot == null) return false;
+        var xamlRoot = _windowManager?.RuntimeAnchorXamlRoot;
+        if (xamlRoot == null) return false;
 
         var dialog = new ContentDialog
         {
@@ -1476,7 +1355,7 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands, IPer
             PrimaryButtonText = actionLabel,
             CloseButtonText = LocalizationHelper.GetString("SessionActionPrompt_CancelLabel"),
             DefaultButton = ContentDialogButton.None,
-            XamlRoot = root.XamlRoot
+            XamlRoot = xamlRoot
         };
         var result = await dialog.ShowAsync();
         return result == ContentDialogResult.Primary;
@@ -1484,8 +1363,8 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands, IPer
 
     private async Task<bool> ConfirmDeepLinkActionAsync(DeepLinkResult result)
     {
-        var root = _keepAliveWindow?.Content as FrameworkElement;
-        if (root?.XamlRoot == null)
+        var xamlRoot = _windowManager?.RuntimeAnchorXamlRoot;
+        if (xamlRoot == null)
         {
             Logger.Warn($"Cannot confirm deep link action without XAML root: {DeepLinkSecurityPolicy.RedactForLog($"{AppIdentity.ProtocolScheme}://{result.Path}")}");
             return false;
@@ -1498,7 +1377,7 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands, IPer
             PrimaryButtonText = "Allow",
             CloseButtonText = "Cancel",
             DefaultButton = ContentDialogButton.Close,
-            XamlRoot = root.XamlRoot
+            XamlRoot = xamlRoot
         };
         var dialogResult = await dialog.ShowAsync();
         return dialogResult == ContentDialogResult.Primary;
@@ -1535,7 +1414,7 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands, IPer
         _appState?.ClearCachedData();
         UpdateTrayIcon();
         // Dismiss the tray menu on disconnect — it will capture fresh data on next open
-        _trayMenuWindow?.HideCascade();
+        _trayController?.HideMenu();
     }
 
     private SettingsWriteOrigin GetOrCreateSettingsWriteOrigin(
@@ -1670,35 +1549,10 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands, IPer
         }
     }
 
-    private void BuildTrayMenuPopup(TrayMenuWindow menu)
-    {
-        // Preview data must be applied before snapshot capture so the injected
-        // values are visible to the builder without coupling it to App state.
-        ApplyTrayMenuPreviewDataIfRequested();
-        var snapshot = CaptureTrayMenuSnapshot();
-        var presentation = new TrayMenuPresenter(snapshot).Present();
-        var callbacks = new TrayMenuCallbacks(
-            DispatchAction: action => OnTrayMenuItemClicked(null, action),
-            TrackConnectionToggle: toggle => _connectionToggleRef = new WeakReference<ToggleSwitch>(toggle),
-            IsConnectionToggleSuspended: () => _suspendConnectionToggleEvent);
-        var renderer = new TrayMenuRenderer(presentation, callbacks);
-
-        // Render the whole menu inside a single update batch so layout
-        // measures only once instead of once-per-row. Pair with EndUpdate
-        // in finally so an exception mid-build doesn't wedge layout.
-        menu.BeginUpdate();
-        try
-        {
-            renderer.Render(menu);
-        }
-        finally
-        {
-            menu.EndUpdate();
-        }
-    }
-
     private TrayMenuSnapshot CaptureTrayMenuSnapshot()
     {
+        ApplyTrayMenuPreviewDataIfRequested();
+
         // Show "Reconfigure" if there's an existing setup, "Setup Guide" if fresh
         var hasExistingConfig = false;
         if (_settings != null)
@@ -2369,16 +2223,10 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands, IPer
         OnUiThread(() =>
         {
             if (_appState != null) _appState.Status = mapped;
-            _hubWindow?.UpdateTitleBarStatus(snap, mapped);
-            UpdateTrayIcon();
-            SyncConnectionToggle(mapped, snap.OverallState);
+            _windowManager?.UpdateHubTitleBarStatus(snap, mapped);
+            _trayController?.ApplyConnectionState(mapped, snap.OverallState);
             UpdateConnectionIssueNotification(snap);
             PermissionsRuntimeChanged?.Invoke(this, EventArgs.Empty);
-            if (mapped is ConnectionStatus.Connected or ConnectionStatus.Disconnected or ConnectionStatus.Error)
-            {
-                // Dismiss the tray menu on state change — it will capture fresh data on next open
-                _trayMenuWindow?.HideCascade();
-            }
         });
 
         if (connectedSideEffectsKey != null)
@@ -3404,33 +3252,6 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands, IPer
     }
 
 
-    private void SyncConnectionToggle(ConnectionStatus status, OverallConnectionState? overallState = null)
-    {
-        if (_connectionToggleRef == null)
-            return;
-
-        if (!_connectionToggleRef.TryGetTarget(out var toggle))
-            return;
-
-        if (toggle.XamlRoot == null)
-        {
-            _connectionToggleRef = null;
-            return;
-        }
-
-        var presentation = ConnectionTogglePresenter.Present(status, overallState);
-        _suspendConnectionToggleEvent = true;
-        try
-        {
-            TrayMenuWindow.SetMenuToggleSwitchState(toggle, presentation.IsOn, presentation.IsEnabled);
-            ToolTipService.SetToolTip(toggle, presentation.ToolTip);
-        }
-        finally
-        {
-            _suspendConnectionToggleEvent = false;
-        }
-    }
-
     private static string? GetNotificationIcon(string? type)
     {
         // For now, use the app icon for all notifications
@@ -3451,9 +3272,9 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands, IPer
         // Suppress chat notifications when a chat window is already showing them
         if (notification.IsChat)
         {
-            if (_hubWindow != null && !_hubWindow.IsClosed)
+            if (_windowManager?.IsHubOpen == true)
                 return false;
-            if (_chatWindow is { IsClosed: false, Visible: true })
+            if (_windowManager?.IsChatVisible == true)
                 return false;
         }
 
@@ -3521,10 +3342,7 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands, IPer
 
     #region Tray Icon
 
-    private void UpdateTrayIcon() => _trayIconCoordinator?.UpdateTrayIcon();
-
-    private string BuildTrayTooltip() =>
-        new TrayTooltipBuilder(CaptureTraySnapshot()).Build();
+    private void UpdateTrayIcon() => _trayController?.RefreshIcon();
 
     private TrayStateSnapshot CaptureTraySnapshot()
     {
@@ -3550,106 +3368,7 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands, IPer
 
     internal void ShowHub(string? navigateTo = null, bool activate = true)
     {
-        if (_hubWindow == null || _hubWindow.IsClosed)
-        {
-            _hubWindow = new HubWindow();
-            ApplyThemePreference(_hubWindow);
-            _hubWindow.AppModel = _appState;
-            _hubWindow.BindAppNotifications(_appNotificationService!);
-            _hubWindow.ApplyNavPaneState(_settings!);
-            _hubWindow.OpenSetupAction = () => _ = ShowOnboardingAsync();
-            _hubWindow.OpenConnectionStatusAction = ShowConnectionStatusWindow;
-            _hubWindow.OpenVoiceAction = () => ShowHub("voice"); // was: ShowVoiceOverlay()
-            _hubWindow.ConnectionManager = _connectionManager;
-            _hubWindow.GatewayRegistry = _gatewayRegistry;
-            _hubWindow.ConnectAction = () =>
-            {
-                ReconnectWithSyncedBrowserProxyForward();
-            };
-            _hubWindow.DisconnectAction = () =>
-            {
-                _ = _connectionManager?.DisconnectByUserAsync();
-                // Status is updated by OnManagerStateChanged when disconnect completes.
-                UpdateTrayIcon();
-            };
-            _hubWindow.ReconnectAction = () =>
-            {
-                ReconnectWithSyncedBrowserProxyForward();
-            };
-            if (_nodeService != null)
-            {
-                _hubWindow.NodeIsConnected = _nodeService.IsConnected;
-                _hubWindow.NodeIsPaired = _nodeService.IsPaired;
-                _hubWindow.NodeIsPendingApproval = _nodeService.IsPendingApproval;
-                _hubWindow.NodeShortDeviceId = _nodeService.ShortDeviceId;
-                _hubWindow.NodeFullDeviceId = _nodeService.FullDeviceId;
-            }
-            _hubWindow.VoiceServiceInstance = _nodeService?.VoiceService ?? _standaloneVoiceService;
-            _hubWindow.SettingsSaved += OnSettingsSaved;
-            _hubWindow.Closed += (s, e) =>
-            {
-                _hubWindow.SettingsSaved -= OnSettingsSaved;
-                _hubWindow = null;
-
-                // Deactivate + dispose the current navigation scope so a page view model
-                // (once pages are mapped) does not outlive the window it belonged to.
-                try
-                {
-                    PageActivator?.Reset();
-                }
-                catch (Exception ex)
-                {
-                    Logger.Warn($"[App] Navigation scope reset on hub close failed: {ex.Message}");
-                }
-            };
-
-            _hubWindow.BindToAppState();
-
-            // Navigate to default page now that AppModel is set
-            _hubWindow.NavigateToDefault();
-        }
-
-        if (navigateTo != null)
-        {
-            _hubWindow.NavigateTo(navigateTo);
-        }
-        if (activate)
-        {
-            var hubWindow = _hubWindow;
-            AsyncEventHandlerGuard.Run(
-                () => ActivateHubWhenReadyAsync(hubWindow),
-                new AppLogger(),
-                nameof(ActivateHubWhenReadyAsync));
-        }
-        else
-        {
-            // Show without stealing focus — used by right-click on the
-            // tray icon where the popup needs to remain the foreground
-            // window (popups light-dismiss if focus moves away).
-            // If the Hub was minimized, restore it first so it actually
-            // becomes visible behind the popup; otherwise Show(false)
-            // is a no-op on a minimized window.
-            try
-            {
-                if (_hubWindow.AppWindow.Presenter is Microsoft.UI.Windowing.OverlappedPresenter op
-                    && op.State == Microsoft.UI.Windowing.OverlappedPresenterState.Minimized)
-                {
-                    op.Restore(activateWindow: false);
-                }
-                _hubWindow.AppWindow.Show(activateWindow: false);
-            }
-            catch (Exception ex)
-            {
-                Logger.Debug($"App: Failed to show hub window without activation before tray menu: {ex.Message}");
-            }
-        }
-    }
-
-    private async Task ActivateHubWhenReadyAsync(HubWindow hubWindow)
-    {
-        await hubWindow.WaitForCurrentContentReadyAsync();
-        if (ReferenceEquals(_hubWindow, hubWindow) && !hubWindow.IsClosed)
-            hubWindow.Activate();
+        _windowManager?.ShowHub(navigateTo, activate);
     }
 
     private void ShowSettings()
@@ -3691,11 +3410,7 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands, IPer
                 UpdateTrayIcon();
 
                 // Reset chat window — it has a stale URL/token
-                if (_chatWindow != null)
-                {
-                    _chatWindow.ForceClose();
-                    _chatWindow = null;
-                }
+                _windowManager?.ResetChatForCredentialChange();
 
                 ReconnectWithSyncedBrowserProxyForward();
                 break;
@@ -3759,8 +3474,7 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands, IPer
         void ApplyUiSettingsAndNotify()
         {
             ApplyThemePreferenceToOpenWindows();
-            if (_hubWindow is { IsClosed: false })
-                _hubWindow.RefreshDiagnosticsNavVisibility();
+            _windowManager?.RefreshHubDiagnosticsNavigationVisibility();
             SettingsChanged?.Invoke(this, EventArgs.Empty);
             PermissionsRuntimeChanged?.Invoke(this, EventArgs.Empty);
         }
@@ -3799,18 +3513,12 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands, IPer
         if (!string.IsNullOrEmpty(sessionKey))
         {
             PendingChatSessionKey = sessionKey;
-            if (_hubWindow != null)
-            {
-                _hubWindow.PendingChatSessionKey = sessionKey;
-            }
+            _windowManager?.SetPendingChatSessionKey(sessionKey);
         }
         else
         {
             PendingChatSessionKey = null;
-            if (_hubWindow != null)
-            {
-                _hubWindow.PendingChatSessionKey = null;
-            }
+            _windowManager?.SetPendingChatSessionKey(null);
         }
 
         ShowHub("chat");
@@ -3823,17 +3531,7 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands, IPer
 
     private void ShowConnectionStatusWindow()
     {
-        if (_connectionStatusWindow != null && !_connectionStatusWindow.IsClosed)
-        {
-            _connectionStatusWindow.Activate();
-            return;
-        }
-        _connectionStatusWindow = new ConnectionStatusWindow(
-            _connectionManager!.Diagnostics,
-            _gatewayRegistry,
-            _connectionManager);
-        ApplyThemePreference(_connectionStatusWindow);
-        _connectionStatusWindow.Activate();
+        _windowManager?.ShowConnectionStatus();
     }
 
     // ─── Inbound pairing approvals ───────────────────────────────────────
@@ -4066,89 +3764,24 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands, IPer
 
     private async Task ShowOnboardingAsync()
     {
-        await EnsureSetupWindowAsync();
-    }
-
-    private async Task<(SetupWindow? Window, bool CreatedNew)> EnsureSetupWindowAsync(bool startAtGatewayInstalledMilestone = false)
-    {
-        if (_settings == null)
-            return (null, false);
-
-        while (_setupWindow != null)
+        if (_windowManager is not null)
         {
-            var existingSetupWindow = _setupWindow;
-            await existingSetupWindow.WaitForInitialContentReadyAsync();
-            if (!existingSetupWindow.IsClosed)
-            {
-                if (ReferenceEquals(_setupWindow, existingSetupWindow))
-                    existingSetupWindow.BringToFrontForSetupLaunch();
-                return (existingSetupWindow, false);
-            }
-
-            await existingSetupWindow.CleanupCompleted;
-            if (ReferenceEquals(_setupWindow, existingSetupWindow))
-                _setupWindow = null;
-        }
-
-        try
-        {
-            var setupWindow = new SetupWindow(
-                startAtGatewayInstalledMilestone: startAtGatewayInstalledMilestone,
-                dataDir: AppIdentity.ResolveRoamingDataDirectory(),
-                localDataDir: AppIdentity.ResolveSetupLocalDataDirectory(),
-                distroNameOverride: AppIdentity.SetupDistroName,
-                gatewayPortOverride: AppIdentity.SetupGatewayPort,
-                commandLineArgs: SetupWindowArgumentProjection.Project(
-                    _startupArgs,
-                    IsDeepLinkArg,
-                    Environment.ProcessId));
-            setupWindow.Title = AppIdentity.DecorateWindowTitle("OpenClaw Setup");
-            _setupWindow = setupWindow;
-            setupWindow.AdvancedSetupRequested += OnSetupAdvancedSetupRequested;
-            setupWindow.SetupCompleted += OnSetupCompleted;
-            setupWindow.Closed += async (_, _) =>
-            {
-                await setupWindow.CleanupCompleted;
-                if (ReferenceEquals(_setupWindow, setupWindow))
-                    _setupWindow = null;
-            };
-            await setupWindow.WaitForInitialContentReadyAsync();
-            if (ReferenceEquals(_setupWindow, setupWindow) && !setupWindow.IsClosed)
-            {
-                setupWindow.BringToFrontForSetupLaunch();
-                Logger.Info("Opened tray-hosted setup window");
-            }
-            return (setupWindow, true);
-        }
-        catch (Exception ex)
-        {
-            Logger.Error($"Failed to open setup window: {ex}");
-            return (null, false);
+            await _windowManager.ShowOnboardingAsync();
         }
     }
 
     private async Task ShowGatewayWizardAsync()
     {
-        var (setupWindow, createdNew) = await EnsureSetupWindowAsync(startAtGatewayInstalledMilestone: true);
-        if (setupWindow == null)
-            return;
-
-        if (!createdNew)
+        if (_windowManager is not null)
         {
-            if (setupWindow.TryNavigateToGatewayInstalledMilestone())
-                Logger.Info("Setup window already open; switched to direct OpenClaw onboard handoff");
-            else
-                Logger.Info("Setup window already open; leaving current setup page visible to avoid interrupting active setup");
-            return;
+            await _windowManager.ShowGatewayWizardAsync();
         }
-
-        await setupWindow.WaitForInitialContentReadyAsync();
     }
 
     private void OnSetupAdvancedSetupRequested(object? sender, EventArgs e)
     {
         ShowHub("connection");
-        _setupWindow?.Close();
+        _windowManager?.CloseSetup();
     }
 
     private void OnSetupCompleted(object? sender, SetupCompletedEventArgs e) =>
@@ -4196,7 +3829,7 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands, IPer
             restarted.Dispose();
 
             Logger.Info("Started post-setup tray restart process");
-            _setupWindow?.Close();
+            _windowManager?.CloseSetup();
             await ExitApplicationAsync();
         }
         catch (Exception ex)
@@ -4208,7 +3841,8 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands, IPer
 
     private async Task ShowSetupRestartErrorAsync(string message)
     {
-        if (_setupWindow?.Content is not FrameworkElement root || root.XamlRoot is null)
+        var xamlRoot = _windowManager?.SetupXamlRoot;
+        if (xamlRoot is null)
         {
             Logger.Error(message);
             return;
@@ -4219,7 +3853,7 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands, IPer
             Title = "Restart OpenClaw",
             Content = message,
             CloseButtonText = "OK",
-            XamlRoot = root.XamlRoot,
+            XamlRoot = xamlRoot,
         };
 
         await dialog.ShowAsync();
@@ -4524,31 +4158,7 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands, IPer
         if (_dispatcherQueue == null) return;
         _dispatcherQueue.TryEnqueue(() =>
         {
-            // Always set the flag first — ChatPage checks it during navigation
-            var hubExisted = _hubWindow != null;
-            ShowHub("chat");
-            if (_hubWindow == null) return;
-
-            if (_hubWindow.CurrentPage is Pages.ChatPage chatPage)
-            {
-                // Chat page is already visible — trigger voice directly
-                chatPage.TriggerAutoStartVoice();
-            }
-            else
-            {
-                // Chat page is being created — set the flag for ChatPage.Initialize to pick up.
-                // Also schedule a delayed trigger in case the flag isn't consumed during navigation.
-                _hubWindow.PendingAutoStartVoice = true;
-                _dispatcherQueue.TryEnqueue(Microsoft.UI.Dispatching.DispatcherQueuePriority.Low, () =>
-                {
-                    if (_hubWindow?.PendingAutoStartVoice == true &&
-                        _hubWindow.CurrentPage is Pages.ChatPage cp)
-                    {
-                        _hubWindow.PendingAutoStartVoice = false;
-                        cp.TriggerAutoStartVoice();
-                    }
-                });
-            }
+            _windowManager?.ShowHubChatAndStartVoice();
         });
     }
 
@@ -4722,7 +4332,7 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands, IPer
             RestartSshTunnel = RestartSshTunnel,
             OpenChat = () => ShowWebChat(),
             OpenCommandCenter = ShowStatusDetail,
-            OpenTrayMenu = ShowTrayMenuPopup,
+            OpenTrayMenu = () => _trayController?.ShowMenu(),
             OpenActivityStream = ShowActivityStream,
             OpenNotificationHistory = ShowNotificationHistory,
             OpenDashboard = OpenDashboard,
@@ -4832,6 +4442,8 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands, IPer
         }
 
         _isExiting = true;
+        _windowManager?.BeginShutdown();
+        _trayController?.BeginShutdown();
         Logger.Info("Application exiting");
 
         // Cancel background tasks
@@ -4926,12 +4538,13 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands, IPer
         });
 
         // Close windows explicitly for deterministic shutdown tracing.
-        SafeShutdownStep("chat window", () => { _chatWindow?.ForceClose(); _chatWindow = null; });
-        SafeShutdownStep("setup window", () => { _setupWindow?.Close(); _setupWindow = null; });
-        SafeShutdownStep("tray menu window", () => CloseWindow(_trayMenuWindow));
-        _trayMenuWindow = null;
-        SafeShutdownStep("keep alive window", () => CloseWindow(_keepAliveWindow));
-        _keepAliveWindow = null;
+        var windowManager = _windowManager;
+        _windowManager = null;
+        if (windowManager is not null)
+        {
+            await SafeShutdownStepAsync("window manager", windowManager.CloseForShutdownAsync);
+        }
+        SafeShutdownStep("tray menu window", () => _trayController?.CloseMenuForShutdown());
 
         // Dispose the DI composition root. The container only owns the presentation
         // infrastructure it created (navigation scope manager + any open page-view-model
@@ -4952,9 +4565,8 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands, IPer
         // Dispose tray and mutex
         SafeShutdownStep("tray icon", () =>
         {
-            _trayIcon?.Dispose();
-            _trayIcon = null;
-            _trayIconCoordinator = null;
+            _trayController?.Dispose();
+            _trayController = null;
         });
 
         SafeShutdownStep("single-instance mutex", () =>
@@ -4972,19 +4584,6 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands, IPer
 
         Logger.Info("Shutdown complete; calling Exit() now");
         Exit();
-    }
-
-    private static void CloseWindow(Window? window)
-    {
-        try
-        {
-            window?.Close();
-        }
-        catch
-        {
-            // Let caller log specific failure context.
-            throw;
-        }
     }
 
     private static void SafeShutdownStep(string name, Action action)
