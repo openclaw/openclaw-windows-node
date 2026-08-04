@@ -205,6 +205,11 @@ public sealed class ChatTimelinePresentationTests
         Assert.Contains("internal sealed class ToolActivityCard : Component<ToolActivityCardProps>", renderer);
         Assert.Contains("Element details = isExpanded", renderer);
         Assert.Contains("? VStack(", renderer);
+        Assert.Contains("control.MinHeight = 28;", renderer);
+        Assert.Contains("control.FontSize = 12;", renderer);
+        Assert.Contains("border.BorderThickness = isNested", renderer);
+        Assert.Contains("? new Thickness(0)", renderer);
+        Assert.Contains("? \"SubtleFillColorTransparentBrush\"", renderer);
         Assert.Contains(": Empty();", renderer);
         Assert.DoesNotContain("activity.Tools.Select(BuildStandalone)", renderer);
     }

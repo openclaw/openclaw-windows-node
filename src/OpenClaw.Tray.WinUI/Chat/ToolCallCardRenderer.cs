@@ -63,6 +63,12 @@ internal static class ToolCallCardRenderer
             {
                 control.HorizontalAlignment = HorizontalAlignment.Stretch;
                 control.HorizontalContentAlignment = HorizontalAlignment.Stretch;
+                if (isNested)
+                {
+                    control.FontSize = 12;
+                    control.MinHeight = 28;
+                    control.Padding = new Thickness(4, 0, 4, 0);
+                }
                 AutomationProperties.SetAutomationId(
                     control,
                     $"ChatToolCall_{SanitizeAutomationId(entry.Id)}");
@@ -75,20 +81,32 @@ internal static class ToolCallCardRenderer
             .Set(border =>
             {
                 border.Margin = isNested
-                    ? new Thickness(0, 2, 0, 2)
+                    ? new Thickness(0)
                     : new Thickness(68, 4, 40, 4);
                 border.Padding = isNested
-                    ? new Thickness(8, 4, 8, 4)
+                    ? new Thickness(0)
                     : new Thickness(12, 8, 12, 8);
+                border.BorderThickness = isNested
+                    ? new Thickness(0)
+                    : new Thickness(1);
+                border.CornerRadius = isNested
+                    ? new CornerRadius(4)
+                    : new CornerRadius(12);
             })
             .Background(BrushFor(
-                "CardBackgroundFillColorDefaultBrush",
-                Color.FromArgb(0x24, 0x80, 0x80, 0x80)))
+                isNested
+                    ? "SubtleFillColorTransparentBrush"
+                    : "CardBackgroundFillColorDefaultBrush",
+                isNested
+                    ? Color.FromArgb(0, 0, 0, 0)
+                    : Color.FromArgb(0x24, 0x80, 0x80, 0x80)))
             .BorderBrush(BrushFor(
-                "ControlStrokeColorDefaultBrush",
-                Color.FromArgb(0x40, 0x80, 0x80, 0x80)))
-            .BorderThickness(1)
-            .CornerRadius(12);
+                isNested
+                    ? "SubtleFillColorTransparentBrush"
+                    : "ControlStrokeColorDefaultBrush",
+                isNested
+                    ? Color.FromArgb(0, 0, 0, 0)
+                    : Color.FromArgb(0x40, 0x80, 0x80, 0x80)));
     }
 
     public static Element BuildActivity(
@@ -125,7 +143,7 @@ internal static class ToolCallCardRenderer
         var glyph = summary.IsRunning ? "\u21BB" : "\u2713";
         Element details = isExpanded
             ? VStack(
-                2,
+                0,
                 activity.Tools
                     .Select(tool => BuildStandalone(props, tool, isNested: true)
                         .WithKey($"activity-tool:{tool.Id}"))
