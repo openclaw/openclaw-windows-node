@@ -156,6 +156,7 @@ public partial class OpenClawGatewayClient
         {
             _sessionListConnectionGeneration++;
             _sessionListCapability = 0;
+            _operatorReadScopeUnavailable = false;
         }
     }
 

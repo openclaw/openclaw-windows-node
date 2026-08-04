@@ -817,6 +817,220 @@ public sealed class GatewayProtocolLiveRoundTripTests : IDisposable
         }
     }
 
+    [Fact]
+    public async Task QuerySessions_MissingOperatorRead_SuppressesDirectQueriesUntilReconnect()
+    {
+        using var server = new LoopbackGatewayServer();
+        var calls = 0;
+        server.OnMethod("sessions.list", _ =>
+        {
+            if (Interlocked.Increment(ref calls) == 1)
+            {
+                return LoopbackResponse.Fail(new
+                {
+                    code = "INVALID_REQUEST",
+                    message = "missing scope: operator.read",
+                });
+            }
+            return SessionPage(
+                new[] { new { key = "agent:main:after-reconnect", label = "Current" } },
+                offset: 0,
+                nextOffset: (int?)null,
+                hasMore: false);
+        });
+        var client = new OpenClawGatewayClient(
+            server.WebSocketUrl, "test-token", new TestLogger(),
+            identityPath: _identityDir);
+
+        try
+        {
+            await ConnectAndWaitAsync(client, server);
+            await Assert.ThrowsAsync<GatewayRequestException>(() =>
+                client.QuerySessionsAsync(new SessionQuery { IncludeBackground = true }));
+            Assert.Equal(1, calls);
+
+            var recent = await client.QuerySessionsAsync(
+                new SessionQuery { IncludeBackground = true });
+            var search = await client.QuerySessionsAsync(new SessionQuery
+            {
+                Search = "needle",
+                IncludeBackground = true,
+            });
+            using var canceled = new CancellationTokenSource();
+            canceled.Cancel();
+            await Assert.ThrowsAnyAsync<OperationCanceledException>(() =>
+                client.QuerySessionsAsync(
+                    new SessionQuery { Search = "canceled", IncludeBackground = true },
+                    canceled.Token));
+
+            Assert.Empty(recent.Sessions);
+            Assert.Empty(search.Sessions);
+            Assert.Equal("needle", search.Search);
+            Assert.Equal(SessionSearchExecutionMode.None, search.SearchExecutionMode);
+            Assert.Equal(0, recent.PagesRead);
+            Assert.Equal(recent.ConnectionGeneration, search.ConnectionGeneration);
+            Assert.Equal(GetSessionListConnectionGeneration(client), recent.ConnectionGeneration);
+            Assert.Equal(GetSessionQueryConnectionGeneration(client), recent.ConnectionGeneration);
+            Assert.Equal(1, calls);
+
+            await client.DisconnectAsync();
+            await ConnectAndWaitAsync(client, server);
+            var afterReconnect = await client.QuerySessionsAsync(
+                new SessionQuery { IncludeBackground = true });
+
+            Assert.Equal("agent:main:after-reconnect", Assert.Single(afterReconnect.Sessions).Key);
+            Assert.True(afterReconnect.ConnectionGeneration > recent.ConnectionGeneration);
+            Assert.Equal(2, calls);
+        }
+        finally
+        {
+            await client.DisconnectAsync();
+        }
+    }
+
+    [Fact]
+    public async Task QuerySessions_LateMissingScopeFromOldConnection_DoesNotSuppressReconnectedQuery()
+    {
+        using var server = new LoopbackGatewayServer
+        {
+            ProcessRequestsConcurrently = true,
+        };
+        var firstRequestReceived = new TaskCompletionSource(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        var releaseFirstResponse = new TaskCompletionSource(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        var calls = 0;
+        server.OnMethodAsync("sessions.list", async _ =>
+        {
+            if (Interlocked.Increment(ref calls) == 1)
+            {
+                firstRequestReceived.TrySetResult();
+                await releaseFirstResponse.Task;
+                return LoopbackResponse.Fail(new
+                {
+                    code = "INVALID_REQUEST",
+                    message = "missing scope: operator.read",
+                });
+            }
+
+            return SessionPage(
+                new[] { new { key = "agent:main:new-connection", label = "Current" } },
+                offset: 0,
+                nextOffset: (int?)null,
+                hasMore: false);
+        });
+        var client = new OpenClawGatewayClient(
+            server.WebSocketUrl, "test-token", new TestLogger(),
+            identityPath: _identityDir);
+
+        try
+        {
+            await ConnectAndWaitAsync(client, server);
+            var oldGeneration = GetSessionListConnectionGeneration(client);
+            var stale = client.QuerySessionsAsync(
+                new SessionQuery { IncludeBackground = true });
+            await firstRequestReceived.Task.WaitAsync(TimeSpan.FromSeconds(20));
+
+            await client.DisconnectAsync();
+            await ConnectAndWaitAsync(client, server);
+            Assert.True(GetSessionListConnectionGeneration(client) > oldGeneration);
+
+            releaseFirstResponse.TrySetResult();
+            await Assert.ThrowsAnyAsync<OperationCanceledException>(() => stale);
+
+            // Deterministically exercise the old continuation after reconnect.
+            Assert.False(MarkOperatorReadScopeUnavailable(client, oldGeneration));
+
+            var current = await client.QuerySessionsAsync(
+                new SessionQuery { IncludeBackground = true });
+
+            Assert.Equal("agent:main:new-connection", Assert.Single(current.Sessions).Key);
+            Assert.Equal(GetSessionQueryConnectionGeneration(client), current.ConnectionGeneration);
+            Assert.Equal(2, calls);
+        }
+        finally
+        {
+            releaseFirstResponse.TrySetResult();
+            await client.DisconnectAsync();
+        }
+    }
+
+    [Fact]
+    public async Task QuerySessions_UnrelatedGatewayErrorsPropagateWithoutSuppressingNextQuery()
+    {
+        using var server = new LoopbackGatewayServer();
+        var calls = 0;
+        server.OnMethod("sessions.list", _ =>
+        {
+            Interlocked.Increment(ref calls);
+            return LoopbackResponse.Fail(new
+            {
+                code = "SERVER_ERROR",
+                message = "unrelated failure",
+            });
+        });
+        var client = new OpenClawGatewayClient(
+            server.WebSocketUrl, "test-token", new TestLogger(),
+            identityPath: _identityDir);
+
+        try
+        {
+            await ConnectAndWaitAsync(client, server);
+
+            var first = await Assert.ThrowsAsync<GatewayRequestException>(() =>
+                client.QuerySessionsAsync(new SessionQuery { IncludeBackground = true }));
+            var second = await Assert.ThrowsAsync<GatewayRequestException>(() =>
+                client.QuerySessionsAsync(new SessionQuery
+                {
+                    Search = "still queries",
+                    IncludeBackground = true,
+                }));
+
+            Assert.Equal("SERVER_ERROR", first.Code);
+            Assert.Equal("SERVER_ERROR", second.Code);
+            Assert.Equal(2, calls);
+        }
+        finally
+        {
+            await client.DisconnectAsync();
+        }
+    }
+
+    private static int GetSessionListConnectionGeneration(OpenClawGatewayClient client)
+    {
+        var field = typeof(OpenClawGatewayClient).GetField(
+            "_sessionListConnectionGeneration",
+            System.Reflection.BindingFlags.NonPublic |
+            System.Reflection.BindingFlags.Instance);
+        return (int)field!.GetValue(client)!;
+    }
+
+    private static int GetSessionQueryConnectionGeneration(OpenClawGatewayClient client)
+    {
+        var field = typeof(OpenClawGatewayClient).GetField(
+            "_sessionQueries",
+            System.Reflection.BindingFlags.NonPublic |
+            System.Reflection.BindingFlags.Instance);
+        return ((SessionQueryCoordinator)field!.GetValue(client)!).ConnectionGeneration;
+    }
+
+    private static bool MarkOperatorReadScopeUnavailable(
+        OpenClawGatewayClient client,
+        int connectionGeneration)
+    {
+        var method = typeof(OpenClawGatewayClient).GetMethod(
+            "MarkOperatorReadScopeUnavailable",
+            System.Reflection.BindingFlags.NonPublic |
+            System.Reflection.BindingFlags.Instance);
+        return (bool)method!.Invoke(
+            client,
+            new object[]
+            {
+                connectionGeneration,
+                "stale test continuation",
+            })!;
+    }
+
     private static void ConfigureResponders(LoopbackGatewayServer server)
     {
         // NOTE: intentionally NO hello-ok responder. The new methods only require

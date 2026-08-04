@@ -38,6 +38,7 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
     private GatewayUsageStatusInfo? _usageStatus;
     private GatewayCostUsageInfo? _usageCost;
     private readonly Dictionary<string, string> _pendingRequestMethods = new();
+    private readonly Dictionary<string, int> _pendingRequestConnectionGenerations = new();
     private readonly Dictionary<string, TaskCompletionSource<ChatSendResult>> _pendingChatSendRequests = new();
     private readonly object _pendingRequestLock = new();
     private readonly object _pendingChatSendLock = new();
@@ -143,7 +144,6 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
         _agentsListUnsupported = false;
         _agentFilesListUnsupported = false;
         _agentFileGetUnsupported = false;
-        _operatorReadScopeUnavailable = false;
     }
 
     /// <summary>
@@ -732,7 +732,8 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
     /// <summary>Request session list from gateway.</summary>
     public async Task RequestSessionsAsync(string? agentId = null)
     {
-        if (_operatorReadScopeUnavailable) return;
+        var scopeState = CaptureOperatorReadScopeState();
+        if (scopeState.Unavailable) return;
         try
         {
             var snapshot = await QuerySessionsAsync(new SessionQuery
@@ -754,8 +755,7 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
         }
         catch (GatewayRequestException ex) when (IsMissingScopeError(ex.Message, "operator.read"))
         {
-            _operatorReadScopeUnavailable = true;
-            _logger.Warn("Gateway token lacks operator.read; disabling sessions polling");
+            MarkOperatorReadScopeUnavailable(scopeState.Generation);
         }
         catch (Exception ex)
         {
@@ -763,14 +763,87 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
         }
     }
 
-    public Task<SessionQuerySnapshot> QuerySessionsAsync(
+    public async Task<SessionQuerySnapshot> QuerySessionsAsync(
         SessionQuery query,
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(query);
-        return string.IsNullOrWhiteSpace(query.Search)
-            ? _sessionQueries.LoadRecentAsync(query, cancellationToken)
-            : _sessionQueries.SearchAsync(query, cancellationToken);
+        cancellationToken.ThrowIfCancellationRequested();
+        var scopeState = CaptureOperatorReadScopeState();
+        if (scopeState.Unavailable)
+        {
+            var queryGeneration = _sessionQueries.ConnectionGeneration;
+            cancellationToken.ThrowIfCancellationRequested();
+            if (!IsOperatorReadScopeUnavailable(scopeState.Generation))
+            {
+                throw new OperationCanceledException(
+                    "sessions.list query belongs to a stale connection generation.",
+                    cancellationToken);
+            }
+
+            // The query was not executed, so report no paging/search mode while
+            // retaining the requested search identity for upper consumers.
+            return new SessionQuerySnapshot
+            {
+                Search = string.IsNullOrWhiteSpace(query.Search) ? null : query.Search.Trim(),
+                ConnectionGeneration = queryGeneration,
+                Sessions = Array.Empty<SessionInfo>(),
+                MaterializedSessions = Array.Empty<SessionInfo>(),
+            };
+        }
+
+        EnsureCurrentSessionListGeneration(scopeState.Generation, cancellationToken);
+        try
+        {
+            return await (string.IsNullOrWhiteSpace(query.Search)
+                ? _sessionQueries.LoadRecentAsync(query, cancellationToken)
+                : _sessionQueries.SearchAsync(query, cancellationToken)).ConfigureAwait(false);
+        }
+        catch (GatewayRequestException ex) when (IsMissingScopeError(ex.Message, "operator.read"))
+        {
+            if (!MarkOperatorReadScopeUnavailable(scopeState.Generation))
+            {
+                throw new OperationCanceledException(
+                    "sessions.list response belongs to a stale connection generation.",
+                    ex,
+                    cancellationToken);
+            }
+            throw;
+        }
+    }
+
+    private (int Generation, bool Unavailable) CaptureOperatorReadScopeState()
+    {
+        lock (_sessionListCapabilityLock)
+            return (_sessionListConnectionGeneration, _operatorReadScopeUnavailable);
+    }
+
+    private bool IsOperatorReadScopeUnavailable(int connectionGeneration)
+    {
+        lock (_sessionListCapabilityLock)
+        {
+            return _sessionListConnectionGeneration == connectionGeneration &&
+                   _operatorReadScopeUnavailable;
+        }
+    }
+
+    private bool MarkOperatorReadScopeUnavailable(
+        int connectionGeneration,
+        string warning = "Gateway token lacks operator.read; disabling sessions polling")
+    {
+        var shouldLog = false;
+        lock (_sessionListCapabilityLock)
+        {
+            if (_sessionListConnectionGeneration != connectionGeneration)
+                return false;
+            if (_operatorReadScopeUnavailable)
+                return true;
+            _operatorReadScopeUnavailable = true;
+            shouldLog = true;
+        }
+        if (shouldLog)
+            _logger.Warn(warning);
+        return true;
     }
 
     public SessionQuerySnapshot ClearSessionSearch(SessionQuery? query = null) =>
@@ -787,7 +860,7 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
     /// <summary>Request usage/context info from gateway (may not be supported on all gateways).</summary>
     public async Task RequestUsageAsync()
     {
-        if (_operatorReadScopeUnavailable) return;
+        if (CaptureOperatorReadScopeState().Unavailable) return;
         if (!IsConnected) return;
         try
         {
@@ -812,7 +885,7 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
     /// <summary>Request connected node inventory from gateway.</summary>
     public async Task RequestNodesAsync()
     {
-        if (_operatorReadScopeUnavailable) return;
+        if (CaptureOperatorReadScopeState().Unavailable) return;
         if (_nodeListUnsupported) return;
         await SendTrackedRequestAsync("node.list");
     }
@@ -1724,26 +1797,36 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
 
     private void TrackPendingRequest(string requestId, string method)
     {
+        var connectionGeneration = CaptureOperatorReadScopeState().Generation;
         lock (_pendingRequestLock)
         {
             _pendingRequestMethods[requestId] = method;
+            _pendingRequestConnectionGenerations[requestId] = connectionGeneration;
         }
     }
 
     private void RemovePendingRequest(string requestId)
     {
         lock (_pendingRequestLock)
+        {
             _pendingRequestMethods.Remove(requestId);
+            _pendingRequestConnectionGenerations.Remove(requestId);
+        }
     }
 
-    private string? TakePendingRequestMethod(string? requestId)
+    private (string? Method, int? ConnectionGeneration) TakePendingRequest(string? requestId)
     {
-        if (string.IsNullOrWhiteSpace(requestId)) return null;
+        if (string.IsNullOrWhiteSpace(requestId)) return (null, null);
         lock (_pendingRequestLock)
         {
             if (!_pendingRequestMethods.Remove(requestId, out var method))
-                return null;
-            return method;
+                return (null, null);
+            var generation = _pendingRequestConnectionGenerations.Remove(
+                requestId,
+                out var connectionGeneration)
+                ? connectionGeneration
+                : (int?)null;
+            return (method, generation);
         }
     }
 
@@ -1752,6 +1835,7 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
         lock (_pendingRequestLock)
         {
             _pendingRequestMethods.Clear();
+            _pendingRequestConnectionGenerations.Clear();
         }
 
         lock (_pendingChatSendLock)
@@ -1862,11 +1946,12 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
     private void HandleResponse(JsonElement root)
     {
         string? requestMethod = null;
+        int? requestConnectionGeneration = null;
         string? requestId = null;
         if (root.TryGetProperty("id", out var idProp))
         {
             requestId = idProp.GetString();
-            requestMethod = TakePendingRequestMethod(requestId);
+            (requestMethod, requestConnectionGeneration) = TakePendingRequest(requestId);
         }
 
         var pendingChatSend = TakePendingChatSend(requestId);
@@ -1940,7 +2025,7 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
         if (root.TryGetProperty("ok", out var okProp) &&
             okProp.ValueKind == JsonValueKind.False)
         {
-            HandleRequestError(requestMethod, root);
+            HandleRequestError(requestMethod, requestConnectionGeneration, root);
             return;
         }
 
@@ -2231,7 +2316,10 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
             _ => null
         };
 
-    private void HandleRequestError(string? method, JsonElement root)
+    private void HandleRequestError(
+        string? method,
+        int? requestConnectionGeneration,
+        JsonElement root)
     {
         var message = TryGetErrorMessage(root) ?? "request failed";
         var detailCode = method == "connect" ? TryGetErrorDetailCode(root) : null;
@@ -2322,12 +2410,12 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
         if (IsMissingScopeError(message, "operator.read") &&
             method is "sessions.list" or "usage.status" or "usage.cost" or "node.list")
         {
-            if (!_operatorReadScopeUnavailable)
+            if (requestConnectionGeneration.HasValue)
             {
-                _logger.Warn("Gateway token lacks operator.read; disabling sessions/usage/nodes polling");
+                MarkOperatorReadScopeUnavailable(
+                    requestConnectionGeneration.Value,
+                    "Gateway token lacks operator.read; disabling sessions/usage/nodes polling");
             }
-
-            _operatorReadScopeUnavailable = true;
             return;
         }
 
