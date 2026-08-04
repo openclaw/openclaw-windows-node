@@ -52,6 +52,14 @@
   <ItemGroup>
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Services\DeepLinkHandler.cs" Link="Services\DeepLinkHandler.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Services\DeepLinkSecurityPolicy.cs" Link="Services\DeepLinkSecurityPolicy.cs" />
+    <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Services\ActivationRoute.cs" Link="Services\ActivationRoute.cs" />
+    <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Services\IActivationRouter.cs" Link="Services\IActivationRouter.cs" />
+    <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Services\ActivationRouter.cs" Link="Services\ActivationRouter.cs" />
+    <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Services\ISettingsChangeCoordinator.cs" Link="Services\ISettingsChangeCoordinator.cs" />
+    <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Services\SettingsChangeCoordinator.cs" Link="Services\SettingsChangeCoordinator.cs" />
+    <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Services\IAppShutdownCoordinator.cs" Link="Services\IAppShutdownCoordinator.cs" />
+    <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Services\AppShutdownCoordinator.cs" Link="Services\AppShutdownCoordinator.cs" />
+    <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Services\SettingsDataExtensions.cs" Link="Services\SettingsDataExtensions.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Services\ConfigEditorModel.cs" Link="Services\ConfigEditorModel.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Services\JsonDiffFormatter.cs" Link="Services\JsonDiffFormatter.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Services\AppState.cs" Link="Services\AppState.cs" />
