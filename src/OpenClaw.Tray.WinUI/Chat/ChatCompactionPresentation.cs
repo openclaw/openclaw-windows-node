@@ -1,4 +1,5 @@
 using System.Globalization;
+using OpenClaw.Chat;
 
 namespace OpenClawTray.Chat;
 
@@ -9,6 +10,29 @@ internal sealed record ChatCompactionPresentation(
 
 internal static class ChatCompactionPresenter
 {
+    public static ChatCompactionPresentation? TryCreateForEntry(
+        ChatTimelineItem entry,
+        IReadOnlyDictionary<string, ChatEntryMetadata>? entryMetadata,
+        string? title = null,
+        string? metricsFormat = null,
+        string? fallbackDetail = null)
+    {
+        if (entry.Kind != ChatTimelineItemKind.Status
+            || entryMetadata?.TryGetValue(entry.Id, out var metadata) != true
+            || metadata is null
+            || !string.Equals(metadata.OpenClawKind, "compaction", StringComparison.OrdinalIgnoreCase))
+        {
+            return null;
+        }
+
+        return Create(
+            metadata.CompactionTokensBefore,
+            metadata.CompactionTokensAfter,
+            title,
+            metricsFormat,
+            fallbackDetail);
+    }
+
     public static ChatCompactionPresentation Create(
         long? tokensBefore,
         long? tokensAfter,

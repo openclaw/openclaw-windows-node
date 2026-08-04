@@ -412,8 +412,8 @@ public sealed class ReactorChatTimeline : Component<ReactorChatTimelineProps>
         ChatTimelineItemKind.ToolCall => BuildTool(row, entry),
         ChatTimelineItemKind.Reasoning => BuildReasoning(entry),
         ChatTimelineItemKind.PermissionRequest => BuildPermission(row, entry),
-        ChatTimelineItemKind.Status => BuildStatus(entry),
-        _ => BuildStatus(entry),
+        ChatTimelineItemKind.Status => BuildStatus(row, entry),
+        _ => BuildGenericStatus(entry),
     };
 
     private static Element BuildUser(
@@ -922,7 +922,22 @@ public sealed class ReactorChatTimeline : Component<ReactorChatTimelineProps>
             .BorderThickness(1));
     }
 
-    private static Element BuildStatus(ChatTimelineItem entry)
+    private static Element BuildStatus(ReactorTimelineRow row, ChatTimelineItem entry)
+    {
+        var presentation = ChatCompactionPresenter.TryCreateForEntry(
+            entry,
+            row.Props.Timeline.EntryMetadata,
+            LocalizedOrDefault("Chat_Compaction_Title", "Context compacted"),
+            LocalizedOrDefault("Chat_Compaction_MetricsFormat", "{0} → {1} tokens · {2} saved"),
+            LocalizedOrDefault(
+                "Chat_Compaction_FallbackDetail",
+                "Earlier context was summarized into a checkpoint."));
+        return presentation is null
+            ? BuildGenericStatus(entry)
+            : BuildCompaction(presentation);
+    }
+
+    private static Element BuildGenericStatus(ChatTimelineItem entry)
     {
         var isError = entry.Tone == ChatTone.Error;
         return Border(Text(
@@ -944,6 +959,26 @@ public sealed class ReactorChatTimeline : Component<ReactorChatTimelineProps>
                     isError ? (byte)0xC8 : (byte)0x80,
                     isError ? (byte)0x32 : (byte)0x80,
                     isError ? (byte)0x32 : (byte)0x80)));
+    }
+
+    private static Element BuildCompaction(ChatCompactionPresentation presentation)
+    {
+        return Border(
+                VStack(
+                    3,
+                    Text(presentation.Title, 13, FontWeights.SemiBold)
+                        .HAlign(HorizontalAlignment.Center),
+                    Text(presentation.Detail, 12, FontWeights.Normal, "TextFillColorSecondaryBrush")
+                        .Set(text => text.TextAlignment = TextAlignment.Center)
+                        .HAlign(HorizontalAlignment.Center)))
+            .Margin(36, 8, 24, 8)
+            .Padding(16, 10)
+            .HAlign(HorizontalAlignment.Stretch)
+            .CornerRadius(8)
+            .Background(Theme.Ref("CardBackgroundFillColorDefaultBrush"))
+            .BorderBrush(Theme.Ref("ControlStrokeColorDefaultBrush"))
+            .BorderThickness(ReactorChatComposer.IsHighContrast() ? 2 : 1)
+            .AutomationName(presentation.AutomationName);
     }
 
     private static Element Footer(

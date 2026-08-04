@@ -715,7 +715,7 @@ public sealed class ReactorChatComposer : Component<ReactorChatComposerProps>
             .FirstOrDefault(value => value is not null);
     }
 
-    private static bool IsHighContrast()
+    internal static bool IsHighContrast()
     {
         return AccessibilitySettings?.HighContrast ?? false;
     }

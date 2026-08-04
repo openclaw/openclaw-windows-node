@@ -314,6 +314,44 @@ public class OpenClawChatDataProviderTests
         Assert.Contains(presentation.Title, presentation.AutomationName);
     }
 
+    [Fact]
+    public void CompactionPresenter_CreatesPresentationForStructuredStatusEntry()
+    {
+        var entry = new ChatTimelineItem("compaction-1", ChatTimelineItemKind.Status, "Compacted");
+        var metadata = new Dictionary<string, ChatEntryMetadata>
+        {
+            [entry.Id] = new(
+                Timestamp: null,
+                Model: null,
+                OpenClawKind: "compaction",
+                CompactionTokensBefore: 42000,
+                CompactionTokensAfter: 12000),
+        };
+
+        var presentation = ChatCompactionPresenter.TryCreateForEntry(entry, metadata);
+
+        Assert.NotNull(presentation);
+        Assert.Contains("42", presentation.Detail);
+        Assert.Contains("12", presentation.Detail);
+        Assert.Contains("30", presentation.Detail);
+    }
+
+    [Theory]
+    [InlineData(ChatTimelineItemKind.Status, "status")]
+    [InlineData(ChatTimelineItemKind.Assistant, "compaction")]
+    public void CompactionPresenter_RejectsEntriesOutsideStructuredCompactionContract(
+        ChatTimelineItemKind kind,
+        string openClawKind)
+    {
+        var entry = new ChatTimelineItem("entry-1", kind, "Text");
+        var metadata = new Dictionary<string, ChatEntryMetadata>
+        {
+            [entry.Id] = new(Timestamp: null, Model: null, OpenClawKind: openClawKind),
+        };
+
+        Assert.Null(ChatCompactionPresenter.TryCreateForEntry(entry, metadata));
+    }
+
     [Theory]
     [InlineData("/new worktree", false)]
     [InlineData("/reset model", false)]
