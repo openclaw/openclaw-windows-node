@@ -86,13 +86,27 @@ public sealed class PresentationSeamContractTests
     [Fact]
     public void App_AppliesToolCallVisibilityFromPersistedSettings()
     {
-        var source = ReadAppSources();
+        var appSource = ReadAppSources();
+        var coordinatorService = File.ReadAllText(Path.Combine(
+            TestRepositoryPaths.GetRepositoryRoot(),
+            "src", "OpenClaw.Tray.WinUI", "Services", "SettingsChangeCoordinator.cs"));
 
-        var settingsSavedIdx = source.IndexOf("private void OnSettingsSaved", StringComparison.Ordinal);
+        var settingsSavedIdx = appSource.IndexOf("private void OnSettingsSaved", StringComparison.Ordinal);
         Assert.True(settingsSavedIdx >= 0, "Expected App to handle persisted settings saves.");
-        var settingsSavedBlock = source.Substring(settingsSavedIdx, Math.Min(500, source.Length - settingsSavedIdx));
-        Assert.Contains("SetToolCallsVisible", settingsSavedBlock);
-        Assert.Contains("_settings.ShowChatToolCalls", settingsSavedBlock);
+        var settingsSavedBlock = appSource.Substring(settingsSavedIdx, Math.Min(500, appSource.Length - settingsSavedIdx));
+        Assert.Contains("coordinator.ApplyAsync", settingsSavedBlock);
+        Assert.Contains("ObserveBackgroundFault(", settingsSavedBlock);
+        Assert.Contains("[App] Failed to apply saved settings", settingsSavedBlock);
+
+        var applyVisibilityIdx = appSource.IndexOf(
+            "ISettingsRuntimeEffects.ApplyChatToolCallVisibility", StringComparison.Ordinal);
+        Assert.True(applyVisibilityIdx >= 0, "Expected App to own chat tool-call visibility application.");
+        var applyVisibilityBlock = appSource.Substring(
+            applyVisibilityIdx, Math.Min(200, appSource.Length - applyVisibilityIdx));
+        Assert.Contains("SetToolCallsVisible", applyVisibilityBlock);
+        Assert.Contains("settings.ShowChatToolCalls", applyVisibilityBlock);
+
+        Assert.Contains("_runtimeEffects.ApplyChatToolCallVisibility(request.Current);", coordinatorService);
     }
 
     [Fact]

@@ -3,6 +3,7 @@ using OpenClaw.Shared;
 using OpenClawTray.Helpers;
 using OpenClawTray.Services;
 using System.Diagnostics;
+using System.Threading;
 
 namespace OpenClawTray;
 
@@ -10,42 +11,14 @@ public partial class App
 {
     private void OnToastActivated(ToastNotificationActivatedEventArgsCompat args)
     {
-        var arguments = ToastArguments.Parse(args.Argument);
-        var action = GetToastArgument(arguments, "action");
+        var activationRouter = _activationRouter;
+        if (activationRouter == null)
+            return;
 
-        OnUiThread(() => ToastActivationRouter.Route(
-            action,
-            key => GetToastArgument(arguments, key),
-            new ToastActivationActions
-            {
-                OpenUrl = url =>
-                {
-                    try { Process.Start(new ProcessStartInfo(url) { UseShellExecute = true }); }
-                    catch (Exception ex)
-                    {
-                        Logger.Warn($"App: Toast activation failed to open URL '{SanitizeToastUrlForLog(url)}': {ex.Message}");
-                    }
-                },
-                OpenDashboard = () => OpenDashboard(),
-                OpenSettings = ShowSettings,
-                OpenChat = sessionKey => ShowWebChat(sessionKey),
-                OpenActivity = () => ShowHub("channels"),
-                CopyPairingCommand = command =>
-                {
-                    CopyTextToClipboard(command);
-                    _toastService!.ShowToast(new ToastContentBuilder()
-                        .AddText(LocalizationHelper.GetString("Toast_PairingCommandCopied"))
-                        .AddText(command));
-                },
-                ReviewPairing = ShowPairingApprovalDialog,
-            }));
-    }
-
-    private static string? GetToastArgument(ToastArguments arguments, string key)
-    {
-        return arguments.TryGetValue(key, out var value)
-            ? value
-            : null;
+        var plan = activationRouter.PlanToast(args.Argument);
+        ObserveBackgroundFault(
+            activationRouter.DispatchPlanAsync(plan, this, CancellationToken.None),
+            "[App] Toast activation dispatch failed");
     }
 
     private static string SanitizeToastUrlForLog(string? url)

@@ -714,10 +714,10 @@ public sealed class DiagnosticsPageContractTests
     [Fact]
     public void App_SettingsChanged_DispatchesToUiThread()
     {
-        var app = Read("src", "OpenClaw.Tray.WinUI", "App.xaml.cs");
+        var settingsCoordinator = Read("src", "OpenClaw.Tray.WinUI", "App.SettingsChangeCoordinator.cs");
 
-        Assert.Contains("_dispatcherQueue.HasThreadAccess", app);
-        Assert.Contains("void ApplyUiSettingsAndNotify()", app);
-        Assert.Contains("_dispatcherQueue.TryEnqueue(ApplyUiSettingsAndNotify)", app);
+        Assert.Contains("_dispatcherQueue.HasThreadAccess", settingsCoordinator);
+        Assert.Contains("void ApplyUiSettingsAndNotify()", settingsCoordinator);
+        Assert.Contains("_dispatcherQueue.TryEnqueue(ApplyUiSettingsAndNotify)", settingsCoordinator);
     }
 }
