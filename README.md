@@ -1,4 +1,4 @@
-# OpenClaw Windows Hub
+# <img src="docs/assets/openclaw-icon.png" width="28" height="28" alt="OpenClaw"> OpenClaw Windows Hub
 
 ![OpenClaw Windows Node banner](docs/assets/readme-banner.jpg)
 
