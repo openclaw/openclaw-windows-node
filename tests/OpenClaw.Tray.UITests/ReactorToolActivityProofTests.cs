@@ -2,6 +2,7 @@ using Microsoft.UI.Reactor.Hosting;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Automation;
 using Microsoft.UI.Xaml.Controls;
+using Microsoft.UI.Xaml.Documents;
 using OpenClaw.Chat;
 using OpenClawTray.Chat;
 using static Microsoft.UI.Reactor.Factories;
@@ -77,9 +78,9 @@ public sealed class ReactorToolActivityProofTests
 
         await _ui.RunOnUIAsync(() =>
         {
-            var selectableOutputs = FindDescendants<TextBlock>(host!)
+            var selectableOutputs = FindDescendants<RichTextBlock>(host!)
                 .Where(text => text.IsTextSelectionEnabled)
-                .Select(text => text.Text)
+                .Select(CollectText)
                 .ToArray();
             Assert.Contains("first output", selectableOutputs);
             Assert.Contains("second output", selectableOutputs);
@@ -114,6 +115,35 @@ public sealed class ReactorToolActivityProofTests
             ToolName: name,
             ToolResult: result,
             ToolOutput: output);
+
+    private static string CollectText(RichTextBlock richTextBlock)
+    {
+        var text = new System.Text.StringBuilder();
+        foreach (var paragraph in richTextBlock.Blocks.OfType<Paragraph>())
+        {
+            foreach (var inline in paragraph.Inlines)
+                AppendInlineText(inline, text);
+        }
+
+        return text.ToString();
+    }
+
+    private static void AppendInlineText(Inline inline, System.Text.StringBuilder text)
+    {
+        switch (inline)
+        {
+            case Run run:
+                text.Append(run.Text);
+                break;
+            case Span span:
+                foreach (var child in span.Inlines)
+                    AppendInlineText(child, text);
+                break;
+            case LineBreak:
+                text.Append('\n');
+                break;
+        }
+    }
 
     private async Task DrainRenderQueueAsync()
     {
