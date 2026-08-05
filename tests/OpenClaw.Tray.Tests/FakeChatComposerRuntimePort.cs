@@ -20,6 +20,7 @@ internal sealed class FakeChatComposerRuntimePort : IChatComposerRuntimePort
 
     public int SendMessageCallCount { get; private set; }
     public (string ThreadId, string Message, IReadOnlyList<ChatAttachment> Attachments)? LastSendMessageCall { get; private set; }
+    public CancellationToken? LastSendMessageToken { get; private set; }
     public TaskCompletionSource<bool> SendMessageGate { get; set; } = Completed(true);
 
     public int EnqueueCompactCallCount { get; private set; }
@@ -33,21 +34,29 @@ internal sealed class FakeChatComposerRuntimePort : IChatComposerRuntimePort
 
     public int StopCallCount { get; private set; }
     public string? LastStopThreadId { get; private set; }
+    public CancellationToken? LastStopToken { get; private set; }
+    public TaskCompletionSource StopGate { get; set; } = CompletedVoid();
 
     public int CancelQueuedCallCount { get; private set; }
     public (string ThreadId, string MessageId)? LastCancelQueuedCall { get; private set; }
+    public CancellationToken? LastCancelQueuedToken { get; private set; }
 
     public int SetModelCallCount { get; private set; }
     public (string ThreadId, string Model)? LastSetModelCall { get; private set; }
     public List<string> SetModelCallOrder { get; } = new();
+    public CancellationToken? LastSetModelToken { get; private set; }
+    public TaskCompletionSource SetModelGate { get; set; } = CompletedVoid();
 
     public int ClearModelCallCount { get; private set; }
     public string? LastClearModelThreadId { get; private set; }
+    public CancellationToken? LastClearModelToken { get; private set; }
 
     public int SetThinkingLevelCallCount { get; private set; }
     public (string ThreadId, string Level)? LastSetThinkingLevelCall { get; private set; }
+    public CancellationToken? LastSetThinkingLevelToken { get; private set; }
 
     public int EnsureCommandCatalogCallCount { get; private set; }
+    public CancellationToken? LastEnsureCommandCatalogToken { get; private set; }
 
     public Task<bool> SendMessageAsync(
         string threadId,
@@ -57,6 +66,7 @@ internal sealed class FakeChatComposerRuntimePort : IChatComposerRuntimePort
     {
         SendMessageCallCount++;
         LastSendMessageCall = (threadId, message, attachments);
+        LastSendMessageToken = cancellationToken;
         return SendMessageGate.Task;
     }
 
@@ -78,13 +88,15 @@ internal sealed class FakeChatComposerRuntimePort : IChatComposerRuntimePort
     {
         StopCallCount++;
         LastStopThreadId = threadId;
-        return Task.CompletedTask;
+        LastStopToken = cancellationToken;
+        return StopGate.Task;
     }
 
     public Task CancelQueuedMessageAsync(string threadId, string queuedMessageId, CancellationToken cancellationToken)
     {
         CancelQueuedCallCount++;
         LastCancelQueuedCall = (threadId, queuedMessageId);
+        LastCancelQueuedToken = cancellationToken;
         return Task.CompletedTask;
     }
 
@@ -93,13 +105,15 @@ internal sealed class FakeChatComposerRuntimePort : IChatComposerRuntimePort
         SetModelCallCount++;
         LastSetModelCall = (threadId, model);
         SetModelCallOrder.Add(model);
-        return Task.CompletedTask;
+        LastSetModelToken = cancellationToken;
+        return SetModelGate.Task;
     }
 
     public Task ClearModelAsync(string threadId, CancellationToken cancellationToken)
     {
         ClearModelCallCount++;
         LastClearModelThreadId = threadId;
+        LastClearModelToken = cancellationToken;
         return Task.CompletedTask;
     }
 
@@ -107,12 +121,14 @@ internal sealed class FakeChatComposerRuntimePort : IChatComposerRuntimePort
     {
         SetThinkingLevelCallCount++;
         LastSetThinkingLevelCall = (threadId, thinkingLevel);
+        LastSetThinkingLevelToken = cancellationToken;
         return Task.CompletedTask;
     }
 
     public Task EnsureCommandCatalogAsync(CancellationToken cancellationToken)
     {
         EnsureCommandCatalogCallCount++;
+        LastEnsureCommandCatalogToken = cancellationToken;
         return Task.CompletedTask;
     }
 
@@ -127,6 +143,13 @@ internal sealed class FakeChatComposerRuntimePort : IChatComposerRuntimePort
     {
         var tcs = new TaskCompletionSource<ChatLifecycleCommandResult>(TaskCreationOptions.RunContinuationsAsynchronously);
         tcs.SetResult(result);
+        return tcs;
+    }
+
+    private static TaskCompletionSource CompletedVoid()
+    {
+        var tcs = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        tcs.SetResult();
         return tcs;
     }
 }

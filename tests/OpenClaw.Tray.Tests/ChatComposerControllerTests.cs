@@ -2,9 +2,11 @@ using OpenClaw.Chat;
 using OpenClaw.Shared;
 using OpenClaw.Tray.Tests.Presentation;
 using OpenClawTray.Chat;
+using System;
 using System.Collections.Generic;
 using System.Reflection;
 using System.Runtime.CompilerServices;
+using System.Threading;
 using System.Threading.Tasks;
 
 namespace OpenClaw.Tray.Tests;
@@ -609,5 +611,233 @@ public sealed class ChatComposerControllerTests
         var exception = Record.Exception(controller.Dispose);
 
         Assert.Null(exception);
+    }
+
+    [Fact]
+    public async Task SendAsync_DisposedBetweenEntryAndPortInvocation_ReturnsFalseWithoutUnobservedExceptionAndOnlyTheAlreadyAdmittedPortCall()
+    {
+        // ClawSweeper-found P2 regression proof: controller methods used to read
+        // `_lifetimeCts.Token` (the property getter) after their own disposed
+        // check, so a concurrent Dispose() landing between that check and the
+        // token read could make the getter throw ObjectDisposedException — most
+        // visibly here, in the path SendAsync -> SendCoreAsync ->
+        // _port.SendMessageAsync(..., token). That throw was unhandled and would
+        // fault the Task this method returns; if the caller does not await/observe
+        // it (a typical UI fire-and-forget button handler), that is an unobserved
+        // task exception. The fix captures one CancellationToken value in the
+        // constructor and never calls the source's Token property getter again.
+        //
+        // This test uses TestOnlyAfterEntryBeforePortInvocation to deterministically
+        // land a concurrent Dispose() exactly in the gap the bug occupied — after
+        // SendCoreAsync's entry disposed check, before any port call — then proves
+        // the resulting Task completes with `false` (not canceled/faulted from the
+        // caller's perspective) and no exception is ever thrown, while the send
+        // that had already been admitted still reaches the port exactly once (its
+        // token now safely reflecting cancellation) rather than being silently
+        // dropped or duplicated.
+        var (vm, controller, port, _) = MakeController();
+        vm.SetDraft("hello");
+        var resumeAfterDispose = new TaskCompletionSource();
+        controller.TestOnlyAfterEntryBeforePortInvocation = () => resumeAfterDispose.Task;
+
+        var sendTask = controller.SendAsync();
+
+        controller.Dispose();
+        resumeAfterDispose.SetResult();
+
+        Exception? observed = null;
+        bool accepted = false;
+        try
+        {
+            accepted = await sendTask;
+        }
+        catch (Exception ex)
+        {
+            observed = ex;
+        }
+
+        Assert.Null(observed);
+        Assert.False(accepted);
+        Assert.Equal(1, port.SendMessageCallCount);
+        Assert.NotNull(port.LastSendMessageToken);
+        Assert.True(port.LastSendMessageToken!.Value.IsCancellationRequested);
+    }
+
+    [Fact]
+    public async Task SendCoreAsync_DirectCall_DisposedBetweenEntryAndPortInvocation_ReturnsFalseWithoutUnobservedException()
+    {
+        // Sibling proof for the OTHER SendCoreAsync call site (the root's
+        // welcome-screen quick-start suggestion calls SendCoreAsync directly,
+        // without going through SendAsync's draft/attachment/send-gate wrapping).
+        var (_, controller, port, _) = MakeController();
+        var resumeAfterDispose = new TaskCompletionSource();
+        controller.TestOnlyAfterEntryBeforePortInvocation = () => resumeAfterDispose.Task;
+
+        var task = controller.SendCoreAsync("session-1", "Test Session", "hello", Array.Empty<ChatAttachment>());
+
+        controller.Dispose();
+        resumeAfterDispose.SetResult();
+
+        Exception? observed = null;
+        bool accepted = false;
+        try
+        {
+            accepted = await task;
+        }
+        catch (Exception ex)
+        {
+            observed = ex;
+        }
+
+        Assert.Null(observed);
+        Assert.False(accepted);
+        Assert.Equal(1, port.SendMessageCallCount);
+    }
+
+    [Fact]
+    public void Stop_DisposedWhileCallInFlight_CtsCancellationReachesTheInFlightFakePortWithoutUnobservedException()
+    {
+        // Proves the captured _lifetimeToken really is the same live token the
+        // fake port received: canceling it via Dispose() must be observable on
+        // the exact CancellationToken value already handed to the in-flight call,
+        // and completing that already-in-flight call afterward must not throw or
+        // fault (no re-read of a disposed CancellationTokenSource.Token anywhere).
+        var (vm, controller, port, _) = MakeController();
+        port.StopGate = new TaskCompletionSource();
+
+        controller.Stop();
+
+        Assert.Equal(1, port.StopCallCount);
+        Assert.NotNull(port.LastStopToken);
+        Assert.False(port.LastStopToken!.Value.IsCancellationRequested);
+
+        controller.Dispose();
+
+        Assert.True(port.LastStopToken!.Value.IsCancellationRequested);
+
+        var exception = Record.Exception(() => port.StopGate.SetResult());
+        Assert.Null(exception);
+    }
+
+    [Fact]
+    public void SetModel_DisposedWhileCallInFlight_CtsCancellationReachesTheInFlightFakePortWithoutUnobservedException()
+    {
+        var (_, controller, port, _) = MakeController();
+        port.SetModelGate = new TaskCompletionSource();
+
+        controller.SetModel("gpt-5.6");
+
+        Assert.Equal(1, port.SetModelCallCount);
+        Assert.NotNull(port.LastSetModelToken);
+        Assert.False(port.LastSetModelToken!.Value.IsCancellationRequested);
+
+        controller.Dispose();
+
+        Assert.True(port.LastSetModelToken!.Value.IsCancellationRequested);
+
+        var exception = Record.Exception(() => port.SetModelGate.SetResult());
+        Assert.Null(exception);
+    }
+
+    [Fact]
+    public void SetModel_DisposedBetweenEntryAndFireAndForgetInvocation_NoUnobservedExceptionAndCancellationReachesThePort()
+    {
+        // Deterministic sibling proof for the fire-and-forget family (Stop,
+        // CancelQueuedMessage, SetModel, ClearModel, SetThinkingLevel,
+        // RequestCommandCatalog all share this exact shape): the race window
+        // between the method's own disposed check and its FireAndForget-wrapped
+        // synchronous port call is only a few CPU instructions wide, so real OS
+        // thread scheduling cannot reliably land inside it (confirmed: 200
+        // real-thread racing iterations across the other four sibling methods
+        // never reproduced a failure). TestOnlyBeforeFireAndForgetSynchronousInvocation
+        // lets this test force a concurrent Dispose() into exactly that gap instead.
+        var (_, controller, port, _) = MakeController();
+        port.SetModelGate = new TaskCompletionSource();
+        var hookReached = new ManualResetEventSlim(false);
+        var resumeHook = new ManualResetEventSlim(false);
+        controller.TestOnlyBeforeFireAndForgetSynchronousInvocation = () =>
+        {
+            hookReached.Set();
+            Assert.True(resumeHook.Wait(TimeSpan.FromSeconds(5)), "Test did not release the blocked hook in time.");
+        };
+
+        var callerThread = new Thread(() => controller.SetModel("gpt-5.6"));
+        callerThread.Start();
+
+        Assert.True(hookReached.Wait(TimeSpan.FromSeconds(5)), "FireAndForget hook was not reached in time.");
+
+        // Dispose concurrently while SetModel is blocked before its synchronous
+        // port call — this is exactly the gap where the pre-fix code would have
+        // re-read the (now-disposed) CancellationTokenSource.Token and thrown.
+        controller.Dispose();
+        resumeHook.Set();
+
+        Assert.True(callerThread.Join(TimeSpan.FromSeconds(5)));
+
+        Assert.Equal(1, port.SetModelCallCount);
+        Assert.NotNull(port.LastSetModelToken);
+        Assert.True(
+            port.LastSetModelToken!.Value.IsCancellationRequested,
+            "The already-in-flight call's token should reflect the concurrent disposal's cancellation.");
+
+        var exception = Record.Exception(() => port.SetModelGate.SetResult());
+        Assert.Null(exception);
+    }
+
+    [Fact]
+    public void RemainingFireAndForgetOperations_ConcurrentWithDispose_NeverThrowOrFault()
+    {
+        // Sibling race coverage for the remaining fire-and-forget operations that
+        // also used to re-read _lifetimeCts.Token at their call site:
+        // CancelQueuedMessage, ClearModel, SetThinkingLevel, RequestCommandCatalog.
+        // Each is raced against a concurrent Dispose() on a real second thread,
+        // many times, with a fresh controller per iteration, asserting neither
+        // thread ever observes an exception.
+        var operations = new Action<ChatComposerController>[]
+        {
+            c => c.CancelQueuedMessage("queued-1"),
+            c => c.ClearModel(),
+            c => c.SetThinkingLevel("high"),
+            c => c.RequestCommandCatalog(),
+        };
+
+        foreach (var operation in operations)
+        {
+            for (var iteration = 0; iteration < 200; iteration++)
+            {
+                var (_, controller, _, _) = MakeController();
+                Exception? observed = null;
+
+                var callerThread = new Thread(() =>
+                {
+                    try
+                    {
+                        operation(controller);
+                    }
+                    catch (Exception ex)
+                    {
+                        observed = ex;
+                    }
+                });
+                var disposeThread = new Thread(() =>
+                {
+                    try
+                    {
+                        controller.Dispose();
+                    }
+                    catch (Exception ex)
+                    {
+                        observed ??= ex;
+                    }
+                });
+
+                callerThread.Start();
+                disposeThread.Start();
+                Assert.True(callerThread.Join(TimeSpan.FromSeconds(5)));
+                Assert.True(disposeThread.Join(TimeSpan.FromSeconds(5)));
+
+                Assert.Null(observed);
+            }
+        }
     }
 }

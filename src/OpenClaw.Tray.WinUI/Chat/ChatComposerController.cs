@@ -29,16 +29,19 @@ internal sealed partial class ChatComposerController : IDisposable
     private readonly IChatComposerRuntimePort _port;
     private readonly ChatComposerHostActions _hostActions;
 
-    /// <summary>Canceled exactly once, in <see cref="Dispose"/>. Threaded into every
-    /// port call whose interface exposes a <see cref="CancellationToken"/> — ordinary
-    /// send, stop, queue-cancel, model set/clear, thinking, and catalog — so
-    /// outstanding network/provider work is actually interrupted on teardown, not
-    /// merely fenced at the UI-outcome boundary. Never used to cancel <c>/reset</c>,
-    /// <c>/new</c>, or <c>/compact</c>, whose interface omits a token entirely (D1
-    /// owns those as atomic gateway round-trips); those remain fenced only at their
-    /// UI-outcome boundary via the generation/operation checks in
-    /// <see cref="SendAsync"/> and <see cref="SendCoreAsync"/>.</summary>
+    /// <summary>Canceled and disposed exactly once, in <see cref="Dispose"/>. Never
+    /// read directly after construction — see <see cref="_lifetimeToken"/>, which is
+    /// the only thing every port call actually uses.</summary>
     private readonly CancellationTokenSource _lifetimeCts = new();
+
+    /// <summary>The single <see cref="CancellationToken"/> captured once, in the
+    /// constructor, and reused for every send/stop/queue-cancel/model/thinking/
+    /// catalog port call. <see cref="CancellationTokenSource.Token"/>'s getter
+    /// throws <see cref="ObjectDisposedException"/> once the source is disposed;
+    /// a pre-captured token remains usable (and, post-dispose, correctly
+    /// canceled) for cancellation checks/registration, so capturing it once here
+    /// avoids ever re-reading the getter after construction.</summary>
+    private readonly CancellationToken _lifetimeToken;
 
     private Action<string>? _selectedSessionHandoff;
     private CancellationTokenSource? _voiceCancellation;
@@ -68,6 +71,16 @@ internal sealed partial class ChatComposerController : IDisposable
     private int _sendGate;
     private volatile bool _disposed;
 
+#if OPENCLAW_TRAY_TESTS
+    /// <summary>Test-only synchronization seam invoked in <see cref="SendCoreAsync"/>
+    /// after its entry disposed check, before any port call.</summary>
+    internal Func<Task>? TestOnlyAfterEntryBeforePortInvocation;
+
+    /// <summary>Test-only synchronization seam invoked at the start of
+    /// <see cref="FireAndForget"/>, before its eager synchronous port call.</summary>
+    internal Action? TestOnlyBeforeFireAndForgetSynchronousInvocation;
+#endif
+
     public ChatComposerController(
         ChatComposerViewModel viewModel,
         IChatComposerRuntimePort port,
@@ -76,6 +89,7 @@ internal sealed partial class ChatComposerController : IDisposable
         _vm = viewModel ?? throw new ArgumentNullException(nameof(viewModel));
         _port = port ?? throw new ArgumentNullException(nameof(port));
         _hostActions = hostActions ?? throw new ArgumentNullException(nameof(hostActions));
+        _lifetimeToken = _lifetimeCts.Token;
     }
     /// <summary>Binds the root's session-selection handoff exactly once. Safe to call
     /// on every render: it is a no-op once bound, since the underlying closure is
@@ -193,6 +207,11 @@ internal sealed partial class ChatComposerController : IDisposable
         if (_disposed)
             return false;
 
+#if OPENCLAW_TRAY_TESTS
+        if (TestOnlyAfterEntryBeforePortInvocation is { } hook)
+            await hook().ConfigureAwait(true);
+#endif
+
         var generationAtStart = _generation;
         bool StillLive() => !_disposed && generationAtStart == _generation;
 
@@ -220,7 +239,7 @@ internal sealed partial class ChatComposerController : IDisposable
             return result.Succeeded;
         }
 
-        var accepted = await _port.SendMessageAsync(threadId, message, attachments, _lifetimeCts.Token).ConfigureAwait(true);
+        var accepted = await _port.SendMessageAsync(threadId, message, attachments, _lifetimeToken).ConfigureAwait(true);
         return StillLive() && accepted;
     }
 
@@ -231,7 +250,7 @@ internal sealed partial class ChatComposerController : IDisposable
         if (_vm.Inputs?.CurrentThread.Id is not { } threadId)
             return;
 
-        FireAndForget(_ => _port.StopResponseAsync(threadId, _lifetimeCts.Token));
+        FireAndForget(_ => _port.StopResponseAsync(threadId, _lifetimeToken));
     }
 
     public void CancelQueuedMessage(string queuedMessageId)
@@ -241,7 +260,7 @@ internal sealed partial class ChatComposerController : IDisposable
         if (_vm.Inputs?.CurrentThread.Id is not { } threadId)
             return;
 
-        FireAndForget(_ => _port.CancelQueuedMessageAsync(threadId, queuedMessageId, _lifetimeCts.Token));
+        FireAndForget(_ => _port.CancelQueuedMessageAsync(threadId, queuedMessageId, _lifetimeToken));
     }
 
     public void SetModel(string model)
@@ -251,7 +270,7 @@ internal sealed partial class ChatComposerController : IDisposable
         if (_vm.Inputs?.CurrentThread.Id is not { } threadId)
             return;
 
-        FireAndForget(_ => _port.SetModelAsync(threadId, model, _lifetimeCts.Token));
+        FireAndForget(_ => _port.SetModelAsync(threadId, model, _lifetimeToken));
     }
 
     public void ClearModel()
@@ -261,7 +280,7 @@ internal sealed partial class ChatComposerController : IDisposable
         if (_vm.Inputs?.CurrentThread.Id is not { } threadId)
             return;
 
-        FireAndForget(_ => _port.ClearModelAsync(threadId, _lifetimeCts.Token));
+        FireAndForget(_ => _port.ClearModelAsync(threadId, _lifetimeToken));
     }
 
     public void SetThinkingLevel(string level)
@@ -271,7 +290,7 @@ internal sealed partial class ChatComposerController : IDisposable
         if (_vm.Inputs?.CurrentThread.Id is not { } threadId)
             return;
 
-        FireAndForget(_ => _port.SetThinkingLevelAsync(threadId, level, _lifetimeCts.Token));
+        FireAndForget(_ => _port.SetThinkingLevelAsync(threadId, level, _lifetimeToken));
     }
 
     /// <summary>Requests a command-catalog refresh. Assigns a monotonic operation ID
@@ -285,7 +304,7 @@ internal sealed partial class ChatComposerController : IDisposable
             return;
 
         ++_catalogOperation;
-        FireAndForget(_ => _port.EnsureCommandCatalogAsync(_lifetimeCts.Token));
+        FireAndForget(_ => _port.EnsureCommandCatalogAsync(_lifetimeToken));
     }
 
     public void AddAttachment(ChatAttachment attachment)
@@ -397,8 +416,12 @@ internal sealed partial class ChatComposerController : IDisposable
     /// quick succession (for example two rapid model picks), matching the pre-D2
     /// root's <c>ObserveFireAndForget(props.Provider.SetModelAsync(...))</c> pattern
     /// where the provider call itself was already evaluated eagerly at the call site.</summary>
-    private static void FireAndForget(Func<CancellationToken, Task> operation)
+    private void FireAndForget(Func<CancellationToken, Task> operation)
     {
+#if OPENCLAW_TRAY_TESTS
+        TestOnlyBeforeFireAndForgetSynchronousInvocation?.Invoke();
+#endif
+
         Task task;
         try
         {

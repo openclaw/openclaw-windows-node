@@ -27,7 +27,7 @@ public class ReactorSlashCommandSourceContractTests
         var controller = ReadSource("ChatComposerController.cs");
 
         Assert.Contains("++_catalogOperation;", controller);
-        Assert.Contains("FireAndForget(_ => _port.EnsureCommandCatalogAsync(_lifetimeCts.Token));", controller);
+        Assert.Contains("FireAndForget(_ => _port.EnsureCommandCatalogAsync(_lifetimeToken));", controller);
     }
 
     [Fact]
@@ -48,7 +48,7 @@ public class ReactorSlashCommandSourceContractTests
             "ChatLifecycleCommandParser.TryParse(message, attachments.Count > 0, out var command)",
             "ChatLifecycleCommandExecutionPolicy.ShouldQueue(command)",
             "_port.ExecuteLifecycleCommandAsync(threadId, command)",
-            "_port.SendMessageAsync(threadId, message, attachments, _lifetimeCts.Token)");
+            "_port.SendMessageAsync(threadId, message, attachments, _lifetimeToken)");
     }
 
     [Fact]
