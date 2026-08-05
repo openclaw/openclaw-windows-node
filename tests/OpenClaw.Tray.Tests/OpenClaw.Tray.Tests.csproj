@@ -25,6 +25,7 @@
     <Compile Include="..\..\src\OpenClaw.Chat\ChatModels.cs" Link="Chat\ChatModels.cs" />
     <Compile Include="..\..\src\OpenClaw.Chat\ChatModelChoice.cs" Link="Chat\ChatModelChoice.cs" />
     <Compile Include="..\..\src\OpenClaw.Chat\ChatTimelineReducer.cs" Link="Chat\ChatTimelineReducer.cs" />
+    <Compile Include="..\..\src\OpenClaw.Chat\ThinkingLevelClearReconciler.cs" Link="Chat\ThinkingLevelClearReconciler.cs" />
     <Using Include="System.Text.Json.Nodes" />
     <PackageReference Include="System.Security.Cryptography.ProtectedData" Version="10.0.0" />
     <PackageReference Include="System.Drawing.Common" Version="10.0.7" />
