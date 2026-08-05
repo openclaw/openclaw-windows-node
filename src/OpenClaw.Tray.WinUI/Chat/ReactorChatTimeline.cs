@@ -101,6 +101,7 @@ public sealed class ReactorChatTimeline : Component<ReactorChatTimelineProps>
         var rows = BuildRows(props);
         var initialTailRequestKey =
             $"{props.Timeline.SessionId ?? "none"}|{props.Timeline.TimelineGeneration}|{props.HistoryRevision}|{props.Timeline.ScrollToBottomToken}";
+        var displayedTailKey = rows.Count > 0 ? rows[^1].Key : null;
         void SetEntryHovered(string entryId, bool isHovered)
         {
             if (isHovered)
@@ -160,7 +161,9 @@ public sealed class ReactorChatTimeline : Component<ReactorChatTimelineProps>
                 .BindVerticalScrollController(
                     annotatedScrollBarRef,
                     rows.Count - 1,
-                    initialTailRequestKey)
+                    rows.Count,
+                    initialTailRequestKey,
+                    displayedTailKey)
                 .Grid(column: 0)
                 .AutomationName("Chat messages")
                 .HAlign(HorizontalAlignment.Stretch)
