@@ -178,6 +178,24 @@ public sealed class ChatTimelinePresentationTests
             "OpenClaw.Tray.WinUI",
             "Chat",
             "OpenClawChatDataProvider.cs"));
+        var state = File.ReadAllText(Path.Combine(
+            TestRepositoryPaths.GetRepositoryRoot(),
+            "src",
+            "OpenClaw.Tray.WinUI",
+            "Chat",
+            "ChatConversationState.cs"));
+        var historyState = File.ReadAllText(Path.Combine(
+            TestRepositoryPaths.GetRepositoryRoot(),
+            "src",
+            "OpenClaw.Tray.WinUI",
+            "Chat",
+            "ChatHistoryState.cs"));
+        var projector = File.ReadAllText(Path.Combine(
+            TestRepositoryPaths.GetRepositoryRoot(),
+            "src",
+            "OpenClaw.Tray.WinUI",
+            "Chat",
+            "ChatSnapshotProjector.cs"));
         var root = File.ReadAllText(Path.Combine(
             TestRepositoryPaths.GetRepositoryRoot(),
             "src",
@@ -191,8 +209,11 @@ public sealed class ChatTimelinePresentationTests
             "Chat",
             "ReactorChatTimeline.cs"));
 
-        Assert.Contains("_historyRevisions[threadId] = GetHistoryRevisionLocked(threadId) + 1", provider);
-        Assert.Contains("HistoryRevisions: historyRevisionsCopy", provider);
+        Assert.Contains("_revisions[token.ThreadId]", historyState);
+        Assert.Contains("new Dictionary<string, long>(_revisions)", historyState);
+        Assert.Contains("_history.SnapshotRevisions()", state);
+        Assert.Contains("_historyLoader.LoadAsync(", provider);
+        Assert.Contains("HistoryRevisions: input.HistoryRevisions", projector);
         Assert.Contains("snapshot.HistoryRevisions", root);
         Assert.Contains("HistoryRevision: historyRevision", root);
         Assert.Contains("props.HistoryRevision", timeline);

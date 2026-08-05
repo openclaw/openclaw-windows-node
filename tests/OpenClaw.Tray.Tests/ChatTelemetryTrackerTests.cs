@@ -343,6 +343,67 @@ public sealed class ChatTelemetryTrackerTests
     }
 
     [Fact]
+    public void ConnectionCleanup_PreservesTurnsFromCurrentGeneration()
+    {
+        var tracker = new ChatTelemetryTracker();
+        tracker.StartLocalTurn(
+            "old",
+            "thread",
+            queued: false,
+            new ChatRuntimeGeneration(1, 0));
+        tracker.StartLocalTurn(
+            "current",
+            "thread",
+            queued: false,
+            new ChatRuntimeGeneration(2, 0));
+
+        tracker.FinishBeforeConnectionGeneration(
+            2,
+            ChatTelemetryOutcome.Canceled,
+            ChatTurnTelemetryReason.Disconnected);
+
+        Assert.Null(tracker.PrepareFinishByMessageId(
+            "old",
+            ChatTelemetryOutcome.Canceled,
+            ChatTurnTelemetryReason.Disconnected));
+        Assert.NotNull(tracker.PrepareFinishByMessageId(
+            "current",
+            ChatTelemetryOutcome.Success,
+            ChatTurnTelemetryReason.AssistantFinal));
+    }
+
+    [Fact]
+    public void ResetCleanup_PreservesTurnsFromCurrentResetGeneration()
+    {
+        var tracker = new ChatTelemetryTracker();
+        tracker.StartLocalTurn(
+            "old",
+            "thread",
+            queued: false,
+            new ChatRuntimeGeneration(2, 3));
+        tracker.StartLocalTurn(
+            "current",
+            "thread",
+            queued: false,
+            new ChatRuntimeGeneration(2, 4));
+
+        tracker.FinishThreadBeforeResetGeneration(
+            "thread",
+            4,
+            ChatTelemetryOutcome.Canceled,
+            ChatTurnTelemetryReason.Reset);
+
+        Assert.Null(tracker.PrepareFinishByMessageId(
+            "old",
+            ChatTelemetryOutcome.Canceled,
+            ChatTurnTelemetryReason.Reset));
+        Assert.NotNull(tracker.PrepareFinishByMessageId(
+            "current",
+            ChatTelemetryOutcome.Success,
+            ChatTurnTelemetryReason.AssistantFinal));
+    }
+
+    [Fact]
     public void DroppedTerminalEvents_RecordOnlyFiniteReasons()
     {
         using var metrics = new MetricCollector();

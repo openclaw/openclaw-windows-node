@@ -1092,6 +1092,46 @@ public class OpenClawChatDataProviderTests
     }
 
     [Fact]
+    public async Task CoalescedAuthoritativeReload_DoesNotCrossResetGeneration()
+    {
+        var (bridge, provider, _, _) = CreateProvider([MainSession()]);
+        var staleHistory = new TaskCompletionSource<ChatHistoryInfo>(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        bridge.HistoryBehavior = _ => staleHistory.Task;
+
+        await using (provider)
+        {
+            var initialLoad = provider.LoadHistoryAsync("main", force: true);
+            await provider.LoadHistoryAsync(
+                "main",
+                force: true,
+                authoritative: true);
+            await provider.ExecuteLifecycleCommandAsync(
+                "main",
+                ChatLifecycleCommandKind.Reset);
+
+            staleHistory.SetResult(new ChatHistoryInfo
+            {
+                SessionKey = "main",
+                Messages =
+                [
+                    new ChatMessageInfo
+                    {
+                        SessionKey = "main",
+                        Role = "user",
+                        Text = "must stay cleared",
+                    }
+                ],
+            });
+            await initialLoad;
+            await Task.Delay(50);
+
+            Assert.Single(bridge.RequestedHistoryKeys);
+            Assert.Empty((await provider.LoadAsync()).Timelines["main"].Entries);
+        }
+    }
+
+    [Fact]
     public async Task CompactAuthoritativeReload_RetriesAfterTransientFailureWhenHistoryWasLoaded()
     {
         var (bridge, provider, _, _) = CreateProvider([MainSession()]);
@@ -1355,7 +1395,7 @@ public class OpenClawChatDataProviderTests
     public async Task Telemetry_LocalSendAndLifecycle_EmitCorrelatedAllowlistedSpans()
     {
         using var activities = new ChatActivityCollector();
-        var (bridge, provider, _, _) = CreateProvider(new[] { MainSession() });
+        var (bridge, provider, snapshots, _) = CreateProvider(new[] { MainSession() });
         bridge.SendResults.Enqueue(new ChatSendResult { RunId = "private-run", Status = "started" });
 
         await provider.SendMessageAsync("main", "private prompt");
@@ -6918,7 +6958,7 @@ public class OpenClawChatDataProviderTests
         await provider.DisposeAsync();
 
         var cache = JsonSerializer.Deserialize<
-            Dictionary<string, List<OpenClawChatDataProvider.CachedToolMeta>>>(
+            Dictionary<string, List<ChatMetadataStore.CachedToolMeta>>>(
                 File.ReadAllText(cachePath));
         var entry = Assert.Single(Assert.Single(cache!).Value);
         Assert.Equal("tool-1", entry.ToolCallId);
@@ -8156,6 +8196,98 @@ public class OpenClawChatDataProviderTests
 
         Assert.Equal(new[] { "openai/gpt-5.4" }, bridge.PatchedModels);
         Assert.Equal(new[] { "Hello" }, bridge.SentMessages);
+    }
+
+    [Fact]
+    public async Task SendMessageAsync_ModelPatchWait_DropsDispatchAfterReconnect()
+    {
+        var patchStarted = new TaskCompletionSource(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        var releasePatch = new TaskCompletionSource(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        var (bridge, provider, snapshots, _) = CreateProvider(new[] { MainSession() });
+        bridge.PatchSessionModelBehavior = (_, _) =>
+        {
+            patchStarted.TrySetResult();
+            return releasePatch.Task;
+        };
+        await provider.LoadAsync();
+
+        var modelTask = provider.SetModelAsync("main", "openai/gpt-5.4");
+        await patchStarted.Task.WaitAsync(TimeSpan.FromSeconds(1));
+        var sendTask = provider.SendMessageAsync("main", "stale after reconnect");
+        await Task.Delay(50);
+        Assert.Empty(bridge.SentMessages);
+
+        bridge.RaiseStatus(ConnectionStatus.Connected);
+        await provider.SendMessageAsync("main", "fresh after reconnect");
+        Assert.Empty(bridge.SentMessages);
+        releasePatch.SetResult();
+        await Task.WhenAll(modelTask, sendTask);
+
+        await WaitForConditionAsync(() => bridge.SentMessages.Count == 1);
+        Assert.Equal(new[] { "fresh after reconnect" }, bridge.SentMessages);
+    }
+
+    [Fact]
+    public async Task SendMessageAsync_InFlightResultAfterReconnect_EndsStaleTurn()
+    {
+        var sendStarted = new TaskCompletionSource(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        var releaseSend = new TaskCompletionSource(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        var (bridge, provider, snapshots, _) = CreateProvider(new[] { MainSession() });
+        bridge.SendBehavior = async (_, _, _) =>
+        {
+            sendStarted.TrySetResult();
+            await releaseSend.Task;
+        };
+        await provider.LoadAsync();
+
+        var staleSend = provider.SendMessageAsync("main", "in flight");
+        await sendStarted.Task.WaitAsync(TimeSpan.FromSeconds(1));
+        bridge.RaiseStatus(ConnectionStatus.Connected);
+        bridge.SendBehavior = null;
+        await provider.SendMessageAsync("main", "fresh after stale result");
+        releaseSend.SetResult();
+        await staleSend;
+
+        await WaitForConditionAsync(() => bridge.SentMessages.Count == 2);
+        Assert.Equal(
+            new[] { "in flight", "fresh after stale result" },
+            bridge.SentMessages);
+    }
+
+    [Fact]
+    public async Task SendMessageAsync_StaleFailureAfterReconnect_DrainsFreshMessage()
+    {
+        var sendStarted = new TaskCompletionSource(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        var releaseSend = new TaskCompletionSource(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        var sendCount = 0;
+        var (bridge, provider, _, _) = CreateProvider(new[] { MainSession() });
+        bridge.SendBehavior = async (_, _, _) =>
+        {
+            if (Interlocked.Increment(ref sendCount) != 1)
+                return;
+            sendStarted.TrySetResult();
+            await releaseSend.Task;
+            throw new InvalidOperationException("stale failure");
+        };
+        await provider.LoadAsync();
+
+        var staleSend = provider.SendMessageAsync("main", "failing in flight");
+        await sendStarted.Task.WaitAsync(TimeSpan.FromSeconds(1));
+        bridge.RaiseStatus(ConnectionStatus.Connected);
+        await provider.SendMessageAsync("main", "fresh after stale failure");
+        releaseSend.SetResult();
+        await staleSend;
+
+        await WaitForConditionAsync(() => bridge.SentMessages.Count == 2);
+        Assert.Equal(
+            new[] { "failing in flight", "fresh after stale failure" },
+            bridge.SentMessages);
     }
 
     [Fact]
@@ -10523,6 +10655,219 @@ public class OpenClawChatDataProviderTests
     }
 
     [Fact]
+    public async Task RuntimeGolden_PublicSnapshotPreservesCrossDomainState()
+    {
+        var session = new SessionInfo
+        {
+            Key = "main",
+            IsMain = true,
+            DisplayName = "Main session",
+            Status = "active",
+            Model = "provider/model-a",
+            Provider = "provider",
+            ThinkingLevel = "high",
+        };
+        var (bridge, provider, snapshots, _) = CreateProvider([session]);
+        bridge.MainSessionKey = "main";
+        bridge.HasHandshakeSnapshot = true;
+        bridge.SendResults.Enqueue(new ChatSendResult { RunId = "run-1", Status = "started" });
+
+        await using (provider)
+        {
+            await provider.LoadAsync();
+            bridge.RaiseStatus(ConnectionStatus.Connected);
+            bridge.RaiseSessions([session]);
+            bridge.RaiseModels(new ModelsListInfo
+            {
+                Models =
+                [
+                    new ModelInfo { Id = "provider/model-a", Name = "Model A", Provider = "provider" },
+                    new ModelInfo { Id = "provider/model-b", Name = "Model B", Provider = "provider" },
+                ],
+            });
+
+            await provider.SendMessageAsync("main", "hello");
+            bridge.RaiseAgent(MakeAgentEvent(
+                "lifecycle",
+                """{"phase":"start"}""",
+                runId: "run-1"));
+            bridge.RaiseAgent(MakeAgentEvent(
+                "item",
+                """{"kind":"tool","phase":"start","title":"read notes.txt","itemId":"tool-1"}""",
+                runId: "run-1"));
+            bridge.RaiseAgent(MakeAgentEvent(
+                "approval",
+                """{"phase":"requested","approvalSlug":"approve-1","approvalId":"approval-1","title":"Run command","host":"node","command":"echo ok"}""",
+                runId: "run-1"));
+            bridge.RaiseChat(new ChatMessageInfo
+            {
+                SessionKey = "main",
+                Role = "assistant",
+                Text = "done",
+                State = "final",
+                OpenClawId = "message-1",
+                OpenClawSeq = 4,
+            });
+
+            var snapshot = snapshots[^1];
+            Assert.Equal(
+                [
+                    "main|Main session||provider/model-a|high|Running|Working",
+                ],
+                snapshot.Threads.Select(thread =>
+                    $"{thread.Id}|{thread.Title}|{thread.AgentId}|{thread.Model}|{thread.ThinkingLevel}|{thread.Status}|{thread.Activity}"));
+            Assert.Equal(
+                [
+                    "e1|User|hello|False|||Pending",
+                    "e2|ToolCall|read notes.txt|False|Tool|Interrupted|Pending",
+                    "e3|PermissionRequest|echo ok|False|node||Pending",
+                    "e4|Assistant|done|False|||Pending",
+                ],
+                snapshot.Timelines["main"].Entries.Select(entry =>
+                    $"{entry.Id}|{entry.Kind}|{entry.Text}|{entry.IsStreaming}|{entry.ToolName}|{entry.ToolResult}|{entry.PermissionDecision}"));
+            Assert.Equal("approve-1", snapshot.Timelines["main"].PendingPermission?.RequestId);
+            Assert.Equal(["provider/model-a", "provider/model-b"], snapshot.AvailableModels);
+            Assert.Equal("main", snapshot.DefaultThreadId);
+            Assert.Equal(new ChatComposeTarget("main", true, "main"), snapshot.ComposeTarget);
+            Assert.Equal("Connected", snapshot.ConnectionStatus);
+            Assert.Equal(0, snapshot.TimelineGenerations!.GetValueOrDefault("main"));
+            Assert.Empty(GetQueuedMessages(snapshot, "main"));
+        }
+    }
+
+    [Fact]
+    public async Task RuntimeGolden_ResetAtomicallyClearsQueueAndAdvancesGeneration()
+    {
+        var (bridge, provider, snapshots, _) = CreateProvider([MainSession()]);
+        bridge.MainSessionKey = "main";
+        bridge.HasHandshakeSnapshot = true;
+        bridge.SendResults.Enqueue(new ChatSendResult { RunId = "run-1", Status = "started" });
+
+        await using (provider)
+        {
+            await provider.LoadAsync();
+            bridge.RaiseStatus(ConnectionStatus.Connected);
+            bridge.RaiseSessions([MainSession()]);
+            await provider.SendMessageAsync("main", "first");
+            bridge.RaiseAgent(MakeAgentEvent(
+                "lifecycle",
+                """{"phase":"start"}""",
+                runId: "run-1"));
+            await provider.SendMessageAsync("main", "second");
+
+            var queuedSnapshot = snapshots[^1];
+            Assert.Equal(
+                ["q2|second|Queued"],
+                GetQueuedMessages(queuedSnapshot, "main")
+                    .Select(message => $"{message.Id}|{message.Text}|{message.SendState}"));
+
+            var result = await provider.ExecuteLifecycleCommandAsync(
+                "main",
+                ChatLifecycleCommandKind.Reset);
+
+            Assert.True(result.Succeeded);
+            var resetSnapshot = snapshots[^1];
+            Assert.Empty(resetSnapshot.Timelines["main"].Entries);
+            Assert.True(resetSnapshot.Timelines["main"].HistoryLoaded);
+            Assert.Empty(GetQueuedMessages(resetSnapshot, "main"));
+            Assert.Equal(1, resetSnapshot.TimelineGenerations!["main"]);
+            await WaitForConditionAsync(() => bridge.AbortedRunIds.Count == 2);
+            Assert.Contains("run-1", bridge.AbortedRunIds);
+            Assert.Equal(2, bridge.AbortedRunIds.Distinct(StringComparer.Ordinal).Count());
+        }
+    }
+
+    [Fact]
+    public async Task LoadHistoryAsync_QueuedDeliveryDropsAfterResetGenerationAdvances()
+    {
+        using var temp = new TempDirectory();
+        var bridge = new FakeBridge
+        {
+            Sessions = [MainSession()],
+            HistoryBehavior = key => Task.FromResult(new ChatHistoryInfo
+            {
+                SessionKey = key ?? string.Empty,
+                Messages =
+                [
+                    new ChatMessageInfo
+                    {
+                        Role = "assistant",
+                        Text = "stale history",
+                        OpenClawSeq = 1,
+                    },
+                ],
+            }),
+        };
+        var deliveries = new List<Action>();
+        var snapshots = new List<ChatDataSnapshot>();
+        var provider = new OpenClawChatDataProvider(
+            bridge,
+            post: deliveries.Add,
+            toolMetaCacheFilePath: Path.Combine(
+                temp.DirectoryPath,
+                "tool-metadata.json"));
+        provider.Changed += (_, args) => snapshots.Add(args.Snapshot);
+        await using (provider)
+        {
+            await provider.LoadAsync();
+            await provider.LoadHistoryAsync("main");
+            Assert.Single(deliveries);
+
+            bridge.RaiseSessionCommandCompleted(new SessionCommandResult
+            {
+                Method = "sessions.reset",
+                Ok = true,
+                Key = "main",
+            });
+            Assert.Equal(2, deliveries.Count);
+
+            deliveries[1]();
+            deliveries[0]();
+
+            var snapshot = Assert.Single(snapshots);
+            Assert.Empty(snapshot.Timelines["main"].Entries);
+            Assert.Equal(1, snapshot.TimelineGenerations!["main"]);
+        }
+    }
+
+    [Fact]
+    public async Task LoadHistoryAsync_DelayedRetryDoesNotCrossResetGeneration()
+    {
+        var retries = new List<Func<Task>>();
+        var calls = 0;
+        var (bridge, provider, _, _) = CreateProvider(
+            [MainSession()],
+            historyRetryScheduler: (_, _, retry) =>
+            {
+                retries.Add(retry);
+                return Task.CompletedTask;
+            });
+        bridge.HistoryBehavior = _ =>
+        {
+            calls++;
+            throw new InvalidOperationException("history unavailable");
+        };
+        await using (provider)
+        {
+            await provider.LoadAsync();
+            bridge.RaiseStatus(ConnectionStatus.Connected);
+            await provider.LoadHistoryAsync("main");
+            var retry = Assert.Single(retries);
+
+            bridge.RaiseSessionCommandCompleted(new SessionCommandResult
+            {
+                Method = "sessions.reset",
+                Ok = true,
+                Key = "main",
+            });
+            await retry();
+
+            Assert.Equal(1, calls);
+            Assert.Single(retries);
+        }
+    }
+
+    [Fact]
     public void LoadLastChatState_WithCorruptedJson_ReturnsNull()
     {
         using var temp = new TempDirectory();
@@ -10542,11 +10887,19 @@ public class OpenClawChatDataProviderTests
 
     private static ISet<string> GetQueuedDrainScheduledThreads(OpenClawChatDataProvider provider)
     {
-        var field = typeof(OpenClawChatDataProvider).GetField(
-            "_queuedDrainScheduledThreads",
+        var stateField = typeof(OpenClawChatDataProvider).GetField(
+            "_state",
             System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic);
-        Assert.NotNull(field);
-        return Assert.IsAssignableFrom<ISet<string>>(field.GetValue(provider));
+        var state = Assert.IsType<ChatConversationState>(stateField?.GetValue(provider));
+        var queueField = typeof(ChatConversationState).GetField(
+            "_queue",
+            System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic);
+        var queue = Assert.IsType<ChatQueueState>(queueField?.GetValue(state));
+        var scheduledField = typeof(ChatQueueState).GetField(
+            "_drainScheduledThreads",
+            System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic);
+        Assert.NotNull(scheduledField);
+        return Assert.IsAssignableFrom<ISet<string>>(scheduledField.GetValue(queue));
     }
 
     private static void MarkPersistedMessageAborted(
@@ -10555,11 +10908,15 @@ public class OpenClawChatDataProviderTests
         string messageId)
     {
         var field = typeof(OpenClawChatDataProvider).GetField(
-            "_persistedAbortedIds",
+            "_persistence",
             System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic);
         Assert.NotNull(field);
-        var abortedIds = Assert.IsType<Dictionary<string, HashSet<string>>>(field.GetValue(provider));
-        abortedIds[threadId] = [messageId];
+        var persistence =
+            Assert.IsType<ChatStatePersistence>(field.GetValue(provider));
+        Assert.True(persistence.TryAddAbortedIds(
+            threadId,
+            resetGeneration: 0,
+            [messageId]));
     }
 
     private static bool HasFailedQueuedMessage(ChatDataSnapshot snapshot, string threadId, string text) =>

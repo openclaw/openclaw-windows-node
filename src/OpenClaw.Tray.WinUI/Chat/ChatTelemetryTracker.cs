@@ -155,7 +155,11 @@ internal sealed class ChatTelemetryTracker
     private readonly Dictionary<string, TurnState> _turnsByMessageId = new(StringComparer.Ordinal);
     private readonly Dictionary<string, TurnState> _turnsByRunId = new(StringComparer.Ordinal);
 
-    public void StartLocalTurn(string messageId, string threadId, bool queued)
+    public void StartLocalTurn(
+        string messageId,
+        string threadId,
+        bool queued,
+        ChatRuntimeGeneration? runtimeGeneration = null)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(messageId);
 
@@ -172,7 +176,8 @@ internal sealed class ChatTelemetryTracker
                     TurnSpanName,
                     default(ActivityContext),
                     [OpenClawTelemetryTag.String(OpenClawTelemetryTagKey.Source, SourceLocal)]),
-                Stopwatch.GetTimestamp());
+                Stopwatch.GetTimestamp(),
+                runtimeGeneration);
             if (queued)
                 StartQueueSegmentLocked(state);
 
@@ -248,7 +253,11 @@ internal sealed class ChatTelemetryTracker
         }
     }
 
-    public void ObserveLifecycleStart(string threadId, string? runId, bool allowRemoteTurn = true)
+    public void ObserveLifecycleStart(
+        string threadId,
+        string? runId,
+        bool allowRemoteTurn = true,
+        ChatRuntimeGeneration? runtimeGeneration = null)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(threadId);
         if (string.IsNullOrWhiteSpace(runId))
@@ -284,7 +293,9 @@ internal sealed class ChatTelemetryTracker
             var pendingLocal = _turnsByMessageId.Values.FirstOrDefault(
                 state => state.Source == SourceLocal &&
                     state.ThreadId == threadId &&
-                    state.IsDispatched);
+                    state.IsDispatched &&
+                    (runtimeGeneration is null ||
+                     state.RuntimeGeneration == runtimeGeneration));
             if (pendingLocal is not null)
             {
                 BindRunLocked(pendingLocal, runId);
@@ -302,7 +313,8 @@ internal sealed class ChatTelemetryTracker
                     TurnSpanName,
                     default(ActivityContext),
                     [OpenClawTelemetryTag.String(OpenClawTelemetryTagKey.Source, SourceRemote)]),
-                Stopwatch.GetTimestamp());
+                Stopwatch.GetTimestamp(),
+                runtimeGeneration);
             BindRunLocked(remote, runId);
             StartResponseWaitLocked(remote);
         }
@@ -485,6 +497,33 @@ internal sealed class ChatTelemetryTracker
         ArgumentException.ThrowIfNullOrWhiteSpace(threadId);
         FinishStates(
             RemoveWhere(state => state.ThreadId == threadId),
+            outcome,
+            reason);
+    }
+
+    public void FinishBeforeConnectionGeneration(
+        long connectionGeneration,
+        ChatTelemetryOutcome outcome,
+        ChatTurnTelemetryReason reason) =>
+        FinishStates(
+            RemoveWhere(state =>
+                state.RuntimeGeneration is not { } generation ||
+                generation.ConnectionGeneration < connectionGeneration),
+            outcome,
+            reason);
+
+    public void FinishThreadBeforeResetGeneration(
+        string threadId,
+        long resetGeneration,
+        ChatTelemetryOutcome outcome,
+        ChatTurnTelemetryReason reason)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(threadId);
+        FinishStates(
+            RemoveWhere(state =>
+                state.ThreadId == threadId &&
+                (state.RuntimeGeneration is not { } generation ||
+                 generation.ResetGeneration < resetGeneration)),
             outcome,
             reason);
     }
@@ -959,7 +998,8 @@ internal sealed class ChatTelemetryTracker
         string threadId,
         string source,
         Activity? activity,
-        long startTimestamp)
+        long startTimestamp,
+        ChatRuntimeGeneration? runtimeGeneration)
     {
         private long? _queueSegmentStart;
 
@@ -968,6 +1008,7 @@ internal sealed class ChatTelemetryTracker
         public string Source { get; } = source;
         public Activity? Activity { get; } = activity;
         public long StartTimestamp { get; } = startTimestamp;
+        public ChatRuntimeGeneration? RuntimeGeneration { get; } = runtimeGeneration;
         public HashSet<string> RunIds { get; } = new(StringComparer.Ordinal);
         public bool IsDispatched { get; set; }
         public bool WasQueued { get; private set; }
