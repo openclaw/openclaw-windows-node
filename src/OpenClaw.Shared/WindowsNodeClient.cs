@@ -18,6 +18,7 @@ namespace OpenClaw.Shared;
 public class WindowsNodeClient : WebSocketClientBase
 {
     private readonly DeviceIdentity _deviceIdentity;
+    private IConnectEnvelopeSigner _connectEnvelopeSigner;
     
     // Node capabilities registry
     private readonly List<INodeCapability> _capabilities = new();
@@ -40,6 +41,11 @@ public class WindowsNodeClient : WebSocketClientBase
     private bool _useV2Signature; // true after v3 signature rejected by gateway
     public bool UseV2Signature { get => _useV2Signature; set => _useV2Signature = value; }
     private int _handshakeAuthorizationBlocked;
+    internal IConnectEnvelopeSigner ConnectEnvelopeSigner
+    {
+        get => _connectEnvelopeSigner;
+        set => _connectEnvelopeSigner = value;
+    }
     // Bug 3: source-side idempotency for PairingStatusChanged. HandleHelloOk runs on every
     // WS reconnect and re-fires PairingStatus.Paired even when nothing changed, causing a
     // toast storm in the tray UI. Track the last emitted status and only fire on transitions.
@@ -146,6 +152,7 @@ public class WindowsNodeClient : WebSocketClientBase
         // Initialize device identity
         _deviceIdentity = new DeviceIdentity(dataPath, _logger);
         _deviceIdentity.Initialize();
+        _connectEnvelopeSigner = new DeviceIdentityConnectEnvelopeSigner(_deviceIdentity);
         _useV2Signature |= !string.IsNullOrEmpty(_bootstrapToken) && string.IsNullOrEmpty(_deviceIdentity.NodeDeviceToken);
         
         // Initialize registration
@@ -681,7 +688,7 @@ public class WindowsNodeClient : WebSocketClientBase
     {
         var isPaired = !string.IsNullOrEmpty(_deviceIdentity.NodeDeviceToken);
         var usingBootstrap = !isPaired && !string.IsNullOrEmpty(_bootstrapToken);
-        var (auth, tokenForSig) = BuildConnectAuth();
+        var (auth, _) = BuildConnectAuth();
         var authType = auth.ContainsKey("deviceToken") ? "deviceToken"
             : auth.ContainsKey("bootstrapToken") ? "bootstrapToken" : "token";
 
@@ -705,23 +712,29 @@ public class WindowsNodeClient : WebSocketClientBase
         long? challengeTimestampMs,
         string? requestId = null)
     {
-        // Sign the full payload with Ed25519 - this is how device pairing works
+        var credential = SelectConnectCredential();
+        var envelope = ConnectEnvelopeBuilder.PrepareNode(
+            new NodeConnectEnvelopeOptions(
+                requestId ?? Guid.NewGuid().ToString(),
+                _registration.Version,
+                _registration.Platform,
+                _registration.DeviceFamily,
+                _registration.DisplayName,
+                _registration.Capabilities,
+                _registration.Commands,
+                _registration.Permissions,
+                credential,
+                nonce,
+                challengeTimestampMs,
+                _useV2Signature),
+            _connectEnvelopeSigner);
+
         string? signature = null;
-        var signedAt = ConnectAuthTimestamp.ResolveSignedAt(challengeTimestampMs);
-        var (auth, tokenForSignature) = BuildConnectAuth();
-        
-        if (!string.IsNullOrEmpty(nonce))
+        if (envelope.CanSign)
         {
             try
             {
-                signature = _useV2Signature
-                    ? _deviceIdentity.SignConnectPayloadV2(
-                        nonce, signedAt, ClientId, "node", "node",
-                        Array.Empty<string>(), tokenForSignature)
-                    : _deviceIdentity.SignConnectPayloadV3(
-                        nonce, signedAt, ClientId, "node", "node",
-                        Array.Empty<string>(), tokenForSignature,
-                        _registration.Platform, _registration.DeviceFamily);
+                signature = envelope.Sign();
             }
             catch (Exception ex)
             {
@@ -729,60 +742,24 @@ public class WindowsNodeClient : WebSocketClientBase
             }
         }
 
-        // Always include device identity - this is required for pairing
-        var msg = new
-        {
-            type = "req",
-            id = requestId ?? Guid.NewGuid().ToString(),
-            method = "connect",
-            @params = new
-            {
-                minProtocol = 3,
-                maxProtocol = 4,
-                client = new
-                {
-                    id = ClientId,  // Must match what we sign in payload
-                    version = _registration.Version,
-                    platform = _registration.Platform,
-                    deviceFamily = _registration.DeviceFamily,
-                    mode = "node",
-                    displayName = _registration.DisplayName
-                },
-                role = "node",
-                scopes = Array.Empty<string>(),
-                caps = _registration.Capabilities,
-                commands = _registration.Commands,
-                permissions = _registration.Permissions,
-                auth,
-                locale = "en-US",
-                userAgent = $"openclaw-windows-node/{_registration.Version}",
-                device = new
-                {
-                    id = _deviceIdentity.DeviceId,
-                    publicKey = _deviceIdentity.PublicKeyBase64Url,  // Base64url encoded
-                    signature = signature,
-                    signedAt = signedAt,
-                    nonce = nonce
-                }
-            }
-        };
-
-        return JsonSerializer.Serialize(msg, s_ignoreNullOptions);
+        return envelope.Serialize(signature);
     }
 
     private (Dictionary<string, string> Auth, string TokenForSignature) BuildConnectAuth()
     {
+        var credential = SelectConnectCredential();
+        return (credential.ToAuthPayload(), credential.Value);
+    }
+
+    private ConnectCredential SelectConnectCredential()
+    {
         if (!string.IsNullOrEmpty(_deviceIdentity.NodeDeviceToken))
-        {
-            return (new Dictionary<string, string> { ["deviceToken"] = _deviceIdentity.NodeDeviceToken }, _deviceIdentity.NodeDeviceToken);
-        }
+            return new DeviceTokenConnectCredential(_deviceIdentity.NodeDeviceToken);
 
         if (!string.IsNullOrEmpty(_bootstrapToken))
-        {
-            return (new Dictionary<string, string> { ["bootstrapToken"] = _bootstrapToken }, _bootstrapToken);
-        }
+            return new BootstrapTokenConnectCredential(_bootstrapToken);
 
-        return (new Dictionary<string, string> { ["token"] = _gatewayToken }, _gatewayToken);
+        return new TokenConnectCredential(_gatewayToken);
     }
     
     internal void HandleResponse(JsonElement root)
