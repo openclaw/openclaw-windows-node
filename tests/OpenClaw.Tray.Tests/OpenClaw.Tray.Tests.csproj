@@ -67,6 +67,15 @@
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Chat\ChatSnapshotProjector.cs" Link="Chat\ChatSnapshotProjector.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Chat\ChatStatePersistence.cs" Link="Chat\ChatStatePersistence.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Chat\OpenClawChatDataProvider.cs" Link="Chat\OpenClawChatDataProvider.cs" />
+    <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Chat\ChatComposerInputs.cs" Link="Chat\ChatComposerInputs.cs" />
+    <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Chat\IChatComposerRuntimePort.cs" Link="Chat\IChatComposerRuntimePort.cs" />
+    <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Chat\ChatComposerRuntimePort.cs" Link="Chat\ChatComposerRuntimePort.cs" />
+    <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Chat\ChatComposerHostActions.cs" Link="Chat\ChatComposerHostActions.cs" />
+    <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Chat\ChatComposerViewModel.cs" Link="Chat\ChatComposerViewModel.cs" />
+    <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Chat\ChatComposerController.cs" Link="Chat\ChatComposerController.cs" />
+    <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Chat\ChatComposerSession.cs" Link="Chat\ChatComposerSession.cs" />
+    <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Chat\IChatComposerFactory.cs" Link="Chat\IChatComposerFactory.cs" />
+    <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Chat\ChatComposerFactory.cs" Link="Chat\ChatComposerFactory.cs" />
   </ItemGroup>
 
   <ItemGroup>

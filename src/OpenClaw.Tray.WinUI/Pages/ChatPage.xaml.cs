@@ -1,6 +1,7 @@
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.Web.WebView2.Core;
+using Microsoft.Extensions.DependencyInjection;
 using OpenClaw.Chat;
 using OpenClaw.Shared;
 using OpenClaw.Shared.Capabilities;
@@ -239,6 +240,16 @@ public sealed partial class ChatPage : Page
 
         var app = App.Current as App;
         var provider = ResolveChatProvider(app);
+        // A missing IChatComposerFactory registration is a composition bug, not a
+        // "disconnected" state: once the DI container exists, require it so the
+        // failure surfaces loudly through the existing app-level unhandled-exception
+        // handler/crash log rather than being silently treated as "no provider yet".
+        // Only an as-yet-uninitialized container (a normal startup race, same timing
+        // window during which the provider itself is also legitimately absent) is
+        // still tolerated here.
+        var composerFactory = app?.Services is { } services
+            ? services.GetRequiredService<IChatComposerFactory>()
+            : null;
         Func<string, Task>? readAloud = app is null ? null : ReadChatTextAloudAsync;
 
         // Consume a pending session-key hand-off from SessionsPage or a
@@ -274,7 +285,7 @@ public sealed partial class ChatPage : Page
 
         DisposeReactorHost();
 
-        if (provider is null)
+        if (provider is null || composerFactory is null)
         {
             // If we already have a mounted chat, keep it visible rather than
             // flashing the disconnected placeholder. The ChatProviderChanged
@@ -290,18 +301,23 @@ public sealed partial class ChatPage : Page
 
         PlaceholderPanel.Visibility = Visibility.Collapsed;
         ChatHost.Visibility = Visibility.Visible;
-        _reactorHost = CurrentApp.ActiveHubWindow!.MountReactorChat(
+        var composerSession = ReactorChatHostExtensions.CreateComposerSession(
             ChatHost,
+            composerFactory,
             provider,
-            initialThreadId: threadIdToMount,
-            onReadAloud: readAloud,
-            onStopSpeaking: () => app?.StopChatSpeaking(),
             onVoiceRequest: VoiceTranscribeAsync,
             onAttachClick: OnAttachClicked,
             onSettingsClick: () => _hub?.NavigateTo("voice"),
-            onOpenCheckpoints: OpenSessionCheckpoints,
             onSpeakerMuteChanged: muted => _ = OnSpeakerMuteChangedAsync(muted),
             initialMuted: ShouldStartSpeakerMuted(CurrentApp.Settings));
+        _reactorHost = CurrentApp.ActiveHubWindow!.MountReactorChat(
+            ChatHost,
+            provider,
+            composerSession,
+            initialThreadId: threadIdToMount,
+            onReadAloud: readAloud,
+            onStopSpeaking: () => app?.StopChatSpeaking(),
+            onOpenCheckpoints: OpenSessionCheckpoints);
         _mountedProvider = provider;
         _mountedThreadId = threadIdToMount;
         UpdateNativeChatSurfaceActive();

@@ -21,8 +21,16 @@ internal sealed class RecordingUiDispatcher : IUiDispatcher, IDisposable
     /// <summary>When false, enqueued actions are held until <see cref="FlushPending"/>.</summary>
     public bool RunEnqueuedImmediately { get; set; } = true;
 
+    /// <summary>When true, <see cref="TryEnqueue"/> refuses the work item (returns
+    /// false without recording/running it), simulating a dispatcher that is
+    /// shutting down.</summary>
+    public bool RejectEnqueue { get; set; }
+
     public bool TryEnqueue(Action action)
     {
+        if (RejectEnqueue)
+            return false;
+
         EnqueuedCount++;
         if (RunEnqueuedImmediately)
         {
