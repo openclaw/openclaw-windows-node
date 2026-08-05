@@ -53,7 +53,13 @@ src/OpenClaw.SetupEngine/
 ├── Program.cs                     # callable entry: --config, --headless, --dry-run, --rollback-on-failure
 ├── SetupPipeline.cs               # Sequential step orchestrator (132 lines)
 ├── SetupContext.cs                # Config model + shared state bag (217 lines)
-├── SetupSteps.cs                  # All setup step implementations
+├── SetupSteps.cs                  # Shared setup-engine helpers (WslConstants, WslInstallSupport,
+│                                   #   SetupOpenClawLogger, SetupPairingCredentialPolicy,
+│                                   #   WindowsGatewayReachability); one file per step class lives
+│                                   #   alongside it (e.g. CreateWslInstanceStep.cs,
+│                                   #   ConfigureGatewayStep.cs, StartKeepaliveStep.cs, ...)
+├── KeepaliveProcessManager.cs      # Setup-time WSL keepalive process/marker/rollback owner
+├── TailscaleSetupSteps.cs         # The 4 Tailscale setup steps, grouped
 ├── TransactionJournal.cs          # Append-only JSONL journal (77 lines)
 ├── SetupLogger.cs                 # Structured JSONL logger (112 lines)
 ├── CommandRunner.cs               # Concrete WSL/process command runner
@@ -73,7 +79,9 @@ src/OpenClaw.SetupEngine.UI/
     └── CompletePage.xaml / .cs       # Mascot status badge, summary, startup toggle
 ```
 
-**Total engine code: ~1,882 lines across 8 files.** UI adds ~10 more files.
+The pipeline runs 24 steps (see `SetupStepFactory.BuildDefaultSteps()` in `SetupPipeline.cs` for
+the authoritative order — this doc's step table below predates the 4 Tailscale steps and is not
+fully current). UI adds ~10 more files.
 
 ---
 
@@ -181,7 +189,12 @@ rerun setup with a supported new name.
 
 ## Pipeline Steps (19 total)
 
-Executed sequentially. Each step is a small class (30–120 lines) in `SetupSteps.cs`.
+> Note: this table predates the 4 Tailscale setup steps; the current pipeline runs 24 steps
+> total. See `SetupStepFactory.BuildDefaultSteps()` in `SetupPipeline.cs` for the authoritative,
+> current order. Fixing this table fully is out of scope for the E0 file-split PR.
+
+Executed sequentially. Each step is a small class (30–120 lines) in its own file under
+`src/OpenClaw.SetupEngine/` (e.g. `PreflightOsStep.cs`).
 
 | # | Step Class | What It Does |
 |---|-----------|-------------|

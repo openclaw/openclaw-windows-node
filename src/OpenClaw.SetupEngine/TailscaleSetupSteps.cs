@@ -1,6 +1,7 @@
 using System.Net.Http;
 using System.Text.Json;
 using System.Text.RegularExpressions;
+using OpenClaw.Shared;
 
 namespace OpenClaw.SetupEngine;
 
@@ -376,7 +377,7 @@ public sealed class AuthorizeTailscaleStep : SetupStep
         // Root owns tailscaled and Serve. Do not make the gateway account a
         // Tailscale operator; tailscaled's LocalAPI applies its own read/write
         // authorization to local callers.
-        var upCommand = $"/usr/bin/tailscale up --hostname={ShellEscape(hostname)}";
+        var upCommand = $"/usr/bin/tailscale up --hostname={WslShellQuoting.QuotePosixSingleQuote(hostname)}";
         var deadline = _clock.UtcNow.AddSeconds(config.AuthTimeoutSeconds);
         try
         {
@@ -530,8 +531,6 @@ public sealed class AuthorizeTailscaleStep : SetupStep
         TailscaleStatus? Status,
         bool ExpiredAuthorizationPath,
         Uri? ReplacementAuthorizationUri);
-
-    private static string ShellEscape(string value) => "'" + value.Replace("'", "'\\''") + "'";
 }
 
 public sealed class FinalizeTailscaleServeStep : SetupStep
@@ -565,7 +564,7 @@ public sealed class FinalizeTailscaleServeStep : SetupStep
         var devicePairPublicUrl = new UriBuilder(Uri.UriSchemeHttps, ctx.TailscaleDnsName).Uri.AbsoluteUri.TrimEnd('/');
         var configurePairUrl = await ctx.Commands.RunInWslAsync(
             ctx.DistroName!,
-            $"{ctx.WslPathPrefix} && openclaw config set {ConfigureGatewayStep.DevicePairPublicUrlKey} {ShellEscape(devicePairPublicUrl)} && openclaw config set {ConfigureGatewayStep.DevicePairEnabledKey} true",
+            $"{ctx.WslPathPrefix} && openclaw config set {ConfigureGatewayStep.DevicePairPublicUrlKey} {WslShellQuoting.QuotePosixSingleQuote(devicePairPublicUrl)} && openclaw config set {ConfigureGatewayStep.DevicePairEnabledKey} true",
             TimeSpan.FromSeconds(45),
             ct: ct);
         if (configurePairUrl.ExitCode != 0)
@@ -638,6 +637,4 @@ public sealed class FinalizeTailscaleServeStep : SetupStep
     private static Task<CommandResult> GetServeStatusAsync(SetupContext ctx, CancellationToken ct) =>
         ctx.Commands.RunInWslAsync(
             ctx.DistroName!, "/usr/bin/tailscale serve status --json", TimeSpan.FromSeconds(20), ct: ct, user: "root");
-
-    private static string ShellEscape(string value) => "'" + value.Replace("'", "'\\''") + "'";
 }

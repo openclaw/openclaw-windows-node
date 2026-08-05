@@ -92,7 +92,7 @@ await commandRunner.RunInWslAsync(
 
 ### 2. C#-interpolate every value into the script string
 
-Do not store values in Bash variables; bake the values into the script literally. This is the workaround used by `src/OpenClaw.SetupEngine/SetupSteps.cs:936-945` in `ValidateWslLockdownStep`. It is acceptable for short scripts with a small fixed value set and no spaces in values.
+Do not store values in Bash variables; bake the values into the script literally. This is the workaround used by `src/OpenClaw.SetupEngine/ValidateWslLockdownStep.cs:55-59` in `ValidateWslLockdownStep`. It is acceptable for short scripts with a small fixed value set and no spaces in values.
 
 ```csharp
 var workspace = "/home/openclaw/.openclaw/workspace";
@@ -126,8 +126,8 @@ All of these failed workarounds were verified empirically:
 ## Where this matters in the codebase
 
 - `src/OpenClaw.SetupEngine/CommandRunner.cs` — `RunInWslAsync` exposes the opt-in `inputViaStdin` parameter.
-- `src/OpenClaw.SetupEngine/SetupSteps.cs:936-945` — `ValidateWslLockdownStep` uses workaround #2, C# interpolation.
-- `src/OpenClaw.SetupEngine/SetupSteps.cs` `WindowsNodeBootstrapContextStep` — uses workaround #1, stdin.
+- `src/OpenClaw.SetupEngine/ValidateWslLockdownStep.cs:55-59` — `ValidateWslLockdownStep` uses workaround #2, C# interpolation.
+- `src/OpenClaw.SetupEngine/WindowsNodeBootstrapContextStep.cs` — `WindowsNodeBootstrapContextStep` uses workaround #1, stdin.
 
 ## Related
 
