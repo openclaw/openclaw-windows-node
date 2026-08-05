@@ -23,6 +23,21 @@ public sealed class SessionDisplayResolverTests
         Assert.DoesNotContain("491234567890", resolved.Title, StringComparison.Ordinal);
     }
 
+    [Fact]
+    public void Resolve_DoesNotUseRawKeyEchoAsDisplayName()
+    {
+        const string key = "agent:main:dashboard:new";
+
+        var resolved = SessionDisplayResolver.Resolve(new SessionInfo
+        {
+            Key = key,
+            DisplayName = key,
+        });
+
+        Assert.Equal("New session", resolved.Title);
+        Assert.Equal("generated", resolved.TitleSource);
+    }
+
     [Theory]
     [InlineData("agent:main:main", true, "main", "Main session", false)]
     [InlineData("agent:main:subagent:child", false, "subagent", "Subagent", true)]

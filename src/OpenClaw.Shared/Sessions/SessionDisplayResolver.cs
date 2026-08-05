@@ -23,8 +23,11 @@ public static partial class SessionDisplayResolver
         var peerKind = NonEmpty(session.PeerKind) ?? fallback.PeerKind;
         var isDirect = classification.Equals("direct", StringComparison.OrdinalIgnoreCase)
             || peerKind?.Equals("direct", StringComparison.OrdinalIgnoreCase) == true;
+        var displayName = isDirect
+            ? null
+            : UsefulTitle(session.Key, SafeLegacyDisplayName(session.DisplayName));
         var title = UsefulTitle(session.Key, session.Label)
-            ?? (isDirect ? null : SafeLegacyDisplayName(session.DisplayName))
+            ?? displayName
             ?? UsefulTitle(session.Key, session.DerivedTitle)
             ?? (gatewayClassification is null
                 ? fallback.Title
@@ -34,7 +37,7 @@ public static partial class SessionDisplayResolver
         {
             Title = title,
             TitleSource = UsefulTitle(session.Key, session.Label) is not null ? "label"
-                : !isDirect && SafeLegacyDisplayName(session.DisplayName) is not null ? "displayName"
+                : displayName is not null ? "displayName"
                 : UsefulTitle(session.Key, session.DerivedTitle) is not null ? "derivedTitle"
                 : "generated",
             Subtitle = BuildSubtitle(channel, accountId, agentId, session.ExecNode, session.Worktree),
