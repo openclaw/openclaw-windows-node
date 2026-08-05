@@ -38,7 +38,6 @@ public sealed partial class ConnectionPage : Page
     private IGatewayConnectionManager? _connectionManager;
     private GatewayRegistry? _gatewayRegistry;
     private GatewayDiscoveryService? _discoveryService;
-    private global::Windows.UI.ViewManagement.AccessibilitySettings? _accessibilitySettings;
     private IGatewayTerminalLauncher? _terminalLauncher;
     private WslGatewayController? _wslGatewayController;
 
@@ -127,7 +126,6 @@ public sealed partial class ConnectionPage : Page
             _gatewayRegistry.Changed += OnRegistryChanged;
 
         ActualThemeChanged += OnPageActualThemeChanged;
-        TrySubscribeAccessibilitySettings();
         Unloaded += OnPageUnloaded;
 
         // Initialize Node mode toggle from settings (suppressed event)
@@ -172,11 +170,6 @@ public sealed partial class ConnectionPage : Page
         if (_gatewayRegistry != null)
             _gatewayRegistry.Changed -= OnRegistryChanged;
         ActualThemeChanged -= OnPageActualThemeChanged;
-        if (_accessibilitySettings != null)
-        {
-            _accessibilitySettings.HighContrastChanged -= OnHighContrastChanged;
-            _accessibilitySettings = null;
-        }
         _discoveryService?.Dispose();
         _discoveryService = null;
         if (_reconnectMaskTimer != null)
@@ -200,31 +193,10 @@ public sealed partial class ConnectionPage : Page
         RefreshAfterThemeVisualChange();
     }
 
-    private void OnHighContrastChanged(
-        global::Windows.UI.ViewManagement.AccessibilitySettings sender,
-        object args)
-    {
-        DispatcherQueue?.TryEnqueue(RefreshAfterThemeVisualChange);
-    }
-
     private void RefreshAfterThemeVisualChange()
     {
         _capabilityPillsFingerprint = null;
         RefreshFromSnapshot(_lastSnapshot);
-    }
-
-    private void TrySubscribeAccessibilitySettings()
-    {
-        try
-        {
-            _accessibilitySettings = new global::Windows.UI.ViewManagement.AccessibilitySettings();
-            _accessibilitySettings.HighContrastChanged += OnHighContrastChanged;
-        }
-        catch (Exception ex)
-        {
-            Services.Logger.Warn($"[ConnectionPage] Could not subscribe to High Contrast changes: {ex.Message}");
-            _accessibilitySettings = null;
-        }
     }
 
     private void OnManagerStateChanged(object? sender, GatewayConnectionSnapshot snapshot)
@@ -1230,8 +1202,6 @@ public sealed partial class ConnectionPage : Page
         var pendingSet = new HashSet<string>(
             pendingDeclared.Where(c => !string.IsNullOrWhiteSpace(c)),
             StringComparer.OrdinalIgnoreCase);
-        var isHighContrast = IsHighContrastEnabled();
-
         var canonical = new (string Name, string LabelKey, string Glyph, bool Enabled)[]
         {
             ("browser",  "PermissionsPage_Cap_Browser_Label",  FluentIconCatalog.Browser,  settings.NodeBrowserProxyEnabled),
@@ -1273,7 +1243,6 @@ public sealed partial class ConnectionPage : Page
                 LocalizationHelper.GetString(labelKey),
                 glyph,
                 state,
-                isHighContrast,
                 kind,
                 remoteForPill));
             shown.Add(name);
@@ -1295,7 +1264,6 @@ public sealed partial class ConnectionPage : Page
                 label,
                 glyph,
                 state,
-                isHighContrast,
                 kind: state == CapabilityPillState.Active
                     ? BrowserProxyActivation.CapabilityPillKind.Active
                     : BrowserProxyActivation.CapabilityPillKind.PendingApproval,
@@ -1305,52 +1273,37 @@ public sealed partial class ConnectionPage : Page
         return panel;
     }
 
-    private const double CapabilityPillFillOpacity = 0.14;
-
     private Border MakeCapabilityPill(
         string label,
         string glyph,
         CapabilityPillState state,
-        bool isHighContrast,
         BrowserProxyActivation.CapabilityPillKind kind,
         bool requiresRemoteBrowserEndpoint)
     {
-        var (fillBrush, iconBrush, textBrush, stateKey, stateGlyph) = state switch
+        var (borderStyleKey, iconStyleKey, textStyleKey, stateKey, stateGlyph) = state switch
         {
             CapabilityPillState.Active => (
-                TintBrush(
-                    "SystemFillColorSuccessBrush",
-                    "SystemFillColorSuccessBackgroundBrush",
-                    CapabilityPillFillOpacity,
-                    isHighContrast),
-                ResolveBrush("SystemFillColorSuccessBrush"),
-                ResolveBrush("SystemFillColorSuccessBrush"),
+                "ConnectionCapabilityPillActiveBorderStyle",
+                "ConnectionCapabilityPillActiveIconStyle",
+                "ConnectionCapabilityPillActiveTextStyle",
                 "ConnectionPage_NodePillState_Active",
                 null),
             CapabilityPillState.Pending => (
-                TintBrush(
-                    "SystemFillColorCautionBrush",
-                    "SystemFillColorCautionBackgroundBrush",
-                    CapabilityPillFillOpacity,
-                    isHighContrast),
-                ResolveBrush("SystemFillColorCautionBrush"),
-                ResolveBrush("SystemFillColorCautionBrush"),
+                "ConnectionCapabilityPillPendingBorderStyle",
+                "ConnectionCapabilityPillPendingIconStyle",
+                "ConnectionCapabilityPillPendingTextStyle",
                 "ConnectionPage_NodePillState_Pending",
                 FluentIconCatalog.StatusWarn),
             CapabilityPillState.NeedsSharedToken => (
-                TintBrush(
-                    "SystemFillColorCriticalBrush",
-                    "SystemFillColorCriticalBackgroundBrush",
-                    CapabilityPillFillOpacity,
-                    isHighContrast),
-                ResolveBrush("SystemFillColorCriticalBrush"),
-                ResolveBrush("SystemFillColorCriticalBrush"),
+                "ConnectionCapabilityPillCriticalBorderStyle",
+                "ConnectionCapabilityPillCriticalIconStyle",
+                "ConnectionCapabilityPillCriticalTextStyle",
                 "ConnectionPage_NodePillState_NeedsGatewayToken",
                 FluentIconCatalog.StatusWarn),
             _ => (
-                ResolveBrush("SubtleFillColorTertiaryBrush"),
-                ResolveBrush("TextFillColorTertiaryBrush"),
-                ResolveBrush("TextFillColorSecondaryBrush"),
+                "ConnectionCapabilityPillOffBorderStyle",
+                "ConnectionCapabilityPillOffIconStyle",
+                "ConnectionCapabilityPillOffTextStyle",
                 "ConnectionPage_NodePillState_Off",
                 null),
         };
@@ -1365,7 +1318,7 @@ public sealed partial class ConnectionPage : Page
         {
             Glyph = glyph,
             FontSize = 12,
-            Foreground = iconBrush,
+            Style = (Style)Resources[iconStyleKey],
             VerticalAlignment = VerticalAlignment.Center,
             IsTextScaleFactorEnabled = false,
         };
@@ -1381,7 +1334,7 @@ public sealed partial class ConnectionPage : Page
         {
             Text = label,
             FontSize = 12,
-            Foreground = textBrush,
+            Style = (Style)Resources[textStyleKey],
             VerticalAlignment = VerticalAlignment.Center,
         };
         AutomationProperties.SetName(labelText, $"{label}: {detailText}");
@@ -1393,7 +1346,7 @@ public sealed partial class ConnectionPage : Page
             {
                 Glyph = stateGlyph,
                 FontSize = 10,
-                Foreground = textBrush,
+                Style = (Style)Resources[iconStyleKey],
                 VerticalAlignment = VerticalAlignment.Center,
                 IsTextScaleFactorEnabled = false,
             };
@@ -1405,35 +1358,11 @@ public sealed partial class ConnectionPage : Page
         {
             CornerRadius = new CornerRadius(12),
             Padding = new Thickness(8, 3, 11, 3),
-            Background = fillBrush,
+            Style = (Style)Resources[borderStyleKey],
             Child = content,
         };
         ToolTipService.SetToolTip(pill, detailText);
         return pill;
-    }
-
-    private Brush TintBrush(string colorKey, string highContrastBrushKey, double opacity, bool isHighContrast)
-    {
-        if (isHighContrast)
-            return ResolveBrush(highContrastBrushKey);
-
-        var color = ResolveBrush(colorKey) is SolidColorBrush scb
-            ? scb.Color
-            : ((SolidColorBrush)ResolveBrush("TextFillColorPrimaryBrush")).Color;
-        return new SolidColorBrush(color) { Opacity = opacity };
-    }
-
-    private bool IsHighContrastEnabled()
-    {
-        if (_accessibilitySettings is null)
-            return false;
-
-        try { return _accessibilitySettings.HighContrast; }
-        catch (Exception ex)
-        {
-            Services.Logger.Warn($"[ConnectionPage] Could not read High Contrast state: {ex.Message}");
-            return false;
-        }
     }
 
     private static string BuildCapabilityPillFingerprint(

@@ -994,7 +994,7 @@ public sealed class ReactorChatTimeline : Component<ReactorChatTimelineProps>
             .CornerRadius(8)
             .Background(Theme.Ref("CardBackgroundFillColorDefaultBrush"))
             .BorderBrush(Theme.Ref("ControlStrokeColorDefaultBrush"))
-            .BorderThickness(ReactorChatComposer.IsHighContrast() ? 2 : 1)
+            .BorderThickness(1)
             .AutomationName(presentation.AutomationName);
     }
 

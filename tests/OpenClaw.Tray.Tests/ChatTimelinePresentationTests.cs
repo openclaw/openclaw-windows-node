@@ -132,6 +132,58 @@ public sealed class ChatTimelinePresentationTests
     }
 
     [Fact]
+    public void ReactorComposer_UsesReactorThemeResourcesWithoutManualThemeObservation()
+    {
+        var root = File.ReadAllText(Path.Combine(
+            TestRepositoryPaths.GetRepositoryRoot(),
+            "src",
+            "OpenClaw.Tray.WinUI",
+            "Chat",
+            "OpenClawReactorChatRoot.cs"));
+        var composer = root[root.IndexOf(
+            "public sealed class ReactorChatComposer",
+            StringComparison.Ordinal)..];
+
+        Assert.Contains("UseColorScheme()", composer);
+        Assert.Contains(".Background(Theme.ControlFill)", composer);
+        Assert.Contains(".BorderBrush(Theme.ControlStroke)", composer);
+        Assert.Contains("Theme.Ref(\"AcrylicBackgroundFillColorDefaultBrush\")", composer);
+        Assert.Contains("Theme.Ref(\"SurfaceStrokeColorFlyoutBrush\")", composer);
+        Assert.Contains("Theme.Ref(\"SubtleFillColorTertiaryBrush\")", composer);
+        Assert.Contains("colorScheme);", composer);
+        Assert.Contains("CreateSlashPopupHost(BuildSlashPopup(", composer);
+
+        Assert.DoesNotContain("AccessibilitySettings", composer);
+        Assert.DoesNotContain("HighContrastChanged", composer);
+        Assert.DoesNotContain("ConditionalWeakTable", composer);
+        Assert.DoesNotContain("ApplyTheme(", composer);
+        Assert.DoesNotContain("ResolveThemeBrush", composer);
+        Assert.DoesNotContain("FindThemedResource", composer);
+        Assert.DoesNotContain("SearchThemeDictionaries", composer);
+        Assert.DoesNotContain("LookupResource", composer);
+        Assert.DoesNotContain("Application.Current.Resources", composer);
+    }
+
+    [Fact]
+    public void ReactorComposer_LocalizesSettingsTooltipInEveryLocale()
+    {
+        var stringsDirectory = Path.Combine(
+            TestRepositoryPaths.GetRepositoryRoot(),
+            "src",
+            "OpenClaw.Tray.WinUI",
+            "Strings");
+
+        foreach (var resourceFile in Directory.EnumerateFiles(
+                     stringsDirectory,
+                     "Resources.resw",
+                     SearchOption.AllDirectories))
+        {
+            var resources = File.ReadAllText(resourceFile);
+            Assert.Contains("Chat_Composer_Tooltip_Settings", resources);
+        }
+    }
+
+    [Fact]
     public void ReactorRoot_SettlesWelcomeEligibilityBeforeShowingEmptyState()
     {
         var root = File.ReadAllText(Path.Combine(
@@ -186,7 +238,8 @@ public sealed class ChatTimelinePresentationTests
         Assert.Contains("Chat_Compaction_FallbackDetail", timeline);
         Assert.Contains("Chat_Compaction_OpenCheckpoints", timeline);
         Assert.Contains("row.Props.OnOpenCheckpoints!(sessionKey!)", timeline);
-        Assert.Contains(".BorderThickness(ReactorChatComposer.IsHighContrast() ? 2 : 1)", timeline);
+        Assert.Contains(".BorderThickness(1)", timeline);
+        Assert.DoesNotContain("ReactorChatComposer.IsHighContrast", timeline);
         Assert.Contains(".AutomationName(presentation.AutomationName)", timeline);
     }
 }

@@ -2943,6 +2943,9 @@ Utilisez l'une de ces options :
   <data name="Chat_Composer_Tooltip_More" xml:space="preserve">
     <value>Plus</value>
   </data>
+  <data name="Chat_Composer_Tooltip_Settings" xml:space="preserve">
+    <value>Paramètres</value>
+  </data>
   <data name="Chat_Composer_Tooltip_Send" xml:space="preserve">
     <value>Envoyer</value>
   </data>

@@ -2943,6 +2943,9 @@
   <data name="Chat_Composer_Tooltip_More" xml:space="preserve">
     <value>更多</value>
   </data>
+  <data name="Chat_Composer_Tooltip_Settings" xml:space="preserve">
+    <value>設定</value>
+  </data>
   <data name="Chat_Composer_Tooltip_Send" xml:space="preserve">
     <value>傳送</value>
   </data>
