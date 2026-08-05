@@ -872,6 +872,19 @@ public sealed class E2ESetupFixture : IAsyncLifetime
 
     private static string LocateTrayExe()
     {
+        var releaseArtifactExe = Environment.GetEnvironmentVariable("OPENCLAW_E2E_TRAY_EXE");
+        if (!string.IsNullOrWhiteSpace(releaseArtifactExe))
+        {
+            if (!Path.IsPathFullyQualified(releaseArtifactExe) || !File.Exists(releaseArtifactExe))
+            {
+                throw new FileNotFoundException(
+                    "OPENCLAW_E2E_TRAY_EXE must name an existing absolute tray executable.",
+                    releaseArtifactExe);
+            }
+
+            return releaseArtifactExe;
+        }
+
         var rid = RuntimeInformation.ProcessArchitecture switch
         {
             Architecture.Arm64 => "win-arm64",
