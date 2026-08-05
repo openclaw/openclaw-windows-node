@@ -87,8 +87,7 @@ internal sealed class TrayDashboardSummaryBuilder
             return (TrayHealthSeverity.Ok, "Local MCP only");
         }
 
-        var pending = (_snapshot.NodePairList?.Pending.Count ?? 0)
-            + (_snapshot.DevicePairList?.Pending.Count ?? 0);
+        var pending = _snapshot.NodePendingPairCount + _snapshot.DevicePendingPairCount;
         if (pending > 0)
             return (TrayHealthSeverity.Caution, $"Pairing approval pending ({pending})");
 
@@ -171,11 +170,11 @@ internal sealed class TrayDashboardSummaryBuilder
     {
         var cost = FirstPositiveCost(
             _snapshot.Usage?.CostUsd,
-            _snapshot.UsageCost?.Totals.TotalCost);
+            _snapshot.UsageCost?.TotalCost);
 
         var totalTokens = FirstPositiveTokens(
             _snapshot.Usage?.TotalTokens,
-            _snapshot.UsageCost?.Totals.TotalTokens,
+            _snapshot.UsageCost?.TotalTokens,
             _snapshot.Sessions.Sum(SessionUsedTokens));
 
         if (cost <= 0 && totalTokens <= 0)
@@ -201,6 +200,9 @@ internal sealed class TrayDashboardSummaryBuilder
     }
 
     internal static long SessionUsedTokens(SessionInfo session) =>
+        session.TotalTokens > 0 ? session.TotalTokens : session.InputTokens + session.OutputTokens;
+
+    internal static long SessionUsedTokens(TraySessionSnapshot session) =>
         session.TotalTokens > 0 ? session.TotalTokens : session.InputTokens + session.OutputTokens;
 
     internal static SessionInfo? SelectActiveSession(IReadOnlyList<SessionInfo> sessions)
@@ -243,7 +245,7 @@ internal sealed class TrayDashboardSummaryBuilder
 
     private TrayDashboardActiveSession? BuildActiveSession()
     {
-        var session = SelectActiveSession(_snapshot.Sessions);
+        var session = SelectActiveSession(_snapshot.Sessions.Select(item => item.ToSessionInfo()).ToArray());
         if (session == null)
             return null;
 
