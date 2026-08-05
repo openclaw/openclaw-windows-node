@@ -3816,16 +3816,12 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
             session.Status = status.ValueKind == JsonValueKind.String
                 ? status.GetString() ?? "unknown"
                 : "unknown";
-        else
-            session.Status = "unknown";
         if (item.TryGetProperty("hasActiveRun", out var hasActiveRun))
         {
             session.HasActiveRun = hasActiveRun.ValueKind is JsonValueKind.True or JsonValueKind.False
                 ? hasActiveRun.GetBoolean()
                 : null;
         }
-        else
-            session.HasActiveRun = null;
         if (item.TryGetProperty("model", out var model))
         {
             var newModel = model.GetString();

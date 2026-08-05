@@ -2180,6 +2180,24 @@ public class OpenClawGatewayClientTests
     }
 
     [Fact]
+    public void ParseSessions_RetainsRunStateWhenSparseUpdateOmitsIt()
+    {
+        var helper = new GatewayClientTestHelper();
+
+        helper.ParseSessionsPayload("""
+        [{ "key": "agent:main:stateful", "status": "failed", "hasActiveRun": false }]
+        """);
+        helper.ParseSessionsPayload("""
+        [{ "key": "agent:main:stateful", "displayName": "Current task" }]
+        """);
+
+        var session = Assert.Single(helper.GetSessionList());
+        Assert.Equal("failed", session.Status);
+        Assert.Equal(false, session.HasActiveRun);
+        Assert.Equal("Current task", session.DisplayName);
+    }
+
+    [Fact]
     public void ParseUsageStatusPayload_PopulatesProviderSummary()
     {
         var helper = new GatewayClientTestHelper();

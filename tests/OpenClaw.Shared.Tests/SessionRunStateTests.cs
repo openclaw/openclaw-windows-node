@@ -9,12 +9,12 @@ public sealed class SessionRunStateTests
     [InlineData("running", null, true)]
     [InlineData("running", false, false)]
     [InlineData("running", true, true)]
-    [InlineData("done", true, false)]
-    [InlineData("failed", true, false)]
-    [InlineData("killed", true, false)]
-    [InlineData("timeout", true, false)]
+    [InlineData("done", true, true)]
+    [InlineData("failed", true, true)]
+    [InlineData("killed", true, true)]
+    [InlineData("timeout", true, true)]
     [InlineData("unknown", true, true)]
-    public void IsWorking_UsesTerminalOutcomeBeforeGatewayLiveness(
+    public void IsWorking_PrefersGatewayCurrentRunLiveness(
         string status,
         bool? hasActiveRun,
         bool expected)

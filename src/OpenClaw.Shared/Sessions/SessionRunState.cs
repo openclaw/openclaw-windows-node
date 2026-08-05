@@ -38,19 +38,15 @@ public static class SessionRunState
     };
 
     /// <summary>
-    /// A terminal outcome wins over a stale live-run flag. For older Gateways which
-    /// do not send <c>hasActiveRun</c>, preserve the legacy <c>running</c> fallback.
+    /// The Gateway's current-run flag is authoritative when present. Older Gateways
+    /// omit it, so only those payloads fall back to the latest recorded outcome.
     /// </summary>
     public static bool IsWorking(SessionInfo session)
     {
-        var status = ResolveStatus(session.Status);
-        if (status is SessionRunStatus.Completed or SessionRunStatus.Failed
-            or SessionRunStatus.Stopped or SessionRunStatus.TimedOut)
-        {
-            return false;
-        }
+        if (session.HasActiveRun is { } hasActiveRun)
+            return hasActiveRun;
 
-        return session.HasActiveRun ?? status == SessionRunStatus.Running;
+        return ResolveStatus(session.Status) == SessionRunStatus.Running;
     }
 
     public static SessionDisplayState GetDisplayState(SessionInfo session)
