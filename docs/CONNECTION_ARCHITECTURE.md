@@ -24,7 +24,22 @@ to cancelled or completed when capability execution returns; whichever
 transition wins determines the protocol outcome. Capability implementations
 remain responsible for cooperative cancellation of their own underlying work.
 
-**OpenClaw.Connection** owns all connection management: `GatewayConnectionManager`, `GatewayRegistry`, `CredentialResolver`, `ConnectionStateMachine`, `NodeConnector`, `SshTunnelService/Manager`, `SetupCodeDecoder`, and all connection interfaces/DTOs/enums. This project has zero WinUI dependencies and is independently testable.
+**OpenClaw.Connection** owns all connection management. `GatewayConnectionManager`
+is the public lifecycle façade and sole writer of the overall state machine,
+operator lifecycle, active gateway context, tunnel, and operator reconnect
+orchestration. Three narrower owners sit behind it:
+
+- `NodeConnectionCoordinator` owns node generation/CTS/start ordering, connector
+  event handling, node token-mismatch recovery, and node connection telemetry.
+- `BootstrapTokenLifecycle` owns bootstrap/shared/device handoff timing, the
+  durable two-role token clear gate, and operator token-mismatch recovery timing.
+- `DevicePairApprovalCoordinator` owns typed device role-upgrade approval and its
+  one-in-flight plus one-queued bounded node reconnect workflow.
+
+`GatewayRegistry`, `CredentialResolver`, `ConnectionStateMachine`,
+`NodeConnector`, `SshTunnelService/Manager`, `SetupCodeDecoder`, and connection
+interfaces/DTOs/enums remain separate. This project has zero WinUI dependencies
+and is independently testable.
 
 **OpenClaw.Tray.WinUI** consumes the connection layer through interfaces. It never creates gateway clients directly — `GatewayConnectionManager` owns that entirely.
 
@@ -202,7 +217,17 @@ Two orthogonal self-healing behaviors keep the connection reliable without dead-
 
 The gateway may reject a stored device token with the structured code `AUTH_DEVICE_TOKEN_MISMATCH` (a rotated/revoked/replaced device token) — distinct from a wrong *shared* token. `GatewayErrorClassifier` is the single classifier for this: `ClassifyWithCode(message, ...codes)` inspects the structured `error.code`/`error.details.code` **before** the textual heuristic and returns the exact `GatewayErrorKind.DeviceTokenMismatch`, keeping a stale *device* token (auto-recoverable) separate from a wrong *shared* token (`Auth`, not device-recoverable). Broad `GatewayErrorKind.TokenDrift` remains a manual re-pair signal for UI copy.
 
-On a device-token mismatch, the manager clears **only the rejected role's** device token and reconnects, letting `CredentialResolver` fall back to the same record's `SharedGatewayToken` (preferred) or `BootstrapToken`. This kills the post-setup "need a new token" dead end (setup clears the bootstrap token once pairing is durable, but the shared token remains). Operator recovery runs in `TryScheduleOperatorTokenRecovery`; node recovery is driven off the node client's classified `INodeConnectorTelemetryEvents.ConnectionFailure(GatewayErrorKind)` — the manager's `OnNodeConnectionFailure` queues `HandleNodeDeviceTokenMismatchAsync` off the connector's dispatch lock (capturing lifecycle+node generations at fire time and re-checking `IsCurrentNodeAttempt` before/after the transition semaphore). A per-gateway, per-role attempt guard (reset on handshake success / node pairing) prevents clear→reconnect→mismatch loops.
+On a device-token mismatch, the applicable credential owner clears **only the
+rejected role's** device token and reconnects, letting `CredentialResolver` fall
+back to the same record's `SharedGatewayToken` (preferred) or
+`BootstrapToken`. `BootstrapTokenLifecycle` owns operator recovery;
+`NodeConnectionCoordinator` owns node recovery from the connector's classified
+`INodeConnectorTelemetryEvents.ConnectionFailure(GatewayErrorKind)`. The
+manager subscribes once and forwards typed connector events. The node owner
+captures lifecycle plus node generation and is the only implementation of the
+combined current-node-attempt check. A per-gateway, per-role attempt guard
+(reset on handshake success / node pairing) prevents
+clear→reconnect→mismatch loops.
 
 **Security — trust gate and endpoint provenance.** Clearing a device token downgrades to the more powerful shared/bootstrap credential, so `IsRecoverySafeEndpoint` restricts recovery to trusted endpoints: an owned SSH tunnel, a validated TLS (`wss`/`https`) endpoint, or — for a setup-managed WSL loopback gateway — a listener proven by `ManagedLocalGatewayPortProvenanceService` to be the Windows WSL relay. Loopback is not treated as identity by itself: an unknown listener or a proven obsolete native OpenClaw gateway blocks fallback, so a wrong local process cannot return a device-token mismatch to induce disclosure of the shared credential. A plain `ws://` remote endpoint is never eligible.
 
@@ -233,7 +258,8 @@ Setup codes (from QR scan or paste) decode to `{ url, bootstrapToken }` via `Set
 3. Clears stored device tokens (fresh pairing)
 4. Connects to the new gateway
 5. Gateway returns `hello-ok.auth.deviceToken` after pairing
-6. Connection manager persists the device token to the identity file
+6. `BootstrapTokenLifecycle` persists the device token and clears the bootstrap
+   only after operator and node role tokens are both durably readable
 
 **Approval boundaries**: `GatewayConnectionManager` leaves node-pair command-trust requests and reapproval pending for explicit operator approval. It may automatically approve and reconnect only an explicitly typed device-pair request used for a device role upgrade.
 
@@ -300,6 +326,9 @@ Connection tests live in `tests/OpenClaw.Connection.Tests/`:
 - `GatewayRegistryTests` / `GatewayRegistryMigrationTests` — persistence, migration
 - `InteractiveGatewayCredentialResolverTests` — HTTP credential resolution
 - `NodeConnectorTests` — node client lifecycle
+- `NodeConnectionCoordinatorTests` — singular node generation and telemetry contract
+- `BootstrapTokenLifecycleTests` — durable role-token handoff and clear gate
+- `DevicePairApprovalCoordinatorTests` — bounded device role-upgrade reconnect workflow
 - `PairingFlowTests` / `NodePairAutoApproveTests` — pairing lifecycle, device role-upgrade auto-approval, and manual node command-trust boundary
 - `SetupCodeFlowTests` / `SetupCodeDecoderTests` — QR code → connect flow
 - `StaleEventGuardTests` — generation-guarded event handling
