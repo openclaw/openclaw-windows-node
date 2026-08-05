@@ -3,6 +3,7 @@ using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Media;
 using OpenClaw.Shared;
 using OpenClaw.Shared.Sessions;
+using OpenClawTray.Chat;
 using OpenClawTray.Helpers;
 using System;
 using System.Collections.Generic;
@@ -379,6 +380,9 @@ internal sealed class SessionCheckpointDialogCoordinator
         }
         else if (result.Ok)
         {
+            if (CurrentApp.ChatProvider is { } chatProvider)
+                await chatProvider.ReplaceHistoryAfterCheckpointRestoreAsync(key);
+
             await ShowStatusAsync(
                 "Restored",
                 "Rolled the session back to the checkpoint.",

@@ -51,6 +51,7 @@ public sealed class SessionActionsWiringTests
         Assert.Contains("ListCompactionCheckpointsAsync", checkpoints);
         Assert.Contains("BranchCompactionCheckpointAsync", checkpoints);
         Assert.Contains("RestoreCompactionCheckpointAsync", checkpoints);
+        Assert.Contains("ReplaceHistoryAfterCheckpointRestoreAsync", checkpoints);
         // Unsupported gateways are surfaced via the typed IsSupported flag.
         Assert.Contains("IsSupported", checkpoints);
     }
