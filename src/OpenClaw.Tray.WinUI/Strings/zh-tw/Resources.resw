@@ -1,4 +1,4 @@
-﻿<?xml version="1.0" encoding="utf-8"?>
+<?xml version="1.0" encoding="utf-8"?>
 <root xmlns:ns1="urn:schemas-microsoft-com:xml-msdata" xmlns:xs="http://www.w3.org/2001/XMLSchema">
   <xs:schema id="root">
     <xs:element name="root" ns1:IsDataSet="true">
@@ -2842,13 +2842,16 @@
     <value>完成</value>
   </data>
   <data name="Chat_Compaction_Title" xml:space="preserve">
-    <value>內容已壓縮</value>
+    <value>已壓縮的歷程記錄</value>
   </data>
   <data name="Chat_Compaction_MetricsFormat" xml:space="preserve">
     <value>{0} → {1} 個權杖 · 節省 {2}</value>
   </data>
   <data name="Chat_Compaction_FallbackDetail" xml:space="preserve">
-    <value>較早的內容已摘要至檢查點。</value>
+    <value>壓縮後的對話記錄會保留為檢查點。開啟工作階段檢查點，以便從該壓縮檢視建立分支或還原。</value>
+  </data>
+  <data name="Chat_Compaction_OpenCheckpoints" xml:space="preserve">
+    <value>開啟檢查點</value>
   </data>
   <data name="Chat_PendingNewSessionTitle" xml:space="preserve">
     <value>新工作階段</value>
@@ -2960,6 +2963,9 @@
   </data>
   <data name="Chat_Composer_Tooltip_More" xml:space="preserve">
     <value>更多</value>
+  </data>
+  <data name="Chat_Composer_Tooltip_Settings" xml:space="preserve">
+    <value>設定</value>
   </data>
   <data name="Chat_Composer_Tooltip_Send" xml:space="preserve">
     <value>傳送</value>
@@ -6160,7 +6166,7 @@
     <value>Gateway authentication failed</value>
   </data>
   <data name="CommandCenter_BrowserProxyAuthMayNeed" xml:space="preserve">
-    <value>Browser proxy auth may need a gateway token</value>
+    <value>Browser control needs a gateway shared token</value>
   </data>
   <data name="CommandCenter_BrowserProxyHostNotDetected" xml:space="preserve">
     <value>Browser proxy host not detected</value>
@@ -6647,6 +6653,9 @@
   </data>
   <data name="ConnectionPage_NodePillState_Pending" xml:space="preserve">
     <value>Enabled, not active yet</value>
+  </data>
+  <data name="ConnectionPage_NodePillState_NeedsGatewayToken" xml:space="preserve">
+    <value>Needs gateway shared token</value>
   </data>
   <data name="ConnectionPage_NodePillState_Off" xml:space="preserve">
     <value>Off</value>

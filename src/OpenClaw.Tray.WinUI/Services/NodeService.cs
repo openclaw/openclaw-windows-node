@@ -405,10 +405,11 @@ public sealed class NodeService : IDisposable, IAsyncDisposable
         // BrowserProxy talks to the HTTP/browser-control surface, which expects
         // the shared gateway token rather than the node WebSocket device token.
         var sharedGatewayToken = _sharedGatewayTokenResolver?.Invoke();
-        if (NodeCapabilityGating.ShouldRegisterBrowserProxy(
-                _settings,
-                sharedGatewayToken,
-                hasGatewayClient: _nodeClient != null))
+        var browserProxyBlock = NodeCapabilityGating.ResolveBrowserProxyRegistrationBlock(
+            _settings,
+            sharedGatewayToken,
+            hasGatewayClient: _nodeClient != null);
+        if (browserProxyBlock == BrowserProxyActivation.RegistrationBlock.None)
         {
             // Tunnel state is resolved from the active GatewayRecord when a resolver is wired
             // (the normal app path), so a tunnel->direct gateway switch can't leave stale global
@@ -433,6 +434,13 @@ public sealed class NodeService : IDisposable, IAsyncDisposable
                 allowGatewayPortFallback: tunnelState.AllowGatewayPortFallback,
                 authorizeEndpointAsync: _browserControlAuthorization);
             Register(_browserProxyCapability);
+        }
+        else if (browserProxyBlock != BrowserProxyActivation.RegistrationBlock.ToggleDisabled)
+        {
+            // Toggle is on but registration cannot proceed. Log the concrete reason so
+            // "Enabled, not active yet" is never a silent dead end in diagnostics.
+            _logger.Warn(
+                $"[NodeService] browser capability not declared: {BrowserProxyActivation.DescribeRegistrationBlock(browserProxyBlock)}");
         }
 
         if (_nodeClient != null)

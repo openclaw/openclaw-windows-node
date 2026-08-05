@@ -1,7 +1,6 @@
 using Microsoft.UI.Reactor;
 using Microsoft.UI.Reactor.Core;
 using Microsoft.UI.Reactor.Core.V1Protocol;
-using Microsoft.UI.Reactor.Hooks;
 using Microsoft.UI.Reactor.Input;
 using Microsoft.UI.Xaml;
 using System.Runtime.CompilerServices;
@@ -15,7 +14,9 @@ file sealed record ItemsViewVerticalScrollControllerElement(
     Element Child,
     ElementRef<WinUIAnnotatedScrollBar> ScrollBarRef,
     int InitialTailIndex,
-    string InitialTailRequestKey) : Element
+    int ItemCount,
+    string InitialTailRequestKey,
+    string? DisplayedTailKey) : Element
 {
     static ItemsViewVerticalScrollControllerElement() =>
         ControlRegistry.RegisterDecorator<ItemsViewVerticalScrollControllerElement>(
@@ -39,7 +40,11 @@ file sealed class ItemsViewVerticalScrollControllerHandler
                 ((WinUIItemsView)value).VerticalScrollController = scrollBar?.ScrollController);
         var positioner = new InitialTailPositioner(itemsView);
         Positioners.Add(itemsView, positioner);
-        positioner.Request(element.InitialTailIndex, element.InitialTailRequestKey);
+        positioner.Request(
+            element.InitialTailIndex,
+            element.ItemCount,
+            element.InitialTailRequestKey,
+            element.DisplayedTailKey);
         return itemsView;
     }
 
@@ -54,9 +59,16 @@ file sealed class ItemsViewVerticalScrollControllerHandler
             throw new InvalidOperationException("ItemsView scroll controller binding requires an ItemsView child.");
         if (!string.Equals(oldElement.InitialTailRequestKey, newElement.InitialTailRequestKey, StringComparison.Ordinal)
             && Positioners.TryGetValue(itemsView, out var positioner))
-            positioner.Request(newElement.InitialTailIndex, newElement.InitialTailRequestKey);
+            positioner.Request(
+                newElement.InitialTailIndex,
+                newElement.ItemCount,
+                newElement.InitialTailRequestKey,
+                newElement.DisplayedTailKey);
         else if (Positioners.TryGetValue(itemsView, out var existingPositioner))
-            existingPositioner.UpdateTailIndex(newElement.InitialTailIndex);
+            existingPositioner.UpdateTail(
+                newElement.InitialTailIndex,
+                newElement.ItemCount,
+                newElement.DisplayedTailKey);
         return itemsView;
     }
 
@@ -73,15 +85,20 @@ file sealed class ItemsViewVerticalScrollControllerHandler
 
 file sealed class InitialTailPositioner : IDisposable
 {
+    private const double FollowThreshold = 60;
+
     private readonly WinUIItemsView itemsView;
     private string? _requestKey;
+    private string? _displayedTailKey;
     private int _tailIndex;
+    private int _itemCount;
     private int _version;
     private bool _valid;
     private bool _awaitingLayout;
     private WinUIScrollView? _awaitingScrollView;
     private WinUIScrollView? _scrollView;
     private bool _following;
+    private readonly TailNavigationQueue _tailNavigationQueue = new();
     private bool _disposed;
 
     public InitialTailPositioner(WinUIItemsView itemsView)
@@ -91,46 +108,72 @@ file sealed class InitialTailPositioner : IDisposable
         itemsView.Unloaded += OnUnloaded;
     }
 
-    public void Request(int tailIndex, string requestKey)
+    public void Request(int tailIndex, int itemCount, string requestKey, string? displayedTailKey)
     {
         if (_disposed || string.Equals(_requestKey, requestKey, StringComparison.Ordinal))
             return;
+
         _requestKey = requestKey;
         _version++;
         DetachLayout();
-        _valid = tailIndex >= 0;
-        if (!_valid) return;
         _tailIndex = tailIndex;
-        SetFollowing(true);
-        if (itemsView.IsLoaded) AwaitLayout();
+        _itemCount = itemCount;
+        _displayedTailKey = displayedTailKey;
+        _following = true;
+        _valid = TailNavigationPolicy.TryCapture(tailIndex, displayedTailKey, itemCount, out _);
+        if (!_valid)
+            return;
+
+        if (itemsView.IsLoaded)
+            AwaitLayout();
     }
 
-    public void UpdateTailIndex(int tailIndex)
+    public void UpdateTail(int tailIndex, int itemCount, string? displayedTailKey)
     {
+        var changed = !string.Equals(_displayedTailKey, displayedTailKey, StringComparison.Ordinal);
         _tailIndex = tailIndex;
+        _itemCount = itemCount;
+        _displayedTailKey = displayedTailKey;
+        _valid = TailNavigationPolicy.TryCapture(tailIndex, displayedTailKey, itemCount, out var request);
+        if (!_valid)
+        {
+            _tailNavigationQueue.Clear();
+            return;
+        }
+
+        if (changed && _following && itemsView.IsLoaded)
+        {
+            QueueTailRequest(_version, request);
+        }
     }
 
     private void OnLoaded(object sender, RoutedEventArgs args)
     {
-        if (_valid) AwaitLayout();
+        if (_valid)
+            AwaitLayout();
     }
 
     private void AwaitLayout()
     {
-        if (_disposed || !_valid || !itemsView.IsLoaded || _awaitingLayout) return;
+        if (_disposed || !_valid || !itemsView.IsLoaded || _awaitingLayout)
+            return;
+
         if (itemsView.ScrollView is { IsLoaded: false } scrollView)
         {
             _awaitingScrollView = scrollView;
             scrollView.Loaded += OnScrollViewLoaded;
             return;
         }
+
         _awaitingLayout = true;
         itemsView.LayoutUpdated += OnLayoutUpdated;
     }
 
     private void OnScrollViewLoaded(object sender, RoutedEventArgs args)
     {
-        if (sender is WinUIScrollView scrollView) scrollView.Loaded -= OnScrollViewLoaded;
+        if (sender is WinUIScrollView scrollView)
+            scrollView.Loaded -= OnScrollViewLoaded;
+
         _awaitingScrollView = null;
         AwaitLayout();
     }
@@ -143,68 +186,103 @@ file sealed class InitialTailPositioner : IDisposable
             AwaitLayout();
             return;
         }
+
         var version = _version;
-        var index = _tailIndex;
+        if (!TailNavigationPolicy.TryCapture(_tailIndex, _displayedTailKey, _itemCount, out var request))
+            return;
+
         itemsView.DispatcherQueue.TryEnqueue(() =>
         {
             if (_disposed || !_valid || !itemsView.IsLoaded || version != _version
                 || itemsView.ScrollView is not { IsLoaded: true })
             {
-                if (!_disposed && _valid) AwaitLayout();
+                if (!_disposed && _valid)
+                    AwaitLayout();
                 return;
             }
-            itemsView.StartBringItemIntoView(index, new BringIntoViewOptions
-            {
-                AnimationDesired = false,
-                VerticalAlignmentRatio = 1.0,
-            });
+
             AttachScrollView();
-            ApplyFollowAnchor();
+            if (!StartTailRequest(request) && !_disposed && _valid)
+                AwaitLayout();
         });
     }
 
     private void AttachScrollView()
     {
-        if (ReferenceEquals(_scrollView, itemsView.ScrollView))
+        var nextScrollView = itemsView.ScrollView;
+        if (ReferenceEquals(_scrollView, nextScrollView))
             return;
 
+        DetachScrollView();
+        _scrollView = nextScrollView;
         if (_scrollView is not null)
-            _scrollView.ViewChanged -= OnViewChanged;
-        _scrollView = itemsView.ScrollView;
-        if (_scrollView is not null)
+        {
+            _scrollView.VerticalAnchorRatio = 1.0;
             _scrollView.ViewChanged += OnViewChanged;
+        }
     }
 
     private void OnViewChanged(WinUIScrollView sender, object args)
     {
-        if (_tailIndex < 0
-            || !itemsView.TryGetItemIndex(0.5, 1.0, out var bottomIndex))
-        {
+        _following = IsNearBottom(sender);
+    }
+
+    private void QueueTailRequest(int version, TailNavigationRequest request)
+    {
+        if (!_tailNavigationQueue.Enqueue(version, request))
             return;
+
+        if (!itemsView.DispatcherQueue.TryEnqueue(() =>
+        {
+            if (!_tailNavigationQueue.TryDequeue(_version, out var queuedRequest)
+                || _disposed
+                || !_valid
+                || !itemsView.IsLoaded
+                || !_following)
+            {
+                return;
+            }
+
+            StartTailRequest(queuedRequest);
+        }))
+        {
+            _tailNavigationQueue.SchedulingFailed();
+            _following = false;
+        }
+    }
+
+    private bool StartTailRequest(TailNavigationRequest request)
+    {
+        if (itemsView.ScrollView is not { IsLoaded: true })
+            return false;
+
+        if (!TailNavigationPolicy.CanExecute(
+                request,
+                _tailIndex,
+                _displayedTailKey,
+                _itemCount))
+        {
+            return false;
         }
 
-        SetFollowing(bottomIndex >= _tailIndex);
+        _following = true;
+        itemsView.StartBringItemIntoView(request.Index, new BringIntoViewOptions
+        {
+            AnimationDesired = false,
+            VerticalAlignmentRatio = 1.0,
+        });
+        return true;
     }
 
-    private void SetFollowing(bool following)
-    {
-        if (_following == following)
-            return;
-
-        _following = following;
-        ApplyFollowAnchor();
-    }
-
-    private void ApplyFollowAnchor()
-    {
-        if (itemsView.ScrollView is { IsLoaded: true } scrollView)
-            scrollView.VerticalAnchorRatio = _following ? 1.0 : double.NaN;
-    }
+    private static bool IsNearBottom(WinUIScrollView scrollView) =>
+        scrollView.ScrollableHeight - scrollView.VerticalOffset <= FollowThreshold;
 
     private void OnUnloaded(object sender, RoutedEventArgs args)
     {
         _version++;
+        _tailNavigationQueue.Clear();
         DetachLayout();
+        DetachScrollView();
     }
 
     private void DetachLayout()
@@ -214,6 +292,7 @@ file sealed class InitialTailPositioner : IDisposable
             scrollView.Loaded -= OnScrollViewLoaded;
             _awaitingScrollView = null;
         }
+
         if (_awaitingLayout)
         {
             itemsView.LayoutUpdated -= OnLayoutUpdated;
@@ -221,15 +300,27 @@ file sealed class InitialTailPositioner : IDisposable
         }
     }
 
+    private void DetachScrollView()
+    {
+        if (_scrollView is not null)
+        {
+            _scrollView.VerticalAnchorRatio = double.NaN;
+            _scrollView.ViewChanged -= OnViewChanged;
+        }
+
+        _scrollView = null;
+    }
+
     public void Dispose()
     {
-        if (_disposed) return;
+        if (_disposed)
+            return;
+
         _disposed = true;
         _version++;
+        _tailNavigationQueue.Clear();
         DetachLayout();
-        if (_scrollView is not null)
-            _scrollView.ViewChanged -= OnViewChanged;
-        _scrollView = null;
+        DetachScrollView();
         itemsView.Loaded -= OnLoaded;
         itemsView.Unloaded -= OnUnloaded;
     }
@@ -241,6 +332,14 @@ internal static class ItemsViewScrollControllerExtensions
         this ItemsViewElement<T> itemsView,
         ElementRef<WinUIAnnotatedScrollBar> scrollBarRef,
         int initialTailIndex,
-        string initialTailRequestKey) =>
-        new ItemsViewVerticalScrollControllerElement(itemsView, scrollBarRef, initialTailIndex, initialTailRequestKey);
+        int itemCount,
+        string initialTailRequestKey,
+        string? displayedTailKey) =>
+        new ItemsViewVerticalScrollControllerElement(
+            itemsView,
+            scrollBarRef,
+            initialTailIndex,
+            itemCount,
+            initialTailRequestKey,
+            displayedTailKey);
 }

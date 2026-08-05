@@ -180,6 +180,7 @@ public class LocalizationValidationTests
         "ConnectionPage_NodeTechnicalDetails.Text",
         "ConnectionPage_NodePillState_Active",
         "ConnectionPage_NodePillState_Pending",
+        "ConnectionPage_NodePillState_NeedsGatewayToken",
         "ConnectionPage_NodePillState_Off",
         "ConnectionPage_NodeCap_Device",
         "ConnectionPage_NodeCap_System",

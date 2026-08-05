@@ -122,6 +122,146 @@ public class GatewayConnectionManagerTests : IDisposable
     }
 
     [Fact]
+    public async Task RecoverSshTunnelAsync_RevalidatesGatewayAfterWaitingForTransition()
+    {
+        var tunnelConfig = new SshTunnelConfig("user", "host.example", 18789, 45678);
+        _registry.AddOrUpdate(new GatewayRecord
+        {
+            Id = "gw-1",
+            Url = "wss://test1",
+            SshTunnel = tunnelConfig
+        });
+        _registry.AddOrUpdate(new GatewayRecord
+        {
+            Id = "gw-2",
+            Url = "wss://test2"
+        });
+        _registry.SetActive("gw-1");
+        _resolver.OperatorCredential = new GatewayCredential("tok", false, "test");
+        var tunnel = new BlockingTunnelManager { RestartPending = true };
+        using var manager = new GatewayConnectionManager(
+            _resolver,
+            _factory,
+            _registry,
+            NullLogger.Instance,
+            tunnelManager: tunnel);
+        var connectTask = manager.ConnectAsync("gw-1");
+        await tunnel.Started.Task.WaitAsync(TimeSpan.FromSeconds(2));
+
+        _registry.SetActive("gw-2");
+        var recoveryTask = manager.RecoverSshTunnelAsync(
+            new SshTunnelExit(
+                255,
+                tunnelConfig,
+                Generation: 7,
+                SshTunnelOwner.GatewayConnectionManager));
+        tunnel.AllowStart.SetResult(true);
+
+        await connectTask.WaitAsync(TimeSpan.FromSeconds(2));
+        var recovered = await recoveryTask.WaitAsync(TimeSpan.FromSeconds(2));
+
+        Assert.False(recovered);
+        Assert.Single(_factory.CreatedClients);
+        Assert.Equal("gw-2", _registry.ActiveGatewayId);
+    }
+
+    [Fact]
+    public async Task RecoverSshTunnelAsync_CurrentTunnel_Reconnects()
+    {
+        var tunnelConfig = new SshTunnelConfig("user", "host.example", 18789, 45678);
+        _registry.AddOrUpdate(new GatewayRecord
+        {
+            Id = "gw-1",
+            Url = "wss://test1",
+            SshTunnel = tunnelConfig
+        });
+        _registry.SetActive("gw-1");
+        _resolver.OperatorCredential = new GatewayCredential("tok", false, "test");
+        var tunnel = new CountingTunnelManager { RestartPending = true };
+        using var manager = new GatewayConnectionManager(
+            _resolver,
+            _factory,
+            _registry,
+            NullLogger.Instance,
+            tunnelManager: tunnel);
+
+        var recovered = await manager.RecoverSshTunnelAsync(
+            new SshTunnelExit(
+                255,
+                tunnelConfig,
+                Generation: 7,
+                SshTunnelOwner.GatewayConnectionManager));
+
+        Assert.True(recovered);
+        Assert.Equal(1, tunnel.StartCount);
+        Assert.Single(_factory.CreatedClients);
+        Assert.Equal("gw-1", manager.CurrentSnapshot.GatewayId);
+    }
+
+    [Fact]
+    public async Task RecoverSshTunnelAsync_UserDisconnected_DoesNotReconnect()
+    {
+        var tunnelConfig = new SshTunnelConfig("user", "host.example", 18789, 45678);
+        _registry.AddOrUpdate(new GatewayRecord
+        {
+            Id = "gw-1",
+            Url = "wss://test1",
+            SshTunnel = tunnelConfig
+        });
+        _registry.SetActive("gw-1");
+        var tunnel = new CountingTunnelManager { RestartPending = true };
+        using var manager = new GatewayConnectionManager(
+            _resolver,
+            _factory,
+            _registry,
+            NullLogger.Instance,
+            tunnelManager: tunnel);
+        manager.SetGatewayConnectionIntent("gw-1", shouldBeConnected: false);
+
+        var recovered = await manager.RecoverSshTunnelAsync(
+            new SshTunnelExit(
+                255,
+                tunnelConfig,
+                Generation: 7,
+                SshTunnelOwner.GatewayConnectionManager));
+
+        Assert.False(recovered);
+        Assert.Empty(_factory.CreatedClients);
+        Assert.Equal(0, tunnel.StartCount);
+    }
+
+    [Fact]
+    public async Task RecoverSshTunnelAsync_SettingsOwnedTunnel_DoesNotReconnectGateway()
+    {
+        var tunnelConfig = new SshTunnelConfig("user", "host.example", 18789, 45678);
+        _registry.AddOrUpdate(new GatewayRecord
+        {
+            Id = "gw-1",
+            Url = "wss://test1",
+            SshTunnel = tunnelConfig
+        });
+        _registry.SetActive("gw-1");
+        var tunnel = new CountingTunnelManager { RestartPending = true };
+        using var manager = new GatewayConnectionManager(
+            _resolver,
+            _factory,
+            _registry,
+            NullLogger.Instance,
+            tunnelManager: tunnel);
+
+        var recovered = await manager.RecoverSshTunnelAsync(
+            new SshTunnelExit(
+                255,
+                tunnelConfig,
+                Generation: 7,
+                SshTunnelOwner.Settings));
+
+        Assert.False(recovered);
+        Assert.Empty(_factory.CreatedClients);
+        Assert.Equal(0, tunnel.StartCount);
+    }
+
+    [Fact]
     public async Task PassiveGatewayRestart_ReusesLiveClientsAndPreservesDurableIdentity()
     {
         _registry.AddOrUpdate(new GatewayRecord
@@ -3732,6 +3872,9 @@ public class GatewayConnectionManagerTests : IDisposable
         public SshTunnelConfig? LastConfig { get; private set; }
         public bool IsActive { get; private set; }
         public string? LocalTunnelUrl { get; private set; }
+        public bool RestartPending { get; set; }
+
+        public bool IsRestartPending(SshTunnelExit tunnelExit) => RestartPending;
 
         public Task<string> StartAsync(SshTunnelConfig config, CancellationToken ct)
         {
@@ -3760,6 +3903,9 @@ public class GatewayConnectionManagerTests : IDisposable
         public TaskCompletionSource<bool> AllowStart { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
         public bool IsActive => false;
         public string? LocalTunnelUrl => null;
+        public bool RestartPending { get; set; }
+
+        public bool IsRestartPending(SshTunnelExit tunnelExit) => RestartPending;
 
         public async Task<string> StartAsync(SshTunnelConfig config, CancellationToken ct)
         {
@@ -3776,6 +3922,8 @@ public class GatewayConnectionManagerTests : IDisposable
     {
         public bool IsActive => false;
         public string? LocalTunnelUrl => null;
+
+        public bool IsRestartPending(SshTunnelExit tunnelExit) => false;
 
         public Task<string> StartAsync(SshTunnelConfig config, CancellationToken ct) =>
             throw new InvalidOperationException("tunnel failed");

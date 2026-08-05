@@ -244,15 +244,17 @@ public class OpenClawChatDataProviderTests
             string? lastChatStatePath = null,
             TimeSpan? lastChatStateSaveDelay = null,
             Func<TimeSpan, CancellationToken, Func<Task>, Task>? historyRetryScheduler = null,
-            Action? historyFailureReservedForTesting = null)
+            Action? historyFailureReservedForTesting = null,
+            Action<Action>? post = null)
     {
         var bridge = new FakeBridge { Sessions = initial ?? Array.Empty<SessionInfo>() };
         var provider = toolMetaCachePath is null && attachmentMetaCachePath is null && lastChatStatePath is null &&
-            lastChatStateSaveDelay is null && historyRetryScheduler is null && historyFailureReservedForTesting is null
+            lastChatStateSaveDelay is null && historyRetryScheduler is null && historyFailureReservedForTesting is null &&
+            post is null
             ? new OpenClawChatDataProvider(bridge)
             : new OpenClawChatDataProvider(
                 bridge,
-                post: null,
+                post,
                 toolMetaCacheFilePath: toolMetaCachePath ?? Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N"), "tool-metadata.json"),
                 attachmentMetaCacheFilePath: attachmentMetaCachePath,
                 lastChatStateFilePath: lastChatStatePath,
@@ -312,6 +314,49 @@ public class OpenClawChatDataProviderTests
 
         Assert.Contains("checkpoint", presentation.Detail);
         Assert.Contains(presentation.Title, presentation.AutomationName);
+    }
+
+    [Fact]
+    public void CompactionPresenter_CreatesPresentationForStructuredStatusEntry()
+    {
+        var entry = new ChatTimelineItem("compaction-1", ChatTimelineItemKind.Status, "Compacted");
+        var metadata = new Dictionary<string, ChatEntryMetadata>
+        {
+            [entry.Id] = new(
+                Timestamp: null,
+                Model: null,
+                OpenClawKind: "compaction",
+                CompactionTokensBefore: 42000,
+                CompactionTokensAfter: 12000),
+        };
+
+        var presentation = ChatCompactionPresenter.TryCreateForEntry(entry, metadata);
+
+        Assert.NotNull(presentation);
+        Assert.Equal("COMPACTED HISTORY", presentation.Title);
+        Assert.Equal(
+            "The compacted transcript is preserved as a checkpoint. " +
+            "Open session checkpoints to branch or restore from that compacted view.",
+            presentation.Detail);
+        Assert.Equal("Open checkpoints", presentation.ActionLabel);
+        Assert.DoesNotContain("42", presentation.Detail);
+        Assert.DoesNotContain(presentation.ActionLabel, presentation.AutomationName);
+    }
+
+    [Theory]
+    [InlineData(ChatTimelineItemKind.Status, "status")]
+    [InlineData(ChatTimelineItemKind.Assistant, "compaction")]
+    public void CompactionPresenter_RejectsEntriesOutsideStructuredCompactionContract(
+        ChatTimelineItemKind kind,
+        string openClawKind)
+    {
+        var entry = new ChatTimelineItem("entry-1", kind, "Text");
+        var metadata = new Dictionary<string, ChatEntryMetadata>
+        {
+            [entry.Id] = new(Timestamp: null, Model: null, OpenClawKind: openClawKind),
+        };
+
+        Assert.Null(ChatCompactionPresenter.TryCreateForEntry(entry, metadata));
     }
 
     [Theory]
@@ -415,6 +460,193 @@ public class OpenClawChatDataProviderTests
                 OpenClawSeq: 9),
             maxHistorySequence: 10,
             requestStartedAt));
+    }
+
+    [Fact]
+    public async Task CheckpointRestoreReplacement_DropsArchivedEntriesFromLoadedTimeline()
+    {
+        var (bridge, provider, _, _) = CreateProvider([MainSession()]);
+        var historyCall = 0;
+        bridge.HistoryBehavior = key =>
+        {
+            historyCall++;
+            return Task.FromResult(new ChatHistoryInfo
+            {
+                SessionKey = key ?? "",
+                Messages = historyCall == 1
+                    ?
+                    [
+                        new ChatMessageInfo
+                        {
+                            SessionKey = key ?? "",
+                            Role = "user",
+                            Text = "Before checkpoint",
+                            OpenClawSeq = 1,
+                        },
+                        new ChatMessageInfo
+                        {
+                            SessionKey = key ?? "",
+                            Role = "assistant",
+                            Text = "Archived after restore",
+                            OpenClawSeq = 2,
+                        },
+                    ]
+                    :
+                    [
+                        new ChatMessageInfo
+                        {
+                            SessionKey = key ?? "",
+                            Role = "user",
+                            Text = "Before checkpoint",
+                            OpenClawSeq = 1,
+                        },
+                    ],
+            });
+        };
+
+        await using (provider)
+        {
+            bridge.RaiseStatus(ConnectionStatus.Connected);
+            await provider.LoadHistoryAsync("main", force: true);
+            Assert.Contains(
+                (await provider.LoadAsync()).Timelines["main"].Entries,
+                entry => entry.Text == "Archived after restore");
+
+            await provider.ReplaceHistoryAfterCheckpointRestoreAsync("main");
+
+            var timeline = (await provider.LoadAsync()).Timelines["main"];
+            Assert.Contains(timeline.Entries, entry => entry.Text == "Before checkpoint");
+            Assert.DoesNotContain(timeline.Entries, entry => entry.Text == "Archived after restore");
+            Assert.Equal(2, bridge.RequestedHistoryKeys.Count);
+        }
+    }
+
+    [Fact]
+    public async Task CheckpointRestoreReplacement_InvalidatesInflightHistoryAndPreservesNewLiveEntry()
+    {
+        var (bridge, provider, snapshots, _) = CreateProvider([MainSession()]);
+        var staleHistory = new TaskCompletionSource<ChatHistoryInfo>(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        var restoredHistory = new TaskCompletionSource<ChatHistoryInfo>(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        bridge.HistoryBehavior = _ =>
+            bridge.RequestedHistoryKeys.Count == 1
+                ? staleHistory.Task
+                : restoredHistory.Task;
+
+        await using (provider)
+        {
+            bridge.RaiseStatus(ConnectionStatus.Connected);
+            var staleLoad = provider.LoadHistoryAsync("main", force: true);
+
+            await provider.ReplaceHistoryAfterCheckpointRestoreAsync("main");
+            Assert.Single(bridge.RequestedHistoryKeys);
+
+            bridge.RaiseChat(new ChatMessageInfo
+            {
+                SessionKey = "main",
+                Role = "user",
+                Text = "New after restore",
+                OpenClawSeq = 3,
+            });
+            staleHistory.SetResult(new ChatHistoryInfo
+            {
+                SessionKey = "main",
+                Messages =
+                [
+                    new ChatMessageInfo
+                    {
+                        SessionKey = "main",
+                        Role = "user",
+                        Text = "Before checkpoint",
+                        OpenClawSeq = 1,
+                    },
+                    new ChatMessageInfo
+                    {
+                        SessionKey = "main",
+                        Role = "assistant",
+                        Text = "Archived after restore",
+                        OpenClawSeq = 2,
+                    },
+                ],
+            });
+            await staleLoad;
+            await WaitForConditionAsync(() => bridge.RequestedHistoryKeys.Count == 2);
+
+            restoredHistory.SetResult(new ChatHistoryInfo
+            {
+                SessionKey = "main",
+                Messages =
+                [
+                    new ChatMessageInfo
+                    {
+                        SessionKey = "main",
+                        Role = "user",
+                        Text = "Before checkpoint",
+                        OpenClawSeq = 1,
+                    },
+                ],
+            });
+            await WaitForConditionAsync(() =>
+                snapshots.Count > 0 &&
+                snapshots[^1].Timelines["main"].HistoryLoaded);
+
+            var timeline = snapshots[^1].Timelines["main"];
+            Assert.Contains(timeline.Entries, entry => entry.Text == "Before checkpoint");
+            Assert.Contains(timeline.Entries, entry => entry.Text == "New after restore");
+            Assert.DoesNotContain(timeline.Entries, entry => entry.Text == "Archived after restore");
+        }
+    }
+
+    [Fact]
+    public async Task CheckpointRestoreReplacement_SuppressesStaleFailureNotificationAndRetry()
+    {
+        var posted = new Queue<Action>();
+        Func<Task>? scheduledRetry = null;
+        var (bridge, provider, _, notifications) = CreateProvider(
+            [MainSession()],
+            historyRetryScheduler: (_, _, retry) =>
+            {
+                scheduledRetry = retry;
+                return Task.CompletedTask;
+            },
+            post: posted.Enqueue);
+        bridge.HistoryBehavior = key =>
+            bridge.RequestedHistoryKeys.Count == 1
+                ? Task.FromException<ChatHistoryInfo>(new IOException("stale failure"))
+                : Task.FromResult(new ChatHistoryInfo
+                {
+                    SessionKey = key ?? "",
+                    Messages =
+                    [
+                        new ChatMessageInfo
+                        {
+                            SessionKey = key ?? "",
+                            Role = "user",
+                            Text = "Before checkpoint",
+                            OpenClawSeq = 1,
+                        },
+                    ],
+                });
+
+        await using (provider)
+        {
+            bridge.RaiseStatus(ConnectionStatus.Connected);
+            posted.Clear();
+
+            await provider.LoadHistoryAsync("main", force: true);
+            var staleNotification = Assert.Single(posted);
+            Assert.NotNull(scheduledRetry);
+
+            await provider.ReplaceHistoryAfterCheckpointRestoreAsync("main");
+            Assert.Equal(2, bridge.RequestedHistoryKeys.Count);
+
+            staleNotification();
+            Assert.Empty(notifications);
+
+            await scheduledRetry!();
+            Assert.Equal(2, bridge.RequestedHistoryKeys.Count);
+        }
     }
 
     [Fact]

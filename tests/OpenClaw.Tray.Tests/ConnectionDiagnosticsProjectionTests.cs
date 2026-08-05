@@ -65,14 +65,125 @@ public sealed class ConnectionDiagnosticsProjectionTests
         Assert.Equal("nodePairing", status.PendingActions[0].Kind);
         Assert.False(status.Mcp.Running);
         Assert.Equal("Local MCP failed", status.Mcp.Error);
-        Assert.NotNull(status.BrowserProxy.Caveat);
+        // Node is pairing-required, not connected — no shared-token caveat.
+        Assert.Null(status.BrowserProxy.Caveat);
         Assert.True(status.Retry.HasRecentRetrySignal);
         Assert.Equal(9, status.Diagnostics.EventCount);
         Assert.Contains("failed", status.Diagnostics.LastError);
     }
 
     [Fact]
-    public void BuildGateways_RedactsTokensAndMarksBrowserProxyCaveat()
+    public void BuildStatus_OmitsBrowserProxyCaveatWhenNodeSessionIsNotLive()
+    {
+        var gateway = new GatewayRecord
+        {
+            Id = "gw-1",
+            FriendlyName = "Local",
+            Url = "ws://127.0.0.1:18789",
+            IsLocal = true
+        };
+        var snapshot = new GatewayConnectionSnapshot
+        {
+            OverallState = OverallConnectionState.Idle,
+            OperatorState = RoleConnectionState.Idle,
+            NodeConnectionIntended = true,
+            NodeState = RoleConnectionState.Idle,
+            GatewayId = gateway.Id,
+            GatewayUrl = gateway.Url
+        };
+
+        var status = ConnectionDiagnosticsProjection.BuildStatus(
+            snapshot,
+            gateway,
+            enableNodeMode: true,
+            enableMcpServer: false,
+            isMcpRunning: false,
+            mcpError: null,
+            nodeBrowserProxyEnabled: true,
+            recentDiagnostics: [],
+            diagnosticEventCount: 0);
+
+        Assert.Null(status.BrowserProxy.Caveat);
+        Assert.Null(status.Gateway!.BrowserProxyCaveat);
+    }
+
+    [Fact]
+    public void BuildStatus_ShowsBrowserProxyCaveatWhenNodeConnectedAndTokenMissing()
+    {
+        var gateway = new GatewayRecord
+        {
+            Id = "gw-1",
+            FriendlyName = "Local",
+            Url = "ws://127.0.0.1:18789",
+            IsLocal = true
+        };
+        var snapshot = new GatewayConnectionSnapshot
+        {
+            OverallState = OverallConnectionState.Connected,
+            OperatorState = RoleConnectionState.Connected,
+            NodeConnectionIntended = true,
+            NodeState = RoleConnectionState.Connected,
+            NodePairingStatus = PairingStatus.Paired,
+            GatewayId = gateway.Id,
+            GatewayUrl = gateway.Url
+        };
+
+        var status = ConnectionDiagnosticsProjection.BuildStatus(
+            snapshot,
+            gateway,
+            enableNodeMode: true,
+            enableMcpServer: false,
+            isMcpRunning: false,
+            mcpError: null,
+            nodeBrowserProxyEnabled: true,
+            recentDiagnostics: [],
+            diagnosticEventCount: 0);
+
+        Assert.NotNull(status.BrowserProxy.Caveat);
+        Assert.Contains("shared token", status.BrowserProxy.Caveat!, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("browser-control port", status.BrowserProxy.Caveat!, StringComparison.OrdinalIgnoreCase);
+        Assert.Equal(status.BrowserProxy.Caveat, status.Gateway!.BrowserProxyCaveat);
+    }
+
+    [Fact]
+    public void BuildStatus_RemoteWithoutForwardMentionsEndpointRequirement()
+    {
+        var gateway = new GatewayRecord
+        {
+            Id = "gw-remote",
+            FriendlyName = "Remote",
+            Url = "wss://gateway.example.com",
+            IsLocal = false
+        };
+        var snapshot = new GatewayConnectionSnapshot
+        {
+            OverallState = OverallConnectionState.Connected,
+            OperatorState = RoleConnectionState.Connected,
+            NodeConnectionIntended = true,
+            NodeState = RoleConnectionState.Connected,
+            NodePairingStatus = PairingStatus.Paired,
+            GatewayId = gateway.Id,
+            GatewayUrl = gateway.Url
+        };
+
+        var status = ConnectionDiagnosticsProjection.BuildStatus(
+            snapshot,
+            gateway,
+            enableNodeMode: true,
+            enableMcpServer: false,
+            isMcpRunning: false,
+            mcpError: null,
+            nodeBrowserProxyEnabled: true,
+            recentDiagnostics: [],
+            diagnosticEventCount: 0);
+
+        Assert.NotNull(status.BrowserProxy.Caveat);
+        Assert.Contains("browser-control port", status.BrowserProxy.Caveat!, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("SSH browser-proxy forward", status.BrowserProxy.Caveat!, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void BuildGateways_RedactsTokensAndMarksBrowserProxyCaveatOnlyWhenNodeLive()
     {
         var active = new GatewayRecord
         {
@@ -89,23 +200,121 @@ public sealed class ConnectionDiagnosticsProjectionTests
             SharedGatewayToken = "shared-secret"
         };
 
-        var result = ConnectionDiagnosticsProjection.BuildGateways(
+        var withoutLiveSession = ConnectionDiagnosticsProjection.BuildGateways(
             [inactive, active],
             active.Id,
-            nodeBrowserProxyEnabled: true);
+            nodeBrowserProxyEnabled: true,
+            nodeSessionLive: false);
+        Assert.Null(withoutLiveSession.Gateways[0].BrowserProxyCaveat);
 
-        Assert.Equal(active.Id, result.ActiveGatewayId);
-        Assert.Equal(2, result.Count);
-        Assert.Equal(active.Id, result.Gateways[0].Id);
-        Assert.DoesNotContain("password", result.Gateways[0].Url);
-        Assert.DoesNotContain("secret", result.Gateways[0].Url);
-        Assert.Equal("wss://active.example/path", result.Gateways[0].Url);
-        Assert.True(result.Gateways[0].IsActive);
-        Assert.False(result.Gateways[0].HasSharedGatewayToken);
-        Assert.True(result.Gateways[0].HasBootstrapToken);
+        var withLiveSession = ConnectionDiagnosticsProjection.BuildGateways(
+            [inactive, active],
+            active.Id,
+            nodeBrowserProxyEnabled: true,
+            nodeSessionLive: true);
+
+        Assert.Equal(active.Id, withLiveSession.ActiveGatewayId);
+        Assert.Equal(2, withLiveSession.Count);
+        Assert.Equal(active.Id, withLiveSession.Gateways[0].Id);
+        Assert.DoesNotContain("password", withLiveSession.Gateways[0].Url);
+        Assert.DoesNotContain("secret", withLiveSession.Gateways[0].Url);
+        Assert.Equal("wss://active.example/path", withLiveSession.Gateways[0].Url);
+        Assert.True(withLiveSession.Gateways[0].IsActive);
+        Assert.False(withLiveSession.Gateways[0].HasSharedGatewayToken);
+        Assert.True(withLiveSession.Gateways[0].HasBootstrapToken);
+        Assert.NotNull(withLiveSession.Gateways[0].BrowserProxyCaveat);
+        Assert.True(withLiveSession.Gateways[1].HasSharedGatewayToken);
+        Assert.Null(withLiveSession.Gateways[1].BrowserProxyCaveat);
+    }
+
+    [Fact]
+    public void BuildStatus_SshTunnelWithoutBrowserForwardMentionsEndpointRequirement()
+    {
+        var gateway = new GatewayRecord
+        {
+            Id = "gw-ssh",
+            FriendlyName = "SSH Remote",
+            Url = "ws://127.0.0.1:18789",
+            IsLocal = false,
+            SshTunnel = new SshTunnelConfig("dev", "remote.example", 22, 18789, IncludeBrowserProxyForward: false)
+        };
+        var snapshot = new GatewayConnectionSnapshot
+        {
+            OverallState = OverallConnectionState.Connected,
+            OperatorState = RoleConnectionState.Connected,
+            NodeConnectionIntended = true,
+            NodeState = RoleConnectionState.Connected,
+            NodePairingStatus = PairingStatus.Paired,
+            GatewayId = gateway.Id,
+            GatewayUrl = gateway.Url
+        };
+
+        var status = ConnectionDiagnosticsProjection.BuildStatus(
+            snapshot,
+            gateway,
+            enableNodeMode: true,
+            enableMcpServer: false,
+            isMcpRunning: false,
+            mcpError: null,
+            nodeBrowserProxyEnabled: true,
+            recentDiagnostics: [],
+            diagnosticEventCount: 0);
+
+        Assert.NotNull(status.BrowserProxy.Caveat);
+        Assert.Contains("SSH browser-proxy forward", status.BrowserProxy.Caveat!, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void BuildGateways_RemoteWithoutForwardMentionsEndpointRequirement()
+    {
+        var remote = new GatewayRecord
+        {
+            Id = "gw-remote",
+            FriendlyName = "Remote",
+            Url = "wss://gateway.example.com",
+            IsLocal = false
+        };
+
+        var result = ConnectionDiagnosticsProjection.BuildGateways(
+            [remote],
+            remote.Id,
+            nodeBrowserProxyEnabled: true,
+            nodeSessionLive: true);
+
         Assert.NotNull(result.Gateways[0].BrowserProxyCaveat);
-        Assert.True(result.Gateways[1].HasSharedGatewayToken);
-        Assert.Null(result.Gateways[1].BrowserProxyCaveat);
+        Assert.Contains(
+            "browser-control port",
+            result.Gateways[0].BrowserProxyCaveat!,
+            StringComparison.OrdinalIgnoreCase);
+        Assert.Contains(
+            "SSH browser-proxy forward",
+            result.Gateways[0].BrowserProxyCaveat!,
+            StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void BuildGateways_SshLocalUrlWithoutBrowserForwardMentionsEndpointRequirement()
+    {
+        var ssh = new GatewayRecord
+        {
+            Id = "gw-ssh",
+            FriendlyName = "SSH Remote",
+            Url = "ws://127.0.0.1:18789",
+            IsLocal = false,
+            SshTunnel = new SshTunnelConfig("dev", "remote.example", 22, 18789, IncludeBrowserProxyForward: false)
+        };
+
+        var result = ConnectionDiagnosticsProjection.BuildGateways(
+            [ssh],
+            ssh.Id,
+            nodeBrowserProxyEnabled: true,
+            nodeSessionLive: true);
+
+        Assert.NotNull(result.Gateways[0].BrowserProxyCaveat);
+        Assert.Contains(
+            "SSH browser-proxy forward",
+            result.Gateways[0].BrowserProxyCaveat!,
+            StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]
@@ -121,7 +330,8 @@ public sealed class ConnectionDiagnosticsProjectionTests
         var result = ConnectionDiagnosticsProjection.BuildGateways(
             [inactiveWithoutToken],
             activeGatewayId: "different-gateway",
-            nodeBrowserProxyEnabled: true);
+            nodeBrowserProxyEnabled: true,
+            nodeSessionLive: true);
 
         Assert.False(result.Gateways[0].IsActive);
         Assert.Null(result.Gateways[0].BrowserProxyCaveat);

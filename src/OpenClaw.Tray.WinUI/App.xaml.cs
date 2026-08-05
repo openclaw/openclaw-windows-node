@@ -169,6 +169,7 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
             _settings.SshTunnelLocalPort,
             includeBrowserProxyForward,
             _settings.SshTunnelSshPort);
+        _sshTunnelRecoveryBudget.Reset();
     }
 
     /// <summary>
@@ -199,6 +200,7 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
     private ConnectionSettingsSnapshot? _previousSettingsSnapshot;
     private OpenTelemetryEndpointConnection? _openTelemetryConnection;
     private SshTunnelService? _sshTunnelService;
+    private readonly SshTunnelRecoveryBudget _sshTunnelRecoveryBudget = new();
     private GlobalHotkeyService? _globalHotkey;
     private Mutex? _mutex;
     private Microsoft.UI.Dispatching.DispatcherQueue? _dispatcherQueue;
@@ -3773,6 +3775,7 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
                 return;
             }
 
+            _sshTunnelRecoveryBudget.Reset();
             ReconnectWithSyncedBrowserProxyForward();
 
             UpdateStatusDetailWindow();
@@ -3845,6 +3848,8 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
             EffectiveBrowserControlPort = activeGateway?.BrowserControlPort,
             HasActiveGatewayRecord = activeGateway != null,
             ActiveGatewayHasSharedToken = !string.IsNullOrWhiteSpace(activeGateway?.SharedGatewayToken),
+            NodeConnectionState = _connectionManager?.CurrentSnapshot.NodeState
+                ?? OpenClaw.Connection.RoleConnectionState.Idle,
             ActiveGatewaySshTunnel = activeGateway?.SshTunnel
         };
     }
@@ -4818,52 +4823,93 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
 
     #endregion
 
-    private void OnSshTunnelExited(object? sender, int exitCode) =>
+    private void OnSshTunnelExited(object? sender, SshTunnelExit tunnelExit) =>
         AsyncEventHandlerGuard.Run(
-            () => OnSshTunnelExitedAsync(exitCode),
+            () => OnSshTunnelExitedAsync(tunnelExit),
             new AppLogger(),
             nameof(OnSshTunnelExited));
 
-    private async Task OnSshTunnelExitedAsync(int exitCode)
+    private async Task OnSshTunnelExitedAsync(SshTunnelExit tunnelExit)
     {
-        Logger.Warn($"SSH tunnel exited unexpectedly (code {exitCode}); restarting in 3s...");
-        _sshTunnelService?.MarkRestarting(exitCode);
+        var connectionManager = _connectionManager;
+        var tunnelService = _sshTunnelService;
+        if (tunnelService?.TryMarkRestarting(tunnelExit) != true)
+            return;
+
+        if (!_sshTunnelRecoveryBudget.TryReserve(
+                tunnelExit,
+                DateTimeOffset.UtcNow,
+                out var retryDelay))
+        {
+            const string reason = "SSH tunnel recovery stopped after repeated failures. Restart it manually after correcting the tunnel configuration.";
+            tunnelService.TryMarkRecoveryFailed(tunnelExit, reason);
+            Logger.Warn(reason);
+            DiagnosticsJsonlService.Write("tunnel.restart_exhausted", new
+            {
+                owner = tunnelExit.Owner.ToString(),
+                tunnelExit.ExitCode
+            });
+            return;
+        }
+
+        Logger.Warn(
+            $"SSH tunnel exited unexpectedly (code {tunnelExit.ExitCode}); " +
+            $"restarting in {retryDelay.TotalSeconds:0}s...");
         DiagnosticsJsonlService.Write("tunnel.restart_scheduled", new
         {
-            exitCode,
-            localEndpoint = _sshTunnelService?.CurrentLocalPort > 0
-                ? $"127.0.0.1:{_sshTunnelService.CurrentLocalPort}"
+            exitCode = tunnelExit.ExitCode,
+            retryDelaySeconds = retryDelay.TotalSeconds,
+            localEndpoint = tunnelService.CurrentLocalPort > 0
+                ? $"127.0.0.1:{tunnelService.CurrentLocalPort}"
                 : null
         });
-        await Task.Delay(3000);
-        if (_sshTunnelService != null && _settings?.UseSshTunnel == true)
+        await Task.Delay(retryDelay);
+
+        try
         {
-            try
+            bool recovered;
+            if (tunnelExit.Owner == SshTunnelOwner.GatewayConnectionManager)
             {
-                var restartBrowserProxy = BrowserProxySshTunnelForwardPolicy.ShouldInclude(
-                    _settings.NodeBrowserProxyEnabled,
-                    _settings.SshTunnelRemotePort,
-                    _settings.SshTunnelLocalPort);
-                _sshTunnelService.EnsureStarted(
-                    _settings.SshTunnelUser,
-                    _settings.SshTunnelHost,
-                    _settings.SshTunnelRemotePort,
-                    _settings.SshTunnelLocalPort,
-                    restartBrowserProxy,
-                    _settings.SshTunnelSshPort);
-                Logger.Info("SSH tunnel restarted successfully");
-                DiagnosticsJsonlService.Write("tunnel.restart_succeeded", new
+                // The connection manager owns the registry-backed tunnel and both
+                // gateway clients. Reconnect through it so recovery cannot drift
+                // back to the legacy global SSH settings.
+                recovered = connectionManager != null &&
+                    await connectionManager.RecoverSshTunnelAsync(tunnelExit);
+            }
+            else
+            {
+                // Settings-owned tunnels are tunnel-only. Restart the exact
+                // generation/configuration without promoting them into a gateway reconnect.
+                recovered = tunnelService.TryRestart(tunnelExit);
+            }
+
+            if (!recovered)
+            {
+                const string reason = "SSH tunnel recovery was declined because its owner or connection intent changed.";
+                tunnelService.TryMarkRecoveryFailed(tunnelExit, reason);
+                Logger.Warn(reason);
+                DiagnosticsJsonlService.Write("tunnel.restart_declined", new
                 {
-                    localEndpoint = _sshTunnelService.CurrentLocalPort > 0
-                        ? $"127.0.0.1:{_sshTunnelService.CurrentLocalPort}"
-                        : null
+                    owner = tunnelExit.Owner.ToString(),
+                    tunnelExit.ExitCode
                 });
+                return;
             }
-            catch (Exception ex)
+
+            _sshTunnelRecoveryBudget.ReportRecovered(tunnelExit);
+            Logger.Info("SSH tunnel restarted successfully");
+            DiagnosticsJsonlService.Write("tunnel.restart_succeeded", new
             {
-                Logger.Error($"SSH tunnel restart failed: {ex.Message}");
-                DiagnosticsJsonlService.Write("tunnel.restart_failed", new { ex.Message });
-            }
+                localEndpoint = tunnelService.CurrentLocalPort > 0
+                    ? $"127.0.0.1:{tunnelService.CurrentLocalPort}"
+                    : null
+            });
+        }
+        catch (Exception ex)
+        {
+            tunnelService.TryMarkRecoveryFailed(tunnelExit, $"SSH tunnel restart failed: {ex.Message}");
+            Logger.Error($"SSH tunnel restart failed: {ex.Message}");
+            DiagnosticsJsonlService.Write("tunnel.restart_failed", new { ex.Message });
         }
     }
 }

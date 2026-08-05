@@ -382,6 +382,8 @@
                 SelectionChanged="NavView_SelectionChanged">
 
             <NavigationView.Resources>
+                <!-- Keep nav icons as direct ImageIcon elements. ThemeResource-bound
+                     IconSourceElement resources failed to realize here and blocked navigation. -->
                 <!-- Match Windows 11 Settings: ~22px colorful icons in a default-height row.
                      Default row pitch (~50px) lines up with Settings' sidebar.
                      Only the Left-pane theme key has an override; Top and Compact modes are not used (PaneDisplayMode is hardcoded above). -->
@@ -390,12 +392,6 @@
                      as the WinUI default once rows are bigger. -->
                 <Thickness x:Key="NavigationViewItemSeparatorMargin">0,2,0,2</Thickness>
 
-                <!-- Shared SvgImageSource resources for colorful sidebar icons.
-                     Defined once so each NavigationViewItem references the same decoded SVG
-                     (avoids per-instance parse cost; also makes the XAML→ImageSource path
-                     explicit instead of relying on implicit URI→SvgImageSource conversion).
-                     The dynamic agent-list code (HubWindow.xaml.cs) also looks up the
-                     "Agents_Icon" key from this dictionary. -->
                 <SvgImageSource x:Key="Chat_Icon" UriSource="ms-appx:///Assets/SidebarIcons/Chat.svg"/>
                 <SvgImageSource x:Key="Connection_Icon" UriSource="ms-appx:///Assets/SidebarIcons/Connection.svg"/>
                 <SvgImageSource x:Key="Sessions_Icon" UriSource="ms-appx:///Assets/SidebarIcons/Sessions.svg"/>

@@ -256,10 +256,16 @@ public partial class App
         };
 
         connection.GatewaysHandler = () =>
-            Task.FromResult<object?>(ConnectionDiagnosticsProjection.BuildGateways(
+        {
+            var nodeSessionLive = BrowserProxyActivation.IsNodeSessionLive(
+                _connectionManager?.CurrentSnapshot.NodeState
+                    ?? OpenClaw.Connection.RoleConnectionState.Idle);
+            return Task.FromResult<object?>(ConnectionDiagnosticsProjection.BuildGateways(
                 _gatewayRegistry?.GetAll() ?? [],
                 _gatewayRegistry?.ActiveGatewayId,
-                nodeBrowserProxyEnabled: _settings?.NodeBrowserProxyEnabled != false));
+                nodeBrowserProxyEnabled: _settings?.NodeBrowserProxyEnabled != false,
+                nodeSessionLive: nodeSessionLive));
+        };
 
         connection.ApplySetupCodeHandler = async setupCode =>
         {

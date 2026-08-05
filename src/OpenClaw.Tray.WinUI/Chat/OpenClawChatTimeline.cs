@@ -207,121 +207,6 @@ public class OpenClawChatTimeline : Component<OpenClawChatTimelineProps>
         }
     }
 
-    // Per-DispatcherQueue selection-highlight brushes for the user
-    // bubble. The bubble background is the user's chosen system accent
-    // (which may be red, green, purple, …), so a hardcoded color would
-    // clash whenever the accent is non-blue. SystemAccentColorDark2 is
-    // the OS-defined "darker shade of the current accent" — guaranteed
-    // darker than the bubble's AccentFillColorDefault background and
-    // high-contrast against the bubble's white foreground for every
-    // accent. In High Contrast the bubble switches to
-    // SystemColorHighlight (often near-black), so we fall back to the
-    // OS-guaranteed SystemColorHighlightColor for the band there.
-    //
-    // SolidColorBrush is a DependencyObject with thread affinity, so a
-    // single static instance would crash with RPC_E_WRONG_THREAD if a
-    // second window on a different dispatcher ever tried to use it.
-    // Keying by DispatcherQueue keeps one shared brush per window while
-    // still avoiding per-render allocation. ConditionalWeakTable lets a
-    // closing window's brush be collected with its dispatcher. The
-    // brush's Color is mutated in place when the source color changes
-    // (e.g. user switches their accent in Windows Settings) so
-    // already-rendered TextBlocks update atomically.
-    private static readonly System.Runtime.CompilerServices.ConditionalWeakTable<
-        Microsoft.UI.Dispatching.DispatcherQueue, SolidColorBrush> s_accentDarkByDispatcher = new();
-    private static readonly System.Runtime.CompilerServices.ConditionalWeakTable<
-        Microsoft.UI.Dispatching.DispatcherQueue, SolidColorBrush> s_hcHighlightByDispatcher = new();
-    // AccessibilitySettings is a WinRT object with DispatcherQueue
-    // affinity: an instance created on one dispatcher cannot reliably
-    // be read from another. We deliberately avoid Lazy<>: Lazy
-    // permanently caches the factory's result, so a single failed
-    // construction would cache null forever and silently disable the
-    // High Contrast code path. Per-dispatcher cache keyed by
-    // ConditionalWeakTable lets each window have its own instance,
-    // collected when its dispatcher dies. On any thrown exception we
-    // drop the cached instance so the next render retries from scratch.
-    private static readonly System.Runtime.CompilerServices.ConditionalWeakTable<
-        Microsoft.UI.Dispatching.DispatcherQueue,
-        global::Windows.UI.ViewManagement.AccessibilitySettings> s_a11yByDispatcher = new();
-
-    private static bool TryDetectHighContrast()
-    {
-        var dispatcher = Microsoft.UI.Dispatching.DispatcherQueue.GetForCurrentThread();
-        if (dispatcher is null)
-        {
-            // Off-thread caller (tests, design-time). One-shot, no caching.
-            try { return new global::Windows.UI.ViewManagement.AccessibilitySettings().HighContrast; }
-            catch { return false; }
-        }
-        if (!s_a11yByDispatcher.TryGetValue(dispatcher, out var settings))
-        {
-            try
-            {
-                settings = new global::Windows.UI.ViewManagement.AccessibilitySettings();
-                s_a11yByDispatcher.Add(dispatcher, settings);
-            }
-            catch { return false; }
-        }
-        try { return settings.HighContrast; }
-        catch
-        {
-            // Drop the cached instance so the next call retries.
-            s_a11yByDispatcher.Remove(dispatcher);
-            return false;
-        }
-    }
-
-    private static SolidColorBrush GetUserBubbleSelectionBrush(bool isHighContrast)
-    {
-        var dispatcher = Microsoft.UI.Dispatching.DispatcherQueue.GetForCurrentThread();
-        var table = isHighContrast ? s_hcHighlightByDispatcher : s_accentDarkByDispatcher;
-        var color = isHighContrast
-            ? TryGetThemeColor("SystemColorHighlightColor", Microsoft.UI.Colors.Blue)
-            : TryGetThemeColor("SystemAccentColorDark2", Microsoft.UI.Colors.DarkBlue);
-
-        // No dispatcher means we're being called off-thread (e.g.
-        // from a unit test). Allocate a one-shot brush — it can't be
-        // safely cached without a dispatcher to key it on.
-        if (dispatcher is null)
-            return new SolidColorBrush(color);
-
-        if (!table.TryGetValue(dispatcher, out var brush))
-        {
-            brush = new SolidColorBrush(color);
-            table.Add(dispatcher, brush);
-        }
-        else if (brush.Color != color)
-        {
-            // Mutate in place rather than reallocating: TextBlocks
-            // rendered earlier hold a reference to this brush, so
-            // updating .Color updates them atomically without waiting
-            // for the next render pass.
-            brush.Color = color;
-        }
-        return brush;
-    }
-
-    private static Color TryGetThemeColor(string key, Color fallback)
-    {
-        try
-        {
-            var app = Application.Current;
-            if (app is null) return fallback;
-            if (app.Resources.TryGetValue(key, out var v))
-            {
-                // Theme dictionaries usually store Color, but a custom
-                // theme override can supply a SolidColorBrush under the
-                // same key. Accept either rather than silently falling
-                // back to DarkBlue / Blue when the resource is present
-                // but wrapped in a brush.
-                if (v is Color c) return c;
-                if (v is SolidColorBrush brush) return brush.Color;
-            }
-        }
-        catch (Exception ex) { OpenClawTray.Services.Logger.Debug($"ChatTimeline: resource brush lookup failed (unpackaged/test host?): {ex.Message}"); }
-        return fallback;
-    }
-
     private static void ApplyPlainSelectableInlines(TextBlock textBlock, string? text)
     {
         var normalized = text ?? string.Empty;
@@ -1020,12 +905,7 @@ public class OpenClawChatTimeline : Component<OpenClawChatTimelineProps>
         // the bubble surface below is opaque (Mica/acrylic isn't being
         // used directly), so the LayerOnAcrylic family would render
         // incorrectly in dark/HC themes.
-        var toolCardBgBrush     = themeBrush("CardBackgroundFillColorDefaultBrush");
         var toolCardBorderBrush = themeBrush("ControlStrokeColorDefaultBrush");
-        // High-contrast themes need a thicker border to render at all
-        // (WinUI guidance: 2px minimum). Detect once at render time so the
-        // tool card border stays visible when HC is on, normal 1px otherwise.
-        double toolCardBorderThickness = TryDetectHighContrast() ? 2 : 1;
 
         // Avatar: 36×36 circle (Kenny uses circular avatars). Same constructor
         // as before but radius defaults to half the size for a perfect circle.
@@ -1409,12 +1289,6 @@ public class OpenClawChatTimeline : Component<OpenClawChatTimelineProps>
             var entryMeta = MetaFor(entry.Id);
             if (hasMessage)
             {
-                // Resolve HC + selection brush once per render method call
-                // rather than per Set-lambda re-run. HC state cannot change
-                // mid-render, and the brush is cached per-dispatcher so
-                // every user bubble in this render shares the same instance.
-                bool isHighContrast = TryDetectHighContrast();
-                var selectionHighlightBrush = GetUserBubbleSelectionBrush(isHighContrast);
                 bubbleChildren.Add(
                     RichTextBlock()
                         .Set(t =>
@@ -1431,23 +1305,7 @@ public class OpenClawChatTimeline : Component<OpenClawChatTimelineProps>
                             t.Width = double.NaN;
                             t.MinWidth = 0;
                             t.MaxWidth = double.PositiveInfinity;
-                            // The default SelectionHighlightColor is the
-                            // system accent — which equals the user bubble's
-                            // background — so the highlight band is invisible
-                            // against the bubble, and WinUI does NOT auto-
-                            // invert an explicitly-set Foreground for
-                            // selected glyphs. Outside High Contrast, use a
-                            // darker shade of the current accent
-                            // (SystemAccentColorDark2) so the band tracks
-                            // whichever accent the user picked while keeping
-                            // the white foreground readable. In High Contrast
-                            // the bubble background switches to
-                            // SystemColorHighlight (often near-black), where
-                            // an accent-derived band may drop below WCAG
-                            // 3:1, so fall back to the system selection
-                            // color the OS guarantees contrasts with both
-                            // surfaces.
-                            t.SelectionHighlightColor = selectionHighlightBrush;
+                            t.Style = (Style)Application.Current.Resources["ChatUserBubbleSelectionStyle"];
                             // Render the message as a single Paragraph (one Run)
                             // so the whole user message is one continuous
                             // selection scope — matching the assistant bubble's
@@ -1974,10 +1832,9 @@ public class OpenClawChatTimeline : Component<OpenClawChatTimelineProps>
                 ToolName: null, ToolResult: aggregateStatus, ToolOutput: null));
 
             Element CardOf(Element[] rowEls) => Border(VStack(0, rowEls))
-                .Background(toolCardBgBrush)
-                .WithBorder(toolCardBorderBrush, toolCardBorderThickness)
                 .Set(b =>
                 {
+                    b.Style = (Style)Application.Current.Resources["ChatToolCardBorderStyle"];
                     // CornerRadius is uniform across the card; setting it
                     // directly works because rounding nests under the
                     // Border's BorderThickness.
@@ -2349,8 +2206,6 @@ public class OpenClawChatTimeline : Component<OpenClawChatTimelineProps>
                 LocalizationHelper.GetString("Chat_Compaction_Title"),
                 LocalizationHelper.GetString("Chat_Compaction_MetricsFormat"),
                 LocalizationHelper.GetString("Chat_Compaction_FallbackDetail"));
-            var borderThickness = TryDetectHighContrast() ? 2 : 1;
-
             return TimelineInset(
                 Border(
                     VStack(3,
@@ -2368,8 +2223,7 @@ public class OpenClawChatTimeline : Component<OpenClawChatTimelineProps>
                             t.TextAlignment = TextAlignment.Center;
                         }).Foreground(themeBrush("TextFillColorSecondaryBrush"))
                     )
-                ).Background(themeBrush("CardBackgroundFillColorDefaultBrush"))
-                 .WithBorder(themeBrush("ControlStrokeColorDefaultBrush"), borderThickness)
+                ).Set(b => b.Style = (Style)Application.Current.Resources["ChatCompactionCardStyle"])
                  .CornerRadius(8)
                  .Padding(16, 10, 16, 10)
                  .HAlign(HorizontalAlignment.Stretch)

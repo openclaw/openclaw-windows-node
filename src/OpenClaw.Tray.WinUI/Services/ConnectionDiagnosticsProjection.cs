@@ -27,13 +27,14 @@ internal static class ConnectionDiagnosticsProjection
             .TakeLast(12)
             .Select(ToDiagnosticEvent)
             .ToArray();
+        var nodeSessionLive = BrowserProxyActivation.IsNodeSessionLive(snapshot.NodeState);
 
         return new ConnectionStatusDiagnostics(
             SchemaVersion: 1,
             ConnectionState: snapshot.OverallState.ToString(),
             EffectiveMode: GetEffectiveMode(enableNodeMode, enableMcpServer),
             LegacyConnectionStatus: legacyStatus.ToString(),
-            Gateway: BuildGateway(activeGateway, snapshot, isActive: true, nodeBrowserProxyEnabled),
+            Gateway: BuildGateway(activeGateway, snapshot, isActive: true, nodeBrowserProxyEnabled, nodeSessionLive),
             Operator: new OperatorConnectionDiagnostics(
                 State: snapshot.OperatorState.ToString(),
                 Connected: snapshot.OperatorState == RoleConnectionState.Connected,
@@ -69,7 +70,7 @@ internal static class ConnectionDiagnosticsProjection
                 Enabled: enableMcpServer,
                 Running: isMcpRunning,
                 Error: mcpError),
-            BrowserProxy: BuildBrowserProxy(activeGateway, nodeBrowserProxyEnabled),
+            BrowserProxy: BuildBrowserProxy(activeGateway, nodeBrowserProxyEnabled, nodeSessionLive),
             PendingActions: pendingActions,
             Retry: BuildRetry(recentDiagnostics),
             Diagnostics: BuildDiagnosticSummary(recentEvents, recentDiagnostics, diagnosticEventCount));
@@ -78,7 +79,8 @@ internal static class ConnectionDiagnosticsProjection
     internal static GatewayListDiagnostics BuildGateways(
         IReadOnlyList<GatewayRecord> gateways,
         string? activeGatewayId,
-        bool nodeBrowserProxyEnabled)
+        bool nodeBrowserProxyEnabled,
+        bool nodeSessionLive = false)
     {
         var items = gateways
             .OrderByDescending(g => string.Equals(g.Id, activeGatewayId, StringComparison.Ordinal))
@@ -87,7 +89,9 @@ internal static class ConnectionDiagnosticsProjection
                 g,
                 currentSnapshot: null,
                 isActive: string.Equals(g.Id, activeGatewayId, StringComparison.Ordinal),
-                nodeBrowserProxyEnabled))
+                nodeBrowserProxyEnabled,
+                // Only the active gateway can carry live-session remediation.
+                nodeSessionLive: string.Equals(g.Id, activeGatewayId, StringComparison.Ordinal) && nodeSessionLive))
             .OfType<GatewayDiagnostics>()
             .ToArray();
 
@@ -114,7 +118,8 @@ internal static class ConnectionDiagnosticsProjection
         GatewayRecord? gateway,
         GatewayConnectionSnapshot? currentSnapshot,
         bool isActive,
-        bool nodeBrowserProxyEnabled)
+        bool nodeBrowserProxyEnabled,
+        bool nodeSessionLive)
     {
         var id = gateway?.Id ?? currentSnapshot?.GatewayId;
         var url = GatewayUrlHelper.SanitizeForDisplay(gateway?.Url ?? currentSnapshot?.GatewayUrl);
@@ -137,7 +142,7 @@ internal static class ConnectionDiagnosticsProjection
             HasSharedGatewayToken: !string.IsNullOrWhiteSpace(gateway?.SharedGatewayToken),
             HasBootstrapToken: !string.IsNullOrWhiteSpace(gateway?.BootstrapToken),
             BrowserControlPort: gateway?.BrowserControlPort,
-            BrowserProxyCaveat: BuildBrowserProxyCaveat(gateway, nodeBrowserProxyEnabled, isActive),
+            BrowserProxyCaveat: BuildBrowserProxyCaveat(gateway, nodeBrowserProxyEnabled, isActive, nodeSessionLive),
             SshTunnel: gateway?.SshTunnel is null ? null : new GatewaySshTunnelDiagnostics(
                 User: gateway.SshTunnel.User,
                 Host: gateway.SshTunnel.Host,
@@ -147,7 +152,10 @@ internal static class ConnectionDiagnosticsProjection
                 IncludeBrowserProxyForward: gateway.SshTunnel.IncludeBrowserProxyForward));
     }
 
-    private static BrowserProxyDiagnostics BuildBrowserProxy(GatewayRecord? gateway, bool nodeBrowserProxyEnabled)
+    private static BrowserProxyDiagnostics BuildBrowserProxy(
+        GatewayRecord? gateway,
+        bool nodeBrowserProxyEnabled,
+        bool nodeSessionLive)
     {
         var hasSharedToken = !string.IsNullOrWhiteSpace(gateway?.SharedGatewayToken);
         return new BrowserProxyDiagnostics(
@@ -155,20 +163,30 @@ internal static class ConnectionDiagnosticsProjection
             ActiveGatewayHasSharedToken: hasSharedToken,
             BrowserControlPort: gateway?.BrowserControlPort,
             SshBrowserProxyForward: gateway?.SshTunnel?.IncludeBrowserProxyForward == true,
-            Caveat: BuildBrowserProxyCaveat(gateway, nodeBrowserProxyEnabled, isActive: true));
+            Caveat: BuildBrowserProxyCaveat(gateway, nodeBrowserProxyEnabled, isActive: true, nodeSessionLive));
     }
 
-    private static string? BuildBrowserProxyCaveat(GatewayRecord? gateway, bool nodeBrowserProxyEnabled, bool isActive)
+    private static string? BuildBrowserProxyCaveat(
+        GatewayRecord? gateway,
+        bool nodeBrowserProxyEnabled,
+        bool isActive,
+        bool nodeSessionLive)
     {
-        if (!isActive ||
-            !nodeBrowserProxyEnabled ||
-            gateway is null ||
-            !string.IsNullOrWhiteSpace(gateway.SharedGatewayToken))
+        if (!isActive || gateway is null)
+            return null;
+
+        var hasSharedToken = !string.IsNullOrWhiteSpace(gateway.SharedGatewayToken);
+        if (!BrowserProxyActivation.ShouldShowMissingSharedTokenWarning(
+                nodeBrowserProxyEnabled,
+                hasSharedToken,
+                nodeSessionLive))
         {
             return null;
         }
 
-        return "browser.proxy may need a saved shared gateway token for browser-control authentication; QR/bootstrap pairing alone can leave this token absent.";
+        var requiresRemoteEndpoint = BrowserProxyActivation.RequiresRemoteBrowserEndpoint(gateway);
+
+        return BrowserProxyActivation.BuildMissingSharedTokenCaveat(requiresRemoteEndpoint);
     }
 
     private static ConnectionPendingActionDiagnostics[] BuildPendingActions(GatewayConnectionSnapshot snapshot)

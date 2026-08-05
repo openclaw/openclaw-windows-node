@@ -174,6 +174,7 @@ public class ChatNavigationReadinessTests
         public Task ReconnectAsync() => Task.CompletedTask;
         public Task<bool> ReconnectIfCurrentAsync(string gatewayId, CancellationToken cancellationToken = default) =>
             Task.FromResult(true);
+        public Task<bool> RecoverSshTunnelAsync(SshTunnelExit tunnelExit) => Task.FromResult(false);
         public Task SwitchGatewayAsync(string gatewayId) => Task.CompletedTask;
         public void SetGatewayConnectionIntent(string gatewayId, bool shouldBeConnected) { }
         public bool IsAutomaticReconnectAllowed(string gatewayId) => true;

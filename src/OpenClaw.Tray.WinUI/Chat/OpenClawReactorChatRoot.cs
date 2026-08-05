@@ -1,6 +1,7 @@
 using Microsoft.UI;
 using Microsoft.UI.Reactor;
 using Microsoft.UI.Reactor.Core;
+using Microsoft.UI.Reactor.Hosting;
 using Microsoft.UI.Reactor.Input;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
@@ -29,6 +30,7 @@ public sealed record OpenClawReactorChatRootProps(
     Func<CancellationToken, Action?, Task<string?>>? OnVoiceRequest = null,
     Action? OnAttachClick = null,
     Action? OnSettingsClick = null,
+    Action<string>? OnOpenCheckpoints = null,
     Action<bool>? OnSpeakerMuteChanged = null,
     Func<string, string?, Task<bool>>? ConfirmResetAsync = null,
     bool InitialMuted = false,
@@ -318,6 +320,7 @@ public sealed class OpenClawReactorChatRoot : Component<OpenClawReactorChatRootP
             timelineProps,
             onSuggestionPicked,
             firstSendInFlight,
+            OnOpenCheckpoints: props.OnOpenCheckpoints,
             HistoryRevision: historyRevision));
         var composerElement = effectiveThread is null
             ? Empty()
@@ -582,184 +585,11 @@ public sealed record ReactorChatComposerProps(
 public sealed class ReactorChatComposer : Component<ReactorChatComposerProps>
 {
     private static readonly string[] ThinkingLevels = ["off", "minimal", "low", "medium", "high"];
-    private static readonly ConditionalWeakTable<FrameworkElement, ThemeCallbackState> ThemeCallbacks = new();
-    private static readonly global::Windows.UI.ViewManagement.AccessibilitySettings? AccessibilitySettings =
-        CreateAccessibilitySettings();
-
-    private sealed class ThemeCallbackState(Action apply)
-    {
-        public Action Apply { get; set; } = apply;
-        public global::Windows.Foundation.TypedEventHandler<
-            global::Windows.UI.ViewManagement.AccessibilitySettings,
-            object>? HighContrastChanged { get; set; }
-        public bool HighContrastEventUnavailable { get; set; }
-    }
-
-    private static void ApplyTheme(FrameworkElement control, Action apply)
-    {
-        apply();
-        if (ThemeCallbacks.TryGetValue(control, out var state))
-        {
-            state.Apply = apply;
-            EnsureHighContrastCallback(control, state);
-            return;
-        }
-
-        state = new ThemeCallbackState(apply);
-        ThemeCallbacks.Add(control, state);
-        control.ActualThemeChanged += static (sender, _) =>
-        {
-            if (sender is FrameworkElement element
-                && ThemeCallbacks.TryGetValue(element, out var callback))
-                callback.Apply();
-        };
-        control.Loaded += static (sender, _) =>
-        {
-            if (sender is FrameworkElement element
-                && ThemeCallbacks.TryGetValue(element, out var callback))
-            {
-                callback.Apply();
-                EnsureHighContrastCallback(element, callback);
-            }
-        };
-        control.Unloaded += static (sender, _) =>
-        {
-            if (sender is FrameworkElement element
-                && ThemeCallbacks.TryGetValue(element, out var callback)
-                && callback.HighContrastChanged is { } handler
-                && AccessibilitySettings is { } accessibilitySettings)
-            {
-                try
-                {
-                    accessibilitySettings.HighContrastChanged -= handler;
-                }
-                catch (System.Runtime.InteropServices.COMException)
-                {
-                    // The optional WinRT event source can be unavailable while a view tears down.
-                }
-                callback.HighContrastChanged = null;
-            }
-        };
-        EnsureHighContrastCallback(control, state);
-    }
-
-    private static global::Windows.UI.ViewManagement.AccessibilitySettings? CreateAccessibilitySettings()
-    {
-        try
-        {
-            return new global::Windows.UI.ViewManagement.AccessibilitySettings();
-        }
-        catch
-        {
-            return null;
-        }
-    }
-
-    private static void EnsureHighContrastCallback(
-        FrameworkElement control,
-        ThemeCallbackState state)
-    {
-        if (AccessibilitySettings is null
-            || state.HighContrastChanged is not null
-            || state.HighContrastEventUnavailable)
-            return;
-
-        global::Windows.Foundation.TypedEventHandler<
-            global::Windows.UI.ViewManagement.AccessibilitySettings,
-            object> handler = (_, _) =>
-        {
-            control.DispatcherQueue?.TryEnqueue(() =>
-            {
-                if (ThemeCallbacks.TryGetValue(control, out var callback))
-                    callback.Apply();
-            });
-        };
-        try
-        {
-            AccessibilitySettings.HighContrastChanged += handler;
-            state.HighContrastChanged = handler;
-        }
-        catch (System.Runtime.InteropServices.COMException ex)
-        {
-            state.HighContrastEventUnavailable = true;
-            OpenClawTray.Services.Logger.Warn(
-                $"[ReactorChatComposer] High Contrast change notifications are unavailable: {ex.Message}");
-        }
-    }
-
-    private static Brush ResolveThemeBrush(string resourceKey, ElementTheme theme)
-    {
-        if (FindThemedResource(resourceKey, theme) is Brush themed)
-            return themed;
-        if (Application.Current?.Resources.TryGetValue(resourceKey, out var value) == true
-            && value is Brush brush)
-            return brush;
-        return new SolidColorBrush(Microsoft.UI.Colors.Transparent);
-    }
-
-    private static object? FindThemedResource(string resourceKey, ElementTheme theme)
-    {
-        if (Application.Current?.Resources is not { } root)
-            return null;
-
-        var themeNames = IsHighContrast()
-            ? new[] { "HighContrast" }
-            : theme switch
-            {
-                ElementTheme.Dark => ["Dark", "Default"],
-                ElementTheme.Light => ["Light"],
-                _ => Array.Empty<string>(),
-            };
-        return themeNames
-            .Select(themeName => SearchThemeDictionaries(root, resourceKey, themeName, 0))
-            .FirstOrDefault(value => value is not null);
-    }
-
-    private static bool IsHighContrast()
-    {
-        return AccessibilitySettings?.HighContrast ?? false;
-    }
-
-    private static object? SearchThemeDictionaries(
-        ResourceDictionary dictionary,
-        string resourceKey,
-        string themeName,
-        int depth)
-    {
-        if (depth > 6)
-            return null;
-
-        if (dictionary.ThemeDictionaries.TryGetValue(themeName, out var entry)
-            && entry is ResourceDictionary themed
-            && LookupResource(themed, resourceKey) is { } value)
-            return value;
-
-        foreach (var merged in dictionary.MergedDictionaries)
-        {
-            if (SearchThemeDictionaries(merged, resourceKey, themeName, depth + 1) is { } found)
-                return found;
-        }
-
-        return null;
-    }
-
-    private static object? LookupResource(ResourceDictionary dictionary, string resourceKey)
-    {
-        if (dictionary.TryGetValue(resourceKey, out var value))
-            return value;
-
-        foreach (var merged in dictionary.MergedDictionaries)
-        {
-            if (LookupResource(merged, resourceKey) is { } found)
-                return found;
-        }
-
-        return null;
-    }
 
     public override Element Render()
     {
         var props = Props;
+        var colorScheme = UseColorScheme();
         var (text, setText) = UseState(string.Empty, threadSafe: true);
         var (isSending, setIsSending) = UseState(false, threadSafe: true);
         var (isRecording, setIsRecording) = UseState(false, threadSafe: true);
@@ -903,26 +733,6 @@ public sealed class ReactorChatComposer : Component<ReactorChatComposerProps>
             : Localized("Chat_Composer_Tooltip_Send", "Send");
         var controlCornerRadius = new CornerRadius(4);
 
-        void ApplySubtleButtonStyle(Button button)
-        {
-            var transparent = new SolidColorBrush(Microsoft.UI.Colors.Transparent);
-            button.Background = transparent;
-            button.BorderBrush = transparent;
-            button.BorderThickness = new Thickness(0);
-            button.Resources["ButtonBackground"] = transparent;
-            button.Resources["ButtonBorderBrush"] = transparent;
-            button.Resources["ButtonBorderBrushPointerOver"] = transparent;
-            button.Resources["ButtonBorderBrushPressed"] = transparent;
-            ApplyTheme(button, () =>
-            {
-                button.Foreground = ResolveThemeBrush("TextFillColorSecondaryBrush", button.ActualTheme);
-                button.Resources["ButtonBackgroundPointerOver"] =
-                    ResolveThemeBrush("SubtleFillColorSecondaryBrush", button.ActualTheme);
-                button.Resources["ButtonBackgroundPressed"] =
-                    ResolveThemeBrush("SubtleFillColorTertiaryBrush", button.ActualTheme);
-            });
-        }
-
         Element IconButton(string glyph, string automationName, Action onClick, bool enabled = true)
         {
             return Button(
@@ -933,6 +743,14 @@ public sealed class ReactorChatComposer : Component<ReactorChatComposerProps>
                     }),
                     onClick)
                 .AutomationName(automationName)
+                .Foreground(Theme.SecondaryText)
+                .Resources(resources => resources
+                    .Set("ButtonBackground", Theme.Ref("SubtleFillColorTransparentBrush"))
+                    .Set("ButtonBackgroundPointerOver", Theme.SubtleFill)
+                    .Set("ButtonBackgroundPressed", Theme.Ref("SubtleFillColorTertiaryBrush"))
+                    .Set("ButtonBorderBrush", Theme.Ref("SubtleFillColorTransparentBrush"))
+                    .Set("ButtonBorderBrushPointerOver", Theme.Ref("SubtleFillColorTransparentBrush"))
+                    .Set("ButtonBorderBrushPressed", Theme.Ref("SubtleFillColorTransparentBrush")))
                 .Set(button =>
                 {
                     button.Width = 32;
@@ -942,7 +760,7 @@ public sealed class ReactorChatComposer : Component<ReactorChatComposerProps>
                     button.Padding = new Thickness(0);
                     button.CornerRadius = controlCornerRadius;
                     button.IsEnabled = enabled;
-                    ApplySubtleButtonStyle(button);
+                    button.BorderThickness = new Thickness(0);
                     ToolTipService.SetToolTip(button, automationName);
                 });
         }
@@ -967,6 +785,14 @@ public sealed class ReactorChatComposer : Component<ReactorChatComposerProps>
                         })),
                     () => { })
                 .AutomationName(automationName)
+                .Foreground(Theme.SecondaryText)
+                .Resources(resources => resources
+                    .Set("ButtonBackground", Theme.Ref("SubtleFillColorTransparentBrush"))
+                    .Set("ButtonBackgroundPointerOver", Theme.SubtleFill)
+                    .Set("ButtonBackgroundPressed", Theme.Ref("SubtleFillColorTertiaryBrush"))
+                    .Set("ButtonBorderBrush", Theme.Ref("SubtleFillColorTransparentBrush"))
+                    .Set("ButtonBorderBrushPointerOver", Theme.Ref("SubtleFillColorTransparentBrush"))
+                    .Set("ButtonBorderBrushPressed", Theme.Ref("SubtleFillColorTransparentBrush")))
                 .Set(button =>
                 {
                     button.Height = 32;
@@ -975,7 +801,7 @@ public sealed class ReactorChatComposer : Component<ReactorChatComposerProps>
                     button.Padding = new Thickness(8, 0, 8, 0);
                     button.CornerRadius = controlCornerRadius;
                     button.IsEnabled = enabled;
-                    ApplySubtleButtonStyle(button);
+                    button.BorderThickness = new Thickness(0);
                 });
         }
 
@@ -999,8 +825,7 @@ public sealed class ReactorChatComposer : Component<ReactorChatComposerProps>
                     .Height(2 + (audioLevel * (index % 3 == 1 ? 10 : 7)))
                     .CornerRadius(1)
                     .VAlign(VerticalAlignment.Center)
-                    .Set(border => ApplyTheme(border, () => border.Background =
-                        ResolveThemeBrush("TextFillColorSecondaryBrush", border.ActualTheme))))
+                    .Background(Theme.SecondaryText))
             .ToArray();
         Element voiceFeedback = !isRecording
             ? Empty()
@@ -1011,12 +836,10 @@ public sealed class ReactorChatComposer : Component<ReactorChatComposerProps>
                             .Width(6)
                             .Height(6)
                             .CornerRadius(3)
-                            .Set(border => ApplyTheme(border, () => border.Background =
-                                ResolveThemeBrush("TextFillColorSecondaryBrush", border.ActualTheme))),
+                            .Background(Theme.SecondaryText),
                         TextBlock(voiceFeedbackText)
                             .FontSize(11)
-                            .Set(textBlock => ApplyTheme(textBlock, () => textBlock.Foreground =
-                                ResolveThemeBrush("TextFillColorSecondaryBrush", textBlock.ActualTheme))),
+                            .Foreground(Theme.SecondaryText),
                         HStack(1, waveformBars)))
                 .Padding(8, 4)
                 .HAlign(HorizontalAlignment.Left);
@@ -1135,7 +958,8 @@ public sealed class ReactorChatComposer : Component<ReactorChatComposerProps>
             slashDisplay.Query,
             slashDisplay.SelectedIndex,
             slashDisplay.SelectableCount,
-            popupCatalogKey);
+            popupCatalogKey,
+            colorScheme);
         FrameworkElement? slashPopupContent;
         if (!slashPopupVisible)
         {
@@ -1148,27 +972,28 @@ public sealed class ReactorChatComposer : Component<ReactorChatComposerProps>
         }
         else if (slashDisplay.IsLoading)
         {
-            slashPopupContent = BuildSlashHintPopup(
-                Localized("Chat_Composer_Slash_Loading", "Loading commands..."));
+            slashPopupContent = CreateSlashPopupHost(BuildSlashHintPopup(
+                Localized("Chat_Composer_Slash_Loading", "Loading commands...")));
             slashPopupContentRef.Current = (popupStateKey, slashPopupContent);
         }
         else if (slashDisplay.IsArgsMode && slashDisplay.ArgCommand is { } argCommand)
         {
-            slashPopupContent = BuildSlashArgPopup(
+            slashPopupContent = CreateSlashPopupHost(BuildSlashArgPopup(
                 argCommand,
                 slashDisplay.ArgChoices,
                 slashDisplay.SelectedIndex,
                 choice => CommitSlashText(
                     argCommand.BuildArgInsertionText(choice.Value),
-                    ReactorSlashMenuState.Closed));
+                    ReactorSlashMenuState.Closed)));
             slashPopupContentRef.Current = (popupStateKey, slashPopupContent);
         }
         else
         {
-            slashPopupContent = BuildSlashPopup(
+            slashPopupContent = CreateSlashPopupHost(BuildSlashPopup(
                 slashDisplay.Groups,
                 slashDisplay.SelectedIndex,
                 slashDisplay.Query,
+                colorScheme,
                 command =>
                 {
                     CommitSlashText(
@@ -1176,7 +1001,7 @@ public sealed class ReactorChatComposer : Component<ReactorChatComposerProps>
                         command.FirstArgChoices().Count > 0
                             ? new ReactorSlashMenuState(true, string.Empty, 0, true)
                             : ReactorSlashMenuState.Closed);
-                });
+                }));
             slashPopupContentRef.Current = (popupStateKey, slashPopupContent);
         }
 
@@ -1466,11 +1291,8 @@ public sealed class ReactorChatComposer : Component<ReactorChatComposerProps>
             .BorderThickness(1)
             .CornerRadius(8)
             .Margin(12)
-            .Set(border => ApplyTheme(border, () =>
-            {
-                border.Background = ResolveThemeBrush("ControlFillColorDefaultBrush", border.ActualTheme);
-                border.BorderBrush = ResolveThemeBrush("ControlStrokeColorDefaultBrush", border.ActualTheme);
-            }))
+            .Background(Theme.ControlFill)
+            .BorderBrush(Theme.ControlStroke)
             .HAlign(HorizontalAlignment.Stretch);
     }
 
@@ -1480,8 +1302,17 @@ public sealed class ReactorChatComposer : Component<ReactorChatComposerProps>
             return;
 
         popup.IsOpen = false;
+        if (popup.Child is ReactorHostControl host)
+            host.Dispose();
         popup.Child = null;
         popup.PlacementTarget = null;
+    }
+
+    private static ReactorHostControl CreateSlashPopupHost(Element content)
+    {
+        var host = new ReactorHostControl();
+        host.Mount(_ => content);
+        return host;
     }
 
     private static void DriveSlashPopup(
@@ -1511,350 +1342,265 @@ public sealed class ReactorChatComposer : Component<ReactorChatComposerProps>
         popup.XamlRoot = anchor.XamlRoot;
         popup.PlacementTarget = anchor;
         popup.DesiredPlacement = Microsoft.UI.Xaml.Controls.Primitives.PopupPlacementMode.Top;
+        if (popup.Child is ReactorHostControl previousHost
+            && !ReferenceEquals(previousHost, content))
+            previousHost.Dispose();
         popup.Child = content;
         popup.IsOpen = true;
     }
 
-    private static Border BuildSlashHintPopup(string text)
+    private static Element BuildSlashHintPopup(string text)
     {
-        var label = new TextBlock
-        {
-            Text = text,
-            FontSize = 12,
-            Margin = new Thickness(8, 6, 8, 6),
-        };
-        ApplyTheme(label, () => label.Foreground = ResolveThemeBrush("TextFillColorSecondaryBrush", label.ActualTheme));
-        return SlashShell(label);
+        return SlashShell(
+            TextBlock(text)
+                .FontSize(12)
+                .Foreground(Theme.SecondaryText)
+                .Margin(8, 6, 8, 6));
     }
 
-    private static Border BuildSlashPopup(
+    private static Element BuildSlashPopup(
         IReadOnlyList<CommandCategoryGroup> groups,
         int selectedIndex,
         string query,
+        ColorScheme colorScheme,
         Action<GatewayCommand> onPick)
     {
-        var list = new StackPanel { Orientation = Orientation.Vertical };
+        var rows = new List<Element>();
         var index = 0;
         foreach (var group in groups)
         {
-            list.Children.Add(SlashCategoryHeader(CommandCategories.Label(group.Category)));
+            rows.Add(SlashCategoryHeader(CommandCategories.Label(group.Category)));
             foreach (var command in group.Commands)
             {
-                list.Children.Add(SlashRow(command, index == selectedIndex, query, onPick));
+                rows.Add(SlashRow(command, index == selectedIndex, query, colorScheme, onPick));
                 index++;
             }
         }
 
-        return SlashShell(new ScrollViewer
-        {
-            VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
-            HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled,
-            MaxHeight = 280,
-            Content = list,
-        });
+        return SlashShell(
+            ScrollView(VStack(0, rows.ToArray()))
+                .MaxHeight(280)
+                .Set(scrollViewer =>
+                {
+                    scrollViewer.VerticalScrollBarVisibility = ScrollingScrollBarVisibility.Auto;
+                    scrollViewer.HorizontalScrollBarVisibility = ScrollingScrollBarVisibility.Hidden;
+                }));
     }
 
-    private static TextBlock SlashCategoryHeader(string text)
+    private static Element SlashCategoryHeader(string text)
     {
-        var header = new TextBlock
-        {
-            Text = (text ?? string.Empty).ToUpperInvariant(),
-            FontSize = 11,
-            FontWeight = Microsoft.UI.Text.FontWeights.Bold,
-            CharacterSpacing = 60,
-            Margin = new Thickness(8, 8, 8, 2),
-        };
-        ApplyTheme(header, () => header.Foreground = ResolveThemeBrush("TextFillColorTertiaryBrush", header.ActualTheme));
-        return header;
+        return TextBlock((text ?? string.Empty).ToUpperInvariant())
+            .FontSize(11)
+            .SemiBold()
+            .CharacterSpacing(60)
+            .Foreground(Theme.TertiaryText)
+            .Margin(8, 8, 8, 2);
     }
 
-    private static Border BuildSlashArgPopup(
+    private static Element BuildSlashArgPopup(
         GatewayCommand command,
         IReadOnlyList<GatewayCommandArgChoice> choices,
         int selectedIndex,
         Action<GatewayCommandArgChoice> onPick)
     {
-        var list = new StackPanel { Orientation = Orientation.Vertical };
         var argDescription = command.Args?.FirstOrDefault()?.Description;
         var headerText = !string.IsNullOrWhiteSpace(argDescription)
             ? $"{command.DisplayName()}  {argDescription}"
             : !string.IsNullOrWhiteSpace(command.Description)
                 ? $"{command.DisplayName()}  {command.Description}"
                 : command.DisplayName();
-        var header = new TextBlock
+        var rows = new List<Element>
         {
-            Text = headerText,
-            FontSize = 11,
-            FontWeight = Microsoft.UI.Text.FontWeights.SemiBold,
-            TextTrimming = TextTrimming.CharacterEllipsis,
-            MaxLines = 1,
-            Margin = new Thickness(8, 6, 8, 2),
+            TextBlock(headerText)
+                .FontSize(11)
+                .SemiBold()
+                .TextTrimming(TextTrimming.CharacterEllipsis)
+                .MaxLines(1)
+                .Foreground(Theme.TertiaryText)
+                .Margin(8, 6, 8, 2),
         };
-        ApplyTheme(header, () => header.Foreground = ResolveThemeBrush("TextFillColorTertiaryBrush", header.ActualTheme));
-        list.Children.Add(header);
         for (var index = 0; index < choices.Count; index++)
-            list.Children.Add(SlashArgRow(command, choices[index], index == selectedIndex, onPick));
+            rows.Add(SlashArgRow(command, choices[index], index == selectedIndex, onPick));
 
-        return SlashShell(new ScrollViewer
-        {
-            VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
-            HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled,
-            MaxHeight = 280,
-            Content = list,
-        });
+        return SlashShell(
+            ScrollView(VStack(0, rows.ToArray()))
+                .MaxHeight(280)
+                .Set(scrollViewer =>
+                {
+                    scrollViewer.VerticalScrollBarVisibility = ScrollingScrollBarVisibility.Auto;
+                    scrollViewer.HorizontalScrollBarVisibility = ScrollingScrollBarVisibility.Hidden;
+                }));
     }
 
-    private static Button SlashArgRow(
+    private static Element SlashArgRow(
         GatewayCommand command,
         GatewayCommandArgChoice choice,
         bool selected,
         Action<GatewayCommandArgChoice> onPick)
     {
         var label = string.IsNullOrWhiteSpace(choice.Label) ? choice.Value : choice.Label;
-        var row = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8 };
-        var title = new TextBlock
-        {
-            Text = label,
-            FontSize = 13,
-            FontWeight = Microsoft.UI.Text.FontWeights.SemiBold,
-            VerticalAlignment = VerticalAlignment.Center,
-        };
-        ApplyTheme(title, () => title.Foreground = ResolveThemeBrush("TextFillColorPrimaryBrush", title.ActualTheme));
-        row.Children.Add(title);
-
-        var subtitle = new TextBlock
-        {
-            Text = $"{command.DisplayName()} {choice.Value}",
-            FontSize = 12,
-            VerticalAlignment = VerticalAlignment.Center,
-            TextTrimming = TextTrimming.CharacterEllipsis,
-            MaxLines = 1,
-        };
-        ApplyTheme(subtitle, () => subtitle.Foreground = ResolveThemeBrush("TextFillColorSecondaryBrush", subtitle.ActualTheme));
-        row.Children.Add(subtitle);
-
-        var button = new Button
-        {
-            Content = row,
-            Padding = new Thickness(8, 7, 8, 7),
-            HorizontalAlignment = HorizontalAlignment.Stretch,
-            HorizontalContentAlignment = HorizontalAlignment.Left,
-            CornerRadius = new CornerRadius(6),
-            BorderThickness = new Thickness(0),
-        };
-        ApplyTheme(button, () =>
-        {
-            button.Background = selected
-                ? ResolveThemeBrush("SubtleFillColorSecondaryBrush", button.ActualTheme)
-                : new SolidColorBrush(Microsoft.UI.Colors.Transparent);
-            button.BorderBrush = new SolidColorBrush(Microsoft.UI.Colors.Transparent);
-        });
-        Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(
-            button,
-            $"Choose {label} for {command.DisplayName()}");
-        button.Click += (_, _) => onPick(choice);
-        if (selected)
-        {
-            button.Loaded += (_, _) => button.StartBringIntoView(
-                new BringIntoViewOptions { AnimationDesired = false });
-        }
-
-        return button;
+        var background = selected ? Theme.SubtleFill : Theme.Ref("SubtleFillColorTransparentBrush");
+        return Button(
+                HStack(
+                    8,
+                    TextBlock(label)
+                        .FontSize(13)
+                        .SemiBold()
+                        .VAlign(VerticalAlignment.Center)
+                        .Foreground(Theme.PrimaryText),
+                    TextBlock($"{command.DisplayName()} {choice.Value}")
+                        .FontSize(12)
+                        .VAlign(VerticalAlignment.Center)
+                        .TextTrimming(TextTrimming.CharacterEllipsis)
+                        .MaxLines(1)
+                        .Foreground(Theme.SecondaryText)),
+                () => onPick(choice))
+            .Padding(8, 7, 8, 7)
+            .HAlign(HorizontalAlignment.Stretch)
+            .CornerRadius(6)
+            .AutomationName($"Choose {label} for {command.DisplayName()}")
+            .Resources(resources => resources
+                .Set("ButtonBackground", background)
+                .Set("ButtonBorderBrush", Theme.Ref("SubtleFillColorTransparentBrush")))
+            .Set(button =>
+            {
+                button.HorizontalContentAlignment = HorizontalAlignment.Left;
+                button.BorderThickness = new Thickness(0);
+            })
+            .OnMount(element =>
+            {
+                if (selected)
+                    element.StartBringIntoView(new BringIntoViewOptions { AnimationDesired = false });
+            });
     }
 
-    private static Border SlashShell(UIElement child)
+    private static Element SlashShell(Element child)
     {
-        var shell = new Border
-        {
-            BorderThickness = new Thickness(1),
-            CornerRadius = new CornerRadius(8),
-            Padding = new Thickness(4),
-            Child = child,
-            Shadow = new ThemeShadow(),
-            Translation = new System.Numerics.Vector3(0, 0, 32),
-        };
-        ApplyTheme(shell, () =>
-        {
-            shell.Background = ResolvePopupBackgroundBrush(shell.ActualTheme);
-            shell.BorderBrush = ResolveThemeBrush("SurfaceStrokeColorDefaultBrush", shell.ActualTheme);
-        });
-        return shell;
+        return Border(child)
+            .Padding(4)
+            .CornerRadius(8)
+            .Background(Theme.Ref("AcrylicBackgroundFillColorDefaultBrush"))
+            .WithBorder(Theme.Ref("SurfaceStrokeColorFlyoutBrush"), 1)
+            .Translation(0, 0, 32)
+            .Set(border => border.Shadow = new ThemeShadow());
     }
 
-    private static Brush ResolvePopupBackgroundBrush(ElementTheme theme)
-    {
-        var overlay = FindThemedResource("TextControlBackground", theme) as SolidColorBrush
-            ?? Application.Current?.Resources["TextControlBackground"] as SolidColorBrush;
-        var baseBrush = FindThemedResource("SolidBackgroundFillColorBaseBrush", theme) as SolidColorBrush
-            ?? Application.Current?.Resources["SolidBackgroundFillColorBaseBrush"] as SolidColorBrush;
-        if (overlay is null || baseBrush is null)
-            return ResolveThemeBrush("SolidBackgroundFillColorBaseBrush", theme);
-
-        var alpha = overlay.Color.A / 255.0;
-        static byte Mix(byte background, byte foreground, double alpha) =>
-            (byte)Math.Round(background * (1 - alpha) + foreground * alpha);
-
-        return new SolidColorBrush(global::Windows.UI.Color.FromArgb(
-            255,
-            Mix(baseBrush.Color.R, overlay.Color.R, alpha),
-            Mix(baseBrush.Color.G, overlay.Color.G, alpha),
-            Mix(baseBrush.Color.B, overlay.Color.B, alpha)));
-    }
-
-    private static Button SlashRow(
+    private static Element SlashRow(
         GatewayCommand command,
         bool selected,
         string query,
+        ColorScheme colorScheme,
         Action<GatewayCommand> onPick)
     {
-        var mono = new FontFamily("Consolas");
-        var grid = new Microsoft.UI.Xaml.Controls.Grid
+        var cells = new List<Element>
         {
-            ColumnSpacing = 8,
-            VerticalAlignment = VerticalAlignment.Center,
+            TextBlock(SlashGlyph(command))
+                .FontFamily(FluentIconCatalog.SymbolThemeFontFamily)
+                .FontSize(14)
+                .VAlign(VerticalAlignment.Center)
+                .Foreground(Theme.SecondaryText)
+                .AccessibilityView(Microsoft.UI.Xaml.Automation.Peers.AccessibilityView.Raw)
+                .Grid(row: 0, column: 0),
+            TextBlock(command.DisplayName())
+                .FontSize(13)
+                .SemiBold()
+                .VAlign(VerticalAlignment.Center)
+                .Foreground(Theme.PrimaryText)
+                .Set(textBlock => ApplyQueryHighlight(textBlock, query, colorScheme))
+                .Grid(row: 0, column: 1),
         };
-        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
-        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
-        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
-        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
-        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
-
-        var icon = new FontIcon
-        {
-            FontFamily = (FontFamily)Application.Current.Resources["SymbolThemeFontFamily"],
-            Glyph = SlashGlyph(command),
-            FontSize = 14,
-            VerticalAlignment = VerticalAlignment.Center,
-        };
-        ApplyTheme(icon, () => icon.Foreground = ResolveThemeBrush("TextFillColorSecondaryBrush", icon.ActualTheme));
-        Microsoft.UI.Xaml.Automation.AutomationProperties.SetAccessibilityView(
-            icon,
-            Microsoft.UI.Xaml.Automation.Peers.AccessibilityView.Raw);
-        Microsoft.UI.Xaml.Controls.Grid.SetColumn(icon, 0);
-        grid.Children.Add(icon);
-
-        var name = new TextBlock
-        {
-            Text = command.DisplayName(),
-            FontSize = 13,
-            FontWeight = Microsoft.UI.Text.FontWeights.SemiBold,
-            VerticalAlignment = VerticalAlignment.Center,
-        };
-        ApplyTheme(name, () => name.Foreground = ResolveThemeBrush("TextFillColorPrimaryBrush", name.ActualTheme));
-        Microsoft.UI.Xaml.Controls.Grid.SetColumn(name, 1);
-        grid.Children.Add(name);
-        ApplyQueryHighlight(name, query);
-
         var args = command.ArgTemplate();
         if (!string.IsNullOrWhiteSpace(args))
         {
-            var argBlock = new TextBlock
-            {
-                Text = args,
-                FontSize = 12,
-                FontFamily = mono,
-                Opacity = 0.75,
-                VerticalAlignment = VerticalAlignment.Center,
-            };
-            ApplyTheme(argBlock, () => argBlock.Foreground = ResolveThemeBrush("TextFillColorSecondaryBrush", argBlock.ActualTheme));
-            Microsoft.UI.Xaml.Controls.Grid.SetColumn(argBlock, 2);
-            grid.Children.Add(argBlock);
+            cells.Add(
+                TextBlock(args)
+                    .FontSize(12)
+                    .FontFamily("Consolas")
+                    .VAlign(VerticalAlignment.Center)
+                    .Foreground(Theme.SecondaryText)
+                    .Grid(row: 0, column: 2));
         }
 
         if (!string.IsNullOrWhiteSpace(command.Description))
         {
-            var description = new TextBlock
-            {
-                Text = command.Description!,
-                FontSize = 12,
-                VerticalAlignment = VerticalAlignment.Center,
-                HorizontalAlignment = HorizontalAlignment.Right,
-                TextAlignment = TextAlignment.Right,
-                TextTrimming = TextTrimming.CharacterEllipsis,
-                MaxLines = 1,
-            };
-            ApplyTheme(description, () => description.Foreground = ResolveThemeBrush("TextFillColorSecondaryBrush", description.ActualTheme));
-            Microsoft.UI.Xaml.Controls.Grid.SetColumn(description, 3);
-            grid.Children.Add(description);
-            ApplyQueryHighlight(description, query);
+            cells.Add(
+                TextBlock(command.Description!)
+                    .FontSize(12)
+                    .VAlign(VerticalAlignment.Center)
+                    .HAlign(HorizontalAlignment.Right)
+                    .TextAlignment(TextAlignment.Right)
+                    .TextTrimming(TextTrimming.CharacterEllipsis)
+                    .MaxLines(1)
+                    .Foreground(Theme.SecondaryText)
+                    .Set(textBlock => ApplyQueryHighlight(textBlock, query, colorScheme))
+                    .Grid(row: 0, column: 3));
         }
 
         var options = command.OptionCount();
         if (options > 0)
         {
-            var badge = SlashBadge($"{options} options");
-            Microsoft.UI.Xaml.Controls.Grid.SetColumn(badge, 4);
-            grid.Children.Add(badge);
+            cells.Add(SlashBadge($"{options} options").Grid(row: 0, column: 4));
         }
 
-        var button = new Button
-        {
-            Content = grid,
-            Padding = new Thickness(8, 7, 8, 7),
-            HorizontalAlignment = HorizontalAlignment.Stretch,
-            HorizontalContentAlignment = HorizontalAlignment.Stretch,
-            CornerRadius = new CornerRadius(6),
-            BorderThickness = new Thickness(0),
-        };
-        ApplyTheme(button, () =>
-        {
-            button.Background = selected
-                ? ResolveThemeBrush("SubtleFillColorSecondaryBrush", button.ActualTheme)
-                : new SolidColorBrush(Microsoft.UI.Colors.Transparent);
-            button.BorderBrush = new SolidColorBrush(Microsoft.UI.Colors.Transparent);
-        });
-        Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(button, $"Insert {command.DisplayName()}");
-        button.Click += (_, _) => onPick(command);
-        if (selected)
-        {
-            button.Loaded += (_, _) => button.StartBringIntoView(
-                new BringIntoViewOptions { AnimationDesired = false });
-        }
-        return button;
+        var background = selected ? Theme.SubtleFill : Theme.Ref("SubtleFillColorTransparentBrush");
+        return Button(
+                Grid(
+                    [GridSize.Auto, GridSize.Auto, GridSize.Auto, GridSize.Star(), GridSize.Auto],
+                    [GridSize.Auto],
+                    cells.ToArray())
+                    .Set(grid => grid.ColumnSpacing = 8)
+                    .VAlign(VerticalAlignment.Center),
+                () => onPick(command))
+            .Padding(8, 7, 8, 7)
+            .HAlign(HorizontalAlignment.Stretch)
+            .CornerRadius(6)
+            .AutomationName($"Insert {command.DisplayName()}")
+            .Resources(resources => resources
+                .Set("ButtonBackground", background)
+                .Set("ButtonBorderBrush", Theme.Ref("SubtleFillColorTransparentBrush")))
+            .Set(button =>
+            {
+                button.HorizontalContentAlignment = HorizontalAlignment.Stretch;
+                button.BorderThickness = new Thickness(0);
+            })
+            .OnMount(element =>
+            {
+                if (selected)
+                    element.StartBringIntoView(new BringIntoViewOptions { AnimationDesired = false });
+            });
     }
 
-    private static Border SlashBadge(string text)
+    private static Element SlashBadge(string text)
     {
-        var label = new TextBlock
-        {
-            Text = text,
-            FontSize = 10,
-            FontWeight = Microsoft.UI.Text.FontWeights.SemiBold,
-        };
-        var badge = new Border
-        {
-            Padding = new Thickness(6, 1, 6, 1),
-            CornerRadius = new CornerRadius(4),
-            VerticalAlignment = VerticalAlignment.Center,
-            Child = label,
-        };
-        ApplyTheme(badge, () =>
-        {
-            var accent = ResolveThemeBrush("AccentFillColorDefaultBrush", badge.ActualTheme);
-            badge.Background = accent is SolidColorBrush solid
-                ? new SolidColorBrush(solid.Color) { Opacity = 0.14 }
-                : accent;
-        });
-        ApplyTheme(label, () => label.Foreground = ResolveThemeBrush("AccentFillColorDefaultBrush", label.ActualTheme));
-        return badge;
+        return Border(
+                TextBlock(text)
+                    .FontSize(10)
+                    .SemiBold()
+                    .Foreground(Theme.Ref("TextOnAccentFillColorPrimaryBrush")))
+            .Padding(6, 1, 6, 1)
+            .CornerRadius(4)
+            .VAlign(VerticalAlignment.Center)
+            .Background(Theme.AccentSecondary);
     }
 
-    private static void ApplyQueryHighlight(TextBlock textBlock, string? query)
+    private static void ApplyQueryHighlight(TextBlock textBlock, string? query, ColorScheme colorScheme)
     {
         textBlock.TextHighlighters.Clear();
         var text = textBlock.Text ?? string.Empty;
         var normalized = (query ?? string.Empty).Trim().TrimStart('/').Trim();
-        if (normalized.Length == 0 || text.Length < normalized.Length)
+        if (normalized.Length == 0 || text.Length < normalized.Length || colorScheme == ColorScheme.HighContrast)
             return;
 
-        var accent = Application.Current.Resources["AccentFillColorDefaultBrush"] as SolidColorBrush
-            ?? new SolidColorBrush(Microsoft.UI.Colors.SteelBlue);
+        var isDark = colorScheme == ColorScheme.Dark;
+        if (ThemeRef.Resolve("AccentFillColorDefaultBrush", isDark) is not SolidColorBrush accent
+            || ThemeRef.Resolve("TextFillColorPrimaryBrush", isDark) is not Brush foreground)
+            return;
+
         var accentColor = accent.Color;
         var highlighter = new Microsoft.UI.Xaml.Documents.TextHighlighter
         {
             Background = new SolidColorBrush(global::Windows.UI.Color.FromArgb(31, accentColor.R, accentColor.G, accentColor.B)),
-            Foreground = Application.Current.Resources["TextFillColorPrimaryBrush"] as Brush
-                ?? new SolidColorBrush(Microsoft.UI.Colors.White),
+            Foreground = foreground,
         };
 
         for (var index = 0; index <= text.Length - normalized.Length;)

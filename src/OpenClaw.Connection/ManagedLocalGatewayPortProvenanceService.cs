@@ -28,7 +28,7 @@ internal interface IManagedLocalGatewayPortPlatform
 {
     WindowsTcpListenerSnapshotResult CaptureListeners();
     string? GetProcessCommandLine(int processId);
-    bool IsTrustedWslRelayBinary(string processPath);
+    WslRelayTrustResult InspectWslRelayBinary(string processPath);
     bool IsExpectedWslGatewayListening(string distroName, int port);
     string? ReadScheduledTaskXml(string taskName);
     string? ReadFile(string path);
@@ -40,6 +40,13 @@ internal interface IManagedLocalGatewayPortPlatform
         CancellationToken cancellationToken);
 }
 
+internal readonly record struct WslRelayTrustResult(bool IsTrusted, string? Detail)
+{
+    public static WslRelayTrustResult Trusted() => new(true, null);
+
+    public static WslRelayTrustResult Rejected(string detail) => new(false, detail);
+}
+
 internal sealed class WindowsManagedLocalGatewayPortPlatform : IManagedLocalGatewayPortPlatform
 {
     public WindowsTcpListenerSnapshotResult CaptureListeners() =>
@@ -48,7 +55,12 @@ internal sealed class WindowsManagedLocalGatewayPortPlatform : IManagedLocalGate
     public string? GetProcessCommandLine(int processId) =>
         WindowsTcpListenerSnapshot.GetProcessCommandLine(processId);
 
-    public bool IsTrustedWslRelayBinary(string processPath)
+    public WslRelayTrustResult InspectWslRelayBinary(string processPath) =>
+        EvaluateWslRelayBinary(processPath, WindowsAuthenticodeVerifier.VerifyMicrosoftSignedFile);
+
+    internal static WslRelayTrustResult EvaluateWslRelayBinary(
+        string processPath,
+        Func<string, AuthenticodeTrustResult> verifySignature)
     {
         try
         {
@@ -64,48 +76,22 @@ internal sealed class WindowsManagedLocalGatewayPortPlatform : IManagedLocalGate
                 (fullPath.StartsWith(windowsAppsRoot, StringComparison.OrdinalIgnoreCase) &&
                  string.Equals(Path.GetFileName(fullPath), "wslrelay.exe", StringComparison.OrdinalIgnoreCase));
             if (!isCanonical)
-                return false;
-
-            for (var attempt = 0; attempt < 2; attempt++)
             {
-                var psi = CreateWslRelaySignatureProbe(fullPath);
-                using var process = Process.Start(psi);
-                if (process is null)
-                    return false;
-                if (process.WaitForExit(5_000))
-                    return process.ExitCode == 0;
-
-                try { process.Kill(entireProcessTree: true); } catch { }
+                return WslRelayTrustResult.Rejected(
+                    "WSL relay executable path is not canonical.");
             }
-            return false;
+
+            var signature = verifySignature(fullPath);
+            return signature.IsTrusted
+                ? WslRelayTrustResult.Trusted()
+                : WslRelayTrustResult.Rejected(
+                    signature.Detail ?? "WSL relay Authenticode verification failed.");
         }
         catch
         {
-            return false;
+            return WslRelayTrustResult.Rejected(
+                "WSL relay Authenticode verification could not complete.");
         }
-    }
-
-    internal static ProcessStartInfo CreateWslRelaySignatureProbe(string fullPath)
-    {
-        var startInfo = new ProcessStartInfo
-        {
-            FileName = "powershell.exe",
-            UseShellExecute = false,
-            CreateNoWindow = true,
-        };
-
-        // A pwsh parent can prepend PowerShell 7 modules that Windows PowerShell
-        // 5.1 cannot load. Let the child rebuild its native module path so the
-        // built-in Authenticode cmdlet remains available.
-        startInfo.Environment.Remove("PSModulePath");
-        startInfo.Environment["OPENCLAW_VERIFY_PATH"] = fullPath;
-        startInfo.ArgumentList.Add("-NoProfile");
-        startInfo.ArgumentList.Add("-NonInteractive");
-        startInfo.ArgumentList.Add("-Command");
-        startInfo.ArgumentList.Add(
-            "$s=Get-AuthenticodeSignature -LiteralPath $env:OPENCLAW_VERIFY_PATH; " +
-            "if($s.Status -eq 'Valid' -and $s.SignerCertificate.Subject -match 'Microsoft'){exit 0}; exit 1");
-        return startInfo;
     }
 
     public bool IsExpectedWslGatewayListening(string distroName, int port)
@@ -386,10 +372,10 @@ public sealed class ManagedLocalGatewayPortProvenanceService
             .Distinct(StringComparer.OrdinalIgnoreCase)
             .ToDictionary(
                 path => path,
-                path => _platform.IsTrustedWslRelayBinary(path),
+                path => _platform.InspectWslRelayBinary(path),
                 StringComparer.OrdinalIgnoreCase);
         var expectedDistroListening =
-            relayTrustByPath.Values.Any(trusted => trusted) &&
+            relayTrustByPath.Values.Any(result => result.IsTrusted) &&
             _platform.IsExpectedWslGatewayListening(managedDistroName, uri.Port);
         var classified = listeners
             .Select(listener => ClassifyListener(
@@ -426,7 +412,8 @@ public sealed class ManagedLocalGatewayPortProvenanceService
                 .Where(item => item.Kind != GatewayEndpointProvenanceKind.ExpectedManagedGateway)
                 .Select(item =>
                     $"{item.ProcessName ?? "unknown"} (PID {item.ProcessId?.ToString() ?? "?"}): " +
-                    (item.Detail ?? "listener verification failed")));
+                    (item.Detail ?? "listener verification failed"))
+                .Distinct(StringComparer.Ordinal));
         return new GatewayEndpointProvenance(
             GatewayEndpointProvenanceKind.UnknownListener,
             uri.Port,
@@ -533,16 +520,17 @@ public sealed class ManagedLocalGatewayPortProvenanceService
         string managedDistroName,
         int port,
         WindowsTcpListenerInfo listener,
-        IReadOnlyDictionary<string, bool> relayTrustByPath,
+        IReadOnlyDictionary<string, WslRelayTrustResult> relayTrustByPath,
         bool expectedDistroListening)
     {
         var isWslRelay =
             string.Equals(listener.ProcessName, "wslrelay", StringComparison.OrdinalIgnoreCase);
         var relayPath = listener.ProcessPath;
-        var trustedRelay =
+        var relayTrust = default(WslRelayTrustResult);
+        var hasRelayTrust =
             relayPath is not null &&
-            relayTrustByPath.TryGetValue(relayPath, out var trusted) &&
-            trusted;
+            relayTrustByPath.TryGetValue(relayPath, out relayTrust);
+        var trustedRelay = hasRelayTrust && relayTrust.IsTrusted;
         if (isWslRelay && trustedRelay && expectedDistroListening)
         {
             return new GatewayEndpointProvenance(
@@ -572,7 +560,8 @@ public sealed class ManagedLocalGatewayPortProvenanceService
             ? relayPath is null
                 ? "WSL relay executable path could not be read."
                 : !trustedRelay
-                    ? "WSL relay is not the canonical Microsoft-signed binary."
+                    ? relayTrust.Detail ??
+                        "WSL relay Authenticode verification failed."
                     : $"Expected distro '{managedDistroName}' does not report its systemd gateway MainPID owning port {port}."
             : "Process is not a verified managed WSL relay or proven obsolete OpenClaw gateway.";
         return new GatewayEndpointProvenance(

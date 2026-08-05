@@ -38,7 +38,6 @@ public sealed partial class ConnectionPage : Page
     private IGatewayConnectionManager? _connectionManager;
     private GatewayRegistry? _gatewayRegistry;
     private GatewayDiscoveryService? _discoveryService;
-    private global::Windows.UI.ViewManagement.AccessibilitySettings? _accessibilitySettings;
     private IGatewayTerminalLauncher? _terminalLauncher;
     private WslGatewayController? _wslGatewayController;
 
@@ -127,7 +126,6 @@ public sealed partial class ConnectionPage : Page
             _gatewayRegistry.Changed += OnRegistryChanged;
 
         ActualThemeChanged += OnPageActualThemeChanged;
-        TrySubscribeAccessibilitySettings();
         Unloaded += OnPageUnloaded;
 
         // Initialize Node mode toggle from settings (suppressed event)
@@ -172,11 +170,6 @@ public sealed partial class ConnectionPage : Page
         if (_gatewayRegistry != null)
             _gatewayRegistry.Changed -= OnRegistryChanged;
         ActualThemeChanged -= OnPageActualThemeChanged;
-        if (_accessibilitySettings != null)
-        {
-            _accessibilitySettings.HighContrastChanged -= OnHighContrastChanged;
-            _accessibilitySettings = null;
-        }
         _discoveryService?.Dispose();
         _discoveryService = null;
         if (_reconnectMaskTimer != null)
@@ -200,31 +193,10 @@ public sealed partial class ConnectionPage : Page
         RefreshAfterThemeVisualChange();
     }
 
-    private void OnHighContrastChanged(
-        global::Windows.UI.ViewManagement.AccessibilitySettings sender,
-        object args)
-    {
-        DispatcherQueue?.TryEnqueue(RefreshAfterThemeVisualChange);
-    }
-
     private void RefreshAfterThemeVisualChange()
     {
         _capabilityPillsFingerprint = null;
         RefreshFromSnapshot(_lastSnapshot);
-    }
-
-    private void TrySubscribeAccessibilitySettings()
-    {
-        try
-        {
-            _accessibilitySettings = new global::Windows.UI.ViewManagement.AccessibilitySettings();
-            _accessibilitySettings.HighContrastChanged += OnHighContrastChanged;
-        }
-        catch (Exception ex)
-        {
-            Services.Logger.Warn($"[ConnectionPage] Could not subscribe to High Contrast changes: {ex.Message}");
-            _accessibilitySettings = null;
-        }
     }
 
     private void OnManagerStateChanged(object? sender, GatewayConnectionSnapshot snapshot)
@@ -930,18 +902,37 @@ public sealed partial class ConnectionPage : Page
 
             if (showSurfaces && settings is not null)
             {
+                var activeGateway = _gatewayRegistry?.GetActive();
+                var hasSharedGatewayToken = !string.IsNullOrWhiteSpace(
+                    activeGateway?.SharedGatewayToken);
+                // Same manager NodeState signal as app.connection.* / Command Center.
+                var nodeSessionLive = BrowserProxyActivation.IsNodeSessionLive(
+                    _connectionManager?.CurrentSnapshot.NodeState
+                        ?? OpenClaw.Connection.RoleConnectionState.Idle);
+                // Match Command Center CaptureSnapshot: active record URL, else settings.
+                var requiresRemoteBrowserEndpoint =
+                    BrowserProxyActivation.RequiresRemoteBrowserEndpoint(
+                        gatewayUrl: activeGateway?.Url ?? settings.GatewayUrl,
+                        browserControlPort: activeGateway?.BrowserControlPort,
+                        sshTunnel: activeGateway?.SshTunnel);
                 var pillFp = BuildCapabilityPillFingerprint(
                     plan.NodeCard,
                     plan.NodeEffectiveCapabilities,
                     plan.NodePendingDeclaredCapabilities,
-                    settings);
+                    settings,
+                    hasSharedGatewayToken,
+                    nodeSessionLive,
+                    requiresRemoteBrowserEndpoint);
                 if (_capabilityPillsFingerprint != pillFp)
                 {
                     _capabilityPillsFingerprint = pillFp;
                     NodeCapabilityPillsHost.Child = BuildCapabilityPills(
                         plan.NodeEffectiveCapabilities,
                         plan.NodePendingDeclaredCapabilities,
-                        settings);
+                        settings,
+                        hasSharedGatewayToken,
+                        nodeSessionLive,
+                        requiresRemoteBrowserEndpoint);
                 }
 
                 NodeCapabilityPillsHost.Visibility =
@@ -1194,12 +1185,15 @@ public sealed partial class ConnectionPage : Page
         return new Border { Child = grid };
     }
 
-    private enum CapabilityPillState { Active, Pending, Off }
+    private enum CapabilityPillState { Active, Pending, NeedsSharedToken, Off }
 
     private WrapPanel BuildCapabilityPills(
         IReadOnlyList<string> effective,
         IReadOnlyList<string> pendingDeclared,
-        SettingsManager settings)
+        SettingsManager settings,
+        bool hasSharedGatewayToken,
+        bool nodeSessionLive,
+        bool requiresRemoteBrowserEndpoint)
     {
         var panel = new WrapPanel { HorizontalSpacing = 6, VerticalSpacing = 6 };
         var effectiveSet = new HashSet<string>(
@@ -1208,8 +1202,6 @@ public sealed partial class ConnectionPage : Page
         var pendingSet = new HashSet<string>(
             pendingDeclared.Where(c => !string.IsNullOrWhiteSpace(c)),
             StringComparer.OrdinalIgnoreCase);
-        var isHighContrast = IsHighContrastEnabled();
-
         var canonical = new (string Name, string LabelKey, string Glyph, bool Enabled)[]
         {
             ("browser",  "PermissionsPage_Cap_Browser_Label",  FluentIconCatalog.Browser,  settings.NodeBrowserProxyEnabled),
@@ -1224,12 +1216,35 @@ public sealed partial class ConnectionPage : Page
         var shown = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         foreach (var (name, labelKey, glyph, enabled) in canonical)
         {
-            var state = effectiveSet.Contains(name)
-                ? CapabilityPillState.Active
-                : (pendingSet.Contains(name) || enabled)
-                    ? CapabilityPillState.Pending
-                    : CapabilityPillState.Off;
-            panel.Children.Add(MakeCapabilityPill(LocalizationHelper.GetString(labelKey), glyph, state, isHighContrast));
+            var kind = name.Equals("browser", StringComparison.OrdinalIgnoreCase)
+                ? BrowserProxyActivation.ResolveCapabilityPillKind(
+                    toggleEnabled: enabled,
+                    effective: effectiveSet.Contains(name),
+                    pendingDeclared: pendingSet.Contains(name),
+                    hasSharedGatewayToken: hasSharedGatewayToken,
+                    nodeSessionLive: nodeSessionLive)
+                : effectiveSet.Contains(name)
+                    ? BrowserProxyActivation.CapabilityPillKind.Active
+                    : (pendingSet.Contains(name) || enabled)
+                        ? BrowserProxyActivation.CapabilityPillKind.PendingApproval
+                        : BrowserProxyActivation.CapabilityPillKind.Off;
+            var state = kind switch
+            {
+                BrowserProxyActivation.CapabilityPillKind.Active => CapabilityPillState.Active,
+                BrowserProxyActivation.CapabilityPillKind.NeedsSharedToken => CapabilityPillState.NeedsSharedToken,
+                BrowserProxyActivation.CapabilityPillKind.PendingApproval => CapabilityPillState.Pending,
+                _ => CapabilityPillState.Off,
+            };
+            var remoteForPill = name.Equals("browser", StringComparison.OrdinalIgnoreCase) &&
+                                kind == BrowserProxyActivation.CapabilityPillKind.NeedsSharedToken
+                ? requiresRemoteBrowserEndpoint
+                : false;
+            panel.Children.Add(MakeCapabilityPill(
+                LocalizationHelper.GetString(labelKey),
+                glyph,
+                state,
+                kind,
+                remoteForPill));
             shown.Add(name);
         }
 
@@ -1245,42 +1260,50 @@ public sealed partial class ConnectionPage : Page
                 "system" => (LocalizationHelper.GetString("ConnectionPage_NodeCap_System"), FluentIconCatalog.System),
                 _ => (HumanizeNodeToken(name), FluentIconCatalog.System),
             };
-            panel.Children.Add(MakeCapabilityPill(label, glyph, state, isHighContrast));
+            panel.Children.Add(MakeCapabilityPill(
+                label,
+                glyph,
+                state,
+                kind: state == CapabilityPillState.Active
+                    ? BrowserProxyActivation.CapabilityPillKind.Active
+                    : BrowserProxyActivation.CapabilityPillKind.PendingApproval,
+                requiresRemoteBrowserEndpoint: false));
         }
 
         return panel;
     }
 
-    private const double CapabilityPillFillOpacity = 0.14;
-
-    private Border MakeCapabilityPill(string label, string glyph, CapabilityPillState state, bool isHighContrast)
+    private Border MakeCapabilityPill(
+        string label,
+        string glyph,
+        CapabilityPillState state,
+        BrowserProxyActivation.CapabilityPillKind kind,
+        bool requiresRemoteBrowserEndpoint)
     {
-        var (fillBrush, iconBrush, textBrush, stateKey, stateGlyph) = state switch
+        var (borderStyleKey, iconStyleKey, textStyleKey, stateKey, stateGlyph) = state switch
         {
             CapabilityPillState.Active => (
-                TintBrush(
-                    "SystemFillColorSuccessBrush",
-                    "SystemFillColorSuccessBackgroundBrush",
-                    CapabilityPillFillOpacity,
-                    isHighContrast),
-                ResolveBrush("SystemFillColorSuccessBrush"),
-                ResolveBrush("SystemFillColorSuccessBrush"),
+                "ConnectionCapabilityPillActiveBorderStyle",
+                "ConnectionCapabilityPillActiveIconStyle",
+                "ConnectionCapabilityPillActiveTextStyle",
                 "ConnectionPage_NodePillState_Active",
                 null),
             CapabilityPillState.Pending => (
-                TintBrush(
-                    "SystemFillColorCautionBrush",
-                    "SystemFillColorCautionBackgroundBrush",
-                    CapabilityPillFillOpacity,
-                    isHighContrast),
-                ResolveBrush("SystemFillColorCautionBrush"),
-                ResolveBrush("SystemFillColorCautionBrush"),
+                "ConnectionCapabilityPillPendingBorderStyle",
+                "ConnectionCapabilityPillPendingIconStyle",
+                "ConnectionCapabilityPillPendingTextStyle",
                 "ConnectionPage_NodePillState_Pending",
                 FluentIconCatalog.StatusWarn),
+            CapabilityPillState.NeedsSharedToken => (
+                "ConnectionCapabilityPillCriticalBorderStyle",
+                "ConnectionCapabilityPillCriticalIconStyle",
+                "ConnectionCapabilityPillCriticalTextStyle",
+                "ConnectionPage_NodePillState_NeedsGatewayToken",
+                FluentIconCatalog.StatusWarn),
             _ => (
-                ResolveBrush("SubtleFillColorTertiaryBrush"),
-                ResolveBrush("TextFillColorTertiaryBrush"),
-                ResolveBrush("TextFillColorSecondaryBrush"),
+                "ConnectionCapabilityPillOffBorderStyle",
+                "ConnectionCapabilityPillOffIconStyle",
+                "ConnectionCapabilityPillOffTextStyle",
                 "ConnectionPage_NodePillState_Off",
                 null),
         };
@@ -1295,7 +1318,7 @@ public sealed partial class ConnectionPage : Page
         {
             Glyph = glyph,
             FontSize = 12,
-            Foreground = iconBrush,
+            Style = (Style)Resources[iconStyleKey],
             VerticalAlignment = VerticalAlignment.Center,
             IsTextScaleFactorEnabled = false,
         };
@@ -1303,14 +1326,18 @@ public sealed partial class ConnectionPage : Page
         content.Children.Add(capabilityIcon);
 
         var stateText = LocalizationHelper.GetString(stateKey);
+        var detailText = BrowserProxyActivation.ResolveCapabilityPillTooltip(
+            kind,
+            stateText,
+            requiresRemoteBrowserEndpoint);
         var labelText = new TextBlock
         {
             Text = label,
             FontSize = 12,
-            Foreground = textBrush,
+            Style = (Style)Resources[textStyleKey],
             VerticalAlignment = VerticalAlignment.Center,
         };
-        AutomationProperties.SetName(labelText, $"{label}: {stateText}");
+        AutomationProperties.SetName(labelText, $"{label}: {detailText}");
         content.Children.Add(labelText);
 
         if (stateGlyph != null)
@@ -1319,7 +1346,7 @@ public sealed partial class ConnectionPage : Page
             {
                 Glyph = stateGlyph,
                 FontSize = 10,
-                Foreground = textBrush,
+                Style = (Style)Resources[iconStyleKey],
                 VerticalAlignment = VerticalAlignment.Center,
                 IsTextScaleFactorEnabled = false,
             };
@@ -1331,42 +1358,21 @@ public sealed partial class ConnectionPage : Page
         {
             CornerRadius = new CornerRadius(12),
             Padding = new Thickness(8, 3, 11, 3),
-            Background = fillBrush,
+            Style = (Style)Resources[borderStyleKey],
             Child = content,
         };
-        ToolTipService.SetToolTip(pill, stateText);
+        ToolTipService.SetToolTip(pill, detailText);
         return pill;
-    }
-
-    private Brush TintBrush(string colorKey, string highContrastBrushKey, double opacity, bool isHighContrast)
-    {
-        if (isHighContrast)
-            return ResolveBrush(highContrastBrushKey);
-
-        var color = ResolveBrush(colorKey) is SolidColorBrush scb
-            ? scb.Color
-            : ((SolidColorBrush)ResolveBrush("TextFillColorPrimaryBrush")).Color;
-        return new SolidColorBrush(color) { Opacity = opacity };
-    }
-
-    private bool IsHighContrastEnabled()
-    {
-        if (_accessibilitySettings is null)
-            return false;
-
-        try { return _accessibilitySettings.HighContrast; }
-        catch (Exception ex)
-        {
-            Services.Logger.Warn($"[ConnectionPage] Could not read High Contrast state: {ex.Message}");
-            return false;
-        }
     }
 
     private static string BuildCapabilityPillFingerprint(
         NodeCardState state,
         IReadOnlyList<string> effective,
         IReadOnlyList<string> pendingDeclared,
-        SettingsManager settings)
+        SettingsManager settings,
+        bool hasSharedGatewayToken,
+        bool nodeSessionLive,
+        bool requiresRemoteBrowserEndpoint)
     {
         var eff = string.Join(
             ",",
@@ -1384,7 +1390,7 @@ public sealed partial class ConnectionPage : Page
             settings.NodeLocationEnabled ? '1' : '0',
             settings.NodeTtsEnabled ? '1' : '0',
             settings.NodeSttEnabled ? '1' : '0');
-        return $"{state}|{eff}|{pend}|{toggles}";
+        return $"{state}|{eff}|{pend}|{toggles}|{(hasSharedGatewayToken ? '1' : '0')}|{(nodeSessionLive ? '1' : '0')}|{(requiresRemoteBrowserEndpoint ? '1' : '0')}";
     }
 
     /// <summary>

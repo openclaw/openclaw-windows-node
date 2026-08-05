@@ -166,6 +166,10 @@ dotnet_diagnostic.REACTOR_DIALOG_001.severity = none
 [src/OpenClaw.Tray.WinUI/Windows/**/*.cs]
 dotnet_diagnostic.REACTOR_DIALOG_001.severity = none
 
+# Shared XAML/Reactor workflow targets the invoking surface's XamlRoot.
+[src/OpenClaw.Tray.WinUI/Dialogs/SessionCheckpointDialogCoordinator.cs]
+dotnet_diagnostic.REACTOR_DIALOG_001.severity = none
+
 [src/OpenClaw.Tray.WinUI/Chat/ReactorChatHostExtensions.cs]
 dotnet_diagnostic.REACTOR_DIALOG_001.severity = none
 

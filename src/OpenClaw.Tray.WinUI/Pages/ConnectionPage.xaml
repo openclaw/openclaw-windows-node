@@ -19,6 +19,42 @@
             <Setter Property="Padding" Value="0"/>
             <Setter Property="MinHeight" Value="0"/>
         </Style>
+        <Style x:Key="ConnectionCapabilityPillActiveBorderStyle" TargetType="Border">
+            <Setter Property="Background" Value="{ThemeResource ConnectionCapabilityPillSuccessBrush}"/>
+        </Style>
+        <Style x:Key="ConnectionCapabilityPillPendingBorderStyle" TargetType="Border">
+            <Setter Property="Background" Value="{ThemeResource ConnectionCapabilityPillCautionBrush}"/>
+        </Style>
+        <Style x:Key="ConnectionCapabilityPillCriticalBorderStyle" TargetType="Border">
+            <Setter Property="Background" Value="{ThemeResource ConnectionCapabilityPillCriticalBrush}"/>
+        </Style>
+        <Style x:Key="ConnectionCapabilityPillOffBorderStyle" TargetType="Border">
+            <Setter Property="Background" Value="{ThemeResource SubtleFillColorTertiaryBrush}"/>
+        </Style>
+        <Style x:Key="ConnectionCapabilityPillActiveIconStyle" TargetType="FontIcon">
+            <Setter Property="Foreground" Value="{ThemeResource SystemFillColorSuccessBrush}"/>
+        </Style>
+        <Style x:Key="ConnectionCapabilityPillPendingIconStyle" TargetType="FontIcon">
+            <Setter Property="Foreground" Value="{ThemeResource SystemFillColorCautionBrush}"/>
+        </Style>
+        <Style x:Key="ConnectionCapabilityPillCriticalIconStyle" TargetType="FontIcon">
+            <Setter Property="Foreground" Value="{ThemeResource SystemFillColorCriticalBrush}"/>
+        </Style>
+        <Style x:Key="ConnectionCapabilityPillOffIconStyle" TargetType="FontIcon">
+            <Setter Property="Foreground" Value="{ThemeResource TextFillColorTertiaryBrush}"/>
+        </Style>
+        <Style x:Key="ConnectionCapabilityPillActiveTextStyle" TargetType="TextBlock">
+            <Setter Property="Foreground" Value="{ThemeResource SystemFillColorSuccessBrush}"/>
+        </Style>
+        <Style x:Key="ConnectionCapabilityPillPendingTextStyle" TargetType="TextBlock">
+            <Setter Property="Foreground" Value="{ThemeResource SystemFillColorCautionBrush}"/>
+        </Style>
+        <Style x:Key="ConnectionCapabilityPillCriticalTextStyle" TargetType="TextBlock">
+            <Setter Property="Foreground" Value="{ThemeResource SystemFillColorCriticalBrush}"/>
+        </Style>
+        <Style x:Key="ConnectionCapabilityPillOffTextStyle" TargetType="TextBlock">
+            <Setter Property="Foreground" Value="{ThemeResource TextFillColorSecondaryBrush}"/>
+        </Style>
     </Page.Resources>
 
     <!--

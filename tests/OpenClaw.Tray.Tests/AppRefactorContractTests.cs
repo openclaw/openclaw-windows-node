@@ -179,6 +179,24 @@ public sealed class AppRefactorContractTests
     }
 
     [Fact]
+    public void SshTunnelExit_RecoversActiveRegistryGatewayThroughConnectionManager()
+    {
+        var source = ReadAppSources();
+        var method = ExtractMethod(source, "OnSshTunnelExitedAsync");
+
+        Assert.Contains("var connectionManager = _connectionManager;", method);
+        Assert.Contains("tunnelService?.TryMarkRestarting(tunnelExit) != true", method);
+        Assert.Contains("await connectionManager.RecoverSshTunnelAsync(tunnelExit)", method);
+        Assert.Contains("tunnelService.TryRestart(tunnelExit)", method);
+        Assert.Contains("tunnelService.TryMarkRecoveryFailed(tunnelExit", method);
+        Assert.Contains("_sshTunnelRecoveryBudget.TryReserve(", method);
+        Assert.Contains("_sshTunnelRecoveryBudget.ReportRecovered(tunnelExit)", method);
+        Assert.DoesNotContain("_gatewayRegistry?.GetActive()", method);
+        Assert.DoesNotContain("_settings?.UseSshTunnel", method);
+        Assert.DoesNotContain("_sshTunnelService.EnsureStarted", method);
+    }
+
+    [Fact]
     public void ConnectionIssueNotification_PrefersNodeOwnedFailuresBeforeGenericGatewayError()
     {
         var source = ReadAppSources();

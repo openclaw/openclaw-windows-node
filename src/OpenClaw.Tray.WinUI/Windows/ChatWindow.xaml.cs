@@ -6,6 +6,7 @@ using Microsoft.UI.Xaml.Media;
 using Microsoft.Web.WebView2.Core;
 using OpenClaw.Shared;
 using OpenClawTray.Chat;
+using OpenClawTray.Dialogs;
 using OpenClawTray.Helpers;
 using OpenClawTray.Services;
 using System;
@@ -435,12 +436,22 @@ public sealed partial class ChatWindow : WindowEx
             onVoiceRequest: VoiceTranscribeAsync,
             onAttachClick: OnAttachClicked,
             onSettingsClick: () => appInstance?.ShowHub("voice"),
+            onOpenCheckpoints: OpenSessionCheckpoints,
             onSpeakerMuteChanged: muted => _ = OnSpeakerMuteChangedAsync(muted),
             initialMuted: ShouldStartSpeakerMuted(appInstance?.Settings),
             isCompact: true);
         _mountedProvider = provider;
         UpdateNativeChatSurfaceActive();
     }
+
+    private void OpenSessionCheckpoints(string sessionKey) =>
+        AsyncEventHandlerGuard.Run(
+            () => SessionCheckpointDialogCoordinator.ShowAsync(
+                Content?.XamlRoot,
+                sessionKey,
+                isHostAvailable: () => !IsClosed && _shownNearTray && Content?.XamlRoot is not null),
+            new OpenClawTray.AppLogger(),
+            nameof(OpenSessionCheckpoints));
 
     private void DisposeReactorHost()
     {

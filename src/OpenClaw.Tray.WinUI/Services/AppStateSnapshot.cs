@@ -39,6 +39,13 @@ internal sealed record AppStateSnapshot
     public bool HasActiveGatewayRecord          { get; init; }
     public bool ActiveGatewayHasSharedToken     { get; init; }
 
+    /// <summary>
+    /// Manager-owned node role state. Shared-token browser remediation uses
+    /// <see cref="BrowserProxyActivation.IsNodeSessionLive"/> on this value so
+    /// Command Center matches <c>app.connection.*</c> diagnostics.
+    /// </summary>
+    public OpenClaw.Connection.RoleConnectionState NodeConnectionState { get; init; }
+
     /// <summary>SSH tunnel config from the active GatewayRecord. Null means this gateway is
     /// direct (no tunnel), NOT "unknown". Only meaningful when HasActiveGatewayRecord is true.</summary>
     public SshTunnelConfig? ActiveGatewaySshTunnel { get; init; }

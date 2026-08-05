@@ -58,6 +58,46 @@ public sealed class SshTunnelServiceTests
     }
 
     [Fact]
+    public void TryMarkRestarting_RejectsUnknownTunnelGeneration()
+    {
+        using var service = new SshTunnelService(NullLogger.Instance);
+        var tunnelExit = new SshTunnelExit(
+            ExitCode: 42,
+            Tunnel: new SshTunnelConfig("user", "host", 18789, 18789),
+            Generation: 1);
+
+        var accepted = service.TryMarkRestarting(tunnelExit);
+
+        Assert.False(accepted);
+        Assert.False(service.IsRestartPending(tunnelExit));
+        Assert.Equal(TunnelStatus.NotConfigured, service.Status);
+        Assert.Null(service.LastError);
+    }
+
+    [Theory]
+    [InlineData(
+        SshTunnelOwner.Settings,
+        SshTunnelOwner.GatewayConnectionManager,
+        SshTunnelOwner.GatewayConnectionManager)]
+    [InlineData(
+        SshTunnelOwner.GatewayConnectionManager,
+        SshTunnelOwner.Settings,
+        SshTunnelOwner.GatewayConnectionManager)]
+    [InlineData(
+        SshTunnelOwner.Settings,
+        SshTunnelOwner.Settings,
+        SshTunnelOwner.Settings)]
+    public void ResolveOwnerForReuse_PreservesManagerOwnership(
+        SshTunnelOwner currentOwner,
+        SshTunnelOwner requestedOwner,
+        SshTunnelOwner expectedOwner)
+    {
+        Assert.Equal(
+            expectedOwner,
+            SshTunnelService.ResolveOwnerForReuse(currentOwner, requestedOwner));
+    }
+
+    [Fact]
     public void Stop_FromNotConfigured_StatusRemainsNotConfigured()
     {
         // Stop() when no process has been started and state is NotConfigured

@@ -35,6 +35,11 @@ public sealed class SessionActionsWiringTests
     public void SessionsPage_ExposesExportAndCheckpointActions()
     {
         var source = ReadSource("src", "OpenClaw.Tray.WinUI", "Pages", "SessionsPage.xaml.cs");
+        var checkpoints = ReadSource(
+            "src",
+            "OpenClaw.Tray.WinUI",
+            "Dialogs",
+            "SessionCheckpointDialogCoordinator.cs");
 
         // Export uses transcript fetch + formatter + file picker.
         Assert.Contains("RequestChatHistoryAsync", source);
@@ -42,24 +47,60 @@ public sealed class SessionActionsWiringTests
         Assert.Contains("FileSavePicker", source);
 
         // Checkpoints use the gateway's compaction-checkpoint protocol APIs.
-        Assert.Contains("ListCompactionCheckpointsAsync", source);
-        Assert.Contains("BranchCompactionCheckpointAsync", source);
-        Assert.Contains("RestoreCompactionCheckpointAsync", source);
+        Assert.Contains("SessionCheckpointDialogCoordinator.ShowAsync", source);
+        Assert.Contains("ListCompactionCheckpointsAsync", checkpoints);
+        Assert.Contains("BranchCompactionCheckpointAsync", checkpoints);
+        Assert.Contains("RestoreCompactionCheckpointAsync", checkpoints);
+        Assert.Contains("ReplaceHistoryAfterCheckpointRestoreAsync", checkpoints);
         // Unsupported gateways are surfaced via the typed IsSupported flag.
-        Assert.Contains("IsSupported", source);
+        Assert.Contains("IsSupported", checkpoints);
+    }
+
+    [Fact]
+    public void ChatCompactionAction_OpensTheCurrentSessionsCheckpoints()
+    {
+        var root = ReadSource("src", "OpenClaw.Tray.WinUI", "Chat", "OpenClawReactorChatRoot.cs");
+        var host = ReadSource("src", "OpenClaw.Tray.WinUI", "Chat", "ReactorChatHostExtensions.cs");
+        var timeline = ReadSource("src", "OpenClaw.Tray.WinUI", "Chat", "ReactorChatTimeline.cs");
+        var chatPage = ReadSource("src", "OpenClaw.Tray.WinUI", "Pages", "ChatPage.xaml.cs");
+        var chatWindow = ReadSource("src", "OpenClaw.Tray.WinUI", "Windows", "ChatWindow.xaml.cs");
+        var sessions = ReadSource("src", "OpenClaw.Tray.WinUI", "Pages", "SessionsPage.xaml.cs");
+        var checkpoints = ReadSource(
+            "src",
+            "OpenClaw.Tray.WinUI",
+            "Dialogs",
+            "SessionCheckpointDialogCoordinator.cs");
+
+        Assert.Contains("Action<string>? OnOpenCheckpoints", root);
+        Assert.Contains("Action<string>? onOpenCheckpoints", host);
+        Assert.Contains("row.Props.OnOpenCheckpoints!(sessionKey!)", timeline);
+        Assert.Contains("onOpenCheckpoints: OpenSessionCheckpoints", chatPage);
+        Assert.Contains("onOpenCheckpoints: OpenSessionCheckpoints", chatWindow);
+        Assert.Contains("SessionCheckpointDialogCoordinator.ShowAsync", chatPage);
+        Assert.Contains("SessionCheckpointDialogCoordinator.ShowAsync", chatWindow);
+        Assert.Contains("SessionCheckpointDialogCoordinator.ShowAsync", sessions);
+        Assert.Contains("XamlRoot = _xamlRoot", checkpoints);
+        Assert.DoesNotContain("ShowHub(\"sessions\")", chatWindow);
     }
 
     [Fact]
     public void SessionsPage_HardensDestructiveActions()
     {
         var source = ReadSource("src", "OpenClaw.Tray.WinUI", "Pages", "SessionsPage.xaml.cs");
+        var checkpoints = ReadSource(
+            "src",
+            "OpenClaw.Tray.WinUI",
+            "Dialogs",
+            "SessionCheckpointDialogCoordinator.cs");
 
         // Main-session gating uses an authoritative resolver, not a VM-only default.
-        Assert.Contains("ResolveMainState", source);
+        Assert.Contains("ResolveMainState", checkpoints);
         // Restore only acts on a provably-latest checkpoint and re-validates fresh.
-        Assert.Contains("ResolveUnambiguousLatest", source);
+        Assert.Contains("ResolveUnambiguousLatest", checkpoints);
         // ID-less checkpoints are preserved for restore safety, but can't be used as branch targets.
-        Assert.Contains("FirstOrDefault(c => !string.IsNullOrWhiteSpace(c.Id))", source);
+        Assert.Contains(
+            "FirstOrDefault(checkpoint => !string.IsNullOrWhiteSpace(checkpoint.Id))",
+            checkpoints);
         // Destructive send failures are surfaced, not swallowed.
         Assert.Contains("\"The gateway didn't accept the request. Try again.\"", source);
     }

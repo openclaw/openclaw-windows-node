@@ -15,19 +15,55 @@ public class ManagedLocalGatewayPortProvenanceServiceTests
     };
 
     [Fact]
-    public void CreateWslRelaySignatureProbe_DoesNotInheritPwshModulePath()
+    public void EvaluateWslRelayBinary_NonCanonicalPathSkipsSignatureVerification()
     {
-        const string relayPath = @"C:\Program Files\WSL\wslrelay.exe";
+        var signatureChecked = false;
 
-        var startInfo =
-            WindowsManagedLocalGatewayPortPlatform.CreateWslRelaySignatureProbe(relayPath);
+        var result = WindowsManagedLocalGatewayPortPlatform.EvaluateWslRelayBinary(
+            @"C:\Temp\WSL\wslrelay.exe",
+            _ =>
+            {
+                signatureChecked = true;
+                return AuthenticodeTrustResult.Trusted();
+            });
 
-        Assert.False(startInfo.Environment.ContainsKey("PSModulePath"));
-        Assert.Equal(relayPath, startInfo.Environment["OPENCLAW_VERIFY_PATH"]);
-        Assert.Contains(
-            "Get-AuthenticodeSignature",
-            startInfo.ArgumentList[^1],
-            StringComparison.Ordinal);
+        Assert.False(result.IsTrusted);
+        Assert.Contains("path is not canonical", result.Detail);
+        Assert.False(signatureChecked);
+    }
+
+    [Fact]
+    public void VerifyMicrosoftSignedFile_AcceptsWindowsWslBinary()
+    {
+        var windowsDir = Environment.GetFolderPath(Environment.SpecialFolder.Windows);
+        var wslPath = Path.Combine(windowsDir, "System32", "wsl.exe");
+
+        var result = WindowsAuthenticodeVerifier.VerifyMicrosoftSignedFile(wslPath);
+
+        Assert.True(result.IsTrusted, result.Detail);
+    }
+
+    [Fact]
+    public void VerifyMicrosoftSignedFile_RejectsUnsignedAssembly()
+    {
+        var result = WindowsAuthenticodeVerifier.VerifyMicrosoftSignedFile(
+            typeof(ManagedLocalGatewayPortProvenanceServiceTests).Assembly.Location);
+
+        Assert.False(result.IsTrusted);
+        Assert.Contains("Authenticode verification failed", result.Detail);
+    }
+
+    [Theory]
+    [InlineData("CN=Microsoft Windows, O=Microsoft Corporation, C=US", true)]
+    [InlineData("CN=Microsoft Corporation Test Certificate, O=Example Corp, C=US", false)]
+    [InlineData("CN=Other Publisher, O=Microsoft Corporation Services, C=US", false)]
+    public void HasMicrosoftPublisherIdentity_RequiresExactOrganization(
+        string subject,
+        bool expected)
+    {
+        Assert.Equal(
+            expected,
+            WindowsAuthenticodeVerifier.HasMicrosoftPublisherIdentity(subject));
     }
 
     [Fact]
@@ -109,7 +145,36 @@ public class ManagedLocalGatewayPortProvenanceServiceTests
         var result = service.Inspect(ManagedRecord());
 
         Assert.Equal(GatewayEndpointProvenanceKind.UnknownListener, result.Kind);
-        Assert.Contains("not the canonical Microsoft-signed binary", result.Detail);
+        Assert.Contains("Authenticode verification failed", result.Detail);
+    }
+
+    [Fact]
+    public void Inspect_DualStackUntrustedRelay_DeduplicatesFailureDetail()
+    {
+        var platform = new FakePlatform { TrustedWslRelay = false };
+        var start = new DateTime(2026, 7, 24, 1, 0, 0, DateTimeKind.Utc);
+        platform.Listeners.Add(new WindowsTcpListenerInfo(
+            IPAddress.Loopback,
+            18789,
+            101,
+            "wslrelay",
+            @"C:\Program Files\WSL\wslrelay.exe",
+            start));
+        platform.Listeners.Add(new WindowsTcpListenerInfo(
+            IPAddress.IPv6Loopback,
+            18789,
+            101,
+            "wslrelay",
+            @"C:\Program Files\WSL\wslrelay.exe",
+            start));
+        var service = new ManagedLocalGatewayPortProvenanceService(platform, NullLogger.Instance);
+
+        var result = service.Inspect(ManagedRecord());
+
+        Assert.Equal(GatewayEndpointProvenanceKind.UnknownListener, result.Kind);
+        Assert.Equal(
+            result.Detail!.IndexOf("Authenticode verification failed", StringComparison.Ordinal),
+            result.Detail.LastIndexOf("Authenticode verification failed", StringComparison.Ordinal));
     }
 
     [Fact]
@@ -425,10 +490,13 @@ public class ManagedLocalGatewayPortProvenanceServiceTests
         }
         public string? GetProcessCommandLine(int processId) =>
             CommandLines.GetValueOrDefault(processId);
-        public bool IsTrustedWslRelayBinary(string processPath)
+        public WslRelayTrustResult InspectWslRelayBinary(string processPath)
         {
             TrustedWslRelayChecks++;
-            return TrustedWslRelay;
+            return TrustedWslRelay
+                ? WslRelayTrustResult.Trusted()
+                : WslRelayTrustResult.Rejected(
+                    "WSL relay Authenticode verification failed.");
         }
 
         public bool IsExpectedWslGatewayListening(string distroName, int port)

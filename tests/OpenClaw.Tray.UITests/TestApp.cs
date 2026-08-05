@@ -2,6 +2,7 @@ using System;
 using System.Threading;
 using Microsoft.UI;
 using Microsoft.UI.Xaml;
+using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Markup;
 using Microsoft.UI.Xaml.Media;
 
@@ -76,7 +77,6 @@ internal sealed class TestApp : Application
             "<Setter Property='Foreground' Value='White' />" +
             "<Setter Property='CornerRadius' Value='4' />" +
             "</Style>");
-
         EnsureFluentBrushFallbacks(resources);
     }
 
@@ -86,6 +86,8 @@ internal sealed class TestApp : Application
         {
             TryAddBrushResource(resources, key, color);
         }
+
+        AddChatTimelineStyles(resources);
     }
 
     private bool TryGetResources(out ResourceDictionary resources)
@@ -132,5 +134,40 @@ internal sealed class TestApp : Application
         {
             // best-effort; missing key just means renderers fall back.
         }
+    }
+
+    private static void AddChatTimelineStyles(ResourceDictionary resources)
+    {
+        if (!resources.ContainsKey("ChatUserBubbleSelectionStyle"))
+        {
+            resources["ChatUserBubbleSelectionStyle"] = new Style
+            {
+                TargetType = typeof(RichTextBlock),
+            };
+        }
+
+        AddChatBorderStyle(resources, "ChatToolCardBorderStyle");
+        AddChatBorderStyle(resources, "ChatCompactionCardStyle");
+    }
+
+    private static void AddChatBorderStyle(ResourceDictionary resources, string key)
+    {
+        if (resources.ContainsKey(key))
+            return;
+
+        var style = new Style
+        {
+            TargetType = typeof(Border),
+        };
+        style.Setters.Add(new Setter(
+            Border.BackgroundProperty,
+            resources["CardBackgroundFillColorDefaultBrush"]));
+        style.Setters.Add(new Setter(
+            Border.BorderBrushProperty,
+            resources["ControlStrokeColorDefaultBrush"]));
+        style.Setters.Add(new Setter(
+            Border.BorderThicknessProperty,
+            new Thickness(1)));
+        resources[key] = style;
     }
 }
