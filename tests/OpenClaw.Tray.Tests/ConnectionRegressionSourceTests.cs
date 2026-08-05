@@ -147,12 +147,30 @@ public sealed class ConnectionRegressionSourceTests
     }
 
     [Fact]
-    public void SetupKeepalive_DisposesProcessWrapperAfterWritingMarker()
+    public void SetupKeepaliveRuntime_DisposesProcessWrapperAfterStartingDetachedProcess()
     {
-        var source = ReadSource("src", "OpenClaw.SetupEngine", "SetupSteps.cs");
+        // Process.Start for the detached setup-time keepalive now lives in the
+        // KeepaliveProcessManager's IKeepaliveProcessRuntime production adapter
+        // (KeepaliveProcessRuntime.cs), not inline in KeepaliveProcessManager itself. The `using`
+        // wrapper must still dispose the Process handle before returning the PID.
+        var source = ReadSource("src", "OpenClaw.SetupEngine", "KeepaliveProcessRuntime.cs");
 
-        Assert.Contains("using var proc = System.Diagnostics.Process.Start(psi);", source);
-        Assert.Contains("WriteKeepaliveMarker(ctx, markerPath, proc.Id);", source);
+        AssertInOrder(source,
+            "using var proc = Process.Start(psi);",
+            "return proc?.Id;");
+    }
+
+    [Fact]
+    public void SetupKeepaliveManager_WritesMarkerAfterSuccessfulStart()
+    {
+        // KeepaliveProcessManager only ever writes the keepalive marker after receiving a
+        // non-null PID back from the runtime seam's StartDetachedKeepalive call — never before a
+        // process is confirmed started.
+        var source = ReadSource("src", "OpenClaw.SetupEngine", "KeepaliveProcessManager.cs");
+
+        AssertInOrder(source,
+            "pid = _runtime.StartDetached(new KeepaliveProcessStartSpec(",
+            "WriteMarker(markerPath, distroName, pid.Value);");
     }
 
     private static string ReadSource(params string[] relativePathParts)

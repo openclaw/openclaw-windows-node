@@ -126,8 +126,8 @@ All of these failed workarounds were verified empirically:
 ## Where this matters in the codebase
 
 - `src/OpenClaw.SetupEngine/CommandRunner.cs` - `RunInWslAsync` exposes the opt-in `inputViaStdin` parameter.
-- `src/OpenClaw.SetupEngine/SetupSteps.cs:936-945` - `ValidateWslLockdownStep` uses workaround #2, C# interpolation.
-- `src/OpenClaw.SetupEngine/SetupSteps.cs` `WindowsNodeBootstrapContextStep` - uses workaround #1, stdin.
+- `src/OpenClaw.SetupEngine/ValidateWslLockdownStep.cs` - `ValidateWslLockdownStep` uses workaround #2, C# interpolation.
+- `src/OpenClaw.SetupEngine/WindowsNodeBootstrapContextStep.cs` - `WindowsNodeBootstrapContextStep` uses workaround #1, stdin.
 
 ## Related
 

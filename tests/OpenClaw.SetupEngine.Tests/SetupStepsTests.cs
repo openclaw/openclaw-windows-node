@@ -2945,37 +2945,9 @@ public class SetupStepsTests : IDisposable
         Assert.Equal("token=12345678…[REDACTED] status=ok", result);
     }
 
-    [Fact]
-    public void TryGetExistingKeepalive_ReturnsFalseForCorruptMarker()
-    {
-        var markerPath = Path.Combine(_tempDir, "keepalive.json");
-        File.WriteAllText(markerPath, "not json");
-
-        var result = StartKeepaliveStep.TryGetExistingKeepalive(markerPath, "OpenClawGateway", out var pid);
-
-        Assert.False(result);
-        Assert.Equal(0, pid);
-    }
-
-    [Fact]
-    public void IsKeepaliveCommandLine_RequiresDistroAndSleepInfinity()
-    {
-        Assert.True(StartKeepaliveStep.IsKeepaliveCommandLine(
-            @"C:\Windows\System32\wsl.exe -d OpenClawGateway -- sleep infinity",
-            "OpenClawGateway"));
-        Assert.False(StartKeepaliveStep.IsKeepaliveCommandLine(
-            @"C:\Windows\System32\wsl.exe -d OpenClawGateway -- sleep 60",
-            "OpenClawGateway"));
-        Assert.False(StartKeepaliveStep.IsKeepaliveCommandLine(
-            @"C:\Windows\System32\wsl.exe -d OtherGateway -- sleep infinity",
-            "OpenClawGateway"));
-        Assert.False(StartKeepaliveStep.IsKeepaliveCommandLine(
-            @"C:\Windows\System32\wsl.exe -d OpenClawGateway-Dev -- sleep infinity",
-            "OpenClawGateway"));
-        Assert.True(StartKeepaliveStep.IsKeepaliveCommandLine(
-            "wsl.exe --distribution \"OpenClawGateway-Dev\" -- sleep infinity",
-            "OpenClawGateway-Dev"));
-    }
+    // Keepalive marker/identity tests moved to KeepaliveProcessManagerTests.cs — this logic now
+    // lives in KeepaliveProcessManager, not StartKeepaliveStep (see setup-keepalive-process-manager
+    // in docs/ARCHITECTURE.md).
 
     [Fact]
     public async Task AutoApprovePairing_ReturnsTerminalForDevicePairPluginNotFound()
