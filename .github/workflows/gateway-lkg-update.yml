@@ -35,8 +35,8 @@ jobs:
         if not match:
             raise SystemExit("Could not parse LkgVersion constant from GatewayLkgVersion.cs")
         pinned = match.group(1)
-        if not re.fullmatch(r'[0-9]+\.[0-9]+\.[0-9]+([.\-+][A-Za-z0-9.\-]+)*', pinned):
-            raise SystemExit(f"Pinned LkgVersion has unexpected format: {pinned}")
+        if not re.fullmatch(r'[0-9]+\.[0-9]+\.[0-9]+', pinned):
+            raise SystemExit(f"Pinned LkgVersion must be an exact stable version: {pinned}")
         print(pinned)
         PY
         )"
@@ -45,8 +45,8 @@ jobs:
         with urllib.request.urlopen('https://registry.npmjs.org/openclaw/latest', timeout=30) as r:
             payload = json.load(r)
         latest = payload['version']
-        if not re.fullmatch(r'[0-9]+\.[0-9]+\.[0-9]+([.\-+][A-Za-z0-9.\-]+)*', latest):
-            raise SystemExit(f"Resolved npm latest version has unexpected format: {latest}")
+        if not re.fullmatch(r'[0-9]+\.[0-9]+\.[0-9]+', latest):
+            raise SystemExit(f"Resolved npm latest must be an exact stable version: {latest}")
         print(latest)
         PY
         )"
@@ -56,7 +56,13 @@ jobs:
           echo "latest=${latest}"
         } >> "$GITHUB_OUTPUT"
 
-        if [[ "$pinned" != "$latest" ]]; then
+        if python3 - "$pinned" "$latest" <<'PY'
+        import sys
+        pinned = tuple(map(int, sys.argv[1].split(".")))
+        latest = tuple(map(int, sys.argv[2].split(".")))
+        raise SystemExit(0 if latest > pinned else 1)
+        PY
+        then
           echo "drifted=true" >> "$GITHUB_OUTPUT"
         else
           echo "drifted=false" >> "$GITHUB_OUTPUT"
@@ -84,27 +90,47 @@ jobs:
         import os
         import pathlib, re
         latest = os.environ["LATEST_VERSION"]
-        path = pathlib.Path("src/OpenClaw.SetupEngine/GatewayLkgVersion.cs")
-        source = path.read_text(encoding="utf-8")
-        pattern = r'(LkgVersion\s*=\s*")([^"]+)(")'
-        updated, count = re.subn(pattern, lambda m: f"{m.group(1)}{latest}{m.group(3)}", source, count=1)
-        if count != 1:
-            raise SystemExit("Failed to rewrite LkgVersion constant")
-        path.write_text(updated, encoding="utf-8")
+        replacements = (
+            (
+                pathlib.Path("src/OpenClaw.SetupEngine/GatewayLkgVersion.cs"),
+                r'(LkgVersion\s*=\s*")([^"]+)(")',
+                "LkgVersion constant",
+            ),
+            (
+                pathlib.Path("tests/OpenClaw.SetupEngine.Tests/GatewayLkgVersionTests.cs"),
+                r'(ExpectedLkgVersion\s*=\s*")([^"]+)(")',
+                "ExpectedLkgVersion constant",
+            ),
+        )
+        for path, pattern, label in replacements:
+            source = path.read_text(encoding="utf-8")
+            updated, count = re.subn(
+                pattern,
+                lambda m: f"{m.group(1)}{latest}{m.group(3)}",
+                source,
+                count=1,
+            )
+            if count != 1:
+                raise SystemExit(f"Failed to rewrite {label}")
+            path.write_text(updated, encoding="utf-8")
         PY
 
     - name: Commit and push branch
       if: ${{ steps.versions.outputs.drifted == 'true' }}
       shell: bash
       run: |
-        if git diff --quiet -- src/OpenClaw.SetupEngine/GatewayLkgVersion.cs; then
+        update_paths=(
+          src/OpenClaw.SetupEngine/GatewayLkgVersion.cs
+          tests/OpenClaw.SetupEngine.Tests/GatewayLkgVersionTests.cs
+        )
+        if git diff --quiet -- "${update_paths[@]}"; then
           echo "No LKG change detected after update write."
           exit 0
         fi
 
         git config user.name "github-actions[bot]"
         git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-        git add src/OpenClaw.SetupEngine/GatewayLkgVersion.cs
+        git add "${update_paths[@]}"
         git commit -m "chore(setup): bump gateway LKG to ${{ steps.versions.outputs.latest }}"
         git push --force-with-lease origin "${BRANCH_NAME}"
 
@@ -121,7 +147,9 @@ jobs:
 
         - Previous pinned LKG: \`${{ steps.versions.outputs.pinned }}\`
         - Candidate latest: \`${{ steps.versions.outputs.latest }}\`
-        - Updated file: \`src/OpenClaw.SetupEngine/GatewayLkgVersion.cs\`
+        - Updated files: LKG source and its contract test
+
+        The automation only proposes exact stable versions newer than the current pin.
 
         This is the standing automation PR used to review and validate gateway LKG bumps before merge.
         EOF

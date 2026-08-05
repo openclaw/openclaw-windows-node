@@ -1,5 +1,6 @@
 using System.Text.Json;
 using System.Text.RegularExpressions;
+using System.Runtime.ExceptionServices;
 using OpenClaw.Connection;
 using OpenClaw.Shared;
 
@@ -9,12 +10,17 @@ public sealed class SetupWizardRunner
 {
     private const int MaxWizardSteps = 50;
     private const int MaxSameStepVisits = 3;
+    private const string TerminalDisconnectCompatibilityVersion = "2026.7.1";
     private static readonly Regex s_normalizeKeyRegex = new("[^a-z0-9]+", RegexOptions.Compiled);
+    private static readonly JsonElement s_completedWizardPayload =
+        JsonSerializer.SerializeToElement(new { done = true });
 
     // Progress steps can repeat while background work runs; keep bounded caps
     // so setup fails with a diagnostic instead of hanging.
 
     private readonly SetupContext _ctx;
+    private bool _reloadSuspended;
+    private bool _reloadRecoveryRecorded;
 
     public SetupWizardRunner(SetupContext ctx)
     {
@@ -22,6 +28,184 @@ public sealed class SetupWizardRunner
     }
 
     public async Task<StepResult> RunAsync(CancellationToken ct)
+    {
+        var recoveryResult = await ReconcilePendingReloadRecoveryAsync();
+        if (!recoveryResult.IsSuccess)
+            return recoveryResult;
+
+        if (_ctx.Config.SkipWizard)
+            return StepResult.Skip("Gateway wizard skipped by configuration");
+
+        return await RunWithReloadRestorationAsync(() => RunCoreAsync(ct));
+    }
+
+    internal async Task<StepResult> RunWithReloadRestorationAsync(Func<Task<StepResult>> runWizard)
+    {
+        StepResult? wizardResult = null;
+        Exception? wizardException = null;
+        StepResult? restoreResult = null;
+        try
+        {
+            wizardResult = await runWizard();
+        }
+        catch (Exception ex)
+        {
+            wizardException = ex;
+        }
+
+        if (_reloadSuspended)
+        {
+            restoreResult = await RestoreReloadModeIfNeededAsync();
+            if (!restoreResult.IsSuccess)
+                _ctx.Logger.Error($"Gateway reload restoration failed after setup wizard exit: {restoreResult.Message}");
+        }
+
+        if (restoreResult?.IsSuccess == false)
+        {
+            if (wizardException is null)
+                return restoreResult;
+
+            var restorationException = new InvalidOperationException(restoreResult.Message, restoreResult.Error);
+            return StepResult.Fail(
+                $"{restoreResult.Message} The wizard also exited with {wizardException.GetType().Name}.",
+                new AggregateException(restorationException, wizardException));
+        }
+
+        if (wizardException is not null)
+            ExceptionDispatchInfo.Capture(wizardException).Throw();
+
+        return wizardResult!;
+    }
+
+    internal void MarkReloadSuspended() => _reloadSuspended = true;
+
+    internal async Task<StepResult> RestoreReloadModeIfNeededAsync()
+    {
+        if (!_reloadSuspended)
+            return StepResult.Ok("Gateway reload was not suspended");
+
+        var result = await RestoreReloadModeAsync();
+        if (result.IsSuccess)
+        {
+            _reloadSuspended = false;
+            _reloadRecoveryRecorded = false;
+        }
+        return result;
+    }
+
+    internal async Task<StepResult> SuspendReloadModeAsync()
+    {
+        try
+        {
+            var readResult = await _ctx.Commands.RunInWslAsync(
+                _ctx.DistroName!,
+                $"{_ctx.WslPathPrefix}\nopenclaw config get gateway.reload.mode --json",
+                TimeSpan.FromSeconds(15),
+                ct: CancellationToken.None,
+                inputViaStdin: true);
+            if (readResult.TimedOut)
+                return StepResult.Fail("Failed to read gateway.reload.mode before wizard suspension.");
+
+            var pathWasAbsent = readResult.ExitCode != 0 && readResult.Stderr.Contains(
+                "Config path not found: gateway.reload.mode",
+                StringComparison.Ordinal);
+            var reloadMode = readResult.ExitCode == 0 ? ExtractReloadMode(readResult.Stdout) : null;
+            if (!pathWasAbsent && (reloadMode is null || !GatewayReloadRecoveryStore.IsSupportedReloadMode(reloadMode)))
+                return StepResult.Fail("Failed to resolve gateway.reload.mode before wizard suspension.");
+
+            GatewayReloadRecoveryStore.Save(_ctx, reloadMode);
+            _reloadRecoveryRecorded = true;
+
+            var result = await _ctx.Commands.RunInWslAsync(
+                _ctx.DistroName!,
+                $"{_ctx.WslPathPrefix} && openclaw config set gateway.reload.mode off",
+                TimeSpan.FromSeconds(15),
+                ct: CancellationToken.None);
+
+            if (result.ExitCode != 0)
+                return StepResult.Fail($"Failed to suspend gateway reload for wizard (exit {result.ExitCode}): {result.Stderr.Trim()}");
+
+            _ctx.Logger.Info("Configured gateway reload suspension; restarting gateway before wizard");
+            return await StartGatewayStep.RestartAndWaitForHealthAsync(_ctx, CancellationToken.None);
+        }
+        catch (Exception ex)
+        {
+            return StepResult.Fail($"Failed to suspend gateway reload for wizard: {ex.Message}", ex);
+        }
+    }
+
+    internal static string? ExtractReloadMode(string stdout)
+    {
+        foreach (var line in stdout.Split(['\r', '\n'], StringSplitOptions.RemoveEmptyEntries).Reverse())
+        {
+            var candidate = line.Trim();
+            if (candidate.StartsWith('"') && candidate.EndsWith('"'))
+            {
+                try
+                {
+                    candidate = JsonSerializer.Deserialize<string>(candidate) ?? string.Empty;
+                }
+                catch (JsonException)
+                {
+                    continue;
+                }
+            }
+
+            if (GatewayReloadRecoveryStore.IsSupportedReloadMode(candidate))
+                return candidate;
+        }
+
+        return null;
+    }
+
+    internal async Task<StepResult> BeginReloadSuspensionAsync()
+    {
+        var recoveryResult = await ReconcilePendingReloadRecoveryAsync();
+        if (!recoveryResult.IsSuccess)
+            return recoveryResult;
+
+        var suspendResult = await SuspendReloadModeAsync();
+        if (suspendResult.IsSuccess)
+        {
+            MarkReloadSuspended();
+            return suspendResult;
+        }
+
+        if (!_reloadRecoveryRecorded)
+            return suspendResult;
+
+        MarkReloadSuspended();
+        var restoreResult = await RestoreReloadModeIfNeededAsync();
+        return restoreResult.IsSuccess ? suspendResult : restoreResult;
+    }
+
+    internal async Task<StepResult> ReconcilePendingReloadRecoveryAsync()
+    {
+        GatewayReloadRecoveryState? recovery;
+        try
+        {
+            recovery = GatewayReloadRecoveryStore.Load(_ctx);
+        }
+        catch (Exception ex)
+        {
+            return StepResult.Fail($"Cannot reconcile gateway reload recovery state: {ex.Message}", ex);
+        }
+
+        if (recovery is null)
+            return StepResult.Ok("No pending gateway reload recovery state");
+
+        if (!string.Equals(recovery.DistroName, _ctx.DistroName, StringComparison.OrdinalIgnoreCase))
+        {
+            return StepResult.Fail(
+                $"Gateway reload recovery marker targets distro '{recovery.DistroName}', " +
+                $"but setup targets '{_ctx.DistroName}'. Refusing to mutate either distro.");
+        }
+
+        _ctx.Logger.Warn("Pending gateway reload recovery state found; restoring before setup continues");
+        return await RestoreReloadModeAsync(recovery);
+    }
+
+    private async Task<StepResult> RunCoreAsync(CancellationToken ct)
     {
         var registry = new GatewayRegistry(_ctx.DataDir, logger: new SetupOpenClawLogger(_ctx.Logger));
         registry.Load();
@@ -71,13 +255,22 @@ public sealed class SetupWizardRunner
         var wizardCompleted = false;
         var discoveredSteps = new List<WizardTemplateStep>();
 
+        var suspendResult = await BeginReloadSuspensionAsync();
+        if (!suspendResult.IsSuccess)
+            return suspendResult;
+
         try
         {
             var provenanceCheck = await PairOperatorStep.EnsurePairingEndpointTrustedAsync(_ctx, ct);
             if (provenanceCheck is not null)
                 return provenanceCheck;
             client = CreateWizardClient(credential, identityPath, wsLogger);
-            var connection = await PairOperatorStep.WaitForConnectionOrPairing(client, _ctx, TimeSpan.FromSeconds(20), ct);
+            var connection = await PairOperatorStep.WaitForConnectionOrPairing(
+                client,
+                _ctx,
+                TimeSpan.FromSeconds(20),
+                ct,
+                waitThroughTransientErrors: true);
             if (connection == PairOperatorStep.ConnectionOutcome.PairingRequired && _ctx.Config.AutoApprovePairing)
             {
                 _ctx.Logger.Info("Wizard operator pairing required — auto-approving");
@@ -100,7 +293,9 @@ public sealed class SetupWizardRunner
                 return StepResult.Fail($"Cannot run gateway wizard because operator connection failed: {connection}");
 
             _ctx.Logger.Info("Starting gateway wizard");
-            var payload = await client.SendWizardRequestAsync("wizard.start", timeoutMs: 30_000);
+            var payload = await client.SendWizardRequestAsync(
+                "wizard.start",
+                timeoutMs: 30_000);
             wizardStarted = true;
 
             var visits = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
@@ -112,11 +307,23 @@ public sealed class SetupWizardRunner
 
             // A reconnect restarts the wizard session, so reset replay-scoped
             // counters before processing the replacement start payload.
-            async Task<JsonElement> SendWizardNextAsync(object parameters, int timeoutMs)
+            async Task<JsonElement> SendWizardNextAsync(
+                object parameters,
+                int timeoutMs,
+                string? answerKey = null)
             {
                 try
                 {
                     return await client!.SendWizardRequestAsync("wizard.next", parameters, timeoutMs);
+                }
+                catch (Exception ex) when (
+                    !ct.IsCancellationRequested &&
+                    IsKnownLkgTerminalDisconnect(_ctx.Config.Gateway.Version, answerKey, ex))
+                {
+                    _ctx.Logger.Warn(
+                        "OpenClaw 2026.7.1 restarted after applying the terminal wizard answer; " +
+                        "continuing with managed reload restoration and health validation.");
+                    return s_completedWizardPayload;
                 }
                 catch (Exception ex) when (!ct.IsCancellationRequested && IsRestartLikeWizardDisconnect(ex) && restartAttempts < 2)
                 {
@@ -132,7 +339,12 @@ public sealed class SetupWizardRunner
                     if (restartProvenance is not null)
                         throw new WizardFatalException(restartProvenance.Message ?? "Gateway ownership changed.");
                     client = CreateWizardClient(credential, identityPath, wsLogger);
-                    var reconnect = await PairOperatorStep.WaitForConnectionOrPairing(client, _ctx, TimeSpan.FromSeconds(30), ct);
+                    var reconnect = await PairOperatorStep.WaitForConnectionOrPairing(
+                        client,
+                        _ctx,
+                        TimeSpan.FromSeconds(30),
+                        ct,
+                        waitThroughTransientErrors: true);
                     if (reconnect != PairOperatorStep.ConnectionOutcome.Connected)
                         throw new WizardFatalException($"Gateway wizard reconnect failed after restart: {reconnect}");
 
@@ -143,7 +355,9 @@ public sealed class SetupWizardRunner
                     progressPolls = 0;
                     totalProgressPolls = 0;
                     lastProgressStepId = "";
-                    return await client.SendWizardRequestAsync("wizard.start", timeoutMs: 30_000);
+                    return await client.SendWizardRequestAsync(
+                        "wizard.start",
+                        timeoutMs: 30_000);
                 }
             }
 
@@ -236,8 +450,9 @@ public sealed class SetupWizardRunner
                     return StepResult.Fail($"{answerResult.Error} A wizard answer template was written to: {templatePath}");
                 }
 
+                var answerKey = StableAnswerKey(parsed.Title, parsed.Message, parsed.StepId);
                 _ctx.Logger.Info(answerResult.HasAnswer
-                    ? $"Wizard step '{parsed.StepId}' ({parsed.StepType}, key={StableAnswerKey(parsed.Title, parsed.Message, parsed.StepId)}) answered with {(parsed.Sensitive ? "[sensitive]" : $"'{answerResult.Answer}'")}"
+                    ? $"Wizard step '{parsed.StepId}' ({parsed.StepType}, key={answerKey}) answered with {(parsed.Sensitive ? "[sensitive]" : $"'{answerResult.Answer}'")}"
                     : $"Wizard step '{parsed.StepId}' ({parsed.StepType}, {category}) continuing without explicit answer");
 
                 object parameters = answerResult.HasAnswer
@@ -252,7 +467,10 @@ public sealed class SetupWizardRunner
                     }
                     : WizardNextPayload.Acknowledge(sessionId, parsed.StepId);
 
-                payload = await SendWizardNextAsync(parameters, TimeoutFor(parsed, answerResult.Answer));
+                payload = await SendWizardNextAsync(
+                    parameters,
+                    TimeoutFor(parsed, answerResult.Answer),
+                    answerResult.HasAnswer ? answerKey : null);
             }
         }
         catch (OperationCanceledException)
@@ -273,9 +491,6 @@ public sealed class SetupWizardRunner
         {
             if (client is not null && wizardStarted && !wizardCompleted && !string.IsNullOrWhiteSpace(sessionId))
                 await TryCancelWizardAsync(client, sessionId);
-
-            if (wizardStarted)
-                await TryResetReloadModeAsync();
 
             if (client != null)
             {
@@ -309,25 +524,61 @@ public sealed class SetupWizardRunner
         }
     }
 
-    private async Task TryResetReloadModeAsync()
+    internal async Task<StepResult> RestoreReloadModeAsync(GatewayReloadRecoveryState? recoveryOverride = null)
     {
         try
         {
+            var recovery = recoveryOverride ?? GatewayReloadRecoveryStore.Load(_ctx);
+            if (recovery is not null && !string.Equals(recovery.DistroName, _ctx.DistroName, StringComparison.OrdinalIgnoreCase))
+            {
+                return StepResult.Fail(
+                    $"Gateway reload recovery marker targets distro '{recovery.DistroName}', " +
+                    $"but setup targets '{_ctx.DistroName}'. Refusing to mutate either distro.");
+            }
+
+            var hadExplicitReloadMode = recovery is null || recovery.ReloadMode is not null;
+            var reloadMode = recovery?.ReloadMode is { } recoveredReloadMode
+                ? GatewayReloadModeConfig.Resolve(recoveredReloadMode)
+                : ConfigureGatewayStep.GetEffectiveReloadMode(_ctx.Config.Gateway);
+            var restoreCommand = hadExplicitReloadMode
+                ? $"openclaw config set gateway.reload.mode {WslShellQuoting.QuotePosixSingleQuote(reloadMode)}"
+                : "openclaw config unset gateway.reload.mode";
             var result = await _ctx.Commands.RunInWslAsync(
                 _ctx.DistroName!,
-                $"{_ctx.WslPathPrefix} && openclaw config set gateway.reload.mode hybrid",
+                $"{_ctx.WslPathPrefix} && {restoreCommand}",
                 TimeSpan.FromSeconds(15),
                 ct: CancellationToken.None);
 
-            if (result.ExitCode == 0)
-                _ctx.Logger.Info("Reset gateway.reload.mode to hybrid after wizard");
-            else
-                _ctx.Logger.Warn($"Failed to reset gateway.reload.mode after wizard (exit {result.ExitCode}): {result.Stderr.Trim()}");
+            var absentStateAlreadyRestored = !hadExplicitReloadMode && IsMissingReloadModePath(result);
+            if (result.ExitCode != 0 && !absentStateAlreadyRestored)
+                return StepResult.Fail($"Failed to restore gateway.reload.mode after wizard (exit {result.ExitCode}): {result.Stderr.Trim()}");
+
+            var restoredState = hadExplicitReloadMode ? reloadMode : "its previous absent state";
+            _ctx.Logger.Info($"Restored gateway.reload.mode to {restoredState} after wizard; restarting gateway to apply wizard configuration");
+            var restartResult = await StartGatewayStep.RestartAndWaitForHealthAsync(_ctx, CancellationToken.None);
+            if (!restartResult.IsSuccess)
+                return StepResult.Fail($"Gateway restart after wizard failed: {restartResult.Message}", restartResult.Error);
+
+            GatewayReloadRecoveryStore.Clear(_ctx);
+            _reloadSuspended = false;
+            _reloadRecoveryRecorded = false;
+
+            return StepResult.Ok($"Restored gateway.reload.mode to {restoredState} and restarted gateway");
         }
         catch (Exception ex)
         {
-            _ctx.Logger.Warn($"Failed to reset gateway.reload.mode after wizard: {ex.Message}");
+            return StepResult.Fail($"Failed to restore gateway.reload.mode after wizard: {ex.Message}", ex);
         }
+    }
+
+    private static bool IsMissingReloadModePath(CommandResult result)
+    {
+        if (result.ExitCode == 0)
+            return false;
+
+        var output = $"{result.Stdout}\n{result.Stderr}";
+        return output.Contains("Config path not found", StringComparison.OrdinalIgnoreCase)
+            && output.Contains("gateway.reload.mode", StringComparison.Ordinal);
     }
 
     private string WriteAnswerTemplate(IReadOnlyList<WizardTemplateStep> discoveredSteps, WizardPayload? missingStep)
@@ -515,6 +766,19 @@ public sealed class SetupWizardRunner
         return ex.Message.Contains("connection lost", StringComparison.OrdinalIgnoreCase)
             || ex.Message.Contains("gateway restarting", StringComparison.OrdinalIgnoreCase)
             || ex.Message.Contains("service restart", StringComparison.OrdinalIgnoreCase);
+    }
+
+    internal static bool IsKnownLkgTerminalDisconnect(
+        string? gatewayVersion,
+        string? answerKey,
+        Exception ex)
+    {
+        return string.Equals(
+                gatewayVersion,
+                TerminalDisconnectCompatibilityVersion,
+                StringComparison.OrdinalIgnoreCase)
+            && string.Equals(answerKey, "done", StringComparison.OrdinalIgnoreCase)
+            && IsRestartLikeWizardDisconnect(ex);
     }
 
     private static bool IsKnownGatewayFinalizationPromptBug(string error)

@@ -3,6 +3,8 @@ namespace OpenClaw.SetupEngine.Tests;
 [Collection(EnvironmentVariableCollection.Name)]
 public sealed class GatewayLkgVersionTests
 {
+    private const string ExpectedLkgVersion = "2026.7.1";
+
     [Fact]
     public void ResolveLkgVersion_ReturnsEmbeddedLkg()
     {
@@ -18,6 +20,7 @@ public sealed class GatewayLkgVersionTests
         config.Gateway.Version = null;
         GatewayLkgVersion.ApplyToConfig(config);
 
+        Assert.Equal(ExpectedLkgVersion, GatewayLkgVersion.LkgVersion);
         Assert.Equal(GatewayLkgVersion.LkgVersion, config.Gateway.Version);
     }
 
@@ -30,5 +33,30 @@ public sealed class GatewayLkgVersionTests
         GatewayLkgVersion.ApplyToConfig(config);
 
         Assert.Null(config.Gateway.Version);
+        Assert.Equal("https://contoso.example/install-cli.sh", config.Gateway.InstallUrl);
+    }
+
+    [Fact]
+    public void TerminalWizardDisconnect_RemainsPinnedToAffectedReleaseAndDoneStep()
+    {
+        var disconnect = new OperationCanceledException(
+            "Gateway connection lost while waiting for wizard response");
+
+        Assert.True(SetupWizardRunner.IsKnownLkgTerminalDisconnect(
+            ExpectedLkgVersion,
+            "done",
+            disconnect));
+        Assert.False(SetupWizardRunner.IsKnownLkgTerminalDisconnect(
+            "2026.7.2",
+            "done",
+            disconnect));
+        Assert.False(SetupWizardRunner.IsKnownLkgTerminalDisconnect(
+            ExpectedLkgVersion,
+            "what-now",
+            disconnect));
+        Assert.False(SetupWizardRunner.IsKnownLkgTerminalDisconnect(
+            ExpectedLkgVersion,
+            "done",
+            new InvalidOperationException("wizard rejected the answer")));
     }
 }

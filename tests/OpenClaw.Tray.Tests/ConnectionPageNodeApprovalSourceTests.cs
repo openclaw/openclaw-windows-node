@@ -17,7 +17,9 @@ public sealed class ConnectionPageNodeApprovalSourceTests
             "CommandCenterBrowserProxyAuthWarningPolicy.cs");
         var appSource = ReadSource("src", "OpenClaw.Tray.WinUI", "App.xaml.cs");
 
-        Assert.Contains("NodeCapabilityHealthInfo.FromLocalDeclarations(localNode)", builderSource);
+        Assert.Contains(
+            "NodeCapabilityHealthInfo.FromLocalDeclarations(localNode, gatewayVersion)",
+            builderSource);
         Assert.DoesNotContain("NodeCapabilityHealthInfo.FromNode(localNode)", builderSource);
         Assert.Contains("var hasAuthoritativePendingLocalNodeTrust =", builderSource);
         Assert.Contains("string.Equals(node.NodeId, localNodeId, StringComparison.OrdinalIgnoreCase)", builderSource);

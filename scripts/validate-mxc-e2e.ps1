@@ -148,10 +148,65 @@ function Set-ProcessEnv {
     [Environment]::SetEnvironmentVariable($Name, $Value, "Process")
 }
 
+function Assert-ReviewedComposedGatewayPackage {
+    param(
+        [Parameter(Mandatory = $true)][string]$PackageSpec,
+        [Parameter(Mandatory = $true)][string]$ExpectedSha256,
+        [Parameter(Mandatory = $true)][string]$HostDistroName
+    )
+
+    $composedUri = $null
+    if (-not [Uri]::TryCreate($PackageSpec, [UriKind]::Absolute, [ref]$composedUri) -or
+        ($composedUri.Scheme -ne [Uri]::UriSchemeHttp -and $composedUri.Scheme -ne [Uri]::UriSchemeHttps) -or
+        -not $composedUri.AbsolutePath.EndsWith(".tgz", [StringComparison]::OrdinalIgnoreCase)) {
+        throw "OPENCLAW_E2E_GATEWAY_PACKAGE_SPEC must be an absolute HTTP(S) URL for a reviewed composed .tgz package."
+    }
+    if (-not [string]::IsNullOrEmpty($composedUri.UserInfo)) {
+        throw "OPENCLAW_E2E_GATEWAY_PACKAGE_SPEC cannot contain credentials."
+    }
+    if ($ExpectedSha256 -notmatch "^[a-fA-F0-9]{64}$") {
+        throw "OPENCLAW_E2E_GATEWAY_PACKAGE_SHA256 must be the reviewed composed-package SHA-256."
+    }
+    if ($HostDistroName -notmatch "^OpenClawE2EPackageHost-[A-Za-z0-9-]+$") {
+        throw "OPENCLAW_E2E_GATEWAY_PACKAGE_HOST_DISTRO must identify the disposable package host."
+    }
+
+    $normalizedSha256 = $ExpectedSha256.ToLowerInvariant()
+    $expectedFileName = "openclaw-composed-$normalizedSha256.tgz"
+    if (-not [string]::Equals(
+        [IO.Path]::GetFileName($composedUri.AbsolutePath),
+        $expectedFileName,
+        [StringComparison]::Ordinal)) {
+        throw "Composed gateway package URL is not bound to the reviewed SHA-256. Use Start-E2EGatewayPackageHost.ps1 output."
+    }
+
+    $hostPackagePath = "/tmp/openclaw-e2e-package-host/$expectedFileName"
+    $hostHashOutput = [string](& wsl.exe -d $HostDistroName -u root -- sha256sum -- $hostPackagePath)
+    if ($LASTEXITCODE -ne 0 -or $hostHashOutput -notmatch "^([a-fA-F0-9]{64})\s" -or
+        $Matches[1].ToLowerInvariant() -ne $normalizedSha256) {
+        throw "The disposable package host does not contain the reviewed composed gateway package."
+    }
+    $hostMode = [string](& wsl.exe -d $HostDistroName -u root -- stat -c "%a" -- $hostPackagePath)
+    if ($LASTEXITCODE -ne 0 -or $hostMode.Trim() -ne "444") {
+        throw "The reviewed composed gateway package is not read-only in the disposable package host."
+    }
+    $hostAddresses = @(
+        ((& wsl.exe -d $HostDistroName -u root -- hostname -I) -split "\s+") |
+            Where-Object { -not [string]::IsNullOrWhiteSpace($_) }
+    )
+    if ($LASTEXITCODE -ne 0 -or $hostAddresses -notcontains $composedUri.Host) {
+        throw "The composed gateway package URL is not served by the proven disposable package host."
+    }
+
+    Write-Host "Composed gateway package identity proven: distro=$HostDistroName sha256=$normalizedSha256" -ForegroundColor Green
+}
+
 $trackedEnvVars = @(
     "OPENCLAW_REPO_ROOT",
     "OPENCLAW_RUN_E2E",
-    "OPENCLAW_RUN_MXC_E2E"
+    "OPENCLAW_RUN_MXC_E2E",
+    "OPENCLAW_E2E_GATEWAY_SOURCE",
+    "OPENCLAW_E2E_GATEWAY_VERSION"
 )
 $previousEnv = @{}
 foreach ($name in $trackedEnvVars) {
@@ -159,9 +214,26 @@ foreach ($name in $trackedEnvVars) {
 }
 
 try {
+    if ([string]::IsNullOrWhiteSpace($env:OPENCLAW_E2E_GATEWAY_PACKAGE_SPEC)) {
+        throw "OPENCLAW_E2E_GATEWAY_PACKAGE_SPEC must name the reviewed composed HTTP(S) .tgz package before formal MXC validation."
+    }
+    if ([string]::IsNullOrWhiteSpace($env:OPENCLAW_E2E_GATEWAY_PACKAGE_SHA256)) {
+        throw "OPENCLAW_E2E_GATEWAY_PACKAGE_SHA256 must identify the reviewed composed package before formal MXC validation."
+    }
+    if ([string]::IsNullOrWhiteSpace($env:OPENCLAW_E2E_GATEWAY_PACKAGE_HOST_DISTRO)) {
+        throw "OPENCLAW_E2E_GATEWAY_PACKAGE_HOST_DISTRO must identify the disposable package host before formal MXC validation."
+    }
+
+    Assert-ReviewedComposedGatewayPackage `
+        -PackageSpec $env:OPENCLAW_E2E_GATEWAY_PACKAGE_SPEC `
+        -ExpectedSha256 $env:OPENCLAW_E2E_GATEWAY_PACKAGE_SHA256 `
+        -HostDistroName $env:OPENCLAW_E2E_GATEWAY_PACKAGE_HOST_DISTRO
+
     Set-ProcessEnv -Name "OPENCLAW_REPO_ROOT" -Value $repoRoot
     Set-ProcessEnv -Name "OPENCLAW_RUN_E2E" -Value "1"
     Set-ProcessEnv -Name "OPENCLAW_RUN_MXC_E2E" -Value "1"
+    Set-ProcessEnv -Name "OPENCLAW_E2E_GATEWAY_VERSION" -Value $null
+    Set-ProcessEnv -Name "OPENCLAW_E2E_GATEWAY_SOURCE" -Value "composed"
 
     Write-Host "OpenClaw MXC validation"
     Write-Host "  Repo: $repoRoot"
