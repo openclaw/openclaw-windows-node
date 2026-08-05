@@ -70,6 +70,17 @@ public interface IOperatorGatewayClient
         => Task.FromException<ChatHistoryInfo>(new NotSupportedException("chat.history is not supported by this gateway client."));
     Task CheckHealthAsync();
     Task RequestSessionsAsync(string? agentId = null);
+    /// <summary>
+    /// Returns a bounded, coherent session discovery snapshot. The default keeps
+    /// existing external implementers source-compatible with an empty snapshot.
+    /// </summary>
+    Task<SessionQuerySnapshot> QuerySessionsAsync(
+        SessionQuery query,
+        CancellationToken cancellationToken = default)
+        => Task.FromResult(new SessionQuerySnapshot());
+    /// <summary>Clears server search and restores the coherent recent snapshot.</summary>
+    SessionQuerySnapshot ClearSessionSearch(SessionQuery? query = null)
+        => new();
     Task RequestUsageAsync();
     Task RequestNodesAsync();
     Task RequestUsageStatusAsync();

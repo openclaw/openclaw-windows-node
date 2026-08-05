@@ -38,10 +38,14 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
     private GatewayUsageStatusInfo? _usageStatus;
     private GatewayCostUsageInfo? _usageCost;
     private readonly Dictionary<string, string> _pendingRequestMethods = new();
+    private readonly Dictionary<string, int> _pendingRequestConnectionGenerations = new();
     private readonly Dictionary<string, TaskCompletionSource<ChatSendResult>> _pendingChatSendRequests = new();
     private readonly object _pendingRequestLock = new();
     private readonly object _pendingChatSendLock = new();
     private readonly object _sessionsLock = new();
+    private readonly object _sessionListCapabilityLock = new();
+    private readonly SemaphoreSlim _sessionListCapabilityGate = new(1, 1);
+    private readonly SessionQueryCoordinator _sessionQueries;
     private readonly DeviceIdentity _deviceIdentity;
     private readonly string _currentGatewayUrl;
     private string? _mainSessionKey;
@@ -93,6 +97,8 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
     private bool _pairingRequiredAwaitingApproval;
     private string? _pairingRequiredRequestId;
     private bool _authFailed;
+    private int _sessionListCapability;
+    private int _sessionListConnectionGeneration;
     private string? _lastSkillsStatusAgentId;
     private readonly bool _tokenIsBootstrapToken;
     private readonly bool _bootstrapPairAsNode;
@@ -138,7 +144,6 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
         _agentsListUnsupported = false;
         _agentFilesListUnsupported = false;
         _agentFileGetUnsupported = false;
-        _operatorReadScopeUnavailable = false;
     }
 
     /// <summary>
@@ -163,6 +168,8 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
     protected override Task OnConnectedAsync()
     {
         ResetUnsupportedMethodFlags();
+        ResetSessionListCapability();
+        _sessionQueries.AdvanceConnectionGeneration();
         RaiseTransportConnected();
         return Task.CompletedTask;
     }
@@ -178,6 +185,8 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
 
     protected override void OnDisconnected()
     {
+        ResetSessionListCapability();
+        _sessionQueries.AdvanceConnectionGeneration();
         ClearPendingRequests();
         // Invalidate the handshake snapshot — the next hello-ok must
         // re-establish the canonical session key, scopes, etc. Without this,
@@ -191,6 +200,8 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
 
     protected override void OnDisposing()
     {
+        ResetSessionListCapability();
+        _sessionQueries.Dispose();
         ClearPendingRequests();
     }
 
@@ -280,12 +291,19 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
         _deviceIdentity.Initialize();
         _connectAuthToken = HasUsableOperatorDeviceToken ? _deviceIdentity.DeviceToken! : (_tokenIsBootstrapToken ? string.Empty : _token);
         _useV2Signature |= _tokenIsBootstrapToken && !HasUsableOperatorDeviceToken;
+        _sessionQueries = new SessionQueryCoordinator(
+            (request, cancellationToken) =>
+                ListSessionsPageAsync(request, cancellationToken: cancellationToken));
     }
 
     public async Task DisconnectAsync()
     {
         if (IsConnected)
         {
+            // Invalidate connection-owned queries before waiting for the close
+            // handshake. A slow gateway response must not keep bootstrap work
+            // alive or publish after the caller has requested disconnect.
+            OnDisconnected();
             try
             {
                 await CloseWebSocketAsync();
@@ -310,14 +328,7 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
 
         try
         {
-            var req = new
-            {
-                type = "req",
-                id = Guid.NewGuid().ToString(),
-                method = "health",
-                @params = new { deep = true }
-            };
-            await SendRawAsync(JsonSerializer.Serialize(req));
+            await SendTrackedRequestAsync("health", new { deep = true });
         }
         catch (Exception ex)
         {
@@ -669,7 +680,28 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
     /// Sends a wizard RPC request and waits for the response payload.
     /// Used for wizard.start, wizard.next, wizard.cancel, wizard.status.
     /// </summary>
-    public async Task<JsonElement> SendWizardRequestAsync(string method, object? parameters = null, int timeoutMs = 30000)
+    public async Task<JsonElement> SendWizardRequestAsync(
+        string method,
+        object? parameters = null,
+        int timeoutMs = 30000)
+    {
+        try
+        {
+            return await SendWizardRequestAsync(
+                method, parameters, timeoutMs, CancellationToken.None).ConfigureAwait(false);
+        }
+        catch (GatewayRequestException ex)
+        {
+            // Preserve the exact public exception contract for existing callers.
+            throw new InvalidOperationException(ex.Message);
+        }
+    }
+
+    public async Task<JsonElement> SendWizardRequestAsync(
+        string method,
+        object? parameters,
+        int timeoutMs,
+        CancellationToken cancellationToken)
     {
         if (!IsConnected)
             throw new InvalidOperationException("Gateway connection is not open");
@@ -678,12 +710,14 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
         var requestId = Guid.NewGuid().ToString();
         var completion = new TaskCompletionSource<JsonElement>(TaskCreationOptions.RunContinuationsAsynchronously);
         _pendingWizardResponses[requestId] = completion;
-        TrackPendingRequest(requestId, method);
 
         try
         {
+            cancellationToken.ThrowIfCancellationRequested();
             await SendRawAsync(SerializeRequest(requestId, method, parameters));
-            return await completion.Task.WaitAsync(TimeSpan.FromMilliseconds(timeoutMs), CancellationToken);
+            using var linked = CancellationTokenSource.CreateLinkedTokenSource(
+                CancellationToken, cancellationToken);
+            return await completion.Task.WaitAsync(TimeSpan.FromMilliseconds(timeoutMs), linked.Token);
         }
         catch (TimeoutException ex)
         {
@@ -692,19 +726,128 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
         finally
         {
             _pendingWizardResponses.TryRemove(requestId, out _);
-            RemovePendingRequest(requestId);
         }
     }
 
     /// <summary>Request session list from gateway.</summary>
     public async Task RequestSessionsAsync(string? agentId = null)
     {
-        if (_operatorReadScopeUnavailable) return;
-        if (!string.IsNullOrEmpty(agentId))
-            await SendTrackedRequestAsync("sessions.list", new { agentId });
-        else
-            await SendTrackedRequestAsync("sessions.list");
+        var scopeState = CaptureOperatorReadScopeState();
+        if (scopeState.Unavailable) return;
+        try
+        {
+            var snapshot = await QuerySessionsAsync(new SessionQuery
+            {
+                AgentId = agentId,
+                IncludeBackground = true,
+            }).ConfigureAwait(false);
+            SessionInfo[]? publication = null;
+            if (_sessionQueries.TryApplyCurrentRecentSnapshot(
+                    snapshot,
+                    sessions => publication = ReplaceCoherentSessions(sessions)))
+            {
+                SessionsUpdated?.Invoke(this, publication!);
+            }
+        }
+        catch (OperationCanceledException)
+        {
+            // Superseded query or connection generation. A current request owns publication.
+        }
+        catch (GatewayRequestException ex) when (IsMissingScopeError(ex.Message, "operator.read"))
+        {
+            MarkOperatorReadScopeUnavailable(scopeState.Generation);
+        }
+        catch (Exception ex)
+        {
+            _logger.Warn($"sessions.list failed: {ex.Message}");
+        }
     }
+
+    public async Task<SessionQuerySnapshot> QuerySessionsAsync(
+        SessionQuery query,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(query);
+        cancellationToken.ThrowIfCancellationRequested();
+        var scopeState = CaptureOperatorReadScopeState();
+        if (scopeState.Unavailable)
+        {
+            var queryGeneration = _sessionQueries.ConnectionGeneration;
+            cancellationToken.ThrowIfCancellationRequested();
+            if (!IsOperatorReadScopeUnavailable(scopeState.Generation))
+            {
+                throw new OperationCanceledException(
+                    "sessions.list query belongs to a stale connection generation.",
+                    cancellationToken);
+            }
+
+            // The query was not executed, so report no paging/search mode while
+            // retaining the requested search identity for upper consumers.
+            return new SessionQuerySnapshot
+            {
+                Search = string.IsNullOrWhiteSpace(query.Search) ? null : query.Search.Trim(),
+                ConnectionGeneration = queryGeneration,
+                Sessions = Array.Empty<SessionInfo>(),
+                MaterializedSessions = Array.Empty<SessionInfo>(),
+            };
+        }
+
+        EnsureCurrentSessionListGeneration(scopeState.Generation, cancellationToken);
+        try
+        {
+            return await (string.IsNullOrWhiteSpace(query.Search)
+                ? _sessionQueries.LoadRecentAsync(query, cancellationToken)
+                : _sessionQueries.SearchAsync(query, cancellationToken)).ConfigureAwait(false);
+        }
+        catch (GatewayRequestException ex) when (IsMissingScopeError(ex.Message, "operator.read"))
+        {
+            if (!MarkOperatorReadScopeUnavailable(scopeState.Generation))
+            {
+                throw new OperationCanceledException(
+                    "sessions.list response belongs to a stale connection generation.",
+                    ex,
+                    cancellationToken);
+            }
+            throw;
+        }
+    }
+
+    private (int Generation, bool Unavailable) CaptureOperatorReadScopeState()
+    {
+        lock (_sessionListCapabilityLock)
+            return (_sessionListConnectionGeneration, _operatorReadScopeUnavailable);
+    }
+
+    private bool IsOperatorReadScopeUnavailable(int connectionGeneration)
+    {
+        lock (_sessionListCapabilityLock)
+        {
+            return _sessionListConnectionGeneration == connectionGeneration &&
+                   _operatorReadScopeUnavailable;
+        }
+    }
+
+    private bool MarkOperatorReadScopeUnavailable(
+        int connectionGeneration,
+        string warning = "Gateway token lacks operator.read; disabling sessions polling")
+    {
+        var shouldLog = false;
+        lock (_sessionListCapabilityLock)
+        {
+            if (_sessionListConnectionGeneration != connectionGeneration)
+                return false;
+            if (_operatorReadScopeUnavailable)
+                return true;
+            _operatorReadScopeUnavailable = true;
+            shouldLog = true;
+        }
+        if (shouldLog)
+            _logger.Warn(warning);
+        return true;
+    }
+
+    public SessionQuerySnapshot ClearSessionSearch(SessionQuery? query = null) =>
+        _sessionQueries.ClearSearch(query);
 
     /// <summary>Subscribe to session change events so the gateway pushes
     /// <c>sessions.changed</c> notifications when sessions are mutated.</summary>
@@ -717,7 +860,7 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
     /// <summary>Request usage/context info from gateway (may not be supported on all gateways).</summary>
     public async Task RequestUsageAsync()
     {
-        if (_operatorReadScopeUnavailable) return;
+        if (CaptureOperatorReadScopeState().Unavailable) return;
         if (!IsConnected) return;
         try
         {
@@ -742,7 +885,7 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
     /// <summary>Request connected node inventory from gateway.</summary>
     public async Task RequestNodesAsync()
     {
-        if (_operatorReadScopeUnavailable) return;
+        if (CaptureOperatorReadScopeState().Unavailable) return;
         if (_nodeListUnsupported) return;
         await SendTrackedRequestAsync("node.list");
     }
@@ -1654,9 +1797,11 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
 
     private void TrackPendingRequest(string requestId, string method)
     {
+        var connectionGeneration = CaptureOperatorReadScopeState().Generation;
         lock (_pendingRequestLock)
         {
             _pendingRequestMethods[requestId] = method;
+            _pendingRequestConnectionGenerations[requestId] = connectionGeneration;
         }
     }
 
@@ -1665,15 +1810,23 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
         lock (_pendingRequestLock)
         {
             _pendingRequestMethods.Remove(requestId);
+            _pendingRequestConnectionGenerations.Remove(requestId);
         }
     }
 
-    private string? TakePendingRequestMethod(string? requestId)
+    private (string? Method, int? ConnectionGeneration) TakePendingRequest(string? requestId)
     {
-        if (string.IsNullOrWhiteSpace(requestId)) return null;
+        if (string.IsNullOrWhiteSpace(requestId)) return (null, null);
         lock (_pendingRequestLock)
         {
-            return _pendingRequestMethods.Remove(requestId, out var method) ? method : null;
+            if (!_pendingRequestMethods.Remove(requestId, out var method))
+                return (null, null);
+            var generation = _pendingRequestConnectionGenerations.Remove(
+                requestId,
+                out var connectionGeneration)
+                ? connectionGeneration
+                : (int?)null;
+            return (method, generation);
         }
     }
 
@@ -1682,6 +1835,7 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
         lock (_pendingRequestLock)
         {
             _pendingRequestMethods.Clear();
+            _pendingRequestConnectionGenerations.Clear();
         }
 
         lock (_pendingChatSendLock)
@@ -1792,11 +1946,12 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
     private void HandleResponse(JsonElement root)
     {
         string? requestMethod = null;
+        int? requestConnectionGeneration = null;
         string? requestId = null;
         if (root.TryGetProperty("id", out var idProp))
         {
             requestId = idProp.GetString();
-            requestMethod = TakePendingRequestMethod(requestId);
+            (requestMethod, requestConnectionGeneration) = TakePendingRequest(requestId);
         }
 
         var pendingChatSend = TakePendingChatSend(requestId);
@@ -1821,7 +1976,9 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
             if (root.TryGetProperty("ok", out var okWiz) && okWiz.ValueKind == JsonValueKind.False)
             {
                 var message = TryGetErrorMessage(root) ?? "wizard request failed";
-                wizardCompletion.TrySetException(new InvalidOperationException(message));
+                wizardCompletion.TrySetException(new GatewayRequestException(
+                    TryGetErrorTopLevelCode(root),
+                    message));
             }
             else if (root.TryGetProperty("payload", out var wizPayload))
             {
@@ -1859,10 +2016,16 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
             return;
         }
 
+        // Protocol responses are request-owned. Once specialized completion
+        // paths have had first refusal, an id with no tracked owner is stale,
+        // canceled, duplicated, or unsolicited and must not mutate generic state.
+        if (requestId != null && requestMethod is null)
+            return;
+
         if (root.TryGetProperty("ok", out var okProp) &&
             okProp.ValueKind == JsonValueKind.False)
         {
-            HandleRequestError(requestMethod, root);
+            HandleRequestError(requestMethod, requestConnectionGeneration, root);
             return;
         }
 
@@ -1956,17 +2119,8 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
 
             RaiseStatusChanged(ConnectionStatus.Connected);
 
-            // Request initial state after handshake
-            _ = Task.Run(async () =>
-            {
-                await Task.Delay(500);
-                await CheckHealthAsync();
-                await RequestSessionsAsync();
-                await SubscribeSessionEventsAsync();
-                await RequestUsageAsync();
-                await RequestNodesAsync();
-                await RequestAgentsListAsync();
-            });
+            var bootstrapGeneration = CaptureSessionListCapability().Generation;
+            _ = Task.Run(() => RequestInitialStateAsync(bootstrapGeneration));
         }
 
         // Handle health response — channels
@@ -2162,7 +2316,10 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
             _ => null
         };
 
-    private void HandleRequestError(string? method, JsonElement root)
+    private void HandleRequestError(
+        string? method,
+        int? requestConnectionGeneration,
+        JsonElement root)
     {
         var message = TryGetErrorMessage(root) ?? "request failed";
         var detailCode = method == "connect" ? TryGetErrorDetailCode(root) : null;
@@ -2253,12 +2410,12 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
         if (IsMissingScopeError(message, "operator.read") &&
             method is "sessions.list" or "usage.status" or "usage.cost" or "node.list")
         {
-            if (!_operatorReadScopeUnavailable)
+            if (requestConnectionGeneration.HasValue)
             {
-                _logger.Warn("Gateway token lacks operator.read; disabling sessions/usage/nodes polling");
+                MarkOperatorReadScopeUnavailable(
+                    requestConnectionGeneration.Value,
+                    "Gateway token lacks operator.read; disabling sessions/usage/nodes polling");
             }
-
-            _operatorReadScopeUnavailable = true;
             return;
         }
 
@@ -3628,6 +3785,91 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
         return arr;
     }
 
+    private async Task RequestInitialStateAsync(int connectionGeneration)
+    {
+        Task? sessionCatchUp = null;
+        try
+        {
+            await Task.Delay(500).ConfigureAwait(false);
+            EnsureCurrentSessionListGeneration(connectionGeneration, CancellationToken.None);
+            await CheckHealthAsync().ConfigureAwait(false);
+            EnsureCurrentSessionListGeneration(connectionGeneration, CancellationToken.None);
+
+            // Subscribe before the paged catch-up. A sessions.changed event then
+            // supersedes the in-flight recent query through the coordinator's
+            // request identity instead of being lost behind a slow initial load.
+            await SubscribeSessionEventsAsync().ConfigureAwait(false);
+            EnsureCurrentSessionListGeneration(connectionGeneration, CancellationToken.None);
+
+            // Keep the coherent catch-up owned and observed by this bootstrap,
+            // but do not serialize unrelated startup reads behind up to 20 pages.
+            sessionCatchUp = RequestInitialSessionsAsync(connectionGeneration);
+            await RequestUsageAsync().ConfigureAwait(false);
+            EnsureCurrentSessionListGeneration(connectionGeneration, CancellationToken.None);
+            await RequestNodesAsync().ConfigureAwait(false);
+            EnsureCurrentSessionListGeneration(connectionGeneration, CancellationToken.None);
+            await RequestAgentsListAsync().ConfigureAwait(false);
+        }
+        catch (OperationCanceledException)
+        {
+            // The socket generation changed while bootstrap work was pending.
+        }
+        catch (Exception ex)
+        {
+            _logger.Warn($"Initial gateway state request failed: {ex.Message}");
+        }
+        finally
+        {
+            if (sessionCatchUp is not null)
+                await sessionCatchUp.ConfigureAwait(false);
+        }
+    }
+
+    private async Task RequestInitialSessionsAsync(int connectionGeneration)
+    {
+        try
+        {
+            await RequestSessionsAsync().ConfigureAwait(false);
+            EnsureCurrentSessionListGeneration(connectionGeneration, CancellationToken.None);
+        }
+        catch (OperationCanceledException)
+        {
+            // Disconnect/reconnect owns cancellation of this generation's catch-up.
+        }
+        catch (Exception ex)
+        {
+            // Keep this task non-faulting because bootstrap is launched fire-and-forget.
+            _logger.Warn($"Initial sessions catch-up failed: {ex.Message}");
+        }
+    }
+
+    private SessionInfo[] ReplaceCoherentSessions(IReadOnlyList<SessionInfo> sessions)
+    {
+        SessionInfo[] snapshot;
+        lock (_sessionsLock)
+        {
+            var replacement = new Dictionary<string, SessionInfo>(StringComparer.Ordinal);
+            foreach (var incoming in sessions)
+            {
+                if (string.IsNullOrWhiteSpace(incoming.Key))
+                    continue;
+                var session = incoming.Clone();
+                if (_sessions.TryGetValue(session.Key, out var tracked))
+                {
+                    session.CurrentActivity = tracked.CurrentActivity;
+                    if (tracked.LastSeen > session.LastSeen)
+                        session.LastSeen = tracked.LastSeen;
+                }
+                replacement[session.Key] = session;
+            }
+            _sessions.Clear();
+            foreach (var pair in replacement)
+                _sessions[pair.Key] = pair.Value;
+            snapshot = GetSessionListInternal();
+        }
+        return snapshot;
+    }
+
     // --- Parsing helpers ---
 
     private void ParseChannelHealth(JsonElement channels)
@@ -3741,6 +3983,57 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
         }
     }
 
+    private SessionInfo[] ParseSessionPageRows(JsonElement sessions, int maximumRows = int.MaxValue)
+    {
+        var rows = new List<SessionInfo>();
+        if (sessions.ValueKind == JsonValueKind.Array)
+        {
+            foreach (var item in sessions.EnumerateArray())
+            {
+                if (rows.Count >= maximumRows)
+                    break;
+                if (item.ValueKind != JsonValueKind.Object)
+                    continue;
+                var key = GetString(item, "key");
+                if (string.IsNullOrWhiteSpace(key))
+                    continue;
+                var session = new SessionInfo { Key = key };
+                UpdateSessionMainStatus(session, key, item);
+                PopulateSessionFromObject(session, item);
+                rows.Add(session);
+            }
+        }
+        else if (sessions.ValueKind == JsonValueKind.Object)
+        {
+            foreach (var property in sessions.EnumerateObject())
+            {
+                if (rows.Count >= maximumRows)
+                    break;
+                var key = property.Name;
+                if (key is "recent" or "count" or "path" or "defaults" or "ts")
+                    continue;
+                if (!key.Equals("global", StringComparison.OrdinalIgnoreCase) &&
+                    !key.Contains(':') &&
+                    !key.Contains("agent") &&
+                    !key.Contains("session"))
+                {
+                    continue;
+                }
+
+                var session = new SessionInfo { Key = key };
+                UpdateSessionMainStatus(session, key, property.Value);
+                if (property.Value.ValueKind == JsonValueKind.Object)
+                    PopulateSessionFromObject(session, property.Value);
+                else if (property.Value.ValueKind == JsonValueKind.String)
+                    session.Status = property.Value.GetString() ?? string.Empty;
+                else
+                    continue;
+                rows.Add(session);
+            }
+        }
+        return rows.ToArray();
+    }
+
     private string? ParseSessionItem(JsonElement item)
     {
         var sessionKey = "unknown";
@@ -3828,7 +4121,7 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
         {
             var newModel = model.GetString();
             if (session.Model != newModel)
-                _logger.Info($"[SESSION] {session.Key}: model changed '{session.Model}' → '{newModel}'");
+                _logger.Info($"[SESSION] model changed '{session.Model}' → '{newModel}'");
             session.Model = newModel;
         }
         if (item.TryGetProperty("label", out _)) session.Label = GetString(item, "label");

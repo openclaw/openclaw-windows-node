@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text.Json;
+using System.Text.RegularExpressions;
 using System.Threading.Tasks;
 
 namespace OpenClaw.Shared;
@@ -30,6 +31,175 @@ namespace OpenClaw.Shared;
 // ─────────────────────────────────────────────────────────────────────────────
 public partial class OpenClawGatewayClient
 {
+    // ── sessions.list ──
+
+    /// <summary>
+    /// Fetches one typed sessions.list page. Expanded paging capability is
+    /// negotiated once per connection and falls back only for the precise
+    /// INVALID_REQUEST unknown-parameter response used by older gateways.
+    /// </summary>
+    public async Task<SessionListResult> ListSessionsPageAsync(
+        SessionListRequest request,
+        int timeoutMs = 15000,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+        await _sessionListCapabilityGate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            var (connectionGeneration, capability) = CaptureSessionListCapability();
+            if (capability == 2)
+            {
+                EnsureCurrentSessionListGeneration(connectionGeneration, cancellationToken);
+                var legacyPayload = await SendWizardRequestAsync(
+                    "sessions.list",
+                    request.ToLegacyParameters(),
+                    timeoutMs,
+                    cancellationToken).ConfigureAwait(false);
+                EnsureCurrentSessionListGeneration(connectionGeneration, cancellationToken);
+                return ParseSessionListResult(legacyPayload, isLegacyResponse: true);
+            }
+
+            try
+            {
+                EnsureCurrentSessionListGeneration(connectionGeneration, cancellationToken);
+                var payload = await SendWizardRequestAsync(
+                    "sessions.list",
+                    request.ToParameters(),
+                    timeoutMs,
+                    cancellationToken).ConfigureAwait(false);
+                EnsureCurrentSessionListGeneration(connectionGeneration, cancellationToken);
+                RememberSessionListCapability(connectionGeneration, 1, cancellationToken);
+                return ParseSessionListResult(payload, isLegacyResponse: false);
+            }
+            catch (GatewayRequestException ex) when (IsLegacySessionListParameterError(ex, request))
+            {
+                RememberSessionListCapability(connectionGeneration, 2, cancellationToken);
+                _logger.Warn("sessions.list expanded paging unsupported; using legacy request shape");
+                EnsureCurrentSessionListGeneration(connectionGeneration, cancellationToken);
+                var legacyPayload = await SendWizardRequestAsync(
+                    "sessions.list",
+                    request.ToLegacyParameters(),
+                    timeoutMs,
+                    cancellationToken).ConfigureAwait(false);
+                EnsureCurrentSessionListGeneration(connectionGeneration, cancellationToken);
+                return ParseSessionListResult(legacyPayload, isLegacyResponse: true);
+            }
+        }
+        finally
+        {
+            _sessionListCapabilityGate.Release();
+        }
+    }
+
+    internal static bool IsLegacySessionListParameterError(
+        GatewayRequestException exception,
+        SessionListRequest request)
+    {
+        if (!string.Equals(exception.Code, "INVALID_REQUEST", StringComparison.Ordinal))
+            return false;
+
+        var match = Regex.Match(
+            exception.Message,
+            @"\b(?:unexpected\s+property|unknown\s+parameter)\b\s*(?::|=)?\s*[""'`]?(?<field>[A-Za-z][A-Za-z0-9]*)[""'`]?",
+            RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
+        if (!match.Success)
+            return false;
+
+        var field = match.Groups["field"].Value;
+        if (string.Equals(field, "limit", StringComparison.OrdinalIgnoreCase))
+            return request.Limit.HasValue;
+        if (string.Equals(field, "offset", StringComparison.OrdinalIgnoreCase))
+            return request.Offset.HasValue;
+        if (string.Equals(field, "search", StringComparison.OrdinalIgnoreCase))
+            return !string.IsNullOrWhiteSpace(request.Search);
+        if (string.Equals(field, "configuredAgentsOnly", StringComparison.OrdinalIgnoreCase))
+            return request.ConfiguredAgentsOnly.HasValue;
+        return false;
+    }
+
+    private void EnsureCurrentSessionListGeneration(
+        int connectionGeneration,
+        CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        lock (_sessionListCapabilityLock)
+        {
+            if (_sessionListConnectionGeneration != connectionGeneration)
+                throw new OperationCanceledException("sessions.list response belongs to a stale connection generation.");
+        }
+    }
+
+    private (int Generation, int Capability) CaptureSessionListCapability()
+    {
+        lock (_sessionListCapabilityLock)
+            return (_sessionListConnectionGeneration, _sessionListCapability);
+    }
+
+    private void RememberSessionListCapability(
+        int connectionGeneration,
+        int capability,
+        CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        lock (_sessionListCapabilityLock)
+        {
+            if (_sessionListConnectionGeneration != connectionGeneration)
+                throw new OperationCanceledException("sessions.list response belongs to a stale connection generation.");
+            _sessionListCapability = capability;
+        }
+    }
+
+    private void ResetSessionListCapability()
+    {
+        lock (_sessionListCapabilityLock)
+        {
+            _sessionListConnectionGeneration++;
+            _sessionListCapability = 0;
+            _operatorReadScopeUnavailable = false;
+        }
+    }
+
+    internal SessionListResult ParseSessionListResult(
+        JsonElement payload,
+        bool isLegacyResponse = false)
+    {
+        var maximumRows = isLegacyResponse
+            ? SessionQueryCoordinator.MaximumMaterializedSessions
+            : int.MaxValue;
+        IReadOnlyList<SessionInfo> sessions = TryGetSessionsPayload(payload, out var sessionsPayload)
+            ? ParseSessionPageRows(sessionsPayload, maximumRows)
+            : Array.Empty<SessionInfo>();
+        return new SessionListResult
+        {
+            Sessions = sessions,
+            Count = GetInt32OrNull(payload, "count"),
+            TotalCount = GetInt32OrNull(payload, "totalCount"),
+            LimitApplied = GetInt32OrNull(payload, "limitApplied"),
+            Offset = GetInt32OrNull(payload, "offset"),
+            NextOffset = GetInt32OrNull(payload, "nextOffset"),
+            HasMore = payload.ValueKind == JsonValueKind.Object
+                ? GetOptionalBool(payload, "hasMore")
+                : null,
+            IsLegacyResponse = isLegacyResponse,
+        };
+    }
+
+    private static int? GetInt32OrNull(JsonElement parent, string property)
+    {
+        if (parent.ValueKind != JsonValueKind.Object ||
+            !parent.TryGetProperty(property, out var value) ||
+            value.ValueKind != JsonValueKind.Number)
+        {
+            return null;
+        }
+        if (value.TryGetInt32(out var integer))
+            return integer;
+        if (value.TryGetInt64(out var wide) && wide is >= int.MinValue and <= int.MaxValue)
+            return (int)wide;
+        return null;
+    }
+
     // ── sessions.reset ──
 
     public async Task<SessionResetResult> ResetSessionDetailedAsync(
