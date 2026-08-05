@@ -1,0 +1,117 @@
+name: Windows node release-candidate E2E
+
+on:
+  workflow_call:
+    inputs:
+      candidate_artifact_name:
+        description: Name of the caller-run artifact containing openclaw-current.tgz and package-candidate.json.
+        required: true
+        type: string
+      candidate_sha256:
+        description: SHA-256 of openclaw-current.tgz from the caller's package metadata.
+        required: true
+        type: string
+      candidate_version:
+        description: Version expected from the candidate tarball.
+        required: true
+        type: string
+      windows_node_sha:
+        description: Immutable Windows node revision to test.
+        required: true
+        type: string
+
+permissions:
+  actions: read
+  contents: read
+
+jobs:
+  setup-connect:
+    name: Setup, connect, and invoke candidate gateway
+    runs-on: windows-latest
+    timeout-minutes: 55
+    steps:
+      - name: Validate immutable Windows node revision
+        shell: pwsh
+        run: |
+          if ("${{ inputs.windows_node_sha }}" -notmatch '^[0-9a-f]{40}$') {
+            throw "windows_node_sha must be a full lowercase Git SHA."
+          }
+          if ("${{ inputs.candidate_sha256 }}" -notmatch '^[0-9a-f]{64}$') {
+            throw "candidate_sha256 must be a lowercase SHA-256."
+          }
+
+      - name: Check out Windows node
+        uses: actions/checkout@v7
+        with:
+          repository: openclaw/openclaw-windows-node
+          ref: ${{ inputs.windows_node_sha }}
+          persist-credentials: false
+
+      - name: Download exact OpenClaw candidate
+        uses: actions/download-artifact@v8
+        with:
+          name: ${{ inputs.candidate_artifact_name }}
+          path: ${{ runner.temp }}\openclaw-candidate
+
+      - name: Verify candidate identity
+        id: candidate
+        shell: pwsh
+        run: |
+          $candidateDir = Join-Path $env:RUNNER_TEMP "openclaw-candidate"
+          $tarball = Join-Path $candidateDir "openclaw-current.tgz"
+          $metadataPath = Join-Path $candidateDir "package-candidate.json"
+          if (-not (Test-Path -LiteralPath $tarball) -or -not (Test-Path -LiteralPath $metadataPath)) {
+            throw "Candidate artifact must contain openclaw-current.tgz and package-candidate.json."
+          }
+
+          $actualHash = (Get-FileHash -LiteralPath $tarball -Algorithm SHA256).Hash.ToLowerInvariant()
+          if ($actualHash -ne "${{ inputs.candidate_sha256 }}") {
+            throw "Candidate tarball SHA-256 mismatch: expected ${{ inputs.candidate_sha256 }}, got $actualHash."
+          }
+
+          $metadata = Get-Content -LiteralPath $metadataPath -Raw | ConvertFrom-Json
+          if ($metadata.sha256 -ne "${{ inputs.candidate_sha256 }}" -or $metadata.version -ne "${{ inputs.candidate_version }}") {
+            throw "Candidate metadata does not match the caller's declared SHA-256 and version."
+          }
+
+          "tarball=$tarball" >> $env:GITHUB_OUTPUT
+
+      - name: Setup .NET 10
+        uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: 10.0.x
+
+      - name: Restore and build E2E surface
+        shell: pwsh
+        run: |
+          dotnet restore
+          dotnet build src/OpenClaw.Shared -c Debug --no-restore
+          dotnet build src/OpenClaw.SetupEngine -c Debug --no-restore
+          dotnet build src/OpenClaw.Tray.WinUI -c Debug -r win-x64 --no-restore
+          dotnet build tests/OpenClaw.E2ETests -c Debug -r win-x64 --no-restore
+
+      - name: Run candidate setup and node E2E
+        shell: pwsh
+        env:
+          OPENCLAW_RUN_E2E: 1
+          OPENCLAW_E2E_GATEWAY_PACKAGE_TGZ: ${{ steps.candidate.outputs.tarball }}
+          OPENCLAW_E2E_GATEWAY_EXPECTED_VERSION: ${{ inputs.candidate_version }}
+        run: |
+          dotnet test tests/OpenClaw.E2ETests `
+            --no-build `
+            -c Debug `
+            -r win-x64 `
+            --verbosity normal `
+            --results-directory TestResults/ReleaseCandidateE2E `
+            --logger "trx;LogFileName=OpenClaw.E2ETests.release-candidate.trx" `
+            --logger "console;verbosity=detailed" `
+            --filter "FullyQualifiedName~OpenClaw.E2ETests.Setup.SetupAndConnectTests|FullyQualifiedName~OpenClaw.E2ETests.Setup.MxcSetupAndConnectTests"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Upload candidate E2E evidence
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: windows-node-release-candidate-e2e-${{ github.run_id }}-${{ github.run_attempt }}
+          path: TestResults/ReleaseCandidateE2E/
+          if-no-files-found: warn

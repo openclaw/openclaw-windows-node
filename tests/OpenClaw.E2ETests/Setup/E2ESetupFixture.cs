@@ -50,6 +50,7 @@ public sealed class E2ESetupFixture : IAsyncLifetime
 
     private readonly string _configPath;
     private readonly string _distroName;
+    private readonly string? _expectedGatewayVersion;
     private Process? _trayProcess;
 
     public E2ESetupFixture()
@@ -98,6 +99,7 @@ public sealed class E2ESetupFixture : IAsyncLifetime
 
         // Write isolated config JSON
         _configPath = Path.Combine(DataDir, "e2e-config.json");
+        _expectedGatewayVersion = Environment.GetEnvironmentVariable("OPENCLAW_E2E_GATEWAY_EXPECTED_VERSION");
         WriteConfig();
 
         Log($"E2E fixture initialized: distro={_distroName}, dataDir={DataDir}, localAppDataRoot={LocalAppDataRoot}, artifacts={ArtifactDir}");
@@ -131,6 +133,9 @@ public sealed class E2ESetupFixture : IAsyncLifetime
         }
 
         Log("Phase 1 complete: pipeline succeeded.");
+
+        if (!string.IsNullOrWhiteSpace(_expectedGatewayVersion))
+            await VerifyGatewayVersionAsync(_expectedGatewayVersion);
 
         // ── Phase 2: Verify artifacts ──
         Log("Phase 2: Verifying artifacts...");
@@ -230,7 +235,7 @@ public sealed class E2ESetupFixture : IAsyncLifetime
 
     private void WriteConfig()
     {
-        var lkgVersion = GatewayLkgVersion.ResolveLkgVersion();
+        var gatewayVersion = ResolveGatewayVersion();
         var config = new
         {
             DistroName = _distroName,
@@ -267,12 +272,50 @@ public sealed class E2ESetupFixture : IAsyncLifetime
             },
             Gateway = new
             {
-                Version = lkgVersion
+                Version = gatewayVersion
             }
         };
 
         var json = JsonSerializer.Serialize(config, new JsonSerializerOptions { WriteIndented = true });
         File.WriteAllText(_configPath, json);
+    }
+
+    private static string ResolveGatewayVersion()
+    {
+        var candidatePackage = Environment.GetEnvironmentVariable("OPENCLAW_E2E_GATEWAY_PACKAGE_TGZ");
+        if (string.IsNullOrWhiteSpace(candidatePackage))
+            return GatewayLkgVersion.ResolveLkgVersion();
+
+        if (!Path.IsPathFullyQualified(candidatePackage) ||
+            !candidatePackage.EndsWith(".tgz", StringComparison.OrdinalIgnoreCase) ||
+            !File.Exists(candidatePackage))
+        {
+            throw new InvalidOperationException(
+                "OPENCLAW_E2E_GATEWAY_PACKAGE_TGZ must name an existing absolute .tgz file.");
+        }
+
+        var root = Path.GetPathRoot(candidatePackage);
+        if (string.IsNullOrWhiteSpace(root) || root.Length < 2 || root[1] != ':')
+            throw new InvalidOperationException(
+                "OPENCLAW_E2E_GATEWAY_PACKAGE_TGZ must be on a Windows drive mounted by WSL.");
+
+        var wslPath = "/mnt/" + char.ToLowerInvariant(root[0]) +
+                      candidatePackage[root.Length..].Replace('\\', '/');
+        return $"file:{wslPath}";
+    }
+
+    private async Task VerifyGatewayVersionAsync(string expectedVersion)
+    {
+        var actual = await RunInWslAsync("openclaw --version", TimeSpan.FromSeconds(15));
+        if (actual.ExitCode != 0 ||
+            !actual.Stdout.Contains(expectedVersion, StringComparison.OrdinalIgnoreCase))
+        {
+            throw new InvalidOperationException(
+                $"Candidate gateway version mismatch: expected {expectedVersion}, " +
+                $"got stdout='{actual.Stdout.Trim()}', stderr='{actual.Stderr.Trim()}'.");
+        }
+
+        Log($"Candidate gateway package verified: version={expectedVersion}");
     }
 
     private void PatchSettingsForMcp(string settingsPath)
