@@ -283,6 +283,52 @@ public sealed class AppRefactorContractTests
     }
 
     [Fact]
+    public void McpRestart_RebuildsOnlyLocalTransportAndPreservesCapabilityOwners()
+    {
+        var root = TestRepositoryPaths.GetRepositoryRoot();
+        var source = File.ReadAllText(Path.Combine(
+            root,
+            "src",
+            "OpenClaw.Tray.WinUI",
+            "Services",
+            "NodeService.cs"));
+        var enable = ExtractMethod(source, "SetMcpEnabled");
+        var refresh = ExtractMethod(source, "RefreshMcpOnlyCapabilities");
+        var register = ExtractMethod(source, "RegisterCapabilities");
+        var start = ExtractMethod(source, "StartMcpServer");
+
+        AssertInOrder(
+            enable,
+            "lock (_clientLock)",
+            "lock (_capabilitiesLock)",
+            "McpRuntimeStatePolicy.PlanCapabilityEnable",
+            "McpCapabilityEnablePlan.RebuildFromCurrentSettings",
+            "RegisterCapabilities();");
+        Assert.Contains("hasGatewayClient: _nodeClient != null", enable);
+        Assert.Contains("hasCapabilities: _capabilities.Count != 0", enable);
+        Assert.Contains("StartMcpServer();", enable);
+        Assert.Contains("StopMcpServer();", enable);
+
+        Assert.Contains("lock (_clientLock)", refresh);
+        Assert.Contains("RegisterCapabilities();", refresh);
+        AssertInOrder(
+            register,
+            "lock (_capabilitiesLock)",
+            "_capabilities.Clear();",
+            "_execApprovalsV2Handler ??=",
+            "_textToSpeechService ??=",
+            "_voiceService ??=",
+            "} // end lock",
+            "StartMcpServer();");
+
+        Assert.DoesNotContain("_mcpOnlyCapabilities.Clear()", register);
+        AssertInOrder(
+            start,
+            "merged.AddRange(_capabilities)",
+            "merged.AddRange(_mcpOnlyCapabilities)");
+    }
+
+    [Fact]
     public void AppStatus_ReportsNodeStateFromManagerSnapshot()
     {
         var source = ReadAppSources();
