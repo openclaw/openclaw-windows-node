@@ -57,10 +57,15 @@ public sealed class ConnectionRegressionSourceTests
     [Fact]
     public void LocalNodeTrustPairListUpdate_RefreshesVisibleNodeList()
     {
-        var managerSource = ReadSource("src", "OpenClaw.Connection", "GatewayConnectionManager.cs");
+        var pairingOwnerSource = ReadSource(
+            "src",
+            "OpenClaw.Connection",
+            "DevicePairApprovalCoordinator.cs");
 
-        Assert.Contains("operatorClient.RequestNodesAsync()", managerSource);
-        Assert.Contains("Node list refresh failed after local node trust request", managerSource);
+        Assert.Contains("lease.Gateway.RequestNodesAsync()", pairingOwnerSource);
+        Assert.Contains(
+            "Node list refresh failed after local node trust request",
+            pairingOwnerSource);
     }
 
     [Fact]

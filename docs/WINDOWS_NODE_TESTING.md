@@ -239,8 +239,11 @@ Local MCP clients also see MCP-only `app.*` commands such as `app.navigate`, `ap
 - `src/OpenClaw.Shared/WindowsNodeClient.cs` - Node protocol client
 - `src/OpenClaw.Shared/Capabilities/*.cs` - Capability handlers
 - `src/OpenClaw.Tray.WinUI/Services/Connection/GatewayRegistry.cs` - persistent gateway records
-- `src/OpenClaw.Tray.WinUI/Services/Connection/GatewayConnectionManager.cs` - operator/node connection lifecycle
-- `src/OpenClaw.Tray.WinUI/Services/Connection/CredentialResolver.cs` - device-token/shared/bootstrap credential precedence
+- `src/OpenClaw.Connection/GatewayConnectionManager.cs` - public lifecycle façade, operator/state/tunnel orchestration
+- `src/OpenClaw.Connection/NodeConnectionCoordinator.cs` - node generation, start/recovery, connector events, and telemetry
+- `src/OpenClaw.Connection/BootstrapTokenLifecycle.cs` - bootstrap/device-token handoff and durable clear timing
+- `src/OpenClaw.Connection/DevicePairApprovalCoordinator.cs` - device role-upgrade approval and bounded reconnect
+- `src/OpenClaw.Connection/CredentialResolver.cs` - device-token/shared/bootstrap credential precedence
 - `src/OpenClaw.Tray.WinUI/Services/NodeService.cs` - Orchestrates capabilities
 - `src/OpenClaw.Tray.WinUI/Services/ScreenCaptureService.cs` - screen snapshots
 - `src/OpenClaw.Tray.WinUI/Services/ScreenRecordingService.cs` - screen recordings

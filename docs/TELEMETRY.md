@@ -110,6 +110,8 @@ The Windows node initiates its gateway connection: its prepare span includes
 credential resolution, client creation, and synchronous capability registration;
 its transport span covers the outbound WebSocket; and its handshake span covers
 the gateway's `connect.challenge`, the signed connect request, and `hello-ok`.
+`NodeConnectionCoordinator` owns this node attempt/phase instrumentation; the
+manager continues to own operator and overall state-transition instrumentation.
 
 A node attempt succeeds only after `hello-ok` yields connected and paired
 readiness. Pending approval completes the attempt as `pairing_required`; human

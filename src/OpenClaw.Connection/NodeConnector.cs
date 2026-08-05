@@ -230,7 +230,7 @@ public sealed class NodeConnector : INodeConnector, INodeConnectorTelemetryEvent
     // held when _clientLifecycleLock is acquired, but subscribers never acquire
     // _connectSemaphore. Among monitor locks, _clientLifecycleLock is the outermost
     // in the connector's acquisition graph. Subscribers may acquire their own locks
-    // (GatewayConnectionManager._telemetryLock, GatewayRegistry._lock,
+    // (NodeConnectionCoordinator's telemetry/operation locks, GatewayRegistry._lock,
     // ConnectionDiagnostics._lock) but code holding those locks must not
     // synchronously enter connector lifecycle operations, preserving a consistent
     // acquisition order that prevents deadlock. Subscriber handlers must return
