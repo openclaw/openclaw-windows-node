@@ -3288,6 +3288,18 @@ Commands are blocked while sandboxing is unavailable because strict fallback blo
   <data name="Chat_Error_SendFailedFormat" xml:space="preserve">
     <value>Send failed: {0}</value>
   </data>
+  <data name="Chat_Notification_ClearThinkingFailed" xml:space="preserve">
+    <value>Reasoning setting not changed</value>
+  </data>
+  <data name="Chat_Error_ClearThinkingFailedFormat" xml:space="preserve">
+    <value>Could not use default reasoning: {0}</value>
+  </data>
+  <data name="Chat_Error_ClearThinkingCanceled" xml:space="preserve">
+    <value>The change was canceled.</value>
+  </data>
+  <data name="Chat_Error_ClearThinkingInterrupted" xml:space="preserve">
+    <value>The gateway connection changed before the update was confirmed.</value>
+  </data>
   <data name="Chat_Notification_AbortFailed" xml:space="preserve">
     <value>Abort failed</value>
   </data>

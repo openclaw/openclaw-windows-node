@@ -520,6 +520,7 @@ public class SessionCommandResult
 {
     public string Method { get; set; } = "";
     public bool Ok { get; set; }
+    public bool IsSupported { get; set; } = true;
     public string? Key { get; set; }
     public bool? Deleted { get; set; }
     public bool? Compacted { get; set; }

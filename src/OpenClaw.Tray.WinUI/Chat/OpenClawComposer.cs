@@ -63,6 +63,7 @@ public record OpenClawComposerProps(
     Action<string> OnChannelChanged,
     Action<string> OnModelChanged,
     Action<string> OnThinkingLevelChanged,
+    Action OnThinkingLevelCleared,
     Action<bool> OnPermissionsChanged,
     Func<CancellationToken, Action?, Task<string?>>? OnVoiceRequest = null,
     Action? OnAttachClick = null,
@@ -99,10 +100,8 @@ public sealed class OpenClawComposer : Component<OpenClawComposerProps>
     // rather than OnModelChanged.
     private static readonly object ClearModelTag = new();
 
-    // Thinking levels matching the gateway's sessions.patch thinkingLevel values.
-    // "medium" is the default when the session has no explicit thinkingLevel set.
-    private static readonly string[] ThinkingLevelIds    = { "off", "minimal", "low", "medium", "high" };
-    private static readonly string[] ThinkingLevelLabels = { "off", "minimal", "low", "medium (default)", "high" };
+    // Concrete gateway thinkingLevel values. Default is a distinct clear action.
+    private static readonly string[] ThinkingLevelIds = { "off", "minimal", "low", "medium", "high" };
 
     public override Element Render()
     {
@@ -374,16 +373,21 @@ public sealed class OpenClawComposer : Component<OpenClawComposerProps>
             ? (defaultChoice?.DisplayName ?? "Default")
             : (currentChoice?.DisplayName ?? Props.CurrentModel ?? "Model");
 
-        var thinkingLevel = Props.CurrentThinkingLevel ?? "medium";
-        var thinkingIndex = Array.IndexOf(ThinkingLevelIds, thinkingLevel);
-        if (thinkingIndex < 0) thinkingIndex = 3; // default to "medium (default)"
+        var defaultReasoningLabel = LocalizationHelper.GetString("Chat_Composer_Reasoning_Default");
+        var thinkingIndex = Props.CurrentThinkingLevel is null
+            ? -1
+            : Array.IndexOf(ThinkingLevelIds, Props.CurrentThinkingLevel);
 
-        var reasoningMenuItems = new CoreMenuFlyoutItemBase[ThinkingLevelLabels.Length];
-        for (int i = 0; i < ThinkingLevelLabels.Length; i++)
+        var reasoningMenuItems = new CoreMenuFlyoutItemBase[ThinkingLevelIds.Length + 1];
+        reasoningMenuItems[0] = ToggleMenuItem(
+            defaultReasoningLabel,
+            isChecked: Props.CurrentThinkingLevel is null,
+            onClick: Props.OnThinkingLevelCleared);
+        for (int i = 0; i < ThinkingLevelIds.Length; i++)
         {
             var levelIndex = i;
-            reasoningMenuItems[i] = ToggleMenuItem(
-                ThinkingLevelLabels[i],
+            reasoningMenuItems[i + 1] = ToggleMenuItem(
+                ThinkingLevelIds[i],
                 isChecked: i == thinkingIndex,
                 onClick: () =>
                 {
@@ -509,12 +513,11 @@ public sealed class OpenClawComposer : Component<OpenClawComposerProps>
             FlyoutPlacementMode.Top);
 
 
-        // Title-case the level id for the picker button (menu rows show the
-        // fuller "medium (default)" style labels).
-        var reasoningId = ThinkingLevelIds[thinkingIndex];
-        var reasoningPickerLabel = reasoningId.Length == 0
-            ? reasoningId
-            : char.ToUpperInvariant(reasoningId[0]) + reasoningId.Substring(1);
+        var reasoningPickerLabel = Props.CurrentThinkingLevel is null
+            ? defaultReasoningLabel
+            : thinkingIndex >= 0
+                ? char.ToUpperInvariant(ThinkingLevelIds[thinkingIndex][0]) + ThinkingLevelIds[thinkingIndex].Substring(1)
+                : Props.CurrentThinkingLevel;
 
         // ── Row 2: multi-line composer textbox ─────────────────────────
         var recording = isRecording.Value;

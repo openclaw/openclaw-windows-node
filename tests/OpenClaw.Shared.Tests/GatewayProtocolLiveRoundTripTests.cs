@@ -117,6 +117,33 @@ public sealed class GatewayProtocolLiveRoundTripTests : IDisposable
             var clearFrame = await server.WaitFrameAsync("sessions.patch", occurrence: 1, timeoutMs: rpc);
             Assert.Contains("\"model\":null", clearFrame);
 
+            var detailedClear = await client.PatchSessionDetailedAsync(
+                key,
+                new SessionPatch { ThinkingLevel = SessionPatch.Clear },
+                timeoutMs: rpc);
+            Assert.True(detailedClear.Ok);
+            Assert.True(detailedClear.IsSupported);
+            Assert.Equal(key, detailedClear.Key);
+            var detailedClearFrame = await server.WaitFrameAsync("sessions.patch", occurrence: 2, timeoutMs: rpc);
+            Assert.Contains("\"method\":\"sessions.patch\"", detailedClearFrame);
+            Assert.Contains("\"key\":\"agent:main:main\"", detailedClearFrame);
+            Assert.Contains("\"thinkingLevel\":null", detailedClearFrame);
+            Assert.DoesNotContain("\"thinkingLevel\":\"default\"", detailedClearFrame);
+            Assert.DoesNotContain("\"thinkingLevel\":\"medium\"", detailedClearFrame);
+
+            // ── 6. sessions.list correlated snapshot ──
+            var sessionsUpdated = 0;
+            client.SessionsUpdated += (_, _) => sessionsUpdated++;
+            var sessions = await client.RequestSessionsSnapshotAsync();
+            var refreshedSession = Assert.Single(sessions);
+            Assert.Equal(key, refreshedSession.Key);
+            Assert.Null(refreshedSession.ThinkingLevel);
+            Assert.Equal("gpt-5", refreshedSession.Model);
+            Assert.Equal(0, sessionsUpdated);
+            Assert.Empty(client.GetSessionList());
+            var sessionsFrame = await server.WaitFrameAsync("sessions.list", occurrence: 0, timeoutMs: rpc);
+            Assert.Contains("\"method\":\"sessions.list\"", sessionsFrame);
+
             PrintProof(server);
         }
         finally
@@ -214,6 +241,62 @@ public sealed class GatewayProtocolLiveRoundTripTests : IDisposable
         }
     }
 
+    [Fact]
+    public async Task SessionPatchDetailed_RepresentsDisconnectedUnknownTimeoutAndCancellation()
+    {
+        var disconnected = new OpenClawGatewayClient(
+            "ws://127.0.0.1:1/",
+            "test-token",
+            new TestLogger(),
+            identityPath: _identityDir);
+        var disconnectedResult = await disconnected.PatchSessionDetailedAsync(
+            "agent:main:main",
+            new SessionPatch { ThinkingLevel = SessionPatch.Clear });
+        Assert.False(disconnectedResult.Ok);
+        Assert.True(disconnectedResult.IsSupported);
+        Assert.Contains("not open", disconnectedResult.Error);
+
+        using var server = new LoopbackGatewayServer();
+        server.OnMethod("sessions.patch", _ => LoopbackResponse.Fail("unknown method: sessions.patch"));
+        var client = new OpenClawGatewayClient(
+            server.WebSocketUrl,
+            "test-token",
+            new TestLogger(),
+            identityPath: _identityDir);
+        try
+        {
+            await ConnectAndWaitAsync(client, server);
+            var unknown = await client.PatchSessionDetailedAsync(
+                "agent:main:main",
+                new SessionPatch { ThinkingLevel = SessionPatch.Clear },
+                timeoutMs: 20000);
+            Assert.False(unknown.Ok);
+            Assert.False(unknown.IsSupported);
+            Assert.Contains("unknown method", unknown.Error);
+
+            server.OnMethod("sessions.patch", _ => LoopbackResponse.NoResponse());
+            var timeout = await client.PatchSessionDetailedAsync(
+                "agent:main:main",
+                new SessionPatch { ThinkingLevel = SessionPatch.Clear },
+                timeoutMs: 50);
+            Assert.False(timeout.Ok);
+            Assert.True(timeout.IsSupported);
+            Assert.Contains("timed out", timeout.Error);
+
+            using var cancellation = new CancellationTokenSource(50);
+            await Assert.ThrowsAnyAsync<OperationCanceledException>(() =>
+                client.PatchSessionDetailedAsync(
+                    "agent:main:main",
+                    new SessionPatch { ThinkingLevel = SessionPatch.Clear },
+                    timeoutMs: 20000,
+                    cancellationToken: cancellation.Token));
+        }
+        finally
+        {
+            await client.DisconnectAsync();
+        }
+    }
+
     private static void ConfigureResponders(LoopbackGatewayServer server)
     {
         // NOTE: intentionally NO hello-ok responder. The new methods only require
@@ -244,6 +327,21 @@ public sealed class GatewayProtocolLiveRoundTripTests : IDisposable
                             choices = new object[] { new { value = "gpt-5", label = "GPT-5" } }
                         }
                     }
+                }
+            }
+        });
+
+        server.OnMethod("sessions.list", _ => new
+        {
+            sessions = new object[]
+            {
+                new
+                {
+                    key = "agent:main:main",
+                    status = "active",
+                    model = "gpt-5",
+                    thinkingLevel = (string?)null,
+                    isMain = true
                 }
             }
         });
@@ -513,10 +611,14 @@ public sealed class GatewayProtocolLiveRoundTripTests : IDisposable
                 : new { };
 
             var response = payload is LoopbackResponse loopbackResponse
-                ? loopbackResponse.Ok
+                ? loopbackResponse.SuppressResponse
+                    ? null
+                    : loopbackResponse.Ok
                     ? JsonSerializer.Serialize(new { type = "res", id, ok = true, payload = loopbackResponse.Payload })
                     : JsonSerializer.Serialize(new { type = "res", id, ok = false, error = loopbackResponse.Error })
                 : JsonSerializer.Serialize(new { type = "res", id, ok = true, payload });
+            if (response is null)
+                return;
             var bytes = Encoding.UTF8.GetBytes(response);
             await socket.SendAsync(new ArraySegment<byte>(bytes), WebSocketMessageType.Text, endOfMessage: true, CancellationToken.None);
         }
@@ -540,8 +642,13 @@ public sealed class GatewayProtocolLiveRoundTripTests : IDisposable
         }
     }
 
-    private sealed record LoopbackResponse(bool Ok, object? Payload = null, string? Error = null)
+    private sealed record LoopbackResponse(
+        bool Ok,
+        object? Payload = null,
+        string? Error = null,
+        bool SuppressResponse = false)
     {
         public static LoopbackResponse Fail(string error) => new(false, Error: error);
+        public static LoopbackResponse NoResponse() => new(false, SuppressResponse: true);
     }
 }

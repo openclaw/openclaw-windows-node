@@ -3241,6 +3241,18 @@ Les commandes sont bloquées tant que le sandboxing est indisponible, car le blo
   <data name="Chat_Error_SendFailedFormat" xml:space="preserve">
     <value>Échec de l’envoi : {0}</value>
   </data>
+  <data name="Chat_Notification_ClearThinkingFailed" xml:space="preserve">
+    <value>Paramètre de raisonnement inchangé</value>
+  </data>
+  <data name="Chat_Error_ClearThinkingFailedFormat" xml:space="preserve">
+    <value>Impossible d’utiliser le raisonnement par défaut : {0}</value>
+  </data>
+  <data name="Chat_Error_ClearThinkingCanceled" xml:space="preserve">
+    <value>La modification a été annulée.</value>
+  </data>
+  <data name="Chat_Error_ClearThinkingInterrupted" xml:space="preserve">
+    <value>La connexion à la passerelle a changé avant la confirmation de la mise à jour.</value>
+  </data>
   <data name="Chat_Notification_AbortFailed" xml:space="preserve">
     <value>Échec de l'abandon</value>
   </data>

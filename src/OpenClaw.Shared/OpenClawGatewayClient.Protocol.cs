@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text.Json;
+using System.Threading;
 using System.Threading.Tasks;
 
 namespace OpenClaw.Shared;
@@ -472,6 +473,95 @@ public partial class OpenClawGatewayClient
         if (patch is null || !patch.HasChanges) return Task.FromResult(false);
         return TrySendTrackedRequestAsync("sessions.patch", patch.ToPayload(key));
     }
+
+    /// <summary>
+    /// Applies an extended session patch and waits for the gateway response.
+    /// Unsupported gateways and protocol failures return a truthful typed result;
+    /// caller cancellation remains cancellation.
+    /// </summary>
+    public async Task<SessionCommandResult> PatchSessionDetailedAsync(
+        string key,
+        SessionPatch patch,
+        int timeoutMs = 15000,
+        CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(key))
+        {
+            return CreateSessionPatchFailure(key, "Session key is required");
+        }
+        if (patch is null || !patch.HasChanges)
+        {
+            return CreateSessionPatchFailure(key, "Session patch has no changes");
+        }
+        if (!IsConnected)
+        {
+            return CreateSessionPatchFailure(key, "Gateway connection is not open");
+        }
+
+        try
+        {
+            var payload = await SendWizardRequestAsync(
+                "sessions.patch",
+                patch.ToPayload(key),
+                timeoutMs,
+                cancellationToken).ConfigureAwait(false);
+            return ParseSessionPatchResult(payload, key);
+        }
+        catch (OperationCanceledException)
+        {
+            throw;
+        }
+        catch (TimeoutException ex)
+        {
+            _logger.Warn($"sessions.patch timed out: {ex.Message}");
+            return CreateSessionPatchFailure(
+                key,
+                "The gateway did not respond before the session change timed out.");
+        }
+        catch (InvalidOperationException ex) when (IsUnknownMethodError(ex.Message))
+        {
+            _logger.Warn("sessions.patch unsupported on gateway");
+            return new SessionCommandResult
+            {
+                Method = "sessions.patch",
+                Ok = false,
+                IsSupported = false,
+                Key = key,
+                Error = ex.Message
+            };
+        }
+        catch (InvalidOperationException ex)
+        {
+            _logger.Warn($"sessions.patch failed: {ex.Message}");
+            return CreateSessionPatchFailure(key, ex.Message);
+        }
+    }
+
+    internal static SessionCommandResult ParseSessionPatchResult(JsonElement payload, string key)
+    {
+        var ok = !payload.TryGetProperty("ok", out var okElement) ||
+                 okElement.ValueKind == JsonValueKind.True;
+        var reason = GetStringSafe(payload, "reason");
+        var error = GetStringSafe(payload, "error");
+        return new SessionCommandResult
+        {
+            Method = "sessions.patch",
+            Ok = ok,
+            IsSupported = true,
+            Key = FirstNonEmpty(GetStringSafe(payload, "key"), key),
+            Reason = reason,
+            Error = ok ? null : error ?? reason ?? "The gateway could not change the session."
+        };
+    }
+
+    private static SessionCommandResult CreateSessionPatchFailure(string? key, string error) => new()
+    {
+        Method = "sessions.patch",
+        Ok = false,
+        IsSupported = true,
+        Key = key,
+        Error = error
+    };
 
     // ── sessions.files.list / sessions.files.get ──
 

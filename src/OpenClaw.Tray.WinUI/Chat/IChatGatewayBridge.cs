@@ -70,6 +70,8 @@ public interface IChatGatewayBridge : IDisposable
             Error = "Response-aware sessions.compact is not supported by this chat bridge."
         });
     Task RequestSessionsAsync() => Task.CompletedTask;
+    Task<SessionInfo[]?> RequestSessionsSnapshotAsync(CancellationToken cancellationToken = default) =>
+        Task.FromResult<SessionInfo[]?>(null);
     Task PatchSessionModelAsync(string sessionKey, string model);
     /// <summary>
     /// Clears the session's model override (tri-state <c>sessions.patch</c> with
@@ -79,6 +81,17 @@ public interface IChatGatewayBridge : IDisposable
     /// </summary>
     Task ClearSessionModelAsync(string sessionKey);
     Task PatchSessionThinkingLevelAsync(string sessionKey, string thinkingLevel);
+    Task<SessionCommandResult> ClearSessionThinkingLevelAsync(
+        string sessionKey,
+        CancellationToken cancellationToken = default) =>
+        Task.FromResult(new SessionCommandResult
+        {
+            Method = "sessions.patch",
+            Ok = false,
+            IsSupported = false,
+            Key = sessionKey,
+            Error = "Response-aware thinking-level clear is not supported by this chat bridge."
+        });
     Task<ChatHistoryInfo> RequestChatHistoryAsync(string? sessionKey);
     Task SendChatAbortAsync(string runId, string? sessionKey = null);
     Task ResolveExecApprovalAsync(string approvalId, string decision);
@@ -214,6 +227,14 @@ public sealed class GatewayClientChatBridge : IChatGatewayBridge
     public Task PatchSessionThinkingLevelAsync(string sessionKey, string thinkingLevel) =>
         _client.PatchSessionAsync(sessionKey, new SessionPatch { ThinkingLevel = thinkingLevel });
 
+    public Task<SessionCommandResult> ClearSessionThinkingLevelAsync(
+        string sessionKey,
+        CancellationToken cancellationToken = default) =>
+        _client.PatchSessionDetailedAsync(
+            sessionKey,
+            new SessionPatch { ThinkingLevel = SessionPatch.Clear },
+            cancellationToken: cancellationToken);
+
     public Task<CommandCatalog> ListCommandsAsync(CommandCatalogQuery? query = null) =>
         _client.ListCommandsAsync(query);
 
@@ -234,6 +255,10 @@ public sealed class GatewayClientChatBridge : IChatGatewayBridge
 
     public Task RequestSessionsAsync() =>
         _client.RequestSessionsAsync();
+
+    public async Task<SessionInfo[]?> RequestSessionsSnapshotAsync(
+        CancellationToken cancellationToken = default) =>
+        await _client.RequestSessionsSnapshotAsync(cancellationToken).ConfigureAwait(false);
 
     public Task<ChatHistoryInfo> RequestChatHistoryAsync(string? sessionKey) =>
         _client.RequestChatHistoryAsync(sessionKey);

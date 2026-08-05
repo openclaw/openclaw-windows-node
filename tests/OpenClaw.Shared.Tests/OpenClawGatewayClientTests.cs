@@ -101,6 +101,22 @@ public class OpenClawGatewayClientTests
             return completion.Task;
         }
 
+        public Task<SessionInfo[]> RegisterPendingSessionSnapshot(string requestId)
+        {
+            var completion = new TaskCompletionSource<SessionInfo[]>(
+                TaskCreationOptions.RunContinuationsAsynchronously);
+            Assert.True(
+                _client.PendingRequests.RegisterSessionSnapshot(
+                    requestId,
+                    completion).Accepted);
+            return completion.Task;
+        }
+
+        public void RemovePendingSessionSnapshot(string requestId)
+        {
+            Assert.True(_client.PendingRequests.Remove(requestId));
+        }
+
         public void ClearPendingRequests()
         {
             _client.PendingRequests.CloseForDisconnect();

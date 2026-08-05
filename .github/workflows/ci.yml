@@ -348,7 +348,7 @@ jobs:
         include:
           - name: setup-connect
             timeout_minutes: 45
-            filter: "FullyQualifiedName~OpenClaw.E2ETests.Setup.SetupAndConnectTests|FullyQualifiedName~OpenClaw.E2ETests.Setup.MxcSetupAndConnectTests|FullyQualifiedName~OpenClaw.E2ETests.Setup.RequestRoutingProofCollectorTests"
+            filter: "FullyQualifiedName~OpenClaw.E2ETests.Setup.SetupAndConnectTests|FullyQualifiedName~OpenClaw.E2ETests.Setup.MxcSetupAndConnectTests|FullyQualifiedName~OpenClaw.E2ETests.Setup.RequestRoutingProofCollectorTests|FullyQualifiedName~OpenClaw.E2ETests.Setup.SessionsPatchThinkingLevelE2ETests"
           - name: revocation-recovery
             timeout_minutes: 25
             filter: FullyQualifiedName~OpenClaw.E2ETests.Setup.RevocationAndRecoveryTests

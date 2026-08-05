@@ -3242,6 +3242,18 @@ Opdrachten worden geblokkeerd zolang sandboxing niet beschikbaar is, omdat strik
   <data name="Chat_Error_SendFailedFormat" xml:space="preserve">
     <value>Verzenden mislukt: {0}</value>
   </data>
+  <data name="Chat_Notification_ClearThinkingFailed" xml:space="preserve">
+    <value>Redeneerinstelling niet gewijzigd</value>
+  </data>
+  <data name="Chat_Error_ClearThinkingFailedFormat" xml:space="preserve">
+    <value>Standaardredenering kan niet worden gebruikt: {0}</value>
+  </data>
+  <data name="Chat_Error_ClearThinkingCanceled" xml:space="preserve">
+    <value>De wijziging is geannuleerd.</value>
+  </data>
+  <data name="Chat_Error_ClearThinkingInterrupted" xml:space="preserve">
+    <value>De gatewayverbinding is gewijzigd voordat de update werd bevestigd.</value>
+  </data>
   <data name="Chat_Notification_AbortFailed" xml:space="preserve">
     <value>Afbreken mislukt</value>
   </data>

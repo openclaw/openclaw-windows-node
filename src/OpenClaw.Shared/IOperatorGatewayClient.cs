@@ -157,6 +157,23 @@ public interface IOperatorGatewayClient
     /// <summary>Apply an extended <see cref="SessionPatch"/> (rich field set) to a session.</summary>
     Task<bool> PatchSessionAsync(string key, SessionPatch patch)
         => Task.FromResult(false);
+    /// <summary>
+    /// Response-aware variant of <see cref="PatchSessionAsync(string, SessionPatch)"/>.
+    /// Returns the gateway's terminal result instead of completing after the frame is sent.
+    /// </summary>
+    Task<SessionCommandResult> PatchSessionDetailedAsync(
+        string key,
+        SessionPatch patch,
+        int timeoutMs = 15000,
+        CancellationToken cancellationToken = default)
+        => Task.FromResult(new SessionCommandResult
+        {
+            Method = "sessions.patch",
+            Ok = false,
+            IsSupported = false,
+            Key = key,
+            Error = "Response-aware sessions.patch is not supported by this gateway client."
+        });
     /// <summary>List session files, optionally scoped to a sub-path/search (<c>sessions.files.list</c>).</summary>
     Task<SessionFileList> ListSessionFilesAsync(string key, string? path = null, string? search = null, int timeoutMs = 15000)
         => Task.FromResult(new SessionFileList { Key = key, IsSupported = false });

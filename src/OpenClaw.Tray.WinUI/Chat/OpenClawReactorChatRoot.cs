@@ -349,7 +349,8 @@ public sealed class OpenClawReactorChatRoot : Component<OpenClawReactorChatRootP
                 SelectThread,
                 model => ObserveFireAndForget(props.Provider.SetModelAsync(effectiveThread.Id, model)),
                 () => ObserveFireAndForget(props.Provider.ClearModelAsync(effectiveThread.Id)),
-                level => RunFireAndForget(ct => props.Provider.SetThinkingLevelAsync(effectiveThread.Id, level, ct)),
+                level => ObserveFireAndForget(props.Provider.SetThinkingLevelAsync(effectiveThread.Id, level)),
+                () => ObserveFireAndForget(props.Provider.ClearThinkingLevelAsync(effectiveThread.Id)),
                 allowAll => RunFireAndForget(ct => props.Provider.SetPermissionModeAsync(effectiveThread.Id, allowAll, ct)),
                 props.OnVoiceRequest,
                 props.OnAttachClick,
@@ -562,6 +563,7 @@ public sealed record ReactorChatComposerProps(
     Action<string> OnModelChanged,
     Action OnModelCleared,
     Action<string> OnThinkingLevelChanged,
+    Action OnThinkingLevelCleared,
     Action<bool> OnPermissionsChanged,
     Func<CancellationToken, Action?, Task<string?>>? OnVoiceRequest,
     Action? OnAttachClick,
@@ -895,9 +897,10 @@ public sealed class ReactorChatComposer : Component<ReactorChatComposerProps>
             : Math.Max(0, Array.FindIndex(
                 selectableModels,
                 model => model.MatchesModel(props.CurrentThread.Model, props.CurrentThread.ModelProvider)) + 1);
-        var thinkingIndex = Math.Max(0, Array.IndexOf(
-            ThinkingLevels,
-            props.CurrentThread.ThinkingLevel ?? "medium"));
+        var defaultReasoningLabel = Localized("Chat_Composer_Reasoning_Default", "Default");
+        var thinkingIndex = props.CurrentThread.ThinkingLevel is null
+            ? -1
+            : Array.IndexOf(ThinkingLevels, props.CurrentThread.ThinkingLevel);
         var actionLabel = props.TurnActive
             ? Localized("Chat_Composer_Tooltip_Stop", "Stop")
             : Localized("Chat_Composer_Tooltip_Send", "Send");
@@ -1364,19 +1367,32 @@ public sealed class ReactorChatComposer : Component<ReactorChatComposerProps>
                     }))
                 .ToArray());
 
+        var reasoningPickerLabel = props.CurrentThread.ThinkingLevel is null
+            ? defaultReasoningLabel
+            : thinkingIndex >= 0
+                ? ThinkingLevels[thinkingIndex]
+                : props.CurrentThread.ThinkingLevel;
+        var reasoningMenuItems = new[]
+            {
+                RadioMenuItem(
+                    defaultReasoningLabel,
+                    "chat-thinking-level",
+                    props.CurrentThread.ThinkingLevel is null,
+                    props.OnThinkingLevelCleared)
+            }
+            .Concat(ThinkingLevels.Select((level, index) => RadioMenuItem(
+                level,
+                "chat-thinking-level",
+                index == thinkingIndex,
+                () => props.OnThinkingLevelChanged(level))))
+            .ToArray();
         var reasoningPicker = MenuFlyout(
             PickerButton(
-                ThinkingLevels[thinkingIndex],
-                $"{Localized("Chat_Composer_Accessibility_Reasoning", "Reasoning")}: {ThinkingLevels[thinkingIndex]}",
+                reasoningPickerLabel,
+                $"{Localized("Chat_Composer_Accessibility_Reasoning", "Reasoning")}: {reasoningPickerLabel}",
                 !props.MessageOptionsDisabled,
                 props.IsCompact ? 54 : 96),
-            ThinkingLevels
-                .Select((level, index) => RadioMenuItem(
-                    level,
-                    "chat-thinking-level",
-                    index == thinkingIndex,
-                    () => props.OnThinkingLevelChanged(level)))
-                .ToArray());
+            reasoningMenuItems);
 
         var attachButton = IconButton(
             "\uE723",

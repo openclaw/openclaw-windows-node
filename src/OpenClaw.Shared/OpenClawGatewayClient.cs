@@ -676,8 +676,19 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
     /// Sends a wizard RPC request and waits for the response payload.
     /// Used for wizard.start, wizard.next, wizard.cancel, wizard.status.
     /// </summary>
-    public async Task<JsonElement> SendWizardRequestAsync(string method, object? parameters = null, int timeoutMs = 30000)
+    public Task<JsonElement> SendWizardRequestAsync(
+        string method,
+        object? parameters = null,
+        int timeoutMs = 30000) =>
+        SendWizardRequestAsync(method, parameters, timeoutMs, CancellationToken.None);
+
+    private async Task<JsonElement> SendWizardRequestAsync(
+        string method,
+        object? parameters,
+        int timeoutMs,
+        CancellationToken cancellationToken)
     {
+        cancellationToken.ThrowIfCancellationRequested();
         if (!IsConnected)
             throw new InvalidOperationException("Gateway connection is not open");
 
@@ -690,7 +701,9 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
         {
             if (registration.Accepted)
                 await SendRawAsync(SerializeRequest(requestId, method, parameters));
-            return await completion.Task.WaitAsync(TimeSpan.FromMilliseconds(timeoutMs), CancellationToken);
+            return await completion.Task.WaitAsync(
+                TimeSpan.FromMilliseconds(timeoutMs),
+                cancellationToken);
         }
         catch (TimeoutException ex)
         {
@@ -710,6 +723,46 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
             await SendTrackedRequestAsync("sessions.list", new { agentId });
         else
             await SendTrackedRequestAsync("sessions.list");
+    }
+
+    /// <summary>
+    /// Requests and returns the session snapshot from the matching
+    /// <c>sessions.list</c> response.
+    /// </summary>
+    public async Task<SessionInfo[]> RequestSessionsSnapshotAsync(
+        CancellationToken cancellationToken = default)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        if (_operatorReadScopeUnavailable)
+            throw new NotSupportedException("sessions.list is unavailable for this connection.");
+        if (!IsConnected)
+            throw new InvalidOperationException("Gateway connection is not open");
+
+        const string method = "sessions.list";
+        var requestId = Guid.NewGuid().ToString();
+        var completion = new TaskCompletionSource<SessionInfo[]>(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        var registration = _pendingRequests.RegisterSessionSnapshot(
+            requestId,
+            completion,
+            method);
+
+        try
+        {
+            if (registration.Accepted)
+                await SendRawAsync(SerializeRequest(requestId, method, parameters: null));
+            return await completion.Task.WaitAsync(
+                TimeSpan.FromSeconds(30),
+                cancellationToken).ConfigureAwait(false);
+        }
+        catch (TimeoutException ex)
+        {
+            throw new TimeoutException($"Timed out waiting for {method} response", ex);
+        }
+        finally
+        {
+            _pendingRequests.Remove(registration);
+        }
     }
 
     /// <summary>Subscribe to session change events so the gateway pushes

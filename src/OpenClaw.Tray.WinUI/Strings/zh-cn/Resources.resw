@@ -3241,6 +3241,18 @@
   <data name="Chat_Error_SendFailedFormat" xml:space="preserve">
     <value>发送失败：{0}</value>
   </data>
+  <data name="Chat_Notification_ClearThinkingFailed" xml:space="preserve">
+    <value>推理设置未更改</value>
+  </data>
+  <data name="Chat_Error_ClearThinkingFailedFormat" xml:space="preserve">
+    <value>无法使用默认推理：{0}</value>
+  </data>
+  <data name="Chat_Error_ClearThinkingCanceled" xml:space="preserve">
+    <value>更改已取消。</value>
+  </data>
+  <data name="Chat_Error_ClearThinkingInterrupted" xml:space="preserve">
+    <value>在确认更新前，网关连接已更改。</value>
+  </data>
   <data name="Chat_Notification_AbortFailed" xml:space="preserve">
     <value>中止失败</value>
   </data>

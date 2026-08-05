@@ -410,6 +410,25 @@ public sealed class ThinkingLevelClearReconciler : IDisposable
         }
     }
 
+    public bool TryGetRefreshCancellationToken(
+        RefreshRequest request,
+        out CancellationToken cancellationToken)
+    {
+        lock (_gate)
+        {
+            if (_disposed ||
+                !_entries.TryGetValue(request.ThreadId, out var entry) ||
+                !IsCurrentRefresh(entry, request))
+            {
+                cancellationToken = new CancellationToken(canceled: true);
+                return false;
+            }
+
+            cancellationToken = entry.LifetimeCancellation.Token;
+            return true;
+        }
+    }
+
     /// <summary>
     /// Advances connection authority. A reconnect or client swap invalidates all
     /// earlier refresh requests and requests current-generation convergence for

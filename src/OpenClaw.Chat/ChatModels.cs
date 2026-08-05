@@ -293,6 +293,7 @@ public interface IChatDataProvider : IAsyncDisposable
     /// </summary>
     Task ClearModelAsync(string threadId, CancellationToken cancellationToken = default) => Task.CompletedTask;
     Task SetThinkingLevelAsync(string threadId, string thinkingLevel, CancellationToken cancellationToken = default);
+    Task ClearThinkingLevelAsync(string threadId, CancellationToken cancellationToken = default) => Task.CompletedTask;
     Task SetPermissionModeAsync(string threadId, bool allowAll, CancellationToken cancellationToken = default);
     Task RespondToPermissionAsync(string threadId, string requestId, string action, CancellationToken cancellationToken = default);
     Task RespondToPermissionAsync(string threadId, string requestId, bool allow, CancellationToken cancellationToken = default) =>

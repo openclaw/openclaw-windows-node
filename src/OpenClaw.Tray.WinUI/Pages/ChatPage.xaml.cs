@@ -379,6 +379,9 @@ public sealed partial class ChatPage : Page
         public Task SetThinkingLevelAsync(string threadId, string thinkingLevel, CancellationToken cancellationToken = default)
             => Task.CompletedTask;
 
+        public Task ClearThinkingLevelAsync(string threadId, CancellationToken cancellationToken = default)
+            => Task.CompletedTask;
+
         public Task SetPermissionModeAsync(string threadId, bool allowAll, CancellationToken cancellationToken = default)
             => Task.CompletedTask;
 

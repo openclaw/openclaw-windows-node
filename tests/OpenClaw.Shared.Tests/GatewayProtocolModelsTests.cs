@@ -27,6 +27,7 @@ public class GatewayProtocolModelsTests
         {
             ("ListCommandsAsync", new[] { typeof(CommandCatalogQuery), typeof(int) }),
             ("PatchSessionAsync", new[] { typeof(string), typeof(SessionPatch) }),
+            ("PatchSessionDetailedAsync", new[] { typeof(string), typeof(SessionPatch), typeof(int), typeof(CancellationToken) }),
             ("ListSessionFilesAsync", new[] { typeof(string), typeof(string), typeof(string), typeof(int) }),
             ("GetSessionFileAsync", new[] { typeof(string), typeof(string), typeof(int) }),
             ("ListCompactionCheckpointsAsync", new[] { typeof(string), typeof(int) }),
@@ -470,6 +471,32 @@ public class GatewayProtocolModelsTests
 
         var fastJson = JsonSerializer.Serialize(new SessionPatch { FastMode = SessionPatch.Clear }.ToPayload("k"));
         Assert.Contains("\"fastMode\":null", fastJson);
+
+        var thinkingJson = JsonSerializer.Serialize(
+            new SessionPatch { ThinkingLevel = SessionPatch.Clear }.ToPayload("k"));
+        Assert.Contains("\"thinkingLevel\":null", thinkingJson);
+        Assert.DoesNotContain("\"thinkingLevel\":\"default\"", thinkingJson);
+        Assert.DoesNotContain("\"thinkingLevel\":\"medium\"", thinkingJson);
+    }
+
+    [Fact]
+    public void ParseSessionPatchResult_PreservesGatewaySuccessAndPayloadFailure()
+    {
+        var succeeded = OpenClawGatewayClient.ParseSessionPatchResult(
+            Parse("""{"ok":true,"key":"agent:main:main"}"""),
+            "fallback");
+        Assert.True(succeeded.Ok);
+        Assert.True(succeeded.IsSupported);
+        Assert.Equal("agent:main:main", succeeded.Key);
+        Assert.Null(succeeded.Error);
+
+        var failed = OpenClawGatewayClient.ParseSessionPatchResult(
+            Parse("""{"ok":false,"reason":"policy rejected the change"}"""),
+            "agent:main:main");
+        Assert.False(failed.Ok);
+        Assert.True(failed.IsSupported);
+        Assert.Equal("agent:main:main", failed.Key);
+        Assert.Equal("policy rejected the change", failed.Error);
     }
 
     [Fact]
