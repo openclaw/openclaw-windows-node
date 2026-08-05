@@ -1,3 +1,4 @@
+using Microsoft.UI.Reactor.Core;
 using Microsoft.UI.Reactor.Hosting;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Automation;
@@ -22,75 +23,161 @@ public sealed class ReactorToolActivityProofTests
     public async Task ConsecutiveTools_RenderCompactActivityWithAccessibleExpansion()
     {
         await _ui.ResetContainerAsync();
+        var timeline = BuildTimeline(
+        [
+            Tool("tool-1", "powershell", "first output", ChatToolCallStatus.Success),
+            Tool("tool-2", "read_file", "second output", ChatToolCallStatus.Success),
+        ], generation: 1);
+        var activityRow = Assert.Single(
+            ChatToolActivityPresentation.Project(
+                timeline.Entries,
+                timeline.SessionId,
+                timeline.TimelineGeneration,
+                timeline.ShowToolCalls),
+            row => row.IsActivityGroup);
+        var expansionState = new ChatToolActivityExpansionState();
         ReactorHostControl? host = null;
-
-        await _ui.RunOnUIAsync(() =>
+        UIElement? root = null;
+        Element? currentElement = null;
+        var disposing = false;
+        try
         {
-            TestApp.EnsureFluentBrushFallbacks(Application.Current.Resources);
-            _ui.Container.Width = 900;
-            _ui.Container.Height = 640;
-            host = new ReactorHostControl { Width = 860, Height = 560 };
-            _ui.Container.Children.Add(host);
-            Mount(host, BuildTimeline(
-            [
-                Tool("tool-1", "powershell", "first output", ChatToolCallStatus.Success),
-                Tool("tool-2", "read_file", "second output", ChatToolCallStatus.Success),
-            ], generation: 1));
-        });
-        await DrainRenderQueueAsync();
-
-        await _ui.RunOnUIAsync(() =>
-        {
-            var activity = Assert.Single(
-                FindDescendants<Expander>(host!),
-                expander => AutomationProperties.GetAutomationId(expander) == "ChatToolActivity_tool_1");
-            Assert.False(activity.IsExpanded);
-            var name = AutomationProperties.GetName(activity);
-            Assert.Contains("Activity:", name, StringComparison.Ordinal);
-            Assert.Contains("2 tools", name, StringComparison.Ordinal);
-            Assert.Contains("Collapsed", name, StringComparison.Ordinal);
-            activity.IsExpanded = true;
-        });
-        await DrainRenderQueueAsync();
-
-        await _ui.RunOnUIAsync(() =>
-        {
-            var expanders = FindDescendants<Expander>(host!).ToArray();
-            var activity = Assert.Single(
-                expanders,
-                expander => AutomationProperties.GetAutomationId(expander) == "ChatToolActivity_tool_1");
-            Assert.True(activity.IsExpanded);
-            Assert.Contains("Expanded", AutomationProperties.GetName(activity), StringComparison.Ordinal);
-
-            var nested = expanders
-                .Where(expander => AutomationProperties.GetAutomationId(expander).StartsWith(
-                    "ChatToolCall_",
-                    StringComparison.Ordinal))
-                .ToArray();
-            Assert.Equal(2, nested.Length);
-            Assert.All(nested, expander =>
+            await _ui.RunOnUIAsync(() =>
             {
-                Assert.False(string.IsNullOrWhiteSpace(AutomationProperties.GetName(expander)));
-                expander.IsExpanded = true;
+                TestApp.EnsureFluentBrushFallbacks(Application.Current.Resources);
+                // Reconcile native controls without attaching them to the VSTest visual tree,
+                // where applying the unpackaged Expander template crashes Microsoft.UI.Xaml.
+                host = new ReactorHostControl();
+                Action? reconcile = null;
+                Action requestRender = () =>
+                {
+                    if (!disposing)
+                        _ui.Dispatcher.TryEnqueue(() => reconcile!());
+                };
+                reconcile = () =>
+                {
+                    if (disposing)
+                        return;
+
+                    var nextElement = ToolCallCardRenderer.BuildActivity(
+                        timeline,
+                        activityRow,
+                        expansionState);
+                    root = host.Reconciler.Reconcile(
+                        currentElement!,
+                        nextElement,
+                        root!,
+                        requestRender);
+                    currentElement = nextElement;
+                    host.Content = root;
+                };
+                currentElement = ToolCallCardRenderer.BuildActivity(
+                    timeline,
+                    activityRow,
+                    expansionState);
+                root = host.Reconciler.Mount(currentElement, requestRender);
+                host.Content = root;
             });
-        });
-        await DrainRenderQueueAsync();
 
-        await _ui.RunOnUIAsync(() =>
+            await _ui.RunOnUIAsync(() =>
+            {
+                var activity = Assert.Single(
+                    FindLogical<Expander>(root!),
+                    expander => AutomationProperties.GetAutomationId(expander) == "ChatToolActivity_tool_1");
+                Assert.False(activity.IsExpanded);
+                var name = AutomationProperties.GetName(activity);
+                Assert.Contains("Activity:", name, StringComparison.Ordinal);
+                Assert.Contains("2 tools", name, StringComparison.Ordinal);
+                Assert.Contains("Collapsed", name, StringComparison.Ordinal);
+                Assert.DoesNotContain(
+                    FindLogical<Expander>(root!),
+                    expander => AutomationProperties.GetAutomationId(expander).StartsWith(
+                        "ChatToolCall_",
+                        StringComparison.Ordinal));
+
+                activity.IsExpanded = true;
+            });
+            await DrainReactorQueueAsync();
+
+            await _ui.RunOnUIAsync(() =>
+            {
+                Assert.True(expansionState.IsExpanded(
+                    activityRow.Key,
+                    activityRow.Summary!,
+                    timeline.ToolCallsCollapseVersion));
+                var expanders = FindLogical<Expander>(root!).ToArray();
+                var activity = Assert.Single(
+                    expanders,
+                    expander => AutomationProperties.GetAutomationId(expander) == "ChatToolActivity_tool_1");
+                Assert.True(activity.IsExpanded);
+                Assert.Contains("Expanded", AutomationProperties.GetName(activity), StringComparison.Ordinal);
+
+                var nested = expanders
+                    .Where(expander => AutomationProperties.GetAutomationId(expander).StartsWith(
+                        "ChatToolCall_",
+                        StringComparison.Ordinal))
+                    .ToArray();
+                Assert.Equal(2, nested.Length);
+                Assert.DoesNotContain(
+                    FindExpandedLogical<RichTextBlock>(root!),
+                    text => text.IsTextSelectionEnabled);
+                Assert.All(nested, expander =>
+                {
+                    Assert.False(string.IsNullOrWhiteSpace(AutomationProperties.GetName(expander)));
+                    expander.IsExpanded = true;
+                });
+
+                var selectableOutputs = FindExpandedLogical<RichTextBlock>(root!)
+                    .Where(text => text.IsTextSelectionEnabled)
+                    .Select(CollectText)
+                    .ToArray();
+                Assert.Contains("first output", selectableOutputs);
+                Assert.Contains("second output", selectableOutputs);
+                activity.IsExpanded = false;
+            });
+            await DrainReactorQueueAsync();
+
+            await _ui.RunOnUIAsync(() =>
+            {
+                Assert.False(expansionState.IsExpanded(
+                    activityRow.Key,
+                    activityRow.Summary!,
+                    timeline.ToolCallsCollapseVersion));
+                var activity = Assert.Single(
+                    FindLogical<Expander>(root!),
+                    expander => AutomationProperties.GetAutomationId(expander) == "ChatToolActivity_tool_1");
+                Assert.False(activity.IsExpanded);
+                Assert.Contains("Collapsed", AutomationProperties.GetName(activity), StringComparison.Ordinal);
+                Assert.DoesNotContain(
+                    FindLogical<Expander>(root!),
+                    expander => AutomationProperties.GetAutomationId(expander).StartsWith(
+                        "ChatToolCall_",
+                        StringComparison.Ordinal));
+            });
+        }
+        finally
         {
-            var selectableOutputs = FindDescendants<RichTextBlock>(host!)
-                .Where(text => text.IsTextSelectionEnabled)
-                .Select(CollectText)
-                .ToArray();
-            Assert.Contains("first output", selectableOutputs);
-            Assert.Contains("second output", selectableOutputs);
-            host!.Dispose();
-        });
+            if (host is not null)
+            {
+                await _ui.RunOnUIAsync(() =>
+                {
+                    disposing = true;
+                    if (root is not null && currentElement is not null)
+                    {
+                        var empty = Empty();
+                        root = host.Reconciler.Reconcile(
+                            currentElement,
+                            empty,
+                            root,
+                            static () => { });
+                        currentElement = empty;
+                    }
+                    host.Content = null;
+                    host.Dispose();
+                });
+            }
+        }
     }
-
-    private static void Mount(ReactorHostControl host, OpenClawChatTimelineProps timeline) =>
-        host.Mount(_ => Component<ReactorChatTimeline, ReactorChatTimelineProps>(
-            new ReactorChatTimelineProps(ReactorChatTimelineMode.Timeline, timeline)));
 
     private static OpenClawChatTimelineProps BuildTimeline(
         IReadOnlyList<ChatTimelineItem> entries,
@@ -145,13 +232,34 @@ public sealed class ReactorToolActivityProofTests
         }
     }
 
-    private async Task DrainRenderQueueAsync()
+    private static IEnumerable<T> FindExpandedLogical<T>(DependencyObject root)
+        where T : DependencyObject
     {
-        for (var pass = 0; pass < 3; pass++)
+        if (root is T self)
+            yield return self;
+
+        IEnumerable<DependencyObject> children = root switch
         {
-            await _ui.RunOnUIAsync(() => _ui.Container.UpdateLayout());
-            await _ui.YieldToRenderAsync();
-            await Task.Delay(40);
+            Panel panel => panel.Children,
+            Border border when border.Child is not null => [border.Child],
+            ScrollViewer scrollViewer when scrollViewer.Content is DependencyObject content => [content],
+            Expander expander when expander.IsExpanded && expander.Content is DependencyObject content => [content],
+            Microsoft.UI.Xaml.Controls.Expander => [],
+            ContentControl contentControl when contentControl.Content is DependencyObject content => [content],
+            _ => [],
+        };
+
+        foreach (var child in children)
+        {
+            foreach (var descendant in FindExpandedLogical<T>(child))
+                yield return descendant;
         }
     }
+
+    private async Task DrainReactorQueueAsync()
+    {
+        for (var pass = 0; pass < 3; pass++)
+            await _ui.YieldToRenderAsync();
+    }
+
 }
