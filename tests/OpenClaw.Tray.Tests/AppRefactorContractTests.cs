@@ -258,6 +258,77 @@ public sealed class AppRefactorContractTests
     }
 
     [Fact]
+    public void McpOnlyCapabilityReload_RebuildsTheSharedCapabilityList()
+    {
+        var root = TestRepositoryPaths.GetRepositoryRoot();
+        var appSource = ReadAppSources();
+        var nodeServiceSource = File.ReadAllText(Path.Combine(
+            root,
+            "src",
+            "OpenClaw.Tray.WinUI",
+            "Services",
+            "NodeService.cs"));
+
+        var reconnect = ExtractMethod(appSource, "ReconnectWithSyncedBrowserProxyForward");
+        var refresh = ExtractMethod(nodeServiceSource, "RefreshMcpOnlyCapabilities");
+
+        AssertInOrder(
+            reconnect,
+            "SyncActiveGatewayBrowserProxyForward()",
+            "_nodeService?.RefreshMcpOnlyCapabilities()",
+            "_connectionManager?.ReconnectAsync()");
+        Assert.Contains("lock (_clientLock)", refresh);
+        Assert.Contains("if (!_enableMcpServer || _mcpServer == null || _nodeClient != null)", refresh);
+        Assert.Contains("RegisterCapabilities();", refresh);
+    }
+
+    [Fact]
+    public void McpRestart_RebuildsOnlyLocalTransportAndPreservesCapabilityOwners()
+    {
+        var root = TestRepositoryPaths.GetRepositoryRoot();
+        var source = File.ReadAllText(Path.Combine(
+            root,
+            "src",
+            "OpenClaw.Tray.WinUI",
+            "Services",
+            "NodeService.cs"));
+        var enable = ExtractMethod(source, "SetMcpEnabled");
+        var refresh = ExtractMethod(source, "RefreshMcpOnlyCapabilities");
+        var register = ExtractMethod(source, "RegisterCapabilities");
+        var start = ExtractMethod(source, "StartMcpServer");
+
+        AssertInOrder(
+            enable,
+            "lock (_clientLock)",
+            "lock (_capabilitiesLock)",
+            "McpRuntimeStatePolicy.PlanCapabilityEnable",
+            "McpCapabilityEnablePlan.RebuildFromCurrentSettings",
+            "RegisterCapabilities();");
+        Assert.Contains("hasGatewayClient: _nodeClient != null", enable);
+        Assert.Contains("hasCapabilities: _capabilities.Count != 0", enable);
+        Assert.Contains("StartMcpServer();", enable);
+        Assert.Contains("StopMcpServer();", enable);
+
+        Assert.Contains("lock (_clientLock)", refresh);
+        Assert.Contains("RegisterCapabilities();", refresh);
+        AssertInOrder(
+            register,
+            "lock (_capabilitiesLock)",
+            "_capabilities.Clear();",
+            "_execApprovalsV2Handler ??=",
+            "_textToSpeechService ??=",
+            "_voiceService ??=",
+            "} // end lock",
+            "StartMcpServer();");
+
+        Assert.DoesNotContain("_mcpOnlyCapabilities.Clear()", register);
+        AssertInOrder(
+            start,
+            "merged.AddRange(_capabilities)",
+            "merged.AddRange(_mcpOnlyCapabilities)");
+    }
+
+    [Fact]
     public void AppStatus_ReportsNodeStateFromManagerSnapshot()
     {
         var source = ReadAppSources();
@@ -425,15 +496,17 @@ public sealed class AppRefactorContractTests
     public void PermissionsPage_ExecApprovals_UsesAppOwnedStoreWithCas()
     {
         var root = TestRepositoryPaths.GetRepositoryRoot();
-        var source = File.ReadAllText(Path.Combine(root, "src", "OpenClaw.Tray.WinUI", "Pages", "PermissionsPage.xaml.cs"));
+        var pageSource = File.ReadAllText(Path.Combine(root, "src", "OpenClaw.Tray.WinUI", "Pages", "PermissionsPage.xaml.cs"));
+        var viewModelSource = File.ReadAllText(Path.Combine(root, "src", "OpenClaw.Tray.WinUI", "Presentation", "PermissionsPageViewModel.cs"));
 
-        Assert.Contains("CurrentApp.ExecApprovalsStore.GetSnapshotAsync()", source);
-        Assert.Contains("CurrentApp.ExecApprovalsStore.ReplaceAsync(expectedHash, file)", source);
-        Assert.Contains("ExecPolicyMutationKind.AddRule", source);
-        Assert.Contains("ExecPolicyMutationKind.RemoveRule", source);
-        Assert.DoesNotContain("main.Allowlist = _policyRules", source);
-        Assert.DoesNotContain("Path.Combine(CurrentApp.DataDirectoryPath, \"exec-approvals.json\")", source);
-        Assert.DoesNotContain("File.WriteAllText(tmpPath", source);
+        Assert.Contains("_execApprovalsStore.GetSnapshotReadOnlyAsync()", viewModelSource);
+        Assert.Contains("_execApprovalsStore.ReplaceAsync(baseHash, workingFile, _execApprovalsOrigin)", viewModelSource);
+        Assert.Contains("ExecApprovalsMutationKind.AddRule", viewModelSource);
+        Assert.Contains("ExecApprovalsMutationKind.RemoveRule", viewModelSource);
+        Assert.DoesNotContain("CurrentApp.ExecApprovalsStore.GetSnapshot", pageSource);
+        Assert.DoesNotContain("CurrentApp.ExecApprovalsStore.ReplaceAsync", pageSource);
+        Assert.DoesNotContain("Path.Combine(CurrentApp.DataDirectoryPath, \"exec-approvals.json\")", pageSource);
+        Assert.DoesNotContain("File.WriteAllText(tmpPath", pageSource);
     }
 
     [Fact]
@@ -468,8 +541,8 @@ public sealed class AppRefactorContractTests
 
         Assert.Contains("AutomationProperties.Name=\"{Binding RemoveRuleAutomationName}\"", xaml);
         Assert.Contains("AutomationProperties.AutomationId=\"{Binding RemoveRuleAutomationId}\"", xaml);
-        Assert.Contains("RemoveRuleAutomationName = $\"Remove rule {r.Pattern}\"", codeBehind);
-        Assert.Contains("RemoveRuleAutomationId = $\"RemoveExecPolicyRuleButton_{r.Index}\"", codeBehind);
+        Assert.Contains("RemoveRuleAutomationName = $\"Remove rule {rule.Pattern}\"", codeBehind);
+        Assert.Contains("RemoveRuleAutomationId = $\"RemoveExecPolicyRuleButton_{index}\"", codeBehind);
     }
 
     [Fact]

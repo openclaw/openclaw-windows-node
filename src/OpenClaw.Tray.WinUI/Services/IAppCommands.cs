@@ -1,3 +1,5 @@
+using OpenClawTray.Presentation;
+
 namespace OpenClawTray.Services;
 
 /// <summary>
@@ -18,6 +20,6 @@ internal interface IAppCommands
     void ShowGatewayWizard();
     void ShowConnectionStatus();
     void NotifySettingsSaved();
-    Task<bool> ApplyAutoStart(bool autoStart);
+    Task<bool> ApplyAutoStart(SettingsWriteOrigin origin, bool autoStart);
     Task<bool> ResendOpenTelemetryProbeAsync();
 }

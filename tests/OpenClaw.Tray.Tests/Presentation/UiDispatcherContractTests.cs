@@ -1,13 +1,13 @@
 using Microsoft.Extensions.DependencyInjection;
+using OpenClaw.Shared;
+using OpenClaw.Shared.ExecApprovals;
 using OpenClawTray.Presentation;
 using OpenClawTray.Services;
 
 namespace OpenClaw.Tray.Tests.Presentation;
 
 /// <summary>
-/// Behavioral guard for the UI-thread dispatcher abstraction. Confirms view models
-/// depend on <see cref="IUiDispatcher"/> via DI (not a concrete dispatcher queue) and
-/// locks the basic dispatcher contract.
+/// Behavioral guard for the UI-thread dispatcher abstraction.
 /// </summary>
 public sealed class UiDispatcherContractTests
 {
@@ -16,10 +16,15 @@ public sealed class UiDispatcherContractTests
     {
         using var temp = new TempDir();
         var dispatcher = new RecordingUiDispatcher();
+        var execApprovalsStore = new ExecApprovalsStore(temp.Path, NullLogger.Instance);
 
         var services = new ServiceCollection();
         services.AddOpenClawTrayCore(new AppServiceContext(
-            dispatcher, new FakeAppCommands(), new SettingsManager(temp.Path)));
+            dispatcher,
+            new FakeAppCommands(),
+            new SettingsManager(temp.Path),
+            execApprovalsStore,
+            new FakePermissionsPageRuntimeHost()));
         using var provider = services.BuildServiceProvider(new ServiceProviderOptions
         {
             ValidateScopes = true,
@@ -27,13 +32,8 @@ public sealed class UiDispatcherContractTests
         });
 
         using var scope = provider.CreateScope();
-        var settingsVm = scope.ServiceProvider.GetRequiredService<SettingsPageViewModel>();
         var permissionsVm = scope.ServiceProvider.GetRequiredService<PermissionsPageViewModel>();
 
-        // Both page view models resolve from the registered core, so their IUiDispatcher
-        // dependency is satisfied from DI (not a concrete dispatcher queue). The placeholder
-        // permissions view model still exposes the injected instance for a strong same-reference check.
-        Assert.NotNull(settingsVm);
         Assert.Same(dispatcher, permissionsVm.Dispatcher);
     }
 

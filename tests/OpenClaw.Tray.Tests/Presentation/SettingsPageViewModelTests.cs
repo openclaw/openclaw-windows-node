@@ -111,6 +111,7 @@ public sealed class SettingsPageViewModelTests
             // With a completed (successful) task, the saved flash runs after the awaited apply.
             Assert.Equal((bool?)target, appCommands.AutoStartApplied);
             Assert.Equal(1, appCommands.AutoStartApplyCount);
+            Assert.NotNull(appCommands.LastAutoStartOrigin);
             Assert.Equal(0, appCommands.NotifySettingsSavedCount);
             Assert.Equal(1, savedFlashes);
         }
@@ -141,7 +142,7 @@ public sealed class SettingsPageViewModelTests
         var settings = new SettingsManager(temp.Path);
         var dispatcher = new RecordingUiDispatcher();
         var store = new SettingsStore(settings, dispatcher);
-        var appCommands = new SelfWritingAppCommands(store, settings);
+        var appCommands = new SelfWritingAppCommands(store);
         var vm = new SettingsPageViewModel(store, appCommands);
 
         vm.Activate(null);

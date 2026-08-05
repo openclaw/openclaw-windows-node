@@ -7,9 +7,24 @@ internal readonly record struct McpStartupNotificationPlan(bool ShouldShow, stri
     public bool ShouldDismiss => !ShouldShow;
 }
 
+internal enum McpCapabilityEnablePlan
+{
+    ReuseCurrent,
+    RebuildFromCurrentSettings,
+}
+
 internal static class McpRuntimeStatePolicy
 {
     public const string DefaultStartupError = "Local MCP server did not start.";
+
+    public static McpCapabilityEnablePlan PlanCapabilityEnable(
+        bool hasGatewayClient,
+        bool hasCapabilities)
+    {
+        return !hasGatewayClient || !hasCapabilities
+            ? McpCapabilityEnablePlan.RebuildFromCurrentSettings
+            : McpCapabilityEnablePlan.ReuseCurrent;
+    }
 
     public static McpStartupNotificationPlan PlanStartupNotification(
         bool enableMcpServer,
