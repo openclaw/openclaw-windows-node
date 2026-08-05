@@ -2903,7 +2903,7 @@ Utilisez l'une de ces options :
   <data name="Chat_Activity_Complete" xml:space="preserve"><value>Terminé</value></data>
   <data name="Chat_Activity_Expanded" xml:space="preserve"><value>Développé</value></data>
   <data name="Chat_Activity_Collapsed" xml:space="preserve"><value>Réduit</value></data>
-  <data name="Chat_Activity_AutomationFormat" xml:space="preserve"><value>Activité : {0}. {1} outils. {2}. {3}.</value></data>
+  <data name="Chat_Activity_AutomationFormat" xml:space="preserve"><value>Activité : {0}. {1} outils. {2}.</value></data>
   <data name="Chat_Reasoning_ThinkingHeader" xml:space="preserve">
     <value>🧠 Réflexion</value>
   </data>

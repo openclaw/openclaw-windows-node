@@ -5637,6 +5637,96 @@ public class OpenClawChatDataProviderTests
     }
 
     [Fact]
+    public async Task LoadHistoryAsync_InterleavedContentParts_PreserveChronologyAndCorrelation()
+    {
+        var call = new ChatToolContentInfo
+        {
+            Kind = ChatToolContentKind.Call,
+            CallId = "call-1",
+            ToolName = "exec",
+            Args = JsonSerializer.Deserialize<JsonElement>("""{"command":"pwd"}"""),
+        };
+        var result = new ChatToolContentInfo
+        {
+            Kind = ChatToolContentKind.Result,
+            CallId = "call-1",
+            ToolName = "exec",
+            Text = "/workspace",
+        };
+        var (bridge, provider, snapshots, _) = CreateProvider(new[] { MainSession() });
+        bridge.HistoryBehavior = _ => Task.FromResult(new ChatHistoryInfo
+        {
+            SessionKey = "main",
+            Messages =
+            [
+                new ChatMessageInfo
+                {
+                    Role = "assistant",
+                    Text = "Before\nMiddle\nAfter",
+                    State = "final",
+                    Ts = 1,
+                    ToolContent = [call, result],
+                    ContentParts =
+                    [
+                        new ChatMessageContentPartInfo
+                        {
+                            Kind = ChatMessageContentPartKind.Text,
+                            Text = "Before",
+                        },
+                        new ChatMessageContentPartInfo
+                        {
+                            Kind = ChatMessageContentPartKind.Tool,
+                            Tool = call,
+                        },
+                        new ChatMessageContentPartInfo
+                        {
+                            Kind = ChatMessageContentPartKind.Text,
+                            Text = "Middle",
+                        },
+                        new ChatMessageContentPartInfo
+                        {
+                            Kind = ChatMessageContentPartKind.Tool,
+                            Tool = result,
+                        },
+                        new ChatMessageContentPartInfo
+                        {
+                            Kind = ChatMessageContentPartKind.Text,
+                            Text = "After",
+                        },
+                    ],
+                },
+            ],
+        });
+
+        await provider.LoadHistoryAsync("main");
+
+        var entries = snapshots[^1].Timelines["main"].Entries;
+        Assert.Collection(
+            entries,
+            entry =>
+            {
+                Assert.Equal(ChatTimelineItemKind.Assistant, entry.Kind);
+                Assert.Equal("Before", entry.Text);
+            },
+            entry =>
+            {
+                Assert.Equal(ChatTimelineItemKind.ToolCall, entry.Kind);
+                Assert.Equal(ChatToolCallStatus.Success, entry.ToolResult);
+                Assert.Equal("/workspace", entry.ToolOutput);
+            },
+            entry =>
+            {
+                Assert.Equal(ChatTimelineItemKind.Assistant, entry.Kind);
+                Assert.Equal("Middle", entry.Text);
+            },
+            entry =>
+            {
+                Assert.Equal(ChatTimelineItemKind.Assistant, entry.Kind);
+                Assert.Equal("After", entry.Text);
+            });
+    }
+
+    [Fact]
     public async Task LoadHistoryAsync_StructuredOrphanResult_SynthesizesCompletedTool()
     {
         var (bridge, provider, snapshots, _) = CreateProvider(new[] { MainSession() });
@@ -5705,6 +5795,35 @@ public class OpenClawChatDataProviderTests
 
         var entry = Assert.Single(snapshots[^1].Timelines["main"].Entries);
         Assert.Equal(ChatToolCallStatus.Interrupted, entry.ToolResult);
+    }
+
+    [Fact]
+    public async Task LoadHistoryAsync_LiveToolStartedDuringRequest_RemainsCorrelated()
+    {
+        var pendingHistory = new TaskCompletionSource<ChatHistoryInfo>(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        var (bridge, provider, snapshots, _) = CreateProvider(new[] { MainSession() });
+        bridge.HistoryBehavior = _ => pendingHistory.Task;
+        await provider.LoadAsync();
+
+        var historyLoad = provider.LoadHistoryAsync("main");
+        bridge.RaiseAgent(MakeAgentEvent(
+            "tool",
+            """{"phase":"start","name":"exec","itemId":"live-call","args":{"command":"pwd"}}"""));
+
+        pendingHistory.SetResult(new ChatHistoryInfo { SessionKey = "main" });
+        await historyLoad;
+
+        var inProgress = Assert.Single(snapshots[^1].Timelines["main"].Entries);
+        Assert.Equal(ChatToolCallStatus.InProgress, inProgress.ToolResult);
+
+        bridge.RaiseAgent(MakeAgentEvent(
+            "tool",
+            """{"phase":"result","name":"exec","itemId":"live-call","result":{"content":"/workspace"}}"""));
+
+        var completed = Assert.Single(snapshots[^1].Timelines["main"].Entries);
+        Assert.Equal(ChatToolCallStatus.Success, completed.ToolResult);
+        Assert.Equal("/workspace", completed.ToolOutput);
     }
 
     [Fact]

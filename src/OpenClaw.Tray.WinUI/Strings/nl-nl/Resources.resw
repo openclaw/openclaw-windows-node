@@ -2904,7 +2904,7 @@ Gebruik een van deze opties:
   <data name="Chat_Activity_Complete" xml:space="preserve"><value>Voltooid</value></data>
   <data name="Chat_Activity_Expanded" xml:space="preserve"><value>Uitgevouwen</value></data>
   <data name="Chat_Activity_Collapsed" xml:space="preserve"><value>Samengevouwen</value></data>
-  <data name="Chat_Activity_AutomationFormat" xml:space="preserve"><value>Activiteit: {0}. {1} hulpmiddelen. {2}. {3}.</value></data>
+  <data name="Chat_Activity_AutomationFormat" xml:space="preserve"><value>Activiteit: {0}. {1} hulpmiddelen. {2}.</value></data>
   <data name="Chat_Reasoning_ThinkingHeader" xml:space="preserve">
     <value>🧠 Denken</value>
   </data>

@@ -2903,7 +2903,7 @@
   <data name="Chat_Activity_Complete" xml:space="preserve"><value>已完成</value></data>
   <data name="Chat_Activity_Expanded" xml:space="preserve"><value>已展開</value></data>
   <data name="Chat_Activity_Collapsed" xml:space="preserve"><value>已摺疊</value></data>
-  <data name="Chat_Activity_AutomationFormat" xml:space="preserve"><value>活動：{0}。{1} 個工具。{2}。{3}。</value></data>
+  <data name="Chat_Activity_AutomationFormat" xml:space="preserve"><value>活動：{0}。{1} 個工具。{2}。</value></data>
   <data name="Chat_Reasoning_ThinkingHeader" xml:space="preserve">
     <value>🧠 思考中</value>
   </data>

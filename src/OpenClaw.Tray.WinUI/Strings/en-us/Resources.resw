@@ -2950,7 +2950,7 @@ Use one of these options:
   <data name="Chat_Activity_Complete" xml:space="preserve"><value>Complete</value></data>
   <data name="Chat_Activity_Expanded" xml:space="preserve"><value>Expanded</value></data>
   <data name="Chat_Activity_Collapsed" xml:space="preserve"><value>Collapsed</value></data>
-  <data name="Chat_Activity_AutomationFormat" xml:space="preserve"><value>Activity: {0}. {1} tools. {2}. {3}.</value></data>
+  <data name="Chat_Activity_AutomationFormat" xml:space="preserve"><value>Activity: {0}. {1} tools. {2}.</value></data>
   <data name="Chat_Reasoning_ThinkingHeader" xml:space="preserve">
     <value>🧠 Thinking</value>
   </data>

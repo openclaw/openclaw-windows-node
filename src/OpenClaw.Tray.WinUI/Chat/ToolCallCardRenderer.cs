@@ -168,22 +168,17 @@ internal static class ToolCallCardRenderer
         var summary = activity.Summary
             ?? throw new ArgumentException("An activity row requires a summary.", nameof(activity));
         var summaryText = FormatSummary(summary);
-        var stateText = summary.IsRunning
-            ? LocalizedOrDefault("Chat_Status_Running", "Running")
-            : LocalizedOrDefault("Chat_Activity_Complete", "Complete");
         string AutomationName(bool expanded) => string.Format(
             LocalizedOrDefault(
                 "Chat_Activity_AutomationFormat",
-                "Activity: {0}. {1} tools. {2}. {3}."),
+                "Activity: {0}. {1} tools. {2}."),
             summaryText,
             summary.ToolCount,
-            stateText,
             expanded
                 ? LocalizedOrDefault("Chat_Activity_Expanded", "Expanded")
                 : LocalizedOrDefault("Chat_Activity_Collapsed", "Collapsed"));
         var collapsedAutomationName = AutomationName(expanded: false);
         var expandedAutomationName = AutomationName(expanded: true);
-        var glyph = summary.IsRunning ? "\u21BB" : "\u2713";
         Element details = isExpanded
             ? VStack(
                 0,
@@ -194,7 +189,7 @@ internal static class ToolCallCardRenderer
             : Empty();
 
         var expander = Expander(
-                $"{glyph}  {summaryText}",
+                summaryText,
                 details)
             .Set(control =>
             {
@@ -353,7 +348,8 @@ internal sealed class ToolActivityCard : Component<ToolActivityCardProps>
 {
     public override Element Render()
     {
-        var (renderVersion, setRenderVersion) = UseState(0, threadSafe: true);
+        var (_, setRenderVersion) = UseState(0, threadSafe: true);
+        var renderVersion = UseRef(0);
         var summary = Props.Activity.Summary
             ?? throw new ArgumentException("An activity row requires a summary.", nameof(Props));
         var isExpanded = Props.ExpansionState.IsExpanded(
@@ -367,7 +363,9 @@ internal sealed class ToolActivityCard : Component<ToolActivityCardProps>
                 Props.Activity.Key,
                 expanded,
                 Props.Timeline.ToolCallsCollapseVersion);
-            setRenderVersion(renderVersion + 1);
+            var nextRenderVersion = renderVersion.Current + 1;
+            renderVersion.Current = nextRenderVersion;
+            setRenderVersion(nextRenderVersion);
         }
 
         return ToolCallCardRenderer.BuildActivityCore(

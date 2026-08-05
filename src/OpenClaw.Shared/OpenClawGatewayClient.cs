@@ -608,9 +608,11 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
             // Content can include text and structured tool call/result blocks.
             string text = ExtractMessageText(m);
             var toolContent = ExtractToolContent(m, role, text);
+            var contentParts = ExtractOrderedMessageContent(m, role, toolContent);
             if (string.IsNullOrEmpty(text) && toolContent.Count == 0) continue;
             if (string.IsNullOrEmpty(role)) continue;
             if (!string.IsNullOrEmpty(text)
+                && toolContent.Count == 0
                 && ChatMessageInfo.IsSilentAssistantDirective(role, text))
             {
                 continue;
@@ -623,6 +625,7 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
                 Role = role,
                 Text = text,
                 ToolContent = toolContent,
+                ContentParts = contentParts,
                 State = "final",
                 Ts = ts,
                 OpenClawId = openClawMetadata.Id,
@@ -755,6 +758,109 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
         }
 
         return blocks;
+    }
+
+    private static IReadOnlyList<ChatMessageContentPartInfo> ExtractOrderedMessageContent(
+        JsonElement message,
+        string role,
+        IReadOnlyList<ChatToolContentInfo> toolContent)
+    {
+        if (!message.TryGetProperty("content", out var content)
+            || content.ValueKind != JsonValueKind.Array)
+        {
+            return Array.Empty<ChatMessageContentPartInfo>();
+        }
+
+        var parts = new List<ChatMessageContentPartInfo>();
+        var text = new StringBuilder();
+        var toolIndex = 0;
+        var structuredToolCount = 0;
+
+        void FlushText()
+        {
+            if (text.Length == 0)
+                return;
+
+            parts.Add(new ChatMessageContentPartInfo
+            {
+                Kind = ChatMessageContentPartKind.Text,
+                Text = text.ToString(),
+            });
+            text.Clear();
+        }
+
+        foreach (var item in content.EnumerateArray())
+        {
+            if (item.ValueKind == JsonValueKind.String)
+            {
+                text.Append(item.GetString());
+                continue;
+            }
+
+            if (item.ValueKind != JsonValueKind.Object
+                || !item.TryGetProperty("type", out var typeElement)
+                || typeElement.ValueKind != JsonValueKind.String)
+            {
+                continue;
+            }
+
+            var normalizedType = (typeElement.GetString() ?? string.Empty)
+                .Replace("_", string.Empty, StringComparison.Ordinal)
+                .ToLowerInvariant();
+            if (normalizedType == "text")
+            {
+                if (item.TryGetProperty("text", out var textElement)
+                    && textElement.ValueKind == JsonValueKind.String)
+                {
+                    if (text.Length > 0)
+                        text.Append('\n');
+                    text.Append(textElement.GetString());
+                }
+                continue;
+            }
+
+            if (normalizedType is not ("toolcall" or "tooluse" or "toolresult"))
+                continue;
+
+            FlushText();
+            structuredToolCount++;
+            if (toolIndex < toolContent.Count)
+            {
+                parts.Add(new ChatMessageContentPartInfo
+                {
+                    Kind = ChatMessageContentPartKind.Tool,
+                    Tool = toolContent[toolIndex++],
+                });
+            }
+        }
+
+        FlushText();
+
+        var normalizedRole = role.Replace("_", string.Empty, StringComparison.Ordinal)
+            .ToLowerInvariant();
+        if (structuredToolCount == 0
+            && normalizedRole is "toolresult" or "tool" or "function"
+            && toolContent.Count > 0)
+        {
+            return toolContent
+                .Select(static tool => new ChatMessageContentPartInfo
+                {
+                    Kind = ChatMessageContentPartKind.Tool,
+                    Tool = tool,
+                })
+                .ToArray();
+        }
+
+        while (toolIndex < toolContent.Count)
+        {
+            parts.Add(new ChatMessageContentPartInfo
+            {
+                Kind = ChatMessageContentPartKind.Tool,
+                Tool = toolContent[toolIndex++],
+            });
+        }
+
+        return parts;
     }
 
     private static JsonElement? ReadFirstValue(JsonElement value, params string[] propertyNames)

@@ -1261,6 +1261,53 @@ public class OpenClawGatewayClientTests
     }
 
     [Fact]
+    public void ParseChatHistoryPayload_InterleavedBlocks_PreserveSourceOrder()
+    {
+        var helper = new GatewayClientTestHelper();
+
+        var history = helper.ParseChatHistoryPayload("""
+        {
+          "messages": [
+            {
+              "role": "assistant",
+              "content": [
+                { "type": "text", "text": "Before" },
+                {
+                  "type": "tool_use",
+                  "id": "call-1",
+                  "name": "exec",
+                  "input": { "command": "pwd" }
+                },
+                { "type": "text", "text": "After" }
+              ],
+              "timestamp": 1
+            }
+          ]
+        }
+        """);
+
+        var message = Assert.Single(history.Messages);
+        Assert.Equal("Before\nAfter", message.Text);
+        Assert.Collection(
+            message.ContentParts,
+            part =>
+            {
+                Assert.Equal(ChatMessageContentPartKind.Text, part.Kind);
+                Assert.Equal("Before", part.Text);
+            },
+            part =>
+            {
+                Assert.Equal(ChatMessageContentPartKind.Tool, part.Kind);
+                Assert.Equal("call-1", part.Tool?.CallId);
+            },
+            part =>
+            {
+                Assert.Equal(ChatMessageContentPartKind.Text, part.Kind);
+                Assert.Equal("After", part.Text);
+            });
+    }
+
+    [Fact]
     public void ParseChatHistoryPayload_OpenClawMetadata_PreservesMessageIdentity()
     {
         var helper = new GatewayClientTestHelper();

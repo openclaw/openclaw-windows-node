@@ -205,6 +205,8 @@ public sealed class ChatTimelinePresentationTests
         Assert.Contains("var body = RichTextBlock(content)", renderer);
         Assert.Contains(".MaxHeight(240)", renderer);
         Assert.Contains("text.IsTextSelectionEnabled = true", renderer);
+        Assert.DoesNotContain("var stateText =", renderer);
+        Assert.DoesNotContain("var glyph =", renderer);
         Assert.Contains("AutomationProperties.SetAutomationId(", renderer);
         Assert.Contains("ChatToolActivity_", renderer);
         Assert.Contains("ChatToolCall_", renderer);

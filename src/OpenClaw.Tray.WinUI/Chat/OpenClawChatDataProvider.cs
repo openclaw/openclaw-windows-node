@@ -1123,10 +1123,11 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
                 var pendingUnkeyedToolCalls = new Queue<string>();
                 var syntheticToolCallSequence = 0;
 
-                foreach (var msg in ordered)
+                foreach (var replayPart in ChatHistoryReplayProjection.Project(ordered))
                 {
+                    var msg = replayPart.Message;
                     var roleLower = msg.Role?.ToLowerInvariant() ?? "";
-                    var rawText = msg.Text ?? string.Empty;
+                    var rawText = replayPart.Text;
                     var ts = msg.Ts > 0
                         ? DateTimeOffset.FromUnixTimeMilliseconds(msg.Ts).ToLocalTime()
                         : (DateTimeOffset?)null;
@@ -1150,7 +1151,7 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
                     if (roleLower == "user")
                         text = RehydrateAttachmentMarkers(attachmentMatcher, text, msg.Ts);
 
-                    var hasStructuredToolContent = msg.ToolContent.Count > 0;
+                    var hasStructuredToolContent = replayPart.ToolContent.Count > 0;
                     if (string.IsNullOrEmpty(text) && !hasStructuredToolContent) continue;
 
                     // Check if this user message was aborted (persisted __openclaw.id match)
@@ -1168,8 +1169,12 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
                         !string.Equals(msg.StopReason, "toolUse", StringComparison.OrdinalIgnoreCase) &&
                         !string.Equals(msg.StopReason, "end_turn", StringComparison.OrdinalIgnoreCase);
 
-                    bool shouldMarkAborted = (roleLower == "assistant" && nextAssistantIsAborted) || gatewayAborted;
-                    if (roleLower == "assistant") nextAssistantIsAborted = false; // reset after consuming
+                    bool shouldMarkAborted = replayPart.IsFirstTextPart
+                        && ((roleLower == "assistant" && nextAssistantIsAborted) || gatewayAborted);
+                    if (roleLower == "assistant" && replayPart.IsFirstTextPart)
+                        nextAssistantIsAborted = false;
+                    if (gatewayAborted && !replayPart.IsFirstTextPart && !string.IsNullOrEmpty(text))
+                        continue;
 
                     // Diagnostic: log shape (role + length + heuristic flags) only.
                     // Never log the message text — see HIGH 4 logging audit.
@@ -1272,10 +1277,26 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
                             }
                             Logger.Debug($"[ChatHistory]   → routed: ASSISTANT bubble (no flatten/system match)");
                             rebuilt = ApplyAndCaptureMeta(rebuilt, new ChatMessageEvent(RepairContentBlockSeams(text)), msgMeta);
-                            // End the turn so the next assistant message starts a new
-                            // entry rather than replacing this one (UpsertAssistant
-                            // upserts by ActiveAssistantId, which TurnEnd clears).
-                            rebuilt = ChatTimelineReducer.Apply(rebuilt, new ChatTurnEndEvent());
+                            if (rebuilt.ActiveToolCalls.Count > 0
+                                || rebuilt.ActiveToolCallId is not null)
+                            {
+                                // Text can be interleaved between a tool start and its
+                                // result in one array-valued history message. Preserve
+                                // tool correlation while ensuring later text becomes a
+                                // separate chronological entry.
+                                rebuilt = rebuilt with
+                                {
+                                    ActiveAssistantId = null,
+                                    ActiveReasoningId = null,
+                                };
+                            }
+                            else
+                            {
+                                // End the turn so the next assistant message starts a new
+                                // entry rather than replacing this one (UpsertAssistant
+                                // upserts by ActiveAssistantId, which TurnEnd clears).
+                                rebuilt = ChatTimelineReducer.Apply(rebuilt, new ChatTurnEndEvent());
+                            }
                             break;
 
                             case "toolresult":
@@ -1328,7 +1349,7 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
                         }
                     }
 
-                    foreach (var toolBlock in msg.ToolContent)
+                    foreach (var toolBlock in replayPart.ToolContent)
                     {
                         if (toolBlock.Kind == ChatToolContentKind.Call)
                         {
@@ -1557,6 +1578,7 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
                         NextId = nextId,
                         TurnActive = prior.TurnActive
                     };
+                    rebuilt = ChatTimelineReducer.RebuildActiveToolTracking(rebuilt);
                 }
 
                 _timelines[threadId] = rebuilt;

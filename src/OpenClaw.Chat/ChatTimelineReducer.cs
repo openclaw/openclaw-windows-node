@@ -4,6 +4,32 @@ public static class ChatTimelineReducer
 {
     private const int MaxLocalNonces = 256;
 
+    public static ChatTimelineState RebuildActiveToolTracking(ChatTimelineState state)
+    {
+        var activeToolCallId = default(string);
+        var activeToolCalls =
+            System.Collections.Immutable.ImmutableDictionary<string, string>.Empty;
+
+        foreach (var entry in state.Entries)
+        {
+            if (entry.Kind != ChatTimelineItemKind.ToolCall
+                || entry.ToolResult is not (null or ChatToolCallStatus.InProgress))
+            {
+                continue;
+            }
+
+            activeToolCallId = entry.Id;
+            if (!string.IsNullOrWhiteSpace(entry.ToolCallId))
+                activeToolCalls = activeToolCalls.SetItem(entry.ToolCallId, entry.Id);
+        }
+
+        return state with
+        {
+            ActiveToolCallId = activeToolCallId,
+            ActiveToolCalls = activeToolCalls,
+        };
+    }
+
     public static ChatTimelineState Apply(ChatTimelineState state, ChatEvent evt)
     {
         return evt switch

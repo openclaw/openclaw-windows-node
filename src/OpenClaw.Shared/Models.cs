@@ -1822,6 +1822,14 @@ public class ChatMessageInfo
         Array.Empty<ChatToolContentInfo>();
 
     /// <summary>
+    /// Ordered text and tool blocks retained from array-valued message content.
+    /// Flat <see cref="Text"/> and <see cref="ToolContent"/> remain populated for
+    /// compatibility with consumers that do not need block-level chronology.
+    /// </summary>
+    public IReadOnlyList<ChatMessageContentPartInfo> ContentParts { get; set; } =
+        Array.Empty<ChatMessageContentPartInfo>();
+
+    /// <summary>
     /// Optional gateway-assigned message state. "final" indicates a complete
     /// terminal message; absent or other values indicate intermediate state.
     /// </summary>
@@ -1892,6 +1900,19 @@ public class ChatToolContentInfo
     public JsonElement? Args { get; set; }
     public string? Text { get; set; }
     public bool IsError { get; set; }
+}
+
+public enum ChatMessageContentPartKind
+{
+    Text,
+    Tool,
+}
+
+public class ChatMessageContentPartInfo
+{
+    public ChatMessageContentPartKind Kind { get; set; }
+    public string? Text { get; set; }
+    public ChatToolContentInfo? Tool { get; set; }
 }
 
 /// <summary>
