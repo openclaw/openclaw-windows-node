@@ -5872,6 +5872,61 @@ public class OpenClawChatDataProviderTests
         Assert.Equal("/workspace", entry.ToolOutput);
     }
 
+    [Theory]
+    [InlineData("toolResult")]
+    [InlineData("tool_result")]
+    public async Task LoadHistoryAsync_StringToolResult_CompletesOriginalCall(string role)
+    {
+        var (bridge, provider, snapshots, _) = CreateProvider(new[] { MainSession() });
+        bridge.HistoryBehavior = _ => Task.FromResult(new ChatHistoryInfo
+        {
+            SessionKey = "main",
+            Messages =
+            [
+                new ChatMessageInfo
+                {
+                    Role = "assistant",
+                    State = "final",
+                    Ts = 1,
+                    ToolContent =
+                    [
+                        new ChatToolContentInfo
+                        {
+                            Kind = ChatToolContentKind.Call,
+                            CallId = "call-1",
+                            ToolName = "exec",
+                            Args = JsonSerializer.Deserialize<JsonElement>("""{"command":"pwd"}"""),
+                        },
+                    ],
+                },
+                new ChatMessageInfo
+                {
+                    Role = role,
+                    Text = "/workspace",
+                    State = "final",
+                    Ts = 2,
+                    ToolContent =
+                    [
+                        new ChatToolContentInfo
+                        {
+                            Kind = ChatToolContentKind.Result,
+                            CallId = "call-1",
+                            ToolName = "exec",
+                            Text = "/workspace",
+                        },
+                    ],
+                },
+            ],
+        });
+
+        await provider.LoadHistoryAsync("main");
+
+        var entry = Assert.Single(snapshots[^1].Timelines["main"].Entries);
+        Assert.Equal("call-1", entry.ToolCallId);
+        Assert.Equal(ChatToolCallStatus.Success, entry.ToolResult);
+        Assert.Equal("/workspace", entry.ToolOutput);
+    }
+
     [Fact]
     public async Task LoadHistoryAsync_InterleavedContentParts_PreserveChronologyAndCorrelation()
     {

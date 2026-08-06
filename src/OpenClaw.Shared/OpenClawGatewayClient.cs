@@ -679,67 +679,68 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
         string role,
         string messageText)
     {
-        if (!message.TryGetProperty("content", out var content)
-            || content.ValueKind != JsonValueKind.Array)
-        {
-            return Array.Empty<ChatToolContentInfo>();
-        }
-
         var blocks = new List<ChatToolContentInfo>();
-        foreach (var item in content.EnumerateArray())
+        var hasArrayContent = message.TryGetProperty("content", out var content)
+            && content.ValueKind == JsonValueKind.Array;
+        if (hasArrayContent)
         {
-            if (item.ValueKind != JsonValueKind.Object
-                || !item.TryGetProperty("type", out var typeElement)
-                || typeElement.ValueKind != JsonValueKind.String)
+            foreach (var item in content.EnumerateArray())
             {
-                continue;
+                if (item.ValueKind != JsonValueKind.Object
+                    || !item.TryGetProperty("type", out var typeElement)
+                    || typeElement.ValueKind != JsonValueKind.String)
+                {
+                    continue;
+                }
+
+                var normalizedType = (typeElement.GetString() ?? string.Empty)
+                    .Replace("_", string.Empty, StringComparison.Ordinal)
+                    .ToLowerInvariant();
+                var kind = normalizedType switch
+                {
+                    "toolcall" or "tooluse" => ChatToolContentKind.Call,
+                    "toolresult" => ChatToolContentKind.Result,
+                    _ => (ChatToolContentKind?)null,
+                };
+                if (kind is null)
+                    continue;
+
+                blocks.Add(new ChatToolContentInfo
+                {
+                    Kind = kind.Value,
+                    CallId = ReadFirstString(
+                            item,
+                            "id",
+                            "tool_call_id",
+                            "toolCallId",
+                            "tool_use_id",
+                            "toolUseId")
+                        ?? ReadFirstString(
+                            message,
+                            "tool_call_id",
+                            "toolCallId",
+                            "tool_use_id",
+                            "toolUseId"),
+                    ToolName = ReadFirstString(item, "name")
+                        ?? ReadFirstString(message, "toolName", "tool_name")
+                        ?? "tool",
+                    Args = kind == ChatToolContentKind.Call
+                        ? ReadFirstValue(item, "args", "arguments", "input")
+                        : null,
+                    Text = kind == ChatToolContentKind.Result
+                        ? ExtractToolContentText(item)
+                        : null,
+                    IsError = ReadBoolean(item, "isError", "is_error"),
+                });
             }
-
-            var normalizedType = (typeElement.GetString() ?? string.Empty)
-                .Replace("_", string.Empty, StringComparison.Ordinal)
-                .ToLowerInvariant();
-            var kind = normalizedType switch
-            {
-                "toolcall" or "tooluse" => ChatToolContentKind.Call,
-                "toolresult" => ChatToolContentKind.Result,
-                _ => (ChatToolContentKind?)null,
-            };
-            if (kind is null)
-                continue;
-
-            blocks.Add(new ChatToolContentInfo
-            {
-                Kind = kind.Value,
-                CallId = ReadFirstString(
-                        item,
-                        "id",
-                        "tool_call_id",
-                        "toolCallId",
-                        "tool_use_id",
-                        "toolUseId")
-                    ?? ReadFirstString(
-                        message,
-                        "tool_call_id",
-                        "toolCallId",
-                        "tool_use_id",
-                        "toolUseId"),
-                ToolName = ReadFirstString(item, "name")
-                    ?? ReadFirstString(message, "toolName", "tool_name")
-                    ?? "tool",
-                Args = kind == ChatToolContentKind.Call
-                    ? ReadFirstValue(item, "args", "arguments", "input")
-                    : null,
-                Text = kind == ChatToolContentKind.Result
-                    ? ExtractToolContentText(item)
-                    : null,
-                IsError = ReadBoolean(item, "isError", "is_error"),
-            });
         }
 
         var normalizedRole = role.Replace("_", string.Empty, StringComparison.Ordinal)
             .ToLowerInvariant();
+        var supportsResultFallback = normalizedRole == "toolresult"
+            || (hasArrayContent && normalizedRole is "tool" or "function");
         if (blocks.All(static block => block.Kind != ChatToolContentKind.Result)
-            && normalizedRole is "toolresult" or "tool" or "function"
+            && supportsResultFallback
             && !string.IsNullOrEmpty(messageText))
         {
             blocks.Add(new ChatToolContentInfo
