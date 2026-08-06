@@ -1873,6 +1873,36 @@ public class OpenClawGatewayClientTests
         Assert.Equal("call-1", Assert.Single(history.Messages[0].ToolContent).CallId);
     }
 
+    [Fact]
+    public void ParseChatHistoryPayload_ToolResult_UsesCallIdAndMessageErrorFallback()
+    {
+        var helper = new GatewayClientTestHelper();
+
+        var history = helper.ParseChatHistoryPayload("""
+        {
+          "messages": [
+            {
+              "role": "toolResult",
+              "isError": true,
+              "content": [
+                {
+                  "type": "tool_result",
+                  "callId": "call-1",
+                  "name": "exec",
+                  "content": "access denied"
+                }
+              ],
+              "timestamp": 2
+            }
+          ]
+        }
+        """);
+
+        var result = Assert.Single(Assert.Single(history.Messages).ToolContent);
+        Assert.Equal("call-1", result.CallId);
+        Assert.True(result.IsError);
+    }
+
     [Theory]
     [InlineData("toolResult")]
     [InlineData("tool_result")]

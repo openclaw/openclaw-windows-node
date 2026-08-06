@@ -13,10 +13,30 @@ internal sealed record ChatHistoryReplayPart(
 
 internal static class ChatHistoryReplayProjection
 {
-    internal static JsonObject? ProjectToolArgs(JsonElement? value) =>
-        value is { ValueKind: JsonValueKind.Object } args
-            ? NativeToolProjector.ExtractSafeToolDisplayArgs(args)
-            : null;
+    internal static JsonObject? ProjectToolArgs(JsonElement? value)
+    {
+        if (value is { ValueKind: JsonValueKind.Object } args)
+            return NativeToolProjector.ExtractSafeToolDisplayArgs(args);
+
+        if (value is not { ValueKind: JsonValueKind.String } encoded)
+            return null;
+
+        var json = encoded.GetString();
+        if (string.IsNullOrWhiteSpace(json))
+            return null;
+
+        try
+        {
+            using var document = JsonDocument.Parse(json);
+            return document.RootElement.ValueKind == JsonValueKind.Object
+                ? NativeToolProjector.ExtractSafeToolDisplayArgs(document.RootElement)
+                : null;
+        }
+        catch (JsonException)
+        {
+            return null;
+        }
+    }
 
     internal static string ToolLabel(string toolName, JsonObject? args)
     {

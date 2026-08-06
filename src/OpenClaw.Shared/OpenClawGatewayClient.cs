@@ -756,12 +756,14 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
 
                 var itemSemanticCallId = ReadFirstString(
                     item,
+                    "callId",
                     "tool_call_id",
                     "toolCallId",
                     "tool_use_id",
                     "toolUseId");
                 var messageSemanticCallId = ReadFirstString(
                     message,
+                    "callId",
                     "tool_call_id",
                     "toolCallId",
                     "tool_use_id",
@@ -770,6 +772,7 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
                     ? ReadFirstString(
                         item,
                         "id",
+                        "callId",
                         "tool_call_id",
                         "toolCallId",
                         "tool_use_id",
@@ -791,7 +794,8 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
                     Text = kind == ChatToolContentKind.Result
                         ? ExtractToolContentText(item)
                         : null,
-                    IsError = ReadBoolean(item, "isError", "is_error"),
+                    IsError = ReadNullableBoolean(item, "isError", "is_error")
+                        ?? ReadBoolean(message, "isError", "is_error"),
                 });
             }
         }
@@ -809,6 +813,7 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
                 Kind = ChatToolContentKind.Result,
                 CallId = ReadFirstString(
                     message,
+                    "callId",
                     "tool_call_id",
                     "toolCallId",
                     "tool_use_id",
@@ -1141,6 +1146,9 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
     }
 
     private static bool ReadBoolean(JsonElement value, params string[] propertyNames)
+        => ReadNullableBoolean(value, propertyNames) ?? false;
+
+    private static bool? ReadNullableBoolean(JsonElement value, params string[] propertyNames)
     {
         foreach (var propertyName in propertyNames)
         {
@@ -1151,7 +1159,7 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
             }
         }
 
-        return false;
+        return null;
     }
 
     private static string? ExtractToolContentText(JsonElement item)
