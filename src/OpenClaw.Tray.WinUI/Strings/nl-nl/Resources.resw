@@ -6879,6 +6879,7 @@ Het binaire bestand wxc-exec is niet gevonden. {1} Als dit een ontwikkelaarsbuil
   </data>
   <data name="PermissionsPage_ExecPolicySaveFailed" xml:space="preserve">
     <value>Opslaan mislukt</value>
+  </data>
   <data name="SessionsPage_Status_Working" xml:space="preserve">
     <value>Bezig</value>
   </data>

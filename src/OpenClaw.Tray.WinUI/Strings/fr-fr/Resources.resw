@@ -6878,6 +6878,7 @@ Le binaire wxc-exec est introuvable. {1} S'il s'agit d'une build développeur, c
   </data>
   <data name="PermissionsPage_ExecPolicySaveFailed" xml:space="preserve">
     <value>Échec de l’enregistrement</value>
+  </data>
   <data name="SessionsPage_Status_Working" xml:space="preserve">
     <value>En cours</value>
   </data>

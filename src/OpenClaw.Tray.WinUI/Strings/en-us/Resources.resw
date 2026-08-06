@@ -6918,6 +6918,7 @@ Make sure the gateway is running.</value>
   </data>
   <data name="PermissionsPage_ExecPolicySaveFailed" xml:space="preserve">
     <value>Save failed</value>
+  </data>
   <data name="SessionsPage_Status_Working" xml:space="preserve">
     <value>Working</value>
   </data>

@@ -6878,6 +6878,7 @@
   </data>
   <data name="PermissionsPage_ExecPolicySaveFailed" xml:space="preserve">
     <value>保存失败</value>
+  </data>
   <data name="SessionsPage_Status_Working" xml:space="preserve">
     <value>工作中</value>
   </data>
