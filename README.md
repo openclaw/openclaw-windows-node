@@ -1,4 +1,4 @@
-# <img src="docs/assets/openclaw-icon.png" width="28" height="28" alt="OpenClaw"> OpenClaw Windows Hub
+# OpenClaw Windows Hub
 
 ![OpenClaw Windows Node banner](docs/assets/readme-banner.jpg)
 
@@ -7,11 +7,9 @@
 [![License: MIT](https://img.shields.io/badge/license-MIT-green?style=flat-square)](LICENSE)
 [![Discord](https://img.shields.io/discord/1456350064065904867?label=discord&logo=discord&logoColor=white&color=5865F2&style=flat-square)](https://discord.gg/clawd)
 
-The native Windows companion for [OpenClaw](https://github.com/openclaw/openclaw). Connect your PC to your gateway and let the agent run commands, capture your screen, present UI, and speak aloud, all permission-gated and sandboxed.
+The native Windows companion for [OpenClaw](https://github.com/openclaw/openclaw). Connect your PC to a gateway, chat with your agents, and choose which Windows capabilities they can use.
 
-[Download](https://docs.openclaw.ai/platforms/windows) · [Docs](https://docs.openclaw.ai/platforms/windows) · [Setup Guide](docs/SETUP.md) · [Discord](https://discord.gg/clawd)
-
----
+[Download](https://docs.openclaw.ai/platforms/windows) | [Setup guide](docs/SETUP.md) | [Windows docs](https://docs.openclaw.ai/platforms/windows) | [Discord](https://discord.gg/clawd)
 
 ## Install
 
@@ -20,188 +18,206 @@ The native Windows companion for [OpenClaw](https://github.com/openclaw/openclaw
 | x64 | [OpenClawCompanion-Setup-x64.exe](https://github.com/openclaw/openclaw-windows-node/releases/latest/download/OpenClawCompanion-Setup-x64.exe) |
 | ARM64 | [OpenClawCompanion-Setup-arm64.exe](https://github.com/openclaw/openclaw-windows-node/releases/latest/download/OpenClawCompanion-Setup-arm64.exe) |
 
-[Checksums](https://github.com/openclaw/openclaw-windows-node/releases/latest/download/OpenClawCompanion-SHA256SUMS.txt) · Windows 10 20H2+ or Windows 11 · No build required.
+Requires Windows 10 20H2 or later, or Windows 11. No source build is required.
 
-On first launch, a setup wizard walks you through connecting to an existing gateway or installing one locally in WSL. No gateway yet? Choose "Set up locally" and the wizard handles everything.
+On first launch, the setup wizard can install a dedicated local gateway in WSL or connect OpenClaw Companion to an existing gateway. If you do not have a gateway yet, choose **Install a local gateway (WSL)**.
 
----
+## 🔌 Node mode (agent control)
 
-## Node Mode
+Use OpenClaw Companion for normal setup. You should not need to edit `openclaw.json` by hand.
 
-Once paired with your gateway, the agent can act on your PC through these capabilities:
+1. Open **Companion Settings…** from the tray menu.
+2. Open **Connection** and connect to your gateway. Complete any pending pairing approval shown by the app.
+3. Open **Sandbox** and choose how agent-run programs should be contained.
+4. Open **Permissions** and turn on **Node mode**.
+5. Choose the capabilities this PC should offer. Changes save automatically.
+6. Open **Command Center** to verify the node is connected and to resolve any gateway allowlist or reapproval warnings.
 
-| | What the agent can do |
+Node mode registers this PC as a node and advertises only the capabilities enabled in **Permissions**. Gateway policy and local Windows checks can still block a capability.
+
+### Capabilities
+
+| Capability | What it lets agents do |
 |---|---|
-| **Run commands** | Execute shell commands, scripts, and tools (`system.run`) |
-| **Show things** | Toast notifications, WebView2 canvas windows, A2UI rendering |
-| **See your screen** | Screenshots and short screen recordings |
-| **Use your camera** | List cameras, take photos, record short clips |
-| **Speak** | Text-to-speech via Windows SAPI or ElevenLabs |
-| **Know context** | Device info, geolocation, microphone transcription |
+| **System tools** | Run shell commands and scripts, subject to local exec approvals and sandbox policy |
+| **Browser control** | Drive a compatible Chromium browser on this PC |
+| **Camera** | Capture still images and short camera clips |
+| **Canvas** | Present and interact with visual content in a hosted window |
+| **Screen capture** | Take screenshots and short screen recordings |
+| **Location** | Read this PC's approximate location |
+| **Text-to-speech** | Speak text aloud through this PC's speakers |
+| **Speech-to-text** | Transcribe microphone audio locally |
 
-### Connect in 4 steps
+Notifications and basic device status are available when Node mode is active. Windows may request consent before camera, microphone, location, or screen features can run.
 
-1. **Enable Node Mode** in Settings (on by default).
-2. **Approve the device** on your gateway:
-   ```bash
-   openclaw devices list           # Find your Windows device
-   openclaw devices approve <id>   # Approve it
-   ```
-3. **Allow capabilities** in your gateway config (`~/.openclaw/openclaw.json`):
-   ```json
-   {
-     "gateway": {
-       "nodes": {
-         "allowCommands": [
-           "system.notify",
-           "system.run",
-           "canvas.present",
-           "canvas.hide",
-           "screen.snapshot",
-           "device.info",
-           "tts.speak"
-         ]
-       }
-     }
-   }
-   ```
-   > Commands must be listed explicitly. Wildcards like `canvas.*` don't work. Privacy-sensitive commands (`screen.record`, `camera.snap`, `camera.clip`, `stt.transcribe`) should only be added when you explicitly want to allow them.
+Privacy-sensitive capabilities should stay off unless you intend to use them. This includes camera capture, screen recording, microphone transcription, spoken output, and command execution.
 
-4. **Verify from your gateway**:
-   ```bash
-   openclaw nodes notify --node <id> --title "Hello" --body "From gateway!"
-   openclaw nodes invoke --node <id> --command screen.snapshot --params '{"format":"png"}'
-   ```
+### Gateway approvals and allowlists
 
-See [Node Concepts](docs/OPERATOR_NODE_CONCEPTS.md) for the full pairing and approval model, and [Windows Node Testing](docs/WINDOWS_NODE_TESTING.md) for the complete capabilities reference and test commands.
+OpenClaw applies more than one trust check:
 
----
+- **Permissions** controls what this PC advertises.
+- **Connection** shows pairing and reapproval requests.
+- **Command Center** explains commands filtered by gateway policy and provides copyable repair commands for safe capabilities.
+- **Advanced > Config** provides a schema-guided editor for the connected gateway's configuration.
 
-## Sandboxing
+After changing gateway command policy, approve any `pending-reapproval` request shown by the app and reconnect the node. The app never silently opts into privacy-sensitive gateway commands.
 
-Every command the agent runs on your PC goes through **MXC process isolation**. You control what the sandbox allows:
+<details>
+<summary>Advanced: externally managed gateway allowlist shape</summary>
 
-- **Files** — per-folder grants (Documents, Downloads, Desktop, custom paths). SSH keys and browser profiles are always blocked.
-- **Network** — internet on/off. LAN is always blocked.
-- **Clipboard** — none, read, write, or both.
-- **Limits** — per-command timeout and output cap.
+Use your gateway's supported configuration tools when OpenClaw Companion cannot manage that gateway. Preserve existing entries and add only the exact commands you need. Wildcards such as `canvas.*` are not expanded.
 
-Choose a preset (Locked Down, Recommended, Unprotected) or configure each control individually. See [Sandboxing docs](https://docs.openclaw.ai/gateway/sandboxing) for details.
+```json
+{
+  "gateway": {
+    "nodes": {
+      "allowCommands": [
+        "system.notify",
+        "canvas.present",
+        "canvas.hide",
+        "screen.snapshot",
+        "device.info",
+        "device.status"
+      ]
+    }
+  }
+}
+```
 
----
+Commands such as `system.run`, `system.run.prepare`, `system.which`, `screen.record`, `camera.snap`, `camera.clip`, `stt.transcribe`, and `tts.speak` require deliberate opt-in. Reapprove and reconnect the node after changing the effective command set.
+
+</details>
+
+See [Operator and node concepts](docs/OPERATOR_NODE_CONCEPTS.md) for the pairing and trust model, and [Windows node testing](docs/WINDOWS_NODE_TESTING.md) for command-level reference material.
+
+## Sandbox command execution
+
+The **Sandbox** page controls programs launched through the Windows node's `system.run` capability:
+
+- **Locked Down** blocks internet, clipboard, and standard user folders.
+- **Recommended** enables internet, read-only access to common folders, and clipboard read access.
+- **Unprotected** allows broad folder and clipboard access. Use it only when you accept the added risk.
+- Custom controls set folder access, network access, clipboard access, timeout, and output limits.
+
+When enabled and available, the Windows node uses MXC process isolation for `system.run`. If MXC is unavailable and strict fallback blocking is off, OpenClaw can fall back to uncontained host execution for compatibility. The **Sandbox** page shows the current state and lets you choose the appropriate policy.
+
+This sandbox covers commands run through the Windows node. Commands run directly on the gateway use the gateway's separate security controls.
 
 ## Features
 
-- 💬 **Native chat** — WebView2 chat UI and Quick Send hotkey (Ctrl+Alt+Shift+C)
-- 🧭 **Command Center** — diagnostics hub for sessions, nodes, channels, and usage
-- 🔔 **Toast notifications** — clickable Windows notifications with smart categorization
-- 🔄 **Auto-updates** — background updates from GitHub Releases
-- 🔗 **Deep links** — `openclaw://` URL scheme for automation (see below)
-- 📡 **Local MCP server** — Model Context Protocol endpoint for tool integration ([MCP Mode](docs/MCP_MODE.md))
-- 🎯 **First-run setup** — guided WSL gateway install with permissions and onboarding
+- Native tray flyout with gateway, session, usage, channel, node, and activity status
+- Companion Settings for connections, permissions, gateway configuration, diagnostics, and updates
+- Native chat and Quick Send with the `Ctrl+Alt+Shift+C` global hotkey
+- Command Center diagnostics with copyable repair guidance
+- Toast notifications with smart categorization
+- WebView2 Canvas and A2UI rendering
+- Local MCP server for local tool integrations
+- Background updates from GitHub Releases
+- `openclaw://` deep links for automation
 
-### Deep links
+### Useful deep links
 
-The app registers `openclaw://` for automation. Key links:
-
-| Link | What it does |
+| Link | Action |
 |---|---|
-| `openclaw://settings` | Open Settings |
-| `openclaw://setup` | Open Setup Wizard |
+| `openclaw://settings` | Open Companion Settings |
+| `openclaw://setup` | Open the setup wizard |
 | `openclaw://chat` | Open Chat |
-| `openclaw://commandcenter` | Open Command Center diagnostics |
-| `openclaw://send?message=Hello` | Quick Send with pre-filled text |
-| `openclaw://logs` | Open current log file |
+| `openclaw://commandcenter` | Open Command Center |
+| `openclaw://send?message=Hello` | Open Quick Send with pre-filled text |
+| `openclaw://logs` | Open the current log file |
 | `openclaw://support-context` | Copy redacted support context |
-| `openclaw://capability-diagnostics` | Copy permissions and allowlist diagnostics |
+| `openclaw://capability-diagnostics` | Copy capability and allowlist diagnostics |
 
-Deep links work when the app is already running (forwarded via IPC).
+Deep links are forwarded through IPC when OpenClaw Companion is already running.
 
-### File paths
+### Local files
 
-| What | Where |
+| Data | Default path |
 |---|---|
-| Settings | `%APPDATA%\OpenClawTray\settings.json` |
+| App settings | `%APPDATA%\OpenClawTray\settings.json` |
 | Gateway registry | `%APPDATA%\OpenClawTray\gateways.json` |
 | Logs | `%LOCALAPPDATA%\OpenClawTray\openclaw-tray.log` |
 | Exec approvals | `%APPDATA%\OpenClawTray\exec-approvals.json` |
 
-Default gateway: `ws://localhost:18789`
-
----
+The default local gateway URL is `ws://localhost:18789`.
 
 ## For contributors
 
 ### Projects
 
-| Project | What it is |
+| Project | Purpose |
 |---|---|
-| **OpenClaw.Tray.WinUI** | System tray app (WinUI 3) |
-| **OpenClaw.Connection** | Gateway registry and connection manager |
-| **OpenClaw.Shared** | Gateway client, capabilities, MCP bridge |
-| **OpenClaw.Chat** | Chat model and timeline reducer |
-| **OpenClaw.WinNode.Cli** | `winnode` CLI for local node/MCP invocation |
-| **OpenClaw.SetupEngine** | WSL gateway setup and setup-code pairing |
+| **OpenClaw.Tray.WinUI** | WinUI 3 tray app and Companion Settings |
+| **OpenClaw.Connection** | Gateway registry, credential resolution, and connection manager |
+| **OpenClaw.Shared** | Gateway client, Windows capabilities, diagnostics, and MCP bridge |
+| **OpenClaw.Chat** | Native chat model and timeline reducer |
+| **OpenClaw.WinNode.Cli** | `winnode` CLI for local Windows node and MCP invocation |
+| **OpenClaw.SetupEngine** | WSL gateway installation and setup-code pairing |
 | **OpenClaw.SetupEngine.UI** | WinUI setup wizard pages |
-| **OpenClaw.Cli** | CLI WebSocket validator |
-| **OpenClawTray.FunctionalUI** | Declarative WinUI helpers |
+| **OpenClaw.Cli** | Gateway WebSocket validation CLI |
+| **OpenClawTray.FunctionalUI** | Declarative WinUI helpers used by newer surfaces |
 
-### Prerequisites
+### Prepare the checkout
 
 ```powershell
-.\scripts\setup-dev.ps1                # Install missing prerequisites (winget, .NET, etc.)
-.\scripts\setup-dev.ps1 -CheckOnly     # Verify without installing
-.\scripts\setup-dev.ps1 -RunValidation # Install + run full build/test validation
+.\scripts\setup-dev.ps1
+.\scripts\setup-dev.ps1 -CheckOnly
+.\scripts\setup-dev.ps1 -RunValidation
 ```
 
 ### Build
 
 ```powershell
-.\build.ps1                            # Build all projects
-.\build.ps1 -Project WinUI            # Build only the tray app
-.\build.ps1 -CheckOnly                # Check prerequisites without building
+.\build.ps1
+.\build.ps1 -Project WinUI
+.\build.ps1 -CheckOnly
 ```
 
-Or build directly with `dotnet` (note: WinUI requires a runtime identifier):
+Direct WinUI builds require a runtime identifier:
 
 ```powershell
-dotnet build src/OpenClaw.Tray.WinUI -r win-x64     # x64
-dotnet build src/OpenClaw.Tray.WinUI -r win-arm64   # ARM64
-dotnet build src/OpenClaw.Tray.WinUI -r win-x64 -p:PackageMsix=true  # MSIX package
+dotnet build .\src\OpenClaw.Tray.WinUI\OpenClaw.Tray.WinUI.csproj -r win-x64
+dotnet build .\src\OpenClaw.Tray.WinUI\OpenClaw.Tray.WinUI.csproj -r win-arm64
+dotnet build .\src\OpenClaw.Tray.WinUI\OpenClaw.Tray.WinUI.csproj -r win-x64 -p:PackageMsix=true
 ```
 
 ### Run
 
+`run-app-local.ps1` allows `main` by default. Pass `-AllowNonMain` when previewing a feature branch or linked worktree.
+
 ```powershell
-.\run-app-local.ps1                    # Build and launch
-.\run-app-local.ps1 -NoBuild          # Launch existing build (skip rebuild)
-.\run-app-local.ps1 -Isolated         # Separate settings per worktree
-.\run-app-local.ps1 -Dev -Isolated    # Side-by-side dev identity (own mutex, port, distro)
-.\run-app-local.ps1 -Configuration Release -Isolated -UpdateChannel alpha  # Test updates
+.\run-app-local.ps1
+.\run-app-local.ps1 -NoBuild
+.\run-app-local.ps1 -AllowNonMain -Isolated
+.\run-app-local.ps1 -AllowNonMain -Dev -Isolated
+.\run-app-local.ps1 -AllowNonMain -Configuration Release -Isolated -UpdateChannel alpha
 ```
 
 ### Test
 
+Set the repository root explicitly so tests also work in linked worktrees:
+
 ```powershell
-dotnet test tests/OpenClaw.Shared.Tests
-dotnet test tests/OpenClaw.Tray.Tests
+$env:OPENCLAW_REPO_ROOT = (Get-Location).Path
+dotnet test .\tests\OpenClaw.Shared.Tests\OpenClaw.Shared.Tests.csproj
+dotnet test .\tests\OpenClaw.Tray.Tests\OpenClaw.Tray.Tests.csproj
 ```
 
-### Docs
+These commands restore and build the test projects when needed. Use `--no-restore` only after each test project has built successfully in the current worktree.
 
-| Topic | Link |
+### Documentation
+
+| Topic | Document |
 |---|---|
-| Connection architecture | [docs/CONNECTION_ARCHITECTURE.md](docs/CONNECTION_ARCHITECTURE.md) |
+| Architecture ownership | [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) |
+| Connection and pairing | [docs/CONNECTION_ARCHITECTURE.md](docs/CONNECTION_ARCHITECTURE.md) |
 | Onboarding wizard | [docs/ONBOARDING_WIZARD.md](docs/ONBOARDING_WIZARD.md) |
-| WSL gateway admin | [docs/WSL_GATEWAY_ADMIN.md](docs/WSL_GATEWAY_ADMIN.md) |
+| Windows node behavior | [docs/WINDOWS_NODE_TESTING.md](docs/WINDOWS_NODE_TESTING.md) |
+| Local MCP mode | [docs/MCP_MODE.md](docs/MCP_MODE.md) |
+| Managed WSL gateway | [docs/WSL_GATEWAY_ADMIN.md](docs/WSL_GATEWAY_ADMIN.md) |
 | Development | [DEVELOPMENT.md](DEVELOPMENT.md) |
-
-**User-facing docs** (also linked above): [Setup](docs/SETUP.md) · [Node Concepts](docs/OPERATOR_NODE_CONCEPTS.md) · [Windows Node Testing](docs/WINDOWS_NODE_TESTING.md) · [MCP Mode](docs/MCP_MODE.md)
-
----
 
 ## License
 
 [MIT](LICENSE)
-
-*Made with 🦞 by Scott Hanselman, Molty, and contributors*

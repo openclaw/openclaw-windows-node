@@ -1170,7 +1170,6 @@ public sealed partial class HubWindow : WindowEx
         "voice" => typeof(VoiceSettingsPage),
         "permissions" => typeof(PermissionsPage),
         "sandbox" => typeof(SandboxPage),
-        "sandbox-sessions" => typeof(SandboxSessionPrototypePage),
         // ActivityPage has been removed; legacy "activity"/"history" deep links
         // redirect to ChannelsPage via DeepLinkHandler.
         "activity" => typeof(ChannelsPage),

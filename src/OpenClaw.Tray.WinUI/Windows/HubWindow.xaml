@@ -480,9 +480,6 @@
             <NavigationViewItem x:Uid="HubWindow_NavigationViewItem_Sandbox" Tag="sandbox" Content="Sandbox">
                 <NavigationViewItem.Icon><ImageIcon Source="{StaticResource Sandbox_Icon}" AutomationProperties.AccessibilityView="Raw"/></NavigationViewItem.Icon>
             </NavigationViewItem>
-            <NavigationViewItem Tag="sandbox-sessions" Content="Sessions (Prototype)">
-                <NavigationViewItem.Icon><FontIcon FontFamily="{ThemeResource SymbolThemeFontFamily}" Glyph="&#xE72E;"/></NavigationViewItem.Icon>
-            </NavigationViewItem>
         </NavigationView.MenuItems>
 
         <NavigationView.FooterMenuItems>
