@@ -17,6 +17,34 @@ namespace OpenClaw.Shared.Tests;
 [Collection(AppVersionInfoTestCollection.Name)]
 public class WindowsNodeClientTests
 {
+    private static string BuildProtocolFeatureErrorResponse(
+        string requestId,
+        bool structuredError)
+    {
+        if (structuredError)
+        {
+            return JsonSerializer.Serialize(new
+            {
+                type = "res",
+                id = requestId,
+                ok = false,
+                error = new
+                {
+                    code = "INVALID_REQUEST",
+                    message = "unknown method: node.protocolFeatures.update"
+                }
+            });
+        }
+
+        return JsonSerializer.Serialize(new
+        {
+            type = "res",
+            id = requestId,
+            ok = false,
+            error = "UnKnOwN MeThOd: node.protocolFeatures.update"
+        });
+    }
+
     private sealed class CapturingWindowsNodeClient(
         string gatewayUrl,
         string token,
@@ -513,11 +541,10 @@ public class WindowsNodeClientTests
     }
 
     [Theory]
-    [InlineData(
-        """{"code":"INVALID_REQUEST","message":"unknown method: node.protocolFeatures.update"}""")]
-    [InlineData(""""UnKnOwN MeThOd: node.protocolFeatures.update"""")]
+    [InlineData(true)]
+    [InlineData(false)]
     public async Task HandleResponse_ProtocolFeatureUnknownMethod_DoesNotFailConnection(
-        string errorJson)
+        bool structuredError)
     {
         var dataPath = Path.Combine(Path.GetTempPath(), $"openclaw-node-test-{Guid.NewGuid():N}");
         Directory.CreateDirectory(dataPath);
@@ -549,15 +576,9 @@ public class WindowsNodeClientTests
                     StringComparison.Ordinal));
             using var request = JsonDocument.Parse(requestJson);
             var requestId = request.RootElement.GetProperty("id").GetString();
+            Assert.NotNull(requestId);
             using var error = JsonDocument.Parse(
-                $$"""
-                {
-                  "type": "res",
-                  "id": "{{requestId}}",
-                  "ok": false,
-                  "error": {{errorJson}}
-                }
-                """);
+                BuildProtocolFeatureErrorResponse(requestId, structuredError));
 
             client.HandleResponse(error.RootElement);
 
@@ -2807,11 +2828,10 @@ public class WindowsNodeClientTests
     }
 
     [Theory]
-    [InlineData(
-        """{"code":"INVALID_REQUEST","message":"unknown method: node.protocolFeatures.update"}""")]
-    [InlineData(""""UnKnOwN MeThOd: node.protocolFeatures.update"""")]
+    [InlineData(true)]
+    [InlineData(false)]
     public async Task CommandDispatch_EventPath_PreservesLegacyArgsSessionKeyWithoutEnvelope(
-        string errorJson)
+        bool structuredError)
     {
         var dataPath = Path.Combine(Path.GetTempPath(), $"openclaw-node-test-{Guid.NewGuid():N}");
         Directory.CreateDirectory(dataPath);
@@ -2843,16 +2863,10 @@ public class WindowsNodeClientTests
                     StringComparison.Ordinal));
             using var request = JsonDocument.Parse(requestJson);
             var requestId = request.RootElement.GetProperty("id").GetString();
+            Assert.NotNull(requestId);
             await InvokeProcessMessageAsync(
                 client,
-                $$"""
-                {
-                  "type": "res",
-                  "id": "{{requestId}}",
-                  "ok": false,
-                  "error": {{errorJson}}
-                }
-                """);
+                BuildProtocolFeatureErrorResponse(requestId, structuredError));
 
             await InvokeProcessMessageAsync(client, """
                 {
