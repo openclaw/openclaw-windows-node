@@ -34,11 +34,17 @@ public sealed class ChatTimelineRenderIdentityContractTests
     {
         var models = Read("src", "OpenClaw.Chat", "ChatModels.cs");
         var provider = Read("src", "OpenClaw.Tray.WinUI", "Chat", "OpenClawChatDataProvider.cs");
+        var state = Read("src", "OpenClaw.Tray.WinUI", "Chat", "ChatConversationState.cs");
+        var resetState = Read("src", "OpenClaw.Tray.WinUI", "Chat", "ChatResetState.cs");
+        var projector = Read("src", "OpenClaw.Tray.WinUI", "Chat", "ChatSnapshotProjector.cs");
         var root = Read("src", "OpenClaw.Tray.WinUI", "Chat", "OpenClawChatRoot.cs");
 
         Assert.Contains("IReadOnlyDictionary<string, long>? TimelineGenerations = null", models);
-        Assert.Contains("new Dictionary<string, long>(_resetVersions)", provider);
-        Assert.Contains("TimelineGenerations: timelineGenerationsCopy", provider);
+        Assert.Contains("new Dictionary<string, long>(_versions)", resetState);
+        Assert.Contains("_reset.SnapshotVersions()", state);
+        Assert.Contains("private readonly ChatConversationState _state", provider);
+        Assert.DoesNotContain("private readonly object _gate", provider);
+        Assert.Contains("TimelineGenerations: input.TimelineGenerations", projector);
         Assert.Contains("snapshot.TimelineGenerations", root);
         Assert.Contains("TimelineGeneration: timelineGeneration", root);
     }
@@ -48,14 +54,20 @@ public sealed class ChatTimelineRenderIdentityContractTests
     {
         var models = Read("src", "OpenClaw.Chat", "ChatModels.cs");
         var provider = Read("src", "OpenClaw.Tray.WinUI", "Chat", "OpenClawChatDataProvider.cs");
+        var state = Read("src", "OpenClaw.Tray.WinUI", "Chat", "ChatConversationState.cs");
+        var queueState = Read("src", "OpenClaw.Tray.WinUI", "Chat", "ChatQueueState.cs");
+        var projector = Read("src", "OpenClaw.Tray.WinUI", "Chat", "ChatSnapshotProjector.cs");
         var root = Read("src", "OpenClaw.Tray.WinUI", "Chat", "OpenClawChatRoot.cs");
         var timeline = Read("src", "OpenClaw.Tray.WinUI", "Chat", "OpenClawChatTimeline.cs");
         var composer = Read("src", "OpenClaw.Tray.WinUI", "Chat", "OpenClawComposer.cs");
 
         Assert.Contains("public record ChatQueuedMessage", models);
         Assert.Contains("QueuedMessagesByThread", models);
-        Assert.Contains("Dictionary<string, List<ChatQueuedMessage>> _queuedMessages", provider);
-        Assert.Contains("QueuedMessagesByThread: queuedMessagesCopy", provider);
+        Assert.Contains("Dictionary<string, List<ChatQueuedMessage>> _messages", queueState);
+        Assert.Contains("_messages.ToDictionary(", queueState);
+        Assert.Contains("_queue.SnapshotMessages()", state);
+        Assert.DoesNotContain("Dictionary<string, List<ChatQueuedMessage>> _queuedMessages", provider);
+        Assert.Contains("QueuedMessagesByThread: input.QueuedMessages", projector);
         Assert.Contains("snapshot.QueuedMessagesByThread", root);
         Assert.Contains("QueuedMessages: queuedMessages", root);
         Assert.Contains("OnQueuedMessageCancel:", root);
@@ -135,11 +147,15 @@ public sealed class ChatTimelineRenderIdentityContractTests
     [Fact]
     public void ResetClearPath_BumpsTimelineGenerationBeforeReusingEntryIds()
     {
-        var provider = Read("src", "OpenClaw.Tray.WinUI", "Chat", "OpenClawChatDataProvider.cs");
+        var state = Read("src", "OpenClaw.Tray.WinUI", "Chat", "ChatConversationState.cs");
+        var resetState = Read("src", "OpenClaw.Tray.WinUI", "Chat", "ChatResetState.cs");
 
         Assert.Matches(
-            new Regex(@"private\s+ResetClearPersistence\s+ClearThreadHistoryAfterResetLocked\(string\s+threadId\)[\s\S]*_resetVersions\[threadId\]\s*=\s*GetResetVersionLocked\(threadId\)\s*\+\s*1;[\s\S]*_timelines\[threadId\]\s*=\s*ChatTimelineState\.Initial\(\)\s*with\s*\{\s*HistoryLoaded\s*=\s*true\s*\};"),
-            provider);
+            new Regex(@"internal\s+ChatResetTransition\s+ResetThread\([\s\S]*lock\s*\(_gate\)[\s\S]*_reset\.BeginReset\([\s\S]*_timelines\[threadId\]\s*=\s*ChatTimelineState\.Initial\(\)\s*with\s*\{\s*HistoryLoaded\s*=\s*true"),
+            state);
+        Assert.Matches(
+            new Regex(@"internal\s+long\s+BeginReset\([\s\S]*_versions\[threadId\]\s*=\s*generation;"),
+            resetState);
     }
 
     [Fact]
