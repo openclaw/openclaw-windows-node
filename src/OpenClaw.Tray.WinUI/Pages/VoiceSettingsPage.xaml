@@ -220,6 +220,7 @@
                         <ComboBoxItem x:Uid="VoiceSettingsPage_TtsPiper"      Content="Piper (local neural voices)"          Tag="piper"/>
                         <ComboBoxItem x:Uid="VoiceSettingsPage_TtsWindows"    Content="Windows (built-in neural voices)"     Tag="windows"/>
                         <ComboBoxItem x:Uid="VoiceSettingsPage_TtsElevenLabs" Content="ElevenLabs (cloud, requires API key)" Tag="elevenlabs"/>
+                        <ComboBoxItem x:Name="MiniMaxProviderItem" Content="MiniMax (cloud, requires API key)" Tag="minimax"/>
                     </ComboBox>
 
                     <!-- Piper voice picker (local neural TTS via Sherpa-ONNX) -->
@@ -281,6 +282,22 @@
                         <TextBox x:Uid="VoiceSettingsPage_ElevenLabsModelBox" x:Name="ElevenLabsModelBox" Header="Model (optional)"
                                  TextChanged="OnElevenLabsModelChanged" Width="300"
                                  PlaceholderText="e.g. eleven_turbo_v2"/>
+                    </StackPanel>
+
+                    <StackPanel x:Name="MiniMaxPanel" Spacing="8" Visibility="Collapsed">
+                        <PasswordBox x:Name="MiniMaxApiKeyBox" Header="API Key"
+                                     PasswordChanged="OnMiniMaxKeyChanged" Width="300"/>
+                        <TextBox x:Name="MiniMaxVoiceIdBox" Header="Voice ID"
+                                 TextChanged="OnMiniMaxVoiceIdChanged" Width="300"
+                                 PlaceholderText="e.g. male-qn-qingse"/>
+                        <TextBox x:Name="MiniMaxModelBox" Header="Model"
+                                 TextChanged="OnMiniMaxModelChanged" Width="300"
+                                 PlaceholderText="speech-2.8-hd"/>
+                        <ComboBox x:Name="MiniMaxRegionCombo" Header="Region"
+                                  SelectionChanged="OnMiniMaxRegionChanged" Width="300">
+                            <ComboBoxItem Content="Global" Tag="global_en"/>
+                            <ComboBoxItem Content="China" Tag="cn_zh"/>
+                        </ComboBox>
                     </StackPanel>
                 </StackPanel>
             </Border>
