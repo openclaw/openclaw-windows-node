@@ -228,6 +228,46 @@ public sealed class ChatTimelinePresentationTests
     }
 
     [Fact]
+    public void ReactorComposer_ReattachesStableImagePasteHandlerAfterRemount()
+    {
+        var root = File.ReadAllText(Path.Combine(
+            TestRepositoryPaths.GetRepositoryRoot(),
+            "src",
+            "OpenClaw.Tray.WinUI",
+            "Chat",
+            "OpenClawReactorChatRoot.cs"));
+        var composer = root[root.IndexOf(
+            "public sealed class ReactorChatComposer",
+            StringComparison.Ordinal)..];
+
+        const string callbackRef =
+            "var onAttachmentPasted = UseRef<Action<ChatAttachment>>(props.OnAttachmentPasted);";
+        const string callbackAssignment =
+            "onAttachmentPasted.Current = props.OnAttachmentPasted;";
+        const string handlerRef =
+            "var pasteHandler = UseRef<TextControlPasteEventHandler>(async (_, args) =>";
+        const string mount =
+            ".OnMount(control => ((TextBox)control).Paste += pasteHandler.Current)";
+        const string unmount =
+            ".OnUnmount(control => ((TextBox)control).Paste -= pasteHandler.Current)";
+
+        var callbackRefIndex = composer.IndexOf(callbackRef, StringComparison.Ordinal);
+        var callbackAssignmentIndex = composer.IndexOf(callbackAssignment, StringComparison.Ordinal);
+        var handlerRefIndex = composer.IndexOf(handlerRef, StringComparison.Ordinal);
+        var mountIndex = composer.IndexOf(mount, StringComparison.Ordinal);
+        var unmountIndex = composer.IndexOf(unmount, StringComparison.Ordinal);
+
+        Assert.True(callbackRefIndex >= 0);
+        Assert.True(callbackAssignmentIndex > callbackRefIndex);
+        Assert.True(handlerRefIndex > callbackAssignmentIndex);
+        Assert.True(mountIndex > handlerRefIndex);
+        Assert.True(unmountIndex > mountIndex);
+        Assert.Equal(1, composer.Split(handlerRef, StringSplitOptions.None).Length - 1);
+        Assert.Contains("onAttachmentPasted.Current(attachment);", composer);
+        Assert.DoesNotContain("pasteHooked", composer);
+    }
+
+    [Fact]
     public void ReactorComposer_UsesReactorThemeResourcesWithoutManualThemeObservation()
     {
         var root = File.ReadAllText(Path.Combine(

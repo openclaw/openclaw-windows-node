@@ -599,7 +599,36 @@ public sealed class ReactorChatComposer : Component<ReactorChatComposerProps>
         var voiceCancellation = UseRef<CancellationTokenSource?>(null);
         var voiceOperation = UseRef(0);
         var voiceStopOperation = UseRef(0);
-        var pasteHooked = UseRef(false);
+        var onAttachmentPasted = UseRef<Action<ChatAttachment>>(props.OnAttachmentPasted);
+        onAttachmentPasted.Current = props.OnAttachmentPasted;
+        var pasteHandler = UseRef<TextControlPasteEventHandler>(async (_, args) =>
+        {
+            var clipboardContent = global::Windows.ApplicationModel.DataTransfer.Clipboard.GetContent();
+            if (clipboardContent is null
+                || !clipboardContent.Contains(
+                    global::Windows.ApplicationModel.DataTransfer.StandardDataFormats.Bitmap))
+            {
+                return;
+            }
+
+            // Paste is a synchronous routed event. Suppress the default text paste
+            // before awaiting bitmap extraction so a multi-format clipboard cannot
+            // insert text alongside the image attachment.
+            args.Handled = true;
+            try
+            {
+                var attachment = await TryReadImageFromClipboardAsync(clipboardContent);
+                if (attachment is null)
+                    return;
+
+                onAttachmentPasted.Current(attachment);
+            }
+            catch (Exception ex)
+            {
+                OpenClawTray.Services.Logger.Debug(
+                    $"Reactor chat composer: clipboard image paste failed: {ex.Message}");
+            }
+        });
         var inputText = UseRef(text);
         var inputControl = UseRef<TextBox?>(null);
         var slashPopup = UseRef<Microsoft.UI.Xaml.Controls.Primitives.Popup?>(null);
@@ -1110,39 +1139,9 @@ public sealed class ReactorChatComposer : Component<ReactorChatComposerProps>
                 control.Resources["TextControlBorderBrush"] = transparent;
                 control.Resources["TextControlBorderBrushFocused"] = transparent;
                 control.Resources["TextControlBorderBrushPointerOver"] = transparent;
-                if (!pasteHooked.Current)
-                {
-                    pasteHooked.Current = true;
-                    control.Paste += async (_, args) =>
-                    {
-                        var clipboardContent = global::Windows.ApplicationModel.DataTransfer.Clipboard.GetContent();
-                        if (clipboardContent is null
-                            || !clipboardContent.Contains(
-                                global::Windows.ApplicationModel.DataTransfer.StandardDataFormats.Bitmap))
-                        {
-                            return;
-                        }
-
-                        // Paste is a synchronous routed event. Suppress the default text paste
-                        // before awaiting bitmap extraction so a multi-format clipboard cannot
-                        // insert text alongside the image attachment.
-                        args.Handled = true;
-                        try
-                        {
-                            var attachment = await TryReadImageFromClipboardAsync(clipboardContent);
-                            if (attachment is null)
-                                return;
-
-                            props.OnAttachmentPasted(attachment);
-                        }
-                        catch (Exception ex)
-                        {
-                            OpenClawTray.Services.Logger.Debug(
-                                $"Reactor chat composer: clipboard image paste failed: {ex.Message}");
-                        }
-                    };
-                }
-            });
+            })
+            .OnMount(control => ((TextBox)control).Paste += pasteHandler.Current)
+            .OnUnmount(control => ((TextBox)control).Paste -= pasteHandler.Current);
         UseEffect((Func<Action>)(() =>
         {
             if (inputControl.Current is { } anchor)
