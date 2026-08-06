@@ -163,6 +163,54 @@ public sealed class ChatConversationStateTests
     }
 
     [Fact]
+    public void RollbackAbortAndEndTurn_StaleGenerationDoesNotEndReplacementTurn()
+    {
+        var state = new ChatConversationState(
+            ConnectionStatus.Connected,
+            lastChatState: null,
+            seedModels: null);
+        var context = new ChatProjectionContext(
+            "main",
+            HasHandshakeSnapshot: true);
+        state.Load(
+            [new SessionInfo { Key = "main", IsMain = true }],
+            context);
+        using var start = JsonDocument.Parse("""{"phase":"start"}""");
+        var oldStart = state.ProcessAgentEvent(
+            new AgentEventInfo
+            {
+                Stream = "lifecycle",
+                SessionKey = "main",
+                RunId = "old-run",
+                Data = start.RootElement.Clone(),
+            },
+            "main",
+            context);
+        state.ApplyStatus(ConnectionStatus.Disconnected, context);
+        state.ApplyStatus(ConnectionStatus.Connected, context);
+        var replacement = state.ProcessAgentEvent(
+            new AgentEventInfo
+            {
+                Stream = "lifecycle",
+                SessionKey = "main",
+                RunId = "replacement-run",
+                Data = start.RootElement.Clone(),
+            },
+            "main",
+            context);
+        Assert.True(replacement.Process);
+
+        var rollback = state.RollbackAbortAndEndTurnIfCurrent(
+            "main",
+            "old-run",
+            oldStart.RuntimeGeneration,
+            context);
+
+        Assert.Null(rollback);
+        Assert.True(state.Snapshot(context).Timelines["main"].TurnActive);
+    }
+
+    [Fact]
     public void HistoryMerge_DeduplicatesPreservedLiveTailEntries()
     {
         var state = new ChatConversationState(
@@ -236,6 +284,201 @@ public sealed class ChatConversationStateTests
             replacement.Token.ReplacementGeneration);
         Assert.False(state.IsHistoryRequestCurrent(oldToken));
         Assert.True(state.IsHistoryRequestCurrent(replacement.Token));
+    }
+}
+
+public sealed class ChatResetStateTests
+{
+    [Fact]
+    public void SubmittedEchoWithoutPendingQueue_OpensBufferedLifecycle()
+    {
+        const string threadId = "main";
+        const string marker = "controlled marker";
+        var now = DateTimeOffset.UtcNow;
+        var state = new ChatResetState();
+        var version = state.BeginReset(
+            threadId,
+            now.ToUnixTimeMilliseconds());
+        state.AddSubmittedLocalEcho(threadId, marker, now);
+        Assert.Null(state.RecordLocalSendWithoutRun(
+            threadId,
+            version,
+            state.LifecycleStartSequence));
+        var start = Lifecycle("start", "new-run", now.AddSeconds(1));
+
+        var buffered = state.EvaluateAgentEvent(start, threadId);
+        var earlyAssistant = state.EvaluateAgentEvent(
+            Assistant("early", "new-run", now.AddSeconds(1)),
+            threadId);
+        var echo = state.EvaluateChatMessage(
+            threadId,
+            role: "user",
+            rawText: marker,
+            timestampMs: now.AddSeconds(1).ToUnixTimeMilliseconds(),
+            hasPendingLocalEcho: false);
+        var terminal = state.EvaluateAgentEvent(
+            Lifecycle("end", "new-run", now.AddSeconds(1)),
+            threadId);
+
+        Assert.True(buffered.Drop);
+        Assert.Null(buffered.OpenedLifecycleStart);
+        Assert.True(earlyAssistant.Drop);
+        Assert.True(echo.Drop);
+        Assert.Equal(marker, echo.ConsumeEchoText);
+        Assert.Same(start, echo.OpenedLifecycleStart);
+        Assert.False(state.IsAwaitingUserMessage(threadId));
+        Assert.False(terminal.Drop);
+    }
+
+    [Fact]
+    public void SubmittedEcho_NonmatchingTextDoesNotOpenBufferedLifecycle()
+    {
+        var now = DateTimeOffset.UtcNow;
+        var state = PendingSubmittedEcho(now, submittedText: "expected");
+        var start = Lifecycle("start", "new-run", now.AddSeconds(1));
+        Assert.True(state.EvaluateAgentEvent(start, "main").Drop);
+
+        var gate = state.EvaluateChatMessage(
+            "main",
+            role: "user",
+            rawText: "different",
+            timestampMs: 0,
+            hasPendingLocalEcho: false);
+
+        Assert.True(gate.Drop);
+        Assert.True(gate.RequestRemoteBackfill);
+        Assert.Null(gate.OpenedLifecycleStart);
+        Assert.True(state.IsAwaitingUserMessage("main"));
+    }
+
+    [Fact]
+    public void SubmittedEcho_ExpiredCorrelationDoesNotOpenBufferedLifecycle()
+    {
+        var now = DateTimeOffset.UtcNow;
+        var state = new ChatResetState();
+        var version = state.BeginReset("main", now.ToUnixTimeMilliseconds());
+        state.AddSubmittedLocalEcho(
+            "main",
+            "expected",
+            now.AddSeconds(-31));
+        state.RecordLocalSendWithoutRun(
+            "main",
+            version,
+            state.LifecycleStartSequence);
+        var start = Lifecycle("start", "new-run", now.AddSeconds(1));
+        Assert.True(state.EvaluateAgentEvent(start, "main").Drop);
+
+        var gate = state.EvaluateChatMessage(
+            "main",
+            role: "user",
+            rawText: "expected",
+            timestampMs: 0,
+            hasPendingLocalEcho: false);
+
+        Assert.True(gate.Drop);
+        Assert.True(gate.RequestRemoteBackfill);
+        Assert.Null(gate.OpenedLifecycleStart);
+        Assert.True(state.IsAwaitingUserMessage("main"));
+    }
+
+    [Fact]
+    public void SubmittedEcho_PreResetTimestampIsConsumedWithoutOpeningLifecycle()
+    {
+        var now = DateTimeOffset.UtcNow;
+        var state = PendingSubmittedEcho(now, submittedText: "expected");
+        var start = Lifecycle("start", "new-run", now.AddSeconds(1));
+        Assert.True(state.EvaluateAgentEvent(start, "main").Drop);
+
+        var gate = state.EvaluateChatMessage(
+            "main",
+            role: "user",
+            rawText: "expected",
+            timestampMs: now.AddSeconds(-5).ToUnixTimeMilliseconds(),
+            hasPendingLocalEcho: false);
+
+        Assert.True(gate.Drop);
+        Assert.Equal("expected", gate.ConsumeEchoText);
+        Assert.False(gate.RequestRemoteBackfill);
+        Assert.Null(gate.OpenedLifecycleStart);
+        Assert.True(state.IsAwaitingUserMessage("main"));
+    }
+
+    [Fact]
+    public void IgnoredOldRunAndPreResetMessageRemainDropped()
+    {
+        var now = DateTimeOffset.UtcNow;
+        var state = PendingSubmittedEcho(now, submittedText: "expected");
+        state.AddIgnoredRun("main", "old-run");
+
+        var ignoredStart = state.EvaluateAgentEvent(
+            Lifecycle("start", "old-run", now.AddSeconds(1)),
+            "main");
+        var ignoredTerminal = state.EvaluateAgentEvent(
+            Lifecycle("end", "old-run", now.AddSeconds(1)),
+            "main");
+        var preReset = state.EvaluateChatMessage(
+            "main",
+            role: "user",
+            rawText: "unrelated old message",
+            timestampMs: now.AddSeconds(-5).ToUnixTimeMilliseconds(),
+            hasPendingLocalEcho: false);
+
+        Assert.True(ignoredStart.Drop);
+        Assert.Null(ignoredStart.OpenedLifecycleStart);
+        Assert.True(ignoredTerminal.Drop);
+        Assert.True(ignoredTerminal.ReloadHistory);
+        Assert.True(preReset.Drop);
+        Assert.False(preReset.RequestRemoteBackfill);
+        Assert.Null(preReset.OpenedLifecycleStart);
+        Assert.True(state.IsAwaitingUserMessage("main"));
+    }
+
+    private static ChatResetState PendingSubmittedEcho(
+        DateTimeOffset now,
+        string submittedText)
+    {
+        var state = new ChatResetState();
+        var version = state.BeginReset("main", now.ToUnixTimeMilliseconds());
+        state.AddSubmittedLocalEcho("main", submittedText, now);
+        state.RecordLocalSendWithoutRun(
+            "main",
+            version,
+            state.LifecycleStartSequence);
+        return state;
+    }
+
+    private static AgentEventInfo Lifecycle(
+        string phase,
+        string runId,
+        DateTimeOffset timestamp)
+    {
+        using var document = JsonDocument.Parse(
+            $$"""{"phase":"{{phase}}"}""");
+        return new AgentEventInfo
+        {
+            Stream = "lifecycle",
+            SessionKey = "main",
+            RunId = runId,
+            Ts = timestamp.ToUnixTimeMilliseconds(),
+            Data = document.RootElement.Clone(),
+        };
+    }
+
+    private static AgentEventInfo Assistant(
+        string text,
+        string runId,
+        DateTimeOffset timestamp)
+    {
+        using var document = JsonDocument.Parse(
+            $$"""{"delta":"{{text}}"}""");
+        return new AgentEventInfo
+        {
+            Stream = "assistant",
+            SessionKey = "main",
+            RunId = runId,
+            Ts = timestamp.ToUnixTimeMilliseconds(),
+            Data = document.RootElement.Clone(),
+        };
     }
 }
 

@@ -250,12 +250,13 @@ public class OpenClawChatDataProviderTests
             TimeSpan? lastChatStateSaveDelay = null,
             Func<TimeSpan, CancellationToken, Func<Task>, Task>? historyRetryScheduler = null,
             Action? historyFailureReservedForTesting = null,
+            Func<Func<Task>, Task>? deferredAbortScheduler = null,
             Action<Action>? post = null)
     {
         var bridge = new FakeBridge { Sessions = initial ?? Array.Empty<SessionInfo>() };
         var provider = toolMetaCachePath is null && attachmentMetaCachePath is null && lastChatStatePath is null &&
             lastChatStateSaveDelay is null && historyRetryScheduler is null && historyFailureReservedForTesting is null &&
-            post is null
+            deferredAbortScheduler is null && post is null
             ? new OpenClawChatDataProvider(bridge)
             : new OpenClawChatDataProvider(
                 bridge,
@@ -265,13 +266,38 @@ public class OpenClawChatDataProviderTests
                 lastChatStateFilePath: lastChatStatePath,
                 lastChatStateSaveDelay: lastChatStateSaveDelay,
                 historyRetryScheduler: historyRetryScheduler,
-                historyFailureReservedForTesting: historyFailureReservedForTesting);
+                historyFailureReservedForTesting: historyFailureReservedForTesting,
+                deferredAbortScheduler: deferredAbortScheduler);
         var snapshots = new List<ChatDataSnapshot>();
         var notifications = new List<ChatProviderNotification>();
         provider.Changed += (_, e) => snapshots.Add(e.Snapshot);
         provider.NotificationRequested += (_, e) => notifications.Add(e.Notification);
         return (bridge, provider, snapshots, notifications);
     }
+
+    private static ChatStatePersistence GetStatePersistence(
+        OpenClawChatDataProvider provider) =>
+        Assert.IsType<ChatStatePersistence>(
+            typeof(OpenClawChatDataProvider)
+                .GetField(
+                    "_persistence",
+                    System.Reflection.BindingFlags.Instance |
+                    System.Reflection.BindingFlags.NonPublic)!
+                .GetValue(provider));
+
+    private static void InvokeHandleOpenedLifecycle(
+        OpenClawChatDataProvider provider,
+        string threadId,
+        ChatOpenedLifecycleTransition opened,
+        ChatRuntimeGeneration generation) =>
+        typeof(OpenClawChatDataProvider)
+            .GetMethod(
+                "HandleOpenedLifecycle",
+                System.Reflection.BindingFlags.Instance |
+                System.Reflection.BindingFlags.NonPublic)!
+            .Invoke(
+                provider,
+                [threadId, opened, generation]);
 
     private static SessionInfo MainSession() =>
         new() { Key = "main", IsMain = true, DisplayName = "Main session", Status = "active" };
@@ -3849,6 +3875,708 @@ public class OpenClawChatDataProviderTests
             e.Kind == ChatTimelineItemKind.User && e.Text == "after reset local");
         Assert.Contains(latest.Timelines["main"].Entries, e =>
             e.Kind == ChatTimelineItemKind.Assistant && e.Text == "fresh response");
+    }
+
+    [Fact]
+    public async Task SessionResetCompletion_ReconciledSubmittedEchoOpensBufferedLifecycleAndTerminalizesOnce()
+    {
+        const string marker = "controlled post-reset marker";
+        const string response = "controlled terminal response";
+        using var activities = new ChatActivityCollector();
+        var (bridge, provider, snapshots, _) = CreateProvider(new[] { MainSession() });
+        await provider.LoadAsync();
+        bridge.RaiseSessionCommandCompleted(new SessionCommandResult
+        {
+            Method = "sessions.reset",
+            Ok = true,
+            Key = "main"
+        });
+
+        bridge.SendResults.Enqueue(new ChatSendResult());
+        await provider.SendMessageAsync("main", marker);
+        Assert.Empty(GetQueuedMessages(snapshots[^1], "main"));
+
+        var state = Assert.IsType<ChatConversationState>(
+            typeof(OpenClawChatDataProvider)
+                .GetField(
+                    "_state",
+                    System.Reflection.BindingFlags.Instance |
+                    System.Reflection.BindingFlags.NonPublic)!
+                .GetValue(provider));
+        var reset = Assert.IsType<ChatResetState>(
+            typeof(ChatConversationState)
+                .GetField(
+                    "_reset",
+                    System.Reflection.BindingFlags.Instance |
+                    System.Reflection.BindingFlags.NonPublic)!
+                .GetValue(state));
+        var queue = Assert.IsType<ChatQueueState>(
+            typeof(ChatConversationState)
+                .GetField(
+                    "_queue",
+                    System.Reflection.BindingFlags.Instance |
+                    System.Reflection.BindingFlags.NonPublic)!
+                .GetValue(state));
+        var lifecycle = Assert.IsType<ChatLifecycleState>(
+            typeof(ChatConversationState)
+                .GetField(
+                    "_lifecycle",
+                    System.Reflection.BindingFlags.Instance |
+                    System.Reflection.BindingFlags.NonPublic)!
+                .GetValue(state));
+        reset.AddSubmittedLocalEcho("main", marker, DateTimeOffset.UtcNow);
+        Assert.True(queue.TryConsumeLocalEcho("main", marker, out _));
+        Assert.False(queue.HasPendingLocalEchoText("main", marker));
+
+        var freshTs = DateTimeOffset.UtcNow.AddSeconds(2).ToUnixTimeMilliseconds();
+        var start = MakeAgentEvent(
+            "lifecycle",
+            """{"phase":"start"}""",
+            runId: "gateway-run");
+        start.Ts = freshTs;
+        bridge.RaiseAgent(start);
+        var early = MakeAgentEvent(
+            "assistant",
+            """{"delta":"early assistant"}""",
+            runId: "gateway-run");
+        early.Ts = freshTs;
+        bridge.RaiseAgent(early);
+        Assert.DoesNotContain(
+            snapshots[^1].Timelines["main"].Entries,
+            entry => entry.Text.Contains("early assistant", StringComparison.Ordinal));
+
+        bridge.RaiseChat(new ChatMessageInfo
+        {
+            SessionKey = "main",
+            Role = "user",
+            State = "final",
+            Text = marker,
+            Ts = freshTs,
+            OpenClawId = "user-echo",
+            OpenClawSeq = 1,
+        });
+        Assert.True(lifecycle.TryGetActiveRun("main", out var activeRun));
+        Assert.Equal("gateway-run", activeRun);
+
+        bridge.RaiseChat(new ChatMessageInfo
+        {
+            SessionKey = "main",
+            Role = "user",
+            State = "final",
+            Text = marker,
+            Ts = freshTs,
+            OpenClawId = "duplicate-user-echo",
+            OpenClawSeq = 1,
+        });
+        bridge.RaiseChat(new ChatMessageInfo
+        {
+            SessionKey = "main",
+            Role = "assistant",
+            State = "final",
+            Text = response,
+            Ts = freshTs + 1,
+            OpenClawId = "assistant-final",
+            OpenClawSeq = 2,
+        });
+
+        var terminal = snapshots[^1].Timelines["main"];
+        Assert.False(terminal.TurnActive);
+        Assert.False(lifecycle.TryGetActiveRun("main", out _));
+        Assert.Single(
+            terminal.Entries,
+            entry => entry.Kind == ChatTimelineItemKind.User &&
+                     entry.Text == marker);
+        Assert.Single(
+            terminal.Entries,
+            entry => entry.Kind == ChatTimelineItemKind.Assistant &&
+                     entry.Text == response);
+        Assert.Single(
+            activities.Stopped,
+            activity => activity.OperationName == ChatTelemetryTracker.TurnSpanName);
+
+        bridge.HistoryBehavior = _ => Task.FromResult(new ChatHistoryInfo
+        {
+            SessionKey = "main",
+            Messages =
+            [
+                new ChatMessageInfo
+                {
+                    SessionKey = "main",
+                    Role = "user",
+                    Text = marker,
+                    Ts = freshTs,
+                    OpenClawId = "user-echo",
+                    OpenClawSeq = 1,
+                },
+                new ChatMessageInfo
+                {
+                    SessionKey = "main",
+                    Role = "assistant",
+                    State = "final",
+                    Text = response,
+                    Ts = freshTs + 1,
+                    OpenClawId = "assistant-final",
+                    OpenClawSeq = 2,
+                },
+            ]
+        });
+        await provider.LoadHistoryAsync(
+            "main",
+            force: true,
+            authoritative: true);
+
+        var replay = snapshots[^1].Timelines["main"];
+        Assert.False(replay.TurnActive);
+        Assert.Single(
+            replay.Entries,
+            entry => entry.Kind == ChatTimelineItemKind.User &&
+                     entry.Text == marker);
+        Assert.Single(
+            replay.Entries,
+            entry => entry.Kind == ChatTimelineItemKind.Assistant &&
+                     entry.Text == response);
+        Assert.Single(
+            activities.Stopped,
+            activity => activity.OperationName == ChatTelemetryTracker.TurnSpanName);
+
+        await provider.DisposeAsync();
+    }
+
+    [Fact]
+    public async Task SessionResetCompletion_ReconciledEchoDispatchesPendingAbortForBufferedLifecycle()
+    {
+        const string marker = "controlled abort marker";
+        var (bridge, provider, _, _) = CreateProvider(new[] { MainSession() });
+        await provider.LoadAsync();
+        bridge.RaiseSessionCommandCompleted(new SessionCommandResult
+        {
+            Method = "sessions.reset",
+            Ok = true,
+            Key = "main"
+        });
+        bridge.SendResults.Enqueue(new ChatSendResult());
+        await provider.SendMessageAsync("main", marker);
+
+        var state = Assert.IsType<ChatConversationState>(
+            typeof(OpenClawChatDataProvider)
+                .GetField(
+                    "_state",
+                    System.Reflection.BindingFlags.Instance |
+                    System.Reflection.BindingFlags.NonPublic)!
+                .GetValue(provider));
+        var reset = Assert.IsType<ChatResetState>(
+            typeof(ChatConversationState)
+                .GetField(
+                    "_reset",
+                    System.Reflection.BindingFlags.Instance |
+                    System.Reflection.BindingFlags.NonPublic)!
+                .GetValue(state));
+        var queue = Assert.IsType<ChatQueueState>(
+            typeof(ChatConversationState)
+                .GetField(
+                    "_queue",
+                    System.Reflection.BindingFlags.Instance |
+                    System.Reflection.BindingFlags.NonPublic)!
+                .GetValue(state));
+        reset.AddSubmittedLocalEcho("main", marker, DateTimeOffset.UtcNow);
+        Assert.True(queue.TryConsumeLocalEcho("main", marker, out _));
+
+        var freshTs = DateTimeOffset.UtcNow.AddSeconds(2).ToUnixTimeMilliseconds();
+        var start = MakeAgentEvent(
+            "lifecycle",
+            """{"phase":"start"}""",
+            runId: "gateway-run");
+        start.Ts = freshTs;
+        bridge.RaiseAgent(start);
+        await provider.StopResponseAsync("main");
+        Assert.Empty(bridge.AbortedRunIds);
+
+        bridge.RaiseChat(new ChatMessageInfo
+        {
+            SessionKey = "main",
+            Role = "user",
+            State = "final",
+            Text = marker,
+            Ts = freshTs,
+            OpenClawId = "user-echo",
+        });
+        await WaitForConditionAsync(() =>
+            bridge.AbortedRunIds.Contains("gateway-run"));
+        bridge.RaiseChat(new ChatMessageInfo
+        {
+            SessionKey = "main",
+            Role = "assistant",
+            State = "delta",
+            Text = "must stay suppressed",
+            Ts = freshTs + 1,
+        });
+
+        Assert.Single(
+            bridge.AbortedRunIds,
+            runId => runId == "gateway-run");
+        Assert.DoesNotContain(
+            (await provider.LoadAsync()).Timelines["main"].Entries,
+            entry => entry.Text.Contains(
+                "must stay suppressed",
+                StringComparison.Ordinal));
+        await provider.DisposeAsync();
+    }
+
+    [Fact]
+    public async Task SessionResetCompletion_RemoteUserOpenDispatchesPendingAbort()
+    {
+        using var activities = new ChatActivityCollector();
+        var (bridge, provider, _, _) = CreateProvider(new[] { MainSession() });
+        await provider.LoadAsync();
+        bridge.RaiseSessionCommandCompleted(new SessionCommandResult
+        {
+            Method = "sessions.reset",
+            Ok = true,
+            Key = "main"
+        });
+
+        var freshTs = DateTimeOffset.UtcNow.AddSeconds(2).ToUnixTimeMilliseconds();
+        var start = MakeAgentEvent(
+            "lifecycle",
+            """{"phase":"start"}""",
+            runId: "remote-run");
+        start.Ts = freshTs;
+        bridge.RaiseAgent(start);
+        await provider.StopResponseAsync("main");
+
+        bridge.RaiseChat(new ChatMessageInfo
+        {
+            SessionKey = "main",
+            Role = "user",
+            State = "final",
+            Text = "fresh remote user",
+            Ts = freshTs,
+            OpenClawId = "remote-user",
+        });
+        await WaitForConditionAsync(() =>
+            bridge.AbortedRunIds.Contains("remote-run"));
+
+        Assert.Single(
+            bridge.AbortedRunIds,
+            runId => runId == "remote-run");
+        var end = MakeAgentEvent(
+            "lifecycle",
+            """{"phase":"end"}""",
+            runId: "remote-run");
+        end.Ts = freshTs + 1;
+        bridge.RaiseAgent(end);
+        Assert.DoesNotContain(
+            activities.Stopped,
+            activity =>
+                activity.OperationName == ChatTelemetryTracker.TurnSpanName);
+        await provider.DisposeAsync();
+    }
+
+    [Fact]
+    public async Task SessionResetCompletion_AcceptedSendOpenDispatchesPendingAbort()
+    {
+        var sendStarted = new TaskCompletionSource(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        var releaseSend = new TaskCompletionSource(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        var (bridge, provider, _, _) = CreateProvider(new[] { MainSession() });
+        bridge.SendBehavior = async (_, _, _) =>
+        {
+            sendStarted.TrySetResult();
+            await releaseSend.Task;
+        };
+        bridge.SendResults.Enqueue(new ChatSendResult
+        {
+            RunId = "accepted-run",
+            Status = "started"
+        });
+        await provider.LoadAsync();
+        bridge.RaiseSessionCommandCompleted(new SessionCommandResult
+        {
+            Method = "sessions.reset",
+            Ok = true,
+            Key = "main"
+        });
+
+        var sendTask = provider.SendMessageAsync(
+            "main",
+            "accepted send marker");
+        await sendStarted.Task;
+        var start = MakeAgentEvent(
+            "lifecycle",
+            """{"phase":"start"}""",
+            runId: "accepted-run");
+        start.Ts = DateTimeOffset.UtcNow
+            .AddSeconds(2)
+            .ToUnixTimeMilliseconds();
+        bridge.RaiseAgent(start);
+        await provider.StopResponseAsync("main");
+        releaseSend.TrySetResult();
+        await sendTask;
+        await WaitForConditionAsync(() =>
+            bridge.AbortedRunIds.Contains("accepted-run"));
+
+        Assert.Single(
+            bridge.AbortedRunIds,
+            runId => runId == "accepted-run");
+        await provider.DisposeAsync();
+    }
+
+    [Fact]
+    public async Task SessionResetCompletion_RemoteBackfillOpenDispatchesPendingAbort()
+    {
+        var (bridge, provider, _, _) = CreateProvider(new[] { MainSession() });
+        bridge.HistoryBehavior = _ => Task.FromResult(new ChatHistoryInfo
+        {
+            SessionKey = "main",
+            Messages =
+            [
+                new ChatMessageInfo
+                {
+                    SessionKey = "main",
+                    Role = "user",
+                    Text = "timestamp-less remote user",
+                    Ts = 0,
+                    OpenClawId = "remote-user",
+                },
+            ]
+        });
+        await provider.LoadAsync();
+        bridge.RaiseSessionCommandCompleted(new SessionCommandResult
+        {
+            Method = "sessions.reset",
+            Ok = true,
+            Key = "main"
+        });
+        var start = MakeAgentEvent(
+            "lifecycle",
+            """{"phase":"start"}""",
+            runId: "backfill-run");
+        start.Ts = DateTimeOffset.UtcNow
+            .AddSeconds(2)
+            .ToUnixTimeMilliseconds();
+        bridge.RaiseAgent(start);
+        await provider.StopResponseAsync("main");
+
+        bridge.RaiseChat(new ChatMessageInfo
+        {
+            SessionKey = "main",
+            Role = "user",
+            State = "final",
+            Text = "timestamp-less remote user",
+            Ts = 0,
+            OpenClawId = "remote-user",
+        });
+        await WaitForConditionAsync(() =>
+            bridge.AbortedRunIds.Contains("backfill-run"),
+            attempts: 200);
+
+        Assert.Single(
+            bridge.AbortedRunIds,
+            runId => runId == "backfill-run");
+        await provider.DisposeAsync();
+    }
+
+    [Fact]
+    public async Task SessionResetCompletion_FailedDeferredAbortRollsBackBufferedRun()
+    {
+        const string marker = "controlled failed abort marker";
+        const string queued = "queued while abort fails";
+        var (bridge, provider, _, notifications) =
+            CreateProvider(new[] { MainSession() });
+        bridge.RaiseStatus(ConnectionStatus.Connected);
+        var abortStarted = new TaskCompletionSource(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        var releaseAbort = new TaskCompletionSource(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        bridge.AbortBehavior = async _ =>
+        {
+            abortStarted.TrySetResult();
+            await releaseAbort.Task;
+            throw new InvalidOperationException("deferred abort failed");
+        };
+        await provider.LoadAsync();
+        bridge.RaiseSessionCommandCompleted(new SessionCommandResult
+        {
+            Method = "sessions.reset",
+            Ok = true,
+            Key = "main"
+        });
+        bridge.SendResults.Enqueue(new ChatSendResult());
+        await provider.SendMessageAsync("main", marker);
+
+        var state = Assert.IsType<ChatConversationState>(
+            typeof(OpenClawChatDataProvider)
+                .GetField(
+                    "_state",
+                    System.Reflection.BindingFlags.Instance |
+                    System.Reflection.BindingFlags.NonPublic)!
+                .GetValue(provider));
+        var reset = Assert.IsType<ChatResetState>(
+            typeof(ChatConversationState)
+                .GetField(
+                    "_reset",
+                    System.Reflection.BindingFlags.Instance |
+                    System.Reflection.BindingFlags.NonPublic)!
+                .GetValue(state));
+        var queue = Assert.IsType<ChatQueueState>(
+            typeof(ChatConversationState)
+                .GetField(
+                    "_queue",
+                    System.Reflection.BindingFlags.Instance |
+                    System.Reflection.BindingFlags.NonPublic)!
+                .GetValue(state));
+        var lifecycle = Assert.IsType<ChatLifecycleState>(
+            typeof(ChatConversationState)
+                .GetField(
+                    "_lifecycle",
+                    System.Reflection.BindingFlags.Instance |
+                    System.Reflection.BindingFlags.NonPublic)!
+                .GetValue(state));
+        reset.AddSubmittedLocalEcho("main", marker, DateTimeOffset.UtcNow);
+        Assert.True(queue.TryConsumeLocalEcho("main", marker, out _));
+
+        var freshTs = DateTimeOffset.UtcNow.AddSeconds(2).ToUnixTimeMilliseconds();
+        var start = MakeAgentEvent(
+            "lifecycle",
+            """{"phase":"start"}""",
+            runId: "gateway-run");
+        start.Ts = freshTs;
+        bridge.RaiseAgent(start);
+        await provider.StopResponseAsync("main");
+        bridge.RaiseChat(new ChatMessageInfo
+        {
+            SessionKey = "main",
+            Role = "user",
+            State = "final",
+            Text = marker,
+            Ts = freshTs,
+            OpenClawId = "user-echo",
+        });
+        await abortStarted.Task;
+        await provider.SendMessageAsync("main", queued);
+        Assert.DoesNotContain(queued, bridge.SentMessages);
+        releaseAbort.TrySetResult();
+        await WaitForConditionAsync(() =>
+            notifications.Any(notification =>
+                notification.Kind == ChatProviderNotificationKind.Error &&
+                notification.Message == "deferred abort failed"));
+        await WaitForConditionAsync(() =>
+            bridge.SentMessages.Contains(queued),
+            attempts: 200);
+
+        Assert.False(provider.IsResponseSuppressed);
+        Assert.False(lifecycle.TryGetActiveRun("main", out _));
+        Assert.Single(
+            bridge.AbortedRunIds,
+            runId => runId == "gateway-run");
+        Assert.Single(
+            notifications,
+            notification =>
+                notification.Kind == ChatProviderNotificationKind.Error &&
+                notification.Message == "deferred abort failed");
+        Assert.Contains(queued, bridge.SentMessages);
+        await provider.DisposeAsync();
+    }
+
+    [Fact]
+    public async Task DeferredAbort_AgentLifecycleFailureRollsBackRun()
+    {
+        var (bridge, provider, snapshots, notifications) =
+            CreateProvider(new[] { MainSession() });
+        bridge.AbortBehavior = _ =>
+            throw new InvalidOperationException("agent abort failed");
+        bridge.SendResults.Enqueue(new ChatSendResult());
+        await provider.LoadAsync();
+        await provider.SendMessageAsync("main", "waiting for lifecycle");
+        await provider.StopResponseAsync("main");
+
+        var start = MakeAgentEvent(
+            "lifecycle",
+            """{"phase":"start"}""",
+            runId: "gateway-run");
+        start.Ts = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+        bridge.RaiseAgent(start);
+        await WaitForConditionAsync(() =>
+            notifications.Any(notification =>
+                notification.Kind == ChatProviderNotificationKind.Error &&
+                notification.Message == "agent abort failed"));
+
+        bridge.RaiseAgent(MakeAgentEvent(
+            "assistant",
+            """{"delta":"accepted after rollback"}""",
+            runId: "gateway-run"));
+
+        Assert.Single(
+            bridge.AbortedRunIds,
+            runId => runId == "gateway-run");
+        Assert.Single(
+            notifications,
+            notification =>
+                notification.Kind == ChatProviderNotificationKind.Error &&
+                notification.Message == "agent abort failed");
+        Assert.Contains(
+            snapshots[^1].Timelines["main"].Entries,
+            entry => entry.Kind == ChatTimelineItemKind.Assistant &&
+                     entry.Text == "accepted after rollback");
+        await provider.DisposeAsync();
+    }
+
+    [Fact]
+    public async Task DeferredAbort_StaleBeforeHandleDoesNotScheduleWork()
+    {
+        var scheduleCount = 0;
+        var (bridge, provider, _, _) = CreateProvider(
+            new[] { MainSession() },
+            deferredAbortScheduler: work =>
+            {
+                scheduleCount++;
+                return Task.CompletedTask;
+            });
+        var state = GetConversationState(provider);
+        var token = state.CaptureHistoryToken("main");
+        var generation = new ChatRuntimeGeneration(
+            token.ConnectionGeneration,
+            token.ResetGeneration);
+        bridge.RaiseStatus(ConnectionStatus.Connected);
+        var opened = new ChatOpenedLifecycleTransition(
+            MakeAgentEvent(
+                "lifecycle",
+                """{"phase":"start"}""",
+                runId: "stale-run"),
+            AllowRemoteTurn: false,
+            DeferredAbortRunId: "stale-run",
+            DeferredAbortCount: 1);
+
+        InvokeHandleOpenedLifecycle(
+            provider,
+            "main",
+            opened,
+            generation);
+        await Task.Delay(25);
+
+        Assert.Equal(0, scheduleCount);
+        Assert.Empty(bridge.AbortedRunIds);
+        await provider.DisposeAsync();
+    }
+
+    [Fact]
+    public async Task DeferredAbort_ResetBeforeScheduledBodyDoesNotSendAbort()
+    {
+        Func<Task>? scheduledWork = null;
+        var (bridge, provider, _, _) = CreateProvider(
+            new[] { MainSession() },
+            deferredAbortScheduler: work =>
+            {
+                scheduledWork = work;
+                return Task.CompletedTask;
+            });
+        var state = GetConversationState(provider);
+        var token = state.CaptureHistoryToken("main");
+        var generation = new ChatRuntimeGeneration(
+            token.ConnectionGeneration,
+            token.ResetGeneration);
+        var opened = new ChatOpenedLifecycleTransition(
+            MakeAgentEvent(
+                "lifecycle",
+                """{"phase":"start"}""",
+                runId: "stale-run"),
+            AllowRemoteTurn: false,
+            DeferredAbortRunId: "stale-run",
+            DeferredAbortCount: 1);
+        InvokeHandleOpenedLifecycle(
+            provider,
+            "main",
+            opened,
+            generation);
+        Assert.NotNull(scheduledWork);
+
+        bridge.RaiseSessionCommandCompleted(new SessionCommandResult
+        {
+            Method = "sessions.reset",
+            Ok = true,
+            Key = "main"
+        });
+        await scheduledWork!();
+
+        Assert.Empty(bridge.AbortedRunIds);
+        await provider.DisposeAsync();
+    }
+
+    [Fact]
+    public async Task DeferredAbort_ResetDuringSuccessfulAbortSkipsStalePersistence()
+    {
+        Func<Task>? scheduledWork = null;
+        var abortStarted = new TaskCompletionSource(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        var releaseAbort = new TaskCompletionSource(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        var (bridge, provider, _, _) = CreateProvider(
+            new[] { MainSession() },
+            deferredAbortScheduler: work =>
+            {
+                scheduledWork = work;
+                return Task.CompletedTask;
+            });
+        bridge.AbortBehavior = async _ =>
+        {
+            abortStarted.TrySetResult();
+            await releaseAbort.Task;
+        };
+        bridge.HistoryBehavior = _ => Task.FromResult(new ChatHistoryInfo
+        {
+            SessionKey = "main",
+            Messages =
+            [
+                new ChatMessageInfo
+                {
+                    SessionKey = "main",
+                    Role = "user",
+                    Text = "aborted user",
+                    OpenClawId = "aborted-user-id",
+                },
+            ]
+        });
+        var state = GetConversationState(provider);
+        var persistence = GetStatePersistence(provider);
+        var token = state.CaptureHistoryToken("main");
+        var generation = new ChatRuntimeGeneration(
+            token.ConnectionGeneration,
+            token.ResetGeneration);
+        var opened = new ChatOpenedLifecycleTransition(
+            MakeAgentEvent(
+                "lifecycle",
+                """{"phase":"start"}""",
+                runId: "stale-run"),
+            AllowRemoteTurn: false,
+            DeferredAbortRunId: "stale-run",
+            DeferredAbortCount: 1);
+        InvokeHandleOpenedLifecycle(
+            provider,
+            "main",
+            opened,
+            generation);
+        Assert.NotNull(scheduledWork);
+
+        var work = scheduledWork!();
+        await abortStarted.Task;
+        bridge.RaiseSessionCommandCompleted(new SessionCommandResult
+        {
+            Method = "sessions.reset",
+            Ok = true,
+            Key = "main"
+        });
+        releaseAbort.TrySetResult();
+        await work;
+
+        Assert.Single(
+            bridge.AbortedRunIds,
+            runId => runId == "stale-run");
+        Assert.False(persistence.IsMessageAborted(
+            "main",
+            "aborted-user-id",
+            resetGeneration: 0));
+        await provider.DisposeAsync();
     }
 
     [Fact]

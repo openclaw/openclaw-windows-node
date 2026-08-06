@@ -121,7 +121,20 @@ internal sealed class ChatResetState
             !hasPendingLocalEcho &&
             TryConsumeSubmittedLocalEcho(threadId, rawText))
         {
-            return new(true, null, false, null);
+            AgentEventInfo? opened = null;
+            if (_awaitingUserMessage.Contains(threadId) &&
+                !IsPreResetTimestamp(threadId, timestampMs))
+            {
+                _localEchoSequences[threadId] = _lifecycleStartSequence;
+                opened = TryOpenPendingLifecycle(
+                    threadId,
+                    acceptedRunId: null);
+            }
+            return new(
+                Drop: true,
+                ConsumeEchoText: rawText.Trim(),
+                RequestRemoteBackfill: false,
+                OpenedLifecycleStart: opened);
         }
         if (!_awaitingUserMessage.Contains(threadId))
         {

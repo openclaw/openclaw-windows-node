@@ -102,8 +102,11 @@ internal sealed class ChatLifecycleState
         return sequence;
     }
 
-    internal void MarkRunAborted(string runId) =>
+    internal void MarkDeferredAbort(string threadId, string runId)
+    {
+        _abortedThreads.Add(threadId);
         _abortedRunIds.Add(runId);
+    }
 
     internal void RemoveAbortedRun(string? runId)
     {

@@ -108,6 +108,12 @@ internal sealed record ChatQueueStart(
     TimeSpan? DelayedRetry,
     ChatDataSnapshot? Snapshot);
 
+internal sealed record ChatOpenedLifecycleTransition(
+    AgentEventInfo Event,
+    bool AllowRemoteTurn,
+    string? DeferredAbortRunId,
+    int DeferredAbortCount);
+
 internal sealed record ChatSendCommit(
     bool IsCurrent,
     ChatDataSnapshot? AcceptedSnapshot,
@@ -116,7 +122,9 @@ internal sealed record ChatSendCommit(
     bool BindAcceptedRun,
     bool RequeueRequired,
     bool RetryDeferredSend,
-    TimeSpan DeferredRetryDelay);
+    TimeSpan DeferredRetryDelay,
+    ChatOpenedLifecycleTransition? OpenedLifecycle,
+    ChatRuntimeGeneration RuntimeGeneration);
 
 internal sealed record ChatSendFailure(
     bool IsCurrent,
@@ -139,7 +147,14 @@ internal sealed record ChatIncomingMessageGate(
     bool Drop,
     bool Suppressed,
     bool RequestRemoteBackfill,
-    ChatDataSnapshot? Snapshot);
+    ChatDataSnapshot? Snapshot,
+    ChatOpenedLifecycleTransition? OpenedLifecycle,
+    ChatRuntimeGeneration RuntimeGeneration);
+
+internal sealed record ChatRemoteUserBackfillTransition(
+    ChatDataSnapshot Snapshot,
+    ChatOpenedLifecycleTransition? OpenedLifecycle,
+    ChatRuntimeGeneration RuntimeGeneration);
 
 internal sealed record ChatLocalEchoTransition(
     bool Consumed,

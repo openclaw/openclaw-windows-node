@@ -730,11 +730,14 @@ internal sealed class ChatConversationState
                     BindAcceptedRun: false,
                     RequeueRequired: false,
                     RetryDeferredSend: false,
-                    DeferredRetryDelay: ChatSendQueuePolicy.DrainDelay);
+                    DeferredRetryDelay: ChatSendQueuePolicy.DrainDelay,
+                    OpenedLifecycle: null,
+                    CurrentRuntimeGenerationLocked(threadId));
             }
 
             ChatDataSnapshot? acceptedSnapshot = null;
             ChatDataSnapshot? requeuedSnapshot = null;
+            ChatOpenedLifecycleTransition? openedLifecycle = null;
             var bindAcceptedRun = false;
             var requeueRequired = false;
             var retryDeferredSend = false;
@@ -773,7 +776,10 @@ internal sealed class ChatConversationState
                     if (!string.IsNullOrEmpty(acceptedRunId))
                     {
                         _queue.TrackRun(threadId, acceptedRunId, request.Id);
-                        AddResetAcceptedRunIdLocked(threadId, acceptedRunId);
+                        openedLifecycle =
+                            AddResetAcceptedRunIdLocked(
+                                threadId,
+                                acceptedRunId);
                     }
                     requeuedSnapshot = BuildSnapshotLocked(context);
                     retryDeferredSend = true;
@@ -788,7 +794,10 @@ internal sealed class ChatConversationState
             {
                 bindAcceptedRun = true;
                 _queue.TrackRun(threadId, acceptedRunId, request.Id);
-                AddResetAcceptedRunIdLocked(threadId, acceptedRunId);
+                openedLifecycle =
+                    AddResetAcceptedRunIdLocked(
+                        threadId,
+                        acceptedRunId);
                 var runAlreadyStarted =
                     _lifecycle.HasRunStartedAfter(
                         threadId,
@@ -802,12 +811,14 @@ internal sealed class ChatConversationState
             else if (_reset.IsAwaitingUserMessage(threadId))
             {
                 _queue.RemoveRunMappingByRunId(threadId, request.SendRunId);
-                ApplyOpenedResetLifecycleStartLocked(
-                    threadId,
-                    _reset.RecordLocalSendWithoutRun(
+                openedLifecycle =
+                    ApplyBufferedLifecycleOpenLocked(
                         threadId,
-                        dispatch.ResetVersion,
-                        dispatch.StartedLifecycleSequence));
+                        _reset.RecordLocalSendWithoutRun(
+                            threadId,
+                            dispatch.ResetVersion,
+                            dispatch.StartedLifecycleSequence),
+                        allowRemoteTurn: false);
                 if (PromoteQueuedMessageLocked(threadId, request.Id))
                     acceptedSnapshot = BuildSnapshotLocked(context);
             }
@@ -825,7 +836,9 @@ internal sealed class ChatConversationState
                 bindAcceptedRun,
                 requeueRequired,
                 retryDeferredSend,
-                deferredRetryDelay);
+                deferredRetryDelay,
+                openedLifecycle,
+                CurrentRuntimeGenerationLocked(threadId));
         }
     }
 
@@ -1160,6 +1173,33 @@ internal sealed class ChatConversationState
         }
     }
 
+    internal ChatDataSnapshot? RollbackAbortAndEndTurnIfCurrent(
+        string threadId,
+        string runId,
+        ChatRuntimeGeneration expectedGeneration,
+        ChatProjectionContext context)
+    {
+        lock (_gate)
+        {
+            if (_disposed ||
+                CurrentRuntimeGenerationLocked(threadId) != expectedGeneration ||
+                !_lifecycle.TryGetActiveRun(threadId, out var activeRunId) ||
+                !string.Equals(activeRunId, runId, StringComparison.Ordinal))
+            {
+                return null;
+            }
+
+            _lifecycle.RollbackAbort(threadId, runId);
+            if (!_queue.HasSendingMessages(threadId))
+                _queue.ClearLocallyInitiated(threadId);
+            ApplyEventLocked(
+                threadId,
+                new ChatTurnEndEvent(),
+                metadata: null);
+            return BuildSnapshotLocked(context);
+        }
+    }
+
     internal void CompleteAbort(string threadId, string? runId)
     {
         lock (_gate)
@@ -1237,9 +1277,12 @@ internal sealed class ChatConversationState
                     text,
                     message.Ts,
                     _queue.HasPendingLocalEchoText(threadId, text));
-            ApplyOpenedResetLifecycleStartLocked(
-                threadId,
-                resetGate.OpenedLifecycleStart);
+            var openedLifecycle =
+                ApplyBufferedLifecycleOpenLocked(
+                    threadId,
+                    resetGate.OpenedLifecycleStart,
+                    allowRemoteTurn:
+                        resetGate.ConsumeEchoText is null);
             if (resetGate.Drop)
             {
                 ChatDataSnapshot? snapshot = null;
@@ -1266,13 +1309,17 @@ internal sealed class ChatConversationState
                     true,
                     false,
                     resetGate.RequestRemoteBackfill,
-                    snapshot);
+                    snapshot,
+                    openedLifecycle,
+                    CurrentRuntimeGenerationLocked(threadId));
             }
             return new(
                 Drop: false,
                 Suppressed: _lifecycle.IsThreadSuppressed(threadId),
                 RequestRemoteBackfill: false,
-                Snapshot: null);
+                Snapshot: null,
+                openedLifecycle,
+                CurrentRuntimeGenerationLocked(threadId));
         }
     }
 
@@ -1655,7 +1702,9 @@ internal sealed class ChatConversationState
                             _lifecycle.TakePendingAbortCount(threadId);
                         if (pendingCount > 0)
                         {
-                            _lifecycle.MarkRunAborted(evt.RunId);
+                            _lifecycle.MarkDeferredAbort(
+                                threadId,
+                                evt.RunId);
                             deferredAbortRunId = evt.RunId;
                             deferredAbortCount = pendingCount;
                         }
@@ -1747,7 +1796,7 @@ internal sealed class ChatConversationState
             _reset.CompleteRemoteBackfill(threadId);
     }
 
-    internal ChatDataSnapshot? ApplyRemoteUserBackfill(
+    internal ChatRemoteUserBackfillTransition? ApplyRemoteUserBackfill(
         string threadId,
         ChatMessageInfo message,
         long expectedResetGeneration,
@@ -1772,12 +1821,12 @@ internal sealed class ChatConversationState
                     break;
                 }
             }
-            if (openResetGate)
-            {
-                ApplyOpenedResetLifecycleStartLocked(
+            var openedLifecycle = openResetGate
+                ? ApplyBufferedLifecycleOpenLocked(
                     threadId,
-                    _reset.RecordRemoteUser(threadId));
-            }
+                    _reset.RecordRemoteUser(threadId),
+                    allowRemoteTurn: true)
+                : null;
             ApplyEventLocked(
                 threadId,
                 new ChatUserMessageEvent(
@@ -1787,7 +1836,10 @@ internal sealed class ChatConversationState
                     message.Ts,
                     message.OpenClawId,
                     message.OpenClawSeq));
-            return BuildSnapshotLocked(context);
+            return new(
+                BuildSnapshotLocked(context),
+                openedLifecycle,
+                CurrentRuntimeGenerationLocked(threadId));
         }
     }
 
@@ -2239,11 +2291,40 @@ internal sealed class ChatConversationState
             LocalQueuedMessageId: localQueuedMessageId);
     }
 
-    private void AddResetAcceptedRunIdLocked(string threadId, string runId)
+    private ChatOpenedLifecycleTransition? AddResetAcceptedRunIdLocked(
+        string threadId,
+        string runId)
     {
-        ApplyOpenedResetLifecycleStartLocked(
+        return ApplyBufferedLifecycleOpenLocked(
             threadId,
-            _reset.AddAcceptedRun(threadId, runId));
+            _reset.AddAcceptedRun(threadId, runId),
+            allowRemoteTurn: false);
+    }
+
+    private ChatOpenedLifecycleTransition? ApplyBufferedLifecycleOpenLocked(
+        string threadId,
+        AgentEventInfo? lifecycleStart,
+        bool allowRemoteTurn)
+    {
+        if (string.IsNullOrEmpty(lifecycleStart?.RunId))
+            return null;
+
+        _lifecycle.StartRun(threadId, lifecycleStart.RunId);
+        var deferredAbortCount =
+            _lifecycle.TakePendingAbortCount(threadId);
+        string? deferredAbortRunId = null;
+        if (deferredAbortCount > 0)
+        {
+            deferredAbortRunId = lifecycleStart.RunId;
+            _lifecycle.MarkDeferredAbort(
+                threadId,
+                deferredAbortRunId);
+        }
+        return new(
+            lifecycleStart,
+            allowRemoteTurn && deferredAbortCount == 0,
+            deferredAbortRunId,
+            deferredAbortCount);
     }
 
     private void ApplyOpenedResetLifecycleStartLocked(

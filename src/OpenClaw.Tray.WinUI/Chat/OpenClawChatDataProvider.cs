@@ -88,6 +88,7 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
     private readonly ChatConversationState _state;
     private readonly ChatHistoryLoader _historyLoader;
     private readonly Action<Action>? _post;
+    private readonly Func<Func<Task>, Task> _deferredAbortScheduler;
 
     /// <summary>Whether any thread is in an aborted state (suppress TTS/notifications).</summary>
     public bool IsResponseSuppressed => _state.IsResponseSuppressed;
@@ -122,10 +123,13 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
         string? lastChatStateFilePath = null,
         TimeSpan? lastChatStateSaveDelay = null,
         Func<TimeSpan, CancellationToken, Func<Task>, Task>? historyRetryScheduler = null,
-        Action? historyFailureReservedForTesting = null)
+        Action? historyFailureReservedForTesting = null,
+        Func<Func<Task>, Task>? deferredAbortScheduler = null)
     {
         _bridge = bridge ?? throw new ArgumentNullException(nameof(bridge));
         _post = post;
+        _deferredAbortScheduler =
+            deferredAbortScheduler ?? (work => Task.Run(work));
         _metadataStore = new ChatMetadataStore(
             toolMetaCacheFilePath,
             attachmentMetaCacheFilePath);
@@ -456,6 +460,10 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
                 _telemetry.BindAcceptedRun(request.Id, acceptedRunId);
             if (commit.RequeueRequired)
                 _telemetry.RequeueLocalTurn(request.Id);
+            HandleOpenedLifecycle(
+                threadId,
+                commit.OpenedLifecycle,
+                commit.RuntimeGeneration);
             ChatTelemetryTracker.PreparedTurnCompletion? staleCompletion = null;
             if (!commit.IsCurrent)
             {
@@ -1176,6 +1184,10 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
         var role = message.Role?.ToLowerInvariant() ?? string.Empty;
         var rawText = message.Text ?? string.Empty;
         var gate = _state.GateIncomingChatMessage(message, ProjectionContext());
+        HandleOpenedLifecycle(
+            threadId,
+            gate.OpenedLifecycle,
+            gate.RuntimeGeneration);
         if (gate.Suppressed)
         {
             Logger.Debug($"[ABORT] Suppressed ChatMessage for threadId='{threadId}' (role={message.Role})");
@@ -1422,30 +1434,11 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
         }
         _telemetry.CompletePreparedTurn(completion);
 
-        if (transition.DeferredAbortRunId is not null ||
-            transition.DeferredAbortCount > 0)
-        {
-            var resetGeneration = _state.GetResetGeneration(threadId);
-            _ = Task.Run(async () =>
-            {
-                if (transition.DeferredAbortRunId is not null)
-                {
-                    try
-                    {
-                        await _bridge.SendChatAbortAsync(
-                            transition.DeferredAbortRunId,
-                            threadId);
-                    }
-                    catch (Exception ex)
-                    {
-                        Logger.Warn($"[ABORT] Deferred chat.abort failed: {ex.Message}");
-                    }
-                }
-                await PersistAbortedMessageIdsAsync(
-                    threadId,
-                    resetGeneration);
-            });
-        }
+        ScheduleDeferredAbort(
+            threadId,
+            transition.DeferredAbortRunId,
+            transition.DeferredAbortCount,
+            transition.RuntimeGeneration);
 
         if (transition.Suppressed)
         {
@@ -1468,6 +1461,95 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
             _metadataStore.CacheTool(toolMetadata);
         if (terminal)
             ScheduleQueuedSendDrain(threadId);
+    }
+
+    private void ScheduleDeferredAbort(
+        string threadId,
+        string? runId,
+        int pendingCount,
+        ChatRuntimeGeneration runtimeGeneration)
+    {
+        if (runId is null && pendingCount <= 0)
+            return;
+
+        _ = _deferredAbortScheduler(async () =>
+        {
+            if (!_state.IsRuntimeGenerationCurrent(
+                    threadId,
+                    runtimeGeneration))
+            {
+                return;
+            }
+            if (runId is not null)
+            {
+                try
+                {
+                    await _bridge.SendChatAbortAsync(runId, threadId);
+                }
+                catch (Exception ex)
+                {
+                    var rollbackSnapshot =
+                        _state.RollbackAbortAndEndTurnIfCurrent(
+                            threadId,
+                            runId,
+                            runtimeGeneration,
+                            ProjectionContext());
+                    if (rollbackSnapshot is not null)
+                    {
+                        Logger.Warn(
+                            $"[ABORT] Deferred chat.abort failed, cleared suppression: {ex.Message}");
+                        RaiseNotification(new ChatProviderNotification(
+                            ChatProviderNotificationKind.Error,
+                            threadId,
+                            LocalizationHelper.GetString(
+                                "Chat_Notification_AbortFailed"),
+                            ex.Message));
+                        Publish(rollbackSnapshot);
+                        ScheduleQueuedSendDrain(threadId);
+                    }
+                    return;
+                }
+            }
+            if (!_state.IsRuntimeGenerationCurrent(
+                    threadId,
+                    runtimeGeneration))
+            {
+                return;
+            }
+            await PersistAbortedMessageIdsAsync(
+                threadId,
+                runtimeGeneration.ResetGeneration);
+        });
+    }
+
+    private void HandleOpenedLifecycle(
+        string threadId,
+        ChatOpenedLifecycleTransition? opened,
+        ChatRuntimeGeneration runtimeGeneration)
+    {
+        if (opened is null)
+            return;
+
+        _telemetry.ObserveLifecycleStart(
+            threadId,
+            opened.Event.RunId,
+            opened.AllowRemoteTurn,
+            runtimeGeneration);
+        if (!_state.IsRuntimeGenerationCurrent(
+                threadId,
+                runtimeGeneration))
+        {
+            _telemetry.FinishByRunId(
+                opened.Event.RunId,
+                ChatTelemetryOutcome.Canceled,
+                ChatTurnTelemetryReason.Superseded);
+            return;
+        }
+        ScheduleDeferredAbort(
+            threadId,
+            opened.DeferredAbortRunId,
+            opened.DeferredAbortCount,
+            runtimeGeneration);
     }
 
     private void RaiseKeylessEventDiagnosticOnce()
@@ -1583,15 +1665,19 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
             }
             if (lastUser is null || string.IsNullOrEmpty(lastUser.Text)) return;
 
-            var snapshotToPublish = _state.ApplyRemoteUserBackfill(
+            var transition = _state.ApplyRemoteUserBackfill(
                 threadId,
                 lastUser,
                 requestResetVersion,
                 openResetGateOnSuccess,
                 ProjectionContext());
-            if (snapshotToPublish is null)
+            if (transition is null)
                 return;
-            Publish(snapshotToPublish);
+            HandleOpenedLifecycle(
+                threadId,
+                transition.OpenedLifecycle,
+                transition.RuntimeGeneration);
+            Publish(transition.Snapshot);
             Logger.Info($"[REMOTE] Injected remote user message for threadId='{threadId}' len={lastUser.Text.Length}");
         }
         catch (Exception ex)
