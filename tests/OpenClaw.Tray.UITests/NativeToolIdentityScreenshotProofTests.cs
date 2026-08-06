@@ -59,9 +59,10 @@ public sealed class NativeToolIdentityScreenshotProofTests
             $"head={Environment.GetEnvironmentVariable("OPENCLAW_UI_PROOF_HEAD") ?? "local"}",
         };
 
-        ExpandTool("Tool call: Bash, Done", proof);
-        ExpandTool("Tool call: Apply Patch, Done", proof);
-        ExpandTool("Tool call: Tool, Done", proof);
+        ExpandToolActivity(proof);
+        ExpandTool("Tool call Bash. Done.", proof);
+        ExpandTool("Tool call Apply Patch. Done.", proof);
+        ExpandTool("Tool call Tool. Done.", proof);
 
         var names = WaitForExpectedText();
         Assert.Contains(
@@ -79,11 +80,8 @@ public sealed class NativeToolIdentityScreenshotProofTests
             names,
             name => name.Contains("super-secret-value", StringComparison.Ordinal));
 
-        proof.Add("UIA header=\"Bash · Done\"");
         proof.Add("UIA input=\"command: powershell -NoProfile -Command Get-ChildItem .\\src\"");
-        proof.Add("UIA header=\"Apply Patch · Done\"");
         proof.Add("UIA input=\"file_path: src\\OpenClaw.Chat\\ChatTimelineReducer.cs\"");
-        proof.Add("UIA header=\"Tool · Done\"");
         proof.Add("UIA input=\"command: [redacted]\"");
         proof.Add("forbidden proof-run-=absent");
         proof.Add("forbidden super-secret-value=absent");
@@ -101,11 +99,29 @@ public sealed class NativeToolIdentityScreenshotProofTests
         WriteProofArtifactIfRequested(proof);
     }
 
+    private void ExpandToolActivity(ICollection<string> proof)
+    {
+        var activity = WaitForElement(
+            element => element.Current.AutomationId.StartsWith(
+                "ChatToolActivity_",
+                StringComparison.Ordinal),
+            "native tool activity to appear");
+        Expand(activity, activity.Current.Name, proof);
+    }
+
     private void ExpandTool(string automationName, ICollection<string> proof)
     {
         var element = WaitForElement(new PropertyCondition(
             AutomationElement.NameProperty,
             automationName));
+        Expand(element, automationName, proof);
+    }
+
+    private static void Expand(
+        AutomationElement element,
+        string automationName,
+        ICollection<string> proof)
+    {
         Assert.True(
             element.TryGetCurrentPattern(ExpandCollapsePattern.Pattern, out var rawPattern),
             $"{automationName} did not expose ExpandCollapsePattern.");
@@ -123,8 +139,7 @@ public sealed class NativeToolIdentityScreenshotProofTests
             var hub = AutomationElement.FromHandle(_app.HubWindowHandle);
             names = hub.FindAll(TreeScope.Descendants, Condition.TrueCondition)
                 .Cast<AutomationElement>()
-                .Select(element => element.Current.Name)
-                .Where(name => !string.IsNullOrWhiteSpace(name))
+                .SelectMany(ReadTextCandidates)
                 .ToHashSet(StringComparer.Ordinal);
             return names.Contains("Tool input")
                 && names.Contains("command: powershell -NoProfile -Command Get-ChildItem .\\src")
@@ -132,6 +147,24 @@ public sealed class NativeToolIdentityScreenshotProofTests
                 && names.Contains("command: [redacted]");
         }, "expanded native tool inputs to appear");
         return names!;
+    }
+
+    private static IEnumerable<string> ReadTextCandidates(AutomationElement element)
+    {
+        var name = element.Current.Name;
+        if (!string.IsNullOrWhiteSpace(name))
+            yield return name;
+
+        if (element.TryGetCurrentPattern(TextPattern.Pattern, out var rawPattern)
+            && rawPattern is TextPattern textPattern)
+        {
+            var text = textPattern.DocumentRange.GetText(-1).TrimEnd('\r', '\n');
+            if (!string.IsNullOrWhiteSpace(text)
+                && !string.Equals(text, name, StringComparison.Ordinal))
+            {
+                yield return text;
+            }
+        }
     }
 
     private AutomationElement WaitForElement(Condition condition)
@@ -143,6 +176,22 @@ public sealed class NativeToolIdentityScreenshotProofTests
             element = hub.FindFirst(TreeScope.Descendants, condition);
             return element is not null;
         }, "native tool row to appear");
+        return element!;
+    }
+
+    private AutomationElement WaitForElement(
+        Func<AutomationElement, bool> predicate,
+        string description)
+    {
+        AutomationElement? element = null;
+        WaitUntil(() =>
+        {
+            var hub = AutomationElement.FromHandle(_app.HubWindowHandle);
+            element = hub.FindAll(TreeScope.Descendants, Condition.TrueCondition)
+                .Cast<AutomationElement>()
+                .FirstOrDefault(predicate);
+            return element is not null;
+        }, description);
         return element!;
     }
 
