@@ -1716,7 +1716,14 @@ public class OpenClawChatDataProviderTests
     {
         var sessions = new[]
         {
-            new SessionInfo { Key = "done", DisplayName = "Done", Status = "done" },
+            new SessionInfo
+            {
+                Key = "done",
+                DisplayName = "Done",
+                Status = "done",
+                HasActiveRun = false,
+                CurrentActivity = "stale run detail",
+            },
             new SessionInfo { Key = "killed", DisplayName = "Killed", Status = "killed" },
             new SessionInfo
             {
@@ -1743,6 +1750,9 @@ public class OpenClawChatDataProviderTests
         Assert.Equal(
             ChatThreadStatus.Created,
             Assert.Single(snapshot.Threads, thread => thread.Id == "unknown").Status);
+        Assert.Equal(
+            ChatActivity.Idle,
+            Assert.Single(snapshot.Threads, thread => thread.Id == "done").Activity);
     }
 
     [Fact]

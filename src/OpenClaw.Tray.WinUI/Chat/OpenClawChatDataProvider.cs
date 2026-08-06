@@ -6405,7 +6405,7 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
             AgentId = display.AgentId,
             IsBackground = display.IsBackground,
             Status = SessionVisibilityFilter.ToChatThreadStatus(s),
-            Activity = string.IsNullOrEmpty(s.CurrentActivity) ? ChatActivity.Idle : ChatActivity.Working,
+            Activity = SessionVisibilityFilter.ToChatThreadActivity(s),
             Workspace = s.Channel,
             Model = s.Model,
             ModelProvider = s.Provider,

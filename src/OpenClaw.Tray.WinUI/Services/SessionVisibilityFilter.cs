@@ -17,6 +17,9 @@ public static class SessionVisibilityFilter
     public static ChatThreadStatus ToChatThreadStatus(SessionInfo session)
         => SessionRunState.IsWorking(session) ? ChatThreadStatus.Running : ChatThreadStatus.Created;
 
+    public static ChatActivity ToChatThreadActivity(SessionInfo session)
+        => SessionRunState.IsWorking(session) ? ChatActivity.Working : ChatActivity.Idle;
+
     public static IEnumerable<ChatThread> VisibleChatPickerThreads(
         IEnumerable<ChatThread> threads,
         string? activeThreadId = null)
