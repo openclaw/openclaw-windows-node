@@ -740,6 +740,14 @@ public sealed class PreflightPortStep : SetupStep
 
 public sealed class CreateWslInstanceStep : SetupStep
 {
+    private static readonly TimeSpan DistroVersionVerificationTimeout = TimeSpan.FromMinutes(1);
+    private static readonly TimeSpan[] FreshDistroProbeTimeouts =
+    [
+        TimeSpan.FromSeconds(30),
+        TimeSpan.FromSeconds(60),
+        TimeSpan.FromSeconds(90),
+    ];
+
     public override string Id => "wsl-create";
     public override string DisplayName => "Create WSL instance";
     public override bool CanRetry => false;
@@ -832,21 +840,46 @@ public sealed class CreateWslInstanceStep : SetupStep
             return StepResult.Fail(environmentIssue != null ? $"{baseMessage} {environmentIssue}" : baseMessage);
         }
 
-        var verbose = await ctx.Commands.RunAsync(WslConstants.WslExePath, ["--list", "--verbose"], TimeSpan.FromSeconds(15), ct: ct);
+        var verbose = await ctx.Commands.RunAsync(
+            WslConstants.WslExePath,
+            ["--list", "--verbose"],
+            DistroVersionVerificationTimeout,
+            ct: ct);
         if (verbose.ExitCode != 0 || !WslInstallSupport.TryGetDistroVersion(verbose.Stdout, distro, out var version))
             return StepResult.Fail($"Fresh WSL install registered '{distro}', but setup could not verify it is WSL2.");
 
         if (version != 2)
             return StepResult.Fail($"Fresh WSL install registered '{distro}' as WSL{version}; WSL2 is required.");
 
-        var probe = await ctx.Commands.RunAsync(
-            WslConstants.WslExePath,
-            ["-d", distro, "-u", "root", "--", "sh", "-lc", "id -u && test -d / && echo OPENCLAW_FRESH_WSL_READY"],
-            TimeSpan.FromSeconds(30),
-            ct: ct);
+        CommandResult? probe = null;
+        for (var attempt = 0; attempt < FreshDistroProbeTimeouts.Length; attempt++)
+        {
+            probe = await ctx.Commands.RunAsync(
+                WslConstants.WslExePath,
+                ["-d", distro, "-u", "root", "--", "sh", "-lc", "id -u && test -d / && echo OPENCLAW_FRESH_WSL_READY"],
+                FreshDistroProbeTimeouts[attempt],
+                ct: ct);
+            if (probe.ExitCode == 0
+                && probe.Stdout.Contains("OPENCLAW_FRESH_WSL_READY", StringComparison.Ordinal))
+            {
+                break;
+            }
 
-        if (probe.ExitCode != 0 || !probe.Stdout.Contains("OPENCLAW_FRESH_WSL_READY", StringComparison.Ordinal))
-            return StepResult.Fail($"Fresh WSL distro '{distro}' could not run a root verification command: {FirstNonEmpty(probe.Stderr, probe.Stdout)}");
+            if (attempt < FreshDistroProbeTimeouts.Length - 1)
+            {
+                ctx.Logger.Warn(
+                    $"Fresh WSL distro '{distro}' root probe was not ready " +
+                    $"(attempt {attempt + 1}/{FreshDistroProbeTimeouts.Length}); retrying.");
+            }
+        }
+
+        if (probe is null
+            || probe.ExitCode != 0
+            || !probe.Stdout.Contains("OPENCLAW_FRESH_WSL_READY", StringComparison.Ordinal))
+        {
+            var detail = probe is null ? "no output" : FirstNonEmpty(probe.Stderr, probe.Stdout);
+            return StepResult.Fail($"Fresh WSL distro '{distro}' could not run a root verification command: {detail}");
+        }
 
         return StepResult.Ok($"Created clean WSL2 distro '{distro}' at '{installPath}'");
     }

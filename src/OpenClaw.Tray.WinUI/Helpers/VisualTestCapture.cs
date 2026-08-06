@@ -13,6 +13,22 @@ namespace OpenClawTray.Helpers;
 internal static class VisualTestCapture
 {
     private static readonly ConcurrentDictionary<string, int> s_captureIndexes = new(StringComparer.OrdinalIgnoreCase);
+    private static readonly ConcurrentDictionary<string, byte> s_scheduledSignals = new(StringComparer.OrdinalIgnoreCase);
+
+    public static void ScheduleSignalCapture(FrameworkElement root)
+    {
+        if (Environment.GetEnvironmentVariable("OPENCLAW_VISUAL_TEST") != "1"
+            || Environment.GetEnvironmentVariable("OPENCLAW_VISUAL_TEST_SIGNAL")
+                is not { Length: > 0 } signalPath
+            || Environment.GetEnvironmentVariable("OPENCLAW_VISUAL_TEST_SURFACE")
+                is not { Length: > 0 } surfaceName
+            || !s_scheduledSignals.TryAdd(signalPath, 0))
+        {
+            return;
+        }
+
+        _ = CaptureWhenSignaledAsync(root, signalPath, surfaceName);
+    }
 
     public static async Task CaptureAsync(FrameworkElement root, string surfaceName)
     {
@@ -21,6 +37,24 @@ internal static class VisualTestCapture
             return;
 
         await CaptureToDirectoryAsync(root, Path.Combine(rootDir, SanitizePathSegment(surfaceName)));
+    }
+
+    private static async Task CaptureWhenSignaledAsync(
+        FrameworkElement root,
+        string signalPath,
+        string surfaceName)
+    {
+        for (var attempt = 0; attempt < 600; attempt++)
+        {
+            await Task.Delay(100);
+            if (!File.Exists(signalPath))
+                continue;
+
+            await CaptureAsync(root, surfaceName);
+            return;
+        }
+
+        Logger.Warn($"[VisualTest] Timed out waiting for capture signal for {surfaceName}.");
     }
 
     private static async Task CaptureToDirectoryAsync(FrameworkElement root, string surfaceDir)

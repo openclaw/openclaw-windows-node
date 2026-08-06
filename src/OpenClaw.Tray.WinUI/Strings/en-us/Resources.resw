@@ -4705,7 +4705,7 @@ Commands are blocked while sandboxing is unavailable because strict fallback blo
     <value>All</value>
   </data>
   <data name="SessionsPage_ShowCompleted.Header" xml:space="preserve">
-    <value>Show ended</value>
+    <value>Show completed</value>
   </data>
   <data name="SessionsPage_ShowBackground.Header" xml:space="preserve">
     <value>Show background</value>
@@ -4748,7 +4748,7 @@ Commands are blocked while sandboxing is unavailable because strict fallback blo
     <value>Loading sessions...</value>
   </data>
   <data name="SessionsPage_NoActiveSessions.Text" xml:space="preserve">
-    <value>No active sessions</value>
+    <value>No sessions</value>
   </data>
   <data name="SessionsPage_Reset.Text" xml:space="preserve">
     <value>Reset</value>
@@ -6939,5 +6939,17 @@ Make sure the gateway is running.</value>
   </data>
   <data name="PermissionsPage_ExecPolicySaveFailed" xml:space="preserve">
     <value>Save failed</value>
+  </data>
+  <data name="SessionsPage_Status_Working" xml:space="preserve">
+    <value>Working</value>
+  </data>
+  <data name="SessionsPage_Status_Ready" xml:space="preserve">
+    <value>Ready</value>
+  </data>
+  <data name="SessionsPage_Status_NeedsAttention" xml:space="preserve">
+    <value>Needs attention</value>
+  </data>
+  <data name="SessionsPage_LastRunStopped" xml:space="preserve">
+    <value>Last run stopped</value>
   </data>
 </root>

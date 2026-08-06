@@ -10,30 +10,30 @@ public class SessionVisibilityFilterTests
     [InlineData("done")]
     [InlineData("DONE")]
     [InlineData(" completed ")]
-    [InlineData("failed")]
-    [InlineData("killed")]
-    [InlineData("timeout")]
-    public void IsEnded_RecognizesTerminalStatuses(string status)
+    public void IsCompleted_RecognizesSuccessfulCompletedStatuses(string status)
     {
         var session = new SessionInfo { Status = status };
 
-        Assert.True(SessionVisibilityFilter.IsEnded(session));
-        Assert.False(SessionVisibilityFilter.IsVisibleWhenEndedHidden(session));
+        Assert.True(SessionVisibilityFilter.IsCompleted(session));
+        Assert.False(SessionVisibilityFilter.IsVisibleWhenCompletedHidden(session));
     }
 
     [Theory]
+    [InlineData("failed")]
+    [InlineData("killed")]
+    [InlineData("timeout")]
     [InlineData("running")]
     [InlineData("unknown")]
-    public void IsEnded_LeavesActiveAndUnknownStatusesVisible(string status)
+    public void IsCompleted_LeavesWorkingAndNonSuccessOutcomesVisible(string status)
     {
         var session = new SessionInfo { Status = status };
 
-        Assert.False(SessionVisibilityFilter.IsEnded(session));
-        Assert.True(SessionVisibilityFilter.IsVisibleWhenEndedHidden(session));
+        Assert.False(SessionVisibilityFilter.IsCompleted(session));
+        Assert.True(SessionVisibilityFilter.IsVisibleWhenCompletedHidden(session));
     }
 
     [Fact]
-    public void IsEnded_KeepsAbortedDoneSessionsVisible()
+    public void IsCompleted_LeavesAbortedDoneSessionsVisibleAsStoppedWork()
     {
         var session = new SessionInfo
         {
@@ -41,12 +41,12 @@ public class SessionVisibilityFilterTests
             AbortedLastRun = true,
         };
 
-        Assert.False(SessionVisibilityFilter.IsEnded(session));
-        Assert.True(SessionVisibilityFilter.IsVisibleWhenEndedHidden(session));
+        Assert.False(SessionVisibilityFilter.IsCompleted(session));
+        Assert.True(SessionVisibilityFilter.IsVisibleWhenCompletedHidden(session));
     }
 
     [Fact]
-    public void VisibleSessions_HidesEndedSessionsByDefault()
+    public void VisibleSessions_HidesOnlySuccessfulCompletedSessionsByDefault()
     {
         var sessions = new[]
         {
@@ -58,15 +58,15 @@ public class SessionVisibilityFilterTests
             new SessionInfo { Key = "running", Status = "running" },
         };
 
-        var visible = SessionVisibilityFilter.VisibleSessions(sessions, showEnded: false)
+        var visible = SessionVisibilityFilter.VisibleSessions(sessions, showCompleted: false)
             .Select(s => s.Key)
             .ToArray();
 
-        Assert.Equal(new[] { "aborted-done", "running" }, visible);
+        Assert.Equal(new[] { "failed", "killed", "timeout", "aborted-done", "running" }, visible);
     }
 
     [Fact]
-    public void VisibleSessions_ShowEndedPreservesAllSessions()
+    public void VisibleSessions_ShowCompletedPreservesAllSessions()
     {
         var sessions = new[]
         {
@@ -74,7 +74,7 @@ public class SessionVisibilityFilterTests
             new SessionInfo { Key = "failed", Status = "failed" },
         };
 
-        var visible = SessionVisibilityFilter.VisibleSessions(sessions, showEnded: true)
+        var visible = SessionVisibilityFilter.VisibleSessions(sessions, showCompleted: true)
             .Select(s => s.Key)
             .ToArray();
 
@@ -82,22 +82,21 @@ public class SessionVisibilityFilterTests
     }
 
     [Theory]
-    [InlineData("done", false, ChatThreadStatus.Ended)]
-    [InlineData("completed", false, ChatThreadStatus.Ended)]
-    [InlineData("failed", false, ChatThreadStatus.Ended)]
-    [InlineData("killed", false, ChatThreadStatus.Ended)]
-    [InlineData("timeout", false, ChatThreadStatus.Ended)]
-    [InlineData("done", true, ChatThreadStatus.Running)]
-    [InlineData("unknown", false, ChatThreadStatus.Running)]
-    public void ToChatThreadStatus_ReusesEndedSemantics(
+    [InlineData("running", true, ChatThreadStatus.Running)]
+    [InlineData("running", false, ChatThreadStatus.Created)]
+    [InlineData("done", false, ChatThreadStatus.Created)]
+    [InlineData("failed", false, ChatThreadStatus.Created)]
+    [InlineData("killed", false, ChatThreadStatus.Created)]
+    [InlineData("timeout", false, ChatThreadStatus.Created)]
+    public void ToChatThreadStatus_UsesCanonicalRunLiveness(
         string status,
-        bool abortedLastRun,
+        bool hasActiveRun,
         ChatThreadStatus expected)
     {
         var session = new SessionInfo
         {
             Status = status,
-            AbortedLastRun = abortedLastRun,
+            HasActiveRun = hasActiveRun,
         };
 
         Assert.Equal(expected, SessionVisibilityFilter.ToChatThreadStatus(session));

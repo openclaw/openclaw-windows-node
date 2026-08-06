@@ -59,6 +59,7 @@ These are the canonical homes. Do not reintroduce private copies elsewhere.
 | Presentation-layer DI composition root | `AppServiceRegistration` (root `ServiceProvider`, owned by `App`) | authoritative |
 | Settings snapshot read + batched save + non-echoing change notification | `ISettingsStore` | authoritative |
 | Settings page load/persist view logic | `SettingsPageViewModel` | authoritative |
+| Native tool identity, display arguments, payload extraction, and flattened-history projection | `NativeToolProjector` | authoritative |
 | Managed-local listener provenance and strong-credential authorization | `ManagedLocalGatewayPortProvenanceService` | authoritative |
 | Managed-local automatic repair eligibility and orchestration | `ManagedLocalGatewayAutoRepairMonitor` + `ManagedLocalGatewayRepairCoordinator` | authoritative |
 | Capability UI metadata | `NodeCapabilityUiCatalog` (planned) | planned |
@@ -72,7 +73,7 @@ These are the canonical homes. Do not reintroduce private copies elsewhere.
 | If you are editing… | Do not grow it. Extract toward… |
 | --- | --- |
 | `src/OpenClaw.Tray.WinUI/App.xaml.cs` | `IWindowManager`, `ITrayController`, `IActivationRouter`, `ISettingsChangeCoordinator`, `AppBootstrapper` |
-| `src/OpenClaw.Tray.WinUI/Chat/OpenClawChatDataProvider.cs` | `ChatSendQueue`, `ChatBridgeEventPump`, `ChatHistoryLoader`, `ChatSnapshotProjector`, `AttachmentMetadataStore` |
+| `src/OpenClaw.Tray.WinUI/Chat/OpenClawChatDataProvider.cs` | `ChatSendQueue`, `ChatBridgeEventPump`, `ChatHistoryLoader`, `ChatSnapshotProjector`, `AttachmentMetadataStore`; pure native tool projection stays in `NativeToolProjector` |
 | `src/OpenClaw.Tray.WinUI/Chat/OpenClawChatTimeline.cs` | `ReactorChatTimeline` (production `ItemsView` / `ItemContainer`), `ChatBubbleRenderer`, `ToolCallCardRenderer`, `PermissionRequestCard`, `AttachmentBubbleRenderer` |
 | `src/OpenClaw.Tray.WinUI/Chat/OpenClawComposer.cs` | `ComposerViewModel`, `SlashCommandPalette`, `AttachmentPreviewStrip`, `VoiceComposerController` |
 | `src/OpenClaw.Tray.WinUI/Pages/ConnectionPage.xaml.cs` | `ConnectionPagePlan` (pure), `ConnectionPageViewModel`, gateway row models |
@@ -125,6 +126,8 @@ leading and trailing pipe. Columns, in order:
 | app-window-manager | planned | src/OpenClaw.Tray.WinUI/App.xaml.cs | window creation/show/hide/shutdown | IWindowManager | composition/delegation only | startup/shutdown ordering deterministic; disposed once | none | review-only | extracted in Phase 3 |
 | app-tray-controller | planned | src/OpenClaw.Tray.WinUI/App.xaml.cs | tray icon/menu/action routing | ITrayController | composition/delegation only | tray actions route unchanged | none | review-only | extracted in Phase 3 |
 | app-activation-router | planned | src/OpenClaw.Tray.WinUI/App.xaml.cs | deep-link/toast/single-instance activation | IActivationRouter | composition/delegation only | activation routes land on the same UI/actions; current-user pipe security preserved | none | review-only | extracted in Phase 3 |
+| native-tool-projector | authoritative | src/OpenClaw.Tray.WinUI/Chat/OpenClawChatDataProvider.cs | pure native tool identity, allowlisted display arguments, payload extraction, and flattened-history detection/classification/summary | NativeToolProjector | provider calls the projector while retaining stateful live/history application and metadata cache behavior | unknown identities remain truthful Tool; title aliases are strict; display arguments are allowlisted, redacted, and bounded; live/history projection stays consistent | NativeToolProjectorTests.ExtractToolIdentity_TitleRequiresExactTrustedAlias | behavioral | - |
+| provider-native-tool-projection-closed | closed | src/OpenClaw.Tray.WinUI/Chat/OpenClawChatDataProvider.cs | private static copies of native tool identity, display argument, payload, and flattened-history projection | NativeToolProjector | provider owns run/session/legacy-generation correlation, metadata cache persistence/upsert/migration/matching, active run IDs, and timeline state | provider does not regain pure native tool projection or duplicate NativeToolProjector compatibility wrappers | review-only: the provider retains stateful orchestration and calls the focused projector directly | review-only | when OpenClawChatDataProvider no longer applies native tool events or history |
 | chat-send-queue | planned | src/OpenClaw.Tray.WinUI/Chat/OpenClawChatDataProvider.cs | send queue/admission/abort state | ChatSendQueue | - | queued send/abort/generation semantics preserved | none | review-only | extracted in Phase 4 |
 | gateway-pending-requests | planned | src/OpenClaw.Shared/OpenClawGatewayClient.cs | request-id -> method/completion tracking | PendingRequestRegistry | - | request ids never leak after disconnect; thread-safe | none | review-only | extracted in Phase 4 |
 | connect-envelope | planned | src/OpenClaw.Shared/OpenClawGatewayClient.cs + WindowsNodeClient.cs | connect message + auth precedence + signature version | ConnectEnvelopeBuilder | - | credential precedence never downgrades a device token; v3->v2 fallback preserved | none | review-only | extracted in Phase 4 |

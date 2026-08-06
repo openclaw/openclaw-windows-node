@@ -4701,7 +4701,7 @@ Les commandes sont bloquées tant que le sandboxing est indisponible, car le blo
     <value>Chargement des sessions…</value>
   </data>
   <data name="SessionsPage_NoActiveSessions.Text" xml:space="preserve">
-    <value>Aucune session active</value>
+    <value>Aucune session</value>
   </data>
   <data name="SessionsPage_Reset.Text" xml:space="preserve">
     <value>Réinitialiser</value>
@@ -6899,5 +6899,17 @@ Le binaire wxc-exec est introuvable. {1} S'il s'agit d'une build développeur, c
   </data>
   <data name="PermissionsPage_ExecPolicySaveFailed" xml:space="preserve">
     <value>Échec de l’enregistrement</value>
+  </data>
+  <data name="SessionsPage_Status_Working" xml:space="preserve">
+    <value>En cours</value>
+  </data>
+  <data name="SessionsPage_Status_Ready" xml:space="preserve">
+    <value>Prête</value>
+  </data>
+  <data name="SessionsPage_Status_NeedsAttention" xml:space="preserve">
+    <value>À vérifier</value>
+  </data>
+  <data name="SessionsPage_LastRunStopped" xml:space="preserve">
+    <value>Dernière exécution arrêtée</value>
   </data>
 </root>

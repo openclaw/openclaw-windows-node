@@ -6,6 +6,7 @@ using Microsoft.UI.Xaml.Documents;
 using Microsoft.UI.Xaml.Media;
 using OpenClaw.Connection;
 using OpenClaw.Shared;
+using OpenClaw.Shared.Sessions;
 using OpenClawTray.Helpers;
 using OpenClawTray.Services;
 using System;
@@ -730,9 +731,7 @@ public sealed partial class ConnectionPage : Page
         // Status sub-row (mirrors PermissionsPage NodeStatusDot pattern):
         // colored dot + descriptive label that reflects the live state.
         var sessions = _appState?.Sessions;
-        int activeSessions = sessions?.Count(s =>
-            string.Equals(s.Status, "active", StringComparison.OrdinalIgnoreCase) ||
-            string.Equals(s.Status, "running", StringComparison.OrdinalIgnoreCase)) ?? 0;
+        int activeSessions = sessions?.Count(SessionRunState.IsWorking) ?? 0;
 
         var (statusGlyph, statusBrushKey, statusText) = plan.OperatorCard switch
         {

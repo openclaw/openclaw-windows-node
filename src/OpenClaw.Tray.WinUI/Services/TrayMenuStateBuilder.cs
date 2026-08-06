@@ -5,6 +5,7 @@ using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Controls.Primitives;
 using OpenClaw.Chat;
 using OpenClaw.Shared;
+using OpenClaw.Shared.Sessions;
 using OpenClawTray.Chat;
 using OpenClawTray.Helpers;
 using OpenClawTray.Windows;
@@ -288,14 +289,14 @@ internal sealed class TrayMenuStateBuilder
 
         // ── Sessions (now below Devices) ──
         var foregroundSessions = _snapshot.Sessions
-            .Where(session => !SessionPresentationResolver.IsBackground(session))
+            .Where(session => !SessionDisplayResolver.IsBackground(session))
             .ToArray();
         if (foregroundSessions.Length > 0)
         {
             menu.AddSeparator();
 
             var sessionCount = foregroundSessions.Length;
-            var activeCount = foregroundSessions.Count(s => string.Equals(s.Status, "active", StringComparison.OrdinalIgnoreCase));
+            var activeCount = foregroundSessions.Count(SessionRunState.IsWorking);
             var totalTokensAll = foregroundSessions.Sum(TrayDashboardSummaryBuilder.SessionUsedTokens);
 
             // Single collapsed entry whose hover flyout reveals the session list.
@@ -634,9 +635,9 @@ internal sealed class TrayMenuStateBuilder
 
     // ── Sessions: collapsed entry + flyout list ─────────────────────────
 
-    private static UIElement BuildSessionsListRow(int total, int active, long totalTokens, Microsoft.UI.Xaml.Media.Brush secondaryText)
+    private static UIElement BuildSessionsListRow(int total, int working, long totalTokens, Microsoft.UI.Xaml.Media.Brush secondaryText)
     {
-        // Card row: [icon] Sessions    (N active · X tokens)
+        // Card row: [icon] Sessions    (N working · X tokens)
         var resources = Application.Current.Resources;
         var captionStyle = (Style)resources["CaptionTextBlockStyle"];
 
@@ -662,7 +663,7 @@ internal sealed class TrayMenuStateBuilder
 
         var summary = new TextBlock
         {
-            Text = $"{active} active · {FormatTokenCount(totalTokens)} tokens",
+            Text = $"{working} working · {FormatTokenCount(totalTokens)} tokens",
             Style = captionStyle,
             FontSize = 11,
             Foreground = secondaryText,
@@ -1208,7 +1209,7 @@ internal sealed class TrayMenuStateBuilder
 
         if (sessions.Count == 0)
         {
-            items.Add(new() { Text = "No active sessions" });
+            items.Add(new() { Text = "No sessions" });
             return items;
         }
 

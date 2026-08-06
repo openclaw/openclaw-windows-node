@@ -15,19 +15,19 @@ internal static class SessionTitleFormatter
     }
 
     /// <summary>
-    /// Formats a session title from the Gateway presentation contract, with a
-    /// bounded fallback for older gateways.
+    /// Formats a session title from flattened Gateway facts, with a bounded
+    /// fallback for older gateways.
     /// </summary>
     public static string Format(SessionInfo session)
     {
         ArgumentNullException.ThrowIfNull(session);
 
-        var presentation = SessionPresentationResolver.Resolve(session);
-        if (!presentation.TitleSource.Equals("generated", StringComparison.OrdinalIgnoreCase))
-            return presentation.Title;
+        var display = SessionDisplayResolver.Resolve(session);
+        if (!display.TitleSource.Equals("generated", StringComparison.OrdinalIgnoreCase))
+            return display.Title;
 
-        var family = presentation.Family.ToLowerInvariant();
-        var hasChannel = !string.IsNullOrWhiteSpace(presentation.Channel);
+        var family = display.Classification.ToLowerInvariant();
+        var hasChannel = !string.IsNullOrWhiteSpace(display.Channel);
         var resourceKey = family switch
         {
             "main" => "SessionTitle_Main",
@@ -51,37 +51,37 @@ internal static class SessionTitleFormatter
             _ => null,
         };
         if (resourceKey is null)
-            return presentation.Title;
+            return display.Title;
 
         return hasChannel && (family is "direct" or "group" or "channel" or "thread")
-            ? LocalizedFormat(resourceKey, presentation.Title, ChannelLabel(presentation.Channel))
-            : Localized(resourceKey, presentation.Title);
+            ? LocalizedFormat(resourceKey, display.Title, ChannelLabel(display.Channel))
+            : Localized(resourceKey, display.Title);
     }
 
     public static string? FormatSubtitle(SessionInfo session)
     {
         ArgumentNullException.ThrowIfNull(session);
 
-        var presentation = SessionPresentationResolver.Resolve(session);
+        var display = SessionDisplayResolver.Resolve(session);
         var parts = new List<string>(5);
         if (FormatWorktree(session.Worktree) is { } worktree) parts.Add(worktree);
-        if (!string.IsNullOrWhiteSpace(presentation.Channel)) parts.Add(ChannelLabel(presentation.Channel));
-        if (presentation.AccountId is { } accountId && !string.IsNullOrWhiteSpace(accountId))
+        if (!string.IsNullOrWhiteSpace(display.Channel)) parts.Add(ChannelLabel(display.Channel));
+        if (display.AccountId is { } accountId && !string.IsNullOrWhiteSpace(accountId))
         {
-            var display = SessionPresentationResolver.FormatContext(accountId);
-            parts.Add(LocalizedFormat("SessionSubtitle_Account", $"account {display}", display));
+            var context = SessionDisplayResolver.FormatContext(accountId);
+            parts.Add(LocalizedFormat("SessionSubtitle_Account", $"account {context}", context));
         }
-        if (presentation.AgentId is { } agentId && !string.IsNullOrWhiteSpace(agentId))
+        if (display.AgentId is { } agentId && !string.IsNullOrWhiteSpace(agentId))
         {
-            var display = SessionPresentationResolver.FormatContext(agentId);
-            parts.Add(LocalizedFormat("SessionSubtitle_Agent", $"agent {display}", display));
+            var context = SessionDisplayResolver.FormatContext(agentId);
+            parts.Add(LocalizedFormat("SessionSubtitle_Agent", $"agent {context}", context));
         }
         if (session.ExecNode is { } execNode && !string.IsNullOrWhiteSpace(execNode))
         {
-            var display = SessionPresentationResolver.FormatContext(execNode);
-            parts.Add(LocalizedFormat("SessionSubtitle_Node", $"node {display}", display));
+            var context = SessionDisplayResolver.FormatContext(execNode);
+            parts.Add(LocalizedFormat("SessionSubtitle_Node", $"node {context}", context));
         }
-        return parts.Count > 0 ? string.Join(" · ", parts) : presentation.Subtitle;
+        return parts.Count > 0 ? string.Join(" · ", parts) : display.Subtitle;
     }
 
     /// <summary>
@@ -173,7 +173,7 @@ internal static class SessionTitleFormatter
 
     private static bool IsCanonicalMain(SessionInfo session)
     {
-        return SessionPresentationResolver.Resolve(session).IsMain;
+        return SessionDisplayResolver.Resolve(session).IsMain;
     }
 
     private static string Localized(string key, string fallback)

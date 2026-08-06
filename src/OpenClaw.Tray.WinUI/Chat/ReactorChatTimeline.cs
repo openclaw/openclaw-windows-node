@@ -12,6 +12,7 @@ using Microsoft.UI.Xaml.Media;
 using Microsoft.UI.Xaml.Media.Imaging;
 using OpenClaw.Chat;
 using OpenClawTray.Helpers;
+using System.Text.Json.Nodes;
 using Windows.UI;
 using static Microsoft.UI.Reactor.Factories;
 using WinUIAnnotatedScrollBar = Microsoft.UI.Xaml.Controls.AnnotatedScrollBar;

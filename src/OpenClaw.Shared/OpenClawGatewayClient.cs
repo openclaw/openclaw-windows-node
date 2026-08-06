@@ -4058,16 +4058,6 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
         }
 
         if (item.ValueKind == JsonValueKind.Object
-            && item.TryGetProperty("presentation", out var presentation)
-            && presentation.ValueKind == JsonValueKind.Object
-            && TryGetRequiredBoolean(presentation, "isMain", out var presentationIsMain))
-        {
-            session.IsMain = presentationIsMain;
-            session.IsMainResolved = true;
-            return;
-        }
-
-        if (item.ValueKind == JsonValueKind.Object
             && item.TryGetProperty("isMain", out var isMain)
             && isMain.ValueKind is JsonValueKind.True or JsonValueKind.False)
         {
@@ -4088,7 +4078,15 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
     private void PopulateSessionFromObject(SessionInfo session, JsonElement item)
     {
         if (item.TryGetProperty("status", out var status))
-            session.Status = status.GetString() ?? "active";
+            session.Status = status.ValueKind == JsonValueKind.String
+                ? status.GetString() ?? "unknown"
+                : "unknown";
+        if (item.TryGetProperty("hasActiveRun", out var hasActiveRun))
+        {
+            session.HasActiveRun = hasActiveRun.ValueKind is JsonValueKind.True or JsonValueKind.False
+                ? hasActiveRun.GetBoolean()
+                : null;
+        }
         if (item.TryGetProperty("model", out var model))
         {
             var newModel = model.GetString();
@@ -4111,6 +4109,13 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
             session.Room = GetString(item, "room");
         if (item.TryGetProperty("space", out _)) session.Space = GetString(item, "space");
         if (item.TryGetProperty("chatType", out _)) session.ChatType = GetString(item, "chatType");
+        if (item.TryGetProperty("classification", out _)) session.Classification = GetString(item, "classification");
+        if (item.TryGetProperty("agentId", out _)) session.AgentId = GetString(item, "agentId");
+        if (item.TryGetProperty("accountId", out _)) session.AccountId = GetString(item, "accountId");
+        if (item.TryGetProperty("peerKind", out _)) session.PeerKind = GetString(item, "peerKind");
+        if (item.TryGetProperty("isBackground", out var isBackground)
+            && isBackground.ValueKind is JsonValueKind.True or JsonValueKind.False)
+            session.IsBackground = isBackground.GetBoolean();
         if (item.TryGetProperty("execNode", out _)) session.ExecNode = GetString(item, "execNode");
         if (item.TryGetProperty("parentSessionKey", out _))
             session.ParentSessionKey = GetString(item, "parentSessionKey");
@@ -4124,12 +4129,6 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
                 ? GetString(origin, "label")
                 : null;
         if (item.TryGetProperty("worktree", out _)) session.Worktree = ParseSessionWorktree(item);
-        if (item.TryGetProperty("presentation", out _))
-            session.Presentation = ParseSessionPresentation(item);
-        if (session.Presentation is { } presentation)
-        {
-            session.Channel ??= presentation.Channel;
-        }
         if (item.TryGetProperty("sessionId", out var sessionId))
             session.SessionId = sessionId.GetString();
         if (item.TryGetProperty("thinkingLevel", out var thinking))
@@ -4179,43 +4178,6 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
         return id is null && branch is null && repoRoot is null
             ? null
             : new SessionWorktreeInfo { Id = id, Branch = branch, RepoRoot = repoRoot };
-    }
-
-    private static SessionPresentationInfo? ParseSessionPresentation(JsonElement item)
-    {
-        if (!item.TryGetProperty("presentation", out var presentation)
-            || presentation.ValueKind != JsonValueKind.Object)
-            return null;
-
-        var title = GetString(presentation, "title");
-        var family = GetString(presentation, "family");
-        if (title is null
-            || family is null
-            || !TryGetRequiredBoolean(presentation, "isMain", out var isMain)
-            || !TryGetRequiredBoolean(presentation, "isBackground", out var isBackground))
-            return null;
-
-        return new SessionPresentationInfo
-        {
-            Title = title,
-            TitleSource = GetString(presentation, "titleSource") ?? "generated",
-            Subtitle = GetString(presentation, "subtitle"),
-            Family = family,
-            AgentId = GetString(presentation, "agentId"),
-            Channel = GetString(presentation, "channel"),
-            AccountId = GetString(presentation, "accountId"),
-            PeerKind = GetString(presentation, "peerKind"),
-            IsMain = isMain,
-            IsBackground = isBackground,
-        };
-    }
-
-    private static bool TryGetRequiredBoolean(JsonElement parent, string propertyName, out bool value)
-    {
-        value = false;
-        if (!parent.TryGetProperty(propertyName, out var property)) return false;
-        if (property.ValueKind == JsonValueKind.True) value = true;
-        return property.ValueKind is JsonValueKind.True or JsonValueKind.False;
     }
 
     private void ParseNodeList(JsonElement nodesPayload)

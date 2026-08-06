@@ -679,25 +679,17 @@ public class SessionInfoTests
     }
 
     [Fact]
-    public void Clone_DeepCopies_Presentation()
+    public void Clone_PreservesFlatSessionFacts()
     {
         var original = new SessionInfo
         {
             Key = "agent:main:test",
-            Presentation = new SessionPresentationInfo
-            {
-                Title = "Original", Family = "custom", AgentId = "main", IsBackground = false,
-            },
+            Classification = "custom", AgentId = "main", IsBackground = false,
         };
         var clone = original.Clone();
-
-        // Mutate clone's Presentation
-        clone.Presentation!.Title = "Mutated";
-        clone.Presentation.IsBackground = true;
-
-        // Original must be unchanged
-        Assert.Equal("Original", original.Presentation.Title);
-        Assert.False(original.Presentation.IsBackground);
+        Assert.Equal("custom", clone.Classification);
+        Assert.Equal("main", clone.AgentId);
+        Assert.False(clone.IsBackground);
     }
 
     [Fact]
@@ -720,42 +712,6 @@ public class SessionInfoTests
         // Original must be unchanged
         Assert.Equal("main", original.Worktree.Branch);
         Assert.Equal("/home/user/repo", original.Worktree.RepoRoot);
-    }
-
-    [Fact]
-    public void Clone_NullPresentation_DoesNotThrow()
-    {
-        var original = new SessionInfo { Key = "test", Presentation = null, Worktree = null };
-        var clone = original.Clone();
-        Assert.Null(clone.Presentation);
-        Assert.Null(clone.Worktree);
-    }
-
-    [Fact]
-    public void Clone_SnapshotIsolation_MultipleClonesIndependent()
-    {
-        var live = new SessionInfo
-        {
-            Key = "agent:main:explicit:task",
-            Presentation = new SessionPresentationInfo { Title = "V1", Family = "explicit" },
-            Worktree = new SessionWorktreeInfo { Branch = "main" },
-        };
-
-        var snapshot1 = live.Clone();
-        live.Presentation.Title = "V2";
-        live.Worktree.Branch = "develop";
-        var snapshot2 = live.Clone();
-
-        // snapshot1 sees V1, snapshot2 sees V2, both independent
-        Assert.Equal("V1", snapshot1.Presentation!.Title);
-        Assert.Equal("main", snapshot1.Worktree!.Branch);
-        Assert.Equal("V2", snapshot2.Presentation!.Title);
-        Assert.Equal("develop", snapshot2.Worktree!.Branch);
-
-        // Mutating snapshot2 doesn't affect live or snapshot1
-        snapshot2.Presentation.Title = "V3";
-        Assert.Equal("V2", live.Presentation.Title);
-        Assert.Equal("V1", snapshot1.Presentation.Title);
     }
 }
 

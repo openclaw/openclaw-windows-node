@@ -80,6 +80,14 @@ public sealed class ConnectionRegressionSourceTests
     }
 
     [Fact]
+    public void SessionCount_UsesCanonicalRunLiveness()
+    {
+        var pageSource = ReadSource("src", "OpenClaw.Tray.WinUI", "Pages", "ConnectionPage.xaml.cs");
+
+        Assert.Contains("sessions?.Count(SessionRunState.IsWorking)", pageSource);
+    }
+
+    [Fact]
     public void PairingRequiredDisconnectGuard_RunsInsideTransitionSemaphore()
     {
         var managerSource = ReadSource("src", "OpenClaw.Connection", "GatewayConnectionManager.cs");

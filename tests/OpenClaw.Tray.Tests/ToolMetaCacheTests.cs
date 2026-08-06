@@ -258,6 +258,112 @@ public class ToolMetaCacheTests
     }
 
     [Fact]
+    public async Task CacheToolMeta_SameIdAcrossRunsPersistsDistinctRecords()
+    {
+        using var tempDir = new TempDirectory();
+        var cachePath = Path.Combine(tempDir.DirectoryPath, "tool-metadata.json");
+        var provider = new OpenClawChatDataProvider(
+            new FakeBridge(),
+            post: null,
+            toolMetaCacheFilePath: cachePath);
+
+        provider.CacheToolMeta(
+            "main",
+            1_000,
+            "Bash",
+            "first",
+            toolCallId: "tool-1",
+            runId: "run-1");
+        provider.CacheToolMeta(
+            "main",
+            2_000,
+            "Apply Patch",
+            "second",
+            toolCallId: "tool-1",
+            runId: "run-2");
+        provider.CacheToolMeta(
+            "main",
+            2_100,
+            "Apply Patch",
+            "upgraded second",
+            toolCallId: "tool-1",
+            identityStrength: ChatToolIdentityStrength.Explicit,
+            runId: "run-2");
+
+        await provider.DisposeAsync();
+
+        var cache = JsonSerializer.Deserialize<Dictionary<string, List<OpenClawChatDataProvider.CachedToolMeta>>>(
+            File.ReadAllText(cachePath));
+        Assert.Collection(
+            cache!["main"],
+            first =>
+            {
+                Assert.Equal("run-1", first.RunId);
+                Assert.Equal("first", first.Label);
+            },
+            second =>
+            {
+                Assert.Equal("run-2", second.RunId);
+                Assert.Equal("upgraded second", second.Label);
+            });
+    }
+
+    [Fact]
+    public async Task CacheToolMeta_LegacyIdReuseAcrossTurnsPersistsDistinctRecords()
+    {
+        using var tempDir = new TempDirectory();
+        var cachePath = Path.Combine(tempDir.DirectoryPath, "tool-metadata.json");
+        var provider = new OpenClawChatDataProvider(
+            new FakeBridge(),
+            post: null,
+            toolMetaCacheFilePath: cachePath);
+
+        provider.CacheToolMeta(
+            "main",
+            1_000,
+            "Bash",
+            "first",
+            toolCallId: "tool-1",
+            legacyTurn: 1);
+        provider.CacheToolMeta(
+            "main",
+            2_000,
+            "Apply Patch",
+            "second",
+            toolCallId: "tool-1",
+            legacyTurn: 2);
+
+        await provider.DisposeAsync();
+
+        var cache = JsonSerializer.Deserialize<Dictionary<string, List<OpenClawChatDataProvider.CachedToolMeta>>>(
+            File.ReadAllText(cachePath));
+        Assert.Collection(
+            cache!["main"],
+            first => Assert.Equal(1, first.LegacyTurn),
+            second => Assert.Equal(2, second.LegacyTurn));
+    }
+
+    [Fact]
+    public void CachedToolMeta_LegacyJsonWithoutScopeMigratesToNullRunAndZeroTurn()
+    {
+        const string json = """
+            {
+              "Ts": 1000,
+              "ToolName": "Bash",
+              "Label": "legacy",
+              "ToolCallId": "tool-1"
+            }
+            """;
+
+        var entry = JsonSerializer.Deserialize<OpenClawChatDataProvider.CachedToolMeta>(json);
+
+        Assert.NotNull(entry);
+        Assert.Null(entry!.RunId);
+        Assert.Equal(0, entry.LegacyTurn);
+        Assert.Equal("tool-1", entry.ToolCallId);
+    }
+
+    [Fact]
     public void TryMatch_NormalizesLegacyCachedNewlines()
     {
         var cache = new Queue<OpenClawChatDataProvider.CachedToolMeta>();
@@ -267,6 +373,38 @@ public class ToolMetaCacheTests
 
         Assert.Equal("bash name", result!.ToolName);
         Assert.Equal("line1       \"line2\"", result.Label);
+    }
+
+    [Fact]
+    public async Task CacheToolMeta_SameToolCallId_UpgradesSpecificIdentityWithoutDuplicate()
+    {
+        using var tempDir = new TempDirectory();
+        var cachePath = Path.Combine(tempDir.DirectoryPath, "tool-metadata.json");
+        var provider = new OpenClawChatDataProvider(new FakeBridge(), post: null, toolMetaCacheFilePath: cachePath);
+
+        provider.CacheToolMeta(
+            "main",
+            100,
+            "Tool",
+            "Tool",
+            "tool-1",
+            identityStrength: ChatToolIdentityStrength.Fallback);
+        provider.CacheToolMeta(
+            "main",
+            110,
+            "Bash",
+            "Get-Date",
+            "tool-1",
+            new System.Text.Json.Nodes.JsonObject { ["command"] = "Get-Date" },
+            ChatToolIdentityStrength.Specific);
+        await provider.DisposeAsync();
+
+        var cache = JsonSerializer.Deserialize<Dictionary<string, List<OpenClawChatDataProvider.CachedToolMeta>>>(
+            File.ReadAllText(cachePath));
+        var entry = Assert.Single(cache!["main"]);
+        Assert.Equal("Bash", entry.ToolName);
+        Assert.Equal("Get-Date", entry.ToolArgs!["command"]!.GetValue<string>());
+        Assert.Equal(ChatToolIdentityStrength.Specific, entry.IdentityStrength);
     }
 
     [Fact]

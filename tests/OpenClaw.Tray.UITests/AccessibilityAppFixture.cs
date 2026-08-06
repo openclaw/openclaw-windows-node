@@ -29,11 +29,18 @@ public sealed class AccessibilityAppFixture : IDisposable
 
     private readonly string _dataDirectory;
     private readonly string _executablePath;
+    private readonly string? _nativeChatProofSignalPath;
+    private readonly string? _nativeChatProofVisualDirectory;
     private readonly Process _process;
 
     public IntPtr HubWindowHandle { get; }
 
     public AccessibilityAppFixture()
+        : this(initializeAxe: true)
+    {
+    }
+
+    internal AccessibilityAppFixture(bool initializeAxe)
     {
         _executablePath = Path.Combine(AppContext.BaseDirectory, "OpenClaw.Tray.WinUI.exe");
         if (!File.Exists(_executablePath))
@@ -47,6 +54,17 @@ public sealed class AccessibilityAppFixture : IDisposable
             Path.GetTempPath(),
             $"OpenClaw.Tray.Axe.{Guid.NewGuid():N}");
         Directory.CreateDirectory(_dataDirectory);
+        if (!initializeAxe
+            && Environment.GetEnvironmentVariable("OPENCLAW_UI_SCREENSHOT_PATH")
+                is { Length: > 0 })
+        {
+            _nativeChatProofSignalPath = Path.Combine(
+                _dataDirectory,
+                "native-chat-proof.capture");
+            _nativeChatProofVisualDirectory = Path.Combine(
+                _dataDirectory,
+                "native-chat-visual");
+        }
         File.WriteAllText(
             Path.Combine(_dataDirectory, "settings.json"),
             """
@@ -60,7 +78,8 @@ public sealed class AccessibilityAppFixture : IDisposable
 
         _process = StartProcess($"{OpenClawTray.AppIdentity.ProtocolScheme}://hub/connection");
         HubWindowHandle = WaitForHubWindow();
-        AxeHelper.Initialize(_process.Id);
+        if (initializeAxe)
+            AxeHelper.Initialize(_process.Id);
     }
 
     public async Task NavigateAsync(string pageTag, string pageMarkerAutomationId)
@@ -155,6 +174,69 @@ public sealed class AccessibilityAppFixture : IDisposable
         return path;
     }
 
+    public string? CaptureNativeChatVisualIfRequested()
+    {
+        var configuredPath = Environment.GetEnvironmentVariable("OPENCLAW_UI_SCREENSHOT_PATH");
+        if (string.IsNullOrWhiteSpace(configuredPath))
+            return null;
+        if (_nativeChatProofSignalPath is null || _nativeChatProofVisualDirectory is null)
+        {
+            throw new InvalidOperationException(
+                "Native chat visual capture was not configured for this fixture.");
+        }
+
+        EnsureTargetIsAlive();
+        var capturedPath = Path.Combine(
+            _nativeChatProofVisualDirectory,
+            "NativeToolIdentity",
+            "capture-00.png");
+        File.WriteAllText(_nativeChatProofSignalPath, "capture");
+
+        var stopwatch = Stopwatch.StartNew();
+        while (stopwatch.Elapsed < TimeSpan.FromSeconds(30))
+        {
+            EnsureTargetIsAlive();
+            if (File.Exists(capturedPath) && new FileInfo(capturedPath).Length > 0)
+                break;
+            Thread.Sleep(100);
+        }
+        if (!File.Exists(capturedPath) || new FileInfo(capturedPath).Length == 0)
+        {
+            throw new TimeoutException(
+                "The isolated app did not produce the native chat visual proof.");
+        }
+
+        var path = Path.GetFullPath(configuredPath, Environment.CurrentDirectory);
+        Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+        File.Copy(capturedPath, path, overwrite: true);
+
+        using (var bitmap = new Bitmap(path))
+        {
+            var sampledColors = new HashSet<int>();
+            var sampledPixels = 0;
+            var contentPixels = 0;
+            var stepX = Math.Max(1, bitmap.Width / 32);
+            var stepY = Math.Max(1, bitmap.Height / 32);
+            for (var y = 0; y < bitmap.Height; y += stepY)
+            {
+                for (var x = 0; x < bitmap.Width; x += stepX)
+                {
+                    var color = bitmap.GetPixel(x, y);
+                    sampledColors.Add(color.ToArgb());
+                    sampledPixels++;
+                    if (color.R < 245 || color.G < 245 || color.B < 245)
+                        contentPixels++;
+                }
+            }
+            if (sampledColors.Count < 8 || contentPixels < sampledPixels / 40)
+            {
+                throw new InvalidOperationException(
+                    "Native chat visual capture was blank or near-uniform.");
+            }
+        }
+        return path;
+    }
+
     private async Task WaitForPageMarkerAsync(string pageTag, string automationId)
     {
         var stopwatch = Stopwatch.StartNew();
@@ -191,6 +273,17 @@ public sealed class AccessibilityAppFixture : IDisposable
         startInfo.Environment["OPENCLAW_LANGUAGE"] = "en-US";
         startInfo.Environment["OPENCLAW_ACCESSIBILITY_TEST_CHAT"] = "1";
         startInfo.Environment["OPENCLAW_ACCESSIBILITY_TEST_SESSIONS"] = "1";
+        if (_nativeChatProofSignalPath is not null
+            && _nativeChatProofVisualDirectory is not null)
+        {
+            startInfo.Environment["OPENCLAW_VISUAL_TEST_SIGNAL"] =
+                _nativeChatProofSignalPath;
+            startInfo.Environment["OPENCLAW_VISUAL_TEST"] = "1";
+            startInfo.Environment["OPENCLAW_VISUAL_TEST_DIR"] =
+                _nativeChatProofVisualDirectory;
+            startInfo.Environment["OPENCLAW_VISUAL_TEST_SURFACE"] =
+                "NativeToolIdentity";
+        }
 
         return Process.Start(startInfo)
             ?? throw new InvalidOperationException("Failed to start the OpenClaw tray executable.");
@@ -267,4 +360,5 @@ public sealed class AccessibilityAppFixture : IDisposable
 
     [DllImport("user32.dll")]
     private static extern int GetSystemMetrics(int index);
+
 }

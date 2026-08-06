@@ -345,7 +345,7 @@ public sealed class ChatTimelinePresentationTests
         Assert.DoesNotContain("private static Element BuildTool", timeline);
         Assert.Contains("public static Element BuildStandalone", renderer);
         Assert.Contains("public static Element BuildActivity", renderer);
-        Assert.Contains("FormatToolInput(entry.ToolArgs)", renderer);
+        Assert.Contains("FormatToolDisplayArgs(entry.ToolArgs)", renderer);
         Assert.Contains("private const int ToolDetailMaxChars = 4000;", renderer);
         Assert.Contains("\"Chat_Tool_InputSection\"", renderer);
         Assert.Contains("\"Chat_Tool_OutputLabel\"", renderer);

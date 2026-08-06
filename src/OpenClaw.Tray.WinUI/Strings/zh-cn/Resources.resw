@@ -4658,7 +4658,7 @@
     <value>全部</value>
   </data>
   <data name="SessionsPage_ShowCompleted.Header" xml:space="preserve">
-    <value>显示已结束的会话</value>
+    <value>显示已完成的会话</value>
   </data>
   <data name="SessionsPage_ShowBackground.Header" xml:space="preserve">
     <value>显示后台会话</value>
@@ -4701,7 +4701,7 @@
     <value>正在加载会话…</value>
   </data>
   <data name="SessionsPage_NoActiveSessions.Text" xml:space="preserve">
-    <value>无活动会话</value>
+    <value>没有会话</value>
   </data>
   <data name="SessionsPage_Reset.Text" xml:space="preserve">
     <value>重置</value>
@@ -6899,5 +6899,17 @@
   </data>
   <data name="PermissionsPage_ExecPolicySaveFailed" xml:space="preserve">
     <value>保存失败</value>
+  </data>
+  <data name="SessionsPage_Status_Working" xml:space="preserve">
+    <value>工作中</value>
+  </data>
+  <data name="SessionsPage_Status_Ready" xml:space="preserve">
+    <value>就绪</value>
+  </data>
+  <data name="SessionsPage_Status_NeedsAttention" xml:space="preserve">
+    <value>需要注意</value>
+  </data>
+  <data name="SessionsPage_LastRunStopped" xml:space="preserve">
+    <value>上次运行已停止</value>
   </data>
 </root>
