@@ -112,12 +112,8 @@ public sealed partial class SessionsPage : Page
                     Status = "active",
                     HasActiveRun = true,
                     DisplayName = "Nightly cleanup",
-                    Presentation = new SessionPresentationInfo
-                    {
-                        Title = "Nightly cleanup",
-                        Family = "cron",
-                        IsBackground = true,
-                    },
+                    Classification = "cron",
+                    IsBackground = true,
                     UpdatedAt = DateTime.UtcNow.AddMinutes(-7),
                 },
                 new SessionInfo
