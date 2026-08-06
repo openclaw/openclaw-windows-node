@@ -2652,7 +2652,7 @@ public class WindowsNodeClientTests
     }
 
     [Fact]
-    public async Task CommandDispatch_EventPath_UsesLegacyBindingWhileNegotiationIsPending()
+    public async Task CommandDispatch_EventPath_FailsClosedWhileNegotiationIsPending()
     {
         var dataPath = Path.Combine(Path.GetTempPath(), $"openclaw-node-test-{Guid.NewGuid():N}");
         Directory.CreateDirectory(dataPath);
@@ -2699,7 +2699,7 @@ public class WindowsNodeClientTests
                 }
                 """);
             await cap.ExecutedTask.WaitAsync(TimeSpan.FromSeconds(5));
-            Assert.Equal("nested-session", cap.LastRequest?.SessionKey);
+            Assert.Null(cap.LastRequest?.SessionKey);
 
             await InvokeProcessMessageAsync(
                 client,

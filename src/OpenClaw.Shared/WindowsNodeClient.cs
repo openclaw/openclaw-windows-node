@@ -1809,11 +1809,11 @@ public class WindowsNodeClient : WebSocketClientBase
             return NodeInvokeSessionEnvelopeMode.Authoritative;
         }
 
-        // Before negotiation completes, the Gateway has not observed feature support and
-        // therefore sends the legacy nested binding. Preserve that receipt-time meaning.
+        // An explicit unknown-method response is the only authority for trusting the
+        // legacy nested binding. Omission remains fail-closed while negotiation is pending.
         if (!_nodeInvokeSessionEnvelopeNegotiationComplete)
         {
-            return NodeInvokeSessionEnvelopeMode.Legacy;
+            return NodeInvokeSessionEnvelopeMode.Authoritative;
         }
 
         return _nodeInvokeSessionEnvelopeMode.IsCompletedSuccessfully
