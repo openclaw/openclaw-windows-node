@@ -65,9 +65,21 @@ public static class ChatToolActivityPresentation
                 continue;
             }
 
+            if (entry.ToolResult == ChatToolCallStatus.Error)
+            {
+                if (showToolCalls)
+                    rows.Add(Standalone(entry, sessionId, timelineGeneration));
+                index++;
+                continue;
+            }
+
             var end = index + 1;
-            while (end < entries.Count && entries[end].Kind == ChatTimelineItemKind.ToolCall)
+            while (end < entries.Count
+                && entries[end].Kind == ChatTimelineItemKind.ToolCall
+                && entries[end].ToolResult != ChatToolCallStatus.Error)
+            {
                 end++;
+            }
 
             if (!showToolCalls)
             {

@@ -4802,9 +4802,27 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
 
     private static JsonObject? ConvertToolArgs(JsonElement? value)
     {
-        if (value is not { ValueKind: JsonValueKind.Object } args)
+        if (value is { ValueKind: JsonValueKind.Object } args)
+            return NativeToolProjector.ExtractSafeToolDisplayArgs(args);
+
+        if (value is not { ValueKind: JsonValueKind.String } encoded)
             return null;
-        return NativeToolProjector.ExtractSafeToolDisplayArgs(args);
+
+        var json = encoded.GetString();
+        if (string.IsNullOrWhiteSpace(json))
+            return null;
+
+        try
+        {
+            using var document = JsonDocument.Parse(json);
+            return document.RootElement.ValueKind == JsonValueKind.Object
+                ? NativeToolProjector.ExtractSafeToolDisplayArgs(document.RootElement)
+                : null;
+        }
+        catch (JsonException)
+        {
+            return null;
+        }
     }
 
     private static string ToolLabel(string toolName, JsonObject? args)
