@@ -235,11 +235,9 @@ public sealed class ChatComposerControllerTests
     [Fact]
     public void Disposed_FieldIsDeclaredVolatile()
     {
-        // Structural guard for the cross-lock/no-lock disposal-visibility fix:
-        // _disposed has no lock protecting it at all in this class (there is no
-        // lock anywhere in ChatComposerController), so every read/write relies
-        // entirely on `volatile` for cross-thread visibility. This fails if a
-        // future edit ever removes the keyword.
+        // The operation-registration gate protects final admission checks, while
+        // public entry points deliberately retain cheap lock-free rejects. Those
+        // reads rely on volatile visibility.
         var field = typeof(ChatComposerController).GetField(
             "_disposed",
             BindingFlags.NonPublic | BindingFlags.Instance);
@@ -590,6 +588,184 @@ public sealed class ChatComposerControllerTests
     }
 
     [Fact]
+    public void StartVoiceRecording_DisposeWinsBeforeRegistration_DoesNotInvokeHostOrMutateViewModel()
+    {
+        var requestCalls = 0;
+        var actions = new ChatComposerHostActions(
+            null,
+            null,
+            VoiceCaptureRequest: (_, _) =>
+            {
+                Interlocked.Increment(ref requestCalls);
+                return Task.FromResult<string?>("unexpected");
+            },
+            null,
+            null);
+        var (vm, controller, _, _) = MakeController(actions);
+        using var hookReached = new ManualResetEventSlim();
+        using var releaseHook = new ManualResetEventSlim();
+        Exception? observed = null;
+        controller.TestOnlyBeforeVoiceRegistration = () =>
+        {
+            hookReached.Set();
+            Assert.True(releaseHook.Wait(TimeSpan.FromSeconds(5)));
+        };
+
+        var startThread = new Thread(() =>
+        {
+            try { controller.StartVoiceRecording(); }
+            catch (Exception ex) { observed = ex; }
+        });
+        startThread.Start();
+        Assert.True(hookReached.Wait(TimeSpan.FromSeconds(5)));
+
+        controller.Dispose();
+        releaseHook.Set();
+
+        Assert.True(startThread.Join(TimeSpan.FromSeconds(5)));
+        Assert.Null(observed);
+        Assert.Equal(0, requestCalls);
+        Assert.False(vm.IsRecording);
+        Assert.Equal(string.Empty, vm.Draft);
+    }
+
+    [Fact]
+    public void StartVoiceRecording_RegistrationWins_InitiatesBeforeDisposeReturnsAndFencesLateCallbacks()
+    {
+        var dispatcher = new RecordingUiDispatcher
+        {
+            HasThreadAccess = false,
+            RunEnqueuedImmediately = false,
+        };
+        var requestCalls = 0;
+        CancellationToken requestToken = default;
+        Action? recordingStarted = null;
+        var voiceResult = new TaskCompletionSource<string?>(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        using var requestEntered = new ManualResetEventSlim();
+        using var releaseRequest = new ManualResetEventSlim();
+        using var disposeStarted = new ManualResetEventSlim();
+        using var cleanupReached = new ManualResetEventSlim();
+        var actions = new ChatComposerHostActions(
+            null,
+            null,
+            VoiceCaptureRequest: (token, started) =>
+            {
+                Interlocked.Increment(ref requestCalls);
+                requestToken = token;
+                recordingStarted = started;
+                requestEntered.Set();
+                Assert.True(releaseRequest.Wait(TimeSpan.FromSeconds(5)));
+                return voiceResult.Task;
+            },
+            null,
+            null);
+        var (vm, controller, _, _) = MakeController(actions, dispatcher);
+        dispatcher.FlushPending();
+        controller.TestOnlyVoiceOperationCleanedUp = () => cleanupReached.Set();
+        Exception? startException = null;
+        Exception? disposeException = null;
+
+        var startThread = new Thread(() =>
+        {
+            try { controller.StartVoiceRecording(); }
+            catch (Exception ex) { startException = ex; }
+        });
+        startThread.Start();
+        Assert.True(requestEntered.Wait(TimeSpan.FromSeconds(5)));
+
+        var disposeThread = new Thread(() =>
+        {
+            disposeStarted.Set();
+            try { controller.Dispose(); }
+            catch (Exception ex) { disposeException = ex; }
+        });
+        disposeThread.Start();
+        Assert.True(disposeStarted.Wait(TimeSpan.FromSeconds(5)));
+        Assert.True(
+            SpinWait.SpinUntil(
+                () => (disposeThread.ThreadState & ThreadState.WaitSleepJoin) != 0,
+                TimeSpan.FromSeconds(5)),
+            "Dispose did not block on the held voice-registration gate.");
+        Assert.True(disposeThread.IsAlive);
+
+        releaseRequest.Set();
+        Assert.True(startThread.Join(TimeSpan.FromSeconds(5)));
+        Assert.True(disposeThread.Join(TimeSpan.FromSeconds(5)));
+        Assert.Null(startException);
+        Assert.Null(disposeException);
+        Assert.Equal(1, requestCalls);
+        Assert.True(requestToken.IsCancellationRequested);
+
+        var enqueuedAtDispose = dispatcher.EnqueuedCount;
+        recordingStarted?.Invoke();
+        voiceResult.SetResult("late transcript");
+        Assert.True(cleanupReached.Wait(TimeSpan.FromSeconds(5)));
+
+        Assert.Equal(enqueuedAtDispose, dispatcher.EnqueuedCount);
+        Assert.Equal(string.Empty, vm.Draft);
+    }
+
+    [Fact]
+    public void StartVoiceRecording_SynchronousHostException_IsObservedAndCleansUpOnce()
+    {
+        var actions = new ChatComposerHostActions(
+            null,
+            null,
+            VoiceCaptureRequest: (_, _) => throw new InvalidOperationException("synchronous failure"),
+            null,
+            null);
+        var (vm, controller, _, _) = MakeController(actions);
+        var cleanupCalls = 0;
+        controller.TestOnlyVoiceOperationCleanedUp = () => cleanupCalls++;
+
+        var exception = Record.Exception(controller.StartVoiceRecording);
+
+        Assert.Null(exception);
+        Assert.False(vm.IsRecording);
+        Assert.Equal(1, cleanupCalls);
+    }
+
+    [Fact]
+    public async Task VoiceStartStopDispose_RaceStress_NeverThrowsAndDisposeRemainsIdempotent()
+    {
+        for (var iteration = 0; iteration < 100; iteration++)
+        {
+            var requestCalls = 0;
+            var voiceResult = new TaskCompletionSource<string?>(
+                TaskCreationOptions.RunContinuationsAsynchronously);
+            var cleanupReached = new TaskCompletionSource(
+                TaskCreationOptions.RunContinuationsAsynchronously);
+            var actions = new ChatComposerHostActions(
+                null,
+                null,
+                VoiceCaptureRequest: (_, _) =>
+                {
+                    Interlocked.Increment(ref requestCalls);
+                    return voiceResult.Task;
+                },
+                null,
+                null);
+            var (_, controller, _, _) = MakeController(actions);
+            controller.TestOnlyVoiceOperationCleanedUp = () => cleanupReached.TrySetResult();
+
+            await Task.WhenAll(
+                Task.Run(controller.StartVoiceRecording),
+                Task.Run(controller.StopVoiceRecording),
+                Task.Run(controller.Dispose),
+                Task.Run(controller.Dispose));
+
+            voiceResult.TrySetResult("late");
+            if (requestCalls != 0)
+                await cleanupReached.Task.WaitAsync(TimeSpan.FromSeconds(5));
+
+            var exception = Record.Exception(controller.Dispose);
+            Assert.Null(exception);
+            Assert.InRange(requestCalls, 0, 1);
+        }
+    }
+
+    [Fact]
     public async Task SendAsync_AfterDispose_ReturnsFalseWithoutCallingPort()
     {
         var (vm, controller, port, _) = MakeController();
@@ -611,6 +787,107 @@ public sealed class ChatComposerControllerTests
         var exception = Record.Exception(controller.Dispose);
 
         Assert.Null(exception);
+    }
+
+    [Fact]
+    public async Task Dispose_LifetimeCancellationCallbackCanWaitForReentrantControllerWork()
+    {
+        var voiceRequestCalls = 0;
+        var actions = new ChatComposerHostActions(
+            null,
+            null,
+            VoiceCaptureRequest: (_, _) =>
+            {
+                Interlocked.Increment(ref voiceRequestCalls);
+                return Task.FromResult<string?>(null);
+            },
+            null,
+            null);
+        var (_, controller, port, _) = MakeController(actions);
+        controller.Stop();
+        Assert.NotNull(port.LastStopToken);
+
+        Task? callbackWork = null;
+        var callbackInvoked = false;
+        var callbackWorkCompleted = false;
+        var callbackObservedDisposed = false;
+        using var registration = port.LastStopToken!.Value.Register(() =>
+        {
+            callbackInvoked = true;
+            callbackWork = Task.Run(() =>
+            {
+                controller.TestOnlyProbeOperationGate();
+                callbackObservedDisposed = controller.IsDisposed;
+                controller.StartVoiceRecording();
+            });
+            callbackWorkCompleted = callbackWork.Wait(TimeSpan.FromSeconds(2));
+        });
+
+        var disposeTask = Task.Run(controller.Dispose);
+        var exception = await Record.ExceptionAsync(
+            async () => await disposeTask.WaitAsync(TimeSpan.FromSeconds(5)));
+        if (callbackWork is not null)
+            await callbackWork.WaitAsync(TimeSpan.FromSeconds(5));
+
+        Assert.Null(exception);
+        Assert.True(callbackInvoked);
+        Assert.True(callbackWorkCompleted);
+        Assert.True(callbackObservedDisposed);
+        Assert.True(controller.IsDisposed);
+        Assert.Equal(0, voiceRequestCalls);
+    }
+
+    [Fact]
+    public async Task Dispose_VoiceCancellationCallbackCanWaitForReentrantControllerWork()
+    {
+        var voiceRequestCalls = 0;
+        CancellationToken voiceToken = default;
+        var voiceResult = new TaskCompletionSource<string?>(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        var cleanupReached = new TaskCompletionSource(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        var actions = new ChatComposerHostActions(
+            null,
+            null,
+            VoiceCaptureRequest: (token, _) =>
+            {
+                Interlocked.Increment(ref voiceRequestCalls);
+                voiceToken = token;
+                return voiceResult.Task;
+            },
+            null,
+            null);
+        var (vm, controller, _, _) = MakeController(actions);
+        controller.TestOnlyVoiceOperationCleanedUp = () => cleanupReached.TrySetResult();
+        controller.StartVoiceRecording();
+        Assert.True(voiceToken.CanBeCanceled);
+
+        Task? callbackWork = null;
+        var callbackInvoked = false;
+        var callbackWorkCompleted = false;
+        using var registration = voiceToken.Register(() =>
+        {
+            callbackInvoked = true;
+            callbackWork = Task.Run(async () =>
+            {
+                voiceResult.TrySetResult("late transcript");
+                await cleanupReached.Task;
+            });
+            callbackWorkCompleted = callbackWork.Wait(TimeSpan.FromSeconds(2));
+        });
+
+        var disposeTask = Task.Run(controller.Dispose);
+        var exception = await Record.ExceptionAsync(
+            async () => await disposeTask.WaitAsync(TimeSpan.FromSeconds(5)));
+        if (callbackWork is not null)
+            await callbackWork.WaitAsync(TimeSpan.FromSeconds(5));
+        await cleanupReached.Task.WaitAsync(TimeSpan.FromSeconds(5));
+
+        Assert.Null(exception);
+        Assert.True(callbackInvoked);
+        Assert.True(callbackWorkCompleted);
+        Assert.Equal(1, voiceRequestCalls);
+        Assert.Equal(string.Empty, vm.Draft);
     }
 
     [Fact]

@@ -28,6 +28,7 @@ internal sealed partial class ChatComposerController : IDisposable
     private readonly ChatComposerViewModel _vm;
     private readonly IChatComposerRuntimePort _port;
     private readonly ChatComposerHostActions _hostActions;
+    private readonly object _operationGate = new();
 
     /// <summary>Canceled and disposed exactly once, in <see cref="Dispose"/>. Never
     /// read directly after construction — see <see cref="_lifetimeToken"/>, which is
@@ -79,6 +80,21 @@ internal sealed partial class ChatComposerController : IDisposable
     /// <summary>Test-only synchronization seam invoked at the start of
     /// <see cref="FireAndForget"/>, before its eager synchronous port call.</summary>
     internal Action? TestOnlyBeforeFireAndForgetSynchronousInvocation;
+
+    /// <summary>Test-only synchronization seam invoked after voice's cheap entry
+    /// checks and before operation registration.</summary>
+    internal Action? TestOnlyBeforeVoiceRegistration;
+
+    /// <summary>Test-only observation seam invoked after a registered voice
+    /// operation releases its cancellation source.</summary>
+    internal Action? TestOnlyVoiceOperationCleanedUp;
+
+    /// <summary>Test-only contention probe that must acquire the same operation
+    /// gate used by registration and disposal.</summary>
+    internal void TestOnlyProbeOperationGate()
+    {
+        lock (_operationGate) { }
+    }
 #endif
 
     public ChatComposerController(
@@ -353,15 +369,47 @@ internal sealed partial class ChatComposerController : IDisposable
         if (_disposed || _hostActions.VoiceCaptureRequest is not { } request || _vm.IsRecording)
             return;
 
-        var cancellation = new CancellationTokenSource();
-        _voiceCancellation?.Cancel();
-        _voiceCancellation?.Dispose();
-        _voiceCancellation = cancellation;
-        var operation = ++_voiceOperation;
-        _voiceStopOperation = 0;
-        var generationAtStart = _generation;
-        _vm.SetRecording(true);
-        _ = ReceiveVoiceAsync(request, cancellation, operation, generationAtStart);
+#if OPENCLAW_TRAY_TESTS
+        TestOnlyBeforeVoiceRegistration?.Invoke();
+#endif
+
+        CancellationTokenSource cancellation;
+        CancellationTokenSource? superseded;
+        Task<string?> requestTask;
+        int operation;
+        int generationAtStart;
+
+        lock (_operationGate)
+        {
+            if (_disposed || _vm.IsRecording)
+                return;
+
+            cancellation = new CancellationTokenSource();
+            superseded = _voiceCancellation;
+            _voiceCancellation = cancellation;
+            operation = ++_voiceOperation;
+            _voiceStopOperation = 0;
+            generationAtStart = _generation;
+            _vm.SetRecording(true);
+
+            try
+            {
+                requestTask = request(
+                    cancellation.Token,
+                    () => SetVoiceRecordingStartedIfCurrent(cancellation, operation, generationAtStart))
+                    ?? Task.FromException<string?>(new InvalidOperationException("Voice capture returned no task."));
+            }
+            catch (Exception ex)
+            {
+                requestTask = Task.FromException<string?>(ex);
+            }
+        }
+
+        // The external request is synchronously initiated while registration is
+        // linearized above; all awaiting and cancellation happen after releasing
+        // the operation gate.
+        TryCancel(superseded);
+        _ = ReceiveVoiceAsync(requestTask, cancellation, operation, generationAtStart);
     }
 
     /// <summary>Requests cancellation of the in-flight voice capture. The capture's
@@ -372,26 +420,57 @@ internal sealed partial class ChatComposerController : IDisposable
         if (_disposed)
             return;
 
-        _voiceStopOperation = _voiceOperation;
-        _voiceCancellation?.Cancel();
+        CancellationTokenSource? cancellation;
+        lock (_operationGate)
+        {
+            if (_disposed)
+                return;
+
+            _voiceStopOperation = _voiceOperation;
+            cancellation = _voiceCancellation;
+        }
+
+        TryCancel(cancellation);
+    }
+
+    private void SetVoiceRecordingStartedIfCurrent(
+        CancellationTokenSource cancellation,
+        int operation,
+        int generationAtStart)
+    {
+        lock (_operationGate)
+        {
+            if (!_disposed
+                && generationAtStart == _generation
+                && operation == _voiceOperation
+                && ReferenceEquals(_voiceCancellation, cancellation))
+            {
+                _vm.SetRecording(true);
+            }
+        }
     }
 
     private async Task ReceiveVoiceAsync(
-        Func<CancellationToken, Action?, Task<string?>> request,
+        Task<string?> requestTask,
         CancellationTokenSource cancellation,
         int operation,
         int generationAtStart)
     {
         try
         {
-            var transcript = await request(cancellation.Token, () => _vm.SetRecording(true)).ConfigureAwait(true);
-            var stoppedByUser = _voiceStopOperation == operation;
-            if (!_disposed
-                && generationAtStart == _generation
-                && (!cancellation.IsCancellationRequested || stoppedByUser)
-                && !string.IsNullOrWhiteSpace(transcript))
+            var transcript = await requestTask.ConfigureAwait(true);
+            lock (_operationGate)
             {
-                _vm.AppendVoiceTranscript(transcript);
+                var stoppedByUser = _voiceStopOperation == operation;
+                if (!_disposed
+                    && generationAtStart == _generation
+                    && operation == _voiceOperation
+                    && ReferenceEquals(_voiceCancellation, cancellation)
+                    && (!cancellation.IsCancellationRequested || stoppedByUser)
+                    && !string.IsNullOrWhiteSpace(transcript))
+                {
+                    _vm.AppendVoiceTranscript(transcript);
+                }
             }
         }
         catch (OperationCanceledException) { }
@@ -401,11 +480,37 @@ internal sealed partial class ChatComposerController : IDisposable
         }
         finally
         {
-            if (ReferenceEquals(_voiceCancellation, cancellation))
-                _voiceCancellation = null;
+            lock (_operationGate)
+            {
+                if (ReferenceEquals(_voiceCancellation, cancellation))
+                    _voiceCancellation = null;
+                if (!_disposed
+                    && generationAtStart == _generation
+                    && _voiceOperation == operation)
+                {
+                    _vm.SetRecording(false);
+                }
+            }
+
             cancellation.Dispose();
-            if (!_disposed && generationAtStart == _generation && _voiceOperation == operation)
-                _vm.SetRecording(false);
+#if OPENCLAW_TRAY_TESTS
+            TestOnlyVoiceOperationCleanedUp?.Invoke();
+#endif
+        }
+    }
+
+    private static void TryCancel(CancellationTokenSource? cancellation)
+    {
+        if (cancellation is null)
+            return;
+
+        try
+        {
+            cancellation.Cancel();
+        }
+        catch (ObjectDisposedException)
+        {
+            // The operation completion owns disposal and may win this race.
         }
     }
 
@@ -456,15 +561,28 @@ internal sealed partial class ChatComposerController : IDisposable
         if (_disposed)
             return;
 
-        _disposed = true;
-        _generation++;
+        CancellationTokenSource? voiceCancellation;
+        CancellationTokenSource? pasteCancellation;
+        lock (_operationGate)
+        {
+            if (_disposed)
+                return;
+
+            _disposed = true;
+            _generation++;
+            voiceCancellation = _voiceCancellation;
+            _voiceCancellation = null;
+            pasteCancellation = _pasteCancellation;
+            _pasteCancellation = null;
+        }
+
+        // Cancellation invokes registered callbacks synchronously. Run it only
+        // after releasing the registration gate so callbacks may safely re-enter
+        // the controller or wait for operation cleanup. The winning Dispose call
+        // still returns only after every cancellation request has been issued.
         _lifetimeCts.Cancel();
         _lifetimeCts.Dispose();
-        _voiceCancellation?.Cancel();
-        _voiceCancellation?.Dispose();
-        _voiceCancellation = null;
-        _pasteCancellation?.Cancel();
-        _pasteCancellation?.Dispose();
-        _pasteCancellation = null;
+        TryCancel(voiceCancellation);
+        TryCancel(pasteCancellation);
     }
 }

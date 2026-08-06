@@ -112,33 +112,7 @@ public sealed class ChatComposerControllerPasteFencingProofTests
 
         var dataPackage = new DataPackage();
         dataPackage.SetBitmap(RandomAccessStreamReference.CreateFromStream(stream));
-        SetClipboardContentWithRetry(dataPackage);
-        return Clipboard.GetContent();
-    }
-
-    /// <summary>Windows clipboard ownership is a shared, sometimes-contended OS
-    /// resource: <c>SetContent</c> can transiently fail (for example
-    /// <c>CLIPBRD_E_CANT_OPEN</c>) if another process/thread briefly holds it. Retry
-    /// a few times with a short backoff, which is the standard mitigation for this
-    /// well-known transient Windows clipboard failure mode.</summary>
-    private static void SetClipboardContentWithRetry(DataPackage dataPackage)
-    {
-        Exception? last = null;
-        for (var attempt = 0; attempt < 10; attempt++)
-        {
-            try
-            {
-                Clipboard.SetContent(dataPackage);
-                return;
-            }
-            catch (Exception ex)
-            {
-                last = ex;
-                Thread.Sleep(25);
-            }
-        }
-
-        throw new InvalidOperationException("Could not set clipboard content after retries.", last);
+        return dataPackage.GetView();
     }
 
     private static IBuffer CryptographicBufferFromBytes(byte[] bytes)
@@ -149,7 +123,7 @@ public sealed class ChatComposerControllerPasteFencingProofTests
     }
 
     [Fact]
-    public async Task PasteImageAsync_DisposedBeforeDecodeCompletes_NeverAddsAttachment()
+    public async Task PasteImageAsync_DisposeWinsDuringPreDecodeHook_NeverStartsGetBitmapOrAddsAttachment()
     {
         await _ui.RunOnUIAsync(async () =>
         {
@@ -164,36 +138,177 @@ public sealed class ChatComposerControllerPasteFencingProofTests
             // one) completes entirely synchronously.
             var resumeDecode = new TaskCompletionSource();
             controller.TestOnlyBeforeDecodeAsync = () => resumeDecode.Task;
+            var getBitmapCalls = 0;
+            controller.TestOnlyClipboardGetBitmapInitiated = () => getBitmapCalls++;
 
             var pasteTask = controller.PasteImageAsync(clip);
 
             // Dispose while the decode has not even been allowed to start yet.
             controller.Dispose();
             resumeDecode.SetResult();
-            await pasteTask;
+            var exception = await Record.ExceptionAsync(() => pasteTask);
 
+            Assert.Null(exception);
+            Assert.Equal(0, getBitmapCalls);
             Assert.Equal(0, vmHandle.PendingAttachmentCount);
         });
     }
 
-    // PasteImageAsync_NewPasteSupersedesInFlightPaste_OnlyLatestAdds and
-    // PasteImageAsync_OrdinaryPaste_AddsExactlyOneAttachment were removed: this
-    // sandboxed test environment cannot reliably call
-    // Windows.ApplicationModel.DataTransfer.Clipboard.SetContent — it fails with an
-    // opaque COMException even after a 10-attempt/25ms-backoff retry (the standard
-    // mitigation for the well-known transient CLIPBRD_E_CANT_OPEN failure), which
-    // points to no interactive clipboard owner in this session rather than a
-    // transient contention issue. This is the same class of environment limitation
-    // documented for computer-use screenshot/window-enumeration in this session.
-    // The supersede/ordinary-add behavior reuses the identical operation-ID +
-    // CancellationTokenSource-supersede + generation-fencing pattern already proven
-    // deterministically (via a fully test-controlled TaskCompletionSource, with no
-    // OS clipboard dependency) for voice capture in
-    // ChatComposerControllerTests.StartVoiceRecording_AppendsTranscriptOnCompletion
-    // and Dispose_CancelsVoiceAndFencesLateCompletionFromMutatingViewModel. The one
-    // property that is paste-specific and safety-critical — a decode that resolves
-    // after dispose must never mutate the view model — is proven above with a real
-    // WinRT decode pipeline, which does not depend on Clipboard.SetContent succeeding
-    // beforehand in the same way (it only needs the decode, not a second contended
-    // clipboard round-trip).
+    [Fact]
+    public async Task PasteImageAsync_DecodeInitiationWins_DisposeFencesDecodedResult()
+    {
+        await _ui.RunOnUIAsync(async () =>
+        {
+            var (vmHandle, controller) = MakeController(_ui);
+            var clip = await CreateClipboardBitmapAsync(0, 255, 0);
+            var getBitmapCalls = 0;
+            var decoded = new TaskCompletionSource(
+                TaskCreationOptions.RunContinuationsAsynchronously);
+            var releaseDecoded = new TaskCompletionSource(
+                TaskCreationOptions.RunContinuationsAsynchronously);
+            controller.TestOnlyClipboardGetBitmapInitiated = () => getBitmapCalls++;
+            controller.TestOnlyAfterDecodeAsync = async () =>
+            {
+                decoded.TrySetResult();
+                await releaseDecoded.Task;
+            };
+
+            var pasteTask = controller.PasteImageAsync(clip);
+            await decoded.Task.WaitAsync(TimeSpan.FromSeconds(5));
+
+            controller.Dispose();
+            releaseDecoded.SetResult();
+            var exception = await Record.ExceptionAsync(() => pasteTask);
+
+            Assert.Null(exception);
+            Assert.Equal(1, getBitmapCalls);
+            Assert.Equal(0, vmHandle.PendingAttachmentCount);
+        });
+    }
+
+    [Fact]
+    public async Task PasteImageAsync_GetBitmapInitiationWins_BlocksDisposeUntilHostCallStarts()
+    {
+        await _ui.RunOnUIAsync(async () =>
+        {
+            var (vmHandle, controller) = MakeController(_ui);
+            var clip = await CreateClipboardBitmapAsync(0, 255, 255);
+            using var disposeStarted = new ManualResetEventSlim();
+            Thread? disposeThread = null;
+            Exception? disposeException = null;
+            var getBitmapCalls = 0;
+            var disposeBlockedOnGate = false;
+            var disposeWasAliveWhileGateHeld = false;
+            controller.TestOnlyClipboardGetBitmapInitiated = () =>
+            {
+                getBitmapCalls++;
+                disposeThread = new Thread(() =>
+                {
+                    disposeStarted.Set();
+                    try { controller.Dispose(); }
+                    catch (Exception ex) { disposeException = ex; }
+                });
+                disposeThread.Start();
+                if (disposeStarted.Wait(TimeSpan.FromSeconds(5)))
+                {
+                    disposeBlockedOnGate = SpinWait.SpinUntil(
+                        () => (disposeThread.ThreadState & ThreadState.WaitSleepJoin) != 0,
+                        TimeSpan.FromSeconds(5));
+                    disposeWasAliveWhileGateHeld = disposeThread.IsAlive;
+                }
+            };
+
+            var pasteTask = controller.PasteImageAsync(clip);
+
+            Assert.NotNull(disposeThread);
+            Assert.True(disposeThread!.Join(TimeSpan.FromSeconds(5)));
+            var exception = await Record.ExceptionAsync(() => pasteTask);
+
+            Assert.Null(disposeException);
+            Assert.Null(exception);
+            Assert.True(disposeBlockedOnGate, "Dispose did not block on the held paste-initiation gate.");
+            Assert.True(disposeWasAliveWhileGateHeld);
+            Assert.Equal(1, getBitmapCalls);
+            Assert.Equal(0, vmHandle.PendingAttachmentCount);
+        });
+    }
+
+    [Fact]
+    public async Task PasteImageAsync_OrdinaryPaste_AddsExactlyOneAttachment()
+    {
+        await _ui.RunOnUIAsync(async () =>
+        {
+            var (vmHandle, controller) = MakeController(_ui);
+            var clip = await CreateClipboardBitmapAsync(64, 128, 192);
+            var getBitmapCalls = 0;
+            controller.TestOnlyClipboardGetBitmapInitiated = () => getBitmapCalls++;
+
+            await controller.PasteImageAsync(clip);
+            await _ui.YieldToRenderAsync();
+
+            Assert.Equal(1, getBitmapCalls);
+            Assert.Equal(1, vmHandle.PendingAttachmentCount);
+            Assert.StartsWith("pasted-image-", vmHandle.LastAttachmentFileName);
+            vmHandle.Dispose();
+        });
+    }
+
+    [Fact]
+    public async Task PasteImageAsync_NewPasteSupersedesPreDecodePaste_OnlyLatestAdds()
+    {
+        await _ui.RunOnUIAsync(async () =>
+        {
+            var (vmHandle, controller) = MakeController(_ui);
+            var firstClip = await CreateClipboardBitmapAsync(255, 0, 255);
+            var secondClip = await CreateClipboardBitmapAsync(255, 255, 0);
+            var releaseFirst = new TaskCompletionSource(
+                TaskCreationOptions.RunContinuationsAsynchronously);
+            var hookCalls = 0;
+            var getBitmapCalls = 0;
+            controller.TestOnlyBeforeDecodeAsync = () =>
+                Interlocked.Increment(ref hookCalls) == 1
+                    ? releaseFirst.Task
+                    : Task.CompletedTask;
+            controller.TestOnlyClipboardGetBitmapInitiated = () => getBitmapCalls++;
+
+            var firstPaste = controller.PasteImageAsync(firstClip);
+            var secondPaste = controller.PasteImageAsync(secondClip);
+            await secondPaste;
+            releaseFirst.SetResult();
+            await firstPaste;
+            await _ui.YieldToRenderAsync();
+
+            Assert.Equal(1, getBitmapCalls);
+            Assert.Equal(1, vmHandle.PendingAttachmentCount);
+            vmHandle.Dispose();
+        });
+    }
+
+    [Fact]
+    public async Task PasteImageDispose_RaceStress_NeverStartsDecodeAfterDisposeOrThrows()
+    {
+        await _ui.RunOnUIAsync(async () =>
+        {
+            var clip = await CreateClipboardBitmapAsync(255, 0, 0);
+            for (var iteration = 0; iteration < 50; iteration++)
+            {
+                var (vmHandle, controller) = MakeController(_ui);
+                var resumeDecode = new TaskCompletionSource(
+                    TaskCreationOptions.RunContinuationsAsynchronously);
+                var getBitmapCalls = 0;
+                controller.TestOnlyBeforeDecodeAsync = () => resumeDecode.Task;
+                controller.TestOnlyClipboardGetBitmapInitiated = () => getBitmapCalls++;
+
+                var pasteTask = controller.PasteImageAsync(clip);
+                controller.Dispose();
+                controller.Dispose();
+                resumeDecode.SetResult();
+                var exception = await Record.ExceptionAsync(() => pasteTask);
+
+                Assert.Null(exception);
+                Assert.Equal(0, getBitmapCalls);
+                Assert.Equal(0, vmHandle.PendingAttachmentCount);
+            }
+        });
+    }
 }

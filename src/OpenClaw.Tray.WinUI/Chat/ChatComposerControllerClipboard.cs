@@ -28,6 +28,14 @@ internal sealed partial class ChatComposerController
     /// explicit suppression below.</summary>
 #pragma warning disable CS0649 // Assigned only by OpenClaw.Tray.UITests via InternalsVisibleTo.
     internal Func<Task>? TestOnlyBeforeDecodeAsync;
+
+    /// <summary>Test-only observation seam invoked immediately before the WinRT
+    /// clipboard bitmap request is made.</summary>
+    internal Action? TestOnlyClipboardGetBitmapInitiated;
+
+    /// <summary>Test-only synchronization seam awaited after decode completes and
+    /// before the attachment result is considered for application.</summary>
+    internal Func<Task>? TestOnlyAfterDecodeAsync;
 #pragma warning restore CS0649
 
     /// <summary>Decodes a clipboard bitmap into a PNG attachment, mirroring the pre-D2
@@ -45,26 +53,62 @@ internal sealed partial class ChatComposerController
         if (_disposed)
             return;
 
-        var cancellation = new CancellationTokenSource();
-        _pasteCancellation?.Cancel();
-        _pasteCancellation?.Dispose();
-        _pasteCancellation = cancellation;
-        var operation = ++_pasteOperation;
-        var generationAtStart = _generation;
+        CancellationTokenSource cancellation;
+        CancellationTokenSource? superseded;
+        int operation;
+        int generationAtStart;
+
+        lock (_operationGate)
+        {
+            if (_disposed)
+                return;
+
+            cancellation = new CancellationTokenSource();
+            superseded = _pasteCancellation;
+            _pasteCancellation = cancellation;
+            operation = ++_pasteOperation;
+            generationAtStart = _generation;
+        }
+
+        TryCancel(superseded);
 
         try
         {
             if (TestOnlyBeforeDecodeAsync is { } hook)
                 await hook().ConfigureAwait(true);
 
-            var attachment = await TryReadImageFromClipboardAsync(clipboardContent, cancellation.Token)
-                .ConfigureAwait(true);
-            if (attachment is not null
-                && !_disposed
-                && generationAtStart == _generation
-                && operation == _pasteOperation)
+            Task<global::Windows.Storage.Streams.RandomAccessStreamReference> bitmapTask;
+            lock (_operationGate)
             {
-                _vm.AddAttachments(new[] { attachment });
+                if (_disposed
+                    || generationAtStart != _generation
+                    || operation != _pasteOperation
+                    || !ReferenceEquals(_pasteCancellation, cancellation))
+                {
+                    return;
+                }
+
+                bitmapTask = clipboardContent.GetBitmapAsync().AsTask(cancellation.Token);
+                TestOnlyClipboardGetBitmapInitiated?.Invoke();
+            }
+
+            // GetBitmapAsync is synchronously initiated while registration is
+            // linearized above; decode and every await run after releasing the gate.
+            var attachment = await TryReadImageFromClipboardAsync(bitmapTask, cancellation.Token)
+                .ConfigureAwait(true);
+            if (TestOnlyAfterDecodeAsync is { } afterDecode)
+                await afterDecode().ConfigureAwait(true);
+
+            lock (_operationGate)
+            {
+                if (attachment is not null
+                    && !_disposed
+                    && generationAtStart == _generation
+                    && operation == _pasteOperation
+                    && ReferenceEquals(_pasteCancellation, cancellation))
+                {
+                    _vm.AddAttachments(new[] { attachment });
+                }
             }
         }
         catch (OperationCanceledException) { }
@@ -75,17 +119,21 @@ internal sealed partial class ChatComposerController
         }
         finally
         {
-            if (ReferenceEquals(_pasteCancellation, cancellation))
-                _pasteCancellation = null;
+            lock (_operationGate)
+            {
+                if (ReferenceEquals(_pasteCancellation, cancellation))
+                    _pasteCancellation = null;
+            }
+
             cancellation.Dispose();
         }
     }
 
-    private static async Task<ChatAttachment?> TryReadImageFromClipboardAsync(
-        global::Windows.ApplicationModel.DataTransfer.DataPackageView content,
+    private async Task<ChatAttachment?> TryReadImageFromClipboardAsync(
+        Task<global::Windows.Storage.Streams.RandomAccessStreamReference> bitmapTask,
         CancellationToken cancellationToken)
     {
-        var streamRef = await content.GetBitmapAsync().AsTask(cancellationToken).ConfigureAwait(true);
+        var streamRef = await bitmapTask.ConfigureAwait(true);
         using var input = await streamRef.OpenReadAsync().AsTask(cancellationToken).ConfigureAwait(true);
         var decoder = await global::Windows.Graphics.Imaging.BitmapDecoder.CreateAsync(input)
             .AsTask(cancellationToken).ConfigureAwait(true);
