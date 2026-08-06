@@ -51,6 +51,7 @@ public sealed class E2ESetupFixture : IAsyncLifetime
     private readonly string _configPath;
     private readonly string _distroName;
     private readonly string? _expectedGatewayVersion;
+    private readonly string? _protocolMismatchResultPath;
     private Process? _trayProcess;
 
     public E2ESetupFixture()
@@ -100,6 +101,7 @@ public sealed class E2ESetupFixture : IAsyncLifetime
         // Write isolated config JSON
         _configPath = Path.Combine(DataDir, "e2e-config.json");
         _expectedGatewayVersion = Environment.GetEnvironmentVariable("OPENCLAW_E2E_GATEWAY_EXPECTED_VERSION");
+        _protocolMismatchResultPath = Environment.GetEnvironmentVariable("OPENCLAW_E2E_PROTOCOL_MISMATCH_RESULT");
         WriteConfig();
 
         Log($"E2E fixture initialized: distro={_distroName}, dataDir={DataDir}, localAppDataRoot={LocalAppDataRoot}, artifacts={ArtifactDir}");
@@ -110,63 +112,71 @@ public sealed class E2ESetupFixture : IAsyncLifetime
         if (!E2ETestGate.IsEnabled)
             return;
 
-        // ── Phase 1: Run SetupEngine CLI ──
-        Log("Phase 1: Running SetupEngine CLI pipeline...");
-        var setupLogPath = Path.Combine(ArtifactDir, "setup-engine.jsonl");
-
-        Environment.SetEnvironmentVariable("OPENCLAW_TRAY_DATA_DIR", DataDir);
-        Environment.SetEnvironmentVariable("OPENCLAW_TRAY_APPDATA_DIR", DataDir);
-        Environment.SetEnvironmentVariable("OPENCLAW_TRAY_LOCALAPPDATA_DIR", LocalAppDataRoot);
-
-        var exitCode = await Program.Main([
-            "--config", _configPath,
-            "--headless",
-            "--rollback-on-failure",
-            "--log-path", setupLogPath
-        ]);
-
-        if (exitCode != 0)
+        try
         {
-            SetupError = $"SetupEngine CLI exited with code {exitCode}. Logs: {setupLogPath}";
-            CopyDataDirLogs();
-            throw new InvalidOperationException(SetupError);
+            // ── Phase 1: Run SetupEngine CLI ──
+            Log("Phase 1: Running SetupEngine CLI pipeline...");
+            var setupLogPath = Path.Combine(ArtifactDir, "setup-engine.jsonl");
+
+            Environment.SetEnvironmentVariable("OPENCLAW_TRAY_DATA_DIR", DataDir);
+            Environment.SetEnvironmentVariable("OPENCLAW_TRAY_APPDATA_DIR", DataDir);
+            Environment.SetEnvironmentVariable("OPENCLAW_TRAY_LOCALAPPDATA_DIR", LocalAppDataRoot);
+
+            var exitCode = await Program.Main([
+                "--config", _configPath,
+                "--headless",
+                "--rollback-on-failure",
+                "--log-path", setupLogPath
+            ]);
+
+            if (exitCode != 0)
+            {
+                SetupError = $"SetupEngine CLI exited with code {exitCode}. Logs: {setupLogPath}";
+                CopyDataDirLogs();
+                throw new InvalidOperationException(SetupError);
+            }
+
+            Log("Phase 1 complete: pipeline succeeded.");
+
+            if (!string.IsNullOrWhiteSpace(_expectedGatewayVersion))
+                await VerifyGatewayVersionAsync(_expectedGatewayVersion);
+
+            // ── Phase 2: Verify artifacts ──
+            Log("Phase 2: Verifying artifacts...");
+            var settingsPath = Path.Combine(DataDir, "settings.json");
+            var gatewaysPath = Path.Combine(DataDir, "gateways.json");
+
+            if (!File.Exists(settingsPath))
+                throw new FileNotFoundException("settings.json not written by setup pipeline", settingsPath);
+            if (!File.Exists(gatewaysPath))
+                throw new FileNotFoundException("gateways.json not written by setup pipeline", gatewaysPath);
+
+            // Patch EnableMcpServer into settings (setup writes EnableNodeMode but not EnableMcpServer)
+            PatchSettingsForMcp(settingsPath);
+            Log("Phase 2 complete: artifacts verified, EnableMcpServer patched.");
+
+            // ── Phase 3: Spawn tray and wait for MCP ──
+            Log("Phase 3: Spawning tray app...");
+            McpPort = FindFreePort();
+            var exePath = LocateTrayExe();
+            _trayProcess = SpawnTray(exePath);
+            Log($"Tray spawned: PID={_trayProcess.Id}, MCP port={McpPort}");
+
+            Client = new McpClient(McpEndpoint);
+            await WaitForMcpReady();
+            Log("Phase 3 complete: MCP server ready.");
+
+            // ── Phase 4: Wait for gateway connection to reach Ready ──
+            Log("Phase 4: Waiting for tray gateway connection...");
+            await WaitForConnectionReady();
+            await WaitForNodeListReady();
+            Log("Phase 4 complete: tray fully connected and node list populated.");
         }
-
-        Log("Phase 1 complete: pipeline succeeded.");
-
-        if (!string.IsNullOrWhiteSpace(_expectedGatewayVersion))
-            await VerifyGatewayVersionAsync(_expectedGatewayVersion);
-
-        // ── Phase 2: Verify artifacts ──
-        Log("Phase 2: Verifying artifacts...");
-        var settingsPath = Path.Combine(DataDir, "settings.json");
-        var gatewaysPath = Path.Combine(DataDir, "gateways.json");
-
-        if (!File.Exists(settingsPath))
-            throw new FileNotFoundException("settings.json not written by setup pipeline", settingsPath);
-        if (!File.Exists(gatewaysPath))
-            throw new FileNotFoundException("gateways.json not written by setup pipeline", gatewaysPath);
-
-        // Patch EnableMcpServer into settings (setup writes EnableNodeMode but not EnableMcpServer)
-        PatchSettingsForMcp(settingsPath);
-        Log("Phase 2 complete: artifacts verified, EnableMcpServer patched.");
-
-        // ── Phase 3: Spawn tray and wait for MCP ──
-        Log("Phase 3: Spawning tray app...");
-        McpPort = FindFreePort();
-        var exePath = LocateTrayExe();
-        _trayProcess = SpawnTray(exePath);
-        Log($"Tray spawned: PID={_trayProcess.Id}, MCP port={McpPort}");
-
-        Client = new McpClient(McpEndpoint);
-        await WaitForMcpReady();
-        Log("Phase 3 complete: MCP server ready.");
-
-        // ── Phase 4: Wait for gateway connection to reach Ready ──
-        Log("Phase 4: Waiting for tray gateway connection...");
-        await WaitForConnectionReady();
-        await WaitForNodeListReady();
-        Log("Phase 4 complete: tray fully connected and node list populated.");
+        catch (Exception ex)
+        {
+            RecordProtocolMismatchResult(ex);
+            throw;
+        }
     }
 
     public async Task DisposeAsync()
@@ -316,6 +326,46 @@ public sealed class E2ESetupFixture : IAsyncLifetime
         }
 
         Log($"Candidate gateway package verified: version={expectedVersion}");
+    }
+
+    private void RecordProtocolMismatchResult(Exception error)
+    {
+        if (string.IsNullOrWhiteSpace(_protocolMismatchResultPath) ||
+            !ContainsProtocolMismatch(error))
+        {
+            return;
+        }
+
+        try
+        {
+            var parent = Path.GetDirectoryName(_protocolMismatchResultPath);
+            if (!string.IsNullOrWhiteSpace(parent))
+                Directory.CreateDirectory(parent);
+            File.WriteAllText(
+                _protocolMismatchResultPath,
+                JsonSerializer.Serialize(new
+                {
+                    schema_version = 1,
+                    outcome = "protocol_mismatch",
+                    phase = "fixture_initialization"
+                }));
+            Log("Recorded structured protocol-mismatch result for release validation.");
+        }
+        catch (Exception writeError)
+        {
+            Log($"Warning: could not record protocol-mismatch result: {writeError.Message}");
+        }
+    }
+
+    private static bool ContainsProtocolMismatch(Exception error)
+    {
+        for (var current = error; current is not null; current = current.InnerException)
+        {
+            if (current.Message.Contains("PROTOCOL_MISMATCH", StringComparison.Ordinal))
+                return true;
+        }
+
+        return false;
     }
 
     private void PatchSettingsForMcp(string settingsPath)
