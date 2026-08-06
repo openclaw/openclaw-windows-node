@@ -1,4 +1,5 @@
 using Microsoft.Extensions.DependencyInjection;
+using OpenClawTray.Chat;
 using OpenClawTray.Presentation;
 using OpenClawTray.Services;
 
@@ -56,6 +57,54 @@ public sealed class AppServiceRegistrationTests
             Assert.Same(dispatcher, provider.GetRequiredService<IUiDispatcher>());
             Assert.Same(commands, provider.GetRequiredService<IAppCommands>());
             Assert.Same(settings, provider.GetRequiredService<SettingsManager>());
+        }
+    }
+
+    [Fact]
+    public void ChatComposerFactory_IsRegisteredAsAStatelessSingleton()
+    {
+        var provider = BuildProvider(out _, out _, out _, out var temp);
+        using (provider)
+        using (temp)
+        {
+            var first = provider.GetRequiredService<IChatComposerFactory>();
+            var second = provider.GetRequiredService<IChatComposerFactory>();
+
+            Assert.Same(first, second);
+            Assert.IsType<ChatComposerFactory>(first);
+        }
+    }
+
+    [Fact]
+    public void ChatComposerFactory_MissingRegistration_GetRequiredServiceThrowsInsteadOfReturningNull()
+    {
+        // Proves the fail-fast property the host-composition call sites rely on:
+        // if IChatComposerFactory were ever NOT registered (a genuine composition
+        // bug), GetRequiredService throws rather than silently yielding null, which
+        // is what lets ChatPage/ChatWindow surface the failure through the app's
+        // existing unhandled-exception/crash-log path instead of conflating it with
+        // the "disconnected, no provider yet" placeholder.
+        var temp = new TempDir();
+        using (temp)
+        {
+            var dispatcher = new RecordingUiDispatcher();
+            var commands = new FakeAppCommands();
+            var settings = new SettingsManager(temp.Path);
+            var services = new ServiceCollection();
+            services.AddOpenClawTrayCore(new AppServiceContext(dispatcher, commands, settings));
+
+            // Simulate the registration being absent by building a container that
+            // only removes this one registration, keeping everything else intact.
+            IServiceCollection withoutFactory = new ServiceCollection();
+            foreach (var descriptor in services)
+            {
+                if (descriptor.ServiceType != typeof(IChatComposerFactory))
+                    withoutFactory.Add(descriptor);
+            }
+
+            using var provider = withoutFactory.BuildServiceProvider();
+
+            Assert.Throws<InvalidOperationException>(() => provider.GetRequiredService<IChatComposerFactory>());
         }
     }
 

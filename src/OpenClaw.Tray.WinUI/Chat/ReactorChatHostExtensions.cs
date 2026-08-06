@@ -26,23 +26,26 @@ public static class ReactorChatHostExtensions
                 System.Diagnostics.Debug.WriteLine("Dropped chat UI update because DispatcherQueue rejected the work item.");
         };
 
-    public static MountedReactorChat MountReactorChat(
-        this Window window,
+    /// <summary>Builds the reset-confirmation dialog closure (centralized here so
+    /// <see cref="Pages.ChatPage"/> and <see cref="Windows.ChatWindow"/> do not each
+    /// duplicate it) and creates one <see cref="ChatComposerSession"/> from the
+    /// resolved <paramref name="composerFactory"/>. Callers pass the returned session
+    /// into <see cref="MountReactorChat"/>. <see cref="IChatComposerFactory"/> and
+    /// <see cref="ChatComposerHostActions"/> stay internal — this helper, not a
+    /// public factory parameter on <c>MountReactorChat</c>, is their only call site
+    /// outside this file.</summary>
+    internal static ChatComposerSession CreateComposerSession(
         Border target,
+        IChatComposerFactory composerFactory,
         IChatDataProvider provider,
-        string? initialThreadId = null,
-        Func<string, Task>? onReadAloud = null,
-        Action? onStopSpeaking = null,
-        Func<CancellationToken, Action?, Task<string?>>? onVoiceRequest = null,
-        Action? onAttachClick = null,
-        Action? onSettingsClick = null,
-        Action<string>? onOpenCheckpoints = null,
-        Action<bool>? onSpeakerMuteChanged = null,
-        bool initialMuted = false,
-        bool isCompact = false)
+        Func<CancellationToken, Action?, Task<string?>>? onVoiceRequest,
+        Action? onAttachClick,
+        Action? onSettingsClick,
+        Action<bool>? onSpeakerMuteChanged,
+        bool initialMuted)
     {
-        ArgumentNullException.ThrowIfNull(window);
         ArgumentNullException.ThrowIfNull(target);
+        ArgumentNullException.ThrowIfNull(composerFactory);
         ArgumentNullException.ThrowIfNull(provider);
 
         async Task<bool> ConfirmResetAsync(string sessionKey, string? displayName)
@@ -72,38 +75,72 @@ public static class ReactorChatHostExtensions
             return await dialog.ShowAsync() == ContentDialogResult.Primary;
         }
 
-        var callbacks = new ReactorChatHostCallbacks();
+        var hostActions = new ChatComposerHostActions(
+            ConfirmResetAsync,
+            onAttachClick,
+            onVoiceRequest,
+            onSettingsClick,
+            onSpeakerMuteChanged);
+        return composerFactory.Create(provider, hostActions, initialMuted);
+    }
+
+    public static MountedReactorChat MountReactorChat(
+        this Window window,
+        Border target,
+        IChatDataProvider provider,
+        ChatComposerSession composerSession,
+        string? initialThreadId = null,
+        Func<string, Task>? onReadAloud = null,
+        Action? onStopSpeaking = null,
+        Action<string>? onOpenCheckpoints = null,
+        bool isCompact = false)
+    {
+        ArgumentNullException.ThrowIfNull(window);
+        ArgumentNullException.ThrowIfNull(target);
+        ArgumentNullException.ThrowIfNull(provider);
+        ArgumentNullException.ThrowIfNull(composerSession);
+
+        // External attachment/voice/mute ingress binds directly to the session, once,
+        // instead of being reassigned by the Reactor tree on every render.
+        var callbacks = new ReactorChatHostCallbacks
+        {
+            AttachFiles = attachments => composerSession.Controller.AddAttachments(attachments),
+            SetVoiceTranscript = text => composerSession.ViewModel.SetVoiceTranscript(text),
+            SetVoiceAudioLevel = level => composerSession.ViewModel.SetVoiceAudioLevel(level),
+            TriggerVoiceRecording = () => composerSession.Controller.StartVoiceRecording(),
+            SetSpeakerMuted = muted => composerSession.ViewModel.SetSpeakerMuted(muted),
+        };
+
         var props = new OpenClawReactorChatRootProps(
             provider,
-            callbacks,
+            composerSession,
             initialThreadId,
             onReadAloud,
             onStopSpeaking,
-            onVoiceRequest,
-            onAttachClick,
-            onSettingsClick,
             onOpenCheckpoints,
-            onSpeakerMuteChanged,
-            ConfirmResetAsync,
-            initialMuted,
             isCompact);
         var host = new ReactorHostControl();
         host.Mount(_ => Component<OpenClawReactorChatRoot, OpenClawReactorChatRootProps>(props));
         target.Child = host;
         VisualTestCapture.ScheduleSignalCapture(target);
-        return new MountedReactorChat(target, host, callbacks);
+        return new MountedReactorChat(target, host, callbacks, composerSession);
     }
 }
 
 /// <summary>
 /// Imperative host handle used by the page and compact window for attachment
-/// and voice input that originates outside the declarative chat tree.
+/// and voice input that originates outside the declarative chat tree. Owns the one
+/// <see cref="ChatComposerSession"/> created for this mount and disposes it exactly
+/// once, alongside the Reactor host.
 /// </summary>
 public sealed class MountedReactorChat(
     Border target,
     ReactorHostControl host,
-    ReactorChatHostCallbacks callbacks) : IDisposable
+    ReactorChatHostCallbacks callbacks,
+    ChatComposerSession session) : IDisposable
 {
+    private int _disposed;
+
     public void AttachFile(ChatAttachment attachment) => AttachFiles(new[] { attachment });
 
     public void AttachFiles(IReadOnlyList<ChatAttachment> attachments) =>
@@ -123,8 +160,17 @@ public sealed class MountedReactorChat(
     public void SetSpeakerMuted(bool muted) =>
         callbacks.SetSpeakerMuted?.Invoke(muted);
 
+    /// <summary>First-wins/idempotent: only the first call performs teardown
+    /// (session disposal, callback clearing, host disposal, target detach); every
+    /// later call — concurrent or sequential — is a no-op. This matters because
+    /// <see cref="ReactorHostControl.Dispose"/> is not itself guaranteed idempotent,
+    /// so a repeated external <c>Dispose()</c> call must never reach it twice.</summary>
     public void Dispose()
     {
+        if (Interlocked.Exchange(ref _disposed, 1) != 0)
+            return;
+
+        session.Dispose();
         callbacks.Clear();
         host.Dispose();
         if (ReferenceEquals(target.Child, host))

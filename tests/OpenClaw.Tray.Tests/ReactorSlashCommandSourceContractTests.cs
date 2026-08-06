@@ -3,56 +3,78 @@ using System.IO;
 
 namespace OpenClaw.Tray.Tests;
 
+/// <summary>
+/// Source-contract tests for the composer's D2 owners: <c>ChatComposerController</c>
+/// (send/lifecycle delegation and command-catalog request), <c>ChatComposerViewModel</c>
+/// (slash evaluation/reconciliation), and <c>ReactorChatComposer</c> (the view-only
+/// popup cache). Updated in D2 to point at the new owner/view seam; see
+/// docs/ARCHITECTURE.md for the chat-composer-* ledger rows.
+/// </summary>
 public class ReactorSlashCommandSourceContractTests
 {
     [Fact]
-    public void ReactorComposer_WiresSnapshotCommandCatalogAndLazyRequest()
+    public void ReactorRoot_WiresSnapshotCommandCatalogIntoComposerInputs()
     {
-        var source = ReadReactorRootSource();
+        var root = ReadSource("OpenClawReactorChatRoot.cs");
 
-        Assert.Contains("snapshot.AvailableCommands", source);
-        Assert.Contains("snapshot.CommandsSupported", source);
-        Assert.Contains("() => RunFireAndForget(ct => props.Provider.EnsureCommandCatalogAsync(ct))", source);
-        Assert.Contains("ReactorSlashCommandController.ShouldRequestCatalogOnOpen", source);
+        Assert.Contains("AvailableCommands: snapshot.AvailableCommands", root);
+        Assert.Contains("CommandsSupported: snapshot.CommandsSupported", root);
     }
 
     [Fact]
-    public void ReactorRoot_SendAsync_RetainsLifecycleDispatcherPath()
+    public void ChatComposerController_RequestsCatalogThroughTheRuntimePort()
     {
-        var source = ReadReactorRootSource();
+        var controller = ReadSource("ChatComposerController.cs");
+
+        Assert.Contains("++_catalogOperation;", controller);
+        Assert.Contains("FireAndForget(_ => _port.EnsureCommandCatalogAsync(_lifetimeToken));", controller);
+    }
+
+    [Fact]
+    public void ChatComposerViewModel_UsesShouldRequestCatalogOnOpen()
+    {
+        var viewModel = ReadSource("ChatComposerViewModel.cs");
+
+        Assert.Contains("ReactorSlashCommandController.ShouldRequestCatalogOnOpen(_awaitingCatalog, SlashDisplay)", viewModel);
+    }
+
+    [Fact]
+    public void ChatComposerController_SendCoreAsync_RetainsLifecycleDispatcherPath()
+    {
+        var controller = ReadSource("ChatComposerController.cs");
 
         AssertInOrder(
-            source,
+            controller,
             "ChatLifecycleCommandParser.TryParse(message, attachments.Count > 0, out var command)",
             "ChatLifecycleCommandExecutionPolicy.ShouldQueue(command)",
-            "native.ExecuteLifecycleCommandAsync(threadId, command)",
-            "provider.SendMessageAsync(threadId, message, CancellationToken.None, attachments)");
+            "_port.ExecuteLifecycleCommandAsync(threadId, command)",
+            "_port.SendMessageAsync(threadId, message, attachments, _lifetimeToken)");
     }
 
     [Fact]
-    public void ReactorComposer_EvaluatesTheStoredSlashStateWithoutReopeningDismissedText()
+    public void ChatComposerViewModel_EvaluatesTheStoredSlashStateWithoutReopeningDismissedText()
     {
-        var source = ReadReactorRootSource();
-        var evaluationStart = source.IndexOf(
-            "var slashDisplay = ReactorSlashCommandController.Evaluate(",
+        var viewModel = ReadSource("ChatComposerViewModel.cs");
+        var evaluationStart = viewModel.IndexOf(
+            "SlashDisplay = ReactorSlashCommandController.Evaluate(",
             StringComparison.Ordinal);
 
         Assert.True(evaluationStart >= 0);
         Assert.True(
-            source.IndexOf("slashMenuState,", evaluationStart, StringComparison.Ordinal) >= 0);
-        Assert.DoesNotContain("resolvedSlashMenuState", source);
+            viewModel.IndexOf("_slashMenuState,", evaluationStart, StringComparison.Ordinal) >= 0);
+        Assert.DoesNotContain("resolvedSlashMenuState", viewModel);
     }
 
     [Fact]
     public void ReactorComposer_CachesStablePopupContentBeforeApplyingTheme()
     {
-        var source = ReadReactorRootSource();
+        var composer = ReadSource("ReactorChatComposer.cs");
 
-        Assert.Contains("var slashPopupContentRef = UseRef", source);
-        Assert.Contains("slashPopupContentRef.Current.Key == popupStateKey", source);
+        Assert.Contains("var slashPopupContentRef = UseRef", composer);
+        Assert.Contains("slashPopupContentRef.Current.Key == popupStateKey", composer);
     }
 
-    private static string ReadReactorRootSource()
+    private static string ReadSource(string fileName)
     {
         var root = TestRepositoryPaths.GetRepositoryRoot();
         return File.ReadAllText(Path.Combine(
@@ -60,7 +82,7 @@ public class ReactorSlashCommandSourceContractTests
             "src",
             "OpenClaw.Tray.WinUI",
             "Chat",
-            "OpenClawReactorChatRoot.cs"));
+            fileName));
     }
 
     private static void AssertInOrder(string source, params string[] fragments)

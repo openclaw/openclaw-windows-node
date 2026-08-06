@@ -223,43 +223,40 @@ public sealed class ChatTimelinePresentationTests
     [Fact]
     public void ReactorComposer_OffsetsPickerChevronRightAndUp()
     {
-        var root = File.ReadAllText(Path.Combine(
+        var composer = File.ReadAllText(Path.Combine(
             TestRepositoryPaths.GetRepositoryRoot(),
             "src",
             "OpenClaw.Tray.WinUI",
             "Chat",
-            "OpenClawReactorChatRoot.cs"));
+            "ReactorChatComposer.cs"));
 
-        Assert.Contains("textBlock.Margin = new Thickness(2, 4, 0, 0)", root);
+        Assert.Contains("textBlock.Margin = new Thickness(2, 4, 0, 0)", composer);
     }
 
     [Fact]
     public void ReactorComposer_BoundsAndAnnouncesQueuedMessages()
     {
-        var root = File.ReadAllText(Path.Combine(
+        var composer = File.ReadAllText(Path.Combine(
             TestRepositoryPaths.GetRepositoryRoot(),
             "src",
             "OpenClaw.Tray.WinUI",
             "Chat",
-            "OpenClawReactorChatRoot.cs"));
+            "ReactorChatComposer.cs"));
 
-        Assert.Contains("ScrollView(VStack(4, queuedRows))", root);
-        Assert.Contains(".MaxHeight(props.IsCompact ? 144 : 220)", root);
-        Assert.Contains("AutomationLiveSetting.Polite", root);
+        Assert.Contains("ScrollView(VStack(4, queuedRows))", composer);
+        Assert.Contains(".MaxHeight(props.IsCompact ? 144 : 220)", composer);
+        Assert.Contains("AutomationLiveSetting.Polite", composer);
     }
 
     [Fact]
     public void ReactorComposer_UsesReactorThemeResourcesWithoutManualThemeObservation()
     {
-        var root = File.ReadAllText(Path.Combine(
+        var composer = File.ReadAllText(Path.Combine(
             TestRepositoryPaths.GetRepositoryRoot(),
             "src",
             "OpenClaw.Tray.WinUI",
             "Chat",
-            "OpenClawReactorChatRoot.cs"));
-        var composer = root[root.IndexOf(
-            "public sealed class ReactorChatComposer",
-            StringComparison.Ordinal)..];
+            "ReactorChatComposer.cs"));
 
         Assert.Contains("UseColorScheme()", composer);
         Assert.Contains(".Background(Theme.ControlFill)", composer);
