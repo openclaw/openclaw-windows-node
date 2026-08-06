@@ -55,4 +55,16 @@ public class NativeToolProjectorTests
         Assert.DoesNotContain("must-not-render", args.ToJsonString(), StringComparison.Ordinal);
         Assert.DoesNotContain("json-must-not-render", args.ToJsonString(), StringComparison.Ordinal);
     }
+
+    [Fact]
+    public void ExtractSafeToolDisplayArgsValue_DecodesStringAndPreservesSafeProjection()
+    {
+        var value = JsonSerializer.SerializeToElement(
+            """{"command":"pwd","workdir":"C:\\private"}""");
+
+        var args = NativeToolProjector.ExtractSafeToolDisplayArgsValue(value)!;
+
+        Assert.Equal("pwd", args["command"]!.GetValue<string>());
+        Assert.False(args.ContainsKey("workdir"));
+    }
 }

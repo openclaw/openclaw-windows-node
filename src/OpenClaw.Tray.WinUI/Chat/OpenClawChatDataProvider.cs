@@ -1423,7 +1423,7 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
                         if (toolBlock.Kind == ChatToolContentKind.Call)
                         {
                             _ = TryMatchCachedTool(cachedTools, msg.Ts);
-                            var args = ConvertToolArgs(toolBlock.Args);
+                            var args = NativeToolProjector.ExtractSafeToolDisplayArgsValue(toolBlock.Args);
                             var callId = toolBlock.CallId;
                             if (string.IsNullOrWhiteSpace(callId))
                             {
@@ -4798,31 +4798,6 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
                 RunId: evt.RunId),
             _ => null
         };
-    }
-
-    private static JsonObject? ConvertToolArgs(JsonElement? value)
-    {
-        if (value is { ValueKind: JsonValueKind.Object } args)
-            return NativeToolProjector.ExtractSafeToolDisplayArgs(args);
-
-        if (value is not { ValueKind: JsonValueKind.String } encoded)
-            return null;
-
-        var json = encoded.GetString();
-        if (string.IsNullOrWhiteSpace(json))
-            return null;
-
-        try
-        {
-            using var document = JsonDocument.Parse(json);
-            return document.RootElement.ValueKind == JsonValueKind.Object
-                ? NativeToolProjector.ExtractSafeToolDisplayArgs(document.RootElement)
-                : null;
-        }
-        catch (JsonException)
-        {
-            return null;
-        }
     }
 
     private static string ToolLabel(string toolName, JsonObject? args)
