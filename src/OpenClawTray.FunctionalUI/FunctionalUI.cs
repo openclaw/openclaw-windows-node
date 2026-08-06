@@ -390,7 +390,6 @@ public sealed record ItemComboBoxElement(IReadOnlyList<ComboItem> Items, string?
 public sealed record ImageElement(string Source) : Element;
 public sealed record BorderElement(Element? Child) : Element;
 public sealed record StackElement(Orientation Orientation, double Spacing, IReadOnlyList<Element?> Children) : Element;
-public sealed record VirtualStackElement(Orientation Orientation, double Spacing, IReadOnlyList<Element?> Children) : Element;
 public sealed record FlexRowElement(IReadOnlyList<Element?> Children) : Element
 {
     public double ColumnGap { get; init; }
@@ -790,8 +789,6 @@ public static class Factories
     public static StackElement VStack(double spacing, params Element?[] children) => new(Orientation.Vertical, spacing, children);
     public static StackElement HStack(params Element?[] children) => new(Orientation.Horizontal, 0, children);
     public static StackElement HStack(double spacing, params Element?[] children) => new(Orientation.Horizontal, spacing, children);
-    public static VirtualStackElement VirtualVStack(double spacing, params Element?[] children) => new(Orientation.Vertical, spacing, children);
-    public static VirtualStackElement VirtualHStack(double spacing, params Element?[] children) => new(Orientation.Horizontal, spacing, children);
     public static GridElement Grid(string[] columns, string[] rows, params Element?[] children) => new(columns, rows, children);
     public static GridElement Grid(GridSize[] columns, GridSize[] rows, params Element?[] children) =>
         new(columns.Select(c => c.ToString()).ToArray(), rows.Select(r => r.ToString()).ToArray(), children);
@@ -1012,7 +1009,6 @@ public sealed class FunctionalHostControl : ContentControl, IDisposable
     /// survives page navigation.
     /// </summary>
     public bool SuppressAutoDispose { get; set; }
-    internal int CachedVirtualStackControlCount => _renderer.CachedVirtualStackControlCount;
 
     public FunctionalHostControl()
     {
@@ -1118,11 +1114,6 @@ internal sealed class UiRenderer(Action requestRender)
     private readonly HashSet<string> _visitedComponentKeys = new();
     private readonly HashSet<string> _visitedContentFlyoutPaths = new();
     private readonly HashSet<string> _visitedMenuFlyoutPaths = new();
-    private readonly HashSet<string> _visitedVirtualStackPaths = new();
-    private readonly Dictionary<string, string[]> _virtualStackOwnedPathPrefixes = new();
-
-    internal int CachedVirtualStackControlCount =>
-        _controls.Keys.Count(IsOwnedByVirtualStack);
 
     public UIElement Render(Element element, string path, List<Action> effects)
     {
@@ -1130,7 +1121,6 @@ internal sealed class UiRenderer(Action requestRender)
         _visitedComponentKeys.Clear();
         _visitedContentFlyoutPaths.Clear();
         _visitedMenuFlyoutPaths.Clear();
-        _visitedVirtualStackPaths.Clear();
 
         var rendered = RenderElement(element, path, effects);
         PruneUnvisitedPaths();
@@ -1150,8 +1140,6 @@ internal sealed class UiRenderer(Action requestRender)
         _contentFlyouts.Clear();
         _menuFlyouts.Clear();
         _mountedPaths.Clear();
-        _visitedVirtualStackPaths.Clear();
-        _virtualStackOwnedPathPrefixes.Clear();
     }
 
     private UIElement RenderElement(Element element, string path, List<Action> effects)
@@ -1180,7 +1168,6 @@ internal sealed class UiRenderer(Action requestRender)
             ImageElement e => ConfigureImage(GetOrCreate<Image>(path), e),
             BorderElement e => ConfigureBorder(GetOrCreate<Border>(path), e, path, effects),
             StackElement e => ConfigureStack(GetOrCreate<Border>(path), e, path, effects),
-            VirtualStackElement e => ConfigureVirtualStack(GetOrCreate<Border>(path), e, path, effects),
             FlexRowElement e => ConfigureFlexRow(GetOrCreate<Border>(path), e, path, effects),
             GridElement e => ConfigureGrid(GetOrCreate<Border>(path), e, path, effects),
             ScrollViewElement e => ConfigureScrollView(GetOrCreate<ScrollViewer>(path), e, path, effects),
@@ -1572,210 +1559,6 @@ internal sealed class UiRenderer(Action requestRender)
         return wrapper;
     }
 
-    private Border ConfigureVirtualStack(Border wrapper, VirtualStackElement element, string path, List<Action> effects)
-    {
-        var repeater = GetOrCreate<ItemsRepeater>(path + ".repeater");
-        _visitedVirtualStackPaths.Add(path);
-        if (repeater.Layout is not StackLayout layout)
-        {
-            layout = new StackLayout();
-            repeater.Layout = layout;
-        }
-        layout.Orientation = element.Orientation;
-        layout.Spacing = element.Spacing;
-
-        var items = element.Children
-            .Select((child, index) => child is null ? null : new VirtualStackItem(
-                index,
-                ResolveElementPath(ChildPath(path, index, child), child),
-                child))
-            .Where(item => item is not null)
-            .Cast<VirtualStackItem>()
-            .ToArray();
-        _virtualStackOwnedPathPrefixes[path] = items.Select(item => item.Path).ToArray();
-
-        if (repeater.ItemsSource is VirtualStackItem[] currentItems && VirtualStackItemsMatch(currentItems, items))
-        {
-            for (var i = 0; i < currentItems.Length; i++)
-            {
-                currentItems[i].Index = items[i].Index;
-                currentItems[i].Element = items[i].Element;
-            }
-            UpdateRealizedVirtualStackItems(currentItems, effects);
-        }
-        else
-        {
-            repeater.ItemsSource = items;
-        }
-
-        if (repeater.ItemTemplate is not VirtualStackItemTemplate template || !template.Matches(this, path))
-            repeater.ItemTemplate = new VirtualStackItemTemplate(this, path);
-
-        repeater.HorizontalAlignment = HorizontalAlignment.Stretch;
-        repeater.VerticalAlignment = VerticalAlignment.Stretch;
-
-        SetChild(wrapper, repeater);
-        ApplyModifiers(wrapper, element);
-        ApplySetters(repeater, element);
-        return wrapper;
-    }
-
-    private void UpdateRealizedVirtualStackItems(IEnumerable<VirtualStackItem> items, List<Action> effects)
-    {
-        foreach (var item in items)
-        {
-            if (item.RealizedContainer is null)
-                continue;
-
-            var child = RenderElementCore(item.Element, item.Path, effects);
-            SetChild(item.RealizedContainer, child);
-            PruneUnvisitedCachedSubtree(item.Path);
-        }
-    }
-
-    private static bool VirtualStackItemsMatch(VirtualStackItem[] currentItems, VirtualStackItem[] nextItems)
-    {
-        if (currentItems.Length != nextItems.Length)
-            return false;
-
-        for (var i = 0; i < currentItems.Length; i++)
-        {
-            if (!string.Equals(currentItems[i].Path, nextItems[i].Path, StringComparison.Ordinal))
-                return false;
-            if (currentItems[i].Element.GetType() != nextItems[i].Element.GetType())
-                return false;
-            if (currentItems[i].Element is ComponentElement currentComponent
-                && nextItems[i].Element is ComponentElement nextComponent
-                && currentComponent.ComponentType != nextComponent.ComponentType)
-            {
-                return false;
-            }
-        }
-
-        return true;
-    }
-
-    private sealed class VirtualStackItem(int index, string path, Element element)
-    {
-        public int Index { get; set; } = index;
-        public string Path { get; } = path;
-        public Element Element { get; set; } = element;
-        public Border? RealizedContainer { get; set; }
-    }
-
-    private sealed class VirtualStackItemTemplate(UiRenderer renderer, string path) : IElementFactory
-    {
-        private readonly Dictionary<UIElement, VirtualStackItem> _realizedItems = new();
-
-        public bool Matches(UiRenderer otherRenderer, string otherPath) =>
-            ReferenceEquals(renderer, otherRenderer) && string.Equals(path, otherPath, StringComparison.Ordinal);
-
-        public UIElement GetElement(ElementFactoryGetArgs args)
-        {
-            if (args.Data is not VirtualStackItem item)
-                return new Border();
-
-            var container = new Border { HorizontalAlignment = HorizontalAlignment.Stretch };
-            var effects = new List<Action>();
-            var child = renderer.RenderElementCore(item.Element, item.Path, effects);
-            renderer.SetChild(container, child);
-            item.RealizedContainer = container;
-            _realizedItems[container] = item;
-            foreach (var effect in effects)
-                effect();
-            return container;
-        }
-
-        public void RecycleElement(ElementFactoryRecycleArgs args)
-        {
-            if (args.Element is not { } control || !_realizedItems.Remove(control, out var item))
-                return;
-
-            if (ReferenceEquals(item.RealizedContainer, control))
-                item.RealizedContainer = null;
-            renderer.RemoveCachedSubtree(item.Path);
-        }
-    }
-
-    private void PruneUnvisitedCachedSubtree(string prefix)
-    {
-        foreach (var (key, component) in _components
-                     .Where(pair => IsPathAtOrBelow(pair.Key, prefix) && !_visitedComponentKeys.Contains(pair.Key))
-                     .ToArray())
-        {
-            component.Context.RunEffectCleanups();
-            _components.Remove(key);
-        }
-
-        foreach (var (path, flyout) in _contentFlyouts
-                     .Where(pair => IsPathAtOrBelow(pair.Key, prefix) && !_visitedContentFlyoutPaths.Contains(pair.Key))
-                     .ToArray())
-        {
-            flyout.Hide();
-            flyout.Content = null;
-            _contentFlyouts.Remove(path);
-        }
-
-        foreach (var (path, flyout) in _menuFlyouts
-                     .Where(pair => IsPathAtOrBelow(pair.Key, prefix) && !_visitedMenuFlyoutPaths.Contains(pair.Key))
-                     .ToArray())
-        {
-            flyout.Hide();
-            flyout.Items.Clear();
-            _menuFlyouts.Remove(path);
-        }
-
-        foreach (var (path, cachedControl) in _controls
-                     .Where(pair => IsPathAtOrBelow(pair.Key, prefix) && !_visitedControlPaths.Contains(pair.Key))
-                     .OrderByDescending(pair => pair.Key.Length)
-                     .ToArray())
-        {
-            _mountedPaths.Remove(path);
-            DetachChildren(cachedControl);
-            RemoveFromParent(cachedControl);
-            _controls.Remove(path);
-        }
-    }
-
-    private void RemoveCachedSubtree(string prefix)
-    {
-        foreach (var (key, component) in _components
-                     .Where(pair => IsPathAtOrBelow(pair.Key, prefix))
-                     .ToArray())
-        {
-            component.Context.RunEffectCleanups();
-            _components.Remove(key);
-        }
-
-        foreach (var (path, flyout) in _contentFlyouts
-                     .Where(pair => IsPathAtOrBelow(pair.Key, prefix))
-                     .ToArray())
-        {
-            flyout.Hide();
-            _contentFlyouts.Remove(path);
-        }
-
-        foreach (var (path, flyout) in _menuFlyouts
-                     .Where(pair => IsPathAtOrBelow(pair.Key, prefix))
-                     .ToArray())
-        {
-            flyout.Hide();
-            flyout.Items.Clear();
-            _menuFlyouts.Remove(path);
-        }
-
-        foreach (var (path, cachedControl) in _controls
-                     .Where(pair => IsPathAtOrBelow(pair.Key, prefix))
-                     .OrderByDescending(pair => pair.Key.Length)
-                     .ToArray())
-        {
-            _mountedPaths.Remove(path);
-            DetachChildren(cachedControl);
-            RemoveFromParent(cachedControl);
-            _controls.Remove(path);
-        }
-    }
-
     private Border ConfigureFlexRow(Border wrapper, FlexRowElement element, string path, List<Action> effects)
     {
         var panel = GetOrCreate<StackPanel>(path + ".panel");
@@ -1939,15 +1722,9 @@ internal sealed class UiRenderer(Action requestRender)
 
     private void PruneUnvisitedPaths()
     {
-        foreach (var path in _virtualStackOwnedPathPrefixes.Keys.ToArray())
-        {
-            if (!_visitedVirtualStackPaths.Contains(path))
-                _virtualStackOwnedPathPrefixes.Remove(path);
-        }
-
         foreach (var (key, component) in _components.ToArray())
         {
-            if (_visitedComponentKeys.Contains(key) || IsOwnedByVirtualStack(key))
+            if (_visitedComponentKeys.Contains(key))
                 continue;
 
             component.Context.RunEffectCleanups();
@@ -1956,7 +1733,7 @@ internal sealed class UiRenderer(Action requestRender)
 
         foreach (var (path, flyout) in _contentFlyouts.ToArray())
         {
-            if (_visitedContentFlyoutPaths.Contains(path) || IsOwnedByVirtualStack(path))
+            if (_visitedContentFlyoutPaths.Contains(path))
                 continue;
 
             flyout.Hide();
@@ -1966,7 +1743,7 @@ internal sealed class UiRenderer(Action requestRender)
 
         foreach (var (path, flyout) in _menuFlyouts.ToArray())
         {
-            if (_visitedMenuFlyoutPaths.Contains(path) || IsOwnedByVirtualStack(path))
+            if (_visitedMenuFlyoutPaths.Contains(path))
                 continue;
 
             flyout.Hide();
@@ -1976,7 +1753,7 @@ internal sealed class UiRenderer(Action requestRender)
 
         foreach (var (path, control) in _controls.ToArray())
         {
-            if (_visitedControlPaths.Contains(path) || IsOwnedByVirtualStack(path))
+            if (_visitedControlPaths.Contains(path))
                 continue;
 
             _mountedPaths.Remove(path);
@@ -1985,25 +1762,6 @@ internal sealed class UiRenderer(Action requestRender)
             _controls.Remove(path);
         }
     }
-
-    private bool IsOwnedByVirtualStack(string path)
-    {
-        foreach (var prefixes in _virtualStackOwnedPathPrefixes.Values)
-        {
-            foreach (var prefix in prefixes)
-            {
-                if (IsPathAtOrBelow(path, prefix))
-                    return true;
-            }
-        }
-
-        return false;
-    }
-
-    private static bool IsPathAtOrBelow(string path, string prefix) =>
-        string.Equals(path, prefix, StringComparison.Ordinal)
-        || path.StartsWith(prefix + ".", StringComparison.Ordinal)
-        || path.StartsWith(prefix + ":", StringComparison.Ordinal);
 
     private MenuFlyout CreateMenuFlyout(MenuFlyoutContentElement element, string path)
     {

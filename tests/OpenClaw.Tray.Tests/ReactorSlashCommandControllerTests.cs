@@ -183,6 +183,20 @@ public class ReactorSlashCommandControllerTests
         Assert.False(display.IsVisible);
     }
 
+    [Fact]
+    public void Evaluate_NoMatchingCommands_HidesPaletteAndLeavesInputForNormalEditing()
+    {
+        var display = ReactorSlashCommandController.Evaluate(
+            "/definitely-not-a-command",
+            new ReactorSlashMenuState(true, "definitely-not-a-command", 0, false),
+            commandModeEnabled: true,
+            commandsSupported: true,
+            SampleCommands());
+
+        Assert.False(display.IsVisible);
+        Assert.False(display.HasSelection);
+    }
+
     private static GatewayCommand[] SampleCommands() =>
     [
         new()

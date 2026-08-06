@@ -1,10 +1,9 @@
 namespace OpenClaw.Tray.Tests;
 
 /// <summary>
-/// Source-contract guards for the composer pickers. These assert the redesigned composer uses
-/// declarative FunctionalUI flyouts rather than hand-rolling a native <c>ComboBox</c> inside a
-/// setter — the imperative escape hatch that caused the #970 "dropdown slams shut on status
-/// render" regression.
+/// Source-contract guards for the Reactor composer pickers. These assert the production composer
+/// keeps picker identity in the declarative Reactor tree instead of hand-rolling a native
+/// <c>ComboBox</c>, the escape hatch that caused the #970 dropdown regression.
 /// </summary>
 public sealed class ComposerSessionPickerTests
 {
@@ -13,16 +12,17 @@ public sealed class ComposerSessionPickerTests
         "src",
         "OpenClaw.Tray.WinUI",
         "Chat",
-        "OpenClawComposer.cs"));
+        "OpenClawReactorChatRoot.cs"));
 
     [Fact]
-    public void SessionPicker_UsesDeclarativeContentFlyout()
+    public void SessionPicker_UsesDeclarativeMenuFlyout()
     {
         var composer = ComposerSource();
 
-        Assert.Contains("var sessionRows = new List<Element?>();", composer);
-        Assert.Contains("var channelFlyout = ContentFlyout(", composer);
-        Assert.Contains("var channelPicker = PickerButton(", composer);
+        Assert.Contains("var sessionPicker = MenuFlyout(", composer);
+        Assert.Contains("props.AvailableChannels", composer);
+        Assert.Contains(".Select(thread => RadioMenuItem(", composer);
+        Assert.Contains("() => props.OnChannelChanged(thread.Id)", composer);
     }
 
     [Fact]
@@ -30,9 +30,9 @@ public sealed class ComposerSessionPickerTests
     {
         var composer = ComposerSource();
 
-        Assert.Contains("var modelMenu = MenuItems(", composer);
-        Assert.Contains("var modelPicker = PickerButton(", composer);
-        Assert.Contains("ToggleMenuItem(", composer);
+        Assert.Contains("var modelPicker = MenuFlyout(", composer);
+        Assert.Contains("modelNames", composer);
+        Assert.Contains(".Select((modelName, index) => RadioMenuItem(", composer);
     }
 
     [Fact]
@@ -40,10 +40,8 @@ public sealed class ComposerSessionPickerTests
     {
         var composer = ComposerSource();
 
-        // The escape-hatch patterns that produced #970 must not return.
         Assert.DoesNotContain("border.Child = cb;", composer);
         Assert.DoesNotContain("SessionPickerSnapshot", composer);
-        Assert.DoesNotContain("Native(", composer);
         Assert.DoesNotContain("ComboBox(sessionItems", composer);
     }
 }

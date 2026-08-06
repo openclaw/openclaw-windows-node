@@ -28,7 +28,7 @@ public enum ReactorChatTimelineMode
 
 public sealed record ReactorChatTimelineProps(
     ReactorChatTimelineMode Mode,
-    OpenClawChatTimelineProps Timeline,
+    ChatTimelinePresentationContext Timeline,
     Action<string>? OnSuggestionPicked = null,
     bool SuggestionsDisabled = false,
     ReactorChatIdentity? AssistantIdentity = null,
@@ -180,7 +180,7 @@ public sealed class ReactorChatTimeline : Component<ReactorChatTimelineProps>
             .VAlign(VerticalAlignment.Stretch);
     }
 
-    public static string RowKey(OpenClawChatTimelineProps props, ChatTimelineItem entry) =>
+    public static string RowKey(ChatTimelinePresentationContext props, ChatTimelineItem entry) =>
         entry.Kind == ChatTimelineItemKind.ToolCall
             ? ChatToolActivityPresentation.ActivityKey(
                 props.SessionId,
@@ -188,7 +188,7 @@ public sealed class ReactorChatTimeline : Component<ReactorChatTimelineProps>
                 entry.Id)
             : $"thread:{props.SessionId ?? "none"}|generation:{props.TimelineGeneration}|kind:{entry.Kind}|id:{entry.Id}";
 
-    public static string SyntheticRowKey(OpenClawChatTimelineProps props, string id, ChatTimelineItemKind kind) =>
+    public static string SyntheticRowKey(ChatTimelinePresentationContext props, string id, ChatTimelineItemKind kind) =>
         $"thread:{props.SessionId ?? "none"}|generation:{props.TimelineGeneration}|kind:{kind}|synthetic:{id}";
 
     private static IReadOnlyList<ReactorTimelineRow> BuildRows(ReactorChatTimelineProps props)
