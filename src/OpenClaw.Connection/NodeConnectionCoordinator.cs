@@ -739,7 +739,13 @@ internal sealed class NodeConnectionCoordinator : INodePairReconnectPort
             MapNodeConnectionErrorCategory(errorKind));
 
         if (errorKind == GatewayErrorKind.DeviceTokenMismatch)
-            TrackBackground(HandleDeviceTokenMismatchAsync(attempt));
+        {
+            // NodeConnector raises this callback under its lifecycle lock, so the
+            // entire token recovery must run off the callback stack. The unwrapped
+            // proxy task is tracked and still drains on shutdown. Rationale and the
+            // regression proofs live in NodeConnectionCoordinatorTests.
+            TrackBackground(Task.Run(() => HandleDeviceTokenMismatchAsync(attempt)));
+        }
     }
 
     internal void HandleDeviceTokenReceived(DeviceTokenReceivedEventArgs token)

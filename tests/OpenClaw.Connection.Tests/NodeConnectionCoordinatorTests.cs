@@ -190,6 +190,292 @@ public sealed class NodeConnectionCoordinatorTests
         await coordinator.StopAsync();
     }
 
+    // P1 regression discriminator: proves credential recovery no longer runs on
+    // the connector's lock-holding callback stack. Fails against the pre-fix inline
+    // TrackBackground(HandleDeviceTokenMismatchAsync(attempt)) call.
+    [Fact]
+    public async Task ConnectionFailureRecovery_DetachesFromConnectorCallbackThread()
+    {
+        using var temp = new TempDirectory("openclaw-node-detach-");
+        using var meter = new Meter("openclaw-node-detach-tests");
+        var (registry, identityPath, lifecycle) = CreateRecoveryFixture(temp);
+        var state = new RecordingNodeStateSink();
+        var attemptLeases = new TrackingAttemptLeaseSource();
+        var gate = new GatingEndpointSecurity();
+        var diagnostics = new ConnectionDiagnostics();
+        var releaseReconnect =
+            new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var coordinator = new NodeConnectionCoordinator(
+            lifecycle,
+            state,
+            state,
+            attemptLeases,
+            gate,
+            CreateBootstrap(registry, attemptLeases, gate),
+            new NullCredentialResolver(),
+            new TestNodeConnector(),
+            NullLogger.Instance,
+            diagnostics,
+            _ => releaseReconnect.Task,
+            meter.CreateCounter<long>("attempts"),
+            meter.CreateHistogram<double>("duration"));
+
+        var invokerThreadId = 0;
+        var invokerReturned = new ManualResetEventSlim(false);
+        var invoker = new Thread(() =>
+        {
+            invokerThreadId = Environment.CurrentManagedThreadId;
+            coordinator.HandleConnectionFailure(GatewayErrorKind.DeviceTokenMismatch);
+            invokerReturned.Set();
+        })
+        {
+            IsBackground = true,
+            Name = "connection-failure-invoker"
+        };
+
+        try
+        {
+            invoker.Start();
+
+            Assert.True(
+                gate.Entered.Wait(TimeSpan.FromSeconds(5)),
+                "Credential recovery never reached the endpoint trust check.");
+            Assert.True(
+                invokerReturned.Wait(TimeSpan.FromSeconds(5)),
+                "Callback remained blocked while recovery was suspended at the endpoint " +
+                "trust check; recovery ran inline on the connector-lock-holding stack " +
+                "instead of being scheduled off it.");
+            Assert.NotEqual(invokerThreadId, gate.ObservedThreadId);
+            Assert.DoesNotContain(
+                diagnostics.GetAll(),
+                entry => entry.Message.StartsWith(
+                    "Cleared stale node device token",
+                    StringComparison.Ordinal));
+            Assert.Equal(
+                "stale-node-token",
+                DeviceIdentityFileReader.Instance.TryReadStoredNodeDeviceToken(identityPath));
+        }
+        finally
+        {
+            gate.Release();
+            releaseReconnect.TrySetResult();
+        }
+
+        await WaitUntilAsync(() => diagnostics.GetAll().Any(
+            entry => entry.Message.StartsWith(
+                "Cleared stale node device token",
+                StringComparison.Ordinal)));
+        Assert.Null(
+            DeviceIdentityFileReader.Instance.TryReadStoredNodeDeviceToken(identityPath));
+        await coordinator.StopAsync();
+        Assert.True(invoker.Join(TimeSpan.FromSeconds(5)));
+    }
+
+    // Behavior-preservation regression: recovery clears a stale node device token
+    // on a trusted endpoint. Guards the recovery outcome (holds under both the old
+    // inline call and the detached fix); the detachment itself is covered above.
+    [Fact]
+    public async Task ConnectionFailureRecovery_TrustedEndpoint_ClearsStaleNodeToken()
+    {
+        using var temp = new TempDirectory("openclaw-node-recovery-clear-");
+        using var meter = new Meter("openclaw-node-recovery-clear-tests");
+        var (registry, identityPath, lifecycle) = CreateRecoveryFixture(temp);
+        var state = new RecordingNodeStateSink();
+        var attemptLeases = new TrackingAttemptLeaseSource();
+        var security = new AllowEndpointCredentialSecurity();
+        var diagnostics = new ConnectionDiagnostics();
+        var releaseReconnect =
+            new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var coordinator = new NodeConnectionCoordinator(
+            lifecycle,
+            state,
+            state,
+            attemptLeases,
+            security,
+            CreateBootstrap(registry, attemptLeases, security),
+            new NullCredentialResolver(),
+            new TestNodeConnector(),
+            NullLogger.Instance,
+            diagnostics,
+            _ => releaseReconnect.Task,
+            meter.CreateCounter<long>("attempts"),
+            meter.CreateHistogram<double>("duration"));
+
+        coordinator.HandleConnectionFailure(GatewayErrorKind.DeviceTokenMismatch);
+        await WaitUntilAsync(() => diagnostics.GetAll().Any(
+            entry => entry.Message.StartsWith(
+                "Cleared stale node device token",
+                StringComparison.Ordinal)));
+
+        Assert.Null(
+            DeviceIdentityFileReader.Instance.TryReadStoredNodeDeviceToken(identityPath));
+        releaseReconnect.TrySetResult();
+        await coordinator.StopAsync();
+    }
+
+    // Behavior-preservation regression: an untrusted endpoint must not clear the
+    // node device token. Guards the recovery outcome, not the detachment.
+    [Fact]
+    public async Task ConnectionFailureRecovery_UntrustedEndpoint_PreservesNodeToken()
+    {
+        using var temp = new TempDirectory("openclaw-node-recovery-deny-");
+        using var meter = new Meter("openclaw-node-recovery-deny-tests");
+        var (registry, identityPath, lifecycle) = CreateRecoveryFixture(temp);
+        var state = new RecordingNodeStateSink();
+        var attemptLeases = new TrackingAttemptLeaseSource();
+        var security = new DenyRecoveryEndpointSecurity();
+        var diagnostics = new ConnectionDiagnostics();
+        var coordinator = new NodeConnectionCoordinator(
+            lifecycle,
+            state,
+            state,
+            attemptLeases,
+            security,
+            CreateBootstrap(registry, attemptLeases, security),
+            new NullCredentialResolver(),
+            new TestNodeConnector(),
+            NullLogger.Instance,
+            diagnostics,
+            _ => Task.CompletedTask,
+            meter.CreateCounter<long>("attempts"),
+            meter.CreateHistogram<double>("duration"));
+
+        coordinator.HandleConnectionFailure(GatewayErrorKind.DeviceTokenMismatch);
+        await WaitUntilAsync(() => diagnostics.GetAll().Any(
+            entry => entry.Message.StartsWith(
+                "Skipped node token recovery",
+                StringComparison.Ordinal)));
+
+        Assert.Equal(
+            "stale-node-token",
+            DeviceIdentityFileReader.Instance.TryReadStoredNodeDeviceToken(identityPath));
+        Assert.DoesNotContain(
+            diagnostics.GetAll(),
+            entry => entry.Message.StartsWith(
+                "Cleared stale node device token",
+                StringComparison.Ordinal));
+        await coordinator.StopAsync();
+    }
+
+    // Behavior-preservation regression: after StopAsync the stopped/generation
+    // fence gates recovery to a no-op. Guards the disposed outcome, not detachment.
+    [Fact]
+    public async Task ConnectionFailure_AfterStop_SkipsRecovery()
+    {
+        using var temp = new TempDirectory("openclaw-node-recovery-stopped-");
+        using var meter = new Meter("openclaw-node-recovery-stopped-tests");
+        var (registry, identityPath, lifecycle) = CreateRecoveryFixture(temp);
+        var state = new RecordingNodeStateSink();
+        var attemptLeases = new TrackingAttemptLeaseSource();
+        var security = new AllowEndpointCredentialSecurity();
+        var diagnostics = new ConnectionDiagnostics();
+        var coordinator = new NodeConnectionCoordinator(
+            lifecycle,
+            state,
+            state,
+            attemptLeases,
+            security,
+            CreateBootstrap(registry, attemptLeases, security),
+            new NullCredentialResolver(),
+            new TestNodeConnector(),
+            NullLogger.Instance,
+            diagnostics,
+            _ => Task.CompletedTask,
+            meter.CreateCounter<long>("attempts"),
+            meter.CreateHistogram<double>("duration"));
+
+        await coordinator.StopAsync();
+        coordinator.HandleConnectionFailure(GatewayErrorKind.DeviceTokenMismatch);
+        await Task.Delay(100);
+
+        Assert.Equal(
+            "stale-node-token",
+            DeviceIdentityFileReader.Instance.TryReadStoredNodeDeviceToken(identityPath));
+        Assert.DoesNotContain(
+            diagnostics.GetAll(),
+            entry => entry.Message.StartsWith(
+                "Cleared stale node device token",
+                StringComparison.Ordinal));
+    }
+
+    // P1 regression discriminator: recovery detached onto the pool can be superseded
+    // mid-flight; the post-trust-check generation fence must abort before clearing
+    // the token. Fails against the pre-fix inline call, which clears synchronously
+    // before the supersession can land.
+    [Fact]
+    public async Task ConnectionFailureRecovery_SupersededNodeGeneration_PreservesNodeToken()
+    {
+        using var temp = new TempDirectory("openclaw-node-recovery-superseded-");
+        using var meter = new Meter("openclaw-node-recovery-superseded-tests");
+        var (registry, identityPath, lifecycle) = CreateRecoveryFixture(temp);
+        var state = new RecordingNodeStateSink();
+        var attemptLeases = new TrackingAttemptLeaseSource();
+        var gate = new GatingEndpointSecurity();
+        var diagnostics = new ConnectionDiagnostics();
+        var coordinator = new NodeConnectionCoordinator(
+            lifecycle,
+            state,
+            state,
+            attemptLeases,
+            gate,
+            CreateBootstrap(registry, attemptLeases, gate),
+            new NullCredentialResolver(),
+            new TestNodeConnector(),
+            NullLogger.Instance,
+            diagnostics,
+            _ => Task.CompletedTask,
+            meter.CreateCounter<long>("attempts"),
+            meter.CreateHistogram<double>("duration"));
+
+        coordinator.HandleConnectionFailure(GatewayErrorKind.DeviceTokenMismatch);
+        Assert.True(
+            gate.Entered.Wait(TimeSpan.FromSeconds(5)),
+            "Credential recovery never reached the endpoint trust check.");
+
+        // Supersede the captured attempt while recovery is parked at the trust
+        // check, then let it proceed. The post-check generation fence must abort
+        // before clearing the node device token.
+        await coordinator.RetireAsync();
+        gate.Release();
+        await coordinator.StopAsync();
+
+        Assert.Equal(
+            "stale-node-token",
+            DeviceIdentityFileReader.Instance.TryReadStoredNodeDeviceToken(identityPath));
+        Assert.DoesNotContain(
+            diagnostics.GetAll(),
+            entry => entry.Message.StartsWith(
+                "Cleared stale node device token",
+                StringComparison.Ordinal));
+    }
+
+    private static (GatewayRegistry Registry, string IdentityPath, FakeNodeLifecycleSource Lifecycle)
+        CreateRecoveryFixture(TempDirectory temp)
+    {
+        var registry = new GatewayRegistry(temp.Path);
+        var record = new GatewayRecord
+        {
+            Id = "gw-1",
+            Url = "wss://gateway.example",
+            SharedGatewayToken = "shared-token"
+        };
+        registry.AddOrUpdate(record);
+        var identityPath = registry.GetIdentityDirectory(record.Id);
+        var identity = new DeviceIdentity(identityPath, NullLogger.Instance);
+        identity.Initialize();
+        identity.StoreDeviceTokenForRole("node", "stale-node-token");
+
+        var gatewayAttempt = new GatewayAttemptStamp(1, record.Id);
+        var lifecycle = new FakeNodeLifecycleSource(
+            new NodeConnectionTarget(
+                gatewayAttempt,
+                record,
+                identityPath,
+                UseV2Signature: false),
+            shouldStart: true);
+        return (registry, identityPath, lifecycle);
+    }
+
     private static BootstrapTokenLifecycle CreateBootstrap(
         GatewayRegistry registry,
         IGatewayAttemptLeaseSource attemptLeases,
@@ -331,6 +617,47 @@ public sealed class NodeConnectionCoordinatorTests
             ObservedLeaseHeld = attemptLeases.IsHeld;
             return Task.FromResult(true);
         }
+    }
+
+    private sealed class DenyRecoveryEndpointSecurity : IEndpointCredentialSecurity
+    {
+        public Task<EndpointCredentialAuthorization> AuthorizeCredentialAsync(
+            GatewayRecord record,
+            GatewayCredential credential,
+            CancellationToken cancellationToken) =>
+            Task.FromResult(EndpointCredentialAuthorization.AllowedResult);
+
+        public Task<bool> IsRecoverySafeEndpointAsync(
+            GatewayRecord record,
+            CancellationToken cancellationToken) =>
+            Task.FromResult(false);
+    }
+
+    private sealed class GatingEndpointSecurity : IEndpointCredentialSecurity
+    {
+        private readonly ManualResetEventSlim _release = new(false);
+
+        public ManualResetEventSlim Entered { get; } = new(false);
+
+        public int ObservedThreadId { get; private set; }
+
+        public Task<EndpointCredentialAuthorization> AuthorizeCredentialAsync(
+            GatewayRecord record,
+            GatewayCredential credential,
+            CancellationToken cancellationToken) =>
+            Task.FromResult(EndpointCredentialAuthorization.AllowedResult);
+
+        public Task<bool> IsRecoverySafeEndpointAsync(
+            GatewayRecord record,
+            CancellationToken cancellationToken)
+        {
+            ObservedThreadId = Environment.CurrentManagedThreadId;
+            Entered.Set();
+            _release.Wait(TimeSpan.FromSeconds(10));
+            return Task.FromResult(true);
+        }
+
+        public void Release() => _release.Set();
     }
 
     private sealed class TestNodeConnector : INodeConnector
