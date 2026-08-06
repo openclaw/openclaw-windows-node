@@ -170,6 +170,8 @@ public sealed class E2ESetupFixture : IAsyncLifetime
             return;
 
         Log("Teardown starting...");
+        var cleanupErrors = new List<string>();
+        var uninstallSucceeded = false;
 
         // 1. Dispose MCP client
         Client?.Dispose();
@@ -208,10 +210,14 @@ public sealed class E2ESetupFixture : IAsyncLifetime
                 "--log-path", uninstallLogPath
             ]);
             Log($"Uninstall completed with exit code {exitCode}.");
+            uninstallSucceeded = exitCode == 0;
+            if (!uninstallSucceeded)
+                cleanupErrors.Add($"uninstall exited with code {exitCode}");
         }
         catch (Exception ex)
         {
             Log($"Warning: uninstall threw: {ex.Message}");
+            cleanupErrors.Add($"uninstall threw {ex.GetType().Name}");
         }
 
         // 4. Copy logs from data dir to artifact dir before deleting
@@ -219,11 +225,58 @@ public sealed class E2ESetupFixture : IAsyncLifetime
 
         // 5. Delete temp data dirs (best-effort)
         try { Directory.Delete(DataDir, recursive: true); }
-        catch (Exception ex) { Log($"Warning: temp dir cleanup failed: {ex.Message}"); }
+        catch (Exception ex)
+        {
+            Log($"Warning: temp dir cleanup failed: {ex.Message}");
+            cleanupErrors.Add($"tray data cleanup threw {ex.GetType().Name}");
+        }
         try { Directory.Delete(LocalAppDataRoot, recursive: true); }
-        catch (Exception ex) { Log($"Warning: temp local appdata cleanup failed: {ex.Message}"); }
+        catch (Exception ex)
+        {
+            Log($"Warning: temp local appdata cleanup failed: {ex.Message}");
+            cleanupErrors.Add($"local app data cleanup threw {ex.GetType().Name}");
+        }
+
+        var distroRemoved = false;
+        try
+        {
+            distroRemoved = !await IsDistroRegisteredAsync(_distroName);
+        }
+        catch (Exception ex)
+        {
+            Log($"Warning: WSL cleanup verification failed: {ex.Message}");
+            cleanupErrors.Add($"WSL cleanup verification threw {ex.GetType().Name}");
+        }
+        var dataDirRemoved = !Directory.Exists(DataDir);
+        var localAppDataRemoved = !Directory.Exists(LocalAppDataRoot);
+        if (!distroRemoved)
+            cleanupErrors.Add("isolated WSL distro is still registered");
+        if (!dataDirRemoved)
+            cleanupErrors.Add("isolated tray data still exists");
+        if (!localAppDataRemoved)
+            cleanupErrors.Add("isolated local app data still exists");
+
+        var cleanupPassed =
+            uninstallSucceeded &&
+            distroRemoved &&
+            dataDirRemoved &&
+            localAppDataRemoved;
+        File.WriteAllLines(
+            Path.Combine(ArtifactDir, "cleanup-proof.txt"),
+            [
+                $"UNINSTALL={(uninstallSucceeded ? "PASS" : "FAIL")}",
+                $"ISOLATED_DISTRO_REMOVED={(distroRemoved ? "PASS" : "FAIL")}",
+                $"ISOLATED_TRAY_DATA_REMOVED={(dataDirRemoved ? "PASS" : "FAIL")}",
+                $"ISOLATED_LOCALAPPDATA_REMOVED={(localAppDataRemoved ? "PASS" : "FAIL")}",
+                $"RESULT={(cleanupPassed ? "PASS" : "FAIL")}",
+            ]);
 
         Log("Teardown complete.");
+        if (!cleanupPassed)
+        {
+            throw new InvalidOperationException(
+                $"E2E fixture cleanup failed: {string.Join("; ", cleanupErrors)}");
+        }
     }
 
     // ─── Helpers ───
@@ -745,6 +798,37 @@ public sealed class E2ESetupFixture : IAsyncLifetime
 
         value = default;
         return false;
+    }
+
+    private static async Task<bool> IsDistroRegisteredAsync(string distroName)
+    {
+        var psi = new ProcessStartInfo
+        {
+            FileName = "wsl.exe",
+            UseShellExecute = false,
+            RedirectStandardOutput = true,
+            RedirectStandardError = true,
+            CreateNoWindow = true,
+        };
+        psi.ArgumentList.Add("--list");
+        psi.ArgumentList.Add("--quiet");
+
+        using var process = Process.Start(psi)
+            ?? throw new InvalidOperationException("Failed to start wsl.exe for cleanup verification");
+        var stdoutTask = process.StandardOutput.ReadToEndAsync();
+        var stderrTask = process.StandardError.ReadToEndAsync();
+        await process.WaitForExitAsync();
+        var stdout = (await stdoutTask).Replace("\0", string.Empty, StringComparison.Ordinal);
+        var stderr = await stderrTask;
+        if (process.ExitCode != 0)
+        {
+            throw new InvalidOperationException(
+                $"wsl.exe --list --quiet failed during cleanup verification: {SanitizeForLog(stderr.Trim())}");
+        }
+
+        return stdout
+            .Split(['\r', '\n'], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .Contains(distroName, StringComparer.OrdinalIgnoreCase);
     }
 
     private static string SanitizeForLog(string value)

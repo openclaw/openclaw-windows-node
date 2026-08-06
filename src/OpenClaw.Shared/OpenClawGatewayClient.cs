@@ -37,10 +37,7 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
     private GatewayUsageInfo? _usage;
     private GatewayUsageStatusInfo? _usageStatus;
     private GatewayCostUsageInfo? _usageCost;
-    private readonly Dictionary<string, string> _pendingRequestMethods = new();
-    private readonly Dictionary<string, TaskCompletionSource<ChatSendResult>> _pendingChatSendRequests = new();
-    private readonly object _pendingRequestLock = new();
-    private readonly object _pendingChatSendLock = new();
+    private readonly PendingRequestRegistry _pendingRequests = new();
     private readonly object _sessionsLock = new();
     private readonly DeviceIdentity _deviceIdentity;
     private readonly string _currentGatewayUrl;
@@ -97,6 +94,7 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
     private readonly bool _tokenIsBootstrapToken;
     private readonly bool _bootstrapPairAsNode;
     private readonly bool _ignoreStoredDeviceToken;
+    internal PendingRequestRegistry PendingRequests => _pendingRequests;
 
     /// <summary>True when the gateway reported "pairing required" for this device.</summary>
     public bool IsPairingRequired => Volatile.Read(ref _pairingRequiredAwaitingApproval);
@@ -111,15 +109,6 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
     public string ConnectAuthToken => _connectAuthToken;
     private IReadOnlyList<UserNotificationRule>? _userRules;
     private bool _preferStructuredCategories = true;
-    private readonly System.Collections.Concurrent.ConcurrentDictionary<string, TaskCompletionSource<JsonElement>> _pendingWizardResponses = new();
-
-    // Pending exec.approval.resolve requests awaiting an ok:true / ok:false
-    // response. Without this, ResolveExecApprovalAsync would clear the chat
-    // approval banner immediately after the send completes, even if the
-    // gateway later rejects the resolve (ok:false). See ClawSweeper review
-    // on PR #676.
-    private readonly System.Collections.Concurrent.ConcurrentDictionary<string, TaskCompletionSource<bool>> _pendingApprovalResolves = new();
-
     /// <summary>
     /// Controls whether structured notification metadata (Intent, Channel) takes priority
     /// over keyword-based classification. Call after construction and whenever settings change.
@@ -162,6 +151,7 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
 
     protected override Task OnConnectedAsync()
     {
+        _pendingRequests.Reopen();
         ResetUnsupportedMethodFlags();
         RaiseTransportConnected();
         return Task.CompletedTask;
@@ -178,7 +168,7 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
 
     protected override void OnDisconnected()
     {
-        ClearPendingRequests();
+        _pendingRequests.CloseForDisconnect();
         // Invalidate the handshake snapshot — the next hello-ok must
         // re-establish the canonical session key, scopes, etc. Without this,
         // a reconnect-after-server-restart could leave the tray sending to a
@@ -191,7 +181,7 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
 
     protected override void OnDisposing()
     {
-        ClearPendingRequests();
+        _pendingRequests.Dispose();
     }
 
     // Events
@@ -257,6 +247,11 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
         RaiseConnectionFailure(GatewayErrorClassifier.Classify(exception.ToString()));
     }
 
+    protected override void OnError(Exception exception)
+    {
+        _pendingRequests.CloseForDisconnect();
+    }
+
     protected override void OnReconnectAuthorizationDenied(
         ReconnectAuthorizationResult authorization)
     {
@@ -284,6 +279,7 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
 
     public async Task DisconnectAsync()
     {
+        _pendingRequests.CloseForDisconnect();
         if (IsConnected)
         {
             try
@@ -295,7 +291,6 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
                 _logger.Warn($"Error during disconnect: {ex.Message}");
             }
         }
-        ClearPendingRequests();
         RaiseStatusChanged(ConnectionStatus.Disconnected);
         _logger.Info("Disconnected");
     }
@@ -310,14 +305,27 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
 
         try
         {
+            var requestId = Guid.NewGuid().ToString();
+            var registration = _pendingRequests.RegisterMethod(requestId, "health");
+            if (!registration.Accepted)
+                return;
+
             var req = new
             {
                 type = "req",
-                id = Guid.NewGuid().ToString(),
+                id = requestId,
                 method = "health",
                 @params = new { deep = true }
             };
-            await SendRawAsync(JsonSerializer.Serialize(req));
+            try
+            {
+                await SendRawAsync(JsonSerializer.Serialize(req));
+            }
+            catch
+            {
+                _pendingRequests.Remove(registration);
+                throw;
+            }
         }
         catch (Exception ex)
         {
@@ -354,7 +362,7 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
 
         var requestId = Guid.NewGuid().ToString();
         var completion = new TaskCompletionSource<ChatSendResult>(TaskCreationOptions.RunContinuationsAsynchronously);
-        TrackPendingChatSend(requestId, completion);
+        var registration = _pendingRequests.RegisterChatSend(requestId, completion);
 
         // The gateway's `chat.send` validates strictly on (sessionKey, message,
         // idempotencyKey). The spec document mentioned `sessionId` and `text`
@@ -381,10 +389,11 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
             @params = chatParams
         };
 
-        await SendRawAsync(JsonSerializer.Serialize(req));
-
         try
         {
+            if (registration.Accepted)
+                await SendRawAsync(JsonSerializer.Serialize(req));
+
             var result = await WaitForGatewayResponseAsync(
                 completion.Task,
                 TimeSpan.FromSeconds(5),
@@ -395,7 +404,7 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
         }
         finally
         {
-            RemovePendingChatSend(requestId);
+            _pendingRequests.Remove(registration);
         }
     }
 
@@ -476,37 +485,36 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
         // on PR #676.
         var requestId = Guid.NewGuid().ToString();
         var completion = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
-        _pendingApprovalResolves[requestId] = completion;
-        TrackPendingRequest(requestId, "exec.approval.resolve");
+        var registration = _pendingRequests.RegisterApproval(requestId, completion);
 
         try
         {
-            await SendRawAsync(SerializeRequest(requestId, "exec.approval.resolve", new { id = approvalId, decision }));
+            if (registration.Accepted)
+            {
+                await SendRawAsync(SerializeRequest(requestId, "exec.approval.resolve", new { id = approvalId, decision }));
+            }
         }
         catch
         {
-            _pendingApprovalResolves.TryRemove(requestId, out _);
-            RemovePendingRequest(requestId);
+            _pendingRequests.Remove(registration);
             throw;
         }
 
         // Post-send disconnect re-check. Closes a race where the WebSocket
         // dies between the up-front IsConnected guard and TCS registration:
-        // ClearPendingRequests can fire on an empty _pendingApprovalResolves
-        // snapshot (before our entry was added), then SendRawAsync silently
-        // succeeds against the now-dead socket, leaving the TCS stranded
-        // until the 15s timeout instead of failing fast for retry.
+        // the registry closes registration atomically with draining active
+        // requests, so a request either receives lifecycle cancellation or is
+        // rejected before its frame can be sent.
         //
-        // TryRemove-first idiom: if we win the race and pull our TCS out of
-        // the dict, throw immediately — no exception is ever set on the
+        // Remove-first idiom: if we win the race and pull our completion out
+        // of the registry, throw immediately. No exception is set on the
         // discarded TCS, so it can never be unobserved by
-        // TaskScheduler.UnobservedTaskException. If TryRemove returns false,
-        // ClearPendingRequests already claimed (and faulted) our entry; fall
+        // TaskScheduler.UnobservedTaskException. If Remove returns false, the
+        // registry already claimed (and faulted) our entry. Fall
         // through to the WhenAny/await path so the OperationCanceledException
         // it set is observed by the caller.
-        if (!IsConnected && _pendingApprovalResolves.TryRemove(requestId, out _))
+        if (!IsConnected && _pendingRequests.Remove(registration))
         {
-            RemovePendingRequest(requestId);
             throw new InvalidOperationException("Gateway disconnected before exec.approval.resolve was sent.");
         }
 
@@ -524,8 +532,7 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
         }
         finally
         {
-            _pendingApprovalResolves.TryRemove(requestId, out _);
-            RemovePendingRequest(requestId);
+            _pendingRequests.Remove(registration);
         }
     }
 
@@ -955,12 +962,12 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
         _logger.Info($"[GatewayClient] Sending frame: {method}");
         var requestId = Guid.NewGuid().ToString();
         var completion = new TaskCompletionSource<JsonElement>(TaskCreationOptions.RunContinuationsAsynchronously);
-        _pendingWizardResponses[requestId] = completion;
-        TrackPendingRequest(requestId, method);
+        var registration = _pendingRequests.RegisterWizard(requestId, method, completion);
 
         try
         {
-            await SendRawAsync(SerializeRequest(requestId, method, parameters));
+            if (registration.Accepted)
+                await SendRawAsync(SerializeRequest(requestId, method, parameters));
             return await completion.Task.WaitAsync(TimeSpan.FromMilliseconds(timeoutMs), CancellationToken);
         }
         catch (TimeoutException ex)
@@ -969,8 +976,7 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
         }
         finally
         {
-            _pendingWizardResponses.TryRemove(requestId, out _);
-            RemovePendingRequest(requestId);
+            _pendingRequests.Remove(registration);
         }
     }
 
@@ -1721,7 +1727,9 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
     private async Task SendConnectMessageAsync(string? nonce = null)
     {
         var requestId = Guid.NewGuid().ToString();
-        TrackPendingRequest(requestId, "connect");
+        var registration = _pendingRequests.RegisterMethod(requestId, "connect");
+        if (!registration.Accepted)
+            return;
         var role = GetConnectRole();
         var requestedScopes = GetRequestedScopes(role);
 
@@ -1807,7 +1815,7 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
         }
         catch
         {
-            RemovePendingRequest(requestId);
+            _pendingRequests.Remove(registration);
             throw;
         }
     }
@@ -1883,14 +1891,16 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
         if (!IsConnected) return;
 
         var requestId = Guid.NewGuid().ToString();
-        TrackPendingRequest(requestId, method);
+        var registration = _pendingRequests.RegisterMethod(requestId, method);
+        if (!registration.Accepted)
+            return;
         try
         {
             await SendRawAsync(SerializeRequest(requestId, method, parameters));
         }
         catch
         {
-            RemovePendingRequest(requestId);
+            _pendingRequests.Remove(registration);
             throw;
         }
     }
@@ -1930,111 +1940,6 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
         return JsonSerializer.Serialize(new { type = "req", id = requestId, method, @params = parameters });
     }
 
-    private void TrackPendingRequest(string requestId, string method)
-    {
-        lock (_pendingRequestLock)
-        {
-            _pendingRequestMethods[requestId] = method;
-        }
-    }
-
-    private void RemovePendingRequest(string requestId)
-    {
-        lock (_pendingRequestLock)
-        {
-            _pendingRequestMethods.Remove(requestId);
-        }
-    }
-
-    private string? TakePendingRequestMethod(string? requestId)
-    {
-        if (string.IsNullOrWhiteSpace(requestId)) return null;
-        lock (_pendingRequestLock)
-        {
-            return _pendingRequestMethods.Remove(requestId, out var method) ? method : null;
-        }
-    }
-
-    private void ClearPendingRequests()
-    {
-        lock (_pendingRequestLock)
-        {
-            _pendingRequestMethods.Clear();
-        }
-
-        lock (_pendingChatSendLock)
-        {
-            foreach (var completion in _pendingChatSendRequests.Values)
-            {
-                completion.TrySetException(new OperationCanceledException("Request canceled"));
-            }
-
-            _pendingChatSendRequests.Clear();
-        }
-
-        foreach (var completion in _pendingWizardResponses.Values)
-        {
-            completion.TrySetException(new OperationCanceledException("Gateway connection lost while waiting for wizard response"));
-        }
-
-        _pendingWizardResponses.Clear();
-
-        // Fail any in-flight approval resolves so the chat banner is
-        // preserved for retry instead of hanging on the 15s timeout.
-        // Use OperationCanceledException to match the _pendingWizardResponses
-        // cleanup taxonomy: this is a connection-lifecycle cancellation, not a
-        // protocol-level error. The public ResolveExecApprovalAsync still
-        // throws InvalidOperationException from its synchronous IsConnected
-        // pre-check; the cancellation case here only surfaces when reset
-        // races an in-flight request.
-        //
-        // CONTRACT FOR CALLERS: callers of ResolveExecApprovalAsync MUST catch
-        // System.Exception (not just InvalidOperationException/TimeoutException)
-        // to preserve the chat approval banner on disconnect-mid-flight. The
-        // OperationCanceledException thrown here is intentionally a connection
-        // lifecycle signal, NOT a benign cancel. RunFireAndForget in the tray
-        // (OpenClawChatRoot) silently swallows OperationCanceledException —
-        // if a caller forwards the OCE up to RunFireAndForget instead of
-        // catching it locally, the banner will be cleared with no UI feedback.
-        // Today OpenClawChatDataProvider.RespondToPermissionAsync correctly
-        // catches Exception ex; do not narrow that catch.
-        foreach (var completion in _pendingApprovalResolves.Values)
-        {
-            completion.TrySetException(new OperationCanceledException("Gateway connection lost before exec.approval.resolve response"));
-        }
-
-        _pendingApprovalResolves.Clear();
-    }
-
-    private void TrackPendingChatSend(string requestId, TaskCompletionSource<ChatSendResult> completion)
-    {
-        lock (_pendingChatSendLock)
-        {
-            _pendingChatSendRequests[requestId] = completion;
-        }
-    }
-
-    private void RemovePendingChatSend(string requestId)
-    {
-        lock (_pendingChatSendLock)
-        {
-            _pendingChatSendRequests.Remove(requestId);
-        }
-    }
-
-    private TaskCompletionSource<ChatSendResult>? TakePendingChatSend(string? requestId)
-    {
-        if (string.IsNullOrWhiteSpace(requestId))
-        {
-            return null;
-        }
-
-        lock (_pendingChatSendLock)
-        {
-            return _pendingChatSendRequests.Remove(requestId, out var completion) ? completion : null;
-        }
-    }
-
     // --- Message processing ---
 
     private void ProcessMessage(string json)
@@ -2069,37 +1974,47 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
 
     private void HandleResponse(JsonElement root)
     {
-        string? requestMethod = null;
         string? requestId = null;
         if (root.TryGetProperty("id", out var idProp))
-        {
             requestId = idProp.GetString();
-            requestMethod = TakePendingRequestMethod(requestId);
+
+        var responseTake = _pendingRequests.TakeForResponse(requestId);
+        var pendingRequest = responseTake.Request;
+        switch (responseTake.Disposition)
+        {
+            case PendingResponseDisposition.Active:
+            case PendingResponseDisposition.Ownerless:
+                break;
+            case PendingResponseDisposition.Tombstoned:
+                return;
+            default:
+                throw new InvalidOperationException(
+                    $"Unknown pending response disposition: {responseTake.Disposition}");
         }
 
-        var pendingChatSend = TakePendingChatSend(requestId);
-        if (pendingChatSend != null)
+        if (pendingRequest?.Kind == PendingRequestKind.ChatSend)
         {
             if (root.TryGetProperty("ok", out var okChatProp) &&
                 okChatProp.ValueKind == JsonValueKind.False)
             {
                 var message = TryGetErrorMessage(root) ?? "request failed";
                 _logger.Warn($"chat.send failed: {message}");
-                pendingChatSend.TrySetException(new InvalidOperationException(message));
+                pendingRequest.ChatSendCompletion!.TrySetException(
+                    new InvalidOperationException(message));
                 return;
             }
 
-            pendingChatSend.TrySetResult(ParseChatSendResult(root));
+            pendingRequest.ChatSendCompletion!.TrySetResult(ParseChatSendResult(root));
             return;
         }
 
-        // Check for pending wizard response
-        if (requestId != null && _pendingWizardResponses.TryRemove(requestId, out var wizardCompletion))
+        if (pendingRequest?.Kind == PendingRequestKind.Wizard)
         {
             if (root.TryGetProperty("ok", out var okWiz) && okWiz.ValueKind == JsonValueKind.False)
             {
                 var message = TryGetErrorMessage(root) ?? "wizard request failed";
-                wizardCompletion.TrySetException(new InvalidOperationException(message));
+                pendingRequest.WizardCompletion!.TrySetException(
+                    new InvalidOperationException(message));
             }
             else if (root.TryGetProperty("payload", out var wizPayload))
             {
@@ -2109,34 +2024,42 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
                 // gateway's own server-side logs if engineering needs it.
                 var wizardPayloadLen = wizPayload.ValueKind == JsonValueKind.Undefined ? 0 : wizPayload.GetRawText().Length;
                 _logger.Info($"Wizard response payload kind={wizPayload.ValueKind} len={wizardPayloadLen}");
-                wizardCompletion.TrySetResult(wizPayload.Clone());
+                pendingRequest.WizardCompletion!.TrySetResult(wizPayload.Clone());
             }
             else
             {
-                wizardCompletion.TrySetResult(root.Clone());
+                pendingRequest.WizardCompletion!.TrySetResult(root.Clone());
             }
             return;
         }
 
-        // Approval-resolve completion path. Must run before the generic
-        // HandleRequestError branch below; otherwise an ok:false from the
-        // gateway would only get logged and the awaiting caller would hang
-        // until the 5s timeout. See ClawSweeper review on PR #676.
-        if (requestId != null && _pendingApprovalResolves.TryRemove(requestId, out var approvalCompletion))
+        if (pendingRequest?.Kind == PendingRequestKind.ApprovalResolve)
         {
             if (root.TryGetProperty("ok", out var okAppr) && okAppr.ValueKind == JsonValueKind.False)
             {
                 var message = TryGetErrorMessage(root) ?? "exec.approval.resolve rejected";
                 _logger.Warn($"exec.approval.resolve rejected by gateway: {message}");
-                approvalCompletion.TrySetException(new InvalidOperationException(message));
+                pendingRequest.ApprovalCompletion!.TrySetException(
+                    new InvalidOperationException(message));
             }
             else
             {
-                approvalCompletion.TrySetResult(true);
+                pendingRequest.ApprovalCompletion!.TrySetResult(true);
             }
             return;
         }
 
+        if (pendingRequest?.Kind == PendingRequestKind.SessionSnapshot)
+        {
+            CompleteSessionSnapshotResponse(root, pendingRequest.SessionSnapshotCompletion!);
+            return;
+        }
+
+        // Health was historically untracked and routed by payload shape. Keep
+        // that exact compatibility while still owning its request ID.
+        var requestMethod = pendingRequest?.Method == "health"
+            ? null
+            : pendingRequest?.Method;
         if (root.TryGetProperty("ok", out var okProp) &&
             okProp.ValueKind == JsonValueKind.False)
         {
@@ -2270,6 +2193,43 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
         {
             ParseNodeList(nodes);
         }
+
+        if (payload.TryGetProperty("agents", out _))
+        {
+            AgentsListUpdated?.Invoke(this, payload.Clone());
+        }
+    }
+
+    private void CompleteSessionSnapshotResponse(
+        JsonElement root,
+        TaskCompletionSource<SessionInfo[]> completion)
+    {
+        if (root.TryGetProperty("ok", out var ok) &&
+            ok.ValueKind == JsonValueKind.False)
+        {
+            var message = TryGetErrorMessage(root) ?? "sessions.list request failed";
+            completion.TrySetException(new InvalidOperationException(message));
+            return;
+        }
+
+        if (root.TryGetProperty("payload", out var payload) &&
+            TryGetSessionsPayload(payload, out var sessions))
+        {
+            try
+            {
+                completion.TrySetResult(ParseSessionsDetached(sessions));
+            }
+            catch (Exception ex)
+            {
+                _logger.Warn($"Failed to parse correlated sessions.list response: {ex.Message}");
+                completion.TrySetException(
+                    new InvalidDataException("sessions.list response could not be parsed.", ex));
+            }
+            return;
+        }
+
+        completion.TrySetException(
+            new InvalidDataException("sessions.list response did not contain a session snapshot."));
     }
 
     private bool TryStoreHandshakeDeviceToken(string role, string token, string[]? scopes)
@@ -2291,11 +2251,6 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
     {
         switch (method)
         {
-            case "health":
-                PublishGatewaySelf(GatewaySelfInfo.FromHealthPayload(payload));
-                if (payload.TryGetProperty("channels", out var channels))
-                    ParseChannelHealth(channels);
-                return true;
             case "sessions.list":
                 if (TryGetSessionsPayload(payload, out var sessionsPayload))
                     ParseSessions(sessionsPayload);
@@ -4037,6 +3992,68 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
 
         _sessions[session.Key] = session;
         return session.Key;
+    }
+
+    private SessionInfo[] ParseSessionsDetached(JsonElement sessions)
+    {
+        var snapshot = new List<SessionInfo>();
+        if (sessions.ValueKind == JsonValueKind.Array)
+        {
+            foreach (var item in sessions.EnumerateArray())
+                snapshot.Add(ParseSessionItemDetached(item));
+        }
+        else if (sessions.ValueKind == JsonValueKind.Object)
+        {
+            foreach (var prop in sessions.EnumerateObject())
+            {
+                var sessionKey = prop.Name;
+                if (sessionKey is "recent" or "count" or "path" or "defaults" or "ts")
+                    continue;
+                if (!sessionKey.Equals("global", StringComparison.OrdinalIgnoreCase) &&
+                    !sessionKey.Contains(':') &&
+                    !sessionKey.Contains("agent") &&
+                    !sessionKey.Contains("session"))
+                {
+                    continue;
+                }
+
+                var item = prop.Value;
+                if (item.ValueKind == JsonValueKind.String)
+                {
+                    var value = item.GetString() ?? "";
+                    if (value.StartsWith("/") || value.Contains("/."))
+                        continue;
+                }
+                else if (item.ValueKind == JsonValueKind.Number)
+                {
+                    continue;
+                }
+
+                var session = new SessionInfo { Key = sessionKey };
+                UpdateSessionMainStatus(session, sessionKey, item);
+                if (item.ValueKind == JsonValueKind.Object)
+                    PopulateSessionFromObject(session, item);
+                else if (item.ValueKind == JsonValueKind.String)
+                    session.Status = item.GetString() ?? "";
+                snapshot.Add(session);
+            }
+        }
+
+        return snapshot
+            .OrderByDescending(session => session.IsMain)
+            .ThenByDescending(session => session.LastSeen)
+            .ToArray();
+    }
+
+    private SessionInfo ParseSessionItemDetached(JsonElement item)
+    {
+        var sessionKey = item.TryGetProperty("key", out var key)
+            ? key.GetString() ?? "unknown"
+            : "unknown";
+        var session = new SessionInfo { Key = sessionKey };
+        UpdateSessionMainStatus(session, sessionKey, item);
+        PopulateSessionFromObject(session, item);
+        return session;
     }
 
     private bool IsMainSessionKey(string sessionKey)

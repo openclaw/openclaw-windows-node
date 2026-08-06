@@ -276,8 +276,8 @@ public class OpenClawGatewayClientApprovalTranslationTests
     }
 
     // ─── Approval-resolve response routing (PR #676 ClawSweeper P1) ────────
-    // Drives HandleResponse via reflection against a pre-registered TCS in
-    // _pendingApprovalResolves. This pins the contract that an ok:false
+    // Drives HandleResponse against a pre-registered registry completion.
+    // This pins the contract that an ok:false
     // gateway response surfaces as an exception on the awaiting caller — so
     // the chat approval banner is preserved for retry. Without this routing,
     // ResolveExecApprovalAsync would hang until the 5s timeout (best case)
@@ -286,21 +286,9 @@ public class OpenClawGatewayClientApprovalTranslationTests
 
     private static TaskCompletionSource<bool> RegisterPendingApprovalResolve(OpenClawGatewayClient client, string requestId)
     {
-        var fieldInfo = typeof(OpenClawGatewayClient).GetField(
-            "_pendingApprovalResolves",
-            BindingFlags.NonPublic | BindingFlags.Instance);
-        Assert.NotNull(fieldInfo);
-        var dict = (System.Collections.Concurrent.ConcurrentDictionary<string, TaskCompletionSource<bool>>)fieldInfo!.GetValue(client)!;
         var tcs = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
-        dict[requestId] = tcs;
-
-        // Also seed the request-method tracker so HandleResponse's id lookup
-        // mirrors what TrackPendingRequest would have done in production.
-        var trackMethod = typeof(OpenClawGatewayClient).GetMethod(
-            "TrackPendingRequest",
-            BindingFlags.NonPublic | BindingFlags.Instance);
-        Assert.NotNull(trackMethod);
-        trackMethod!.Invoke(client, new object[] { requestId, "exec.approval.resolve" });
+        client.PendingRequests.Reopen();
+        Assert.True(client.PendingRequests.RegisterApproval(requestId, tcs).Accepted);
         return tcs;
     }
 

@@ -224,6 +224,22 @@ For an app-owned setup-managed local WSL gateway (`WslKeepAlivePolicy.IsSetupMan
 
 Both paths dispose old clients before creating new ones.
 
+### Operator pending request ownership
+
+`PendingRequestRegistry` is the single owner of operator request IDs, methods,
+and typed completions for wizard calls, chat sends, approval resolves, and
+future correlated session snapshots. Response routing atomically takes one
+owner and records a bounded completed-ID tombstone, so duplicate, timed-out,
+and otherwise late responses cannot fall through to generic payload
+publication. Reusing an ID transfers ownership to the new registration and
+removes the old tombstone.
+
+A disconnect closes registration before cancelling all active completions.
+`OnConnectedAsync` reopens registration for the new connection generation, but
+disposal closes it permanently. The client tracks health requests without
+changing their wire frame. Legacy `hello-ok` responses without a tracked
+request ID remain the only sanctioned unowned response routing exception.
+
 ## Setup-code and pairing flow
 
 Setup codes (from QR scan or paste) decode to `{ url, bootstrapToken }` via `SetupCodeDecoder`. The flow:

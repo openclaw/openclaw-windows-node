@@ -35,6 +35,7 @@ public class OpenClawGatewayClientTests
                 tokenIsBootstrapToken,
                 bootstrapPairAsNode,
                 identityPath);
+            _client.PendingRequests.Reopen();
         }
 
         public GatewayClientTestHelper(IOpenClawLogger logger)
@@ -44,6 +45,7 @@ public class OpenClawGatewayClientTests
                 "test-token",
                 logger,
                 identityPath: CreateTempIdentityPath());
+            _client.PendingRequests.Reopen();
         }
 
         public string ClassifyNotification(string text)
@@ -83,30 +85,25 @@ public class OpenClawGatewayClientTests
         public Task<ChatSendResult> RegisterPendingChatSend(string requestId)
         {
             var completion = new TaskCompletionSource<ChatSendResult>(TaskCreationOptions.RunContinuationsAsynchronously);
-            var method = typeof(OpenClawGatewayClient).GetMethod(
-                "TrackPendingChatSend",
-                System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
-            method!.Invoke(_client, new object[] { requestId, completion });
+            Assert.True(
+                _client.PendingRequests.RegisterChatSend(requestId, completion).Accepted);
             return completion.Task;
         }
 
         public Task<JsonElement> RegisterPendingWizardResponse(string requestId)
         {
             var completion = new TaskCompletionSource<JsonElement>(TaskCreationOptions.RunContinuationsAsynchronously);
-            var field = typeof(OpenClawGatewayClient).GetField(
-                "_pendingWizardResponses",
-                System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
-            var pending = (System.Collections.Concurrent.ConcurrentDictionary<string, TaskCompletionSource<JsonElement>>)field!.GetValue(_client)!;
-            pending[requestId] = completion;
+            Assert.True(
+                _client.PendingRequests.RegisterWizard(
+                    requestId,
+                    "wizard.next",
+                    completion).Accepted);
             return completion.Task;
         }
 
         public void ClearPendingRequests()
         {
-            var method = typeof(OpenClawGatewayClient).GetMethod(
-                "ClearPendingRequests",
-                System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
-            method!.Invoke(_client, Array.Empty<object>());
+            _client.PendingRequests.CloseForDisconnect();
         }
 
         public void OnDisconnected()
@@ -440,10 +437,7 @@ public class OpenClawGatewayClientTests
         /// <summary>Pre-register a pending request so ProcessRawMessage can resolve the method.</summary>
         public void TrackPendingRequest(string requestId, string method)
         {
-            var methodInfo = typeof(OpenClawGatewayClient).GetMethod(
-                "TrackPendingRequest",
-                System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
-            methodInfo!.Invoke(_client, new object[] { requestId, method });
+            Assert.True(_client.PendingRequests.RegisterMethod(requestId, method).Accepted);
         }
 
         public bool GetPairingRequiredFlag() =>
@@ -510,18 +504,9 @@ public class OpenClawGatewayClientTests
 
         public (int WizardResponses, int RequestMethods) GetPendingRequestCounts()
         {
-            var wizardField = typeof(OpenClawGatewayClient).GetField(
-                "_pendingWizardResponses",
-                System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
-            var wizardResponses =
-                (System.Collections.Concurrent.ConcurrentDictionary<string, TaskCompletionSource<JsonElement>>)wizardField!.GetValue(_client)!;
-
-            var methodsField = typeof(OpenClawGatewayClient).GetField(
-                "_pendingRequestMethods",
-                System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
-            var requestMethods = (Dictionary<string, string>)methodsField!.GetValue(_client)!;
-
-            return (wizardResponses.Count, requestMethods.Count);
+            return (
+                _client.PendingRequests.Count(PendingRequestKind.Wizard),
+                _client.PendingRequests.ActiveCount);
         }
     }
 
@@ -681,6 +666,359 @@ public class OpenClawGatewayClientTests
         await Assert.ThrowsAnyAsync<OperationCanceledException>(
             async () => await responseTask.WaitAsync(TimeSpan.FromSeconds(2)));
         Assert.Equal((0, 0), helper.GetPendingRequestCounts());
+    }
+
+    [Fact]
+    public async Task DisconnectAsync_ClosesPendingRegistryBeforeSocketCloseCompletes()
+    {
+        using var server = new LoopbackWebSocketServer();
+        using var identity = new TempDirectory("disconnect-request-");
+        await server.StartAsync();
+        var helper = new GatewayClientTestHelper(
+            gatewayUrl: server.WebSocketUrl,
+            identityPath: identity.Path);
+        using var client = helper.Client;
+        await client.ConnectAsync();
+
+        var completion = new TaskCompletionSource<JsonElement>(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        Assert.True(
+            client.PendingRequests.RegisterWizard(
+                "pending-disconnect",
+                "wizard.status",
+                completion).Accepted);
+
+        var disconnectTask = client.DisconnectAsync();
+
+        Assert.False(client.PendingRequests.IsAcceptingRegistrations);
+        await Assert.ThrowsAsync<OperationCanceledException>(
+            async () => await completion.Task);
+
+        await server.CloseSocketAsync(0);
+        await disconnectTask.WaitAsync(TimeSpan.FromSeconds(2));
+    }
+
+    [Fact]
+    public void TrackedHealthResponse_PublishesOnceAndSuppressesDuplicate()
+    {
+        var helper = new GatewayClientTestHelper();
+        var updates = new List<ChannelHealth[]>();
+        helper.Client.ChannelHealthUpdated += (_, channels) => updates.Add(channels);
+        helper.TrackPendingRequest("health-id", "health");
+
+        const string response = """
+            {
+              "type": "res",
+              "id": "health-id",
+              "ok": true,
+              "payload": {
+                "channels": {
+                  "telegram": { "configured": true, "status": "ready" }
+                }
+              }
+            }
+            """;
+        helper.ProcessRawMessage(response);
+        helper.ProcessRawMessage(response);
+
+        var update = Assert.Single(updates);
+        Assert.Equal("telegram", Assert.Single(update).Name);
+    }
+
+    [Fact]
+    public async Task CheckHealthAsync_PreservesWireFrameAndRoutesTrackedResponse()
+    {
+        using var server = new LoopbackWebSocketServer();
+        using var identity = new TempDirectory("health-request-");
+        await server.StartAsync();
+        var helper = new GatewayClientTestHelper(
+            gatewayUrl: server.WebSocketUrl,
+            identityPath: identity.Path);
+        using var client = helper.Client;
+        var update = new TaskCompletionSource<ChannelHealth[]>(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        client.ChannelHealthUpdated += (_, channels) => update.TrySetResult(channels);
+        await client.ConnectAsync();
+
+        await client.CheckHealthAsync();
+        var requestJson = await server.ReceiveTextAsync().WaitAsync(TimeSpan.FromSeconds(2));
+        using var request = JsonDocument.Parse(requestJson);
+        var requestRoot = request.RootElement;
+        var requestId = requestRoot.GetProperty("id").GetString();
+
+        Assert.Equal("req", requestRoot.GetProperty("type").GetString());
+        Assert.Equal("health", requestRoot.GetProperty("method").GetString());
+        Assert.True(requestRoot.GetProperty("params").GetProperty("deep").GetBoolean());
+        Assert.Equal(1, client.PendingRequests.ActiveCount);
+
+        await server.SendTextAsync(
+            JsonSerializer.Serialize(
+                new
+                {
+                    type = "res",
+                    id = requestId,
+                    ok = true,
+                    payload = new
+                    {
+                        channels = new
+                        {
+                            telegram = new { configured = true, status = "ready" }
+                        }
+                    }
+                }));
+
+        var channels = await update.Task.WaitAsync(TimeSpan.FromSeconds(2));
+        Assert.Equal("telegram", Assert.Single(channels).Name);
+        Assert.Equal(0, client.PendingRequests.ActiveCount);
+    }
+
+    [Fact]
+    public void OwnerlessHealthResponse_PreservesGenericHealthRouting()
+    {
+        var helper = new GatewayClientTestHelper();
+        ChannelHealth[]? channels = null;
+        GatewaySelfInfo? gateway = null;
+        helper.Client.ChannelHealthUpdated += (_, update) => channels = update;
+        helper.Client.GatewaySelfUpdated += (_, update) => gateway = update;
+
+        helper.ProcessRawMessage("""
+            {
+              "type": "res",
+              "id": "ownerless-id",
+              "ok": true,
+              "payload": {
+                "channels": {
+                  "telegram": { "configured": true, "status": "ready" }
+                },
+                "uptimeMs": 1234
+              }
+            }
+            """);
+
+        Assert.Equal("telegram", Assert.Single(Assert.IsType<ChannelHealth[]>(channels)).Name);
+        Assert.Equal(1234, Assert.IsType<GatewaySelfInfo>(gateway).UptimeMs);
+    }
+
+    [Fact]
+    public void OwnerlessStatePayloads_PreserveGenericRouting()
+    {
+        var helper = new GatewayClientTestHelper();
+        SessionInfo[]? sessions = null;
+        GatewayUsageInfo? usage = null;
+        GatewayNodeInfo[]? nodes = null;
+        JsonElement? agents = null;
+        helper.Client.SessionsUpdated += (_, update) => sessions = update;
+        helper.Client.UsageUpdated += (_, update) => usage = update;
+        helper.Client.NodesUpdated += (_, update) => nodes = update;
+        helper.Client.AgentsListUpdated += (_, update) => agents = update;
+
+        helper.ProcessRawMessage("""
+            {
+              "type": "res",
+              "id": "ownerless-state",
+              "ok": true,
+              "payload": {
+                "sessions": [
+                  { "key": "agent:main:ownerless", "status": "idle" }
+                ],
+                "usage": {
+                  "inputTokens": 17,
+                  "outputTokens": 5,
+                  "totalTokens": 22
+                },
+                "nodes": [
+                  { "nodeId": "ownerless-node", "status": "online" }
+                ],
+                "agents": [
+                  { "id": "ownerless-agent" }
+                ]
+              }
+            }
+            """);
+
+        Assert.Equal("agent:main:ownerless", Assert.Single(Assert.IsType<SessionInfo[]>(sessions)).Key);
+        Assert.Equal(17, Assert.IsType<GatewayUsageInfo>(usage).InputTokens);
+        Assert.Equal("ownerless-node", Assert.Single(Assert.IsType<GatewayNodeInfo[]>(nodes)).NodeId);
+        Assert.Equal(
+            "ownerless-agent",
+            Assert.IsType<JsonElement>(agents)
+                .GetProperty("agents")[0]
+                .GetProperty("id")
+                .GetString());
+    }
+
+    [Fact]
+    public void TombstonedDuplicateStatePayloads_DoNotRepublishGenericState()
+    {
+        var helper = new GatewayClientTestHelper();
+        var sessionUpdates = 0;
+        var usageUpdates = 0;
+        var nodeUpdates = 0;
+        var agentUpdates = 0;
+        helper.Client.SessionsUpdated += (_, _) => sessionUpdates++;
+        helper.Client.UsageUpdated += (_, _) => usageUpdates++;
+        helper.Client.NodesUpdated += (_, _) => nodeUpdates++;
+        helper.Client.AgentsListUpdated += (_, _) => agentUpdates++;
+        helper.TrackPendingRequest("duplicate-state", "health");
+
+        const string response = """
+            {
+              "type": "res",
+              "id": "duplicate-state",
+              "ok": true,
+              "payload": {
+                "sessions": [],
+                "usage": { "totalTokens": 22 },
+                "nodes": [],
+                "agents": []
+              }
+            }
+            """;
+        helper.ProcessRawMessage(response);
+        helper.ProcessRawMessage(response);
+
+        Assert.Equal(1, sessionUpdates);
+        Assert.Equal(1, usageUpdates);
+        Assert.Equal(1, nodeUpdates);
+        Assert.Equal(1, agentUpdates);
+    }
+
+    [Fact]
+    public void UnknownOwnerlessPayload_DoesNotCompleteTypedOwner()
+    {
+        var helper = new GatewayClientTestHelper();
+        var pending = helper.RegisterPendingWizardResponse("pending-wizard");
+
+        helper.ProcessRawMessage("""
+            {
+              "type": "res",
+              "id": "unrelated-ownerless",
+              "ok": true,
+              "payload": { "unknown": true }
+            }
+            """);
+
+        Assert.False(pending.IsCompleted);
+        Assert.Equal(1, helper.Client.PendingRequests.ActiveCount);
+    }
+
+    [Fact]
+    public async Task LateWizardResponse_IsTombstonedAndDoesNotPublishGenericPayload()
+    {
+        var helper = new GatewayClientTestHelper();
+        var completion = new TaskCompletionSource<JsonElement>(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        Assert.True(
+            helper.Client.PendingRequests.RegisterWizard(
+                "late-wizard",
+                "wizard.status",
+                completion).Accepted);
+        Assert.True(helper.Client.PendingRequests.Cancel("late-wizard"));
+        var updateCount = 0;
+        helper.Client.ChannelHealthUpdated += (_, _) => updateCount++;
+
+        helper.ProcessRawMessage("""
+            {
+              "type": "res",
+              "id": "late-wizard",
+              "ok": true,
+              "payload": {
+                "channels": {
+                  "telegram": { "configured": true, "status": "ready" }
+                }
+              }
+            }
+            """);
+
+        await Assert.ThrowsAsync<OperationCanceledException>(
+            async () => await completion.Task);
+        Assert.Equal(0, updateCount);
+    }
+
+    [Fact]
+    public async Task SessionSnapshotResponse_CompletesTypedRegistryOwner()
+    {
+        var helper = new GatewayClientTestHelper();
+        helper.ParseSessionsPayload("""
+            [
+              {
+                "key": "agent:main:cached",
+                "status": "idle"
+              }
+            ]
+            """);
+        var updateCount = 0;
+        helper.Client.SessionsUpdated += (_, _) => updateCount++;
+        var completion = new TaskCompletionSource<SessionInfo[]>(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        Assert.True(
+            helper.Client.PendingRequests.RegisterSessionSnapshot(
+                "sessions-snapshot",
+                completion).Accepted);
+
+        helper.ProcessRawMessage("""
+            {
+              "type": "res",
+              "id": "sessions-snapshot",
+              "ok": true,
+              "payload": {
+                "sessions": [
+                  {
+                    "key": "agent:main:test",
+                    "status": "idle"
+                  }
+                ]
+              }
+            }
+            """);
+        helper.ProcessRawMessage("""
+            {
+              "type": "res",
+              "id": "sessions-snapshot",
+              "ok": true,
+              "payload": {
+                "sessions": [
+                  {
+                    "key": "agent:main:duplicate",
+                    "status": "idle"
+                  }
+                ]
+              }
+            }
+            """);
+
+        var snapshot = await completion.Task;
+        Assert.Equal("agent:main:test", Assert.Single(snapshot).Key);
+        Assert.Equal("agent:main:cached", Assert.Single(helper.GetSessionList()).Key);
+        Assert.Equal(0, updateCount);
+    }
+
+    [Fact]
+    public void LegacyUntrackedHelloOk_RemainsAccepted()
+    {
+        var helper = new GatewayClientTestHelper();
+        var handshakeCount = 0;
+        helper.Client.HandshakeSucceeded += (_, _) => handshakeCount++;
+
+        helper.ProcessRawMessage("""
+            {
+              "type": "res",
+              "id": "legacy-untracked-connect",
+              "ok": true,
+              "payload": {
+                "type": "hello-ok",
+                "snapshot": {
+                  "sessionDefaults": {
+                    "mainSessionKey": "agent:main:legacy"
+                  }
+                }
+              }
+            }
+            """);
+
+        Assert.Equal(1, handshakeCount);
+        Assert.True(helper.Client.HasHandshakeSnapshot);
+        Assert.Equal("agent:main:legacy", helper.Client.MainSessionKey);
     }
 
     private static string ReadRequestId(string request)

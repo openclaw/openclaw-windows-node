@@ -9,6 +9,7 @@
 
   <ItemGroup>
     <InternalsVisibleTo Include="OpenClaw.SetupEngine" />
+    <InternalsVisibleTo Include="OpenClaw.E2ETests" />
     <InternalsVisibleTo Include="OpenClaw.Shared.Tests" />
     <InternalsVisibleTo Include="OpenClaw.Tray.WinUI" />
   </ItemGroup>
@@ -25,4 +26,3 @@
   </ItemGroup>
 
 </Project>
-

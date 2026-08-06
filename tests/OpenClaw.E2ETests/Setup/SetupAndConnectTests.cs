@@ -16,7 +16,7 @@ public class E2ESetupCollection : ICollectionFixture<E2ESetupFixture> { }
 /// with connected operator and node, verified via MCP tool calls.
 /// </summary>
 [Collection("E2E Setup")]
-public class SetupAndConnectTests
+public partial class SetupAndConnectTests
 {
     private readonly E2ESetupFixture _fixture;
 

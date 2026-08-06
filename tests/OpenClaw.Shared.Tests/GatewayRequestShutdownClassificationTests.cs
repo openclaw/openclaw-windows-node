@@ -62,11 +62,9 @@ public sealed class GatewayRequestShutdownClassificationTests
             "shutdown must classify immediately instead of waiting out the 15s approval budget");
     }
 
-    // Guards the actual shutdown entry point: Dispose faults the pending completion
-    // via ClearPendingRequests before cancelling the lifetime token, and that path
-    // must never fabricate a gateway timeout either. The two tests above pin the
-    // residual register-after-clear window, which a real Dispose cannot reach
-    // deterministically precisely because of that ordering.
+    // Guards the actual shutdown entry point: Dispose faults the registry-owned
+    // completion before cancelling the lifetime token, and that path must never
+    // fabricate a gateway timeout either.
     [Fact]
     public async Task ResolveExecApproval_RealDisposeDuringWait_SurfacesCancellationNotTimeout()
     {
@@ -165,9 +163,8 @@ public sealed class GatewayRequestShutdownClassificationTests
         }
     }
 
-    // Models the shutdown race from #1021: the lifetime token is cancelled while this
-    // request's pending completion has not been faulted — the state a request reaches
-    // when it registers after ClearPendingRequests has already swept the pending maps.
+    // Cancels only the client lifetime token so the test independently pins
+    // shutdown classification when registry cancellation is not the winning signal.
     private static void CancelLifetime(OpenClawGatewayClient client)
     {
         var field = typeof(WebSocketClientBase).GetField(

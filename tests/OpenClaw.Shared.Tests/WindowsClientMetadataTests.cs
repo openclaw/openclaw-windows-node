@@ -225,6 +225,7 @@ public sealed class WindowsClientMetadataTests
 
         public async Task<string> BuildConnectMessageAsync(string nonce)
         {
+            PendingRequests.Reopen();
             var method = typeof(OpenClawGatewayClient).GetMethod(
                 "SendConnectMessageAsync",
                 BindingFlags.NonPublic | BindingFlags.Instance);
