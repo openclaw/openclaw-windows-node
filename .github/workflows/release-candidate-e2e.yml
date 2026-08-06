@@ -153,7 +153,7 @@ jobs:
           dotnet build src/OpenClaw.Tray.WinUI -c Debug -r win-x64 --no-restore
           dotnet build tests/OpenClaw.E2ETests -c Debug -r win-x64 --no-restore
 
-      - name: Run candidate setup and node E2E
+      - name: Run hosted candidate setup and node E2E
         shell: pwsh
         env:
           OPENCLAW_RUN_E2E: 1
@@ -161,6 +161,8 @@ jobs:
           OPENCLAW_E2E_GATEWAY_EXPECTED_VERSION: ${{ inputs.candidate_version }}
           OPENCLAW_E2E_TRAY_EXE: ${{ steps.windows_node_artifact.outputs.tray_exe }}
         run: |
+          # GitHub-hosted Windows cannot exercise MXC/AppContainer containment.
+          # MXC release proof belongs on an MXC-capable self-hosted runner and must reject skips.
           dotnet test tests/OpenClaw.E2ETests `
             --no-build `
             -c Debug `
@@ -169,7 +171,7 @@ jobs:
             --results-directory TestResults/ReleaseCandidateE2E `
             --logger "trx;LogFileName=OpenClaw.E2ETests.release-candidate.trx" `
             --logger "console;verbosity=detailed" `
-            --filter "FullyQualifiedName~OpenClaw.E2ETests.Setup.SetupAndConnectTests|FullyQualifiedName~OpenClaw.E2ETests.Setup.MxcSetupAndConnectTests"
+            --filter "FullyQualifiedName~OpenClaw.E2ETests.Setup.SetupAndConnectTests"
           if ($LASTEXITCODE -ne 0) {
             if ("${{ inputs.allow_protocol_mismatch }}" -ne "true") {
               exit $LASTEXITCODE
