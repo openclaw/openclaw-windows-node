@@ -315,6 +315,7 @@ internal sealed class ChatConversationState
             if (disconnected)
             {
                 _history.AdvanceConnectionGeneration(clearLoaded: false);
+                _reset.ClearSubmittedEchoesForReconnect();
                 interruptedThreads = _timelines
                     .Where(pair => pair.Value.TurnActive)
                     .Select(pair => pair.Key)
@@ -719,6 +720,10 @@ internal sealed class ChatConversationState
         {
             if (!IsDispatchGenerationCurrentLocked(dispatch))
             {
+                _reset.RemovePendingLocalSubmission(
+                    threadId,
+                    request.Id,
+                    dispatch.ResetVersion);
                 var staleRunId = acceptedRunId ?? request.SendRunId;
                 _reset.AddIgnoredRun(threadId, staleRunId);
                 return new(
@@ -744,6 +749,10 @@ internal sealed class ChatConversationState
             var deferredRetryDelay = ChatSendQueuePolicy.DrainDelay;
             if (ChatSendQueuePolicy.IsDeferredAdmissionStatus(sendResult.Status))
             {
+                _reset.RemovePendingLocalSubmission(
+                    threadId,
+                    request.Id,
+                    dispatch.ResetVersion);
                 var runAlreadyStarted = !string.IsNullOrEmpty(acceptedRunId)
                     && _lifecycle.HasRunStartedAfter(
                         threadId,
@@ -817,7 +826,8 @@ internal sealed class ChatConversationState
                         _reset.RecordLocalSendWithoutRun(
                             threadId,
                             dispatch.ResetVersion,
-                            dispatch.StartedLifecycleSequence),
+                            dispatch.StartedLifecycleSequence,
+                            request.Id),
                         allowRemoteTurn: false);
                 if (PromoteQueuedMessageLocked(threadId, request.Id))
                     acceptedSnapshot = BuildSnapshotLocked(context);
@@ -851,6 +861,10 @@ internal sealed class ChatConversationState
         var request = dispatch.Request;
         lock (_gate)
         {
+            _reset.RemovePendingLocalSubmission(
+                request.ThreadId,
+                request.Id,
+                dispatch.ResetVersion);
             if (!IsDispatchGenerationCurrentLocked(dispatch))
             {
                 return new(
@@ -972,13 +986,15 @@ internal sealed class ChatConversationState
             threadId,
             isLocalQueuedSend: true,
             localQueuedMessageId: request.Id);
-        return _queue.StartDirect(
+        var dispatch = _queue.StartDirect(
             request,
             _history.ResolveSessionId(threadId),
             _history.ConnectionGeneration,
             resetVersion,
             _reset.LifecycleStartSequence,
             _lifecycle.LifecycleStartSequence);
+        RegisterResetSubmissionLocked(dispatch);
+        return dispatch;
     }
 
     private ChatQueuedSendDispatch? TryStartNextQueuedSendLocked(
@@ -1002,10 +1018,26 @@ internal sealed class ChatConversationState
             out delayedRetry);
         if (dispatch?.Request.LifecycleCommand is null && dispatch is not null)
         {
+            RegisterResetSubmissionLocked(dispatch);
             _timelines[threadId] = ChatTimelineReducer.BeginLocalUserTurn(
                 GetOrCreateTimelineLocked(threadId));
         }
         return dispatch;
+    }
+
+    private void RegisterResetSubmissionLocked(
+        ChatQueuedSendDispatch dispatch)
+    {
+        _reset.RegisterPendingLocalSubmission(
+            dispatch.Request.ThreadId,
+            dispatch.Request.Id,
+            dispatch.Request.Text,
+            dispatch.ResetVersion,
+            dispatch.StartedLifecycleSequence,
+            DateTimeOffset.UtcNow,
+            requiresEcho:
+                !string.IsNullOrWhiteSpace(
+                    dispatch.Request.Text));
     }
 
     private bool RemoveQueuedMessageLocked(string threadId, string messageId)
@@ -1271,12 +1303,16 @@ internal sealed class ChatConversationState
         var text = message.Text ?? string.Empty;
         lock (_gate)
         {
+            _lifecycle.TryGetActiveRun(
+                threadId,
+                out var activeRunId);
             var resetGate = _reset.EvaluateChatMessage(
                     threadId,
                     role,
                     text,
                     message.Ts,
-                    _queue.HasPendingLocalEchoText(threadId, text));
+                    _queue.HasPendingLocalEchoText(threadId, text),
+                    activeRunId);
             var openedLifecycle =
                 ApplyBufferedLifecycleOpenLocked(
                     threadId,
@@ -1452,6 +1488,7 @@ internal sealed class ChatConversationState
         lock (_gate)
         {
             var completedRunId = _lifecycle.CompleteAssistantFinal(threadId);
+            _reset.CompleteRun(threadId, completedRunId);
             if (!_queue.HasSendingMessages(threadId))
                 _queue.ClearLocallyInitiated(threadId);
             return completedRunId;
@@ -1483,6 +1520,7 @@ internal sealed class ChatConversationState
                     MappedEvent: null,
                     ToolMetadata: null,
                     Snapshots: [],
+                    gate.OpenedLifecycle,
                     CurrentRuntimeGenerationLocked(threadId));
             }
 
@@ -1539,6 +1577,7 @@ internal sealed class ChatConversationState
                 mapped,
                 toolMetadata,
                 snapshots.ToArray(),
+                gate.OpenedLifecycle,
                 CurrentRuntimeGenerationLocked(threadId));
         }
     }
@@ -1649,21 +1688,45 @@ internal sealed class ChatConversationState
         string threadId)
     {
         var resetGate = _reset.EvaluateAgentEvent(evt, threadId);
-        ApplyOpenedResetLifecycleStartLocked(
-            threadId,
-            resetGate.OpenedLifecycleStart);
+        ChatOpenedLifecycleTransition? openedLifecycle = null;
+        if (resetGate.OpenedLifecycleStart is { } openedStart &&
+            ChatEventMapper.IsLifecycleStart(openedStart))
+        {
+            ApplyOpenedResetLifecycleStartLocked(
+                threadId,
+                openedStart);
+        }
+        else
+        {
+            openedLifecycle = ApplyBufferedLifecycleOpenLocked(
+                threadId,
+                resetGate.OpenedLifecycleStart,
+                allowRemoteTurn: false);
+        }
         if (resetGate.Drop)
         {
-            return new(false, resetGate.ReloadHistory, null);
+            return new(
+                false,
+                resetGate.ReloadHistory,
+                null,
+                openedLifecycle);
         }
         if (ShouldDropTerminalAgentEventLocked(
                 evt,
                 threadId,
                 out var droppedReason))
         {
-            return new(false, false, droppedReason);
+            return new(
+                false,
+                false,
+                droppedReason,
+                openedLifecycle);
         }
-        return new(true, false, null);
+        return new(
+            true,
+            false,
+            null,
+            openedLifecycle);
     }
 
     private ChatRunTransition UpdateRunTrackingLocked(
@@ -1716,6 +1779,7 @@ internal sealed class ChatConversationState
                 {
                     completionPhase = phase;
                     wasAborted = _lifecycle.IsRunAborted(evt.RunId);
+                    _reset.CompleteRun(threadId, evt.RunId);
                     _lifecycle.RemoveAbortedRun(evt.RunId);
                     _lifecycle.RemoveActiveRun(threadId);
                     _lifecycle.ClearThreadSuppression(threadId);
@@ -1743,6 +1807,7 @@ internal sealed class ChatConversationState
                 {
                     completionPhase = phase == "done" ? "end" : "error";
                     wasAborted = _lifecycle.IsRunAborted(evt.RunId);
+                    _reset.CompleteRun(threadId, evt.RunId);
                     if (!string.IsNullOrWhiteSpace(evt.RunId))
                     {
                         _lifecycle.RemoveAbortedRun(evt.RunId);

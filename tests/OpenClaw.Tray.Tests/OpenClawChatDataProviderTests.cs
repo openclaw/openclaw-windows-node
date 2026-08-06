@@ -3878,6 +3878,398 @@ public class OpenClawChatDataProviderTests
     }
 
     [Fact]
+    public async Task SessionResetCompletion_ProductionSubmissionAcceptsSkewedLifecycleAndFinal()
+    {
+        const string marker = "production skew marker";
+        const string response = "production skew terminal";
+        using var activities = new ChatActivityCollector();
+        var sendStarted = new TaskCompletionSource(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        var releaseSend = new TaskCompletionSource(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        var (bridge, provider, snapshots, _) =
+            CreateProvider(new[] { MainSession() });
+        bridge.SendBehavior = async (_, _, _) =>
+        {
+            sendStarted.TrySetResult();
+            await releaseSend.Task;
+        };
+        bridge.SendResults.Enqueue(new ChatSendResult());
+        await provider.LoadAsync();
+        var skewedStartTs = DateTimeOffset.UtcNow
+            .AddSeconds(-5)
+            .ToUnixTimeMilliseconds();
+        bridge.RaiseSessionCommandCompleted(new SessionCommandResult
+        {
+            Method = "sessions.reset",
+            Ok = true,
+            Key = "main"
+        });
+
+        var sendTask = provider.SendMessageAsync("main", marker);
+        await sendStarted.Task;
+        var start = MakeAgentEvent(
+            "lifecycle",
+            """{"phase":"start"}""",
+            runId: "skewed-run");
+        start.Ts = skewedStartTs;
+        bridge.RaiseAgent(start);
+        var early = MakeAgentEvent(
+            "assistant",
+            """{"delta":"early skewed assistant"}""",
+            runId: "skewed-run");
+        early.Ts = skewedStartTs + 1;
+        bridge.RaiseAgent(early);
+        releaseSend.TrySetResult();
+        await sendTask;
+
+        bridge.RaiseChat(new ChatMessageInfo
+        {
+            SessionKey = "main",
+            Role = "user",
+            Text = marker,
+            Ts = skewedStartTs + 2,
+            OpenClawId = "user-skewed",
+            OpenClawSeq = 1,
+        });
+        bridge.RaiseChat(new ChatMessageInfo
+        {
+            SessionKey = "main",
+            Role = "assistant",
+            State = "final",
+            Text = response,
+            Ts = skewedStartTs + 3,
+            OpenClawId = "assistant-skewed",
+            OpenClawSeq = 2,
+        });
+
+        var terminal = snapshots[^1].Timelines["main"];
+        Assert.False(terminal.TurnActive);
+        Assert.DoesNotContain(
+            terminal.Entries,
+            entry => entry.Text.Contains(
+                "early skewed assistant",
+                StringComparison.Ordinal));
+        Assert.Single(
+            terminal.Entries,
+            entry => entry.Kind == ChatTimelineItemKind.User &&
+                     entry.Text == marker);
+        Assert.Single(
+            terminal.Entries,
+            entry => entry.Kind == ChatTimelineItemKind.Assistant &&
+                     entry.Text == response);
+        Assert.Single(
+            activities.Stopped,
+            activity =>
+                activity.OperationName == ChatTelemetryTracker.TurnSpanName);
+
+        bridge.HistoryBehavior = _ => Task.FromResult(new ChatHistoryInfo
+        {
+            SessionKey = "main",
+            Messages =
+            [
+                new ChatMessageInfo
+                {
+                    SessionKey = "main",
+                    Role = "user",
+                    Text = marker,
+                    Ts = skewedStartTs + 2,
+                    OpenClawId = "user-skewed",
+                    OpenClawSeq = 1,
+                },
+                new ChatMessageInfo
+                {
+                    SessionKey = "main",
+                    Role = "assistant",
+                    State = "final",
+                    Text = response,
+                    Ts = skewedStartTs + 3,
+                    OpenClawId = "assistant-skewed",
+                    OpenClawSeq = 2,
+                },
+            ]
+        });
+        await provider.LoadHistoryAsync(
+            "main",
+            force: true,
+            authoritative: true);
+        var replay = snapshots[^1].Timelines["main"];
+        Assert.Single(
+            replay.Entries,
+            entry => entry.Kind == ChatTimelineItemKind.User &&
+                     entry.Text == marker);
+        Assert.Single(
+            replay.Entries,
+            entry => entry.Kind == ChatTimelineItemKind.Assistant &&
+                     entry.Text == response);
+        Assert.Single(
+            activities.Stopped,
+            activity =>
+                activity.OperationName == ChatTelemetryTracker.TurnSpanName);
+        await provider.DisposeAsync();
+    }
+
+    [Fact]
+    public async Task SessionResetCompletion_ExactEchoOverridesMismatchedAcceptedRun()
+    {
+        const string marker = "accepted mismatch marker";
+        var (bridge, provider, snapshots, _) =
+            CreateProvider(new[] { MainSession() });
+        bridge.SendResults.Enqueue(new ChatSendResult
+        {
+            RunId = "response-run",
+            Status = "started",
+        });
+        await provider.LoadAsync();
+        var skewedTs = DateTimeOffset.UtcNow
+            .AddSeconds(-5)
+            .ToUnixTimeMilliseconds();
+        bridge.RaiseSessionCommandCompleted(new SessionCommandResult
+        {
+            Method = "sessions.reset",
+            Ok = true,
+            Key = "main"
+        });
+        await provider.SendMessageAsync("main", marker);
+
+        var start = MakeAgentEvent(
+            "lifecycle",
+            """{"phase":"start"}""",
+            runId: "gateway-run");
+        start.Ts = skewedTs;
+        bridge.RaiseAgent(start);
+        bridge.RaiseChat(new ChatMessageInfo
+        {
+            SessionKey = "main",
+            Role = "user",
+            Text = marker,
+            Ts = skewedTs + 1,
+        });
+        bridge.RaiseChat(new ChatMessageInfo
+        {
+            SessionKey = "main",
+            Role = "assistant",
+            State = "final",
+            Text = "accepted mismatch terminal",
+            Ts = skewedTs + 2,
+        });
+
+        var latest = snapshots[^1].Timelines["main"];
+        Assert.False(latest.TurnActive);
+        Assert.Single(
+            latest.Entries,
+            entry => entry.Kind == ChatTimelineItemKind.User &&
+                     entry.Text == marker);
+        Assert.Single(
+            latest.Entries,
+            entry => entry.Kind == ChatTimelineItemKind.Assistant &&
+                     entry.Text == "accepted mismatch terminal");
+        await provider.DisposeAsync();
+    }
+
+    [Fact]
+    public async Task SessionResetCompletion_FallbackStepUsesExactEchoTimestampFloor()
+    {
+        const string marker = "fallback step marker";
+        var (bridge, provider, snapshots, _) =
+            CreateProvider(new[] { MainSession() });
+        bridge.SendResults.Enqueue(new ChatSendResult());
+        await provider.LoadAsync();
+        var lifecycleTimestamp = DateTimeOffset.UtcNow
+            .AddSeconds(-5)
+            .ToUnixTimeMilliseconds();
+        var echoTimestamp = lifecycleTimestamp - 500;
+        bridge.RaiseSessionCommandCompleted(new SessionCommandResult
+        {
+            Method = "sessions.reset",
+            Ok = true,
+            Key = "main"
+        });
+        await provider.SendMessageAsync("main", marker);
+
+        var fallback = MakeAgentEvent(
+            "lifecycle",
+            """{"phase":"fallback_step"}""",
+            runId: "fallback-run");
+        fallback.Ts = lifecycleTimestamp;
+        bridge.RaiseAgent(fallback);
+        bridge.RaiseChat(new ChatMessageInfo
+        {
+            SessionKey = "main",
+            Role = "user",
+            Text = marker,
+            Ts = echoTimestamp,
+        });
+        bridge.RaiseChat(new ChatMessageInfo
+        {
+            SessionKey = "main",
+            Role = "assistant",
+            State = "final",
+            Text = "fallback terminal",
+            Ts = echoTimestamp + 1,
+        });
+
+        var latest = snapshots[^1].Timelines["main"];
+        Assert.False(latest.TurnActive);
+        Assert.Single(
+            latest.Entries,
+            entry => entry.Kind == ChatTimelineItemKind.User &&
+                     entry.Text == marker);
+        Assert.Single(
+            latest.Entries,
+            entry => entry.Kind == ChatTimelineItemKind.Assistant &&
+                     entry.Text == "fallback terminal");
+        await provider.DisposeAsync();
+    }
+
+    [Fact]
+    public async Task SessionResetCompletion_ExactEchoSelectsNewestBufferedLifecycle()
+    {
+        const string marker = "newest lifecycle marker";
+        const string currentOutput = "current lifecycle output";
+        using var activities = new ChatActivityCollector();
+        var (bridge, provider, snapshots, _) =
+            CreateProvider(new[] { MainSession() });
+        bridge.SendResults.Enqueue(new ChatSendResult());
+        await provider.LoadAsync();
+        var now = DateTimeOffset.UtcNow;
+        var staleTimestamp = now.AddSeconds(-6).ToUnixTimeMilliseconds();
+        var currentTimestamp = now.AddSeconds(-5).ToUnixTimeMilliseconds();
+        var echoTimestamp = now.AddMilliseconds(-5_500)
+            .ToUnixTimeMilliseconds();
+        bridge.RaiseSessionCommandCompleted(new SessionCommandResult
+        {
+            Method = "sessions.reset",
+            Ok = true,
+            Key = "main"
+        });
+        await provider.SendMessageAsync("main", marker);
+
+        var staleStart = MakeAgentEvent(
+            "lifecycle",
+            """{"phase":"start"}""",
+            runId: "stale-run");
+        staleStart.Ts = staleTimestamp;
+        bridge.RaiseAgent(staleStart);
+        var currentStart = MakeAgentEvent(
+            "lifecycle",
+            """{"phase":"start"}""",
+            runId: "current-run");
+        currentStart.Ts = currentTimestamp;
+        bridge.RaiseAgent(currentStart);
+        bridge.RaiseChat(new ChatMessageInfo
+        {
+            SessionKey = "main",
+            Role = "user",
+            Text = marker,
+            Ts = echoTimestamp,
+        });
+
+        var staleOutput = MakeAgentEvent(
+            "assistant",
+            """{"delta":"stale lifecycle output"}""",
+            runId: "stale-run");
+        staleOutput.Ts = echoTimestamp + 1;
+        bridge.RaiseAgent(staleOutput);
+        var staleTerminal = MakeAgentEvent(
+            "lifecycle",
+            """{"phase":"error"}""",
+            runId: "stale-run");
+        staleTerminal.Ts = echoTimestamp + 2;
+        bridge.RaiseAgent(staleTerminal);
+        Assert.True(snapshots[^1].Timelines["main"].TurnActive);
+
+        var currentFrame = MakeAgentEvent(
+            "assistant",
+            $$"""{"delta":"{{currentOutput}}"}""",
+            runId: "current-run");
+        currentFrame.Ts = echoTimestamp + 3;
+        bridge.RaiseAgent(currentFrame);
+        var currentTerminal = MakeAgentEvent(
+            "lifecycle",
+            """{"phase":"error"}""",
+            runId: "current-run");
+        currentTerminal.Ts = echoTimestamp + 4;
+        bridge.RaiseAgent(currentTerminal);
+
+        var terminal = snapshots[^1].Timelines["main"];
+        Assert.False(terminal.TurnActive);
+        Assert.Single(
+            terminal.Entries,
+            entry => entry.Kind == ChatTimelineItemKind.User &&
+                     entry.Text == marker);
+        Assert.DoesNotContain(
+            terminal.Entries,
+            entry => entry.Text.Contains(
+                "stale lifecycle output",
+                StringComparison.Ordinal));
+        Assert.Contains(
+            terminal.Entries,
+            entry => entry.Kind == ChatTimelineItemKind.Assistant &&
+                     entry.Text == currentOutput);
+        var turn = Assert.Single(
+            activities.Stopped,
+            activity =>
+                activity.OperationName ==
+                ChatTelemetryTracker.TurnSpanName);
+        Assert.Equal(
+            "lifecycle_error",
+            turn.GetTagItem(
+                OpenClawTelemetryTagKey.Reason.ToTelemetryName()));
+        await provider.DisposeAsync();
+    }
+
+    [Fact]
+    public async Task SessionResetCompletion_FailedSendRemovesProductionSubmissionProof()
+    {
+        const string marker = "failed production marker";
+        var (bridge, provider, snapshots, _) =
+            CreateProvider(new[] { MainSession() });
+        bridge.SendBehavior = (_, _, _) =>
+            throw new InvalidOperationException("send rejected");
+        await provider.LoadAsync();
+        var skewedTs = DateTimeOffset.UtcNow
+            .AddSeconds(-5)
+            .ToUnixTimeMilliseconds();
+        bridge.RaiseSessionCommandCompleted(new SessionCommandResult
+        {
+            Method = "sessions.reset",
+            Ok = true,
+            Key = "main"
+        });
+
+        await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            provider.SendMessageAsync("main", marker));
+        var start = MakeAgentEvent(
+            "lifecycle",
+            """{"phase":"start"}""",
+            runId: "rejected-run");
+        start.Ts = skewedTs;
+        bridge.RaiseAgent(start);
+        bridge.RaiseChat(new ChatMessageInfo
+        {
+            SessionKey = "main",
+            Role = "user",
+            Text = marker,
+            Ts = skewedTs + 1,
+        });
+        bridge.RaiseChat(new ChatMessageInfo
+        {
+            SessionKey = "main",
+            Role = "assistant",
+            State = "final",
+            Text = "must remain dropped",
+            Ts = skewedTs + 2,
+        });
+
+        var latest = snapshots[^1].Timelines["main"];
+        Assert.DoesNotContain(
+            latest.Entries,
+            entry => entry.Text == "must remain dropped");
+        await provider.DisposeAsync();
+    }
+
+    [Fact]
     public async Task SessionResetCompletion_ReconciledSubmittedEchoOpensBufferedLifecycleAndTerminalizesOnce()
     {
         const string marker = "controlled post-reset marker";
@@ -3903,13 +4295,6 @@ public class OpenClawChatDataProviderTests
                     System.Reflection.BindingFlags.Instance |
                     System.Reflection.BindingFlags.NonPublic)!
                 .GetValue(provider));
-        var reset = Assert.IsType<ChatResetState>(
-            typeof(ChatConversationState)
-                .GetField(
-                    "_reset",
-                    System.Reflection.BindingFlags.Instance |
-                    System.Reflection.BindingFlags.NonPublic)!
-                .GetValue(state));
         var queue = Assert.IsType<ChatQueueState>(
             typeof(ChatConversationState)
                 .GetField(
@@ -3924,7 +4309,6 @@ public class OpenClawChatDataProviderTests
                     System.Reflection.BindingFlags.Instance |
                     System.Reflection.BindingFlags.NonPublic)!
                 .GetValue(state));
-        reset.AddSubmittedLocalEcho("main", marker, DateTimeOffset.UtcNow);
         Assert.True(queue.TryConsumeLocalEcho("main", marker, out _));
         Assert.False(queue.HasPendingLocalEchoText("main", marker));
 

@@ -1393,6 +1393,10 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
             return;
         }
 
+        HandleOpenedLifecycle(
+            threadId,
+            transition.OpenedLifecycle,
+            transition.RuntimeGeneration);
         foreach (var snapshot in transition.Snapshots)
             Publish(snapshot);
         if (ChatEventMapper.IsLifecycleStart(evt))

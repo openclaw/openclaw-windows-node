@@ -285,6 +285,62 @@ public sealed class ChatConversationStateTests
         Assert.False(state.IsHistoryRequestCurrent(oldToken));
         Assert.True(state.IsHistoryRequestCurrent(replacement.Token));
     }
+
+    [Fact]
+    public void AttachmentOnlyFallbackAfterSendConfirmation_SurfacesOpenedLifecycle()
+    {
+        var state = new ChatConversationState(
+            ConnectionStatus.Connected,
+            lastChatState: null,
+            seedModels: null);
+        var context = new ChatProjectionContext("main", HasHandshakeSnapshot: true);
+        state.Load([new SessionInfo { Key = "main", IsMain = true }], context);
+        state.ResetThread("main", context);
+        var admission = state.AdmitMessage(
+            "main",
+            text: string.Empty,
+            displayText: "\u200B📎 proof.txt",
+            nonce: "attachment-only",
+            attachments:
+            [
+                new ChatAttachment
+                {
+                    Type = "file",
+                    MimeType = "text/plain",
+                    FileName = "proof.txt",
+                    Content = "cHJvb2Y=",
+                    SizeBytes = 5,
+                },
+            ],
+            DateTimeOffset.UtcNow,
+            context);
+        Assert.NotNull(admission.Dispatch);
+        var commit = state.CommitSendResult(
+            admission.Dispatch!,
+            new ChatSendResult { Status = "started" },
+            context);
+        Assert.Null(commit.OpenedLifecycle);
+        using var fallbackData =
+            JsonDocument.Parse("""{"phase":"fallback_step"}""");
+
+        var fallback = state.ProcessAgentEvent(
+            new AgentEventInfo
+            {
+                Stream = "lifecycle",
+                SessionKey = "main",
+                RunId = "attachment-run",
+                Ts = DateTimeOffset.UtcNow.AddMinutes(-5)
+                    .ToUnixTimeMilliseconds(),
+                Data = fallbackData.RootElement.Clone(),
+            },
+            "main",
+            context);
+
+        Assert.True(fallback.Process);
+        Assert.Equal(
+            "attachment-run",
+            fallback.OpenedLifecycle?.Event.RunId);
+    }
 }
 
 public sealed class ChatResetStateTests
@@ -401,6 +457,396 @@ public sealed class ChatResetStateTests
         Assert.False(gate.RequestRemoteBackfill);
         Assert.Null(gate.OpenedLifecycleStart);
         Assert.True(state.IsAwaitingUserMessage("main"));
+    }
+
+    [Fact]
+    public void ProductionSubmission_SkewedEchoOpensOnlyLifecycleAfterItsStartSequence()
+    {
+        const string text = "same text";
+        var now = DateTimeOffset.UtcNow;
+        var cutoff = now.ToUnixTimeMilliseconds();
+        var state = new ChatResetState();
+        var generation = state.BeginReset("main", cutoff);
+        var oldStart = Lifecycle(
+            "start",
+            "old-run",
+            now.AddSeconds(1));
+        Assert.True(state.EvaluateAgentEvent(oldStart, "main").Drop);
+        var submissionSequence = state.LifecycleStartSequence;
+        state.RegisterPendingLocalSubmission(
+            "main",
+            "submission-1",
+            text,
+            generation,
+            submissionSequence,
+            now);
+
+        var echo = state.EvaluateChatMessage(
+            "main",
+            role: "user",
+            rawText: text,
+            timestampMs: cutoff - 5_000,
+            hasPendingLocalEcho: false);
+        Assert.True(echo.Drop);
+        Assert.Null(echo.OpenedLifecycleStart);
+        Assert.True(state.IsAwaitingUserMessage("main"));
+
+        var eligibleStart = Lifecycle(
+            "start",
+            "new-run",
+            now.AddSeconds(-5));
+        var opened = state.EvaluateAgentEvent(
+            eligibleStart,
+            "main");
+
+        Assert.False(opened.Drop);
+        Assert.Same(eligibleStart, opened.OpenedLifecycleStart);
+        Assert.False(state.IsAwaitingUserMessage("main"));
+    }
+
+    [Fact]
+    public void ProductionSubmission_ExactEchoSelectsNewestEligibleLifecycle()
+    {
+        const string text = "current submission";
+        var now = DateTimeOffset.UtcNow;
+        var cutoff = now.ToUnixTimeMilliseconds();
+        var state = new ChatResetState();
+        var generation = state.BeginReset("main", cutoff);
+        state.RegisterPendingLocalSubmission(
+            "main",
+            "submission",
+            text,
+            generation,
+            state.LifecycleStartSequence,
+            now);
+        var stale = Lifecycle(
+            "start",
+            "stale-run",
+            now.AddSeconds(-6));
+        var current = Lifecycle(
+            "start",
+            "current-run",
+            now.AddSeconds(-5));
+        Assert.True(state.EvaluateAgentEvent(stale, "main").Drop);
+        Assert.True(state.EvaluateAgentEvent(current, "main").Drop);
+
+        var echo = state.EvaluateChatMessage(
+            "main",
+            "user",
+            text,
+            now.AddMilliseconds(-5_500).ToUnixTimeMilliseconds(),
+            hasPendingLocalEcho: false);
+        var staleFrame = state.EvaluateAgentEvent(
+            Assistant(
+                "stale output",
+                "stale-run",
+                now.AddMilliseconds(-5_400)),
+            "main");
+        var currentFrame = state.EvaluateAgentEvent(
+            Assistant(
+                "current output",
+                "current-run",
+                now.AddMilliseconds(-5_400)),
+            "main");
+
+        Assert.True(echo.Drop);
+        Assert.Same(current, echo.OpenedLifecycleStart);
+        Assert.True(staleFrame.Drop);
+        Assert.False(currentFrame.Drop);
+    }
+
+    [Fact]
+    public void ProductionSubmission_WrongExpiredAndWrongGenerationCannotOpen()
+    {
+        var now = DateTimeOffset.UtcNow;
+        var cutoff = now.ToUnixTimeMilliseconds();
+        var state = new ChatResetState();
+        var generation = state.BeginReset("main", cutoff);
+        state.RegisterPendingLocalSubmission(
+            "main",
+            "wrong-generation",
+            "expected",
+            generation - 1,
+            state.LifecycleStartSequence,
+            now);
+        state.RegisterPendingLocalSubmission(
+            "main",
+            "expired",
+            "expired",
+            generation,
+            state.LifecycleStartSequence,
+            now.AddSeconds(-31));
+        state.RegisterPendingLocalSubmission(
+            "main",
+            "current",
+            "expected",
+            generation,
+            state.LifecycleStartSequence,
+            now);
+        var start = Lifecycle(
+            "start",
+            "new-run",
+            now.AddSeconds(-5));
+        Assert.True(state.EvaluateAgentEvent(start, "main").Drop);
+
+        var wrong = state.EvaluateChatMessage(
+            "main",
+            role: "user",
+            rawText: "different",
+            timestampMs: cutoff - 5_000,
+            hasPendingLocalEcho: false);
+        var expired = state.EvaluateChatMessage(
+            "main",
+            role: "user",
+            rawText: "expired",
+            timestampMs: cutoff - 5_000,
+            hasPendingLocalEcho: false);
+
+        Assert.True(wrong.Drop);
+        Assert.Null(wrong.OpenedLifecycleStart);
+        Assert.True(expired.Drop);
+        Assert.Null(expired.OpenedLifecycleStart);
+        Assert.True(state.IsAwaitingUserMessage("main"));
+    }
+
+    [Fact]
+    public void AcceptedLifecycleFloor_AllowsSameRunAndRejectsOlderOrCompletedRun()
+    {
+        const string text = "exact echo";
+        var now = DateTimeOffset.UtcNow;
+        var cutoff = now.ToUnixTimeMilliseconds();
+        var lifecycleTimestamp = cutoff - 5_000;
+        var state = new ChatResetState();
+        var generation = state.BeginReset("main", cutoff);
+        state.RegisterPendingLocalSubmission(
+            "main",
+            "submission",
+            text,
+            generation,
+            state.LifecycleStartSequence,
+            now);
+        var start = Lifecycle(
+            "start",
+            "new-run",
+            DateTimeOffset.FromUnixTimeMilliseconds(
+                lifecycleTimestamp));
+        Assert.True(state.EvaluateAgentEvent(start, "main").Drop);
+        var echo = state.EvaluateChatMessage(
+            "main",
+            role: "user",
+            rawText: text,
+            timestampMs: lifecycleTimestamp + 1,
+            hasPendingLocalEcho: true);
+        Assert.Same(start, echo.OpenedLifecycleStart);
+
+        var accepted = state.EvaluateChatMessage(
+            "main",
+            role: "assistant",
+            rawText: "current",
+            timestampMs: lifecycleTimestamp + 2,
+            hasPendingLocalEcho: false,
+            activeRunId: "new-run");
+        var older = state.EvaluateChatMessage(
+            "main",
+            role: "assistant",
+            rawText: "older",
+            timestampMs: lifecycleTimestamp - 1,
+            hasPendingLocalEcho: false,
+            activeRunId: "new-run");
+        var wrongRun = state.EvaluateChatMessage(
+            "main",
+            role: "assistant",
+            rawText: "wrong run",
+            timestampMs: lifecycleTimestamp + 2,
+            hasPendingLocalEcho: false,
+            activeRunId: "other-run");
+        state.CompleteRun("main", "new-run");
+        var completed = state.EvaluateChatMessage(
+            "main",
+            role: "assistant",
+            rawText: "completed",
+            timestampMs: lifecycleTimestamp + 2,
+            hasPendingLocalEcho: false,
+            activeRunId: "new-run");
+
+        Assert.False(accepted.Drop);
+        Assert.True(older.Drop);
+        Assert.True(wrongRun.Drop);
+        Assert.True(completed.Drop);
+    }
+
+    [Fact]
+    public void AcceptedLifecycleFloor_ResetAndReconnectClearState()
+    {
+        var now = DateTimeOffset.UtcNow;
+        var cutoff = now.ToUnixTimeMilliseconds();
+        var lifecycleTimestamp = cutoff - 5_000;
+        var state = new ChatResetState();
+        var generation = state.BeginReset("main", cutoff);
+        state.RegisterPendingLocalSubmission(
+            "main",
+            "submission",
+            "echo",
+            generation,
+            state.LifecycleStartSequence,
+            now);
+        var start = Lifecycle(
+            "start",
+            "new-run",
+            DateTimeOffset.FromUnixTimeMilliseconds(
+                lifecycleTimestamp));
+        state.EvaluateAgentEvent(start, "main");
+        state.EvaluateChatMessage(
+            "main",
+            "user",
+            "echo",
+            lifecycleTimestamp + 1,
+            hasPendingLocalEcho: true);
+        state.BeginReset("main", cutoff + 10_000);
+        var afterReset = state.EvaluateChatMessage(
+            "main",
+            "assistant",
+            "after reset",
+            lifecycleTimestamp + 2,
+            hasPendingLocalEcho: false,
+            activeRunId: "new-run");
+        state.ClearSubmittedEchoesForReconnect();
+        var afterReconnect = state.EvaluateChatMessage(
+            "main",
+            "assistant",
+            "after reconnect",
+            lifecycleTimestamp + 2,
+            hasPendingLocalEcho: false,
+            activeRunId: "new-run");
+
+        Assert.True(afterReset.Drop);
+        Assert.True(afterReconnect.Drop);
+    }
+
+    [Fact]
+    public void RemovePendingSubmission_RemovesOnlyMatchingIdentityAndGeneration()
+    {
+        const string text = "repeated";
+        var now = DateTimeOffset.UtcNow;
+        var cutoff = now.ToUnixTimeMilliseconds();
+        var state = new ChatResetState();
+        var generation = state.BeginReset("main", cutoff);
+        state.RegisterPendingLocalSubmission(
+            "main",
+            "first",
+            text,
+            generation,
+            state.LifecycleStartSequence,
+            now);
+        state.RegisterPendingLocalSubmission(
+            "main",
+            "second",
+            text,
+            generation,
+            state.LifecycleStartSequence,
+            now.AddMilliseconds(1));
+        state.RemovePendingLocalSubmission(
+            "main",
+            "first",
+            generation);
+        state.RemovePendingLocalSubmission(
+            "main",
+            "second",
+            generation - 1);
+        var start = Lifecycle(
+            "start",
+            "new-run",
+            now.AddSeconds(-5));
+        Assert.True(state.EvaluateAgentEvent(start, "main").Drop);
+
+        var echo = state.EvaluateChatMessage(
+            "main",
+            role: "user",
+            rawText: text,
+            timestampMs: cutoff - 5_000,
+            hasPendingLocalEcho: false);
+
+        Assert.Same(start, echo.OpenedLifecycleStart);
+        Assert.False(state.IsAwaitingUserMessage("main"));
+    }
+
+    [Fact]
+    public void MatchedSubmissionEcho_DoesNotConsumeLaterIdenticalRemoteMessage()
+    {
+        var now = DateTimeOffset.UtcNow;
+        var cutoff = now.ToUnixTimeMilliseconds();
+        var state = new ChatResetState();
+        var generation = state.BeginReset("main", cutoff);
+        state.RegisterPendingLocalSubmission(
+            "main",
+            "submission",
+            "same text",
+            generation,
+            state.LifecycleStartSequence,
+            now);
+        var start = Lifecycle(
+            "start",
+            "new-run",
+            now.AddSeconds(-5));
+        Assert.True(state.EvaluateAgentEvent(start, "main").Drop);
+
+        var echo = state.EvaluateChatMessage(
+            "main",
+            "user",
+            "same text",
+            cutoff - 5_000,
+            hasPendingLocalEcho: false);
+        var laterRemote = state.EvaluateChatMessage(
+            "main",
+            "user",
+            "same text",
+            cutoff - 4_000,
+            hasPendingLocalEcho: false,
+            activeRunId: "new-run");
+
+        Assert.True(echo.Drop);
+        Assert.Same(start, echo.OpenedLifecycleStart);
+        Assert.False(laterRemote.Drop);
+    }
+
+    [Fact]
+    public void AttachmentOnlySubmission_ConfirmedSendOpensBufferedFallback()
+    {
+        var now = DateTimeOffset.UtcNow;
+        var cutoff = now.ToUnixTimeMilliseconds();
+        var fallbackTimestamp = cutoff - 5_000;
+        var state = new ChatResetState();
+        var generation = state.BeginReset("main", cutoff);
+        state.RegisterPendingLocalSubmission(
+            "main",
+            "attachment-only",
+            string.Empty,
+            generation,
+            state.LifecycleStartSequence,
+            now,
+            requiresEcho: false);
+        var fallback = Lifecycle(
+            "fallback_step",
+            "attachment-run",
+            DateTimeOffset.FromUnixTimeMilliseconds(
+                fallbackTimestamp));
+        Assert.True(state.EvaluateAgentEvent(fallback, "main").Drop);
+
+        var opened = state.RecordLocalSendWithoutRun(
+            "main",
+            generation,
+            lifecycleStartSequence: 0,
+            submissionId: "attachment-only");
+        var final = state.EvaluateChatMessage(
+            "main",
+            "assistant",
+            "attachment terminal",
+            fallbackTimestamp + 1,
+            hasPendingLocalEcho: false,
+            activeRunId: "attachment-run");
+
+        Assert.Same(fallback, opened);
+        Assert.False(final.Drop);
     }
 
     [Fact]

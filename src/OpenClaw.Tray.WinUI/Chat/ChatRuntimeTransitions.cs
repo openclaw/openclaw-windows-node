@@ -49,6 +49,7 @@ internal sealed record ChatAgentEventTransition(
     ChatEvent? MappedEvent,
     ChatToolMetadataWrite? ToolMetadata,
     ChatDataSnapshot[] Snapshots,
+    ChatOpenedLifecycleTransition? OpenedLifecycle,
     ChatRuntimeGeneration RuntimeGeneration);
 
 internal sealed record ChatToolMetadataWrite(
@@ -78,7 +79,8 @@ internal sealed record ChatRunTransition(
 internal sealed record ChatAgentEventGate(
     bool Process,
     bool ReloadHistory,
-    ChatTerminalEventDropReason? DroppedTerminalReason);
+    ChatTerminalEventDropReason? DroppedTerminalReason,
+    ChatOpenedLifecycleTransition? OpenedLifecycle);
 
 internal sealed record ChatHistoryCommitToken(
     string ThreadId,
