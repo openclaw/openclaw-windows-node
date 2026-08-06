@@ -73,9 +73,8 @@ public class WindowsNodeClient : WebSocketClientBase
         TaskCompletionSource<NodeInvokeSessionEnvelopeMode>> _protocolFeatureRequests = new();
     private Task<NodeInvokeSessionEnvelopeMode> _nodeInvokeSessionEnvelopeMode =
         Task.FromResult(NodeInvokeSessionEnvelopeMode.Authoritative);
+    private volatile bool _nodeInvokeSessionEnvelopeNegotiationComplete = true;
     private int _gatewayConnectionGeneration;
-    private readonly object _nodeInvokeEventDispatchLock = new();
-    private Task _nodeInvokeEventDispatch = Task.CompletedTask;
 
     // Events
     public event EventHandler<NodeInvokeRequest>? InvokeReceived;
@@ -354,18 +353,10 @@ public class WindowsNodeClient : WebSocketClientBase
                 await HandlePairingResolvedEventAsync(root, eventType);
                 break;
             case "node.invoke.request":
-                QueueNodeInvokeMessage(
-                    root.Clone(),
-                    QueuedNodeInvokeKind.Invoke,
-                    containerName: "payload",
-                    responseId: null);
+                await StartNodeInvokeEventAsync(root.Clone());
                 break;
             case "node.invoke.cancel":
-                QueueNodeInvokeMessage(
-                    root.Clone(),
-                    QueuedNodeInvokeKind.Cancel,
-                    containerName: "payload",
-                    responseId: null);
+                await HandleNodeInvokeCancelAsync(root, "payload", responseId: null);
                 break;
             case "health":
                 if (root.TryGetProperty("payload", out var payload))
@@ -466,67 +457,7 @@ public class WindowsNodeClient : WebSocketClientBase
         }
     }
     
-    private void QueueNodeInvokeMessage(
-        JsonElement root,
-        QueuedNodeInvokeKind kind,
-        string containerName,
-        string? responseId)
-    {
-        var envelopeModeTask = _nodeInvokeSessionEnvelopeMode;
-        var connectionGeneration = _gatewayConnectionGeneration;
-        lock (_nodeInvokeEventDispatchLock)
-        {
-            _nodeInvokeEventDispatch = _nodeInvokeEventDispatch
-                .ContinueWith(
-                    _ => DispatchNodeInvokeEventAsync(
-                        root,
-                        kind,
-                        containerName,
-                        responseId,
-                        envelopeModeTask,
-                        connectionGeneration),
-                    CancellationToken.None,
-                    TaskContinuationOptions.ExecuteSynchronously,
-                    TaskScheduler.Default)
-                .Unwrap();
-        }
-    }
-
-    private async Task DispatchNodeInvokeEventAsync(
-        JsonElement root,
-        QueuedNodeInvokeKind kind,
-        string containerName,
-        string? responseId,
-        Task<NodeInvokeSessionEnvelopeMode> envelopeModeTask,
-        int connectionGeneration)
-    {
-        try
-        {
-            var envelopeMode = await envelopeModeTask;
-            if (connectionGeneration != _gatewayConnectionGeneration)
-                return;
-
-            switch (kind)
-            {
-                case QueuedNodeInvokeKind.Invoke:
-                    // This returns after active-invocation registration and Task.Run handoff;
-                    // the next queued cancel is not serialized behind capability execution.
-                    await StartNodeInvokeEventAsync(root, envelopeMode);
-                    break;
-                case QueuedNodeInvokeKind.Cancel:
-                    await HandleNodeInvokeCancelAsync(root, containerName, responseId);
-                    break;
-            }
-        }
-        catch (Exception ex)
-        {
-            _logger.Error("Node invoke event dispatch failed", ex);
-        }
-    }
-
-    private async Task StartNodeInvokeEventAsync(
-        JsonElement root,
-        NodeInvokeSessionEnvelopeMode envelopeMode)
+    private async Task StartNodeInvokeEventAsync(JsonElement root)
     {
         var telemetry = new NodeToolInvocation(NodeToolTransport.Gateway);
         _logger.Info("[NODE] Received node.invoke.request event");
@@ -612,6 +543,7 @@ public class WindowsNodeClient : WebSocketClientBase
             }
         }
 
+        var envelopeMode = ResolveNodeInvokeSessionEnvelopeModeAtReceipt(payload);
         var sessionKey = ExtractGatewayNodeInvokeSessionKey(payload, args, envelopeMode);
         
         _logger.Info($"[NODE] Invoking command: {command}");
@@ -878,6 +810,10 @@ public class WindowsNodeClient : WebSocketClientBase
                 ? NodeInvokeSessionEnvelopeMode.Legacy
                 : NodeInvokeSessionEnvelopeMode.Authoritative;
             negotiation.TrySetResult(mode);
+            if (ReferenceEquals(_nodeInvokeSessionEnvelopeMode, negotiation.Task))
+            {
+                _nodeInvokeSessionEnvelopeNegotiationComplete = true;
+            }
             if (mode == NodeInvokeSessionEnvelopeMode.Legacy)
             {
                 _logger.Debug("[NODE] Gateway does not accept node protocol feature publication");
@@ -1010,6 +946,7 @@ public class WindowsNodeClient : WebSocketClientBase
         var negotiation = new TaskCompletionSource<NodeInvokeSessionEnvelopeMode>(
             TaskCreationOptions.RunContinuationsAsynchronously);
         _nodeInvokeSessionEnvelopeMode = negotiation.Task;
+        _nodeInvokeSessionEnvelopeNegotiationComplete = false;
         var request = new
         {
             type = "req",
@@ -1031,6 +968,10 @@ public class WindowsNodeClient : WebSocketClientBase
         {
             _protocolFeatureRequests.TryRemove(requestId, out _);
             negotiation.TrySetResult(NodeInvokeSessionEnvelopeMode.Authoritative);
+            if (ReferenceEquals(_nodeInvokeSessionEnvelopeMode, negotiation.Task))
+            {
+                _nodeInvokeSessionEnvelopeNegotiationComplete = true;
+            }
             // Only an explicit unknown-method response enables legacy attribution.
             // Transport failures keep omitted envelopes fail-closed.
             _logger.Warn($"[NODE] Failed to publish protocol features: {ex.Message}");
@@ -1047,6 +988,10 @@ public class WindowsNodeClient : WebSocketClientBase
         {
             _logger.Warn("[NODE] Protocol feature publication timed out; using fail-closed envelopes");
             negotiation.TrySetResult(NodeInvokeSessionEnvelopeMode.Authoritative);
+            if (ReferenceEquals(_nodeInvokeSessionEnvelopeMode, negotiation.Task))
+            {
+                _nodeInvokeSessionEnvelopeNegotiationComplete = true;
+            }
         }
     }
 
@@ -1054,18 +999,31 @@ public class WindowsNodeClient : WebSocketClientBase
     {
         if (!response.TryGetProperty("ok", out var ok) ||
             ok.ValueKind != JsonValueKind.False ||
-            !response.TryGetProperty("error", out var error) ||
-            error.ValueKind != JsonValueKind.Object)
+            !response.TryGetProperty("error", out var error))
         {
             return false;
         }
 
-        return error.TryGetProperty("code", out var code) &&
-            string.Equals(code.GetString(), "INVALID_REQUEST", StringComparison.OrdinalIgnoreCase) &&
-            error.TryGetProperty("message", out var message) &&
-            message.GetString()?.Contains(
-                "unknown method: node.protocolFeatures.update",
-                StringComparison.Ordinal) == true;
+        string? message;
+        if (error.ValueKind == JsonValueKind.String)
+        {
+            message = error.GetString();
+        }
+        else if (error.ValueKind == JsonValueKind.Object &&
+                 error.TryGetProperty("code", out var code) &&
+                 string.Equals(code.GetString(), "INVALID_REQUEST", StringComparison.OrdinalIgnoreCase) &&
+                 error.TryGetProperty("message", out var objectMessage))
+        {
+            message = objectMessage.GetString();
+        }
+        else
+        {
+            return false;
+        }
+
+        return message?.Contains(
+            "unknown method: node.protocolFeatures.update",
+            StringComparison.OrdinalIgnoreCase) == true;
     }
 
     private void TryStoreHandshakeDeviceToken(string token, string[]? scopes)
@@ -1362,11 +1320,7 @@ public class WindowsNodeClient : WebSocketClientBase
                 await HandleNodeInvokeAsync(root, id);
                 break;
             case "node.invoke.cancel":
-                QueueNodeInvokeMessage(
-                    root.Clone(),
-                    QueuedNodeInvokeKind.Cancel,
-                    containerName: "params",
-                    responseId: id);
+                await HandleNodeInvokeCancelAsync(root, "params", id);
                 break;
             case "ping":
                 await SendPongAsync(id);
@@ -1437,8 +1391,10 @@ public class WindowsNodeClient : WebSocketClientBase
             Id = requestId,
             Command = command,
             Args = args,
-            // Legacy request frames have no trusted gateway event envelope.
-            // Keep caller-controlled params out of approval/session correlation.
+            SessionKey = ExtractGatewayNodeInvokeSessionKey(
+                paramsEl,
+                args,
+                NodeInvokeSessionEnvelopeMode.Authoritative),
             Telemetry = telemetry
         };
         
@@ -1845,16 +1801,30 @@ public class WindowsNodeClient : WebSocketClientBase
         return null;
     }
 
+    private NodeInvokeSessionEnvelopeMode ResolveNodeInvokeSessionEnvelopeModeAtReceipt(
+        JsonElement envelope)
+    {
+        if (envelope.TryGetProperty("sessionKey", out _))
+        {
+            return NodeInvokeSessionEnvelopeMode.Authoritative;
+        }
+
+        // Before negotiation completes, the Gateway has not observed feature support and
+        // therefore sends the legacy nested binding. Preserve that receipt-time meaning.
+        if (!_nodeInvokeSessionEnvelopeNegotiationComplete)
+        {
+            return NodeInvokeSessionEnvelopeMode.Legacy;
+        }
+
+        return _nodeInvokeSessionEnvelopeMode.IsCompletedSuccessfully
+            ? _nodeInvokeSessionEnvelopeMode.Result
+            : NodeInvokeSessionEnvelopeMode.Authoritative;
+    }
+
     private enum NodeInvokeSessionEnvelopeMode
     {
         Authoritative,
         Legacy
-    }
-
-    private enum QueuedNodeInvokeKind
-    {
-        Invoke,
-        Cancel
     }
 
     private sealed record CommandDispatchEntry(
@@ -2048,9 +2018,6 @@ public class WindowsNodeClient : WebSocketClientBase
         _protocolFeatureRequests.Clear();
         _nodeInvokeSessionEnvelopeMode =
             Task.FromResult(NodeInvokeSessionEnvelopeMode.Authoritative);
-        lock (_nodeInvokeEventDispatchLock)
-        {
-            _nodeInvokeEventDispatch = Task.CompletedTask;
-        }
+        _nodeInvokeSessionEnvelopeNegotiationComplete = true;
     }
 }

@@ -512,8 +512,12 @@ public class WindowsNodeClientTests
         }
     }
 
-    [Fact]
-    public async Task HandleResponse_ProtocolFeatureError_DoesNotFailConnection()
+    [Theory]
+    [InlineData(
+        """{"code":"INVALID_REQUEST","message":"unknown method: node.protocolFeatures.update"}""")]
+    [InlineData(""""UnKnOwN MeThOd: node.protocolFeatures.update"""")]
+    public async Task HandleResponse_ProtocolFeatureUnknownMethod_DoesNotFailConnection(
+        string errorJson)
     {
         var dataPath = Path.Combine(Path.GetTempPath(), $"openclaw-node-test-{Guid.NewGuid():N}");
         Directory.CreateDirectory(dataPath);
@@ -551,10 +555,7 @@ public class WindowsNodeClientTests
                   "type": "res",
                   "id": "{{requestId}}",
                   "ok": false,
-                  "error": {
-                    "code": "INVALID_REQUEST",
-                    "message": "unknown method: node.protocolFeatures.update"
-                  }
+                  "error": {{errorJson}}
                 }
                 """);
 
@@ -2341,7 +2342,7 @@ public class WindowsNodeClientTests
     }
 
     [Fact]
-    public async Task CommandDispatch_ReqPath_DoesNotTrustParamsSessionKey()
+    public async Task CommandDispatch_ReqPath_UsesEnvelopeSessionKey()
     {
         var dataPath = Path.Combine(Path.GetTempPath(), $"openclaw-node-test-{Guid.NewGuid():N}");
         Directory.CreateDirectory(dataPath);
@@ -2369,7 +2370,7 @@ public class WindowsNodeClientTests
             await InvokeProcessMessageAsync(client, json);
             await cap.ExecutedTask.WaitAsync(TimeSpan.FromSeconds(5));
 
-            Assert.Null(cap.LastRequest?.SessionKey);
+            Assert.Equal("chat-thread-from-params", cap.LastRequest?.SessionKey);
         }
         finally
         {
@@ -2418,7 +2419,7 @@ public class WindowsNodeClientTests
     }
 
     [Fact]
-    public async Task CommandDispatch_ReqPath_DoesNotCreateTrustedSessionBinding()
+    public async Task CommandDispatch_ReqPath_EnvelopeSessionKeyOverridesArgs()
     {
         var dataPath = Path.Combine(Path.GetTempPath(), $"openclaw-node-test-{Guid.NewGuid():N}");
         Directory.CreateDirectory(dataPath);
@@ -2448,7 +2449,7 @@ public class WindowsNodeClientTests
             await InvokeProcessMessageAsync(client, json);
             await cap.ExecutedTask.WaitAsync(TimeSpan.FromSeconds(5));
 
-            Assert.Null(cap.LastRequest?.SessionKey);
+            Assert.Equal("trusted-session", cap.LastRequest?.SessionKey);
         }
         finally
         {
@@ -2651,7 +2652,7 @@ public class WindowsNodeClientTests
     }
 
     [Fact]
-    public async Task CommandDispatch_EventPath_WaitsForEnvelopeNegotiation()
+    public async Task CommandDispatch_EventPath_UsesLegacyBindingWhileNegotiationIsPending()
     {
         var dataPath = Path.Combine(Path.GetTempPath(), $"openclaw-node-test-{Guid.NewGuid():N}");
         Directory.CreateDirectory(dataPath);
@@ -2697,7 +2698,8 @@ public class WindowsNodeClientTests
                   }
                 }
                 """);
-            Assert.Equal(0, cap.ExecuteCount);
+            await cap.ExecutedTask.WaitAsync(TimeSpan.FromSeconds(5));
+            Assert.Equal("nested-session", cap.LastRequest?.SessionKey);
 
             await InvokeProcessMessageAsync(
                 client,
@@ -2709,9 +2711,6 @@ public class WindowsNodeClientTests
                   "payload": {}
                 }
                 """);
-            await cap.ExecutedTask.WaitAsync(TimeSpan.FromSeconds(5));
-
-            Assert.Null(cap.LastRequest?.SessionKey);
         }
         finally
         {
@@ -2721,7 +2720,7 @@ public class WindowsNodeClientTests
     }
 
     [Fact]
-    public async Task CommandDispatch_EventPath_PreservesCancelOrderingDuringNegotiation()
+    public async Task CommandDispatch_EventPath_DispatchesCancelDuringNegotiation()
     {
         var dataPath = Path.Combine(Path.GetTempPath(), $"openclaw-node-test-{Guid.NewGuid():N}");
         Directory.CreateDirectory(dataPath);
@@ -2765,6 +2764,7 @@ public class WindowsNodeClientTests
                   }
                 }
                 """);
+            await blocking.ExpectedEnteredTask.WaitAsync(TimeSpan.FromSeconds(5));
             await InvokeProcessMessageAsync(client, """
                 {
                   "type": "req",
@@ -2775,20 +2775,6 @@ public class WindowsNodeClientTests
                   }
                 }
                 """);
-            Assert.Equal(0, blocking.ExecuteCount);
-
-            await InvokeProcessMessageAsync(
-                client,
-                $$"""
-                {
-                  "type": "res",
-                  "id": "{{requestId}}",
-                  "ok": true,
-                  "payload": {}
-                }
-                """);
-
-            await blocking.ExpectedEnteredTask.WaitAsync(TimeSpan.FromSeconds(5));
             await blocking.AllCompletedTask.WaitAsync(TimeSpan.FromSeconds(5));
             Assert.Equal(1, blocking.ExecuteCount);
             var cancelResponseJson = await WaitForSentMessageAsync(
@@ -2800,6 +2786,17 @@ public class WindowsNodeClientTests
                     .GetProperty("payload")
                     .GetProperty("cancelled")
                     .GetBoolean());
+
+            await InvokeProcessMessageAsync(
+                client,
+                $$"""
+                {
+                  "type": "res",
+                  "id": "{{requestId}}",
+                  "ok": true,
+                  "payload": {}
+                }
+                """);
         }
         finally
         {
@@ -2809,8 +2806,12 @@ public class WindowsNodeClientTests
         }
     }
 
-    [Fact]
-    public async Task CommandDispatch_EventPath_PreservesLegacyArgsSessionKeyWithoutEnvelope()
+    [Theory]
+    [InlineData(
+        """{"code":"INVALID_REQUEST","message":"unknown method: node.protocolFeatures.update"}""")]
+    [InlineData(""""UnKnOwN MeThOd: node.protocolFeatures.update"""")]
+    public async Task CommandDispatch_EventPath_PreservesLegacyArgsSessionKeyWithoutEnvelope(
+        string errorJson)
     {
         var dataPath = Path.Combine(Path.GetTempPath(), $"openclaw-node-test-{Guid.NewGuid():N}");
         Directory.CreateDirectory(dataPath);
@@ -2849,10 +2850,7 @@ public class WindowsNodeClientTests
                   "type": "res",
                   "id": "{{requestId}}",
                   "ok": false,
-                  "error": {
-                    "code": "INVALID_REQUEST",
-                    "message": "unknown method: node.protocolFeatures.update"
-                  }
+                  "error": {{errorJson}}
                 }
                 """);
 
