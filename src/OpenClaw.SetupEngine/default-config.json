@@ -85,6 +85,8 @@
     "InstallUrl": null,
     // Pin gateway version (null = use GatewayLkgVersion.cs embedded LKG)
     "Version": null,
+    // Optional absolute Windows path to a local .tgz package. Setup copies only this file into WSL.
+    "LocalPackagePath": null,
     // Seconds to wait for gateway health endpoint before failing
     "HealthTimeoutSeconds": 90,
     // Config reload strategy: "hot" (no restart), "restart"

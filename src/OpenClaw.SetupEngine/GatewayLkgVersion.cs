@@ -9,7 +9,8 @@ public static class GatewayLkgVersion
 
     public static void ApplyToConfig(SetupConfig config)
     {
-        if (!string.IsNullOrWhiteSpace(config.Gateway.Version))
+        if (!string.IsNullOrWhiteSpace(config.Gateway.Version) ||
+            !string.IsNullOrWhiteSpace(config.Gateway.LocalPackagePath))
             return;
 
         if (!string.IsNullOrWhiteSpace(config.Gateway.InstallUrl) &&

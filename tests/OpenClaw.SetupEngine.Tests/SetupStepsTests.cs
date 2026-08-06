@@ -952,6 +952,82 @@ public class SetupStepsTests : IDisposable
     }
 
     [Fact]
+    public void InstallCli_BuildInstallCommand_AcceptsFilePackageSpecifier()
+    {
+        var command = InstallCliStep.BuildInstallCommand(
+            "https://openclaw.ai/install-cli.sh",
+            InstallCliStep.StagedLocalPackageReference);
+
+        Assert.Equal(
+            "curl -fsSL --proto '=https' --tlsv1.2 'https://openclaw.ai/install-cli.sh' | bash -s -- --version 'file:/var/lib/openclaw/setup-package/openclaw-current.tgz'",
+            command);
+    }
+
+    [Theory]
+    [InlineData("relative\\openclaw-current.tgz")]
+    [InlineData(@"D:\candidate\openclaw-current.zip")]
+    [InlineData(@"\\server\share\openclaw-current.tgz")]
+    public void InstallCli_LocalPackagePath_RejectsUnsafeShape(string path)
+    {
+        Assert.False(InstallCliStep.TryValidateLocalPackagePath(path, out _, out var error));
+        Assert.NotNull(error);
+    }
+
+    [Fact]
+    public async Task InstallCli_LocalPackage_StreamsBytesIntoWslAndVerifiesDigest()
+    {
+        var packagePath = Path.Combine(_tempDir, "openclaw-current.tgz");
+        await File.WriteAllBytesAsync(packagePath, [0, 1, 2, 3, 0xFF]);
+        var expectedHash = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(
+            await File.ReadAllBytesAsync(packagePath)));
+        var commands = new FakeCommandRunner(
+            _ => Ok(expectedHash.ToLowerInvariant()),
+            (_, command, _) => command == "openclaw --version"
+                ? Ok("2026.6.11")
+                : Ok());
+        var ctx = CreateContext(new SetupConfig
+        {
+            Gateway = new GatewayConfig { LocalPackagePath = packagePath }
+        }, commands);
+        ctx.DistroName = "test-distro";
+
+        var result = await new InstallCliStep().ExecuteAsync(ctx, CancellationToken.None);
+
+        Assert.True(result.IsSuccess);
+        var copy = Assert.Single(commands.DetailedCalls, call => call.StdinStreamLength != null);
+        Assert.Equal(5, copy.StdinStreamLength);
+        Assert.Contains(
+            copy.Arguments,
+            argument => argument.Contains(
+                "cat > /var/lib/openclaw/setup-package/openclaw-current.tgz",
+                StringComparison.Ordinal));
+        Assert.DoesNotContain(commands.Calls, call => call.Executable.Contains("powershell", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
+    public async Task InstallCli_LocalPackage_RejectsStagedDigestMismatch()
+    {
+        var packagePath = Path.Combine(_tempDir, "openclaw-current.tgz");
+        await File.WriteAllBytesAsync(packagePath, [1, 2, 3]);
+        var commands = new FakeCommandRunner(
+            _ => Ok(new string('0', 64)),
+            (_, _, _) => Ok());
+        var ctx = CreateContext(new SetupConfig
+        {
+            Gateway = new GatewayConfig { LocalPackagePath = packagePath }
+        }, commands);
+        ctx.DistroName = "test-distro";
+
+        var result = await new InstallCliStep().ExecuteAsync(ctx, CancellationToken.None);
+
+        Assert.False(result.IsSuccess);
+        Assert.Contains("changed while it was copied", result.Message);
+        Assert.Contains(
+            commands.WslCalls,
+            call => call.Command == "rm -rf -- /var/lib/openclaw/setup-package");
+    }
+
+    [Fact]
     public void InstallCli_BuildInstallCommand_EscapesSingleQuotesInUrlAndVersion()
     {
         var command = InstallCliStep.BuildInstallCommand("https://openclaw.ai/install-cli's.sh", "2026.5.22'a");
@@ -3694,7 +3770,7 @@ public class SetupStepsTests : IDisposable
     {
         public List<(string Executable, string[] Arguments)> Calls { get; } = [];
         public List<(string Executable, string[] Arguments, TimeSpan Timeout)> TimedCalls { get; } = [];
-        public List<(string Executable, string[] Arguments, string? StdinInput)> DetailedCalls { get; } = [];
+        public List<(string Executable, string[] Arguments, string? StdinInput, long? StdinStreamLength)> DetailedCalls { get; } = [];
         public List<(string DistroName, string Command, TimeSpan Timeout, string? User, bool InputViaStdin)> WslCalls { get; } = [];
         public List<IReadOnlyDictionary<string, string>?> WslEnvironments { get; } = [];
 
@@ -3705,11 +3781,12 @@ public class SetupStepsTests : IDisposable
             IReadOnlyDictionary<string, string>? environment = null,
             string? workingDirectory = null,
             string? stdinInput = null,
-            CancellationToken ct = default)
+            CancellationToken ct = default,
+            Stream? stdinStream = null)
         {
             Calls.Add((executable, arguments));
             TimedCalls.Add((executable, arguments, timeout));
-            DetailedCalls.Add((executable, arguments, stdinInput));
+            DetailedCalls.Add((executable, arguments, stdinInput, stdinStream?.CanSeek == true ? stdinStream.Length : null));
             return Task.FromResult(run(arguments));
         }
 

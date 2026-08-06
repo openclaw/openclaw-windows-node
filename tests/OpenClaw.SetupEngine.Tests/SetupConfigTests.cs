@@ -395,6 +395,26 @@ public class SetupConfigTests : IDisposable
     }
 
     [Fact]
+    public void SetupReviewSummary_DisclosesLocalGatewayPackageStaging()
+    {
+        var config = new SetupConfig
+        {
+            Gateway =
+            {
+                LocalPackagePath = @"D:\candidate packages\openclaw-current.tgz"
+            }
+        };
+
+        var summary = SetupReviewSummaryBuilder.Build(config);
+
+        Assert.Equal("Local package + HTTPS", summary.InstallerBadge);
+        Assert.Contains("Copies only the selected gateway package", summary.InstallerDescription);
+        Assert.Contains("HTTPS installer from openclaw.ai", summary.InstallerDescription);
+        Assert.Contains(InstallCliStep.StagedLocalPackageReference, summary.ExactCommands);
+        Assert.DoesNotContain(config.Gateway.LocalPackagePath, summary.ExactCommands);
+    }
+
+    [Fact]
     public void SetupReviewSummary_UsesDiscoveredTailnetSuffix()
     {
         var config = new SetupConfig

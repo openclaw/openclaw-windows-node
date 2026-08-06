@@ -22,10 +22,17 @@ public static class SetupReviewSummaryBuilder
         var gatewayDataPath = Path.Combine(dataDir ?? SetupContext.ResolveDataDir(), "gateways.json");
         var installUrl = config.Gateway.InstallUrl ?? GatewayLkgVersion.DefaultInstallUrl;
         var installerHost = TryGetHttpsHost(installUrl);
-        var installerDescription = installerHost is null
-            ? "Installer URL is not HTTPS; setup will stop before downloading anything."
-            : $"Fetched over HTTPS from {installerHost}; runs as a non-root {Display(config.Wsl.User, "openclaw")} user inside the instance.";
-        var installerBadge = installerHost is null ? "Invalid URL" : "HTTPS";
+        var usesLocalPackage = !string.IsNullOrWhiteSpace(config.Gateway.LocalPackagePath);
+        var installerDescription = usesLocalPackage
+            ? installerHost is null
+                ? "Installer URL is not HTTPS; setup will stop before copying or installing the selected local gateway package."
+                : $"Copies only the selected gateway package into the isolated WSL instance, then installs it with the HTTPS installer from {installerHost}."
+            : installerHost is null
+                ? "Installer URL is not HTTPS; setup will stop before downloading anything."
+                : $"Fetched over HTTPS from {installerHost}; runs as a non-root {Display(config.Wsl.User, "openclaw")} user inside the instance.";
+        var installerBadge = installerHost is null
+            ? "Invalid URL"
+            : usesLocalPackage ? "Local package + HTTPS" : "HTTPS";
         var isLanBind = gatewayBind.Equals("lan", StringComparison.OrdinalIgnoreCase);
         var tailscaleEnabled = config.Tailscale.Enabled;
         var tailnetDnsSuffix = config.Tailscale.TailnetDnsSuffix?.Trim().Trim('.');
@@ -43,9 +50,12 @@ public static class SetupReviewSummaryBuilder
             ? tailscaleEndpoint
             : isLanBind ? $"LAN:{gatewayPort}" : $"127.0.0.1:{gatewayPort}";
         var wslCommand = "wsl " + string.Join(' ', WslInstallSupport.BuildDirectInstallArgs(baseDistro, distroName, installPath));
-        var installCommand = string.IsNullOrWhiteSpace(config.Gateway.Version)
+        var requestedVersion = usesLocalPackage
+            ? InstallCliStep.StagedLocalPackageReference
+            : config.Gateway.Version;
+        var installCommand = string.IsNullOrWhiteSpace(requestedVersion)
             ? "curl -fsSL --proto '=https' --tlsv1.2 <install-url> | bash"
-            : $"curl -fsSL --proto '=https' --tlsv1.2 <install-url> | bash -s -- --version {config.Gateway.Version.Trim()}";
+            : $"curl -fsSL --proto '=https' --tlsv1.2 <install-url> | bash -s -- --version {requestedVersion.Trim()}";
 
         return new SetupReviewSummary(
             DistroTitle: $"Install an isolated {baseDistro} instance",

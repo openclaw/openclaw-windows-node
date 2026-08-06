@@ -29,34 +29,108 @@ on:
         default: false
         type: boolean
       windows_node_sha:
-        description: Immutable Windows node revision to test.
+        description: Immutable Windows node test-harness revision. Pass the same SHA used to call this workflow.
         required: true
         type: string
+    outputs:
+      outcome:
+        description: "Candidate E2E outcome: passed or protocol_mismatch."
+        value: ${{ jobs.setup-connect.outputs.outcome }}
 
 permissions:
   actions: read
   contents: read
+  id-token: write
 
 jobs:
   setup-connect:
     name: Setup, connect, and invoke candidate gateway
     runs-on: windows-latest
     timeout-minutes: 55
+    outputs:
+      outcome: ${{ steps.e2e.outputs.outcome }}
     steps:
-      - name: Validate immutable Windows node revision
+      - name: Validate reusable workflow inputs
         shell: pwsh
+        env:
+          INPUT_CANDIDATE_ARTIFACT_NAME: ${{ inputs.candidate_artifact_name }}
+          INPUT_CANDIDATE_SHA256: ${{ inputs.candidate_sha256 }}
+          INPUT_CANDIDATE_VERSION: ${{ inputs.candidate_version }}
+          INPUT_WINDOWS_NODE_RELEASE_TAG: ${{ inputs.windows_node_release_tag }}
+          INPUT_WINDOWS_NODE_RELEASE_SHA: ${{ inputs.windows_node_release_sha }}
+          INPUT_ALLOW_PROTOCOL_MISMATCH: ${{ inputs.allow_protocol_mismatch }}
+          INPUT_WINDOWS_NODE_SHA: ${{ inputs.windows_node_sha }}
         run: |
-          if ("${{ inputs.windows_node_sha }}" -notmatch '^[0-9a-f]{40}$') {
-            throw "windows_node_sha must be a full lowercase Git SHA."
+          $semVerCore = '[0-9]+\.[0-9]+\.[0-9]+(?:-[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?(?:\+[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?'
+          $semVerPattern = '^' + $semVerCore + '$'
+          $releaseTagPattern = '^v' + $semVerCore + '$'
+
+          if ($env:INPUT_CANDIDATE_ARTIFACT_NAME -notmatch '^[0-9A-Za-z][0-9A-Za-z._-]{0,127}$' -or
+              $env:INPUT_CANDIDATE_ARTIFACT_NAME -in '.', '..') {
+            throw "candidate_artifact_name must be a simple artifact name of at most 128 characters."
           }
-          if ("${{ inputs.candidate_sha256 }}" -notmatch '^[0-9a-f]{64}$') {
+          if ($env:INPUT_CANDIDATE_SHA256 -notmatch '^[0-9a-f]{64}$') {
             throw "candidate_sha256 must be a lowercase SHA-256."
           }
-          if ("${{ inputs.windows_node_release_sha }}" -notmatch '^[0-9a-f]{40}$') {
+          if ($env:INPUT_CANDIDATE_VERSION -notmatch $semVerPattern) {
+            throw "candidate_version must be a semantic version."
+          }
+          if ($env:INPUT_WINDOWS_NODE_RELEASE_TAG -notmatch $releaseTagPattern) {
+            throw "windows_node_release_tag must be an immutable semantic version tag."
+          }
+          if ($env:INPUT_WINDOWS_NODE_RELEASE_SHA -notmatch '^[0-9a-f]{40}$') {
             throw "windows_node_release_sha must be a full lowercase Git SHA."
           }
-          if ("${{ inputs.windows_node_release_tag }}" -notmatch '^v[0-9]+\.[0-9]+\.[0-9]+(?:[-.][A-Za-z0-9.-]+)?$') {
-            throw "windows_node_release_tag must be an immutable version tag."
+          if ($env:INPUT_ALLOW_PROTOCOL_MISMATCH -cnotin 'true', 'false') {
+            throw "allow_protocol_mismatch must be a boolean."
+          }
+          if ($env:INPUT_WINDOWS_NODE_SHA -notmatch '^[0-9a-f]{40}$') {
+            throw "windows_node_sha must be a full lowercase Git SHA."
+          }
+
+      - name: Bind test harness to called workflow revision
+        shell: pwsh
+        env:
+          EXPECTED_WINDOWS_NODE_SHA: ${{ inputs.windows_node_sha }}
+        run: |
+          if ([string]::IsNullOrWhiteSpace($env:ACTIONS_ID_TOKEN_REQUEST_URL) -or
+              [string]::IsNullOrWhiteSpace($env:ACTIONS_ID_TOKEN_REQUEST_TOKEN)) {
+            throw "GitHub OIDC identity is required to bind the test harness revision."
+          }
+
+          $audience = [Uri]::EscapeDataString("openclaw-windows-node-release-candidate-e2e")
+          $tokenResponse = Invoke-RestMethod `
+            -Uri "$($env:ACTIONS_ID_TOKEN_REQUEST_URL)&audience=$audience" `
+            -Headers @{ Authorization = "Bearer $($env:ACTIONS_ID_TOKEN_REQUEST_TOKEN)" }
+          if ($tokenResponse.value -isnot [string]) {
+            throw "GitHub OIDC identity response did not contain a token."
+          }
+
+          $segments = $tokenResponse.value -split '\.'
+          if ($segments.Count -ne 3) {
+            throw "GitHub OIDC identity response was not a JWT."
+          }
+          $payload = $segments[1].Replace("-", "+").Replace("_", "/")
+          switch ($payload.Length % 4) {
+            0 { }
+            2 { $payload += "==" }
+            3 { $payload += "=" }
+            default { throw "GitHub OIDC identity payload was not valid base64url." }
+          }
+
+          try {
+            $claimsJson = [Text.Encoding]::UTF8.GetString([Convert]::FromBase64String($payload))
+            $claims = $claimsJson | ConvertFrom-Json
+          } catch {
+            throw "GitHub OIDC identity payload was not valid JSON."
+          }
+
+          $expectedWorkflowRef = "openclaw/openclaw-windows-node/.github/workflows/release-candidate-e2e.yml@$($env:EXPECTED_WINDOWS_NODE_SHA)"
+          if ($claims.job_workflow_sha -isnot [string] -or
+              $claims.job_workflow_sha -cne $env:EXPECTED_WINDOWS_NODE_SHA -or
+              $claims.job_workflow_ref -isnot [string] -or
+              $claims.job_workflow_ref -cne $expectedWorkflowRef) {
+            throw "windows_node_sha must equal the immutable revision used to call this reusable workflow."
           }
 
       - name: Check out Windows node
@@ -75,6 +149,9 @@ jobs:
       - name: Verify candidate identity
         id: candidate
         shell: pwsh
+        env:
+          EXPECTED_CANDIDATE_SHA256: ${{ inputs.candidate_sha256 }}
+          EXPECTED_CANDIDATE_VERSION: ${{ inputs.candidate_version }}
         run: |
           $candidateDir = Join-Path $env:RUNNER_TEMP "openclaw-candidate"
           $tarball = Join-Path $candidateDir "openclaw-current.tgz"
@@ -84,12 +161,15 @@ jobs:
           }
 
           $actualHash = (Get-FileHash -LiteralPath $tarball -Algorithm SHA256).Hash.ToLowerInvariant()
-          if ($actualHash -ne "${{ inputs.candidate_sha256 }}") {
-            throw "Candidate tarball SHA-256 mismatch: expected ${{ inputs.candidate_sha256 }}, got $actualHash."
+          if ($actualHash -cne $env:EXPECTED_CANDIDATE_SHA256) {
+            throw "Candidate tarball SHA-256 mismatch: expected $($env:EXPECTED_CANDIDATE_SHA256), got $actualHash."
           }
 
           $metadata = Get-Content -LiteralPath $metadataPath -Raw | ConvertFrom-Json
-          if ($metadata.sha256 -ne "${{ inputs.candidate_sha256 }}" -or $metadata.version -ne "${{ inputs.candidate_version }}") {
+          if ($metadata.sha256 -isnot [string] -or
+              $metadata.version -isnot [string] -or
+              $metadata.sha256 -cne $env:EXPECTED_CANDIDATE_SHA256 -or
+              $metadata.version -cne $env:EXPECTED_CANDIDATE_VERSION) {
             throw "Candidate metadata does not match the caller's declared SHA-256 and version."
           }
 
@@ -100,25 +180,46 @@ jobs:
         shell: pwsh
         env:
           GH_TOKEN: ${{ github.token }}
+          EXPECTED_WINDOWS_NODE_RELEASE_TAG: ${{ inputs.windows_node_release_tag }}
+          EXPECTED_WINDOWS_NODE_RELEASE_SHA: ${{ inputs.windows_node_release_sha }}
         run: |
-          $releaseTag = "${{ inputs.windows_node_release_tag }}"
+          $releaseTag = $env:EXPECTED_WINDOWS_NODE_RELEASE_TAG
           $release = gh api "repos/openclaw/openclaw-windows-node/releases/tags/$releaseTag" | ConvertFrom-Json
-          if ($release.tag_name -ne $releaseTag -or $release.draft) {
+          if ($LASTEXITCODE -ne 0) {
+            throw "Could not resolve Windows-node release tag: $releaseTag"
+          }
+          if ($release.tag_name -cne $releaseTag -or $release.draft -or $null -eq $release.published_at) {
             throw "Windows-node release tag must resolve to a published release: $releaseTag"
           }
 
           $tagRef = gh api "repos/openclaw/openclaw-windows-node/git/ref/tags/$releaseTag" | ConvertFrom-Json
-          $releaseSha = $tagRef.object.sha
-          if ($tagRef.object.type -eq "tag") {
-            $releaseSha = (gh api "repos/openclaw/openclaw-windows-node/git/tags/$releaseSha" | ConvertFrom-Json).object.sha
+          if ($LASTEXITCODE -ne 0) {
+            throw "Could not resolve Windows-node tag ref: $releaseTag"
           }
-          if ($releaseSha -ne "${{ inputs.windows_node_release_sha }}") {
-            throw "Windows-node release tag revision mismatch: expected ${{ inputs.windows_node_release_sha }}, got $releaseSha."
+          $tagObject = $tagRef.object
+          $tagDepth = 0
+          while ($tagObject.type -eq "tag") {
+            if ($tagDepth -ge 5) {
+              throw "Windows-node release tag has too many annotated tag indirections."
+            }
+            $annotatedTag = gh api "repos/openclaw/openclaw-windows-node/git/tags/$($tagObject.sha)" | ConvertFrom-Json
+            if ($LASTEXITCODE -ne 0) {
+              throw "Could not dereference annotated Windows-node release tag."
+            }
+            $tagObject = $annotatedTag.object
+            $tagDepth++
+          }
+          if ($tagObject.type -ne "commit" -or $tagObject.sha -notmatch '^[0-9a-f]{40}$') {
+            throw "Windows-node release tag must resolve to a commit."
+          }
+          $releaseSha = $tagObject.sha
+          if ($releaseSha -cne $env:EXPECTED_WINDOWS_NODE_RELEASE_SHA) {
+            throw "Windows-node release tag revision mismatch: expected $($env:EXPECTED_WINDOWS_NODE_RELEASE_SHA), got $releaseSha."
           }
 
           $x64Assets = @($release.assets | Where-Object {
             $_.state -eq "uploaded" -and
-            $_.name -match '^OpenClawTray-.*-win-x64\\.zip$|^OpenClaw\\.Tray\\.WinUI_.*_x64\\.msix$' -and
+            $_.name -match '^OpenClawTray-[0-9A-Za-z.+-]+-win-x64\.zip$|^OpenClaw\.Tray\.WinUI_[0-9A-Za-z.+-]+_x64\.msix$' -and
             $_.digest -match '^sha256:[a-f0-9]{64}$'
           })
           $zipAssets = @($x64Assets | Where-Object { $_.name.EndsWith(".zip") })
@@ -128,7 +229,7 @@ jobs:
           } elseif ($zipAssets.Count -eq 0 -and $msixAssets.Count -eq 1) {
             $msixAssets[0]
           } else {
-            throw "Windows-node release must expose exactly one canonical hashed x64 ZIP or MSIX asset."
+            throw "Windows-node release must expose one canonical hashed x64 ZIP, or one x64 MSIX when no ZIP exists."
           }
 
           $assetDir = Join-Path $env:RUNNER_TEMP "windows-node-release"
@@ -144,7 +245,7 @@ jobs:
 
           $actualHash = (Get-FileHash -LiteralPath $assetPath -Algorithm SHA256).Hash.ToLowerInvariant()
           $expectedHash = $asset.digest -replace '^sha256:', ''
-          if ($actualHash -ne $expectedHash) {
+          if ($actualHash -cne $expectedHash) {
             throw "Official Windows-node release asset SHA-256 mismatch: expected $expectedHash, got $actualHash."
           }
 
@@ -166,9 +267,9 @@ jobs:
 
           "tray_exe=$($trayExecutables[0].FullName)" >> $env:GITHUB_OUTPUT
           "### Windows-node artifact under test" >> $env:GITHUB_STEP_SUMMARY
-          "- Release: `$releaseTag` at `$releaseSha`" >> $env:GITHUB_STEP_SUMMARY
-          "- Asset: `$($asset.name)`" >> $env:GITHUB_STEP_SUMMARY
-          "- SHA-256: `$actualHash`" >> $env:GITHUB_STEP_SUMMARY
+          ('- Release: `{0}` at `{1}`' -f $releaseTag, $releaseSha) >> $env:GITHUB_STEP_SUMMARY
+          ('- Asset: `{0}`' -f $asset.name) >> $env:GITHUB_STEP_SUMMARY
+          ('- SHA-256: `{0}`' -f $actualHash) >> $env:GITHUB_STEP_SUMMARY
 
       - name: Setup .NET 10
         uses: actions/setup-dotnet@v6
@@ -185,6 +286,7 @@ jobs:
           dotnet build tests/OpenClaw.E2ETests -c Debug -r win-x64 --no-restore
 
       - name: Run hosted candidate setup and node E2E
+        id: e2e
         shell: pwsh
         env:
           OPENCLAW_RUN_E2E: 1
@@ -192,9 +294,11 @@ jobs:
           OPENCLAW_E2E_GATEWAY_EXPECTED_VERSION: ${{ inputs.candidate_version }}
           OPENCLAW_E2E_TRAY_EXE: ${{ steps.windows_node_artifact.outputs.tray_exe }}
           OPENCLAW_E2E_PROTOCOL_MISMATCH_RESULT: ${{ runner.temp }}\\openclaw-e2e-protocol-mismatch.json
+          INPUT_ALLOW_PROTOCOL_MISMATCH: ${{ inputs.allow_protocol_mismatch }}
         run: |
           # GitHub-hosted Windows cannot exercise MXC/AppContainer containment.
           # MXC release proof belongs on an MXC-capable self-hosted runner and must reject skips.
+          Remove-Item -LiteralPath $env:OPENCLAW_E2E_PROTOCOL_MISMATCH_RESULT -Force -ErrorAction SilentlyContinue
           dotnet test tests/OpenClaw.E2ETests `
             --no-build `
             -c Debug `
@@ -204,25 +308,38 @@ jobs:
             --logger "trx;LogFileName=OpenClaw.E2ETests.release-candidate.trx" `
             --logger "console;verbosity=detailed" `
             --filter "FullyQualifiedName~OpenClaw.E2ETests.Setup.SetupAndConnectTests"
-          if ($LASTEXITCODE -ne 0) {
-            if ("${{ inputs.allow_protocol_mismatch }}" -ne "true") {
-              exit $LASTEXITCODE
+          $testExitCode = $LASTEXITCODE
+
+          $trxFiles = @(Get-ChildItem TestResults/ReleaseCandidateE2E -File -Filter "*.trx" -ErrorAction SilentlyContinue)
+          if ($trxFiles.Count -ne 1) {
+            throw "Windows-node E2E must emit exactly one TRX result."
+          }
+          [xml]$trx = Get-Content -LiteralPath $trxFiles[0].FullName -Raw
+          $executed = [int]$trx.TestRun.ResultSummary.Counters.executed
+          if ($executed -lt 1) {
+            throw "Windows-node E2E executed zero tests; refusing to record a release-candidate outcome."
+          }
+
+          if ($testExitCode -eq 0) {
+            "outcome=passed" >> $env:GITHUB_OUTPUT
+          } else {
+            if ($env:INPUT_ALLOW_PROTOCOL_MISMATCH -cne "true") {
+              exit $testExitCode
             }
 
-            $resultPath = Join-Path $env:RUNNER_TEMP "openclaw-e2e-protocol-mismatch.json"
+            $resultPath = $env:OPENCLAW_E2E_PROTOCOL_MISMATCH_RESULT
             if (-not (Test-Path -LiteralPath $resultPath)) {
               throw "Windows-node E2E failed without a structured protocol-mismatch result."
             }
             $result = Get-Content -LiteralPath $resultPath -Raw | ConvertFrom-Json
-            if ($result.schema_version -ne 1 -or $result.outcome -ne "protocol_mismatch" -or $result.phase -ne "fixture_initialization") {
+            if ($result.schema_version -ne 1 -or
+                $result.outcome -cne "protocol_mismatch" -or
+                $result.phase -cne "fixture_initialization" -or
+                $result.source -cnotin "app.status.nodeError", "openclaw-tray.log.node_rx_error_code" -or
+                $result.code -cne "PROTOCOL_MISMATCH") {
               throw "Windows-node E2E failed with an invalid protocol-mismatch result."
             }
 
-            $trxFiles = @(Get-ChildItem TestResults/ReleaseCandidateE2E -File -Filter "*.trx" -ErrorAction SilentlyContinue)
-            if ($trxFiles.Count -ne 1) {
-              throw "Windows-node E2E must emit exactly one TRX result before protocol mismatch can be accepted."
-            }
-            [xml]$trx = Get-Content -LiteralPath $trxFiles[0].FullName -Raw
             $outcomes = @($trx.TestRun.Results.UnitTestResult | ForEach-Object outcome)
             if ($outcomes.Count -eq 0 -or @($outcomes | Where-Object { $_ -ne "Failed" }).Count -ne 0) {
               throw "Windows-node E2E had outcomes beyond the expected protocol mismatch; refusing to hide unrelated failures."
@@ -230,6 +347,7 @@ jobs:
 
             "### Expected Windows-node protocol incompatibility" >> $env:GITHUB_STEP_SUMMARY
             "The released Windows-node artifact emitted a structured protocol_mismatch result against this gateway candidate." >> $env:GITHUB_STEP_SUMMARY
+            "outcome=protocol_mismatch" >> $env:GITHUB_OUTPUT
           }
 
       - name: Upload candidate E2E evidence

@@ -3,6 +3,7 @@ using System.Net;
 using System.Net.Http;
 using System.Net.Sockets;
 using System.Runtime.InteropServices;
+using System.Security.Cryptography;
 using System.Text.Json;
 using OpenClaw.Connection;
 using OpenClaw.Shared;
@@ -1260,6 +1261,10 @@ public sealed class ValidateWslLockdownStep : SetupStep
 
 public sealed class InstallCliStep : SetupStep
 {
+    internal const string StagedLocalPackageReference =
+        "file:/var/lib/openclaw/setup-package/openclaw-current.tgz";
+    private const string StagedLocalPackageDirectory = "/var/lib/openclaw/setup-package";
+
     public override string Id => "install-cli";
     public override string DisplayName => "Install OpenClaw CLI";
     public override RetryPolicy Retry => new(MaxAttempts: 2, InitialDelay: TimeSpan.FromSeconds(5));
@@ -1268,6 +1273,8 @@ public sealed class InstallCliStep : SetupStep
     {
         var distro = ctx.DistroName!;
         var user = ctx.Config.Wsl.User;
+        var requestedVersion = ctx.Config.Gateway.Version;
+        var localPackageStaged = false;
 
         // Download and run install script (URL configurable)
         var installUrl = ctx.Config.Gateway.InstallUrl ?? GatewayLkgVersion.DefaultInstallUrl;
@@ -1279,47 +1286,69 @@ public sealed class InstallCliStep : SetupStep
             return StepResult.Fail($"Installer URL must be HTTPS: {installUrl}");
         }
 
-        string installScript;
+        if (!string.IsNullOrWhiteSpace(ctx.Config.Gateway.LocalPackagePath))
+        {
+            var stageResult = await StageLocalPackageAsync(
+                ctx,
+                distro,
+                ctx.Config.Gateway.LocalPackagePath,
+                ct);
+            if (!stageResult.IsSuccess)
+                return stageResult;
+
+            requestedVersion = StagedLocalPackageReference;
+            localPackageStaged = true;
+        }
+
         try
         {
-            installScript = BuildInstallCommand(installUrl, ctx.Config.Gateway.Version);
-        }
-        catch (ArgumentException ex)
-        {
-            return StepResult.Fail(ex.Message);
-        }
-
-        var result = await ctx.Commands.RunInWslAsync(distro, installScript, TimeSpan.FromMinutes(5), ct: ct);
-
-        if (result.ExitCode != 0)
-            return StepResult.Fail($"CLI install failed (exit {result.ExitCode}): {result.Stderr}");
-
-        var verifyCommands = new (string Command, string? ExecutablePath)[]
-        {
-            ("openclaw --version", null),
-            ($"/home/{user}/.openclaw/bin/openclaw --version", $"/home/{user}/.openclaw/bin/openclaw"),
-            ("/opt/openclaw/bin/openclaw --version", "/opt/openclaw/bin/openclaw"),
-            ("/usr/local/bin/openclaw --version", "/usr/local/bin/openclaw")
-        };
-
-        foreach (var (cmd, executablePath) in verifyCommands)
-        {
-            var verify = await ctx.Commands.RunInWslAsync(distro, cmd, TimeSpan.FromSeconds(15), ct: ct);
-            if (verify.ExitCode == 0 && !string.IsNullOrWhiteSpace(verify.Stdout))
+            string installScript;
+            try
             {
-                if (executablePath != null)
-                {
-                    var pathResult = await EnsureCliOnDefaultPathAsync(ctx, distro, executablePath, ct);
-                    if (!pathResult.IsSuccess)
-                        return pathResult;
-                }
-
-                ctx.Logger.Info($"OpenClaw CLI version: {verify.Stdout.Trim()}");
-                return StepResult.Ok($"CLI installed: {verify.Stdout.Trim()}");
+                installScript = BuildInstallCommand(installUrl, requestedVersion);
             }
-        }
+            catch (ArgumentException ex)
+            {
+                return StepResult.Fail(ex.Message);
+            }
 
-        return StepResult.Fail("CLI installed but not found in any known location");
+            var result = await ctx.Commands.RunInWslAsync(distro, installScript, TimeSpan.FromMinutes(5), ct: ct);
+
+            if (result.ExitCode != 0)
+                return StepResult.Fail($"CLI install failed (exit {result.ExitCode}): {result.Stderr}");
+
+            var verifyCommands = new (string Command, string? ExecutablePath)[]
+            {
+                ("openclaw --version", null),
+                ($"/home/{user}/.openclaw/bin/openclaw --version", $"/home/{user}/.openclaw/bin/openclaw"),
+                ("/opt/openclaw/bin/openclaw --version", "/opt/openclaw/bin/openclaw"),
+                ("/usr/local/bin/openclaw --version", "/usr/local/bin/openclaw")
+            };
+
+            foreach (var (cmd, executablePath) in verifyCommands)
+            {
+                var verify = await ctx.Commands.RunInWslAsync(distro, cmd, TimeSpan.FromSeconds(15), ct: ct);
+                if (verify.ExitCode == 0 && !string.IsNullOrWhiteSpace(verify.Stdout))
+                {
+                    if (executablePath != null)
+                    {
+                        var pathResult = await EnsureCliOnDefaultPathAsync(ctx, distro, executablePath, ct);
+                        if (!pathResult.IsSuccess)
+                            return pathResult;
+                    }
+
+                    ctx.Logger.Info($"OpenClaw CLI version: {verify.Stdout.Trim()}");
+                    return StepResult.Ok($"CLI installed: {verify.Stdout.Trim()}");
+                }
+            }
+
+            return StepResult.Fail("CLI installed but not found in any known location");
+        }
+        finally
+        {
+            if (localPackageStaged)
+                await CleanupStagedLocalPackageAsync(ctx, distro, ct);
+        }
     }
 
     internal static string BuildInstallCommand(string installUrl, string? requestedVersion)
@@ -1334,6 +1363,139 @@ public sealed class InstallCliStep : SetupStep
 
         var escapedVersion = WslShellQuoting.EscapePosixSingleQuoteInner(trimmedVersion);
         return $"curl -fsSL --proto '=https' --tlsv1.2 '{escapedUrl}' | bash -s -- --version '{escapedVersion}'";
+    }
+
+    internal static bool TryValidateLocalPackagePath(
+        string localPackagePath,
+        out string normalizedPath,
+        out string? error)
+    {
+        normalizedPath = "";
+        error = null;
+
+        if (!Path.IsPathFullyQualified(localPackagePath) ||
+            !localPackagePath.EndsWith(".tgz", StringComparison.OrdinalIgnoreCase))
+        {
+            error = "Gateway.LocalPackagePath must name an absolute Windows .tgz file.";
+            return false;
+        }
+
+        var root = Path.GetPathRoot(localPackagePath);
+        if (string.IsNullOrWhiteSpace(root) || root.Length < 2 || root[1] != ':')
+        {
+            error = "Gateway.LocalPackagePath must be on a local Windows drive.";
+            return false;
+        }
+
+        try
+        {
+            normalizedPath = Path.GetFullPath(localPackagePath);
+            if (!File.Exists(normalizedPath))
+            {
+                error = "Gateway.LocalPackagePath does not exist.";
+                return false;
+            }
+
+            if (new FileInfo(normalizedPath).Length == 0)
+            {
+                error = "Gateway.LocalPackagePath must not be empty.";
+                return false;
+            }
+        }
+        catch (Exception ex) when (
+            ex is ArgumentException
+            or IOException
+            or NotSupportedException
+            or UnauthorizedAccessException)
+        {
+            normalizedPath = "";
+            error = $"Gateway.LocalPackagePath could not be read: {ex.Message}";
+            return false;
+        }
+
+        return true;
+    }
+
+    private static async Task<StepResult> StageLocalPackageAsync(
+        SetupContext ctx,
+        string distro,
+        string localPackagePath,
+        CancellationToken ct)
+    {
+        if (!TryValidateLocalPackagePath(localPackagePath, out var sourcePath, out var validationError))
+            return StepResult.Fail(validationError ?? "Gateway.LocalPackagePath is invalid.");
+
+        var prepare = await ctx.Commands.RunInWslAsync(
+            distro,
+            $"install -d -m 0755 {StagedLocalPackageDirectory}",
+            TimeSpan.FromSeconds(30),
+            ct: ct,
+            user: "root");
+        if (prepare.ExitCode != 0)
+            return StepResult.Fail($"Could not prepare local gateway package staging directory: {prepare.Stderr}");
+
+        var stagedPath = StagedLocalPackageReference["file:".Length..];
+        string sourceHash;
+        CommandResult copy;
+        try
+        {
+            sourceHash = ComputeSha256(sourcePath);
+            await using var source = File.OpenRead(sourcePath);
+            copy = await ctx.Commands.RunAsync(
+                WslConstants.WslExePath,
+                [
+                    "-d", distro,
+                    "-u", "root",
+                    "--", "bash", "-c",
+                    $"set -e; cat > {stagedPath}; chmod 0644 {stagedPath}; sha256sum {stagedPath} | cut -d ' ' -f1"
+                ],
+                TimeSpan.FromMinutes(2),
+                ct: ct,
+                stdinStream: source);
+        }
+        catch (Exception ex) when (
+            ex is IOException
+            or UnauthorizedAccessException)
+        {
+            await CleanupStagedLocalPackageAsync(ctx, distro, ct);
+            return StepResult.Fail($"Could not copy local gateway package into WSL: {ex.Message}");
+        }
+
+        if (copy.ExitCode != 0)
+        {
+            await CleanupStagedLocalPackageAsync(ctx, distro, ct);
+            return StepResult.Fail($"Could not copy local gateway package into WSL: {copy.Stderr}");
+        }
+
+        if (!string.Equals(sourceHash, copy.Stdout.Trim(), StringComparison.OrdinalIgnoreCase))
+        {
+            await CleanupStagedLocalPackageAsync(ctx, distro, ct);
+            return StepResult.Fail("Local gateway package changed while it was copied into WSL.");
+        }
+
+        ctx.Logger.Info("Copied verified local gateway package into the isolated WSL instance.");
+        return StepResult.Ok();
+    }
+
+    private static async Task CleanupStagedLocalPackageAsync(
+        SetupContext ctx,
+        string distro,
+        CancellationToken ct)
+    {
+        var cleanup = await ctx.Commands.RunInWslAsync(
+            distro,
+            $"rm -rf -- {StagedLocalPackageDirectory}",
+            TimeSpan.FromSeconds(15),
+            ct: ct,
+            user: "root");
+        if (cleanup.ExitCode != 0)
+            ctx.Logger.Warn($"Could not remove staged local gateway package: {cleanup.Stderr}");
+    }
+
+    private static string ComputeSha256(string path)
+    {
+        using var stream = File.OpenRead(path);
+        return Convert.ToHexString(SHA256.HashData(stream));
     }
 
     private static async Task<StepResult> EnsureCliOnDefaultPathAsync(

@@ -31,4 +31,16 @@ public sealed class GatewayLkgVersionTests
 
         Assert.Null(config.Gateway.Version);
     }
+
+    [Fact]
+    public void ApplyToConfig_DoesNotSetGatewayVersionForLocalPackage()
+    {
+        var config = new SetupConfig();
+        config.Gateway.Version = null;
+        config.Gateway.LocalPackagePath = @"D:\candidate\openclaw-current.tgz";
+
+        GatewayLkgVersion.ApplyToConfig(config);
+
+        Assert.Null(config.Gateway.Version);
+    }
 }

@@ -22,6 +22,8 @@ namespace OpenClaw.E2ETests.Setup;
 /// </summary>
 public sealed class E2ESetupFixture : IAsyncLifetime
 {
+    private const string AppStatusProtocolMismatchSource = "app.status.nodeError";
+    private const string TrayLogProtocolMismatchSource = "openclaw-tray.log.node_rx_error_code";
     private readonly Action<Dictionary<string, object>>? _settingsPatch;
 
     /// <summary>
@@ -50,6 +52,7 @@ public sealed class E2ESetupFixture : IAsyncLifetime
 
     private readonly string _configPath;
     private readonly string _distroName;
+    private readonly string? _candidateGatewayPackagePath;
     private readonly string? _expectedGatewayVersion;
     private readonly string? _protocolMismatchResultPath;
     private Process? _trayProcess;
@@ -100,6 +103,7 @@ public sealed class E2ESetupFixture : IAsyncLifetime
 
         // Write isolated config JSON
         _configPath = Path.Combine(DataDir, "e2e-config.json");
+        _candidateGatewayPackagePath = ResolveGatewayPackagePath();
         _expectedGatewayVersion = Environment.GetEnvironmentVariable("OPENCLAW_E2E_GATEWAY_EXPECTED_VERSION");
         _protocolMismatchResultPath = Environment.GetEnvironmentVariable("OPENCLAW_E2E_PROTOCOL_MISMATCH_RESULT");
         WriteConfig();
@@ -112,71 +116,63 @@ public sealed class E2ESetupFixture : IAsyncLifetime
         if (!E2ETestGate.IsEnabled)
             return;
 
-        try
+        // ── Phase 1: Run SetupEngine CLI ──
+        Log("Phase 1: Running SetupEngine CLI pipeline...");
+        var setupLogPath = Path.Combine(ArtifactDir, "setup-engine.jsonl");
+
+        Environment.SetEnvironmentVariable("OPENCLAW_TRAY_DATA_DIR", DataDir);
+        Environment.SetEnvironmentVariable("OPENCLAW_TRAY_APPDATA_DIR", DataDir);
+        Environment.SetEnvironmentVariable("OPENCLAW_TRAY_LOCALAPPDATA_DIR", LocalAppDataRoot);
+
+        var exitCode = await Program.Main([
+            "--config", _configPath,
+            "--headless",
+            "--rollback-on-failure",
+            "--log-path", setupLogPath
+        ]);
+
+        if (exitCode != 0)
         {
-            // ── Phase 1: Run SetupEngine CLI ──
-            Log("Phase 1: Running SetupEngine CLI pipeline...");
-            var setupLogPath = Path.Combine(ArtifactDir, "setup-engine.jsonl");
-
-            Environment.SetEnvironmentVariable("OPENCLAW_TRAY_DATA_DIR", DataDir);
-            Environment.SetEnvironmentVariable("OPENCLAW_TRAY_APPDATA_DIR", DataDir);
-            Environment.SetEnvironmentVariable("OPENCLAW_TRAY_LOCALAPPDATA_DIR", LocalAppDataRoot);
-
-            var exitCode = await Program.Main([
-                "--config", _configPath,
-                "--headless",
-                "--rollback-on-failure",
-                "--log-path", setupLogPath
-            ]);
-
-            if (exitCode != 0)
-            {
-                SetupError = $"SetupEngine CLI exited with code {exitCode}. Logs: {setupLogPath}";
-                CopyDataDirLogs();
-                throw new InvalidOperationException(SetupError);
-            }
-
-            Log("Phase 1 complete: pipeline succeeded.");
-
-            if (!string.IsNullOrWhiteSpace(_expectedGatewayVersion))
-                await VerifyGatewayVersionAsync(_expectedGatewayVersion);
-
-            // ── Phase 2: Verify artifacts ──
-            Log("Phase 2: Verifying artifacts...");
-            var settingsPath = Path.Combine(DataDir, "settings.json");
-            var gatewaysPath = Path.Combine(DataDir, "gateways.json");
-
-            if (!File.Exists(settingsPath))
-                throw new FileNotFoundException("settings.json not written by setup pipeline", settingsPath);
-            if (!File.Exists(gatewaysPath))
-                throw new FileNotFoundException("gateways.json not written by setup pipeline", gatewaysPath);
-
-            // Patch EnableMcpServer into settings (setup writes EnableNodeMode but not EnableMcpServer)
-            PatchSettingsForMcp(settingsPath);
-            Log("Phase 2 complete: artifacts verified, EnableMcpServer patched.");
-
-            // ── Phase 3: Spawn tray and wait for MCP ──
-            Log("Phase 3: Spawning tray app...");
-            McpPort = FindFreePort();
-            var exePath = LocateTrayExe();
-            _trayProcess = SpawnTray(exePath);
-            Log($"Tray spawned: PID={_trayProcess.Id}, MCP port={McpPort}");
-
-            Client = new McpClient(McpEndpoint);
-            await WaitForMcpReady();
-            Log("Phase 3 complete: MCP server ready.");
-
-            // ── Phase 4: Wait for gateway connection to reach Ready ──
-            Log("Phase 4: Waiting for tray gateway connection...");
-            await WaitForConnectionReady();
-            await WaitForNodeListReady();
-            Log("Phase 4 complete: tray fully connected and node list populated.");
+            SetupError = $"SetupEngine CLI exited with code {exitCode}. Logs: {setupLogPath}";
+            CopyDataDirLogs();
+            throw new InvalidOperationException(SetupError);
         }
-        catch (Exception ex)
-        {
-            RecordProtocolMismatchResult(ex);
-            throw;
-        }
+
+        Log("Phase 1 complete: pipeline succeeded.");
+
+        if (!string.IsNullOrWhiteSpace(_expectedGatewayVersion))
+            await VerifyGatewayVersionAsync(_expectedGatewayVersion);
+
+        // ── Phase 2: Verify artifacts ──
+        Log("Phase 2: Verifying artifacts...");
+        var settingsPath = Path.Combine(DataDir, "settings.json");
+        var gatewaysPath = Path.Combine(DataDir, "gateways.json");
+
+        if (!File.Exists(settingsPath))
+            throw new FileNotFoundException("settings.json not written by setup pipeline", settingsPath);
+        if (!File.Exists(gatewaysPath))
+            throw new FileNotFoundException("gateways.json not written by setup pipeline", gatewaysPath);
+
+        // Patch EnableMcpServer into settings (setup writes EnableNodeMode but not EnableMcpServer)
+        PatchSettingsForMcp(settingsPath);
+        Log("Phase 2 complete: artifacts verified, EnableMcpServer patched.");
+
+        // ── Phase 3: Spawn tray and wait for MCP ──
+        Log("Phase 3: Spawning tray app...");
+        McpPort = FindFreePort();
+        var exePath = LocateTrayExe();
+        _trayProcess = SpawnTray(exePath);
+        Log($"Tray spawned: PID={_trayProcess.Id}, MCP port={McpPort}");
+
+        Client = new McpClient(McpEndpoint);
+        await WaitForMcpReady();
+        Log("Phase 3 complete: MCP server ready.");
+
+        // ── Phase 4: Wait for gateway connection to reach Ready ──
+        Log("Phase 4: Waiting for tray gateway connection...");
+        await WaitForConnectionReady();
+        await WaitForNodeListReady();
+        Log("Phase 4 complete: tray fully connected and node list populated.");
     }
 
     public async Task DisposeAsync()
@@ -245,7 +241,9 @@ public sealed class E2ESetupFixture : IAsyncLifetime
 
     private void WriteConfig()
     {
-        var gatewayVersion = ResolveGatewayVersion();
+        var gatewayVersion = string.IsNullOrWhiteSpace(_candidateGatewayPackagePath)
+            ? GatewayLkgVersion.ResolveLkgVersion()
+            : null;
         var config = new
         {
             DistroName = _distroName,
@@ -282,7 +280,8 @@ public sealed class E2ESetupFixture : IAsyncLifetime
             },
             Gateway = new
             {
-                Version = gatewayVersion
+                Version = gatewayVersion,
+                LocalPackagePath = _candidateGatewayPackagePath
             }
         };
 
@@ -290,35 +289,37 @@ public sealed class E2ESetupFixture : IAsyncLifetime
         File.WriteAllText(_configPath, json);
     }
 
-    private static string ResolveGatewayVersion()
+    internal static string? ResolveGatewayPackagePath()
     {
         var candidatePackage = Environment.GetEnvironmentVariable("OPENCLAW_E2E_GATEWAY_PACKAGE_TGZ");
         if (string.IsNullOrWhiteSpace(candidatePackage))
-            return GatewayLkgVersion.ResolveLkgVersion();
+            return null;
 
+        return ValidateGatewayPackagePath(candidatePackage);
+    }
+
+    internal static string ValidateGatewayPackagePath(string candidatePackage)
+    {
         if (!Path.IsPathFullyQualified(candidatePackage) ||
             !candidatePackage.EndsWith(".tgz", StringComparison.OrdinalIgnoreCase) ||
             !File.Exists(candidatePackage))
         {
             throw new InvalidOperationException(
-                "OPENCLAW_E2E_GATEWAY_PACKAGE_TGZ must name an existing absolute .tgz file.");
+                "OPENCLAW_E2E_GATEWAY_PACKAGE_TGZ must name an existing absolute Windows .tgz file.");
         }
 
         var root = Path.GetPathRoot(candidatePackage);
         if (string.IsNullOrWhiteSpace(root) || root.Length < 2 || root[1] != ':')
             throw new InvalidOperationException(
-                "OPENCLAW_E2E_GATEWAY_PACKAGE_TGZ must be on a Windows drive mounted by WSL.");
+                "OPENCLAW_E2E_GATEWAY_PACKAGE_TGZ must be on a local Windows drive.");
 
-        var wslPath = "/mnt/" + char.ToLowerInvariant(root[0]) +
-                      candidatePackage[root.Length..].Replace('\\', '/');
-        return $"file:{wslPath}";
+        return Path.GetFullPath(candidatePackage);
     }
 
     private async Task VerifyGatewayVersionAsync(string expectedVersion)
     {
         var actual = await RunInWslAsync("openclaw --version", TimeSpan.FromSeconds(15));
-        if (actual.ExitCode != 0 ||
-            !actual.Stdout.Contains(expectedVersion, StringComparison.OrdinalIgnoreCase))
+        if (actual.ExitCode != 0 || !OutputMatchesExpectedGatewayVersion(actual.Stdout, expectedVersion))
         {
             throw new InvalidOperationException(
                 $"Candidate gateway version mismatch: expected {expectedVersion}, " +
@@ -328,44 +329,81 @@ public sealed class E2ESetupFixture : IAsyncLifetime
         Log($"Candidate gateway package verified: version={expectedVersion}");
     }
 
-    private void RecordProtocolMismatchResult(Exception error)
+    internal static bool OutputMatchesExpectedGatewayVersion(string output, string expectedVersion)
     {
-        if (string.IsNullOrWhiteSpace(_protocolMismatchResultPath) ||
-            !ContainsProtocolMismatch(error))
-        {
-            return;
-        }
+        const string semVerPattern =
+            @"(?<![0-9A-Za-z.+-])v?(?<version>[0-9]+\.[0-9]+\.[0-9]+(?:-[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?(?:\+[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?)(?![0-9A-Za-z.+-])";
+        var match = Regex.Match(output, semVerPattern, RegexOptions.CultureInvariant);
+        return match.Success &&
+               string.Equals(match.Groups["version"].Value, expectedVersion, StringComparison.Ordinal);
+    }
+
+    internal static bool IsExplicitProtocolMismatchNodeError(string? nodeError)
+    {
+        return !string.IsNullOrWhiteSpace(nodeError) &&
+               Regex.IsMatch(
+                   nodeError,
+                   @"(?<![A-Z0-9_])PROTOCOL_MISMATCH(?![A-Z0-9_])",
+                   RegexOptions.CultureInvariant);
+    }
+
+    internal static bool IsExplicitProtocolMismatchNodeResponseLogLine(string? line)
+    {
+        const string marker = "[NODE RX] ";
+        if (string.IsNullOrWhiteSpace(line))
+            return false;
+
+        var markerIndex = line.IndexOf(marker, StringComparison.Ordinal);
+        if (markerIndex < 0)
+            return false;
 
         try
         {
-            var parent = Path.GetDirectoryName(_protocolMismatchResultPath);
-            if (!string.IsNullOrWhiteSpace(parent))
-                Directory.CreateDirectory(parent);
-            File.WriteAllText(
-                _protocolMismatchResultPath,
-                JsonSerializer.Serialize(new
-                {
-                    schema_version = 1,
-                    outcome = "protocol_mismatch",
-                    phase = "fixture_initialization"
-                }));
-            Log("Recorded structured protocol-mismatch result for release validation.");
+            using var document = JsonDocument.Parse(line[(markerIndex + marker.Length)..]);
+            var root = document.RootElement;
+            return root.TryGetProperty("type", out var type) &&
+                   type.ValueKind == JsonValueKind.String &&
+                   type.GetString() == "res" &&
+                   root.TryGetProperty("ok", out var ok) &&
+                   ok.ValueKind == JsonValueKind.False &&
+                   root.TryGetProperty("error", out var error) &&
+                   error.ValueKind == JsonValueKind.Object &&
+                   error.TryGetProperty("code", out var code) &&
+                   code.ValueKind == JsonValueKind.String &&
+                   code.GetString() == "PROTOCOL_MISMATCH";
         }
-        catch (Exception writeError)
+        catch (JsonException)
         {
-            Log($"Warning: could not record protocol-mismatch result: {writeError.Message}");
+            return false;
         }
     }
 
-    private static bool ContainsProtocolMismatch(Exception error)
+    private bool HasExplicitProtocolMismatchNodeResponseLog()
     {
-        for (var current = error; current is not null; current = current.InnerException)
-        {
-            if (current.Message.Contains("PROTOCOL_MISMATCH", StringComparison.Ordinal))
-                return true;
-        }
+        var logPath = Path.Combine(DataDir, "openclaw-tray.log");
+        return File.Exists(logPath) &&
+               File.ReadLines(logPath).Any(IsExplicitProtocolMismatchNodeResponseLogLine);
+    }
 
-        return false;
+    private void RecordProtocolMismatchResult(string source)
+    {
+        if (string.IsNullOrWhiteSpace(_protocolMismatchResultPath))
+            return;
+
+        var parent = Path.GetDirectoryName(_protocolMismatchResultPath);
+        if (!string.IsNullOrWhiteSpace(parent))
+            Directory.CreateDirectory(parent);
+        File.WriteAllText(
+            _protocolMismatchResultPath,
+            JsonSerializer.Serialize(new
+            {
+                schema_version = 1,
+                outcome = "protocol_mismatch",
+                phase = "fixture_initialization",
+                source,
+                code = "PROTOCOL_MISMATCH"
+            }));
+        Log($"Recorded structured protocol-mismatch result from {source}.");
     }
 
     private void PatchSettingsForMcp(string settingsPath)
@@ -460,6 +498,7 @@ public sealed class E2ESetupFixture : IAsyncLifetime
         string lastStatus = "unknown";
         bool lastNodeConnected = false;
         bool lastNodePaired = false;
+        string? lastNodeError = null;
 
         while (DateTime.UtcNow < deadline)
         {
@@ -471,6 +510,14 @@ public sealed class E2ESetupFixture : IAsyncLifetime
                     $"Last status: {lastStatus}, nodeConnected: {lastNodeConnected}. Logs: {ArtifactDir}");
             }
 
+            if (HasExplicitProtocolMismatchNodeResponseLog())
+            {
+                RecordProtocolMismatchResult(TrayLogProtocolMismatchSource);
+                CopyDataDirLogs();
+                throw new ReleaseProtocolMismatchException(
+                    "Released tray logged a node response with gateway error code PROTOCOL_MISMATCH.");
+            }
+
             try
             {
                 using var doc = await Client!.CallToolExpectSuccessAsync("app.status");
@@ -478,12 +525,28 @@ public sealed class E2ESetupFixture : IAsyncLifetime
                 lastStatus = root.GetProperty("connectionStatus").GetString() ?? "null";
                 lastNodeConnected = root.TryGetProperty("nodeConnected", out var nc) && nc.GetBoolean();
                 lastNodePaired = root.TryGetProperty("nodePaired", out var np) && np.GetBoolean();
+                lastNodeError = root.TryGetProperty("nodeError", out var nodeError) &&
+                                nodeError.ValueKind == JsonValueKind.String
+                    ? nodeError.GetString()
+                    : null;
+
+                if (IsExplicitProtocolMismatchNodeError(lastNodeError))
+                {
+                    RecordProtocolMismatchResult(AppStatusProtocolMismatchSource);
+                    CopyDataDirLogs();
+                    throw new ReleaseProtocolMismatchException(
+                        "Released tray reported gateway error code PROTOCOL_MISMATCH in app.status nodeError.");
+                }
 
                 Log($"Connection poll: status={lastStatus}, nodeConnected={lastNodeConnected}, nodePaired={lastNodePaired}");
 
                 // Accept Connected or Ready when node is confirmed connected+paired
                 if ((lastStatus is "Ready" or "Connected") && lastNodeConnected && lastNodePaired)
                     return;
+            }
+            catch (ReleaseProtocolMismatchException)
+            {
+                throw;
             }
             catch (Exception ex)
             {
@@ -497,7 +560,8 @@ public sealed class E2ESetupFixture : IAsyncLifetime
         CopyDataDirLogs();
         throw new TimeoutException(
             $"Tray never reached connected state within {timeout?.TotalSeconds ?? 90}s. Last: status={lastStatus}, " +
-            $"nodeConnected={lastNodeConnected}, nodePaired={lastNodePaired}. Logs: {ArtifactDir}");
+            $"nodeConnected={lastNodeConnected}, nodePaired={lastNodePaired}, nodeErrorPresent={!string.IsNullOrWhiteSpace(lastNodeError)}. " +
+            $"Logs: {ArtifactDir}");
     }
 
     public async Task WaitForNodeListReady(TimeSpan? timeout = null)
@@ -564,6 +628,7 @@ public sealed class E2ESetupFixture : IAsyncLifetime
         psi.Environment["OPENCLAW_TRAY_LOCALAPPDATA_DIR"] = LocalAppDataRoot;
         psi.Environment["OPENCLAW_MCP_PORT"] = McpPort.ToString();
         psi.Environment["OPENCLAW_SUPPRESS_EXTERNAL_BROWSER"] = "1";
+        psi.Environment.Remove("OPENCLAW_E2E_PROTOCOL_MISMATCH_RESULT");
 
         var p = Process.Start(psi)
             ?? throw new InvalidOperationException("Failed to start tray app process");
@@ -839,6 +904,8 @@ public sealed class E2ESetupFixture : IAsyncLifetime
         value = default;
         return false;
     }
+
+    private sealed class ReleaseProtocolMismatchException(string message) : Exception(message);
 
     private static string SanitizeForLog(string value)
     {

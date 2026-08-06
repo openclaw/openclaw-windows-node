@@ -117,6 +117,7 @@ rerun setup with a supported new name.
     "Bind": "loopback",
     "InstallUrl": null,
     "Version": null,
+    "LocalPackagePath": null,
     "HealthTimeoutSeconds": 90,
     "ReloadMode": "hot",
     "AuthMode": "token",
