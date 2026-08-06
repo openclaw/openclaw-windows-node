@@ -705,22 +705,34 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
                 if (kind is null)
                     continue;
 
+                var itemSemanticCallId = ReadFirstString(
+                    item,
+                    "tool_call_id",
+                    "toolCallId",
+                    "tool_use_id",
+                    "toolUseId");
+                var messageSemanticCallId = ReadFirstString(
+                    message,
+                    "tool_call_id",
+                    "toolCallId",
+                    "tool_use_id",
+                    "toolUseId");
+                var callId = kind == ChatToolContentKind.Call
+                    ? ReadFirstString(
+                        item,
+                        "id",
+                        "tool_call_id",
+                        "toolCallId",
+                        "tool_use_id",
+                        "toolUseId")
+                        ?? messageSemanticCallId
+                    : itemSemanticCallId
+                        ?? messageSemanticCallId
+                        ?? ReadFirstString(item, "id");
                 blocks.Add(new ChatToolContentInfo
                 {
                     Kind = kind.Value,
-                    CallId = ReadFirstString(
-                            item,
-                            "id",
-                            "tool_call_id",
-                            "toolCallId",
-                            "tool_use_id",
-                            "toolUseId")
-                        ?? ReadFirstString(
-                            message,
-                            "tool_call_id",
-                            "toolCallId",
-                            "tool_use_id",
-                            "toolUseId"),
+                    CallId = callId,
                     ToolName = ReadFirstString(item, "name")
                         ?? ReadFirstString(message, "toolName", "tool_name")
                         ?? "tool",

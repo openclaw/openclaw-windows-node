@@ -5927,6 +5927,92 @@ public class OpenClawChatDataProviderTests
         Assert.Equal("/workspace", entry.ToolOutput);
     }
 
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task LoadHistoryAsync_AbortedUserBeforeToolFirstAssistant_SuppressesEntireAssistantMessage(
+        bool includeTrailingText)
+    {
+        var tool = new ChatToolContentInfo
+        {
+            Kind = ChatToolContentKind.Call,
+            CallId = "call-1",
+            ToolName = "exec",
+            Args = JsonSerializer.Deserialize<JsonElement>("""{"command":"pwd"}"""),
+        };
+        var contentParts = new List<ChatMessageContentPartInfo>
+        {
+            new()
+            {
+                Kind = ChatMessageContentPartKind.Tool,
+                Tool = tool,
+            },
+        };
+        if (includeTrailingText)
+        {
+            contentParts.Add(new ChatMessageContentPartInfo
+            {
+                Kind = ChatMessageContentPartKind.Text,
+                Text = "partial answer",
+            });
+        }
+
+        var (bridge, provider, snapshots, _) = CreateProvider(new[] { MainSession() });
+        MarkPersistedMessageAborted(provider, "main", "aborted-user");
+        bridge.HistoryBehavior = _ => Task.FromResult(new ChatHistoryInfo
+        {
+            SessionKey = "main",
+            Messages =
+            [
+                new ChatMessageInfo
+                {
+                    Role = "user",
+                    Text = "run it",
+                    State = "final",
+                    Ts = 1,
+                    OpenClawId = "aborted-user",
+                },
+                new ChatMessageInfo
+                {
+                    Role = "assistant",
+                    Text = includeTrailingText ? "partial answer" : string.Empty,
+                    State = "final",
+                    Ts = 2,
+                    ToolContent = [tool],
+                    ContentParts = contentParts,
+                },
+                new ChatMessageInfo
+                {
+                    Role = "assistant",
+                    Text = "next response",
+                    State = "final",
+                    Ts = 3,
+                },
+            ],
+        });
+
+        await provider.LoadHistoryAsync("main");
+
+        Assert.Collection(
+            snapshots[^1].Timelines["main"].Entries,
+            entry =>
+            {
+                Assert.Equal(ChatTimelineItemKind.User, entry.Kind);
+                Assert.Equal("run it", entry.Text);
+            },
+            entry =>
+            {
+                Assert.Equal(ChatTimelineItemKind.Status, entry.Kind);
+                Assert.Equal("Response was stopped", entry.Text);
+                Assert.Equal(ChatTone.Warning, entry.Tone);
+            },
+            entry =>
+            {
+                Assert.Equal(ChatTimelineItemKind.Assistant, entry.Kind);
+                Assert.Equal("next response", entry.Text);
+            });
+    }
+
     [Fact]
     public async Task LoadHistoryAsync_InterleavedContentParts_PreserveChronologyAndCorrelation()
     {
@@ -10123,6 +10209,19 @@ public class OpenClawChatDataProviderTests
             System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic);
         Assert.NotNull(field);
         return Assert.IsAssignableFrom<ISet<string>>(field.GetValue(provider));
+    }
+
+    private static void MarkPersistedMessageAborted(
+        OpenClawChatDataProvider provider,
+        string threadId,
+        string messageId)
+    {
+        var field = typeof(OpenClawChatDataProvider).GetField(
+            "_persistedAbortedIds",
+            System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic);
+        Assert.NotNull(field);
+        var abortedIds = Assert.IsType<Dictionary<string, HashSet<string>>>(field.GetValue(provider));
+        abortedIds[threadId] = [messageId];
     }
 
     private static bool HasFailedQueuedMessage(ChatDataSnapshot snapshot, string threadId, string text) =>

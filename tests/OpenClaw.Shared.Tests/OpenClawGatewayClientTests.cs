@@ -1261,6 +1261,82 @@ public class OpenClawGatewayClientTests
     }
 
     [Theory]
+    [InlineData("tool_call_id")]
+    [InlineData("tool_use_id")]
+    public void ParseChatHistoryPayload_ToolResult_PrefersSemanticCallReference(string referenceProperty)
+    {
+        var helper = new GatewayClientTestHelper();
+
+        var history = helper.ParseChatHistoryPayload($$"""
+        {
+          "messages": [
+            {
+              "role": "assistant",
+              "content": [
+                {
+                  "type": "tool_use",
+                  "id": "call-1",
+                  "tool_call_id": "not-the-definition-id",
+                  "name": "exec",
+                  "input": { "command": "pwd" }
+                }
+              ],
+              "timestamp": 1
+            },
+            {
+              "role": "toolResult",
+              "toolCallId": "message-level-id",
+              "content": [
+                {
+                  "type": "tool_result",
+                  "id": "result-block-id",
+                  "{{referenceProperty}}": "call-1",
+                  "name": "exec",
+                  "content": "/workspace"
+                }
+              ],
+              "timestamp": 2
+            }
+          ]
+        }
+        """);
+
+        Assert.Equal("call-1", Assert.Single(history.Messages[0].ToolContent).CallId);
+        Assert.Equal("call-1", Assert.Single(history.Messages[1].ToolContent).CallId);
+    }
+
+    [Theory]
+    [InlineData("toolCallId")]
+    [InlineData("toolUseId")]
+    public void ParseChatHistoryPayload_ToolResult_PrefersMessageCallReferenceOverBlockId(
+        string referenceProperty)
+    {
+        var helper = new GatewayClientTestHelper();
+
+        var history = helper.ParseChatHistoryPayload($$"""
+        {
+          "messages": [
+            {
+              "role": "toolResult",
+              "{{referenceProperty}}": "call-1",
+              "content": [
+                {
+                  "type": "tool_result",
+                  "id": "result-block-id",
+                  "name": "exec",
+                  "content": "/workspace"
+                }
+              ],
+              "timestamp": 2
+            }
+          ]
+        }
+        """);
+
+        Assert.Equal("call-1", Assert.Single(history.Messages[0].ToolContent).CallId);
+    }
+
+    [Theory]
     [InlineData("toolResult")]
     [InlineData("tool_result")]
     public void ParseChatHistoryPayload_StringToolResult_PreservesCallId(string role)

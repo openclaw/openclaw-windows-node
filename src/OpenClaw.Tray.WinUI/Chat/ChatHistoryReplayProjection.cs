@@ -6,7 +6,7 @@ internal sealed record ChatHistoryReplayPart(
     ChatMessageInfo Message,
     string Text,
     IReadOnlyList<ChatToolContentInfo> ToolContent,
-    bool IsFirstTextPart);
+    bool IsFirstPart);
 
 internal static class ChatHistoryReplayProjection
 {
@@ -21,11 +21,11 @@ internal static class ChatHistoryReplayProjection
                     message,
                     message.Text ?? string.Empty,
                     message.ToolContent,
-                    IsFirstTextPart: true);
+                    IsFirstPart: true);
                 continue;
             }
 
-            var isFirstTextPart = true;
+            var isFirstPart = true;
             foreach (var part in message.ContentParts)
             {
                 if (part.Kind == ChatMessageContentPartKind.Text)
@@ -34,8 +34,8 @@ internal static class ChatHistoryReplayProjection
                         message,
                         part.Text ?? string.Empty,
                         Array.Empty<ChatToolContentInfo>(),
-                        isFirstTextPart);
-                    isFirstTextPart = false;
+                        isFirstPart);
+                    isFirstPart = false;
                 }
                 else if (part.Tool is { } tool)
                 {
@@ -43,7 +43,8 @@ internal static class ChatHistoryReplayProjection
                         message,
                         string.Empty,
                         new[] { tool },
-                        IsFirstTextPart: false);
+                        isFirstPart);
+                    isFirstPart = false;
                 }
             }
         }

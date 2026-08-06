@@ -1167,10 +1167,18 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
                 var attachmentMatcher = CreateAttachmentMetaMatcher(history.SessionId, threadId);
                 var pendingUnkeyedToolCalls = new Queue<string>();
                 var syntheticToolCallSequence = 0;
+                ChatMessageInfo? suppressedAbortedAssistant = null;
 
                 foreach (var replayPart in ChatHistoryReplayProjection.Project(ordered))
                 {
                     var msg = replayPart.Message;
+                    if (suppressedAbortedAssistant is not null)
+                    {
+                        if (ReferenceEquals(suppressedAbortedAssistant, msg))
+                            continue;
+                        suppressedAbortedAssistant = null;
+                    }
+
                     var roleLower = msg.Role?.ToLowerInvariant() ?? "";
                     var rawText = replayPart.Text;
                     var ts = msg.Ts > 0
@@ -1195,9 +1203,7 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
                     var text = TruncateForChatEntry(EscapeUntrustedAttachmentMarkerLines(rawText));
                     if (roleLower == "user")
                         text = RehydrateAttachmentMarkers(attachmentMatcher, text, msg.Ts);
-
                     var hasStructuredToolContent = replayPart.ToolContent.Count > 0;
-                    if (string.IsNullOrEmpty(text) && !hasStructuredToolContent) continue;
 
                     // Check if this user message was aborted (persisted __openclaw.id match)
                     if (roleLower == "user")
@@ -1214,18 +1220,30 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
                         !string.Equals(msg.StopReason, "toolUse", StringComparison.OrdinalIgnoreCase) &&
                         !string.Equals(msg.StopReason, "end_turn", StringComparison.OrdinalIgnoreCase);
 
-                    bool shouldMarkAborted = replayPart.IsFirstTextPart
-                        && ((roleLower == "assistant" && nextAssistantIsAborted) || gatewayAborted);
-                    if (roleLower == "assistant" && replayPart.IsFirstTextPart)
+                    var isFirstAssistantPart = roleLower == "assistant" && replayPart.IsFirstPart;
+                    var shouldSuppressAssistant = isFirstAssistantPart
+                        && (nextAssistantIsAborted || gatewayAborted);
+                    if (isFirstAssistantPart)
                         nextAssistantIsAborted = false;
-                    if (gatewayAborted && !replayPart.IsFirstTextPart && !string.IsNullOrEmpty(text))
+                    if (shouldSuppressAssistant)
+                    {
+                        Logger.Debug("[ChatHistory]   → routed: ABORTED (response was stopped)");
+                        rebuilt = ApplyAndCaptureMeta(
+                            rebuilt,
+                            new ChatStatusEvent("Response was stopped", ChatTone.Warning),
+                            msgMeta);
+                        rebuilt = ChatTimelineReducer.Apply(rebuilt, new ChatTurnEndEvent());
+                        suppressedAbortedAssistant = msg;
                         continue;
+                    }
+
+                    if (string.IsNullOrEmpty(text) && !hasStructuredToolContent) continue;
 
                     // Diagnostic: log shape (role + length + heuristic flags) only.
                     // Never log the message text — see HIGH 4 logging audit.
                     var isFlat = NativeToolProjector.LooksLikeFlattenedToolOutput(text);
                     var isSys  = NativeToolProjector.LooksLikeSystemControlNote(text);
-                    Logger.Debug($"[ChatHistory] role='{roleLower}' len={text.Length} flat={isFlat} sys={isSys} aborted={shouldMarkAborted}");
+                    Logger.Debug($"[ChatHistory] role='{roleLower}' len={text.Length} flat={isFlat} sys={isSys}");
 
                     if (!string.IsNullOrEmpty(text))
                     {
@@ -1277,18 +1295,6 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
                                     break;
                             }
 
-                            // If this assistant response was aborted, show a placeholder
-                            // instead of the actual (partial) content.
-                            if (shouldMarkAborted)
-                            {
-                                Logger.Debug($"[ChatHistory]   → routed: ABORTED (response was stopped)");
-                                rebuilt = ApplyAndCaptureMeta(
-                                    rebuilt,
-                                    new ChatStatusEvent("Response was stopped", ChatTone.Warning),
-                                    msgMeta);
-                                rebuilt = ChatTimelineReducer.Apply(rebuilt, new ChatTurnEndEvent());
-                                break;
-                            }
                             // ── Heuristic recovery for history-flattened tool calls ──
                             // The gateway strips ``stream:"item"`` / ``command_output``
                             // detail server-side when serving ``chat.history`` —
