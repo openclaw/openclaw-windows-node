@@ -131,7 +131,9 @@ internal sealed record ChatModelPatchLease(
     Task? Previous,
     TaskCompletionSource Completion);
 
-internal sealed record ChatDisposeTransition(long HistoryGeneration);
+internal sealed record ChatDisposeTransition(
+    long HistoryGeneration,
+    bool IsFirstDispose);
 
 internal sealed record ChatIncomingMessageGate(
     bool Drop,

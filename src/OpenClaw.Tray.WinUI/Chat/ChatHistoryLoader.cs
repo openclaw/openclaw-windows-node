@@ -142,6 +142,43 @@ internal sealed class ChatHistoryLoader : IDisposable
         return transition;
     }
 
+    internal void ApplyReset(string threadId, long resetGeneration)
+    {
+        lock (_gate)
+        {
+            RemoveOlderPendingReload(
+                _authoritativePending,
+                threadId,
+                resetGeneration);
+            RemoveOlderPendingReload(
+                _replacementPending,
+                threadId,
+                resetGeneration);
+            foreach (var token in _retryCounts.Keys
+                         .Where(candidate => string.Equals(
+                             candidate.ThreadId,
+                             threadId,
+                             StringComparison.Ordinal) &&
+                             candidate.ResetGeneration < resetGeneration)
+                         .ToArray())
+            {
+                _retryCounts.Remove(token);
+            }
+        }
+    }
+
+    private static void RemoveOlderPendingReload(
+        Dictionary<string, ChatHistoryCommitToken> pending,
+        string threadId,
+        long resetGeneration)
+    {
+        if (pending.TryGetValue(threadId, out var token) &&
+            token.ResetGeneration < resetGeneration)
+        {
+            pending.Remove(threadId);
+        }
+    }
+
     public void Dispose()
     {
         CancellationTokenSource cancellation;
@@ -184,6 +221,11 @@ internal sealed class ChatHistoryLoader : IDisposable
         {
             if (_disposed)
                 return;
+            if (expectedToken is { } expected &&
+                !_state.IsHistoryRequestCurrent(expected))
+            {
+                return;
+            }
             if (_inFlight.ContainsKey(threadId))
             {
                 if (replacement)

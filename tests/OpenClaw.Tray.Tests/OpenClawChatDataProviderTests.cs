@@ -225,6 +225,7 @@ public class OpenClawChatDataProviderTests
         public event EventHandler<AgentEventInfo>? AgentEventReceived;
         public event EventHandler<ModelsListInfo>? ModelsListUpdated;
         public bool IsDisposed { get; private set; }
+        public int DisposeCount { get; private set; }
 
         public EventHandler<ConnectionStatus>? CaptureStatusChangedHandlers() => StatusChanged;
         public void RaiseStatus(ConnectionStatus s) { CurrentStatus = s; StatusChanged?.Invoke(this, s); }
@@ -233,7 +234,11 @@ public class OpenClawChatDataProviderTests
         public void RaiseChat(ChatMessageInfo m) => ChatMessageReceived?.Invoke(this, m);
         public void RaiseAgent(AgentEventInfo a) => AgentEventReceived?.Invoke(this, a);
         public void RaiseModels(ModelsListInfo m) { CurrentModels = m; ModelsListUpdated?.Invoke(this, m); }
-        public void Dispose() => IsDisposed = true;
+        public void Dispose()
+        {
+            IsDisposed = true;
+            DisposeCount++;
+        }
     }
 
     private static (FakeBridge bridge, OpenClawChatDataProvider provider, List<ChatDataSnapshot> snapshots, List<ChatProviderNotification> notifications)
@@ -4086,6 +4091,17 @@ public class OpenClawChatDataProviderTests
 
         Assert.Empty(snapshots);
         Assert.True(bridge.IsDisposed);
+    }
+
+    [Fact]
+    public async Task DisposeAsync_ConcurrentCalls_DisposesBridgeOnce()
+    {
+        var (bridge, provider, _, _) = CreateProvider([MainSession()]);
+
+        await Task.WhenAll(Enumerable.Range(0, 8)
+            .Select(_ => provider.DisposeAsync().AsTask()));
+
+        Assert.Equal(1, bridge.DisposeCount);
     }
 
     [Fact]
@@ -10853,6 +10869,7 @@ public class OpenClawChatDataProviderTests
             bridge.RaiseStatus(ConnectionStatus.Connected);
             await provider.LoadHistoryAsync("main");
             var retry = Assert.Single(retries);
+            Assert.Equal(1, GetHistoryRetryEntryCount(provider));
 
             bridge.RaiseSessionCommandCompleted(new SessionCommandResult
             {
@@ -10860,10 +10877,89 @@ public class OpenClawChatDataProviderTests
                 Ok = true,
                 Key = "main",
             });
+            Assert.Equal(0, GetHistoryRetryEntryCount(provider));
             await retry();
 
             Assert.Equal(1, calls);
             Assert.Single(retries);
+        }
+    }
+
+    [Fact]
+    public async Task HistoryResetCleanup_PreservesCurrentGenerationPendingWork()
+    {
+        var (_, provider, _, _) = CreateProvider([MainSession()]);
+        await using (provider)
+        {
+            await provider.LoadAsync();
+            var state = GetConversationState(provider);
+            var loader = GetHistoryLoader(provider);
+            var oldToken = state.CaptureHistoryToken("main");
+            var reset = state.ResetThread(
+                "main",
+                new ChatProjectionContext(
+                    "main",
+                    HasHandshakeSnapshot: true));
+            var currentToken = state.CaptureHistoryToken("main");
+            var pending = GetHistoryPendingReloads(loader);
+            var retries = GetHistoryRetryEntries(loader);
+            pending["main"] = currentToken;
+            retries[oldToken] = 1;
+            retries[currentToken] = 1;
+
+            loader.ApplyReset("main", reset.ResetGeneration);
+
+            Assert.Equal(currentToken, pending["main"]);
+            Assert.False(retries.ContainsKey(oldToken));
+            Assert.Equal(1, retries[currentToken]);
+        }
+    }
+
+    [Fact]
+    public async Task HistoryRetry_StaleTokenCannotOccupyCurrentPendingSlot()
+    {
+        var retries = new List<Func<Task>>();
+        var (bridge, provider, _, _) = CreateProvider(
+            [MainSession()],
+            historyRetryScheduler: (_, _, retry) =>
+            {
+                retries.Add(retry);
+                return Task.CompletedTask;
+            });
+        bridge.HistoryBehavior = _ =>
+            throw new InvalidOperationException("history unavailable");
+        await using (provider)
+        {
+            await provider.LoadAsync();
+            bridge.RaiseStatus(ConnectionStatus.Connected);
+            await provider.LoadHistoryAsync("main", force: true);
+            var staleRetry = Assert.Single(retries);
+            var currentHistory = new TaskCompletionSource<ChatHistoryInfo>(
+                TaskCreationOptions.RunContinuationsAsynchronously);
+            var loader = GetHistoryLoader(provider);
+            bridge.HistoryBehavior = _ => currentHistory.Task;
+
+            var state = GetConversationState(provider);
+            var reset = state.ResetThread(
+                "main",
+                new ChatProjectionContext(
+                    "main",
+                    HasHandshakeSnapshot: true));
+            loader.ApplyReset("main", reset.ResetGeneration);
+            var currentLoad = provider.LoadHistoryAsync(
+                "main",
+                force: true,
+                authoritative: true);
+            await Task.Yield();
+
+            await staleRetry();
+
+            Assert.Empty(GetHistoryPendingReloads(loader));
+            currentHistory.SetResult(new ChatHistoryInfo
+            {
+                SessionKey = "main",
+            });
+            await currentLoad;
         }
     }
 
@@ -10917,6 +11013,69 @@ public class OpenClawChatDataProviderTests
             threadId,
             resetGeneration: 0,
             [messageId]));
+    }
+
+    private static int GetHistoryRetryEntryCount(OpenClawChatDataProvider provider)
+    {
+        var loaderField = typeof(OpenClawChatDataProvider).GetField(
+            "_historyLoader",
+            System.Reflection.BindingFlags.Instance |
+            System.Reflection.BindingFlags.NonPublic);
+        var loader = Assert.IsType<ChatHistoryLoader>(
+            loaderField?.GetValue(provider));
+        var retriesField = typeof(ChatHistoryLoader).GetField(
+            "_retryCounts",
+            System.Reflection.BindingFlags.Instance |
+            System.Reflection.BindingFlags.NonPublic);
+        var retries = Assert.IsAssignableFrom<System.Collections.IDictionary>(
+            retriesField?.GetValue(loader));
+        return retries.Count;
+    }
+
+    private static ChatConversationState GetConversationState(
+        OpenClawChatDataProvider provider)
+    {
+        var field = typeof(OpenClawChatDataProvider).GetField(
+            "_state",
+            System.Reflection.BindingFlags.Instance |
+            System.Reflection.BindingFlags.NonPublic);
+        return Assert.IsType<ChatConversationState>(
+            field?.GetValue(provider));
+    }
+
+    private static ChatHistoryLoader GetHistoryLoader(
+        OpenClawChatDataProvider provider)
+    {
+        var field = typeof(OpenClawChatDataProvider).GetField(
+            "_historyLoader",
+            System.Reflection.BindingFlags.Instance |
+            System.Reflection.BindingFlags.NonPublic);
+        return Assert.IsType<ChatHistoryLoader>(
+            field?.GetValue(provider));
+    }
+
+    private static Dictionary<string, ChatHistoryCommitToken>
+        GetHistoryPendingReloads(ChatHistoryLoader loader)
+    {
+        var field = typeof(ChatHistoryLoader).GetField(
+            "_authoritativePending",
+            System.Reflection.BindingFlags.Instance |
+            System.Reflection.BindingFlags.NonPublic);
+        return Assert.IsType<
+            Dictionary<string, ChatHistoryCommitToken>>(
+            field?.GetValue(loader));
+    }
+
+    private static Dictionary<ChatHistoryCommitToken, int>
+        GetHistoryRetryEntries(ChatHistoryLoader loader)
+    {
+        var field = typeof(ChatHistoryLoader).GetField(
+            "_retryCounts",
+            System.Reflection.BindingFlags.Instance |
+            System.Reflection.BindingFlags.NonPublic);
+        return Assert.IsType<
+            Dictionary<ChatHistoryCommitToken, int>>(
+            field?.GetValue(loader));
     }
 
     private static bool HasFailedQueuedMessage(ChatDataSnapshot snapshot, string threadId, string text) =>

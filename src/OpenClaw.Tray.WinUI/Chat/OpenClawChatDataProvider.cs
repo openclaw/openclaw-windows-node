@@ -992,9 +992,9 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
 
     public ValueTask DisposeAsync()
     {
-        if (_state.IsDisposed)
+        var transition = _state.DisposeState();
+        if (!transition.IsFirstDispose)
             return ValueTask.CompletedTask;
-        _state.DisposeState();
         _telemetry.FinishAll(
             ChatTelemetryOutcome.Canceled,
             ChatTurnTelemetryReason.Disposed);
@@ -1101,6 +1101,9 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
         var transition = _state.ResetThread(
             threadId,
             ProjectionContext());
+        _historyLoader.ApplyReset(
+            threadId,
+            transition.ResetGeneration);
         _telemetry.FinishThreadBeforeResetGeneration(
             threadId,
             transition.ResetGeneration,

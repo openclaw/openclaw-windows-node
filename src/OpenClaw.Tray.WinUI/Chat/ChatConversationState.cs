@@ -447,13 +447,17 @@ internal sealed class ChatConversationState
         lock (_gate)
         {
             if (_disposed)
-                return new(_history.ConnectionGeneration);
+                return new(
+                    _history.ConnectionGeneration,
+                    IsFirstDispose: false);
             _disposed = true;
             _history.AdvanceConnectionGeneration(clearLoaded: false);
             _queue.ClearForDispose();
             _lifecycle.ClearForDispose();
             _reset.ClearSubmittedEchoesForReconnect();
-            return new(_history.ConnectionGeneration);
+            return new(
+                _history.ConnectionGeneration,
+                IsFirstDispose: true);
         }
     }
 
