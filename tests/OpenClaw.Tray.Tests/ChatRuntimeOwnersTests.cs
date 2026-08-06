@@ -676,6 +676,79 @@ public sealed class ChatResetStateTests
     }
 
     [Fact]
+    public void AcceptedLifecycleFloor_NeverAuthorizesUserRoleFrames()
+    {
+        const string marker = "exact local echo";
+        var now = DateTimeOffset.UtcNow;
+        var cutoff = now.ToUnixTimeMilliseconds();
+        var lifecycleTimestamp = cutoff - 5_000;
+        var state = new ChatResetState();
+        var generation = state.BeginReset("main", cutoff);
+        state.RegisterPendingLocalSubmission(
+            "main",
+            "submission",
+            marker,
+            generation,
+            state.LifecycleStartSequence,
+            now);
+        var start = Lifecycle(
+            "start",
+            "current-run",
+            DateTimeOffset.FromUnixTimeMilliseconds(
+                lifecycleTimestamp));
+        Assert.True(state.EvaluateAgentEvent(start, "main").Drop);
+        var echo = state.EvaluateChatMessage(
+            "main",
+            "user",
+            marker,
+            lifecycleTimestamp + 1,
+            hasPendingLocalEcho: false);
+        Assert.Same(start, echo.OpenedLifecycleStart);
+
+        var delayedUser = state.EvaluateChatMessage(
+            "main",
+            "user",
+            "delayed unrelated user",
+            lifecycleTimestamp + 2,
+            hasPendingLocalEcho: false,
+            activeRunId: "current-run");
+        var delayedApproval = state.EvaluateChatMessage(
+            "main",
+            "user",
+            "/approve abcdef allow-once",
+            lifecycleTimestamp + 3,
+            hasPendingLocalEcho: false,
+            activeRunId: "current-run");
+        var delayedControl = state.EvaluateChatMessage(
+            "main",
+            "user",
+            "System: Reset session",
+            lifecycleTimestamp + 4,
+            hasPendingLocalEcho: false,
+            activeRunId: "current-run");
+        var sameRunAssistant = state.EvaluateChatMessage(
+            "main",
+            "assistant",
+            "current response",
+            lifecycleTimestamp + 5,
+            hasPendingLocalEcho: false,
+            activeRunId: "current-run");
+        var postCutoffUser = state.EvaluateChatMessage(
+            "main",
+            "user",
+            "fresh remote user",
+            cutoff + 1,
+            hasPendingLocalEcho: false,
+            activeRunId: "current-run");
+
+        Assert.True(delayedUser.Drop);
+        Assert.True(delayedApproval.Drop);
+        Assert.True(delayedControl.Drop);
+        Assert.False(sameRunAssistant.Drop);
+        Assert.False(postCutoffUser.Drop);
+    }
+
+    [Fact]
     public void AcceptedLifecycleFloor_ResetAndReconnectClearState()
     {
         var now = DateTimeOffset.UtcNow;
@@ -771,7 +844,7 @@ public sealed class ChatResetStateTests
     }
 
     [Fact]
-    public void MatchedSubmissionEcho_DoesNotConsumeLaterIdenticalRemoteMessage()
+    public void MatchedSubmissionEcho_DoesNotConsumeLaterIdenticalPostCutoffMessage()
     {
         var now = DateTimeOffset.UtcNow;
         var cutoff = now.ToUnixTimeMilliseconds();
@@ -800,7 +873,7 @@ public sealed class ChatResetStateTests
             "main",
             "user",
             "same text",
-            cutoff - 4_000,
+            cutoff + 1,
             hasPendingLocalEcho: false,
             activeRunId: "new-run");
 

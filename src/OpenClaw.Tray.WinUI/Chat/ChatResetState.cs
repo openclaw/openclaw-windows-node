@@ -286,11 +286,14 @@ internal sealed class ChatResetState
         }
         if (!_awaitingUserMessage.Contains(threadId))
         {
-            return new(
-                !IsTimestampAcceptedForRun(
+            var timestampAccepted = role == "user"
+                ? !IsPreResetTimestamp(threadId, timestampMs)
+                : IsTimestampAcceptedForRun(
                     threadId,
                     activeRunId,
-                    timestampMs),
+                    timestampMs);
+            return new(
+                !timestampAccepted,
                 null,
                 false,
                 null);

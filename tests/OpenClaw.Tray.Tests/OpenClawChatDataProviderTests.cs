@@ -4123,6 +4123,153 @@ public class OpenClawChatDataProviderTests
     }
 
     [Fact]
+    public async Task SessionResetCompletion_RunFloorDoesNotAdmitPreResetUserFrames()
+    {
+        const string marker = "user floor marker";
+        const string delayedUser = "delayed unrelated user";
+        const string freshUser = "fresh remote user";
+        const string response = "same-run terminal";
+        using var activities = new ChatActivityCollector();
+        var (bridge, provider, snapshots, _) =
+            CreateProvider(new[] { MainSession() });
+        bridge.SendResults.Enqueue(new ChatSendResult());
+        await provider.LoadAsync();
+        var lifecycleTimestamp = DateTimeOffset.UtcNow
+            .AddSeconds(-5)
+            .ToUnixTimeMilliseconds();
+        bridge.RaiseSessionCommandCompleted(new SessionCommandResult
+        {
+            Method = "sessions.reset",
+            Ok = true,
+            Key = "main"
+        });
+        await provider.SendMessageAsync("main", marker);
+
+        var start = MakeAgentEvent(
+            "lifecycle",
+            """{"phase":"start"}""",
+            runId: "current-run");
+        start.Ts = lifecycleTimestamp;
+        bridge.RaiseAgent(start);
+        bridge.RaiseChat(new ChatMessageInfo
+        {
+            SessionKey = "main",
+            Role = "user",
+            Text = marker,
+            Ts = lifecycleTimestamp + 1,
+            OpenClawId = "marker-user",
+            OpenClawSeq = 1,
+        });
+        bridge.RaiseChat(new ChatMessageInfo
+        {
+            SessionKey = "main",
+            Role = "user",
+            Text = delayedUser,
+            Ts = lifecycleTimestamp + 2,
+            OpenClawId = "delayed-user",
+            OpenClawSeq = 2,
+        });
+        var sameRunFrame = MakeAgentEvent(
+            "assistant",
+            """{"delta":"same-run partial"}""",
+            runId: "current-run");
+        sameRunFrame.Ts = lifecycleTimestamp + 3;
+        bridge.RaiseAgent(sameRunFrame);
+        bridge.RaiseChat(new ChatMessageInfo
+        {
+            SessionKey = "main",
+            Role = "user",
+            Text = freshUser,
+            Ts = DateTimeOffset.UtcNow.AddSeconds(1)
+                .ToUnixTimeMilliseconds(),
+            OpenClawId = "fresh-user",
+            OpenClawSeq = 3,
+        });
+        bridge.RaiseChat(new ChatMessageInfo
+        {
+            SessionKey = "main",
+            Role = "assistant",
+            State = "final",
+            Text = response,
+            Ts = lifecycleTimestamp + 4,
+            OpenClawId = "assistant-final",
+            OpenClawSeq = 4,
+        });
+
+        var terminal = snapshots[^1].Timelines["main"];
+        Assert.False(terminal.TurnActive);
+        Assert.Single(
+            terminal.Entries,
+            entry => entry.Kind == ChatTimelineItemKind.User &&
+                     entry.Text == marker);
+        Assert.DoesNotContain(
+            terminal.Entries,
+            entry => entry.Text == delayedUser);
+        Assert.Contains(
+            terminal.Entries,
+            entry => entry.Kind == ChatTimelineItemKind.User &&
+                     entry.Text == freshUser);
+        Assert.Contains(
+            terminal.Entries,
+            entry => entry.Kind == ChatTimelineItemKind.Assistant &&
+                     entry.Text == response);
+        Assert.Single(
+            activities.Stopped,
+            activity =>
+                activity.OperationName ==
+                ChatTelemetryTracker.TurnSpanName);
+
+        bridge.HistoryBehavior = _ => Task.FromResult(new ChatHistoryInfo
+        {
+            SessionKey = "main",
+            Messages =
+            [
+                new ChatMessageInfo
+                {
+                    SessionKey = "main",
+                    Role = "user",
+                    Text = marker,
+                    Ts = lifecycleTimestamp + 1,
+                    OpenClawId = "marker-user",
+                    OpenClawSeq = 1,
+                },
+                new ChatMessageInfo
+                {
+                    SessionKey = "main",
+                    Role = "assistant",
+                    State = "final",
+                    Text = response,
+                    Ts = lifecycleTimestamp + 4,
+                    OpenClawId = "assistant-final",
+                    OpenClawSeq = 4,
+                },
+            ]
+        });
+        await provider.LoadHistoryAsync(
+            "main",
+            force: true,
+            authoritative: true);
+        var replay = snapshots[^1].Timelines["main"];
+        Assert.Single(
+            replay.Entries,
+            entry => entry.Kind == ChatTimelineItemKind.User &&
+                     entry.Text == marker);
+        Assert.DoesNotContain(
+            replay.Entries,
+            entry => entry.Text == delayedUser);
+        Assert.Single(
+            replay.Entries,
+            entry => entry.Kind == ChatTimelineItemKind.Assistant &&
+                     entry.Text == response);
+        Assert.Single(
+            activities.Stopped,
+            activity =>
+                activity.OperationName ==
+                ChatTelemetryTracker.TurnSpanName);
+        await provider.DisposeAsync();
+    }
+
+    [Fact]
     public async Task SessionResetCompletion_ExactEchoSelectsNewestBufferedLifecycle()
     {
         const string marker = "newest lifecycle marker";
