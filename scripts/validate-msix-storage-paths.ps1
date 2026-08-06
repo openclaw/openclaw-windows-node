@@ -5,9 +5,9 @@
     (Path B).  The verdict drives the MSIX uninstall strategy.
 
 .DESCRIPTION
-    OpenClawTray declares the runFullTrust restricted capability, which typically
+    OpenClaw Companion declares the runFullTrust restricted capability, which typically
     bypasses MSIX filesystem virtualization and writes to the real roaming/local
-    app-data folders.  This cannot be assumed — it must be verified empirically
+    app-data folders.  This cannot be assumed. It must be verified empirically
     before the MSIX uninstall surface is considered complete.
 
     VERDICT SEMANTICS
@@ -15,8 +15,8 @@
     PathA-OrphanRisk
         Files land in real %APPDATA%\OpenClawTray\ and/or %LOCALAPPDATA%\OpenClawTray\.
         Remove-AppxPackage does NOT clean these up.  The "Remove Local Gateway" in-tray
-        button is the canonical pre-uninstall cleanup path.  A pre-removal warning banner
-        (PackageHelper.IsPackaged() && setup-state.json exists) MUST ship in commit 5.
+        button is the current pre-uninstall cleanup path.  Product-level removal needs a
+        maintenance path that remains available after package removal.
 
     PathB-CleanRemove
         Files land only inside %LOCALAPPDATA%\Packages\<PackageFamilyName>\.
@@ -29,58 +29,46 @@
         location, app launch failure, timeout, etc.).  Investigation is required before
         MSIX uninstall claims can be made.
 
-    ## Notes for Aaron
-    ==================
-    Read verdict.json → field "verdict" to branch your commit-5 decisions:
+    FOLLOW-UP GUIDANCE
+    ------------------
+    Read the "verdict" field in verdict.json before making lifecycle claims.
 
     If "PathA-OrphanRisk":
       - Keep the "Remove Local Gateway" in-tray button as the canonical cleanup path.
-      - MUST add in-app pre-uninstall warning banner gated on:
-            PackageHelper.IsPackaged() && File.Exists(setupStatePath)
-        so users are warned before removing the MSIX package.
+      - The in-app pre-uninstall warning already ships, gated on:
+            PackageHelper.IsPackaged && File.Exists(setupStatePath)
+        Confirm that it surfaces before package removal.
       - The Inno uninstaller script (Uninstall-LocalGateway.ps1) targets real paths
-        unconditionally — no change needed there.
-      - Recovery: scripts/validate-wsl-gateway-uninstall.ps1 -Scenario Full
-            -ConfirmDestructiveClean is still relevant for orphaned state.
+        unconditionally, so no storage-path change is needed there.
+      - Recovery remains available through:
+            scripts/validate-wsl-gateway-uninstall.ps1 -Mode Full -ConfirmDestructive
 
     If "PathB-CleanRemove":
       - Remove-AppxPackage handles file-based artifact cleanup automatically.
-      - MSIX section of the plan is limited to WSL distro cleanup only (steps 2-5 of
-        canonical sequence: stop service, terminate, unregister distro, remove VHD dir).
-      - In-app warning banner is optional.  You may still want it for WSL distro orphan
-        risk (distro registration is NOT cleaned by Remove-AppxPackage in either path).
-      - document in Artifact Catalog that MSIX path is path B.
+      - Product removal must still stop the service, terminate WSL, unregister the
+        distribution, and remove the VHD parent directory.
+      - The existing in-app warning still applies to WSL distro orphan risk because
+        distro registration is NOT cleaned by Remove-AppxPackage in either path.
+      - Record the observed storage layout with the package evidence.
 
     If "Inconclusive":
-      - Block commit 5 MSIX claims.  Either re-run on a clean VM or defer MSIX
-        validation to a tracked TODO.  Do NOT ship "MSIX removal is sufficient"
-        language without a pass verdict.
+      - Re-run on a clean VM or record the validation as blocked.
+      - Do NOT ship "MSIX removal is sufficient" language without a pass verdict.
 
-    OPEN QUESTIONS FOR AARON (pre-commit-5)
-    ========================================
-    Q1: If -AutoSetup detection is infeasible on a given test machine (no interactive
-        session, sandboxed runner), do you want to defer MSIX validation to a manual
-        TODO tracked in the PR, or require a VM pre-condition before commit 5 merges?
-        Default assumption: commit 5 is gated on a non-Inconclusive verdict.
-
-    Q2: Should the in-app warning banner check PackageHelper.IsPackaged() at runtime,
-        or check for APPX identity via Environment.GetEnvironmentVariable("LOCALAPPDATA")?
-        The former is more robust.  Confirm the PackageHelper API is available in the
-        Settings page code-behind at the time commit 5 lands.
-
-    ⚠️  SECURITY NOTE: Do NOT run this script against a live, user-paired tray instance.
+    SECURITY NOTE: Do NOT run this script against a live, user-paired tray instance.
         Filesystem snapshots captured in -EvidenceDir would include settings.json
         which may contain gateway token fields.  Run only on a clean test machine or
         dedicated validation VM.
 
     CI ARTIFACT
     -----------
-    The MSIX is produced by the build-msix CI job.  Download artifact:
+    When enabled, the build-msix CI job produces the package.  Download artifact:
         gh run download <run_id> --name openclaw-msix-win-x64 --dir ./msix-drop/
     Then pass the .msix file path to -MsixPath.
 
 .PARAMETER MsixPath
-    Absolute path to the OpenClawTray MSIX file (e.g. OpenClawTray_1.2.3.0_x64.msix)
+    Absolute path to the OpenClaw Companion MSIX file
+    (e.g. OpenClaw.Companion_1.2.3.0_x64.msix)
     as produced by the build-msix CI job.  Required unless -SkipInstall is set.
 
 .PARAMETER CertPath
@@ -168,8 +156,6 @@
     3  Manual step required: -SkipAutoSetup was used; operator must walk UI flow.
 
 .NOTES
-    Date:   2026-05-07
-    Author: Bostick (Tester/FIDO) — drafted pre-commit-7 for commit-7 verification.
     DO NOT RUN against a paired tray instance.  Snapshots capture settings.json content.
 #>
 
@@ -1225,7 +1211,7 @@ try {
             # Phase 5: Post-install snapshot
             Invoke-PostInstallSnapshot
 
-            # Phase 4a: CLI Engine Uninstall — invoke Aaron's --uninstall flag to:
+            # Phase 4a: CLI engine uninstall invokes the packaged --uninstall flag to:
             #   1. Drive the engine's own gateway cleanup (WSL distro, settings, etc.)
             #   2. Capture engine postconditions for cross_check_consistent in verdict.json
             # Must run AFTER the probe snapshot so the post-probe state reflects what the
