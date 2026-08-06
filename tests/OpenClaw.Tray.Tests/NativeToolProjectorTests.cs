@@ -131,4 +131,16 @@ public class NativeToolProjectorTests
 
         Assert.Empty(matches);
     }
+
+    [Fact]
+    public void ExtractSafeToolDisplayArgsValue_DecodesStringAndPreservesSafeProjection()
+    {
+        var value = JsonSerializer.SerializeToElement(
+            """{"command":"pwd","workdir":"C:\\private"}""");
+
+        var args = NativeToolProjector.ExtractSafeToolDisplayArgsValue(value)!;
+
+        Assert.Equal("pwd", args["command"]!.GetValue<string>());
+        Assert.False(args.ContainsKey("workdir"));
+    }
 }
