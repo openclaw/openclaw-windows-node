@@ -3,7 +3,7 @@ using OpenClaw.Shared;
 namespace OpenClaw.Connection;
 
 /// <summary>
-/// Lightweight node connector that creates and manages a WindowsNodeClient.
+/// Lightweight node connector that creates and manages a node runtime client.
 /// Capability setup (canvas, screen capture, etc.) is handled by NodeService,
 /// which has WinUI dependencies and remains in App.xaml.cs for now.
 /// </summary>
@@ -11,9 +11,10 @@ public sealed class NodeConnector : INodeConnector, INodeConnectorTelemetryEvent
 {
     private readonly IOpenClawLogger _logger;
     private readonly ConnectionDiagnostics? _diagnostics;
+    private readonly INodeRuntimeClientFactory _clientFactory;
     private readonly SemaphoreSlim _connectSemaphore = new(1, 1);
     private readonly object _clientLifecycleLock = new();
-    private WindowsNodeClient? _client;
+    private INodeRuntimeClient? _client;
     private long _clientGeneration;
     private bool _disposed;
     public Func<CancellationToken, Task<ReconnectAuthorizationResult>>? ReconnectAuthorizationAsync { get; set; }
@@ -25,10 +26,14 @@ public sealed class NodeConnector : INodeConnector, INodeConnectorTelemetryEvent
     public event EventHandler? TransportConnected;
     public event EventHandler<GatewayErrorKind>? ConnectionFailure;
 
-    public NodeConnector(IOpenClawLogger logger, ConnectionDiagnostics? diagnostics = null)
+    public NodeConnector(
+        IOpenClawLogger logger,
+        ConnectionDiagnostics? diagnostics = null,
+        INodeRuntimeClientFactory? clientFactory = null)
     {
         _logger = logger;
         _diagnostics = diagnostics;
+        _clientFactory = clientFactory ?? new WindowsNodeRuntimeClientFactory();
     }
 
     public bool IsConnected => _client?.IsConnected ?? false;
@@ -42,8 +47,8 @@ public sealed class NodeConnector : INodeConnector, INodeConnectorTelemetryEvent
     public string? NodeDeviceId => _client?.FullDeviceId;
     public NodeConnectionMode Mode { get; private set; } = NodeConnectionMode.Disabled;
 
-    /// <summary>The underlying node client, for capability registration by NodeService.</summary>
-    public WindowsNodeClient? Client => _client;
+    /// <summary>The underlying node runtime, for capability registration by NodeService.</summary>
+    public INodeRuntimeClient? Client => _client;
 
     public Task ConnectAsync(
         string gatewayUrl,
@@ -96,43 +101,43 @@ public sealed class NodeConnector : INodeConnector, INodeConnectorTelemetryEvent
             ? new DiagnosticTeeLogger(_logger, _diagnostics)
             : _logger;
 
-        var client = new WindowsNodeClient(
-            gatewayUrl,
-            credential.IsBootstrapToken ? "" : credential.Token,
-            identityPath,
-            nodeLogger,
-            bootstrapToken: credential.IsBootstrapToken ? credential.Token : null);
+        var client = _clientFactory.Create(gatewayUrl, credential, identityPath, nodeLogger);
         client.ReconnectAuthorizationAsync = ReconnectAuthorizationAsync;
 
         // Share v2 signature flag from operator — avoid wasting a roundtrip on v3
         if (useV2Signature)
             client.UseV2Signature = true;
 
-        long generation;
+        long generation = 0;
+        bool rejectCandidate;
         lock (_clientLifecycleLock)
         {
-            if (_disposed || cancellationToken.IsCancellationRequested)
+            rejectCandidate = _disposed || cancellationToken.IsCancellationRequested;
+            if (!rejectCandidate)
             {
-                try { client.Dispose(); }
-                catch (Exception ex) { _logger.Warn($"[NodeConnector] Candidate dispose error: {ex.Message}"); }
-                cancellationToken.ThrowIfCancellationRequested();
-                return;
+                generation = Interlocked.Increment(ref _clientGeneration);
+                _client = client;
+                Mode = NodeConnectionMode.Gateway;
             }
-
-            generation = Interlocked.Increment(ref _clientGeneration);
-            _client = client;
-            Mode = NodeConnectionMode.Gateway;
         }
 
-        using var cancellationRegistration = cancellationToken.Register(
-            () => DisconnectIfCurrent(generation));
-        cancellationToken.ThrowIfCancellationRequested();
+        if (rejectCandidate)
+        {
+            DisposeClient(client);
+            cancellationToken.ThrowIfCancellationRequested();
+            return;
+        }
 
-        // CRITICAL: fire ClientCreated BEFORE await _client.ConnectAsync() so subscribers
-        // (NodeService) can register capabilities synchronously. WindowsNodeClient
-        // serializes _registration.Capabilities/Commands into the outbound "connect"
-        // message during the connect handshake — registering after that point means
-        // the gateway sees an empty caps array for this session.
+        if (cancellationToken.IsCancellationRequested)
+        {
+            RetireIfCurrent(client, generation);
+            cancellationToken.ThrowIfCancellationRequested();
+        }
+
+        // CRITICAL: fire ClientCreated BEFORE await client.ConnectAsync() so subscribers
+        // (NodeService) can register capabilities synchronously. Runtime implementations
+        // serialize the registration into their outbound connect handshake; registering
+        // after that point means the gateway sees an empty caps array for this session.
         try
         {
             lock (_clientLifecycleLock)
@@ -149,12 +154,17 @@ public sealed class NodeConnector : INodeConnector, INodeConnectorTelemetryEvent
             cancellationToken.IsCancellationRequested ||
             !IsCurrentClient(client, generation))
         {
+            RetireIfCurrent(client, generation);
             throw;
         }
         catch (Exception ex)
         {
-            if (cancellationToken.IsCancellationRequested ||
-                !IsCurrentClient(client, generation))
+            if (cancellationToken.IsCancellationRequested)
+            {
+                RetireIfCurrent(client, generation);
+                cancellationToken.ThrowIfCancellationRequested();
+            }
+            if (!IsCurrentClient(client, generation))
             {
                 return;
             }
@@ -179,24 +189,25 @@ public sealed class NodeConnector : INodeConnector, INodeConnectorTelemetryEvent
 
         try
         {
-            Task connectTask;
             lock (_clientLifecycleLock)
-            {
                 ThrowIfNotCurrent(client, generation, cancellationToken);
-                connectTask = client.ConnectAsync();
-            }
-            await connectTask;
+            await client.ConnectAsync(cancellationToken);
             lock (_clientLifecycleLock)
                 ThrowIfNotCurrent(client, generation, cancellationToken);
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
+            RetireIfCurrent(client, generation);
             throw;
         }
         catch (Exception ex)
         {
-            if (cancellationToken.IsCancellationRequested ||
-                !IsCurrentClient(client, generation))
+            if (cancellationToken.IsCancellationRequested)
+            {
+                RetireIfCurrent(client, generation);
+                cancellationToken.ThrowIfCancellationRequested();
+            }
+            if (!IsCurrentClient(client, generation))
             {
                 return;
             }
@@ -266,15 +277,6 @@ public sealed class NodeConnector : INodeConnector, INodeConnectorTelemetryEvent
         }
     }
 
-    private void DisconnectIfCurrent(long generation)
-    {
-        lock (_clientLifecycleLock)
-        {
-            if (Interlocked.Read(ref _clientGeneration) == generation)
-                DisconnectInternalCore();
-        }
-    }
-
     private void DisconnectCurrentClient()
     {
         DisconnectInternal();
@@ -282,25 +284,46 @@ public sealed class NodeConnector : INodeConnector, INodeConnectorTelemetryEvent
 
     private void DisconnectInternal()
     {
+        INodeRuntimeClient? old;
         lock (_clientLifecycleLock)
-            DisconnectInternalCore();
+            old = RetireCurrentClientCore();
+        DisposeClient(old);
     }
 
-    private void DisconnectInternalCore()
+    private void RetireIfCurrent(INodeRuntimeClient client, long generation)
+    {
+        INodeRuntimeClient? retired = null;
+        lock (_clientLifecycleLock)
+        {
+            if (Interlocked.Read(ref _clientGeneration) == generation &&
+                ReferenceEquals(client, _client))
+            {
+                retired = RetireCurrentClientCore();
+            }
+        }
+        DisposeClient(retired);
+    }
+
+    private INodeRuntimeClient? RetireCurrentClientCore()
     {
         Interlocked.Increment(ref _clientGeneration);
         var old = _client;
         _client = null;
-        if (old != null)
-        {
-            try { old.Dispose(); }
-            catch (Exception ex) { _logger.Warn($"[NodeConnector] Dispose error: {ex.Message}"); }
-        }
         Mode = NodeConnectionMode.Disabled;
+        return old;
+    }
+
+    private void DisposeClient(INodeRuntimeClient? client)
+    {
+        if (client == null)
+            return;
+
+        try { client.Dispose(); }
+        catch (Exception ex) { _logger.Warn($"[NodeConnector] Dispose error: {ex.Message}"); }
     }
 
     private void ThrowIfNotCurrent(
-        WindowsNodeClient client,
+        INodeRuntimeClient client,
         long generation,
         CancellationToken cancellationToken)
     {
@@ -314,11 +337,13 @@ public sealed class NodeConnector : INodeConnector, INodeConnectorTelemetryEvent
 
     public void Dispose()
     {
+        INodeRuntimeClient? old;
         lock (_clientLifecycleLock)
         {
             if (_disposed) return;
             _disposed = true;
-            DisconnectInternalCore();
+            old = RetireCurrentClientCore();
         }
+        DisposeClient(old);
     }
 }

@@ -32,7 +32,7 @@ public sealed class NodeService : IDisposable, IAsyncDisposable
     private TaskCompletionSource<bool>? _screenConsentInFlight;
     private TaskCompletionSource<bool>? _cameraConsentInFlight;
     private Task? _disposeTask;
-    private WindowsNodeClient? _nodeClient;
+    private INodeRuntimeClient? _nodeClient;
     private CanvasWindow? _canvasWindow;
     // Invariant: _a2uiCanvasWindow is only read/written from the UI dispatcher
     // (DispatcherQueue.TryEnqueue callbacks). Today's WinUI dispatcher serializes,
@@ -271,7 +271,7 @@ public sealed class NodeService : IDisposable, IAsyncDisposable
     {
         await StopMcpServerAsync().ConfigureAwait(false);
 
-        WindowsNodeClient? previous;
+        INodeRuntimeClient? previous;
         lock (_clientLock)
         {
             previous = _nodeClient;
@@ -491,20 +491,20 @@ public sealed class NodeService : IDisposable, IAsyncDisposable
     }
 
     /// <summary>
-    /// Adopt a <see cref="WindowsNodeClient"/> created by an outside party
+    /// Adopt an <see cref="INodeRuntimeClient"/> created by an outside party
     /// (typically <see cref="OpenClaw.Connection.NodeConnector"/>)
     /// and register all current capabilities on it. Called via
     /// <see cref="OpenClaw.Connection.INodeConnector.ClientCreated"/>
     /// every time the connector spins up a fresh client (initial connect AND
     /// reconnect). Idempotent on the capability list — the same capability
-    /// objects get registered against the new client; <c>WindowsNodeClient</c>
-    /// dedupes by category+command into its <c>_registration</c> structure.
+    /// objects get registered against the new runtime. Runtime implementations
+    /// dedupe the advertised category and command manifest.
     ///
     /// Must run synchronously before the client's outbound "connect" message
     /// is serialized — otherwise the gateway sees this node as having no
     /// advertised commands and the agent can't invoke anything.
     /// </summary>
-    public void AttachClient(WindowsNodeClient client, string? bearerToken = null)
+    public void AttachClient(INodeRuntimeClient client, string? bearerToken = null)
     {
         if (client is null) return;
 
@@ -515,7 +515,7 @@ public sealed class NodeService : IDisposable, IAsyncDisposable
         // an old client or double-subscribe the same client. Unconditional
         // unsubscribe-then-subscribe makes the wiring idempotent regardless of
         // whether the previous client is the same instance or null.
-        WindowsNodeClient? previous;
+        INodeRuntimeClient? previous;
         lock (_clientLock)
         {
             previous = _nodeClient;
@@ -529,7 +529,7 @@ public sealed class NodeService : IDisposable, IAsyncDisposable
             // Wire NodeService event re-emitters to the manager-owned client.
             // App.OnPairingStatusChanged + OnNodeStatusChanged subscribe to NodeService events;
             // those subscriptions are stable across reconnects because the subscriptions are
-            // on NodeService, not on the underlying WindowsNodeClient. (Pre-unification this
+            // on NodeService, not on the underlying node runtime. (Pre-unification this
             // wiring lived in NodeService.ConnectAsync — moved here so the unified
             // manager-owned lifecycle still drives NodeService's event surface.)
             // -= before += so a re-attach of the same client (e.g. AttachClient called
@@ -583,7 +583,7 @@ public sealed class NodeService : IDisposable, IAsyncDisposable
         _logger.Info($"[NodeService] AttachClient DONE: client.Registration.Capabilities={client.RegisteredCapabilityCount}, client.Registration.Commands={client.RegisteredCommandCount}");
     }
 
-    private void DetachClientHandlers(WindowsNodeClient client)
+    private void DetachClientHandlers(INodeRuntimeClient client)
     {
         client.StatusChanged -= OnNodeStatusChanged;
         client.Disposed -= OnNodeClientDisposed;
@@ -1099,7 +1099,7 @@ public sealed class NodeService : IDisposable, IAsyncDisposable
         var retired = false;
         lock (_clientLock)
         {
-            if (sender is WindowsNodeClient client && ReferenceEquals(_nodeClient, client))
+            if (sender is INodeRuntimeClient client && ReferenceEquals(_nodeClient, client))
             {
                 DetachClientHandlers(client);
                 _nodeClient = null;
@@ -1694,9 +1694,9 @@ public sealed class NodeService : IDisposable, IAsyncDisposable
     // resolveMainSessionKey() fallback.
     private sealed class GatewayActionContext : IGatewayActionContext
     {
-        private readonly Func<WindowsNodeClient?> _client;
+        private readonly Func<INodeRuntimeClient?> _client;
         private string _sessionKey = "main";
-        public GatewayActionContext(Func<WindowsNodeClient?> client) { _client = client; }
+        public GatewayActionContext(Func<INodeRuntimeClient?> client) { _client = client; }
         public string SessionKey
         {
             get => _sessionKey;
@@ -2415,7 +2415,7 @@ public sealed class NodeService : IDisposable, IAsyncDisposable
     {
         await StopMcpServerAsync().ConfigureAwait(false);
 
-        WindowsNodeClient? client;
+        INodeRuntimeClient? client;
         lock (_clientLock)
         {
             client = _nodeClient;

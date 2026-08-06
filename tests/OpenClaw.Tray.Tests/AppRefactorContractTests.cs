@@ -5,6 +5,18 @@ namespace OpenClaw.Tray.Tests;
 public sealed class AppRefactorContractTests
 {
     [Fact]
+    public void NodeService_RetiresAnyRuntimeImplementationOnDisposedEvent()
+    {
+        var root = TestRepositoryPaths.GetRepositoryRoot();
+        var source = File.ReadAllText(Path.Combine(
+            root, "src", "OpenClaw.Tray.WinUI", "Services", "NodeService.cs"));
+        var method = ExtractMethod(source, "OnNodeClientDisposed");
+
+        Assert.Contains("sender is INodeRuntimeClient client", method);
+        Assert.DoesNotContain("sender is WindowsNodeClient client", method);
+    }
+
+    [Fact]
     public void Startup_UsesConnectionManagerAsOnlyGatewayClientOwner()
     {
         var source = ReadAppSources();
