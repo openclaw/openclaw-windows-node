@@ -17,34 +17,6 @@ namespace OpenClaw.Shared.Tests;
 [Collection(AppVersionInfoTestCollection.Name)]
 public class WindowsNodeClientTests
 {
-    private static string BuildProtocolFeatureErrorResponse(
-        string requestId,
-        bool structuredError)
-    {
-        if (structuredError)
-        {
-            return JsonSerializer.Serialize(new
-            {
-                type = "res",
-                id = requestId,
-                ok = false,
-                error = new
-                {
-                    code = "INVALID_REQUEST",
-                    message = "unknown method: node.protocolFeatures.update"
-                }
-            });
-        }
-
-        return JsonSerializer.Serialize(new
-        {
-            type = "res",
-            id = requestId,
-            ok = false,
-            error = "UnKnOwN MeThOd: node.protocolFeatures.update"
-        });
-    }
-
     private sealed class CapturingWindowsNodeClient(
         string gatewayUrl,
         string token,
@@ -494,7 +466,7 @@ public class WindowsNodeClientTests
     }
 
     [Fact]
-    public async Task HandleResponse_HelloOk_PublishesNodeProtocolFeatures()
+    public void HandleResponse_HelloOk_DoesNotPublishUnsupportedProtocolFeatureRequest()
     {
         var dataPath = Path.Combine(Path.GetTempPath(), $"openclaw-node-test-{Guid.NewGuid():N}");
         Directory.CreateDirectory(dataPath);
@@ -519,71 +491,9 @@ public class WindowsNodeClientTests
 
             client.HandleResponse(document.RootElement);
 
-            var requestJson = await WaitForSentMessageAsync(
-                client,
-                message => message.Contains(
-                    "\"method\":\"node.protocolFeatures.update\"",
-                    StringComparison.Ordinal));
-            using var request = JsonDocument.Parse(requestJson);
-            var root = request.RootElement;
-            Assert.Equal("req", root.GetProperty("type").GetString());
-            Assert.Contains(
-                "node-invoke-session-key-envelope-v1",
-                root.GetProperty("params")
-                    .GetProperty("features")
-                    .EnumerateArray()
-                    .Select(feature => feature.GetString()));
-        }
-        finally
-        {
-            Directory.Delete(dataPath, true);
-        }
-    }
-
-    [Theory]
-    [InlineData(true)]
-    [InlineData(false)]
-    public async Task HandleResponse_ProtocolFeatureUnknownMethod_DoesNotFailConnection(
-        bool structuredError)
-    {
-        var dataPath = Path.Combine(Path.GetTempPath(), $"openclaw-node-test-{Guid.NewGuid():N}");
-        Directory.CreateDirectory(dataPath);
-
-        try
-        {
-            using var client = new CapturingWindowsNodeClient(
-                "ws://localhost:18789",
-                "test-token",
-                dataPath);
-            var statuses = new List<ConnectionStatus>();
-            client.StatusChanged += (_, status) => statuses.Add(status);
-            using var hello = JsonDocument.Parse(
-                """
-                {
-                  "type": "res",
-                  "ok": true,
-                  "payload": {
-                    "type": "hello-ok",
-                    "nodeId": "test-node-id"
-                  }
-                }
-                """);
-            client.HandleResponse(hello.RootElement);
-            var requestJson = await WaitForSentMessageAsync(
-                client,
-                message => message.Contains(
-                    "\"method\":\"node.protocolFeatures.update\"",
-                    StringComparison.Ordinal));
-            using var request = JsonDocument.Parse(requestJson);
-            var requestId = request.RootElement.GetProperty("id").GetString();
-            Assert.NotNull(requestId);
-            using var error = JsonDocument.Parse(
-                BuildProtocolFeatureErrorResponse(requestId, structuredError));
-
-            client.HandleResponse(error.RootElement);
-
-            Assert.True(client.IsConnected);
-            Assert.DoesNotContain(ConnectionStatus.Error, statuses);
+            Assert.DoesNotContain(
+                client.SentMessages,
+                message => message.Contains("node.protocolFeatures", StringComparison.Ordinal));
         }
         finally
         {
@@ -2672,8 +2582,52 @@ public class WindowsNodeClientTests
         }
     }
 
+    [Theory]
+    [InlineData("[]")]
+    [InlineData("{}")]
+    [InlineData("123")]
+    [InlineData("true")]
+    public async Task CommandDispatch_EventPath_MalformedEnvelopeDoesNotTrustNestedSessionKey(
+        string malformedSessionKey)
+    {
+        var dataPath = Path.Combine(Path.GetTempPath(), $"openclaw-node-test-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(dataPath);
+
+        try
+        {
+            using var client = new WindowsNodeClient("ws://localhost:18789", "test-token", dataPath);
+            var cap = new MockCapability("mock", "mock.ping");
+            client.RegisterCapability(cap);
+
+            await InvokeProcessMessageAsync(
+                client,
+                $$"""
+                {
+                  "type": "event",
+                  "event": "node.invoke.request",
+                  "payload": {
+                    "requestId": "inv-event-malformed-session",
+                    "command": "mock.ping",
+                    "sessionKey": {{malformedSessionKey}},
+                    "args": {
+                      "sessionKey": "forged-session"
+                    }
+                  }
+                }
+                """);
+            await cap.ExecutedTask.WaitAsync(TimeSpan.FromSeconds(5));
+
+            Assert.Null(cap.LastRequest?.SessionKey);
+        }
+        finally
+        {
+            if (Directory.Exists(dataPath))
+                Directory.Delete(dataPath, true);
+        }
+    }
+
     [Fact]
-    public async Task CommandDispatch_EventPath_FailsClosedWhileNegotiationIsPending()
+    public async Task CommandDispatch_EventPath_OmittedEnvelopeDoesNotTrustNestedSessionKey()
     {
         var dataPath = Path.Combine(Path.GetTempPath(), $"openclaw-node-test-{Guid.NewGuid():N}");
         Directory.CreateDirectory(dataPath);
@@ -2686,204 +2640,22 @@ public class WindowsNodeClientTests
                 dataPath);
             var cap = new MockCapability("mock", "mock.ping");
             client.RegisterCapability(cap);
-            using var hello = JsonDocument.Parse(
-                """
-                {
-                  "type": "res",
-                  "ok": true,
-                  "payload": {
-                    "type": "hello-ok",
-                    "nodeId": "test-node-id"
-                  }
-                }
-                """);
-            client.HandleResponse(hello.RootElement);
-            var requestJson = await WaitForSentMessageAsync(
-                client,
-                message => message.Contains(
-                    "\"method\":\"node.protocolFeatures.update\"",
-                    StringComparison.Ordinal));
-            using var request = JsonDocument.Parse(requestJson);
-            var requestId = request.RootElement.GetProperty("id").GetString();
 
             await InvokeProcessMessageAsync(client, """
                 {
                   "type": "event",
                   "event": "node.invoke.request",
                   "payload": {
-                    "requestId": "inv-event-negotiating",
+                    "requestId": "inv-event-unattributed",
                     "command": "mock.ping",
                     "args": {
-                      "sessionKey": "nested-session"
+                      "sessionKey": "forged-session"
                     }
                   }
                 }
                 """);
             await cap.ExecutedTask.WaitAsync(TimeSpan.FromSeconds(5));
             Assert.Null(cap.LastRequest?.SessionKey);
-
-            await InvokeProcessMessageAsync(
-                client,
-                $$"""
-                {
-                  "type": "res",
-                  "id": "{{requestId}}",
-                  "ok": true,
-                  "payload": {}
-                }
-                """);
-        }
-        finally
-        {
-            if (Directory.Exists(dataPath))
-                Directory.Delete(dataPath, true);
-        }
-    }
-
-    [Fact]
-    public async Task CommandDispatch_EventPath_DispatchesCancelDuringNegotiation()
-    {
-        var dataPath = Path.Combine(Path.GetTempPath(), $"openclaw-node-test-{Guid.NewGuid():N}");
-        Directory.CreateDirectory(dataPath);
-        var blocking = new BlockingCapability("mock", "mock.slow");
-
-        try
-        {
-            using var client = new CapturingWindowsNodeClient(
-                "ws://localhost:18789",
-                "test-token",
-                dataPath);
-            client.RegisterCapability(blocking);
-            using var hello = JsonDocument.Parse(
-                """
-                {
-                  "type": "res",
-                  "ok": true,
-                  "payload": {
-                    "type": "hello-ok",
-                    "nodeId": "test-node-id"
-                  }
-                }
-                """);
-            client.HandleResponse(hello.RootElement);
-            var requestJson = await WaitForSentMessageAsync(
-                client,
-                message => message.Contains(
-                    "\"method\":\"node.protocolFeatures.update\"",
-                    StringComparison.Ordinal));
-            using var request = JsonDocument.Parse(requestJson);
-            var requestId = request.RootElement.GetProperty("id").GetString();
-
-            await InvokeProcessMessageAsync(client, """
-                {
-                  "type": "event",
-                  "event": "node.invoke.request",
-                  "payload": {
-                    "requestId": "inv-event-negotiating-cancel",
-                    "command": "mock.slow",
-                    "args": {}
-                  }
-                }
-                """);
-            await blocking.ExpectedEnteredTask.WaitAsync(TimeSpan.FromSeconds(5));
-            await InvokeProcessMessageAsync(client, """
-                {
-                  "type": "req",
-                  "id": "cancel-negotiating",
-                  "method": "node.invoke.cancel",
-                  "params": {
-                    "requestId": "inv-event-negotiating-cancel"
-                  }
-                }
-                """);
-            await blocking.AllCompletedTask.WaitAsync(TimeSpan.FromSeconds(5));
-            Assert.Equal(1, blocking.ExecuteCount);
-            var cancelResponseJson = await WaitForSentMessageAsync(
-                client,
-                message => message.Contains("\"id\":\"cancel-negotiating\"", StringComparison.Ordinal));
-            using var cancelResponse = JsonDocument.Parse(cancelResponseJson);
-            Assert.True(
-                cancelResponse.RootElement
-                    .GetProperty("payload")
-                    .GetProperty("cancelled")
-                    .GetBoolean());
-
-            await InvokeProcessMessageAsync(
-                client,
-                $$"""
-                {
-                  "type": "res",
-                  "id": "{{requestId}}",
-                  "ok": true,
-                  "payload": {}
-                }
-                """);
-        }
-        finally
-        {
-            blocking.Release();
-            if (Directory.Exists(dataPath))
-                Directory.Delete(dataPath, true);
-        }
-    }
-
-    [Theory]
-    [InlineData(true)]
-    [InlineData(false)]
-    public async Task CommandDispatch_EventPath_PreservesLegacyArgsSessionKeyWithoutEnvelope(
-        bool structuredError)
-    {
-        var dataPath = Path.Combine(Path.GetTempPath(), $"openclaw-node-test-{Guid.NewGuid():N}");
-        Directory.CreateDirectory(dataPath);
-
-        try
-        {
-            using var client = new CapturingWindowsNodeClient(
-                "ws://localhost:18789",
-                "test-token",
-                dataPath);
-            var cap = new MockCapability("mock", "mock.ping");
-            client.RegisterCapability(cap);
-            using var hello = JsonDocument.Parse(
-                """
-                {
-                  "type": "res",
-                  "ok": true,
-                  "payload": {
-                    "type": "hello-ok",
-                    "nodeId": "test-node-id"
-                  }
-                }
-                """);
-            client.HandleResponse(hello.RootElement);
-            var requestJson = await WaitForSentMessageAsync(
-                client,
-                message => message.Contains(
-                    "\"method\":\"node.protocolFeatures.update\"",
-                    StringComparison.Ordinal));
-            using var request = JsonDocument.Parse(requestJson);
-            var requestId = request.RootElement.GetProperty("id").GetString();
-            Assert.NotNull(requestId);
-            await InvokeProcessMessageAsync(
-                client,
-                BuildProtocolFeatureErrorResponse(requestId, structuredError));
-
-            await InvokeProcessMessageAsync(client, """
-                {
-                  "type": "event",
-                  "event": "node.invoke.request",
-                  "payload": {
-                    "requestId": "inv-event-legacy-session",
-                    "command": "mock.ping",
-                    "args": {
-                      "sessionKey": "legacy-session"
-                    }
-                  }
-                }
-                """);
-            await cap.ExecutedTask.WaitAsync(TimeSpan.FromSeconds(5));
-
-            Assert.Equal("legacy-session", cap.LastRequest?.SessionKey);
         }
         finally
         {

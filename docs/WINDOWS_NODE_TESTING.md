@@ -127,6 +127,7 @@ Local MCP clients also see MCP-only `app.*` commands such as `app.navigate`, `ap
 - **URL Validation**: Canvas blocks `file://`, `javascript:`, localhost, private IPs, IPv6 localhost
 - **Screen Capture Notification**: User is notified when screen snapshots are captured
 - **Screen Recording Allowlist**: `screen.record` must be explicitly allowed by the gateway and does not leave a hidden local MP4 copy on Windows
+- **Session Attribution**: Only the optional top-level `sessionKey` stamped by the Gateway on `node.invoke.request` is trusted. Older Gateways omit it, so those invokes remain unattributed; a caller-supplied nested `args.sessionKey` is never used as a fallback.
 - **Command Center Redaction**: recent node invoke activity records command name, status, duration, node id, and privacy class only; it does not store base64 payloads, screenshots, recordings, tokens, or command arguments
 - **Node Mode Toggle**: Must be explicitly enabled by user
 - **Command Validation**: Only alphanumeric commands with dots/hyphens allowed
