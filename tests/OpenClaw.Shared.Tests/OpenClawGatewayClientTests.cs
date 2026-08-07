@@ -533,7 +533,7 @@ public class OpenClawGatewayClientTests
     [Fact]
     public async Task SendWizardRequestAsync_ResponseBeforeDispose_ReturnsPayloadAndCleansTracking()
     {
-        using var server = new LoopbackWebSocketServer(useManagedWebSocket: true);
+        using var server = new LoopbackWebSocketServer();
         using var identity = new TempDirectory("wizard-request-");
         await server.StartAsync();
         var helper = new GatewayClientTestHelper(
@@ -688,7 +688,7 @@ public class OpenClawGatewayClientTests
     [Fact]
     public async Task SendWizardRequestAsync_ServiceRestartClose_PreservesCloseStatus()
     {
-        using var server = new LoopbackWebSocketServer();
+        using var server = new LoopbackWebSocketServer(useManagedWebSocket: true);
         using var identity = new TempDirectory("wizard-request-");
         await server.StartAsync();
         var helper = new GatewayClientTestHelper(
