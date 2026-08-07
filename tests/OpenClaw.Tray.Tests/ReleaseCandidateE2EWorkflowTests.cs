@@ -49,9 +49,18 @@ public sealed class ReleaseCandidateE2EWorkflowTests
     {
         var workflow = ReadWorkflow();
 
+        const string e2eRestore = "dotnet restore tests/OpenClaw.E2ETests -r win-x64";
+        const string firstNoRestoreBuild = "dotnet build src/OpenClaw.Shared -c Debug --no-restore";
+
+        var e2eRestoreIndex = workflow.IndexOf(e2eRestore, StringComparison.Ordinal);
+        var firstNoRestoreBuildIndex = workflow.IndexOf(firstNoRestoreBuild, StringComparison.Ordinal);
+
         Assert.Contains("fetch-depth: 0", workflow);
         Assert.Contains("dotnet restore src/OpenClaw.Tray.WinUI -r win-x64", workflow);
-        Assert.Contains("dotnet restore tests/OpenClaw.E2ETests -r win-x64", workflow);
+        Assert.True(e2eRestoreIndex >= 0);
+        Assert.Equal(e2eRestoreIndex, workflow.LastIndexOf(e2eRestore, StringComparison.Ordinal));
+        Assert.True(firstNoRestoreBuildIndex >= 0);
+        Assert.True(e2eRestoreIndex < firstNoRestoreBuildIndex);
     }
 
     [Fact]
