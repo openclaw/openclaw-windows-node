@@ -282,6 +282,7 @@ jobs:
         run: |
           dotnet restore
           dotnet restore src/OpenClaw.Tray.WinUI -r win-x64
+          dotnet restore tests/OpenClaw.E2ETests -r win-x64
           dotnet build src/OpenClaw.Shared -c Debug --no-restore
           dotnet build src/OpenClaw.SetupEngine -c Debug --no-restore
           dotnet build src/OpenClaw.Tray.WinUI -c Debug -r win-x64 --no-restore

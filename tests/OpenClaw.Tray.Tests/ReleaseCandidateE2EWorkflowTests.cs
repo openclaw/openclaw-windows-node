@@ -51,6 +51,7 @@ public sealed class ReleaseCandidateE2EWorkflowTests
 
         Assert.Contains("fetch-depth: 0", workflow);
         Assert.Contains("dotnet restore src/OpenClaw.Tray.WinUI -r win-x64", workflow);
+        Assert.Contains("dotnet restore tests/OpenClaw.E2ETests -r win-x64", workflow);
     }
 
     [Fact]
