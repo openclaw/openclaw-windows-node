@@ -22,6 +22,13 @@ public enum GatewayEndpointProvenanceKind
     UnknownListener,
 }
 
+/// <summary>Typed diagnostic for narrowly retryable provenance failures.</summary>
+public enum GatewayEndpointProvenanceFailureReason
+{
+    None,
+    ListenerSnapshotChanged,
+}
+
 /// <summary>
 /// Address-specific endpoint provenance. Process/task details are diagnostics only; no credential
 /// material is ever included.
@@ -34,4 +41,6 @@ public sealed record GatewayEndpointProvenance(
     DateTime? ProcessStartTimeUtc = null,
     string? ProcessPath = null,
     string? ScheduledTaskName = null,
-    string? Detail = null);
+    string? Detail = null,
+    GatewayEndpointProvenanceFailureReason FailureReason =
+        GatewayEndpointProvenanceFailureReason.None);

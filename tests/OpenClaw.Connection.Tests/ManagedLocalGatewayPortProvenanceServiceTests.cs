@@ -171,6 +171,9 @@ public class ManagedLocalGatewayPortProvenanceServiceTests
         var result = service.Inspect(ManagedRecord());
 
         Assert.Equal(GatewayEndpointProvenanceKind.UnknownListener, result.Kind);
+        Assert.Equal(
+            GatewayEndpointProvenanceFailureReason.ListenerSnapshotChanged,
+            result.FailureReason);
         Assert.Null(result.ProcessId);
         Assert.Contains("changed during relayless provenance verification", result.Detail);
     }
@@ -253,9 +256,9 @@ public class ManagedLocalGatewayPortProvenanceServiceTests
             new DateTime(2026, 7, 24, 1, 0, 0, DateTimeKind.Utc)));
         var service = new ManagedLocalGatewayPortProvenanceService(platform, NullLogger.Instance);
 
-        Assert.Equal(
-            GatewayEndpointProvenanceKind.UnknownListener,
-            service.Inspect(ManagedRecord()).Kind);
+        var result = service.Inspect(ManagedRecord());
+
+        Assert.Equal(GatewayEndpointProvenanceKind.UnknownListener, result.Kind);
     }
 
     [Fact]
@@ -271,9 +274,12 @@ public class ManagedLocalGatewayPortProvenanceServiceTests
             new DateTime(2026, 7, 24, 1, 0, 0, DateTimeKind.Utc)));
         var service = new ManagedLocalGatewayPortProvenanceService(platform, NullLogger.Instance);
 
+        var result = service.Inspect(ManagedRecord());
+
+        Assert.Equal(GatewayEndpointProvenanceKind.UnknownListener, result.Kind);
         Assert.Equal(
-            GatewayEndpointProvenanceKind.UnknownListener,
-            service.Inspect(ManagedRecord()).Kind);
+            GatewayEndpointProvenanceFailureReason.ListenerSnapshotChanged,
+            result.FailureReason);
     }
 
     [Fact]

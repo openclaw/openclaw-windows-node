@@ -67,6 +67,21 @@ public class GatewayWizardRestartRecoveryPolicyTests
             new OperationCanceledException(message)));
     }
 
+    [Theory]
+    [InlineData(1013, true)]
+    [InlineData(1012, false)]
+    [InlineData(1000, false)]
+    [InlineData(null, false)]
+    public void RetryableGatewayStartupDisconnect_IsNarrow(
+        int? closeStatusCode,
+        bool expected)
+    {
+        Assert.Equal(
+            expected,
+            GatewayWizardRestartRecoveryPolicy.IsRetryableGatewayStartupDisconnect(
+                closeStatusCode));
+    }
+
     [Fact]
     public async Task WaitForExpectedManagedGateway_NoListenerThenExpected_Retries()
     {
@@ -128,7 +143,30 @@ public class GatewayWizardRestartRecoveryPolicyTests
         Assert.Equal(1, attempts);
     }
 
+    [Fact]
+    public async Task WaitForExpectedManagedGateway_SnapshotChangeThenExpected_Retries()
+    {
+        var attempts = 0;
+
+        var result =
+            await GatewayWizardRestartRecoveryPolicy.WaitForExpectedManagedGatewayAsync(
+                _ => Task.FromResult(
+                    ++attempts == 1
+                        ? Provenance(
+                            GatewayEndpointProvenanceKind.UnknownListener,
+                            GatewayEndpointProvenanceFailureReason.ListenerSnapshotChanged)
+                        : Provenance(GatewayEndpointProvenanceKind.ExpectedManagedGateway)),
+                noListenerRetryCount: 1,
+                retryDelay: TimeSpan.Zero,
+                CancellationToken.None);
+
+        Assert.Equal(GatewayEndpointProvenanceKind.ExpectedManagedGateway, result.Kind);
+        Assert.Equal(2, attempts);
+    }
+
     private static GatewayEndpointProvenance Provenance(
-        GatewayEndpointProvenanceKind kind) =>
-        new(kind, 18789);
+        GatewayEndpointProvenanceKind kind,
+        GatewayEndpointProvenanceFailureReason failureReason =
+            GatewayEndpointProvenanceFailureReason.None) =>
+        new(kind, 18789, FailureReason: failureReason);
 }

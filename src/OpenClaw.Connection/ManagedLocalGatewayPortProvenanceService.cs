@@ -387,7 +387,8 @@ public sealed class ManagedLocalGatewayPortProvenanceService
                 return new GatewayEndpointProvenance(
                     GatewayEndpointProvenanceKind.UnknownListener,
                     uri.Port,
-                    Detail: "Windows listener ownership changed during relayless provenance verification.");
+                    Detail: "Windows listener ownership changed during relayless provenance verification.",
+                    FailureReason: GatewayEndpointProvenanceFailureReason.ListenerSnapshotChanged);
             }
 
             return new GatewayEndpointProvenance(
@@ -423,7 +424,8 @@ public sealed class ManagedLocalGatewayPortProvenanceService
             return new GatewayEndpointProvenance(
                 GatewayEndpointProvenanceKind.UnknownListener,
                 uri.Port,
-                Detail: "Loopback listener ownership changed during provenance verification.");
+                Detail: "Loopback listener ownership changed during provenance verification.",
+                FailureReason: GatewayEndpointProvenanceFailureReason.ListenerSnapshotChanged);
         }
 
         if (classified.All(item => item.Kind == GatewayEndpointProvenanceKind.ExpectedManagedGateway))

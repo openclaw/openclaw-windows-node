@@ -131,6 +131,62 @@ public class SetupStepsTests : IDisposable
         Assert.Equal(1, attempts);
     }
 
+    [Fact]
+    public async Task PairingEndpointTrust_RestartWait_RetriesSnapshotChangeOnly()
+    {
+        var context = CreateContext(new SetupConfig
+        {
+            DistroName = "OpenClawGateway",
+            GatewayUrl = "ws://localhost:18789"
+        });
+        var attempts = 0;
+        context.EndpointProvenanceProbe = (_, _) => Task.FromResult(
+            ++attempts == 1
+                ? new GatewayEndpointProvenance(
+                    GatewayEndpointProvenanceKind.UnknownListener,
+                    18789,
+                    FailureReason:
+                        GatewayEndpointProvenanceFailureReason.ListenerSnapshotChanged)
+                : new GatewayEndpointProvenance(
+                    GatewayEndpointProvenanceKind.ExpectedManagedGateway,
+                    18789));
+
+        var result = await PairOperatorStep.EnsurePairingEndpointTrustedAsync(
+            context,
+            CancellationToken.None,
+            noListenerRetryCount: 1,
+            noListenerRetryDelay: TimeSpan.Zero);
+
+        Assert.Null(result);
+        Assert.Equal(2, attempts);
+    }
+
+    [Theory]
+    [InlineData(ConnectionStatus.Disconnected, false, 1013, true, null)]
+    [InlineData(ConnectionStatus.Disconnected, false, 1013, false, (int)PairOperatorStep.ConnectionOutcome.Error)]
+    [InlineData(ConnectionStatus.Disconnected, false, 1012, true, (int)PairOperatorStep.ConnectionOutcome.Error)]
+    [InlineData(ConnectionStatus.Disconnected, true, 1013, true, (int)PairOperatorStep.ConnectionOutcome.PairingRequired)]
+    [InlineData(ConnectionStatus.Connected, false, null, true, (int)PairOperatorStep.ConnectionOutcome.Connected)]
+    [InlineData(ConnectionStatus.Error, false, 1013, true, (int)PairOperatorStep.ConnectionOutcome.Error)]
+    public void SetupConnectionStatus_RetriesOnlyStartup1013AfterRestart(
+        ConnectionStatus status,
+        bool isPairingRequired,
+        int? closeStatusCode,
+        bool retryGatewayStartupDisconnects,
+        int? expected)
+    {
+        var expectedOutcome = expected is null
+            ? null
+            : (PairOperatorStep.ConnectionOutcome?)expected.Value;
+        Assert.Equal(
+            expectedOutcome,
+            PairOperatorStep.ClassifySetupConnectionStatus(
+                status,
+                isPairingRequired,
+                closeStatusCode,
+                retryGatewayStartupDisconnects));
+    }
+
     [Theory]
     [InlineData(null)]
     [InlineData("")]

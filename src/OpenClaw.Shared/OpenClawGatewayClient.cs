@@ -254,6 +254,7 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
     public string? OperatorDeviceId => _operatorDeviceId;
     public IReadOnlyList<string> GrantedOperatorScopes => _grantedOperatorScopes;
     public virtual bool IsConnectedToGateway => IsConnected;
+    public int? LastRemoteCloseStatusCode => RemoteCloseStatusCode;
 
     protected override void OnConnectionException(Exception exception)
     {

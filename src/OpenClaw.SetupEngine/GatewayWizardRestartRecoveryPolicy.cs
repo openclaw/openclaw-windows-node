@@ -44,6 +44,9 @@ internal static class GatewayWizardRestartRecoveryPolicy
         return false;
     }
 
+    public static bool IsRetryableGatewayStartupDisconnect(int? closeStatusCode) =>
+        closeStatusCode == 1013;
+
     public static async Task<GatewayEndpointProvenance> WaitForExpectedManagedGatewayAsync(
         Func<CancellationToken, Task<GatewayEndpointProvenance>> inspectAsync,
         int noListenerRetryCount,
@@ -57,7 +60,15 @@ internal static class GatewayWizardRestartRecoveryPolicy
         for (var attempt = 0; ; attempt++)
         {
             var result = await inspectAsync(cancellationToken);
-            if (result.Kind != GatewayEndpointProvenanceKind.NoListener ||
+            var retryable =
+                result.Kind == GatewayEndpointProvenanceKind.NoListener ||
+                result is
+                {
+                    Kind: GatewayEndpointProvenanceKind.UnknownListener,
+                    FailureReason:
+                        GatewayEndpointProvenanceFailureReason.ListenerSnapshotChanged,
+                };
+            if (!retryable ||
                 attempt >= noListenerRetryCount)
             {
                 return result;

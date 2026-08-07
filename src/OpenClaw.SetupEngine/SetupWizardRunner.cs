@@ -151,12 +151,17 @@ public sealed class SetupWizardRunner
                             "Gateway ownership changed during the terminal restart.");
                     }
 
-                    client = CreateWizardClient(credential, identityPath, wsLogger);
+                    client = CreateWizardClient(
+                        credential,
+                        identityPath,
+                        wsLogger,
+                        restartRecovery: true);
                     var reconnect = await PairOperatorStep.WaitForConnectionOrPairing(
                         client,
                         _ctx,
                         TimeSpan.FromSeconds(30),
-                        ct);
+                        ct,
+                        retryGatewayStartupDisconnects: true);
                     if (reconnect != PairOperatorStep.ConnectionOutcome.Connected)
                     {
                         throw new WizardFatalException(
@@ -188,8 +193,17 @@ public sealed class SetupWizardRunner
                             noListenerRetryDelay: TimeSpan.FromSeconds(1));
                     if (restartProvenance is not null)
                         throw new WizardFatalException(restartProvenance.Message ?? "Gateway ownership changed.");
-                    client = CreateWizardClient(credential, identityPath, wsLogger);
-                    var reconnect = await PairOperatorStep.WaitForConnectionOrPairing(client, _ctx, TimeSpan.FromSeconds(30), ct);
+                    client = CreateWizardClient(
+                        credential,
+                        identityPath,
+                        wsLogger,
+                        restartRecovery: true);
+                    var reconnect = await PairOperatorStep.WaitForConnectionOrPairing(
+                        client,
+                        _ctx,
+                        TimeSpan.FromSeconds(30),
+                        ct,
+                        retryGatewayStartupDisconnects: true);
                     if (reconnect != PairOperatorStep.ConnectionOutcome.Connected)
                         throw new WizardFatalException($"Gateway wizard reconnect failed after restart: {reconnect}");
 
@@ -352,13 +366,21 @@ public sealed class SetupWizardRunner
         }
     }
 
-    private OpenClawGatewayClient CreateWizardClient(string credential, string identityPath, IOpenClawLogger wsLogger)
+    private OpenClawGatewayClient CreateWizardClient(
+        string credential,
+        string identityPath,
+        IOpenClawLogger wsLogger,
+        bool restartRecovery = false)
     {
         var client = new OpenClawGatewayClient(_ctx.GatewayUrl!, credential, logger: wsLogger, identityPath: identityPath)
         {
             UseV2Signature = true
         };
-        PairOperatorStep.ApplyReconnectAuthorization(client, _ctx);
+        PairOperatorStep.ApplyReconnectAuthorization(
+            client,
+            _ctx,
+            provenanceRetryCount: restartRecovery ? 30 : 0,
+            provenanceRetryDelay: TimeSpan.FromSeconds(1));
         return client;
     }
 
