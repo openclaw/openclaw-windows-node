@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Net.WebSockets;
 using System.Text.Json;
 using Xunit;
 using OpenClaw.Shared;
@@ -524,27 +525,6 @@ public class OpenClawGatewayClientTests
             return (wizardResponses.Count, requestMethods.Count);
         }
 
-        public void SimulateRemoteDisconnect(
-            int closeStatusCode,
-            string closeStatusDescription)
-        {
-            var statusField = typeof(WebSocketClientBase).GetField(
-                "_remoteCloseStatusCode",
-                System.Reflection.BindingFlags.NonPublic |
-                System.Reflection.BindingFlags.Instance);
-            var descriptionField = typeof(WebSocketClientBase).GetField(
-                "_remoteCloseStatusDescription",
-                System.Reflection.BindingFlags.NonPublic |
-                System.Reflection.BindingFlags.Instance);
-            statusField!.SetValue(_client, closeStatusCode);
-            descriptionField!.SetValue(_client, closeStatusDescription);
-
-            var disconnected = typeof(OpenClawGatewayClient).GetMethod(
-                "OnDisconnected",
-                System.Reflection.BindingFlags.NonPublic |
-                System.Reflection.BindingFlags.Instance);
-            disconnected!.Invoke(_client, null);
-        }
     }
 
     private static string CreateTempIdentityPath() =>
@@ -553,7 +533,7 @@ public class OpenClawGatewayClientTests
     [Fact]
     public async Task SendWizardRequestAsync_ResponseBeforeDispose_ReturnsPayloadAndCleansTracking()
     {
-        using var server = new LoopbackWebSocketServer();
+        using var server = new LoopbackWebSocketServer(useManagedWebSocket: true);
         using var identity = new TempDirectory("wizard-request-");
         await server.StartAsync();
         var helper = new GatewayClientTestHelper(
@@ -719,7 +699,10 @@ public class OpenClawGatewayClientTests
 
         var responseTask = client.SendWizardRequestAsync("wizard.next", timeoutMs: 10_000);
         await server.ReceiveTextAsync().WaitAsync(TimeSpan.FromSeconds(2));
-        helper.SimulateRemoteDisconnect(1012, "service restart");
+        await server.CloseSocketAsync(
+            0,
+            (WebSocketCloseStatus)1012,
+            "service restart");
 
         var exception = await Assert.ThrowsAsync<GatewayConnectionLostException>(
             async () => await responseTask.WaitAsync(TimeSpan.FromSeconds(2)));
