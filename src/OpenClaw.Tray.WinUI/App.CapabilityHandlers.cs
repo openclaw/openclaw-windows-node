@@ -216,7 +216,8 @@ public partial class App
                 gatewayUrl,
                 path,
                 token,
-                !isBootstrapToken && credentialSource == CredentialResolver.SourceSharedGatewayToken);
+                !isBootstrapToken && credentialSource == CredentialResolver.SourceSharedGatewayToken,
+                trustTailscaleAuth: ActiveGatewayTrustsTailscaleAuth(gatewayUrl));
 
             return new
             {

@@ -27,4 +27,17 @@ public sealed class GatewayDashboardUrlBuilderTests
 
         Assert.Equal("http://localhost:4317/config", url);
     }
+
+    [Fact]
+    public void Build_DoesNotAppendSharedToken_WhenTailscaleIdentityTrustIsExplicit()
+    {
+        var url = GatewayDashboardUrlBuilder.Build(
+            "wss://gateway.tailnet.ts.net",
+            "settings/profile",
+            "gateway-token",
+            appendSharedGatewayToken: true,
+            trustTailscaleAuth: true);
+
+        Assert.Equal("https://gateway.tailnet.ts.net/settings/profile", url);
+    }
 }

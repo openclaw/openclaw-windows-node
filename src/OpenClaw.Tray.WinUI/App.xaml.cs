@@ -4128,7 +4128,8 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
             gatewayUrl,
             path,
             token,
-            !isBootstrapToken && credentialSource == CredentialResolver.SourceSharedGatewayToken);
+            !isBootstrapToken && credentialSource == CredentialResolver.SourceSharedGatewayToken,
+            trustTailscaleAuth: ActiveGatewayTrustsTailscaleAuth(gatewayUrl));
 
         try
         {
@@ -4138,6 +4139,13 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
         {
             Logger.Error($"Failed to open dashboard: {ex.Message}");
         }
+    }
+
+    private bool ActiveGatewayTrustsTailscaleAuth(string gatewayUrl)
+    {
+        var active = _gatewayRegistry?.GetActive();
+        return active?.TrustTailscaleAuth == true &&
+            string.Equals(active.Url, gatewayUrl, StringComparison.OrdinalIgnoreCase);
     }
 
     // ── IAppCommands implementation ─────────────────────────────────────

@@ -1885,6 +1885,7 @@ public sealed class PairOperatorStep : SetupStep
                 BootstrapToken = ctx.BootstrapToken,
                 IsLocal = true,
                 SetupManagedDistroName = ctx.DistroName,
+                TrustTailscaleAuth = ctx.Config.Tailscale.Enabled && ctx.Config.Tailscale.TrustTailscaleAuth,
                 LastConnected = DateTime.UtcNow
             };
 
