@@ -138,6 +138,7 @@ jobs:
         with:
           repository: openclaw/openclaw-windows-node
           ref: ${{ inputs.windows_node_sha }}
+          fetch-depth: 0
           persist-credentials: false
 
       - name: Download exact OpenClaw candidate
