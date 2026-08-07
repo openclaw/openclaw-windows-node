@@ -323,8 +323,13 @@ public sealed class ManagedLocalGatewayPortProvenanceService
 
         if (HasNoWindowsProcessIdentity(cached))
         {
-            return current.Length == 0 &&
-                _platform.IsExpectedWslGatewayListening(managedDistroName, uri.Port);
+            if (current.Length != 0 ||
+                !_platform.IsExpectedWslGatewayListening(managedDistroName, uri.Port))
+            {
+                return false;
+            }
+
+            return ListenerSnapshotStillCurrent(current, uri);
         }
 
         if (cached.ProcessId is not int expectedPid ||
@@ -374,12 +379,21 @@ public sealed class ManagedLocalGatewayPortProvenanceService
             .ToArray();
         if (listeners.Length == 0)
         {
-            return _platform.IsExpectedWslGatewayListening(managedDistroName, uri.Port)
-                ? new GatewayEndpointProvenance(
-                    GatewayEndpointProvenanceKind.ExpectedManagedGateway,
+            if (!_platform.IsExpectedWslGatewayListening(managedDistroName, uri.Port))
+                return new GatewayEndpointProvenance(GatewayEndpointProvenanceKind.NoListener, uri.Port);
+
+            if (!ListenerSnapshotStillCurrent(listeners, uri))
+            {
+                return new GatewayEndpointProvenance(
+                    GatewayEndpointProvenanceKind.UnknownListener,
                     uri.Port,
-                    Detail: $"Expected WSL gateway owns port {uri.Port} without a Windows relay listener.")
-                : new GatewayEndpointProvenance(GatewayEndpointProvenanceKind.NoListener, uri.Port);
+                    Detail: "Windows listener ownership changed during relayless provenance verification.");
+            }
+
+            return new GatewayEndpointProvenance(
+                GatewayEndpointProvenanceKind.ExpectedManagedGateway,
+                uri.Port,
+                Detail: $"Expected WSL gateway owns port {uri.Port} without a Windows relay listener.");
         }
 
         var relayTrustByPath = listeners
