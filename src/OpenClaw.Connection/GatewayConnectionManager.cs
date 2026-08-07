@@ -171,6 +171,33 @@ public sealed class GatewayConnectionManager : IGatewayConnectionManager
     public IOperatorGatewayClient? OperatorClient => _activeLifecycle?.DataClient;
     /// <summary>Internal access to the concrete client for auto-approve and other manager-internal operations.</summary>
     internal OpenClawGatewayClient? ConcreteOperatorClient => _activeLifecycle?.DataClient;
+
+    public async Task<GatewayTailscaleAuthUpgradeResult> EnableTailscaleDashboardAuthAsync(
+        string gatewayId,
+        CancellationToken cancellationToken = default)
+    {
+        await _transitionSemaphore.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            if (!string.Equals(_activeGatewayRecordId, gatewayId, StringComparison.Ordinal))
+                return new(GatewayTailscaleAuthUpgradeOutcome.NotActive);
+
+            var client = OperatorClient;
+            if (client is null)
+                return new(GatewayTailscaleAuthUpgradeOutcome.NotConnected);
+
+            var service = new GatewayTailscaleAuthUpgradeService(_registry);
+            return await service.EnableAsync(
+                    gatewayId,
+                    new GatewayTailscaleAuthConfigClientAdapter(client),
+                    cancellationToken)
+                .ConfigureAwait(false);
+        }
+        finally
+        {
+            _transitionSemaphore.Release();
+        }
+    }
     public ConnectionDiagnostics Diagnostics => _diagnostics;
 
     // ─── Lifecycle ───
