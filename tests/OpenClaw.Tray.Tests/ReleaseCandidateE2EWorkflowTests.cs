@@ -35,7 +35,6 @@ public sealed class ReleaseCandidateE2EWorkflowTests
 
         Assert.Contains("id-token: write", workflow);
         Assert.Contains("ref: ${{ inputs.windows_node_sha }}", workflow);
-        Assert.Contains("fetch-depth: 0", workflow);
         Assert.Contains("$claims.job_workflow_sha -cne $env:EXPECTED_WINDOWS_NODE_SHA", workflow);
         Assert.Contains("$claims.job_workflow_ref -cne $expectedWorkflowRef", workflow);
         Assert.Contains("$tagObject.type -ne \"commit\"", workflow);
@@ -43,6 +42,15 @@ public sealed class ReleaseCandidateE2EWorkflowTests
         Assert.Contains(@"-win-x64\.zip$", workflow);
         Assert.Contains(@"_x64\.msix$", workflow);
         Assert.Contains("$actualHash -cne $expectedHash", workflow);
+    }
+
+    [Fact]
+    public void Workflow_RestoresHostedBuildPrerequisites()
+    {
+        var workflow = ReadWorkflow();
+
+        Assert.Contains("fetch-depth: 0", workflow);
+        Assert.Contains("dotnet restore src/OpenClaw.Tray.WinUI -r win-x64", workflow);
     }
 
     [Fact]
