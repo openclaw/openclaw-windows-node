@@ -70,6 +70,7 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
     private string? _operatorDeviceId;
     private string[] _grantedOperatorScopes = Array.Empty<string>();
     private string _connectAuthToken;
+    private string? _assistantMediaAuthToken;
     private bool _useV2Signature; // true after v3 signature rejected by gateway
 
     /// <summary>Set to true to skip v3 and use v2 signatures directly (for gateways that don't support v3).</summary>
@@ -201,6 +202,7 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
     protected override void OnDisposing()
     {
         _pendingRequests.Drain();
+        _assistantMediaHttpClient.Dispose();
     }
 
     protected override void OnError(Exception ex)
@@ -291,13 +293,27 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
     protected void RaiseConnectionFailure(GatewayErrorKind kind) =>
         ConnectionFailure?.Invoke(this, kind);
 
-    public OpenClawGatewayClient(string gatewayUrl, string token, IOpenClawLogger? logger = null, bool tokenIsBootstrapToken = false, bool bootstrapPairAsNode = false, string? identityPath = null, bool ignoreStoredDeviceToken = false, bool persistHandshakeDeviceTokens = true)
+    public OpenClawGatewayClient(
+        string gatewayUrl,
+        string token,
+        IOpenClawLogger? logger = null,
+        bool tokenIsBootstrapToken = false,
+        bool bootstrapPairAsNode = false,
+        string? identityPath = null,
+        bool ignoreStoredDeviceToken = false,
+        bool persistHandshakeDeviceTokens = true,
+        string? assistantMediaAuthToken = null,
+        HttpMessageHandler? assistantMediaHandler = null)
         : base(gatewayUrl, token, logger)
     {
         _tokenIsBootstrapToken = tokenIsBootstrapToken;
         _bootstrapPairAsNode = bootstrapPairAsNode;
         _ignoreStoredDeviceToken = ignoreStoredDeviceToken;
         _persistHandshakeDeviceTokens = persistHandshakeDeviceTokens;
+        _assistantMediaHttpClient = assistantMediaHandler is null
+            ? new HttpClient(new HttpClientHandler { AllowAutoRedirect = false })
+            : new HttpClient(assistantMediaHandler, disposeHandler: true);
+        SetAssistantMediaAuthToken(assistantMediaAuthToken);
         _currentGatewayUrl = gatewayUrl;
         var dataPath = identityPath ?? OpenClawAppIdentity.ResolveRoamingDataDirectory(
             Environment.GetEnvironmentVariable);
@@ -308,6 +324,15 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
         _connectAuthToken = HasUsableOperatorDeviceToken ? _deviceIdentity.DeviceToken! : (_tokenIsBootstrapToken ? string.Empty : _token);
         _useV2Signature |= _tokenIsBootstrapToken && !HasUsableOperatorDeviceToken;
     }
+
+    /// <summary>
+    /// Updates the independently authorized credential used by assistant-media
+    /// HTTP requests. A null or blank value disables authenticated media HTTP.
+    /// </summary>
+    public void SetAssistantMediaAuthToken(string? token) =>
+        Volatile.Write(
+            ref _assistantMediaAuthToken,
+            string.IsNullOrWhiteSpace(token) ? null : token);
 
     public async Task DisconnectAsync()
     {
@@ -622,10 +647,15 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
                 stopReason = sr.GetString();
 
             // Content can include text and structured tool call/result blocks.
-            string text = ExtractMessageText(m);
+            string text = ExtractMessageText(m, role);
             var toolContent = ExtractToolContent(m, role, text);
             var contentParts = ExtractOrderedMessageContent(m, role, toolContent);
-            if (string.IsNullOrEmpty(text) && toolContent.Count == 0) continue;
+            if (string.IsNullOrEmpty(text)
+                && toolContent.Count == 0
+                && contentParts.All(static part => part.Kind != ChatMessageContentPartKind.Media))
+            {
+                continue;
+            }
             if (string.IsNullOrEmpty(role)) continue;
             if (!string.IsNullOrEmpty(text)
                 && toolContent.Count == 0
@@ -660,12 +690,14 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
         return info;
     }
 
-    private static string ExtractMessageText(JsonElement message)
+    private static string ExtractMessageText(JsonElement message, string role)
     {
         if (!message.TryGetProperty("content", out var content)) return string.Empty;
 
         if (content.ValueKind == JsonValueKind.String)
-            return content.GetString() ?? string.Empty;
+        {
+            return AssistantMediaDirectiveParser.Project(role, content.GetString()).Text;
+        }
 
         if (content.ValueKind == JsonValueKind.Array)
         {
@@ -674,6 +706,7 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
             {
                 if (item.ValueKind == JsonValueKind.String)
                 {
+                    if (sb.Length > 0) sb.Append('\n');
                     sb.Append(item.GetString());
                 }
                 else if (item.ValueKind == JsonValueKind.Object &&
@@ -684,7 +717,7 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
                     sb.Append(tx.GetString());
                 }
             }
-            return sb.ToString();
+            return AssistantMediaDirectiveParser.Project(role, sb.ToString()).Text;
         }
 
         return string.Empty;
@@ -795,34 +828,42 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
         IReadOnlyList<ChatToolContentInfo> toolContent)
     {
         if (!message.TryGetProperty("content", out var content)
-            || content.ValueKind != JsonValueKind.Array)
+            || content.ValueKind is not (JsonValueKind.Array or JsonValueKind.String))
         {
             return Array.Empty<ChatMessageContentPartInfo>();
         }
 
+        if (content.ValueKind == JsonValueKind.String)
+        {
+            return AssistantMediaDirectiveParser.Project(role, content.GetString()).ContentParts;
+        }
+
         var parts = new List<ChatMessageContentPartInfo>();
-        var text = new StringBuilder();
+        var textRun = new StringBuilder();
         var toolIndex = 0;
         var structuredToolCount = 0;
 
-        void FlushText()
+        void AppendTextBlock(string? value)
         {
-            if (text.Length == 0)
-                return;
+            if (textRun.Length > 0)
+                textRun.Append('\n');
+            textRun.Append(value);
+        }
 
-            parts.Add(new ChatMessageContentPartInfo
-            {
-                Kind = ChatMessageContentPartKind.Text,
-                Text = text.ToString(),
-            });
-            text.Clear();
+        void FlushTextRun()
+        {
+            if (textRun.Length == 0)
+                return;
+            parts.AddRange(
+                AssistantMediaDirectiveParser.Project(role, textRun.ToString()).ContentParts);
+            textRun.Clear();
         }
 
         foreach (var item in content.EnumerateArray())
         {
             if (item.ValueKind == JsonValueKind.String)
             {
-                text.Append(item.GetString());
+                AppendTextBlock(item.GetString());
                 continue;
             }
 
@@ -830,6 +871,7 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
                 || !item.TryGetProperty("type", out var typeElement)
                 || typeElement.ValueKind != JsonValueKind.String)
             {
+                FlushTextRun();
                 continue;
             }
 
@@ -841,17 +883,25 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
                 if (item.TryGetProperty("text", out var textElement)
                     && textElement.ValueKind == JsonValueKind.String)
                 {
-                    if (text.Length > 0)
-                        text.Append('\n');
-                    text.Append(textElement.GetString());
+                    AppendTextBlock(textElement.GetString());
                 }
+                continue;
+            }
+
+            FlushTextRun();
+            if (TryParseStructuredMedia(item, normalizedType, out var media))
+            {
+                parts.Add(new ChatMessageContentPartInfo
+                {
+                    Kind = ChatMessageContentPartKind.Media,
+                    Media = media,
+                });
                 continue;
             }
 
             if (normalizedType is not ("toolcall" or "tooluse" or "toolresult"))
                 continue;
 
-            FlushText();
             structuredToolCount++;
             if (toolIndex < toolContent.Count)
             {
@@ -863,7 +913,7 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
             }
         }
 
-        FlushText();
+        FlushTextRun();
 
         var normalizedRole = role.Replace("_", string.Empty, StringComparison.Ordinal)
             .ToLowerInvariant();
@@ -890,6 +940,178 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
         }
 
         return parts;
+    }
+
+    private static bool TryParseStructuredMedia(
+        JsonElement item,
+        string normalizedType,
+        out ChatMediaContentInfo media)
+    {
+        media = null!;
+        var mimeType = ReadFirstString(item, "mimeType", "mime_type")?.Trim().ToLowerInvariant();
+        var hasMediaShape = normalizedType is "image" or "audio" or "video" or "file" or "attachment"
+            || !string.IsNullOrWhiteSpace(mimeType)
+            || ReadFirstString(item, "artifactId", "artifact_id") is not null
+            || ReadFirstString(item, "url") is not null;
+        if (!hasMediaShape)
+            return false;
+
+        var kind = normalizedType switch
+        {
+            "image" => ChatMediaContentKind.Image,
+            "audio" => ChatMediaContentKind.Audio,
+            "video" => ChatMediaContentKind.Video,
+            "file" or "attachment" => ClassifyMediaMimeType(mimeType, ChatMediaContentKind.File),
+            _ => ClassifyMediaMimeType(mimeType, ChatMediaContentKind.Unknown),
+        };
+        var url = ReadFirstString(item, "url");
+        var artifactId = ReadFirstString(item, "artifactId", "artifact_id")
+            ?? TryCreateManagedArtifactId(url, kind);
+
+        media = new ChatMediaContentInfo
+        {
+            Kind = kind,
+            Source = ChatMediaContentSource.Structured,
+            Type = ReadFirstString(item, "type"),
+            MimeType = NormalizeMediaMimeType(mimeType),
+            FileName = NormalizeMediaDisplayText(
+                ReadFirstString(item, "fileName", "file_name"),
+                255),
+            ArtifactId = NormalizeMediaDisplayText(artifactId, 512),
+            AgentId = NormalizeMediaDisplayText(ReadFirstString(item, "agentId", "agent_id"), 256),
+            Url = NormalizeMediaProtocolValue(url, 4096),
+            OpenUrl = NormalizeMediaProtocolValue(ReadFirstString(item, "openUrl", "open_url"), 4096),
+            Alt = NormalizeMediaDisplayText(ReadFirstString(item, "alt"), 1024),
+            Width = ReadPositiveInt(item, "width"),
+            Height = ReadPositiveInt(item, "height"),
+            SizeBytes = ReadPositiveLong(item, "sizeBytes", "size_bytes"),
+            DurationSeconds = ReadDurationSeconds(item),
+            Playback = ReadFirstString(item, "playback")?.ToLowerInvariant() switch
+            {
+                "native" => ChatMediaPlaybackMode.Native,
+                "transcode" => ChatMediaPlaybackMode.Transcode,
+                _ => null,
+            },
+        };
+        return true;
+    }
+
+    private static ChatMediaContentKind ClassifyMediaMimeType(
+        string? mimeType,
+        ChatMediaContentKind fallback)
+    {
+        if (mimeType?.StartsWith("image/", StringComparison.OrdinalIgnoreCase) == true)
+            return ChatMediaContentKind.Image;
+        if (mimeType?.StartsWith("audio/", StringComparison.OrdinalIgnoreCase) == true)
+            return ChatMediaContentKind.Audio;
+        if (mimeType?.StartsWith("video/", StringComparison.OrdinalIgnoreCase) == true)
+            return ChatMediaContentKind.Video;
+        return fallback;
+    }
+
+    private static string? NormalizeMediaMimeType(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value) || value.Length > 128)
+            return null;
+        var normalized = value.Trim().ToLowerInvariant();
+        return normalized.Contains('/') && normalized.All(static character =>
+            character is >= 'a' and <= 'z'
+            or >= '0' and <= '9'
+            or '/' or '+' or '-' or '.' or '_')
+                ? normalized
+                : null;
+    }
+
+    private static string? NormalizeMediaDisplayText(string? value, int maxLength)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+            return null;
+        var builder = new StringBuilder(Math.Min(value.Length, maxLength));
+        foreach (var character in value)
+        {
+            if (!char.IsControl(character) && character is not '\r' and not '\n')
+                builder.Append(character);
+            if (builder.Length == maxLength)
+                break;
+        }
+        var result = builder.ToString().Trim();
+        return result.Length == 0 ? null : result;
+    }
+
+    private static string? NormalizeMediaProtocolValue(string? value, int maxLength)
+    {
+        if (string.IsNullOrWhiteSpace(value) || value.Length > maxLength)
+            return null;
+        return value.Trim();
+    }
+
+    private static int? ReadPositiveInt(JsonElement item, string name)
+    {
+        if (!item.TryGetProperty(name, out var value)
+            || value.ValueKind != JsonValueKind.Number
+            || !value.TryGetInt32(out var result)
+            || result <= 0)
+        {
+            return null;
+        }
+        return result;
+    }
+
+    private static long? ReadPositiveLong(JsonElement item, params string[] names)
+    {
+        foreach (var name in names)
+        {
+            if (item.TryGetProperty(name, out var value)
+                && value.ValueKind == JsonValueKind.Number
+                && value.TryGetInt64(out var result)
+                && result > 0)
+            {
+                return result;
+            }
+        }
+        return null;
+    }
+
+    private static double? ReadDurationSeconds(JsonElement item)
+    {
+        if (item.TryGetProperty("durationSeconds", out var seconds)
+            && seconds.ValueKind == JsonValueKind.Number
+            && seconds.TryGetDouble(out var secondsValue)
+            && secondsValue >= 0)
+        {
+            return secondsValue;
+        }
+        if (item.TryGetProperty("durationMs", out var milliseconds)
+            && milliseconds.ValueKind == JsonValueKind.Number
+            && milliseconds.TryGetDouble(out var millisecondsValue)
+            && millisecondsValue >= 0)
+        {
+            return millisecondsValue / 1000d;
+        }
+        return null;
+    }
+
+    private static string? TryCreateManagedArtifactId(string? rawUrl, ChatMediaContentKind kind)
+    {
+        if (string.IsNullOrWhiteSpace(rawUrl)
+            || !Uri.TryCreate(rawUrl, UriKind.Relative, out var relative)
+            || relative.IsAbsoluteUri)
+        {
+            return null;
+        }
+        var path = rawUrl.Split('?', '#')[0];
+        var segments = path.Split('/', StringSplitOptions.RemoveEmptyEntries);
+        if (segments.Length != 7
+            || !segments[..4].SequenceEqual(new[] { "api", "chat", "media", "outgoing" })
+            || !string.Equals(segments[6], "full", StringComparison.Ordinal)
+            || !Guid.TryParse(segments[5], out var attachmentId))
+        {
+            return null;
+        }
+        var prefix = kind is ChatMediaContentKind.Audio or ChatMediaContentKind.Video
+            ? "artifact_managed_media_"
+            : "artifact_managed_image_";
+        return prefix + attachmentId.ToString("D").ToLowerInvariant();
     }
 
     private static JsonElement? ReadFirstValue(JsonElement value, params string[] propertyNames)
@@ -3602,8 +3824,14 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
             if (inTok is null && outTok is null && respTok is null && ctxPct is null)
                 (inTok, outTok, respTok, ctxPct) = ExtractChatUsage(message);
 
-            var text = ExtractMessageText(message);
-            if (string.IsNullOrEmpty(text)) return;
+            var text = ExtractMessageText(message, role);
+            var toolContent = ExtractToolContent(message, role, text);
+            var contentParts = ExtractOrderedMessageContent(message, role, toolContent);
+            if (string.IsNullOrEmpty(text)
+                && contentParts.All(static part => part.Kind != ChatMessageContentPartKind.Media))
+            {
+                return;
+            }
             if (ChatMessageInfo.IsSilentAssistantDirective(role, text)) return;
 
             var messageOpenClawMetadata = ExtractOpenClawMetadata(message);
@@ -3622,25 +3850,29 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
                 messageOpenClawMetadata.Seq ?? payloadOpenClawMetadata.Seq,
                 messageOpenClawMetadata.Kind ?? payloadOpenClawMetadata.Kind,
                 messageOpenClawMetadata.TokensBefore ?? payloadOpenClawMetadata.TokensBefore,
-                messageOpenClawMetadata.TokensAfter ?? payloadOpenClawMetadata.TokensAfter);
+                messageOpenClawMetadata.TokensAfter ?? payloadOpenClawMetadata.TokensAfter,
+                contentParts);
 
             if (role == "assistant" && string.Equals(state, "final", StringComparison.OrdinalIgnoreCase))
             {
                 // HIGH 4: log shape only — content previously
                 // surfaced in the operator log.
                 _logger.Info($"Assistant response: role={role} state={state} len={text.Length}");
-                EmitChatNotification(text, sessionKey);
+                if (!string.IsNullOrWhiteSpace(text))
+                    EmitChatNotification(text, sessionKey);
             }
         }
         
         // Legacy format: payload.text + payload.role
         else if (payload.TryGetProperty("text", out var textProp))
         {
-            var text = textProp.GetString() ?? "";
             var role = payload.TryGetProperty("role", out var roleProp) ? roleProp.GetString() ?? "" : "";
             var state = payload.TryGetProperty("state", out var stateProp) ? stateProp.GetString() : null;
+            var projection = AssistantMediaDirectiveParser.Project(role, textProp.GetString());
+            var text = projection.Text;
 
-            if (!string.IsNullOrEmpty(text))
+            if (!string.IsNullOrEmpty(text)
+                || projection.ContentParts.Any(static part => part.Kind == ChatMessageContentPartKind.Media))
             {
                 if (ChatMessageInfo.IsSilentAssistantDirective(role, text)) return;
 
@@ -3659,13 +3891,15 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
                     openClawMetadata.Seq,
                     openClawMetadata.Kind,
                     openClawMetadata.TokensBefore,
-                    openClawMetadata.TokensAfter);
+                    openClawMetadata.TokensAfter,
+                    projection.ContentParts);
 
                 if (role == "assistant")
                 {
                     // HIGH 4: log shape only.
                     _logger.Info($"Assistant response (legacy): role={role} state={state} len={text.Length}");
-                    EmitChatNotification(text, sessionKey);
+                    if (!string.IsNullOrWhiteSpace(text))
+                        EmitChatNotification(text, sessionKey);
                 }
             }
         }
@@ -3735,7 +3969,8 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
         int? openClawSeq = null,
         string? openClawKind = null,
         long? compactionTokensBefore = null,
-        long? compactionTokensAfter = null)
+        long? compactionTokensAfter = null,
+        IReadOnlyList<ChatMessageContentPartInfo>? contentParts = null)
     {
         if (ChatMessageInfo.IsSilentAssistantDirective(role, text))
             return;
@@ -3747,6 +3982,7 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
                 SessionKey = sessionKey,
                 Role = role,
                 Text = text,
+                ContentParts = contentParts ?? Array.Empty<ChatMessageContentPartInfo>(),
                 State = state,
                 Ts = tsMs,
                 InputTokens = inputTokens,

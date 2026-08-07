@@ -2007,6 +2007,177 @@ public class OpenClawGatewayClientTests
     }
 
     [Fact]
+    public void ParseChatHistoryPayload_StructuredMedia_PreservesTypedFieldsAndOrder()
+    {
+        var helper = new GatewayClientTestHelper();
+
+        var history = helper.ParseChatHistoryPayload("""
+        {
+          "messages": [
+            {
+              "role": "assistant",
+              "content": [
+                { "type": "text", "text": "Created it." },
+                {
+                  "type": "image",
+                  "mimeType": "image/png",
+                  "fileName": "banner.png",
+                  "artifactId": "artifact_managed_image_123",
+                  "alt": "OpenClaw banner",
+                  "width": 1200,
+                  "height": 774,
+                  "sizeBytes": 12345
+                },
+                { "type": "text", "text": "Finished." }
+              ],
+              "timestamp": 1
+            }
+          ]
+        }
+        """);
+
+        var message = Assert.Single(history.Messages);
+        Assert.Equal("Created it.\nFinished.", message.Text);
+        Assert.Collection(
+            message.ContentParts,
+            part =>
+            {
+                Assert.Equal(ChatMessageContentPartKind.Text, part.Kind);
+                Assert.Equal("Created it.", part.Text);
+            },
+            part =>
+            {
+                Assert.Equal(ChatMessageContentPartKind.Media, part.Kind);
+                Assert.Equal(ChatMediaContentKind.Image, part.Media?.Kind);
+                Assert.Equal("image/png", part.Media?.MimeType);
+                Assert.Equal("banner.png", part.Media?.FileName);
+                Assert.Equal("artifact_managed_image_123", part.Media?.ArtifactId);
+                Assert.Equal(1200, part.Media?.Width);
+                Assert.Equal(774, part.Media?.Height);
+            },
+            part =>
+            {
+                Assert.Equal(ChatMessageContentPartKind.Text, part.Kind);
+                Assert.Equal("Finished.", part.Text);
+            });
+    }
+
+    [Fact]
+    public void ParseChatHistoryPayload_LegacyMediaOnly_PreservesMessageAndRedactsPath()
+    {
+        var helper = new GatewayClientTestHelper();
+
+        var history = helper.ParseChatHistoryPayload("""
+        {
+          "messages": [
+            {
+              "role": "assistant",
+              "content": "MEDIA:/home/openclaw/.openclaw/workspace/downloads/banner.png",
+              "timestamp": 1
+            }
+          ]
+        }
+        """);
+
+        var message = Assert.Single(history.Messages);
+        Assert.Equal(string.Empty, message.Text);
+        var media = Assert.Single(message.ContentParts).Media;
+        Assert.NotNull(media);
+        Assert.Equal(ChatMediaContentSource.LegacyDirective, media.Source);
+        Assert.Equal("banner.png", media.FileName);
+    }
+
+    [Fact]
+    public void ParseChatHistoryPayload_StringArray_RedactsLegacyMediaPath()
+    {
+        var helper = new GatewayClientTestHelper();
+
+        var history = helper.ParseChatHistoryPayload("""
+        {
+          "messages": [
+            {
+              "role": "assistant",
+              "content": [
+                "Created it.",
+                "MEDIA:/home/openclaw/.openclaw/workspace/downloads/banner.png"
+              ],
+              "timestamp": 1
+            }
+          ]
+        }
+        """);
+
+        var message = Assert.Single(history.Messages);
+        Assert.Equal("Created it.", message.Text);
+        Assert.DoesNotContain("/home/openclaw", message.Text, StringComparison.Ordinal);
+        Assert.Single(
+            message.ContentParts,
+            part => part.Kind == ChatMessageContentPartKind.Media);
+        Assert.Equal(
+            "Created it.",
+            Assert.Single(
+                message.ContentParts,
+                part => part.Kind == ChatMessageContentPartKind.Text).Text);
+    }
+
+    [Fact]
+    public void ParseChatHistoryPayload_SplitFence_KeepsMediaDirectiveAsTextOnly()
+    {
+        var helper = new GatewayClientTestHelper();
+
+        var history = helper.ParseChatHistoryPayload("""
+        {
+          "messages": [
+            {
+              "role": "assistant",
+              "content": [
+                "```",
+                "MEDIA:/home/openclaw/private.png\n```"
+              ],
+              "timestamp": 1
+            }
+          ]
+        }
+        """);
+
+        var message = Assert.Single(history.Messages);
+        var part = Assert.Single(message.ContentParts);
+        Assert.Equal(ChatMessageContentPartKind.Text, part.Kind);
+        Assert.Contains("MEDIA:/home/openclaw/private.png", part.Text, StringComparison.Ordinal);
+        Assert.DoesNotContain(
+            message.ContentParts,
+            contentPart => contentPart.Kind == ChatMessageContentPartKind.Media);
+    }
+
+    [Fact]
+    public void ChatEvent_LegacyMediaOnly_RaisesTypedMessageWithoutRawPath()
+    {
+        var helper = new GatewayClientTestHelper();
+        ChatMessageInfo? received = null;
+        helper.Client.ChatMessageReceived += (_, message) => received = message;
+
+        helper.ProcessRawMessage("""
+        {
+          "type": "event",
+          "event": "chat",
+          "payload": {
+            "sessionKey": "main",
+            "state": "final",
+            "message": {
+              "role": "assistant",
+              "content": "MEDIA:/home/openclaw/.openclaw/workspace/downloads/banner.png"
+            }
+          }
+        }
+        """);
+
+        Assert.NotNull(received);
+        Assert.Equal(string.Empty, received.Text);
+        var media = Assert.Single(received.ContentParts).Media;
+        Assert.Equal("banner.png", media?.FileName);
+    }
+
+    [Fact]
     public void ParseChatHistoryPayload_OpenClawMetadata_PreservesMessageIdentity()
     {
         var helper = new GatewayClientTestHelper();

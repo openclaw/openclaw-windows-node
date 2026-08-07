@@ -384,7 +384,12 @@ public sealed class ReactorChatTimeline : Component<ReactorChatTimelineProps>
         bool isHovered,
         Action<string, bool> setEntryHovered)
     {
-        var (messageText, attachments) = ParseAttachments(entry.Text);
+        var (messageText, legacyAttachments) = ParseAttachments(entry.Text);
+        var attachments = row.Props.Timeline.EntryMetadata?.TryGetValue(entry.Id, out var metadata) == true &&
+            metadata.Attachments is { Count: > 0 } structuredAttachments
+                ? structuredAttachments
+                : legacyAttachments;
+        var accessibleText = BuildAccessibleUserText(messageText, attachments);
         var content = attachments.Select(BuildAttachment).ToList();
         if (messageText.Length > 0)
         {
@@ -412,12 +417,12 @@ public sealed class ReactorChatTimeline : Component<ReactorChatTimelineProps>
                         row.Props.Timeline.ShowToolCalls
                             ? UserMetadata(row, entry, isHovered)
                             : Empty(),
-                        CopyAction(entry.Text, isHovered, setEntryHovered, entry.Id))
+                        CopyAction(accessibleText, isHovered, setEntryHovered, entry.Id))
                     .Margin(16, 2, 4, 0)
                     .HAlign(HorizontalAlignment.Right))
             .Margin(72, 4, 20, 4)
             .HAlign(HorizontalAlignment.Stretch)
-            .AutomationName(entry.Text ?? string.Empty);
+            .AutomationName(accessibleText);
     }
 
     private static Element BuildAssistant(
@@ -428,9 +433,35 @@ public sealed class ReactorChatTimeline : Component<ReactorChatTimelineProps>
         Func<ChatTimelineItem, Task> toggleSpeechAsync,
         Action<string, bool> setEntryHovered)
     {
-        var message = BuildSafeMarkdown(entry.Text);
+        var content = new List<Element>();
+        ChatEntryMetadata? metadata = null;
+        if (!string.IsNullOrWhiteSpace(entry.Text))
+            content.Add(BuildSafeMarkdown(entry.Text));
+        if (row.Props.Timeline.EntryMetadata?.TryGetValue(entry.Id, out var resolvedMetadata) == true)
+            metadata = resolvedMetadata;
+        if (metadata?.AssistantContent is { Media.Count: > 0 } assistantContent)
+        {
+            var renderPlan = ChatAssistantContentProjector.BuildRenderPlan(assistantContent.Media);
+            content.AddRange(renderPlan.Media.Select(media =>
+                ChatAssistantMediaRenderer.Render(
+                    media,
+                    row.Props.Timeline.SessionId,
+                    row.Props.Timeline.ResolveAssistantMediaAsync)));
+            if (renderPlan.OmittedImages > 0)
+            {
+                content.Add(TextBlock(string.Format(
+                        ChatAssistantMediaRenderer.LocalizedOrDefault(
+                            "Chat_AssistantMedia_ImagesOmitted",
+                            "{0} more images not shown"),
+                        renderPlan.OmittedImages))
+                    .FontSize(11)
+                    .Foreground(Theme.SecondaryText));
+            }
+        }
+        if (content.Count == 0)
+            content.Add(BuildSafeMarkdown(string.Empty));
 
-        var bubble = Border(message)
+        var bubble = Border(VStack(8, content.ToArray()))
             .Background(BrushFor(
                 "SubtleFillColorSecondaryBrush",
                 Color.FromArgb(0x24, 0x80, 0x80, 0x80)))
@@ -464,7 +495,25 @@ public sealed class ReactorChatTimeline : Component<ReactorChatTimelineProps>
                     .Grid(column: 1))
             .Margin(20, row.IsAssistantRunStart ? 6 : 1, 72, row.IsAssistantRunEnd ? 6 : 1)
             .HAlign(HorizontalAlignment.Stretch)
-            .AutomationName(entry.Text ?? string.Empty);
+            .AutomationName(BuildAccessibleAssistantText(entry.Text, metadata?.AssistantContent));
+    }
+
+    private static string BuildAccessibleAssistantText(
+        string? text,
+        ChatAssistantContentPresentation? content)
+    {
+        var lines = new List<string>();
+        if (!string.IsNullOrWhiteSpace(text))
+            lines.Add(text);
+        if (content is not null)
+        {
+            var attachmentLabel = ChatAssistantMediaRenderer.LocalizedOrDefault(
+                "Chat_AssistantMedia_MediaAttachment",
+                "Media attachment");
+            lines.AddRange(content.Media.Select(media =>
+                $"{ChatAssistantMediaRenderer.DisplayName(media)}. {attachmentLabel}"));
+        }
+        return string.Join('\n', lines);
     }
 
     private static Element BuildAssistantAvatarSlot(ReactorTimelineRow row)
@@ -607,12 +656,12 @@ public sealed class ReactorChatTimeline : Component<ReactorChatTimelineProps>
             });
     }
 
-    private static (string Message, IReadOnlyList<ChatAttachmentPreview> Attachments) ParseAttachments(string? text)
+    private static (string Message, IReadOnlyList<ChatAttachmentPresentation> Attachments) ParseAttachments(string? text)
     {
         const string imagePrefix = "\u200B🖼️ ";
         const string filePrefix = "\u200B📎 ";
         var messageLines = new List<string>();
-        var attachments = new List<ChatAttachmentPreview>();
+        var attachments = new List<ChatAttachmentPresentation>();
 
         foreach (var line in (text ?? string.Empty).Split('\n'))
         {
@@ -621,13 +670,21 @@ public sealed class ReactorChatTimeline : Component<ReactorChatTimelineProps>
             {
                 var name = trimmed[imagePrefix.Length..].Trim();
                 if (name.Length > 0)
-                    attachments.Add(new ChatAttachmentPreview(name, true));
+                    attachments.Add(new ChatAttachmentPresentation(
+                        ChatAttachmentOrigin.Local,
+                        name,
+                        "application/octet-stream",
+                        IsImage: true));
             }
             else if (trimmed.StartsWith(filePrefix, StringComparison.Ordinal))
             {
                 var name = trimmed[filePrefix.Length..].Trim();
                 if (name.Length > 0)
-                    attachments.Add(new ChatAttachmentPreview(name, false));
+                    attachments.Add(new ChatAttachmentPresentation(
+                        ChatAttachmentOrigin.Local,
+                        name,
+                        "application/octet-stream",
+                        IsImage: false));
             }
             else
             {
@@ -638,10 +695,25 @@ public sealed class ReactorChatTimeline : Component<ReactorChatTimelineProps>
         return (string.Join('\n', messageLines).Trim(), attachments);
     }
 
-    private static Element BuildAttachment(ChatAttachmentPreview attachment)
+    private static string BuildAccessibleUserText(
+        string message,
+        IReadOnlyList<ChatAttachmentPresentation> attachments)
+    {
+        var lines = new List<string>();
+        if (message.Length > 0)
+            lines.Add(message);
+        lines.AddRange(attachments.Select(attachment =>
+            $"{attachment.DisplayFileName} ({attachment.MimeType})"));
+        return string.Join('\n', lines);
+    }
+
+    private static Element BuildAttachment(ChatAttachmentPresentation attachment)
     {
         if (attachment.IsImage
-            && OpenClawChatDataProvider.ImagePreviewCache.TryGetValue(attachment.Name, out var bytes)
+            && ChatAttachmentPreviewResolver.TryGetBytes(
+                attachment,
+                OpenClawChatDataProvider.ImagePreviewCache,
+                out var bytes)
             && TryDecodeAttachmentBitmap(bytes) is { } bitmap)
         {
             const double maxWidth = 280;
@@ -658,7 +730,7 @@ public sealed class ReactorChatTimeline : Component<ReactorChatTimelineProps>
                 .Size(pixelWidth * scale, pixelHeight * scale)
                 .CornerRadius(8)
                 .HAlign(HorizontalAlignment.Right)
-                .AutomationName(attachment.Name);
+                .AutomationName(attachment.DisplayFileName);
         }
 
         var glyph = Text(
@@ -673,7 +745,7 @@ public sealed class ReactorChatTimeline : Component<ReactorChatTimelineProps>
             .CornerRadius(6)
             .Background(Theme.Ref("SubtleFillColorSecondaryBrush"));
         var name = Text(
-                attachment.Name,
+                attachment.DisplayFileName,
                 13,
                 FontWeights.Normal,
                 "TextOnAccentFillColorPrimaryBrush")
@@ -685,13 +757,25 @@ public sealed class ReactorChatTimeline : Component<ReactorChatTimelineProps>
             .MaxWidth(240)
             .VAlign(VerticalAlignment.Center);
 
-        return Border(HStack(8, glyphBackground, name))
+        var mimeType = Text(
+                attachment.MimeType,
+                11,
+                FontWeights.Normal,
+                "TextOnAccentFillColorSecondaryBrush")
+            .Set(text =>
+            {
+                text.TextWrapping = TextWrapping.NoWrap;
+                text.TextTrimming = TextTrimming.CharacterEllipsis;
+            })
+            .MaxWidth(240);
+
+        return Border(HStack(8, glyphBackground, VStack(1, name, mimeType)))
             .Padding(8, 6, 12, 6)
             .CornerRadius(6)
             .BorderThickness(1)
             .BorderBrush(Theme.Ref("ControlStrokeColorDefaultBrush"))
             .Background(Theme.Ref("SubtleFillColorSecondaryBrush"))
-            .AutomationName(attachment.Name);
+            .AutomationName($"{attachment.DisplayFileName}, {attachment.MimeType}");
     }
 
     private static BitmapImage? TryDecodeAttachmentBitmap(byte[] bytes)
@@ -1026,7 +1110,6 @@ public sealed class ReactorChatTimeline : Component<ReactorChatTimelineProps>
     private static readonly System.Runtime.CompilerServices.ConditionalWeakTable<byte[], BitmapImage>
         s_attachmentBitmaps = new();
 
-    private sealed record ChatAttachmentPreview(string Name, bool IsImage);
 }
 
 internal sealed record ReactorTimelineRow(

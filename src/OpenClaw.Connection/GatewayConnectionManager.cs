@@ -526,7 +526,52 @@ public sealed class GatewayConnectionManager :
             IGatewayClientLifecycle lifecycle;
             try
             {
-                lifecycle = _clientFactory.Create(connectUrl, credential, perGatewayIdentityDir, diagLogger);
+                var httpCredential =
+                    InteractiveGatewayCredentialResolver.ResolveForAssistantMediaHttpSurface(
+                        record,
+                        credential);
+                var interactiveHttpToken = string.Empty;
+                if (httpCredential is not null)
+                {
+                    var httpAuthorization = await AuthorizeCredentialForEndpointAsync(
+                            record,
+                            httpCredential,
+                            _operationCts!.Token)
+                        .ConfigureAwait(false);
+                    if (_disposed ||
+                        Interlocked.Read(ref _generation) != gen ||
+                        _operationCts?.IsCancellationRequested != false)
+                    {
+                        return;
+                    }
+                    if (httpAuthorization.Allowed)
+                    {
+                        interactiveHttpToken = httpCredential.Token;
+                    }
+                    else
+                    {
+                        _diagnostics.Record(
+                            "credentials",
+                            "Interactive HTTP credential was withheld",
+                            httpAuthorization.Detail);
+                    }
+                }
+                else
+                {
+                    _diagnostics.Record(
+                        "credentials",
+                        "Interactive HTTP credential was unavailable");
+                }
+
+                var clientCredential = credential with
+                {
+                    InteractiveHttpToken = interactiveHttpToken,
+                };
+                lifecycle = _clientFactory.Create(
+                    connectUrl,
+                    clientCredential,
+                    perGatewayIdentityDir,
+                    diagLogger);
             }
             catch (DeviceIdentityLoadException ex)
             {
@@ -557,6 +602,11 @@ public sealed class GatewayConnectionManager :
             async Task<ReconnectAuthorizationResult> AuthorizeLiveCredentialHandoffAsync(
                 CancellationToken cancellationToken)
             {
+                // Clear the assistant-media HTTP credential up front so any
+                // in-flight media request never outlives this handoff attempt;
+                // it is only restored below once the fresh credential (or its
+                // interactive HTTP fallback) is re-authorized for this generation.
+                lifecycle.DataClient.SetAssistantMediaAuthToken(null);
                 var authorization = await AuthorizeCredentialHandoffAsync(
                         record,
                         credential,
@@ -578,6 +628,58 @@ public sealed class GatewayConnectionManager :
                             record.Id)
                         .ConfigureAwait(false);
                 }
+
+                if (authorization.Allowed &&
+                    IsCurrentGatewayAttempt(gen, record.Id) &&
+                    IsAutomaticReconnectAllowed(record.Id))
+                {
+                    var currentRecord = _registry.GetById(record.Id);
+                    if (currentRecord is not null)
+                    {
+                        GatewayCredential? currentHttpFallback = null;
+                        if (string.IsNullOrWhiteSpace(currentRecord.SharedGatewayToken))
+                        {
+                            currentHttpFallback = _credentialResolver.ResolveOperator(
+                                currentRecord,
+                                perGatewayIdentityDir);
+                        }
+                        var reconnectHttpCredential =
+                            InteractiveGatewayCredentialResolver.ResolveForAssistantMediaHttpSurface(
+                                currentRecord,
+                                currentHttpFallback);
+                        if (reconnectHttpCredential is null)
+                        {
+                            _diagnostics.Record(
+                                "credentials",
+                                "Interactive HTTP credential was unavailable during reconnect");
+                        }
+                        else
+                        {
+                            var httpAuthorization = await AuthorizeCredentialForEndpointAsync(
+                                    currentRecord,
+                                    reconnectHttpCredential,
+                                    cancellationToken)
+                                .ConfigureAwait(false);
+                            if (IsCurrentGatewayAttempt(gen, record.Id) &&
+                                IsAutomaticReconnectAllowed(record.Id))
+                            {
+                                if (httpAuthorization.Allowed)
+                                {
+                                    lifecycle.DataClient.SetAssistantMediaAuthToken(
+                                        reconnectHttpCredential.Token);
+                                }
+                                else
+                                {
+                                    _diagnostics.Record(
+                                        "credentials",
+                                        "Interactive HTTP credential was withheld during reconnect",
+                                        httpAuthorization.Detail);
+                                }
+                            }
+                        }
+                    }
+                }
+
                 return authorization;
             }
 
@@ -2549,23 +2651,66 @@ public sealed class GatewayConnectionManager :
             identityPath,
             token,
             CancellationToken.None).ConfigureAwait(false);
-        if (result.Outcome != DeviceTokenHandlingOutcome.IdentityLoadFailure)
+        if (result.Outcome != DeviceTokenHandlingOutcome.IdentityLoadFailure &&
+            result.Outcome != DeviceTokenHandlingOutcome.Stored)
+        {
             return;
+        }
 
+        var gatewayRecordId = attempt.GatewayRecordId ?? string.Empty;
         await _transitionSemaphore.WaitAsync().ConfigureAwait(false);
         try
         {
-            if (!IsCurrentGatewayAttempt(
-                    attempt.LifecycleGeneration,
-                    attempt.GatewayRecordId ?? string.Empty))
+            if (!IsCurrentGatewayAttempt(attempt.LifecycleGeneration, gatewayRecordId))
             {
                 return;
             }
 
-            _stateMachine.TryTransition(
-                ConnectionTrigger.WebSocketError,
-                DeviceIdentityLoadException.RecoveryMessage);
-            EmitStateChanged();
+            if (result.Outcome == DeviceTokenHandlingOutcome.IdentityLoadFailure)
+            {
+                _stateMachine.TryTransition(
+                    ConnectionTrigger.WebSocketError,
+                    DeviceIdentityLoadException.RecoveryMessage);
+                EmitStateChanged();
+                return;
+            }
+
+            // Stored: refresh the assistant-media HTTP credential bound to the
+            // fresh operator device token when this connection relies on a
+            // device token rather than a shared gateway token.
+            if (!string.Equals(token.Role, "operator", StringComparison.OrdinalIgnoreCase))
+                return;
+
+            var currentRecord = _registry.GetById(gatewayRecordId);
+            if (currentRecord is null ||
+                !string.IsNullOrWhiteSpace(currentRecord.SharedGatewayToken))
+            {
+                return;
+            }
+
+            var deviceCredential = new GatewayCredential(
+                token.Token,
+                IsBootstrapToken: false,
+                CredentialResolver.SourceDeviceToken);
+            var authorization = await AuthorizeCredentialForEndpointAsync(
+                    currentRecord,
+                    deviceCredential,
+                    _operationCts?.Token ?? CancellationToken.None)
+                .ConfigureAwait(false);
+            if (!IsCurrentGatewayAttempt(attempt.LifecycleGeneration, gatewayRecordId))
+                return;
+            if (authorization.Allowed)
+            {
+                _activeLifecycle?.DataClient.SetAssistantMediaAuthToken(token.Token);
+            }
+            else
+            {
+                _activeLifecycle?.DataClient.SetAssistantMediaAuthToken(null);
+                _diagnostics.Record(
+                    "credentials",
+                    "Interactive HTTP device credential was withheld after token refresh",
+                    authorization.Detail);
+            }
         }
         finally
         {

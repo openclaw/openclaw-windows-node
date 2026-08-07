@@ -6963,4 +6963,16 @@
   <data name="ConnectionPage_ProtocolUnknownMismatch" xml:space="preserve">
     <value>不支持此 Gateway 版本</value>
   </data>
+  <data name="Chat_AssistantMedia_Preparing" xml:space="preserve"><value>正在准备媒体</value></data>
+  <data name="Chat_AssistantMedia_Unavailable" xml:space="preserve"><value>媒体不可用</value></data>
+  <data name="Chat_AssistantMedia_Retry" xml:space="preserve"><value>重试</value></data>
+  <data name="Chat_AssistantMedia_Image" xml:space="preserve"><value>图像</value></data>
+  <data name="Chat_AssistantMedia_Audio" xml:space="preserve"><value>音频</value></data>
+  <data name="Chat_AssistantMedia_Video" xml:space="preserve"><value>视频</value></data>
+  <data name="Chat_AssistantMedia_File" xml:space="preserve"><value>文件</value></data>
+  <data name="Chat_AssistantMedia_Media" xml:space="preserve"><value>媒体</value></data>
+  <data name="Chat_AssistantMedia_ImagesOmitted" xml:space="preserve"><value>还有 {0} 张图像未显示</value></data>
+  <data name="Chat_AssistantMedia_MediaAttachment" xml:space="preserve"><value>媒体附件</value></data>
+  <data name="Chat_AssistantMedia_OpenImage" xml:space="preserve"><value>打开图像 {0}</value></data>
+  <data name="Chat_AssistantMedia_Close" xml:space="preserve"><value>关闭</value></data>
 </root>

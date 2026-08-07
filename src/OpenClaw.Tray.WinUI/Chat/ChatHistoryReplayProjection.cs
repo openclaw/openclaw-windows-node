@@ -8,6 +8,7 @@ internal sealed record ChatHistoryReplayPart(
     ChatMessageInfo Message,
     string Text,
     IReadOnlyList<ChatToolContentInfo> ToolContent,
+    IReadOnlyList<ChatMessageContentPartInfo> AssistantContentParts,
     bool IsFirstPart);
 
 internal static class ChatHistoryReplayProjection
@@ -41,6 +42,7 @@ internal static class ChatHistoryReplayProjection
                     message,
                     message.Text ?? string.Empty,
                     message.ToolContent,
+                    Array.Empty<ChatMessageContentPartInfo>(),
                     IsFirstPart: true);
                 continue;
             }
@@ -54,6 +56,7 @@ internal static class ChatHistoryReplayProjection
                         message,
                         part.Text ?? string.Empty,
                         Array.Empty<ChatToolContentInfo>(),
+                        new[] { part },
                         isFirstPart);
                     isFirstPart = false;
                 }
@@ -63,6 +66,17 @@ internal static class ChatHistoryReplayProjection
                         message,
                         string.Empty,
                         new[] { tool },
+                        Array.Empty<ChatMessageContentPartInfo>(),
+                        isFirstPart);
+                    isFirstPart = false;
+                }
+                else if (part.Kind == ChatMessageContentPartKind.Media && part.Media is not null)
+                {
+                    yield return new ChatHistoryReplayPart(
+                        message,
+                        string.Empty,
+                        Array.Empty<ChatToolContentInfo>(),
+                        new[] { part },
                         isFirstPart);
                     isFirstPart = false;
                 }

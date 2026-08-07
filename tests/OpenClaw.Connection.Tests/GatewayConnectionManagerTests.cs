@@ -89,6 +89,196 @@ public class GatewayConnectionManagerTests : IDisposable
     }
 
     [Fact]
+    public async Task ConnectAsync_PrefersSharedTokenForInteractiveHttpSurfaces()
+    {
+        _registry.AddOrUpdate(new GatewayRecord
+        {
+            Id = "gw-1",
+            Url = "wss://test",
+            SharedGatewayToken = "shared-http-token",
+        });
+        _registry.SetActive("gw-1");
+        _resolver.OperatorCredential = new GatewayCredential(
+            "paired-device-token",
+            false,
+            CredentialResolver.SourceDeviceToken);
+
+        await _manager.ConnectAsync("gw-1");
+
+        var created = Assert.Single(_factory.CreatedCredentials);
+        Assert.Equal("paired-device-token", created.Token);
+        Assert.Equal("shared-http-token", created.InteractiveHttpToken);
+    }
+
+    [Fact]
+    public async Task ConnectAsync_BootstrapOnlyDisablesAssistantMediaHttpAuth()
+    {
+        _registry.AddOrUpdate(new GatewayRecord
+        {
+            Id = "gw-1",
+            Url = "wss://test",
+            BootstrapToken = "bootstrap-token",
+        });
+        _registry.SetActive("gw-1");
+        _resolver.OperatorCredential = new GatewayCredential(
+            "bootstrap-token",
+            true,
+            CredentialResolver.SourceBootstrapToken);
+
+        await _manager.ConnectAsync("gw-1");
+
+        var created = Assert.Single(_factory.CreatedCredentials);
+        Assert.Equal("bootstrap-token", created.Token);
+        Assert.Equal(string.Empty, created.InteractiveHttpToken);
+        Assert.Null(Assert.Single(_factory.CreatedClients).AssistantMediaAuthToken);
+    }
+
+    [Fact]
+    public async Task ReconnectAuthorization_RefreshesHttpTokenAcrossProvenanceChanges()
+    {
+        _registry.AddOrUpdate(new GatewayRecord
+        {
+            Id = "gw-local",
+            Url = "ws://localhost:18789",
+            IsLocal = true,
+            SetupManagedDistroName = "OpenClawGateway",
+            SharedGatewayToken = "shared-http-token",
+        });
+        _registry.SetActive("gw-local");
+        _resolver.OperatorCredential = new GatewayCredential(
+            "paired-device-token",
+            false,
+            CredentialResolver.SourceDeviceToken);
+        var provenance = new GatewayEndpointProvenance(
+            GatewayEndpointProvenanceKind.ExpectedManagedGateway,
+            18789);
+        using var manager = new GatewayConnectionManager(
+            _resolver,
+            _factory,
+            _registry,
+            NullLogger.Instance,
+            endpointProvenanceProbe: (_, _) => Task.FromResult(provenance));
+
+        await manager.ConnectAsync("gw-local");
+        var client = Assert.Single(_factory.CreatedClients);
+        Assert.Equal("shared-http-token", client.AssistantMediaAuthToken);
+
+        provenance = new GatewayEndpointProvenance(
+            GatewayEndpointProvenanceKind.UnknownListener,
+            18789,
+            ProcessId: 42,
+            ProcessName: "unknown");
+        var deniedHttp = await client.DataClient.ReconnectAuthorizationAsync!(
+            CancellationToken.None);
+
+        Assert.True(deniedHttp.Allowed);
+        Assert.Null(client.AssistantMediaAuthToken);
+
+        provenance = new GatewayEndpointProvenance(
+            GatewayEndpointProvenanceKind.ExpectedManagedGateway,
+            18789);
+        var restoredHttp = await client.DataClient.ReconnectAuthorizationAsync!(
+            CancellationToken.None);
+
+        Assert.True(restoredHttp.Allowed);
+        Assert.Equal("shared-http-token", client.AssistantMediaAuthToken);
+    }
+
+    [Fact]
+    public async Task ReconnectAuthorization_RefreshesFallbackDeviceCredential()
+    {
+        SetupGateway("gw-1", "wss://test");
+        _resolver.OperatorCredential = new GatewayCredential(
+            "paired-device-token-1",
+            false,
+            CredentialResolver.SourceDeviceToken);
+
+        await _manager.ConnectAsync("gw-1");
+        var client = Assert.Single(_factory.CreatedClients);
+        Assert.Equal("paired-device-token-1", client.AssistantMediaAuthToken);
+
+        _resolver.OperatorCredential = new GatewayCredential(
+            "paired-device-token-2",
+            false,
+            CredentialResolver.SourceDeviceToken);
+        var reconnect = await client.DataClient.ReconnectAuthorizationAsync!(
+            CancellationToken.None);
+
+        Assert.True(reconnect.Allowed);
+        Assert.Equal("paired-device-token-2", client.AssistantMediaAuthToken);
+    }
+
+    [Fact]
+    public async Task ReconnectAuthorization_RejectsSameUrlTrustConfigurationChange()
+    {
+        SetupGateway("gw-1", "wss://test");
+        _resolver.OperatorCredential = new GatewayCredential(
+            "paired-device-token",
+            false,
+            CredentialResolver.SourceDeviceToken);
+
+        await _manager.ConnectAsync("gw-1");
+        var client = Assert.Single(_factory.CreatedClients);
+        _registry.AddOrUpdate(_registry.GetById("gw-1")! with
+        {
+            IsLocal = true,
+        });
+
+        var reconnect = await client.DataClient.ReconnectAuthorizationAsync!(
+            CancellationToken.None);
+
+        Assert.False(reconnect.Allowed);
+        Assert.Null(client.AssistantMediaAuthToken);
+    }
+
+    [Fact]
+    public async Task ReconnectAuthorization_AllowsRuntimeV2SignatureUpgrade()
+    {
+        SetupGateway("gw-1", "wss://test");
+        _resolver.OperatorCredential = new GatewayCredential(
+            "paired-device-token",
+            false,
+            CredentialResolver.SourceDeviceToken);
+
+        await _manager.ConnectAsync("gw-1");
+        var client = Assert.Single(_factory.CreatedClients);
+        _registry.Update("gw-1", record => record with
+        {
+            RequiresV2Signature = true,
+        });
+
+        var reconnect = await client.DataClient.ReconnectAuthorizationAsync!(
+            CancellationToken.None);
+
+        Assert.True(reconnect.Allowed);
+        Assert.Equal("paired-device-token", client.AssistantMediaAuthToken);
+    }
+
+    [Fact]
+    public async Task OperatorDeviceTokenReceived_RefreshesAssistantMediaAuthWithoutReconnect()
+    {
+        SetupGateway("gw-1", "wss://test");
+        _resolver.OperatorCredential = new GatewayCredential(
+            "paired-device-token-1",
+            false,
+            CredentialResolver.SourceDeviceToken);
+
+        await _manager.ConnectAsync("gw-1");
+        var client = Assert.Single(_factory.CreatedClients);
+        Assert.Equal("paired-device-token-1", client.AssistantMediaAuthToken);
+
+        client.SimulateDeviceTokenReceived(
+            "paired-device-token-2",
+            "operator",
+            ["operator.read"]);
+        await WaitUntilAsync(
+            () => client.AssistantMediaAuthToken == "paired-device-token-2");
+
+        Assert.Single(_factory.CreatedClients);
+        Assert.Equal("paired-device-token-2", client.AssistantMediaAuthToken);
+    }
+
+    [Fact]
     public async Task ConnectAndReconnect_EmitCompletedOperatorSpans()
     {
         SetupGateway("gw-1", "wss://test");
@@ -4968,7 +5158,10 @@ public class GatewayConnectionManagerTests : IDisposable
             if (CreateException != null)
                 throw CreateException;
 
-            var mock = new MockLifecycle(gatewayUrl, identityPath);
+            var mock = new MockLifecycle(
+                gatewayUrl,
+                identityPath,
+                credential.InteractiveHttpToken);
             CreatedClients.Add(mock);
             CreatedCredentials.Add(credential);
             CreatedIdentityPaths.Add(identityPath);
@@ -5017,12 +5210,19 @@ public class GatewayConnectionManagerTests : IDisposable
     {
         private readonly MockGatewayClient _client;
 
-        public MockLifecycle(string url, string identityPath)
+        public MockLifecycle(
+            string url,
+            string identityPath,
+            string? assistantMediaAuthToken = null)
         {
-            _client = new MockGatewayClient(url, identityPath);
+            _client = new MockGatewayClient(
+                url,
+                identityPath,
+                assistantMediaAuthToken);
         }
 
         public OpenClawGatewayClient DataClient => _client;
+        public string? AssistantMediaAuthToken => _client.AssistantMediaAuthToken;
         public bool IsDisposed { get; private set; }
         public event EventHandler<ConnectionStatus>? StatusChanged;
         public event EventHandler<string>? AuthenticationFailed;
@@ -5066,8 +5266,30 @@ public class GatewayConnectionManagerTests : IDisposable
     {
         private bool _isConnected = true;
 
-        public MockGatewayClient(string url, string identityPath)
-            : base(url, "mock-token", NullLogger.Instance, identityPath: identityPath) { }
+        public MockGatewayClient(
+            string url,
+            string identityPath,
+            string? assistantMediaAuthToken = null)
+            : base(
+                url,
+                "mock-token",
+                NullLogger.Instance,
+                identityPath: identityPath,
+                assistantMediaAuthToken: assistantMediaAuthToken) { }
+
+        public string? AssistantMediaAuthToken
+        {
+            get
+            {
+                var fieldInfo = typeof(OpenClawGatewayClient).GetField(
+                        "_assistantMediaAuthToken",
+                        System.Reflection.BindingFlags.Instance |
+                        System.Reflection.BindingFlags.NonPublic)
+                    ?? throw new InvalidOperationException(
+                        "Assistant media auth token field was not found.");
+                return fieldInfo.GetValue(this) as string;
+            }
+        }
 
         public override bool IsConnectedToGateway => _isConnected;
 

@@ -38,6 +38,11 @@
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Chat\ChatSurfaceResolver.cs" Link="Chat\ChatSurfaceResolver.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Chat\DebugChatSurfaceOverrides.cs" Link="Chat\DebugChatSurfaceOverrides.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Chat\ChatEntryMetadata.cs" Link="Chat\ChatEntryMetadata.cs" />
+    <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Chat\ChatAssistantContentPresentation.cs" Link="Chat\ChatAssistantContentPresentation.cs" />
+    <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Chat\ChatAssistantImageDecodePolicy.cs" Link="Chat\ChatAssistantImageDecodePolicy.cs" />
+    <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Chat\ChatAttachmentPresentation.cs" Link="Chat\ChatAttachmentPresentation.cs" />
+    <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Chat\ChatAttachmentEchoCorrelation.cs" Link="Chat\ChatAttachmentEchoCorrelation.cs" />
+    <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Chat\GatewayMediaMessageProjection.cs" Link="Chat\GatewayMediaMessageProjection.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Chat\ChatUsageFormatter.cs" Link="Chat\ChatUsageFormatter.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Chat\ChannelGroup.cs" Link="Chat\ChannelGroup.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Chat\ChatMarkdownSanitizer.cs" Link="Chat\ChatMarkdownSanitizer.cs" />
