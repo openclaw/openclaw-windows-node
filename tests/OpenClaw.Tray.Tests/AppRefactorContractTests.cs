@@ -5,6 +5,27 @@ namespace OpenClaw.Tray.Tests;
 public sealed class AppRefactorContractTests
 {
     [Fact]
+    public void VoiceAssistant_StateMachineStaysOutsideApp()
+    {
+        var source = ReadAppSources();
+
+        Assert.Contains("_voiceAssistantCoordinator?.TryClaimResponse(notification)", source);
+        Assert.Contains("new VoiceAssistantCoordinator(", source);
+        Assert.Matches(
+            new Regex(
+                @"if\s*\(!enabled\)\s*\{\s*await DisposeVoiceAssistantCoordinatorCoreAsync\(\)",
+                RegexOptions.Multiline),
+            source);
+        Assert.Contains("_voiceAssistantCoordinator = null;", source);
+        Assert.Contains("_voiceAssistantChatTurnClient = null;", source);
+        Assert.Contains("_voiceAssistantInput = null;", source);
+        Assert.DoesNotContain("enum VoiceAssistantState", source);
+        Assert.DoesNotContain("VoiceAssistantState.Dispatching", source);
+        Assert.DoesNotContain("VoiceAssistantState.WaitingForReply", source);
+        Assert.DoesNotContain("VoiceAssistantState.Speaking", source);
+    }
+
+    [Fact]
     public void Startup_UsesConnectionManagerAsOnlyGatewayClientOwner()
     {
         var source = ReadAppSources();
@@ -419,6 +440,34 @@ public sealed class AppRefactorContractTests
         Assert.DoesNotContain("_pendingWebViewSessionKey = null;", init);
         Assert.Contains("NavigateWebViewToCurrentChatUrl()", readiness);
         Assert.DoesNotContain("WebView.CoreWebView2.Navigate(_chatUrl)", readiness);
+    }
+
+    [Fact]
+    public void NativeChatRoots_PropagateInitialSelectionToProvider()
+    {
+        var root = TestRepositoryPaths.GetRepositoryRoot();
+        var functionalSource = File.ReadAllText(Path.Combine(
+            root,
+            "src",
+            "OpenClaw.Tray.WinUI",
+            "Chat",
+            "OpenClawChatRoot.cs"));
+        var reactorSource = File.ReadAllText(Path.Combine(
+            root,
+            "src",
+            "OpenClaw.Tray.WinUI",
+            "Chat",
+            "OpenClawReactorChatRoot.cs"));
+
+        Assert.Contains(
+            "nativeProvider.RememberSelectedThread(selectedThreadId);",
+            ExtractMethod(functionalSource, "LoadAsync"));
+        Assert.Contains(
+            "nativeProvider.RememberSelectedThread(selectedThreadId);",
+            ExtractMethod(reactorSource, "LoadAsync"));
+        Assert.Contains(
+            "nativeProvider.RememberSelectedThread(threadId);",
+            functionalSource);
     }
 
     [Fact]

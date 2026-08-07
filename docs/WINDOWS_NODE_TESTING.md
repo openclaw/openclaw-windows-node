@@ -122,6 +122,48 @@ When the node connects, it advertises these capabilities:
 
 Local MCP clients also see MCP-only `app.*` commands such as `app.navigate`, `app.status`, `app.chat.snapshot`/`app.chat.send`/`app.chat.reset`, and `app.chat.queue.list`/`app.chat.queue.cancel`. Connection diagnostics and setup tools live under `app.connection.*`; use `app.connection.status` to inspect active gateway, operator/node credential state, MCP runtime status, browser proxy caveat, pending approval commands, and recent diagnostics, and `app.connection.gateways` to list saved gateway records without token values. These are local testing and automation hooks registered with the tray's MCP server and are not advertised to the gateway WebSocket.
 
+## Voice Assistant Preview
+
+The Voice & Audio page includes a default-off **Assistant (preview)** mode. It reuses local
+Whisper STT, the configured TTS provider, and the existing gateway chat timeline. It does not add
+an MCP tool or gateway node command.
+
+Prerequisites:
+
+- Speech-to-text is enabled and the selected Whisper model is downloaded.
+- Text-to-speech is enabled and the selected provider is ready. Piper requires its selected voice;
+  ElevenLabs requires its protected API key and voice ID.
+- The wake phrase contains one to three words and is no longer than 64 characters.
+- At runtime, the gateway is connected and the canonical compose target is idle.
+
+Manual smoke:
+
+1. Open **Settings > Voice & Audio** and confirm the assistant mode defaults to Off.
+2. Disable each local speech prerequisite in turn. Confirm wake mode cannot be selected and the
+   status identifies the missing prerequisite.
+3. Set a custom wake phrase, leave the page, return, and confirm it persists.
+4. Enable **Wake phrase, one request**. Confirm the status becomes Listening and Windows shows
+   microphone use.
+5. Speak unrelated text and confirm no chat request is sent.
+6. Speak `<wake phrase>, summarize my inbox` as one utterance. Confirm only
+   `summarize my inbox` is sent.
+7. Confirm the matching final response is spoken once, then the status returns to Listening.
+8. While waiting or speaking, turn the mode off, disconnect the gateway, or disable a speech
+   prerequisite. Confirm capture and playback stop and the status becomes Off or Paused.
+9. Start push-to-talk while wake listening owns the microphone. Confirm the existing UI reports
+   microphone contention rather than opening a second capture pipeline.
+
+Privacy and V0 limits:
+
+- Enabling the mode keeps the microphone active and locally transcribes detected speech bursts to
+  find the wake phrase. Only the extracted trailing request is sent through the gateway.
+- Audio, ambient transcripts, wake phrases, extracted requests, and response content are not
+  added to application logs or telemetry.
+- The wake phrase and request must be in the same silence-bounded utterance.
+- There is no persistent conversation, barge-in, dedicated wake-word model, or overlay.
+- Assistant replies are always spoken. **Read responses aloud** continues to control other chat
+  replies only.
+
 ## Security Features
 
 - **URL Validation**: Canvas blocks `file://`, `javascript:`, localhost, private IPs, IPv6 localhost

@@ -89,6 +89,17 @@
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Services\BrowserProxyActivation.cs" Link="Services\BrowserProxyActivation.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Services\CaptureOperationGate.cs" Link="Services\CaptureOperationGate.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Services\CaptureCancellationPolicy.cs" Link="Services\CaptureCancellationPolicy.cs" />
+    <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Services\VoiceCaptureLease.cs" Link="Services\VoiceCaptureLease.cs" />
+    <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Services\VoiceAssistant\VoiceWakeGate.cs" Link="Services\VoiceAssistant\VoiceWakeGate.cs" />
+    <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Services\VoiceAssistant\VoiceAssistantReadiness.cs" Link="Services\VoiceAssistant\VoiceAssistantReadiness.cs" />
+    <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Services\VoiceAssistant\VoiceAssistantState.cs" Link="Services\VoiceAssistant\VoiceAssistantState.cs" />
+    <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Services\VoiceAssistant\VoiceAssistantChatInputPolicy.cs" Link="Services\VoiceAssistant\VoiceAssistantChatInputPolicy.cs" />
+    <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Services\VoiceAssistant\IVoiceAssistantInput.cs" Link="Services\VoiceAssistant\IVoiceAssistantInput.cs" />
+    <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Services\VoiceAssistant\IVoiceAssistantChatTurnClient.cs" Link="Services\VoiceAssistant\IVoiceAssistantChatTurnClient.cs" />
+    <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Services\VoiceAssistant\VoiceAssistantChatTurnClient.cs" Link="Services\VoiceAssistant\VoiceAssistantChatTurnClient.cs" />
+    <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Services\VoiceAssistant\VoiceAssistantCoordinator.cs" Link="Services\VoiceAssistant\VoiceAssistantCoordinator.cs" />
+    <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Presentation\IVoiceAssistantSettingsEnvironment.cs" Link="Presentation\IVoiceAssistantSettingsEnvironment.cs" />
+    <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Presentation\VoiceAssistantSettingsViewModel.cs" Link="Presentation\VoiceAssistantSettingsViewModel.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Services\BrowserProxyTunnelState.cs" Link="Services\BrowserProxyTunnelState.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Services\CommandCenterTopologyTunnelResolver.cs" Link="Services\CommandCenterTopologyTunnelResolver.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Services\CommandCenterTunnelInfoBuilder.cs" Link="Services\CommandCenterTunnelInfoBuilder.cs" />

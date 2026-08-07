@@ -38,6 +38,8 @@ public static class ReactorChatHostExtensions
         Action? onSettingsClick = null,
         Action<string>? onOpenCheckpoints = null,
         Action<bool>? onSpeakerMuteChanged = null,
+        string? initialVoiceUnavailableReason = null,
+        string? initialVoiceUnavailableStatus = null,
         bool initialMuted = false,
         bool isCompact = false)
     {
@@ -85,6 +87,8 @@ public static class ReactorChatHostExtensions
             onOpenCheckpoints,
             onSpeakerMuteChanged,
             ConfirmResetAsync,
+            initialVoiceUnavailableReason,
+            initialVoiceUnavailableStatus,
             initialMuted,
             isCompact);
         var host = new ReactorHostControl();
@@ -115,6 +119,9 @@ public sealed class MountedReactorChat(
     public void SetVoiceAudioLevel(float level) =>
         callbacks.SetVoiceAudioLevel?.Invoke(level);
 
+    public void SetVoiceAvailability(string? unavailableReason, string? unavailableStatus) =>
+        callbacks.SetVoiceAvailability?.Invoke(unavailableReason, unavailableStatus);
+
     public void TriggerVoiceRecording() =>
         callbacks.TriggerVoiceRecording?.Invoke();
 
@@ -137,6 +144,7 @@ public sealed class ReactorChatHostCallbacks
     public Action<IReadOnlyList<ChatAttachment>>? AttachFiles { get; set; }
     public Action<string?>? SetVoiceTranscript { get; set; }
     public Action<float>? SetVoiceAudioLevel { get; set; }
+    public Action<string?, string?>? SetVoiceAvailability { get; set; }
     public Action? TriggerVoiceRecording { get; set; }
     public Action<bool>? SetSpeakerMuted { get; set; }
 
@@ -145,6 +153,7 @@ public sealed class ReactorChatHostCallbacks
         AttachFiles = null;
         SetVoiceTranscript = null;
         SetVoiceAudioLevel = null;
+        SetVoiceAvailability = null;
         TriggerVoiceRecording = null;
         SetSpeakerMuted = null;
     }

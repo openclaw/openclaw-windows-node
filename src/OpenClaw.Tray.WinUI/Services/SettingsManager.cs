@@ -127,6 +127,28 @@ public class SettingsManager
     public bool ShowChatToolCalls { get => _data.ShowChatToolCalls; set => _data = _data with { ShowChatToolCalls = value }; }
     /// <summary>Play audio feedback chimes on listen start/stop.</summary>
     public bool VoiceAudioFeedback { get => _data.VoiceAudioFeedback; set => _data = _data with { VoiceAudioFeedback = value }; }
+    public string VoiceAssistantMode
+    {
+        get => VoiceAssistantSettingsPolicy.NormalizeMode(_data.VoiceAssistantMode);
+        set => _data = _data with { VoiceAssistantMode = VoiceAssistantSettingsPolicy.NormalizeMode(value) };
+    }
+    public string VoiceAssistantWakePhrase
+    {
+        get => VoiceAssistantSettingsPolicy.TryNormalizeWakePhrase(_data.VoiceAssistantWakePhrase, out var normalized)
+            ? normalized
+            : VoiceAssistantSettingsPolicy.DefaultWakePhrase;
+        set
+        {
+            var valid = VoiceAssistantSettingsPolicy.TryNormalizeWakePhrase(value, out var normalized);
+            _data = _data with
+            {
+                VoiceAssistantWakePhrase = valid ? normalized : VoiceAssistantSettingsPolicy.DefaultWakePhrase,
+                VoiceAssistantMode = valid
+                    ? VoiceAssistantSettingsPolicy.NormalizeMode(_data.VoiceAssistantMode)
+                    : VoiceAssistantSettingsPolicy.OffMode
+            };
+        }
+    }
     public bool NodeTtsEnabled { get => _data.NodeTtsEnabled; set => _data = _data with { NodeTtsEnabled = value }; }
     public string TtsProvider { get => string.IsNullOrWhiteSpace(_data.TtsProvider) ? TtsCapability.PiperProvider : _data.TtsProvider; set => _data = _data with { TtsProvider = value }; }
     public string TtsElevenLabsApiKey { get => _data.TtsElevenLabsApiKey ?? ""; set => _data = _data with { TtsElevenLabsApiKey = value }; }
@@ -268,6 +290,8 @@ public class SettingsManager
         SttSilenceTimeout = 1.5f,
         VoiceTtsEnabled = true,
         VoiceAudioFeedback = true,
+        VoiceAssistantMode = VoiceAssistantSettingsPolicy.OffMode,
+        VoiceAssistantWakePhrase = VoiceAssistantSettingsPolicy.DefaultWakePhrase,
         NodeTtsEnabled = false,
         TtsProvider = TtsCapability.PiperProvider,
         TtsElevenLabsApiKey = "",
@@ -296,6 +320,9 @@ public class SettingsManager
     private static SettingsData NormalizeLoadedData(SettingsData loaded, string? rawJson = null)
     {
         var defaults = CreateDefaultData();
+        var wakePhraseValid = VoiceAssistantSettingsPolicy.TryNormalizeWakePhrase(
+            loaded.VoiceAssistantWakePhrase,
+            out var normalizedWakePhrase);
         var data = loaded with
         {
             SettingsSchemaVersion = CurrentSettingsSchemaVersion,
@@ -309,6 +336,12 @@ public class SettingsManager
             SttLanguage = string.IsNullOrWhiteSpace(loaded.SttLanguage) ? defaults.SttLanguage : loaded.SttLanguage,
             SttModelName = string.IsNullOrWhiteSpace(loaded.SttModelName) ? defaults.SttModelName : loaded.SttModelName,
             SttSilenceTimeout = loaded.SttSilenceTimeout > 0 ? loaded.SttSilenceTimeout : defaults.SttSilenceTimeout,
+            VoiceAssistantMode = wakePhraseValid
+                ? VoiceAssistantSettingsPolicy.NormalizeMode(loaded.VoiceAssistantMode)
+                : VoiceAssistantSettingsPolicy.OffMode,
+            VoiceAssistantWakePhrase = wakePhraseValid
+                ? normalizedWakePhrase
+                : defaults.VoiceAssistantWakePhrase,
             TtsProvider = string.IsNullOrWhiteSpace(loaded.TtsProvider) ? defaults.TtsProvider : loaded.TtsProvider,
             TtsElevenLabsApiKey = UnprotectSettingSecret(loaded.TtsElevenLabsApiKey) ?? defaults.TtsElevenLabsApiKey,
             TtsElevenLabsModel = loaded.TtsElevenLabsModel ?? defaults.TtsElevenLabsModel,
@@ -399,6 +432,8 @@ public class SettingsManager
         SttLanguage = SttLanguage,
         SttModelName = SttModelName,
         SttSilenceTimeout = SttSilenceTimeout,
+        VoiceAssistantMode = VoiceAssistantMode,
+        VoiceAssistantWakePhrase = VoiceAssistantWakePhrase,
         TtsProvider = TtsProvider,
         TtsElevenLabsApiKey = TtsElevenLabsApiKey,
         TtsElevenLabsModel = string.IsNullOrWhiteSpace(TtsElevenLabsModel) ? null : TtsElevenLabsModel,

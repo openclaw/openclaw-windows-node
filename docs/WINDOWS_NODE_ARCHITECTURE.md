@@ -508,6 +508,31 @@ This is a candidate implementation path, not an implemented node command yet. Vo
 
 Current PR review status: open PR #120 (`feature/voice-mode`) is a useful prototype but should not merge as-is. It currently conflicts with the active capability-settings branch, advertises `voice.*` commands without the default-off Settings gate used for other privacy-sensitive capability groups, widens operator scopes in the same PR, persists cloud TTS provider keys in plain settings JSON, and introduces a Windows-specific wire schema before the Mac runtime/controller/session contract is agreed. Safe next step: split schema, gateway scope, chat transport, Windows runtime, WebChat integration, and cloud-provider credentials into separate reviews; keep the first merge behind a default-off Voice Settings group and gateway dangerous-command allowlist.
 
+### Local voice assistant V0
+
+The tray also has a default-off local voice assistant preview. This is a settings-driven
+orchestration feature, not a new node capability or `voice.*` protocol:
+
+1. `VoiceService` owns WASAPI microphone capture, energy VAD, and local Whisper transcription.
+2. `VoiceWakeGate` accepts only a silence-bounded transcript that begins with the configured
+   one-to-three-word wake phrase and includes a request in the same utterance.
+3. `VoiceAssistantCoordinator` stops capture, sends the extracted request through the canonical
+   chat provider, claims only the final response correlated to that tracked local send, and speaks
+   it through the configured Windows, Piper, or ElevenLabs TTS provider.
+4. Capture remains stopped while dispatching, waiting, and speaking. A fresh capture pipeline is
+   acquired afterward through the shared exclusive microphone lease.
+
+The coordinator is the authoritative state and cancellation owner. `App` remains the composition
+root and forwards settings, provider, notification, and shutdown lifecycle inputs. Gateway
+message ID and sequence are carried into local notifications so assistant playback does not claim
+an unrelated final from the same session.
+
+V0 intentionally uses transcript-gated activation rather than a dedicated wake-word model.
+Whisper therefore runs for each detected ambient speech burst. The wake phrase and request must be
+spoken together, there is no persistent conversation mode or barge-in, and only one request can be
+in flight. Enabling the preview requires configured local STT and TTS readiness, while gateway and
+idle-chat readiness are runtime pause conditions.
+
 ---
 
 ## Architectural Questions

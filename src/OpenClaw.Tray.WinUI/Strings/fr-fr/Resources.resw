@@ -2955,6 +2955,12 @@ Utilisez l'une de ces options :
   <data name="Chat_Composer_Tooltip_Voice" xml:space="preserve">
     <value>Voix</value>
   </data>
+  <data name="Chat_Composer_VoiceUnavailable_AssistantListening" xml:space="preserve">
+    <value>La saisie vocale est indisponible pendant que l’Assistant écoute la phrase d’activation.</value>
+  </data>
+  <data name="Chat_Composer_Status_AssistantListening" xml:space="preserve">
+    <value>L’Assistant écoute la phrase d’activation.</value>
+  </data>
   <data name="Chat_Voice_ListeningPrompt" xml:space="preserve">
     <value>Écoute…</value>
   </data>
@@ -6894,6 +6900,30 @@ Le binaire wxc-exec est introuvable. {1} S'il s'agit d'une build développeur, c
   <data name="JsonPreviewSplitter.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.LocalizedControlType" xml:space="preserve">
     <value>séparateur</value>
   </data>
+  <data name="VoiceSettingsPage_AssistantHeader.Text" xml:space="preserve"><value>Assistant (aperçu)</value></data>
+  <data name="VoiceSettingsPage_AssistantDescription.Text" xml:space="preserve"><value>Dites la phrase de réveil et votre demande dans un même énoncé. La réponse correspondante est toujours lue.</value></data>
+  <data name="VoiceSettingsPage_AssistantMode.Header" xml:space="preserve"><value>Mode Assistant</value></data>
+  <data name="VoiceSettingsPage_AssistantOff.Content" xml:space="preserve"><value>Désactivé</value></data>
+  <data name="VoiceSettingsPage_AssistantWakeOneShot.Content" xml:space="preserve"><value>Phrase de réveil, une demande</value></data>
+  <data name="VoiceSettingsPage_AssistantWakePhrase.Header" xml:space="preserve"><value>Phrase de réveil</value></data>
+  <data name="VoiceSettingsPage_AssistantWakePhrase.PlaceholderText" xml:space="preserve"><value>OpenClaw</value></data>
+  <data name="VoiceSettingsPage_AssistantPrivacy.Text" xml:space="preserve"><value>Lorsque cette option est activée, le microphone reste actif et les segments vocaux sont transcrits localement pour détecter la phrase de réveil. Seule la demande qui suit est envoyée via votre passerelle configurée.</value></data>
+  <data name="VoiceSettingsPage_AssistantStatusOff" xml:space="preserve"><value>L’assistant est désactivé.</value></data>
+  <data name="VoiceSettingsPage_AssistantStatusStarting" xml:space="preserve"><value>Démarrage de l’écoute.</value></data>
+  <data name="VoiceSettingsPage_AssistantStatusListening" xml:space="preserve"><value>Écoute de la phrase de réveil.</value></data>
+  <data name="VoiceSettingsPage_AssistantStatusDispatching" xml:space="preserve"><value>Envoi de votre demande.</value></data>
+  <data name="VoiceSettingsPage_AssistantStatusWaiting" xml:space="preserve"><value>Attente de la réponse.</value></data>
+  <data name="VoiceSettingsPage_AssistantStatusSpeaking" xml:space="preserve"><value>Lecture de la réponse.</value></data>
+  <data name="VoiceSettingsPage_AssistantStatusPaused" xml:space="preserve"><value>L’assistant est en pause jusqu’à ce que la conversation soit connectée et inactive.</value></data>
+  <data name="VoiceSettingsPage_AssistantStatusError" xml:space="preserve"><value>L’assistant s’est arrêté après une erreur et réessaiera lorsqu’il sera prêt.</value></data>
+  <data name="VoiceSettingsPage_AssistantStatusSttDisabled" xml:space="preserve"><value>Activez la reconnaissance vocale dans Autorisations.</value></data>
+  <data name="VoiceSettingsPage_AssistantStatusModelMissing" xml:space="preserve"><value>Téléchargez le modèle vocal sélectionné.</value></data>
+  <data name="VoiceSettingsPage_AssistantStatusTtsDisabled" xml:space="preserve"><value>Activez la synthèse vocale dans Autorisations.</value></data>
+  <data name="VoiceSettingsPage_AssistantStatusPiperMissing" xml:space="preserve"><value>Téléchargez la voix Piper sélectionnée.</value></data>
+  <data name="VoiceSettingsPage_AssistantStatusApiKeyMissing" xml:space="preserve"><value>Ajoutez une clé API ElevenLabs.</value></data>
+  <data name="VoiceSettingsPage_AssistantStatusVoiceIdMissing" xml:space="preserve"><value>Ajoutez un ID de voix ElevenLabs.</value></data>
+  <data name="VoiceSettingsPage_AssistantStatusWakeInvalid" xml:space="preserve"><value>Utilisez une phrase de réveil de un à trois mots et de 64 caractères maximum.</value></data>
+  <data name="VoiceSettingsPage_AssistantStatusProviderInvalid" xml:space="preserve"><value>Sélectionnez et configurez un fournisseur de synthèse vocale pris en charge.</value></data>
   <data name="PermissionsPage_ExecPolicySaved" xml:space="preserve">
     <value>Enregistré</value>
   </data>

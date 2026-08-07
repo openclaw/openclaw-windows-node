@@ -4,6 +4,7 @@ using Microsoft.UI.Xaml.Media;
 using OpenClaw.Shared;
 using OpenClaw.Shared.Capabilities;
 using OpenClawTray.Helpers;
+using OpenClawTray.Presentation;
 using OpenClawTray.Services;
 using OpenClawTray.Windows;
 using System;
@@ -27,10 +28,12 @@ public sealed partial class VoiceSettingsPage : Page
     private CancellationTokenSource? _whisperDownloadCts;
     private CancellationTokenSource? _piperDownloadCts;
     private bool _piperPreviewInProgress;
+    private VoiceAssistantSettingsViewModel? _assistantViewModel;
 
     public VoiceSettingsPage()
     {
         InitializeComponent();
+        DataContextChanged += OnDataContextChanged;
         Loaded += (_, _) =>
         {
             UpdateModelStatus();
@@ -48,6 +51,26 @@ public sealed partial class VoiceSettingsPage : Page
                 _inlineTestVoiceService = null;
             }
         };
+    }
+
+    private void OnDataContextChanged(FrameworkElement sender, DataContextChangedEventArgs args)
+    {
+        _assistantViewModel = args.NewValue as VoiceAssistantSettingsViewModel;
+        _assistantViewModel?.Refresh();
+    }
+
+    private void OnAssistantWakePhraseLostFocus(object sender, RoutedEventArgs e) =>
+        _assistantViewModel?.CommitWakePhrase();
+
+    private void OnAssistantWakePhraseKeyDown(
+        object sender,
+        Microsoft.UI.Xaml.Input.KeyRoutedEventArgs e)
+    {
+        if (e.Key != global::Windows.System.VirtualKey.Enter)
+            return;
+
+        _assistantViewModel?.CommitWakePhrase();
+        e.Handled = true;
     }
 
     public void Initialize(VoiceService? voiceService)

@@ -2956,6 +2956,12 @@ Gebruik een van deze opties:
   <data name="Chat_Composer_Tooltip_Voice" xml:space="preserve">
     <value>Stem</value>
   </data>
+  <data name="Chat_Composer_VoiceUnavailable_AssistantListening" xml:space="preserve">
+    <value>Spraakinvoer is niet beschikbaar terwijl Assistent naar de activeringszin luistert.</value>
+  </data>
+  <data name="Chat_Composer_Status_AssistantListening" xml:space="preserve">
+    <value>Assistent luistert naar de activeringszin.</value>
+  </data>
   <data name="Chat_Voice_ListeningPrompt" xml:space="preserve">
     <value>Luisteren…</value>
   </data>
@@ -6895,6 +6901,30 @@ Het binaire bestand wxc-exec is niet gevonden. {1} Als dit een ontwikkelaarsbuil
   <data name="JsonPreviewSplitter.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.LocalizedControlType" xml:space="preserve">
     <value>scheidingslijn</value>
   </data>
+  <data name="VoiceSettingsPage_AssistantHeader.Text" xml:space="preserve"><value>Assistent (preview)</value></data>
+  <data name="VoiceSettingsPage_AssistantDescription.Text" xml:space="preserve"><value>Zeg de wekzin en uw verzoek in één uiting. Het bijbehorende antwoord wordt altijd uitgesproken.</value></data>
+  <data name="VoiceSettingsPage_AssistantMode.Header" xml:space="preserve"><value>Assistentmodus</value></data>
+  <data name="VoiceSettingsPage_AssistantOff.Content" xml:space="preserve"><value>Uit</value></data>
+  <data name="VoiceSettingsPage_AssistantWakeOneShot.Content" xml:space="preserve"><value>Wekzin, één verzoek</value></data>
+  <data name="VoiceSettingsPage_AssistantWakePhrase.Header" xml:space="preserve"><value>Wekzin</value></data>
+  <data name="VoiceSettingsPage_AssistantWakePhrase.PlaceholderText" xml:space="preserve"><value>OpenClaw</value></data>
+  <data name="VoiceSettingsPage_AssistantPrivacy.Text" xml:space="preserve"><value>Wanneer dit is ingeschakeld, blijft de microfoon actief en worden spraakfragmenten lokaal getranscribeerd om de wekzin te vinden. Alleen het verzoek na de wekzin wordt via uw geconfigureerde gateway verzonden.</value></data>
+  <data name="VoiceSettingsPage_AssistantStatusOff" xml:space="preserve"><value>Assistent is uit.</value></data>
+  <data name="VoiceSettingsPage_AssistantStatusStarting" xml:space="preserve"><value>Luisteren wordt gestart.</value></data>
+  <data name="VoiceSettingsPage_AssistantStatusListening" xml:space="preserve"><value>Luisteren naar de wekzin.</value></data>
+  <data name="VoiceSettingsPage_AssistantStatusDispatching" xml:space="preserve"><value>Uw verzoek wordt verzonden.</value></data>
+  <data name="VoiceSettingsPage_AssistantStatusWaiting" xml:space="preserve"><value>Wachten op het antwoord.</value></data>
+  <data name="VoiceSettingsPage_AssistantStatusSpeaking" xml:space="preserve"><value>Het antwoord wordt uitgesproken.</value></data>
+  <data name="VoiceSettingsPage_AssistantStatusPaused" xml:space="preserve"><value>Assistent is gepauzeerd totdat chat verbonden en inactief is.</value></data>
+  <data name="VoiceSettingsPage_AssistantStatusError" xml:space="preserve"><value>De assistent is gestopt na een fout en probeert het opnieuw wanneer deze gereed is.</value></data>
+  <data name="VoiceSettingsPage_AssistantStatusSttDisabled" xml:space="preserve"><value>Schakel spraak-naar-tekst in bij Machtigingen.</value></data>
+  <data name="VoiceSettingsPage_AssistantStatusModelMissing" xml:space="preserve"><value>Download het geselecteerde spraakmodel.</value></data>
+  <data name="VoiceSettingsPage_AssistantStatusTtsDisabled" xml:space="preserve"><value>Schakel tekst-naar-spraak in bij Machtigingen.</value></data>
+  <data name="VoiceSettingsPage_AssistantStatusPiperMissing" xml:space="preserve"><value>Download de geselecteerde Piper-stem.</value></data>
+  <data name="VoiceSettingsPage_AssistantStatusApiKeyMissing" xml:space="preserve"><value>Voeg een ElevenLabs API-sleutel toe.</value></data>
+  <data name="VoiceSettingsPage_AssistantStatusVoiceIdMissing" xml:space="preserve"><value>Voeg een ElevenLabs-stem-ID toe.</value></data>
+  <data name="VoiceSettingsPage_AssistantStatusWakeInvalid" xml:space="preserve"><value>Gebruik een wekzin van één tot drie woorden en maximaal 64 tekens.</value></data>
+  <data name="VoiceSettingsPage_AssistantStatusProviderInvalid" xml:space="preserve"><value>Selecteer en configureer een ondersteunde tekst-naar-spraakprovider.</value></data>
   <data name="PermissionsPage_ExecPolicySaved" xml:space="preserve">
     <value>Opgeslagen</value>
   </data>

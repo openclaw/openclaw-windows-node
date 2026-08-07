@@ -1,3 +1,4 @@
+using OpenClaw.Shared;
 using OpenClawTray.Presentation;
 using OpenClawTray.Services;
 
@@ -26,11 +27,15 @@ public sealed class SettingsStoreTests
         {
             settings.GlobalHotkeyEnabled = true;
             settings.NotificationSound = "Subtle";
+            settings.VoiceAssistantMode = VoiceAssistantSettingsPolicy.WakeOneShotMode;
+            settings.VoiceAssistantWakePhrase = "Hey OpenClaw";
 
             var snapshot = store.Current;
 
             Assert.True(snapshot.GlobalHotkeyEnabled);
             Assert.Equal("Subtle", snapshot.NotificationSound);
+            Assert.Equal(VoiceAssistantSettingsPolicy.WakeOneShotMode, snapshot.VoiceAssistantMode);
+            Assert.Equal("Hey OpenClaw", snapshot.VoiceAssistantWakePhrase);
         }
     }
 
@@ -47,10 +52,14 @@ public sealed class SettingsStoreTests
             {
                 e.GlobalHotkeyEnabled = true;
                 e.NotifyHealth = true;
+                e.VoiceAssistantMode = VoiceAssistantSettingsPolicy.WakeOneShotMode;
+                e.VoiceAssistantWakePhrase = "Hey OpenClaw";
             });
 
             Assert.True(settings.GlobalHotkeyEnabled);
             Assert.True(settings.NotifyHealth);
+            Assert.Equal(VoiceAssistantSettingsPolicy.WakeOneShotMode, settings.VoiceAssistantMode);
+            Assert.Equal("Hey OpenClaw", settings.VoiceAssistantWakePhrase);
             Assert.Equal(1, saves); // batched: one save for both edits
         }
     }

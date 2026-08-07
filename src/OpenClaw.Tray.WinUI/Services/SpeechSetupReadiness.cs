@@ -1,5 +1,6 @@
 using OpenClaw.Shared.Audio;
 using OpenClaw.Shared.Capabilities;
+using OpenClawTray.Services.VoiceAssistant;
 
 namespace OpenClawTray.Services;
 
@@ -40,5 +41,29 @@ public static class SpeechSetupReadiness
         }
 
         return true;
+    }
+
+    public static VoiceAssistantReadinessResult GetVoiceAssistantReadiness(
+        SettingsManager settings,
+        string? wakePhrase = null)
+    {
+        ArgumentNullException.ThrowIfNull(settings);
+
+        var whisperModels = new WhisperModelManager(SettingsManager.SettingsDirectoryPath, new AppLogger());
+        var piperVoices = new PiperVoiceManager(SettingsManager.SettingsDirectoryPath, new AppLogger());
+        var provider = TtsCapability.ResolveProvider(null, settings.TtsProvider);
+
+        return VoiceAssistantReadiness.Evaluate(new VoiceAssistantReadinessInput(
+            SttEnabled: settings.NodeSttEnabled,
+            SttModelDownloaded: whisperModels.IsModelDownloaded(settings.SttModelName),
+            TtsEnabled: settings.NodeTtsEnabled,
+            TtsProvider: provider,
+            PiperVoiceDownloaded:
+                string.Equals(provider, TtsCapability.PiperProvider, StringComparison.Ordinal) &&
+                !string.IsNullOrWhiteSpace(settings.TtsPiperVoiceId) &&
+                piperVoices.IsVoiceDownloaded(settings.TtsPiperVoiceId),
+            HasElevenLabsApiKey: !string.IsNullOrWhiteSpace(settings.TtsElevenLabsApiKey),
+            HasElevenLabsVoiceId: !string.IsNullOrWhiteSpace(settings.TtsElevenLabsVoiceId),
+            WakePhrase: wakePhrase ?? settings.VoiceAssistantWakePhrase));
     }
 }

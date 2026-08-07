@@ -2955,6 +2955,12 @@
   <data name="Chat_Composer_Tooltip_Voice" xml:space="preserve">
     <value>语音</value>
   </data>
+  <data name="Chat_Composer_VoiceUnavailable_AssistantListening" xml:space="preserve">
+    <value>助手正在监听唤醒短语，语音输入暂不可用。</value>
+  </data>
+  <data name="Chat_Composer_Status_AssistantListening" xml:space="preserve">
+    <value>助手正在监听唤醒短语。</value>
+  </data>
   <data name="Chat_Voice_ListeningPrompt" xml:space="preserve">
     <value>正在聆听…</value>
   </data>
@@ -6894,6 +6900,30 @@
   <data name="JsonPreviewSplitter.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.LocalizedControlType" xml:space="preserve">
     <value>分隔条</value>
   </data>
+  <data name="VoiceSettingsPage_AssistantHeader.Text" xml:space="preserve"><value>助手（预览）</value></data>
+  <data name="VoiceSettingsPage_AssistantDescription.Text" xml:space="preserve"><value>在同一句话中说出唤醒短语和请求。匹配的回复将始终朗读。</value></data>
+  <data name="VoiceSettingsPage_AssistantMode.Header" xml:space="preserve"><value>助手模式</value></data>
+  <data name="VoiceSettingsPage_AssistantOff.Content" xml:space="preserve"><value>关闭</value></data>
+  <data name="VoiceSettingsPage_AssistantWakeOneShot.Content" xml:space="preserve"><value>唤醒短语，一次请求</value></data>
+  <data name="VoiceSettingsPage_AssistantWakePhrase.Header" xml:space="preserve"><value>唤醒短语</value></data>
+  <data name="VoiceSettingsPage_AssistantWakePhrase.PlaceholderText" xml:space="preserve"><value>OpenClaw</value></data>
+  <data name="VoiceSettingsPage_AssistantPrivacy.Text" xml:space="preserve"><value>启用后，麦克风将保持活动状态，并在本地转录语音片段以查找唤醒短语。仅唤醒短语之后的请求会通过已配置的网关发送。</value></data>
+  <data name="VoiceSettingsPage_AssistantStatusOff" xml:space="preserve"><value>助手已关闭。</value></data>
+  <data name="VoiceSettingsPage_AssistantStatusStarting" xml:space="preserve"><value>正在启动唤醒监听。</value></data>
+  <data name="VoiceSettingsPage_AssistantStatusListening" xml:space="preserve"><value>正在监听唤醒短语。</value></data>
+  <data name="VoiceSettingsPage_AssistantStatusDispatching" xml:space="preserve"><value>正在发送请求。</value></data>
+  <data name="VoiceSettingsPage_AssistantStatusWaiting" xml:space="preserve"><value>正在等待回复。</value></data>
+  <data name="VoiceSettingsPage_AssistantStatusSpeaking" xml:space="preserve"><value>正在朗读回复。</value></data>
+  <data name="VoiceSettingsPage_AssistantStatusPaused" xml:space="preserve"><value>助手已暂停，直到聊天已连接且空闲。</value></data>
+  <data name="VoiceSettingsPage_AssistantStatusError" xml:space="preserve"><value>助手因错误而停止，并会在准备就绪后重试。</value></data>
+  <data name="VoiceSettingsPage_AssistantStatusSttDisabled" xml:space="preserve"><value>请在“权限”中启用语音转文字。</value></data>
+  <data name="VoiceSettingsPage_AssistantStatusModelMissing" xml:space="preserve"><value>请下载所选语音模型。</value></data>
+  <data name="VoiceSettingsPage_AssistantStatusTtsDisabled" xml:space="preserve"><value>请在“权限”中启用文字转语音。</value></data>
+  <data name="VoiceSettingsPage_AssistantStatusPiperMissing" xml:space="preserve"><value>请下载所选 Piper 语音。</value></data>
+  <data name="VoiceSettingsPage_AssistantStatusApiKeyMissing" xml:space="preserve"><value>请添加 ElevenLabs API 密钥。</value></data>
+  <data name="VoiceSettingsPage_AssistantStatusVoiceIdMissing" xml:space="preserve"><value>请添加 ElevenLabs 语音 ID。</value></data>
+  <data name="VoiceSettingsPage_AssistantStatusWakeInvalid" xml:space="preserve"><value>请使用一到三个词且不超过 64 个字符的唤醒短语。</value></data>
+  <data name="VoiceSettingsPage_AssistantStatusProviderInvalid" xml:space="preserve"><value>请选择并配置受支持的文字转语音提供商。</value></data>
   <data name="PermissionsPage_ExecPolicySaved" xml:space="preserve">
     <value>已保存</value>
   </data>

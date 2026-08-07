@@ -285,6 +285,50 @@
                 </StackPanel>
             </Border>
 
+            <!-- Assistant preview -->
+            <Border Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                    BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                    BorderThickness="1" CornerRadius="8" Padding="16">
+                <StackPanel Spacing="12">
+                    <TextBlock x:Uid="VoiceSettingsPage_AssistantHeader"
+                               Text="Assistant (preview)"
+                               Style="{StaticResource BodyStrongTextBlockStyle}"/>
+                    <TextBlock x:Uid="VoiceSettingsPage_AssistantDescription"
+                               Text="Say the wake phrase and your request in one utterance. The matched reply is always spoken."
+                               Style="{StaticResource CaptionTextBlockStyle}"
+                               Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                               TextWrapping="Wrap"/>
+                    <RadioButtons x:Uid="VoiceSettingsPage_AssistantMode"
+                                  Header="Assistant mode"
+                                  SelectedIndex="{Binding SelectedModeIndex, Mode=TwoWay}"
+                                  AutomationProperties.AutomationId="VoiceAssistantMode">
+                        <RadioButton x:Uid="VoiceSettingsPage_AssistantOff"
+                                     Content="Off"/>
+                        <RadioButton x:Uid="VoiceSettingsPage_AssistantWakeOneShot"
+                                     Content="Wake phrase, one request"
+                                     IsEnabled="{Binding CanEnableWakeMode}"/>
+                    </RadioButtons>
+                    <TextBox x:Uid="VoiceSettingsPage_AssistantWakePhrase"
+                             Header="Wake phrase"
+                             PlaceholderText="OpenClaw"
+                             MaxLength="64"
+                             Text="{Binding WakePhraseDraft, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                             LostFocus="OnAssistantWakePhraseLostFocus"
+                             KeyDown="OnAssistantWakePhraseKeyDown"
+                             AutomationProperties.AutomationId="VoiceAssistantWakePhrase"/>
+                    <InfoBar IsOpen="True"
+                             IsClosable="False"
+                             Severity="Informational"
+                             Message="{Binding StatusText}"
+                             AutomationProperties.AutomationId="VoiceAssistantStatus"/>
+                    <TextBlock x:Uid="VoiceSettingsPage_AssistantPrivacy"
+                               Text="When enabled, the microphone stays active and speech bursts are transcribed locally to find the wake phrase. Only the request after the wake phrase is sent through your configured gateway."
+                               Style="{StaticResource CaptionTextBlockStyle}"
+                               Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                               TextWrapping="Wrap"/>
+                </StackPanel>
+            </Border>
+
             <!-- Privacy notice -->
             <Border Background="{ThemeResource SystemFillColorCautionBackgroundBrush}"
                     CornerRadius="8" Padding="12">

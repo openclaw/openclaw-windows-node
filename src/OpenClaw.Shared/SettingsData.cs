@@ -1,7 +1,43 @@
+using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 
 namespace OpenClaw.Shared;
+
+public static class VoiceAssistantSettingsPolicy
+{
+    public const string OffMode = "off";
+    public const string WakeOneShotMode = "wake-one-shot";
+    public const string DefaultWakePhrase = "OpenClaw";
+    public const int MaxWakePhraseLength = 64;
+
+    public static string NormalizeMode(string? value) =>
+        string.Equals(value, WakeOneShotMode, StringComparison.OrdinalIgnoreCase)
+            ? WakeOneShotMode
+            : OffMode;
+
+    public static bool TryNormalizeWakePhrase(string? value, out string normalized)
+    {
+        normalized = string.Join(
+            ' ',
+            (value ?? string.Empty)
+                .Normalize(NormalizationForm.FormKC)
+                .Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries));
+
+        if (normalized.Length is 0 or > MaxWakePhraseLength)
+            return false;
+
+        var words = normalized.Split(' ');
+        if (words.Length is < 1 or > 3)
+            return false;
+
+        return words.All(word =>
+            word.Any(char.IsLetterOrDigit) &&
+            word.All(character =>
+                char.IsLetterOrDigit(character) ||
+                character is '\'' or '\u2019' or '-'));
+    }
+}
 
 /// <summary>
 /// Serializable settings data model. Used for JSON round-trip persistence.
@@ -87,6 +123,10 @@ public record class SettingsData
     public bool ShowChatToolCalls { get; set; } = true;
     /// <summary>Play audio feedback chimes on listen start/stop.</summary>
     public bool VoiceAudioFeedback { get; set; } = true;
+    /// <summary>Local assistant mode. Unknown values normalize to <c>off</c>.</summary>
+    public string VoiceAssistantMode { get; set; } = VoiceAssistantSettingsPolicy.OffMode;
+    /// <summary>Wake phrase used by the local transcript gate.</summary>
+    public string VoiceAssistantWakePhrase { get; set; } = VoiceAssistantSettingsPolicy.DefaultWakePhrase;
     public bool NodeTtsEnabled { get; set; } = false;
     public string TtsProvider { get; set; } = OpenClaw.Shared.Capabilities.TtsCapability.PiperProvider;
     /// <summary>Persisted: whether the Hub's NavigationView pane is expanded

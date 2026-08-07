@@ -3595,7 +3595,11 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
                 // HIGH 4: log shape only — content previously
                 // surfaced in the operator log.
                 _logger.Info($"Assistant response: role={role} state={state} len={text.Length}");
-                EmitChatNotification(text, sessionKey);
+                EmitChatNotification(
+                    text,
+                    sessionKey,
+                    messageOpenClawMetadata.Id ?? payloadOpenClawMetadata.Id,
+                    messageOpenClawMetadata.Seq ?? payloadOpenClawMetadata.Seq);
             }
         }
         
@@ -3631,7 +3635,7 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
                 {
                     // HIGH 4: log shape only.
                     _logger.Info($"Assistant response (legacy): role={role} state={state} len={text.Length}");
-                    EmitChatNotification(text, sessionKey);
+                    EmitChatNotification(text, sessionKey, openClawMetadata.Id, openClawMetadata.Seq);
                 }
             }
         }
@@ -3831,7 +3835,11 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
         }
     }
 
-    private void EmitChatNotification(string text, string? sessionKey = null)
+    private void EmitChatNotification(
+        string text,
+        string? sessionKey = null,
+        string? openClawId = null,
+        int? openClawSeq = null)
     {
         var displayText = text.Length > 200 ? text[..200] + "…" : text;
         var notification = new OpenClawNotification
@@ -3839,7 +3847,9 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
             Message = displayText,
             FullMessage = text,
             IsChat = true,
-            SessionKey = sessionKey
+            SessionKey = sessionKey,
+            OpenClawId = openClawId,
+            OpenClawSeq = openClawSeq
         };
         var (title, type) = _categorizer.Classify(notification, _userRules);
         notification.Title = title;

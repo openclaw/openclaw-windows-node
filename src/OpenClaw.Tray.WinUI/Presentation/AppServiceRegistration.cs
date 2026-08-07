@@ -32,6 +32,7 @@ internal static class AppServiceRegistration
         services.AddSingleton(context.Dispatcher);
         services.AddSingleton(context.AppCommands);
         services.AddSingleton(context.Settings);
+        services.AddSingleton(context.VoiceAssistantEnvironment);
 
         // Settings facade over the App-owned SettingsManager. Constructed eagerly from the
         // already-owned singletons so presentation code depends on ISettingsStore, never the
@@ -45,6 +46,7 @@ internal static class AppServiceRegistration
         // Transient page view models resolved per navigation scope.
         services.AddTransient<SettingsPageViewModel>();
         services.AddTransient<PermissionsPageViewModel>();
+        services.AddTransient<VoiceAssistantSettingsViewModel>();
 
         return services;
     }

@@ -177,6 +177,8 @@ public sealed class OpenClawChatRoot : Component
             _pendingSelectedThreadId = threadId;
             selectedIdState.Set(threadId);
             selectedIdRef.Current = threadId;
+            if (_provider is OpenClawChatDataProvider nativeProvider)
+                nativeProvider.RememberSelectedThread(threadId);
         };
 
         UseEffect((Func<Action>)(() =>
@@ -914,8 +916,17 @@ public sealed class OpenClawChatRoot : Component
         {
             var snap = await provider.LoadAsync();
             setSnapshot(snap);
-            if (getSelected() is null && snap.DefaultThreadId is { } d)
+            var selectedThreadId = getSelected();
+            if (selectedThreadId is null && snap.DefaultThreadId is { } d)
+            {
+                selectedThreadId = d;
                 setSelected(d);
+            }
+            if (selectedThreadId is not null &&
+                provider is OpenClawChatDataProvider nativeProvider)
+            {
+                nativeProvider.RememberSelectedThread(selectedThreadId);
+            }
         }
         catch (Exception ex)
         {

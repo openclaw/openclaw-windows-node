@@ -118,7 +118,20 @@ public sealed class OpenClawChatCoordinator : IDisposable
 
     public Task SpeakResponseAsync(string text) => SpeakConfiguredTextAsync(text, muteVoiceCapture: true, bypassMute: false);
 
-    private async Task SpeakConfiguredTextAsync(string text, bool muteVoiceCapture, bool bypassMute = false)
+    public Task SpeakAssistantResponseAsync(string text, CancellationToken cancellationToken) =>
+        SpeakConfiguredTextAsync(
+            text,
+            muteVoiceCapture: false,
+            bypassMute: true,
+            cancellationToken,
+            propagateFailure: true);
+
+    private async Task SpeakConfiguredTextAsync(
+        string text,
+        bool muteVoiceCapture,
+        bool bypassMute = false,
+        CancellationToken cancellationToken = default,
+        bool propagateFailure = false)
     {
         if (!bypassMute && IsMuted) return;
         var voiceService = _nodeServiceAccessor()?.VoiceService;
@@ -146,11 +159,17 @@ public sealed class OpenClawChatCoordinator : IDisposable
 
             var ttsService = _nodeServiceAccessor()?.TextToSpeech
                 ?? GetFallbackTextToSpeechService();
-            await ttsService.SpeakAsync(speakArgs).ConfigureAwait(false);
+            await ttsService.SpeakAsync(speakArgs, cancellationToken).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            throw;
         }
         catch (Exception ex)
         {
             _logger.Warn($"TTS response playback failed: {ex.Message}");
+            if (propagateFailure)
+                throw;
         }
         finally
         {

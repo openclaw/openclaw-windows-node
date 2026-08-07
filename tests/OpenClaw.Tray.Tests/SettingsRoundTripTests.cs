@@ -44,6 +44,8 @@ public class SettingsRoundTripTests
             SttSilenceTimeout = 2.5f,
             VoiceTtsEnabled = false,
             VoiceAudioFeedback = false,
+            VoiceAssistantMode = VoiceAssistantSettingsPolicy.WakeOneShotMode,
+            VoiceAssistantWakePhrase = "Hey OpenClaw",
             NodeTtsEnabled = true,
             TtsProvider = "elevenlabs",
             TtsElevenLabsApiKey = "elevenlabs-key",
@@ -108,6 +110,8 @@ public class SettingsRoundTripTests
         Assert.Equal(original.SttSilenceTimeout, restored.SttSilenceTimeout);
         Assert.Equal(original.VoiceTtsEnabled, restored.VoiceTtsEnabled);
         Assert.Equal(original.VoiceAudioFeedback, restored.VoiceAudioFeedback);
+        Assert.Equal(original.VoiceAssistantMode, restored.VoiceAssistantMode);
+        Assert.Equal(original.VoiceAssistantWakePhrase, restored.VoiceAssistantWakePhrase);
         Assert.Equal(original.NodeTtsEnabled, restored.NodeTtsEnabled);
         Assert.Equal(original.TtsProvider, restored.TtsProvider);
         Assert.Equal(original.TtsElevenLabsApiKey, restored.TtsElevenLabsApiKey);
@@ -184,6 +188,8 @@ public class SettingsRoundTripTests
         Assert.True(settings.NodeBrowserProxyEnabled);
         Assert.False(settings.NodeSttEnabled);
         Assert.Equal("auto", settings.SttLanguage);
+        Assert.Equal(VoiceAssistantSettingsPolicy.OffMode, settings.VoiceAssistantMode);
+        Assert.Equal(VoiceAssistantSettingsPolicy.DefaultWakePhrase, settings.VoiceAssistantWakePhrase);
         Assert.False(settings.NodeTtsEnabled);
         Assert.Equal("piper", settings.TtsProvider);
         Assert.Null(settings.TtsElevenLabsApiKey);
@@ -205,6 +211,40 @@ public class SettingsRoundTripTests
         // installs and for any settings file that predates the field).
         Assert.True(settings.HubNavPaneOpen);
         Assert.Null(settings.UserRules);
+    }
+
+    [Theory]
+    [InlineData("unexpected", "OpenClaw", "off", "OpenClaw")]
+    [InlineData("wake-one-shot", "too many words for a wake phrase", "off", "OpenClaw")]
+    [InlineData("WAKE-ONE-SHOT", "  Hey   OpenClaw ", "wake-one-shot", "Hey OpenClaw")]
+    public void SettingsManager_NormalizesAssistantSettings(
+        string mode,
+        string wakePhrase,
+        string expectedMode,
+        string expectedWakePhrase)
+    {
+        var dir = Path.Combine(Path.GetTempPath(), "OpenClaw.Tray.Tests", Guid.NewGuid().ToString("N"));
+        try
+        {
+            Directory.CreateDirectory(dir);
+            File.WriteAllText(
+                Path.Combine(dir, "settings.json"),
+                JsonSerializer.Serialize(new
+                {
+                    VoiceAssistantMode = mode,
+                    VoiceAssistantWakePhrase = wakePhrase
+                }));
+
+            var settings = new SettingsManager(dir);
+
+            Assert.Equal(expectedMode, settings.VoiceAssistantMode);
+            Assert.Equal(expectedWakePhrase, settings.VoiceAssistantWakePhrase);
+        }
+        finally
+        {
+            if (Directory.Exists(dir))
+                Directory.Delete(dir, recursive: true);
+        }
     }
 
     [Fact]

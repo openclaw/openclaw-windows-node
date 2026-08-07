@@ -33,6 +33,8 @@ public sealed record OpenClawReactorChatRootProps(
     Action<string>? OnOpenCheckpoints = null,
     Action<bool>? OnSpeakerMuteChanged = null,
     Func<string, string?, Task<bool>>? ConfirmResetAsync = null,
+    string? InitialVoiceUnavailableReason = null,
+    string? InitialVoiceUnavailableStatus = null,
     bool InitialMuted = false,
     bool IsCompact = false);
 
@@ -76,6 +78,10 @@ public sealed class OpenClawReactorChatRoot : Component<OpenClawReactorChatRootP
         var (speakerMuted, setSpeakerMuted) = UseState(props.InitialMuted, threadSafe: true);
         var (voiceTranscript, setVoiceTranscript) = UseState<string?>(null, threadSafe: true);
         var (voiceAudioLevel, setVoiceAudioLevel) = UseState(0f, threadSafe: true);
+        var (voiceUnavailableReason, setVoiceUnavailableReason) =
+            UseState<string?>(props.InitialVoiceUnavailableReason, threadSafe: true);
+        var (voiceUnavailableStatus, setVoiceUnavailableStatus) =
+            UseState<string?>(props.InitialVoiceUnavailableStatus, threadSafe: true);
         var (scrollToBottomToken, setScrollToBottomToken) = UseState(0, threadSafe: true);
         var (showToolCalls, setShowToolCalls) = UseState(s_showToolCalls, threadSafe: true);
         var (toolCallsCollapseVersion, setToolCallsCollapseVersion) =
@@ -95,6 +101,11 @@ public sealed class OpenClawReactorChatRoot : Component<OpenClawReactorChatRootP
         };
         props.HostCallbacks.SetVoiceTranscript = setVoiceTranscript;
         props.HostCallbacks.SetVoiceAudioLevel = setVoiceAudioLevel;
+        props.HostCallbacks.SetVoiceAvailability = (reason, status) =>
+        {
+            setVoiceUnavailableReason(reason);
+            setVoiceUnavailableStatus(status);
+        };
         props.HostCallbacks.SetSpeakerMuted = setSpeakerMuted;
 
         UseEffect((Func<Action>)(() => () => props.HostCallbacks.Clear()), props.HostCallbacks);
@@ -355,6 +366,8 @@ public sealed class OpenClawReactorChatRoot : Component<OpenClawReactorChatRootP
                 level => RunFireAndForget(ct => props.Provider.SetThinkingLevelAsync(effectiveThread.Id, level, ct)),
                 allowAll => RunFireAndForget(ct => props.Provider.SetPermissionModeAsync(effectiveThread.Id, allowAll, ct)),
                 props.OnVoiceRequest,
+                voiceUnavailableReason,
+                voiceUnavailableStatus,
                 props.OnAttachClick,
                 speakerMuted,
                 () =>
@@ -539,8 +552,17 @@ public sealed class OpenClawReactorChatRoot : Component<OpenClawReactorChatRootP
         {
             var snapshot = await provider.LoadAsync();
             setSnapshot(snapshot);
-            if (getSelected() is null && snapshot.DefaultThreadId is { } defaultThreadId)
+            var selectedThreadId = getSelected();
+            if (selectedThreadId is null && snapshot.DefaultThreadId is { } defaultThreadId)
+            {
+                selectedThreadId = defaultThreadId;
                 setSelected(defaultThreadId);
+            }
+            if (selectedThreadId is not null &&
+                provider is OpenClawChatDataProvider nativeProvider)
+            {
+                nativeProvider.RememberSelectedThread(selectedThreadId);
+            }
         }
         catch (Exception ex)
         {
@@ -567,6 +589,8 @@ public sealed record ReactorChatComposerProps(
     Action<string> OnThinkingLevelChanged,
     Action<bool> OnPermissionsChanged,
     Func<CancellationToken, Action?, Task<string?>>? OnVoiceRequest,
+    string? VoiceUnavailableReason,
+    string? VoiceUnavailableStatus,
     Action? OnAttachClick,
     bool IsSpeakerMuted,
     Action OnSpeakerToggle,
@@ -646,7 +670,7 @@ public sealed class ReactorChatComposer : Component<ReactorChatComposerProps>
 
         void StartVoiceRecording()
         {
-            if (props.OnVoiceRequest is null || isRecording)
+            if (props.OnVoiceRequest is null || props.VoiceUnavailableReason is not null || isRecording)
                 return;
 
             var cancellation = new CancellationTokenSource();
@@ -1214,7 +1238,8 @@ public sealed class ReactorChatComposer : Component<ReactorChatComposerProps>
                 : "\uE720",
             isRecording
                 ? Localized("Chat_Composer_Tooltip_Stop", "Stop")
-                : Localized("Chat_Composer_Tooltip_Voice", "Voice"),
+                : props.VoiceUnavailableReason
+                    ?? Localized("Chat_Composer_Tooltip_Voice", "Voice"),
             () =>
             {
                 if (isRecording)
@@ -1225,7 +1250,7 @@ public sealed class ReactorChatComposer : Component<ReactorChatComposerProps>
                 else
                     StartVoiceRecording();
             },
-            props.OnVoiceRequest is not null);
+            props.OnVoiceRequest is not null && props.VoiceUnavailableReason is null);
         var speakerButton = IconButton(
             props.IsSpeakerMuted ? "\uE74F" : "\uE767",
             props.IsSpeakerMuted ? "Unmute" : "Mute",
@@ -1276,6 +1301,42 @@ public sealed class ReactorChatComposer : Component<ReactorChatComposerProps>
             rightToolbar.Grid(row: 0, column: 1));
 
         var composerChildren = new List<Element>();
+        if (props.VoiceUnavailableStatus is { } voiceUnavailableStatus)
+        {
+            composerChildren.Add(
+                HStack(
+                    6,
+                    TextBlock("\uE720").Set(textBlock =>
+                    {
+                        textBlock.FontFamily = FluentIconCatalog.SymbolThemeFontFamily;
+                        textBlock.FontSize = 14;
+                        ApplyTheme(textBlock, () =>
+                            textBlock.Foreground = ResolveThemeBrush(
+                                "TextFillColorSecondaryBrush",
+                                textBlock.ActualTheme));
+                    }),
+                    TextBlock(voiceUnavailableStatus).Set(textBlock =>
+                    {
+                        textBlock.FontSize = 12;
+                        textBlock.TextWrapping = TextWrapping.Wrap;
+                        ApplyTheme(textBlock, () =>
+                            textBlock.Foreground = ResolveThemeBrush(
+                                "TextFillColorSecondaryBrush",
+                                textBlock.ActualTheme));
+                    }))
+                .Set(panel =>
+                {
+                    Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(
+                        panel,
+                        props.VoiceUnavailableReason ?? voiceUnavailableStatus);
+                    Microsoft.UI.Xaml.Automation.AutomationProperties.SetHelpText(
+                        panel,
+                        props.VoiceUnavailableReason ?? voiceUnavailableStatus);
+                    Microsoft.UI.Xaml.Automation.AutomationProperties.SetLiveSetting(
+                        panel,
+                        Microsoft.UI.Xaml.Automation.Peers.AutomationLiveSetting.Polite);
+                }));
+        }
         if (isRecording)
             composerChildren.Add(voiceFeedback);
         if (attachmentRows.Length > 0)

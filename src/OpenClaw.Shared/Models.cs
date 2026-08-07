@@ -114,6 +114,10 @@ public class OpenClawNotification
     /// the specific session instead of the default/main session.
     /// </summary>
     public string? SessionKey { get; set; }
+    /// <summary>Gateway-assigned message identity used for local deduplication and correlation.</summary>
+    public string? OpenClawId { get; set; }
+    /// <summary>Monotonic per-session sequence used for local ordering and correlation.</summary>
+    public int? OpenClawSeq { get; set; }
 }
 
 /// <summary>

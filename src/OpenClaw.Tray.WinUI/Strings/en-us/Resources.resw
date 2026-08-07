@@ -3002,6 +3002,12 @@ Use one of these options:
   <data name="Chat_Composer_Tooltip_Voice" xml:space="preserve">
     <value>Voice</value>
   </data>
+  <data name="Chat_Composer_VoiceUnavailable_AssistantListening" xml:space="preserve">
+    <value>Voice input unavailable while Assistant is listening for the wake phrase.</value>
+  </data>
+  <data name="Chat_Composer_Status_AssistantListening" xml:space="preserve">
+    <value>Assistant is listening for the wake phrase.</value>
+  </data>
   <data name="Chat_Voice_ListeningPrompt" xml:space="preserve">
     <value>Listening…</value>
   </data>
@@ -6934,6 +6940,30 @@ Make sure the gateway is running.</value>
   <data name="JsonPreviewSplitter.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.LocalizedControlType" xml:space="preserve">
     <value>splitter</value>
   </data>
+  <data name="VoiceSettingsPage_AssistantHeader.Text" xml:space="preserve"><value>Assistant (preview)</value></data>
+  <data name="VoiceSettingsPage_AssistantDescription.Text" xml:space="preserve"><value>Say the wake phrase and your request in one utterance. The matched reply is always spoken.</value></data>
+  <data name="VoiceSettingsPage_AssistantMode.Header" xml:space="preserve"><value>Assistant mode</value></data>
+  <data name="VoiceSettingsPage_AssistantOff.Content" xml:space="preserve"><value>Off</value></data>
+  <data name="VoiceSettingsPage_AssistantWakeOneShot.Content" xml:space="preserve"><value>Wake phrase, one request</value></data>
+  <data name="VoiceSettingsPage_AssistantWakePhrase.Header" xml:space="preserve"><value>Wake phrase</value></data>
+  <data name="VoiceSettingsPage_AssistantWakePhrase.PlaceholderText" xml:space="preserve"><value>OpenClaw</value></data>
+  <data name="VoiceSettingsPage_AssistantPrivacy.Text" xml:space="preserve"><value>When enabled, the microphone stays active and speech bursts are transcribed locally to find the wake phrase. Only the request after the wake phrase is sent through your configured gateway.</value></data>
+  <data name="VoiceSettingsPage_AssistantStatusOff" xml:space="preserve"><value>Assistant is off.</value></data>
+  <data name="VoiceSettingsPage_AssistantStatusStarting" xml:space="preserve"><value>Starting wake listening.</value></data>
+  <data name="VoiceSettingsPage_AssistantStatusListening" xml:space="preserve"><value>Listening for the wake phrase.</value></data>
+  <data name="VoiceSettingsPage_AssistantStatusDispatching" xml:space="preserve"><value>Sending your request.</value></data>
+  <data name="VoiceSettingsPage_AssistantStatusWaiting" xml:space="preserve"><value>Waiting for the reply.</value></data>
+  <data name="VoiceSettingsPage_AssistantStatusSpeaking" xml:space="preserve"><value>Speaking the reply.</value></data>
+  <data name="VoiceSettingsPage_AssistantStatusPaused" xml:space="preserve"><value>Assistant is paused until chat is connected and idle.</value></data>
+  <data name="VoiceSettingsPage_AssistantStatusError" xml:space="preserve"><value>The assistant stopped after an error and will retry when ready.</value></data>
+  <data name="VoiceSettingsPage_AssistantStatusSttDisabled" xml:space="preserve"><value>Enable speech-to-text in Permissions to use the assistant.</value></data>
+  <data name="VoiceSettingsPage_AssistantStatusModelMissing" xml:space="preserve"><value>Download the selected speech model to use the assistant.</value></data>
+  <data name="VoiceSettingsPage_AssistantStatusTtsDisabled" xml:space="preserve"><value>Enable text-to-speech in Permissions to use the assistant.</value></data>
+  <data name="VoiceSettingsPage_AssistantStatusPiperMissing" xml:space="preserve"><value>Download the selected Piper voice to use the assistant.</value></data>
+  <data name="VoiceSettingsPage_AssistantStatusApiKeyMissing" xml:space="preserve"><value>Add an ElevenLabs API key to use the assistant.</value></data>
+  <data name="VoiceSettingsPage_AssistantStatusVoiceIdMissing" xml:space="preserve"><value>Add an ElevenLabs voice ID to use the assistant.</value></data>
+  <data name="VoiceSettingsPage_AssistantStatusWakeInvalid" xml:space="preserve"><value>Use a wake phrase with one to three words and up to 64 characters.</value></data>
+  <data name="VoiceSettingsPage_AssistantStatusProviderInvalid" xml:space="preserve"><value>Select and configure a supported text-to-speech provider.</value></data>
   <data name="PermissionsPage_ExecPolicySaved" xml:space="preserve">
     <value>Saved</value>
   </data>

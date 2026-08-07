@@ -15,7 +15,8 @@ public enum VoiceMode
 {
     Inactive,
     PushToTalk,
-    VoiceChat
+    VoiceChat,
+    WakeListening
 }
 
 /// <summary>
@@ -28,9 +29,12 @@ public sealed class VoiceService : IAsyncDisposable
     private readonly SettingsManager _settings;
     private readonly SpeechToTextService _stt;
     private readonly WhisperModelManager _modelManager;
+    private readonly VoiceCaptureLeaseGate _captureGate = VoiceCaptureLeaseGate.Shared;
+    private readonly SemaphoreSlim _sessionGate = new(1, 1);
     private AudioPipeline? _pipeline;
     private VoiceMode _currentMode = VoiceMode.Inactive;
     private CancellationTokenSource? _sessionCts;
+    private IDisposable? _sessionCaptureLease;
 
     /// <summary>Current voice interaction mode.</summary>
     public VoiceMode CurrentMode => _currentMode;
@@ -85,6 +89,12 @@ public sealed class VoiceService : IAsyncDisposable
     /// <summary>Fired when pipeline state changes.</summary>
     public event Action<AudioPipelineState>? PipelineStateChanged;
 
+    public event Action? CaptureAvailable
+    {
+        add => _captureGate.Available += value;
+        remove => _captureGate.Available -= value;
+    }
+
     /// <summary>When true, the pipeline ignores audio input (used during TTS playback to prevent echo).</summary>
     public bool IsMutedForPlayback
     {
@@ -136,38 +146,10 @@ public sealed class VoiceService : IAsyncDisposable
     /// </summary>
     public async Task StartPushToTalkAsync()
     {
-        if (_currentMode != VoiceMode.Inactive)
-        {
-            _logger.Info("Voice already active, ignoring PTT start");
-            return;
-        }
-
-        await EnsureInitializedAsync();
-        SetMode(VoiceMode.PushToTalk);
-
-        _sessionCts = new CancellationTokenSource();
-        _pipeline = new AudioPipeline(_logger, _stt);
-        WirePipelineEvents(_pipeline);
-
-        var options = new AudioPipelineOptions
-        {
-            ModelPath = _modelManager.GetModelPath(_settings.SttModelName),
-            Language = _settings.SttLanguage,
-            SilenceTimeoutSeconds = 30, // For PTT, don't auto-stop on silence
-            VadThreshold = 0.5f
-        };
-
-        try
-        {
-            await _pipeline.StartAsync(options, _sessionCts.Token);
-            _logger.Info("Push-to-talk started");
-        }
-        catch
-        {
-            // Clean up on failure so the service isn't stuck in a broken state
-            await CleanupSessionAsync();
-            throw;
-        }
+        await StartContinuousCaptureAsync(
+            VoiceMode.PushToTalk,
+            VoiceCaptureKind.PushToTalk,
+            silenceTimeoutSeconds: 30);
     }
 
     /// <summary>Stop push-to-talk.</summary>
@@ -178,50 +160,38 @@ public sealed class VoiceService : IAsyncDisposable
     /// </summary>
     public async Task StartVoiceChatAsync()
     {
-        if (_currentMode != VoiceMode.Inactive)
-        {
-            _logger.Info("Voice already active, ignoring voice chat start");
-            return;
-        }
-
-        await EnsureInitializedAsync();
-        SetMode(VoiceMode.VoiceChat);
-
-        _sessionCts = new CancellationTokenSource();
-        _pipeline = new AudioPipeline(_logger, _stt);
-        WirePipelineEvents(_pipeline);
-
-        var options = new AudioPipelineOptions
-        {
-            ModelPath = _modelManager.GetModelPath(_settings.SttModelName),
-            Language = _settings.SttLanguage,
-            SilenceTimeoutSeconds = _settings.SttSilenceTimeout,
-            VadThreshold = 0.5f
-        };
-
-        try
-        {
-            await _pipeline.StartAsync(options, _sessionCts.Token);
-            _logger.Info("Voice chat session started");
-        }
-        catch
-        {
-            await CleanupSessionAsync();
-            throw;
-        }
+        await StartContinuousCaptureAsync(
+            VoiceMode.VoiceChat,
+            VoiceCaptureKind.VoiceChat,
+            _settings.SttSilenceTimeout);
     }
 
     /// <summary>Stop the current voice chat session.</summary>
     public Task StopVoiceChatAsync() => StopAsync();
 
+    public Task StartWakeListeningAsync() =>
+        StartContinuousCaptureAsync(
+            VoiceMode.WakeListening,
+            VoiceCaptureKind.WakeListening,
+            _settings.SttSilenceTimeout);
+
     /// <summary>Stop any active voice mode.</summary>
     public async Task StopAsync()
     {
-        if (_currentMode == VoiceMode.Inactive) return;
-        await CleanupSessionAsync();
+        await _sessionGate.WaitAsync().ConfigureAwait(false);
+        try
+        {
+            if (_sessionCaptureLease is null)
+                return;
+            await CleanupSessionCoreAsync().ConfigureAwait(false);
+        }
+        finally
+        {
+            _sessionGate.Release();
+        }
     }
 
-    private async Task CleanupSessionAsync()
+    private async Task CleanupSessionCoreAsync()
     {
         if (_pipeline != null)
         {
@@ -237,6 +207,8 @@ public sealed class VoiceService : IAsyncDisposable
         _sessionCts = null;
 
         SetMode(VoiceMode.Inactive);
+        _sessionCaptureLease?.Dispose();
+        _sessionCaptureLease = null;
     }
 
     /// <summary>
@@ -247,6 +219,7 @@ public sealed class VoiceService : IAsyncDisposable
     /// </summary>
     public async Task<SttListenResult> ListenOnceAsync(SttListenArgs args, CancellationToken cancellationToken)
     {
+        using var captureLease = _captureGate.Acquire(VoiceCaptureKind.ListenOnce);
         await EnsureInitializedAsync();
 
         using var timeoutCts = new CancellationTokenSource(args.TimeoutMs);
@@ -344,8 +317,8 @@ public sealed class VoiceService : IAsyncDisposable
         if (args.MaxDurationMs <= 0)
             throw new ArgumentOutOfRangeException(nameof(args), "maxDurationMs must be positive.");
 
+        using var captureLease = _captureGate.Acquire(VoiceCaptureKind.FixedDuration);
         await EnsureInitializedAsync();
-
         var pipeline = new AudioPipeline(_logger, _stt);
         var sw = Stopwatch.StartNew();
         try
@@ -438,6 +411,53 @@ public sealed class VoiceService : IAsyncDisposable
         if (!_stt.IsModelLoaded)
         {
             await InitializeAsync();
+        }
+    }
+
+    private async Task StartContinuousCaptureAsync(
+        VoiceMode mode,
+        VoiceCaptureKind captureKind,
+        float silenceTimeoutSeconds)
+    {
+        await _sessionGate.WaitAsync().ConfigureAwait(false);
+        try
+        {
+            if (_sessionCaptureLease is not null)
+            {
+                _logger.Info("Voice capture already active, ignoring start");
+                return;
+            }
+
+            _sessionCaptureLease = _captureGate.Acquire(captureKind);
+            try
+            {
+                await EnsureInitializedAsync().ConfigureAwait(false);
+                SetMode(mode);
+
+                _sessionCts = new CancellationTokenSource();
+                _pipeline = new AudioPipeline(_logger, _stt);
+                WirePipelineEvents(_pipeline);
+
+                var options = new AudioPipelineOptions
+                {
+                    ModelPath = _modelManager.GetModelPath(_settings.SttModelName),
+                    Language = _settings.SttLanguage,
+                    SilenceTimeoutSeconds = silenceTimeoutSeconds,
+                    VadThreshold = 0.5f
+                };
+
+                await _pipeline.StartAsync(options, _sessionCts.Token).ConfigureAwait(false);
+                _logger.Info($"Voice capture started: {mode}");
+            }
+            catch
+            {
+                await CleanupSessionCoreAsync().ConfigureAwait(false);
+                throw;
+            }
+        }
+        finally
+        {
+            _sessionGate.Release();
         }
     }
 

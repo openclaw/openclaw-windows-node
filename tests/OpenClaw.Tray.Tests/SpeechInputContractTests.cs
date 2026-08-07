@@ -16,6 +16,16 @@ public sealed class SpeechInputContractTests
     }
 
     [Fact]
+    public void VoiceService_SerializesContinuousCaptureStartAndStop()
+    {
+        var cs = Read("src", "OpenClaw.Tray.WinUI", "Services", "VoiceService.cs");
+
+        Assert.Contains("private readonly SemaphoreSlim _sessionGate = new(1, 1);", cs);
+        Assert.Contains("await _sessionGate.WaitAsync().ConfigureAwait(false);", cs);
+        Assert.Contains("await CleanupSessionCoreAsync().ConfigureAwait(false);", cs);
+    }
+
+    [Fact]
     public void AudioPipeline_UsesManagedEnergyVad_NotNativeVad()
     {
         var cs = Read("src", "OpenClaw.Tray.WinUI", "Services", "AudioPipeline.cs");
@@ -48,6 +58,30 @@ public sealed class SpeechInputContractTests
         Assert.Contains("ChatVoiceDialog_OpenPermissionsSettings", resources);
         Assert.Contains("Open Permissions", resources);
         Assert.Contains("Speech-to-Text is on, but voice input will not work until at least one speech model is downloaded.", resources);
+    }
+
+    [Fact]
+    public void ChatComposer_ExplainsAssistantWakeListeningMicrophoneOwnership()
+    {
+        var composer = Read("src", "OpenClaw.Tray.WinUI", "Chat", "OpenClawReactorChatRoot.cs");
+        var host = Read("src", "OpenClaw.Tray.WinUI", "Chat", "ReactorChatHostExtensions.cs");
+        var chatPage = Read("src", "OpenClaw.Tray.WinUI", "Pages", "ChatPage.xaml.cs");
+        var chatWindow = Read("src", "OpenClaw.Tray.WinUI", "Windows", "ChatWindow.xaml.cs");
+        var resources = Read("src", "OpenClaw.Tray.WinUI", "Strings", "en-us", "Resources.resw");
+
+        Assert.Contains("props.VoiceUnavailableReason is null", composer);
+        Assert.Contains("props.VoiceUnavailableStatus is { } voiceUnavailableStatus", composer);
+        Assert.Contains("SetName(", composer);
+        Assert.Contains("SetHelpText(", composer);
+        Assert.Contains("AutomationLiveSetting.Polite", composer);
+        Assert.Contains("SetVoiceAvailability", host);
+        Assert.Contains("VoiceAssistantRuntimeStateChanged", chatPage);
+        Assert.Contains("VoiceAssistantRuntimeStateChanged", chatWindow);
+        Assert.Contains(
+            "ChatHost.Visibility = Visibility.Visible;\r\n            UpdateVoiceAvailability();",
+            chatPage);
+        Assert.Contains("Voice input unavailable while Assistant is listening for the wake phrase.", resources);
+        Assert.Contains("Assistant is listening for the wake phrase.", resources);
     }
 
     [Fact]
