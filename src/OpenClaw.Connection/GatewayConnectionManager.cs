@@ -1886,13 +1886,14 @@ public sealed class GatewayConnectionManager : IGatewayConnectionManager
             return;
         }
 
-        var updated = _registry.Update(gatewayRecordId, r => r with { BootstrapToken = null });
-        if (updated == null)
-            return;
-
         try
         {
-            _registry.Save();
+            var updated = _registry.UpdateAndSave(
+                gatewayRecordId,
+                r => r with { BootstrapToken = null });
+            if (updated == null)
+                return;
+
             _diagnostics.Record("credential", "Cleared bootstrap token — operator and node tokens are durable");
         }
         catch (Exception ex)

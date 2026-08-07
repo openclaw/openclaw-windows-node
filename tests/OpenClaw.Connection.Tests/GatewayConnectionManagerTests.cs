@@ -3337,6 +3337,29 @@ public class GatewayConnectionManagerTests : IDisposable
         public void DeleteFile(string path) => File.Delete(path);
     }
 
+    private sealed class FailOnceWriteFileSystem : IFileSystem
+    {
+        private int _writeAttempts;
+
+        public int WriteAttempts => Volatile.Read(ref _writeAttempts);
+        public bool FileExists(string path) => File.Exists(path);
+        public string ReadAllText(string path) => File.ReadAllText(path);
+
+        public void WriteAllText(string path, string content)
+        {
+            if (Interlocked.Increment(ref _writeAttempts) == 1)
+                throw new UnauthorizedAccessException("simulated transient access denial");
+
+            File.WriteAllText(path, content);
+        }
+
+        public void CreateDirectory(string path) => Directory.CreateDirectory(path);
+        public bool DirectoryExists(string path) => Directory.Exists(path);
+        public void CopyFile(string source, string destination, bool overwrite) =>
+            File.Copy(source, destination, overwrite);
+        public void DeleteFile(string path) => File.Delete(path);
+    }
+
     internal sealed class MockLifecycle : IGatewayClientLifecycle
     {
         private readonly MockGatewayClient _client;
@@ -3601,6 +3624,51 @@ public class GatewayConnectionManagerTests : IDisposable
         node.SimulateDeviceTokenReceived("node-device-token");
 
         await WaitUntilAsync(() => _registry.GetById("gw-1")?.BootstrapToken == null);
+    }
+
+    [Fact]
+    public async Task DeviceTokenReceived_BootstrapClearSaveFailure_RemainsRetryable()
+    {
+        var dataDir = Path.Combine(_tempDir, "bootstrap-clear-retry");
+        var fs = new FailOnceWriteFileSystem();
+        var registry = new GatewayRegistry(dataDir, fs);
+        registry.AddOrUpdate(new GatewayRecord
+        {
+            Id = "gw-1",
+            Url = "wss://test",
+            BootstrapToken = "bs-secret"
+        });
+        registry.SetActive("gw-1");
+
+        var identityDir = registry.GetIdentityDirectory("gw-1");
+        var identity = new DeviceIdentity(identityDir, NullLogger.Instance);
+        identity.Initialize();
+        identity.StoreDeviceTokenForRole("operator", "op-device-token", ["operator.read"]);
+        identity.StoreDeviceTokenForRole("node", "node-device-token");
+
+        var resolver = new MockCredentialResolver
+        {
+            OperatorCredential = new GatewayCredential("tok", false, "test")
+        };
+        var factory = new MockClientFactory();
+        using var manager = new GatewayConnectionManager(
+            resolver,
+            factory,
+            registry,
+            NullLogger.Instance);
+
+        await manager.ConnectAsync("gw-1");
+        var lifecycle = factory.CreatedClients[0];
+
+        lifecycle.SimulateDeviceTokenReceived("op-device-token", "operator", ["operator.read"]);
+        await WaitUntilAsync(() => fs.WriteAttempts >= 1);
+
+        Assert.Equal("bs-secret", registry.GetById("gw-1")?.BootstrapToken);
+
+        lifecycle.SimulateDeviceTokenReceived("op-device-token", "operator", ["operator.read"]);
+        await WaitUntilAsync(() => registry.GetById("gw-1")?.BootstrapToken == null);
+
+        Assert.Equal(2, fs.WriteAttempts);
     }
 
     [Fact]
