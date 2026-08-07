@@ -6952,4 +6952,40 @@ Make sure the gateway is running.</value>
   <data name="SessionsPage_LastRunStopped" xml:space="preserve">
     <value>Last run stopped</value>
   </data>
+  <data name="Chat_AssistantMedia_Preparing" xml:space="preserve">
+    <value>Preparing media</value>
+  </data>
+  <data name="Chat_AssistantMedia_Unavailable" xml:space="preserve">
+    <value>Media unavailable</value>
+  </data>
+  <data name="Chat_AssistantMedia_Retry" xml:space="preserve">
+    <value>Retry</value>
+  </data>
+  <data name="Chat_AssistantMedia_Image" xml:space="preserve">
+    <value>Image</value>
+  </data>
+  <data name="Chat_AssistantMedia_Audio" xml:space="preserve">
+    <value>Audio</value>
+  </data>
+  <data name="Chat_AssistantMedia_Video" xml:space="preserve">
+    <value>Video</value>
+  </data>
+  <data name="Chat_AssistantMedia_File" xml:space="preserve">
+    <value>File</value>
+  </data>
+  <data name="Chat_AssistantMedia_Media" xml:space="preserve">
+    <value>Media</value>
+  </data>
+  <data name="Chat_AssistantMedia_ImagesOmitted" xml:space="preserve">
+    <value>{0} more images not shown</value>
+  </data>
+  <data name="Chat_AssistantMedia_MediaAttachment" xml:space="preserve">
+    <value>Media attachment</value>
+  </data>
+  <data name="Chat_AssistantMedia_OpenImage" xml:space="preserve">
+    <value>Open image {0}</value>
+  </data>
+  <data name="Chat_AssistantMedia_Close" xml:space="preserve">
+    <value>Close</value>
+  </data>
 </root>

@@ -55,7 +55,9 @@ public record OpenClawChatTimelineProps(
     Func<string, Task>? OnReadAloud = null,
     Action? OnStopSpeaking = null,
     int ScrollToBottomToken = 0,
-    Action<string, string>? OnPermissionResponse = null);
+    Action<string, string>? OnPermissionResponse = null,
+    Func<string, ChatMediaContentInfo, CancellationToken, Task<AssistantMediaResolutionResult>>?
+        ResolveAssistantMediaAsync = null);
 
 /// <summary>
 /// OpenClaw-skinned variant of <see cref="ChatTimeline"/> from the vendored
@@ -1179,22 +1181,38 @@ public class OpenClawChatTimeline : Component<OpenClawChatTimelineProps>
             var text = entry.Text ?? "";
             var lines = text.Split('\n');
             var messageLines = new List<string>();
-            var attachmentNames = new List<(string Icon, string Name, bool IsImage)>();
+            var attachmentNames = new List<ChatAttachmentPresentation>();
 
             foreach (var line in lines)
             {
                 var trimLine = line.Trim();
                 if (trimLine.StartsWith("\u200B🖼️ "))
-                    attachmentNames.Add(("🖼️", trimLine.Substring(4).Trim(), true));
+                    attachmentNames.Add(new ChatAttachmentPresentation(
+                        ChatAttachmentOrigin.Local,
+                        trimLine.Substring(4).Trim(),
+                        "application/octet-stream",
+                        IsImage: true));
                 else if (trimLine.StartsWith("\u200B📎 "))
-                    attachmentNames.Add(("📎", trimLine.Substring(3).Trim(), false));
+                    attachmentNames.Add(new ChatAttachmentPresentation(
+                        ChatAttachmentOrigin.Local,
+                        trimLine.Substring(3).Trim(),
+                        "application/octet-stream",
+                        IsImage: false));
                 else
                     messageLines.Add(line);
             }
 
+            if (MetaFor(entry.Id)?.Attachments is { Count: > 0 } structuredAttachments)
+                attachmentNames = structuredAttachments.ToList();
+
             var messageText = string.Join('\n', messageLines).Trim();
             var hasMessage = !string.IsNullOrEmpty(messageText);
             var hasAttachments = attachmentNames.Count > 0;
+            var safeUserText = string.Join(
+                '\n',
+                (hasMessage ? new[] { messageText } : Array.Empty<string>())
+                    .Concat(attachmentNames.Select(attachment =>
+                        $"{attachment.DisplayFileName} ({attachment.MimeType})")));
 
             // Build attachment elements. Images become real thumbnail previews
             // by pulling the original bytes from OpenClawChatDataProvider's
@@ -1206,9 +1224,14 @@ public class OpenClawChatTimeline : Component<OpenClawChatTimelineProps>
             var attachmentElements = new List<Element>();
             if (hasAttachments)
             {
-                foreach (var (_, name, isImage) in attachmentNames)
+                foreach (var attachment in attachmentNames)
                 {
-                    if (isImage && OpenClawChatDataProvider.ImagePreviewCache.TryGetValue(name, out var bytes))
+                    var name = attachment.DisplayFileName;
+                    var isImage = attachment.IsImage;
+                    if (isImage && ChatAttachmentPreviewResolver.TryGetBytes(
+                        attachment,
+                        OpenClawChatDataProvider.ImagePreviewCache,
+                        out var bytes))
                     {
                         var bmp = TryDecodeBitmap(bytes);
                         if (bmp is not null)
@@ -1359,7 +1382,7 @@ public class OpenClawChatTimeline : Component<OpenClawChatTimelineProps>
                 var timeStr = FormatTime(entryMeta?.Timestamp);
                 var rightInset = showUserAvatar ? (36 + bubbleSideMargin) : 0;
                 rightInset += (int)bubblePadding.Right;
-                footer = BuildUserFooter(userSender, timeStr, chatStampFg, entry.Id, entry.Text ?? "")
+                footer = BuildUserFooter(userSender, timeStr, chatStampFg, entry.Id, safeUserText)
                     .Margin(0, 2, rightInset, 0);
             }
 
@@ -1370,7 +1393,8 @@ public class OpenClawChatTimeline : Component<OpenClawChatTimelineProps>
                     VStack(2, bubbleRow, footer)
                         .HAlign(HorizontalAlignment.Stretch)
                 ).Background(new SolidColorBrush(Colors.Transparent))
-                 .Margin(gutter, topMargin, 20, bottomMargin),
+                 .Margin(gutter, topMargin, 20, bottomMargin)
+                 .AutomationName(safeUserText),
                 entry.Id);
         }
 

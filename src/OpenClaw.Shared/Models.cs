@@ -1809,7 +1809,7 @@ public class ChatMessageInfo
         Array.Empty<ChatToolContentInfo>();
 
     /// <summary>
-    /// Ordered text and tool blocks retained from array-valued message content.
+    /// Ordered text, tool, and media blocks retained from message content.
     /// Flat <see cref="Text"/> and <see cref="ToolContent"/> remain populated for
     /// compatibility with consumers that do not need block-level chronology.
     /// </summary>
@@ -1893,6 +1893,7 @@ public enum ChatMessageContentPartKind
 {
     Text,
     Tool,
+    Media,
 }
 
 public class ChatMessageContentPartInfo
@@ -1900,6 +1901,55 @@ public class ChatMessageContentPartInfo
     public ChatMessageContentPartKind Kind { get; set; }
     public string? Text { get; set; }
     public ChatToolContentInfo? Tool { get; set; }
+    public ChatMediaContentInfo? Media { get; set; }
+}
+
+public enum ChatMediaContentKind
+{
+    Image,
+    Audio,
+    Video,
+    File,
+    Unknown,
+}
+
+public enum ChatMediaPlaybackMode
+{
+    Native,
+    Transcode,
+}
+
+public enum ChatMediaContentSource
+{
+    Structured,
+    LegacyDirective,
+    Unavailable,
+}
+
+/// <summary>
+/// Typed assistant media metadata retained from the Gateway protocol. Legacy
+/// Gateway sources are transient transport references and must never be
+/// displayed, logged, persisted, or passed to local file APIs.
+/// </summary>
+public sealed class ChatMediaContentInfo
+{
+    public ChatMediaContentKind Kind { get; set; }
+    public ChatMediaContentSource Source { get; set; }
+    public string? Type { get; set; }
+    public string? MimeType { get; set; }
+    public string? FileName { get; set; }
+    public string? ArtifactId { get; set; }
+    public string? AgentId { get; set; }
+    public string? Url { get; set; }
+    public string? OpenUrl { get; set; }
+    public string? Alt { get; set; }
+    public int? Width { get; set; }
+    public int? Height { get; set; }
+    public long? SizeBytes { get; set; }
+    public double? DurationSeconds { get; set; }
+    public ChatMediaPlaybackMode? Playback { get; set; }
+
+    internal string? GatewaySource { get; set; }
 }
 
 /// <summary>

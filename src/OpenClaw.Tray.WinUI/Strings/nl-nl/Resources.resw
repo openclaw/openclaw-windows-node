@@ -6913,4 +6913,16 @@ Het binaire bestand wxc-exec is niet gevonden. {1} Als dit een ontwikkelaarsbuil
   <data name="SessionsPage_LastRunStopped" xml:space="preserve">
     <value>Laatste uitvoering gestopt</value>
   </data>
+  <data name="Chat_AssistantMedia_Preparing" xml:space="preserve"><value>Media voorbereiden</value></data>
+  <data name="Chat_AssistantMedia_Unavailable" xml:space="preserve"><value>Media niet beschikbaar</value></data>
+  <data name="Chat_AssistantMedia_Retry" xml:space="preserve"><value>Opnieuw proberen</value></data>
+  <data name="Chat_AssistantMedia_Image" xml:space="preserve"><value>Afbeelding</value></data>
+  <data name="Chat_AssistantMedia_Audio" xml:space="preserve"><value>Geluid</value></data>
+  <data name="Chat_AssistantMedia_Video" xml:space="preserve"><value>Videofragment</value></data>
+  <data name="Chat_AssistantMedia_File" xml:space="preserve"><value>Bestand</value></data>
+  <data name="Chat_AssistantMedia_Media" xml:space="preserve"><value>Mediabestand</value></data>
+  <data name="Chat_AssistantMedia_ImagesOmitted" xml:space="preserve"><value>{0} extra afbeeldingen niet weergegeven</value></data>
+  <data name="Chat_AssistantMedia_MediaAttachment" xml:space="preserve"><value>Mediabijlage</value></data>
+  <data name="Chat_AssistantMedia_OpenImage" xml:space="preserve"><value>Afbeelding {0} openen</value></data>
+  <data name="Chat_AssistantMedia_Close" xml:space="preserve"><value>Sluiten</value></data>
 </root>

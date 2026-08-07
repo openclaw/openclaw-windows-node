@@ -80,6 +80,11 @@ public interface IChatGatewayBridge : IDisposable
     Task ClearSessionModelAsync(string sessionKey);
     Task PatchSessionThinkingLevelAsync(string sessionKey, string thinkingLevel);
     Task<ChatHistoryInfo> RequestChatHistoryAsync(string? sessionKey);
+    Task<AssistantMediaResolutionResult> ResolveAssistantMediaAsync(
+        string sessionKey,
+        ChatMediaContentInfo media,
+        CancellationToken cancellationToken = default) =>
+        Task.FromResult(AssistantMediaResolutionResult.Unavailable);
     Task SendChatAbortAsync(string runId, string? sessionKey = null);
     Task ResolveExecApprovalAsync(string approvalId, string decision);
 
@@ -237,6 +242,12 @@ public sealed class GatewayClientChatBridge : IChatGatewayBridge
 
     public Task<ChatHistoryInfo> RequestChatHistoryAsync(string? sessionKey) =>
         _client.RequestChatHistoryAsync(sessionKey);
+
+    public Task<AssistantMediaResolutionResult> ResolveAssistantMediaAsync(
+        string sessionKey,
+        ChatMediaContentInfo media,
+        CancellationToken cancellationToken = default) =>
+        _client.ResolveAssistantMediaAsync(sessionKey, media, cancellationToken);
 
     public Task SendChatAbortAsync(string runId, string? sessionKey = null) => _client.SendChatAbortAsync(runId, sessionKey);
 

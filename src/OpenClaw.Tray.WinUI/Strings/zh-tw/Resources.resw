@@ -6912,4 +6912,16 @@
   <data name="SessionsPage_LastRunStopped" xml:space="preserve">
     <value>上次執行已停止</value>
   </data>
+  <data name="Chat_AssistantMedia_Preparing" xml:space="preserve"><value>正在準備媒體</value></data>
+  <data name="Chat_AssistantMedia_Unavailable" xml:space="preserve"><value>媒體無法使用</value></data>
+  <data name="Chat_AssistantMedia_Retry" xml:space="preserve"><value>重試</value></data>
+  <data name="Chat_AssistantMedia_Image" xml:space="preserve"><value>圖片</value></data>
+  <data name="Chat_AssistantMedia_Audio" xml:space="preserve"><value>音訊</value></data>
+  <data name="Chat_AssistantMedia_Video" xml:space="preserve"><value>影片</value></data>
+  <data name="Chat_AssistantMedia_File" xml:space="preserve"><value>檔案</value></data>
+  <data name="Chat_AssistantMedia_Media" xml:space="preserve"><value>媒體</value></data>
+  <data name="Chat_AssistantMedia_ImagesOmitted" xml:space="preserve"><value>還有 {0} 張圖片未顯示</value></data>
+  <data name="Chat_AssistantMedia_MediaAttachment" xml:space="preserve"><value>媒體附件</value></data>
+  <data name="Chat_AssistantMedia_OpenImage" xml:space="preserve"><value>開啟圖片 {0}</value></data>
+  <data name="Chat_AssistantMedia_Close" xml:space="preserve"><value>關閉</value></data>
 </root>

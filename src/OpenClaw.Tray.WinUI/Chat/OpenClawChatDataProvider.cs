@@ -78,12 +78,8 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
         Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping
     };
     /// <summary>
-    /// Process-wide cache mapping an attachment's filename to its raw image
-    /// bytes. Populated by <see cref="SendMessageAsync"/> for image
-    /// attachments so the timeline can render an actual thumbnail in the
-    /// user bubble (the display-text marker only carries the filename, not
-    /// the base64 content). Static so any timeline render after a re-mount
-    /// can still find the image.
+    /// Process-wide cache mapping an opaque local preview key to raw image
+    /// bytes. Gateway references never receive keys and cannot read this cache.
     /// </summary>
     public static readonly ConcurrentDictionary<string, byte[]> ImagePreviewCache = new();
 
@@ -128,7 +124,7 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
     private readonly Dictionary<string, long> _resetCutoffUtcMs = new(); // sessionKey -> local reset time
     private readonly HashSet<string> _resetAwaitingUserMessage = new(); // threads reset and waiting for first post-reset turn
     private readonly Dictionary<string, HashSet<string>> _resetIgnoredRunIds = new(); // sessionKey -> pre-reset run IDs to drop
-    private readonly Dictionary<string, Dictionary<string, Queue<DateTimeOffset>>> _resetSubmittedLocalEchoTexts = new(); // sessionKey -> pre-reset local user echoes that reached the gateway
+    private readonly Dictionary<string, Dictionary<string, Queue<DateTimeOffset>>> _resetSubmittedLocalEchoTexts = new(); // sessionKey -> pre-reset local user echo signatures that reached the gateway
     private readonly Dictionary<string, HashSet<string>> _resetAcceptedRunIds = new(); // sessionKey -> post-reset run IDs allowed to open the gate
     private readonly Dictionary<string, long> _resetLocalSendWithoutRunVersions = new(); // sessionKey -> reset generation for no-runId sends
     private readonly Dictionary<string, long> _resetLocalSendWithoutRunStartSequences = new(); // sessionKey -> lifecycle sequence at local send start
@@ -167,15 +163,22 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
     private static readonly TimeSpan LocalEchoSuppressionWindow = TimeSpan.FromSeconds(30);
     private static readonly TimeSpan DeferredQueueDrainDelay = TimeSpan.FromMilliseconds(100);
     private static readonly TimeSpan MaxDeferredAdmissionRetryDelay = TimeSpan.FromSeconds(1);
-    private readonly record struct LocalSentText(string Text, DateTimeOffset SentAt, string QueuedMessageId);
+    private readonly record struct LocalSentText(
+        string Text,
+        string AttachmentCorrelationSignature,
+        DateTimeOffset SentAt,
+        string QueuedMessageId);
     private sealed record QueuedSendRequest(
         string Id,
         string SendRunId,
         string ThreadId,
         string Text,
+        string TimelineText,
         string DisplayText,
         string LocalNonce,
         IReadOnlyList<ChatAttachment>? Attachments,
+        IReadOnlyList<ChatAttachmentPresentation> AttachmentPresentations,
+        string AttachmentCorrelationSignature,
         int DeferredAdmissionRetryCount = 0,
         DateTimeOffset? DeferredAdmissionRetryAfter = null,
         ChatLifecycleCommandKind? LifecycleCommand = null);
@@ -369,18 +372,24 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
 
         var trimmed = message.Trim();
         var nonce = Guid.NewGuid().ToString("N");
+        var attachmentPresentations = GatewayMediaMessageProjection.CreateLocalPresentations(
+            attachments,
+            static () => Guid.NewGuid().ToString("N"));
+        var attachmentCorrelationSignature =
+            GatewayMediaMessageProjection.BuildAttachmentCorrelationSignature(attachmentPresentations);
 
-        // Cache image attachments by filename so the timeline can render an
-        // actual thumbnail preview (the display-text marker only carries the
-        // filename — see ImagePreviewCache notes).
+        // Cache image bytes only under collision-resistant keys carried by
+        // local structured descriptors.
         if (hasAttachments)
         {
-            foreach (var a in attachments!)
+            for (var i = 0; i < Math.Min(attachments!.Count, attachmentPresentations.Count); i++)
             {
-                if (a.Type == "image" && !string.IsNullOrEmpty(a.FileName) && !string.IsNullOrEmpty(a.Content))
+                var source = attachments[i];
+                var presentation = attachmentPresentations[i];
+                if (presentation.CanAccessPreviewCache && !string.IsNullOrEmpty(source.Content))
                 {
-                    try { ImagePreviewCache[a.FileName] = Convert.FromBase64String(a.Content); }
-                    catch (Exception ex) { Logger.Debug($"ChatDataProvider: image attachment base64 decode failed for '{a.FileName}': {ex.Message}"); }
+                    try { ImagePreviewCache[presentation.PreviewCacheKey!] = Convert.FromBase64String(source.Content); }
+                    catch (Exception ex) { Logger.Debug($"ChatDataProvider: image attachment base64 decode failed for '{presentation.DisplayFileName}': {ex.Message}"); }
                 }
             }
         }
@@ -390,7 +399,7 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
         // blank even if the typed message was empty. Uses a unique prefix
         // ("\u200B📎 " / "\u200B🖼️ ") with a zero-width space to prevent
         // false positives from normal user text.
-        var safeUserText = EscapeUntrustedAttachmentMarkerLines(trimmed);
+        var safeUserText = NormalizeEchoCorrelationText(trimmed);
         var displayText = safeUserText;
         if (hasAttachments)
         {
@@ -423,9 +432,12 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
                 Guid.NewGuid().ToString(),
                 threadId,
                 trimmed,
+                safeUserText,
                 displayText,
                 nonce,
-                attachments?.ToArray());
+                attachments?.ToArray(),
+                attachmentPresentations,
+                attachmentCorrelationSignature);
 
             var sendDirectly = CanSendDirectlyLocked(threadId);
             _telemetry.StartLocalTurn(request.Id, threadId, queued: !sendDirectly);
@@ -471,8 +483,11 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
                 threadId,
                 "/compact",
                 "/compact",
+                "/compact",
                 Guid.NewGuid().ToString(),
                 Attachments: null,
+                AttachmentPresentations: Array.Empty<ChatAttachmentPresentation>(),
+                AttachmentCorrelationSignature: string.Empty,
                 LifecycleCommand: ChatLifecycleCommandKind.Compact);
 
             AddQueuedMessageLocked(threadId, new ChatQueuedMessage(
@@ -1183,6 +1198,9 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
 
                     var roleLower = msg.Role?.ToLowerInvariant() ?? "";
                     var rawText = replayPart.Text;
+                    var userProjection = roleLower == "user"
+                        ? GatewayMediaMessageProjection.Project(rawText)
+                        : null;
                     var ts = msg.Ts > 0
                         ? DateTimeOffset.FromUnixTimeMilliseconds(msg.Ts).ToLocalTime()
                         : (DateTimeOffset?)null;
@@ -1197,15 +1215,32 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
                         OpenClawSeq: msg.OpenClawSeq,
                         OpenClawKind: msg.OpenClawKind,
                         CompactionTokensBefore: msg.CompactionTokensBefore,
-                        CompactionTokensAfter: msg.CompactionTokensAfter);
+                        CompactionTokensAfter: msg.CompactionTokensAfter,
+                        AssistantContent: roleLower == "assistant"
+                            ? ChatAssistantContentProjector.Project(replayPart.AssistantContentParts)
+                            : null);
 
                     // Cap per-message text up front so heuristics, logging,
                     // and the reducer all see the same bounded value
                     // (chat rubber-duck MEDIUM 4).
-                    var text = TruncateForChatEntry(EscapeUntrustedAttachmentMarkerLines(rawText));
-                    if (roleLower == "user")
-                        text = RehydrateAttachmentMarkers(attachmentMatcher, text, msg.Ts);
+                    var text = TruncateForChatEntry(EscapeUntrustedAttachmentMarkerLines(
+                        userProjection?.HasMediaEnvelope == true
+                            ? userProjection.ReconciliationText
+                            : rawText));
+                    if (userProjection is not null)
+                    {
+                        var cachedAttachment = attachmentMatcher.TryMatch(
+                            userProjection.ReconciliationText,
+                            userProjection.AttachmentCorrelationSignature,
+                            msg.Ts);
+                        var attachmentPresentations = cachedAttachment is not null
+                            ? CreatePersistedLocalPresentations(cachedAttachment.Attachments)
+                            : userProjection.Attachments;
+                        msgMeta = msgMeta with { Attachments = attachmentPresentations };
+                    }
                     var hasStructuredToolContent = replayPart.ToolContent.Count > 0;
+                    var hasUserAttachments = msgMeta.Attachments is { Count: > 0 };
+                    var hasAssistantMedia = msgMeta.AssistantContent is { Media.Count: > 0 };
 
                     // Check if this user message was aborted (persisted __openclaw.id match)
                     if (roleLower == "user")
@@ -1239,7 +1274,13 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
                         continue;
                     }
 
-                    if (string.IsNullOrEmpty(text) && !hasStructuredToolContent) continue;
+                    if (string.IsNullOrEmpty(text)
+                        && !hasStructuredToolContent
+                        && !hasUserAttachments
+                        && !hasAssistantMedia)
+                    {
+                        continue;
+                    }
 
                     // Diagnostic: log shape (role + length + heuristic flags) only.
                     // Never log the message text — see HIGH 4 logging audit.
@@ -1247,7 +1288,9 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
                     var isSys  = NativeToolProjector.LooksLikeSystemControlNote(text);
                     Logger.Debug($"[ChatHistory] role='{roleLower}' len={text.Length} flat={isFlat} sys={isSys}");
 
-                    if (!string.IsNullOrEmpty(text))
+                    if (!string.IsNullOrEmpty(text)
+                        || (roleLower == "user" && hasUserAttachments)
+                        || (roleLower == "assistant" && hasAssistantMedia))
                     {
                         switch (roleLower)
                         {
@@ -2254,6 +2297,12 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
         }
     }
 
+    internal Task<AssistantMediaResolutionResult> ResolveAssistantMediaAsync(
+        string sessionKey,
+        ChatMediaContentInfo media,
+        CancellationToken cancellationToken) =>
+        _bridge.ResolveAssistantMediaAsync(sessionKey, media, cancellationToken);
+
     // ── Event handlers ──
 
     private void OnStatusChanged(object? sender, ConnectionStatus status)
@@ -2611,6 +2660,10 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
         var role = message.Role ?? "";
         var roleLower = role.ToLowerInvariant();
         var rawText = message.Text ?? string.Empty;
+        var userProjection = roleLower == "user"
+            ? GatewayMediaMessageProjection.Project(rawText)
+            : null;
+        var projectedUserText = userProjection?.ReconciliationText ?? rawText;
         ChatDataSnapshot? resetLocalEchoSnapshot = null;
         var dropAfterReset = false;
         var requestRemoteBackfillAfterReset = false;
@@ -2619,17 +2672,17 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
             if (ShouldDropChatMessageAfterResetLocked(
                 msgThreadId,
                 roleLower,
-                rawText,
+                userProjection,
                 message.Ts,
-                out var consumeEchoText,
+                out var consumeEchoProjection,
                 out var requestRemoteBackfill))
             {
                 dropAfterReset = true;
                 requestRemoteBackfillAfterReset = requestRemoteBackfill;
-                if (consumeEchoText is not null &&
+                if (consumeEchoProjection is not null &&
                     _localSentTexts.TryGetValue(msgThreadId, out var resetEchoQueue) &&
                     resetEchoQueue.Count > 0 &&
-                    TryConsumeLocalEchoLocked(msgThreadId, resetEchoQueue, consumeEchoText, out var queuedMessageId))
+                    TryConsumeLocalEchoLocked(msgThreadId, resetEchoQueue, consumeEchoProjection, out var queuedMessageId))
                 {
                     var confirmedMeta = BuildLiveMetaLocked(
                         msgThreadId,
@@ -2688,6 +2741,7 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
         // other clients (e.g. gateway web UI) so the conversation is coherent.
         if (roleLower == "user")
         {
+            var projection = userProjection!;
             // Approval slash-commands ("/approve <slug> allow-once",
             // "/approve <slug> allow-always",
             // "/deny <slug>") are transport, not user prose. If WE sent
@@ -2697,9 +2751,9 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
             // this thread, render a dim audit-trail status so the user
             // can still see that an approval decision was made elsewhere
             // (preserves audit signal).
-            if (LooksLikeApprovalSlashCommand(rawText))
+            if (LooksLikeApprovalSlashCommand(projectedUserText))
             {
-                var slashEcho = rawText.Trim();
+                var slashEcho = projectedUserText.Trim();
                 bool weSentIt = false;
                 lock (_gate)
                 {
@@ -2724,26 +2778,25 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
                 return;
             }
 
-            if (NativeToolProjector.LooksLikeSystemControlNote(rawText))
+            if (NativeToolProjector.LooksLikeSystemControlNote(projectedUserText))
             {
                 if (string.IsNullOrEmpty(message.Text)) return;
                 var sysThread = message.SessionKey;
                 ChatEntryMetadata? sysMeta;
                 lock (_gate) { sysMeta = BuildLiveMetaLocked(sysThread, message.Ts); }
                 ApplyEventAndPublish(sysThread,
-                    new ChatStatusEvent(TruncateForChatEntry(message.Text), ChatTone.Dim),
+                    new ChatStatusEvent(TruncateForChatEntry(projectedUserText), ChatTone.Dim),
                     sysMeta);
                 return;
             }
 
             // Check if this is an echo of a locally-sent message.
-            var echoText = (message.Text ?? "").Trim();
             bool isLocalEcho = false;
             ChatDataSnapshot? echoSnapshot = null;
             lock (_gate)
             {
                 if (_localSentTexts.TryGetValue(msgThreadId, out var q) && q.Count > 0
-                    && TryConsumeLocalEchoLocked(msgThreadId, q, echoText, out var echoEntryId))
+                    && TryConsumeLocalEchoLocked(msgThreadId, q, projection, out var echoEntryId))
                 {
                     isLocalEcho = true;
                     var confirmedMeta = BuildLiveMetaLocked(
@@ -2765,30 +2818,40 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
             }
 
             // Not a local echo — show it as a user message from another client.
-            if (!string.IsNullOrEmpty(message.Text))
+            if (projectedUserText.Length > 0 || projection.Attachments.Count > 0)
             {
-                var userText = TruncateForChatEntry(EscapeUntrustedAttachmentMarkerLines(message.Text));
-                ChatEntryMetadata? userMeta;
-                ChatDataSnapshot? reconciledLocalQueuedSnapshot = null;
+                var userText = TruncateForChatEntry(EscapeUntrustedAttachmentMarkerLines(
+                    projection.HasMediaEnvelope ? projection.ReconciliationText : rawText));
+                ChatDataSnapshot? userSnapshot;
                 lock (_gate)
                 {
-                    userMeta = BuildLiveMetaLocked(
+                    var userMeta = BuildLiveMetaLocked(
                         msgThreadId,
                         message.Ts,
                         message.OpenClawId,
-                        message.OpenClawSeq);
-                    if (TryReconcileExistingLocalQueuedUserEchoLocked(msgThreadId, userText, userMeta))
-                        reconciledLocalQueuedSnapshot = BuildSnapshotLocked();
-                }
-                if (reconciledLocalQueuedSnapshot is not null)
-                {
-                    Publish(reconciledLocalQueuedSnapshot);
-                    return;
+                        message.OpenClawSeq,
+                        attachments: projection.Attachments);
+                    if (TryReconcileExistingLocalQueuedUserEchoLocked(
+                        msgThreadId,
+                        userText,
+                        projection.AttachmentCorrelationSignature,
+                        projection.HasMediaEnvelope,
+                        userMeta))
+                    {
+                        userSnapshot = BuildSnapshotLocked();
+                    }
+                    else
+                    {
+                        userSnapshot = ApplyProjectedRemoteUserMessageLocked(
+                           msgThreadId,
+                           userText,
+                           projection.AttachmentCorrelationSignature,
+                           userMeta);
+                    }
                 }
 
-                ApplyEventAndPublish(msgThreadId,
-                    new ChatUserMessageEvent(userText),
-                    userMeta);
+                if (userSnapshot is not null)
+                    Publish(userSnapshot);
             }
             return;
         }
@@ -2833,7 +2896,8 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
             return;
         if (ChatMessageInfo.IsSilentAssistantDirective(roleLower, message.Text))
             return;
-        if (string.IsNullOrEmpty(message.Text))
+        var assistantContent = ChatAssistantContentProjector.Project(message.ContentParts);
+        if (string.IsNullOrEmpty(message.Text) && assistantContent is null)
             return;
 
         var threadId = message.SessionKey;
@@ -2841,11 +2905,16 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
         AssistantQueueFrameDisposition assistantDisposition;
         lock (_gate)
         {
-            assistantDisposition = ClassifyAssistantQueueFrameLocked(
-                threadId,
-                cappedAssistantText,
-                message.OpenClawId,
-                message.OpenClawSeq);
+            assistantDisposition = cappedAssistantText.Length == 0
+                && assistantContent is not null
+                && string.IsNullOrEmpty(message.OpenClawId)
+                && message.OpenClawSeq is null
+                ? AssistantQueueFrameDisposition.Render
+                : ClassifyAssistantQueueFrameLocked(
+                    threadId,
+                    cappedAssistantText,
+                    message.OpenClawId,
+                    message.OpenClawSeq);
         }
         if (assistantDisposition != AssistantQueueFrameDisposition.Render)
         {
@@ -2864,7 +2933,8 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
                 threadId,
                 message.Ts,
                 message.OpenClawId,
-                message.OpenClawSeq);
+                message.OpenClawSeq,
+                assistantContent: assistantContent);
             _activeRunIds.TryGetValue(threadId, out telemetryRunId);
             // If the gateway included a usage block on this chat event,
             // attach it so the assistant footer pills (↑/↓/R/ctx%) can
@@ -3512,7 +3582,11 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
         return false;
     }
 
-    private bool TryConsumeLocalEchoLocked(string threadId, Queue<LocalSentText> queue, string text, out string queuedMessageId)
+    private bool TryConsumeLocalEchoLocked(
+        string threadId,
+        Queue<LocalSentText> queue,
+        GatewayMediaMessageProjectionResult projection,
+        out string queuedMessageId)
     {
         queuedMessageId = string.Empty;
         var now = DateTimeOffset.UtcNow;
@@ -3525,40 +3599,40 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
             return false;
         }
 
-        var matched = false;
-        string matchedMessageId = string.Empty;
         var pendingEchoes = queue.ToArray();
+        var matchedMessageId = ChatAttachmentEchoCorrelation.SelectMatchingMessageId(
+            pendingEchoes.Select(pending => new ChatPendingEchoCandidate(
+                pending.QueuedMessageId,
+                pending.Text,
+                pending.AttachmentCorrelationSignature)).ToArray(),
+            NormalizeEchoCorrelationText(projection.ReconciliationText),
+            projection.AttachmentCorrelationSignature,
+            projection.HasMediaEnvelope);
+        if (matchedMessageId is null)
+            return false;
+
         queue.Clear();
         foreach (var pending in pendingEchoes)
         {
-            if (matched || !string.Equals(pending.Text, text, StringComparison.Ordinal))
-                continue;
-
-            queuedMessageId = pending.QueuedMessageId;
-            matchedMessageId = pending.QueuedMessageId;
-            matched = true;
+            if (!string.Equals(pending.QueuedMessageId, matchedMessageId, StringComparison.Ordinal))
+                queue.Enqueue(pending);
         }
 
-        var kept = new Queue<LocalSentText>(pendingEchoes.Length);
-        if (!matched)
-        {
-            foreach (var pending in pendingEchoes)
-                kept.Enqueue(pending);
-            StoreLocalEchoQueueLocked(threadId, kept);
-            return false;
-        }
-
-        foreach (var pending in pendingEchoes)
-        {
-            if (string.Equals(pending.QueuedMessageId, matchedMessageId, StringComparison.Ordinal))
-                continue;
-
-            kept.Enqueue(pending);
-        }
-
-        StoreLocalEchoQueueLocked(threadId, kept);
+        queuedMessageId = matchedMessageId;
+        StoreLocalEchoQueueLocked(threadId, queue);
         return true;
     }
+
+    private bool TryConsumeLocalEchoLocked(
+        string threadId,
+        Queue<LocalSentText> queue,
+        string text,
+        out string queuedMessageId) =>
+        TryConsumeLocalEchoLocked(
+            threadId,
+            queue,
+            GatewayMediaMessageProjection.Project(text),
+            out queuedMessageId);
 
     private void StoreLocalEchoQueueLocked(string threadId, Queue<LocalSentText> queue)
     {
@@ -3571,6 +3645,8 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
     private bool TryReconcileExistingLocalQueuedUserEchoLocked(
         string threadId,
         string text,
+        string attachmentCorrelationSignature,
+        bool hasMediaEnvelope,
         ChatEntryMetadata confirmedMeta)
     {
         if (!HasGatewayIdentity(confirmedMeta))
@@ -3579,6 +3655,8 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
             !_timelines.TryGetValue(threadId, out var timeline))
             return false;
 
+        var candidates = new List<ChatTimelineItem>();
+        var echoCandidates = new List<ChatPendingEchoCandidate>();
         foreach (var entry in timeline.Entries)
         {
             if (entry.Kind != ChatTimelineItemKind.User)
@@ -3591,16 +3669,160 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
                 continue;
             if (!IsFreshLocalQueuedPromotion(existing, confirmedMeta))
                 continue;
-
-            threadMeta[entry.Id] = confirmedMeta with
-            {
-                IsLocalQueuedSend = false,
-                LocalQueuedMessageId = existing.LocalQueuedMessageId,
-            };
-            return true;
+            candidates.Add(entry);
+            echoCandidates.Add(new ChatPendingEchoCandidate(
+                entry.Id,
+                entry.Text,
+                GatewayMediaMessageProjection.BuildAttachmentCorrelationSignature(existing.Attachments)));
         }
 
-        return false;
+        var matchedMessageId = ChatAttachmentEchoCorrelation.SelectMatchingMessageId(
+            echoCandidates,
+            text,
+            attachmentCorrelationSignature,
+            hasMediaEnvelope);
+        if (matchedMessageId is null)
+            return false;
+
+        var matched = candidates.First(candidate =>
+            string.Equals(candidate.Id, matchedMessageId, StringComparison.Ordinal));
+        var matchedMeta = threadMeta[matched.Id];
+        threadMeta[matched.Id] = confirmedMeta with
+        {
+            IsLocalQueuedSend = false,
+            LocalQueuedMessageId = matchedMeta.LocalQueuedMessageId,
+            Attachments = matchedMeta.Attachments,
+        };
+        return true;
+    }
+
+    private ChatDataSnapshot? ApplyProjectedRemoteUserMessageLocked(
+        string threadId,
+        string projectedText,
+        string attachmentCorrelationSignature,
+        ChatEntryMetadata incomingMeta)
+    {
+        var timeline = GetOrCreateTimelineLocked(threadId);
+        var threadMeta = GetOrCreateThreadMetaLocked(threadId);
+        ChatTimelineItem? matched = null;
+        ChatEntryMetadata? existingMeta = null;
+
+        if (HasGatewayIdentity(incomingMeta))
+        {
+            for (var i = timeline.Entries.Count - 1; i >= 0; i--)
+            {
+                var candidate = timeline.Entries[i];
+                if (candidate.Kind != ChatTimelineItemKind.User ||
+                    !threadMeta.TryGetValue(candidate.Id, out var candidateMeta) ||
+                    candidateMeta.IsLocalQueuedSend ||
+                    !HasMatchingGatewayIdentity(candidateMeta, incomingMeta))
+                {
+                    continue;
+                }
+
+                matched = candidate;
+                existingMeta = candidateMeta;
+                break;
+            }
+        }
+
+        // Identity-less history/live twins are only safe to correlate against
+        // the current trailing user row. Crossing an assistant/status boundary
+        // would collapse a legitimate later turn that repeats the same prose.
+        if (matched is null &&
+            timeline.Entries.Count > 0 &&
+            timeline.Entries[^1] is { Kind: ChatTimelineItemKind.User } latestUser &&
+            string.Equals(latestUser.Text, projectedText, StringComparison.Ordinal) &&
+            threadMeta.TryGetValue(latestUser.Id, out var latestMeta) &&
+            !latestMeta.IsLocalQueuedSend &&
+            !HasConflictingGatewayIdentity(latestMeta, incomingMeta) &&
+            string.Equals(
+                GatewayMediaMessageProjection.BuildAttachmentCorrelationSignature(latestMeta.Attachments),
+                attachmentCorrelationSignature,
+                StringComparison.Ordinal))
+        {
+            matched = latestUser;
+            existingMeta = latestMeta;
+        }
+
+        if (matched is null || existingMeta is null)
+        {
+            return ApplyEventLocked(
+                threadId,
+                new ChatUserMessageEvent(projectedText),
+                incomingMeta);
+        }
+
+        var mergedMeta = MergeProjectedUserMetadata(existingMeta, incomingMeta);
+        if (mergedMeta == existingMeta)
+            return null;
+
+        threadMeta[matched.Id] = mergedMeta;
+        return HasRendererVisibleUserMetadataChange(existingMeta, mergedMeta)
+            ? BuildSnapshotLocked()
+            : null;
+    }
+
+    private static bool HasMatchingGatewayIdentity(
+        ChatEntryMetadata existing,
+        ChatEntryMetadata incoming) =>
+        (!string.IsNullOrEmpty(incoming.GatewayMessageId) &&
+         string.Equals(existing.GatewayMessageId, incoming.GatewayMessageId, StringComparison.Ordinal)) ||
+        (incoming.OpenClawSeq is not null && existing.OpenClawSeq == incoming.OpenClawSeq);
+
+    private static bool HasConflictingGatewayIdentity(
+        ChatEntryMetadata existing,
+        ChatEntryMetadata incoming) =>
+        (!string.IsNullOrEmpty(existing.GatewayMessageId) &&
+         !string.IsNullOrEmpty(incoming.GatewayMessageId) &&
+         !string.Equals(existing.GatewayMessageId, incoming.GatewayMessageId, StringComparison.Ordinal)) ||
+        (existing.OpenClawSeq is not null &&
+         incoming.OpenClawSeq is not null &&
+         existing.OpenClawSeq != incoming.OpenClawSeq);
+
+    private static ChatEntryMetadata MergeProjectedUserMetadata(
+        ChatEntryMetadata existing,
+        ChatEntryMetadata incoming)
+    {
+        var existingAttachments = existing.Attachments;
+        var mergedAttachments = existingAttachments is { Count: > 0 }
+            ? existingAttachments
+            : incoming.Attachments;
+        return existing with
+        {
+            Timestamp = existing.Timestamp ?? incoming.Timestamp,
+            Model = existing.Model ?? incoming.Model,
+            GatewayMessageId = string.IsNullOrEmpty(existing.GatewayMessageId)
+                ? incoming.GatewayMessageId
+                : existing.GatewayMessageId,
+            OpenClawSeq = existing.OpenClawSeq ?? incoming.OpenClawSeq,
+            Attachments = mergedAttachments,
+        };
+    }
+
+    private static bool HasRendererVisibleUserMetadataChange(
+        ChatEntryMetadata existing,
+        ChatEntryMetadata merged) =>
+        existing.Timestamp != merged.Timestamp ||
+        !AttachmentPresentationsEqual(existing.Attachments, merged.Attachments);
+
+    private static bool AttachmentPresentationsEqual(
+        IReadOnlyList<ChatAttachmentPresentation>? left,
+        IReadOnlyList<ChatAttachmentPresentation>? right)
+    {
+        var leftCount = left?.Count ?? 0;
+        var rightCount = right?.Count ?? 0;
+        if (leftCount != rightCount)
+            return false;
+        if (leftCount == 0)
+            return true;
+
+        for (var i = 0; i < leftCount; i++)
+        {
+            if (left![i] != right![i])
+                return false;
+        }
+        return true;
     }
 
     private static bool HasGatewayIdentity(ChatEntryMetadata meta)
@@ -3684,14 +3906,15 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
         var startedRunStartSequence = _lifecycleStartSequence;
         var current = GetOrCreateTimelineLocked(threadId);
         var entryId = $"e{current.NextId}";
-        _timelines[threadId] = ChatTimelineReducer.AddLocalUser(current, request.DisplayText, request.LocalNonce);
+        _timelines[threadId] = ChatTimelineReducer.AddLocalUser(current, request.TimelineText, request.LocalNonce);
         GetOrCreateThreadMetaLocked(threadId)[entryId] = BuildLiveMetaLocked(
             threadId,
             isLocalQueuedSend: true,
-            localQueuedMessageId: request.Id);
+            localQueuedMessageId: request.Id,
+            attachments: request.AttachmentPresentations);
         _sessionIds.TryGetValue(threadId, out var sessionId);
 
-        EnqueueLocalEchoLocked(threadId, request.Text, request.Id);
+        EnqueueLocalEchoLocked(threadId, request);
         _locallyInitiatedThreads.Add(threadId);
         _assistantFallbackPromotedThreads.Add(threadId);
         var queueCompletion = _telemetry.PrepareDispatchLocalTurn(request.Id, request.SendRunId);
@@ -3757,7 +3980,7 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
             if (request.LifecycleCommand is null)
             {
                 _timelines[threadId] = ChatTimelineReducer.BeginLocalUserTurn(GetOrCreateTimelineLocked(threadId));
-                EnqueueLocalEchoLocked(threadId, request.Text, request.Id);
+                EnqueueLocalEchoLocked(threadId, request);
                 _locallyInitiatedThreads.Add(threadId);
                 queueCompletion = _telemetry.PrepareDispatchLocalTurn(request.Id, request.SendRunId);
             }
@@ -3774,16 +3997,20 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
         return null;
     }
 
-    private void EnqueueLocalEchoLocked(string threadId, string text, string messageId)
+    private void EnqueueLocalEchoLocked(string threadId, QueuedSendRequest request)
     {
-        RemovePendingLocalEchoLocked(threadId, messageId);
+        RemovePendingLocalEchoLocked(threadId, request.Id);
         if (!_localSentTexts.TryGetValue(threadId, out var localEchoQueue))
         {
             localEchoQueue = new Queue<LocalSentText>();
             _localSentTexts[threadId] = localEchoQueue;
         }
 
-        localEchoQueue.Enqueue(new LocalSentText(text, DateTimeOffset.UtcNow, messageId));
+        localEchoQueue.Enqueue(new LocalSentText(
+            request.TimelineText,
+            request.AttachmentCorrelationSignature,
+            DateTimeOffset.UtcNow,
+            request.Id));
         while (localEchoQueue.Count > 20)
             localEchoQueue.Dequeue();
     }
@@ -3953,17 +4180,27 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
             return false;
 
         var queued = list[index];
+        var request = FindQueuedSendRequestLocked(threadId, messageId);
         var current = GetOrCreateTimelineLocked(threadId);
         var entryId = $"e{current.NextId}";
-        _timelines[threadId] = ChatTimelineReducer.AddLocalUser(current, queued.Text, queued.LocalNonce);
+        _timelines[threadId] = ChatTimelineReducer.AddLocalUser(
+            current,
+            request?.TimelineText ?? queued.Text,
+            queued.LocalNonce);
 
         var hasGatewayIdentity = confirmedMeta is not null && HasGatewayIdentity(confirmedMeta);
         var meta = hasGatewayIdentity
-            ? confirmedMeta! with { IsLocalQueuedSend = false, LocalQueuedMessageId = messageId }
+            ? confirmedMeta! with
+            {
+                IsLocalQueuedSend = false,
+                LocalQueuedMessageId = messageId,
+                Attachments = request?.AttachmentPresentations ?? confirmedMeta.Attachments,
+            }
             : BuildLiveMetaLocked(
                 threadId,
                 isLocalQueuedSend: true,
-                localQueuedMessageId: messageId);
+                localQueuedMessageId: messageId,
+                attachments: request?.AttachmentPresentations);
         var threadMeta = GetOrCreateThreadMetaLocked(threadId);
         threadMeta[entryId] = meta;
 
@@ -4015,10 +4252,12 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
         if (matchedEntryId is null)
             return false;
 
+        var existingMeta = threadMeta[matchedEntryId];
         threadMeta[matchedEntryId] = confirmedMeta with
         {
             IsLocalQueuedSend = false,
             LocalQueuedMessageId = messageId,
+            Attachments = existingMeta.Attachments,
         };
         return true;
     }
@@ -4245,12 +4484,23 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
                     break;
                 }
             }
-            if (lastUser is null || string.IsNullOrEmpty(lastUser.Text)) return;
+            if (lastUser is null) return;
+            var projection = GatewayMediaMessageProjection.Project(lastUser.Text);
+            if (projection.ReconciliationText.Length == 0 && projection.Attachments.Count == 0)
+                return;
+            var cachedAttachment = CreateAttachmentMetaMatcher(history.SessionId, threadId).TryMatch(
+                projection.ReconciliationText,
+                projection.AttachmentCorrelationSignature,
+                lastUser.Ts);
+            var projectedAttachments = cachedAttachment is not null
+                ? CreatePersistedLocalPresentations(cachedAttachment.Attachments)
+                : projection.Attachments;
+            var projectedAttachmentCorrelationSignature =
+                GatewayMediaMessageProjection.BuildAttachmentCorrelationSignature(projectedAttachments);
+            var projectedText = TruncateForChatEntry(EscapeUntrustedAttachmentMarkerLines(
+                projection.HasMediaEnvelope ? projection.ReconciliationText : lastUser.Text));
 
-            ChatDataSnapshot? snapshotToPublish = null;
-
-            // Check if we already have this user message as the last User entry
-            // in the timeline (avoid duplicates on reconnect/reload).
+            ChatDataSnapshot? snapshotToPublish;
             lock (_gate)
             {
                 if (GetResetVersionLocked(threadId) != requestResetVersion ||
@@ -4260,38 +4510,28 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
                     return;
                 }
 
-                if (_timelines.TryGetValue(threadId, out var tl))
-                {
-                    for (int i = tl.Entries.Count - 1; i >= 0; i--)
-                    {
-                        if (tl.Entries[i].Kind == ChatTimelineItemKind.User)
-                        {
-                            if (tl.Entries[i].Text == lastUser.Text)
-                                return; // already displayed
-                            break;
-                        }
-                    }
-                }
+                var meta = BuildLiveMetaLocked(
+                    threadId,
+                    lastUser.Ts,
+                    lastUser.OpenClawId,
+                    lastUser.OpenClawSeq,
+                    attachments: projectedAttachments);
+                snapshotToPublish = ApplyProjectedRemoteUserMessageLocked(
+                    threadId,
+                    projectedText,
+                    projectedAttachmentCorrelationSignature,
+                    meta);
 
                 if (openResetGateOnSuccess)
                 {
                     _resetRemoteUserSeen.Add(threadId);
                     TryOpenResetGateFromPendingLifecycleLocked(threadId, acceptedRunId: null);
                 }
-
-                var meta = BuildLiveMetaLocked(
-                    threadId,
-                    lastUser.Ts,
-                    lastUser.OpenClawId,
-                    lastUser.OpenClawSeq);
-                snapshotToPublish = ApplyEventLocked(
-                    threadId,
-                    new ChatUserMessageEvent(TruncateForChatEntry(lastUser.Text)),
-                    meta);
             }
 
-            Publish(snapshotToPublish);
-            Logger.Info($"[REMOTE] Injected remote user message for threadId='{threadId}' len={lastUser.Text.Length}");
+            if (snapshotToPublish is not null)
+                Publish(snapshotToPublish);
+            Logger.Info($"[REMOTE] Projected remote user message for threadId='{threadId}' len={projectedText.Length}");
         }
         catch (Exception ex)
         {
@@ -5004,6 +5244,7 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
                 hi = lo;
                 continue;
             }
+
             int bytes = enc.GetByteCount(text.AsSpan(0, mid));
             if (bytes <= budget) lo = mid;
             else hi = mid - 1;
@@ -5013,6 +5254,9 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
         Logger.Debug($"[ChatTruncate] message {actual} bytes → {lo} chars (~{enc.GetByteCount(text.AsSpan(0, lo))} bytes); cap={MaxEntryTextBytes}");
         return string.Concat(text.AsSpan(0, lo), marker.AsSpan());
     }
+
+    private static string NormalizeEchoCorrelationText(string? text) =>
+        TruncateForChatEntry(EscapeUntrustedAttachmentMarkerLines(text?.Trim()));
 
     // ── chat.history flattened-tool-output recovery ──
 
@@ -5312,6 +5556,11 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
             var threadMeta = GetOrCreateThreadMetaLocked(threadId);
             var hasUsage = meta.InputTokens is not null || meta.OutputTokens is not null
                 || meta.ResponseTokens is not null || meta.ContextPercent is not null;
+            var hasAssistantContent = meta.AssistantContent is not null;
+            var updatedAssistantId = evt is ChatMessageEvent or ChatMessageDeltaEvent
+                ? next.Entries.LastOrDefault(
+                    static entry => entry.Kind == ChatTimelineItemKind.Assistant)?.Id
+                : null;
             for (int i = 0; i < next.Entries.Count; i++)
             {
                 var id = next.Entries[i].Id;
@@ -5320,8 +5569,9 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
                 {
                     threadMeta[id] = meta;
                 }
-                else if (hasUsage && threadMeta.TryGetValue(id, out var existing)
-                    && (existing.InputTokens is null && existing.OutputTokens is null))
+                else if (string.Equals(id, updatedAssistantId, StringComparison.Ordinal)
+                    && (hasUsage || hasAssistantContent)
+                    && threadMeta.TryGetValue(id, out var existing))
                 {
                     // Merge usage onto the existing assistant entry whose
                     // text was just upserted by this final delta.
@@ -5330,7 +5580,12 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
                         InputTokens = meta.InputTokens ?? existing.InputTokens,
                         OutputTokens = meta.OutputTokens ?? existing.OutputTokens,
                         ResponseTokens = meta.ResponseTokens ?? existing.ResponseTokens,
-                        ContextPercent = meta.ContextPercent ?? existing.ContextPercent
+                        ContextPercent = meta.ContextPercent ?? existing.ContextPercent,
+                        AssistantContent = meta.AssistantContent is { } incomingContent
+                            ? ChatAssistantContentProjector.MergeLiveUpdate(
+                                existing.AssistantContent,
+                                incomingContent)
+                            : existing.AssistantContent
                     };
                 }
             }
@@ -5405,7 +5660,11 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
         if (_localSentTexts.TryGetValue(threadId, out var localEchoes))
         {
             foreach (var localEcho in localEchoes)
-                AddResetSubmittedLocalEchoTextLocked(threadId, localEcho.Text, localEcho.SentAt);
+                AddResetSubmittedLocalEchoTextLocked(
+                    threadId,
+                    localEcho.Text,
+                    localEcho.AttachmentCorrelationSignature,
+                    localEcho.SentAt);
         }
 
         _resetVersions[threadId] = GetResetVersionLocked(threadId) + 1;
@@ -5461,9 +5720,13 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
         set.Add(runId);
     }
 
-    private void AddResetSubmittedLocalEchoTextLocked(string threadId, string text, DateTimeOffset sentAt)
+    private void AddResetSubmittedLocalEchoTextLocked(
+        string threadId,
+        string text,
+        string attachmentCorrelationSignature,
+        DateTimeOffset sentAt)
     {
-        if (string.IsNullOrWhiteSpace(text))
+        if (string.IsNullOrWhiteSpace(text) && string.IsNullOrEmpty(attachmentCorrelationSignature))
             return;
 
         if (!_resetSubmittedLocalEchoTexts.TryGetValue(threadId, out var texts))
@@ -5472,34 +5735,44 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
             _resetSubmittedLocalEchoTexts[threadId] = texts;
         }
 
-        var normalized = text.Trim();
-        if (!texts.TryGetValue(normalized, out var timestamps))
+        var key = BuildEchoMatchKey(text.Trim(), attachmentCorrelationSignature);
+        if (!texts.TryGetValue(key, out var timestamps))
         {
             timestamps = new Queue<DateTimeOffset>();
-            texts[normalized] = timestamps;
+            texts[key] = timestamps;
         }
         timestamps.Enqueue(sentAt);
     }
 
-    private bool TryConsumeResetSubmittedLocalEchoTextLocked(string threadId, string text)
+    private bool TryConsumeResetSubmittedLocalEchoTextLocked(
+        string threadId,
+        GatewayMediaMessageProjectionResult projection)
     {
-        if (string.IsNullOrWhiteSpace(text) ||
+        if ((string.IsNullOrWhiteSpace(projection.ReconciliationText) &&
+             string.IsNullOrEmpty(projection.AttachmentCorrelationSignature)) ||
             !_resetSubmittedLocalEchoTexts.TryGetValue(threadId, out var texts))
         {
             return false;
         }
 
-        var normalized = text.Trim();
-        if (!texts.TryGetValue(normalized, out var timestamps))
+        var key = BuildEchoMatchKey(
+            NormalizeEchoCorrelationText(projection.ReconciliationText),
+            projection.HasMediaEnvelope ? projection.AttachmentCorrelationSignature : string.Empty);
+        if (!texts.TryGetValue(key, out var timestamps))
             return false;
 
         var now = DateTimeOffset.UtcNow;
         while (timestamps.Count > 0 && now - timestamps.Peek() > LocalEchoSuppressionWindow)
             timestamps.Dequeue();
 
+        if (projection.HasMediaEnvelope && timestamps.Count != 1)
+        {
+            return false;
+        }
+
         if (timestamps.Count == 0)
         {
-            texts.Remove(normalized);
+            texts.Remove(key);
             if (texts.Count == 0)
                 _resetSubmittedLocalEchoTexts.Remove(threadId);
             return false;
@@ -5507,25 +5780,44 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
 
         timestamps.Dequeue();
         if (timestamps.Count == 0)
-            texts.Remove(normalized);
+            texts.Remove(key);
 
         if (texts.Count == 0)
             _resetSubmittedLocalEchoTexts.Remove(threadId);
         return true;
     }
 
-    private bool HasPendingLocalEchoTextLocked(string threadId, string text)
+    private bool HasPendingLocalEchoTextLocked(
+        string threadId,
+        GatewayMediaMessageProjectionResult projection)
     {
-        if (string.IsNullOrWhiteSpace(text) ||
+        if ((string.IsNullOrWhiteSpace(projection.ReconciliationText) &&
+             string.IsNullOrEmpty(projection.AttachmentCorrelationSignature)) ||
             !_localSentTexts.TryGetValue(threadId, out var queue) ||
             queue.Count == 0)
         {
             return false;
         }
 
-        var normalized = text.Trim();
-        return queue.Any(pending => string.Equals(pending.Text, normalized, StringComparison.Ordinal));
+        return ChatAttachmentEchoCorrelation.SelectMatchingMessageId(
+            queue.Select(pending => new ChatPendingEchoCandidate(
+                pending.QueuedMessageId,
+                pending.Text,
+                pending.AttachmentCorrelationSignature)).ToArray(),
+            NormalizeEchoCorrelationText(projection.ReconciliationText),
+            projection.AttachmentCorrelationSignature,
+            projection.HasMediaEnvelope) is not null;
     }
+
+#if OPENCLAW_TRAY_TESTS
+    internal Task FetchRemoteUserMessageForTestsAsync(
+        string threadId,
+        bool openResetGateOnSuccess) =>
+        FetchRemoteUserMessageAsync(threadId, openResetGateOnSuccess);
+#endif
+
+    private static string BuildEchoMatchKey(string text, string attachmentCorrelationSignature) =>
+        $"{text.Length}:{text}|{attachmentCorrelationSignature}";
 
     private void AddResetAcceptedRunIdLocked(string threadId, string runId)
     {
@@ -5546,20 +5838,22 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
     private bool ShouldDropChatMessageAfterResetLocked(
         string threadId,
         string roleLower,
-        string rawText,
+        GatewayMediaMessageProjectionResult? userProjection,
         long tsMs,
-        out string? consumeEchoText,
+        out GatewayMediaMessageProjectionResult? consumeEchoProjection,
         out bool requestRemoteBackfill)
     {
-        consumeEchoText = null;
+        consumeEchoProjection = null;
         requestRemoteBackfill = false;
+        var projectedText = userProjection?.ReconciliationText ?? string.Empty;
         var isNormalUserText = roleLower == "user" &&
-            !LooksLikeApprovalSlashCommand(rawText) &&
-            !NativeToolProjector.LooksLikeSystemControlNote(rawText);
+            userProjection is not null &&
+            !LooksLikeApprovalSlashCommand(projectedText) &&
+            !NativeToolProjector.LooksLikeSystemControlNote(projectedText);
 
         if (isNormalUserText &&
-            !HasPendingLocalEchoTextLocked(threadId, rawText) &&
-            TryConsumeResetSubmittedLocalEchoTextLocked(threadId, rawText))
+            !HasPendingLocalEchoTextLocked(threadId, userProjection!) &&
+            TryConsumeResetSubmittedLocalEchoTextLocked(threadId, userProjection!))
         {
             return true;
         }
@@ -5575,9 +5869,9 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
         if (isFreshUser &&
             _localSentTexts.TryGetValue(threadId, out var echoQueue) &&
             echoQueue.Count > 0 &&
-            echoQueue.Any(pending => string.Equals(pending.Text, rawText.Trim(), StringComparison.Ordinal)))
+            HasPendingLocalEchoTextLocked(threadId, userProjection!))
         {
-            consumeEchoText = rawText.Trim();
+            consumeEchoProjection = userProjection;
             _resetLocalEchoSequences[threadId] = _resetLifecycleStartSequence;
             if (TryOpenResetGateFromPendingLifecycleLocked(threadId, acceptedRunId: null))
                 return false;
@@ -5682,7 +5976,9 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
         return AssistantQueueFrameDisposition.Render;
     }
 
-    private bool IsIdentitylessAssistantRetransmitAcrossLocalUserBoundaryLocked(string threadId, string assistantText)
+    private bool IsIdentitylessAssistantRetransmitAcrossLocalUserBoundaryLocked(
+        string threadId,
+        string assistantText)
     {
         if (!_locallyInitiatedThreads.Contains(threadId) ||
             _activeRunIds.ContainsKey(threadId) ||
@@ -6179,7 +6475,9 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
         string? localQueuedMessageId = null,
         string? openClawKind = null,
         long? compactionTokensBefore = null,
-        long? compactionTokensAfter = null)
+        long? compactionTokensAfter = null,
+        IReadOnlyList<ChatAttachmentPresentation>? attachments = null,
+        ChatAssistantContentPresentation? assistantContent = null)
     {
         var ts = tsMs is { } v && v > 0
             ? DateTimeOffset.FromUnixTimeMilliseconds(v).ToLocalTime()
@@ -6194,7 +6492,9 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
             CompactionTokensBefore: compactionTokensBefore,
             CompactionTokensAfter: compactionTokensAfter,
             IsLocalQueuedSend: isLocalQueuedSend,
-            LocalQueuedMessageId: localQueuedMessageId);
+            LocalQueuedMessageId: localQueuedMessageId,
+            Attachments: attachments,
+            AssistantContent: assistantContent);
     }
 
     private static List<ChatMessageInfo> OrderHistoryMessages(List<(ChatMessageInfo Message, int Index)> messages)
@@ -6698,6 +6998,7 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
     internal sealed class CachedAttachmentItem
     {
         public string FileName { get; set; } = "";
+        public string MimeType { get; set; } = "application/octet-stream";
         public bool IsImage { get; set; }
     }
 
@@ -6767,7 +7068,10 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
                 {
                     entry.Text = NormalizeCachedDisplayText(entry.Text);
                     foreach (var attachment in entry.Attachments)
+                    {
                         attachment.FileName = NormalizeCachedDisplayText(attachment.FileName);
+                        attachment.MimeType = GatewayMediaMessageProjection.NormalizeMimeType(attachment.MimeType);
+                    }
                 }
             }
             return dict ?? new();
@@ -6783,38 +7087,38 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
     {
         try
         {
-            Dictionary<string, List<CachedAttachmentMeta>> snapshot;
-            lock (_gate)
-            {
-                snapshot = _attachmentMetaCache.ToDictionary(
-                    kv => kv.Key,
-                    kv => kv.Value.Select(e => new CachedAttachmentMeta
-                    {
-                        Ts = e.Ts,
-                        Text = NormalizeCachedDisplayText(e.Text),
-                        Attachments = e.Attachments.Select(a => new CachedAttachmentItem
-                        {
-                            FileName = NormalizeCachedDisplayText(a.FileName),
-                            IsImage = a.IsImage
-                        }).ToList()
-                    }).ToList(),
-                    StringComparer.Ordinal);
-            }
-
-            if (snapshot.Count > MaxCachedSessions)
-            {
-                var toRemove = snapshot
-                    .OrderBy(kv => kv.Value.Count > 0 ? kv.Value[^1].Ts : 0)
-                    .Take(snapshot.Count - MaxCachedSessions)
-                    .Select(kv => kv.Key)
-                    .ToList();
-                foreach (var k in toRemove) snapshot.Remove(k);
-            }
-
-            var json = System.Text.Json.JsonSerializer.Serialize(snapshot, CacheJsonOptions);
-
             lock (_attachmentMetaSaveGate)
             {
+                Dictionary<string, List<CachedAttachmentMeta>> snapshot;
+                lock (_gate)
+                {
+                    snapshot = _attachmentMetaCache.ToDictionary(
+                        kv => kv.Key,
+                        kv => kv.Value.Select(e => new CachedAttachmentMeta
+                        {
+                            Ts = e.Ts,
+                            Text = NormalizeCachedDisplayText(e.Text),
+                            Attachments = e.Attachments.Select(a => new CachedAttachmentItem
+                            {
+                                FileName = NormalizeCachedDisplayText(a.FileName),
+                                MimeType = GatewayMediaMessageProjection.NormalizeMimeType(a.MimeType),
+                                IsImage = a.IsImage
+                            }).ToList()
+                        }).ToList(),
+                        StringComparer.Ordinal);
+                }
+
+                if (snapshot.Count > MaxCachedSessions)
+                {
+                    var toRemove = snapshot
+                        .OrderBy(kv => kv.Value.Count > 0 ? kv.Value[^1].Ts : 0)
+                        .Take(snapshot.Count - MaxCachedSessions)
+                        .Select(kv => kv.Key)
+                        .ToList();
+                    foreach (var k in toRemove) snapshot.Remove(k);
+                }
+
+                var json = System.Text.Json.JsonSerializer.Serialize(snapshot, CacheJsonOptions);
                 var dir = Path.GetDirectoryName(_attachmentMetaCacheFilePath);
                 if (!string.IsNullOrEmpty(dir)) Directory.CreateDirectory(dir);
 
@@ -6857,10 +7161,16 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
 
         var items = attachments
             .Where(a => !string.IsNullOrWhiteSpace(a.FileName))
-            .Select(a => new CachedAttachmentItem
+            .Select(a =>
             {
-                FileName = NormalizeCachedDisplayText(a.FileName),
-                IsImage = string.Equals(a.Type, "image", StringComparison.OrdinalIgnoreCase)
+                var mimeType = GatewayMediaMessageProjection.NormalizeMimeType(a.MimeType);
+                return new CachedAttachmentItem
+                {
+                    FileName = NormalizeCachedDisplayText(a.FileName),
+                    MimeType = mimeType,
+                    IsImage = string.Equals(a.Type, "image", StringComparison.OrdinalIgnoreCase) ||
+                        mimeType.StartsWith("image/", StringComparison.Ordinal),
+                };
             })
             .ToList();
         if (items.Count == 0)
@@ -6924,6 +7234,7 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
             Attachments = e.Attachments.Select(a => new CachedAttachmentItem
             {
                 FileName = NormalizeCachedDisplayText(a.FileName),
+                MimeType = GatewayMediaMessageProjection.NormalizeMimeType(a.MimeType),
                 IsImage = a.IsImage
             }).ToList()
         }).ToList();
@@ -6940,8 +7251,14 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
             _used = new bool[entries.Count];
         }
 
-        public CachedAttachmentMeta? TryMatch(string text, long historyTsMs)
+        public CachedAttachmentMeta? TryMatch(
+            string text,
+            string attachmentCorrelationSignature,
+            long historyTsMs)
         {
+            if (string.IsNullOrEmpty(attachmentCorrelationSignature))
+                return null;
+
             for (int i = 0; i < _entries.Count; i++)
             {
                 if (_used[i])
@@ -6950,6 +7267,14 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
                 var entry = _entries[i];
                 if (!string.Equals(entry.Text, text, StringComparison.Ordinal))
                     continue;
+                if (!string.Equals(
+                    GatewayMediaMessageProjection.BuildAttachmentCorrelationSignature(
+                        CreatePersistedLocalPresentations(entry.Attachments)),
+                    attachmentCorrelationSignature,
+                    StringComparison.Ordinal))
+                {
+                    continue;
+                }
 
                 if (historyTsMs > 0 && entry.Ts > 0 &&
                     Math.Abs(historyTsMs - entry.Ts) > MatchWindow.TotalMilliseconds)
@@ -6963,27 +7288,18 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
         }
     }
 
-    private static string RehydrateAttachmentMarkers(AttachmentMetaMatcher matcher, string text, long historyTsMs)
-    {
-        var match = matcher.TryMatch(text, historyTsMs);
-        if (match is null || match.Attachments.Count == 0)
-            return text;
-
-        var markerLines = BuildAttachmentMarkerLines(match.Attachments);
-        return string.IsNullOrEmpty(text)
-            ? markerLines
-            : $"{text}\n{markerLines}";
-    }
+    private static IReadOnlyList<ChatAttachmentPresentation> CreatePersistedLocalPresentations(
+        IEnumerable<CachedAttachmentItem> attachments) =>
+        attachments.Select(a => new ChatAttachmentPresentation(
+            ChatAttachmentOrigin.Local,
+            GatewayMediaMessageProjection.NormalizeDisplayFileName(a.FileName),
+            GatewayMediaMessageProjection.NormalizeMimeType(a.MimeType),
+            a.IsImage,
+            PreviewCacheKey: null)).ToArray();
 
     private static string BuildAttachmentMarkerLines(IEnumerable<ChatAttachment> attachments) =>
         string.Join("\n", attachments.Select(a =>
             string.Equals(a.Type, "image", StringComparison.OrdinalIgnoreCase)
-                ? $"\u200B🖼️ {a.FileName}"
-                : $"\u200B📎 {a.FileName}"));
-
-    private static string BuildAttachmentMarkerLines(IEnumerable<CachedAttachmentItem> attachments) =>
-        string.Join("\n", attachments.Select(a =>
-            a.IsImage
                 ? $"\u200B🖼️ {a.FileName}"
                 : $"\u200B📎 {a.FileName}"));
 

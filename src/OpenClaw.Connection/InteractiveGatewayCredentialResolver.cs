@@ -10,6 +10,22 @@ namespace OpenClaw.Connection;
 /// </summary>
 public static class InteractiveGatewayCredentialResolver
 {
+    internal static GatewayCredential? ResolveForAssistantMediaHttpSurface(
+        GatewayRecord record,
+        GatewayCredential? fallback) =>
+        !string.IsNullOrWhiteSpace(record.SharedGatewayToken)
+            ? new GatewayCredential(
+                record.SharedGatewayToken!,
+                IsBootstrapToken: false,
+                CredentialResolver.SourceSharedGatewayToken)
+            : fallback is
+                {
+                    IsBootstrapToken: false,
+                    Source: CredentialResolver.SourceDeviceToken,
+                }
+                ? fallback
+                : null;
+
     public static bool TryResolve(
         GatewayRegistry? registry,
         string settingsDirectory,

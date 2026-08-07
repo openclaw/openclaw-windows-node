@@ -6912,4 +6912,16 @@ Le binaire wxc-exec est introuvable. {1} S'il s'agit d'une build développeur, c
   <data name="SessionsPage_LastRunStopped" xml:space="preserve">
     <value>Dernière exécution arrêtée</value>
   </data>
+  <data name="Chat_AssistantMedia_Preparing" xml:space="preserve"><value>Préparation du média</value></data>
+  <data name="Chat_AssistantMedia_Unavailable" xml:space="preserve"><value>Média indisponible</value></data>
+  <data name="Chat_AssistantMedia_Retry" xml:space="preserve"><value>Réessayer</value></data>
+  <data name="Chat_AssistantMedia_Image" xml:space="preserve"><value>Illustration</value></data>
+  <data name="Chat_AssistantMedia_Audio" xml:space="preserve"><value>Son</value></data>
+  <data name="Chat_AssistantMedia_Video" xml:space="preserve"><value>Vidéo</value></data>
+  <data name="Chat_AssistantMedia_File" xml:space="preserve"><value>Fichier</value></data>
+  <data name="Chat_AssistantMedia_Media" xml:space="preserve"><value>Média</value></data>
+  <data name="Chat_AssistantMedia_ImagesOmitted" xml:space="preserve"><value>{0} images supplémentaires non affichées</value></data>
+  <data name="Chat_AssistantMedia_MediaAttachment" xml:space="preserve"><value>Pièce jointe multimédia</value></data>
+  <data name="Chat_AssistantMedia_OpenImage" xml:space="preserve"><value>Ouvrir l’image {0}</value></data>
+  <data name="Chat_AssistantMedia_Close" xml:space="preserve"><value>Fermer</value></data>
 </root>

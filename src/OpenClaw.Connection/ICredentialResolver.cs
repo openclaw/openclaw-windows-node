@@ -11,6 +11,7 @@ public sealed record GatewayCredential(string Token, bool IsBootstrapToken, stri
         GatewayCredentialResolutionStatus.Resolved;
     public bool FallbackUsed { get; init; }
     public string? ResolutionDetail { get; init; }
+    public string? InteractiveHttpToken { get; init; }
 }
 
 /// <summary>

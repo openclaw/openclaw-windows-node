@@ -449,7 +449,52 @@ public sealed class GatewayConnectionManager : IGatewayConnectionManager
             IGatewayClientLifecycle lifecycle;
             try
             {
-                lifecycle = _clientFactory.Create(connectUrl, credential, perGatewayIdentityDir, diagLogger);
+                var httpCredential =
+                    InteractiveGatewayCredentialResolver.ResolveForAssistantMediaHttpSurface(
+                        record,
+                        credential);
+                var interactiveHttpToken = string.Empty;
+                if (httpCredential is not null)
+                {
+                    var httpAuthorization = await AuthorizeCredentialForEndpointAsync(
+                            record,
+                            httpCredential,
+                            _operationCts!.Token)
+                        .ConfigureAwait(false);
+                    if (_disposed ||
+                        Interlocked.Read(ref _generation) != gen ||
+                        _operationCts?.IsCancellationRequested != false)
+                    {
+                        return;
+                    }
+                    if (httpAuthorization.Allowed)
+                    {
+                        interactiveHttpToken = httpCredential.Token;
+                    }
+                    else
+                    {
+                        _diagnostics.Record(
+                            "credentials",
+                            "Interactive HTTP credential was withheld",
+                            httpAuthorization.Detail);
+                    }
+                }
+                else
+                {
+                    _diagnostics.Record(
+                        "credentials",
+                        "Interactive HTTP credential was unavailable");
+                }
+
+                var clientCredential = credential with
+                {
+                    InteractiveHttpToken = interactiveHttpToken,
+                };
+                lifecycle = _clientFactory.Create(
+                    connectUrl,
+                    clientCredential,
+                    perGatewayIdentityDir,
+                    diagLogger);
             }
             catch (DeviceIdentityLoadException ex)
             {
@@ -473,6 +518,7 @@ public sealed class GatewayConnectionManager : IGatewayConnectionManager
 
             lifecycle.DataClient.ReconnectAuthorizationAsync = async cancellationToken =>
             {
+                lifecycle.DataClient.SetAssistantMediaAuthToken(null);
                 if (!IsCurrentGatewayAttempt(gen, record.Id) ||
                     !IsAutomaticReconnectAllowed(record.Id))
                 {
@@ -481,10 +527,82 @@ public sealed class GatewayConnectionManager : IGatewayConnectionManager
                         GatewayErrorKind.Unknown,
                         "Connection attempt was superseded or explicitly disconnected.");
                 }
+                var currentRecord = _registry.GetById(record.Id);
+                if (currentRecord is null ||
+                    !HasSameReconnectConfiguration(record, currentRecord))
+                {
+                    return new ReconnectAuthorizationResult(
+                        false,
+                        GatewayErrorKind.Unknown,
+                        "The active gateway configuration changed before reconnect.");
+                }
                 var authorization = await AuthorizeCredentialForEndpointAsync(
-                    record,
+                    currentRecord,
                     credential,
                     cancellationToken).ConfigureAwait(false);
+                if (!authorization.Allowed)
+                {
+                    return new ReconnectAuthorizationResult(
+                        false,
+                        authorization.FailureKind,
+                        authorization.Detail);
+                }
+                if (!IsCurrentGatewayAttempt(gen, record.Id) ||
+                    !IsAutomaticReconnectAllowed(record.Id))
+                {
+                    return new ReconnectAuthorizationResult(
+                        false,
+                        GatewayErrorKind.Unknown,
+                        "Connection attempt was superseded or explicitly disconnected.");
+                }
+
+                GatewayCredential? currentHttpFallback = null;
+                if (string.IsNullOrWhiteSpace(currentRecord.SharedGatewayToken))
+                {
+                    currentHttpFallback = _credentialResolver.ResolveOperator(
+                        currentRecord,
+                        perGatewayIdentityDir);
+                }
+                var reconnectHttpCredential =
+                    InteractiveGatewayCredentialResolver.ResolveForAssistantMediaHttpSurface(
+                        currentRecord,
+                        currentHttpFallback);
+                if (reconnectHttpCredential is null)
+                {
+                    _diagnostics.Record(
+                        "credentials",
+                        "Interactive HTTP credential was unavailable during reconnect");
+                    return new ReconnectAuthorizationResult(
+                        true,
+                        authorization.FailureKind,
+                        authorization.Detail);
+                }
+                var httpAuthorization = await AuthorizeCredentialForEndpointAsync(
+                        currentRecord,
+                        reconnectHttpCredential,
+                        cancellationToken)
+                    .ConfigureAwait(false);
+                if (!IsCurrentGatewayAttempt(gen, record.Id) ||
+                    !IsAutomaticReconnectAllowed(record.Id))
+                {
+                    return new ReconnectAuthorizationResult(
+                        false,
+                        GatewayErrorKind.Unknown,
+                        "Connection attempt was superseded or explicitly disconnected.");
+                }
+                if (httpAuthorization.Allowed)
+                {
+                    lifecycle.DataClient.SetAssistantMediaAuthToken(
+                        reconnectHttpCredential.Token);
+                }
+                else
+                {
+                    _diagnostics.Record(
+                        "credentials",
+                        "Interactive HTTP credential was withheld during reconnect",
+                        httpAuthorization.Detail);
+                }
+
                 return new ReconnectAuthorizationResult(
                     authorization.Allowed,
                     authorization.FailureKind,
@@ -1578,6 +1696,17 @@ public sealed class GatewayConnectionManager : IGatewayConnectionManager
                 "The managed gateway address is owned by an unverified process. OpenClaw did not send the shared or bootstrap token.");
     }
 
+    private static bool HasSameReconnectConfiguration(
+        GatewayRecord original,
+        GatewayRecord current) =>
+        string.Equals(original.Url, current.Url, StringComparison.OrdinalIgnoreCase)
+        && original.IsLocal == current.IsLocal
+        && string.Equals(
+            original.SetupManagedDistroName,
+            current.SetupManagedDistroName,
+            StringComparison.Ordinal)
+        && Equals(original.SshTunnel, current.SshTunnel);
+
     private readonly record struct EndpointCredentialAuthorization(
         bool Allowed,
         GatewayErrorKind FailureKind,
@@ -1843,6 +1972,38 @@ public sealed class GatewayConnectionManager : IGatewayConnectionManager
                         $"Failed to persist {e.Role} device token",
                         ex.Message);
                     return;
+                }
+            }
+
+            if (string.Equals(e.Role, "operator", StringComparison.OrdinalIgnoreCase))
+            {
+                var currentRecord = _registry.GetById(gatewayRecordId);
+                if (currentRecord is not null &&
+                    string.IsNullOrWhiteSpace(currentRecord.SharedGatewayToken))
+                {
+                    var deviceCredential = new GatewayCredential(
+                        e.Token,
+                        IsBootstrapToken: false,
+                        CredentialResolver.SourceDeviceToken);
+                    var authorization = await AuthorizeCredentialForEndpointAsync(
+                            currentRecord,
+                            deviceCredential,
+                            _operationCts?.Token ?? CancellationToken.None)
+                        .ConfigureAwait(false);
+                    if (!IsCurrentGatewayAttempt(gen, gatewayRecordId))
+                        return;
+                    if (authorization.Allowed)
+                    {
+                        _activeLifecycle?.DataClient.SetAssistantMediaAuthToken(e.Token);
+                    }
+                    else
+                    {
+                        _activeLifecycle?.DataClient.SetAssistantMediaAuthToken(null);
+                        _diagnostics.Record(
+                            "credentials",
+                            "Interactive HTTP device credential was withheld after token refresh",
+                            authorization.Detail);
+                    }
                 }
             }
 
