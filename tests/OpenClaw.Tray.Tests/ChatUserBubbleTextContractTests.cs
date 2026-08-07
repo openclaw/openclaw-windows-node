@@ -1,5 +1,3 @@
-using System.Text.RegularExpressions;
-
 namespace OpenClaw.Tray.Tests;
 
 public sealed class ChatUserBubbleTextContractTests
@@ -7,21 +5,13 @@ public sealed class ChatUserBubbleTextContractTests
     [Fact]
     public void UserPromptText_RendersSelectableRichTextBlockParagraph()
     {
-        var timeline = Read("src", "OpenClaw.Tray.WinUI", "Chat", "OpenClawChatTimeline.cs");
+        var timeline = Read("src", "OpenClaw.Tray.WinUI", "Chat", "ReactorChatTimeline.cs");
 
-        Assert.Contains("private const string ChatTextFontFamilySource", timeline);
-        // The user message renders through a single RichTextBlock (one
-        // Paragraph / one Run) so the whole message is one continuous
-        // selection scope, matching the assistant bubble append-block pattern.
-        Assert.Contains("RichTextBlock()", timeline);
-        Assert.Contains("t.FontFamily = s_chatTextFontFamily;", timeline);
-        Assert.Contains("t.TextTrimming = TextTrimming.None;", timeline);
-        Assert.Contains("t.MaxLines = 0;", timeline);
-        Assert.Contains("t.Width = double.NaN;", timeline);
-        Assert.Contains("t.MaxWidth = double.PositiveInfinity;", timeline);
-        Assert.Matches(
-            new Regex(@"t\.TextTrimming\s*=\s*TextTrimming\.None;[\s\S]*ApplyPlainSelectableParagraph\(t,\s*messageText\);"),
-            timeline);
+        Assert.Contains("private static Element BuildUser(", timeline);
+        Assert.Contains("content.Add(Text(", timeline);
+        Assert.Contains("messageText,", timeline);
+        Assert.Contains(".Set(text => text.IsTextSelectionEnabled = true)", timeline);
+        Assert.Contains(".AutomationName(entry.Text ?? string.Empty)", timeline);
     }
 
     private static string Read(params string[] parts)

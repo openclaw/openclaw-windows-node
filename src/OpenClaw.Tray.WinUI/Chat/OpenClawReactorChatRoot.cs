@@ -263,7 +263,7 @@ public sealed class OpenClawReactorChatRoot : Component<OpenClawReactorChatRootP
                 ? ReactorChatTimelineMode.Empty
                 : ReactorChatTimelineMode.Timeline;
 
-        var timelineProps = new OpenClawChatTimelineProps(
+        var timelineProps = new ChatTimelinePresentationContext(
             effectiveThread?.Id,
             entries,
             false,
@@ -387,7 +387,7 @@ public sealed class OpenClawReactorChatRoot : Component<OpenClawReactorChatRootP
     private static Element RenderLoading() =>
         Component<ReactorChatTimeline, ReactorChatTimelineProps>(new(
             ReactorChatTimelineMode.Loading,
-            new OpenClawChatTimelineProps(null, Array.Empty<ChatTimelineItem>(), false, null),
+            new ChatTimelinePresentationContext(null, Array.Empty<ChatTimelineItem>(), false, null),
             null,
             false));
 

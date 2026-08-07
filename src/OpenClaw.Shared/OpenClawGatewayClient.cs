@@ -1993,8 +1993,8 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
         // to preserve the chat approval banner on disconnect-mid-flight. The
         // OperationCanceledException thrown here is intentionally a connection
         // lifecycle signal, NOT a benign cancel. RunFireAndForget in the tray
-        // (OpenClawChatRoot) silently swallows OperationCanceledException —
-        // if a caller forwards the OCE up to RunFireAndForget instead of
+        // chat root silently absorbs OperationCanceledException.
+        // If a caller forwards the OCE up to RunFireAndForget instead of
         // catching it locally, the banner will be cleared with no UI feedback.
         // Today OpenClawChatDataProvider.RespondToPermissionAsync correctly
         // catches Exception ex; do not narrow that catch.
