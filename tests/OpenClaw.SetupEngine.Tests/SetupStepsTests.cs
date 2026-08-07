@@ -1028,6 +1028,37 @@ public class SetupStepsTests : IDisposable
     }
 
     [Fact]
+    public async Task InstallCli_LocalPackage_CancellationDuringCopy_CleansStagingDirectory()
+    {
+        var packagePath = Path.Combine(_tempDir, "openclaw-current.tgz");
+        await File.WriteAllBytesAsync(packagePath, [1, 2, 3]);
+        using var cancellation = new CancellationTokenSource();
+        var commands = new FakeCommandRunner(
+            _ => Ok(),
+            (_, _, _) => Ok(),
+            (_, _, _, ct) =>
+            {
+                cancellation.Cancel();
+                ct.ThrowIfCancellationRequested();
+                return Ok();
+            });
+        var ctx = CreateContext(new SetupConfig
+        {
+            Gateway = new GatewayConfig { LocalPackagePath = packagePath }
+        }, commands);
+        ctx.DistroName = "test-distro";
+
+        await Assert.ThrowsAsync<OperationCanceledException>(
+            () => new InstallCliStep().ExecuteAsync(ctx, cancellation.Token));
+
+        var cleanup = Assert.Single(
+            commands.WslCalls,
+            call => call.Command == "rm -rf -- /var/lib/openclaw/setup-package");
+        Assert.NotEqual(cancellation.Token, cleanup.CancellationToken);
+        Assert.False(cleanup.CancellationToken.IsCancellationRequested);
+    }
+
+    [Fact]
     public void InstallCli_BuildInstallCommand_EscapesSingleQuotesInUrlAndVersion()
     {
         var command = InstallCliStep.BuildInstallCommand("https://openclaw.ai/install-cli's.sh", "2026.5.22'a");
@@ -3766,12 +3797,13 @@ public class SetupStepsTests : IDisposable
 
     private sealed class FakeCommandRunner(
         Func<string[], CommandResult> run,
-        Func<string, string, TimeSpan, CommandResult>? runInWsl = null) : ICommandRunner
+        Func<string, string, TimeSpan, CommandResult>? runInWsl = null,
+        Func<string, string[], TimeSpan, CancellationToken, CommandResult>? runWithCancellation = null) : ICommandRunner
     {
         public List<(string Executable, string[] Arguments)> Calls { get; } = [];
         public List<(string Executable, string[] Arguments, TimeSpan Timeout)> TimedCalls { get; } = [];
         public List<(string Executable, string[] Arguments, string? StdinInput, long? StdinStreamLength)> DetailedCalls { get; } = [];
-        public List<(string DistroName, string Command, TimeSpan Timeout, string? User, bool InputViaStdin)> WslCalls { get; } = [];
+        public List<(string DistroName, string Command, TimeSpan Timeout, string? User, bool InputViaStdin, CancellationToken CancellationToken)> WslCalls { get; } = [];
         public List<IReadOnlyDictionary<string, string>?> WslEnvironments { get; } = [];
 
         public Task<CommandResult> RunAsync(
@@ -3787,7 +3819,7 @@ public class SetupStepsTests : IDisposable
             Calls.Add((executable, arguments));
             TimedCalls.Add((executable, arguments, timeout));
             DetailedCalls.Add((executable, arguments, stdinInput, stdinStream?.CanSeek == true ? stdinStream.Length : null));
-            return Task.FromResult(run(arguments));
+            return Task.FromResult(runWithCancellation?.Invoke(executable, arguments, timeout, ct) ?? run(arguments));
         }
 
         public Task<CommandResult> RunInWslAsync(
@@ -3799,7 +3831,7 @@ public class SetupStepsTests : IDisposable
             string? user = null,
             bool inputViaStdin = false)
         {
-            WslCalls.Add((distroName, command, timeout, user, inputViaStdin));
+            WslCalls.Add((distroName, command, timeout, user, inputViaStdin, ct));
             WslEnvironments.Add(environment);
             if (runInWsl == null)
                 throw new NotSupportedException("RunInWslAsync is not expected in these tests.");

@@ -1347,7 +1347,7 @@ public sealed class InstallCliStep : SetupStep
         finally
         {
             if (localPackageStaged)
-                await CleanupStagedLocalPackageAsync(ctx, distro, ct);
+                await CleanupStagedLocalPackageAsync(ctx, distro);
         }
     }
 
@@ -1434,14 +1434,13 @@ public sealed class InstallCliStep : SetupStep
         if (prepare.ExitCode != 0)
             return StepResult.Fail($"Could not prepare local gateway package staging directory: {prepare.Stderr}");
 
-        var stagedPath = StagedLocalPackageReference["file:".Length..];
-        string sourceHash;
-        CommandResult copy;
+        var stagedSuccessfully = false;
         try
         {
-            sourceHash = ComputeSha256(sourcePath);
+            var stagedPath = StagedLocalPackageReference["file:".Length..];
+            var sourceHash = ComputeSha256(sourcePath);
             await using var source = File.OpenRead(sourcePath);
-            copy = await ctx.Commands.RunAsync(
+            var copy = await ctx.Commands.RunAsync(
                 WslConstants.WslExePath,
                 [
                     "-d", distro,
@@ -1452,44 +1451,51 @@ public sealed class InstallCliStep : SetupStep
                 TimeSpan.FromMinutes(2),
                 ct: ct,
                 stdinStream: source);
+
+            if (copy.ExitCode != 0)
+                return StepResult.Fail($"Could not copy local gateway package into WSL: {copy.Stderr}");
+
+            if (!string.Equals(sourceHash, copy.Stdout.Trim(), StringComparison.OrdinalIgnoreCase))
+                return StepResult.Fail("Local gateway package changed while it was copied into WSL.");
+
+            ctx.Logger.Info("Copied verified local gateway package into the isolated WSL instance.");
+            stagedSuccessfully = true;
+            return StepResult.Ok();
         }
         catch (Exception ex) when (
             ex is IOException
             or UnauthorizedAccessException)
         {
-            await CleanupStagedLocalPackageAsync(ctx, distro, ct);
             return StepResult.Fail($"Could not copy local gateway package into WSL: {ex.Message}");
         }
-
-        if (copy.ExitCode != 0)
+        finally
         {
-            await CleanupStagedLocalPackageAsync(ctx, distro, ct);
-            return StepResult.Fail($"Could not copy local gateway package into WSL: {copy.Stderr}");
+            if (!stagedSuccessfully)
+                await CleanupStagedLocalPackageAsync(ctx, distro);
         }
-
-        if (!string.Equals(sourceHash, copy.Stdout.Trim(), StringComparison.OrdinalIgnoreCase))
-        {
-            await CleanupStagedLocalPackageAsync(ctx, distro, ct);
-            return StepResult.Fail("Local gateway package changed while it was copied into WSL.");
-        }
-
-        ctx.Logger.Info("Copied verified local gateway package into the isolated WSL instance.");
-        return StepResult.Ok();
     }
 
     private static async Task CleanupStagedLocalPackageAsync(
         SetupContext ctx,
-        string distro,
-        CancellationToken ct)
+        string distro)
     {
-        var cleanup = await ctx.Commands.RunInWslAsync(
-            distro,
-            $"rm -rf -- {StagedLocalPackageDirectory}",
-            TimeSpan.FromSeconds(15),
-            ct: ct,
-            user: "root");
-        if (cleanup.ExitCode != 0)
-            ctx.Logger.Warn($"Could not remove staged local gateway package: {cleanup.Stderr}");
+        // Cleanup owns a bounded token so cancellation cannot leave partial package bytes behind.
+        using var cleanupCts = new CancellationTokenSource(TimeSpan.FromSeconds(15));
+        try
+        {
+            var cleanup = await ctx.Commands.RunInWslAsync(
+                distro,
+                $"rm -rf -- {StagedLocalPackageDirectory}",
+                TimeSpan.FromSeconds(15),
+                ct: cleanupCts.Token,
+                user: "root");
+            if (cleanup.ExitCode != 0)
+                ctx.Logger.Warn($"Could not remove staged local gateway package: {cleanup.Stderr}");
+        }
+        catch (OperationCanceledException) when (cleanupCts.IsCancellationRequested)
+        {
+            ctx.Logger.Warn("Timed out removing staged local gateway package.");
+        }
     }
 
     private static string ComputeSha256(string path)
