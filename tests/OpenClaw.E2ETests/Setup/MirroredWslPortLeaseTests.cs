@@ -1,0 +1,93 @@
+namespace OpenClaw.E2ETests.Setup;
+
+public sealed class MirroredWslPortLeaseTests
+{
+    [Fact]
+    public void CandidateSequence_CoversOnlyConfiguredLowRangeWithoutDuplicates()
+    {
+        var candidates = MirroredWslPortLease.CreateCandidateSequence(137).ToArray();
+
+        Assert.Equal(
+            MirroredWslPortLease.CandidateRangeEnd - MirroredWslPortLease.CandidateRangeStart + 1,
+            candidates.Length);
+        Assert.Equal(candidates.Length, candidates.Distinct().Count());
+        Assert.All(candidates, port => Assert.InRange(
+            port,
+            MirroredWslPortLease.CandidateRangeStart,
+            MirroredWslPortLease.CandidateRangeEnd));
+        Assert.Equal(MirroredWslPortLease.CandidateRangeStart + 137, candidates[0]);
+    }
+
+    [Fact]
+    public void WindowsPortState_ParsesDynamicAndExcludedNetshRanges()
+    {
+        var dynamicRange = WindowsTcpPortState.ParseDynamicRange(
+            """
+            Protocol tcp Dynamic Port Range
+            ---------------------------------
+            Start Port      : 49152
+            Number of Ports : 16384
+            """);
+        var excludedRanges = WindowsTcpPortState.ParseExcludedRanges(
+            """
+            Protocol tcp Port Exclusion Ranges
+
+            Start Port    End Port
+            ----------    --------
+                 5357        5357
+                50000       50059     *
+                56755       56854
+            """);
+
+        Assert.Equal(new TcpPortRange(49_152, 65_535), dynamicRange);
+        Assert.Equal(
+            [
+                new TcpPortRange(5_357, 5_357),
+                new TcpPortRange(50_000, 50_059),
+                new TcpPortRange(56_755, 56_854),
+            ],
+            excludedRanges);
+    }
+
+    [Fact]
+    public void Acquire_SkipsBlockedBusyAndAlreadyLeasedCandidates()
+    {
+        var leaseDirectory = Path.Combine(
+            Path.GetTempPath(),
+            $"openclaw-e2e-port-lease-test-{Guid.NewGuid():N}");
+        var start = MirroredWslPortLease.CandidateRangeStart;
+        var windowsPortState = new WindowsTcpPortState(
+            [new TcpPortRange(start, start)],
+            [new TcpPortRange(start + 1, start + 1)]);
+
+        try
+        {
+            using var first = MirroredWslPortLease.Acquire(
+                [start, start + 1, start + 2, start + 3],
+                windowsPortState,
+                port => port != start + 2,
+                leaseDirectory);
+            Assert.Equal(start + 3, first.Port);
+
+            using var second = MirroredWslPortLease.Acquire(
+                [start + 3, start + 4],
+                new WindowsTcpPortState([], []),
+                _ => true,
+                leaseDirectory);
+            Assert.Equal(start + 4, second.Port);
+
+            first.Dispose();
+            using var afterRelease = MirroredWslPortLease.Acquire(
+                [start + 3],
+                new WindowsTcpPortState([], []),
+                _ => true,
+                leaseDirectory);
+            Assert.Equal(start + 3, afterRelease.Port);
+        }
+        finally
+        {
+            if (Directory.Exists(leaseDirectory))
+                Directory.Delete(leaseDirectory, recursive: true);
+        }
+    }
+}

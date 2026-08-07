@@ -50,6 +50,7 @@ public sealed class E2ESetupFixture : IAsyncLifetime
 
     private readonly string _configPath;
     private readonly string _distroName;
+    private MirroredWslPortLease? _gatewayPortLease;
     private Process? _trayProcess;
 
     public E2ESetupFixture()
@@ -94,13 +95,25 @@ public sealed class E2ESetupFixture : IAsyncLifetime
         ArtifactDir = Path.Combine(repoRoot, "TestResults", "E2E", runId);
         Directory.CreateDirectory(ArtifactDir);
 
-        GatewayPort = FindFreePort();
+        var gatewayPortLease = MirroredWslPortLease.Acquire();
+        try
+        {
+            _gatewayPortLease = gatewayPortLease;
+            GatewayPort = gatewayPortLease.Port;
 
-        // Write isolated config JSON
-        _configPath = Path.Combine(DataDir, "e2e-config.json");
-        WriteConfig();
+            // Write isolated config JSON
+            _configPath = Path.Combine(DataDir, "e2e-config.json");
+            WriteConfig();
+            WritePortAllocationArtifact(gatewayPortLease);
 
-        Log($"E2E fixture initialized: distro={_distroName}, dataDir={DataDir}, localAppDataRoot={LocalAppDataRoot}, artifacts={ArtifactDir}");
+            Log($"E2E fixture initialized: distro={_distroName}, gatewayPort={GatewayPort}, dataDir={DataDir}, localAppDataRoot={LocalAppDataRoot}, artifacts={ArtifactDir}");
+        }
+        catch
+        {
+            gatewayPortLease.Dispose();
+            _gatewayPortLease = null;
+            throw;
+        }
     }
 
     public async Task InitializeAsync()
@@ -108,6 +121,19 @@ public sealed class E2ESetupFixture : IAsyncLifetime
         if (!E2ETestGate.IsEnabled)
             return;
 
+        try
+        {
+            await InitializeEnabledAsync();
+        }
+        catch
+        {
+            ReleaseGatewayPortLease();
+            throw;
+        }
+    }
+
+    private async Task InitializeEnabledAsync()
+    {
         // ── Phase 1: Run SetupEngine CLI ──
         Log("Phase 1: Running SetupEngine CLI pipeline...");
         var setupLogPath = Path.Combine(ArtifactDir, "setup-engine.jsonl");
@@ -169,6 +195,18 @@ public sealed class E2ESetupFixture : IAsyncLifetime
         if (!E2ETestGate.IsEnabled)
             return;
 
+        try
+        {
+            await DisposeEnabledAsync();
+        }
+        finally
+        {
+            ReleaseGatewayPortLease();
+        }
+    }
+
+    private async Task DisposeEnabledAsync()
+    {
         Log("Teardown starting...");
 
         // 1. Dispose MCP client
@@ -273,6 +311,40 @@ public sealed class E2ESetupFixture : IAsyncLifetime
 
         var json = JsonSerializer.Serialize(config, new JsonSerializerOptions { WriteIndented = true });
         File.WriteAllText(_configPath, json);
+    }
+
+    private void WritePortAllocationArtifact(MirroredWslPortLease lease)
+    {
+        var artifact = new
+        {
+            gatewayPort = lease.Port,
+            candidateRange = new
+            {
+                start = MirroredWslPortLease.CandidateRangeStart,
+                end = MirroredWslPortLease.CandidateRangeEnd,
+            },
+            windowsDynamicTcpRanges = lease.WindowsPortState.DynamicRanges.Select(range => new
+            {
+                start = range.Start,
+                end = range.End,
+            }),
+            windowsExcludedTcpRanges = lease.WindowsPortState.ExcludedRanges.Select(range => new
+            {
+                start = range.Start,
+                end = range.End,
+            }),
+            selectionChecks = new[]
+            {
+                "outside-windows-dynamic-range",
+                "outside-windows-excluded-ranges",
+                "exclusive-ipv4-ipv6-bind",
+                "cross-process-fixture-lease",
+            },
+        };
+
+        File.WriteAllText(
+            Path.Combine(ArtifactDir, "gateway-port-allocation.json"),
+            JsonSerializer.Serialize(artifact, new JsonSerializerOptions { WriteIndented = true }));
     }
 
     private void PatchSettingsForMcp(string settingsPath)
@@ -898,6 +970,12 @@ public sealed class E2ESetupFixture : IAsyncLifetime
         listener.Start();
         try { return ((IPEndPoint)listener.LocalEndpoint).Port; }
         finally { listener.Stop(); }
+    }
+
+    private void ReleaseGatewayPortLease()
+    {
+        _gatewayPortLease?.Dispose();
+        _gatewayPortLease = null;
     }
 
     private void Log(string message)
