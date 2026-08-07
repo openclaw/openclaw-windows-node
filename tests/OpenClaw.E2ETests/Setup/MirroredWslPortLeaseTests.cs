@@ -52,6 +52,42 @@ public sealed class MirroredWslPortLeaseTests
     }
 
     [Fact]
+    public void ParseExcludedRanges_AcceptsRecognizedEmptyTable()
+    {
+        var ranges = WindowsTcpPortState.ParseExcludedRanges(
+            """
+            Protocol tcp Port Exclusion Ranges
+
+            Start Port    End Port
+            ----------    --------
+
+            * - Administered port exclusions.
+            """);
+
+        Assert.Empty(ranges);
+    }
+
+    [Theory]
+    [InlineData(
+        """
+        Protocol tcp Port Exclusion Ranges
+        No port table was returned.
+        """)]
+    [InlineData(
+        """
+        Protocol tcp Port Exclusion Ranges
+
+        Start Port    End Port
+        ----------    --------
+        unavailable
+        """)]
+    public void ParseExcludedRanges_RejectsUnrecognizedTableShape(string output)
+    {
+        Assert.Throws<InvalidDataException>(() =>
+            WindowsTcpPortState.ParseExcludedRanges(output));
+    }
+
+    [Fact]
     public async Task RunProcessAsync_TimesOutAndIncludesCommandContext()
     {
         var startInfo = new ProcessStartInfo

@@ -22,17 +22,24 @@ internal sealed record WindowsTcpPortState(
         var dynamicRanges = new List<TcpPortRange>();
         var excludedRanges = new List<TcpPortRange>();
 
-        foreach (var family in new[] { "ipv4", "ipv6" })
-        {
-            dynamicRanges.Add(ParseDynamicRange(RunNetsh(
-                "interface", family, "show", "dynamicport", "tcp")));
-            excludedRanges.AddRange(ParseExcludedRanges(RunNetsh(
-                "interface", family, "show", "excludedportrange", "protocol=tcp")));
-        }
+        CaptureFamily("ipv4", dynamicRanges, excludedRanges);
+        if (Socket.OSSupportsIPv6)
+            CaptureFamily("ipv6", dynamicRanges, excludedRanges);
 
         return new WindowsTcpPortState(
             dynamicRanges.Distinct().OrderBy(range => range.Start).ToArray(),
             excludedRanges.Distinct().OrderBy(range => range.Start).ToArray());
+    }
+
+    private static void CaptureFamily(
+        string family,
+        List<TcpPortRange> dynamicRanges,
+        List<TcpPortRange> excludedRanges)
+    {
+        dynamicRanges.Add(ParseDynamicRange(RunNetsh(
+            "interface", family, "show", "dynamicport", "tcp")));
+        excludedRanges.AddRange(ParseExcludedRanges(RunNetsh(
+            "interface", family, "show", "excludedportrange", "protocol=tcp")));
     }
 
     internal static TcpPortRange ParseDynamicRange(string output)
@@ -44,7 +51,10 @@ internal sealed record WindowsTcpPortState(
             .ToArray();
 
         if (values.Length != 2 || values[1] <= 0)
-            throw new InvalidDataException($"Could not parse Windows TCP dynamic port range:{Environment.NewLine}{output}");
+        {
+            throw new InvalidDataException(
+                $"Could not parse Windows TCP dynamic port range:{Environment.NewLine}{output}");
+        }
 
         var end = checked(values[0] + values[1] - 1);
         if (values[0] is < 1 or > 65_535 || end > 65_535)
@@ -55,11 +65,44 @@ internal sealed record WindowsTcpPortState(
 
     internal static IReadOnlyList<TcpPortRange> ParseExcludedRanges(string output)
     {
-        var ranges = new List<TcpPortRange>();
-        foreach (Match match in Regex.Matches(
-                     output,
-                     @"(?m)^\s*(\d+)\s+(\d+)(?:\s+\*)?\s*$"))
+        var lines = output.Replace("\r\n", "\n", StringComparison.Ordinal).Split('\n');
+        var headerIndex = Array.FindIndex(lines, line =>
+            Regex.IsMatch(
+                line,
+                @"^\s*Start\s+Port\s+End\s+Port\s*$",
+                RegexOptions.IgnoreCase));
+        if (headerIndex < 0)
         {
+            throw new InvalidDataException(
+                $"Could not recognize Windows excluded TCP port table header:{Environment.NewLine}{output}");
+        }
+
+        var separatorIndex = Array.FindIndex(
+            lines,
+            headerIndex + 1,
+            line => Regex.IsMatch(line, @"^\s*-+\s+-+\s*$"));
+        if (separatorIndex < 0)
+        {
+            throw new InvalidDataException(
+                $"Could not recognize Windows excluded TCP port table separator:{Environment.NewLine}{output}");
+        }
+
+        var ranges = new List<TcpPortRange>();
+        for (var index = separatorIndex + 1; index < lines.Length; index++)
+        {
+            var line = lines[index].Trim();
+            if (line.Length == 0)
+                continue;
+            if (Regex.IsMatch(line, @"^\*\s*-"))
+                break;
+
+            var match = Regex.Match(line, @"^(\d+)\s+(\d+)(?:\s+\*)?$");
+            if (!match.Success)
+            {
+                throw new InvalidDataException(
+                    $"Unrecognized Windows excluded TCP port table row '{line}':{Environment.NewLine}{output}");
+            }
+
             var start = int.Parse(match.Groups[1].Value);
             var end = int.Parse(match.Groups[2].Value);
             if (start is < 1 or > 65_535 || end < start || end > 65_535)
@@ -72,10 +115,11 @@ internal sealed record WindowsTcpPortState(
 
     private static string RunNetsh(params string[] arguments)
     {
-        var commandContext = $"netsh.exe {string.Join(' ', arguments)}";
+        var netshPath = Path.Combine(Environment.SystemDirectory, "netsh.exe");
+        var commandContext = $"\"{netshPath}\" {string.Join(' ', arguments)}";
         var startInfo = new ProcessStartInfo
         {
-            FileName = "netsh.exe",
+            FileName = netshPath,
             UseShellExecute = false,
             CreateNoWindow = true,
             RedirectStandardOutput = true,

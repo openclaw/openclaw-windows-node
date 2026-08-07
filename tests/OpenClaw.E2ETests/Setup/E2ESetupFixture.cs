@@ -337,7 +337,7 @@ public sealed class E2ESetupFixture : IAsyncLifetime
             {
                 "outside-windows-dynamic-range",
                 "outside-windows-excluded-ranges",
-                "exclusive-ipv4-ipv6-bind",
+                "exclusive-ipv4-ipv6-bind-probe",
                 "cross-process-fixture-lease",
             },
         };

@@ -35,28 +35,43 @@ public sealed class MxcSetupAndConnectTests
         Assert.True(File.Exists(artifactPath), $"Gateway port allocation artifact not found: {artifactPath}");
         using var artifact = JsonDocument.Parse(await File.ReadAllTextAsync(artifactPath));
         Assert.Equal(_fixture.GatewayPort, artifact.RootElement.GetProperty("gatewayPort").GetInt32());
-        foreach (var range in artifact.RootElement.GetProperty("windowsDynamicTcpRanges").EnumerateArray())
-        {
-            var start = range.GetProperty("start").GetInt32();
-            var end = range.GetProperty("end").GetInt32();
-            Assert.False(
-                _fixture.GatewayPort >= start && _fixture.GatewayPort <= end,
-                $"Gateway port {_fixture.GatewayPort} overlaps Windows dynamic range {start}-{end}.");
-        }
-        foreach (var range in artifact.RootElement.GetProperty("windowsExcludedTcpRanges").EnumerateArray())
-        {
-            var start = range.GetProperty("start").GetInt32();
-            var end = range.GetProperty("end").GetInt32();
-            Assert.False(
-                _fixture.GatewayPort >= start && _fixture.GatewayPort <= end,
-                $"Gateway port {_fixture.GatewayPort} overlaps Windows excluded range {start}-{end}.");
-        }
+        var artifactDynamicRanges = ReadPortRanges(
+            artifact.RootElement.GetProperty("windowsDynamicTcpRanges"));
+        var artifactExcludedRanges = ReadPortRanges(
+            artifact.RootElement.GetProperty("windowsExcludedTcpRanges"));
+        var freshPortState = WindowsTcpPortState.Capture();
+
+        Assert.NotEmpty(freshPortState.DynamicRanges);
+        Assert.Equal(freshPortState.DynamicRanges.ToArray(), artifactDynamicRanges);
+        Assert.Equal(freshPortState.ExcludedRanges.ToArray(), artifactExcludedRanges);
+        Assert.DoesNotContain(
+            freshPortState.DynamicRanges,
+            range => range.Contains(_fixture.GatewayPort));
+        Assert.DoesNotContain(
+            freshPortState.ExcludedRanges,
+            range => range.Contains(_fixture.GatewayPort));
 
         var listener = await _fixture.RunInWslAsync(
-            $"ss -H -ltn 'sport = :{_fixture.GatewayPort}'",
+            $"""
+            ss_path=$(command -v ss 2>/dev/null || true)
+            if [ -z "$ss_path" ] && [ -x /usr/sbin/ss ]; then
+              ss_path=/usr/sbin/ss
+            fi
+            if [ -z "$ss_path" ]; then
+              printf '%s\n' 'OPENCLAW_E2E_SS_UNAVAILABLE' >&2
+              exit 127
+            fi
+            "$ss_path" -H -ltn 'sport = :{_fixture.GatewayPort}'
+            """,
             inputViaStdin: true);
+        Assert.False(
+            listener.ExitCode == 127 &&
+                listener.Stderr.Contains("OPENCLAW_E2E_SS_UNAVAILABLE", StringComparison.Ordinal),
+            $"Cannot verify Gateway listener because ss is unavailable in WSL distro {_fixture.DistroName}.");
         AssertCommandSucceeded(listener, "inspect the selected Gateway port inside WSL");
-        Assert.Contains($":{_fixture.GatewayPort}", listener.Stdout, StringComparison.Ordinal);
+        Assert.True(
+            listener.Stdout.Contains($":{_fixture.GatewayPort}", StringComparison.Ordinal),
+            $"ss is available, but Gateway port {_fixture.GatewayPort} is absent from WSL listeners. Output: {listener.Stdout}");
         Console.WriteLine(
             $"[E2E] mirrored-WSL-safe Gateway port proof: port={_fixture.GatewayPort}; artifact={artifactPath}; listener={listener.Stdout.Trim()}");
     }
@@ -414,6 +429,16 @@ public sealed class MxcSetupAndConnectTests
             .Where(value => !string.IsNullOrWhiteSpace(value))
             .Select(value => value!)
             .Order(StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+    }
+
+    private static TcpPortRange[] ReadPortRanges(JsonElement element)
+    {
+        Assert.Equal(JsonValueKind.Array, element.ValueKind);
+        return element.EnumerateArray()
+            .Select(range => new TcpPortRange(
+                range.GetProperty("start").GetInt32(),
+                range.GetProperty("end").GetInt32()))
             .ToArray();
     }
 

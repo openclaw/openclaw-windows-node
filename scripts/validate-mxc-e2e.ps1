@@ -202,7 +202,7 @@ try {
             --results-directory $ResultsDirectory `
             --logger "trx;LogFileName=OpenClaw.E2ETests.Mxc.trx" `
             --logger "console;verbosity=detailed" `
-            --filter "FullyQualifiedName~OpenClaw.E2ETests.Setup.MxcSetupAndConnectTests" `
+            --filter "FullyQualifiedName~OpenClaw.E2ETests.Setup.MxcSetupAndConnectTests|FullyQualifiedName~OpenClaw.E2ETests.Setup.MirroredWslPortLeaseTests" `
             2>&1 | Tee-Object -FilePath $e2eConsoleLog
     }
     Assert-GatewayMxcProofsPassed -Trx (Read-Trx -Path $e2eTrx)
