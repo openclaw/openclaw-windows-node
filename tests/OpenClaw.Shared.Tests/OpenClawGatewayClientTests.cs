@@ -575,6 +575,16 @@ public class OpenClawGatewayClientTests
             identityPath: identity.Path);
         using var client = helper.Client;
         await client.ConnectAsync();
+        helper.ProcessRawMessage("""
+        {
+            "type": "res",
+            "id": "req-hello-restart",
+            "payload": {
+                "type": "hello-ok"
+            }
+        }
+        """);
+        Assert.True(client.HasHandshakeSnapshot);
 
         var responseTask = client.SendWizardRequestAsync("wizard.next", timeoutMs: 10_000);
         var request = await server.ReceiveTextAsync().WaitAsync(TimeSpan.FromSeconds(2));
@@ -709,6 +719,7 @@ public class OpenClawGatewayClientTests
 
         Assert.Equal(1012, exception.CloseStatusCode);
         Assert.Equal("service restart", exception.CloseStatusDescription);
+        Assert.False(client.HasHandshakeSnapshot);
         Assert.Equal((0, 0), helper.GetPendingRequestCounts());
     }
 
