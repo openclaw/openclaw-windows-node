@@ -8,6 +8,7 @@ using OpenClaw.Shared;
 using OpenClaw.Shared.Sessions;
 using OpenClawTray.Chat;
 using OpenClawTray.Helpers;
+using OpenClawTray.Presentation;
 using OpenClawTray.Windows;
 using System;
 using System.Collections.Frozen;
@@ -19,7 +20,7 @@ namespace OpenClawTray.Services;
 
 internal sealed record TrayMenuCallbacks(
     Action<string> DispatchAction,
-    Action SaveAndReconnect,
+    Action<string, Action<ISettingsEditor>, Action<SettingsManager>> UpdatePermissionAndReconnect,
     Action<ToggleSwitch> TrackConnectionToggle,
     Func<bool> IsConnectionToggleSuspended);
 
@@ -1489,38 +1490,64 @@ internal sealed class TrayMenuStateBuilder
         };
 
         AddPermToggle(items, "Windows node", FluentIconCatalog.System,
-            "Run OpenClaw as a local node on this PC",
-            () => settings.EnableNodeMode, v => settings.EnableNodeMode = v);
+            "Run OpenClaw as a local node on this PC", nameof(SettingsManager.EnableNodeMode),
+            () => settings.EnableNodeMode,
+            (edit, v) => edit.EnableNodeMode = v,
+            (manager, v) => manager.EnableNodeMode = v);
         AddPermToggle(items, "System tools", FluentIconCatalog.Terminal,
-            "Let agents run shell commands and scripts on this PC",
-            () => settings.NodeSystemRunEnabled, v => settings.NodeSystemRunEnabled = v);
+            "Let agents run shell commands and scripts on this PC", nameof(SettingsManager.NodeSystemRunEnabled),
+            () => settings.NodeSystemRunEnabled,
+            (edit, v) => edit.NodeSystemRunEnabled = v,
+            (manager, v) => manager.NodeSystemRunEnabled = v);
         AddPermToggle(items, "Browser control", FluentIconCatalog.Browser,
-            "Let agents drive web browsers via proxy",
-            () => settings.NodeBrowserProxyEnabled, v => settings.NodeBrowserProxyEnabled = v);
+            "Let agents drive web browsers via proxy", nameof(SettingsManager.NodeBrowserProxyEnabled),
+            () => settings.NodeBrowserProxyEnabled,
+            (edit, v) => edit.NodeBrowserProxyEnabled = v,
+            (manager, v) => manager.NodeBrowserProxyEnabled = v);
         AddPermToggle(items, "Camera", FluentIconCatalog.Camera,
-            "Allow webcam capture during sessions",
-            () => settings.NodeCameraEnabled, v => settings.NodeCameraEnabled = v);
+            "Allow webcam capture during sessions", nameof(SettingsManager.NodeCameraEnabled),
+            () => settings.NodeCameraEnabled,
+            (edit, v) => edit.NodeCameraEnabled = v,
+            (manager, v) => manager.NodeCameraEnabled = v);
         AddPermToggle(items, "Canvas", FluentIconCatalog.Canvas,
-            "Render generated HTML canvases in chat",
-            () => settings.NodeCanvasEnabled, v => settings.NodeCanvasEnabled = v);
+            "Render generated HTML canvases in chat", nameof(SettingsManager.NodeCanvasEnabled),
+            () => settings.NodeCanvasEnabled,
+            (edit, v) => edit.NodeCanvasEnabled = v,
+            (manager, v) => manager.NodeCanvasEnabled = v);
         AddPermToggle(items, "Screen capture", FluentIconCatalog.Screen,
-            "Share what's on your screen with the agent",
-            () => settings.NodeScreenEnabled, v => settings.NodeScreenEnabled = v);
+            "Share what's on your screen with the agent", nameof(SettingsManager.NodeScreenEnabled),
+            () => settings.NodeScreenEnabled,
+            (edit, v) => edit.NodeScreenEnabled = v,
+            (manager, v) => manager.NodeScreenEnabled = v);
         AddPermToggle(items, "Location", FluentIconCatalog.Location,
-            "Share this device's location",
-            () => settings.NodeLocationEnabled, v => settings.NodeLocationEnabled = v);
+            "Share this device's location", nameof(SettingsManager.NodeLocationEnabled),
+            () => settings.NodeLocationEnabled,
+            (edit, v) => edit.NodeLocationEnabled = v,
+            (manager, v) => manager.NodeLocationEnabled = v);
         AddPermToggle(items, "Voice (TTS)", FluentIconCatalog.Voice,
-            "Read responses out loud",
-            () => settings.NodeTtsEnabled, v => settings.NodeTtsEnabled = v);
+            "Read responses out loud", nameof(SettingsManager.NodeTtsEnabled),
+            () => settings.NodeTtsEnabled,
+            (edit, v) => edit.NodeTtsEnabled = v,
+            (manager, v) => manager.NodeTtsEnabled = v);
         AddPermToggle(items, "Speech-to-text (STT)", FluentIconCatalog.Speech,
-            "Dictate input by speaking",
-            () => settings.NodeSttEnabled, v => settings.NodeSttEnabled = v);
+            "Dictate input by speaking", nameof(SettingsManager.NodeSttEnabled),
+            () => settings.NodeSttEnabled,
+            (edit, v) => edit.NodeSttEnabled = v,
+            (manager, v) => manager.NodeSttEnabled = v);
 
         items.Add(new() { CustomContent = new Border { Height = 10 } });
         return items;
     }
 
-    private void AddPermToggle(List<TrayMenuFlyoutItem> items, string label, string iconGlyph, string description, Func<bool> get, Action<bool> set)
+    private void AddPermToggle(
+        List<TrayMenuFlyoutItem> items,
+        string label,
+        string iconGlyph,
+        string description,
+        string settingName,
+        Func<bool> get,
+        Action<ISettingsEditor, bool> update,
+        Action<SettingsManager, bool> fallbackUpdate)
     {
         var on = get();
         var actionId = $"perm-toggle|{label}";
@@ -1535,8 +1562,11 @@ internal sealed class TrayMenuStateBuilder
         });
         _permToggleActions[actionId] = () =>
         {
-            set(!get());
-            _callbacks.SaveAndReconnect();
+            var nextValue = !get();
+            _callbacks.UpdatePermissionAndReconnect(
+                settingName,
+                edit => update(edit, nextValue),
+                settings => fallbackUpdate(settings, nextValue));
         };
     }
 

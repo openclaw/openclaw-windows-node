@@ -91,6 +91,17 @@ public sealed class PresentationSeamContractTests
     }
 
     [Fact]
+    public void App_PublicSpeakerMute_PublishesNullOriginThroughSettingsStore()
+    {
+        var source = ReadAppSources();
+        var publicIdx = source.IndexOf("public void SetChatSpeakerMuted", StringComparison.Ordinal);
+        Assert.True(publicIdx >= 0, "Expected a public SetChatSpeakerMuted for chat and voice surfaces.");
+        var publicBlock = source.Substring(publicIdx, Math.Min(500, source.Length - publicIdx));
+        Assert.Contains("origin: null", publicBlock);
+        Assert.Contains("store.Update(origin, edit => edit.VoiceTtsEnabled = !muted)", publicBlock);
+    }
+
+    [Fact]
     public void HubWindow_InvokesPageActivator_OnNavigation()
     {
         var source = ReadHubWindowSource();
