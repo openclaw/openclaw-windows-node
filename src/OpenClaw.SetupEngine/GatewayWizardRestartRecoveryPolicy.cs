@@ -6,20 +6,26 @@ namespace OpenClaw.SetupEngine;
 internal static class GatewayWizardRestartRecoveryPolicy
 {
     private const string TerminalRestartVersion = "2026.7.1";
-    private const string TerminalStepId = "done";
+    private const string TerminalStepKey = "model-check";
 
-    public static bool IsTerminalRestartCandidate(string? gatewayVersion, string? stepId) =>
+    public static bool IsTerminalRestartCandidate(
+        string? gatewayVersion,
+        string? stepId,
+        string? title = null,
+        string? message = null) =>
         string.Equals(
             gatewayVersion?.Trim(),
             TerminalRestartVersion,
             StringComparison.Ordinal) &&
-        string.Equals(stepId, TerminalStepId, StringComparison.Ordinal);
+        IsTerminalStep(stepId, title, message);
 
     public static bool IsExpectedTerminalRestart(
         string? gatewayVersion,
         string? stepId,
-        Exception exception) =>
-        IsTerminalRestartCandidate(gatewayVersion, stepId) &&
+        Exception exception,
+        string? title = null,
+        string? message = null) =>
+        IsTerminalRestartCandidate(gatewayVersion, stepId, title, message) &&
         IsServiceRestartDisconnect(exception);
 
     public static bool IsRestartLikeDisconnect(Exception exception)
@@ -70,5 +76,28 @@ internal static class GatewayWizardRestartRecoveryPolicy
         }
 
         return false;
+    }
+
+    private static bool IsTerminalStep(
+        string? stepId,
+        string? title,
+        string? message) =>
+        IsTerminalStepKey(stepId) ||
+        IsTerminalStepKey(title) ||
+        IsTerminalStepKey(message);
+
+    private static bool IsTerminalStepKey(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+            return false;
+
+        var normalized = string.Join(
+            '-',
+            value.Trim()
+                .ToLowerInvariant()
+                .Split(
+                    [' ', '\t', '\r', '\n', '_', '-'],
+                    StringSplitOptions.RemoveEmptyEntries));
+        return string.Equals(normalized, TerminalStepKey, StringComparison.Ordinal);
     }
 }

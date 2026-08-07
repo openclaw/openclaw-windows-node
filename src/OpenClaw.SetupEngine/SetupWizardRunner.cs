@@ -117,7 +117,9 @@ public sealed class SetupWizardRunner
             async Task<JsonElement> SendWizardNextAsync(
                 object parameters,
                 int timeoutMs,
-                string stepId)
+                string stepId,
+                string stepTitle,
+                string stepMessage)
             {
                 try
                 {
@@ -129,7 +131,9 @@ public sealed class SetupWizardRunner
                     GatewayWizardRestartRecoveryPolicy.IsExpectedTerminalRestart(
                         _ctx.Config.Gateway.Version,
                         stepId,
-                        ex))
+                        ex,
+                        stepTitle,
+                        stepMessage))
                 {
                     try { await client!.DisconnectAsync(); } catch { }
                     client!.Dispose();
@@ -177,7 +181,11 @@ public sealed class SetupWizardRunner
 
                     await Task.Delay(TimeSpan.FromSeconds(3), ct);
                     var restartProvenance =
-                        await PairOperatorStep.EnsurePairingEndpointTrustedAsync(_ctx, ct);
+                        await PairOperatorStep.EnsurePairingEndpointTrustedAsync(
+                            _ctx,
+                            ct,
+                            noListenerRetryCount: 30,
+                            noListenerRetryDelay: TimeSpan.FromSeconds(1));
                     if (restartProvenance is not null)
                         throw new WizardFatalException(restartProvenance.Message ?? "Gateway ownership changed.");
                     client = CreateWizardClient(credential, identityPath, wsLogger);
@@ -263,7 +271,9 @@ public sealed class SetupWizardRunner
                     payload = await SendWizardNextAsync(
                         WizardNextPayload.Acknowledge(sessionId, parsed.StepId),
                         TimeoutFor(parsed),
-                        parsed.StepId);
+                        parsed.StepId,
+                        parsed.Title,
+                        parsed.Message);
                     continue;
                 }
 
@@ -307,7 +317,9 @@ public sealed class SetupWizardRunner
                 payload = await SendWizardNextAsync(
                     parameters,
                     TimeoutFor(parsed, answerResult.Answer),
-                    parsed.StepId);
+                    parsed.StepId,
+                    parsed.Title,
+                    parsed.Message);
             }
         }
         catch (OperationCanceledException)

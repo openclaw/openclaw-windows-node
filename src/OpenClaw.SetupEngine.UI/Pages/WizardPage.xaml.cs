@@ -853,7 +853,9 @@ public sealed partial class WizardPage : Page
                 _hostAccessPlan.CanControlWslGateway &&
                 GatewayWizardRestartRecoveryPolicy.IsTerminalRestartCandidate(
                     _config.Gateway.Version,
-                    _stepId);
+                    _stepId,
+                    _currentTitle,
+                    _currentMessage);
             var payload = await _client.SendWizardRequestAsync("wizard.next", parameters, timeoutMs: TimeoutForCurrentStep());
             if (generation != _operationGeneration)
                 return;
@@ -871,7 +873,9 @@ public sealed partial class WizardPage : Page
                 GatewayWizardRestartRecoveryPolicy.IsExpectedTerminalRestart(
                     _config.Gateway.Version,
                     _stepId,
-                    ex))
+                    ex,
+                    _currentTitle,
+                    _currentMessage))
             {
                 StatusText.Text = "Gateway restarted; verifying endpoint ownership...";
                 var reconnected = await WaitForReconnectAsync(
