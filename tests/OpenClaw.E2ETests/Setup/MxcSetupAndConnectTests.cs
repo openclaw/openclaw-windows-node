@@ -42,14 +42,17 @@ public sealed class MxcSetupAndConnectTests
         var freshPortState = WindowsTcpPortState.Capture();
 
         Assert.NotEmpty(freshPortState.DynamicRanges);
-        Assert.Equal(freshPortState.DynamicRanges.ToArray(), artifactDynamicRanges);
-        Assert.Equal(freshPortState.ExcludedRanges.ToArray(), artifactExcludedRanges);
         Assert.DoesNotContain(
-            freshPortState.DynamicRanges,
+            artifactDynamicRanges,
             range => range.Contains(_fixture.GatewayPort));
         Assert.DoesNotContain(
-            freshPortState.ExcludedRanges,
+            artifactExcludedRanges,
             range => range.Contains(_fixture.GatewayPort));
+        Assert.False(
+            freshPortState.IsBlocked(_fixture.GatewayPort),
+            $"Gateway port {_fixture.GatewayPort} became blocked after allocation. " +
+            $"Dynamic ranges: {string.Join(", ", freshPortState.DynamicRanges)}. " +
+            $"Excluded ranges: {string.Join(", ", freshPortState.ExcludedRanges)}.");
 
         var listener = await _fixture.RunInWslAsync(
             $"""

@@ -31,6 +31,10 @@ internal sealed record WindowsTcpPortState(
             excludedRanges.Distinct().OrderBy(range => range.Start).ToArray());
     }
 
+    public bool IsBlocked(int port) =>
+        DynamicRanges.Any(range => range.Contains(port)) ||
+        ExcludedRanges.Any(range => range.Contains(port));
+
     private static void CaptureFamily(
         string family,
         List<TcpPortRange> dynamicRanges,
@@ -255,15 +259,11 @@ internal sealed class MirroredWslPortLease : IDisposable
         ArgumentException.ThrowIfNullOrWhiteSpace(leaseDirectory);
 
         Directory.CreateDirectory(leaseDirectory);
-        var blockedRanges = windowsPortState.DynamicRanges
-            .Concat(windowsPortState.ExcludedRanges)
-            .ToArray();
-
         foreach (var candidate in candidates)
         {
             if (candidate is < CandidateRangeStart or > CandidateRangeEnd)
                 throw new ArgumentOutOfRangeException(nameof(candidates), candidate, "Candidate is outside the WSL-safe range.");
-            if (blockedRanges.Any(range => range.Contains(candidate)))
+            if (windowsPortState.IsBlocked(candidate))
                 continue;
 
             FileStream? leaseStream;

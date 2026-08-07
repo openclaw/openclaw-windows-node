@@ -52,6 +52,25 @@ public sealed class MirroredWslPortLeaseTests
     }
 
     [Fact]
+    public void WindowsPortState_IsBlocked_IgnoresUnrelatedRangeChanges()
+    {
+        const int selectedPort = 36_696;
+        var allocationState = new WindowsTcpPortState(
+            [new TcpPortRange(49_152, 65_535)],
+            [new TcpPortRange(5_357, 5_357)]);
+        var laterState = new WindowsTcpPortState(
+            [new TcpPortRange(49_152, 65_535)],
+            [
+                new TcpPortRange(5_357, 5_357),
+                new TcpPortRange(40_683, 40_683),
+            ]);
+
+        Assert.False(allocationState.IsBlocked(selectedPort));
+        Assert.False(laterState.IsBlocked(selectedPort));
+        Assert.True(laterState.IsBlocked(40_683));
+    }
+
+    [Fact]
     public void ParseExcludedRanges_AcceptsRecognizedEmptyTable()
     {
         var ranges = WindowsTcpPortState.ParseExcludedRanges(
