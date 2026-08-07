@@ -24,6 +24,8 @@ public sealed class ReleaseCandidateE2EWorkflowTests
         Assert.Contains("INPUT_CANDIDATE_VERSION: ${{ inputs.candidate_version }}", workflow);
         Assert.Contains("INPUT_WINDOWS_NODE_RELEASE_TAG: ${{ inputs.windows_node_release_tag }}", workflow);
         Assert.Contains("INPUT_WINDOWS_NODE_RELEASE_SHA: ${{ inputs.windows_node_release_sha }}", workflow);
+        Assert.Contains("INPUT_WINDOWS_NODE_RELEASE_ASSET_NAME: ${{ inputs.windows_node_release_asset_name }}", workflow);
+        Assert.Contains("INPUT_WINDOWS_NODE_RELEASE_ASSET_SHA256: ${{ inputs.windows_node_release_asset_sha256 }}", workflow);
         Assert.Contains("INPUT_ALLOW_PROTOCOL_MISMATCH: ${{ inputs.allow_protocol_mismatch }}", workflow);
         Assert.Contains("INPUT_WINDOWS_NODE_SHA: ${{ inputs.windows_node_sha }}", workflow);
     }
@@ -39,9 +41,11 @@ public sealed class ReleaseCandidateE2EWorkflowTests
         Assert.Contains("$claims.job_workflow_ref -cne $expectedWorkflowRef", workflow);
         Assert.Contains("$tagObject.type -ne \"commit\"", workflow);
         Assert.Contains("$releaseSha -cne $env:EXPECTED_WINDOWS_NODE_RELEASE_SHA", workflow);
+        Assert.Contains("$asset.name -cne $env:EXPECTED_WINDOWS_NODE_RELEASE_ASSET_NAME", workflow);
+        Assert.Contains("$releaseDeclaredHash -cne $env:EXPECTED_WINDOWS_NODE_RELEASE_ASSET_SHA256", workflow);
         Assert.Contains(@"-win-x64\.zip$", workflow);
         Assert.Contains(@"_x64\.msix$", workflow);
-        Assert.Contains("$actualHash -cne $expectedHash", workflow);
+        Assert.Contains("$actualHash -cne $env:EXPECTED_WINDOWS_NODE_RELEASE_ASSET_SHA256", workflow);
     }
 
     [Fact]

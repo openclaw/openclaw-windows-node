@@ -23,6 +23,14 @@ on:
         description: Immutable commit selected by the declared Windows-node release tag.
         required: true
         type: string
+      windows_node_release_asset_name:
+        description: Exact Windows-node release asset selected by the caller.
+        required: true
+        type: string
+      windows_node_release_asset_sha256:
+        description: SHA-256 of the exact Windows-node release asset selected by the caller.
+        required: true
+        type: string
       allow_protocol_mismatch:
         description: Accept only an explicit PROTOCOL_MISMATCH result from this released app.
         required: false
@@ -58,6 +66,8 @@ jobs:
           INPUT_CANDIDATE_VERSION: ${{ inputs.candidate_version }}
           INPUT_WINDOWS_NODE_RELEASE_TAG: ${{ inputs.windows_node_release_tag }}
           INPUT_WINDOWS_NODE_RELEASE_SHA: ${{ inputs.windows_node_release_sha }}
+          INPUT_WINDOWS_NODE_RELEASE_ASSET_NAME: ${{ inputs.windows_node_release_asset_name }}
+          INPUT_WINDOWS_NODE_RELEASE_ASSET_SHA256: ${{ inputs.windows_node_release_asset_sha256 }}
           INPUT_ALLOW_PROTOCOL_MISMATCH: ${{ inputs.allow_protocol_mismatch }}
           INPUT_WINDOWS_NODE_SHA: ${{ inputs.windows_node_sha }}
         run: |
@@ -80,6 +90,13 @@ jobs:
           }
           if ($env:INPUT_WINDOWS_NODE_RELEASE_SHA -notmatch '^[0-9a-f]{40}$') {
             throw "windows_node_release_sha must be a full lowercase Git SHA."
+          }
+          if ($env:INPUT_WINDOWS_NODE_RELEASE_ASSET_NAME -notmatch '^[0-9A-Za-z][0-9A-Za-z._-]{0,127}$' -or
+              $env:INPUT_WINDOWS_NODE_RELEASE_ASSET_NAME -in '.', '..') {
+            throw "windows_node_release_asset_name must be a simple artifact name of at most 128 characters."
+          }
+          if ($env:INPUT_WINDOWS_NODE_RELEASE_ASSET_SHA256 -notmatch '^[0-9a-f]{64}$') {
+            throw "windows_node_release_asset_sha256 must be a lowercase SHA-256."
           }
           if ($env:INPUT_ALLOW_PROTOCOL_MISMATCH -cnotin 'true', 'false') {
             throw "allow_protocol_mismatch must be a boolean."
@@ -183,6 +200,8 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           EXPECTED_WINDOWS_NODE_RELEASE_TAG: ${{ inputs.windows_node_release_tag }}
           EXPECTED_WINDOWS_NODE_RELEASE_SHA: ${{ inputs.windows_node_release_sha }}
+          EXPECTED_WINDOWS_NODE_RELEASE_ASSET_NAME: ${{ inputs.windows_node_release_asset_name }}
+          EXPECTED_WINDOWS_NODE_RELEASE_ASSET_SHA256: ${{ inputs.windows_node_release_asset_sha256 }}
         run: |
           $releaseTag = $env:EXPECTED_WINDOWS_NODE_RELEASE_TAG
           $release = gh api "repos/openclaw/openclaw-windows-node/releases/tags/$releaseTag" | ConvertFrom-Json
@@ -232,6 +251,13 @@ jobs:
           } else {
             throw "Windows-node release must expose one canonical hashed x64 ZIP, or one x64 MSIX when no ZIP exists."
           }
+          if ($asset.name -cne $env:EXPECTED_WINDOWS_NODE_RELEASE_ASSET_NAME) {
+            throw "Windows-node release asset name mismatch: expected $($env:EXPECTED_WINDOWS_NODE_RELEASE_ASSET_NAME), got $($asset.name)."
+          }
+          $releaseDeclaredHash = $asset.digest -replace '^sha256:', ''
+          if ($releaseDeclaredHash -cne $env:EXPECTED_WINDOWS_NODE_RELEASE_ASSET_SHA256) {
+            throw "Windows-node release asset digest mismatch: expected $($env:EXPECTED_WINDOWS_NODE_RELEASE_ASSET_SHA256), got $releaseDeclaredHash."
+          }
 
           $assetDir = Join-Path $env:RUNNER_TEMP "windows-node-release"
           New-Item -ItemType Directory -Force -Path $assetDir | Out-Null
@@ -245,9 +271,8 @@ jobs:
           }
 
           $actualHash = (Get-FileHash -LiteralPath $assetPath -Algorithm SHA256).Hash.ToLowerInvariant()
-          $expectedHash = $asset.digest -replace '^sha256:', ''
-          if ($actualHash -cne $expectedHash) {
-            throw "Official Windows-node release asset SHA-256 mismatch: expected $expectedHash, got $actualHash."
+          if ($actualHash -cne $env:EXPECTED_WINDOWS_NODE_RELEASE_ASSET_SHA256) {
+            throw "Official Windows-node release asset SHA-256 mismatch: expected $($env:EXPECTED_WINDOWS_NODE_RELEASE_ASSET_SHA256), got $actualHash."
           }
 
           $extension = [IO.Path]::GetExtension($assetPath)
