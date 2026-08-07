@@ -2438,6 +2438,38 @@ public class SetupStepsTests : IDisposable
     }
 
     [Fact]
+    public async Task PairOperatorStep_ExtraConfigOverrideDisablesTailscaleIdentityTrust()
+    {
+        var config = new SetupConfig
+        {
+            GatewayPort = GetFreeTcpPort(),
+            Tailscale = new TailscaleConfig
+            {
+                Enabled = true,
+                TrustTailscaleAuth = true,
+            },
+            Gateway = new GatewayConfig
+            {
+                ExtraConfig = new Dictionary<string, string>
+                {
+                    ["gateway.auth.allowTailscale"] = "false",
+                },
+            },
+        };
+        var context = CreateContext(config);
+        context.GatewayUrl = "wss://gateway.tailnet.ts.net";
+        context.SharedGatewayToken = "gateway-token";
+        context.DistroName = "OpenClawGateway";
+
+        var result = await new PairOperatorStep().ExecuteAsync(context, CancellationToken.None);
+
+        Assert.Equal(StepOutcome.Failed, result.Outcome);
+        var registry = new GatewayRegistry(_tempDir);
+        registry.Load();
+        Assert.False(registry.GetActive()!.TrustTailscaleAuth);
+    }
+
+    [Fact]
     public async Task PairOperatorStep_WhenSavedIdentityIsCorrupt_ReturnsTerminalWithoutMutation()
     {
         var config = new SetupConfig { GatewayPort = GetFreeTcpPort() };

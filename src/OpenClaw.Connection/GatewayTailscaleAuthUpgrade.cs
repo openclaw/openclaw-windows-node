@@ -29,10 +29,9 @@ public sealed record GatewayTailscaleAuthUpgradeResult(
 
 public static class GatewayTailscaleAuthUpgradePolicy
 {
-    public static bool CanOffer(GatewayRecord? record)
+    public static bool IsEligible(GatewayRecord? record)
     {
         if (record is null ||
-            record.TrustTailscaleAuth ||
             !record.IsLocal ||
             record.SshTunnel is not null ||
             GatewayRecordEditing.ResolveManagedDistroName(record) is null)
@@ -44,6 +43,9 @@ public static class GatewayTailscaleAuthUpgradePolicy
         return GatewayTopologyClassifier.Classify(record.Url, useSshTunnel: false).DetectedKind ==
             GatewayKind.Tailscale;
     }
+
+    public static bool CanOffer(GatewayRecord? record) =>
+        record?.TrustTailscaleAuth != true && IsEligible(record);
 }
 
 internal interface IGatewayTailscaleAuthConfigClient
@@ -87,12 +89,8 @@ internal sealed class GatewayTailscaleAuthUpgradeService(GatewayRegistry registr
         CancellationToken cancellationToken)
     {
         var record = registry.GetById(gatewayId);
-        if (record is null || !GatewayTailscaleAuthUpgradePolicy.CanOffer(record))
-        {
-            return record?.TrustTailscaleAuth == true
-                ? new(GatewayTailscaleAuthUpgradeOutcome.AlreadyEnabled)
-                : new(GatewayTailscaleAuthUpgradeOutcome.Ineligible);
-        }
+        if (!GatewayTailscaleAuthUpgradePolicy.IsEligible(record))
+            return new(GatewayTailscaleAuthUpgradeOutcome.Ineligible);
 
         if (!string.Equals(registry.ActiveGatewayId, gatewayId, StringComparison.Ordinal))
             return new(GatewayTailscaleAuthUpgradeOutcome.NotActive);
@@ -111,10 +109,17 @@ internal sealed class GatewayTailscaleAuthUpgradeService(GatewayRegistry registr
         {
             snapshot = await ReadConfigAsync(client, cancellationToken).ConfigureAwait(false);
         }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            throw;
+        }
         catch (Exception ex)
         {
             return new(GatewayTailscaleAuthUpgradeOutcome.ConfigUnavailable, ex.Message);
         }
+
+        if (record!.TrustTailscaleAuth && AllowsTailscaleAuth(snapshot.Root))
+            return new(GatewayTailscaleAuthUpgradeOutcome.AlreadyEnabled);
 
         if (string.IsNullOrWhiteSpace(snapshot.BaseHash))
         {
@@ -135,6 +140,9 @@ internal sealed class GatewayTailscaleAuthUpgradeService(GatewayRegistry registr
 
         if (!patch.Ok)
             return new(GatewayTailscaleAuthUpgradeOutcome.PatchRejected, patch.Error);
+
+        if (record.TrustTailscaleAuth)
+            return new(GatewayTailscaleAuthUpgradeOutcome.Succeeded);
 
         var previousValue = false;
         var changed = false;
@@ -161,6 +169,50 @@ internal sealed class GatewayTailscaleAuthUpgradeService(GatewayRegistry registr
             registry.Update(gatewayId, current => current with { TrustTailscaleAuth = previousValue });
             return new(GatewayTailscaleAuthUpgradeOutcome.PersistenceFailed, ex.Message);
         }
+    }
+
+    public async Task<bool> RevalidateAsync(
+        string gatewayId,
+        IGatewayTailscaleAuthConfigClient client,
+        CancellationToken cancellationToken)
+    {
+        var record = registry.GetById(gatewayId);
+        if (record?.TrustTailscaleAuth != true ||
+            !GatewayTailscaleAuthUpgradePolicy.IsEligible(record) ||
+            !string.Equals(registry.ActiveGatewayId, gatewayId, StringComparison.Ordinal) ||
+            !client.IsConnectedToGateway ||
+            !OperatorScopeHelper.CanReadConfig(client.GrantedOperatorScopes))
+        {
+            return false;
+        }
+
+        ConfigSnapshot snapshot;
+        try
+        {
+            snapshot = await ReadConfigAsync(client, cancellationToken).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch
+        {
+            return false;
+        }
+
+        if (AllowsTailscaleAuth(snapshot.Root))
+            return true;
+
+        registry.Update(gatewayId, current => current with { TrustTailscaleAuth = false });
+        try
+        {
+            registry.Save();
+        }
+        catch
+        {
+            registry.Update(gatewayId, current => current with { TrustTailscaleAuth = true });
+        }
+        return false;
     }
 
     private static async Task<ConfigSnapshot> ReadConfigAsync(
@@ -215,6 +267,18 @@ internal sealed class GatewayTailscaleAuthUpgradeService(GatewayRegistry registr
             """);
         return document.RootElement.Clone();
     }
+
+    // A true marker is issued only after this service or setup explicitly writes
+    // allowTailscale=true. Omission therefore means that grant drifted or was revoked;
+    // do not duplicate Core's environment-sensitive implicit auth resolver here.
+    private static bool AllowsTailscaleAuth(JsonElement config) =>
+        config.ValueKind == JsonValueKind.Object &&
+        config.TryGetProperty("gateway", out var gateway) &&
+        gateway.ValueKind == JsonValueKind.Object &&
+        gateway.TryGetProperty("auth", out var auth) &&
+        auth.ValueKind == JsonValueKind.Object &&
+        auth.TryGetProperty("allowTailscale", out var allowTailscale) &&
+        allowTailscale.ValueKind is JsonValueKind.True;
 
     private sealed record ConfigSnapshot(JsonElement Root, string? BaseHash);
 }

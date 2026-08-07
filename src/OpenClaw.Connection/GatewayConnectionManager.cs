@@ -198,6 +198,33 @@ public sealed class GatewayConnectionManager : IGatewayConnectionManager
             _transitionSemaphore.Release();
         }
     }
+
+    public async Task<bool> RevalidateTailscaleDashboardAuthAsync(
+        string gatewayId,
+        CancellationToken cancellationToken = default)
+    {
+        await _transitionSemaphore.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            if (!string.Equals(_activeGatewayRecordId, gatewayId, StringComparison.Ordinal))
+                return false;
+
+            var client = OperatorClient;
+            if (client is null)
+                return false;
+
+            var service = new GatewayTailscaleAuthUpgradeService(_registry);
+            return await service.RevalidateAsync(
+                    gatewayId,
+                    new GatewayTailscaleAuthConfigClientAdapter(client),
+                    cancellationToken)
+                .ConfigureAwait(false);
+        }
+        finally
+        {
+            _transitionSemaphore.Release();
+        }
+    }
     public ConnectionDiagnostics Diagnostics => _diagnostics;
 
     // ─── Lifecycle ───

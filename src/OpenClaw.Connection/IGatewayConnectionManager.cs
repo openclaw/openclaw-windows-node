@@ -32,6 +32,10 @@ public interface IGatewayConnectionManager : IDisposable, IAsyncDisposable
         CancellationToken cancellationToken = default) =>
         Task.FromResult(new GatewayTailscaleAuthUpgradeResult(
             GatewayTailscaleAuthUpgradeOutcome.NotConnected));
+    Task<bool> RevalidateTailscaleDashboardAuthAsync(
+        string gatewayId,
+        CancellationToken cancellationToken = default) =>
+        Task.FromResult(false);
     void SetGatewayConnectionIntent(string gatewayId, bool shouldBeConnected);
     bool IsAutomaticReconnectAllowed(string gatewayId);
 

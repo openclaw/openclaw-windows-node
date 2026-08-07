@@ -4124,12 +4124,65 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
             return;
         }
 
-        var url = GatewayDashboardUrlBuilder.Build(
+        var appendBrowserCredential =
+            !isBootstrapToken && credentialSource == CredentialResolver.SourceSharedGatewayToken;
+        var active = _gatewayRegistry?.GetActive();
+        if (active?.TrustTailscaleAuth == true &&
+            string.Equals(active.Url, gatewayUrl, StringComparison.OrdinalIgnoreCase) &&
+            _connectionManager is not null)
+        {
+            _ = OpenDashboardAfterTailscaleAuthRevalidationAsync(
+                active.Id,
+                gatewayUrl,
+                path,
+                token,
+                appendBrowserCredential);
+            return;
+        }
+
+        LaunchDashboardUrl(GatewayDashboardUrlBuilder.Build(
             gatewayUrl,
             path,
             token,
-            !isBootstrapToken && credentialSource == CredentialResolver.SourceSharedGatewayToken,
-            trustTailscaleAuth: ActiveGatewayTrustsTailscaleAuth(gatewayUrl));
+            appendBrowserCredential));
+    }
+
+    private async Task OpenDashboardAfterTailscaleAuthRevalidationAsync(
+        string gatewayId,
+        string gatewayUrl,
+        string? path,
+        string? browserCredential,
+        bool appendBrowserCredential)
+    {
+        var trustTailscaleAuth = false;
+        try
+        {
+            trustTailscaleAuth = await _connectionManager!
+                .RevalidateTailscaleDashboardAuthAsync(gatewayId);
+        }
+        catch (Exception ex)
+        {
+            Logger.Warn($"Failed to revalidate Tailscale dashboard auth: {ex.Message}");
+        }
+
+        if (!trustTailscaleAuth && !appendBrowserCredential)
+        {
+            ShowConnectionSettingsForPairingIssue(
+                "Dashboard",
+                "Tailscale authentication is unavailable and no approved browser credential is available");
+            return;
+        }
+
+        LaunchDashboardUrl(GatewayDashboardUrlBuilder.Build(
+            gatewayUrl,
+            path,
+            browserCredential,
+            appendBrowserCredential && !trustTailscaleAuth,
+            trustTailscaleAuth));
+    }
+
+    private static void LaunchDashboardUrl(string url)
+    {
 
         try
         {
@@ -4139,13 +4192,6 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
         {
             Logger.Error($"Failed to open dashboard: {ex.Message}");
         }
-    }
-
-    private bool ActiveGatewayTrustsTailscaleAuth(string gatewayUrl)
-    {
-        var active = _gatewayRegistry?.GetActive();
-        return active?.TrustTailscaleAuth == true &&
-            string.Equals(active.Url, gatewayUrl, StringComparison.OrdinalIgnoreCase);
     }
 
     // ── IAppCommands implementation ─────────────────────────────────────

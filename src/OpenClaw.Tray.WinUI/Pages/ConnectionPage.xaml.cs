@@ -2494,7 +2494,10 @@ public sealed partial class ConnectionPage : Page
         if (rec == null) return;
         try
         {
-            if (rec.TrustTailscaleAuth)
+            var trustTailscaleAuth = rec.TrustTailscaleAuth &&
+                _connectionManager is not null &&
+                await _connectionManager.RevalidateTailscaleDashboardAuthAsync(rec.Id);
+            if (trustTailscaleAuth)
             {
                 var tailscaleUrl = GatewayDashboardUrlBuilder.Build(
                     rec.Url,
