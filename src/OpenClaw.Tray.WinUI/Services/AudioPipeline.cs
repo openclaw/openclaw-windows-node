@@ -7,6 +7,7 @@ using NAudio.CoreAudioApi;
 using NAudio.Wave;
 using OpenClaw.Shared;
 using OpenClaw.Shared.Audio;
+using OpenClawTray.Helpers;
 
 namespace OpenClawTray.Services;
 
@@ -18,9 +19,21 @@ public sealed class AudioPipeline : IAsyncDisposable
 {
     private readonly IOpenClawLogger _logger;
     private readonly SpeechToTextService _stt;
-    private WasapiCapture? _capture;
+    private readonly object _captureGate = new();
+    private readonly SemaphoreSlim _stopGate = new(1, 1);
+    private readonly Func<IAudioCapture> _captureFactory;
+    private readonly Func<TimeSpan, CancellationToken, Task> _delayAsync;
+    private readonly Func<Task> _beforeFixedCaptureTeardownAsync;
+    private readonly TimeSpan _firstAudioTimeout;
+    private readonly Func<string> _firstAudioTimeoutMessage;
+    private IAudioCapture? _capture;
+    private EventHandler<WaveInEventArgs>? _dataAvailableHandler;
+    private EventHandler<StoppedEventArgs>? _recordingStoppedHandler;
     private WaveFormat? _captureFormat;
+    private CancellationTokenSource? _firstAudioCts;
+    private int _captureGeneration;
     private AudioPipelineOptions _options = new();
+    internal static readonly TimeSpan DefaultFirstAudioTimeout = TimeSpan.FromSeconds(5);
 
     // Resampling state
     private readonly List<float> _resampleBuffer = new();
@@ -36,7 +49,7 @@ public sealed class AudioPipeline : IAsyncDisposable
     private int _silenceChunksThreshold;
 
     // State
-    private AudioPipelineState _state = AudioPipelineState.Stopped;
+    private volatile AudioPipelineState _state = AudioPipelineState.Stopped;
     private CancellationTokenSource? _cts;
     private const int PipelineSampleRate = 16000;
     private const int VadChunkSamples = 512;
@@ -61,7 +74,7 @@ public sealed class AudioPipeline : IAsyncDisposable
     // _fixedCaptureBuffer for the duration of CaptureFixedDurationAsync.
     // This gives stt.transcribe a true bounded-window capture (vs.
     // stt.listen's silence-bounded behavior).
-    private bool _fixedCaptureMode;
+    private int _fixedCaptureGeneration;
     private readonly List<float> _fixedCaptureBuffer = new();
 
     /// <summary>Fired when a single Whisper segment has been transcribed.
@@ -95,74 +108,115 @@ public sealed class AudioPipeline : IAsyncDisposable
     public bool IsMuted { get; set; }
 
     public AudioPipeline(IOpenClawLogger logger, SpeechToTextService stt)
+        : this(
+            logger,
+            stt,
+            static () => new WasapiAudioCapture(),
+            static (delay, token) => Task.Delay(delay, token),
+            DefaultFirstAudioTimeout,
+            static () => LocalizationHelper.GetString("AudioPipeline_FirstAudioTimeout"),
+            static () => Task.CompletedTask)
+    {
+    }
+
+    internal AudioPipeline(
+        IOpenClawLogger logger,
+        SpeechToTextService stt,
+        Func<IAudioCapture> captureFactory,
+        Func<TimeSpan, CancellationToken, Task> delayAsync,
+        TimeSpan firstAudioTimeout,
+        Func<string> firstAudioTimeoutMessage,
+        Func<Task>? beforeFixedCaptureTeardownAsync = null)
     {
         _logger = logger;
         _stt = stt;
+        _captureFactory = captureFactory;
+        _delayAsync = delayAsync;
+        _firstAudioTimeout = firstAudioTimeout;
+        _firstAudioTimeoutMessage = firstAudioTimeoutMessage;
+        _beforeFixedCaptureTeardownAsync = beforeFixedCaptureTeardownAsync ?? (() => Task.CompletedTask);
     }
 
     /// <summary>Start capturing and processing audio.</summary>
     public async Task StartAsync(AudioPipelineOptions options, CancellationToken cancellationToken = default)
     {
-        if (_state != AudioPipelineState.Stopped)
-            throw new InvalidOperationException($"Pipeline is {_state}, must be Stopped to start.");
-
-        _options = options;
-        _cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-
-        // Calculate silence threshold: how many VAD chunks = silence timeout
-        float chunkDurationSec = (float)VadChunkSamples / PipelineSampleRate;
-        _silenceChunksThreshold = Math.Max(1, (int)(options.SilenceTimeoutSeconds / chunkDurationSec));
-
-        SetState(AudioPipelineState.Starting);
-
+        await _stopGate.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
         {
-            // WASAPI COM objects must be created on an MTA thread, not the
-            // WinUI STA dispatcher thread. Run capture init on the thread pool.
-            await Task.Run(() =>
+            if (_state != AudioPipelineState.Stopped)
+                throw new InvalidOperationException($"Pipeline is {_state}, must be Stopped to start.");
+
+            _options = options;
+            _cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+            var captureCancellation = _cts.Token;
+            var generation = BeginCaptureGeneration();
+
+            // Calculate silence threshold: how many VAD chunks = silence timeout
+            float chunkDurationSec = (float)VadChunkSamples / PipelineSampleRate;
+            _silenceChunksThreshold = Math.Max(1, (int)(options.SilenceTimeoutSeconds / chunkDurationSec));
+
+            SetState(AudioPipelineState.Starting);
+
+            try
             {
-                _capture = new WasapiCapture();
-                _captureFormat = _capture.WaveFormat;
-                _capture.DataAvailable += OnDataAvailable;
-                _capture.RecordingStopped += OnRecordingStopped;
-                _capture.StartRecording();
-            });
+                // WASAPI COM objects must be created on an MTA thread, not the
+                // WinUI STA dispatcher thread. Run capture init on the thread pool.
+                await InitializeCaptureAsync(generation, captureCancellation);
 
-            _speechBuffer.Clear();
-            _resampleBuffer.Clear();
-            _isSpeaking = false;
-            _silenceChunksCount = 0;
-            _dataCallbackCount = 0;
-            _vadChunkCount = 0;
+                _speechBuffer.Clear();
+                _resampleBuffer.Clear();
+                _isSpeaking = false;
+                _silenceChunksCount = 0;
+                _dataCallbackCount = 0;
+                _vadChunkCount = 0;
 
-            SetState(AudioPipelineState.Listening);
-            var captureFormat = _captureFormat ?? throw new InvalidOperationException("Audio capture format was not initialized.");
-            var sttStatus = _stt.IsModelLoaded ? "loaded" : "NOT loaded";
-            _logger.Info($"Audio pipeline started: {captureFormat.SampleRate}Hz {captureFormat.BitsPerSample}bit {captureFormat.Channels}ch → 16kHz mono, VAD=energy, STT={sttStatus}");
-            DiagnosticMessage?.Invoke($"Mic: {captureFormat.SampleRate}Hz, STT model: {sttStatus}");
+                if (!TrySetState(generation, AudioPipelineState.Listening))
+                    return;
+
+                var captureFormat = _captureFormat ?? throw new InvalidOperationException("Audio capture format was not initialized.");
+                var sttStatus = _stt.IsModelLoaded ? "loaded" : "NOT loaded";
+                _logger.Info($"Audio pipeline started: {captureFormat.SampleRate}Hz {captureFormat.BitsPerSample}bit {captureFormat.Channels}ch → 16kHz mono, VAD=energy, STT={sttStatus}");
+                DiagnosticMessage?.Invoke($"Mic: {captureFormat.SampleRate}Hz, STT model: {sttStatus}");
+            }
+            catch (System.Runtime.InteropServices.COMException ex) when (
+                ex.HResult == unchecked((int)0x80070005) || // E_ACCESSDENIED
+                ex.HResult == unchecked((int)0x88890008))   // AUDCLNT_E_DEVICE_INVALIDATED
+            {
+                if (!IsCurrentCapture(generation))
+                    return;
+
+                _logger.Error("Microphone access denied", ex);
+                SetState(AudioPipelineState.Error);
+                DiagnosticMessage?.Invoke("⚠️ Microphone access denied: check Windows Settings → Privacy → Microphone");
+                // Release the partially-initialised capture device.
+                CleanupCapture(stopCapture: true);
+                throw new InvalidOperationException(
+                    "Microphone access denied. Open Windows Settings → Privacy & Security → Microphone and enable 'Let desktop apps access your microphone'.",
+                    ex);
+            }
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+            {
+                CleanupCapture(stopCapture: true);
+                SetState(AudioPipelineState.Stopped);
+                throw;
+            }
+            catch (Exception ex)
+            {
+                if (!IsCurrentCapture(generation))
+                    return;
+
+                _logger.Error("Failed to start audio capture", ex);
+                SetState(AudioPipelineState.Error);
+                DiagnosticMessage?.Invoke($"⚠️ Mic error: {ex.Message}");
+                // Release the partially-initialised capture device and CTS so
+                // the mic LED doesn't stay on after a failed start.
+                CleanupCapture(stopCapture: true);
+                throw;
+            }
         }
-        catch (System.Runtime.InteropServices.COMException ex) when (
-            ex.HResult == unchecked((int)0x80070005) || // E_ACCESSDENIED
-            ex.HResult == unchecked((int)0x88890008))   // AUDCLNT_E_DEVICE_INVALIDATED
+        finally
         {
-            _logger.Error("Microphone access denied", ex);
-            SetState(AudioPipelineState.Error);
-            DiagnosticMessage?.Invoke("⚠️ Microphone access denied: check Windows Settings → Privacy → Microphone");
-            // Release the partially-initialised capture device.
-            CleanupCapture();
-            throw new InvalidOperationException(
-                "Microphone access denied. Open Windows Settings → Privacy & Security → Microphone and enable 'Let desktop apps access your microphone'.",
-                ex);
-        }
-        catch (Exception ex)
-        {
-            _logger.Error("Failed to start audio capture", ex);
-            SetState(AudioPipelineState.Error);
-            DiagnosticMessage?.Invoke($"⚠️ Mic error: {ex.Message}");
-            // Release the partially-initialised capture device and CTS so
-            // the mic LED doesn't stay on after a failed start.
-            CleanupCapture();
-            throw;
+            _stopGate.Release();
         }
     }
 
@@ -175,34 +229,38 @@ public sealed class AudioPipeline : IAsyncDisposable
     /// </summary>
     public async Task<float[]> CaptureFixedDurationAsync(int durationMs, CancellationToken cancellationToken = default)
     {
-        if (_state != AudioPipelineState.Stopped)
-            throw new InvalidOperationException($"Pipeline is {_state}, must be Stopped to start capture.");
-        if (durationMs <= 0)
-            throw new ArgumentOutOfRangeException(nameof(durationMs), "Duration must be positive.");
-
-        _fixedCaptureMode = true;
-        _fixedCaptureBuffer.Clear();
-        _resampleBuffer.Clear();
-        _cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-
-        SetState(AudioPipelineState.Starting);
+        await _stopGate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        var lifecycleGateHeld = true;
+        var generation = 0;
         try
         {
-            await Task.Run(() =>
-            {
-                _capture = new WasapiCapture();
-                _captureFormat = _capture.WaveFormat;
-                _capture.DataAvailable += OnDataAvailable;
-                _capture.RecordingStopped += OnRecordingStopped;
-                _capture.StartRecording();
-            });
+            if (_state != AudioPipelineState.Stopped)
+                throw new InvalidOperationException($"Pipeline is {_state}, must be Stopped to start capture.");
+            if (durationMs <= 0)
+                throw new ArgumentOutOfRangeException(nameof(durationMs), "Duration must be positive.");
 
-            SetState(AudioPipelineState.Listening);
+            _fixedCaptureBuffer.Clear();
+            _resampleBuffer.Clear();
+            _cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+            var captureCancellation = _cts.Token;
+            generation = BeginCaptureGeneration();
+            Volatile.Write(ref _fixedCaptureGeneration, generation);
+
+            SetState(AudioPipelineState.Starting);
+            // Fixed-duration capture is already bounded by durationMs, so it
+            // does not use the streaming first-audio watchdog.
+            await InitializeCaptureAsync(generation, captureCancellation, armFirstAudioWatchdog: false);
+
+            if (!TrySetState(generation, AudioPipelineState.Listening))
+                return [];
+
             SafeRaiseDiag($"Recording {durationMs / 1000.0:F1}s...");
+            _stopGate.Release();
+            lifecycleGateHeld = false;
 
             try
             {
-                await Task.Delay(durationMs, _cts.Token).ConfigureAwait(false);
+                await Task.Delay(durationMs, captureCancellation).ConfigureAwait(false);
             }
             // slopwatch-ignore: SW003 Shutdown cancellation or disposal is expected and the caller already preserves the safe state.
             catch (TaskCanceledException)
@@ -210,8 +268,16 @@ public sealed class AudioPipeline : IAsyncDisposable
                 // External cancellation: return whatever we have so far.
             }
 
+            await _beforeFixedCaptureTeardownAsync().ConfigureAwait(false);
+            await _stopGate.WaitAsync().ConfigureAwait(false);
+            lifecycleGateHeld = true;
+
+            var capture = GetCurrentCapture(generation);
+            if (capture == null)
+                return [];
+
             // Stop capture and give NAudio a moment to flush its last buffer.
-            try { _capture?.StopRecording(); }
+            try { capture.StopRecording(); }
             catch (Exception ex) { _logger.Debug($"AudioPipeline: StopRecording during fixed-capture teardown threw: {ex.Message}"); }
             await Task.Delay(150).ConfigureAwait(false);
 
@@ -219,70 +285,98 @@ public sealed class AudioPipeline : IAsyncDisposable
         }
         finally
         {
-            _fixedCaptureMode = false;
-            _fixedCaptureBuffer.Clear();
-            CleanupCapture();
-            SetState(AudioPipelineState.Stopped);
+            if (!lifecycleGateHeld)
+            {
+                await _stopGate.WaitAsync().ConfigureAwait(false);
+                lifecycleGateHeld = true;
+            }
+
+            var cleanedCurrentCapture = generation != 0 && CleanupCapture(expectedGeneration: generation);
+            if (generation != 0 &&
+                Interlocked.CompareExchange(ref _fixedCaptureGeneration, 0, generation) == generation)
+            {
+                _fixedCaptureBuffer.Clear();
+            }
+
+            if (cleanedCurrentCapture)
+                SetState(AudioPipelineState.Stopped);
+
+            if (lifecycleGateHeld)
+                _stopGate.Release();
         }
     }
 
     /// <summary>Stop capturing and processing.</summary>
     public async Task StopAsync()
     {
-        if (_state == AudioPipelineState.Stopped)
-            return;
-
-        _isStopping = true;
+        await _stopGate.WaitAsync().ConfigureAwait(false);
         try
         {
-            // Order matters here. Previously we cancelled `_cts` first and THEN
-            // tried to flush the speech buffer — but the flush passed `_cts.Token`
-            // straight into Whisper.net, which honored the cancel and dropped the
-            // final utterance. Now:
-            //
-            //   1. Stop capturing new audio so the buffer doesn't grow further.
-            //   2. Wait briefly for any in-flight transcriptions (Task.Run-spawned
-            //      from earlier VAD bursts) to finish — so the user's last
-            //      utterance reaches Whisper instead of being killed mid-encode.
-            //   3. Flush any buffered speech using a fresh (non-cancelled) token
-            //      so anything left over also reaches Whisper.
-            //   4. Cancel `_cts` to stop background work that hasn't drained yet.
-            //   5. Tear down capture resources.
-            if (_capture != null)
+            if (_state == AudioPipelineState.Stopped)
+                return;
+
+            _isStopping = true;
+            try
             {
-                try { _capture.StopRecording(); }
-                catch (Exception ex) { _logger.Error("Error stopping capture", ex); }
-            }
+                CancelFirstAudioWatchdog();
 
-            // Drain in-flight transcriptions, capped at 3 s so Stop never hangs.
-            var drainDeadline = DateTime.UtcNow + TimeSpan.FromSeconds(3);
-            while (Volatile.Read(ref _inFlightTranscriptions) > 0 && DateTime.UtcNow < drainDeadline)
+                // Order matters here. Previously we cancelled `_cts` first and THEN
+                // tried to flush the speech buffer — but the flush passed `_cts.Token`
+                // straight into Whisper.net, which honored the cancel and dropped the
+                // final utterance. Now:
+                //
+                //   1. Stop capturing new audio so the buffer doesn't grow further.
+                //   2. Wait briefly for any in-flight transcriptions (Task.Run-spawned
+                //      from earlier VAD bursts) to finish — so the user's last
+                //      utterance reaches Whisper instead of being killed mid-encode.
+                //   3. Flush any buffered speech using a fresh (non-cancelled) token
+                //      so anything left over also reaches Whisper.
+                //   4. Cancel `_cts` to stop background work that hasn't drained yet.
+                //   5. Tear down capture resources.
+                var capture = GetCurrentCapture();
+                if (capture != null)
+                {
+                    try { capture.StopRecording(); }
+                    catch (Exception ex) { _logger.Error("Error stopping capture", ex); }
+                }
+
+                // Drain in-flight transcriptions, capped at 3 s so Stop never hangs.
+                var drainDeadline = DateTime.UtcNow + TimeSpan.FromSeconds(3);
+                while (Volatile.Read(ref _inFlightTranscriptions) > 0 && DateTime.UtcNow < drainDeadline)
+                {
+                    await Task.Delay(50).ConfigureAwait(false);
+                }
+
+                if (_speechBuffer.Count > 0 && _stt.IsModelLoaded)
+                {
+                    await FlushSpeechBufferAsync();
+                }
+
+                GetCurrentPipelineCancellation()?.Cancel();
+
+                CleanupCapture();
+                SetState(AudioPipelineState.Stopped);
+                _logger.Info("Audio pipeline stopped");
+            }
+            finally
             {
-                await Task.Delay(50).ConfigureAwait(false);
+                _isStopping = false;
             }
-
-            if (_speechBuffer.Count > 0 && _stt.IsModelLoaded)
-            {
-                await FlushSpeechBufferAsync();
-            }
-
-            _cts?.Cancel();
-
-            CleanupCapture();
-            SetState(AudioPipelineState.Stopped);
-            _logger.Info("Audio pipeline stopped");
         }
         finally
         {
-            _isStopping = false;
+            _stopGate.Release();
         }
     }
 
     private int _dataCallbackCount;
 
-    private void OnDataAvailable(object? sender, WaveInEventArgs e)
+    private void OnDataAvailable(int generation, object? sender, WaveInEventArgs e)
     {
-        if (_cts?.IsCancellationRequested == true || e.BytesRecorded == 0 || IsMuted)
+        if (e.BytesRecorded == 0 || !TryAcceptFirstAudio(generation))
+            return;
+
+        if (_cts?.IsCancellationRequested == true || _isStopping || IsMuted)
             return;
 
         _dataCallbackCount++;
@@ -310,7 +404,7 @@ public sealed class AudioPipeline : IAsyncDisposable
             // Fixed-duration capture mode: skip VAD entirely; we want every
             // sample for the full window. CaptureFixedDurationAsync drains
             // the buffer when the timer fires.
-            if (_fixedCaptureMode)
+            if (generation == Volatile.Read(ref _fixedCaptureGeneration))
             {
                 _fixedCaptureBuffer.AddRange(resampled);
                 return;
@@ -542,13 +636,37 @@ public sealed class AudioPipeline : IAsyncDisposable
         }
     }
 
-    private void OnRecordingStopped(object? sender, StoppedEventArgs e)
+    private void OnRecordingStopped(int generation, object? sender, StoppedEventArgs e)
     {
-        if (e.Exception != null)
+        if (e.Exception == null)
+            return;
+
+        _ = HandleRecordingStoppedErrorAsync(generation, e.Exception);
+    }
+
+    private async Task HandleRecordingStoppedErrorAsync(int generation, Exception exception)
+    {
+        await _stopGate.WaitAsync().ConfigureAwait(false);
+        try
         {
-            _logger.Error("Recording stopped with error", e.Exception);
-            SetState(AudioPipelineState.Error);
-            DiagnosticMessage?.Invoke($"⚠️ Microphone error: {e.Exception.Message}");
+            if (!IsCurrentCapture(generation))
+                return;
+
+            var fixedCapture = generation == Volatile.Read(ref _fixedCaptureGeneration);
+            if (fixedCapture)
+                Interlocked.CompareExchange(ref _fixedCaptureGeneration, 0, generation);
+
+            GetCurrentPipelineCancellation()?.Cancel();
+            CleanupCapture(expectedGeneration: generation);
+            _state = AudioPipelineState.Error;
+            _logger.Error("Recording stopped with error", exception);
+            try { StateChanged?.Invoke(AudioPipelineState.Error); }
+            catch (Exception ex) { _logger.Error("Recording stopped state handler failed", ex); }
+            SafeRaiseDiag($"⚠️ Microphone error: {exception.Message}");
+        }
+        finally
+        {
+            _stopGate.Release();
         }
     }
 
@@ -635,54 +753,292 @@ public sealed class AudioPipeline : IAsyncDisposable
         StateChanged?.Invoke(newState);
     }
 
-    private void CleanupCapture()
+    private int BeginCaptureGeneration()
     {
-        if (_capture != null)
+        lock (_captureGate)
         {
-            try
+            return ++_captureGeneration;
+        }
+    }
+
+    private async Task InitializeCaptureAsync(
+        int generation,
+        CancellationToken captureCancellation,
+        bool armFirstAudioWatchdog = true)
+    {
+        await Task.Run(() =>
+        {
+            var capture = _captureFactory();
+            var dataAvailableHandler = new EventHandler<WaveInEventArgs>(
+                (sender, args) => OnDataAvailable(generation, sender, args));
+            var recordingStoppedHandler = new EventHandler<StoppedEventArgs>(
+                (sender, args) => OnRecordingStopped(generation, sender, args));
+
+            capture.DataAvailable += dataAvailableHandler;
+            capture.RecordingStopped += recordingStoppedHandler;
+
+            CancellationTokenSource? watchdogCts = null;
+            lock (_captureGate)
             {
-                _capture.DataAvailable -= OnDataAvailable;
-                _capture.RecordingStopped -= OnRecordingStopped;
-            }
-            catch (Exception ex)
-            {
-                _logger.Error("Error detaching capture event handlers", ex);
+                if (generation != _captureGeneration || captureCancellation.IsCancellationRequested)
+                {
+                    capture.DataAvailable -= dataAvailableHandler;
+                    capture.RecordingStopped -= recordingStoppedHandler;
+                    capture.Dispose();
+                    captureCancellation.ThrowIfCancellationRequested();
+                    return;
+                }
+
+                _capture = capture;
+                _captureFormat = capture.WaveFormat;
+                _dataAvailableHandler = dataAvailableHandler;
+                _recordingStoppedHandler = recordingStoppedHandler;
+                if (armFirstAudioWatchdog)
+                    watchdogCts = CancellationTokenSource.CreateLinkedTokenSource(captureCancellation);
+                _firstAudioCts = watchdogCts;
             }
 
-            try
-            {
-                _capture.Dispose();
-            }
-            catch (Exception ex)
-            {
-                // NAudio's WasapiCapture.Dispose may throw on a stuck COM
-                // object. Log but never propagate — this method is called
-                // from finally-blocks and re-throwing would mask the original
-                // failure AND leave the mic device held by the OS until
-                // process exit.
-                _logger.Error("Error disposing audio capture", ex);
-            }
-            finally
-            {
-                _capture = null;
-            }
+            if (watchdogCts != null)
+                _ = WatchForFirstAudioAsync(generation, watchdogCts.Token);
+            capture.StartRecording();
+        }).ConfigureAwait(false);
+    }
+
+    private async Task WatchForFirstAudioAsync(int generation, CancellationToken cancellationToken)
+    {
+        try
+        {
+            await _delayAsync(_firstAudioTimeout, cancellationToken).ConfigureAwait(false);
         }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            return;
+        }
+
+        await HandleFirstAudioTimeoutAsync(generation).ConfigureAwait(false);
+    }
+
+    private async Task HandleFirstAudioTimeoutAsync(int generation)
+    {
+        await _stopGate.WaitAsync().ConfigureAwait(false);
+        try
+        {
+            IAudioCapture? capture;
+            EventHandler<WaveInEventArgs>? dataAvailableHandler;
+            EventHandler<StoppedEventArgs>? recordingStoppedHandler;
+            CancellationTokenSource? watchdogCts;
+            CancellationTokenSource? pipelineCts;
+            bool stateChanged;
+
+            lock (_captureGate)
+            {
+                if (generation != _captureGeneration || _firstAudioCts == null)
+                    return;
+
+                ++_captureGeneration;
+                capture = _capture;
+                dataAvailableHandler = _dataAvailableHandler;
+                recordingStoppedHandler = _recordingStoppedHandler;
+                watchdogCts = _firstAudioCts;
+                pipelineCts = _cts;
+
+                _capture = null;
+                _captureFormat = null;
+                _dataAvailableHandler = null;
+                _recordingStoppedHandler = null;
+                _firstAudioCts = null;
+                _cts = null;
+                stateChanged = _state != AudioPipelineState.Error;
+                _state = AudioPipelineState.Error;
+            }
+
+            CancelAndDispose(watchdogCts);
+            CancelAndDispose(pipelineCts);
+            ReleaseCapture(capture, dataAvailableHandler, recordingStoppedHandler, stopCapture: true);
+            _resampleBuffer.Clear();
+            _speechBuffer.Clear();
+
+            _logger.Error($"Audio capture produced no data within {_firstAudioTimeout.TotalSeconds:F1} seconds");
+            if (stateChanged)
+            {
+                try { StateChanged?.Invoke(AudioPipelineState.Error); }
+                catch (Exception ex) { _logger.Error("Audio timeout state handler failed", ex); }
+            }
+
+            try { SafeRaiseDiag(_firstAudioTimeoutMessage()); }
+            catch (Exception ex) { _logger.Error("Audio timeout diagnostic localization failed", ex); }
+        }
+        finally
+        {
+            _stopGate.Release();
+        }
+    }
+
+    private bool TryAcceptFirstAudio(int generation)
+    {
+        CancellationTokenSource? watchdogCts;
+        lock (_captureGate)
+        {
+            if (generation != _captureGeneration || _capture == null)
+                return false;
+
+            watchdogCts = _firstAudioCts;
+            _firstAudioCts = null;
+        }
+
+        CancelAndDispose(watchdogCts);
+        return true;
+    }
+
+    private void CancelFirstAudioWatchdog()
+    {
+        CancellationTokenSource? watchdogCts;
+        lock (_captureGate)
+        {
+            watchdogCts = _firstAudioCts;
+            _firstAudioCts = null;
+        }
+
+        CancelAndDispose(watchdogCts);
+    }
+
+    private IAudioCapture? GetCurrentCapture(int? expectedGeneration = null)
+    {
+        lock (_captureGate)
+        {
+            if (expectedGeneration.HasValue && expectedGeneration.Value != _captureGeneration)
+                return null;
+
+            return _capture;
+        }
+    }
+
+    private CancellationTokenSource? GetCurrentPipelineCancellation()
+    {
+        lock (_captureGate)
+        {
+            return _cts;
+        }
+    }
+
+    private bool IsCurrentCapture(int generation)
+    {
+        lock (_captureGate)
+        {
+            return generation == _captureGeneration;
+        }
+    }
+
+    private bool TrySetState(int generation, AudioPipelineState state)
+    {
+        bool stateChanged;
+        lock (_captureGate)
+        {
+            if (generation != _captureGeneration || _capture == null)
+                return false;
+
+            stateChanged = _state != state;
+            _state = state;
+        }
+
+        if (stateChanged)
+            StateChanged?.Invoke(state);
+        return true;
+    }
+
+    private bool CleanupCapture(bool stopCapture = false, int? expectedGeneration = null)
+    {
+        IAudioCapture? capture;
+        EventHandler<WaveInEventArgs>? dataAvailableHandler;
+        EventHandler<StoppedEventArgs>? recordingStoppedHandler;
+        CancellationTokenSource? watchdogCts;
+        CancellationTokenSource? pipelineCts;
+
+        lock (_captureGate)
+        {
+            if (expectedGeneration.HasValue && expectedGeneration.Value != _captureGeneration)
+                return false;
+
+            ++_captureGeneration;
+            capture = _capture;
+            dataAvailableHandler = _dataAvailableHandler;
+            recordingStoppedHandler = _recordingStoppedHandler;
+            watchdogCts = _firstAudioCts;
+            pipelineCts = _cts;
+
+            _capture = null;
+            _captureFormat = null;
+            _dataAvailableHandler = null;
+            _recordingStoppedHandler = null;
+            _firstAudioCts = null;
+            _cts = null;
+        }
+
+        CancelAndDispose(watchdogCts);
+        ReleaseCapture(capture, dataAvailableHandler, recordingStoppedHandler, stopCapture);
 
         try
         {
-            _cts?.Dispose();
+            pipelineCts?.Dispose();
         }
         catch (Exception ex)
         {
             _logger.Error("Error disposing pipeline cancellation source", ex);
         }
-        finally
-        {
-            _cts = null;
-        }
 
         _resampleBuffer.Clear();
         _speechBuffer.Clear();
+        return true;
+    }
+
+    private void ReleaseCapture(
+        IAudioCapture? capture,
+        EventHandler<WaveInEventArgs>? dataAvailableHandler,
+        EventHandler<StoppedEventArgs>? recordingStoppedHandler,
+        bool stopCapture)
+    {
+        if (capture == null)
+            return;
+
+        try
+        {
+            if (dataAvailableHandler != null)
+                capture.DataAvailable -= dataAvailableHandler;
+            if (recordingStoppedHandler != null)
+                capture.RecordingStopped -= recordingStoppedHandler;
+        }
+        catch (Exception ex)
+        {
+            _logger.Error("Error detaching capture event handlers", ex);
+        }
+
+        if (stopCapture)
+        {
+            try { capture.StopRecording(); }
+            catch (Exception ex) { _logger.Error("Error stopping capture", ex); }
+        }
+
+        try
+        {
+            capture.Dispose();
+        }
+        catch (Exception ex)
+        {
+            // NAudio's WasapiCapture.Dispose may throw on a stuck COM
+            // object. Log but never propagate because teardown must remain
+            // idempotent and preserve the original failure.
+            _logger.Error("Error disposing audio capture", ex);
+        }
+    }
+
+    private static void CancelAndDispose(CancellationTokenSource? cts)
+    {
+        if (cts == null)
+            return;
+
+        try { cts.Cancel(); }
+        catch (ObjectDisposedException) { }
+        cts.Dispose();
     }
 
     public async ValueTask DisposeAsync()
@@ -699,4 +1055,36 @@ public sealed class AudioPipeline : IAsyncDisposable
         try { DiagnosticMessage?.Invoke(message); }
         catch (Exception ex) { _logger.Debug($"AudioPipeline: DiagnosticMessage handler threw: {ex.Message}"); }
     }
+}
+
+internal interface IAudioCapture : IDisposable
+{
+    WaveFormat WaveFormat { get; }
+    event EventHandler<WaveInEventArgs>? DataAvailable;
+    event EventHandler<StoppedEventArgs>? RecordingStopped;
+    void StartRecording();
+    void StopRecording();
+}
+
+internal sealed class WasapiAudioCapture : IAudioCapture
+{
+    private readonly WasapiCapture _capture = new();
+
+    public WaveFormat WaveFormat => _capture.WaveFormat;
+
+    public event EventHandler<WaveInEventArgs>? DataAvailable
+    {
+        add => _capture.DataAvailable += value;
+        remove => _capture.DataAvailable -= value;
+    }
+
+    public event EventHandler<StoppedEventArgs>? RecordingStopped
+    {
+        add => _capture.RecordingStopped += value;
+        remove => _capture.RecordingStopped -= value;
+    }
+
+    public void StartRecording() => _capture.StartRecording();
+    public void StopRecording() => _capture.StopRecording();
+    public void Dispose() => _capture.Dispose();
 }

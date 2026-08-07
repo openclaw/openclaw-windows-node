@@ -2781,6 +2781,9 @@ Utilisez l'une de ces options :
   <data name="VoiceOverlayWindow_StatusErrorOccurred" xml:space="preserve">
     <value>Une erreur s'est produite</value>
   </data>
+  <data name="AudioPipeline_FirstAudioTimeout" xml:space="preserve">
+    <value>Aucun son n’a été reçu. Vérifiez que votre microphone est connecté et sélectionné comme périphérique d’entrée Windows, puis réessayez.</value>
+  </data>
   <data name="VoiceOverlayWindow_winexWindowEx_2.Title" xml:space="preserve">
     <value>Companion Voice</value>
   </data>

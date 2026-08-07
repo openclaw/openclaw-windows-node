@@ -2781,6 +2781,9 @@
   <data name="VoiceOverlayWindow_StatusErrorOccurred" xml:space="preserve">
     <value>发生错误</value>
   </data>
+  <data name="AudioPipeline_FirstAudioTimeout" xml:space="preserve">
+    <value>未收到音频。请检查麦克风是否已连接并在 Windows 中选作输入设备，然后重试。</value>
+  </data>
   <data name="VoiceOverlayWindow_winexWindowEx_2.Title" xml:space="preserve">
     <value>Companion Voice</value>
   </data>
