@@ -32,6 +32,7 @@ public class SetupConfigTests : IDisposable
         Assert.Equal("trace", config.LogLevel);
         Assert.False(config.RollbackOnFailure);
         Assert.Equal("loopback", config.Gateway.Bind);
+        Assert.Equal("hybrid", config.Gateway.ReloadMode);
         Assert.False(config.SkipPermissions);
         Assert.False(config.SkipWizard);
         Assert.True(config.WindowsNodeContext.Enabled);

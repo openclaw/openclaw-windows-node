@@ -87,8 +87,8 @@
     "Version": null,
     // Seconds to wait for gateway health endpoint before failing
     "HealthTimeoutSeconds": 90,
-    // Config reload strategy: "hot" (no restart), "restart"
-    "ReloadMode": "hot",
+    // Config reload strategy: "off" or "hybrid"
+    "ReloadMode": "hybrid",
     // Auth mode: "token" (shared secret)
     "AuthMode": "token",
     // Additional gateway config key/value pairs (applied via `openclaw config set`)

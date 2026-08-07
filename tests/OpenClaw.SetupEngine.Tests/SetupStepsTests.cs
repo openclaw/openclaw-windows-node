@@ -1706,6 +1706,17 @@ public class SetupStepsTests : IDisposable
     }
 
     [Fact]
+    public void ConfigureGateway_DefaultsReloadModeToHybrid()
+    {
+        var commands = ConfigureGatewayStep.BuildConfigCommands(
+            new GatewayConfig(),
+            18789,
+            "'[]'");
+
+        Assert.Contains("openclaw config set gateway.reload.mode hybrid", commands);
+    }
+
+    [Fact]
     public void ConfigureGateway_AddsDevicePairPublicUrlForLoopbackGateway()
     {
         var commands = ConfigureGatewayStep.BuildConfigCommands(
