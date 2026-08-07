@@ -2494,10 +2494,19 @@ public sealed partial class ConnectionPage : Page
         if (rec == null) return;
         try
         {
-            var appendSharedGatewayToken =
-                !rec.TrustTailscaleAuth &&
-                !string.IsNullOrWhiteSpace(rec.SharedGatewayToken);
-            if (appendSharedGatewayToken)
+            if (rec.TrustTailscaleAuth)
+            {
+                var tailscaleUrl = GatewayDashboardUrlBuilder.Build(
+                    rec.Url,
+                    path: null,
+                    rec.SharedGatewayToken,
+                    appendSharedGatewayToken: false,
+                    trustTailscaleAuth: true);
+                await global::Windows.System.Launcher.LaunchUriAsync(new Uri(tailscaleUrl));
+                return;
+            }
+
+            if (!string.IsNullOrWhiteSpace(rec.SharedGatewayToken))
             {
                 var provenanceService = CurrentApp.ManagedLocalPortProvenance;
                 if (provenanceService is null)
@@ -2519,8 +2528,7 @@ public sealed partial class ConnectionPage : Page
                 rec.Url,
                 path: null,
                 rec.SharedGatewayToken,
-                appendSharedGatewayToken,
-                trustTailscaleAuth: rec.TrustTailscaleAuth);
+                appendSharedGatewayToken: !string.IsNullOrWhiteSpace(rec.SharedGatewayToken));
             await global::Windows.System.Launcher.LaunchUriAsync(new Uri(url));
         }
         catch (Exception ex)
