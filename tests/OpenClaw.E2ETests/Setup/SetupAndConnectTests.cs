@@ -598,6 +598,10 @@ public class SetupAndConnectTests
         var loginShell = await _fixture.RunInWslAsync("bash -lc 'openclaw --version'", TimeSpan.FromSeconds(15));
         AssertCommandSucceeded(loginShell, "openclaw --version in login shell");
         Console.WriteLine($"[E2E] login shell openclaw --version: {loginShell.Stdout}");
+        var expectedGatewayVersion =
+            Environment.GetEnvironmentVariable("OPENCLAW_E2E_GATEWAY_VERSION");
+        if (!string.IsNullOrWhiteSpace(expectedGatewayVersion))
+            Assert.Contains(expectedGatewayVersion.Trim(), loginShell.Stdout, StringComparison.Ordinal);
 
         var systemPath = await _fixture.RunInWslAsync(
             "env -i HOME=/home/openclaw USER=openclaw PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin openclaw --version",

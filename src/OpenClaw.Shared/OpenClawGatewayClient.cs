@@ -178,7 +178,6 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
 
     protected override void OnDisconnected()
     {
-        ClearPendingRequests();
         // Invalidate the handshake snapshot — the next hello-ok must
         // re-establish the canonical session key, scopes, etc. Without this,
         // a reconnect-after-server-restart could leave the tray sending to a
@@ -187,6 +186,10 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
         Volatile.Write(ref _mainSessionKey, null);
         Volatile.Write(ref _mainSessionKeyIsCanonical, false);
         Volatile.Write(ref _hasHandshakeSnapshot, false);
+        ClearPendingRequests(
+            new GatewayConnectionLostException(
+                RemoteCloseStatusCode,
+                RemoteCloseStatusDescription));
     }
 
     protected override void OnDisposing()
@@ -1955,7 +1958,8 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
         }
     }
 
-    private void ClearPendingRequests()
+    private void ClearPendingRequests(
+        GatewayConnectionLostException? wizardDisconnect = null)
     {
         lock (_pendingRequestLock)
         {
@@ -1974,7 +1978,10 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
 
         foreach (var completion in _pendingWizardResponses.Values)
         {
-            completion.TrySetException(new OperationCanceledException("Gateway connection lost while waiting for wizard response"));
+            completion.TrySetException(
+                wizardDisconnect ??
+                new OperationCanceledException(
+                    "Gateway connection lost while waiting for wizard response"));
         }
 
         _pendingWizardResponses.Clear();

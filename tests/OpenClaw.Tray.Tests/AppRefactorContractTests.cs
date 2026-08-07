@@ -831,6 +831,28 @@ public sealed class AppRefactorContractTests
     }
 
     [Fact]
+    public void WizardTerminalRestartRecovery_IsExactVersionManagedLocalAndFailClosed()
+    {
+        var root = TestRepositoryPaths.GetRepositoryRoot();
+        var source = File.ReadAllText(Path.Combine(root, "src", "OpenClaw.SetupEngine.UI", "Pages", "WizardPage.xaml.cs"));
+        var connect = ExtractMethod(source, "ConnectClientAsync");
+        var statusChanged = ExtractMethod(source, "OnWizardClientStatusChanged");
+        var sendAnswer = ExtractMethod(source, "SendCurrentAnswerAsync");
+
+        Assert.Contains(
+            "GatewayWizardRestartRecoveryPolicy.WaitForExpectedManagedGatewayAsync",
+            connect);
+        Assert.Contains("_expectedTerminalRestart", connect);
+        Assert.Contains("_expectedTerminalRestart", statusChanged);
+        Assert.Contains("_hostAccessPlan.CanControlWslGateway", sendAnswer);
+        Assert.Contains("GatewayWizardRestartRecoveryPolicy.IsExpectedTerminalRestart", sendAnswer);
+        Assert.Contains("WaitForReconnectAsync", sendAnswer);
+        Assert.Contains("HasHandshakeSnapshot", source);
+        Assert.Contains("HandshakeSucceeded", source);
+        Assert.Contains("Disposed", source);
+    }
+
+    [Fact]
     public void Settings_OnboardCardRequiresActiveManagedWslGateway()
     {
         var root = TestRepositoryPaths.GetRepositoryRoot();

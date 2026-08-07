@@ -2003,8 +2003,14 @@ public sealed class PairOperatorStep : SetupStep
 
     internal static async Task<StepResult?> EnsurePairingEndpointTrustedAsync(
         SetupContext ctx,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        int noListenerRetryCount = 0,
+        TimeSpan? noListenerRetryDelay = null)
     {
+        ArgumentOutOfRangeException.ThrowIfNegative(noListenerRetryCount);
+        var retryDelay = noListenerRetryDelay ?? TimeSpan.FromSeconds(1);
+        ArgumentOutOfRangeException.ThrowIfLessThan(retryDelay, TimeSpan.Zero);
+
         var record = new GatewayRecord
         {
             Id = ctx.GatewayRecordId ?? "setup-managed-gateway",
@@ -2015,7 +2021,19 @@ public sealed class PairOperatorStep : SetupStep
         var probe = ctx.EndpointProvenanceProbe ??
             new ManagedLocalGatewayPortProvenanceService(
                 new SetupOpenClawLogger(ctx.Logger)).InspectAsync;
-        var provenance = await probe(record, cancellationToken).ConfigureAwait(false);
+        GatewayEndpointProvenance provenance;
+        for (var attempt = 0; ; attempt++)
+        {
+            provenance = await probe(record, cancellationToken).ConfigureAwait(false);
+            if (provenance.Kind != GatewayEndpointProvenanceKind.NoListener ||
+                attempt >= noListenerRetryCount)
+            {
+                break;
+            }
+
+            await Task.Delay(retryDelay, cancellationToken).ConfigureAwait(false);
+        }
+
         return provenance.Kind switch
         {
             GatewayEndpointProvenanceKind.ExpectedManagedGateway or

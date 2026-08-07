@@ -268,7 +268,11 @@ public sealed class E2ESetupFixture : IAsyncLifetime
 
     private void WriteConfig()
     {
-        var lkgVersion = GatewayLkgVersion.ResolveLkgVersion();
+        var requestedGatewayVersion =
+            Environment.GetEnvironmentVariable("OPENCLAW_E2E_GATEWAY_VERSION");
+        var gatewayVersion = string.IsNullOrWhiteSpace(requestedGatewayVersion)
+            ? GatewayLkgVersion.ResolveLkgVersion()
+            : requestedGatewayVersion.Trim();
         var config = new
         {
             DistroName = _distroName,
@@ -305,7 +309,7 @@ public sealed class E2ESetupFixture : IAsyncLifetime
             },
             Gateway = new
             {
-                Version = lkgVersion
+                Version = gatewayVersion
             }
         };
 

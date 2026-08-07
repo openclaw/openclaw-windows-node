@@ -74,6 +74,63 @@ public class SetupStepsTests : IDisposable
         Assert.Contains("unknown owner", result.Message);
     }
 
+    [Fact]
+    public async Task PairingEndpointTrust_TerminalRestartWait_RetriesOnlyNoListener()
+    {
+        var context = CreateContext(new SetupConfig
+        {
+            DistroName = "OpenClawGateway",
+            GatewayUrl = "ws://localhost:18789"
+        });
+        var attempts = 0;
+        context.EndpointProvenanceProbe = (_, _) => Task.FromResult(
+            ++attempts < 3
+                ? new GatewayEndpointProvenance(
+                    GatewayEndpointProvenanceKind.NoListener,
+                    18789)
+                : new GatewayEndpointProvenance(
+                    GatewayEndpointProvenanceKind.ExpectedManagedGateway,
+                    18789));
+
+        var result = await PairOperatorStep.EnsurePairingEndpointTrustedAsync(
+            context,
+            CancellationToken.None,
+            noListenerRetryCount: 2,
+            noListenerRetryDelay: TimeSpan.Zero);
+
+        Assert.Null(result);
+        Assert.Equal(3, attempts);
+    }
+
+    [Fact]
+    public async Task PairingEndpointTrust_TerminalRestartWait_RejectsUnknownOwnerImmediately()
+    {
+        var context = CreateContext(new SetupConfig
+        {
+            DistroName = "OpenClawGateway",
+            GatewayUrl = "ws://localhost:18789"
+        });
+        var attempts = 0;
+        context.EndpointProvenanceProbe = (_, _) =>
+        {
+            attempts++;
+            return Task.FromResult(new GatewayEndpointProvenance(
+                GatewayEndpointProvenanceKind.UnknownListener,
+                18789,
+                Detail: "unknown owner"));
+        };
+
+        var result = await PairOperatorStep.EnsurePairingEndpointTrustedAsync(
+            context,
+            CancellationToken.None,
+            noListenerRetryCount: 30,
+            noListenerRetryDelay: TimeSpan.Zero);
+
+        Assert.NotNull(result);
+        Assert.Equal(StepOutcome.FailedTerminal, result!.Outcome);
+        Assert.Equal(1, attempts);
+    }
+
     [Theory]
     [InlineData(null)]
     [InlineData("")]

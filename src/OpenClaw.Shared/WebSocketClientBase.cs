@@ -30,6 +30,8 @@ public abstract class WebSocketClientBase : IDisposable
     private int _reconnectAttempts;
     private int _reconnectLoopActive;
     private long _connectionGeneration;
+    private int _remoteCloseStatusCode = -1;
+    private string? _remoteCloseStatusDescription;
     private readonly SemaphoreSlim _sendLock = new(1, 1);
     private static readonly int[] BackoffMs = { 1000, 2000, 4000, 8000, 15000, 30000, 60000 };
 
@@ -47,6 +49,20 @@ public abstract class WebSocketClientBase : IDisposable
 
     /// <summary>Cancellation token tied to this client's lifetime.</summary>
     protected CancellationToken CancellationToken => _cts.Token;
+
+    /// <summary>Close status from the current connection's server-originated close frame.</summary>
+    protected int? RemoteCloseStatusCode
+    {
+        get
+        {
+            var code = Volatile.Read(ref _remoteCloseStatusCode);
+            return code >= 0 ? code : null;
+        }
+    }
+
+    /// <summary>Close description from the current connection's server-originated close frame.</summary>
+    protected string? RemoteCloseStatusDescription =>
+        Volatile.Read(ref _remoteCloseStatusDescription);
 
     // Events
     public event EventHandler<ConnectionStatus>? StatusChanged;
@@ -128,6 +144,8 @@ public abstract class WebSocketClientBase : IDisposable
         }
 
         var connectGeneration = Interlocked.Increment(ref _connectionGeneration);
+        Volatile.Write(ref _remoteCloseStatusCode, -1);
+        Volatile.Write(ref _remoteCloseStatusDescription, null);
         ClientWebSocket? ws = null;
 
         try
@@ -313,11 +331,17 @@ public abstract class WebSocketClientBase : IDisposable
                 }
                 else if (result.MessageType == WebSocketMessageType.Close)
                 {
-                    var closeStatus = ws.CloseStatus?.ToString() ?? "unknown";
-                    var closeDesc = ws.CloseStatusDescription ?? "no description";
+                    var closeStatus = result.CloseStatus?.ToString() ?? "unknown";
+                    var closeDesc = result.CloseStatusDescription ?? "no description";
                     _logger.Info($"Server closed connection: {closeStatus} - {closeDesc}");
                     if (IsCurrentConnection(ws, connectionGeneration))
                     {
+                        Volatile.Write(
+                            ref _remoteCloseStatusCode,
+                            result.CloseStatus is null ? -1 : (int)result.CloseStatus.Value);
+                        Volatile.Write(
+                            ref _remoteCloseStatusDescription,
+                            result.CloseStatusDescription);
                         OnDisconnected();
                         RaiseStatusChanged(ConnectionStatus.Disconnected);
                     }
