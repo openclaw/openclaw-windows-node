@@ -308,9 +308,6 @@ public sealed class ManagedLocalGatewayPortProvenanceService
                 new ProvenanceCacheKey(record.Id, record.Url),
                 out var cached) ||
             cached.Kind != GatewayEndpointProvenanceKind.ExpectedManagedGateway ||
-            cached.ProcessId is not int expectedPid ||
-            cached.ProcessStartTimeUtc is not DateTime expectedStart ||
-            string.IsNullOrWhiteSpace(cached.ProcessPath) ||
             !Uri.TryCreate(record.Url, UriKind.Absolute, out var uri) ||
             GatewayRecordEditing.ResolveManagedDistroName(record) is not { } managedDistroName)
         {
@@ -323,6 +320,20 @@ public sealed class ManagedLocalGatewayPortProvenanceService
         var current = currentSnapshot.Listeners
             .Where(listener => listener.Port == uri.Port && AcceptsHost(listener.Address, uri.Host))
             .ToArray();
+
+        if (HasNoWindowsProcessIdentity(cached))
+        {
+            return current.Length == 0 &&
+                _platform.IsExpectedWslGatewayListening(managedDistroName, uri.Port);
+        }
+
+        if (cached.ProcessId is not int expectedPid ||
+            cached.ProcessStartTimeUtc is not DateTime expectedStart ||
+            string.IsNullOrWhiteSpace(cached.ProcessPath))
+        {
+            return false;
+        }
+
         if (current.Length == 0 ||
             !current.All(listener =>
                 listener.ProcessId == expectedPid &&
@@ -362,7 +373,14 @@ public sealed class ManagedLocalGatewayPortProvenanceService
             .Where(listener => listener.Port == uri.Port && AcceptsHost(listener.Address, uri.Host))
             .ToArray();
         if (listeners.Length == 0)
-            return new GatewayEndpointProvenance(GatewayEndpointProvenanceKind.NoListener, uri.Port);
+        {
+            return _platform.IsExpectedWslGatewayListening(managedDistroName, uri.Port)
+                ? new GatewayEndpointProvenance(
+                    GatewayEndpointProvenanceKind.ExpectedManagedGateway,
+                    uri.Port,
+                    Detail: $"Expected WSL gateway owns port {uri.Port} without a Windows relay listener.")
+                : new GatewayEndpointProvenance(GatewayEndpointProvenanceKind.NoListener, uri.Port);
+        }
 
         var relayTrustByPath = listeners
             .Where(listener =>
@@ -648,6 +666,13 @@ public sealed class ManagedLocalGatewayPortProvenanceService
         left.Kind == GatewayEndpointProvenanceKind.ConflictingOpenClawGateway &&
         left.ProcessId == right.ProcessId &&
         left.ProcessStartTimeUtc == right.ProcessStartTimeUtc;
+
+    private static bool HasNoWindowsProcessIdentity(GatewayEndpointProvenance provenance) =>
+        provenance.ProcessId is null &&
+        provenance.ProcessName is null &&
+        provenance.ProcessStartTimeUtc is null &&
+        provenance.ProcessPath is null &&
+        provenance.ScheduledTaskName is null;
 
     private static bool AcceptsHost(IPAddress listenerAddress, string host)
     {

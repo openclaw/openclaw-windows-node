@@ -9,7 +9,10 @@ public enum GatewayEndpointProvenanceKind
     /// <summary>No listener currently owns the endpoint.</summary>
     NoListener,
 
-    /// <summary>The listener is the expected OS-owned WSL relay for this managed gateway.</summary>
+    /// <summary>
+    /// The endpoint belongs to the expected managed WSL gateway, either through a verified
+    /// OS-owned WSL relay or through direct guest ownership with no Windows listener.
+    /// </summary>
     ExpectedManagedGateway,
 
     /// <summary>A fully proven, obsolete native OpenClaw gateway owns the WSL gateway endpoint.</summary>

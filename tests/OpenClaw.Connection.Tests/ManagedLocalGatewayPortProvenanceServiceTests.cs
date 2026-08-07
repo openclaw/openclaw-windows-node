@@ -131,6 +131,35 @@ public class ManagedLocalGatewayPortProvenanceServiceTests
     }
 
     [Fact]
+    public void Inspect_CompleteEmptyWindowsSnapshotWithGuestOwner_IsExpectedWithoutWindowsIdentity()
+    {
+        var platform = new FakePlatform();
+        var service = new ManagedLocalGatewayPortProvenanceService(platform, NullLogger.Instance);
+
+        var result = service.Inspect(ManagedRecord());
+
+        Assert.Equal(GatewayEndpointProvenanceKind.ExpectedManagedGateway, result.Kind);
+        Assert.Null(result.ProcessId);
+        Assert.Null(result.ProcessName);
+        Assert.Null(result.ProcessStartTimeUtc);
+        Assert.Null(result.ProcessPath);
+        Assert.Null(result.ScheduledTaskName);
+        Assert.Equal(1, platform.ExpectedDistroChecks);
+    }
+
+    [Fact]
+    public void Inspect_CompleteEmptyWindowsSnapshotWithoutGuestOwner_IsNoListener()
+    {
+        var platform = new FakePlatform { ExpectedDistroListening = false };
+        var service = new ManagedLocalGatewayPortProvenanceService(platform, NullLogger.Instance);
+
+        var result = service.Inspect(ManagedRecord());
+
+        Assert.Equal(GatewayEndpointProvenanceKind.NoListener, result.Kind);
+        Assert.Equal(1, platform.ExpectedDistroChecks);
+    }
+
+    [Fact]
     public void Inspect_SpoofedWslRelayPath_IsUnknown()
     {
         var platform = new FakePlatform { TrustedWslRelay = false };
@@ -302,6 +331,52 @@ public class ManagedLocalGatewayPortProvenanceServiceTests
         Assert.Equal(GatewayEndpointProvenanceKind.ExpectedManagedGateway, service.Inspect(gateway).Kind);
 
         platform.ExpectedDistroListening = false;
+
+        Assert.False(service.IsStrongCredentialAllowed(gateway, credential));
+    }
+
+    [Fact]
+    public void InteractiveCredentialGate_RelaylessProofRevalidatesEmptySnapshotAndGuestOwner()
+    {
+        var platform = new FakePlatform();
+        var service = new ManagedLocalGatewayPortProvenanceService(platform, NullLogger.Instance);
+        var gateway = ManagedRecord();
+        var credential = new GatewayCredential(
+            "shared-token", false, CredentialResolver.SourceSharedGatewayToken);
+        Assert.Equal(GatewayEndpointProvenanceKind.ExpectedManagedGateway, service.Inspect(gateway).Kind);
+
+        Assert.True(service.IsStrongCredentialAllowed(gateway, credential));
+
+        platform.ExpectedDistroListening = false;
+
+        Assert.False(service.IsStrongCredentialAllowed(gateway, credential));
+    }
+
+    [Fact]
+    public void InteractiveCredentialGate_RelaylessProofWithAppearingWindowsListener_FailsClosed()
+    {
+        var platform = new FakePlatform();
+        var service = new ManagedLocalGatewayPortProvenanceService(platform, NullLogger.Instance);
+        var gateway = ManagedRecord();
+        var credential = new GatewayCredential(
+            "shared-token", false, CredentialResolver.SourceSharedGatewayToken);
+        Assert.Equal(GatewayEndpointProvenanceKind.ExpectedManagedGateway, service.Inspect(gateway).Kind);
+        platform.Listeners.Add(new WindowsTcpListenerInfo(
+            IPAddress.Loopback, 18789, 999, "unknown", @"C:\unknown.exe"));
+
+        Assert.False(service.IsStrongCredentialAllowed(gateway, credential));
+    }
+
+    [Fact]
+    public void InteractiveCredentialGate_RelaylessProofWithIncompleteCapture_FailsClosed()
+    {
+        var platform = new FakePlatform();
+        var service = new ManagedLocalGatewayPortProvenanceService(platform, NullLogger.Instance);
+        var gateway = ManagedRecord();
+        var credential = new GatewayCredential(
+            "shared-token", false, CredentialResolver.SourceSharedGatewayToken);
+        Assert.Equal(GatewayEndpointProvenanceKind.ExpectedManagedGateway, service.Inspect(gateway).Kind);
+        platform.Ipv6Complete = false;
 
         Assert.False(service.IsStrongCredentialAllowed(gateway, credential));
     }
