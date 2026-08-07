@@ -15,6 +15,8 @@ internal sealed record WindowsTcpPortState(
     IReadOnlyList<TcpPortRange> DynamicRanges,
     IReadOnlyList<TcpPortRange> ExcludedRanges)
 {
+    private static readonly TimeSpan NetshTimeout = TimeSpan.FromSeconds(20);
+
     public static WindowsTcpPortState Capture()
     {
         var dynamicRanges = new List<TcpPortRange>();
@@ -70,6 +72,7 @@ internal sealed record WindowsTcpPortState(
 
     private static string RunNetsh(params string[] arguments)
     {
+        var commandContext = $"netsh.exe {string.Join(' ', arguments)}";
         var startInfo = new ProcessStartInfo
         {
             FileName = "netsh.exe",
@@ -81,16 +84,75 @@ internal sealed record WindowsTcpPortState(
         foreach (var argument in arguments)
             startInfo.ArgumentList.Add(argument);
 
+        return RunProcessAsync(startInfo, NetshTimeout, commandContext).GetAwaiter().GetResult();
+    }
+
+    internal static async Task<string> RunProcessAsync(
+        ProcessStartInfo startInfo,
+        TimeSpan timeout,
+        string commandContext)
+    {
+        ArgumentNullException.ThrowIfNull(startInfo);
+        ArgumentException.ThrowIfNullOrWhiteSpace(commandContext);
+        if (timeout <= TimeSpan.Zero)
+            throw new ArgumentOutOfRangeException(nameof(timeout));
+
         using var process = Process.Start(startInfo)
-            ?? throw new InvalidOperationException("Failed to start netsh.exe while inspecting Windows TCP port ranges.");
-        var stdout = process.StandardOutput.ReadToEnd();
-        var stderr = process.StandardError.ReadToEnd();
-        process.WaitForExit();
+            ?? throw new InvalidOperationException($"Failed to start command: {commandContext}");
+        var stdoutTask = process.StandardOutput.ReadToEndAsync();
+        var stderrTask = process.StandardError.ReadToEndAsync();
+        using var timeoutCts = new CancellationTokenSource(timeout);
+
+        try
+        {
+            await process.WaitForExitAsync(timeoutCts.Token);
+        }
+        catch (OperationCanceledException) when (timeoutCts.IsCancellationRequested)
+        {
+            var cleanupProblems = new List<string>();
+            try
+            {
+                process.Kill(entireProcessTree: true);
+            }
+            catch (Exception ex) when (
+                ex is InvalidOperationException or
+                    NotSupportedException or
+                    System.ComponentModel.Win32Exception)
+            {
+                cleanupProblems.Add(
+                    $"process-tree termination failed ({ex.GetType().Name}: {ex.Message})");
+            }
+
+            using var cleanupCts = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+            try
+            {
+                await process.WaitForExitAsync(cleanupCts.Token);
+                await Task.WhenAll(stdoutTask, stderrTask).WaitAsync(cleanupCts.Token);
+            }
+            catch (OperationCanceledException) when (cleanupCts.IsCancellationRequested)
+            {
+                cleanupProblems.Add("process exit or stream drain did not complete within 5 seconds");
+            }
+            catch (Exception ex) when (ex is IOException or ObjectDisposedException)
+            {
+                cleanupProblems.Add(
+                    $"process stream cleanup failed ({ex.GetType().Name}: {ex.Message})");
+            }
+
+            var cleanupContext = cleanupProblems.Count == 0
+                ? ""
+                : $" Cleanup: {string.Join("; ", cleanupProblems)}.";
+            throw new TimeoutException(
+                $"Command timed out after {timeout.TotalSeconds:0.###} seconds: {commandContext}.{cleanupContext}");
+        }
+
+        var stdout = await stdoutTask;
+        var stderr = await stderrTask;
 
         if (process.ExitCode != 0)
         {
             throw new InvalidOperationException(
-                $"netsh.exe {string.Join(' ', arguments)} failed with exit code {process.ExitCode}: {stderr.Trim()}");
+                $"{commandContext} failed with exit code {process.ExitCode}: {stderr.Trim()}");
         }
 
         return stdout;

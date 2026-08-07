@@ -1,3 +1,5 @@
+using System.Diagnostics;
+
 namespace OpenClaw.E2ETests.Setup;
 
 public sealed class MirroredWslPortLeaseTests
@@ -47,6 +49,35 @@ public sealed class MirroredWslPortLeaseTests
                 new TcpPortRange(56_755, 56_854),
             ],
             excludedRanges);
+    }
+
+    [Fact]
+    public async Task RunProcessAsync_TimesOutAndIncludesCommandContext()
+    {
+        var startInfo = new ProcessStartInfo
+        {
+            FileName = Environment.GetEnvironmentVariable("ComSpec") ?? "cmd.exe",
+            UseShellExecute = false,
+            CreateNoWindow = true,
+            RedirectStandardOutput = true,
+            RedirectStandardError = true,
+        };
+        startInfo.ArgumentList.Add("/d");
+        startInfo.ArgumentList.Add("/s");
+        startInfo.ArgumentList.Add("/c");
+        startInfo.ArgumentList.Add("ping -n 30 127.0.0.1 >nul");
+
+        var stopwatch = Stopwatch.StartNew();
+        var exception = await Assert.ThrowsAsync<TimeoutException>(() =>
+            WindowsTcpPortState.RunProcessAsync(
+                startInfo,
+                TimeSpan.FromMilliseconds(100),
+                "timeout-test-command"));
+
+        Assert.Contains("timeout-test-command", exception.Message, StringComparison.Ordinal);
+        Assert.True(
+            stopwatch.Elapsed < TimeSpan.FromSeconds(10),
+            $"Timed process runner did not return promptly: {stopwatch.Elapsed}.");
     }
 
     [Fact]
