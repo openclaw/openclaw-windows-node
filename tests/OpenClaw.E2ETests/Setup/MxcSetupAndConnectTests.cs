@@ -24,6 +24,44 @@ public sealed class MxcSetupAndConnectTests
     }
 
     [MxcE2EFact]
+    public async Task MirroredWslSafeGatewayPort_IsListeningAndRecorded()
+    {
+        Assert.InRange(
+            _fixture.GatewayPort,
+            MirroredWslPortLease.CandidateRangeStart,
+            MirroredWslPortLease.CandidateRangeEnd);
+
+        var artifactPath = Path.Combine(_fixture.ArtifactDir, "gateway-port-allocation.json");
+        Assert.True(File.Exists(artifactPath), $"Gateway port allocation artifact not found: {artifactPath}");
+        using var artifact = JsonDocument.Parse(await File.ReadAllTextAsync(artifactPath));
+        Assert.Equal(_fixture.GatewayPort, artifact.RootElement.GetProperty("gatewayPort").GetInt32());
+        foreach (var range in artifact.RootElement.GetProperty("windowsDynamicTcpRanges").EnumerateArray())
+        {
+            var start = range.GetProperty("start").GetInt32();
+            var end = range.GetProperty("end").GetInt32();
+            Assert.False(
+                _fixture.GatewayPort >= start && _fixture.GatewayPort <= end,
+                $"Gateway port {_fixture.GatewayPort} overlaps Windows dynamic range {start}-{end}.");
+        }
+        foreach (var range in artifact.RootElement.GetProperty("windowsExcludedTcpRanges").EnumerateArray())
+        {
+            var start = range.GetProperty("start").GetInt32();
+            var end = range.GetProperty("end").GetInt32();
+            Assert.False(
+                _fixture.GatewayPort >= start && _fixture.GatewayPort <= end,
+                $"Gateway port {_fixture.GatewayPort} overlaps Windows excluded range {start}-{end}.");
+        }
+
+        var listener = await _fixture.RunInWslAsync(
+            $"ss -H -ltn 'sport = :{_fixture.GatewayPort}'",
+            inputViaStdin: true);
+        AssertCommandSucceeded(listener, "inspect the selected Gateway port inside WSL");
+        Assert.Contains($":{_fixture.GatewayPort}", listener.Stdout, StringComparison.Ordinal);
+        Console.WriteLine(
+            $"[E2E] mirrored-WSL-safe Gateway port proof: port={_fixture.GatewayPort}; artifact={artifactPath}; listener={listener.Stdout.Trim()}");
+    }
+
+    [MxcE2EFact]
     public async Task RealGateway_SystemRun_ExecutesThroughWindowsNodeMxcSandbox()
     {
         const string marker = "OPENCLAW_GATEWAY_SYSTEM_RUN_MXC_OK";
