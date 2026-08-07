@@ -66,28 +66,19 @@ internal sealed record WindowsTcpPortState(
     internal static IReadOnlyList<TcpPortRange> ParseExcludedRanges(string output)
     {
         var lines = output.Replace("\r\n", "\n", StringComparison.Ordinal).Split('\n');
-        var headerIndex = Array.FindIndex(lines, line =>
-            Regex.IsMatch(
-                line,
-                @"^\s*Start\s+Port\s+End\s+Port\s*$",
-                RegexOptions.IgnoreCase));
-        if (headerIndex < 0)
+        var separatorIndices = lines
+            .Select((line, index) => new { line, index })
+            .Where(item => Regex.IsMatch(item.line, @"^\s*-+\s+-+\s*$"))
+            .Select(item => item.index)
+            .ToArray();
+        if (separatorIndices.Length != 1)
         {
             throw new InvalidDataException(
-                $"Could not recognize Windows excluded TCP port table header:{Environment.NewLine}{output}");
-        }
-
-        var separatorIndex = Array.FindIndex(
-            lines,
-            headerIndex + 1,
-            line => Regex.IsMatch(line, @"^\s*-+\s+-+\s*$"));
-        if (separatorIndex < 0)
-        {
-            throw new InvalidDataException(
-                $"Could not recognize Windows excluded TCP port table separator:{Environment.NewLine}{output}");
+                $"Expected exactly one Windows excluded TCP port table separator, found {separatorIndices.Length}:{Environment.NewLine}{output}");
         }
 
         var ranges = new List<TcpPortRange>();
+        var separatorIndex = separatorIndices[0];
         for (var index = separatorIndex + 1; index < lines.Length; index++)
         {
             var line = lines[index].Trim();
@@ -115,7 +106,14 @@ internal sealed record WindowsTcpPortState(
 
     private static string RunNetsh(params string[] arguments)
     {
-        var netshPath = Path.Combine(Environment.SystemDirectory, "netsh.exe");
+        var systemDirectory = Environment.SystemDirectory;
+        if (string.IsNullOrWhiteSpace(systemDirectory))
+        {
+            throw new InvalidOperationException(
+                "Cannot resolve netsh.exe because Environment.SystemDirectory is unavailable.");
+        }
+
+        var netshPath = Path.Combine(systemDirectory, "netsh.exe");
         var commandContext = $"\"{netshPath}\" {string.Join(' ', arguments)}";
         var startInfo = new ProcessStartInfo
         {

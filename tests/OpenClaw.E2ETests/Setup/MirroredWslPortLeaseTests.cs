@@ -67,6 +67,27 @@ public sealed class MirroredWslPortLeaseTests
         Assert.Empty(ranges);
     }
 
+    [Fact]
+    public void ParseExcludedRanges_AcceptsLocalizedHeader()
+    {
+        var ranges = WindowsTcpPortState.ParseExcludedRanges(
+            """
+            Rangos de exclusión de puertos para tcp
+
+            Puerto inicial    Puerto final
+            --------------    ------------
+                     5357             5357
+                    50000            50059     *
+            """);
+
+        Assert.Equal(
+            [
+                new TcpPortRange(5_357, 5_357),
+                new TcpPortRange(50_000, 50_059),
+            ],
+            ranges);
+    }
+
     [Theory]
     [InlineData(
         """
