@@ -1,0 +1,305 @@
+// components.jsonc — the component patterns your team has agreed on, as a structured
+// element tree (JSON + comments). One component = one decision already made.
+//
+// These render live in the Design System + Prototype canvases via a pure JSON→DOM
+// interpreter (no React, no build step). Style with the `ds-*` classes and CSS variables
+// the design system generates from design.json (var(--color-accent), var(--space-4),
+// var(--radius-md), var(--font-display), …). Copilot reads this file to match the house
+// style when it builds new UI.
+//
+// Schema:
+//   { "meta": {…}, "components": [ { "name", "note"?, "props"?, "root" } ] }
+//   node = element  { "el": "div", "class"?, "attrs"?, "children"?: [node|string] }
+//        | component { "component": "Button", "props"?: { … } }   // ref by name
+//        | string    "literal"  or  "{prop}"                       // prop interpolation
+//   "{prop}" interpolates a prop into class / attr values / text; "{{" and "}}" are
+//   literal braces. SVG tags (svg/path/rect/…) render in the SVG namespace automatically.
+//
+// This is DESIGN INTENT for the canvas preview — not shipping code. To ship, port these
+// patterns into the app using the port targets in design.json `authority`: most surfaces
+// ship as native WinUI 3 / C# (port via github.com/microsoft/win-dev-skills), while the
+// chat surface (ChatBubble, ChatComposer, ChatThread) ships via Reactor
+// (github.com/microsoft/microsoft-ui-reactor). Don't ship this verbatim.
+{
+  "meta": { "version": 1, "updatedBy": "copilot", "note": "Windows Fluent UI for OpenClaw — migrated from components.jsx." },
+  "components": [
+    {
+      "name": "Button",
+      "note": "Primary action. One per view — it's where the eye should land. Padding mirrors WinUI's default ButtonPadding (11,5,11,6 → 5px 11px 6px); MinWidth 100px keeps short labels (OK / Connect) from cramping and gives side-by-side buttons a consistent footprint.",
+      "props": { "children": "Save changes", "variant": "primary" },
+      "root": {
+        "el": "button",
+        "class": "ds-btn ds-btn-{variant}",
+        "attrs": { "style": "padding:5px 11px 6px;min-width:100px" },
+        "children": ["{children}"]
+      }
+    },
+    {
+      "name": "Field",
+      "note": "Text input with a quiet label above it — the field is the subject. Input padding mirrors WinUI TextControlThemePadding (10,5,6,6 → 5px 6px 6px 10px) with MinHeight 32px, so a field lines up with a Button on the same row.",
+      "props": { "label": "Gateway address", "placeholder": "127.0.0.1:18789" },
+      "root": {
+        "el": "label",
+        "class": "ds-field",
+        "children": [
+          { "el": "span", "class": "ds-field-label", "children": ["{label}"] },
+          {
+            "el": "input",
+            "class": "ds-input",
+            "attrs": { "placeholder": "{placeholder}", "style": "padding:5px 6px 6px 10px;min-height:32px" }
+          }
+        ]
+      }
+    },
+    {
+      "name": "Card",
+      "note": "Content card. Flat by default — a 1px hairline border, not a drop shadow. Padding mirrors the WinUI Gallery card (16,12 → 12px 16px) with the `md` radius and a `line`-colored border. Never nest a card inside a card.",
+      "props": { "title": "Windows node", "body": "Paired · 6 capabilities exposed over MCP." },
+      "root": {
+        "el": "article",
+        "class": "ds-card",
+        "attrs": { "style": "padding:12px 16px" },
+        "children": [
+          { "el": "h3", "class": "ds-card-title", "children": ["{title}"] },
+          { "el": "p", "class": "ds-card-body", "children": ["{body}"] },
+          { "el": "a", "class": "ds-link", "attrs": { "href": "#" }, "children": ["Open report →"] }
+        ]
+      }
+    },
+    {
+      "name": "Badge",
+      "note": "Status pill. Uses semantic color tokens, never a raw hex.",
+      "props": { "children": "Connected", "tone": "positive" },
+      "root": { "el": "span", "class": "ds-badge ds-badge-{tone}", "children": ["{children}"] }
+    },
+    {
+      "name": "ComposerPicker",
+      "note": "Subtle inline picker — text label + chevron, no border until hover in the app. Used for the model and reasoning-effort selectors; reads as a quiet dropdown, not a button. (Preview shows the rest state.)",
+      "props": { "label": "Model" },
+      "root": {
+        "el": "button",
+        "attrs": {
+          "type": "button",
+          "style": "display:inline-flex;align-items:center;gap:var(--space-1);height:32px;padding:0 var(--space-2);border-radius:var(--radius-sm);border:1px solid transparent;background:transparent;color:var(--color-muted);font-family:var(--font-body);font-size:13px;line-height:18px;cursor:pointer;white-space:nowrap"
+        },
+        "children": [
+          { "el": "span", "children": ["{label}"] },
+          {
+            "el": "svg",
+            "attrs": { "width": "12", "height": "12", "viewBox": "0 0 24 24", "fill": "none", "aria-hidden": "true", "stroke": "currentColor", "stroke-width": "2", "stroke-linecap": "round", "stroke-linejoin": "round" },
+            "children": [ { "el": "path", "attrs": { "d": "M6 9l6 6 6-6" } } ]
+          }
+        ]
+      }
+    },
+    {
+      "name": "ChatBubble",
+      "note": "Assistant chat bubble: a 36×36 avatar (subtle fill, hairline border) to the LEFT of a bubble on a subtle surface with a hairline border. The `bubble` radius (16px) is friendlier than the 8/12px control radii; padding 12/16. Footer reads timestamp · usage · Copy — the same used/context (pct%) string ChatUsageFormatter produces. Mirrors OpenClawChatTimeline. (User messages ride the accent on the right in-app; this component previews the assistant variant.)",
+      "props": {
+        "time": "2:14 PM",
+        "usage": "12.5K/200K (6%)",
+        "children": "Paired to the gateway — 6 Windows node capabilities are live."
+      },
+      "root": {
+        "el": "div",
+        "attrs": { "style": "display:flex;align-items:flex-start;gap:var(--space-2)" },
+        "children": [
+          {
+            "el": "div",
+            "attrs": { "aria-hidden": "true", "style": "flex:0 0 auto;width:36px;height:36px;border-radius:var(--radius-pill);background:var(--color-surface);border:1px solid var(--color-line);color:var(--color-muted);display:inline-flex;align-items:center;justify-content:center" },
+            "children": [
+              {
+                "el": "svg",
+                "attrs": { "width": "18", "height": "18", "viewBox": "0 0 24 24", "fill": "currentColor", "aria-hidden": "true" },
+                "children": [ { "el": "path", "attrs": { "d": "M12 2.5l1.7 5.1a4 4 0 0 0 2.7 2.7l5.1 1.7-5.1 1.7a4 4 0 0 0-2.7 2.7L12 21.5l-1.7-5.1a4 4 0 0 0-2.7-2.7L2.5 12l5.1-1.7a4 4 0 0 0 2.7-2.7L12 2.5z" } } ]
+              }
+            ]
+          },
+          {
+            "el": "div",
+            "attrs": { "style": "display:flex;flex-direction:column;align-items:flex-start;gap:var(--space-1)" },
+            "children": [
+              {
+                "el": "div",
+                "attrs": { "style": "max-width:min(80%, 520px);padding:var(--space-3) var(--space-4);border-radius:var(--radius-bubble);font-family:var(--font-body);font-size:14px;line-height:20px;background:var(--color-surface);color:var(--color-ink);border:1px solid var(--color-line)" },
+                "children": ["{children}"]
+              },
+              {
+                "el": "div",
+                "attrs": { "style": "display:flex;align-items:center;gap:var(--space-2);padding:0 var(--space-2);font-family:var(--font-body);font-size:12px;line-height:16px;color:var(--color-muted)" },
+                "children": [
+                  { "el": "span", "children": ["{time}"] },
+                  { "el": "span", "attrs": { "aria-hidden": "true" }, "children": ["·"] },
+                  { "el": "span", "children": ["{usage}"] },
+                  {
+                    "el": "button",
+                    "attrs": { "type": "button", "title": "Copy", "aria-label": "Copy message", "style": "display:inline-flex;align-items:center;justify-content:center;width:20px;height:20px;padding:0;border:none;border-radius:var(--radius-sm);background:transparent;color:var(--color-muted);opacity:0.65;cursor:pointer;transform:translateY(2px)" },
+                    "children": [
+                      {
+                        "el": "svg",
+                        "attrs": { "width": "14", "height": "14", "viewBox": "0 0 24 24", "fill": "none", "aria-hidden": "true", "stroke": "currentColor", "stroke-width": "2", "stroke-linecap": "round", "stroke-linejoin": "round" },
+                        "children": [
+                          { "el": "rect", "attrs": { "x": "9", "y": "9", "width": "11", "height": "11", "rx": "2" } },
+                          { "el": "path", "attrs": { "d": "M6 15H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v1" } }
+                        ]
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "name": "ChatComposer",
+      "note": "Chat input. A rounded surface (md radius / 8px) with a 1px hairline border wrapping a borderless, transparent, auto-growing textarea (min 56 → max 200) over a toolbar. Left cluster = Add, model picker, reasoning-effort picker; right cluster = mic + Send. Only Send spends the accent; every other control stays subtle so the toolbar reads as quiet chrome. (Preview shows the rest state.)",
+      "props": {
+        "placeholder": "Message OpenClaw…",
+        "model": "Claude Opus 4.8",
+        "effort": "High"
+      },
+      "root": {
+        "el": "div",
+        "attrs": { "style": "display:flex;flex-direction:column;gap:var(--space-2);padding:var(--space-2);border-radius:var(--radius-md);background:var(--color-surface);border:1px solid var(--color-line)" },
+        "children": [
+          {
+            "el": "textarea",
+            "attrs": { "rows": "2", "placeholder": "{placeholder}", "style": "min-height:56px;max-height:200px;resize:none;border:none;outline:none;background:transparent;color:var(--color-ink);font-family:var(--font-body);font-size:14px;line-height:20px;padding:var(--space-2)" }
+          },
+          {
+            "el": "div",
+            "attrs": { "style": "display:flex;align-items:center;justify-content:space-between;gap:var(--space-2)" },
+            "children": [
+              {
+                "el": "div",
+                "attrs": { "style": "display:flex;align-items:center;gap:var(--space-1);min-width:0" },
+                "children": [
+                  {
+                    "el": "button",
+                    "attrs": { "type": "button", "title": "Add context", "aria-label": "Add context", "style": "display:inline-flex;align-items:center;justify-content:center;width:32px;height:32px;padding:0;border-radius:var(--radius-sm);cursor:pointer;border:1px solid transparent;background:transparent;color:var(--color-muted)" },
+                    "children": [
+                      {
+                        "el": "svg",
+                        "attrs": { "width": "18", "height": "18", "viewBox": "0 0 24 24", "fill": "none", "aria-hidden": "true", "stroke": "currentColor", "stroke-width": "2", "stroke-linecap": "round", "stroke-linejoin": "round" },
+                        "children": [ { "el": "path", "attrs": { "d": "M12 5v14M5 12h14" } } ]
+                      }
+                    ]
+                  },
+                  { "component": "ComposerPicker", "props": { "label": "{model}" } },
+                  { "component": "ComposerPicker", "props": { "label": "{effort}" } }
+                ]
+              },
+              {
+                "el": "div",
+                "attrs": { "style": "display:flex;align-items:center;gap:var(--space-1)" },
+                "children": [
+                  {
+                    "el": "button",
+                    "attrs": { "type": "button", "title": "Dictate", "aria-label": "Dictate", "style": "display:inline-flex;align-items:center;justify-content:center;width:32px;height:32px;padding:0;border-radius:var(--radius-sm);cursor:pointer;border:1px solid transparent;background:transparent;color:var(--color-muted)" },
+                    "children": [
+                      {
+                        "el": "svg",
+                        "attrs": { "width": "18", "height": "18", "viewBox": "0 0 24 24", "fill": "none", "aria-hidden": "true", "stroke": "currentColor", "stroke-width": "2", "stroke-linecap": "round", "stroke-linejoin": "round" },
+                        "children": [
+                          { "el": "rect", "attrs": { "x": "9", "y": "3", "width": "6", "height": "11", "rx": "3" } },
+                          { "el": "path", "attrs": { "d": "M5 11a7 7 0 0 0 14 0M12 18v3" } }
+                        ]
+                      }
+                    ]
+                  },
+                  {
+                    "el": "button",
+                    "attrs": { "type": "button", "title": "Send", "aria-label": "Send", "style": "display:inline-flex;align-items:center;justify-content:center;width:32px;height:32px;padding:0;border-radius:var(--radius-sm);cursor:pointer;border:none;background:var(--color-accent);color:var(--color-accentInk)" },
+                    "children": [
+                      {
+                        "el": "svg",
+                        "attrs": { "width": "18", "height": "18", "viewBox": "0 0 24 24", "fill": "none", "aria-hidden": "true", "stroke": "currentColor", "stroke-width": "2", "stroke-linecap": "round", "stroke-linejoin": "round" },
+                        "children": [ { "el": "path", "attrs": { "d": "M12 19V5M5 12l7-7 7 7" } } ]
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "name": "ChatThread",
+      "note": "A short thread: the \"does chat hang together\" check — a user turn (accent bubble on the right) and an assistant turn (with its Copy affordance + context-usage readout), then the composer.",
+      "root": {
+        "el": "div",
+        "attrs": { "style": "display:flex;flex-direction:column;gap:var(--space-3);max-width:560px" },
+        "children": [
+          {
+            "el": "div",
+            "attrs": { "style": "display:flex;justify-content:flex-end" },
+            "children": [
+              {
+                "el": "div",
+                "attrs": { "style": "display:flex;flex-direction:column;align-items:flex-end;gap:var(--space-1)" },
+                "children": [
+                  {
+                    "el": "div",
+                    "attrs": { "style": "max-width:min(80%, 520px);padding:var(--space-3) var(--space-4);border-radius:var(--radius-bubble);font-family:var(--font-body);font-size:14px;line-height:20px;background:var(--color-accent);color:var(--color-accentInk);border:none" },
+                    "children": ["Can you list the Windows node capabilities?"]
+                  },
+                  {
+                    "el": "div",
+                    "attrs": { "style": "display:flex;align-items:center;gap:var(--space-2);padding:0 var(--space-2);font-family:var(--font-body);font-size:12px;line-height:16px;color:var(--color-muted)" },
+                    "children": [ { "el": "span", "children": ["2:14 PM"] } ]
+                  }
+                ]
+              }
+            ]
+          },
+          { "component": "ChatBubble", "props": { "time": "2:14 PM", "usage": "12.5K/200K (6%)", "children": "Paired to the gateway — 6 capabilities are live, including system.run and clipboard access." } },
+          { "component": "ChatComposer" }
+        ]
+      }
+    },
+    {
+      "name": "ExampleScreen",
+      "note": "A representative screen composed from the pieces above — the \"does it hang together\" check for the whole system.",
+      "root": {
+        "el": "section",
+        "class": "ds-screen",
+        "children": [
+          {
+            "el": "header",
+            "class": "ds-screen-head",
+            "children": [
+              {
+                "el": "div",
+                "children": [
+                  { "el": "p", "class": "ds-eyebrow", "children": ["Connection"] },
+                  { "el": "h2", "class": "ds-screen-title", "children": ["OpenClaw Windows Hub"] }
+                ]
+              },
+              { "component": "Badge", "props": { "tone": "positive", "children": "Connected" } }
+            ]
+          },
+          {
+            "el": "div",
+            "class": "ds-grid",
+            "children": [
+              { "component": "Card", "props": { "title": "Gateway", "body": "Paired to OpenClawGateway · last seen just now." } },
+              { "component": "Card", "props": { "title": "Windows node", "body": "6 capabilities exposed over MCP." } }
+            ]
+          },
+          {
+            "el": "div",
+            "class": "ds-row",
+            "children": [
+              { "component": "Field", "props": { "label": "Gateway address", "placeholder": "127.0.0.1:18789" } },
+              { "component": "Button", "props": { "children": "Connect" } }
+            ]
+          }
+        ]
+      }
+    }
+  ]
+}
