@@ -7124,6 +7124,172 @@ public class OpenClawChatDataProviderTests
     }
 
     [Fact]
+    public async Task LoadHistoryAsync_CrossKeyDuplicateCacheIdentity_DoesNotCollapseFlattenedRows()
+    {
+        using var tempDir = new TempDirectory();
+        var cachePath = Path.Combine(tempDir.DirectoryPath, "tool-metadata.json");
+        File.WriteAllText(
+            cachePath,
+            JsonSerializer.Serialize(new Dictionary<string, List<OpenClawChatDataProvider.CachedToolMeta>>
+            {
+                ["session-1"] =
+                [
+                    new()
+                    {
+                        Ts = 100,
+                        ToolName = "Bash",
+                        Label = "first",
+                        ToolCallId = "shared",
+                        RunId = "run-1"
+                    }
+                ],
+                ["main"] =
+                [
+                    new()
+                    {
+                        Ts = 110,
+                        ToolName = "Bash",
+                        Label = "first enriched",
+                        ToolCallId = "shared",
+                        RunId = "run-1",
+                        IdentityStrength = ChatToolIdentityStrength.Specific
+                    },
+                    new()
+                    {
+                        Ts = 200,
+                        ToolName = "Apply Patch",
+                        Label = "second",
+                        ToolCallId = "shared",
+                        RunId = "run-2",
+                        IdentityStrength = ChatToolIdentityStrength.Specific
+                    }
+                ]
+            }));
+        var (bridge, provider, snapshots, _) = CreateProvider(
+            [MainSession()],
+            toolMetaCachePath: cachePath);
+        bridge.HistoryBehavior = _ => Task.FromResult(new ChatHistoryInfo
+        {
+            SessionKey = "main",
+            SessionId = "session-1",
+            Messages =
+            [
+                new ChatMessageInfo { Role = "toolresult", Text = "first output", Ts = 150 },
+                new ChatMessageInfo { Role = "toolresult", Text = "second output", Ts = 250 }
+            ]
+        });
+
+        await provider.LoadHistoryAsync("main");
+
+        Assert.Collection(
+            snapshots[^1].Timelines["main"].Entries,
+            first =>
+            {
+                Assert.Equal("Bash", first.ToolName);
+                Assert.Equal("first output", first.ToolOutput);
+                Assert.StartsWith("history-tool-", first.ToolCallId);
+                Assert.Null(first.ToolRunId);
+            },
+            second =>
+            {
+                Assert.Equal("Apply Patch", second.ToolName);
+                Assert.Equal("second output", second.ToolOutput);
+                Assert.StartsWith("history-tool-", second.ToolCallId);
+                Assert.Null(second.ToolRunId);
+                Assert.NotEqual(snapshots[^1].Timelines["main"].Entries[0].ToolCallId, second.ToolCallId);
+            });
+    }
+
+    [Fact]
+    public async Task LoadHistoryAsync_MixedStructuredAndFlattenedCache_UsesOnlyVerifiedCorrelation()
+    {
+        using var tempDir = new TempDirectory();
+        var cachePath = Path.Combine(tempDir.DirectoryPath, "tool-metadata.json");
+        File.WriteAllText(
+            cachePath,
+            JsonSerializer.Serialize(new Dictionary<string, List<OpenClawChatDataProvider.CachedToolMeta>>
+            {
+                ["session-1"] =
+                [
+                    new()
+                    {
+                        Ts = 100,
+                        ToolName = "Bash",
+                        ToolCallId = "call-1",
+                        RunId = "run-1"
+                    },
+                    new()
+                    {
+                        Ts = 200,
+                        ToolName = "Apply Patch",
+                        ToolCallId = "cached-flat",
+                        RunId = "run-2",
+                        IdentityStrength = ChatToolIdentityStrength.Specific
+                    }
+                ]
+            }));
+        var (bridge, provider, snapshots, _) = CreateProvider(
+            [MainSession()],
+            toolMetaCachePath: cachePath);
+        bridge.HistoryBehavior = _ => Task.FromResult(new ChatHistoryInfo
+        {
+            SessionKey = "main",
+            SessionId = "session-1",
+            Messages =
+            [
+                new ChatMessageInfo
+                {
+                    Role = "assistant",
+                    Ts = 100,
+                    ToolContent =
+                    [
+                        new ChatToolContentInfo
+                        {
+                            Kind = ChatToolContentKind.Call,
+                            CallId = "call-1",
+                            ToolName = "exec"
+                        }
+                    ]
+                },
+                new ChatMessageInfo
+                {
+                    Role = "toolresult",
+                    Ts = 150,
+                    ToolContent =
+                    [
+                        new ChatToolContentInfo
+                        {
+                            Kind = ChatToolContentKind.Result,
+                            CallId = "call-1",
+                            ToolName = "exec",
+                            Text = "structured output"
+                        }
+                    ]
+                },
+                new ChatMessageInfo { Role = "toolresult", Text = "flattened output", Ts = 250 }
+            ]
+        });
+
+        await provider.LoadHistoryAsync("main");
+
+        Assert.Collection(
+            snapshots[^1].Timelines["main"].Entries,
+            structured =>
+            {
+                Assert.Equal("call-1", structured.ToolCallId);
+                Assert.Equal("structured output", structured.ToolOutput);
+            },
+            flattened =>
+            {
+                Assert.Equal("Apply Patch", flattened.ToolName);
+                Assert.Equal("flattened output", flattened.ToolOutput);
+                Assert.StartsWith("history-tool-", flattened.ToolCallId);
+                Assert.NotEqual("cached-flat", flattened.ToolCallId);
+                Assert.Null(flattened.ToolRunId);
+            });
+    }
+
+    [Fact]
     public async Task AgentEvent_ToolResultIsError_ExtractsCoreErrorDetails()
     {
         var (bridge, provider, snapshots, _) = CreateProvider(new[] { MainSession() });

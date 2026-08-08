@@ -39,7 +39,7 @@ public class ToolMetaCacheTests
         var result = OpenClawChatDataProvider.TryMatchCachedTool(cache, 200);
 
         Assert.NotNull(result);
-        Assert.Equal("bash", result!.ToolName);
+        Assert.Equal("Bash", result!.ToolName);
         Assert.Equal("ls -la", result.Label);
         Assert.Empty(cache); // consumed
     }
@@ -57,7 +57,7 @@ public class ToolMetaCacheTests
         var r2 = OpenClawChatDataProvider.TryMatchCachedTool(cache, 600);
         var r3 = OpenClawChatDataProvider.TryMatchCachedTool(cache, 700);
 
-        Assert.Equal("bash", r1!.ToolName);
+        Assert.Equal("Bash", r1!.ToolName);
         Assert.Equal("grep", r2!.ToolName);
         Assert.Equal("view", r3!.ToolName);
         Assert.Empty(cache);
@@ -100,7 +100,7 @@ public class ToolMetaCacheTests
         var result = OpenClawChatDataProvider.TryMatchCachedTool(cache, 100_000);
 
         Assert.NotNull(result);
-        Assert.Equal("bash", result!.ToolName);
+        Assert.Equal("Bash", result!.ToolName);
     }
 
     [Fact]
@@ -371,8 +371,121 @@ public class ToolMetaCacheTests
 
         var result = OpenClawChatDataProvider.TryMatchCachedTool(cache, 200);
 
-        Assert.Equal("bash name", result!.ToolName);
+        Assert.Equal("Bash", result!.ToolName);
         Assert.Equal("line1       \"line2\"", result.Label);
+    }
+
+    [Fact]
+    public void BuildCachedToolQueue_CrossKeyDuplicateUsesEarliestPositionAndRichestMetadata()
+    {
+        var sessionEntries = new[]
+        {
+            new OpenClawChatDataProvider.CachedToolMeta
+            {
+                Ts = 100,
+                ToolName = "Tool",
+                Label = "starting",
+                ToolCallId = "tool-1",
+                RunId = "run-1",
+                IdentityStrength = ChatToolIdentityStrength.Fallback,
+                ToolArgs = new System.Text.Json.Nodes.JsonObject { ["command"] = "Get-Date" }
+            }
+        };
+        var threadEntries = new[]
+        {
+            new OpenClawChatDataProvider.CachedToolMeta
+            {
+                Ts = 110,
+                ToolName = "Bash",
+                Label = "finished",
+                ToolCallId = "tool-1",
+                RunId = "run-1",
+                IdentityStrength = ChatToolIdentityStrength.Specific,
+                ToolArgs = new System.Text.Json.Nodes.JsonObject { ["path"] = "src" }
+            }
+        };
+
+        var queue = OpenClawChatDataProvider.BuildCachedToolQueue(sessionEntries, threadEntries);
+
+        var merged = Assert.Single(queue!);
+        Assert.Equal(100, merged.Ts);
+        Assert.Equal("Bash", merged.ToolName);
+        Assert.Equal("finished", merged.Label);
+        Assert.Equal("Get-Date", merged.ToolArgs!["command"]!.GetValue<string>());
+        Assert.Equal("src", merged.ToolArgs["path"]!.GetValue<string>());
+    }
+
+    [Fact]
+    public void BuildCachedToolQueue_ReusedIdsAcrossRunsAndLegacyTurnsRemainDistinct()
+    {
+        var entries = new[]
+        {
+            new OpenClawChatDataProvider.CachedToolMeta { Ts = 1, ToolCallId = "same", RunId = "run-1" },
+            new OpenClawChatDataProvider.CachedToolMeta { Ts = 2, ToolCallId = "same", RunId = "run-2" },
+            new OpenClawChatDataProvider.CachedToolMeta { Ts = 3, ToolCallId = "same", LegacyTurn = 1 },
+            new OpenClawChatDataProvider.CachedToolMeta { Ts = 4, ToolCallId = "same", LegacyTurn = 2 }
+        };
+
+        var queue = OpenClawChatDataProvider.BuildCachedToolQueue(entries, null);
+
+        Assert.Equal(4, queue!.Count);
+        Assert.Equal([1L, 2L, 3L, 4L], queue.Select(entry => entry.Ts).ToArray());
+    }
+
+    [Fact]
+    public void BuildCachedToolQueue_ReadSanitizationDoesNotMutateSource()
+    {
+        var rawName = "bash\u202Eevil";
+        var rawLabel = new string('x', NativeToolProjector.MaxDisplayValueChars + 20) + "\u202E";
+        var source = new OpenClawChatDataProvider.CachedToolMeta
+        {
+            Ts = 100,
+            ToolName = rawName,
+            Label = rawLabel,
+            ToolCallId = "tool-1"
+        };
+
+        var queue = OpenClawChatDataProvider.BuildCachedToolQueue([source], null);
+        var result = OpenClawChatDataProvider.TryMatchCachedTool(queue, 200);
+
+        Assert.Equal(rawName, source.ToolName);
+        Assert.Equal(rawLabel, source.Label);
+        Assert.Equal("Tool", result!.ToolName);
+        Assert.DoesNotContain('\u202E', result.Label);
+        Assert.True(result.Label.Length <= NativeToolProjector.MaxDisplayValueChars);
+    }
+
+    [Fact]
+    public void BuildCachedToolQueue_RevalidatesIdentityStrengthBeforeMerging()
+    {
+        var entries = new[]
+        {
+            new OpenClawChatDataProvider.CachedToolMeta
+            {
+                Ts = 100,
+                ToolName = "invalid\u202E",
+                ToolCallId = "tool-1",
+                RunId = "run-1",
+                IdentityStrength = ChatToolIdentityStrength.Explicit
+            },
+            new OpenClawChatDataProvider.CachedToolMeta
+            {
+                Ts = 110,
+                ToolName = "bash",
+                ToolCallId = "tool-1",
+                RunId = "run-1",
+                IdentityStrength = ChatToolIdentityStrength.Heuristic
+            }
+        };
+
+        var queue = OpenClawChatDataProvider.BuildCachedToolQueue(entries, null);
+
+        var merged = Assert.Single(queue!);
+        Assert.Equal(100, merged.Ts);
+        Assert.Equal("Bash", merged.ToolName);
+        Assert.Equal(ChatToolIdentityStrength.Specific, merged.IdentityStrength);
+        Assert.Equal("invalid\u202E", entries[0].ToolName);
+        Assert.Equal(ChatToolIdentityStrength.Explicit, entries[0].IdentityStrength);
     }
 
     [Fact]

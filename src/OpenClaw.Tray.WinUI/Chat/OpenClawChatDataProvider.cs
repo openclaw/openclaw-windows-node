@@ -1317,6 +1317,7 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
                                 var cached = TryMatchCachedTool(cachedTools, msg.Ts);
                                 var kind = cached?.ToolName ?? NativeToolProjector.ClassifyFlattenedToolOutput(text);
                                 var label = cached?.Label ?? NativeToolProjector.ExtractFlattenedToolSummary(text);
+                                var historyToolCallId = $"history-tool-{syntheticToolCallSequence++}";
                                 Logger.Debug($"[ChatHistory]   → routed: TOOL chip kind='{kind}' cached={cached is not null}");
                                 rebuilt = ApplyAndCaptureMeta(
                                     rebuilt,
@@ -1324,16 +1325,14 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
                                         label,
                                         kind,
                                         ToolArgs: cached?.ToolArgs,
-                                        ToolCallId: cached?.ToolCallId,
-                                        IdentityStrength: cached?.IdentityStrength ?? NativeToolProjector.ClassifyHistoryIdentityStrength(kind),
-                                        RunId: cached?.RunId),
+                                        ToolCallId: historyToolCallId,
+                                        IdentityStrength: cached?.IdentityStrength ?? NativeToolProjector.ClassifyHistoryIdentityStrength(kind)),
                                     msgMeta);
                                 rebuilt = ApplyAndCaptureMeta(
                                     rebuilt,
                                     new ChatToolOutputEvent(
                                         text,
-                                        ToolCallId: cached?.ToolCallId,
-                                        RunId: cached?.RunId),
+                                        ToolCallId: historyToolCallId),
                                     msgMeta);
                                 break;
                             }
@@ -1376,6 +1375,7 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
                                 var cached = TryMatchCachedTool(cachedTools, msg.Ts);
                                 var kind = cached?.ToolName ?? NativeToolProjector.ClassifyFlattenedToolOutput(text);
                                 var label = cached?.Label ?? NativeToolProjector.ExtractFlattenedToolSummary(text);
+                                var historyToolCallId = $"history-tool-{syntheticToolCallSequence++}";
                                 Logger.Debug($"[ChatHistory]   → routed: TOOL chip (role=toolresult, kind='{kind}' cached={cached is not null})");
                                 rebuilt = ApplyAndCaptureMeta(
                                     rebuilt,
@@ -1383,16 +1383,14 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
                                         label,
                                         kind,
                                         ToolArgs: cached?.ToolArgs,
-                                        ToolCallId: cached?.ToolCallId,
-                                        IdentityStrength: cached?.IdentityStrength ?? NativeToolProjector.ClassifyHistoryIdentityStrength(kind),
-                                        RunId: cached?.RunId),
+                                        ToolCallId: historyToolCallId,
+                                        IdentityStrength: cached?.IdentityStrength ?? NativeToolProjector.ClassifyHistoryIdentityStrength(kind)),
                                     msgMeta);
                                 rebuilt = ApplyAndCaptureMeta(
                                     rebuilt,
                                     new ChatToolOutputEvent(
                                         text,
-                                        ToolCallId: cached?.ToolCallId,
-                                        RunId: cached?.RunId),
+                                        ToolCallId: historyToolCallId),
                                     msgMeta);
                             }
                                 break;
@@ -6687,6 +6685,11 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
         public ChatToolIdentityStrength IdentityStrength { get; set; } = ChatToolIdentityStrength.Heuristic;
     }
 
+    private readonly record struct CachedToolCorrelationIdentity(
+        string? RunId,
+        string ToolCallId,
+        long LegacyTurn);
+
     /// <summary>Attachment display metadata persisted without attachment bytes.</summary>
     internal sealed class CachedAttachmentMeta
     {
@@ -7193,24 +7196,105 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
         if (string.IsNullOrEmpty(sessionId) && string.IsNullOrEmpty(threadId)) return null;
         lock (_gate)
         {
-            var entries = new List<CachedToolMeta>();
+            IReadOnlyList<CachedToolMeta>? sessionEntries = null;
+            IReadOnlyList<CachedToolMeta>? threadEntries = null;
             if (!string.IsNullOrEmpty(sessionId) &&
-                _toolMetaCache.TryGetValue(sessionId!, out var sessionEntries))
+                _toolMetaCache.TryGetValue(sessionId!, out var cachedSessionEntries))
             {
-                entries.AddRange(sessionEntries);
+                sessionEntries = cachedSessionEntries;
             }
 
             if (!string.IsNullOrEmpty(threadId) &&
                 (string.IsNullOrEmpty(sessionId) || !string.Equals(sessionId, threadId, StringComparison.Ordinal)) &&
-                _toolMetaCache.TryGetValue(threadId, out var threadEntries))
+                _toolMetaCache.TryGetValue(threadId, out var cachedThreadEntries))
             {
-                entries.AddRange(threadEntries);
+                threadEntries = cachedThreadEntries;
             }
 
-            if (entries.Count > 0)
-                return new Queue<CachedToolMeta>(entries.OrderBy(e => e.Ts));
+            return BuildCachedToolQueue(sessionEntries, threadEntries);
         }
-        return null;
+    }
+
+    internal static Queue<CachedToolMeta>? BuildCachedToolQueue(
+        IReadOnlyList<CachedToolMeta>? sessionEntries,
+        IReadOnlyList<CachedToolMeta>? threadEntries)
+    {
+        var ordered = (sessionEntries ?? Array.Empty<CachedToolMeta>())
+            .Concat(threadEntries ?? Array.Empty<CachedToolMeta>())
+            .OrderBy(entry => entry.Ts);
+        var merged = new List<CachedToolMeta>();
+        var stableIdentities = new Dictionary<CachedToolCorrelationIdentity, int>();
+
+        foreach (var source in ordered)
+        {
+            var entry = CloneCachedToolMeta(source);
+            if (!TryGetCachedToolCorrelationIdentity(entry, out var identity) ||
+                !stableIdentities.TryGetValue(identity, out var existingIndex))
+            {
+                if (TryGetCachedToolCorrelationIdentity(entry, out identity))
+                    stableIdentities[identity] = merged.Count;
+                merged.Add(entry);
+                continue;
+            }
+
+            MergeCachedToolMeta(merged[existingIndex], entry);
+        }
+
+        return merged.Count == 0 ? null : new Queue<CachedToolMeta>(merged);
+    }
+
+    private static bool TryGetCachedToolCorrelationIdentity(
+        CachedToolMeta entry,
+        out CachedToolCorrelationIdentity identity)
+    {
+        if (string.IsNullOrWhiteSpace(entry.ToolCallId))
+        {
+            identity = default;
+            return false;
+        }
+
+        var runId = string.IsNullOrWhiteSpace(entry.RunId) ? null : entry.RunId;
+        identity = new CachedToolCorrelationIdentity(
+            runId,
+            entry.ToolCallId,
+            runId is null ? entry.LegacyTurn : 0);
+        return true;
+    }
+
+    private static CachedToolMeta CloneCachedToolMeta(CachedToolMeta source)
+    {
+        var identity = NativeToolProjector.CanonicalizeToolIdentity(
+            NormalizeCachedDisplayText(source.ToolName),
+            source.IdentityStrength);
+        return new CachedToolMeta
+        {
+            Ts = source.Ts,
+            ToolName = identity.Name,
+            Label = NativeToolProjector.SanitizeToolDisplayValue(
+                NormalizeCachedDisplayText(source.Label)),
+            ToolCallId = source.ToolCallId,
+            RunId = string.IsNullOrWhiteSpace(source.RunId) ? null : source.RunId,
+            LegacyTurn = string.IsNullOrWhiteSpace(source.RunId) ? source.LegacyTurn : 0,
+            ToolArgs = NormalizeCachedToolArgs(source.ToolArgs),
+            IdentityStrength = identity.Strength
+        };
+    }
+
+    private static void MergeCachedToolMeta(CachedToolMeta existing, CachedToolMeta incoming)
+    {
+        if (incoming.IdentityStrength > existing.IdentityStrength)
+        {
+            existing.ToolName = incoming.ToolName;
+            existing.IdentityStrength = incoming.IdentityStrength;
+        }
+        else if (string.IsNullOrWhiteSpace(existing.ToolName))
+        {
+            existing.ToolName = incoming.ToolName;
+        }
+
+        if (!string.IsNullOrWhiteSpace(incoming.Label))
+            existing.Label = incoming.Label;
+        existing.ToolArgs = MergeCachedToolArgs(existing.ToolArgs, incoming.ToolArgs);
     }
 
     /// <summary>
@@ -7233,8 +7317,13 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
             return null; // cached entry is >5 min after this history entry — not a match
 
         var match = cache.Dequeue();
-        match.ToolName = NormalizeCachedDisplayText(match.ToolName);
-        match.Label = NormalizeCachedDisplayText(match.Label);
+        var identity = NativeToolProjector.CanonicalizeToolIdentity(
+            NormalizeCachedDisplayText(match.ToolName),
+            match.IdentityStrength);
+        match.ToolName = identity.Name;
+        match.IdentityStrength = identity.Strength;
+        match.Label = NativeToolProjector.SanitizeToolDisplayValue(
+            NormalizeCachedDisplayText(match.Label));
         match.ToolArgs = NormalizeCachedToolArgs(match.ToolArgs);
         return match;
     }
