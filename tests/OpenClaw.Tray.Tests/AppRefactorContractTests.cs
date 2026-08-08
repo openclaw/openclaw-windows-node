@@ -179,6 +179,17 @@ public sealed class AppRefactorContractTests
     }
 
     [Fact]
+    public void DashboardLinkPolicy_StaysDelegatedToFocusedService()
+    {
+        var source = ReadAppSources();
+
+        Assert.Contains("GatewayDashboardLinkService", source);
+        Assert.DoesNotContain("OpenDashboardAfterTailscaleAuthRevalidationAsync", source);
+        Assert.DoesNotContain(".RevalidateTailscaleDashboardAuthAsync(active.Id)", source);
+        Assert.DoesNotContain("GatewayDashboardUrlBuilder.Build(", source);
+    }
+
+    [Fact]
     public void SshTunnelExit_RecoversActiveRegistryGatewayThroughConnectionManager()
     {
         var source = ReadAppSources();

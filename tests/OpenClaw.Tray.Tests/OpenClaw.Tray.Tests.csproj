@@ -73,6 +73,7 @@
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Services\OnboardingChatBootstrapper.cs" Link="Services\OnboardingChatBootstrapper.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Services\StartupSetupState.cs" Link="Services\StartupSetupState.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Services\SetupExistingGatewayClassifier.cs" Link="Services\SetupExistingGatewayClassifier.cs" />
+    <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Services\GatewayDashboardLinkService.cs" Link="Services\GatewayDashboardLinkService.cs" />
     <!-- GatewayHostAccess, GatewayTerminalLauncher, WslGatewayController and WslCommandRunner
          now live in OpenClaw.Connection (referenced above), so they no longer need linking. -->
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Services\WslKeepAlivePolicy.cs" Link="Services\WslKeepAlivePolicy.cs" />

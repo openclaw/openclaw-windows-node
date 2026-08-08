@@ -52,6 +52,7 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
     private TrayIcon? _trayIcon;
     private TrayIconCoordinator? _trayIconCoordinator;
     private GatewayConnectionManager? _connectionManager;
+    private GatewayDashboardLinkService? _gatewayDashboardLinkService;
     private GatewayRegistry? _gatewayRegistry;
     private OpenClawTray.Services.ManagedLocalGatewayAutoRepairMonitor? _managedLocalAutoRepairMonitor;
     private ManagedLocalGatewayPortProvenanceService? _managedLocalPortProvenance;
@@ -798,6 +799,10 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
             diagnostics: diagnostics,
             tunnelManager: _sshTunnelService,
             endpointProvenanceProbe: managedLocalPortProvenance.InspectAsync);
+        _gatewayDashboardLinkService = new GatewayDashboardLinkService(
+            (gatewayId, cancellationToken) => _connectionManager.RevalidateTailscaleDashboardAuthAsync(
+                gatewayId,
+                cancellationToken));
         _connectionManager.OperatorClientChanged += OnOperatorClientChanged;
         _connectionManager.StateChanged += OnManagerStateChanged;
 
@@ -4127,58 +4132,43 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
         var appendBrowserCredential =
             !isBootstrapToken && credentialSource == CredentialResolver.SourceSharedGatewayToken;
         var active = _gatewayRegistry?.GetActive();
-        if (active?.TrustTailscaleAuth == true &&
-            string.Equals(active.Url, gatewayUrl, StringComparison.OrdinalIgnoreCase) &&
-            _connectionManager is not null)
-        {
-            _ = OpenDashboardAfterTailscaleAuthRevalidationAsync(
-                active.Id,
-                gatewayUrl,
-                path,
-                token,
-                appendBrowserCredential);
-            return;
-        }
+        var tailscaleGatewayId = active?.TrustTailscaleAuth == true &&
+                                 string.Equals(active.Url, gatewayUrl, StringComparison.OrdinalIgnoreCase)
+            ? active.Id
+            : null;
 
-        LaunchDashboardUrl(GatewayDashboardUrlBuilder.Build(
+        _ = OpenDashboardFromLinkServiceAsync(new GatewayDashboardLinkRequest(
             gatewayUrl,
             path,
             token,
-            appendBrowserCredential));
+            appendBrowserCredential,
+            tailscaleGatewayId));
     }
 
-    private async Task OpenDashboardAfterTailscaleAuthRevalidationAsync(
-        string gatewayId,
-        string gatewayUrl,
-        string? path,
-        string? browserCredential,
-        bool appendBrowserCredential)
+    private async Task OpenDashboardFromLinkServiceAsync(GatewayDashboardLinkRequest request)
     {
-        var trustTailscaleAuth = false;
-        try
+        var service = _gatewayDashboardLinkService;
+        if (service is null)
         {
-            trustTailscaleAuth = await _connectionManager!
-                .RevalidateTailscaleDashboardAuthAsync(gatewayId);
-        }
-        catch (Exception ex)
-        {
-            Logger.Warn($"Failed to revalidate Tailscale dashboard auth: {ex.Message}");
-        }
-
-        if (!trustTailscaleAuth && !appendBrowserCredential)
-        {
-            ShowConnectionSettingsForPairingIssue(
-                "Dashboard",
-                "Tailscale authentication is unavailable and no approved browser credential is available");
+            ShowConnectionSettingsForPairingIssue("Dashboard", "Connection manager is not initialized");
             return;
         }
 
-        LaunchDashboardUrl(GatewayDashboardUrlBuilder.Build(
-            gatewayUrl,
-            path,
-            browserCredential,
-            appendBrowserCredential && !trustTailscaleAuth,
-            trustTailscaleAuth));
+        var result = await service.BuildAsync(request);
+        if (result.RevalidationError is not null)
+        {
+            Logger.Warn($"Failed to revalidate Tailscale dashboard auth: {result.RevalidationError}");
+        }
+
+        if (!result.Success)
+        {
+            ShowConnectionSettingsForPairingIssue(
+                "Dashboard",
+                result.Error ?? "Dashboard URL is unavailable");
+            return;
+        }
+
+        LaunchDashboardUrl(result.Url!);
     }
 
     private static void LaunchDashboardUrl(string url)
@@ -4680,6 +4670,7 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
         }
 
         var connectionManager = _connectionManager;
+        _gatewayDashboardLinkService = null;
         if (connectionManager != null)
         {
             await SafeShutdownStepAsync("gateway client", async () =>

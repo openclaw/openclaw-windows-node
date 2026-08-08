@@ -214,25 +214,26 @@ public partial class App
 
             var active = _gatewayRegistry?.GetActive();
             var activeMatches = active is not null &&
-                string.Equals(active.Url, gatewayUrl, StringComparison.OrdinalIgnoreCase);
-            var trustTailscaleAuth = false;
-            if (active?.TrustTailscaleAuth == true &&
-                activeMatches &&
-                _connectionManager is not null)
-            {
-                trustTailscaleAuth = await _connectionManager
-                    .RevalidateTailscaleDashboardAuthAsync(active.Id);
-            }
-
+                                string.Equals(active.Url, gatewayUrl, StringComparison.OrdinalIgnoreCase);
             var usesSharedCredential =
                 !isBootstrapToken && credentialSource == CredentialResolver.SourceSharedGatewayToken;
+            var tailscaleGatewayId = active?.TrustTailscaleAuth == true && activeMatches
+                ? active.Id
+                : null;
+            var service = _gatewayDashboardLinkService;
+            if (service is null)
+                return new { error = "Connection manager is not initialized" };
 
-            var url = GatewayDashboardUrlBuilder.Build(
+            var result = await service.BuildAsync(new GatewayDashboardLinkRequest(
                 gatewayUrl,
                 path,
                 dashboardCredential,
                 usesSharedCredential,
-                trustTailscaleAuth);
+                tailscaleGatewayId));
+            if (!result.Success)
+                return new { error = result.Error };
+
+            var url = result.Url!;
 
             return new
             {
