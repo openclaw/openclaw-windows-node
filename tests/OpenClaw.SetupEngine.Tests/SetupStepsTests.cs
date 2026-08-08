@@ -1980,6 +1980,63 @@ public class SetupStepsTests : IDisposable
     }
 
     [Fact]
+    public void SetupWizard_TerminalTuiSigtermAfterFinalStepCompletesWithoutCancel()
+    {
+        var decision = SetupWizardRunner.DecideTerminalWizardError(
+            payloadIsTerminal: true,
+            "Error: TUI exited from signal SIGTERM",
+            answeredFinalWizardStep: true);
+
+        Assert.True(decision.Result.IsSuccess, decision.Result.Message);
+        Assert.True(decision.MarksWizardCompleted);
+        Assert.Contains("hosted wizard TUI after the final step", decision.Result.Message);
+        Assert.Contains("Error: TUI exited from signal SIGTERM", decision.LogWarning);
+    }
+
+    [Theory]
+    // Early SIGTERM before the authoritative final step was answered.
+    [InlineData(true, "Error: TUI exited from signal SIGTERM", false)]
+    // Terminal-looking error on a non-terminal payload.
+    [InlineData(false, "Error: TUI exited from signal SIGTERM", true)]
+    // Inexact SIGTERM-like errors.
+    [InlineData(true, "Error: TUI exited from signal SIGKILL", true)]
+    [InlineData(true, "TUI exited from signal SIGTERM", true)]
+    [InlineData(true, "Error: TUI exited from signal SIGTERM then the gateway died", true)]
+    // Unrelated terminal failures.
+    [InlineData(true, "PROTOCOL_MISMATCH", true)]
+    [InlineData(true, "Wizard returned error status.", true)]
+    public void SetupWizard_TerminalWizardErrorsStayFatalAndDoNotSuppressCancel(
+        bool payloadIsTerminal,
+        string error,
+        bool answeredFinalWizardStep)
+    {
+        var decision = SetupWizardRunner.DecideTerminalWizardError(
+            payloadIsTerminal,
+            error,
+            answeredFinalWizardStep);
+
+        Assert.False(decision.Result.IsSuccess);
+        Assert.False(decision.MarksWizardCompleted);
+        Assert.Null(decision.LogWarning);
+        Assert.Equal($"Gateway wizard failed: {error}", decision.Result.Message);
+    }
+
+    [Fact]
+    public void SetupWizard_KnownFinalizationPromptBugStillCompletesWithoutFinalStep()
+    {
+        var decision = SetupWizardRunner.DecideTerminalWizardError(
+            payloadIsTerminal: true,
+            "TypeError: this.prompt is not a function",
+            answeredFinalWizardStep: false);
+
+        Assert.True(decision.Result.IsSuccess, decision.Result.Message);
+        Assert.True(decision.MarksWizardCompleted);
+        Assert.Equal(
+            "Gateway wizard completed with non-fatal finalization prompt warning",
+            decision.Result.Message);
+    }
+
+    [Fact]
     public async Task StartGateway_RestartUsesRestartCommandAndWaitsForHealth()
     {
         var commands = new FakeCommandRunner(

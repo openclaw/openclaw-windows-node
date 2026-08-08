@@ -83,6 +83,138 @@ public class GatewayWizardRestartRecoveryPolicyTests
                 closeStatusCode));
     }
 
+    [Theory]
+    [InlineData("done")]
+    [InlineData("Done")]
+    [InlineData("  DONE  ")]
+    public void AuthoritativeFinalWizardStep_MatchesNormalizedDoneNote(string title)
+    {
+        Assert.True(GatewayWizardRestartRecoveryPolicy.IsAuthoritativeFinalWizardStep(
+            "note",
+            "5c1c6f22-2f4f-4b0a-9d0e-2c0a6f1a7c31",
+            title,
+            hasOptions: false,
+            stepIndex: 41,
+            totalSteps: 42));
+    }
+
+    [Theory]
+    [InlineData(41, 42)]
+    [InlineData(42, 42)]
+    public void AuthoritativeFinalWizardStep_AcceptsZeroAndOneBasedFinalPosition(
+        int stepIndex,
+        int totalSteps)
+    {
+        Assert.True(GatewayWizardRestartRecoveryPolicy.IsAuthoritativeFinalWizardStep(
+            "note",
+            "5c1c6f22-2f4f-4b0a-9d0e-2c0a6f1a7c31",
+            "Done",
+            hasOptions: false,
+            stepIndex,
+            totalSteps));
+    }
+
+    [Fact]
+    public void AuthoritativeFinalWizardStep_AcceptsAbsentPositionMetadata()
+    {
+        Assert.True(GatewayWizardRestartRecoveryPolicy.IsAuthoritativeFinalWizardStep(
+            "note",
+            stepId: "done",
+            title: "",
+            hasOptions: false,
+            stepIndex: 0,
+            totalSteps: 0));
+    }
+
+    [Theory]
+    // Not the final key.
+    [InlineData("note", "step-7", "Almost done", false, 0, 0)]
+    [InlineData("note", "done-later", "All done", false, 0, 0)]
+    [InlineData("note", "model-check", "Model check", false, 0, 0)]
+    // Answerable or option-bearing steps are never the terminal acknowledgement.
+    [InlineData("text", "done", "Done", false, 0, 0)]
+    [InlineData("confirm", "done", "Done", false, 0, 0)]
+    [InlineData("select", "done", "Done", true, 0, 0)]
+    [InlineData("progress", "done", "Done", false, 0, 0)]
+    [InlineData("note", "done", "Done", true, 0, 0)]
+    // Position metadata says the step is not last, or is impossible.
+    [InlineData("note", "done", "Done", false, 5, 42)]
+    [InlineData("note", "done", "Done", false, 43, 42)]
+    public void AuthoritativeFinalWizardStep_RejectsEverythingElse(
+        string stepType,
+        string stepId,
+        string title,
+        bool hasOptions,
+        int stepIndex,
+        int totalSteps)
+    {
+        Assert.False(GatewayWizardRestartRecoveryPolicy.IsAuthoritativeFinalWizardStep(
+            stepType,
+            stepId,
+            title,
+            hasOptions,
+            stepIndex,
+            totalSteps));
+    }
+
+    [Fact]
+    public void AuthoritativeFinalWizardStep_IgnoresStepMessageText()
+    {
+        Assert.False(GatewayWizardRestartRecoveryPolicy.IsAuthoritativeFinalWizardStep(
+            "note",
+            stepId: "security-disclaimer",
+            title: "Security disclaimer",
+            hasOptions: false,
+            stepIndex: 0,
+            totalSteps: 0));
+    }
+
+    [Fact]
+    public void HostedWizardTermination_AfterFinalStep_IsAccepted()
+    {
+        Assert.True(
+            GatewayWizardRestartRecoveryPolicy.IsHostedWizardTerminationAfterFinalStep(
+                payloadIsTerminal: true,
+                "Error: TUI exited from signal SIGTERM",
+                answeredAuthoritativeFinalStep: true));
+    }
+
+    [Fact]
+    public void HostedWizardTermination_ToleratesOnlySurroundingWhitespace()
+    {
+        Assert.True(
+            GatewayWizardRestartRecoveryPolicy.IsHostedWizardTerminationAfterFinalStep(
+                payloadIsTerminal: true,
+                "  Error: TUI exited from signal SIGTERM\n",
+                answeredAuthoritativeFinalStep: true));
+    }
+
+    [Theory]
+    // Early SIGTERM: the final step was never answered.
+    [InlineData(true, "Error: TUI exited from signal SIGTERM", false)]
+    // Non-terminal payload never completes the wizard.
+    [InlineData(false, "Error: TUI exited from signal SIGTERM", true)]
+    // Inexact SIGTERM-like errors stay failures.
+    [InlineData(true, "Error: TUI exited from signal SIGKILL", true)]
+    [InlineData(true, "TUI exited from signal SIGTERM", true)]
+    [InlineData(true, "Error: TUI exited from signal SIGTERM (worker crashed)", true)]
+    [InlineData(true, "error: tui exited from signal sigterm", true)]
+    [InlineData(true, "Error: TUI exited from signal SIGTERM\nModel check failed", true)]
+    [InlineData(true, "PROTOCOL_MISMATCH", true)]
+    [InlineData(true, "", true)]
+    [InlineData(true, null, true)]
+    public void HostedWizardTermination_RejectsEverythingElse(
+        bool payloadIsTerminal,
+        string? error,
+        bool answeredAuthoritativeFinalStep)
+    {
+        Assert.False(
+            GatewayWizardRestartRecoveryPolicy.IsHostedWizardTerminationAfterFinalStep(
+                payloadIsTerminal,
+                error,
+                answeredAuthoritativeFinalStep));
+    }
+
     [Fact]
     public async Task WaitForExpectedManagedGateway_NoListenerThenExpected_Retries()
     {

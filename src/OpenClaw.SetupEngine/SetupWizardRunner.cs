@@ -259,6 +259,7 @@ public sealed class SetupWizardRunner
             var totalProgressPolls = 0;
             var lastProgressStepId = "";
             var interactiveSteps = 0;
+            var finalStepTracker = new WizardFinalStepTracker();
 
             // A reconnect restarts the wizard session, so reset replay-scoped
             // counters before processing the replacement start payload.
@@ -362,6 +363,7 @@ public sealed class SetupWizardRunner
                     progressPolls = 0;
                     totalProgressPolls = 0;
                     lastProgressStepId = "";
+                    finalStepTracker.ResetForNewSession();
                     return await SendWizardStartAsync(client);
                 }
             }
@@ -375,14 +377,15 @@ public sealed class SetupWizardRunner
                 {
                     if (!string.IsNullOrWhiteSpace(parsed.Error))
                     {
-                        if (IsKnownGatewayFinalizationPromptBug(parsed.Error))
-                        {
-                            wizardCompleted = true;
-                            _ctx.Logger.Warn($"Gateway wizard ended after applying setup but hit known finalization prompt bug: {parsed.Error}");
-                            return StepResult.Ok("Gateway wizard completed with non-fatal finalization prompt warning");
-                        }
+                        var decision = DecideTerminalWizardError(
+                            parsed.IsDone,
+                            parsed.Error,
+                            finalStepTracker.AnsweredFinalStep);
+                        if (decision.LogWarning is not null)
+                            _ctx.Logger.Warn(decision.LogWarning);
 
-                        return StepResult.Fail($"Gateway wizard failed: {parsed.Error}");
+                        wizardCompleted = decision.MarksWizardCompleted;
+                        return decision.Result;
                     }
 
                     if (discoveredSteps.Count > 0)
@@ -430,6 +433,7 @@ public sealed class SetupWizardRunner
                         : $"Wizard progress: {progressText}");
 
                     await Task.Delay(WizardTimeouts.ProgressPollDelay, ct);
+                    finalStepTracker.RecordProgressAcknowledgement();
                     payload = await SendWizardNextAsync(
                         WizardNextPayload.Acknowledge(sessionId, parsed.StepId),
                         TimeoutFor(parsed),
@@ -476,6 +480,13 @@ public sealed class SetupWizardRunner
                     }
                     : WizardNextPayload.Acknowledge(sessionId, parsed.StepId);
 
+                finalStepTracker.RecordAnsweredStep(
+                    parsed.StepType,
+                    parsed.StepId,
+                    parsed.Title,
+                    parsed.Options.Count > 0,
+                    parsed.StepIndex,
+                    parsed.TotalSteps);
                 payload = await SendWizardNextAsync(
                     parameters,
                     TimeoutFor(parsed, answerResult.Answer),
@@ -880,6 +891,51 @@ public sealed class SetupWizardRunner
     {
         return error.Contains("this.prompt is not a function", StringComparison.OrdinalIgnoreCase);
     }
+
+    /// <summary>
+    /// Classifies a terminal wizard payload that carries an error. Only a known
+    /// non-fatal finalization prompt bug, or the exact hosted-TUI termination reported
+    /// immediately after the authoritative final step, count as completion; everything
+    /// else stays a wizard failure and never marks the wizard completed.
+    /// </summary>
+    internal static WizardTerminalDecision DecideTerminalWizardError(
+        bool payloadIsTerminal,
+        string error,
+        bool answeredFinalWizardStep)
+    {
+        if (payloadIsTerminal && IsKnownGatewayFinalizationPromptBug(error))
+        {
+            return new WizardTerminalDecision(
+                MarksWizardCompleted: true,
+                StepResult.Ok("Gateway wizard completed with non-fatal finalization prompt warning"),
+                $"Gateway wizard ended after applying setup but hit known finalization prompt bug: {error}");
+        }
+
+        // The gateway terminates its hosted wizard TUI when the configuration applied by
+        // the final step restarts the gateway. That is completion, not failure, but only
+        // for the exact terminal message right after the authoritative final step.
+        if (GatewayWizardRestartRecoveryPolicy.IsHostedWizardTerminationAfterFinalStep(
+                payloadIsTerminal,
+                error,
+                answeredFinalWizardStep))
+        {
+            return new WizardTerminalDecision(
+                MarksWizardCompleted: true,
+                StepResult.Ok(
+                    "Gateway wizard completed; the gateway terminated its hosted wizard TUI after the final step"),
+                $"Gateway wizard applied every step through the final step and then terminated its hosted TUI: {error}");
+        }
+
+        return new WizardTerminalDecision(
+            MarksWizardCompleted: false,
+            StepResult.Fail($"Gateway wizard failed: {error}"),
+            LogWarning: null);
+    }
+
+    internal sealed record WizardTerminalDecision(
+        bool MarksWizardCompleted,
+        StepResult Result,
+        string? LogWarning);
 
     private static string AnswerPlaceholderFor(WizardTemplateStep step)
     {

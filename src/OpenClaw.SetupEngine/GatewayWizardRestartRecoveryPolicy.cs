@@ -7,6 +7,14 @@ internal static class GatewayWizardRestartRecoveryPolicy
 {
     private const string TerminalRestartVersion = "2026.7.1";
     private const string TerminalStepKey = "model-check";
+    private const string FinalWizardStepKey = "done";
+
+    /// <summary>
+    /// Exact terminal error the gateway reports when a config-driven gateway restart
+    /// terminates the hosted wizard TUI process.
+    /// </summary>
+    public const string HostedWizardTerminationError =
+        "Error: TUI exited from signal SIGTERM";
 
     public static bool IsTerminalRestartCandidate(
         string? gatewayVersion,
@@ -17,7 +25,44 @@ internal static class GatewayWizardRestartRecoveryPolicy
             gatewayVersion?.Trim(),
             TerminalRestartVersion,
             StringComparison.Ordinal) &&
-        IsTerminalStep(stepId, title, message);
+        MatchesStepKey(TerminalStepKey, stepId, title, message);
+
+    /// <summary>
+    /// True when a wizard step is the authoritative final <c>done</c> step. The gateway
+    /// assigns opaque step ids, so the step is identified by its normalized id or title.
+    /// It must be a plain acknowledgement note with no options, and when the gateway
+    /// supplies position metadata the step must also be the last one.
+    /// </summary>
+    public static bool IsAuthoritativeFinalWizardStep(
+        string? stepType,
+        string? stepId,
+        string? title,
+        bool hasOptions,
+        int stepIndex,
+        int totalSteps) =>
+        !hasOptions &&
+        WizardStepClassifier.Categorize(stepType, hasOptions) ==
+            WizardStepCategory.Acknowledge &&
+        (MatchesStepKey(FinalWizardStepKey, stepId) ||
+            MatchesStepKey(FinalWizardStepKey, title)) &&
+        (totalSteps <= 0 || stepIndex == totalSteps - 1 || stepIndex == totalSteps);
+
+    /// <summary>
+    /// True only when a terminal wizard payload reports the exact hosted-TUI termination
+    /// error after the authoritative final <c>done</c> step was already answered. Only
+    /// surrounding whitespace is tolerated: every other terminal error, an earlier step,
+    /// a non-terminal payload, and any other message keeps the wizard failure.
+    /// </summary>
+    public static bool IsHostedWizardTerminationAfterFinalStep(
+        bool payloadIsTerminal,
+        string? error,
+        bool answeredAuthoritativeFinalStep) =>
+        payloadIsTerminal &&
+        answeredAuthoritativeFinalStep &&
+        string.Equals(
+            error?.Trim(),
+            HostedWizardTerminationError,
+            StringComparison.Ordinal);
 
     public static bool IsExpectedTerminalRestart(
         string? gatewayVersion,
@@ -90,15 +135,16 @@ internal static class GatewayWizardRestartRecoveryPolicy
         return false;
     }
 
-    private static bool IsTerminalStep(
+    private static bool MatchesStepKey(
+        string expectedKey,
         string? stepId,
         string? title,
         string? message) =>
-        IsTerminalStepKey(stepId) ||
-        IsTerminalStepKey(title) ||
-        IsTerminalStepKey(message);
+        MatchesStepKey(expectedKey, stepId) ||
+        MatchesStepKey(expectedKey, title) ||
+        MatchesStepKey(expectedKey, message);
 
-    private static bool IsTerminalStepKey(string? value)
+    private static bool MatchesStepKey(string expectedKey, string? value)
     {
         if (string.IsNullOrWhiteSpace(value))
             return false;
@@ -110,6 +156,6 @@ internal static class GatewayWizardRestartRecoveryPolicy
                 .Split(
                     [' ', '\t', '\r', '\n', '_', '-'],
                     StringSplitOptions.RemoveEmptyEntries));
-        return string.Equals(normalized, TerminalStepKey, StringComparison.Ordinal);
+        return string.Equals(normalized, expectedKey, StringComparison.Ordinal);
     }
 }
