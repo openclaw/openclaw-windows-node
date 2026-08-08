@@ -16,6 +16,7 @@ public static class Program
         "--local-data-dir",
         "--distro-name",
         "--gateway-port",
+        "--gateway-candidate-package",
         "--tailscale-auth",
         "--tailscale-hostname",
         "--autostart-name",
@@ -63,6 +64,7 @@ public static class Program
         var localDataDir = parsedArguments.GetValue("--local-data-dir");
         var distroName = parsedArguments.GetValue("--distro-name");
         var gatewayPortText = parsedArguments.GetValue("--gateway-port");
+        var gatewayCandidatePackage = parsedArguments.GetValue("--gateway-candidate-package");
         var tailscale = parsedArguments.HasFlag("--tailscale");
         var tailscaleTrustAuth = parsedArguments.HasFlag("--tailscale-trust-auth");
         var validateGatewayCandidate = parsedArguments.HasFlag("--validate-gateway-candidate");
@@ -142,13 +144,37 @@ public static class Program
         if (dryRun) config.DryRun = true;
         if (confirmDestructive) config.ConfirmDestructive = true;
 
+        if (gatewayCandidatePackage != null)
+        {
+            if (!validateGatewayCandidate || !config.Headless || !config.RollbackOnFailure)
+            {
+                Console.Error.WriteLine(
+                    "ERROR: --gateway-candidate-package requires --validate-gateway-candidate, headless mode, and rollback on failure.");
+                return 2;
+            }
+
+            if (!InstallCliStep.TryValidateCandidatePackagePath(
+                    gatewayCandidatePackage,
+                    out var normalizedPackagePath,
+                    out var packageError))
+            {
+                Console.Error.WriteLine($"ERROR: {packageError}");
+                return 2;
+            }
+
+            config.Gateway.ValidationPackagePath = normalizedPackagePath;
+        }
+
         if (!uninstall && !wizardOnly)
         {
             try
             {
-                GatewayReleasePolicy.ResolveAndApply(
-                    config,
-                    allowCandidate: validateGatewayCandidate);
+                if (config.Gateway.ValidationPackagePath != null)
+                    GatewayReleasePolicy.ResolveAndApplyValidationPackage(config);
+                else
+                    GatewayReleasePolicy.ResolveAndApply(
+                        config,
+                        allowCandidate: validateGatewayCandidate);
             }
             catch (GatewayCompatibilityException ex)
             {

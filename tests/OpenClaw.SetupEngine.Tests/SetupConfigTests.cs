@@ -46,6 +46,24 @@ public class SetupConfigTests : IDisposable
     }
 
     [Fact]
+    public void ValidationPackagePath_IsRuntimeOnly()
+    {
+        var config = new SetupConfig
+        {
+            Gateway = new GatewayConfig { ValidationPackagePath = @"C:\candidate\openclaw-current.tgz" }
+        };
+
+        var json = JsonSerializer.Serialize(config, SetupConfig.JsonWriteOptions);
+        var loaded = JsonSerializer.Deserialize<SetupConfig>(
+            """{"Gateway":{"ValidationPackagePath":"C:\\untrusted\\candidate.tgz"}}""",
+            SetupConfig.JsonOptions);
+
+        Assert.DoesNotContain("ValidationPackagePath", json, StringComparison.Ordinal);
+        Assert.NotNull(loaded);
+        Assert.Null(loaded.Gateway.ValidationPackagePath);
+    }
+
+    [Fact]
     public void ApplyUiDefaults_EnablesRollbackAndClearsHeadless()
     {
         var config = new SetupConfig

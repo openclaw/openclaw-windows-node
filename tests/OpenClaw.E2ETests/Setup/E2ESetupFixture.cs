@@ -149,9 +149,20 @@ public sealed class E2ESetupFixture : IAsyncLifetime
             "--rollback-on-failure",
             "--log-path", setupLogPath
         };
-        if (!string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable("OPENCLAW_E2E_GATEWAY_VERSION")))
+        var candidateVersion = Environment.GetEnvironmentVariable("OPENCLAW_E2E_GATEWAY_VERSION");
+        var candidatePackage = Environment.GetEnvironmentVariable("OPENCLAW_E2E_GATEWAY_PACKAGE_TGZ");
+        if (!string.IsNullOrWhiteSpace(candidateVersion))
         {
             setupArguments.Add("--validate-gateway-candidate");
+        }
+        if (!string.IsNullOrWhiteSpace(candidatePackage))
+        {
+            if (string.IsNullOrWhiteSpace(candidateVersion))
+                throw new InvalidOperationException(
+                    "OPENCLAW_E2E_GATEWAY_PACKAGE_TGZ requires OPENCLAW_E2E_GATEWAY_VERSION.");
+
+            setupArguments.Add("--gateway-candidate-package");
+            setupArguments.Add(candidatePackage);
         }
 
         var exitCode = await Program.Main([.. setupArguments]);

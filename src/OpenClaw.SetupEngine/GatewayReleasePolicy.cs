@@ -312,6 +312,56 @@ public static class GatewayReleasePolicy
         return resolution;
     }
 
+    internal static GatewayReleaseResolution ResolveAndApplyValidationPackage(SetupConfig config)
+    {
+        ArgumentNullException.ThrowIfNull(config);
+        var policyErrors = ValidateEmbeddedPolicy();
+        if (policyErrors.Count != 0)
+        {
+            throw Failure(
+                GatewayCompatibilityFailureKind.InvalidPolicy,
+                $"Embedded Gateway release policy is invalid: {string.Join(" ", policyErrors)}");
+        }
+
+        if (!IsOfficialInstallerUrl(config.Gateway.InstallUrl))
+        {
+            throw Failure(
+                GatewayCompatibilityFailureKind.InvalidPolicy,
+                "Gateway candidate package validation requires the official installer.");
+        }
+
+        var selectedVersion = config.Gateway.Version?.Trim();
+        if (string.IsNullOrWhiteSpace(selectedVersion))
+        {
+            throw Failure(
+                GatewayCompatibilityFailureKind.InvalidPolicy,
+                "Gateway candidate package validation requires an exact Gateway.Version.");
+        }
+
+        ValidateStableFloor(selectedVersion);
+        _ = s_releases.TryGetValue(selectedVersion, out var evidence);
+        if (evidence?.Status == GatewayReleaseStatus.Rejected)
+        {
+            var detail = string.IsNullOrWhiteSpace(evidence.RejectionReason)
+                ? ""
+                : $" {evidence.RejectionReason}.";
+            throw Failure(
+                GatewayCompatibilityFailureKind.UnattestedRelease,
+                $"Gateway {selectedVersion} is rejected for protocol-v{ProtocolGeneration} Windows setup.{detail}");
+        }
+
+        var resolution = new GatewayReleaseResolution(
+            GatewayReleaseSelectionMode.Exact,
+            selectedVersion,
+            ProtocolGeneration,
+            IsCustomInstaller: false,
+            evidence);
+        config.Gateway.Selection = "exact";
+        config.Gateway.Version = selectedVersion;
+        config.Gateway.ResolvedRelease = resolution;
+        return resolution;
+    }
+
     public static GatewayCompatibilityException? ValidateHandshake(
         SetupConfig config,
         GatewaySelfInfo? gatewaySelf)
