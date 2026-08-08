@@ -1,4 +1,6 @@
 using System.Diagnostics;
+using System.Net;
+using System.Net.Sockets;
 
 namespace OpenClaw.E2ETests.Setup;
 
@@ -18,6 +20,53 @@ public sealed class MirroredWslPortLeaseTests
             MirroredWslPortLease.CandidateRangeStart,
             MirroredWslPortLease.CandidateRangeEnd));
         Assert.Equal(MirroredWslPortLease.CandidateRangeStart + 137, candidates[0]);
+    }
+
+    [Fact]
+    public void BindProbe_UsesOnlyLoopbackAddressesAndReleasesThePort()
+    {
+        Assert.Equal(IPAddress.Loopback, MirroredWslPortLease.BindProbeAddresses[0]);
+        Assert.All(MirroredWslPortLease.BindProbeAddresses, address =>
+        {
+            Assert.True(IPAddress.IsLoopback(address));
+            Assert.NotEqual(IPAddress.Any, address);
+            Assert.NotEqual(IPAddress.IPv6Any, address);
+        });
+
+        var reservation = new TcpListener(IPAddress.Loopback, 0);
+        reservation.Start();
+        var port = ((IPEndPoint)reservation.LocalEndpoint).Port;
+        reservation.Stop();
+
+        Assert.True(MirroredWslPortLease.CanBindLoopbackExclusively(port));
+
+        var rebound = new TcpListener(IPAddress.Loopback, port);
+        rebound.Server.ExclusiveAddressUse = true;
+        rebound.Start();
+        rebound.Stop();
+    }
+
+    [Fact]
+    public void BindProbe_RejectsIpv6LoopbackCollision()
+    {
+        if (!Socket.OSSupportsIPv6)
+            return;
+
+        var ipv6Reservation = new TcpListener(IPAddress.IPv6Loopback, 0);
+        ipv6Reservation.Server.ExclusiveAddressUse = true;
+        ipv6Reservation.Start();
+        var port = ((IPEndPoint)ipv6Reservation.LocalEndpoint).Port;
+
+        try
+        {
+            Assert.False(MirroredWslPortLease.CanBindLoopbackExclusively(port));
+        }
+        finally
+        {
+            ipv6Reservation.Stop();
+        }
+
+        Assert.True(MirroredWslPortLease.CanBindLoopbackExclusively(port));
     }
 
     [Fact]

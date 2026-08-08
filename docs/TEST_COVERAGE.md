@@ -118,6 +118,12 @@ dotnet test --logger "console;verbosity=detailed"
 In a fresh worktree, run the project once without `--no-restore` or build it
 first so `dotnet test --no-restore` cannot no-op before `bin\` exists.
 
+Test-owned TCP listeners must bind only to loopback addresses. A successful
+wildcard bind from `testhost.exe` can trigger a per-worktree Windows Defender
+Firewall consent dialog and block unattended validation. Tests for production
+LAN-bind conflict handling should occupy loopback first so the production
+wildcard bind fails without opening a network-reachable listener.
+
 ## Not fully covered by automated tests
 
 - Real shell tray hover/click behavior against Explorer.

@@ -980,9 +980,9 @@ public class SetupStepsTests : IDisposable
     }
 
     [Fact]
-    public async Task PreflightPort_Lan_FailsWhenAnyBindPortInUse()
+    public async Task PreflightPort_Lan_FailsWhenLoopbackPortInUse()
     {
-        var listener = new TcpListener(IPAddress.Any, 0)
+        var listener = new TcpListener(IPAddress.Loopback, 0)
         {
             ExclusiveAddressUse = true
         };

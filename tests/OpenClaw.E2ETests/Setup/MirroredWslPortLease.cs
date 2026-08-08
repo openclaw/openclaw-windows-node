@@ -210,6 +210,10 @@ internal sealed class MirroredWslPortLease : IDisposable
     public const int CandidateRangeStart = 20_000;
     public const int CandidateRangeEnd = 39_999;
     private const int CandidateCount = CandidateRangeEnd - CandidateRangeStart + 1;
+    internal static IReadOnlyList<IPAddress> BindProbeAddresses { get; } =
+        Socket.OSSupportsIPv6
+            ? [IPAddress.Loopback, IPAddress.IPv6Loopback]
+            : [IPAddress.Loopback];
 
     private FileStream? _leaseStream;
 
@@ -234,7 +238,7 @@ internal sealed class MirroredWslPortLease : IDisposable
         return Acquire(
             CreateCandidateSequence(startOffset),
             windowsPortState,
-            CanBindExclusively,
+            CanBindLoopbackExclusively,
             leaseDirectory);
     }
 
@@ -308,22 +312,17 @@ internal sealed class MirroredWslPortLease : IDisposable
         Interlocked.Exchange(ref _leaseStream, null)?.Dispose();
     }
 
-    private static bool CanBindExclusively(int port)
+    internal static bool CanBindLoopbackExclusively(int port)
     {
-        TcpListener? ipv4 = null;
-        TcpListener? ipv6 = null;
+        var listeners = new List<TcpListener>(BindProbeAddresses.Count);
         try
         {
-            ipv4 = new TcpListener(IPAddress.Any, port);
-            ipv4.Server.ExclusiveAddressUse = true;
-            ipv4.Start();
-
-            if (Socket.OSSupportsIPv6)
+            foreach (var address in BindProbeAddresses)
             {
-                ipv6 = new TcpListener(IPAddress.IPv6Any, port);
-                ipv6.Server.DualMode = false;
-                ipv6.Server.ExclusiveAddressUse = true;
-                ipv6.Start();
+                var listener = new TcpListener(address, port);
+                listeners.Add(listener);
+                listener.Server.ExclusiveAddressUse = true;
+                listener.Start();
             }
 
             return true;
@@ -334,8 +333,8 @@ internal sealed class MirroredWslPortLease : IDisposable
         }
         finally
         {
-            ipv6?.Stop();
-            ipv4?.Stop();
+            foreach (var listener in listeners)
+                listener.Stop();
         }
     }
 }

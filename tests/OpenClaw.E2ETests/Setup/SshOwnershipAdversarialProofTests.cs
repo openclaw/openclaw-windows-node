@@ -872,12 +872,12 @@ public sealed class SshOwnershipAdversarialProofTests
         for (var attempt = 0; attempt < 100; attempt++)
         {
             var candidate = Random.Shared.Next(20_000, 40_000);
-            TcpListener? gatewayForward = null;
-            TcpListener? browserForward = null;
+            IReadOnlyList<TcpListener>? gatewayForward = null;
+            IReadOnlyList<TcpListener>? browserForward = null;
             try
             {
-                gatewayForward = StartExclusiveDualStackListener(candidate);
-                browserForward = StartExclusiveDualStackListener(candidate + 2);
+                gatewayForward = StartExclusiveLoopbackListeners(candidate);
+                browserForward = StartExclusiveLoopbackListeners(candidate + 2);
                 return candidate;
             }
             catch (SocketException)
@@ -886,21 +886,43 @@ public sealed class SshOwnershipAdversarialProofTests
             }
             finally
             {
-                browserForward?.Stop();
-                gatewayForward?.Stop();
+                StopListeners(browserForward);
+                StopListeners(gatewayForward);
             }
         }
 
         throw new InvalidOperationException("Unable to allocate an SSH forward port pair.");
     }
 
-    private static TcpListener StartExclusiveDualStackListener(int port)
+    private static IReadOnlyList<TcpListener> StartExclusiveLoopbackListeners(int port)
     {
-        var listener = new TcpListener(IPAddress.IPv6Any, port);
-        listener.Server.DualMode = true;
-        listener.Server.ExclusiveAddressUse = true;
-        listener.Start();
-        return listener;
+        var listeners = new List<TcpListener>(MirroredWslPortLease.BindProbeAddresses.Count);
+        try
+        {
+            foreach (var address in MirroredWslPortLease.BindProbeAddresses)
+            {
+                var listener = new TcpListener(address, port);
+                listeners.Add(listener);
+                listener.Server.ExclusiveAddressUse = true;
+                listener.Start();
+            }
+
+            return listeners;
+        }
+        catch
+        {
+            StopListeners(listeners);
+            throw;
+        }
+    }
+
+    private static void StopListeners(IReadOnlyList<TcpListener>? listeners)
+    {
+        if (listeners is null)
+            return;
+
+        foreach (var listener in listeners)
+            listener.Stop();
     }
 
     private sealed record ProcessResult(int ExitCode, string Stdout, string Stderr);
