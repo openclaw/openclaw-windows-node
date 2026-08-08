@@ -1,4 +1,3 @@
-using System.Diagnostics;
 using System.Runtime.ExceptionServices;
 using System.Text.Json;
 using System.Text.RegularExpressions;
@@ -16,7 +15,8 @@ public sealed class SetupWizardRunner
         TimeSpan.FromMilliseconds(250);
     private static readonly TimeSpan StartupMigrationLeaseRestoreMaxDelay =
         TimeSpan.FromSeconds(2);
-    internal const int StartupMigrationLeaseRestoreMaxAttempts = 8;
+    private static readonly TimeSpan MinimumReloadRestorationCommandTimeout =
+        TimeSpan.FromMilliseconds(500);
     internal const string StartupMigrationLeaseDiagnostic =
         "OpenClaw startup migrations are already running for this state directory;";
     private static readonly Regex s_normalizeKeyRegex = new("[^a-z0-9]+", RegexOptions.Compiled);
@@ -26,19 +26,25 @@ public sealed class SetupWizardRunner
 
     private readonly SetupContext _ctx;
     private readonly Func<TimeSpan, CancellationToken, Task> _restorationDelayAsync;
+    private readonly TimeProvider _timeProvider;
     private bool _reloadSuspended;
 
     public SetupWizardRunner(SetupContext ctx)
-        : this(ctx, static (delay, cancellationToken) => Task.Delay(delay, cancellationToken))
+        : this(
+            ctx,
+            static (delay, cancellationToken) => Task.Delay(delay, cancellationToken),
+            TimeProvider.System)
     {
     }
 
     internal SetupWizardRunner(
         SetupContext ctx,
-        Func<TimeSpan, CancellationToken, Task> restorationDelayAsync)
+        Func<TimeSpan, CancellationToken, Task> restorationDelayAsync,
+        TimeProvider? timeProvider = null)
     {
         _ctx = ctx;
         _restorationDelayAsync = restorationDelayAsync;
+        _timeProvider = timeProvider ?? TimeProvider.System;
     }
 
     public async Task<StepResult> RunAsync(CancellationToken ct)
@@ -611,15 +617,16 @@ public sealed class SetupWizardRunner
     {
         var command =
             $"{_ctx.WslPathPrefix} && openclaw config set gateway.reload.mode {WslShellQuoting.QuotePosixSingleQuote(reloadMode)}";
-        var stopwatch = Stopwatch.StartNew();
+        var startedAt = _timeProvider.GetTimestamp();
         CommandResult? lastResult = null;
 
         for (var attempt = 1; ; attempt++)
         {
-            var remaining = ReloadRestorationTimeout - stopwatch.Elapsed;
+            var remaining =
+                ReloadRestorationTimeout - _timeProvider.GetElapsedTime(startedAt);
             if (remaining <= TimeSpan.Zero)
                 return lastResult!;
-            if (lastResult is not null && remaining <= StartupMigrationLeaseRestoreInitialDelay)
+            if (lastResult is not null && remaining < MinimumReloadRestorationCommandTimeout)
                 return lastResult;
 
             var result = await _ctx.Commands.RunInWslAsync(
@@ -629,23 +636,25 @@ public sealed class SetupWizardRunner
                 ct: CancellationToken.None);
             lastResult = result;
             if (result.ExitCode == 0
-                || !IsStartupMigrationLeaseContention(result)
-                || attempt >= StartupMigrationLeaseRestoreMaxAttempts)
+                || !IsStartupMigrationLeaseContention(result))
             {
                 return result;
             }
 
-            remaining = ReloadRestorationTimeout - stopwatch.Elapsed;
-            var delay = TimeSpan.FromMilliseconds(
+            remaining =
+                ReloadRestorationTimeout - _timeProvider.GetElapsedTime(startedAt);
+            var scheduledDelay = TimeSpan.FromMilliseconds(
                 Math.Min(
                     StartupMigrationLeaseRestoreInitialDelay.TotalMilliseconds
                         * Math.Pow(2, attempt - 1),
                     StartupMigrationLeaseRestoreMaxDelay.TotalMilliseconds));
-            if (remaining <= delay)
+            var maximumDelay = remaining - MinimumReloadRestorationCommandTimeout;
+            if (maximumDelay <= TimeSpan.Zero)
                 return result;
+            var delay = scheduledDelay < maximumDelay ? scheduledDelay : maximumDelay;
 
             _ctx.Logger.Warn(
-                $"Gateway startup migrations still own the state directory while restoring reload mode; retrying in {delay.TotalMilliseconds:0} ms (attempt {attempt + 1}/{StartupMigrationLeaseRestoreMaxAttempts})");
+                $"Gateway startup migrations still own the state directory while restoring reload mode; retrying in {delay.TotalMilliseconds:0} ms (attempt {attempt + 1})");
             await _restorationDelayAsync(delay, CancellationToken.None);
         }
     }

@@ -2187,6 +2187,7 @@ public class SetupStepsTests : IDisposable
     public async Task SetupWizard_LeaseContentionExhaustionPreservesWizardAndRestorationFailures()
     {
         var restoreAttempts = 0;
+        var timeProvider = new ManualTimeProvider();
         var commands = new FakeCommandRunner(
             _ => Ok(),
             (_, command, _) =>
@@ -2198,11 +2199,13 @@ public class SetupStepsTests : IDisposable
         ctx.DistroName = "test-distro";
         var runner = new SetupWizardRunner(
             ctx,
-            (_, _) =>
+            (delay, _) =>
             {
                 restoreAttempts++;
+                timeProvider.Advance(delay);
                 return Task.CompletedTask;
-            });
+            },
+            timeProvider);
 
         var result = await runner.RunWithReloadRestorationAsync(() =>
         {
@@ -2214,13 +2217,16 @@ public class SetupStepsTests : IDisposable
         Assert.Contains("Failed to restore gateway.reload.mode", result.Message);
         Assert.Contains(SetupWizardRunner.StartupMigrationLeaseDiagnostic, result.Message);
         Assert.Contains("wizard failed", result.Message);
+        Assert.Equal(10, restoreAttempts);
         Assert.Equal(
-            SetupWizardRunner.StartupMigrationLeaseRestoreMaxAttempts - 1,
-            restoreAttempts);
-        Assert.Equal(
-            SetupWizardRunner.StartupMigrationLeaseRestoreMaxAttempts,
+            11,
             commands.WslCalls.Count(
                 call => call.Command.Contains("config set gateway.reload.mode 'hybrid'")));
+        Assert.Equal(TimeSpan.FromSeconds(14.5), timeProvider.Elapsed);
+        Assert.All(
+            commands.WslCalls.Where(
+                call => call.Command.Contains("config set gateway.reload.mode 'hybrid'")),
+            call => Assert.True(call.Timeout >= TimeSpan.FromMilliseconds(500)));
         Assert.DoesNotContain(
             commands.WslCalls,
             call => call.Command.Contains("openclaw gateway restart"));
@@ -4447,6 +4453,19 @@ public class SetupStepsTests : IDisposable
 
             return Task.FromResult(runInWsl(distroName, command, timeout));
         }
+    }
+
+    private sealed class ManualTimeProvider : TimeProvider
+    {
+        private long _timestamp;
+
+        public TimeSpan Elapsed => TimeSpan.FromTicks(_timestamp);
+
+        public override long TimestampFrequency => TimeSpan.TicksPerSecond;
+
+        public override long GetTimestamp() => _timestamp;
+
+        public void Advance(TimeSpan duration) => _timestamp += duration.Ticks;
     }
 
     private sealed class RecordingAuthorizationPresenter : IExternalAuthorizationPresenter
