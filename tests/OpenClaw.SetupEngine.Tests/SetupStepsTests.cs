@@ -2052,6 +2052,48 @@ public class SetupStepsTests : IDisposable
     }
 
     [Fact]
+    public async Task SetupWizard_RestoreReloadModeRetriesExactStartupMigrationLeaseContention()
+    {
+        var restoreAttempts = 0;
+        var delays = new List<TimeSpan>();
+        var commands = new FakeCommandRunner(
+            _ => Ok(),
+            (_, command, _) => command switch
+            {
+                var value when value.Contains("config set gateway.reload.mode 'hybrid'") =>
+                    ++restoreAttempts < 3
+                        ? Fail($"{SetupWizardRunner.StartupMigrationLeaseDiagnostic} retry after the other OpenClaw process finishes. (held by pid 266)")
+                        : Ok(),
+                var value when value.Contains("openclaw gateway restart") => Ok(),
+                var value when value.Contains("curl -s") => Ok("200"),
+                _ => Fail($"Unexpected command: {command}"),
+            });
+        var ctx = CreateContext(commands: commands);
+        ctx.DistroName = "test-distro";
+        TrustManagedEndpoint(ctx);
+        var runner = new SetupWizardRunner(
+            ctx,
+            (delay, cancellationToken) =>
+            {
+                Assert.False(cancellationToken.CanBeCanceled);
+                delays.Add(delay);
+                return Task.CompletedTask;
+            });
+
+        var result = await runner.RestoreReloadModeAsync();
+
+        Assert.True(result.IsSuccess, result.Message);
+        Assert.Equal(3, restoreAttempts);
+        Assert.Equal(2, delays.Count);
+        Assert.Equal(TimeSpan.FromMilliseconds(250), delays[0]);
+        Assert.Equal(TimeSpan.FromMilliseconds(500), delays[1]);
+        Assert.Single(
+            commands.WslCalls,
+            call => call.Command.Contains("openclaw gateway restart"));
+        AssertReloadRestorationCompleted(commands);
+    }
+
+    [Fact]
     public async Task SetupWizard_OrchestratorRestoresAfterSuccessfulWizard()
     {
         var commands = CreateReloadRestorationRunner();
@@ -2071,13 +2113,32 @@ public class SetupStepsTests : IDisposable
     }
 
     [Fact]
-    public async Task SetupWizard_OrchestratorRestoresBeforePropagatingCancellation()
+    public async Task SetupWizard_OrchestratorRestoresThroughLeaseContentionBeforePropagatingCancellation()
     {
-        var commands = CreateReloadRestorationRunner();
+        var restoreAttempts = 0;
+        var delayTokens = new List<CancellationToken>();
+        var commands = new FakeCommandRunner(
+            _ => Ok(),
+            (_, command, _) => command switch
+            {
+                var value when value.Contains("config set gateway.reload.mode 'hybrid'") =>
+                    ++restoreAttempts == 1
+                        ? Fail($"{SetupWizardRunner.StartupMigrationLeaseDiagnostic} retry after the other OpenClaw process finishes.")
+                        : Ok(),
+                var value when value.Contains("openclaw gateway restart") => Ok(),
+                var value when value.Contains("curl -s") => Ok("200"),
+                _ => Fail($"Unexpected command: {command}"),
+            });
         var ctx = CreateContext(commands: commands);
         ctx.DistroName = "test-distro";
         TrustManagedEndpoint(ctx);
-        var runner = new SetupWizardRunner(ctx);
+        var runner = new SetupWizardRunner(
+            ctx,
+            (_, cancellationToken) =>
+            {
+                delayTokens.Add(cancellationToken);
+                return Task.CompletedTask;
+            });
 
         await Assert.ThrowsAsync<OperationCanceledException>(() =>
             runner.RunWithReloadRestorationAsync(async () =>
@@ -2087,11 +2148,14 @@ public class SetupStepsTests : IDisposable
                 throw new OperationCanceledException();
             }));
 
+        Assert.Equal(2, restoreAttempts);
+        Assert.Single(delayTokens);
+        Assert.False(delayTokens[0].CanBeCanceled);
         AssertReloadRestorationCompleted(commands);
     }
 
     [Fact]
-    public async Task SetupWizard_OrchestratorReturnsRestorationFailure()
+    public async Task SetupWizard_OrchestratorDoesNotRetryUnrelatedRestorationFailure()
     {
         var commands = new FakeCommandRunner(
             _ => Ok(),
@@ -2111,23 +2175,34 @@ public class SetupStepsTests : IDisposable
 
         Assert.False(result.IsSuccess);
         Assert.Contains("Failed to restore gateway.reload.mode", result.Message);
+        Assert.Single(
+            commands.WslCalls,
+            call => call.Command.Contains("config set gateway.reload.mode 'hybrid'"));
         Assert.DoesNotContain(
             commands.WslCalls,
             call => call.Command.Contains("openclaw gateway restart"));
     }
 
     [Fact]
-    public async Task SetupWizard_OrchestratorPreservesWizardAndRestorationFailures()
+    public async Task SetupWizard_LeaseContentionExhaustionPreservesWizardAndRestorationFailures()
     {
+        var restoreAttempts = 0;
         var commands = new FakeCommandRunner(
             _ => Ok(),
             (_, command, _) =>
                 command.Contains("config set gateway.reload.mode 'hybrid'")
-                    ? Fail("restore failed")
+                    ? FailWithStdout(
+                        $"{SetupWizardRunner.StartupMigrationLeaseDiagnostic} retry after the other OpenClaw process finishes. (held by pid 247)")
                     : Fail($"Unexpected command: {command}"));
         var ctx = CreateContext(commands: commands);
         ctx.DistroName = "test-distro";
-        var runner = new SetupWizardRunner(ctx);
+        var runner = new SetupWizardRunner(
+            ctx,
+            (_, _) =>
+            {
+                restoreAttempts++;
+                return Task.CompletedTask;
+            });
 
         var result = await runner.RunWithReloadRestorationAsync(() =>
         {
@@ -2137,7 +2212,18 @@ public class SetupStepsTests : IDisposable
 
         Assert.False(result.IsSuccess);
         Assert.Contains("Failed to restore gateway.reload.mode", result.Message);
+        Assert.Contains(SetupWizardRunner.StartupMigrationLeaseDiagnostic, result.Message);
         Assert.Contains("wizard failed", result.Message);
+        Assert.Equal(
+            SetupWizardRunner.StartupMigrationLeaseRestoreMaxAttempts - 1,
+            restoreAttempts);
+        Assert.Equal(
+            SetupWizardRunner.StartupMigrationLeaseRestoreMaxAttempts,
+            commands.WslCalls.Count(
+                call => call.Command.Contains("config set gateway.reload.mode 'hybrid'")));
+        Assert.DoesNotContain(
+            commands.WslCalls,
+            call => call.Command.Contains("openclaw gateway restart"));
     }
 
     [Fact]

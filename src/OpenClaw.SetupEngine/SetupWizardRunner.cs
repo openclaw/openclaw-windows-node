@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Runtime.ExceptionServices;
 using System.Text.Json;
 using System.Text.RegularExpressions;
@@ -10,17 +11,34 @@ public sealed class SetupWizardRunner
 {
     private const int MaxWizardSteps = 50;
     private const int MaxSameStepVisits = 3;
+    private static readonly TimeSpan ReloadRestorationTimeout = TimeSpan.FromSeconds(15);
+    private static readonly TimeSpan StartupMigrationLeaseRestoreInitialDelay =
+        TimeSpan.FromMilliseconds(250);
+    private static readonly TimeSpan StartupMigrationLeaseRestoreMaxDelay =
+        TimeSpan.FromSeconds(2);
+    internal const int StartupMigrationLeaseRestoreMaxAttempts = 8;
+    internal const string StartupMigrationLeaseDiagnostic =
+        "OpenClaw startup migrations are already running for this state directory;";
     private static readonly Regex s_normalizeKeyRegex = new("[^a-z0-9]+", RegexOptions.Compiled);
 
     // Progress steps can repeat while background work runs; keep bounded caps
     // so setup fails with a diagnostic instead of hanging.
 
     private readonly SetupContext _ctx;
+    private readonly Func<TimeSpan, CancellationToken, Task> _restorationDelayAsync;
     private bool _reloadSuspended;
 
     public SetupWizardRunner(SetupContext ctx)
+        : this(ctx, static (delay, cancellationToken) => Task.Delay(delay, cancellationToken))
+    {
+    }
+
+    internal SetupWizardRunner(
+        SetupContext ctx,
+        Func<TimeSpan, CancellationToken, Task> restorationDelayAsync)
     {
         _ctx = ctx;
+        _restorationDelayAsync = restorationDelayAsync;
     }
 
     public async Task<StepResult> RunAsync(CancellationToken ct)
@@ -552,16 +570,12 @@ public sealed class SetupWizardRunner
         var reloadMode = ConfigureGatewayStep.GetEffectiveReloadMode(_ctx.Config.Gateway);
         try
         {
-            var result = await _ctx.Commands.RunInWslAsync(
-                _ctx.DistroName!,
-                $"{_ctx.WslPathPrefix} && openclaw config set gateway.reload.mode {WslShellQuoting.QuotePosixSingleQuote(reloadMode)}",
-                TimeSpan.FromSeconds(15),
-                ct: CancellationToken.None);
+            var result = await RunReloadModeRestorationCommandAsync(reloadMode);
 
             if (result.ExitCode != 0)
             {
                 return StepResult.Fail(
-                    $"Failed to restore gateway.reload.mode after wizard (exit {result.ExitCode}): {result.Stderr.Trim()}");
+                    $"Failed to restore gateway.reload.mode after wizard (exit {result.ExitCode}): {CommandFailureOutput(result)}");
             }
 
             _ctx.Logger.Info(
@@ -591,6 +605,62 @@ public sealed class SetupWizardRunner
                 $"Failed to restore gateway.reload.mode after wizard: {ex.Message}",
                 ex);
         }
+    }
+
+    private async Task<CommandResult> RunReloadModeRestorationCommandAsync(string reloadMode)
+    {
+        var command =
+            $"{_ctx.WslPathPrefix} && openclaw config set gateway.reload.mode {WslShellQuoting.QuotePosixSingleQuote(reloadMode)}";
+        var stopwatch = Stopwatch.StartNew();
+        CommandResult? lastResult = null;
+
+        for (var attempt = 1; ; attempt++)
+        {
+            var remaining = ReloadRestorationTimeout - stopwatch.Elapsed;
+            if (remaining <= TimeSpan.Zero)
+                return lastResult!;
+            if (lastResult is not null && remaining <= StartupMigrationLeaseRestoreInitialDelay)
+                return lastResult;
+
+            var result = await _ctx.Commands.RunInWslAsync(
+                _ctx.DistroName!,
+                command,
+                remaining,
+                ct: CancellationToken.None);
+            lastResult = result;
+            if (result.ExitCode == 0
+                || !IsStartupMigrationLeaseContention(result)
+                || attempt >= StartupMigrationLeaseRestoreMaxAttempts)
+            {
+                return result;
+            }
+
+            remaining = ReloadRestorationTimeout - stopwatch.Elapsed;
+            var delay = TimeSpan.FromMilliseconds(
+                Math.Min(
+                    StartupMigrationLeaseRestoreInitialDelay.TotalMilliseconds
+                        * Math.Pow(2, attempt - 1),
+                    StartupMigrationLeaseRestoreMaxDelay.TotalMilliseconds));
+            if (remaining <= delay)
+                return result;
+
+            _ctx.Logger.Warn(
+                $"Gateway startup migrations still own the state directory while restoring reload mode; retrying in {delay.TotalMilliseconds:0} ms (attempt {attempt + 1}/{StartupMigrationLeaseRestoreMaxAttempts})");
+            await _restorationDelayAsync(delay, CancellationToken.None);
+        }
+    }
+
+    internal static bool IsStartupMigrationLeaseContention(CommandResult result) =>
+        result.ExitCode != 0
+        && (result.Stdout.Contains(StartupMigrationLeaseDiagnostic, StringComparison.Ordinal)
+            || result.Stderr.Contains(StartupMigrationLeaseDiagnostic, StringComparison.Ordinal));
+
+    private static string CommandFailureOutput(CommandResult result)
+    {
+        var output = string.IsNullOrWhiteSpace(result.Stderr)
+            ? result.Stdout.Trim()
+            : result.Stderr.Trim();
+        return output.Length > 0 ? output : "no output";
     }
 
     private async Task<StepResult> VerifyExpectedManagedGatewayAsync(string phase)
@@ -874,7 +944,7 @@ public sealed class SetupWizardRunner
                 {
                     var status = payload.TryGetProperty("status", out var statusProperty) ? statusProperty.ToString() : "";
                     var error = payload.TryGetProperty("error", out var errorProperty) ? errorProperty.ToString() : null;
-                    return new(true, sessionId, "", "", "", "", "", false, 0, 0, [], 
+                    return new(true, sessionId, "", "", "", "", "", false, 0, 0, [],
                         string.Equals(status, "error", StringComparison.OrdinalIgnoreCase) ? error ?? "Wizard returned error status." : null);
                 }
 
