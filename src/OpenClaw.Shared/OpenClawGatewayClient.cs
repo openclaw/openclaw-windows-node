@@ -1216,6 +1216,9 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
         await SendTrackedRequestAsync("config.get");
     }
 
+    public Task<JsonElement> RequestConfigDetailedAsync(int timeoutMs = 15000) =>
+        SendWizardRequestAsync("config.get", timeoutMs: timeoutMs);
+
     public async Task RequestConfigSchemaAsync()
     {
         await SendTrackedRequestAsync("config.schema");

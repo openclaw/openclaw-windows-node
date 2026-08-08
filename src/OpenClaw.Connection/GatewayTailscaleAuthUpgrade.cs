@@ -50,10 +50,9 @@ public static class GatewayTailscaleAuthUpgradePolicy
 
 internal interface IGatewayTailscaleAuthConfigClient
 {
-    event EventHandler<JsonElement>? ConfigUpdated;
     IReadOnlyList<string> GrantedOperatorScopes { get; }
     bool IsConnectedToGateway { get; }
-    Task RequestConfigAsync();
+    Task<JsonElement> RequestConfigDetailedAsync(int timeoutMs = 15000);
     Task<ConfigPatchResult> PatchConfigDetailedAsync(
         JsonElement fullConfig,
         string? baseHash,
@@ -63,15 +62,10 @@ internal interface IGatewayTailscaleAuthConfigClient
 internal sealed class GatewayTailscaleAuthConfigClientAdapter(IOperatorGatewayClient client)
     : IGatewayTailscaleAuthConfigClient
 {
-    public event EventHandler<JsonElement>? ConfigUpdated
-    {
-        add => client.ConfigUpdated += value;
-        remove => client.ConfigUpdated -= value;
-    }
-
     public IReadOnlyList<string> GrantedOperatorScopes => client.GrantedOperatorScopes;
     public bool IsConnectedToGateway => client.IsConnectedToGateway;
-    public Task RequestConfigAsync() => client.RequestConfigAsync();
+    public Task<JsonElement> RequestConfigDetailedAsync(int timeoutMs = 15000) =>
+        client.RequestConfigDetailedAsync(timeoutMs);
     public Task<ConfigPatchResult> PatchConfigDetailedAsync(
         JsonElement fullConfig,
         string? baseHash,
@@ -219,20 +213,11 @@ internal sealed class GatewayTailscaleAuthUpgradeService(GatewayRegistry registr
         IGatewayTailscaleAuthConfigClient client,
         CancellationToken cancellationToken)
     {
-        var completion = new TaskCompletionSource<JsonElement>(TaskCreationOptions.RunContinuationsAsynchronously);
-        void OnConfigUpdated(object? _, JsonElement config) => completion.TrySetResult(config.Clone());
-
-        client.ConfigUpdated += OnConfigUpdated;
-        try
-        {
-            await client.RequestConfigAsync().ConfigureAwait(false);
-            var response = await completion.Task.WaitAsync(ConfigTimeout, cancellationToken).ConfigureAwait(false);
-            return CaptureSnapshot(response);
-        }
-        finally
-        {
-            client.ConfigUpdated -= OnConfigUpdated;
-        }
+        var timeoutMs = checked((int)ConfigTimeout.TotalMilliseconds);
+        var response = await client.RequestConfigDetailedAsync(timeoutMs)
+            .WaitAsync(cancellationToken)
+            .ConfigureAwait(false);
+        return CaptureSnapshot(response);
     }
 
     private static ConfigSnapshot CaptureSnapshot(JsonElement response)

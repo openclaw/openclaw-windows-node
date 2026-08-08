@@ -311,7 +311,6 @@ public sealed class GatewayTailscaleAuthUpgradeTests : IDisposable
 
     private sealed class FakeConfigClient(JsonElement config) : IGatewayTailscaleAuthConfigClient
     {
-        public event EventHandler<JsonElement>? ConfigUpdated;
         public IReadOnlyList<string> Scopes { get; set; } = ["operator.read", "operator.write"];
         public IReadOnlyList<string> GrantedOperatorScopes => Scopes;
         public bool IsConnectedToGateway { get; set; } = true;
@@ -322,12 +321,12 @@ public sealed class GatewayTailscaleAuthUpgradeTests : IDisposable
         public ConfigPatchResult PatchResult { get; set; } = new() { Ok = true };
         public bool EmitConfig { get; set; } = true;
 
-        public Task RequestConfigAsync()
+        public Task<JsonElement> RequestConfigDetailedAsync(int timeoutMs = 15000)
         {
             ConfigRequests++;
-            if (EmitConfig)
-                ConfigUpdated?.Invoke(this, config.Clone());
-            return Task.CompletedTask;
+            return EmitConfig
+                ? Task.FromResult(config.Clone())
+                : new TaskCompletionSource<JsonElement>().Task;
         }
 
         public Task<ConfigPatchResult> PatchConfigDetailedAsync(
