@@ -1,8 +1,20 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Text.Json;
 
 namespace OpenClaw.Shared;
+
+internal sealed class GatewayRequestException : InvalidOperationException
+{
+    public GatewayRequestException(string message, string code)
+        : base(message)
+    {
+        Code = code;
+    }
+
+    public string Code { get; }
+}
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Gateway protocol DTOs.
@@ -10,6 +22,7 @@ namespace OpenClaw.Shared;
 // These mirror the canonical upstream gateway protocol
 // (openclaw/openclaw, packages/gateway-protocol/src/schema) for:
 //   • commands.list           — the command catalog
+//   • agents.workspace.*      — agent workspace browsing and content
 //   • sessions.patch          — the extended per-session preference field set
 //   • sessions.files.list/get — session workspace file rail + browser
 //   • sessions.compaction.*   — compaction checkpoint list/get/branch/restore
@@ -366,6 +379,107 @@ public sealed class SessionPatch
         ResponseUsageMode.Full => "full",
         _ => "on"
     };
+}
+
+// ── Agent workspace (agents.workspace.list / agents.workspace.get) ──
+
+public sealed class AgentWorkspaceListRequest
+{
+    public string AgentId { get; set; } = "";
+    public string? Path { get; set; }
+    public long? Offset { get; set; }
+    public long? Limit { get; set; }
+
+    internal Dictionary<string, object?> ToListPayload()
+    {
+        if (string.IsNullOrEmpty(AgentId))
+            throw new ArgumentException("Agent id is required", nameof(AgentId));
+        if (Offset is < 0)
+            throw new ArgumentOutOfRangeException(nameof(Offset));
+        if (Limit is < 1)
+            throw new ArgumentOutOfRangeException(nameof(Limit));
+
+        var payload = new Dictionary<string, object?> { ["agentId"] = AgentId };
+        if (Path is not null) payload["path"] = Path;
+        if (Offset.HasValue) payload["offset"] = Offset.Value;
+        if (Limit.HasValue) payload["limit"] = Limit.Value;
+        return payload;
+    }
+}
+
+public enum AgentWorkspaceEntryKind
+{
+    File,
+    Directory
+}
+
+public sealed class AgentWorkspaceEntry
+{
+    public string Path { get; set; } = "";
+    public string Name { get; set; } = "";
+    public AgentWorkspaceEntryKind Kind { get; set; }
+    public long? Size { get; set; }
+    public long? UpdatedAtMs { get; set; }
+}
+
+public sealed class AgentWorkspaceListResult
+{
+    public string AgentId { get; set; } = "";
+    public string Path { get; set; } = "";
+    public string? ParentPath { get; set; }
+    public IReadOnlyList<AgentWorkspaceEntry> Entries { get; set; } = Array.Empty<AgentWorkspaceEntry>();
+    public long TotalEntries { get; set; }
+    public long Offset { get; set; }
+    public bool IsSupported { get; set; } = true;
+}
+
+public sealed class AgentWorkspaceGetRequest
+{
+    public string AgentId { get; set; } = "";
+    public string Path { get; set; } = "";
+
+    internal Dictionary<string, object?> ToGetPayload()
+    {
+        if (string.IsNullOrEmpty(AgentId))
+            throw new ArgumentException("Agent id is required", nameof(AgentId));
+        if (string.IsNullOrEmpty(Path))
+            throw new ArgumentException("File path is required", nameof(Path));
+        return new Dictionary<string, object?>
+        {
+            ["agentId"] = AgentId,
+            ["path"] = Path
+        };
+    }
+}
+
+public enum AgentWorkspaceFileEncoding
+{
+    Utf8,
+    Base64
+}
+
+public sealed class AgentWorkspaceFile
+{
+    public string Path { get; set; } = "";
+    public string Name { get; set; } = "";
+    public long Size { get; set; }
+    public long UpdatedAtMs { get; set; }
+    public string MimeType { get; set; } = "";
+    public AgentWorkspaceFileEncoding Encoding { get; set; }
+    public string Content { get; set; } = "";
+}
+
+public sealed class AgentWorkspaceGetResult
+{
+    public string AgentId { get; set; } = "";
+    public AgentWorkspaceFile? File { get; set; }
+    public bool IsSupported { get; set; } = true;
+}
+
+public sealed class LegacyAgentFilesResponse
+{
+    public JsonElement? Payload { get; set; }
+    public bool IsSupported { get; set; } = true;
 }
 
 // ── Session files (sessions.files.list / sessions.files.get) ──

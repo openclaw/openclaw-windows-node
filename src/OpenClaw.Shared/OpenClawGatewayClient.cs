@@ -89,6 +89,8 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
     private bool _agentsListUnsupported;
     private bool _agentFilesListUnsupported;
     private bool _agentFileGetUnsupported;
+    private bool _agentWorkspaceListUnsupported;
+    private bool _agentWorkspaceGetUnsupported;
     private bool _operatorReadScopeUnavailable;
     private bool _pairingRequiredAwaitingApproval;
     private string? _pairingRequiredRequestId;
@@ -141,6 +143,8 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
         _agentsListUnsupported = false;
         _agentFilesListUnsupported = false;
         _agentFileGetUnsupported = false;
+        _agentWorkspaceListUnsupported = false;
+        _agentWorkspaceGetUnsupported = false;
         _operatorReadScopeUnavailable = false;
     }
 
@@ -966,6 +970,13 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
     /// Used for wizard.start, wizard.next, wizard.cancel, wizard.status.
     /// </summary>
     public async Task<JsonElement> SendWizardRequestAsync(string method, object? parameters = null, int timeoutMs = 30000)
+        => await SendResponseRequestAsync(method, parameters, timeoutMs, CancellationToken.None).ConfigureAwait(false);
+
+    private async Task<JsonElement> SendResponseRequestAsync(
+        string method,
+        object? parameters,
+        int timeoutMs,
+        CancellationToken cancellationToken)
     {
         if (!IsConnected)
             throw new InvalidOperationException("Gateway connection is not open");
@@ -978,8 +989,14 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
 
         try
         {
+            using var linkedCancellation = CancellationTokenSource.CreateLinkedTokenSource(
+                cancellationToken,
+                CancellationToken);
+            linkedCancellation.Token.ThrowIfCancellationRequested();
             await SendRawAsync(SerializeRequest(requestId, method, parameters));
-            return await completion.Task.WaitAsync(TimeSpan.FromMilliseconds(timeoutMs), CancellationToken);
+            return await completion.Task.WaitAsync(
+                TimeSpan.FromMilliseconds(timeoutMs),
+                linkedCancellation.Token);
         }
         catch (TimeoutException ex)
         {
@@ -2121,7 +2138,10 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
             if (root.TryGetProperty("ok", out var okWiz) && okWiz.ValueKind == JsonValueKind.False)
             {
                 var message = TryGetErrorMessage(root) ?? "wizard request failed";
-                wizardCompletion.TrySetException(new InvalidOperationException(message));
+                var errorCode = TryGetResponseErrorCode(root);
+                wizardCompletion.TrySetException(errorCode is null
+                    ? new InvalidOperationException(message)
+                    : new GatewayRequestException(message, errorCode));
             }
             else if (root.TryGetProperty("payload", out var wizPayload))
             {
@@ -2785,6 +2805,16 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
     private static bool IsUnknownMethodError(string errorMessage)
     {
         return errorMessage.Contains("unknown method", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static string? TryGetResponseErrorCode(JsonElement root)
+    {
+        return root.TryGetProperty("error", out var error) &&
+               error.ValueKind == JsonValueKind.Object &&
+               error.TryGetProperty("code", out var code) &&
+               code.ValueKind == JsonValueKind.String
+            ? code.GetString()
+            : null;
     }
 
     private static bool IsTerminalAuthError(string errorMessage)

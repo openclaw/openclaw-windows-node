@@ -1,6 +1,6 @@
 # Gateway Protocol Drift Guard
 
-> Source of truth: [`openclaw/openclaw` - `packages/gateway-protocol/src/schema/{sessions,commands}.ts`](https://github.com/openclaw/openclaw/tree/main/packages/gateway-protocol/src/schema)
+> Source of truth: [`openclaw/openclaw` gateway protocol schemas](https://github.com/openclaw/openclaw/tree/main/packages/gateway-protocol/src/schema)
 
 This guard covers a protocol subset, not protocol negotiation or gateway release
 pinning. See the
@@ -15,12 +15,13 @@ protocol - when methods or session fields change upstream but the Windows client
 tolerates unknown/extra fields, such drift ships without any test failing.
 
 The **drift guard** pins a hand-maintained mirror of the upstream gateway protocol
-for the `sessions` / `files` / `commands` / compaction surface and fails the test
+for the `sessions` / `files` / `commands` / `agents.workspace` / compaction surface and fails the test
 suite whenever the typed client and the pinned schema diverge.
 
 The typed client implements the richer protocol surface -
 `commands.list`, the extended `sessions.patch` field set, `sessions.files.list`/
-`get`, and `sessions.compaction.list`/`get`/`branch`/`restore` - across
+`get`, `agents.workspace.list`/`get`, and
+`sessions.compaction.list`/`get`/`branch`/`restore` - across
 `OpenClawGatewayClient.Protocol.cs` and the DTO/payload builders in
 `GatewayProtocolModels.cs`. This guard pins that whole surface.
 
@@ -93,7 +94,8 @@ unit tests still pass on their fixed sample payloads.
 5. **Snapshot integrity** (`Snapshot_isWellFormed_andCoversFoundationShapes`)
    - The snapshot stays well-formed, keeps covering every protocol-foundation shape
      (`commands.list`, `sessions.list`/`patch`/`compact`, `agents.files.list`/`get`,
-     `sessions.files.list`/`get`, `sessions.compaction.list`/`get`/`branch`/
+     `sessions.files.list`/`get`, `agents.workspace.list`/`get`,
+     `sessions.compaction.list`/`get`/`branch`/
      `restore`), and keeps its honesty invariant: `provisionalResponseFields` may
      only be set while `windowsUsage: "planned"`.
 6. **Tri-state clear contract** (`TriStateClearContract_isWiredInClient`)
@@ -135,7 +137,7 @@ should know which edits are actually validated:
 | `responseEnvelopeSource` | **Yes** - required when `responseEnvelope` is pinned; must resolve uniquely to the parser body that reads the envelope (no whole-client fallback). |
 | `tristateContract` (markers + state members) | **Yes** - for `requestFieldSemantics: "tristate-nullable"`, the builder source must implement every marker and the `PatchField<T>` type must expose every state. |
 | `kind`, `scopePrefixes`, foundation coverage | **Yes** - snapshot-integrity invariants. |
-| `itemFields` (per-item descriptor fields) | **No** - documentation-only; behaviour covered by `GatewayProtocolModelsTests` parsers. |
+| `itemFields` (per-item descriptor fields) | Documentation-only generally. The snapshot integrity guard additionally pins the exact `agents.workspace` entry/file sets. |
 | `_comment`, `_note`, `_itemFieldsNote`, provenance | **No** - documentation-only. |
 
 
@@ -176,6 +178,7 @@ session field, a new `commands.list` descriptor field, etc.):
 1. Open the upstream schema on `main`:
    - `packages/gateway-protocol/src/schema/sessions.ts`
    - `packages/gateway-protocol/src/schema/commands.ts`
+   - `packages/gateway-protocol/src/schema/agents-workspace.ts`
 2. Update `tests/OpenClaw.Shared.Tests/Protocol/gateway-protocol-snapshot.json`:
    - Add/rename/remove methods under `methods[]`.
    - Update `requestFields` / `responseFields` / `responseEnvelope` to match the
@@ -217,22 +220,22 @@ up one level.
 
 Mitigations:
 
-- The snapshot records `upstreamVerified` (date + the exact `sessions.ts`/`commands.ts`
-  blob SHAs the pin was checked against) so each verification is auditable and
-  reproducible. **Last verified 2026-06-23** against `openclaw/openclaw` main:
-  all enforced request fields / response envelopes / the `sessions.patch` tri-state
-  nullable contract matched exactly; the snapshot is a deliberate subset (see the
-  `upstreamVerified.result` note for the upstream-only `sessions.patch` fields the
-  Windows client does not yet implement).
+- The snapshot records `upstreamVerified` (date + the exact `sessions.ts`,
+  `commands.ts`, and `agents-workspace.ts` blob SHAs the pin was checked against)
+  so each verification is auditable and reproducible. **Last verified 2026-08-07**
+  against `openclaw/openclaw` tag `v2026.7.1-2`: all enforced request fields,
+  response envelopes, the `sessions.patch` tri-state nullable contract, and the
+  `agents.workspace.list/get` contracts matched exactly.
 - Treat a gateway-protocol bump in upstream as a trigger to re-verify and refresh,
   the same way `docs/gateway-node-integration.md` is refreshed.
-- Re-verify by fetching `packages/gateway-protocol/src/schema/{sessions,commands}.ts`
-  from `openclaw/openclaw` main, diffing against the pinned methods/fields, and
-  updating `upstreamVerified` with the new blob SHAs.
+- Re-verify by fetching
+  `packages/gateway-protocol/src/schema/{sessions,commands,agents-workspace}.ts`
+  from the pinned `openclaw/openclaw` ref, diffing against the pinned
+  methods/fields, and updating `upstreamVerified` with the new blob SHAs.
 
 ## Scope
 
 The guard deliberately covers only the `sessions` / `files` / `commands` /
-compaction surface (`scopePrefixes` in the snapshot), which is where the
-drift-critical session and command APIs live. Other gateway namespaces
+`agents.workspace` / compaction surface (`scopePrefixes` in the snapshot),
+which is where the drift-critical workspace, session, and command APIs live. Other gateway namespaces
 (`cron.*`, `config.*`, `device.pair.*`, …) are out of scope for this guard.

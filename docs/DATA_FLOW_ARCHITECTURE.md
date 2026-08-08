@@ -130,7 +130,7 @@ private void OnAppStateChanged(object? sender, PropertyChangedEventArgs e)
 | BindingsPage | Config |
 | CronPage | CronList, CronStatus, CronRuns |
 | SkillsPage | SkillsData |
-| WorkspacePage | AgentFilesList, AgentFileContent |
+| WorkspacePage | Sessions, only while the active source depends on an authoritative fallback key; typed `agents.workspace.*` and response-aware fallback reads |
 | AgentEventsPage | AgentEventAdded (separate event) |
 | AboutPage | GatewaySelf |
 
@@ -138,6 +138,23 @@ Pages that don't observe AppState: ChatPage, SettingsPage, SandboxPage,
 VoiceSettingsPage.
 
 ### HubWindow - minimal role
+
+Workspace legacy fallback responses are correlated by gateway request ID and are
+not completed from the shared AgentFilesList or AgentFileContent event cache.
+Repeated `Sessions` snapshots do not reload the page: the workspace observes a
+session change only when the resolved authoritative fallback key changes. Primary
+`agents.workspace.*` results are session-independent, while legacy/unsupported
+results wait for session updates only when no authoritative key was available.
+
+### Workspace follow-ups (not part of issue #969)
+
+- Define one explicit search contract across primary agent-workspace browsing,
+  session-file fallback, and legacy fallback before changing the current
+  source-specific behavior.
+- Add a product-approved aggregate entry ceiling for multi-page
+  `agents.workspace.list` reads; the current implementation follows the
+  gateway-reported total and validates that pagination advances, but does not
+  impose a separate client total cap.
 
 HubWindow's role is now limited to:
 - **Title bar** - subscribes to `AppState.Status` and `AppState.GatewaySelf` for status/version display

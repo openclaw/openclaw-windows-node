@@ -2168,6 +2168,18 @@ Use one of these options:
   <data name="WorkspacePage_LoadingContent" xml:space="preserve">
     <value>Loading content…</value>
   </data>
+  <data name="WorkspacePage_AgentWorkspaceLabel" xml:space="preserve">
+    <value>Agent workspace</value>
+  </data>
+  <data name="WorkspacePage_LimitedScopeMessage" xml:space="preserve">
+    <value>Showing files from this session.</value>
+  </data>
+  <data name="WorkspacePage_LegacyAgentFilesScopeMessage" xml:space="preserve">
+    <value>Showing managed agent files, not the full workspace.</value>
+  </data>
+  <data name="WorkspacePage_ImagePreviewUnsupported" xml:space="preserve">
+    <value>Image preview isn't supported here yet.</value>
+  </data>
   <data name="WorkspacePage_SearchBox.PlaceholderText" xml:space="preserve">
     <value>Search files</value>
   </data>

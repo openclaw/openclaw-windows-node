@@ -2121,6 +2121,18 @@
   <data name="WorkspacePage_LoadingContent" xml:space="preserve">
     <value>正在載入內容…</value>
   </data>
+  <data name="WorkspacePage_AgentWorkspaceLabel" xml:space="preserve">
+    <value>Agent 工作區</value>
+  </data>
+  <data name="WorkspacePage_LimitedScopeMessage" xml:space="preserve">
+    <value>正在顯示此工作階段中的檔案。</value>
+  </data>
+  <data name="WorkspacePage_LegacyAgentFilesScopeMessage" xml:space="preserve">
+    <value>正在顯示受管理的 Agent 檔案，而不是完整工作區。</value>
+  </data>
+  <data name="WorkspacePage_ImagePreviewUnsupported" xml:space="preserve">
+    <value>此處尚不支援影像預覽。</value>
+  </data>
   <data name="WorkspacePage_SearchBox.PlaceholderText" xml:space="preserve">
     <value>Search files</value>
   </data>

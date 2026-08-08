@@ -2,6 +2,7 @@ using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using System.Net;
 using System.Net.Sockets;
 using System.Net.WebSockets;
@@ -70,7 +71,76 @@ public sealed class GatewayProtocolLiveRoundTripTests : IDisposable
             // when many test classes run in parallel).
             const int rpc = 20000;
 
-            // ── 1. commands.list (typed catalog read) ──
+            // ── 1. agents.workspace.list/get ──
+            var workspace = await client.ListAgentWorkspaceAsync(
+                new AgentWorkspaceListRequest
+                {
+                    AgentId = "arbitrary-agent",
+                    Path = "Repo/Src",
+                    Offset = 250,
+                    Limit = 500
+                },
+                rpc);
+            Assert.Equal("Repo/Src", workspace.Path);
+            Assert.Equal(501, workspace.TotalEntries);
+            Assert.Equal("Repo/Src/ReadMe.md", Assert.Single(workspace.Entries).Path);
+
+            var workspaceFile = await client.GetAgentWorkspaceFileAsync(
+                new AgentWorkspaceGetRequest
+                {
+                    AgentId = "arbitrary-agent",
+                    Path = "Repo/Src/ReadMe.md"
+                },
+                rpc);
+            Assert.Equal("text/plain", workspaceFile.File!.MimeType);
+            Assert.Equal(AgentWorkspaceFileEncoding.Utf8, workspaceFile.File.Encoding);
+            Assert.Equal("# Exact Case", workspaceFile.File.Content);
+
+            using (var listFrame = JsonDocument.Parse(server.FrameFor("agents.workspace.list")))
+            {
+                var parameters = listFrame.RootElement.GetProperty("params");
+                Assert.Equal(4, parameters.EnumerateObject().Count());
+                Assert.Equal("arbitrary-agent", parameters.GetProperty("agentId").GetString());
+                Assert.Equal("Repo/Src", parameters.GetProperty("path").GetString());
+                Assert.Equal(250, parameters.GetProperty("offset").GetInt32());
+                Assert.Equal(500, parameters.GetProperty("limit").GetInt32());
+            }
+            using (var getFrame = JsonDocument.Parse(server.FrameFor("agents.workspace.get")))
+            {
+                var parameters = getFrame.RootElement.GetProperty("params");
+                Assert.Equal(2, parameters.EnumerateObject().Count());
+                Assert.Equal("Repo/Src/ReadMe.md", parameters.GetProperty("path").GetString());
+            }
+
+            // ── 2. agents.files.list/get (response-aware legacy fallback) ──
+            var legacyList = await client.ListLegacyAgentFilesAsync("arbitrary-agent", rpc);
+            Assert.True(legacyList.IsSupported);
+            Assert.Equal("Repo/Src/ReadMe.md", legacyList.Payload!.Value
+                .GetProperty("files")[0].GetProperty("path").GetString());
+
+            var legacyGet = await client.GetLegacyAgentFileAsync(
+                "arbitrary-agent",
+                "Repo/Src/ReadMe.md",
+                rpc);
+            Assert.True(legacyGet.IsSupported);
+            Assert.Equal("# Legacy", legacyGet.Payload!.Value
+                .GetProperty("file").GetProperty("content").GetString());
+
+            using (var listFrame = JsonDocument.Parse(server.FrameFor("agents.files.list")))
+            {
+                var parameters = listFrame.RootElement.GetProperty("params");
+                Assert.Single(parameters.EnumerateObject());
+                Assert.Equal("arbitrary-agent", parameters.GetProperty("agentId").GetString());
+            }
+            using (var getFrame = JsonDocument.Parse(server.FrameFor("agents.files.get")))
+            {
+                var parameters = getFrame.RootElement.GetProperty("params");
+                Assert.Equal(2, parameters.EnumerateObject().Count());
+                Assert.Equal("arbitrary-agent", parameters.GetProperty("agentId").GetString());
+                Assert.Equal("Repo/Src/ReadMe.md", parameters.GetProperty("name").GetString());
+            }
+
+            // ── 3. commands.list (typed catalog read) ──
             var catalog = await client.ListCommandsAsync(timeoutMs: rpc);
             Assert.True(catalog.IsSupported);
             var cmd = Assert.Single(catalog.Commands);
@@ -78,13 +148,13 @@ public sealed class GatewayProtocolLiveRoundTripTests : IDisposable
             var arg = Assert.Single(cmd.Args);
             Assert.Equal("gpt-5", Assert.Single(arg.Choices).Value);
 
-            // ── 2. sessions.files.get (read; param must be sessionKey, response nested under "file") ──
+            // ── 4. sessions.files.get (read; param must be sessionKey, response nested under "file") ──
             var file = await client.GetSessionFileAsync(key, "src/a.cs", timeoutMs: rpc);
             Assert.True(file.Found);
             Assert.Equal("hello world", file.Content);
             Assert.Contains("\"sessionKey\"", server.FrameFor("sessions.files.get"));
 
-            // ── 3. chat.history (real client transcript export path) ──
+            // ── 5. chat.history (real client transcript export path) ──
             var history = await client.RequestChatHistoryAsync(key, timeoutMs: rpc);
             Assert.Equal("sid-1", history.SessionId);
             var message = Assert.Single(history.Messages);
@@ -92,7 +162,7 @@ public sealed class GatewayProtocolLiveRoundTripTests : IDisposable
             Assert.Equal("done", message.Text);
             Assert.Contains("\"sessionKey\"", server.FrameFor("chat.history"));
 
-            // ── 4. sessions.compaction.list + branch (param key/checkpointId; branch returns sourceKey + new key) ──
+            // ── 6. sessions.compaction.list + branch (param key/checkpointId; branch returns sourceKey + new key) ──
             var checkpoints = await client.ListCompactionCheckpointsAsync(key, timeoutMs: rpc);
             Assert.True(checkpoints.IsSupported);
             Assert.Equal("cp1", Assert.Single(checkpoints.Checkpoints).Id);
@@ -103,7 +173,7 @@ public sealed class GatewayProtocolLiveRoundTripTests : IDisposable
             Assert.Equal("agent:main:branch-1", branch.ResultSessionKey);
             Assert.Contains("\"checkpointId\"", server.FrameFor("sessions.compaction.branch"));
 
-            // ── 5. sessions.patch SET then CLEAR (the tri-state proof) ──
+            // ── 7. sessions.patch SET then CLEAR (the tri-state proof) ──
             // PatchSessionAsync is fire-and-tracked (returns on send, not on
             // response), so wait for the captured frame to arrive on the server.
             var setOk = await client.PatchSessionAsync(key, new SessionPatch { Model = "gpt-5", FastMode = SessionFastMode.Auto });
@@ -123,6 +193,410 @@ public sealed class GatewayProtocolLiveRoundTripTests : IDisposable
         {
             await client.DisconnectAsync();
         }
+    }
+
+    [Fact]
+    public async Task AgentWorkspaceSupportFlags_AreSplitCachedAndResetOnReconnect()
+        {
+            using var server = new LoopbackGatewayServer();
+            var listRequests = 0;
+            server.OnMethod("agents.workspace.list", _ =>
+            {
+                listRequests++;
+                return listRequests == 1
+                    ? LoopbackResponse.Fail(new
+                    {
+                        code = "INVALID_REQUEST",
+                        message = "unknown method: agents.workspace.list"
+                    })
+                    : new
+                    {
+                        agentId = "a",
+                        path = "",
+                        entries = Array.Empty<object>(),
+                        totalEntries = 0,
+                        offset = 0
+                    };
+            });
+            server.OnMethod("agents.workspace.get", _ => new
+            {
+                agentId = "a",
+                file = new
+                {
+                    path = "A.txt",
+                    name = "A.txt",
+                    size = 1,
+                    updatedAtMs = 1,
+                    mimeType = "text/plain",
+                    encoding = "utf8",
+                    content = "a"
+                }
+            });
+
+            var client = new OpenClawGatewayClient(
+                server.WebSocketUrl,
+                "not-a-real",
+                new TestLogger(),
+                identityPath: _identityDir);
+            try
+            {
+                await ConnectAndWaitAsync(client, server);
+                var request = new AgentWorkspaceListRequest { AgentId = "a", Path = "" };
+
+                Assert.False((await client.ListAgentWorkspaceAsync(request, 20000)).IsSupported);
+                Assert.False((await client.ListAgentWorkspaceAsync(request, 20000)).IsSupported);
+                Assert.Equal(1, listRequests);
+
+                var get = await client.GetAgentWorkspaceFileAsync(
+                    new AgentWorkspaceGetRequest { AgentId = "a", Path = "A.txt" },
+                    20000);
+                Assert.True(get.IsSupported);
+                Assert.Equal("a", get.File!.Content);
+
+                await client.DisconnectAsync();
+                await ConnectAndWaitAsync(client, server);
+
+                Assert.True((await client.ListAgentWorkspaceAsync(request, 20000)).IsSupported);
+                Assert.Equal(2, listRequests);
+        }
+        finally
+        {
+            await client.DisconnectAsync();
+        }
+    }
+
+    [Fact]
+    public async Task LegacyAgentFilesSupportFlags_AreSplitCachedAndResetOnReconnect()
+    {
+        using var server = new LoopbackGatewayServer();
+        var listRequests = 0;
+        var getRequests = 0;
+        server.OnMethod("agents.files.list", _ =>
+        {
+            listRequests++;
+            return listRequests == 1
+                ? LoopbackResponse.Fail(new
+                {
+                    code = "INVALID_REQUEST",
+                    message = "unknown method: agents.files.list"
+                })
+                : new { files = Array.Empty<object>() };
+        });
+        server.OnMethod("agents.files.get", _ =>
+        {
+            getRequests++;
+            return getRequests == 1
+                ? LoopbackResponse.Fail(new
+                {
+                    code = "INVALID_REQUEST",
+                    message = "unknown method: agents.files.get"
+                })
+                : new { file = new { path = "A.txt", content = "a" } };
+        });
+
+        var client = new OpenClawGatewayClient(
+            server.WebSocketUrl,
+            "not-a-real",
+            new TestLogger(),
+            identityPath: _identityDir);
+        try
+        {
+            await ConnectAndWaitAsync(client, server);
+
+            Assert.False((await client.ListLegacyAgentFilesAsync("a", 20000)).IsSupported);
+            Assert.False((await client.ListLegacyAgentFilesAsync("a", 20000)).IsSupported);
+            Assert.Equal(1, listRequests);
+
+            Assert.False((await client.GetLegacyAgentFileAsync("a", "A.txt", 20000)).IsSupported);
+            Assert.False((await client.GetLegacyAgentFileAsync("a", "A.txt", 20000)).IsSupported);
+            Assert.Equal(1, getRequests);
+
+            await client.DisconnectAsync();
+            await ConnectAndWaitAsync(client, server);
+
+            Assert.True((await client.ListLegacyAgentFilesAsync("a", 20000)).IsSupported);
+            Assert.True((await client.GetLegacyAgentFileAsync("a", "A.txt", 20000)).IsSupported);
+            Assert.Equal(2, listRequests);
+            Assert.Equal(2, getRequests);
+        }
+        finally
+        {
+            await client.DisconnectAsync();
+        }
+    }
+
+    [Fact]
+    public async Task ExistingTypedReads_ExactStringUnknownMethodRemainsUnsupported()
+    {
+        using var server = new LoopbackGatewayServer();
+        server.OnMethod(
+            "commands.list",
+            _ => LoopbackResponse.Fail("unknown method: commands.list"));
+        server.OnMethod(
+            "sessions.files.list",
+            _ => LoopbackResponse.Fail("unknown method: sessions.files.list"));
+        server.OnMethod(
+            "sessions.files.get",
+            _ => LoopbackResponse.Fail("unknown method: sessions.files.get"));
+
+        var client = new OpenClawGatewayClient(
+            server.WebSocketUrl,
+            "not-a-real",
+            new TestLogger(),
+            identityPath: _identityDir);
+        try
+        {
+            await ConnectAndWaitAsync(client, server);
+
+            Assert.False((await client.ListCommandsAsync(timeoutMs: 20000)).IsSupported);
+            Assert.False((await client.ListSessionFilesAsync("custom-main", timeoutMs: 20000)).IsSupported);
+            Assert.False((await client.GetSessionFileAsync(
+                "custom-main",
+                "ReadMe.md",
+                20000)).IsSupported);
+        }
+        finally
+        {
+            await client.DisconnectAsync();
+        }
+    }
+
+    [Fact]
+    public async Task WorkspaceAndLegacyReads_CodeLessUnknownMethodDoesNotDowngrade()
+    {
+        using var server = new LoopbackGatewayServer();
+        var workspaceRequests = 0;
+        var legacyRequests = 0;
+        server.OnMethod("agents.workspace.list", _ =>
+        {
+            workspaceRequests++;
+            return workspaceRequests == 1
+                ? LoopbackResponse.Fail("unknown method: agents.workspace.list")
+                : new
+                {
+                    agentId = "a",
+                    path = "",
+                    entries = Array.Empty<object>(),
+                    totalEntries = 0,
+                    offset = 0
+                };
+        });
+        server.OnMethod("agents.files.list", _ =>
+        {
+            legacyRequests++;
+            return legacyRequests == 1
+                ? LoopbackResponse.Fail("unknown method: agents.files.list")
+                : new { files = Array.Empty<object>() };
+        });
+
+        var client = new OpenClawGatewayClient(
+            server.WebSocketUrl,
+            "not-a-real",
+            new TestLogger(),
+            identityPath: _identityDir);
+        try
+        {
+            await ConnectAndWaitAsync(client, server);
+
+            await Assert.ThrowsAsync<InvalidOperationException>(() =>
+                client.ListAgentWorkspaceAsync(
+                    new AgentWorkspaceListRequest { AgentId = "a" },
+                    20000));
+            Assert.True((await client.ListAgentWorkspaceAsync(
+                new AgentWorkspaceListRequest { AgentId = "a" },
+                20000)).IsSupported);
+
+            await Assert.ThrowsAsync<InvalidOperationException>(() =>
+                client.ListLegacyAgentFilesAsync("a", 20000));
+            Assert.True((await client.ListLegacyAgentFilesAsync("a", 20000)).IsSupported);
+            Assert.Equal(2, workspaceRequests);
+            Assert.Equal(2, legacyRequests);
+        }
+        finally
+        {
+            await client.DisconnectAsync();
+        }
+    }
+
+    [Fact]
+    public async Task LegacyList_NonUnknownErrorsAndTimeoutDoNotDowngradeSupport()
+    {
+        using var server = new LoopbackGatewayServer();
+        var requestCount = 0;
+        server.OnMethod("agents.files.list", _ =>
+        {
+            requestCount++;
+            return requestCount switch
+            {
+                1 => LoopbackResponse.Fail(new
+                {
+                    code = "UNAUTHORIZED",
+                    message = "authentication failed"
+                }),
+                2 => LoopbackResponse.Fail(new
+                {
+                    code = "INVALID_REQUEST",
+                    message = "invalid path"
+                }),
+                3 => LoopbackResponse.Fail(new
+                {
+                    code = "INTERNAL_ERROR",
+                    message = "server error"
+                }),
+                4 => LoopbackResponse.Drop(),
+                _ => new { files = new[] { new { path = "fresh.md" } } }
+            };
+        });
+
+        var client = new OpenClawGatewayClient(
+            server.WebSocketUrl,
+            "not-a-real",
+            new TestLogger(),
+            identityPath: _identityDir);
+        try
+        {
+            await ConnectAndWaitAsync(client, server);
+
+            var auth = await Assert.ThrowsAsync<GatewayRequestException>(
+                () => client.ListLegacyAgentFilesAsync("a", 20000));
+            Assert.Equal("UNAUTHORIZED", auth.Code);
+
+            var invalid = await Assert.ThrowsAsync<GatewayRequestException>(
+                () => client.ListLegacyAgentFilesAsync("a", 20000));
+            Assert.Equal("INVALID_REQUEST", invalid.Code);
+            Assert.Equal("invalid path", invalid.Message);
+
+            var serverError = await Assert.ThrowsAsync<GatewayRequestException>(
+                () => client.ListLegacyAgentFilesAsync("a", 20000));
+            Assert.Equal("INTERNAL_ERROR", serverError.Code);
+
+            await Assert.ThrowsAsync<TimeoutException>(
+                () => client.ListLegacyAgentFilesAsync("a", 100));
+
+            var success = await client.ListLegacyAgentFilesAsync("a", 20000);
+            Assert.True(success.IsSupported);
+            Assert.Equal("fresh.md", success.Payload!.Value
+                .GetProperty("files")[0].GetProperty("path").GetString());
+            Assert.Equal(5, requestCount);
+        }
+        finally
+        {
+            await client.DisconnectAsync();
+        }
+    }
+
+    [Fact]
+    public async Task LegacyGet_CallerCancellationIgnoresLateResponse()
+    {
+        using var server = new LoopbackGatewayServer();
+        var requestCount = 0;
+        server.OnMethod("agents.files.get", _ =>
+        {
+            requestCount++;
+            return requestCount == 1
+                ? LoopbackResponse.SuccessAfter(
+                    new { file = new { path = "stale.md", content = "stale" } },
+                    delayMs: 250)
+                : new { file = new { path = "fresh.md", content = "fresh" } };
+        });
+
+        var client = new OpenClawGatewayClient(
+            server.WebSocketUrl,
+            "not-a-real",
+            new TestLogger(),
+            identityPath: _identityDir);
+        try
+        {
+            await ConnectAndWaitAsync(client, server);
+            using var cancellation = new CancellationTokenSource(50);
+
+            await Assert.ThrowsAnyAsync<OperationCanceledException>(() =>
+                client.GetLegacyAgentFileAsync("a", "stale.md", 20000, cancellation.Token));
+
+            var fresh = await client.GetLegacyAgentFileAsync("a", "fresh.md", 20000);
+            Assert.Equal("fresh", fresh.Payload!.Value
+                .GetProperty("file").GetProperty("content").GetString());
+            Assert.Equal(2, requestCount);
+        }
+        finally
+        {
+            await client.DisconnectAsync();
+        }
+    }
+
+    [Theory]
+    [InlineData("agents.workspace.list")]
+    [InlineData("agents.workspace.get")]
+    [InlineData("sessions.files.list")]
+    [InlineData("sessions.files.get")]
+    public async Task WorkspaceReads_CallerCancellationStopsPendingResponse(string method)
+    {
+        using var server = new LoopbackGatewayServer();
+        server.OnMethod(method, _ => LoopbackResponse.Drop());
+
+        var client = new OpenClawGatewayClient(
+            server.WebSocketUrl,
+            "test-token",
+            new TestLogger(),
+            tokenIsBootstrapToken: false,
+            bootstrapPairAsNode: false,
+            identityPath: _identityDir);
+
+        try
+        {
+            await ConnectAndWaitAsync(client, server);
+            using var cancellation = new CancellationTokenSource(50);
+
+            Task request = method switch
+            {
+                "agents.workspace.list" => client.ListAgentWorkspaceAsync(
+                    new AgentWorkspaceListRequest { AgentId = "a" },
+                    20000,
+                    cancellation.Token),
+                "agents.workspace.get" => client.GetAgentWorkspaceFileAsync(
+                    new AgentWorkspaceGetRequest { AgentId = "a", Path = "stale.md" },
+                    20000,
+                    cancellation.Token),
+                "sessions.files.list" => client.ListSessionFilesAsync(
+                    "agent:a:main",
+                    null,
+                    null,
+                    20000,
+                    cancellation.Token),
+                _ => client.GetSessionFileAsync(
+                    "agent:a:main",
+                    "stale.md",
+                    20000,
+                    cancellation.Token)
+            };
+
+            await Assert.ThrowsAnyAsync<OperationCanceledException>(() => request);
+            Assert.NotNull(await server.WaitFrameAsync(method, occurrence: 0, timeoutMs: 20000));
+        }
+        finally
+        {
+            await client.DisconnectAsync();
+        }
+    }
+
+    [Fact]
+    public async Task LegacyList_DisconnectCancelsPendingResponse()
+    {
+        using var server = new LoopbackGatewayServer();
+        server.OnMethod("agents.files.list", _ => LoopbackResponse.Drop());
+
+        var client = new OpenClawGatewayClient(
+            server.WebSocketUrl,
+            "not-a-real",
+            new TestLogger(),
+            identityPath: _identityDir);
+        await ConnectAndWaitAsync(client, server);
+
+        var pending = client.ListLegacyAgentFilesAsync("a", 20000);
+        await server.WaitFrameAsync("agents.files.list", occurrence: 0, timeoutMs: 20000);
+        await client.DisconnectAsync();
+
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => pending);
     }
 
     [Fact]
@@ -245,6 +719,59 @@ public sealed class GatewayProtocolLiveRoundTripTests : IDisposable
                         }
                     }
                 }
+            }
+        });
+
+        server.OnMethod("agents.workspace.list", _ => new
+        {
+            agentId = "arbitrary-agent",
+            path = "Repo/Src",
+            parentPath = "Repo",
+            entries = new object[]
+            {
+                new
+                {
+                    path = "Repo/Src/ReadMe.md",
+                    name = "ReadMe.md",
+                    kind = "file",
+                    size = 12,
+                    updatedAtMs = 1760000000000L
+                }
+            },
+            totalEntries = 501,
+            offset = 250
+        });
+
+        server.OnMethod("agents.workspace.get", _ => new
+        {
+            agentId = "arbitrary-agent",
+            file = new
+            {
+                path = "Repo/Src/ReadMe.md",
+                name = "ReadMe.md",
+                size = 12,
+                updatedAtMs = 1760000000000L,
+                mimeType = "text/plain",
+                encoding = "utf8",
+                content = "# Exact Case"
+            }
+        });
+
+        server.OnMethod("agents.files.list", _ => new
+        {
+            files = new object[]
+            {
+                new { path = "Repo/Src/ReadMe.md", name = "ReadMe.md" }
+            }
+        });
+
+        server.OnMethod("agents.files.get", _ => new
+        {
+            file = new
+            {
+                path = "Repo/Src/ReadMe.md",
+                name = "ReadMe.md",
+                content = "# Legacy"
             }
         });
 
@@ -512,6 +1039,11 @@ public sealed class GatewayProtocolLiveRoundTripTests : IDisposable
                 ? responder(parameters)
                 : new { };
 
+            if (payload is LoopbackResponse delayed && delayed.DelayMs > 0)
+                await Task.Delay(delayed.DelayMs, _cts.Token);
+            if (payload is LoopbackResponse dropped && !dropped.SendResponse)
+                return;
+
             var response = payload is LoopbackResponse loopbackResponse
                 ? loopbackResponse.Ok
                     ? JsonSerializer.Serialize(new { type = "res", id, ok = true, payload = loopbackResponse.Payload })
@@ -540,8 +1072,16 @@ public sealed class GatewayProtocolLiveRoundTripTests : IDisposable
         }
     }
 
-    private sealed record LoopbackResponse(bool Ok, object? Payload = null, string? Error = null)
+    private sealed record LoopbackResponse(
+        bool Ok,
+        object? Payload = null,
+        object? Error = null,
+        bool SendResponse = true,
+        int DelayMs = 0)
     {
-        public static LoopbackResponse Fail(string error) => new(false, Error: error);
+        public static LoopbackResponse Fail(object error) => new(false, Error: error);
+        public static LoopbackResponse Drop() => new(true, SendResponse: false);
+        public static LoopbackResponse SuccessAfter(object payload, int delayMs) =>
+            new(true, Payload: payload, DelayMs: delayMs);
     }
 }

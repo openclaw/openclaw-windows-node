@@ -395,6 +395,7 @@ public class GatewayProtocolDriftTests
                      "commands.list",
                      "sessions.list", "sessions.patch", "sessions.compact",
                      "agents.files.list", "agents.files.get",
+                     "agents.workspace.list", "agents.workspace.get",
                      "sessions.files.list", "sessions.files.get",
                      "sessions.compaction.list", "sessions.compaction.get",
                      "sessions.compaction.branch", "sessions.compaction.restore",
@@ -403,6 +404,18 @@ public class GatewayProtocolDriftTests
 
         Assert.NotEmpty(snapshot.Methods.Single(m => m.Method == "sessions.list").ResponseFields);
         Assert.NotEmpty(snapshot.Methods.Single(m => m.Method == "commands.list").ResponseEnvelope);
+        Assert.Equal(
+            new[] { "agentId", "path", "parentPath", "entries", "totalEntries", "offset" },
+            snapshot.Methods.Single(m => m.Method == "agents.workspace.list").ResponseFields);
+        Assert.Equal(
+            new[] { "path", "name", "kind", "size", "updatedAtMs" },
+            snapshot.Methods.Single(m => m.Method == "agents.workspace.list").ItemFields);
+        Assert.Equal(
+            new[] { "agentId", "file" },
+            snapshot.Methods.Single(m => m.Method == "agents.workspace.get").ResponseFields);
+        Assert.Equal(
+            new[] { "path", "name", "size", "updatedAtMs", "mimeType", "encoding", "content" },
+            snapshot.Methods.Single(m => m.Method == "agents.workspace.get").ItemFields);
     }
 
     /// <summary>
@@ -875,6 +888,7 @@ public class GatewayProtocolDriftTests
                 RequestFields: ReadStringArray(m, "requestFields"),
                 AllowedExtraRequestFields: ReadStringArray(m, "allowedExtraRequestFields"),
                 ResponseFields: ReadStringArray(m, "responseFields"),
+                ItemFields: ReadStringArray(m, "itemFields"),
                 ResponseEnvelope: ReadStringArray(m, "responseEnvelope"),
                 RequestFieldsSource: m.TryGetProperty("requestFieldsSource", out var s) && s.ValueKind == JsonValueKind.String ? s.GetString() : null,
                 ResponseEnvelopeSource: m.TryGetProperty("responseEnvelopeSource", out var es) && es.ValueKind == JsonValueKind.String ? es.GetString() : null,
@@ -938,6 +952,7 @@ public class GatewayProtocolDriftTests
         IReadOnlyList<string> RequestFields,
         IReadOnlyList<string> AllowedExtraRequestFields,
         IReadOnlyList<string> ResponseFields,
+        IReadOnlyList<string> ItemFields,
         IReadOnlyList<string> ResponseEnvelope,
         string? RequestFieldsSource,
         string? ResponseEnvelopeSource,

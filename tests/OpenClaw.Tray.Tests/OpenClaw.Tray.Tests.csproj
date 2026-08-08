@@ -133,6 +133,7 @@
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Pages\ChatPagePanelStates.cs" Link="Imported\ChatPagePanelStates.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Pages\ExecPolicyRuleList.cs" Link="Pages\ExecPolicyRuleList.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Pages\WorkspaceFilesModel.cs" Link="Imported\WorkspaceFilesModel.cs" />
+    <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Services\WorkspaceGatewayCoordinator.cs" Link="Services\WorkspaceGatewayCoordinator.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Services\ConnectionManagerWindowsNodeConnector.cs" Link="Services\ConnectionManagerWindowsNodeConnector.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Services\SetupWindowArgumentProjection.cs" Link="Services\SetupWindowArgumentProjection.cs" />
     <!-- Pulled in for console-log tail tests. Pure logic, no WinUI deps. -->

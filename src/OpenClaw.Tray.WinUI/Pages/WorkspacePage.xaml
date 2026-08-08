@@ -101,7 +101,7 @@
                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"
                        TextWrapping="NoWrap" TextTrimming="CharacterEllipsis"/>
 
-            <StackPanel Grid.Row="2">
+            <StackPanel Grid.Row="2" Spacing="8">
                 <StackPanel x:Name="LoadingPanel" Visibility="Collapsed"
                             HorizontalAlignment="Center" Spacing="8" Margin="0,24,0,0">
                     <ProgressRing x:Name="LoadingRing" IsActive="False" Width="24" Height="24"
@@ -124,6 +124,10 @@
                                          Click="RepairLink_Click"/>
                     </InfoBar.ActionButton>
                 </InfoBar>
+                <InfoBar x:Name="ScopeInfoBar"
+                         IsOpen="False"
+                         IsClosable="False"
+                         Severity="Informational"/>
             </StackPanel>
 
             <Border x:Name="BodyGrid" Grid.Row="3" Visibility="Collapsed"

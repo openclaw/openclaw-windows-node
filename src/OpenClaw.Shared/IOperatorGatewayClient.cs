@@ -1,4 +1,5 @@
 using System.Text.Json;
+using System.Threading;
 
 namespace OpenClaw.Shared;
 
@@ -123,6 +124,17 @@ public interface IOperatorGatewayClient
     Task RequestAgentsListAsync();
     Task RequestAgentFilesListAsync(string agentId = "main");
     Task RequestAgentFileGetAsync(string agentId, string name);
+    Task<LegacyAgentFilesResponse> ListLegacyAgentFilesAsync(
+        string agentId,
+        int timeoutMs = 15000,
+        CancellationToken cancellationToken = default) =>
+        Task.FromResult(new LegacyAgentFilesResponse { IsSupported = false });
+    Task<LegacyAgentFilesResponse> GetLegacyAgentFileAsync(
+        string agentId,
+        string name,
+        int timeoutMs = 15000,
+        CancellationToken cancellationToken = default) =>
+        Task.FromResult(new LegacyAgentFilesResponse { IsSupported = false });
     Task RequestModelsListAsync();
     Task RequestNodePairListAsync();
     Task<bool> NodePairApproveAsync(string requestId);
@@ -157,12 +169,50 @@ public interface IOperatorGatewayClient
     /// <summary>Apply an extended <see cref="SessionPatch"/> (rich field set) to a session.</summary>
     Task<bool> PatchSessionAsync(string key, SessionPatch patch)
         => Task.FromResult(false);
+    /// <summary>List immediate children in an agent workspace (<c>agents.workspace.list</c>).</summary>
+    Task<AgentWorkspaceListResult> ListAgentWorkspaceAsync(AgentWorkspaceListRequest request, int timeoutMs = 15000)
+        => Task.FromResult(new AgentWorkspaceListResult
+        {
+            AgentId = request?.AgentId ?? "",
+            Path = request?.Path ?? "",
+            IsSupported = false
+        });
+    Task<AgentWorkspaceListResult> ListAgentWorkspaceAsync(
+        AgentWorkspaceListRequest request,
+        int timeoutMs,
+        CancellationToken cancellationToken)
+        => ListAgentWorkspaceAsync(request, timeoutMs).WaitAsync(cancellationToken);
+    /// <summary>Read one file in an agent workspace (<c>agents.workspace.get</c>).</summary>
+    Task<AgentWorkspaceGetResult> GetAgentWorkspaceFileAsync(AgentWorkspaceGetRequest request, int timeoutMs = 15000)
+        => Task.FromResult(new AgentWorkspaceGetResult
+        {
+            AgentId = request?.AgentId ?? "",
+            IsSupported = false
+        });
+    Task<AgentWorkspaceGetResult> GetAgentWorkspaceFileAsync(
+        AgentWorkspaceGetRequest request,
+        int timeoutMs,
+        CancellationToken cancellationToken)
+        => GetAgentWorkspaceFileAsync(request, timeoutMs).WaitAsync(cancellationToken);
     /// <summary>List session files, optionally scoped to a sub-path/search (<c>sessions.files.list</c>).</summary>
     Task<SessionFileList> ListSessionFilesAsync(string key, string? path = null, string? search = null, int timeoutMs = 15000)
         => Task.FromResult(new SessionFileList { Key = key, IsSupported = false });
+    Task<SessionFileList> ListSessionFilesAsync(
+        string key,
+        string? path,
+        string? search,
+        int timeoutMs,
+        CancellationToken cancellationToken)
+        => ListSessionFilesAsync(key, path, search, timeoutMs).WaitAsync(cancellationToken);
     /// <summary>Read a session file's content (<c>sessions.files.get</c>).</summary>
     Task<SessionFileContent> GetSessionFileAsync(string key, string path, int timeoutMs = 15000)
         => Task.FromResult(new SessionFileContent { Key = key, Path = path, IsSupported = false });
+    Task<SessionFileContent> GetSessionFileAsync(
+        string key,
+        string path,
+        int timeoutMs,
+        CancellationToken cancellationToken)
+        => GetSessionFileAsync(key, path, timeoutMs).WaitAsync(cancellationToken);
     /// <summary>List compaction checkpoints for a session (<c>sessions.compaction.list</c>).</summary>
     Task<SessionCompactionCheckpointList> ListCompactionCheckpointsAsync(string key, int timeoutMs = 15000)
         => Task.FromResult(new SessionCompactionCheckpointList { Key = key, IsSupported = false });

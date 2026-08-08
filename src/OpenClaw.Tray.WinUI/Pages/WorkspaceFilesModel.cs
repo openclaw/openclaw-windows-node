@@ -8,11 +8,9 @@ using OpenClaw.Shared;
 namespace OpenClawTray.Pages;
 
 /// <summary>
-/// Pure projection layer for the Workspace page's session file rail. Adapts the
-/// typed gateway protocol DTOs (<see cref="SessionFileList"/> /
-/// <see cref="SessionFileContent"/> from <c>sessions.files.list/get</c>) into
-/// view rows and owns the search/sort/format logic so the code-behind stays a
-/// thin view.
+/// Pure projection layer for the Workspace page's agent workspace and legacy
+/// session file results. Adapts typed gateway protocol DTOs into view rows and
+/// owns search, sort, display-path, and formatting logic.
 ///
 /// This layer <i>consumes</i> the protocol DTOs — it does not re-parse wire JSON
 /// or redefine the protocol contract (that lives in
@@ -21,6 +19,13 @@ namespace OpenClawTray.Pages;
 /// </summary>
 internal static class WorkspaceFilesModel
 {
+    internal enum PreviewKind
+    {
+        Text,
+        ImageUnsupported,
+        Unsupported
+    }
+
     /// <summary>One row in the workspace file rail.</summary>
     internal sealed record WorkspaceFileEntry
     {
@@ -34,7 +39,7 @@ internal static class WorkspaceFilesModel
 
         /// <summary>
         /// The original path string from the gateway DTO — used verbatim when
-        /// requesting content via <c>sessions.files.get</c> so normalization
+        /// requesting content from the gateway so display normalization
         /// never diverges from what the gateway expects.
         /// </summary>
         public required string RequestPath { get; init; }
@@ -51,7 +56,7 @@ internal static class WorkspaceFilesModel
         /// <summary>True when this row came from transcript/session relevance.</summary>
         public bool IsSessionFile { get; init; }
 
-        /// <summary>True when selecting this file may call <c>sessions.files.get</c>.</summary>
+        /// <summary>True when selecting this file may request gateway content.</summary>
         public bool CanPreview { get; init; }
 
         /// <summary>The agent wrote/modified this file during the session.</summary>
@@ -83,9 +88,46 @@ internal static class WorkspaceFilesModel
 
         public string? BrowserParentPath { get; init; }
 
+        public string RequestBrowserPath { get; init; } = string.Empty;
+
+        public string? RequestBrowserParentPath { get; init; }
+
         public string BrowserSearch { get; init; } = string.Empty;
 
         public bool BrowserTruncated { get; init; }
+    }
+
+    public static WorkspaceListState FromAgentWorkspaceList(AgentWorkspaceListResult list)
+    {
+        if (list == null) return new WorkspaceListState();
+        if (!list.IsSupported)
+        {
+            return new WorkspaceListState
+            {
+                Supported = false,
+                RequestBrowserPath = list.Path,
+                RequestBrowserParentPath = list.ParentPath
+            };
+        }
+
+        var entries = new List<WorkspaceFileEntry>();
+        foreach (var item in list.Entries ?? Array.Empty<AgentWorkspaceEntry>())
+        {
+            if (MapAgentWorkspaceEntry(item) is { } entry)
+                entries.Add(entry);
+        }
+
+        return new WorkspaceListState
+        {
+            Supported = true,
+            Entries = Sort(entries),
+            BrowserPath = NormalizeBrowserPath(list.Path),
+            BrowserParentPath = list.ParentPath is null
+                ? null
+                : NormalizeBrowserPath(list.ParentPath),
+            RequestBrowserPath = list.Path,
+            RequestBrowserParentPath = list.ParentPath
+        };
     }
 
     /// <summary>
@@ -108,9 +150,9 @@ internal static class WorkspaceFilesModel
 
         void Add(WorkspaceFileEntry entry)
         {
-            if (!byPath.ContainsKey(entry.RelativePath))
-                order.Add(entry.RelativePath);
-            byPath[entry.RelativePath] = entry;
+            if (!byPath.ContainsKey(entry.RequestPath))
+                order.Add(entry.RequestPath);
+            byPath[entry.RequestPath] = entry;
         }
 
         foreach (var f in list.Files ?? Array.Empty<SessionFileEntry>())
@@ -123,7 +165,7 @@ internal static class WorkspaceFilesModel
         foreach (var b in list.Browser?.Entries ?? Array.Empty<SessionFileBrowserEntry>())
         {
             if (MapBrowserEntry(b) is not { } entry) continue;
-            if (byPath.ContainsKey(entry.RelativePath)) continue; // file entry wins
+            if (byPath.ContainsKey(entry.RequestPath)) continue; // file entry wins
             Add(entry);
         }
 
@@ -141,6 +183,37 @@ internal static class WorkspaceFilesModel
                 : browser?.ParentPath,
             BrowserSearch = browser?.Search ?? string.Empty,
             BrowserTruncated = browser?.Truncated ?? false,
+            RequestBrowserPath = browser?.Path ?? string.Empty,
+            RequestBrowserParentPath = browser?.ParentPath,
+        };
+    }
+
+    public static PreviewKind GetPreviewKind(AgentWorkspaceFile file)
+    {
+        ArgumentNullException.ThrowIfNull(file);
+        if (file.MimeType.StartsWith("image/", StringComparison.OrdinalIgnoreCase))
+            return PreviewKind.ImageUnsupported;
+        return file.Encoding == AgentWorkspaceFileEncoding.Utf8
+            ? PreviewKind.Text
+            : PreviewKind.Unsupported;
+    }
+
+    private static WorkspaceFileEntry? MapAgentWorkspaceEntry(AgentWorkspaceEntry item)
+    {
+        if (string.IsNullOrEmpty(item.Path) || string.IsNullOrEmpty(item.Name))
+            return null;
+
+        return new WorkspaceFileEntry
+        {
+            Name = item.Name,
+            RelativePath = NormalizePath(item.Path),
+            RequestPath = item.Path,
+            Size = item.Size is >= 0 ? item.Size : null,
+            Exists = true,
+            IsDirectory = item.Kind == AgentWorkspaceEntryKind.Directory,
+            IsSessionFile = false,
+            CanPreview = item.Kind == AgentWorkspaceEntryKind.File,
+            ModifiedUtc = ToUtc(item.UpdatedAtMs)
         };
     }
 
@@ -336,6 +409,19 @@ internal static class WorkspaceFilesModel
         return dt.Kind == DateTimeKind.Unspecified
             ? new DateTimeOffset(DateTime.SpecifyKind(dt, DateTimeKind.Utc))
             : new DateTimeOffset(dt.ToUniversalTime());
+    }
+
+    private static DateTimeOffset? ToUtc(long? unixTimeMs)
+    {
+        if (unixTimeMs is not >= 0) return null;
+        try
+        {
+            return DateTimeOffset.FromUnixTimeMilliseconds(unixTimeMs.Value);
+        }
+        catch (ArgumentOutOfRangeException)
+        {
+            return null;
+        }
     }
 
     private static string? GetString(JsonElement item, string name)

@@ -8,10 +8,9 @@ namespace OpenClaw.Tray.Tests;
 
 /// <summary>
 /// Unit coverage for <see cref="WorkspaceFilesModel"/> — the pure projection
-/// behind the Workspace page session file rail. Exercises the mapping from the
-/// typed gateway DTOs (<see cref="SessionFileList"/> / <see cref="SessionFileEntry"/>
-/// / <see cref="SessionFileBrowser"/>) into view rows, plus search/path,
-/// metadata (size/modified/missing), sort tiering, and unsupported/empty paths.
+/// behind the Workspace page. Exercises agent workspace and session fallback
+/// DTO projection into rows, plus search/path, metadata, sort tiering, and
+/// unsupported/empty paths.
 /// </summary>
 public class WorkspaceFilesModelTests
 {
@@ -36,6 +35,86 @@ public class WorkspaceFilesModelTests
     };
 
     // ── File list mapping ───────────────────────────────────────────────
+
+    [Fact]
+    public void FromAgentWorkspaceList_ProjectsArbitraryAgentEntriesAndOpaquePaths()
+    {
+        var state = WorkspaceFilesModel.FromAgentWorkspaceList(new AgentWorkspaceListResult
+        {
+            AgentId = "not-a-session",
+            Path = "Repo/Src",
+            ParentPath = "Repo",
+            TotalEntries = 3,
+            Offset = 0,
+            Entries = new[]
+            {
+                new AgentWorkspaceEntry
+                {
+                    Path = "Repo/Src/ReadMe.md",
+                    Name = "ReadMe.md",
+                    Kind = AgentWorkspaceEntryKind.File,
+                    Size = 12,
+                    UpdatedAtMs = 1_760_000_000_123
+                },
+                new AgentWorkspaceEntry
+                {
+                    Path = "Repo/Src/README.md",
+                    Name = "README.md",
+                    Kind = AgentWorkspaceEntryKind.File
+                },
+                new AgentWorkspaceEntry
+                {
+                    Path = "Repo/Src/Images",
+                    Name = "Images",
+                    Kind = AgentWorkspaceEntryKind.Directory
+                }
+            }
+        });
+
+        Assert.True(state.Supported);
+        Assert.Equal(string.Empty, state.WorkspacePath);
+        Assert.Equal("Repo/Src", state.RequestBrowserPath);
+        Assert.Equal("Repo", state.RequestBrowserParentPath);
+        Assert.Equal("Repo/Src", state.BrowserPath);
+        Assert.Equal("Repo", state.BrowserParentPath);
+        Assert.Equal(3, state.Entries.Count);
+
+        var mixedCase = Assert.Single(state.Entries, entry => entry.Name == "ReadMe.md");
+        Assert.Equal("Repo/Src/ReadMe.md", mixedCase.RequestPath);
+        Assert.Equal("Repo/Src/ReadMe.md", mixedCase.RelativePath);
+        Assert.True(mixedCase.CanPreview);
+        Assert.False(mixedCase.IsSessionFile);
+        Assert.NotNull(mixedCase.ModifiedUtc);
+        Assert.True(Assert.Single(state.Entries, entry => entry.Name == "Images").IsDirectory);
+    }
+
+    [Fact]
+    public void AgentWorkspacePreviewKind_NeverTreatsBase64AsText()
+    {
+        Assert.Equal(
+            WorkspaceFilesModel.PreviewKind.Text,
+            WorkspaceFilesModel.GetPreviewKind(new AgentWorkspaceFile
+            {
+                MimeType = "text/plain",
+                Encoding = AgentWorkspaceFileEncoding.Utf8
+            }));
+        Assert.Equal(
+            WorkspaceFilesModel.PreviewKind.ImageUnsupported,
+            WorkspaceFilesModel.GetPreviewKind(new AgentWorkspaceFile
+            {
+                MimeType = "image/png",
+                Encoding = AgentWorkspaceFileEncoding.Base64,
+                Content = "iVBORw=="
+            }));
+        Assert.Equal(
+            WorkspaceFilesModel.PreviewKind.Unsupported,
+            WorkspaceFilesModel.GetPreviewKind(new AgentWorkspaceFile
+            {
+                MimeType = "application/octet-stream",
+                Encoding = AgentWorkspaceFileEncoding.Base64,
+                Content = "AA=="
+            }));
+    }
 
     [Fact]
     public void FromSessionFileList_MapsRootAndBasicFields()
@@ -76,6 +155,19 @@ public class WorkspaceFilesModelTests
         Assert.Equal("src/app/main.ts", entry.RelativePath);
         // Request path stays verbatim so sessions.files.get matches the gateway.
         Assert.Equal(@"src\app\main.ts", entry.RequestPath);
+    }
+
+    [Fact]
+    public void FromSessionFileList_DeduplicatesByVerbatimRequestPath()
+    {
+        var state = WorkspaceFilesModel.FromSessionFileList(List(
+            File(@"src\app\main.ts", name: "backslash.ts"),
+            File("src/app/main.ts", name: "slash.ts")));
+
+        Assert.Equal(2, state.Entries.Count);
+        Assert.Contains(state.Entries, entry => entry.RequestPath == @"src\app\main.ts");
+        Assert.Contains(state.Entries, entry => entry.RequestPath == "src/app/main.ts");
+        Assert.All(state.Entries, entry => Assert.Equal("src/app/main.ts", entry.RelativePath));
     }
 
     [Fact]

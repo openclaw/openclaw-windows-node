@@ -2122,6 +2122,18 @@ Gebruik een van deze opties:
   <data name="WorkspacePage_LoadingContent" xml:space="preserve">
     <value>Inhoud laden…</value>
   </data>
+  <data name="WorkspacePage_AgentWorkspaceLabel" xml:space="preserve">
+    <value>Agentwerkruimte</value>
+  </data>
+  <data name="WorkspacePage_LimitedScopeMessage" xml:space="preserve">
+    <value>Bestanden uit deze sessie worden weergegeven.</value>
+  </data>
+  <data name="WorkspacePage_LegacyAgentFilesScopeMessage" xml:space="preserve">
+    <value>Beheerde agentbestanden worden weergegeven, niet de volledige werkruimte.</value>
+  </data>
+  <data name="WorkspacePage_ImagePreviewUnsupported" xml:space="preserve">
+    <value>Afbeeldingsvoorbeeld wordt hier nog niet ondersteund.</value>
+  </data>
   <data name="WorkspacePage_SearchBox.PlaceholderText" xml:space="preserve">
     <value>Search files</value>
   </data>

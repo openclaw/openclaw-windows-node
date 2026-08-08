@@ -329,6 +329,10 @@ public class LocalizationValidationTests
         "WorkspacePage_RootFolder",
         "WorkspacePage_SearchResultsPath",
         "WorkspacePage_BrowserTruncated",
+        "WorkspacePage_AgentWorkspaceLabel",
+        "WorkspacePage_LimitedScopeMessage",
+        "WorkspacePage_LegacyAgentFilesScopeMessage",
+        "WorkspacePage_ImagePreviewUnsupported",
     };
 
     private static readonly HashSet<string> EnUsOnlyFallbackResourceKeys = new(StringComparer.Ordinal);

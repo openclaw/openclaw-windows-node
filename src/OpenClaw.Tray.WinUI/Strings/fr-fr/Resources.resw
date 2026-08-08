@@ -2121,6 +2121,18 @@ Utilisez l'une de ces options :
   <data name="WorkspacePage_LoadingContent" xml:space="preserve">
     <value>Chargement du contenu…</value>
   </data>
+  <data name="WorkspacePage_AgentWorkspaceLabel" xml:space="preserve">
+    <value>Espace de travail de l’agent</value>
+  </data>
+  <data name="WorkspacePage_LimitedScopeMessage" xml:space="preserve">
+    <value>Affichage des fichiers de cette session.</value>
+  </data>
+  <data name="WorkspacePage_LegacyAgentFilesScopeMessage" xml:space="preserve">
+    <value>Affichage des fichiers d’agent gérés, et non de l’espace de travail complet.</value>
+  </data>
+  <data name="WorkspacePage_ImagePreviewUnsupported" xml:space="preserve">
+    <value>L’aperçu des images n’est pas encore pris en charge ici.</value>
+  </data>
   <data name="WorkspacePage_SearchBox.PlaceholderText" xml:space="preserve">
     <value>Search files</value>
   </data>

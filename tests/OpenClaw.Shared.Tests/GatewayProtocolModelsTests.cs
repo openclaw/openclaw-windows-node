@@ -27,8 +27,14 @@ public class GatewayProtocolModelsTests
         {
             ("ListCommandsAsync", new[] { typeof(CommandCatalogQuery), typeof(int) }),
             ("PatchSessionAsync", new[] { typeof(string), typeof(SessionPatch) }),
+            ("ListAgentWorkspaceAsync", new[] { typeof(AgentWorkspaceListRequest), typeof(int) }),
+            ("ListAgentWorkspaceAsync", new[] { typeof(AgentWorkspaceListRequest), typeof(int), typeof(CancellationToken) }),
+            ("GetAgentWorkspaceFileAsync", new[] { typeof(AgentWorkspaceGetRequest), typeof(int) }),
+            ("GetAgentWorkspaceFileAsync", new[] { typeof(AgentWorkspaceGetRequest), typeof(int), typeof(CancellationToken) }),
             ("ListSessionFilesAsync", new[] { typeof(string), typeof(string), typeof(string), typeof(int) }),
+            ("ListSessionFilesAsync", new[] { typeof(string), typeof(string), typeof(string), typeof(int), typeof(CancellationToken) }),
             ("GetSessionFileAsync", new[] { typeof(string), typeof(string), typeof(int) }),
+            ("GetSessionFileAsync", new[] { typeof(string), typeof(string), typeof(int), typeof(CancellationToken) }),
             ("ListCompactionCheckpointsAsync", new[] { typeof(string), typeof(int) }),
             ("GetCompactionCheckpointAsync", new[] { typeof(string), typeof(string), typeof(int) }),
             ("BranchCompactionCheckpointAsync", new[] { typeof(string), typeof(string), typeof(int) }),
@@ -48,6 +54,155 @@ public class GatewayProtocolModelsTests
     }
 
     private static JsonElement Parse(string json) => JsonDocument.Parse(json).RootElement;
+
+    [Fact]
+    public void AgentWorkspaceRequests_EmitExactStrictSchemaKeys()
+    {
+        var root = new AgentWorkspaceListRequest { AgentId = "Agent-A" }.ToListPayload();
+        Assert.Equal("Agent-A", root["agentId"]);
+        Assert.DoesNotContain("path", root);
+        Assert.DoesNotContain("offset", root);
+        Assert.DoesNotContain("limit", root);
+
+        var page = new AgentWorkspaceListRequest
+        {
+            AgentId = "Agent-A",
+            Path = "Src/MixedCase",
+            Offset = 3_000_000_000L,
+            Limit = 500
+        }.ToListPayload();
+        Assert.Equal(
+            new[] { "agentId", "limit", "offset", "path" },
+            page.Keys.OrderBy(key => key, StringComparer.Ordinal));
+        Assert.Equal("Src/MixedCase", page["path"]);
+        Assert.Equal(3_000_000_000L, page["offset"]);
+        Assert.Equal(500L, page["limit"]);
+
+        var get = new AgentWorkspaceGetRequest
+        {
+            AgentId = "Agent-A",
+            Path = "Repo/ReadMe.md"
+        }.ToGetPayload();
+        Assert.Equal(new[] { "agentId", "path" }, get.Keys.OrderBy(key => key, StringComparer.Ordinal));
+        Assert.Equal("Repo/ReadMe.md", get["path"]);
+    }
+
+    [Fact]
+    public void ParseAgentWorkspaceList_PreservesOpaquePathsPaginationAndMetadata()
+    {
+        var result = OpenClawGatewayClient.ParseAgentWorkspaceListResult(Parse("""
+        {
+          "agentId": "Arbitrary-Agent",
+          "path": "Repo/Src",
+          "parentPath": "Repo",
+          "entries": [
+            {
+              "path": "Repo/Src/ReadMe.md",
+              "name": "ReadMe.md",
+              "kind": "file",
+              "size": 42,
+              "updatedAtMs": 1760000000123
+            },
+            {
+              "path": "Repo/Src/Images",
+              "name": "Images",
+              "kind": "directory"
+            }
+          ],
+          "totalEntries": 502,
+          "offset": 250
+        }
+        """));
+
+        Assert.True(result.IsSupported);
+        Assert.Equal("Arbitrary-Agent", result.AgentId);
+        Assert.Equal("Repo/Src", result.Path);
+        Assert.Equal("Repo", result.ParentPath);
+        Assert.Equal(502, result.TotalEntries);
+        Assert.Equal(250, result.Offset);
+        Assert.Equal("Repo/Src/ReadMe.md", result.Entries[0].Path);
+        Assert.Equal(AgentWorkspaceEntryKind.File, result.Entries[0].Kind);
+        Assert.Equal(42, result.Entries[0].Size);
+        Assert.Equal(1_760_000_000_123L, result.Entries[0].UpdatedAtMs);
+        Assert.Equal(AgentWorkspaceEntryKind.Directory, result.Entries[1].Kind);
+
+        var root = OpenClawGatewayClient.ParseAgentWorkspaceListResult(Parse("""
+        {"agentId":"a","path":"","entries":[],"totalEntries":0,"offset":0}
+        """));
+        Assert.Null(root.ParentPath);
+
+        var firstLevel = OpenClawGatewayClient.ParseAgentWorkspaceListResult(Parse("""
+        {"agentId":"a","path":"Src","parentPath":"","entries":[],"totalEntries":0,"offset":0}
+        """));
+        Assert.Equal("", firstLevel.ParentPath);
+    }
+
+    [Fact]
+    public void ParseAgentWorkspaceGet_PreservesUtf8AndImagePayloads()
+    {
+        var text = OpenClawGatewayClient.ParseAgentWorkspaceGetResult(Parse("""
+        {
+          "agentId": "a",
+          "file": {
+            "path": "Docs/日本語.md",
+            "name": "日本語.md",
+            "size": 15,
+            "updatedAtMs": 1760000000999,
+            "mimeType": "text/plain",
+            "encoding": "utf8",
+            "content": "# こんにちは"
+          }
+        }
+        """));
+        Assert.Equal("Docs/日本語.md", text.File!.Path);
+        Assert.Equal(AgentWorkspaceFileEncoding.Utf8, text.File.Encoding);
+        Assert.Equal("# こんにちは", text.File.Content);
+
+        var image = OpenClawGatewayClient.ParseAgentWorkspaceGetResult(Parse("""
+        {
+          "agentId": "a",
+          "file": {
+            "path": "Images/Logo.PNG",
+            "name": "Logo.PNG",
+            "size": 4,
+            "updatedAtMs": 1760000001000,
+            "mimeType": "image/png",
+            "encoding": "base64",
+            "content": "iVBORw=="
+          }
+        }
+        """));
+        Assert.Equal("image/png", image.File!.MimeType);
+        Assert.Equal(AgentWorkspaceFileEncoding.Base64, image.File.Encoding);
+        Assert.Equal("iVBORw==", image.File.Content);
+    }
+
+    [Theory]
+    [InlineData("unknown method: agents.workspace.list", "agents.workspace.list", true)]
+    [InlineData("unknown method: agents.workspace.get", "agents.workspace.get", true)]
+    [InlineData("unknown method: agents.workspace.get", "agents.workspace.list", false)]
+    [InlineData("UNKNOWN METHOD: agents.workspace.list", "agents.workspace.list", false)]
+    [InlineData("unknown method: agents.workspace.list (disabled)", "agents.workspace.list", false)]
+    [InlineData("invalid agents.workspace.list params", "agents.workspace.list", false)]
+    public void ExactUnknownMethodClassifier_IsMethodSpecific(string message, string method, bool expected)
+    {
+        Assert.Equal(expected, OpenClawGatewayClient.IsExactUnknownMethodError(message, method));
+    }
+
+    [Fact]
+    public void ExactUnknownMethodClassifier_RequiresInvalidRequestCode()
+    {
+        Assert.True(OpenClawGatewayClient.IsExactUnknownMethodError(
+            new GatewayRequestException(
+                "unknown method: agents.workspace.list",
+                "INVALID_REQUEST"),
+            "agents.workspace.list"));
+        Assert.False(OpenClawGatewayClient.IsExactUnknownMethodError(
+            new GatewayRequestException(
+                "unknown method: agents.workspace.list",
+                "INTERNAL_ERROR"),
+            "agents.workspace.list"));
+    }
 
     [Fact]
     public void ParseSessionCreateResult_RequiresAndPreservesGatewayKey()

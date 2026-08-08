@@ -1,7 +1,7 @@
 {
   "_comment": [
     "CANONICAL MIRROR of the upstream OpenClaw gateway protocol schema for the",
-    "sessions / files / commands / compaction surface. This file is the pinned",
+    "sessions / files / commands / agent-workspace / compaction surface. This file is the pinned",
     "reference that GatewayProtocolDriftTests checks the Windows companion against.",
     "It is maintained BY HAND from upstream main. When upstream changes, refresh",
     "this file (see docs/gateway-protocol-drift-guard.md) and the drift test will",
@@ -45,18 +45,20 @@
     "  responseEnvelopeSource - declaration-signature fragment of the parser body that",
     "                    reads this method's response envelope."
   ],
-  "upstreamSourceOfTruth": "openclaw/openclaw — packages/gateway-protocol/src/schema/{sessions,commands}.ts",
-  "upstreamRef": "main",
+  "upstreamSourceOfTruth": "openclaw/openclaw — packages/gateway-protocol/src/schema/{sessions,commands,agents-workspace}.ts",
+  "upstreamRef": "v2026.7.1-2",
+  "upstreamCommit": "0790d9f593ad30c940ed93b5872a8cf6d6f3cf8c",
   "upstreamVerified": {
-    "date": "2026-06-23",
-    "sessionsTsBlobSha": "d938f80f68cb285719e20801e83f74893aa04332",
+    "date": "2026-08-07",
+    "sessionsTsBlobSha": "0fc13a7438100f82a201e860f1d1f501cfe0b440",
     "commandsTsBlobSha": "a24972162dfbe4f95e05bf19211097707d30f9bb",
-    "result": "All enforced request fields, response envelopes, and the sessions.patch tri-state nullable (Union([value, Null])) contract match upstream main exactly. The snapshot is a deliberate SUBSET: the Windows client does not yet implement these upstream sessions.patch fields — label, agentId, spawnedBy, spawnedWorkspaceDir, spawnedCwd, spawnDepth, subagentRole, subagentControlScope, inheritedToolAllow, inheritedToolDeny (spawn/subagent orchestration); nor the compaction checkpoint preCompaction/postCompaction references. These are upstream fields the client does not implement yet, not drift."
+    "agentsWorkspaceTsBlobSha": "04fcc82a767d530473154c6d7e6a6ececdc54829",
+    "result": "All enforced sessions, commands, and agents.workspace.list/get contracts match tag v2026.7.1-2."
   },
   "clientFoundationCommit": "2cae69ba",
   "_clientFoundationCommitNote": "The commit on main that introduced the typed gateway protocol client (OpenClawGatewayClient.Protocol.cs + GatewayProtocolModels.cs) this guard cross-checks.",
-  "snapshotUpdated": "2026-07-13",
-  "scopePrefixes": ["sessions.", "agents.files.", "commands."],
+  "snapshotUpdated": "2026-08-07",
+  "scopePrefixes": ["sessions.", "agents.files.", "agents.workspace.", "commands."],
   "methods": [
     {
       "method": "sessions.list",
@@ -169,6 +171,28 @@
       "kind": "request",
       "windowsUsage": "used",
       "requestFields": ["agentId", "name"]
+    },
+    {
+      "method": "agents.workspace.list",
+      "kind": "request",
+      "windowsUsage": "used",
+      "requestFields": ["agentId", "path", "offset", "limit"],
+      "requestFieldsSource": "internal Dictionary<string, object?> ToListPayload()",
+      "responseEnvelope": ["entries"],
+      "responseEnvelopeSource": "ParseAgentWorkspaceListResult(JsonElement payload",
+      "responseFields": ["agentId", "path", "parentPath", "entries", "totalEntries", "offset"],
+      "itemFields": ["path", "name", "kind", "size", "updatedAtMs"]
+    },
+    {
+      "method": "agents.workspace.get",
+      "kind": "request",
+      "windowsUsage": "used",
+      "requestFields": ["agentId", "path"],
+      "requestFieldsSource": "internal Dictionary<string, object?> ToGetPayload()",
+      "responseEnvelope": ["file"],
+      "responseEnvelopeSource": "ParseAgentWorkspaceGetResult(JsonElement payload",
+      "responseFields": ["agentId", "file"],
+      "itemFields": ["path", "name", "size", "updatedAtMs", "mimeType", "encoding", "content"]
     },
     {
       "method": "commands.list",
