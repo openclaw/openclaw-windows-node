@@ -30,6 +30,8 @@ public abstract class WebSocketClientBase : IDisposable
     private int _reconnectAttempts;
     private int _reconnectLoopActive;
     private long _connectionGeneration;
+    private int _remoteCloseStatusCode = -1;
+    private string? _remoteCloseStatusDescription;
     private readonly SemaphoreSlim _sendLock = new(1, 1);
     private static readonly int[] BackoffMs = { 1000, 2000, 4000, 8000, 15000, 30000, 60000 };
 
@@ -47,6 +49,23 @@ public abstract class WebSocketClientBase : IDisposable
 
     /// <summary>Cancellation token tied to this client's lifetime.</summary>
     protected CancellationToken CancellationToken => _cts.Token;
+
+    /// <summary>Close status from the current connection's server-originated close frame.</summary>
+    protected int? RemoteCloseStatusCode
+    {
+        get
+        {
+            var code = Volatile.Read(ref _remoteCloseStatusCode);
+            return code >= 0 ? code : null;
+        }
+    }
+
+    /// <summary>Close description from the current connection's server-originated close frame.</summary>
+    protected string? RemoteCloseStatusDescription =>
+        Volatile.Read(ref _remoteCloseStatusDescription);
+
+    /// <summary>Identifies the transport attempt currently owned by this client.</summary>
+    protected long CurrentConnectionGeneration => Interlocked.Read(ref _connectionGeneration);
 
     // Events
     public event EventHandler<ConnectionStatus>? StatusChanged;
@@ -128,6 +147,8 @@ public abstract class WebSocketClientBase : IDisposable
         }
 
         var connectGeneration = Interlocked.Increment(ref _connectionGeneration);
+        Volatile.Write(ref _remoteCloseStatusCode, -1);
+        Volatile.Write(ref _remoteCloseStatusDescription, null);
         ClientWebSocket? ws = null;
 
         try
@@ -238,6 +259,25 @@ public abstract class WebSocketClientBase : IDisposable
         try { ws.Dispose(); } catch { }
     }
 
+    /// <summary>
+    /// Aborts the current transport while retaining reconnect ownership for its listen loop.
+    /// Use when a socket-specific trust check fails and only a fresh socket may retry.
+    /// </summary>
+    protected bool IsCurrentConnectionGeneration(long expectedGeneration) =>
+        !_disposed && Interlocked.Read(ref _connectionGeneration) == expectedGeneration;
+
+    protected void AbortCurrentWebSocket(long expectedGeneration)
+    {
+        var ws = _webSocket;
+        if (ws is null ||
+            !IsCurrentConnectionGeneration(expectedGeneration) ||
+            !ReferenceEquals(_webSocket, ws))
+            return;
+
+        try { ws.Abort(); }
+        catch (Exception ex) { _logger.Debug($"{ClientRole} WebSocket abort threw: {ex.Message}"); }
+    }
+
     // Cap on a single accumulated inbound message. A peer that streams an unbounded multi-frame text
     // message (never setting EndOfMessage) would otherwise grow the StringBuilder without limit —
     // a memory-exhaustion DoS (CWE-770 / CWE-400). 32M UTF-16 chars (~64 MB) is generous for large
@@ -313,11 +353,17 @@ public abstract class WebSocketClientBase : IDisposable
                 }
                 else if (result.MessageType == WebSocketMessageType.Close)
                 {
-                    var closeStatus = ws.CloseStatus?.ToString() ?? "unknown";
-                    var closeDesc = ws.CloseStatusDescription ?? "no description";
+                    var closeStatus = result.CloseStatus?.ToString() ?? "unknown";
+                    var closeDesc = result.CloseStatusDescription ?? "no description";
                     _logger.Info($"Server closed connection: {closeStatus} - {closeDesc}");
                     if (IsCurrentConnection(ws, connectionGeneration))
                     {
+                        Volatile.Write(
+                            ref _remoteCloseStatusCode,
+                            result.CloseStatus is null ? -1 : (int)result.CloseStatus.Value);
+                        Volatile.Write(
+                            ref _remoteCloseStatusDescription,
+                            result.CloseStatusDescription);
                         OnDisconnected();
                         RaiseStatusChanged(ConnectionStatus.Disconnected);
                     }

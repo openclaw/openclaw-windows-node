@@ -136,6 +136,32 @@ public class WslGatewayControllerTests
         Assert.Equal(2, runner.InDistroCount);
     }
 
+    [Fact]
+    public async Task Restarter_GatewayChangesAfterInPlaceFailure_DoesNotForceTerminate()
+    {
+        var runner = new FakeWslCommandRunner
+        {
+            Distros = [new WslDistroInfo("OpenClawGateway", "Running", 2)],
+            InDistroResults = new Queue<WslCommandResult>(
+            [
+                new WslCommandResult(1, string.Empty, "wedged"),
+            ]),
+        };
+        var controller = new WslGatewayController(runner, NullLogger.Instance);
+        var restarter = new OpenClawTray.Services.WslManagedLocalGatewayRestarter(controller);
+        var checks = 0;
+
+        var result = await restarter.RestartAsync(
+            "OpenClawGateway",
+            CancellationToken.None,
+            canContinue: () => ++checks == 1);
+
+        Assert.False(result.Success);
+        Assert.Contains("changed", result.Detail, StringComparison.OrdinalIgnoreCase);
+        Assert.Equal(0, runner.TerminateCount);
+        Assert.Equal(1, runner.InDistroCount);
+    }
+
     private sealed class FakeWslCommandRunner : IWslCommandRunner
     {
         public IReadOnlyList<WslDistroInfo> Distros { get; init; } = [];

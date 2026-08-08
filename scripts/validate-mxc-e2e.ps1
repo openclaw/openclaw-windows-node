@@ -11,7 +11,8 @@
     claim end-to-end validation on a host that did not exercise MXC.
 
 .PARAMETER NoBuild
-    Skip build steps and run against existing outputs.
+    Skip the repository and tray-app build steps. The E2E test project is always
+    rebuilt so fixture source changes cannot run against stale --no-build output.
 
 .PARAMETER AllowSkip
     Return success when MXC tests are reported but skipped. Use only for
@@ -100,6 +101,7 @@ function Assert-GatewayMxcProofsPassed {
     param([Parameter(Mandatory = $true)][xml]$Trx)
 
     $expectedProofs = @(
+        "MirroredWslSafeGatewayPort_IsListeningAndRecorded",
         "RealGateway_SystemRun_ExecutesThroughWindowsNodeMxcSandbox",
         "RealGateway_SystemRun_BlocksWritesToTrayDataDirectoryInMxcSandbox"
     )
@@ -182,9 +184,10 @@ try {
             & dotnet build ".\src\OpenClaw.Tray.WinUI\OpenClaw.Tray.WinUI.csproj" -c $Configuration -r $RuntimeIdentifier
         }
 
-        Invoke-Checked -Name "Build E2E tests for $RuntimeIdentifier" -Command {
-            & dotnet build ".\tests\OpenClaw.E2ETests\OpenClaw.E2ETests.csproj" -c $Configuration -r $RuntimeIdentifier
-        }
+    }
+
+    Invoke-Checked -Name "Build E2E tests for $RuntimeIdentifier (always current)" -Command {
+        & dotnet build ".\tests\OpenClaw.E2ETests\OpenClaw.E2ETests.csproj" -c $Configuration -r $RuntimeIdentifier
     }
 
     $e2eTrx = Join-Path $ResultsDirectory "OpenClaw.E2ETests.Mxc.trx"
@@ -199,7 +202,7 @@ try {
             --results-directory $ResultsDirectory `
             --logger "trx;LogFileName=OpenClaw.E2ETests.Mxc.trx" `
             --logger "console;verbosity=detailed" `
-            --filter "FullyQualifiedName~OpenClaw.E2ETests.Setup.MxcSetupAndConnectTests" `
+            --filter "FullyQualifiedName~OpenClaw.E2ETests.Setup.MxcSetupAndConnectTests|FullyQualifiedName~OpenClaw.E2ETests.Setup.MirroredWslPortLeaseTests" `
             2>&1 | Tee-Object -FilePath $e2eConsoleLog
     }
     Assert-GatewayMxcProofsPassed -Trx (Read-Trx -Path $e2eTrx)

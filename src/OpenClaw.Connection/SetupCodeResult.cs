@@ -6,7 +6,8 @@ namespace OpenClaw.Connection;
 public sealed record SetupCodeResult(
     SetupCodeOutcome Outcome,
     string? ErrorMessage = null,
-    string? GatewayUrl = null);
+    string? GatewayUrl = null,
+    bool GatewayCommitted = false);
 
 public enum SetupCodeOutcome
 {

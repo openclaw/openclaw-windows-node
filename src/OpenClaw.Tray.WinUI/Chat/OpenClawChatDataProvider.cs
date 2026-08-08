@@ -997,7 +997,9 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
         // Always clear local "turn active" state — the gateway will emit a
         // lifecycle.end if the abort succeeds, but we want the UI to reflect
         // the user's intent immediately.
-        ApplyEventAndPublish(threadId, new ChatTurnEndEvent());
+        ApplyEventAndPublish(
+            threadId,
+            new ChatTurnEndEvent(RetainToolCorrelations: false));
     }
 
     /// <summary>
@@ -4323,19 +4325,21 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
             case "lifecycle":
                 return MapLifecycleEvent(evt);
             case "tool":
-                // Spec name; gateway 2026.4.x uses ``item`` (kind=tool) instead.
+                // Normalized tool lifecycle with arguments and results.
                 return MapToolEvent(evt);
             case "item":
                 // Verified live shape: stream="item", data.kind ∈
-                // {"tool","command","reasoning","message"}, data.phase ∈
-                // {"start","end"}, data.title/itemId/details. We surface
-                // tool items as chips and ignore the redundant command
-                // children (their output arrives on ``command_output``).
+                // {"tool","command","patch","reasoning","message"},
+                // data.phase ∈ {"start","update","end"}, data.name/title,
+                // data.toolCallId/itemId. Tool items create chips; command
+                // and patch siblings refine or close the same correlated row.
                 return MapItemEvent(evt);
             case "command_output":
                 // Shell command stdout/stderr — attach to the active tool
                 // chip as its ``Tool output`` body.
                 return MapCommandOutputEvent(evt);
+            case "patch":
+                return MapPatchEvent(evt);
             case "job":
                 return MapJobEvent(evt);
             case "approval":
@@ -4669,15 +4673,14 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
 
     private static ChatEvent? MapToolEvent(AgentEventInfo evt)
     {
-        // Expected payload shape: data.phase ∈ {"start","result","error"}, data.name, data.args
+        // Core result+isError is authoritative; phase=error remains legacy compatibility.
         if (evt.Data.ValueKind != System.Text.Json.JsonValueKind.Object) return null;
 
         var phase = evt.Data.TryGetProperty("phase", out var phaseProp) ? phaseProp.GetString() ?? "" : "";
         var identity = NativeToolProjector.ExtractToolIdentity(evt.Data);
         var toolArgs = NativeToolProjector.ExtractSafeToolDisplayArgs(evt.Data);
         var label = NativeToolProjector.ExtractToolLabel(evt.Data, toolArgs);
-        var toolCallId = evt.Data.TryGetProperty("itemId", out var idProp) ? idProp.GetString()
-            : (evt.Data.TryGetProperty("callId", out var cProp) ? cProp.GetString() : null);
+        var toolCallId = NativeToolProjector.ExtractToolCorrelationId(evt.Data);
 
         return phase.ToLowerInvariant() switch
         {
@@ -4688,8 +4691,16 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
                 ToolCallId: toolCallId,
                 IdentityStrength: identity.Strength,
                 RunId: evt.RunId),
+            "result" when NativeToolProjector.IsToolResultError(evt.Data) =>
+                new ChatToolErrorEvent(
+                NativeToolProjector.ExtractToolResultErrorText(evt.Data),
+                ToolCallId: toolCallId,
+                RunId: evt.RunId,
+                ErrorTextQuality: NativeToolProjector.HasSafeToolErrorSummary(evt.Data)
+                    ? ChatToolErrorTextQuality.SafeSummary
+                    : ChatToolErrorTextQuality.Unspecified),
             "result" => new ChatToolOutputEvent(
-                NativeToolProjector.ExtractToolResultText(evt.Data, fallback: label),
+                NativeToolProjector.ExtractToolResultText(evt.Data, fallback: string.Empty),
                 ToolCallId: toolCallId,
                 RunId: evt.RunId),
             "error" => new ChatToolErrorEvent(
@@ -4701,25 +4712,26 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
     }
 
     /// <summary>
-    /// Map ``stream: "item"`` agent events (the gateway's actual tool/command
-    /// lifecycle channel as of 2026.4.x — distinct from the spec's ``"tool"``
-    /// stream which has not been observed in the wild).
+    /// Map Core ``stream: "item"`` activity envelopes that accompany the
+    /// normalized ``stream: "tool"`` lifecycle.
     ///
     /// Verified payload shape:
     /// <code>
     /// {
     ///   "stream": "item",
     ///   "data": {
-    ///     "itemId": "tool:call_xxx|fc_yyy",
-    ///     "phase": "start" | "end",
-    ///     "kind": "tool" | "command" | "reasoning" | "message",
-    ///     "title": "exec run command openclaw → ..."
+    ///     "itemId": "tool:call_xxx",
+    ///     "toolCallId": "call_xxx",
+    ///     "phase": "start" | "update" | "end",
+    ///     "kind": "tool" | "command" | "patch",
+    ///     "name": "system.run",
+    ///     "title": "Run command"
     ///   }
     /// }
     /// </code>
     ///
-    /// Tool items create chips. Command children upgrade the parent chip with
-    /// their specific identity and bounded safe display arguments.
+    /// Tool items create chips. Command and patch frames can refine the same
+    /// chip with bounded safe display arguments and terminal status.
     /// </summary>
     private static ChatEvent? MapItemEvent(AgentEventInfo evt)
     {
@@ -4743,25 +4755,49 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
                 : null;
         }
 
-        if (string.Equals(kind, "command", StringComparison.OrdinalIgnoreCase))
+        if (string.Equals(kind, "command", StringComparison.OrdinalIgnoreCase)
+            || string.Equals(kind, "patch", StringComparison.OrdinalIgnoreCase))
         {
             var normalizedPhase = phase.ToLowerInvariant();
-            if (normalizedPhase is not ("start" or "update"))
+            if (normalizedPhase is not ("start" or "update" or "end"))
                 return null;
 
-            var parentItemId = NativeToolProjector.ExtractParentToolCallId(evt.Data);
-            if (string.IsNullOrWhiteSpace(parentItemId))
-                return null;
-
+            var toolCallId = NativeToolProjector.ExtractToolCorrelationId(evt.Data);
+            var childStatus = NativeToolProjector.GetStringProperty(evt.Data, "status");
             var childIdentity = NativeToolProjector.ExtractToolIdentity(evt.Data);
             var commandArgs = NativeToolProjector.ExtractSafeToolDisplayArgs(evt.Data);
-            var childItemId = NativeToolProjector.GetStringProperty(evt.Data, "itemId", "commandItemId", "callId");
+            if (normalizedPhase == "end")
+            {
+                if (IsErrorLikeToolStatus(childStatus))
+                {
+                    return new ChatToolErrorEvent(
+                        NativeToolProjector.ExtractToolErrorText(evt.Data, ToolStatusFallback(childStatus)),
+                        ToolCallId: toolCallId,
+                        RunId: evt.RunId);
+                }
+
+                if (IsCompletedToolStatus(childStatus))
+                    return new ChatToolOutputEvent(string.Empty, ToolCallId: toolCallId, RunId: evt.RunId);
+
+                return string.IsNullOrWhiteSpace(toolCallId)
+                    ? null
+                    : new ChatToolPresentationEvent(
+                        toolCallId,
+                        childIdentity.Name,
+                        childIdentity.Strength,
+                        commandArgs,
+                        ActivatesTurn: false,
+                        RunId: evt.RunId);
+            }
+
+            if (string.IsNullOrWhiteSpace(toolCallId))
+                return null;
+
             return new ChatToolPresentationEvent(
-                parentItemId,
+                toolCallId,
                 childIdentity.Name,
                 childIdentity.Strength,
                 commandArgs,
-                childItemId,
                 ActivatesTurn: normalizedPhase == "start",
                 RunId: evt.RunId);
         }
@@ -4775,9 +4811,8 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
         var label = NativeToolProjector.FirstToolDisplayValue(toolArgs);
         if (string.IsNullOrWhiteSpace(label))
             label = NativeToolProjector.SanitizeToolDisplayValue(title);
-        string? itemId = NativeToolProjector.GetStringProperty(evt.Data, "itemId", "callId");
-        if (string.IsNullOrWhiteSpace(itemId))
-            itemId = null;
+        var itemId = NativeToolProjector.ExtractToolCorrelationId(evt.Data);
+        var status = NativeToolProjector.GetStringProperty(evt.Data, "status");
 
         return phase.ToLowerInvariant() switch
         {
@@ -4790,7 +4825,11 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
                 RunId: evt.RunId),
             // ``end`` flips the active tool's status to Success even when no
             // command_output arrived (e.g. ``read``, ``glob`` — non-shell).
-            // Use the title as a no-op output so the reducer marks Success.
+            // Use an empty output so the reducer marks Success.
+            "end" when IsErrorLikeToolStatus(status) => new ChatToolErrorEvent(
+                NativeToolProjector.ExtractToolErrorText(evt.Data, ToolStatusFallback(status)),
+                ToolCallId: itemId,
+                RunId: evt.RunId),
             "end" => new ChatToolOutputEvent(string.Empty, ToolCallId: itemId, RunId: evt.RunId),
             "error" => new ChatToolErrorEvent(
                 NativeToolProjector.SanitizeToolDisplayValue(title),
@@ -4834,6 +4873,24 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
     }
 
     /// <summary>
+    /// Map Core's terminal patch summary onto the existing apply-patch row.
+    /// </summary>
+    private static ChatEvent? MapPatchEvent(AgentEventInfo evt)
+    {
+        if (evt.Data.ValueKind != System.Text.Json.JsonValueKind.Object)
+            return null;
+
+        var phase = NativeToolProjector.GetStringProperty(evt.Data, "phase");
+        if (!string.Equals(phase, "end", StringComparison.OrdinalIgnoreCase))
+            return null;
+
+        return new ChatToolOutputEvent(
+            NativeToolProjector.ExtractPatchSummaryText(evt.Data),
+            ToolCallId: NativeToolProjector.ExtractToolCorrelationId(evt.Data),
+            RunId: evt.RunId);
+    }
+
+    /// <summary>
     /// Map ``stream: "command_output"`` agent events. These carry shell
     /// stdout/stderr and may arrive in chunks (phase=delta) and as a final
     /// (phase=end) — we attach the text to the currently-active tool chip.
@@ -4850,16 +4907,35 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
             return null;
 
         var output = NativeToolProjector.ExtractCommandOutputText(evt.Data);
-        if (string.IsNullOrEmpty(output))
-            return null;
+        var itemId = NativeToolProjector.ExtractToolCorrelationId(evt.Data);
+        var status = NativeToolProjector.GetStringProperty(evt.Data, "status");
 
-        // command_output events may carry an itemId or parentItemId that
-        // identifies the parent tool call this output belongs to.
-        var itemId = evt.Data.TryGetProperty("parentItemId", out var pidProp) ? pidProp.GetString()
-            : (evt.Data.TryGetProperty("itemId", out var idProp) ? idProp.GetString() : null);
+        if (IsErrorLikeToolStatus(status))
+        {
+            var fallback = string.IsNullOrEmpty(output) ? ToolStatusFallback(status) : output;
+            return new ChatToolErrorEvent(
+                NativeToolProjector.ExtractToolErrorText(evt.Data, fallback),
+                ToolCallId: itemId,
+                RunId: evt.RunId);
+        }
+
+        if (string.IsNullOrEmpty(output) && !IsCompletedToolStatus(status))
+            return null;
 
         return new ChatToolOutputEvent(output, ToolCallId: itemId, RunId: evt.RunId);
     }
+
+    private static bool IsErrorLikeToolStatus(string status) =>
+        string.Equals(status, "failed", StringComparison.OrdinalIgnoreCase)
+        || string.Equals(status, "blocked", StringComparison.OrdinalIgnoreCase);
+
+    private static bool IsCompletedToolStatus(string status) =>
+        string.Equals(status, "completed", StringComparison.OrdinalIgnoreCase);
+
+    private static string ToolStatusFallback(string status) =>
+        string.Equals(status, "blocked", StringComparison.OrdinalIgnoreCase)
+            ? "Tool blocked"
+            : "Tool failed";
 
     private static ChatEvent? MapJobEvent(AgentEventInfo evt)
     {

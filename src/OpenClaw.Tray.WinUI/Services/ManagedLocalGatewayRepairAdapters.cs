@@ -15,14 +15,24 @@ public sealed class WslManagedLocalGatewayRestarter(WslGatewayController control
 {
     private readonly WslGatewayController _controller = controller ?? throw new ArgumentNullException(nameof(controller));
 
-    public async Task<ManagedLocalGatewayRestartResult> RestartAsync(string distroName, CancellationToken cancellationToken)
+    public async Task<ManagedLocalGatewayRestartResult> RestartAsync(
+        string distroName,
+        CancellationToken cancellationToken,
+        Func<bool>? canContinue = null)
     {
+        canContinue ??= static () => true;
+        if (!canContinue())
+            return new ManagedLocalGatewayRestartResult(false, "Gateway changed before restart.");
+
         var result = await _controller
             .RunAsync(distroName, WslGatewayControlAction.Restart, cancellationToken)
             .ConfigureAwait(false);
 
         if (result.Success)
             return new ManagedLocalGatewayRestartResult(true);
+
+        if (!canContinue())
+            return new ManagedLocalGatewayRestartResult(false, "Gateway changed before forced restart.");
 
         // The in-place restart failed — the distro/VM may be wedged and unable to run an in-distro
         // command (an in-distro command also times out to a failure rather than hanging forever).

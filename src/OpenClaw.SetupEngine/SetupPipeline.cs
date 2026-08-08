@@ -21,7 +21,11 @@ public abstract class SetupStep
 
 public enum PipelineOutcome { Success, Failed, Cancelled }
 
-public sealed record PipelineResult(PipelineOutcome Outcome, string? FailedStepId = null, string? Message = null)
+public sealed record PipelineResult(
+    PipelineOutcome Outcome,
+    string? FailedStepId = null,
+    string? Message = null,
+    GatewayCompatibilityFailureKind? CompatibilityFailure = null)
 {
     public int ExitCode => Outcome switch
     {
@@ -196,7 +200,11 @@ public sealed class SetupPipeline
             }
 
             ctx.Journal.RecordPipelineEvent("pipeline_failed", $"step={step.Id}, message={result.Message}");
-            return new PipelineResult(PipelineOutcome.Failed, step.Id, result.Message);
+            return new PipelineResult(
+                PipelineOutcome.Failed,
+                step.Id,
+                result.Message,
+                (result.Error as GatewayCompatibilityException)?.Kind);
         }
 
         pipelineSw.Stop();

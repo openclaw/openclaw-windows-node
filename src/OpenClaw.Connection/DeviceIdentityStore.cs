@@ -52,4 +52,19 @@ public sealed class DeviceIdentityStore : IDeviceIdentityStore
             logger?.Warn($"[IdentityStore] Failed to clear device tokens: {ex.Message}");
         }
     }
+
+    public static DeviceTokenClearResult BeginTransactionalTokenClear(
+        string identityDir,
+        IOpenClawLogger? logger = null) =>
+        DeviceIdentity.BeginClearAllDeviceTokens(identityDir, logger);
+
+    public static bool TryRestoreTransactionalTokenClear(
+        DeviceTokenClearTransaction transaction,
+        IOpenClawLogger? logger = null) =>
+        DeviceIdentity.TryRestoreClearedDeviceTokens(transaction, logger);
+
+    public static DeviceTokenRestoreResult RestoreTransactionalTokenClear(
+        DeviceTokenClearTransaction transaction,
+        IOpenClawLogger? logger = null) =>
+        DeviceIdentity.RestoreClearedDeviceTokens(transaction, logger);
 }

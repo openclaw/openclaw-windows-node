@@ -117,6 +117,25 @@ internal static class WslKeepAlivePolicy
         return IsLegacyDefaultSetupManagedLocalRecord(record);
     }
 
+    public static bool IsSameSetupManagedGateway(
+        GatewayRecord expected,
+        GatewayRecord? current)
+    {
+        if (current is null ||
+            !IsSetupManagedLocalRecord(expected) ||
+            !IsSetupManagedLocalRecord(current) ||
+            !string.Equals(expected.Id, current.Id, StringComparison.Ordinal) ||
+            !string.Equals(expected.Url, current.Url, StringComparison.Ordinal))
+        {
+            return false;
+        }
+
+        return string.Equals(
+            GetSetupManagedDistroName(expected),
+            GetSetupManagedDistroName(current),
+            StringComparison.OrdinalIgnoreCase);
+    }
+
     private static string? GetSetupManagedDistroName(GatewayRecord record)
         => GatewayRecordEditing.ResolveManagedDistroName(record);
 

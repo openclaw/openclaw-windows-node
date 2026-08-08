@@ -47,6 +47,8 @@ If the gateway doesn't support the wizard protocol or is unreachable, this scree
 
 The wizard keeps recovery choices visible while setup steps are running so users can start the wizard again or skip it for now if an auth flow stalls. If the gateway restarts or the wizard connection is lost while setup is running, the same recovery choices are presented in the error state so the user is not trapped retrying a broken session.
 
+Exact Gateway 2026.7.1 has a terminal compatibility path for an app-managed local WSL gateway. When the final `model-check` answer produces WebSocket close 1012 before the gateway can return `done`, setup retries the temporary `NoListener` state and the typed snapshot-changed race that can occur while the listener is restarting. Other unknown or conflicting endpoint ownership fails immediately, and no credential is sent until the managed endpoint is verified again. A retryable startup close 1013 remains inside the existing reconnect timeout. Setup completes only after a fresh authenticated `hello-ok` handshake. Other versions and steps keep the normal managed-local wizard replay behavior with the same bounded ownership wait; remote gateways and other disconnects do not enter this recovery path.
+
 When the gateway config wizard surfaces an error and the active gateway is an app-managed WSL distro, the error state also offers **Open terminal** and **Restart gateway**. The wizard does not parse or classify the gateway's error text; it leaves the message visible and selectable so the user can copy any command the gateway reports. The buttons reuse the shared `GatewayTerminalLauncher` and `WslGatewayController` (in `OpenClaw.Connection`, also used by the Connections tab). Restart re-enters the gateway config wizard (the provider/model onboarding step - not the whole V2 onboarding, and without re-installing the WSL distro) so fixes such as newly-installed tools are picked up on `PATH`. Because the gateway restart clears its wizard session, this resumes at the first config question rather than the exact step that failed. Detection is gated on `GatewayRecord.SetupManagedDistroName`, so it never appears for remote/SSH gateways.
 
 ### All set
@@ -93,6 +95,7 @@ Use a temp settings directory for tests that construct `SettingsManager`, or set
 | `src/OpenClaw.SetupEngine.UI/Pages/CapabilitiesPage.xaml(.cs)` | Capability profile, inline Windows permission status, and install review |
 | `src/OpenClaw.SetupEngine.UI/Pages/ProgressPage.xaml(.cs)` | WSL gateway install progress and gateway-installed handoff |
 | `src/OpenClaw.SetupEngine.UI/Pages/WizardPage.xaml(.cs)` | OpenClaw onboard provider/model/key wizard driven by gateway `wizard.*` frames |
+| `src/OpenClaw.SetupEngine/GatewayWizardRestartRecoveryPolicy.cs` | Exact terminal-restart classification and bounded restart provenance/reconnect retry policy |
 | `src/OpenClaw.SetupEngine.UI/Pages/CompletePage.xaml(.cs)` | Success, failure, log/help, and startup preference summary |
 | `src/OpenClaw.SetupEngine.UI/Pages/SetupPermissionHelper.cs` | Passive Windows permission checks and inline permission rows |
 | `src/OpenClaw.Connection/GatewayRegistry.cs` | Persistent gateway records and migration target |

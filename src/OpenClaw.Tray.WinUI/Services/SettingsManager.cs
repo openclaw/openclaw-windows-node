@@ -433,30 +433,42 @@ public class SettingsManager
 
     public void Save()
     {
+        try
+        {
+            SaveOrThrow();
+        }
+        catch (Exception ex)
+        {
+            Logger.Error($"Failed to save settings: {ex.Message}");
+        }
+    }
+
+    internal void SaveOrThrow()
+    {
         lock (_saveLock)
         {
+            Directory.CreateDirectory(_settingsDirectory);
+            // Lock the tray data dir to current user + SYSTEM + Administrators —
+            // it co-locates the MCP bearer token, settings.json (which embeds
+            // gateway/bootstrap credentials), and diagnostics jsonl. Other apps
+            // running as the same user could otherwise read these freely.
+            OpenClaw.Shared.Mcp.McpAuthToken.TryRestrictDataDirectoryAcl(_settingsDirectory);
+
+            var data = ToSettingsData();
+            // Apply DPAPI protection to the API key for on-disk storage only
+            data.TtsElevenLabsApiKey = ProtectSettingSecret(data.TtsElevenLabsApiKey);
+
+            var json = data.ToJson();
+            File.WriteAllText(_settingsFilePath, json);
+
+            Logger.Info("Settings saved");
             try
             {
-                Directory.CreateDirectory(_settingsDirectory);
-                // Lock the tray data dir to current user + SYSTEM + Administrators —
-                // it co-locates the MCP bearer token, settings.json (which embeds
-                // gateway/bootstrap credentials), and diagnostics jsonl. Other apps
-                // running as the same user could otherwise read these freely.
-                OpenClaw.Shared.Mcp.McpAuthToken.TryRestrictDataDirectoryAcl(_settingsDirectory);
-
-                var data = ToSettingsData();
-                // Apply DPAPI protection to the API key for on-disk storage only
-                data.TtsElevenLabsApiKey = ProtectSettingSecret(data.TtsElevenLabsApiKey);
-
-                var json = data.ToJson();
-                File.WriteAllText(_settingsFilePath, json);
-                
-                Logger.Info("Settings saved");
                 Saved?.Invoke(this, EventArgs.Empty);
             }
             catch (Exception ex)
             {
-                Logger.Error($"Failed to save settings: {ex.Message}");
+                Logger.Warn($"Settings saved, but a notification subscriber failed: {ex.Message}");
             }
         }
     }

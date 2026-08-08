@@ -16,6 +16,8 @@
   <ItemGroup>
     <ProjectReference Include="..\..\src\OpenClaw.SetupEngine\OpenClaw.SetupEngine.csproj" />
     <ProjectReference Include="..\..\src\OpenClaw.Shared\OpenClaw.Shared.csproj" />
+    <ProjectReference Include="..\..\src\OpenClaw.Connection\OpenClaw.Connection.csproj" />
+    <PackageReference Include="System.Drawing.Common" Version="10.0.7" />
   </ItemGroup>
 
 </Project>

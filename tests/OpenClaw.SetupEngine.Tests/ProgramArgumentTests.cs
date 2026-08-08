@@ -14,6 +14,7 @@ public sealed class ProgramArgumentTests : IDisposable
         "--local-data-dir",
         "--distro-name",
         "--gateway-port",
+        "--gateway-candidate-package",
         "--tailscale-auth",
         "--tailscale-hostname",
         "--autostart-name",
@@ -32,6 +33,7 @@ public sealed class ProgramArgumentTests : IDisposable
         "--preserve-logs",
         "--tailscale",
         "--tailscale-trust-auth",
+        "--validate-gateway-candidate",
     ];
 
     private readonly string _tempDir;
@@ -398,5 +400,153 @@ public sealed class ProgramArgumentTests : IDisposable
         var exitCode = await Program.Main([$"--config={configPath}", "--dry-run"]);
 
         Assert.Equal(0, exitCode);
+    }
+
+    [Fact]
+    public async Task Main_RejectsRuntimeRejectedReleaseWithoutValidationFlag()
+    {
+        var configPath = Path.Combine(_tempDir, "candidate.json");
+        await File.WriteAllTextAsync(
+            configPath,
+            """{"Gateway":{"Selection":"exact","Version":"2026.7.1"}}""");
+
+        var exitCode = await Program.Main(["--config", configPath, "--dry-run"]);
+
+        Assert.Equal(2, exitCode);
+    }
+
+    [Fact]
+    public async Task Main_DoesNotAllowValidationFlagToOverrideRuntimeRejection()
+    {
+        var configPath = Path.Combine(_tempDir, "candidate-validation.json");
+        await File.WriteAllTextAsync(
+            configPath,
+            """{"Gateway":{"Selection":"exact","Version":"2026.7.1"}}""");
+
+        var exitCode = await Program.Main(
+            ["--config", configPath, "--dry-run", "--validate-gateway-candidate"]);
+
+        Assert.Equal(2, exitCode);
+    }
+
+    [Fact]
+    public async Task Main_RejectsUnembeddedCandidateWithValidationFlag()
+    {
+        const string version = "2026.8.1";
+        var configPath = Path.Combine(_tempDir, "external-candidate.json");
+        await File.WriteAllTextAsync(
+            configPath,
+            $"{{\"Gateway\":{{\"Selection\":\"exact\",\"Version\":\"{version}\"}}}}");
+
+        var exitCode = await Program.Main(
+            [
+                "--config", configPath,
+                "--dry-run",
+                "--validate-gateway-candidate"
+            ]);
+
+        Assert.Equal(2, exitCode);
+    }
+
+    [Fact]
+    public async Task Main_AcceptsUnembeddedCandidatePackageOnlyForHeadlessRollbackValidation()
+    {
+        const string version = "2026.8.1";
+        var configPath = Path.Combine(_tempDir, "external-package-candidate.json");
+        var packagePath = Path.Combine(_tempDir, "openclaw-current.tgz");
+        await File.WriteAllTextAsync(
+            configPath,
+            $"{{\"Gateway\":{{\"Selection\":\"exact\",\"Version\":\"{version}\"}}}}");
+        await File.WriteAllBytesAsync(packagePath, [1, 2, 3]);
+
+        var exitCode = await Program.Main(
+            [
+                "--config", configPath,
+                "--dry-run",
+                "--headless",
+                "--rollback-on-failure",
+                "--validate-gateway-candidate",
+                "--gateway-candidate-package", packagePath
+            ]);
+
+        Assert.Equal(0, exitCode);
+    }
+
+    [Fact]
+    public async Task Main_RejectsCandidatePackageOutsideExplicitValidationMode()
+    {
+        var configPath = Path.Combine(_tempDir, "package-without-validation.json");
+        var packagePath = Path.Combine(_tempDir, "openclaw-current.tgz");
+        await File.WriteAllTextAsync(configPath, "{}");
+        await File.WriteAllBytesAsync(packagePath, [1, 2, 3]);
+
+        var exitCode = await Program.Main(
+            [
+                "--config", configPath,
+                "--dry-run",
+                "--gateway-candidate-package", packagePath
+            ]);
+
+        Assert.Equal(2, exitCode);
+    }
+
+    [Fact]
+    public async Task Main_DoesNotAllowCandidatePackageToOverrideEmbeddedRejection()
+    {
+        var configPath = Path.Combine(_tempDir, "rejected-package-candidate.json");
+        var packagePath = Path.Combine(_tempDir, "openclaw-current.tgz");
+        await File.WriteAllTextAsync(
+            configPath,
+            $"{{\"Gateway\":{{\"Selection\":\"exact\",\"Version\":\"{GatewayReleasePolicy.RuntimeRejectedVersion}\"}}}}");
+        await File.WriteAllBytesAsync(packagePath, [1, 2, 3]);
+
+        var exitCode = await Program.Main(
+            [
+                "--config", configPath,
+                "--dry-run",
+                "--headless",
+                "--rollback-on-failure",
+                "--validate-gateway-candidate",
+                "--gateway-candidate-package", packagePath
+            ]);
+
+        Assert.Equal(2, exitCode);
+    }
+
+    [Fact]
+    public void CompatibilityFallbackMessage_NamesExactFallbackAndExplicitSelection()
+    {
+        var config = new SetupConfig();
+        GatewayReleasePolicy.ResolveAndApply(config);
+
+        var message = Program.BuildCompatibilityFallbackMessage(
+            config,
+            GatewayCompatibilityFailureKind.ProtocolMismatch);
+
+        Assert.Contains(GatewayReleasePolicy.FallbackVersion!, message, StringComparison.Ordinal);
+        Assert.Contains("Gateway.Selection", message, StringComparison.Ordinal);
+        Assert.Contains("\"fallback\"", message, StringComparison.Ordinal);
+
+        Assert.True(GatewayReleasePolicy.TryApplyFallback(config, out _));
+        Assert.Contains(
+            "No additional validated fallback",
+            Program.BuildCompatibilityFallbackMessage(
+                config,
+                GatewayCompatibilityFailureKind.ProtocolMismatch),
+            StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void CompatibilityFallbackMessage_DoesNotOfferFallbackForRuntimeMismatch()
+    {
+        var config = new SetupConfig();
+        GatewayReleasePolicy.ResolveAndApply(config);
+
+        var message = Program.BuildCompatibilityFallbackMessage(
+            config,
+            GatewayCompatibilityFailureKind.InstalledRuntimeMismatch);
+
+        Assert.DoesNotContain("retry explicitly", message, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("No additional validated fallback", message, StringComparison.Ordinal);
     }
 }

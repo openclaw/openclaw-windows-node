@@ -154,6 +154,31 @@ This preserves the authority split:
 Windows compare-and-swap and monotonicity checks are in
 [`SystemCapability.cs`](https://github.com/openclaw/openclaw-windows-node/blob/d7d153ca5d409487e06ef584b1de1184520e90e6/src/OpenClaw.Shared/Capabilities/SystemCapability.cs#L449-L698).
 
+`baseHash` travels in one direction only, and the upstream schema enforces that.
+In
+[`exec-approvals.ts`](https://github.com/openclaw/openclaw/blob/db90dff1396fecbf7029e9e9ea19d6c6ca3e644e/packages/gateway-protocol/src/schema/exec-approvals.ts#L104-L165),
+`ExecApprovalsNodeSnapshotSchema` sets `additionalProperties: false` at line 119
+and its no-file branch lists `{ required: ["baseHash"] }` at line 126 inside a
+`not.anyOf` guard:
+
+```ts
+    additionalProperties: false,
+    oneOf: [
+      {
+        required: ["path", "exists", "hash", "file"],
+        not: {
+          anyOf: [
+            { required: ["enabled"] },
+            { required: ["baseHash"] },
+```
+
+A `get` response carrying `path`, `exists`, `hash`, `file`, and `baseHash`
+therefore matches no branch of the `oneOf` and is rejected by the gateway. The
+node must omit `baseHash` from the snapshot it returns. A client reads `hash`
+from that snapshot and passes it back as `baseHash` on the next `set`, which is
+how the compare-and-swap closes. Omitting it from the response is required for
+protocol conformance, not merely tidier.
+
 ## What happens when a user says "delete this"?
 
 There is no universal "delete subsystem." The gateway agent first resolves what
@@ -224,12 +249,26 @@ gateway can build:
 
 The gateway evaluates its `host=node` policy, dispatches `system.run`, and
 Windows separately evaluates the exact wrapper and payload under V2 before MXC
-or host execution. Windows resolves `argv[0]` to `cmd.exe`, so the approved
-executable is the command host itself. The inner `del` payload is considered
-for allowlist matching, but a shell built-in cannot resolve as a standalone
-executable. **Allow once** can run the command; **Allow always** is rejected
-with `persistent-approval-not-permitted-for-command-host` rather than creating
-a durable grant for general `cmd.exe` execution.
+or host execution. Windows recognizes the strict canonical `cmd.exe /d /s /c`
+carrier and looks through it to the payload, so the durable approval identity is
+the payload's resolved executable plus an exact argument pattern, not the command
+host. The carrier itself is never the approved identity.
+
+In this specific example the payload is `del`, a `cmd` built-in with no standalone
+executable to resolve, so nothing is bindable: **Allow once** can run the command
+and **Allow always** is still rejected with
+`persistent-approval-not-permitted-for-command-host`. A payload that does resolve
+to a real `.exe` behaves differently. For
+`["cmd.exe","/d","/s","/c","hostname.exe"]`, **Allow always** is permitted and
+records `C:\Windows\System32\hostname.exe` with an argument pattern that matches
+only that exact argument list. It does not create a durable grant for general
+`cmd.exe` execution.
+
+Binding is refused, leaving the request prompt-only, when the payload executable
+is not a plain `.exe`, when the payload cannot be tokenized unambiguously, when
+the resolved path contains a space or other character that `cmd /s` would not
+preserve verbatim, or when the carrier is not the strict canonical form. Fail
+closed is the intended outcome in each of those cases.
 
 ## How does agent `exec` become node `system.run`?
 
@@ -465,7 +504,7 @@ boundary.
 | --- | --- | --- |
 | Input identity | Shell command text | Canonical argv plus resolved executable identity |
 | Typical rule | Command-text glob | Executable/argument-aware allowlist entries |
-| Shell ambiguity | Rule could accidentally authorize a reusable command host such as `cmd.exe` or PowerShell | Shell wrappers are normalized and indirect command hosts cannot receive unsafe persistent approval |
+| Shell ambiguity | Rule could accidentally authorize a reusable command host such as `cmd.exe` or PowerShell | Shell wrappers are structurally classified and bound to an exact argument pattern, so an indirect command host cannot receive unsafe persistent approval |
 | Prompt result | Legacy behavior | Explicit allow-once or allow-always, with deny |
 | Race handling | Limited | Policy snapshot and execution-boundary revalidation |
 | Execution | Could reparse shell text | Approved absolute executable and argv are passed to the runner |
@@ -475,6 +514,21 @@ The old Windows `exec-policy.json` command-text rules are not evaluated or
 mechanically converted. Conversion could widen a narrow-looking text rule into
 a grant for a general command interpreter. Existing V1 approvals therefore
 require a new attended decision under V2.
+
+The mechanism behind the "shell ambiguity" row is structural, not a maintained
+list of dangerous program names. A resolved executable is classified by shape as
+a shell wrapper, interpreter, or code host, and every durable entry written by
+V2 carries an argument pattern that must match the exact argument list. A name
+catalog is not the security boundary, because renaming a binary would defeat it.
+
+One narrow legacy case remains. An allowlist entry written before argument
+binding existed has neither a recorded source nor an argument pattern. Such an
+entry stays valid for an ordinary executable, but it is inert when its resolved
+executable is one of the interpreters or indirect command hosts that were
+already refused durable approval at the time the entry could have been written.
+Those requests prompt instead of matching. The entry is not deleted and is not
+silently upgraded; only an explicit **Allow always** creates a new
+argument-bound entry that can match.
 
 Do not confuse the pipeline name with the persisted schema field.
 `exec-approvals.json` currently contains `"version": 1`; that is the file
@@ -563,6 +617,32 @@ Upstream also has separate sandbox and plugin concepts:
 Those extension points do not make MXC a gateway plugin. They are separate
 layers with different owners.
 
+### Host limitation: some hosts cannot spawn a child executable under MXC
+
+On some Windows hosts the AppContainer starts and runs `cmd` builtins, but the
+first child executable it tries to launch never runs. Two signatures have been
+observed for the same underlying incapacity:
+
+- the child dies during DLL initialization, reported as exit code `0xC0000142`
+  (`STATUS_DLL_INIT_FAILED`);
+- `CreateProcess` is refused outright, reported as exit code `1` with
+  `Access is denied.` on stderr.
+
+This is a sandbox-runtime property of the host. It is independent of exec
+approvals: it reproduces with `security=full`, with no allowlist entry
+involved, and with the command executed exactly as the gateway sent it, so it
+is not caused by argument binding, by pinning a payload to a resolved absolute
+path, or by any V2 decision. A `cmd` builtin such as `echo` still succeeds in
+the same container, which is what isolates the failure to process creation.
+
+Consequences for validation on such a host: approval decisions are still
+provable end to end through a real gateway, because the decision is asserted
+from the node's own log and from the MXC request shape. Whether the approved
+command then produces output is not provable there. The MXC E2E records this
+explicitly rather than passing quietly, and it never tolerates any other
+nonzero exit code. See `Diagnostic_SystemRun_SpawnsChildExecutableInSandbox`
+and `AssertApprovedCommandRan` in `tests/OpenClaw.E2ETests/Setup/MxcSetupAndConnectTests.cs`.
+
 By default, Windows enables sandboxing but preserves a compatibility host
 fallback if MXC is unavailable. Enabling **block host fallback when MXC is
 unavailable** changes that case to a deny. The actual result reports whether
@@ -624,15 +704,18 @@ branch behavior on it. Method and payload compatibility is still a separate
 concern; the client uses feature/error handling and drift tests for the surfaces
 it implements.
 
-### Managed gateway release pin
+### Managed gateway release policy
 
-The Windows setup engine separately installs OpenClaw release `2026.6.11` for a
-new app-managed WSL gateway unless setup explicitly overrides the version or
-uses a custom installer URL.
+The Windows setup engine installs exact recommended OpenClaw release
+`2026.6.34` for a new app-managed WSL gateway. Release `2026.6.11` is the
+security floor and distinct validated fallback. Setup never selects that
+fallback automatically.
 
-That release pin does not force every remote gateway to be `2026.6.11`.
-Windows can connect to an existing gateway with a different release if the
-protocol and methods it uses are compatible.
+This managed-setup policy does not force every remote gateway to use the
+recommended release. Windows can connect to an existing gateway with a
+different release if the protocol and methods it uses are compatible. Custom
+installer URLs require an exact version, are labeled unverified, and still
+must pass the exact protocol and server-version checks.
 
 At tag `v2026.6.11`, upstream protocol constants were protocol 4 with minimum
 general/probe protocol 4. Its documentation already showed clients advertising
@@ -647,8 +730,8 @@ and
 [`OpenClawGatewayClient.cs`](https://github.com/openclaw/openclaw-windows-node/blob/d7d153ca5d409487e06ef584b1de1184520e90e6/src/OpenClaw.Shared/OpenClawGatewayClient.cs#L1492-L1510).
 The current upstream constants are in
 [`version.ts`](https://github.com/openclaw/openclaw/blob/db90dff1396fecbf7029e9e9ea19d6c6ca3e644e/packages/gateway-protocol/src/version.ts).
-The managed release pin is in
-[`GatewayLkgVersion.cs`](https://github.com/openclaw/openclaw-windows-node/blob/d7d153ca5d409487e06ef584b1de1184520e90e6/src/OpenClaw.SetupEngine/GatewayLkgVersion.cs).
+The managed release policy is in
+[`GatewayReleasePolicy.cs`](../src/OpenClaw.SetupEngine/GatewayReleasePolicy.cs).
 
 ## What deployment combinations are valid?
 
@@ -695,7 +778,7 @@ Any layer can deny. A later layer cannot widen an earlier deny.
 | Exec host routing | n/a, Windows is the target host | `bash-tools.exec-run.ts`, `bash-tools.exec-host-gateway.ts`, `bash-tools.exec-host-node.ts` |
 | Shell argv construction | `LocalCommandRunner` for its legacy shell path; V2 approved runs are direct argv | `src/infra/node-shell.ts` |
 | Gateway node invoke gates | node receives only the post-gate request | `src/gateway/server-methods/nodes.invoke.ts` |
-| Windows local approval | `ExecApprovalsCoordinator`, `ExecApprovalsStore` | comparable node-host exec approval contracts |
+| Windows local approval | `ExecApprovalsCoordinator`, `ExecApprovalsStore`, `ExecReusableCommandBinder`, `CanonicalCmdCarrier`, `CmdPayloadTokenizer` | comparable node-host exec approval contracts |
 | Windows sandbox | `MxcCommandRunner`, `MxcPolicyBuilder`, `DirectAppContainerExecutor` | separate agent sandbox backend interfaces |
 | Protocol version | connect payloads | `packages/gateway-protocol/src/version.ts` |
-| Managed gateway release | `GatewayLkgVersion.cs`, setup engine | OpenClaw tag `v2026.6.11` |
+| Managed gateway release | `GatewayReleasePolicy.cs`, setup engine | OpenClaw tags `v2026.6.34` and `v2026.6.11` |

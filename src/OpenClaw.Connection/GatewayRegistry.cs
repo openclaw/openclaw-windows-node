@@ -139,32 +139,72 @@ public sealed class GatewayRegistry
         return updated;
     }
 
+    /// <summary>
+    /// Atomically update and persist a record. If persistence fails, the in-memory
+    /// record is restored so a later lifecycle event can safely retry the update.
+    /// </summary>
+    public GatewayRecord? UpdateAndSave(string id, Func<GatewayRecord, GatewayRecord> updater)
+    {
+        GatewayRecord? updated;
+        List<GatewayRecord> snapshot;
+        string? activeId;
+        lock (_lock)
+        {
+            var idx = _records.FindIndex(r => r.Id == id);
+            if (idx < 0) return null;
+
+            var original = _records[idx];
+            updated = updater(original);
+            ArgumentNullException.ThrowIfNull(updated, nameof(updater));
+            _records[idx] = updated;
+
+            try
+            {
+                SaveLocked();
+            }
+            catch
+            {
+                _records[idx] = original;
+                throw;
+            }
+
+            snapshot = _records.ToList();
+            activeId = _activeId;
+        }
+
+        Changed?.Invoke(this, new GatewayRegistryChangedEventArgs(snapshot, activeId));
+        return updated;
+    }
+
     // ─── Persistence ───
 
     public void Save()
     {
         lock (_lock)
+            SaveLocked();
+    }
+
+    private void SaveLocked()
+    {
+        var data = new RegistryData { Gateways = _records.ToList(), ActiveId = _activeId };
+        var json = JsonSerializer.Serialize(data, s_jsonOptions);
+
+        var dir = Path.GetDirectoryName(_filePath);
+        if (dir != null && !_fs.DirectoryExists(dir))
+            _fs.CreateDirectory(dir);
+
+        // Atomic write: unique temp file then rename. Keep the registry lock
+        // through the move so concurrent saves cannot publish stale snapshots.
+        var tempPath = $"{_filePath}.{Guid.NewGuid():N}.tmp";
+        try
         {
-            var data = new RegistryData { Gateways = _records.ToList(), ActiveId = _activeId };
-            var json = JsonSerializer.Serialize(data, s_jsonOptions);
-
-            var dir = Path.GetDirectoryName(_filePath);
-            if (dir != null && !_fs.DirectoryExists(dir))
-                _fs.CreateDirectory(dir);
-
-            // Atomic write: unique temp file then rename. Keep the registry lock
-            // through the move so concurrent saves cannot publish stale snapshots.
-            var tempPath = $"{_filePath}.{Guid.NewGuid():N}.tmp";
-            try
-            {
-                _fs.WriteAllText(tempPath, json);
-                File.Move(tempPath, _filePath, overwrite: true);
-            }
-            catch
-            {
-                TryDeleteTempFile(tempPath);
-                throw;
-            }
+            _fs.WriteAllText(tempPath, json);
+            File.Move(tempPath, _filePath, overwrite: true);
+        }
+        catch
+        {
+            TryDeleteTempFile(tempPath);
+            throw;
         }
     }
 

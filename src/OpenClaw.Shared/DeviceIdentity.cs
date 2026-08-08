@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
@@ -10,11 +11,36 @@ using Org.BouncyCastle.Math.EC.Rfc8032;
 
 namespace OpenClaw.Shared;
 
+public sealed record DeviceTokenClearTransaction(
+    string IdentityPath,
+    string BackupJson,
+    bool ClearedFileExisted,
+    string? ClearedContentHash);
+
+public sealed record DeviceTokenClearResult(
+    bool Success,
+    bool TokensCleared,
+    DeviceTokenClearTransaction? Transaction = null,
+    string? Error = null);
+
+public enum DeviceTokenRestoreOutcome
+{
+    Restored,
+    Superseded,
+    Failed,
+}
+
+public sealed record DeviceTokenRestoreResult(
+    DeviceTokenRestoreOutcome Outcome,
+    string? Error = null);
+
 /// <summary>
 /// Manages device identity (keypair) for node authentication using Ed25519
 /// </summary>
 public class DeviceIdentity
 {
+    private static readonly ConcurrentDictionary<string, object> s_identityFileLocks =
+        new(StringComparer.OrdinalIgnoreCase);
     private readonly string _keyPath;
     private readonly IOpenClawLogger _logger;
     private readonly IDeviceIdentityFileSystem _fileSystem;
@@ -154,78 +180,140 @@ public class DeviceIdentity
     /// </returns>
     public static bool TryClearAllDeviceTokens(string dataPath, IOpenClawLogger? logger = null)
     {
-        var keyPath = Path.Combine(dataPath, "device-key-ed25519.json");
-        if (!File.Exists(keyPath))
-            return false;
+        var result = BeginClearAllDeviceTokens(dataPath, logger);
+        return result.Success && result.TokensCleared;
+    }
 
+    public static DeviceTokenClearResult BeginClearAllDeviceTokens(
+        string dataPath,
+        IOpenClawLogger? logger = null)
+    {
+        var keyPath = Path.Combine(dataPath, "device-key-ed25519.json");
         try
         {
-            var json = File.ReadAllText(keyPath);
-            using var doc = JsonDocument.Parse(json);
-            var root = doc.RootElement;
-            if (root.ValueKind != JsonValueKind.Object)
+            return WithIdentityFileLock(keyPath, () =>
             {
-                logger?.Warn("Failed to clear all device tokens: device-key-ed25519.json root is not a JSON object.");
-                return false;
-            }
+                if (!File.Exists(keyPath))
+                    return new DeviceTokenClearResult(Success: true, TokensCleared: false);
 
-            var data = root.Deserialize<DeviceKeyData>();
-            if (data == null)
-            {
-                logger?.Warn("Failed to clear all device tokens: device-key-ed25519.json did not contain an object.");
-                return false;
-            }
-            _ = ValidateAndReconstruct(data);
-
-            bool hadTokens = false;
-            using var ms = new MemoryStream();
-            using (var writer = new System.Text.Json.Utf8JsonWriter(ms, new System.Text.Json.JsonWriterOptions { Indented = true }))
-            {
-                writer.WriteStartObject();
-                foreach (var prop in root.EnumerateObject())
+                try
                 {
-                    if (prop.Name is "DeviceToken" or "DeviceTokenScopes" or "NodeDeviceToken" or "NodeDeviceTokenScopes")
+                    var json = File.ReadAllText(keyPath);
+                    using var doc = JsonDocument.Parse(json);
+                    var root = doc.RootElement;
+                    if (root.ValueKind != JsonValueKind.Object)
                     {
-                        hadTokens = true;
-                        continue;
+                        const string error = "device-key-ed25519.json root is not a JSON object.";
+                        logger?.Warn($"Failed to clear all device tokens: {error}");
+                        return new DeviceTokenClearResult(false, false, Error: error);
                     }
-                    prop.WriteTo(writer);
+
+                    var data = root.Deserialize<DeviceKeyData>();
+                    if (data == null)
+                    {
+                        const string error = "device-key-ed25519.json did not contain an object.";
+                        logger?.Warn($"Failed to clear all device tokens: {error}");
+                        return new DeviceTokenClearResult(false, false, Error: error);
+                    }
+                    _ = ValidateAndReconstruct(data);
+
+                    bool hadTokens = false;
+                    using var ms = new MemoryStream();
+                    using (var writer = new Utf8JsonWriter(
+                        ms,
+                        new JsonWriterOptions { Indented = true }))
+                    {
+                        writer.WriteStartObject();
+                        foreach (var prop in root.EnumerateObject())
+                        {
+                            if (prop.Name is "DeviceToken" or "DeviceTokenScopes" or
+                                "NodeDeviceToken" or "NodeDeviceTokenScopes")
+                            {
+                                hadTokens = true;
+                                continue;
+                            }
+                            prop.WriteTo(writer);
+                        }
+                        writer.WriteEndObject();
+                    }
+
+                    if (!hadTokens)
+                        return new DeviceTokenClearResult(Success: true, TokensCleared: false);
+
+                    var content = Encoding.UTF8.GetString(ms.ToArray());
+                    AtomicWriteKeyFileRawCore(keyPath, content);
+                    var transaction = new DeviceTokenClearTransaction(
+                        keyPath,
+                        json,
+                        ClearedFileExisted: true,
+                        ClearedContentHash: ComputeContentHash(content));
+                    logger?.Info("All device tokens cleared from device-key-ed25519.json (keypair preserved).");
+                    return new DeviceTokenClearResult(true, true, transaction);
                 }
-                writer.WriteEndObject();
-            }
+                catch (Exception ex) when (IsIdentityLoadFailure(ex))
+                {
+                    logger?.Warn($"Failed to clear all device tokens: {ex.Message}");
+                    return new DeviceTokenClearResult(false, false, Error: ex.Message);
+                }
+            });
+        }
+        catch (Exception ex)
+        {
+            logger?.Warn($"Failed to acquire device identity lock for token clear: {ex.Message}");
+            return new DeviceTokenClearResult(false, false, Error: ex.Message);
+        }
+    }
 
-            if (!hadTokens)
-                return false;
+    public static bool TryRestoreClearedDeviceTokens(
+        DeviceTokenClearTransaction transaction,
+        IOpenClawLogger? logger = null) =>
+        RestoreClearedDeviceTokens(transaction, logger).Outcome ==
+            DeviceTokenRestoreOutcome.Restored;
 
-            var content = System.Text.Encoding.UTF8.GetString(ms.ToArray());
-            AtomicWriteKeyFileRaw(keyPath, content);
-            logger?.Info("All device tokens cleared from device-key-ed25519.json (keypair preserved).");
-            return true;
-        }
-        catch (IOException ex)
+    public static DeviceTokenRestoreResult RestoreClearedDeviceTokens(
+        DeviceTokenClearTransaction transaction,
+        IOpenClawLogger? logger = null)
+    {
+        ArgumentNullException.ThrowIfNull(transaction);
+        try
         {
-            logger?.Warn($"Failed to clear all device tokens: {ex.Message}");
-            return false;
+            return WithIdentityFileLock(transaction.IdentityPath, () =>
+            {
+                try
+                {
+                    var exists = File.Exists(transaction.IdentityPath);
+                    var unchanged = !transaction.ClearedFileExisted && !exists;
+                    if (transaction.ClearedFileExisted && exists)
+                    {
+                        unchanged = string.Equals(
+                            ComputeContentHash(File.ReadAllText(transaction.IdentityPath)),
+                            transaction.ClearedContentHash,
+                            StringComparison.Ordinal);
+                    }
+
+                    if (!unchanged)
+                        return new DeviceTokenRestoreResult(
+                            DeviceTokenRestoreOutcome.Superseded);
+
+                    AtomicWriteKeyFileRawCore(transaction.IdentityPath, transaction.BackupJson);
+                    logger?.Info("Device tokens restored after failed direct connection.");
+                    return new DeviceTokenRestoreResult(DeviceTokenRestoreOutcome.Restored);
+                }
+                catch (Exception ex)
+                {
+                    logger?.Warn($"Failed to restore cleared device tokens: {ex.Message}");
+                    return new DeviceTokenRestoreResult(
+                        DeviceTokenRestoreOutcome.Failed,
+                        ex.Message);
+                }
+            });
         }
-        catch (UnauthorizedAccessException ex)
+        catch (Exception ex)
         {
-            logger?.Warn($"Failed to clear all device tokens: {ex.Message}");
-            return false;
-        }
-        catch (JsonException ex)
-        {
-            logger?.Warn($"Failed to clear all device tokens: {ex.Message}");
-            return false;
-        }
-        catch (Exception ex) when (
-            ex is FormatException
-                or ArgumentException
-                or InvalidDataException
-                or InvalidOperationException
-                or CryptographicException)
-        {
-            logger?.Warn($"Failed to clear all device tokens: {ex.Message}");
-            return false;
+            logger?.Warn($"Failed to acquire device identity lock for token restore: {ex.Message}");
+            return new DeviceTokenRestoreResult(
+                DeviceTokenRestoreOutcome.Failed,
+                ex.Message);
         }
     }
 
@@ -242,50 +330,61 @@ public class DeviceIdentity
     {
         var tokenRole = ParseDeviceTokenRole(role);
         var keyPath = Path.Combine(dataPath, "device-key-ed25519.json");
-        if (!File.Exists(keyPath))
-            return false;
-
         try
         {
-            var json = File.ReadAllText(keyPath);
-            var data = JsonSerializer.Deserialize<DeviceKeyData>(json);
-            if (data == null)
-                return false;
-
-            var token = tokenRole == DeviceTokenRole.Node
-                ? data.NodeDeviceToken
-                : data.DeviceToken;
-            if (string.IsNullOrEmpty(token))
-                return false; // already null — idempotent
-
-            if (tokenRole == DeviceTokenRole.Node)
+            return WithIdentityFileLock(keyPath, () =>
             {
-                data.NodeDeviceToken = null;
-                data.NodeDeviceTokenScopes = null;
-            }
-            else
-            {
-                data.DeviceToken = null;
-                data.DeviceTokenScopes = null;
-            }
+                if (!File.Exists(keyPath))
+                    return false;
 
-            AtomicWriteKeyFile(keyPath, data);
-            logger?.Info($"{(tokenRole == DeviceTokenRole.Node ? "NodeDeviceToken" : "DeviceToken")} cleared from device-key-ed25519.json (file preserved).");
-            return true;
+                try
+                {
+                    var json = File.ReadAllText(keyPath);
+                    var data = JsonSerializer.Deserialize<DeviceKeyData>(json);
+                    if (data == null)
+                        return false;
+
+                    var token = tokenRole == DeviceTokenRole.Node
+                        ? data.NodeDeviceToken
+                        : data.DeviceToken;
+                    if (string.IsNullOrEmpty(token))
+                        return false;
+
+                    if (tokenRole == DeviceTokenRole.Node)
+                    {
+                        data.NodeDeviceToken = null;
+                        data.NodeDeviceTokenScopes = null;
+                    }
+                    else
+                    {
+                        data.DeviceToken = null;
+                        data.DeviceTokenScopes = null;
+                    }
+
+                    AtomicWriteKeyFile(keyPath, data);
+                    logger?.Info($"{(tokenRole == DeviceTokenRole.Node ? "NodeDeviceToken" : "DeviceToken")} cleared from device-key-ed25519.json (file preserved).");
+                    return true;
+                }
+                catch (IOException ex)
+                {
+                    logger?.Warn($"Failed to clear device token: {ex.Message}");
+                    return false;
+                }
+                catch (UnauthorizedAccessException ex)
+                {
+                    logger?.Warn($"Failed to clear device token: {ex.Message}");
+                    return false;
+                }
+                catch (JsonException ex)
+                {
+                    logger?.Warn($"Failed to clear device token: {ex.Message}");
+                    return false;
+                }
+            });
         }
-        catch (IOException ex)
+        catch (Exception ex)
         {
-            logger?.Warn($"Failed to clear device token: {ex.Message}");
-            return false;
-        }
-        catch (UnauthorizedAccessException ex)
-        {
-            logger?.Warn($"Failed to clear device token: {ex.Message}");
-            return false;
-        }
-        catch (JsonException ex)
-        {
-            logger?.Warn($"Failed to clear device token: {ex.Message}");
+            logger?.Warn($"Failed to acquire device identity lock for role token clear: {ex.Message}");
             return false;
         }
     }
@@ -761,22 +860,25 @@ public class DeviceIdentity
 
         try
         {
-            var data = ReadCurrentIdentityForTokenUpdate();
-            data.DeviceToken = token;
-            data.DeviceTokenScopes = scopes;
-            AtomicWriteKeyFile(_keyPath, data);
-            _deviceToken = token;
-            _deviceTokenScopes = scopes;
-            _logger.Info("Device token stored");
+            WithIdentityFileLock(_keyPath, () =>
+            {
+                try
+                {
+                    var data = ReadCurrentIdentityForTokenUpdate();
+                    data.DeviceToken = token;
+                    data.DeviceTokenScopes = scopes;
+                    AtomicWriteKeyFile(_keyPath, data);
+                    _deviceToken = token;
+                    _deviceTokenScopes = scopes;
+                    _logger.Info("Device token stored");
+                    return 0;
+                }
+                catch (DeviceIdentityLoadException) { throw; }
+                catch (Exception ex) when (IsIdentityLoadFailure(ex)) { throw CreateLoadException(ex); }
+            });
         }
-        catch (DeviceIdentityLoadException)
-        {
-            throw;
-        }
-        catch (Exception ex) when (IsIdentityLoadFailure(ex))
-        {
-            throw CreateLoadException(ex);
-        }
+        catch (DeviceIdentityLoadException) { throw; }
+        catch (Exception ex) when (IsIdentityLoadFailure(ex)) { throw CreateLoadException(ex); }
     }
 
     private void StoreNodeDeviceTokenCore(string token, string[]? scopes)
@@ -786,22 +888,25 @@ public class DeviceIdentity
 
         try
         {
-            var data = ReadCurrentIdentityForTokenUpdate();
-            data.NodeDeviceToken = token;
-            data.NodeDeviceTokenScopes = scopes;
-            AtomicWriteKeyFile(_keyPath, data);
-            _nodeDeviceToken = token;
-            _nodeDeviceTokenScopes = scopes;
-            _logger.Info("Node device token stored");
+            WithIdentityFileLock(_keyPath, () =>
+            {
+                try
+                {
+                    var data = ReadCurrentIdentityForTokenUpdate();
+                    data.NodeDeviceToken = token;
+                    data.NodeDeviceTokenScopes = scopes;
+                    AtomicWriteKeyFile(_keyPath, data);
+                    _nodeDeviceToken = token;
+                    _nodeDeviceTokenScopes = scopes;
+                    _logger.Info("Node device token stored");
+                    return 0;
+                }
+                catch (DeviceIdentityLoadException) { throw; }
+                catch (Exception ex) when (IsIdentityLoadFailure(ex)) { throw CreateLoadException(ex); }
+            });
         }
-        catch (DeviceIdentityLoadException)
-        {
-            throw;
-        }
-        catch (Exception ex) when (IsIdentityLoadFailure(ex))
-        {
-            throw CreateLoadException(ex);
-        }
+        catch (DeviceIdentityLoadException) { throw; }
+        catch (Exception ex) when (IsIdentityLoadFailure(ex)) { throw CreateLoadException(ex); }
     }
 
     private DeviceKeyData ReadCurrentIdentityForTokenUpdate()
@@ -844,6 +949,15 @@ public class DeviceIdentity
     /// </summary>
     public static void AtomicWriteKeyFileRaw(string path, string jsonContent)
     {
+        WithIdentityFileLock(path, () =>
+        {
+            AtomicWriteKeyFileRawCore(path, jsonContent);
+            return 0;
+        });
+    }
+
+    private static void AtomicWriteKeyFileRawCore(string path, string jsonContent)
+    {
         var dir = Path.GetDirectoryName(path);
         var tempDir = string.IsNullOrEmpty(dir) ? Environment.CurrentDirectory : dir;
         var tempPath = Path.Combine(tempDir, $".{Path.GetFileName(path)}.{Guid.NewGuid():N}.tmp");
@@ -862,6 +976,38 @@ public class DeviceIdentity
         }
         McpAuthToken.TryRestrictSensitiveFileAcl(path);
     }
+
+    private static T WithIdentityFileLock<T>(string path, Func<T> action)
+    {
+        var normalizedPath = Path.GetFullPath(path);
+        var localLock = s_identityFileLocks.GetOrAdd(normalizedPath, static _ => new object());
+        lock (localLock)
+        {
+            var mutexHash = Convert.ToHexString(
+                SHA256.HashData(Encoding.UTF8.GetBytes(normalizedPath.ToUpperInvariant())));
+            var mutexName = OperatingSystem.IsWindows()
+                ? $@"Local\OpenClaw.DeviceIdentity.{mutexHash}"
+                : $"OpenClaw.DeviceIdentity.{mutexHash}";
+            using var mutex = new Mutex(initiallyOwned: false, mutexName);
+            var acquired = false;
+            try
+            {
+                try { acquired = mutex.WaitOne(TimeSpan.FromSeconds(15)); }
+                catch (AbandonedMutexException) { acquired = true; }
+                if (!acquired)
+                    throw new IOException("Timed out waiting for the device identity writer lock.");
+                return action();
+            }
+            finally
+            {
+                if (acquired)
+                    mutex.ReleaseMutex();
+            }
+        }
+    }
+
+    private static string ComputeContentHash(string content) =>
+        Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(content)));
 
     private static string[]? NormalizeScopes(IEnumerable<string>? scopes)
     {

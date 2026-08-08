@@ -98,10 +98,13 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
     private bool _pairingRequiredAwaitingApproval;
     private string? _pairingRequiredRequestId;
     private bool _authFailed;
+    private int _handshakeAuthorizationBlocked;
+    private int _handshakeChallengeActive;
     private string? _lastSkillsStatusAgentId;
     private readonly bool _tokenIsBootstrapToken;
     private readonly bool _bootstrapPairAsNode;
     private readonly bool _ignoreStoredDeviceToken;
+    private readonly bool _persistHandshakeDeviceTokens;
 
     /// <summary>True when the gateway reported "pairing required" for this device.</summary>
     public bool IsPairingRequired => Volatile.Read(ref _pairingRequiredAwaitingApproval);
@@ -167,6 +170,8 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
 
     protected override Task OnConnectedAsync()
     {
+        Volatile.Write(ref _handshakeAuthorizationBlocked, 0);
+        Volatile.Write(ref _handshakeChallengeActive, 0);
         ResetUnsupportedMethodFlags();
         RaiseTransportConnected();
         return Task.CompletedTask;
@@ -183,7 +188,6 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
 
     protected override void OnDisconnected()
     {
-        ClearPendingRequests();
         // Invalidate the handshake snapshot — the next hello-ok must
         // re-establish the canonical session key, scopes, etc. Without this,
         // a reconnect-after-server-restart could leave the tray sending to a
@@ -192,6 +196,10 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
         Volatile.Write(ref _mainSessionKey, null);
         Volatile.Write(ref _mainSessionKeyIsCanonical, false);
         Volatile.Write(ref _hasHandshakeSnapshot, false);
+        ClearPendingRequests(
+            new GatewayConnectionLostException(
+                RemoteCloseStatusCode,
+                RemoteCloseStatusDescription));
     }
 
     protected override void OnDisposing()
@@ -217,6 +225,14 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
     public event EventHandler<JsonElement>? SkillsStatusUpdated;
     public event EventHandler<JsonElement>? ConfigUpdated;
     public event EventHandler<JsonElement>? ConfigSchemaUpdated;
+
+    /// <summary>
+    /// Optional fail-closed authorization invoked after connect.challenge and immediately before
+    /// the credential-bearing connect message. Validation clients use this to re-prove the exact
+    /// local listener after the WebSocket has connected, closing listener-replacement races.
+    /// </summary>
+    public Func<CancellationToken, Task<ReconnectAuthorizationResult>>?
+        HandshakeAuthorizationAsync { get; set; }
 
     // New events for agent events, pairing, and models
     public event EventHandler<AgentEventInfo>? AgentEventReceived;
@@ -256,6 +272,7 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
     public string? OperatorDeviceId => _operatorDeviceId;
     public IReadOnlyList<string> GrantedOperatorScopes => _grantedOperatorScopes;
     public virtual bool IsConnectedToGateway => IsConnected;
+    public int? LastRemoteCloseStatusCode => RemoteCloseStatusCode;
 
     protected override void OnConnectionException(Exception exception)
     {
@@ -271,12 +288,13 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
     protected void RaiseConnectionFailure(GatewayErrorKind kind) =>
         ConnectionFailure?.Invoke(this, kind);
 
-    public OpenClawGatewayClient(string gatewayUrl, string token, IOpenClawLogger? logger = null, bool tokenIsBootstrapToken = false, bool bootstrapPairAsNode = false, string? identityPath = null, bool ignoreStoredDeviceToken = false)
+    public OpenClawGatewayClient(string gatewayUrl, string token, IOpenClawLogger? logger = null, bool tokenIsBootstrapToken = false, bool bootstrapPairAsNode = false, string? identityPath = null, bool ignoreStoredDeviceToken = false, bool persistHandshakeDeviceTokens = true)
         : base(gatewayUrl, token, logger)
     {
         _tokenIsBootstrapToken = tokenIsBootstrapToken;
         _bootstrapPairAsNode = bootstrapPairAsNode;
         _ignoreStoredDeviceToken = ignoreStoredDeviceToken;
+        _persistHandshakeDeviceTokens = persistHandshakeDeviceTokens;
         _currentGatewayUrl = gatewayUrl;
         var dataPath = identityPath ?? OpenClawAppIdentity.ResolveRoamingDataDirectory(
             Environment.GetEnvironmentVariable);
@@ -1967,7 +1985,8 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
         }
     }
 
-    private void ClearPendingRequests()
+    private void ClearPendingRequests(
+        GatewayConnectionLostException? wizardDisconnect = null)
     {
         lock (_pendingRequestLock)
         {
@@ -1986,7 +2005,10 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
 
         foreach (var completion in _pendingWizardResponses.Values)
         {
-            completion.TrySetException(new OperationCanceledException("Gateway connection lost while waiting for wizard response"));
+            completion.TrySetException(
+                wizardDisconnect ??
+                new OperationCanceledException(
+                    "Gateway connection lost while waiting for wizard response"));
         }
 
         _pendingWizardResponses.Clear();
@@ -2168,6 +2190,13 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
         // Handle handshake acknowledgement payload.
         if (payload.TryGetProperty("type", out var t) && t.GetString() == "hello-ok")
         {
+            if (HandshakeAuthorizationAsync is not null &&
+                !string.Equals(requestMethod, "connect", StringComparison.Ordinal))
+            {
+                _logger.Warn("[HANDSHAKE] Ignoring uncorrelated hello-ok on guarded validation connection.");
+                return;
+            }
+
             _logger.Info($"[HANDSHAKE] Received hello-ok!");
             Volatile.Write(ref _pairingRequiredAwaitingApproval, false);
             Volatile.Write(ref _pairingRequiredRequestId, null);
@@ -2288,6 +2317,9 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
 
     private bool TryStoreHandshakeDeviceToken(string role, string token, string[]? scopes)
     {
+        if (!_persistHandshakeDeviceTokens)
+            return false;
+
         try
         {
             _deviceIdentity.StoreDeviceTokenForRole(role, token, scopes);
@@ -3322,6 +3354,13 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
 
     private void HandleConnectChallenge(JsonElement root)
     {
+        if (Volatile.Read(ref _handshakeAuthorizationBlocked) != 0 ||
+            Interlocked.CompareExchange(ref _handshakeChallengeActive, 1, 0) != 0)
+        {
+            _logger.Warn("[HANDSHAKE] Ignoring duplicate challenge on the current socket.");
+            return;
+        }
+
         string? nonce = null;
         long? ts = null;
         if (root.TryGetProperty("payload", out var payload))
@@ -3337,18 +3376,45 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
         _currentChallengeNonce = nonce;
         
         _logger.Info($"[HANDSHAKE] Received connect.challenge: nonce={nonce}, ts={ts}");
-        _ = SendConnectSafeAsync(nonce);
+        _ = SendConnectSafeAsync(nonce, CurrentConnectionGeneration);
     }
 
-    private async Task SendConnectSafeAsync(string? nonce)
+    private async Task SendConnectSafeAsync(string? nonce, long connectionGeneration)
     {
         try
         {
+            if (HandshakeAuthorizationAsync is not null)
+            {
+                var authorization = await HandshakeAuthorizationAsync(CancellationToken.None)
+                    .ConfigureAwait(false);
+                if (!IsCurrentConnectionGeneration(connectionGeneration))
+                    return;
+                if (!authorization.Allowed)
+                {
+                    Volatile.Write(ref _handshakeAuthorizationBlocked, 1);
+                    RaiseConnectionFailure(authorization.FailureKind);
+                    RaiseAuthenticationFailed(
+                        authorization.Detail ?? "Connection authorization failed.");
+                    AbortCurrentWebSocket(connectionGeneration);
+                    RaiseStatusChanged(ConnectionStatus.Error);
+                    return;
+                }
+            }
+
+            if (!IsCurrentConnectionGeneration(connectionGeneration) ||
+                Volatile.Read(ref _handshakeAuthorizationBlocked) != 0)
+                return;
+
             await SendConnectMessageAsync(nonce);
         }
         catch (Exception ex)
         {
             _logger.Error($"[HANDSHAKE] FATAL: SendConnectMessageAsync threw: {ex}");
+        }
+        finally
+        {
+            if (IsCurrentConnectionGeneration(connectionGeneration))
+                Volatile.Write(ref _handshakeChallengeActive, 0);
         }
     }
 

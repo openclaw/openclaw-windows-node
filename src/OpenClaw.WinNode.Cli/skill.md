@@ -138,9 +138,10 @@ Returns `{ "bins": { "git": "C:\\...", ... } }`. Names not found are omitted.
 
 ### system.execApprovals.get
 No params. Returns the active V2 snapshot:
-`{ path, exists, hash, baseHash, file: { version, defaults: { security, ask, askFallback, autoAllowSkills }, agents: { "<agentId>": { security, ask, askFallback, autoAllowSkills, allowlist: [{ id, pattern, lastUsedAt?, lastResolvedPath? }] } } } }`.
+`{ path, exists, hash, file: { version, defaults: { security, ask, askFallback, autoAllowSkills }, agents: { "<agentId>": { security, ask, askFallback, autoAllowSkills, allowlist: [{ id, pattern, lastUsedAt?, lastResolvedPath? }] } } } }`.
 `security` is `deny|allowlist|full`; `ask` is `off|on-miss|always|deny`;
 `askFallback` is `deny|allowlist|full`. Socket credentials are never returned.
+Pass `hash` as `baseHash` when calling `system.execApprovals.set`.
 
 ### system.execApprovals.set
 Replace the full V2 file using compare-and-swap. `baseHash` is required and must

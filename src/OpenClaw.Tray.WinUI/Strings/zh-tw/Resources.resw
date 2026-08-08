@@ -1903,7 +1903,7 @@
     <value>執行原則</value>
   </data>
   <data name="PermissionsPage_TextBlock_17.Text" xml:space="preserve">
-    <value>控制代理程式可在此節點上啟動哪些可執行檔。規則會比對解析後的可執行檔路徑。</value>
+    <value>控制代理程式可在此節點上啟動哪些可執行檔。可執行檔路徑允許清單一開始是空的。</value>
   </data>
   <data name="DefaultActionCombo.Header" xml:space="preserve">
     <value>預設動作</value>
@@ -1918,22 +1918,22 @@
     <value>詢問</value>
   </data>
   <data name="PermissionsPage_TextBlock_28.Text" xml:space="preserve">
-    <value>規則</value>
+    <value>可執行檔路徑允許清單</value>
   </data>
   <data name="NewRulePattern.PlaceholderText" xml:space="preserve">
-    <value>可執行檔路徑模式 (例如 **/git.exe)</value>
+    <value>可執行檔路徑模式 (例如 **/hostname.exe)</value>
+  </data>
+  <data name="PermissionsPage_ExecAllowlistPatternValidation.Text" xml:space="preserve">
+    <value>請輸入可執行檔路徑模式，例如 **/hostname.exe。hostname 等僅含基本名稱或命令文字的模式無效。</value>
   </data>
   <data name="PermissionsPage_ComboBoxItem_54.Content" xml:space="preserve">
     <value>拒絕</value>
-  </data>
-  <data name="PermissionsPage_ComboBoxItem_55.Content" xml:space="preserve">
-    <value>允許</value>
   </data>
   <data name="PermissionsPage_ComboBoxItem_56.Content" xml:space="preserve">
     <value>詢問</value>
   </data>
   <data name="PermissionsPage_Button_57.Content" xml:space="preserve">
-    <value>新增規則</value>
+    <value>新增項目</value>
   </data>
   <data name="PermissionsPage_TextBlock_69.Text" xml:space="preserve">
     <value>節點允許清單</value>
@@ -2781,6 +2781,9 @@
   <data name="VoiceOverlayWindow_StatusErrorOccurred" xml:space="preserve">
     <value>發生錯誤</value>
   </data>
+  <data name="AudioPipeline_FirstAudioTimeout" xml:space="preserve">
+    <value>未收到音訊。請確認麥克風已連線，並在 Windows 中選為輸入裝置，然後再試一次。</value>
+  </data>
   <data name="VoiceOverlayWindow_winexWindowEx_2.Title" xml:space="preserve">
     <value>Companion Voice</value>
   </data>
@@ -3392,13 +3395,13 @@
     <value>URL copied to clipboard</value>
   </data>
   <data name="PermissionsPage_RulesCount_None" xml:space="preserve">
-    <value>No rules</value>
+    <value>沒有項目</value>
   </data>
   <data name="PermissionsPage_RulesCount_One" xml:space="preserve">
-    <value>1 rule</value>
+    <value>1 個項目</value>
   </data>
   <data name="PermissionsPage_RulesCount_ManyFormat" xml:space="preserve">
-    <value>{0} rules</value>
+    <value>{0} 個項目</value>
   </data>
   <data name="PermissionsPage_Allowlist_NoConfig" xml:space="preserve">
     <value>No allowlist data available. Connect to a gateway first.</value>
@@ -4451,19 +4454,19 @@
     <value>預設動作</value>
   </data>
   <data name="PermissionsPage_WhatHappensWhenA.Text" xml:space="preserve">
-    <value>當命令不符合下列任何規則時會發生什麼。</value>
+    <value>當命令不符合下列可執行檔路徑允許清單時會發生什麼。</value>
   </data>
   <data name="PermissionsPage_PatternsAreMatchedLeft.Text" xml:space="preserve">
-    <value>允許清單模式會比對解析後的可執行檔路徑。可使用 **/git.exe 等萬用字元模式。變更會自動儲存。</value>
+    <value>「一律允許」會為符合條件的原生 .exe 命令建立參數繫結項目。在此新增的項目只依路徑比對，可能允許相符的可執行檔使用任何引數。「拒絕」和「詢問」仍由「預設動作」控制。變更會自動儲存。</value>
   </data>
   <data name="PermissionsPage_Saved.Text" xml:space="preserve">
     <value>已儲存</value>
   </data>
   <data name="PermissionsPage_0Rules.Text" xml:space="preserve">
-    <value>0 條規則</value>
+    <value>0 個項目</value>
   </data>
   <data name="PermissionsPage_NoRulesYetAdd.Text" xml:space="preserve">
-    <value>尚無規則。在下方新增模式以拒絕、允許或詢問特定命令。</value>
+    <value>沒有可執行檔路徑允許清單項目。使用「一律允許」核准符合條件的原生 .exe 命令，或新增只依路徑比對的模式，例如 **/hostname.exe。</value>
   </data>
   <data name="PermissionsPage_WindowsPrivacy.Text" xml:space="preserve">
     <value>Windows 隱私</value>
@@ -6854,9 +6857,6 @@
   </data>
   <data name="SettingsPage_GatewayInfoLabel_Uptime.Text" xml:space="preserve">
     <value>Uptime</value>
-  </data>
-  <data name="PermissionsPage_NewRuleAction.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
-    <value>規則動作</value>
   </data>
   <data name="SandboxPage_UnavailablePrimaryButton.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
     <value>沙箱動作</value>

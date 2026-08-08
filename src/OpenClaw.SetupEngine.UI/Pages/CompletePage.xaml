@@ -126,8 +126,12 @@
             </StackPanel>
         </ScrollViewer>
 
-        <Grid Grid.Row="1" ColumnDefinitions="*,Auto" Margin="0,16,0,0">
-            <StackPanel Grid.ColumnSpan="2" Orientation="Horizontal" Spacing="8" HorizontalAlignment="Center" VerticalAlignment="Center"
+        <Grid Grid.Row="1" ColumnDefinitions="Auto,*,Auto" Margin="0,16,0,0">
+            <Button x:Name="FallbackButton" Grid.Column="0"
+                    Content="Retry with validated fallback"
+                    Visibility="Collapsed"
+                    Click="FallbackButton_Click" />
+            <StackPanel Grid.ColumnSpan="3" Orientation="Horizontal" Spacing="8" HorizontalAlignment="Center" VerticalAlignment="Center"
                         IsTabStop="False" AutomationProperties.Name="Step 6 of 6">
                 <Border Width="8" Height="8" CornerRadius="4" VerticalAlignment="Center" Background="{ThemeResource SetupInactiveDotBrush}" />
                 <Border Width="8" Height="8" CornerRadius="4" VerticalAlignment="Center" Background="{ThemeResource SetupInactiveDotBrush}" />
@@ -136,7 +140,7 @@
                 <Border Width="8" Height="8" CornerRadius="4" VerticalAlignment="Center" Background="{ThemeResource SetupInactiveDotBrush}" />
                 <Border Width="20" Height="8" CornerRadius="4" VerticalAlignment="Center" Background="{ThemeResource SetupIndicatorAccentBrush}" />
             </StackPanel>
-            <Button x:Name="LaunchButton" Grid.Column="1"
+            <Button x:Name="LaunchButton" Grid.Column="2"
                     Content="Finish"
                     HorizontalAlignment="Right" MinWidth="100"
                     Style="{StaticResource AccentButtonStyle}"

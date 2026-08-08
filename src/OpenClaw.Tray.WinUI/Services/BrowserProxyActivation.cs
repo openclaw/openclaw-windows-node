@@ -27,6 +27,7 @@ internal static class BrowserProxyActivation
         ToggleDisabled,
         NoGatewayClient,
         MissingSharedGatewayToken,
+        UnverifiedBrowserEndpoint,
     }
 
     internal enum CapabilityPillKind
@@ -35,12 +36,21 @@ internal static class BrowserProxyActivation
         Active,
         PendingApproval,
         NeedsSharedToken,
+        NeedsVerifiedEndpoint,
+    }
+
+    internal enum RemediationKind
+    {
+        None,
+        MissingSharedToken,
+        UnverifiedEndpoint,
     }
 
     internal static RegistrationBlock ResolveRegistrationBlock(
         bool toggleEnabled,
         string? sharedGatewayToken,
-        bool hasGatewayClient)
+        bool hasGatewayClient,
+        bool browserEndpointVerified = true)
     {
         if (!toggleEnabled)
             return RegistrationBlock.ToggleDisabled;
@@ -48,15 +58,34 @@ internal static class BrowserProxyActivation
             return RegistrationBlock.NoGatewayClient;
         if (string.IsNullOrWhiteSpace(sharedGatewayToken))
             return RegistrationBlock.MissingSharedGatewayToken;
+        if (!browserEndpointVerified)
+            return RegistrationBlock.UnverifiedBrowserEndpoint;
         return RegistrationBlock.None;
     }
 
     internal static bool ShouldRegister(
         bool toggleEnabled,
         string? sharedGatewayToken,
-        bool hasGatewayClient)
-        => ResolveRegistrationBlock(toggleEnabled, sharedGatewayToken, hasGatewayClient) ==
+        bool hasGatewayClient,
+        bool browserEndpointVerified = true)
+        => ResolveRegistrationBlock(
+               toggleEnabled,
+               sharedGatewayToken,
+               hasGatewayClient,
+               browserEndpointVerified) ==
            RegistrationBlock.None;
+
+    internal static bool IsSshBrowserEndpointVerified(
+        SshTunnelConfig? sshTunnel,
+        int? browserControlPort)
+    {
+        if (sshTunnel is null)
+            return true;
+        if (!sshTunnel.IncludeBrowserProxyForward)
+            return false;
+        return browserControlPort is not (>= 1 and <= 65535) ||
+               browserControlPort == sshTunnel.LocalPort + 2;
+    }
 
     /// <summary>
     /// True when missing-token remediation is honest: Browser control is on, the
@@ -71,6 +100,21 @@ internal static class BrowserProxyActivation
         => nodeBrowserProxyEnabled &&
            nodeSessionLive &&
            !activeGatewayHasSharedToken;
+
+    internal static RemediationKind ResolveRemediation(
+        bool toggleEnabled,
+        bool hasSharedGatewayToken,
+        bool nodeSessionLive,
+        bool browserEndpointVerified)
+    {
+        if (!toggleEnabled || !nodeSessionLive)
+            return RemediationKind.None;
+        if (!hasSharedGatewayToken)
+            return RemediationKind.MissingSharedToken;
+        return browserEndpointVerified
+            ? RemediationKind.None
+            : RemediationKind.UnverifiedEndpoint;
+    }
 
     /// <summary>
     /// Remote (non-loopback) gateways need more than a shared token for usable
@@ -126,7 +170,11 @@ internal static class BrowserProxyActivation
         string? gatewayUrl,
         int? browserControlPort,
         SshTunnelConfig? sshTunnel)
-        => RequiresRemoteBrowserEndpoint(
+    {
+        if (!IsSshBrowserEndpointVerified(sshTunnel, browserControlPort))
+            return true;
+
+        return RequiresRemoteBrowserEndpoint(
             isLocalGateway: !string.IsNullOrWhiteSpace(gatewayUrl) &&
                             LocalGatewayUrlClassifier.IsLocalGatewayUrl(gatewayUrl) &&
                             sshTunnel is null,
@@ -134,6 +182,7 @@ internal static class BrowserProxyActivation
             browserControlPort: browserControlPort,
             hasSshTunnelConfigured: sshTunnel is not null,
             sshBrowserProxyForwardEnabled: sshTunnel?.IncludeBrowserProxyForward == true);
+    }
 
     internal static bool IsNodeSessionLive(RoleConnectionState nodeState)
         => nodeState == RoleConnectionState.Connected;
@@ -180,12 +229,17 @@ internal static class BrowserProxyActivation
                "or enable an SSH browser-proxy forward so browser.proxy can reach the control host.";
     }
 
+    internal static string BuildUnverifiedSshBrowserEndpointDetail() =>
+        "Browser control is enabled, but the configured SSH browser endpoint is not the managed " +
+        "browser-proxy forward. Enable the SSH browser-proxy forward and use the local tunnel port plus 2.";
+
     internal static CapabilityPillKind ResolveCapabilityPillKind(
         bool toggleEnabled,
         bool effective,
         bool pendingDeclared,
         bool hasSharedGatewayToken,
-        bool nodeSessionLive)
+        bool nodeSessionLive,
+        bool browserEndpointVerified = true)
     {
         if (effective)
             return CapabilityPillKind.Active;
@@ -193,14 +247,15 @@ internal static class BrowserProxyActivation
         if (!toggleEnabled && !pendingDeclared)
             return CapabilityPillKind.Off;
 
-        // NeedsSharedToken only when a live node session exists and the shared
-        // token is what blocks browser.proxy (not reconnect).
-        if (toggleEnabled &&
-            ShouldShowMissingSharedTokenWarning(
-                nodeBrowserProxyEnabled: true,
-                activeGatewayHasSharedToken: hasSharedGatewayToken,
-                nodeSessionLive: nodeSessionLive))
+        var remediation = ResolveRemediation(
+            toggleEnabled,
+            hasSharedGatewayToken,
+            nodeSessionLive,
+            browserEndpointVerified);
+        if (remediation == RemediationKind.MissingSharedToken)
             return CapabilityPillKind.NeedsSharedToken;
+        if (remediation == RemediationKind.UnverifiedEndpoint)
+            return CapabilityPillKind.NeedsVerifiedEndpoint;
 
         if (pendingDeclared || toggleEnabled)
             return CapabilityPillKind.PendingApproval;
@@ -232,6 +287,8 @@ internal static class BrowserProxyActivation
             "no gateway node client is attached",
         RegistrationBlock.MissingSharedGatewayToken =>
             "active gateway has no shared gateway token (setup-code/QR pairing alone is not enough for browser.proxy; enter the gateway shared token in Settings)",
+        RegistrationBlock.UnverifiedBrowserEndpoint =>
+            "active SSH gateway browser endpoint is not the verified managed browser-proxy forward",
         _ => "none",
     };
 }

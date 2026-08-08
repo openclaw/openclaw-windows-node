@@ -20,7 +20,8 @@ public sealed class GatewayClientFactory : IGatewayClientFactory
             logger,
             tokenIsBootstrapToken: credential.IsBootstrapToken,
             bootstrapPairAsNode: false,
-            identityPath: identityPath);
+            identityPath: identityPath,
+            ignoreStoredDeviceToken: credential.IsBootstrapToken);
 
         return new GatewayClientLifecycleAdapter(client);
     }

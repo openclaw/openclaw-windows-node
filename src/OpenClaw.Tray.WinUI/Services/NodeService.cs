@@ -405,10 +405,15 @@ public sealed class NodeService : IDisposable, IAsyncDisposable
         // BrowserProxy talks to the HTTP/browser-control surface, which expects
         // the shared gateway token rather than the node WebSocket device token.
         var sharedGatewayToken = _sharedGatewayTokenResolver?.Invoke();
+        var activeGatewayTunnel = _activeGatewayTunnelResolver?.Invoke();
+        var browserControlPort = _browserControlPortResolver?.Invoke();
         var browserProxyBlock = NodeCapabilityGating.ResolveBrowserProxyRegistrationBlock(
             _settings,
             sharedGatewayToken,
-            hasGatewayClient: _nodeClient != null);
+            hasGatewayClient: _nodeClient != null,
+            browserEndpointVerified: BrowserProxyActivation.IsSshBrowserEndpointVerified(
+                activeGatewayTunnel,
+                browserControlPort));
         if (browserProxyBlock == BrowserProxyActivation.RegistrationBlock.None)
         {
             // Tunnel state is resolved from the active GatewayRecord when a resolver is wired
@@ -417,7 +422,7 @@ public sealed class NodeService : IDisposable, IAsyncDisposable
             // old tunnel-local+2 endpoint. See BrowserProxyTunnelState for the exact contract.
             var tunnelState = BrowserProxyTunnelState.Resolve(
                 activeResolverSupplied: _activeGatewayTunnelResolver != null,
-                activeTunnel: _activeGatewayTunnelResolver?.Invoke(),
+                activeTunnel: activeGatewayTunnel,
                 activeGatewayUrl: _activeGatewayUrlResolver?.Invoke(),
                 settingsUseSshTunnel: _settings?.UseSshTunnel == true,
                 settingsLocalPort: _settings?.SshTunnelLocalPort,
@@ -428,7 +433,7 @@ public sealed class NodeService : IDisposable, IAsyncDisposable
                 _nodeClient!.GatewayUrl,
                 sharedGatewayToken,
                 sshRemoteGatewayPort: tunnelState.RemotePort,
-                controlPortOverride: _browserControlPortResolver?.Invoke(),
+                controlPortOverride: browserControlPort,
                 useSshTunnel: tunnelState.Enabled,
                 sshTunnelLocalPort: tunnelState.LocalPort,
                 allowGatewayPortFallback: tunnelState.AllowGatewayPortFallback,

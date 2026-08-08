@@ -1950,7 +1950,7 @@ Use one of these options:
     <value>Exec Policy</value>
   </data>
   <data name="PermissionsPage_TextBlock_17.Text" xml:space="preserve">
-    <value>Controls which executables the agent can launch on this node. Rules match resolved executable paths.</value>
+    <value>Controls which executables the agent can launch on this node. The executable-path allowlist starts empty.</value>
   </data>
   <data name="DefaultActionCombo.Header" xml:space="preserve">
     <value>Default Action</value>
@@ -1965,22 +1965,22 @@ Use one of these options:
     <value>Ask</value>
   </data>
   <data name="PermissionsPage_TextBlock_28.Text" xml:space="preserve">
-    <value>Rules</value>
+    <value>Executable-path allowlist</value>
   </data>
   <data name="NewRulePattern.PlaceholderText" xml:space="preserve">
-    <value>Executable path pattern (e.g. **/git.exe)</value>
+    <value>Executable-path pattern (e.g. **/hostname.exe)</value>
+  </data>
+  <data name="PermissionsPage_ExecAllowlistPatternValidation.Text" xml:space="preserve">
+    <value>Enter an executable-path pattern such as **/hostname.exe. Basename or command-text patterns such as hostname are invalid.</value>
   </data>
   <data name="PermissionsPage_ComboBoxItem_54.Content" xml:space="preserve">
     <value>Deny</value>
-  </data>
-  <data name="PermissionsPage_ComboBoxItem_55.Content" xml:space="preserve">
-    <value>Allow</value>
   </data>
   <data name="PermissionsPage_ComboBoxItem_56.Content" xml:space="preserve">
     <value>Ask</value>
   </data>
   <data name="PermissionsPage_Button_57.Content" xml:space="preserve">
-    <value>Add Rule</value>
+    <value>Add entry</value>
   </data>
   <data name="PermissionsPage_TextBlock_69.Text" xml:space="preserve">
     <value>Node Allowlist</value>
@@ -2828,6 +2828,9 @@ Use one of these options:
   <data name="VoiceOverlayWindow_StatusErrorOccurred" xml:space="preserve">
     <value>An error occurred</value>
   </data>
+  <data name="AudioPipeline_FirstAudioTimeout" xml:space="preserve">
+    <value>No audio was received. Check that your microphone is connected and selected as the Windows input device, then try again.</value>
+  </data>
   <data name="VoiceOverlayWindow_winexWindowEx_2.Title" xml:space="preserve">
     <value>Companion Voice</value>
   </data>
@@ -3439,13 +3442,13 @@ Commands are blocked while sandboxing is unavailable because strict fallback blo
     <value>URL copied to clipboard</value>
   </data>
   <data name="PermissionsPage_RulesCount_None" xml:space="preserve">
-    <value>No rules</value>
+    <value>No entries</value>
   </data>
   <data name="PermissionsPage_RulesCount_One" xml:space="preserve">
-    <value>1 rule</value>
+    <value>1 entry</value>
   </data>
   <data name="PermissionsPage_RulesCount_ManyFormat" xml:space="preserve">
-    <value>{0} rules</value>
+    <value>{0} entries</value>
   </data>
   <data name="PermissionsPage_Allowlist_NoConfig" xml:space="preserve">
     <value>No allowlist data available. Connect to a gateway first.</value>
@@ -4498,19 +4501,19 @@ Commands are blocked while sandboxing is unavailable because strict fallback blo
     <value>Default action</value>
   </data>
   <data name="PermissionsPage_WhatHappensWhenA.Text" xml:space="preserve">
-    <value>What happens when a command doesn't match any rule below.</value>
+    <value>What happens when a command doesn't match the executable-path allowlist below.</value>
   </data>
   <data name="PermissionsPage_PatternsAreMatchedLeft.Text" xml:space="preserve">
-    <value>Allowlist patterns match resolved executable paths. Use wildcards such as **/git.exe. Changes save automatically.</value>
+    <value>Allow Always creates an argument-bound entry for an eligible native .exe command. Entries added here are path-only and can allow matching executables with any arguments. Deny and Ask remain controlled by Default action. Changes save automatically.</value>
   </data>
   <data name="PermissionsPage_Saved.Text" xml:space="preserve">
     <value>Saved</value>
   </data>
   <data name="PermissionsPage_0Rules.Text" xml:space="preserve">
-    <value>0 rules</value>
+    <value>0 entries</value>
   </data>
   <data name="PermissionsPage_NoRulesYetAdd.Text" xml:space="preserve">
-    <value>No rules yet. Add a pattern below to deny, allow, or ask for specific commands.</value>
+    <value>No executable-path allowlist entries. Approve an eligible native .exe command with Allow Always, or add a path-only pattern such as **/hostname.exe.</value>
   </data>
   <data name="PermissionsPage_WindowsPrivacy.Text" xml:space="preserve">
     <value>Windows privacy</value>
@@ -6894,9 +6897,6 @@ Make sure the gateway is running.</value>
   </data>
   <data name="SettingsPage_GatewayInfoLabel_Uptime.Text" xml:space="preserve">
     <value>Uptime</value>
-  </data>
-  <data name="PermissionsPage_NewRuleAction.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
-    <value>Rule action</value>
   </data>
   <data name="SandboxPage_UnavailablePrimaryButton.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
     <value>Sandbox action</value>
