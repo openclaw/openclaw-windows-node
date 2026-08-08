@@ -80,6 +80,18 @@ public class WebSocketClientBaseTests
 {
     private readonly TestLogger _logger = new();
 
+    [Fact]
+    public void HandshakeChallengeGate_StaleGenerationCannotReplaceCurrentState()
+    {
+        var gate = new HandshakeChallengeGate();
+        gate.Reset(2);
+
+        Assert.True(gate.TryBegin(2));
+        Assert.False(gate.TryBegin(1));
+        Assert.True(gate.TryAuthorize(2));
+        Assert.True(gate.IsAuthorized(2));
+    }
+
     [Theory]
     [InlineData("http://localhost:18789", "ws://localhost:18789")]
     [InlineData("https://gateway.example.com", "wss://gateway.example.com")]

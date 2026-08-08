@@ -2377,13 +2377,23 @@ public sealed partial class ConnectionPage : Page
             ClipboardHelper.CopyText(RecoveryApproveCmdText.Text);
     }
 
-    private void OnRestartTunnel(object sender, RoutedEventArgs e)
+    private void OnRestartTunnel(object sender, RoutedEventArgs e) =>
+        AsyncEventHandlerGuard.Run(
+            OnRestartTunnelAsync,
+            new OpenClawTray.AppLogger(),
+            nameof(OnRestartTunnel));
+
+    private async Task OnRestartTunnelAsync()
     {
         try
         {
             var app = (App)Microsoft.UI.Xaml.Application.Current;
-            app.EnsureSshTunnelStarted();
-            AddResultText.Text = LocalizationHelper.GetString("ConnectionPage_TunnelRestartTriggered");
+            var restarted = await app.RestartSshTunnelAsync();
+            AddResultText.Text = restarted
+                ? LocalizationHelper.GetString("ConnectionPage_TunnelRestartTriggered")
+                : string.Format(
+                    LocalizationHelper.GetString("ConnectionPage_TunnelRestartFailed"),
+                    "The owned tunnel or authenticated gateway connection could not be verified.");
         }
         catch (Exception ex)
         {

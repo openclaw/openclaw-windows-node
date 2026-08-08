@@ -445,6 +445,26 @@ public class OpenClawGatewayClientTests
                 "TrackPendingRequest",
                 System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
             methodInfo!.Invoke(_client, new object[] { requestId, method });
+            if (string.Equals(method, "connect", StringComparison.Ordinal))
+                AuthorizeCurrentHandshake();
+        }
+
+        private void AuthorizeCurrentHandshake()
+        {
+            var generationProperty = typeof(WebSocketClientBase).GetProperty(
+                "CurrentConnectionGeneration",
+                System.Reflection.BindingFlags.NonPublic |
+                System.Reflection.BindingFlags.Instance);
+            var generation = (long)generationProperty!.GetValue(_client)!;
+            var gateField = typeof(OpenClawGatewayClient).GetField(
+                "_handshakeChallengeGate",
+                System.Reflection.BindingFlags.NonPublic |
+                System.Reflection.BindingFlags.Instance);
+            var gate = gateField!.GetValue(_client)!;
+            var gateType = gate.GetType();
+            gateType.GetMethod("Reset")!.Invoke(gate, [generation]);
+            Assert.True((bool)gateType.GetMethod("TryBegin")!.Invoke(gate, [generation])!);
+            Assert.True((bool)gateType.GetMethod("TryAuthorize")!.Invoke(gate, [generation])!);
         }
 
         public bool GetPairingRequiredFlag() =>
@@ -696,6 +716,7 @@ public class OpenClawGatewayClientTests
             identityPath: identity.Path);
         using var client = helper.Client;
         await client.ConnectAsync();
+        helper.TrackPendingRequest("req-hello-restart", "connect");
         helper.ProcessRawMessage("""
         {
             "type": "res",
@@ -893,6 +914,7 @@ public class OpenClawGatewayClientTests
             bootstrapPairAsNode: true,
             identityPath: CreateTempIdentityPath());
         helper.SetDeviceTokenForTest(null);
+        helper.TrackPendingRequest("req-hello-node", "connect");
 
         helper.ProcessRawMessage("""
         {
@@ -921,6 +943,7 @@ public class OpenClawGatewayClientTests
             bootstrapPairAsNode: true,
             identityPath: CreateTempIdentityPath());
         helper.SetDeviceTokenForTest(null);
+        helper.TrackPendingRequest("req-hello-node", "connect");
 
         helper.ProcessRawMessage("""
         {
@@ -1015,7 +1038,7 @@ public class OpenClawGatewayClientTests
                     "listener ownership lost")
                 : ReconnectAuthorizationResult.AllowedResult);
         };
-        helper.Client.AuthenticationFailed += (_, _) => denied.TrySetResult();
+        helper.Client.ConnectionFailure += (_, _) => denied.TrySetResult();
 
         const string challenge = """
             {
@@ -1035,6 +1058,81 @@ public class OpenClawGatewayClientTests
 
         Assert.Equal(1, authorizationCalls);
         Assert.False(helper.GetAuthFailedFlag());
+    }
+
+    [Fact]
+    public async Task DuplicateChallengeWhileAuthorizationActive_IsSuppressed()
+    {
+        var helper = new GatewayClientTestHelper();
+        var authorizationCalls = 0;
+        var authorizationStarted = new TaskCompletionSource(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        var releaseAuthorization = new TaskCompletionSource(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        helper.Client.HandshakeAuthorizationAsync = async _ =>
+        {
+            Interlocked.Increment(ref authorizationCalls);
+            authorizationStarted.TrySetResult();
+            await releaseAuthorization.Task;
+            return ReconnectAuthorizationResult.AllowedResult;
+        };
+
+        const string challenge = """
+            {
+              "type": "event",
+              "event": "connect.challenge",
+              "payload": {
+                "nonce": "duplicate",
+                "ts": 1785824000000
+              }
+            }
+            """;
+
+        helper.ProcessRawMessage(challenge);
+        await authorizationStarted.Task.WaitAsync(TimeSpan.FromSeconds(2));
+        helper.ProcessRawMessage(challenge);
+        releaseAuthorization.TrySetResult();
+        await Task.Delay(50);
+
+        Assert.Equal(1, authorizationCalls);
+    }
+
+    [Fact]
+    public async Task MalformedChallenge_DoesNotConsumeCurrentSocketGate()
+    {
+        var helper = new GatewayClientTestHelper();
+        var authorizationCalls = 0;
+        var authorizationObserved = new TaskCompletionSource(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        helper.Client.HandshakeAuthorizationAsync = _ =>
+        {
+            authorizationCalls++;
+            authorizationObserved.TrySetResult();
+            return Task.FromResult(ReconnectAuthorizationResult.AllowedResult);
+        };
+
+        helper.ProcessRawMessage(
+            """
+            {
+              "type": "event",
+              "event": "connect.challenge",
+              "payload": { "nonce": 42 }
+            }
+            """);
+        helper.ProcessRawMessage(
+            """
+            {
+              "type": "event",
+              "event": "connect.challenge",
+              "payload": {
+                "nonce": "valid-after-malformed",
+                "ts": 1785824000000
+              }
+            }
+            """);
+        await authorizationObserved.Task.WaitAsync(TimeSpan.FromSeconds(2));
+
+        Assert.Equal(1, authorizationCalls);
     }
 
     [Fact]
@@ -1099,6 +1197,7 @@ public class OpenClawGatewayClientTests
             bootstrapPairAsNode: false,
             identityPath: CreateTempIdentityPath());
         helper.SetDeviceTokenForTest(null);
+        helper.TrackPendingRequest("req-hello-operator", "connect");
 
         helper.ProcessRawMessage("""
         {
@@ -1137,6 +1236,7 @@ public class OpenClawGatewayClientTests
         DeviceTokenReceivedEventArgs? receivedToken = null;
         helper.Client.HandshakeSucceeded += (_, _) => handshakeSucceeded = true;
         helper.Client.DeviceTokenReceived += (_, e) => receivedToken = e;
+        helper.TrackPendingRequest("req-hello-operator", "connect");
 
         using (new FileStream(
             Path.Combine(identityPath, "device-key-ed25519.json"),
@@ -4400,6 +4500,7 @@ public class OpenClawGatewayClientTests
         Assert.True(helper.GetAuthFailedFlag());
 
         // Now receive hello-ok — flag must be cleared
+        helper.TrackPendingRequest("req-hello-1", "connect");
         helper.ProcessRawMessage("""
         {
             "type": "res",

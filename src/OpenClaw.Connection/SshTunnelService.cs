@@ -10,8 +10,7 @@ namespace OpenClaw.Connection;
 /// </summary>
 public sealed class SshTunnelService : ISshTunnelManager
 {
-    private readonly IOpenClawLogger _logger;
-    private readonly string? _sshConfigFile;
+private readonly IOpenClawLogger _logger;
     private readonly object _operationLock = new();
     private readonly object _stateLock = new();
     private Process? _process;
@@ -24,10 +23,9 @@ public sealed class SshTunnelService : ISshTunnelManager
     /// <summary>Raised when the SSH tunnel exits unexpectedly (not during shutdown).</summary>
     public event EventHandler<SshTunnelExit>? TunnelExited;
 
-    public SshTunnelService(IOpenClawLogger logger, string? sshConfigFile = null)
+    public SshTunnelService(IOpenClawLogger logger)
     {
         _logger = logger;
-        _sshConfigFile = sshConfigFile;
     }
 
     public bool IsRunning
@@ -288,8 +286,7 @@ public sealed class SshTunnelService : ISshTunnelManager
                 remotePort,
                 localPort,
                 includeBrowserProxyForward,
-                sshPort,
-                _sshConfigFile),
+                sshPort),
             UseShellExecute = false,
             RedirectStandardOutput = true,
             RedirectStandardError = true,
@@ -558,7 +555,12 @@ public sealed class SshTunnelService : ISshTunnelManager
         }
     }
 
-    public async Task<string> StartAsync(SshTunnelConfig config, CancellationToken ct)
+    public async Task<string> StartAsync(SshTunnelConfig config, CancellationToken ct) =>
+        (await StartOwnedAsync(config, ct).ConfigureAwait(false)).Url;
+
+    public async Task<SshTunnelStartResult> StartOwnedAsync(
+        SshTunnelConfig config,
+        CancellationToken ct)
     {
         Process? process = null;
         long generation = 0;
@@ -613,7 +615,10 @@ public sealed class SshTunnelService : ISshTunnelManager
                     processStartTimeUtc,
                     ct).ConfigureAwait(false);
             }
-            return $"ws://localhost:{config.LocalPort}";
+            return new SshTunnelStartResult(
+                $"ws://localhost:{config.LocalPort}",
+                normalizedConfig,
+                generation);
         }
         catch
         {
@@ -627,6 +632,42 @@ public sealed class SshTunnelService : ISshTunnelManager
     {
         Stop();
         return Task.CompletedTask;
+    }
+
+    public Task<bool> StopIfOwnedAsync(
+        SshTunnelConfig config,
+        long ownershipGeneration,
+        CancellationToken ct)
+    {
+        ct.ThrowIfCancellationRequested();
+        while (!Monitor.TryEnter(_operationLock, millisecondsTimeout: 50))
+            ct.ThrowIfCancellationRequested();
+        try
+        {
+            ct.ThrowIfCancellationRequested();
+            lock (_stateLock)
+            {
+                var normalizedConfig = config with
+                {
+                    User = config.User.Trim(),
+                    Host = config.Host.Trim(),
+                };
+                if (_lifecycleGeneration != ownershipGeneration ||
+                    !Equals(_currentConfig, normalizedConfig) ||
+                    _currentOwner != SshTunnelOwner.GatewayConnectionManager)
+                {
+                    return Task.FromResult(false);
+                }
+            }
+
+            ct.ThrowIfCancellationRequested();
+            StopLocked();
+            return Task.FromResult(true);
+        }
+        finally
+        {
+            Monitor.Exit(_operationLock);
+        }
     }
 
     private async Task WaitForOwnedLocalListenerAsync(

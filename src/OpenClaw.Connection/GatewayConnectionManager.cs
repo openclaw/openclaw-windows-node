@@ -62,6 +62,8 @@ public sealed class GatewayConnectionManager : IGatewayConnectionManager
     private readonly Func<GatewayRecord, CancellationToken, Task<GatewayEndpointProvenance>>?
         _endpointProvenanceProbe;
     private readonly Func<ISshTunnelManager> _validationTunnelFactory;
+    private readonly TimeSpan _credentialHandoffTimeout;
+    private readonly TimeSpan _manualSshRestartTimeout;
     private readonly SemaphoreSlim _transitionSemaphore = new(1, 1);
     private readonly SemaphoreSlim _nodeStartSemaphore = new(1, 1);
     private readonly object _nodeOperationLock = new();
@@ -107,6 +109,8 @@ public sealed class GatewayConnectionManager : IGatewayConnectionManager
     private GatewayConnectionSnapshot _lastTelemetrySnapshot = GatewayConnectionSnapshot.Idle;
     private long _pendingOperatorFailureGeneration;
     private GatewayErrorKind? _pendingOperatorFailureKind;
+    private long _manualSshRestartGeneration;
+    private CancellationTokenSource? _manualSshRestartCts;
 
     private const string MissingNodeCredentialMessage =
         "No node credential available. Re-pair this PC or add a shared/bootstrap gateway token.";
@@ -138,7 +142,9 @@ public sealed class GatewayConnectionManager : IGatewayConnectionManager
         Func<TimeSpan, Task>? reconnectDelay = null,
         Func<GatewayRecord, CancellationToken, Task<GatewayEndpointProvenance>>?
             endpointProvenanceProbe = null,
-        Func<ISshTunnelManager>? validationTunnelFactory = null)
+        Func<ISshTunnelManager>? validationTunnelFactory = null,
+        TimeSpan? credentialHandoffTimeout = null,
+        TimeSpan? manualSshRestartTimeout = null)
     {
         _credentialResolver = credentialResolver ?? throw new ArgumentNullException(nameof(credentialResolver));
         _clientFactory = clientFactory ?? throw new ArgumentNullException(nameof(clientFactory));
@@ -153,6 +159,12 @@ public sealed class GatewayConnectionManager : IGatewayConnectionManager
         _reconnectDelay = reconnectDelay ?? Task.Delay;
         _endpointProvenanceProbe = endpointProvenanceProbe;
         _validationTunnelFactory = validationTunnelFactory ?? (() => new SshTunnelService(_logger));
+        _credentialHandoffTimeout = credentialHandoffTimeout ?? TimeSpan.FromSeconds(5);
+        _manualSshRestartTimeout = manualSshRestartTimeout ?? TimeSpan.FromSeconds(35);
+        if (_credentialHandoffTimeout <= TimeSpan.Zero)
+            throw new ArgumentOutOfRangeException(nameof(credentialHandoffTimeout));
+        if (_manualSshRestartTimeout <= TimeSpan.Zero)
+            throw new ArgumentOutOfRangeException(nameof(manualSshRestartTimeout));
         _diagnostics = diagnostics ?? new ConnectionDiagnostics(clock: clock);
         _diagnostics.EventRecorded += (_, e) => DiagnosticEvent?.Invoke(this, e);
 
@@ -257,7 +269,10 @@ public sealed class GatewayConnectionManager : IGatewayConnectionManager
     }
 
     /// <summary>Core connect logic. Caller must hold <see cref="_transitionSemaphore"/>.</summary>
-    private async Task ConnectCoreAsync(string? gatewayId = null, string operation = "connect")
+    private async Task ConnectCoreAsync(
+        string? gatewayId = null,
+        string operation = "connect",
+        CancellationToken externalCancellationToken = default)
     {
             var id = gatewayId ?? _registry.ActiveGatewayId;
             if (id == null)
@@ -281,7 +296,10 @@ public sealed class GatewayConnectionManager : IGatewayConnectionManager
 
             // Cancel any in-flight operation
             var gen = Interlocked.Increment(ref _generation);
-            var oldCts = Interlocked.Exchange(ref _operationCts, new CancellationTokenSource());
+            var newOperationCts = externalCancellationToken.CanBeCanceled
+                ? CancellationTokenSource.CreateLinkedTokenSource(externalCancellationToken)
+                : new CancellationTokenSource();
+            var oldCts = Interlocked.Exchange(ref _operationCts, newOperationCts);
             oldCts?.Cancel();
             oldCts?.Dispose();
 
@@ -411,6 +429,7 @@ public sealed class GatewayConnectionManager : IGatewayConnectionManager
             // logs appear in the Connection Status window timeline.
             // When SSH tunnel is configured, start the tunnel and connect to the local URL.
             var connectUrl = record.Url;
+            SshTunnelStartResult? startedTunnel = null;
             if (record.SshTunnel != null && _tunnelManager != null)
             {
                 var tunnel = record.SshTunnel;
@@ -430,14 +449,33 @@ public sealed class GatewayConnectionManager : IGatewayConnectionManager
                 }
                 try
                 {
-                    connectUrl = await _tunnelManager.StartAsync(tunnel, _operationCts!.Token);
+                    startedTunnel = await _tunnelManager
+                        .StartOwnedAsync(tunnel, _operationCts!.Token)
+                        .ConfigureAwait(false);
+                    connectUrl = startedTunnel.Url;
                     var tunnelAuthorization = await AuthorizeCredentialForEndpointAsync(
                         record,
                         credential,
                         _operationCts.Token,
                         requireSshTunnelOwnership: true).ConfigureAwait(false);
                     if (!tunnelAuthorization.Allowed)
-                        throw new InvalidOperationException(tunnelAuthorization.Detail);
+                    {
+                        _stateMachine.SetOperatorErrorKind(tunnelAuthorization.FailureKind);
+                        _stateMachine.TryTransition(
+                            tunnelAuthorization.FailureKind == GatewayErrorKind.Network
+                                ? ConnectionTrigger.WebSocketError
+                                : ConnectionTrigger.AuthenticationFailed,
+                            tunnelAuthorization.Detail);
+                        await StopOwnedTunnelAfterFailedConnectionAsync(
+                            startedTunnel,
+                            "SSH tunnel ownership authorization failure");
+                        CompleteOperatorTelemetryAttempt(
+                            gen,
+                            "failure",
+                            ConnectionErrorCategory.SshTunnelFailure);
+                        EmitStateChanged();
+                        return;
+                    }
                     expectedEndpointOwnership = tunnelAuthorization.OwnershipProof;
                     _diagnostics.Record("tunnel", $"SSH tunnel started → {connectUrl}");
                 }
@@ -446,7 +484,12 @@ public sealed class GatewayConnectionManager : IGatewayConnectionManager
                     _logger.Error($"[ConnMgr] SSH tunnel start failed: {ex.Message}");
                     _diagnostics.Record("tunnel", "SSH tunnel start failed", ex.Message);
                     _stateMachine.TryTransition(ConnectionTrigger.WebSocketError, $"SSH tunnel failed: {ex.Message}");
-                    await StopTunnelAfterFailedConnectionAsync("SSH tunnel startup or authorization failure");
+                    if (startedTunnel is not null)
+                    {
+                        await StopOwnedTunnelAfterFailedConnectionAsync(
+                            startedTunnel,
+                            "SSH tunnel startup or authorization failure");
+                    }
                     CompleteOperatorTelemetryAttempt(
                         gen,
                         "failure",
@@ -486,7 +529,12 @@ public sealed class GatewayConnectionManager : IGatewayConnectionManager
                 _stateMachine.TryTransition(
                     ConnectionTrigger.WebSocketError,
                     DeviceIdentityLoadException.RecoveryMessage);
-                await StopTunnelAfterFailedConnectionAsync("operator identity load failure");
+                if (startedTunnel is not null)
+                {
+                    await StopOwnedTunnelAfterFailedConnectionAsync(
+                        startedTunnel,
+                        "operator identity load failure");
+                }
                 CompleteOperatorTelemetryAttempt(
                     gen,
                     "failure",
@@ -495,35 +543,32 @@ public sealed class GatewayConnectionManager : IGatewayConnectionManager
                 return;
             }
 
+            var operatorOperationCancellation = _operationCts!.Token;
             async Task<ReconnectAuthorizationResult> AuthorizeLiveCredentialHandoffAsync(
                 CancellationToken cancellationToken)
             {
-                if (!IsCurrentGatewayAttempt(gen, record.Id) ||
-                    !IsAutomaticReconnectAllowed(record.Id))
+                var authorization = await AuthorizeCredentialHandoffAsync(
+                        record,
+                        credential,
+                        expectedEndpointOwnership,
+                        () => IsCurrentGatewayAttempt(gen, record.Id) &&
+                            IsAutomaticReconnectAllowed(record.Id),
+                        operatorOperationCancellation,
+                        cancellationToken,
+                        "operator")
+                    .ConfigureAwait(false);
+                if (!authorization.Allowed &&
+                    authorization.FailureKind != GatewayErrorKind.Unknown)
                 {
-                    return new ReconnectAuthorizationResult(
-                        false,
-                        GatewayErrorKind.Unknown,
-                        "Connection attempt was superseded or explicitly disconnected.");
+                    await RecordOperatorCredentialHandoffFailureAsync(
+                            authorization.Detail ?? "Operator credential handoff was not authorized.",
+                            authorization.FailureKind,
+                            operatorOperationCancellation,
+                            gen,
+                            record.Id)
+                        .ConfigureAwait(false);
                 }
-                var authorization = await AuthorizeCredentialForEndpointAsync(
-                    record,
-                    credential,
-                    cancellationToken,
-                    requireSshTunnelOwnership: true).ConfigureAwait(false);
-                if (authorization.Allowed &&
-                    expectedEndpointOwnership is not null &&
-                    authorization.OwnershipProof != expectedEndpointOwnership)
-                {
-                    return new ReconnectAuthorizationResult(
-                        false,
-                        GatewayErrorKind.LocalPortConflict,
-                        "Endpoint ownership changed after preflight, so credentials were not sent.");
-                }
-                return new ReconnectAuthorizationResult(
-                    authorization.Allowed,
-                    authorization.FailureKind,
-                    authorization.Detail);
+                return authorization;
             }
 
             lifecycle.DataClient.HandshakeAuthorizationAsync =
@@ -727,13 +772,18 @@ public sealed class GatewayConnectionManager : IGatewayConnectionManager
         _diagnostics.Record("node", $"Starting node-only connection to {record.Url}",
             $"Credential source: {nodeCredential.Source}");
 
-        if (!preservesOperatorConnection && !await TryStartTunnelForNodeOnlyAsync(record))
+        SshTunnelStartResult? startedTunnel = null;
+        if (!preservesOperatorConnection && record.SshTunnel is not null)
         {
-            _stateMachine.SetNodeCredentialResolution(nodeCredentialResolution);
-            _stateMachine.BlockNodeStart(NodeTunnelStartFailedMessage, preserveCredentialResolution: true);
-            EmitStateChanged();
-            RecordNodePreflightTelemetryFailure(ConnectionErrorCategory.SshTunnelFailure);
-            return null;
+            startedTunnel = await TryStartTunnelForNodeOnlyAsync(record);
+            if (startedTunnel is null)
+            {
+                _stateMachine.SetNodeCredentialResolution(nodeCredentialResolution);
+                _stateMachine.BlockNodeStart(NodeTunnelStartFailedMessage, preserveCredentialResolution: true);
+                EmitStateChanged();
+                RecordNodePreflightTelemetryFailure(ConnectionErrorCategory.SshTunnelFailure);
+                return null;
+            }
         }
 
         if (record.SshTunnel is not null)
@@ -746,7 +796,11 @@ public sealed class GatewayConnectionManager : IGatewayConnectionManager
             if (!tunnelAuthorization.Allowed)
             {
                 if (!preservesOperatorConnection)
-                    await StopTunnelAfterFailedConnectionAsync("node-only ownership proof failure");
+                {
+                    await StopOwnedTunnelAfterFailedConnectionAsync(
+                        startedTunnel!,
+                        "node-only ownership proof failure");
+                }
 
                 _stateMachine.SetNodeCredentialResolution(nodeCredentialResolution);
                 _stateMachine.BlockNodeStart(
@@ -761,15 +815,16 @@ public sealed class GatewayConnectionManager : IGatewayConnectionManager
         return Interlocked.Read(ref _generation) == gen ? gen : null;
     }
 
-    private async Task<bool> TryStartTunnelForNodeOnlyAsync(GatewayRecord record)
+    private async Task<SshTunnelStartResult?> TryStartTunnelForNodeOnlyAsync(
+        GatewayRecord record)
     {
         if (record.SshTunnel == null)
-            return true;
+            return null;
 
         if (_tunnelManager == null)
         {
             _diagnostics.Record("tunnel", "No tunnel manager available for node-only SSH connection");
-            return false;
+            return null;
         }
 
         var tunnel = record.SshTunnel;
@@ -780,20 +835,52 @@ public sealed class GatewayConnectionManager : IGatewayConnectionManager
         {
             _logger.Warn("[ConnMgr] SSH tunnel config is incomplete for node-only connect");
             _diagnostics.Record("tunnel", "SSH tunnel config is incomplete for node-only connect");
-            return false;
+            return null;
         }
 
         try
         {
-            var connectUrl = await _tunnelManager.StartAsync(tunnel, _operationCts!.Token);
-            _diagnostics.Record("tunnel", $"SSH tunnel started for node-only connect → {connectUrl}");
-            return true;
+            var startedTunnel = await _tunnelManager
+                .StartOwnedAsync(tunnel, _operationCts!.Token)
+                .ConfigureAwait(false);
+            _diagnostics.Record(
+                "tunnel",
+                $"SSH tunnel started for node-only connect → {startedTunnel.Url}");
+            return startedTunnel;
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
             _logger.Error($"[ConnMgr] SSH tunnel start failed for node-only connect: {ex.Message}");
             _diagnostics.Record("tunnel", "SSH tunnel start failed for node-only connect", ex.Message);
-            return false;
+            return null;
+        }
+    }
+
+    private async Task StopOwnedTunnelAfterFailedConnectionAsync(
+        SshTunnelStartResult startedTunnel,
+        string operation)
+    {
+        if (_tunnelManager is null)
+            return;
+
+        using var stopCts = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+        try
+        {
+            if (await _tunnelManager.StopIfOwnedAsync(
+                    startedTunnel.Config,
+                    startedTunnel.OwnershipGeneration,
+                    stopCts.Token).ConfigureAwait(false))
+            {
+                _diagnostics.Record("tunnel", $"SSH tunnel stopped after {operation}");
+            }
+        }
+        catch (OperationCanceledException)
+        {
+            _logger.Warn($"[ConnMgr] Tunnel stop timed out after {operation}");
+        }
+        catch (Exception ex)
+        {
+            _logger.Warn($"[ConnMgr] Tunnel stop failed after {operation}: {ex.Message}");
         }
     }
 
@@ -973,6 +1060,266 @@ public sealed class GatewayConnectionManager : IGatewayConnectionManager
                 && _registry.GetById(activeGateway.Id) is not null
                 && _tunnelManager?.IsActive == true
                 && string.Equals(_registry.ActiveGatewayId, activeGateway.Id, StringComparison.Ordinal);
+        }
+        finally
+        {
+            _transitionSemaphore.Release();
+        }
+    }
+
+    public async Task<bool> RestartSshTunnelAsync(CancellationToken cancellationToken = default)
+    {
+        ThrowIfDisposed();
+        var restartGeneration = Interlocked.Increment(ref _manualSshRestartGeneration);
+        using var restartCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        restartCts.CancelAfter(_manualSshRestartTimeout);
+        var previousRestartCts = Interlocked.Exchange(ref _manualSshRestartCts, restartCts);
+        try { previousRestartCts?.Cancel(); }
+        catch (ObjectDisposedException) { }
+
+        EventHandler<GatewayConnectionSnapshot>? stateHandler = null;
+        TaskCompletionSource<bool>? handshakeCompletion = null;
+        long connectionGeneration = 0;
+        long tunnelGeneration = 0;
+        IGatewayClientLifecycle? lifecycle = null;
+        GatewayRecord? expectedGatewayRecord = null;
+        string? gatewayId = null;
+        SshTunnelConfig? tunnelConfig = null;
+        SshTunnelConfig? ownedTunnelConfig = null;
+        var succeeded = false;
+
+        try
+        {
+            await _transitionSemaphore.WaitAsync(restartCts.Token).ConfigureAwait(false);
+            try
+            {
+                if (restartGeneration != Interlocked.Read(ref _manualSshRestartGeneration))
+                    return false;
+
+                var activeRecord = _registry.GetActive();
+                expectedGatewayRecord = activeRecord;
+                gatewayId = activeRecord?.Id;
+                tunnelConfig = activeRecord?.SshTunnel;
+                if (activeRecord is null ||
+                    tunnelConfig is null ||
+                    _tunnelManager is null)
+                {
+                    return false;
+                }
+                ownedTunnelConfig = tunnelConfig with
+                {
+                    User = tunnelConfig.User.Trim(),
+                    Host = tunnelConfig.Host.Trim(),
+                };
+
+                var previousTunnelGeneration = _tunnelManager.OwnershipGeneration;
+                var previousTunnelWasActive = _tunnelManager.IsActive;
+                if (previousTunnelWasActive &&
+                    _tunnelManager.ActiveConfig != ownedTunnelConfig)
+                    return false;
+
+                SetGatewayConnectionIntent(activeRecord.Id, shouldBeConnected: true);
+                await DisconnectCoreAsync().ConfigureAwait(false);
+                if (restartGeneration != Interlocked.Read(ref _manualSshRestartGeneration) ||
+                    !IsCurrentSshRegistryRecord(activeRecord) ||
+                    _tunnelManager.OwnershipGeneration != previousTunnelGeneration)
+                {
+                    return false;
+                }
+
+                if (previousTunnelWasActive)
+                {
+                    var stopped = await _tunnelManager.StopIfOwnedAsync(
+                            tunnelConfig,
+                            previousTunnelGeneration,
+                            restartCts.Token)
+                        .ConfigureAwait(false);
+                    if (!stopped)
+                        return false;
+                }
+                else if (_tunnelManager.IsActive)
+                {
+                    return false;
+                }
+
+                if (!IsCurrentSshRegistryRecord(activeRecord))
+                {
+                    return false;
+                }
+
+                await ConnectCoreAsync(
+                        activeRecord.Id,
+                        operation: "reconnect",
+                        restartCts.Token)
+                    .ConfigureAwait(false);
+
+                connectionGeneration = Interlocked.Read(ref _generation);
+                lifecycle = _activeLifecycle;
+                tunnelGeneration = _tunnelManager.OwnershipGeneration;
+                if (lifecycle is null ||
+                    !IsCurrentGatewayAttempt(connectionGeneration, activeRecord.Id) ||
+                    !_tunnelManager.IsActive ||
+                    _tunnelManager.ActiveConfig != ownedTunnelConfig)
+                {
+                    return false;
+                }
+
+                handshakeCompletion = new TaskCompletionSource<bool>(
+                    TaskCreationOptions.RunContinuationsAsynchronously);
+                stateHandler = (_, snapshot) =>
+                {
+                    if (restartGeneration != Interlocked.Read(ref _manualSshRestartGeneration) ||
+                        connectionGeneration != Interlocked.Read(ref _generation) ||
+                        !ReferenceEquals(lifecycle, _activeLifecycle))
+                    {
+                        handshakeCompletion.TrySetResult(false);
+                        return;
+                    }
+
+                    if (snapshot.OperatorState == RoleConnectionState.Connected)
+                        handshakeCompletion.TrySetResult(true);
+                    else if (snapshot.OperatorState is RoleConnectionState.Error
+                        or RoleConnectionState.PairingRequired)
+                        handshakeCompletion.TrySetResult(false);
+                };
+                StateChanged += stateHandler;
+                if (_stateMachine.Current.OperatorState == RoleConnectionState.Connected)
+                    handshakeCompletion.TrySetResult(true);
+                else if (_stateMachine.Current.OperatorState is RoleConnectionState.Error
+                    or RoleConnectionState.PairingRequired)
+                    handshakeCompletion.TrySetResult(false);
+            }
+            finally
+            {
+                _transitionSemaphore.Release();
+            }
+
+            if (handshakeCompletion is null ||
+                !await handshakeCompletion.Task.WaitAsync(restartCts.Token).ConfigureAwait(false))
+            {
+                return false;
+            }
+
+            await _transitionSemaphore.WaitAsync(restartCts.Token).ConfigureAwait(false);
+            try
+            {
+                var activeRecordId = _registry.ActiveGatewayId;
+                if (restartGeneration != Interlocked.Read(ref _manualSshRestartGeneration) ||
+                    connectionGeneration != Interlocked.Read(ref _generation) ||
+                    !ReferenceEquals(lifecycle, _activeLifecycle) ||
+                    _stateMachine.Current.OperatorState != RoleConnectionState.Connected ||
+                    !lifecycle.DataClient.IsConnectedToGateway ||
+                    gatewayId is null ||
+                    activeRecordId is null ||
+                    !string.Equals(activeRecordId, gatewayId, StringComparison.Ordinal) ||
+                    expectedGatewayRecord is null ||
+                    tunnelConfig is null ||
+                    ownedTunnelConfig is null ||
+                    !IsCurrentSshRegistryRecord(expectedGatewayRecord) ||
+                    _tunnelManager is null ||
+                    !_tunnelManager.IsActive ||
+                    _tunnelManager.OwnershipGeneration != tunnelGeneration ||
+                    _tunnelManager.ActiveConfig != ownedTunnelConfig)
+                {
+                    return false;
+                }
+
+                succeeded = await _tunnelManager.IsOwnedListenerReadyAsync(
+                        tunnelConfig,
+                        tunnelConfig.LocalPort,
+                        restartCts.Token)
+                    .ConfigureAwait(false);
+                succeeded = succeeded &&
+                    restartGeneration == Interlocked.Read(ref _manualSshRestartGeneration) &&
+                    connectionGeneration == Interlocked.Read(ref _generation) &&
+                    ReferenceEquals(lifecycle, _activeLifecycle) &&
+                    _stateMachine.Current.OperatorState == RoleConnectionState.Connected &&
+                    lifecycle.DataClient.IsConnectedToGateway &&
+                    _tunnelManager.OwnershipGeneration == tunnelGeneration &&
+                    _tunnelManager.ActiveConfig == ownedTunnelConfig &&
+                    IsCurrentSshRegistryRecord(expectedGatewayRecord);
+                return succeeded;
+            }
+            finally
+            {
+                _transitionSemaphore.Release();
+            }
+        }
+        catch (OperationCanceledException)
+        {
+            return false;
+        }
+        finally
+        {
+            if (stateHandler is not null)
+                StateChanged -= stateHandler;
+
+            if (!succeeded)
+            {
+                await CleanupManualSshRestartAsync(
+                        restartGeneration,
+                        connectionGeneration,
+                        lifecycle,
+                        tunnelGeneration,
+                        tunnelConfig)
+                    .ConfigureAwait(false);
+            }
+
+            Interlocked.CompareExchange(ref _manualSshRestartCts, null, restartCts);
+        }
+    }
+
+    private bool IsCurrentSshRegistryRecord(GatewayRecord expectedRecord)
+    {
+        var currentRecord = _registry.GetById(expectedRecord.Id);
+        return currentRecord is not null &&
+            string.Equals(_registry.ActiveGatewayId, expectedRecord.Id, StringComparison.Ordinal) &&
+            IsSameCredentialHandoffRecord(currentRecord, expectedRecord);
+    }
+
+    private async Task CleanupManualSshRestartAsync(
+        long restartGeneration,
+        long connectionGeneration,
+        IGatewayClientLifecycle? lifecycle,
+        long tunnelGeneration,
+        SshTunnelConfig? tunnelConfig)
+    {
+        if (restartGeneration != Interlocked.Read(ref _manualSshRestartGeneration) ||
+            connectionGeneration == 0)
+            return;
+
+        using var cleanupCts = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+        try
+        {
+            await _transitionSemaphore.WaitAsync(cleanupCts.Token).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException)
+        {
+            _logger.Warn("[ConnMgr] Timed out waiting to clean up a failed manual SSH restart.");
+            return;
+        }
+        catch (ObjectDisposedException) when (_disposed)
+        {
+            return;
+        }
+        try
+        {
+            if (restartGeneration != Interlocked.Read(ref _manualSshRestartGeneration) ||
+                connectionGeneration != Interlocked.Read(ref _generation) ||
+                !ReferenceEquals(lifecycle, _activeLifecycle))
+            {
+                return;
+            }
+
+            await DisconnectCoreAsync().ConfigureAwait(false);
+            if (tunnelConfig is not null && _tunnelManager is not null)
+            {
+                await _tunnelManager.StopIfOwnedAsync(
+                        tunnelConfig,
+                        tunnelGeneration,
+                        cleanupCts.Token)
+                    .ConfigureAwait(false);
+            }
         }
         finally
         {
@@ -1670,8 +2017,10 @@ public sealed class GatewayConnectionManager : IGatewayConnectionManager
                             _stateMachine.Current.OperatorErrorKind is null)
                         {
                             _stateMachine.SetOperatorErrorKind(ReadOperatorFailureKind(gen));
+                            _stateMachine.TryTransition(
+                                ConnectionTrigger.WebSocketError,
+                                "Transport error");
                         }
-                        _stateMachine.TryTransition(ConnectionTrigger.WebSocketError, "Transport error");
                     }
                     CompleteOperatorTelemetryAttempt(
                         gen,
@@ -1941,6 +2290,120 @@ public sealed class GatewayConnectionManager : IGatewayConnectionManager
             provenance.Detail ??
                 "The managed gateway address is owned by an unverified process. OpenClaw did not send the shared or bootstrap token.");
     }
+
+    private async Task<ReconnectAuthorizationResult> AuthorizeCredentialHandoffAsync(
+        GatewayRecord expectedRecord,
+        GatewayCredential credential,
+        EndpointOwnershipProof? expectedOwnership,
+        Func<bool> isCurrentAttempt,
+        CancellationToken operationCancellationToken,
+        CancellationToken handshakeCancellationToken,
+        string role)
+    {
+        using var timeoutCts = new CancellationTokenSource(_credentialHandoffTimeout);
+        using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(
+            operationCancellationToken,
+            handshakeCancellationToken,
+            timeoutCts.Token);
+
+        try
+        {
+            if (!isCurrentAttempt())
+            {
+                return new ReconnectAuthorizationResult(
+                    false,
+                    GatewayErrorKind.Unknown,
+                    $"{role} connection attempt was superseded.");
+            }
+
+            var currentRecord = _registry.GetById(expectedRecord.Id);
+            if (currentRecord is null ||
+                !string.Equals(_registry.ActiveGatewayId, expectedRecord.Id, StringComparison.Ordinal) ||
+                !IsSameCredentialHandoffRecord(currentRecord, expectedRecord))
+            {
+                return new ReconnectAuthorizationResult(
+                    false,
+                    GatewayErrorKind.LocalPortConflict,
+                    $"The active gateway endpoint, credentials, or SSH configuration changed before the {role} credential handoff.");
+            }
+
+            var authorization = await AuthorizeCredentialForEndpointAsync(
+                    currentRecord,
+                    credential,
+                    linkedCts.Token,
+                    requireSshTunnelOwnership: true)
+                .ConfigureAwait(false);
+            if (!isCurrentAttempt())
+            {
+                return new ReconnectAuthorizationResult(
+                    false,
+                    GatewayErrorKind.Unknown,
+                    $"{role} connection attempt was superseded.");
+            }
+
+            var verifiedRecord = _registry.GetById(expectedRecord.Id);
+            if (verifiedRecord is null ||
+                !string.Equals(_registry.ActiveGatewayId, expectedRecord.Id, StringComparison.Ordinal) ||
+                !IsSameCredentialHandoffRecord(verifiedRecord, expectedRecord))
+            {
+                return new ReconnectAuthorizationResult(
+                    false,
+                    GatewayErrorKind.LocalPortConflict,
+                    $"The active gateway endpoint, credentials, or SSH configuration changed during the {role} credential handoff.");
+            }
+
+            if (authorization.Allowed &&
+                expectedOwnership is not null &&
+                authorization.OwnershipProof != expectedOwnership)
+            {
+                return new ReconnectAuthorizationResult(
+                    false,
+                    GatewayErrorKind.LocalPortConflict,
+                    $"Endpoint ownership changed after preflight, so {role} credentials were not sent.");
+            }
+
+            return new ReconnectAuthorizationResult(
+                authorization.Allowed,
+                authorization.FailureKind,
+                authorization.Detail);
+        }
+        catch (OperationCanceledException)
+        {
+            if (!isCurrentAttempt() || operationCancellationToken.IsCancellationRequested)
+            {
+                return new ReconnectAuthorizationResult(
+                    false,
+                    GatewayErrorKind.Unknown,
+                    $"{role} connection attempt was superseded or canceled.");
+            }
+
+            return new ReconnectAuthorizationResult(
+                false,
+                GatewayErrorKind.Network,
+                $"Timed out re-verifying the owned SSH listener before the {role} credential handoff.");
+        }
+    }
+
+    private static bool IsSameCredentialHandoffRecord(
+        GatewayRecord current,
+        GatewayRecord expected) =>
+        string.Equals(current.Id, expected.Id, StringComparison.Ordinal) &&
+        string.Equals(current.Url, expected.Url, StringComparison.Ordinal) &&
+        string.Equals(
+            current.SharedGatewayToken,
+            expected.SharedGatewayToken,
+            StringComparison.Ordinal) &&
+        string.Equals(
+            current.BootstrapToken,
+            expected.BootstrapToken,
+            StringComparison.Ordinal) &&
+        current.IsLocal == expected.IsLocal &&
+        current.RequiresV2Signature == expected.RequiresV2Signature &&
+        string.Equals(
+            current.SetupManagedDistroName,
+            expected.SetupManagedDistroName,
+            StringComparison.Ordinal) &&
+        current.SshTunnel == expected.SshTunnel;
 
     private readonly record struct EndpointCredentialAuthorization(
         bool Allowed,
@@ -2828,6 +3291,36 @@ public sealed class GatewayConnectionManager : IGatewayConnectionManager
         }
     }
 
+    private async Task RecordOperatorCredentialHandoffFailureAsync(
+        string detail,
+        GatewayErrorKind failureKind,
+        CancellationToken cancellationToken,
+        long expectedLifecycleGeneration,
+        string expectedGatewayId)
+    {
+        if (!IsCurrentGatewayAttempt(expectedLifecycleGeneration, expectedGatewayId))
+            return;
+
+        await _transitionSemaphore.WaitAsync(cancellationToken);
+        try
+        {
+            if (!IsCurrentGatewayAttempt(expectedLifecycleGeneration, expectedGatewayId))
+                return;
+
+            _stateMachine.SetOperatorErrorKind(failureKind);
+            _stateMachine.TryTransition(
+                failureKind == GatewayErrorKind.Network
+                    ? ConnectionTrigger.WebSocketError
+                    : ConnectionTrigger.AuthenticationFailed,
+                detail);
+            EmitStateChanged();
+        }
+        finally
+        {
+            _transitionSemaphore.Release();
+        }
+    }
+
     private async Task<bool> StartNodeConnectionCoreAsync(
         long expectedLifecycleGeneration,
         long nodeGeneration,
@@ -2998,38 +3491,28 @@ public sealed class GatewayConnectionManager : IGatewayConnectionManager
             async Task<ReconnectAuthorizationResult> AuthorizeNodeCredentialHandoffAsync(
                 CancellationToken authorizationCancellationToken)
             {
-                if (!IsExpectedNodeStartCurrent(expectedLifecycleGeneration, nodeGeneration))
-                    return new ReconnectAuthorizationResult(
-                        false,
-                        GatewayErrorKind.Unknown,
-                        "Node attempt was superseded.");
-                var authorization = await AuthorizeCredentialForEndpointAsync(
-                    record,
-                    nodeCredential,
-                    authorizationCancellationToken,
-                    requireSshTunnelOwnership: true).ConfigureAwait(false);
-                if (authorization.Allowed &&
-                    expectedNodeEndpointOwnership is not null &&
-                    authorization.OwnershipProof != expectedNodeEndpointOwnership)
-                {
-                    authorization = new EndpointCredentialAuthorization(
-                        false,
-                        GatewayErrorKind.LocalPortConflict,
-                        "Endpoint ownership changed after preflight, so node credentials were not sent.");
-                }
-                if (!authorization.Allowed)
+                var authorization = await AuthorizeCredentialHandoffAsync(
+                        record,
+                        nodeCredential,
+                        expectedNodeEndpointOwnership,
+                        () => IsExpectedNodeStartCurrent(
+                            expectedLifecycleGeneration,
+                            nodeGeneration),
+                        cancellationToken,
+                        authorizationCancellationToken,
+                        "node")
+                    .ConfigureAwait(false);
+                if (!authorization.Allowed &&
+                    authorization.FailureKind != GatewayErrorKind.Unknown)
                 {
                     await BlockNodeStartAsync(
-                            authorization.Detail,
+                            authorization.Detail ?? "Node credential handoff was not authorized.",
                             authorizationCancellationToken,
                             expectedLifecycleGeneration,
                             nodeGeneration)
                         .ConfigureAwait(false);
                 }
-                return new ReconnectAuthorizationResult(
-                    authorization.Allowed,
-                    authorization.FailureKind,
-                    authorization.Detail);
+                return authorization;
             }
 
             reconnectPolicy.HandshakeAuthorizationAsync =
@@ -4149,6 +4632,8 @@ public sealed class GatewayConnectionManager : IGatewayConnectionManager
         _disposed = true;
         CancelOperatorTelemetryAttempt("disposed", ConnectionErrorCategory.Disposed);
         CancelNodeTelemetryAttempt("disposed", ConnectionErrorCategory.Disposed);
+        try { Volatile.Read(ref _manualSshRestartCts)?.Cancel(); }
+        catch (ObjectDisposedException) { }
         _operationCts?.Cancel();
 
         // Unsubscribe from node events before disposing the semaphore

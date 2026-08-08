@@ -213,42 +213,6 @@ public class SshTunnelCommandLineTests
     }
 
     [Fact]
-    public void BuildArguments_CanUseExplicitSshConfigFile()
-    {
-        var args = SshTunnelCommandLine.BuildArguments(
-            "scott",
-            "mac-mini.local",
-            18789,
-            28789,
-            includeBrowserProxyForward: false,
-            sshPort: 2222,
-            sshConfigFile: @"C:\proof data\ssh_config");
-
-        Assert.StartsWith(
-            "-F \"C:\\proof data\\ssh_config\" -o BatchMode=yes ",
-            args);
-        Assert.EndsWith("-p 2222 scott@mac-mini.local", args);
-    }
-
-    [Theory]
-    [InlineData("")]
-    [InlineData("   ")]
-    [InlineData("C:\\proof\"bad\\ssh_config")]
-    [InlineData("C:\\proof\r\nbad\\ssh_config")]
-    public void BuildArguments_RejectsUnsafeSshConfigFile(string sshConfigFile)
-    {
-        Assert.Throws<ArgumentException>(() =>
-            SshTunnelCommandLine.BuildArguments(
-                "scott",
-                "mac-mini.local",
-                18789,
-                28789,
-                includeBrowserProxyForward: false,
-                sshPort: 22,
-                sshConfigFile));
-    }
-
-    [Fact]
     public void BuildArguments_RejectsInvalidSshPort()
     {
         Assert.Throws<ArgumentOutOfRangeException>(() =>

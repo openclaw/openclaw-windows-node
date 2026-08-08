@@ -229,14 +229,19 @@ public sealed class WindowsClientMetadataTests
                 "SendConnectMessageAsync",
                 BindingFlags.NonPublic | BindingFlags.Instance);
             Assert.NotNull(method);
-            await (Task)method!.Invoke(this, [nonce])!;
+            await (Task)method!.Invoke(
+                this,
+                [nonce, 0L, CancellationToken.None])!;
             return Assert.Single(_messages);
         }
 
-        protected override Task SendRawAsync(string message)
+        protected override Task<bool> SendRawAsync(
+            string message,
+            long expectedConnectionGeneration,
+            CancellationToken cancellationToken)
         {
             _messages.Enqueue(message);
-            return Task.CompletedTask;
+            return Task.FromResult(true);
         }
     }
 }

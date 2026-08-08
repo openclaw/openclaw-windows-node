@@ -485,6 +485,14 @@ public class SetupCodeFlowTests : IDisposable
             return Task.FromResult(LocalTunnelUrl);
         }
 
+        public async Task<SshTunnelStartResult> StartOwnedAsync(
+            SshTunnelConfig config,
+            CancellationToken ct)
+        {
+            var url = await StartAsync(config, ct);
+            return new SshTunnelStartResult(url, config, OwnershipGeneration);
+        }
+
         public Task StopAsync()
         {
             OwnershipGeneration++;
@@ -492,6 +500,26 @@ public class SetupCodeFlowTests : IDisposable
             ActiveConfig = null;
             LocalTunnelUrl = null;
             return Task.CompletedTask;
+        }
+
+        public Task<bool> StopIfOwnedAsync(
+            SshTunnelConfig config,
+            long ownershipGeneration,
+            CancellationToken ct)
+        {
+            ct.ThrowIfCancellationRequested();
+            if (!IsActive ||
+                ActiveConfig != config ||
+                OwnershipGeneration != ownershipGeneration)
+            {
+                return Task.FromResult(false);
+            }
+
+            OwnershipGeneration++;
+            IsActive = false;
+            ActiveConfig = null;
+            LocalTunnelUrl = null;
+            return Task.FromResult(true);
         }
 
         public void Dispose()
