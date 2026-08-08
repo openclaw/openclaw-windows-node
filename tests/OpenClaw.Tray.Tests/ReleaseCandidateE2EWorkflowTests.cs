@@ -20,6 +20,7 @@ public sealed class ReleaseCandidateE2EWorkflowTests
             Assert.DoesNotContain("${{ inputs.", runBlock);
 
         Assert.Contains("INPUT_CANDIDATE_ARTIFACT_NAME: ${{ inputs.candidate_artifact_name }}", workflow);
+        Assert.Contains("INPUT_CANDIDATE_ARTIFACT_RUN_ID: ${{ inputs.candidate_artifact_run_id }}", workflow);
         Assert.Contains("INPUT_CANDIDATE_SHA256: ${{ inputs.candidate_sha256 }}", workflow);
         Assert.Contains("INPUT_CANDIDATE_VERSION: ${{ inputs.candidate_version }}", workflow);
         Assert.Contains("INPUT_WINDOWS_NODE_RELEASE_TAG: ${{ inputs.windows_node_release_tag }}", workflow);
@@ -35,7 +36,14 @@ public sealed class ReleaseCandidateE2EWorkflowTests
     {
         var workflow = ReadWorkflow();
 
+        Assert.Contains("actions: read", workflow);
         Assert.Contains("id-token: write", workflow);
+        Assert.Contains("run-id: ${{ inputs.candidate_artifact_run_id }}", workflow);
+        Assert.Contains("github-token: ${{ github.token }}", workflow);
+        Assert.Contains(
+            "$env:INPUT_CANDIDATE_ARTIFACT_RUN_ID -notmatch '^[1-9][0-9]{0,19}$'",
+            workflow);
+        Assert.Contains("$candidateArtifactRunId -gt 9007199254740991", workflow);
         Assert.Contains("ref: ${{ inputs.windows_node_sha }}", workflow);
         Assert.Contains("$claims.job_workflow_sha -cne $env:EXPECTED_WINDOWS_NODE_SHA", workflow);
         Assert.Contains("$claims.job_workflow_ref -cne $expectedWorkflowRef", workflow);
