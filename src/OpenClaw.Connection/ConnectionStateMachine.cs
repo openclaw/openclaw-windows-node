@@ -14,6 +14,11 @@ internal sealed class ConnectionStateMachine
     private string? _operatorError;
     private OpenClaw.Shared.GatewayErrorKind? _operatorErrorKind;
     private string? _nodeError;
+    private OpenClaw.Shared.GatewayErrorKind? _nodeErrorKind;
+    private OpenClaw.Shared.GatewayProtocolCompatibility _operatorProtocolCompatibility =
+        OpenClaw.Shared.GatewayProtocolCompatibility.Unknown;
+    private OpenClaw.Shared.GatewayProtocolCompatibility _nodeProtocolCompatibility =
+        OpenClaw.Shared.GatewayProtocolCompatibility.Unknown;
     private string? _operatorCredentialSource;
     private string? _nodeCredentialSource;
     private GatewayCredentialResolutionStatus? _operatorCredentialStatus;
@@ -135,6 +140,8 @@ internal sealed class ConnectionStateMachine
         {
             _nodeState = RoleConnectionState.Disabled;
             _nodeError = null;
+            _nodeErrorKind = null;
+            _nodeProtocolCompatibility = OpenClaw.Shared.GatewayProtocolCompatibility.Unknown;
             _nodeCredentialSource = null;
             _nodeCredentialStatus = null;
             _nodeCredentialFallbackUsed = false;
@@ -145,6 +152,8 @@ internal sealed class ConnectionStateMachine
         {
             _nodeState = RoleConnectionState.Idle;
             _nodeError = null;
+            _nodeErrorKind = null;
+            _nodeProtocolCompatibility = OpenClaw.Shared.GatewayProtocolCompatibility.Unknown;
         }
         RebuildSnapshot();
     }
@@ -157,6 +166,9 @@ internal sealed class ConnectionStateMachine
         _operatorError = null;
         _operatorErrorKind = null;
         _nodeError = null;
+        _nodeErrorKind = null;
+        _operatorProtocolCompatibility = OpenClaw.Shared.GatewayProtocolCompatibility.Unknown;
+        _nodeProtocolCompatibility = OpenClaw.Shared.GatewayProtocolCompatibility.Unknown;
         _operatorCredentialSource = null;
         _nodeCredentialSource = null;
         _operatorCredentialStatus = null;
@@ -177,6 +189,8 @@ internal sealed class ConnectionStateMachine
         {
             _nodeState = RoleConnectionState.Connecting;
             _nodeError = null;
+            _nodeErrorKind = null;
+            _nodeProtocolCompatibility = OpenClaw.Shared.GatewayProtocolCompatibility.Unknown;
             RebuildSnapshot();
         }
     }
@@ -212,6 +226,26 @@ internal sealed class ConnectionStateMachine
     internal void SetOperatorErrorKind(OpenClaw.Shared.GatewayErrorKind? kind)
     {
         _operatorErrorKind = kind;
+        RebuildSnapshot();
+    }
+
+    internal void SetOperatorProtocolCompatibility(
+        OpenClaw.Shared.GatewayProtocolCompatibility compatibility)
+    {
+        _operatorProtocolCompatibility = compatibility;
+        RebuildSnapshot();
+    }
+
+    internal void SetNodeErrorKind(OpenClaw.Shared.GatewayErrorKind? kind)
+    {
+        _nodeErrorKind = kind;
+        RebuildSnapshot();
+    }
+
+    internal void SetNodeProtocolCompatibility(
+        OpenClaw.Shared.GatewayProtocolCompatibility compatibility)
+    {
+        _nodeProtocolCompatibility = compatibility;
         RebuildSnapshot();
     }
 
@@ -302,6 +336,7 @@ internal sealed class ConnectionStateMachine
                 _operatorState = RoleConnectionState.Connecting;
                 _operatorError = null;
                 _operatorErrorKind = null;
+                _operatorProtocolCompatibility = OpenClaw.Shared.GatewayProtocolCompatibility.Unknown;
                 break;
 
             case ConnectionTrigger.ConnectRequestSent:
@@ -369,6 +404,9 @@ internal sealed class ConnectionStateMachine
                 _operatorError = null;
                 _operatorErrorKind = null;
                 _nodeError = null;
+                _nodeErrorKind = null;
+                _operatorProtocolCompatibility = OpenClaw.Shared.GatewayProtocolCompatibility.Unknown;
+                _nodeProtocolCompatibility = OpenClaw.Shared.GatewayProtocolCompatibility.Unknown;
                 _operatorCredentialSource = null;
                 _nodeCredentialSource = null;
                 _operatorCredentialStatus = null;
@@ -385,6 +423,7 @@ internal sealed class ConnectionStateMachine
                 _operatorState = RoleConnectionState.Connecting;
                 _operatorError = null;
                 _operatorErrorKind = null;
+                _operatorProtocolCompatibility = OpenClaw.Shared.GatewayProtocolCompatibility.Unknown;
                 break;
 
             case ConnectionTrigger.ReconnectSuppressed:
@@ -401,21 +440,29 @@ internal sealed class ConnectionStateMachine
             case ConnectionTrigger.NodeConnected:
                 _nodeState = RoleConnectionState.Connected;
                 _nodeError = null;
+                _nodeErrorKind = null;
                 break;
 
             case ConnectionTrigger.NodeDisconnected:
+                if (_nodeErrorKind == OpenClaw.Shared.GatewayErrorKind.ProtocolMismatch)
+                    break;
+
                 _nodeState = RoleConnectionState.Idle;
                 _nodeError = null;
+                _nodeErrorKind = null;
+                _nodeProtocolCompatibility = OpenClaw.Shared.GatewayProtocolCompatibility.Unknown;
                 break;
 
             case ConnectionTrigger.NodePairingRequired:
                 _nodeState = RoleConnectionState.PairingRequired;
                 _nodeError = null;
+                _nodeErrorKind = null;
                 break;
 
             case ConnectionTrigger.NodePaired:
                 _nodeState = RoleConnectionState.Connected;
                 _nodeError = null;
+                _nodeErrorKind = null;
                 break;
 
             case ConnectionTrigger.NodePairingRejected:
@@ -437,6 +484,11 @@ internal sealed class ConnectionStateMachine
 
     private void RebuildSnapshot()
     {
+        var (protocolCompatibility, protocolRole) =
+            GatewayConnectionSnapshot.DeriveProtocolCompatibility(
+                _operatorProtocolCompatibility,
+                _nodeProtocolCompatibility,
+                _nodeEnabled);
         Current = Current with
         {
             OverallState = GatewayConnectionSnapshot.DeriveOverall(_operatorState, _nodeState, _nodeEnabled),
@@ -448,6 +500,7 @@ internal sealed class ConnectionStateMachine
             OperatorCredentialFallbackUsed = _operatorCredentialFallbackUsed,
             OperatorCredentialBootstrapRequired = _operatorCredentialBootstrapRequired,
             OperatorCredentialDetail = _operatorCredentialDetail,
+            OperatorProtocolCompatibility = _operatorProtocolCompatibility,
             OperatorPairingRequired = _operatorState == RoleConnectionState.PairingRequired,
             // Clear requestId when no longer in PairingRequired to prevent stale reads
             OperatorPairingRequestId = _operatorState == RoleConnectionState.PairingRequired
@@ -455,11 +508,15 @@ internal sealed class ConnectionStateMachine
             NodeConnectionIntended = _nodeEnabled,
             NodeState = _nodeState,
             NodeError = _nodeError,
+            NodeErrorKind = _nodeErrorKind,
             NodeCredentialSource = _nodeCredentialSource,
             NodeCredentialStatus = _nodeCredentialStatus,
             NodeCredentialFallbackUsed = _nodeCredentialFallbackUsed,
             NodeCredentialBootstrapRequired = _nodeCredentialBootstrapRequired,
             NodeCredentialDetail = _nodeCredentialDetail,
+            NodeProtocolCompatibility = _nodeProtocolCompatibility,
+            ProtocolCompatibility = protocolCompatibility,
+            ProtocolCompatibilityRole = protocolRole,
             // Clear requestId when no longer in PairingRequired to prevent stale reads
             NodePairingRequestId = _nodeState == RoleConnectionState.PairingRequired
                 ? Current.NodePairingRequestId : null,

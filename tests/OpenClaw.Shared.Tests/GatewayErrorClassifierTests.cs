@@ -103,6 +103,16 @@ public class GatewayErrorClassifierTests
         Assert.Equal(GatewayErrorKind.RateLimited, GatewayErrorClassifier.Classify(error));
     }
 
+    [Theory]
+    [InlineData("protocol mismatch")]
+    [InlineData("Gateway rejected connect: protocol mismatch (server=5, client=4)")]
+    public void Classify_GenericProtocolMismatch_IsProtocolMismatch(string error)
+    {
+        Assert.Equal(
+            GatewayErrorKind.ProtocolMismatch,
+            GatewayErrorClassifier.Classify(error));
+    }
+
     [Fact]
     public void Classify_SshPermissionDenied_IsTunnel_NotScope()
     {
@@ -225,6 +235,21 @@ public class GatewayErrorClassifierTests
         Assert.Equal(
             GatewayErrorKind.Network,
             GatewayErrorClassifier.ClassifyWithCode("connection refused", null, null));
+    }
+
+    [Theory]
+    [InlineData("PROTOCOL_MISMATCH", null)]
+    [InlineData(null, "protocol_mismatch")]
+    public void ClassifyWithCode_ProtocolMismatchCode_IsProtocolMismatch(
+        string? topLevel,
+        string? detailsCode)
+    {
+        Assert.Equal(
+            GatewayErrorKind.ProtocolMismatch,
+            GatewayErrorClassifier.ClassifyWithCode(
+                "connect rejected",
+                topLevel,
+                detailsCode));
     }
 
     [Fact]

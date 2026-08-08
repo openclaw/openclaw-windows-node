@@ -120,8 +120,12 @@ public sealed class WindowsClientMetadataTests
             var parameters = message.RootElement.GetProperty("params");
 
             Assert.True(client.UseV2Signature);
-            Assert.Equal(3, parameters.GetProperty("minProtocol").GetInt32());
-            Assert.Equal(4, parameters.GetProperty("maxProtocol").GetInt32());
+            Assert.Equal(
+                GatewayProtocolContract.MinimumSupportedVersion,
+                parameters.GetProperty("minProtocol").GetInt32());
+            Assert.Equal(
+                GatewayProtocolContract.MaximumSupportedVersion,
+                parameters.GetProperty("maxProtocol").GetInt32());
             AssertCanonicalMetadata(parameters.GetProperty("client"));
             Assert.Equal(
                 BuildExpectedSignature(client, parameters, useV2: true),

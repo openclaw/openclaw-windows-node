@@ -6913,4 +6913,19 @@ Het binaire bestand wxc-exec is niet gevonden. {1} Als dit een ontwikkelaarsbuil
   <data name="SessionsPage_LastRunStopped" xml:space="preserve">
     <value>Laatste uitvoering gestopt</value>
   </data>
+  <data name="ConnectionPage_ProtocolGatewayUpdateRequired" xml:space="preserve">
+    <value>Gateway-update vereist</value>
+  </data>
+  <data name="ConnectionPage_ProtocolGatewayUpdateDetail" xml:space="preserve">
+    <value>Deze Gateway gebruikt protocol v{0}. Deze Windows-app ondersteunt protocollen v{1} tot en met v{2}. Het huidige protocol van de app is v{3}. Werk de Gateway bij om door te gaan.</value>
+  </data>
+  <data name="ConnectionPage_ProtocolWindowsUpdateRequired" xml:space="preserve">
+    <value>Update van Windows-app vereist</value>
+  </data>
+  <data name="ConnectionPage_ProtocolWindowsUpdateDetail" xml:space="preserve">
+    <value>Deze Gateway vereist protocol v{0}. Deze Windows-app ondersteunt protocollen v{1} tot en met v{2}. Het huidige protocol is v{3}. Werk de Windows-app bij om door te gaan.</value>
+  </data>
+  <data name="ConnectionPage_ProtocolUnknownMismatch" xml:space="preserve">
+    <value>Gateway-versie wordt niet ondersteund</value>
+  </data>
 </root>

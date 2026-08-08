@@ -65,6 +65,9 @@ public enum GatewayErrorKind
 
     /// <summary>Rate limited by the gateway.</summary>
     RateLimited,
+
+    /// <summary>The Gateway wire protocol is incompatible with this client.</summary>
+    ProtocolMismatch,
 }
 
 /// <summary>
@@ -80,6 +83,9 @@ public static class GatewayErrorClassifier
             return GatewayErrorKind.Unknown;
 
         var e = error.ToLowerInvariant();
+
+        if (Contains(e, "protocol mismatch"))
+            return GatewayErrorKind.ProtocolMismatch;
 
         if ((Contains(e, "rate") && Contains(e, "limit")) ||
             Contains(e, "429") || Contains(e, "too many request"))
@@ -169,6 +175,9 @@ public static class GatewayErrorClassifier
     /// <summary>The structured gateway code for a wrong <em>shared/gateway</em> token.</summary>
     public const string SharedTokenMismatchCode = "AUTH_TOKEN_MISMATCH";
 
+    /// <summary>The structured gateway code for an incompatible wire protocol.</summary>
+    public const string ProtocolMismatchCode = "PROTOCOL_MISMATCH";
+
     /// <summary>
     /// Code-aware classification. Structured error codes (top-level <c>error.code</c> and
     /// nested <c>error.details.code</c>) are authoritative and are checked BEFORE the textual
@@ -188,6 +197,8 @@ public static class GatewayErrorClassifier
             {
                 if (string.IsNullOrWhiteSpace(code))
                     continue;
+                if (string.Equals(code, ProtocolMismatchCode, StringComparison.OrdinalIgnoreCase))
+                    return GatewayErrorKind.ProtocolMismatch;
                 if (string.Equals(code, DeviceTokenMismatchCode, StringComparison.OrdinalIgnoreCase))
                     return GatewayErrorKind.DeviceTokenMismatch;
                 // A wrong shared/gateway token is terminal auth but must NOT be treated as a

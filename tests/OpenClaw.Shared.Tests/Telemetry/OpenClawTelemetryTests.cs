@@ -22,6 +22,11 @@ public sealed class OpenClawTelemetryTests
         Assert.Equal("openclaw.reason", OpenClawTelemetryTagKey.Reason.ToTelemetryName());
         Assert.Equal("openclaw.status", OpenClawTelemetryTagKey.Status.ToTelemetryName());
         Assert.Equal("error.type", OpenClawTelemetryTagKey.ErrorType.ToTelemetryName());
+        Assert.Equal("openclaw.protocol.client", OpenClawTelemetryTagKey.ClientProtocol.ToTelemetryName());
+        Assert.Equal("openclaw.protocol.gateway", OpenClawTelemetryTagKey.GatewayProtocol.ToTelemetryName());
+        Assert.Equal(
+            "openclaw.protocol.compatibility",
+            OpenClawTelemetryTagKey.ProtocolCompatibility.ToTelemetryName());
     }
 
     [Fact]

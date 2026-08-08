@@ -52,6 +52,20 @@ public class SkillMdDriftTests
         }
     }
 
+    [Fact]
+    public void ConnectionStatus_documents_package_and_protocol_compatibility_separately()
+    {
+        var content = File.ReadAllText(LocateSkillMd());
+
+        Assert.Contains("gateway.packageVersion", content, StringComparison.Ordinal);
+        Assert.Contains("wire protocol", content, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("gateway_too_old", content, StringComparison.Ordinal);
+        Assert.Contains("gateway_too_new", content, StringComparison.Ordinal);
+        Assert.Contains("retryable", content, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("4/3/4", content, StringComparison.Ordinal);
+        Assert.Contains("selectedProtocol", content, StringComparison.Ordinal);
+    }
+
     /// <summary>
     /// skill.md lists each command under its own H3 heading like
     /// <c>### system.notify</c>. Anything matching <c>### &lt;dotted.name&gt;</c>

@@ -95,6 +95,7 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
     private bool _authFailed;
     private int _handshakeAuthorizationBlocked;
     private int _handshakeChallengeActive;
+    private bool _protocolMismatch;
     private string? _lastSkillsStatusAgentId;
     private readonly bool _tokenIsBootstrapToken;
     private readonly bool _bootstrapPairAsNode;
@@ -178,7 +179,7 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
     protected override bool ShouldAutoReconnect()
     {
         // PairingRequired must stay visible, but approval only takes effect on a fresh socket.
-        return !_authFailed;
+        return !_authFailed && !_protocolMismatch;
     }
 
     protected override void OnDisconnected()
@@ -263,6 +264,8 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
     /// kind for policy/UI decisions and keep the accompanying text only for sanitized detail.
     /// </summary>
     public event EventHandler<GatewayErrorKind>? ConnectionFailure;
+    /// <summary>Raised with sanitized wire-protocol compatibility details for the current handshake.</summary>
+    public event EventHandler<GatewayProtocolCompatibility>? ProtocolCompatibilityChanged;
 
     public string? OperatorDeviceId => _operatorDeviceId;
     public IReadOnlyList<string> GrantedOperatorScopes => _grantedOperatorScopes;
@@ -1789,8 +1792,8 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
             method = "connect",
             @params = new
             {
-                minProtocol = 3,
-                maxProtocol = 4,
+                minProtocol = GatewayProtocolContract.MinimumSupportedVersion,
+                maxProtocol = GatewayProtocolContract.MaximumSupportedVersion,
                 client = new
                 {
                     id = OperatorClientId,  // Native client ID
@@ -2061,6 +2064,12 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
 
     private void ProcessMessage(string json)
     {
+        if (_protocolMismatch)
+        {
+            _logger.Warn("[HANDSHAKE] Ignoring message after terminal protocol mismatch");
+            return;
+        }
+
         try
         {
             using var doc = JsonDocument.Parse(json);
@@ -2166,7 +2175,30 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
             return;
         }
 
-        if (!root.TryGetProperty("payload", out var payload)) return;
+        if (!root.TryGetProperty("payload", out var payload))
+        {
+            if (string.Equals(requestMethod, "connect", StringComparison.Ordinal))
+                HandleProtocolMismatch("connect success response has no payload");
+            return;
+        }
+
+        var isHelloOk = GatewayProtocolContract.IsHelloOk(payload);
+        if (isHelloOk &&
+            HandshakeAuthorizationAsync is not null &&
+            !string.Equals(requestMethod, "connect", StringComparison.Ordinal))
+        {
+            _logger.Warn("[HANDSHAKE] Ignoring uncorrelated hello-ok on guarded validation connection.");
+            return;
+        }
+
+        if ((string.Equals(requestMethod, "connect", StringComparison.Ordinal) || isHelloOk) &&
+            !GatewayProtocolContract.TryValidateHelloOk(payload, out var protocolError))
+        {
+            var compatibility = GatewayProtocolCompatibility.FromGatewayExpectation(
+                GatewayProtocolContract.TryGetProtocol(payload, out var protocol) ? protocol : null);
+            HandleProtocolMismatch(protocolError, compatibility);
+            return;
+        }
 
         if (!string.IsNullOrEmpty(requestMethod) && HandleKnownResponse(requestMethod!, payload))
         {
@@ -2174,19 +2206,17 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
         }
 
         // Handle handshake acknowledgement payload.
-        if (payload.TryGetProperty("type", out var t) && t.GetString() == "hello-ok")
+        if (isHelloOk)
         {
-            if (HandshakeAuthorizationAsync is not null &&
-                !string.Equals(requestMethod, "connect", StringComparison.Ordinal))
-            {
-                _logger.Warn("[HANDSHAKE] Ignoring uncorrelated hello-ok on guarded validation connection.");
-                return;
-            }
-
             _logger.Info($"[HANDSHAKE] Received hello-ok!");
             Volatile.Write(ref _pairingRequiredAwaitingApproval, false);
             Volatile.Write(ref _pairingRequiredRequestId, null);
             _authFailed = false;
+            _protocolMismatch = false;
+            _ = GatewayProtocolContract.TryGetProtocol(payload, out var acceptedProtocol);
+            ProtocolCompatibilityChanged?.Invoke(
+                this,
+                GatewayProtocolCompatibility.Compatible(acceptedProtocol));
             ResetReconnectAttempts();
             _operatorDeviceId = TryGetHandshakeDeviceId(payload);
             _grantedOperatorScopes = TryGetHandshakeScopes(payload);
@@ -2476,6 +2506,7 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
     {
         var message = TryGetErrorMessage(root) ?? "request failed";
         var detailCode = method == "connect" ? TryGetErrorDetailCode(root) : null;
+        var topLevelCode = method == "connect" ? TryGetErrorTopLevelCode(root) : null;
 
         if (string.IsNullOrEmpty(method))
         {
@@ -2490,6 +2521,14 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
             var rawJson = root.ToString() ?? "";
             if (rawJson.Length > 500) rawJson = rawJson[..500] + "...";
             _logger.Info($"[HANDSHAKE] Raw error response: {rawJson}");
+        }
+
+        if (method == "connect" &&
+            GatewayErrorClassifier.ClassifyWithCode(message, topLevelCode, detailCode) ==
+                GatewayErrorKind.ProtocolMismatch)
+        {
+            HandleProtocolMismatch(message, GatewayProtocolContract.ParseMismatch(root));
+            return;
         }
 
         if (method == "connect" && detailCode == "DEVICE_AUTH_SIGNATURE_EXPIRED")
@@ -2538,7 +2577,6 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
         // error.code and the structured error.details.code so a device-token mismatch delivered in
         // either place is recognized (the gateway may send the reason only as a code with a generic
         // message).
-        var topLevelCode = TryGetErrorTopLevelCode(root);
         if (method == "connect" &&
             (IsTerminalAuthError(message) || IsTerminalAuthDetailCode(detailCode) || IsTerminalAuthDetailCode(topLevelCode)))
         {
@@ -2631,6 +2669,20 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
         }
 
         _logger.Warn($"{method} failed: {message}");
+    }
+
+    private void HandleProtocolMismatch(
+        string detail,
+        GatewayProtocolCompatibility? compatibility = null)
+    {
+        _protocolMismatch = true;
+        AbortCurrentWebSocket(CurrentConnectionGeneration);
+        _logger.Warn($"[HANDSHAKE] Gateway protocol mismatch: {detail}");
+        ProtocolCompatibilityChanged?.Invoke(
+            this,
+            compatibility ?? GatewayProtocolCompatibility.FromGatewayExpectation(expectedProtocol: null));
+        RaiseConnectionFailure(GatewayErrorKind.ProtocolMismatch);
+        RaiseStatusChanged(ConnectionStatus.Error);
     }
 
     private static bool TryGetSessionsPayload(JsonElement payload, out JsonElement sessions)
