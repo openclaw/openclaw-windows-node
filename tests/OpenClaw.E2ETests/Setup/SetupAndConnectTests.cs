@@ -264,6 +264,39 @@ public class SetupAndConnectTests
     }
 
     [E2EFact]
+    public async Task FullSetup_SafeNodeInvocation_RoutesThroughRealGateway()
+    {
+        var gateway = _fixture.ReadActiveGatewayRecord();
+        var env = GatewayTokenEnv(gateway.SharedGatewayToken);
+        var nodeId = _fixture.ReadActiveGatewayDeviceId();
+        var invokeParams = JsonSerializer.Serialize(new
+        {
+            nodeId,
+            command = "system.which",
+            @params = new { bins = new[] { "cmd" } },
+            timeoutMs = 30_000,
+            idempotencyKey = Guid.NewGuid().ToString("N")
+        });
+
+        var invoke = await _fixture.RunInWslAsync(
+            $"openclaw gateway call node.invoke --params {ShellSingleQuote(invokeParams)} --json --timeout 60000",
+            TimeSpan.FromSeconds(70),
+            env,
+            inputViaStdin: true);
+        AssertCommandSucceeded(invoke, "invoke Windows node system.which through real gateway");
+
+        using var invokeDoc = JsonDocument.Parse(ExtractJsonObject(invoke.Stdout));
+        if (invokeDoc.RootElement.TryGetProperty("ok", out var ok))
+            Assert.True(ok.GetBoolean(), $"Expected gateway node.invoke ok=true: {invokeDoc.RootElement.GetRawText()}");
+
+        var payload = ReadNodeInvokePayload(invokeDoc.RootElement);
+        var bins = payload.GetProperty("bins");
+        Assert.True(bins.TryGetProperty("cmd", out var cmdPath), $"system.which did not return cmd: {payload.GetRawText()}");
+        Assert.Contains("cmd.exe", cmdPath.GetString(), StringComparison.OrdinalIgnoreCase);
+        Console.WriteLine($"[E2E] gateway system.which resolved cmd to {cmdPath.GetString()}");
+    }
+
+    [E2EFact]
     public async Task FullSetup_GatewayRestart_ReconnectsTrayAndNode()
     {
         var gateway = _fixture.ReadActiveGatewayRecord();
@@ -381,7 +414,7 @@ public class SetupAndConnectTests
             var credentials = externalTray.ReadCredentialState();
             Assert.False(credentials.HasNodeToken, "QR-only external-like onboarding should wait for explicit device approval before persisting a node token.");
             Assert.False(credentials.HasOperatorToken,
-                "Current LKG QR-only external-like onboarding does not provide an admin operator token.");
+                "The validated Gateway recommendation's QR-only external-like onboarding does not provide an admin operator token.");
             Assert.True(credentials.HasBootstrapToken,
                 "Bootstrap remains as recovery material while explicit approval is pending.");
 
@@ -640,6 +673,28 @@ public class SetupAndConnectTests
         Assert.False(result.TimedOut, $"{description} timed out");
         Assert.Equal(0, result.ExitCode);
     }
+
+    private static JsonElement ReadNodeInvokePayload(JsonElement root)
+    {
+        if (root.TryGetProperty("payload", out var payload) &&
+            payload.ValueKind == JsonValueKind.Object)
+        {
+            return payload.Clone();
+        }
+
+        if (root.TryGetProperty("payloadJSON", out var payloadJson) &&
+            payloadJson.ValueKind == JsonValueKind.String &&
+            !string.IsNullOrWhiteSpace(payloadJson.GetString()))
+        {
+            using var doc = JsonDocument.Parse(payloadJson.GetString()!);
+            return doc.RootElement.Clone();
+        }
+
+        throw new InvalidDataException($"Gateway node.invoke response did not include a payload object: {root.GetRawText()}");
+    }
+
+    private static string ShellSingleQuote(string value) =>
+        $"'{value.Replace("'", "'\"'\"'", StringComparison.Ordinal)}'";
 
     private static void AssertReadyStatus(JsonElement root)
     {

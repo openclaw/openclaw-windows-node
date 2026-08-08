@@ -55,10 +55,18 @@ on newer behavior.
 - `https://github.com/openclaw/openclaw/blob/main/src/gateway/server-methods/nodes.ts`
 - `https://github.com/openclaw/openclaw/blob/main/packages/gateway-protocol/src/schema/frames.ts`
 
-The setup engine currently pins gateway LKG `2026.6.11` in
-`src/OpenClaw.SetupEngine/GatewayLkgVersion.cs`. Before implementing behavior
-that depends on newer upstream `main`, compare the installed LKG against the
-reviewed upstream docs/code.
+The setup engine installs the exact Windows-validated recommendation from
+`src/OpenClaw.SetupEngine/GatewayReleasePolicy.cs`. The policy currently
+requires Gateway protocol v4 and security floor `2026.6.11`. npm dist-tags are
+candidate discovery hints only. Before promoting a newer upstream release,
+verify its tagged protocol source and run exact-version Windows setup,
+pairing, reconnect, recovery, and Gateway-to-node proof.
+
+The current recommendation is exact release `2026.6.34`; `2026.6.11` is the
+explicit validated fallback. Exact release `2026.7.1` is protocol-v4 compatible
+but runtime-rejected because its clean setup wizard restart did not recover a
+trusted managed endpoint. `2026.7.1-2` is rejected for missing provenance and
+stable release-validation evidence.
 
 The managed gateway release pin is not the WebSocket protocol pin. Windows
 currently advertises `minProtocol: 3` and `maxProtocol: 4`; the gateway reports
@@ -472,7 +480,7 @@ Reliability risks:
 | Multi-role handoff parsing | `OpenClawGatewayClient` | Parses `auth.deviceTokens[]` and emits role-specific token events. | Needs integration validation | Real gateway bootstrap fixture/E2E. |
 | Loopback QR dedupe | `GatewayRegistry.FindByUrl` | Exact URL matching can treat `localhost` and `127.0.0.1` as different records. | Fixed | Match loopback-equivalent same-port URLs so QR reapply preserves shared token. |
 | QR bootstrap immediate credential | `ApplySetupCodeAsync`, `CredentialResolver` | Preserved shared token can win over fresh bootstrap token. | Fixed | Force the fresh bootstrap token for the immediate setup-code connect. |
-| QR post-bootstrap operator reconnect | `GatewayConnectionManager` | LKG gateway may return only node token on bootstrap; operator must reconnect via preserved shared token. | Fixed | Schedule post-bootstrap operator reconnect using durable operator token or preserved shared token. |
+| QR post-bootstrap operator reconnect | `GatewayConnectionManager` | The validated Gateway recommendation may return only a node token on bootstrap; operator must reconnect via the preserved shared token. | Fixed | Schedule post-bootstrap operator reconnect using a durable operator token or preserved shared token. |
 | Node token parsing | `WindowsNodeClient` | Parses direct `auth.deviceToken` for node. | Aligned for direct node connect | Validate post-approval reconnect. |
 | Node command trust | `GatewayConnectionManager.OnNodePairingStatusChangedAsync` | Explicit node-pair and unknown requests remain pending; only explicitly typed device-pair role upgrades may auto-approve. | Fixed | Preserve explicit operator approval for command trust and reapproval. |
 | Approval scope helper | `OperatorScopeHelper.CanApproveDevices` | Checks only admin/pairing. | Needs protocol-specific split | Do not add `operator.approvals` for `node.pair.*`; add clearer helpers. |
@@ -559,7 +567,7 @@ Do these only after the gap matrix confirms the exact local behavior:
      HTTP/dashboard use.
    - Implemented local fix: after bootstrap handoff, the operator role is
      reconnected using either the durable operator token or the preserved shared
-     token. This covers the current LKG behavior where QR bootstrap returns a
+     token. This covers the validated recommendation behavior where QR bootstrap returns a
      durable node token but not an operator handoff token.
 
 2. **Pairing authority diagnostics**

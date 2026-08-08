@@ -1078,19 +1078,25 @@ public class SetupStepsTests : IDisposable
     }
 
     [Fact]
-    public void InstallCli_BuildInstallCommand_UsesDefaultWhenVersionMissing()
+    public void InstallCli_BuildInstallCommand_RejectsMissingExactVersion()
     {
-        var command = InstallCliStep.BuildInstallCommand("https://openclaw.ai/install-cli.sh", null);
+        var error = Assert.Throws<ArgumentException>(
+            () => InstallCliStep.BuildInstallCommand("https://openclaw.ai/install-cli.sh", null));
 
-        Assert.Equal("curl -fsSL --proto '=https' --tlsv1.2 'https://openclaw.ai/install-cli.sh' | bash", command);
+        Assert.Contains("exact version", error.Message);
     }
 
     [Fact]
-    public void InstallCli_BuildInstallCommand_AppendsVersionWhenConfigured()
+    public void InstallCli_BuildInstallCommand_AppendsExactReleaseAndRuntime()
     {
-        var command = InstallCliStep.BuildInstallCommand("https://openclaw.ai/install-cli.sh", "2026.5.22");
+        var command = InstallCliStep.BuildInstallCommand(
+            "https://openclaw.ai/install-cli.sh",
+            "2026.5.22",
+            GatewayReleasePolicy.NodeVersion);
 
-        Assert.Equal("curl -fsSL --proto '=https' --tlsv1.2 'https://openclaw.ai/install-cli.sh' | bash -s -- --version '2026.5.22'", command);
+        Assert.Equal(
+            "curl -fsSL --proto '=https' --tlsv1.2 'https://openclaw.ai/install-cli.sh' | bash -s -- --version '2026.5.22' --node-version '22.22.3'",
+            command);
     }
 
     [Fact]
@@ -1099,6 +1105,51 @@ public class SetupStepsTests : IDisposable
         var command = InstallCliStep.BuildInstallCommand("https://openclaw.ai/install-cli's.sh", "2026.5.22'a");
 
         Assert.Equal("curl -fsSL --proto '=https' --tlsv1.2 'https://openclaw.ai/install-cli'\\''s.sh' | bash -s -- --version '2026.5.22'\\''a'", command);
+    }
+
+    [Fact]
+    public async Task InstallCli_InstalledVersionMismatchFailsTerminally()
+    {
+        var commands = new FakeCommandRunner(
+            _ => Ok(),
+            (_, command, _) => command.Contains("--version", StringComparison.Ordinal)
+                ? Ok("OpenClaw 2026.7.1-2")
+                : Ok());
+        var config = new SetupConfig();
+        GatewayReleasePolicy.ResolveAndApply(config);
+        var ctx = CreateContext(config, commands);
+
+        var result = await new InstallCliStep().ExecuteAsync(ctx, CancellationToken.None);
+
+        Assert.Equal(StepOutcome.FailedTerminal, result.Outcome);
+        var error = Assert.IsType<GatewayCompatibilityException>(result.Error);
+        Assert.Equal(GatewayCompatibilityFailureKind.InstalledVersionMismatch, error.Kind);
+    }
+
+    [Fact]
+    public async Task InstallCli_InstalledRuntimeMismatchFailsTerminally()
+    {
+        var commands = new FakeCommandRunner(
+            _ => Ok(),
+            (_, command, _) =>
+            {
+                if (command.StartsWith("curl ", StringComparison.Ordinal))
+                    return Ok();
+                if (command.Contains("tools/node/bin/node --version", StringComparison.Ordinal))
+                    return Ok("v24.15.0");
+                if (command.EndsWith("openclaw --version", StringComparison.Ordinal))
+                    return Ok($"OpenClaw {GatewayReleasePolicy.RecommendedVersion}");
+                return Ok();
+            });
+        var config = new SetupConfig();
+        GatewayReleasePolicy.ResolveAndApply(config);
+        var ctx = CreateContext(config, commands);
+
+        var result = await new InstallCliStep().ExecuteAsync(ctx, CancellationToken.None);
+
+        Assert.Equal(StepOutcome.FailedTerminal, result.Outcome);
+        var error = Assert.IsType<GatewayCompatibilityException>(result.Error);
+        Assert.Equal(GatewayCompatibilityFailureKind.InstalledRuntimeMismatch, error.Kind);
     }
 
     [Fact]
@@ -1869,6 +1920,25 @@ public class SetupStepsTests : IDisposable
         Assert.Contains(
             "openclaw config set plugins.entries.device-pair.config.publicUrl 'http://127.0.0.1:18789'",
             commands);
+    }
+
+    [Fact]
+    public void ConfigureGateway_RefreshesBundledPluginRegistryBeforeWritingPluginConfig()
+    {
+        var commands = ConfigureGatewayStep.BuildConfigCommands(
+            new GatewayConfig(),
+            18789,
+            "'[]'");
+
+        var refreshIndex = commands.IndexOf(
+            "openclaw plugins registry --refresh",
+            StringComparison.Ordinal);
+        var devicePairIndex = commands.IndexOf(
+            "openclaw config set plugins.entries.device-pair.enabled true",
+            StringComparison.Ordinal);
+
+        Assert.True(refreshIndex >= 0);
+        Assert.True(devicePairIndex > refreshIndex);
     }
 
     // Issue: device-pair plugin must be enabled, not just configured. Otherwise

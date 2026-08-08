@@ -374,7 +374,12 @@ public class SetupConfigTests : IDisposable
                 DistroName = "CustomClaw",
                 BaseDistro = "Debian",
                 GatewayPort = 19999,
-                Gateway = { Bind = "lan", InstallUrl = "https://example.test/install.sh" }
+                Gateway =
+                {
+                    Bind = "lan",
+                    InstallUrl = "https://example.test/install.sh",
+                    Version = GatewayReleasePolicy.SecurityFloor
+                }
             };
 
             var summary = SetupReviewSummaryBuilder.Build(config);
@@ -384,6 +389,7 @@ public class SetupConfigTests : IDisposable
             Assert.Contains("19999", summary.GatewayEndpoint);
             Assert.Contains("LAN bind enabled", summary.GatewayDescription);
             Assert.Contains("example.test", summary.InstallerDescription);
+            Assert.Contains("Unverified custom installer", summary.InstallerDescription);
             Assert.Contains("CustomClaw", summary.ExactCommands);
             Assert.Contains("19999", summary.ExactCommands);
             Assert.Equal("CustomClaw · LAN:19999", summary.CompletionGatewaySummary);

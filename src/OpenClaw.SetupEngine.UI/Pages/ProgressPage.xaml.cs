@@ -190,7 +190,12 @@ public sealed partial class ProgressPage : Page
                     : result.FailedStepId != null
                         ? $"Step '{result.FailedStepId}' failed: {result.Message}"
                         : result.Message;
-                SetupWindow.Active?.NavigateToComplete(false, sw.Elapsed, config.LogPath, errorMsg);
+                SetupWindow.Active?.NavigateToComplete(
+                    false,
+                    sw.Elapsed,
+                    config.LogPath,
+                    errorMsg,
+                    result.CompatibilityFailure);
             }
         }
         catch (OperationCanceledException) when (cts.IsCancellationRequested)

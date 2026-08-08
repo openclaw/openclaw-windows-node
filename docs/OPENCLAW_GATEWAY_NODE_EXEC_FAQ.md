@@ -704,15 +704,18 @@ branch behavior on it. Method and payload compatibility is still a separate
 concern; the client uses feature/error handling and drift tests for the surfaces
 it implements.
 
-### Managed gateway release pin
+### Managed gateway release policy
 
-The Windows setup engine separately installs OpenClaw release `2026.6.11` for a
-new app-managed WSL gateway unless setup explicitly overrides the version or
-uses a custom installer URL.
+The Windows setup engine installs exact recommended OpenClaw release
+`2026.6.34` for a new app-managed WSL gateway. Release `2026.6.11` is the
+security floor and distinct validated fallback. Setup never selects that
+fallback automatically.
 
-That release pin does not force every remote gateway to be `2026.6.11`.
-Windows can connect to an existing gateway with a different release if the
-protocol and methods it uses are compatible.
+This managed-setup policy does not force every remote gateway to use the
+recommended release. Windows can connect to an existing gateway with a
+different release if the protocol and methods it uses are compatible. Custom
+installer URLs require an exact version, are labeled unverified, and still
+must pass the exact protocol and server-version checks.
 
 At tag `v2026.6.11`, upstream protocol constants were protocol 4 with minimum
 general/probe protocol 4. Its documentation already showed clients advertising
@@ -727,8 +730,8 @@ and
 [`OpenClawGatewayClient.cs`](https://github.com/openclaw/openclaw-windows-node/blob/d7d153ca5d409487e06ef584b1de1184520e90e6/src/OpenClaw.Shared/OpenClawGatewayClient.cs#L1492-L1510).
 The current upstream constants are in
 [`version.ts`](https://github.com/openclaw/openclaw/blob/db90dff1396fecbf7029e9e9ea19d6c6ca3e644e/packages/gateway-protocol/src/version.ts).
-The managed release pin is in
-[`GatewayLkgVersion.cs`](https://github.com/openclaw/openclaw-windows-node/blob/d7d153ca5d409487e06ef584b1de1184520e90e6/src/OpenClaw.SetupEngine/GatewayLkgVersion.cs).
+The managed release policy is in
+[`GatewayReleasePolicy.cs`](../src/OpenClaw.SetupEngine/GatewayReleasePolicy.cs).
 
 ## What deployment combinations are valid?
 
@@ -778,4 +781,4 @@ Any layer can deny. A later layer cannot widen an earlier deny.
 | Windows local approval | `ExecApprovalsCoordinator`, `ExecApprovalsStore`, `ExecReusableCommandBinder`, `CanonicalCmdCarrier`, `CmdPayloadTokenizer` | comparable node-host exec approval contracts |
 | Windows sandbox | `MxcCommandRunner`, `MxcPolicyBuilder`, `DirectAppContainerExecutor` | separate agent sandbox backend interfaces |
 | Protocol version | connect payloads | `packages/gateway-protocol/src/version.ts` |
-| Managed gateway release | `GatewayLkgVersion.cs`, setup engine | OpenClaw tag `v2026.6.11` |
+| Managed gateway release | `GatewayReleasePolicy.cs`, setup engine | OpenClaw tags `v2026.6.34` and `v2026.6.11` |

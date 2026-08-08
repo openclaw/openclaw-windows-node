@@ -34,6 +34,7 @@ public static class Program
         "--preserve-logs",
         "--tailscale",
         "--tailscale-trust-auth",
+        "--validate-gateway-candidate",
     ]);
 
     public static async Task<int> Main(string[] args)
@@ -64,6 +65,7 @@ public static class Program
         var gatewayPortText = parsedArguments.GetValue("--gateway-port");
         var tailscale = parsedArguments.HasFlag("--tailscale");
         var tailscaleTrustAuth = parsedArguments.HasFlag("--tailscale-trust-auth");
+        var validateGatewayCandidate = parsedArguments.HasFlag("--validate-gateway-candidate");
         var tailscaleAuth = parsedArguments.GetValue("--tailscale-auth");
         var tailscaleHostname = parsedArguments.GetValue("--tailscale-hostname");
         var autoStartName = parsedArguments.GetValue("--autostart-name") ?? "OpenClawTray";
@@ -132,7 +134,6 @@ public static class Program
         }
         if (!string.IsNullOrWhiteSpace(tailscaleHostname))
             config.Tailscale.Hostname = tailscaleHostname;
-        GatewayLkgVersion.ApplyToConfig(config);
         if (headless) config.Headless = true;
         if (rollback) config.RollbackOnFailure = true;
         if (noRollback) config.RollbackOnFailure = false;
@@ -140,6 +141,21 @@ public static class Program
         if (logPath != null) config.LogPath = logPath;
         if (dryRun) config.DryRun = true;
         if (confirmDestructive) config.ConfirmDestructive = true;
+
+        if (!uninstall && !wizardOnly)
+        {
+            try
+            {
+                GatewayReleasePolicy.ResolveAndApply(
+                    config,
+                    allowCandidate: validateGatewayCandidate);
+            }
+            catch (GatewayCompatibilityException ex)
+            {
+                Console.Error.WriteLine($"ERROR: {ex.Message}");
+                return 2;
+            }
+        }
 
         if (TailscaleSetupPolicy.ValidateConfig(config) is { } tailscaleConfigError)
         {
@@ -156,6 +172,12 @@ public static class Program
         Console.WriteLine($"Log file: {config.LogPath}");
         Console.WriteLine($"Distro: {config.DistroName}");
         Console.WriteLine($"Gateway: {config.EffectiveGatewayUrl}");
+        if (!uninstall && !wizardOnly)
+        {
+            Console.WriteLine(
+                $"Gateway release: {config.Gateway.Version} " +
+                $"({config.Gateway.Selection}, protocol v{GatewayReleasePolicy.ProtocolGeneration})");
+        }
         Console.WriteLine($"Mode: {(uninstall ? "UNINSTALL" : "SETUP")}");
         if (uninstall)
         {
@@ -286,6 +308,8 @@ public static class Program
             PipelineOutcome.Cancelled => $"═══ {label} CANCELLED ═══",
             _ => "═══ UNKNOWN STATE ═══"
         });
+        if (result.CompatibilityFailure is not null)
+            Console.WriteLine($"\n{BuildCompatibilityFallbackMessage(config, result.CompatibilityFailure.Value)}");
 
         Console.WriteLine($"\nLog: {config.LogPath}");
         Console.WriteLine($"Journal: {journalPath}");
@@ -302,6 +326,14 @@ public static class Program
                 exitCode = result.ExitCode,
                 failedStepId = result.FailedStepId,
                 message = result.Message,
+                compatibilityFailure = result.CompatibilityFailure?.ToString(),
+                selectedGatewayVersion = config.Gateway.Version,
+                gatewayProtocolGeneration = GatewayReleasePolicy.ProtocolGeneration,
+                fallbackGatewayVersion =
+                    result.CompatibilityFailure is { } failureKind &&
+                    GatewayReleasePolicy.CanRetryWithFallback(config, failureKind)
+                        ? GatewayReleasePolicy.FallbackVersion
+                        : null,
                 logPath = config.LogPath,
                 journalPath
             };
@@ -310,6 +342,16 @@ public static class Program
         }
 
         return result.ExitCode;
+    }
+
+    internal static string BuildCompatibilityFallbackMessage(
+        SetupConfig config,
+        GatewayCompatibilityFailureKind failureKind)
+    {
+        var fallback = GatewayReleasePolicy.FallbackVersion;
+        return !GatewayReleasePolicy.CanRetryWithFallback(config, failureKind)
+            ? $"No additional validated fallback is available at or above security floor {GatewayReleasePolicy.SecurityFloor}."
+            : $"To retry explicitly with validated fallback {fallback}, set Gateway.Selection to \"fallback\" and rerun setup.";
     }
 
     private static List<SetupStep> BuildSteps(SetupConfig config)

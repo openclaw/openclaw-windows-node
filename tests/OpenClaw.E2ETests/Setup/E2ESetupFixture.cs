@@ -142,12 +142,19 @@ public sealed class E2ESetupFixture : IAsyncLifetime
         Environment.SetEnvironmentVariable("OPENCLAW_TRAY_APPDATA_DIR", DataDir);
         Environment.SetEnvironmentVariable("OPENCLAW_TRAY_LOCALAPPDATA_DIR", LocalAppDataRoot);
 
-        var exitCode = await Program.Main([
+        var setupArguments = new List<string>
+        {
             "--config", _configPath,
             "--headless",
             "--rollback-on-failure",
             "--log-path", setupLogPath
-        ]);
+        };
+        if (!string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable("OPENCLAW_E2E_GATEWAY_VERSION")))
+        {
+            setupArguments.Add("--validate-gateway-candidate");
+        }
+
+        var exitCode = await Program.Main([.. setupArguments]);
 
         if (exitCode != 0)
         {
@@ -313,11 +320,17 @@ public sealed class E2ESetupFixture : IAsyncLifetime
 
     private void WriteConfig()
     {
-        var requestedGatewayVersion =
-            Environment.GetEnvironmentVariable("OPENCLAW_E2E_GATEWAY_VERSION");
-        var gatewayVersion = string.IsNullOrWhiteSpace(requestedGatewayVersion)
-            ? GatewayLkgVersion.ResolveLkgVersion()
-            : requestedGatewayVersion.Trim();
+        var candidateVersion =
+            Environment.GetEnvironmentVariable("OPENCLAW_E2E_GATEWAY_VERSION")?.Trim();
+        var gateway = new Dictionary<string, object?>
+        {
+            ["Selection"] = string.IsNullOrWhiteSpace(candidateVersion)
+                ? "recommended"
+                : "exact"
+        };
+        if (!string.IsNullOrWhiteSpace(candidateVersion))
+            gateway["Version"] = candidateVersion;
+
         var config = new
         {
             DistroName = _distroName,
@@ -352,10 +365,7 @@ public sealed class E2ESetupFixture : IAsyncLifetime
                 NodeTtsEnabled = true,
                 NodeSttEnabled = true,
             },
-            Gateway = new
-            {
-                Version = gatewayVersion
-            }
+            Gateway = gateway
         };
 
         var json = JsonSerializer.Serialize(config, new JsonSerializerOptions { WriteIndented = true });

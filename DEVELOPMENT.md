@@ -630,13 +630,37 @@ The repository uses GitHub Actions for continuous integration and release automa
 - Pull requests to `main`
 - Git tags matching `v*` (e.g., `v1.2.3`) for releases
 
-### Gateway LKG version automation
+### Gateway release policy
 
-- The pinned gateway setup version lives in `src/OpenClaw.SetupEngine/GatewayLkgVersion.cs` (`GatewayLkgVersion.LkgVersion`).
-- Setup/E2E consume this as the default source of truth when `Gateway.Version` is not explicitly set.
-- When `Gateway.InstallUrl` points to a custom installer script, SetupEngine does not auto-inject the LKG; set `Gateway.Version` explicitly if your script supports `--version`.
-- The `test` job in `.github/workflows/ci.yml` compares pinned LKG vs npm `openclaw@latest` and emits a **warning** on drift (non-blocking).
-- `.github/workflows/gateway-lkg-update.yml` creates or updates one standing draft PR on branch `automation/gateway-lkg-update` to bump `GatewayLkgVersion.LkgVersion` when upstream latest advances.
+- `src/OpenClaw.SetupEngine/GatewayReleasePolicy.cs` embeds the exact Gateway
+  recommendation, protocol generation, security floor, validation evidence, and
+  any distinct validated fallback for the Windows release.
+- Setup and E2E install the exact recommendation. Product setup never resolves
+  a moving npm dist-tag at runtime.
+- `Gateway.Selection` supports `recommended`, `fallback`, and `exact`.
+  `fallback` currently resolves to exact validated release `2026.6.11` and is
+  never automatic. `exact` accepts only an embedded validated official release
+  in product mode.
+- A custom `Gateway.InstallUrl` must also specify an exact `Gateway.Version`.
+  Setup labels it unverified and still requires an exact protocol-v4 handshake
+  and matching server version after installation.
+- `.github/workflows/gateway-release-candidate.yml` discovers official stable
+  candidates and opens an evidence-only draft PR. It does not promote a
+  candidate. Promotion requires exact-version Windows setup, pairing,
+  reconnect, recovery, and Gateway-to-node invocation proof.
+- `scripts/Test-GatewayReleaseCandidate.ps1` verifies stable GitHub release
+  classification, SHA-512 npm integrity, registry signature, SLSA provenance,
+  exact package/tag commit identity, stable release soak evidence, and protocol
+  v4 at that exact commit. Unembedded candidates require provenance whose source
+  commit matches the tag. Existing embedded recommendation/fallback evidence
+  may use the explicit `-AllowEmbeddedPolicyEvidence` compatibility switch only
+  when the integrity-verified package build commit matches the exact tag and
+  the package integrity is already embedded in policy.
+- Candidate evidence is discovery input only and cannot authorize an
+  unembedded release. To exercise a candidate, first add a reviewed
+  `GatewayReleaseStatus.Candidate` entry to `GatewayReleasePolicy`, then set
+  `OPENCLAW_E2E_GATEWAY_VERSION` and run the setup/connect and recovery E2E
+  shards with `--validate-gateway-candidate`.
 
 ### Build Matrix
 

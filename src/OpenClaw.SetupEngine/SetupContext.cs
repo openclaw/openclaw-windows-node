@@ -2,6 +2,7 @@ using System.Diagnostics.CodeAnalysis;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using OpenClaw.Connection;
+using OpenClaw.Shared;
 
 namespace OpenClaw.SetupEngine;
 
@@ -154,11 +155,14 @@ public sealed class GatewayConfig
 {
     public string Bind { get; set; } = "loopback";
     public string? InstallUrl { get; set; }
+    public string Selection { get; set; } = "recommended";
     public string? Version { get; set; }
     public int HealthTimeoutSeconds { get; set; } = 90;
     public string ReloadMode { get; set; } = "hybrid";
     public string AuthMode { get; set; } = "token";
     public Dictionary<string, string>? ExtraConfig { get; set; }
+    [JsonIgnore]
+    public GatewayReleaseResolution? ResolvedRelease { get; set; }
 }
 
 // ─── Capabilities Configuration ───
@@ -447,6 +451,8 @@ public sealed class SetupContext
     public string? GatewayRecordId { get; set; }
     public string? OperatorDeviceId { get; set; }
     public string? NodeDeviceId { get; set; }
+    public GatewaySelfInfo? ObservedGatewaySelf { get; set; }
+    public GatewayCompatibilityException? GatewayCompatibilityFailure { get; set; }
     public string? WindowsTailnetDnsSuffix { get; set; }
     public string? TailscaleDnsName { get; set; }
     public IExternalAuthorizationPresenter? ExternalAuthorizationPresenter { get; set; }

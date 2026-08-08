@@ -1270,7 +1270,7 @@ public sealed class InstallCliStep : SetupStep
         var user = ctx.Config.Wsl.User;
 
         // Download and run install script (URL configurable)
-        var installUrl = ctx.Config.Gateway.InstallUrl ?? GatewayLkgVersion.DefaultInstallUrl;
+        var installUrl = ctx.Config.Gateway.InstallUrl ?? GatewayReleasePolicy.DefaultInstallUrl;
 
         // Validate URL is HTTPS to prevent downgrade attacks
         if (!Uri.TryCreate(installUrl, UriKind.Absolute, out var parsedUrl) ||
@@ -1280,9 +1280,13 @@ public sealed class InstallCliStep : SetupStep
         }
 
         string installScript;
+        var officialInstaller = GatewayReleasePolicy.IsOfficialInstallerUrl(installUrl);
         try
         {
-            installScript = BuildInstallCommand(installUrl, ctx.Config.Gateway.Version);
+            installScript = BuildInstallCommand(
+                installUrl,
+                ctx.Config.Gateway.Version,
+                officialInstaller ? GatewayReleasePolicy.NodeVersion : null);
         }
         catch (ArgumentException ex)
         {
@@ -1307,11 +1311,47 @@ public sealed class InstallCliStep : SetupStep
             var verify = await ctx.Commands.RunInWslAsync(distro, cmd, TimeSpan.FromSeconds(15), ct: ct);
             if (verify.ExitCode == 0 && !string.IsNullOrWhiteSpace(verify.Stdout))
             {
+                var selectedVersion = ctx.Config.Gateway.Version!;
+                if (!GatewayReleaseVersion.TryExtract(verify.Stdout, out var installedVersion) ||
+                    !string.Equals(installedVersion, selectedVersion, StringComparison.Ordinal))
+                {
+                    var actual = string.IsNullOrWhiteSpace(installedVersion) ? "unparseable" : installedVersion;
+                    var failure = new GatewayCompatibilityException(
+                        GatewayCompatibilityFailureKind.InstalledVersionMismatch,
+                        $"Gateway compatibility check failed: selected version {selectedVersion}, installed CLI reported {actual}.");
+                    return StepResult.Terminal(failure.Message, failure);
+                }
+
                 if (executablePath != null)
                 {
                     var pathResult = await EnsureCliOnDefaultPathAsync(ctx, distro, executablePath, ct);
                     if (!pathResult.IsSuccess)
                         return pathResult;
+                }
+
+                if (officialInstaller)
+                {
+                    var expectedRuntimeVersion = $"v{GatewayReleasePolicy.NodeVersion}";
+                    var runtimeCommand = $"/home/{user}/.openclaw/tools/node/bin/node --version";
+                    var runtime = await ctx.Commands.RunInWslAsync(
+                        distro,
+                        runtimeCommand,
+                        TimeSpan.FromSeconds(15),
+                        ct: ct);
+                    var actualRuntimeVersion = runtime.Stdout.Trim();
+                    if (runtime.ExitCode != 0 ||
+                        !string.Equals(actualRuntimeVersion, expectedRuntimeVersion, StringComparison.Ordinal))
+                    {
+                        var actual = string.IsNullOrWhiteSpace(actualRuntimeVersion)
+                            ? "missing"
+                            : actualRuntimeVersion;
+                        var failure = new GatewayCompatibilityException(
+                            GatewayCompatibilityFailureKind.InstalledRuntimeMismatch,
+                            $"Gateway compatibility check failed: selected Node runtime {expectedRuntimeVersion}, installed runtime reported {actual}.");
+                        return StepResult.Terminal(failure.Message, failure);
+                    }
+
+                    ctx.Logger.Info($"Gateway Node runtime: {actualRuntimeVersion}");
                 }
 
                 ctx.Logger.Info($"OpenClaw CLI version: {verify.Stdout.Trim()}");
@@ -1322,18 +1362,32 @@ public sealed class InstallCliStep : SetupStep
         return StepResult.Fail("CLI installed but not found in any known location");
     }
 
-    internal static string BuildInstallCommand(string installUrl, string? requestedVersion)
+    internal static string BuildInstallCommand(
+        string installUrl,
+        string? requestedVersion,
+        string? nodeVersion = null)
     {
         var escapedUrl = WslShellQuoting.EscapePosixSingleQuoteInner(installUrl);
         if (string.IsNullOrWhiteSpace(requestedVersion))
-            return $"curl -fsSL --proto '=https' --tlsv1.2 '{escapedUrl}' | bash";
+            throw new ArgumentException("Gateway release policy must resolve an exact version before installation.");
 
         var trimmedVersion = requestedVersion.Trim();
         if (trimmedVersion.Contains('\n') || trimmedVersion.Contains('\r'))
             throw new ArgumentException("Gateway version cannot contain newlines.");
 
         var escapedVersion = WslShellQuoting.EscapePosixSingleQuoteInner(trimmedVersion);
-        return $"curl -fsSL --proto '=https' --tlsv1.2 '{escapedUrl}' | bash -s -- --version '{escapedVersion}'";
+        var runtimeArgument = "";
+        if (!string.IsNullOrWhiteSpace(nodeVersion))
+        {
+            var trimmedNodeVersion = nodeVersion.Trim();
+            if (!Version.TryParse(trimmedNodeVersion, out _))
+                throw new ArgumentException("Gateway Node runtime must be an exact numeric version.");
+
+            var escapedNodeVersion = WslShellQuoting.EscapePosixSingleQuoteInner(trimmedNodeVersion);
+            runtimeArgument = $" --node-version '{escapedNodeVersion}'";
+        }
+
+        return $"curl -fsSL --proto '=https' --tlsv1.2 '{escapedUrl}' | bash -s -- --version '{escapedVersion}'{runtimeArgument}";
     }
 
     private static async Task<StepResult> EnsureCliOnDefaultPathAsync(
@@ -1479,6 +1533,7 @@ public sealed class ConfigureGatewayStep : SetupStep
         TailscaleConfig? tailscale = null)
     {
         var configCommands = $"""
+            openclaw plugins registry --refresh
             openclaw config set gateway.mode local
             openclaw config set gateway.port {port}
             openclaw config set gateway.bind {gw.Bind}
@@ -1978,10 +2033,10 @@ public sealed class PairOperatorStep : SetupStep
                     return StepResult.Ok("Operator paired (finalization deferred)");
                 }
 
-                return StepResult.Fail($"Reconnection after approval failed: {phase2Result}");
+                return ConnectionFailureResult(ctx, "Reconnection after approval failed", phase2Result);
             }
 
-            return StepResult.Fail($"Operator connection failed: {phase1Result}");
+            return ConnectionFailureResult(ctx, "Operator connection failed", phase1Result);
         }
         catch (DeviceIdentityLoadException ex)
         {
@@ -2152,10 +2207,10 @@ public sealed class PairOperatorStep : SetupStep
                     return StepResult.Ok("Operator paired and finalized for tray");
                 }
 
-                return StepResult.Fail($"Finalization failed after approval: {finalResult}");
+                return ConnectionFailureResult(ctx, "Finalization failed after approval", finalResult);
             }
 
-            return StepResult.Fail($"Finalization connect failed: {result}");
+            return ConnectionFailureResult(ctx, "Finalization connect failed", result);
         }
         finally
         {
@@ -2223,7 +2278,21 @@ public sealed class PairOperatorStep : SetupStep
         return StepResult.Ok($"Approved request {requestId}");
     }
 
-    internal enum ConnectionOutcome { Connected, PairingRequired, Error, Timeout }
+    internal enum ConnectionOutcome { Connected, PairingRequired, CompatibilityFailure, Error, Timeout }
+
+    internal static StepResult ConnectionFailureResult(
+        SetupContext ctx,
+        string prefix,
+        ConnectionOutcome outcome)
+    {
+        if (outcome == ConnectionOutcome.CompatibilityFailure &&
+            ctx.GatewayCompatibilityFailure is { } compatibilityFailure)
+        {
+            return StepResult.Terminal(compatibilityFailure.Message, compatibilityFailure);
+        }
+
+        return StepResult.Fail($"{prefix}: {outcome}");
+    }
 
     internal static ConnectionOutcome? ClassifySetupConnectionStatus(
         ConnectionStatus status,
@@ -2252,10 +2321,29 @@ public sealed class PairOperatorStep : SetupStep
         bool retryGatewayStartupDisconnects = false)
     {
         var tcs = new TaskCompletionSource<ConnectionOutcome>();
+        ctx.ObservedGatewaySelf = null;
+        ctx.GatewayCompatibilityFailure = null;
 
         void OnStatusChanged(object? sender, ConnectionStatus status)
         {
             ctx.Logger.Debug($"Operator connection status: {status}");
+            if (status == ConnectionStatus.Connected)
+            {
+                var compatibilityFailure = GatewayReleasePolicy.ValidateHandshake(
+                    ctx.Config,
+                    ctx.ObservedGatewaySelf);
+                if (compatibilityFailure is null)
+                {
+                    tcs.TrySetResult(ConnectionOutcome.Connected);
+                }
+                else
+                {
+                    ctx.GatewayCompatibilityFailure = compatibilityFailure;
+                    tcs.TrySetResult(ConnectionOutcome.CompatibilityFailure);
+                }
+                return;
+            }
+
             var outcome = ClassifySetupConnectionStatus(
                 status,
                 client.IsPairingRequired,
@@ -2275,6 +2363,8 @@ public sealed class PairOperatorStep : SetupStep
         client.StatusChanged += OnStatusChanged;
         EventHandler<DeviceTokenReceivedEventArgs> onDeviceToken = (_, _) => ctx.Logger.Info("Device token received from gateway");
         client.DeviceTokenReceived += onDeviceToken;
+        EventHandler<GatewaySelfInfo> onGatewaySelf = (_, gatewaySelf) => ctx.ObservedGatewaySelf = gatewaySelf;
+        client.GatewaySelfUpdated += onGatewaySelf;
 
         try
         {
@@ -2300,6 +2390,7 @@ public sealed class PairOperatorStep : SetupStep
         {
             client.StatusChanged -= OnStatusChanged;
             client.DeviceTokenReceived -= onDeviceToken;
+            client.GatewaySelfUpdated -= onGatewaySelf;
         }
     }
 
@@ -3060,8 +3151,8 @@ public sealed class WindowsNodeBootstrapContextStep : SetupStep
     {
         var workspaceArg = WslShellQuoting.QuotePosixSingleQuote(workspaceAbsolute);
 
-        // The pinned 2026.6.11 CLI uses plain `setup` for baseline initialization;
-        // newer/custom CLIs require `--baseline`. Detect the installed contract.
+        // Validated Gateway releases span both setup contracts. Detect the
+        // installed exact release's contract instead of keying behavior by tag.
         var script = $"""
             set -e
             {ctx.WslPathPrefix}
@@ -3136,7 +3227,7 @@ public sealed class WindowsNodeBootstrapContextStep : SetupStep
         var raw = ExtractWorkspaceFromConfigOutput(result.Stdout);
         if (result.ExitCode != 0)
         {
-            // Pinned 2026.6.11 reports an absent key with exit 1. Only that
+            // Validated releases report an absent key with exit 1. Only that
             // known case may select the default; other read failures must not
             // be persisted by the subsequent `setup --workspace` call.
             if (!result.Stderr.Contains(
@@ -3685,10 +3776,13 @@ public sealed class VerifyEndToEndStep : SetupStep
                     return StepResult.Ok("Operator finalized after approval");
                 }
 
-                return StepResult.Fail($"Operator finalization failed after approval: {confirmResult}");
+                return PairOperatorStep.ConnectionFailureResult(
+                    ctx,
+                    "Operator finalization failed after approval",
+                    confirmResult);
             }
 
-            return StepResult.Fail($"Operator finalization failed: {result}");
+            return PairOperatorStep.ConnectionFailureResult(ctx, "Operator finalization failed", result);
         }
         finally
         {
