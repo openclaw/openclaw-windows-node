@@ -148,6 +148,9 @@ internal sealed class GatewayTailscaleAuthUpgradeService(GatewayRegistry registr
             }
         }
 
+        // Core beta.7 and current main define config.patch as JSON Merge Patch.
+        // Send only the intended leaf: replaying the full snapshot would turn
+        // unrelated null values into deletion markers.
         var configPatch = CreateAllowTailscalePatch();
         ConfigPatchResult patch;
         try
