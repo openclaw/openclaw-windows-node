@@ -1829,6 +1829,11 @@ public sealed class ConfigureGatewayStep : SetupStep
     internal static string? GetDefaultDevicePairPublicUrl(GatewayConfig gw, int port, bool tailscaleEnabled = false) =>
         gw.Bind == "loopback" && !tailscaleEnabled ? $"http://127.0.0.1:{port}" : null;
 
+    internal static string GetEffectiveReloadMode(GatewayConfig gw) =>
+        gw.ExtraConfig?.TryGetValue("gateway.reload.mode", out var overrideMode) == true
+            ? overrideMode
+            : gw.ReloadMode;
+
     internal static bool IsSafeExtraConfigKey(string value)
         => System.Text.RegularExpressions.Regex.IsMatch(value, "^[A-Za-z0-9._-]+$");
 }
@@ -1863,31 +1868,44 @@ public sealed class StartGatewayStep : SetupStep
     public override string DisplayName => "Start gateway";
     public override RetryPolicy Retry => new(MaxAttempts: 3, InitialDelay: TimeSpan.FromSeconds(3));
 
-    public override async Task<StepResult> ExecuteAsync(SetupContext ctx, CancellationToken ct)
+    public override Task<StepResult> ExecuteAsync(SetupContext ctx, CancellationToken ct) =>
+        StartOrRestartAndWaitForHealthAsync(ctx, restart: false, ct);
+
+    internal static Task<StepResult> RestartAndWaitForHealthAsync(
+        SetupContext ctx,
+        CancellationToken ct) =>
+        StartOrRestartAndWaitForHealthAsync(ctx, restart: true, ct);
+
+    private static async Task<StepResult> StartOrRestartAndWaitForHealthAsync(
+        SetupContext ctx,
+        bool restart,
+        CancellationToken ct)
     {
         var distro = ctx.DistroName!;
         var pathCmd = ctx.WslPathPrefix;
+        var action = restart ? "restart" : "start";
 
-        // Check for port conflicts before starting
-        var portCheck = await ctx.Commands.RunInWslAsync(
-            distro, $"ss -tlnp 2>/dev/null | grep ':{ctx.Config.GatewayPort}\\b' || true",
-            TimeSpan.FromSeconds(10), ct: ct);
-
-        if (!string.IsNullOrWhiteSpace(portCheck.Stdout) && portCheck.Stdout.Contains($":{ctx.Config.GatewayPort}"))
+        if (!restart)
         {
-            if (!portCheck.Stdout.Contains("openclaw", StringComparison.OrdinalIgnoreCase))
-            {
-                ctx.Logger.Warn($"Port {ctx.Config.GatewayPort} is in use by another process:\n{portCheck.Stdout.Trim()}");
-                return StepResult.Fail(
-                    $"Port {ctx.Config.GatewayPort} is already in use by another process. Either stop the conflicting process or change GatewayPort in the setup config.");
-            }
+            var portCheck = await ctx.Commands.RunInWslAsync(
+                distro, $"ss -tlnp 2>/dev/null | grep ':{ctx.Config.GatewayPort}\\b' || true",
+                TimeSpan.FromSeconds(10), ct: ct);
 
-            ctx.Logger.Info($"Port {ctx.Config.GatewayPort} appears to be in use by openclaw — proceeding");
+            if (!string.IsNullOrWhiteSpace(portCheck.Stdout) && portCheck.Stdout.Contains($":{ctx.Config.GatewayPort}"))
+            {
+                if (!portCheck.Stdout.Contains("openclaw", StringComparison.OrdinalIgnoreCase))
+                {
+                    ctx.Logger.Warn($"Port {ctx.Config.GatewayPort} is in use by another process:\n{portCheck.Stdout.Trim()}");
+                    return StepResult.Fail(
+                        $"Port {ctx.Config.GatewayPort} is already in use by another process. Either stop the conflicting process or change GatewayPort in the setup config.");
+                }
+
+                ctx.Logger.Info($"Port {ctx.Config.GatewayPort} appears to be in use by openclaw — proceeding");
+            }
         }
 
-        // Start the service
         var start = await ctx.Commands.RunInWslAsync(
-            distro, $"{pathCmd} && openclaw gateway start", TimeSpan.FromSeconds(30), ct: ct);
+            distro, $"{pathCmd} && openclaw gateway {action}", TimeSpan.FromSeconds(30), ct: ct);
 
         if (start.ExitCode != 0)
         {
@@ -1901,17 +1919,28 @@ public sealed class StartGatewayStep : SetupStep
                     TimeSpan.FromSeconds(10),
                     ct: ct);
                 await Task.Delay(2000, ct);
-                start = await ctx.Commands.RunInWslAsync(distro, $"{pathCmd} && openclaw gateway start", TimeSpan.FromSeconds(30), ct: ct);
+                start = await ctx.Commands.RunInWslAsync(
+                    distro,
+                    $"{pathCmd} && openclaw gateway {action}",
+                    TimeSpan.FromSeconds(30),
+                    ct: ct);
                 if (start.ExitCode != 0)
-                    return StepResult.Fail($"Gateway start failed after reset: {start.Stderr}");
+                    return StepResult.Fail($"Gateway {action} failed after reset: {start.Stderr}");
             }
             else
             {
-                return StepResult.Fail($"Gateway start failed (exit {start.ExitCode}): {start.Stderr}");
+                return StepResult.Fail($"Gateway {action} failed (exit {start.ExitCode}): {start.Stderr}");
             }
         }
 
-        // Wait for health endpoint
+        return await WaitForHealthAsync(ctx, ct);
+    }
+
+    internal static async Task<StepResult> WaitForHealthAsync(
+        SetupContext ctx,
+        CancellationToken ct)
+    {
+        var distro = ctx.DistroName!;
         ctx.Logger.Info("Waiting for gateway health endpoint...");
         var healthDeadline = DateTimeOffset.UtcNow.Add(TimeSpan.FromSeconds(ctx.Config.Gateway.HealthTimeoutSeconds));
 
