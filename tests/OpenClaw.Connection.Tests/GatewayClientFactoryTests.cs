@@ -138,12 +138,15 @@ public sealed class GatewayClientFactoryTests
                     "validation listener ownership lost"));
             };
             client.AuthenticationFailed += (_, message) => failure = message;
+            GatewayErrorKind? failureKind = null;
+            client.ConnectionFailure += (_, kind) => failureKind = kind;
             client.StatusChanged += (_, status) => lastStatus = status;
 
             await InvokeSendConnectSafeAsync(client);
 
             Assert.Equal(1, authorizationCalls);
-            Assert.Equal("validation listener ownership lost", failure);
+            Assert.Null(failure);
+            Assert.Equal(GatewayErrorKind.LocalPortConflict, failureKind);
             Assert.Equal(ConnectionStatus.Error, lastStatus);
         }
         finally
@@ -187,6 +190,16 @@ public sealed class GatewayClientFactoryTests
 
     private static async Task InvokeSendConnectSafeAsync(OpenClawGatewayClient client)
     {
+        var gateField = typeof(OpenClawGatewayClient).GetField(
+            "_handshakeChallengeGate",
+            BindingFlags.Instance | BindingFlags.NonPublic);
+        Assert.NotNull(gateField);
+        var gate = gateField.GetValue(client);
+        Assert.NotNull(gate);
+        var tryBegin = gate.GetType().GetMethod("TryBegin");
+        Assert.NotNull(tryBegin);
+        Assert.True(Assert.IsType<bool>(tryBegin.Invoke(gate, [0L])));
+
         var method = typeof(OpenClawGatewayClient).GetMethod(
             "SendConnectSafeAsync",
             BindingFlags.Instance | BindingFlags.NonPublic);

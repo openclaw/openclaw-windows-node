@@ -29,6 +29,15 @@ public class WindowsNodeClientTests
             SentMessages.Enqueue(message);
             return Task.CompletedTask;
         }
+
+        protected override Task<bool> SendRawAsync(
+            string message,
+            long expectedConnectionGeneration,
+            CancellationToken cancellationToken)
+        {
+            SentMessages.Enqueue(message);
+            return Task.FromResult(true);
+        }
     }
 
     private sealed class ThrowingWindowsNodeClient(
@@ -38,6 +47,12 @@ public class WindowsNodeClientTests
     {
         protected override Task SendRawAsync(string message) =>
             Task.FromException(new IOException("simulated gateway send failure"));
+
+        protected override Task<bool> SendRawAsync(
+            string message,
+            long expectedConnectionGeneration,
+            CancellationToken cancellationToken) =>
+            Task.FromException<bool>(new IOException("simulated gateway send failure"));
     }
 
     [Theory]
@@ -1598,6 +1613,7 @@ public class WindowsNodeClientTests
                     "ts": 1785824000000
                   }
                 }
+
                 """);
 
             Assert.Equal(1, authorizationCalls);
@@ -1619,6 +1635,252 @@ public class WindowsNodeClientTests
                 """);
 
             Assert.Equal(1, authorizationCalls);
+            Assert.Empty(client.SentMessages);
+        }
+        finally
+        {
+            Directory.Delete(dataPath, true);
+        }
+    }
+
+    [Fact]
+    public async Task HandleConnectChallenge_DuplicateWhileActive_IsSuppressed()
+    {
+        var dataPath = Path.Combine(Path.GetTempPath(), $"openclaw-node-test-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(dataPath);
+
+        try
+        {
+            using var client = new CapturingWindowsNodeClient(
+                "ws://localhost:18789",
+                "gateway-token",
+                dataPath);
+            var authorizationCalls = 0;
+            var authorizationStarted = new TaskCompletionSource(
+                TaskCreationOptions.RunContinuationsAsynchronously);
+            var releaseAuthorization = new TaskCompletionSource(
+                TaskCreationOptions.RunContinuationsAsynchronously);
+            client.HandshakeAuthorizationAsync = async _ =>
+            {
+                Interlocked.Increment(ref authorizationCalls);
+                authorizationStarted.TrySetResult();
+                await releaseAuthorization.Task;
+                return ReconnectAuthorizationResult.AllowedResult;
+            };
+            const string challenge = """
+                {
+                  "type": "event",
+                  "event": "connect.challenge",
+                  "payload": {
+                    "nonce": "duplicate-node",
+                    "ts": 1785824000000
+                  }
+                }
+                """;
+
+            var first = InvokeHandleEventAsync(client, challenge);
+            await authorizationStarted.Task.WaitAsync(TimeSpan.FromSeconds(2));
+            await InvokeHandleEventAsync(client, challenge);
+            releaseAuthorization.TrySetResult();
+            await first;
+
+            Assert.Equal(1, authorizationCalls);
+            Assert.Single(client.SentMessages);
+        }
+        finally
+        {
+            Directory.Delete(dataPath, true);
+        }
+    }
+
+    [Fact]
+    public async Task HandleConnectChallenge_MalformedFrameDoesNotConsumeSocketGate()
+    {
+        var dataPath = Path.Combine(Path.GetTempPath(), $"openclaw-node-test-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(dataPath);
+
+        try
+        {
+            using var client = new CapturingWindowsNodeClient(
+                "ws://localhost:18789",
+                "fake-gateway-token",
+                dataPath);
+            var authorizationCalls = 0;
+            client.HandshakeAuthorizationAsync = _ =>
+            {
+                authorizationCalls++;
+                return Task.FromResult(ReconnectAuthorizationResult.AllowedResult);
+            };
+
+            await InvokeHandleEventAsync(
+                client,
+                """
+                {
+                  "type": "event",
+                  "event": "connect.challenge",
+                  "payload": { "nonce": 42 }
+                }
+                """);
+            await InvokeHandleEventAsync(
+                client,
+                """
+                {
+                  "type": "event",
+                  "event": "connect.challenge",
+                  "payload": {
+                    "nonce": "valid-after-malformed",
+                    "ts": 1785824000000
+                  }
+                }
+                """);
+
+            Assert.Equal(1, authorizationCalls);
+            Assert.Single(client.SentMessages);
+        }
+        finally
+        {
+            Directory.Delete(dataPath, true);
+        }
+    }
+
+    [Fact]
+    public async Task HandleConnectChallenge_AuthorizationExceptionBlocksSocketGeneration()
+    {
+        var dataPath = Path.Combine(Path.GetTempPath(), $"openclaw-node-test-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(dataPath);
+
+        try
+        {
+            using var client = new CapturingWindowsNodeClient(
+                "ws://localhost:18789",
+                "fake-gateway-token",
+                dataPath);
+            var authorizationCalls = 0;
+            GatewayErrorKind? failureKind = null;
+            ConnectionStatus? lastStatus = null;
+            client.HandshakeAuthorizationAsync = _ =>
+            {
+                authorizationCalls++;
+                throw new IOException("listener verification failed");
+            };
+            client.ConnectionFailure += (_, kind) => failureKind = kind;
+            client.StatusChanged += (_, status) => lastStatus = status;
+            const string challenge = """
+                {
+                  "type": "event",
+                  "event": "connect.challenge",
+                  "payload": {
+                    "nonce": "authorization-error",
+                    "ts": 1785824000000
+                  }
+                }
+                """;
+
+            await InvokeHandleEventAsync(client, challenge);
+            await InvokeHandleEventAsync(client, challenge);
+
+            Assert.Equal(1, authorizationCalls);
+            Assert.Equal(GatewayErrorKind.Network, failureKind);
+            Assert.Equal(ConnectionStatus.Error, lastStatus);
+            Assert.Empty(client.SentMessages);
+        }
+        finally
+        {
+            Directory.Delete(dataPath, true);
+        }
+    }
+
+    [Fact]
+    public async Task HandleConnectChallenge_SendExceptionBlocksSocketGeneration()
+    {
+        var dataPath = Path.Combine(Path.GetTempPath(), $"openclaw-node-test-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(dataPath);
+
+        try
+        {
+            using var client = new ThrowingWindowsNodeClient(
+                "ws://localhost:18789",
+                "fake-gateway-token",
+                dataPath);
+            GatewayErrorKind? failureKind = null;
+            ConnectionStatus? lastStatus = null;
+            client.ConnectionFailure += (_, kind) => failureKind = kind;
+            client.StatusChanged += (_, status) => lastStatus = status;
+            const string challenge = """
+                {
+                  "type": "event",
+                  "event": "connect.challenge",
+                  "payload": {
+                    "nonce": "send-error",
+                    "ts": 1785824000000
+                  }
+                }
+                """;
+
+            await InvokeHandleEventAsync(client, challenge);
+            await InvokeHandleEventAsync(client, challenge);
+
+            Assert.Equal(GatewayErrorKind.Network, failureKind);
+            Assert.Equal(ConnectionStatus.Error, lastStatus);
+        }
+        finally
+        {
+            Directory.Delete(dataPath, true);
+        }
+    }
+
+    [Fact]
+    public async Task HandleConnectChallenge_StaleDenialCannotAffectReplacementGeneration()
+    {
+        var dataPath = Path.Combine(Path.GetTempPath(), $"openclaw-node-test-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(dataPath);
+
+        try
+        {
+            using var client = new CapturingWindowsNodeClient(
+                "ws://localhost:18789",
+                "gateway-token",
+                dataPath);
+            var authorizationStarted = new TaskCompletionSource(
+                TaskCreationOptions.RunContinuationsAsynchronously);
+            var releaseAuthorization = new TaskCompletionSource(
+                TaskCreationOptions.RunContinuationsAsynchronously);
+            var failures = new List<GatewayErrorKind>();
+            var statuses = new List<ConnectionStatus>();
+            client.ConnectionFailure += (_, kind) => failures.Add(kind);
+            client.StatusChanged += (_, status) => statuses.Add(status);
+            client.HandshakeAuthorizationAsync = async _ =>
+            {
+                authorizationStarted.TrySetResult();
+                await releaseAuthorization.Task;
+                return new ReconnectAuthorizationResult(
+                    false,
+                    GatewayErrorKind.LocalPortConflict,
+                    "stale owner");
+            };
+
+            var challenge = InvokeHandleEventAsync(
+                client,
+                """
+                {
+                  "type": "event",
+                  "event": "connect.challenge",
+                  "payload": {
+                    "nonce": "old-generation",
+                    "ts": 1785824000000
+                  }
+                }
+                """);
+            await authorizationStarted.Task.WaitAsync(TimeSpan.FromSeconds(2));
+            var generationField = typeof(WebSocketClientBase).GetField(
+                "_connectionGeneration",
+                BindingFlags.NonPublic | BindingFlags.Instance);
+            generationField!.SetValue(client, 1L);
+            releaseAuthorization.TrySetResult();
+            await challenge;
+
+            Assert.Empty(failures);
+            Assert.DoesNotContain(ConnectionStatus.Error, statuses);
             Assert.Empty(client.SentMessages);
         }
         finally
@@ -2055,6 +2317,7 @@ public class WindowsNodeClientTests
             BindingFlags.NonPublic | BindingFlags.Instance);
         Assert.NotNull(pendingRequestField);
         pendingRequestField.SetValue(client, requestId);
+        AuthorizeCurrentHandshake(client);
 
         using var correlated = JsonDocument.Parse(
             JsonSerializer.Serialize(new
@@ -2065,6 +2328,22 @@ public class WindowsNodeClientTests
                 payload = response.GetProperty("payload"),
             }));
         client.HandleResponse(correlated.RootElement);
+    }
+
+    private static void AuthorizeCurrentHandshake(WindowsNodeClient client)
+    {
+        var generationProperty = typeof(WebSocketClientBase).GetProperty(
+            "CurrentConnectionGeneration",
+            BindingFlags.NonPublic | BindingFlags.Instance);
+        var generation = (long)generationProperty!.GetValue(client)!;
+        var gateField = typeof(WindowsNodeClient).GetField(
+            "_handshakeChallengeGate",
+            BindingFlags.NonPublic | BindingFlags.Instance);
+        var gate = gateField!.GetValue(client)!;
+        var gateType = gate.GetType();
+        gateType.GetMethod("Reset")!.Invoke(gate, [generation]);
+        Assert.True((bool)gateType.GetMethod("TryBegin")!.Invoke(gate, [generation])!);
+        Assert.True((bool)gateType.GetMethod("TryAuthorize")!.Invoke(gate, [generation])!);
     }
 
     private static string InvokeBuildNodeConnectMessage(

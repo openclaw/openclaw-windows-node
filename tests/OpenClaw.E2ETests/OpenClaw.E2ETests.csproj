@@ -14,6 +14,8 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <!-- Proof-only SSH ownership tests depended on a production config-injection hook. -->
+    <Compile Remove="Setup\SshOwnershipAdversarialProofTests.cs" />
     <ProjectReference Include="..\..\src\OpenClaw.SetupEngine\OpenClaw.SetupEngine.csproj" />
     <ProjectReference Include="..\..\src\OpenClaw.Shared\OpenClaw.Shared.csproj" />
     <ProjectReference Include="..\..\src\OpenClaw.Connection\OpenClaw.Connection.csproj" />

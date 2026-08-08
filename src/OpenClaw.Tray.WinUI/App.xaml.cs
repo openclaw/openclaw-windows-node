@@ -295,19 +295,6 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
     private readonly AppCrashLogger _crashLogger = new(Path.Combine(DataPath, "crash.log"));
     private static readonly AppRunMarker s_runMarker = new(Path.Combine(DataPath, "run.marker"));
 
-    private static string? ResolveE2eSshConfigFile()
-    {
-        if (Environment.GetEnvironmentVariable("OPENCLAW_RUN_E2E") != "1")
-            return null;
-
-        var path = Environment.GetEnvironmentVariable("OPENCLAW_E2E_SSH_CONFIG_FILE");
-        if (string.IsNullOrWhiteSpace(path))
-            return null;
-        if (!File.Exists(path))
-            throw new FileNotFoundException("E2E SSH config file was not found.", path);
-        return Path.GetFullPath(path);
-    }
-
     public App()
     {
         WaitForRestartSourceIfRequested(Environment.GetCommandLineArgs());
@@ -722,8 +709,7 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
         // Register toast activation handler
         ToastNotificationManagerCompat.OnActivated += OnToastActivated;
 
-        var e2eSshConfigFile = ResolveE2eSshConfigFile();
-        _sshTunnelService = new SshTunnelService(new AppLogger(), e2eSshConfigFile);
+        _sshTunnelService = new SshTunnelService(new AppLogger());
         _sshTunnelService.TunnelExited += OnSshTunnelExited;
 
         // Initialize tray icon FIRST (window-less pattern from WinUIEx).
@@ -815,7 +801,7 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
             diagnostics: diagnostics,
             tunnelManager: _sshTunnelService,
             endpointProvenanceProbe: managedLocalPortProvenance.InspectAsync,
-            validationTunnelFactory: () => new SshTunnelService(appLogger, e2eSshConfigFile));
+            validationTunnelFactory: () => new SshTunnelService(appLogger));
         _connectionManager.OperatorClientChanged += OnOperatorClientChanged;
         _connectionManager.StateChanged += OnManagerStateChanged;
         _gatewayDirectConnectService = new GatewayDirectConnectService(
@@ -3781,7 +3767,19 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
         _pairingApprovalDialog.ShowForeground();
     }
 
-    private void RestartSshTunnel()
+    public async Task<bool> RestartSshTunnelAsync()
+    {
+        return _connectionManager is not null &&
+            await _connectionManager.RestartSshTunnelAsync();
+    }
+
+    private void RestartSshTunnel() =>
+        AsyncEventHandlerGuard.Run(
+            RestartSshTunnelCoreAsync,
+            new AppLogger(),
+            nameof(RestartSshTunnel));
+
+    private async Task RestartSshTunnelCoreAsync()
     {
         if (_settings?.UseSshTunnel != true)
         {
@@ -3800,26 +3798,21 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
                 remotePort = _settings.SshTunnelRemotePort
             });
 
-            _sshTunnelService?.Stop();
-            // Status is updated by OnManagerStateChanged when reconnect completes.
-            UpdateTrayIcon();
-
-            if (!EnsureSshTunnelConfigured())
+            var restarted = await RestartSshTunnelAsync();
+            UpdateStatusDetailWindow();
+            if (restarted)
             {
-                UpdateStatusDetailWindow();
+                _sshTunnelRecoveryBudget.Reset();
+                _toastService!.ShowToast(new ToastContentBuilder()
+                    .AddText("SSH tunnel")
+                    .AddText("Restarted and authenticated."));
+            }
+            else
+            {
                 _toastService!.ShowToast(new ToastContentBuilder()
                     .AddText("SSH tunnel restart failed")
-                    .AddText(_sshTunnelService?.LastError ?? "Check SSH tunnel settings and logs."));
-                return;
+                    .AddText("The owned tunnel or authenticated gateway connection could not be verified."));
             }
-
-            _sshTunnelRecoveryBudget.Reset();
-            ReconnectWithSyncedBrowserProxyForward();
-
-            UpdateStatusDetailWindow();
-            _toastService!.ShowToast(new ToastContentBuilder()
-                .AddText("SSH tunnel")
-                .AddText("Restarted; reconnecting to gateway."));
         }
         catch (Exception ex)
         {
@@ -4824,9 +4817,7 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
 
             try
             {
-                _sshTunnelService ??= new SshTunnelService(
-                    new AppLogger(),
-                    ResolveE2eSshConfigFile());
+                _sshTunnelService ??= new SshTunnelService(new AppLogger());
                 var includeBrowserProxy = BrowserProxySshTunnelForwardPolicy.ShouldInclude(
                     _settings.NodeBrowserProxyEnabled,
                     _settings.SshTunnelRemotePort,

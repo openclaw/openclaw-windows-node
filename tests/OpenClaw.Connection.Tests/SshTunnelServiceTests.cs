@@ -194,6 +194,47 @@ public sealed class SshTunnelServiceTests
     }
 
     [Fact]
+    public async Task StopIfOwnedAsync_CancellationInterruptsOperationLockWait()
+    {
+        using var service = new SshTunnelService(NullLogger.Instance);
+        var operationLockField = typeof(SshTunnelService).GetField(
+            "_operationLock",
+            System.Reflection.BindingFlags.Instance |
+            System.Reflection.BindingFlags.NonPublic);
+        var operationLock = Assert.IsType<object>(operationLockField?.GetValue(service));
+        using var cts = new CancellationTokenSource();
+        using var releaseLock = new ManualResetEventSlim();
+        var lockEntered = new TaskCompletionSource(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        var lockHolder = Task.Run(() =>
+        {
+            lock (operationLock)
+            {
+                lockEntered.TrySetResult();
+                releaseLock.Wait();
+            }
+        });
+        await lockEntered.Task.WaitAsync(TimeSpan.FromSeconds(2));
+        try
+        {
+            var stop = Task.Run(
+                async () => await service.StopIfOwnedAsync(
+                    new SshTunnelConfig("user", "host", 18789, 45678),
+                    ownershipGeneration: 1,
+                    cts.Token));
+            cts.Cancel();
+
+            await Assert.ThrowsAnyAsync<OperationCanceledException>(
+                () => stop.WaitAsync(TimeSpan.FromSeconds(2)));
+        }
+        finally
+        {
+            releaseLock.Set();
+            await lockHolder.WaitAsync(TimeSpan.FromSeconds(2));
+        }
+    }
+
+    [Fact]
     public void EnsurePortIsUnoccupied_RejectsExistingListener()
     {
         var snapshot = new WindowsTcpListenerSnapshotResult(

@@ -93,8 +93,7 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
     private bool _pairingRequiredAwaitingApproval;
     private string? _pairingRequiredRequestId;
     private bool _authFailed;
-    private int _handshakeAuthorizationBlocked;
-    private int _handshakeChallengeActive;
+    private readonly HandshakeChallengeGate _handshakeChallengeGate = new();
     private string? _lastSkillsStatusAgentId;
     private readonly bool _tokenIsBootstrapToken;
     private readonly bool _bootstrapPairAsNode;
@@ -159,14 +158,21 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
 
     protected override Task ProcessMessageAsync(string json)
     {
-        ProcessMessage(json);
+        ProcessMessageForConnection(json, CurrentConnectionGeneration);
+        return Task.CompletedTask;
+    }
+
+    protected override Task ProcessMessageForConnectionAsync(
+        string json,
+        long sourceConnectionGeneration)
+    {
+        ProcessMessageForConnection(json, sourceConnectionGeneration);
         return Task.CompletedTask;
     }
 
     protected override Task OnConnectedAsync()
     {
-        Volatile.Write(ref _handshakeAuthorizationBlocked, 0);
-        Volatile.Write(ref _handshakeChallengeActive, 0);
+        _handshakeChallengeGate.Reset(CurrentConnectionGeneration);
         ResetUnsupportedMethodFlags();
         RaiseTransportConnected();
         return Task.CompletedTask;
@@ -1736,7 +1742,10 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
         }
     }
 
-    private async Task SendConnectMessageAsync(string? nonce = null)
+    private async Task<bool> SendConnectMessageAsync(
+        string? nonce,
+        long connectionGeneration,
+        CancellationToken cancellationToken)
     {
         var requestId = Guid.NewGuid().ToString();
         TrackPendingRequest(requestId, "connect");
@@ -1821,7 +1830,14 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
 
         try
         {
-            await SendRawAsync(JsonSerializer.Serialize(msg));
+            var sent = await SendRawAsync(
+                    JsonSerializer.Serialize(msg),
+                    connectionGeneration,
+                    cancellationToken)
+                .ConfigureAwait(false);
+            if (!sent)
+                RemovePendingRequest(requestId);
+            return sent;
         }
         catch
         {
@@ -2059,8 +2075,16 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
 
     // --- Message processing ---
 
-    private void ProcessMessage(string json)
+    private void ProcessMessage(string json) =>
+        ProcessMessageForConnection(json, CurrentConnectionGeneration);
+
+    private void ProcessMessageForConnection(
+        string json,
+        long sourceConnectionGeneration)
     {
+        if (!IsCurrentConnectionGeneration(sourceConnectionGeneration))
+            return;
+
         try
         {
             using var doc = JsonDocument.Parse(json);
@@ -2072,10 +2096,13 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
             switch (type)
             {
                 case "res":
-                    HandleResponse(root);
+                    HandleResponseForConnection(root, sourceConnectionGeneration);
                     break;
                 case "event":
-                    HandleEvent(root, json.Length);
+                    HandleEventForConnection(
+                        root,
+                        json.Length,
+                        sourceConnectionGeneration);
                     break;
             }
         }
@@ -2089,7 +2116,9 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
         }
     }
 
-    private void HandleResponse(JsonElement root)
+    private void HandleResponseForConnection(
+        JsonElement root,
+        long sourceConnectionGeneration)
     {
         string? requestMethod = null;
         string? requestId = null;
@@ -2176,10 +2205,11 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
         // Handle handshake acknowledgement payload.
         if (payload.TryGetProperty("type", out var t) && t.GetString() == "hello-ok")
         {
-            if (HandshakeAuthorizationAsync is not null &&
+            if (!IsCurrentConnectionGeneration(sourceConnectionGeneration) ||
+                !_handshakeChallengeGate.IsAuthorized(sourceConnectionGeneration) ||
                 !string.Equals(requestMethod, "connect", StringComparison.Ordinal))
             {
-                _logger.Warn("[HANDSHAKE] Ignoring uncorrelated hello-ok on guarded validation connection.");
+                _logger.Warn("[HANDSHAKE] Ignoring stale or uncorrelated hello-ok.");
                 return;
             }
 
@@ -3096,7 +3126,10 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
         return null;
     }
 
-    private void HandleEvent(JsonElement root, int rawMessageLength)
+    private void HandleEventForConnection(
+        JsonElement root,
+        int rawMessageLength,
+        long sourceConnectionGeneration)
     {
         if (!root.TryGetProperty("event", out var eventProp)) return;
         var eventType = eventProp.GetString();
@@ -3105,7 +3138,9 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
         switch (eventType)
         {
             case "connect.challenge":
-                HandleConnectChallenge(root);
+                HandleConnectChallengeForConnection(
+                    root,
+                    sourceConnectionGeneration);
                 break;
             case "agent":
                 HandleAgentEvent(root, rawMessageLength);
@@ -3338,31 +3373,46 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
         }
     }
 
-    private void HandleConnectChallenge(JsonElement root)
+    private void HandleConnectChallenge(JsonElement root) =>
+        HandleConnectChallengeForConnection(root, CurrentConnectionGeneration);
+
+    private void HandleConnectChallengeForConnection(
+        JsonElement root,
+        long sourceConnectionGeneration)
     {
-        if (Volatile.Read(ref _handshakeAuthorizationBlocked) != 0 ||
-            Interlocked.CompareExchange(ref _handshakeChallengeActive, 1, 0) != 0)
+        if (!IsCurrentConnectionGeneration(sourceConnectionGeneration))
+            return;
+
+        if (!root.TryGetProperty("payload", out var payload) ||
+            payload.ValueKind != JsonValueKind.Object)
         {
-            _logger.Warn("[HANDSHAKE] Ignoring duplicate challenge on the current socket.");
+            _logger.Warn("[HANDSHAKE] Ignoring malformed challenge without an object payload.");
             return;
         }
 
         string? nonce = null;
-        long? ts = null;
-        if (root.TryGetProperty("payload", out var payload))
+        if (payload.TryGetProperty("nonce", out var nonceProp))
         {
-            if (payload.TryGetProperty("nonce", out var nonceProp))
+            if (nonceProp.ValueKind != JsonValueKind.String)
             {
-                nonce = nonceProp.GetString();
+                _logger.Warn("[HANDSHAKE] Ignoring malformed challenge with a non-string nonce.");
+                return;
             }
-            ts = ConnectAuthTimestamp.ReadChallengeTimestamp(payload);
+            nonce = nonceProp.GetString();
+        }
+        var ts = ConnectAuthTimestamp.ReadChallengeTimestamp(payload);
+
+        if (!_handshakeChallengeGate.TryBegin(sourceConnectionGeneration))
+        {
+            _logger.Warn("[HANDSHAKE] Ignoring duplicate challenge on the current socket.");
+            return;
         }
 
         _challengeTimestampMs = ts;
         _currentChallengeNonce = nonce;
         
         _logger.Info($"[HANDSHAKE] Received connect.challenge: nonce={nonce}, ts={ts}");
-        _ = SendConnectSafeAsync(nonce, CurrentConnectionGeneration);
+        _ = SendConnectSafeAsync(nonce, sourceConnectionGeneration);
     }
 
     private async Task SendConnectSafeAsync(string? nonce, long connectionGeneration)
@@ -3371,36 +3421,56 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
         {
             if (HandshakeAuthorizationAsync is not null)
             {
-                var authorization = await HandshakeAuthorizationAsync(CancellationToken.None)
+                var authorization = await HandshakeAuthorizationAsync(CancellationToken)
                     .ConfigureAwait(false);
                 if (!IsCurrentConnectionGeneration(connectionGeneration))
                     return;
                 if (!authorization.Allowed)
                 {
-                    Volatile.Write(ref _handshakeAuthorizationBlocked, 1);
+                    if (!_handshakeChallengeGate.TryBlock(connectionGeneration))
+                        return;
                     RaiseConnectionFailure(authorization.FailureKind);
-                    RaiseAuthenticationFailed(
-                        authorization.Detail ?? "Connection authorization failed.");
+                    if (authorization.FailureKind is GatewayErrorKind.Auth
+                        or GatewayErrorKind.DeviceTokenMismatch
+                        or GatewayErrorKind.TokenDrift)
+                    {
+                        RaiseAuthenticationFailed(
+                            authorization.Detail ?? "Connection authorization failed.");
+                    }
                     AbortCurrentWebSocket(connectionGeneration);
                     RaiseStatusChanged(ConnectionStatus.Error);
                     return;
                 }
+                if (!_handshakeChallengeGate.TryAuthorize(connectionGeneration))
+                    return;
+            }
+            else if (!_handshakeChallengeGate.TryAuthorize(connectionGeneration))
+            {
+                return;
             }
 
-            if (!IsCurrentConnectionGeneration(connectionGeneration) ||
-                Volatile.Read(ref _handshakeAuthorizationBlocked) != 0)
-                return;
-
-            await SendConnectMessageAsync(nonce);
+            var sent = await SendConnectMessageAsync(
+                    nonce,
+                    connectionGeneration,
+                    CancellationToken)
+                .ConfigureAwait(false);
+            if (!sent && IsCurrentConnectionGeneration(connectionGeneration))
+                AbortCurrentWebSocket(connectionGeneration);
+        }
+        catch (OperationCanceledException) when (
+            CancellationToken.IsCancellationRequested ||
+            !IsCurrentConnectionGeneration(connectionGeneration))
+        {
         }
         catch (Exception ex)
         {
             _logger.Error($"[HANDSHAKE] FATAL: SendConnectMessageAsync threw: {ex}");
-        }
-        finally
-        {
-            if (IsCurrentConnectionGeneration(connectionGeneration))
-                Volatile.Write(ref _handshakeChallengeActive, 0);
+            if (_handshakeChallengeGate.TryBlock(connectionGeneration))
+            {
+                RaiseConnectionFailure(GatewayErrorKind.Network);
+                AbortCurrentWebSocket(connectionGeneration);
+                RaiseStatusChanged(ConnectionStatus.Error);
+            }
         }
     }
 

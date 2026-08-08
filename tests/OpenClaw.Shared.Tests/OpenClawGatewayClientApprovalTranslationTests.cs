@@ -23,10 +23,10 @@ public class OpenClawGatewayClientApprovalTranslationTests
     {
         using var doc = JsonDocument.Parse(json);
         var method = typeof(OpenClawGatewayClient).GetMethod(
-            "HandleEvent",
+            "HandleEventForConnection",
             BindingFlags.NonPublic | BindingFlags.Instance);
         Assert.NotNull(method);
-        method!.Invoke(client, new object[] { doc.RootElement, json.Length });
+        method!.Invoke(client, new object[] { doc.RootElement, json.Length, 0L });
     }
 
     [Fact]
@@ -308,10 +308,10 @@ public class OpenClawGatewayClientApprovalTranslationTests
     {
         using var doc = JsonDocument.Parse(json);
         var method = typeof(OpenClawGatewayClient).GetMethod(
-            "HandleResponse",
+            "HandleResponseForConnection",
             BindingFlags.NonPublic | BindingFlags.Instance);
         Assert.NotNull(method);
-        method!.Invoke(client, new object[] { doc.RootElement });
+        method!.Invoke(client, new object[] { doc.RootElement, 0L });
     }
 
     [Fact]

@@ -470,6 +470,18 @@ public sealed class AppRefactorContractTests
     }
 
     [Fact]
+    public void UserSshRestart_StaysDelegatedToConnectionManager()
+    {
+        var source = ReadAppSources();
+        var method = ExtractMethod(source, "RestartSshTunnelAsync");
+
+        Assert.Contains("_connectionManager.RestartSshTunnelAsync()", method);
+        Assert.DoesNotContain("_sshTunnelService", method);
+        Assert.DoesNotContain("EnsureSshTunnelConfigured", method);
+        Assert.DoesNotContain("ReconnectWithSyncedBrowserProxyForward", method);
+    }
+
+    [Fact]
     public void ConnectionIssueNotification_PrefersNodeOwnedFailuresBeforeGenericGatewayError()
     {
         var source = ReadAppSources();

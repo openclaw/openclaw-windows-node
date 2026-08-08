@@ -15,6 +15,79 @@ public readonly record struct ReconnectAuthorizationResult(
     public static ReconnectAuthorizationResult AllowedResult { get; } = new(true);
 }
 
+internal enum HandshakeChallengeState
+{
+    Idle,
+    Active,
+    Authorized,
+    Blocked,
+}
+
+internal sealed class HandshakeChallengeGate
+{
+    private readonly object _lock = new();
+    private long _generation;
+    private HandshakeChallengeState _state;
+
+    public void Reset(long generation)
+    {
+        lock (_lock)
+        {
+            _generation = generation;
+            _state = HandshakeChallengeState.Idle;
+        }
+    }
+
+    public bool TryBegin(long generation)
+    {
+        lock (_lock)
+        {
+            if (_generation != generation)
+                return false;
+
+            if (_state != HandshakeChallengeState.Idle)
+                return false;
+
+            _state = HandshakeChallengeState.Active;
+            return true;
+        }
+    }
+
+    public bool TryAuthorize(long generation)
+    {
+        lock (_lock)
+        {
+            if (_generation != generation || _state != HandshakeChallengeState.Active)
+                return false;
+
+            _state = HandshakeChallengeState.Authorized;
+            return true;
+        }
+    }
+
+    public bool TryBlock(long generation)
+    {
+        lock (_lock)
+        {
+            if (_generation != generation ||
+                _state is not (HandshakeChallengeState.Active or HandshakeChallengeState.Authorized))
+                return false;
+
+            _state = HandshakeChallengeState.Blocked;
+            return true;
+        }
+    }
+
+    public bool IsAuthorized(long generation)
+    {
+        lock (_lock)
+        {
+            return _generation == generation &&
+                _state == HandshakeChallengeState.Authorized;
+        }
+    }
+}
+
 /// <summary>
 /// Abstract base class for WebSocket-based gateway clients.
 /// Extracts shared connection lifecycle: connect, listen, reconnect, send, dispose.
@@ -96,6 +169,15 @@ public abstract class WebSocketClientBase : IDisposable
     /// Node directly uses its async implementation.
     /// </summary>
     protected abstract Task ProcessMessageAsync(string json);
+
+    /// <summary>
+    /// Process a message attributed to the socket generation that received it.
+    /// Override when message side effects or responses must remain bound to that socket.
+    /// </summary>
+    protected virtual Task ProcessMessageForConnectionAsync(
+        string json,
+        long sourceConnectionGeneration) =>
+        ProcessMessageAsync(json);
 
     /// <summary>Receive buffer size in bytes. Gateway: 16384, Node: 65536.</summary>
     protected abstract int ReceiveBufferSize { get; }
@@ -316,7 +398,9 @@ public abstract class WebSocketClientBase : IDisposable
                     if (result.EndOfMessage && sb.Length == 0)
                     {
                         // Fast path: single-frame message — decode directly, skip StringBuilder round-trip
-                        await ProcessMessageAsync(Encoding.UTF8.GetString(buffer, 0, result.Count));
+                        await ProcessMessageForConnectionAsync(
+                            Encoding.UTF8.GetString(buffer, 0, result.Count),
+                            connectionGeneration);
                     }
                     else
                     {
@@ -346,7 +430,9 @@ public abstract class WebSocketClientBase : IDisposable
 
                         if (result.EndOfMessage)
                         {
-                            await ProcessMessageAsync(sb.ToString());
+                            await ProcessMessageForConnectionAsync(
+                                sb.ToString(),
+                                connectionGeneration);
                             sb.Clear();
                         }
                     }
@@ -526,6 +612,7 @@ public abstract class WebSocketClientBase : IDisposable
         {
             await _sendLock.WaitAsync(_cts.Token);
         }
+
         catch (OperationCanceledException)
         {
             // Shutdown canceled the wait; drop the send silently.
@@ -573,6 +660,77 @@ public abstract class WebSocketClientBase : IDisposable
             catch (WebSocketException ex) when (ex.WebSocketErrorCode == WebSocketError.InvalidState)
             {
                 _logger.Warn($"WebSocket send failed (state changed): {ex.Message}");
+            }
+        }
+        finally
+        {
+            _sendLock.Release();
+        }
+    }
+
+    /// <summary>
+    /// Sends only when the captured socket generation still owns the transport immediately before
+    /// the write. Used for credential-bearing handshake frames.
+    /// </summary>
+    protected virtual async Task<bool> SendRawAsync(
+        string message,
+        long expectedConnectionGeneration,
+        CancellationToken cancellationToken)
+    {
+        using var linkedCancellation = CancellationTokenSource.CreateLinkedTokenSource(
+            _cts.Token,
+            cancellationToken);
+        try
+        {
+            await _sendLock.WaitAsync(linkedCancellation.Token).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException)
+        {
+            return false;
+        }
+        catch (ObjectDisposedException)
+        {
+            return false;
+        }
+
+        try
+        {
+            var ws = _webSocket;
+            if (ws?.State != WebSocketState.Open ||
+                !IsCurrentConnection(ws, expectedConnectionGeneration))
+            {
+                return false;
+            }
+
+            var byteCount = Encoding.UTF8.GetByteCount(message);
+            var buffer = ArrayPool<byte>.Shared.Rent(byteCount);
+            try
+            {
+                var written = Encoding.UTF8.GetBytes(message, buffer);
+                await ws.SendAsync(
+                        buffer.AsMemory(0, written),
+                        WebSocketMessageType.Text,
+                        true,
+                        linkedCancellation.Token)
+                    .ConfigureAwait(false);
+                return IsCurrentConnection(ws, expectedConnectionGeneration);
+            }
+            catch (OperationCanceledException)
+            {
+                return false;
+            }
+            catch (ObjectDisposedException)
+            {
+                return false;
+            }
+            catch (WebSocketException ex) when (ex.WebSocketErrorCode == WebSocketError.InvalidState)
+            {
+                _logger.Warn($"WebSocket send failed (state changed): {ex.Message}");
+                return false;
+            }
+            finally
+            {
+                ArrayPool<byte>.Shared.Return(buffer);
             }
         }
         finally

@@ -262,6 +262,384 @@ public class GatewayConnectionManagerTests : IDisposable
     }
 
     [Fact]
+    public async Task RestartSshTunnelAsync_ReturnsSuccessOnlyAfterFreshHandshake()
+    {
+        var (manager, tunnel, factory, tunnelConfig) = await CreateConnectedSshManagerAsync();
+        using (manager)
+        {
+            var listenerChecksBeforeRestart = tunnel.OwnedListenerCheckCount;
+            var restart = manager.RestartSshTunnelAsync();
+            await WaitUntilAsync(() => factory.CreatedClients.Count == 2);
+
+            Assert.False(restart.IsCompleted);
+            factory.CreatedClients[1].SimulateHandshake();
+
+            Assert.True(await restart.WaitAsync(TimeSpan.FromSeconds(2)));
+            Assert.True(tunnel.IsActive);
+            Assert.Equal(tunnelConfig, tunnel.ActiveConfig);
+            Assert.Equal(
+                listenerChecksBeforeRestart + 2,
+                tunnel.OwnedListenerCheckCount);
+        }
+    }
+
+    [Fact]
+    public async Task RestartSshTunnelAsync_ConnectionLossDuringListenerCheckFails()
+    {
+        var (manager, tunnel, factory, _) = await CreateConnectedSshManagerAsync();
+        using (manager)
+        {
+            var listenerCheckStarted = new TaskCompletionSource(
+                TaskCreationOptions.RunContinuationsAsynchronously);
+            var releaseListenerCheck = new TaskCompletionSource<bool>(
+                TaskCreationOptions.RunContinuationsAsynchronously);
+            var checkCount = 0;
+            tunnel.OwnedListenerCheckAsync = cancellationToken =>
+            {
+                if (Interlocked.Increment(ref checkCount) == 2)
+                {
+                    listenerCheckStarted.TrySetResult();
+                    return releaseListenerCheck.Task.WaitAsync(cancellationToken);
+                }
+
+                return Task.FromResult(true);
+            };
+
+            var restart = manager.RestartSshTunnelAsync();
+            await WaitUntilAsync(() => factory.CreatedClients.Count == 2);
+            factory.CreatedClients[1].SimulateHandshake();
+            await listenerCheckStarted.Task.WaitAsync(TimeSpan.FromSeconds(2));
+            factory.CreatedClients[1].SimulateStatusChanged(ConnectionStatus.Error);
+            releaseListenerCheck.TrySetResult(true);
+
+            Assert.False(await restart.WaitAsync(TimeSpan.FromSeconds(2)));
+            Assert.False(tunnel.IsActive);
+        }
+    }
+
+    [Fact]
+    public async Task RestartSshTunnelAsync_ManagerDisposalCancelsInFlightRestart()
+    {
+        var (manager, tunnel, factory, _) = await CreateConnectedSshManagerAsync();
+        var restart = manager.RestartSshTunnelAsync();
+        await WaitUntilAsync(() => factory.CreatedClients.Count == 2);
+
+        await manager.DisposeAsync();
+
+        Assert.False(await restart.WaitAsync(TimeSpan.FromSeconds(2)));
+        Assert.False(tunnel.IsActive);
+    }
+
+    [Fact]
+    public async Task RestartSshTunnelAsync_InactiveTunnelStartsFreshOwnedGeneration()
+    {
+        var (manager, tunnel, factory, tunnelConfig) = await CreateConnectedSshManagerAsync();
+        using (manager)
+        {
+            tunnel.SimulateExit();
+
+            var restart = manager.RestartSshTunnelAsync();
+            await WaitUntilAsync(() => factory.CreatedClients.Count == 2);
+            factory.CreatedClients[1].SimulateHandshake();
+
+            Assert.True(await restart.WaitAsync(TimeSpan.FromSeconds(2)));
+            Assert.True(tunnel.IsActive);
+            Assert.Equal(tunnelConfig, tunnel.ActiveConfig);
+        }
+    }
+
+    [Fact]
+    public async Task RestartSshTunnelAsync_UnhealthyOwnedListenerStartsFreshGeneration()
+    {
+        var (manager, tunnel, factory, tunnelConfig) = await CreateConnectedSshManagerAsync();
+        using (manager)
+        {
+            tunnel.OwnedListenerReady = false;
+            tunnel.BecomeReadyOnStart = true;
+
+            var restart = manager.RestartSshTunnelAsync();
+            await WaitUntilAsync(() => factory.CreatedClients.Count == 2);
+            factory.CreatedClients[1].SimulateHandshake();
+
+            Assert.True(await restart.WaitAsync(TimeSpan.FromSeconds(2)));
+            Assert.True(tunnel.IsActive);
+            Assert.Equal(tunnelConfig, tunnel.ActiveConfig);
+        }
+    }
+
+    [Fact]
+    public async Task RestartSshTunnelAsync_NormalizedConfigMatchesOwnedTunnel()
+    {
+        var (manager, tunnel, factory, _) = await CreateConnectedSshManagerAsync(
+            tunnelUser: " user ",
+            tunnelHost: " host.example ");
+        using (manager)
+        {
+            var restart = manager.RestartSshTunnelAsync();
+            await WaitUntilAsync(() => factory.CreatedClients.Count == 2);
+            factory.CreatedClients[1].SimulateHandshake();
+
+            Assert.True(await restart.WaitAsync(TimeSpan.FromSeconds(2)));
+            Assert.Equal("user", tunnel.ActiveConfig?.User);
+            Assert.Equal("host.example", tunnel.ActiveConfig?.Host);
+        }
+    }
+
+    [Fact]
+    public async Task RestartSshTunnelAsync_TimeoutFailsAndCleansCapturedGeneration()
+    {
+        var (manager, tunnel, factory, _) = await CreateConnectedSshManagerAsync(
+            restartTimeout: TimeSpan.FromMilliseconds(100));
+        using (manager)
+        {
+            var restarted = await manager.RestartSshTunnelAsync()
+                .WaitAsync(TimeSpan.FromSeconds(2));
+
+            Assert.False(restarted);
+            Assert.Equal(2, factory.CreatedClients.Count);
+            Assert.False(tunnel.IsActive);
+        }
+    }
+
+    [Fact]
+    public async Task RestartSshTunnelAsync_CleanupStopReceivesBoundedCancellation()
+    {
+        var (manager, tunnel, _, _) = await CreateConnectedSshManagerAsync(
+            restartTimeout: TimeSpan.FromMilliseconds(50));
+        using (manager)
+        {
+            CancellationToken cleanupToken = default;
+            tunnel.StopIfOwnedAsyncOverride = token =>
+            {
+                cleanupToken = token;
+                return Task.FromResult(false);
+            };
+
+            Assert.False(
+                await manager.RestartSshTunnelAsync()
+                    .WaitAsync(TimeSpan.FromSeconds(2)));
+            Assert.True(cleanupToken.CanBeCanceled);
+        }
+    }
+
+    [Fact]
+    public async Task RestartSshTunnelAsync_CancellationFailsAndCleansCapturedGeneration()
+    {
+        var (manager, tunnel, factory, _) = await CreateConnectedSshManagerAsync();
+        using (manager)
+        using (var cts = new CancellationTokenSource())
+        {
+            var restart = manager.RestartSshTunnelAsync(cts.Token);
+            await WaitUntilAsync(() => factory.CreatedClients.Count == 2);
+            cts.Cancel();
+
+            Assert.False(await restart.WaitAsync(TimeSpan.FromSeconds(2)));
+            Assert.False(tunnel.IsActive);
+        }
+    }
+
+    [Fact]
+    public async Task RestartSshTunnelAsync_AuthenticationFailureDoesNotReportSuccess()
+    {
+        var (manager, tunnel, factory, _) = await CreateConnectedSshManagerAsync();
+        using (manager)
+        {
+            var restart = manager.RestartSshTunnelAsync();
+            await WaitUntilAsync(() => factory.CreatedClients.Count == 2);
+            factory.CreatedClients[1].SimulateAuthFailed("token mismatch");
+
+            Assert.False(await restart.WaitAsync(TimeSpan.FromSeconds(2)));
+            Assert.False(tunnel.IsActive);
+        }
+    }
+
+    [Fact]
+    public async Task RestartSshTunnelAsync_SupersededConnectionDoesNotCleanReplacement()
+    {
+        var (manager, tunnel, factory, _) = await CreateConnectedSshManagerAsync();
+        using (manager)
+        {
+            var restart = manager.RestartSshTunnelAsync();
+            await WaitUntilAsync(() => factory.CreatedClients.Count == 2);
+
+            await manager.ReconnectAsync();
+            await WaitUntilAsync(() => factory.CreatedClients.Count == 3);
+
+            Assert.False(await restart.WaitAsync(TimeSpan.FromSeconds(2)));
+            Assert.True(tunnel.IsActive);
+            Assert.Equal(3, factory.CreatedClients.Count);
+        }
+    }
+
+    [Fact]
+    public async Task RestartSshTunnelAsync_OwnerReplacementFailsWithoutStoppingReplacement()
+    {
+        var (manager, tunnel, factory, _) = await CreateConnectedSshManagerAsync();
+        using (manager)
+        {
+            var restart = manager.RestartSshTunnelAsync();
+            await WaitUntilAsync(() => factory.CreatedClients.Count == 2);
+            tunnel.OwnershipGeneration++;
+            factory.CreatedClients[1].SimulateHandshake();
+
+            Assert.False(await restart.WaitAsync(TimeSpan.FromSeconds(2)));
+            Assert.True(tunnel.IsActive);
+        }
+    }
+
+    [Fact]
+    public async Task RestartSshTunnelAsync_CurrentRecordMutationFails()
+    {
+        var (manager, tunnel, factory, tunnelConfig) = await CreateConnectedSshManagerAsync();
+        using (manager)
+        {
+            var restart = manager.RestartSshTunnelAsync();
+            await WaitUntilAsync(() => factory.CreatedClients.Count == 2);
+            _registry.AddOrUpdate(new GatewayRecord
+            {
+                Id = "gw-restart-user",
+                Url = "wss://test",
+                SshTunnel = tunnelConfig with { RemotePort = tunnelConfig.RemotePort + 1 },
+                SharedGatewayToken = "gateway-token",
+            });
+            factory.CreatedClients[1].SimulateHandshake();
+
+            Assert.False(await restart.WaitAsync(TimeSpan.FromSeconds(2)));
+            Assert.False(tunnel.IsActive);
+        }
+    }
+
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task RestartSshTunnelAsync_RecordMutationDuringListenerCheckFails(
+        bool mutateEndpoint)
+    {
+        var (manager, tunnel, factory, _) = await CreateConnectedSshManagerAsync();
+        using (manager)
+        {
+            var original = Assert.IsType<GatewayRecord>(_registry.GetActive());
+            var listenerCheckStarted = new TaskCompletionSource(
+                TaskCreationOptions.RunContinuationsAsynchronously);
+            var releaseListenerCheck = new TaskCompletionSource<bool>(
+                TaskCreationOptions.RunContinuationsAsynchronously);
+            var checkCount = 0;
+            tunnel.OwnedListenerCheckAsync = cancellationToken =>
+            {
+                if (Interlocked.Increment(ref checkCount) == 2)
+                {
+                    listenerCheckStarted.TrySetResult();
+                    return releaseListenerCheck.Task.WaitAsync(cancellationToken);
+                }
+
+                return Task.FromResult(true);
+            };
+
+            var restart = manager.RestartSshTunnelAsync();
+            await WaitUntilAsync(() => factory.CreatedClients.Count == 2);
+            factory.CreatedClients[1].SimulateHandshake();
+            await listenerCheckStarted.Task.WaitAsync(TimeSpan.FromSeconds(2));
+            _registry.AddOrUpdate(
+                mutateEndpoint
+                    ? original with { Url = "wss://replacement.example" }
+                    : original with { SharedGatewayToken = "second" });
+            releaseListenerCheck.TrySetResult(true);
+
+            Assert.False(await restart.WaitAsync(TimeSpan.FromSeconds(2)));
+            Assert.False(tunnel.IsActive);
+        }
+    }
+
+    [Fact]
+    public async Task RestartSshTunnelAsync_ActiveGatewayReplacementWithSameConfigFails()
+    {
+        var (manager, tunnel, factory, tunnelConfig) = await CreateConnectedSshManagerAsync();
+        using (manager)
+        {
+            var restart = manager.RestartSshTunnelAsync();
+            await WaitUntilAsync(() => factory.CreatedClients.Count == 2);
+            _registry.AddOrUpdate(new GatewayRecord
+            {
+                Id = "gw-restart-replacement",
+                Url = "wss://replacement.example",
+                SshTunnel = tunnelConfig,
+                SharedGatewayToken = "gateway-token",
+            });
+            _registry.SetActive("gw-restart-replacement");
+            factory.CreatedClients[1].SimulateHandshake();
+
+            Assert.False(await restart.WaitAsync(TimeSpan.FromSeconds(2)));
+            Assert.False(tunnel.IsActive);
+        }
+    }
+
+    [Fact]
+    public async Task RestartSshTunnelAsync_TimeoutBeforeTransitionLockReturnsPromptly()
+    {
+        var (manager, _, _, _) = await CreateConnectedSshManagerAsync(
+            restartTimeout: TimeSpan.FromMilliseconds(100));
+        using (manager)
+        {
+            var semaphoreField = typeof(GatewayConnectionManager).GetField(
+                "_transitionSemaphore",
+                System.Reflection.BindingFlags.Instance |
+                System.Reflection.BindingFlags.NonPublic);
+            var semaphore = Assert.IsType<SemaphoreSlim>(semaphoreField?.GetValue(manager));
+            await semaphore.WaitAsync();
+            try
+            {
+                Assert.False(
+                    await manager.RestartSshTunnelAsync()
+                        .WaitAsync(TimeSpan.FromSeconds(2)));
+            }
+            finally
+            {
+                semaphore.Release();
+            }
+        }
+    }
+
+    private async Task<(
+        GatewayConnectionManager Manager,
+        CountingTunnelManager Tunnel,
+        MockClientFactory Factory,
+        SshTunnelConfig TunnelConfig)> CreateConnectedSshManagerAsync(
+            TimeSpan? restartTimeout = null,
+            string tunnelUser = "user",
+            string tunnelHost = "host.example")
+    {
+            var tunnelConfig = new SshTunnelConfig(
+                tunnelUser,
+                tunnelHost,
+                18789,
+                45678);
+        _registry.AddOrUpdate(new GatewayRecord
+        {
+            Id = "gw-restart-user",
+            Url = "wss://test",
+            SharedGatewayToken = "gateway-token",
+            SshTunnel = tunnelConfig,
+        });
+        _registry.SetActive("gw-restart-user");
+        _resolver.OperatorCredential = new GatewayCredential("gateway-token", false, "test");
+        var tunnel = new CountingTunnelManager();
+        var factory = new MockClientFactory();
+        var manager = new GatewayConnectionManager(
+            _resolver,
+            factory,
+            _registry,
+            NullLogger.Instance,
+            tunnelManager: tunnel,
+            manualSshRestartTimeout: restartTimeout);
+
+        await manager.ConnectAsync("gw-restart-user");
+        factory.CreatedClients[0].SimulateHandshake();
+        await WaitUntilAsync(
+            () => manager.CurrentSnapshot.OperatorState == RoleConnectionState.Connected);
+        return (manager, tunnel, factory, tunnelConfig);
+    }
+
+    [Fact]
     public async Task PassiveGatewayRestart_ReusesLiveClientsAndPreservesDurableIdentity()
     {
         _registry.AddOrUpdate(new GatewayRecord
@@ -1185,6 +1563,86 @@ public class GatewayConnectionManagerTests : IDisposable
         Assert.Contains("credentials were not sent", authorization.Detail);
     }
 
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task SshHandshakeAuthorization_RejectsEndpointOrCredentialMutation(
+        bool mutateEndpoint)
+    {
+        var ssh = new SshTunnelConfig("user", "host.example", 18789, 45678);
+        var original = new GatewayRecord
+        {
+            Id = "gw-ssh-mutation",
+            Url = "wss://remote.example",
+            SharedGatewayToken = "first",
+            SshTunnel = ssh,
+        };
+        _registry.AddOrUpdate(original);
+        _registry.SetActive(original.Id);
+        _resolver.OperatorCredential = new GatewayCredential(
+            "first",
+            IsBootstrapToken: false,
+            CredentialResolver.SourceSharedGatewayToken);
+        var tunnel = new CountingTunnelManager();
+        using var manager = new GatewayConnectionManager(
+            _resolver,
+            _factory,
+            _registry,
+            NullLogger.Instance,
+            tunnelManager: tunnel);
+
+        await manager.ConnectAsync(original.Id);
+        var authorizeHandshake = Assert.IsType<
+            Func<CancellationToken, Task<ReconnectAuthorizationResult>>>(
+            Assert.Single(_factory.CreatedClients).DataClient.HandshakeAuthorizationAsync);
+        _registry.AddOrUpdate(
+            mutateEndpoint
+                ? original with { Url = "wss://replacement.example" }
+                : original with { SharedGatewayToken = "second" });
+
+        var authorization = await authorizeHandshake(CancellationToken.None);
+
+        Assert.False(authorization.Allowed);
+        Assert.Equal(GatewayErrorKind.LocalPortConflict, authorization.FailureKind);
+        Assert.Contains("changed before", authorization.Detail);
+    }
+
+    [Fact]
+    public async Task SshOwnershipFailure_DoesNotStopReplacementTunnelGeneration()
+    {
+        var ssh = new SshTunnelConfig("user", "host.example", 18789, 45678);
+        _registry.AddOrUpdate(new GatewayRecord
+        {
+            Id = "gw-ssh-owner-replacement",
+            Url = "wss://remote.example",
+            SharedGatewayToken = "first",
+            SshTunnel = ssh,
+        });
+        _registry.SetActive("gw-ssh-owner-replacement");
+        _resolver.OperatorCredential = new GatewayCredential(
+            "first",
+            IsBootstrapToken: false,
+            CredentialResolver.SourceSharedGatewayToken);
+        var tunnel = new CountingTunnelManager();
+        tunnel.OwnedListenerCheckAsync = _ =>
+        {
+            tunnel.OwnershipGeneration++;
+            return Task.FromResult(false);
+        };
+        using var manager = new GatewayConnectionManager(
+            _resolver,
+            _factory,
+            _registry,
+            NullLogger.Instance,
+            tunnelManager: tunnel);
+
+        await manager.ConnectAsync("gw-ssh-owner-replacement");
+
+        Assert.True(tunnel.IsActive);
+        Assert.Equal(0, tunnel.StopCount);
+        Assert.Empty(_factory.CreatedClients);
+    }
+
     [Fact]
     public async Task SshConnectWithoutTunnelManager_FailsBeforeClientCreation()
     {
@@ -1279,12 +1737,12 @@ public class GatewayConnectionManagerTests : IDisposable
         await manager.ConnectAsync("gw-ssh");
         var lifecycle = Assert.Single(_factory.CreatedClients);
         Assert.NotNull(lifecycle.DataClient.HandshakeAuthorizationAsync);
-        var failure = new TaskCompletionSource<string>(
+        var failure = new TaskCompletionSource<GatewayErrorKind>(
             TaskCreationOptions.RunContinuationsAsynchronously);
         var errorStatus = new TaskCompletionSource(
             TaskCreationOptions.RunContinuationsAsynchronously);
-        lifecycle.DataClient.AuthenticationFailed += (_, message) =>
-            failure.TrySetResult(message);
+        lifecycle.DataClient.ConnectionFailure += (_, kind) =>
+            failure.TrySetResult(kind);
         lifecycle.DataClient.StatusChanged += (_, status) =>
         {
             if (status == ConnectionStatus.Error)
@@ -1296,11 +1754,11 @@ public class GatewayConnectionManagerTests : IDisposable
         tunnel.OwnedListenerReady = false;
         lifecycle.SimulateConnectChallenge();
 
-        var failureMessage = await failure.Task.WaitAsync(TimeSpan.FromSeconds(2));
+        var failureKind = await failure.Task.WaitAsync(TimeSpan.FromSeconds(2));
         await errorStatus.Task.WaitAsync(TimeSpan.FromSeconds(2));
 
         Assert.Equal(checksBeforeChallenge + 1, tunnel.OwnedListenerCheckCount);
-        Assert.Contains("credentials were not sent", failureMessage);
+        Assert.Equal(GatewayErrorKind.LocalPortConflict, failureKind);
     }
 
     [Fact]
@@ -1345,6 +1803,95 @@ public class GatewayConnectionManagerTests : IDisposable
         Assert.Equal(GatewayErrorKind.LocalPortConflict, authorization.FailureKind);
         Assert.Contains("credentials were not sent", authorization.Detail);
         Assert.Contains("credentials were not sent", manager.CurrentSnapshot.NodeError);
+    }
+
+    [Fact]
+    public async Task SshOperatorHandshakeAuthorization_TimesOutAsTunnelFailure()
+    {
+        var ssh = new SshTunnelConfig("user", "host.example", 18789, 45678);
+        _registry.AddOrUpdate(new GatewayRecord
+        {
+            Id = "gw-ssh-timeout",
+            Url = "wss://remote.example",
+            SharedGatewayToken = "gateway-token",
+            SshTunnel = ssh,
+        });
+        _registry.SetActive("gw-ssh-timeout");
+        _resolver.OperatorCredential = new GatewayCredential(
+            "gateway-token",
+            IsBootstrapToken: false,
+            CredentialResolver.SourceSharedGatewayToken);
+        var tunnel = new CountingTunnelManager();
+        using var manager = new GatewayConnectionManager(
+            _resolver,
+            _factory,
+            _registry,
+            NullLogger.Instance,
+            tunnelManager: tunnel,
+            credentialHandoffTimeout: TimeSpan.FromMilliseconds(50));
+
+        await manager.ConnectAsync("gw-ssh-timeout");
+        var authorizeHandshake = Assert.IsType<
+            Func<CancellationToken, Task<ReconnectAuthorizationResult>>>(
+            Assert.Single(_factory.CreatedClients).DataClient.HandshakeAuthorizationAsync);
+        tunnel.OwnedListenerCheckAsync = async ct =>
+        {
+            await Task.Delay(Timeout.InfiniteTimeSpan, ct);
+            return true;
+        };
+
+        var authorization = await authorizeHandshake(CancellationToken.None)
+            .WaitAsync(TimeSpan.FromSeconds(2));
+
+        Assert.False(authorization.Allowed);
+        Assert.Equal(GatewayErrorKind.Network, authorization.FailureKind);
+        Assert.Contains("Timed out", authorization.Detail);
+    }
+
+    [Fact]
+    public async Task SshNodeHandshakeAuthorization_TimesOutAsTunnelFailure()
+    {
+        var ssh = new SshTunnelConfig("user", "host.example", 18789, 45678);
+        _registry.AddOrUpdate(new GatewayRecord
+        {
+            Id = "gw-node-ssh-timeout",
+            Url = "wss://remote.example",
+            SharedGatewayToken = "gateway-token",
+            SshTunnel = ssh,
+        });
+        _registry.SetActive("gw-node-ssh-timeout");
+        _resolver.NodeCredential = new GatewayCredential(
+            "gateway-token",
+            IsBootstrapToken: false,
+            CredentialResolver.SourceSharedGatewayToken);
+        var tunnel = new CountingTunnelManager();
+        var node = new CountingNodeConnector();
+        using var manager = new GatewayConnectionManager(
+            _resolver,
+            _factory,
+            _registry,
+            NullLogger.Instance,
+            nodeConnector: node,
+            isNodeEnabled: () => true,
+            tunnelManager: tunnel,
+            credentialHandoffTimeout: TimeSpan.FromMilliseconds(50));
+
+        await manager.ConnectNodeOnlyAsync("gw-node-ssh-timeout");
+        var authorizeHandshake = Assert.IsType<
+            Func<CancellationToken, Task<ReconnectAuthorizationResult>>>(
+            node.HandshakeAuthorizationAsync);
+        tunnel.OwnedListenerCheckAsync = async ct =>
+        {
+            await Task.Delay(Timeout.InfiniteTimeSpan, ct);
+            return true;
+        };
+
+        var authorization = await authorizeHandshake(CancellationToken.None)
+            .WaitAsync(TimeSpan.FromSeconds(2));
+
+        Assert.False(authorization.Allowed);
+        Assert.Equal(GatewayErrorKind.Network, authorization.FailureKind);
+        Assert.Contains("Timed out", authorization.Detail);
     }
 
     [Fact]
@@ -4063,8 +4610,11 @@ public class GatewayConnectionManagerTests : IDisposable
 
         public Task ConnectAsync(CancellationToken ct) => Task.CompletedTask;
 
-        public void SimulateStatusChanged(ConnectionStatus status) =>
+        public void SimulateStatusChanged(ConnectionStatus status)
+        {
+            _client.SetConnected(status == ConnectionStatus.Connected);
             StatusChanged?.Invoke(this, status);
+        }
 
         public void SimulateAuthFailed(string msg) =>
             AuthenticationFailed?.Invoke(this, msg);
@@ -4092,8 +4642,14 @@ public class GatewayConnectionManagerTests : IDisposable
 
     private sealed class MockGatewayClient : OpenClawGatewayClient
     {
+        private bool _isConnected = true;
+
         public MockGatewayClient(string url, string identityPath)
             : base(url, "mock-token", NullLogger.Instance, identityPath: identityPath) { }
+
+        public override bool IsConnectedToGateway => _isConnected;
+
+        public void SetConnected(bool connected) => _isConnected = connected;
 
         public void SimulateTransportConnected() =>
             RaiseTransportConnected();
@@ -4663,21 +5219,26 @@ public class GatewayConnectionManagerTests : IDisposable
         public string? LocalTunnelUrl { get; private set; }
         public bool RestartPending { get; set; }
         public bool OwnedListenerReady { get; set; } = true;
+        public bool BecomeReadyOnStart { get; set; }
+        public Func<CancellationToken, Task<bool>>? OwnedListenerCheckAsync { get; set; }
+        public Func<CancellationToken, Task<bool>>? StopIfOwnedAsyncOverride { get; set; }
         public int OwnedListenerCheckCount { get; private set; }
 
         public bool IsRestartPending(SshTunnelExit tunnelExit) => RestartPending;
-        public Task<bool> IsOwnedListenerReadyAsync(
+        public async Task<bool> IsOwnedListenerReadyAsync(
             SshTunnelConfig config,
             int destinationPort,
             CancellationToken ct)
         {
             ct.ThrowIfCancellationRequested();
             OwnedListenerCheckCount++;
-            return Task.FromResult(
-                OwnedListenerReady &&
+            var ready = OwnedListenerCheckAsync is null
+                ? OwnedListenerReady
+                : await OwnedListenerCheckAsync(ct);
+            return ready &&
                 IsActive &&
-                ActiveConfig == config &&
-                IsConfiguredForward(config, destinationPort));
+                ActiveConfig == Normalize(config) &&
+                IsConfiguredForward(config, destinationPort);
         }
 
         public Task<string> StartAsync(SshTunnelConfig config, CancellationToken ct)
@@ -4685,6 +5246,11 @@ public class GatewayConnectionManagerTests : IDisposable
             ct.ThrowIfCancellationRequested();
             StartCount++;
             OwnershipGeneration++;
+            var normalizedConfig = config with
+            {
+                User = config.User.Trim(),
+                Host = config.Host.Trim(),
+            };
             StartedConfigs.Add(config);
             if (FailStart || config == FailForConfig)
             {
@@ -4694,10 +5260,25 @@ public class GatewayConnectionManagerTests : IDisposable
                 throw new InvalidOperationException("tunnel failed");
             }
             IsActive = true;
-            LastConfig = config;
+            LastConfig = normalizedConfig;
             LocalTunnelUrl = $"ws://localhost:{config.LocalPort}";
+            if (BecomeReadyOnStart)
+                OwnedListenerReady = true;
             return Task.FromResult(LocalTunnelUrl);
         }
+
+        public void SimulateExit()
+        {
+            IsActive = false;
+            LocalTunnelUrl = null;
+        }
+
+        private static SshTunnelConfig Normalize(SshTunnelConfig config) =>
+            config with
+            {
+                User = config.User.Trim(),
+                Host = config.Host.Trim(),
+            };
 
         public Task StopAsync()
         {
@@ -4706,6 +5287,28 @@ public class GatewayConnectionManagerTests : IDisposable
             IsActive = false;
             LocalTunnelUrl = null;
             return Task.CompletedTask;
+        }
+
+        public Task<bool> StopIfOwnedAsync(
+            SshTunnelConfig config,
+            long ownershipGeneration,
+            CancellationToken ct)
+        {
+            ct.ThrowIfCancellationRequested();
+            if (StopIfOwnedAsyncOverride is not null)
+                return StopIfOwnedAsyncOverride(ct);
+            if (!IsActive ||
+                ActiveConfig != Normalize(config) ||
+                OwnershipGeneration != ownershipGeneration)
+            {
+                return Task.FromResult(false);
+            }
+
+            StopCount++;
+            OwnershipGeneration++;
+            IsActive = false;
+            LocalTunnelUrl = null;
+            return Task.FromResult(true);
         }
 
         public void Dispose() => IsDisposed = true;
