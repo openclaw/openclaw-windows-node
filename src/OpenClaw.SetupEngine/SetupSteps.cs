@@ -1615,6 +1615,9 @@ public sealed class ConfigureGatewayStep : SetupStep
 {
     internal const string DevicePairPublicUrlKey = "plugins.entries.device-pair.config.publicUrl";
     internal const string DevicePairEnabledKey = "plugins.entries.device-pair.enabled";
+    internal const string LegacyNodeCommandsAllowKey = "gateway.nodes.allowCommands";
+    internal const string NodeCommandsAllowKey = "gateway.nodes.commands.allow";
+    internal const string NodeCommandsConfigMigrationVersion = "2026.7.2";
     // Each `openclaw config set` emitted below spawns the Node CLI fresh inside WSL; on a
     // newly created distro with a cold cache that is ~4-5s apiece. Budget the step by how
     // many config commands we actually emit -- BuildConfigCommands grows with the
@@ -1638,6 +1641,11 @@ public sealed class ConfigureGatewayStep : SetupStep
             return StepResult.Terminal($"Invalid Gateway.Bind value '{gw.Bind}'. Must be 'loopback' or 'lan'.");
         if (TailscaleSetupPolicy.ValidateConfig(ctx.Config) is { } tailscaleConfigError)
             return StepResult.Terminal(tailscaleConfigError);
+        if (HasConflictingNodeCommandsAllowOverrides(gw.ExtraConfig))
+        {
+            return StepResult.Terminal(
+                $"Gateway.ExtraConfig cannot define both {LegacyNodeCommandsAllowKey} and {NodeCommandsAllowKey}.");
+        }
 
         // Generate a shared gateway token
         var token = Guid.NewGuid().ToString("N") + Guid.NewGuid().ToString("N");
@@ -1646,7 +1654,9 @@ public sealed class ConfigureGatewayStep : SetupStep
 
         var allowedCommandsJson = JsonSerializer.Serialize(ctx.Config.Capabilities.GetEnabledCommandIds());
         var escapedAllowedCommands = WslShellQuoting.QuotePosixSingleQuote(allowedCommandsJson);
-        var extraConfigOverridesAllowCommands = gw.ExtraConfig?.ContainsKey("gateway.nodes.allowCommands") == true;
+        var nodeCommandsAllowKey = ResolveNodeCommandsAllowKey(gw.Version);
+        var extraConfigOverridesAllowCommands =
+            gw.ExtraConfig?.Keys.Any(IsNodeCommandsAllowKey) == true;
         if (gw.ExtraConfig is { Count: > 0 })
         {
             foreach (var key in gw.ExtraConfig.Keys)
@@ -1658,9 +1668,9 @@ public sealed class ConfigureGatewayStep : SetupStep
 
         var configCommands = BuildConfigCommands(gw, port, escapedAllowedCommands, ctx.Config.Tailscale);
 
-        ctx.Logger.Info($"Gateway node allowCommands derived from setup capabilities: {allowedCommandsJson}");
+        ctx.Logger.Info($"Gateway node command allowlist ({nodeCommandsAllowKey}) derived from setup capabilities: {allowedCommandsJson}");
         if (extraConfigOverridesAllowCommands)
-            ctx.Logger.Warn("Gateway.ExtraConfig overrides derived gateway.nodes.allowCommands");
+            ctx.Logger.Warn($"Gateway.ExtraConfig overrides derived {nodeCommandsAllowKey}");
         if (GetDefaultDevicePairPublicUrl(gw, port, ctx.Config.Tailscale.Enabled) is { } defaultPublicUrl &&
             gw.ExtraConfig?.ContainsKey(DevicePairPublicUrlKey) != true)
         {
@@ -1699,6 +1709,14 @@ public sealed class ConfigureGatewayStep : SetupStep
         string escapedAllowedCommands,
         TailscaleConfig? tailscale = null)
     {
+        var nodeCommandsAllowKey = ResolveNodeCommandsAllowKey(gw.Version);
+        if (HasConflictingNodeCommandsAllowOverrides(gw.ExtraConfig))
+        {
+            throw new ArgumentException(
+                $"Gateway.ExtraConfig cannot define both {LegacyNodeCommandsAllowKey} and {NodeCommandsAllowKey}.",
+                nameof(gw));
+        }
+
         var configCommands = $"""
             openclaw plugins registry --refresh
             openclaw config set gateway.mode local
@@ -1707,7 +1725,7 @@ public sealed class ConfigureGatewayStep : SetupStep
             openclaw config set gateway.auth.mode {gw.AuthMode}
             openclaw config set gateway.auth.token "$OPENCLAW_GATEWAY_TOKEN"
             openclaw config set gateway.reload.mode {gw.ReloadMode}
-            openclaw config set gateway.nodes.allowCommands {escapedAllowedCommands}
+            openclaw config set {nodeCommandsAllowKey} {escapedAllowedCommands}
             """;
 
         if (tailscale?.Enabled == true)
@@ -1752,12 +1770,40 @@ public sealed class ConfigureGatewayStep : SetupStep
                     throw new ArgumentException($"Invalid Gateway.ExtraConfig key '{key}'. Keys may contain only letters, digits, '.', '_', and '-'.", nameof(gw));
 
                 var escapedValue = WslShellQuoting.QuotePosixSingleQuote(value);
-                configCommands += $"\n            openclaw config set {key} {escapedValue}";
+                var effectiveKey = IsNodeCommandsAllowKey(key)
+                    ? nodeCommandsAllowKey
+                    : key;
+                configCommands += $"\n            openclaw config set {effectiveKey} {escapedValue}";
             }
         }
 
         return configCommands;
     }
+
+    internal static string ResolveNodeCommandsAllowKey(string? gatewayVersion)
+    {
+        var selectedVersion = string.IsNullOrWhiteSpace(gatewayVersion)
+            ? GatewayReleasePolicy.RecommendedVersion
+            : gatewayVersion.Trim();
+        if (!GatewayReleaseVersion.TryParse(selectedVersion, out var parsedVersion))
+            throw new ArgumentException($"Gateway version '{selectedVersion}' is not an exact stable release.", nameof(gatewayVersion));
+        if (!GatewayReleaseVersion.TryParse(NodeCommandsConfigMigrationVersion, out var migrationVersion))
+            throw new InvalidOperationException("Gateway node command config migration version is invalid.");
+
+        return parsedVersion.CompareTo(migrationVersion) >= 0
+            ? NodeCommandsAllowKey
+            : LegacyNodeCommandsAllowKey;
+    }
+
+    internal static bool IsNodeCommandsAllowKey(string key) =>
+        string.Equals(key, LegacyNodeCommandsAllowKey, StringComparison.Ordinal) ||
+        string.Equals(key, NodeCommandsAllowKey, StringComparison.Ordinal);
+
+    internal static bool HasConflictingNodeCommandsAllowOverrides(
+        IReadOnlyDictionary<string, string>? extraConfig) =>
+        extraConfig is not null &&
+        extraConfig.ContainsKey(LegacyNodeCommandsAllowKey) &&
+        extraConfig.ContainsKey(NodeCommandsAllowKey);
 
     // Budget = base + per-command, floored. Scales the WSL timeout with the number of
     // `openclaw config set` invocations the step emits so it cannot silently regress as

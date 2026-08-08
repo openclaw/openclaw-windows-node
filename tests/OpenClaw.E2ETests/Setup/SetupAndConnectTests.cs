@@ -123,7 +123,8 @@ public class SetupAndConnectTests
             AssertJsonPath(root, ["gateway", "bind"], "loopback");
             AssertJsonPath(root, ["gateway", "auth", "mode"], "token");
 
-            var allowCommands = ReadStringArray(GetJsonPath(root, ["gateway", "nodes", "allowCommands"]));
+            var allowCommandsKey = ResolveNodeCommandsAllowKey();
+            var allowCommands = ReadStringArray(GetJsonPath(root, allowCommandsKey.Split('.')));
             Assert.Equal(new CapabilitiesConfig().GetEnabledCommandIds().ToArray(), allowCommands.Order(StringComparer.OrdinalIgnoreCase).ToArray());
         }
 
@@ -139,11 +140,12 @@ public class SetupAndConnectTests
         AssertCommandSucceeded(gatewayAuthMode, "read gateway.auth.mode");
         Assert.Contains("token", gatewayAuthMode.Stdout);
 
+        var nodeCommandsAllowKey = ResolveNodeCommandsAllowKey();
         var cliAllowCommands = await _fixture.RunInWslAsync(
-            "openclaw config get gateway.nodes.allowCommands",
+            $"openclaw config get {nodeCommandsAllowKey}",
             TimeSpan.FromSeconds(15));
-        AssertCommandSucceeded(cliAllowCommands, "read gateway.nodes.allowCommands");
-        Console.WriteLine($"[E2E] gateway.nodes.allowCommands: {cliAllowCommands.Stdout}");
+        AssertCommandSucceeded(cliAllowCommands, $"read {nodeCommandsAllowKey}");
+        Console.WriteLine($"[E2E] {nodeCommandsAllowKey}: {cliAllowCommands.Stdout}");
         var expectedCommands = new CapabilitiesConfig().GetEnabledCommandIds().ToArray();
         var effectiveCommands = ParseJsonArrayFromOutput(cliAllowCommands.Stdout);
         Assert.Equal(expectedCommands, effectiveCommands.Order(StringComparer.OrdinalIgnoreCase).ToArray());
@@ -161,6 +163,14 @@ public class SetupAndConnectTests
         var identityDir = Path.Combine(_fixture.DataDir, "gateways", gateway.ActiveId);
         Assert.True(Directory.Exists(identityDir), $"Expected identity directory: {identityDir}");
         Assert.Contains(Directory.EnumerateFiles(identityDir), path => Path.GetFileName(path).Contains("device-key", StringComparison.OrdinalIgnoreCase));
+    }
+
+    private static string ResolveNodeCommandsAllowKey()
+    {
+        var gatewayVersion =
+            Environment.GetEnvironmentVariable("OPENCLAW_E2E_GATEWAY_VERSION") ??
+            GatewayReleasePolicy.RecommendedVersion;
+        return ConfigureGatewayStep.ResolveNodeCommandsAllowKey(gatewayVersion);
     }
 
     [E2EFact]

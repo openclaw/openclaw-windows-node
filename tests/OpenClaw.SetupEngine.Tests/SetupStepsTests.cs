@@ -1945,6 +1945,71 @@ public class SetupStepsTests : IDisposable
         Assert.Contains("openclaw config set gateway.reload.mode hybrid", commands);
     }
 
+    [Theory]
+    [InlineData("2026.6.11", ConfigureGatewayStep.LegacyNodeCommandsAllowKey, ConfigureGatewayStep.NodeCommandsAllowKey)]
+    [InlineData("2026.6.34", ConfigureGatewayStep.LegacyNodeCommandsAllowKey, ConfigureGatewayStep.NodeCommandsAllowKey)]
+    [InlineData("2026.7.2", ConfigureGatewayStep.NodeCommandsAllowKey, ConfigureGatewayStep.LegacyNodeCommandsAllowKey)]
+    [InlineData("2026.7.2-1", ConfigureGatewayStep.NodeCommandsAllowKey, ConfigureGatewayStep.LegacyNodeCommandsAllowKey)]
+    public void ConfigureGateway_UsesVersionedNodeCommandsAllowKey(
+        string gatewayVersion,
+        string expectedKey,
+        string rejectedKey)
+    {
+        var commands = ConfigureGatewayStep.BuildConfigCommands(
+            new GatewayConfig { Version = gatewayVersion },
+            18789,
+            "'[\"system.which\"]'");
+
+        Assert.Contains($"openclaw config set {expectedKey} '[\"system.which\"]'", commands);
+        Assert.DoesNotContain($"openclaw config set {rejectedKey} ", commands);
+    }
+
+    [Theory]
+    [InlineData("2026.6.34", ConfigureGatewayStep.NodeCommandsAllowKey, ConfigureGatewayStep.LegacyNodeCommandsAllowKey)]
+    [InlineData("2026.7.2", ConfigureGatewayStep.LegacyNodeCommandsAllowKey, ConfigureGatewayStep.NodeCommandsAllowKey)]
+    public void ConfigureGateway_NormalizesNodeCommandsAllowOverrideToTargetSchema(
+        string gatewayVersion,
+        string configuredKey,
+        string expectedKey)
+    {
+        var commands = ConfigureGatewayStep.BuildConfigCommands(
+            new GatewayConfig
+            {
+                Version = gatewayVersion,
+                ExtraConfig = new Dictionary<string, string>
+                {
+                    [configuredKey] = "[\"camera.snap\"]"
+                }
+            },
+            18789,
+            "'[\"system.which\"]'");
+
+        Assert.Contains($"openclaw config set {expectedKey} '[\"camera.snap\"]'", commands);
+        Assert.DoesNotContain($"openclaw config set {configuredKey} ", commands);
+    }
+
+    [Fact]
+    public async Task ConfigureGateway_RejectsConflictingNodeCommandsAllowOverrides()
+    {
+        var context = CreateContext(new SetupConfig
+        {
+            Gateway = new GatewayConfig
+            {
+                Version = "2026.7.2",
+                ExtraConfig = new Dictionary<string, string>
+                {
+                    [ConfigureGatewayStep.LegacyNodeCommandsAllowKey] = "[]",
+                    [ConfigureGatewayStep.NodeCommandsAllowKey] = "[]"
+                }
+            }
+        });
+
+        var result = await new ConfigureGatewayStep().ExecuteAsync(context, CancellationToken.None);
+
+        Assert.Equal(StepOutcome.FailedTerminal, result.Outcome);
+        Assert.Contains("cannot define both", result.Message);
+    }
+
     [Fact]
     public void ConfigureGateway_AddsDevicePairPublicUrlForLoopbackGateway()
     {
