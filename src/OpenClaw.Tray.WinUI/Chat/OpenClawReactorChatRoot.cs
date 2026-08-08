@@ -599,7 +599,19 @@ public sealed class ReactorChatComposer : Component<ReactorChatComposerProps>
         var voiceCancellation = UseRef<CancellationTokenSource?>(null);
         var voiceOperation = UseRef(0);
         var voiceStopOperation = UseRef(0);
-        var pasteHooked = UseRef(false);
+        var onAttachmentPasted = UseRef<Action<ChatAttachment>>(props.OnAttachmentPasted);
+        onAttachmentPasted.Current = props.OnAttachmentPasted;
+        var pasteHandler = UseRef<TextControlPasteEventHandler>(async (_, args) =>
+        {
+            if (GetBitmapClipboardContent() is not { } clipboardContent)
+                return;
+
+            // Paste is a synchronous routed event. Suppress the default text paste
+            // before awaiting bitmap extraction so a multi-format clipboard cannot
+            // insert text alongside the image attachment.
+            args.Handled = true;
+            await PasteImageFromClipboardAsync(clipboardContent, onAttachmentPasted.Current);
+        });
         var inputText = UseRef(text);
         var inputControl = UseRef<TextBox?>(null);
         var slashPopup = UseRef<Microsoft.UI.Xaml.Controls.Primitives.Popup?>(null);
@@ -1110,38 +1122,20 @@ public sealed class ReactorChatComposer : Component<ReactorChatComposerProps>
                 control.Resources["TextControlBorderBrush"] = transparent;
                 control.Resources["TextControlBorderBrushFocused"] = transparent;
                 control.Resources["TextControlBorderBrushPointerOver"] = transparent;
-                if (!pasteHooked.Current)
-                {
-                    pasteHooked.Current = true;
-                    control.Paste += async (_, args) =>
-                    {
-                        var clipboardContent = global::Windows.ApplicationModel.DataTransfer.Clipboard.GetContent();
-                        if (clipboardContent is null
-                            || !clipboardContent.Contains(
-                                global::Windows.ApplicationModel.DataTransfer.StandardDataFormats.Bitmap))
-                        {
-                            return;
-                        }
-
-                        // Paste is a synchronous routed event. Suppress the default text paste
-                        // before awaiting bitmap extraction so a multi-format clipboard cannot
-                        // insert text alongside the image attachment.
-                        args.Handled = true;
-                        try
-                        {
-                            var attachment = await TryReadImageFromClipboardAsync(clipboardContent);
-                            if (attachment is null)
-                                return;
-
-                            props.OnAttachmentPasted(attachment);
-                        }
-                        catch (Exception ex)
-                        {
-                            OpenClawTray.Services.Logger.Debug(
-                                $"Reactor chat composer: clipboard image paste failed: {ex.Message}");
-                        }
-                    };
-                }
+            })
+            .OnMount(control =>
+            {
+                var textBox = (TextBox)control;
+                textBox.Paste += pasteHandler.Current;
+                textBox.ContextFlyout = CreateComposerContextFlyout(
+                    textBox,
+                    () => onAttachmentPasted.Current);
+            })
+            .OnUnmount(control =>
+            {
+                var textBox = (TextBox)control;
+                textBox.Paste -= pasteHandler.Current;
+                textBox.ContextFlyout = null;
             });
         UseEffect((Func<Action>)(() =>
         {
@@ -1744,6 +1738,154 @@ public sealed class ReactorChatComposer : Component<ReactorChatComposerProps>
             Content = Convert.ToBase64String(bytes),
             SizeBytes = size,
         };
+    }
+
+    private static global::Windows.ApplicationModel.DataTransfer.DataPackageView? GetBitmapClipboardContent()
+    {
+        try
+        {
+            var content = global::Windows.ApplicationModel.DataTransfer.Clipboard.GetContent();
+            return content is not null
+                && content.Contains(
+                    global::Windows.ApplicationModel.DataTransfer.StandardDataFormats.Bitmap)
+                    ? content
+                    : null;
+        }
+        catch (System.Runtime.InteropServices.COMException ex)
+        {
+            OpenClawTray.Services.Logger.Debug(
+                $"Reactor chat composer: clipboard access failed: {ex.Message}");
+            return null;
+        }
+    }
+
+    private static MenuFlyout CreateComposerContextFlyout(
+        TextBox textBox,
+        Func<Action<ChatAttachment>> getOnAttachmentPasted)
+    {
+        var undoItem = CreateStandardMenuItem(
+            Microsoft.UI.Xaml.Input.StandardUICommandKind.Undo,
+            textBox.Undo);
+        var redoItem = CreateStandardMenuItem(
+            Microsoft.UI.Xaml.Input.StandardUICommandKind.Redo,
+            textBox.Redo);
+        var cutItem = CreateStandardMenuItem(
+            Microsoft.UI.Xaml.Input.StandardUICommandKind.Cut,
+            textBox.CutSelectionToClipboard);
+        var copyItem = CreateStandardMenuItem(
+            Microsoft.UI.Xaml.Input.StandardUICommandKind.Copy,
+            textBox.CopySelectionToClipboard);
+        var pasteItem = CreateStandardMenuItem(
+            Microsoft.UI.Xaml.Input.StandardUICommandKind.Paste,
+            () =>
+            {
+                if (GetBitmapClipboardContent() is { } clipboardContent)
+                    _ = PasteImageFromClipboardAsync(clipboardContent, getOnAttachmentPasted());
+                else
+                    PasteTextFromClipboard(textBox);
+            });
+        var selectAllItem = CreateStandardMenuItem(
+            Microsoft.UI.Xaml.Input.StandardUICommandKind.SelectAll,
+            textBox.SelectAll);
+        Microsoft.UI.Xaml.Automation.AutomationProperties.SetAutomationId(
+            pasteItem,
+            "ChatComposerPasteMenuItem");
+
+        var editSeparator = new MenuFlyoutSeparator();
+        var selectAllSeparator = new MenuFlyoutSeparator();
+        var menu = new MenuFlyout();
+        menu.Items.Add(undoItem);
+        menu.Items.Add(redoItem);
+        menu.Items.Add(editSeparator);
+        menu.Items.Add(cutItem);
+        menu.Items.Add(copyItem);
+        menu.Items.Add(pasteItem);
+        menu.Items.Add(selectAllSeparator);
+        menu.Items.Add(selectAllItem);
+        menu.Opening += (_, _) =>
+        {
+            var state = ChatComposerContextMenuState.Project(
+                textBox.CanUndo,
+                textBox.CanRedo,
+                textBox.SelectionLength > 0,
+                ClipboardContainsPasteContent(),
+                !string.IsNullOrEmpty(textBox.Text));
+            undoItem.Visibility = ToVisibility(state.ShowUndo);
+            redoItem.Visibility = ToVisibility(state.ShowRedo);
+            cutItem.Visibility = ToVisibility(state.ShowCut);
+            copyItem.Visibility = ToVisibility(state.ShowCopy);
+            pasteItem.Visibility = ToVisibility(state.ShowPaste);
+            selectAllItem.Visibility = ToVisibility(state.ShowSelectAll);
+            editSeparator.Visibility = ToVisibility(state.ShowEditSeparator);
+            selectAllSeparator.Visibility = ToVisibility(state.ShowSelectAllSeparator);
+        };
+        return menu;
+    }
+
+    private static Visibility ToVisibility(bool visible) =>
+        visible ? Visibility.Visible : Visibility.Collapsed;
+
+    private static MenuFlyoutItem CreateStandardMenuItem(
+        Microsoft.UI.Xaml.Input.StandardUICommandKind kind,
+        Action execute)
+    {
+        var command = new Microsoft.UI.Xaml.Input.StandardUICommand(kind);
+        command.CanExecuteRequested += (_, args) => args.CanExecute = true;
+        command.ExecuteRequested += (_, _) => execute();
+        return new MenuFlyoutItem
+        {
+            Command = command,
+            Visibility = Visibility.Collapsed,
+        };
+    }
+
+    private static bool ClipboardContainsPasteContent()
+    {
+        try
+        {
+            var content = global::Windows.ApplicationModel.DataTransfer.Clipboard.GetContent();
+            return content is not null
+                && (content.Contains(
+                        global::Windows.ApplicationModel.DataTransfer.StandardDataFormats.Bitmap)
+                    || content.Contains(
+                        global::Windows.ApplicationModel.DataTransfer.StandardDataFormats.Text));
+        }
+        catch (System.Runtime.InteropServices.COMException ex)
+        {
+            OpenClawTray.Services.Logger.Debug(
+                $"Reactor chat composer: clipboard access failed: {ex.Message}");
+            return false;
+        }
+    }
+
+    private static void PasteTextFromClipboard(TextBox textBox)
+    {
+        try
+        {
+            textBox.PasteFromClipboard();
+        }
+        catch (System.Runtime.InteropServices.COMException ex)
+        {
+            OpenClawTray.Services.Logger.Debug(
+                $"Reactor chat composer: clipboard text paste failed: {ex.Message}");
+        }
+    }
+
+    private static async Task PasteImageFromClipboardAsync(
+        global::Windows.ApplicationModel.DataTransfer.DataPackageView clipboardContent,
+        Action<ChatAttachment> onAttachmentPasted)
+    {
+        try
+        {
+            var attachment = await TryReadImageFromClipboardAsync(clipboardContent);
+            if (attachment is not null)
+                onAttachmentPasted(attachment);
+        }
+        catch (Exception ex)
+        {
+            OpenClawTray.Services.Logger.Debug(
+                $"Reactor chat composer: clipboard image paste failed: {ex.Message}");
+        }
     }
 
     private static string PlaceholderFor(string connectionState) => connectionState switch

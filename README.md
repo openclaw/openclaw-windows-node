@@ -85,7 +85,13 @@ Use your gateway's supported configuration tools when OpenClaw Companion cannot 
 }
 ```
 
-Commands such as `system.run`, `system.run.prepare`, `system.which`, `screen.record`, `camera.snap`, `camera.clip`, `stt.transcribe`, and `tts.speak` require deliberate opt-in. Reapprove and reconnect the node after changing the effective command set.
+Canonical paired Windows nodes already receive the desktop `system.*` defaults,
+including `system.run`, `system.run.prepare`, and `system.which`. Windows still
+applies the local **Run system tools** switch, V2 exec approvals, and sandbox
+policy. Commands outside the Windows gateway defaults, including
+`screen.record`, `camera.snap`, `camera.clip`, `stt.transcribe`, and
+`tts.speak`, require deliberate gateway opt-in. Reapprove and reconnect the
+node after changing the effective command set.
 
 </details>
 
@@ -211,7 +217,9 @@ These commands restore and build the test projects when needed. Use `--no-restor
 | Topic | Document |
 |---|---|
 | Architecture ownership | [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) |
+| Audio model asset integrity | [docs/AUDIO_MODEL_ASSETS.md](docs/AUDIO_MODEL_ASSETS.md) |
 | Connection and pairing | [docs/CONNECTION_ARCHITECTURE.md](docs/CONNECTION_ARCHITECTURE.md) |
+| Gateway, node, and exec flow FAQ | [docs/OPENCLAW_GATEWAY_NODE_EXEC_FAQ.md](docs/OPENCLAW_GATEWAY_NODE_EXEC_FAQ.md) |
 | Onboarding wizard | [docs/ONBOARDING_WIZARD.md](docs/ONBOARDING_WIZARD.md) |
 | Windows node behavior | [docs/WINDOWS_NODE_TESTING.md](docs/WINDOWS_NODE_TESTING.md) |
 | Local MCP mode | [docs/MCP_MODE.md](docs/MCP_MODE.md) |

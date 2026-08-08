@@ -1,8 +1,8 @@
-# A2UI v0.8 — Data Binding & Actions
+# A2UI v0.8 - Data Binding & Actions
 
 ## A2UIValue
 
-Almost every property on a component is an `A2UIValue` — a tagged union of
+Almost every property on a component is an `A2UIValue` - a tagged union of
 literal types and a path into the data model.
 
 ```jsonc
@@ -19,8 +19,9 @@ literal types and a path into the data model.
 //   then binds. After that it's a path binding.
 ```
 
-The spec does **not** enumerate `literalArray<number>` or `literalArray<bool>`
-— string arrays are the only explicit array literal in v0.8.
+The spec does **not** enumerate `literalArray<number>` or
+`literalArray<bool>`; string arrays are the only explicit array literal in
+v0.8.
 
 ### Resolution at runtime
 
@@ -44,7 +45,7 @@ edges:
 - **Lit**: relative paths supported (`.` = current `dataContextPath`,
   bare names resolve relative to context); auto-parses `valueString`
   fields that look like JSON (`vendor/a2ui/.../model-processor.ts:198–225`).
-  This is convenient but can be surprising — a string `"[1,2]"` becomes
+  This is convenient but can be surprising - a string `"[1,2]"` becomes
   an array.
 
 ## Data model
@@ -123,7 +124,7 @@ When the user clicks, the client must:
 
 ### What "context" should and shouldn't contain
 
-The spec is silent on **scoping** — i.e., is it OK for a Button to
+The spec is silent on **scoping** - i.e., is it OK for a Button to
 declare `context: [{ key: "all", value: { path: "/" } }]` and exfiltrate
 the entire data model?
 
@@ -131,7 +132,7 @@ The two impls take very different positions here:
 
 - **Lit**: passes `action` and `dataContextPath` straight through in a
   DOM `CustomEvent`. The host (canvas) is responsible for resolving and
-  sanitizing — there's no defense at the renderer.
+  sanitizing - there's no defense at the renderer.
 - **WinUI**: `RenderContext.BuildActionContext()` (`IComponentRenderer.cs:183–249`)
   collects an **allowed-paths set** from either:
   - explicit `dataBinding: [ { path: "..." } ]` on the component, or
@@ -142,7 +143,8 @@ The two impls take very different positions here:
   denylisted by substring) are excluded unless explicitly allowed.
 
 This is one of the most consequential **good deviations** in the WinUI
-impl — see [`grading.md#security-deviations`](./grading.md#security-deviations).
+implementation. See
+[`grading.md#action-security-model`](./grading.md#action-security-model).
 
 ### Transport
 
@@ -172,19 +174,19 @@ an `agent.request` node event:
 ```
 
 `AgentMessageFormatter` is a deliberate byte-for-byte port of the Android
-node's formatter — the gateway parses tags identically across platforms.
+node's formatter - the gateway parses tags identically across platforms.
 
 ## Security boundaries
 
 | Concern | Spec | Lit | WinUI |
 | --- | --- | --- | --- |
-| URL fetching for `Image`/`Video`/`AudioPlayer` | silent | unrestricted | HTTPS+allowlist for all three; DNS-rebinding pin only on `Image` fetches (`MediaResolver.cs`'s `SocketsHttpHandler.ConnectCallback`). `Video`/`AudioPlayer` hand the validated URI to `MediaSource.CreateFromUri`, which performs its own DNS at playback — allowlist is the load-bearing defense for media. |
+| URL fetching for `Image`/`Video`/`AudioPlayer` | silent | unrestricted | HTTPS+allowlist for all three; DNS-rebinding pin only on `Image` fetches (`MediaResolver.cs`'s `SocketsHttpHandler.ConnectCallback`). `Video`/`AudioPlayer` hand the validated URI to `MediaSource.CreateFromUri`, which performs its own DNS at playback - allowlist is the load-bearing defense for media. |
 | Unknown component types | "render placeholder, don't crash" | placeholder for spec'd missing; **registers user-supplied custom elements** if a flag is set | strict 18-only `UnknownRenderer` placeholder |
 | Markdown / HTML in `Text` | spec says plain string | parses Markdown; HTML blocks rendered in `iframe sandbox=""`; code escaped | renders as plain string |
-| Action context leakage | underspecified | passthrough — host's problem | server allowlist + secret denylist |
+| Action context leakage | underspecified | passthrough, host's problem | server allowlist + secret denylist |
 | Bearer / token surfaces | n/a | n/a | MCP token shown in Settings UI w/ copy button (out-of-band) |
 | `canvas.navigate` | n/a (out of A2UI) | n/a | `HttpUrlValidator` gates URLs; user choice of "canvas" vs "browser" opener |
 
 The "Spec is silent" rows are the spots where a reviewer should keep
-their guard up — anything Lit forwards to the embedding host can become
+their guard up - anything Lit forwards to the embedding host can become
 a vulnerability if that host doesn't apply policy.

@@ -74,6 +74,148 @@ public class SetupStepsTests : IDisposable
         Assert.Contains("unknown owner", result.Message);
     }
 
+    [Fact]
+    public async Task PairingEndpointTrust_TerminalRestartWait_RetriesOnlyNoListener()
+    {
+        var context = CreateContext(new SetupConfig
+        {
+            DistroName = "OpenClawGateway",
+            GatewayUrl = "ws://localhost:18789"
+        });
+        var attempts = 0;
+        context.EndpointProvenanceProbe = (_, _) => Task.FromResult(
+            ++attempts < 3
+                ? new GatewayEndpointProvenance(
+                    GatewayEndpointProvenanceKind.NoListener,
+                    18789)
+                : new GatewayEndpointProvenance(
+                    GatewayEndpointProvenanceKind.ExpectedManagedGateway,
+                    18789));
+
+        var result = await PairOperatorStep.EnsurePairingEndpointTrustedAsync(
+            context,
+            CancellationToken.None,
+            noListenerRetryCount: 2,
+            noListenerRetryDelay: TimeSpan.Zero);
+
+        Assert.Null(result);
+        Assert.Equal(3, attempts);
+    }
+
+    [Fact]
+    public async Task PairingEndpointTrust_TerminalRestartWait_RejectsUnknownOwnerImmediately()
+    {
+        var context = CreateContext(new SetupConfig
+        {
+            DistroName = "OpenClawGateway",
+            GatewayUrl = "ws://localhost:18789"
+        });
+        var attempts = 0;
+        context.EndpointProvenanceProbe = (_, _) =>
+        {
+            attempts++;
+            return Task.FromResult(new GatewayEndpointProvenance(
+                GatewayEndpointProvenanceKind.UnknownListener,
+                18789,
+                Detail: "unknown owner"));
+        };
+
+        var result = await PairOperatorStep.EnsurePairingEndpointTrustedAsync(
+            context,
+            CancellationToken.None,
+            noListenerRetryCount: 30,
+            noListenerRetryDelay: TimeSpan.Zero);
+
+        Assert.NotNull(result);
+        Assert.Equal(StepOutcome.FailedTerminal, result!.Outcome);
+        Assert.Equal(1, attempts);
+    }
+
+    [Fact]
+    public void PairingAuthorization_GatesInitialAndReconnectHandshakesForOperatorAndNode()
+    {
+        var context = CreateContext(new SetupConfig
+        {
+            DistroName = "OpenClawGateway",
+            GatewayUrl = "ws://localhost:18789"
+        });
+        var operatorIdentityDir = Path.Combine(_tempDir, "operator-identity");
+        var nodeIdentityDir = Path.Combine(_tempDir, "node-identity");
+        const string gatewayUrl = "ws://localhost:18789";
+        using var operatorClient = new OpenClawGatewayClient(
+            gatewayUrl,
+            "synthetic-operator-token",
+            identityPath: operatorIdentityDir);
+        using var nodeClient = new WindowsNodeClient(
+            gatewayUrl,
+            "synthetic-node-token",
+            nodeIdentityDir);
+
+        PairOperatorStep.ApplyReconnectAuthorization(operatorClient, context);
+        PairOperatorStep.ApplyReconnectAuthorization(nodeClient, context);
+
+        Assert.NotNull(operatorClient.HandshakeAuthorizationAsync);
+        Assert.NotNull(operatorClient.ReconnectAuthorizationAsync);
+        Assert.NotNull(nodeClient.HandshakeAuthorizationAsync);
+        Assert.NotNull(nodeClient.ReconnectAuthorizationAsync);
+    }
+
+    [Fact]
+    public async Task PairingEndpointTrust_RestartWait_RetriesSnapshotChangeOnly()
+    {
+        var context = CreateContext(new SetupConfig
+        {
+            DistroName = "OpenClawGateway",
+            GatewayUrl = "ws://localhost:18789"
+        });
+        var attempts = 0;
+        context.EndpointProvenanceProbe = (_, _) => Task.FromResult(
+            ++attempts == 1
+                ? new GatewayEndpointProvenance(
+                    GatewayEndpointProvenanceKind.UnknownListener,
+                    18789,
+                    FailureReason:
+                        GatewayEndpointProvenanceFailureReason.ListenerSnapshotChanged)
+                : new GatewayEndpointProvenance(
+                    GatewayEndpointProvenanceKind.ExpectedManagedGateway,
+                    18789));
+
+        var result = await PairOperatorStep.EnsurePairingEndpointTrustedAsync(
+            context,
+            CancellationToken.None,
+            noListenerRetryCount: 1,
+            noListenerRetryDelay: TimeSpan.Zero);
+
+        Assert.Null(result);
+        Assert.Equal(2, attempts);
+    }
+
+    [Theory]
+    [InlineData(ConnectionStatus.Disconnected, false, 1013, true, null)]
+    [InlineData(ConnectionStatus.Disconnected, false, 1013, false, (int)PairOperatorStep.ConnectionOutcome.Error)]
+    [InlineData(ConnectionStatus.Disconnected, false, 1012, true, (int)PairOperatorStep.ConnectionOutcome.Error)]
+    [InlineData(ConnectionStatus.Disconnected, true, 1013, true, (int)PairOperatorStep.ConnectionOutcome.PairingRequired)]
+    [InlineData(ConnectionStatus.Connected, false, null, true, (int)PairOperatorStep.ConnectionOutcome.Connected)]
+    [InlineData(ConnectionStatus.Error, false, 1013, true, (int)PairOperatorStep.ConnectionOutcome.Error)]
+    public void SetupConnectionStatus_RetriesOnlyStartup1013AfterRestart(
+        ConnectionStatus status,
+        bool isPairingRequired,
+        int? closeStatusCode,
+        bool retryGatewayStartupDisconnects,
+        int? expected)
+    {
+        var expectedOutcome = expected is null
+            ? null
+            : (PairOperatorStep.ConnectionOutcome?)expected.Value;
+        Assert.Equal(
+            expectedOutcome,
+            PairOperatorStep.ClassifySetupConnectionStatus(
+                status,
+                isPairingRequired,
+                closeStatusCode,
+                retryGatewayStartupDisconnects));
+    }
+
     [Theory]
     [InlineData(null)]
     [InlineData("")]
@@ -838,9 +980,9 @@ public class SetupStepsTests : IDisposable
     }
 
     [Fact]
-    public async Task PreflightPort_Lan_FailsWhenAnyBindPortInUse()
+    public async Task PreflightPort_Lan_FailsWhenLoopbackPortInUse()
     {
-        var listener = new TcpListener(IPAddress.Any, 0)
+        var listener = new TcpListener(IPAddress.Loopback, 0)
         {
             ExclusiveAddressUse = true
         };
@@ -936,19 +1078,25 @@ public class SetupStepsTests : IDisposable
     }
 
     [Fact]
-    public void InstallCli_BuildInstallCommand_UsesDefaultWhenVersionMissing()
+    public void InstallCli_BuildInstallCommand_RejectsMissingExactVersion()
     {
-        var command = InstallCliStep.BuildInstallCommand("https://openclaw.ai/install-cli.sh", null);
+        var error = Assert.Throws<ArgumentException>(
+            () => InstallCliStep.BuildInstallCommand("https://openclaw.ai/install-cli.sh", null));
 
-        Assert.Equal("curl -fsSL --proto '=https' --tlsv1.2 'https://openclaw.ai/install-cli.sh' | bash", command);
+        Assert.Contains("exact version", error.Message);
     }
 
     [Fact]
-    public void InstallCli_BuildInstallCommand_AppendsVersionWhenConfigured()
+    public void InstallCli_BuildInstallCommand_AppendsExactReleaseAndRuntime()
     {
-        var command = InstallCliStep.BuildInstallCommand("https://openclaw.ai/install-cli.sh", "2026.5.22");
+        var command = InstallCliStep.BuildInstallCommand(
+            "https://openclaw.ai/install-cli.sh",
+            "2026.5.22",
+            GatewayReleasePolicy.NodeVersion);
 
-        Assert.Equal("curl -fsSL --proto '=https' --tlsv1.2 'https://openclaw.ai/install-cli.sh' | bash -s -- --version '2026.5.22'", command);
+        Assert.Equal(
+            "curl -fsSL --proto '=https' --tlsv1.2 'https://openclaw.ai/install-cli.sh' | bash -s -- --version '2026.5.22' --node-version '22.22.3'",
+            command);
     }
 
     [Fact]
@@ -957,6 +1105,87 @@ public class SetupStepsTests : IDisposable
         var command = InstallCliStep.BuildInstallCommand("https://openclaw.ai/install-cli's.sh", "2026.5.22'a");
 
         Assert.Equal("curl -fsSL --proto '=https' --tlsv1.2 'https://openclaw.ai/install-cli'\\''s.sh' | bash -s -- --version '2026.5.22'\\''a'", command);
+    }
+
+    [Fact]
+    public async Task InstallCli_CandidatePackageCancellationDuringCopy_CleansStagingDirectory()
+    {
+        var packagePath = Path.Combine(_tempDir, "openclaw-current.tgz");
+        await File.WriteAllBytesAsync(packagePath, [1, 2, 3]);
+        using var cancellation = new CancellationTokenSource();
+        var commands = new FakeCommandRunner(
+            _ => Ok(),
+            (_, _, _) => Ok(),
+            (_, _, _, ct) =>
+            {
+                cancellation.Cancel();
+                ct.ThrowIfCancellationRequested();
+                return Ok();
+            });
+        var config = new SetupConfig
+        {
+            Gateway = new GatewayConfig
+            {
+                Version = "2026.8.1",
+                ValidationPackagePath = packagePath
+            }
+        };
+        var ctx = CreateContext(config, commands);
+        ctx.DistroName = "test-distro";
+
+        await Assert.ThrowsAsync<OperationCanceledException>(
+            () => new InstallCliStep().ExecuteAsync(ctx, cancellation.Token));
+
+        var cleanup = Assert.Single(
+            commands.WslCalls,
+            call => call.Command == "rm -rf -- /var/lib/openclaw/setup-package");
+        Assert.NotEqual(cancellation.Token, cleanup.CancellationToken);
+        Assert.False(cleanup.CancellationToken.IsCancellationRequested);
+    }
+
+    [Fact]
+    public async Task InstallCli_InstalledVersionMismatchFailsTerminally()
+    {
+        var commands = new FakeCommandRunner(
+            _ => Ok(),
+            (_, command, _) => command.Contains("--version", StringComparison.Ordinal)
+                ? Ok("OpenClaw 2026.7.1-2")
+                : Ok());
+        var config = new SetupConfig();
+        GatewayReleasePolicy.ResolveAndApply(config);
+        var ctx = CreateContext(config, commands);
+
+        var result = await new InstallCliStep().ExecuteAsync(ctx, CancellationToken.None);
+
+        Assert.Equal(StepOutcome.FailedTerminal, result.Outcome);
+        var error = Assert.IsType<GatewayCompatibilityException>(result.Error);
+        Assert.Equal(GatewayCompatibilityFailureKind.InstalledVersionMismatch, error.Kind);
+    }
+
+    [Fact]
+    public async Task InstallCli_InstalledRuntimeMismatchFailsTerminally()
+    {
+        var commands = new FakeCommandRunner(
+            _ => Ok(),
+            (_, command, _) =>
+            {
+                if (command.StartsWith("curl ", StringComparison.Ordinal))
+                    return Ok();
+                if (command.Contains("tools/node/bin/node --version", StringComparison.Ordinal))
+                    return Ok("v24.15.0");
+                if (command.EndsWith("openclaw --version", StringComparison.Ordinal))
+                    return Ok($"OpenClaw {GatewayReleasePolicy.RecommendedVersion}");
+                return Ok();
+            });
+        var config = new SetupConfig();
+        GatewayReleasePolicy.ResolveAndApply(config);
+        var ctx = CreateContext(config, commands);
+
+        var result = await new InstallCliStep().ExecuteAsync(ctx, CancellationToken.None);
+
+        Assert.Equal(StepOutcome.FailedTerminal, result.Outcome);
+        var error = Assert.IsType<GatewayCompatibilityException>(result.Error);
+        Assert.Equal(GatewayCompatibilityFailureKind.InstalledRuntimeMismatch, error.Kind);
     }
 
     [Fact]
@@ -1706,6 +1935,355 @@ public class SetupStepsTests : IDisposable
     }
 
     [Fact]
+    public void ConfigureGateway_DefaultsReloadModeToHybrid()
+    {
+        var commands = ConfigureGatewayStep.BuildConfigCommands(
+            new GatewayConfig(),
+            18789,
+            "'[]'");
+
+        Assert.Contains("openclaw config set gateway.reload.mode hybrid", commands);
+    }
+
+    [Fact]
+    public void ConfigureGateway_EffectiveReloadModeUsesExtraConfigOverride()
+    {
+        var config = new GatewayConfig
+        {
+            ReloadMode = "hybrid",
+            ExtraConfig = new Dictionary<string, string>
+            {
+                ["gateway.reload.mode"] = "off",
+            },
+        };
+
+        Assert.Equal("off", ConfigureGatewayStep.GetEffectiveReloadMode(config));
+    }
+
+    [Fact]
+    public void SetupWizard_StartParametersDisableDaemonInstallation()
+    {
+        var json = JsonSerializer.Serialize(SetupWizardRunner.BuildWizardStartParameters());
+        using var document = JsonDocument.Parse(json);
+
+        Assert.False(document.RootElement.GetProperty("installDaemon").GetBoolean());
+    }
+
+    [Fact]
+    public void SetupWizard_RecognizesLegacyInstallDaemonSchemaRejection()
+    {
+        Assert.True(SetupWizardRunner.IsInstallDaemonParameterUnsupported(
+            new InvalidOperationException(
+                "invalid wizard.start params: at root: unexpected property 'installDaemon'")));
+        Assert.False(SetupWizardRunner.IsInstallDaemonParameterUnsupported(
+            new InvalidOperationException("wizard.start unavailable during gateway restart")));
+    }
+
+    [Fact]
+    public async Task StartGateway_RestartUsesRestartCommandAndWaitsForHealth()
+    {
+        var commands = new FakeCommandRunner(
+            _ => Ok(),
+            (_, command, _) => command switch
+            {
+                var value when value.Contains("openclaw gateway restart") => Ok(),
+                var value when value.Contains("curl -s") => Ok("200"),
+                _ => Fail($"Unexpected command: {command}"),
+            });
+        var ctx = CreateContext(commands: commands);
+        ctx.DistroName = "test-distro";
+
+        var result =
+            await StartGatewayStep.RestartAndWaitForHealthAsync(
+                ctx,
+                CancellationToken.None);
+
+        Assert.True(result.IsSuccess, result.Message);
+        Assert.DoesNotContain(
+            commands.WslCalls,
+            call => call.Command.Contains("ss -tlnp"));
+        Assert.Contains(
+            commands.WslCalls,
+            call => call.Command.Contains("openclaw gateway restart"));
+    }
+
+    [Fact]
+    public async Task SetupWizard_SuspendReloadModeRunsBeforeHealthVerification()
+    {
+        var commands = new FakeCommandRunner(
+            _ => Ok(),
+            (_, command, _) => command switch
+            {
+                var value when value.Contains("config set gateway.reload.mode off") => Ok(),
+                var value when value.Contains("curl -s") => Ok("200"),
+                _ => Fail($"Unexpected command: {command}"),
+            });
+        var ctx = CreateContext(commands: commands);
+        ctx.DistroName = "test-distro";
+        TrustManagedEndpoint(ctx);
+
+        var result = await new SetupWizardRunner(ctx).SuspendReloadModeAsync();
+
+        Assert.True(result.IsSuccess, result.Message);
+        Assert.Equal(2, commands.WslCalls.Count);
+        Assert.Contains(
+            "config set gateway.reload.mode off",
+            commands.WslCalls[0].Command);
+        Assert.Contains("curl -s", commands.WslCalls[1].Command);
+    }
+
+    [Fact]
+    public async Task SetupWizard_RestoreReloadModeRestartsAndVerifiesGateway()
+    {
+        var commands = CreateReloadRestorationRunner();
+        var ctx = CreateContext(
+            new SetupConfig
+            {
+                Gateway = new GatewayConfig { ReloadMode = "hybrid" },
+            },
+            commands);
+        ctx.DistroName = "test-distro";
+        TrustManagedEndpoint(ctx);
+
+        var result = await new SetupWizardRunner(ctx).RestoreReloadModeAsync();
+
+        Assert.True(result.IsSuccess, result.Message);
+        AssertReloadRestorationCompleted(commands);
+    }
+
+    [Fact]
+    public async Task SetupWizard_OrchestratorRestoresAfterSuccessfulWizard()
+    {
+        var commands = CreateReloadRestorationRunner();
+        var ctx = CreateContext(commands: commands);
+        ctx.DistroName = "test-distro";
+        TrustManagedEndpoint(ctx);
+        var runner = new SetupWizardRunner(ctx);
+
+        var result = await runner.RunWithReloadRestorationAsync(() =>
+        {
+            runner.MarkReloadSuspended();
+            return Task.FromResult(StepResult.Ok("wizard complete"));
+        });
+
+        Assert.True(result.IsSuccess, result.Message);
+        AssertReloadRestorationCompleted(commands);
+    }
+
+    [Fact]
+    public async Task SetupWizard_OrchestratorRestoresBeforePropagatingCancellation()
+    {
+        var commands = CreateReloadRestorationRunner();
+        var ctx = CreateContext(commands: commands);
+        ctx.DistroName = "test-distro";
+        TrustManagedEndpoint(ctx);
+        var runner = new SetupWizardRunner(ctx);
+
+        await Assert.ThrowsAsync<OperationCanceledException>(() =>
+            runner.RunWithReloadRestorationAsync(async () =>
+            {
+                runner.MarkReloadSuspended();
+                await Task.Yield();
+                throw new OperationCanceledException();
+            }));
+
+        AssertReloadRestorationCompleted(commands);
+    }
+
+    [Fact]
+    public async Task SetupWizard_OrchestratorReturnsRestorationFailure()
+    {
+        var commands = new FakeCommandRunner(
+            _ => Ok(),
+            (_, command, _) =>
+                command.Contains("config set gateway.reload.mode 'hybrid'")
+                    ? Fail("restore failed")
+                    : Fail($"Unexpected command: {command}"));
+        var ctx = CreateContext(commands: commands);
+        ctx.DistroName = "test-distro";
+        var runner = new SetupWizardRunner(ctx);
+
+        var result = await runner.RunWithReloadRestorationAsync(() =>
+        {
+            runner.MarkReloadSuspended();
+            return Task.FromResult(StepResult.Ok("wizard complete"));
+        });
+
+        Assert.False(result.IsSuccess);
+        Assert.Contains("Failed to restore gateway.reload.mode", result.Message);
+        Assert.DoesNotContain(
+            commands.WslCalls,
+            call => call.Command.Contains("openclaw gateway restart"));
+    }
+
+    [Fact]
+    public async Task SetupWizard_OrchestratorPreservesWizardAndRestorationFailures()
+    {
+        var commands = new FakeCommandRunner(
+            _ => Ok(),
+            (_, command, _) =>
+                command.Contains("config set gateway.reload.mode 'hybrid'")
+                    ? Fail("restore failed")
+                    : Fail($"Unexpected command: {command}"));
+        var ctx = CreateContext(commands: commands);
+        ctx.DistroName = "test-distro";
+        var runner = new SetupWizardRunner(ctx);
+
+        var result = await runner.RunWithReloadRestorationAsync(() =>
+        {
+            runner.MarkReloadSuspended();
+            return Task.FromResult(StepResult.Fail("wizard failed"));
+        });
+
+        Assert.False(result.IsSuccess);
+        Assert.Contains("Failed to restore gateway.reload.mode", result.Message);
+        Assert.Contains("wizard failed", result.Message);
+    }
+
+    [Fact]
+    public async Task SetupWizard_OrchestratorPreservesWizardFailureAfterRestoration()
+    {
+        var commands = CreateReloadRestorationRunner();
+        var ctx = CreateContext(commands: commands);
+        ctx.DistroName = "test-distro";
+        TrustManagedEndpoint(ctx);
+        var runner = new SetupWizardRunner(ctx);
+
+        var result = await runner.RunWithReloadRestorationAsync(() =>
+        {
+            runner.MarkReloadSuspended();
+            return Task.FromResult(StepResult.Fail("wizard failed"));
+        });
+
+        Assert.False(result.IsSuccess);
+        Assert.Equal("wizard failed", result.Message);
+        AssertReloadRestorationCompleted(commands);
+    }
+
+    [Fact]
+    public async Task SetupWizard_SuspendHealthFailureStillRestoresReloadMode()
+    {
+        var restoring = false;
+        var commands = new FakeCommandRunner(
+            _ => Ok(),
+            (_, command, _) => command switch
+            {
+                var value when value.Contains("config set gateway.reload.mode off") => Ok(),
+                var value when value.Contains("config set gateway.reload.mode 'hybrid'") =>
+                    SetRestoring(),
+                var value when value.Contains("openclaw gateway restart") => Ok(),
+                var value when value.Contains("curl -s") && restoring => Ok("200"),
+                var value when value.Contains("curl -s") => Fail("not ready"),
+                var value when value.Contains("systemctl --user status") => Ok(),
+                var value when value.Contains("journalctl --user-unit") => Ok(),
+                _ => Fail($"Unexpected command: {command}"),
+            });
+        var config = new SetupConfig();
+        config.Gateway.HealthTimeoutSeconds = 1;
+        var ctx = CreateContext(config, commands);
+        ctx.DistroName = "test-distro";
+        TrustManagedEndpoint(ctx);
+        var runner = new SetupWizardRunner(ctx);
+
+        var result = await runner.RunWithReloadRestorationAsync(
+            () => runner.SuspendReloadModeAsync());
+
+        Assert.False(result.IsSuccess);
+        Assert.Contains("Gateway did not become healthy", result.Message);
+        AssertReloadRestorationCompleted(commands);
+        return;
+
+        CommandResult SetRestoring()
+        {
+            restoring = true;
+            return Ok();
+        }
+    }
+
+    [Fact]
+    public async Task SetupWizard_RestoreReloadModeFailsClosedOnUnknownListener()
+    {
+        var commands = CreateReloadRestorationRunner();
+        var ctx = CreateContext(commands: commands);
+        ctx.DistroName = "test-distro";
+        ctx.EndpointProvenanceProbe = (_, _) => Task.FromResult(
+            new GatewayEndpointProvenance(
+                GatewayEndpointProvenanceKind.UnknownListener,
+                ctx.Config.GatewayPort,
+                Detail: "unknown owner"));
+
+        var result = await new SetupWizardRunner(ctx).RestoreReloadModeAsync();
+
+        Assert.False(result.IsSuccess);
+        Assert.Contains("ownership verification failed", result.Message);
+    }
+
+    [Theory]
+    [InlineData("2026.6.11", ConfigureGatewayStep.LegacyNodeCommandsAllowKey, ConfigureGatewayStep.NodeCommandsAllowKey)]
+    [InlineData("2026.6.34", ConfigureGatewayStep.LegacyNodeCommandsAllowKey, ConfigureGatewayStep.NodeCommandsAllowKey)]
+    [InlineData("2026.7.2", ConfigureGatewayStep.NodeCommandsAllowKey, ConfigureGatewayStep.LegacyNodeCommandsAllowKey)]
+    [InlineData("2026.7.2-1", ConfigureGatewayStep.NodeCommandsAllowKey, ConfigureGatewayStep.LegacyNodeCommandsAllowKey)]
+    public void ConfigureGateway_UsesVersionedNodeCommandsAllowKey(
+        string gatewayVersion,
+        string expectedKey,
+        string rejectedKey)
+    {
+        var commands = ConfigureGatewayStep.BuildConfigCommands(
+            new GatewayConfig { Version = gatewayVersion },
+            18789,
+            "'[\"system.which\"]'");
+
+        Assert.Contains($"openclaw config set {expectedKey} '[\"system.which\"]'", commands);
+        Assert.DoesNotContain($"openclaw config set {rejectedKey} ", commands);
+    }
+
+    [Theory]
+    [InlineData("2026.6.34", ConfigureGatewayStep.NodeCommandsAllowKey, ConfigureGatewayStep.LegacyNodeCommandsAllowKey)]
+    [InlineData("2026.7.2", ConfigureGatewayStep.LegacyNodeCommandsAllowKey, ConfigureGatewayStep.NodeCommandsAllowKey)]
+    public void ConfigureGateway_NormalizesNodeCommandsAllowOverrideToTargetSchema(
+        string gatewayVersion,
+        string configuredKey,
+        string expectedKey)
+    {
+        var commands = ConfigureGatewayStep.BuildConfigCommands(
+            new GatewayConfig
+            {
+                Version = gatewayVersion,
+                ExtraConfig = new Dictionary<string, string>
+                {
+                    [configuredKey] = "[\"camera.snap\"]"
+                }
+            },
+            18789,
+            "'[\"system.which\"]'");
+
+        Assert.Contains($"openclaw config set {expectedKey} '[\"camera.snap\"]'", commands);
+        Assert.DoesNotContain($"openclaw config set {configuredKey} ", commands);
+    }
+
+    [Fact]
+    public async Task ConfigureGateway_RejectsConflictingNodeCommandsAllowOverrides()
+    {
+        var context = CreateContext(new SetupConfig
+        {
+            Gateway = new GatewayConfig
+            {
+                Version = "2026.7.2",
+                ExtraConfig = new Dictionary<string, string>
+                {
+                    [ConfigureGatewayStep.LegacyNodeCommandsAllowKey] = "[]",
+                    [ConfigureGatewayStep.NodeCommandsAllowKey] = "[]"
+                }
+            }
+        });
+
+        var result = await new ConfigureGatewayStep().ExecuteAsync(context, CancellationToken.None);
+
+        Assert.Equal(StepOutcome.FailedTerminal, result.Outcome);
+        Assert.Contains("cannot define both", result.Message);
+    }
+
+    [Fact]
     public void ConfigureGateway_AddsDevicePairPublicUrlForLoopbackGateway()
     {
         var commands = ConfigureGatewayStep.BuildConfigCommands(
@@ -1716,6 +2294,25 @@ public class SetupStepsTests : IDisposable
         Assert.Contains(
             "openclaw config set plugins.entries.device-pair.config.publicUrl 'http://127.0.0.1:18789'",
             commands);
+    }
+
+    [Fact]
+    public void ConfigureGateway_RefreshesBundledPluginRegistryBeforeWritingPluginConfig()
+    {
+        var commands = ConfigureGatewayStep.BuildConfigCommands(
+            new GatewayConfig(),
+            18789,
+            "'[]'");
+
+        var refreshIndex = commands.IndexOf(
+            "openclaw plugins registry --refresh",
+            StringComparison.Ordinal);
+        var devicePairIndex = commands.IndexOf(
+            "openclaw config set plugins.entries.device-pair.enabled true",
+            StringComparison.Ordinal);
+
+        Assert.True(refreshIndex >= 0);
+        Assert.True(devicePairIndex > refreshIndex);
     }
 
     // Issue: device-pair plugin must be enabled, not just configured. Otherwise
@@ -3159,6 +3756,39 @@ public class SetupStepsTests : IDisposable
     private static CommandResult TimedOut()
         => new(-1, "", "", TimeSpan.FromSeconds(30), TimedOut: true);
 
+    private static FakeCommandRunner CreateReloadRestorationRunner() =>
+        new(
+            _ => Ok(),
+            (_, command, _) => command switch
+            {
+                var value when value.Contains("config set gateway.reload.mode 'hybrid'") => Ok(),
+                var value when value.Contains("openclaw gateway restart") => Ok(),
+                var value when value.Contains("curl -s") => Ok("200"),
+                _ => Fail($"Unexpected command: {command}"),
+            });
+
+    private static void AssertReloadRestorationCompleted(
+        FakeCommandRunner commands)
+    {
+        Assert.Contains(
+            commands.WslCalls,
+            call => call.Command.Contains("config set gateway.reload.mode 'hybrid'"));
+        Assert.Contains(
+            commands.WslCalls,
+            call => call.Command.Contains("openclaw gateway restart"));
+        Assert.Contains(
+            commands.WslCalls,
+            call => call.Command.Contains("curl -s"));
+    }
+
+    private static void TrustManagedEndpoint(SetupContext ctx)
+    {
+        ctx.EndpointProvenanceProbe = (_, _) => Task.FromResult(
+            new GatewayEndpointProvenance(
+                GatewayEndpointProvenanceKind.ExpectedManagedGateway,
+                ctx.Config.GatewayPort));
+    }
+
     private static string AgentsListJson(string workspace, string id = "main", bool isDefault = true)
         => JsonSerializer.Serialize(new[] { new { id, workspace, isDefault } });
 
@@ -3690,12 +4320,13 @@ public class SetupStepsTests : IDisposable
 
     private sealed class FakeCommandRunner(
         Func<string[], CommandResult> run,
-        Func<string, string, TimeSpan, CommandResult>? runInWsl = null) : ICommandRunner
+        Func<string, string, TimeSpan, CommandResult>? runInWsl = null,
+        Func<string, string[], TimeSpan, CancellationToken, CommandResult>? runWithCancellation = null) : ICommandRunner
     {
         public List<(string Executable, string[] Arguments)> Calls { get; } = [];
         public List<(string Executable, string[] Arguments, TimeSpan Timeout)> TimedCalls { get; } = [];
         public List<(string Executable, string[] Arguments, string? StdinInput)> DetailedCalls { get; } = [];
-        public List<(string DistroName, string Command, TimeSpan Timeout, string? User, bool InputViaStdin)> WslCalls { get; } = [];
+        public List<(string DistroName, string Command, TimeSpan Timeout, string? User, bool InputViaStdin, CancellationToken CancellationToken)> WslCalls { get; } = [];
         public List<IReadOnlyDictionary<string, string>?> WslEnvironments { get; } = [];
 
         public Task<CommandResult> RunAsync(
@@ -3705,12 +4336,13 @@ public class SetupStepsTests : IDisposable
             IReadOnlyDictionary<string, string>? environment = null,
             string? workingDirectory = null,
             string? stdinInput = null,
-            CancellationToken ct = default)
+            CancellationToken ct = default,
+            Stream? stdinStream = null)
         {
             Calls.Add((executable, arguments));
             TimedCalls.Add((executable, arguments, timeout));
             DetailedCalls.Add((executable, arguments, stdinInput));
-            return Task.FromResult(run(arguments));
+            return Task.FromResult(runWithCancellation?.Invoke(executable, arguments, timeout, ct) ?? run(arguments));
         }
 
         public Task<CommandResult> RunInWslAsync(
@@ -3722,7 +4354,7 @@ public class SetupStepsTests : IDisposable
             string? user = null,
             bool inputViaStdin = false)
         {
-            WslCalls.Add((distroName, command, timeout, user, inputViaStdin));
+            WslCalls.Add((distroName, command, timeout, user, inputViaStdin, ct));
             WslEnvironments.Add(environment);
             if (runInWsl == null)
                 throw new NotSupportedException("RunInWslAsync is not expected in these tests.");

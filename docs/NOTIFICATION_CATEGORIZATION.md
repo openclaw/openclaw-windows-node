@@ -4,7 +4,7 @@ The tray app categorizes incoming notifications to apply per-category filters, d
 
 ## How It Works
 
-Notifications flow through a **layered pipeline** — the first layer that matches wins:
+Notifications flow through a **layered pipeline** - the first layer that matches wins:
 
 ```
 Structured Metadata  →  User Rules  →  Keyword Matching  →  Default (info)
@@ -14,10 +14,10 @@ Structured Metadata  →  User Rules  →  Keyword Matching  →  Default (info)
 
 If the gateway sends metadata on the notification, it is used directly:
 
-- **Intent** (e.g. `reminder`, `build`, `alert`) — maps to a category
-- **Channel** (e.g. `email`, `calendar`, `ci`) — maps to a category
+- **Intent** (e.g. `reminder`, `build`, `alert`) - maps to a category
+- **Channel** (e.g. `email`, `calendar`, `ci`) - maps to a category
 
-This eliminates misclassification. A chat response that mentions "email" won't be categorized as email — the gateway knows the actual source.
+This eliminates misclassification. A chat response that mentions "email" won't be categorized as email - the gateway knows the actual source.
 
 > **Note:** The gateway does not send structured metadata yet. When it does, categorization will automatically improve with no client changes needed.
 
@@ -130,7 +130,7 @@ When structured metadata is available, channels and agents map to categories:
 | `health` | health |
 | `alerts` | urgent |
 
-**Agent mapping** is also supported — per-agent category defaults can be added to the channel map in `NotificationCategorizer.cs`.
+**Agent mapping** is also supported - per-agent category defaults can be added to the channel map in `NotificationCategorizer.cs`.
 
 ## Architecture
 

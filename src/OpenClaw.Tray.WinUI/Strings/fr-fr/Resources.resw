@@ -1903,7 +1903,7 @@ Utilisez l'une de ces options :
     <value>Stratégie d’exécution</value>
   </data>
   <data name="PermissionsPage_TextBlock_17.Text" xml:space="preserve">
-    <value>Contrôle les exécutables que l’agent peut lancer sur ce nœud. Les règles correspondent aux chemins d’accès résolus des exécutables.</value>
+    <value>Contrôle les exécutables que l’agent peut lancer sur ce nœud. La liste d’autorisation des chemins d’exécutables est vide au départ.</value>
   </data>
   <data name="DefaultActionCombo.Header" xml:space="preserve">
     <value>Action par défaut</value>
@@ -1918,22 +1918,22 @@ Utilisez l'une de ces options :
     <value>Demander</value>
   </data>
   <data name="PermissionsPage_TextBlock_28.Text" xml:space="preserve">
-    <value>Règles</value>
+    <value>Liste d’autorisation des chemins d’exécutables</value>
   </data>
   <data name="NewRulePattern.PlaceholderText" xml:space="preserve">
-    <value>Motif de chemin d’exécutable (p. ex. **/git.exe)</value>
+    <value>Motif de chemin d’exécutable (p. ex. **/hostname.exe)</value>
+  </data>
+  <data name="PermissionsPage_ExecAllowlistPatternValidation.Text" xml:space="preserve">
+    <value>Entrez un motif de chemin d’exécutable tel que **/hostname.exe. Un nom de base ou un texte de commande tel que hostname n’est pas valide.</value>
   </data>
   <data name="PermissionsPage_ComboBoxItem_54.Content" xml:space="preserve">
     <value>Refuser</value>
-  </data>
-  <data name="PermissionsPage_ComboBoxItem_55.Content" xml:space="preserve">
-    <value>Autoriser</value>
   </data>
   <data name="PermissionsPage_ComboBoxItem_56.Content" xml:space="preserve">
     <value>Demander</value>
   </data>
   <data name="PermissionsPage_Button_57.Content" xml:space="preserve">
-    <value>Ajouter une règle</value>
+    <value>Ajouter une entrée</value>
   </data>
   <data name="PermissionsPage_TextBlock_69.Text" xml:space="preserve">
     <value>Liste d’autorisation des nœuds</value>
@@ -2781,6 +2781,9 @@ Utilisez l'une de ces options :
   <data name="VoiceOverlayWindow_StatusErrorOccurred" xml:space="preserve">
     <value>Une erreur s'est produite</value>
   </data>
+  <data name="AudioPipeline_FirstAudioTimeout" xml:space="preserve">
+    <value>Aucun son n’a été reçu. Vérifiez que votre microphone est connecté et sélectionné comme périphérique d’entrée Windows, puis réessayez.</value>
+  </data>
   <data name="VoiceOverlayWindow_winexWindowEx_2.Title" xml:space="preserve">
     <value>Companion Voice</value>
   </data>
@@ -3392,13 +3395,13 @@ Les commandes sont bloquées tant que le sandboxing est indisponible, car le blo
     <value>URL copied to clipboard</value>
   </data>
   <data name="PermissionsPage_RulesCount_None" xml:space="preserve">
-    <value>No rules</value>
+    <value>Aucune entrée</value>
   </data>
   <data name="PermissionsPage_RulesCount_One" xml:space="preserve">
-    <value>1 rule</value>
+    <value>1 entrée</value>
   </data>
   <data name="PermissionsPage_RulesCount_ManyFormat" xml:space="preserve">
-    <value>{0} rules</value>
+    <value>{0} entrées</value>
   </data>
   <data name="PermissionsPage_Allowlist_NoConfig" xml:space="preserve">
     <value>No allowlist data available. Connect to a gateway first.</value>
@@ -4451,19 +4454,19 @@ Les commandes sont bloquées tant que le sandboxing est indisponible, car le blo
     <value>Action par défaut</value>
   </data>
   <data name="PermissionsPage_WhatHappensWhenA.Text" xml:space="preserve">
-    <value>Ce qui se passe lorsqu'une commande ne correspond à aucune règle ci-dessous.</value>
+    <value>Ce qui se passe lorsqu’une commande ne correspond pas à la liste d’autorisation des chemins d’exécutables ci-dessous.</value>
   </data>
   <data name="PermissionsPage_PatternsAreMatchedLeft.Text" xml:space="preserve">
-    <value>Les motifs de liste d’autorisation correspondent aux chemins d’accès résolus des exécutables. Utilisez des caractères génériques tels que **/git.exe. Les modifications sont enregistrées automatiquement.</value>
+    <value>Toujours autoriser crée une entrée liée aux arguments pour une commande .exe native admissible. Les entrées ajoutées ici sont basées uniquement sur le chemin et peuvent autoriser les exécutables correspondants avec n’importe quels arguments. Refuser et Demander restent contrôlés par Action par défaut. Les modifications sont enregistrées automatiquement.</value>
   </data>
   <data name="PermissionsPage_Saved.Text" xml:space="preserve">
     <value>Enregistré</value>
   </data>
   <data name="PermissionsPage_0Rules.Text" xml:space="preserve">
-    <value>0 règle</value>
+    <value>0 entrée</value>
   </data>
   <data name="PermissionsPage_NoRulesYetAdd.Text" xml:space="preserve">
-    <value>Aucune règle pour l'instant. Ajoutez un motif ci-dessous pour refuser, autoriser ou demander pour des commandes spécifiques.</value>
+    <value>Aucune entrée dans la liste d’autorisation des chemins d’exécutables. Approuvez une commande .exe native admissible avec Toujours autoriser, ou ajoutez un motif basé uniquement sur le chemin tel que **/hostname.exe.</value>
   </data>
   <data name="PermissionsPage_WindowsPrivacy.Text" xml:space="preserve">
     <value>Confidentialité Windows</value>
@@ -6854,9 +6857,6 @@ Le binaire wxc-exec est introuvable. {1} S'il s'agit d'une build développeur, c
   </data>
   <data name="SettingsPage_GatewayInfoLabel_Uptime.Text" xml:space="preserve">
     <value>Uptime</value>
-  </data>
-  <data name="PermissionsPage_NewRuleAction.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
-    <value>Action de la règle</value>
   </data>
   <data name="SandboxPage_UnavailablePrimaryButton.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
     <value>Action du bac à sable</value>

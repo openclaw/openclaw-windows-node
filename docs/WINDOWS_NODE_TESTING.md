@@ -77,7 +77,7 @@ These features need the gateway to send `node.invoke` commands:
 | `screen.snapshot` | Take screenshot | Captures screen, shows notification, returns base64 |
 | `screen.record` | Record short screen clip | Returns MP4/base64 metadata; requires explicit gateway allowlist |
 | `system.notify` | Show notification | Displays toast notification |
-| `system.run` | Controlled command execution | Uses local exec approval policy; `prompt` decisions show a Windows Allow once / Always allow / Deny dialog |
+| `system.run` | Controlled command execution | Uses local exec approval policy. A simple unquoted gateway command can bind to an allowlisted executable and run as direct argv; shell syntax remains one-time. Prompt decisions show a Windows Allow once / Always allow / Deny dialog when Allow always is safe. |
 | `system.run.prepare` | Pre-flight command execution | Parses and validates a `system.run` invocation without executing it |
 | `system.which` | Resolve executables | Returns absolute paths for requested binaries |
 | `camera.list` | Enumerate cameras | Returns device IDs and names |
@@ -127,6 +127,7 @@ Local MCP clients also see MCP-only `app.*` commands such as `app.navigate`, `ap
 - **URL Validation**: Canvas blocks `file://`, `javascript:`, localhost, private IPs, IPv6 localhost
 - **Screen Capture Notification**: User is notified when screen snapshots are captured
 - **Screen Recording Allowlist**: `screen.record` must be explicitly allowed by the gateway and does not leave a hidden local MP4 copy on Windows
+- **Session Attribution**: Only the optional top-level `sessionKey` stamped by the Gateway on `node.invoke.request` is trusted. Older Gateways omit it, so those invokes remain unattributed; a caller-supplied nested `args.sessionKey` is never used as a fallback.
 - **Command Center Redaction**: recent node invoke activity records command name, status, duration, node id, and privacy class only; it does not store base64 payloads, screenshots, recordings, tokens, or command arguments
 - **Node Mode Toggle**: Must be explicitly enabled by user
 - **Command Validation**: Only alphanumeric commands with dots/hyphens allowed
@@ -147,7 +148,7 @@ Local MCP clients also see MCP-only `app.*` commands such as `app.navigate`, `ap
 ### Browser control stays enabled but never declares `browser`
 - Setup-code / QR pairing can connect with a device token and leave `GatewayRecord.SharedGatewayToken` empty. Browser control will not declare `browser` / `browser.proxy` until a shared gateway token is saved for that gateway.
 - Expect Connection capability pills to say **Needs gateway shared token** (not "Enabled, not active yet") only while the node WebSocket session is live and the shared token is missing. Disconnected or attached-but-disconnected states should ask for reconnect, not a token paste. The pill keeps that short label; its tooltip matches Command Center remediation detail.
-- Command Center, Connection pill tooltips, and `app.connection.status` / `app.connection.gateways` use the same live-session rule for the shared-token caveat. For a remote (non-loopback) gateway without an explicit `BrowserControlPort` or SSH browser-proxy forward — including SSH tunnels whose effective URL is `127.0.0.1` — that caveat also mentions the endpoint/forward requirement; the shared token alone is not enough for usable remote browser.proxy.
+- Command Center, Connection pill tooltips, and `app.connection.status` / `app.connection.gateways` use the same live-session rule for the shared-token caveat. For a remote (non-loopback) gateway without an explicit `BrowserControlPort` or SSH browser-proxy forward - including SSH tunnels whose effective URL is `127.0.0.1` - that caveat also mentions the endpoint/forward requirement; the shared token alone is not enough for usable remote browser.proxy.
 - Enter the gateway shared token in Settings, save, and reconnect node mode. Bootstrap tokens are not the shared gateway token.
 
 ### `browser.proxy` reports no browser-control host
@@ -178,11 +179,18 @@ Local MCP clients also see MCP-only `app.*` commands such as `app.navigate`, `ap
   ```
 
 ### Full Gateway `system.run` MXC runtime proof
-- The focused E2E below provisions a fresh WSL Gateway, starts an isolated tray instance, sets a local exec approval rule through MCP, invokes `system.run` through the real Gateway `node.invoke` path, and verifies tray MXC diagnostics show contained `mxc-direct-appc` execution for both allowed execution and denied writes to the tray data directory.
+- The focused E2E below provisions a fresh WSL Gateway, starts an isolated tray instance, sets local exec approval policy, invokes `system.run` through the real Gateway `node.invoke` path, and verifies tray MXC diagnostics show contained `mxc-direct-appc` execution for a bound `hostname.exe` allowlist rule, full-policy shell execution, and denied writes to the tray data directory.
 - Run it when validating the Gateway/Windows node runtime path, not just direct MCP or shared library behavior.
 - GitHub-hosted Actions runners do not provide a working MXC/AppContainer runtime. The regular cloud E2E matrix should report these MXC proofs as skipped while still running the rest of setup-connect. Run the proof on a local MXC-enabled Windows machine. Only set `OPENCLAW_RUN_MXC_E2E=1` in GitHub Actions when using an MXC-enabled self-hosted runner.
 - Use `.\scripts\validate-mxc-e2e.ps1` for normal local validation. It sets `OPENCLAW_RUN_E2E` and `OPENCLAW_RUN_MXC_E2E`, runs the real Gateway MXC proofs, and fails if the MXC proof skips. `-AllowSkip` is only for documenting a non-MXC host, not for merge validation of MXC-related work.
-- When reproducing this manually against an existing Gateway, make sure `gateway.nodes.allowCommands` includes `system.run`, `system.run.prepare`, and `system.which`, then approve any `pending-reapproval` request with `openclaw nodes approve <pendingRequestId>`. The node can advertise `system.run` while the Gateway still blocks it until both gates are updated.
+- When reproducing this manually against an existing Gateway, confirm
+  `gateway.nodes.denyCommands` does not block `system.run`,
+  `system.run.prepare`, or `system.which`, then approve any
+  `pending-reapproval` request with
+  `openclaw nodes approve <pendingRequestId>`. Current gateways include these
+  commands in the canonical Windows desktop defaults. Older or deliberately
+  customized gateways may still need exact `gateway.nodes.allowCommands`
+  entries.
 
   ```powershell
   .\build.ps1
@@ -190,15 +198,16 @@ Local MCP clients also see MCP-only `app.*` commands such as `app.navigate`, `ap
   $env:OPENCLAW_RUN_E2E = "1"
   dotnet test .\tests\OpenClaw.E2ETests\OpenClaw.E2ETests.csproj `
     --no-restore `
-    --filter "FullyQualifiedName~RealGateway_SystemRun_ExecutesThroughWindowsNodeMxcSandbox" `
+    --filter "FullyQualifiedName~RealGateway_SystemRun" `
     --logger "console;verbosity=normal" `
     -r win-x64
   ```
 
 - Expected proof markers:
+  - The bound-hostname proof succeeds with a local `**/hostname.exe` rule, logs `promptAttempted=false`, and reaches MXC as `shell=<direct-argv>`.
   - Gateway response contains `OPENCLAW_GATEWAY_SYSTEM_RUN_MXC_OK` with `exitCode=0`.
   - The denied-write proof targets a fresh file under the isolated tray data directory, returns non-zero, and leaves that file absent.
-  - `openclaw-tray.log` contains `[mxc] system.run sandbox request` with `executor=mxc-direct-appc`, `contained=True`, and `shell=cmd`.
+  - `openclaw-tray.log` contains `[mxc] system.run sandbox request` with `executor=mxc-direct-appc` and `contained=True`.
   - `openclaw-tray.log` contains `[mxc] system.run sandbox result` with `containment=mxc` for both the successful execution and the denied write.
 - E2E artifacts are written under `TestResults\E2E\<run-id>` and skip known secret-bearing files such as gateway records and settings.
 

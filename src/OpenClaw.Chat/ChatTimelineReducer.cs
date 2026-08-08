@@ -55,7 +55,7 @@ public static class ChatTimelineReducer
             ChatReasoningEndEvent => state.ActiveReasoningId is null ? state : state with { ActiveReasoningId = null },
             ChatMessageDeltaEvent e => UpsertAssistant(BeginTurn(state), e.Text, replace: false, streaming: true),
             ChatMessageEvent e => UpsertAssistant(BeginTurn(state), e.Text, replace: true, streaming: e.IsStreaming, e.ReconcilePrevious),
-            ChatTurnEndEvent => ApplyTurnEnd(state),
+            ChatTurnEndEvent e => ApplyTurnEnd(state, e.RetainToolCorrelations),
             ChatIntentEvent e => state with { CurrentIntent = e.Intent },
             ChatToolStartEvent e => ApplyToolStart(state, e),
             ChatToolPresentationEvent e => ApplyToolPresentation(state, e),
@@ -372,7 +372,12 @@ public static class ChatTimelineReducer
                     correlationId);
                 if (!pendingOutcomes.TryGetValue(outcomeKey, out var outcome))
                     continue;
-                entry = ApplyToolOutcome(entry, outcome);
+                entry = ApplyToolOutcome(
+                    entry,
+                    outcome,
+                    state.TerminalToolCorrelations?.ContainsKey(outcomeKey) == true
+                        ? outcomeKey.RunId
+                        : null);
                 pendingOutcomes = pendingOutcomes.Remove(outcomeKey);
                 if (!isTerminalReplay)
                     terminalCorrelations = terminalCorrelations.Remove(outcomeKey);
@@ -529,7 +534,12 @@ public static class ChatTimelineReducer
             var outcomeKey = CorrelationKey(entry.ToolRunId, entry.ToolLegacyTurn, correlationId);
             if (!pendingOutcomes.TryGetValue(outcomeKey, out var outcome))
                 continue;
-            entry = ApplyToolOutcome(entry, outcome);
+            entry = ApplyToolOutcome(
+                entry,
+                outcome,
+                state.TerminalToolCorrelations?.ContainsKey(outcomeKey) == true
+                    ? outcomeKey.RunId
+                    : null);
             pendingOutcomes = pendingOutcomes.Remove(outcomeKey);
         }
 
@@ -547,26 +557,32 @@ public static class ChatTimelineReducer
         ApplyToolOutcome(state, e.Text, e.ToolCallId, e.RunId, ChatToolCallStatus.Success);
 
     static ChatTimelineState ApplyToolError(ChatTimelineState state, ChatToolErrorEvent e) =>
-        ApplyToolOutcome(state, e.Text, e.ToolCallId, e.RunId, ChatToolCallStatus.Error);
+        ApplyToolOutcome(
+            state, e.Text, e.ToolCallId, e.RunId, ChatToolCallStatus.Error, e.ErrorTextQuality);
 
     static ChatTimelineState ApplyToolOutcome(
         ChatTimelineState state,
         string text,
         string? toolCallId,
         string? runId,
-        ChatToolCallStatus status)
+        ChatToolCallStatus status,
+        ChatToolErrorTextQuality errorTextQuality = ChatToolErrorTextQuality.Unspecified)
     {
         var sequence = state.NextToolOutcomeSequence;
-        var incoming = new ChatPendingToolOutcome(text, status, sequence);
+        var incoming = new ChatPendingToolOutcome(text, status, sequence, errorTextQuality);
         var key = toolCallId is { Length: > 0 }
             ? ResolveBufferedCorrelationKey(state, runId, toolCallId)
             : default(ChatToolCorrelationKey?);
+        var recoveryRunId = key is { } recoveryKey
+            && state.TerminalToolCorrelations?.ContainsKey(recoveryKey) == true
+                ? runId
+                : null;
         var (entries, entryId) = ResolveToolEntry(state, key);
         if (entryId is { } tid)
         {
             var idx = entries.FindIndex(en => en.Id == tid);
             if (idx >= 0)
-                entries = entries.SetItem(idx, ApplyToolOutcome(entries[idx], incoming));
+                entries = entries.SetItem(idx, ApplyToolOutcome(entries[idx], incoming, recoveryRunId));
         }
 
         var pendingOutcomes = state.PendingToolOutcomes
@@ -604,15 +620,41 @@ public static class ChatTimelineReducer
 
     static ChatTimelineItem ApplyToolOutcome(
         ChatTimelineItem entry,
-        ChatPendingToolOutcome incoming)
+        ChatPendingToolOutcome incoming,
+        string? incomingRunId = null)
     {
         var currentStatus = entry.ToolResult ?? ChatToolCallStatus.InProgress;
         var currentPrecedence = ToolOutcomePrecedence(currentStatus);
         var incomingPrecedence = ToolOutcomePrecedence(incoming.Status);
+        var currentErrorQuality = currentStatus == ChatToolCallStatus.Error
+            ? entry.ToolErrorTextQuality
+            : ChatToolErrorTextQuality.Unspecified;
+        var incomingErrorQuality = incoming.Status == ChatToolCallStatus.Error
+            ? incoming.ErrorTextQuality
+            : ChatToolErrorTextQuality.Unspecified;
         if (incomingPrecedence < currentPrecedence
             || (incomingPrecedence == currentPrecedence
-                && incoming.Sequence < entry.ToolOutcomeSequence))
+                && (incomingErrorQuality < currentErrorQuality
+                    || (incomingErrorQuality == currentErrorQuality
+                        && incoming.Sequence < entry.ToolOutcomeSequence))))
         {
+            if (currentStatus == ChatToolCallStatus.Interrupted
+                && incoming.Status == ChatToolCallStatus.Success
+                && !string.IsNullOrWhiteSpace(incomingRunId)
+                && string.Equals(incomingRunId, entry.ToolRunId, StringComparison.Ordinal)
+                && incoming.Sequence >= entry.ToolOutcomeSequence)
+            {
+                return entry with
+                {
+                    ToolResult = ChatToolCallStatus.Success,
+                    ToolOutput = string.IsNullOrEmpty(incoming.Text) && entry.ToolOutput is not null
+                        ? entry.ToolOutput
+                        : incoming.Text,
+                    ToolOutcomeSequence = incoming.Sequence,
+                    ToolErrorTextQuality = incomingErrorQuality
+                };
+            }
+
             if (currentStatus == ChatToolCallStatus.Interrupted
                 && incoming.Sequence >= entry.ToolOutcomeSequence
                 && !string.IsNullOrEmpty(incoming.Text))
@@ -632,7 +674,8 @@ public static class ChatTimelineReducer
             ToolOutput = string.IsNullOrEmpty(incoming.Text) && entry.ToolOutput is not null
                 ? entry.ToolOutput
                 : incoming.Text,
-            ToolOutcomeSequence = incoming.Sequence
+            ToolOutcomeSequence = incoming.Sequence,
+            ToolErrorTextQuality = incomingErrorQuality
         };
     }
 
@@ -644,6 +687,9 @@ public static class ChatTimelineReducer
         var incomingPrecedence = ToolOutcomePrecedence(incoming.Status);
         if (incomingPrecedence != existingPrecedence)
             return incomingPrecedence > existingPrecedence ? incoming : existing;
+        if (incoming.Status == ChatToolCallStatus.Error
+            && incoming.ErrorTextQuality != existing.ErrorTextQuality)
+            return incoming.ErrorTextQuality > existing.ErrorTextQuality ? incoming : existing;
         return incoming.Sequence >= existing.Sequence ? incoming : existing;
     }
 
@@ -1308,7 +1354,9 @@ public static class ChatTimelineReducer
         };
     }
 
-    static ChatTimelineState ApplyTurnEnd(ChatTimelineState state)
+    static ChatTimelineState ApplyTurnEnd(
+        ChatTimelineState state,
+        bool retainToolCorrelations = true)
     {
         var entries = state.Entries;
 
@@ -1390,23 +1438,30 @@ public static class ChatTimelineReducer
 
         var terminalCorrelations = state.TerminalToolCorrelations
             ?? System.Collections.Immutable.ImmutableDictionary<ChatToolCorrelationKey, long>.Empty;
-        foreach (var key in state.ActiveToolCalls.Keys)
-            terminalCorrelations = terminalCorrelations.SetItem(key, state.ToolLegacyTurn);
 
         var pendingPresentations = state.PendingToolPresentations
             ?? System.Collections.Immutable.ImmutableDictionary<ChatToolCorrelationKey, ChatPendingToolPresentation>.Empty;
-        foreach (var pair in pendingPresentations)
-        {
-            if (!terminalCorrelations.ContainsKey(pair.Key))
-                terminalCorrelations = terminalCorrelations.Add(pair.Key, state.ToolLegacyTurn);
-        }
-
         var pendingOutcomes = state.PendingToolOutcomes
             ?? System.Collections.Immutable.ImmutableDictionary<ChatToolCorrelationKey, ChatPendingToolOutcome>.Empty;
-        foreach (var key in pendingOutcomes.Keys)
+        if (retainToolCorrelations)
         {
-            if (!terminalCorrelations.ContainsKey(key))
-                terminalCorrelations = terminalCorrelations.Add(key, state.ToolLegacyTurn);
+            foreach (var key in state.ActiveToolCalls.Keys)
+                terminalCorrelations = terminalCorrelations.SetItem(key, state.ToolLegacyTurn);
+            foreach (var pair in pendingPresentations)
+            {
+                if (!terminalCorrelations.ContainsKey(pair.Key))
+                    terminalCorrelations = terminalCorrelations.Add(pair.Key, state.ToolLegacyTurn);
+            }
+            foreach (var key in pendingOutcomes.Keys)
+            {
+                if (!terminalCorrelations.ContainsKey(key))
+                    terminalCorrelations = terminalCorrelations.Add(key, state.ToolLegacyTurn);
+            }
+        }
+        else
+        {
+            foreach (var key in state.ActiveToolCalls.Keys)
+                terminalCorrelations = terminalCorrelations.Remove(key);
         }
 
         var oldestRetainedTurn = Math.Max(0, state.ToolLegacyTurn - MaxRetainedToolTurns + 1);

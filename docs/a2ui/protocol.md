@@ -1,4 +1,4 @@
-# A2UI v0.8 — Protocol
+# A2UI v0.8 - Protocol
 
 This is a faithful summary of the v0.8 wire format, distilled from
 <https://a2ui.org/specification/v0.8-a2ui/> and
@@ -15,7 +15,7 @@ interfaces:
 - **Surfaces**: independently-controllable UI regions, addressed by
   `surfaceId`. A single agent stream can manage many surfaces in parallel.
 
-The component model is an **adjacency list** — a flat dictionary of
+The component model is an **adjacency list** - a flat dictionary of
 `id → component`, with parents referencing children by id. This is easier
 for an LLM to emit incrementally than nested trees and is the foundation of
 progressive rendering.
@@ -64,14 +64,15 @@ types).
 }}
 ```
 
-The `contents` array is a **typed key-value list** — `valueString`,
+The `contents` array is a **typed key-value list** - `valueString`,
 `valueNumber`, `valueBoolean`, `valueMap`, `valueArray`. Updates are merged
 into the surface's data model rooted at `path` (default `/`). The spec
 leaves "merge vs replace" semantics underspecified; in practice both
 reference clients overwrite leaves and recurse into maps.
 
-A special idiom — `path: "/x", contents: [{ "key": ".", "valueString": "v" }]`
-— is used to set a primitive at a non-root path.
+A special idiom,
+`path: "/x", contents: [{ "key": ".", "valueString": "v" }]`, is used to set
+a primitive at a non-root path.
 
 ### 2.3 `beginRendering`
 
@@ -84,7 +85,7 @@ A special idiom — `path: "/x", contents: [{ "key": ".", "valueString": "v" }]`
 ```
 
 Acts as a **synchronization gate**: until the client sees this, it should
-buffer components/data without rendering. `catalogId` is optional —
+buffer components/data without rendering. `catalogId` is optional -
 default is the v0.8 standard catalog. `styles` may also appear here for
 per-surface theme tokens.
 
@@ -111,7 +112,7 @@ Disposes the surface, its data model, and any subscriptions.
 ```
 
 `context` is the **resolved** snapshot of the action's `context[]`
-(BoundValues evaluated against the data model at click time — see
+(BoundValues evaluated against the data model at click time - see
 [`data-and-actions.md`](./data-and-actions.md)).
 
 ### 3.2 `error`
@@ -140,7 +141,7 @@ A2UI rides on **A2A** as a typed extension:
     ```
   - Server picks one in the next `beginRendering`.
 
-The available spec text is partial — push/pull operations, retry,
+The available spec text is partial - push/pull operations, retry,
 backpressure, and authentication details are **delegated to the A2A layer**
 or to implementations.
 
@@ -161,7 +162,7 @@ or to implementations.
 These behaviors are spec-silent or under-specified; both reference
 implementations and this repo make pragmatic choices:
 
-- **Line-delimited JSON parsing** must tolerate malformed lines gracefully —
+- **Line-delimited JSON parsing** must tolerate malformed lines gracefully -
   a single bad line MUST NOT abort the stream. Both impls log + skip.
 - **Size caps** on lines, components per surface, data-model entries.
   WinUI applies hard caps (1 MiB / 2000 / 1024); Lit does not.

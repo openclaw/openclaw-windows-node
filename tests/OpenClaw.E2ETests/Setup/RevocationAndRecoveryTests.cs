@@ -41,6 +41,9 @@ public class RevocationAndRecoveryTests
             removed = true;
             Console.WriteLine($"[E2E] remove paired device:\n{removeDevice.Stdout}");
 
+            await WaitForManagedEndpointReadyAsync(
+                gateway.GatewayUrl,
+                gateway.SharedGatewayToken!);
             using var connectDoc = await _fixture.Client!.CallToolExpectSuccessAsync(
                 "app.connection.connectSharedToken",
                 new
@@ -52,10 +55,7 @@ public class RevocationAndRecoveryTests
             Console.WriteLine($"[E2E] reconnect after device removal response: {connect.GetRawText()}");
             Assert.Equal("ConnectionFailed", connect.GetProperty("outcome").GetString());
 
-            var pendingDevices = await _fixture.RunInWslAsync("openclaw devices list --json", TimeSpan.FromSeconds(30), env);
-            AssertCommandSucceeded(pendingDevices, "list pending device approval after removal");
-            var requestId = ReadFirstPendingRequestId(pendingDevices.Stdout);
-            Assert.False(string.IsNullOrWhiteSpace(requestId));
+            var requestId = await WaitForFirstPendingRequestIdAsync(env);
 
             var approve = await _fixture.RunInWslAsync(
                 $"openclaw devices approve {ShellSingleQuote(requestId)} --json",
@@ -134,6 +134,57 @@ public class RevocationAndRecoveryTests
         Assert.Contains("windows", nodes.Stdout, StringComparison.OrdinalIgnoreCase);
     }
 
+    private async Task WaitForManagedEndpointReadyAsync(
+        string gatewayUrl,
+        string token)
+    {
+        var deadline = DateTime.UtcNow.AddSeconds(45);
+        JsonElement lastResponse = default;
+        while (DateTime.UtcNow < deadline)
+        {
+            using var connectDoc = await _fixture.Client!.CallToolExpectSuccessAsync(
+                "app.connection.connectSharedToken",
+                new
+                {
+                    gatewayUrl,
+                    token
+                });
+            lastResponse = connectDoc.RootElement.Clone();
+            var error = lastResponse.TryGetProperty("error", out var errorElement)
+                ? errorElement.GetString()
+                : null;
+            if (error?.Contains("not listening yet", StringComparison.OrdinalIgnoreCase) != true)
+                return;
+
+            await Task.Delay(1000);
+        }
+
+        throw new TimeoutException(
+            $"Managed Gateway endpoint did not become ready for revocation recovery. Last response: {lastResponse.GetRawText()}");
+    }
+
+    private async Task<string> WaitForFirstPendingRequestIdAsync(Dictionary<string, string> env)
+    {
+        var deadline = DateTime.UtcNow.AddSeconds(45);
+        string lastOutput = "<none>";
+        while (DateTime.UtcNow < deadline)
+        {
+            var pendingDevices = await _fixture.RunInWslAsync(
+                "openclaw devices list --json",
+                TimeSpan.FromSeconds(30),
+                env);
+            AssertCommandSucceeded(pendingDevices, "list pending device approval after removal");
+            lastOutput = pendingDevices.Stdout;
+            var requestId = TryReadFirstPendingRequestId(lastOutput);
+            if (!string.IsNullOrWhiteSpace(requestId))
+                return requestId;
+
+            await Task.Delay(500);
+        }
+
+        throw new TimeoutException($"Expected a pending replacement device approval. Last response: {lastOutput}");
+    }
+
     private async Task TryRecoverDeviceAfterRemovalAsync(
         (string GatewayUrl, string? SharedGatewayToken, string ActiveId) gateway,
         Dictionary<string, string> env)
@@ -165,17 +216,6 @@ public class RevocationAndRecoveryTests
         {
             Console.WriteLine($"[E2E] Best-effort recovery after device removal failed: {ex.Message}");
         }
-    }
-
-    private static string ReadFirstPendingRequestId(string output)
-    {
-        using var doc = JsonDocument.Parse(ExtractJsonObject(output));
-        Assert.True(doc.RootElement.TryGetProperty("pending", out var pending), $"Missing pending array: {output}");
-        Assert.Equal(JsonValueKind.Array, pending.ValueKind);
-        Assert.True(pending.GetArrayLength() > 0, $"Expected at least one pending request: {output}");
-        var request = pending[0];
-        Assert.True(request.TryGetProperty("requestId", out var requestId), $"Missing requestId: {request.GetRawText()}");
-        return requestId.GetString() ?? string.Empty;
     }
 
     private static string? TryReadFirstPendingRequestId(string output)

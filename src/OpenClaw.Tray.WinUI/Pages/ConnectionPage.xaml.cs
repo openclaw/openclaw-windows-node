@@ -37,6 +37,7 @@ public sealed partial class ConnectionPage : Page
     private static App CurrentApp => (App)Microsoft.UI.Xaml.Application.Current!;
     private AppState? _appState;
     private IGatewayConnectionManager? _connectionManager;
+    private GatewayDirectConnectService? _gatewayDirectConnectService;
     private GatewayRegistry? _gatewayRegistry;
     private GatewayDiscoveryService? _discoveryService;
     private IGatewayTerminalLauncher? _terminalLauncher;
@@ -92,6 +93,7 @@ public sealed partial class ConnectionPage : Page
     public ConnectionPage()
     {
         InitializeComponent();
+        Loaded += (_, _) => _ = VisualTestCapture.CaptureAsync(this, "Connection");
     }
 
     private IGatewayTerminalLauncher TerminalLauncher =>
@@ -109,6 +111,7 @@ public sealed partial class ConnectionPage : Page
         _appState = ((App)Application.Current!).AppState!;
         _appState.PropertyChanged += OnAppStateChanged;
         _connectionManager = CurrentApp.ConnectionManager;
+        _gatewayDirectConnectService = CurrentApp.GatewayDirectConnectService;
         _gatewayRegistry = CurrentApp.Registry;
         var settings = CurrentApp.Settings;
         if (settings == null) return;
@@ -914,6 +917,10 @@ public sealed partial class ConnectionPage : Page
                         gatewayUrl: activeGateway?.Url ?? settings.GatewayUrl,
                         browserControlPort: activeGateway?.BrowserControlPort,
                         sshTunnel: activeGateway?.SshTunnel);
+                var browserEndpointVerified =
+                    BrowserProxyActivation.IsSshBrowserEndpointVerified(
+                        activeGateway?.SshTunnel,
+                        activeGateway?.BrowserControlPort);
                 var pillFp = BuildCapabilityPillFingerprint(
                     plan.NodeCard,
                     plan.NodeEffectiveCapabilities,
@@ -921,7 +928,8 @@ public sealed partial class ConnectionPage : Page
                     settings,
                     hasSharedGatewayToken,
                     nodeSessionLive,
-                    requiresRemoteBrowserEndpoint);
+                    requiresRemoteBrowserEndpoint,
+                    browserEndpointVerified);
                 if (_capabilityPillsFingerprint != pillFp)
                 {
                     _capabilityPillsFingerprint = pillFp;
@@ -931,7 +939,8 @@ public sealed partial class ConnectionPage : Page
                         settings,
                         hasSharedGatewayToken,
                         nodeSessionLive,
-                        requiresRemoteBrowserEndpoint);
+                        requiresRemoteBrowserEndpoint,
+                        browserEndpointVerified);
                 }
 
                 NodeCapabilityPillsHost.Visibility =
@@ -1184,7 +1193,14 @@ public sealed partial class ConnectionPage : Page
         return new Border { Child = grid };
     }
 
-    private enum CapabilityPillState { Active, Pending, NeedsSharedToken, Off }
+    private enum CapabilityPillState
+    {
+        Active,
+        Pending,
+        NeedsSharedToken,
+        NeedsVerifiedEndpoint,
+        Off
+    }
 
     private WrapPanel BuildCapabilityPills(
         IReadOnlyList<string> effective,
@@ -1192,7 +1208,8 @@ public sealed partial class ConnectionPage : Page
         SettingsManager settings,
         bool hasSharedGatewayToken,
         bool nodeSessionLive,
-        bool requiresRemoteBrowserEndpoint)
+        bool requiresRemoteBrowserEndpoint,
+        bool browserEndpointVerified)
     {
         var panel = new WrapPanel { HorizontalSpacing = 6, VerticalSpacing = 6 };
         var effectiveSet = new HashSet<string>(
@@ -1221,7 +1238,8 @@ public sealed partial class ConnectionPage : Page
                     effective: effectiveSet.Contains(name),
                     pendingDeclared: pendingSet.Contains(name),
                     hasSharedGatewayToken: hasSharedGatewayToken,
-                    nodeSessionLive: nodeSessionLive)
+                    nodeSessionLive: nodeSessionLive,
+                    browserEndpointVerified: browserEndpointVerified)
                 : effectiveSet.Contains(name)
                     ? BrowserProxyActivation.CapabilityPillKind.Active
                     : (pendingSet.Contains(name) || enabled)
@@ -1231,6 +1249,7 @@ public sealed partial class ConnectionPage : Page
             {
                 BrowserProxyActivation.CapabilityPillKind.Active => CapabilityPillState.Active,
                 BrowserProxyActivation.CapabilityPillKind.NeedsSharedToken => CapabilityPillState.NeedsSharedToken,
+                BrowserProxyActivation.CapabilityPillKind.NeedsVerifiedEndpoint => CapabilityPillState.NeedsVerifiedEndpoint,
                 BrowserProxyActivation.CapabilityPillKind.PendingApproval => CapabilityPillState.Pending,
                 _ => CapabilityPillState.Off,
             };
@@ -1298,6 +1317,12 @@ public sealed partial class ConnectionPage : Page
                 "ConnectionCapabilityPillCriticalIconStyle",
                 "ConnectionCapabilityPillCriticalTextStyle",
                 "ConnectionPage_NodePillState_NeedsGatewayToken",
+                FluentIconCatalog.StatusWarn),
+            CapabilityPillState.NeedsVerifiedEndpoint => (
+                "ConnectionCapabilityPillPendingBorderStyle",
+                "ConnectionCapabilityPillPendingIconStyle",
+                "ConnectionCapabilityPillPendingTextStyle",
+                "CommandCenter_BrowserProxyHostNotDetected",
                 FluentIconCatalog.StatusWarn),
             _ => (
                 "ConnectionCapabilityPillOffBorderStyle",
@@ -1371,7 +1396,8 @@ public sealed partial class ConnectionPage : Page
         SettingsManager settings,
         bool hasSharedGatewayToken,
         bool nodeSessionLive,
-        bool requiresRemoteBrowserEndpoint)
+        bool requiresRemoteBrowserEndpoint,
+        bool browserEndpointVerified)
     {
         var eff = string.Join(
             ",",
@@ -1389,7 +1415,7 @@ public sealed partial class ConnectionPage : Page
             settings.NodeLocationEnabled ? '1' : '0',
             settings.NodeTtsEnabled ? '1' : '0',
             settings.NodeSttEnabled ? '1' : '0');
-        return $"{state}|{eff}|{pend}|{toggles}|{(hasSharedGatewayToken ? '1' : '0')}|{(nodeSessionLive ? '1' : '0')}|{(requiresRemoteBrowserEndpoint ? '1' : '0')}";
+        return $"{state}|{eff}|{pend}|{toggles}|{(hasSharedGatewayToken ? '1' : '0')}|{(nodeSessionLive ? '1' : '0')}|{(requiresRemoteBrowserEndpoint ? '1' : '0')}|{(browserEndpointVerified ? '1' : '0')}";
     }
 
     /// <summary>
@@ -2438,15 +2464,14 @@ public sealed partial class ConnectionPage : Page
         btn.IsEnabled = false;
         try
         {
-            _gatewayRegistry.SetActive(gwId);
             _userIntent = UserIntent.None;
-            LoadSavedGateways();
-            RefreshFromSnapshot(_lastSnapshot);
             // Await the switch so any failure surfaces in the strip via the
             // catch below rather than becoming a silent unobserved task
             // exception. The state-change events that drive the rest of the
             // UI continue to fire while this awaits.
             await _connectionManager.SwitchGatewayAsync(gwId);
+            LoadSavedGateways();
+            RefreshFromSnapshot(_lastSnapshot);
         }
         catch (Exception ex)
         {
@@ -2727,15 +2752,12 @@ public sealed partial class ConnectionPage : Page
     }
 
     /// <summary>
-    /// Direct connect — adapted from the legacy OnDirectConnect handler.
-    /// Identical semantics: validate, snapshot for rollback, AddOrUpdate +
-    /// SetActive in the registry, ClearStoredTokens for the identity, save
-    /// settings, kick the connection manager and wait for a terminal state.
-    /// Per-gateway SSH is built from the AddSsh* fields (when expander expanded).
+    /// Applies the Add Gateway form through the dedicated direct-connect transaction owner.
+    /// This page reads controls and renders the result; persistence and rollback stay in the service.
     /// </summary>
     private async Task DoDirectConnectFromAddFormAsync()
     {
-        if (_connectionManager == null || _gatewayRegistry == null) return;
+        if (_gatewayDirectConnectService is null) return;
 
         var url = DirectUrlBox.Text?.Trim();
         var token = DirectTokenBox.Text?.Trim();
@@ -2753,128 +2775,31 @@ public sealed partial class ConnectionPage : Page
             AddResultText.Text = sshError;
             return;
         }
-        bool useSsh = sshConfig != null;
 
         AddSaveButton.IsEnabled = false;
-        AddResultText.Text = LocalizationHelper.GetString("ConnectionPage_Connecting");
-
-        // Snapshot previous state for rollback (mirrors legacy logic exactly)
-        var previousActiveId = _gatewayRegistry.ActiveGatewayId;
-        var previousSettings = CurrentApp.Settings;
-        var prevGatewayUrl = previousSettings?.GatewayUrl;
-        var prevUseSsh = previousSettings?.UseSshTunnel ?? false;
-        var prevSshUser = previousSettings?.SshTunnelUser;
-        var prevSshHost = previousSettings?.SshTunnelHost;
-        var prevSshPort = previousSettings?.SshTunnelSshPort ?? 22;
-        var prevSshRemotePort = previousSettings?.SshTunnelRemotePort ?? 0;
-        var prevSshLocalPort = previousSettings?.SshTunnelLocalPort ?? 0;
-
-        // Resolve which record we're operating on:
-        //   1. If the user opened the form via Edit on a saved row, prefer
-        //      the original record id — this lets a URL change *update* the
-        //      existing record instead of orphaning it as a duplicate.
-        //   2. Otherwise look up by URL (typical "user typed a URL" flow).
-        //   3. Otherwise it's brand new.
-        var existing = _editingGatewayId != null
-            ? _gatewayRegistry.GetById(_editingGatewayId) ?? _gatewayRegistry.FindByUrl(url)
-            : _gatewayRegistry.FindByUrl(url);
-        var isNewRecord = existing == null;
-        var existingRecordSnapshot = existing;
-        var recordId = existing?.Id ?? Guid.NewGuid().ToString();
-
-        // Hoisted out of the try block so the catch handler can pass the
-        // backup to RollbackDirectConnect for credential restore.
-        // identityBackupSentinel = file size + last-write-time captured at
-        // backup time. Rollback uses it to skip the restore if the file was
-        // touched in the meantime (e.g. successful late pairing wrote a new
-        // valid token while the connect attempt was still failing).
-        string? identityKeyPath = null;
-        string? identityBackup = null;
-        long identityBackupLength = -1;
-        DateTime identityBackupMtimeUtc = DateTime.MinValue;
-        bool identityCleared = false;
+        AddResultText.Text = sshConfig is null
+            ? LocalizationHelper.GetString("ConnectionPage_Connecting")
+            : LocalizationHelper.GetString("ConnectionPage_StartingSshTunnel");
 
         try
         {
-            await _connectionManager.DisconnectAsync();
-
-            var record = new GatewayRecord
+            var result = await _gatewayDirectConnectService.ConnectAsync(
+                new GatewayDirectConnectRequest(
+                    url,
+                    token,
+                    friendly,
+                    sshConfig,
+                    _editingGatewayId));
+            if (result.Outcome == GatewayDirectConnectOutcome.Failed)
             {
-                Id = recordId,
-                Url = url,
-                FriendlyName = string.IsNullOrWhiteSpace(friendly) ? existing?.FriendlyName : friendly,
-                SharedGatewayToken = string.IsNullOrWhiteSpace(token) ? null : token,
-                BootstrapToken = null,
-                SshTunnel = sshConfig,
-                LastConnected = existing?.LastConnected,
-            }.PreserveAdvancedFields(existing); // keep per-gateway BrowserControlPort across edits
-            _gatewayRegistry.AddOrUpdate(record);
-            _gatewayRegistry.SetActive(recordId);
-            _gatewayRegistry.Save();
-
-            // Identity-token handling.
-            //   - When the user provides a NEW shared token, the previous
-            //     device token is no longer trusted by the gateway, so we
-            //     clear the stored device tokens to force a fresh re-pair.
-            //   - When the form is left blank (user is just renaming /
-            //     fixing SSH), keep the existing device tokens — clearing
-            //     them would silently force a re-pair the user didn't ask
-            //     for and would violate the "never downgrade a paired
-            //     device" architecture rule.
-            //   - When we DO clear, snapshot the identity JSON first so
-            //     RollbackDirectConnect can restore the user's credentials
-            //     if the connection then fails.
-            var identityDir = _gatewayRegistry.GetIdentityDirectory(recordId);
-            identityKeyPath = Path.Combine(identityDir, "device-key-ed25519.json");
-            try
-            {
-                if (File.Exists(identityKeyPath))
-                {
-                    identityBackup = File.ReadAllText(identityKeyPath);
-                    var info = new FileInfo(identityKeyPath);
-                    identityBackupLength = info.Length;
-                    identityBackupMtimeUtc = info.LastWriteTimeUtc;
-                }
-            }
-            catch (Exception ex)
-            {
-                Logger.Warn($"ConnectionPage: Failed to snapshot gateway identity before direct connect; rollback will skip restore: {ex.Message}");
+                AddResultText.Text = $"✗ {result.Error}";
+                return;
             }
 
-            if (!string.IsNullOrWhiteSpace(token))
-            {
-                DeviceIdentityStore.ClearStoredTokens(identityDir);
-                identityCleared = true;
-            }
-
-            if (previousSettings != null)
-            {
-                previousSettings.GatewayUrl = url;
-                previousSettings.UseSshTunnel = useSsh;
-                if (useSsh && sshConfig != null)
-                {
-                    previousSettings.SshTunnelUser = sshConfig.User;
-                    previousSettings.SshTunnelHost = sshConfig.Host;
-                    previousSettings.SshTunnelSshPort = sshConfig.SshPort;
-                    previousSettings.SshTunnelRemotePort = sshConfig.RemotePort;
-                    previousSettings.SshTunnelLocalPort = sshConfig.LocalPort;
-                }
-                previousSettings.Save();
-            }
-
-            if (useSsh)
-            {
-                AddResultText.Text = LocalizationHelper.GetString("ConnectionPage_StartingSshTunnel");
-                var app = (App)Microsoft.UI.Xaml.Application.Current;
-                app.EnsureSshTunnelStarted();
-            }
-
-            var snapshot = await ConnectAndWaitForDirectConnectOutcomeAsync(recordId);
-            AddResultText.Text = snapshot.OperatorState == RoleConnectionState.PairingRequired
+            AddResultText.Text = result.Outcome == GatewayDirectConnectOutcome.PairingRequired
                 ? string.Format(LocalizationHelper.GetString("ConnectionPage_PairingApprovalRequired"), GatewayUrlHelper.SanitizeForDisplay(url))
                 : string.Format(LocalizationHelper.GetString("ConnectionPage_ConnectedTo"), GatewayUrlHelper.SanitizeForDisplay(url));
 
-            // Success — leave Add mode and stop tracking the edited record.
             _editingGatewayId = null;
             _userIntent = UserIntent.None;
             LoadSavedGateways();
@@ -2883,66 +2808,12 @@ public sealed partial class ConnectionPage : Page
         catch (Exception ex)
         {
             AddResultText.Text = $"✗ {ex.Message}";
-            RollbackDirectConnect(previousActiveId, isNewRecord, recordId, existingRecordSnapshot,
-                previousSettings, prevGatewayUrl, prevUseSsh, prevSshUser, prevSshHost,
-                prevSshPort, prevSshRemotePort, prevSshLocalPort,
-                identityCleared ? identityKeyPath : null,
-                identityCleared ? identityBackup : null,
-                identityCleared ? identityBackupLength : -1,
-                identityCleared ? identityBackupMtimeUtc : DateTime.MinValue);
         }
         finally
         {
             AddSaveButton.IsEnabled = true;
         }
     }
-
-    private async Task<GatewayConnectionSnapshot> ConnectAndWaitForDirectConnectOutcomeAsync(string recordId)
-    {
-        if (_connectionManager == null)
-            throw new InvalidOperationException("Connection manager is not available.");
-
-        var completion = new TaskCompletionSource<GatewayConnectionSnapshot>(
-            TaskCreationOptions.RunContinuationsAsynchronously);
-
-        void OnStateChanged(object? sender, GatewayConnectionSnapshot snapshot)
-        {
-            if (!string.Equals(snapshot.GatewayId, recordId, StringComparison.Ordinal))
-                return;
-            if (IsDirectConnectTerminal(snapshot))
-                completion.TrySetResult(snapshot);
-        }
-
-        _connectionManager.StateChanged += OnStateChanged;
-        try
-        {
-            await _connectionManager.ConnectAsync(recordId);
-
-            var current = _connectionManager.CurrentSnapshot;
-            if (string.Equals(current.GatewayId, recordId, StringComparison.Ordinal) &&
-                IsDirectConnectTerminal(current))
-            {
-                return EnsureDirectConnectSucceeded(current);
-            }
-
-            var completed = await Task.WhenAny(completion.Task, Task.Delay(TimeSpan.FromSeconds(15)));
-            if (completed != completion.Task)
-                throw new TimeoutException(LocalizationHelper.GetString("ConnectionPage_ConnectionTimeout"));
-
-            return EnsureDirectConnectSucceeded(await completion.Task);
-        }
-        finally
-        {
-            _connectionManager.StateChanged -= OnStateChanged;
-        }
-    }
-
-    private static bool IsDirectConnectTerminal(GatewayConnectionSnapshot snapshot) =>
-        snapshot.OverallState is OverallConnectionState.Connected
-            or OverallConnectionState.Ready
-            or OverallConnectionState.Degraded ||
-        snapshot.OperatorState is RoleConnectionState.PairingRequired
-            or RoleConnectionState.Error;
 
     private bool TryBuildAddSshTunnelConfig(out SshTunnelConfig? sshConfig, out string? error)
     {
@@ -2987,84 +2858,6 @@ public sealed partial class ConnectionPage : Page
             IncludeBrowserProxyForward: includeBrowserProxyForward,
             SshPort: sshPort);
         return true;
-    }
-
-    private static GatewayConnectionSnapshot EnsureDirectConnectSucceeded(GatewayConnectionSnapshot snapshot)
-    {
-        if (snapshot.OperatorState == RoleConnectionState.Error)
-        {
-            var message = snapshot.OperatorError ?? snapshot.NodeError ?? LocalizationHelper.GetString("ConnectionPage_GatewayConnectionFailed");
-            throw new InvalidOperationException(message);
-        }
-        return snapshot;
-    }
-
-    private void RollbackDirectConnect(
-        string? previousActiveId, bool isNewRecord, string recordId,
-        GatewayRecord? existingRecordSnapshot, SettingsManager? settings,
-        string? prevGatewayUrl, bool prevUseSsh, string? prevSshUser,
-        string? prevSshHost, int prevSshPort, int prevSshRemotePort, int prevSshLocalPort,
-        string? identityKeyPath = null, string? identityBackup = null,
-        long identityBackupLength = -1, DateTime identityBackupMtimeUtc = default)
-    {
-        if (_gatewayRegistry == null) return;
-
-        if (isNewRecord)
-            _gatewayRegistry.Remove(recordId);
-        else if (existingRecordSnapshot != null)
-            _gatewayRegistry.AddOrUpdate(existingRecordSnapshot);
-
-        if (previousActiveId != null)
-            _gatewayRegistry.SetActive(previousActiveId);
-        _gatewayRegistry.Save();
-
-        // Restore the device-token JSON we cleared at the top of
-        // DoDirectConnectFromAddFormAsync. Without this, a failed direct
-        // connect after the user had typed a (possibly wrong) shared token
-        // would permanently destroy the device token earned during the
-        // last successful pairing — forcing a full re-pair the user never
-        // asked for. Skip the restore if the file changed since backup
-        // (e.g. a late-arriving successful pairing wrote a fresh token in
-        // the meantime — that token is more valuable than our backup).
-        if (!string.IsNullOrEmpty(identityKeyPath) && identityBackup != null)
-        {
-            try
-            {
-                bool fileUnchanged = false;
-                if (File.Exists(identityKeyPath))
-                {
-                    var info = new FileInfo(identityKeyPath);
-                    fileUnchanged = info.Length == identityBackupLength
-                                    && info.LastWriteTimeUtc == identityBackupMtimeUtc;
-                }
-                else
-                {
-                    // ClearStoredTokens may have rewritten the file with a
-                    // smaller body — that's the expected post-clear state,
-                    // so treat as unchanged-from-clear and restore.
-                    fileUnchanged = true;
-                }
-                if (fileUnchanged)
-                    DeviceIdentity.AtomicWriteKeyFileRaw(identityKeyPath, identityBackup);
-                // else: another writer touched the file; preserve it.
-            }
-            catch (Exception ex)
-            {
-                Logger.Warn($"ConnectionPage: Failed to restore gateway identity after direct connect rollback: {ex.Message}");
-            }
-        }
-
-        if (settings != null)
-        {
-            settings.GatewayUrl = prevGatewayUrl ?? string.Empty;
-            settings.UseSshTunnel = prevUseSsh;
-            settings.SshTunnelUser = prevSshUser ?? string.Empty;
-            settings.SshTunnelHost = prevSshHost ?? string.Empty;
-            settings.SshTunnelSshPort = prevSshPort;
-            settings.SshTunnelRemotePort = prevSshRemotePort;
-            settings.SshTunnelLocalPort = prevSshLocalPort;
-            settings.Save();
-        }
     }
 
     private async Task DoApplySetupCodeFromAddFormAsync()

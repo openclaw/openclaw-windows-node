@@ -1,0 +1,11 @@
+{
+  "tunnelPort": 35064,
+  "owned": true,
+  "listenerCount": 2,
+  "processName": "ssh",
+  "processId": 56340,
+  "addresses": [
+    "127.0.0.1",
+    "::1"
+  ]
+}

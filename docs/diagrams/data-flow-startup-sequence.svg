@@ -1,0 +1,58 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1750" height="1180" viewBox="0 0 1750 1180" role="img" aria-labelledby="title desc">
+  <title id="title">Startup dispatch sequence: connection to page update</title>
+  <desc id="desc">Sequence diagram with participants ConnectionManager, App.xaml.cs, GatewayService, AppState, HubWindow, and Active Page, showing OperatorClientChanged, AttachClient, StateChanged, Status assignment, and EnqueueModelUpdate leading to PropertyChanged notifications.</desc>
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto"><path d="M0 0 L10 5 L0 10z" fill="context-stroke"/></marker>
+    <style>
+      .title{font:700 28px Segoe UI,Arial,sans-serif;fill:#111}
+      .subtitle{font:16px Segoe UI,Arial,sans-serif;fill:#222}
+      .lane{font:700 18px Segoe UI,Arial,sans-serif;fill:#111;text-anchor:middle}
+      .box{font:15px Segoe UI,Arial,sans-serif;fill:#111;text-anchor:middle}
+      .mono{font:13px Cascadia Code,Consolas,monospace;fill:#111}
+      .msg{font:14px Segoe UI,Arial,sans-serif;fill:#111;text-anchor:middle}
+      .note{font:13px Segoe UI,Arial,sans-serif;fill:#111}
+      .participant{font:16px Segoe UI,Arial,sans-serif;fill:#111;text-anchor:middle}
+    </style>
+  </defs>
+  <rect width="1750" height="1180" fill="#fff"/>
+  <text x="40" y="50" class="title">Startup dispatch sequence: connection to page update</text>
+  <text x="40" y="92" class="subtitle">App.xaml.cs wires ConnectionManager, GatewayService, and AppState together in OnLaunched, then routes live gateway events to AppState and its observers.</text>
+  <rect x="65.0" y="140" width="220" height="65" rx="8" fill="#CFE4FA" stroke="#0078D4" stroke-width="2"/>
+  <rect x="65.0" y="140" width="220" height="65" rx="10" fill="#CFE4FA" stroke="#0078D4" stroke-width="2"/><text x="175.0" y="178.5" class="participant">ConnectionManager</text>
+  <line x1="175.0" y1="205" x2="175.0" y2="1140" stroke="#868E96" stroke-width="1" stroke-dasharray="8 7"/>
+  <rect x="345.0" y="140" width="220" height="65" rx="8" fill="#E8DAEF" stroke="#5C2D91" stroke-width="2"/>
+  <rect x="345.0" y="140" width="220" height="65" rx="10" fill="#E8DAEF" stroke="#5C2D91" stroke-width="2"/><text x="455.0" y="178.5" class="participant">App.xaml.cs</text>
+  <line x1="455.0" y1="205" x2="455.0" y2="1140" stroke="#868E96" stroke-width="1" stroke-dasharray="8 7"/>
+  <rect x="625.0" y="140" width="220" height="65" rx="8" fill="#DFF6DD" stroke="#107C10" stroke-width="2"/>
+  <rect x="625.0" y="140" width="220" height="65" rx="10" fill="#DFF6DD" stroke="#107C10" stroke-width="2"/><text x="735.0" y="178.5" class="participant">GatewayService</text>
+  <line x1="735.0" y1="205" x2="735.0" y2="1140" stroke="#868E96" stroke-width="1" stroke-dasharray="8 7"/>
+  <rect x="905.0" y="140" width="220" height="65" rx="8" fill="#DFF6DD" stroke="#107C10" stroke-width="2"/>
+  <rect x="905.0" y="140" width="220" height="65" rx="10" fill="#DFF6DD" stroke="#107C10" stroke-width="2"/><text x="1015.0" y="178.5" class="participant">AppState</text>
+  <line x1="1015.0" y1="205" x2="1015.0" y2="1140" stroke="#868E96" stroke-width="1" stroke-dasharray="8 7"/>
+  <rect x="1185.0" y="140" width="220" height="65" rx="8" fill="#FFF4CE" stroke="#F7630C" stroke-width="2"/>
+  <rect x="1185.0" y="140" width="220" height="65" rx="10" fill="#FFF4CE" stroke="#F7630C" stroke-width="2"/><text x="1295.0" y="178.5" class="participant">HubWindow</text>
+  <line x1="1295.0" y1="205" x2="1295.0" y2="1140" stroke="#868E96" stroke-width="1" stroke-dasharray="8 7"/>
+  <rect x="1465.0" y="140" width="220" height="65" rx="8" fill="#99E9F2" stroke="#0C8599" stroke-width="2"/>
+  <rect x="1465.0" y="140" width="220" height="65" rx="10" fill="#99E9F2" stroke="#0C8599" stroke-width="2"/><text x="1575.0" y="178.5" class="participant">Active Page</text>
+  <line x1="1575.0" y1="205" x2="1575.0" y2="1140" stroke="#868E96" stroke-width="1" stroke-dasharray="8 7"/>
+  <path d="M175.0 260 L455.0 260" fill="none" stroke="#111111" stroke-width="2" marker-end="url(#arrow)"/>
+  <text x="315.0" y="250" class="msg">OperatorClientChanged</text>
+  <path d="M455.0 340 L735.0 340" fill="none" stroke="#111111" stroke-width="2" marker-end="url(#arrow)"/>
+  <text x="595.0" y="330" class="msg">AttachClient(new, old)</text>
+  <rect x="580.0" y="400" width="310" height="42" rx="8" fill="#F3F2F1" stroke="#495057" stroke-width="2"/>
+  <rect x="580.0" y="400" width="310" height="42" rx="6" fill="#F3F2F1" stroke="#495057" stroke-width="1.5"/><text x="735.0" y="422" class="note" text-anchor="middle"><tspan x="735.0">Unsubscribe old, subscribe new</tspan></text>
+  <path d="M175.0 490 L455.0 490" fill="none" stroke="#111111" stroke-width="2" marker-end="url(#arrow)"/>
+  <text x="315.0" y="480" class="msg">StateChanged (connect/disconnect)</text>
+  <path d="M455.0 570 L1015.0 570" fill="none" stroke="#111111" stroke-width="2" marker-end="url(#arrow)"/>
+  <text x="735.0" y="560" class="msg">Status = mapped (on UI thread)</text>
+  <rect x="566.5" y="650" width="337" height="42" rx="8" fill="#F3F2F1" stroke="#495057" stroke-width="2"/>
+  <rect x="566.5" y="650" width="337" height="42" rx="6" fill="#F3F2F1" stroke="#495057" stroke-width="1.5"/><text x="735.0" y="672" class="note" text-anchor="middle"><tspan x="735.0">Gateway event arrives (BG thread)</tspan></text>
+  <path d="M735.0 740 L1015.0 740" fill="none" stroke="#111111" stroke-width="2" marker-end="url(#arrow)"/>
+  <text x="875.0" y="730" class="msg">EnqueueModelUpdate (UI thread)</text>
+  <path d="M1015.0 820 L1575.0 820" fill="none" stroke="#111111" stroke-width="2" marker-end="url(#arrow)"/>
+  <text x="1295.0" y="810" class="msg">PropertyChanged</text>
+  <path d="M1015.0 900 L1295.0 900" fill="none" stroke="#111111" stroke-width="2" marker-end="url(#arrow)"/>
+  <text x="1155.0" y="890" class="msg">PropertyChanged (title bar)</text>
+  <path d="M1015.0 980 L455.0 980" fill="none" stroke="#111111" stroke-width="2" marker-end="url(#arrow)"/>
+  <text x="735.0" y="970" class="msg">PropertyChanged (tray icon/menu)</text>
+</svg>

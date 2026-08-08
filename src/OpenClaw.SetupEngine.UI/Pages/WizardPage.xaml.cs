@@ -36,6 +36,7 @@ public sealed partial class WizardPage : Page
     private readonly Dictionary<string, int> _stepVisits = new(StringComparer.OrdinalIgnoreCase);
     private readonly List<WizardOptionValue> _options = [];
     private readonly Stack<JsonElement> _stepHistory = new();
+    private volatile bool _expectedTerminalRestart;
     // "More ▾" overflow toggle lives as a sibling of SelectOptions, so track it to remove between steps.
     private Button? _moreOptionsButton;
     // wizard.payload frames do not include plugin console output, so tail the gateway log inline.
@@ -98,6 +99,8 @@ public sealed partial class WizardPage : Page
 
     protected override void OnNavigatedFrom(NavigationEventArgs e)
     {
+        AdvanceOperationGeneration();
+        _expectedTerminalRestart = false;
         _ = DisconnectAsync();
     }
 
@@ -108,6 +111,7 @@ public sealed partial class WizardPage : Page
         {
             _errorState = false;
             _finalizationErrorState = false;
+            _expectedTerminalRestart = false;
             HideRecoveryActions();
             // Cancel any in-progress server-side wizard session before starting a
             // fresh one, so the gateway doesn't reject wizard.start with "wizard
@@ -184,7 +188,15 @@ public sealed partial class WizardPage : Page
             {
                 return ReconnectAuthorizationResult.AllowedResult;
             }
-            var provenance = await provenanceService.InspectAsync(record, cancellationToken);
+            var provenance = _expectedTerminalRestart
+                ? await GatewayWizardRestartRecoveryPolicy.WaitForExpectedManagedGatewayAsync(
+                    cancellationToken => provenanceService.InspectAsync(
+                        record,
+                        cancellationToken),
+                    noListenerRetryCount: 30,
+                    retryDelay: TimeSpan.FromSeconds(1),
+                    cancellationToken)
+                : await provenanceService.InspectAsync(record, cancellationToken);
             return provenance.Kind == GatewayEndpointProvenanceKind.ExpectedManagedGateway
                 ? ReconnectAuthorizationResult.AllowedResult
                 : new ReconnectAuthorizationResult(
@@ -236,9 +248,12 @@ public sealed partial class WizardPage : Page
 
         DispatcherQueue.TryEnqueue(() =>
         {
+            // The pending request classifies the close code. Suppress only the duplicate
+            // status error while it does so; non-1012 failures still enter the normal error path.
             if (_errorState
                 || _client == null
                 || !ReferenceEquals(sender, _client)
+                || _expectedTerminalRestart
                 || string.IsNullOrWhiteSpace(_sessionId))
             {
                 return;
@@ -793,6 +808,8 @@ public sealed partial class WizardPage : Page
         if (_client == null) return;
 
         var generation = _operationGeneration;
+        var answeredQuestion = "";
+        string? answeredLabel = null;
         try
         {
             object? answerValue = null;
@@ -813,8 +830,8 @@ public sealed partial class WizardPage : Page
             // render and the user's current click. Once they answer, those messages
             // are "consumed" — wipe so the next step starts with a clean slate.
             ClearConsoleBanner();
-            var answeredQuestion = TitleText.Text;
-            var answeredLabel = CurrentAnswerLabel(skip);
+            answeredQuestion = TitleText.Text;
+            answeredLabel = CurrentAnswerLabel(skip);
             object parameters;
             if (skip)
             {
@@ -831,6 +848,14 @@ public sealed partial class WizardPage : Page
                 parameters = new { sessionId = _sessionId, answer = new { stepId = _stepId, value = answerValue } };
             }
 
+            _expectedTerminalRestart =
+                !skip &&
+                _hostAccessPlan.CanControlWslGateway &&
+                GatewayWizardRestartRecoveryPolicy.IsTerminalRestartCandidate(
+                    _config.Gateway.Version,
+                    _stepId,
+                    _currentTitle,
+                    _currentMessage);
             var payload = await _client.SendWizardRequestAsync("wizard.next", parameters, timeoutMs: TimeoutForCurrentStep());
             if (generation != _operationGeneration)
                 return;
@@ -844,7 +869,76 @@ public sealed partial class WizardPage : Page
             if (generation != _operationGeneration)
                 return;
 
+            if (_expectedTerminalRestart &&
+                GatewayWizardRestartRecoveryPolicy.IsExpectedTerminalRestart(
+                    _config.Gateway.Version,
+                    _stepId,
+                    ex,
+                    _currentTitle,
+                    _currentMessage))
+            {
+                StatusText.Text = "Gateway restarted; verifying endpoint ownership...";
+                var reconnected = await WaitForReconnectAsync(
+                    _client,
+                    TimeSpan.FromSeconds(60));
+                if (generation != _operationGeneration)
+                    return;
+
+                if (!reconnected)
+                {
+                    await EnterWizardErrorAsync(
+                        "The gateway restarted after applying setup, but Companion could not verify and reconnect to its managed endpoint.");
+                    return;
+                }
+
+                AppendTranscriptTurn(answeredQuestion, answeredLabel);
+                await DisconnectAsync();
+                if (generation != _operationGeneration || _errorState)
+                    return;
+
+                await CompleteSetupAsync(generation);
+                return;
+            }
+
             await EnterWizardErrorAsync(ex.Message);
+        }
+        finally
+        {
+            if (generation == _operationGeneration)
+                _expectedTerminalRestart = false;
+        }
+    }
+
+    private static async Task<bool> WaitForReconnectAsync(
+        OpenClawGatewayClient client,
+        TimeSpan timeout)
+    {
+        if (client.HasHandshakeSnapshot)
+            return true;
+
+        var tcs = new TaskCompletionSource<bool>(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        void OnHandshakeSucceeded(object? sender, EventArgs args) =>
+            tcs.TrySetResult(true);
+        void OnDisposed(object? sender, EventArgs args) =>
+            tcs.TrySetResult(false);
+
+        client.HandshakeSucceeded += OnHandshakeSucceeded;
+        client.Disposed += OnDisposed;
+        try
+        {
+            if (client.HasHandshakeSnapshot)
+                return true;
+
+            using var timeoutCancellation = new CancellationTokenSource(timeout);
+            await using var _ = timeoutCancellation.Token.Register(
+                () => tcs.TrySetResult(false));
+            return await tcs.Task;
+        }
+        finally
+        {
+            client.HandshakeSucceeded -= OnHandshakeSucceeded;
+            client.Disposed -= OnDisposed;
         }
     }
 

@@ -1,6 +1,6 @@
 # Test Coverage Summary
 
-**Last audited**: 2026-07-06<br>
+**Last audited**: 2026-08-06<br>
 **Framework**: xUnit / .NET 10.0<br>
 **Required validation status**: passing (`.\build.ps1`, Shared tests, Tray tests)
 
@@ -11,27 +11,30 @@ These are the suites every agent must run after code changes, as documented in
 
 | Suite | Latest runtime result |
 |---|---:|
-| `OpenClaw.Shared.Tests` | 2,734 total: 2,703 passed, 31 skipped |
-| `OpenClaw.Tray.Tests` | 1,584 total: 1,584 passed, 0 skipped |
+| `OpenClaw.Shared.Tests` | 3,444 total: 3,412 passed, 32 skipped |
+| `OpenClaw.Tray.Tests` | 2,165 total: 2,165 passed, 0 skipped |
 
-Runtime totals come from `dotnet test` on 2026-07-06. They are higher than
+Runtime totals come from `dotnet test` on 2026-08-06. They are higher than
 method counts because some `[Theory]` tests expand into multiple cases.
 
 ## Test project inventory
 
 | Project | Primary scope | Test methods |
 |---|---|---:|
-| `OpenClaw.Connection.Tests` | Gateway registry, credential resolution, connection manager/state machine, setup codes, pairing, diagnostics | 325 |
-| `OpenClaw.Shared.Tests` | Shared models, gateway client, capabilities, MCP, exec approval, A2UI security, URL handling, notification categorization | 1,977 |
-| `OpenClaw.Tray.Tests` | Tray state/UI helpers, settings isolation, onboarding, connection page behavior, localization, local gateway setup/uninstall | 1,240 |
-| `OpenClaw.Tray.UITests` | Native WinUI/A2UI control, rendering, and accessibility scan coverage | 64 |
+| `OpenClaw.Connection.Tests` | Gateway registry, credential resolution, connection manager/state machine, setup codes, pairing, diagnostics | 452 |
+| `OpenClaw.Shared.Tests` | Shared models, gateway client, capabilities, MCP, exec approval, A2UI security, URL handling, notification categorization | 2,373 |
+| `OpenClaw.Tray.Tests` | Tray state/UI helpers, settings isolation, onboarding, connection page behavior, localization, local gateway setup/uninstall | 1,717 |
+| `OpenClaw.Tray.UITests` | Native WinUI/A2UI control, rendering, and accessibility scan coverage | 89 |
 | `OpenClaw.WinNode.Cli.Tests` | Windows node CLI argument parsing, command behavior, JSON output, uninstall flow | 89 |
-| `OpenClaw.SetupEngine.Tests` | Setup engine, WSL gateway installation, setup-code, and local setup policy coverage | 284 |
-| `OpenClawTray.FunctionalUI.Tests` | Functional UI smoke coverage | 10 |
+| `OpenClaw.SetupEngine.Tests` | Setup engine, WSL gateway installation, setup-code, and local setup policy coverage | 387 |
+| `OpenClawTray.FunctionalUI.Tests` | Functional UI smoke coverage | 19 |
 | `OpenClaw.E2ETests` | Gateway-mediated setup/connect, revocation recovery, and network recovery suites | 21 |
-| `OpenClaw.Tray.IntegrationTests` | Real-process tray/MCP integration tests gated by `OPENCLAW_RUN_INTEGRATION=1` | 18 |
+| `OpenClaw.Tray.IntegrationTests` | Real-process tray/MCP integration tests gated by `OPENCLAW_RUN_INTEGRATION=1` | 19 |
 
-The method inventory is a source scan of `[Fact]`, `[Theory]`, and repo custom xUnit attributes such as `[E2EFact]`, `[MxcE2EFact]`, and `[IntegrationFact]`. Use `dotnet test` for authoritative runtime totals.
+The method inventory is a source scan of `[Fact]`, `[Theory]`, and repo custom
+xUnit attributes such as `[WindowsFact]`, `[E2EFact]`, `[MxcE2EFact]`,
+`[IntegrationFact]`, and `[IntegrationTheory]`. Use `dotnet test` for
+authoritative runtime totals.
 
 ## Coverage highlights
 
@@ -114,6 +117,12 @@ dotnet test --logger "console;verbosity=detailed"
 
 In a fresh worktree, run the project once without `--no-restore` or build it
 first so `dotnet test --no-restore` cannot no-op before `bin\` exists.
+
+Test-owned TCP listeners must bind only to loopback addresses. A successful
+wildcard bind from `testhost.exe` can trigger a per-worktree Windows Defender
+Firewall consent dialog and block unattended validation. Tests for production
+LAN-bind conflict handling should occupy loopback first so the production
+wildcard bind fails without opening a network-reachable listener.
 
 ## Not fully covered by automated tests
 

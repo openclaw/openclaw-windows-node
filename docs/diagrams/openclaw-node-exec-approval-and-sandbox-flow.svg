@@ -1,0 +1,58 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1440" height="1200" viewBox="0 0 1440 1200" role="img" aria-labelledby="title desc">
+  <title id="title">OpenClaw node exec approval and sandbox flow</title>
+  <desc id="desc">A node-targeted command passes gateway approval and node invoke gates, then independent Windows approval and sandbox policy.</desc>
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto"><path d="M0 0 L10 5 L0 10z" fill="context-stroke"/></marker>
+    <style>
+      .title{font:700 30px Segoe UI,Arial,sans-serif;fill:#111}
+      .section{font:700 22px Segoe UI,Arial,sans-serif;fill:#111;text-anchor:middle}
+      .box{font:16px Segoe UI,Arial,sans-serif;fill:#111;text-anchor:middle}
+      .note{font:18px Segoe UI,Arial,sans-serif;fill:#111;text-anchor:middle}
+    </style>
+  </defs>
+  <rect width="1440" height="1200" fill="#fff"/>
+  <text x="40" y="50" class="title">Node exec: independent gateway and Windows safety boundaries</text>
+
+  <rect x="40" y="100" width="600" height="940" rx="20" fill="none" stroke="#5C2D91" stroke-width="4"/>
+  <text x="340" y="145" class="section">Gateway boundary</text>
+  <rect x="150" y="200" width="380" height="100" rx="14" fill="#E8DAEF" stroke="#5C2D91" stroke-width="2"/>
+  <text x="340" y="235" class="box"><tspan x="340">Agent exec host=node</tspan><tspan x="340" dy="24">select target and platform</tspan></text>
+  <rect x="150" y="360" width="380" height="120" rx="14" fill="#E8DAEF" stroke="#5C2D91" stroke-width="2"/>
+  <text x="340" y="392" class="box"><tspan x="340">Build platform shell argv</tspan><tspan x="340" dy="24">Windows: cmd.exe /d /s /c</tspan><tspan x="340" dy="24">Unix: /bin/sh -c or -lc</tspan></text>
+  <rect x="150" y="540" width="380" height="100" rx="14" fill="#FFF4CE" stroke="#F7630C" stroke-width="2" stroke-dasharray="10 7"/>
+  <text x="340" y="576" class="box"><tspan x="340">system.run.prepare</tspan><tspan x="340" dy="24">get node-canonical execution plan</tspan></text>
+  <rect x="150" y="700" width="380" height="125" rx="14" fill="#FFF4CE" stroke="#F7630C" stroke-width="2" stroke-dasharray="10 7"/>
+  <text x="340" y="735" class="box"><tspan x="340">Conditional gateway path</tspan><tspan x="340" dy="24">system.run.prepare + host=node policy</tspan><tspan x="340" dy="24">approval/fallback + recheck</tspan></text>
+  <rect x="150" y="885" width="380" height="115" rx="14" fill="#FDE7E9" stroke="#D13438" stroke-width="2"/>
+  <text x="340" y="917" class="box"><tspan x="340">node.invoke gateway gates</tspan><tspan x="340" dy="22">pairing + declared command + allow/deny</tspan><tspan x="340" dy="22">sanitize + plugin policy</tspan></text>
+
+  <path d="M340 300 V360" fill="none" stroke="#5C2D91" stroke-width="3" marker-end="url(#arrow)"/>
+  <path d="M340 480 V540" fill="none" stroke="#F7630C" stroke-width="3" marker-end="url(#arrow)"/>
+  <path d="M340 640 V700" fill="none" stroke="#F7630C" stroke-width="3" marker-end="url(#arrow)"/>
+  <path d="M340 825 V885" fill="none" stroke="#D13438" stroke-width="3" marker-end="url(#arrow)"/>
+  <path d="M150 420 H100 V942 H150" fill="none" stroke="#5C2D91" stroke-width="3" marker-end="url(#arrow)"/>
+  <text x="78" y="590" class="box"><tspan x="78">Default</tspan><tspan x="78" dy="20">full + off</tspan><tspan x="78" dy="20">skips prepare</tspan><tspan x="78" dy="20">and approval</tspan></text>
+
+  <rect x="750" y="100" width="640" height="940" rx="20" fill="none" stroke="#107C10" stroke-width="4"/>
+  <text x="1070" y="145" class="section">Target Windows node boundary</text>
+  <rect x="880" y="200" width="380" height="90" rx="14" fill="#DFF6DD" stroke="#107C10" stroke-width="2"/>
+  <text x="1070" y="233" class="box"><tspan x="1070">Receive node.invoke system.run</tspan><tspan x="1070" dy="23">concurrency and cancellation</tspan></text>
+  <rect x="880" y="350" width="380" height="90" rx="14" fill="#FDE7E9" stroke="#D13438" stroke-width="2"/>
+  <text x="1070" y="402" class="box">Local Run system tools kill switch</text>
+  <rect x="845" y="495" width="450" height="200" rx="16" fill="#DFF6DD" stroke="#107C10" stroke-width="3"/>
+  <text x="1070" y="530" class="box"><tspan x="1070">Windows V2 approval</tspan><tspan x="1070" dy="23">validate; detect wrappers for policy</tspan><tspan x="1070" dy="23">resolve absolute executable</tspan><tspan x="1070" dy="23">allowlist and ask evaluation</tspan><tspan x="1070" dy="23">local prompt or bounded fallback</tspan><tspan x="1070" dy="23">policy revalidation</tspan></text>
+  <rect x="845" y="755" width="450" height="130" rx="14" fill="#99E9F2" stroke="#0C8599" stroke-width="2"/>
+  <text x="1070" y="790" class="box"><tspan x="1070">MxcCommandRunner</tspan><tspan x="1070" dy="24">MXC AppContainer, strict deny,</tspan><tspan x="1070" dy="24">or approved host fallback</tspan></text>
+  <rect x="845" y="940" width="450" height="70" rx="14" fill="#DFF6DD" stroke="#107C10" stroke-width="2"/>
+  <text x="1070" y="982" class="box">Approved process -> result -> gateway -> agent</text>
+
+  <path d="M530 942 H690 V245 H880" fill="none" stroke="#D13438" stroke-width="4" marker-end="url(#arrow)"/>
+  <text x="690" y="215" class="box"><tspan x="690">forward only</tspan><tspan x="690" dy="22">after gateway gates</tspan></text>
+  <path d="M1070 290 V350" fill="none" stroke="#107C10" stroke-width="3" marker-end="url(#arrow)"/>
+  <path d="M1070 440 V495" fill="none" stroke="#107C10" stroke-width="3" marker-end="url(#arrow)"/>
+  <path d="M1070 695 V755" fill="none" stroke="#0C8599" stroke-width="3" marker-end="url(#arrow)"/>
+  <path d="M1070 885 V940" fill="none" stroke="#107C10" stroke-width="3" marker-end="url(#arrow)"/>
+
+  <rect x="110" y="1090" width="1220" height="70" rx="14" fill="#F3F2F1" stroke="#1e1e1e" stroke-width="2"/>
+  <text x="720" y="1118" class="note"><tspan x="720">A gateway approval authorizes the request to cross the control plane. A Windows V2 approval</tspan><tspan x="720" dy="24">authorizes execution on the Windows machine. Neither replaces the other.</tspan></text>
+</svg>

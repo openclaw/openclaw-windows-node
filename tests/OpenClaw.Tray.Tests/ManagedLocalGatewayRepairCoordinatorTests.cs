@@ -155,7 +155,7 @@ public class ManagedLocalGatewayRepairCoordinatorTests : IDisposable
 
         Assert.Equal(ManagedLocalGatewayRepairOutcome.Repaired, result.Outcome);
         Assert.Equal(1, restarter.Calls);   // escalated to a single budgeted restart
-        Assert.Equal(2, reconnects);         // reachable-path reconnect, then post-restart reconnect
+        Assert.Equal(1, reconnects);         // reachable-path reconnect; restart recovery avoids tearing down a healthy client
     }
 
     [Fact]
@@ -217,6 +217,38 @@ public class ManagedLocalGatewayRepairCoordinatorTests : IDisposable
                 {
                     mutated = true;
                     _registry.AddOrUpdate(new GatewayRecord { Id = "gw-local", Url = "wss://remote.example" });
+                }
+                return false;
+            });
+
+        var result = await coordinator.TryRepairActiveGatewayAsync();
+
+        Assert.Equal(ManagedLocalGatewayRepairOutcome.AbortedGatewayChanged, result.Outcome);
+        Assert.Equal(0, restarter.Calls);
+    }
+
+    [Fact]
+    public async Task RecordRepointedToDifferentManagedPortDuringVerify_AbortsBeforeRestart()
+    {
+        SetActiveManagedLocal();
+        var restarter = new FakeRestarter();
+        var mutated = false;
+        var coordinator = CreateCoordinator(
+            restarter,
+            probeReachable: () => true,
+            reconnectIfCurrent: (_, _) => Task.FromResult(true),
+            isOperatorConnected: () =>
+            {
+                if (!mutated)
+                {
+                    mutated = true;
+                    _registry.AddOrUpdate(new GatewayRecord
+                    {
+                        Id = "gw-local",
+                        Url = "ws://localhost:18800",
+                        IsLocal = true,
+                        SetupManagedDistroName = "OpenClawGateway",
+                    });
                 }
                 return false;
             });
@@ -432,7 +464,7 @@ public class ManagedLocalGatewayRepairCoordinatorTests : IDisposable
             restarter,
             probeReachable: () => false,
             (_, _) => { reconnects++; return Task.FromResult(true); },
-            () => true,
+            () => restarter.Calls > 0,
             onReArm: () => rearms++);
 
         var result = await coordinator.TryRepairActiveGatewayAsync();
@@ -441,7 +473,44 @@ public class ManagedLocalGatewayRepairCoordinatorTests : IDisposable
         Assert.Equal("OpenClawGateway", result.DistroName);
         Assert.Equal(1, restarter.Calls);
         Assert.Equal(1, rearms);   // keepalive re-armed after restart
-        Assert.Equal(1, reconnects);
+        Assert.Equal(0, reconnects); // operator recovered during restart; do not tear down the healthy client
+    }
+
+    [Fact]
+    public async Task OperatorRecoversDuringRestart_RearmsKeepAliveAndReportsRepaired()
+    {
+        SetActiveManagedLocal();
+        var transportFailure = true;
+        var operatorConnected = false;
+        var rearms = 0;
+        var reconnects = 0;
+        var restarter = new FakeRestarter
+        {
+            Gate = () =>
+            {
+                transportFailure = false;
+                operatorConnected = true;
+                return Task.CompletedTask;
+            }
+        };
+        var coordinator = CreateCoordinator(
+            restarter,
+            probeReachable: () => false,
+            (_, _) =>
+            {
+                reconnects++;
+                return Task.FromResult(true);
+            },
+            isOperatorConnected: () => operatorConnected,
+            onReArm: () => rearms++,
+            isRestartStillWarranted: () => transportFailure);
+
+        var result = await coordinator.TryRepairActiveGatewayAsync();
+
+        Assert.Equal(ManagedLocalGatewayRepairOutcome.Repaired, result.Outcome);
+        Assert.Equal(1, restarter.Calls);
+        Assert.Equal(1, rearms);
+        Assert.Equal(0, reconnects);
     }
 
     [Fact]
@@ -508,7 +577,7 @@ public class ManagedLocalGatewayRepairCoordinatorTests : IDisposable
             restarter,
             probeReachable: () => false,
             reconnectIfCurrent: (_, _) => { _registry.SetActive("gw-other"); return Task.FromResult(false); },
-            isOperatorConnected: () => true);
+            isOperatorConnected: () => false);
 
         var result = await coordinator.TryRepairActiveGatewayAsync();
 
@@ -526,8 +595,13 @@ public class ManagedLocalGatewayRepairCoordinatorTests : IDisposable
         public ManagedLocalGatewayRestartResult Result = new(true);
         public Func<Task>? Gate;
 
-        public async Task<ManagedLocalGatewayRestartResult> RestartAsync(string distroName, CancellationToken cancellationToken)
+        public async Task<ManagedLocalGatewayRestartResult> RestartAsync(
+            string distroName,
+            CancellationToken cancellationToken,
+            Func<bool>? canContinue = null)
         {
+            if (canContinue is not null && !canContinue())
+                return new ManagedLocalGatewayRestartResult(false, "Gateway changed before restart.");
             Calls++;
             LastDistro = distroName;
             if (Gate != null)

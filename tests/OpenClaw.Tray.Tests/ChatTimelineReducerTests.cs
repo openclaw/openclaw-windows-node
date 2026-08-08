@@ -603,6 +603,35 @@ public class ChatTimelineReducerTests
     }
 
     [Fact]
+    public void PendingToolOutcomes_PreserveSafeSummaryAcrossLaterUnspecifiedError()
+    {
+        var state = ChatTimelineReducer.Apply(
+            ChatTimelineState.Initial(),
+            new ChatToolPresentationEvent(
+                "parent-1",
+                "Bash",
+                ChatToolIdentityStrength.Specific,
+                ChildToolCallId: "child-1"));
+        state = ChatTimelineReducer.Apply(
+            state,
+            new ChatToolErrorEvent(
+                "Safe validation failure",
+                "child-1",
+                ErrorTextQuality: ChatToolErrorTextQuality.SafeSummary));
+        state = ChatTimelineReducer.Apply(
+            state,
+            new ChatToolErrorEvent("raw validator details", "child-1"));
+        state = ChatTimelineReducer.Apply(
+            state,
+            new ChatToolStartEvent("Tool", "Tool", ToolCallId: "parent-1"));
+
+        var entry = Assert.Single(state.Entries);
+        Assert.Equal(ChatToolCallStatus.Error, entry.ToolResult);
+        Assert.Equal("Safe validation failure", entry.ToolOutput);
+        Assert.Equal(ChatToolErrorTextQuality.SafeSummary, entry.ToolErrorTextQuality);
+    }
+
+    [Fact]
     public void ToolPresentation_LegacyUpdateAfterTurnEndDoesNotRewriteTerminalRow()
     {
         var state = ChatTimelineReducer.Apply(
@@ -960,6 +989,117 @@ public class ChatTimelineReducerTests
         Assert.Equal("late output", entry.ToolOutput);
         Assert.False(state.TurnActive);
         Assert.Empty(state.PendingToolOutcomes!);
+    }
+
+    [Fact]
+    public void ToolReplayRetention_SameRunLateSuccessReplacesInterrupted()
+    {
+        var state = ChatTimelineReducer.Apply(
+            ChatTimelineState.Initial(),
+            new ChatToolStartEvent(
+                "Tool",
+                "Tool",
+                ToolCallId: "tool-1",
+                RunId: "run-1"));
+        state = ChatTimelineReducer.Apply(state, new ChatTurnEndEvent());
+
+        Assert.Equal(ChatToolCallStatus.Interrupted, Assert.Single(state.Entries).ToolResult);
+
+        state = ChatTimelineReducer.Apply(
+            state,
+            new ChatToolOutputEvent("late output", "tool-1", RunId: "run-1"));
+
+        var entry = Assert.Single(state.Entries);
+        Assert.Equal(ChatToolCallStatus.Success, entry.ToolResult);
+        Assert.Equal("late output", entry.ToolOutput);
+    }
+
+    [Fact]
+    public void ToolReplayRetention_AbortedTurnLateSuccessDoesNotReplaceInterrupted()
+    {
+        var state = ChatTimelineReducer.Apply(
+            ChatTimelineState.Initial(),
+            new ChatToolStartEvent(
+                "Tool",
+                "Tool",
+                ToolCallId: "tool-1",
+                RunId: "run-1"));
+        state = ChatTimelineReducer.Apply(
+            state,
+            new ChatTurnEndEvent(RetainToolCorrelations: false));
+
+        state = ChatTimelineReducer.Apply(
+            state,
+            new ChatToolOutputEvent(string.Empty, "tool-1", RunId: "run-1"));
+
+        Assert.Equal(ChatToolCallStatus.Interrupted, Assert.Single(state.Entries).ToolResult);
+    }
+
+    [Fact]
+    public void ToolReplayRetention_AbortPreservesPriorLegacyPendingCorrelation()
+    {
+        var state = ChatTimelineReducer.Apply(
+            ChatTimelineState.Initial(),
+            new ChatToolPresentationEvent(
+                "parent-1",
+                "Bash",
+                ChatToolIdentityStrength.Specific,
+                ChildToolCallId: "child-1",
+                ActivatesTurn: false));
+        state = ChatTimelineReducer.Apply(state, new ChatTurnEndEvent());
+        state = ChatTimelineReducer.Apply(
+            state,
+            new ChatToolStartEvent(
+                "current",
+                "Read",
+                ToolCallId: "current"));
+        state = ChatTimelineReducer.Apply(
+            state,
+            new ChatTurnEndEvent(RetainToolCorrelations: false));
+
+        Assert.Contains(
+            state.PendingToolPresentations!,
+            pair => pair.Key.ToolCallId == "parent-1");
+
+        state = ChatTimelineReducer.Apply(
+            state,
+            new ChatToolStartEvent(
+                "Tool",
+                "Tool",
+                ToolCallId: "parent-1",
+                IdentityStrength: ChatToolIdentityStrength.Fallback));
+        state = ChatTimelineReducer.Apply(
+            state,
+            new ChatToolOutputEvent("late output", "child-1"));
+
+        var parent = Assert.Single(
+            state.Entries,
+            entry => entry.ToolCallId == "parent-1");
+        Assert.Equal("Bash", parent.ToolName);
+        Assert.Equal(ChatToolCallStatus.Interrupted, parent.ToolResult);
+        Assert.Equal("late output", parent.ToolOutput);
+        Assert.False(state.TurnActive);
+    }
+
+    [Fact]
+    public void ToolReplayReset_SameRunLateSuccessDoesNotReplaceInterrupted()
+    {
+        var state = ChatTimelineReducer.Apply(
+            ChatTimelineState.Initial(),
+            new ChatToolStartEvent(
+                "Tool",
+                "Tool",
+                ToolCallId: "tool-1",
+                RunId: "run-1"));
+        state = ChatTimelineReducer.Apply(state, new ChatTurnEndEvent());
+        state = ChatTimelineReducer.Apply(state, new ChatToolReplayResetEvent());
+
+        state = ChatTimelineReducer.Apply(
+            state,
+            new ChatToolOutputEvent(string.Empty, "tool-1", RunId: "run-1"));
+
+        Assert.Equal(ChatToolCallStatus.Interrupted, Assert.Single(state.Entries).ToolResult);
+        Assert.Empty(state.TerminalToolCorrelations!);
     }
 
     [Fact]

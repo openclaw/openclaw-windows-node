@@ -1,11 +1,16 @@
 # Gateway Protocol Drift Guard
 
-> Source of truth: [`openclaw/openclaw` — `packages/gateway-protocol/src/schema/{sessions,commands}.ts`](https://github.com/openclaw/openclaw/tree/main/packages/gateway-protocol/src/schema)
+> Source of truth: [`openclaw/openclaw` - `packages/gateway-protocol/src/schema/{sessions,commands}.ts`](https://github.com/openclaw/openclaw/tree/main/packages/gateway-protocol/src/schema)
+
+This guard covers a protocol subset, not protocol negotiation or gateway release
+pinning. See the
+[Gateway, node, and exec flow FAQ](OPENCLAW_GATEWAY_NODE_EXEC_FAQ.md#are-we-pinned-to-a-gateway-protocol-version-or-a-gateway-release)
+for those separate version axes.
 
 ## Why this exists
 
 The Windows companion can silently drift from the upstream OpenClaw gateway
-protocol — when methods or session fields change upstream but the Windows client
+protocol - when methods or session fields change upstream but the Windows client
 (`OpenClawGatewayClient`) keeps sending the old shapes. Because the gateway
 tolerates unknown/extra fields, such drift ships without any test failing.
 
@@ -13,9 +18,9 @@ The **drift guard** pins a hand-maintained mirror of the upstream gateway protoc
 for the `sessions` / `files` / `commands` / compaction surface and fails the test
 suite whenever the typed client and the pinned schema diverge.
 
-The typed client implements the richer protocol surface —
+The typed client implements the richer protocol surface -
 `commands.list`, the extended `sessions.patch` field set, `sessions.files.list`/
-`get`, and `sessions.compaction.list`/`get`/`branch`/`restore` — across
+`get`, and `sessions.compaction.list`/`get`/`branch`/`restore` - across
 `OpenClawGatewayClient.Protocol.cs` and the DTO/payload builders in
 `GatewayProtocolModels.cs`. This guard pins that whole surface.
 
@@ -37,20 +42,20 @@ unit tests still pass on their fixed sample payloads.
 ## What the guard checks
 
 1. **Method surface** (`ScopedMethodSurface_matches_snapshot`)
-   - Every in-scope method the client actually *wires* — request methods it
+   - Every in-scope method the client actually *wires* - request methods it
      **dispatches** (a method literal passed as a call argument to any dispatcher,
      e.g. `TrySendTrackedRequestAsync("sessions.patch", …)`,
      `TryRequestPayloadAsync("commands.list", …)`, or the private
      `MutateCompactionAsync("sessions.compaction.branch", …)` forwarder), plus
-     notifications it **handles** via `case "…":` — must be pinned in the snapshot.
+     notifications it **handles** via `case "…":` - must be pinned in the snapshot.
    - Every method pinned `windowsUsage: "used"` must still be wired in the way its
      `kind` implies: a **request** must still be *dispatched* (a leftover `case`
      label, a `method is "…"` predicate, or a log sentence is not enough), a
      **notification** must still be *handled*. Dropping one is the classic
      drift regression.
-   - A `planned` method must **not** already be wired — if the client starts using
+   - A `planned` method must **not** already be wired - if the client starts using
      it, the guard forces you to flip it to `used` and verify its response shape.
-     (None currently — the typed client wires the whole surface.)
+     (None currently - the typed client wires the whole surface.)
 2. **`sessions.list` response shape** (`SessionsList_responseShape_matches_snapshot`)
    - The session wire-fields the client parses (scoped to the two session-parsing
      methods) must exactly equal the snapshot's `responseFields` (both directions).
@@ -60,7 +65,7 @@ unit tests still pass on their fixed sample payloads.
      `requestFields` (modulo a per-method `allowedExtraRequestFields` allowlist).
      The comparison is **bidirectional**:
      - **missing** (pinned − constructed): the client no longer sends a field the
-       schema expects — e.g. renaming a wire key while the old name survives as a
+       schema expects - e.g. renaming a wire key while the old name survives as a
        local/parameter (`new { sessionKey = key }` when `key` is still pinned) is
        caught, because the check compares *constructed keys*, not token presence.
      - **unexpected** (constructed − pinned − allowed): the client still constructs
@@ -70,8 +75,8 @@ unit tests still pass on their fixed sample payloads.
        an intentional client-only extra the gateway tolerates.
    - A constructed wire key is an anonymous-object member (`new { sessionKey = key,
      path }`) or a dictionary string key (`payload["model"] = …`) in the region.
-   - The region is the enclosing block of an actual dispatch call, or — when the
-     payload is built by a helper rather than inline — the explicit
+   - The region is the enclosing block of an actual dispatch call, or - when the
+     payload is built by a helper rather than inline - the explicit
      `requestFieldsSource` builder body (the extended `sessions.patch` fields are
      checked against `SessionPatch.ToPayload`; the compaction `branch`/`restore`
      params against `MutateCompactionAsync`). `requestFieldsSource` must resolve
@@ -80,7 +85,7 @@ unit tests still pass on their fixed sample payloads.
      **fails closed** asking for a `requestFieldsSource`.
 4. **Response envelope** (`ResponseEnvelopes_areReadByClient`)
    - For each `used` method that pins a `responseEnvelope`, the client must read
-     that property — `TryGetProperty("…")` **or** `TryGetArray(payload, "…")` —
+     that property - `TryGetProperty("…")` **or** `TryGetArray(payload, "…")` -
      **inside that method's own parser body** (pinned via `responseEnvelopeSource`),
      so one parser reading the same property name (e.g. several read `"checkpoint"`)
      cannot satisfy a different method's envelope. An upstream envelope rename forces
@@ -100,13 +105,13 @@ unit tests still pass on their fixed sample payloads.
      `requestFieldSemantics: "tristate-nullable"`, this guard statically verifies
      the builder source still wires the clear→null routing, the blank-omit guard,
      and the value-state gate, and that the `PatchField<T>` type still exposes its
-     three states — so a refactor that removes the machinery is caught structurally
+     three states - so a refactor that removes the machinery is caught structurally
      here, independent of the behavioural emission tests. (Runtime emission is
      covered by `GatewayProtocolModelsTests`.)
 
 > Extraction is intent-specific and resilient: request-method literals are read
 > from real dispatch call sites (excluding logging sinks) and notifications from
-> `case` labels — not comments, `method is "…"` predicates, or log strings. Each
+> `case` labels - not comments, `method is "…"` predicates, or log strings. Each
 > source is preprocessed into two index-aligned views: a *code* view with comments
 > blanked (literal extraction, so commented-out code never counts) and a *masked*
 > view with comments **and** string/char literals blanked (brace structure, so
@@ -120,18 +125,18 @@ should know which edits are actually validated:
 
 | Snapshot field | Enforced against the client? |
 | --- | --- |
-| `methods[].method` (in-scope) | **Yes** — must match what the client dispatches/handles. |
-| `windowsUsage` (`used`/`planned`) | **Yes** — drives the dispatch/handle requirement and the planned-not-wired check. |
-| `sessions.list.responseFields` | **Yes** — exact set vs. the session parser. |
-| `requestFields` of `used` request methods | **Yes** — bidirectional: must exactly equal the wire keys constructed in the region (missing **and** unexpected both fail). |
-| `allowedExtraRequestFields` | **Yes** — exempts the listed client-only extras from the "unexpected" direction; everything else still fails. |
-| `requestFieldsSource` | **Yes** — must resolve uniquely to a body that constructs keys; that body is the region. |
-| `responseEnvelope` of `used` methods | **Yes** — must be read (`TryGetProperty`/`TryGetArray`) by the pinned parser. |
-| `responseEnvelopeSource` | **Yes** — required when `responseEnvelope` is pinned; must resolve uniquely to the parser body that reads the envelope (no whole-client fallback). |
-| `tristateContract` (markers + state members) | **Yes** — for `requestFieldSemantics: "tristate-nullable"`, the builder source must implement every marker and the `PatchField<T>` type must expose every state. |
-| `kind`, `scopePrefixes`, foundation coverage | **Yes** — snapshot-integrity invariants. |
-| `itemFields` (per-item descriptor fields) | **No** — documentation-only; behaviour covered by `GatewayProtocolModelsTests` parsers. |
-| `_comment`, `_note`, `_itemFieldsNote`, provenance | **No** — documentation-only. |
+| `methods[].method` (in-scope) | **Yes** - must match what the client dispatches/handles. |
+| `windowsUsage` (`used`/`planned`) | **Yes** - drives the dispatch/handle requirement and the planned-not-wired check. |
+| `sessions.list.responseFields` | **Yes** - exact set vs. the session parser. |
+| `requestFields` of `used` request methods | **Yes** - bidirectional: must exactly equal the wire keys constructed in the region (missing **and** unexpected both fail). |
+| `allowedExtraRequestFields` | **Yes** - exempts the listed client-only extras from the "unexpected" direction; everything else still fails. |
+| `requestFieldsSource` | **Yes** - must resolve uniquely to a body that constructs keys; that body is the region. |
+| `responseEnvelope` of `used` methods | **Yes** - must be read (`TryGetProperty`/`TryGetArray`) by the pinned parser. |
+| `responseEnvelopeSource` | **Yes** - required when `responseEnvelope` is pinned; must resolve uniquely to the parser body that reads the envelope (no whole-client fallback). |
+| `tristateContract` (markers + state members) | **Yes** - for `requestFieldSemantics: "tristate-nullable"`, the builder source must implement every marker and the `PatchField<T>` type must expose every state. |
+| `kind`, `scopePrefixes`, foundation coverage | **Yes** - snapshot-integrity invariants. |
+| `itemFields` (per-item descriptor fields) | **No** - documentation-only; behaviour covered by `GatewayProtocolModelsTests` parsers. |
+| `_comment`, `_note`, `_itemFieldsNote`, provenance | **No** - documentation-only. |
 
 
 ## Tri-state clear contract (`sessions.patch`)
@@ -154,14 +159,14 @@ the value-state gate, and `PatchField<T>` must keep its `IsSpecified`/`IsClear`/
 by `GatewayProtocolModelsTests` (`SessionPatch_ToPayload_ClearEmitsExplicitNull*`,
 `…MixesSetAndClearAndUnset`, `PatchField_TriStateFlags`) and end-to-end by
 `GatewayProtocolLiveRoundTripTests` (a loopback-WebSocket test capturing the real
-wire frames) — the guard is the static, upstream-mirrored complement, not a duplicate.
+wire frames) - the guard is the static, upstream-mirrored complement, not a duplicate.
 
 ## `windowsUsage` semantics
 
 | Value | Meaning |
 | --- | --- |
 | `used` | The client dispatches/handles this method today. The guard **requires** it to remain wired up. |
-| `planned` | Defined upstream but not yet consumed by the Windows client. The shape is pinned so future adoption matches upstream, but the client is not required to use it yet. (None currently — the typed client wires the whole surface.) |
+| `planned` | Defined upstream but not yet consumed by the Windows client. The shape is pinned so future adoption matches upstream, but the client is not required to use it yet. (None currently - the typed client wires the whole surface.) |
 
 ## How to refresh the snapshot when upstream changes
 
@@ -198,7 +203,7 @@ session field, a new `commands.list` descriptor field, etc.):
    ```
 4. If the guard fails, reconcile the typed client (`OpenClawGatewayClient.cs`,
    `OpenClawGatewayClient.Protocol.cs`, and the DTOs in `GatewayProtocolModels.cs` /
-   `SessionInfo` in `Models.cs`) with the new schema — that reconciliation is the
+   `SessionInfo` in `Models.cs`) with the new schema - that reconciliation is the
    whole point of the guard. Update the snapshot only to reflect upstream, never to
    silence a real client gap.
 
@@ -207,7 +212,7 @@ session field, a new `commands.list` descriptor field, etc.):
 Every guard checks the client against the **snapshot**, not against upstream
 directly (a deliberate trade-off for the offline/repo-contained guarantee). If
 upstream changes and nobody refreshes the snapshot, the tests stay green while the
-client silently drifts from real upstream — the original regression class, moved
+client silently drifts from real upstream - the original regression class, moved
 up one level.
 
 Mitigations:

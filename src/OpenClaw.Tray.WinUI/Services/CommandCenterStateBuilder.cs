@@ -276,28 +276,46 @@ internal sealed class CommandCenterStateBuilder
         // Same live-session signal as app.connection.status / gateways (manager NodeState).
         var nodeSessionLive = BrowserProxyActivation.IsNodeSessionLive(
             _snapshot.NodeConnectionState);
-        if (!CommandCenterBrowserProxyAuthWarningPolicy.ShouldShow(
-                _snapshot.Settings?.NodeBrowserProxyEnabled != false,
-                _snapshot.ActiveGatewayHasSharedToken,
-                nodeSessionLive))
-        {
-            yield break;
-        }
-
+        var browserProxyEnabled = _snapshot.Settings?.NodeBrowserProxyEnabled != false;
+        var browserEndpointVerified = BrowserProxyActivation.IsSshBrowserEndpointVerified(
+            _snapshot.ActiveGatewaySshTunnel,
+            _snapshot.EffectiveBrowserControlPort);
+        var remediation = BrowserProxyActivation.ResolveRemediation(
+            browserProxyEnabled,
+            _snapshot.ActiveGatewayHasSharedToken,
+            nodeSessionLive,
+            browserEndpointVerified);
         var requiresRemoteEndpoint = BrowserProxyActivation.RequiresRemoteBrowserEndpoint(
             gatewayUrl: _snapshot.EffectiveGatewayUrl,
             browserControlPort: _snapshot.EffectiveBrowserControlPort,
             sshTunnel: _snapshot.ActiveGatewaySshTunnel);
-
-        yield return new GatewayDiagnosticWarning
+        if (remediation == BrowserProxyActivation.RemediationKind.MissingSharedToken)
         {
-            Severity = GatewayDiagnosticSeverity.Warning,
-            Category = "browser",
-            Title = LocalizationHelper.GetString("CommandCenter_BrowserProxyAuthMayNeed"),
-            Detail = BrowserProxyActivation.BuildMissingSharedTokenWarningDetail(requiresRemoteEndpoint),
-            RepairAction = "Copy browser proxy auth guidance",
-            CopyText = BrowserProxyActivation.BuildMissingSharedTokenCopyText(requiresRemoteEndpoint)
-        };
+            yield return new GatewayDiagnosticWarning
+            {
+                Severity = GatewayDiagnosticSeverity.Warning,
+                Category = "browser",
+                Title = LocalizationHelper.GetString("CommandCenter_BrowserProxyAuthMayNeed"),
+                Detail = BrowserProxyActivation.BuildMissingSharedTokenWarningDetail(requiresRemoteEndpoint),
+                RepairAction = "Copy browser proxy auth guidance",
+                CopyText = BrowserProxyActivation.BuildMissingSharedTokenCopyText(requiresRemoteEndpoint)
+            };
+            yield break;
+        }
+
+        if (remediation == BrowserProxyActivation.RemediationKind.UnverifiedEndpoint)
+        {
+            var detail = BrowserProxyActivation.BuildUnverifiedSshBrowserEndpointDetail();
+            yield return new GatewayDiagnosticWarning
+            {
+                Severity = GatewayDiagnosticSeverity.Warning,
+                Category = "browser",
+                Title = LocalizationHelper.GetString("CommandCenter_BrowserProxyHostNotDetected"),
+                Detail = detail,
+                RepairAction = "Review SSH browser-proxy forward",
+                CopyText = detail
+            };
+        }
     }
 
     private static IEnumerable<GatewayDiagnosticWarning> BuildPortDiagnosticWarnings(

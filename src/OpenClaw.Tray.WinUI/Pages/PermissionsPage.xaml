@@ -187,7 +187,7 @@
             <TextBlock x:Uid="PermissionsPage_TextBlock_14" Text="Exec policy" Style="{StaticResource BodyStrongTextBlockStyle}"
                        Margin="{StaticResource PermSectionHeaderMargin}"/>
             <TextBlock x:Uid="PermissionsPage_TextBlock_17"
-                       Text="Controls which executables agents can launch on this node. Allowlist entries match resolved executable paths."
+                       Text="Controls which executables the agent can launch on this node. The executable-path allowlist starts empty."
                        Style="{StaticResource CaptionTextBlockStyle}"
                        Foreground="{ThemeResource TextFillColorSecondaryBrush}" TextWrapping="Wrap"
                        Margin="4,0,4,4"/>
@@ -203,7 +203,7 @@
                     </Grid.ColumnDefinitions>
                     <StackPanel Grid.Column="0" VerticalAlignment="Center" Spacing="2">
                         <TextBlock x:Uid="PermissionsPage_DefaultAction" Text="Default action" Style="{StaticResource BodyTextBlockStyle}"/>
-                        <TextBlock x:Uid="PermissionsPage_WhatHappensWhenA" Text="What happens when a command doesn't match the allowlist below."
+                        <TextBlock x:Uid="PermissionsPage_WhatHappensWhenA" Text="What happens when a command doesn't match the executable-path allowlist below."
                                    Style="{StaticResource CaptionTextBlockStyle}"
                                    Foreground="{ThemeResource TextFillColorSecondaryBrush}"
                                    TextWrapping="Wrap"/>
@@ -218,12 +218,12 @@
                 </Grid>
             </Border>
 
-            <!-- Rules card -->
+            <!-- Executable-path allowlist card -->
             <Border Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
                     BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
                     BorderThickness="1" CornerRadius="8">
                 <StackPanel>
-                    <!-- Card header: title + rule count badge + auto-save hint -->
+                    <!-- Card header: title + entry count badge + auto-save hint -->
                     <Grid Padding="16,12,16,12" ColumnSpacing="8">
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="*"/>
@@ -231,8 +231,8 @@
                             <ColumnDefinition Width="Auto"/>
                         </Grid.ColumnDefinitions>
                         <StackPanel Grid.Column="0" Spacing="2">
-                            <TextBlock x:Uid="PermissionsPage_TextBlock_28" Text="Rules" Style="{StaticResource BodyStrongTextBlockStyle}"/>
-                            <TextBlock x:Uid="PermissionsPage_PatternsAreMatchedLeft" Text="Allowlist patterns match resolved executable paths. Use wildcards such as **/git.exe. Changes save automatically."
+                            <TextBlock x:Uid="PermissionsPage_TextBlock_28" Text="Executable-path allowlist" Style="{StaticResource BodyStrongTextBlockStyle}"/>
+                            <TextBlock x:Uid="PermissionsPage_PatternsAreMatchedLeft" Text="Allow Always creates an argument-bound entry for an eligible native .exe command. Entries added here are path-only and can allow matching executables with any arguments. Deny and Ask remain controlled by Default action. Changes save automatically."
                                        Style="{StaticResource CaptionTextBlockStyle}"
                                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"
                                        TextWrapping="Wrap"/>
@@ -248,7 +248,7 @@
                                 Background="{ThemeResource ControlAltFillColorSecondaryBrush}"
                                 CornerRadius="10" Padding="10,2"
                                 VerticalAlignment="Center">
-                            <TextBlock x:Uid="PermissionsPage_0Rules" x:Name="RulesCountBadge" Text="0 rules"
+                            <TextBlock x:Uid="PermissionsPage_0Rules" x:Name="RulesCountBadge" Text="0 entries"
                                        Style="{StaticResource CaptionTextBlockStyle}"
                                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
                         </Border>
@@ -256,16 +256,17 @@
 
                     <Border Height="1" Background="{ThemeResource CardStrokeColorDefaultBrush}"/>
 
-                    <!-- Empty state — visible when there are no rules -->
+                    <!-- Empty state — visible when there are no allowlist entries -->
                     <TextBlock x:Uid="PermissionsPage_NoRulesYetAdd" x:Name="RulesEmptyState"
-                              Text="No rules yet. Add a pattern below to deny, allow, or ask for specific commands."
+                              Text="No executable-path allowlist entries. Approve an eligible native .exe command with Allow Always, or add a path-only pattern such as **/hostname.exe."
                                Style="{StaticResource CaptionTextBlockStyle}"
                                Foreground="{ThemeResource TextFillColorTertiaryBrush}"
+                               TextWrapping="Wrap"
                                HorizontalAlignment="Center"
                                Margin="16,20,16,20"
                                Visibility="Collapsed"/>
 
-                    <!-- Rules list -->
+                    <!-- Allowlist entries -->
                     <ListView x:Name="PolicyRulesList" SelectionMode="None"
                               MaxHeight="320"
                               ItemContainerTransitions="{x:Null}">
@@ -305,7 +306,7 @@
                                             Padding="6" MinWidth="0"
                                             AutomationProperties.Name="{Binding RemoveRuleAutomationName}"
                                             AutomationProperties.AutomationId="{Binding RemoveRuleAutomationId}"
-                                            ToolTipService.ToolTip="Remove rule">
+                                            ToolTipService.ToolTip="Remove allowlist entry">
                                         <FontIcon Glyph="&#xE74D;" FontSize="14"
                                                   Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
                                     </Button>
@@ -316,21 +317,30 @@
 
                     <Border Height="1" Background="{ThemeResource CardStrokeColorDefaultBrush}"/>
 
-                    <!-- Add rule row -->
+                    <!-- Add allowlist entry row -->
                     <Grid Padding="16,12,16,12" ColumnSpacing="8">
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="*"/>
                             <ColumnDefinition Width="Auto"/>
-                            <ColumnDefinition Width="Auto"/>
                         </Grid.ColumnDefinitions>
-                        <TextBox Grid.Column="0" x:Uid="NewRulePattern" x:Name="NewRulePattern"
-                                 PlaceholderText="Executable path pattern (e.g. **/git.exe)"
-                                 FontFamily="Consolas"/>
-                        <ComboBox Grid.Column="1" x:Uid="PermissionsPage_NewRuleAction" x:Name="NewRuleAction"
-                                  MinWidth="100" SelectedIndex="0">
-                           <ComboBoxItem x:Uid="PermissionsPage_ComboBoxItem_55" Content="Allow" Tag="allow"/>
-                        </ComboBox>
-                        <Button Grid.Column="2" x:Uid="PermissionsPage_Button_57" Content="Add" Click="OnAddRule"/>
+                        <StackPanel Grid.Column="0" Spacing="4">
+                            <TextBox x:Uid="NewRulePattern" x:Name="NewRulePattern"
+                                     PlaceholderText="Executable-path pattern (e.g. **/hostname.exe)"
+                                     FontFamily="Consolas"
+                                     AutomationProperties.AutomationId="NewExecAllowlistPatternTextBox"/>
+                            <TextBlock x:Uid="PermissionsPage_ExecAllowlistPatternValidation"
+                                       x:Name="ExecAllowlistPatternValidation"
+                                       Text="Enter an executable-path pattern such as **/hostname.exe. Basename or command-text patterns such as hostname are invalid."
+                                       Style="{StaticResource CaptionTextBlockStyle}"
+                                       Foreground="{ThemeResource SystemFillColorCriticalBrush}"
+                                       TextWrapping="Wrap"
+                                       Visibility="Collapsed"
+                                       AutomationProperties.AutomationId="ExecAllowlistPatternValidation"
+                                       AutomationProperties.LiveSetting="Assertive"/>
+                        </StackPanel>
+                        <Button Grid.Column="1" x:Uid="PermissionsPage_Button_57" Content="Add entry"
+                                Click="OnAddRule"
+                                AutomationProperties.AutomationId="AddExecAllowlistPatternButton"/>
                     </Grid>
                 </StackPanel>
             </Border>

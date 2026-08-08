@@ -1,4 +1,5 @@
 using System.Text.RegularExpressions;
+using System.Xml.Linq;
 
 namespace OpenClaw.Tray.Tests;
 
@@ -105,6 +106,278 @@ public sealed class AppRefactorContractTests
         Assert.Contains("private async Task<bool> VerifyAsync", coordinator);
         Assert.DoesNotContain("private async Task<bool> SafeProbeAsync", app);
         Assert.DoesNotContain("private async Task<bool> VerifyAsync", app);
+        Assert.Contains("WslKeepAlivePolicy.IsSameSetupManagedGateway(", startup);
+    }
+
+    [Fact]
+    public void GatewayRecordEdits_HoldSharedLifecycleLease()
+    {
+        var root = TestRepositoryPaths.GetRepositoryRoot();
+        var connectionPage = File.ReadAllText(Path.Combine(
+            root,
+            "src",
+            "OpenClaw.Tray.WinUI",
+            "Pages",
+            "ConnectionPage.xaml.cs"));
+        var statusWindow = File.ReadAllText(Path.Combine(
+            root,
+            "src",
+            "OpenClaw.Tray.WinUI",
+            "Windows",
+            "ConnectionStatusWindow.xaml.cs"));
+        var directConnectService = File.ReadAllText(Path.Combine(
+            root,
+            "src",
+            "OpenClaw.Tray.WinUI",
+            "Services",
+            "GatewayDirectConnectService.cs"));
+        var pageEdit = ExtractMethod(connectionPage, "DoDirectConnectFromAddFormAsync");
+        var windowEdit = ExtractMethod(statusWindow, "OnDirectConnectAsync");
+
+        Assert.Contains("_gatewayDirectConnectService.ConnectAsync(", pageEdit);
+        Assert.DoesNotContain("BeginManualGatewayLifecycleOperationAsync", pageEdit);
+        Assert.DoesNotContain("_gatewayRegistry.AddOrUpdate", pageEdit);
+        AssertInOrder(
+            directConnectService,
+            "BeginManualGatewayLifecycleOperationAsync",
+            "DisconnectAsync",
+            "_registry.AddOrUpdate(candidate)");
+        Assert.Contains("GatewayDirectConnectService", windowEdit);
+        Assert.Contains("directConnectService.ConnectAsync(", windowEdit);
+        Assert.DoesNotContain("BeginManualGatewayLifecycleOperationAsync", windowEdit);
+        Assert.DoesNotContain("_registry.AddOrUpdate", windowEdit);
+    }
+
+    [Fact]
+    public void SavedGatewaySwitch_LeavesActiveIdMutationToManager()
+    {
+        var root = TestRepositoryPaths.GetRepositoryRoot();
+        var connectionPage = File.ReadAllText(Path.Combine(
+            root,
+            "src",
+            "OpenClaw.Tray.WinUI",
+            "Pages",
+            "ConnectionPage.xaml.cs"));
+        var switchMethod = ExtractMethod(connectionPage, "OnConnectSavedGatewayAsync");
+
+        Assert.DoesNotContain("_gatewayRegistry.SetActive(gwId)", switchMethod);
+        AssertInOrder(
+            switchMethod,
+            "await _connectionManager.SwitchGatewayAsync(gwId)",
+            "LoadSavedGateways()",
+            "RefreshFromSnapshot(_lastSnapshot)");
+    }
+
+    [Fact]
+    public void CredentialReplacementFlows_DoNotBlindlyClearDeviceTokens()
+    {
+        var root = TestRepositoryPaths.GetRepositoryRoot();
+        var manager = File.ReadAllText(Path.Combine(
+            root,
+            "src",
+            "OpenClaw.Connection",
+            "GatewayConnectionManager.cs"));
+        var statusWindow = File.ReadAllText(Path.Combine(
+            root,
+            "src",
+            "OpenClaw.Tray.WinUI",
+            "Windows",
+            "ConnectionStatusWindow.xaml.cs"));
+        var setupCode = ExtractMethod(manager, "ApplySetupCodeAsync");
+        var sharedToken = ExtractMethod(manager, "ConnectWithSharedTokenAsync");
+        var directConnect = ExtractMethod(statusWindow, "OnDirectConnectAsync");
+        var pageDirectConnect = ExtractMethod(
+            File.ReadAllText(Path.Combine(
+                root,
+                "src",
+                "OpenClaw.Tray.WinUI",
+                "Pages",
+                "ConnectionPage.xaml.cs")),
+            "DoDirectConnectFromAddFormAsync");
+        var directConnectService = File.ReadAllText(Path.Combine(
+            root,
+            "src",
+            "OpenClaw.Tray.WinUI",
+            "Services",
+            "GatewayDirectConnectService.cs"));
+        var capabilityHandlers = File.ReadAllText(Path.Combine(
+            root,
+            "src",
+            "OpenClaw.Tray.WinUI",
+            "App.CapabilityHandlers.cs"));
+
+        Assert.DoesNotContain("ClearStoredTokens", setupCode);
+        Assert.DoesNotContain("ClearStoredTokens", sharedToken);
+        Assert.DoesNotContain("ClearStoredTokens", directConnect);
+        Assert.Contains("directConnectService.ConnectAsync(", directConnect);
+        Assert.Contains("PreserveExistingSharedTokenWhenMissing: true", directConnect);
+        Assert.Contains("isolatedValidationTunnel", sharedToken);
+        Assert.Contains("StartAsync(validationConfig", sharedToken);
+        Assert.Contains("ValidateSharedTokenBeforeReplacementAsync(", sharedToken);
+        Assert.Contains("_validationTunnelFactory()", sharedToken);
+        Assert.Contains("StopAndDisposeValidationTunnelAsync(isolatedValidationTunnel)", sharedToken);
+        Assert.DoesNotContain("ClearStoredTokens", pageDirectConnect);
+        Assert.DoesNotContain("BeginTransactionalTokenClear", pageDirectConnect);
+        Assert.Contains("BeginTransactionalTokenClear", directConnectService);
+        Assert.Contains(
+            "_gatewayDirectConnectService.SynchronizeSettingsWithCommittedGateway(record)",
+            capabilityHandlers);
+        Assert.DoesNotContain("if (result.GatewayCommitted)", capabilityHandlers);
+    }
+
+    [Fact]
+    public void StatusWindowDirectConnect_WaitsForManagerStateBeforeReportingConnected()
+    {
+        var root = TestRepositoryPaths.GetRepositoryRoot();
+        var statusWindow = File.ReadAllText(Path.Combine(
+            root,
+            "src",
+            "OpenClaw.Tray.WinUI",
+            "Windows",
+            "ConnectionStatusWindow.xaml.cs"));
+        var directConnect = ExtractMethod(statusWindow, "OnDirectConnectAsync");
+        var setupConnect = ExtractMethod(statusWindow, "OnConnectAsync");
+        var stateChanged = ExtractMethod(statusWindow, "OnManagerStateChanged");
+
+        Assert.Contains("ConnectionStatus_Connecting", directConnect);
+        Assert.Contains("ConnectionPage_ConnectedTo", directConnect);
+        Assert.Contains("ConnectionStatus_Applying", setupConnect);
+        Assert.DoesNotContain("ConnectionStatus_ConnectedTo", setupConnect);
+        Assert.DoesNotContain("SetupCodeOutcome.Success =>", setupConnect);
+        Assert.Contains("directConnectService.ConnectAsync(", directConnect);
+        Assert.Contains("GatewayDirectConnectOutcome.Failed", directConnect);
+        Assert.Contains("PreserveExistingSharedTokenWhenMissing: true", directConnect);
+        AssertInOrder(
+            directConnect,
+            "ConnectionStatus_Connecting",
+            "directConnectService.ConnectAsync(");
+        Assert.Contains("snapshot.OverallState == OverallConnectionState.Error", stateChanged);
+        Assert.Contains("snapshot.OperatorError", stateChanged);
+        Assert.Contains("SetupCodeResult.Text = errorText", stateChanged);
+        Assert.Contains("SetupCodeResult.Text = connectedText", stateChanged);
+        Assert.Contains("OverallConnectionState.Degraded", stateChanged);
+        Assert.Contains("HubWindow_Pill_Degraded", stateChanged);
+        Assert.Contains("OverallConnectionState.Connected or OverallConnectionState.Ready", stateChanged);
+        Assert.Contains("OverallConnectionState.Idle or OverallConnectionState.Disconnecting", stateChanged);
+        Assert.Contains("ConnectionStatus_Disconnected", stateChanged);
+        Assert.Contains("statusMessageGeneration", stateChanged);
+        Assert.Contains("Volatile.Read(ref _statusMessageGeneration)", stateChanged);
+        Assert.DoesNotContain("_registry.Save()", directConnect);
+        Assert.DoesNotContain("SaveOrThrow()", directConnect);
+        Assert.DoesNotContain("RollbackDirectConnectState(", statusWindow);
+    }
+
+    [Fact]
+    public void DirectConnectRollback_RestoresNullActiveGatewayExactly()
+    {
+        var root = TestRepositoryPaths.GetRepositoryRoot();
+        var directConnectService = File.ReadAllText(Path.Combine(
+            root,
+            "src",
+            "OpenClaw.Tray.WinUI",
+            "Services",
+            "GatewayDirectConnectService.cs"));
+        var rollback = ExtractMethod(directConnectService, "Rollback");
+
+        Assert.Contains("_registry.SetActive(previousActiveId);", rollback);
+        Assert.DoesNotContain("if (previousActiveId != null)", rollback);
+    }
+
+    [Fact]
+    public void DirectConnectRollback_UsesTransactionalTokenClearAfterLifecycleLease()
+    {
+        var root = TestRepositoryPaths.GetRepositoryRoot();
+        var connectionPage = File.ReadAllText(Path.Combine(
+            root,
+            "src",
+            "OpenClaw.Tray.WinUI",
+            "Pages",
+            "ConnectionPage.xaml.cs"));
+        var directConnect = ExtractMethod(connectionPage, "DoDirectConnectFromAddFormAsync");
+        var directConnectService = File.ReadAllText(Path.Combine(
+            root,
+            "src",
+            "OpenClaw.Tray.WinUI",
+            "Services",
+            "GatewayDirectConnectService.cs"));
+        var serviceConnect = ExtractMethod(directConnectService, "ConnectAsync");
+        var rollback = ExtractMethod(directConnectService, "Rollback");
+
+        Assert.Contains("_gatewayDirectConnectService.ConnectAsync(", directConnect);
+        Assert.DoesNotContain("_gatewayRegistry.AddOrUpdate", directConnect);
+        Assert.DoesNotContain("BeginTransactionalTokenClear", directConnect);
+        AssertInOrder(
+            serviceConnect,
+            "BeginManualGatewayLifecycleOperationAsync",
+            "var previousActiveId = _registry.ActiveGatewayId",
+            "await _connectionManager.DisconnectAsync()",
+            "BeginTransactionalTokenClear(identityDir, _logger)");
+        AssertInOrder(
+            serviceConnect,
+            "BeginTransactionalTokenClear(identityDir, _logger)",
+            "ConnectAndWaitForTerminalStateAsync(",
+            "await _connectionManager.DisconnectAsync()",
+            "Rollback(");
+        Assert.Contains("if (!clearResult.Success)", serviceConnect);
+        Assert.Contains("candidateRegistryCommitted", serviceConnect);
+        AssertInOrder(
+            serviceConnect,
+            "_registry.Save();",
+            "candidateRegistryCommitted = true",
+            "BeginTransactionalTokenClear(identityDir, _logger)");
+        AssertInOrder(
+            rollback,
+            "_registry.Save();",
+            "RestoreTransactionalTokenClear(");
+        Assert.Contains("RestoreTransactionalTokenClear(", rollback);
+        Assert.Contains("DeviceTokenRestoreOutcome.Superseded", rollback);
+        Assert.Contains("DeviceTokenRestoreOutcome.Failed", rollback);
+        Assert.Contains("ReconcileSettings(candidate)", rollback);
+        Assert.Contains("previousSettings.Restore(_settings)", rollback);
+        Assert.Contains("_reconcileRuntimeTunnel()", rollback);
+    }
+
+    [Fact]
+    public void DirectConnectTransaction_StaysOutOfConnectionPage()
+    {
+        var root = TestRepositoryPaths.GetRepositoryRoot();
+        var page = File.ReadAllText(Path.Combine(
+            root,
+            "src",
+            "OpenClaw.Tray.WinUI",
+            "Pages",
+            "ConnectionPage.xaml.cs"));
+        var app = ReadAppSources();
+        var service = File.ReadAllText(Path.Combine(
+            root,
+            "src",
+            "OpenClaw.Tray.WinUI",
+            "Services",
+            "GatewayDirectConnectService.cs"));
+        var pageMethod = ExtractMethod(page, "DoDirectConnectFromAddFormAsync");
+
+        Assert.Contains("new GatewayDirectConnectService(", app);
+        Assert.Contains("_gatewayDirectConnectService.ConnectAsync(", pageMethod);
+        Assert.DoesNotContain("BeginManualGatewayLifecycleOperationAsync", pageMethod);
+        Assert.DoesNotContain("_gatewayRegistry.AddOrUpdate", pageMethod);
+        Assert.DoesNotContain("_gatewayRegistry.SetActive", pageMethod);
+        Assert.DoesNotContain("BeginTransactionalTokenClear", pageMethod);
+        Assert.DoesNotContain("SaveOrThrow", pageMethod);
+        Assert.DoesNotContain("RollbackDirectConnect", page);
+        Assert.Contains("BeginManualGatewayLifecycleOperationAsync", service);
+        Assert.Contains("BeginTransactionalTokenClear", service);
+        Assert.Contains("RestoreTransactionalTokenClear", service);
+    }
+
+    [Fact]
+    public void BrowserAuthorization_RequiresExactOwnedSshListener()
+    {
+        var source = ReadAppSources();
+
+        Assert.Contains("uri.Port != browserForwardPort", source);
+        Assert.Contains("IsOwnedListenerReadyAsync(", source);
+        Assert.Contains("uri.Port,", source);
+        Assert.DoesNotContain("_sshTunnelService?.IsActive == true", source);
     }
 
     [Fact]
@@ -437,6 +710,133 @@ public sealed class AppRefactorContractTests
     }
 
     [Fact]
+    public void PermissionsPage_ExecPolicyEditor_IsExecutablePathAllowlistOnly()
+    {
+        var root = TestRepositoryPaths.GetRepositoryRoot();
+        var xaml = File.ReadAllText(Path.Combine(root, "src", "OpenClaw.Tray.WinUI", "Pages", "PermissionsPage.xaml"));
+        var resources = File.ReadAllText(Path.Combine(
+            root,
+            "src",
+            "OpenClaw.Tray.WinUI",
+            "Strings",
+            "en-us",
+            "Resources.resw"));
+
+        Assert.Single(Regex.Matches(xaml, "<ComboBox ").Cast<Match>());
+        Assert.DoesNotContain("x:Name=\"NewRuleAction\"", xaml);
+        Assert.DoesNotContain("PermissionsPage_NewRuleAction", xaml);
+        Assert.Contains("x:Name=\"ExecAllowlistPatternValidation\"", xaml);
+        Assert.Contains("AutomationProperties.AutomationId=\"ExecAllowlistPatternValidation\"", xaml);
+        Assert.Contains("AutomationProperties.LiveSetting=\"Assertive\"", xaml);
+        Assert.Matches(
+            new Regex("x:Name=\"RulesEmptyState\"[\\s\\S]*?TextWrapping=\"Wrap\"[\\s\\S]*?Visibility=\"Collapsed\""),
+            xaml);
+
+        Assert.Contains("<value>Executable-path allowlist</value>", resources);
+        Assert.Contains(
+            "<value>Controls which executables the agent can launch on this node. The executable-path allowlist starts empty.</value>",
+            resources);
+        Assert.Contains(
+            "<value>Allow Always creates an argument-bound entry for an eligible native .exe command. Entries added here are path-only and can allow matching executables with any arguments. Deny and Ask remain controlled by Default action. Changes save automatically.</value>",
+            resources);
+        Assert.Contains(
+            "<value>No executable-path allowlist entries. Approve an eligible native .exe command with Allow Always, or add a path-only pattern such as **/hostname.exe.</value>",
+            resources);
+        Assert.Contains(
+            "<value>Enter an executable-path pattern such as **/hostname.exe. Basename or command-text patterns such as hostname are invalid.</value>",
+            resources);
+        Assert.Contains("<value>Add entry</value>", resources);
+        Assert.DoesNotContain("<value>Add Rule</value>", resources);
+    }
+
+    [Fact]
+    public void PermissionsPage_ExecPolicyCopy_IsLocalizedAcrossSupportedLocales()
+    {
+        var root = TestRepositoryPaths.GetRepositoryRoot();
+        var stringsRoot = Path.Combine(root, "src", "OpenClaw.Tray.WinUI", "Strings");
+        var enUs = ReadReswValues(Path.Combine(stringsRoot, "en-us", "Resources.resw"));
+        var localizedKeys = new[]
+        {
+            "PermissionsPage_TextBlock_17.Text",
+            "PermissionsPage_TextBlock_28.Text",
+        };
+        var hostnameExampleKeys = new[]
+        {
+            "PermissionsPage_NoRulesYetAdd.Text",
+            "PermissionsPage_ExecAllowlistPatternValidation.Text",
+        };
+        const string runtimeContractKey = "PermissionsPage_PatternsAreMatchedLeft.Text";
+
+        foreach (var locale in new[] { "fr-fr", "nl-nl", "zh-cn", "zh-tw" })
+        {
+            var localized = ReadReswValues(Path.Combine(stringsRoot, locale, "Resources.resw"));
+            foreach (var key in localizedKeys)
+            {
+                var value = Assert.Contains(key, localized);
+                Assert.NotEmpty(value);
+                Assert.NotEqual(enUs[key], value);
+            }
+
+            foreach (var key in hostnameExampleKeys)
+            {
+                var value = Assert.Contains(key, localized);
+                Assert.NotEmpty(value);
+                Assert.Contains("hostname.exe", value, StringComparison.Ordinal);
+                Assert.DoesNotContain("git.exe", value, StringComparison.OrdinalIgnoreCase);
+                Assert.NotEqual(enUs[key], value);
+            }
+
+            var runtimeContract = Assert.Contains(runtimeContractKey, localized);
+            Assert.NotEmpty(runtimeContract);
+            Assert.Contains(".exe", runtimeContract, StringComparison.OrdinalIgnoreCase);
+            Assert.NotEqual(enUs[runtimeContractKey], runtimeContract);
+        }
+    }
+
+    [Fact]
+    public void PermissionsPage_ExecPolicyValidation_PersistsUntilValidAdd()
+    {
+        var root = TestRepositoryPaths.GetRepositoryRoot();
+        var source = File.ReadAllText(Path.Combine(root, "src", "OpenClaw.Tray.WinUI", "Pages", "PermissionsPage.xaml.cs"));
+        var addRule = ExtractMethod(source, "OnAddRule");
+        var showValidation = ExtractMethod(source, "ShowExecAllowlistPatternValidation");
+        var hideValidation = ExtractMethod(source, "HideExecAllowlistPatternValidation");
+
+        AssertInOrder(
+            addRule,
+            "if (string.IsNullOrEmpty(pattern))",
+            "ShowExecAllowlistPatternValidation();",
+            "return;",
+            "if (!ExecApprovalsStore.IsValidAllowlistPattern(pattern))",
+            "ShowExecAllowlistPatternValidation();",
+            "return;",
+            "ExecPolicyRuleList.UpsertByPattern(_policyRules, pattern, \"allow\");",
+            "NewRulePattern.Text = \"\";",
+            "HideExecAllowlistPatternValidation();",
+            "RefreshPolicyRulesList();");
+
+        AssertInOrder(
+            showValidation,
+            "ExecAllowlistPatternValidation.Visibility = Visibility.Visible;",
+            "AutomationProperties.SetHelpText(",
+            "NewRulePattern,",
+            "ExecAllowlistPatternValidation.Text);",
+            "NewRulePattern.Focus(FocusState.Programmatic);",
+            "DispatcherQueue.TryEnqueue(",
+            "DispatcherQueuePriority.Low",
+            "ExecAllowlistPatternValidation.Visibility == Visibility.Visible",
+            "ExecAllowlistPatternValidation.StartBringIntoView(",
+            "new BringIntoViewOptions { AnimationDesired = false });");
+        Assert.DoesNotContain("UpdateLayout()", showValidation);
+        AssertInOrder(
+            hideValidation,
+            "ExecAllowlistPatternValidation.Visibility = Visibility.Collapsed;",
+            "AutomationProperties.SetHelpText(",
+            "NewRulePattern,",
+            "string.Empty);");
+    }
+
+    [Fact]
     public void App_ExecApprovalsStore_UsesRoamingProductionDataRoot()
     {
         var source = ReadAppSources();
@@ -468,7 +868,7 @@ public sealed class AppRefactorContractTests
 
         Assert.Contains("AutomationProperties.Name=\"{Binding RemoveRuleAutomationName}\"", xaml);
         Assert.Contains("AutomationProperties.AutomationId=\"{Binding RemoveRuleAutomationId}\"", xaml);
-        Assert.Contains("RemoveRuleAutomationName = $\"Remove rule {r.Pattern}\"", codeBehind);
+        Assert.Contains("RemoveRuleAutomationName = $\"Remove allowlist entry {r.Pattern}\"", codeBehind);
         Assert.Contains("RemoveRuleAutomationId = $\"RemoveExecPolicyRuleButton_{r.Index}\"", codeBehind);
     }
 
@@ -668,6 +1068,21 @@ public sealed class AppRefactorContractTests
     }
 
     [Fact]
+    public void CompletePage_OffersExactFallbackOnlyThroughTypedCompatibilityPath()
+    {
+        var root = TestRepositoryPaths.GetRepositoryRoot();
+        var setupWindow = File.ReadAllText(Path.Combine(root, "src", "OpenClaw.SetupEngine.UI", "SetupWindow.xaml.cs"));
+        var complete = File.ReadAllText(Path.Combine(root, "src", "OpenClaw.SetupEngine.UI", "Pages", "CompletePage.xaml.cs"));
+        var progress = File.ReadAllText(Path.Combine(root, "src", "OpenClaw.SetupEngine.UI", "Pages", "ProgressPage.xaml.cs"));
+
+        Assert.Contains("result.CompatibilityFailure", progress);
+        Assert.Contains("GatewayReleasePolicy.CanRetryWithFallback(_config, failureKind)", setupWindow);
+        Assert.Contains("GatewayReleasePolicy.TryApplyFallback(_config, out error)", setupWindow);
+        Assert.Contains("Retry with validated fallback {args.GatewayFallbackVersion}", complete);
+        Assert.Contains("FallbackButton.Visibility = args.CanRetryGatewayFallback", complete);
+    }
+
+    [Fact]
     public void CapabilitiesPage_PersistsSelectedProfileIntoRuntimeNodeSettings()
     {
         var root = TestRepositoryPaths.GetRepositoryRoot();
@@ -828,6 +1243,28 @@ public sealed class AppRefactorContractTests
         Assert.Contains("GatewayClientEndpointResolver.Resolve(record)", method);
         Assert.Contains("new OpenClawGatewayClient(gatewayUrl, token", method);
         Assert.DoesNotContain("config.EffectiveGatewayUrl", method);
+    }
+
+    [Fact]
+    public void WizardTerminalRestartRecovery_IsExactVersionManagedLocalAndFailClosed()
+    {
+        var root = TestRepositoryPaths.GetRepositoryRoot();
+        var source = File.ReadAllText(Path.Combine(root, "src", "OpenClaw.SetupEngine.UI", "Pages", "WizardPage.xaml.cs"));
+        var connect = ExtractMethod(source, "ConnectClientAsync");
+        var statusChanged = ExtractMethod(source, "OnWizardClientStatusChanged");
+        var sendAnswer = ExtractMethod(source, "SendCurrentAnswerAsync");
+
+        Assert.Contains(
+            "GatewayWizardRestartRecoveryPolicy.WaitForExpectedManagedGatewayAsync",
+            connect);
+        Assert.Contains("_expectedTerminalRestart", connect);
+        Assert.Contains("_expectedTerminalRestart", statusChanged);
+        Assert.Contains("_hostAccessPlan.CanControlWslGateway", sendAnswer);
+        Assert.Contains("GatewayWizardRestartRecoveryPolicy.IsExpectedTerminalRestart", sendAnswer);
+        Assert.Contains("WaitForReconnectAsync", sendAnswer);
+        Assert.Contains("HasHandshakeSnapshot", source);
+        Assert.Contains("HandshakeSucceeded", source);
+        Assert.Contains("Disposed", source);
     }
 
     [Fact]
@@ -1189,11 +1626,21 @@ public sealed class AppRefactorContractTests
             root, "src", "OpenClaw.Tray.WinUI", "Chat", "OpenClawComposer.cs"));
     }
 
+    private static Dictionary<string, string> ReadReswValues(string path) =>
+        XDocument.Load(path)
+            .Root!
+            .Elements("data")
+            .Where(element => element.Attribute("name") is not null)
+            .ToDictionary(
+                element => element.Attribute("name")!.Value,
+                element => element.Element("value")?.Value ?? string.Empty,
+                StringComparer.Ordinal);
+
     private static string ExtractMethod(string source, string methodName)
     {
         var match = Regex.Match(
             source,
-            $@"(?m)^\s*(?:private|protected|public|internal)\s+(?:static\s+)?(?:async\s+)?(?:Task(?:<[^>]+>)?|System\.Threading\.Tasks\.Task|void|bool|int|string\??|object\??|IntPtr|TrayMenuSnapshot|OpenClaw\.Connection\.GatewayCredential\?)\s+{Regex.Escape(methodName)}\s*\(");
+            $@"(?m)^\s*(?:private|protected|public|internal)\s+(?:static\s+)?(?:async\s+)?(?:Task(?:<[^>]+>)?|System\.Threading\.Tasks\.Task|void|bool|int|string\??|object\??|IntPtr|TrayMenuSnapshot|RollbackResult|OpenClaw\.Connection\.GatewayCredential\?)\s+{Regex.Escape(methodName)}\s*\(");
         Assert.True(match.Success, $"Could not find method {methodName}.");
 
         var brace = source.IndexOf('{', match.Index);

@@ -52,6 +52,7 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
     private TrayIcon? _trayIcon;
     private TrayIconCoordinator? _trayIconCoordinator;
     private GatewayConnectionManager? _connectionManager;
+    private GatewayDirectConnectService? _gatewayDirectConnectService;
     private GatewayRegistry? _gatewayRegistry;
     private OpenClawTray.Services.ManagedLocalGatewayAutoRepairMonitor? _managedLocalAutoRepairMonitor;
     private ManagedLocalGatewayPortProvenanceService? _managedLocalPortProvenance;
@@ -95,6 +96,8 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
     public IOperatorGatewayClient? GatewayClient => _connectionManager?.OperatorClient;
     public GatewayRegistry? Registry => _gatewayRegistry;
     public GatewayConnectionManager? ConnectionManager => _connectionManager;
+    internal GatewayDirectConnectService? GatewayDirectConnectService =>
+        _gatewayDirectConnectService;
     internal ManagedLocalGatewayPortProvenanceService? ManagedLocalPortProvenance =>
         _managedLocalPortProvenance;
     internal SettingsManager Settings => _settings ?? throw new InvalidOperationException("Settings are not initialized.");
@@ -291,6 +294,19 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
             AppIdentity.DataDirectoryName);
     private readonly AppCrashLogger _crashLogger = new(Path.Combine(DataPath, "crash.log"));
     private static readonly AppRunMarker s_runMarker = new(Path.Combine(DataPath, "run.marker"));
+
+    private static string? ResolveE2eSshConfigFile()
+    {
+        if (Environment.GetEnvironmentVariable("OPENCLAW_RUN_E2E") != "1")
+            return null;
+
+        var path = Environment.GetEnvironmentVariable("OPENCLAW_E2E_SSH_CONFIG_FILE");
+        if (string.IsNullOrWhiteSpace(path))
+            return null;
+        if (!File.Exists(path))
+            throw new FileNotFoundException("E2E SSH config file was not found.", path);
+        return Path.GetFullPath(path);
+    }
 
     public App()
     {
@@ -706,7 +722,8 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
         // Register toast activation handler
         ToastNotificationManagerCompat.OnActivated += OnToastActivated;
 
-        _sshTunnelService = new SshTunnelService(new AppLogger());
+        var e2eSshConfigFile = ResolveE2eSshConfigFile();
+        _sshTunnelService = new SshTunnelService(new AppLogger(), e2eSshConfigFile);
         _sshTunnelService.TunnelExited += OnSshTunnelExited;
 
         // Initialize tray icon FIRST (window-less pattern from WinUIEx).
@@ -797,9 +814,16 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
             isNodeEnabled: IsGatewayNodeEnabled,
             diagnostics: diagnostics,
             tunnelManager: _sshTunnelService,
-            endpointProvenanceProbe: managedLocalPortProvenance.InspectAsync);
+            endpointProvenanceProbe: managedLocalPortProvenance.InspectAsync,
+            validationTunnelFactory: () => new SshTunnelService(appLogger, e2eSshConfigFile));
         _connectionManager.OperatorClientChanged += OnOperatorClientChanged;
         _connectionManager.StateChanged += OnManagerStateChanged;
+        _gatewayDirectConnectService = new GatewayDirectConnectService(
+            _connectionManager,
+            _gatewayRegistry,
+            _settings,
+            EnsureSshTunnelStarted,
+            appLogger);
 
         // First-run check (also supports forced onboarding for testing).
         // Wrapped in try/catch so a wizard construction failure cannot tear
@@ -875,10 +899,9 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
                         record,
                         ct,
                         canContinue: () =>
-                            string.Equals(
-                                _gatewayRegistry?.ActiveGatewayId,
-                                record.Id,
-                                StringComparison.Ordinal) &&
+                            OpenClawTray.Services.WslKeepAlivePolicy.IsSameSetupManagedGateway(
+                                record,
+                                _gatewayRegistry?.GetActive()) &&
                             (_connectionManager?.IsAutomaticReconnectAllowed(record.Id) ?? false))
                     : Task.FromResult(new ManagedLocalPortConflictRepairResult(
                         ManagedLocalPortConflictRepairOutcome.NotNeeded)),
@@ -2247,7 +2270,22 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
                     if (record is null || !uri.IsLoopback)
                         return false;
                     if (record.SshTunnel is not null)
-                        return _sshTunnelService?.IsActive == true;
+                    {
+                        var browserForwardPort = record.SshTunnel.LocalPort + 2;
+                        if (!record.SshTunnel.IncludeBrowserProxyForward ||
+                            uri.Port != browserForwardPort)
+                        {
+                            return false;
+                        }
+
+                        return _sshTunnelService is not null &&
+                            await _sshTunnelService
+                                .IsOwnedListenerReadyAsync(
+                                    record.SshTunnel,
+                                    uri.Port,
+                                    cancellationToken)
+                                .ConfigureAwait(false);
+                    }
                     if (_managedLocalPortProvenance is null ||
                         GatewayRecordEditing.ResolveManagedDistroName(record) is null)
                     {
@@ -4786,7 +4824,9 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
 
             try
             {
-                _sshTunnelService ??= new SshTunnelService(new AppLogger());
+                _sshTunnelService ??= new SshTunnelService(
+                    new AppLogger(),
+                    ResolveE2eSshConfigFile());
                 var includeBrowserProxy = BrowserProxySshTunnelForwardPolicy.ShouldInclude(
                     _settings.NodeBrowserProxyEnabled,
                     _settings.SshTunnelRemotePort,

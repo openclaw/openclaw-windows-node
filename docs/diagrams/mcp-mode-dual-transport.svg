@@ -1,0 +1,38 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1500" height="980" viewBox="0 0 1500 980" role="img" aria-labelledby="title desc">
+  <title id="title">Single capability registry, two transports</title>
+  <desc id="desc">Flowchart: NodeService owns one live capability list. Register adds capabilities to that list and calls RegisterCapability on the optional WindowsNodeClient for the gateway WebSocket. McpToolBridge reads the same live list when local MCP clients request tools through McpHttpServer at 127.0.0.1:8765.</desc>
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto"><path d="M0 0 L10 5 L0 10z" fill="context-stroke"/></marker>
+    <style>
+      .title{font:700 28px Segoe UI,Arial,sans-serif;fill:#111}
+      .subtitle{font:16px Segoe UI,Arial,sans-serif;fill:#222}
+      .lane{font:700 18px Segoe UI,Arial,sans-serif;fill:#111;text-anchor:middle}
+      .box{font:15px Segoe UI,Arial,sans-serif;fill:#111;text-anchor:middle}
+      .mono{font:13px Cascadia Code,Consolas,monospace;fill:#111}
+      .msg{font:14px Segoe UI,Arial,sans-serif;fill:#111;text-anchor:middle}
+      .note{font:13px Segoe UI,Arial,sans-serif;fill:#111}
+      .participant{font:16px Segoe UI,Arial,sans-serif;fill:#111;text-anchor:middle}
+    </style>
+  </defs>
+  <rect width="1500" height="980" fill="#fff"/>
+  <text x="40" y="50" class="title">Single capability registry, two transports</text>
+  <text x="40" y="92" class="subtitle">NodeService holds one List&lt;INodeCapability&gt;. Register() adds to that list and registers with the gateway client; the MCP bridge reads the same live list for tools/list.</text>
+  <rect x="260" y="140" width="980" height="260" rx="8" fill="none" stroke="#1e1e1e" stroke-width="2"/>
+  <text x="280" y="172" font-weight="700" font-size="20" font-family="Segoe UI, Arial, sans-serif" fill="#111">NodeService</text>
+  <text x="280" y="211" class="mono" xml:space="preserve"><tspan x="280">List&lt;INodeCapability&gt; _capabilities</tspan><tspan x="280" dy="20"> </tspan><tspan x="280" dy="20">private void Register(INodeCapability cap)</tspan><tspan x="280" dy="20">{</tspan><tspan x="280" dy="20">    _capabilities.Add(cap);</tspan><tspan x="280" dy="20">    _nodeClient?.RegisterCapability(cap);</tspan><tspan x="280" dy="20">}</tspan></text>
+  <rect x="260" y="460" width="420" height="100" rx="8" fill="#FDE7E9" stroke="#D13438" stroke-width="2"/>
+  <text x="470.0" y="500" class="box" font-size="17"><tspan x="470.0">WindowsNodeClient</tspan><tspan x="470.0" dy="24">(gateway WebSocket)</tspan></text>
+  <rect x="820" y="460" width="420" height="100" rx="8" fill="#99E9F2" stroke="#0C8599" stroke-width="2"/>
+  <text x="1030.0" y="500" class="box" font-size="17"><tspan x="1030.0">McpToolBridge</tspan><tspan x="1030.0" dy="24">(JSON-RPC dispatch)</tspan></text>
+  <path d="M554.0 400 L470.0 460" fill="none" stroke="#495057" stroke-width="2" marker-end="url(#arrow)"/>
+  <path d="M946.0 400 L1030.0 460" fill="none" stroke="#495057" stroke-width="2" marker-end="url(#arrow)"/>
+  <rect x="260" y="660" width="420" height="80" rx="8" fill="#FDE7E9" stroke="#D13438" stroke-width="2"/>
+  <text x="470.0" y="706.0" class="box" font-size="17">OpenClaw gateway</text>
+  <path d="M470.0 560 L470.0 660" fill="none" stroke="#D13438" stroke-width="2" marker-end="url(#arrow)"/>
+  <rect x="820" y="660" width="420" height="100" rx="8" fill="#99E9F2" stroke="#0C8599" stroke-width="2"/>
+  <text x="1030.0" y="700" class="box" font-size="16"><tspan x="1030.0">McpHttpServer</tspan><tspan x="1030.0" dy="22">(HttpListener@127.0.0.1:8765)</tspan></text>
+  <path d="M1030.0 560 L1030.0 660" fill="none" stroke="#0C8599" stroke-width="2" marker-end="url(#arrow)"/>
+  <rect x="820" y="850" width="420" height="100" rx="8" fill="#99E9F2" stroke="#0C8599" stroke-width="2"/>
+  <text x="1030.0" y="890" class="box" font-size="16"><tspan x="1030.0">Local MCP clients</tspan><tspan x="1030.0" dy="22">(Claude Code, Cursor, etc.)</tspan></text>
+  <path d="M1030.0 760 L1030.0 850" fill="none" stroke="#0C8599" stroke-width="2" marker-end="url(#arrow)"/>
+</svg>

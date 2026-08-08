@@ -2,6 +2,7 @@ using System.Text;
 using System.Security.AccessControl;
 using System.Security.Principal;
 using System.Runtime.Versioning;
+using OpenClaw.Shared.Commands;
 
 namespace OpenClaw.Shared.Mxc;
 
@@ -470,16 +471,13 @@ public static class MxcConfigBuilder
         string scratchDir,
         IReadOnlyList<string> pathDirs)
     {
-        if (!IsCmdExecutable(argv.Count > 0 ? argv[0] : null))
+        if (!CanonicalCmdCarrier.IsCmdExecutable(argv.Count > 0 ? argv[0] : null))
             return DirectArgvCommandLine.Build(argv);
 
         if (!SelectsCmdCommandMode(argv))
             return DirectArgvCommandLine.Build(argv);
 
-        if (argv.Count != 5
-            || !string.Equals(argv[1], "/d", StringComparison.OrdinalIgnoreCase)
-            || !string.Equals(argv[2], "/s", StringComparison.OrdinalIgnoreCase)
-            || !string.Equals(argv[3], "/c", StringComparison.OrdinalIgnoreCase))
+        if (!CanonicalCmdCarrier.TryGetCanonicalPayload(argv, out var payload))
         {
             throw new NotSupportedException(
                 "Direct cmd.exe command wrappers must use canonical argv: cmd.exe /d /s /c <command>.");
@@ -487,7 +485,7 @@ public static class MxcConfigBuilder
 
         return ShellCommandLine.BuildCanonicalCmdWrapper(
             argv[0],
-            argv[4],
+            payload,
             scratchDir,
             pathDirs);
     }
@@ -510,16 +508,6 @@ public static class MxcConfigBuilder
         }
 
         return false;
-    }
-
-    private static bool IsCmdExecutable(string? executable)
-    {
-        if (string.IsNullOrWhiteSpace(executable))
-            return false;
-
-        var fileName = Path.GetFileName(executable.Trim());
-        return string.Equals(fileName, "cmd", StringComparison.OrdinalIgnoreCase)
-            || string.Equals(fileName, "cmd.exe", StringComparison.OrdinalIgnoreCase);
     }
 
     /// <summary>

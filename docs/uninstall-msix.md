@@ -1,6 +1,6 @@
-# Uninstalling OpenClaw Tray — MSIX Package
+# Uninstalling OpenClaw Tray - MSIX Package
 
-> **Date:** 2026-05-07  
+> **Date:** 2026-05-07
 > **Branch:** feat/wsl-gateway-uninstall
 
 ---
@@ -16,7 +16,7 @@ at uninstall time.  The supported extension points
 Therefore, removing the MSIX package via **Settings → Apps → OpenClaw Tray
 → Uninstall** will silently leave behind:
 
-- **WSL distro** — `OpenClawGateway` remains in `wsl --list`.
+- **WSL distro** - `OpenClawGateway` remains in `wsl --list`.
 - **Roaming app data** under `%APPDATA%\OpenClawTray\` (device key, settings,
   mcp-token).
 - **Local app data** under `%LOCALAPPDATA%\OpenClawTray\` (setup state, logs,
@@ -36,7 +36,7 @@ Therefore, removing the MSIX package via **Settings → Apps → OpenClaw Tray
 2. Navigate to **Settings → Local Gateway**.
 3. Click **"Remove Local Gateway"** (Mattingly's warning banner in commit 4
    surfaces this step for MSIX users).
-4. Wait for the engine to complete — it stops keepalive processes, unregisters
+4. Wait for the engine to complete - it stops keepalive processes, unregisters
    the WSL distro, nulls the device token, removes autostart, and cleans up app
    data.
 5. Uninstall the MSIX package via **Settings → Apps**.
@@ -63,7 +63,7 @@ Remove-ItemProperty `
 # 4. Remove local app data (setup state, logs)
 Remove-Item "$env:LOCALAPPDATA\OpenClawTray" -Recurse -Force -ErrorAction SilentlyContinue
 
-# 5. Remove roaming app data (settings, device key — only if you want full purge)
+# 5. Remove roaming app data (settings, device key - only if you want full purge)
 #    NOTE: mcp-token.txt is intentionally preserved here; delete manually if needed.
 Remove-Item "$env:APPDATA\OpenClawTray\setup-state.json" -Force -ErrorAction SilentlyContinue
 ```

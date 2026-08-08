@@ -16,7 +16,8 @@ public interface ICommandRunner
         IReadOnlyDictionary<string, string>? environment = null,
         string? workingDirectory = null,
         string? stdinInput = null,
-        CancellationToken ct = default);
+        CancellationToken ct = default,
+        Stream? stdinStream = null);
 
     /// <summary>
     /// Run a command inside a WSL distro.
@@ -84,8 +85,14 @@ public sealed class CommandRunner : ICommandRunner
         IReadOnlyDictionary<string, string>? environment = null,
         string? workingDirectory = null,
         string? stdinInput = null,
-        CancellationToken ct = default)
+        CancellationToken ct = default,
+        Stream? stdinStream = null)
     {
+        ArgumentNullException.ThrowIfNull(executable);
+        ArgumentNullException.ThrowIfNull(arguments);
+        if (stdinInput != null && stdinStream != null)
+            throw new ArgumentException("Only one standard input source may be provided.");
+
         _logger.CommandStarted(executable, arguments, timeout);
         var sw = Stopwatch.StartNew();
 
@@ -94,7 +101,7 @@ public sealed class CommandRunner : ICommandRunner
             FileName = executable,
             RedirectStandardOutput = true,
             RedirectStandardError = true,
-            RedirectStandardInput = stdinInput != null,
+            RedirectStandardInput = stdinInput != null || stdinStream != null,
             UseShellExecute = false,
             CreateNoWindow = true,
             WorkingDirectory = workingDirectory ?? ""
@@ -137,12 +144,21 @@ public sealed class CommandRunner : ICommandRunner
 
         try
         {
-            if (stdinInput != null)
+            if (stdinInput != null || stdinStream != null)
             {
                 try
                 {
-                    await process.StandardInput.WriteAsync(stdinInput.AsMemory(), timeoutCts.Token);
-                    await process.StandardInput.FlushAsync(timeoutCts.Token);
+                    if (stdinStream != null)
+                    {
+                        await stdinStream.CopyToAsync(process.StandardInput.BaseStream, timeoutCts.Token);
+                        await process.StandardInput.BaseStream.FlushAsync(timeoutCts.Token);
+                    }
+                    else
+                    {
+                        await process.StandardInput.WriteAsync(stdinInput!.AsMemory(), timeoutCts.Token);
+                        await process.StandardInput.FlushAsync(timeoutCts.Token);
+                    }
+
                     process.StandardInput.Close();
                 }
                 catch (IOException) when (process.HasExited)

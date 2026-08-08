@@ -286,8 +286,18 @@ public partial class App
         {
             if (_connectionManager == null)
                 return new { outcome = "ConnectionFailed", error = "Connection manager is not initialized", connected = false };
+            if (_gatewayDirectConnectService is null)
+                return new { outcome = "ConnectionFailed", error = "Gateway settings service is not initialized", connected = false };
 
-            var result = await _connectionManager.ConnectWithSharedTokenAsync(gatewayUrl, token);
+            var result = await _connectionManager.ConnectWithSharedTokenAsync(
+                gatewayUrl,
+                token,
+                sshTunnel: null,
+                onGatewayCommitted: (record, _) =>
+                {
+                    _gatewayDirectConnectService.SynchronizeSettingsWithCommittedGateway(record);
+                    return Task.CompletedTask;
+                });
             return new
             {
                 outcome = result.Outcome.ToString(),

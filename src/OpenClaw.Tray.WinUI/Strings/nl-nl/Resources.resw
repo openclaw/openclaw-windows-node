@@ -1904,7 +1904,7 @@ Gebruik een van deze opties:
     <value>Uitvoeringsbeleid</value>
   </data>
   <data name="PermissionsPage_TextBlock_17.Text" xml:space="preserve">
-    <value>Bepaalt welke uitvoerbare bestanden de agent op dit knooppunt kan starten. Regels worden vergeleken met opgeloste paden van uitvoerbare bestanden.</value>
+    <value>Bepaalt welke uitvoerbare bestanden de agent op dit knooppunt kan starten. De allowlist voor paden van uitvoerbare bestanden is aanvankelijk leeg.</value>
   </data>
   <data name="DefaultActionCombo.Header" xml:space="preserve">
     <value>Standaardactie</value>
@@ -1919,22 +1919,22 @@ Gebruik een van deze opties:
     <value>Vragen</value>
   </data>
   <data name="PermissionsPage_TextBlock_28.Text" xml:space="preserve">
-    <value>Regels</value>
+    <value>Allowlist voor paden van uitvoerbare bestanden</value>
   </data>
   <data name="NewRulePattern.PlaceholderText" xml:space="preserve">
-    <value>Padpatroon voor uitvoerbaar bestand (bijv. **/git.exe)</value>
+    <value>Padpatroon voor uitvoerbaar bestand (bijv. **/hostname.exe)</value>
+  </data>
+  <data name="PermissionsPage_ExecAllowlistPatternValidation.Text" xml:space="preserve">
+    <value>Voer een padpatroon voor een uitvoerbaar bestand in, zoals **/hostname.exe. Alleen een basisnaam of opdrachttekst, zoals hostname, is niet geldig.</value>
   </data>
   <data name="PermissionsPage_ComboBoxItem_54.Content" xml:space="preserve">
     <value>Weigeren</value>
-  </data>
-  <data name="PermissionsPage_ComboBoxItem_55.Content" xml:space="preserve">
-    <value>Toestaan</value>
   </data>
   <data name="PermissionsPage_ComboBoxItem_56.Content" xml:space="preserve">
     <value>Vragen</value>
   </data>
   <data name="PermissionsPage_Button_57.Content" xml:space="preserve">
-    <value>Regel toevoegen</value>
+    <value>Vermelding toevoegen</value>
   </data>
   <data name="PermissionsPage_TextBlock_69.Text" xml:space="preserve">
     <value>Knooppunt-allowlist</value>
@@ -2782,6 +2782,9 @@ Gebruik een van deze opties:
   <data name="VoiceOverlayWindow_StatusErrorOccurred" xml:space="preserve">
     <value>Er is een fout opgetreden</value>
   </data>
+  <data name="AudioPipeline_FirstAudioTimeout" xml:space="preserve">
+    <value>Er is geen audio ontvangen. Controleer of uw microfoon is aangesloten en geselecteerd als Windows-invoerapparaat en probeer het opnieuw.</value>
+  </data>
   <data name="VoiceOverlayWindow_winexWindowEx_2.Title" xml:space="preserve">
     <value>Companion Voice</value>
   </data>
@@ -3393,13 +3396,13 @@ Opdrachten worden geblokkeerd zolang sandboxing niet beschikbaar is, omdat strik
     <value>URL copied to clipboard</value>
   </data>
   <data name="PermissionsPage_RulesCount_None" xml:space="preserve">
-    <value>No rules</value>
+    <value>Geen vermeldingen</value>
   </data>
   <data name="PermissionsPage_RulesCount_One" xml:space="preserve">
-    <value>1 rule</value>
+    <value>1 vermelding</value>
   </data>
   <data name="PermissionsPage_RulesCount_ManyFormat" xml:space="preserve">
-    <value>{0} rules</value>
+    <value>{0} vermeldingen</value>
   </data>
   <data name="PermissionsPage_Allowlist_NoConfig" xml:space="preserve">
     <value>No allowlist data available. Connect to a gateway first.</value>
@@ -4452,19 +4455,19 @@ Opdrachten worden geblokkeerd zolang sandboxing niet beschikbaar is, omdat strik
     <value>Standaardactie</value>
   </data>
   <data name="PermissionsPage_WhatHappensWhenA.Text" xml:space="preserve">
-    <value>Wat gebeurt er als een opdracht aan geen enkele regel hieronder voldoet.</value>
+    <value>Wat gebeurt er als een opdracht niet overeenkomt met de allowlist voor paden van uitvoerbare bestanden hieronder.</value>
   </data>
   <data name="PermissionsPage_PatternsAreMatchedLeft.Text" xml:space="preserve">
-    <value>Allowlistpatronen worden vergeleken met opgeloste paden van uitvoerbare bestanden. Gebruik jokertekens zoals **/git.exe. Wijzigingen worden automatisch opgeslagen.</value>
+    <value>Altijd toestaan maakt een aan argumenten gebonden vermelding voor een geschikte systeemeigen .exe-opdracht. Vermeldingen die u hier toevoegt, zijn alleen op het pad gebaseerd en kunnen overeenkomende uitvoerbare bestanden met alle argumenten toestaan. Weigeren en Vragen blijven onder Standaardactie vallen. Wijzigingen worden automatisch opgeslagen.</value>
   </data>
   <data name="PermissionsPage_Saved.Text" xml:space="preserve">
     <value>Opgeslagen</value>
   </data>
   <data name="PermissionsPage_0Rules.Text" xml:space="preserve">
-    <value>0 regels</value>
+    <value>0 vermeldingen</value>
   </data>
   <data name="PermissionsPage_NoRulesYetAdd.Text" xml:space="preserve">
-    <value>Nog geen regels. Voeg hieronder een patroon toe om specifieke opdrachten te weigeren, toe te staan of te vragen.</value>
+    <value>Geen vermeldingen in de allowlist voor paden van uitvoerbare bestanden. Keur een geschikte systeemeigen .exe-opdracht goed met Altijd toestaan of voeg een patroon toe dat alleen op het pad is gebaseerd, zoals **/hostname.exe.</value>
   </data>
   <data name="PermissionsPage_WindowsPrivacy.Text" xml:space="preserve">
     <value>Windows-privacy</value>
@@ -6855,9 +6858,6 @@ Het binaire bestand wxc-exec is niet gevonden. {1} Als dit een ontwikkelaarsbuil
   </data>
   <data name="SettingsPage_GatewayInfoLabel_Uptime.Text" xml:space="preserve">
     <value>Uptime</value>
-  </data>
-  <data name="PermissionsPage_NewRuleAction.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
-    <value>Regelactie</value>
   </data>
   <data name="SandboxPage_UnavailablePrimaryButton.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
     <value>Sandboxactie</value>

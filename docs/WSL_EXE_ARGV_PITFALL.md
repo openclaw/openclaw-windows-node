@@ -22,11 +22,11 @@ function Invoke-Wsl([string[]]$arr) {
   "EXIT=$($p.ExitCode) STDOUT=[$out] STDERR=[$err]"
 }
 
-# BROKEN: argv path — $x is dropped before bash sees it
+# BROKEN: argv path - $x is dropped before bash sees it
 Invoke-Wsl @("-d","Ubuntu-26.04","--","bash","-c","x=abc; echo VAL=`$x")
 # → EXIT=0 STDOUT=[VAL=]  ← assignment ran, but $x was already expanded to empty
 
-# WORKING: stdin path — script bytes arrive at bash intact
+# WORKING: stdin path - script bytes arrive at bash intact
 $psi = New-Object System.Diagnostics.ProcessStartInfo
 $psi.FileName = "wsl.exe"
 $psi.RedirectStandardOutput = $true
@@ -115,20 +115,20 @@ This works for single isolated references, but it is fragile and easy to miss in
 
 All of these failed workarounds were verified empirically:
 
-- **Single quotes** — `'$workspace'` is still rewritten before Bash sees the quotes.
-- **Double quotes** — `"$workspace"` is also rewritten before Bash sees the quotes.
-- **Braces** — `${workspace}` is removed just like `$workspace`.
-- **Subshells** — `( workspace=x; echo $workspace )` still loses the inner `$workspace`.
-- **Prefix assignment** — `x=abc echo $x` still expands `$x` before the assignment can matter.
-- **`-e VAR=val` flag forwarding** — forwarded environment values do not prevent argv rewriting before Bash receives the script.
-- **Switching to `/bin/sh`** — the mutation happens in `wsl.exe`, before any shell starts.
+- **Single quotes** - `'$workspace'` is still rewritten before Bash sees the quotes.
+- **Double quotes** - `"$workspace"` is also rewritten before Bash sees the quotes.
+- **Braces** - `${workspace}` is removed just like `$workspace`.
+- **Subshells** - `( workspace=x; echo $workspace )` still loses the inner `$workspace`.
+- **Prefix assignment** - `x=abc echo $x` still expands `$x` before the assignment can matter.
+- **`-e VAR=val` flag forwarding** - forwarded environment values do not prevent argv rewriting before Bash receives the script.
+- **Switching to `/bin/sh`** - the mutation happens in `wsl.exe`, before any shell starts.
 
 ## Where this matters in the codebase
 
-- `src/OpenClaw.SetupEngine/CommandRunner.cs` — `RunInWslAsync` exposes the opt-in `inputViaStdin` parameter.
-- `src/OpenClaw.SetupEngine/SetupSteps.cs:936-945` — `ValidateWslLockdownStep` uses workaround #2, C# interpolation.
-- `src/OpenClaw.SetupEngine/SetupSteps.cs` `WindowsNodeBootstrapContextStep` — uses workaround #1, stdin.
+- `src/OpenClaw.SetupEngine/CommandRunner.cs` - `RunInWslAsync` exposes the opt-in `inputViaStdin` parameter.
+- `src/OpenClaw.SetupEngine/SetupSteps.cs:936-945` - `ValidateWslLockdownStep` uses workaround #2, C# interpolation.
+- `src/OpenClaw.SetupEngine/SetupSteps.cs` `WindowsNodeBootstrapContextStep` - uses workaround #1, stdin.
 
 ## Related
 
-- `docs/XAML_COMPILER_BUG.md` — sibling footgun doc for XAML compiler crashes.
+- `docs/XAML_COMPILER_BUG.md` - sibling footgun doc for XAML compiler crashes.

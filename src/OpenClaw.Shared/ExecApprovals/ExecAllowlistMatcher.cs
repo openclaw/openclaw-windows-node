@@ -5,36 +5,103 @@ using System.Text.RegularExpressions;
 
 namespace OpenClaw.Shared.ExecApprovals;
 
-// Path-based allowlist matcher.
+// Path-based allowlist matcher, extended with the durable argument binding.
 // Research doc 03 decisions:
 //   - target = resolvedPath ?? rawExecutable
 //   - * = single segment ([^/]*); ** = any segments (.*); ? = single char no separator ([^/])
 //   - case-insensitive via RegexOptions (no ToLowerInvariant); \ → / normalization before matching
 //   - basename-only patterns are invalid and fail-closed (no match produced)
 //   - matchAll is strict all-or-nothing: any miss returns empty list
+//
+// An entry authorizes a candidate only when the path pattern matches AND the
+// argument binding is satisfied. See ExecArgPattern for why the binding exists.
 internal static class ExecAllowlistMatcher
 {
+    // Marks an entry this node generated from an Allow always decision, as opposed to
+    // one a user wrote by hand. The distinction is load-bearing: see MatchInternal.
+    internal const string AllowAlwaysSource = "allow-always";
+
     // Compiled regexes keyed by normalized pattern string.
     // Allowlist patterns are config-defined and bounded; unbounded cache growth is not a concern.
     private static readonly ConcurrentDictionary<string, Regex> s_regexCache = new();
+
+    private static readonly string[] s_noArgs = [];
 
     // Returns the first entry whose pattern matches the resolution's target path, or null.
     // Target is normalized once before iterating — not per entry.
     internal static ExecAllowlistEntry? Match(
         IReadOnlyList<ExecAllowlistEntry> entries,
         ExecCommandResolution resolution)
+        => MatchInternal(entries, resolution, argv: null);
+
+    internal static ExecAllowlistEntry? Match(
+        IReadOnlyList<ExecAllowlistEntry> entries,
+        ExecCommandResolution resolution,
+        IReadOnlyList<string>? argv)
+        => MatchInternal(entries, resolution, argv);
+
+    // Mirrors the shared matcher the gateway and the macOS node use, so one allowlist
+    // file authorizes the same commands everywhere it is read.
+    //
+    // Two kinds of entry with no argPattern exist, and they are not equivalent:
+    //   - A hand-written entry has no source. It is a deliberate path-only rule and
+    //     authorizes the executable whatever its arguments, with one carve-out: if it
+    //     resolves to a program the previous model refused to approve durably (an
+    //     interpreter, shell, or script host), it goes inert and the command prompts.
+    //     Without that, moving from a name catalog to argument binding would silently
+    //     turn a case that used to be denied outright into one that is allowed with
+    //     any arguments, which is a loosening nobody asked for. The entry is left on
+    //     disk untouched and is not migrated; only an explicit Allow always writes an
+    //     argument-bound sibling, and that sibling then matches normally.
+    //   - A generated entry carries a source, normally "allow-always". Generated
+    //     entries have bound their arguments since argument binding was introduced, so
+    //     one that lacks an argPattern is an older record whose arguments were never
+    //     pinned. Honoring it would let a rule approved for one command authorize any
+    //     later command that reuses the same executable, so it is skipped instead.
+    //     Any non-empty source is treated this way, not just the exact spelling this
+    //     node writes. A source that is cased differently, padded, or otherwise
+    //     unrecognized still means "a generator produced this entry", so falling
+    //     through to the path-only branch would let a corrupted or foreign marker
+    //     widen a rule that was never meant to be path-only. Provenance is only
+    //     absent when the source is genuinely empty.
+    //
+    // A path-only match is only returned when no argument-bound entry matched, so a
+    // precise rule always wins over a broad one.
+    private static ExecAllowlistEntry? MatchInternal(
+        IReadOnlyList<ExecAllowlistEntry> entries,
+        ExecCommandResolution resolution,
+        IReadOnlyList<string>? argv)
     {
         var target = NormalizeSeparators(resolution.ResolvedPath ?? resolution.RawExecutable);
+        ExecAllowlistEntry? pathOnlyMatch = null;
+
         foreach (var entry in entries)
         {
             var pattern = entry.Pattern;
             if (string.IsNullOrWhiteSpace(pattern)) continue;
             var normalizedPattern = NormalizeSeparators(pattern);
             if (!IsValidNormalizedPattern(normalizedPattern)) continue;
-            if (s_regexCache.GetOrAdd(normalizedPattern, BuildPatternRegex).IsMatch(target))
+            if (!s_regexCache.GetOrAdd(normalizedPattern, BuildPatternRegex).IsMatch(target))
+                continue;
+
+            if (string.IsNullOrEmpty(entry.ArgPattern))
+            {
+                // Fail closed on any provenance marker: an entry that records where it
+                // came from is a generated entry, and a generated entry with no
+                // argPattern lost its binding.
+                if (!string.IsNullOrWhiteSpace(entry.Source))
+                    continue;
+                if (ExecCommandToken.IsLegacyQuarantinedHost(target))
+                    continue;
+                pathOnlyMatch ??= entry;
+                continue;
+            }
+
+            if (ExecArgPattern.Matches(entry.ArgPattern, argv ?? s_noArgs))
                 return entry;
         }
-        return null;
+
+        return pathOnlyMatch;
     }
 
     // Returns one matching entry per resolution in input order.
@@ -42,13 +109,24 @@ internal static class ExecAllowlistMatcher
     internal static IReadOnlyList<ExecAllowlistEntry> MatchAll(
         IReadOnlyList<ExecAllowlistEntry> entries,
         IReadOnlyList<ExecCommandResolution> resolutions)
+        => MatchAll(entries, resolutions, reusableCommand: null);
+
+    // The reusable command supplies the argv the argument binding is evaluated
+    // against. It is the same object the resolutions were derived from, so the path
+    // and argument sides of a rule are always evaluated against one identity.
+    internal static IReadOnlyList<ExecAllowlistEntry> MatchAll(
+        IReadOnlyList<ExecAllowlistEntry> entries,
+        IReadOnlyList<ExecCommandResolution> resolutions,
+        ExecReusableCommand? reusableCommand)
     {
         if (resolutions.Count == 0) return [];
+
+        var argv = reusableCommand?.Argv;
 
         var result = new ExecAllowlistEntry[resolutions.Count];
         for (var i = 0; i < resolutions.Count; i++)
         {
-            var match = Match(entries, resolutions[i]);
+            var match = MatchInternal(entries, resolutions[i], argv);
             if (match is null) return [];
             result[i] = match;
         }

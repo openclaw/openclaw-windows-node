@@ -1,4 +1,4 @@
-# A2UI v0.8 — Standard Catalog (Components)
+# A2UI v0.8 - Standard Catalog (Components)
 
 Source of truth: <https://a2ui.org/specification/v0_8/standard_catalog_definition.json>.
 
@@ -7,14 +7,14 @@ categories: containers, display, interactive. A v0.8-conformant client
 MUST recognize all 18 and either render them or fall back to an "unknown"
 placeholder for catalog-strict mode.
 
-Each section below is the spec — required properties first, optional
+Each section below is the spec - required properties first, optional
 after, with enums spelled out. Where the WinUI or Lit impl has a known gap
 or improvement, it's flagged inline so this doc doubles as a quick lookup
 when wiring a new component. Detailed grading is in
 [`grading.md`](./grading.md).
 
 Notation: `BoundValue` means an [`A2UIValue`](./data-and-actions.md#a2uivalue)
-tagged union — typically `{ literalString }` or `{ path }`. `Children`
+tagged union - typically `{ literalString }` or `{ path }`. `Children`
 means `{ explicitList: string[] }` or `{ template: { dataBinding, componentId } }`.
 
 ---
@@ -33,7 +33,7 @@ Horizontal layout container.
 **Behavior**: lays children left-to-right; cross-axis = vertical alignment.
 
 > WinUI: `StackPanel` (horizontal); `distribution` collapsed onto WinUI
-> `HorizontalAlignment` — `spaceBetween`/`spaceAround`/`spaceEvenly` all
+> `HorizontalAlignment` - `spaceBetween`/`spaceAround`/`spaceEvenly` all
 > map to `Stretch` (justify-content not natively available). Wrap to next
 > row not implemented.
 > Lit: full distribution support via CSS flex.
@@ -126,8 +126,8 @@ Text display.
 > WinUI: `TextBlock` w/ Fluent theme styles (`TitleLarge`, `Subtitle`,
 > `BodyStrong`, `Caption`, `Body`). Plain text only.
 > Lit: **renders Markdown** via `markdown-it`. HTML blocks sandboxed in
-> `<iframe sandbox="">`; code blocks escaped. This is _beyond_ spec —
-> see [`grading.md`](./grading.md#text-markdown-divergence) for whether
+> `<iframe sandbox="">`; code blocks escaped. This is _beyond_ spec:
+> see [`grading.md`](./grading.md#text--markdown-divergence) for whether
 > that's a feature or a foot-gun.
 
 ### `Image`
@@ -143,7 +143,7 @@ Text display.
 > Avatar wraps in `Border` w/ circular `CornerRadius`. SVG via
 > `SvgImageSource` w/ 8s timeout. URLs gated by `MediaResolver` allowlist
 > + DNS-rebinding defense.
-> Lit: `<img>` directly; **no URL filtering** — `data:` and other schemes
+> Lit: `<img>` directly; **no URL filtering** - `data:` and other schemes
 > pass through.
 
 ### `Icon`
@@ -177,7 +177,7 @@ visibility, visibilityOff, warning
 | `url` | `BoundValue<string>` | ✓ |
 
 > WinUI: `MediaPlayerElement` w/ transport controls. URL gated by
-> `MediaResolver` HTTPS+allowlist. **No DNS-rebinding pin** — the OS
+> `MediaResolver` HTTPS+allowlist. **No DNS-rebinding pin** - the OS
 > media stack does its own DNS lookup at playback time, so the
 > hostname-allowlist is the load-bearing defense (image fetches use a
 > separate, safer path that does pin).
@@ -230,7 +230,7 @@ visibility, visibilityOff, warning
 | `label` | `BoundValue<string>` | ✓ |
 | `value` | `BoundValue<bool>` | ✓ |
 
-> Both impls: bi-directional binding — toggle writes back to the
+> Both impls: bi-directional binding - toggle writes back to the
 > `value.path` data-model location. Spec is silent on write-back.
 
 ### `TextField`
@@ -272,7 +272,7 @@ visibility, visibilityOff, warning
 
 > WinUI: `ComboBox` (single) or `ListView` (multi). When
 > `maxAllowedSelections == 1` it writes a scalar to the path (not a
-> 1-element array) — back-compat reads tolerate either. **`variant` and
+> 1-element array) - back-compat reads tolerate either. **`variant` and
 > `filterable` not honored**.
 > Lit: `<select multiple>`. **`maxAllowedSelections` not enforced**
 > (root.ts:334 TODO); selections array resolution incomplete
@@ -301,7 +301,7 @@ rendering a placeholder, not by throwing. This is one of the few
 > The full set of available component types and their properties is
 > defined by a Catalog Schema, not in the core protocol schema.
 
-> WinUI: `UnknownRenderer` — orange-bordered placeholder w/ warning
+> WinUI: `UnknownRenderer` - orange-bordered placeholder w/ warning
 > icon and component name. Telemetry event fired.
 > Lit: walks a `componentRegistry`; allows custom components when
 > `enableCustomElements` flag is set (extension beyond spec).

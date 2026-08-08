@@ -68,7 +68,10 @@ public sealed record ManagedLocalGatewayRestartResult(bool Success, string? Deta
 /// <summary>Restarts an app-owned local WSL gateway distro. Abstracted for testability.</summary>
 public interface IManagedLocalGatewayRestarter
 {
-    Task<ManagedLocalGatewayRestartResult> RestartAsync(string distroName, CancellationToken cancellationToken);
+    Task<ManagedLocalGatewayRestartResult> RestartAsync(
+        string distroName,
+        CancellationToken cancellationToken,
+        Func<bool>? canContinue = null);
 }
 
 /// <summary>
@@ -209,16 +212,7 @@ public sealed class ManagedLocalGatewayRepairCoordinator
                 }
 
                 var currentBeforeRepair = _registry.GetActive();
-                var currentDistroBeforeRepair = currentBeforeRepair is null
-                    ? null
-                    : WslKeepAlivePolicy.ResolveDistroName(
-                        currentBeforeRepair,
-                        setupStateDistroName: null,
-                        environmentOverride: null);
-                if (currentBeforeRepair is null ||
-                    !string.Equals(currentBeforeRepair.Id, gatewayId, StringComparison.Ordinal) ||
-                    !WslKeepAlivePolicy.IsSetupManagedLocalRecord(currentBeforeRepair) ||
-                    !string.Equals(currentDistroBeforeRepair, distro, StringComparison.OrdinalIgnoreCase) ||
+                if (!WslKeepAlivePolicy.IsSameSetupManagedGateway(record, currentBeforeRepair) ||
                     !_isAutomaticRepairAllowed(gatewayId) ||
                     !_isPortConflictCandidate())
                 {
@@ -310,13 +304,7 @@ public sealed class ManagedLocalGatewayRepairCoordinator
             // gateway), or (c) started a manual gateway lifecycle action. Any of these means we must not
             // restart the cached distro (a manual restart + our --terminate could kill its fresh VM).
             var currentActive = _registry.GetActive();
-            var currentDistro = currentActive is null
-                ? null
-                : WslKeepAlivePolicy.ResolveDistroName(currentActive, setupStateDistroName: null, environmentOverride: null);
-            if (currentActive is null ||
-                !string.Equals(currentActive.Id, gatewayId, StringComparison.Ordinal) ||
-                !WslKeepAlivePolicy.IsSetupManagedLocalRecord(currentActive) ||
-                !string.Equals(currentDistro, distro, StringComparison.OrdinalIgnoreCase))
+            if (!WslKeepAlivePolicy.IsSameSetupManagedGateway(record, currentActive))
             {
                 _diagnostics.Record("setup", "Gateway no longer eligible for restart (switched/edited); aborting", $"distro={distro}");
                 return new ManagedLocalGatewayRepairResult(ManagedLocalGatewayRepairOutcome.AbortedGatewayChanged, distro,
@@ -350,6 +338,40 @@ public sealed class ManagedLocalGatewayRepairCoordinator
                     "Manual gateway operation in progress.");
             }
 
+            ManagedLocalGatewayRepairResult? GetRestartAbortResult(bool requireTransportFailure = true)
+            {
+                var active = _registry.GetActive();
+                if (!WslKeepAlivePolicy.IsSameSetupManagedGateway(record, active))
+                {
+                    return new ManagedLocalGatewayRepairResult(
+                        ManagedLocalGatewayRepairOutcome.AbortedGatewayChanged,
+                        distro,
+                        "Gateway changed before restart.");
+                }
+                if (!_isAutomaticRepairAllowed(gatewayId))
+                {
+                    return new ManagedLocalGatewayRepairResult(
+                        ManagedLocalGatewayRepairOutcome.AbortedUserIntent,
+                        distro,
+                        "Gateway was explicitly disconnected or stopped.");
+                }
+                if (requireTransportFailure &&
+                    _isRestartStillWarranted is not null &&
+                    !_isRestartStillWarranted())
+                {
+                    return new ManagedLocalGatewayRepairResult(
+                        ManagedLocalGatewayRepairOutcome.AbortedNonTransportFailure,
+                        distro,
+                        "Failure is no longer a transport outage.");
+                }
+                return null;
+            }
+
+            bool CanContinueRestart() => GetRestartAbortResult() is null;
+
+            if (GetRestartAbortResult() is { } beforeRestartAbort)
+                return beforeRestartAbort;
+
             ManagedLocalGatewayRestartResult restart;
             try
             {
@@ -370,7 +392,9 @@ public sealed class ManagedLocalGatewayRepairCoordinator
 
                 try
                 {
-                    restart = await _restarter.RestartAsync(distro!, cancellationToken).ConfigureAwait(false);
+                    restart = await _restarter
+                        .RestartAsync(distro!, cancellationToken, CanContinueRestart)
+                        .ConfigureAwait(false);
                 }
                 catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
                 {
@@ -382,6 +406,9 @@ public sealed class ManagedLocalGatewayRepairCoordinator
                     _diagnostics.Record("setup", "Local gateway restart failed", ex.Message);
                     return new ManagedLocalGatewayRepairResult(ManagedLocalGatewayRepairOutcome.RestartFailed, distro, ex.Message);
                 }
+
+                if (GetRestartAbortResult(requireTransportFailure: !restart.Success) is { } duringRestartAbort)
+                    return duringRestartAbort;
 
                 if (!restart.Success)
                 {
@@ -405,8 +432,25 @@ public sealed class ManagedLocalGatewayRepairCoordinator
 
             _diagnostics.Record("setup", "Local gateway restarted; reconnecting", $"distro={distro}");
             cancellationToken.ThrowIfCancellationRequested();
+            if (!WslKeepAlivePolicy.IsSameSetupManagedGateway(record, _registry.GetActive()))
+                return new ManagedLocalGatewayRepairResult(
+                    ManagedLocalGatewayRepairOutcome.AbortedGatewayChanged,
+                    distro,
+                    "Gateway changed after restart.");
             if (!_isAutomaticRepairAllowed(gatewayId))
                 return new ManagedLocalGatewayRepairResult(ManagedLocalGatewayRepairOutcome.AbortedUserIntent, distro);
+
+            if (_isOperatorConnected() &&
+                WslKeepAlivePolicy.IsSameSetupManagedGateway(record, _registry.GetActive()))
+            {
+                lock (_attemptLock) { _restartCounts.Remove(gatewayId); }
+                _diagnostics.Record(
+                    "setup",
+                    "Local gateway repair verified during restart (operator connected)",
+                    $"distro={distro}");
+                return new ManagedLocalGatewayRepairResult(ManagedLocalGatewayRepairOutcome.Repaired, distro);
+            }
+
             try
             {
                 if (!await _reconnectIfCurrentAsync(gatewayId, cancellationToken).ConfigureAwait(false))

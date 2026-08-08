@@ -40,7 +40,71 @@ public class ExecApprovalsStoreTests : IDisposable
     private static string Hash(string raw) =>
         Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(raw))).ToLowerInvariant();
 
+    // Two generated entries can share an executable and differ only by argument
+    // binding. Usage metadata identifies which grant actually authorized a run, so
+    // stamping it on every sibling with the same pattern makes the audit trail claim a
+    // rule was used when it never matched.
+    [Fact]
+    public async Task RecordAllowlistUse_StampsOnlyTheMatchedArgumentBinding()
+    {
+        var used = ExecArgPattern.BuildArgPattern(new[] { "C:\\bin\\tool.exe", "--safe" });
+        var other = ExecArgPattern.BuildArgPattern(new[] { "C:\\bin\\tool.exe", "--dangerous" });
+        WriteFile($$"""
+        {
+          "version": 1,
+          "agents": {
+            "main": {
+              "allowlist": [
+                { "id": "11111111-1111-1111-1111-111111111111", "pattern": "**/tool.exe", "source": "allow-always", "argPattern": {{JsonSerializer.Serialize(used)}} },
+                { "id": "22222222-2222-2222-2222-222222222222", "pattern": "**/tool.exe", "source": "allow-always", "argPattern": {{JsonSerializer.Serialize(other)}} }
+              ]
+            }
+          }
+        }
+        """);
+
+        var changed = await Store().RecordAllowlistUseAsync(
+            "main", "**/tool.exe", "C:\\bin\\tool.exe", "tool.exe --safe", entryId: Guid.Parse("11111111-1111-1111-1111-111111111111"), argPattern: used);
+        Assert.True(changed);
+
+        var entries = JsonDocument.Parse(File.ReadAllText(FilePath))
+            .RootElement.GetProperty("agents").GetProperty("main").GetProperty("allowlist")
+            .EnumerateArray()
+            .ToDictionary(e => e.GetProperty("id").GetString()!, e => e);
+
+        Assert.True(entries["11111111-1111-1111-1111-111111111111"].TryGetProperty("lastUsedAt", out _));
+        Assert.False(
+            entries["22222222-2222-2222-2222-222222222222"].TryGetProperty("lastUsedAt", out _),
+            "The non-matching argument binding must not be stamped as used.");
+        Assert.False(entries["22222222-2222-2222-2222-222222222222"].TryGetProperty("lastUsedCommand", out _));
+    }
+
     // ── Prompt-on-miss when file absent ──────────────────────────────────────
+
+    // A generated entry is only safe because its argument pattern is what makes it
+    // match. Rewriting the file must not drop argPattern or source: losing either one
+    // silently converts a narrow generated rule into a path-only rule, which is a
+    // wider grant than the operator ever approved.
+    [Fact]
+    public async Task Normalization_PreservesGeneratedEntryBinding()
+    {
+        WriteFile(
+            """
+            {"version":1,"defaults":{"security":"allowlist","ask":"on-miss"},"agents":{"main":{"allowlist":[
+              {"pattern":"C:\\tools\\a.exe","source":"allow-always","argPattern":"^--one\u0000\u0000$","commandText":"a.exe --one"}
+            ]}}}
+            """);
+
+        // Any write goes through the same normalization path that rebuilds every entry.
+        await Store().AddAllowlistEntryAsync("main", "C:\\tools\\b.exe");
+
+        var entry = Assert.Single(
+            Store().ResolveReadOnly("main").Allowlist,
+            candidate => candidate.Pattern == "C:\\tools\\a.exe");
+        Assert.Equal("allow-always", entry.Source);
+        Assert.Equal("^--one\u0000\u0000$", entry.ArgPattern);
+        Assert.Equal("a.exe --one", entry.CommandText);
+    }
 
     [Fact]
     public void ResolveReadOnly_NoFile_ReturnsAllowlistOnMiss()

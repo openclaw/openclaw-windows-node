@@ -8,9 +8,9 @@ namespace OpenClaw.Shared.Audio;
 /// <see cref="WhisperModelManager"/> and <see cref="PiperVoiceManager"/>:
 /// the runtime checks the downloaded file's SHA-256 against
 /// <see cref="Sha256"/> before installing it. The pinned hash here was
-/// captured against the upstream raw URL on 2026-05-05; re-verify from
-/// an independent source before any public release (Audio_FollowUps.md
-/// §2 captures the broader signed-manifest plan).
+/// captured against the upstream raw URL on 2026-05-05. Re-verify the asset
+/// from an independent source before every public release; see
+/// <c>docs/AUDIO_MODEL_ASSETS.md</c>.
 /// </summary>
 public static class SileroVadModelManifest
 {

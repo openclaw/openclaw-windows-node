@@ -10,8 +10,8 @@ namespace OpenClaw.Shared.Tests;
 /// New entries that forget the hash will fail this test loudly instead of
 /// quietly being installable from a compromised source.
 ///
-/// See WhisperModelManager.AvailableModels / PiperVoiceManager.AvailableVoices
-/// and Audio_FollowUps.md §2.
+/// See WhisperModelManager.AvailableModels, PiperVoiceManager.AvailableVoices,
+/// and docs/AUDIO_MODEL_ASSETS.md.
 /// </summary>
 public class AssetHashPinningTests
 {

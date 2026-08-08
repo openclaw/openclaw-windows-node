@@ -154,7 +154,15 @@ public sealed partial class SetupWindow : Window
             _config.GatewayPort = gatewayPortOverride.Value;
             _config.GatewayUrl = null;
         }
-        GatewayLkgVersion.ApplyToConfig(_config);
+        try
+        {
+            GatewayReleasePolicy.ResolveAndApply(_config);
+        }
+        catch (GatewayCompatibilityException ex)
+        {
+            ShowConfigurationError(ex.Message);
+            return;
+        }
         _config.ApplyUiDefaults(rollbackOnFailure: setupArguments.RollbackOnFailure);
         if (startAtGatewayInstalledMilestone)
         {
@@ -260,8 +268,17 @@ public sealed partial class SetupWindow : Window
         };
     }
 
-    public void NavigateToComplete(bool success, TimeSpan elapsed, string? logPath, string? errorMessage = null)
-        => NavigateTo(
+    public void NavigateToComplete(
+        bool success,
+        TimeSpan elapsed,
+        string? logPath,
+        string? errorMessage = null,
+        GatewayCompatibilityFailureKind? compatibilityFailure = null)
+    {
+        var canRetryFallback =
+            compatibilityFailure is { } failureKind &&
+            GatewayReleasePolicy.CanRetryWithFallback(_config, failureKind);
+        NavigateTo(
             typeof(CompletePage),
             new CompletePageArgs(
                 success,
@@ -270,7 +287,21 @@ public sealed partial class SetupWindow : Window
                 errorMessage,
                 DefaultAutoStart: true,
                 ShowStartupPreference: _showStartupPreferenceOnComplete,
-                ReviewSummary: SetupReviewSummaryBuilder.Build(_config, _dataDir, _localDataDir)));
+                ReviewSummary: SetupReviewSummaryBuilder.Build(_config, _dataDir, _localDataDir),
+                CanRetryGatewayFallback: canRetryFallback,
+                GatewayFallbackVersion: canRetryFallback
+                    ? GatewayReleasePolicy.FallbackVersion
+                    : null));
+    }
+
+    public bool TryRetryWithGatewayFallback(out string? error)
+    {
+        if (!GatewayReleasePolicy.TryApplyFallback(_config, out error))
+            return false;
+
+        NavigateToProgress();
+        return true;
+    }
 
     private void ShowConfigurationError(string errorMessage)
     {
@@ -426,5 +457,7 @@ public sealed record CompletePageArgs(
     string? ErrorMessage = null,
     bool DefaultAutoStart = true,
     bool ShowStartupPreference = true,
-    SetupReviewSummary? ReviewSummary = null);
+    SetupReviewSummary? ReviewSummary = null,
+    bool CanRetryGatewayFallback = false,
+    string? GatewayFallbackVersion = null);
 public sealed record SetupCompletedEventArgs(bool EnableAutoStart);

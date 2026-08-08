@@ -23,6 +23,15 @@ public sealed class TrayAppFixture : IAsyncLifetime
     public const string SeededExecApprovalPattern = "**/where.exe";
     public const string SeededExecApprovalId = "11111111-1111-1111-1111-111111111111";
 
+    // A generated, argument-bound entry. Remote updates may retain it verbatim but must
+    // not be able to keep the path while dropping the binding that keeps it narrow.
+    public const string SeededBoundExecApprovalPattern = @"C:\Windows\System32\hostname.exe";
+    public const string SeededBoundExecApprovalId = "22222222-2222-2222-2222-222222222222";
+    public const string SeededBoundExecApprovalArgPattern = "^--version\u0000$";
+    // Escaped for embedding in the JSON template above.
+    public const string SeededBoundExecApprovalArgPatternJson = @"^--version\u0000$";
+    public const string SeededBoundExecApprovalPatternJson = @"C:\\Windows\\System32\\hostname.exe";
+
     public string DataDir { get; }
     public int McpPort { get; }
     public string McpEndpoint => $"http://127.0.0.1:{McpPort}/mcp";
@@ -193,6 +202,12 @@ public sealed class TrayAppFixture : IAsyncLifetime
                     {
                       "id": "{{SeededExecApprovalId}}",
                       "pattern": "{{SeededExecApprovalPattern}}"
+                    },
+                    {
+                      "id": "{{SeededBoundExecApprovalId}}",
+                      "pattern": "{{SeededBoundExecApprovalPatternJson}}",
+                      "source": "allow-always",
+                      "argPattern": "{{SeededBoundExecApprovalArgPatternJson}}"
                     }
                   ]
                 }

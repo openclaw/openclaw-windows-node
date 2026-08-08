@@ -1903,7 +1903,7 @@
     <value>执行策略</value>
   </data>
   <data name="PermissionsPage_TextBlock_17.Text" xml:space="preserve">
-    <value>控制代理可在此节点上启动哪些可执行文件。规则会匹配解析后的可执行文件路径。</value>
+    <value>控制代理可在此节点上启动哪些可执行文件。可执行文件路径允许列表初始为空。</value>
   </data>
   <data name="DefaultActionCombo.Header" xml:space="preserve">
     <value>默认操作</value>
@@ -1918,22 +1918,22 @@
     <value>询问</value>
   </data>
   <data name="PermissionsPage_TextBlock_28.Text" xml:space="preserve">
-    <value>规则</value>
+    <value>可执行文件路径允许列表</value>
   </data>
   <data name="NewRulePattern.PlaceholderText" xml:space="preserve">
-    <value>可执行文件路径模式（例如 **/git.exe）</value>
+    <value>可执行文件路径模式（例如 **/hostname.exe）</value>
+  </data>
+  <data name="PermissionsPage_ExecAllowlistPatternValidation.Text" xml:space="preserve">
+    <value>请输入可执行文件路径模式，例如 **/hostname.exe。hostname 等仅含基本名称或命令文本的模式无效。</value>
   </data>
   <data name="PermissionsPage_ComboBoxItem_54.Content" xml:space="preserve">
     <value>拒绝</value>
-  </data>
-  <data name="PermissionsPage_ComboBoxItem_55.Content" xml:space="preserve">
-    <value>允许</value>
   </data>
   <data name="PermissionsPage_ComboBoxItem_56.Content" xml:space="preserve">
     <value>询问</value>
   </data>
   <data name="PermissionsPage_Button_57.Content" xml:space="preserve">
-    <value>添加规则</value>
+    <value>添加条目</value>
   </data>
   <data name="PermissionsPage_TextBlock_69.Text" xml:space="preserve">
     <value>节点允许列表</value>
@@ -2781,6 +2781,9 @@
   <data name="VoiceOverlayWindow_StatusErrorOccurred" xml:space="preserve">
     <value>发生错误</value>
   </data>
+  <data name="AudioPipeline_FirstAudioTimeout" xml:space="preserve">
+    <value>未收到音频。请检查麦克风是否已连接并在 Windows 中选作输入设备，然后重试。</value>
+  </data>
   <data name="VoiceOverlayWindow_winexWindowEx_2.Title" xml:space="preserve">
     <value>Companion Voice</value>
   </data>
@@ -3392,13 +3395,13 @@
     <value>URL copied to clipboard</value>
   </data>
   <data name="PermissionsPage_RulesCount_None" xml:space="preserve">
-    <value>No rules</value>
+    <value>无条目</value>
   </data>
   <data name="PermissionsPage_RulesCount_One" xml:space="preserve">
-    <value>1 rule</value>
+    <value>1 个条目</value>
   </data>
   <data name="PermissionsPage_RulesCount_ManyFormat" xml:space="preserve">
-    <value>{0} rules</value>
+    <value>{0} 个条目</value>
   </data>
   <data name="PermissionsPage_Allowlist_NoConfig" xml:space="preserve">
     <value>No allowlist data available. Connect to a gateway first.</value>
@@ -4451,19 +4454,19 @@
     <value>默认操作</value>
   </data>
   <data name="PermissionsPage_WhatHappensWhenA.Text" xml:space="preserve">
-    <value>当命令与下列任何规则都不匹配时发生什么。</value>
+    <value>当命令与下列可执行文件路径允许列表不匹配时发生什么。</value>
   </data>
   <data name="PermissionsPage_PatternsAreMatchedLeft.Text" xml:space="preserve">
-    <value>允许列表模式会匹配解析后的可执行文件路径。可使用 **/git.exe 等通配模式。更改将自动保存。</value>
+    <value>“始终允许”会为符合条件的原生 .exe 命令创建参数绑定条目。在此添加的条目仅按路径匹配，可能允许匹配的可执行文件使用任意参数。“拒绝”和“询问”仍由“默认操作”控制。更改将自动保存。</value>
   </data>
   <data name="PermissionsPage_Saved.Text" xml:space="preserve">
     <value>已保存</value>
   </data>
   <data name="PermissionsPage_0Rules.Text" xml:space="preserve">
-    <value>0 条规则</value>
+    <value>0 个条目</value>
   </data>
   <data name="PermissionsPage_NoRulesYetAdd.Text" xml:space="preserve">
-    <value>尚无规则。在下方添加模式以拒绝、允许或询问特定命令。</value>
+    <value>没有可执行文件路径允许列表条目。使用“始终允许”批准符合条件的原生 .exe 命令，或添加仅按路径匹配的模式，例如 **/hostname.exe。</value>
   </data>
   <data name="PermissionsPage_WindowsPrivacy.Text" xml:space="preserve">
     <value>Windows 隐私</value>
@@ -6854,9 +6857,6 @@
   </data>
   <data name="SettingsPage_GatewayInfoLabel_Uptime.Text" xml:space="preserve">
     <value>Uptime</value>
-  </data>
-  <data name="PermissionsPage_NewRuleAction.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
-    <value>规则操作</value>
   </data>
   <data name="SandboxPage_UnavailablePrimaryButton.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
     <value>沙盒操作</value>

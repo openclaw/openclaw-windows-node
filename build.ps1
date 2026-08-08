@@ -311,6 +311,12 @@ if ($issues.Count -eq 0) {
     }
 }
 
+Write-Header "Validating Documentation"
+& (Join-Path $repoRoot "scripts\validate-docs.ps1") -RepoRoot $repoRoot
+if ($LASTEXITCODE -ne 0) {
+    exit $LASTEXITCODE
+}
+
 if ($CheckOnly) {
     Write-Host "`nRun without -CheckOnly to build.`n"
     exit 0

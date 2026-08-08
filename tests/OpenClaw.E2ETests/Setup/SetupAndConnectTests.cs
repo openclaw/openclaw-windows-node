@@ -123,7 +123,8 @@ public class SetupAndConnectTests
             AssertJsonPath(root, ["gateway", "bind"], "loopback");
             AssertJsonPath(root, ["gateway", "auth", "mode"], "token");
 
-            var allowCommands = ReadStringArray(GetJsonPath(root, ["gateway", "nodes", "allowCommands"]));
+            var allowCommandsKey = ResolveNodeCommandsAllowKey();
+            var allowCommands = ReadStringArray(GetJsonPath(root, allowCommandsKey.Split('.')));
             Assert.Equal(new CapabilitiesConfig().GetEnabledCommandIds().ToArray(), allowCommands.Order(StringComparer.OrdinalIgnoreCase).ToArray());
         }
 
@@ -139,11 +140,12 @@ public class SetupAndConnectTests
         AssertCommandSucceeded(gatewayAuthMode, "read gateway.auth.mode");
         Assert.Contains("token", gatewayAuthMode.Stdout);
 
+        var nodeCommandsAllowKey = ResolveNodeCommandsAllowKey();
         var cliAllowCommands = await _fixture.RunInWslAsync(
-            "openclaw config get gateway.nodes.allowCommands",
+            $"openclaw config get {nodeCommandsAllowKey}",
             TimeSpan.FromSeconds(15));
-        AssertCommandSucceeded(cliAllowCommands, "read gateway.nodes.allowCommands");
-        Console.WriteLine($"[E2E] gateway.nodes.allowCommands: {cliAllowCommands.Stdout}");
+        AssertCommandSucceeded(cliAllowCommands, $"read {nodeCommandsAllowKey}");
+        Console.WriteLine($"[E2E] {nodeCommandsAllowKey}: {cliAllowCommands.Stdout}");
         var expectedCommands = new CapabilitiesConfig().GetEnabledCommandIds().ToArray();
         var effectiveCommands = ParseJsonArrayFromOutput(cliAllowCommands.Stdout);
         Assert.Equal(expectedCommands, effectiveCommands.Order(StringComparer.OrdinalIgnoreCase).ToArray());
@@ -161,6 +163,14 @@ public class SetupAndConnectTests
         var identityDir = Path.Combine(_fixture.DataDir, "gateways", gateway.ActiveId);
         Assert.True(Directory.Exists(identityDir), $"Expected identity directory: {identityDir}");
         Assert.Contains(Directory.EnumerateFiles(identityDir), path => Path.GetFileName(path).Contains("device-key", StringComparison.OrdinalIgnoreCase));
+    }
+
+    private static string ResolveNodeCommandsAllowKey()
+    {
+        var gatewayVersion =
+            Environment.GetEnvironmentVariable("OPENCLAW_E2E_GATEWAY_VERSION") ??
+            GatewayReleasePolicy.RecommendedVersion;
+        return ConfigureGatewayStep.ResolveNodeCommandsAllowKey(gatewayVersion);
     }
 
     [E2EFact]
@@ -261,6 +271,39 @@ public class SetupAndConnectTests
         Console.WriteLine($"[E2E] openclaw nodes list --json:\n{nodes.Stdout}");
         AssertNoPendingRequests(nodes.Stdout);
         Assert.Contains("windows", nodes.Stdout, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [E2EFact]
+    public async Task FullSetup_SafeNodeInvocation_RoutesThroughRealGateway()
+    {
+        var gateway = _fixture.ReadActiveGatewayRecord();
+        var env = GatewayTokenEnv(gateway.SharedGatewayToken);
+        var nodeId = _fixture.ReadActiveGatewayDeviceId();
+        var invokeParams = JsonSerializer.Serialize(new
+        {
+            nodeId,
+            command = "system.which",
+            @params = new { bins = new[] { "cmd" } },
+            timeoutMs = 30_000,
+            idempotencyKey = Guid.NewGuid().ToString("N")
+        });
+
+        var invoke = await _fixture.RunInWslAsync(
+            $"openclaw gateway call node.invoke --params {ShellSingleQuote(invokeParams)} --json --timeout 60000",
+            TimeSpan.FromSeconds(70),
+            env,
+            inputViaStdin: true);
+        AssertCommandSucceeded(invoke, "invoke Windows node system.which through real gateway");
+
+        using var invokeDoc = JsonDocument.Parse(ExtractJsonObject(invoke.Stdout));
+        if (invokeDoc.RootElement.TryGetProperty("ok", out var ok))
+            Assert.True(ok.GetBoolean(), $"Expected gateway node.invoke ok=true: {invokeDoc.RootElement.GetRawText()}");
+
+        var payload = ReadNodeInvokePayload(invokeDoc.RootElement);
+        var bins = payload.GetProperty("bins");
+        Assert.True(bins.TryGetProperty("cmd", out var cmdPath), $"system.which did not return cmd: {payload.GetRawText()}");
+        Assert.Contains("cmd.exe", cmdPath.GetString(), StringComparison.OrdinalIgnoreCase);
+        Console.WriteLine($"[E2E] gateway system.which resolved cmd to {cmdPath.GetString()}");
     }
 
     [E2EFact]
@@ -381,7 +424,7 @@ public class SetupAndConnectTests
             var credentials = externalTray.ReadCredentialState();
             Assert.False(credentials.HasNodeToken, "QR-only external-like onboarding should wait for explicit device approval before persisting a node token.");
             Assert.False(credentials.HasOperatorToken,
-                "Current LKG QR-only external-like onboarding does not provide an admin operator token.");
+                "The validated Gateway recommendation's QR-only external-like onboarding does not provide an admin operator token.");
             Assert.True(credentials.HasBootstrapToken,
                 "Bootstrap remains as recovery material while explicit approval is pending.");
 
@@ -598,6 +641,10 @@ public class SetupAndConnectTests
         var loginShell = await _fixture.RunInWslAsync("bash -lc 'openclaw --version'", TimeSpan.FromSeconds(15));
         AssertCommandSucceeded(loginShell, "openclaw --version in login shell");
         Console.WriteLine($"[E2E] login shell openclaw --version: {loginShell.Stdout}");
+        var expectedGatewayVersion =
+            Environment.GetEnvironmentVariable("OPENCLAW_E2E_GATEWAY_VERSION");
+        if (!string.IsNullOrWhiteSpace(expectedGatewayVersion))
+            Assert.Contains(expectedGatewayVersion.Trim(), loginShell.Stdout, StringComparison.Ordinal);
 
         var systemPath = await _fixture.RunInWslAsync(
             "env -i HOME=/home/openclaw USER=openclaw PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin openclaw --version",
@@ -636,6 +683,28 @@ public class SetupAndConnectTests
         Assert.False(result.TimedOut, $"{description} timed out");
         Assert.Equal(0, result.ExitCode);
     }
+
+    private static JsonElement ReadNodeInvokePayload(JsonElement root)
+    {
+        if (root.TryGetProperty("payload", out var payload) &&
+            payload.ValueKind == JsonValueKind.Object)
+        {
+            return payload.Clone();
+        }
+
+        if (root.TryGetProperty("payloadJSON", out var payloadJson) &&
+            payloadJson.ValueKind == JsonValueKind.String &&
+            !string.IsNullOrWhiteSpace(payloadJson.GetString()))
+        {
+            using var doc = JsonDocument.Parse(payloadJson.GetString()!);
+            return doc.RootElement.Clone();
+        }
+
+        throw new InvalidDataException($"Gateway node.invoke response did not include a payload object: {root.GetRawText()}");
+    }
+
+    private static string ShellSingleQuote(string value) =>
+        $"'{value.Replace("'", "'\"'\"'", StringComparison.Ordinal)}'";
 
     private static void AssertReadyStatus(JsonElement root)
     {

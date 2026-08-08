@@ -56,6 +56,25 @@ public class SetupPipelineTests
     }
 
     [Fact]
+    public async Task RunAsync_CompatibilityFailure_PreservesTypedTerminalReason()
+    {
+        var compatibilityError = new GatewayCompatibilityException(
+            GatewayCompatibilityFailureKind.ProtocolMismatch,
+            "Expected protocol v4.");
+        var pipeline = new SetupPipeline([
+            new MockStep(
+                "compatibility",
+                (_, _) => Task.FromResult(
+                    StepResult.Terminal(compatibilityError.Message, compatibilityError))),
+        ]);
+
+        var result = await pipeline.RunAsync(CreateContext());
+
+        Assert.Equal(PipelineOutcome.Failed, result.Outcome);
+        Assert.Equal(GatewayCompatibilityFailureKind.ProtocolMismatch, result.CompatibilityFailure);
+    }
+
+    [Fact]
     public void BuildDefaultSteps_IncludesCurrentSetupFlow()
     {
         var steps = SetupStepFactory.BuildDefaultSteps();

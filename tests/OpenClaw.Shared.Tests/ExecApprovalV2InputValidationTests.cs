@@ -18,8 +18,14 @@ public class ExecApprovalV2InputValidationTests
         return doc.RootElement.Clone();
     }
 
-    private static NodeInvokeRequest Req(string argsJson)
-        => new() { Id = "r1", Command = "system.run", Args = Parse(argsJson) };
+    private static NodeInvokeRequest Req(string argsJson, string? sessionKey = null)
+        => new()
+        {
+            Id = "r1",
+            Command = "system.run",
+            Args = Parse(argsJson),
+            SessionKey = sessionKey
+        };
 
     // -------------------------------------------------------------------------
     // Allow paths
@@ -62,9 +68,9 @@ public class ExecApprovalV2InputValidationTests
                 "cwd": "C:\\repo",
                 "timeoutMs": 5000,
                 "agentId": "agent-1",
-                "sessionKey": "sess-abc"
+                "sessionKey": "forged-session"
             }
-            """));
+            """, sessionKey: "sess-abc"));
 
         Assert.True(outcome.IsValid);
         var r = outcome.Request!;
@@ -446,10 +452,10 @@ public class ExecApprovalV2InputValidationTests
     }
 
     [Fact]
-    public void SessionKeyWrongType_TreatedAsAbsent()
+    public void ArgsSessionKey_IsIgnored()
     {
         var outcome = ExecApprovalV2InputValidator.Validate(
-            Req("""{"command":["echo"],"sessionKey":[]}"""));
+            Req("""{"command":["echo"],"sessionKey":"forged-session"}"""));
 
         Assert.True(outcome.IsValid);
         Assert.Null(outcome.Request!.SessionKey);

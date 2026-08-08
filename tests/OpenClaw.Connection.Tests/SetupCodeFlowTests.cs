@@ -117,8 +117,9 @@ public class SetupCodeFlowTests : IDisposable
 
         var resolver = new CredentialResolver(new FakeIdentityReader());
         var factory = new RecordingClientFactory();
+        var tunnelManager = new RecordingTunnelManager();
         var manager = new GatewayConnectionManager(
-            resolver, factory, _registry, NullLogger.Instance);
+            resolver, factory, _registry, NullLogger.Instance, tunnelManager: tunnelManager);
 
         var result = await manager.ApplySetupCodeAsync(code, sshTunnel);
 
@@ -451,6 +452,51 @@ public class SetupCodeFlowTests : IDisposable
         public string? NodeToken { get; set; }
         public string? TryReadStoredDeviceToken(string dataPath) => OperatorToken;
         public string? TryReadStoredNodeDeviceToken(string dataPath) => NodeToken;
+    }
+
+    private sealed class RecordingTunnelManager : ISshTunnelManager
+    {
+        public bool IsActive { get; private set; }
+        public long OwnershipGeneration { get; private set; }
+        public SshTunnelConfig? ActiveConfig { get; private set; }
+        public string? LocalTunnelUrl { get; private set; }
+
+        public bool IsRestartPending(SshTunnelExit tunnelExit) => false;
+
+        public Task<bool> IsOwnedListenerReadyAsync(
+            SshTunnelConfig config,
+            int destinationPort,
+            CancellationToken ct)
+        {
+            ct.ThrowIfCancellationRequested();
+            return Task.FromResult(
+                IsActive &&
+                ActiveConfig == config &&
+                destinationPort == config.LocalPort);
+        }
+
+        public Task<string> StartAsync(SshTunnelConfig config, CancellationToken ct)
+        {
+            ct.ThrowIfCancellationRequested();
+            OwnershipGeneration++;
+            IsActive = true;
+            ActiveConfig = config;
+            LocalTunnelUrl = $"ws://localhost:{config.LocalPort}";
+            return Task.FromResult(LocalTunnelUrl);
+        }
+
+        public Task StopAsync()
+        {
+            OwnershipGeneration++;
+            IsActive = false;
+            ActiveConfig = null;
+            LocalTunnelUrl = null;
+            return Task.CompletedTask;
+        }
+
+        public void Dispose()
+        {
+        }
     }
 
     private sealed class RecordingClientFactory : IGatewayClientFactory

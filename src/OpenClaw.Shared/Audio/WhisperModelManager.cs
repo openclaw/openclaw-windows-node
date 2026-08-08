@@ -31,8 +31,7 @@ public sealed class WhisperModelManager
     /// HuggingFace on 2026-05-05. Downloads with a different hash are
     /// rejected and the partial file is deleted. Before any public release:
     /// re-verify each hash from an independent source and document the
-    /// provenance in Audio_FollowUps.md §2 (also consider replacing this
-    /// inline table with a signed manifest).
+    /// provenance. See <c>docs/AUDIO_MODEL_ASSETS.md</c>.
     /// </summary>
     public static readonly WhisperModelInfo[] AvailableModels =
     [
@@ -111,7 +110,7 @@ public sealed class WhisperModelManager
         // SECURITY: a missing pinned hash is treated as a hard failure so we
         // never install an unverified asset. The catalog above pins all
         // shipped models; if you add a new one without a hash, this is the
-        // place that refuses to download it. See Audio_FollowUps.md §2.
+        // place that refuses to download it. See docs/AUDIO_MODEL_ASSETS.md.
         if (string.IsNullOrWhiteSpace(info.Sha256))
         {
             throw new InvalidOperationException(
@@ -214,8 +213,8 @@ public sealed class WhisperModelManager
 /// <param name="DownloadUrl">HTTPS URL of the model file.</param>
 /// <param name="Sha256">Pinned lowercase hex SHA-256 of the downloaded file.
 /// MUST be set; downloads are refused when null. See the catalog for the
-/// "verified on" date — these need re-verification before any public
-/// release (see Audio_FollowUps.md §2).</param>
+/// "verified on" date. Re-verify all shipped assets before every public release;
+/// see <c>docs/AUDIO_MODEL_ASSETS.md</c>.</param>
 public sealed record WhisperModelInfo(
     string FileName,
     string Name,

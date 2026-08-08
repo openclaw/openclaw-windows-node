@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Net.WebSockets;
 using System.Text.Json;
 using Xunit;
 using OpenClaw.Shared;
@@ -106,7 +107,7 @@ public class OpenClawGatewayClientTests
             var method = typeof(OpenClawGatewayClient).GetMethod(
                 "ClearPendingRequests",
                 System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
-            method!.Invoke(_client, Array.Empty<object>());
+            method!.Invoke(_client, [null]);
         }
 
         public void OnDisconnected()
@@ -523,6 +524,7 @@ public class OpenClawGatewayClientTests
 
             return (wizardResponses.Count, requestMethods.Count);
         }
+
     }
 
     private static string CreateTempIdentityPath() =>
@@ -680,6 +682,44 @@ public class OpenClawGatewayClientTests
 
         await Assert.ThrowsAnyAsync<OperationCanceledException>(
             async () => await responseTask.WaitAsync(TimeSpan.FromSeconds(2)));
+        Assert.Equal((0, 0), helper.GetPendingRequestCounts());
+    }
+
+    [Fact]
+    public async Task SendWizardRequestAsync_ServiceRestartClose_PreservesCloseStatus()
+    {
+        using var server = new LoopbackWebSocketServer(useManagedWebSocket: true);
+        using var identity = new TempDirectory("wizard-request-");
+        await server.StartAsync();
+        var helper = new GatewayClientTestHelper(
+            gatewayUrl: server.WebSocketUrl,
+            identityPath: identity.Path);
+        using var client = helper.Client;
+        await client.ConnectAsync();
+        helper.ProcessRawMessage("""
+        {
+            "type": "res",
+            "id": "req-hello-restart",
+            "payload": {
+                "type": "hello-ok"
+            }
+        }
+        """);
+        Assert.True(client.HasHandshakeSnapshot);
+
+        var responseTask = client.SendWizardRequestAsync("wizard.next", timeoutMs: 10_000);
+        await server.ReceiveTextAsync().WaitAsync(TimeSpan.FromSeconds(2));
+        await server.CloseSocketAsync(
+            0,
+            (WebSocketCloseStatus)1012,
+            "service restart");
+
+        var exception = await Assert.ThrowsAsync<GatewayConnectionLostException>(
+            async () => await responseTask.WaitAsync(TimeSpan.FromSeconds(2)));
+
+        Assert.Equal(1012, exception.CloseStatusCode);
+        Assert.Equal("service restart", exception.CloseStatusDescription);
+        Assert.False(client.HasHandshakeSnapshot);
         Assert.Equal((0, 0), helper.GetPendingRequestCounts());
     }
 
@@ -906,6 +946,149 @@ public class OpenClawGatewayClientTests
 
         Assert.Equal("node-token", helper.GetStoredNodeDeviceToken());
         Assert.Equal("operator-token", helper.GetStoredOperatorDeviceToken());
+    }
+
+    [Fact]
+    public void GuardedValidation_IgnoresUncorrelatedHelloOk()
+    {
+        var helper = new GatewayClientTestHelper();
+        var handshakeSucceeded = false;
+        helper.Client.HandshakeAuthorizationAsync = _ => Task.FromResult(
+            new ReconnectAuthorizationResult(true, GatewayErrorKind.Unknown, string.Empty));
+        helper.Client.HandshakeSucceeded += (_, _) => handshakeSucceeded = true;
+
+        helper.ProcessRawMessage("""
+        {
+          "type": "res",
+          "id": "unsolicited",
+          "payload": {
+            "type": "hello-ok",
+            "protocol": 4,
+            "server": { "version": "hostile" }
+          }
+        }
+        """);
+
+        Assert.False(handshakeSucceeded);
+        Assert.False(helper.Client.HasHandshakeSnapshot);
+    }
+
+    [Fact]
+    public void GuardedValidation_AcceptsHelloOkForTrackedConnectRequest()
+    {
+        var helper = new GatewayClientTestHelper();
+        var handshakeSucceeded = false;
+        helper.Client.HandshakeAuthorizationAsync = _ => Task.FromResult(
+            new ReconnectAuthorizationResult(true, GatewayErrorKind.Unknown, string.Empty));
+        helper.Client.HandshakeSucceeded += (_, _) => handshakeSucceeded = true;
+        helper.TrackPendingRequest("tracked-connect", "connect");
+
+        helper.ProcessRawMessage("""
+        {
+          "type": "res",
+          "id": "tracked-connect",
+          "payload": {
+            "type": "hello-ok",
+            "protocol": 4,
+            "server": { "version": "expected" }
+          }
+        }
+        """);
+
+        Assert.True(handshakeSucceeded);
+        Assert.True(helper.Client.HasHandshakeSnapshot);
+    }
+
+    [Fact]
+    public async Task HandshakeAuthorizationDenial_BlocksLaterChallengesWithoutDisablingReconnect()
+    {
+        var helper = new GatewayClientTestHelper();
+        var authorizationCalls = 0;
+        var denied = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        helper.Client.HandshakeAuthorizationAsync = _ =>
+        {
+            authorizationCalls++;
+            return Task.FromResult(authorizationCalls == 1
+                ? new ReconnectAuthorizationResult(
+                    false,
+                    GatewayErrorKind.LocalPortConflict,
+                    "listener ownership lost")
+                : ReconnectAuthorizationResult.AllowedResult);
+        };
+        helper.Client.AuthenticationFailed += (_, _) => denied.TrySetResult();
+
+        const string challenge = """
+            {
+              "type": "event",
+              "event": "connect.challenge",
+              "payload": {
+                "nonce": "listener-replacement",
+                "ts": 1785824000000
+              }
+            }
+            """;
+
+        helper.ProcessRawMessage(challenge);
+        await denied.Task.WaitAsync(TimeSpan.FromSeconds(2));
+        helper.ProcessRawMessage(challenge);
+        await Task.Delay(50);
+
+        Assert.Equal(1, authorizationCalls);
+        Assert.False(helper.GetAuthFailedFlag());
+    }
+
+    [Fact]
+    public async Task StaleHandshakeAuthorizationDenial_DoesNotAbortNewerSocket()
+    {
+        using var server = new LoopbackWebSocketServer();
+        await server.StartAsync();
+        using var client = new OpenClawGatewayClient(
+            server.WebSocketUrl,
+            "test-token",
+            new TestLogger(),
+            identityPath: CreateTempIdentityPath());
+        var authorizationStarted = new TaskCompletionSource(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        var releaseAuthorization = new TaskCompletionSource(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        client.HandshakeAuthorizationAsync = async _ =>
+        {
+            authorizationStarted.TrySetResult();
+            await releaseAuthorization.Task;
+            return new ReconnectAuthorizationResult(
+                false,
+                GatewayErrorKind.LocalPortConflict,
+                "stale listener");
+        };
+
+        await client.ConnectAsync();
+        await server.WaitForAcceptedCountAsync(1, TimeSpan.FromSeconds(2));
+        await server.SendTextAsync(
+            """
+            {
+              "type": "event",
+              "event": "connect.challenge",
+              "payload": {
+                "nonce": "old-socket",
+                "ts": 1785824000000
+              }
+            }
+            """);
+        await authorizationStarted.Task.WaitAsync(TimeSpan.FromSeconds(2));
+
+        await client.ConnectAsync();
+        await server.WaitForAcceptedCountAsync(2, TimeSpan.FromSeconds(2));
+        releaseAuthorization.TrySetResult();
+        await server.SendTextAsync("{}");
+        await Task.Delay(100);
+
+        var isConnected = (bool)typeof(WebSocketClientBase)
+            .GetProperty(
+                "IsConnected",
+                System.Reflection.BindingFlags.Instance |
+                System.Reflection.BindingFlags.NonPublic)!
+            .GetValue(client)!;
+        Assert.True(isConnected);
     }
 
     [Fact]
@@ -2002,7 +2185,9 @@ public class OpenClawGatewayClientTests
         // slopwatch-ignore: SW004 Test delay is an intentional bounded async wait; replacing it would change the scenario under test.
         var completed = await Task.WhenAny(task, Task.Delay(250));
         Assert.Same(task, completed);
-        await Assert.ThrowsAsync<OperationCanceledException>(async () => await task);
+        var exception = await Assert.ThrowsAsync<GatewayConnectionLostException>(
+            async () => await task);
+        Assert.Null(exception.CloseStatusCode);
     }
 
         [Fact]

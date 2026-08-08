@@ -1,1 +1,4 @@
 .github/workflows/*.lock.yml linguist-generated=true merge=ours
+*.md text eol=lf
+*.excalidraw text eol=lf
+docs/diagrams/*.svg text eol=lf
