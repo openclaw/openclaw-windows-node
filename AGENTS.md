@@ -32,6 +32,13 @@ Notes:
 - Prefer isolated worktrees for PR validation. Use `git-wt` for worktree workflows; `wt.exe` may resolve to WorkTrunk instead of Windows Terminal, so use the full Windows Terminal path when explicitly launching Terminal.
 - Do not claim completion without reporting validation results.
 
+## Active Work Status
+
+- Apply the `status: 🚢 actively landing` label when a maintainer or delegated agent takes active ownership of an issue or pull request through implementation, conflict resolution, validation, or merge.
+- Apply the label only to work that is actively moving. Do not use it for queued, parked, or indefinitely blocked items.
+- Remove the label when active work pauses, ownership returns to the author, or the item closes or merges.
+- This maintainer-ownership label may coexist with contributor-facing status labels such as `status: 📣 needs proof`.
+
 ## Targeted Validation Paths
 
 Run the required validation above for every code change, then add the targeted path that matches the touched subsystem.
