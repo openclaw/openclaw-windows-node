@@ -119,7 +119,12 @@ public sealed class GatewayTailscaleAuthUpgradeTests : IDisposable
         var registry = CreateRegistry();
         var client = new FakeConfigClient(Config(allowTailscale: false))
         {
-            PatchResult = new ConfigPatchResult { Ok = false, Error = "rejected" },
+            PatchResult = new ConfigPatchResult
+            {
+                Ok = false,
+                Error = "rejected",
+                IsGatewayRejection = true,
+            },
         };
         var service = new GatewayTailscaleAuthUpgradeService(registry);
 
@@ -127,6 +132,23 @@ public sealed class GatewayTailscaleAuthUpgradeTests : IDisposable
 
         Assert.Equal(GatewayTailscaleAuthUpgradeOutcome.PatchRejected, result.Outcome);
         Assert.False(registry.GetActive()!.TrustTailscaleAuth);
+        Assert.Equal("test-token-placeholder", registry.GetActive()!.SharedGatewayToken);
+    }
+
+    [Fact]
+    public async Task EnableAsync_AmbiguousPatchFailure_PreservesMarkerForRevalidation()
+    {
+        var registry = CreateRegistry();
+        var client = new FakeConfigClient(Config(allowTailscale: false))
+        {
+            PatchResult = new ConfigPatchResult { Ok = false, Error = "request timed out" },
+        };
+        var service = new GatewayTailscaleAuthUpgradeService(registry);
+
+        var result = await service.EnableAsync("gateway-1", client, CancellationToken.None);
+
+        Assert.Equal(GatewayTailscaleAuthUpgradeOutcome.PatchRejected, result.Outcome);
+        Assert.True(registry.GetActive()!.TrustTailscaleAuth);
         Assert.Equal("test-token-placeholder", registry.GetActive()!.SharedGatewayToken);
     }
 

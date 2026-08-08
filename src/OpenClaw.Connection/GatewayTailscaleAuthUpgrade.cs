@@ -162,8 +162,15 @@ internal sealed class GatewayTailscaleAuthUpgradeService(GatewayRegistry registr
             return new(GatewayTailscaleAuthUpgradeOutcome.PatchRejected, ex.Message);
         }
 
-        if (!patch.Ok)
+        if (!patch.Ok && patch.IsGatewayRejection)
             return RollBackMarkerAfterRejectedPatch(gatewayId, changed, previousValue, patch.Error);
+
+        if (!patch.Ok)
+        {
+            // The request may have committed before its response was lost. Preserve
+            // the marker so the next trust-aware launch revalidates Core state.
+            return new(GatewayTailscaleAuthUpgradeOutcome.PatchRejected, patch.Error);
+        }
 
         return new(GatewayTailscaleAuthUpgradeOutcome.Succeeded);
     }

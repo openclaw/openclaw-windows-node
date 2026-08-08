@@ -12,6 +12,11 @@ using System.Threading.Tasks;
 
 namespace OpenClaw.Shared;
 
+internal sealed class GatewayRequestRejectedException(string message, string? code) : InvalidOperationException(message)
+{
+    public string? Code { get; } = code;
+}
+
 public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatewayClient
 {
     private const string OperatorClientId = "cli";
@@ -1276,6 +1281,10 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
                 Ok = false,
                 Error = ex.Message,
                 RawResponse = ex.ToString(),
+                IsGatewayRejection = ex is GatewayRequestRejectedException
+                {
+                    Code: "INVALID_REQUEST",
+                },
             };
         }
     }
@@ -2102,7 +2111,9 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
             if (root.TryGetProperty("ok", out var okWiz) && okWiz.ValueKind == JsonValueKind.False)
             {
                 var message = TryGetErrorMessage(root) ?? "wizard request failed";
-                wizardCompletion.TrySetException(new InvalidOperationException(message));
+                wizardCompletion.TrySetException(new GatewayRequestRejectedException(
+                    message,
+                    TryGetErrorTopLevelCode(root)));
             }
             else if (root.TryGetProperty("payload", out var wizPayload))
             {
