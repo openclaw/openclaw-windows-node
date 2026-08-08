@@ -9,10 +9,11 @@ public sealed class GatewayTailscaleAuthUpgradeTests : IDisposable
     private readonly TempDirectory _temp = new();
 
     [Fact]
-    public async Task EnableAsync_PatchesCoreBeforePersistingRecord()
+    public async Task EnableAsync_PersistsRecordBeforePatchingCore()
     {
         var registry = CreateRegistry();
         var client = new FakeConfigClient(Config(allowTailscale: false));
+        client.BeforePatch = () => Assert.True(registry.GetActive()!.TrustTailscaleAuth);
         var service = new GatewayTailscaleAuthUpgradeService(registry);
 
         var result = await service.EnableAsync("gateway-1", client, CancellationToken.None);
@@ -158,6 +159,7 @@ public sealed class GatewayTailscaleAuthUpgradeTests : IDisposable
         Assert.Equal(GatewayTailscaleAuthUpgradeOutcome.PersistenceFailed, result.Outcome);
         Assert.False(registry.GetActive()!.TrustTailscaleAuth);
         Assert.Equal("test-token-placeholder", registry.GetActive()!.SharedGatewayToken);
+        Assert.Equal(0, client.PatchCalls);
     }
 
     [Fact]
@@ -320,6 +322,7 @@ public sealed class GatewayTailscaleAuthUpgradeTests : IDisposable
         public JsonElement? PatchedConfig { get; private set; }
         public ConfigPatchResult PatchResult { get; set; } = new() { Ok = true };
         public bool EmitConfig { get; set; } = true;
+        public Action? BeforePatch { get; set; }
 
         public Task<JsonElement> RequestConfigDetailedAsync(int timeoutMs = 15000)
         {
@@ -334,6 +337,7 @@ public sealed class GatewayTailscaleAuthUpgradeTests : IDisposable
             string? baseHash,
             int timeoutMs = 15000)
         {
+            BeforePatch?.Invoke();
             PatchCalls++;
             PatchBaseHash = baseHash;
             PatchedConfig = fullConfig.Clone();

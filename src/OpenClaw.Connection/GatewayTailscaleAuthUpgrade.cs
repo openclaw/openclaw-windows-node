@@ -120,6 +120,34 @@ internal sealed class GatewayTailscaleAuthUpgradeService(GatewayRegistry registr
             return new(GatewayTailscaleAuthUpgradeOutcome.ConfigUnavailable, "Config base hash is unavailable.");
         }
 
+        var previousValue = false;
+        var changed = false;
+        if (!record.TrustTailscaleAuth)
+        {
+            registry.Update(gatewayId, current =>
+            {
+                if (!GatewayTailscaleAuthUpgradePolicy.CanOffer(current))
+                    return current;
+
+                previousValue = current.TrustTailscaleAuth;
+                changed = true;
+                return current with { TrustTailscaleAuth = true };
+            });
+
+            if (!changed)
+                return new(GatewayTailscaleAuthUpgradeOutcome.NotActive);
+
+            try
+            {
+                registry.Save();
+            }
+            catch (Exception ex)
+            {
+                registry.Update(gatewayId, current => current with { TrustTailscaleAuth = previousValue });
+                return new(GatewayTailscaleAuthUpgradeOutcome.PersistenceFailed, ex.Message);
+            }
+        }
+
         var configPatch = CreateAllowTailscalePatch();
         ConfigPatchResult patch;
         try
@@ -129,40 +157,15 @@ internal sealed class GatewayTailscaleAuthUpgradeService(GatewayRegistry registr
         }
         catch (Exception ex)
         {
+            // The response can be lost after Core commits the patch. Keep the marker so
+            // the next trust-aware launch revalidates the authoritative Core state.
             return new(GatewayTailscaleAuthUpgradeOutcome.PatchRejected, ex.Message);
         }
 
         if (!patch.Ok)
-            return new(GatewayTailscaleAuthUpgradeOutcome.PatchRejected, patch.Error);
+            return RollBackMarkerAfterRejectedPatch(gatewayId, changed, previousValue, patch.Error);
 
-        if (record.TrustTailscaleAuth)
-            return new(GatewayTailscaleAuthUpgradeOutcome.Succeeded);
-
-        var previousValue = false;
-        var changed = false;
-        registry.Update(gatewayId, current =>
-        {
-            if (!GatewayTailscaleAuthUpgradePolicy.CanOffer(current))
-                return current;
-
-            previousValue = current.TrustTailscaleAuth;
-            changed = true;
-            return current with { TrustTailscaleAuth = true };
-        });
-
-        if (!changed)
-            return new(GatewayTailscaleAuthUpgradeOutcome.NotActive);
-
-        try
-        {
-            registry.Save();
-            return new(GatewayTailscaleAuthUpgradeOutcome.Succeeded);
-        }
-        catch (Exception ex)
-        {
-            registry.Update(gatewayId, current => current with { TrustTailscaleAuth = previousValue });
-            return new(GatewayTailscaleAuthUpgradeOutcome.PersistenceFailed, ex.Message);
-        }
+        return new(GatewayTailscaleAuthUpgradeOutcome.Succeeded);
     }
 
     public async Task<bool> RevalidateAsync(
@@ -251,6 +254,29 @@ internal sealed class GatewayTailscaleAuthUpgradeService(GatewayRegistry registr
             { "gateway": { "auth": { "allowTailscale": true } } }
             """);
         return document.RootElement.Clone();
+    }
+
+    private GatewayTailscaleAuthUpgradeResult RollBackMarkerAfterRejectedPatch(
+        string gatewayId,
+        bool changed,
+        bool previousValue,
+        string? patchError)
+    {
+        if (!changed)
+            return new(GatewayTailscaleAuthUpgradeOutcome.PatchRejected, patchError);
+
+        registry.Update(gatewayId, current => current with { TrustTailscaleAuth = previousValue });
+        try
+        {
+            registry.Save();
+            return new(GatewayTailscaleAuthUpgradeOutcome.PatchRejected, patchError);
+        }
+        catch (Exception ex)
+        {
+            return new(
+                GatewayTailscaleAuthUpgradeOutcome.PersistenceFailed,
+                $"Core rejected the patch and the local marker rollback failed: {ex.Message}");
+        }
     }
 
     // A true marker is issued only after this service or setup explicitly writes
