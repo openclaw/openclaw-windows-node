@@ -1967,7 +1967,7 @@ internal static class ComposerAutomationVisibility
         Detach(control);
         if (HasUsableLayout(control))
         {
-            Enable(control);
+            ApplyReadyState(control);
             return;
         }
 
@@ -1996,10 +1996,10 @@ internal static class ComposerAutomationVisibility
         if (sender is not FrameworkElement control || !HasUsableLayout(control))
             return;
 
-        Enable(control);
+        ApplyReadyState(control);
     }
 
-    private static void Enable(FrameworkElement control)
+    private static void ApplyReadyState(FrameworkElement control)
     {
         Microsoft.UI.Xaml.Automation.AutomationProperties.SetAccessibilityView(
             control,

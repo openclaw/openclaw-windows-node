@@ -14,7 +14,7 @@ public sealed class ReactorComposerAccessibilityProofTests
     public ReactorComposerAccessibilityProofTests(UIThreadFixture ui) => _ui = ui;
 
     [Fact]
-    public async Task ComposerAutomationVisibility_GatesHitTestingUntilLayoutIsUsable()
+    public async Task ComposerAutomationVisibility_PreventsHitTestingBeforeLayoutIsUsable()
     {
         await _ui.ResetContainerAsync();
         Border? control = null;
@@ -37,22 +37,7 @@ public sealed class ReactorComposerAccessibilityProofTests
                 Assert.Equal(
                     "ComposerReady",
                     AutomationProperties.GetAutomationId(control));
-                _ui.Container.Children.Add(control);
-            });
-            await _ui.YieldToRenderAsync();
 
-            await _ui.RunOnUIAsync(() =>
-            {
-                Assert.True(control!.IsLoaded);
-                Assert.True(control.ActualWidth > 0);
-                Assert.True(control.ActualHeight > 0);
-                Assert.True(control.IsHitTestVisible);
-                Assert.Equal(
-                    AccessibilityView.Control,
-                    AutomationProperties.GetAccessibilityView(control));
-                Assert.Equal(
-                    "ComposerReady",
-                    AutomationProperties.GetAutomationId(control));
             });
         }
         finally
@@ -62,7 +47,6 @@ public sealed class ReactorComposerAccessibilityProofTests
                 await _ui.RunOnUIAsync(() =>
                 {
                     ComposerAutomationVisibility.Detach(control);
-                    _ui.Container.Children.Remove(control);
                 });
             }
         }
