@@ -429,14 +429,23 @@ presence/outcome only.
 
 ### app.connection.status
 Read-only connection diagnostics for agents and CLIs. No params. Returns:
-`{ schemaVersion, connectionState, effectiveMode, legacyConnectionStatus, gateway, operator, node, mcp, browserProxy, pendingActions, retry, diagnostics }`.
+`{ schemaVersion, connectionState, effectiveMode, legacyConnectionStatus, gateway, protocol, operator, node, mcp, browserProxy, pendingActions, retry, diagnostics }`.
 
 The payload includes the active gateway id/name/url, operator and node role
 states, credential sources/statuses, MCP enabled/running/error state, browser
 proxy shared-token caveat, pending approval commands, retry hints inferred from
 recent diagnostics, and recent connection diagnostic events. `effectiveMode`
 reflects Settings mode (`EnableNodeMode` / `EnableMcpServer`); `node.intended`
-reflects the manager snapshot plus current Node mode setting.
+reflects the manager snapshot plus current Node mode setting. `gateway.packageVersion`
+is the installed Gateway npm package version reported by `hello-ok`; it is
+separate from the wire protocol. `protocol` reports the accepted Gateway wire
+protocol, the Windows-supported current/minimum/maximum values (currently
+4/3/4), normalized compatibility
+(`compatible`, `gateway_too_old`, `gateway_too_new`, `mismatch`, or `unknown`),
+the operator/node source, available Gateway protocol expectations, and whether
+the condition is retryable. During an active mismatch, `selectedProtocol` comes
+only from that connection attempt and is otherwise null, even if cached Gateway
+self information remains available.
 
 ### app.connection.gateways
 Read-only saved gateway diagnostics. No params. Returns:

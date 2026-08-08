@@ -6952,4 +6952,19 @@ Make sure the gateway is running.</value>
   <data name="SessionsPage_LastRunStopped" xml:space="preserve">
     <value>Last run stopped</value>
   </data>
+  <data name="ConnectionPage_ProtocolGatewayUpdateRequired" xml:space="preserve">
+    <value>Gateway update required</value>
+  </data>
+  <data name="ConnectionPage_ProtocolGatewayUpdateDetail" xml:space="preserve">
+    <value>This Gateway uses protocol v{0}. This Windows app supports v{1}-v{2}. Its current protocol is v{3}. Update the Gateway to continue.</value>
+  </data>
+  <data name="ConnectionPage_ProtocolWindowsUpdateRequired" xml:space="preserve">
+    <value>Windows app update required</value>
+  </data>
+  <data name="ConnectionPage_ProtocolWindowsUpdateDetail" xml:space="preserve">
+    <value>This Gateway requires protocol v{0}. This Windows app supports v{1}-v{2}. Its current protocol is v{3}. Update the Windows app to continue.</value>
+  </data>
+  <data name="ConnectionPage_ProtocolUnknownMismatch" xml:space="preserve">
+    <value>Gateway version not supported</value>
+  </data>
 </root>

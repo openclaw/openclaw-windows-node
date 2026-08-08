@@ -701,7 +701,8 @@ public class OpenClawGatewayClientTests
             "type": "res",
             "id": "req-hello-restart",
             "payload": {
-                "type": "hello-ok"
+                "type": "hello-ok",
+                "protocol": 4
             }
         }
         """);
@@ -721,6 +722,35 @@ public class OpenClawGatewayClientTests
         Assert.Equal("service restart", exception.CloseStatusDescription);
         Assert.False(client.HasHandshakeSnapshot);
         Assert.Equal((0, 0), helper.GetPendingRequestCounts());
+    }
+
+    [Fact]
+    public async Task ProtocolMismatch_AbortsTransportAndRejectsSubsequentOperatorSend()
+    {
+        using var server = new LoopbackWebSocketServer();
+        using var identity = new TempDirectory("operator-protocol-mismatch-");
+        await server.StartAsync();
+        var helper = new GatewayClientTestHelper(
+            gatewayUrl: server.WebSocketUrl,
+            identityPath: identity.Path);
+        using var client = helper.Client;
+        await client.ConnectAsync();
+
+        helper.ProcessRawMessage("""
+        {
+          "type": "res",
+          "id": "connect-mismatch",
+          "payload": {
+            "type": "hello-ok",
+            "protocol": 2
+          }
+        }
+        """);
+
+        Assert.False(client.IsConnectedToGateway);
+        Assert.False(helper.ShouldAutoReconnectForTest());
+        await Assert.ThrowsAsync<InvalidOperationException>(
+            () => client.SendChatMessageAsync("blocked after protocol mismatch"));
     }
 
     private static string ReadRequestId(string request)
@@ -900,6 +930,7 @@ public class OpenClawGatewayClientTests
           "id": "req-hello-node",
           "payload": {
             "type": "hello-ok",
+            "protocol": 4,
             "auth": {
               "deviceToken": "node-token",
               "role": "node",
@@ -928,6 +959,7 @@ public class OpenClawGatewayClientTests
           "id": "req-hello-node",
           "payload": {
             "type": "hello-ok",
+            "protocol": 4,
             "auth": {
               "deviceToken": "node-token",
               "role": "node",
@@ -948,29 +980,32 @@ public class OpenClawGatewayClientTests
         Assert.Equal("operator-token", helper.GetStoredOperatorDeviceToken());
     }
 
-    [Fact]
-    public void GuardedValidation_IgnoresUncorrelatedHelloOk()
+    [Theory]
+    [InlineData("""{"type":"hello-ok","protocol":4,"server":{"version":"hostile"}}""")]
+    [InlineData("""{"type":"hello-ok","protocol":5}""")]
+    [InlineData("""{"type":"hello-ok"}""")]
+    public void GuardedValidation_IgnoresUncorrelatedHelloOk(string payloadJson)
     {
         var helper = new GatewayClientTestHelper();
         var handshakeSucceeded = false;
+        var failures = new List<GatewayErrorKind>();
         helper.Client.HandshakeAuthorizationAsync = _ => Task.FromResult(
             new ReconnectAuthorizationResult(true, GatewayErrorKind.Unknown, string.Empty));
         helper.Client.HandshakeSucceeded += (_, _) => handshakeSucceeded = true;
+        helper.Client.ConnectionFailure += (_, failure) => failures.Add(failure);
 
-        helper.ProcessRawMessage("""
+        helper.ProcessRawMessage($$"""
         {
           "type": "res",
           "id": "unsolicited",
-          "payload": {
-            "type": "hello-ok",
-            "protocol": 4,
-            "server": { "version": "hostile" }
-          }
+          "payload": {{payloadJson}}
         }
         """);
 
         Assert.False(handshakeSucceeded);
         Assert.False(helper.Client.HasHandshakeSnapshot);
+        Assert.Empty(failures);
+        Assert.True(helper.ShouldAutoReconnectForTest());
     }
 
     [Fact]
@@ -1106,6 +1141,7 @@ public class OpenClawGatewayClientTests
           "id": "req-hello-operator",
           "payload": {
             "type": "hello-ok",
+            "protocol": 4,
             "auth": {
               "deviceToken": "operator-token",
               "role": "operator",
@@ -1150,6 +1186,7 @@ public class OpenClawGatewayClientTests
               "id": "req-hello-operator",
               "payload": {
                 "type": "hello-ok",
+                "protocol": 4,
                 "auth": {
                   "deviceToken": "operator-token",
                   "role": "operator",
@@ -1163,6 +1200,194 @@ public class OpenClawGatewayClientTests
         Assert.True(handshakeSucceeded);
         Assert.Equal("operator-token", receivedToken?.Token);
         Assert.Equal("operator", receivedToken?.Role);
+    }
+
+    [Theory]
+    [InlineData(3)]
+    [InlineData(4)]
+    [InlineData(5)]
+    public void AcceptedHelloOkProtocol_CompletesHandshakeWithAdditiveSnapshotFields(int protocol)
+    {
+        var helper = new GatewayClientTestHelper();
+        var statuses = new List<ConnectionStatus>();
+        var compatibility = new List<GatewayProtocolCompatibility>();
+        var handshakeCount = 0;
+        helper.Client.StatusChanged += (_, status) => statuses.Add(status);
+        helper.Client.ProtocolCompatibilityChanged += (_, value) => compatibility.Add(value);
+        helper.Client.HandshakeSucceeded += (_, _) => handshakeCount++;
+        helper.TrackPendingRequest("req-protocol", "connect");
+
+        helper.ProcessRawMessage(
+            $$"""
+            {
+              "type": "res",
+              "id": "req-protocol",
+              "ok": true,
+              "payload": {
+                "type": "hello-ok",
+                "protocol": {{protocol}},
+                "snapshot": {
+                  "futureField": {
+                    "nested": true
+                  }
+                }
+              }
+            }
+            """);
+
+        Assert.Equal(1, handshakeCount);
+        Assert.Contains(ConnectionStatus.Connected, statuses);
+        Assert.True(helper.Client.HasHandshakeSnapshot);
+        var accepted = Assert.Single(compatibility);
+        Assert.Equal(GatewayProtocolCompatibilityState.Compatible, accepted.State);
+        Assert.Equal(protocol, accepted.SelectedProtocol);
+        Assert.Null(accepted.GatewayExpectedProtocol);
+    }
+
+    [Theory]
+    [InlineData("""{"type":"hello-ok","protocol":2,"auth":{"deviceToken":"must-not-store"}}""")]
+    [InlineData("""{"type":"hello-ok","auth":{"deviceToken":"must-not-store"}}""")]
+    [InlineData("""{"type":"hello-ok","protocol":null,"auth":{"deviceToken":"must-not-store"}}""")]
+    [InlineData("""{"type":"hello-ok","protocol":"4","auth":{"deviceToken":"must-not-store"}}""")]
+    [InlineData("""{"type":"hello-ok","protocol":4.5,"auth":{"deviceToken":"must-not-store"}}""")]
+    [InlineData("""{"type":"unexpected-success","protocol":4,"auth":{"deviceToken":"must-not-store"}}""")]
+    [InlineData("""null""")]
+    public void InvalidConnectSuccess_FailsBeforeOperatorHandshakeSideEffects(string payloadJson)
+    {
+        var helper = new GatewayClientTestHelper();
+        var statuses = new List<ConnectionStatus>();
+        var failures = new List<GatewayErrorKind>();
+        var handshakeCount = 0;
+        var tokenCount = 0;
+        var gatewaySelfCount = 0;
+        helper.Client.StatusChanged += (_, status) => statuses.Add(status);
+        helper.Client.ConnectionFailure += (_, kind) => failures.Add(kind);
+        helper.Client.HandshakeSucceeded += (_, _) => handshakeCount++;
+        helper.Client.DeviceTokenReceived += (_, _) => tokenCount++;
+        helper.Client.GatewaySelfUpdated += (_, _) => gatewaySelfCount++;
+        helper.TrackPendingRequest("req-invalid-hello", "connect");
+
+        helper.ProcessRawMessage(
+            $$"""
+            {
+              "type": "res",
+              "id": "req-invalid-hello",
+              "ok": true,
+              "payload": {{payloadJson}}
+            }
+            """);
+
+        Assert.Equal([GatewayErrorKind.ProtocolMismatch], failures);
+        Assert.Contains(ConnectionStatus.Error, statuses);
+        Assert.DoesNotContain(ConnectionStatus.Connected, statuses);
+        Assert.Equal(0, handshakeCount);
+        Assert.Equal(0, tokenCount);
+        Assert.Equal(0, gatewaySelfCount);
+        Assert.Null(helper.GetStoredOperatorDeviceToken());
+        Assert.False(helper.Client.HasHandshakeSnapshot);
+        Assert.False(helper.ShouldAutoReconnectForTest());
+    }
+
+    [Fact]
+    public void ProtocolMismatch_IgnoresSubsequentOperatorEvents()
+    {
+        var helper = new GatewayClientTestHelper();
+        var chatMessageCount = 0;
+        helper.Client.ChatMessageReceived += (_, _) => chatMessageCount++;
+        helper.TrackPendingRequest("req-invalid-hello", "connect");
+
+        helper.ProcessRawMessage(
+            """
+            {
+              "type": "res",
+              "id": "req-invalid-hello",
+              "ok": true,
+              "payload": {
+                "type": "hello-ok",
+                "protocol": 2
+              }
+            }
+            """);
+        helper.ProcessRawMessage(
+            """
+            {
+              "type": "event",
+              "event": "session.message",
+              "payload": {
+                "sessionKey": "agent:main:main",
+                "message": {
+                  "role": "assistant",
+                  "content": "must not dispatch"
+                },
+                "state": "final"
+              }
+            }
+            """);
+
+        Assert.Equal(0, chatMessageCount);
+    }
+
+    [Theory]
+    [InlineData("""{"message":"connect rejected","code":"PROTOCOL_MISMATCH"}""")]
+    [InlineData("""{"message":"protocol mismatch: gateway requires version 5"}""")]
+    public void ConnectProtocolMismatch_IsClassifiedAndStopsAutomaticReconnect(string errorJson)
+    {
+        var helper = new GatewayClientTestHelper();
+        var statuses = new List<ConnectionStatus>();
+        var failures = new List<GatewayErrorKind>();
+        helper.Client.StatusChanged += (_, status) => statuses.Add(status);
+        helper.Client.ConnectionFailure += (_, kind) => failures.Add(kind);
+        helper.TrackPendingRequest("req-protocol-mismatch", "connect");
+
+        helper.ProcessRawMessage(
+            $$"""
+            {
+              "type": "res",
+              "id": "req-protocol-mismatch",
+              "ok": false,
+              "error": {{errorJson}}
+            }
+            """);
+
+        Assert.Equal([GatewayErrorKind.ProtocolMismatch], failures);
+        Assert.Contains(ConnectionStatus.Error, statuses);
+        Assert.False(helper.ShouldAutoReconnectForTest());
+        Assert.False(helper.GetUseV2Signature());
+    }
+
+    [Fact]
+    public void StructuredProtocolMismatch_PublishesGatewayExpectation()
+    {
+        var helper = new GatewayClientTestHelper();
+        GatewayProtocolCompatibility? compatibility = null;
+        helper.Client.ProtocolCompatibilityChanged += (_, value) => compatibility = value;
+        helper.TrackPendingRequest("req-protocol-details", "connect");
+
+        helper.ProcessRawMessage(
+            """
+            {
+              "type": "res",
+              "id": "req-protocol-details",
+              "ok": false,
+              "error": {
+                "code": "INVALID_REQUEST",
+                "message": "protocol mismatch",
+                "details": {
+                  "code": "PROTOCOL_MISMATCH",
+                  "clientMinProtocol": 3,
+                  "clientMaxProtocol": 4,
+                  "expectedProtocol": 5,
+                  "minimumProbeProtocol": 3
+                }
+              }
+            }
+            """);
+
+        Assert.NotNull(compatibility);
+        Assert.Equal(GatewayProtocolCompatibilityState.GatewayTooNew, compatibility.State);
+        Assert.Equal(5, compatibility.GatewayExpectedProtocol);
+        Assert.Equal(3, compatibility.GatewayMinimumProtocol);
+        Assert.False(compatibility.Retryable);
     }
 
     [Fact]
@@ -4405,7 +4630,8 @@ public class OpenClawGatewayClientTests
             "type": "res",
             "id": "req-hello-1",
             "payload": {
-                "type": "hello-ok"
+                "type": "hello-ok",
+                "protocol": 4
             }
         }
         """);

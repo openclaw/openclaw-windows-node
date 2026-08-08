@@ -6912,4 +6912,19 @@
   <data name="SessionsPage_LastRunStopped" xml:space="preserve">
     <value>上次运行已停止</value>
   </data>
+  <data name="ConnectionPage_ProtocolGatewayUpdateRequired" xml:space="preserve">
+    <value>需要更新 Gateway</value>
+  </data>
+  <data name="ConnectionPage_ProtocolGatewayUpdateDetail" xml:space="preserve">
+    <value>此 Gateway 使用协议 v{0}。此 Windows 应用支持协议 v{1} 到 v{2}。该应用的当前协议为 v{3}。请更新 Gateway 以继续。</value>
+  </data>
+  <data name="ConnectionPage_ProtocolWindowsUpdateRequired" xml:space="preserve">
+    <value>需要更新 Windows 应用</value>
+  </data>
+  <data name="ConnectionPage_ProtocolWindowsUpdateDetail" xml:space="preserve">
+    <value>此 Gateway 需要协议 v{0}。此 Windows 应用支持协议 v{1} 到 v{2}。当前协议为 v{3}。请更新 Windows 应用以继续。</value>
+  </data>
+  <data name="ConnectionPage_ProtocolUnknownMismatch" xml:space="preserve">
+    <value>不支持此 Gateway 版本</value>
+  </data>
 </root>

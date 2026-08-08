@@ -11,6 +11,17 @@ namespace OpenClawTray.Pages;
 internal static class ConnectionPageRowState
 {
     /// <summary>
+    /// Returns true when a saved gateway row should expose Connect. A terminal
+    /// mismatch suppresses retry only for the active row; other saved gateways
+    /// remain available so the user can switch to a compatible gateway.
+    /// </summary>
+    internal static bool ShouldShowConnect(
+        bool isActive,
+        bool hasLiveAffordance,
+        bool allowConnectionToggle)
+        => !hasLiveAffordance && (!isActive || allowConnectionToggle);
+
+    /// <summary>
     /// Returns true when the active row's overflow menu should offer
     /// "Disconnect". Tear-down is meaningful while the connection is
     /// live (Connected / Ready / Degraded) or in transit

@@ -6912,4 +6912,19 @@ Le binaire wxc-exec est introuvable. {1} S'il s'agit d'une build développeur, c
   <data name="SessionsPage_LastRunStopped" xml:space="preserve">
     <value>Dernière exécution arrêtée</value>
   </data>
+  <data name="ConnectionPage_ProtocolGatewayUpdateRequired" xml:space="preserve">
+    <value>Mise à jour de la Gateway requise</value>
+  </data>
+  <data name="ConnectionPage_ProtocolGatewayUpdateDetail" xml:space="preserve">
+    <value>Cette Gateway utilise le protocole v{0}. Cette application Windows prend en charge les protocoles v{1} à v{2}. Le protocole actuel de l’application est v{3}. Mettez à jour la Gateway pour continuer.</value>
+  </data>
+  <data name="ConnectionPage_ProtocolWindowsUpdateRequired" xml:space="preserve">
+    <value>Mise à jour de l’application Windows requise</value>
+  </data>
+  <data name="ConnectionPage_ProtocolWindowsUpdateDetail" xml:space="preserve">
+    <value>Cette Gateway nécessite le protocole v{0}. Cette application Windows prend en charge les protocoles v{1} à v{2}. Son protocole actuel est v{3}. Mettez à jour l’application Windows pour continuer.</value>
+  </data>
+  <data name="ConnectionPage_ProtocolUnknownMismatch" xml:space="preserve">
+    <value>Version de Gateway non prise en charge</value>
+  </data>
 </root>

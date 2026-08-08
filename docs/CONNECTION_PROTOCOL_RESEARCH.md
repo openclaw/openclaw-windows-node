@@ -71,8 +71,11 @@ stable release-validation evidence.
 The managed gateway release pin is not the WebSocket protocol pin. Windows
 currently advertises `minProtocol: 3` and `maxProtocol: 4`; the gateway reports
 its current protocol constant in `hello-ok.protocol`, not a per-connection
-negotiated value. Windows records that value for diagnostics but does not
-currently branch behavior on it. Current upstream gateways use the protocol-3
+negotiated value. After the gateway accepts the advertised range, Windows records
+that integer constant for diagnostics and requires it to be at least
+`MinimumSupportedVersion`; a lower or malformed value is a terminal protocol
+failure. A structured `PROTOCOL_MISMATCH` rejection determines which side falls
+outside the advertised range. Current upstream gateways use the protocol-3
 N-1 node window only when both `role` and `client.mode` are `node` and the
 client range does not support the gateway's current protocol. Because Windows
 advertises `maxProtocol: 4`, its node connection uses protocol 4 against a

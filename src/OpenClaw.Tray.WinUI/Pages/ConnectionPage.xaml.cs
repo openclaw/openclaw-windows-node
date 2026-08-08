@@ -12,6 +12,7 @@ using OpenClawTray.Services;
 using System;
 using System.Collections.Generic;
 using System.ComponentModel;
+using System.Globalization;
 using System.IO;
 using System.Linq;
 using System.Threading;
@@ -393,9 +394,17 @@ public sealed partial class ConnectionPage : Page
             ? Visibility.Collapsed
             : Visibility.Visible;
 
-        StripHeadline.Text = plan.StripHeadline ?? "";
-        StripSub.Text = plan.StripSub ?? "";
-        StripSub.Visibility = string.IsNullOrEmpty(plan.StripSub) ? Visibility.Collapsed : Visibility.Visible;
+        var stripHeadline = ResolvePlanText(
+            plan.StripHeadline,
+            plan.StripHeadlineResourceKey,
+            plan);
+        var stripSub = ResolvePlanText(
+            plan.StripSub,
+            plan.StripSubResourceKey,
+            plan);
+        StripHeadline.Text = stripHeadline;
+        StripSub.Text = stripSub;
+        StripSub.Visibility = string.IsNullOrEmpty(stripSub) ? Visibility.Collapsed : Visibility.Visible;
 
         // Primary action button — show only for actions the connection
         // toggle can't already do. The toggle covers Connect / Reconnect /
@@ -436,7 +445,9 @@ public sealed partial class ConnectionPage : Page
             or OverallConnectionState.Ready
             or OverallConnectionState.Degraded
             or OverallConnectionState.PairingRequired;
-        ConnectionToggle.Visibility = hasActive ? Visibility.Visible : Visibility.Collapsed;
+        ConnectionToggle.Visibility = hasActive && plan.AllowConnectionToggle
+            ? Visibility.Visible
+            : Visibility.Collapsed;
         // Avoid recursive Toggled events while we sync from snapshot
         _suppressConnectionToggle = true;
         ConnectionToggle.IsOn = toggleOn;
@@ -799,7 +810,9 @@ public sealed partial class ConnectionPage : Page
             NodeCardState.OnNodePairingRequired   => LocalizationHelper.GetString("ConnectionPage_NodeBodyAwaitingApproval"),
             NodeCardState.OnNodeRejected          => LocalizationHelper.GetString("ConnectionPage_NodeBodyPairingRejected"),
             NodeCardState.OnNodeRateLimited       => LocalizationHelper.GetString("ConnectionPage_NodeBodyRateLimited"),
-            NodeCardState.OnNodeError             => plan.NodeErrorDetail ?? LocalizationHelper.GetString("ConnectionPage_NodeBodyError"),
+            NodeCardState.OnNodeError             => plan.NodeErrorDetailResourceKey is { } nodeErrorResourceKey
+                ? ResolvePlanText("", nodeErrorResourceKey, plan)
+                : plan.NodeErrorDetail ?? LocalizationHelper.GetString("ConnectionPage_NodeBodyError"),
             _ => "",
         };
         var bodyBrushKey = plan.NodeCard switch
@@ -1060,12 +1073,17 @@ public sealed partial class ConnectionPage : Page
     private void ApplyRecoveryBody(ConnectionPagePlan plan)
     {
         RecoveryBulletsPanel.Children.Clear();
+        RecoveryConnectionActions.Visibility = plan.AllowConnectionToggle
+            ? Visibility.Visible
+            : Visibility.Collapsed;
         RecoveryTunnelBlock.Visibility = Visibility.Collapsed;
         RecoveryAuthPasteBlock.Visibility = Visibility.Collapsed;
         RecoveryApproveCmdBlock.Visibility = Visibility.Collapsed;
         RecoveryRepairResultText.Visibility = Visibility.Collapsed;
 
-        RecoveryHelpHeaderText.Text = plan.Recovery switch
+        RecoveryHelpHeaderText.Text = plan.RecoveryHeaderResourceKey is { } recoveryHeaderKey
+            ? ResolvePlanText("", recoveryHeaderKey, plan)
+            : plan.Recovery switch
         {
             RecoveryCategory.Auth => LocalizationHelper.GetString("ConnectionPage_RecoveryHeaderAuth"),
             RecoveryCategory.Pairing => LocalizationHelper.GetString("ConnectionPage_RecoveryHeaderPairing"),
@@ -1080,7 +1098,11 @@ public sealed partial class ConnectionPage : Page
             _ => LocalizationHelper.GetString("ConnectionPage_RecoveryHeaderServer"),
         };
 
-        var bullets = plan.Recovery switch
+        var bullets = plan.RecoveryBulletResourceKeys.Count > 0
+            ? plan.RecoveryBulletResourceKeys
+                .Select(key => ResolvePlanText("", key, plan))
+                .ToArray()
+            : plan.Recovery switch
         {
             RecoveryCategory.Auth => new[]
             {
@@ -1165,6 +1187,24 @@ public sealed partial class ConnectionPage : Page
             RecoveryApproveCmdBlock.Visibility = Visibility.Visible;
             RecoveryApproveCmdText.Text = plan.RecoveryApproveCommand;
         }
+    }
+
+    private static string ResolvePlanText(
+        string fallback,
+        string? resourceKey,
+        ConnectionPagePlan plan)
+    {
+        if (string.IsNullOrWhiteSpace(resourceKey))
+            return fallback;
+
+        var value = LocalizationHelper.GetString(resourceKey);
+        return string.Format(
+            CultureInfo.CurrentCulture,
+            value,
+            plan.ProtocolExpectedVersion,
+            plan.ProtocolMinimumVersion,
+            plan.ProtocolMaximumVersion,
+            plan.ProtocolCurrentVersion);
     }
 
     private static Border BuildBulletRow(string text)
@@ -1516,7 +1556,9 @@ public sealed partial class ConnectionPage : Page
         // because that drives the per-row "Connected" badge, and Url
         // because the row's sub-line shows it.
         var sb = new System.Text.StringBuilder(items.Count * 64);
-        sb.Append(_lastSnapshot.OverallState).Append('|');
+        sb.Append(_lastSnapshot.OverallState).Append('/')
+          .Append(_currentPlan?.AllowConnectionToggle != false ? '1' : '0')
+          .Append('|');
         foreach (var r in items)
         {
             sb.Append(r.Id).Append('/').Append(r.IsActive ? '1' : '0').Append('/')
@@ -1755,7 +1797,10 @@ public sealed partial class ConnectionPage : Page
             Grid.SetColumn(badge!, 1);
             grid.Children.Add(badge!);
         }
-        else
+        else if (ConnectionPageRowState.ShouldShowConnect(
+            row.IsActive,
+            hasLiveAffordance,
+            _currentPlan?.AllowConnectionToggle ?? true))
         {
             var connectBtn = new Button
             {
@@ -1763,6 +1808,9 @@ public sealed partial class ConnectionPage : Page
                 Tag = row.Id,
                 VerticalAlignment = VerticalAlignment.Center,
             };
+            Microsoft.UI.Xaml.Automation.AutomationProperties.SetAutomationId(
+                connectBtn,
+                "SavedGatewayConnectAction");
             connectBtn.Click += OnConnectSavedGateway;
             Grid.SetColumn(connectBtn, 1);
             grid.Children.Add(connectBtn);

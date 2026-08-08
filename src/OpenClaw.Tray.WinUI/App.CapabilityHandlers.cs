@@ -252,7 +252,8 @@ public partial class App
                 mcpError: mcpPlan.ShouldShow ? mcpPlan.Message : null,
                 nodeBrowserProxyEnabled: _settings?.NodeBrowserProxyEnabled != false,
                 recentDiagnostics: recentDiagnostics,
-                diagnosticEventCount: diagnostics?.Count ?? recentDiagnostics.Count));
+                diagnosticEventCount: diagnostics?.Count ?? recentDiagnostics.Count,
+                gatewaySelf: _appState?.GatewaySelf));
         };
 
         connection.GatewaysHandler = () =>
