@@ -172,6 +172,31 @@ internal static class NativeToolProjector
         return displayArgs.Count == 0 ? null : displayArgs;
     }
 
+    internal static JsonObject? ExtractSafeToolDisplayArgsValue(JsonElement? value)
+    {
+        if (value is { ValueKind: JsonValueKind.Object } data)
+            return ExtractSafeToolDisplayArgs(data);
+
+        if (value is not { ValueKind: JsonValueKind.String } encoded)
+            return null;
+
+        var json = encoded.GetString();
+        if (string.IsNullOrWhiteSpace(json))
+            return null;
+
+        try
+        {
+            using var document = JsonDocument.Parse(json);
+            return document.RootElement.ValueKind == JsonValueKind.Object
+                ? ExtractSafeToolDisplayArgs(document.RootElement)
+                : null;
+        }
+        catch (JsonException)
+        {
+            return null;
+        }
+    }
+
     internal static string SanitizeToolDisplayValue(string? value)
     {
         if (string.IsNullOrWhiteSpace(value))
