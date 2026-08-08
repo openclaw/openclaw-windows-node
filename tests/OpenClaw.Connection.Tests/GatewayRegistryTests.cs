@@ -400,6 +400,21 @@ public class GatewayRegistryTests : IDisposable
     }
 
     [Fact]
+    public void TrustTailscaleAuth_DefaultsFalse_AndPersistsAcrossReload()
+    {
+        _registry.AddOrUpdate(MakeRecord("gw-1", "wss://gateway.tailnet.ts.net"));
+        _registry.SetActive("gw-1");
+        Assert.False(_registry.GetActive()!.TrustTailscaleAuth);
+
+        _registry.AddOrUpdate(_registry.GetActive()! with { TrustTailscaleAuth = true });
+        _registry.Save();
+
+        var reloaded = new GatewayRegistry(_tempDir);
+        reloaded.Load();
+        Assert.True(reloaded.GetActive()!.TrustTailscaleAuth);
+    }
+
+    [Fact]
     public void PreserveAdvancedFields_KeepsBrowserControlPort_AcrossSavedGatewayEdit()
     {
         // Simulates the edit/connect flow: a saved gateway has a per-gateway override; the user
@@ -472,6 +487,7 @@ public class GatewayRegistryTests : IDisposable
         {
             IsLocal = true,
             SetupManagedDistroName = "OpenClawGateway",
+            TrustTailscaleAuth = true,
         };
 
         var rebuilt = new GatewayRecord
@@ -484,6 +500,7 @@ public class GatewayRegistryTests : IDisposable
 
         Assert.True(rebuilt.IsLocal);
         Assert.Equal("OpenClawGateway", rebuilt.SetupManagedDistroName);
+        Assert.True(rebuilt.TrustTailscaleAuth);
     }
 
     [Fact]
@@ -518,6 +535,7 @@ public class GatewayRegistryTests : IDisposable
             SetupManagedDistroName = "OpenClawGateway",
             FriendlyName = "Local (OpenClawGateway)",
             RequiresV2Signature = true,
+            TrustTailscaleAuth = true,
         };
 
         var rebuilt = new GatewayRecord
@@ -534,6 +552,7 @@ public class GatewayRegistryTests : IDisposable
         Assert.Null(rebuilt.SetupManagedDistroName);
         Assert.Null(rebuilt.FriendlyName);
         Assert.False(rebuilt.RequiresV2Signature);
+        Assert.False(rebuilt.TrustTailscaleAuth);
         Assert.Null(GatewayRecordEditing.ResolveManagedDistroName(rebuilt));
     }
 
