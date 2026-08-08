@@ -489,7 +489,7 @@ public class WindowsNodeClientTests
                 }
                 """);
 
-            client.HandleResponse(document.RootElement);
+            HandleCorrelatedHelloOk(client, document.RootElement);
 
             Assert.DoesNotContain(
                 client.SentMessages,
