@@ -39,6 +39,10 @@ public sealed class ChatTimelineVirtualizationContractTests
         Assert.Contains("scrollPinPendingRef", timeline);
         Assert.Contains("UserScrolledAway", timeline);
         Assert.Contains("sv.UpdateLayout();", timeline);
+        Assert.Contains(
+            "prevScrollToBottomTokenRef.Current = Props.ScrollToBottomToken;" + Environment.NewLine +
+            "                    QueueScrollToBottom(sv, Props.SessionId, disableAnimation: true);",
+            timeline);
     }
 
     [Fact]
