@@ -547,7 +547,7 @@ public sealed class GatewayConnectionManager : IGatewayConnectionManager
             async Task<ReconnectAuthorizationResult> AuthorizeLiveCredentialHandoffAsync(
                 CancellationToken cancellationToken)
             {
-                return await AuthorizeCredentialHandoffAsync(
+                var authorization = await AuthorizeCredentialHandoffAsync(
                         record,
                         credential,
                         expectedEndpointOwnership,
@@ -557,6 +557,18 @@ public sealed class GatewayConnectionManager : IGatewayConnectionManager
                         cancellationToken,
                         "operator")
                     .ConfigureAwait(false);
+                if (!authorization.Allowed &&
+                    authorization.FailureKind != GatewayErrorKind.Unknown)
+                {
+                    await RecordOperatorCredentialHandoffFailureAsync(
+                            authorization.Detail ?? "Operator credential handoff was not authorized.",
+                            authorization.FailureKind,
+                            operatorOperationCancellation,
+                            gen,
+                            record.Id)
+                        .ConfigureAwait(false);
+                }
+                return authorization;
             }
 
             lifecycle.DataClient.HandshakeAuthorizationAsync =
@@ -2005,8 +2017,10 @@ public sealed class GatewayConnectionManager : IGatewayConnectionManager
                             _stateMachine.Current.OperatorErrorKind is null)
                         {
                             _stateMachine.SetOperatorErrorKind(ReadOperatorFailureKind(gen));
+                            _stateMachine.TryTransition(
+                                ConnectionTrigger.WebSocketError,
+                                "Transport error");
                         }
-                        _stateMachine.TryTransition(ConnectionTrigger.WebSocketError, "Transport error");
                     }
                     CompleteOperatorTelemetryAttempt(
                         gen,
@@ -3269,6 +3283,36 @@ public sealed class GatewayConnectionManager : IGatewayConnectionManager
             }
 
             _stateMachine.BlockNodeStart(detail);
+            EmitStateChanged();
+        }
+        finally
+        {
+            _transitionSemaphore.Release();
+        }
+    }
+
+    private async Task RecordOperatorCredentialHandoffFailureAsync(
+        string detail,
+        GatewayErrorKind failureKind,
+        CancellationToken cancellationToken,
+        long expectedLifecycleGeneration,
+        string expectedGatewayId)
+    {
+        if (!IsCurrentGatewayAttempt(expectedLifecycleGeneration, expectedGatewayId))
+            return;
+
+        await _transitionSemaphore.WaitAsync(cancellationToken);
+        try
+        {
+            if (!IsCurrentGatewayAttempt(expectedLifecycleGeneration, expectedGatewayId))
+                return;
+
+            _stateMachine.SetOperatorErrorKind(failureKind);
+            _stateMachine.TryTransition(
+                failureKind == GatewayErrorKind.Network
+                    ? ConnectionTrigger.WebSocketError
+                    : ConnectionTrigger.AuthenticationFailed,
+                detail);
             EmitStateChanged();
         }
         finally

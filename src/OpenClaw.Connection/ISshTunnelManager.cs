@@ -12,7 +12,7 @@ public sealed record SshTunnelStartResult(
 public interface ISshTunnelManager : IDisposable
 {
     bool IsActive { get; }
-    long OwnershipGeneration => 0;
+    long OwnershipGeneration { get; }
     bool IsRestartPending(SshTunnelExit tunnelExit);
     SshTunnelConfig? ActiveConfig { get; }
     Task<bool> IsOwnedListenerReadyAsync(
@@ -20,17 +20,13 @@ public interface ISshTunnelManager : IDisposable
         int destinationPort,
         CancellationToken ct);
     Task<string> StartAsync(SshTunnelConfig config, CancellationToken ct);
-    async Task<SshTunnelStartResult> StartOwnedAsync(
+    Task<SshTunnelStartResult> StartOwnedAsync(
         SshTunnelConfig config,
-        CancellationToken ct)
-    {
-        var url = await StartAsync(config, ct).ConfigureAwait(false);
-        return new SshTunnelStartResult(url, config, OwnershipGeneration);
-    }
+        CancellationToken ct);
     Task StopAsync();
     Task<bool> StopIfOwnedAsync(
         SshTunnelConfig config,
         long ownershipGeneration,
-        CancellationToken ct) => Task.FromResult(false);
+        CancellationToken ct);
     string? LocalTunnelUrl { get; }
 }

@@ -414,6 +414,14 @@ public sealed class SshOwnershipAdversarialProofTests
             return Task.FromResult(webSocketUrl);
         }
 
+        public async Task<SshTunnelStartResult> StartOwnedAsync(
+            SshTunnelConfig config,
+            CancellationToken ct)
+        {
+            var url = await StartAsync(config, ct);
+            return new SshTunnelStartResult(url, config, OwnershipGeneration);
+        }
+
         public Task StopAsync()
         {
             IsActive = false;

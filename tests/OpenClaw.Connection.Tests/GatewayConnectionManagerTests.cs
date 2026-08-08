@@ -1561,6 +1561,16 @@ public class GatewayConnectionManagerTests : IDisposable
         Assert.False(authorization.Allowed);
         Assert.Equal(GatewayErrorKind.LocalPortConflict, authorization.FailureKind);
         Assert.Contains("credentials were not sent", authorization.Detail);
+
+        lifecycle.SimulateStatusChanged(ConnectionStatus.Error);
+        await WaitUntilAsync(() =>
+            manager.CurrentSnapshot.OperatorState == RoleConnectionState.Error);
+        Assert.Equal(
+            GatewayErrorKind.LocalPortConflict,
+            manager.CurrentSnapshot.OperatorErrorKind);
+        Assert.Contains(
+            "credentials were not sent",
+            manager.CurrentSnapshot.OperatorError);
     }
 
     [Theory]
@@ -5267,6 +5277,14 @@ public class GatewayConnectionManagerTests : IDisposable
             return Task.FromResult(LocalTunnelUrl);
         }
 
+        public async Task<SshTunnelStartResult> StartOwnedAsync(
+            SshTunnelConfig config,
+            CancellationToken ct)
+        {
+            var url = await StartAsync(config, ct);
+            return new SshTunnelStartResult(url, Normalize(config), OwnershipGeneration);
+        }
+
         public void SimulateExit()
         {
             IsActive = false;
@@ -5317,10 +5335,12 @@ public class GatewayConnectionManagerTests : IDisposable
     private sealed class BlockingTunnelManager : ISshTunnelManager
     {
         private SshTunnelConfig? _activeConfig;
+        private long _ownershipGeneration;
 
         public TaskCompletionSource<bool> Started { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
         public TaskCompletionSource<bool> AllowStart { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
         public bool IsActive => _activeConfig is not null;
+        public long OwnershipGeneration => _ownershipGeneration;
         public SshTunnelConfig? ActiveConfig => _activeConfig;
         public string? LocalTunnelUrl => _activeConfig is null ? null : $"ws://localhost:{_activeConfig.LocalPort}";
         public bool RestartPending { get; set; }
@@ -5343,7 +5363,16 @@ public class GatewayConnectionManagerTests : IDisposable
             Started.SetResult(true);
             await AllowStart.Task.WaitAsync(ct);
             _activeConfig = config;
+            _ownershipGeneration++;
             return $"ws://localhost:{config.LocalPort}";
+        }
+
+        public async Task<SshTunnelStartResult> StartOwnedAsync(
+            SshTunnelConfig config,
+            CancellationToken ct)
+        {
+            var url = await StartAsync(config, ct);
+            return new SshTunnelStartResult(url, config, OwnershipGeneration);
         }
 
         public Task StopAsync()
@@ -5351,12 +5380,31 @@ public class GatewayConnectionManagerTests : IDisposable
             _activeConfig = null;
             return Task.CompletedTask;
         }
+
+        public Task<bool> StopIfOwnedAsync(
+            SshTunnelConfig config,
+            long ownershipGeneration,
+            CancellationToken ct)
+        {
+            ct.ThrowIfCancellationRequested();
+            if (_activeConfig != config ||
+                _ownershipGeneration != ownershipGeneration)
+            {
+                return Task.FromResult(false);
+            }
+
+            _activeConfig = null;
+            _ownershipGeneration++;
+            return Task.FromResult(true);
+        }
+
         public void Dispose() { }
     }
 
     private sealed class FailingTunnelManager : ISshTunnelManager
     {
         public bool IsActive => false;
+        public long OwnershipGeneration => 0;
         public SshTunnelConfig? ActiveConfig => null;
         public string? LocalTunnelUrl => null;
 
@@ -5373,7 +5421,17 @@ public class GatewayConnectionManagerTests : IDisposable
         public Task<string> StartAsync(SshTunnelConfig config, CancellationToken ct) =>
             throw new InvalidOperationException("tunnel failed");
 
+        public Task<SshTunnelStartResult> StartOwnedAsync(
+            SshTunnelConfig config,
+            CancellationToken ct) =>
+            throw new InvalidOperationException("tunnel failed");
+
         public Task StopAsync() => Task.CompletedTask;
+
+        public Task<bool> StopIfOwnedAsync(
+            SshTunnelConfig config,
+            long ownershipGeneration,
+            CancellationToken ct) => Task.FromResult(false);
 
         public void Dispose() { }
     }
