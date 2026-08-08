@@ -227,9 +227,6 @@ public partial class App
             var usesSharedCredential =
                 !isBootstrapToken && credentialSource == CredentialResolver.SourceSharedGatewayToken;
 
-            if (!trustTailscaleAuth && !usesSharedCredential)
-                return new { error = "No browser-compatible gateway credential is available" };
-
             var url = GatewayDashboardUrlBuilder.Build(
                 gatewayUrl,
                 path,
