@@ -35,6 +35,7 @@ internal static class GatewayWizardRestartRecoveryPolicy
             if (current is GatewayConnectionLostException ||
                 current.Message.Contains("connection lost", StringComparison.OrdinalIgnoreCase) ||
                 current.Message.Contains("gateway restarting", StringComparison.OrdinalIgnoreCase) ||
+                current.Message.Contains("during gateway restart", StringComparison.OrdinalIgnoreCase) ||
                 current.Message.Contains("service restart", StringComparison.OrdinalIgnoreCase))
             {
                 return true;

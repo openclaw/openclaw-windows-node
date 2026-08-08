@@ -61,6 +61,7 @@ public class GatewayWizardRestartRecoveryPolicyTests
     [InlineData("connection lost")]
     [InlineData("The service restart closed the request")]
     [InlineData("Gateway restarting")]
+    [InlineData("wizard.next unavailable during gateway restart")]
     public void GenericDisconnectText_RemainsEligibleForWizardReplay(string message)
     {
         Assert.True(GatewayWizardRestartRecoveryPolicy.IsRestartLikeDisconnect(
