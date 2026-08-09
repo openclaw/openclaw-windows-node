@@ -977,8 +977,31 @@ public sealed class E2ESetupFixture : IAsyncLifetime
             .Any(segment => segment.Equals("gateways", StringComparison.OrdinalIgnoreCase));
     }
 
-    private static string LocateTrayExe()
+    private const string TrayExecutableOverrideEnvironmentVariable = "OPENCLAW_E2E_TRAY_EXE";
+
+    private static string LocateTrayExe() => ResolveTrayExecutable(
+        Environment.GetEnvironmentVariable(TrayExecutableOverrideEnvironmentVariable),
+        repoRoot: null);
+
+    internal static string ResolveTrayExecutable(string? overridePath, string? repoRoot)
     {
+        if (!string.IsNullOrWhiteSpace(overridePath))
+        {
+            var executable = Path.GetFullPath(overridePath);
+            // The release gate must exercise its verified artifact, never silently
+            // fall back to a checkout build when that artifact is unavailable.
+            if (!Path.GetExtension(executable).Equals(".exe", StringComparison.OrdinalIgnoreCase) ||
+                !File.Exists(executable))
+            {
+                throw new FileNotFoundException(
+                    $"{TrayExecutableOverrideEnvironmentVariable} must name an existing .exe file.",
+                    executable);
+            }
+
+            return executable;
+        }
+
+        repoRoot ??= FindRepoRoot();
         var rid = RuntimeInformation.ProcessArchitecture switch
         {
             Architecture.Arm64 => "win-arm64",
@@ -993,7 +1016,6 @@ public sealed class E2ESetupFixture : IAsyncLifetime
             "Release";
 #endif
 
-        var repoRoot = FindRepoRoot();
         var targetFramework = GetTrayTargetFramework(repoRoot);
         var exe = Path.Combine(
             repoRoot,
