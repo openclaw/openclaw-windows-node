@@ -23,12 +23,13 @@ public sealed class ReleaseCandidateE2EWorkflowTests
         Assert.Contains("INPUT_CANDIDATE_ARTIFACT_RUN_ID: ${{ inputs.candidate_artifact_run_id }}", workflow);
         Assert.Contains("INPUT_CANDIDATE_SHA256: ${{ inputs.candidate_sha256 }}", workflow);
         Assert.Contains("INPUT_CANDIDATE_VERSION: ${{ inputs.candidate_version }}", workflow);
+        Assert.Contains("INPUT_WINDOWS_NODE_SOURCE: ${{ inputs.windows_node_source }}", workflow);
+        Assert.Contains("INPUT_WINDOWS_NODE_SOURCE_SHA: ${{ inputs.windows_node_source_sha }}", workflow);
+        Assert.Contains("INPUT_WINDOWS_NODE_WORKFLOW_SHA: ${{ inputs.windows_node_workflow_sha }}", workflow);
         Assert.Contains("INPUT_WINDOWS_NODE_RELEASE_TAG: ${{ inputs.windows_node_release_tag }}", workflow);
-        Assert.Contains("INPUT_WINDOWS_NODE_RELEASE_SHA: ${{ inputs.windows_node_release_sha }}", workflow);
         Assert.Contains("INPUT_WINDOWS_NODE_RELEASE_ASSET_NAME: ${{ inputs.windows_node_release_asset_name }}", workflow);
         Assert.Contains("INPUT_WINDOWS_NODE_RELEASE_ASSET_SHA256: ${{ inputs.windows_node_release_asset_sha256 }}", workflow);
         Assert.Contains("INPUT_ALLOW_PROTOCOL_MISMATCH: ${{ inputs.allow_protocol_mismatch }}", workflow);
-        Assert.Contains("INPUT_WINDOWS_NODE_SHA: ${{ inputs.windows_node_sha }}", workflow);
     }
 
     [Fact]
@@ -44,11 +45,16 @@ public sealed class ReleaseCandidateE2EWorkflowTests
             "$env:INPUT_CANDIDATE_ARTIFACT_RUN_ID -notmatch '^[1-9][0-9]{0,19}$'",
             workflow);
         Assert.Contains("$candidateArtifactRunId -gt 9007199254740991", workflow);
-        Assert.Contains("ref: ${{ inputs.windows_node_sha }}", workflow);
-        Assert.Contains("$claims.job_workflow_sha -cne $env:EXPECTED_WINDOWS_NODE_SHA", workflow);
+        Assert.Contains("ref: ${{ inputs.windows_node_source_sha }}", workflow);
+        Assert.Contains("windows_node_source must be release or main.", workflow);
+        Assert.Contains("main mode must not receive Windows-node release artifact inputs.", workflow);
+        Assert.Contains("windows_node_source_sha must be a full lowercase Git SHA.", workflow);
+        Assert.Contains("windows_node_workflow_sha must be a full lowercase Git SHA.", workflow);
+        Assert.Contains("$claims.job_workflow_sha -cne $env:EXPECTED_WINDOWS_NODE_WORKFLOW_SHA", workflow);
         Assert.Contains("$claims.job_workflow_ref -cne $expectedWorkflowRef", workflow);
+        Assert.Contains("Windows-node checkout revision mismatch", workflow);
         Assert.Contains("$tagObject.type -ne \"commit\"", workflow);
-        Assert.Contains("$releaseSha -cne $env:EXPECTED_WINDOWS_NODE_RELEASE_SHA", workflow);
+        Assert.Contains("$releaseSha -cne $env:EXPECTED_WINDOWS_NODE_SOURCE_SHA", workflow);
         Assert.Contains("$asset.name -cne $env:EXPECTED_WINDOWS_NODE_RELEASE_ASSET_NAME", workflow);
         Assert.Contains("$releaseDeclaredHash -cne $env:EXPECTED_WINDOWS_NODE_RELEASE_ASSET_SHA256", workflow);
         Assert.Contains(@"-win-x64\.zip$", workflow);
@@ -56,6 +62,17 @@ public sealed class ReleaseCandidateE2EWorkflowTests
         Assert.Contains("$actualHash -cne $env:EXPECTED_WINDOWS_NODE_RELEASE_ASSET_SHA256", workflow);
         Assert.Contains("OPENCLAW_E2E_GATEWAY_VERSION: ${{ inputs.candidate_version }}", workflow);
         Assert.Contains("OPENCLAW_E2E_GATEWAY_PACKAGE_TGZ: ${{ steps.candidate.outputs.tarball }}", workflow);
+    }
+
+    [Fact]
+    public void Workflow_BuildsOnlyTheDeclaredMainSourceTray()
+    {
+        var workflow = ReadWorkflow();
+
+        Assert.Contains("if: inputs.windows_node_source == 'release'", workflow);
+        Assert.Contains("if: inputs.windows_node_source == 'main'", workflow);
+        Assert.Contains("Expected exactly one win-x64 OpenClaw.Tray.WinUI.exe from Windows-node main", workflow);
+        Assert.Contains("OPENCLAW_E2E_TRAY_EXE: ${{ inputs.windows_node_source == 'release' && steps.windows_node_release_artifact.outputs.tray_exe || steps.windows_node_main_source.outputs.tray_exe }}", workflow);
     }
 
     [Fact]
