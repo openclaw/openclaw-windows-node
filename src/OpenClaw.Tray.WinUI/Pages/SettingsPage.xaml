@@ -282,6 +282,61 @@
                             <ColumnDefinition Width="Auto"/>
                         </Grid.ColumnDefinitions>
                         <StackPanel Grid.Column="0" VerticalAlignment="Center" Spacing="2">
+                            <TextBlock x:Uid="SettingsPage_CodexSessionAccess_Header"
+                                       Text="Codex sessions"
+                                       Style="{StaticResource BodyTextBlockStyle}"/>
+                            <TextBlock x:Uid="SettingsPage_CodexSessionAccess_Description"
+                                       Text="Choose whether OpenClaw can list local Codex sessions and read transcripts. This does not change Gateway configuration."
+                                       Style="{StaticResource CaptionTextBlockStyle}"
+                                       Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                       TextWrapping="Wrap"/>
+                            <TextBlock x:Uid="SettingsPage_CodexSessionAccess_StatusOff"
+                                       x:Name="CodexAccessOffStatus"
+                                       Text="Catalog unavailable: access is off."
+                                       Style="{StaticResource CaptionTextBlockStyle}"
+                                       Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                       TextWrapping="Wrap"/>
+                            <TextBlock x:Uid="SettingsPage_CodexSessionAccess_StatusCatalogAvailable"
+                                       x:Name="CodexCatalogAvailableStatus"
+                                       Text="Catalog available: OpenClaw can list sessions and read transcripts."
+                                       Style="{StaticResource CaptionTextBlockStyle}"
+                                       Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                       TextWrapping="Wrap" Visibility="Collapsed"/>
+                            <TextBlock x:Uid="SettingsPage_CodexSessionAccess_StatusCatalogUnavailable"
+                                       x:Name="CodexCatalogUnavailableStatus"
+                                       Text="Catalog unavailable: Codex executable not found."
+                                       Style="{StaticResource CaptionTextBlockStyle}"
+                                       Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                       TextWrapping="Wrap" Visibility="Collapsed"/>
+                            <TextBlock x:Uid="SettingsPage_CodexSessionAccess_StatusSteeringUnavailable"
+                                       x:Name="CodexSteeringUnavailableStatus"
+                                       Text="Steering unavailable: owner control is not available because Stage 0 did not pass validation."
+                                       Style="{StaticResource CaptionTextBlockStyle}"
+                                       Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                       TextWrapping="Wrap" Visibility="Collapsed"/>
+                        </StackPanel>
+                        <ComboBox Grid.Column="1"
+                                  x:Uid="CodexSessionAccessComboBox"
+                                  x:Name="CodexSessionAccessComboBox"
+                                  MinWidth="150"
+                                  SelectedIndex="{Binding CodexSessionAccessIndex, Mode=TwoWay}"
+                                  AutomationProperties.AutomationId="SettingsPageCodexSessionAccess">
+                            <ComboBoxItem x:Uid="SettingsPage_CodexSessionAccess_Off" Content="Off"/>
+                            <ComboBoxItem x:Uid="SettingsPage_CodexSessionAccess_ReadOnly" Content="Read only"/>
+                            <ComboBoxItem x:Uid="SettingsPage_CodexSessionAccess_ReadAndSteer" Content="Read and steer"/>
+                        </ComboBox>
+                    </Grid>
+                </Border>
+
+                <Border Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                        BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                        BorderThickness="1" CornerRadius="8" Padding="{StaticResource SettingsRowPadding}">
+                    <Grid ColumnSpacing="14">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="Auto"/>
+                        </Grid.ColumnDefinitions>
+                        <StackPanel Grid.Column="0" VerticalAlignment="Center" Spacing="2">
                             <TextBlock x:Uid="SettingsRow_ScreenRec_Header" Text="Allow screen recording" Style="{StaticResource BodyTextBlockStyle}"/>
                             <TextBlock x:Uid="SettingsRow_ScreenRec_Description"
                                        Text="Lets agents capture the screen via screen.* commands."

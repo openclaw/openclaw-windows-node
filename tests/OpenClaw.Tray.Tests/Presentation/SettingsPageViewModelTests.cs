@@ -1,3 +1,4 @@
+using OpenClaw.Shared.Codex;
 using OpenClawTray.Presentation;
 using OpenClawTray.Services;
 
@@ -16,14 +17,80 @@ public sealed class SettingsPageViewModelTests
         out SettingsManager settings,
         out FakeAppCommands appCommands,
         out RecordingUiDispatcher dispatcher,
-        out TempDir temp)
+        out TempDir temp,
+        bool codexExecutableAvailable = false)
     {
         temp = new TempDir();
         settings = new SettingsManager(temp.Path);
         appCommands = new FakeAppCommands();
         dispatcher = new RecordingUiDispatcher();
         var store = new SettingsStore(settings, dispatcher);
-        return new SettingsPageViewModel(store, appCommands);
+        return new SettingsPageViewModel(store, appCommands, () => codexExecutableAvailable);
+    }
+
+    [Theory]
+    [InlineData(CodexSessionAccessMode.Off)]
+    [InlineData(CodexSessionAccessMode.ReadOnly)]
+    [InlineData(CodexSessionAccessMode.ReadAndSteer)]
+    public void CodexSessionAccess_AllChoicesPersistThroughSettingsStore(CodexSessionAccessMode mode)
+    {
+        var vm = NewVm(out var settings, out var appCommands, out _, out var temp);
+        using (temp)
+        {
+            settings.CodexSessionAccess = mode == CodexSessionAccessMode.Off
+                ? CodexSessionAccessMode.ReadOnly
+                : CodexSessionAccessMode.Off;
+            vm.Activate(null);
+
+            vm.CodexSessionAccess = mode;
+
+            Assert.Equal(mode, settings.CodexSessionAccess);
+            Assert.Equal(mode, new SettingsManager(temp.Path).CodexSessionAccess);
+            Assert.Equal(1, appCommands.NotifySettingsSavedCount);
+        }
+    }
+
+    [Fact]
+    public void CodexSessionAccess_ExternalChangeReloadsWithoutEcho()
+    {
+        var vm = NewVm(out var settings, out var appCommands, out _, out var temp);
+        using (temp)
+        {
+            vm.Activate(null);
+
+            settings.CodexSessionAccess = CodexSessionAccessMode.ReadAndSteer;
+            settings.Save();
+
+            Assert.Equal(CodexSessionAccessMode.ReadAndSteer, vm.CodexSessionAccess);
+            Assert.Equal(0, appCommands.NotifySettingsSavedCount);
+        }
+    }
+
+    [Theory]
+    [InlineData(CodexSessionAccessMode.Off, true, false, false, false)]
+    [InlineData(CodexSessionAccessMode.ReadOnly, true, true, false, false)]
+    [InlineData(CodexSessionAccessMode.ReadOnly, false, false, true, false)]
+    [InlineData(CodexSessionAccessMode.ReadAndSteer, true, true, false, true)]
+    [InlineData(CodexSessionAccessMode.ReadAndSteer, false, false, true, true)]
+    public void CodexSessionAccess_StatusSeparatesCatalogAvailabilityFromUnavailableSteering(
+        CodexSessionAccessMode mode,
+        bool executableAvailable,
+        bool catalogAvailable,
+        bool catalogUnavailable,
+        bool steeringUnavailable)
+    {
+        var vm = NewVm(out var settings, out _, out _, out var temp, executableAvailable);
+        using (temp)
+        {
+            settings.CodexSessionAccess = mode;
+
+            vm.Activate(null);
+
+            Assert.Equal(mode == CodexSessionAccessMode.Off, vm.IsCodexAccessOff);
+            Assert.Equal(catalogAvailable, vm.IsCodexCatalogAvailable);
+            Assert.Equal(catalogUnavailable, vm.IsCodexCatalogUnavailable);
+            Assert.Equal(steeringUnavailable, vm.IsCodexSteeringUnavailable);
+        }
     }
 
     [Fact]

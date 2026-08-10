@@ -1,6 +1,7 @@
 using System.ComponentModel;
 using System.Runtime.CompilerServices;
 using System.Threading.Tasks;
+using OpenClaw.Shared.Codex;
 using OpenClawTray.Services;
 
 namespace OpenClawTray.Presentation;
@@ -31,6 +32,7 @@ internal sealed class SettingsPageViewModel : INavigationAware, IDisposable, INo
 
     private readonly ISettingsStore _store;
     private readonly IAppCommands _appCommands;
+    private readonly Func<bool> _codexExecutableAvailable;
 
     private bool _loading;
     private bool _subscribed;
@@ -53,11 +55,23 @@ internal sealed class SettingsPageViewModel : INavigationAware, IDisposable, INo
     private bool _screenRecordingConsentGiven;
     private bool _cameraRecordingConsentGiven;
     private bool _showChatToolCalls;
+    private CodexSessionAccessMode _codexSessionAccess;
+    private bool _isCodexExecutableAvailable;
 
     public SettingsPageViewModel(ISettingsStore store, IAppCommands appCommands)
+        : this(store, appCommands, () => new CodexExecutableResolver().Resolve() is not null)
+    {
+    }
+
+    internal SettingsPageViewModel(
+        ISettingsStore store,
+        IAppCommands appCommands,
+        Func<bool> codexExecutableAvailable)
     {
         _store = store ?? throw new ArgumentNullException(nameof(store));
         _appCommands = appCommands ?? throw new ArgumentNullException(nameof(appCommands));
+        _codexExecutableAvailable = codexExecutableAvailable
+            ?? throw new ArgumentNullException(nameof(codexExecutableAvailable));
     }
 
     public event PropertyChangedEventHandler? PropertyChanged;
@@ -220,6 +234,51 @@ internal sealed class SettingsPageViewModel : INavigationAware, IDisposable, INo
         }
     }
 
+    public CodexSessionAccessMode CodexSessionAccess
+    {
+        get => _codexSessionAccess;
+        set
+        {
+            if (!Enum.IsDefined(value))
+            {
+                return;
+            }
+
+            if (SetField(ref _codexSessionAccess, value))
+            {
+                RaiseCodexStatusChanged();
+                OnPropertyChanged(nameof(CodexSessionAccessIndex));
+                if (!_loading)
+                {
+                    Persist(e => e.CodexSessionAccess = value);
+                }
+            }
+        }
+    }
+
+    public int CodexSessionAccessIndex
+    {
+        get => (int)CodexSessionAccess;
+        set
+        {
+            if (Enum.IsDefined(typeof(CodexSessionAccessMode), value))
+            {
+                CodexSessionAccess = (CodexSessionAccessMode)value;
+            }
+        }
+    }
+
+    public bool IsCodexAccessOff => CodexSessionAccess == CodexSessionAccessMode.Off;
+
+    public bool IsCodexCatalogAvailable =>
+        !IsCodexAccessOff && _isCodexExecutableAvailable;
+
+    public bool IsCodexCatalogUnavailable =>
+        !IsCodexAccessOff && !_isCodexExecutableAvailable;
+
+    public bool IsCodexSteeringUnavailable =>
+        CodexSessionAccess == CodexSessionAccessMode.ReadAndSteer;
+
     public void Activate(object? parameter)
     {
         IsActive = true;
@@ -280,6 +339,9 @@ internal sealed class SettingsPageViewModel : INavigationAware, IDisposable, INo
             SetField(ref _screenRecordingConsentGiven, s.ScreenRecordingConsentGiven, nameof(ScreenRecordingConsentGiven));
             SetField(ref _cameraRecordingConsentGiven, s.CameraRecordingConsentGiven, nameof(CameraRecordingConsentGiven));
             SetField(ref _showChatToolCalls, s.ShowChatToolCalls, nameof(ShowChatToolCalls));
+            _isCodexExecutableAvailable = _codexExecutableAvailable();
+            CodexSessionAccess = s.CodexSessionAccess;
+            RaiseCodexStatusChanged();
         }
         finally
         {
@@ -326,4 +388,15 @@ internal sealed class SettingsPageViewModel : INavigationAware, IDisposable, INo
         PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(propertyName));
         return true;
     }
+
+    private void RaiseCodexStatusChanged()
+    {
+        OnPropertyChanged(nameof(IsCodexAccessOff));
+        OnPropertyChanged(nameof(IsCodexCatalogAvailable));
+        OnPropertyChanged(nameof(IsCodexCatalogUnavailable));
+        OnPropertyChanged(nameof(IsCodexSteeringUnavailable));
+    }
+
+    private void OnPropertyChanged(string propertyName) =>
+        PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(propertyName));
 }

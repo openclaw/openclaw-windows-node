@@ -1,3 +1,5 @@
+using OpenClaw.Shared.Codex;
+
 namespace OpenClawTray.Presentation;
 
 /// <summary>
@@ -75,6 +77,7 @@ public interface ISettingsEditor
     bool CameraRecordingConsentGiven { set; }
 
     bool ShowChatToolCalls { set; }
+    CodexSessionAccessMode CodexSessionAccess { set; }
 }
 
 /// <summary>
@@ -106,4 +109,5 @@ public sealed record SettingsSnapshot
     public bool CameraRecordingConsentGiven { get; init; }
 
     public bool ShowChatToolCalls { get; init; }
+    public CodexSessionAccessMode CodexSessionAccess { get; init; }
 }

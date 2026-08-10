@@ -53,6 +53,7 @@ internal sealed class SettingsStore : ISettingsStore
         ScreenRecordingConsentGiven = _settings.ScreenRecordingConsentGiven,
         CameraRecordingConsentGiven = _settings.CameraRecordingConsentGiven,
         ShowChatToolCalls = _settings.ShowChatToolCalls,
+        CodexSessionAccess = _settings.CodexSessionAccess,
     };
 
     public void Update(Action<ISettingsEditor> edit)
@@ -133,5 +134,6 @@ internal sealed class SettingsStore : ISettingsStore
         public bool ScreenRecordingConsentGiven { set => _settings.ScreenRecordingConsentGiven = value; }
         public bool CameraRecordingConsentGiven { set => _settings.CameraRecordingConsentGiven = value; }
         public bool ShowChatToolCalls { set => _settings.ShowChatToolCalls = value; }
+        public OpenClaw.Shared.Codex.CodexSessionAccessMode CodexSessionAccess { set => _settings.CodexSessionAccess = value; }
     }
 }

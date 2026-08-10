@@ -70,6 +70,7 @@ public sealed partial class SettingsPage : Page
         {
             _viewModel.SavedIndicated -= OnViewModelSavedIndicated;
             _viewModel.ExternalChanged -= OnViewModelExternalChanged;
+            _viewModel.PropertyChanged -= OnViewModelPropertyChanged;
         }
 
         _viewModel = args.NewValue as SettingsPageViewModel;
@@ -78,7 +79,32 @@ public sealed partial class SettingsPage : Page
         {
             _viewModel.SavedIndicated += OnViewModelSavedIndicated;
             _viewModel.ExternalChanged += OnViewModelExternalChanged;
+            _viewModel.PropertyChanged += OnViewModelPropertyChanged;
+            RefreshCodexSessionAccessStatus();
         }
+    }
+
+    private void OnViewModelPropertyChanged(object? sender, PropertyChangedEventArgs e)
+    {
+        if (e.PropertyName is nameof(SettingsPageViewModel.IsCodexAccessOff)
+            or nameof(SettingsPageViewModel.IsCodexCatalogAvailable)
+            or nameof(SettingsPageViewModel.IsCodexCatalogUnavailable)
+            or nameof(SettingsPageViewModel.IsCodexSteeringUnavailable))
+        {
+            RefreshCodexSessionAccessStatus();
+        }
+    }
+
+    private void RefreshCodexSessionAccessStatus()
+    {
+        CodexAccessOffStatus.Visibility = _viewModel?.IsCodexAccessOff == true
+            ? Visibility.Visible : Visibility.Collapsed;
+        CodexCatalogAvailableStatus.Visibility = _viewModel?.IsCodexCatalogAvailable == true
+            ? Visibility.Visible : Visibility.Collapsed;
+        CodexCatalogUnavailableStatus.Visibility = _viewModel?.IsCodexCatalogUnavailable == true
+            ? Visibility.Visible : Visibility.Collapsed;
+        CodexSteeringUnavailableStatus.Visibility = _viewModel?.IsCodexSteeringUnavailable == true
+            ? Visibility.Visible : Visibility.Collapsed;
     }
 
     private void OnViewModelSavedIndicated(object? sender, EventArgs e) => ShowSavedIndicator();

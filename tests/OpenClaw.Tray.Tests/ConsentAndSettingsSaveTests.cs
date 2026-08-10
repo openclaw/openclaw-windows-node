@@ -1,9 +1,60 @@
 using OpenClawTray.Services;
+using OpenClaw.Shared.Codex;
+using OpenClaw.Tray.Tests.Presentation;
 
 namespace OpenClaw.Tray.Tests;
 
 public class ConsentAndSettingsSaveTests
 {
+    [Fact]
+    public void CodexSessionAccessUi_IsInteractiveLocalizedAndTransportRoutesCannotWriteIt()
+    {
+        var root = Environment.GetEnvironmentVariable("OPENCLAW_REPO_ROOT")
+            ?? throw new InvalidOperationException("OPENCLAW_REPO_ROOT must identify the test worktree.");
+        var xaml = File.ReadAllText(Path.Combine(root, "src", "OpenClaw.Tray.WinUI", "Pages", "SettingsPage.xaml"));
+        var resources = File.ReadAllText(Path.Combine(root, "src", "OpenClaw.Tray.WinUI", "Strings", "en-us", "Resources.resw"));
+        var transportSources = new[]
+        {
+            Path.Combine(root, "src", "OpenClaw.Shared", "Mcp", "McpToolBridge.cs"),
+            Path.Combine(root, "src", "OpenClaw.Tray.WinUI", "Services", "NodeCapabilityRegistry.cs"),
+            Path.Combine(root, "src", "OpenClaw.Tray.WinUI", "Services", "NodeService.cs"),
+        }.Select(File.ReadAllText);
+
+        Assert.Contains("SelectedIndex=\"{Binding CodexSessionAccessIndex, Mode=TwoWay}\"", xaml);
+        Assert.Contains("SettingsPage_CodexSessionAccess_Off", xaml);
+        Assert.Contains("SettingsPage_CodexSessionAccess_ReadOnly", xaml);
+        Assert.Contains("SettingsPage_CodexSessionAccess_ReadAndSteer", xaml);
+        Assert.Contains("Catalog available", resources);
+        Assert.Contains("Catalog unavailable", resources);
+        Assert.Contains("Steering unavailable", resources);
+        Assert.Contains("owner control", resources, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("Stage 0 did not pass validation", resources);
+        Assert.Contains("does not change Gateway configuration", resources);
+        Assert.DoesNotContain('\u2014', resources);
+        Assert.All(transportSources, source => Assert.DoesNotMatch(
+            new System.Text.RegularExpressions.Regex(@"\bCodexSessionAccess\s*=", System.Text.RegularExpressions.RegexOptions.CultureInvariant),
+            source));
+    }
+
+    [Fact]
+    public void CodexCatalogTransportProjection_DoesNotMutateSettingsOrGatewayConfiguration()
+    {
+        using var temp = new TempDir();
+        var settings = new SettingsManager(temp.Path)
+        {
+            GatewayUrl = "wss://gateway.example.test",
+            CodexSessionAccess = CodexSessionAccessMode.ReadAndSteer,
+        };
+        var registry = new NodeCapabilityRegistry(() => null);
+
+        registry.Rebuild(Array.Empty<OpenClaw.Shared.INodeCapability>(), settings.CodexSessionAccess);
+        _ = registry.GetGatewaySnapshot();
+        _ = registry.GetMcpSnapshot();
+
+        Assert.Equal(CodexSessionAccessMode.ReadAndSteer, settings.CodexSessionAccess);
+        Assert.Equal("wss://gateway.example.test", settings.GatewayUrl);
+    }
+
     [Fact]
     public async Task Save_IsThreadSafe_ConcurrentCallsDoNotCorruptFile()
     {
