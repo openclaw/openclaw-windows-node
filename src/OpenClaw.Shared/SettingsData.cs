@@ -1,5 +1,6 @@
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using OpenClaw.Shared.Codex;
 
 namespace OpenClaw.Shared;
 
@@ -53,6 +54,7 @@ public record class SettingsData
     public bool CameraRecordingConsentGiven { get; set; } = false;
     public bool NodeLocationEnabled { get; set; } = true;
     public bool NodeBrowserProxyEnabled { get; set; } = true;
+    public CodexSessionAccessMode CodexSessionAccess { get; set; } = CodexSessionAccessMode.Off;
 
     /// <summary>
     /// Optional override for the browser-control host port the node-side
@@ -228,7 +230,10 @@ public record class SettingsData
             return null;
         try
         {
-            return JsonSerializer.Deserialize<SettingsData>(json);
+            var data = JsonSerializer.Deserialize<SettingsData>(json);
+            return data is not null && Enum.IsDefined(data.CodexSessionAccess)
+                ? data
+                : null;
         }
         catch (JsonException)
         {

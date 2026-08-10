@@ -1,11 +1,37 @@
 using System.Text.Json;
 using OpenClaw.Shared;
+using OpenClaw.Shared.Codex;
 using OpenClawTray.Services;
 
 namespace OpenClaw.Tray.Tests;
 
 public class SettingsRoundTripTests
 {
+    [Fact]
+    public void CodexSessionAccess_DefaultsAndValidModesRoundTrip()
+    {
+        Assert.Equal(CodexSessionAccessMode.Off, new SettingsData().CodexSessionAccess);
+        Assert.Equal(CodexSessionAccessMode.ReadOnly, RoundTrip(CodexSessionAccessMode.ReadOnly));
+        Assert.Equal(CodexSessionAccessMode.ReadAndSteer, RoundTrip(CodexSessionAccessMode.ReadAndSteer));
+    }
+
+    [Fact]
+    public void CodexSessionAccess_UndefinedValueIsRejected()
+    {
+        Assert.Null(SettingsData.FromJson("{\"CodexSessionAccess\":99}"));
+    }
+
+    private static CodexSessionAccessMode RoundTrip(CodexSessionAccessMode mode)
+    {
+        var restored = SettingsData.FromJson(new SettingsData
+        {
+            CodexSessionAccess = mode,
+        }.ToJson());
+
+        Assert.NotNull(restored);
+        return restored.CodexSessionAccess;
+    }
+
     [Fact]
     public void RoundTrip_AllFields_Preserved()
     {

@@ -5,6 +5,7 @@ using System.Text;
 using System.Text.Json;
 using OpenClaw.Shared;
 using OpenClaw.Shared.Capabilities;
+using OpenClaw.Shared.Codex;
 
 namespace OpenClawTray.Services;
 
@@ -107,6 +108,7 @@ public class SettingsManager
     public bool CameraRecordingConsentGiven { get => _data.CameraRecordingConsentGiven; set => _data = _data with { CameraRecordingConsentGiven = value }; }
     public bool NodeLocationEnabled { get => _data.NodeLocationEnabled; set => _data = _data with { NodeLocationEnabled = value }; }
     public bool NodeBrowserProxyEnabled { get => _data.NodeBrowserProxyEnabled; set => _data = _data with { NodeBrowserProxyEnabled = value }; }
+    public CodexSessionAccessMode CodexSessionAccess { get => _data.CodexSessionAccess; set => _data = _data with { CodexSessionAccess = value }; }
     /// <summary>
     /// Master switch for the <c>system.run</c> / <c>system.run.prepare</c>
     /// commands. Per-command exec approvals still apply when this is on;
@@ -261,6 +263,7 @@ public class SettingsManager
         CameraRecordingConsentGiven = false,
         NodeLocationEnabled = true,
         NodeBrowserProxyEnabled = true,
+        CodexSessionAccess = CodexSessionAccessMode.Off,
         NodeSystemRunEnabled = true,
         NodeSttEnabled = false,
         SttLanguage = "auto",
