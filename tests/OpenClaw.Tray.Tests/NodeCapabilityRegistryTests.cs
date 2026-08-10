@@ -1,6 +1,9 @@
+using System.Diagnostics;
+using System.Text;
 using System.Text.Json;
 using OpenClaw.Shared;
 using OpenClaw.Shared.Codex;
+using OpenClaw.Shared.Mcp;
 using OpenClawTray.Services;
 
 namespace OpenClaw.Tray.Tests;
@@ -58,20 +61,115 @@ public sealed class NodeCapabilityRegistryTests
     }
 
     [Fact]
-    public void SharedSnapshot_McpAndGatewayReceiveSameImmutableRegistrySnapshot()
+    public async Task DeferredCodexCapability_UsesTrustedCatalogTransportLazilyAndDisposesIt()
     {
-        var baseline = new StubCapability("system", ["system.notify"]);
-        var registry = CreateRegistry(clientAvailable: true);
+        using var harness = new CodexRegistryProcessHarness(CodexRegistryProcessMode.Success);
+        var launchPlan = new CodexLaunchPlan(Path.Combine(harness.RootPath, "codex.exe"));
+        var registry = new NodeCapabilityRegistry(
+            NullLogger.Instance,
+            () => launchPlan,
+            harness);
 
-        var rebuilt = registry.Rebuild([baseline], CodexSessionAccessMode.ReadOnly);
-        var gateway = registry.GetGatewaySnapshot();
-        var mcp = registry.GetMcpSnapshot();
+        var snapshot = registry.Rebuild([], CodexSessionAccessMode.ReadOnly);
+        var capability = Assert.Single(snapshot);
 
-        Assert.Same(rebuilt, gateway);
-        Assert.Same(gateway, mcp);
-        var collection = Assert.IsAssignableFrom<ICollection<INodeCapability>>(rebuilt);
-        Assert.True(collection.IsReadOnly);
-        Assert.Throws<NotSupportedException>(() => collection.Add(new StubCapability("write", ["thread.resume"])));
+        Assert.Equal("codex-app-server-threads", capability.Category);
+        Assert.Equal(
+            [
+                "codex.appServer.threads.list.v1",
+                "codex.appServer.thread.turns.list.v1",
+            ],
+            capability.Commands);
+        Assert.Equal(0, harness.StartCount);
+
+        var response = await capability.ExecuteAsync(new NodeInvokeRequest
+        {
+            Id = "request-1",
+            Command = "codex.appServer.threads.list.v1",
+            Args = JsonSerializer.SerializeToElement(new { limit = 50 }),
+        });
+
+        Assert.True(response.Ok, response.Error);
+        Assert.Equal(1, harness.StartCount);
+        Assert.Equal(launchPlan.ExecutablePath, Assert.Single(harness.LaunchPlans).ExecutablePath);
+        Assert.Equal(["initialize", "initialized", "thread/list"], harness.RecordedMethods());
+        Assert.Equal(50, harness.RecordedRequest("thread/list").GetProperty("params").GetProperty("limit").GetInt32());
+        await harness.AssertAllProcessesExitedAsync();
+    }
+
+    [Theory]
+    [InlineData(CodexRegistryProcessMode.RemoteFailure)]
+    [InlineData(CodexRegistryProcessMode.FailedInitialization)]
+    public async Task DeferredCodexCapability_SanitizesFailureAndDisposesFailedProcess(
+        CodexRegistryProcessMode mode)
+    {
+        using var harness = new CodexRegistryProcessHarness(mode);
+        var registry = new NodeCapabilityRegistry(
+            NullLogger.Instance,
+            () => new CodexLaunchPlan(Path.Combine(harness.RootPath, "codex.exe")),
+            harness);
+        var capability = Assert.Single(registry.Rebuild([], CodexSessionAccessMode.ReadOnly));
+
+        var response = await capability.ExecuteAsync(new NodeInvokeRequest
+        {
+            Id = "request-1",
+            Command = "codex.appServer.threads.list.v1",
+            Args = JsonSerializer.SerializeToElement(new { }),
+        });
+
+        Assert.False(response.Ok);
+        Assert.Equal("Codex app-server catalog is unavailable", response.Error);
+        Assert.DoesNotContain("operator-secret", response.Error, StringComparison.Ordinal);
+        await harness.AssertAllProcessesExitedAsync();
+    }
+
+    [Fact]
+    public async Task SharedSnapshot_ActualMcpAndGatewayConsumersApplyTransportPolicy()
+    {
+        var root = Path.Combine(Path.GetTempPath(), $"openclaw-registry-gateway-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(root);
+        try
+        {
+            var shared = new StubCapability("system", ["system.notify"]);
+            var localOnly = new StubCapability("app", ["app.connection.status"]);
+            var mcpOnly = new StubCapability("test", ["app.test.only"]);
+            var registry = CreateRegistry(clientAvailable: true);
+            var snapshot = registry.Rebuild([shared, localOnly], CodexSessionAccessMode.ReadOnly);
+            registry.RegisterMcpOnly(mcpOnly);
+            using var gateway = new WindowsNodeClient(
+                "ws://127.0.0.1:1",
+                "test-token",
+                root,
+                NullLogger.Instance);
+
+            registry.RegisterGateway(gateway, NullLogger.Instance);
+            var bridge = new McpToolBridge(registry.GetMcpSnapshot, NullLogger.Instance);
+            var toolsJson = await bridge.HandleRequestAsync(
+                "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"tools/list\"}");
+            using var toolsDocument = JsonDocument.Parse(toolsJson!);
+            var mcpCommands = toolsDocument.RootElement.GetProperty("result").GetProperty("tools")
+                .EnumerateArray()
+                .Select(tool => tool.GetProperty("name").GetString())
+                .ToArray();
+
+            Assert.Contains("system.notify", gateway.Capabilities.SelectMany(capability => capability.Commands));
+            Assert.Contains("codex.appServer.threads.list.v1", gateway.Capabilities.SelectMany(capability => capability.Commands));
+            Assert.DoesNotContain("app.connection.status", gateway.Capabilities.SelectMany(capability => capability.Commands));
+            Assert.DoesNotContain("app.test.only", gateway.Capabilities.SelectMany(capability => capability.Commands));
+            Assert.Contains("system.notify", mcpCommands);
+            Assert.Contains("codex.appServer.threads.list.v1", mcpCommands);
+            Assert.Contains("app.connection.status", mcpCommands);
+            Assert.Contains("app.test.only", mcpCommands);
+
+            var collection = Assert.IsAssignableFrom<ICollection<INodeCapability>>(snapshot);
+            Assert.True(collection.IsReadOnly);
+            Assert.Throws<NotSupportedException>(() => collection.Add(new StubCapability("write", ["thread.resume"])));
+        }
+        finally
+        {
+            if (Directory.Exists(root))
+                Directory.Delete(root, recursive: true);
+        }
     }
 
     [Fact]
@@ -86,6 +184,8 @@ public sealed class NodeCapabilityRegistryTests
             "NodeService.cs"));
 
         Assert.Contains("NodeCapabilityRegistry", source);
+        Assert.Contains("_capabilityRegistry.RegisterGateway(_nodeClient, _logger)", source);
+        Assert.Contains("_capabilityRegistry.GetMcpSnapshot", source);
         Assert.DoesNotContain("List<INodeCapability> _capabilities", source);
         Assert.DoesNotContain("void Register(INodeCapability capability)", source);
     }
@@ -117,5 +217,162 @@ public sealed class NodeCapabilityRegistryTests
                 Ok = true,
                 Payload = JsonSerializer.SerializeToElement(new { }),
             });
+    }
+
+    public enum CodexRegistryProcessMode
+    {
+        Success,
+        RemoteFailure,
+        FailedInitialization,
+    }
+
+    private sealed class CodexRegistryProcessHarness : ICodexAppServerProcessFactory, IDisposable
+    {
+        private const string Script = """
+            param([string]$RecordPath, [string]$Mode)
+            $ErrorActionPreference = 'Stop'
+            function Read-Message {
+              $line = [Console]::In.ReadLine()
+              if ($null -eq $line) { exit 80 }
+              Add-Content -LiteralPath $RecordPath -Value $line -Encoding utf8
+              return $line | ConvertFrom-Json
+            }
+            function Write-Message($Value) {
+              [Console]::Out.WriteLine(($Value | ConvertTo-Json -Compress -Depth 10))
+              [Console]::Out.Flush()
+            }
+
+            $initialize = Read-Message
+            if ($Mode -eq 'FailedInitialization') {
+              [Console]::Error.WriteLine('operator-secret failed initialization')
+              exit 91
+            }
+            Write-Message @{ id = [long]$initialize.id; result = @{} }
+            $null = Read-Message
+            $list = Read-Message
+            if ($Mode -eq 'RemoteFailure') {
+              Write-Message @{ id = [long]$list.id; error = @{ code = -32000; message = 'operator-secret remote failure' } }
+              Start-Sleep -Seconds 30
+              exit 92
+            }
+            $padding = 'x' * 1200000
+            Write-Message @{
+              id = [long]$list.id
+              result = @{
+                data = @(@{
+                  id = '123e4567-e89b-12d3-a456-426614174000'
+                  name = 'Catalog session'
+                  preview = $padding
+                  status = @{ type = 'idle' }
+                  source = 'cli'
+                })
+              }
+            }
+            Start-Sleep -Seconds 30
+            """;
+
+        private readonly string _recordPath;
+        private readonly string _scriptPath;
+        private readonly CodexRegistryProcessMode _mode;
+        private readonly List<int> _processIds = [];
+
+        public CodexRegistryProcessHarness(CodexRegistryProcessMode mode)
+        {
+            _mode = mode;
+            RootPath = Path.Combine(Path.GetTempPath(), $"openclaw-registry-codex-{Guid.NewGuid():N}");
+            Directory.CreateDirectory(RootPath);
+            _recordPath = Path.Combine(RootPath, "requests.jsonl");
+            _scriptPath = Path.Combine(RootPath, "fake-app-server.ps1");
+            File.WriteAllText(_scriptPath, Script, new UTF8Encoding(false));
+        }
+
+        public string RootPath { get; }
+
+        public int StartCount { get; private set; }
+
+        public List<CodexLaunchPlan> LaunchPlans { get; } = [];
+
+        public ICodexAppServerProcess Start(CodexLaunchPlan launchPlan)
+        {
+            StartCount++;
+            LaunchPlans.Add(launchPlan);
+            var startInfo = new ProcessStartInfo
+            {
+                FileName = "powershell.exe",
+                UseShellExecute = false,
+                RedirectStandardInput = true,
+                RedirectStandardOutput = true,
+                RedirectStandardError = true,
+                CreateNoWindow = true,
+            };
+            foreach (var argument in new[]
+            {
+                "-NoLogo", "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass",
+                "-File", _scriptPath, _recordPath, _mode.ToString(),
+            })
+            {
+                startInfo.ArgumentList.Add(argument);
+            }
+            var process = Process.Start(startInfo)
+                ?? throw new InvalidOperationException("Fake Codex App Server did not start.");
+            _processIds.Add(process.Id);
+            return new CodexAppServerProcess(process);
+        }
+
+        public IReadOnlyList<string?> RecordedMethods() =>
+            RecordedRequests().Select(request => request.GetProperty("method").GetString()).ToArray();
+
+        public JsonElement RecordedRequest(string method) =>
+            RecordedRequests().Single(request => string.Equals(
+                request.GetProperty("method").GetString(),
+                method,
+                StringComparison.Ordinal));
+
+        public async Task AssertAllProcessesExitedAsync()
+        {
+            var timeout = Stopwatch.StartNew();
+            while (timeout.Elapsed < TimeSpan.FromSeconds(2) && _processIds.Any(IsRunning))
+                await Task.Delay(20);
+            Assert.All(_processIds, processId => Assert.False(IsRunning(processId)));
+        }
+
+        public void Dispose()
+        {
+            foreach (var processId in _processIds.Where(IsRunning))
+            {
+                try
+                {
+                    using var process = Process.GetProcessById(processId);
+                    process.Kill(entireProcessTree: true);
+                    process.WaitForExit(2_000);
+                }
+                catch (ArgumentException)
+                {
+                }
+            }
+            if (Directory.Exists(RootPath))
+                Directory.Delete(RootPath, recursive: true);
+        }
+
+        private JsonElement[] RecordedRequests() =>
+            File.Exists(_recordPath)
+                ? File.ReadAllLines(_recordPath)
+                    .Where(line => !string.IsNullOrWhiteSpace(line))
+                    .Select(line => JsonDocument.Parse(line).RootElement.Clone())
+                    .ToArray()
+                : [];
+
+        private static bool IsRunning(int processId)
+        {
+            try
+            {
+                using var process = Process.GetProcessById(processId);
+                return !process.HasExited;
+            }
+            catch (ArgumentException)
+            {
+                return false;
+            }
+        }
     }
 }

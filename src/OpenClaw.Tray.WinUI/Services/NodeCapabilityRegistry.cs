@@ -18,8 +18,24 @@ public sealed class NodeCapabilityRegistry
     private IReadOnlyList<INodeCapability> _mcpOnlySnapshot = Array.Empty<INodeCapability>();
 
     public NodeCapabilityRegistry(IOpenClawLogger logger)
-        : this(() => CreateCodexCapability(logger))
+        : this(
+            logger,
+            () => new CodexExecutableResolver().Resolve(),
+            new CodexAppServerProcessFactory())
     {
+    }
+
+    internal NodeCapabilityRegistry(
+        IOpenClawLogger logger,
+        Func<CodexLaunchPlan?> codexLaunchPlanResolver,
+        ICodexAppServerProcessFactory codexProcessFactory)
+        : this(() => CreateCodexCapability(
+            logger,
+            codexLaunchPlanResolver,
+            codexProcessFactory))
+    {
+        ArgumentNullException.ThrowIfNull(codexLaunchPlanResolver);
+        ArgumentNullException.ThrowIfNull(codexProcessFactory);
     }
 
     internal NodeCapabilityRegistry(Func<INodeCapability?> codexCapabilityFactory)
@@ -102,15 +118,21 @@ public sealed class NodeCapabilityRegistry
     private static IReadOnlyList<INodeCapability> Freeze(IEnumerable<INodeCapability> capabilities) =>
         new ReadOnlyCollection<INodeCapability>(capabilities.ToArray());
 
-    private static INodeCapability? CreateCodexCapability(IOpenClawLogger logger)
+    private static INodeCapability? CreateCodexCapability(
+        IOpenClawLogger logger,
+        Func<CodexLaunchPlan?> launchPlanResolver,
+        ICodexAppServerProcessFactory processFactory)
     {
-        var launchPlan = new CodexExecutableResolver().Resolve();
-        return launchPlan is null ? null : new DeferredCodexSessionCapability(logger, launchPlan);
+        var launchPlan = launchPlanResolver();
+        return launchPlan is null
+            ? null
+            : new DeferredCodexSessionCapability(logger, launchPlan, processFactory);
     }
 
     private sealed class DeferredCodexSessionCapability(
         IOpenClawLogger logger,
-        CodexLaunchPlan launchPlan) : NodeCapabilityBase(logger)
+        CodexLaunchPlan launchPlan,
+        ICodexAppServerProcessFactory processFactory) : NodeCapabilityBase(logger)
     {
         private static readonly IReadOnlyList<string> ReadCommands = Array.AsReadOnly(
         [
@@ -129,13 +151,27 @@ public sealed class NodeCapabilityRegistry
             NodeInvokeRequest request,
             CancellationToken cancellationToken)
         {
-            await using var client = await CodexAppServerClient.ConnectCatalogAsync(
-                launchPlan,
-                cancellationToken).ConfigureAwait(false);
-            var capability = new CodexSessionCapability(
-                Logger,
-                new CodexSessionCatalogService(client));
-            return await capability.ExecuteAsync(request, cancellationToken).ConfigureAwait(false);
+            try
+            {
+                await using var client = await CodexAppServerClient.ConnectCatalogAsync(
+                    launchPlan,
+                    processFactory,
+                    cancellationToken).ConfigureAwait(false);
+                var capability = new CodexSessionCapability(
+                    Logger,
+                    new CodexSessionCatalogService(client));
+                return await capability.ExecuteAsync(request, cancellationToken).ConfigureAwait(false);
+            }
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+            {
+                throw;
+            }
+            catch
+            {
+                return Error(request.Command == CodexSessionCapability.ThreadTurnsListCommand
+                    ? "Codex app-server transcript is unavailable"
+                    : "Codex app-server catalog is unavailable");
+            }
         }
     }
 }
