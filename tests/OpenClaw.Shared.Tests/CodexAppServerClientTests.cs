@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.Text;
 using System.Text.Json;
 using OpenClaw.Shared.Codex;
 
@@ -12,7 +13,8 @@ public sealed class CodexAppServerClientTests
         maxOperationBytes: 4_096,
         maxStandardErrorBytes: 128,
         requestTimeout: TimeSpan.FromSeconds(3),
-        idleTimeout: TimeSpan.FromSeconds(1));
+        idleTimeout: TimeSpan.FromSeconds(2),
+        cleanupTimeout: TimeSpan.FromSeconds(2));
 
     [Fact]
     public async Task ConnectAsync_InitializesExperimentalApiBeforeSendingInitializedAndReads()
@@ -147,6 +149,60 @@ public sealed class CodexAppServerClientTests
     }
 
     [Fact]
+    public async Task RequestDeadline_IncludesBlockedPartialFrameWriteAndReplacesSession()
+    {
+        var writeGate = new PartialFrameWriteGate();
+        var limits = DefaultTestLimits with
+        {
+            RequestTimeout = TimeSpan.FromMilliseconds(1_500),
+            IdleTimeout = TimeSpan.FromSeconds(2),
+        };
+        using var harness = new JsonlProcessHarness(
+            "success",
+            wrapProcess: (attempt, process) => attempt == 1
+                ? new WriteGatedProcess(process, writeGate)
+                : process);
+        await using var client = await ConnectAsync(harness, limits);
+        using var safety = new CancellationTokenSource(TimeSpan.FromSeconds(3));
+
+        var blockedRead = client.ListThreadsAsync(Params("blocked"), safety.Token);
+        await writeGate.Entered.WaitAsync(safety.Token);
+        var exception = await Assert.ThrowsAsync<CodexAppServerTimeoutException>(
+            async () => await blockedRead);
+
+        Assert.Equal(CodexAppServerTimeoutKind.Request, exception.Kind);
+        Assert.False(safety.IsCancellationRequested);
+        await harness.AssertProcessExitedAsync(0);
+        var recovered = await client.ListThreadsAsync(Params("recovered"), safety.Token);
+        Assert.Equal("recovered", recovered.GetProperty("tag").GetString());
+        Assert.Equal(2, harness.StartCount);
+    }
+
+    [Fact]
+    public async Task CallerCancellation_DuringPartialFrameWriteFailsSessionAndRemovesPendingRequest()
+    {
+        var writeGate = new PartialFrameWriteGate();
+        using var harness = new JsonlProcessHarness(
+            "success",
+            wrapProcess: (attempt, process) => attempt == 1
+                ? new WriteGatedProcess(process, writeGate)
+                : process);
+        await using var client = await ConnectAsync(harness);
+        using var cancellation = new CancellationTokenSource();
+        using var safety = new CancellationTokenSource(TimeSpan.FromSeconds(3));
+
+        var canceledRead = client.ListThreadsAsync(Params("cancel"), cancellation.Token);
+        await writeGate.Entered.WaitAsync(safety.Token);
+        cancellation.Cancel();
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(async () => await canceledRead);
+
+        await harness.AssertProcessExitedAsync(0);
+        var recovered = await client.ListThreadsAsync(Params("recovered"), safety.Token);
+        Assert.Equal("recovered", recovered.GetProperty("tag").GetString());
+        Assert.Equal(2, harness.StartCount);
+    }
+
+    [Fact]
     public async Task IdleTimeout_FailsReadAfterOutputStopsAndCleansUpProcess()
     {
         var limits = DefaultTestLimits with
@@ -197,6 +253,40 @@ public sealed class CodexAppServerClientTests
     }
 
     [Fact]
+    public async Task TransportExitOnSecondAttempt_IsSurfacedWithoutThirdStart()
+    {
+        using var harness = new JsonlProcessHarness("retry-both-attempts");
+        await using var client = await ConnectAsync(harness);
+
+        var exception = await Assert.ThrowsAsync<CodexAppServerTransportException>(
+            () => client.ListThreadsAsync(Params("twice")));
+
+        Assert.False(exception.ResponseBytesObserved);
+        Assert.Equal(2, harness.StartCount);
+        await harness.AssertAllProcessesExitedAsync();
+    }
+
+    [Fact]
+    public async Task DisposeDuringRestart_DoesNotPublishOrLeakReplacementSession()
+    {
+        using var harness = new JsonlProcessHarness(
+            "retry-before-response",
+            blockStartAttempt: 2);
+        var client = await ConnectAsync(harness);
+        using var safety = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+
+        var read = client.ListThreadsAsync(Params("restart"), safety.Token);
+        await harness.BlockedStartEntered.WaitAsync(safety.Token);
+        var disposal = client.DisposeAsync().AsTask();
+        harness.ReleaseBlockedStart();
+
+        await Assert.ThrowsAnyAsync<ObjectDisposedException>(async () => await read);
+        await disposal.WaitAsync(safety.Token);
+        await harness.AssertAllProcessesExitedAsync();
+        Assert.Equal(2, harness.StartCount);
+    }
+
+    [Fact]
     public async Task AggregateOperationBytesOverLimit_AreRejected()
     {
         using var harness = new JsonlProcessHarness("operation-oversized");
@@ -233,6 +323,39 @@ public sealed class CodexAppServerClientTests
         await client.DisposeAsync();
 
         await harness.AssertAllProcessesExitedAsync();
+    }
+
+    [Fact]
+    public async Task DisposeAsync_KillsTheRealGrandchildProcessTree()
+    {
+        using var harness = new JsonlProcessHarness("grandchild");
+        var client = await ConnectAsync(harness);
+        _ = await client.ListThreadsAsync(Params("tree"));
+        var grandchildId = int.Parse(
+            await harness.WaitForMarkerValueAsync("grandchild"),
+            System.Globalization.CultureInfo.InvariantCulture);
+        Assert.True(JsonlProcessHarness.IsProcessRunning(grandchildId));
+
+        await client.DisposeAsync();
+
+        await harness.AssertProcessIdExitedAsync(grandchildId);
+        await harness.AssertAllProcessesExitedAsync();
+    }
+
+    [Fact]
+    public async Task DisposeAsync_SurfacesFailureWhenKilledProcessDoesNotExitByDeadline()
+    {
+        var limits = DefaultTestLimits with { CleanupTimeout = TimeSpan.FromMilliseconds(200) };
+        using var harness = new JsonlProcessHarness(
+            "success",
+            wrapProcess: (_, process) => new SuppressedKillProcess(process));
+        var client = await ConnectAsync(harness, limits);
+        _ = await client.ListThreadsAsync(Params("unkillable"));
+
+        var exception = await Assert.ThrowsAsync<CodexAppServerCleanupException>(
+            async () => await client.DisposeAsync());
+
+        Assert.Contains("did not exit", exception.Message, StringComparison.OrdinalIgnoreCase);
     }
 
     private static JsonElement Params(string tag) =>
@@ -328,6 +451,9 @@ public sealed class CodexAppServerClientTests
                 if ($Attempt -eq 1) { exit 9 }
                 Write-Result $request
               }
+              'retry-both-attempts' {
+                exit 9
+              }
               'partial-response' {
                 [Console]::Out.Write('{"id":')
                 [Console]::Out.Flush()
@@ -340,6 +466,11 @@ public sealed class CodexAppServerClientTests
               }
               'response-oversized' {
                 Write-Message @{ id = [long]$request.id; result = @{ tag = [string]$request.params.tag; payload = ('r' * 250) } }
+              }
+              'grandchild' {
+                $child = Start-Process -FilePath 'powershell.exe' -ArgumentList '-NoLogo','-NoProfile','-NonInteractive','-Command','Start-Sleep -Seconds 30' -WindowStyle Hidden -PassThru
+                Record 'marker' ("grandchild:$($child.Id)")
+                Write-Result $request
               }
               default {
                 Write-Result $request
@@ -355,10 +486,20 @@ public sealed class CodexAppServerClientTests
         private readonly string _scriptPath;
         private readonly string _recordPath;
         private readonly List<int> _processIds = [];
+        private readonly Func<int, ICodexAppServerProcess, ICodexAppServerProcess>? _wrapProcess;
+        private readonly int? _blockStartAttempt;
+        private readonly TaskCompletionSource _blockedStartEntered =
+            new(TaskCreationOptions.RunContinuationsAsynchronously);
+        private readonly ManualResetEventSlim _releaseBlockedStart = new(initialState: false);
 
-        public JsonlProcessHarness(string scenario)
+        public JsonlProcessHarness(
+            string scenario,
+            Func<int, ICodexAppServerProcess, ICodexAppServerProcess>? wrapProcess = null,
+            int? blockStartAttempt = null)
         {
             _scenario = scenario;
+            _wrapProcess = wrapProcess;
+            _blockStartAttempt = blockStartAttempt;
             Directory.CreateDirectory(_root);
             _scriptPath = Path.Combine(_root, "fake-app-server.ps1");
             _recordPath = Path.Combine(_root, "record.txt");
@@ -367,9 +508,16 @@ public sealed class CodexAppServerClientTests
 
         public int StartCount { get; private set; }
 
-        public Process Start(CodexLaunchPlan launchPlan)
+        public Task BlockedStartEntered => _blockedStartEntered.Task;
+
+        public ICodexAppServerProcess Start(CodexLaunchPlan launchPlan)
         {
             StartCount++;
+            if (_blockStartAttempt == StartCount)
+            {
+                _blockedStartEntered.TrySetResult();
+                _releaseBlockedStart.Wait();
+            }
             var startInfo = new ProcessStartInfo
             {
                 FileName = "powershell.exe",
@@ -391,8 +539,11 @@ public sealed class CodexAppServerClientTests
             startInfo.ArgumentList.Add(_recordPath);
             var process = Process.Start(startInfo) ?? throw new InvalidOperationException("Fake process did not start.");
             _processIds.Add(process.Id);
-            return process;
+            var appServerProcess = new CodexAppServerProcess(process);
+            return _wrapProcess?.Invoke(StartCount, appServerProcess) ?? appServerProcess;
         }
+
+        public void ReleaseBlockedStart() => _releaseBlockedStart.Set();
 
         public IReadOnlyList<JsonElement> ClientMessages()
         {
@@ -423,18 +574,52 @@ public sealed class CodexAppServerClientTests
             throw new Xunit.Sdk.XunitException($"Timed out waiting for fake process marker '{marker}'.");
         }
 
+        public async Task<string> WaitForMarkerValueAsync(string marker)
+        {
+            var deadline = Stopwatch.StartNew();
+            while (deadline.Elapsed < TimeSpan.FromSeconds(3))
+            {
+                if (File.Exists(_recordPath))
+                {
+                    var prefix = $"|marker|{marker}:";
+                    var line = File.ReadAllLines(_recordPath)
+                        .FirstOrDefault(value => value.Contains(prefix, StringComparison.Ordinal));
+                    if (line is not null)
+                        return line[(line.IndexOf(prefix, StringComparison.Ordinal) + prefix.Length)..];
+                }
+
+                await Task.Delay(20);
+            }
+
+            throw new Xunit.Sdk.XunitException($"Timed out waiting for fake process marker '{marker}'.");
+        }
+
+        public Task AssertProcessExitedAsync(int processIndex) =>
+            AssertProcessIdExitedAsync(_processIds[processIndex]);
+
+        public async Task AssertProcessIdExitedAsync(int processId)
+        {
+            var deadline = Stopwatch.StartNew();
+            while (deadline.Elapsed < TimeSpan.FromSeconds(2) && IsProcessRunning(processId))
+                await Task.Delay(20);
+
+            Assert.False(IsProcessRunning(processId), $"Process {processId} is still running.");
+        }
+
         public async Task AssertAllProcessesExitedAsync()
         {
             var deadline = Stopwatch.StartNew();
-            while (deadline.Elapsed < TimeSpan.FromSeconds(2) && _processIds.Any(IsRunning))
+            while (deadline.Elapsed < TimeSpan.FromSeconds(2) && _processIds.Any(IsProcessRunning))
                 await Task.Delay(20);
 
-            Assert.All(_processIds, id => Assert.False(IsRunning(id), $"Process {id} is still running."));
+            Assert.All(_processIds, id => Assert.False(IsProcessRunning(id), $"Process {id} is still running."));
         }
 
         public void Dispose()
         {
-            foreach (var processId in _processIds.Where(IsRunning))
+            _releaseBlockedStart.Set();
+            var cleanupIds = _processIds.Concat(RecordedGrandchildIds()).Distinct().ToArray();
+            foreach (var processId in cleanupIds.Where(IsProcessRunning))
             {
                 try
                 {
@@ -449,9 +634,29 @@ public sealed class CodexAppServerClientTests
 
             if (Directory.Exists(_root))
                 Directory.Delete(_root, recursive: true);
+            _releaseBlockedStart.Dispose();
         }
 
-        private static bool IsRunning(int processId)
+        private IEnumerable<int> RecordedGrandchildIds()
+        {
+            if (!File.Exists(_recordPath))
+                return [];
+
+            const string marker = "|marker|grandchild:";
+            return File.ReadAllLines(_recordPath)
+                .Where(line => line.Contains(marker, StringComparison.Ordinal))
+                .Select(line => line[(line.IndexOf(marker, StringComparison.Ordinal) + marker.Length)..])
+                .Select(value => int.TryParse(
+                    value,
+                    System.Globalization.NumberStyles.None,
+                    System.Globalization.CultureInfo.InvariantCulture,
+                    out var processId)
+                    ? processId
+                    : -1)
+                .Where(processId => processId > 0);
+        }
+
+        public static bool IsProcessRunning(int processId)
         {
             try
             {
@@ -462,6 +667,130 @@ public sealed class CodexAppServerClientTests
             {
                 return false;
             }
+        }
+    }
+
+    private sealed class PartialFrameWriteGate
+    {
+        public TaskCompletionSource EnteredSource { get; } =
+            new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        public Task Entered => EnteredSource.Task;
+    }
+
+    private sealed class WriteGatedProcess : DelegatingProcess
+    {
+        private readonly Stream _standardInput;
+
+        public WriteGatedProcess(ICodexAppServerProcess inner, PartialFrameWriteGate gate)
+            : base(inner)
+        {
+            _standardInput = new PartialFrameBlockingStream(inner.StandardInput, gate);
+        }
+
+        public override Stream StandardInput => _standardInput;
+    }
+
+    private sealed class SuppressedKillProcess : DelegatingProcess
+    {
+        public SuppressedKillProcess(ICodexAppServerProcess inner)
+            : base(inner)
+        {
+        }
+
+        public override void KillProcessTree()
+        {
+        }
+    }
+
+    private class DelegatingProcess : ICodexAppServerProcess
+    {
+        protected DelegatingProcess(ICodexAppServerProcess inner)
+        {
+            Inner = inner;
+        }
+
+        protected ICodexAppServerProcess Inner { get; }
+
+        public virtual Stream StandardInput => Inner.StandardInput;
+
+        public virtual Stream StandardOutput => Inner.StandardOutput;
+
+        public virtual Stream StandardError => Inner.StandardError;
+
+        public virtual bool HasExited => Inner.HasExited;
+
+        public virtual void CloseStandardInput() => Inner.CloseStandardInput();
+
+        public virtual void KillProcessTree() => Inner.KillProcessTree();
+
+        public virtual Task WaitForExitAsync(CancellationToken cancellationToken) =>
+            Inner.WaitForExitAsync(cancellationToken);
+
+        public virtual void Dispose() => Inner.Dispose();
+    }
+
+    private sealed class PartialFrameBlockingStream : Stream
+    {
+        private readonly Stream _inner;
+        private readonly PartialFrameWriteGate _gate;
+        private int _blocked;
+
+        public PartialFrameBlockingStream(Stream inner, PartialFrameWriteGate gate)
+        {
+            _inner = inner;
+            _gate = gate;
+        }
+
+        public override bool CanRead => false;
+
+        public override bool CanSeek => false;
+
+        public override bool CanWrite => true;
+
+        public override long Length => throw new NotSupportedException();
+
+        public override long Position
+        {
+            get => throw new NotSupportedException();
+            set => throw new NotSupportedException();
+        }
+
+        public override void Flush() => _inner.Flush();
+
+        public override Task FlushAsync(CancellationToken cancellationToken) =>
+            _inner.FlushAsync(cancellationToken);
+
+        public override int Read(byte[] buffer, int offset, int count) => throw new NotSupportedException();
+
+        public override long Seek(long offset, SeekOrigin origin) => throw new NotSupportedException();
+
+        public override void SetLength(long value) => throw new NotSupportedException();
+
+        public override void Write(byte[] buffer, int offset, int count) =>
+            WriteAsync(buffer.AsMemory(offset, count)).AsTask().GetAwaiter().GetResult();
+
+        public override async ValueTask WriteAsync(
+            ReadOnlyMemory<byte> buffer,
+            CancellationToken cancellationToken = default)
+        {
+            var isReadRequest = Encoding.UTF8.GetString(buffer.Span)
+                .Contains("\"method\":\"thread/list\"", StringComparison.Ordinal);
+            if (!isReadRequest || Interlocked.Exchange(ref _blocked, 1) != 0)
+            {
+                await _inner.WriteAsync(buffer, cancellationToken);
+                return;
+            }
+
+            var prefixLength = Math.Min(8, buffer.Length);
+            await _inner.WriteAsync(buffer[..prefixLength], CancellationToken.None);
+            await _inner.FlushAsync(CancellationToken.None);
+            _gate.EnteredSource.TrySetResult();
+            await Task.Delay(Timeout.InfiniteTimeSpan, cancellationToken);
+        }
+
+        protected override void Dispose(bool disposing)
+        {
         }
     }
 }

@@ -246,6 +246,19 @@ public sealed class CodexAppServerTimeoutException : CodexAppServerException
     public CodexAppServerTimeoutKind Kind { get; }
 }
 
+public sealed class CodexAppServerCleanupException : CodexAppServerException
+{
+    internal CodexAppServerCleanupException(string message)
+        : base(message)
+    {
+    }
+
+    internal CodexAppServerCleanupException(string message, Exception innerException)
+        : base(message, innerException)
+    {
+    }
+}
+
 internal sealed record CodexAppServerLimits
 {
     public static CodexAppServerLimits Default { get; } = new(
@@ -254,7 +267,8 @@ internal sealed record CodexAppServerLimits
         maxOperationBytes: 8_388_608,
         maxStandardErrorBytes: 16_384,
         requestTimeout: TimeSpan.FromSeconds(20),
-        idleTimeout: TimeSpan.FromSeconds(5));
+        idleTimeout: TimeSpan.FromSeconds(5),
+        cleanupTimeout: TimeSpan.FromSeconds(2));
 
     public CodexAppServerLimits(
         int maxLineBytes,
@@ -262,7 +276,8 @@ internal sealed record CodexAppServerLimits
         int maxOperationBytes,
         int maxStandardErrorBytes,
         TimeSpan requestTimeout,
-        TimeSpan idleTimeout)
+        TimeSpan idleTimeout,
+        TimeSpan cleanupTimeout)
     {
         if (maxLineBytes <= 0
             || maxResponseBytes <= 0
@@ -272,7 +287,9 @@ internal sealed record CodexAppServerLimits
             throw new ArgumentOutOfRangeException(nameof(maxLineBytes));
         }
 
-        if (requestTimeout <= TimeSpan.Zero || idleTimeout <= TimeSpan.Zero)
+        if (requestTimeout <= TimeSpan.Zero
+            || idleTimeout <= TimeSpan.Zero
+            || cleanupTimeout <= TimeSpan.Zero)
             throw new ArgumentOutOfRangeException(nameof(requestTimeout));
 
         MaxLineBytes = maxLineBytes;
@@ -281,6 +298,7 @@ internal sealed record CodexAppServerLimits
         MaxStandardErrorBytes = maxStandardErrorBytes;
         RequestTimeout = requestTimeout;
         IdleTimeout = idleTimeout;
+        CleanupTimeout = cleanupTimeout;
     }
 
     public int MaxLineBytes { get; init; }
@@ -294,4 +312,6 @@ internal sealed record CodexAppServerLimits
     public TimeSpan RequestTimeout { get; init; }
 
     public TimeSpan IdleTimeout { get; init; }
+
+    public TimeSpan CleanupTimeout { get; init; }
 }

@@ -14,7 +14,9 @@ public sealed class CodexAppServerClient : IAsyncDisposable
     private readonly SemaphoreSlim _restartGate = new(1, 1);
     private readonly object _stateGate = new();
     private CodexAppServerSession? _session;
+    private Task? _disposeTask;
     private long _nextRequestId;
+    private bool _disposeRequested;
     private bool _disposed;
 
     private CodexAppServerClient(
@@ -123,13 +125,28 @@ public sealed class CodexAppServerClient : IAsyncDisposable
             }
 
             await failedSession.DisposeAsync().ConfigureAwait(false);
-            var replacement = await StartInitializedSessionAsync(cancellationToken).ConfigureAwait(false);
             lock (_stateGate)
             {
-                ThrowIfDisposed();
-                _session = replacement;
+                if (ReferenceEquals(_session, failedSession))
+                    _session = null;
             }
 
+            var replacement = await StartInitializedSessionAsync(cancellationToken).ConfigureAwait(false);
+            var publish = false;
+            lock (_stateGate)
+            {
+                if (!_disposeRequested)
+                {
+                    _session = replacement;
+                    publish = true;
+                }
+            }
+
+            if (!publish)
+            {
+                await replacement.DisposeAsync().ConfigureAwait(false);
+                throw new ObjectDisposedException(nameof(CodexAppServerClient));
+            }
             return replacement;
         }
         finally
@@ -177,64 +194,128 @@ public sealed class CodexAppServerClient : IAsyncDisposable
 
     private void ThrowIfDisposed()
     {
-        if (_disposed)
+        if (_disposeRequested || _disposed)
             throw new ObjectDisposedException(nameof(CodexAppServerClient));
     }
 
-    public async ValueTask DisposeAsync()
+    public ValueTask DisposeAsync()
     {
-        CodexAppServerSession? session;
         lock (_stateGate)
         {
-            if (_disposed)
-                return;
-            _disposed = true;
-            session = _session;
-            _session = null;
+            if (_disposeTask is not null)
+                return new ValueTask(_disposeTask);
+            _disposeRequested = true;
+            _disposeTask = DisposeCoreAsync();
+            return new ValueTask(_disposeTask);
         }
+    }
 
-        if (session is not null)
-            await session.DisposeAsync().ConfigureAwait(false);
-        _restartGate.Dispose();
+    private async Task DisposeCoreAsync()
+    {
+        await _restartGate.WaitAsync().ConfigureAwait(false);
+        try
+        {
+            CodexAppServerSession? session;
+            lock (_stateGate)
+            {
+                session = _session;
+                _session = null;
+                _disposed = true;
+            }
+
+            if (session is not null)
+                await session.DisposeAsync().ConfigureAwait(false);
+        }
+        finally
+        {
+            _restartGate.Release();
+        }
     }
 }
 
 internal interface ICodexAppServerProcessFactory
 {
-    Process Start(CodexLaunchPlan launchPlan);
+    ICodexAppServerProcess Start(CodexLaunchPlan launchPlan);
 }
 
 internal sealed class CodexAppServerProcessFactory : ICodexAppServerProcessFactory
 {
-    public Process Start(CodexLaunchPlan launchPlan)
+    public ICodexAppServerProcess Start(CodexLaunchPlan launchPlan)
     {
         var startInfo = launchPlan.CreateProcessStartInfo();
         startInfo.CreateNoWindow = true;
-        return Process.Start(startInfo)
-               ?? throw new CodexAppServerTransportException(
-                   "Codex App Server process did not start.",
-                   responseBytesObserved: false);
+        var process = Process.Start(startInfo)
+                      ?? throw new CodexAppServerTransportException(
+                          "Codex App Server process did not start.",
+                          responseBytesObserved: false);
+        return new CodexAppServerProcess(process);
     }
+}
+
+internal interface ICodexAppServerProcess : IDisposable
+{
+    Stream StandardInput { get; }
+
+    Stream StandardOutput { get; }
+
+    Stream StandardError { get; }
+
+    bool HasExited { get; }
+
+    void CloseStandardInput();
+
+    void KillProcessTree();
+
+    Task WaitForExitAsync(CancellationToken cancellationToken);
+}
+
+internal sealed class CodexAppServerProcess : ICodexAppServerProcess
+{
+    private readonly Process _process;
+
+    public CodexAppServerProcess(Process process)
+    {
+        _process = process;
+    }
+
+    public Stream StandardInput => _process.StandardInput.BaseStream;
+
+    public Stream StandardOutput => _process.StandardOutput.BaseStream;
+
+    public Stream StandardError => _process.StandardError.BaseStream;
+
+    public bool HasExited => _process.HasExited;
+
+    public void CloseStandardInput() => _process.StandardInput.Close();
+
+    public void KillProcessTree() => _process.Kill(entireProcessTree: true);
+
+    public Task WaitForExitAsync(CancellationToken cancellationToken) =>
+        _process.WaitForExitAsync(cancellationToken);
+
+    public void Dispose() => _process.Dispose();
 }
 
 internal sealed class CodexAppServerSession : IAsyncDisposable
 {
     private static readonly byte[] NewLine = [(byte)'\n'];
-    private readonly Process _process;
+    private readonly ICodexAppServerProcess _process;
     private readonly CodexAppServerLimits _limits;
     private readonly BoundedByteRing _standardError;
     private readonly ConcurrentDictionary<long, PendingRequest> _pending = new();
     private readonly SemaphoreSlim _writeGate = new(1, 1);
     private readonly CancellationTokenSource _lifetime = new();
     private readonly object _failureGate = new();
+    private readonly object _disposeGate = new();
     private Task? _stdoutDrain;
     private Task? _stderrDrain;
     private Exception? _failure;
+    private CodexAppServerCleanupException? _killFailure;
     private long _highestIssuedId;
-    private int _disposed;
+    private Task? _disposeTask;
 
     public CodexAppServerSession(
-        Process process,
+        ICodexAppServerProcess process,
         CodexAppServerLimits limits,
         BoundedByteRing standardError)
     {
@@ -259,65 +340,102 @@ internal sealed class CodexAppServerSession : IAsyncDisposable
         if (!_pending.TryAdd(id, pending))
             throw new CodexAppServerProtocolException($"Duplicate client request id {id}.");
         InterlockedExtensions.Max(ref _highestIssuedId, id);
-
         try
         {
-            await WriteLineAsync(request, cancellationToken).ConfigureAwait(false);
-        }
-        catch (Exception exception) when (exception is IOException or ObjectDisposedException)
-        {
-            Fail(new CodexAppServerTransportException(
-                "Failed to write to Codex App Server.",
-                responseBytesObserved: false,
-                exception));
-        }
-
-        using var timers = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-        try
-        {
-            var requestTimeout = Task.Delay(_limits.RequestTimeout, timers.Token);
-            var idleTimeout = WaitForIdleTimeoutAsync(pending, timers.Token);
-            var completed = await Task.WhenAny(pending.Completion.Task, requestTimeout, idleTimeout)
-                .ConfigureAwait(false);
-
-            if (completed == pending.Completion.Task)
-                return await pending.Completion.Task.ConfigureAwait(false);
-
-            if (cancellationToken.IsCancellationRequested)
+            var writeAttempt = new WriteAttempt();
+            using var deadline = new CancellationTokenSource(_limits.RequestTimeout);
+            using var operation = CancellationTokenSource.CreateLinkedTokenSource(
+                cancellationToken,
+                deadline.Token,
+                _lifetime.Token);
+            try
             {
-                var canceled = new OperationCanceledException(cancellationToken);
-                Fail(canceled);
-                throw canceled;
-            }
+                await WriteLineAsync(request, writeAttempt, operation.Token).ConfigureAwait(false);
+                var idleTimeout = WaitForIdleTimeoutAsync(pending, operation.Token);
+                var completed = await Task.WhenAny(pending.Completion.Task, idleTimeout)
+                    .ConfigureAwait(false);
 
-            var timeout = new CodexAppServerTimeoutException(
-                completed == requestTimeout
-                    ? CodexAppServerTimeoutKind.Request
-                    : CodexAppServerTimeoutKind.Idle);
-            Fail(timeout);
-            throw timeout;
+                if (pending.Completion.Task.IsCompleted)
+                    return await pending.Completion.Task.ConfigureAwait(false);
+
+                await completed.ConfigureAwait(false);
+                FailForAbandonedRequest("Codex App Server request exceeded the idle timeout.");
+                throw new CodexAppServerTimeoutException(CodexAppServerTimeoutKind.Idle);
+            }
+            catch (OperationCanceledException) when (deadline.IsCancellationRequested)
+            {
+                FailForAbandonedRequest("Codex App Server request deadline expired.");
+                throw new CodexAppServerTimeoutException(CodexAppServerTimeoutKind.Request);
+            }
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+            {
+                if (writeAttempt.FrameStarted || pending.ResponseBytesObserved)
+                    FailForAbandonedRequest("Codex App Server request was canceled after framing began.");
+                throw;
+            }
+            catch (OperationCanceledException) when (_lifetime.IsCancellationRequested)
+            {
+                ThrowIfFailed();
+                throw;
+            }
+            catch (Exception exception) when (exception is IOException or ObjectDisposedException)
+            {
+                var transport = new CodexAppServerTransportException(
+                    "Failed to write to Codex App Server.",
+                    responseBytesObserved: pending.ResponseBytesObserved,
+                    exception);
+                Fail(transport);
+                throw transport;
+            }
         }
         finally
         {
-            timers.Cancel();
             _pending.TryRemove(id, out _);
         }
     }
 
-    public Task SendNotificationAsync(byte[] notification, CancellationToken cancellationToken) =>
-        WriteLineAsync(notification, cancellationToken);
+    public async Task SendNotificationAsync(
+        byte[] notification,
+        CancellationToken cancellationToken)
+    {
+        var writeAttempt = new WriteAttempt();
+        using var deadline = new CancellationTokenSource(_limits.RequestTimeout);
+        using var operation = CancellationTokenSource.CreateLinkedTokenSource(
+            cancellationToken,
+            deadline.Token,
+            _lifetime.Token);
+        try
+        {
+            await WriteLineAsync(notification, writeAttempt, operation.Token).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException) when (deadline.IsCancellationRequested)
+        {
+            FailForAbandonedRequest("Codex App Server notification deadline expired.");
+            throw new CodexAppServerTimeoutException(CodexAppServerTimeoutKind.Request);
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            if (writeAttempt.FrameStarted)
+                FailForAbandonedRequest("Codex App Server notification was canceled after framing began.");
+            throw;
+        }
+    }
 
-    private async Task WriteLineAsync(byte[] message, CancellationToken cancellationToken)
+    private async Task WriteLineAsync(
+        byte[] message,
+        WriteAttempt attempt,
+        CancellationToken cancellationToken)
     {
         await _writeGate.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
         {
             ThrowIfFailed();
-            await _process.StandardInput.BaseStream.WriteAsync(message, cancellationToken)
+            attempt.FrameStarted = true;
+            await _process.StandardInput.WriteAsync(message, cancellationToken)
                 .ConfigureAwait(false);
-            await _process.StandardInput.BaseStream.WriteAsync(NewLine, cancellationToken)
+            await _process.StandardInput.WriteAsync(NewLine, cancellationToken)
                 .ConfigureAwait(false);
-            await _process.StandardInput.BaseStream.FlushAsync(cancellationToken)
+            await _process.StandardInput.FlushAsync(cancellationToken)
                 .ConfigureAwait(false);
         }
         finally
@@ -325,6 +443,11 @@ internal sealed class CodexAppServerSession : IAsyncDisposable
             _writeGate.Release();
         }
     }
+
+    private void FailForAbandonedRequest(string message) =>
+        Fail(new CodexAppServerTransportException(
+            message,
+            responseBytesObserved: false));
 
     private async Task WaitForIdleTimeoutAsync(
         PendingRequest pending,
@@ -348,7 +471,7 @@ internal sealed class CodexAppServerSession : IAsyncDisposable
         {
             while (true)
             {
-                var read = await _process.StandardOutput.BaseStream
+                var read = await _process.StandardOutput
                     .ReadAsync(readBuffer, _lifetime.Token)
                     .ConfigureAwait(false);
                 if (read == 0)
@@ -451,6 +574,7 @@ internal sealed class CodexAppServerSession : IAsyncDisposable
         {
             await WriteLineAsync(
                     CodexAppServerProtocol.CreateServerRequestRefusal(id),
+                    new WriteAttempt(),
                     _lifetime.Token)
                 .ConfigureAwait(false);
         }
@@ -473,7 +597,7 @@ internal sealed class CodexAppServerSession : IAsyncDisposable
         {
             while (true)
             {
-                var read = await _process.StandardError.BaseStream
+                var read = await _process.StandardError
                     .ReadAsync(buffer, _lifetime.Token)
                     .ConfigureAwait(false);
                 if (read == 0)
@@ -512,7 +636,7 @@ internal sealed class CodexAppServerSession : IAsyncDisposable
         }
 
         _lifetime.Cancel();
-        TryKillProcess();
+        RequestProcessTreeKill();
     }
 
     private void ThrowIfFailed()
@@ -524,60 +648,116 @@ internal sealed class CodexAppServerSession : IAsyncDisposable
             throw failure;
     }
 
-    private void TryKillProcess()
+    private void RequestProcessTreeKill()
     {
         try
         {
             if (!_process.HasExited)
-                _process.Kill(entireProcessTree: true);
+                _process.KillProcessTree();
         }
-        catch (InvalidOperationException)
+        catch (Exception exception) when (exception is InvalidOperationException
+                                          or System.ComponentModel.Win32Exception
+                                          or NotSupportedException)
         {
-        }
-        catch (System.ComponentModel.Win32Exception)
-        {
+            lock (_failureGate)
+            {
+                _killFailure ??= new CodexAppServerCleanupException(
+                    "Failed to kill the Codex App Server process tree.",
+                    exception);
+            }
         }
     }
 
-    public async ValueTask DisposeAsync()
+    public ValueTask DisposeAsync()
     {
-        if (Interlocked.Exchange(ref _disposed, 1) != 0)
-            return;
+        lock (_disposeGate)
+        {
+            _disposeTask ??= DisposeCoreAsync();
+            return new ValueTask(_disposeTask);
+        }
+    }
 
+    private async Task DisposeCoreAsync()
+    {
         _lifetime.Cancel();
-        try
-        {
-            _process.StandardInput.Close();
-        }
-        catch (InvalidOperationException)
-        {
-        }
-        TryKillProcess();
+        CodexAppServerCleanupException? cleanupFailure = null;
 
+        using (var writerDeadline = new CancellationTokenSource(_limits.CleanupTimeout))
+        {
+            try
+            {
+                await _writeGate.WaitAsync(writerDeadline.Token).ConfigureAwait(false);
+                _writeGate.Release();
+            }
+            catch (OperationCanceledException) when (writerDeadline.IsCancellationRequested)
+            {
+                cleanupFailure = new CodexAppServerCleanupException(
+                    "Codex App Server stdin writer did not stop by the cleanup deadline.");
+            }
+        }
         try
         {
-            await _process.WaitForExitAsync().WaitAsync(TimeSpan.FromSeconds(2)).ConfigureAwait(false);
+            _process.CloseStandardInput();
         }
-        catch (Exception exception) when (exception is InvalidOperationException or TimeoutException)
+        catch (Exception exception) when (exception is InvalidOperationException or IOException)
         {
-            TryKillProcess();
+            cleanupFailure ??= new CodexAppServerCleanupException(
+                "Failed to close Codex App Server stdin.",
+                exception);
+        }
+        RequestProcessTreeKill();
+
+        lock (_failureGate)
+            cleanupFailure ??= _killFailure;
+
+        using var exitDeadline = new CancellationTokenSource(_limits.CleanupTimeout);
+        try
+        {
+            await _process.WaitForExitAsync(exitDeadline.Token).ConfigureAwait(false);
+            if (!_process.HasExited)
+            {
+                cleanupFailure ??= new CodexAppServerCleanupException(
+                    "Codex App Server process did not exit by the cleanup deadline.");
+            }
+        }
+        catch (OperationCanceledException) when (exitDeadline.IsCancellationRequested)
+        {
+            cleanupFailure ??= new CodexAppServerCleanupException(
+                "Codex App Server process did not exit by the cleanup deadline.");
+        }
+        catch (Exception exception) when (exception is InvalidOperationException
+                                          or System.ComponentModel.Win32Exception)
+        {
+            cleanupFailure ??= new CodexAppServerCleanupException(
+                "Failed while waiting for the Codex App Server process to exit.",
+                exception);
         }
 
         var drains = new[] { _stdoutDrain, _stderrDrain }.Where(task => task is not null).Cast<Task>();
         try
         {
-            await Task.WhenAll(drains).WaitAsync(TimeSpan.FromSeconds(2)).ConfigureAwait(false);
+            await Task.WhenAll(drains).WaitAsync(_limits.CleanupTimeout).ConfigureAwait(false);
         }
         catch (Exception exception) when (exception is OperationCanceledException or TimeoutException)
         {
+            cleanupFailure ??= new CodexAppServerCleanupException(
+                "Codex App Server output drains did not stop by the cleanup deadline.",
+                exception);
         }
 
         foreach (var pending in _pending.Values)
             pending.Completion.TrySetException(new ObjectDisposedException(nameof(CodexAppServerClient)));
         _pending.Clear();
-        _writeGate.Dispose();
         _lifetime.Dispose();
         _process.Dispose();
+
+        if (cleanupFailure is not null)
+            throw cleanupFailure;
+    }
+
+    private sealed class WriteAttempt
+    {
+        public bool FrameStarted { get; set; }
     }
 
     private sealed class PendingRequest
