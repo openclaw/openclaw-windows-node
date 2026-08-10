@@ -10,13 +10,15 @@ public class MxcCommandRunnerTests
 {
     private static SettingsData NewSettings(
         bool sandboxEnabled = true,
-        bool blockHostFallbackWhenMxcUnavailable = false)
+        bool blockHostFallbackWhenMxcUnavailable = false,
+        bool allowWindowsUi = false)
     {
         return new SettingsData
         {
             SystemRunSandboxEnabled = sandboxEnabled,
             SystemRunBlockHostFallbackWhenMxcUnavailable = blockHostFallbackWhenMxcUnavailable,
             SystemRunAllowOutbound = false,
+            SystemRunAllowWindowsUi = allowWindowsUi,
         };
     }
 
@@ -965,6 +967,22 @@ public class MxcCommandRunnerTests
     }
 
     [Fact]
+    public async Task RunAsync_SandboxRequestAllowsWindowsUiWhenOperatorOptsIn()
+    {
+        var executor = new FakeSandboxExecutor();
+        var fallback = new FakeCommandRunner();
+        var runner = NewRunner(
+            executor,
+            fallback,
+            NewSettings(sandboxEnabled: true, allowWindowsUi: true));
+
+        await runner.RunAsync(new CommandRequest { Command = "Write-Output hi", Shell = "powershell" });
+
+        Assert.NotNull(executor.LastRequest);
+        Assert.True(executor.LastRequest!.Policy.Ui!.AllowWindows);
+    }
+
+    [Fact]
     public async Task RunAsync_HostFallbackUsesNormalizedEffectiveShellForUnsupportedExplicitShell()
     {
         var executor = new FakeSandboxExecutor();
@@ -988,6 +1006,7 @@ public class MxcCommandRunnerTests
         var fallback = new FakeCommandRunner();
         var settings = NewSettings(sandboxEnabled: true);
         settings.SystemRunAllowOutbound = true;
+        settings.SystemRunAllowWindowsUi = true;
         settings.SandboxClipboard = SandboxClipboardMode.Both;
         settings.SandboxDocumentsAccess = SandboxFolderAccess.ReadOnly;
         settings.SandboxCustomFolders = new()
@@ -1002,12 +1021,14 @@ public class MxcCommandRunnerTests
         var requestLog = Assert.Single(logger.DebugMessages, m => m.Contains("system.run sandbox request", StringComparison.Ordinal));
         Assert.Contains("sandboxSettings={enabled=True", requestLog);
         Assert.Contains("allowOutbound=True", requestLog);
+        Assert.Contains("allowWindowsUi=True", requestLog);
         Assert.Contains("clipboard=Both", requestLog);
         Assert.Contains("customFolderCount=1", requestLog);
         Assert.Contains("settingsDirectoryPath=<set>", requestLog);
         Assert.Contains("policy={readonlyCount=", requestLog);
         Assert.Contains("readwriteCount=1", requestLog);
         Assert.Contains("networkAllowOutbound=True", requestLog);
+        Assert.Contains("uiAllowWindows=True", requestLog);
         Assert.DoesNotContain("sandboxSettingsJson=", requestLog);
         Assert.DoesNotContain("policyJson=", requestLog);
         Assert.DoesNotContain("C:\\Code\\repo", requestLog, StringComparison.OrdinalIgnoreCase);

@@ -386,6 +386,36 @@
                     </StackPanel>
                 </Expander>
 
+                <!-- Windows UI system calls -->
+                <Expander IsExpanded="True" HorizontalAlignment="Stretch" HorizontalContentAlignment="Stretch">
+                    <Expander.Header>
+                        <TextBlock x:Uid="SandboxPage_CommandCompatibility"
+                                   Text="🪟 Command compatibility"
+                                   Style="{StaticResource BodyStrongTextBlockStyle}" />
+                    </Expander.Header>
+                    <StackPanel Spacing="12" Padding="4">
+                        <ToggleSwitch x:Uid="SandboxPage_AllowWindowsUi"
+                                      x:Name="WindowsUiToggle"
+                                      AutomationProperties.AutomationId="SandboxWindowsUiToggle"
+                                      AutomationProperties.Name="Allow Windows UI APIs for sandboxed commands"
+                                      Header="Allow Windows UI APIs"
+                                      OffContent="Off: blocks Win32k system calls"
+                                      OnContent="On: PowerShell and similar tools can start"
+                                      Toggled="OnWindowsUiToggled" />
+                        <TextBlock x:Uid="SandboxPage_WindowsUiCompatibilityDescription"
+                                   Text="PowerShell, whoami, tasklist, and many other console tools use Windows UI APIs during startup."
+                                   TextWrapping="Wrap"
+                                   Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                        <InfoBar x:Uid="SandboxPage_WindowsUiWarning"
+                                 x:Name="WindowsUiWarningBar"
+                                 IsOpen="False"
+                                 IsClosable="False"
+                                 Severity="Warning"
+                                 Title="Win32k boundary disabled"
+                                 Message="File, network, clipboard, timeout, and command approval controls still apply, but Win32k system calls are allowed." />
+                    </StackPanel>
+                </Expander>
+
                 <!-- Limits -->
                 <Expander IsExpanded="False" HorizontalAlignment="Stretch" HorizontalContentAlignment="Stretch">
                     <Expander.Header>

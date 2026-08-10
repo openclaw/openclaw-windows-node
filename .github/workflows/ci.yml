@@ -423,7 +423,7 @@ jobs:
         }
         if ("${{ matrix.name }}" -eq "setup-connect") {
           $mxcProofNames = @(
-            "RealGateway_SystemRun_ExecutesThroughWindowsNodeMxcSandbox",
+            "RealGateway_SystemRun_WithWindowsUiAccess_ExecutesPowerShellThroughMxcSandbox",
             "RealGateway_SystemRun_BlocksWritesToTrayDataDirectoryInMxcSandbox"
           )
 

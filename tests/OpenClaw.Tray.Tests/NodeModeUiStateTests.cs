@@ -175,6 +175,17 @@ public sealed class NodeModeUiStateTests
     }
 
     [Fact]
+    public void NodeService_MxcSettingsSnapshotIncludesWindowsUiAccess()
+    {
+        var service = ReadSource("src", "OpenClaw.Tray.WinUI", "Services", "NodeService.cs");
+        var snapshot = ExtractMethodBody(service, "SnapshotSettings");
+
+        Assert.Contains(
+            "SystemRunAllowWindowsUi = _settings.SystemRunAllowWindowsUi",
+            snapshot);
+    }
+
+    [Fact]
     public void NewNodeStateStrings_ExistInEnUsResources()
     {
         var resw = ReadSource(

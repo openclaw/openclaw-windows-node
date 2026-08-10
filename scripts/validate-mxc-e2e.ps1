@@ -100,7 +100,7 @@ function Assert-GatewayMxcProofsPassed {
     param([Parameter(Mandatory = $true)][xml]$Trx)
 
     $expectedProofs = @(
-        "RealGateway_SystemRun_ExecutesThroughWindowsNodeMxcSandbox",
+        "RealGateway_SystemRun_WithWindowsUiAccess_ExecutesPowerShellThroughMxcSandbox",
         "RealGateway_SystemRun_BlocksWritesToTrayDataDirectoryInMxcSandbox"
     )
     $results = Get-TrxUnitTestResults -Trx $Trx

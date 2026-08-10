@@ -848,6 +848,38 @@ public class MxcConfigBuilderTests
         Assert.Contains("PowerShell-family shells require UI access", ex.Message);
     }
 
+    [Theory]
+    [InlineData("powershell.exe")]
+    [InlineData("C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe")]
+    [InlineData("pwsh.exe")]
+    public void Build_PowerShellFamilyDirectArgv_WhenUiDenied_FailsClosed(string executable)
+    {
+        using var argsDoc = JsonDocument.Parse(
+            JsonSerializer.Serialize(new { argv = new[] { executable, "-NoProfile", "-Command", "Write-Output hi" } }));
+        var request = RequestFor(BalancedPolicy()) with { Args = argsDoc.RootElement.Clone() };
+
+        var ex = Assert.Throws<NotSupportedException>(() => BuildConfig(request, pathEnvVar: ""));
+
+        Assert.Contains("PowerShell-family shells require UI access", ex.Message);
+    }
+
+    [Fact]
+    public void Build_PowerShellDirectArgv_WhenPolicyAllowsWindows_EnablesDesktopIsolation()
+    {
+        using var argsDoc = JsonDocument.Parse(
+            """{"argv":["powershell.exe","-NoProfile","-Command","Write-Output hi"]}""");
+        var policy = BalancedPolicy() with
+        {
+            Ui = new UiPolicy(AllowWindows: true, Clipboard: ClipboardPolicy.None, AllowInputInjection: false),
+        };
+        var request = RequestFor(policy) with { Args = argsDoc.RootElement.Clone() };
+
+        var config = BuildConfig(request, pathEnvVar: "");
+
+        Assert.False(config.Ui!.Disable);
+        Assert.Equal("desktop", config.ProcessContainer!.Ui!.Isolation);
+    }
+
     [Fact]
     public void Build_UnsupportedShell_FailsClosedBeforeCommandLineFallback()
     {

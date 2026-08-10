@@ -21,9 +21,10 @@ namespace OpenClaw.Shared.Mxc;
 /// credentials, ElevenLabs key), <c>~/.ssh</c>, and the common browser profile
 /// roots (Chrome / Edge / Firefox / Brave). Always blocked regardless of grants.</item>
 /// <item><c>network.allowOutbound</c> — bound by <see cref="SettingsData.SystemRunAllowOutbound"/>.</item>
-/// <item><c>ui</c> — default-deny in base policy. PowerShell-family shells
-/// need an explicit <c>allowWindows</c> policy on MXC 0.7 and fail closed under
-/// the default UI-deny policy.</item>
+/// <item><c>ui</c> — Win32k access is bound by
+/// <see cref="SettingsData.SystemRunAllowWindowsUi"/> and remains denied by
+/// default. PowerShell-family shells and many console utilities require this
+/// opt-in on MXC 0.7.</item>
 /// </list>
 /// </remarks>
 public static class MxcPolicyBuilder
@@ -114,7 +115,7 @@ public static class MxcPolicyBuilder
                 // exposed: MXC team confirmed only internetClient is validated today.
                 AllowLocalNetwork: false),
             Ui: new UiPolicy(
-                AllowWindows: false,
+                AllowWindows: settings.SystemRunAllowWindowsUi,
                 Clipboard: MapClipboard(settings.SandboxClipboard),
                 AllowInputInjection: false),
             TimeoutMs: settings.SandboxTimeoutMs > 0 ? settings.SandboxTimeoutMs : null);

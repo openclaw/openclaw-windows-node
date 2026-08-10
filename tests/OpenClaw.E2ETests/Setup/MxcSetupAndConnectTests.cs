@@ -24,7 +24,7 @@ public sealed class MxcSetupAndConnectTests
     }
 
     [MxcE2EFact]
-    public async Task RealGateway_SystemRun_ExecutesThroughWindowsNodeMxcSandbox()
+    public async Task RealGateway_SystemRun_WithWindowsUiAccess_ExecutesPowerShellThroughMxcSandbox()
     {
         const string marker = "OPENCLAW_GATEWAY_SYSTEM_RUN_MXC_OK";
 
@@ -35,14 +35,14 @@ public sealed class MxcSetupAndConnectTests
         var env = GatewayTokenEnv(gateway.SharedGatewayToken);
         var nodeId = _fixture.ReadActiveGatewayDeviceId();
         var logCursor = GetTrayLogCursor();
-        var commandText = $"echo {marker}";
+        var commandText = $"Write-Output '{marker}'";
         var invokeParams = JsonSerializer.Serialize(new
         {
             nodeId,
             command = "system.run",
             @params = new
             {
-                command = new[] { "cmd.exe", "/d", "/s", "/c", commandText },
+                command = new[] { "powershell.exe", "-NoProfile", "-Command", commandText },
                 rawCommand = commandText,
                 timeoutMs = SystemRunProofTimeoutMs
             },
@@ -85,7 +85,8 @@ public sealed class MxcSetupAndConnectTests
             "[mxc] system.run sandbox request",
             "executor=mxc-direct-appc",
             "contained=True",
-            "shell=<direct-argv>");
+            "shell=<direct-argv>",
+            "uiAllowWindows=True");
         var resultLog = await WaitForTrayLogLineContainingAsync(
             TimeSpan.FromSeconds(30),
             logCursor,

@@ -76,11 +76,15 @@ public static class MxcConfigBuilder
         if (args.DirectArgv is null)
         {
             shell = NormalizeSupportedShell(args.Shell);
-            if (IsPowerShellFamilyShell(shell) && policy?.Ui?.AllowWindows != true)
-            {
-                throw new NotSupportedException(
-                    "PowerShell-family shells require UI access with the Windows MXC 0.7 processcontainer backend.");
-            }
+        }
+
+        var requiresWindowsUi = args.DirectArgv is { Count: > 0 }
+            ? IsPowerShellFamilyExecutable(args.DirectArgv[0])
+            : IsPowerShellFamilyShell(shell!);
+        if (requiresWindowsUi && policy?.Ui?.AllowWindows != true)
+        {
+            throw new NotSupportedException(
+                "PowerShell-family shells require UI access with the Windows MXC 0.7 processcontainer backend.");
         }
 
         if (request.Env is { Count: > 0 })
@@ -517,7 +521,7 @@ public static class MxcConfigBuilder
         if (string.IsNullOrWhiteSpace(executable))
             return false;
 
-        var fileName = Path.GetFileName(executable.Trim());
+        var fileName = GetWindowsExecutableFileName(executable);
         return string.Equals(fileName, "cmd", StringComparison.OrdinalIgnoreCase)
             || string.Equals(fileName, "cmd.exe", StringComparison.OrdinalIgnoreCase);
     }
@@ -565,6 +569,25 @@ public static class MxcConfigBuilder
     {
         var normalized = shell.Trim().ToLowerInvariant();
         return normalized is "powershell" or "pwsh";
+    }
+
+    private static bool IsPowerShellFamilyExecutable(string executable)
+    {
+        if (string.IsNullOrWhiteSpace(executable))
+            return false;
+
+        var fileName = GetWindowsExecutableFileName(executable);
+        var stem = fileName.EndsWith(".exe", StringComparison.OrdinalIgnoreCase)
+            ? fileName[..^4]
+            : fileName;
+        return IsPowerShellFamilyShell(stem);
+    }
+
+    private static string GetWindowsExecutableFileName(string executable)
+    {
+        var normalized = executable.Trim().Replace('\\', '/');
+        var separator = normalized.LastIndexOf('/');
+        return separator >= 0 ? normalized[(separator + 1)..] : normalized;
     }
 
     private static string NormalizeSupportedShell(string shell)
