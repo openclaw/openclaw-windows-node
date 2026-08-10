@@ -42,6 +42,30 @@ public sealed class CodexAppServerClientTests
     }
 
     [Fact]
+    public async Task GeneralAndCatalogFactoryRoutes_EnforceTheirOwnResponseProfiles()
+    {
+        var largeResult = BuildRawResult(1_200_000);
+        using var generalHarness = new JsonlProcessHarness("payload-response", largeResult);
+        await using var generalClient = await CodexAppServerClient.ConnectAsync(
+            new CodexLaunchPlan(Path.Combine(Path.GetTempPath(), "codex.exe")),
+            generalHarness,
+            CancellationToken.None);
+
+        var generalError = await Assert.ThrowsAsync<CodexAppServerProtocolException>(
+            () => generalClient.ListThreadsAsync(Params("general")));
+        Assert.Contains("line limit", generalError.Message, StringComparison.OrdinalIgnoreCase);
+
+        using var catalogHarness = new JsonlProcessHarness("payload-response", largeResult);
+        await using var catalogClient = await CodexAppServerClient.ConnectCatalogAsync(
+            new CodexLaunchPlan(Path.Combine(Path.GetTempPath(), "codex.exe")),
+            catalogHarness,
+            CancellationToken.None);
+
+        var catalogResult = await catalogClient.ListThreadsAsync(Params("catalog"));
+        Assert.Equal("payload", catalogResult.GetProperty("tag").GetString());
+    }
+
+    [Fact]
     public async Task ConcurrentReads_CorrelateOutOfOrderNumericResponses()
     {
         using var harness = new JsonlProcessHarness("out-of-order");
@@ -58,6 +82,26 @@ public sealed class CodexAppServerClientTests
             .ToArray();
         Assert.All(requestIds, id => Assert.Equal(JsonValueKind.Number, id.ValueKind));
         Assert.Equal(requestIds.Length, requestIds.Select(id => id.GetInt64()).Distinct().Count());
+    }
+
+    [Fact]
+    public async Task ConcurrentCatalogReads_ChargeOnlyTheirCorrelatedResponseBytes()
+    {
+        using var harness = new JsonlProcessHarness(
+            "concurrent-catalog-large",
+            BuildRawResult(20 * 1024 * 1024));
+        await using var client = await CodexAppServerClient.ConnectCatalogAsync(
+            new CodexLaunchPlan(Path.Combine(Path.GetTempPath(), "codex.exe")),
+            harness,
+            CancellationToken.None);
+        using var safety = new CancellationTokenSource(TimeSpan.FromSeconds(15));
+
+        var largeRead = client.ListThreadTurnsAsync(Params("large"), safety.Token);
+        var overlappingRead = client.ListThreadsAsync(Params("overlap"), safety.Token);
+
+        Assert.Equal("payload", (await largeRead).GetProperty("tag").GetString());
+        Assert.Equal("overlap", (await overlappingRead).GetProperty("tag").GetString());
+        Assert.False(safety.IsCancellationRequested);
     }
 
     [Fact]
@@ -253,6 +297,20 @@ public sealed class CodexAppServerClientTests
     }
 
     [Fact]
+    public async Task TransportExitAfterCompleteNotification_DoesNotRetry()
+    {
+        using var harness = new JsonlProcessHarness("notification-then-exit");
+        await using var client = await ConnectAsync(harness);
+
+        var exception = await Assert.ThrowsAsync<CodexAppServerTransportException>(
+            () => client.ListThreadsAsync(Params("notification")));
+
+        Assert.True(exception.ResponseBytesObserved);
+        Assert.Equal(1, harness.StartCount);
+        await harness.AssertAllProcessesExitedAsync();
+    }
+
+    [Fact]
     public async Task TransportExitOnSecondAttempt_IsSurfacedWithoutThirdStart()
     {
         using var harness = new JsonlProcessHarness("retry-both-attempts");
@@ -361,6 +419,17 @@ public sealed class CodexAppServerClientTests
     private static JsonElement Params(string tag) =>
         JsonSerializer.SerializeToElement(new { tag });
 
+    private static string BuildRawResult(int targetUtf8Bytes)
+    {
+        const string prefix = "{\"tag\":\"payload\",\"padding\":\"";
+        const string suffix = "\"}";
+        var paddingLength = targetUtf8Bytes - prefix.Length - suffix.Length;
+        Assert.True(paddingLength >= 0);
+        var result = prefix + new string('x', paddingLength) + suffix;
+        Assert.Equal(targetUtf8Bytes, Encoding.UTF8.GetByteCount(result));
+        return result;
+    }
+
     private static Task<CodexAppServerClient> ConnectAsync(
         JsonlProcessHarness harness,
         CodexAppServerLimits? limits = null) =>
@@ -373,7 +442,7 @@ public sealed class CodexAppServerClientTests
     private sealed class JsonlProcessHarness : ICodexAppServerProcessFactory, IDisposable
     {
         private const string Script = """
-            param([string]$Scenario, [int]$Attempt, [string]$RecordPath)
+            param([string]$Scenario, [int]$Attempt, [string]$RecordPath, [string]$PayloadPath)
             $ErrorActionPreference = 'Stop'
             function Record([string]$Kind, [string]$Value) {
               Add-Content -LiteralPath $RecordPath -Value ("$Attempt|$Kind|$Value") -Encoding utf8
@@ -391,6 +460,11 @@ public sealed class CodexAppServerClientTests
             }
             function Write-Result($Request) {
               Write-Message @{ id = [long]$Request.id; result = @{ tag = [string]$Request.params.tag } }
+            }
+            function Write-RawResult($Request) {
+              $payload = [IO.File]::ReadAllText($PayloadPath)
+              [Console]::Out.Write('{"id":' + [long]$Request.id + ',"result":' + $payload + '}' + "`n")
+              [Console]::Out.Flush()
             }
 
             $initialize = Read-Message
@@ -410,6 +484,15 @@ public sealed class CodexAppServerClientTests
               }
               Start-Sleep -Milliseconds 30
               Write-Result $first
+              Start-Sleep -Seconds 30
+              exit 0
+            }
+
+            if ($Scenario -eq 'concurrent-catalog-large') {
+              $first = Read-Message
+              $second = Read-Message
+              Write-RawResult $first
+              Write-Message @{ id = [long]$second.id; result = @{ tag = [string]$second.params.tag; padding = ('s' * 9000) } }
               Start-Sleep -Seconds 30
               exit 0
             }
@@ -459,6 +542,10 @@ public sealed class CodexAppServerClientTests
                 [Console]::Out.Flush()
                 exit 9
               }
+              'notification-then-exit' {
+                Write-Message @{ method = 'server/pulse'; params = @{ value = 1 } }
+                exit 9
+              }
               'operation-oversized' {
                 for ($i = 0; $i -lt 20; $i++) {
                   Write-Message @{ method = 'server/noise'; params = @{ payload = ('n' * 250) } }
@@ -466,6 +553,9 @@ public sealed class CodexAppServerClientTests
               }
               'response-oversized' {
                 Write-Message @{ id = [long]$request.id; result = @{ tag = [string]$request.params.tag; payload = ('r' * 250) } }
+              }
+              'payload-response' {
+                Write-RawResult $request
               }
               'grandchild' {
                 $child = Start-Process -FilePath 'powershell.exe' -ArgumentList '-NoLogo','-NoProfile','-NonInteractive','-Command','Start-Sleep -Seconds 30' -WindowStyle Hidden -PassThru
@@ -485,6 +575,7 @@ public sealed class CodexAppServerClientTests
         private readonly string _scenario;
         private readonly string _scriptPath;
         private readonly string _recordPath;
+        private readonly string _payloadPath;
         private readonly List<int> _processIds = [];
         private readonly Func<int, ICodexAppServerProcess, ICodexAppServerProcess>? _wrapProcess;
         private readonly int? _blockStartAttempt;
@@ -494,6 +585,7 @@ public sealed class CodexAppServerClientTests
 
         public JsonlProcessHarness(
             string scenario,
+            string? rawResult = null,
             Func<int, ICodexAppServerProcess, ICodexAppServerProcess>? wrapProcess = null,
             int? blockStartAttempt = null)
         {
@@ -503,7 +595,10 @@ public sealed class CodexAppServerClientTests
             Directory.CreateDirectory(_root);
             _scriptPath = Path.Combine(_root, "fake-app-server.ps1");
             _recordPath = Path.Combine(_root, "record.txt");
+            _payloadPath = Path.Combine(_root, "payload.json");
             File.WriteAllText(_scriptPath, Script);
+            if (rawResult is not null)
+                File.WriteAllText(_payloadPath, rawResult, new UTF8Encoding(encoderShouldEmitUTF8Identifier: false));
         }
 
         public int StartCount { get; private set; }
@@ -537,6 +632,7 @@ public sealed class CodexAppServerClientTests
             startInfo.ArgumentList.Add(_scenario);
             startInfo.ArgumentList.Add(StartCount.ToString(System.Globalization.CultureInfo.InvariantCulture));
             startInfo.ArgumentList.Add(_recordPath);
+            startInfo.ArgumentList.Add(_payloadPath);
             var process = Process.Start(startInfo) ?? throw new InvalidOperationException("Fake process did not start.");
             _processIds.Add(process.Id);
             var appServerProcess = new CodexAppServerProcess(process);

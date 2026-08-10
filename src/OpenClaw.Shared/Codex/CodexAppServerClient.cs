@@ -38,16 +38,24 @@ public sealed class CodexAppServerClient : IAsyncDisposable
         ConnectAsync(
             launchPlan,
             new CodexAppServerProcessFactory(),
-            CodexAppServerLimits.Catalog,
+            cancellationToken);
+
+    internal static Task<CodexAppServerClient> ConnectAsync(
+        CodexLaunchPlan launchPlan,
+        ICodexAppServerProcessFactory processFactory,
+        CancellationToken cancellationToken) =>
+        ConnectAsync(
+            launchPlan,
+            processFactory,
+            CodexAppServerLimits.Default,
             cancellationToken);
 
     internal static Task<CodexAppServerClient> ConnectCatalogAsync(
         CodexLaunchPlan launchPlan,
         CancellationToken cancellationToken = default) =>
-        ConnectAsync(
+        ConnectCatalogAsync(
             launchPlan,
             new CodexAppServerProcessFactory(),
-            CodexAppServerLimits.Default,
             cancellationToken);
 
     internal static Task<CodexAppServerClient> ConnectCatalogAsync(
@@ -331,6 +339,7 @@ internal sealed class CodexAppServerSession : IAsyncDisposable
     private Exception? _failure;
     private CodexAppServerCleanupException? _killFailure;
     private long _highestIssuedId;
+    private long _unmatchedOperationBytes;
     private Task? _disposeTask;
 
     public CodexAppServerSession(
@@ -497,11 +506,11 @@ internal sealed class CodexAppServerSession : IAsyncDisposable
                 {
                     Fail(new CodexAppServerTransportException(
                         "Codex App Server closed stdout.",
-                        responseBytesObserved: false));
+                        responseBytesObserved: lineLength > 0 || _unmatchedOperationBytes > 0));
                     return;
                 }
 
-                var segmentStart = 0;
+                ObserveOutputActivity();
                 for (var index = 0; index < read; index++)
                 {
                     var value = readBuffer[index];
@@ -513,19 +522,17 @@ internal sealed class CodexAppServerSession : IAsyncDisposable
                         continue;
                     }
 
-                    ObserveOutputBytes(index - segmentStart + 1);
-                    segmentStart = index + 1;
                     var contentLength = lineLength > 0 && lineBuffer[lineLength - 1] == (byte)'\r'
                         ? lineLength - 1
                         : lineLength;
                     if (contentLength == 0)
                         throw new CodexAppServerProtocolException("Malformed empty App Server JSONL message.");
-                    HandleMessage(CodexAppServerProtocol.ParseMessage(lineBuffer.AsSpan(0, contentLength)), contentLength);
+                    HandleMessage(
+                        CodexAppServerProtocol.ParseMessage(lineBuffer.AsSpan(0, contentLength)),
+                        contentLength,
+                        lineLength + 1);
                     lineLength = 0;
                 }
-
-                if (segmentStart < read)
-                    ObserveOutputBytes(read - segmentStart);
             }
         }
         catch (OperationCanceledException) when (_lifetime.IsCancellationRequested)
@@ -537,43 +544,53 @@ internal sealed class CodexAppServerSession : IAsyncDisposable
                 ? exception
                 : new CodexAppServerTransportException(
                     "Failed to read Codex App Server stdout.",
-                    responseBytesObserved: false,
+                    responseBytesObserved: lineLength > 0 || _unmatchedOperationBytes > 0,
                     exception));
         }
     }
 
-    private void ObserveOutputBytes(int count)
+    private void ObserveOutputActivity()
     {
         foreach (var pending in _pending.Values)
-        {
-            pending.ObserveBytes(count);
-            if (pending.OperationBytes > _limits.MaxOperationBytes)
-                throw new CodexAppServerProtocolException("Codex App Server operation byte limit exceeded.");
-        }
+            pending.ObserveActivity();
     }
 
-    private void HandleMessage(CodexAppServerMessage message, int lineBytes)
+    private void HandleMessage(
+        CodexAppServerMessage message,
+        int responseBytes,
+        int operationBytes)
     {
         if (message.Kind == CodexAppServerMessageKind.Notification)
+        {
+            ObserveUnmatchedOperationBytes(operationBytes);
             return;
+        }
 
         if (message.Kind == CodexAppServerMessageKind.ServerRequest)
         {
+            ObserveUnmatchedOperationBytes(operationBytes);
             _ = RefuseServerRequestAsync(message.Id!.Value);
             return;
         }
 
-        if (lineBytes > _limits.MaxResponseBytes)
+        if (responseBytes > _limits.MaxResponseBytes)
             throw new CodexAppServerProtocolException("Codex App Server response byte limit exceeded.");
 
         var id = message.Id!.Value;
-        if (!_pending.TryRemove(id, out var pending))
+        if (!_pending.TryGetValue(id, out var pending))
         {
             var description = id <= Volatile.Read(ref _highestIssuedId)
                 ? "duplicate response id"
                 : "unknown response id";
             throw new CodexAppServerProtocolException($"Codex App Server sent {description} {id}.");
         }
+
+        pending.ObserveBytes(_unmatchedOperationBytes + operationBytes);
+        _unmatchedOperationBytes = 0;
+        if (pending.OperationBytes > _limits.MaxOperationBytes)
+            throw new CodexAppServerProtocolException("Codex App Server operation byte limit exceeded.");
+        if (!_pending.TryRemove(id, out pending))
+            throw new CodexAppServerProtocolException($"Codex App Server sent duplicate response id {id}.");
 
         if (message.Kind == CodexAppServerMessageKind.Error)
         {
@@ -585,6 +602,19 @@ internal sealed class CodexAppServerSession : IAsyncDisposable
         }
 
         pending.Completion.TrySetResult(message.Result!.Value);
+    }
+
+    private void ObserveUnmatchedOperationBytes(int count)
+    {
+        if (_pending.IsEmpty)
+        {
+            _unmatchedOperationBytes = 0;
+            return;
+        }
+
+        _unmatchedOperationBytes += count;
+        if (_unmatchedOperationBytes > _limits.MaxOperationBytes)
+            throw new CodexAppServerProtocolException("Codex App Server operation byte limit exceeded.");
     }
 
     private async Task RefuseServerRequestAsync(long id)
@@ -794,9 +824,14 @@ internal sealed class CodexAppServerSession : IAsyncDisposable
         public TimeSpan ElapsedSinceActivity =>
             Stopwatch.GetElapsedTime(Volatile.Read(ref _lastActivity));
 
-        public void ObserveBytes(int count)
+        public void ObserveBytes(long count)
         {
             Interlocked.Add(ref _operationBytes, count);
+            ObserveActivity();
+        }
+
+        public void ObserveActivity()
+        {
             Volatile.Write(ref _lastActivity, Stopwatch.GetTimestamp());
         }
     }
