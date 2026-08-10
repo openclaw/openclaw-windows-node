@@ -61,6 +61,8 @@ public sealed class CodexSessionCatalogService
     internal const int MaxEligibilityPages = 100;
     internal const int MaxTranscriptTextLength = 1_000_000;
     internal const int MaxTranscriptPageBytes = 20 * 1024 * 1024;
+    internal const int MaxJsonRpcEnvelopeBytes = 4 * 1024;
+    internal const int MaxCatalogOperationOverheadBytes = 4 * 1024;
 
     private static readonly HashSet<string> InteractiveStringSources =
         new(StringComparer.Ordinal) { "cli", "vscode" };
@@ -372,7 +374,7 @@ public sealed class CodexSessionCatalogService
 
     private static Dictionary<string, JsonElement> ReadObject(JsonElement value, string error)
     {
-        if (value.ValueKind is JsonValueKind.Undefined or JsonValueKind.Null)
+        if (value.ValueKind == JsonValueKind.Undefined)
             return new Dictionary<string, JsonElement>(StringComparer.Ordinal);
         if (value.ValueKind != JsonValueKind.Object)
             throw new CodexSessionCatalogValidationException(error);
@@ -579,6 +581,16 @@ public sealed class CodexSessionCatalogService
                 SkipTerminalEscape(value, ref index);
                 continue;
             }
+            if (character == '\u009b')
+            {
+                SkipControlSequence(value, ref index);
+                continue;
+            }
+            if (character == '\u009d')
+            {
+                SkipOperatingSystemCommand(value, ref index);
+                continue;
+            }
             var whitespace = char.IsWhiteSpace(character) || char.IsControl(character);
             if (whitespace)
             {
@@ -601,20 +613,30 @@ public sealed class CodexSessionCatalogService
         var introducer = value[++index];
         if (introducer == '[')
         {
-            while (index + 1 < value.Length)
-            {
-                var candidate = value[++index];
-                if (candidate is >= '@' and <= '~')
-                    return;
-            }
+            SkipControlSequence(value, ref index);
             return;
         }
         if (introducer != ']')
             return;
+        SkipOperatingSystemCommand(value, ref index);
+    }
+
+    private static void SkipControlSequence(string value, ref int index)
+    {
         while (index + 1 < value.Length)
         {
             var candidate = value[++index];
-            if (candidate == '\a')
+            if (candidate is >= '@' and <= '~')
+                return;
+        }
+    }
+
+    private static void SkipOperatingSystemCommand(string value, ref int index)
+    {
+        while (index + 1 < value.Length)
+        {
+            var candidate = value[++index];
+            if (candidate is '\a' or '\u009c')
                 return;
             if (candidate == '\u001b' && index + 1 < value.Length && value[index + 1] == '\\')
             {

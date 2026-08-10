@@ -38,7 +38,26 @@ public sealed class CodexAppServerClient : IAsyncDisposable
         ConnectAsync(
             launchPlan,
             new CodexAppServerProcessFactory(),
+            CodexAppServerLimits.Catalog,
+            cancellationToken);
+
+    internal static Task<CodexAppServerClient> ConnectCatalogAsync(
+        CodexLaunchPlan launchPlan,
+        CancellationToken cancellationToken = default) =>
+        ConnectAsync(
+            launchPlan,
+            new CodexAppServerProcessFactory(),
             CodexAppServerLimits.Default,
+            cancellationToken);
+
+    internal static Task<CodexAppServerClient> ConnectCatalogAsync(
+        CodexLaunchPlan launchPlan,
+        ICodexAppServerProcessFactory processFactory,
+        CancellationToken cancellationToken) =>
+        ConnectAsync(
+            launchPlan,
+            processFactory,
+            CodexAppServerLimits.Catalog,
             cancellationToken);
 
     internal static async Task<CodexAppServerClient> ConnectAsync(

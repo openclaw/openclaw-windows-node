@@ -270,6 +270,17 @@ internal sealed record CodexAppServerLimits
         idleTimeout: TimeSpan.FromSeconds(5),
         cleanupTimeout: TimeSpan.FromSeconds(2));
 
+    public static CodexAppServerLimits Catalog { get; } = Default with
+    {
+        MaxLineBytes = CodexSessionCatalogService.MaxTranscriptPageBytes
+            + CodexSessionCatalogService.MaxJsonRpcEnvelopeBytes,
+        MaxResponseBytes = CodexSessionCatalogService.MaxTranscriptPageBytes
+            + CodexSessionCatalogService.MaxJsonRpcEnvelopeBytes,
+        MaxOperationBytes = CodexSessionCatalogService.MaxTranscriptPageBytes
+            + CodexSessionCatalogService.MaxJsonRpcEnvelopeBytes
+            + CodexSessionCatalogService.MaxCatalogOperationOverheadBytes,
+    };
+
     public CodexAppServerLimits(
         int maxLineBytes,
         int maxResponseBytes,

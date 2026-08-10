@@ -1,3 +1,5 @@
+using System.Diagnostics;
+using System.Text;
 using System.Text.Json;
 using OpenClaw.Shared.Capabilities;
 using OpenClaw.Shared.Codex;
@@ -164,6 +166,43 @@ public sealed class CodexSessionCapabilityTests
         Assert.False(response.Ok);
         Assert.Contains(expectedError, response.Error, StringComparison.Ordinal);
         Assert.Empty(client.Methods);
+    }
+
+    [Theory]
+    [InlineData("codex.appServer.threads.list.v1", "null", "Codex session catalog parameters must be an object")]
+    [InlineData("codex.appServer.threads.list.v1", "[]", "Codex session catalog parameters must be an object")]
+    [InlineData("codex.appServer.thread.turns.list.v1", "null", "Codex session read parameters must be an object")]
+    [InlineData("codex.appServer.thread.turns.list.v1", "[]", "Codex session read parameters must be an object")]
+    public async Task NullAndNonObjectParameters_AreRejectedBeforeAppServerIo(
+        string command,
+        string argsJson,
+        string expectedError)
+    {
+        var client = new RecordingCatalogClient();
+        var capability = CreateCapability(client);
+
+        var response = await ExecuteAsync(capability, command, argsJson);
+
+        Assert.False(response.Ok);
+        Assert.Equal(expectedError, response.Error);
+        Assert.Empty(client.Methods);
+    }
+
+    [Fact]
+    public async Task UndefinedParameters_RemainEquivalentToOmittedArguments()
+    {
+        var client = new RecordingCatalogClient();
+        var capability = CreateCapability(client);
+
+        var response = await capability.ExecuteAsync(new NodeInvokeRequest
+        {
+            Id = "request-1",
+            Command = "codex.appServer.threads.list.v1",
+        });
+
+        Assert.True(response.Ok, response.Error);
+        Assert.Single(client.Methods);
+        Assert.Equal(50, client.Parameters.Single().GetProperty("limit").GetInt32());
     }
 
     [Fact]
@@ -468,7 +507,10 @@ public sealed class CodexSessionCapabilityTests
                     {
                         id = ThreadId,
                         name = (string?)null,
-                        preview = "Investigate\n\u001b[31mfailed\u001b[0m\r run",
+                        preview = "Investigate\n\u001b[31mfailed\u001b[0m\r "
+                            + "\u009b32msafely\u009b0m "
+                            + "\u009dprivate terminal title\u009c"
+                            + "run",
                         cwd = new string('c', 4097),
                         status = new
                         {
@@ -489,7 +531,7 @@ public sealed class CodexSessionCapabilityTests
         Assert.True(response.Ok, response.Error);
         var session = Assert.Single(PayloadJson(response).GetProperty("sessions").EnumerateArray());
         Assert.Equal(JsonValueKind.Null, session.GetProperty("name").ValueKind);
-        Assert.Equal("Investigate failed run", session.GetProperty("fallbackName").GetString());
+        Assert.Equal("Investigate failed safely run", session.GetProperty("fallbackName").GetString());
         Assert.False(session.TryGetProperty("cwd", out _));
         Assert.Equal(16, session.GetProperty("activeFlags").GetArrayLength());
         Assert.Equal(500, session.GetProperty("modelProvider").GetString()!.Length);
@@ -531,6 +573,71 @@ public sealed class CodexSessionCapabilityTests
         Assert.Equal("Codex app-server catalog is unavailable", response.Error);
         Assert.DoesNotContain("operator", response.Error, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("transcript", response.Error, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Theory]
+    [InlineData(1_200_000, true)]
+    [InlineData(20 * 1024 * 1024, true)]
+    [InlineData((20 * 1024 * 1024) + 1, false)]
+    public async Task RealAdapter_BoundsTranscriptAfterJsonRpcEnvelopeOverhead(
+        int rawResultBytes,
+        bool expectedSuccess)
+    {
+        using var harness = new CatalogJsonlProcessHarness(
+            BuildTranscriptPage(rawResultBytes));
+        await using var client = await CodexAppServerClient.ConnectCatalogAsync(
+            new CodexLaunchPlan(Path.Combine(Path.GetTempPath(), "codex.exe")),
+            harness,
+            CancellationToken.None);
+        var capability = new CodexSessionCapability(
+            NullLogger.Instance,
+            new CodexSessionCatalogService(client));
+
+        var response = await ExecuteAsync(
+            capability,
+            "codex.appServer.thread.turns.list.v1",
+            $$"""{"threadId":"{{ThreadId}}","limit":50}""");
+
+        Assert.Equal(expectedSuccess, response.Ok);
+        Assert.Equal(
+            expectedSuccess ? null : "Codex app-server transcript is unavailable",
+            response.Error);
+        Assert.Equal(
+            ["initialize", "initialized", "thread/list", "thread/turns/list"],
+            harness.RecordedMethods());
+        Assert.DoesNotContain("thread/resume", harness.RecordedMethods());
+        Assert.DoesNotContain("turn/steer", harness.RecordedMethods());
+        Assert.DoesNotContain("turn/interrupt", harness.RecordedMethods());
+        await harness.AssertAllProcessesExitedAfterDisposalAsync(client);
+    }
+
+    [Fact]
+    public void CatalogTransportLimits_AreScopedAndIncludeSerializedJsonRpcFraming()
+    {
+        var result = Json("""{"data":[{"text":"escaped \\u009b and utf8 ☃"}]}""");
+        var framedResponse = JsonSerializer.SerializeToUtf8Bytes(new
+        {
+            id = long.MinValue,
+            result,
+        });
+        var rawResultBytes = Encoding.UTF8.GetByteCount(result.GetRawText());
+        var serializedEnvelopeBytes = framedResponse.Length - rawResultBytes;
+
+        Assert.InRange(
+            serializedEnvelopeBytes,
+            1,
+            CodexSessionCatalogService.MaxJsonRpcEnvelopeBytes);
+        Assert.Equal(1_048_576, CodexAppServerLimits.Default.MaxLineBytes);
+        Assert.Equal(
+            CodexSessionCatalogService.MaxTranscriptPageBytes
+                + CodexSessionCatalogService.MaxJsonRpcEnvelopeBytes,
+            CodexAppServerLimits.Catalog.MaxLineBytes);
+        Assert.Equal(
+            CodexAppServerLimits.Catalog.MaxLineBytes,
+            CodexAppServerLimits.Catalog.MaxResponseBytes);
+        Assert.True(
+            CodexAppServerLimits.Catalog.MaxOperationBytes
+                > CodexAppServerLimits.Catalog.MaxResponseBytes);
     }
 
     private static CodexSessionCapability CreateCapability(RecordingCatalogClient client) =>
@@ -577,6 +684,34 @@ public sealed class CodexSessionCapabilityTests
     {
         using var document = JsonDocument.Parse(json);
         return document.RootElement.Clone();
+    }
+
+    private static string BuildTranscriptPage(int targetUtf8Bytes)
+    {
+        var builder = new StringBuilder(targetUtf8Bytes);
+        builder.Append("{\"data\":[");
+        for (var index = 0; ; index++)
+        {
+            var prefix = $"{(index == 0 ? "" : ",")}{{\"id\":\"turn-{index}\",\"items\":[{{\"id\":\"item-{index}\",\"type\":\"agentMessage\",\"text\":\"";
+            const string itemSuffix = "\"}]}";
+            const string pageSuffix = "]}";
+            var remaining = targetUtf8Bytes
+                - builder.Length
+                - prefix.Length
+                - itemSuffix.Length
+                - pageSuffix.Length;
+            var textLength = Math.Min(1_000_000, remaining);
+            Assert.True(textLength >= 0, "Target transcript page is too small for its JSON structure.");
+            builder.Append(prefix);
+            builder.Append('x', textLength);
+            builder.Append(itemSuffix);
+            if (remaining <= 1_000_000)
+                break;
+        }
+        builder.Append("]}");
+        var page = builder.ToString();
+        Assert.Equal(targetUtf8Bytes, Encoding.UTF8.GetByteCount(page));
+        return page;
     }
 
     private static void AssertJsonEqual(string expectedJson, JsonElement actual)
@@ -628,6 +763,140 @@ public sealed class CodexSessionCapabilityTests
             Methods.Add(CodexAppServerProtocol.ThreadTurnsListMethod);
             Parameters.Add(parameters.Clone());
             return Task.FromResult(TurnsResponse.Clone());
+        }
+    }
+
+    private sealed class CatalogJsonlProcessHarness : ICodexAppServerProcessFactory, IDisposable
+    {
+        private const string Script = """
+            param([string]$RecordPath, [string]$PayloadPath)
+            $ErrorActionPreference = 'Stop'
+            function Read-Message {
+              $line = [Console]::In.ReadLine()
+              if ($null -eq $line) { exit 80 }
+              $message = $line | ConvertFrom-Json
+              Add-Content -LiteralPath $RecordPath -Value ([string]$message.method) -Encoding utf8
+              return $message
+            }
+            function Write-Message($Value) {
+              $json = $Value | ConvertTo-Json -Compress -Depth 10
+              [Console]::Out.WriteLine($json)
+              [Console]::Out.Flush()
+            }
+
+            $initialize = Read-Message
+            if ($initialize.method -ne 'initialize') { exit 81 }
+            Write-Message @{ id = [long]$initialize.id; result = @{} }
+            $initialized = Read-Message
+            if ($initialized.method -ne 'initialized') { exit 82 }
+            $list = Read-Message
+            if ($list.method -ne 'thread/list') { exit 83 }
+            Write-Message @{
+              id = [long]$list.id
+              result = @{
+                data = @(@{
+                  id = '123e4567-e89b-12d3-a456-426614174000'
+                  status = @{ type = 'idle' }
+                  source = 'cli'
+                })
+              }
+            }
+            $turns = Read-Message
+            if ($turns.method -ne 'thread/turns/list') { exit 84 }
+            $payload = [IO.File]::ReadAllText($PayloadPath)
+            [Console]::Out.Write('{"id":' + [long]$turns.id + ',"result":' + $payload + '}' + "`n")
+            [Console]::Out.Flush()
+            Start-Sleep -Seconds 30
+            """;
+
+        private readonly string _root = Path.Combine(
+            Path.GetTempPath(),
+            $"openclaw-codex-catalog-jsonl-{Guid.NewGuid():N}");
+        private readonly string _scriptPath;
+        private readonly string _recordPath;
+        private readonly string _payloadPath;
+        private readonly List<int> _processIds = [];
+
+        public CatalogJsonlProcessHarness(string transcriptPage)
+        {
+            Directory.CreateDirectory(_root);
+            _scriptPath = Path.Combine(_root, "fake-catalog-app-server.ps1");
+            _recordPath = Path.Combine(_root, "methods.txt");
+            _payloadPath = Path.Combine(_root, "transcript.json");
+            File.WriteAllText(_scriptPath, Script);
+            File.WriteAllText(_payloadPath, transcriptPage, new UTF8Encoding(encoderShouldEmitUTF8Identifier: false));
+        }
+
+        public ICodexAppServerProcess Start(CodexLaunchPlan launchPlan)
+        {
+            var startInfo = new ProcessStartInfo
+            {
+                FileName = "powershell.exe",
+                UseShellExecute = false,
+                RedirectStandardInput = true,
+                RedirectStandardOutput = true,
+                RedirectStandardError = true,
+                CreateNoWindow = true,
+            };
+            startInfo.ArgumentList.Add("-NoLogo");
+            startInfo.ArgumentList.Add("-NoProfile");
+            startInfo.ArgumentList.Add("-NonInteractive");
+            startInfo.ArgumentList.Add("-ExecutionPolicy");
+            startInfo.ArgumentList.Add("Bypass");
+            startInfo.ArgumentList.Add("-File");
+            startInfo.ArgumentList.Add(_scriptPath);
+            startInfo.ArgumentList.Add(_recordPath);
+            startInfo.ArgumentList.Add(_payloadPath);
+            var process = Process.Start(startInfo)
+                ?? throw new InvalidOperationException("Fake catalog App Server did not start.");
+            _processIds.Add(process.Id);
+            return new CodexAppServerProcess(process);
+        }
+
+        public IReadOnlyList<string> RecordedMethods() =>
+            File.Exists(_recordPath)
+                ? File.ReadAllLines(_recordPath).Where(value => value.Length > 0).ToArray()
+                : [];
+
+        public async Task AssertAllProcessesExitedAfterDisposalAsync(CodexAppServerClient client)
+        {
+            await client.DisposeAsync();
+            var deadline = Stopwatch.StartNew();
+            while (deadline.Elapsed < TimeSpan.FromSeconds(2) && _processIds.Any(IsProcessRunning))
+                await Task.Delay(20);
+            Assert.All(_processIds, processId =>
+                Assert.False(IsProcessRunning(processId), $"Process {processId} is still running."));
+        }
+
+        public void Dispose()
+        {
+            foreach (var processId in _processIds.Where(IsProcessRunning))
+            {
+                try
+                {
+                    using var process = Process.GetProcessById(processId);
+                    process.Kill(entireProcessTree: true);
+                    process.WaitForExit(2_000);
+                }
+                catch (ArgumentException)
+                {
+                }
+            }
+            if (Directory.Exists(_root))
+                Directory.Delete(_root, recursive: true);
+        }
+
+        private static bool IsProcessRunning(int processId)
+        {
+            try
+            {
+                using var process = Process.GetProcessById(processId);
+                return !process.HasExited;
+            }
+            catch (ArgumentException)
+            {
+                return false;
+            }
         }
     }
 }
