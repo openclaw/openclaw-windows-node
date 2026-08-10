@@ -602,6 +602,27 @@ public class MxcCommandRunnerTests
     }
 
     [Fact]
+    public async Task RunAsync_PowerShellDirectArgvUiUnsupported_ReturnsExplicitDeny()
+    {
+        var executor = new FakeSandboxExecutor
+        {
+            ThrowsArbitrary = new NotSupportedException("PowerShell-family shells require UI access"),
+        };
+        var fallback = new FakeCommandRunner();
+        var runner = NewRunner(executor, fallback, NewSettings(sandboxEnabled: true));
+
+        var result = await runner.RunAsync(new CommandRequest
+        {
+            Argv = ["powershell.exe", "-NoProfile", "-Command", "Write-Output hi"],
+        });
+
+        Assert.Equal(-1, result.ExitCode);
+        Assert.Contains("cannot execute PowerShell-family shells", result.Stderr);
+        Assert.Contains("Allow Windows UI APIs", result.Stderr);
+        Assert.Null(fallback.LastRequest);
+    }
+
+    [Fact]
     public async Task RunAsync_OtherNotSupportedException_ReturnsExplicitDeny_DoesNotFallBack()
     {
         var executor = new FakeSandboxExecutor
