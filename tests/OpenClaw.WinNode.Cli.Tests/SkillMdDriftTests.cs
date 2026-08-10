@@ -52,6 +52,27 @@ public class SkillMdDriftTests
         }
     }
 
+    [Fact]
+    public void SkillMd_documents_exactly_the_two_read_only_codex_catalog_commands()
+    {
+        var documented = ParseCommandHeadings(File.ReadAllText(LocateSkillMd()));
+        var codexCommands = documented
+            .Where(command => command.StartsWith("codex.appServer.", StringComparison.Ordinal))
+            .OrderBy(command => command, StringComparer.Ordinal)
+            .ToArray();
+
+        Assert.Equal(
+            new[]
+            {
+                "codex.appServer.thread.turns.list.v1",
+                "codex.appServer.threads.list.v1",
+            },
+            codexCommands);
+        Assert.DoesNotContain("codex.appServer.thread.resume.v1", documented);
+        Assert.DoesNotContain("codex.appServer.turn.steer.v1", documented);
+        Assert.DoesNotContain("codex.appServer.turn.interrupt.v1", documented);
+    }
+
     /// <summary>
     /// skill.md lists each command under its own H3 heading like
     /// <c>### system.notify</c>. Anything matching <c>### &lt;dotted.name&gt;</c>
@@ -100,6 +121,8 @@ public class SkillMdDriftTests
                 commands.Add(command);
             }
         }
+        commands.Add(CodexSessionCapability.ThreadsListCommand);
+        commands.Add(CodexSessionCapability.ThreadTurnsListCommand);
         return commands;
     }
 

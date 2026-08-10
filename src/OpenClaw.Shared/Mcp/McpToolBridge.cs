@@ -352,6 +352,12 @@ public class McpToolBridge
         ["tts.status"] =
             "Report TTS provider readiness. No args. Returns { configuredProvider, effectiveProvider (the provider that would run now after fallback), willFallBack (bool), providers: [{ provider ('piper'|'windows'|'elevenlabs'), readiness ('ready'|'needs-api-key'|'needs-voice'|'voice-not-downloaded'|'unavailable'), isReady (bool) }] }. Carries no PII (no voice ids, no key fragments, no device names). Requires NodeTtsEnabled.",
 
+        // codex.appServer.*
+        ["codex.appServer.threads.list.v1"] =
+            "Read-only, bounded Codex App Server thread catalog. Args: cursor (string, optional, max 4096 characters), limit (int, default 50, limit 1-100), searchTerm (string, optional, max 500 characters), cwd (string, optional, max 4096 characters). Returns { sessions, nextCursor?, backwardsCursor? } with non-archived interactive sessions only. Available in Read only and Read and steer modes. Off advertises no Codex catalog commands. Stage 0 Read and steer adds no owner controls.",
+        ["codex.appServer.thread.turns.list.v1"] =
+            "Read-only, bounded Codex App Server transcript page for a freshly eligible catalog thread. Args: threadId (UUID, required), cursor (string, optional, max 4096 characters), limit (int, default 20, limit 1-50). Returns { data, nextCursor?, backwardsCursor? }. Available in Read only and Read and steer modes. Off advertises no Codex catalog commands. Stage 0 Read and steer adds no owner controls.",
+
         // app.*
         ["app.navigate"] =
             "Navigate the companion app to a specific page (e.g., 'home', 'sessions', 'settings'). Args: page (string, required). Returns { navigated, page }.",

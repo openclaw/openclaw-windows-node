@@ -5,6 +5,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using OpenClaw.Shared;
 using OpenClaw.Shared.Capabilities;
+using OpenClaw.Shared.Codex;
 using OpenClaw.Shared.Mcp;
 using OpenClaw.Shared.Telemetry;
 using Xunit;
@@ -91,6 +92,22 @@ public class McpToolBridgeTests
             => Task.FromResult(new NodeInvokeResponse { Ok = false, Error = "cancelled" });
     }
 
+    private sealed class FailingCodexCatalogClient : ICodexSessionCatalogClient
+    {
+        private const string PrivateFailure =
+            "TRANSCRIPT_BODY_PRIVATE C:\\Users\\operator\\.codex secret conversation";
+
+        public Task<JsonElement> ListThreadsAsync(
+            JsonElement parameters,
+            CancellationToken cancellationToken = default) =>
+            throw new InvalidOperationException(PrivateFailure);
+
+        public Task<JsonElement> ListThreadTurnsAsync(
+            JsonElement parameters,
+            CancellationToken cancellationToken = default) =>
+            throw new InvalidOperationException(PrivateFailure);
+    }
+
     private static McpToolBridge CreateBridge(IReadOnlyList<INodeCapability> caps)
         => new(() => caps);
 
@@ -166,6 +183,93 @@ public class McpToolBridgeTests
 
         // Unknown commands keep the generic fallback so newly-added capabilities still render.
         Assert.Equal("custom capability: custom.unknown", byName["custom.unknown"]);
+    }
+
+    [Fact]
+    public async Task ToolsList_CodexCatalog_AdvertisesExactlyTwoBoundedReadOnlyCommands()
+    {
+        string[] commands =
+        [
+            "codex.appServer.threads.list.v1",
+            "codex.appServer.thread.turns.list.v1",
+        ];
+        var bridge = CreateBridge([new FakeCapability("codex-app-server-threads", commands)]);
+
+        var response = await bridge.HandleRequestAsync(
+            """{"jsonrpc":"2.0","id":1,"method":"tools/list"}""");
+
+        using var document = JsonDocument.Parse(response!);
+        var tools = document.RootElement.GetProperty("result").GetProperty("tools");
+        Assert.Equal(2, tools.GetArrayLength());
+        var descriptions = tools.EnumerateArray().ToDictionary(
+            tool => tool.GetProperty("name").GetString()!,
+            tool => tool.GetProperty("description").GetString()!,
+            StringComparer.Ordinal);
+        Assert.Equal(commands, descriptions.Keys);
+        Assert.Contains("read-only", descriptions[commands[0]], StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("limit 1-100", descriptions[commands[0]], StringComparison.Ordinal);
+        Assert.Contains("read-only", descriptions[commands[1]], StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("limit 1-50", descriptions[commands[1]], StringComparison.Ordinal);
+        Assert.All(
+            descriptions.Values,
+            description => Assert.Contains(
+                "Stage 0 Read and steer adds no owner controls",
+                description,
+                StringComparison.Ordinal));
+
+        var codexCommands = McpToolBridge.KnownCommands
+            .Where(command => command.StartsWith("codex.appServer.", StringComparison.Ordinal))
+            .OrderBy(command => command, StringComparer.Ordinal)
+            .ToArray();
+        Assert.Equal(commands.OrderBy(command => command, StringComparer.Ordinal), codexCommands);
+    }
+
+    [Theory]
+    [InlineData("codex.appServer.threads.list.v1", "{}", "Codex app-server catalog is unavailable")]
+    [InlineData(
+        "codex.appServer.thread.turns.list.v1",
+        "{\"threadId\":\"123e4567-e89b-12d3-a456-426614174000\"}",
+        "Codex app-server transcript is unavailable")]
+    public async Task ToolsCall_CodexAppServerFailure_UsesStablePrivateDataFreeErrorAndAudit(
+        string command,
+        string arguments,
+        string expectedError)
+    {
+        var capability = new CodexSessionCapability(
+            NullLogger.Instance,
+            new CodexSessionCatalogService(new FailingCodexCatalogClient()));
+        var bridge = CreateBridge([capability]);
+        NodeToolTelemetryCompletion? completion = null;
+        bridge.ToolTelemetryCompleted += (_, value) => completion = value;
+
+        using var argumentDocument = JsonDocument.Parse(arguments);
+        var requestBody = JsonSerializer.Serialize(new
+        {
+            jsonrpc = "2.0",
+            id = 1,
+            method = "tools/call",
+            @params = new
+            {
+                name = command,
+                arguments = argumentDocument.RootElement.Clone(),
+            },
+        });
+        var response = await bridge.HandleRequestAsync(requestBody);
+
+        using var document = JsonDocument.Parse(response!);
+        var result = document.RootElement.GetProperty("result");
+        Assert.True(result.GetProperty("isError").GetBoolean());
+        Assert.Equal(expectedError, result.GetProperty("content")[0].GetProperty("text").GetString());
+        Assert.NotNull(completion);
+        Assert.Equal(command, completion!.Command);
+        Assert.Equal(NodeToolOutcome.Failure, completion.Outcome);
+        Assert.Equal(NodeToolErrorCategory.CapabilityFailure, completion.ErrorCategory);
+
+        var exportedAudit = completion.ToString();
+        Assert.DoesNotContain("TRANSCRIPT_BODY_PRIVATE", response, StringComparison.Ordinal);
+        Assert.DoesNotContain("operator", response, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("TRANSCRIPT_BODY_PRIVATE", exportedAudit, StringComparison.Ordinal);
+        Assert.DoesNotContain("operator", exportedAudit, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]

@@ -349,6 +349,45 @@ The configured/effective view reflects configured defaults only; explicit
 `tts.speak` provider requests stay strict and may not match the default
 snapshot.
 
+## Codex App Server catalog
+
+Codex session access is opt-in and controlled only from the tray Settings UI.
+`Off` advertises neither command below. `Read only` advertises both bounded
+read commands. `Read and steer` currently advertises the same two read commands
+because Stage 0 has no owner-control endpoint. It does not expose resume, steer,
+interrupt, or any other write command.
+
+Transcript responses contain conversation content. Keep them private, request
+only the page needed, and do not paste them into logs or bug reports. Audit and
+error summaries contain command/outcome metadata only, not transcript bodies.
+
+### codex.appServer.threads.list.v1
+Read the bounded catalog of non-archived interactive Codex threads.
+
+```json
+{"cursor":"opaque cursor","limit":50,"searchTerm":"title text","cwd":"C:\\work"}
+```
+
+All fields are optional. `limit` defaults to 50 and must be from 1 through 100.
+`cursor` is opaque and limited to 4096 characters. `searchTerm` is limited to
+500 characters, and `cwd` is limited to 4096 characters. Unknown fields are
+rejected. Returns `{ "sessions": [...], "nextCursor"?: string,
+"backwardsCursor"?: string }`.
+
+### codex.appServer.thread.turns.list.v1
+Read one bounded transcript page after the thread is freshly verified as an
+eligible non-archived interactive Codex thread.
+
+```json
+{"threadId":"123e4567-e89b-12d3-a456-426614174000","cursor":"opaque cursor","limit":20}
+```
+
+`threadId` is a required UUID. `limit` defaults to 20 and must be from 1 through
+50. `cursor` is optional, opaque, and limited to 4096 characters. Unknown fields
+are rejected. Returns `{ "data": [...], "nextCursor"?: string,
+"backwardsCursor"?: string }`. The implementation also caps transcript text and
+aggregate response bytes.
+
 ## App control (app.*)
 
 Read-only and small write operations targeting the running tray. Used
