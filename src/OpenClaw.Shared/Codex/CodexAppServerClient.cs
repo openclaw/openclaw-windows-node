@@ -50,7 +50,7 @@ public sealed class CodexAppServerClient : IAsyncDisposable
             CodexAppServerLimits.Default,
             cancellationToken);
 
-    internal static Task<CodexAppServerClient> ConnectCatalogAsync(
+    public static Task<CodexAppServerClient> ConnectCatalogAsync(
         CodexLaunchPlan launchPlan,
         CancellationToken cancellationToken = default) =>
         ConnectCatalogAsync(

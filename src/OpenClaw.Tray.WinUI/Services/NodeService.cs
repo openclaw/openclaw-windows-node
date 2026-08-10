@@ -108,21 +108,9 @@ public sealed class NodeService : IDisposable, IAsyncDisposable
     private readonly Func<Uri, CancellationToken, Task<bool>>? _browserControlAuthorization;
     private string? _token;
 
-    // Authoritative capability list — populated by RegisterCapabilities and
-    // shared with both the gateway client (when present) and the MCP bridge.
-    // Holding it here lets MCP-only mode skip the gateway client entirely.
-    //
-    // Mutated on the UI thread (Connect / StartLocalOnly / Disconnect rebuild
-    // it); read by the MCP bridge on threadpool threads (every tools/list and
-    // tools/call). Every read/write goes through _capabilitiesLock so a
-    // bridge snapshot can't race a re-register.
-    private readonly List<INodeCapability> _capabilities = new();
-    private readonly object _capabilitiesLock = new();
-
-    // MCP-only capabilities — visible to local MCP clients but NOT registered
-    // on the gateway WebSocket. Used for app-level testing/control tools that
-    // should not be callable by remote agents.
-    private readonly List<INodeCapability> _mcpOnlyCapabilities = new();
+    // Canonical capability storage and transport publication live in the
+    // registry. NodeService retains capability construction and UI wiring.
+    private readonly NodeCapabilityRegistry _capabilityRegistry;
 
     // Serializes AttachClient ↔ DisconnectAsync so a reconnect that overlaps a
     // disconnect can't leave stale subscriptions on an old client or double-
@@ -222,6 +210,7 @@ public sealed class NodeService : IDisposable, IAsyncDisposable
         _browserControlAuthorization = browserControlAuthorization;
         _execApprovalsStore = execApprovalsStore;
         _settings = settings;
+        _capabilityRegistry = new NodeCapabilityRegistry(logger);
         _enableMcpServer = enableMcpServer;
         _screenCaptureService = new ScreenCaptureService(logger);
         _screenRecordingService = new ScreenRecordingService(logger);
@@ -283,7 +272,7 @@ public sealed class NodeService : IDisposable, IAsyncDisposable
             DetachClientHandlers(previous);
         }
 
-        lock (_capabilitiesLock) { _capabilities.Clear(); }
+        _capabilityRegistry.Clear();
 
         // Close canvas window
         if (_canvasWindow != null && !_canvasWindow.IsClosed)
@@ -301,13 +290,7 @@ public sealed class NodeService : IDisposable, IAsyncDisposable
     
     private void RegisterCapabilities()
     {
-        // Hold the lock across the entire rebuild. The body is sync construction
-        // (no awaits), so the lock is held briefly and an MCP tools/list arriving
-        // mid-rebuild waits for a consistent snapshot rather than seeing a half-
-        // populated list.
-        lock (_capabilitiesLock)
-        {
-        _capabilities.Clear();
+        var capabilities = new List<INodeCapability>();
 
         // System capability (notifications + command execution). The
         // "Run system tools" toggle gates the run/run.prepare commands
@@ -326,7 +309,7 @@ public sealed class NodeService : IDisposable, IAsyncDisposable
             _systemCapability.SetApprovalsStore(_execApprovalsStore);
         _systemCapability.SetV2Handler(_execApprovalsV2Handler ?? ExecApprovalV2NullHandler.Instance);
 
-        Register(_systemCapability);
+        capabilities.Add(_systemCapability);
 
         if (NodeCapabilityGating.ShouldRegisterCanvas(_settings))
         {
@@ -340,7 +323,7 @@ public sealed class NodeService : IDisposable, IAsyncDisposable
             _canvasCapability.A2UIResetRequested += OnCanvasA2UIReset;
             _canvasCapability.A2UIDumpRequested += OnCanvasA2UIDumpAsync;
             _canvasCapability.CapsRequested += OnCanvasCapsAsync;
-            Register(_canvasCapability);
+            capabilities.Add(_canvasCapability);
         }
 
         if (NodeCapabilityGating.ShouldRegisterScreen(_settings))
@@ -348,7 +331,7 @@ public sealed class NodeService : IDisposable, IAsyncDisposable
             _screenCapability = new ScreenCapability(_logger);
             _screenCapability.CaptureRequested += OnScreenCapture;
             _screenCapability.RecordRequested += OnScreenRecord;
-            Register(_screenCapability);
+            capabilities.Add(_screenCapability);
         }
 
         if (NodeCapabilityGating.ShouldRegisterCamera(_settings))
@@ -357,14 +340,14 @@ public sealed class NodeService : IDisposable, IAsyncDisposable
             _cameraCapability.ListRequested += OnCameraList;
             _cameraCapability.SnapRequested += OnCameraSnap;
             _cameraCapability.ClipRequested += OnCameraClip;
-            Register(_cameraCapability);
+            capabilities.Add(_cameraCapability);
         }
 
         if (NodeCapabilityGating.ShouldRegisterLocation(_settings))
         {
             _locationCapability = new LocationCapability(_logger);
             _locationCapability.GetRequested += async (args) => await GetLocationAsync(args);
-            Register(_locationCapability);
+            capabilities.Add(_locationCapability);
         }
 
         if (NodeCapabilityGating.ShouldRegisterTts(_settings))
@@ -374,7 +357,7 @@ public sealed class NodeService : IDisposable, IAsyncDisposable
             _ttsCapability = new TtsCapability(_logger);
             _ttsCapability.SpeakRequested += OnTtsSpeakAsync;
             _ttsCapability.StatusRequested += OnTtsStatusAsync;
-            Register(_ttsCapability);
+            capabilities.Add(_ttsCapability);
         }
 
         if (NodeCapabilityGating.ShouldRegisterStt(_settings))
@@ -392,7 +375,7 @@ public sealed class NodeService : IDisposable, IAsyncDisposable
             _sttCapability.TranscribeRequested += OnSttTranscribeAsync;
             _sttCapability.ListenRequested += OnSttListenAsync;
             _sttCapability.StatusRequested += OnSttStatusAsync;
-            Register(_sttCapability);
+            capabilities.Add(_sttCapability);
         }
 
         // Device metadata/status capability - dispose previous provider on re-registration
@@ -400,7 +383,7 @@ public sealed class NodeService : IDisposable, IAsyncDisposable
         _deviceStatusProvider = new DeviceStatusProvider(_logger);
         _deviceStatusProvider.StartCpuSampling();
         _deviceCapability = new DeviceCapability(_logger, _deviceStatusProvider);
-        Register(_deviceCapability);
+        capabilities.Add(_deviceCapability);
 
         // BrowserProxy talks to the HTTP/browser-control surface, which expects
         // the shared gateway token rather than the node WebSocket device token.
@@ -438,7 +421,7 @@ public sealed class NodeService : IDisposable, IAsyncDisposable
                 sshTunnelLocalPort: tunnelState.LocalPort,
                 allowGatewayPortFallback: tunnelState.AllowGatewayPortFallback,
                 authorizeEndpointAsync: _browserControlAuthorization);
-            Register(_browserProxyCapability);
+            capabilities.Add(_browserProxyCapability);
         }
         else if (browserProxyBlock != BrowserProxyActivation.RegistrationBlock.ToggleDisabled)
         {
@@ -456,32 +439,14 @@ public sealed class NodeService : IDisposable, IAsyncDisposable
                 _nodeClient.SetPermission("screen.record", true);
         }
 
-        _logger.Info($"Capabilities registered: {string.Join(", ", _capabilities.Select(c => c.Category).Distinct(StringComparer.OrdinalIgnoreCase))} ({_capabilities.Count} caps)");
-        } // end lock
+        var snapshot = _capabilityRegistry.Rebuild(
+            capabilities,
+            _settings?.CodexSessionAccess ?? OpenClaw.Shared.Codex.CodexSessionAccessMode.Off);
+        _capabilityRegistry.RegisterGateway(_nodeClient, _logger);
+        _logger.Info($"Capabilities registered: {string.Join(", ", snapshot.Select(c => c.Category).Distinct(StringComparer.OrdinalIgnoreCase))} ({snapshot.Count} caps)");
 
         StartMcpServer();
     }
-
-    /// <summary>
-    /// Register one capability with both NodeService and (when present) the
-    /// gateway client. Single seam so adding a new capability touches one
-    /// site and is exposed by every transport (gateway + MCP) automatically.
-    /// </summary>
-    private void Register(INodeCapability capability)
-    {
-        _capabilities.Add(capability);
-        if (IsLocalOnlyCapability(capability))
-        {
-            _logger.Warn($"Capability {capability.Category} contains local-only commands and will not be registered with the gateway node transport.");
-            return;
-        }
-
-        _nodeClient?.RegisterCapability(capability);
-    }
-
-    private static bool IsLocalOnlyCapability(INodeCapability capability) =>
-        capability.Commands.Any(command =>
-            command.StartsWith("app.connection.", StringComparison.OrdinalIgnoreCase));
 
     /// <summary>
     /// Register a capability that is only visible to local MCP clients, not
@@ -489,10 +454,7 @@ public sealed class NodeService : IDisposable, IAsyncDisposable
     /// </summary>
     public void RegisterMcpOnlyCapability(INodeCapability capability)
     {
-        lock (_capabilitiesLock)
-        {
-            _mcpOnlyCapabilities.Add(capability);
-        }
+        _capabilityRegistry.RegisterMcpOnly(capability);
     }
 
     /// <summary>
@@ -564,16 +526,11 @@ public sealed class NodeService : IDisposable, IAsyncDisposable
                 _canvasWindow.SetTrustedGatewayOrigin(gatewayUrl, token, configuredGatewayUrl);
         });
 
-        bool capabilitiesBuilt;
-        lock (_capabilitiesLock)
-        {
-            capabilitiesBuilt = _capabilities.Count > 0;
-        }
-
-        _logger.Info($"[NodeService] AttachClient: capabilitiesBuilt={capabilitiesBuilt}, _capabilities.Count={_capabilities.Count}");
+        var capabilitiesBuilt = _capabilityRegistry.GetGatewaySnapshot().Count > 0;
+        _logger.Info($"[NodeService] AttachClient: capabilitiesBuilt={capabilitiesBuilt}");
 
         // Always rebuild from current settings. The previous reconnect path
-        // re-registered the cached _capabilities instances, but _capabilities
+        // re-registered cached capability instances, but the registry snapshot
         // is only cleared in DisconnectAsync — which is never invoked on the
         // reconnect path used by App.OnSettingsSaved (CapabilityReload calls
         // ReconnectAsync, not DisconnectAsync). That left toggles like
@@ -645,8 +602,8 @@ public sealed class NodeService : IDisposable, IAsyncDisposable
         var hostRunner = new LocalCommandRunner(_logger);
         var executor = new DirectAppContainerExecutor(GetOrProbeMxcAvailability, _logger);
 
-        // Do NOT probe synchronously here: this runs while _capabilitiesLock is held
-        // (RegisterCapabilities), and a blocking wxc-exec --probe (~15s) would stall
+        // Do NOT probe synchronously here: this runs on the capability rebuild
+        // path, and a blocking wxc-exec --probe (~15s) would stall
         // capability registration / reconnect. Log from a non-blocking peek; the
         // first real probe happens lazily on the first system.run via the
         // availability gate / executor provider below (off any of our locks).
@@ -810,7 +767,7 @@ public sealed class NodeService : IDisposable, IAsyncDisposable
     /// <summary>
     /// Non-blocking read of the cached MXC availability for diagnostics/logging.
     /// Returns null when nothing has been probed yet. Never spawns or waits on a
-    /// probe, so it is safe to call while holding other locks (e.g. _capabilitiesLock).
+    /// probe, so it is safe to call during capability construction.
     /// </summary>
     private MxcAvailability? PeekMxcAvailability()
     {
@@ -834,25 +791,11 @@ public sealed class NodeService : IDisposable, IAsyncDisposable
         McpHttpServer? attempt = null;
         try
         {
-            // Bridge reads the live _capabilities list every tools/list, so any
-            // future Register(...) call is exposed via MCP automatically.
-            // MCP-only capabilities (e.g. AppCapability) are merged in so
-            // they appear in tools/list but never touch the gateway client.
-            // The snapshot takes the same lock RegisterCapabilities holds,
-            // so a tools/list arriving mid-rebuild observes either the old
-            // or the new set — never a partially-cleared list.
+            // The bridge reads an immutable registry snapshot for each request.
+            // MCP-only capabilities are merged by the registry and never reach
+            // the gateway client.
             var bridge = new McpToolBridge(
-                () => {
-                    lock (_capabilitiesLock)
-                    {
-                        if (_mcpOnlyCapabilities.Count == 0)
-                            return _capabilities.ToArray();
-                        var merged = new List<INodeCapability>(_capabilities.Count + _mcpOnlyCapabilities.Count);
-                        merged.AddRange(_capabilities);
-                        merged.AddRange(_mcpOnlyCapabilities);
-                        return merged.ToArray();
-                    }
-                },
+                _capabilityRegistry.GetMcpSnapshot,
                 _logger,
                 serverName: "openclaw-tray-mcp",
                 serverVersion: AppVersionInfo.Version);
@@ -976,8 +919,7 @@ public sealed class NodeService : IDisposable, IAsyncDisposable
             _logger.Info("[MCP] SetMcpEnabled(true) — starting MCP server");
             _mcpStartupError = null;
 
-            bool needsCapabilities;
-            lock (_capabilitiesLock) { needsCapabilities = _capabilities.Count == 0; }
+            var needsCapabilities = _capabilityRegistry.GetGatewaySnapshot().Count == 0;
             try
             {
                 if (needsCapabilities)
@@ -1015,11 +957,7 @@ public sealed class NodeService : IDisposable, IAsyncDisposable
         if (_nodeClient == null)
             return null;
 
-        INodeCapability[] capabilitySnapshot;
-        lock (_capabilitiesLock)
-        {
-            capabilitySnapshot = _capabilities.ToArray();
-        }
+        var capabilitySnapshot = _capabilityRegistry.GetGatewaySnapshot();
 
         var capabilities = capabilitySnapshot.Select(c => c.Category).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
         var commands = capabilitySnapshot.SelectMany(c => c.Commands).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
