@@ -1,3 +1,5 @@
+using OpenClaw.Shared.Codex;
+
 namespace OpenClaw.Connection;
 
 /// <summary>
@@ -22,4 +24,5 @@ public sealed record ConnectionSettingsSnapshot(
     bool NodeSttEnabled,
     bool NodeTtsEnabled,
     bool NodeSystemRunEnabled,
+    CodexSessionAccessMode CodexSessionAccess,
     string? FullSettingsJson);

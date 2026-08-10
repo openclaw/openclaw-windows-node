@@ -2,8 +2,10 @@ using System.Diagnostics;
 using System.Text;
 using System.Text.Json;
 using OpenClaw.Shared;
+using OpenClaw.Shared.Capabilities;
 using OpenClaw.Shared.Codex;
 using OpenClaw.Shared.Mcp;
+using OpenClawTray.Presentation;
 using OpenClawTray.Services;
 
 namespace OpenClaw.Tray.Tests;
@@ -15,6 +17,105 @@ public sealed class NodeCapabilityRegistryTests
         "codex.appServer.threads.list.v1",
         "codex.appServer.thread.turns.list.v1",
     ];
+
+    [Fact]
+    public void RealSettingsSave_ImmediatelyAddsAndRevokesCodexCatalogsForMcpAndGateway()
+    {
+        using var temp = new Presentation.TempDir();
+        var settings = new SettingsManager(temp.Path);
+        var store = new SettingsStore(settings, new Presentation.RecordingUiDispatcher());
+        using var harness = new CodexRegistryProcessHarness(CodexRegistryProcessMode.Success);
+        var registry = new NodeCapabilityRegistry(
+            NullLogger.Instance,
+            () => new CodexLaunchPlan(Path.Combine(harness.RootPath, "codex.exe")),
+            harness);
+        using var gateway = new WindowsNodeClient("ws://127.0.0.1:1", "token", temp.Path, NullLogger.Instance);
+        registry.Rebuild([], settings.CodexSessionAccess);
+        registry.RegisterGateway(gateway, NullLogger.Instance);
+        settings.Saved += (_, _) => registry.RefreshCodexSessionAccess(
+            settings.CodexSessionAccess,
+            gateway,
+            NullLogger.Instance);
+
+        store.Update(editor => editor.CodexSessionAccess = CodexSessionAccessMode.ReadOnly);
+
+        Assert.Equal(ExpectedReadCommands, CodexCommands(registry.GetMcpSnapshot()));
+        Assert.Equal(ExpectedReadCommands, CodexCommands(gateway.Capabilities));
+
+        store.Update(editor => editor.CodexSessionAccess = CodexSessionAccessMode.Off);
+
+        Assert.Empty(CodexCommands(registry.GetMcpSnapshot()));
+        Assert.Empty(CodexCommands(gateway.Capabilities));
+    }
+
+    [Fact]
+    public async Task RealMcpAndGatewayCatalogDispatchesExposeOnlyReadsAndDoNotMutateStore()
+    {
+        using var temp = new Presentation.TempDir();
+        var settings = new SettingsManager(temp.Path)
+        {
+            GatewayUrl = "wss://gateway.example.test",
+            CodexSessionAccess = CodexSessionAccessMode.ReadOnly,
+        };
+        settings.Save();
+        using var harness = new CodexRegistryProcessHarness(CodexRegistryProcessMode.Success);
+        var registry = new NodeCapabilityRegistry(
+            NullLogger.Instance,
+            () => new CodexLaunchPlan(Path.Combine(harness.RootPath, "codex.exe")),
+            harness);
+        registry.Rebuild([], settings.CodexSessionAccess);
+        using var gateway = new WindowsNodeClient("ws://127.0.0.1:1", "token", temp.Path, NullLogger.Instance);
+        registry.RegisterGateway(gateway, NullLogger.Instance);
+        var bridge = new McpToolBridge(registry.GetMcpSnapshot, NullLogger.Instance);
+
+        var listJson = await bridge.HandleRequestAsync(
+            "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"tools/list\"}");
+        using var listDocument = JsonDocument.Parse(listJson!);
+        var mcpCommands = listDocument.RootElement.GetProperty("result").GetProperty("tools")
+            .EnumerateArray().Select(tool => tool.GetProperty("name").GetString()).ToArray();
+        Assert.Equal(ExpectedReadCommands, mcpCommands);
+        Assert.Equal(ExpectedReadCommands, CodexCommands(gateway.Capabilities));
+        Assert.DoesNotContain(mcpCommands, command => command is not null &&
+            (command.Contains("steer", StringComparison.OrdinalIgnoreCase)
+             || command.Contains("resume", StringComparison.OrdinalIgnoreCase)
+             || command.Contains("interrupt", StringComparison.OrdinalIgnoreCase)
+             || command.Contains("write", StringComparison.OrdinalIgnoreCase)));
+
+        foreach (var command in ExpectedReadCommands)
+        {
+            var arguments = command == CodexSessionCapability.ThreadTurnsListCommand
+                ? JsonSerializer.SerializeToElement(new { threadId = "123e4567-e89b-12d3-a456-426614174000" })
+                : JsonSerializer.SerializeToElement(new { });
+            var requestJson = JsonSerializer.Serialize(new
+            {
+                jsonrpc = "2.0",
+                id = 2,
+                method = "tools/call",
+                @params = new { name = command, arguments },
+            });
+            var mcpResponse = await bridge.HandleRequestAsync(
+                requestJson);
+            using var responseDocument = JsonDocument.Parse(mcpResponse!);
+            Assert.False(responseDocument.RootElement.GetProperty("result").GetProperty("isError").GetBoolean());
+
+            var gatewayCapability = Assert.Single(gateway.Capabilities, item => item.CanHandle(command));
+            var gatewayResponse = await gatewayCapability.ExecuteAsync(new NodeInvokeRequest
+            {
+                Id = "gateway-test",
+                Command = command,
+                Args = arguments,
+            });
+            Assert.True(gatewayResponse.Ok, gatewayResponse.Error);
+        }
+
+        var persisted = new SettingsManager(temp.Path);
+        Assert.Equal(4, harness.StartCount);
+        Assert.Equal(CodexSessionAccessMode.ReadOnly, persisted.CodexSessionAccess);
+        Assert.Equal("wss://gateway.example.test", persisted.GatewayUrl);
+        Assert.Equal(4, harness.RecordedMethods().Count(method => method == "thread/list"));
+        Assert.Equal(2, harness.RecordedMethods().Count(method => method == "thread/turns/list"));
+        await harness.AssertAllProcessesExitedAsync();
+    }
 
     [Fact]
     public void Rebuild_Off_DoesNotAdvertiseCodexCommands()
@@ -257,17 +358,35 @@ public sealed class NodeCapabilityRegistryTests
               exit 92
             }
             $padding = 'x' * 1200000
-            Write-Message @{
-              id = [long]$list.id
-              result = @{
-                data = @(@{
-                  id = '123e4567-e89b-12d3-a456-426614174000'
-                  name = 'Catalog session'
-                  preview = $padding
-                  status = @{ type = 'idle' }
-                  source = 'cli'
-                })
+            while ($true) {
+              if ($list.method -eq 'thread/list') {
+                Write-Message @{
+                  id = [long]$list.id
+                  result = @{
+                    data = @(@{
+                      id = '123e4567-e89b-12d3-a456-426614174000'
+                      name = 'Catalog session'
+                      preview = $padding
+                      status = @{ type = 'idle' }
+                      source = 'cli'
+                    })
+                  }
+                }
+              } elseif ($list.method -eq 'thread/turns/list') {
+                Write-Message @{
+                  id = [long]$list.id
+                  result = @{
+                    data = @(@{
+                      id = 'turn-1'
+                      status = 'completed'
+                      items = @(@{ id = 'item-1'; type = 'agentMessage'; text = 'bounded answer' })
+                    })
+                  }
+                }
+              } else {
+                exit 93
               }
+              $list = Read-Message
             }
             Start-Sleep -Seconds 30
             """;

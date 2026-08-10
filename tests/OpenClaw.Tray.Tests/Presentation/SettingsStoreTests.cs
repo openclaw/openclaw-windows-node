@@ -1,5 +1,6 @@
 using OpenClawTray.Presentation;
 using OpenClawTray.Services;
+using OpenClaw.Shared.Codex;
 
 namespace OpenClaw.Tray.Tests.Presentation;
 
@@ -146,6 +147,53 @@ public sealed class SettingsStoreTests
             // a subsequent external save still republishes Changed exactly once.
             settings.Save();
             Assert.Equal(1, changed);
+        }
+    }
+
+    [Fact]
+    public async Task ConcurrentAtomicWriters_PreservePermissionRevocationAndGatewayChange()
+    {
+        var store = NewStore(out var settings, out _, out var temp);
+        using (temp)
+        {
+            settings.CodexSessionAccess = CodexSessionAccessMode.ReadOnly;
+            settings.GatewayUrl = "wss://old.example.test";
+            settings.Save();
+            using var firstEntered = new ManualResetEventSlim();
+            using var releaseFirst = new ManualResetEventSlim();
+            using var gatewayAttempted = new ManualResetEventSlim();
+            using var gatewayCompleted = new ManualResetEventSlim();
+
+            var revoke = Task.Run(() => store.Update(editor =>
+            {
+                editor.CodexSessionAccess = CodexSessionAccessMode.Off;
+                firstEntered.Set();
+                Assert.True(releaseFirst.Wait(TimeSpan.FromSeconds(5)));
+            }));
+            Assert.True(firstEntered.Wait(TimeSpan.FromSeconds(5)));
+
+            var gatewayChange = Task.Run(() =>
+            {
+                gatewayAttempted.Set();
+                settings.UpdateAndSave(manager => manager.GatewayUrl = "wss://new.example.test");
+                gatewayCompleted.Set();
+            });
+            Assert.True(gatewayAttempted.Wait(TimeSpan.FromSeconds(5)));
+            try
+            {
+                Assert.False(gatewayCompleted.Wait(TimeSpan.FromMilliseconds(500)));
+            }
+            finally
+            {
+                releaseFirst.Set();
+            }
+            await Task.WhenAll(revoke, gatewayChange).WaitAsync(TimeSpan.FromSeconds(5));
+
+            var snapshot = store.Current;
+            var persisted = new SettingsManager(temp.Path);
+            Assert.Equal(CodexSessionAccessMode.Off, snapshot.CodexSessionAccess);
+            Assert.Equal(CodexSessionAccessMode.Off, persisted.CodexSessionAccess);
+            Assert.Equal("wss://new.example.test", persisted.GatewayUrl);
         }
     }
 }

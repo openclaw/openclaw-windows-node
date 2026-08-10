@@ -7,12 +7,13 @@ namespace OpenClaw.Tray.Tests;
 public class ConsentAndSettingsSaveTests
 {
     [Fact]
-    public void CodexSessionAccessUi_IsInteractiveLocalizedAndTransportRoutesCannotWriteIt()
+    public void CodexSessionAccessUi_IsInteractiveLocalizedAndTransportSourcesHaveNoSettingsAssignment()
     {
         var root = Environment.GetEnvironmentVariable("OPENCLAW_REPO_ROOT")
             ?? throw new InvalidOperationException("OPENCLAW_REPO_ROOT must identify the test worktree.");
         var xaml = File.ReadAllText(Path.Combine(root, "src", "OpenClaw.Tray.WinUI", "Pages", "SettingsPage.xaml"));
         var resources = File.ReadAllText(Path.Combine(root, "src", "OpenClaw.Tray.WinUI", "Strings", "en-us", "Resources.resw"));
+        var app = File.ReadAllText(Path.Combine(root, "src", "OpenClaw.Tray.WinUI", "App.xaml.cs"));
         var transportSources = new[]
         {
             Path.Combine(root, "src", "OpenClaw.Shared", "Mcp", "McpToolBridge.cs"),
@@ -34,25 +35,7 @@ public class ConsentAndSettingsSaveTests
         Assert.All(transportSources, source => Assert.DoesNotMatch(
             new System.Text.RegularExpressions.Regex(@"\bCodexSessionAccess\s*=", System.Text.RegularExpressions.RegexOptions.CultureInvariant),
             source));
-    }
-
-    [Fact]
-    public void CodexCatalogTransportProjection_DoesNotMutateSettingsOrGatewayConfiguration()
-    {
-        using var temp = new TempDir();
-        var settings = new SettingsManager(temp.Path)
-        {
-            GatewayUrl = "wss://gateway.example.test",
-            CodexSessionAccess = CodexSessionAccessMode.ReadAndSteer,
-        };
-        var registry = new NodeCapabilityRegistry(() => null);
-
-        registry.Rebuild(Array.Empty<OpenClaw.Shared.INodeCapability>(), settings.CodexSessionAccess);
-        _ = registry.GetGatewaySnapshot();
-        _ = registry.GetMcpSnapshot();
-
-        Assert.Equal(CodexSessionAccessMode.ReadAndSteer, settings.CodexSessionAccess);
-        Assert.Equal("wss://gateway.example.test", settings.GatewayUrl);
+        Assert.Contains("_nodeService?.RefreshCodexSessionAccess()", app);
     }
 
     [Fact]

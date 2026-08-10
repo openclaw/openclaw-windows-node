@@ -70,6 +70,35 @@ public sealed class NodeCapabilityRegistry
             _sharedSnapshot = Array.Empty<INodeCapability>();
     }
 
+    public IReadOnlyList<INodeCapability> RefreshCodexSessionAccess(
+        CodexSessionAccessMode codexAccess,
+        WindowsNodeClient? client,
+        IOpenClawLogger logger)
+    {
+        IReadOnlyList<INodeCapability> snapshot;
+        lock (_gate)
+        {
+            var refreshed = _sharedSnapshot
+                .Where(capability => !string.Equals(
+                    capability.Category,
+                    "codex-app-server-threads",
+                    StringComparison.Ordinal))
+                .ToList();
+            if (codexAccess is CodexSessionAccessMode.ReadOnly or CodexSessionAccessMode.ReadAndSteer)
+            {
+                var codex = _codexCapabilityFactory();
+                if (codex is not null)
+                    refreshed.Add(codex);
+            }
+
+            snapshot = Freeze(refreshed);
+            _sharedSnapshot = snapshot;
+        }
+
+        RegisterGateway(client, logger);
+        return snapshot;
+    }
+
     public IReadOnlyList<INodeCapability> GetGatewaySnapshot()
     {
         lock (_gate)
@@ -99,6 +128,7 @@ public sealed class NodeCapabilityRegistry
         if (client is null)
             return;
 
+        var gatewayCapabilities = new List<INodeCapability>();
         foreach (var capability in GetGatewaySnapshot())
         {
             if (IsLocalOnly(capability))
@@ -107,8 +137,9 @@ public sealed class NodeCapabilityRegistry
                 continue;
             }
 
-            client.RegisterCapability(capability);
+            gatewayCapabilities.Add(capability);
         }
+        client.ReplaceCapabilities(gatewayCapabilities);
     }
 
     private static bool IsLocalOnly(INodeCapability capability) =>

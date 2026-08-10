@@ -450,29 +450,53 @@ public class SettingsManager
     {
         lock (_saveLock)
         {
-            Directory.CreateDirectory(_settingsDirectory);
-            // Lock the tray data dir to current user + SYSTEM + Administrators —
-            // it co-locates the MCP bearer token, settings.json (which embeds
-            // gateway/bootstrap credentials), and diagnostics jsonl. Other apps
-            // running as the same user could otherwise read these freely.
-            OpenClaw.Shared.Mcp.McpAuthToken.TryRestrictDataDirectoryAcl(_settingsDirectory);
+            SaveOrThrowCore();
+        }
+    }
 
-            var data = ToSettingsData();
-            // Apply DPAPI protection to the API key for on-disk storage only
-            data.TtsElevenLabsApiKey = ProtectSettingSecret(data.TtsElevenLabsApiKey);
+    internal void UpdateAndSave(Action<SettingsManager> update)
+    {
+        ArgumentNullException.ThrowIfNull(update);
+        lock (_saveLock)
+        {
+            update(this);
+            SaveOrThrowCore();
+        }
+    }
 
-            var json = data.ToJson();
-            File.WriteAllText(_settingsFilePath, json);
+    internal T ReadLocked<T>(Func<SettingsManager, T> read)
+    {
+        ArgumentNullException.ThrowIfNull(read);
+        lock (_saveLock)
+        {
+            return read(this);
+        }
+    }
 
-            Logger.Info("Settings saved");
-            try
-            {
-                Saved?.Invoke(this, EventArgs.Empty);
-            }
-            catch (Exception ex)
-            {
-                Logger.Warn($"Settings saved, but a notification subscriber failed: {ex.Message}");
-            }
+    private void SaveOrThrowCore()
+    {
+        Directory.CreateDirectory(_settingsDirectory);
+        // Lock the tray data dir to current user + SYSTEM + Administrators —
+        // it co-locates the MCP bearer token, settings.json (which embeds
+        // gateway/bootstrap credentials), and diagnostics jsonl. Other apps
+        // running as the same user could otherwise read these freely.
+        OpenClaw.Shared.Mcp.McpAuthToken.TryRestrictDataDirectoryAcl(_settingsDirectory);
+
+        var data = ToSettingsData();
+        // Apply DPAPI protection to the API key for on-disk storage only
+        data.TtsElevenLabsApiKey = ProtectSettingSecret(data.TtsElevenLabsApiKey);
+
+        var json = data.ToJson();
+        File.WriteAllText(_settingsFilePath, json);
+
+        Logger.Info("Settings saved");
+        try
+        {
+            Saved?.Invoke(this, EventArgs.Empty);
+        }
+        catch (Exception ex)
+        {
+            Logger.Warn($"Settings saved, but a notification subscriber failed: {ex.Message}");
         }
     }
 

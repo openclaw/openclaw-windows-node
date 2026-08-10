@@ -33,28 +33,28 @@ internal sealed class SettingsStore : ISettingsStore
 
     public event EventHandler? Changed;
 
-    public SettingsSnapshot Current => new()
+    public SettingsSnapshot Current => _settings.ReadLocked(settings => new SettingsSnapshot
     {
-        AutoStart = _settings.AutoStart,
-        GlobalHotkeyEnabled = _settings.GlobalHotkeyEnabled,
-        UseLegacyWebChat = _settings.UseLegacyWebChat,
-        ShowNotifications = _settings.ShowNotifications,
-        NotificationSound = _settings.NotificationSound,
-        AppTheme = _settings.AppTheme,
-        ShowDiagnosticsEffective = _settings.ShowDiagnosticsEffective,
-        NotifyHealth = _settings.NotifyHealth,
-        NotifyUrgent = _settings.NotifyUrgent,
-        NotifyReminder = _settings.NotifyReminder,
-        NotifyEmail = _settings.NotifyEmail,
-        NotifyCalendar = _settings.NotifyCalendar,
-        NotifyBuild = _settings.NotifyBuild,
-        NotifyStock = _settings.NotifyStock,
-        NotifyInfo = _settings.NotifyInfo,
-        ScreenRecordingConsentGiven = _settings.ScreenRecordingConsentGiven,
-        CameraRecordingConsentGiven = _settings.CameraRecordingConsentGiven,
-        ShowChatToolCalls = _settings.ShowChatToolCalls,
-        CodexSessionAccess = _settings.CodexSessionAccess,
-    };
+        AutoStart = settings.AutoStart,
+        GlobalHotkeyEnabled = settings.GlobalHotkeyEnabled,
+        UseLegacyWebChat = settings.UseLegacyWebChat,
+        ShowNotifications = settings.ShowNotifications,
+        NotificationSound = settings.NotificationSound,
+        AppTheme = settings.AppTheme,
+        ShowDiagnosticsEffective = settings.ShowDiagnosticsEffective,
+        NotifyHealth = settings.NotifyHealth,
+        NotifyUrgent = settings.NotifyUrgent,
+        NotifyReminder = settings.NotifyReminder,
+        NotifyEmail = settings.NotifyEmail,
+        NotifyCalendar = settings.NotifyCalendar,
+        NotifyBuild = settings.NotifyBuild,
+        NotifyStock = settings.NotifyStock,
+        NotifyInfo = settings.NotifyInfo,
+        ScreenRecordingConsentGiven = settings.ScreenRecordingConsentGiven,
+        CameraRecordingConsentGiven = settings.CameraRecordingConsentGiven,
+        ShowChatToolCalls = settings.ShowChatToolCalls,
+        CodexSessionAccess = settings.CodexSessionAccess,
+    });
 
     public void Update(Action<ISettingsEditor> edit)
     {
@@ -62,8 +62,7 @@ internal sealed class SettingsStore : ISettingsStore
 
         using (BeginSelfWrite())
         {
-            edit(new Editor(_settings));
-            _settings.Save();
+            _settings.UpdateAndSave(settings => edit(new Editor(settings)));
         }
     }
 

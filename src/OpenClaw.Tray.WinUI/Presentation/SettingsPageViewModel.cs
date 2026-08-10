@@ -339,9 +339,11 @@ internal sealed class SettingsPageViewModel : INavigationAware, IDisposable, INo
             SetField(ref _screenRecordingConsentGiven, s.ScreenRecordingConsentGiven, nameof(ScreenRecordingConsentGiven));
             SetField(ref _cameraRecordingConsentGiven, s.CameraRecordingConsentGiven, nameof(CameraRecordingConsentGiven));
             SetField(ref _showChatToolCalls, s.ShowChatToolCalls, nameof(ShowChatToolCalls));
+            var modeChanged = _codexSessionAccess != s.CodexSessionAccess;
             _isCodexExecutableAvailable = _codexExecutableAvailable();
             CodexSessionAccess = s.CodexSessionAccess;
-            RaiseCodexStatusChanged();
+            if (!modeChanged)
+                RaiseCodexStatusChanged();
         }
         finally
         {

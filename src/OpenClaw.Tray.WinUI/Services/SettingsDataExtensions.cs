@@ -23,5 +23,6 @@ public static class SettingsDataExtensions
         settings.NodeSttEnabled,
         settings.NodeTtsEnabled,
         settings.NodeSystemRunEnabled,
+        settings.CodexSessionAccess,
         settings.ToJson());
 }

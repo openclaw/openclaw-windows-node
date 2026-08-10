@@ -50,6 +50,53 @@ public sealed class SettingsPageViewModelTests
         }
     }
 
+    [Theory]
+    [InlineData(0, CodexSessionAccessMode.Off)]
+    [InlineData(1, CodexSessionAccessMode.ReadOnly)]
+    [InlineData(2, CodexSessionAccessMode.ReadAndSteer)]
+    public void CodexSessionAccessIndex_BoundOrderPersistsExactMode(
+        int selectedIndex,
+        CodexSessionAccessMode expectedMode)
+    {
+        var vm = NewVm(out _, out _, out _, out var temp);
+        using (temp)
+        {
+            vm.Activate(null);
+            vm.CodexSessionAccessIndex = selectedIndex == 0 ? 1 : 0;
+
+            vm.CodexSessionAccessIndex = selectedIndex;
+
+            Assert.Equal(selectedIndex, vm.CodexSessionAccessIndex);
+            Assert.Equal(expectedMode, new SettingsManager(temp.Path).CodexSessionAccess);
+        }
+    }
+
+    [Fact]
+    public void ExternalModeAndAvailabilityChange_RaisesEachDerivedStatusOnce()
+    {
+        var executableAvailable = false;
+        using var temp = new TempDir();
+        var settings = new SettingsManager(temp.Path);
+        var store = new SettingsStore(settings, new RecordingUiDispatcher());
+        var vm = new SettingsPageViewModel(store, new FakeAppCommands(), () => executableAvailable);
+        vm.Activate(null);
+        var notifications = new Dictionary<string, int>(StringComparer.Ordinal);
+        vm.PropertyChanged += (_, e) =>
+        {
+            if (e.PropertyName?.StartsWith("IsCodex", StringComparison.Ordinal) == true)
+                notifications[e.PropertyName] = notifications.GetValueOrDefault(e.PropertyName) + 1;
+        };
+
+        executableAvailable = true;
+        settings.CodexSessionAccess = CodexSessionAccessMode.ReadOnly;
+        settings.Save();
+
+        Assert.Equal(1, notifications[nameof(SettingsPageViewModel.IsCodexAccessOff)]);
+        Assert.Equal(1, notifications[nameof(SettingsPageViewModel.IsCodexCatalogAvailable)]);
+        Assert.Equal(1, notifications[nameof(SettingsPageViewModel.IsCodexCatalogUnavailable)]);
+        Assert.Equal(1, notifications[nameof(SettingsPageViewModel.IsCodexSteeringUnavailable)]);
+    }
+
     [Fact]
     public void CodexSessionAccess_ExternalChangeReloadsWithoutEcho()
     {

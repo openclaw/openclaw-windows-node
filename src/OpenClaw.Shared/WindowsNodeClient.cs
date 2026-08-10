@@ -21,6 +21,7 @@ public class WindowsNodeClient : WebSocketClientBase
     
     // Node capabilities registry
     private readonly List<INodeCapability> _capabilities = new();
+    private readonly object _capabilityLock = new();
     private FrozenDictionary<string, CommandDispatchEntry> _commandMap =
         FrozenDictionary<string, CommandDispatchEntry>.Empty;
     private readonly NodeRegistration _registration;
@@ -94,7 +95,14 @@ public class WindowsNodeClient : WebSocketClientBase
     public new bool IsConnected => _isConnected;
     public string? NodeId => _nodeId;
     public string GatewayUrl => GatewayUrlForDisplay;
-    public IReadOnlyList<INodeCapability> Capabilities => _capabilities;
+    public IReadOnlyList<INodeCapability> Capabilities
+    {
+        get
+        {
+            lock (_capabilityLock)
+                return _capabilities.ToArray();
+        }
+    }
     
     /// <summary>True if connected but waiting for pairing approval on gateway</summary>
     public bool IsPendingApproval => _isPendingApproval;
@@ -200,29 +208,44 @@ public class WindowsNodeClient : WebSocketClientBase
     /// </summary>
     public void RegisterCapability(INodeCapability capability)
     {
-        if (!_capabilities.Contains(capability))
+        lock (_capabilityLock)
         {
-            _capabilities.Add(capability);
+            if (!_capabilities.Contains(capability))
+                _capabilities.Add(capability);
+
+            if (!_registration.Capabilities.Contains(capability.Category))
+                _registration.Capabilities.Add(capability.Category);
+            foreach (var cmd in capability.Commands)
+                if (!_registration.Commands.Contains(cmd))
+                    _registration.Commands.Add(cmd);
+
+            RebuildCommandMap();
         }
-        
-        // Update registration
-        if (!_registration.Capabilities.Contains(capability.Category))
-        {
-            _registration.Capabilities.Add(capability.Category);
-        }
-        foreach (var cmd in capability.Commands)
-        {
-            if (!_registration.Commands.Contains(cmd))
-            {
-                _registration.Commands.Add(cmd);
-            }
-        }
-        
-        // Rebuild the O(1) command dispatch map so node.invoke lookups stay fast
-        // regardless of how many capabilities or commands are registered.
-        RebuildCommandMap();
         
         _logger.Info($"Registered capability: {capability.Category} ({capability.Commands.Count} commands)");
+    }
+
+    /// <summary>Atomically replaces the live dispatch and next-handshake capability catalog.</summary>
+    public void ReplaceCapabilities(IEnumerable<INodeCapability> capabilities)
+    {
+        ArgumentNullException.ThrowIfNull(capabilities);
+        var replacement = capabilities.ToArray();
+        lock (_capabilityLock)
+        {
+            _capabilities.Clear();
+            _capabilities.AddRange(replacement);
+            _registration.Capabilities.Clear();
+            _registration.Commands.Clear();
+            foreach (var capability in replacement)
+            {
+                if (!_registration.Capabilities.Contains(capability.Category))
+                    _registration.Capabilities.Add(capability.Category);
+                foreach (var command in capability.Commands)
+                    if (!_registration.Commands.Contains(command))
+                        _registration.Commands.Add(command);
+            }
+            RebuildCommandMap();
+        }
     }
     
     /// <summary>

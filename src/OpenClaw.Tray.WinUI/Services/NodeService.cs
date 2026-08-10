@@ -457,6 +457,14 @@ public sealed class NodeService : IDisposable, IAsyncDisposable
         _capabilityRegistry.RegisterMcpOnly(capability);
     }
 
+    public void RefreshCodexSessionAccess()
+    {
+        _capabilityRegistry.RefreshCodexSessionAccess(
+            _settings?.CodexSessionAccess ?? OpenClaw.Shared.Codex.CodexSessionAccessMode.Off,
+            _nodeClient,
+            _logger);
+    }
+
     /// <summary>
     /// Adopt a <see cref="WindowsNodeClient"/> created by an outside party
     /// (typically <see cref="OpenClaw.Connection.NodeConnector"/>)

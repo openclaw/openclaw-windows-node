@@ -3547,6 +3547,7 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands
                 break;
 
             case SettingsChangeImpact.CapabilityReload:
+                _nodeService?.RefreshCodexSessionAccess();
                 ReconnectWithSyncedBrowserProxyForward();
                 break;
 

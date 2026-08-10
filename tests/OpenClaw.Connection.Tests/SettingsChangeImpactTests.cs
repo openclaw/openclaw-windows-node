@@ -1,4 +1,5 @@
 using OpenClaw.Connection;
+using OpenClaw.Shared.Codex;
 
 namespace OpenClaw.Connection.Tests;
 
@@ -22,6 +23,7 @@ public class SettingsChangeImpactTests
         bool nodeSttEnabled = false,
         bool nodeTtsEnabled = false,
         bool nodeSystemRunEnabled = true,
+        CodexSessionAccessMode codexSessionAccess = CodexSessionAccessMode.Off,
         string? fullSettingsJson = null) => new(
         gatewayUrl,
         useSshTunnel,
@@ -40,7 +42,22 @@ public class SettingsChangeImpactTests
         nodeSttEnabled,
         nodeTtsEnabled,
         nodeSystemRunEnabled,
+        codexSessionAccess,
         fullSettingsJson);
+
+    [Theory]
+    [InlineData(CodexSessionAccessMode.Off, CodexSessionAccessMode.ReadOnly)]
+    [InlineData(CodexSessionAccessMode.ReadOnly, CodexSessionAccessMode.Off)]
+    public void CodexSessionAccessChanged_ReturnsCapabilityReload(
+        CodexSessionAccessMode before,
+        CodexSessionAccessMode after)
+    {
+        Assert.Equal(
+            SettingsChangeImpact.CapabilityReload,
+            SettingsChangeClassifier.Classify(
+                MakeSnapshot(codexSessionAccess: before),
+                MakeSnapshot(codexSessionAccess: after)));
+    }
 
     [Fact]
     public void NullPrev_ReturnsFullReconnect()
