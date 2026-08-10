@@ -35,16 +35,28 @@ public class SettingsManager
     private readonly object _saveLock = new();
     private SettingsData _data = CreateDefaultData();
 
+    private T ReadData<T>(Func<SettingsData, T> read)
+    {
+        lock (_saveLock)
+            return read(_data);
+    }
+
+    private void UpdateData(Func<SettingsData, SettingsData> update)
+    {
+        lock (_saveLock)
+            _data = update(_data);
+    }
+
     // Connection
-    public string GatewayUrl { get => _data.GatewayUrl ?? AppIdentity.SetupGatewayUrl; set => _data = _data with { GatewayUrl = value }; }
-    public bool UseSshTunnel { get => _data.UseSshTunnel; set => _data = _data with { UseSshTunnel = value }; }
-    public string SshTunnelUser { get => _data.SshTunnelUser ?? ""; set => _data = _data with { SshTunnelUser = value }; }
-    public string SshTunnelHost { get => _data.SshTunnelHost ?? ""; set => _data = _data with { SshTunnelHost = value }; }
-    public int SshTunnelSshPort { get => IsValidPort(_data.SshTunnelSshPort) ? _data.SshTunnelSshPort : 22; set => _data = _data with { SshTunnelSshPort = value }; }
-    public int SshTunnelRemotePort { get => _data.SshTunnelRemotePort <= 0 ? 18789 : _data.SshTunnelRemotePort; set => _data = _data with { SshTunnelRemotePort = value }; }
-    public int SshTunnelLocalPort { get => _data.SshTunnelLocalPort <= 0 ? 18789 : _data.SshTunnelLocalPort; set => _data = _data with { SshTunnelLocalPort = value }; }
+    public string GatewayUrl { get => ReadData(data => data.GatewayUrl ?? AppIdentity.SetupGatewayUrl); set => UpdateData(data => data with { GatewayUrl = value }); }
+    public bool UseSshTunnel { get => ReadData(data => data.UseSshTunnel); set => UpdateData(data => data with { UseSshTunnel = value }); }
+    public string SshTunnelUser { get => ReadData(data => data.SshTunnelUser ?? ""); set => UpdateData(data => data with { SshTunnelUser = value }); }
+    public string SshTunnelHost { get => ReadData(data => data.SshTunnelHost ?? ""); set => UpdateData(data => data with { SshTunnelHost = value }); }
+    public int SshTunnelSshPort { get => ReadData(data => IsValidPort(data.SshTunnelSshPort) ? data.SshTunnelSshPort : 22); set => UpdateData(data => data with { SshTunnelSshPort = value }); }
+    public int SshTunnelRemotePort { get => ReadData(data => data.SshTunnelRemotePort <= 0 ? 18789 : data.SshTunnelRemotePort); set => UpdateData(data => data with { SshTunnelRemotePort = value }); }
+    public int SshTunnelLocalPort { get => ReadData(data => data.SshTunnelLocalPort <= 0 ? 18789 : data.SshTunnelLocalPort); set => UpdateData(data => data with { SshTunnelLocalPort = value }); }
     /// <inheritdoc cref="SettingsData.BrowserControlPort"/>
-    public int? BrowserControlPort { get => _data.BrowserControlPort; set => _data = _data with { BrowserControlPort = value }; }
+    public int? BrowserControlPort { get => ReadData(data => data.BrowserControlPort); set => UpdateData(data => data with { BrowserControlPort = value }); }
     public string? LegacyToken { get; private set; }
     public string? LegacyBootstrapToken { get; private set; }
     public bool HasLegacyGatewayCredentials =>
@@ -52,35 +64,35 @@ public class SettingsManager
         !string.IsNullOrWhiteSpace(LegacyBootstrapToken);
 
     // Startup
-    public bool AutoStart { get => _data.AutoStart; set => _data = _data with { AutoStart = value }; }
-    public bool GlobalHotkeyEnabled { get => _data.GlobalHotkeyEnabled; set => _data = _data with { GlobalHotkeyEnabled = value }; }
+    public bool AutoStart { get => ReadData(data => data.AutoStart); set => UpdateData(data => data with { AutoStart = value }); }
+    public bool GlobalHotkeyEnabled { get => ReadData(data => data.GlobalHotkeyEnabled); set => UpdateData(data => data with { GlobalHotkeyEnabled = value }); }
     /// <summary>
     /// One-shot gate: set to true after the post-onboarding "first-run" bootstrap
     /// kickoff message has been injected into the chat exactly once.
     /// </summary>
-    public bool HasInjectedFirstRunBootstrap { get => _data.HasInjectedFirstRunBootstrap; set => _data = _data with { HasInjectedFirstRunBootstrap = value }; }
+    public bool HasInjectedFirstRunBootstrap { get => ReadData(data => data.HasInjectedFirstRunBootstrap); set => UpdateData(data => data with { HasInjectedFirstRunBootstrap = value }); }
 
     // Notifications
-    public bool ShowNotifications { get => _data.ShowNotifications; set => _data = _data with { ShowNotifications = value }; }
-    public string NotificationSound { get => _data.NotificationSound ?? "Default"; set => _data = _data with { NotificationSound = value }; }
+    public bool ShowNotifications { get => ReadData(data => data.ShowNotifications); set => UpdateData(data => data with { ShowNotifications = value }); }
+    public string NotificationSound { get => ReadData(data => data.NotificationSound ?? "Default"); set => UpdateData(data => data with { NotificationSound = value }); }
     
     // Notification filters
-    public bool NotifyHealth { get => _data.NotifyHealth; set => _data = _data with { NotifyHealth = value }; }
-    public bool NotifyUrgent { get => _data.NotifyUrgent; set => _data = _data with { NotifyUrgent = value }; }
-    public bool NotifyReminder { get => _data.NotifyReminder; set => _data = _data with { NotifyReminder = value }; }
-    public bool NotifyEmail { get => _data.NotifyEmail; set => _data = _data with { NotifyEmail = value }; }
-    public bool NotifyCalendar { get => _data.NotifyCalendar; set => _data = _data with { NotifyCalendar = value }; }
-    public bool NotifyBuild { get => _data.NotifyBuild; set => _data = _data with { NotifyBuild = value }; }
-    public bool NotifyStock { get => _data.NotifyStock; set => _data = _data with { NotifyStock = value }; }
-    public bool NotifyInfo { get => _data.NotifyInfo; set => _data = _data with { NotifyInfo = value }; }
+    public bool NotifyHealth { get => ReadData(data => data.NotifyHealth); set => UpdateData(data => data with { NotifyHealth = value }); }
+    public bool NotifyUrgent { get => ReadData(data => data.NotifyUrgent); set => UpdateData(data => data with { NotifyUrgent = value }); }
+    public bool NotifyReminder { get => ReadData(data => data.NotifyReminder); set => UpdateData(data => data with { NotifyReminder = value }); }
+    public bool NotifyEmail { get => ReadData(data => data.NotifyEmail); set => UpdateData(data => data with { NotifyEmail = value }); }
+    public bool NotifyCalendar { get => ReadData(data => data.NotifyCalendar); set => UpdateData(data => data with { NotifyCalendar = value }); }
+    public bool NotifyBuild { get => ReadData(data => data.NotifyBuild); set => UpdateData(data => data with { NotifyBuild = value }); }
+    public bool NotifyStock { get => ReadData(data => data.NotifyStock); set => UpdateData(data => data with { NotifyStock = value }); }
+    public bool NotifyInfo { get => ReadData(data => data.NotifyInfo); set => UpdateData(data => data with { NotifyInfo = value }); }
 
     // Enhanced categorization
-    public bool NotifyChatResponses { get => _data.NotifyChatResponses; set => _data = _data with { NotifyChatResponses = value }; }
-    public bool PreferStructuredCategories { get => _data.PreferStructuredCategories; set => _data = _data with { PreferStructuredCategories = value }; }
+    public bool NotifyChatResponses { get => ReadData(data => data.NotifyChatResponses); set => UpdateData(data => data with { NotifyChatResponses = value }); }
+    public bool PreferStructuredCategories { get => ReadData(data => data.PreferStructuredCategories); set => UpdateData(data => data with { PreferStructuredCategories = value }); }
     public List<OpenClaw.Shared.UserNotificationRule> UserRules
     {
-        get => _data.UserRules ??= new();
-        set => _data = _data with { UserRules = value ?? new() };
+        get => ReadData(data => data.UserRules ?? []);
+        set => UpdateData(data => data with { UserRules = value ?? new() });
     }
 
     // User interface
@@ -89,60 +101,60 @@ public class SettingsManager
     /// native chat surface in both the Hub Chat tab and tray Chat popup.
     /// Default false (native).
     /// </summary>
-    public bool UseLegacyWebChat { get => _data.UseLegacyWebChat; set => _data = _data with { UseLegacyWebChat = value }; }
-    public bool ShowCompletedSessions { get => _data.ShowCompletedSessions; set => _data = _data with { ShowCompletedSessions = value }; }
-    public string AppTheme { get => NormalizeAppTheme(_data.AppTheme); set => _data = _data with { AppTheme = NormalizeAppTheme(value) }; }
-    public bool? ShowDiagnosticsOverride { get => _data.ShowDiagnostics; set => _data = _data with { ShowDiagnostics = value }; }
-    public bool ShowDiagnosticsEffective => _data.ShowDiagnostics ?? OpenClawTray.Helpers.DiagnosticsGate.BuildDefault;
-    public string OpenTelemetryEndpoint { get => _data.OpenTelemetryEndpoint ?? ""; set => _data = _data with { OpenTelemetryEndpoint = NormalizeOptionalString(value) }; }
-    public string OpenTelemetryProtocol { get => OpenTelemetryEndpointProtocol.Normalize(_data.OpenTelemetryProtocol); set => _data = _data with { OpenTelemetryProtocol = OpenTelemetryEndpointProtocol.Normalize(value) }; }
+    public bool UseLegacyWebChat { get => ReadData(data => data.UseLegacyWebChat); set => UpdateData(data => data with { UseLegacyWebChat = value }); }
+    public bool ShowCompletedSessions { get => ReadData(data => data.ShowCompletedSessions); set => UpdateData(data => data with { ShowCompletedSessions = value }); }
+    public string AppTheme { get => ReadData(data => NormalizeAppTheme(data.AppTheme)); set => UpdateData(data => data with { AppTheme = NormalizeAppTheme(value) }); }
+    public bool? ShowDiagnosticsOverride { get => ReadData(data => data.ShowDiagnostics); set => UpdateData(data => data with { ShowDiagnostics = value }); }
+    public bool ShowDiagnosticsEffective => ReadData(data => data.ShowDiagnostics ?? OpenClawTray.Helpers.DiagnosticsGate.BuildDefault);
+    public string OpenTelemetryEndpoint { get => ReadData(data => data.OpenTelemetryEndpoint ?? ""); set => UpdateData(data => data with { OpenTelemetryEndpoint = NormalizeOptionalString(value) }); }
+    public string OpenTelemetryProtocol { get => ReadData(data => OpenTelemetryEndpointProtocol.Normalize(data.OpenTelemetryProtocol)); set => UpdateData(data => data with { OpenTelemetryProtocol = OpenTelemetryEndpointProtocol.Normalize(value) }); }
 
     // Node mode(gateway WebSocket connection — separate from MCP)
-    public bool EnableNodeMode { get => _data.EnableNodeMode; set => _data = _data with { EnableNodeMode = value }; }
+    public bool EnableNodeMode { get => ReadData(data => data.EnableNodeMode); set => UpdateData(data => data with { EnableNodeMode = value }); }
     /// <summary>Master switch for the focused inbound-pairing approval dialog + awareness toast.</summary>
-    public bool ShowPairingApprovalDialog { get => _data.ShowPairingApprovalDialog; set => _data = _data with { ShowPairingApprovalDialog = value }; }
-    public bool NodeCanvasEnabled { get => _data.NodeCanvasEnabled; set => _data = _data with { NodeCanvasEnabled = value }; }
-    public bool NodeScreenEnabled { get => _data.NodeScreenEnabled; set => _data = _data with { NodeScreenEnabled = value }; }
-    public bool NodeCameraEnabled { get => _data.NodeCameraEnabled; set => _data = _data with { NodeCameraEnabled = value }; }
-    public bool ScreenRecordingConsentGiven { get => _data.ScreenRecordingConsentGiven; set => _data = _data with { ScreenRecordingConsentGiven = value }; }
-    public bool CameraRecordingConsentGiven { get => _data.CameraRecordingConsentGiven; set => _data = _data with { CameraRecordingConsentGiven = value }; }
-    public bool NodeLocationEnabled { get => _data.NodeLocationEnabled; set => _data = _data with { NodeLocationEnabled = value }; }
-    public bool NodeBrowserProxyEnabled { get => _data.NodeBrowserProxyEnabled; set => _data = _data with { NodeBrowserProxyEnabled = value }; }
-    public CodexSessionAccessMode CodexSessionAccess { get => _data.CodexSessionAccess; set => _data = _data with { CodexSessionAccess = value }; }
+    public bool ShowPairingApprovalDialog { get => ReadData(data => data.ShowPairingApprovalDialog); set => UpdateData(data => data with { ShowPairingApprovalDialog = value }); }
+    public bool NodeCanvasEnabled { get => ReadData(data => data.NodeCanvasEnabled); set => UpdateData(data => data with { NodeCanvasEnabled = value }); }
+    public bool NodeScreenEnabled { get => ReadData(data => data.NodeScreenEnabled); set => UpdateData(data => data with { NodeScreenEnabled = value }); }
+    public bool NodeCameraEnabled { get => ReadData(data => data.NodeCameraEnabled); set => UpdateData(data => data with { NodeCameraEnabled = value }); }
+    public bool ScreenRecordingConsentGiven { get => ReadData(data => data.ScreenRecordingConsentGiven); set => UpdateData(data => data with { ScreenRecordingConsentGiven = value }); }
+    public bool CameraRecordingConsentGiven { get => ReadData(data => data.CameraRecordingConsentGiven); set => UpdateData(data => data with { CameraRecordingConsentGiven = value }); }
+    public bool NodeLocationEnabled { get => ReadData(data => data.NodeLocationEnabled); set => UpdateData(data => data with { NodeLocationEnabled = value }); }
+    public bool NodeBrowserProxyEnabled { get => ReadData(data => data.NodeBrowserProxyEnabled); set => UpdateData(data => data with { NodeBrowserProxyEnabled = value }); }
+    public CodexSessionAccessMode CodexSessionAccess { get => ReadData(data => data.CodexSessionAccess); set => UpdateData(data => data with { CodexSessionAccess = value }); }
     /// <summary>
     /// Master switch for the <c>system.run</c> / <c>system.run.prepare</c>
     /// commands. Per-command exec approvals still apply when this is on;
     /// flipping it off removes those commands from the declared capability
     /// entirely. Default <c>true</c> (backward compatible).
     /// </summary>
-    public bool NodeSystemRunEnabled { get => _data.NodeSystemRunEnabled; set => _data = _data with { NodeSystemRunEnabled = value }; }
-    public bool NodeSttEnabled { get => _data.NodeSttEnabled; set => _data = _data with { NodeSttEnabled = value }; }
+    public bool NodeSystemRunEnabled { get => ReadData(data => data.NodeSystemRunEnabled); set => UpdateData(data => data with { NodeSystemRunEnabled = value }); }
+    public bool NodeSttEnabled { get => ReadData(data => data.NodeSttEnabled); set => UpdateData(data => data with { NodeSttEnabled = value }); }
     /// <summary>STT language: "auto" for Whisper auto-detect, or a BCP-47 tag like "en-US".</summary>
-    public string SttLanguage { get => string.IsNullOrWhiteSpace(_data.SttLanguage) ? "auto" : _data.SttLanguage; set => _data = _data with { SttLanguage = value }; }
+    public string SttLanguage { get => ReadData(data => string.IsNullOrWhiteSpace(data.SttLanguage) ? "auto" : data.SttLanguage); set => UpdateData(data => data with { SttLanguage = value }); }
     /// <summary>Whisper model size: "tiny", "base", or "small".</summary>
-    public string SttModelName { get => string.IsNullOrWhiteSpace(_data.SttModelName) ? "base" : _data.SttModelName; set => _data = _data with { SttModelName = value }; }
+    public string SttModelName { get => ReadData(data => string.IsNullOrWhiteSpace(data.SttModelName) ? "base" : data.SttModelName); set => UpdateData(data => data with { SttModelName = value }); }
     /// <summary>Seconds of silence before auto-submit in voice chat mode.</summary>
-    public float SttSilenceTimeout { get => _data.SttSilenceTimeout > 0 ? _data.SttSilenceTimeout : 1.5f; set => _data = _data with { SttSilenceTimeout = value }; }
+    public float SttSilenceTimeout { get => ReadData(data => data.SttSilenceTimeout > 0 ? data.SttSilenceTimeout : 1.5f); set => UpdateData(data => data with { SttSilenceTimeout = value }); }
     /// <summary>Enable TTS playback of responses during voice sessions.</summary>
-    public bool VoiceTtsEnabled { get => _data.VoiceTtsEnabled; set => _data = _data with { VoiceTtsEnabled = value }; }
+    public bool VoiceTtsEnabled { get => ReadData(data => data.VoiceTtsEnabled); set => UpdateData(data => data with { VoiceTtsEnabled = value }); }
     /// <summary>Show tool-call and usage chips inline in the chat timeline.</summary>
-    public bool ShowChatToolCalls { get => _data.ShowChatToolCalls; set => _data = _data with { ShowChatToolCalls = value }; }
+    public bool ShowChatToolCalls { get => ReadData(data => data.ShowChatToolCalls); set => UpdateData(data => data with { ShowChatToolCalls = value }); }
     /// <summary>Play audio feedback chimes on listen start/stop.</summary>
-    public bool VoiceAudioFeedback { get => _data.VoiceAudioFeedback; set => _data = _data with { VoiceAudioFeedback = value }; }
-    public bool NodeTtsEnabled { get => _data.NodeTtsEnabled; set => _data = _data with { NodeTtsEnabled = value }; }
-    public string TtsProvider { get => string.IsNullOrWhiteSpace(_data.TtsProvider) ? TtsCapability.PiperProvider : _data.TtsProvider; set => _data = _data with { TtsProvider = value }; }
-    public string TtsElevenLabsApiKey { get => _data.TtsElevenLabsApiKey ?? ""; set => _data = _data with { TtsElevenLabsApiKey = value }; }
-    public string TtsElevenLabsModel { get => _data.TtsElevenLabsModel ?? ""; set => _data = _data with { TtsElevenLabsModel = value }; }
-    public string TtsElevenLabsVoiceId { get => _data.TtsElevenLabsVoiceId ?? ""; set => _data = _data with { TtsElevenLabsVoiceId = value }; }
-    public string TtsWindowsVoiceId { get => _data.TtsWindowsVoiceId ?? ""; set => _data = _data with { TtsWindowsVoiceId = value }; }
+    public bool VoiceAudioFeedback { get => ReadData(data => data.VoiceAudioFeedback); set => UpdateData(data => data with { VoiceAudioFeedback = value }); }
+    public bool NodeTtsEnabled { get => ReadData(data => data.NodeTtsEnabled); set => UpdateData(data => data with { NodeTtsEnabled = value }); }
+    public string TtsProvider { get => ReadData(data => string.IsNullOrWhiteSpace(data.TtsProvider) ? TtsCapability.PiperProvider : data.TtsProvider); set => UpdateData(data => data with { TtsProvider = value }); }
+    public string TtsElevenLabsApiKey { get => ReadData(data => data.TtsElevenLabsApiKey ?? ""); set => UpdateData(data => data with { TtsElevenLabsApiKey = value }); }
+    public string TtsElevenLabsModel { get => ReadData(data => data.TtsElevenLabsModel ?? ""); set => UpdateData(data => data with { TtsElevenLabsModel = value }); }
+    public string TtsElevenLabsVoiceId { get => ReadData(data => data.TtsElevenLabsVoiceId ?? ""); set => UpdateData(data => data with { TtsElevenLabsVoiceId = value }); }
+    public string TtsWindowsVoiceId { get => ReadData(data => data.TtsWindowsVoiceId ?? ""); set => UpdateData(data => data with { TtsWindowsVoiceId = value }); }
     /// <summary>Hub NavigationView pane expanded (true) vs compact (false). Default true.</summary>
-    public bool HubNavPaneOpen { get => _data.HubNavPaneOpen; set => _data = _data with { HubNavPaneOpen = value }; }
+    public bool HubNavPaneOpen { get => ReadData(data => data.HubNavPaneOpen); set => UpdateData(data => data with { HubNavPaneOpen = value }); }
     /// <summary>Piper voice identifier, e.g. "en_US-amy-low".</summary>
-    public string TtsPiperVoiceId { get => string.IsNullOrWhiteSpace(_data.TtsPiperVoiceId) ? "en_US-amy-low" : _data.TtsPiperVoiceId; set => _data = _data with { TtsPiperVoiceId = value }; }
+    public string TtsPiperVoiceId { get => ReadData(data => string.IsNullOrWhiteSpace(data.TtsPiperVoiceId) ? "en_US-amy-low" : data.TtsPiperVoiceId); set => UpdateData(data => data with { TtsPiperVoiceId = value }); }
     // Local MCP HTTP server (independent of EnableNodeMode)
-    public bool EnableMcpServer { get => _data.EnableMcpServer; set => _data = _data with { EnableMcpServer = value }; }
+    public bool EnableMcpServer { get => ReadData(data => data.EnableMcpServer); set => UpdateData(data => data with { EnableMcpServer = value }); }
     // Automatic self-repair of app-owned setup-managed local WSL gateways (kill switch).
-    public bool EnableManagedLocalGatewayAutoRepair { get => _data.EnableManagedLocalGatewayAutoRepair; set => _data = _data with { EnableManagedLocalGatewayAutoRepair = value }; }
+    public bool EnableManagedLocalGatewayAutoRepair { get => ReadData(data => data.EnableManagedLocalGatewayAutoRepair); set => UpdateData(data => data with { EnableManagedLocalGatewayAutoRepair = value }); }
     /// <summary>
     /// Hostnames the A2UI image renderer is allowed to fetch over HTTPS.
     /// Empty by default — agents can still ship inline data: images. The
@@ -151,32 +163,32 @@ public class SettingsManager
     /// </summary>
     public List<string> A2UIImageHosts
     {
-        get => _data.A2UIImageHosts ??= new();
-        set => _data = _data with { A2UIImageHosts = value ?? new() };
+        get => ReadData(data => data.A2UIImageHosts ?? []);
+        set => UpdateData(data => data with { A2UIImageHosts = value ?? new() });
     }
-    public bool HasSeenActivityStreamTip { get => _data.HasSeenActivityStreamTip; set => _data = _data with { HasSeenActivityStreamTip = value }; }
-    public string SkippedUpdateTag { get => _data.SkippedUpdateTag ?? ""; set => _data = _data with { SkippedUpdateTag = value }; }
-    public string? PreferredGatewayId { get => _data.PreferredGatewayId; set => _data = _data with { PreferredGatewayId = value }; }
+    public bool HasSeenActivityStreamTip { get => ReadData(data => data.HasSeenActivityStreamTip); set => UpdateData(data => data with { HasSeenActivityStreamTip = value }); }
+    public string SkippedUpdateTag { get => ReadData(data => data.SkippedUpdateTag ?? ""); set => UpdateData(data => data with { SkippedUpdateTag = value }); }
+    public string? PreferredGatewayId { get => ReadData(data => data.PreferredGatewayId); set => UpdateData(data => data with { PreferredGatewayId = value }); }
 
     // ── MXC sandbox ─────────────────────────────────────────────────────
     /// <summary>Master switch for system.run containment. When true (default), system.run uses MXC when available and falls back to host execution when unavailable unless strict fallback blocking is enabled. When false, system.run runs on host like before.</summary>
-    public bool SystemRunSandboxEnabled { get => _data.SystemRunSandboxEnabled; set => _data = _data with { SystemRunSandboxEnabled = value }; }
+    public bool SystemRunSandboxEnabled { get => ReadData(data => data.SystemRunSandboxEnabled); set => UpdateData(data => data with { SystemRunSandboxEnabled = value }); }
     /// <summary>When true, sandbox-enabled system.run blocks instead of using the compatibility host fallback if MXC is unavailable. Default false.</summary>
-    public bool SystemRunBlockHostFallbackWhenMxcUnavailable { get => _data.SystemRunBlockHostFallbackWhenMxcUnavailable; set => _data = _data with { SystemRunBlockHostFallbackWhenMxcUnavailable = value }; }
+    public bool SystemRunBlockHostFallbackWhenMxcUnavailable { get => ReadData(data => data.SystemRunBlockHostFallbackWhenMxcUnavailable); set => UpdateData(data => data with { SystemRunBlockHostFallbackWhenMxcUnavailable = value }); }
     /// <summary>When sandboxed, allow system.run commands to reach the public internet. Default false.</summary>
-    public bool SystemRunAllowOutbound { get => _data.SystemRunAllowOutbound; set => _data = _data with { SystemRunAllowOutbound = value }; }
+    public bool SystemRunAllowOutbound { get => ReadData(data => data.SystemRunAllowOutbound); set => UpdateData(data => data with { SystemRunAllowOutbound = value }); }
     // ── MXC sandbox: additional knobs (Sandbox page) ─────────────────
-    public SandboxClipboardMode SandboxClipboard { get => _data.SandboxClipboard; set => _data = _data with { SandboxClipboard = value }; }
-    public SandboxFolderAccess? SandboxDocumentsAccess { get => _data.SandboxDocumentsAccess; set => _data = _data with { SandboxDocumentsAccess = value }; }
-    public SandboxFolderAccess? SandboxDownloadsAccess { get => _data.SandboxDownloadsAccess; set => _data = _data with { SandboxDownloadsAccess = value }; }
-    public SandboxFolderAccess? SandboxDesktopAccess { get => _data.SandboxDesktopAccess; set => _data = _data with { SandboxDesktopAccess = value }; }
+    public SandboxClipboardMode SandboxClipboard { get => ReadData(data => data.SandboxClipboard); set => UpdateData(data => data with { SandboxClipboard = value }); }
+    public SandboxFolderAccess? SandboxDocumentsAccess { get => ReadData(data => data.SandboxDocumentsAccess); set => UpdateData(data => data with { SandboxDocumentsAccess = value }); }
+    public SandboxFolderAccess? SandboxDownloadsAccess { get => ReadData(data => data.SandboxDownloadsAccess); set => UpdateData(data => data with { SandboxDownloadsAccess = value }); }
+    public SandboxFolderAccess? SandboxDesktopAccess { get => ReadData(data => data.SandboxDesktopAccess); set => UpdateData(data => data with { SandboxDesktopAccess = value }); }
     public List<SandboxCustomFolder> SandboxCustomFolders
     {
-        get => _data.SandboxCustomFolders ??= new();
-        set => _data = _data with { SandboxCustomFolders = value ?? new() };
+        get => ReadData(data => data.SandboxCustomFolders ?? []);
+        set => UpdateData(data => data with { SandboxCustomFolders = value ?? new() });
     }
-    public int SandboxTimeoutMs { get => _data.SandboxTimeoutMs > 0 ? _data.SandboxTimeoutMs : 30_000; set => _data = _data with { SandboxTimeoutMs = value }; }
-    public long SandboxMaxOutputBytes { get => _data.SandboxMaxOutputBytes > 0 ? _data.SandboxMaxOutputBytes : 4 * 1024 * 1024; set => _data = _data with { SandboxMaxOutputBytes = value }; }
+    public int SandboxTimeoutMs { get => ReadData(data => data.SandboxTimeoutMs > 0 ? data.SandboxTimeoutMs : 30_000); set => UpdateData(data => data with { SandboxTimeoutMs = value }); }
+    public long SandboxMaxOutputBytes { get => ReadData(data => data.SandboxMaxOutputBytes > 0 ? data.SandboxMaxOutputBytes : 4 * 1024 * 1024); set => UpdateData(data => data with { SandboxMaxOutputBytes = value }); }
 
     public SettingsManager() : this(GetDefaultSettingsDirectory())
     {
@@ -198,6 +210,12 @@ public class SettingsManager
     }
 
     public void Load()
+    {
+        lock (_saveLock)
+            LoadCore();
+    }
+
+    private void LoadCore()
     {
         LegacyToken = null;
         LegacyBootstrapToken = null;
@@ -391,7 +409,7 @@ public class SettingsManager
     /// Creates a detached snapshot of current settings. No DPAPI protection is
     /// applied here; Save applies it to a second clone for on-disk storage only.
     /// </summary>
-    public SettingsData ToSettingsData() => _data with
+    public SettingsData ToSettingsData() => ReadData(data => data with
     {
         GatewayUrl = GatewayUrl,
         SshTunnelUser = SshTunnelUser,
@@ -420,7 +438,7 @@ public class SettingsManager
         SandboxTimeoutMs = SandboxTimeoutMs,
         SandboxMaxOutputBytes = SandboxMaxOutputBytes,
         McpOnlyMode = null
-    };
+    });
 
     public static string NormalizeAppTheme(string? value)
     {
@@ -460,7 +478,14 @@ public class SettingsManager
         lock (_saveLock)
         {
             update(this);
-            SaveOrThrowCore();
+            try
+            {
+                SaveOrThrowCore();
+            }
+            catch (Exception ex)
+            {
+                Logger.Error($"Failed to save settings: {ex.Message}");
+            }
         }
     }
 

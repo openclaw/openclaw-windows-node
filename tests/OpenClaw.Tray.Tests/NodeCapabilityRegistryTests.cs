@@ -98,8 +98,7 @@ public sealed class NodeCapabilityRegistryTests
             using var responseDocument = JsonDocument.Parse(mcpResponse!);
             Assert.False(responseDocument.RootElement.GetProperty("result").GetProperty("isError").GetBoolean());
 
-            var gatewayCapability = Assert.Single(gateway.Capabilities, item => item.CanHandle(command));
-            var gatewayResponse = await gatewayCapability.ExecuteAsync(new NodeInvokeRequest
+            var gatewayResponse = await gateway.DispatchRegisteredCommandForTestAsync(new NodeInvokeRequest
             {
                 Id = "gateway-test",
                 Command = command,
@@ -115,6 +114,71 @@ public sealed class NodeCapabilityRegistryTests
         Assert.Equal(4, harness.RecordedMethods().Count(method => method == "thread/list"));
         Assert.Equal(2, harness.RecordedMethods().Count(method => method == "thread/turns/list"));
         await harness.AssertAllProcessesExitedAsync();
+    }
+
+    [Fact]
+    public async Task GatewayCommandMap_EnableDispatchesAndRevokeReturnsUnavailable()
+    {
+        using var temp = new Presentation.TempDir();
+        using var harness = new CodexRegistryProcessHarness(CodexRegistryProcessMode.Success);
+        var registry = new NodeCapabilityRegistry(
+            NullLogger.Instance,
+            () => new CodexLaunchPlan(Path.Combine(harness.RootPath, "codex.exe")),
+            harness);
+        using var gateway = new WindowsNodeClient("ws://127.0.0.1:1", "token", temp.Path, NullLogger.Instance);
+
+        registry.Rebuild([], CodexSessionAccessMode.ReadOnly);
+        registry.RegisterGateway(gateway, NullLogger.Instance);
+        var enabled = await gateway.DispatchRegisteredCommandForTestAsync(new NodeInvokeRequest
+        {
+            Id = "enabled",
+            Command = CodexSessionCapability.ThreadsListCommand,
+            Args = JsonSerializer.SerializeToElement(new { }),
+        });
+
+        registry.RefreshCodexSessionAccess(CodexSessionAccessMode.Off, gateway, NullLogger.Instance);
+        var revoked = await gateway.DispatchRegisteredCommandForTestAsync(new NodeInvokeRequest
+        {
+            Id = "revoked",
+            Command = CodexSessionCapability.ThreadsListCommand,
+            Args = JsonSerializer.SerializeToElement(new { }),
+        });
+
+        Assert.True(enabled.Ok, enabled.Error);
+        Assert.False(revoked.Ok);
+        Assert.Equal($"Command not supported: {CodexSessionCapability.ThreadsListCommand}", revoked.Error);
+        await harness.AssertAllProcessesExitedAsync();
+    }
+
+    [Fact]
+    public async Task ConcurrentReplaceAndHandshakeSnapshot_NeverPublishesTornCatalog()
+    {
+        using var temp = new Presentation.TempDir();
+        using var gateway = new WindowsNodeClient("ws://127.0.0.1:1", "token", temp.Path, NullLogger.Instance);
+        var a = new StubCapability("catalog-a", ["catalog.a.one", "catalog.a.two"]);
+        var b = new StubCapability("catalog-b", ["catalog.b.one"]);
+        gateway.ReplaceCapabilities([a]);
+
+        using var start = new ManualResetEventSlim();
+        var replacing = Task.Run(() =>
+        {
+            start.Wait();
+            for (var i = 0; i < 2_000; i++)
+                gateway.ReplaceCapabilities(i % 2 == 0 ? [b] : [a]);
+        });
+        start.Set();
+
+        for (var i = 0; i < 2_000; i++)
+        {
+            var snapshot = gateway.GetHandshakeCatalogForTest();
+            var isA = snapshot.Capabilities.SequenceEqual(["catalog-a"]) &&
+                snapshot.Commands.SequenceEqual(["catalog.a.one", "catalog.a.two"]);
+            var isB = snapshot.Capabilities.SequenceEqual(["catalog-b"]) &&
+                snapshot.Commands.SequenceEqual(["catalog.b.one"]);
+            Assert.True(isA || isB, $"Torn catalog: {string.Join(',', snapshot.Capabilities)} / {string.Join(',', snapshot.Commands)}");
+        }
+
+        await replacing.WaitAsync(TimeSpan.FromSeconds(5));
     }
 
     [Fact]

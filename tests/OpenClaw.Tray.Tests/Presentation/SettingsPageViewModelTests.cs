@@ -72,6 +72,27 @@ public sealed class SettingsPageViewModelTests
     }
 
     [Fact]
+    public void CodexSessionAccessIndex_PersistenceFailureDoesNotEscapeTwoWaySetter()
+    {
+        using var temp = new TempDir();
+        var invalidDirectory = Path.Combine(temp.Path, "not-a-directory");
+        File.WriteAllText(invalidDirectory, "occupied");
+        var settings = new SettingsManager(invalidDirectory);
+        var appCommands = new FakeAppCommands();
+        var vm = new SettingsPageViewModel(
+            new SettingsStore(settings, new RecordingUiDispatcher()),
+            appCommands,
+            () => true);
+        vm.Activate(null);
+
+        var exception = Record.Exception(() => vm.CodexSessionAccessIndex = 1);
+
+        Assert.Null(exception);
+        Assert.Equal(CodexSessionAccessMode.ReadOnly, settings.CodexSessionAccess);
+        Assert.Equal(1, appCommands.NotifySettingsSavedCount);
+    }
+
+    [Fact]
     public void ExternalModeAndAvailabilityChange_RaisesEachDerivedStatusOnce()
     {
         var executableAvailable = false;

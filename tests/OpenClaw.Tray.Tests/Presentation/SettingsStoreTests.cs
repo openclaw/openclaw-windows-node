@@ -196,4 +196,66 @@ public sealed class SettingsStoreTests
             Assert.Equal("wss://new.example.test", persisted.GatewayUrl);
         }
     }
+
+    [Fact]
+    public async Task DirectSetterAndSave_WaitForStoreTransactionAndPreserveBothChanges()
+    {
+        var store = NewStore(out var settings, out _, out var temp);
+        using (temp)
+        {
+            settings.CodexSessionAccess = CodexSessionAccessMode.ReadOnly;
+            settings.GatewayUrl = "wss://old.example.test";
+            settings.Save();
+            using var editEntered = new ManualResetEventSlim();
+            using var releaseEdit = new ManualResetEventSlim();
+            using var setterCompleted = new ManualResetEventSlim();
+
+            var revoke = Task.Run(() => store.Update(editor =>
+            {
+                editEntered.Set();
+                Assert.True(releaseEdit.Wait(TimeSpan.FromSeconds(5)));
+                editor.CodexSessionAccess = CodexSessionAccessMode.Off;
+            }));
+            Assert.True(editEntered.Wait(TimeSpan.FromSeconds(5)));
+
+            var directWriter = Task.Run(() =>
+            {
+                settings.GatewayUrl = "wss://new.example.test";
+                setterCompleted.Set();
+                settings.Save();
+            });
+            try
+            {
+                Assert.False(setterCompleted.Wait(TimeSpan.FromMilliseconds(500)));
+            }
+            finally
+            {
+                releaseEdit.Set();
+            }
+
+            await Task.WhenAll(revoke, directWriter).WaitAsync(TimeSpan.FromSeconds(5));
+            var persisted = new SettingsManager(temp.Path);
+            Assert.Equal(CodexSessionAccessMode.Off, persisted.CodexSessionAccess);
+            Assert.Equal("wss://new.example.test", persisted.GatewayUrl);
+        }
+    }
+
+    [Fact]
+    public async Task PersistenceFailure_DoesNotEscapeAndReleasesOwnerLock()
+    {
+        using var temp = new TempDir();
+        var invalidDirectory = Path.Combine(temp.Path, "not-a-directory");
+        File.WriteAllText(invalidDirectory, "occupied");
+        var settings = new SettingsManager(invalidDirectory);
+        var store = new SettingsStore(settings, new RecordingUiDispatcher());
+
+        var exception = Record.Exception(() =>
+            store.Update(editor => editor.CodexSessionAccess = CodexSessionAccessMode.ReadOnly));
+
+        Assert.Null(exception);
+        Assert.Equal(CodexSessionAccessMode.ReadOnly, store.Current.CodexSessionAccess);
+        await Task.Run(() => settings.GatewayUrl = "wss://after-failure.example.test")
+            .WaitAsync(TimeSpan.FromSeconds(2));
+        Assert.Equal("wss://after-failure.example.test", settings.GatewayUrl);
+    }
 }

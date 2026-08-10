@@ -24,6 +24,7 @@ public class WindowsNodeClient : WebSocketClientBase
     private readonly object _capabilityLock = new();
     private FrozenDictionary<string, CommandDispatchEntry> _commandMap =
         FrozenDictionary<string, CommandDispatchEntry>.Empty;
+    private HandshakeCatalog _handshakeCatalog = HandshakeCatalog.Empty;
     private readonly NodeRegistration _registration;
     // Connection state
     private bool _isConnected;
@@ -125,13 +126,14 @@ public class WindowsNodeClient : WebSocketClientBase
     internal NodeRegistration Registration => _registration;
 
     /// <summary>Number of registered capabilities (read-only diagnostic accessor).</summary>
-    public int RegisteredCapabilityCount => _registration.Capabilities.Count;
+    public int RegisteredCapabilityCount => Volatile.Read(ref _handshakeCatalog).Capabilities.Length;
 
     /// <summary>Number of registered commands (read-only diagnostic accessor).</summary>
-    public int RegisteredCommandCount => _registration.Commands.Count;
+    public int RegisteredCommandCount => Volatile.Read(ref _handshakeCatalog).Commands.Length;
 
     /// <summary>First few registered command names for diagnostic logging.</summary>
-    public IEnumerable<string> RegisteredCommandsSample => _registration.Commands.Take(5);
+    public IEnumerable<string> RegisteredCommandsSample =>
+        Volatile.Read(ref _handshakeCatalog).Commands.Take(5);
 
     protected override int ReceiveBufferSize => 65536;
     protected override string ClientRole => "node";
@@ -220,6 +222,7 @@ public class WindowsNodeClient : WebSocketClientBase
                     _registration.Commands.Add(cmd);
 
             RebuildCommandMap();
+            PublishHandshakeCatalog();
         }
         
         _logger.Info($"Registered capability: {capability.Category} ({capability.Commands.Count} commands)");
@@ -245,7 +248,35 @@ public class WindowsNodeClient : WebSocketClientBase
                         _registration.Commands.Add(command);
             }
             RebuildCommandMap();
+            PublishHandshakeCatalog();
         }
+    }
+
+    private void PublishHandshakeCatalog() => Volatile.Write(
+        ref _handshakeCatalog,
+        new HandshakeCatalog(_registration.Capabilities.ToArray(), _registration.Commands.ToArray()));
+
+    internal HandshakeCatalog GetHandshakeCatalogForTest() => Volatile.Read(ref _handshakeCatalog);
+
+    internal async Task<NodeInvokeResponse> DispatchRegisteredCommandForTestAsync(
+        NodeInvokeRequest request,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+        var dispatchEntry = ResolveCommand(request.Command);
+        if (dispatchEntry is null)
+        {
+            return new NodeInvokeResponse
+            {
+                Id = request.Id,
+                Ok = false,
+                Error = $"Command not supported: {request.Command}",
+            };
+        }
+
+        var response = await dispatchEntry.Capability.ExecuteAsync(request, cancellationToken);
+        response.Id = request.Id;
+        return response;
     }
     
     /// <summary>
@@ -262,6 +293,9 @@ public class WindowsNodeClient : WebSocketClientBase
             ref _commandMap,
             map.ToFrozenDictionary(StringComparer.OrdinalIgnoreCase));
     }
+
+    private CommandDispatchEntry? ResolveCommand(string command) =>
+        Volatile.Read(ref _commandMap).GetValueOrDefault(command);
     
     /// <summary>
     /// Set a permission for the node
@@ -568,7 +602,7 @@ public class WindowsNodeClient : WebSocketClientBase
         };
         
         // Find capability that can handle this command
-        var dispatchEntry = Volatile.Read(ref _commandMap).GetValueOrDefault(command);
+        var dispatchEntry = ResolveCommand(command);
         
         if (dispatchEntry == null)
         {
@@ -707,11 +741,12 @@ public class WindowsNodeClient : WebSocketClientBase
         var (auth, tokenForSig) = BuildConnectAuth();
         var authType = auth.ContainsKey("deviceToken") ? "deviceToken"
             : auth.ContainsKey("bootstrapToken") ? "bootstrapToken" : "token";
+        var catalog = Volatile.Read(ref _handshakeCatalog);
 
         _logger.Info($"[HANDSHAKE] → Sending connect:");
         _logger.Info($"[HANDSHAKE]   role=node, clientId={ClientId}, mode=node");
-        _logger.Info($"[HANDSHAKE]   caps={_registration.Capabilities.Count}: [{string.Join(", ", _registration.Capabilities)}]");
-        _logger.Info($"[HANDSHAKE]   commands={_registration.Commands.Count}: [{string.Join(", ", _registration.Commands)}]");
+        _logger.Info($"[HANDSHAKE]   caps={catalog.Capabilities.Length}: [{string.Join(", ", catalog.Capabilities)}]");
+        _logger.Info($"[HANDSHAKE]   commands={catalog.Commands.Length}: [{string.Join(", ", catalog.Commands)}]");
         _logger.Info($"[HANDSHAKE]   isBootstrap={usingBootstrap}, hasNodeDeviceToken={isPaired}");
         _logger.Info($"[HANDSHAKE]   deviceId={_deviceIdentity.DeviceId[..Math.Min(16, _deviceIdentity.DeviceId.Length)]}...");
         _logger.Info($"[HANDSHAKE]   nonce={nonce?[..Math.Min(15, nonce?.Length ?? 0)]}...");
@@ -720,13 +755,23 @@ public class WindowsNodeClient : WebSocketClientBase
 
         var requestId = Guid.NewGuid().ToString();
         Volatile.Write(ref _pendingConnectRequestId, requestId);
-        await SendRawAsync(BuildNodeConnectMessage(nonce, challengeTimestampMs, requestId));
+        await SendRawAsync(BuildNodeConnectMessageFromCatalog(nonce, challengeTimestampMs, requestId, catalog));
     }
 
     private string BuildNodeConnectMessage(
         string? nonce,
         long? challengeTimestampMs,
-        string? requestId = null)
+        string? requestId = null) => BuildNodeConnectMessageFromCatalog(
+            nonce,
+            challengeTimestampMs,
+            requestId,
+            Volatile.Read(ref _handshakeCatalog));
+
+    private string BuildNodeConnectMessageFromCatalog(
+        string? nonce,
+        long? challengeTimestampMs,
+        string? requestId,
+        HandshakeCatalog catalog)
     {
         // Sign the full payload with Ed25519 - this is how device pairing works
         string? signature = null;
@@ -773,8 +818,8 @@ public class WindowsNodeClient : WebSocketClientBase
                 },
                 role = "node",
                 scopes = Array.Empty<string>(),
-                caps = _registration.Capabilities,
-                commands = _registration.Commands,
+                caps = catalog.Capabilities,
+                commands = catalog.Commands,
                 permissions = _registration.Permissions,
                 auth,
                 locale = "en-US",
@@ -1297,7 +1342,7 @@ public class WindowsNodeClient : WebSocketClientBase
         };
         
         // Find capability that can handle this command
-        var dispatchEntry = Volatile.Read(ref _commandMap).GetValueOrDefault(command);
+        var dispatchEntry = ResolveCommand(command);
         
         if (dispatchEntry == null)
         {
@@ -1688,6 +1733,11 @@ public class WindowsNodeClient : WebSocketClientBase
     private sealed record CommandDispatchEntry(
         INodeCapability Capability,
         string CanonicalName);
+
+    internal sealed record HandshakeCatalog(string[] Capabilities, string[] Commands)
+    {
+        public static HandshakeCatalog Empty { get; } = new([], []);
+    }
 
     private void RaiseInvokeCompleted(string requestId, string command, bool ok, string? error, TimeSpan duration)
     {

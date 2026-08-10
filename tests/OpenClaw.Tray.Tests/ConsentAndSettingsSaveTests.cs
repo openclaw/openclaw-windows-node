@@ -7,6 +7,29 @@ namespace OpenClaw.Tray.Tests;
 public class ConsentAndSettingsSaveTests
 {
     [Fact]
+    public void SettingsManager_PublicDataPropertiesUseOwnerLockHelpers()
+    {
+        var root = Environment.GetEnvironmentVariable("OPENCLAW_REPO_ROOT")
+            ?? throw new InvalidOperationException("OPENCLAW_REPO_ROOT must identify the test worktree.");
+        var source = File.ReadAllText(Path.Combine(
+            root,
+            "src",
+            "OpenClaw.Tray.WinUI",
+            "Services",
+            "SettingsManager.cs"));
+
+        Assert.DoesNotMatch(
+            new System.Text.RegularExpressions.Regex(
+                @"(?m)^\s*public\s+[^\r\n]*\b_data\b",
+                System.Text.RegularExpressions.RegexOptions.CultureInvariant),
+            source);
+        Assert.Contains("get => ReadData(data =>", source);
+        Assert.Contains("set => UpdateData(data => data with", source);
+        Assert.Contains("lock (_saveLock)\n            LoadCore();", source.Replace("\r\n", "\n"));
+        Assert.Contains("ToSettingsData() => ReadData(data => data with", source);
+    }
+
+    [Fact]
     public void CodexSessionAccessUi_IsInteractiveLocalizedAndTransportSourcesHaveNoSettingsAssignment()
     {
         var root = Environment.GetEnvironmentVariable("OPENCLAW_REPO_ROOT")
