@@ -244,7 +244,8 @@ public sealed class NodeCapabilityRegistryTests
 
             $initialize = Read-Message
             if ($Mode -eq 'FailedInitialization') {
-              [Console]::Error.WriteLine('operator-secret failed initialization')
+              Write-Message @{ id = [long]$initialize.id; error = @{ code = -32001; message = 'operator-secret failed initialization' } }
+              Start-Sleep -Seconds 30
               exit 91
             }
             Write-Message @{ id = [long]$initialize.id; result = @{} }
