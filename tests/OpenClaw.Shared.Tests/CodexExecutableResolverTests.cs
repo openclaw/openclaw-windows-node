@@ -33,7 +33,10 @@ public sealed class CodexExecutableResolverTests : IDisposable
         _ = CreateFile(pathDirectory, "codex.exe");
         var platform = new TestPlatform(
             trailingSeparator ? localAppData + Path.DirectorySeparatorChar : localAppData,
-            pathDirectory);
+            pathDirectory,
+            attributes: path => string.Equals(path, alias, StringComparison.OrdinalIgnoreCase)
+                ? FileAttributes.Archive | FileAttributes.ReparsePoint
+                : File.GetAttributes(path));
 
         var plan = new CodexExecutableResolver(platform).Resolve();
 
@@ -105,6 +108,26 @@ public sealed class CodexExecutableResolverTests : IDisposable
             Path.Combine(_root, "no-local-app-data"),
             pathEntry);
 
+        Assert.Null(new CodexExecutableResolver(platform).Resolve());
+    }
+
+    [Fact]
+    public void Resolve_RejectsFullyQualifiedPathEntryContainingTraversal()
+    {
+        var pathDirectory = Directory.CreateDirectory(
+            Path.Combine(_root, "path-parent", "bin")).FullName;
+        _ = CreateFile(pathDirectory, "codex.exe");
+        var traversalPath = Path.Combine(
+            _root,
+            "path-parent",
+            "unused",
+            "..",
+            "bin");
+        var platform = new TestPlatform(
+            Path.Combine(_root, "no-local-app-data"),
+            traversalPath);
+
+        Assert.True(Path.IsPathFullyQualified(traversalPath));
         Assert.Null(new CodexExecutableResolver(platform).Resolve());
     }
 

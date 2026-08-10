@@ -30,8 +30,12 @@ public sealed class CodexExecutableResolver
 
         foreach (var pathEntry in _platform.PathEnvironment.Split(Path.PathSeparator))
         {
-            if (string.IsNullOrWhiteSpace(pathEntry) || !_platform.IsPathFullyQualified(pathEntry))
+            if (string.IsNullOrWhiteSpace(pathEntry)
+                || !_platform.IsPathFullyQualified(pathEntry)
+                || ContainsTraversalSegment(pathEntry))
+            {
                 continue;
+            }
 
             var candidate = TryGetFullPath(Path.Combine(pathEntry, ExecutableName));
             if (candidate is not null && IsExistingFile(candidate, allowReparsePoint: false))
@@ -39,6 +43,13 @@ public sealed class CodexExecutableResolver
         }
 
         return null;
+    }
+
+    private static bool ContainsTraversalSegment(string path)
+    {
+        return path
+            .Split(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar)
+            .Any(segment => segment is "." or "..");
     }
 
     private string? GetPackagedAlias()
