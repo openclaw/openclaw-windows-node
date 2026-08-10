@@ -6844,6 +6844,37 @@ Het binaire bestand wxc-exec is niet gevonden. {1} Als dit een ontwikkelaarsbuil
   <data name="SettingsPage_About.Text" xml:space="preserve">
     <value>About</value>
   </data>
+  <data name="SettingsPage_CodexSessionAccess_Header.Text" xml:space="preserve">
+    <value>Codex sessions</value>
+  </data>
+  <data name="SettingsPage_CodexSessionAccess_Description.Text" xml:space="preserve">
+    <value>Choose whether OpenClaw can list local Codex sessions and read transcripts. This does not change Gateway configuration.</value>
+  </data>
+  <data name="SettingsPage_CodexSessionAccess_StatusOff.Text" xml:space="preserve">
+    <value>Catalog unavailable: access is off.</value>
+  </data>
+  <data name="SettingsPage_CodexSessionAccess_StatusCatalogAvailable.Text" xml:space="preserve">
+    <value>Catalog available: OpenClaw can list sessions and read transcripts.</value>
+  </data>
+  <data name="SettingsPage_CodexSessionAccess_StatusCatalogUnavailable.Text" xml:space="preserve">
+    <value>Catalog unavailable: Codex executable not found.</value>
+  </data>
+  <data name="SettingsPage_CodexSessionAccess_StatusSteeringUnavailable.Text" xml:space="preserve">
+    <value>Steering unavailable: owner control is not available because Stage 0 did not pass validation.</value>
+  </data>
+  <data name="SettingsPage_CodexSessionAccess_Off.Content" xml:space="preserve">
+    <value>Off</value>
+  </data>
+  <data name="SettingsPage_CodexSessionAccess_ReadOnly.Content" xml:space="preserve">
+    <value>Read only</value>
+  </data>
+  <data name="SettingsPage_CodexSessionAccess_ReadAndSteer.Content" xml:space="preserve">
+    <value>Read and steer</value>
+  </data>
+  <data name="CodexSessionAccessComboBox.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>Codex session access</value>
+  </data>
+
   <data name="SettingsPage_GatewayInfoExpander.Header" xml:space="preserve">
     <value>Gateway info</value>
   </data>

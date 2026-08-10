@@ -93,6 +93,16 @@ public class LocalizationValidationTests
         // translation pass lands. They are still present in every locale file
         // so key parity stays strict; this set only documents deferred copy.
         "SettingsPage_About.Text",
+        "SettingsPage_CodexSessionAccess_Header.Text",
+        "SettingsPage_CodexSessionAccess_Description.Text",
+        "SettingsPage_CodexSessionAccess_StatusOff.Text",
+        "SettingsPage_CodexSessionAccess_StatusCatalogAvailable.Text",
+        "SettingsPage_CodexSessionAccess_StatusCatalogUnavailable.Text",
+        "SettingsPage_CodexSessionAccess_StatusSteeringUnavailable.Text",
+        "SettingsPage_CodexSessionAccess_Off.Content",
+        "SettingsPage_CodexSessionAccess_ReadOnly.Content",
+        "SettingsPage_CodexSessionAccess_ReadAndSteer.Content",
+        "CodexSessionAccessComboBox.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name",
         "SettingsPage_GatewayInfoExpander.Header",
         "SettingsPage_GatewayInfoLabel_Version.Text",
         "SettingsPage_GatewayInfoLabel_Protocol.Text",
