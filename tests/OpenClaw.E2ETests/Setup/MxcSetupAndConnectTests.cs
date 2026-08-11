@@ -24,7 +24,7 @@ public sealed class MxcSetupAndConnectTests
     }
 
     [MxcE2EFact]
-    public async Task RealGateway_SystemRun_WithWindowsUiAccess_ExecutesPowerShellThroughMxcSandbox()
+    public async Task RealGateway_SystemRun_ExecutesThroughWindowsNodeMxcSandbox()
     {
         const string marker = "OPENCLAW_GATEWAY_SYSTEM_RUN_MXC_OK";
 

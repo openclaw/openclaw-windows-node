@@ -197,7 +197,7 @@ Local MCP clients also see MCP-only `app.*` commands such as `app.navigate`, `ap
   $env:OPENCLAW_RUN_E2E = "1"
   dotnet test .\tests\OpenClaw.E2ETests\OpenClaw.E2ETests.csproj `
     --no-restore `
-    --filter "FullyQualifiedName~RealGateway_SystemRun_WithWindowsUiAccess_ExecutesPowerShellThroughMxcSandbox" `
+    --filter "FullyQualifiedName~RealGateway_SystemRun_ExecutesThroughWindowsNodeMxcSandbox" `
     --logger "console;verbosity=normal" `
     -r win-x64
   ```
