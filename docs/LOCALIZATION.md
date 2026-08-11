@@ -1,6 +1,6 @@
 # Localization Guide
 
-OpenClaw Tray uses WinUI `.resw` resource files for localization. Windows automatically selects the correct language based on the OS locale — no user configuration needed.
+OpenClaw Tray uses WinUI `.resw` resource files for localization. Windows automatically selects the correct language based on the OS locale - no user configuration needed.
 
 ## Currently Supported Languages
 
@@ -28,7 +28,7 @@ OpenClaw Tray uses WinUI `.resw` resource files for localization. Windows automa
 
    Use the standard BCP-47 locale tag in lowercase (e.g., `de-de`, `fr-fr`, `ja-jp`, `ko-kr`, `pt-br`, `es-es`).
 
-3. **Translate the `<value>` elements** — do not change the `name` attributes. Each entry looks like:
+3. **Translate the `<value>` elements** - do not change the `name` attributes. Each entry looks like:
 
    ```xml
    <data name="SettingsSaveButton.Content" xml:space="preserve">
@@ -46,7 +46,7 @@ OpenClaw Tray uses WinUI `.resw` resource files for localization. Windows automa
 
 5. **Do not translate resource key names** (the `name` attribute). Only translate `<value>` content.
 
-6. **Submit a pull request** with just your new `Resources.resw` file. No code changes are needed — the build system and localization tests automatically discover new locale folders.
+6. **Submit a pull request** with just your new `Resources.resw` file. No code changes are needed - the build system and localization tests automatically discover new locale folders.
 
 ## How It Works
 

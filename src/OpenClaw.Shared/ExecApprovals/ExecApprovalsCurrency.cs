@@ -17,13 +17,13 @@ internal sealed class ExecApprovalsCurrency
     private readonly ExecSecurity _security;
     private readonly ExecAsk _ask;
     private readonly ExecSecurity _askFallback;
-    private readonly HashSet<string> _allowlistPatterns;
+    private readonly HashSet<(string Pattern, string ArgPattern, string Source)> _allowlistPatterns;
 
     private ExecApprovalsCurrency(
         ExecSecurity security,
         ExecAsk ask,
         ExecSecurity askFallback,
-        HashSet<string> allowlistPatterns)
+        HashSet<(string Pattern, string ArgPattern, string Source)> allowlistPatterns)
     {
         _security = security;
         _ask = ask;
@@ -41,8 +41,9 @@ internal sealed class ExecApprovalsCurrency
     /// <summary>
     /// True when <paramref name="fresh"/> has not tightened relative to the snapshot.
     /// Fails on: security made more restrictive (lower <see cref="ExecSecurity"/>), ask
-    /// raised (higher <see cref="ExecAsk"/>), or any allowlist pattern the snapshot carried
-    /// now absent. Additive changes (new entries, looser policy) stay current.
+    /// raised (higher <see cref="ExecAsk"/>), or any allowlist grant the snapshot carried
+    /// now absent - where a grant is the (pattern, argPattern, source) triple, so tightening
+    /// an entry counts as revoking it. Additive changes (new entries, looser policy) stay current.
     /// </summary>
     public bool IsStillCurrent(ExecApprovalsResolved fresh)
     {
@@ -71,14 +72,47 @@ internal sealed class ExecApprovalsCurrency
         return true;
     }
 
-    private static HashSet<string> CollectPatterns(ExecApprovalsResolved resolved)
+    /// <summary>
+    /// An allowlist grant is the triple (pattern, argPattern, source), not the pattern
+    /// alone: <see cref="ExecAllowlistMatcher"/> narrows a match by <c>argPattern</c> and
+    /// skips a generated entry whose <c>source</c> is set but whose <c>argPattern</c> is
+    /// missing. Fingerprinting only the pattern would let the owner tighten the very entry
+    /// an approval relied on - by adding or narrowing its argPattern, or by marking a
+    /// hand-written path-only entry as generated - while the pattern string stayed present,
+    /// so the guard would report the policy unchanged and the stale approval would run.
+    /// </summary>
+    private static HashSet<(string Pattern, string ArgPattern, string Source)> CollectPatterns(
+        ExecApprovalsResolved resolved)
     {
-        var patterns = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var patterns = new HashSet<(string, string, string)>(GrantIdentityComparer.Instance);
         foreach (var entry in resolved.Allowlist)
         {
             if (!string.IsNullOrWhiteSpace(entry.Pattern))
-                patterns.Add(entry.Pattern!);
+                patterns.Add((entry.Pattern!, entry.ArgPattern ?? string.Empty, entry.Source ?? string.Empty));
         }
         return patterns;
+    }
+
+    /// <summary>
+    /// Patterns keep their historical case-insensitive comparison because they name Windows
+    /// paths. <c>argPattern</c> is a regex and <c>source</c> is a protocol token, so both are
+    /// compared ordinally - case is significant in a regex.
+    /// </summary>
+    private sealed class GrantIdentityComparer : IEqualityComparer<(string Pattern, string ArgPattern, string Source)>
+    {
+        internal static readonly GrantIdentityComparer Instance = new();
+
+        public bool Equals(
+            (string Pattern, string ArgPattern, string Source) x,
+            (string Pattern, string ArgPattern, string Source) y)
+            => string.Equals(x.Pattern, y.Pattern, StringComparison.OrdinalIgnoreCase)
+                && string.Equals(x.ArgPattern, y.ArgPattern, StringComparison.Ordinal)
+                && string.Equals(x.Source, y.Source, StringComparison.Ordinal);
+
+        public int GetHashCode((string Pattern, string ArgPattern, string Source) obj)
+            => HashCode.Combine(
+                StringComparer.OrdinalIgnoreCase.GetHashCode(obj.Pattern),
+                StringComparer.Ordinal.GetHashCode(obj.ArgPattern),
+                StringComparer.Ordinal.GetHashCode(obj.Source));
     }
 }

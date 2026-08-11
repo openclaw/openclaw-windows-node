@@ -90,6 +90,7 @@ public static class ReactorChatHostExtensions
         var host = new ReactorHostControl();
         host.Mount(_ => Component<OpenClawReactorChatRoot, OpenClawReactorChatRootProps>(props));
         target.Child = host;
+        VisualTestCapture.ScheduleSignalCapture(target);
         return new MountedReactorChat(target, host, callbacks);
     }
 }

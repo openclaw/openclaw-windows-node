@@ -38,8 +38,20 @@ public sealed class BrowserProxyActivationTests
                 toggleEnabled: true,
                 sharedGatewayToken: "token",
                 hasGatewayClient: true));
+        Assert.Equal(
+            BrowserProxyActivation.RegistrationBlock.UnverifiedBrowserEndpoint,
+            BrowserProxyActivation.ResolveRegistrationBlock(
+                toggleEnabled: true,
+                sharedGatewayToken: "token",
+                hasGatewayClient: true,
+                browserEndpointVerified: false));
         Assert.True(BrowserProxyActivation.ShouldRegister(true, "token", true));
         Assert.False(BrowserProxyActivation.ShouldRegister(true, null, true));
+        Assert.False(BrowserProxyActivation.ShouldRegister(
+            true,
+            "token",
+            true,
+            browserEndpointVerified: false));
     }
 
     [Fact]
@@ -62,6 +74,32 @@ public sealed class BrowserProxyActivationTests
             nodeBrowserProxyEnabled: false,
             activeGatewayHasSharedToken: false,
             nodeSessionLive: true));
+    }
+
+    [Fact]
+    public void Remediation_PrioritizesMissingTokenBeforeEndpoint()
+    {
+        Assert.Equal(
+            BrowserProxyActivation.RemediationKind.MissingSharedToken,
+            BrowserProxyActivation.ResolveRemediation(
+                toggleEnabled: true,
+                hasSharedGatewayToken: false,
+                nodeSessionLive: true,
+                browserEndpointVerified: false));
+        Assert.Equal(
+            BrowserProxyActivation.RemediationKind.UnverifiedEndpoint,
+            BrowserProxyActivation.ResolveRemediation(
+                toggleEnabled: true,
+                hasSharedGatewayToken: true,
+                nodeSessionLive: true,
+                browserEndpointVerified: false));
+        Assert.Equal(
+            BrowserProxyActivation.RemediationKind.None,
+            BrowserProxyActivation.ResolveRemediation(
+                toggleEnabled: true,
+                hasSharedGatewayToken: true,
+                nodeSessionLive: true,
+                browserEndpointVerified: true));
     }
 
     [Fact]
@@ -108,6 +146,24 @@ public sealed class BrowserProxyActivationTests
                 pendingDeclared: false,
                 hasSharedGatewayToken: false,
                 nodeSessionLive: false));
+        Assert.Equal(
+            BrowserProxyActivation.CapabilityPillKind.NeedsVerifiedEndpoint,
+            BrowserProxyActivation.ResolveCapabilityPillKind(
+                toggleEnabled: true,
+                effective: false,
+                pendingDeclared: false,
+                hasSharedGatewayToken: true,
+                nodeSessionLive: true,
+                browserEndpointVerified: false));
+        Assert.Equal(
+            BrowserProxyActivation.CapabilityPillKind.NeedsSharedToken,
+            BrowserProxyActivation.ResolveCapabilityPillKind(
+                toggleEnabled: true,
+                effective: false,
+                pendingDeclared: false,
+                hasSharedGatewayToken: false,
+                nodeSessionLive: true,
+                browserEndpointVerified: false));
     }
 
     [Fact]
@@ -150,6 +206,36 @@ public sealed class BrowserProxyActivationTests
             browserControlPort: null,
             hasSshTunnelConfigured: true,
             sshBrowserProxyForwardEnabled: false));
+    }
+
+    [Fact]
+    public void SshBrowserEndpoint_RequiresManagedForwardOrMatchingOverride()
+    {
+        var tunnel = new SshTunnelConfig(
+            "user",
+            "host.example",
+            RemotePort: 18789,
+            LocalPort: 9100,
+            IncludeBrowserProxyForward: true);
+
+        Assert.True(BrowserProxyActivation.IsSshBrowserEndpointVerified(tunnel, null));
+        Assert.True(BrowserProxyActivation.IsSshBrowserEndpointVerified(tunnel, 9102));
+        Assert.False(BrowserProxyActivation.IsSshBrowserEndpointVerified(tunnel, 19000));
+        Assert.False(BrowserProxyActivation.IsSshBrowserEndpointVerified(
+            tunnel with { IncludeBrowserProxyForward = false },
+            19000));
+        Assert.True(BrowserProxyActivation.RequiresRemoteBrowserEndpoint(
+            "wss://remote.example",
+            19000,
+            tunnel));
+        Assert.False(BrowserProxyActivation.RequiresRemoteBrowserEndpoint(
+            "wss://remote.example",
+            9102,
+            tunnel));
+        Assert.Contains(
+            "managed browser-proxy forward",
+            BrowserProxyActivation.BuildUnverifiedSshBrowserEndpointDetail(),
+            StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]

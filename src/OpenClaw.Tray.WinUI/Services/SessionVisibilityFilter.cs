@@ -1,31 +1,24 @@
 using OpenClaw.Chat;
 using OpenClaw.Shared;
+using OpenClaw.Shared.Sessions;
 
 namespace OpenClawTray.Services;
 
 public static class SessionVisibilityFilter
 {
-    public static IEnumerable<SessionInfo> VisibleSessions(IEnumerable<SessionInfo> sessions, bool showEnded)
-        => showEnded ? sessions : sessions.Where(IsVisibleWhenEndedHidden);
+    public static IEnumerable<SessionInfo> VisibleSessions(IEnumerable<SessionInfo> sessions, bool showCompleted)
+        => showCompleted ? sessions : sessions.Where(IsVisibleWhenCompletedHidden);
 
-    public static bool IsVisibleWhenEndedHidden(SessionInfo session)
-        => !IsEnded(session);
+    public static bool IsVisibleWhenCompletedHidden(SessionInfo session)
+        => !IsCompleted(session);
 
-    public static bool IsEnded(SessionInfo session)
-    {
-        if (session.AbortedLastRun)
-            return false;
-
-        var status = session.Status?.Trim();
-        return string.Equals(status, "done", StringComparison.OrdinalIgnoreCase)
-            || string.Equals(status, "completed", StringComparison.OrdinalIgnoreCase)
-            || string.Equals(status, "failed", StringComparison.OrdinalIgnoreCase)
-            || string.Equals(status, "killed", StringComparison.OrdinalIgnoreCase)
-            || string.Equals(status, "timeout", StringComparison.OrdinalIgnoreCase);
-    }
+    public static bool IsCompleted(SessionInfo session) => SessionRunState.IsCompleted(session);
 
     public static ChatThreadStatus ToChatThreadStatus(SessionInfo session)
-        => IsEnded(session) ? ChatThreadStatus.Ended : ChatThreadStatus.Running;
+        => SessionRunState.IsWorking(session) ? ChatThreadStatus.Running : ChatThreadStatus.Created;
+
+    public static ChatActivity ToChatThreadActivity(SessionInfo session)
+        => SessionRunState.IsWorking(session) ? ChatActivity.Working : ChatActivity.Idle;
 
     public static IEnumerable<ChatThread> VisibleChatPickerThreads(
         IEnumerable<ChatThread> threads,

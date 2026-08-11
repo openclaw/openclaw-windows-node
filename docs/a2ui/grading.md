@@ -1,4 +1,4 @@
-# A2UI v0.8 — Implementation Grading
+# A2UI v0.8 - Implementation Grading
 
 This grades two implementations against the v0.8 spec
 (<https://a2ui.org/specification/v0.8-a2ui/>):
@@ -18,11 +18,11 @@ anchored at `src/OpenClaw.Tray.WinUI/A2UI/`.
 
 For each spec area, deductions land in two buckets:
 
-- **Gap** — implementation is missing or wrong vs. spec. Letter grade penalty.
-- **Good deviation** — implementation does something the spec _doesn't say
+- **Gap** - implementation is missing or wrong vs. spec. Letter grade penalty.
+- **Good deviation** - implementation does something the spec _doesn't say
   to do_, but it's the correct call. Listed but doesn't penalize.
 
-Grades are A–F, separately for Lit and WinUI. There is no curving —
+Grades are A–F, separately for Lit and WinUI. There is no curving -
 "A" means it would pass a strict spec audit and a strict security
 audit; "B" means it works for normal traffic but fails under a hostile
 agent; etc.
@@ -61,7 +61,7 @@ The two "A" grades have very different shapes:
 
 ---
 
-## Lit implementation — detailed deductions
+## Lit implementation - detailed deductions
 
 ### Documented `TODO` gaps
 
@@ -100,7 +100,7 @@ safety** (this is the F).
 
 `vendor/a2ui/.../ui/root.ts:118–140, 441–471` lets the embedding app set
 `enableCustomElements = true` and then renders any `<component>` whose tag
-is registered in `componentRegistry`. This is **beyond spec** — useful for
+is registered in `componentRegistry`. This is **beyond spec** - useful for
 extensibility, dangerous for catalog-strict mode. **Not graded as a gap**
 since it's behind a flag, but it's worth flagging at the host level.
 
@@ -117,8 +117,8 @@ coverage** (D).
 - **Markdown rendering** in `Text` (`ui/text.ts`, `ui/directives/markdown.ts`).
   HTML blocks wrapped in `<iframe sandbox="">`; code blocks escaped via
   `sanitizer.escapeNodeText`. The spec says plain string. Whether this
-  counts as good depends on the threat model — see
-  [the Text/Markdown divergence](#text-markdown-divergence).
+  counts as good depends on the threat model - see
+  [the Text/Markdown divergence](#text--markdown-divergence).
 - **Signal-driven re-render** via `@lit-labs/signals`. Cleaner reactivity
   than naive `requestUpdate()`.
 - **Bi-directional binding** in `CheckBox`, `TextField`, `Slider`,
@@ -126,7 +126,7 @@ coverage** (D).
 
 ---
 
-## WinUI implementation — detailed deductions
+## WinUI implementation - detailed deductions
 
 ### Property-coverage misses
 
@@ -150,7 +150,7 @@ balanced by being the only impl that fills the corresponding Lit gaps
 `Rendering/IComponentRenderer.cs:183–249` (`BuildActionContext`):
 
 1. Collect `allowed` paths from the component's explicit `dataBinding`
-   array, or — if absent — implicitly walk every `A2UIValue.path` referenced
+   array, or - if absent - implicitly walk every `A2UIValue.path` referenced
    by the component's own properties.
 2. For each `action.context[]` entry, resolve only if `IsAllowedPath`
    matches (exact or ancestor with `/` boundary).
@@ -162,7 +162,7 @@ This blocks the trivial "exfiltrate the whole tree" attack without
 requiring the host to know about A2UI internals. The Lit impl can't
 do this because it dispatches `action` straight through.
 
-### URL safety — DNS rebinding defense (Image fetches)
+### URL safety - DNS rebinding defense (Image fetches)
 
 `Rendering/MediaResolver.cs:57–95`:
 
@@ -186,7 +186,7 @@ does none of this.
 **Limitation: this pin is image-only.** `Video`/`AudioPlayer` route through
 `MediaSource.CreateFromUri`, which performs its own DNS resolution at
 playback time outside the resolver. The HTTPS+allowlist gate still
-applies to those URLs, but the connect-time IP check does not — see
+applies to those URLs, but the connect-time IP check does not - see
 `MediaResolver.TryResolveMediaUri`. A local-proxy approach was scoped
 out of the v0.8 native renderer; the allowlist is the load-bearing
 defense for media playback.
@@ -254,7 +254,7 @@ fake `WindowsNodeClient`).
 
 | Deviation | File | Why it's good |
 | --- | --- | --- |
-| DNS rebinding defense (image fetches) | `Rendering/MediaResolver.cs:57–95` | spec doesn't ask but a hostile agent can otherwise pivot through the image fetch path to internal HTTP services. Does not extend to `Video`/`AudioPlayer` — see "URL safety" section. |
+| DNS rebinding defense (image fetches) | `Rendering/MediaResolver.cs:57–95` | spec doesn't ask but a hostile agent can otherwise pivot through the image fetch path to internal HTTP services. Does not extend to `Video`/`AudioPlayer` - see "URL safety" section. |
 | Action context allowlist | `Rendering/IComponentRenderer.cs:183–249` | minimum-information principle; spec leaves this open |
 | Secret denylist | `Rendering/SecretRedactor.cs` | catches `/auth/sessionToken` style names automatically |
 | `surfaceUpdate` diff | `Hosting/SurfaceHost.cs` | preserves caret/scroll/selection on re-emit |
@@ -275,7 +275,7 @@ the **biggest functional UX difference** between the two.
 
 Lit's defense is `iframe sandbox=""` for HTML blocks plus
 `escapeNodeText` for code. That's a reasonable sandbox model in the
-browser — but every line still expands the renderer's attack surface
+browser - but every line still expands the renderer's attack surface
 beyond the spec's "plain string" promise.
 
 For ms-windows-node, parity is **probably not worth chasing** unless
@@ -313,21 +313,21 @@ forward them.
 
 ## Known deviations by category
 
-For PR reviewers — quick "is this OK?" reference.
+For PR reviewers - quick "is this OK?" reference.
 
 | Deviation | Spec status | Lit | WinUI | Verdict |
 | --- | --- | --- | --- | --- |
-| Bi-directional data-model write on user input | silent | ✓ | ✓ | Good — spec assumes it implicitly |
+| Bi-directional data-model write on user input | silent | ✓ | ✓ | Good - spec assumes it implicitly |
 | Markdown in `Text` | violation (plain string) | ✓ | ✗ | Lit: useful but expands attack surface; WinUI: stay plain |
 | Custom-element registry beyond catalog | violation (catalog-strict) | ✓ (flag) | ✗ | Risk; only enable in trusted hosts |
 | `valueString` auto-parsed as JSON | violation (type erasure) | ✓ | ✗ | Bug-shaped; rely on `valueMap`/`valueArray` |
-| Hard size caps on stream / model | silent | ✗ | ✓ | Good — DoS defense |
-| URL allowlist on media | silent | ✗ | ✓ | Good — SSRF defense |
-| DNS-rebinding defense (image fetches) | silent | ✗ | ✓ | Good — beyond allowlist. Image only; `Video`/`AudioPlayer` rely on the allowlist alone (OS media stack re-resolves at playback). |
-| Action context allowlist | silent | ✗ | ✓ | Good — minimum information |
-| Secret-path redaction | silent | ✗ | ✓ | Good — keeps tokens off the wire |
-| Component diff on `surfaceUpdate` | "structural diffing" (vague) | ✗ | ✓ | Good — preserves UI state |
-| `List` virtualization | "should virtualize" | ✗ | ✓ | Good — required for non-trivial surfaces |
+| Hard size caps on stream / model | silent | ✗ | ✓ | Good - DoS defense |
+| URL allowlist on media | silent | ✗ | ✓ | Good - SSRF defense |
+| DNS-rebinding defense (image fetches) | silent | ✗ | ✓ | Good - beyond allowlist. Image only; `Video`/`AudioPlayer` rely on the allowlist alone (OS media stack re-resolves at playback). |
+| Action context allowlist | silent | ✗ | ✓ | Good - minimum information |
+| Secret-path redaction | silent | ✗ | ✓ | Good - keeps tokens off the wire |
+| Component diff on `surfaceUpdate` | "structural diffing" (vague) | ✗ | ✓ | Good - preserves UI state |
+| `List` virtualization | "should virtualize" | ✗ | ✓ | Good - required for non-trivial surfaces |
 | `Modal` as native `ContentDialog` | shape open | `<dialog>` | `ContentDialog` | Both fine |
 | `MultipleChoice` single-mode writes scalar | spec implies array | array | scalar | WinUI's reads tolerate either; talk to your agent format |
 | `validationRegexp` (TextField) | spec property | ✗ TODO | ✗ | Both have a gap here |

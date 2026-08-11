@@ -83,6 +83,20 @@ public enum ChatToolCallStatus
     Interrupted
 }
 
+public enum ChatToolErrorTextQuality
+{
+    Unspecified,
+    SafeSummary
+}
+
+public enum ChatToolIdentityStrength
+{
+    Fallback,
+    Heuristic,
+    Specific,
+    Explicit
+}
+
 public enum ChatTone
 {
     Info,
@@ -137,7 +151,18 @@ public record ChatTimelineItem(
     string? ToolCallId = null,
     string? PermissionRequestId = null,
     ChatPermissionDecision PermissionDecision = ChatPermissionDecision.Pending,
-    IReadOnlyList<string>? PermissionActions = null);
+    IReadOnlyList<string>? PermissionActions = null,
+    ChatToolIdentityStrength ToolIdentityStrength = ChatToolIdentityStrength.Fallback,
+    System.Collections.Immutable.ImmutableHashSet<string>? ToolCorrelationIds = null,
+    long ToolOutcomeSequence = 0,
+    string? ToolRunId = null,
+    long ToolLegacyTurn = 0,
+    ChatToolErrorTextQuality ToolErrorTextQuality = ChatToolErrorTextQuality.Unspecified);
+
+public readonly record struct ChatToolCorrelationKey(
+    string? RunId,
+    long LegacyTurn,
+    string ToolCallId);
 
 public record ChatPermissionRequest(string RequestId, string PermissionKind, string ToolName, string Detail, IReadOnlyList<string>? Actions = null);
 
@@ -150,16 +175,38 @@ public record ChatTimelineState(
     string? ActiveToolCallId,
     string? CurrentIntent,
     System.Collections.Immutable.ImmutableHashSet<string> LocalNonces,
-    System.Collections.Immutable.ImmutableDictionary<string, string> ActiveToolCalls,
+    System.Collections.Immutable.ImmutableDictionary<ChatToolCorrelationKey, string> ActiveToolCalls,
     bool HistoryLoaded = false,
-    ChatPermissionRequest? PendingPermission = null)
+    ChatPermissionRequest? PendingPermission = null,
+    System.Collections.Immutable.ImmutableDictionary<ChatToolCorrelationKey, ChatPendingToolPresentation>? PendingToolPresentations = null,
+    System.Collections.Immutable.ImmutableDictionary<ChatToolCorrelationKey, ChatPendingToolOutcome>? PendingToolOutcomes = null,
+    System.Collections.Immutable.ImmutableDictionary<ChatToolCorrelationKey, long>? TerminalToolCorrelations = null,
+    long NextToolOutcomeSequence = 1,
+    long NextToolCorrelationSequence = 1,
+    long ToolLegacyTurn = 1)
 {
     public static ChatTimelineState Initial() => new(
         System.Collections.Immutable.ImmutableList<ChatTimelineItem>.Empty,
         false, 1, null, null, null, null,
         System.Collections.Immutable.ImmutableHashSet<string>.Empty,
-        System.Collections.Immutable.ImmutableDictionary<string, string>.Empty);
+        System.Collections.Immutable.ImmutableDictionary<ChatToolCorrelationKey, string>.Empty,
+        PendingToolPresentations: System.Collections.Immutable.ImmutableDictionary<ChatToolCorrelationKey, ChatPendingToolPresentation>.Empty,
+        PendingToolOutcomes: System.Collections.Immutable.ImmutableDictionary<ChatToolCorrelationKey, ChatPendingToolOutcome>.Empty,
+        TerminalToolCorrelations: System.Collections.Immutable.ImmutableDictionary<ChatToolCorrelationKey, long>.Empty);
 }
+
+public record ChatPendingToolPresentation(
+    string ToolName,
+    ChatToolIdentityStrength IdentityStrength,
+    JsonObject? ToolArgs,
+    System.Collections.Immutable.ImmutableHashSet<string> CorrelationIds,
+    long Sequence = 0);
+
+public record ChatPendingToolOutcome(
+    string Text,
+    ChatToolCallStatus Status,
+    long Sequence,
+    ChatToolErrorTextQuality ErrorTextQuality = ChatToolErrorTextQuality.Unspecified);
 
 public enum ChatQueuedMessageSendState
 {
@@ -192,11 +239,33 @@ public record ChatReasoningDeltaEvent(string Text) : ChatEvent;
 public record ChatReasoningEndEvent() : ChatEvent;
 public record ChatMessageEvent(string Text, string? ReasoningText = null, bool ReconcilePrevious = false, bool IsStreaming = false) : ChatEvent;
 public record ChatMessageDeltaEvent(string Text) : ChatEvent;
-public record ChatTurnEndEvent() : ChatEvent;
+public record ChatTurnEndEvent(bool RetainToolCorrelations = true) : ChatEvent;
 public record ChatIntentEvent(string Intent) : ChatEvent;
-public record ChatToolStartEvent(string Text, string ToolName, JsonObject? ToolArgs = null, string? ToolCallId = null) : ChatEvent;
-public record ChatToolOutputEvent(string Text, string? ToolCallId = null) : ChatEvent;
-public record ChatToolErrorEvent(string Text, string? ToolCallId = null) : ChatEvent;
+public record ChatToolStartEvent(
+    string Text,
+    string ToolName,
+    JsonObject? ToolArgs = null,
+    string? ToolCallId = null,
+    ChatToolIdentityStrength IdentityStrength = ChatToolIdentityStrength.Explicit,
+    string? RunId = null) : ChatEvent;
+public record ChatToolPresentationEvent(
+    string ParentToolCallId,
+    string ToolName,
+    ChatToolIdentityStrength IdentityStrength,
+    JsonObject? ToolArgs = null,
+    string? ChildToolCallId = null,
+    bool ActivatesTurn = true,
+    string? RunId = null) : ChatEvent;
+public record ChatToolOutputEvent(
+    string Text,
+    string? ToolCallId = null,
+    string? RunId = null) : ChatEvent;
+public record ChatToolErrorEvent(
+    string Text,
+    string? ToolCallId = null,
+    string? RunId = null,
+    ChatToolErrorTextQuality ErrorTextQuality = ChatToolErrorTextQuality.Unspecified) : ChatEvent;
+public record ChatToolReplayResetEvent : ChatEvent;
 public record ChatContextChangedEvent(string? Cwd, string? GitBranch) : ChatEvent;
 public record ChatStatusEvent(string Text, ChatTone Tone) : ChatEvent;
 public record ChatErrorEvent(string Text) : ChatEvent;

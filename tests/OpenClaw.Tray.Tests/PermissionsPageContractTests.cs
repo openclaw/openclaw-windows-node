@@ -26,7 +26,7 @@ public sealed class PermissionsPageContractTests
     }
 
     [Fact]
-    public void PermissionsPage_ExecPolicyCombos_PreserveDenyAllowAskChoices()
+    public void PermissionsPage_ExecPolicyControls_PreserveDefaultChoicesAndAllowOnlyRules()
     {
         var doc = XDocument.Load(GetPermissionsXamlPath());
 
@@ -41,7 +41,8 @@ public sealed class PermissionsPageContractTests
                 StringComparer.Ordinal);
 
         Assert.Equal(new[] { "deny", "allow", "prompt" }, combos["DefaultActionCombo"]);
-        Assert.Equal(new[] { "allow" }, combos["NewRuleAction"]);
+        Assert.DoesNotContain("NewRuleAction", combos.Keys);
+        Assert.Contains("Action = \"allow\"", ReadPermissionsCodeBehind());
     }
 
     [Fact]

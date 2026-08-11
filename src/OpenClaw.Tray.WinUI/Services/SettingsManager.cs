@@ -163,6 +163,8 @@ public class SettingsManager
     public bool SystemRunBlockHostFallbackWhenMxcUnavailable { get => _data.SystemRunBlockHostFallbackWhenMxcUnavailable; set => _data = _data with { SystemRunBlockHostFallbackWhenMxcUnavailable = value }; }
     /// <summary>When sandboxed, allow system.run commands to reach the public internet. Default false.</summary>
     public bool SystemRunAllowOutbound { get => _data.SystemRunAllowOutbound; set => _data = _data with { SystemRunAllowOutbound = value }; }
+    /// <summary>When sandboxed, allow Windows UI system calls required by PowerShell and many console utilities. Default false.</summary>
+    public bool SystemRunAllowWindowsUi { get => _data.SystemRunAllowWindowsUi; set => _data = _data with { SystemRunAllowWindowsUi = value }; }
     // ── MXC sandbox: additional knobs (Sandbox page) ─────────────────
     public SandboxClipboardMode SandboxClipboard { get => _data.SandboxClipboard; set => _data = _data with { SandboxClipboard = value }; }
     public SandboxFolderAccess? SandboxDocumentsAccess { get => _data.SandboxDocumentsAccess; set => _data = _data with { SandboxDocumentsAccess = value }; }
@@ -284,6 +286,7 @@ public class SettingsManager
         SystemRunSandboxEnabled = true,
         SystemRunBlockHostFallbackWhenMxcUnavailable = false,
         SystemRunAllowOutbound = false,
+        SystemRunAllowWindowsUi = false,
         SandboxClipboard = SandboxClipboardMode.None,
         SandboxDocumentsAccess = null,
         SandboxDownloadsAccess = null,
@@ -433,30 +436,42 @@ public class SettingsManager
 
     public void Save()
     {
+        try
+        {
+            SaveOrThrow();
+        }
+        catch (Exception ex)
+        {
+            Logger.Error($"Failed to save settings: {ex.Message}");
+        }
+    }
+
+    internal void SaveOrThrow()
+    {
         lock (_saveLock)
         {
+            Directory.CreateDirectory(_settingsDirectory);
+            // Lock the tray data dir to current user + SYSTEM + Administrators —
+            // it co-locates the MCP bearer token, settings.json (which embeds
+            // gateway/bootstrap credentials), and diagnostics jsonl. Other apps
+            // running as the same user could otherwise read these freely.
+            OpenClaw.Shared.Mcp.McpAuthToken.TryRestrictDataDirectoryAcl(_settingsDirectory);
+
+            var data = ToSettingsData();
+            // Apply DPAPI protection to the API key for on-disk storage only
+            data.TtsElevenLabsApiKey = ProtectSettingSecret(data.TtsElevenLabsApiKey);
+
+            var json = data.ToJson();
+            File.WriteAllText(_settingsFilePath, json);
+
+            Logger.Info("Settings saved");
             try
             {
-                Directory.CreateDirectory(_settingsDirectory);
-                // Lock the tray data dir to current user + SYSTEM + Administrators —
-                // it co-locates the MCP bearer token, settings.json (which embeds
-                // gateway/bootstrap credentials), and diagnostics jsonl. Other apps
-                // running as the same user could otherwise read these freely.
-                OpenClaw.Shared.Mcp.McpAuthToken.TryRestrictDataDirectoryAcl(_settingsDirectory);
-
-                var data = ToSettingsData();
-                // Apply DPAPI protection to the API key for on-disk storage only
-                data.TtsElevenLabsApiKey = ProtectSettingSecret(data.TtsElevenLabsApiKey);
-
-                var json = data.ToJson();
-                File.WriteAllText(_settingsFilePath, json);
-                
-                Logger.Info("Settings saved");
                 Saved?.Invoke(this, EventArgs.Empty);
             }
             catch (Exception ex)
             {
-                Logger.Error($"Failed to save settings: {ex.Message}");
+                Logger.Warn($"Settings saved, but a notification subscriber failed: {ex.Message}");
             }
         }
     }

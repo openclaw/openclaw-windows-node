@@ -1,0 +1,58 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1900" height="820" viewBox="0 0 1900 820" role="img" aria-labelledby="title desc">
+  <title id="title">AppState data flow: gateway to UI</title>
+  <desc id="desc">Flowchart showing GatewayService dispatching 27 WebSocket events into AppState, which raises PropertyChanged to pages, HubWindow, and App.xaml.cs; GatewayService also re-raises 4 events directly to App.xaml.cs, which reads back from AppState.</desc>
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto"><path d="M0 0 L10 5 L0 10z" fill="context-stroke"/></marker>
+    <style>
+      .title{font:700 28px Segoe UI,Arial,sans-serif;fill:#111}
+      .subtitle{font:16px Segoe UI,Arial,sans-serif;fill:#222}
+      .lane{font:700 18px Segoe UI,Arial,sans-serif;fill:#111;text-anchor:middle}
+      .box{font:15px Segoe UI,Arial,sans-serif;fill:#111;text-anchor:middle}
+      .mono{font:13px Cascadia Code,Consolas,monospace;fill:#111}
+      .msg{font:14px Segoe UI,Arial,sans-serif;fill:#111;text-anchor:middle}
+      .note{font:13px Segoe UI,Arial,sans-serif;fill:#111}
+      .participant{font:16px Segoe UI,Arial,sans-serif;fill:#111;text-anchor:middle}
+    </style>
+  </defs>
+  <rect width="1900" height="820" fill="#fff"/>
+  <text x="40" y="50" class="title">AppState data flow: gateway to UI</text>
+  <text x="40" y="92" class="subtitle">GatewayService owns all 27 WebSocket event subscriptions and dispatches updates to AppState on the UI thread. Pages, HubWindow, and App.xaml.cs observe AppState.PropertyChanged.</text>
+  <rect x="700" y="140" width="260" height="80" rx="8" fill="#CFE4FA" stroke="#0078D4" stroke-width="2"/>
+  <text x="830.0" y="186.0" class="box" font-size="18">Gateway WebSocket</text>
+  <path d="M830.0 220 L830.0 280" fill="none" stroke="#495057" stroke-width="2" marker-end="url(#arrow)"/>
+  <text x="950.0" y="254.0" class="msg" text-anchor="middle"><tspan x="950.0">27 events</tspan></text>
+  <rect x="700" y="280" width="260" height="80" rx="8" fill="#DFF6DD" stroke="#107C10" stroke-width="2"/>
+  <text x="830.0" y="326.0" class="box" font-size="18">GatewayService</text>
+  <path d="M830.0 360 L830.0 420" fill="none" stroke="#495057" stroke-width="2" marker-end="url(#arrow)"/>
+  <text x="980.0" y="394.0" class="msg" text-anchor="middle"><tspan x="980.0">EnqueueModelUpdate</tspan></text>
+  <rect x="660" y="420" width="340" height="80" rx="8" fill="#B2F2BB" stroke="#107C10" stroke-width="2"/>
+  <text x="830.0" y="466.0" class="box" font-size="19" font-weight="700">AppState (INPC)</text>
+  <rect x="50.0" y="620" width="280" height="100" rx="8" fill="#E8DAEF" stroke="#5C2D91" stroke-width="2"/>
+  <text x="190.0" y="676.0" class="box"><tspan x="190.0">ConnectionPage</tspan></text>
+  <rect x="354.0" y="620" width="280" height="100" rx="8" fill="#E8DAEF" stroke="#5C2D91" stroke-width="2"/>
+  <text x="494.0" y="676.0" class="box"><tspan x="494.0">SessionsPage</tspan></text>
+  <rect x="658.0" y="620" width="280" height="100" rx="8" fill="#E8DAEF" stroke="#5C2D91" stroke-width="2"/>
+  <text x="798.0" y="676.0" class="box"><tspan x="798.0">UsagePage</tspan></text>
+  <rect x="962.0" y="620" width="280" height="100" rx="8" fill="#E8DAEF" stroke="#5C2D91" stroke-width="2"/>
+  <text x="1102.0" y="676.0" class="box"><tspan x="1102.0">...14 pages total</tspan></text>
+  <rect x="1266.0" y="620" width="280" height="100" rx="8" fill="#FFF4CE" stroke="#F7630C" stroke-width="2"/>
+  <text x="1406.0" y="665.0" class="box"><tspan x="1406.0">HubWindow</tspan><tspan x="1406.0" dy="22">(title bar, nav sidebar)</tspan></text>
+  <rect x="1570.0" y="620" width="280" height="100" rx="8" fill="#FFF4CE" stroke="#F7630C" stroke-width="2"/>
+  <text x="1710.0" y="665.0" class="box"><tspan x="1710.0">App.xaml.cs</tspan><tspan x="1710.0" dy="22">(tray icon, tray menu)</tspan></text>
+  <path d="M830.0 500 L190.0 620" fill="none" stroke="#5C2D91" stroke-width="2" marker-end="url(#arrow)"/>
+  <text x="510.0" y="552.0" class="msg" text-anchor="middle"><tspan x="510.0">PropertyChanged</tspan></text>
+  <path d="M830.0 500 L494.0 620" fill="none" stroke="#5C2D91" stroke-width="2" marker-end="url(#arrow)"/>
+  <text x="662.0" y="552.0" class="msg" text-anchor="middle"><tspan x="662.0">PropertyChanged</tspan></text>
+  <path d="M830.0 500 L798.0 620" fill="none" stroke="#5C2D91" stroke-width="2" marker-end="url(#arrow)"/>
+  <text x="814.0" y="552.0" class="msg" text-anchor="middle"><tspan x="814.0">PropertyChanged</tspan></text>
+  <path d="M830.0 500 L1102.0 620" fill="none" stroke="#5C2D91" stroke-width="2" marker-end="url(#arrow)"/>
+  <text x="966.0" y="552.0" class="msg" text-anchor="middle"><tspan x="966.0">PropertyChanged</tspan></text>
+  <path d="M830.0 500 L1406.0 620" fill="none" stroke="#F7630C" stroke-width="2" marker-end="url(#arrow)"/>
+  <text x="1118.0" y="552.0" class="msg" text-anchor="middle"><tspan x="1118.0">PropertyChanged</tspan></text>
+  <path d="M830.0 500 L1710.0 620" fill="none" stroke="#F7630C" stroke-width="2" marker-end="url(#arrow)"/>
+  <text x="1270.0" y="552.0" class="msg" text-anchor="middle"><tspan x="1270.0">PropertyChanged</tspan></text>
+  <path d="M960 320.0 L1860 320.0 L1860 670.0 L1850.0 670.0" fill="none" stroke="#D13438" stroke-width="2" marker-end="url(#arrow)"/>
+  <text x="1770" y="310.0" class="msg" text-anchor="middle"><tspan x="1770">4 re-raised events</tspan></text>
+  <path d="M1570.0 670.0 L40 670.0 L40 460.0 L660 460.0" fill="none" stroke="#0078D4" stroke-width="2" marker-end="url(#arrow)"/>
+  <text x="130" y="450.0" class="msg" text-anchor="middle"><tspan x="130">reads</tspan></text>
+</svg>

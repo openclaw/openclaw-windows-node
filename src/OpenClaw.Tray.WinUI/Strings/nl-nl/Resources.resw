@@ -1904,7 +1904,7 @@ Gebruik een van deze opties:
     <value>Uitvoeringsbeleid</value>
   </data>
   <data name="PermissionsPage_TextBlock_17.Text" xml:space="preserve">
-    <value>Bepaalt welke uitvoerbare bestanden de agent op dit knooppunt kan starten. Regels worden vergeleken met opgeloste paden van uitvoerbare bestanden.</value>
+    <value>Bepaalt welke uitvoerbare bestanden de agent op dit knooppunt kan starten. De allowlist voor paden van uitvoerbare bestanden is aanvankelijk leeg.</value>
   </data>
   <data name="DefaultActionCombo.Header" xml:space="preserve">
     <value>Standaardactie</value>
@@ -1919,22 +1919,22 @@ Gebruik een van deze opties:
     <value>Vragen</value>
   </data>
   <data name="PermissionsPage_TextBlock_28.Text" xml:space="preserve">
-    <value>Regels</value>
+    <value>Allowlist voor paden van uitvoerbare bestanden</value>
   </data>
   <data name="NewRulePattern.PlaceholderText" xml:space="preserve">
-    <value>Padpatroon voor uitvoerbaar bestand (bijv. **/git.exe)</value>
+    <value>Padpatroon voor uitvoerbaar bestand (bijv. **/hostname.exe)</value>
+  </data>
+  <data name="PermissionsPage_ExecAllowlistPatternValidation.Text" xml:space="preserve">
+    <value>Voer een padpatroon voor een uitvoerbaar bestand in, zoals **/hostname.exe. Alleen een basisnaam of opdrachttekst, zoals hostname, is niet geldig.</value>
   </data>
   <data name="PermissionsPage_ComboBoxItem_54.Content" xml:space="preserve">
     <value>Weigeren</value>
-  </data>
-  <data name="PermissionsPage_ComboBoxItem_55.Content" xml:space="preserve">
-    <value>Toestaan</value>
   </data>
   <data name="PermissionsPage_ComboBoxItem_56.Content" xml:space="preserve">
     <value>Vragen</value>
   </data>
   <data name="PermissionsPage_Button_57.Content" xml:space="preserve">
-    <value>Regel toevoegen</value>
+    <value>Vermelding toevoegen</value>
   </data>
   <data name="PermissionsPage_TextBlock_69.Text" xml:space="preserve">
     <value>Knooppunt-allowlist</value>
@@ -2782,6 +2782,9 @@ Gebruik een van deze opties:
   <data name="VoiceOverlayWindow_StatusErrorOccurred" xml:space="preserve">
     <value>Er is een fout opgetreden</value>
   </data>
+  <data name="AudioPipeline_FirstAudioTimeout" xml:space="preserve">
+    <value>Er is geen audio ontvangen. Controleer of uw microfoon is aangesloten en geselecteerd als Windows-invoerapparaat en probeer het opnieuw.</value>
+  </data>
   <data name="VoiceOverlayWindow_winexWindowEx_2.Title" xml:space="preserve">
     <value>Companion Voice</value>
   </data>
@@ -2887,6 +2890,27 @@ Gebruik een van deze opties:
   <data name="Chat_Tool_FooterWithTimeFormat" xml:space="preserve">
     <value>Hulpmiddel · {0}</value>
   </data>
+  <data name="Chat_Activity_CommandOne" xml:space="preserve"><value>{0} opdracht uitgevoerd</value></data>
+  <data name="Chat_Activity_CommandMany" xml:space="preserve"><value>{0} opdrachten uitgevoerd</value></data>
+  <data name="Chat_Activity_ReadOne" xml:space="preserve"><value>{0} bestand gelezen</value></data>
+  <data name="Chat_Activity_ReadMany" xml:space="preserve"><value>{0} bestanden gelezen</value></data>
+  <data name="Chat_Activity_EditOne" xml:space="preserve"><value>{0} bestand bewerkt</value></data>
+  <data name="Chat_Activity_EditMany" xml:space="preserve"><value>{0} bestanden bewerkt</value></data>
+  <data name="Chat_Activity_WriteOne" xml:space="preserve"><value>{0} bestand geschreven</value></data>
+  <data name="Chat_Activity_WriteMany" xml:space="preserve"><value>{0} bestanden geschreven</value></data>
+  <data name="Chat_Activity_SearchOne" xml:space="preserve"><value>{0} zoekopdracht uitgevoerd</value></data>
+  <data name="Chat_Activity_SearchMany" xml:space="preserve"><value>{0} zoekopdrachten uitgevoerd</value></data>
+  <data name="Chat_Activity_FetchOne" xml:space="preserve"><value>{0} pagina opgehaald</value></data>
+  <data name="Chat_Activity_FetchMany" xml:space="preserve"><value>{0} pagina's opgehaald</value></data>
+  <data name="Chat_Activity_GenericOne" xml:space="preserve"><value>{0} hulpmiddel gebruikt</value></data>
+  <data name="Chat_Activity_GenericMany" xml:space="preserve"><value>{0} hulpmiddelen gebruikt</value></data>
+  <data name="Chat_Activity_GenericNamed" xml:space="preserve"><value>{1} gebruikt</value></data>
+  <data name="Chat_Activity_GenericNamedRepeated" xml:space="preserve"><value>{1} {0} keer gebruikt</value></data>
+  <data name="Chat_Activity_RunningFormat" xml:space="preserve"><value>{0} wordt uitgevoerd</value></data>
+  <data name="Chat_Activity_Complete" xml:space="preserve"><value>Voltooid</value></data>
+  <data name="Chat_Activity_Expanded" xml:space="preserve"><value>Uitgevouwen</value></data>
+  <data name="Chat_Activity_Collapsed" xml:space="preserve"><value>Samengevouwen</value></data>
+  <data name="Chat_Activity_AutomationFormat" xml:space="preserve"><value>Activiteit: {0}. {1} hulpmiddelen. {2}.</value></data>
   <data name="Chat_Reasoning_ThinkingHeader" xml:space="preserve">
     <value>🧠 Denken</value>
   </data>
@@ -3372,13 +3396,13 @@ Opdrachten worden geblokkeerd zolang sandboxing niet beschikbaar is, omdat strik
     <value>URL copied to clipboard</value>
   </data>
   <data name="PermissionsPage_RulesCount_None" xml:space="preserve">
-    <value>No rules</value>
+    <value>Geen vermeldingen</value>
   </data>
   <data name="PermissionsPage_RulesCount_One" xml:space="preserve">
-    <value>1 rule</value>
+    <value>1 vermelding</value>
   </data>
   <data name="PermissionsPage_RulesCount_ManyFormat" xml:space="preserve">
-    <value>{0} rules</value>
+    <value>{0} vermeldingen</value>
   </data>
   <data name="PermissionsPage_Allowlist_NoConfig" xml:space="preserve">
     <value>No allowlist data available. Connect to a gateway first.</value>
@@ -4431,19 +4455,19 @@ Opdrachten worden geblokkeerd zolang sandboxing niet beschikbaar is, omdat strik
     <value>Standaardactie</value>
   </data>
   <data name="PermissionsPage_WhatHappensWhenA.Text" xml:space="preserve">
-    <value>Wat gebeurt er als een opdracht aan geen enkele regel hieronder voldoet.</value>
+    <value>Wat gebeurt er als een opdracht niet overeenkomt met de allowlist voor paden van uitvoerbare bestanden hieronder.</value>
   </data>
   <data name="PermissionsPage_PatternsAreMatchedLeft.Text" xml:space="preserve">
-    <value>Allowlistpatronen worden vergeleken met opgeloste paden van uitvoerbare bestanden. Gebruik jokertekens zoals **/git.exe. Wijzigingen worden automatisch opgeslagen.</value>
+    <value>Altijd toestaan maakt een aan argumenten gebonden vermelding voor een geschikte systeemeigen .exe-opdracht. Vermeldingen die u hier toevoegt, zijn alleen op het pad gebaseerd en kunnen overeenkomende uitvoerbare bestanden met alle argumenten toestaan. Weigeren en Vragen blijven onder Standaardactie vallen. Wijzigingen worden automatisch opgeslagen.</value>
   </data>
   <data name="PermissionsPage_Saved.Text" xml:space="preserve">
     <value>Opgeslagen</value>
   </data>
   <data name="PermissionsPage_0Rules.Text" xml:space="preserve">
-    <value>0 regels</value>
+    <value>0 vermeldingen</value>
   </data>
   <data name="PermissionsPage_NoRulesYetAdd.Text" xml:space="preserve">
-    <value>Nog geen regels. Voeg hieronder een patroon toe om specifieke opdrachten te weigeren, toe te staan of te vragen.</value>
+    <value>Geen vermeldingen in de allowlist voor paden van uitvoerbare bestanden. Keur een geschikte systeemeigen .exe-opdracht goed met Altijd toestaan of voeg een patroon toe dat alleen op het pad is gebaseerd, zoals **/hostname.exe.</value>
   </data>
   <data name="PermissionsPage_WindowsPrivacy.Text" xml:space="preserve">
     <value>Windows-privacy</value>
@@ -4607,6 +4631,42 @@ Opdrachten worden geblokkeerd zolang sandboxing niet beschikbaar is, omdat strik
   <data name="SandboxPage_LocalNetworkDevicesAnd.Text" xml:space="preserve">
     <value>Lokale netwerkapparaten en gedeelde mappen zijn nog niet inbegrepen.</value>
   </data>
+  <data name="SandboxPage_CommandCompatibility.Text" xml:space="preserve">
+    <value>🪟 Opdrachtcompatibiliteit</value>
+  </data>
+  <data name="SandboxPage_AllowWindowsUi.Header" xml:space="preserve">
+    <value>Windows UI-API's toestaan</value>
+  </data>
+  <data name="SandboxPage_AllowWindowsUi.OffContent" xml:space="preserve">
+    <value>Uit: blokkeert Win32k-systeemaanroepen</value>
+  </data>
+  <data name="SandboxPage_AllowWindowsUi.OnContent" xml:space="preserve">
+    <value>Aan: PowerShell en vergelijkbare hulpprogramma's kunnen starten</value>
+  </data>
+  <data name="SandboxPage_AllowWindowsUi.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>Windows UI-API's toestaan voor opdrachten in de sandbox</value>
+  </data>
+  <data name="SandboxPage_WindowsUiCompatibilityDescription.Text" xml:space="preserve">
+    <value>PowerShell, whoami, tasklist en veel andere consolehulpprogramma's gebruiken Windows UI-API's tijdens het opstarten.</value>
+  </data>
+  <data name="SandboxPage_WindowsUiWarning.Title" xml:space="preserve">
+    <value>Win32k-grens uitgeschakeld</value>
+  </data>
+  <data name="SandboxPage_WindowsUiWarning.Message" xml:space="preserve">
+    <value>Bestands-, netwerk-, klembord-, time-out- en opdrachtgoedkeuringsregels blijven gelden, maar Win32k-systeemaanroepen zijn toegestaan.</value>
+  </data>
+  <data name="SandboxPage_AllowWindowsUiDialogTitle" xml:space="preserve">
+    <value>Windows UI-API's toestaan?</value>
+  </data>
+  <data name="SandboxPage_AllowWindowsUiDialogContent" xml:space="preserve">
+    <value>Hiermee kunnen opdrachten in de sandbox Windows UI-systeemaanroepen gebruiken. PowerShell, whoami, tasklist en andere consolehulpprogramma's hebben dit nodig om met huidige MXC-versies te starten.&#xA;&#xA;Bestands-, netwerk-, klembord-, time-out- en opdrachtgoedkeuringsregels blijven gelden, maar de blokkering van Win32k-systeemaanroepen wordt uitgeschakeld. Schakel dit alleen in als u bredere opdrachtcompatibiliteit nodig hebt.</value>
+  </data>
+  <data name="SandboxPage_AllowWindowsUiDialogPrimary" xml:space="preserve">
+    <value>UI-API's toestaan</value>
+  </data>
+  <data name="SandboxPage_AllowWindowsUiDialogCancel" xml:space="preserve">
+    <value>Annuleren</value>
+  </data>
   <data name="SandboxPage_Limits.Text" xml:space="preserve">
     <value>⏱ Limieten</value>
   </data>
@@ -4638,7 +4698,7 @@ Opdrachten worden geblokkeerd zolang sandboxing niet beschikbaar is, omdat strik
     <value>Alle</value>
   </data>
   <data name="SessionsPage_ShowCompleted.Header" xml:space="preserve">
-    <value>Beëindigde sessies tonen</value>
+    <value>Voltooide sessies weergeven</value>
   </data>
   <data name="SessionsPage_ShowBackground.Header" xml:space="preserve">
     <value>Achtergrondsessies tonen</value>
@@ -4681,7 +4741,7 @@ Opdrachten worden geblokkeerd zolang sandboxing niet beschikbaar is, omdat strik
     <value>Sessies worden geladen…</value>
   </data>
   <data name="SessionsPage_NoActiveSessions.Text" xml:space="preserve">
-    <value>Geen actieve sessies</value>
+    <value>Geen sessies</value>
   </data>
   <data name="SessionsPage_Reset.Text" xml:space="preserve">
     <value>Resetten</value>
@@ -6835,9 +6895,6 @@ Het binaire bestand wxc-exec is niet gevonden. {1} Als dit een ontwikkelaarsbuil
   <data name="SettingsPage_GatewayInfoLabel_Uptime.Text" xml:space="preserve">
     <value>Uptime</value>
   </data>
-  <data name="PermissionsPage_NewRuleAction.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
-    <value>Regelactie</value>
-  </data>
   <data name="SandboxPage_UnavailablePrimaryButton.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
     <value>Sandboxactie</value>
   </data>
@@ -6879,5 +6936,17 @@ Het binaire bestand wxc-exec is niet gevonden. {1} Als dit een ontwikkelaarsbuil
   </data>
   <data name="PermissionsPage_ExecPolicySaveFailed" xml:space="preserve">
     <value>Opslaan mislukt</value>
+  </data>
+  <data name="SessionsPage_Status_Working" xml:space="preserve">
+    <value>Bezig</value>
+  </data>
+  <data name="SessionsPage_Status_Ready" xml:space="preserve">
+    <value>Gereed</value>
+  </data>
+  <data name="SessionsPage_Status_NeedsAttention" xml:space="preserve">
+    <value>Heeft aandacht nodig</value>
+  </data>
+  <data name="SessionsPage_LastRunStopped" xml:space="preserve">
+    <value>Laatste uitvoering gestopt</value>
   </data>
 </root>

@@ -42,48 +42,6 @@ jobs:
       with:
         fetch-depth: 0
 
-    - name: Detect gateway LKG drift from npm latest
-      id: gateway_lkg_drift
-      continue-on-error: true
-      shell: pwsh
-      run: |
-        $sourcePath = "src/OpenClaw.SetupEngine/GatewayLkgVersion.cs"
-        $source = Get-Content -LiteralPath $sourcePath -Raw
-        $match = [regex]::Match($source, 'LkgVersion\s*=\s*"([^"]+)"')
-        if (-not $match.Success) {
-          throw "Unable to parse LKG version from $sourcePath"
-        }
-
-        $pinned = $match.Groups[1].Value
-        $latest = (Invoke-RestMethod -Uri "https://registry.npmjs.org/openclaw/latest" -TimeoutSec 30).version
-        if ([string]::IsNullOrWhiteSpace($latest)) {
-          throw "Unable to resolve npm latest version for openclaw."
-        }
-        if ($latest -notmatch '^[0-9]+\.[0-9]+\.[0-9]+([.\-+][A-Za-z0-9.\-]+)*$') {
-          throw "Resolved npm latest version has unexpected format: $latest"
-        }
-
-        "pinned=$pinned" >> $env:GITHUB_OUTPUT
-        "latest=$latest" >> $env:GITHUB_OUTPUT
-
-        if ($pinned -ne $latest) {
-          "drifted=true" >> $env:GITHUB_OUTPUT
-          Write-Host "::warning::Gateway LKG drift detected: pinned $pinned, npm latest $latest. Run gateway-lkg-update workflow to refresh the standing draft PR."
-          Write-Error "Gateway LKG drift detected (pinned $pinned, npm latest $latest)."
-          "### :warning: Gateway LKG drift detected" >> $env:GITHUB_STEP_SUMMARY
-          "" >> $env:GITHUB_STEP_SUMMARY
-          "- Pinned LKG: $pinned" >> $env:GITHUB_STEP_SUMMARY
-          "- npm latest: $latest" >> $env:GITHUB_STEP_SUMMARY
-          "- Action: run `gateway-lkg-update` to refresh the standing draft PR." >> $env:GITHUB_STEP_SUMMARY
-          exit 1
-        } else {
-          "drifted=false" >> $env:GITHUB_OUTPUT
-          Write-Host "Gateway LKG is current ($pinned)."
-          "### Gateway LKG is current" >> $env:GITHUB_STEP_SUMMARY
-          "" >> $env:GITHUB_STEP_SUMMARY
-          "- Pinned LKG: $pinned" >> $env:GITHUB_STEP_SUMMARY
-        }
-
     - name: Setup .NET 10
       uses: actions/setup-dotnet@v6
       with:
@@ -115,6 +73,10 @@ jobs:
         if ($actual -ne $expected) {
           throw "GitVersion SemVer '$actual' did not match tag '$expected'."
         }
+
+    - name: Validate documentation
+      shell: pwsh
+      run: ./scripts/validate-docs.ps1
 
     - name: Restore dependencies
       run: dotnet restore
@@ -348,7 +310,7 @@ jobs:
         include:
           - name: setup-connect
             timeout_minutes: 45
-            filter: "FullyQualifiedName~OpenClaw.E2ETests.Setup.SetupAndConnectTests|FullyQualifiedName~OpenClaw.E2ETests.Setup.MxcSetupAndConnectTests"
+            filter: "FullyQualifiedName~OpenClaw.E2ETests.Setup.SetupAndConnectTests|FullyQualifiedName~OpenClaw.E2ETests.Setup.MxcSetupAndConnectTests|FullyQualifiedName~OpenClaw.E2ETests.Setup.MirroredWslPortLeaseTests|FullyQualifiedName~OpenClaw.E2ETests.Setup.SshOwnershipAdversarialProofTests|FullyQualifiedName~OpenClaw.E2ETests.Setup.TrayExecutableResolutionTests"
           - name: revocation-recovery
             timeout_minutes: 25
             filter: FullyQualifiedName~OpenClaw.E2ETests.Setup.RevocationAndRecoveryTests
@@ -446,6 +408,29 @@ jobs:
               exit 1
             }
           }
+
+          $sshOwnershipProofNames = @(
+            "UnownedListenerIsRejectedThenOwnedTunnelRecoversWithoutRepairing",
+            "InitialHandshakeListenerReplacementWithholdsCredentialFrame",
+            "InitialNodeHandshakeListenerReplacementWithholdsCredentialFrame"
+          )
+          foreach ($sshOwnershipProofName in $sshOwnershipProofNames) {
+            $sshOwnershipProof = @(
+              $trx.TestRun.Results.UnitTestResult |
+                Where-Object { $_.testName -like "*$sshOwnershipProofName*" }
+            ) | Select-Object -First 1
+            if ($null -eq $sshOwnershipProof) {
+              Write-Error "E2E shard '${{ matrix.name }}' did not report the SSH ownership proof test '$sshOwnershipProofName'. Check the setup-connect filter before merging."
+              exit 1
+            }
+
+            $sshOwnershipOutcome = [string]$sshOwnershipProof.outcome
+            if ($sshOwnershipOutcome -ne "Passed") {
+              Write-Error "SSH ownership E2E proof '$sshOwnershipProofName' had outcome '$sshOwnershipOutcome'; this proof must pass and may not skip."
+              exit 1
+            }
+            Write-Host "SSH ownership E2E proof passed: $sshOwnershipProofName"
+          }
         }
 
     - name: Upload E2E Test Results & Logs
@@ -527,7 +512,7 @@ jobs:
 
   build-msix:
     needs: [test, e2etests]
-    if: false # Paused for alpha.4; ship Inno setup and portable ZIP artifacts only.
+    if: false # MSIX distribution is paused; ship Inno setup and portable ZIP artifacts only.
     runs-on: ${{ matrix.rid == 'win-arm64' && 'windows-11-arm' || 'windows-latest' }}
     continue-on-error: true
     strategy:

@@ -1,0 +1,13 @@
+{
+  "head": "31e156399778be8200f717b59c03d103927db68d",
+  "distro": "OpenClawE2E-8b2ae192",
+  "gatewayPort": 53279,
+  "sshPort": 57632,
+  "tunnelPort": 35064,
+  "ambiguousListenerOwnershipRejectedBeforeCredentialSend": true,
+  "recoveredReady": true,
+  "sameOperatorCredential": true,
+  "sameNodeCredential": true,
+  "lateWriterWonRollback": true,
+  "degradedScreenshot": true
+}

@@ -50,8 +50,9 @@ public sealed class E2ESetupFixture : IAsyncLifetime
 
     private readonly string _configPath;
     private readonly string _distroName;
+    private MirroredWslPortLease? _gatewayPortLease;
+    private readonly Dictionary<string, string> _trayEnvironment = new(StringComparer.Ordinal);
     private Process? _trayProcess;
-
     public E2ESetupFixture()
         : this(settingsPatch: null)
     {
@@ -94,13 +95,25 @@ public sealed class E2ESetupFixture : IAsyncLifetime
         ArtifactDir = Path.Combine(repoRoot, "TestResults", "E2E", runId);
         Directory.CreateDirectory(ArtifactDir);
 
-        GatewayPort = FindFreePort();
+        var gatewayPortLease = MirroredWslPortLease.Acquire();
+        try
+        {
+            _gatewayPortLease = gatewayPortLease;
+            GatewayPort = gatewayPortLease.Port;
 
-        // Write isolated config JSON
-        _configPath = Path.Combine(DataDir, "e2e-config.json");
-        WriteConfig();
+            // Write isolated config JSON
+            _configPath = Path.Combine(DataDir, "e2e-config.json");
+            WriteConfig();
+            WritePortAllocationArtifact(gatewayPortLease);
 
-        Log($"E2E fixture initialized: distro={_distroName}, dataDir={DataDir}, localAppDataRoot={LocalAppDataRoot}, artifacts={ArtifactDir}");
+            Log($"E2E fixture initialized: distro={_distroName}, gatewayPort={GatewayPort}, dataDir={DataDir}, localAppDataRoot={LocalAppDataRoot}, artifacts={ArtifactDir}");
+        }
+        catch
+        {
+            gatewayPortLease.Dispose();
+            _gatewayPortLease = null;
+            throw;
+        }
     }
 
     public async Task InitializeAsync()
@@ -108,6 +121,19 @@ public sealed class E2ESetupFixture : IAsyncLifetime
         if (!E2ETestGate.IsEnabled)
             return;
 
+        try
+        {
+            await InitializeEnabledAsync();
+        }
+        catch
+        {
+            ReleaseGatewayPortLease();
+            throw;
+        }
+    }
+
+    private async Task InitializeEnabledAsync()
+    {
         // ── Phase 1: Run SetupEngine CLI ──
         Log("Phase 1: Running SetupEngine CLI pipeline...");
         var setupLogPath = Path.Combine(ArtifactDir, "setup-engine.jsonl");
@@ -116,12 +142,30 @@ public sealed class E2ESetupFixture : IAsyncLifetime
         Environment.SetEnvironmentVariable("OPENCLAW_TRAY_APPDATA_DIR", DataDir);
         Environment.SetEnvironmentVariable("OPENCLAW_TRAY_LOCALAPPDATA_DIR", LocalAppDataRoot);
 
-        var exitCode = await Program.Main([
+        var setupArguments = new List<string>
+        {
             "--config", _configPath,
             "--headless",
             "--rollback-on-failure",
             "--log-path", setupLogPath
-        ]);
+        };
+        var candidateVersion = Environment.GetEnvironmentVariable("OPENCLAW_E2E_GATEWAY_VERSION");
+        var candidatePackage = Environment.GetEnvironmentVariable("OPENCLAW_E2E_GATEWAY_PACKAGE_TGZ");
+        if (!string.IsNullOrWhiteSpace(candidateVersion))
+        {
+            setupArguments.Add("--validate-gateway-candidate");
+        }
+        if (!string.IsNullOrWhiteSpace(candidatePackage))
+        {
+            if (string.IsNullOrWhiteSpace(candidateVersion))
+                throw new InvalidOperationException(
+                    "OPENCLAW_E2E_GATEWAY_PACKAGE_TGZ requires OPENCLAW_E2E_GATEWAY_VERSION.");
+
+            setupArguments.Add("--gateway-candidate-package");
+            setupArguments.Add(candidatePackage);
+        }
+
+        var exitCode = await Program.Main([.. setupArguments]);
 
         if (exitCode != 0)
         {
@@ -169,27 +213,22 @@ public sealed class E2ESetupFixture : IAsyncLifetime
         if (!E2ETestGate.IsEnabled)
             return;
 
+        try
+        {
+            await DisposeEnabledAsync();
+        }
+        finally
+        {
+            ReleaseGatewayPortLease();
+        }
+    }
+
+    private async Task DisposeEnabledAsync()
+    {
         Log("Teardown starting...");
 
-        // 1. Dispose MCP client
-        Client?.Dispose();
-        Client = null;
-
-        // 2. Kill tray process
-        if (_trayProcess is not null)
-        {
-            try
-            {
-                if (!_trayProcess.HasExited)
-                {
-                    _trayProcess.Kill(entireProcessTree: true);
-                    _trayProcess.WaitForExit(5_000);
-                    Log($"Tray process killed (PID={_trayProcess.Id}).");
-                }
-            }
-            catch (Exception ex) { Log($"Warning: tray kill failed: {ex.Message}"); }
-            finally { _trayProcess.Dispose(); }
-        }
+        // 1-2. Dispose MCP client and stop the exact proof-owned tray.
+        await StopTrayAsync();
 
         // 3. Uninstall via CLI
         Log("Running SetupEngine CLI uninstall...");
@@ -209,6 +248,7 @@ public sealed class E2ESetupFixture : IAsyncLifetime
             ]);
             Log($"Uninstall completed with exit code {exitCode}.");
         }
+
         catch (Exception ex)
         {
             Log($"Warning: uninstall threw: {ex.Message}");
@@ -226,11 +266,82 @@ public sealed class E2ESetupFixture : IAsyncLifetime
         Log("Teardown complete.");
     }
 
+    public void SetTrayEnvironmentVariable(string name, string value)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(name);
+        _trayEnvironment[name] = value;
+    }
+
+    public void RemoveTrayEnvironmentVariable(string name)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(name);
+        _trayEnvironment.Remove(name);
+    }
+
+    public async Task StopTrayAsync()
+    {
+        Client?.Dispose();
+        Client = null;
+
+        if (_trayProcess is null)
+            return;
+
+        var process = _trayProcess;
+        _trayProcess = null;
+        try
+        {
+            if (!process.HasExited)
+            {
+                process.Kill(entireProcessTree: true);
+                await process.WaitForExitAsync().WaitAsync(TimeSpan.FromSeconds(5));
+                Log($"Tray process killed (PID={process.Id}).");
+            }
+        }
+        catch (Exception ex)
+        {
+            Log($"Warning: tray kill failed: {ex.Message}");
+        }
+        finally
+        {
+            process.Dispose();
+        }
+    }
+
+    public async Task StartTrayAsync(bool waitForConnection = true)
+    {
+        if (_trayProcess is { HasExited: false })
+            throw new InvalidOperationException("The E2E tray is already running.");
+
+        McpPort = FindFreePort();
+        var exePath = LocateTrayExe();
+        _trayProcess = SpawnTray(exePath);
+        Log($"Tray respawned: PID={_trayProcess.Id}, MCP port={McpPort}");
+        Client = new McpClient(McpEndpoint);
+        await WaitForMcpReady();
+        if (waitForConnection)
+        {
+            await WaitForConnectionReady(TimeSpan.FromSeconds(120));
+            await WaitForNodeListReady(TimeSpan.FromSeconds(90));
+        }
+    }
+
+    public static int AllocateFreePort() => FindFreePort();
+
     // ─── Helpers ───
 
     private void WriteConfig()
     {
-        var lkgVersion = GatewayLkgVersion.ResolveLkgVersion();
+        var candidateVersion =
+            Environment.GetEnvironmentVariable("OPENCLAW_E2E_GATEWAY_VERSION")?.Trim();
+        var gateway = new Dictionary<string, object?>
+        {
+            ["Selection"] = string.IsNullOrWhiteSpace(candidateVersion)
+                ? "recommended"
+                : "exact"
+        };
+        if (!string.IsNullOrWhiteSpace(candidateVersion))
+            gateway["Version"] = candidateVersion;
+
         var config = new
         {
             DistroName = _distroName,
@@ -265,14 +376,45 @@ public sealed class E2ESetupFixture : IAsyncLifetime
                 NodeTtsEnabled = true,
                 NodeSttEnabled = true,
             },
-            Gateway = new
-            {
-                Version = lkgVersion
-            }
+            Gateway = gateway
         };
 
         var json = JsonSerializer.Serialize(config, new JsonSerializerOptions { WriteIndented = true });
         File.WriteAllText(_configPath, json);
+    }
+
+    private void WritePortAllocationArtifact(MirroredWslPortLease lease)
+    {
+        var artifact = new
+        {
+            gatewayPort = lease.Port,
+            candidateRange = new
+            {
+                start = MirroredWslPortLease.CandidateRangeStart,
+                end = MirroredWslPortLease.CandidateRangeEnd,
+            },
+            windowsDynamicTcpRanges = lease.WindowsPortState.DynamicRanges.Select(range => new
+            {
+                start = range.Start,
+                end = range.End,
+            }),
+            windowsExcludedTcpRanges = lease.WindowsPortState.ExcludedRanges.Select(range => new
+            {
+                start = range.Start,
+                end = range.End,
+            }),
+            selectionChecks = new[]
+            {
+                "outside-windows-dynamic-range",
+                "outside-windows-excluded-ranges",
+                "exclusive-ipv4-ipv6-loopback-bind-probe",
+                "cross-process-fixture-lease",
+            },
+        };
+
+        File.WriteAllText(
+            Path.Combine(ArtifactDir, "gateway-port-allocation.json"),
+            JsonSerializer.Serialize(artifact, new JsonSerializerOptions { WriteIndented = true }));
     }
 
     private void PatchSettingsForMcp(string settingsPath)
@@ -471,6 +613,8 @@ public sealed class E2ESetupFixture : IAsyncLifetime
         psi.Environment["OPENCLAW_TRAY_LOCALAPPDATA_DIR"] = LocalAppDataRoot;
         psi.Environment["OPENCLAW_MCP_PORT"] = McpPort.ToString();
         psi.Environment["OPENCLAW_SUPPRESS_EXTERNAL_BROWSER"] = "1";
+        foreach (var (key, value) in _trayEnvironment)
+            psi.Environment[key] = value;
 
         var p = Process.Start(psi)
             ?? throw new InvalidOperationException("Failed to start tray app process");
@@ -488,7 +632,8 @@ public sealed class E2ESetupFixture : IAsyncLifetime
         string command,
         TimeSpan? timeout = null,
         IReadOnlyDictionary<string, string>? environment = null,
-        bool inputViaStdin = false)
+        bool inputViaStdin = false,
+        string? user = null)
     {
         command = command.Replace("\r", "");
         Log($"WSL command: {SanitizeForLog(command)}");
@@ -505,6 +650,11 @@ public sealed class E2ESetupFixture : IAsyncLifetime
 
         psi.ArgumentList.Add("-d");
         psi.ArgumentList.Add(_distroName);
+        if (!string.IsNullOrWhiteSpace(user))
+        {
+            psi.ArgumentList.Add("-u");
+            psi.ArgumentList.Add(user);
+        }
         psi.ArgumentList.Add("--");
         psi.ArgumentList.Add("bash");
         psi.ArgumentList.Add(inputViaStdin ? "-s" : "-c");
@@ -827,8 +977,31 @@ public sealed class E2ESetupFixture : IAsyncLifetime
             .Any(segment => segment.Equals("gateways", StringComparison.OrdinalIgnoreCase));
     }
 
-    private static string LocateTrayExe()
+    private const string TrayExecutableOverrideEnvironmentVariable = "OPENCLAW_E2E_TRAY_EXE";
+
+    private static string LocateTrayExe() => ResolveTrayExecutable(
+        Environment.GetEnvironmentVariable(TrayExecutableOverrideEnvironmentVariable),
+        repoRoot: null);
+
+    internal static string ResolveTrayExecutable(string? overridePath, string? repoRoot)
     {
+        if (!string.IsNullOrWhiteSpace(overridePath))
+        {
+            var executable = Path.GetFullPath(overridePath);
+            // The release gate must exercise its verified artifact, never silently
+            // fall back to a checkout build when that artifact is unavailable.
+            if (!Path.GetExtension(executable).Equals(".exe", StringComparison.OrdinalIgnoreCase) ||
+                !File.Exists(executable))
+            {
+                throw new FileNotFoundException(
+                    $"{TrayExecutableOverrideEnvironmentVariable} must name an existing .exe file.",
+                    executable);
+            }
+
+            return executable;
+        }
+
+        repoRoot ??= FindRepoRoot();
         var rid = RuntimeInformation.ProcessArchitecture switch
         {
             Architecture.Arm64 => "win-arm64",
@@ -843,7 +1016,6 @@ public sealed class E2ESetupFixture : IAsyncLifetime
             "Release";
 #endif
 
-        var repoRoot = FindRepoRoot();
         var targetFramework = GetTrayTargetFramework(repoRoot);
         var exe = Path.Combine(
             repoRoot,
@@ -898,6 +1070,12 @@ public sealed class E2ESetupFixture : IAsyncLifetime
         listener.Start();
         try { return ((IPEndPoint)listener.LocalEndpoint).Port; }
         finally { listener.Stop(); }
+    }
+
+    private void ReleaseGatewayPortLease()
+    {
+        _gatewayPortLease?.Dispose();
+        _gatewayPortLease = null;
     }
 
     private void Log(string message)

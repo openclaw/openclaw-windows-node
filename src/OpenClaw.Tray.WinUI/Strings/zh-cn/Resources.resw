@@ -1903,7 +1903,7 @@
     <value>执行策略</value>
   </data>
   <data name="PermissionsPage_TextBlock_17.Text" xml:space="preserve">
-    <value>控制代理可在此节点上启动哪些可执行文件。规则会匹配解析后的可执行文件路径。</value>
+    <value>控制代理可在此节点上启动哪些可执行文件。可执行文件路径允许列表初始为空。</value>
   </data>
   <data name="DefaultActionCombo.Header" xml:space="preserve">
     <value>默认操作</value>
@@ -1918,22 +1918,22 @@
     <value>询问</value>
   </data>
   <data name="PermissionsPage_TextBlock_28.Text" xml:space="preserve">
-    <value>规则</value>
+    <value>可执行文件路径允许列表</value>
   </data>
   <data name="NewRulePattern.PlaceholderText" xml:space="preserve">
-    <value>可执行文件路径模式（例如 **/git.exe）</value>
+    <value>可执行文件路径模式（例如 **/hostname.exe）</value>
+  </data>
+  <data name="PermissionsPage_ExecAllowlistPatternValidation.Text" xml:space="preserve">
+    <value>请输入可执行文件路径模式，例如 **/hostname.exe。hostname 等仅含基本名称或命令文本的模式无效。</value>
   </data>
   <data name="PermissionsPage_ComboBoxItem_54.Content" xml:space="preserve">
     <value>拒绝</value>
-  </data>
-  <data name="PermissionsPage_ComboBoxItem_55.Content" xml:space="preserve">
-    <value>允许</value>
   </data>
   <data name="PermissionsPage_ComboBoxItem_56.Content" xml:space="preserve">
     <value>询问</value>
   </data>
   <data name="PermissionsPage_Button_57.Content" xml:space="preserve">
-    <value>添加规则</value>
+    <value>添加条目</value>
   </data>
   <data name="PermissionsPage_TextBlock_69.Text" xml:space="preserve">
     <value>节点允许列表</value>
@@ -2781,6 +2781,9 @@
   <data name="VoiceOverlayWindow_StatusErrorOccurred" xml:space="preserve">
     <value>发生错误</value>
   </data>
+  <data name="AudioPipeline_FirstAudioTimeout" xml:space="preserve">
+    <value>未收到音频。请检查麦克风是否已连接并在 Windows 中选作输入设备，然后重试。</value>
+  </data>
   <data name="VoiceOverlayWindow_winexWindowEx_2.Title" xml:space="preserve">
     <value>Companion Voice</value>
   </data>
@@ -2886,6 +2889,27 @@
   <data name="Chat_Tool_FooterWithTimeFormat" xml:space="preserve">
     <value>工具 · {0}</value>
   </data>
+  <data name="Chat_Activity_CommandOne" xml:space="preserve"><value>运行了 {0} 个命令</value></data>
+  <data name="Chat_Activity_CommandMany" xml:space="preserve"><value>运行了 {0} 个命令</value></data>
+  <data name="Chat_Activity_ReadOne" xml:space="preserve"><value>读取了 {0} 个文件</value></data>
+  <data name="Chat_Activity_ReadMany" xml:space="preserve"><value>读取了 {0} 个文件</value></data>
+  <data name="Chat_Activity_EditOne" xml:space="preserve"><value>编辑了 {0} 个文件</value></data>
+  <data name="Chat_Activity_EditMany" xml:space="preserve"><value>编辑了 {0} 个文件</value></data>
+  <data name="Chat_Activity_WriteOne" xml:space="preserve"><value>写入了 {0} 个文件</value></data>
+  <data name="Chat_Activity_WriteMany" xml:space="preserve"><value>写入了 {0} 个文件</value></data>
+  <data name="Chat_Activity_SearchOne" xml:space="preserve"><value>执行了 {0} 次搜索</value></data>
+  <data name="Chat_Activity_SearchMany" xml:space="preserve"><value>执行了 {0} 次搜索</value></data>
+  <data name="Chat_Activity_FetchOne" xml:space="preserve"><value>获取了 {0} 个页面</value></data>
+  <data name="Chat_Activity_FetchMany" xml:space="preserve"><value>获取了 {0} 个页面</value></data>
+  <data name="Chat_Activity_GenericOne" xml:space="preserve"><value>使用了 {0} 个工具</value></data>
+  <data name="Chat_Activity_GenericMany" xml:space="preserve"><value>使用了 {0} 个工具</value></data>
+  <data name="Chat_Activity_GenericNamed" xml:space="preserve"><value>使用了 {1}</value></data>
+  <data name="Chat_Activity_GenericNamedRepeated" xml:space="preserve"><value>使用了 {1} {0} 次</value></data>
+  <data name="Chat_Activity_RunningFormat" xml:space="preserve"><value>正在运行 {0}</value></data>
+  <data name="Chat_Activity_Complete" xml:space="preserve"><value>已完成</value></data>
+  <data name="Chat_Activity_Expanded" xml:space="preserve"><value>已展开</value></data>
+  <data name="Chat_Activity_Collapsed" xml:space="preserve"><value>已折叠</value></data>
+  <data name="Chat_Activity_AutomationFormat" xml:space="preserve"><value>活动：{0}。{1} 个工具。{2}。</value></data>
   <data name="Chat_Reasoning_ThinkingHeader" xml:space="preserve">
     <value>🧠 思考中</value>
   </data>
@@ -3371,13 +3395,13 @@
     <value>URL copied to clipboard</value>
   </data>
   <data name="PermissionsPage_RulesCount_None" xml:space="preserve">
-    <value>No rules</value>
+    <value>无条目</value>
   </data>
   <data name="PermissionsPage_RulesCount_One" xml:space="preserve">
-    <value>1 rule</value>
+    <value>1 个条目</value>
   </data>
   <data name="PermissionsPage_RulesCount_ManyFormat" xml:space="preserve">
-    <value>{0} rules</value>
+    <value>{0} 个条目</value>
   </data>
   <data name="PermissionsPage_Allowlist_NoConfig" xml:space="preserve">
     <value>No allowlist data available. Connect to a gateway first.</value>
@@ -4430,19 +4454,19 @@
     <value>默认操作</value>
   </data>
   <data name="PermissionsPage_WhatHappensWhenA.Text" xml:space="preserve">
-    <value>当命令与下列任何规则都不匹配时发生什么。</value>
+    <value>当命令与下列可执行文件路径允许列表不匹配时发生什么。</value>
   </data>
   <data name="PermissionsPage_PatternsAreMatchedLeft.Text" xml:space="preserve">
-    <value>允许列表模式会匹配解析后的可执行文件路径。可使用 **/git.exe 等通配模式。更改将自动保存。</value>
+    <value>“始终允许”会为符合条件的原生 .exe 命令创建参数绑定条目。在此添加的条目仅按路径匹配，可能允许匹配的可执行文件使用任意参数。“拒绝”和“询问”仍由“默认操作”控制。更改将自动保存。</value>
   </data>
   <data name="PermissionsPage_Saved.Text" xml:space="preserve">
     <value>已保存</value>
   </data>
   <data name="PermissionsPage_0Rules.Text" xml:space="preserve">
-    <value>0 条规则</value>
+    <value>0 个条目</value>
   </data>
   <data name="PermissionsPage_NoRulesYetAdd.Text" xml:space="preserve">
-    <value>尚无规则。在下方添加模式以拒绝、允许或询问特定命令。</value>
+    <value>没有可执行文件路径允许列表条目。使用“始终允许”批准符合条件的原生 .exe 命令，或添加仅按路径匹配的模式，例如 **/hostname.exe。</value>
   </data>
   <data name="PermissionsPage_WindowsPrivacy.Text" xml:space="preserve">
     <value>Windows 隐私</value>
@@ -4606,6 +4630,42 @@
   <data name="SandboxPage_LocalNetworkDevicesAnd.Text" xml:space="preserve">
     <value>本地网络设备和共享尚未包含在内。</value>
   </data>
+  <data name="SandboxPage_CommandCompatibility.Text" xml:space="preserve">
+    <value>🪟 命令兼容性</value>
+  </data>
+  <data name="SandboxPage_AllowWindowsUi.Header" xml:space="preserve">
+    <value>允许 Windows UI API</value>
+  </data>
+  <data name="SandboxPage_AllowWindowsUi.OffContent" xml:space="preserve">
+    <value>关闭：阻止 Win32k 系统调用</value>
+  </data>
+  <data name="SandboxPage_AllowWindowsUi.OnContent" xml:space="preserve">
+    <value>开启：PowerShell 和类似工具可以启动</value>
+  </data>
+  <data name="SandboxPage_AllowWindowsUi.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>允许沙盒命令使用 Windows UI API</value>
+  </data>
+  <data name="SandboxPage_WindowsUiCompatibilityDescription.Text" xml:space="preserve">
+    <value>PowerShell、whoami、tasklist 及许多其他控制台工具在启动时会使用 Windows UI API。</value>
+  </data>
+  <data name="SandboxPage_WindowsUiWarning.Title" xml:space="preserve">
+    <value>Win32k 边界已禁用</value>
+  </data>
+  <data name="SandboxPage_WindowsUiWarning.Message" xml:space="preserve">
+    <value>文件、网络、剪贴板、超时和命令审批控制仍然有效，但允许使用 Win32k 系统调用。</value>
+  </data>
+  <data name="SandboxPage_AllowWindowsUiDialogTitle" xml:space="preserve">
+    <value>允许 Windows UI API？</value>
+  </data>
+  <data name="SandboxPage_AllowWindowsUiDialogContent" xml:space="preserve">
+    <value>这将允许沙盒命令使用 Windows UI 系统调用。当前 MXC 版本中的 PowerShell、whoami、tasklist 和其他控制台工具需要此权限才能启动。&#xA;&#xA;文件、网络、剪贴板、超时和命令审批控制仍然有效，但 Win32k 系统调用阻止将被禁用。仅在需要更广泛的命令兼容性时启用。</value>
+  </data>
+  <data name="SandboxPage_AllowWindowsUiDialogPrimary" xml:space="preserve">
+    <value>允许 UI API</value>
+  </data>
+  <data name="SandboxPage_AllowWindowsUiDialogCancel" xml:space="preserve">
+    <value>取消</value>
+  </data>
   <data name="SandboxPage_Limits.Text" xml:space="preserve">
     <value>⏱ 限制</value>
   </data>
@@ -4637,7 +4697,7 @@
     <value>全部</value>
   </data>
   <data name="SessionsPage_ShowCompleted.Header" xml:space="preserve">
-    <value>显示已结束的会话</value>
+    <value>显示已完成的会话</value>
   </data>
   <data name="SessionsPage_ShowBackground.Header" xml:space="preserve">
     <value>显示后台会话</value>
@@ -4680,7 +4740,7 @@
     <value>正在加载会话…</value>
   </data>
   <data name="SessionsPage_NoActiveSessions.Text" xml:space="preserve">
-    <value>无活动会话</value>
+    <value>没有会话</value>
   </data>
   <data name="SessionsPage_Reset.Text" xml:space="preserve">
     <value>重置</value>
@@ -6834,9 +6894,6 @@
   <data name="SettingsPage_GatewayInfoLabel_Uptime.Text" xml:space="preserve">
     <value>Uptime</value>
   </data>
-  <data name="PermissionsPage_NewRuleAction.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
-    <value>规则操作</value>
-  </data>
   <data name="SandboxPage_UnavailablePrimaryButton.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
     <value>沙盒操作</value>
   </data>
@@ -6878,5 +6935,17 @@
   </data>
   <data name="PermissionsPage_ExecPolicySaveFailed" xml:space="preserve">
     <value>保存失败</value>
+  </data>
+  <data name="SessionsPage_Status_Working" xml:space="preserve">
+    <value>工作中</value>
+  </data>
+  <data name="SessionsPage_Status_Ready" xml:space="preserve">
+    <value>就绪</value>
+  </data>
+  <data name="SessionsPage_Status_NeedsAttention" xml:space="preserve">
+    <value>需要注意</value>
+  </data>
+  <data name="SessionsPage_LastRunStopped" xml:space="preserve">
+    <value>上次运行已停止</value>
   </data>
 </root>

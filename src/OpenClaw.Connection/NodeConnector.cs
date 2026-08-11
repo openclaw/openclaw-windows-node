@@ -16,6 +16,7 @@ public sealed class NodeConnector : INodeConnector, INodeConnectorTelemetryEvent
     private WindowsNodeClient? _client;
     private long _clientGeneration;
     private bool _disposed;
+    public Func<CancellationToken, Task<ReconnectAuthorizationResult>>? HandshakeAuthorizationAsync { get; set; }
     public Func<CancellationToken, Task<ReconnectAuthorizationResult>>? ReconnectAuthorizationAsync { get; set; }
 
     public event EventHandler<ConnectionStatus>? StatusChanged;
@@ -102,6 +103,7 @@ public sealed class NodeConnector : INodeConnector, INodeConnectorTelemetryEvent
             identityPath,
             nodeLogger,
             bootstrapToken: credential.IsBootstrapToken ? credential.Token : null);
+        client.HandshakeAuthorizationAsync = HandshakeAuthorizationAsync;
         client.ReconnectAuthorizationAsync = ReconnectAuthorizationAsync;
 
         // Share v2 signature flag from operator — avoid wasting a roundtrip on v3

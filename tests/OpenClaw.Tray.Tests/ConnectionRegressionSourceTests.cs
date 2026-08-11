@@ -15,10 +15,18 @@ public sealed class ConnectionRegressionSourceTests
     public void DirectConnect_WaitsForTerminalConnectionOutcome()
     {
         var pageSource = ReadSource("src", "OpenClaw.Tray.WinUI", "Pages", "ConnectionPage.xaml.cs");
+        var serviceSource = ReadSource(
+            "src",
+            "OpenClaw.Tray.WinUI",
+            "Services",
+            "GatewayDirectConnectService.cs");
 
-        Assert.Contains("ConnectAndWaitForDirectConnectOutcomeAsync(recordId)", pageSource);
-        Assert.Contains("Task.Delay(TimeSpan.FromSeconds(15))", pageSource);
-        Assert.Contains("RollbackDirectConnect(previousActiveId", pageSource);
+        Assert.Contains("_gatewayDirectConnectService.ConnectAsync(", pageSource);
+        Assert.DoesNotContain("ConnectAndWaitForDirectConnectOutcomeAsync", pageSource);
+        Assert.DoesNotContain("RollbackDirectConnect(", pageSource);
+        Assert.Contains("ConnectAndWaitForTerminalStateAsync(", serviceSource);
+        Assert.Contains("Task.Delay(_terminalTimeout, cancellationToken)", serviceSource);
+        Assert.Contains("Rollback(", serviceSource);
     }
 
     [Fact]
@@ -77,6 +85,14 @@ public sealed class ConnectionRegressionSourceTests
             "AutomationProperties.SetAccessibilityView(labelText, AccessibilityView.Raw);",
             pageSource);
         Assert.DoesNotContain("AutomationProperties.SetName(pill", pageSource);
+    }
+
+    [Fact]
+    public void SessionCount_UsesCanonicalRunLiveness()
+    {
+        var pageSource = ReadSource("src", "OpenClaw.Tray.WinUI", "Pages", "ConnectionPage.xaml.cs");
+
+        Assert.Contains("sessions?.Count(SessionRunState.IsWorking)", pageSource);
     }
 
     [Fact]

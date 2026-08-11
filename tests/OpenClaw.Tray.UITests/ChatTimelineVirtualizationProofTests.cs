@@ -629,6 +629,7 @@ public sealed class ChatTimelineVirtualizationProofTests
             Assert.True(
                 gap <= 4,
                 $"after prepend + restore, scroll-to-bottom must follow to the newest row; gap={gap:0.0}");
+            Assert.Equal(1.0, scrollViewer.VerticalAnchorRatio);
         });
 
         await _ui.RunOnUIAsync(() => host!.Dispose());

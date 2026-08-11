@@ -190,6 +190,29 @@ public class WslKeepAlivePolicyTests
     }
 
     [Fact]
+    public void SameSetupManagedGateway_RequiresExactEndpointAndOwnership()
+    {
+        var expected = new GatewayRecord
+        {
+            Id = "local",
+            Url = "ws://localhost:18789",
+            IsLocal = true,
+            SetupManagedDistroName = "OpenClawGateway",
+        };
+
+        Assert.True(WslKeepAlivePolicy.IsSameSetupManagedGateway(expected, expected with { }));
+        Assert.False(WslKeepAlivePolicy.IsSameSetupManagedGateway(
+            expected,
+            expected with { Url = "ws://localhost:18800" }));
+        Assert.False(WslKeepAlivePolicy.IsSameSetupManagedGateway(
+            expected,
+            expected with { SetupManagedDistroName = null, FriendlyName = null }));
+        Assert.False(WslKeepAlivePolicy.IsSameSetupManagedGateway(
+            expected,
+            expected with { Id = "other" }));
+    }
+
+    [Fact]
     public void HasSetupManagedLocalGateway_ReturnsFalseForNullRecords()
     {
         Assert.False(WslKeepAlivePolicy.HasSetupManagedLocalGateway(null));

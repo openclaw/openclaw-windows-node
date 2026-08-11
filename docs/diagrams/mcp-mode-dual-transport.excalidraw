@@ -1,0 +1,368 @@
+{
+  "type": "excalidraw",
+  "version": 2,
+  "source": "openclaw-windows-node",
+  "elements": [
+    {
+      "type": "text",
+      "id": "text-001",
+      "x": 40,
+      "y": 20,
+      "width": 1300,
+      "height": 42,
+      "text": "Single capability registry, two transports",
+      "fontSize": 28,
+      "fontFamily": 1,
+      "strokeColor": "#000000",
+      "textAlign": "left",
+      "verticalAlign": "top"
+    },
+    {
+      "type": "text",
+      "id": "text-002",
+      "x": 40,
+      "y": 68,
+      "width": 1420,
+      "height": 45,
+      "text": "NodeService holds one List<INodeCapability>. Register() adds to that list and registers with the gateway client; the MCP bridge reads the same live list for tools/list.",
+      "fontSize": 15,
+      "fontFamily": 1,
+      "strokeColor": "#000000",
+      "textAlign": "left",
+      "verticalAlign": "top"
+    },
+    {
+      "type": "rectangle",
+      "id": "rect-003",
+      "x": 260,
+      "y": 140,
+      "width": 980,
+      "height": 260,
+      "strokeColor": "#1e1e1e",
+      "backgroundColor": "transparent",
+      "fillStyle": "solid",
+      "strokeWidth": 2,
+      "roundness": {
+        "type": 3
+      },
+      "boundElements": [
+        {
+          "type": "text",
+          "id": "text-004"
+        }
+      ]
+    },
+    {
+      "type": "text",
+      "id": "text-004",
+      "x": 280,
+      "y": 152,
+      "width": 300,
+      "height": 30,
+      "text": "NodeService",
+      "fontSize": 20,
+      "fontFamily": 1,
+      "strokeColor": "#000000",
+      "textAlign": "left",
+      "verticalAlign": "top",
+      "containerId": "rect-003"
+    },
+    {
+      "type": "text",
+      "id": "text-005",
+      "x": 280,
+      "y": 195,
+      "width": 940,
+      "height": 192,
+      "text": "List<INodeCapability> _capabilities\n\nprivate void Register(INodeCapability cap)\n{\n    _capabilities.Add(cap);\n    _nodeClient?.RegisterCapability(cap);\n}",
+      "fontSize": 15,
+      "fontFamily": 3,
+      "strokeColor": "#000000",
+      "textAlign": "left",
+      "verticalAlign": "top"
+    },
+    {
+      "type": "rectangle",
+      "id": "rect-006",
+      "x": 260,
+      "y": 460,
+      "width": 420,
+      "height": 100,
+      "strokeColor": "#D13438",
+      "backgroundColor": "#FDE7E9",
+      "fillStyle": "solid",
+      "strokeWidth": 2,
+      "roundness": {
+        "type": 3
+      },
+      "boundElements": [
+        {
+          "type": "text",
+          "id": "text-007"
+        }
+      ]
+    },
+    {
+      "type": "text",
+      "id": "text-007",
+      "x": 270,
+      "y": 475,
+      "width": 400,
+      "height": 70,
+      "text": "WindowsNodeClient\n(gateway WebSocket)",
+      "fontSize": 17,
+      "fontFamily": 1,
+      "strokeColor": "#000000",
+      "textAlign": "center",
+      "verticalAlign": "middle",
+      "containerId": "rect-006"
+    },
+    {
+      "type": "rectangle",
+      "id": "rect-008",
+      "x": 820,
+      "y": 460,
+      "width": 420,
+      "height": 100,
+      "strokeColor": "#0C8599",
+      "backgroundColor": "#99E9F2",
+      "fillStyle": "solid",
+      "strokeWidth": 2,
+      "roundness": {
+        "type": 3
+      },
+      "boundElements": [
+        {
+          "type": "text",
+          "id": "text-009"
+        }
+      ]
+    },
+    {
+      "type": "text",
+      "id": "text-009",
+      "x": 830,
+      "y": 475,
+      "width": 400,
+      "height": 70,
+      "text": "McpToolBridge\n(JSON-RPC dispatch)",
+      "fontSize": 17,
+      "fontFamily": 1,
+      "strokeColor": "#000000",
+      "textAlign": "center",
+      "verticalAlign": "middle",
+      "containerId": "rect-008"
+    },
+    {
+      "type": "arrow",
+      "id": "arrow-010",
+      "x": 554.0,
+      "y": 400,
+      "width": 84.0,
+      "height": 60,
+      "strokeColor": "#495057",
+      "strokeWidth": 2,
+      "points": [
+        [
+          0.0,
+          0
+        ],
+        [
+          -84.0,
+          60
+        ]
+      ]
+    },
+    {
+      "type": "arrow",
+      "id": "arrow-011",
+      "x": 946.0,
+      "y": 400,
+      "width": 84.0,
+      "height": 60,
+      "strokeColor": "#495057",
+      "strokeWidth": 2,
+      "points": [
+        [
+          0.0,
+          0
+        ],
+        [
+          84.0,
+          60
+        ]
+      ]
+    },
+    {
+      "type": "rectangle",
+      "id": "rect-012",
+      "x": 260,
+      "y": 660,
+      "width": 420,
+      "height": 80,
+      "strokeColor": "#D13438",
+      "backgroundColor": "#FDE7E9",
+      "fillStyle": "solid",
+      "strokeWidth": 2,
+      "roundness": {
+        "type": 3
+      },
+      "boundElements": [
+        {
+          "type": "text",
+          "id": "text-013"
+        }
+      ]
+    },
+    {
+      "type": "text",
+      "id": "text-013",
+      "x": 270,
+      "y": 675,
+      "width": 400,
+      "height": 50,
+      "text": "OpenClaw gateway",
+      "fontSize": 17,
+      "fontFamily": 1,
+      "strokeColor": "#000000",
+      "textAlign": "center",
+      "verticalAlign": "middle",
+      "containerId": "rect-012"
+    },
+    {
+      "type": "arrow",
+      "id": "arrow-014",
+      "x": 470.0,
+      "y": 560,
+      "width": 0.0,
+      "height": 100,
+      "strokeColor": "#D13438",
+      "strokeWidth": 2,
+      "points": [
+        [
+          0.0,
+          0
+        ],
+        [
+          0.0,
+          100
+        ]
+      ]
+    },
+    {
+      "type": "rectangle",
+      "id": "rect-015",
+      "x": 820,
+      "y": 660,
+      "width": 420,
+      "height": 100,
+      "strokeColor": "#0C8599",
+      "backgroundColor": "#99E9F2",
+      "fillStyle": "solid",
+      "strokeWidth": 2,
+      "roundness": {
+        "type": 3
+      },
+      "boundElements": [
+        {
+          "type": "text",
+          "id": "text-016"
+        }
+      ]
+    },
+    {
+      "type": "text",
+      "id": "text-016",
+      "x": 830,
+      "y": 675,
+      "width": 400,
+      "height": 70,
+      "text": "McpHttpServer\n(HttpListener@127.0.0.1:8765)",
+      "fontSize": 16,
+      "fontFamily": 1,
+      "strokeColor": "#000000",
+      "textAlign": "center",
+      "verticalAlign": "middle",
+      "containerId": "rect-015"
+    },
+    {
+      "type": "arrow",
+      "id": "arrow-017",
+      "x": 1030.0,
+      "y": 560,
+      "width": 0.0,
+      "height": 100,
+      "strokeColor": "#0C8599",
+      "strokeWidth": 2,
+      "points": [
+        [
+          0.0,
+          0
+        ],
+        [
+          0.0,
+          100
+        ]
+      ]
+    },
+    {
+      "type": "rectangle",
+      "id": "rect-018",
+      "x": 820,
+      "y": 850,
+      "width": 420,
+      "height": 100,
+      "strokeColor": "#0C8599",
+      "backgroundColor": "#99E9F2",
+      "fillStyle": "solid",
+      "strokeWidth": 2,
+      "roundness": {
+        "type": 3
+      },
+      "boundElements": [
+        {
+          "type": "text",
+          "id": "text-019"
+        }
+      ]
+    },
+    {
+      "type": "text",
+      "id": "text-019",
+      "x": 830,
+      "y": 865,
+      "width": 400,
+      "height": 70,
+      "text": "Local MCP clients\n(Claude Code, Cursor, etc.)",
+      "fontSize": 16,
+      "fontFamily": 1,
+      "strokeColor": "#000000",
+      "textAlign": "center",
+      "verticalAlign": "middle",
+      "containerId": "rect-018"
+    },
+    {
+      "type": "arrow",
+      "id": "arrow-020",
+      "x": 1030.0,
+      "y": 760,
+      "width": 0.0,
+      "height": 90,
+      "strokeColor": "#0C8599",
+      "strokeWidth": 2,
+      "points": [
+        [
+          0.0,
+          0
+        ],
+        [
+          0.0,
+          90
+        ]
+      ]
+    }
+  ],
+  "appState": {
+    "viewBackgroundColor": "#ffffff"
+  }
+}

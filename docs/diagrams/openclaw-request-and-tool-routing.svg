@@ -1,0 +1,96 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1590" height="1190" viewBox="0 0 1590 1190" role="img" aria-labelledby="title desc">
+  <title id="title">What happens when a user says delete this?</title>
+  <desc id="desc">A decision flow that resolves target authority, chooses one operation and execution host, applies policy, and converges on one result.</desc>
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto"><path d="M0 0 L10 5 L0 10z" fill="context-stroke"/></marker>
+    <style>
+      .title{font:700 30px Segoe UI,Arial,sans-serif;fill:#111}
+      .subtitle{font:17px Segoe UI,Arial,sans-serif;fill:#222}
+      .lane{font:700 20px Segoe UI,Arial,sans-serif;fill:#111;text-anchor:middle}
+      .box{font:16px Segoe UI,Arial,sans-serif;fill:#111;text-anchor:middle}
+      .decision{font:17px Segoe UI,Arial,sans-serif;fill:#111;text-anchor:middle}
+      .label{font:14px Segoe UI,Arial,sans-serif;fill:#222;text-anchor:middle}
+      .result{font:18px Segoe UI,Arial,sans-serif;fill:#111;text-anchor:middle}
+    </style>
+  </defs>
+  <rect width="1590" height="1190" fill="#fff"/>
+  <text x="40" y="50" class="title">What happens when a user says "delete this"?</text>
+  <text x="40" y="92" class="subtitle">Resolve the target first. Then choose one authoritative operation, authorize it, execute it on one host, and return one result.</text>
+
+  <rect x="55" y="170" width="210" height="90" rx="14" fill="#CFE4FA" stroke="#0078D4" stroke-width="2"/>
+  <text x="160" y="202" class="box"><tspan x="160">User request</tspan><tspan x="160" dy="24">"delete this"</tspan></text>
+  <rect x="345" y="170" width="250" height="90" rx="14" fill="#E8DAEF" stroke="#5C2D91" stroke-width="2"/>
+  <text x="470" y="202" class="box"><tspan x="470">Gateway agent resolves</tspan><tspan x="470" dy="24">context and intent</tspan></text>
+  <polygon points="845,135 980,215 845,295 710,215" fill="#E8DAEF" stroke="#5C2D91" stroke-width="3"/>
+  <text x="845" y="202" class="decision"><tspan x="845">What authority</tspan><tspan x="845" dy="24">owns the target?</tspan></text>
+  <path d="M265 215 H345" fill="none" stroke="#0078D4" stroke-width="3" marker-end="url(#arrow)"/>
+  <path d="M595 215 H710" fill="none" stroke="#5C2D91" stroke-width="3" marker-end="url(#arrow)"/>
+
+  <rect x="35" y="370" width="310" height="480" rx="18" fill="none" stroke="#5C2D91" stroke-width="3"/>
+  <text x="190" y="408" class="lane">Gateway-owned state</text>
+  <rect x="75" y="460" width="230" height="75" rx="12" fill="#E8DAEF" stroke="#5C2D91" stroke-width="2"/>
+  <text x="190" y="504" class="box">Example: session record</text>
+  <rect x="75" y="585" width="230" height="90" rx="12" fill="#DFF6DD" stroke="#107C10" stroke-width="2"/>
+  <text x="190" y="617" class="box"><tspan x="190">Typed gateway RPC</tspan><tspan x="190" dy="24">sessions.delete</tspan></text>
+  <rect x="75" y="725" width="230" height="80" rx="12" fill="#DFF6DD" stroke="#107C10" stroke-width="2"/>
+  <text x="190" y="753" class="box"><tspan x="190">Authorize and mutate</tspan><tspan x="190" dy="23">inside the gateway</tspan></text>
+  <path d="M190 535 V585" fill="none" stroke="#5C2D91" stroke-width="2" marker-end="url(#arrow)"/>
+  <path d="M190 675 V725" fill="none" stroke="#107C10" stroke-width="2" marker-end="url(#arrow)"/>
+
+  <rect x="380" y="370" width="310" height="480" rx="18" fill="none" stroke="#107C10" stroke-width="3"/>
+  <text x="535" y="408" class="lane">Agent workspace</text>
+  <rect x="420" y="460" width="230" height="75" rx="12" fill="#DFF6DD" stroke="#107C10" stroke-width="2"/>
+  <text x="535" y="504" class="box">Example: checked-out file</text>
+  <rect x="420" y="585" width="230" height="90" rx="12" fill="#DFF6DD" stroke="#107C10" stroke-width="2"/>
+  <text x="535" y="617" class="box"><tspan x="535">Filesystem tool</tspan><tspan x="535" dy="24">not shell by default</tspan></text>
+  <rect x="420" y="725" width="230" height="80" rx="12" fill="#DFF6DD" stroke="#107C10" stroke-width="2"/>
+  <text x="535" y="753" class="box"><tspan x="535">Tool + workspace policy</tspan><tspan x="535" dy="23">then mutate workspace</tspan></text>
+  <path d="M535 535 V585" fill="none" stroke="#107C10" stroke-width="2" marker-end="url(#arrow)"/>
+  <path d="M535 675 V725" fill="none" stroke="#107C10" stroke-width="2" marker-end="url(#arrow)"/>
+
+  <rect x="725" y="370" width="480" height="610" rx="18" fill="none" stroke="#F7630C" stroke-width="3"/>
+  <text x="965" y="408" class="lane">Operating-system resource needs exec</text>
+  <polygon points="965,450 1085,515 965,580 845,515" fill="#FFF4CE" stroke="#F7630C" stroke-width="2"/>
+  <text x="965" y="503" class="decision"><tspan x="965">Which execution</tspan><tspan x="965" dy="23">host owns it?</tspan></text>
+  <rect x="755" y="645" width="130" height="105" rx="12" fill="#FFF4CE" stroke="#F7630C" stroke-width="2"/>
+  <text x="820" y="672" class="box"><tspan x="820">auto</tspan><tspan x="820" dy="21">sandbox active</tspan><tspan x="820" dy="21">host=sandbox</tspan></text>
+  <rect x="900" y="645" width="130" height="105" rx="12" fill="#FFF4CE" stroke="#F7630C" stroke-width="2"/>
+  <text x="965" y="672" class="box"><tspan x="965">auto</tspan><tspan x="965" dy="21">no sandbox</tspan><tspan x="965" dy="21">host=gateway</tspan></text>
+  <rect x="1045" y="645" width="130" height="105" rx="12" fill="#FDE7E9" stroke="#D13438" stroke-width="2"/>
+  <text x="1110" y="672" class="box"><tspan x="1110">explicit node</tspan><tspan x="1110" dy="21">resolve node</tspan><tspan x="1110" dy="21">host=node</tspan></text>
+  <rect x="800" y="815" width="330" height="115" rx="14" fill="#FDE7E9" stroke="#D13438" stroke-width="2"/>
+  <text x="965" y="842" class="box"><tspan x="965">Apply selected host policy</tspan><tspan x="965" dy="22">Node path also applies node.invoke,</tspan><tspan x="965" dy="22">local approval, and local sandbox</tspan></text>
+  <path d="M910 565 L820 645" fill="none" stroke="#F7630C" stroke-width="2" marker-end="url(#arrow)"/>
+  <path d="M965 580 V645" fill="none" stroke="#F7630C" stroke-width="2" marker-end="url(#arrow)"/>
+  <path d="M1020 565 L1110 645" fill="none" stroke="#D13438" stroke-width="2" marker-end="url(#arrow)"/>
+  <path d="M820 750 L920 815" fill="none" stroke="#F7630C" stroke-width="2" marker-end="url(#arrow)"/>
+  <path d="M965 750 V815" fill="none" stroke="#F7630C" stroke-width="2" marker-end="url(#arrow)"/>
+  <path d="M1110 750 L1010 815" fill="none" stroke="#D13438" stroke-width="2" marker-end="url(#arrow)"/>
+
+  <rect x="1240" y="370" width="310" height="610" rx="18" fill="none" stroke="#0C8599" stroke-width="3"/>
+  <text x="1395" y="408" class="lane">Typed node capability</text>
+  <rect x="1280" y="460" width="230" height="75" rx="12" fill="#99E9F2" stroke="#0C8599" stroke-width="2"/>
+  <text x="1395" y="504" class="box">Example: typed device API</text>
+  <rect x="1280" y="585" width="230" height="90" rx="12" fill="#99E9F2" stroke="#0C8599" stroke-width="2"/>
+  <text x="1395" y="617" class="box"><tspan x="1395">Select node and typed</tspan><tspan x="1395" dy="24">node command</tspan></text>
+  <rect x="1280" y="725" width="230" height="110" rx="12" fill="#99E9F2" stroke="#0C8599" stroke-width="2"/>
+  <text x="1395" y="751" class="box"><tspan x="1395">node.invoke gates</tspan><tspan x="1395" dy="22">+ local permission</tspan><tspan x="1395" dy="22">then capability action</tspan></text>
+  <path d="M1395 535 V585" fill="none" stroke="#0C8599" stroke-width="2" marker-end="url(#arrow)"/>
+  <path d="M1395 675 V725" fill="none" stroke="#0C8599" stroke-width="2" marker-end="url(#arrow)"/>
+
+  <path d="M780 285 L190 460" fill="none" stroke="#5C2D91" stroke-width="2" marker-end="url(#arrow)"/>
+  <text x="490" y="335" class="label">gateway state</text>
+  <path d="M815 295 L535 460" fill="none" stroke="#107C10" stroke-width="2" marker-end="url(#arrow)"/>
+  <text x="680" y="355" class="label">workspace</text>
+  <path d="M875 295 L965 450" fill="none" stroke="#F7630C" stroke-width="2" marker-end="url(#arrow)"/>
+  <text x="980" y="345" class="label">machine resource</text>
+  <path d="M930 280 L1395 460" fill="none" stroke="#0C8599" stroke-width="2" marker-end="url(#arrow)"/>
+  <text x="1200" y="335" class="label">typed capability</text>
+
+  <ellipse cx="780" cy="1090" rx="195" ry="50" fill="#DFF6DD" stroke="#107C10" stroke-width="3"/>
+  <text x="780" y="1080" class="result"><tspan x="780">One tool result: success, denial, or failure</tspan><tspan x="780" dy="25">Agent reports the actual outcome</tspan></text>
+  <path d="M190 805 V990 L660 1040" fill="none" stroke="#107C10" stroke-width="2" marker-end="url(#arrow)"/>
+  <path d="M535 805 V990 L700 1040" fill="none" stroke="#107C10" stroke-width="2" marker-end="url(#arrow)"/>
+  <path d="M965 930 V990 L845 1040" fill="none" stroke="#107C10" stroke-width="2" marker-end="url(#arrow)"/>
+  <path d="M1395 835 V990 L895 1040" fill="none" stroke="#107C10" stroke-width="2" marker-end="url(#arrow)"/>
+</svg>

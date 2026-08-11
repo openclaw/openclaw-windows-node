@@ -86,6 +86,18 @@ public sealed class NodeCapabilityGatingTests : IDisposable
         Assert.False(NodeCapabilityGating.ShouldRegisterBrowserProxy(s, sharedGatewayToken: "   ", hasGatewayClient: true));
         Assert.False(NodeCapabilityGating.ShouldRegisterBrowserProxy(s, sharedGatewayToken: "shared-token", hasGatewayClient: false));
         Assert.True(NodeCapabilityGating.ShouldRegisterBrowserProxy(s, sharedGatewayToken: "shared-token", hasGatewayClient: true));
+        Assert.False(NodeCapabilityGating.ShouldRegisterBrowserProxy(
+            s,
+            sharedGatewayToken: "shared-token",
+            hasGatewayClient: true,
+            browserEndpointVerified: false));
+        Assert.Equal(
+            BrowserProxyActivation.RegistrationBlock.UnverifiedBrowserEndpoint,
+            NodeCapabilityGating.ResolveBrowserProxyRegistrationBlock(
+                s,
+                sharedGatewayToken: "shared-token",
+                hasGatewayClient: true,
+                browserEndpointVerified: false));
     }
 
     [Fact]

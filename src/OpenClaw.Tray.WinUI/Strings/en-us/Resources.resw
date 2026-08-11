@@ -1950,7 +1950,7 @@ Use one of these options:
     <value>Exec Policy</value>
   </data>
   <data name="PermissionsPage_TextBlock_17.Text" xml:space="preserve">
-    <value>Controls which executables the agent can launch on this node. Rules match resolved executable paths.</value>
+    <value>Controls which executables the agent can launch on this node. The executable-path allowlist starts empty.</value>
   </data>
   <data name="DefaultActionCombo.Header" xml:space="preserve">
     <value>Default Action</value>
@@ -1965,22 +1965,22 @@ Use one of these options:
     <value>Ask</value>
   </data>
   <data name="PermissionsPage_TextBlock_28.Text" xml:space="preserve">
-    <value>Rules</value>
+    <value>Executable-path allowlist</value>
   </data>
   <data name="NewRulePattern.PlaceholderText" xml:space="preserve">
-    <value>Executable path pattern (e.g. **/git.exe)</value>
+    <value>Executable-path pattern (e.g. **/hostname.exe)</value>
+  </data>
+  <data name="PermissionsPage_ExecAllowlistPatternValidation.Text" xml:space="preserve">
+    <value>Enter an executable-path pattern such as **/hostname.exe. Basename or command-text patterns such as hostname are invalid.</value>
   </data>
   <data name="PermissionsPage_ComboBoxItem_54.Content" xml:space="preserve">
     <value>Deny</value>
-  </data>
-  <data name="PermissionsPage_ComboBoxItem_55.Content" xml:space="preserve">
-    <value>Allow</value>
   </data>
   <data name="PermissionsPage_ComboBoxItem_56.Content" xml:space="preserve">
     <value>Ask</value>
   </data>
   <data name="PermissionsPage_Button_57.Content" xml:space="preserve">
-    <value>Add Rule</value>
+    <value>Add entry</value>
   </data>
   <data name="PermissionsPage_TextBlock_69.Text" xml:space="preserve">
     <value>Node Allowlist</value>
@@ -2828,6 +2828,9 @@ Use one of these options:
   <data name="VoiceOverlayWindow_StatusErrorOccurred" xml:space="preserve">
     <value>An error occurred</value>
   </data>
+  <data name="AudioPipeline_FirstAudioTimeout" xml:space="preserve">
+    <value>No audio was received. Check that your microphone is connected and selected as the Windows input device, then try again.</value>
+  </data>
   <data name="VoiceOverlayWindow_winexWindowEx_2.Title" xml:space="preserve">
     <value>Companion Voice</value>
   </data>
@@ -2933,6 +2936,27 @@ Use one of these options:
   <data name="Chat_Tool_FooterWithTimeFormat" xml:space="preserve">
     <value>Tool · {0}</value>
   </data>
+  <data name="Chat_Activity_CommandOne" xml:space="preserve"><value>Ran {0} command</value></data>
+  <data name="Chat_Activity_CommandMany" xml:space="preserve"><value>Ran {0} commands</value></data>
+  <data name="Chat_Activity_ReadOne" xml:space="preserve"><value>read {0} file</value></data>
+  <data name="Chat_Activity_ReadMany" xml:space="preserve"><value>read {0} files</value></data>
+  <data name="Chat_Activity_EditOne" xml:space="preserve"><value>edited {0} file</value></data>
+  <data name="Chat_Activity_EditMany" xml:space="preserve"><value>edited {0} files</value></data>
+  <data name="Chat_Activity_WriteOne" xml:space="preserve"><value>wrote {0} file</value></data>
+  <data name="Chat_Activity_WriteMany" xml:space="preserve"><value>wrote {0} files</value></data>
+  <data name="Chat_Activity_SearchOne" xml:space="preserve"><value>ran {0} search</value></data>
+  <data name="Chat_Activity_SearchMany" xml:space="preserve"><value>ran {0} searches</value></data>
+  <data name="Chat_Activity_FetchOne" xml:space="preserve"><value>fetched {0} page</value></data>
+  <data name="Chat_Activity_FetchMany" xml:space="preserve"><value>fetched {0} pages</value></data>
+  <data name="Chat_Activity_GenericOne" xml:space="preserve"><value>used {0} tool</value></data>
+  <data name="Chat_Activity_GenericMany" xml:space="preserve"><value>used {0} tools</value></data>
+  <data name="Chat_Activity_GenericNamed" xml:space="preserve"><value>used {1}</value></data>
+  <data name="Chat_Activity_GenericNamedRepeated" xml:space="preserve"><value>used {1} {0} times</value></data>
+  <data name="Chat_Activity_RunningFormat" xml:space="preserve"><value>Running {0}</value></data>
+  <data name="Chat_Activity_Complete" xml:space="preserve"><value>Complete</value></data>
+  <data name="Chat_Activity_Expanded" xml:space="preserve"><value>Expanded</value></data>
+  <data name="Chat_Activity_Collapsed" xml:space="preserve"><value>Collapsed</value></data>
+  <data name="Chat_Activity_AutomationFormat" xml:space="preserve"><value>Activity: {0}. {1} tools. {2}.</value></data>
   <data name="Chat_Reasoning_ThinkingHeader" xml:space="preserve">
     <value>🧠 Thinking</value>
   </data>
@@ -3418,13 +3442,13 @@ Commands are blocked while sandboxing is unavailable because strict fallback blo
     <value>URL copied to clipboard</value>
   </data>
   <data name="PermissionsPage_RulesCount_None" xml:space="preserve">
-    <value>No rules</value>
+    <value>No entries</value>
   </data>
   <data name="PermissionsPage_RulesCount_One" xml:space="preserve">
-    <value>1 rule</value>
+    <value>1 entry</value>
   </data>
   <data name="PermissionsPage_RulesCount_ManyFormat" xml:space="preserve">
-    <value>{0} rules</value>
+    <value>{0} entries</value>
   </data>
   <data name="PermissionsPage_Allowlist_NoConfig" xml:space="preserve">
     <value>No allowlist data available. Connect to a gateway first.</value>
@@ -4477,19 +4501,19 @@ Commands are blocked while sandboxing is unavailable because strict fallback blo
     <value>Default action</value>
   </data>
   <data name="PermissionsPage_WhatHappensWhenA.Text" xml:space="preserve">
-    <value>What happens when a command doesn't match any rule below.</value>
+    <value>What happens when a command doesn't match the executable-path allowlist below.</value>
   </data>
   <data name="PermissionsPage_PatternsAreMatchedLeft.Text" xml:space="preserve">
-    <value>Allowlist patterns match resolved executable paths. Use wildcards such as **/git.exe. Changes save automatically.</value>
+    <value>Allow Always creates an argument-bound entry for an eligible native .exe command. Entries added here are path-only and can allow matching executables with any arguments. Deny and Ask remain controlled by Default action. Changes save automatically.</value>
   </data>
   <data name="PermissionsPage_Saved.Text" xml:space="preserve">
     <value>Saved</value>
   </data>
   <data name="PermissionsPage_0Rules.Text" xml:space="preserve">
-    <value>0 rules</value>
+    <value>0 entries</value>
   </data>
   <data name="PermissionsPage_NoRulesYetAdd.Text" xml:space="preserve">
-    <value>No rules yet. Add a pattern below to deny, allow, or ask for specific commands.</value>
+    <value>No executable-path allowlist entries. Approve an eligible native .exe command with Allow Always, or add a path-only pattern such as **/hostname.exe.</value>
   </data>
   <data name="PermissionsPage_WindowsPrivacy.Text" xml:space="preserve">
     <value>Windows privacy</value>
@@ -4653,6 +4677,42 @@ Commands are blocked while sandboxing is unavailable because strict fallback blo
   <data name="SandboxPage_LocalNetworkDevicesAnd.Text" xml:space="preserve">
     <value>Local network devices and shares are not included yet.</value>
   </data>
+  <data name="SandboxPage_CommandCompatibility.Text" xml:space="preserve">
+    <value>🪟 Command compatibility</value>
+  </data>
+  <data name="SandboxPage_AllowWindowsUi.Header" xml:space="preserve">
+    <value>Allow Windows UI APIs</value>
+  </data>
+  <data name="SandboxPage_AllowWindowsUi.OffContent" xml:space="preserve">
+    <value>Off: blocks Win32k system calls</value>
+  </data>
+  <data name="SandboxPage_AllowWindowsUi.OnContent" xml:space="preserve">
+    <value>On: PowerShell and similar tools can start</value>
+  </data>
+  <data name="SandboxPage_AllowWindowsUi.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>Allow Windows UI APIs for sandboxed commands</value>
+  </data>
+  <data name="SandboxPage_WindowsUiCompatibilityDescription.Text" xml:space="preserve">
+    <value>PowerShell, whoami, tasklist, and many other console tools use Windows UI APIs during startup.</value>
+  </data>
+  <data name="SandboxPage_WindowsUiWarning.Title" xml:space="preserve">
+    <value>Win32k boundary disabled</value>
+  </data>
+  <data name="SandboxPage_WindowsUiWarning.Message" xml:space="preserve">
+    <value>File, network, clipboard, timeout, and command approval controls still apply, but Win32k system calls are allowed.</value>
+  </data>
+  <data name="SandboxPage_AllowWindowsUiDialogTitle" xml:space="preserve">
+    <value>Allow Windows UI APIs?</value>
+  </data>
+  <data name="SandboxPage_AllowWindowsUiDialogContent" xml:space="preserve">
+    <value>This lets sandboxed commands use Windows UI system calls. PowerShell, whoami, tasklist, and other console tools need this to start on current MXC versions.&#xA;&#xA;File, network, clipboard, timeout, and command approval controls still apply, but Win32k syscall blocking will be disabled. Only enable this if you need broader command compatibility.</value>
+  </data>
+  <data name="SandboxPage_AllowWindowsUiDialogPrimary" xml:space="preserve">
+    <value>Allow UI APIs</value>
+  </data>
+  <data name="SandboxPage_AllowWindowsUiDialogCancel" xml:space="preserve">
+    <value>Cancel</value>
+  </data>
   <data name="SandboxPage_Limits.Text" xml:space="preserve">
     <value>⏱ Limits</value>
   </data>
@@ -4684,7 +4744,7 @@ Commands are blocked while sandboxing is unavailable because strict fallback blo
     <value>All</value>
   </data>
   <data name="SessionsPage_ShowCompleted.Header" xml:space="preserve">
-    <value>Show ended</value>
+    <value>Show completed</value>
   </data>
   <data name="SessionsPage_ShowBackground.Header" xml:space="preserve">
     <value>Show background</value>
@@ -4727,7 +4787,7 @@ Commands are blocked while sandboxing is unavailable because strict fallback blo
     <value>Loading sessions...</value>
   </data>
   <data name="SessionsPage_NoActiveSessions.Text" xml:space="preserve">
-    <value>No active sessions</value>
+    <value>No sessions</value>
   </data>
   <data name="SessionsPage_Reset.Text" xml:space="preserve">
     <value>Reset</value>
@@ -6874,9 +6934,6 @@ Make sure the gateway is running.</value>
   <data name="SettingsPage_GatewayInfoLabel_Uptime.Text" xml:space="preserve">
     <value>Uptime</value>
   </data>
-  <data name="PermissionsPage_NewRuleAction.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
-    <value>Rule action</value>
-  </data>
   <data name="SandboxPage_UnavailablePrimaryButton.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
     <value>Sandbox action</value>
   </data>
@@ -6918,5 +6975,17 @@ Make sure the gateway is running.</value>
   </data>
   <data name="PermissionsPage_ExecPolicySaveFailed" xml:space="preserve">
     <value>Save failed</value>
+  </data>
+  <data name="SessionsPage_Status_Working" xml:space="preserve">
+    <value>Working</value>
+  </data>
+  <data name="SessionsPage_Status_Ready" xml:space="preserve">
+    <value>Ready</value>
+  </data>
+  <data name="SessionsPage_Status_NeedsAttention" xml:space="preserve">
+    <value>Needs attention</value>
+  </data>
+  <data name="SessionsPage_LastRunStopped" xml:space="preserve">
+    <value>Last run stopped</value>
   </data>
 </root>

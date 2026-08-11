@@ -1712,11 +1712,18 @@ public class OpenClawChatDataProviderTests
     }
 
     [Fact]
-    public async Task LoadAsync_MapsOnlyEndedSessionsToEndedThreads()
+    public async Task LoadAsync_MapsRunLivenessWithoutEndingReusableThreads()
     {
         var sessions = new[]
         {
-            new SessionInfo { Key = "done", DisplayName = "Done", Status = "done" },
+            new SessionInfo
+            {
+                Key = "done",
+                DisplayName = "Done",
+                Status = "done",
+                HasActiveRun = false,
+                CurrentActivity = "stale run detail",
+            },
             new SessionInfo { Key = "killed", DisplayName = "Killed", Status = "killed" },
             new SessionInfo
             {
@@ -1732,17 +1739,20 @@ public class OpenClawChatDataProviderTests
         var snapshot = await provider.LoadAsync();
 
         Assert.Equal(
-            ChatThreadStatus.Ended,
+            ChatThreadStatus.Created,
             Assert.Single(snapshot.Threads, thread => thread.Id == "done").Status);
         Assert.Equal(
-            ChatThreadStatus.Ended,
+            ChatThreadStatus.Created,
             Assert.Single(snapshot.Threads, thread => thread.Id == "killed").Status);
         Assert.Equal(
-            ChatThreadStatus.Running,
+            ChatThreadStatus.Created,
             Assert.Single(snapshot.Threads, thread => thread.Id == "aborted").Status);
         Assert.Equal(
-            ChatThreadStatus.Running,
+            ChatThreadStatus.Created,
             Assert.Single(snapshot.Threads, thread => thread.Id == "unknown").Status);
+        Assert.Equal(
+            ChatActivity.Idle,
+            Assert.Single(snapshot.Threads, thread => thread.Id == "done").Activity);
     }
 
     [Fact]
@@ -1766,7 +1776,7 @@ public class OpenClawChatDataProviderTests
     }
 
     [Fact]
-    public async Task LoadAsync_PreservesRawKeyAsId_EvenWithPresentationTitle()
+    public async Task LoadAsync_PreservesRawKeyAsIdWithFlattenedClassification()
     {
         // Gateway keys must round-trip untouched: the resolver only derives display fields.
         var rawKey = "agent:main:tui-847241c7-3f9a-4a2b-b123-abcdef123456";
@@ -1775,12 +1785,8 @@ public class OpenClawChatDataProviderTests
             new SessionInfo
             {
                 Key = rawKey,
-                Presentation = new SessionPresentationInfo
-                {
-                    Title = "Terminal session",
-                    Family = "tui",
-                    AgentId = "main",
-                },
+                Classification = "tui",
+                AgentId = "main",
             },
         };
         var (_, provider, _, _) = CreateProvider(sessions);
@@ -1791,10 +1797,10 @@ public class OpenClawChatDataProviderTests
     }
 
     [Fact]
-    public async Task LoadAsync_EndedAndBackgroundFiltering_ComposesCorrectly()
+    public async Task LoadAsync_RunLivenessAndBackgroundFiltering_ComposesCorrectly()
     {
-        // Verifies the full filtering pipeline: ended sessions get Status=Ended,
-        // background sessions get IsBackground=true, and both properties coexist.
+        // Verifies the full filtering pipeline: only live runs get Status=Running,
+        // ready sessions stay selectable, and background sessions get IsBackground=true.
         var sessions = new[]
         {
             new SessionInfo { Key = "agent:main:main", IsMain = true, Status = "active" },
@@ -1810,11 +1816,11 @@ public class OpenClawChatDataProviderTests
         Assert.False(main.IsBackground);
 
         var cron = Assert.Single(snapshot.Threads, t => t.Id == "agent:main:cron:daily");
-        Assert.Equal(ChatThreadStatus.Ended, cron.Status);
+        Assert.Equal(ChatThreadStatus.Created, cron.Status);
         Assert.True(cron.IsBackground);
 
         var task = Assert.Single(snapshot.Threads, t => t.Id == "agent:main:explicit:task");
-        Assert.Equal(ChatThreadStatus.Ended, task.Status);
+        Assert.Equal(ChatThreadStatus.Created, task.Status);
         Assert.False(task.IsBackground);
 
         var hook = Assert.Single(snapshot.Threads, t => t.Id == "agent:main:hook:pr-check");
@@ -1823,18 +1829,16 @@ public class OpenClawChatDataProviderTests
     }
 
     [Fact]
-    public async Task LoadAsync_GatewayPresentationAgentId_OverridesKeyParsing()
+    public async Task LoadAsync_FlatAgentId_OverridesKeyParsing()
     {
-        // When Presentation.AgentId is set, it takes precedence over key parsing.
+        // A Gateway-provided agent id takes precedence over key parsing.
         var sessions = new[]
         {
             new SessionInfo
             {
                 Key = "agent:main:explicit:work",
-                Presentation = new SessionPresentationInfo
-                {
-                    Title = "Work", Family = "explicit", AgentId = "custom-agent",
-                },
+                Classification = "explicit",
+                AgentId = "custom-agent",
             },
         };
         var (_, provider, _, _) = CreateProvider(sessions);
@@ -2790,9 +2794,10 @@ public class OpenClawChatDataProviderTests
         var timeline = snapshots[^1].Timelines["main"];
         var entry = Assert.Single(timeline.Entries);
         Assert.Equal(ChatTimelineItemKind.ToolCall, entry.Kind);
-        Assert.Equal("powershell", entry.ToolName);
+        Assert.Equal("PowerShell", entry.ToolName);
         Assert.Equal("ls", entry.Text);
         Assert.Equal(ChatToolCallStatus.InProgress, entry.ToolResult);
+        Assert.Equal("ls", entry.ToolArgs?["command"]?.GetValue<string>());
     }
 
     [Fact]
@@ -5812,6 +5817,393 @@ public class OpenClawChatDataProviderTests
     }
 
     [Fact]
+    public async Task LoadHistoryAsync_StructuredToolBlocks_CorrelatesInputAndOutput()
+    {
+        var (bridge, provider, snapshots, _) = CreateProvider(new[] { MainSession() });
+        bridge.HistoryBehavior = _ => Task.FromResult(new ChatHistoryInfo
+        {
+            SessionKey = "main",
+            Messages =
+            [
+                new ChatMessageInfo
+                {
+                    Role = "assistant",
+                    Text = "",
+                    State = "final",
+                    Ts = 1,
+                    ToolContent =
+                    [
+                        new ChatToolContentInfo
+                        {
+                            Kind = ChatToolContentKind.Call,
+                            CallId = "call-1",
+                            ToolName = "exec",
+                            Args = JsonSerializer.Deserialize<JsonElement>(
+                                """{"command":"pwd","workdir":"/workspace","yieldMs":1000}"""),
+                        },
+                    ],
+                },
+                new ChatMessageInfo
+                {
+                    Role = "toolResult",
+                    Text = "",
+                    State = "final",
+                    Ts = 2,
+                    ToolContent =
+                    [
+                        new ChatToolContentInfo
+                        {
+                            Kind = ChatToolContentKind.Result,
+                            CallId = "call-1",
+                            ToolName = "exec",
+                            Text = "/workspace",
+                        },
+                    ],
+                },
+            ],
+        });
+
+        await provider.LoadHistoryAsync("main");
+
+        var entry = Assert.Single(snapshots[^1].Timelines["main"].Entries);
+        Assert.Equal(ChatTimelineItemKind.ToolCall, entry.Kind);
+        Assert.Equal(ChatToolCallStatus.Success, entry.ToolResult);
+        Assert.Equal("pwd", entry.ToolArgs?["command"]?.GetValue<string>());
+        Assert.Equal("/workspace", entry.ToolOutput);
+    }
+
+    [Theory]
+    [InlineData("toolResult")]
+    [InlineData("tool_result")]
+    public async Task LoadHistoryAsync_StringToolResult_CompletesOriginalCall(string role)
+    {
+        var (bridge, provider, snapshots, _) = CreateProvider(new[] { MainSession() });
+        bridge.HistoryBehavior = _ => Task.FromResult(new ChatHistoryInfo
+        {
+            SessionKey = "main",
+            Messages =
+            [
+                new ChatMessageInfo
+                {
+                    Role = "assistant",
+                    State = "final",
+                    Ts = 1,
+                    ToolContent =
+                    [
+                        new ChatToolContentInfo
+                        {
+                            Kind = ChatToolContentKind.Call,
+                            CallId = "call-1",
+                            ToolName = "exec",
+                            Args = JsonSerializer.Deserialize<JsonElement>("""{"command":"pwd"}"""),
+                        },
+                    ],
+                },
+                new ChatMessageInfo
+                {
+                    Role = role,
+                    Text = "/workspace",
+                    State = "final",
+                    Ts = 2,
+                    ToolContent =
+                    [
+                        new ChatToolContentInfo
+                        {
+                            Kind = ChatToolContentKind.Result,
+                            CallId = "call-1",
+                            ToolName = "exec",
+                            Text = "/workspace",
+                        },
+                    ],
+                },
+            ],
+        });
+
+        await provider.LoadHistoryAsync("main");
+
+        var entry = Assert.Single(snapshots[^1].Timelines["main"].Entries);
+        Assert.Equal("call-1", entry.ToolCallId);
+        Assert.Equal(ChatToolCallStatus.Success, entry.ToolResult);
+        Assert.Equal("/workspace", entry.ToolOutput);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task LoadHistoryAsync_AbortedUserBeforeToolFirstAssistant_SuppressesEntireAssistantMessage(
+        bool includeTrailingText)
+    {
+        var tool = new ChatToolContentInfo
+        {
+            Kind = ChatToolContentKind.Call,
+            CallId = "call-1",
+            ToolName = "exec",
+            Args = JsonSerializer.Deserialize<JsonElement>("""{"command":"pwd"}"""),
+        };
+        var contentParts = new List<ChatMessageContentPartInfo>
+        {
+            new()
+            {
+                Kind = ChatMessageContentPartKind.Tool,
+                Tool = tool,
+            },
+        };
+        if (includeTrailingText)
+        {
+            contentParts.Add(new ChatMessageContentPartInfo
+            {
+                Kind = ChatMessageContentPartKind.Text,
+                Text = "partial answer",
+            });
+        }
+
+        var (bridge, provider, snapshots, _) = CreateProvider(new[] { MainSession() });
+        MarkPersistedMessageAborted(provider, "main", "aborted-user");
+        bridge.HistoryBehavior = _ => Task.FromResult(new ChatHistoryInfo
+        {
+            SessionKey = "main",
+            Messages =
+            [
+                new ChatMessageInfo
+                {
+                    Role = "user",
+                    Text = "run it",
+                    State = "final",
+                    Ts = 1,
+                    OpenClawId = "aborted-user",
+                },
+                new ChatMessageInfo
+                {
+                    Role = "assistant",
+                    Text = includeTrailingText ? "partial answer" : string.Empty,
+                    State = "final",
+                    Ts = 2,
+                    ToolContent = [tool],
+                    ContentParts = contentParts,
+                },
+                new ChatMessageInfo
+                {
+                    Role = "assistant",
+                    Text = "next response",
+                    State = "final",
+                    Ts = 3,
+                },
+            ],
+        });
+
+        await provider.LoadHistoryAsync("main");
+
+        Assert.Collection(
+            snapshots[^1].Timelines["main"].Entries,
+            entry =>
+            {
+                Assert.Equal(ChatTimelineItemKind.User, entry.Kind);
+                Assert.Equal("run it", entry.Text);
+            },
+            entry =>
+            {
+                Assert.Equal(ChatTimelineItemKind.Status, entry.Kind);
+                Assert.Equal("Response was stopped", entry.Text);
+                Assert.Equal(ChatTone.Warning, entry.Tone);
+            },
+            entry =>
+            {
+                Assert.Equal(ChatTimelineItemKind.Assistant, entry.Kind);
+                Assert.Equal("next response", entry.Text);
+            });
+    }
+
+    [Fact]
+    public async Task LoadHistoryAsync_InterleavedContentParts_PreserveChronologyAndCorrelation()
+    {
+        var call = new ChatToolContentInfo
+        {
+            Kind = ChatToolContentKind.Call,
+            CallId = "call-1",
+            ToolName = "exec",
+            Args = JsonSerializer.Deserialize<JsonElement>("""{"command":"pwd"}"""),
+        };
+        var result = new ChatToolContentInfo
+        {
+            Kind = ChatToolContentKind.Result,
+            CallId = "call-1",
+            ToolName = "exec",
+            Text = "/workspace",
+        };
+        var (bridge, provider, snapshots, _) = CreateProvider(new[] { MainSession() });
+        bridge.HistoryBehavior = _ => Task.FromResult(new ChatHistoryInfo
+        {
+            SessionKey = "main",
+            Messages =
+            [
+                new ChatMessageInfo
+                {
+                    Role = "assistant",
+                    Text = "Before\nMiddle\nAfter",
+                    State = "final",
+                    Ts = 1,
+                    ToolContent = [call, result],
+                    ContentParts =
+                    [
+                        new ChatMessageContentPartInfo
+                        {
+                            Kind = ChatMessageContentPartKind.Text,
+                            Text = "Before",
+                        },
+                        new ChatMessageContentPartInfo
+                        {
+                            Kind = ChatMessageContentPartKind.Tool,
+                            Tool = call,
+                        },
+                        new ChatMessageContentPartInfo
+                        {
+                            Kind = ChatMessageContentPartKind.Text,
+                            Text = "Middle",
+                        },
+                        new ChatMessageContentPartInfo
+                        {
+                            Kind = ChatMessageContentPartKind.Tool,
+                            Tool = result,
+                        },
+                        new ChatMessageContentPartInfo
+                        {
+                            Kind = ChatMessageContentPartKind.Text,
+                            Text = "After",
+                        },
+                    ],
+                },
+            ],
+        });
+
+        await provider.LoadHistoryAsync("main");
+
+        var entries = snapshots[^1].Timelines["main"].Entries;
+        Assert.Collection(
+            entries,
+            entry =>
+            {
+                Assert.Equal(ChatTimelineItemKind.Assistant, entry.Kind);
+                Assert.Equal("Before", entry.Text);
+            },
+            entry =>
+            {
+                Assert.Equal(ChatTimelineItemKind.ToolCall, entry.Kind);
+                Assert.Equal(ChatToolCallStatus.Success, entry.ToolResult);
+                Assert.Equal("/workspace", entry.ToolOutput);
+            },
+            entry =>
+            {
+                Assert.Equal(ChatTimelineItemKind.Assistant, entry.Kind);
+                Assert.Equal("Middle", entry.Text);
+            },
+            entry =>
+            {
+                Assert.Equal(ChatTimelineItemKind.Assistant, entry.Kind);
+                Assert.Equal("After", entry.Text);
+            });
+    }
+
+    [Fact]
+    public async Task LoadHistoryAsync_StructuredOrphanResult_SynthesizesCompletedTool()
+    {
+        var (bridge, provider, snapshots, _) = CreateProvider(new[] { MainSession() });
+        bridge.HistoryBehavior = _ => Task.FromResult(new ChatHistoryInfo
+        {
+            SessionKey = "main",
+            Messages =
+            [
+                new ChatMessageInfo
+                {
+                    Role = "toolResult",
+                    Text = "",
+                    State = "final",
+                    Ts = 1,
+                    ToolContent =
+                    [
+                        new ChatToolContentInfo
+                        {
+                            Kind = ChatToolContentKind.Result,
+                            CallId = "missing-call",
+                            ToolName = "exec",
+                            Text = "output",
+                        },
+                    ],
+                },
+            ],
+        });
+
+        await provider.LoadHistoryAsync("main");
+
+        var entry = Assert.Single(snapshots[^1].Timelines["main"].Entries);
+        Assert.Equal(ChatToolCallStatus.Success, entry.ToolResult);
+        Assert.Equal("output", entry.ToolOutput);
+    }
+
+    [Fact]
+    public async Task LoadHistoryAsync_StructuredCallWithoutResult_IsInterrupted()
+    {
+        var (bridge, provider, snapshots, _) = CreateProvider(new[] { MainSession() });
+        bridge.HistoryBehavior = _ => Task.FromResult(new ChatHistoryInfo
+        {
+            SessionKey = "main",
+            Messages =
+            [
+                new ChatMessageInfo
+                {
+                    Role = "assistant",
+                    Text = "",
+                    State = "final",
+                    Ts = 1,
+                    ToolContent =
+                    [
+                        new ChatToolContentInfo
+                        {
+                            Kind = ChatToolContentKind.Call,
+                            CallId = "call-1",
+                            ToolName = "exec",
+                            Args = JsonSerializer.Deserialize<JsonElement>("""{"command":"sleep 30"}"""),
+                        },
+                    ],
+                },
+            ],
+        });
+
+        await provider.LoadHistoryAsync("main");
+
+        var entry = Assert.Single(snapshots[^1].Timelines["main"].Entries);
+        Assert.Equal(ChatToolCallStatus.Interrupted, entry.ToolResult);
+    }
+
+    [Fact]
+    public async Task LoadHistoryAsync_LiveToolStartedDuringRequest_RemainsCorrelated()
+    {
+        var pendingHistory = new TaskCompletionSource<ChatHistoryInfo>(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        var (bridge, provider, snapshots, _) = CreateProvider(new[] { MainSession() });
+        bridge.HistoryBehavior = _ => pendingHistory.Task;
+        await provider.LoadAsync();
+
+        var historyLoad = provider.LoadHistoryAsync("main");
+        bridge.RaiseAgent(MakeAgentEvent(
+            "tool",
+            """{"phase":"start","name":"exec","itemId":"live-call","args":{"command":"pwd"}}"""));
+
+        pendingHistory.SetResult(new ChatHistoryInfo { SessionKey = "main" });
+        await historyLoad;
+
+        var inProgress = Assert.Single(snapshots[^1].Timelines["main"].Entries);
+        Assert.Equal(ChatToolCallStatus.InProgress, inProgress.ToolResult);
+
+        bridge.RaiseAgent(MakeAgentEvent(
+            "tool",
+            """{"phase":"result","name":"exec","itemId":"live-call","result":{"content":"/workspace"}}"""));
+
+        var completed = Assert.Single(snapshots[^1].Timelines["main"].Entries);
+        Assert.Equal(ChatToolCallStatus.Success, completed.ToolResult);
+        Assert.Equal("/workspace", completed.ToolOutput);
+    }
+
+    [Fact]
     public async Task LoadHistoryAsync_ToolRole_RendersAsDimStatusEntry()
     {
         var (bridge, provider, snapshots, _) = CreateProvider(new[] { MainSession() });
@@ -6024,39 +6416,896 @@ public class OpenClawChatDataProviderTests
     }
 
     [Fact]
-    public async Task AgentEvent_ItemEndAfterCommandOutput_PreservesOutput()
+    public async Task AgentEvent_CommandOutputThenToolResults_PreservesInformativeOutput()
     {
         var (bridge, provider, snapshots, _) = CreateProvider(new[] { MainSession() });
         await provider.LoadAsync();
 
+        bridge.RaiseAgent(MakeAgentEvent("tool",
+            """{"phase":"start","name":"exec","toolCallId":"tool-1","args":{"command":"echo hi","workdir":"/workspace","yieldMs":1000}}"""));
         bridge.RaiseAgent(MakeAgentEvent("item",
-            """{"phase":"start","kind":"tool","title":"exec run command echo hi","itemId":"tool-1"}"""));
+            """{"phase":"start","kind":"tool","name":"exec","title":"exec run command echo hi","itemId":"tool:tool-1","toolCallId":"tool-1"}"""));
         bridge.RaiseAgent(MakeAgentEvent("command_output",
-            """{"phase":"end","itemId":"tool-1","output":"hi\n"}"""));
-        bridge.RaiseAgent(MakeAgentEvent("item",
-            """{"phase":"end","kind":"tool","title":"exec run command echo hi","itemId":"tool-1"}"""));
+            """{"itemId":"command:tool-1","phase":"end","title":"exec","toolCallId":"tool-1","command":"echo hi","status":"completed","output":"hi\n","exitCode":0,"durationMs":10,"cwd":"/workspace"}"""));
+        bridge.RaiseAgent(MakeAgentEvent("tool",
+            """{"phase":"result","name":"exec","toolCallId":"tool-1","isError":false,"result":{"details":{"status":"completed","aggregated":"hi\n","exitCode":0,"durationMs":10,"cwd":"/workspace"}}}"""));
+        bridge.RaiseAgent(MakeAgentEvent("tool",
+            """{"phase":"result","name":"exec","toolCallId":"tool-1","isError":false,"result":{"exitCode":0,"durationMs":42}}"""));
 
         var timeline = snapshots[^1].Timelines["main"];
         var entry = Assert.Single(timeline.Entries);
         Assert.Equal(ChatToolCallStatus.Success, entry.ToolResult);
         Assert.Equal("hi\n", entry.ToolOutput);
+        Assert.Equal("echo hi", entry.ToolArgs?["command"]?.GetValue<string>());
+        Assert.False(entry.ToolArgs?.ContainsKey("workdir"));
+        Assert.False(entry.ToolArgs?.ContainsKey("yieldMs"));
+    }
+
+    [Theory]
+    [InlineData("missing")]
+    [InlineData("empty")]
+    [InlineData("whitespace")]
+    [InlineData("prefix-only")]
+    public async Task AgentEvent_ItemWithoutUsableId_UsesLegacyFallbackAndPreservesOutput(string idCase)
+    {
+        var (bridge, provider, snapshots, _) = CreateProvider(new[] { MainSession() });
+        await provider.LoadAsync();
+
+        string ItemPayload(string phase)
+        {
+            var payload = new Dictionary<string, object?>
+            {
+                ["phase"] = phase,
+                ["kind"] = "tool",
+                ["title"] = "Tool"
+            };
+            if (idCase != "missing")
+                payload["itemId"] = idCase switch
+                {
+                    "empty" => string.Empty,
+                    "whitespace" => "   ",
+                    _ => "tool:"
+                };
+            return JsonSerializer.Serialize(payload);
+        }
+
+        bridge.RaiseAgent(MakeAgentEvent(
+            "lifecycle",
+            """{"phase":"start"}""",
+            runId: "run-1"));
+        bridge.RaiseAgent(MakeAgentEvent("item", ItemPayload("start"), runId: "run-1"));
+        bridge.RaiseAgent(MakeAgentEvent(
+            "command_output",
+            """{"phase":"end","output":"legacy output"}""",
+            runId: "run-1"));
+        bridge.RaiseAgent(MakeAgentEvent("item", ItemPayload("end"), runId: "run-1"));
+        bridge.RaiseAgent(MakeAgentEvent(
+            "lifecycle",
+            """{"phase":"end"}""",
+            runId: "run-1"));
+
+        var timeline = snapshots[^1].Timelines["main"];
+        var entry = Assert.Single(timeline.Entries);
+        Assert.Equal(ChatToolCallStatus.Success, entry.ToolResult);
+        Assert.Equal("legacy output", entry.ToolOutput);
+        Assert.False(timeline.TurnActive);
     }
 
     [Fact]
-    public async Task AgentEvent_ToolError_ExtractsErrorText()
+    public async Task AgentEvent_ParentCommandAndOutput_NormalizeToSingleRow()
+    {
+        var (bridge, provider, snapshots, _) = CreateProvider(new[] { MainSession() });
+        await provider.LoadAsync();
+
+        bridge.RaiseAgent(MakeAgentEvent("lifecycle", """{"phase":"start"}""", runId: "run-1"));
+        bridge.RaiseAgent(MakeAgentEvent("tool",
+            """{"phase":"start","name":"system.run","itemId":"tool:tool-1","toolCallId":"tool-1","args":{"command":"powershell -NoProfile -Command Get-ChildItem"}}""",
+            runId: "run-1"));
+        bridge.RaiseAgent(MakeAgentEvent("item",
+            """{"phase":"start","kind":"tool","name":"system.run","title":"Tool","status":"running","itemId":"tool:tool-1","toolCallId":"tool-1"}""",
+            runId: "run-1"));
+        bridge.RaiseAgent(MakeAgentEvent("item",
+            """{"phase":"start","kind":"command","name":"system.run","title":"Bash","status":"running","itemId":"command:tool-1","toolCallId":"tool-1"}""",
+            runId: "run-1"));
+        bridge.RaiseAgent(MakeAgentEvent("tool",
+            """{"phase":"result","name":"system.run","toolCallId":"tool-1","result":"parent done"}""",
+            runId: "run-1"));
+        bridge.RaiseAgent(MakeAgentEvent("item",
+            """{"phase":"end","kind":"command","name":"system.run","status":"completed","itemId":"command:tool-1","toolCallId":"tool-1"}""",
+            runId: "run-1"));
+        bridge.RaiseAgent(MakeAgentEvent("command_output",
+            """{"phase":"end","status":"completed","itemId":"command:tool-1","toolCallId":"tool-1","output":"file.txt"}""",
+            runId: "run-1"));
+
+        var entry = Assert.Single(snapshots[^1].Timelines["main"].Entries);
+        Assert.Equal("system.run", entry.ToolName);
+        Assert.Equal("powershell -NoProfile -Command Get-ChildItem",
+            entry.ToolArgs!["command"]!.GetValue<string>());
+        Assert.Equal("file.txt", entry.ToolOutput);
+        Assert.Equal(ChatToolCallStatus.Success, entry.ToolResult);
+
+        var rows = ChatToolActivityPresentation.Project(snapshots[^1].Timelines["main"].Entries, "main", 1);
+        var row = Assert.Single(rows);
+        Assert.Same(entry, row.Entry);
+    }
+
+    [Fact]
+    public async Task AgentEvent_ApplyPatchItem_PreservesCanonicalIdentity()
+    {
+        var (bridge, provider, snapshots, _) = CreateProvider(new[] { MainSession() });
+        await provider.LoadAsync();
+
+        bridge.RaiseAgent(MakeAgentEvent("item",
+            """{"phase":"start","kind":"tool","name":"apply_patch","title":"Tool","itemId":"tool:patch-1","toolCallId":"patch-1"}"""));
+        bridge.RaiseAgent(MakeAgentEvent("item",
+            """{"phase":"start","kind":"patch","name":"apply_patch","title":"Tool","itemId":"patch:patch-1","toolCallId":"patch-1"}"""));
+        bridge.RaiseAgent(MakeAgentEvent("patch",
+            """{"itemId":"patch:patch-1","phase":"end","title":"apply patch","toolCallId":"patch-1","name":"apply_patch","added":["a.ts"],"modified":["b.ts"],"deleted":["c.ts"],"summary":"1 added, 1 modified, 1 deleted"}"""));
+
+        var entry = Assert.Single(snapshots[^1].Timelines["main"].Entries);
+        Assert.Equal("Apply Patch", entry.ToolName);
+        Assert.Equal("patch-1", entry.ToolCallId);
+        Assert.Equal("1 added, 1 modified, 1 deleted", entry.ToolOutput);
+        Assert.Equal(ChatToolCallStatus.Success, entry.ToolResult);
+
+        var row = Assert.Single(ChatToolActivityPresentation.Project(
+            snapshots[^1].Timelines["main"].Entries,
+            "main",
+            1));
+        Assert.Same(entry, row.Entry);
+    }
+
+    [Fact]
+    public async Task AgentEvent_CodexBareItemIdWithConcreteName_RendersWebFetch()
+    {
+        var (bridge, provider, snapshots, _) = CreateProvider(new[] { MainSession() });
+        await provider.LoadAsync();
+
+        bridge.RaiseAgent(MakeAgentEvent("item",
+            """{"phase":"start","kind":"tool","title":"Tool","name":"web_fetch","itemId":"codex-bare-id"}"""));
+
+        var entry = Assert.Single(snapshots[^1].Timelines["main"].Entries);
+        Assert.Equal("web_fetch", entry.ToolName);
+        Assert.Equal("codex-bare-id", entry.ToolCallId);
+        Assert.Equal(ChatToolCallStatus.InProgress, entry.ToolResult);
+    }
+
+    [Fact]
+    public async Task AgentEvent_BlockedCommandAfterSuccess_UpgradesToError()
+    {
+        var (bridge, provider, snapshots, _) = CreateProvider(new[] { MainSession() });
+        await provider.LoadAsync();
+
+        bridge.RaiseAgent(MakeAgentEvent("item",
+            """{"phase":"start","kind":"tool","name":"system.run","title":"Tool","status":"running","itemId":"tool:tool-1","toolCallId":"tool-1"}""",
+            runId: "run-1"));
+        bridge.RaiseAgent(MakeAgentEvent("item",
+            """{"phase":"start","kind":"command","name":"system.run","title":"Run command","status":"running","itemId":"command:tool-1","toolCallId":"tool-1"}""",
+            runId: "run-1"));
+        bridge.RaiseAgent(MakeAgentEvent("tool",
+            """{"phase":"result","name":"system.run","toolCallId":"tool-1","result":"ready"}""",
+            runId: "run-1"));
+        bridge.RaiseAgent(MakeAgentEvent("item",
+            """{"phase":"end","kind":"command","name":"system.run","status":"blocked","summary":"Awaiting approval before command can run.","itemId":"command:tool-1","toolCallId":"tool-1"}""",
+            runId: "run-1"));
+
+        var entry = Assert.Single(snapshots[^1].Timelines["main"].Entries);
+        Assert.Equal(ChatToolCallStatus.Error, entry.ToolResult);
+        Assert.Equal("Awaiting approval before command can run.", entry.ToolOutput);
+    }
+
+    [Fact]
+    public async Task AgentEvent_SameNameConcurrentCallsWithReversedOutputs_StayIsolated()
     {
         var (bridge, provider, snapshots, _) = CreateProvider(new[] { MainSession() });
         await provider.LoadAsync();
 
         bridge.RaiseAgent(MakeAgentEvent("tool",
-            """{"phase":"start","name":"web_fetch","args":{"url":"https://example"}}"""));
+            """{"phase":"start","name":"system.run","toolCallId":"run-1","args":{"command":"echo one"}}"""));
         bridge.RaiseAgent(MakeAgentEvent("tool",
-            """{"phase":"error","name":"web_fetch","error":"timeout after 30s"}"""));
+            """{"phase":"start","name":"system.run","toolCallId":"run-2","args":{"command":"echo two"}}"""));
+        bridge.RaiseAgent(MakeAgentEvent("command_output",
+            """{"phase":"end","status":"completed","itemId":"command:run-2","toolCallId":"run-2","output":"two"}"""));
+        bridge.RaiseAgent(MakeAgentEvent("command_output",
+            """{"phase":"end","status":"completed","itemId":"command:run-1","toolCallId":"run-1","output":"one"}"""));
+
+        Assert.Collection(
+            snapshots[^1].Timelines["main"].Entries,
+            first =>
+            {
+                Assert.Equal("run-1", first.ToolCallId);
+                Assert.Equal("one", first.ToolOutput);
+                Assert.Equal("echo one", first.ToolArgs!["command"]!.GetValue<string>());
+            },
+            second =>
+            {
+                Assert.Equal("run-2", second.ToolCallId);
+                Assert.Equal("two", second.ToolOutput);
+                Assert.Equal("echo two", second.ToolArgs!["command"]!.GetValue<string>());
+            });
+    }
+
+    [Theory]
+    [InlineData("system.run", "command", "Get-Date")]
+    [InlineData("browser.proxy", "url", "https://example.test")]
+    [InlineData("canvas.navigate", "path", "/dashboard")]
+    public async Task AgentEvent_ToolStream_PreservesKnownIdentityAndAllowlistedPreview(
+        string toolName,
+        string argName,
+        string argValue)
+    {
+        var (bridge, provider, snapshots, _) = CreateProvider(new[] { MainSession() });
+        await provider.LoadAsync();
+        var json = JsonSerializer.Serialize(new
+        {
+            phase = "start",
+            name = toolName,
+            itemId = $"tool-{toolName}",
+            args = new Dictionary<string, string> { [argName] = argValue }
+        });
+
+        bridge.RaiseAgent(MakeAgentEvent("tool", json));
+
+        var entry = Assert.Single(snapshots[^1].Timelines["main"].Entries);
+        Assert.Equal(toolName, entry.ToolName);
+        Assert.Equal(argValue, entry.ToolArgs![argName]!.GetValue<string>());
+    }
+
+    [Fact]
+    public async Task AgentEvent_DisplayArgs_RedactsSecretsOmitsArbitraryJsonAndTruncates()
+    {
+        var (bridge, provider, snapshots, _) = CreateProvider(new[] { MainSession() });
+        await provider.LoadAsync();
+        var longPath = new string('p', 500);
+        var json = JsonSerializer.Serialize(new
+        {
+            phase = "start",
+            name = "system.run",
+            itemId = "tool-1",
+            args = new
+            {
+                command = "curl https://example.test --token abcdef1234567890ghij",
+                path = longPath,
+                environment = new { OPENCLAW_TOKEN = "must-not-render" },
+                payload = new { arbitrary = "json-must-not-render" }
+            }
+        });
+
+        bridge.RaiseAgent(MakeAgentEvent("tool", json));
+
+        var args = Assert.Single(snapshots[^1].Timelines["main"].Entries).ToolArgs!;
+        var command = args["command"]!.GetValue<string>();
+        Assert.DoesNotContain("abcdef1234567890ghij", command, StringComparison.Ordinal);
+        Assert.True(args["path"]!.GetValue<string>().Length <= NativeToolProjector.MaxDisplayValueChars);
+        Assert.False(args.ContainsKey("environment"));
+        Assert.False(args.ContainsKey("payload"));
+        Assert.DoesNotContain("must-not-render", args.ToJsonString(), StringComparison.Ordinal);
+        Assert.DoesNotContain("json-must-not-render", args.ToJsonString(), StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task AgentEvent_CommandChildWithBidiTitle_DoesNotOverrideExplicitParentIdentity()
+    {
+        var (bridge, provider, snapshots, _) = CreateProvider(new[] { MainSession() });
+        await provider.LoadAsync();
+        bridge.RaiseAgent(MakeAgentEvent("item",
+            """{"phase":"start","kind":"tool","name":"system.run","title":"Tool","itemId":"tool:tool-1","toolCallId":"tool-1"}"""));
+        var child = JsonSerializer.Serialize(new
+        {
+            phase = "start",
+            kind = "command",
+            title = "Bash\u202Eevil",
+            itemId = "command:tool-1",
+            toolCallId = "tool-1"
+        });
+        bridge.RaiseAgent(MakeAgentEvent("item", child));
+
+        var entry = Assert.Single(snapshots[^1].Timelines["main"].Entries);
+        Assert.Equal("system.run", entry.ToolName);
+        Assert.Equal(ChatToolIdentityStrength.Explicit, entry.ToolIdentityStrength);
+    }
+
+    [Theory]
+    [InlineData("Delete Files")]
+    [InlineData("Bash delete files")]
+    [InlineData("bAsH")]
+    [InlineData("APPLY_PATCH")]
+    [InlineData("pwsh")]
+    [InlineData("\u0412ash")]
+    public async Task AgentEvent_CommandChildTitle_DoesNotOverrideExplicitParentIdentity(string title)
+    {
+        var (bridge, provider, snapshots, _) = CreateProvider(new[] { MainSession() });
+        await provider.LoadAsync();
+        var child = JsonSerializer.Serialize(new
+        {
+            phase = "start",
+            kind = "command",
+            title,
+            toolCallId = "tool-1",
+            itemId = "command:tool-1"
+        });
+
+        bridge.RaiseAgent(MakeAgentEvent("item", child));
+        bridge.RaiseAgent(MakeAgentEvent("item",
+            """{"phase":"start","kind":"tool","name":"system.run","title":"Tool","itemId":"tool:tool-1","toolCallId":"tool-1"}"""));
+
+        var entry = Assert.Single(snapshots[^1].Timelines["main"].Entries);
+        Assert.Equal("system.run", entry.ToolName);
+        Assert.Equal(ChatToolIdentityStrength.Explicit, entry.ToolIdentityStrength);
+    }
+
+    [Fact]
+    public async Task AgentEvent_LateCompletedCommandAfterTurnEnd_RepairsInterruptedWithoutReactivation()
+    {
+        var (bridge, provider, snapshots, _) = CreateProvider(new[] { MainSession() });
+        await provider.LoadAsync();
+
+        bridge.RaiseAgent(MakeAgentEvent("tool",
+            """{"phase":"start","name":"system.run","toolCallId":"tool-1","args":{"command":"Get-Date"}}""", runId: "run-1"));
+        bridge.RaiseAgent(MakeAgentEvent("item",
+            """{"phase":"start","kind":"tool","name":"system.run","title":"Tool","itemId":"tool:tool-1","toolCallId":"tool-1"}""", runId: "run-1"));
+        bridge.RaiseAgent(MakeAgentEvent("item",
+            """{"phase":"start","kind":"command","name":"system.run","title":"Bash","itemId":"command:tool-1","toolCallId":"tool-1"}""", runId: "run-1"));
+        bridge.RaiseAgent(MakeAgentEvent("item",
+            """{"phase":"update","kind":"command","name":"system.run","title":"Bash","meta":"running","itemId":"command:tool-1","toolCallId":"tool-1"}""", runId: "run-1"));
+        bridge.RaiseAgent(MakeAgentEvent("lifecycle", """{"phase":"end"}""", runId: "run-1"));
+
+        Assert.Equal(
+            ChatToolCallStatus.Interrupted,
+            Assert.Single(snapshots[^1].Timelines["main"].Entries).ToolResult);
+
+        bridge.RaiseAgent(MakeAgentEvent("item",
+            """{"phase":"end","kind":"command","name":"system.run","status":"completed","title":"Bash","itemId":"command:tool-1","toolCallId":"tool-1"}""", runId: "run-1"));
+
+        var timeline = snapshots[^1].Timelines["main"];
+        var entry = Assert.Single(timeline.Entries);
+        Assert.False(timeline.TurnActive);
+        Assert.Empty(timeline.ActiveToolCalls);
+        Assert.Empty(timeline.PendingToolPresentations!);
+        Assert.Equal(ChatToolCallStatus.Success, entry.ToolResult);
+        Assert.Equal("system.run", entry.ToolName);
+        Assert.Equal("Get-Date", entry.ToolArgs!["command"]!.GetValue<string>());
+    }
+
+    [Fact]
+    public async Task StopResponseAsync_LateToolEndAfterLifecycleRemainsInterrupted()
+    {
+        var (bridge, provider, snapshots, _) = CreateProvider(new[] { MainSession() });
+        await provider.LoadAsync();
+
+        bridge.RaiseAgent(MakeAgentEvent(
+            "lifecycle",
+            """{"phase":"start"}""",
+            runId: "run-1"));
+        bridge.RaiseAgent(MakeAgentEvent(
+            "tool",
+            """{"phase":"start","name":"system.run","toolCallId":"tool-1","args":{"command":"Get-Date"}}""",
+            runId: "run-1"));
+
+        await provider.StopResponseAsync("main");
+        Assert.Equal(
+            ChatToolCallStatus.Interrupted,
+            Assert.Single(
+                snapshots[^1].Timelines["main"].Entries,
+                entry => entry.Kind == ChatTimelineItemKind.ToolCall).ToolResult);
+
+        bridge.RaiseAgent(MakeAgentEvent(
+            "lifecycle",
+            """{"phase":"end"}""",
+            runId: "run-1"));
+        bridge.RaiseAgent(MakeAgentEvent(
+            "item",
+            """{"phase":"end","kind":"tool","name":"system.run","itemId":"tool:tool-1","toolCallId":"tool-1"}""",
+            runId: "run-1"));
+
+        var entry = Assert.Single(
+            snapshots[^1].Timelines["main"].Entries,
+            item => item.Kind == ChatTimelineItemKind.ToolCall);
+        Assert.Equal(ChatToolCallStatus.Interrupted, entry.ToolResult);
+    }
+
+    [Fact]
+    public async Task StopResponseAsync_FailedAbortLateToolEndRepairsInterrupted()
+    {
+        var (bridge, provider, snapshots, _) = CreateProvider(new[] { MainSession() });
+        bridge.AbortBehavior = _ => throw new InvalidOperationException("Abort unavailable");
+        await provider.LoadAsync();
+
+        bridge.RaiseAgent(MakeAgentEvent(
+            "lifecycle",
+            """{"phase":"start"}""",
+            runId: "run-1"));
+        bridge.RaiseAgent(MakeAgentEvent(
+            "tool",
+            """{"phase":"start","name":"system.run","toolCallId":"tool-1","args":{"command":"Get-Date"}}""",
+            runId: "run-1"));
+
+        await provider.StopResponseAsync("main");
+        Assert.Equal(
+            ChatToolCallStatus.Interrupted,
+            Assert.Single(
+                snapshots[^1].Timelines["main"].Entries,
+                entry => entry.Kind == ChatTimelineItemKind.ToolCall).ToolResult);
+
+        bridge.RaiseAgent(MakeAgentEvent(
+            "item",
+            """{"phase":"end","kind":"tool","name":"system.run","itemId":"tool:tool-1","toolCallId":"tool-1"}""",
+            runId: "run-1"));
+
+        var entry = Assert.Single(
+            snapshots[^1].Timelines["main"].Entries,
+            item => item.Kind == ChatTimelineItemKind.ToolCall);
+        Assert.Equal(ChatToolCallStatus.Success, entry.ToolResult);
+    }
+
+    [Fact]
+    public async Task AgentEvent_SameToolCallIdAcrossRunsCreatesDistinctRows()
+    {
+        var (bridge, provider, snapshots, _) = CreateProvider(new[] { MainSession() });
+        await provider.LoadAsync();
+
+        bridge.RaiseAgent(MakeAgentEvent("item",
+            """{"phase":"start","kind":"tool","name":"system.run","title":"Tool","itemId":"tool:tool-1","toolCallId":"tool-1"}""", runId: "run-1"));
+        bridge.RaiseAgent(MakeAgentEvent("item",
+            """{"phase":"start","kind":"command","name":"system.run","title":"Bash","itemId":"command:tool-1","toolCallId":"tool-1"}""", runId: "run-1"));
+        bridge.RaiseAgent(MakeAgentEvent("command_output",
+            """{"phase":"end","itemId":"command:tool-1","toolCallId":"tool-1","output":"first"}""", runId: "run-1"));
+        bridge.RaiseAgent(MakeAgentEvent("lifecycle", """{"phase":"end"}""", runId: "run-1"));
+
+        bridge.RaiseAgent(MakeAgentEvent("item",
+            """{"phase":"start","kind":"tool","name":"apply_patch","title":"Tool","itemId":"tool:tool-1","toolCallId":"tool-1"}""", runId: "run-2"));
+        bridge.RaiseAgent(MakeAgentEvent("item",
+            """{"phase":"start","kind":"patch","name":"apply_patch","title":"Apply Patch","itemId":"patch:tool-1","toolCallId":"tool-1"}""", runId: "run-2"));
+        bridge.RaiseAgent(MakeAgentEvent("tool",
+            """{"phase":"result","name":"apply_patch","toolCallId":"tool-1","result":"second"}""", runId: "run-2"));
+
+        Assert.Collection(
+            snapshots[^1].Timelines["main"].Entries,
+            first =>
+            {
+                Assert.Equal("system.run", first.ToolName);
+                Assert.Equal("first", first.ToolOutput);
+                Assert.Equal("run-1", first.ToolRunId);
+            },
+            second =>
+            {
+                Assert.Equal("Apply Patch", second.ToolName);
+                Assert.Equal("second", second.ToolOutput);
+                Assert.Equal("run-2", second.ToolRunId);
+            });
+    }
+
+    [Fact]
+    public async Task AgentEvent_ChildBeforeTurnEndAndLateParentMaterializesTerminalNonActiveRow()
+    {
+        var (bridge, provider, snapshots, _) = CreateProvider(new[] { MainSession() });
+        await provider.LoadAsync();
+
+        bridge.RaiseAgent(MakeAgentEvent("item",
+            """{"phase":"start","kind":"command","name":"system.run","title":"Bash","itemId":"command:tool-1","toolCallId":"tool-1"}""", runId: "run-1"));
+        bridge.RaiseAgent(MakeAgentEvent("item",
+            """{"phase":"update","kind":"command","name":"system.run","title":"Bash","meta":"src","itemId":"command:tool-1","toolCallId":"tool-1"}""", runId: "run-1"));
+        bridge.RaiseAgent(MakeAgentEvent("command_output",
+            """{"phase":"end","itemId":"command:tool-1","toolCallId":"tool-1","output":"ready"}""", runId: "run-1"));
+        bridge.RaiseAgent(MakeAgentEvent("lifecycle", """{"phase":"end"}""", runId: "run-1"));
+        bridge.RaiseAgent(MakeAgentEvent("item",
+            """{"phase":"start","kind":"tool","name":"system.run","title":"Tool","itemId":"tool:tool-1","toolCallId":"tool-1"}""", runId: "run-1"));
+
+        var timeline = snapshots[^1].Timelines["main"];
+        var entry = Assert.Single(timeline.Entries);
+        Assert.False(timeline.TurnActive);
+        Assert.Equal("system.run", entry.ToolName);
+        Assert.Equal("ready", entry.ToolOutput);
+        Assert.Equal(ChatToolCallStatus.Success, entry.ToolResult);
+    }
+
+    [Fact]
+    public async Task AgentEvent_LateLegacyParentUpsertsResolvedCacheGeneration()
+    {
+        using var tempDir = new TempDirectory();
+        var cachePath = Path.Combine(tempDir.DirectoryPath, "tool-metadata.json");
+        var (bridge, provider, _, _) = CreateProvider(
+            new[] { MainSession() },
+            toolMetaCachePath: cachePath);
+        await provider.LoadAsync();
+
+        bridge.RaiseAgent(MakeAgentEvent("item",
+            """{"phase":"start","kind":"command","name":"system.run","title":"Bash","itemId":"command:tool-1","toolCallId":"tool-1"}"""));
+        bridge.RaiseAgent(MakeAgentEvent("lifecycle", """{"phase":"end"}"""));
+        bridge.RaiseAgent(MakeAgentEvent("item",
+            """{"phase":"start","kind":"tool","name":"system.run","title":"Tool","itemId":"tool:tool-1","toolCallId":"tool-1"}"""));
+
+        await provider.DisposeAsync();
+
+        var cache = JsonSerializer.Deserialize<
+            Dictionary<string, List<OpenClawChatDataProvider.CachedToolMeta>>>(
+                File.ReadAllText(cachePath));
+        var entry = Assert.Single(Assert.Single(cache!).Value);
+        Assert.Equal("tool-1", entry.ToolCallId);
+        Assert.Equal("system.run", entry.ToolName);
+        Assert.Equal(1, entry.LegacyTurn);
+    }
+
+    [Fact]
+    public async Task ConnectingTransition_InterruptsAndClearsToolReplayStateOnce()
+    {
+        var (bridge, provider, snapshots, _) = CreateProvider(new[] { MainSession() });
+        await provider.LoadAsync();
+        bridge.RaiseStatus(ConnectionStatus.Connected);
+        bridge.RaiseAgent(MakeAgentEvent("item",
+            """{"phase":"start","kind":"tool","name":"system.run","title":"Tool","itemId":"tool:tool-1","toolCallId":"tool-1"}""", runId: "run-1"));
+
+        bridge.RaiseStatus(ConnectionStatus.Connecting);
+
+        var timeline = snapshots[^1].Timelines["main"];
+        var tool = Assert.Single(
+            timeline.Entries,
+            entry => entry.Kind == ChatTimelineItemKind.ToolCall);
+        Assert.Equal(ChatToolCallStatus.Interrupted, tool.ToolResult);
+        Assert.False(timeline.TurnActive);
+        Assert.Empty(timeline.ActiveToolCalls);
+        Assert.Empty(timeline.PendingToolPresentations!);
+        Assert.Empty(timeline.PendingToolOutcomes!);
+
+        bridge.RaiseStatus(ConnectionStatus.Disconnected);
+        timeline = snapshots[^1].Timelines["main"];
+        Assert.Empty(timeline.TerminalToolCorrelations!);
+        bridge.RaiseStatus(ConnectionStatus.Connected);
+
+        var finalTimeline = snapshots[^1].Timelines["main"];
+        Assert.Single(
+            finalTimeline.Entries,
+            entry => entry.Kind == ChatTimelineItemKind.ToolCall);
+        Assert.False(finalTimeline.TurnActive);
+    }
+
+    [Fact]
+    public async Task AgentEvent_ChildErrorTakesPrecedenceOverParentEndAndReplay()
+    {
+        var (bridge, provider, snapshots, _) = CreateProvider(new[] { MainSession() });
+        await provider.LoadAsync();
+
+        bridge.RaiseAgent(MakeAgentEvent("item",
+            """{"phase":"start","kind":"tool","name":"system.run","title":"Tool","itemId":"tool:tool-1","toolCallId":"tool-1"}"""));
+        bridge.RaiseAgent(MakeAgentEvent("item",
+            """{"phase":"start","kind":"command","name":"system.run","title":"Bash","itemId":"command:tool-1","toolCallId":"tool-1"}"""));
+        bridge.RaiseAgent(MakeAgentEvent("tool",
+            """{"phase":"result","name":"system.run","toolCallId":"tool-1","isError":true,"result":{"details":{"status":"error","error":"access denied"}}}"""));
+        bridge.RaiseAgent(MakeAgentEvent("item",
+            """{"phase":"end","kind":"tool","name":"system.run","title":"Tool","itemId":"tool:tool-1","toolCallId":"tool-1"}"""));
+        bridge.RaiseAgent(MakeAgentEvent("item",
+            """{"phase":"end","kind":"tool","name":"system.run","title":"Tool","itemId":"tool:tool-1","toolCallId":"tool-1"}"""));
+
+        var entry = Assert.Single(snapshots[^1].Timelines["main"].Entries);
+        Assert.Equal(ChatToolCallStatus.Error, entry.ToolResult);
+        Assert.Equal("access denied", entry.ToolOutput);
+    }
+
+    [Fact]
+    public async Task AgentEvent_ParentEndThenChildError_UpgradesTerminalOutcome()
+    {
+        var (bridge, provider, snapshots, _) = CreateProvider(new[] { MainSession() });
+        await provider.LoadAsync();
+
+        bridge.RaiseAgent(MakeAgentEvent("item",
+            """{"phase":"start","kind":"tool","name":"system.run","title":"Tool","itemId":"tool:tool-1","toolCallId":"tool-1"}"""));
+        bridge.RaiseAgent(MakeAgentEvent("item",
+            """{"phase":"start","kind":"command","name":"system.run","title":"Bash","itemId":"command:tool-1","toolCallId":"tool-1"}"""));
+        bridge.RaiseAgent(MakeAgentEvent("item",
+            """{"phase":"end","kind":"tool","name":"system.run","title":"Tool","itemId":"tool:tool-1","toolCallId":"tool-1"}"""));
+        bridge.RaiseAgent(MakeAgentEvent("tool",
+            """{"phase":"result","name":"system.run","toolCallId":"tool-1","isError":true,"result":{"details":{"status":"error","error":"late failure"}}}"""));
+
+        var entry = Assert.Single(snapshots[^1].Timelines["main"].Entries);
+        Assert.Equal(ChatToolCallStatus.Error, entry.ToolResult);
+        Assert.Equal("late failure", entry.ToolOutput);
+    }
+
+    [Fact]
+    public async Task AgentEvent_CommandChildBeforeParent_DrainsIdentityAndPendingOutput()
+    {
+        var (bridge, provider, snapshots, _) = CreateProvider(new[] { MainSession() });
+        await provider.LoadAsync();
+
+        bridge.RaiseAgent(MakeAgentEvent("item",
+            """{"phase":"start","kind":"command","name":"system.run","title":"Bash","itemId":"command:tool-1","toolCallId":"tool-1"}"""));
+        bridge.RaiseAgent(MakeAgentEvent("command_output",
+            """{"phase":"end","itemId":"command:tool-1","toolCallId":"tool-1","output":"12:00"}"""));
+        bridge.RaiseAgent(MakeAgentEvent("item",
+            """{"phase":"start","kind":"tool","name":"system.run","title":"Tool","itemId":"tool:tool-1","toolCallId":"tool-1"}"""));
+
+        var entry = Assert.Single(snapshots[^1].Timelines["main"].Entries);
+        Assert.Equal("system.run", entry.ToolName);
+        Assert.Equal("12:00", entry.ToolOutput);
+        Assert.Equal(ChatToolCallStatus.Success, entry.ToolResult);
+    }
+
+    [Fact]
+    public async Task AgentEvent_MultipleDuplicateChildrenAndLateOutput_KeepSingleCorrelatedRow()
+    {
+        var (bridge, provider, snapshots, _) = CreateProvider(new[] { MainSession() });
+        await provider.LoadAsync();
+
+        bridge.RaiseAgent(MakeAgentEvent("tool",
+            """{"phase":"start","name":"system.run","toolCallId":"tool-1","args":{"command":"Get-Date"}}"""));
+        var parent = MakeAgentEvent("item",
+            """{"phase":"start","kind":"tool","name":"system.run","title":"Tool","itemId":"tool:tool-1","toolCallId":"tool-1"}""");
+        var bashChild = MakeAgentEvent("item",
+            """{"phase":"start","kind":"command","name":"system.run","title":"Bash","itemId":"command:tool-1","toolCallId":"tool-1"}""");
+        bridge.RaiseAgent(parent);
+        bridge.RaiseAgent(parent);
+        bridge.RaiseAgent(bashChild);
+        bridge.RaiseAgent(bashChild);
+        bridge.RaiseAgent(MakeAgentEvent("item",
+            """{"phase":"end","kind":"tool","name":"system.run","title":"Tool","itemId":"tool:tool-1","toolCallId":"tool-1"}"""));
+        bridge.RaiseAgent(MakeAgentEvent("command_output",
+            """{"phase":"end","itemId":"command:tool-1","toolCallId":"tool-1","output":"done"}"""));
+
+        var entry = Assert.Single(snapshots[^1].Timelines["main"].Entries);
+        Assert.Equal("system.run", entry.ToolName);
+        Assert.Equal("Get-Date", entry.ToolArgs!["command"]!.GetValue<string>());
+        Assert.Equal("done", entry.ToolOutput);
+        Assert.Equal(ChatToolCallStatus.Success, entry.ToolResult);
+    }
+
+    [Fact]
+    public async Task AgentEvent_ToolCorrelation_IsIsolatedBySession()
+    {
+        var sessions = new[]
+        {
+            MainSession(),
+            new SessionInfo { Key = "other", DisplayName = "Other", Status = "active" }
+        };
+        var (bridge, provider, snapshots, _) = CreateProvider(sessions);
+        await provider.LoadAsync();
+
+        bridge.RaiseAgent(MakeAgentEvent("item",
+            """{"phase":"start","kind":"command","name":"system.run","title":"Bash","itemId":"command:tool-1","toolCallId":"tool-1"}""",
+            sessionKey: "main"));
+        bridge.RaiseAgent(MakeAgentEvent("item",
+            """{"phase":"start","kind":"tool","name":"system.run","title":"Tool","itemId":"tool:tool-1","toolCallId":"tool-1"}""",
+            sessionKey: "other"));
+
+        var snapshot = snapshots[^1];
+        Assert.Equal("system.run", Assert.Single(snapshot.Timelines["other"].Entries).ToolName);
+        Assert.Empty(snapshot.Timelines["main"].Entries);
+    }
+
+    [Fact]
+    public async Task LoadHistoryAsync_CachedSpecificIdentityAndArgs_MatchLiveProjection()
+    {
+        using var tempDir = new TempDirectory();
+        var cachePath = Path.Combine(tempDir.DirectoryPath, "tool-metadata.json");
+        var (liveBridge, liveProvider, liveSnapshots, _) = CreateProvider(
+            new[] { MainSession() },
+            toolMetaCachePath: cachePath);
+        liveBridge.HistoryBehavior = _ => Task.FromResult(new ChatHistoryInfo
+        {
+            SessionKey = "main",
+            SessionId = "session-1"
+        });
+        await liveProvider.LoadAsync();
+        await liveProvider.LoadHistoryAsync("main");
+        liveBridge.RaiseAgent(MakeAgentEvent("tool",
+            """{"phase":"start","name":"system.run","toolCallId":"tool-1","args":{"command":"Get-Date"}}"""));
+        liveBridge.RaiseAgent(MakeAgentEvent("item",
+            """{"phase":"start","kind":"tool","name":"system.run","title":"Tool","itemId":"tool:tool-1","toolCallId":"tool-1"}"""));
+        liveBridge.RaiseAgent(MakeAgentEvent("item",
+            """{"phase":"start","kind":"command","name":"system.run","title":"Bash","itemId":"command:tool-1","toolCallId":"tool-1"}"""));
+        var liveEntry = Assert.Single(liveSnapshots[^1].Timelines["main"].Entries);
+        await liveProvider.DisposeAsync();
+
+        var (historyBridge, historyProvider, historySnapshots, _) = CreateProvider(
+            new[] { MainSession() },
+            toolMetaCachePath: cachePath);
+        historyBridge.HistoryBehavior = _ => Task.FromResult(new ChatHistoryInfo
+        {
+            SessionKey = "main",
+            SessionId = "session-1",
+            Messages =
+            [
+                new ChatMessageInfo
+                {
+                    SessionKey = "main",
+                    Role = "toolresult",
+                    Text = "12:00",
+                    Ts = 1000
+                }
+            ]
+        });
+        await historyProvider.LoadAsync();
+        await historyProvider.LoadHistoryAsync("main");
+
+        var historyEntry = Assert.Single(historySnapshots[^1].Timelines["main"].Entries);
+        Assert.Equal(liveEntry.ToolName, historyEntry.ToolName);
+        Assert.Equal(
+            liveEntry.ToolArgs!["command"]!.GetValue<string>(),
+            historyEntry.ToolArgs!["command"]!.GetValue<string>());
+    }
+
+    [Fact]
+    public async Task AgentEvent_ToolResultIsError_ExtractsCoreErrorDetails()
+    {
+        var (bridge, provider, snapshots, _) = CreateProvider(new[] { MainSession() });
+        await provider.LoadAsync();
+
+        bridge.RaiseAgent(MakeAgentEvent("tool",
+            """{"phase":"start","name":"web_fetch","toolCallId":"tool-1","args":{"url":"https://example"}}"""));
+        bridge.RaiseAgent(MakeAgentEvent("tool",
+            """{"phase":"result","name":"web_fetch","toolCallId":"tool-1","isError":true,"result":{"details":{"status":"error","error":"timeout after 30s","gatewayCode":"UNAVAILABLE"}}}"""));
 
         var timeline = snapshots[^1].Timelines["main"];
         var entry = Assert.Single(timeline.Entries);
         Assert.Equal(ChatToolCallStatus.Error, entry.ToolResult);
         Assert.Equal("timeout after 30s", entry.ToolOutput);
+    }
+
+    [Fact]
+    public async Task AgentEvent_ToolResultIsError_PrefersSafeToolErrorSummary()
+    {
+        var (bridge, provider, snapshots, _) = CreateProvider(new[] { MainSession() });
+        await provider.LoadAsync();
+
+        bridge.RaiseAgent(MakeAgentEvent("tool",
+            """{"phase":"start","name":"exec","toolCallId":"tool-1"}"""));
+        bridge.RaiseAgent(MakeAgentEvent("tool",
+            """{"phase":"result","name":"exec","toolCallId":"tool-1","isError":true,"toolErrorSummary":"Invalid arguments: command is required.","result":{"details":{"status":"error","error":"raw validator secret sk-test-must-not-render"}}}"""));
+
+        var entry = Assert.Single(snapshots[^1].Timelines["main"].Entries);
+        Assert.Equal(ChatToolCallStatus.Error, entry.ToolResult);
+        Assert.Equal("Invalid arguments: command is required.", entry.ToolOutput);
+        Assert.DoesNotContain("sk-test-must-not-render", entry.ToolOutput, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task AgentEvent_ToolSafeErrorSummary_SurvivesLaterFailedItemAndCommandOutput()
+    {
+        var (bridge, provider, snapshots, _) = CreateProvider(new[] { MainSession() });
+        await provider.LoadAsync();
+
+        bridge.RaiseAgent(MakeAgentEvent("tool",
+            """{"phase":"start","name":"exec","toolCallId":"tool-1"}""", runId: "run-1"));
+        bridge.RaiseAgent(MakeAgentEvent("tool",
+            """{"phase":"result","name":"exec","toolCallId":"tool-1","isError":true,"toolErrorSummary":"Invalid arguments: command is required.","result":{"details":{"status":"error","error":"validator secret result-must-not-render"}}}""", runId: "run-1"));
+        bridge.RaiseAgent(MakeAgentEvent("item",
+            """{"phase":"end","kind":"tool","name":"exec","status":"failed","itemId":"tool:tool-1","toolCallId":"tool-1","error":"parent secret must-not-render"}""", runId: "run-1"));
+        bridge.RaiseAgent(MakeAgentEvent("item",
+            """{"phase":"end","kind":"command","name":"exec","status":"failed","itemId":"command:tool-1","toolCallId":"tool-1","stderr":"command secret must-not-render"}""", runId: "run-1"));
+        bridge.RaiseAgent(MakeAgentEvent("command_output",
+            """{"phase":"end","status":"failed","itemId":"command:tool-1","toolCallId":"tool-1","stderr":"output secret must-not-render"}""", runId: "run-1"));
+
+        var entry = Assert.Single(snapshots[^1].Timelines["main"].Entries);
+        Assert.Equal(ChatToolCallStatus.Error, entry.ToolResult);
+        Assert.Equal("Invalid arguments: command is required.", entry.ToolOutput);
+        Assert.DoesNotContain("must-not-render", entry.ToolOutput, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task AgentEvent_ToolSafeErrorSummary_ConvergesAcrossReversedAndDuplicateErrors()
+    {
+        var (bridge, provider, snapshots, _) = CreateProvider(new[] { MainSession() });
+        await provider.LoadAsync();
+
+        bridge.RaiseAgent(MakeAgentEvent("tool",
+            """{"phase":"start","name":"exec","toolCallId":"tool-1"}""", runId: "run-1"));
+        for (var index = 0; index < 2; index++)
+        {
+            bridge.RaiseAgent(MakeAgentEvent("command_output",
+                """{"phase":"end","status":"failed","itemId":"command:tool-1","toolCallId":"tool-1","stderr":"early secret must-not-render"}""", runId: "run-1"));
+        }
+        bridge.RaiseAgent(MakeAgentEvent("tool",
+            """{"phase":"result","name":"exec","toolCallId":"tool-1","isError":true,"toolErrorSummary":"Invalid arguments.","result":{"details":{"error":"validator secret must-not-render"}}}""", runId: "run-1"));
+        bridge.RaiseAgent(MakeAgentEvent("tool",
+            """{"phase":"result","name":"exec","toolCallId":"tool-1","isError":true,"toolErrorSummary":"Invalid arguments: command is required.","result":{"details":{"error":"validator secret must-not-render"}}}""", runId: "run-1"));
+        for (var index = 0; index < 2; index++)
+        {
+            bridge.RaiseAgent(MakeAgentEvent("item",
+                """{"phase":"end","kind":"command","name":"exec","status":"failed","itemId":"command:tool-1","toolCallId":"tool-1","error":"late secret must-not-render"}""", runId: "run-1"));
+        }
+
+        var entry = Assert.Single(snapshots[^1].Timelines["main"].Entries);
+        Assert.Equal(ChatToolCallStatus.Error, entry.ToolResult);
+        Assert.Equal("Invalid arguments: command is required.", entry.ToolOutput);
+        Assert.DoesNotContain("must-not-render", entry.ToolOutput, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task AgentEvent_ToolErrorWithoutSafeSummary_PreservesLatestErrorFallback()
+    {
+        var (bridge, provider, snapshots, _) = CreateProvider(new[] { MainSession() });
+        await provider.LoadAsync();
+
+        bridge.RaiseAgent(MakeAgentEvent("tool",
+            """{"phase":"start","name":"exec","toolCallId":"tool-1"}""", runId: "run-1"));
+        bridge.RaiseAgent(MakeAgentEvent("tool",
+            """{"phase":"result","name":"exec","toolCallId":"tool-1","isError":true,"result":{"details":{"error":"initial failure"}}}""", runId: "run-1"));
+        bridge.RaiseAgent(MakeAgentEvent("item",
+            """{"phase":"end","kind":"command","name":"exec","status":"failed","itemId":"command:tool-1","toolCallId":"tool-1","error":"later command failure"}""", runId: "run-1"));
+        bridge.RaiseAgent(MakeAgentEvent("command_output",
+            """{"phase":"end","status":"failed","itemId":"command:tool-1","toolCallId":"tool-1","stderr":"latest stderr failure"}""", runId: "run-1"));
+
+        var entry = Assert.Single(snapshots[^1].Timelines["main"].Entries);
+        Assert.Equal(ChatToolCallStatus.Error, entry.ToolResult);
+        Assert.Equal("latest stderr failure", entry.ToolOutput);
+    }
+
+    [Fact]
+    public async Task AgentEvent_ToolResultSuccess_IgnoresStickyToolErrorSummary()
+    {
+        var (bridge, provider, snapshots, _) = CreateProvider(new[] { MainSession() });
+        await provider.LoadAsync();
+
+        bridge.RaiseAgent(MakeAgentEvent("tool",
+            """{"phase":"start","name":"exec","toolCallId":"tool-1"}"""));
+        bridge.RaiseAgent(MakeAgentEvent("tool",
+            """{"phase":"result","name":"exec","toolCallId":"tool-1","isError":false,"toolErrorSummary":"Stale validation failure","result":"normal output"}"""));
+
+        var entry = Assert.Single(snapshots[^1].Timelines["main"].Entries);
+        Assert.Equal(ChatToolCallStatus.Success, entry.ToolResult);
+        Assert.Equal("normal output", entry.ToolOutput);
+        Assert.DoesNotContain("Stale validation failure", entry.ToolOutput, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task AgentEvent_ToolResultContentArray_JoinsOnlyTypedTextBlocks()
+    {
+        var (bridge, provider, snapshots, _) = CreateProvider(new[] { MainSession() });
+        await provider.LoadAsync();
+
+        bridge.RaiseAgent(MakeAgentEvent("tool",
+            """{"phase":"start","name":"read","toolCallId":"tool-1","args":{"path":"/tmp/output.txt"}}"""));
+        bridge.RaiseAgent(MakeAgentEvent("tool",
+            """
+            {"phase":"result","name":"read","toolCallId":"tool-1","isError":false,"result":{"content":[{"type":"text","text":" line one "},{"type":"image","text":"must-not-render"},{"type":"custom","text":"must-not-render"},{"type":"text","text":"line two"}]}}
+            """));
+
+        var entry = Assert.Single(snapshots[^1].Timelines["main"].Entries);
+        Assert.Equal(ChatToolCallStatus.Success, entry.ToolResult);
+        Assert.Equal("line one\nline two", entry.ToolOutput);
+    }
+
+    [Fact]
+    public async Task AgentEvent_ToolResultIsError_ExplicitErrorPrecedesPartialOutputAndIsBounded()
+    {
+        var (bridge, provider, snapshots, _) = CreateProvider(new[] { MainSession() });
+        await provider.LoadAsync();
+        var explicitError = new string('e', 5000);
+
+        bridge.RaiseAgent(MakeAgentEvent("tool",
+            """{"phase":"start","name":"exec","toolCallId":"tool-1"}"""));
+        bridge.RaiseAgent(MakeAgentEvent("tool", JsonSerializer.Serialize(new
+        {
+            phase = "result",
+            name = "exec",
+            toolCallId = "tool-1",
+            isError = true,
+            result = new { details = new { status = "failed", aggregated = "partial output" } },
+            output = "partial output",
+            error = explicitError
+        })));
+
+        var entry = Assert.Single(snapshots[^1].Timelines["main"].Entries);
+        Assert.Equal(ChatToolCallStatus.Error, entry.ToolResult);
+        Assert.DoesNotContain("partial output", entry.ToolOutput, StringComparison.Ordinal);
+        Assert.StartsWith(new string('e', 100), entry.ToolOutput, StringComparison.Ordinal);
+        Assert.EndsWith("(truncated)", entry.ToolOutput, StringComparison.Ordinal);
+        Assert.True(entry.ToolOutput!.Length < explicitError.Length);
+    }
+
+    [Fact]
+    public async Task AgentEvent_ToolPhaseError_RemainsCompatible()
+    {
+        var (bridge, provider, snapshots, _) = CreateProvider(new[] { MainSession() });
+        await provider.LoadAsync();
+
+        bridge.RaiseAgent(MakeAgentEvent("tool",
+            """{"phase":"start","name":"web_fetch","toolCallId":"tool-1"}"""));
+        bridge.RaiseAgent(MakeAgentEvent("tool",
+            """{"phase":"error","name":"web_fetch","toolCallId":"tool-1","error":"legacy timeout"}"""));
+
+        var entry = Assert.Single(snapshots[^1].Timelines["main"].Entries);
+        Assert.Equal(ChatToolCallStatus.Error, entry.ToolResult);
+        Assert.Equal("legacy timeout", entry.ToolOutput);
     }
 
     [Fact]
@@ -7700,6 +8949,7 @@ public class OpenClawChatDataProviderTests
         var timeline = snapshots[^1].Timelines["main"];
         var entry = Assert.Single(timeline.Entries, e => e.Kind == ChatTimelineItemKind.ToolCall);
         Assert.Contains("Process exited", entry.ToolOutput ?? "");
+        Assert.Equal(ChatToolIdentityStrength.Specific, entry.ToolIdentityStrength);
         // Must NOT have rendered as a normal assistant bubble.
         Assert.DoesNotContain(timeline.Entries, e => e.Kind == ChatTimelineItemKind.Assistant);
     }
@@ -7722,6 +8972,7 @@ public class OpenClawChatDataProviderTests
         var timeline = snapshots[^1].Timelines["main"];
         var entry = Assert.Single(timeline.Entries, e => e.Kind == ChatTimelineItemKind.ToolCall);
         Assert.Contains("Exec completed", entry.ToolOutput ?? "");
+        Assert.Equal(ChatToolIdentityStrength.Heuristic, entry.ToolIdentityStrength);
     }
 
     [Fact]
@@ -9296,6 +10547,19 @@ public class OpenClawChatDataProviderTests
             System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic);
         Assert.NotNull(field);
         return Assert.IsAssignableFrom<ISet<string>>(field.GetValue(provider));
+    }
+
+    private static void MarkPersistedMessageAborted(
+        OpenClawChatDataProvider provider,
+        string threadId,
+        string messageId)
+    {
+        var field = typeof(OpenClawChatDataProvider).GetField(
+            "_persistedAbortedIds",
+            System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic);
+        Assert.NotNull(field);
+        var abortedIds = Assert.IsType<Dictionary<string, HashSet<string>>>(field.GetValue(provider));
+        abortedIds[threadId] = [messageId];
     }
 
     private static bool HasFailedQueuedMessage(ChatDataSnapshot snapshot, string threadId, string text) =>

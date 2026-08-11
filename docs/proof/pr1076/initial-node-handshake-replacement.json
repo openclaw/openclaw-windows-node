@@ -1,0 +1,11 @@
+{
+  "head": "31e156399778be8200f717b59c03d103927db68d",
+  "webSocketAcceptedBeforeListenerReplacement": true,
+  "listenerOwnedAtTunnelStart": true,
+  "listenerOwnedAtCredentialHandoff": false,
+  "ownershipChecksBeforeChallenge": 2,
+  "ownershipChecksAfterChallenge": 4,
+  "credentialBearingConnectFramesReceived": 0,
+  "nodeState": "Error",
+  "error": "Node transport error"
+}

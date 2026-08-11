@@ -389,7 +389,7 @@ public sealed partial class PermissionsPage : Page
         {
             Rule = rule,
             rule.Pattern,
-            RemoveRuleAutomationName = $"Remove rule {rule.Pattern}",
+            RemoveRuleAutomationName = $"Remove allowlist entry {rule.Pattern}",
             RemoveRuleAutomationId = $"RemoveExecPolicyRuleButton_{index}",
             Action = "allow",
             ActionBrush = (Brush)Application.Current.Resources["SystemFillColorSuccessBrush"],
@@ -434,11 +434,38 @@ public sealed partial class PermissionsPage : Page
         if (_viewModel is null
             || !await _viewModel.TryAddExecApprovalRuleAsync(NewRulePattern.Text.Trim()))
         {
-            NewRulePattern.Focus(FocusState.Programmatic);
+            ShowExecAllowlistPatternValidation();
             return;
         }
-
         NewRulePattern.Text = string.Empty;
+        HideExecAllowlistPatternValidation();
+    }
+
+    private void ShowExecAllowlistPatternValidation()
+    {
+        ExecAllowlistPatternValidation.Visibility = Visibility.Visible;
+        Microsoft.UI.Xaml.Automation.AutomationProperties.SetHelpText(
+            NewRulePattern,
+            ExecAllowlistPatternValidation.Text);
+        NewRulePattern.Focus(FocusState.Programmatic);
+        DispatcherQueue.TryEnqueue(
+            Microsoft.UI.Dispatching.DispatcherQueuePriority.Low,
+            () =>
+            {
+                if (ExecAllowlistPatternValidation.Visibility == Visibility.Visible)
+                {
+                    ExecAllowlistPatternValidation.StartBringIntoView(
+                        new BringIntoViewOptions { AnimationDesired = false });
+                }
+            });
+    }
+
+    private void HideExecAllowlistPatternValidation()
+    {
+        ExecAllowlistPatternValidation.Visibility = Visibility.Collapsed;
+        Microsoft.UI.Xaml.Automation.AutomationProperties.SetHelpText(
+            NewRulePattern,
+            string.Empty);
     }
 
     private void OnRemoveRule(object sender, RoutedEventArgs e)

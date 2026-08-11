@@ -61,6 +61,7 @@ public interface INodeConnectorTelemetryEvents
 
 public interface INodeConnectorReconnectPolicy
 {
+    Func<CancellationToken, Task<ReconnectAuthorizationResult>>? HandshakeAuthorizationAsync { get; set; }
     Func<CancellationToken, Task<ReconnectAuthorizationResult>>? ReconnectAuthorizationAsync { get; set; }
 }
 

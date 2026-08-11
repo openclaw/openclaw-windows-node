@@ -1,27 +1,20 @@
 # Data Flow Architecture
 
-This document describes how gateway data flows from the WebSocket connection to the UI — the observable application model, event handling, and page update patterns.
+This document describes how gateway data flows from the WebSocket connection to
+the UI: the observable application model, event handling, and page update
+patterns.
+
+It does not describe agent tool routing, `exec`, `node.invoke`, or node-local
+approval and sandboxing. For that end-to-end path, see the
+[Gateway, node, and exec flow FAQ](OPENCLAW_GATEWAY_NODE_EXEC_FAQ.md).
 
 ## Overview
 
 The tray app uses a single observable model (`AppState`) as the source of truth for all gateway-cached state. A dedicated event handler service (`GatewayService`) owns all 27 WebSocket event subscriptions and dispatches updates to `AppState` on the UI thread. Pages subscribe to `AppState.PropertyChanged` for live updates.
 
-```mermaid
-flowchart TD
-    GW["Gateway WebSocket"] -->|27 events| GS["GatewayService"]
-    GS -->|EnqueueModelUpdate| AS["AppState (INPC)"]
-    AS -->|PropertyChanged| P1["ConnectionPage"]
-    AS -->|PropertyChanged| P2["SessionsPage"]
-    AS -->|PropertyChanged| P3["UsagePage"]
-    AS -->|PropertyChanged| P4["...14 pages total"]
-    AS -->|PropertyChanged| HW["HubWindow\n(title bar, nav sidebar)"]
-    AS -->|PropertyChanged| APP["App.xaml.cs\n(tray icon, tray menu)"]
-    GS -->|4 re-raised events| APP
-    APP -->|reads| AS
+![AppState data flow: gateway to UI](diagrams/data-flow-appstate.svg)
 
-    style AS fill:#2d6a4f,color:#fff
-    style GS fill:#1b4332,color:#fff
-```
+[Edit the AppState data-flow diagram](diagrams/data-flow-appstate.excalidraw).
 
 ## Key components
 
@@ -40,10 +33,10 @@ src/OpenClaw.Tray.WinUI/Services/AppState.cs
 **Lifetime**: Created once in `App.OnLaunched`, lives for the app's lifetime. Accessible globally via `((App)Application.Current).AppState`. Connections come and go; pages always have a single stable view of the data.
 
 **Key methods**:
-- `ClearCachedData()` — resets all gateway data fields on disconnect (does NOT reset `Status` — that's managed by `OnManagerStateChanged`)
-- `AddAgentEvent(evt)` — ring buffer, newest-first, capped at 400
-- `GetAgentIds()` — computed from `AgentsList` JSON
-- `SetSessionPreview/GetSessionPreview/PruneSessionPreviews` — thread-safe via lock
+- `ClearCachedData()` - resets all gateway data fields on disconnect (does NOT reset `Status` - that's managed by `OnManagerStateChanged`)
+- `AddAgentEvent(evt)` - ring buffer, newest-first, capped at 400
+- `GetAgentIds()` - computed from `AgentsList` JSON
+- `SetSessionPreview/GetSessionPreview/PruneSessionPreviews` - thread-safe via lock
 
 ### GatewayService (`Services/GatewayService.cs`)
 
@@ -76,38 +69,19 @@ private void EnqueueModelUpdate(Action update)
 
 **Client lifecycle**: `AttachClient(newClient, oldClient)` unsubscribes from old, increments generation, clears service-level caches (channel signature, session activities, display state), subscribes to new.
 
-### App.xaml.cs — orchestration layer
+### App.xaml.cs - orchestration layer
 
 App creates `AppState` and `GatewayService` in `OnLaunched` and wires them together:
 
-```mermaid
-sequenceDiagram
-    participant CM as ConnectionManager
-    participant App as App.xaml.cs
-    participant GS as GatewayService
-    participant AS as AppState
-    participant HW as HubWindow
-    participant Page as Active Page
+![Startup dispatch sequence: connection to page update](diagrams/data-flow-startup-sequence.svg)
 
-    CM->>App: OperatorClientChanged
-    App->>GS: AttachClient(new, old)
-    Note over GS: Unsubscribe old, subscribe new
-
-    CM->>App: StateChanged (connect/disconnect)
-    App->>AS: Status = mapped (on UI thread)
-
-    Note over GS: Gateway event arrives (BG thread)
-    GS->>AS: EnqueueModelUpdate (UI thread)
-    AS->>Page: PropertyChanged
-    AS->>HW: PropertyChanged (title bar)
-    AS->>App: PropertyChanged (tray icon/menu)
-```
+[Edit the startup sequence diagram](diagrams/data-flow-startup-sequence.excalidraw).
 
 **What stays in App**:
-- `OnManagerStateChanged` — maps `GatewayConnectionSnapshot` to `ConnectionStatus`, writes `AppState.Status`
-- Node service handlers — `OnNodeStatusChanged`, `OnPairingStatusChanged`, etc.
+- `OnManagerStateChanged` - maps `GatewayConnectionSnapshot` to `ConnectionStatus`, writes `AppState.Status`
+- Node service handlers - `OnNodeStatusChanged`, `OnPairingStatusChanged`, etc.
 - Toast/notification display (via `ToastService`)
-- Window management — `ShowHub`, `ShowChatWindow`, `ShowVoiceOverlay`
+- Window management - `ShowHub`, `ShowChatWindow`, `ShowVoiceOverlay`
 - Tray icon/menu updates (subscribes to `AppState.PropertyChanged`)
 - `IAppCommands` implementation
 
@@ -117,7 +91,7 @@ sequenceDiagram
 - Toast dedup state → `ToastService`
 - Diagnostic clipboard methods → `DiagnosticsClipboardService`
 
-### Pages — direct observation
+### Pages - direct observation
 
 Pages access `AppState` globally and subscribe to `PropertyChanged` for live updates. They no longer depend on `HubWindow` for data.
 
@@ -137,7 +111,7 @@ private void OnAppStateChanged(object? sender, PropertyChangedEventArgs e)
     switch (e.PropertyName)
     {
         case nameof(AppState.Sessions):
-            // UI update — already on UI thread
+            // UI update - already on UI thread
             break;
     }
 }
@@ -160,14 +134,15 @@ private void OnAppStateChanged(object? sender, PropertyChangedEventArgs e)
 | AgentEventsPage | AgentEventAdded (separate event) |
 | AboutPage | GatewaySelf |
 
-Pages that don't observe AppState: ActivityPage, ChatPage, SettingsPage, SandboxPage, VoiceSettingsPage.
+Pages that don't observe AppState: ChatPage, SettingsPage, SandboxPage,
+VoiceSettingsPage.
 
-### HubWindow — minimal role
+### HubWindow - minimal role
 
 HubWindow's role is now limited to:
-- **Title bar** — subscribes to `AppState.Status` and `AppState.GatewaySelf` for status/version display
-- **Navigation sidebar** — subscribes to `AppState.AgentsList` to rebuild agent nav items
-- **Page lifecycle** — `InitializeCurrentPage()` calls `page.Initialize()` when the user navigates
+- **Title bar** - subscribes to `AppState.Status` and `AppState.GatewaySelf` for status/version display
+- **Navigation sidebar** - subscribes to `AppState.AgentsList` to rebuild agent nav items
+- **Page lifecycle** - `InitializeCurrentPage()` calls `page.Initialize()` when the user navigates
 
 HubWindow no longer caches gateway data or forwards updates to pages.
 
@@ -175,22 +150,22 @@ HubWindow no longer caches gateway data or forwards updates to pages.
 
 ```
 src/OpenClaw.Tray.WinUI/Services/
-├── AppState.cs                    — Observable model (INPC, 24+ properties)
-├── GatewayService.cs              — 27 event subscriptions, UI dispatch
-├── IAppCommands.cs                — Page → App command interface
-├── ToastService.cs                — Toast display, dedup, sound config
-├── DiagnosticsClipboardService.cs — Copy* diagnostic clipboard methods
-├── AppStateSnapshot.cs            — Frozen snapshot for CommandCenter
-├── TrayStateSnapshot.cs           — Frozen snapshot for tray tooltip
-├── TrayMenuSnapshot.cs            — Frozen snapshot for tray menu builder
-├── TrayMenuStateBuilder.cs        — Builds tray popup menu UI
-└── TrayTooltipBuilder.cs          — Builds tray tooltip string
+├── AppState.cs                    - Observable model (INPC, 24+ properties)
+├── GatewayService.cs              - 27 event subscriptions, UI dispatch
+├── IAppCommands.cs                - Page → App command interface
+├── ToastService.cs                - Toast display, dedup, sound config
+├── DiagnosticsClipboardService.cs - Copy* diagnostic clipboard methods
+├── AppStateSnapshot.cs            - Frozen snapshot for CommandCenter
+├── TrayStateSnapshot.cs           - Frozen snapshot for tray tooltip
+├── TrayMenuSnapshot.cs            - Frozen snapshot for tray menu builder
+├── TrayMenuStateBuilder.cs        - Builds tray popup menu UI
+└── TrayTooltipBuilder.cs          - Builds tray tooltip string
 ```
 
 ## Threading rules
 
 1. **AppState writes**: UI thread only. `SetField` asserts `DispatcherQueue.HasThreadAccess`.
 2. **GatewayService handlers**: Run on WebSocket background threads. Use `EnqueueModelUpdate` to dispatch to UI thread before writing to AppState.
-3. **PropertyChanged handlers**: Fire on UI thread (guaranteed by rule 1). Pages can update UI directly — no `TryEnqueue` needed.
+3. **PropertyChanged handlers**: Fire on UI thread (guaranteed by rule 1). Pages can update UI directly - no `TryEnqueue` needed.
 4. **Session previews**: Thread-safe via `lock` (read from any thread, write from any thread).
 5. **Tray menu refresh**: Debounced via `DispatcherQueuePriority.Low` to coalesce rapid AppState changes.

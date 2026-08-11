@@ -1,0 +1,11 @@
+{
+  "head": "31e156399778be8200f717b59c03d103927db68d",
+  "webSocketAcceptedBeforeListenerReplacement": true,
+  "listenerOwnedAtTunnelStart": true,
+  "listenerOwnedAtCredentialHandoff": false,
+  "ownershipChecksBeforeChallenge": 1,
+  "ownershipChecksAfterChallenge": 2,
+  "credentialBearingConnectFramesReceived": 0,
+  "operatorState": "Error",
+  "error": "The configured SSH listener is not owned by the active OpenClaw tunnel, so credentials were not sent."
+}

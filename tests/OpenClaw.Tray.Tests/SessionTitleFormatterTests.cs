@@ -134,18 +134,14 @@ public sealed class SessionTitleFormatterTests
     }
 
     [Fact]
-    public void Format_PreservesExplicitGatewayTitlesAndLocalizesOnlyGeneratedFamilies()
+    public void Format_PreservesExplicitLabelsAndLocalizesGeneratedClassifications()
     {
         var explicitTitle = new SessionInfo
         {
             Key = "agent:main:telegram:main:direct:491234567890",
-            Presentation = new SessionPresentationInfo
-            {
-                Title = "Family chat",
-                TitleSource = "label",
-                Family = "direct",
-                Channel = "telegram",
-            },
+            Label = "Family chat",
+            Classification = "direct",
+            Channel = "telegram",
         };
 
         Assert.Equal("Family chat", SessionTitleFormatter.Format(explicitTitle));
@@ -157,33 +153,23 @@ public sealed class SessionTitleFormatterTests
         var session = new SessionInfo
         {
             Key = "route",
-            Presentation = new SessionPresentationInfo
-            {
-                Title = "Telegram direct message",
-                TitleSource = "generated",
-                Family = "Direct",
-                Channel = "telegram",
-            },
+            Classification = "Direct",
+            Channel = "telegram",
         };
 
         Assert.Equal("Telegram direct message", SessionTitleFormatter.Format(session));
     }
 
     [Fact]
-    public void FormatSubtitle_PreservesGatewaySubtitleWithoutStructuredParts()
+    public void FormatSubtitle_UsesLocalFallbackWithoutStructuredParts()
     {
         var session = new SessionInfo
         {
             Key = "custom",
-            Presentation = new SessionPresentationInfo
-            {
-                Title = "Custom",
-                Family = "custom",
-                Subtitle = "Remote workspace",
-            },
+            DerivedTitle = "Custom",
         };
 
-        Assert.Equal("Remote workspace", SessionTitleFormatter.FormatSubtitle(session));
+        Assert.Null(SessionTitleFormatter.FormatSubtitle(session));
     }
 
     [Fact]
@@ -192,12 +178,8 @@ public sealed class SessionTitleFormatterTests
         var session = new SessionInfo
         {
             Key = "custom",
-            Presentation = new SessionPresentationInfo
-            {
-                Title = "Telegram direct message",
-                Family = "direct",
-                AccountId = "491234567890",
-            },
+            Classification = "direct",
+            AccountId = "491234567890",
         };
 
         var subtitle = SessionTitleFormatter.FormatSubtitle(session);
@@ -235,7 +217,7 @@ public sealed class SessionTitleFormatterTests
             "Pages",
             "SessionsPage.xaml.cs"));
 
-        var formatIndex = source.IndexOf("SessionTitleFormatter.FormatUnique(activeSessions)", StringComparison.Ordinal);
+        var formatIndex = source.IndexOf("SessionTitleFormatter.FormatUnique(visibleSessions)", StringComparison.Ordinal);
         var channelFilterIndex = source.IndexOf("if (_activeChannel != \"all\")", StringComparison.Ordinal);
 
         Assert.True(formatIndex >= 0);
@@ -244,7 +226,7 @@ public sealed class SessionTitleFormatterTests
         Assert.Contains("DisplayName = displayName", source, StringComparison.Ordinal);
         Assert.Contains("Key = s.Key", source, StringComparison.Ordinal);
         Assert.Contains("SessionsForCurrentBackgroundScope()", source, StringComparison.Ordinal);
-        Assert.Contains("SessionPresentationResolver.IsVisible(session, _showBackgroundSessions)", source, StringComparison.Ordinal);
+        Assert.Contains("SessionDisplayResolver.IsVisible(session, _showBackgroundSessions)", source, StringComparison.Ordinal);
 
         var xaml = File.ReadAllText(Path.Combine(
             TestRepositoryPaths.GetRepositoryRoot(),
@@ -285,5 +267,28 @@ public sealed class SessionTitleFormatterTests
 
         Assert.False(thread.IsVisibleInSessionPicker("agent:main:main"));
         Assert.True(thread.IsVisibleInSessionPicker(thread.Id));
+    }
+
+    [Fact]
+    public void SessionsPage_UsesCanonicalCompactSessionPresentation()
+    {
+        var source = File.ReadAllText(Path.Combine(
+            TestRepositoryPaths.GetRepositoryRoot(),
+            "src",
+            "OpenClaw.Tray.WinUI",
+            "Pages",
+            "SessionsPage.xaml.cs"));
+
+        Assert.Contains("SessionRunState.GetDisplaySortOrder(item.Session)", source, StringComparison.Ordinal);
+        Assert.Contains("StatusText = ResolveStatusText(s)", source, StringComparison.Ordinal);
+        Assert.Contains("SessionRunState.HasStoppedLastRun(s)", source, StringComparison.Ordinal);
+
+        var xaml = File.ReadAllText(Path.Combine(
+            TestRepositoryPaths.GetRepositoryRoot(),
+            "src",
+            "OpenClaw.Tray.WinUI",
+            "Pages",
+            "SessionsPage.xaml"));
+        Assert.Contains("Text=\"{Binding StatusText}\"", xaml, StringComparison.Ordinal);
     }
 }

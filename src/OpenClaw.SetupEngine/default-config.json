@@ -81,14 +81,19 @@
   "Gateway": {
     // Network bind: "loopback" (127.0.0.1, secure default), "lan" (0.0.0.0, opt-in for LAN access)
     "Bind": "loopback",
-    // Override CLI install script URL (null = https://openclaw.ai/install-cli.sh)
+    // Override CLI install script URL (null = official https://openclaw.ai/install-cli.sh).
+    // A custom URL requires an exact Version and is reported as unverified.
     "InstallUrl": null,
-    // Pin gateway version (null = use GatewayLkgVersion.cs embedded LKG)
+    // "recommended" installs the exact evidence-backed Windows release.
+    // "fallback" is explicit and fails closed when no distinct validated fallback exists.
+    // "exact" requires Version and accepts only an embedded attested official release.
+    "Selection": "recommended",
+    // Exact version for Selection="exact" or for a custom InstallUrl.
     "Version": null,
     // Seconds to wait for gateway health endpoint before failing
     "HealthTimeoutSeconds": 90,
-    // Config reload strategy: "hot" (no restart), "restart"
-    "ReloadMode": "hot",
+    // Config reload strategy: "off" or "hybrid"
+    "ReloadMode": "hybrid",
     // Auth mode: "token" (shared secret)
     "AuthMode": "token",
     // Additional gateway config key/value pairs (applied via `openclaw config set`)

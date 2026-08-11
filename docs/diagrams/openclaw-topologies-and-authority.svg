@@ -1,0 +1,50 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1320" height="840" viewBox="0 0 1320 840" role="img" aria-labelledby="title desc">
+  <title id="title">OpenClaw topologies and authority</title>
+  <desc id="desc">Operators connect to the gateway control plane. Windows and Mac nodes connect separately and retain local policy.</desc>
+  <defs>
+    <marker id="arrow-blue" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="#0078D4"/></marker>
+    <marker id="arrow-green" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="#107C10"/></marker>
+    <style>
+      .title{font:700 30px Segoe UI,Arial,sans-serif;fill:#111}
+      .subtitle{font:18px Segoe UI,Arial,sans-serif;fill:#222}
+      .section{font:700 21px Segoe UI,Arial,sans-serif;fill:#111}
+      .box{font:16px Segoe UI,Arial,sans-serif;fill:#111;text-anchor:middle}
+      .small{font:14px Segoe UI,Arial,sans-serif;fill:#222;text-anchor:middle}
+      .note{font:17px Segoe UI,Arial,sans-serif;fill:#111;text-anchor:middle}
+    </style>
+  </defs>
+  <rect width="1320" height="840" fill="#fff"/>
+  <text x="40" y="48" class="title">OpenClaw topologies and authority</text>
+  <text x="40" y="90" class="subtitle">Gateway = shared control plane. Operator = control client. Node = one machine's capability host.</text>
+
+  <rect x="40" y="150" width="280" height="450" rx="18" fill="none" stroke="#0078D4" stroke-width="3"/>
+  <text x="180" y="188" class="section" text-anchor="middle">Operator clients</text>
+  <rect x="70" y="240" width="220" height="120" rx="14" fill="#CFE4FA" stroke="#0078D4" stroke-width="2"/>
+  <text x="180" y="276" class="box"><tspan x="180">Windows app</tspan><tspan x="180" dy="23">operator connection</tspan><tspan x="180" dy="23">chat, config, approvals</tspan></text>
+  <rect x="70" y="420" width="220" height="100" rx="14" fill="#CFE4FA" stroke="#0078D4" stroke-width="2"/>
+  <text x="180" y="458" class="box"><tspan x="180">CLI, web UI, or</tspan><tspan x="180" dy="23">another operator</tspan></text>
+
+  <rect x="410" y="120" width="400" height="520" rx="20" fill="none" stroke="#5C2D91" stroke-width="4"/>
+  <text x="610" y="162" class="section" text-anchor="middle">Gateway: shared authority</text>
+  <rect x="460" y="220" width="300" height="90" rx="14" fill="#E8DAEF" stroke="#5C2D91" stroke-width="2"/>
+  <text x="610" y="255" class="box"><tspan x="610">Agent runtime</tspan><tspan x="610" dy="23">model and tools</tspan></text>
+  <rect x="460" y="350" width="300" height="110" rx="14" fill="#E8DAEF" stroke="#5C2D91" stroke-width="2"/>
+  <text x="610" y="383" class="box"><tspan x="610">Gateway policy</tspan><tspan x="610" dy="23">exec host policy</tspan><tspan x="610" dy="23">node command allow/deny</tspan></text>
+  <rect x="460" y="510" width="300" height="85" rx="14" fill="#E8DAEF" stroke="#5C2D91" stroke-width="2"/>
+  <text x="610" y="558" class="box">Node registry and pairing</text>
+
+  <rect x="900" y="150" width="390" height="540" rx="18" fill="none" stroke="#107C10" stroke-width="3"/>
+  <text x="1095" y="188" class="section" text-anchor="middle">Node capability hosts</text>
+  <rect x="950" y="240" width="290" height="160" rx="14" fill="#DFF6DD" stroke="#107C10" stroke-width="2"/>
+  <text x="1095" y="278" class="box"><tspan x="1095">Windows node connection</tspan><tspan x="1095" dy="23">local capability toggles</tspan><tspan x="1095" dy="23">local V2 exec approvals</tspan><tspan x="1095" dy="23">local MXC policy</tspan></text>
+  <rect x="950" y="470" width="290" height="130" rx="14" fill="#DFF6DD" stroke="#107C10" stroke-width="2"/>
+  <text x="1095" y="490" class="box"><tspan x="1095">Mac or other node</tspan><tspan x="1095" dy="23">own declared commands</tspan><tspan x="1095" dy="23">own local permissions</tspan><tspan x="1095" dy="23">own local exec policy</tspan></text>
+
+  <path d="M320 300 H410" fill="none" stroke="#0078D4" stroke-width="3" marker-end="url(#arrow-blue)"/>
+  <text x="365" y="275" class="small">WS role=operator</text>
+  <path d="M810 320 H900" fill="none" stroke="#107C10" stroke-width="3" marker-end="url(#arrow-green)"/>
+  <text x="855" y="277" class="small"><tspan x="855">WS role=node</tspan><tspan x="855" dy="19">node.invoke</tspan></text>
+
+  <rect x="90" y="730" width="1160" height="70" rx="14" fill="#F3F2F1" stroke="#1e1e1e" stroke-width="2"/>
+  <text x="670" y="758" class="note"><tspan x="670">A dual-role Windows app has two connections. The operator side can read gateway node.list;</tspan><tspan x="670" dy="24">the node side does not receive peer-node inventory. Gateway policy is shared. Node-local policy is not.</tspan></text>
+</svg>

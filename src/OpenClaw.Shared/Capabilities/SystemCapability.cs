@@ -206,7 +206,6 @@ public class SystemCapability : NodeCapabilityBase
         var validated = validation.Request!;
         var argv = validated.Argv;
         var rawCommand = GetStringArg(request.Args, "rawCommand");
-        var sessionKey = request.SessionKey ?? validated.SessionKey;
 
         Logger.Info(
             $"system.run.prepare: {rawCommand ?? FormatExecCommand(argv)} (cwd={validated.Cwd ?? "default"})");
@@ -220,7 +219,7 @@ public class SystemCapability : NodeCapabilityBase
                 cwd = validated.Cwd,
                 rawCommand,
                 agentId = validated.AgentId,
-                sessionKey
+                sessionKey = validated.SessionKey
             }
         });
     }
@@ -502,6 +501,17 @@ public class SystemCapability : NodeCapabilityBase
         }
     }
 
+    // Wire shape for exec.approvals.node.get.
+    //
+    // This is the file-backed variant of the gateway's ExecApprovalsNodeSnapshotSchema.
+    // That schema is a closed object (additionalProperties: false) whose file-backed
+    // oneOf branch requires exactly [path, exists, hash, file] AND explicitly carries
+    // not: { anyOf: [ ... { required: ["baseHash"] } ... ] }. Emitting baseHash here
+    // therefore matches no branch and the gateway rejects the whole snapshot.
+    //
+    // baseHash is a REQUEST field, not a response field: a client reads `hash` from
+    // this payload and passes it back as `baseHash` on set for compare-and-swap. Do
+    // not add baseHash to this payload. Tests assert its absence for that reason.
     private static object ToExecApprovalsPayload(ExecApprovalsSnapshot snapshot)
     {
         var file = snapshot.File;
@@ -520,7 +530,6 @@ public class SystemCapability : NodeCapabilityBase
             path = snapshot.Path,
             exists = snapshot.Exists,
             hash = snapshot.Hash,
-            baseHash = snapshot.Hash,
             file = System.Text.Json.JsonSerializer.SerializeToElement(
                 redactedFile,
                 ExecApprovalsStore.JsonOptions),
@@ -552,18 +561,26 @@ public class SystemCapability : NodeCapabilityBase
 
             ExecApprovalsAgent? currentAgent = null;
             current.Agents?.TryGetValue(agentId, out currentAgent);
-            var currentPatterns = new HashSet<string>(
+            // The argument binding, not the path, is what keeps a generated rule narrow.
+            // Comparing patterns alone would let a remote update keep the executable but
+            // drop argPattern/source, silently widening a bound rule into a path-only
+            // grant. The identity therefore includes the binding.
+            //
+            // The fields are compared structurally rather than concatenated: argPattern
+            // legitimately contains NUL, so any single-character join would let a caller
+            // move a delimiter between fields and forge a match against a broader regex.
+            var currentIdentities = new HashSet<(string, string?, string?)>(
                 (currentAgent?.Allowlist ?? [])
-                    .Select(entry => entry.Pattern?.Trim())
-                    .Where(pattern => !string.IsNullOrWhiteSpace(pattern))!,
-                StringComparer.OrdinalIgnoreCase);
+                    .Where(entry => !string.IsNullOrWhiteSpace(entry.Pattern))
+                    .Select(RemoteEntryIdentity),
+                RemoteEntryIdentityComparer.Instance);
 
             foreach (var entry in agent.Allowlist ?? [])
             {
                 var pattern = entry.Pattern?.Trim();
                 if (string.IsNullOrWhiteSpace(pattern))
                     return "Empty allowlist patterns are not permitted.";
-                if (!currentPatterns.Contains(pattern))
+                if (!currentIdentities.Contains(RemoteEntryIdentity(entry)))
                 {
                     return
                         $"Remote exec approval updates cannot add or change allowlist entries for agent '{agentId}'.";
@@ -572,6 +589,40 @@ public class SystemCapability : NodeCapabilityBase
         }
 
         return null;
+    }
+
+    private static (string Pattern, string? ArgPattern, string? Source) RemoteEntryIdentity(
+        ExecAllowlistEntry entry)
+        => (entry.Pattern?.Trim() ?? "", entry.ArgPattern, entry.Source);
+
+    /// <summary>
+    /// Compares the fields separately so no redistribution of characters between them
+    /// can forge a match, and hashes them so a remote caller cannot force a linear scan
+    /// of the local allowlist by submitting many entries.
+    ///
+    /// Pattern is a path, so it is compared case-insensitively. The argument binding and
+    /// provenance must survive byte-for-byte: any change to either alters authorization.
+    /// </summary>
+    private sealed class RemoteEntryIdentityComparer
+        : IEqualityComparer<(string Pattern, string? ArgPattern, string? Source)>
+    {
+        internal static readonly RemoteEntryIdentityComparer Instance = new();
+
+        public bool Equals(
+            (string Pattern, string? ArgPattern, string? Source) left,
+            (string Pattern, string? ArgPattern, string? Source) right)
+            => string.Equals(left.Pattern, right.Pattern, StringComparison.OrdinalIgnoreCase)
+                && string.Equals(left.ArgPattern, right.ArgPattern, StringComparison.Ordinal)
+                && string.Equals(left.Source, right.Source, StringComparison.Ordinal);
+
+        public int GetHashCode((string Pattern, string? ArgPattern, string? Source) value)
+        {
+            var hash = new HashCode();
+            hash.Add(value.Pattern, StringComparer.OrdinalIgnoreCase);
+            hash.Add(value.ArgPattern, StringComparer.Ordinal);
+            hash.Add(value.Source, StringComparer.Ordinal);
+            return hash.ToHashCode();
+        }
     }
 
     private static string? ValidateDefinedPolicyEnums(ExecApprovalsFile file)

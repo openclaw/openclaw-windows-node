@@ -376,6 +376,57 @@ public sealed class PermissionsPageViewModelTests
     }
 
     [Fact]
+    public async Task AddPathOnlyRule_PreservesBoundRuleWithSamePattern()
+    {
+        using var harness = PermissionsHarness.CreateWithRecordingStore(BuildSnapshot(
+            "base",
+            BuildFile(
+                defaultAction: "prompt",
+                allowlist:
+                [
+                    new ExecAllowlistEntry
+                    {
+                        Id = Guid.NewGuid(),
+                        Pattern = "**/git.exe",
+                        ArgPattern = "^status$",
+                    },
+                ])));
+        harness.ViewModel.Activate(null);
+
+        Assert.True(await harness.ViewModel.TryAddExecApprovalRuleAsync("**/git.exe"));
+
+        var remaining = harness.RecordingExecStore!.CurrentSnapshot.File.Agents!["main"].Allowlist!;
+        Assert.Equal(2, remaining.Count);
+        Assert.Contains(remaining, rule => rule.ArgPattern == "^status$");
+        Assert.Contains(remaining, rule => rule.ArgPattern is null);
+    }
+
+    [Fact]
+    public async Task RemoveIdlessBoundRule_PreservesPathOnlyRuleWithSamePattern()
+    {
+        using var harness = PermissionsHarness.CreateWithRecordingStore(BuildSnapshot(
+            "base",
+            BuildFile(
+                defaultAction: "prompt",
+                allowlist:
+                [
+                    new ExecAllowlistEntry { Pattern = "**/git.exe" },
+                    new ExecAllowlistEntry { Pattern = "**/git.exe", ArgPattern = "^status$" },
+                ])));
+        harness.ViewModel.Activate(null);
+        var removalToken = Assert.Single(
+            harness.ViewModel.ExecApprovalRules,
+            rule => rule.ArgPattern == "^status$");
+
+        Assert.True(await harness.ViewModel.RemoveExecApprovalRuleAsync(removalToken));
+
+        var remaining = Assert.Single(
+            harness.RecordingExecStore!.CurrentSnapshot.File.Agents!["main"].Allowlist!);
+        Assert.Equal("**/git.exe", remaining.Pattern);
+        Assert.Null(remaining.ArgPattern);
+    }
+
+    [Fact]
     public async Task DefaultActionMutation_PreservesExplicitAutoAllowSkills()
     {
         var initial = BuildFile(defaultAction: "deny");
@@ -648,12 +699,18 @@ public sealed class PermissionsPageViewModelTests
         {
             if (call.Attempt == 1)
             {
+                var freshFile = BuildFile(
+                    defaultAction: "deny",
+                    socketToken: "socket-2",
+                    otherAgentPath: "**/rg.exe");
+                var boundEntry = freshFile.Agents!["other"].Allowlist![0];
+                boundEntry.ArgPattern = "^--files\u0000\u0000$";
+                boundEntry.CommandText = "rg.exe --files";
+                boundEntry.Source = "allow-always";
+                boundEntry.LastUsedCommand = "rg.exe --files";
                 harness.RecordingExecStore.ReplaceCurrentSnapshot(BuildSnapshot(
                     hash: "fresh",
-                    file: BuildFile(
-                        defaultAction: "deny",
-                        socketToken: "socket-2",
-                        otherAgentPath: "**/rg.exe")));
+                    file: freshFile));
                 return null;
             }
 
@@ -664,7 +721,12 @@ public sealed class PermissionsPageViewModelTests
 
         var saved = harness.RecordingExecStore.CurrentSnapshot;
         Assert.Equal("socket-2", saved.File.Socket!.Token);
-        Assert.Equal("**/rg.exe", saved.File.Agents!["other"].Allowlist![0].Pattern);
+        var preservedEntry = saved.File.Agents!["other"].Allowlist![0];
+        Assert.Equal("**/rg.exe", preservedEntry.Pattern);
+        Assert.Equal("^--files\u0000\u0000$", preservedEntry.ArgPattern);
+        Assert.Equal("rg.exe --files", preservedEntry.CommandText);
+        Assert.Equal("allow-always", preservedEntry.Source);
+        Assert.Equal("rg.exe --files", preservedEntry.LastUsedCommand);
         Assert.Equal("**/git.exe", saved.File.Agents!["main"].Allowlist![0].Pattern);
         Assert.Equal(2, harness.RecordingExecStore.ReplaceCalls.Count);
     }
@@ -1171,8 +1233,12 @@ public sealed class PermissionsPageViewModelTests
                         {
                             Id = entry.Id,
                             Pattern = entry.Pattern,
+                            ArgPattern = entry.ArgPattern,
+                            CommandText = entry.CommandText,
+                            Source = entry.Source,
                             LastUsedAt = entry.LastUsedAt,
                             LastResolvedPath = entry.LastResolvedPath,
+                            LastUsedCommand = entry.LastUsedCommand,
                         }).ToList(),
                     },
                     StringComparer.Ordinal),

@@ -251,20 +251,6 @@ public static class ChannelHealthParser
     }
 }
 
-public sealed class SessionPresentationInfo
-{
-    public string Title { get; set; } = "";
-    public string TitleSource { get; set; } = "generated";
-    public string? Subtitle { get; set; }
-    public string Family { get; set; } = "custom";
-    public string? AgentId { get; set; }
-    public string? Channel { get; set; }
-    public string? AccountId { get; set; }
-    public string? PeerKind { get; set; }
-    public bool IsMain { get; set; }
-    public bool IsBackground { get; set; }
-}
-
 public sealed class SessionWorktreeInfo
 {
     public string? Id { get; set; }
@@ -279,14 +265,6 @@ public class SessionInfo
     public SessionInfo Clone()
     {
         var copy = (SessionInfo)MemberwiseClone();
-        if (copy.Presentation is { } p)
-            copy.Presentation = new SessionPresentationInfo
-            {
-                Title = p.Title, TitleSource = p.TitleSource, Subtitle = p.Subtitle,
-                Family = p.Family, AgentId = p.AgentId, Channel = p.Channel,
-                AccountId = p.AccountId, PeerKind = p.PeerKind,
-                IsMain = p.IsMain, IsBackground = p.IsBackground,
-            };
         if (copy.Worktree is { } w)
             copy.Worktree = new SessionWorktreeInfo
             {
@@ -309,17 +287,26 @@ public class SessionInfo
     public string? Room { get; set; }
     public string? Space { get; set; }
     public string? ChatType { get; set; }
+    public string? Classification { get; set; }
+    public string? AgentId { get; set; }
+    public string? AccountId { get; set; }
+    public string? PeerKind { get; set; }
+    public bool? IsBackground { get; set; }
     public string? OriginLabel { get; set; }
     public SessionWorktreeInfo? Worktree { get; set; }
     public string? ExecNode { get; set; }
     public string? ParentSessionKey { get; set; }
     public int? SpawnDepth { get; set; }
-    public SessionPresentationInfo? Presentation { get; set; }
     public string? SessionId { get; set; }
     public string? ThinkingLevel { get; set; }
     public string? VerboseLevel { get; set; }
     public bool SystemSent { get; set; }
     public bool AbortedLastRun { get; set; }
+    /// <summary>
+    /// Gateway-provided liveness for the session's current run. Null means an
+    /// older Gateway did not provide the field, so callers may use legacy status.
+    /// </summary>
+    public bool? HasActiveRun { get; set; }
     public long InputTokens { get; set; }
     public long OutputTokens { get; set; }
     public long TotalTokens { get; set; }
@@ -352,7 +339,7 @@ public class SessionInfo
     {
         get
         {
-            var title = SessionPresentationResolver.Resolve(this).Title;
+            var title = SessionDisplayResolver.Resolve(this).Title;
 
             // Fixed-size array avoids List<string> allocation; at most 9 detail slots.
             var details = new string?[9];
@@ -395,7 +382,7 @@ public class SessionInfo
     /// <summary>Gets a shortened, user-friendly version of the session key.</summary>
     public string ShortKey
     {
-        get => SessionPresentationResolver.Resolve(this).Title;
+        get => SessionDisplayResolver.Resolve(this).Title;
     }
 
 }
@@ -1815,6 +1802,21 @@ public class ChatMessageInfo
     public string Text { get; set; } = "";
 
     /// <summary>
+    /// Structured tool call/result blocks retained from array-valued message
+    /// content so native clients can correlate inputs with outputs.
+    /// </summary>
+    public IReadOnlyList<ChatToolContentInfo> ToolContent { get; set; } =
+        Array.Empty<ChatToolContentInfo>();
+
+    /// <summary>
+    /// Ordered text and tool blocks retained from array-valued message content.
+    /// Flat <see cref="Text"/> and <see cref="ToolContent"/> remain populated for
+    /// compatibility with consumers that do not need block-level chronology.
+    /// </summary>
+    public IReadOnlyList<ChatMessageContentPartInfo> ContentParts { get; set; } =
+        Array.Empty<ChatMessageContentPartInfo>();
+
+    /// <summary>
     /// Optional gateway-assigned message state. "final" indicates a complete
     /// terminal message; absent or other values indicate intermediate state.
     /// </summary>
@@ -1869,6 +1871,35 @@ public class ChatMessageInfo
     /// Only present on assistant messages in <c>chat.history</c>.
     /// </summary>
     public string? StopReason { get; set; }
+}
+
+public enum ChatToolContentKind
+{
+    Call,
+    Result,
+}
+
+public class ChatToolContentInfo
+{
+    public ChatToolContentKind Kind { get; set; }
+    public string? CallId { get; set; }
+    public string ToolName { get; set; } = "tool";
+    public JsonElement? Args { get; set; }
+    public string? Text { get; set; }
+    public bool IsError { get; set; }
+}
+
+public enum ChatMessageContentPartKind
+{
+    Text,
+    Tool,
+}
+
+public class ChatMessageContentPartInfo
+{
+    public ChatMessageContentPartKind Kind { get; set; }
+    public string? Text { get; set; }
+    public ChatToolContentInfo? Tool { get; set; }
 }
 
 /// <summary>

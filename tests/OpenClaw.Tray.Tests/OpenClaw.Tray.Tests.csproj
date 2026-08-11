@@ -43,9 +43,13 @@
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Chat\ChatTelemetryTracker.cs" Link="Chat\ChatTelemetryTracker.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Chat\ChatLifecycleCommandDispatcher.cs" Link="Chat\ChatLifecycleCommandDispatcher.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Chat\ChatComposerSubmissionPolicy.cs" Link="Chat\ChatComposerSubmissionPolicy.cs" />
+    <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Chat\ChatComposerContextMenuState.cs" Link="Chat\ChatComposerContextMenuState.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Chat\ChatCompactionPresentation.cs" Link="Chat\ChatCompactionPresentation.cs" />
+    <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Chat\ChatHistoryReplayProjection.cs" Link="Chat\ChatHistoryReplayProjection.cs" />
+    <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Chat\ChatToolActivityPresentation.cs" Link="Chat\ChatToolActivityPresentation.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Chat\TailNavigationPolicy.cs" Link="Chat\TailNavigationPolicy.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Chat\ReactorSlashCommandController.cs" Link="Chat\ReactorSlashCommandController.cs" />
+    <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Chat\NativeToolProjector.cs" Link="Chat\NativeToolProjector.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Chat\OpenClawChatDataProvider.cs" Link="Chat\OpenClawChatDataProvider.cs" />
   </ItemGroup>
 
@@ -77,6 +81,7 @@
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Services\ManagedLocalGatewayAutoRepairMonitor.cs" Link="Services\ManagedLocalGatewayAutoRepairMonitor.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Services\ManagedLocalGatewayRepairAdapters.cs" Link="Services\ManagedLocalGatewayRepairAdapters.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Services\GatewayConnectorInterfaces.cs" Link="Services\GatewayConnectorInterfaces.cs" />
+    <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Services\GatewayDirectConnectService.cs" Link="Services\GatewayDirectConnectService.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Services\ActivityStreamService.cs" Link="Services\ActivityStreamService.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Services\AsyncListLoadingState.cs" Link="Services\AsyncListLoadingState.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Services\CronRunHistoryDisplay.cs" Link="Services\CronRunHistoryDisplay.cs" />

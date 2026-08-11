@@ -1,0 +1,20 @@
+{
+  "connectionStatus": "Connected",
+  "overallState": "Degraded",
+  "operatorState": "Connected",
+  "nodeState": "Error",
+  "nodeConnected": false,
+  "nodePaired": false,
+  "nodePendingApproval": false,
+  "nodeError": "The configured SSH listener is not owned by the active OpenClaw tunnel, so credentials were not sent.",
+  "gatewayVersion": "2026.6.11",
+  "sessionCount": 0,
+  "nodeCount": 1,
+  "operatorScopes": [
+    "operator.admin",
+    "operator.pairing",
+    "operator.read",
+    "operator.write"
+  ],
+  "operatorDeviceId": null
+}

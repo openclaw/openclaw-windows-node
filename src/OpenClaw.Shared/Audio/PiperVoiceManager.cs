@@ -29,7 +29,8 @@ namespace OpenClaw.Shared.Audio;
 ///
 /// **Integrity:** downloaded tarballs are SHA-256-verified against the pinned
 /// hash in <see cref="AvailableVoices"/> before extraction; a mismatch is a
-/// hard failure and the partial file is deleted (see Audio_FollowUps.md §2).
+/// hard failure and the partial file is deleted. See
+/// <c>docs/AUDIO_MODEL_ASSETS.md</c>.
 /// </summary>
 public sealed class PiperVoiceManager
 {
@@ -52,8 +53,9 @@ public sealed class PiperVoiceManager
     /// SECURITY — pinned SHA-256 hashes (lowercase hex) verified against
     /// the sherpa-onnx GitHub release on 2026-05-05. Downloads with a
     /// different hash are rejected and the partial tarball is deleted.
-    /// Before any public release: re-verify each hash from an independent
-    /// source and document provenance in Audio_FollowUps.md §2.
+    /// Before every public release: re-verify each hash from an independent
+    /// source and document provenance. See
+    /// <c>docs/AUDIO_MODEL_ASSETS.md</c>.
     /// </summary>
     public static readonly PiperVoiceInfo[] AvailableVoices =
     [
@@ -162,7 +164,7 @@ public sealed class PiperVoiceManager
         CancellationToken cancellationToken)
     {
         // SECURITY: refuse to install any voice that doesn't have a pinned
-        // hash. See Audio_FollowUps.md §2.
+        // hash. See docs/AUDIO_MODEL_ASSETS.md.
         if (string.IsNullOrWhiteSpace(info.Sha256))
         {
             throw new InvalidOperationException(
@@ -392,8 +394,8 @@ public sealed class PiperVoiceManager
 /// <param name="DownloadUrl">HTTPS URL of the .tar.bz2.</param>
 /// <param name="Sha256">Pinned lowercase hex SHA-256 of the downloaded
 /// tarball. MUST be set; downloads are refused when null. See the catalog
-/// for the "verified on" date — these need re-verification before any
-/// public release (see Audio_FollowUps.md §2).</param>
+/// for the "verified on" date. Re-verify all shipped assets before every public
+/// release; see <c>docs/AUDIO_MODEL_ASSETS.md</c>.</param>
 public sealed record PiperVoiceInfo(
     string VoiceId,
     string DisplayName,

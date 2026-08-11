@@ -23,14 +23,14 @@ build/sign/publish release artifacts.
      "Verify Release Executable Signing Policy", `
      "OpenClaw.Tray.WinUI.exe", `
      "build-msix:", `
-     "Paused for alpha"
+     "MSIX distribution is paused"
    ```
 
-3. Create a new tag from `origin/main`. Prefer a new alpha tag over moving a
-   previously failed tag.
+3. Create a new stable or prerelease tag from `origin/main`. Never move a
+   previously published tag.
 
    ```powershell
-   $tag = "v0.6.0-alpha.4"
+   $tag = "vX.Y.Z" # or vX.Y.Z-alpha.N for a prerelease
    if ((git rev-parse HEAD) -ne (git rev-parse origin/main)) {
        throw "HEAD is not origin/main; do not tag."
    }
@@ -55,25 +55,27 @@ build/sign/publish release artifacts.
    # Expected: $version
    ```
 
-6. Confirm the GitHub release is a prerelease and not latest for alpha tags.
+6. Confirm the GitHub release channel matches the tag. Stable tags should be
+   non-prerelease releases; alpha tags should be prereleases and not latest.
 
    ```powershell
    gh release view $tag --repo openclaw/openclaw-windows-node `
      --json tagName,isPrerelease,isLatest,url,assets
    ```
 
-## Alpha release policy
+## Release channel policy
 
-Alpha tags use the same signed CI release pipeline, but GitHub marks them as
-pre-releases and not latest releases so normal updater checks do not offer them
-to stable users.
+Stable and alpha tags use the same signed CI release pipeline:
+
+- `vX.Y.Z` creates a normal release eligible to become latest.
+- `vX.Y.Z-alpha.N` creates a prerelease that stable updater checks do not offer.
 
 ```powershell
 git tag -a vX.Y.Z-alpha.N -m "OpenClaw Windows Hub vX.Y.Z-alpha.N"
 git push origin vX.Y.Z-alpha.N
 ```
 
-For the current alpha flow, ship only:
+Current release artifacts are:
 
 - Inno setup installers:
   - `OpenClawCompanion-Setup-x64.exe`
@@ -82,9 +84,10 @@ For the current alpha flow, ship only:
   - `OpenClawTray-<version>-win-x64.zip`
   - `OpenClawTray-<version>-win-arm64.zip`
 
-MSIX artifacts are intentionally paused for alpha while we focus on the Inno
-installer path and signed portable update payloads. Re-enable MSIX only when we
-explicitly want packaged camera/microphone consent validation again.
+MSIX artifacts remain paused while the supported distribution path uses Inno
+installers and signed portable update payloads. This pause is independent of
+whether a tag is stable or alpha. Re-enable MSIX only with packaged
+camera/microphone consent validation and release coverage.
 
 ## Executable signing policy
 
@@ -111,7 +114,7 @@ x64 and ARM64 portable payloads must ship `vcruntime140.dll` in the payload
 root for the native speech stack. Both build legs source their loose VC runtime
 DLLs from the Visual Studio install on the CI runner (resolved via `vswhere` in
 `src\Directory.Build.targets`). This ensures the bundled CRT is new enough for
-`onnxruntime` — the `VCRuntime.CefSharp.140` NuGet is only used as a dev-time
+`onnxruntime` - the `VCRuntime.CefSharp.140` NuGet is only used as a dev-time
 convenience for local `dotnet build` (not publish). The release validation
 script enforces a minimum VC++ runtime version floor (currently 14.38) to
 prevent regressions, and the x64 verifier load-probes the native TTS stack
@@ -157,7 +160,7 @@ release artifacts are created.
 
 ## Expected release workflow jobs
 
-For alpha tags, the **Build and Test** workflow should run:
+For release tags, the **Build and Test** workflow should run:
 
 - `repo-hygiene`
 - `test`
@@ -165,7 +168,13 @@ For alpha tags, the **Build and Test** workflow should run:
 - `build` matrix entries shown by GitHub as `build (win-x64)` and `build (win-arm64)`
 - `release`
 
-The `setup-connect` E2E shard contains the MXC proof tests for the gateway -> Windows node -> `system.run` path and validates that the expected proof test names appear in the TRX output. GitHub-hosted runners may report those MXC proofs as skipped when the host is not MXC-capable; use `.\scripts\validate-mxc-e2e.ps1` for required local/self-hosted MXC merge validation. The `build-msix` job is disabled with `if: false` while MSIX is paused for alpha releases, so it should not appear in the required run list.
+The `setup-connect` E2E shard contains the MXC proof tests for the gateway ->
+Windows node -> `system.run` path and validates that the expected proof test
+names appear in the TRX output. GitHub-hosted runners may report those MXC
+proofs as skipped when the host is not MXC-capable; use
+`.\scripts\validate-mxc-e2e.ps1` for required local/self-hosted MXC merge
+validation. The `build-msix` job is disabled with `if: false` while MSIX
+distribution is paused, so it should not appear in the required run list.
 
 The release job should:
 
@@ -173,25 +182,27 @@ The release job should:
 2. Authenticate to Azure with OIDC in the `release-signing` environment.
 3. Sign only the OpenClaw-owned EXEs in both payloads.
 4. Verify executable signing policy.
-5. Create the portable x64 ZIP.
+5. Create the portable x64 and ARM64 ZIPs.
 6. Build Inno installers.
 7. Sign installers.
-8. Create a GitHub prerelease with installer and x64 ZIP assets only.
+8. Create a GitHub release whose prerelease flag matches the tag, with installer
+   and portable ZIP assets.
 
 ## Post-release verification
 
-After the release exists, download the x64 installer and ZIP and verify:
+After the release exists, download an installer and both portable ZIPs and
+verify:
 
 ```powershell
-$tag = "v0.6.0-alpha.4"
+$tag = "v0.6.12" # replace with the tag being verified
 gh release view $tag --repo openclaw/openclaw-windows-node `
   --json tagName,isPrerelease,isLatest,url,assets
 ```
 
 Expected:
 
-- `isPrerelease` is `true`.
-- `isLatest` is `false` for alpha tags.
+- Stable tags: `isPrerelease` is `false`.
+- Alpha tags: `isPrerelease` is `true` and `isLatest` is `false`.
 - Installer EXEs are signed.
 - In ZIP payload:
   - `OpenClaw.Tray.WinUI.exe` is OpenClaw-signed.
@@ -200,9 +211,9 @@ Expected:
 
 ## If a tag build fails
 
-Do not keep moving a tag repeatedly from chat unless you are certain GitHub and
-local refs agree. Prefer a fresh alpha tag (`alpha.N+1`) after the fix is merged
-to `main`.
+Do not move a published tag. After the fix is merged to `main`, create a new
+tag: increment `alpha.N` for a prerelease, or choose the next intended stable
+version.
 
 Use these commands to inspect state:
 
@@ -210,7 +221,8 @@ Use these commands to inspect state:
 git status --short --branch
 git rev-parse HEAD
 git rev-parse origin/main
-git ls-remote --tags origin "refs/tags/v0.6.0-alpha*"
+$tagPrefix = "vX.Y.Z" # use the stable or prerelease version family being fixed
+git ls-remote --tags origin "refs/tags/$tagPrefix*"
 
 gh run list --repo openclaw/openclaw-windows-node `
   --workflow "Build and Test" `

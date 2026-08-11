@@ -1903,7 +1903,7 @@ Utilisez l'une de ces options :
     <value>Stratégie d’exécution</value>
   </data>
   <data name="PermissionsPage_TextBlock_17.Text" xml:space="preserve">
-    <value>Contrôle les exécutables que l’agent peut lancer sur ce nœud. Les règles correspondent aux chemins d’accès résolus des exécutables.</value>
+    <value>Contrôle les exécutables que l’agent peut lancer sur ce nœud. La liste d’autorisation des chemins d’exécutables est vide au départ.</value>
   </data>
   <data name="DefaultActionCombo.Header" xml:space="preserve">
     <value>Action par défaut</value>
@@ -1918,22 +1918,22 @@ Utilisez l'une de ces options :
     <value>Demander</value>
   </data>
   <data name="PermissionsPage_TextBlock_28.Text" xml:space="preserve">
-    <value>Règles</value>
+    <value>Liste d’autorisation des chemins d’exécutables</value>
   </data>
   <data name="NewRulePattern.PlaceholderText" xml:space="preserve">
-    <value>Motif de chemin d’exécutable (p. ex. **/git.exe)</value>
+    <value>Motif de chemin d’exécutable (p. ex. **/hostname.exe)</value>
+  </data>
+  <data name="PermissionsPage_ExecAllowlistPatternValidation.Text" xml:space="preserve">
+    <value>Entrez un motif de chemin d’exécutable tel que **/hostname.exe. Un nom de base ou un texte de commande tel que hostname n’est pas valide.</value>
   </data>
   <data name="PermissionsPage_ComboBoxItem_54.Content" xml:space="preserve">
     <value>Refuser</value>
-  </data>
-  <data name="PermissionsPage_ComboBoxItem_55.Content" xml:space="preserve">
-    <value>Autoriser</value>
   </data>
   <data name="PermissionsPage_ComboBoxItem_56.Content" xml:space="preserve">
     <value>Demander</value>
   </data>
   <data name="PermissionsPage_Button_57.Content" xml:space="preserve">
-    <value>Ajouter une règle</value>
+    <value>Ajouter une entrée</value>
   </data>
   <data name="PermissionsPage_TextBlock_69.Text" xml:space="preserve">
     <value>Liste d’autorisation des nœuds</value>
@@ -2781,6 +2781,9 @@ Utilisez l'une de ces options :
   <data name="VoiceOverlayWindow_StatusErrorOccurred" xml:space="preserve">
     <value>Une erreur s'est produite</value>
   </data>
+  <data name="AudioPipeline_FirstAudioTimeout" xml:space="preserve">
+    <value>Aucun son n’a été reçu. Vérifiez que votre microphone est connecté et sélectionné comme périphérique d’entrée Windows, puis réessayez.</value>
+  </data>
   <data name="VoiceOverlayWindow_winexWindowEx_2.Title" xml:space="preserve">
     <value>Companion Voice</value>
   </data>
@@ -2886,6 +2889,27 @@ Utilisez l'une de ces options :
   <data name="Chat_Tool_FooterWithTimeFormat" xml:space="preserve">
     <value>Outil · {0}</value>
   </data>
+  <data name="Chat_Activity_CommandOne" xml:space="preserve"><value>{0} commande exécutée</value></data>
+  <data name="Chat_Activity_CommandMany" xml:space="preserve"><value>{0} commandes exécutées</value></data>
+  <data name="Chat_Activity_ReadOne" xml:space="preserve"><value>{0} fichier lu</value></data>
+  <data name="Chat_Activity_ReadMany" xml:space="preserve"><value>{0} fichiers lus</value></data>
+  <data name="Chat_Activity_EditOne" xml:space="preserve"><value>{0} fichier modifié</value></data>
+  <data name="Chat_Activity_EditMany" xml:space="preserve"><value>{0} fichiers modifiés</value></data>
+  <data name="Chat_Activity_WriteOne" xml:space="preserve"><value>{0} fichier écrit</value></data>
+  <data name="Chat_Activity_WriteMany" xml:space="preserve"><value>{0} fichiers écrits</value></data>
+  <data name="Chat_Activity_SearchOne" xml:space="preserve"><value>{0} recherche effectuée</value></data>
+  <data name="Chat_Activity_SearchMany" xml:space="preserve"><value>{0} recherches effectuées</value></data>
+  <data name="Chat_Activity_FetchOne" xml:space="preserve"><value>{0} page récupérée</value></data>
+  <data name="Chat_Activity_FetchMany" xml:space="preserve"><value>{0} pages récupérées</value></data>
+  <data name="Chat_Activity_GenericOne" xml:space="preserve"><value>{0} outil utilisé</value></data>
+  <data name="Chat_Activity_GenericMany" xml:space="preserve"><value>{0} outils utilisés</value></data>
+  <data name="Chat_Activity_GenericNamed" xml:space="preserve"><value>{1} utilisé</value></data>
+  <data name="Chat_Activity_GenericNamedRepeated" xml:space="preserve"><value>{1} utilisé {0} fois</value></data>
+  <data name="Chat_Activity_RunningFormat" xml:space="preserve"><value>Exécution de {0}</value></data>
+  <data name="Chat_Activity_Complete" xml:space="preserve"><value>Terminé</value></data>
+  <data name="Chat_Activity_Expanded" xml:space="preserve"><value>Développé</value></data>
+  <data name="Chat_Activity_Collapsed" xml:space="preserve"><value>Réduit</value></data>
+  <data name="Chat_Activity_AutomationFormat" xml:space="preserve"><value>Activité : {0}. {1} outils. {2}.</value></data>
   <data name="Chat_Reasoning_ThinkingHeader" xml:space="preserve">
     <value>🧠 Réflexion</value>
   </data>
@@ -3371,13 +3395,13 @@ Les commandes sont bloquées tant que le sandboxing est indisponible, car le blo
     <value>URL copied to clipboard</value>
   </data>
   <data name="PermissionsPage_RulesCount_None" xml:space="preserve">
-    <value>No rules</value>
+    <value>Aucune entrée</value>
   </data>
   <data name="PermissionsPage_RulesCount_One" xml:space="preserve">
-    <value>1 rule</value>
+    <value>1 entrée</value>
   </data>
   <data name="PermissionsPage_RulesCount_ManyFormat" xml:space="preserve">
-    <value>{0} rules</value>
+    <value>{0} entrées</value>
   </data>
   <data name="PermissionsPage_Allowlist_NoConfig" xml:space="preserve">
     <value>No allowlist data available. Connect to a gateway first.</value>
@@ -4430,19 +4454,19 @@ Les commandes sont bloquées tant que le sandboxing est indisponible, car le blo
     <value>Action par défaut</value>
   </data>
   <data name="PermissionsPage_WhatHappensWhenA.Text" xml:space="preserve">
-    <value>Ce qui se passe lorsqu'une commande ne correspond à aucune règle ci-dessous.</value>
+    <value>Ce qui se passe lorsqu’une commande ne correspond pas à la liste d’autorisation des chemins d’exécutables ci-dessous.</value>
   </data>
   <data name="PermissionsPage_PatternsAreMatchedLeft.Text" xml:space="preserve">
-    <value>Les motifs de liste d’autorisation correspondent aux chemins d’accès résolus des exécutables. Utilisez des caractères génériques tels que **/git.exe. Les modifications sont enregistrées automatiquement.</value>
+    <value>Toujours autoriser crée une entrée liée aux arguments pour une commande .exe native admissible. Les entrées ajoutées ici sont basées uniquement sur le chemin et peuvent autoriser les exécutables correspondants avec n’importe quels arguments. Refuser et Demander restent contrôlés par Action par défaut. Les modifications sont enregistrées automatiquement.</value>
   </data>
   <data name="PermissionsPage_Saved.Text" xml:space="preserve">
     <value>Enregistré</value>
   </data>
   <data name="PermissionsPage_0Rules.Text" xml:space="preserve">
-    <value>0 règle</value>
+    <value>0 entrée</value>
   </data>
   <data name="PermissionsPage_NoRulesYetAdd.Text" xml:space="preserve">
-    <value>Aucune règle pour l'instant. Ajoutez un motif ci-dessous pour refuser, autoriser ou demander pour des commandes spécifiques.</value>
+    <value>Aucune entrée dans la liste d’autorisation des chemins d’exécutables. Approuvez une commande .exe native admissible avec Toujours autoriser, ou ajoutez un motif basé uniquement sur le chemin tel que **/hostname.exe.</value>
   </data>
   <data name="PermissionsPage_WindowsPrivacy.Text" xml:space="preserve">
     <value>Confidentialité Windows</value>
@@ -4606,6 +4630,42 @@ Les commandes sont bloquées tant que le sandboxing est indisponible, car le blo
   <data name="SandboxPage_LocalNetworkDevicesAnd.Text" xml:space="preserve">
     <value>Les périphériques et partages réseau locaux ne sont pas encore inclus.</value>
   </data>
+  <data name="SandboxPage_CommandCompatibility.Text" xml:space="preserve">
+    <value>🪟 Compatibilité des commandes</value>
+  </data>
+  <data name="SandboxPage_AllowWindowsUi.Header" xml:space="preserve">
+    <value>Autoriser les API d’interface Windows</value>
+  </data>
+  <data name="SandboxPage_AllowWindowsUi.OffContent" xml:space="preserve">
+    <value>Désactivé : bloque les appels système Win32k</value>
+  </data>
+  <data name="SandboxPage_AllowWindowsUi.OnContent" xml:space="preserve">
+    <value>Activé : PowerShell et les outils similaires peuvent démarrer</value>
+  </data>
+  <data name="SandboxPage_AllowWindowsUi.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>Autoriser les API d’interface Windows pour les commandes en bac à sable</value>
+  </data>
+  <data name="SandboxPage_WindowsUiCompatibilityDescription.Text" xml:space="preserve">
+    <value>PowerShell, whoami, tasklist et de nombreux autres outils de console utilisent les API d’interface Windows au démarrage.</value>
+  </data>
+  <data name="SandboxPage_WindowsUiWarning.Title" xml:space="preserve">
+    <value>Limite Win32k désactivée</value>
+  </data>
+  <data name="SandboxPage_WindowsUiWarning.Message" xml:space="preserve">
+    <value>Les contrôles des fichiers, du réseau, du presse-papiers, du délai d’expiration et de l’approbation des commandes restent actifs, mais les appels système Win32k sont autorisés.</value>
+  </data>
+  <data name="SandboxPage_AllowWindowsUiDialogTitle" xml:space="preserve">
+    <value>Autoriser les API d’interface Windows ?</value>
+  </data>
+  <data name="SandboxPage_AllowWindowsUiDialogContent" xml:space="preserve">
+    <value>Cette option permet aux commandes en bac à sable d’utiliser les appels système de l’interface Windows. PowerShell, whoami, tasklist et d’autres outils de console en ont besoin pour démarrer avec les versions actuelles de MXC.&#xA;&#xA;Les contrôles des fichiers, du réseau, du presse-papiers, du délai d’expiration et de l’approbation des commandes restent actifs, mais le blocage des appels système Win32k sera désactivé. Activez cette option uniquement si vous avez besoin d’une compatibilité de commande plus large.</value>
+  </data>
+  <data name="SandboxPage_AllowWindowsUiDialogPrimary" xml:space="preserve">
+    <value>Autoriser les API d’interface</value>
+  </data>
+  <data name="SandboxPage_AllowWindowsUiDialogCancel" xml:space="preserve">
+    <value>Annuler</value>
+  </data>
   <data name="SandboxPage_Limits.Text" xml:space="preserve">
     <value>⏱ Limites</value>
   </data>
@@ -4680,7 +4740,7 @@ Les commandes sont bloquées tant que le sandboxing est indisponible, car le blo
     <value>Chargement des sessions…</value>
   </data>
   <data name="SessionsPage_NoActiveSessions.Text" xml:space="preserve">
-    <value>Aucune session active</value>
+    <value>Aucune session</value>
   </data>
   <data name="SessionsPage_Reset.Text" xml:space="preserve">
     <value>Réinitialiser</value>
@@ -6834,9 +6894,6 @@ Le binaire wxc-exec est introuvable. {1} S'il s'agit d'une build développeur, c
   <data name="SettingsPage_GatewayInfoLabel_Uptime.Text" xml:space="preserve">
     <value>Uptime</value>
   </data>
-  <data name="PermissionsPage_NewRuleAction.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
-    <value>Action de la règle</value>
-  </data>
   <data name="SandboxPage_UnavailablePrimaryButton.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
     <value>Action du bac à sable</value>
   </data>
@@ -6878,5 +6935,17 @@ Le binaire wxc-exec est introuvable. {1} S'il s'agit d'une build développeur, c
   </data>
   <data name="PermissionsPage_ExecPolicySaveFailed" xml:space="preserve">
     <value>Échec de l’enregistrement</value>
+  </data>
+  <data name="SessionsPage_Status_Working" xml:space="preserve">
+    <value>En cours</value>
+  </data>
+  <data name="SessionsPage_Status_Ready" xml:space="preserve">
+    <value>Prête</value>
+  </data>
+  <data name="SessionsPage_Status_NeedsAttention" xml:space="preserve">
+    <value>À vérifier</value>
+  </data>
+  <data name="SessionsPage_LastRunStopped" xml:space="preserve">
+    <value>Dernière exécution arrêtée</value>
   </data>
 </root>

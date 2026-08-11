@@ -1,4 +1,5 @@
 using OpenClaw.Shared;
+using OpenClaw.Shared.Sessions;
 using System;
 using System.Collections.Generic;
 using System.Globalization;
@@ -151,10 +152,9 @@ internal sealed class TrayDashboardSummaryBuilder
         var sessionCount = _snapshot.Sessions.Length;
         if (sessionCount > 0)
         {
-            var active = _snapshot.Sessions.Count(
-                s => string.Equals(s.Status, "active", StringComparison.OrdinalIgnoreCase));
+            var active = _snapshot.Sessions.Count(SessionRunState.IsWorking);
             parts.Add(active > 0
-                ? $"{sessionCount} {(sessionCount == 1 ? "session" : "sessions")} ({active} active)"
+                ? $"{sessionCount} {(sessionCount == 1 ? "session" : "sessions")} ({active} working)"
                 : $"{sessionCount} {(sessionCount == 1 ? "session" : "sessions")}");
         }
 
@@ -209,20 +209,17 @@ internal sealed class TrayDashboardSummaryBuilder
             return null;
 
         var foregroundSessions = sessions
-            .Where(session => !SessionPresentationResolver.IsBackground(session))
+            .Where(session => !SessionDisplayResolver.IsBackground(session))
             .ToArray();
         if (foregroundSessions.Length == 0)
             return null;
         sessions = foregroundSessions;
 
-        static bool IsActive(SessionInfo s) =>
-            string.Equals(s.Status, "active", StringComparison.OrdinalIgnoreCase);
-
-        var activeMain = sessions.FirstOrDefault(s => s.IsMain && IsActive(s));
+        var activeMain = sessions.FirstOrDefault(s => s.IsMain && SessionRunState.IsWorking(s));
         if (activeMain != null) return activeMain;
 
         var activeRecent = sessions
-            .Where(IsActive)
+            .Where(SessionRunState.IsWorking)
             .OrderByDescending(s => s.UpdatedAt ?? s.LastSeen)
             .FirstOrDefault();
         if (activeRecent != null) return activeRecent;
@@ -230,13 +227,13 @@ internal sealed class TrayDashboardSummaryBuilder
         var main = sessions.FirstOrDefault(s => s.IsMain);
         if (main != null) return main;
 
-        // Prefer non-ended sessions as the dashboard fallback so a completed/failed
-        // session does not appear as "current" when live sessions remain.
-        var nonEnded = sessions
-            .Where(s => !SessionVisibilityFilter.IsEnded(s))
+        // Prefer sessions that are still relevant to the operator over a successful
+        // completed run when there is no working or main session to surface.
+        var nonCompleted = sessions
+            .Where(s => !SessionRunState.IsCompleted(s))
             .OrderByDescending(s => s.UpdatedAt ?? s.LastSeen)
             .FirstOrDefault();
-        if (nonEnded != null) return nonEnded;
+        if (nonCompleted != null) return nonCompleted;
 
         return sessions.OrderByDescending(s => s.UpdatedAt ?? s.LastSeen).First();
     }
@@ -247,8 +244,12 @@ internal sealed class TrayDashboardSummaryBuilder
         if (session == null)
             return null;
 
-        var isActive = string.Equals(session.Status, "active", StringComparison.OrdinalIgnoreCase);
-        var label = isActive ? "Active" : (session.IsMain ? "Main" : "Session");
+        var label = SessionRunState.GetDisplayState(session) switch
+        {
+            SessionDisplayState.Working => "Working",
+            SessionDisplayState.NeedsAttention => "Needs attention",
+            _ => "Ready",
+        };
 
         var title = SessionTitleFormatter.Format(session);
 

@@ -1,0 +1,33 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1400" height="1020" viewBox="0 0 1400 1020" role="img" aria-labelledby="title desc">
+  <title id="title">Setup Engine architecture layering</title>
+  <desc id="desc">Three stacked layers. OpenClaw.SetupEngine (net10.0 library) contains SetupPipeline flowing through 24 SetupStep classes to StepResult, plus SetupContext, SetupConfig, SetupLogger, CommandRunner, TransactionJournal, and RetryExecutor, referencing OpenClaw.Connection and OpenClaw.Shared. It is hosted by OpenClaw.SetupEngine.UI (WinUI3), which contains SetupWindow and pages with direct code-behind and no MVVM, flowing Security to Welcome to Capabilities to Progress to Onboard to Complete, connected upward by a callback of type Action of string and StepStatus. That is hosted by OpenClaw.Tray.WinUI.exe, which owns setup launch and focus, the advanced setup route, and self-restart, connected upward by being hosted by project reference.</desc>
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto"><path d="M0 0 L10 5 L0 10z" fill="context-stroke"/></marker>
+    <style>
+      .title{font:700 28px Segoe UI,Arial,sans-serif;fill:#111}
+      .subtitle{font:16px Segoe UI,Arial,sans-serif;fill:#222}
+      .lane{font:700 18px Segoe UI,Arial,sans-serif;fill:#111;text-anchor:middle}
+      .box{font:15px Segoe UI,Arial,sans-serif;fill:#111;text-anchor:middle}
+      .mono{font:13px Cascadia Code,Consolas,monospace;fill:#111}
+      .msg{font:14px Segoe UI,Arial,sans-serif;fill:#111;text-anchor:middle}
+      .note{font:13px Segoe UI,Arial,sans-serif;fill:#111}
+      .participant{font:16px Segoe UI,Arial,sans-serif;fill:#111;text-anchor:middle}
+    </style>
+  </defs>
+  <rect width="1400" height="1020" fill="#fff"/>
+  <text x="40" y="50" class="title">Setup Engine architecture layering</text>
+  <text x="40" y="92" class="subtitle">OpenClaw.SetupEngine is a headless pipeline library, hosted by OpenClaw.SetupEngine.UI's WinUI3 wizard, which is in turn hosted by the single shipped executable, OpenClaw.Tray.WinUI.exe.</text>
+  <rect x="50.0" y="140" width="1300" height="220" rx="8" fill="none" stroke="#0078D4" stroke-width="3"/>
+  <text x="70.0" y="172" font-weight="700" font-size="19" font-family="Segoe UI, Arial, sans-serif" fill="#111">OpenClaw.SetupEngine (net10.0 library)</text>
+  <text x="70.0" y="211" class="mono" xml:space="preserve"><tspan x="70.0">SetupPipeline → 24 SetupStep classes → StepResult</tspan><tspan x="70.0" dy="24"> </tspan><tspan x="70.0" dy="24">SetupContext          CommandRunner (WSL + Process)</tspan><tspan x="70.0" dy="24">SetupConfig           TransactionJournal (JSONL)</tspan><tspan x="70.0" dy="24">SetupLogger           RetryExecutor</tspan><tspan x="70.0" dy="24"> </tspan><tspan x="70.0" dy="24">refs: OpenClaw.Connection, OpenClaw.Shared</tspan></text>
+  <path d="M140.0 460 L140.0 360" fill="none" stroke="#495057" stroke-width="2" marker-end="url(#arrow)"/>
+  <text x="370.0" y="404.0" class="msg" text-anchor="middle"><tspan x="370.0">callback: Action&lt;string, StepStatus&gt;</tspan></text>
+  <rect x="50.0" y="460" width="1300" height="160" rx="8" fill="none" stroke="#5C2D91" stroke-width="3"/>
+  <text x="70.0" y="492" font-weight="700" font-size="18" font-family="Segoe UI, Arial, sans-serif" fill="#111">OpenClaw.SetupEngine.UI (net10.0-windows10.0.22621, WinUI3)</text>
+  <text x="70.0" y="531" class="mono" xml:space="preserve"><tspan x="70.0">SetupWindow + pages, direct code-behind, no MVVM</tspan><tspan x="70.0" dy="24">Security → Welcome → Capabilities → Progress → Onboard → Complete</tspan></text>
+  <path d="M140.0 770 L140.0 620" fill="none" stroke="#495057" stroke-width="2" marker-end="url(#arrow)"/>
+  <text x="370.0" y="689.0" class="msg" text-anchor="middle"><tspan x="370.0">hosted by project reference</tspan></text>
+  <rect x="50.0" y="770" width="1300" height="140" rx="8" fill="none" stroke="#107C10" stroke-width="3"/>
+  <text x="70.0" y="802" font-weight="700" font-size="19" font-family="Segoe UI, Arial, sans-serif" fill="#111">OpenClaw.Tray.WinUI.exe</text>
+  <text x="70.0" y="841" class="mono" xml:space="preserve"><tspan x="70.0">setup launch/focus, advanced setup route, self-restart</tspan></text>
+</svg>

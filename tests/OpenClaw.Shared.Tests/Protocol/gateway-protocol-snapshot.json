@@ -66,10 +66,10 @@
       "responseEnvelope": ["sessions"],
       "responseEnvelopeSource": "TryGetSessionsPayload(JsonElement payload",
       "responseFields": [
-        "key", "isMain", "status", "model", "label", "channel", "displayName",
+        "key", "isMain", "status", "hasActiveRun", "model", "label", "channel", "displayName",
         "derivedTitle", "modelProvider", "provider", "subject", "groupChannel", "room",
         "space", "chatType", "execNode", "parentSessionKey", "spawnDepth", "origin",
-        "worktree", "presentation", "sessionId", "thinkingLevel", "verboseLevel",
+        "worktree", "classification", "agentId", "accountId", "peerKind", "isBackground", "sessionId", "thinkingLevel", "verboseLevel",
         "systemSent", "abortedLastRun", "inputTokens", "outputTokens", "totalTokens",
         "contextTokens", "updatedAt", "startedAt"
       ]

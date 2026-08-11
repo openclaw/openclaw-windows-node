@@ -2859,7 +2859,7 @@ public class OpenClawChatTimeline : Component<OpenClawChatTimelineProps>
                 if (Props.ScrollToBottomToken != prevScrollToBottomTokenRef.Current)
                 {
                     prevScrollToBottomTokenRef.Current = Props.ScrollToBottomToken;
-                    QueueScrollToBottom(sv, Props.SessionId, disableAnimation: false);
+                    QueueScrollToBottom(sv, Props.SessionId, disableAnimation: true);
                 }
 
                 prevSessionIdRef.Current = Props.SessionId;

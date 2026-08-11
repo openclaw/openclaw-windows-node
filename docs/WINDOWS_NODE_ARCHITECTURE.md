@@ -1,12 +1,18 @@
 # 🏗️ Architecture: Windows Platform Strategy & Native Node Roadmap
 
-> **📝 Note**: This document was written during the initial planning phase (early 2026). Windows Node mode has since been implemented with canvas, screen, camera, system.run, and notification capabilities. The deployment scenarios, design rationale, and protocol details remain accurate reference material. The "Current State" table and roadmap checkboxes may not reflect the latest status — see README.md for current capabilities.
+> **📝 Note**: This document was written during the initial planning phase
+> (early 2026). Windows Node mode has since been implemented with canvas,
+> screen, camera, `system.run`, and notification capabilities. Treat roadmap
+> prose and code sketches as historical context. Use the
+> [Gateway, node, and exec flow FAQ](OPENCLAW_GATEWAY_NODE_EXEC_FAQ.md) for the
+> current end-to-end execution and authority model, and README.md for the
+> current capability list.
 
 ## Summary
 
-OpenClaw has **excellent** macOS support — the native menubar app runs as a full node with camera, canvas, screen capture, notifications, location, system exec, and more. Windows users today rely on **WSL2** for the gateway and get a limited experience: no native UI integration, no camera, no canvas surface, and NAT networking quirks.
+OpenClaw has **excellent** macOS support - the native menubar app runs as a full node with camera, canvas, screen capture, notifications, location, system exec, and more. Windows users today rely on **WSL2** for the gateway and get a limited experience: no native UI integration, no camera, no canvas surface, and NAT networking quirks.
 
-This issue proposes a comprehensive Windows platform strategy that evolves `OpenClaw.Tray.WinUI` from a gateway *client* into a **native Windows node** — giving the agent eyes, hands, and a voice on Windows, and eventually exploring a fully native Windows gateway.
+This issue proposes a comprehensive Windows platform strategy that evolves `OpenClaw.Tray.WinUI` from a gateway *client* into a **native Windows node** - giving the agent eyes, hands, and a voice on Windows, and eventually exploring a fully native Windows gateway.
 
 **This is the umbrella issue for the Windows platform story.** It maps every deployment scenario, identifies capability gaps, proposes a phased roadmap, and provides enough technical detail for contributors to pick up work items.
 
@@ -17,7 +23,7 @@ Related issues: #5 (Canvas Panel), #6 (Skills Settings UI), #7 (DEVELOPMENT.md),
 ## Table of Contents
 
 - [Current State](#current-state)
-- [The Vision](#the-vision)
+- [The Vision](#the-vision-now-implemented-for-the-windows-node)
 - [Deployment Scenario Matrix](#deployment-scenario-matrix)
 - [Capability Matrix by Node Type](#capability-matrix-by-node-type)
 - [Node Protocol Overview](#node-protocol-overview)
@@ -36,32 +42,15 @@ Related issues: #5 (Canvas Panel), #6 (Skills Settings UI), #7 (DEVELOPMENT.md),
 | Component | Status | Details |
 |-----------|--------|---------|
 | `OpenClaw.Shared` | ✅ Working | Gateway WebSocket client library (.NET) |
-| `OpenClaw.Tray.WinUI` | ✅ Working | System tray app — status, Quick Send, WebChat (WebView2), toast notifications, channel control |
-| Windows Node | ✅ Implemented | Canvas, screen, camera, location, device info/status, system.run, notifications — all working via Node Mode |
+| `OpenClaw.Tray.WinUI` | ✅ Working | System tray app - status, Quick Send, WebChat (WebView2), toast notifications, channel control |
+| Windows Node | ✅ Implemented | Canvas, screen, camera, location, device info/status, system.run, notifications - all working via Node Mode |
 | Windows Gateway | ❌ Unexplored | Gateway runs in WSL2 only |
 
-### How Scott uses it today
+### Historical setup that motivated the Windows node
 
-```
-┌─────────────────────────────────────────────────┐
-│  Mac mini (gateway host)                        │
-│  ┌───────────────────────────────────────────┐  │
-│  │ openclaw gateway  (ws://127.0.0.1:18789)  │  │
-│  │ macOS native node (camera, canvas, screen) │  │
-│  └───────────────────────────────────────────┘  │
-└───────────────────────┬─────────────────────────┘
-                        │ Tailnet / LAN
-┌───────────────────────┴─────────────────────────┐
-│  Windows PC                                      │
-│  ┌────────────────────┐  ┌────────────────────┐ │
-│  │ WSL2 (Ubuntu)      │  │ OpenClaw.Tray      │ │
-│  │ openclaw node run  │  │ (WS operator only) │ │
-│  │ headless: exec only│  │ Quick Send, Chat   │ │
-│  └────────────────────┘  └────────────────────┘ │
-└─────────────────────────────────────────────────┘
-```
-
-The Windows PC has **two connections** to the Mac gateway: a headless WSL2 node (exec-only) and the tray app (operator client). But the agent **cannot**:
+Before the native Windows node shipped, the Windows PC commonly used two
+connections to a Mac gateway: a headless WSL2 node for exec and the tray app as
+an operator client. In that historical setup the agent could not:
 - Show a canvas on Windows
 - Take screenshots of the Windows desktop
 - Capture from a Windows webcam
@@ -70,27 +59,15 @@ The Windows PC has **two connections** to the Mac gateway: a headless WSL2 node 
 
 ---
 
-## The Vision
+## The Vision, now implemented for the Windows node
 
-```
-┌──────────────────────────────────────────────────────┐
-│  Gateway Host (Mac, Linux, WSL2, or Windows native)  │
-│  openclaw gateway (ws://...)                         │
-└─────────────┬────────────────────────────────────────┘
-              │
-    ┌─────────┼──────────┬──────────────┬──────────────┐
-    │         │          │              │              │
-  ┌─┴──┐  ┌──┴───┐  ┌───┴────┐  ┌─────┴─────┐  ┌────┴────┐
-  │ Mac│  │iPhone│  │Android │  │  Windows  │  │  Linux  │
-  │Node│  │ Node │  │  Node  │  │   Node    │  │  Node   │
-  │ ★★★│  │  ★★  │  │  ★★★  │  │   ★★★★   │  │   ★    │
-  │    │  │      │  │        │  │(Tray App) │  │(headless│
-  └────┘  └──────┘  └────────┘  └───────────┘  └─────────┘
+The tray app is now a first-class OpenClaw node that registers with
+`role: "node"` and advertises Windows-native capabilities. WSL2 is not required
+for the node; it is used only when the Windows setup owns a local WSL gateway.
 
-Legend: ★ = capability breadth (more = richer)
-```
-
-The tray app becomes **a first-class OpenClaw node** that registers with `role: "node"` and advertises capabilities using Windows-native APIs. No WSL2 required for the node — only potentially for the gateway (or not at all if we pursue native Windows gateway).
+For the current topology and authority boundaries, use the canonical
+[topology diagram](diagrams/openclaw-topologies-and-authority.svg) and its
+[editable Excalidraw source](diagrams/openclaw-topologies-and-authority.excalidraw).
 
 ---
 
@@ -111,14 +88,14 @@ The gold standard. Everything works out of the box. This is what Windows should 
 
 ---
 
-### Scenario 2: Windows Only — WSL2 Gateway + WSL2 Node ⭐⭐
+### Scenario 2: Windows Only - WSL2 Gateway + WSL2 Node ⭐⭐
 
 | Aspect | Details |
 |--------|---------|
 | **Gateway** | WSL2 (Ubuntu) |
 | **Nodes** | WSL2 headless node (exec only) |
 | **Capabilities** | Camera ❌ Canvas ❌ Screen ❌ Notifications ❌ Browser Proxy ✅ Exec ✅ Location ❌ Audio/TTS ❌ |
-| **Networking** | WSL2 NAT — `localhost` works but external access needs `--bind` + firewall rules. HTTPS can be tricky with self-signed certs. |
+| **Networking** | WSL2 NAT - `localhost` works but external access needs `--bind` + firewall rules. HTTPS can be tricky with self-signed certs. |
 | **Setup complexity** | Install WSL2 → install Node.js → install openclaw → configure networking → hope NAT cooperates |
 | **UX Rating** | ⭐⭐ Functional but headless. The agent is blind. |
 
@@ -130,30 +107,30 @@ The gold standard. Everything works out of the box. This is what Windows should 
 
 ---
 
-### Scenario 3: Windows Only — WSL2 Gateway + Tray App as Client ⭐⭐⭐
+### Scenario 3: Windows Only - WSL2 Gateway + Tray App as Client ⭐⭐⭐
 
 | Aspect | Details |
 |--------|---------|
 | **Gateway** | WSL2 (Ubuntu) |
-| **Nodes** | None registered as node — tray app is operator-only |
+| **Nodes** | None registered as node - tray app is operator-only |
 | **Capabilities** | Camera ❌ Canvas ❌ (WebChat only) Screen ❌ Notifications ⚠️ (tray-side only, not agent-driven) Browser ❌ Exec ✅ (WSL2) Location ❌ Audio/TTS ❌ |
 | **Networking** | WSL2 → Windows: `localhost:18789` usually works. Windows → WSL2: same. But HTTPS cert validation can fail for WebView2 connecting to WSL2's self-signed cert. |
-| **Setup complexity** | Medium — WSL2 + openclaw + configure tray app to point at `ws://localhost:18789` |
+| **Setup complexity** | Medium - WSL2 + openclaw + configure tray app to point at `ws://localhost:18789` |
 | **UX Rating** | ⭐⭐⭐ Nice UI wrapper but agent still can't see or interact with Windows |
 
 This operator-only mode provides Quick Send, embedded WebChat, Command Center diagnostics, activity stream, and status display. But without Node Mode it is still a viewport into the agent, not a bridge for the agent to interact with Windows.
 
 ---
 
-### Scenario 4: Windows Only — WSL2 Gateway + Tray App as Native Node ⭐⭐⭐⭐
+### Scenario 4: Windows Only - WSL2 Gateway + Tray App as Native Node ⭐⭐⭐⭐
 
 | Aspect | Details |
 |--------|---------|
 | **Gateway** | WSL2 (Ubuntu) |
 | **Nodes** | OpenClaw.Tray registers as `role: "node"` from Windows |
-| **Capabilities** | Camera ✅ (MediaCapture API) Canvas ✅ (WebView2) Screen ✅ (Graphics Capture) Notifications ✅ (Toast + agent-driven) Browser ✅/⚠️ (local `browser.proxy` bridge; requires browser-control host on gateway port + 2) Exec ✅ (WSL2 + optionally Windows `cmd`/`powershell`) Location ⚠️ (Windows Location API — desktop, less useful) Voice/TTS ⚠️ (separate parity track) |
-| **Networking** | WSL2 NAT still involved for gateway, but tray app connects outward to WSL2's WS — simpler direction. |
-| **Setup complexity** | Medium — WSL2 gateway + tray app auto-discovers and pairs |
+| **Capabilities** | Camera ✅ (MediaCapture API) Canvas ✅ (WebView2) Screen ✅ (Graphics Capture) Notifications ✅ (Toast + agent-driven) Browser ✅/⚠️ (local `browser.proxy` bridge; requires browser-control host on gateway port + 2) Exec ✅ (WSL2 + optionally Windows `cmd`/`powershell`) Location ⚠️ (Windows Location API - desktop, less useful) Voice/TTS ⚠️ (separate parity track) |
+| **Networking** | WSL2 NAT still involved for gateway, but tray app connects outward to WSL2's WS - simpler direction. |
+| **Setup complexity** | Medium - WSL2 gateway + tray app auto-discovers and pairs |
 | **UX Rating** | ⭐⭐⭐⭐ Agent can now see and interact with Windows! |
 
 **This is the sweet spot for Phase 1.** The gateway stays in WSL2 (proven, works), but the tray app lights up all the Windows-native capabilities. The agent gains eyes and hands on Windows.
@@ -166,11 +143,11 @@ The tray now also has a Command Center surface that combines gateway channel hea
 
 | Aspect | Details |
 |--------|---------|
-| **Gateway** | Windows native (Node.js on Windows — `node.exe`) |
+| **Gateway** | Windows native (Node.js on Windows - `node.exe`) |
 | **Nodes** | OpenClaw.Tray as full Windows node |
 | **Capabilities** | Camera ✅ Canvas ✅ Screen ✅ Notifications ✅ Browser ✅/⚠️ (`browser.proxy` bridge; needs browser-control host on gateway+2) Exec ✅ (native `cmd.exe`, PowerShell, `wsl.exe`) Location ⚠️ Voice/TTS ⚠️ (separate parity track) |
-| **Networking** | `ws://127.0.0.1:18789` — pure loopback, no NAT, no WSL2 networking issues |
-| **Setup complexity** | Low — `npm install -g openclaw && openclaw onboard` from PowerShell. Same as Mac. |
+| **Networking** | `ws://127.0.0.1:18789` - pure loopback, no NAT, no WSL2 networking issues |
+| **Setup complexity** | Low - `npm install -g openclaw && openclaw onboard` from PowerShell. Same as Mac. |
 | **UX Rating** | ⭐⭐⭐⭐⭐ True feature parity with Mac |
 
 **The dream.** No WSL2 dependency at all. The gateway runs natively on Windows (Node.js works fine on Windows), and the tray app provides all native capabilities. This is the Mac experience, on Windows.
@@ -187,7 +164,7 @@ The tray now also has a Command Center surface that combines gateway channel hea
 | **Nodes** | macOS native + WSL2 headless node on Windows |
 | **Capabilities** | Full Mac capabilities + Windows exec via WSL2 node |
 | **Networking** | Tailnet or SSH tunnel between machines. Reliable but requires network setup. |
-| **Setup complexity** | Medium — two machines, tailnet/SSH, node pairing |
+| **Setup complexity** | Medium - two machines, tailnet/SSH, node pairing |
 | **UX Rating** | ⭐⭐⭐⭐ Great for multi-machine setups where Mac is primary |
 
 **Today's power-user setup.** Works well for "Mac as brain, Windows as build server" use cases. Adding tray-app-as-node would make this ⭐⭐⭐⭐⭐.
@@ -202,7 +179,7 @@ The tray now also has a Command Center surface that combines gateway channel hea
 | **Nodes** | macOS native + Windows native (tray app) |
 | **Capabilities** | Everything from Mac + camera, canvas, screen, notifications on Windows |
 | **Networking** | Tailnet/LAN between Mac gateway and Windows tray app |
-| **Setup complexity** | Medium — network between machines, but tray app handles pairing |
+| **Setup complexity** | Medium - network between machines, but tray app handles pairing |
 | **UX Rating** | ⭐⭐⭐⭐⭐ Best of both worlds for multi-machine |
 
 The agent can see both the Mac and Windows desktops, capture from either machine's camera, show canvas on both screens. Multi-machine nirvana.
@@ -217,7 +194,7 @@ The agent can see both the Mac and Windows desktops, capture from either machine
 | **Nodes** | macOS native app connecting to Windows WSL2 gateway |
 | **Capabilities** | Full Mac node capabilities, but gateway is in WSL2 |
 | **Networking** | WSL2 must bind non-loopback (`--bind 0.0.0.0` or tailnet). Mac connects to Windows IP. |
-| **Setup complexity** | High — WSL2 networking config + cross-machine pairing |
+| **Setup complexity** | High - WSL2 networking config + cross-machine pairing |
 | **UX Rating** | ⭐⭐⭐½ Unusual topology but works. Why not put gateway on Mac? |
 
 Niche scenario. If the "server" must be Windows for some reason, this works but Mac-gateway-with-Windows-node is almost always better.
@@ -365,13 +342,13 @@ The tray app could connect **twice** (operator + node) or the protocol may suppo
 The tray app *already has WebView2* for WebChat (#5 is the Canvas Panel issue). The same control can serve as the node canvas surface.
 
 ```csharp
-// canvas.present — navigate WebView2 to a URL
+// canvas.present - navigate WebView2 to a URL
 await webView.CoreWebView2.Navigate(url);
 
-// canvas.eval — execute JavaScript
+// canvas.eval - execute JavaScript
 string result = await webView.CoreWebView2.ExecuteScriptAsync(js);
 
-// canvas.snapshot — capture the WebView2 content
+// canvas.snapshot - capture the WebView2 content
 using var stream = new InMemoryRandomAccessStream();
 await webView.CoreWebView2.CapturePreviewAsync(
     CoreWebView2CapturePreviewImageFormat.Png, stream);
@@ -380,7 +357,7 @@ await stream.ReadAsync(bytes.AsBuffer(), (uint)stream.Size, InputStreamOptions.N
 return Convert.ToBase64String(bytes);
 ```
 
-**Blocker:** #9 — WebView2 fails to initialize on ARM64 in WinUI 3 unpackaged mode. This needs resolution first.
+**Blocker:** #9 - WebView2 fails to initialize on ARM64 in WinUI 3 unpackaged mode. This needs resolution first.
 
 ### Camera → Windows.Media.Capture / MediaFoundation
 
@@ -420,7 +397,7 @@ session.StartCapture();
 ### Notifications → ToastNotificationManager
 
 ```csharp
-// system.notify — agent-driven notifications
+// system.notify - agent-driven notifications
 var xml = ToastNotificationManager.GetTemplateContent(ToastTemplateType.ToastText02);
 var textNodes = xml.GetElementsByTagName("text");
 textNodes[0].InnerText = title;
@@ -432,28 +409,33 @@ ToastNotificationManager.CreateToastNotifier("OpenClaw.Tray").Show(toast);
 
 The tray app *already does* toast notifications from gateway events. The change is to also handle `system.notify` commands from the node protocol so the agent can *request* a notification.
 
-### System Exec → Process.Start
+### System Exec: canonical argv, local approval, and MXC
 
-```csharp
-// system.run
-var process = new Process {
-    StartInfo = new ProcessStartInfo {
-        FileName = "powershell.exe",
-        Arguments = $"-Command \"{command}\"",
-        RedirectStandardOutput = true,
-        RedirectStandardError = true,
-        UseShellExecute = false,
-        CreateNoWindow = true,
-        WorkingDirectory = cwd
-    }
-};
-process.Start();
-string stdout = await process.StandardOutput.ReadToEndAsync();
-string stderr = await process.StandardError.ReadToEndAsync();
-await process.WaitForExitAsync();
+The earlier PowerShell-only sketch is no longer the implementation. The current
+path is:
+
+```text
+node.invoke system.run
+  -> local Run system tools gate
+  -> Windows V2 exec approval
+  -> resolved absolute executable + canonical argv
+  -> MXC AppContainer, strict deny, or approved host fallback
+  -> Process.Start with UseShellExecute=false
 ```
 
-**Critical:** Exec approvals must be enforced locally, same as macOS/headless nodes. The default store is `%APPDATA%\OpenClawTray\exec-approvals.json`; `OPENCLAW_STATE_DIR` overrides that location.
+The normal upstream `exec host=node` path is still shell-oriented. The gateway
+builds platform argv such as `cmd.exe /d /s /c <command>` for Windows before it
+calls `system.run`. It calls `system.run.prepare` first only when gateway policy
+requires approval or strict inline-eval review. A low-level caller can instead
+send direct argv. In that case, Windows resolves `argv[0]` to an absolute
+executable and passes arguments through `ProcessStartInfo.ArgumentList` without
+adding another shell.
+
+Exec approvals are enforced locally, as they are for macOS and headless nodes.
+The default store is `%APPDATA%\OpenClawTray\exec-approvals.json`;
+`OPENCLAW_STATE_DIR` overrides that location. See the
+[exec flow FAQ](OPENCLAW_GATEWAY_NODE_EXEC_FAQ.md#what-exactly-happens-inside-the-windows-node-for-systemrun)
+for gateway-owned approval, node-local approval, and sandbox ordering.
 
 #### Decision: retire Windows V1 exec policy without migration
 
@@ -499,6 +481,231 @@ The node returns `command-array-required` for a string command and
 `custom-env-not-supported` for a non-empty environment. This explicit boundary
 keeps approval identity and process execution on one argv representation.
 
+`"version": 1` inside `exec-approvals.json` is the persisted file schema
+version. It is not the retired Windows V1 `exec-policy.json` evaluator.
+
+#### Decision: bind reusable gateway commands to direct argv
+
+The gateway represents Windows shell text as
+`["cmd.exe", "/d", "/s", "/c", "<command>"]` with one pre-joined command element.
+Low-level callers and upstream approval fixtures may instead supply a
+reconstructible tokenized tail. The carrier executable may be the bare name or
+the fully qualified system `cmd.exe` path; an arbitrary file merely named
+`cmd.exe` is never a transparent durable-approval carrier. A bare name is only a
+token check, so durable binding additionally resolves the carrier through
+`ResolveTrustedCarrierPath` and requires a real image in a Windows system
+directory, then pins that absolute path into the executed argv so the loader
+cannot re-resolve it at launch.
+`CanonicalCmdCarrier` is the single owner of that recognition, shared by the
+approvals binder and the MXC command-line builder so the layer that authorizes a
+shape and the layer that runs it cannot disagree. A multi-element tail is only
+accepted when every element is free of whitespace and quotes, because otherwise
+the original process-creation quoting is not recoverable by a space join.
+
+V2 may persist or consume an
+allowlist rule only when that carrier contains one statically bindable external
+command. The binder accepts an intentionally small grammar: unquoted literal
+tokens separated by whitespace. It rejects quoting, pipelines, command chains,
+redirection, expansion, caret escapes, grouping, CMD built-ins, unresolved or
+nonexistent executables, and wrapper/interpreter targets. Durable binding is
+further restricted to native `.exe` images, which CreateProcess runs
+directly: PATH resolution probes every `PATHEXT` entry, so a bare name can
+otherwise resolve to `.bat`, `.cmd`, `.com`, `.vbs`, `.js`, `.wsf`, or `.msc`
+content whose meaning is delegated to an interpreter without any change to the
+approved path. The allowlist is `.exe` only on purpose: adding another image
+format to durable authorization is a separate decision with its own review, not
+a detail of carrier binding. A `.com` target is still runnable, it is simply
+prompt-only, which is the fail-closed side of that decision.
+
+For a successful binding, one immutable reusable command supplies the resolved
+path used for matching, the persisted pattern, usage metadata, and the direct
+argv executed by the runner. The original CMD wrapper remains the approved
+execution only for an attended Allow once decision or locally selected full
+policy. This prevents the former split where an inner executable suppressed the
+prompt but the outer `cmd.exe` identity was then rejected.
+
+Permissions **Ask** maps to prompt-on-miss: a reusable allowlist match runs
+without prompting. A manually configured literal `ask: "always"` still prompts
+every time. Allow always is offered only for a reusable command under allowlist
+security and persists that command's resolved executable path.
+
+When nothing binds, the prompt still shows the operator a resolved executable
+path, falling back to the carrier's own resolution. An approval dialog must never
+ask for a decision with no resolved path displayed.
+
+Durable identity is the executable **plus an argument pattern**, matching macOS and
+the shared protocol. A generated rule persists `path`, `argPattern`, `commandText`,
+and `source`, so approving `where.exe hostname.exe` authorizes exactly that
+argument form and nothing else. This is what makes an explicit code-host catalog
+unnecessary: an argument-selected host such as `mshta.exe` or `rundll32.exe` cannot
+be blanket-approved, because the persisted rule is pinned to the arguments the
+operator actually saw.
+
+`argPattern` is written in the platform form the gateway expects. On Windows each
+argument is separator-normalized and the pattern is the anchored, NUL-joined
+regular expression `^escaped(join("\0"))\0$`; zero arguments serialize as `^\0\0$`.
+The matcher selects its separator by testing whether the pattern contains a NUL,
+so both the Windows and the hashed non-Windows form remain readable. Matching runs
+against the full argv including argv[0].
+
+Authorization consequences follow upstream `matchAllowlist` exactly:
+
+- A **generated** entry with no `argPattern` never matches. It is skipped rather
+  than widened to a path-only grant, so a truncated or hand-edited rule fails
+  closed. Any non-empty `source` counts as generated, not just the exact marker
+  this node writes, so a differently cased, padded, or foreign marker cannot fall
+  through and widen the rule. Provenance is absent only when `source` is empty or
+  whitespace.
+- A **path-only** entry authorizes its executable regardless of arguments. That is
+  the operator writing a deliberately broad rule by hand, and it is honored as
+  written, with one carve-out described under "Legacy quarantine" below. Path-only
+  matches are deferred so a precisely bound rule always wins.
+- Normalization preserves `Source` and `ArgPattern` on rewrite. Dropping either
+  would silently convert a narrow generated rule into a broad path-only one.
+
+##### Legacy quarantine for provenance-less command-host rules
+
+An entry with **no `source` and no `argPattern`** predates argument binding, and we
+cannot tell a deliberate operator rule from one written when this node still refused
+interpreters durable approval by name. For an ordinary program that ambiguity is
+harmless and the entry keeps working. For a program the previous model refused
+outright (`python`, `cmd`, `powershell`, `pwsh`, `wsl`, `node`, `cscript`, the
+indirect execution hosts such as `mshta`, `rundll32`, `regsvr32`, `msbuild` and
+`certutil`, and versioned interpreters such as `python3.12`) it is not: honoring it
+would convert a case that used to be denied into an unconditional allow, purely as a
+side effect of changing the model. Those entries go **inert**. The command falls
+through to a prompt.
+
+The quarantined set is a verbatim copy of the catalog as it stood immediately before
+argument binding replaced it, because the question it answers is purely historical:
+would this exact entry have been refused when it was written? It must not be curated,
+pruned, or extended, and its matching rules are fixed for the same reason: it compares
+a basename with only a `.exe` suffix stripped, exactly as the original did.
+
+The entry is not deleted and not migrated. The only way to make such a host reusable
+is an explicit Allow always, which writes an argument-bound sibling carrying `source`
+and `argPattern`; that sibling then matches its own invocation and nothing else.
+
+This name list is a compatibility measure for records already on disk. It is not the
+security boundary and must not be used as one. The boundary is that every rule this
+node generates pins its arguments.
+
+##### Trusted carrier: approval identity is separate from execution transport
+
+When the payload inside a strictly trusted canonical `cmd` carrier binds, the node
+authorizes the **inner** executable and argument pattern, and executes a carrier
+reconstructed from the validated request. The carrier is not incidental: under MXC it
+transports the PATH and TEMP bootstrap in band, because MXC 0.7 rejects a
+non-empty `process.env`. Substituting the bound direct argv would authorize
+correctly and then run in an environment the command was never prepared for.
+
+The reconstructed carrier differs from the request in exactly two places, and both
+of them remove a resolution that would otherwise happen at launch instead of at
+approval:
+
+- **argv[0]** is pinned to the resolved `System32` or `SysWOW64` `cmd.exe`. A
+  relative `cmd.exe` would let Windows re-resolve the image against PATH and the
+  working directory at spawn time.
+- **The payload's executable token** is pinned to the binder-resolved absolute path.
+  `cmd.exe` resolves that token itself, at launch, searching the working directory
+  **before** PATH, while the binder's resolver searches PATH only. Leaving it
+  unpinned means one resolver authorizes the command and a different one picks what
+  runs, and anything able to write to the working directory in between decides the
+  outcome. A pinned absolute path leaves `cmd` nothing to search for.
+
+Everything else, including interior spacing, is byte-preserved, so the executed
+carrier reconstructs the approved `rawCommand` exactly and no metacharacter can be
+introduced after approval. The rewrite is built from the payload's parsed token
+spans, never by string replacement, so an argument that repeats the executable's
+text is untouched. The tail's arity is preserved as well, so a pre-joined tail stays
+one element and a tokenized tail keeps its elements and no new process-creation
+quoting is introduced.
+
+Both pins apply to **every** approved run of a recognized canonical carrier: a durable
+Allow Always, a one-time Allow Once, an allowlist hit that never prompts, and a
+pre-approved `security=full` run. Approval identity and durability are separate from
+execution transport. The prompt names the inner executable the binder resolved through
+a trusted system `cmd.exe`, so executing the request's own argv instead would reopen
+both launch-time lookups after the decision had been made, and a `cmd.exe` planted
+earlier on PATH than the system directory would run in place of the image that was
+shown. Choosing this transport persists nothing; durability is gated separately on an
+Allow Always decision with a bound reusable command.
+
+The same rule covers a directly invoked executable, which is resolved twice: once by
+the normalizer for the execution identity and once by the binder for the identity that
+is displayed and stored. Execution uses the binder's resolution, so the two lookups can
+never disagree about which image the operator approved.
+
+Pinning is refused rather than approximated. The pinned path must be writable into
+the payload as a single token that `cmd` reads back byte for byte: no whitespace, no
+quote, none of `% ! ^ & | < > ( )`, none of `, ; =` (which end `cmd`'s command-name
+token even though our own tokenizer does not model them), no control characters, and
+no trailing backslash. Whitespace is refused rather than quoted, because under `/s`
+`cmd` strips the first and last quote of the payload and uses the remainder verbatim,
+so quoting a spaced path removes the quotes again and leaves it ambiguous. After
+reconstruction the result is re-parsed and compared against the original: same
+argument count, the executable equal to the pinned path, every other argument
+ordinal-identical, and the whole carrier still recognized as the canonical shape.
+Anything that fails is not bound and stays prompt-only
+(`carrier-payload-not-pinnable`). The same equivalence is re-checked at execution
+time rather than trusted from bind time.
+
+Trust is deliberately narrow. A carrier is trusted only when argv[0] is the bare
+name `cmd`/`cmd.exe` or a fully qualified path under `System32`/`SysWOW64`. A
+renamed or relocated image named `cmd.exe` is refused for durable binding and
+falls back to one-time or prompt handling, so an attacker-supplied binary cannot
+be looked through. Non-canonical carriers stay one-time and report an explicit
+diagnostic (`carrier-payload-not-static`) rather than silently failing to bind.
+
+Pinning supersedes the earlier approval-time working-directory ambiguity check. That
+check could only observe the directory as it was when approval was granted, so a
+writable working directory could gain a shadowing file before launch and win anyway.
+It has been deleted rather than kept as a diagnostic, and must not be restored as an
+authorization boundary.
+
+##### Behavior changes from the previous executable-path-only binding
+
+- A stored rule naming an interpreter or code host (for example `**/wsl.exe`)
+  previously produced a hard `persistent-approval-not-permitted-for-command-host`
+  refusal. A hand-written path-only rule now authorizes that executable, matching
+  upstream, **except** for entries that carry neither `source` nor `argPattern`,
+  which stay inert for those hosts (see "Legacy quarantine" above). Generated rules
+  still pin arguments, so a broad grant cannot happen by accident through the Allow
+  always UX.
+- A separator-bearing path to a nonexistent file is now rejected at bind time.
+  Binding requires the resolved executable to exist.
+- UNC and other network paths are refused for durable approval. Their contents are
+  remotely mutable at a stable path, so a persisted rule would be a standing grant
+  over content the node does not control.
+- Integrity binding is by resolved path only, with no content hash, inode, or
+  signature check. This matches macOS `lastResolvedPath` behavior, and leaves the
+  same time-of-check to time-of-use exposure between approval and launch.
+- An argument containing NUL is refused. NUL separates arguments inside a stored
+  `argPattern`, so `"a\0b"` would render identically to the two arguments
+  `"a"`, `"b"` and let a stored rule match a differently segmented command. It is
+  not representable in a Windows command line either, so refusing costs nothing.
+- A remote `system.execApprovals.set` may retain existing allowlist entries but
+  not alter them. Retention compares the whole authorization identity (pattern,
+  `argPattern`, and `source`) field by field. Comparing paths alone would let a
+  caller keep the executable while dropping the binding, silently widening a
+  generated rule into a path-only grant.
+
+##### Closed: working-directory substitution for bare carrier payloads
+
+Previously, for a bare (unqualified) payload name inside a trusted carrier, the
+executable the node authorized and the executable `cmd.exe` launched were resolved at
+different times by different code, and a writable working directory could gain a
+shadowing file between approval and launch.
+
+This is closed by pinning the payload's executable token to its resolved absolute
+path inside the reconstructed carrier, described above. `cmd` no longer performs a
+second resolution, so there is no window to win. Cases where the resolved path cannot
+be represented safely in the payload are refused durable binding rather than
+transported unpinned.
+
+Time-of-check to time-of-use on the *contents* of the resolved path remains, and is
+unchanged: integrity binding is by path only, matching macOS `lastResolvedPath`.
+
 ### Location → Windows.Devices.Geolocation
 
 ```csharp
@@ -509,7 +716,7 @@ var position = await geolocator.GetGeopositionAsync();
 // position.Coordinate.Point.Position.Latitude / .Longitude
 ```
 
-**Note:** Desktop PCs usually have poor location accuracy (IP-based). Laptops with WiFi can do better. This is a "nice to have" — lower priority than camera/canvas/screen.
+**Note:** Desktop PCs usually have poor location accuracy (IP-based). Laptops with WiFi can do better. This is a "nice to have" - lower priority than camera/canvas/screen.
 
 ### TTS → Windows.Media.SpeechSynthesis
 
@@ -533,9 +740,9 @@ Current PR review status: open PR #120 (`feature/voice-mode`) is a useful protot
 
 The tray app already maintains a WebSocket connection as an operator. It should *also* register as a node on the same or a second connection. This means:
 
-- **Option A:** Single WS, dual role — connect once with `role: ["operator", "node"]` (if protocol supports it)
-- **Option B:** Two WS connections — one operator (existing), one node (new)
-- **Option C:** Node-only, deprecate operator features — bad idea, lose Quick Send / status
+- **Option A:** Single WS, dual role - connect once with `role: ["operator", "node"]` (if protocol supports it)
+- **Option B:** Two WS connections - one operator (existing), one node (new)
+- **Option C:** Node-only, deprecate operator features - bad idea, lose Quick Send / status
 
 Option A is cleanest but requires protocol support. Option B works today with no gateway changes.
 
@@ -552,11 +759,11 @@ The gateway is Node.js. Node.js runs natively on Windows. But:
 | Spawning child processes | Medium | `spawn('sh', ['-c', ...])` won't work on Windows. Need `cmd.exe` or `powershell.exe`. |
 | `launchd`/`systemd` service install | High | `openclaw onboard --install-daemon` installs a launchd/systemd service. Windows needs a Windows Service or Task Scheduler equivalent. |
 | WhatsApp/Telegram/Discord channels | Low | These are network clients, platform-agnostic. |
-| Pi agent RPC | Low | Spawns Node.js processes — should work cross-platform. |
+| Pi agent RPC | Low | Spawns Node.js processes - should work cross-platform. |
 | File watching (chokidar) | Low | Works on Windows. |
 | Browser automation (Playwright) | Low | Playwright supports Windows natively. |
 
-**Recommendation:** Audit the gateway codebase for Unix assumptions. This could be a relatively tractable porting effort — most of the gateway is pure Node.js WebSocket/HTTP work.
+**Recommendation:** Audit the gateway codebase for Unix assumptions. This could be a relatively tractable porting effort - most of the gateway is pure Node.js WebSocket/HTTP work.
 
 ### 3. What about the service lifecycle on Windows?
 
@@ -580,7 +787,7 @@ WSL2 runs behind a NAT. The implications:
 | External → WSL2 | ❌ By default | Needs port forwarding or `--bind 0.0.0.0`. |
 | WSL2 → External | ✅ | NAT outbound works fine. |
 
-**For the tray-app-as-node scenario:** The tray app (Windows) connects *outward* to the WSL2 gateway. This is the easy direction — Windows → WSL2 localhost works. No NAT issues.
+**For the tray-app-as-node scenario:** The tray app (Windows) connects *outward* to the WSL2 gateway. This is the easy direction - Windows → WSL2 localhost works. No NAT issues.
 
 **For native Windows gateway:** No NAT at all. Everything is loopback. Problem solved.
 
@@ -588,9 +795,9 @@ WSL2 runs behind a NAT. The implications:
 
 The tray app currently uses WebView2 for WebChat. The node canvas is a *separate* surface. Options:
 
-- **Two WebView2 instances** — one for chat, one for canvas (each in its own window/panel)
-- **Tab-based UI** — WebView2 with tab switching between chat and canvas
-- **Canvas as separate window** — floating overlay window with WebView2 (like macOS canvas)
+- **Two WebView2 instances** - one for chat, one for canvas (each in its own window/panel)
+- **Tab-based UI** - WebView2 with tab switching between chat and canvas
+- **Canvas as separate window** - floating overlay window with WebView2 (like macOS canvas)
 
 **Recommendation:** Separate floating window for canvas (matches macOS behavior). The chat WebView2 stays in the tray flyout/window. Canvas appears when the agent calls `canvas.present` and hides on `canvas.hide`.
 
@@ -610,31 +817,31 @@ The node protocol requires a stable device identity (`device.id`) derived from a
 
 ## Phased Roadmap
 
-### Phase 1: Tray App as Native Windows Node — Notifications + Canvas
+### Phase 1: Tray App as Native Windows Node - Notifications + Canvas
 **Priority: HIGH | Effort: Medium | Impact: Huge**
 
 - [x] Implement node protocol in `OpenClaw.Shared` (connect with `role: "node"`, handle `node.invoke`)
 - [x] Device identity + keypair generation + pairing flow
-- [x] `system.notify` — agent can request Windows toast notifications
-- [x] `canvas.present` / `canvas.hide` — floating WebView2 canvas window
-- [x] `canvas.navigate` / `canvas.eval` / `canvas.snapshot` — full canvas support
-- [x] `canvas.a2ui.push` / `canvas.a2ui.pushJSONL` / `canvas.a2ui.reset` — A2UI rendering
-- [x] `device.info` / `device.status` — metadata and lightweight status payloads
-- [x] `system.run` — exec commands on Windows (PowerShell/cmd) with ICommandRunner abstraction
-- [x] `system.execApprovals.get/set` — remote-manageable exec approval policy
+- [x] `system.notify` - agent can request Windows toast notifications
+- [x] `canvas.present` / `canvas.hide` - floating WebView2 canvas window
+- [x] `canvas.navigate` / `canvas.eval` / `canvas.snapshot` - full canvas support
+- [x] `canvas.a2ui.push` / `canvas.a2ui.pushJSONL` / `canvas.a2ui.reset` - A2UI rendering
+- [x] `device.info` / `device.status` - metadata and lightweight status payloads
+- [x] `system.run` - exec commands on Windows (PowerShell/cmd) with ICommandRunner abstraction
+- [x] `system.execApprovals.get/set` - remote-manageable exec approval policy
 - [x] Settings UI for node capabilities (enable/disable canvas, screen, camera, location, browser proxy)
-- [x] Resolve #9 (WebView2 ARM64) — required for canvas
+- [x] Resolve #9 (WebView2 ARM64) - required for canvas
 
 **Depends on:** #5 (Canvas Panel), #9 (WebView2 ARM64)
 
 ### Phase 2: Screen Capture + Camera
 **Priority: HIGH | Effort: Medium | Impact: High**
 
-- [x] `camera.list` — enumerate Windows cameras (DeviceInformation.FindAllAsync)
-- [x] `camera.snap` — capture photo from webcam (MediaCapture + frame reader fallback)
-- [x] `camera.clip` — record short video clip (MediaCapture + MediaEncoding)
-- [x] `screen.record` — capture Windows desktop via Graphics Capture API
-- [x] `screen.snapshot` — screenshot via Windows.Graphics.Capture
+- [x] `camera.list` - enumerate Windows cameras (DeviceInformation.FindAllAsync)
+- [x] `camera.snap` - capture photo from webcam (MediaCapture + frame reader fallback)
+- [x] `camera.clip` - record short video clip (MediaCapture + MediaEncoding)
+- [x] `screen.record` - capture Windows desktop via Graphics Capture API
+- [x] `screen.snapshot` - screenshot via Windows.Graphics.Capture
 - [x] Permission prompts (camera: UnauthorizedAccessException → toast; future MSIX consent)
 - [x] Multi-monitor support for screen capture (`screenIndex` param)
 
@@ -652,10 +859,10 @@ The node protocol requires a stable device identity (`device.id`) derived from a
 ### Phase 4: Feature Parity + Polish
 **Priority: LOW | Effort: Medium | Impact: Medium**
 
-- [x] `location.get` — Windows Location API
+- [x] `location.get` - Windows Location API
 - [ ] TTS / Speech Synthesis
 - [ ] Microphone / voice input
-- [x] `browser.proxy` — local browser-control bridge on gateway port + 2, including SSH companion-forward diagnostics
+- [x] `browser.proxy` - local browser-control bridge on gateway port + 2, including SSH companion-forward diagnostics
 - [x] Browser-control host setup guidance and local host runtime smoke for end-to-end browser smoke tests
 - [ ] Bundled/browser-control host installer/launcher
 - [ ] UI Automation (Windows equivalent of macOS Accessibility API)
@@ -729,20 +936,20 @@ This is a big effort and **contributions are very welcome!** Here's how to get s
 
 ### Good First Issues
 
-1. **Capability diagnostics copy** — ✅ Command Center can copy a summary of declared commands, gateway allowlist status, and dangerous-command opt-ins.
-2. **Gateway health summary** — Show version, update state, auth state, and active connection health in one panel.
-3. **Channel status cards** — Surface configured/running/error/probe state for channels.
+1. **Capability diagnostics copy** - ✅ Command Center can copy a summary of declared commands, gateway allowlist status, and dangerous-command opt-ins.
+2. **Gateway health summary** - Show version, update state, auth state, and active connection health in one panel.
+3. **Channel status cards** - Surface configured/running/error/probe state for channels.
 
 ### Medium Issues
 
-4. **Browser proxy parity** — Windows now includes a Mac-compatible local `browser.proxy` bridge to the browser control host on gateway port + 2, and managed SSH tunnel mode forwards local+2 to remote+2 when the browser proxy capability is enabled; continue hardening live browser-host setup guidance and diagnostics.
-5. **Gateway/channel flyout** — Show configured/running/error/probe state for channels and gateway health in the tray.
+4. **Browser proxy parity** - Windows now includes a Mac-compatible local `browser.proxy` bridge to the browser control host on gateway port + 2, and managed SSH tunnel mode forwards local+2 to remote+2 when the browser proxy capability is enabled; continue hardening live browser-host setup guidance and diagnostics.
+5. **Gateway/channel flyout** - Show configured/running/error/probe state for channels and gateway health in the tray.
 
 ### Harder Issues
 
-6. **Voice mode parity** — PR #120 has been reviewed and should stay blocked until it is rebased/split, gated default-off through Settings, aligned with a shared Mac/gateway voice command contract, and hardened for credential storage and permission prompts.
-7. **Native Windows gateway audit** — Run `openclaw gateway` on Windows, identify and fix platform-specific failures.
-8. **Richer channel operations** — Add tray surfaces for channel configuration, probe status, token source, last error, and recovery actions.
+6. **Voice mode parity** - PR #120 has been reviewed and should stay blocked until it is rebased/split, gated default-off through Settings, aligned with a shared Mac/gateway voice command contract, and hardened for credential storage and permission prompts.
+7. **Native Windows gateway audit** - Run `openclaw gateway` on Windows, identify and fix platform-specific failures.
+8. **Richer channel operations** - Add tray surfaces for channel configuration, probe status, token source, last error, and recovery actions.
 
 ### Development Setup
 

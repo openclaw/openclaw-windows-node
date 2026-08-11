@@ -15,13 +15,21 @@ public sealed class ValidatedRunRequest
     public string? AgentId { get; }
     public string? SessionKey { get; }
 
+    /// <summary>
+    /// The request's human-readable command text, when supplied. Validated against
+    /// Argv so the text an operator is shown cannot describe a different command
+    /// than the one that runs. Never an input to resolution or execution.
+    /// </summary>
+    public string? RawCommand { get; }
+
     internal ValidatedRunRequest(
         string[] argv,
         string? cwd,
         int timeoutMs,
         IReadOnlyDictionary<string, string>? env,
         string? agentId,
-        string? sessionKey)
+        string? sessionKey,
+        string? rawCommand = null)
     {
         Argv = argv;
         Cwd = cwd;
@@ -29,6 +37,7 @@ public sealed class ValidatedRunRequest
         Env = env;
         AgentId = agentId;
         SessionKey = sessionKey;
+        RawCommand = rawCommand;
     }
 }
 

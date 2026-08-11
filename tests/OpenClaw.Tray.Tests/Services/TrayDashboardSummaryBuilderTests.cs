@@ -333,17 +333,17 @@ public sealed class TrayDashboardSummaryBuilderTests
     }
 
     [Fact]
-    public void MetricsLine_ShowsSessionsAndActiveCount()
+    public void MetricsLine_ShowsSessionsAndWorkingCount()
     {
         var sessions = new[]
         {
-            new SessionInfo { Key = "a", Status = "active" },
-            new SessionInfo { Key = "b", Status = "idle" },
+            new SessionInfo { Key = "a", Status = "running", HasActiveRun = true },
+            new SessionInfo { Key = "b", Status = "running", HasActiveRun = false },
         };
 
         var summary = Build(Base(sessions: sessions));
 
-        Assert.Contains("2 sessions (1 active)", summary.MetricsLine);
+        Assert.Contains("2 sessions (1 working)", summary.MetricsLine);
     }
 
     [Fact]
@@ -546,7 +546,7 @@ public sealed class TrayDashboardSummaryBuilderTests
     }
 
     [Fact]
-    public void ActiveSession_PrefersActiveSubOverIdleMain()
+    public void ActiveSession_PrefersWorkingSubOverReadyMain()
     {
         var sessions = new[]
         {
@@ -557,11 +557,11 @@ public sealed class TrayDashboardSummaryBuilderTests
         var summary = Build(Base(sessions: sessions));
 
         Assert.Equal("Worker", summary.ActiveSession!.Title);
-        Assert.Equal("Active", summary.ActiveSession.Label);
+        Assert.Equal("Working", summary.ActiveSession.Label);
     }
 
     [Fact]
-    public void ActiveSession_PrefersActiveMainOverActiveSub()
+    public void ActiveSession_PrefersWorkingMainOverWorkingSub()
     {
         var sessions = new[]
         {
@@ -580,11 +580,11 @@ public sealed class TrayDashboardSummaryBuilderTests
         var summary = Build(Base(sessions: sessions));
 
         Assert.Equal("Main", summary.ActiveSession!.Title);
-        Assert.Equal("Active", summary.ActiveSession.Label);
+        Assert.Equal("Working", summary.ActiveSession.Label);
     }
 
     [Fact]
-    public void ActiveSession_LabelIsMainForIdleMain()
+    public void ActiveSession_LabelIsReadyForIdleMain()
     {
         var sessions = new[]
         {
@@ -593,7 +593,7 @@ public sealed class TrayDashboardSummaryBuilderTests
 
         var summary = Build(Base(sessions: sessions));
 
-        Assert.Equal("Main", summary.ActiveSession!.Label);
+        Assert.Equal("Ready", summary.ActiveSession!.Label);
     }
 
     [Fact]
@@ -716,12 +716,8 @@ public sealed class TrayDashboardSummaryBuilderTests
         {
             Key = "agent:main:tui-id:heartbeat",
             Status = "active",
-            Presentation = new SessionPresentationInfo
-            {
-                Title = "Heartbeat",
-                Family = "heartbeat",
-                IsBackground = true,
-            },
+            Classification = "heartbeat",
+            IsBackground = true,
         };
         var main = new SessionInfo { Key = "agent:main:main", IsMain = true, Status = "idle" };
 
@@ -753,10 +749,10 @@ public sealed class TrayDashboardSummaryBuilderTests
     }
 
     [Fact]
-    public void SelectActiveSession_FallsBackToEndedWhenAllEnded()
+    public void SelectActiveSession_PrefersNeedsAttentionOverSuccessfulCompletion()
     {
-        // When every session is ended, still return the most recent one
-        // rather than null (the tray should show something if sessions exist).
+        // Failed work remains actionable, so it should win over a newer successful
+        // completion when there is no working or main session.
         var failed = new SessionInfo
         {
             Key = "agent:main:explicit:task-a",
@@ -771,7 +767,7 @@ public sealed class TrayDashboardSummaryBuilderTests
         };
 
         var result = TrayDashboardSummaryBuilder.SelectActiveSession([failed, done]);
-        Assert.Same(done, result);
+        Assert.Same(failed, result);
     }
 
     [Fact]

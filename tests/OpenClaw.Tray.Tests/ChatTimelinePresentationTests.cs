@@ -213,6 +213,44 @@ public sealed class ChatTimelinePresentationTests
     }
 
     [Fact]
+    public void ReactorComposer_GatesClickableControlsUntilLayoutIsUsable()
+    {
+        var root = File.ReadAllText(Path.Combine(
+            TestRepositoryPaths.GetRepositoryRoot(),
+            "src",
+            "OpenClaw.Tray.WinUI",
+            "Chat",
+            "OpenClawReactorChatRoot.cs"));
+
+        Assert.Contains("internal static class ComposerAutomationVisibility", root);
+        Assert.Contains("control.IsHitTestVisible = false;", root);
+        Assert.Contains("control.IsLoaded", root);
+        Assert.Contains("control.ActualWidth > 0", root);
+        Assert.Contains("control.ActualHeight > 0", root);
+        Assert.Contains("AccessibilityView.Raw", root);
+        Assert.Contains("AccessibilityView.Control", root);
+        Assert.True(
+            root.Split("AccessibilityView.Raw", StringSplitOptions.None).Length - 1 >= 4);
+        Assert.Contains(".AutomationId(\"ChatComposerInput\")", root);
+        Assert.Contains("AutomationProperties.SetAutomationId(", root);
+        Assert.Contains("RaisePropertyChangedEvent(", root);
+        Assert.Contains("AutomationElementIdentifiers.IsOffscreenProperty", root);
+        Assert.Equal(
+            4,
+            root.Split(
+                "ComposerAutomationVisibility.Prepare(",
+                StringSplitOptions.None).Length - 1);
+        Assert.Contains("\"ChatComposerAttach\"", root);
+        Assert.Contains("\"ChatComposerSpeakerToggle\"", root);
+        Assert.Contains("\"ChatComposerSessionPicker\"", root);
+        Assert.Contains("\"ChatComposerModelPicker\"", root);
+        Assert.Contains("\"ChatComposerReasoningPicker\"", root);
+        Assert.Contains("\"ChatComposerVoice\"", root);
+        Assert.Contains("\"ChatComposerSettings\"", root);
+        Assert.Contains("\"ChatComposerPrimaryAction\"", root);
+    }
+
+    [Fact]
     public void ReactorComposer_BoundsAndAnnouncesQueuedMessages()
     {
         var root = File.ReadAllText(Path.Combine(
@@ -225,6 +263,176 @@ public sealed class ChatTimelinePresentationTests
         Assert.Contains("ScrollView(VStack(4, queuedRows))", root);
         Assert.Contains(".MaxHeight(props.IsCompact ? 144 : 220)", root);
         Assert.Contains("AutomationLiveSetting.Polite", root);
+    }
+
+    [Fact]
+    public void ReactorComposer_ReattachesStableImagePasteHandlerAfterRemount()
+    {
+        var root = File.ReadAllText(Path.Combine(
+            TestRepositoryPaths.GetRepositoryRoot(),
+            "src",
+            "OpenClaw.Tray.WinUI",
+            "Chat",
+            "OpenClawReactorChatRoot.cs"));
+        var composer = root[root.IndexOf(
+            "public sealed class ReactorChatComposer",
+            StringComparison.Ordinal)..];
+
+        const string callbackRef =
+            "var onAttachmentPasted = UseRef<Action<ChatAttachment>>(props.OnAttachmentPasted);";
+        const string callbackAssignment =
+            "onAttachmentPasted.Current = props.OnAttachmentPasted;";
+        const string handlerRef =
+            "var pasteHandler = UseRef<TextControlPasteEventHandler>(async (_, args) =>";
+        const string mount =
+            "textBox.Paste += pasteHandler.Current;";
+        const string unmount =
+            "textBox.Paste -= pasteHandler.Current;";
+
+        var callbackRefIndex = composer.IndexOf(callbackRef, StringComparison.Ordinal);
+        var callbackAssignmentIndex = composer.IndexOf(callbackAssignment, StringComparison.Ordinal);
+        var handlerRefIndex = composer.IndexOf(handlerRef, StringComparison.Ordinal);
+        var mountIndex = composer.IndexOf(mount, StringComparison.Ordinal);
+        var unmountIndex = composer.IndexOf(unmount, StringComparison.Ordinal);
+
+        Assert.True(callbackRefIndex >= 0);
+        Assert.True(callbackAssignmentIndex > callbackRefIndex);
+        Assert.True(handlerRefIndex > callbackAssignmentIndex);
+        Assert.True(mountIndex > handlerRefIndex);
+        Assert.True(unmountIndex > mountIndex);
+        Assert.Equal(1, composer.Split(handlerRef, StringSplitOptions.None).Length - 1);
+        var pasteHandlerBody = composer[handlerRefIndex..mountIndex];
+        Assert.Contains(
+            "if (GetBitmapClipboardContent() is not { } clipboardContent)",
+            pasteHandlerBody);
+        Assert.DoesNotContain(
+            "Windows.ApplicationModel.DataTransfer.Clipboard.GetContent()",
+            pasteHandlerBody);
+        Assert.Contains(
+            "await PasteImageFromClipboardAsync(clipboardContent, onAttachmentPasted.Current)",
+            composer);
+        Assert.Contains("onAttachmentPasted(attachment);", composer);
+        Assert.DoesNotContain("pasteHooked", composer);
+    }
+
+    [Fact]
+    public void ReactorComposer_UsesBitmapOnlyContextMenuThatReentersStablePastePath()
+    {
+        var root = File.ReadAllText(Path.Combine(
+            TestRepositoryPaths.GetRepositoryRoot(),
+            "src",
+            "OpenClaw.Tray.WinUI",
+            "Chat",
+            "OpenClawReactorChatRoot.cs"));
+        var composer = root[root.IndexOf(
+            "public sealed class ReactorChatComposer",
+            StringComparison.Ordinal)..];
+
+        Assert.Contains("textBox.ContextFlyout = CreateComposerContextFlyout(", composer);
+        Assert.Contains("textBox.ContextFlyout = null;", composer);
+        Assert.DoesNotContain("ContextRequested", composer);
+        Assert.Contains("StandardUICommandKind.Undo", composer);
+        Assert.Contains("StandardUICommandKind.Redo", composer);
+        Assert.Contains("StandardUICommandKind.Cut", composer);
+        Assert.Contains("StandardUICommandKind.Copy", composer);
+        Assert.Contains("StandardUICommandKind.Paste", composer);
+        Assert.Contains("StandardUICommandKind.SelectAll", composer);
+        Assert.Contains("\"ChatComposerPasteMenuItem\"", composer);
+        Assert.Contains("var menu = new MenuFlyout();", composer);
+        Assert.Contains("menu.Items.Add(undoItem);", composer);
+        Assert.Contains("menu.Items.Add(redoItem);", composer);
+        Assert.Contains("menu.Items.Add(cutItem);", composer);
+        Assert.Contains("menu.Items.Add(copyItem);", composer);
+        Assert.Contains("menu.Items.Add(pasteItem);", composer);
+        Assert.Contains("menu.Items.Add(selectAllItem);", composer);
+        Assert.Contains("menu.Opening += (_, _) =>", composer);
+        Assert.Contains("var state = ChatComposerContextMenuState.Project(", composer);
+        Assert.Contains("pasteItem.Visibility = ToVisibility(state.ShowPaste);", composer);
+        Assert.Contains("textBox.PasteFromClipboard();", composer);
+        Assert.DoesNotContain("TextCommandBarFlyout", composer);
+
+        var menuStart = composer.IndexOf(
+            "private static MenuFlyout CreateComposerContextFlyout(",
+            StringComparison.Ordinal);
+        var standardItemStart = composer.IndexOf(
+            "private static MenuFlyoutItem CreateStandardMenuItem(",
+            StringComparison.Ordinal);
+        var menuFactory = composer[menuStart..standardItemStart];
+
+        Assert.DoesNotContain("TryReadImageFromClipboardAsync", menuFactory);
+        Assert.Contains("GetBitmapClipboardContent()", menuFactory);
+        Assert.Contains(
+            "_ = PasteImageFromClipboardAsync(clipboardContent, getOnAttachmentPasted())",
+            menuFactory);
+        Assert.Equal(
+            1,
+            composer.Split(
+                "await PasteImageFromClipboardAsync(clipboardContent, onAttachmentPasted.Current)",
+                StringSplitOptions.None).Length - 1);
+        Assert.Contains("PasteTextFromClipboard(textBox);", menuFactory);
+        Assert.Contains("private static void PasteTextFromClipboard(TextBox textBox)", composer);
+        Assert.Contains("catch (System.Runtime.InteropServices.COMException ex)", composer);
+        Assert.Contains("clipboard text paste failed", composer);
+        Assert.DoesNotContain("ClipboardContainsBitmap", composer);
+    }
+
+    [Fact]
+    public void ChatComposerContextMenuState_ProjectsNativeCommandVisibility()
+    {
+        Assert.Equal(
+            new ChatComposerContextMenuState(
+                ShowUndo: false,
+                ShowRedo: false,
+                ShowCut: false,
+                ShowCopy: false,
+                ShowPaste: false,
+                ShowSelectAll: false,
+                ShowEditSeparator: false,
+                ShowSelectAllSeparator: false),
+            ChatComposerContextMenuState.Project(
+                canUndo: false,
+                canRedo: false,
+                hasSelection: false,
+                canPaste: false,
+                hasText: false));
+
+        Assert.Equal(
+            new ChatComposerContextMenuState(
+                ShowUndo: true,
+                ShowRedo: true,
+                ShowCut: true,
+                ShowCopy: true,
+                ShowPaste: true,
+                ShowSelectAll: true,
+                ShowEditSeparator: true,
+                ShowSelectAllSeparator: true),
+            ChatComposerContextMenuState.Project(
+                canUndo: true,
+                canRedo: true,
+                hasSelection: true,
+                canPaste: true,
+                hasText: true));
+
+        var pasteOnly = ChatComposerContextMenuState.Project(
+            canUndo: false,
+            canRedo: false,
+            hasSelection: false,
+            canPaste: true,
+            hasText: false);
+        Assert.True(pasteOnly.ShowPaste);
+        Assert.False(pasteOnly.ShowEditSeparator);
+        Assert.False(pasteOnly.ShowSelectAllSeparator);
+
+        var selectedText = ChatComposerContextMenuState.Project(
+            canUndo: false,
+            canRedo: false,
+            hasSelection: true,
+            canPaste: false,
+            hasText: true);
+        Assert.True(selectedText.ShowCut);
+        Assert.True(selectedText.ShowCopy);
+        Assert.True(selectedText.ShowSelectAll);
+        Assert.True(selectedText.ShowSelectAllSeparator);
     }
 
     [Fact]
@@ -302,7 +510,7 @@ public sealed class ChatTimelinePresentationTests
     }
 
     [Fact]
-    public void ReactorTimeline_GroupsAssistantRunsInPresentationOrder()
+    public void ReactorTimeline_ProjectsActivityInSourceChronology()
     {
         var timeline = File.ReadAllText(Path.Combine(
             TestRepositoryPaths.GetRepositoryRoot(),
@@ -311,11 +519,63 @@ public sealed class ChatTimelinePresentationTests
             "Chat",
             "ReactorChatTimeline.cs"));
 
-        Assert.Contains(
-            "var orderedEntries = OrderEntriesForPresentation(props.Timeline.Entries);",
-            timeline);
-        Assert.Contains("ChatTimelineAssistantRuns.Describe(orderedEntries)", timeline);
+        Assert.Contains("var chronologicalEntries = props.Timeline.Entries;", timeline);
+        Assert.Contains("ChatToolActivityPresentation.Project(", timeline);
+        Assert.Contains("ChatTimelineAssistantRuns.Describe(chronologicalEntries)", timeline);
+        Assert.DoesNotContain("OrderEntriesForPresentation", timeline);
         Assert.Contains("includeMetadata: row.IsAssistantRunEnd", timeline);
+    }
+
+    [Fact]
+    public void ReactorTimeline_UsesCanonicalToolActivityKeyForStandaloneAndGroupedRows()
+    {
+        var timeline = File.ReadAllText(Path.Combine(
+            TestRepositoryPaths.GetRepositoryRoot(),
+            "src", "OpenClaw.Tray.WinUI", "Chat", "ReactorChatTimeline.cs"));
+
+        Assert.Contains("entry.Kind == ChatTimelineItemKind.ToolCall", timeline);
+        Assert.Contains("ChatToolActivityPresentation.ActivityKey(", timeline);
+        Assert.Contains("ReactorChatTimeline.RowKey(props.Timeline, entry)", timeline);
+    }
+
+    [Fact]
+    public void ReactorTimeline_DelegatesToolAndActivityRenderingToFocusedOwner()
+    {
+        var timeline = File.ReadAllText(Path.Combine(
+            TestRepositoryPaths.GetRepositoryRoot(),
+            "src", "OpenClaw.Tray.WinUI", "Chat", "ReactorChatTimeline.cs"));
+        var renderer = File.ReadAllText(Path.Combine(
+            TestRepositoryPaths.GetRepositoryRoot(),
+            "src", "OpenClaw.Tray.WinUI", "Chat", "ToolCallCardRenderer.cs"));
+
+        Assert.Contains("ToolCallCardRenderer.BuildStandalone", timeline);
+        Assert.Contains("ToolCallCardRenderer.BuildActivity", timeline);
+        Assert.DoesNotContain("private static Element BuildTool", timeline);
+        Assert.Contains("public static Element BuildStandalone", renderer);
+        Assert.Contains("public static Element BuildActivity", renderer);
+        Assert.Contains("FormatToolDisplayArgs(entry.ToolArgs)", renderer);
+        Assert.Contains("private const int ToolDetailMaxChars = 4000;", renderer);
+        Assert.Contains("\"Chat_Tool_InputSection\"", renderer);
+        Assert.Contains("\"Chat_Tool_OutputLabel\"", renderer);
+        Assert.Contains(".Padding(18, 8, 18, 10)", renderer);
+        Assert.Contains("var body = RichTextBlock(content)", renderer);
+        Assert.Contains(".MaxHeight(240)", renderer);
+        Assert.Contains("text.IsTextSelectionEnabled = true", renderer);
+        Assert.DoesNotContain("var stateText =", renderer);
+        Assert.DoesNotContain("var glyph =", renderer);
+        Assert.Contains("AutomationProperties.SetAutomationId(", renderer);
+        Assert.Contains("ChatToolActivity_", renderer);
+        Assert.Contains("ChatToolCall_", renderer);
+        Assert.Contains("internal sealed class ToolActivityCard : Component<ToolActivityCardProps>", renderer);
+        Assert.Contains("Element details = isExpanded", renderer);
+        Assert.Contains("? VStack(", renderer);
+        Assert.Contains("control.MinHeight = 28;", renderer);
+        Assert.Contains("control.FontSize = 12;", renderer);
+        Assert.Contains("border.BorderThickness = isNested", renderer);
+        Assert.Contains("? new Thickness(0)", renderer);
+        Assert.Contains("? \"SubtleFillColorTransparentBrush\"", renderer);
+        Assert.Contains(": Empty();", renderer);
+        Assert.DoesNotContain("activity.Tools.Select(BuildStandalone)", renderer);
     }
 
     [Fact]

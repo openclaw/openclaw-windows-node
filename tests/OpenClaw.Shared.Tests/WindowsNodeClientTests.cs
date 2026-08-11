@@ -406,11 +406,7 @@ public class WindowsNodeClientTests
                 """;
             var root = JsonDocument.Parse(json).RootElement;
 
-            var handleResponseMethod = typeof(WindowsNodeClient).GetMethod(
-                "HandleResponse",
-                BindingFlags.NonPublic | BindingFlags.Instance);
-            Assert.NotNull(handleResponseMethod);
-            handleResponseMethod!.Invoke(client, [root]);
+            HandleCorrelatedHelloOk(client, root);
 
             Assert.Single(pairingEvents);
             Assert.Equal(PairingStatus.Paired, pairingEvents[0].Status);
@@ -456,12 +452,48 @@ public class WindowsNodeClientTests
                       }
                     }
                     """);
-                client.HandleResponse(document.RootElement);
+                HandleCorrelatedHelloOk(client, document.RootElement);
             }
 
             Assert.True(handshakeSucceeded);
             Assert.Equal("test-device-token", receivedToken?.Token);
             Assert.Equal("node", receivedToken?.Role);
+        }
+        finally
+        {
+            Directory.Delete(dataPath, true);
+        }
+    }
+
+    [Fact]
+    public void HandleResponse_HelloOk_DoesNotPublishUnsupportedProtocolFeatureRequest()
+    {
+        var dataPath = Path.Combine(Path.GetTempPath(), $"openclaw-node-test-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(dataPath);
+
+        try
+        {
+            using var client = new CapturingWindowsNodeClient(
+                "ws://localhost:18789",
+                "test-token",
+                dataPath);
+            using var document = JsonDocument.Parse(
+                """
+                {
+                  "type": "res",
+                  "ok": true,
+                  "payload": {
+                    "type": "hello-ok",
+                    "nodeId": "test-node-id"
+                  }
+                }
+                """);
+
+            HandleCorrelatedHelloOk(client, document.RootElement);
+
+            Assert.DoesNotContain(
+                client.SentMessages,
+                message => message.Contains("node.protocolFeatures", StringComparison.Ordinal));
         }
         finally
         {
@@ -497,10 +529,7 @@ public class WindowsNodeClientTests
                 """;
             var root = JsonDocument.Parse(json).RootElement;
 
-            var handleResponseMethod = typeof(WindowsNodeClient).GetMethod(
-                "HandleResponse",
-                BindingFlags.NonPublic | BindingFlags.Instance);
-            handleResponseMethod!.Invoke(client, [root]);
+            HandleCorrelatedHelloOk(client, root);
 
             Assert.Single(pairingEvents);
             Assert.Equal(PairingStatus.Pending, pairingEvents[0].Status);
@@ -551,10 +580,7 @@ public class WindowsNodeClientTests
                 """;
             var root = JsonDocument.Parse(json).RootElement;
 
-            var handleResponseMethod = typeof(WindowsNodeClient).GetMethod(
-                "HandleResponse",
-                BindingFlags.NonPublic | BindingFlags.Instance);
-            handleResponseMethod!.Invoke(client, [root]);
+            HandleCorrelatedHelloOk(client, root);
 
             Assert.Single(pairingEvents);
             Assert.Equal(PairingStatus.Paired, pairingEvents[0].Status);
@@ -603,14 +629,10 @@ public class WindowsNodeClientTests
                 """;
             var root = JsonDocument.Parse(json).RootElement;
 
-            var handleResponseMethod = typeof(WindowsNodeClient).GetMethod(
-                "HandleResponse",
-                BindingFlags.NonPublic | BindingFlags.Instance);
-
             // Simulate three WS reconnects, each delivering hello-ok with stored token.
-            handleResponseMethod!.Invoke(client, [root]);
-            handleResponseMethod!.Invoke(client, [root]);
-            handleResponseMethod!.Invoke(client, [root]);
+            HandleCorrelatedHelloOk(client, root);
+            HandleCorrelatedHelloOk(client, root);
+            HandleCorrelatedHelloOk(client, root);
 
             Assert.Single(pairingEvents);
             Assert.Equal(PairingStatus.Paired, pairingEvents[0].Status);
@@ -1171,10 +1193,7 @@ public class WindowsNodeClientTests
                 }
                 """).RootElement;
 
-            var handleResponseMethod = typeof(WindowsNodeClient).GetMethod(
-                "HandleResponse",
-                BindingFlags.NonPublic | BindingFlags.Instance);
-            handleResponseMethod!.Invoke(client, [helloOk]);
+            HandleCorrelatedHelloOk(client, helloOk);
 
             Assert.Single(pairingEvents);
             Assert.Equal(PairingStatus.Paired, pairingEvents[0].Status);
@@ -1541,6 +1560,166 @@ public class WindowsNodeClientTests
     }
 
     [Fact]
+    public async Task HandleConnectChallenge_HandshakeAuthorizationDeniesBeforeCredentialFrame()
+    {
+        var dataPath = Path.Combine(Path.GetTempPath(), $"openclaw-node-test-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(dataPath);
+
+        try
+        {
+            using var client = new CapturingWindowsNodeClient(
+                "ws://localhost:18789",
+                "synthetic-node-credential",
+                dataPath);
+            var authorizationCalls = 0;
+            GatewayErrorKind? failureKind = null;
+            ConnectionStatus? lastStatus = null;
+            client.HandshakeAuthorizationAsync = _ =>
+            {
+                authorizationCalls++;
+                return Task.FromResult(authorizationCalls == 1
+                    ? new ReconnectAuthorizationResult(
+                        false,
+                        GatewayErrorKind.LocalPortConflict,
+                        "node listener ownership lost; credentials were not sent")
+                    : ReconnectAuthorizationResult.AllowedResult);
+            };
+            client.ConnectionFailure += (_, kind) => failureKind = kind;
+            client.StatusChanged += (_, status) => lastStatus = status;
+
+            await InvokeHandleEventAsync(
+                client,
+                """
+                {
+                  "type": "event",
+                  "event": "connect.challenge",
+                  "payload": {
+                    "nonce": "node-listener-replacement",
+                    "ts": 1785824000000
+                  }
+                }
+                """);
+
+            Assert.Equal(1, authorizationCalls);
+            Assert.Empty(client.SentMessages);
+            Assert.Equal(GatewayErrorKind.LocalPortConflict, failureKind);
+            Assert.Equal(ConnectionStatus.Error, lastStatus);
+
+            await InvokeHandleEventAsync(
+                client,
+                """
+                {
+                  "type": "event",
+                  "event": "connect.challenge",
+                  "payload": {
+                    "nonce": "node-listener-replacement-retry",
+                    "ts": 1785824001000
+                  }
+                }
+                """);
+
+            Assert.Equal(1, authorizationCalls);
+            Assert.Empty(client.SentMessages);
+        }
+        finally
+        {
+            Directory.Delete(dataPath, true);
+        }
+    }
+
+    [Theory]
+    [InlineData("event")]
+    [InlineData("req")]
+    public async Task PreAuthenticationNodeInvoke_DoesNotExecuteCapability(string messageType)
+    {
+        var dataPath = Path.Combine(Path.GetTempPath(), $"openclaw-node-test-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(dataPath);
+
+        try
+        {
+            using var client = new CapturingWindowsNodeClient(
+                "ws://localhost:18789",
+                "synthetic-node-credential",
+                dataPath);
+            var capability = new MockCapability("system", "system.run");
+            client.RegisterCapability(capability);
+            var json = messageType == "event"
+                ? """
+                  {
+                    "type": "event",
+                    "event": "node.invoke.request",
+                    "payload": {
+                      "requestId": "preauth-event",
+                      "command": "system.run",
+                      "args": {}
+                    }
+                  }
+                  """
+                : """
+                  {
+                    "type": "req",
+                    "id": "preauth-request",
+                    "method": "node.invoke",
+                    "params": {
+                      "command": "system.run",
+                      "args": {}
+                    }
+                  }
+                  """;
+
+            await InvokeProcessMessageAsync(client, json, authenticated: false);
+            await Task.Delay(50);
+
+            Assert.Equal(0, capability.ExecuteCount);
+            Assert.Empty(client.SentMessages);
+        }
+        finally
+        {
+            Directory.Delete(dataPath, true);
+        }
+    }
+
+    [Fact]
+    public void UncorrelatedHelloOk_DoesNotConnectOrPersistDeviceToken()
+    {
+        var dataPath = Path.Combine(Path.GetTempPath(), $"openclaw-node-test-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(dataPath);
+
+        try
+        {
+            using var client = new WindowsNodeClient(
+                "ws://localhost:18789",
+                "synthetic-node-credential",
+                dataPath);
+            using var document = JsonDocument.Parse(
+                """
+                {
+                  "type": "res",
+                  "id": "attacker-controlled",
+                  "ok": true,
+                  "payload": {
+                    "type": "hello-ok",
+                    "nodeId": "attacker-node",
+                    "auth": {
+                      "deviceToken": "attacker-supplied-token"
+                    }
+                  }
+                }
+                """);
+
+            client.HandleResponse(document.RootElement);
+
+            Assert.False(client.IsConnected);
+            Assert.Null(
+                DeviceIdentity.TryReadStoredDeviceTokenForRole(dataPath, "node"));
+        }
+        finally
+        {
+            Directory.Delete(dataPath, true);
+        }
+    }
+
+    [Fact]
     public void BuildNodeConnectMessage_IncludesCanonicalWindowsDeviceFamily()
     {
         var dataPath = Path.Combine(Path.GetTempPath(), $"openclaw-node-test-{Guid.NewGuid():N}");
@@ -1866,6 +2045,28 @@ public class WindowsNodeClientTests
         await task!;
     }
 
+    private static void HandleCorrelatedHelloOk(
+        WindowsNodeClient client,
+        JsonElement response)
+    {
+        const string requestId = "test-connect-request";
+        var pendingRequestField = typeof(WindowsNodeClient).GetField(
+            "_pendingConnectRequestId",
+            BindingFlags.NonPublic | BindingFlags.Instance);
+        Assert.NotNull(pendingRequestField);
+        pendingRequestField.SetValue(client, requestId);
+
+        using var correlated = JsonDocument.Parse(
+            JsonSerializer.Serialize(new
+            {
+                type = "res",
+                id = requestId,
+                ok = true,
+                payload = response.GetProperty("payload"),
+            }));
+        client.HandleResponse(correlated.RootElement);
+    }
+
     private static string InvokeBuildNodeConnectMessage(
         WindowsNodeClient client,
         long? challengeTimestampMs = null,
@@ -1876,7 +2077,7 @@ public class WindowsNodeClientTests
             BindingFlags.NonPublic | BindingFlags.Instance);
         Assert.NotNull(method);
 
-        return (string)method!.Invoke(client, [nonce, challengeTimestampMs])!;
+        return (string)method!.Invoke(client, [nonce, challengeTimestampMs, null])!;
     }
 
     private static (Dictionary<string, string> Auth, string TokenForSignature) InvokeBuildConnectAuth(
@@ -2072,7 +2273,7 @@ public class WindowsNodeClientTests
     }
 
     [Fact]
-    public async Task CommandDispatch_ReqPath_PropagatesParamsSessionKey()
+    public async Task CommandDispatch_ReqPath_UsesEnvelopeSessionKey()
     {
         var dataPath = Path.Combine(Path.GetTempPath(), $"openclaw-node-test-{Guid.NewGuid():N}");
         Directory.CreateDirectory(dataPath);
@@ -2110,7 +2311,7 @@ public class WindowsNodeClientTests
     }
 
     [Fact]
-    public async Task CommandDispatch_ReqPath_PropagatesArgsSessionKey()
+    public async Task CommandDispatch_ReqPath_DoesNotTrustArgsSessionKey()
     {
         var dataPath = Path.Combine(Path.GetTempPath(), $"openclaw-node-test-{Guid.NewGuid():N}");
         Directory.CreateDirectory(dataPath);
@@ -2139,7 +2340,7 @@ public class WindowsNodeClientTests
             await InvokeProcessMessageAsync(client, json);
             await cap.ExecutedTask.WaitAsync(TimeSpan.FromSeconds(5));
 
-            Assert.Equal("chat-thread-from-args", cap.LastRequest?.SessionKey);
+            Assert.Null(cap.LastRequest?.SessionKey);
         }
         finally
         {
@@ -2149,7 +2350,7 @@ public class WindowsNodeClientTests
     }
 
     [Fact]
-    public async Task CommandDispatch_ReqPath_ParamsSessionKeyOverridesArgsSessionKey()
+    public async Task CommandDispatch_ReqPath_EnvelopeSessionKeyOverridesArgs()
     {
         var dataPath = Path.Combine(Path.GetTempPath(), $"openclaw-node-test-{Guid.NewGuid():N}");
         Directory.CreateDirectory(dataPath);
@@ -2299,6 +2500,162 @@ public class WindowsNodeClientTests
 
             Assert.Equal(1, cap.ExecuteCount);
             Assert.Equal("mock.ping", cap.LastCommand);
+        }
+        finally
+        {
+            if (Directory.Exists(dataPath))
+                Directory.Delete(dataPath, true);
+        }
+    }
+
+    [Fact]
+    public async Task CommandDispatch_EventPath_UsesEnvelopeSessionKey()
+    {
+        var dataPath = Path.Combine(Path.GetTempPath(), $"openclaw-node-test-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(dataPath);
+
+        try
+        {
+            using var client = new WindowsNodeClient("ws://localhost:18789", "test-token", dataPath);
+            var cap = new MockCapability("mock", "mock.ping");
+            client.RegisterCapability(cap);
+
+            await InvokeProcessMessageAsync(client, """
+                {
+                  "type": "event",
+                  "event": "node.invoke.request",
+                  "payload": {
+                    "requestId": "inv-event-session",
+                    "command": "mock.ping",
+                    "sessionKey": "gateway-session",
+                    "args": {
+                      "sessionKey": "spoofed-session"
+                    }
+                  }
+                }
+                """);
+            await cap.ExecutedTask.WaitAsync(TimeSpan.FromSeconds(5));
+
+            Assert.Equal("gateway-session", cap.LastRequest?.SessionKey);
+        }
+        finally
+        {
+            if (Directory.Exists(dataPath))
+                Directory.Delete(dataPath, true);
+        }
+    }
+
+    [Fact]
+    public async Task CommandDispatch_EventPath_ExplicitNullEnvelopeClearsArgsSessionKey()
+    {
+        var dataPath = Path.Combine(Path.GetTempPath(), $"openclaw-node-test-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(dataPath);
+
+        try
+        {
+            using var client = new WindowsNodeClient("ws://localhost:18789", "test-token", dataPath);
+            var cap = new MockCapability("mock", "mock.ping");
+            client.RegisterCapability(cap);
+
+            await InvokeProcessMessageAsync(client, """
+                {
+                  "type": "event",
+                  "event": "node.invoke.request",
+                  "payload": {
+                    "requestId": "inv-event-args-session",
+                    "command": "mock.ping",
+                    "sessionKey": null,
+                    "args": {
+                      "sessionKey": "spoofed-session"
+                    }
+                  }
+                }
+                """);
+            await cap.ExecutedTask.WaitAsync(TimeSpan.FromSeconds(5));
+
+            Assert.Null(cap.LastRequest?.SessionKey);
+        }
+        finally
+        {
+            if (Directory.Exists(dataPath))
+                Directory.Delete(dataPath, true);
+        }
+    }
+
+    [Theory]
+    [InlineData("[]")]
+    [InlineData("{}")]
+    [InlineData("123")]
+    [InlineData("true")]
+    public async Task CommandDispatch_EventPath_MalformedEnvelopeDoesNotTrustNestedSessionKey(
+        string malformedSessionKey)
+    {
+        var dataPath = Path.Combine(Path.GetTempPath(), $"openclaw-node-test-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(dataPath);
+
+        try
+        {
+            using var client = new WindowsNodeClient("ws://localhost:18789", "test-token", dataPath);
+            var cap = new MockCapability("mock", "mock.ping");
+            client.RegisterCapability(cap);
+
+            await InvokeProcessMessageAsync(
+                client,
+                $$"""
+                {
+                  "type": "event",
+                  "event": "node.invoke.request",
+                  "payload": {
+                    "requestId": "inv-event-malformed-session",
+                    "command": "mock.ping",
+                    "sessionKey": {{malformedSessionKey}},
+                    "args": {
+                      "sessionKey": "forged-session"
+                    }
+                  }
+                }
+                """);
+            await cap.ExecutedTask.WaitAsync(TimeSpan.FromSeconds(5));
+
+            Assert.Null(cap.LastRequest?.SessionKey);
+        }
+        finally
+        {
+            if (Directory.Exists(dataPath))
+                Directory.Delete(dataPath, true);
+        }
+    }
+
+    [Fact]
+    public async Task CommandDispatch_EventPath_OmittedEnvelopeDoesNotTrustNestedSessionKey()
+    {
+        var dataPath = Path.Combine(Path.GetTempPath(), $"openclaw-node-test-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(dataPath);
+
+        try
+        {
+            using var client = new CapturingWindowsNodeClient(
+                "ws://localhost:18789",
+                "test-token",
+                dataPath);
+            var cap = new MockCapability("mock", "mock.ping");
+            client.RegisterCapability(cap);
+
+            await InvokeProcessMessageAsync(client, """
+                {
+                  "type": "event",
+                  "event": "node.invoke.request",
+                  "payload": {
+                    "requestId": "inv-event-unattributed",
+                    "command": "mock.ping",
+                    "args": {
+                      "sessionKey": "forged-session"
+                    }
+                  }
+                }
+                """);
+            await cap.ExecutedTask.WaitAsync(TimeSpan.FromSeconds(5));
+            Assert.Null(cap.LastRequest?.SessionKey);
         }
         finally
         {
@@ -2898,8 +3255,20 @@ public class WindowsNodeClientTests
         }
     }
 
-    private static async Task InvokeProcessMessageAsync(WindowsNodeClient client, string json)
+    private static async Task InvokeProcessMessageAsync(
+        WindowsNodeClient client,
+        string json,
+        bool authenticated = true)
     {
+        if (authenticated)
+        {
+            var connectedField = typeof(WindowsNodeClient).GetField(
+                "_isConnected",
+                BindingFlags.NonPublic | BindingFlags.Instance);
+            Assert.NotNull(connectedField);
+            connectedField.SetValue(client, true);
+        }
+
         var processMethod = typeof(WindowsNodeClient).GetMethod(
             "ProcessMessageAsync",
             BindingFlags.NonPublic | BindingFlags.Instance);

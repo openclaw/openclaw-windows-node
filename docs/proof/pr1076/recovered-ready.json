@@ -1,0 +1,20 @@
+{
+  "connectionStatus": "Connected",
+  "overallState": "Ready",
+  "operatorState": "Connected",
+  "nodeState": "Connected",
+  "nodeConnected": true,
+  "nodePaired": true,
+  "nodePendingApproval": false,
+  "nodeError": null,
+  "gatewayVersion": "2026.6.11",
+  "sessionCount": 0,
+  "nodeCount": 1,
+  "operatorScopes": [
+    "operator.admin",
+    "operator.pairing",
+    "operator.read",
+    "operator.write"
+  ],
+  "operatorDeviceId": null
+}

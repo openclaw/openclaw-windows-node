@@ -65,6 +65,7 @@ internal enum PermissionsGatewayAllowlistState
 internal sealed record PermissionsExecApprovalRule(
     Guid? Id,
     string Pattern,
+    string? ArgPattern,
     double? LastUsedAt,
     string? LastResolvedPath);
 

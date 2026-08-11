@@ -1,9 +1,9 @@
-# Uninstalling OpenClaw Tray — Portable ZIP
+# Uninstalling OpenClaw Tray - Portable ZIP
 
-> **Date:** 2026-05-07  
+> **Date:** 2026-05-07
 > **Branch:** feat/wsl-gateway-uninstall
 
-Portable (ZIP) installations have **no automatic uninstall hook**.  
+Portable (ZIP) installations have **no automatic uninstall hook**.
 Simply deleting the folder leaves the WSL distro, app data, and autostart
 entry behind.  Follow one of the two paths below for a clean removal.
 
@@ -25,13 +25,13 @@ entry behind.  Follow one of the two paths below for a clean removal.
 Run from the portable folder:
 
 ```powershell
-# Destructive — removes the local WSL gateway cleanly, then print result to stdout
+# Destructive - removes the local WSL gateway cleanly, then print result to stdout
 .\OpenClaw.Tray.WinUI.exe --uninstall --confirm-destructive
 
 # With JSON output for programmatic consumption (tokens redacted in output):
 .\OpenClaw.Tray.WinUI.exe --uninstall --confirm-destructive --json-output .\uninstall-result.json
 
-# Dry-run — records what would happen without any destruction:
+# Dry-run - records what would happen without any destruction:
 .\OpenClaw.Tray.WinUI.exe --uninstall --dry-run
 ```
 
@@ -39,9 +39,9 @@ Run from the portable folder:
 
 | Code | Meaning |
 |------|---------|
-| 0 | Success — all steps completed, postconditions satisfied |
-| 1 | Partial failure — one or more steps failed (see JSON output or stderr) |
-| 2 | Bad arguments — `--confirm-destructive` or `--dry-run` missing |
+| 0 | Success - all steps completed, postconditions satisfied |
+| 1 | Partial failure - one or more steps failed (see JSON output or stderr) |
+| 2 | Bad arguments - `--confirm-destructive` or `--dry-run` missing |
 
 After the CLI command exits 0, delete the portable folder.
 
@@ -51,14 +51,14 @@ After the CLI command exits 0, delete the portable folder.
 
 Deleting the portable folder **without** running the uninstall first leaves:
 
-- **WSL distro orphaned** — `OpenClawGateway` remains in `wsl --list`.  
+- **WSL distro orphaned** - `OpenClawGateway` remains in `wsl --list`.
   Manual cleanup: `wsl --unregister OpenClawGateway`
 
-- **App data** remains under:  
-  - `%APPDATA%\OpenClawTray\` — device key, settings, mcp-token  
-  - `%LOCALAPPDATA%\OpenClawTray\` — setup state, logs, exec policy, VHD parent dir
+- **App data** remains under:
+  - `%APPDATA%\OpenClawTray\` - device key, settings, mcp-token
+  - `%LOCALAPPDATA%\OpenClawTray\` - setup state, logs, exec policy, VHD parent dir
 
-- **Autostart entry** may remain in  
+- **Autostart entry** may remain in
   `HKCU\SOFTWARE\Microsoft\Windows\CurrentVersion\Run\OpenClawTray`
 
 Manual WSL + registry cleanup:

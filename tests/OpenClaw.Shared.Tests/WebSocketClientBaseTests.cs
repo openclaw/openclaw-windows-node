@@ -3,7 +3,9 @@ using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
 using System.Net;
+using System.Net.Sockets;
 using System.Net.WebSockets;
+using System.Security.Cryptography;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
@@ -70,6 +72,7 @@ public class TestWebSocketClient : WebSocketClientBase
     public string TestToken => _token;
     public IOpenClawLogger TestLogger => _logger;
     public Task TestReconnectWithBackoffAsync() => ReconnectWithBackoffAsync();
+    public void TestAbortCurrentWebSocket() => AbortCurrentWebSocket(CurrentConnectionGeneration);
 }
 
 [Collection("WebSocketClientBase")]
@@ -116,6 +119,34 @@ public class WebSocketClientBaseTests
 
         Assert.Equal(1, authorizationCalls);
         Assert.Equal(0, client.OnConnectedCallCount);
+    }
+
+    [Fact]
+    public async Task AbortCurrentWebSocket_PreventsLaterMessagesOnAcceptedSocket()
+    {
+        using var server = new LoopbackWebSocketServer();
+        await server.StartAsync();
+        using var client = new TestWebSocketClient(server.WebSocketUrl, "strong-token", _logger)
+        {
+            AutoReconnectEnabled = false,
+        };
+        await client.ConnectAsync();
+        await WaitForConditionAsync(
+            () => server.AcceptedCount == 1,
+            TimeSpan.FromSeconds(2));
+
+        client.TestAbortCurrentWebSocket();
+        try
+        {
+            await server.SendTextAsync("stale-socket-message");
+        }
+        catch (WebSocketException)
+        {
+            // The remote endpoint may observe the abort before attempting its send.
+        }
+        await Task.Delay(100);
+
+        Assert.DoesNotContain("stale-socket-message", client.ProcessedMessages);
     }
 
     [Fact]
@@ -545,8 +576,10 @@ internal sealed class ReconnectBackoffRaceClient : WebSocketClientBase
 internal sealed class LoopbackWebSocketServer : IDisposable
 {
     private readonly HttpListener _listener = new();
+    private readonly TcpListener? _managedListener;
     private readonly CancellationTokenSource _cts = new();
     private readonly List<WebSocket> _acceptedSockets = new();
+    private readonly List<TcpClient> _managedClients = new();
     private readonly TaskCompletionSource<WebSocket> _firstAcceptedSocket =
         new(TaskCreationOptions.RunContinuationsAsynchronously);
     private Task? _acceptLoop;
@@ -563,18 +596,50 @@ internal sealed class LoopbackWebSocketServer : IDisposable
         }
     }
 
-    public LoopbackWebSocketServer()
+    public async Task WaitForAcceptedCountAsync(int expectedCount, TimeSpan timeout)
+    {
+        var deadline = DateTime.UtcNow + timeout;
+        while (AcceptedCount < expectedCount)
+        {
+            if (DateTime.UtcNow >= deadline)
+            {
+                throw new TimeoutException(
+                    $"Loopback server accepted {AcceptedCount} connection(s); expected {expectedCount}.");
+            }
+
+            // slopwatch-ignore: SW004 This bounded poll synchronizes the test with the async server accept loop.
+            await Task.Delay(10);
+        }
+    }
+
+    public LoopbackWebSocketServer(bool useManagedWebSocket = false)
     {
         var port = GetFreeTcpPort();
-        var prefix = $"http://127.0.0.1:{port}/";
-        _listener.Prefixes.Add(prefix);
+        if (useManagedWebSocket)
+        {
+            _managedListener = new TcpListener(IPAddress.Loopback, port);
+        }
+        else
+        {
+            _listener.Prefixes.Add($"http://127.0.0.1:{port}/");
+        }
+
         WebSocketUrl = $"ws://127.0.0.1:{port}/";
     }
 
     public Task StartAsync()
     {
-        _listener.Start();
-        _acceptLoop = Task.Run(AcceptLoopAsync);
+        if (_managedListener is not null)
+        {
+            _managedListener.Start();
+            _acceptLoop = Task.Run(AcceptManagedLoopAsync);
+        }
+        else
+        {
+            _listener.Start();
+            _acceptLoop = Task.Run(AcceptLoopAsync);
+        }
+
         return Task.CompletedTask;
     }
 
@@ -612,6 +677,95 @@ internal sealed class LoopbackWebSocketServer : IDisposable
         }
     }
 
+    private async Task AcceptManagedLoopAsync()
+    {
+        while (!_cts.Token.IsCancellationRequested)
+        {
+            TcpClient client;
+            try
+            {
+                client = await _managedListener!.AcceptTcpClientAsync(_cts.Token);
+            }
+            catch (OperationCanceledException)
+            {
+                return;
+            }
+            catch (SocketException) when (_cts.Token.IsCancellationRequested)
+            {
+                return;
+            }
+
+            try
+            {
+                var stream = client.GetStream();
+                var request = await ReadHttpHeadersAsync(stream, _cts.Token);
+                var key = request
+                    .Split("\r\n", StringSplitOptions.RemoveEmptyEntries)
+                    .First(line => line.StartsWith(
+                        "Sec-WebSocket-Key:",
+                        StringComparison.OrdinalIgnoreCase))
+                    .Split(':', 2)[1]
+                    .Trim();
+                var accept = Convert.ToBase64String(
+                    SHA1.HashData(
+                        Encoding.ASCII.GetBytes(
+                            $"{key}258EAFA5-E914-47DA-95CA-C5AB0DC85B11")));
+                var response = Encoding.ASCII.GetBytes(
+                    "HTTP/1.1 101 Switching Protocols\r\n" +
+                    "Upgrade: websocket\r\n" +
+                    "Connection: Upgrade\r\n" +
+                    $"Sec-WebSocket-Accept: {accept}\r\n\r\n");
+                await stream.WriteAsync(response.AsMemory(), _cts.Token);
+
+                var socket = WebSocket.CreateFromStream(
+                    stream,
+                    isServer: true,
+                    subProtocol: null,
+                    keepAliveInterval: TimeSpan.FromSeconds(30));
+                lock (_acceptedSockets)
+                {
+                    _managedClients.Add(client);
+                    _acceptedSockets.Add(socket);
+                }
+
+                _firstAcceptedSocket.TrySetResult(socket);
+            }
+            catch
+            {
+                client.Dispose();
+                throw;
+            }
+        }
+    }
+
+    private static async Task<string> ReadHttpHeadersAsync(
+        NetworkStream stream,
+        CancellationToken cancellationToken)
+    {
+        const int maxHeaderBytes = 16 * 1024;
+        var bytes = new List<byte>();
+        var next = new byte[1];
+        while (bytes.Count < maxHeaderBytes)
+        {
+            var read = await stream.ReadAsync(next.AsMemory(), cancellationToken);
+            if (read == 0)
+                throw new EndOfStreamException("WebSocket handshake ended before the HTTP headers.");
+
+            bytes.Add(next[0]);
+            var count = bytes.Count;
+            if (count >= 4 &&
+                bytes[count - 4] == '\r' &&
+                bytes[count - 3] == '\n' &&
+                bytes[count - 2] == '\r' &&
+                bytes[count - 1] == '\n')
+            {
+                return Encoding.ASCII.GetString(bytes.ToArray());
+            }
+        }
+
+        throw new InvalidOperationException("WebSocket handshake headers exceeded the test limit.");
+    }
+
     public async Task<string> ReceiveTextAsync(CancellationToken cancellationToken = default)
     {
         var socket = await _firstAcceptedSocket.Task.WaitAsync(cancellationToken);
@@ -633,7 +787,16 @@ internal sealed class LoopbackWebSocketServer : IDisposable
             cancellationToken);
     }
 
-    public async Task CloseSocketAsync(int index)
+    public Task CloseSocketAsync(int index) =>
+        CloseSocketAsync(
+            index,
+            WebSocketCloseStatus.NormalClosure,
+            "test close");
+
+    public async Task CloseSocketAsync(
+        int index,
+        WebSocketCloseStatus closeStatus,
+        string closeStatusDescription)
     {
         WebSocket socket;
         lock (_acceptedSockets)
@@ -644,8 +807,8 @@ internal sealed class LoopbackWebSocketServer : IDisposable
         if (socket.State == WebSocketState.Open)
         {
             await socket.CloseOutputAsync(
-                WebSocketCloseStatus.NormalClosure,
-                "test close",
+                closeStatus,
+                closeStatusDescription,
                 CancellationToken.None);
         }
     }
@@ -653,6 +816,7 @@ internal sealed class LoopbackWebSocketServer : IDisposable
     public void StopAccepting()
     {
         _cts.Cancel();
+        try { _managedListener?.Stop(); } catch { }
         try { _listener.Stop(); } catch { }
         try { _acceptLoop?.Wait(TimeSpan.FromSeconds(1)); } catch { }
     }
@@ -660,6 +824,7 @@ internal sealed class LoopbackWebSocketServer : IDisposable
     public void Dispose()
     {
         _cts.Cancel();
+        try { _managedListener?.Stop(); } catch { }
         try { _listener.Stop(); } catch { }
         try { _listener.Close(); } catch { }
         lock (_acceptedSockets)
@@ -667,6 +832,11 @@ internal sealed class LoopbackWebSocketServer : IDisposable
             foreach (var socket in _acceptedSockets)
             {
                 try { socket.Dispose(); } catch { }
+            }
+
+            foreach (var client in _managedClients)
+            {
+                try { client.Dispose(); } catch { }
             }
         }
         try { _acceptLoop?.Wait(TimeSpan.FromSeconds(1)); } catch { }

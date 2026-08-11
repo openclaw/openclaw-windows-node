@@ -239,7 +239,8 @@ internal sealed class PermissionsPageViewModel : INavigationAware, IDisposable, 
             ExecApprovalsMutationKind.RemoveRule,
             null,
             rule.Pattern,
-            rule.Id));
+            rule.Id,
+            rule.ArgPattern));
     }
 
     private void PersistSetting(Action<ISettingsEditor> edit)
@@ -654,12 +655,15 @@ internal sealed class PermissionsPageViewModel : INavigationAware, IDisposable, 
                 main.AskFallback = ExecSecurity.Deny;
             }
 
-            if (!allowlist.Any(entry => string.Equals(entry.Pattern?.Trim(), mutation.Pattern, StringComparison.OrdinalIgnoreCase)))
+            if (!allowlist.Any(entry =>
+                    string.Equals(entry.Pattern?.Trim(), mutation.Pattern, StringComparison.OrdinalIgnoreCase)
+                    && string.Equals(entry.ArgPattern, mutation.ArgPattern, StringComparison.Ordinal)))
             {
                 allowlist.Add(new ExecAllowlistEntry
                 {
                     Id = Guid.NewGuid(),
                     Pattern = mutation.Pattern,
+                    ArgPattern = mutation.ArgPattern,
                 });
             }
 
@@ -670,7 +674,8 @@ internal sealed class PermissionsPageViewModel : INavigationAware, IDisposable, 
             mutation.RuleId.HasValue
                 ? entry.Id == mutation.RuleId
                 : entry.Id is null
-                    && string.Equals(entry.Pattern?.Trim(), mutation.Pattern, StringComparison.OrdinalIgnoreCase));
+                    && string.Equals(entry.Pattern?.Trim(), mutation.Pattern, StringComparison.OrdinalIgnoreCase)
+                    && string.Equals(entry.ArgPattern, mutation.ArgPattern, StringComparison.Ordinal));
     }
 
     private void LoadExecApprovals(ExecApprovalsReadOnlySnapshotResult result)
@@ -704,7 +709,12 @@ internal sealed class PermissionsPageViewModel : INavigationAware, IDisposable, 
                 ? main.Allowlist
                 : Array.Empty<ExecAllowlistEntry>()))
             .Where(entry => !string.IsNullOrWhiteSpace(entry.Pattern))
-            .Select(entry => new PermissionsExecApprovalRule(entry.Id, entry.Pattern!, entry.LastUsedAt, entry.LastResolvedPath))
+            .Select(entry => new PermissionsExecApprovalRule(
+                entry.Id,
+                entry.Pattern!,
+                entry.ArgPattern,
+                entry.LastUsedAt,
+                entry.LastResolvedPath))
             .ToArray();
         SetField(ref _execApprovalRules, rules, nameof(ExecApprovalRules));
     }
@@ -801,8 +811,12 @@ internal sealed class PermissionsPageViewModel : INavigationAware, IDisposable, 
                     {
                         Id = entry.Id,
                         Pattern = entry.Pattern,
+                        ArgPattern = entry.ArgPattern,
+                        CommandText = entry.CommandText,
+                        Source = entry.Source,
                         LastUsedAt = entry.LastUsedAt,
                         LastResolvedPath = entry.LastResolvedPath,
+                        LastUsedCommand = entry.LastUsedCommand,
                     }).ToList(),
                 },
                 StringComparer.Ordinal),
@@ -839,5 +853,6 @@ internal sealed class PermissionsPageViewModel : INavigationAware, IDisposable, 
         ExecApprovalsMutationKind Kind,
         string? Action,
         string? Pattern,
-        Guid? RuleId = null);
+        Guid? RuleId = null,
+        string? ArgPattern = null);
 }

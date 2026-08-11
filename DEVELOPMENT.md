@@ -8,6 +8,7 @@ A comprehensive guide for building, running, and contributing to the OpenClaw Wi
 - [Project Structure](#project-structure)
 - [Building](#building)
 - [Architecture Overview](#architecture-overview)
+- [Documentation and Diagrams](#documentation-and-diagrams)
 - [Testing](#testing)
 - [CI/CD](#cicd)
 - [Contributing](#contributing)
@@ -257,7 +258,7 @@ src/OpenClawTray.FunctionalUI/   Component · RenderContext · FunctionalHostCon
 - One `OpenClawChatDataProvider` instance lives on `App` (`App.ChatProvider`),
   created in `InitializeGatewayClient` and disposed inside
   `UnsubscribeGatewayEvents`. Both the Hub Chat tab and the tray ChatWindow
-  consume the same provider — opening either surface shows identical state.
+  consume the same provider - opening either surface shows identical state.
 - Each XAML host (`ChatPage`, `ChatWindow`) mounts its own `FunctionalHostControl`
   with `ContentTarget` pointing at a `<Border x:Name="ChatHost"/>`. The
   surrounding chrome (NavigationView, popup header) stays XAML.
@@ -463,6 +464,38 @@ In DEBUG builds, logs are also written to Visual Studio Output window via `Syste
 **Security:**
 Sensitive data (authentication tokens) are never logged.
 
+## Documentation and Diagrams
+
+Maintained architecture, data-flow, and sequence diagrams use a paired source
+and rendered artifact:
+
+```text
+docs/diagrams/<name>.excalidraw
+docs/diagrams/<name>.svg
+```
+
+Embed the SVG in Markdown so GitHub renders it, and place an adjacent link to
+the `.excalidraw` source so contributors can edit it. Keep labels synchronized
+between both files. Every text element in the Excalidraw JSON must have explicit
+`width` and `height` and use black text; container boxes remain transparent.
+
+Do not add new Mermaid or maintained ASCII-art architecture diagrams. Small
+state notations, directory trees, wire examples, and command-output snippets
+may remain as fenced text when their value is the literal text rather than a
+visual layout. Historical design documents may retain clearly labeled inline
+sketches, but they must link to the current canonical diagram when one exists.
+
+Run documentation validation directly with:
+
+```powershell
+.\scripts\validate-docs.ps1
+```
+
+`.\build.ps1` runs the same validator before compiling. It checks maintained
+Markdown links and anchors, rejects Mermaid and em dashes, verifies every
+Excalidraw/SVG pair, requires SVG accessibility metadata, and confirms rendered
+labels match the editable source.
+
 ## Testing
 
 Required agent validation lives in [AGENTS.md](AGENTS.md). For changes touching
@@ -597,13 +630,37 @@ The repository uses GitHub Actions for continuous integration and release automa
 - Pull requests to `main`
 - Git tags matching `v*` (e.g., `v1.2.3`) for releases
 
-### Gateway LKG version automation
+### Gateway release policy
 
-- The pinned gateway setup version lives in `src/OpenClaw.SetupEngine/GatewayLkgVersion.cs` (`GatewayLkgVersion.LkgVersion`).
-- Setup/E2E consume this as the default source of truth when `Gateway.Version` is not explicitly set.
-- When `Gateway.InstallUrl` points to a custom installer script, SetupEngine does not auto-inject the LKG; set `Gateway.Version` explicitly if your script supports `--version`.
-- The `test` job in `.github/workflows/ci.yml` compares pinned LKG vs npm `openclaw@latest` and emits a **warning** on drift (non-blocking).
-- `.github/workflows/gateway-lkg-update.yml` creates or updates one standing draft PR on branch `automation/gateway-lkg-update` to bump `GatewayLkgVersion.LkgVersion` when upstream latest advances.
+- `src/OpenClaw.SetupEngine/GatewayReleasePolicy.cs` embeds the exact Gateway
+  recommendation, protocol generation, security floor, validation evidence, and
+  any distinct validated fallback for the Windows release.
+- Setup and E2E install the exact recommendation. Product setup never resolves
+  a moving npm dist-tag at runtime.
+- `Gateway.Selection` supports `recommended`, `fallback`, and `exact`.
+  `fallback` currently resolves to exact validated release `2026.6.11` and is
+  never automatic. `exact` accepts only an embedded validated official release
+  in product mode.
+- A custom `Gateway.InstallUrl` must also specify an exact `Gateway.Version`.
+  Setup labels it unverified and still requires an exact protocol-v4 handshake
+  and matching server version after installation.
+- `.github/workflows/gateway-release-candidate.yml` discovers official stable
+  candidates and opens an evidence-only draft PR. It does not promote a
+  candidate. Promotion requires exact-version Windows setup, pairing,
+  reconnect, recovery, and Gateway-to-node invocation proof.
+- `scripts/Test-GatewayReleaseCandidate.ps1` verifies stable GitHub release
+  classification, SHA-512 npm integrity, registry signature, SLSA provenance,
+  exact package/tag commit identity, stable release soak evidence, and protocol
+  v4 at that exact commit. Unembedded candidates require provenance whose source
+  commit matches the tag. Existing embedded recommendation/fallback evidence
+  may use the explicit `-AllowEmbeddedPolicyEvidence` compatibility switch only
+  when the integrity-verified package build commit matches the exact tag and
+  the package integrity is already embedded in policy.
+- Candidate evidence is discovery input only and cannot authorize an
+  unembedded release. To exercise a candidate, first add a reviewed
+  `GatewayReleaseStatus.Candidate` entry to `GatewayReleasePolicy`, then set
+  `OPENCLAW_E2E_GATEWAY_VERSION` and run the setup/connect and recovery E2E
+  shards with `--validate-gateway-candidate`.
 
 ### Build Matrix
 
@@ -611,8 +668,13 @@ The CI builds multiple configurations:
 
 **Test Job:**
 - Runs on `windows-latest`
-- Builds Shared library, Tray app (WinUI), Tests (Shared + Tray)
-- Runs unit tests: `dotnet test tests/OpenClaw.Shared.Tests` and `dotnet test tests/OpenClaw.Tray.Tests`
+- Builds the Shared library, Tray app, and eight test projects: Shared, Tray,
+  Connection, WinNode CLI, Tray Integration, FunctionalUI, SetupEngine, and
+  Tray UI
+- Runs unit, integration, native UI, and accessibility tests across those
+  projects; see [docs/TEST_COVERAGE.md](docs/TEST_COVERAGE.md)
+- Verifies the WinUI DevBuild identity marker after native UI and accessibility
+  tests
 - Uses GitVersion for semantic versioning
 
 **Build Job (Tray):**
@@ -850,12 +912,12 @@ Direct `dotnet build` without the script will fail with "WindowsAppSDKSelfContai
 
 ### Architecture
 
-- **FunctionalUI**: `src/OpenClawTray.FunctionalUI/` — Minimal declarative WinUI helper layer used by onboarding
-- **Pages**: `src/OpenClaw.Tray.WinUI/Onboarding/Pages/` — Functional UI components for each wizard screen
-- **Services**: `src/OpenClaw.Tray.WinUI/Onboarding/Services/` — State management, setup code decoder, permission checker, health check, input validation
-- **Widgets**: `src/OpenClaw.Tray.WinUI/Onboarding/Widgets/` — Shared UI components (cards, step indicators, feature rows)
-- **Window**: `src/OpenClaw.Tray.WinUI/Onboarding/OnboardingWindow.cs` — Host window with WebView2 overlay for chat
-- **Helpers**: `src/OpenClaw.Tray.WinUI/Helpers/GatewayChatHelper.cs` — Shared WebView2 chat URL builder
+- **FunctionalUI**: `src/OpenClawTray.FunctionalUI/` - Minimal declarative WinUI helper layer used by onboarding
+- **Pages**: `src/OpenClaw.Tray.WinUI/Onboarding/Pages/` - Functional UI components for each wizard screen
+- **Services**: `src/OpenClaw.Tray.WinUI/Onboarding/Services/` - State management, setup code decoder, permission checker, health check, input validation
+- **Widgets**: `src/OpenClaw.Tray.WinUI/Onboarding/Widgets/` - Shared UI components (cards, step indicators, feature rows)
+- **Window**: `src/OpenClaw.Tray.WinUI/Onboarding/OnboardingWindow.cs` - Host window with WebView2 overlay for chat
+- **Helpers**: `src/OpenClaw.Tray.WinUI/Helpers/GatewayChatHelper.cs` - Shared WebView2 chat URL builder
 
 ---
 

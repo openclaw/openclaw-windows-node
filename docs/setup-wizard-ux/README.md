@@ -1,9 +1,9 @@
-# Setup wizard UX refresh — screens & accessibility proof
+# Setup wizard UX refresh - screens & accessibility proof
 
 Screenshots captured from the live isolated dev app (`OPENCLAW_FORCE_ONBOARDING=1`,
 `run-app-local.ps1 -NoBuild -Isolated`) walking the full gateway setup + onboard flow.
 Accessibility was scanned per-screen with a standalone Axe.Windows (v2.4.1) scanner
-against the live process — the same engine Accessibility Insights uses.
+against the live process - the same engine Accessibility Insights uses.
 
 ## Screens
 
