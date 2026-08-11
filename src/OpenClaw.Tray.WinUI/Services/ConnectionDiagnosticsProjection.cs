@@ -176,17 +176,22 @@ internal static class ConnectionDiagnosticsProjection
             return null;
 
         var hasSharedToken = !string.IsNullOrWhiteSpace(gateway.SharedGatewayToken);
-        if (!BrowserProxyActivation.ShouldShowMissingSharedTokenWarning(
-                nodeBrowserProxyEnabled,
-                hasSharedToken,
-                nodeSessionLive))
-        {
-            return null;
-        }
-
+        var browserEndpointVerified = BrowserProxyActivation.IsSshBrowserEndpointVerified(
+            gateway.SshTunnel,
+            gateway.BrowserControlPort);
+        var remediation = BrowserProxyActivation.ResolveRemediation(
+            nodeBrowserProxyEnabled,
+            hasSharedToken,
+            nodeSessionLive,
+            browserEndpointVerified);
         var requiresRemoteEndpoint = BrowserProxyActivation.RequiresRemoteBrowserEndpoint(gateway);
 
-        return BrowserProxyActivation.BuildMissingSharedTokenCaveat(requiresRemoteEndpoint);
+        if (remediation == BrowserProxyActivation.RemediationKind.MissingSharedToken)
+            return BrowserProxyActivation.BuildMissingSharedTokenCaveat(requiresRemoteEndpoint);
+
+        return remediation == BrowserProxyActivation.RemediationKind.UnverifiedEndpoint
+            ? BrowserProxyActivation.BuildUnverifiedSshBrowserEndpointDetail()
+            : null;
     }
 
     private static ConnectionPendingActionDiagnostics[] BuildPendingActions(GatewayConnectionSnapshot snapshot)

@@ -106,4 +106,29 @@ public sealed class SettingsManagerIsolationTests
             }
         }
     }
+
+    [Fact]
+    public void SaveOrThrow_PropagatesPersistenceFailureWhileSaveRemainsBestEffort()
+    {
+        var root = Path.Combine(Path.GetTempPath(), "OpenClawTray.Tests", Guid.NewGuid().ToString("N"));
+        var blockedDirectory = Path.Combine(root, "not-a-directory");
+
+        try
+        {
+            Directory.CreateDirectory(root);
+            File.WriteAllText(blockedDirectory, "blocks directory creation");
+            var settings = new SettingsManager(blockedDirectory);
+
+            Assert.Throws<IOException>(() => settings.SaveOrThrow());
+            Assert.Null(Record.Exception(settings.Save));
+        }
+        finally
+        {
+            if (Directory.Exists(root))
+            {
+                // slopwatch-ignore: SW003 Test cleanup is best-effort and must not hide the assertion.
+                try { Directory.Delete(root, recursive: true); } catch { }
+            }
+        }
+    }
 }

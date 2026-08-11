@@ -170,6 +170,8 @@ Many gateway records may be saved, but only `ActiveId` in `gateways.json` is the
 
 `SettingsManager` still owns general tray settings (node mode, MCP mode, SSH tunnel toggles, notifications, UI preferences). It may read legacy `Token` / `BootstrapToken` JSON fields into memory for migration, but save must not write those legacy credential fields back.
 
+`GatewayDirectConnectService` is the single transaction owner for direct-connect UI surfaces. It commits the registry and active id, applies identity changes, persists `SettingsManager`, waits for a terminal manager state, and rolls back ordinary asynchronous connection failures as well as thrown failures. When the operation replaced a live operator connection, successful rollback reconnects that previous gateway before returning the failure. The Connection page and Connection Status window only validate controls and render the result. MCP shared-token replacement keeps its device-token-preserving validation semantics, then asks this service to synchronize the committed active gateway into settings and the runtime tunnel.
+
 ## Credential precedence
 
 Credential resolution order is intentionally strict:
@@ -204,7 +206,7 @@ The gateway may reject a stored device token with the structured code `AUTH_DEVI
 
 On a device-token mismatch, the manager clears **only the rejected role's** device token and reconnects, letting `CredentialResolver` fall back to the same record's `SharedGatewayToken` (preferred) or `BootstrapToken`. This kills the post-setup "need a new token" dead end (setup clears the bootstrap token once pairing is durable, but the shared token remains). Operator recovery runs in `TryScheduleOperatorTokenRecovery`; node recovery is driven off the node client's classified `INodeConnectorTelemetryEvents.ConnectionFailure(GatewayErrorKind)` - the manager's `OnNodeConnectionFailure` queues `HandleNodeDeviceTokenMismatchAsync` off the connector's dispatch lock (capturing lifecycle+node generations at fire time and re-checking `IsCurrentNodeAttempt` before/after the transition semaphore). A per-gateway, per-role attempt guard (reset on handshake success / node pairing) prevents clear→reconnect→mismatch loops.
 
-**Security - trust gate and endpoint provenance.** Clearing a device token downgrades to the more powerful shared/bootstrap credential, so `IsRecoverySafeEndpoint` restricts recovery to trusted endpoints: an owned SSH tunnel, a validated TLS (`wss`/`https`) endpoint, or - for a setup-managed WSL loopback gateway - a listener proven by `ManagedLocalGatewayPortProvenanceService` to be the Windows WSL relay. Loopback is not treated as identity by itself: an unknown listener or a proven obsolete native OpenClaw gateway blocks fallback, so a wrong local process cannot return a device-token mismatch to induce disclosure of the shared credential. A plain `ws://` remote endpoint is never eligible.
+**Security - trust gate and endpoint provenance.** Clearing a device token downgrades to the more powerful shared/bootstrap credential, so `IsRecoverySafeEndpoint` restricts recovery to trusted endpoints: an owned SSH tunnel, a validated TLS (`wss`/`https`) endpoint, or a setup-managed WSL loopback gateway proven by `ManagedLocalGatewayPortProvenanceService`. The managed-local proof accepts either the existing verified Windows WSL relay identity or a relayless mirrored-networking endpoint with a complete empty Windows listener snapshot, positive expected-distro systemd MainPID ownership, and an immediate second complete empty snapshot. Strong credentials repeat that relayless proof immediately before use. Loopback is not treated as identity by itself: incomplete capture or any unknown, conflicting, or changed Windows listener blocks fallback, so a wrong local process cannot return a device-token mismatch to induce disclosure of the shared credential. A plain `ws://` remote endpoint is never eligible.
 
 ### Automatic managed-local WSL gateway repair (tray)
 
@@ -212,7 +214,7 @@ For an app-owned setup-managed local WSL gateway (`WslKeepAlivePolicy.IsSetupMan
 
 **Default-on product contract and macOS parity.** App-installed local gateways are supervised by default for both fresh setups and upgrades, matching the macOS local-mode contract where launchd supervision is active unless OpenClaw is paused. Fresh Windows setup writes `EnableManagedLocalGatewayAutoRepair=true` explicitly; an existing settings file that predates the field deserializes to the same default. This enrollment is restricted to records whose setup-managed ownership is positively linked to the installed endpoint. Manual localhost, repointed, SSH, and remote records are never adopted. The user-facing controls are **Disconnect** and **Stop** on the Connection page: either records explicit operator intent and suppresses automatic restart, process remediation, and reconnect until the operator explicitly connects/starts again. An explicitly persisted `false` remains available as a policy/debug kill switch and is never overwritten by setup merge.
 
-`ManagedLocalGatewayRepairCoordinator` **probes before it restarts**: if the gateway is already reachable it just reconnects (the macOS "attach" path); only a genuinely-down gateway triggers a WSL distro restart (via `WslGatewayController`), a keepalive re-arm (`WslGatewayKeepAliveService.TryEnsureAsync`), and a reconnect. For the native-vs-WSL collision case, `ManagedLocalGatewayPortProvenanceService` classifies listeners by address and proves process command line plus scheduled-task/profile lineage. It automatically disables/stops only a fully proven obsolete native OpenClaw gateway; an unknown listener is never killed and produces precise `LocalPortConflict` diagnostics. The shared lifecycle lease serializes that destructive work with manual WSL actions. Reconnect is **gateway-pinned, intent-aware, and cancellable** (`GatewayConnectionManager.ReconnectIfCurrentAsync(gatewayId, ct)`), so gateway switches, explicit Disconnect/Stop, and shutdown always win. Repair is single-flight, verifies success by a real operator connection to the same gateway, is per-gateway restart-budget-bounded, and never reads or logs credentials.
+`ManagedLocalGatewayRepairCoordinator` **probes before it restarts**: if the gateway is already reachable it just reconnects (the macOS "attach" path); only a genuinely-down gateway triggers a WSL distro restart (via `WslGatewayController`), a keepalive re-arm (`WslGatewayKeepAliveService.TryEnsureAsync`), and a reconnect. For the native-vs-WSL collision case, `ManagedLocalGatewayPortProvenanceService` classifies listeners by address and proves process command line plus scheduled-task/profile lineage. Relayless mirrored networking is accepted only when complete Windows captures remain empty around positive expected-distro systemd MainPID proof. It automatically disables/stops only a fully proven obsolete native OpenClaw gateway; an unknown, incomplete, or conflicting listener is never trusted or killed and produces precise `LocalPortConflict` diagnostics. The shared lifecycle lease serializes that destructive work with manual WSL actions. Reconnect is **gateway-pinned, intent-aware, and cancellable** (`GatewayConnectionManager.ReconnectIfCurrentAsync(gatewayId, ct)`), so gateway switches, explicit Disconnect/Stop, and shutdown always win. Repair is single-flight, verifies success by a real operator connection to the same gateway, is per-gateway restart-budget-bounded, and never reads or logs credentials.
 
 ## Client instance lifecycle
 
@@ -228,12 +230,12 @@ Both paths dispose old clients before creating new ones.
 
 Setup codes (from QR scan or paste) decode to `{ url, bootstrapToken }` via `SetupCodeDecoder`. The flow:
 
-1. `ApplySetupCodeAsync(code)` decodes and validates
-2. Creates/updates a `GatewayRecord` with the bootstrap token
-3. Clears stored device tokens (fresh pairing)
-4. Connects to the new gateway
-5. Gateway returns `hello-ok.auth.deviceToken` after pairing
-6. Connection manager persists the device token to the identity file
+1. `ApplySetupCodeAsync(code)` decodes and validates the gateway URL and bootstrap token
+2. Creates/updates and persists the active `GatewayRecord`, preserving any shared token and durable per-role device tokens
+3. Disconnects the previous connection only after the record is durable
+4. Forces `auth.bootstrapToken` for this connection attempt without clearing stored device tokens; the record-scoped force flag is consumed or cleared even when identity loading fails
+5. After successful pairing, the gateway returns `hello-ok.auth.deviceToken` and the connection manager persists the replacement role token
+6. If pairing or connection fails, the previously stored device tokens remain intact, so retrying or returning to the prior pairing does not require an unintended full re-pair
 
 **Approval boundaries**: `GatewayConnectionManager` leaves node-pair command-trust requests and reapproval pending for explicit operator approval. It may automatically approve and reconnect only an explicitly typed device-pair request used for a device role upgrade.
 
@@ -247,7 +249,9 @@ When **another** device or node requests pairing, the gateway broadcasts `device
 
 `SshTunnelService` manages an SSH local port-forward process and implements `ISshTunnelManager` directly for the connection manager.
 
-When a `GatewayRecord` has `SshTunnel` config, the connection manager starts the tunnel before connecting the WebSocket client to `ws://localhost:<localPort>`. The config stores the SSH daemon port (`sshPort`, default `22`) separately from the remote gateway port forwarded by `-L`.
+When a `GatewayRecord` has `SshTunnel` config, the connection manager starts the tunnel before connecting the WebSocket client to `ws://localhost:<localPort>`. The config stores the SSH daemon port (`sshPort`, default `22`) separately from the remote gateway port forwarded by `-L`. Startup allows up to 20 seconds for SSH transport, key exchange, authentication, and local-forward binding, while every sample still fails closed on incomplete listener capture or a conflicting loopback/wildcard owner. Same-number listeners bound only to non-loopback interfaces are irrelevant to the local forward and are ignored.
+
+Credential handoff pins the verified tunnel lifecycle generation (or managed-local process identity) from preflight through the initial challenge authorization. If ownership changes between WebSocket acceptance and the credential frame, the current socket is aborted and only a fresh, reauthorized socket may retry.
 
 `SshTunnelSnapshot` provides a read-only point-in-time view of tunnel state for UI consumption (avoids coupling UI to the mutable service).
 

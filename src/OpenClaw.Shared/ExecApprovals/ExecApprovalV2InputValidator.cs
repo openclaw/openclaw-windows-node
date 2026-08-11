@@ -79,13 +79,30 @@ public static class ExecApprovalV2InputValidator
             }
         }
 
+        // rawCommand — optional display text. When present it must agree with argv, so
+        // the text shown to an operator can never describe a different command than the
+        // one that will run. The gateway enforces this too (RAW_COMMAND_MISMATCH); the
+        // node repeats it so a request that reaches the node by another path is still
+        // checked.
+        string? rawCommand = null;
+        if (request.Args.ValueKind == JsonValueKind.Object &&
+            request.Args.TryGetProperty("rawCommand", out var rawEl))
+        {
+            if (rawEl.ValueKind != JsonValueKind.String)
+                return Deny("malformed-raw-command");
+            rawCommand = rawEl.GetString();
+            if (!ExecRawCommandConsistency.IsConsistent(rawCommand, argv))
+                return Deny("raw-command-mismatch");
+        }
+
         return ExecApprovalV2ValidationOutcome.Ok(new ValidatedRunRequest(
             argv,
             cwd,
             timeoutMs,
             env,
             TryGetString(request.Args, "agentId"),
-            TryGetString(request.Args, "sessionKey")));
+            request.SessionKey,
+            rawCommand));
     }
 
     private static ExecApprovalV2ValidationOutcome Deny(string reason)

@@ -484,6 +484,228 @@ keeps approval identity and process execution on one argv representation.
 `"version": 1` inside `exec-approvals.json` is the persisted file schema
 version. It is not the retired Windows V1 `exec-policy.json` evaluator.
 
+#### Decision: bind reusable gateway commands to direct argv
+
+The gateway represents Windows shell text as
+`["cmd.exe", "/d", "/s", "/c", "<command>"]` with one pre-joined command element.
+Low-level callers and upstream approval fixtures may instead supply a
+reconstructible tokenized tail. The carrier executable may be the bare name or
+the fully qualified system `cmd.exe` path; an arbitrary file merely named
+`cmd.exe` is never a transparent durable-approval carrier. A bare name is only a
+token check, so durable binding additionally resolves the carrier through
+`ResolveTrustedCarrierPath` and requires a real image in a Windows system
+directory, then pins that absolute path into the executed argv so the loader
+cannot re-resolve it at launch.
+`CanonicalCmdCarrier` is the single owner of that recognition, shared by the
+approvals binder and the MXC command-line builder so the layer that authorizes a
+shape and the layer that runs it cannot disagree. A multi-element tail is only
+accepted when every element is free of whitespace and quotes, because otherwise
+the original process-creation quoting is not recoverable by a space join.
+
+V2 may persist or consume an
+allowlist rule only when that carrier contains one statically bindable external
+command. The binder accepts an intentionally small grammar: unquoted literal
+tokens separated by whitespace. It rejects quoting, pipelines, command chains,
+redirection, expansion, caret escapes, grouping, CMD built-ins, unresolved or
+nonexistent executables, and wrapper/interpreter targets. Durable binding is
+further restricted to native `.exe` images, which CreateProcess runs
+directly: PATH resolution probes every `PATHEXT` entry, so a bare name can
+otherwise resolve to `.bat`, `.cmd`, `.com`, `.vbs`, `.js`, `.wsf`, or `.msc`
+content whose meaning is delegated to an interpreter without any change to the
+approved path. The allowlist is `.exe` only on purpose: adding another image
+format to durable authorization is a separate decision with its own review, not
+a detail of carrier binding. A `.com` target is still runnable, it is simply
+prompt-only, which is the fail-closed side of that decision.
+
+For a successful binding, one immutable reusable command supplies the resolved
+path used for matching, the persisted pattern, usage metadata, and the direct
+argv executed by the runner. The original CMD wrapper remains the approved
+execution only for an attended Allow once decision or locally selected full
+policy. This prevents the former split where an inner executable suppressed the
+prompt but the outer `cmd.exe` identity was then rejected.
+
+Permissions **Ask** maps to prompt-on-miss: a reusable allowlist match runs
+without prompting. A manually configured literal `ask: "always"` still prompts
+every time. Allow always is offered only for a reusable command under allowlist
+security and persists that command's resolved executable path.
+
+When nothing binds, the prompt still shows the operator a resolved executable
+path, falling back to the carrier's own resolution. An approval dialog must never
+ask for a decision with no resolved path displayed.
+
+Durable identity is the executable **plus an argument pattern**, matching macOS and
+the shared protocol. A generated rule persists `path`, `argPattern`, `commandText`,
+and `source`, so approving `where.exe hostname.exe` authorizes exactly that
+argument form and nothing else. This is what makes an explicit code-host catalog
+unnecessary: an argument-selected host such as `mshta.exe` or `rundll32.exe` cannot
+be blanket-approved, because the persisted rule is pinned to the arguments the
+operator actually saw.
+
+`argPattern` is written in the platform form the gateway expects. On Windows each
+argument is separator-normalized and the pattern is the anchored, NUL-joined
+regular expression `^escaped(join("\0"))\0$`; zero arguments serialize as `^\0\0$`.
+The matcher selects its separator by testing whether the pattern contains a NUL,
+so both the Windows and the hashed non-Windows form remain readable. Matching runs
+against the full argv including argv[0].
+
+Authorization consequences follow upstream `matchAllowlist` exactly:
+
+- A **generated** entry with no `argPattern` never matches. It is skipped rather
+  than widened to a path-only grant, so a truncated or hand-edited rule fails
+  closed. Any non-empty `source` counts as generated, not just the exact marker
+  this node writes, so a differently cased, padded, or foreign marker cannot fall
+  through and widen the rule. Provenance is absent only when `source` is empty or
+  whitespace.
+- A **path-only** entry authorizes its executable regardless of arguments. That is
+  the operator writing a deliberately broad rule by hand, and it is honored as
+  written, with one carve-out described under "Legacy quarantine" below. Path-only
+  matches are deferred so a precisely bound rule always wins.
+- Normalization preserves `Source` and `ArgPattern` on rewrite. Dropping either
+  would silently convert a narrow generated rule into a broad path-only one.
+
+##### Legacy quarantine for provenance-less command-host rules
+
+An entry with **no `source` and no `argPattern`** predates argument binding, and we
+cannot tell a deliberate operator rule from one written when this node still refused
+interpreters durable approval by name. For an ordinary program that ambiguity is
+harmless and the entry keeps working. For a program the previous model refused
+outright (`python`, `cmd`, `powershell`, `pwsh`, `wsl`, `node`, `cscript`, the
+indirect execution hosts such as `mshta`, `rundll32`, `regsvr32`, `msbuild` and
+`certutil`, and versioned interpreters such as `python3.12`) it is not: honoring it
+would convert a case that used to be denied into an unconditional allow, purely as a
+side effect of changing the model. Those entries go **inert**. The command falls
+through to a prompt.
+
+The quarantined set is a verbatim copy of the catalog as it stood immediately before
+argument binding replaced it, because the question it answers is purely historical:
+would this exact entry have been refused when it was written? It must not be curated,
+pruned, or extended, and its matching rules are fixed for the same reason: it compares
+a basename with only a `.exe` suffix stripped, exactly as the original did.
+
+The entry is not deleted and not migrated. The only way to make such a host reusable
+is an explicit Allow always, which writes an argument-bound sibling carrying `source`
+and `argPattern`; that sibling then matches its own invocation and nothing else.
+
+This name list is a compatibility measure for records already on disk. It is not the
+security boundary and must not be used as one. The boundary is that every rule this
+node generates pins its arguments.
+
+##### Trusted carrier: approval identity is separate from execution transport
+
+When the payload inside a strictly trusted canonical `cmd` carrier binds, the node
+authorizes the **inner** executable and argument pattern, and executes a carrier
+reconstructed from the validated request. The carrier is not incidental: under MXC it
+transports the PATH and TEMP bootstrap in band, because MXC 0.7 rejects a
+non-empty `process.env`. Substituting the bound direct argv would authorize
+correctly and then run in an environment the command was never prepared for.
+
+The reconstructed carrier differs from the request in exactly two places, and both
+of them remove a resolution that would otherwise happen at launch instead of at
+approval:
+
+- **argv[0]** is pinned to the resolved `System32` or `SysWOW64` `cmd.exe`. A
+  relative `cmd.exe` would let Windows re-resolve the image against PATH and the
+  working directory at spawn time.
+- **The payload's executable token** is pinned to the binder-resolved absolute path.
+  `cmd.exe` resolves that token itself, at launch, searching the working directory
+  **before** PATH, while the binder's resolver searches PATH only. Leaving it
+  unpinned means one resolver authorizes the command and a different one picks what
+  runs, and anything able to write to the working directory in between decides the
+  outcome. A pinned absolute path leaves `cmd` nothing to search for.
+
+Everything else, including interior spacing, is byte-preserved, so the executed
+carrier reconstructs the approved `rawCommand` exactly and no metacharacter can be
+introduced after approval. The rewrite is built from the payload's parsed token
+spans, never by string replacement, so an argument that repeats the executable's
+text is untouched. The tail's arity is preserved as well, so a pre-joined tail stays
+one element and a tokenized tail keeps its elements and no new process-creation
+quoting is introduced.
+
+Both pins apply to **every** approved run of a recognized canonical carrier: a durable
+Allow Always, a one-time Allow Once, an allowlist hit that never prompts, and a
+pre-approved `security=full` run. Approval identity and durability are separate from
+execution transport. The prompt names the inner executable the binder resolved through
+a trusted system `cmd.exe`, so executing the request's own argv instead would reopen
+both launch-time lookups after the decision had been made, and a `cmd.exe` planted
+earlier on PATH than the system directory would run in place of the image that was
+shown. Choosing this transport persists nothing; durability is gated separately on an
+Allow Always decision with a bound reusable command.
+
+The same rule covers a directly invoked executable, which is resolved twice: once by
+the normalizer for the execution identity and once by the binder for the identity that
+is displayed and stored. Execution uses the binder's resolution, so the two lookups can
+never disagree about which image the operator approved.
+
+Pinning is refused rather than approximated. The pinned path must be writable into
+the payload as a single token that `cmd` reads back byte for byte: no whitespace, no
+quote, none of `% ! ^ & | < > ( )`, none of `, ; =` (which end `cmd`'s command-name
+token even though our own tokenizer does not model them), no control characters, and
+no trailing backslash. Whitespace is refused rather than quoted, because under `/s`
+`cmd` strips the first and last quote of the payload and uses the remainder verbatim,
+so quoting a spaced path removes the quotes again and leaves it ambiguous. After
+reconstruction the result is re-parsed and compared against the original: same
+argument count, the executable equal to the pinned path, every other argument
+ordinal-identical, and the whole carrier still recognized as the canonical shape.
+Anything that fails is not bound and stays prompt-only
+(`carrier-payload-not-pinnable`). The same equivalence is re-checked at execution
+time rather than trusted from bind time.
+
+Trust is deliberately narrow. A carrier is trusted only when argv[0] is the bare
+name `cmd`/`cmd.exe` or a fully qualified path under `System32`/`SysWOW64`. A
+renamed or relocated image named `cmd.exe` is refused for durable binding and
+falls back to one-time or prompt handling, so an attacker-supplied binary cannot
+be looked through. Non-canonical carriers stay one-time and report an explicit
+diagnostic (`carrier-payload-not-static`) rather than silently failing to bind.
+
+Pinning supersedes the earlier approval-time working-directory ambiguity check. That
+check could only observe the directory as it was when approval was granted, so a
+writable working directory could gain a shadowing file before launch and win anyway.
+It has been deleted rather than kept as a diagnostic, and must not be restored as an
+authorization boundary.
+
+##### Behavior changes from the previous executable-path-only binding
+
+- A stored rule naming an interpreter or code host (for example `**/wsl.exe`)
+  previously produced a hard `persistent-approval-not-permitted-for-command-host`
+  refusal. A hand-written path-only rule now authorizes that executable, matching
+  upstream, **except** for entries that carry neither `source` nor `argPattern`,
+  which stay inert for those hosts (see "Legacy quarantine" above). Generated rules
+  still pin arguments, so a broad grant cannot happen by accident through the Allow
+  always UX.
+- A separator-bearing path to a nonexistent file is now rejected at bind time.
+  Binding requires the resolved executable to exist.
+- UNC and other network paths are refused for durable approval. Their contents are
+  remotely mutable at a stable path, so a persisted rule would be a standing grant
+  over content the node does not control.
+- Integrity binding is by resolved path only, with no content hash, inode, or
+  signature check. This matches macOS `lastResolvedPath` behavior, and leaves the
+  same time-of-check to time-of-use exposure between approval and launch.
+- An argument containing NUL is refused. NUL separates arguments inside a stored
+  `argPattern`, so `"a\0b"` would render identically to the two arguments
+  `"a"`, `"b"` and let a stored rule match a differently segmented command. It is
+  not representable in a Windows command line either, so refusing costs nothing.
+- A remote `system.execApprovals.set` may retain existing allowlist entries but
+  not alter them. Retention compares the whole authorization identity (pattern,
+  `argPattern`, and `source`) field by field. Comparing paths alone would let a
+  caller keep the executable while dropping the binding, silently widening a
+  generated rule into a path-only grant.
+
+##### Closed: working-directory substitution for bare carrier payloads
+
+Previously, for a bare (unqualified) payload name inside a trusted carrier, the
+executable the node authorized and the executable `cmd.exe` launched were resolved at
+different times by different code, and a writable working directory could gain a
+shadowing file between approval and launch.
+
+This is closed by pinning the payload's executable token to its resolved absolute
+path inside the reconstructed carrier, described above. `cmd` no longer performs a
+second resolution, so there is no window to win. Cases where the resolved path cannot
+be represented safely in the payload are refused durable binding rather than
+transported unpinned.
+
+Time-of-check to time-of-use on the *contents* of the resolved path remains, and is
+unchanged: integrity binding is by path only, matching macOS `lastResolvedPath`.
+
 ### Location → Windows.Devices.Geolocation
 
 ```csharp

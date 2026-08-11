@@ -1,8 +1,16 @@
 using OpenClaw.Shared;
+using System.Text.Json;
+
+if (args is ["--echo-args", .. var echoedArgs])
+{
+    Console.WriteLine(JsonSerializer.Serialize(echoedArgs));
+    return 0;
+}
 
 if (args.Length != 1)
 {
-    Console.Error.WriteLine("Usage: OpenClaw.Shared.TestHost <identity-directory>");
+    Console.Error.WriteLine(
+        "Usage: OpenClaw.Shared.TestHost <identity-directory> | --echo-args [args...]");
     return 64;
 }
 

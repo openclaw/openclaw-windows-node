@@ -541,7 +541,7 @@ public sealed partial class PermissionsPage : Page
             r.Pattern,
             Action = DisplayExecPolicyAction(r.Action),
             r.Index,
-            RemoveRuleAutomationName = $"Remove rule {r.Pattern}",
+            RemoveRuleAutomationName = $"Remove allowlist entry {r.Pattern}",
             RemoveRuleAutomationId = $"RemoveExecPolicyRuleButton_{r.Index}",
             ActionBrush = allowBrush
         }).ToList();
@@ -561,18 +561,50 @@ public sealed partial class PermissionsPage : Page
     private void OnAddRule(object sender, RoutedEventArgs e)
     {
         var pattern = NewRulePattern.Text.Trim();
-        if (string.IsNullOrEmpty(pattern)) return;
+        if (string.IsNullOrEmpty(pattern))
+        {
+            ShowExecAllowlistPatternValidation();
+            return;
+        }
         if (!ExecApprovalsStore.IsValidAllowlistPattern(pattern))
         {
-            NewRulePattern.Focus(FocusState.Programmatic);
+            ShowExecAllowlistPatternValidation();
             return;
         }
         ExecPolicyRuleList.UpsertByPattern(_policyRules, pattern, "allow");
         var rule = CloneExecPolicyRule(_policyRules.First(r =>
             string.Equals(r.Pattern, pattern, StringComparison.OrdinalIgnoreCase)));
         NewRulePattern.Text = "";
+        HideExecAllowlistPatternValidation();
         RefreshPolicyRulesList();
         SaveExecPolicyToDisk(new ExecPolicyMutation(ExecPolicyMutationKind.AddRule, rule));
+    }
+
+    private void ShowExecAllowlistPatternValidation()
+    {
+        ExecAllowlistPatternValidation.Visibility = Visibility.Visible;
+        Microsoft.UI.Xaml.Automation.AutomationProperties.SetHelpText(
+            NewRulePattern,
+            ExecAllowlistPatternValidation.Text);
+        NewRulePattern.Focus(FocusState.Programmatic);
+        DispatcherQueue.TryEnqueue(
+            Microsoft.UI.Dispatching.DispatcherQueuePriority.Low,
+            () =>
+            {
+                if (ExecAllowlistPatternValidation.Visibility == Visibility.Visible)
+                {
+                    ExecAllowlistPatternValidation.StartBringIntoView(
+                        new BringIntoViewOptions { AnimationDesired = false });
+                }
+            });
+    }
+
+    private void HideExecAllowlistPatternValidation()
+    {
+        ExecAllowlistPatternValidation.Visibility = Visibility.Collapsed;
+        Microsoft.UI.Xaml.Automation.AutomationProperties.SetHelpText(
+            NewRulePattern,
+            string.Empty);
     }
 
     private void OnRemoveRule(object sender, RoutedEventArgs e)

@@ -74,7 +74,27 @@ public sealed class CommandCenterStateBuilderTests
             source,
             StringComparison.Ordinal);
         Assert.Contains(
+            "BrowserProxyActivation.BuildUnverifiedSshBrowserEndpointDetail()",
+            source,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "BrowserProxyActivation.IsSshBrowserEndpointVerified(",
+            source,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "BrowserProxyActivation.ResolveRemediation(",
+            source,
+            StringComparison.Ordinal);
+        Assert.Contains(
             "BrowserProxyActivation.ResolveCapabilityPillTooltip(",
+            page,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "CapabilityPillKind.NeedsVerifiedEndpoint",
+            page,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "CommandCenter_BrowserProxyHostNotDetected",
             page,
             StringComparison.Ordinal);
         Assert.Contains(

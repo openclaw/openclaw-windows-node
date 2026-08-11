@@ -26,20 +26,27 @@ internal static class NodeCapabilityGating
     public static bool ShouldRegisterCamera(SettingsManager? s)       => s?.NodeCameraEnabled       != false;
     public static bool ShouldRegisterLocation(SettingsManager? s)     => s?.NodeLocationEnabled     != false;
     public static bool ShouldRegisterBrowserProxy(SettingsManager? s) => s?.NodeBrowserProxyEnabled != false;
-    public static bool ShouldRegisterBrowserProxy(SettingsManager? s, string? sharedGatewayToken, bool hasGatewayClient) =>
+    public static bool ShouldRegisterBrowserProxy(
+        SettingsManager? s,
+        string? sharedGatewayToken,
+        bool hasGatewayClient,
+        bool browserEndpointVerified = true) =>
         BrowserProxyActivation.ShouldRegister(
             toggleEnabled: ShouldRegisterBrowserProxy(s),
             sharedGatewayToken,
-            hasGatewayClient);
+            hasGatewayClient,
+            browserEndpointVerified);
 
     public static BrowserProxyActivation.RegistrationBlock ResolveBrowserProxyRegistrationBlock(
         SettingsManager? s,
         string? sharedGatewayToken,
-        bool hasGatewayClient)
+        bool hasGatewayClient,
+        bool browserEndpointVerified = true)
         => BrowserProxyActivation.ResolveRegistrationBlock(
             toggleEnabled: ShouldRegisterBrowserProxy(s),
             sharedGatewayToken,
-            hasGatewayClient);
+            hasGatewayClient,
+            browserEndpointVerified);
     public static bool ShouldRegisterTts(SettingsManager? s)          => s?.NodeTtsEnabled          == true;
     public static bool ShouldRegisterStt(SettingsManager? s)          => s?.NodeSttEnabled          == true;
 

@@ -17,9 +17,18 @@ public sealed class CanonicalCommandIdentity
     // Used by logging and prompting.
     public string DisplayCommand { get; }
 
-    // Safe rawCommand for executable resolution. Null in Windows v1 (rawCommand not in
-    // the system.run protocol).
+    // Safe rawCommand for executable resolution. Null in Windows v1 (rawCommand is
+    // never an input to resolution; see RawCommand for the validated display text).
     public string? EvaluationRawCommand { get; }
+
+    // The request's rawCommand, already validated against Command by the input
+    // validator. Audit and display only. Deliberately distinct from
+    // EvaluationRawCommand so it can never become executable input.
+    public string? RawCommand { get; }
+
+    // Why no durable identity was produced, when ReusableCommand is null. Diagnostic
+    // only: it explains a prompt-only outcome instead of leaving it unexplained.
+    public string? ReusableBindFailure { get; }
 
     // ── Resolution outputs ────────────────────────────────────────────────────
 
@@ -33,6 +42,10 @@ public sealed class CanonicalCommandIdentity
 
     // Suggested allowlist patterns for prompt/UI. Not a security decision.
     public IReadOnlyList<string> AllowAlwaysPatterns { get; }
+
+    // The only identity eligible for durable allowlist authorization and execution.
+    // Null means the request can be approved only as an exact one-time/full-policy operation.
+    public ExecReusableCommand? ReusableCommand { get; }
 
     // ── Request context (carried from ValidatedRunRequest) ────────────────────
 
@@ -53,7 +66,10 @@ public sealed class CanonicalCommandIdentity
         int timeoutMs,
         IReadOnlyDictionary<string, string>? env,
         string? agentId,
-        string? sessionKey)
+        string? sessionKey,
+        ExecReusableCommand? reusableCommand = null,
+        string? rawCommand = null,
+        string? reusableBindFailure = null)
     {
         Command = command;
         DisplayCommand = displayCommand;
@@ -66,5 +82,8 @@ public sealed class CanonicalCommandIdentity
         Env = env;
         AgentId = agentId;
         SessionKey = sessionKey;
+        ReusableCommand = reusableCommand;
+        RawCommand = rawCommand;
+        ReusableBindFailure = reusableBindFailure;
     }
 }

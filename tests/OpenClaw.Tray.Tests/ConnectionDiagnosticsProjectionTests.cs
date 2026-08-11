@@ -261,6 +261,100 @@ public sealed class ConnectionDiagnosticsProjectionTests
             diagnosticEventCount: 0);
 
         Assert.NotNull(status.BrowserProxy.Caveat);
+        Assert.Contains("shared token", status.BrowserProxy.Caveat!, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("SSH browser-proxy forward", status.BrowserProxy.Caveat!, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void BuildStatus_SshOverrideMismatchExplainsVerifiedEndpointRequirement()
+    {
+        var gateway = new GatewayRecord
+        {
+            Id = "gw-ssh",
+            FriendlyName = "SSH Remote",
+            Url = "ws://127.0.0.1:9100",
+            IsLocal = false,
+            SharedGatewayToken = "shared-token",
+            BrowserControlPort = 19000,
+            SshTunnel = new SshTunnelConfig(
+                "dev",
+                "remote.example",
+                RemotePort: 18789,
+                LocalPort: 9100,
+                IncludeBrowserProxyForward: true)
+        };
+        var snapshot = new GatewayConnectionSnapshot
+        {
+            OverallState = OverallConnectionState.Ready,
+            OperatorState = RoleConnectionState.Connected,
+            NodeConnectionIntended = true,
+            NodeState = RoleConnectionState.Connected,
+            NodePairingStatus = PairingStatus.Paired,
+            GatewayId = gateway.Id,
+            GatewayUrl = gateway.Url
+        };
+
+        var status = ConnectionDiagnosticsProjection.BuildStatus(
+            snapshot,
+            gateway,
+            enableNodeMode: true,
+            enableMcpServer: false,
+            isMcpRunning: false,
+            mcpError: null,
+            nodeBrowserProxyEnabled: true,
+            recentDiagnostics: [],
+            diagnosticEventCount: 0);
+
+        Assert.NotNull(status.BrowserProxy.Caveat);
+        Assert.Contains(
+            "managed browser-proxy forward",
+            status.BrowserProxy.Caveat!,
+            StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain(
+            "shared token",
+            status.BrowserProxy.Caveat!,
+            StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void BuildStatus_SshOverrideMismatchWithMissingTokenPrioritizesToken()
+    {
+        var gateway = new GatewayRecord
+        {
+            Id = "gw-ssh",
+            Url = "ws://127.0.0.1:9100",
+            BrowserControlPort = 19000,
+            SshTunnel = new SshTunnelConfig(
+                "dev",
+                "remote.example",
+                RemotePort: 18789,
+                LocalPort: 9100,
+                IncludeBrowserProxyForward: true)
+        };
+        var snapshot = new GatewayConnectionSnapshot
+        {
+            OverallState = OverallConnectionState.Ready,
+            OperatorState = RoleConnectionState.Connected,
+            NodeConnectionIntended = true,
+            NodeState = RoleConnectionState.Connected,
+            NodePairingStatus = PairingStatus.Paired,
+            GatewayId = gateway.Id,
+            GatewayUrl = gateway.Url
+        };
+
+        var status = ConnectionDiagnosticsProjection.BuildStatus(
+            snapshot,
+            gateway,
+            enableNodeMode: true,
+            enableMcpServer: false,
+            isMcpRunning: false,
+            mcpError: null,
+            nodeBrowserProxyEnabled: true,
+            recentDiagnostics: [],
+            diagnosticEventCount: 0);
+
+        Assert.NotNull(status.BrowserProxy.Caveat);
+        Assert.Contains("shared token", status.BrowserProxy.Caveat!, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("SSH browser-proxy forward", status.BrowserProxy.Caveat!, StringComparison.OrdinalIgnoreCase);
     }
 

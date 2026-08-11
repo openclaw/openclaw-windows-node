@@ -32,6 +32,7 @@ public class SetupConfigTests : IDisposable
         Assert.Equal("trace", config.LogLevel);
         Assert.False(config.RollbackOnFailure);
         Assert.Equal("loopback", config.Gateway.Bind);
+        Assert.Equal("hybrid", config.Gateway.ReloadMode);
         Assert.False(config.SkipPermissions);
         Assert.False(config.SkipWizard);
         Assert.True(config.WindowsNodeContext.Enabled);
@@ -42,6 +43,24 @@ public class SetupConfigTests : IDisposable
         Assert.Equal(TailscaleAuthMode.Browser, config.Tailscale.AuthMode);
         Assert.Equal(300, config.Tailscale.AuthTimeoutSeconds);
         Assert.Equal(300, config.Tailscale.ServeApprovalTimeoutSeconds);
+    }
+
+    [Fact]
+    public void ValidationPackagePath_IsRuntimeOnly()
+    {
+        var config = new SetupConfig
+        {
+            Gateway = new GatewayConfig { ValidationPackagePath = @"C:\candidate\openclaw-current.tgz" }
+        };
+
+        var json = JsonSerializer.Serialize(config, SetupConfig.JsonWriteOptions);
+        var loaded = JsonSerializer.Deserialize<SetupConfig>(
+            """{"Gateway":{"ValidationPackagePath":"C:\\untrusted\\candidate.tgz"}}""",
+            SetupConfig.JsonOptions);
+
+        Assert.DoesNotContain("ValidationPackagePath", json, StringComparison.Ordinal);
+        Assert.NotNull(loaded);
+        Assert.Null(loaded.Gateway.ValidationPackagePath);
     }
 
     [Fact]
@@ -373,7 +392,12 @@ public class SetupConfigTests : IDisposable
                 DistroName = "CustomClaw",
                 BaseDistro = "Debian",
                 GatewayPort = 19999,
-                Gateway = { Bind = "lan", InstallUrl = "https://example.test/install.sh" }
+                Gateway =
+                {
+                    Bind = "lan",
+                    InstallUrl = "https://example.test/install.sh",
+                    Version = GatewayReleasePolicy.SecurityFloor
+                }
             };
 
             var summary = SetupReviewSummaryBuilder.Build(config);
@@ -383,6 +407,7 @@ public class SetupConfigTests : IDisposable
             Assert.Contains("19999", summary.GatewayEndpoint);
             Assert.Contains("LAN bind enabled", summary.GatewayDescription);
             Assert.Contains("example.test", summary.InstallerDescription);
+            Assert.Contains("Unverified custom installer", summary.InstallerDescription);
             Assert.Contains("CustomClaw", summary.ExactCommands);
             Assert.Contains("19999", summary.ExactCommands);
             Assert.Equal("CustomClaw · LAN:19999", summary.CompletionGatewaySummary);

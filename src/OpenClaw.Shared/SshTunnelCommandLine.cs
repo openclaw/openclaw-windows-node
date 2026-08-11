@@ -36,6 +36,23 @@ public static class SshTunnelCommandLine
         int localPort,
         bool includeBrowserProxyForward,
         int sshPort)
+        => BuildArguments(
+            user,
+            host,
+            remotePort,
+            localPort,
+            includeBrowserProxyForward,
+            sshPort,
+            sshConfigFile: null);
+
+    public static string BuildArguments(
+        string user,
+        string host,
+        int remotePort,
+        int localPort,
+        bool includeBrowserProxyForward,
+        int sshPort,
+        string? sshConfigFile)
     {
         user = user.Trim();
         host = host.Trim();
@@ -53,7 +70,20 @@ public static class SshTunnelCommandLine
             ValidateBrowserProxyPort(localPort, nameof(localPort));
         }
 
-        var sb = new StringBuilder(BaseOptions);
+        var sb = new StringBuilder();
+        if (sshConfigFile is not null)
+        {
+            if (string.IsNullOrWhiteSpace(sshConfigFile) ||
+                sshConfigFile.IndexOfAny(['"', '\r', '\n', '\0']) >= 0)
+            {
+                throw new ArgumentException("SSH config path contains invalid characters.", nameof(sshConfigFile));
+            }
+
+            sb.Append("-F \"");
+            sb.Append(sshConfigFile);
+            sb.Append("\" ");
+        }
+        sb.Append(BaseOptions);
         AppendLocalForward(sb, localPort, remotePort);
         if (includeBrowserProxyForward)
             AppendLocalForward(sb, localPort + 2, remotePort + 2);

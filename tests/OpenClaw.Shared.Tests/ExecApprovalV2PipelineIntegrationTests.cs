@@ -195,9 +195,9 @@ public class ExecApprovalV2PipelineIntegrationTests : IDisposable
     }
 
     // A command host (cmd, powershell, ...) re-parses its argument tail, so a stored rule
-    // for the host executable would authorize arbitrary future commands. An interactive
-    // Allow Once is honored (the user approved this exact invocation and the dialog showed
-    // the full sanitized text), but Allow Always must fail closed instead of persisting.
+    // for the host executable would authorize arbitrary future commands. Under security=full,
+    // either attended allow decision authorizes this exact invocation only; neither persists
+    // a command-host rule.
     [Fact]
     public async Task CommandHost_AllowOnce_YieldsExecutionForThisInvocationOnly()
     {
@@ -217,14 +217,19 @@ public class ExecApprovalV2PipelineIntegrationTests : IDisposable
     }
 
     [Fact]
-    public async Task CommandHost_AllowAlways_FailsClosedWithNoExecution()
+    public async Task CommandHost_AllowAlwaysUnderFull_AllowsOnceWithoutPersistence()
     {
         var attack = Req("""{"command":["cmd","/c","echo","SAFE&calc.exe"]}""");
         var result = await MakeCoordinator(dialog: _ => ExecApprovalPromptOutcome.AllowAlways)
             .HandleAsync(attack, "shell-2");
 
-        Assert.False(result.IsAllow);
-        Assert.Null(result.Execution);
-        Assert.Equal(ExecApprovalV2Code.ValidationFailed, result.Code);
+        Assert.True(result.IsAllow);
+        Assert.NotNull(result.Execution);
+        Assert.EndsWith(
+            "cmd.exe",
+            result.Execution!.Argv[0],
+            StringComparison.OrdinalIgnoreCase);
+        Assert.Empty(new ExecApprovalsStore(_dir, NullLogger.Instance)
+            .ResolveReadOnly("main").Allowlist);
     }
 }

@@ -241,7 +241,8 @@ public class SystemCapabilityTests
         {
             Id = "p3",
             Command = "system.run.prepare",
-            Args = Parse("""{"command":["ls","-la"],"cwd":"/tmp","agentId":"agent1","sessionKey":"sk1"}""")
+            Args = Parse("""{"command":["ls","-la"],"cwd":"/tmp","agentId":"agent1","sessionKey":"spoofed"}"""),
+            SessionKey = "trusted-session"
         };
 
         var res = await cap.ExecuteAsync(req);
@@ -254,6 +255,7 @@ public class SystemCapabilityTests
         Assert.Equal("/tmp", cwd.GetString());
         Assert.True(plan.TryGetProperty("agentId", out var agentId));
         Assert.Equal("agent1", agentId.GetString());
+        Assert.Equal("trusted-session", plan.GetProperty("sessionKey").GetString());
     }
 
     [Fact]
@@ -415,7 +417,7 @@ public class SystemCapabilityTests
             var payload = JsonSerializer.SerializeToElement(response.Payload);
             Assert.EndsWith("exec-approvals.json", payload.GetProperty("path").GetString());
             Assert.True(payload.GetProperty("exists").GetBoolean());
-            Assert.Equal(payload.GetProperty("hash").GetString(), payload.GetProperty("baseHash").GetString());
+            Assert.False(payload.TryGetProperty("baseHash", out _));
             var file = payload.GetProperty("file");
             Assert.Equal(1, file.GetProperty("version").GetInt32());
             var defaults = file.GetProperty("defaults");
@@ -456,7 +458,7 @@ public class SystemCapabilityTests
             Assert.True(response.Ok);
             var payload = JsonSerializer.SerializeToElement(response.Payload);
             Assert.NotEqual(before.Hash, payload.GetProperty("hash").GetString());
-            Assert.Equal(payload.GetProperty("hash").GetString(), payload.GetProperty("baseHash").GetString());
+            Assert.False(payload.TryGetProperty("baseHash", out _));
             var defaults = payload.GetProperty("file").GetProperty("defaults");
             Assert.Equal("allowlist", defaults.GetProperty("security").GetString());
         }

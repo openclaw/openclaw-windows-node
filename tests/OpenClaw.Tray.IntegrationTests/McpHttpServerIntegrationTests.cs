@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text.Json;
@@ -125,6 +126,7 @@ public class McpHttpServerIntegrationTests : IClassFixture<TrayAppFixture>
     {
         using var beforeDoc = await _fixture.Client.CallToolExpectSuccessAsync("system.execApprovals.get");
         Assert.Equal(1, beforeDoc.RootElement.GetProperty("file").GetProperty("version").GetInt32());
+        Assert.False(beforeDoc.RootElement.TryGetProperty("baseHash", out _));
         var baseHash = beforeDoc.RootElement.GetProperty("hash").GetString()!;
 
         var beforeFile = beforeDoc.RootElement.GetProperty("file").Clone();
@@ -140,12 +142,44 @@ public class McpHttpServerIntegrationTests : IClassFixture<TrayAppFixture>
             file = beforeFile,
         });
         Assert.False(string.IsNullOrWhiteSpace(setDoc.RootElement.GetProperty("hash").GetString()));
+        Assert.False(setDoc.RootElement.TryGetProperty("baseHash", out _));
 
         using var afterDoc = await _fixture.Client.CallToolExpectSuccessAsync("system.execApprovals.get");
         var allowlist = afterDoc.RootElement.GetProperty("file")
             .GetProperty("agents").GetProperty("main").GetProperty("allowlist");
         Assert.Contains(allowlist.EnumerateArray(),
             rule => rule.GetProperty("pattern").GetString() == TrayAppFixture.SeededExecApprovalPattern);
+    }
+
+    // The GET snapshot deliberately carries no baseHash: upstream's
+    // ExecApprovalsNodeSnapshotSchema is additionalProperties:false and its file-backed
+    // oneOf branch explicitly forbids baseHash, so a snapshot containing one fails
+    // gateway-side validation. baseHash is a .set request parameter only. This proves the
+    // full CAS loop over a real MCP HTTP server: read `hash`, send it back as `baseHash`.
+    [IntegrationFact]
+    public async Task SystemExecApprovals_SetRejectsStaleBaseHash()
+    {
+        using var beforeDoc = await _fixture.Client.CallToolExpectSuccessAsync("system.execApprovals.get");
+        Assert.False(beforeDoc.RootElement.TryGetProperty("baseHash", out _));
+        var currentHash = beforeDoc.RootElement.GetProperty("hash").GetString()!;
+        var beforeFile = beforeDoc.RootElement.GetProperty("file").Clone();
+
+        // A hash that is well-formed but does not describe the on-disk file, i.e. what a
+        // client holding a snapshot from before a concurrent write would send.
+        var staleHash = currentHash.StartsWith("sha256:", StringComparison.Ordinal)
+            ? "sha256:" + new string('0', currentHash.Length - "sha256:".Length)
+            : new string('0', currentHash.Length);
+        Assert.NotEqual(currentHash, staleHash);
+
+        var (isError, text) = await _fixture.Client.CallToolAcceptingFailureAsync(
+            "system.execApprovals.set",
+            new { baseHash = staleHash, file = beforeFile });
+
+        Assert.True(isError, $"Expected stale baseHash to be rejected; response: {text}");
+
+        // The rejected write must not have been applied.
+        using var afterDoc = await _fixture.Client.CallToolExpectSuccessAsync("system.execApprovals.get");
+        Assert.Equal(currentHash, afterDoc.RootElement.GetProperty("hash").GetString());
     }
 
     [IntegrationFact]
@@ -182,6 +216,107 @@ public class McpHttpServerIntegrationTests : IClassFixture<TrayAppFixture>
             });
 
         Assert.True(isError);
+        Assert.Contains("cannot add or change allowlist entries", text, StringComparison.OrdinalIgnoreCase);
+    }
+
+    // A remote update may retain existing entries, but "retain" has to mean the whole
+    // authorization decision, not just the path. Keeping the pattern while dropping
+    // argPattern/source would silently widen a generated, argument-bound rule into a
+    // path-only grant for that executable: remote privilege escalation without adding
+    // a single entry.
+    [IntegrationFact]
+    public async Task SystemExecApprovals_SetRejectsStrippedArgumentBinding()
+    {
+        using var beforeDoc = await _fixture.Client.CallToolExpectSuccessAsync("system.execApprovals.get");
+        var baseHash = beforeDoc.RootElement.GetProperty("hash").GetString()!;
+
+        var (isError, text) = await _fixture.Client.CallToolAcceptingFailureAsync(
+            "system.execApprovals.set",
+            new
+            {
+                baseHash,
+                file = new
+                {
+                    version = 1,
+                    defaults = new { security = "allowlist", ask = "off", askFallback = "deny", autoAllowSkills = false },
+                    agents = new Dictionary<string, object>
+                    {
+                        ["main"] = new
+                        {
+                            security = "allowlist",
+                            ask = "off",
+                            askFallback = "deny",
+                            autoAllowSkills = false,
+                            allowlist = new object[]
+                            {
+                                new { id = TrayAppFixture.SeededExecApprovalId, pattern = TrayAppFixture.SeededExecApprovalPattern },
+                                // Same id and same path, but the argument binding is gone.
+                                new
+                                {
+                                    id = TrayAppFixture.SeededBoundExecApprovalId,
+                                    pattern = TrayAppFixture.SeededBoundExecApprovalPattern,
+                                },
+                            },
+                        },
+                    },
+                },
+            });
+
+        Assert.True(isError, $"Expected a stripped argument binding to be rejected; response: {text}");
+        Assert.Contains("cannot add or change allowlist entries", text, StringComparison.OrdinalIgnoreCase);
+
+        // And the narrow rule must still be intact on disk.
+        using var afterDoc = await _fixture.Client.CallToolExpectSuccessAsync("system.execApprovals.get");
+        Assert.Equal(baseHash, afterDoc.RootElement.GetProperty("hash").GetString());
+    }
+
+    // The retained-entry identity must be compared structurally. If the fields were
+    // concatenated with a delimiter, a caller could move that delimiter between
+    // argPattern and source to forge a match while broadening the regex. argPattern
+    // legitimately contains NUL, so a NUL join is exactly the ambiguous case.
+    [IntegrationFact]
+    public async Task SystemExecApprovals_SetRejectsRedistributedIdentityFields()
+    {
+        using var beforeDoc = await _fixture.Client.CallToolExpectSuccessAsync("system.execApprovals.get");
+        var baseHash = beforeDoc.RootElement.GetProperty("hash").GetString()!;
+
+        var (isError, text) = await _fixture.Client.CallToolAcceptingFailureAsync(
+            "system.execApprovals.set",
+            new
+            {
+                baseHash,
+                file = new
+                {
+                    version = 1,
+                    defaults = new { security = "allowlist", ask = "off", askFallback = "deny", autoAllowSkills = false },
+                    agents = new Dictionary<string, object>
+                    {
+                        ["main"] = new
+                        {
+                            security = "allowlist",
+                            ask = "off",
+                            askFallback = "deny",
+                            autoAllowSkills = false,
+                            allowlist = new object[]
+                            {
+                                new { id = TrayAppFixture.SeededExecApprovalId, pattern = TrayAppFixture.SeededExecApprovalPattern },
+                                // Same characters as the seeded entry, but the anchor and
+                                // the NUL have been shifted out of argPattern into source,
+                                // leaving an unanchored (broader) regex behind.
+                                new
+                                {
+                                    id = TrayAppFixture.SeededBoundExecApprovalId,
+                                    pattern = TrayAppFixture.SeededBoundExecApprovalPattern,
+                                    argPattern = "^--version",
+                                    source = "$\u0000allow-always",
+                                },
+                            },
+                        },
+                    },
+                },
+            });
+
+        Assert.True(isError, $"Expected a redistributed identity to be rejected; response: {text}");
         Assert.Contains("cannot add or change allowlist entries", text, StringComparison.OrdinalIgnoreCase);
     }
 

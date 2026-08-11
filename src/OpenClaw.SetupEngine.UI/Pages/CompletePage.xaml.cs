@@ -36,6 +36,7 @@ public sealed partial class CompletePage : Page
                 SubtitleText.Text = "OpenClaw is ready to go";
                 ErrorCard.Visibility = Visibility.Collapsed;
                 HelpLink.Visibility = Visibility.Collapsed;
+                FallbackButton.Visibility = Visibility.Collapsed;
                 SummaryPanel.Visibility = Visibility.Visible;
             }
             else
@@ -53,6 +54,12 @@ public sealed partial class CompletePage : Page
                 StartupRow.Visibility = Visibility.Collapsed;
                 SummaryPanel.Visibility = Visibility.Collapsed;
                 LaunchButton.Content = "Close";
+                FallbackButton.Visibility = args.CanRetryGatewayFallback
+                    ? Visibility.Visible
+                    : Visibility.Collapsed;
+                FallbackButton.Content = string.IsNullOrWhiteSpace(args.GatewayFallbackVersion)
+                    ? "Retry with validated fallback"
+                    : $"Retry with validated fallback {args.GatewayFallbackVersion}";
 
                 // Show error card with details and log link
                 ErrorCard.Visibility = Visibility.Visible;
@@ -109,6 +116,20 @@ public sealed partial class CompletePage : Page
     private void ViewLog_Click(object sender, RoutedEventArgs e)
     {
         LogFileLauncher.RevealInExplorer(_logPath);
+    }
+
+    private void FallbackButton_Click(object sender, RoutedEventArgs e)
+    {
+        string? error = null;
+        if (SetupWindow.Active is { } window &&
+            window.TryRetryWithGatewayFallback(out error))
+        {
+            return;
+        }
+
+        FallbackButton.Visibility = Visibility.Collapsed;
+        if (!string.IsNullOrWhiteSpace(error))
+            ErrorText.Text = $"{ErrorText.Text}{Environment.NewLine}{error}";
     }
 
 }

@@ -275,7 +275,7 @@ public class ExecApprovalV2NormalizationTests
     }
 
     [Fact]
-    public void Normalize_ShellWrapper_ProducesIdentityWithBothResolutions()
+    public void Normalize_UnbindableShellWrapper_HasNoDurableResolution()
     {
         var req = Req(["bash", "-c", "echo foo && echo bar"]);
         var outcome = ExecApprovalV2Normalizer.Normalize(req);
@@ -284,8 +284,9 @@ public class ExecApprovalV2NormalizationTests
         var id = outcome.Identity!;
         // Singular resolution resolves the wrapper itself (bash) not the inner command.
         Assert.NotNull(id.Resolution);
-        // Allowlist resolutions resolve the inner commands.
-        Assert.Equal(2, id.AllowlistResolutions.Count);
+        Assert.Null(id.ReusableCommand);
+        Assert.Empty(id.AllowlistResolutions);
+        Assert.Empty(id.AllowAlwaysPatterns);
     }
 
     [Fact]

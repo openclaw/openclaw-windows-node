@@ -1,3 +1,4 @@
+using System.Text;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using System.Text.RegularExpressions;
@@ -105,30 +106,41 @@ internal static class NativeToolProjector
         return false;
     }
 
-    internal static string ExtractParentToolCallId(JsonElement data)
+    internal static string? ExtractToolCorrelationId(JsonElement data)
     {
-        var parent = GetStringProperty(data, "parentItemId", "parentId", "toolItemId", "parentCallId");
-        if (!string.IsNullOrWhiteSpace(parent))
-            return parent;
-
-        foreach (var containerName in new[] { "details", "parent" })
+        if (data.TryGetProperty("toolCallId", out var toolCallIdValue)
+            && toolCallIdValue.ValueKind == JsonValueKind.String)
         {
-            if (data.TryGetProperty(containerName, out var container)
-                && container.ValueKind == JsonValueKind.Object)
-            {
-                parent = GetStringProperty(
-                    container,
-                    "parentItemId",
-                    "parentId",
-                    "toolItemId",
-                    "itemId",
-                    "callId");
-                if (!string.IsNullOrWhiteSpace(parent))
-                    return parent;
-            }
+            var toolCallId = toolCallIdValue.GetString();
+            if (!string.IsNullOrWhiteSpace(toolCallId))
+                return toolCallId;
         }
-        return string.Empty;
+
+        if (!data.TryGetProperty("itemId", out var itemIdValue)
+            || itemIdValue.ValueKind != JsonValueKind.String)
+        {
+            return null;
+        }
+
+        var itemId = itemIdValue.GetString();
+        if (string.IsNullOrWhiteSpace(itemId))
+            return null;
+
+        foreach (var prefix in new[] { "tool:", "command:", "patch:" })
+        {
+            if (!itemId.StartsWith(prefix, StringComparison.Ordinal))
+                continue;
+
+            itemId = itemId[prefix.Length..];
+            break;
+        }
+
+        return string.IsNullOrWhiteSpace(itemId) ? null : itemId;
     }
+
+    internal static bool IsToolResultError(JsonElement data) =>
+        data.TryGetProperty("isError", out var isError)
+        && isError.ValueKind == JsonValueKind.True;
 
     internal static string GetStringProperty(JsonElement data, params string[] names)
     {
@@ -215,14 +227,6 @@ internal static class NativeToolProjector
             }
         }
 
-        if (data.TryGetProperty("title", out var title)
-            && title.ValueKind == JsonValueKind.String)
-        {
-            var text = title.GetString();
-            if (!string.IsNullOrEmpty(text))
-                return TruncateToolOutput(text);
-        }
-
         return string.Empty;
     }
 
@@ -240,11 +244,38 @@ internal static class NativeToolProjector
         {
             if (result.ValueKind == JsonValueKind.String)
                 return TruncateToolOutput(result.GetString() ?? "");
-            if (result.ValueKind == JsonValueKind.Object
-                && result.TryGetProperty("content", out var resultContent)
-                && resultContent.ValueKind == JsonValueKind.String)
+            if (result.ValueKind == JsonValueKind.Array)
             {
-                return TruncateToolOutput(resultContent.GetString() ?? "");
+                var arrayText = ExtractTypedTextBlocks(result);
+                if (!string.IsNullOrEmpty(arrayText))
+                    return arrayText;
+            }
+            if (result.ValueKind == JsonValueKind.Object)
+            {
+                if (result.TryGetProperty("details", out var details)
+                    && details.ValueKind == JsonValueKind.Object)
+                {
+                    var aggregated = GetStringProperty(details, "aggregated");
+                    if (!string.IsNullOrEmpty(aggregated))
+                        return TruncateToolOutput(aggregated);
+                }
+
+                if (result.TryGetProperty("content", out var resultContent)
+                    && resultContent.ValueKind == JsonValueKind.String)
+                {
+                    return TruncateToolOutput(resultContent.GetString() ?? "");
+                }
+
+                if (result.TryGetProperty("content", out resultContent))
+                {
+                    var contentText = ExtractTypedTextBlocks(resultContent);
+                    if (!string.IsNullOrEmpty(contentText))
+                        return contentText;
+                }
+
+                var directText = ExtractTypedTextBlocks(result);
+                if (!string.IsNullOrEmpty(directText))
+                    return directText;
             }
         }
 
@@ -263,7 +294,23 @@ internal static class NativeToolProjector
 
     internal static string ExtractToolErrorText(JsonElement data, string fallback)
     {
-        foreach (var key in new[] { "error", "message", "stderr", "content" })
+        if (data.TryGetProperty("result", out var result)
+            && result.ValueKind == JsonValueKind.Object)
+        {
+            if (result.TryGetProperty("details", out var details)
+                && details.ValueKind == JsonValueKind.Object)
+            {
+                var detailsError = GetStringProperty(details, "error", "message", "reason");
+                if (!string.IsNullOrEmpty(detailsError))
+                    return TruncateToolOutput(detailsError);
+            }
+
+            var resultError = GetStringProperty(result, "error", "message", "reason");
+            if (!string.IsNullOrEmpty(resultError))
+                return TruncateToolOutput(resultError);
+        }
+
+        foreach (var key in new[] { "error", "message", "stderr", "summary" })
         {
             if (data.TryGetProperty(key, out var value))
             {
@@ -283,7 +330,69 @@ internal static class NativeToolProjector
                 }
             }
         }
+
+        var resultText = ExtractToolResultText(data, string.Empty);
+        if (!string.IsNullOrEmpty(resultText))
+            return resultText;
+
         return fallback;
+    }
+
+    internal static string ExtractToolResultErrorText(JsonElement data)
+    {
+        var safeSummary = SanitizeToolDisplayValue(
+            GetStringProperty(data, "toolErrorSummary"));
+        return string.IsNullOrEmpty(safeSummary)
+            ? ExtractToolErrorText(data, string.Empty)
+            : safeSummary;
+    }
+
+    internal static bool HasSafeToolErrorSummary(JsonElement data) =>
+        !string.IsNullOrEmpty(SanitizeToolDisplayValue(
+            GetStringProperty(data, "toolErrorSummary")));
+
+    internal static string ExtractPatchSummaryText(JsonElement data)
+    {
+        var summary = GetStringProperty(data, "summary");
+        return string.IsNullOrEmpty(summary) ? string.Empty : TruncateToolOutput(summary);
+    }
+
+    private static string ExtractTypedTextBlocks(JsonElement content)
+    {
+        var builder = new StringBuilder();
+        void AppendBlock(JsonElement block)
+        {
+            if (builder.Length > ToolOutputMaxChars
+                || block.ValueKind != JsonValueKind.Object
+                || !string.Equals(GetStringProperty(block, "type"), "text", StringComparison.Ordinal)
+                || !block.TryGetProperty("text", out var textValue)
+                || textValue.ValueKind != JsonValueKind.String)
+            {
+                return;
+            }
+
+            var text = textValue.GetString()?.Trim();
+            if (string.IsNullOrEmpty(text))
+                return;
+
+            if (builder.Length > 0)
+                builder.Append('\n');
+            var remaining = ToolOutputMaxChars + 1 - builder.Length;
+            if (remaining > 0)
+                builder.Append(text.AsSpan(0, Math.Min(text.Length, remaining)));
+        }
+
+        if (content.ValueKind == JsonValueKind.Array)
+        {
+            foreach (var block in content.EnumerateArray())
+                AppendBlock(block);
+        }
+        else
+        {
+            AppendBlock(content);
+        }
+
+        return TruncateToolOutput(builder.ToString());
     }
 
     internal static bool LooksLikeSystemControlNote(string text)

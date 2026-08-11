@@ -4,6 +4,7 @@ using System.Diagnostics;
 using System.Threading;
 using System.Threading.Tasks;
 using OpenClaw.Shared;
+using OpenClaw.Shared.Commands;
 
 namespace OpenClaw.Shared.ExecApprovals;
 
@@ -81,7 +82,8 @@ public sealed class ExecApprovalsCoordinator : IExecApprovalV2Handler
         var needsAllowlistMatches = resolved.Defaults.Security == ExecSecurity.Allowlist
             || resolved.Defaults.AskFallback == ExecSecurity.Allowlist;
         IReadOnlyList<ExecAllowlistEntry> matches = needsAllowlistMatches
-            ? ExecAllowlistMatcher.MatchAll(resolved.Allowlist, identity.AllowlistResolutions)
+            ? ExecAllowlistMatcher.MatchAll(
+                resolved.Allowlist, identity.AllowlistResolutions, identity.ReusableCommand)
             : [];
 
         var context = new ExecApprovalEvaluation(
@@ -113,25 +115,22 @@ public sealed class ExecApprovalsCoordinator : IExecApprovalV2Handler
 
         if (pass1 is ExecHostPolicyDecision.AllowOutcome)
         {
-            // A stored executable-level rule must not authorize a command host whose
-            // argument tail selects a different command or script. Preserve the store
-            // verbatim, but refuse to consume that rule for this invocation.
-            if (context.Security == ExecSecurity.Allowlist
-                && context.AllowlistSatisfied
-                && IsIndirectCommandHost(identity))
-                return LogAndReturn(
-                    ExecApprovalV2Result.ValidationFailed(
-                        "persistent-approval-not-permitted-for-command-host"),
-                    correlationId, promptAttempted: false, fallbackUsed: false,
-                    canonical: context.DisplayCommand);
-
             // Pre-approved path (security=Full, ask=Off or allowlist satisfied): skip prompt.
             // Fail closed if the approved executable cannot be pinned to a resolved path.
-            var preApprovedExecution = BuildApprovedExecution(
-                identity,
-                sanitizedEnv,
-                policyCurrency,
-                resolved.AgentId);
+            var requiresReusableAllow = context.Security == ExecSecurity.Allowlist
+                && context.AllowlistSatisfied;
+            var preApprovedExecution = UseReusableExecution(identity, requiresReusableAllow)
+                ? BuildReusableApprovedExecution(
+                    identity.ReusableCommand,
+                    identity,
+                    sanitizedEnv,
+                    policyCurrency,
+                    resolved.AgentId)
+                : BuildApprovedExecution(
+                    identity,
+                    sanitizedEnv,
+                    policyCurrency,
+                    resolved.AgentId);
             if (preApprovedExecution is null)
                 return LogAndReturn(ExecApprovalV2Result.InternalError("unresolved-executable-on-allow"),
                     correlationId, promptAttempted: false, fallbackUsed: false, canonical: context.DisplayCommand);
@@ -141,10 +140,22 @@ public sealed class ExecApprovalsCoordinator : IExecApprovalV2Handler
             catch (Exception ex) { _logger.Warn($"[EXEC-APPROVALS] [{correlationId}] side-effect: record-usage failed (non-fatal): {ex.Message}"); }
             _logger.Info($"[EXEC-APPROVALS] [{correlationId}] path=new " +
                 $"canonical=\"{SanitizeForLog(context.DisplayCommand)}\" decision=allow " +
-                $"reason=approved fallbackUsed=false promptAttempted=false");
+                $"reason=approved fallbackUsed=false promptAttempted=false " +
+                $"grant={DescribeGrantBreadth(context)}");
             return ExecApprovalV2Result.Allow(preApprovedExecution);
         }
         // RequiresPromptOutcome → continue to prompt/fallback block
+
+        // A command that could not be bound to a durable identity can only ever be
+        // approved as a one-time operation, no matter what the operator chooses. Log
+        // why once, here, so an allowlist that "does not work" is diagnosable from the
+        // node log alone instead of requiring a debugger.
+        if (identity.ReusableCommand is null && identity.ReusableBindFailure is not null)
+        {
+            _logger.Info($"[EXEC-APPROVALS] [{correlationId}] " +
+                $"canonical=\"{SanitizeForLog(context.DisplayCommand)}\" " +
+                $"reusable=none reason={identity.ReusableBindFailure}");
+        }
 
         // Steps 5-8: prompt/fallback + second pass (critical section) + side effect flag
         bool promptAttempted = false;
@@ -230,7 +241,18 @@ public sealed class ExecApprovalsCoordinator : IExecApprovalV2Handler
                     correlationId, promptAttempted, fallbackUsed, canonical: context.DisplayCommand);
             }
             // pass2 is AllowOutcome — record whether AllowAlways was the prompt decision.
-            persistAllowlistEntry = followupDecision == ExecApprovalDecision.AllowAlways;
+            persistAllowlistEntry =
+                followupDecision == ExecApprovalDecision.AllowAlways
+                && context.Security == ExecSecurity.Allowlist;
+            if (persistAllowlistEntry
+                && identity.ReusableCommand is null)
+            {
+                return LogAndReturn(
+                    ExecApprovalV2Result.ValidationFailed(
+                        "persistent-approval-not-permitted-for-command-host"),
+                    correlationId, promptAttempted, fallbackUsed,
+                    canonical: context.DisplayCommand);
+            }
         }
         finally
         {
@@ -239,11 +261,38 @@ public sealed class ExecApprovalsCoordinator : IExecApprovalV2Handler
 
         // Step 8: build payload before any store writes — a fail-closed payload result
         // must not leave persistent allowlist state behind.
-        var execution = BuildApprovedExecution(
-            identity,
-            sanitizedEnv,
-            policyCurrency,
-            resolved.AgentId);
+        var requiresReusableExecution = persistAllowlistEntry || fallbackAllowWasMatchDependent;
+        if (requiresReusableExecution && identity.ReusableCommand is null)
+        {
+            return LogAndReturn(
+                ExecApprovalV2Result.InternalError(
+                    "reusable-command-required-for-durable-allow"),
+                correlationId, promptAttempted, fallbackUsed,
+                canonical: context.DisplayCommand);
+        }
+
+        // A recognized canonical carrier executes through its pinned transport even for a
+        // one-time allow. The prompt names the inner executable the binder resolved through
+        // a trusted system cmd.exe, so running the request's own argv instead would let both
+        // launch-time lookups happen again after the operator decided: a cmd.exe earlier on
+        // PATH than the system directory would become argv[0], and a bare payload name would
+        // re-resolve against PATH or cwd. Neither is the image that was shown and approved.
+        // This is a transport choice only. Durability is still governed by
+        // requiresReusableExecution, so a one-time allow persists nothing.
+        var useReusableExecution = UseReusableExecution(identity, requiresReusableExecution);
+
+        var execution = useReusableExecution
+            ? BuildReusableApprovedExecution(
+                identity.ReusableCommand,
+                identity,
+                sanitizedEnv,
+                policyCurrency,
+                resolved.AgentId)
+            : BuildApprovedExecution(
+                identity,
+                sanitizedEnv,
+                policyCurrency,
+                resolved.AgentId);
         if (execution is null)
             return LogAndReturn(ExecApprovalV2Result.InternalError("unresolved-executable-on-allow"),
                 correlationId, promptAttempted, fallbackUsed, canonical: context.DisplayCommand);
@@ -260,20 +309,11 @@ public sealed class ExecApprovalsCoordinator : IExecApprovalV2Handler
                 ExecApprovalV2Result.ValidationFailed("policy-changed-before-execution"),
                 correlationId, promptAttempted, fallbackUsed, canonical: context.DisplayCommand);
 
-        var durableCommandHostAuthorization =
-            persistAllowlistEntry || fallbackAllowWasMatchDependent;
-        if (durableCommandHostAuthorization && IsIndirectCommandHost(identity))
-            return LogAndReturn(
-                ExecApprovalV2Result.ValidationFailed(
-                    "persistent-approval-not-permitted-for-command-host"),
-                correlationId, promptAttempted, fallbackUsed,
-                canonical: context.DisplayCommand);
-
         // Step 9: side effects — only reached when the payload is valid.
         // Each side effect is independently best-effort so a failure in one does not skip the other.
         if (persistAllowlistEntry && context.Security == ExecSecurity.Allowlist)
         {
-            try { await PersistAllowlistEntriesAsync(context).ConfigureAwait(false); }
+            try { await PersistAllowlistEntriesAsync(context, identity.ReusableCommand).ConfigureAwait(false); }
             catch (Exception ex) { _logger.Warn($"[EXEC-APPROVALS] [{correlationId}] side-effect: persist-entry failed (non-fatal): {ex.Message}"); }
         }
         try { await RecordAllowlistUsageAsync(context).ConfigureAwait(false); }
@@ -332,6 +372,24 @@ public sealed class ExecApprovalsCoordinator : IExecApprovalV2Handler
         }
     }
 
+    // Chooses the execution transport, independently of durability and of which policy
+    // branch allowed the command. Whenever the binder produced a reusable command, that
+    // command's argv is the identity the operator was shown and the identity durable
+    // policy describes, so it is also what has to run. Anything else lets a second
+    // resolver pick the image after the decision was made: an unpinned carrier re-resolves
+    // both cmd.exe and its payload at launch, and a direct command would execute the
+    // normalizer's earlier resolution rather than the binder's, which is a separate lookup
+    // of the same name and can disagree with it. The two builders agree on shape for a
+    // direct command (BindDirect applies the same env-wrapper unwrapping and rejects
+    // wrappers with modifiers), so this only ever changes which resolution supplies the
+    // executable.
+    //
+    // `required` stays the durability gate: an allowlist-satisfied or match-dependent
+    // allow must have a reusable command or fail closed. Choosing this transport never
+    // persists anything on its own.
+    private static bool UseReusableExecution(CanonicalCommandIdentity identity, bool required)
+        => required || identity.ReusableCommand is not null;
+
     // Builds the approved execution payload from the RESOLVED executable path, never
     // the raw argv[0]. The command must execute with the same canonical identity it
     // was evaluated under: a relative argv[0] in the payload would let Windows
@@ -382,23 +440,96 @@ public sealed class ExecApprovalsCoordinator : IExecApprovalV2Handler
         };
     }
 
-    private static bool IsIndirectCommandHost(CanonicalCommandIdentity identity)
+    internal static ExecApprovedExecution? BuildReusableApprovedExecution(
+        ExecReusableCommand? reusableCommand,
+        CanonicalCommandIdentity identity,
+        IReadOnlyDictionary<string, string>? sanitizedEnv,
+        ExecApprovalsCurrency? policyCurrency = null,
+        string? policyAgentId = null)
     {
-        var resolvedPath = identity.Resolution?.ResolvedPath;
-        return !string.IsNullOrWhiteSpace(resolvedPath)
-            && ExecCommandToken.IsIndirectCommandHost(resolvedPath);
+        var resolvedPath = reusableCommand?.Resolution.ResolvedPath;
+        if (reusableCommand is null
+            || string.IsNullOrWhiteSpace(resolvedPath)
+            || !Path.IsPathFullyQualified(resolvedPath)
+            || !File.Exists(resolvedPath)
+            || ExecReusableCommandBinder.IsNetworkPath(resolvedPath)
+            || !ExecReusableCommandBinder.IsBindableExecutable(resolvedPath))
+        {
+            return null;
+        }
+
+        // Approval identity and execution transport are separate. The identity is the
+        // inner executable that was evaluated and shown; the transport is whatever the
+        // binder said must actually run. For a canonical carrier those differ, and the
+        // carrier is preserved (rather than replaced by the bound direct argv) because
+        // it carries the environment bootstrap the sandbox depends on. It is preserved
+        // with both launch-time resolutions pinned, and that equivalence is re-checked
+        // here rather than trusted from bind time.
+        if (reusableCommand.IsCarrierTransport
+            && !CarrierTransportMatchesRequest(reusableCommand.ExecutionArgv, identity.Command))
+        {
+            return null;
+        }
+
+        return new ExecApprovedExecution(
+            reusableCommand.ExecutionArgv,
+            identity.Cwd,
+            identity.TimeoutMs,
+            sanitizedEnv)
+        {
+            PolicyCurrency = policyCurrency,
+            PolicyAgentId = policyAgentId,
+        };
     }
+
+    // The carrier that runs must be the argv that was validated and evaluated, with
+    // exactly two permitted differences, both of which remove a resolution that would
+    // otherwise happen at launch instead of at approval:
+    //   argv[0] may be the resolved absolute path of the same trusted system cmd.exe
+    //     the request named, and
+    //   the payload's executable token may be the fully qualified path of the same
+    //     program name the payload named.
+    // Every other token, and all interior spacing, must be identical, because a
+    // rewritten command line is the one way metacharacter drift could be introduced
+    // between approval and launch.
+    internal static bool CarrierTransportMatchesRequest(
+        IReadOnlyList<string> executionArgv,
+        IReadOnlyList<string> requestArgv)
+        => CanonicalCmdCarrier.PinnedCarrierMatchesRequest(executionArgv, requestArgv);
 
     // Persists allowAlways patterns after an AllowAlways prompt decision (non-empty only).
     // Caller guarantees Security == Allowlist (guard is in HandleAsync step 8).
-    private async Task PersistAllowlistEntriesAsync(ExecApprovalEvaluation context)
+    // The argument binding travels with the pattern so a rule for an argument-selected
+    // host is never written without it.
+    private async Task PersistAllowlistEntriesAsync(
+        ExecApprovalEvaluation context,
+        ExecReusableCommand? reusableCommand)
     {
         var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         foreach (var pattern in context.AllowAlwaysPatterns)
         {
             if (string.IsNullOrWhiteSpace(pattern) || !seen.Add(pattern)) continue;
-            await _store.AddAllowlistEntryAsync(context.AgentId, pattern).ConfigureAwait(false);
+            await _store.AddAllowlistEntryAsync(
+                context.AgentId,
+                pattern,
+                reusableCommand?.ArgPattern,
+                context.DisplayCommand).ConfigureAwait(false);
         }
+    }
+
+    // A path-only entry authorizes its executable regardless of arguments. That is a
+    // legitimate hand-written operator rule, but it is also what a pre-argPattern
+    // legacy entry degrades to, so a broad grant must never be indistinguishable from a
+    // precisely bound one in the log.
+    private static string DescribeGrantBreadth(ExecApprovalEvaluation context)
+    {
+        if (context.AllowlistMatches.Count == 0) return "none";
+        var anyPathOnly = false;
+        foreach (var match in context.AllowlistMatches)
+        {
+            if (string.IsNullOrEmpty(match.ArgPattern)) anyPathOnly = true;
+        }
+        return anyPathOnly ? "path-only" : "arg-bound";
     }
 
     // Updates lastUsed* metadata for every matched allowlist entry after a final allow.
@@ -409,13 +540,22 @@ public sealed class ExecApprovalsCoordinator : IExecApprovalV2Handler
         var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         for (var i = 0; i < context.AllowlistMatches.Count; i++)
         {
-            var pattern = context.AllowlistMatches[i].Pattern;
-            if (string.IsNullOrEmpty(pattern) || !seen.Add(pattern)) continue;
+            var match = context.AllowlistMatches[i];
+            var pattern = match.Pattern;
+            if (string.IsNullOrEmpty(pattern)) continue;
+            // Entries sharing a pattern are distinguished by their argument binding, so
+            // the dedupe key must include it or a second binding would be skipped.
+            if (!seen.Add($"{match.Id}\u0000{pattern}\u0000{match.ArgPattern}")) continue;
             var resolvedPath = i < context.AllowlistResolutions.Count
                 ? context.AllowlistResolutions[i].ResolvedPath
                 : null;
             await _store.RecordAllowlistUseAsync(
-                context.AgentId, pattern, resolvedPath)
+                context.AgentId,
+                pattern,
+                resolvedPath,
+                context.DisplayCommand,
+                match.Id,
+                match.ArgPattern)
                 .ConfigureAwait(false);
         }
     }
@@ -459,11 +599,15 @@ public sealed class ExecApprovalsCoordinator : IExecApprovalV2Handler
             // policy is not ask=always (which would re-add without a fresh decision). Mirrors
             // macOS resolveExecApprovalAllowedDecisions; empty patterns == one-shot.
             AllowAlwaysAvailable =
-                context.Ask != ExecAsk.Always
-                && context.AllowAlwaysPatterns.Count > 0
-                && !IsIndirectCommandHost(identity),
+                context.Security == ExecSecurity.Allowlist
+                && context.Ask != ExecAsk.Always
+                && identity.ReusableCommand is not null,
             AgentId = context.AgentId ?? "main",
-            ResolvedPath = ExecApprovalPathDisplay.ExpandShortPath(context.Resolution?.ResolvedPath),
+            // context.Resolution is the durably bindable command and is null whenever
+            // nothing binds. Fall back to the carrier's own resolution so the operator
+            // is never asked to approve a command with no resolved executable shown.
+            ResolvedPath = ExecApprovalPathDisplay.ExpandShortPath(
+                context.Resolution?.ResolvedPath ?? identity.Resolution?.ResolvedPath),
             SessionKey = identity.SessionKey,
             CorrelationId = correlationId,
             // Host omitted (no gateway wiring yet)

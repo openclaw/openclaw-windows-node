@@ -37,6 +37,12 @@ public class WizardDefaultAnswerMatrixTests
         Assert.False((bool)WizardAnswerBuilder.BuildWireValue("confirm", configureSkills, []));
     }
 
+    [Fact]
+    public void DefaultConfig_UsesHybridGatewayReloadMode()
+    {
+        Assert.Equal("hybrid", LoadDefaultConfig().Gateway.ReloadMode);
+    }
+
     [Theory]
     [MemberData(nameof(RepresentativeProviderChannelMatrix))]
     public void WizardAnswerBuilder_ValidatesRepresentativeProviderChannelCombinations(
@@ -70,9 +76,13 @@ public class WizardDefaultAnswerMatrixTests
 
     private static Dictionary<string, string> LoadDefaultWizardAnswers()
     {
+        return LoadDefaultConfig().WizardAnswers ?? new Dictionary<string, string>();
+    }
+
+    private static SetupConfig LoadDefaultConfig()
+    {
         var configPath = Path.Combine(RepositoryRoot(), "src", "OpenClaw.SetupEngine", "default-config.json");
-        var config = SetupConfig.LoadFromFile(configPath);
-        return config.WizardAnswers ?? new Dictionary<string, string>();
+        return SetupConfig.LoadFromFile(configPath);
     }
 
     private static void AssertConfiguredSelect(

@@ -182,4 +182,61 @@ public class DeviceIdentityStoreTests : IDisposable
         Assert.Equal(originalBytes, File.ReadAllBytes(path));
         Assert.Empty(Directory.GetFiles(_tempDir, ".device-key-ed25519.json.*.tmp"));
     }
+
+    [Fact]
+    public void TransactionalClear_UnchangedClearedFile_RestoresPreviousTokens()
+    {
+        var identity = CreateIdentity();
+        identity.StoreDeviceTokenForRole("operator", "operator-old");
+        identity.StoreDeviceTokenForRole("node", "node-old");
+
+        var clear = DeviceIdentityStore.BeginTransactionalTokenClear(_tempDir);
+
+        Assert.True(clear.Success);
+        Assert.True(clear.TokensCleared);
+        Assert.NotNull(clear.Transaction);
+        Assert.False(ReadIdentityFile().TryGetProperty("DeviceToken", out _));
+
+        Assert.True(DeviceIdentityStore.TryRestoreTransactionalTokenClear(clear.Transaction!));
+        Assert.Equal(
+            "operator-old",
+            DeviceIdentity.TryReadStoredDeviceTokenForRole(_tempDir, "operator"));
+        Assert.Equal(
+            "node-old",
+            DeviceIdentity.TryReadStoredDeviceTokenForRole(_tempDir, "node"));
+    }
+
+    [Fact]
+    public void TransactionalClear_LateTokenWriter_WinsOverRollback()
+    {
+        var identity = CreateIdentity();
+        identity.StoreDeviceTokenForRole("operator", "operator-old");
+        var clear = DeviceIdentityStore.BeginTransactionalTokenClear(_tempDir);
+        Assert.NotNull(clear.Transaction);
+
+        var lateWriter = new DeviceIdentity(_tempDir);
+        lateWriter.Initialize();
+        lateWriter.StoreDeviceTokenForRole("operator", "operator-new");
+
+        var restore = DeviceIdentityStore.RestoreTransactionalTokenClear(clear.Transaction!);
+        Assert.Equal(DeviceTokenRestoreOutcome.Superseded, restore.Outcome);
+        Assert.Equal(
+            "operator-new",
+            DeviceIdentity.TryReadStoredDeviceTokenForRole(_tempDir, "operator"));
+    }
+
+    [Fact]
+    public void TransactionalClear_CorruptIdentity_FailsWithoutMutation()
+    {
+        var path = Path.Combine(_tempDir, "device-key-ed25519.json");
+        File.WriteAllText(path, "{");
+        var original = File.ReadAllBytes(path);
+
+        var clear = DeviceIdentityStore.BeginTransactionalTokenClear(_tempDir);
+
+        Assert.False(clear.Success);
+        Assert.False(clear.TokensCleared);
+        Assert.Null(clear.Transaction);
+        Assert.Equal(original, File.ReadAllBytes(path));
+    }
 }

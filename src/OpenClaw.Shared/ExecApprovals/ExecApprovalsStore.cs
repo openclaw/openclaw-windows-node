@@ -116,7 +116,31 @@ public sealed class ExecApprovalsStore
     // Returns true if the entry is present after the call (added or already there),
     // false if the pattern was empty or the write was skipped/failed.
     // Pattern validation is non-empty only — parity with macOS.
-    public async Task<bool> AddAllowlistEntryAsync(string? agentId, string pattern)
+    // Adds a hand-written, path-only rule. Deliberately carries no source and no
+    // argument binding: it authorizes the executable whatever its arguments, which is
+    // meaningful only because a human wrote it.
+    public Task<bool> AddAllowlistEntryAsync(string? agentId, string pattern)
+        => AddAllowlistEntryCoreAsync(agentId, pattern, argPattern: null, commandText: null, source: null);
+
+    // Adds a rule generated from an Allow always decision. argPattern is required:
+    // every reader ignores a generated rule that has no argument binding, so writing
+    // one without a pattern would silently produce a rule that never matches.
+    public Task<bool> AddAllowlistEntryAsync(
+        string? agentId, string pattern, string? argPattern, string? commandText)
+    {
+        if (string.IsNullOrWhiteSpace(argPattern))
+        {
+            _logger.Warn("[EXEC-APPROVALS] AddAllowlistEntry skipped: generated entry requires an argPattern");
+            return Task.FromResult(false);
+        }
+        return AddAllowlistEntryCoreAsync(
+            agentId, pattern, argPattern, commandText, ExecAllowlistMatcher.AllowAlwaysSource);
+    }
+
+    // Dedup is keyed on (pattern, argPattern) so a bound rule and an unbound rule for
+    // the same executable stay distinct records.
+    private async Task<bool> AddAllowlistEntryCoreAsync(
+        string? agentId, string pattern, string? argPattern, string? commandText, string? source)
     {
         var trimmed = pattern?.Trim();
         if (string.IsNullOrEmpty(trimmed))
@@ -124,6 +148,7 @@ public sealed class ExecApprovalsStore
             _logger.Debug("[EXEC-APPROVALS] AddAllowlistEntry skipped: empty pattern");
             return false;
         }
+        var normalizedArgPattern = string.IsNullOrWhiteSpace(argPattern) ? null : argPattern;
         var key = NormalizeAgentId(agentId);
         bool alreadyPresent = false;
         var wrote = await UpdateFileAsync(file =>
@@ -137,7 +162,8 @@ public sealed class ExecApprovalsStore
             var allowlist = agent.Allowlist ??= [];
             // Dedup case-insensitive — consistent with NormalizeAllowlistEntries (OrdinalIgnoreCase HashSet).
             if (allowlist.Any(e => string.Equals(
-                    e.Pattern?.Trim(), trimmed, StringComparison.OrdinalIgnoreCase)))
+                    e.Pattern?.Trim(), trimmed, StringComparison.OrdinalIgnoreCase)
+                && string.Equals(e.ArgPattern, normalizedArgPattern, StringComparison.Ordinal)))
             {
                 alreadyPresent = true;
                 return false;
@@ -146,7 +172,10 @@ public sealed class ExecApprovalsStore
             {
                 Id = Guid.NewGuid(),  // parity with macOS UUID()
                 Pattern = trimmed,
-                // LastUsedAt intentionally absent: macOS addAllowlistEntry only sets {id, pattern}.
+                ArgPattern = normalizedArgPattern,
+                CommandText = commandText,
+                Source = source,
+                // LastUsedAt intentionally absent: macOS addAllowlistEntry only sets identity.
                 // RecordAllowlistUseAsync stamps it on first successful use.
             });
             return true;
@@ -162,6 +191,24 @@ public sealed class ExecApprovalsStore
     // so a hit can be authorized by either source and metadata must follow.
     public Task<bool> RecordAllowlistUseAsync(
         string? agentId, string pattern, string? resolvedPath)
+        => RecordAllowlistUseAsync(agentId, pattern, resolvedPath, lastUsedCommand: null);
+
+    public Task<bool> RecordAllowlistUseAsync(
+        string? agentId, string pattern, string? resolvedPath, string? lastUsedCommand)
+        => RecordAllowlistUseAsync(agentId, pattern, resolvedPath, lastUsedCommand, entryId: null, argPattern: null);
+
+    // Several entries can now share one pattern and be distinguished only by their
+    // argument binding, so usage must be stamped on the entry that actually authorized
+    // the run. entryId identifies it exactly; argPattern disambiguates legacy entries
+    // written before ids were persisted. With neither, this falls back to the historical
+    // pattern-wide stamp.
+    public Task<bool> RecordAllowlistUseAsync(
+        string? agentId,
+        string pattern,
+        string? resolvedPath,
+        string? lastUsedCommand,
+        Guid? entryId,
+        string? argPattern)
     {
         if (string.IsNullOrEmpty(pattern)) return Task.FromResult(false);
         var key = NormalizeAgentId(agentId);
@@ -175,16 +222,36 @@ public sealed class ExecApprovalsStore
                     continue;
                 foreach (var entry in agent.Allowlist)
                 {
-                    if (!string.Equals(entry.Pattern?.Trim(), pattern.Trim(),
-                            StringComparison.OrdinalIgnoreCase))
+                    if (!IsUsageTarget(entry, pattern, entryId, argPattern))
                         continue;
                     entry.LastUsedAt = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
-                    entry.LastResolvedPath = resolvedPath;  // Id and Pattern preserved
+                    entry.LastResolvedPath = resolvedPath;  // Id, Pattern, ArgPattern preserved
+                    if (lastUsedCommand is not null)
+                        entry.LastUsedCommand = lastUsedCommand;
                     changed = true;
                 }
             }
             return changed;
         });
+    }
+
+    private static bool IsUsageTarget(
+        ExecAllowlistEntry entry, string pattern, Guid? entryId, string? argPattern)
+    {
+        // An id is unique across buckets, so it alone identifies the authorizing entry
+        // even when the wildcard bucket merged a same-pattern rule into the resolution.
+        if (entryId.HasValue && entry.Id.HasValue)
+            return entry.Id.Value == entryId.Value;
+
+        if (!string.Equals(entry.Pattern?.Trim(), pattern.Trim(), StringComparison.OrdinalIgnoreCase))
+            return false;
+
+        // Only narrow by argument binding when the caller knew one; otherwise preserve
+        // the historical behavior for callers that cannot supply it.
+        if (argPattern is null)
+            return true;
+
+        return string.Equals(entry.ArgPattern ?? "", argPattern, StringComparison.Ordinal);
     }
 
     // Side-effecting resolve: creates the file if missing, initializes agents dict.
@@ -763,22 +830,32 @@ public sealed class ExecApprovalsStore
     // dropInvalid=false: discard only null/empty patterns; keep non-empty ones regardless of validity.
     // dropInvalid=true: same in v1 — pattern validity beyond non-empty is enforced by the allowlist
     //   matcher, not here. The flag is preserved for API symmetry with macOS.
+    //
+    // Identity is (pattern, argPattern). Deduplicating on pattern alone would drop a
+    // bound rule that shares an executable with an unbound one, and rebuilding an entry
+    // without its argPattern or source would turn a rule bound to one command into a
+    // rule for the whole executable. Both are silent authorization widening, so every
+    // field is carried.
     internal static List<ExecAllowlistEntry> NormalizeAllowlistEntries(
         IEnumerable<ExecAllowlistEntry> entries, bool dropInvalid)
     {
-        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var seen = new HashSet<(string Pattern, string ArgPattern)>();
         var result = new List<ExecAllowlistEntry>();
         foreach (var entry in entries)
         {
             var pattern = entry.Pattern?.Trim();
             if (string.IsNullOrEmpty(pattern)) continue;
-            if (!seen.Add(pattern)) continue;
+            if (!seen.Add((pattern.ToLowerInvariant(), entry.ArgPattern ?? "\u0000"))) continue;
             result.Add(pattern == entry.Pattern ? entry : new ExecAllowlistEntry
             {
                 Id = entry.Id,
                 Pattern = pattern,
+                ArgPattern = entry.ArgPattern,
+                CommandText = entry.CommandText,
+                Source = entry.Source,
                 LastUsedAt = entry.LastUsedAt,
                 LastResolvedPath = entry.LastResolvedPath,
+                LastUsedCommand = entry.LastUsedCommand,
             });
         }
         return result;

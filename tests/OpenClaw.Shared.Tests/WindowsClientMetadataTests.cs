@@ -180,7 +180,7 @@ public sealed class WindowsClientMetadataTests
             "BuildNodeConnectMessage",
             BindingFlags.NonPublic | BindingFlags.Instance);
         Assert.NotNull(method);
-        return (string)method!.Invoke(client, [nonce, 0L])!;
+        return (string)method!.Invoke(client, [nonce, 0L, null])!;
     }
 
     private static void AssertCanonicalMetadata(JsonElement clientMetadata)
