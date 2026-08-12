@@ -172,7 +172,7 @@ internal static class NativeToolProjector
         return displayArgs.Count == 0 ? null : displayArgs;
     }
 
-    internal static JsonObject? ExtractSafeToolDisplayArgsValue(JsonElement? value)
+    internal static JsonObject? ExtractSafePersistedToolDisplayArgs(JsonElement? value)
     {
         if (value is { ValueKind: JsonValueKind.Object } data)
             return ExtractSafeToolDisplayArgs(data);

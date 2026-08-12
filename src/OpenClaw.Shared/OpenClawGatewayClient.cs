@@ -769,14 +769,8 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
                     "tool_use_id",
                     "toolUseId");
                 var callId = kind == ChatToolContentKind.Call
-                    ? ReadFirstString(
-                        item,
-                        "id",
-                        "callId",
-                        "tool_call_id",
-                        "toolCallId",
-                        "tool_use_id",
-                        "toolUseId")
+                    ? ReadFirstString(item, "id")
+                        ?? itemSemanticCallId
                         ?? messageSemanticCallId
                     : itemSemanticCallId
                         ?? messageSemanticCallId

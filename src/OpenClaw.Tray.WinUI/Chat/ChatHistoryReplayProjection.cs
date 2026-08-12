@@ -14,7 +14,7 @@ internal sealed record ChatHistoryReplayPart(
 internal static class ChatHistoryReplayProjection
 {
     internal static JsonObject? ProjectToolArgs(JsonElement? value) =>
-        NativeToolProjector.ExtractSafeToolDisplayArgsValue(value);
+        NativeToolProjector.ExtractSafePersistedToolDisplayArgs(value);
 
     internal static string ToolLabel(string toolName, JsonObject? args)
     {
