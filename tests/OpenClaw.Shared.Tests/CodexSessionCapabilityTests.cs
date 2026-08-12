@@ -392,6 +392,44 @@ public sealed class CodexSessionCapabilityTests
     }
 
     [Fact]
+    public async Task ThreadsHistoryList_SearchWalksBoundedPagesAndHonorsTheRequestedLimit()
+    {
+        var client = new RecordingCatalogClient();
+        client.EnqueueThreads(Json("""
+            {
+              "data": [
+                { "id": "123e4567-e89b-12d3-a456-426614174001", "name": "Unrelated", "status": { "type": "idle" }, "source": "cli", "archived": true }
+              ],
+              "nextCursor": "history-page-2"
+            }
+            """));
+        client.EnqueueThreads(Json("""
+            {
+              "data": [
+                { "id": "123e4567-e89b-12d3-a456-426614174002", "name": "MATCH archive", "status": { "type": "idle" }, "source": "cli", "archived": true },
+                { "id": "123e4567-e89b-12d3-a456-426614174003", "name": "MATCH overflow", "status": { "type": "idle" }, "source": "cli", "archived": true }
+              ]
+            }
+            """));
+
+        var response = await ExecuteAsync(
+            CreateCapability(client),
+            CodexSessionCapability.ThreadsHistoryListCommand,
+            """{"archived":true,"limit":1,"searchTerm":"match"}""");
+
+        Assert.True(response.Ok, response.Error);
+        var sessions = PayloadJson(response).GetProperty("sessions");
+        var session = Assert.Single(sessions.EnumerateArray());
+        Assert.Equal("123e4567-e89b-12d3-a456-426614174002", session.GetProperty("threadId").GetString());
+        Assert.Equal(2, client.ThreadsCallCount);
+        Assert.All(client.Parameters, parameters =>
+        {
+            Assert.True(parameters.GetProperty("archived").GetBoolean());
+            Assert.InRange(parameters.GetProperty("limit").GetInt32(), 1, 100);
+        });
+    }
+
+    [Fact]
     public async Task ThreadsList_RepeatedSearchCursorFailsClosedWithSanitizedError()
     {
         var client = new RecordingCatalogClient();
@@ -736,6 +774,39 @@ public sealed class CodexSessionCapabilityTests
         await harness.AssertAllProcessesExitedAfterDisposalAsync(client);
     }
 
+    [Theory]
+    [InlineData(1_200_000, true)]
+    [InlineData(20 * 1024 * 1024, true)]
+    [InlineData((20 * 1024 * 1024) + 1, false)]
+    public async Task RealAdapter_HistoryListRejectsOverBudgetAppServerPages(
+        int rawResultBytes,
+        bool expectedSuccess)
+    {
+        using var harness = new CatalogJsonlProcessHarness(BuildHistoryPage(rawResultBytes));
+        await using var client = await CodexAppServerClient.ConnectCatalogAsync(
+            new CodexLaunchPlan(Path.Combine(Path.GetTempPath(), "codex.exe")),
+            harness,
+            CancellationToken.None);
+        var capability = new CodexSessionCapability(
+            NullLogger.Instance,
+            new CodexSessionCatalogService(client));
+
+        var response = await ExecuteAsync(
+            capability,
+            CodexSessionCapability.ThreadsHistoryListCommand,
+            """{"archived":true,"limit":1}""");
+
+        Assert.Equal(expectedSuccess, response.Ok);
+        Assert.Equal(expectedSuccess ? null : "Codex app-server catalog is unavailable", response.Error);
+        if (expectedSuccess)
+        {
+            var session = Assert.Single(PayloadJson(response).GetProperty("sessions").EnumerateArray());
+            Assert.True(session.GetProperty("archived").GetBoolean());
+        }
+        Assert.Equal(["initialize", "initialized", "thread/list"], harness.RecordedMethods());
+        await harness.AssertAllProcessesExitedAfterDisposalAsync(client);
+    }
+
     [Fact]
     public void CatalogTransportLimits_AreScopedAndIncludeSerializedJsonRpcFraming()
     {
@@ -839,6 +910,17 @@ public sealed class CodexSessionCapabilityTests
         return page;
     }
 
+    private static string BuildHistoryPage(int targetUtf8Bytes)
+    {
+        const string prefix = "{\"data\":[{\"id\":\"123e4567-e89b-12d3-a456-426614174000\",\"status\":{\"type\":\"idle\"},\"source\":\"cli\",\"archived\":true}],\"private\":\"";
+        const string suffix = "\"}";
+        var paddingLength = targetUtf8Bytes - Encoding.UTF8.GetByteCount(prefix) - Encoding.UTF8.GetByteCount(suffix);
+        Assert.True(paddingLength >= 0, "Target history page is too small for its JSON structure.");
+        var page = prefix + new string('x', paddingLength) + suffix;
+        Assert.Equal(targetUtf8Bytes, Encoding.UTF8.GetByteCount(page));
+        return page;
+    }
+
     private static void AssertJsonEqual(string expectedJson, JsonElement actual)
     {
         var expected = Json(expectedJson);
@@ -916,6 +998,13 @@ public sealed class CodexSessionCapabilityTests
             if ($initialized.method -ne 'initialized') { exit 82 }
             $list = Read-Message
             if ($list.method -ne 'thread/list') { exit 83 }
+            if ($list.'params'.archived -eq $true) {
+              $payload = [IO.File]::ReadAllText($PayloadPath)
+              [Console]::Out.Write('{"id":' + [long]$list.id + ',"result":' + $payload + '}' + "`n")
+              [Console]::Out.Flush()
+              Start-Sleep -Seconds 30
+              exit 0
+            }
             Write-Message @{
               id = [long]$list.id
               result = @{

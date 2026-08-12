@@ -249,6 +249,27 @@ public sealed class NodeCapabilityRegistryTests
     }
 
     [Fact]
+    public async Task RefreshCodexSessionAccess_RevokesAnInFlightHistoryCatalogCapability()
+    {
+        var started = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var registry = new NodeCapabilityRegistry(() => new BlockingCapability(started));
+        var capability = Assert.Single(registry.Rebuild([], CodexSessionAccessMode.ReadOnly));
+
+        var execution = capability.ExecuteAsync(new NodeInvokeRequest
+        {
+            Id = "history-revoked-in-flight",
+            Command = CodexSessionCapability.ThreadsHistoryListCommand,
+            Args = JsonSerializer.SerializeToElement(new { archived = true }),
+        }, CancellationToken.None);
+        await started.Task.WaitAsync(TimeSpan.FromSeconds(1));
+
+        registry.RefreshCodexSessionAccess(CodexSessionAccessMode.Off, null, NullLogger.Instance);
+
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(
+            () => execution.WaitAsync(TimeSpan.FromSeconds(1)));
+    }
+
+    [Fact]
     public async Task RefreshCodexSessionAccess_RevocationWinsOverAnOlderBlockedRebuild()
     {
         var factoryStarted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -326,6 +347,36 @@ public sealed class NodeCapabilityRegistryTests
             {
                 name = CodexSessionCapability.ThreadsListCommand,
                 arguments = new { },
+            },
+        }), CancellationToken.None);
+
+        try
+        {
+            Assert.NotNull(prepared.Body);
+            registry.RefreshCodexSessionAccess(CodexSessionAccessMode.Off, null, NullLogger.Instance);
+            Assert.False(prepared.TryBeginDelivery());
+        }
+        finally
+        {
+            prepared.CompleteDelivery();
+        }
+    }
+
+    [Fact]
+    public async Task RefreshCodexSessionAccess_RevokesAPreparedHistoryMcpResponseBeforeWrite()
+    {
+        var registry = CreateRegistry(clientAvailable: true);
+        registry.Rebuild([], CodexSessionAccessMode.ReadOnly);
+        var bridge = new McpToolBridge(registry.GetMcpSnapshot, NullLogger.Instance);
+        var prepared = await bridge.HandleTransportRequestAsync(JsonSerializer.Serialize(new
+        {
+            jsonrpc = "2.0",
+            id = 1,
+            method = "tools/call",
+            @params = new
+            {
+                name = CodexSessionCapability.ThreadsHistoryListCommand,
+                arguments = new { archived = true },
             },
         }), CancellationToken.None);
 

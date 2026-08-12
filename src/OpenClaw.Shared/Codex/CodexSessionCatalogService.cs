@@ -307,6 +307,8 @@ internal sealed class CodexSessionCatalogService
         int maxSessions,
         bool archived)
     {
+        if (Encoding.UTF8.GetByteCount(response.GetRawText()) > MaxTranscriptPageBytes)
+            throw new InvalidDataException("Codex App Server thread page exceeds the byte limit.");
         if (response.ValueKind != JsonValueKind.Object
             || !response.TryGetProperty("data", out var data)
             || data.ValueKind != JsonValueKind.Array
