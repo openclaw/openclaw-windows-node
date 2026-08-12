@@ -3,6 +3,7 @@ using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Net.WebSockets;
 using System.Reflection;
 using System.Text.Json;
 using System.Threading;
@@ -17,6 +18,44 @@ namespace OpenClaw.Shared.Tests;
 [Collection(AppVersionInfoTestCollection.Name)]
 public class WindowsNodeClientTests
 {
+    [Fact]
+    public async Task CommandDispatch_LegacyEventPath_DoesNotDeliverAfterLeaseRevocationWhileSendIsQueued()
+    {
+        using var server = new LoopbackWebSocketServer();
+        await server.StartAsync();
+        var dataPath = Path.Combine(Path.GetTempPath(), $"openclaw-node-test-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(dataPath);
+        using var client = new WindowsNodeClient(server.WebSocketUrl, "test-token", dataPath);
+        var capability = new RevocableEventCapability();
+        client.ReplaceCapabilities([capability]);
+        await client.ConnectAsync();
+        await WaitForConditionAsync(() => server.AcceptedCount == 1, TimeSpan.FromSeconds(2));
+
+        var sendLock = GetSendLock(client);
+        await sendLock.WaitAsync();
+        var lockHeld = true;
+        try
+        {
+            await InvokeProcessMessageAsync(client, """
+                {"type":"event","event":"node.invoke.request","payload":{"requestId":"legacy-revoked","command":"codex.appServer.threads.list.v1","args":{}}}
+                """);
+            await capability.Executed.Task.WaitAsync(TimeSpan.FromSeconds(2));
+            capability.Revoke();
+            sendLock.Release();
+            lockHeld = false;
+
+            using var timeout = new CancellationTokenSource(TimeSpan.FromMilliseconds(300));
+            await Assert.ThrowsAnyAsync<OperationCanceledException>(() =>
+                ReceiveMatchingAsync(GetAcceptedSocket(server), "legacy-secret", timeout.Token));
+        }
+        finally
+        {
+            if (lockHeld)
+                sendLock.Release();
+            Directory.Delete(dataPath, recursive: true);
+        }
+    }
+
     private sealed class CapturingWindowsNodeClient(
         string gatewayUrl,
         string token,
@@ -3275,6 +3314,69 @@ public class WindowsNodeClientTests
         Assert.NotNull(processMethod);
         var task = (Task)processMethod!.Invoke(client, [json])!;
         await task;
+    }
+
+    private static SemaphoreSlim GetSendLock(WindowsNodeClient client) =>
+        (SemaphoreSlim)typeof(WebSocketClientBase)
+            .GetField("_sendLock", BindingFlags.Instance | BindingFlags.NonPublic)!
+            .GetValue(client)!;
+
+    private static WebSocket GetAcceptedSocket(LoopbackWebSocketServer server)
+    {
+        var sockets = (List<WebSocket>)typeof(LoopbackWebSocketServer)
+            .GetField("_acceptedSockets", BindingFlags.Instance | BindingFlags.NonPublic)!
+            .GetValue(server)!;
+        lock (sockets)
+            return sockets[0];
+    }
+
+    private static async Task ReceiveMatchingAsync(WebSocket socket, string marker, CancellationToken cancellationToken)
+    {
+        var buffer = new byte[8192];
+        while (true)
+        {
+            var result = await socket.ReceiveAsync(new ArraySegment<byte>(buffer), cancellationToken);
+            if (result.MessageType != WebSocketMessageType.Text)
+                continue;
+            var message = System.Text.Encoding.UTF8.GetString(buffer, 0, result.Count);
+            if (message.Contains(marker, StringComparison.Ordinal))
+                return;
+        }
+    }
+
+    private static async Task WaitForConditionAsync(Func<bool> predicate, TimeSpan timeout)
+    {
+        var started = DateTime.UtcNow;
+        while (!predicate())
+        {
+            if (DateTime.UtcNow - started > timeout)
+                throw new TimeoutException("Condition was not met before the timeout.");
+            await Task.Delay(20);
+        }
+    }
+
+    private sealed class RevocableEventCapability : INodeCapability, INodeCapabilityDeliveryLeaseProvider
+    {
+        private readonly EventDeliveryLease _lease = new();
+        public TaskCompletionSource Executed { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        public string Category => "codex-app-server-threads";
+        public IReadOnlyList<string> Commands => ["codex.appServer.threads.list.v1"];
+        public bool CanHandle(string command) => Commands.Contains(command, StringComparer.OrdinalIgnoreCase);
+        public Task<NodeInvokeResponse> ExecuteAsync(NodeInvokeRequest request)
+        {
+            Executed.TrySetResult();
+            return Task.FromResult(new NodeInvokeResponse { Ok = true, Payload = new { secret = "legacy-secret" } });
+        }
+        public INodeCapabilityDeliveryLease? TryAcquireDeliveryLease() => _lease;
+        public void Revoke() => _lease.Revoke();
+
+        private sealed class EventDeliveryLease : INodeCapabilityDeliveryLease
+        {
+            private int _revoked;
+            public bool TryBeginDelivery() => Volatile.Read(ref _revoked) == 0;
+            public void Revoke() => Interlocked.Exchange(ref _revoked, 1);
+            public void Dispose() { }
+        }
     }
 
     private static async Task<string> WaitForSentMessageAsync(
