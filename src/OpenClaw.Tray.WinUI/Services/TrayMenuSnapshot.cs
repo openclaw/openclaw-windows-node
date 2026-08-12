@@ -77,34 +77,6 @@ internal sealed record TrayNodeSnapshot(
         value.DeviceFamily);
 }
 
-internal sealed record TraySessionPresentationSnapshot(
-    string Title,
-    string TitleSource,
-    string? Subtitle,
-    string Family,
-    string? AgentId,
-    string? Channel,
-    string? AccountId,
-    string? PeerKind,
-    bool IsMain,
-    bool IsBackground)
-{
-    internal static TraySessionPresentationSnapshot? From(SessionPresentationInfo? value) =>
-        value is null
-            ? null
-            : new(
-                value.Title,
-                value.TitleSource,
-                value.Subtitle,
-                value.Family,
-                value.AgentId,
-                value.Channel,
-                value.AccountId,
-                value.PeerKind,
-                value.IsMain,
-                value.IsBackground);
-}
-
 internal sealed record TraySessionWorktreeSnapshot(string? Id, string? Branch, string? RepoRoot)
 {
     internal static TraySessionWorktreeSnapshot? From(SessionWorktreeInfo? value) =>
@@ -123,7 +95,6 @@ internal sealed record TraySessionSnapshot(
     string? DerivedTitle,
     string? ExecNode,
     TraySessionWorktreeSnapshot? Worktree,
-    TraySessionPresentationSnapshot? Presentation,
     long InputTokens,
     long OutputTokens,
     long TotalTokens,
@@ -150,7 +121,6 @@ internal sealed record TraySessionSnapshot(
         value.DerivedTitle,
         value.ExecNode,
         TraySessionWorktreeSnapshot.From(value.Worktree),
-        TraySessionPresentationSnapshot.From(value.Presentation),
         value.InputTokens,
         value.OutputTokens,
         value.TotalTokens,
@@ -191,21 +161,6 @@ internal sealed record TraySessionSnapshot(
                 Id = Worktree.Id,
                 Branch = Worktree.Branch,
                 RepoRoot = Worktree.RepoRoot,
-            },
-        Presentation = Presentation is null
-            ? null
-            : new SessionPresentationInfo
-            {
-                Title = Presentation.Title,
-                TitleSource = Presentation.TitleSource,
-                Subtitle = Presentation.Subtitle,
-                Family = Presentation.Family,
-                AgentId = Presentation.AgentId,
-                Channel = Presentation.Channel,
-                AccountId = Presentation.AccountId,
-                PeerKind = Presentation.PeerKind,
-                IsMain = Presentation.IsMain,
-                IsBackground = Presentation.IsBackground,
             },
         InputTokens = InputTokens,
         OutputTokens = OutputTokens,

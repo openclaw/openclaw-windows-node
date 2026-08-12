@@ -151,7 +151,7 @@ internal sealed class TrayDashboardSummaryBuilder
         var sessionCount = _snapshot.Sessions.Length;
         if (sessionCount > 0)
         {
-            var active = _snapshot.Sessions.Count(SessionRunState.IsWorking);
+            var active = _snapshot.Sessions.Count(session => SessionRunState.IsWorking(session.ToSessionInfo()));
             parts.Add(active > 0
                 ? $"{sessionCount} {(sessionCount == 1 ? "session" : "sessions")} ({active} working)"
                 : $"{sessionCount} {(sessionCount == 1 ? "session" : "sessions")}");

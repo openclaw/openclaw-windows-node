@@ -366,7 +366,6 @@ public sealed class TrayMenuPresenterTests
                 null,
                 null,
                 null,
-                null,
                 8_000,
                 4_000,
                 12_000,
