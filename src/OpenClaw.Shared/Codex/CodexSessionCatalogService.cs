@@ -159,7 +159,7 @@ internal sealed class CodexSessionCatalogService
         ListRequest request,
         bool archived,
         CancellationToken cancellationToken,
-        bool useStateDbOnly = true)
+        bool? useStateDbOnly = true)
     {
         var sessions = new List<JsonElement>(request.Limit);
         var seenCursors = new HashSet<string>(StringComparer.Ordinal);
@@ -217,7 +217,7 @@ internal sealed class CodexSessionCatalogService
             var response = await _client.ListThreadsAsync(
                 CreateThreadListParameters(
                     new ListRequest(cursor, EligibilityPageLimit, null, null),
-                    useStateDbOnly: false),
+                    useStateDbOnly: null),
                 cancellationToken).ConfigureAwait(false);
             var page = ProjectThreadPage(response, searchTerm: null, EligibilityPageLimit, archived: false);
             if (page.GetProperty("sessions").EnumerateArray().Any(session =>
@@ -298,7 +298,7 @@ internal sealed class CodexSessionCatalogService
     private static JsonElement CreateThreadListParameters(
         ListRequest request,
         bool archived = false,
-        bool useStateDbOnly = true) =>
+        bool? useStateDbOnly = true) =>
         CodexAppServerProtocol.CreateThreadListParameters(
             request.Cursor,
             request.Limit,

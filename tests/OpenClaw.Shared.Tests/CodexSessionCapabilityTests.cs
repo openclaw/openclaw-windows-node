@@ -77,7 +77,7 @@ public sealed class CodexSessionCapabilityTests
             """,
             PayloadJson(response));
         AssertJsonEqual(
-            """{"limit":1,"modelProviders":[],"sortKey":"updated_at","sortDirection":"desc","archived":true}""",
+            """{"limit":1,"modelProviders":[],"sortKey":"updated_at","sortDirection":"desc","archived":true,"useStateDbOnly":false}""",
             client.Parameters.Single());
         Assert.DoesNotContain("private", PayloadJson(response).GetRawText(), StringComparison.OrdinalIgnoreCase);
     }
@@ -102,7 +102,7 @@ public sealed class CodexSessionCapabilityTests
             """{"archived":false,"limit":1}""");
 
         Assert.True(response.Ok, response.Error);
-        Assert.False(client.Parameters.Single().TryGetProperty("useStateDbOnly", out _));
+        Assert.False(client.Parameters.Single().GetProperty("useStateDbOnly").GetBoolean());
     }
 
     [Fact]

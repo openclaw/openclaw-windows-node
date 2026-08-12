@@ -48,7 +48,7 @@ public static class CodexAppServerProtocol
         int limit,
         string? cwd,
         bool archived,
-        bool useStateDbOnly = true) =>
+        bool? useStateDbOnly = true) =>
         JsonSerializer.SerializeToElement(new Dictionary<string, object?>
         {
             ["cursor"] = cursor,
@@ -57,7 +57,7 @@ public static class CodexAppServerProtocol
             ["sortKey"] = "updated_at",
             ["sortDirection"] = "desc",
             ["archived"] = archived,
-            ["useStateDbOnly"] = useStateDbOnly ? true : null,
+            ["useStateDbOnly"] = useStateDbOnly,
             ["cwd"] = cwd,
         }.Where(entry => entry.Value is not null)
             .ToDictionary(entry => entry.Key, entry => entry.Value));
