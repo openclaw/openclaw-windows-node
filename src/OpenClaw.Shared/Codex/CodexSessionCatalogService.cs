@@ -122,12 +122,16 @@ internal sealed class CodexSessionCatalogService
         if (request.SearchTerm is null)
         {
             var response = await _client.ListThreadsAsync(
-                CreateThreadListParameters(listRequest, request.Archived),
+                CreateThreadListParameters(listRequest, request.Archived, useStateDbOnly: false),
                 cancellationToken).ConfigureAwait(false);
             return ProjectThreadPage(response, searchTerm: null, request.Limit, request.Archived);
         }
 
-        return await SearchThreadPagesAsync(listRequest, request.Archived, cancellationToken).ConfigureAwait(false);
+        return await SearchThreadPagesAsync(
+            listRequest,
+            request.Archived,
+            cancellationToken,
+            useStateDbOnly: false).ConfigureAwait(false);
     }
 
     internal async Task<JsonElement> ListThreadTurnsAsync(
@@ -154,7 +158,8 @@ internal sealed class CodexSessionCatalogService
     private async Task<JsonElement> SearchThreadPagesAsync(
         ListRequest request,
         bool archived,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        bool useStateDbOnly = true)
     {
         var sessions = new List<JsonElement>(request.Limit);
         var seenCursors = new HashSet<string>(StringComparer.Ordinal);
@@ -169,7 +174,7 @@ internal sealed class CodexSessionCatalogService
                 Limit = request.Limit - sessions.Count,
             };
             var response = await _client.ListThreadsAsync(
-                CreateThreadListParameters(pageRequest, archived),
+                CreateThreadListParameters(pageRequest, archived, useStateDbOnly),
                 cancellationToken).ConfigureAwait(false);
             var page = ProjectThreadPage(response, request.SearchTerm, pageRequest.Limit, archived);
             if (pageIndex == 0

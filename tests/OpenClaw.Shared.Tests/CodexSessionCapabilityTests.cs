@@ -77,9 +77,32 @@ public sealed class CodexSessionCapabilityTests
             """,
             PayloadJson(response));
         AssertJsonEqual(
-            """{"limit":1,"modelProviders":[],"sortKey":"updated_at","sortDirection":"desc","archived":true,"useStateDbOnly":true}""",
+            """{"limit":1,"modelProviders":[],"sortKey":"updated_at","sortDirection":"desc","archived":true}""",
             client.Parameters.Single());
         Assert.DoesNotContain("private", PayloadJson(response).GetRawText(), StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task ThreadsHistoryList_CurrentPartitionSearchesTheCompleteCatalog()
+    {
+        var client = new RecordingCatalogClient
+        {
+            ThreadsResponse = Json("""
+                {
+                  "data": [
+                    { "id": "123e4567-e89b-12d3-a456-426614174000", "name": "Current work", "status": { "type": "idle" }, "source": "cli", "archived": false }
+                  ]
+                }
+                """),
+        };
+
+        var response = await ExecuteAsync(
+            CreateCapability(client),
+            CodexSessionCapability.ThreadsHistoryListCommand,
+            """{"archived":false,"limit":1}""");
+
+        Assert.True(response.Ok, response.Error);
+        Assert.False(client.Parameters.Single().TryGetProperty("useStateDbOnly", out _));
     }
 
     [Fact]
