@@ -42,6 +42,18 @@ public sealed class CodexAppServerClientTests
     }
 
     [Fact]
+    public async Task CurrentServerNotificationTimestamp_DoesNotTerminateCatalogRead()
+    {
+        using var harness = new JsonlProcessHarness("notification-emitted-at");
+        await using var client = await ConnectAsync(harness);
+
+        var result = await client.ListThreadsAsync(Params("catalog"));
+
+        Assert.Equal("catalog", result.GetProperty("tag").GetString());
+        Assert.Equal(1, harness.StartCount);
+    }
+
+    [Fact]
     public async Task GeneralAndCatalogFactoryRoutes_EnforceTheirOwnResponseProfiles()
     {
         var largeResult = BuildRawResult(1_200_000);
@@ -545,6 +557,10 @@ public sealed class CodexAppServerClientTests
               'notification-then-exit' {
                 Write-Message @{ method = 'server/pulse'; params = @{ value = 1 } }
                 exit 9
+              }
+              'notification-emitted-at' {
+                Write-Message @{ method = 'remoteControl/status/changed'; params = @{ status = 'disconnected' }; emittedAtMs = [long]1786521411098 }
+                Write-Result $request
               }
               'operation-oversized' {
                 for ($i = 0; $i -lt 20; $i++) {

@@ -59,6 +59,7 @@ internal sealed class CodexSessionCatalogService
     internal const int MaxActiveFlagLength = 128;
     internal const int MaxTitleSearchPages = 20;
     internal const int MaxEligibilityPages = 100;
+    internal const int EligibilityPageLimit = 10;
     internal const int MaxTranscriptTextLength = 1_000_000;
     internal const int MaxTranscriptPageBytes = 20 * 1024 * 1024;
     internal const int MaxJsonRpcEnvelopeBytes = 4 * 1024;
@@ -191,9 +192,11 @@ internal sealed class CodexSessionCatalogService
         for (var pageIndex = 0; pageIndex < MaxEligibilityPages; pageIndex++)
         {
             var response = await _client.ListThreadsAsync(
-                CreateThreadListParameters(new ListRequest(cursor, MaxPageLimit, null, null)),
+                CreateThreadListParameters(
+                    new ListRequest(cursor, EligibilityPageLimit, null, null),
+                    useStateDbOnly: false),
                 cancellationToken).ConfigureAwait(false);
-            var page = ProjectThreadPage(response, searchTerm: null, MaxPageLimit);
+            var page = ProjectThreadPage(response, searchTerm: null, EligibilityPageLimit);
             if (page.GetProperty("sessions").EnumerateArray().Any(session =>
                 session.GetProperty("threadId").GetString() == threadId))
             {
@@ -251,7 +254,9 @@ internal sealed class CodexSessionCatalogService
             ReadLimit(values, "limit", DefaultTranscriptPageLimit, MaxTranscriptPageLimit));
     }
 
-    private static JsonElement CreateThreadListParameters(ListRequest request) =>
+    private static JsonElement CreateThreadListParameters(
+        ListRequest request,
+        bool useStateDbOnly = true) =>
         JsonSerializer.SerializeToElement(new Dictionary<string, object?>
         {
             ["cursor"] = request.Cursor,
@@ -260,6 +265,7 @@ internal sealed class CodexSessionCatalogService
             ["sortKey"] = "updated_at",
             ["sortDirection"] = "desc",
             ["archived"] = false,
+            ["useStateDbOnly"] = useStateDbOnly ? true : null,
             ["cwd"] = request.Cwd,
         }.Where(entry => entry.Value is not null)
             .ToDictionary(entry => entry.Key, entry => entry.Value));

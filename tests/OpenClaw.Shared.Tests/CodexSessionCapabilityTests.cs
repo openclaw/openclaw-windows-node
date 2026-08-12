@@ -99,6 +99,7 @@ public sealed class CodexSessionCapabilityTests
                   "sortKey": "updated_at",
                   "sortDirection": "desc",
                   "archived": false,
+                  "useStateDbOnly": true,
                   "cwd": "C:\\workspace\\project"
                 }
                 """,
@@ -141,6 +142,8 @@ public sealed class CodexSessionCapabilityTests
         Assert.Equal(
             [CodexAppServerProtocol.ThreadListMethod, CodexAppServerProtocol.ThreadTurnsListMethod],
             client.Methods);
+        Assert.Equal(10, client.Parameters[0].GetProperty("limit").GetInt32());
+        Assert.False(client.Parameters[0].TryGetProperty("useStateDbOnly", out _));
         AssertJsonEqual(
             $$"""{"threadId":"{{ThreadId}}","cursor":"turns-page-1","limit":25,"sortDirection":"desc","itemsView":"full"}""",
             client.Parameters[1]);

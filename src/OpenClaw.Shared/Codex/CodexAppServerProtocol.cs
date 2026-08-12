@@ -79,13 +79,27 @@ public static class CodexAppServerProtocol
 
             if (hasMethod)
             {
-                RejectUnknownFields(root, hasId ? ["id", "method", "params", "trace"] : ["method", "params"]);
+                RejectUnknownFields(
+                    root,
+                    hasId
+                        ? ["id", "method", "params", "trace"]
+                        : ["method", "params", "emittedAtMs"]);
                 if (methodElement.ValueKind != JsonValueKind.String)
                     throw new CodexAppServerProtocolException("Malformed App Server message: method must be a string.");
 
                 var method = methodElement.GetString()!;
                 if (!hasId)
+                {
+                    if (root.TryGetProperty("emittedAtMs", out var emittedAtMs)
+                        && (emittedAtMs.ValueKind != JsonValueKind.Number
+                            || !emittedAtMs.TryGetInt64(out _)))
+                    {
+                        throw new CodexAppServerProtocolException(
+                            "Malformed App Server message: emittedAtMs must be an integer.");
+                    }
+
                     return CodexAppServerMessage.ForNotification(method);
+                }
 
                 return CodexAppServerMessage.ForServerRequest(ReadNumericId(idElement), method);
             }
