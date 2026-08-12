@@ -292,6 +292,53 @@ public sealed class NodeCapabilityRegistryTests
     }
 
     [Fact]
+    public async Task RefreshCodexSessionAccess_DoesNotWaitForAStalledDeliveryAndRevokesItBeforeWrite()
+    {
+        var registry = CreateRegistry(clientAvailable: true);
+        var capability = Assert.Single(registry.Rebuild([], CodexSessionAccessMode.ReadOnly));
+        var leaseProvider = Assert.IsAssignableFrom<INodeCapabilityDeliveryLeaseProvider>(capability);
+        using var stalledDelivery = Assert.IsAssignableFrom<INodeCapabilityDeliveryLease>(
+            leaseProvider.TryAcquireDeliveryLease());
+
+        var stopwatch = Stopwatch.StartNew();
+        registry.RefreshCodexSessionAccess(CodexSessionAccessMode.Off, null, NullLogger.Instance);
+
+        Assert.True(stopwatch.Elapsed < TimeSpan.FromSeconds(1));
+        Assert.False(stalledDelivery.TryBeginDelivery());
+        await Task.CompletedTask;
+    }
+
+    [Fact]
+    public async Task RefreshCodexSessionAccess_RevokesAnAlreadyPreparedMcpResponseBeforeWrite()
+    {
+        var registry = CreateRegistry(clientAvailable: true);
+        registry.Rebuild([], CodexSessionAccessMode.ReadOnly);
+        var bridge = new McpToolBridge(registry.GetMcpSnapshot, NullLogger.Instance);
+        var prepared = await bridge.HandleTransportRequestAsync(JsonSerializer.Serialize(new
+        {
+            jsonrpc = "2.0",
+            id = 1,
+            method = "tools/call",
+            @params = new
+            {
+                name = CodexSessionCapability.ThreadsListCommand,
+                arguments = new { },
+            },
+        }), CancellationToken.None);
+
+        try
+        {
+            Assert.NotNull(prepared.Body);
+            registry.RefreshCodexSessionAccess(CodexSessionAccessMode.Off, null, NullLogger.Instance);
+            Assert.False(prepared.TryBeginDelivery());
+        }
+        finally
+        {
+            prepared.CompleteDelivery();
+        }
+    }
+
+    [Fact]
     public async Task GatewayDispatch_DeniedDeliveryLease_DoesNotReturnSuccessfulPayload()
     {
         using var temp = new Presentation.TempDir();
@@ -515,7 +562,7 @@ public sealed class NodeCapabilityRegistryTests
         public bool CanHandle(string command) => Commands.Contains(command, StringComparer.OrdinalIgnoreCase);
         public Task<NodeInvokeResponse> ExecuteAsync(NodeInvokeRequest request) =>
             Task.FromResult(new NodeInvokeResponse { Id = request.Id, Ok = true, Payload = new { secret = true } });
-        public IDisposable? TryAcquireDeliveryLease() => null;
+        public INodeCapabilityDeliveryLease? TryAcquireDeliveryLease() => null;
     }
 
     public enum CodexRegistryProcessMode

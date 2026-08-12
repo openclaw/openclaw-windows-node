@@ -185,6 +185,20 @@ public sealed class CodexExecutableResolverTests : IDisposable
         Assert.Equal(string.Empty, startInfo.Arguments);
     }
 
+    [Fact]
+    public void LaunchPlan_RejectsAnExecutableThatIsNoLongerTrustedAtStartTime()
+    {
+        var pathDirectory = Directory.CreateDirectory(Path.Combine(_root, "path-bin")).FullName;
+        var executable = CreateFile(pathDirectory, "codex.exe");
+        var platform = new TestPlatform(Path.Combine(_root, "no-local-app-data"), pathDirectory);
+        var plan = new CodexExecutableResolver(platform).Resolve();
+
+        Assert.NotNull(plan);
+        File.Delete(executable);
+
+        Assert.False(plan.IsTrustedForLaunch());
+    }
+
     private static void AssertLaunchBoundary(CodexLaunchPlan plan)
     {
         Assert.Equal(new[] { "app-server", "--listen", "stdio://" }, plan.Arguments);

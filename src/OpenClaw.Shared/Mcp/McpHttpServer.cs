@@ -607,6 +607,8 @@ public sealed class McpHttpServer : IDisposable, IAsyncDisposable
                 return McpRequestResult.Success;
             }
 
+            if (!transportResponse.TryBeginDelivery())
+                throw new OperationCanceledException("Capability delivery authorization was revoked.");
             _writeText(ctx.Response, HttpStatusCode.OK, transportResponse.Body, "application/json");
             transportResponse.CompleteDelivery();
             return McpRequestResult.Success;

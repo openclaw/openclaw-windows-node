@@ -99,7 +99,7 @@ public class McpToolBridgeTests
         public bool CanHandle(string command) => Commands.Contains(command);
         public Task<NodeInvokeResponse> ExecuteAsync(NodeInvokeRequest request) =>
             Task.FromResult(new NodeInvokeResponse { Ok = true, Payload = new { secret = true } });
-        public IDisposable? TryAcquireDeliveryLease() => null;
+        public INodeCapabilityDeliveryLease? TryAcquireDeliveryLease() => null;
     }
 
     private sealed class FailingCodexCatalogClient : ICodexSessionCatalogClient

@@ -269,6 +269,12 @@ internal sealed class CodexAppServerProcessFactory : ICodexAppServerProcessFacto
 {
     public ICodexAppServerProcess Start(CodexLaunchPlan launchPlan)
     {
+        if (!launchPlan.IsTrustedForLaunch())
+        {
+            throw new CodexAppServerTransportException(
+                "Codex App Server executable is no longer trusted.",
+                responseBytesObserved: false);
+        }
         var startInfo = launchPlan.CreateProcessStartInfo();
         startInfo.CreateNoWindow = true;
         var process = Process.Start(startInfo)

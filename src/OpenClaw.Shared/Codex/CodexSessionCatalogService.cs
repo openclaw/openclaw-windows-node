@@ -70,6 +70,20 @@ internal sealed class CodexSessionCatalogService
     private static readonly HashSet<string> InteractiveCustomSources =
         new(StringComparer.Ordinal) { "atlas", "chatgpt" };
 
+    // This mirrors the current thread/turns/list contract. Keep this finite:
+    // App Server is an untrusted versioned boundary and must not grow the
+    // Windows catalog payload merely by adding fields upstream.
+    private static readonly HashSet<string> TranscriptTurnFields =
+        new(StringComparer.Ordinal) { "id", "status", "createdAt", "updatedAt" };
+
+    private static readonly HashSet<string> TranscriptItemFields =
+        new(StringComparer.Ordinal)
+        {
+            "id", "type", "title", "status", "name", "tool", "server", "command", "cwd", "query",
+            "arguments", "result", "error", "exitCode", "durationMs", "aggregatedOutput", "text",
+            "contentItems", "changes",
+        };
+
     private readonly ICodexSessionCatalogClient _client;
 
     internal CodexSessionCatalogService(CodexAppServerClient client)
@@ -333,24 +347,57 @@ internal sealed class CodexSessionCatalogService
         if (response.ValueKind != JsonValueKind.Object
             || !response.TryGetProperty("data", out var data)
             || data.ValueKind != JsonValueKind.Array
-            || data.GetArrayLength() > MaxTranscriptPageLimit
-            || data.EnumerateArray().Any(turn =>
-                turn.ValueKind != JsonValueKind.Object
-                || !turn.TryGetProperty("items", out var items)
-                || items.ValueKind != JsonValueKind.Array
-                || items.EnumerateArray().Any(item => item.ValueKind != JsonValueKind.Object)))
+            || data.GetArrayLength() > MaxTranscriptPageLimit)
         {
             throw new InvalidDataException("Invalid Codex App Server transcript page.");
         }
 
-        ValidateTranscriptText(data);
-        var result = new Dictionary<string, object?> { ["data"] = data.Clone() };
+        var turns = data.EnumerateArray().Select(ProjectTranscriptTurn).ToArray();
+        var result = new Dictionary<string, object?> { ["data"] = turns };
         CopyCursor(response, result, "nextCursor");
         CopyCursor(response, result, "backwardsCursor");
         var page = JsonSerializer.SerializeToElement(result);
         if (Encoding.UTF8.GetByteCount(page.GetRawText()) > MaxTranscriptPageBytes)
             throw new InvalidDataException("Codex App Server transcript page exceeds the byte limit.");
         return page;
+    }
+
+    private static Dictionary<string, object?> ProjectTranscriptTurn(JsonElement turn)
+    {
+        if (turn.ValueKind != JsonValueKind.Object
+            || !turn.TryGetProperty("items", out var items)
+            || items.ValueKind != JsonValueKind.Array)
+        {
+            throw new InvalidDataException("Invalid Codex App Server transcript page.");
+        }
+
+        var projected = new Dictionary<string, object?>();
+        foreach (var property in turn.EnumerateObject())
+        {
+            if (!TranscriptTurnFields.Contains(property.Name))
+                continue;
+            ValidateTranscriptText(property.Value);
+            projected[property.Name] = property.Value.Clone();
+        }
+
+        projected["items"] = items.EnumerateArray().Select(ProjectTranscriptItem).ToArray();
+        return projected;
+    }
+
+    private static Dictionary<string, object?> ProjectTranscriptItem(JsonElement item)
+    {
+        if (item.ValueKind != JsonValueKind.Object)
+            throw new InvalidDataException("Invalid Codex App Server transcript page.");
+
+        var projected = new Dictionary<string, object?>();
+        foreach (var property in item.EnumerateObject())
+        {
+            if (!TranscriptItemFields.Contains(property.Name))
+                continue;
+            ValidateTranscriptText(property.Value);
+            projected[property.Name] = property.Value.Clone();
+        }
+        return projected;
     }
 
     private static void ValidateTranscriptText(JsonElement value)

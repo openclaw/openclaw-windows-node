@@ -146,6 +146,55 @@ public sealed class CodexSessionCapabilityTests
         Assert.DoesNotContain("thread/resume", client.Methods);
     }
 
+    [Fact]
+    public async Task ThreadTurnsList_ProjectsOnlyTheAllowlistedTranscriptContract()
+    {
+        var client = new RecordingCatalogClient
+        {
+            ThreadsResponse = EligibleThreadsPage(),
+            TurnsResponse = Json("""
+                {
+                  "data": [
+                    {
+                      "id": "turn-1",
+                      "status": "completed",
+                      "privateTurnField": "do-not-forward",
+                      "items": [
+                        {
+                          "id": "item-1",
+                          "type": "agentMessage",
+                          "text": "bounded answer",
+                          "title": "Answer",
+                          "arguments": { "safe": true },
+                          "privateItemField": "do-not-forward"
+                        }
+                      ]
+                    }
+                  ],
+                  "nextCursor": "turns-page-2",
+                  "privatePageField": "do-not-forward"
+                }
+                """),
+        };
+
+        var response = await ExecuteAsync(
+            CreateCapability(client),
+            CodexSessionCapability.ThreadTurnsListCommand,
+            $$"""{"threadId":"{{ThreadId}}"}""");
+
+        Assert.True(response.Ok, response.Error);
+        var payload = PayloadJson(response);
+        var item = payload.GetProperty("data")[0].GetProperty("items")[0];
+        Assert.Equal("turn-1", payload.GetProperty("data")[0].GetProperty("id").GetString());
+        Assert.Equal("item-1", item.GetProperty("id").GetString());
+        Assert.Equal("agentMessage", item.GetProperty("type").GetString());
+        Assert.True(item.GetProperty("arguments").GetProperty("safe").GetBoolean());
+        Assert.Equal("turns-page-2", payload.GetProperty("nextCursor").GetString());
+        Assert.DoesNotContain("privateTurnField", payload.GetRawText(), StringComparison.Ordinal);
+        Assert.DoesNotContain("privateItemField", payload.GetRawText(), StringComparison.Ordinal);
+        Assert.DoesNotContain("privatePageField", payload.GetRawText(), StringComparison.Ordinal);
+    }
+
     [Theory]
     [InlineData("codex.appServer.threads.list.v1", "{\"unknown\":true}", "unknown Codex session catalog parameter")]
     [InlineData("codex.appServer.threads.list.v1", "{\"limit\":0}", "limit must be an integer from 1 to 100")]

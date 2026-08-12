@@ -96,7 +96,17 @@ public interface INodeCapability
 /// </summary>
 internal interface INodeCapabilityDeliveryLeaseProvider
 {
-    IDisposable? TryAcquireDeliveryLease();
+    INodeCapabilityDeliveryLease? TryAcquireDeliveryLease();
+}
+
+/// <summary>
+/// A revocable authorization for a successful capability response. A transport
+/// must call <see cref="TryBeginDelivery"/> immediately before it writes the
+/// response so permission revocation wins over an already-prepared response.
+/// </summary>
+internal interface INodeCapabilityDeliveryLease : IDisposable
+{
+    bool TryBeginDelivery();
 }
 
 /// <summary>

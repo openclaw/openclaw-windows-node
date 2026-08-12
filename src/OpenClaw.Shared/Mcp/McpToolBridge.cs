@@ -86,8 +86,16 @@ public class McpToolBridge
     internal async Task<string?> HandleRequestAsync(string requestBody, CancellationToken cancellationToken)
     {
         var response = await HandleTransportRequestAsync(requestBody, cancellationToken);
-        response.CompleteDelivery();
-        return response.Body;
+        try
+        {
+            if (!response.TryBeginDelivery())
+                throw new OperationCanceledException("Capability delivery authorization was revoked.");
+            return response.Body;
+        }
+        finally
+        {
+            response.CompleteDelivery();
+        }
     }
 
     internal async Task<McpTransportResponse> HandleTransportRequestAsync(
@@ -139,7 +147,7 @@ public class McpToolBridge
             NodeToolExecutionMode? terminalExecutionMode = null;
             Type? terminalErrorType = null;
             string? responseBody;
-            IDisposable? deliveryLease = null;
+            INodeCapabilityDeliveryLease? deliveryLease = null;
             var requestKey = hasId ? GetRequestKey(idElement!.Value) : null;
 
             try
@@ -844,7 +852,7 @@ public class McpToolBridge
     private sealed record McpToolCallResult(
         object Result,
         NodeToolDiagnostic? Diagnostic,
-        IDisposable? DeliveryLease);
+        INodeCapabilityDeliveryLease? DeliveryLease);
 
     private void CompleteToolTelemetry(
         NodeToolInvocation telemetry,
@@ -904,8 +912,10 @@ public class McpToolBridge
     internal sealed record McpTransportResponse(
         string? Body,
         McpPendingToolTelemetry? PendingTelemetry,
-        IDisposable? DeliveryLease = null)
+        INodeCapabilityDeliveryLease? DeliveryLease = null)
     {
+        public bool TryBeginDelivery() => DeliveryLease?.TryBeginDelivery() ?? true;
+
         public void CompleteDelivery(Type? deliveryError = null)
         {
             try

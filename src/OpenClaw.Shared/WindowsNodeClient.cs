@@ -279,6 +279,8 @@ public class WindowsNodeClient : WebSocketClientBase
             (dispatchEntry.Capability as INodeCapabilityDeliveryLeaseProvider)?.TryAcquireDeliveryLease();
         if (dispatchEntry.Capability is INodeCapabilityDeliveryLeaseProvider && deliveryLease is null)
             throw new OperationCanceledException("Capability delivery authorization was revoked.");
+        if (deliveryLease is not null && !deliveryLease.TryBeginDelivery())
+            throw new OperationCanceledException("Capability delivery authorization was revoked.");
         response.Id = request.Id;
         return response;
     }
@@ -1477,6 +1479,8 @@ public class WindowsNodeClient : WebSocketClientBase
 
             try
             {
+                if (deliveryLease is not null && !deliveryLease.TryBeginDelivery())
+                    return;
                 await sendResponse(response);
                 CompleteToolTelemetry(
                     telemetry,

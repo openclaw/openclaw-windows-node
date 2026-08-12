@@ -252,7 +252,7 @@ public sealed class NodeCapabilityRegistry
             return response;
         }
 
-        public IDisposable? TryAcquireDeliveryLease() =>
+        public INodeCapabilityDeliveryLease? TryAcquireDeliveryLease() =>
             accessGeneration.TryAcquireDeliveryLease();
     }
 
@@ -282,7 +282,7 @@ public sealed class NodeCapabilityRegistry
             }
         }
 
-        public IDisposable? TryAcquireDeliveryLease()
+        public INodeCapabilityDeliveryLease? TryAcquireDeliveryLease()
         {
             lock (_gate)
             {
@@ -305,11 +305,7 @@ public sealed class NodeCapabilityRegistry
             _cancellation.Cancel();
 
             lock (_gate)
-            {
-                while (_activeDeliveries > 0)
-                    Monitor.Wait(_gate);
                 DisposeIfRetiredNoLock();
-            }
         }
 
         private void EndExecution()
@@ -326,7 +322,6 @@ public sealed class NodeCapabilityRegistry
             lock (_gate)
             {
                 _activeDeliveries--;
-                Monitor.PulseAll(_gate);
                 DisposeIfRetiredNoLock();
             }
         }
@@ -355,11 +350,23 @@ public sealed class NodeCapabilityRegistry
             public void Dispose() => Interlocked.Exchange(ref _owner, null)?.EndExecution();
         }
 
-        private sealed class DeliveryLease(CodexAccessGeneration owner) : IDisposable
+        private sealed class DeliveryLease(CodexAccessGeneration owner) : INodeCapabilityDeliveryLease
         {
             private CodexAccessGeneration? _owner = owner;
 
+            public bool TryBeginDelivery()
+            {
+                var owner = Volatile.Read(ref _owner);
+                return owner is not null && owner.IsDeliveryStillAuthorized();
+            }
+
             public void Dispose() => Interlocked.Exchange(ref _owner, null)?.EndDelivery();
+        }
+
+        private bool IsDeliveryStillAuthorized()
+        {
+            lock (_gate)
+                return !_revoked;
         }
     }
 }

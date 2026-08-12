@@ -23,7 +23,7 @@ internal sealed class CodexExecutableResolver
     {
         var packagedAlias = GetPackagedAlias();
         if (packagedAlias is not null && IsExistingFile(packagedAlias, allowReparsePoint: true))
-            return new CodexLaunchPlan(packagedAlias);
+            return new CodexLaunchPlan(packagedAlias, path => IsExistingFile(path, allowReparsePoint: true));
 
         if (string.IsNullOrWhiteSpace(_platform.PathEnvironment))
             return null;
@@ -39,7 +39,7 @@ internal sealed class CodexExecutableResolver
 
             var candidate = TryGetFullPath(Path.Combine(pathEntry, ExecutableName));
             if (candidate is not null && IsExistingFile(candidate, allowReparsePoint: false))
-                return new CodexLaunchPlan(candidate);
+                return new CodexLaunchPlan(candidate, path => IsExistingFile(path, allowReparsePoint: false));
         }
 
         return null;
@@ -113,9 +113,18 @@ public sealed class CodexLaunchPlan
     private static readonly IReadOnlyDictionary<string, string> EmptyEnvironment =
         new ReadOnlyDictionary<string, string>(new Dictionary<string, string>());
 
+    private readonly Func<string, bool> _isTrustedExecutable;
+
     internal CodexLaunchPlan(string executablePath)
+        : this(executablePath, path => File.Exists(path) &&
+            (File.GetAttributes(path) & (FileAttributes.Directory | FileAttributes.ReparsePoint)) == 0)
+    {
+    }
+
+    internal CodexLaunchPlan(string executablePath, Func<string, bool> isTrustedExecutable)
     {
         ExecutablePath = executablePath;
+        _isTrustedExecutable = isTrustedExecutable ?? throw new ArgumentNullException(nameof(isTrustedExecutable));
     }
 
     public string ExecutablePath { get; }
@@ -131,6 +140,20 @@ public sealed class CodexLaunchPlan
     public bool RedirectStandardOutput => true;
 
     public bool RedirectStandardError => true;
+
+    internal bool IsTrustedForLaunch()
+    {
+        try
+        {
+            return _isTrustedExecutable(ExecutablePath);
+        }
+        catch (Exception exception) when (exception is IOException
+                                          or UnauthorizedAccessException
+                                          or System.Security.SecurityException)
+        {
+            return false;
+        }
+    }
 
     public ProcessStartInfo CreateProcessStartInfo()
     {
