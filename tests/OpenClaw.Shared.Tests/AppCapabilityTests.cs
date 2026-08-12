@@ -124,6 +124,34 @@ public class AppCapabilityTests
         Assert.True(res.Ok);
     }
 
+    [Theory]
+    [InlineData("CodexSessionAccess")]
+    [InlineData("codexsessionaccess")]
+    public async Task SettingsSet_CodexSessionAccess_IsDeniedBeforeTheLocalHandler(string name)
+    {
+        var handlerCalled = false;
+        var cap = new AppCapability(NullLogger.Instance)
+        {
+            SettingsSetHandler = (_, _) =>
+            {
+                handlerCalled = true;
+                return new { value = "ReadOnly" };
+            }
+        };
+        var req = new NodeInvokeRequest
+        {
+            Id = "1",
+            Command = "app.settings.set",
+            Args = JsonSerializer.SerializeToElement(new { name, value = "ReadOnly" })
+        };
+
+        var res = await cap.ExecuteAsync(req);
+
+        Assert.False(res.Ok);
+        Assert.Contains("not accessible", res.Error, StringComparison.OrdinalIgnoreCase);
+        Assert.False(handlerCalled);
+    }
+
     [Fact]
     public async Task UnknownCommand_ReturnsError()
     {

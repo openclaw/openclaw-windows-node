@@ -3,12 +3,12 @@ using System.Diagnostics;
 
 namespace OpenClaw.Shared.Codex;
 
-public sealed class CodexExecutableResolver
+internal sealed class CodexExecutableResolver
 {
     private const string ExecutableName = "codex.exe";
     private readonly ICodexExecutablePlatform _platform;
 
-    public CodexExecutableResolver()
+    internal CodexExecutableResolver()
         : this(new CurrentProcessCodexExecutablePlatform())
     {
     }
@@ -19,7 +19,7 @@ public sealed class CodexExecutableResolver
         _platform = platform;
     }
 
-    public CodexLaunchPlan? Resolve()
+    internal CodexLaunchPlan? Resolve()
     {
         var packagedAlias = GetPackagedAlias();
         if (packagedAlias is not null && IsExistingFile(packagedAlias, allowReparsePoint: true))

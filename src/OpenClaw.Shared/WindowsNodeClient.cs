@@ -275,6 +275,10 @@ public class WindowsNodeClient : WebSocketClientBase
         }
 
         var response = await dispatchEntry.Capability.ExecuteAsync(request, cancellationToken);
+        using var deliveryLease =
+            (dispatchEntry.Capability as INodeCapabilityDeliveryLeaseProvider)?.TryAcquireDeliveryLease();
+        if (dispatchEntry.Capability is INodeCapabilityDeliveryLeaseProvider && deliveryLease is null)
+            throw new OperationCanceledException("Capability delivery authorization was revoked.");
         response.Id = request.Id;
         return response;
     }
@@ -1414,6 +1418,22 @@ public class WindowsNodeClient : WebSocketClientBase
             capabilityStarted = true;
             var response = await capability.ExecuteAsync(request, cancellationToken);
             response.Id = request.Id;
+
+            using var deliveryLease =
+                (capability as INodeCapabilityDeliveryLeaseProvider)?.TryAcquireDeliveryLease();
+            if (capability is INodeCapabilityDeliveryLeaseProvider && deliveryLease is null)
+            {
+                activeInvocation.TryComplete();
+                NodeToolInvocation.CompleteChild(
+                    executeActivity,
+                    NodeToolOutcome.Canceled,
+                    NodeToolErrorCategory.Other);
+                CompleteToolTelemetry(
+                    telemetry,
+                    NodeToolOutcome.Canceled,
+                    NodeToolErrorCategory.Other);
+                return;
+            }
 
             if (!activeInvocation.TryComplete())
             {

@@ -31,6 +31,12 @@ public interface ISettingsStore
     void Update(Action<ISettingsEditor> edit);
 
     /// <summary>
+    /// Persists the interactive Codex permission and returns whether the durable write
+    /// succeeded. A failed write restores the previous in-memory permission.
+    /// </summary>
+    bool TryUpdateCodexSessionAccess(CodexSessionAccessMode mode);
+
+    /// <summary>
     /// Marks the calling thread as performing a store-originated write for the scope's lifetime,
     /// so a <see cref="SettingsManager.Save"/> raised on that thread is treated as self-originated
     /// and does not echo <see cref="Changed"/>. Used by App-owned writes that persist settings

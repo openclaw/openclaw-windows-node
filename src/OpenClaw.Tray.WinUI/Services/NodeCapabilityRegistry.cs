@@ -14,6 +14,7 @@ public sealed class NodeCapabilityRegistry
 {
     private readonly object _gate = new();
     private readonly Func<INodeCapability?> _codexCapabilityFactory;
+    private CodexAccessGeneration? _codexAccessGeneration;
     private IReadOnlyList<INodeCapability> _sharedSnapshot = Array.Empty<INodeCapability>();
     private IReadOnlyList<INodeCapability> _mcpOnlySnapshot = Array.Empty<INodeCapability>();
 
@@ -50,24 +51,30 @@ public sealed class NodeCapabilityRegistry
     {
         ArgumentNullException.ThrowIfNull(capabilities);
 
-        var rebuilt = capabilities.ToList();
-        if (codexAccess is CodexSessionAccessMode.ReadOnly or CodexSessionAccessMode.ReadAndSteer)
-        {
-            var codex = _codexCapabilityFactory();
-            if (codex is not null)
-                rebuilt.Add(codex);
-        }
-
-        var snapshot = Freeze(rebuilt);
         lock (_gate)
+        {
+            var rebuilt = capabilities.ToList();
+            INodeCapability? codex = null;
+            if (codexAccess is CodexSessionAccessMode.ReadOnly or CodexSessionAccessMode.ReadAndSteer)
+                codex = _codexCapabilityFactory();
+
+            RevokeCodexAccessNoLock();
+            if (codex is not null)
+                rebuilt.Add(CreateRevocableCodexCapabilityNoLock(codex));
+
+            var snapshot = Freeze(rebuilt);
             _sharedSnapshot = snapshot;
-        return snapshot;
+            return snapshot;
+        }
     }
 
     public void Clear()
     {
         lock (_gate)
+        {
+            RevokeCodexAccessNoLock();
             _sharedSnapshot = Array.Empty<INodeCapability>();
+        }
     }
 
     public IReadOnlyList<INodeCapability> RefreshCodexSessionAccess(
@@ -78,6 +85,7 @@ public sealed class NodeCapabilityRegistry
         IReadOnlyList<INodeCapability> snapshot;
         lock (_gate)
         {
+            RevokeCodexAccessNoLock();
             var refreshed = _sharedSnapshot
                 .Where(capability => !string.Equals(
                     capability.Category,
@@ -88,7 +96,7 @@ public sealed class NodeCapabilityRegistry
             {
                 var codex = _codexCapabilityFactory();
                 if (codex is not null)
-                    refreshed.Add(codex);
+                    refreshed.Add(CreateRevocableCodexCapabilityNoLock(codex));
             }
 
             snapshot = Freeze(refreshed);
@@ -149,6 +157,18 @@ public sealed class NodeCapabilityRegistry
     private static IReadOnlyList<INodeCapability> Freeze(IEnumerable<INodeCapability> capabilities) =>
         new ReadOnlyCollection<INodeCapability>(capabilities.ToArray());
 
+    private INodeCapability CreateRevocableCodexCapabilityNoLock(INodeCapability capability)
+    {
+        _codexAccessGeneration = new CodexAccessGeneration();
+        return new RevocableCodexSessionCapability(capability, _codexAccessGeneration);
+    }
+
+    private void RevokeCodexAccessNoLock()
+    {
+        _codexAccessGeneration?.Revoke();
+        _codexAccessGeneration = null;
+    }
+
     private static INodeCapability? CreateCodexCapability(
         IOpenClawLogger logger,
         Func<CodexLaunchPlan?> launchPlanResolver,
@@ -203,6 +223,143 @@ public sealed class NodeCapabilityRegistry
                     ? "Codex app-server transcript is unavailable"
                     : "Codex app-server catalog is unavailable");
             }
+        }
+    }
+
+    private sealed class RevocableCodexSessionCapability(
+        INodeCapability inner,
+        CodexAccessGeneration accessGeneration) : INodeCapability, INodeCapabilityDeliveryLeaseProvider
+    {
+        public string Category => inner.Category;
+
+        public IReadOnlyList<string> Commands => inner.Commands;
+
+        public bool CanHandle(string command) => inner.CanHandle(command);
+
+        public Task<NodeInvokeResponse> ExecuteAsync(NodeInvokeRequest request) =>
+            ExecuteAsync(request, CancellationToken.None);
+
+        public async Task<NodeInvokeResponse> ExecuteAsync(
+            NodeInvokeRequest request,
+            CancellationToken cancellationToken)
+        {
+            using var accessExecution = accessGeneration.BeginExecution();
+            using var execution = CancellationTokenSource.CreateLinkedTokenSource(
+                cancellationToken,
+                accessExecution.Token);
+            var response = await inner.ExecuteAsync(request, execution.Token).ConfigureAwait(false);
+            accessExecution.Token.ThrowIfCancellationRequested();
+            return response;
+        }
+
+        public IDisposable? TryAcquireDeliveryLease() =>
+            accessGeneration.TryAcquireDeliveryLease();
+    }
+
+    private sealed class CodexAccessGeneration
+    {
+        private readonly object _gate = new();
+        private readonly CancellationTokenSource _cancellation = new();
+        private readonly CancellationToken _token;
+        private bool _revoked;
+        private bool _disposed;
+        private int _activeExecutions;
+        private int _activeDeliveries;
+
+        public CodexAccessGeneration()
+        {
+            _token = _cancellation.Token;
+        }
+
+        public ExecutionLease BeginExecution()
+        {
+            lock (_gate)
+            {
+                if (_revoked)
+                    throw new OperationCanceledException(_token);
+                _activeExecutions++;
+                return new ExecutionLease(this, _token);
+            }
+        }
+
+        public IDisposable? TryAcquireDeliveryLease()
+        {
+            lock (_gate)
+            {
+                if (_revoked)
+                    return null;
+                _activeDeliveries++;
+                return new DeliveryLease(this);
+            }
+        }
+
+        public void Revoke()
+        {
+            lock (_gate)
+            {
+                if (_revoked)
+                    return;
+                _revoked = true;
+            }
+
+            _cancellation.Cancel();
+
+            lock (_gate)
+            {
+                while (_activeDeliveries > 0)
+                    Monitor.Wait(_gate);
+                DisposeIfRetiredNoLock();
+            }
+        }
+
+        private void EndExecution()
+        {
+            lock (_gate)
+            {
+                _activeExecutions--;
+                DisposeIfRetiredNoLock();
+            }
+        }
+
+        private void EndDelivery()
+        {
+            lock (_gate)
+            {
+                _activeDeliveries--;
+                Monitor.PulseAll(_gate);
+                DisposeIfRetiredNoLock();
+            }
+        }
+
+        private void DisposeIfRetiredNoLock()
+        {
+            if (_revoked && !_disposed && _activeExecutions == 0 && _activeDeliveries == 0)
+            {
+                _disposed = true;
+                _cancellation.Dispose();
+            }
+        }
+
+        internal sealed class ExecutionLease : IDisposable
+        {
+            private CodexAccessGeneration? _owner;
+
+            public ExecutionLease(CodexAccessGeneration owner, CancellationToken token)
+            {
+                _owner = owner;
+                Token = token;
+            }
+
+            public CancellationToken Token { get; }
+
+            public void Dispose() => Interlocked.Exchange(ref _owner, null)?.EndExecution();
+        }
+
+        private sealed class DeliveryLease(CodexAccessGeneration owner) : IDisposable
+        {
+            private CodexAccessGeneration? _owner = owner;
+
+            public void Dispose() => Interlocked.Exchange(ref _owner, null)?.EndDelivery();
         }
     }
 }

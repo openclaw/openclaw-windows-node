@@ -73,7 +73,7 @@ public class McpToolBridge
     /// Dispatch a JSON-RPC request body and return the response body (or null
     /// for a JSON-RPC notification, which receives no response).
     /// </summary>
-    public Task<string?> HandleRequestAsync(string requestBody)
+    internal Task<string?> HandleRequestAsync(string requestBody)
         => HandleRequestAsync(requestBody, CancellationToken.None);
 
     /// <summary>
@@ -83,7 +83,7 @@ public class McpToolBridge
     /// ("request timed out"). MCP <c>notifications/cancelled</c> messages
     /// cancel the matching active request and surface as "cancelled".
     /// </summary>
-    public async Task<string?> HandleRequestAsync(string requestBody, CancellationToken cancellationToken)
+    internal async Task<string?> HandleRequestAsync(string requestBody, CancellationToken cancellationToken)
     {
         var response = await HandleTransportRequestAsync(requestBody, cancellationToken);
         response.CompleteDelivery();
@@ -139,6 +139,7 @@ public class McpToolBridge
             NodeToolExecutionMode? terminalExecutionMode = null;
             Type? terminalErrorType = null;
             string? responseBody;
+            IDisposable? deliveryLease = null;
             var requestKey = hasId ? GetRequestKey(idElement!.Value) : null;
 
             try
@@ -166,6 +167,7 @@ public class McpToolBridge
                 if (result is McpToolCallResult toolCall)
                 {
                     result = toolCall.Result;
+                    deliveryLease = toolCall.DeliveryLease;
                     if (toolCall.Diagnostic != null)
                     {
                         terminalOutcome = NodeToolOutcome.Failure;
@@ -224,7 +226,7 @@ public class McpToolBridge
                     terminalCategory,
                     terminalExecutionMode,
                     terminalErrorType);
-            return new McpTransportResponse(responseBody, pending);
+            return new McpTransportResponse(responseBody, pending, deliveryLease);
         }
     }
 
@@ -637,9 +639,28 @@ public class McpToolBridge
             response.Diagnostic?.ExecutionMode,
             sandboxDenialReason: response.Diagnostic?.SandboxDenialReason);
 
-        var payloadJson = response.Payload is null
-            ? "null"
-            : JsonSerializer.Serialize(response.Payload, PayloadJsonOptions);
+        var deliveryLeaseProvider = capability as INodeCapabilityDeliveryLeaseProvider;
+        var deliveryLease = deliveryLeaseProvider?.TryAcquireDeliveryLease();
+        if (deliveryLeaseProvider != null && deliveryLease is null)
+        {
+            throw new McpToolException(
+                "cancelled",
+                NodeToolErrorCategory.Other,
+                outcome: NodeToolOutcome.Canceled);
+        }
+
+        string payloadJson;
+        try
+        {
+            payloadJson = response.Payload is null
+                ? "null"
+                : JsonSerializer.Serialize(response.Payload, PayloadJsonOptions);
+        }
+        catch
+        {
+            deliveryLease?.Dispose();
+            throw;
+        }
 
         return new McpToolCallResult(
             new
@@ -650,7 +671,8 @@ public class McpToolBridge
                 },
                 isError = false,
             },
-            response.Diagnostic);
+            response.Diagnostic,
+            deliveryLease);
     }
 
     private static string GetRequestKey(JsonElement requestId) =>
@@ -819,7 +841,10 @@ public class McpToolBridge
         }
     }
 
-    private sealed record McpToolCallResult(object Result, NodeToolDiagnostic? Diagnostic);
+    private sealed record McpToolCallResult(
+        object Result,
+        NodeToolDiagnostic? Diagnostic,
+        IDisposable? DeliveryLease);
 
     private void CompleteToolTelemetry(
         NodeToolInvocation telemetry,
@@ -878,9 +903,19 @@ public class McpToolBridge
 
     internal sealed record McpTransportResponse(
         string? Body,
-        McpPendingToolTelemetry? PendingTelemetry)
+        McpPendingToolTelemetry? PendingTelemetry,
+        IDisposable? DeliveryLease = null)
     {
-        public void CompleteDelivery(Type? deliveryError = null) =>
-            PendingTelemetry?.CompleteDelivery(deliveryError);
+        public void CompleteDelivery(Type? deliveryError = null)
+        {
+            try
+            {
+                PendingTelemetry?.CompleteDelivery(deliveryError);
+            }
+            finally
+            {
+                DeliveryLease?.Dispose();
+            }
+        }
     }
 }

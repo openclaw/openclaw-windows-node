@@ -18,7 +18,7 @@ internal sealed class CodexSessionCatalogClientAdapter : ICodexSessionCatalogCli
 {
     private readonly CodexAppServerClient _client;
 
-    public CodexSessionCatalogClientAdapter(CodexAppServerClient client)
+    internal CodexSessionCatalogClientAdapter(CodexAppServerClient client)
     {
         _client = client ?? throw new ArgumentNullException(nameof(client));
     }
@@ -42,7 +42,7 @@ internal sealed class CodexSessionCatalogValidationException : Exception
     }
 }
 
-public sealed class CodexSessionCatalogService
+internal sealed class CodexSessionCatalogService
 {
     internal const int DefaultPageLimit = 50;
     internal const int MaxPageLimit = 100;
@@ -72,7 +72,7 @@ public sealed class CodexSessionCatalogService
 
     private readonly ICodexSessionCatalogClient _client;
 
-    public CodexSessionCatalogService(CodexAppServerClient client)
+    internal CodexSessionCatalogService(CodexAppServerClient client)
         : this(new CodexSessionCatalogClientAdapter(client))
     {
     }

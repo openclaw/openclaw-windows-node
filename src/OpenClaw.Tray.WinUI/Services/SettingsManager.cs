@@ -18,6 +18,7 @@ public class SettingsManager
     // instance can run alongside the user's real tray without clobbering settings.
     private readonly string _settingsDirectory;
     private readonly string _settingsFilePath;
+    internal ISettingsFileOperations FileOperations { get; set; } = new SettingsFileOperations();
     private const string ProtectedSecretPrefix = "dpapi:";
     private const int CurrentSettingsSchemaVersion = 1;
     private static readonly byte[] ProtectedSecretEntropy = Encoding.UTF8.GetBytes("OpenClawTray.Settings.v1");
@@ -472,19 +473,30 @@ public class SettingsManager
         }
     }
 
-    internal void UpdateAndSave(Action<SettingsManager> update)
+    internal bool UpdateAndSave(Action<SettingsManager> update) =>
+        UpdateAndSave(update, rollbackOnFailure: false);
+
+    internal bool TryUpdateAndSave(Action<SettingsManager> update) =>
+        UpdateAndSave(update, rollbackOnFailure: true);
+
+    private bool UpdateAndSave(Action<SettingsManager> update, bool rollbackOnFailure)
     {
         ArgumentNullException.ThrowIfNull(update);
         lock (_saveLock)
         {
+            var previousData = _data;
             update(this);
             try
             {
                 SaveOrThrowCore();
+                return true;
             }
             catch (Exception ex)
             {
+                if (rollbackOnFailure)
+                    _data = previousData;
                 Logger.Error($"Failed to save settings: {ex.Message}");
+                return false;
             }
         }
     }
@@ -512,7 +524,7 @@ public class SettingsManager
         data.TtsElevenLabsApiKey = ProtectSettingSecret(data.TtsElevenLabsApiKey);
 
         var json = data.ToJson();
-        File.WriteAllText(_settingsFilePath, json);
+        WriteSettingsAtomically(json);
 
         Logger.Info("Settings saved");
         try
@@ -522,6 +534,39 @@ public class SettingsManager
         catch (Exception ex)
         {
             Logger.Warn($"Settings saved, but a notification subscriber failed: {ex.Message}");
+        }
+    }
+
+    private void WriteSettingsAtomically(string json)
+    {
+        var suffix = Guid.NewGuid().ToString("N");
+        var tempPath = Path.Combine(_settingsDirectory, $"settings.{suffix}.tmp");
+        var backupPath = Path.Combine(_settingsDirectory, $"settings.{suffix}.backup");
+        try
+        {
+            FileOperations.WriteAllText(tempPath, json);
+            if (FileOperations.Exists(_settingsFilePath))
+                FileOperations.Replace(tempPath, _settingsFilePath, backupPath);
+            else
+                FileOperations.Move(tempPath, _settingsFilePath);
+        }
+        finally
+        {
+            TryDeleteSettingsArtifact(tempPath);
+            TryDeleteSettingsArtifact(backupPath);
+        }
+    }
+
+    private void TryDeleteSettingsArtifact(string path)
+    {
+        try
+        {
+            if (FileOperations.Exists(path))
+                FileOperations.Delete(path);
+        }
+        catch (Exception ex)
+        {
+            Logger.Warn($"Failed to remove settings persistence artifact: {ex.Message}");
         }
     }
 
@@ -610,4 +655,23 @@ public class SettingsManager
 
         return $"ws://127.0.0.1:{SshTunnelLocalPort}";
     }
+}
+
+internal interface ISettingsFileOperations
+{
+    bool Exists(string path);
+    void WriteAllText(string path, string contents);
+    void Replace(string source, string destination, string backup);
+    void Move(string source, string destination);
+    void Delete(string path);
+}
+
+internal sealed class SettingsFileOperations : ISettingsFileOperations
+{
+    public bool Exists(string path) => File.Exists(path);
+    public void WriteAllText(string path, string contents) => File.WriteAllText(path, contents);
+    public void Replace(string source, string destination, string backup) =>
+        File.Replace(source, destination, backup, ignoreMetadataErrors: true);
+    public void Move(string source, string destination) => File.Move(source, destination);
+    public void Delete(string path) => File.Delete(path);
 }

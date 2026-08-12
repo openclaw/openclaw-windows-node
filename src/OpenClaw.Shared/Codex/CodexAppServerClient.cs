@@ -5,7 +5,7 @@ using System.Text.Json;
 
 namespace OpenClaw.Shared.Codex;
 
-public sealed class CodexAppServerClient : IAsyncDisposable
+internal sealed class CodexAppServerClient : IAsyncDisposable
 {
     private readonly CodexLaunchPlan _launchPlan;
     private readonly ICodexAppServerProcessFactory _processFactory;
@@ -32,7 +32,7 @@ public sealed class CodexAppServerClient : IAsyncDisposable
 
     internal string StandardErrorSnapshot => _standardError.GetUtf8Tail();
 
-    public static Task<CodexAppServerClient> ConnectAsync(
+    internal static Task<CodexAppServerClient> ConnectAsync(
         CodexLaunchPlan launchPlan,
         CancellationToken cancellationToken = default) =>
         ConnectAsync(
@@ -92,12 +92,12 @@ public sealed class CodexAppServerClient : IAsyncDisposable
         }
     }
 
-    public Task<JsonElement> ListThreadsAsync(
+    internal Task<JsonElement> ListThreadsAsync(
         JsonElement parameters,
         CancellationToken cancellationToken = default) =>
         ExecuteReadAsync(CodexAppServerProtocol.ThreadListMethod, parameters, cancellationToken);
 
-    public Task<JsonElement> ListThreadTurnsAsync(
+    internal Task<JsonElement> ListThreadTurnsAsync(
         JsonElement parameters,
         CancellationToken cancellationToken = default) =>
         ExecuteReadAsync(CodexAppServerProtocol.ThreadTurnsListMethod, parameters, cancellationToken);

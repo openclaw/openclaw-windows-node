@@ -18,7 +18,7 @@ public static class WindowsStartupTaskRegistration
 
     public static bool Exists(string taskName = TaskName) => Run(CreateQueryProcessStartInfo(taskName));
 
-    internal static ProcessStartInfo CreateRegisterProcessStartInfo(string trayExecutablePath, string taskName = TaskName)
+    public static ProcessStartInfo CreateRegisterProcessStartInfo(string trayExecutablePath, string taskName = TaskName)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(taskName);
         var fullPath = Path.GetFullPath(trayExecutablePath);
@@ -30,7 +30,7 @@ public static class WindowsStartupTaskRegistration
             "/F");
     }
 
-    internal static ProcessStartInfo CreateUnregisterProcessStartInfo(string taskName = TaskName)
+    public static ProcessStartInfo CreateUnregisterProcessStartInfo(string taskName = TaskName)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(taskName);
         return CreateStartInfo(
@@ -39,7 +39,7 @@ public static class WindowsStartupTaskRegistration
             "/F");
     }
 
-    internal static ProcessStartInfo CreateQueryProcessStartInfo(string taskName = TaskName)
+    public static ProcessStartInfo CreateQueryProcessStartInfo(string taskName = TaskName)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(taskName);
         return CreateStartInfo(

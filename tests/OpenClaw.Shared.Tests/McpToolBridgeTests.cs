@@ -92,6 +92,16 @@ public class McpToolBridgeTests
             => Task.FromResult(new NodeInvokeResponse { Ok = false, Error = "cancelled" });
     }
 
+    private sealed class DeniedDeliveryCapability : INodeCapability, INodeCapabilityDeliveryLeaseProvider
+    {
+        public string Category => "codex-app-server-threads";
+        public IReadOnlyList<string> Commands => ["codex.appServer.threads.list.v1"];
+        public bool CanHandle(string command) => Commands.Contains(command);
+        public Task<NodeInvokeResponse> ExecuteAsync(NodeInvokeRequest request) =>
+            Task.FromResult(new NodeInvokeResponse { Ok = true, Payload = new { secret = true } });
+        public IDisposable? TryAcquireDeliveryLease() => null;
+    }
+
     private sealed class FailingCodexCatalogClient : ICodexSessionCatalogClient
     {
         private const string PrivateFailure =
@@ -1027,5 +1037,18 @@ public class McpToolBridgeTests
         using var doc = JsonDocument.Parse(resp!);
         Assert.True(doc.RootElement.TryGetProperty("result", out var result));
         Assert.False(result.GetProperty("isError").GetBoolean());
+    }
+
+    [Fact]
+    public async Task ToolsCall_DeniedDeliveryLease_DoesNotSerializeSuccessfulPayload()
+    {
+        var bridge = CreateBridge([new DeniedDeliveryCapability()]);
+
+        var response = await bridge.HandleRequestAsync(
+            """{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"codex.appServer.threads.list.v1","arguments":{}}}""");
+
+        using var document = JsonDocument.Parse(response!);
+        Assert.True(document.RootElement.GetProperty("result").GetProperty("isError").GetBoolean());
+        Assert.DoesNotContain("secret", response, StringComparison.Ordinal);
     }
 }

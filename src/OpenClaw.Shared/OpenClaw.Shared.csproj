@@ -8,9 +8,9 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <InternalsVisibleTo Include="OpenClaw.SetupEngine" />
     <InternalsVisibleTo Include="OpenClaw.Shared.Tests" />
     <InternalsVisibleTo Include="OpenClaw.Tray.Tests" />
+    <InternalsVisibleTo Include="OpenClaw.WinNode.Cli.Tests" />
     <InternalsVisibleTo Include="OpenClaw.Tray.WinUI" />
   </ItemGroup>
 

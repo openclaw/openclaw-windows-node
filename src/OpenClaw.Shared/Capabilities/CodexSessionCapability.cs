@@ -2,7 +2,7 @@ using OpenClaw.Shared.Codex;
 
 namespace OpenClaw.Shared.Capabilities;
 
-public sealed class CodexSessionCapability : NodeCapabilityBase
+internal sealed class CodexSessionCapability : NodeCapabilityBase
 {
     public const string ThreadsListCommand = "codex.appServer.threads.list.v1";
     public const string ThreadTurnsListCommand = "codex.appServer.thread.turns.list.v1";
@@ -15,7 +15,7 @@ public sealed class CodexSessionCapability : NodeCapabilityBase
 
     private readonly CodexSessionCatalogService _catalog;
 
-    public CodexSessionCapability(IOpenClawLogger logger, CodexSessionCatalogService catalog)
+    internal CodexSessionCapability(IOpenClawLogger logger, CodexSessionCatalogService catalog)
         : base(logger)
     {
         _catalog = catalog ?? throw new ArgumentNullException(nameof(catalog));

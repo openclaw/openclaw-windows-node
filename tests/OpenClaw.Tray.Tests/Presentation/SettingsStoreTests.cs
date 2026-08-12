@@ -258,4 +258,44 @@ public sealed class SettingsStoreTests
             .WaitAsync(TimeSpan.FromSeconds(2));
         Assert.Equal("wss://after-failure.example.test", settings.GatewayUrl);
     }
+
+    [Fact]
+    public void CodexPermissionUpdate_PartialTempWriteFailurePreservesDurableAndInMemoryMode()
+    {
+        using var temp = new TempDir();
+        var settings = new SettingsManager(temp.Path)
+        {
+            CodexSessionAccess = CodexSessionAccessMode.ReadOnly,
+        };
+        settings.SaveOrThrow();
+        var originalJson = File.ReadAllText(Path.Combine(temp.Path, "settings.json"));
+        settings.FileOperations = new PartialWriteFailureSettingsFileOperations();
+        var store = new SettingsStore(settings, new RecordingUiDispatcher());
+
+        var saved = store.TryUpdateCodexSessionAccess(CodexSessionAccessMode.Off);
+
+        Assert.False(saved);
+        Assert.Equal(CodexSessionAccessMode.ReadOnly, store.Current.CodexSessionAccess);
+        Assert.Equal(originalJson, File.ReadAllText(Path.Combine(temp.Path, "settings.json")));
+        Assert.Equal(CodexSessionAccessMode.ReadOnly, new SettingsManager(temp.Path).CodexSessionAccess);
+        Assert.Empty(Directory.EnumerateFiles(temp.Path, "*.tmp"));
+    }
+
+    private sealed class PartialWriteFailureSettingsFileOperations : ISettingsFileOperations
+    {
+        public bool Exists(string path) => File.Exists(path);
+
+        public void WriteAllText(string path, string contents)
+        {
+            File.WriteAllText(path, contents[..Math.Min(16, contents.Length)]);
+            throw new IOException("simulated partial temp write");
+        }
+
+        public void Replace(string source, string destination, string backup) =>
+            File.Replace(source, destination, backup, ignoreMetadataErrors: true);
+
+        public void Move(string source, string destination) => File.Move(source, destination);
+
+        public void Delete(string path) => File.Delete(path);
+    }
 }

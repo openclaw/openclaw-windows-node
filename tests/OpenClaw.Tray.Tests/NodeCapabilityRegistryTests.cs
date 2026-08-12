@@ -226,6 +226,91 @@ public sealed class NodeCapabilityRegistryTests
     }
 
     [Fact]
+    public async Task RefreshCodexSessionAccess_RevokesAnAlreadyDispatchedCatalogCapability()
+    {
+        var started = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var registry = new NodeCapabilityRegistry(() => new BlockingCapability(started));
+        var capability = Assert.Single(registry.Rebuild([], CodexSessionAccessMode.ReadOnly));
+
+        var execution = capability.ExecuteAsync(new NodeInvokeRequest
+        {
+            Id = "revoked-in-flight",
+            Command = CodexSessionCapability.ThreadsListCommand,
+        }, CancellationToken.None);
+        await started.Task.WaitAsync(TimeSpan.FromSeconds(1));
+
+        registry.RefreshCodexSessionAccess(CodexSessionAccessMode.Off, null, NullLogger.Instance);
+
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(
+            () => execution.WaitAsync(TimeSpan.FromSeconds(1)));
+    }
+
+    [Fact]
+    public async Task RefreshCodexSessionAccess_RevocationWinsOverAnOlderBlockedRebuild()
+    {
+        var factoryStarted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        using var releaseFactory = new ManualResetEventSlim();
+        var registry = new NodeCapabilityRegistry(() =>
+        {
+            factoryStarted.TrySetResult();
+            Assert.True(releaseFactory.Wait(TimeSpan.FromSeconds(5)));
+            return new StubCapability("codex-app-server-threads", ExpectedReadCommands);
+        });
+
+        var staleRebuild = Task.Run(() => registry.Rebuild([], CodexSessionAccessMode.ReadOnly));
+        await factoryStarted.Task.WaitAsync(TimeSpan.FromSeconds(1));
+        var revoke = Task.Run(() => registry.RefreshCodexSessionAccess(
+            CodexSessionAccessMode.Off,
+            null,
+            NullLogger.Instance));
+
+        _ = await Task.WhenAny(revoke, Task.Delay(TimeSpan.FromMilliseconds(500)));
+        releaseFactory.Set();
+        await Task.WhenAll(staleRebuild, revoke).WaitAsync(TimeSpan.FromSeconds(5));
+
+        Assert.Empty(CodexCommands(registry.GetMcpSnapshot()));
+    }
+
+    [Fact]
+    public async Task RefreshCodexSessionAccess_SuppressesSuccessFromCapabilityThatIgnoresCancellation()
+    {
+        var started = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var registry = new NodeCapabilityRegistry(() => new IgnoringCancellationCapability(started, release.Task));
+        var capability = Assert.Single(registry.Rebuild([], CodexSessionAccessMode.ReadOnly));
+        var execution = capability.ExecuteAsync(new NodeInvokeRequest
+        {
+            Id = "ignores-cancellation",
+            Command = CodexSessionCapability.ThreadsListCommand,
+        }, CancellationToken.None);
+        await started.Task.WaitAsync(TimeSpan.FromSeconds(1));
+
+        registry.RefreshCodexSessionAccess(CodexSessionAccessMode.Off, null, NullLogger.Instance);
+        release.TrySetResult();
+
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => execution);
+    }
+
+    [Fact]
+    public async Task GatewayDispatch_DeniedDeliveryLease_DoesNotReturnSuccessfulPayload()
+    {
+        using var temp = new Presentation.TempDir();
+        using var gateway = new WindowsNodeClient(
+            "ws://127.0.0.1:1",
+            "token",
+            temp.Path,
+            NullLogger.Instance);
+        gateway.ReplaceCapabilities([new DeniedDeliveryCapability()]);
+
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() =>
+            gateway.DispatchRegisteredCommandForTestAsync(new NodeInvokeRequest
+            {
+                Id = "denied-delivery",
+                Command = CodexSessionCapability.ThreadsListCommand,
+            }));
+    }
+
+    [Fact]
     public async Task DeferredCodexCapability_UsesTrustedCatalogTransportLazilyAndDisposesIt()
     {
         using var harness = new CodexRegistryProcessHarness(CodexRegistryProcessMode.Success);
@@ -382,6 +467,55 @@ public sealed class NodeCapabilityRegistryTests
                 Ok = true,
                 Payload = JsonSerializer.SerializeToElement(new { }),
             });
+    }
+
+    private sealed class BlockingCapability(TaskCompletionSource started) : INodeCapability
+    {
+        public string Category => "codex-app-server-threads";
+
+        public IReadOnlyList<string> Commands => ExpectedReadCommands;
+
+        public bool CanHandle(string command) =>
+            Commands.Contains(command, StringComparer.OrdinalIgnoreCase);
+
+        public Task<NodeInvokeResponse> ExecuteAsync(NodeInvokeRequest request) =>
+            ExecuteAsync(request, CancellationToken.None);
+
+        public async Task<NodeInvokeResponse> ExecuteAsync(
+            NodeInvokeRequest request,
+            CancellationToken cancellationToken)
+        {
+            started.TrySetResult();
+            await Task.Delay(Timeout.InfiniteTimeSpan, cancellationToken);
+            throw new UnreachableException();
+        }
+    }
+
+    private sealed class IgnoringCancellationCapability(
+        TaskCompletionSource started,
+        Task release) : INodeCapability
+    {
+        public string Category => "codex-app-server-threads";
+        public IReadOnlyList<string> Commands => ExpectedReadCommands;
+        public bool CanHandle(string command) => Commands.Contains(command, StringComparer.OrdinalIgnoreCase);
+        public Task<NodeInvokeResponse> ExecuteAsync(NodeInvokeRequest request) =>
+            ExecuteAsync(request, CancellationToken.None);
+        public async Task<NodeInvokeResponse> ExecuteAsync(NodeInvokeRequest request, CancellationToken cancellationToken)
+        {
+            started.TrySetResult();
+            await release;
+            return new NodeInvokeResponse { Id = request.Id, Ok = true, Payload = new { secret = true } };
+        }
+    }
+
+    private sealed class DeniedDeliveryCapability : INodeCapability, INodeCapabilityDeliveryLeaseProvider
+    {
+        public string Category => "codex-app-server-threads";
+        public IReadOnlyList<string> Commands => ExpectedReadCommands;
+        public bool CanHandle(string command) => Commands.Contains(command, StringComparer.OrdinalIgnoreCase);
+        public Task<NodeInvokeResponse> ExecuteAsync(NodeInvokeRequest request) =>
+            Task.FromResult(new NodeInvokeResponse { Id = request.Id, Ok = true, Payload = new { secret = true } });
+        public IDisposable? TryAcquireDeliveryLease() => null;
     }
 
     public enum CodexRegistryProcessMode

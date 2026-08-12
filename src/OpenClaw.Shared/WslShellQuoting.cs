@@ -27,7 +27,7 @@ namespace OpenClaw.Shared;
 /// bytes between the quotes are preserved verbatim, which is what makes the
 /// result injection-safe for arbitrary values (URLs, JSON, paths, newlines).
 /// </summary>
-internal static class WslShellQuoting
+public static class WslShellQuoting
 {
     // Close quote ('), an escaped literal quote (\'), then reopen quote (').
     private const string EscapedSingleQuote = "'\\''";
@@ -37,7 +37,7 @@ internal static class WslShellQuoting
     /// value the caller will wrap in its own outer single quotes. Does NOT add
     /// outer quotes. An empty input yields an empty string.
     /// </summary>
-    internal static string EscapePosixSingleQuoteInner(string value)
+    public static string EscapePosixSingleQuoteInner(string value)
     {
         ArgumentNullException.ThrowIfNull(value);
         return value.Replace("'", EscapedSingleQuote);
@@ -48,7 +48,7 @@ internal static class WslShellQuoting
     /// single quotes, so the result is exactly one POSIX-shell token. An empty
     /// input yields <c>''</c> (an empty argument, not an omitted one).
     /// </summary>
-    internal static string QuotePosixSingleQuote(string value)
+    public static string QuotePosixSingleQuote(string value)
     {
         ArgumentNullException.ThrowIfNull(value);
         return string.Concat("'", EscapePosixSingleQuoteInner(value), "'");

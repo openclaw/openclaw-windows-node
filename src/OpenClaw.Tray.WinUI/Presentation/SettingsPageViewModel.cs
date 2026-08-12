@@ -244,13 +244,24 @@ internal sealed class SettingsPageViewModel : INavigationAware, IDisposable, INo
                 return;
             }
 
+            var previous = _codexSessionAccess;
             if (SetField(ref _codexSessionAccess, value))
             {
                 RaiseCodexStatusChanged();
                 OnPropertyChanged(nameof(CodexSessionAccessIndex));
                 if (!_loading)
                 {
-                    Persist(e => e.CodexSessionAccess = value);
+                    if (_store.TryUpdateCodexSessionAccess(value))
+                    {
+                        _appCommands.NotifySettingsSaved();
+                        RaiseSaved();
+                    }
+                    else
+                    {
+                        SetField(ref _codexSessionAccess, previous);
+                        RaiseCodexStatusChanged();
+                        OnPropertyChanged(nameof(CodexSessionAccessIndex));
+                    }
                 }
             }
         }

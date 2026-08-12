@@ -91,6 +91,15 @@ public interface INodeCapability
 }
 
 /// <summary>
+/// Internal transport contract for capabilities whose successful results require a
+/// final authorization lease spanning serialization and delivery.
+/// </summary>
+internal interface INodeCapabilityDeliveryLeaseProvider
+{
+    IDisposable? TryAcquireDeliveryLease();
+}
+
+/// <summary>
 /// Base class for node capabilities with common functionality
 /// </summary>
 public abstract class NodeCapabilityBase : INodeCapability

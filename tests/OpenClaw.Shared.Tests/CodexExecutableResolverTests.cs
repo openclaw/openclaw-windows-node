@@ -1,5 +1,6 @@
 using System.Collections;
 using System.Diagnostics;
+using System.Reflection;
 using OpenClaw.Shared.Codex;
 
 namespace OpenClaw.Shared.Tests;
@@ -150,15 +151,17 @@ public sealed class CodexExecutableResolverTests : IDisposable
     public void Resolve_HasNoCallerSuppliedExecutableCandidate()
     {
         var resolveMethods = typeof(CodexExecutableResolver)
-            .GetMethods()
+            .GetMethods(BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic)
             .Where(method => method.Name == nameof(CodexExecutableResolver.Resolve))
             .ToArray();
 
         Assert.Single(resolveMethods);
         Assert.Empty(resolveMethods[0].GetParameters());
-        Assert.All(
-            typeof(CodexExecutableResolver).GetConstructors(),
-            constructor => Assert.Empty(constructor.GetParameters()));
+        Assert.False(resolveMethods[0].IsPublic);
+        Assert.DoesNotContain(
+            typeof(CodexExecutableResolver).GetConstructors(
+                BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic),
+            constructor => constructor.IsPublic);
     }
 
     [Fact]

@@ -148,6 +148,8 @@ public class AppCapability : NodeCapabilityBase
             return Error("Missing required arg: name");
         if (value == null)
             return Error("Missing required arg: value");
+        if (string.Equals(name, "CodexSessionAccess", StringComparison.OrdinalIgnoreCase))
+            return Error($"Setting '{name}' is not accessible");
         if (SettingsSetHandler == null)
             return Error("Settings handler not registered");
 

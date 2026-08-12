@@ -72,12 +72,17 @@ public sealed class SettingsPageViewModelTests
     }
 
     [Fact]
-    public void CodexSessionAccessIndex_PersistenceFailureDoesNotEscapeTwoWaySetter()
+    public void CodexSessionAccessIndex_PersistenceFailureRestoresModeAndDoesNotClaimSave()
     {
         using var temp = new TempDir();
-        var invalidDirectory = Path.Combine(temp.Path, "not-a-directory");
-        File.WriteAllText(invalidDirectory, "occupied");
-        var settings = new SettingsManager(invalidDirectory);
+        var settingsDirectory = Path.Combine(temp.Path, "settings");
+        var settings = new SettingsManager(settingsDirectory)
+        {
+            CodexSessionAccess = CodexSessionAccessMode.ReadOnly,
+        };
+        settings.SaveOrThrow();
+        var settingsFile = Path.Combine(settingsDirectory, "settings.json");
+        File.SetAttributes(settingsFile, FileAttributes.ReadOnly);
         var appCommands = new FakeAppCommands();
         var vm = new SettingsPageViewModel(
             new SettingsStore(settings, new RecordingUiDispatcher()),
@@ -85,11 +90,20 @@ public sealed class SettingsPageViewModelTests
             () => true);
         vm.Activate(null);
 
-        var exception = Record.Exception(() => vm.CodexSessionAccessIndex = 1);
+        try
+        {
+            var exception = Record.Exception(() => vm.CodexSessionAccessIndex = 0);
 
-        Assert.Null(exception);
-        Assert.Equal(CodexSessionAccessMode.ReadOnly, settings.CodexSessionAccess);
-        Assert.Equal(1, appCommands.NotifySettingsSavedCount);
+            Assert.Null(exception);
+            Assert.Equal(CodexSessionAccessMode.ReadOnly, vm.CodexSessionAccess);
+            Assert.Equal(CodexSessionAccessMode.ReadOnly, settings.CodexSessionAccess);
+            Assert.Equal(CodexSessionAccessMode.ReadOnly, new SettingsManager(settingsDirectory).CodexSessionAccess);
+            Assert.Equal(0, appCommands.NotifySettingsSavedCount);
+        }
+        finally
+        {
+            File.SetAttributes(settingsFile, FileAttributes.Normal);
+        }
     }
 
     [Fact]

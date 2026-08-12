@@ -66,6 +66,14 @@ internal sealed class SettingsStore : ISettingsStore
         }
     }
 
+    public bool TryUpdateCodexSessionAccess(OpenClaw.Shared.Codex.CodexSessionAccessMode mode)
+    {
+        using (BeginSelfWrite())
+        {
+            return _settings.TryUpdateAndSave(settings => settings.CodexSessionAccess = mode);
+        }
+    }
+
     public IDisposable BeginSelfWrite()
     {
         t_selfUpdateDepth++;
