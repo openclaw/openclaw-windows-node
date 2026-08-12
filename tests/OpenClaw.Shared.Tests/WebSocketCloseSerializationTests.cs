@@ -77,6 +77,38 @@ public sealed class WebSocketCloseSerializationTests
         }
     }
 
+    [Fact]
+    public async Task SendRawAsync_AuthorizesOnlyAfterTheSharedSendLockIsAcquired()
+    {
+        using var server = new LoopbackWebSocketServer();
+        await server.StartAsync();
+        using var client = new CloseRaceTestClient(server.WebSocketUrl);
+        await client.ConnectAsync();
+        await WaitForConditionAsync(() => server.AcceptedCount == 1, TimeSpan.FromSeconds(2));
+
+        var sendLock = GetSendLock(client);
+        await sendLock.WaitAsync();
+        var authorize = true;
+        try
+        {
+            var sendTask = client.SendAuthorizedAsync("secret", () => authorize);
+            Assert.False(sendTask.IsCompleted);
+
+            authorize = false;
+            sendLock.Release();
+            await sendTask.WaitAsync(TimeSpan.FromSeconds(2));
+
+            using var timeout = new CancellationTokenSource(TimeSpan.FromMilliseconds(200));
+            await Assert.ThrowsAnyAsync<OperationCanceledException>(() =>
+                GetAcceptedSocket(server).ReceiveAsync(new ArraySegment<byte>(new byte[128]), timeout.Token));
+        }
+        finally
+        {
+            if (sendLock.CurrentCount == 0)
+                sendLock.Release();
+        }
+    }
+
     private static async Task<bool> ReceiveUntilCloseAndAcknowledgeAsync(WebSocket socket)
     {
         var buffer = new byte[8192];
@@ -141,6 +173,8 @@ public sealed class WebSocketCloseSerializationTests
         protected override Task ProcessMessageAsync(string json) => Task.CompletedTask;
 
         public Task SendAsync(string message) => SendRawAsync(message);
+        public Task SendAuthorizedAsync(string message, Func<bool> authorize) =>
+            SendRawAsync(message, authorize);
         public Task CloseAsync() => CloseWebSocketAsync();
     }
 }

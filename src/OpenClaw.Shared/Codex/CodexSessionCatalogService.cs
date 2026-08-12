@@ -74,14 +74,14 @@ internal sealed class CodexSessionCatalogService
     // App Server is an untrusted versioned boundary and must not grow the
     // Windows catalog payload merely by adding fields upstream.
     private static readonly HashSet<string> TranscriptTurnFields =
-        new(StringComparer.Ordinal) { "id", "status", "createdAt", "updatedAt" };
+        new(StringComparer.Ordinal) { "id", "status", "createdAt", "updatedAt", "itemsView" };
 
     private static readonly HashSet<string> TranscriptItemFields =
         new(StringComparer.Ordinal)
         {
             "id", "type", "title", "status", "name", "tool", "server", "command", "cwd", "query",
             "arguments", "result", "error", "exitCode", "durationMs", "aggregatedOutput", "text",
-            "contentItems", "changes",
+            "contentItems", "content", "clientId", "summary", "commandActions", "changes",
         };
 
     private readonly ICodexSessionCatalogClient _client;

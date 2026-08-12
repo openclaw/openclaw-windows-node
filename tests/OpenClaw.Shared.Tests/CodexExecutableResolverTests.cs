@@ -186,7 +186,7 @@ public sealed class CodexExecutableResolverTests : IDisposable
     }
 
     [Fact]
-    public void LaunchPlan_RejectsAnExecutableThatIsNoLongerTrustedAtStartTime()
+    public void ProcessFactory_RejectsAnExecutableThatIsNoLongerTrustedAtStartTime()
     {
         var pathDirectory = Directory.CreateDirectory(Path.Combine(_root, "path-bin")).FullName;
         var executable = CreateFile(pathDirectory, "codex.exe");
@@ -196,7 +196,8 @@ public sealed class CodexExecutableResolverTests : IDisposable
         Assert.NotNull(plan);
         File.Delete(executable);
 
-        Assert.False(plan.IsTrustedForLaunch());
+        Assert.Throws<CodexAppServerTransportException>(() =>
+            new CodexAppServerProcessFactory().Start(plan));
     }
 
     private static void AssertLaunchBoundary(CodexLaunchPlan plan)

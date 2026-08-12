@@ -656,11 +656,15 @@ public class WindowsNodeClient : WebSocketClientBase
             () => ExecuteGatewayCapabilityAsync(
                 request,
                 capability,
-                response => SendNodeInvokeResultAsync(
-                    requestId,
-                    response.Ok,
-                    response.Payload,
-                    response.Error),
+                async (response, _) =>
+                {
+                    await SendNodeInvokeResultAsync(
+                        requestId,
+                        response.Ok,
+                        response.Payload,
+                        response.Error);
+                    return true;
+                },
                 error => SendNodeInvokeResultAsync(requestId, false, null, error),
                 invocation!),
             CancellationToken.None);
@@ -1401,7 +1405,7 @@ public class WindowsNodeClient : WebSocketClientBase
     private async Task ExecuteGatewayCapabilityAsync(
         NodeInvokeRequest request,
         INodeCapability capability,
-        Func<NodeInvokeResponse, Task> sendResponse,
+        Func<NodeInvokeResponse, INodeCapabilityDeliveryLease?, Task<bool>> sendResponse,
         Func<string, Task> sendErrorResponse,
         InvocationCancellationRegistry.InvocationCancellation invocation)
     {
@@ -1479,9 +1483,14 @@ public class WindowsNodeClient : WebSocketClientBase
 
             try
             {
-                if (deliveryLease is not null && !deliveryLease.TryBeginDelivery())
+                if (!await sendResponse(response, deliveryLease))
+                {
+                    CompleteToolTelemetry(
+                        telemetry,
+                        NodeToolOutcome.Canceled,
+                        NodeToolErrorCategory.Other);
                     return;
-                await sendResponse(response);
+                }
                 CompleteToolTelemetry(
                     telemetry,
                     outcome,
@@ -1794,7 +1803,9 @@ public class WindowsNodeClient : WebSocketClientBase
         }
     }
     
-    private async Task SendInvokeResponseAsync(NodeInvokeResponse response)
+    private async Task<bool> SendInvokeResponseAsync(
+        NodeInvokeResponse response,
+        INodeCapabilityDeliveryLease? deliveryLease)
     {
         var msg = new
         {
@@ -1805,9 +1816,19 @@ public class WindowsNodeClient : WebSocketClientBase
             error = response.Ok ? null : new { message = response.Error }
         };
         
-        await SendRawAsync(JsonSerializer.Serialize(msg, s_ignoreNullOptions));
+        Func<bool>? authorizeAtWrite = deliveryLease is null
+            ? null
+            : deliveryLease.TryBeginDelivery;
+        var authorizationDenied = false;
+        await SendRawAsync(
+            JsonSerializer.Serialize(msg, s_ignoreNullOptions),
+            authorizeAtWrite,
+            () => authorizationDenied = true);
+        if (authorizationDenied)
+            return false;
         
         _logger.Info($"Sent invoke response: ok={response.Ok}");
+        return true;
     }
     
     private async Task SendErrorResponseAsync(string requestId, string error)

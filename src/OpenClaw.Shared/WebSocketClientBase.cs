@@ -520,7 +520,16 @@ public abstract class WebSocketClientBase : IDisposable
             or WebSocketState.Aborted;
 
     /// <summary>Send a text message over the WebSocket. Thread-safe.</summary>
-    protected virtual async Task SendRawAsync(string message)
+    protected virtual Task SendRawAsync(string message) => SendRawAsync(message, authorizeAtWrite: null);
+
+    /// <summary>
+    /// Send a pre-serialized message, checking optional delivery authorization
+    /// only after this message owns the serialized socket-write slot.
+    /// </summary>
+    protected async Task SendRawAsync(
+        string message,
+        Func<bool>? authorizeAtWrite,
+        Action? authorizationDenied = null)
     {
         try
         {
@@ -541,6 +550,11 @@ public abstract class WebSocketClientBase : IDisposable
         {
             // Serialize sends; reconnect/dispose can still close the captured socket,
             // so the send below keeps the existing state-change guards.
+            if (authorizeAtWrite is not null && !authorizeAtWrite())
+            {
+                authorizationDenied?.Invoke();
+                return;
+            }
             var ws = _webSocket;
             if (ws?.State != WebSocketState.Open) return;
 

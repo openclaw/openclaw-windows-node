@@ -119,6 +119,7 @@ public sealed class CodexSessionCapabilityTests
                     {
                       "id": "turn-1",
                       "status": "completed",
+                      "itemsView": "full",
                       "items": [
                         { "id": "item-1", "type": "agentMessage", "text": "bounded answer" }
                       ]
@@ -158,6 +159,7 @@ public sealed class CodexSessionCapabilityTests
                     {
                       "id": "turn-1",
                       "status": "completed",
+                      "itemsView": "full",
                       "privateTurnField": "do-not-forward",
                       "items": [
                         {
@@ -165,6 +167,10 @@ public sealed class CodexSessionCapabilityTests
                           "type": "agentMessage",
                           "text": "bounded answer",
                           "title": "Answer",
+                          "content": "visible content",
+                          "clientId": "client-1",
+                          "summary": "visible summary",
+                          "commandActions": [{ "type": "run" }],
                           "arguments": { "safe": true },
                           "privateItemField": "do-not-forward"
                         }
@@ -188,6 +194,11 @@ public sealed class CodexSessionCapabilityTests
         Assert.Equal("turn-1", payload.GetProperty("data")[0].GetProperty("id").GetString());
         Assert.Equal("item-1", item.GetProperty("id").GetString());
         Assert.Equal("agentMessage", item.GetProperty("type").GetString());
+        Assert.Equal("full", payload.GetProperty("data")[0].GetProperty("itemsView").GetString());
+        Assert.Equal("visible content", item.GetProperty("content").GetString());
+        Assert.Equal("client-1", item.GetProperty("clientId").GetString());
+        Assert.Equal("visible summary", item.GetProperty("summary").GetString());
+        Assert.Equal("run", item.GetProperty("commandActions")[0].GetProperty("type").GetString());
         Assert.True(item.GetProperty("arguments").GetProperty("safe").GetBoolean());
         Assert.Equal("turns-page-2", payload.GetProperty("nextCursor").GetString());
         Assert.DoesNotContain("privateTurnField", payload.GetRawText(), StringComparison.Ordinal);
