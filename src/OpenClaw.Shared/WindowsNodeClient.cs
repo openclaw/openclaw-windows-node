@@ -656,21 +656,23 @@ public class WindowsNodeClient : WebSocketClientBase
             () => ExecuteGatewayCapabilityAsync(
                 request,
                 capability,
-                async (response, _) =>
-                {
-                    await SendNodeInvokeResultAsync(
+                (response, deliveryLease) => SendNodeInvokeResultAsync(
                         requestId,
                         response.Ok,
                         response.Payload,
-                        response.Error);
-                    return true;
-                },
+                        response.Error,
+                        deliveryLease),
                 error => SendNodeInvokeResultAsync(requestId, false, null, error),
                 invocation!),
             CancellationToken.None);
     }
     
-    private async Task SendNodeInvokeResultAsync(string requestId, bool success, object? payload, string? error)
+    private async Task<bool> SendNodeInvokeResultAsync(
+        string requestId,
+        bool success,
+        object? payload,
+        string? error,
+        INodeCapabilityDeliveryLease? deliveryLease = null)
     {
         // Gateway expects: id (not requestId), nodeId, ok, payload (not result)
         var response = new
@@ -690,7 +692,7 @@ public class WindowsNodeClient : WebSocketClientBase
         
         var json = JsonSerializer.Serialize(response, s_ignoreNullOptions);
         _logger.Info($"[NODE] Sending invoke result for {requestId}: ok={success}");
-        await SendRawAsync(json);
+        return await SendAuthorizedGatewayResponseAsync(json, deliveryLease).ConfigureAwait(false);
     }
     
     private async Task HandleConnectChallengeAsync(JsonElement root)
@@ -1816,19 +1818,31 @@ public class WindowsNodeClient : WebSocketClientBase
             error = response.Ok ? null : new { message = response.Error }
         };
         
-        Func<bool>? authorizeAtWrite = deliveryLease is null
-            ? null
-            : deliveryLease.TryBeginDelivery;
-        var authorizationDenied = false;
-        await SendRawAsync(
-            JsonSerializer.Serialize(msg, s_ignoreNullOptions),
-            authorizeAtWrite,
-            () => authorizationDenied = true);
-        if (authorizationDenied)
+        if (!await SendAuthorizedGatewayResponseAsync(
+                JsonSerializer.Serialize(msg, s_ignoreNullOptions),
+                deliveryLease).ConfigureAwait(false))
             return false;
         
         _logger.Info($"Sent invoke response: ok={response.Ok}");
         return true;
+    }
+
+    private async Task<bool> SendAuthorizedGatewayResponseAsync(
+        string message,
+        INodeCapabilityDeliveryLease? deliveryLease)
+    {
+        if (deliveryLease is null)
+        {
+            await SendRawAsync(message).ConfigureAwait(false);
+            return true;
+        }
+
+        var authorizationDenied = false;
+        await SendRawAsync(
+            message,
+            deliveryLease.TryBeginDelivery,
+            () => authorizationDenied = true).ConfigureAwait(false);
+        return !authorizationDenied;
     }
     
     private async Task SendErrorResponseAsync(string requestId, string error)

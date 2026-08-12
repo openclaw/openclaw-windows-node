@@ -22,6 +22,7 @@ public readonly record struct ReconnectAuthorizationResult(
 /// </summary>
 public abstract class WebSocketClientBase : IDisposable
 {
+    private static readonly AsyncLocal<WebSocketClientBase?> SendLockOwner = new();
     private ClientWebSocket? _webSocket;
     private readonly string _gatewayUrl;
     private readonly string? _credentials;
@@ -520,7 +521,12 @@ public abstract class WebSocketClientBase : IDisposable
             or WebSocketState.Aborted;
 
     /// <summary>Send a text message over the WebSocket. Thread-safe.</summary>
-    protected virtual Task SendRawAsync(string message) => SendRawAsync(message, authorizeAtWrite: null);
+    protected virtual Task SendRawAsync(string message)
+    {
+        if (ReferenceEquals(SendLockOwner.Value, this))
+            return SendRawWhileLockHeldAsync(message);
+        return SendRawAsync(message, authorizeAtWrite: null);
+    }
 
     /// <summary>
     /// Send a pre-serialized message, checking optional delivery authorization
@@ -555,43 +561,45 @@ public abstract class WebSocketClientBase : IDisposable
                 authorizationDenied?.Invoke();
                 return;
             }
-            var ws = _webSocket;
-            if (ws?.State != WebSocketState.Open) return;
-
-            try
-            {
-                // Rent a pooled buffer to avoid per-send heap allocations on the hot send path.
-                var byteCount = Encoding.UTF8.GetByteCount(message);
-                var buffer = ArrayPool<byte>.Shared.Rent(byteCount);
-                try
-                {
-                    var written = Encoding.UTF8.GetBytes(message, buffer);
-                    await ws.SendAsync(buffer.AsMemory(0, written),
-                        WebSocketMessageType.Text, true, _cts.Token);
-                }
-                finally
-                {
-                    ArrayPool<byte>.Shared.Return(buffer);
-                }
-            }
-            // slopwatch-ignore: SW003 Shutdown cancellation or disposal is expected and the caller already preserves the safe state.
-            catch (OperationCanceledException) when (_cts.Token.IsCancellationRequested)
-            {
-                // Shutdown/reconnect canceled an in-flight send.
-            }
-            // slopwatch-ignore: SW003 Shutdown cancellation or disposal is expected and the caller already preserves the safe state.
-            catch (ObjectDisposedException)
-            {
-                // WebSocket was disposed between state check and send.
-            }
-            catch (WebSocketException ex) when (ex.WebSocketErrorCode == WebSocketError.InvalidState)
-            {
-                _logger.Warn($"WebSocket send failed (state changed): {ex.Message}");
-            }
+            SendLockOwner.Value = this;
+            await SendRawAsync(message).ConfigureAwait(false);
         }
         finally
         {
+            SendLockOwner.Value = null;
             _sendLock.Release();
+        }
+    }
+
+    private async Task SendRawWhileLockHeldAsync(string message)
+    {
+        var ws = _webSocket;
+        if (ws?.State != WebSocketState.Open) return;
+
+        try
+        {
+            var byteCount = Encoding.UTF8.GetByteCount(message);
+            var buffer = ArrayPool<byte>.Shared.Rent(byteCount);
+            try
+            {
+                var written = Encoding.UTF8.GetBytes(message, buffer);
+                await ws.SendAsync(buffer.AsMemory(0, written),
+                    WebSocketMessageType.Text, true, _cts.Token);
+            }
+            finally
+            {
+                ArrayPool<byte>.Shared.Return(buffer);
+            }
+        }
+        catch (OperationCanceledException) when (_cts.Token.IsCancellationRequested)
+        {
+        }
+        catch (ObjectDisposedException)
+        {
+        }
+        catch (WebSocketException ex) when (ex.WebSocketErrorCode == WebSocketError.InvalidState)
+        {
+            _logger.Warn($"WebSocket send failed (state changed): {ex.Message}");
         }
     }
 
