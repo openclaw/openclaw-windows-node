@@ -50,6 +50,8 @@ public class NodeConnectorTests
 
         public bool UseV2Signature { get; set; }
         public Func<CancellationToken, Task<ReconnectAuthorizationResult>>?
+            HandshakeAuthorizationAsync { get; set; }
+        public Func<CancellationToken, Task<ReconnectAuthorizationResult>>?
             ReconnectAuthorizationAsync { get; set; }
         public bool IsConnected { get; private set; }
         public string? NodeId => null;
