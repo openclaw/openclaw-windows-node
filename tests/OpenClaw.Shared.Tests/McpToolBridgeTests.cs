@@ -196,11 +196,12 @@ public class McpToolBridgeTests
     }
 
     [Fact]
-    public async Task ToolsList_CodexCatalog_AdvertisesExactlyTwoBoundedReadOnlyCommands()
+    public async Task ToolsList_CodexCatalog_AdvertisesExactlyThreeBoundedReadOnlyCommands()
     {
         string[] commands =
         [
             "codex.appServer.threads.list.v1",
+            "codex.appServer.threads.history.list.v1",
             "codex.appServer.thread.turns.list.v1",
         ];
         var bridge = CreateBridge([new FakeCapability("codex-app-server-threads", commands)]);
@@ -210,7 +211,7 @@ public class McpToolBridgeTests
 
         using var document = JsonDocument.Parse(response!);
         var tools = document.RootElement.GetProperty("result").GetProperty("tools");
-        Assert.Equal(2, tools.GetArrayLength());
+        Assert.Equal(3, tools.GetArrayLength());
         var descriptions = tools.EnumerateArray().ToDictionary(
             tool => tool.GetProperty("name").GetString()!,
             tool => tool.GetProperty("description").GetString()!,
@@ -218,8 +219,10 @@ public class McpToolBridgeTests
         Assert.Equal(commands, descriptions.Keys);
         Assert.Contains("read-only", descriptions[commands[0]], StringComparison.OrdinalIgnoreCase);
         Assert.Contains("limit 1-100", descriptions[commands[0]], StringComparison.Ordinal);
-        Assert.Contains("read-only", descriptions[commands[1]], StringComparison.OrdinalIgnoreCase);
-        Assert.Contains("limit 1-50", descriptions[commands[1]], StringComparison.Ordinal);
+        Assert.Contains("archived (bool, required)", descriptions[commands[1]], StringComparison.Ordinal);
+        Assert.Contains("limit 1-100", descriptions[commands[1]], StringComparison.Ordinal);
+        Assert.Contains("read-only", descriptions[commands[2]], StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("limit 1-50", descriptions[commands[2]], StringComparison.Ordinal);
         Assert.All(
             descriptions.Values,
             description => Assert.Contains(
@@ -236,6 +239,7 @@ public class McpToolBridgeTests
 
     [Theory]
     [InlineData("codex.appServer.threads.list.v1", "{}", "Codex app-server catalog is unavailable")]
+    [InlineData("codex.appServer.threads.history.list.v1", "{\"archived\":true}", "Codex app-server catalog is unavailable")]
     [InlineData(
         "codex.appServer.thread.turns.list.v1",
         "{\"threadId\":\"123e4567-e89b-12d3-a456-426614174000\"}",

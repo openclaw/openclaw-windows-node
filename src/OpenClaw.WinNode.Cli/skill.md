@@ -352,8 +352,8 @@ snapshot.
 ## Codex App Server catalog
 
 Codex session access is opt-in and controlled only from the tray Settings UI.
-`Off` advertises neither command below. `Read only` advertises both bounded
-read commands. `Read and steer` currently advertises the same two read commands
+`Off` advertises none of the commands below. `Read only` advertises all three bounded
+read commands. `Read and steer` currently advertises the same three read commands
 because Stage 0 has no owner-control endpoint. It does not expose resume, steer,
 interrupt, or any other write command.
 
@@ -373,6 +373,22 @@ All fields are optional. `limit` defaults to 50 and must be from 1 through 100.
 500 characters, and `cwd` is limited to 4096 characters. Unknown fields are
 rejected. Returns `{ "sessions": [...], "nextCursor"?: string,
 "backwardsCursor"?: string }`.
+
+### codex.appServer.threads.history.list.v1
+Read a separately authorized bounded history catalog of interactive Codex threads.
+
+```json
+{"cursor":"opaque cursor","limit":50,"searchTerm":"title text","archived":true}
+```
+
+`archived` is required and must be a boolean. It explicitly selects archived
+(`true`) or non-archived (`false`) metadata; it does not change the semantics of
+`codex.appServer.threads.list.v1`, which always selects non-archived threads.
+`limit` defaults to 50 and must be from 1 through 100. `cursor` is opaque and
+limited to 4096 characters, `searchTerm` is limited to 500 characters, and
+unknown fields are rejected. Returns `{ "sessions": [...], "nextCursor"?: string,
+"backwardsCursor"?: string }` with projected metadata only; it never returns
+transcript bodies.
 
 ### codex.appServer.thread.turns.list.v1
 Read one bounded transcript page after the thread is freshly verified as an

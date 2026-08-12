@@ -11,17 +11,75 @@ public sealed class CodexSessionCapabilityTests
     private const string ThreadId = "123e4567-e89b-12d3-a456-426614174000";
 
     [Fact]
-    public void Commands_ExposeExactlyTheTwoReadOnlyCatalogOperations()
+    public void Commands_ExposeExactlyTheThreeReadOnlyCatalogOperations()
     {
         var capability = CreateCapability(new RecordingCatalogClient());
 
         Assert.Equal(
             [
                 "codex.appServer.threads.list.v1",
+                "codex.appServer.threads.history.list.v1",
                 "codex.appServer.thread.turns.list.v1",
             ],
             capability.Commands);
         Assert.Equal("codex-app-server-threads", capability.Category);
+    }
+
+    [Fact]
+    public async Task ThreadsHistoryList_RequiresExplicitArchivedAndProjectsOnlyCatalogMetadata()
+    {
+        var client = new RecordingCatalogClient
+        {
+            ThreadsResponse = Json("""
+                {
+                  "data": [
+                    {
+                      "id": "123e4567-e89b-12d3-a456-426614174000",
+                      "name": "Archived work",
+                      "preview": "must not become a transcript",
+                      "status": { "type": "idle" },
+                      "source": "cli",
+                      "archived": true,
+                      "turns": [{ "body": "private" }],
+                      "private": "do-not-forward"
+                    },
+                    {
+                      "id": "123e4567-e89b-12d3-a456-426614174001",
+                      "name": "Current work",
+                      "status": { "type": "idle" },
+                      "source": "cli",
+                      "archived": false
+                    }
+                  ]
+                }
+                """),
+        };
+
+        var response = await ExecuteAsync(
+            CreateCapability(client),
+            "codex.appServer.threads.history.list.v1",
+            """{"archived":true,"limit":1,"searchTerm":"archived"}""");
+
+        Assert.True(response.Ok, response.Error);
+        AssertJsonEqual(
+            """
+            {
+              "sessions": [
+                {
+                  "threadId": "123e4567-e89b-12d3-a456-426614174000",
+                  "status": "idle",
+                  "archived": true,
+                  "name": "Archived work",
+                  "source": "cli"
+                }
+              ]
+            }
+            """,
+            PayloadJson(response));
+        AssertJsonEqual(
+            """{"limit":1,"modelProviders":[],"sortKey":"updated_at","sortDirection":"desc","archived":true,"useStateDbOnly":true}""",
+            client.Parameters.Single());
+        Assert.DoesNotContain("private", PayloadJson(response).GetRawText(), StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]
@@ -213,6 +271,9 @@ public sealed class CodexSessionCapabilityTests
     [InlineData("codex.appServer.threads.list.v1", "{\"unknown\":true}", "unknown Codex session catalog parameter")]
     [InlineData("codex.appServer.threads.list.v1", "{\"limit\":0}", "limit must be an integer from 1 to 100")]
     [InlineData("codex.appServer.threads.list.v1", "{\"limit\":101}", "limit must be an integer from 1 to 100")]
+    [InlineData("codex.appServer.threads.history.list.v1", "{}", "archived is required")]
+    [InlineData("codex.appServer.threads.history.list.v1", "{\"archived\":\"true\"}", "archived must be a boolean")]
+    [InlineData("codex.appServer.threads.history.list.v1", "{\"archived\":true,\"cwd\":\"C:\\\\work\"}", "unknown Codex session catalog parameter")]
     [InlineData("codex.appServer.thread.turns.list.v1", "{\"threadId\":\"not-a-uuid\"}", "threadId must be a UUID")]
     [InlineData("codex.appServer.thread.turns.list.v1", "{\"threadId\":\"123e4567-e89b-12d3-a456-426614174000\",\"extra\":1}", "unknown Codex session catalog parameter")]
     [InlineData("codex.appServer.thread.turns.list.v1", "{\"threadId\":\"123e4567-e89b-12d3-a456-426614174000\",\"limit\":51}", "limit must be an integer from 1 to 50")]
@@ -234,6 +295,7 @@ public sealed class CodexSessionCapabilityTests
     [Theory]
     [InlineData("codex.appServer.threads.list.v1", "null", "Codex session catalog parameters must be an object")]
     [InlineData("codex.appServer.threads.list.v1", "[]", "Codex session catalog parameters must be an object")]
+    [InlineData("codex.appServer.threads.history.list.v1", "null", "Codex session catalog parameters must be an object")]
     [InlineData("codex.appServer.thread.turns.list.v1", "null", "Codex session read parameters must be an object")]
     [InlineData("codex.appServer.thread.turns.list.v1", "[]", "Codex session read parameters must be an object")]
     public async Task NullAndNonObjectParameters_AreRejectedBeforeAppServerIo(

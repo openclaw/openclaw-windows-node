@@ -39,10 +39,10 @@ Codex session access is opt-in and may be changed only through the interactive t
 | Setting | Advertised commands | Stage 0 behavior |
 |---------|---------------------|------------------|
 | Off | None | Codex catalog access is disabled. |
-| Read only | `codex.appServer.threads.list.v1`, `codex.appServer.thread.turns.list.v1` | Lists bounded non-archived interactive thread metadata and reads bounded transcript pages after a fresh eligibility check. |
-| Read and steer | The same two read commands | Owner control is unavailable in Stage 0. No resume, steer, interrupt, or other write command is advertised. |
+| Read only | `codex.appServer.threads.list.v1`, `codex.appServer.threads.history.list.v1`, `codex.appServer.thread.turns.list.v1` | Lists bounded non-archived interactive thread metadata, separately lists explicitly selected archived/history metadata, and reads bounded transcript pages after a fresh eligibility check. |
+| Read and steer | The same three read commands | Owner control is unavailable in Stage 0. No resume, steer, interrupt, or other write command is advertised. |
 
-Both commands reject unknown fields and enforce bounded limits, cursors, text, pagination, and aggregate response bytes. Transcript bodies are returned only as successful command payloads. Audit and error output uses stable command/outcome summaries and must not contain transcript bodies or private App Server failure details.
+All three commands reject unknown fields and enforce bounded limits, cursors, text, pagination, and aggregate response bytes. `codex.appServer.threads.list.v1` always sends `archived:false`; `codex.appServer.threads.history.list.v1` requires an explicit `archived` boolean and returns projected metadata only. Transcript bodies are returned only as successful command payloads. Audit and error output uses stable command/outcome summaries and must not contain transcript bodies or private App Server failure details.
 
 ### 1. Settings Toggle
 - Verify the toggle appears in Settings under "ADVANCED"

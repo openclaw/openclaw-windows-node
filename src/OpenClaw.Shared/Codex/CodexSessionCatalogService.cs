@@ -107,10 +107,27 @@ internal sealed class CodexSessionCatalogService
             var response = await _client.ListThreadsAsync(
                 CreateThreadListParameters(request),
                 cancellationToken).ConfigureAwait(false);
-            return ProjectThreadPage(response, searchTerm: null, request.Limit);
+            return ProjectThreadPage(response, searchTerm: null, request.Limit, archived: false);
         }
 
-        return await SearchThreadPagesAsync(request, cancellationToken).ConfigureAwait(false);
+        return await SearchThreadPagesAsync(request, archived: false, cancellationToken).ConfigureAwait(false);
+    }
+
+    internal async Task<JsonElement> ListThreadHistoryAsync(
+        JsonElement arguments,
+        CancellationToken cancellationToken)
+    {
+        var request = ReadHistoryListRequest(arguments);
+        var listRequest = new ListRequest(request.Cursor, request.Limit, request.SearchTerm, null);
+        if (request.SearchTerm is null)
+        {
+            var response = await _client.ListThreadsAsync(
+                CreateThreadListParameters(listRequest, request.Archived),
+                cancellationToken).ConfigureAwait(false);
+            return ProjectThreadPage(response, searchTerm: null, request.Limit, request.Archived);
+        }
+
+        return await SearchThreadPagesAsync(listRequest, request.Archived, cancellationToken).ConfigureAwait(false);
     }
 
     internal async Task<JsonElement> ListThreadTurnsAsync(
@@ -136,6 +153,7 @@ internal sealed class CodexSessionCatalogService
 
     private async Task<JsonElement> SearchThreadPagesAsync(
         ListRequest request,
+        bool archived,
         CancellationToken cancellationToken)
     {
         var sessions = new List<JsonElement>(request.Limit);
@@ -151,9 +169,9 @@ internal sealed class CodexSessionCatalogService
                 Limit = request.Limit - sessions.Count,
             };
             var response = await _client.ListThreadsAsync(
-                CreateThreadListParameters(pageRequest),
+                CreateThreadListParameters(pageRequest, archived),
                 cancellationToken).ConfigureAwait(false);
-            var page = ProjectThreadPage(response, request.SearchTerm, pageRequest.Limit);
+            var page = ProjectThreadPage(response, request.SearchTerm, pageRequest.Limit, archived);
             if (pageIndex == 0
                 && page.TryGetProperty("backwardsCursor", out var backwards)
                 && backwards.ValueKind == JsonValueKind.String)
@@ -196,7 +214,7 @@ internal sealed class CodexSessionCatalogService
                     new ListRequest(cursor, EligibilityPageLimit, null, null),
                     useStateDbOnly: false),
                 cancellationToken).ConfigureAwait(false);
-            var page = ProjectThreadPage(response, searchTerm: null, EligibilityPageLimit);
+            var page = ProjectThreadPage(response, searchTerm: null, EligibilityPageLimit, archived: false);
             if (page.GetProperty("sessions").EnumerateArray().Any(session =>
                 session.GetProperty("threadId").GetString() == threadId))
             {
@@ -236,6 +254,24 @@ internal sealed class CodexSessionCatalogService
             ReadOptionalString(values, "cwd", MaxCwdLength));
     }
 
+    private static HistoryListRequest ReadHistoryListRequest(JsonElement arguments)
+    {
+        var values = ReadObject(arguments, "Codex session catalog parameters must be an object");
+        RejectUnknownFields(values, new HashSet<string>(StringComparer.Ordinal)
+        {
+            "cursor", "limit", "searchTerm", "archived",
+        });
+        if (!values.TryGetValue("archived", out var archived))
+            throw new CodexSessionCatalogValidationException("archived is required");
+        if (archived.ValueKind is not JsonValueKind.True and not JsonValueKind.False)
+            throw new CodexSessionCatalogValidationException("archived must be a boolean");
+        return new HistoryListRequest(
+            ReadOptionalString(values, "cursor", MaxCursorLength),
+            ReadLimit(values, "limit", DefaultPageLimit, MaxPageLimit),
+            ReadOptionalString(values, "searchTerm", MaxSearchLength),
+            archived.GetBoolean());
+    }
+
     private static TranscriptRequest ReadTranscriptRequest(JsonElement arguments)
     {
         var values = ReadObject(arguments, "Codex session read parameters must be an object");
@@ -256,24 +292,20 @@ internal sealed class CodexSessionCatalogService
 
     private static JsonElement CreateThreadListParameters(
         ListRequest request,
+        bool archived = false,
         bool useStateDbOnly = true) =>
-        JsonSerializer.SerializeToElement(new Dictionary<string, object?>
-        {
-            ["cursor"] = request.Cursor,
-            ["limit"] = request.Limit,
-            ["modelProviders"] = Array.Empty<string>(),
-            ["sortKey"] = "updated_at",
-            ["sortDirection"] = "desc",
-            ["archived"] = false,
-            ["useStateDbOnly"] = useStateDbOnly ? true : null,
-            ["cwd"] = request.Cwd,
-        }.Where(entry => entry.Value is not null)
-            .ToDictionary(entry => entry.Key, entry => entry.Value));
+        CodexAppServerProtocol.CreateThreadListParameters(
+            request.Cursor,
+            request.Limit,
+            request.Cwd,
+            archived,
+            useStateDbOnly);
 
     private static JsonElement ProjectThreadPage(
         JsonElement response,
         string? searchTerm,
-        int maxSessions)
+        int maxSessions,
+        bool archived)
     {
         if (response.ValueKind != JsonValueKind.Object
             || !response.TryGetProperty("data", out var data)
@@ -286,7 +318,7 @@ internal sealed class CodexSessionCatalogService
         var sessions = new List<Dictionary<string, object?>>();
         foreach (var thread in data.EnumerateArray())
         {
-            var session = ProjectThread(thread);
+            var session = ProjectThread(thread, archived);
             if (session is null)
                 continue;
             if (searchTerm is not null
@@ -307,15 +339,14 @@ internal sealed class CodexSessionCatalogService
         return JsonSerializer.SerializeToElement(result);
     }
 
-    private static Dictionary<string, object?>? ProjectThread(JsonElement thread)
+    private static Dictionary<string, object?>? ProjectThread(JsonElement thread, bool archived)
     {
         if (thread.ValueKind != JsonValueKind.Object)
             throw new InvalidDataException("Invalid Codex App Server thread.");
-        if (thread.TryGetProperty("archived", out var archived)
-            && archived.ValueKind == JsonValueKind.True)
-        {
+        var isArchived = thread.TryGetProperty("archived", out var archivedValue)
+            && archivedValue.ValueKind == JsonValueKind.True;
+        if (isArchived != archived)
             return null;
-        }
         var source = ReadInteractiveSource(thread);
         if (source is null)
             return null;
@@ -330,7 +361,7 @@ internal sealed class CodexSessionCatalogService
         {
             ["threadId"] = idValue.GetString(),
             ["status"] = ReadStatus(thread, out var activeFlags),
-            ["archived"] = false,
+            ["archived"] = archived,
         };
         CopyBoundedString(thread, result, "sessionId", "sessionId", MaxSessionIdLength);
         CopyNameAndFallback(thread, result);
@@ -707,6 +738,8 @@ internal sealed class CodexSessionCatalogService
     }
 
     private sealed record ListRequest(string? Cursor, int Limit, string? SearchTerm, string? Cwd);
+
+    private sealed record HistoryListRequest(string? Cursor, int Limit, string? SearchTerm, bool Archived);
 
     private sealed record TranscriptRequest(string ThreadId, string? Cursor, int Limit);
 }

@@ -43,6 +43,25 @@ public static class CodexAppServerProtocol
             @params = parameters,
         });
 
+    internal static JsonElement CreateThreadListParameters(
+        string? cursor,
+        int limit,
+        string? cwd,
+        bool archived,
+        bool useStateDbOnly = true) =>
+        JsonSerializer.SerializeToElement(new Dictionary<string, object?>
+        {
+            ["cursor"] = cursor,
+            ["limit"] = limit,
+            ["modelProviders"] = Array.Empty<string>(),
+            ["sortKey"] = "updated_at",
+            ["sortDirection"] = "desc",
+            ["archived"] = archived,
+            ["useStateDbOnly"] = useStateDbOnly ? true : null,
+            ["cwd"] = cwd,
+        }.Where(entry => entry.Value is not null)
+            .ToDictionary(entry => entry.Key, entry => entry.Value));
+
     internal static byte[] CreateServerRequestRefusal(long id) =>
         JsonSerializer.SerializeToUtf8Bytes(new
         {

@@ -15,6 +15,7 @@ public sealed class NodeCapabilityRegistryTests
     private static readonly string[] ExpectedReadCommands =
     [
         "codex.appServer.threads.list.v1",
+        "codex.appServer.threads.history.list.v1",
         "codex.appServer.thread.turns.list.v1",
     ];
 
@@ -85,6 +86,8 @@ public sealed class NodeCapabilityRegistryTests
         {
             var arguments = command == CodexSessionCapability.ThreadTurnsListCommand
                 ? JsonSerializer.SerializeToElement(new { threadId = "123e4567-e89b-12d3-a456-426614174000" })
+                : command == CodexSessionCapability.ThreadsHistoryListCommand
+                    ? JsonSerializer.SerializeToElement(new { archived = true })
                 : JsonSerializer.SerializeToElement(new { });
             var requestJson = JsonSerializer.Serialize(new
             {
@@ -108,10 +111,10 @@ public sealed class NodeCapabilityRegistryTests
         }
 
         var persisted = new SettingsManager(temp.Path);
-        Assert.Equal(4, harness.StartCount);
+        Assert.Equal(6, harness.StartCount);
         Assert.Equal(CodexSessionAccessMode.ReadOnly, persisted.CodexSessionAccess);
         Assert.Equal("wss://gateway.example.test", persisted.GatewayUrl);
-        Assert.Equal(4, harness.RecordedMethods().Count(method => method == "thread/list"));
+        Assert.Equal(6, harness.RecordedMethods().Count(method => method == "thread/list"));
         Assert.Equal(2, harness.RecordedMethods().Count(method => method == "thread/turns/list"));
         await harness.AssertAllProcessesExitedAsync();
     }
@@ -192,7 +195,7 @@ public sealed class NodeCapabilityRegistryTests
     }
 
     [Fact]
-    public void Rebuild_ReadOnlyWithAvailableClient_AdvertisesExactlyTwoReadCommands()
+    public void Rebuild_ReadOnlyWithAvailableClient_AdvertisesExactlyThreeReadCommands()
     {
         var registry = CreateRegistry(clientAvailable: true);
 
@@ -212,7 +215,7 @@ public sealed class NodeCapabilityRegistryTests
     }
 
     [Fact]
-    public void Rebuild_ReadAndSteerWithoutOwnerEndpoint_StillAdvertisesOnlyTwoReads()
+    public void Rebuild_ReadAndSteerWithoutOwnerEndpoint_StillAdvertisesOnlyThreeReads()
     {
         var registry = CreateRegistry(clientAvailable: true);
 
@@ -374,6 +377,7 @@ public sealed class NodeCapabilityRegistryTests
         Assert.Equal(
             [
                 "codex.appServer.threads.list.v1",
+                "codex.appServer.threads.history.list.v1",
                 "codex.appServer.thread.turns.list.v1",
             ],
             capability.Commands);

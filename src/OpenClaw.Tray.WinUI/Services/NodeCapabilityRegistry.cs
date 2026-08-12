@@ -188,6 +188,7 @@ public sealed class NodeCapabilityRegistry
         private static readonly IReadOnlyList<string> ReadCommands = Array.AsReadOnly(
         [
             CodexSessionCapability.ThreadsListCommand,
+            CodexSessionCapability.ThreadsHistoryListCommand,
             CodexSessionCapability.ThreadTurnsListCommand,
         ]);
 

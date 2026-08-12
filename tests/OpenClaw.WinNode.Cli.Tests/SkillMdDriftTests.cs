@@ -53,7 +53,7 @@ public class SkillMdDriftTests
     }
 
     [Fact]
-    public void SkillMd_documents_exactly_the_two_read_only_codex_catalog_commands()
+    public void SkillMd_documents_exactly_the_three_read_only_codex_catalog_commands()
     {
         var documented = ParseCommandHeadings(File.ReadAllText(LocateSkillMd()));
         var codexCommands = documented
@@ -65,6 +65,7 @@ public class SkillMdDriftTests
             new[]
             {
                 "codex.appServer.thread.turns.list.v1",
+                "codex.appServer.threads.history.list.v1",
                 "codex.appServer.threads.list.v1",
             },
             codexCommands);
@@ -122,6 +123,7 @@ public class SkillMdDriftTests
             }
         }
         commands.Add(CodexSessionCapability.ThreadsListCommand);
+        commands.Add(CodexSessionCapability.ThreadsHistoryListCommand);
         commands.Add(CodexSessionCapability.ThreadTurnsListCommand);
         return commands;
     }

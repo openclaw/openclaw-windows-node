@@ -5,11 +5,13 @@ namespace OpenClaw.Shared.Capabilities;
 internal sealed class CodexSessionCapability : NodeCapabilityBase
 {
     public const string ThreadsListCommand = "codex.appServer.threads.list.v1";
+    public const string ThreadsHistoryListCommand = "codex.appServer.threads.history.list.v1";
     public const string ThreadTurnsListCommand = "codex.appServer.thread.turns.list.v1";
 
     private static readonly string[] CommandNames =
     [
         ThreadsListCommand,
+        ThreadsHistoryListCommand,
         ThreadTurnsListCommand,
     ];
 
@@ -37,6 +39,9 @@ internal sealed class CodexSessionCapability : NodeCapabilityBase
             var payload = request.Command switch
             {
                 ThreadsListCommand => await _catalog.ListThreadsAsync(
+                    request.Args,
+                    cancellationToken).ConfigureAwait(false),
+                ThreadsHistoryListCommand => await _catalog.ListThreadHistoryAsync(
                     request.Args,
                     cancellationToken).ConfigureAwait(false),
                 ThreadTurnsListCommand => await _catalog.ListThreadTurnsAsync(

@@ -41,6 +41,21 @@ public sealed class CodexCatalogPolicySurfaceTests
             friends.Order(StringComparer.Ordinal).ToArray());
     }
 
+    [Fact]
+    public void HistoryCatalog_RemainsAnInternalCapabilityOperation()
+    {
+        var assembly = typeof(SettingsData).Assembly;
+        var capability = RequiredType(assembly, "OpenClaw.Shared.Capabilities.CodexSessionCapability");
+        var catalog = RequiredType(assembly, "OpenClaw.Shared.Codex.CodexSessionCatalogService");
+
+        Assert.NotNull(capability.GetField(
+            "ThreadsHistoryListCommand",
+            BindingFlags.Public | BindingFlags.Static));
+        Assert.DoesNotContain(
+            catalog.GetMethods(BindingFlags.Public | BindingFlags.Instance),
+            method => method.Name == "ListThreadHistoryAsync");
+    }
+
     private static Type RequiredType(Assembly assembly, string name) =>
         assembly.GetType(name, throwOnError: true)!;
 }

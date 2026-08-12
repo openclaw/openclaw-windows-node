@@ -365,6 +365,8 @@ public class McpToolBridge
         // codex.appServer.*
         ["codex.appServer.threads.list.v1"] =
             "Read-only, bounded Codex App Server thread catalog. Args: cursor (string, optional, max 4096 characters), limit (int, default 50, limit 1-100), searchTerm (string, optional, max 500 characters), cwd (string, optional, max 4096 characters). Returns { sessions, nextCursor?, backwardsCursor? } with non-archived interactive sessions only. Available in Read only and Read and steer modes. Off advertises no Codex catalog commands. Stage 0 Read and steer adds no owner controls.",
+        ["codex.appServer.threads.history.list.v1"] =
+            "Read-only, bounded Codex App Server archived/history thread catalog. Args: cursor (string, optional, max 4096 characters), limit (int, default 50, limit 1-100), searchTerm (string, optional, max 500 characters), archived (bool, required). Returns { sessions, nextCursor?, backwardsCursor? } with projected interactive metadata only and never transcript bodies. Available in Read only and Read and steer modes. Off advertises no Codex catalog commands. Stage 0 Read and steer adds no owner controls.",
         ["codex.appServer.thread.turns.list.v1"] =
             "Read-only, bounded Codex App Server transcript page for a freshly eligible catalog thread. Args: threadId (UUID, required), cursor (string, optional, max 4096 characters), limit (int, default 20, limit 1-50). Returns { data, nextCursor?, backwardsCursor? }. Available in Read only and Read and steer modes. Off advertises no Codex catalog commands. Stage 0 Read and steer adds no owner controls.",
 
