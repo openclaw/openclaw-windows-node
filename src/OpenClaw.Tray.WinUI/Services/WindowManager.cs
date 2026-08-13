@@ -61,7 +61,9 @@ internal sealed class WindowManager : IWindowManager
     public XamlRoot? DialogXamlRoot =>
         _isShuttingDown
             ? null
-            : (_hubWindow?.Content as FrameworkElement)?.XamlRoot
+            : (_hubWindow is { IsClosed: false } hub
+                ? (hub.Content as FrameworkElement)?.XamlRoot
+                : null)
               ?? (_keepAliveWindow?.Content as FrameworkElement)?.XamlRoot;
 
     public XamlRoot? RuntimeAnchorXamlRoot =>
