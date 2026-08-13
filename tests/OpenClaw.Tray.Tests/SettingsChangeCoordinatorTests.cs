@@ -54,6 +54,15 @@ public class SettingsChangeCoordinatorTests
         return (coordinator, connection, runtime, surface, order);
     }
 
+    private static Task ApplyOnDedicatedThread(
+        SettingsChangeCoordinator coordinator,
+        SettingsChangeRequest request) =>
+        Task.Factory.StartNew(
+            () => coordinator.ApplyAsync(request, CancellationToken.None),
+            CancellationToken.None,
+            TaskCreationOptions.LongRunning,
+            TaskScheduler.Default).Unwrap();
+
     private sealed class OrderTrackingConnectionEffects : ISettingsConnectionEffects
     {
         private readonly ISettingsConnectionEffects _inner;
@@ -398,9 +407,9 @@ public class SettingsChangeCoordinatorTests
         var effects = new InstrumentedEffects { BlockOnGateway = first.GatewayUrl };
         var coordinator = new SettingsChangeCoordinator(effects, effects, effects, initial);
 
-        var firstTask = Task.Run(() => coordinator.ApplyAsync(
-            new SettingsChangeRequest(1, first),
-            CancellationToken.None));
+        var firstTask = ApplyOnDedicatedThread(
+            coordinator,
+            new SettingsChangeRequest(1, first));
         await effects.BlockStarted.Task.WaitAsync(TimeSpan.FromSeconds(2));
         var secondTask = coordinator.ApplyAsync(
             new SettingsChangeRequest(2, second),
@@ -425,9 +434,9 @@ public class SettingsChangeCoordinatorTests
         var effects = new InstrumentedEffects { BlockOnGateway = first.GatewayUrl };
         var coordinator = new SettingsChangeCoordinator(effects, effects, effects, initial);
 
-        var firstTask = Task.Run(() => coordinator.ApplyAsync(
-            new SettingsChangeRequest(1, first),
-            CancellationToken.None));
+        var firstTask = ApplyOnDedicatedThread(
+            coordinator,
+            new SettingsChangeRequest(1, first));
         await effects.BlockStarted.Task.WaitAsync(TimeSpan.FromSeconds(2));
         var admittedTask = coordinator.ApplyAsync(
             new SettingsChangeRequest(2, admitted),
