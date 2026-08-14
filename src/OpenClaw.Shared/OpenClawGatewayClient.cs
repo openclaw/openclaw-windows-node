@@ -3266,6 +3266,8 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
                 {
                     if (!_handshakeChallengeGate.TryBlock(connectionGeneration))
                         return;
+                    _logger.Warn(
+                        $"[HANDSHAKE] Operator credential handoff blocked: {authorization.Detail}");
                     RaiseConnectionFailure(authorization.FailureKind);
                     if (authorization.FailureKind is GatewayErrorKind.Auth
                         or GatewayErrorKind.DeviceTokenMismatch

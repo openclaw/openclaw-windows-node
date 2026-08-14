@@ -119,10 +119,11 @@ public sealed class GatewayClientFactoryTests
 
         try
         {
+            var logger = new TestLogger();
             using var client = new OpenClawGatewayClient(
                 "ws://127.0.0.1:18789",
                 "replacement-token",
-                NullLogger.Instance,
+                logger,
                 identityPath: tempDir,
                 ignoreStoredDeviceToken: true,
                 persistHandshakeDeviceTokens: false);
@@ -148,11 +149,26 @@ public sealed class GatewayClientFactoryTests
             Assert.Null(failure);
             Assert.Equal(GatewayErrorKind.LocalPortConflict, failureKind);
             Assert.Equal(ConnectionStatus.Error, lastStatus);
+            Assert.Contains(
+                logger.Warnings,
+                message => message.Contains(
+                    "validation listener ownership lost",
+                    StringComparison.Ordinal));
         }
         finally
         {
             Directory.Delete(tempDir, recursive: true);
         }
+    }
+
+    private sealed class TestLogger : IOpenClawLogger
+    {
+        public List<string> Warnings { get; } = [];
+
+        public void Info(string message) { }
+        public void Debug(string message) { }
+        public void Warn(string message) => Warnings.Add(message);
+        public void Error(string message, Exception? ex = null) { }
     }
 
     private static string GetConnectRole(OpenClawGatewayClient client)
