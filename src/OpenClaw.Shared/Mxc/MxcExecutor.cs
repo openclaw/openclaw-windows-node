@@ -13,10 +13,14 @@ public sealed class MxcExecutor
 {
     private const int DefaultStdoutCapBytes = 40_000;
     private const int DefaultStderrCapBytes = 5_000;
+    private static readonly TimeSpan s_defaultCleanupTimeout = TimeSpan.FromMilliseconds(500);
 
     private readonly string _wxcExePath;
     private readonly int _stdoutCapBytes;
     private readonly int _stderrCapBytes;
+    private readonly Func<ProcessStartInfo, Process> _processFactory;
+    private readonly Action<Process> _processTreeKiller;
+    private readonly TimeSpan _cleanupTimeout;
 
     private static readonly JsonSerializerOptions s_jsonOptions = new()
     {
@@ -25,13 +29,38 @@ public sealed class MxcExecutor
     };
 
     public MxcExecutor(string wxcExePath, int? stdoutCapBytes = null, int? stderrCapBytes = null)
+        : this(
+            wxcExePath,
+            stdoutCapBytes,
+            stderrCapBytes,
+            static startInfo => new Process { StartInfo = startInfo },
+            static process => process.Kill(entireProcessTree: true),
+            s_defaultCleanupTimeout)
+    {
+    }
+
+    internal MxcExecutor(
+        string wxcExePath,
+        int? stdoutCapBytes,
+        int? stderrCapBytes,
+        Func<ProcessStartInfo, Process> processFactory,
+        Action<Process> processTreeKiller,
+        TimeSpan cleanupTimeout)
     {
         if (string.IsNullOrEmpty(wxcExePath)) throw new ArgumentException("wxcExePath required", nameof(wxcExePath));
         if (!File.Exists(wxcExePath))
             throw new FileNotFoundException($"wxc-exec.exe not found at: {wxcExePath}", wxcExePath);
+        ArgumentNullException.ThrowIfNull(processFactory);
+        ArgumentNullException.ThrowIfNull(processTreeKiller);
+        if (cleanupTimeout <= TimeSpan.Zero)
+            throw new ArgumentOutOfRangeException(nameof(cleanupTimeout), "Cleanup timeout must be positive.");
+
         _wxcExePath = wxcExePath;
         _stdoutCapBytes = stdoutCapBytes is > 0 ? stdoutCapBytes.Value : DefaultStdoutCapBytes;
         _stderrCapBytes = stderrCapBytes is > 0 ? stderrCapBytes.Value : DefaultStderrCapBytes;
+        _processFactory = processFactory;
+        _processTreeKiller = processTreeKiller;
+        _cleanupTimeout = cleanupTimeout;
     }
 
     public async Task<MxcResult> RunAsync(
@@ -78,7 +107,6 @@ public sealed class MxcExecutor
         CancellationToken ct,
         string? workingDirectory)
     {
-        using var process = new Process();
         var startInfo = new ProcessStartInfo
         {
             FileName = _wxcExePath,
@@ -94,7 +122,8 @@ public sealed class MxcExecutor
         // ArgumentList avoids the manual-quoting trap that bites Process.Arguments
         // (each entry is escaped per Win32 CommandLineToArgvW rules by the BCL).
         foreach (var arg in arguments) startInfo.ArgumentList.Add(arg);
-        process.StartInfo = startInfo;
+        using var process = _processFactory(startInfo)
+            ?? throw new InvalidOperationException("Process factory returned null.");
 
         var stdoutBuilder = new StringBuilder();
         var stderrBuilder = new StringBuilder();
@@ -102,10 +131,18 @@ public sealed class MxcExecutor
         // concurrently with each other and with the post-kill ToString() read.
         var outLock = new object();
         var errLock = new object();
+        var processExited = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var stdoutClosed = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var stderrClosed = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
 
         process.OutputDataReceived += (_, e) =>
         {
-            if (e.Data is null) return;
+            if (e.Data is null)
+            {
+                stdoutClosed.TrySetResult();
+                return;
+            }
+
             lock (outLock)
             {
                 if (stdoutBuilder.Length < _stdoutCapBytes * 2)
@@ -114,13 +151,20 @@ public sealed class MxcExecutor
         };
         process.ErrorDataReceived += (_, e) =>
         {
-            if (e.Data is null) return;
+            if (e.Data is null)
+            {
+                stderrClosed.TrySetResult();
+                return;
+            }
+
             lock (errLock)
             {
                 if (stderrBuilder.Length < _stderrCapBytes * 2)
                     stderrBuilder.AppendLine(e.Data);
             }
         };
+        process.EnableRaisingEvents = true;
+        process.Exited += (_, _) => processExited.TrySetResult();
 
         var sw = Stopwatch.StartNew();
         try
@@ -128,11 +172,13 @@ public sealed class MxcExecutor
             process.Start();
             process.BeginOutputReadLine();
             process.BeginErrorReadLine();
+            if (process.HasExited)
+                processExited.TrySetResult();
 
             bool completed;
             try
             {
-                await process.WaitForExitAsync(ct);
+                await processExited.Task.WaitAsync(ct);
                 completed = true;
             }
             catch (OperationCanceledException)
@@ -142,13 +188,11 @@ public sealed class MxcExecutor
 
             if (!completed)
             {
-                try { process.Kill(entireProcessTree: true); }
+                try { _processTreeKiller(process); }
                 catch (Exception ex) { Trace.WriteLine($"MxcExecutor: process kill (cancellation path) failed: {ex.Message}"); }
-                // WaitForExit() (sync) blocks until both stdout and stderr async
-                // readers have drained the redirected pipes. Without this the
-                // event handlers can still be appending while ToString() runs.
-                try { process.WaitForExit(); }
-                catch (Exception ex) { Trace.WriteLine($"MxcExecutor: process drain (cancellation path) failed: {ex.Message}"); }
+                if (!await WaitForCleanupAsync(processExited.Task, stdoutClosed.Task, stderrClosed.Task, _cleanupTimeout))
+                    Trace.WriteLine($"MxcExecutor: cancellation cleanup timed out (pid={process.Id}).");
+
                 sw.Stop();
                 string capturedOut;
                 lock (outLock) { capturedOut = stdoutBuilder.ToString(); }
@@ -163,9 +207,13 @@ public sealed class MxcExecutor
                 };
             }
 
-            // Flush async readers before reading the StringBuilders.
+            // Normal completion keeps the established lossless drain behavior.
+            // The bounded cleanup exists specifically for cancellation, where
+            // availability takes precedence over waiting indefinitely for a
+            // launcher or inherited pipe handle that ignored termination.
             try { process.WaitForExit(); }
-            catch (Exception ex) { Trace.WriteLine($"MxcExecutor: post-exit drain WaitForExit failed: {ex.Message}"); }
+            catch (Exception ex) { Trace.WriteLine($"MxcExecutor: post-exit drain failed: {ex.Message}"); }
+
             sw.Stop();
             string outRaw, errRaw;
             lock (outLock) { outRaw = stdoutBuilder.ToString().Trim(); }
@@ -193,6 +241,23 @@ public sealed class MxcExecutor
                 Error = $"Failed to launch wxc-exec.exe: {ex.Message}",
                 DurationMs = sw.ElapsedMilliseconds,
             };
+        }
+    }
+
+    internal static async Task<bool> WaitForCleanupAsync(
+        Task processExited,
+        Task stdoutClosed,
+        Task stderrClosed,
+        TimeSpan timeout)
+    {
+        try
+        {
+            await Task.WhenAll(processExited, stdoutClosed, stderrClosed).WaitAsync(timeout);
+            return true;
+        }
+        catch (TimeoutException)
+        {
+            return false;
         }
     }
 
