@@ -95,6 +95,16 @@ public class MxcPolicyBuilderTests
     }
 
     [Fact]
+    public void ForSystemRun_AllowWindowsUi_SetsUiFlag()
+    {
+        var settings = new SettingsData { SystemRunAllowWindowsUi = true };
+        var policy = MxcPolicyBuilder.ForSystemRun(settings, "C:\\settings");
+
+        Assert.True(policy.Ui!.AllowWindows);
+        Assert.False(policy.Ui.AllowInputInjection);
+    }
+
+    [Fact]
     public void ForSystemRun_ClearPolicyOnExit_True()
     {
         var settings = new SettingsData();

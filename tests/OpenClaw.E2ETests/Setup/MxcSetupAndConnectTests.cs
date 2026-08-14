@@ -142,15 +142,15 @@ public sealed class MxcSetupAndConnectTests
         var env = GatewayTokenEnv(gateway.SharedGatewayToken);
         var nodeId = _fixture.ReadActiveGatewayDeviceId();
         var logCursor = GetTrayLogCursor();
-        var commandText = $"echo {marker}";
+        var commandText = $"Write-Output '{marker}'";
         var invokeParams = JsonSerializer.Serialize(new
         {
             nodeId,
             command = "system.run",
             @params = new
             {
-                command = new[] { "cmd.exe", "/d", "/s", "/c", commandText },
-                rawCommand = commandText,
+                command = new[] { "powershell.exe", "-NoProfile", "-Command", commandText },
+                rawCommand = $"powershell.exe -NoProfile -Command \"{commandText}\"",
                 timeoutMs = SystemRunProofTimeoutMs
             },
             timeoutMs = NodeInvokeProofTimeoutMs,
@@ -192,7 +192,8 @@ public sealed class MxcSetupAndConnectTests
             "[mxc] system.run sandbox request",
             "executor=mxc-direct-appc",
             "contained=True",
-            "shell=<direct-argv>");
+            "shell=<direct-argv>",
+            "uiAllowWindows=True");
         var resultLog = await WaitForTrayLogLineContainingAsync(
             TimeSpan.FromSeconds(30),
             logCursor,
@@ -521,17 +522,21 @@ public sealed class MxcSetupAndConnectTests
         AssertNoPendingRequests(nodes.Stdout);
         Assert.Contains("windows", nodes.Stdout, StringComparison.OrdinalIgnoreCase);
 
+        var gatewayVersion =
+            Environment.GetEnvironmentVariable("OPENCLAW_E2E_GATEWAY_VERSION") ??
+            GatewayReleasePolicy.RecommendedVersion;
+        var nodeCommandsAllowKey = ConfigureGatewayStep.ResolveNodeCommandsAllowKey(gatewayVersion);
         var allowCommands = await _fixture.RunInWslAsync(
-            "openclaw config get gateway.nodes.allowCommands --json",
+            $"openclaw config get {nodeCommandsAllowKey} --json",
             TimeSpan.FromSeconds(30),
             env);
-        AssertCommandSucceeded(allowCommands, "read gateway.nodes.allowCommands before MXC proof");
+        AssertCommandSucceeded(allowCommands, $"read {nodeCommandsAllowKey} before MXC proof");
         using var allowCommandsDoc = JsonDocument.Parse(ExtractJsonValue(allowCommands.Stdout));
         var allowed = ReadStringArray(allowCommandsDoc.RootElement);
         Assert.Contains(allowed, command => command == "system.run");
         Assert.Contains(allowed, command => command == "system.run.prepare");
         Assert.Contains(allowed, command => command == "system.which");
-        Console.WriteLine("[E2E] gateway.nodes.allowCommands includes system.run/system.run.prepare/system.which");
+        Console.WriteLine($"[E2E] {nodeCommandsAllowKey} includes system.run/system.run.prepare/system.which");
 
         using var statusDoc = await _fixture.Client!.CallToolExpectSuccessAsync("app.status");
         AssertReadyStatus(statusDoc.RootElement);

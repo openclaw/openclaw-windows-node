@@ -301,7 +301,7 @@
                                                    HorizontalAlignment="Center"/>
                                     </Border>
                                     <Button Grid.Column="2"
-                                            Click="OnRemoveRule" Tag="{Binding Index}"
+                                            Click="OnRemoveRule" Tag="{Binding Rule}"
                                             Background="Transparent" BorderThickness="0"
                                             Padding="6" MinWidth="0"
                                             AutomationProperties.Name="{Binding RemoveRuleAutomationName}"

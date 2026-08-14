@@ -82,6 +82,7 @@ public sealed partial class SandboxPage : Page
         string Tag,
         bool SandboxEnabled,
         bool AllowOutbound,
+        bool AllowWindowsUi,
         SandboxFolderAccess? DocumentsAccess,
         SandboxFolderAccess? DownloadsAccess,
         SandboxFolderAccess? DesktopAccess,
@@ -93,6 +94,7 @@ public sealed partial class SandboxPage : Page
         Tag: "LockedDown",
         SandboxEnabled: true,
         AllowOutbound: false,
+        AllowWindowsUi: false,
         DocumentsAccess: null,
         DownloadsAccess: null,
         DesktopAccess: null,
@@ -104,6 +106,7 @@ public sealed partial class SandboxPage : Page
         Tag: "Balanced",
         SandboxEnabled: true,
         AllowOutbound: true,
+        AllowWindowsUi: false,
         DocumentsAccess: SandboxFolderAccess.ReadOnly,
         DownloadsAccess: SandboxFolderAccess.ReadOnly,
         DesktopAccess: SandboxFolderAccess.ReadOnly,
@@ -115,6 +118,7 @@ public sealed partial class SandboxPage : Page
         Tag: "Permissive",
         SandboxEnabled: true,
         AllowOutbound: true,
+        AllowWindowsUi: false,
         DocumentsAccess: SandboxFolderAccess.ReadWrite,
         DownloadsAccess: SandboxFolderAccess.ReadWrite,
         DesktopAccess: SandboxFolderAccess.ReadWrite,
@@ -156,6 +160,7 @@ public sealed partial class SandboxPage : Page
             SandboxEnabledToggle.IsOn = settings.SystemRunSandboxEnabled;
 
             NetInternetToggle.IsOn = settings.SystemRunAllowOutbound;
+            WindowsUiToggle.IsOn = settings.SystemRunAllowWindowsUi;
 
             SelectAccessTag(DocsAccessCombo, settings.SandboxDocumentsAccess);
             SelectAccessTag(DownloadsAccessCombo, settings.SandboxDownloadsAccess);
@@ -186,6 +191,7 @@ public sealed partial class SandboxPage : Page
         }
 
         NormalizeSandboxToggleForAvailability();
+        UpdateWindowsUiWarning();
         UpdatePresetHighlight();
         UpdateSandboxStatusCard();
         UpdateControlsEnabledState();
@@ -459,6 +465,7 @@ public sealed partial class SandboxPage : Page
         {
             s.SystemRunSandboxEnabled = preset.SandboxEnabled;
             s.SystemRunAllowOutbound = preset.AllowOutbound;
+            s.SystemRunAllowWindowsUi = preset.AllowWindowsUi;
             s.SandboxDocumentsAccess = preset.DocumentsAccess;
             s.SandboxDownloadsAccess = preset.DownloadsAccess;
             s.SandboxDesktopAccess = preset.DesktopAccess;
@@ -560,6 +567,7 @@ public sealed partial class SandboxPage : Page
     {
         return s.SystemRunSandboxEnabled == p.SandboxEnabled
             && s.SystemRunAllowOutbound == p.AllowOutbound
+            && s.SystemRunAllowWindowsUi == p.AllowWindowsUi
             && s.SandboxDocumentsAccess == p.DocumentsAccess
             && s.SandboxDownloadsAccess == p.DownloadsAccess
             && s.SandboxDesktopAccess == p.DesktopAccess
@@ -744,6 +752,77 @@ public sealed partial class SandboxPage : Page
         s.SystemRunAllowOutbound = NetInternetToggle.IsOn;
         Save();
     }
+
+    private void OnWindowsUiToggled(object sender, RoutedEventArgs e) =>
+        AsyncEventHandlerGuard.Run(
+            OnWindowsUiToggledAsync,
+            new OpenClawTray.AppLogger(),
+            nameof(OnWindowsUiToggled));
+
+    private async Task OnWindowsUiToggledAsync()
+    {
+        if (_suppress) return;
+        if (CurrentApp.Settings is not { } s) return;
+
+        var newValue = WindowsUiToggle.IsOn;
+        var oldValue = s.SystemRunAllowWindowsUi;
+
+        if (newValue && !oldValue)
+        {
+            if (_dialogOpen)
+            {
+                RestoreWindowsUiToggle(oldValue);
+                return;
+            }
+
+            var dialog = new ContentDialog
+            {
+                Title = L("SandboxPage_AllowWindowsUiDialogTitle"),
+                Content = L("SandboxPage_AllowWindowsUiDialogContent"),
+                PrimaryButtonText = L("SandboxPage_AllowWindowsUiDialogPrimary"),
+                CloseButtonText = L("SandboxPage_AllowWindowsUiDialogCancel"),
+                DefaultButton = ContentDialogButton.Close,
+                XamlRoot = XamlRoot,
+            };
+
+            ContentDialogResult result;
+            _dialogOpen = true;
+            try
+            {
+                result = await dialog.ShowAsync();
+            }
+            catch (System.Runtime.InteropServices.COMException)
+            {
+                RestoreWindowsUiToggle(oldValue);
+                return;
+            }
+            finally
+            {
+                _dialogOpen = false;
+            }
+
+            if (result != ContentDialogResult.Primary)
+            {
+                RestoreWindowsUiToggle(oldValue);
+                return;
+            }
+        }
+
+        s.SystemRunAllowWindowsUi = newValue;
+        UpdateWindowsUiWarning();
+        Save();
+    }
+
+    private void RestoreWindowsUiToggle(bool value)
+    {
+        _suppress = true;
+        try { WindowsUiToggle.IsOn = value; }
+        finally { _suppress = false; }
+        UpdateWindowsUiWarning();
+    }
+
+    private void UpdateWindowsUiWarning() =>
+        WindowsUiWarningBar.IsOpen = WindowsUiToggle.IsOn;
 
     private void OnDocsAccessChanged(object sender, SelectionChangedEventArgs e)
     {

@@ -4,6 +4,39 @@ namespace OpenClaw.Tray.Tests.Services;
 
 public sealed class McpRuntimeStatePolicyTests
 {
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void PlanCapabilityEnable_McpOnlyRestartAlwaysRebuildsFromCurrentSettings(
+        bool hasCachedCapabilities)
+    {
+        var plan = McpRuntimeStatePolicy.PlanCapabilityEnable(
+            hasGatewayClient: false,
+            hasCapabilities: hasCachedCapabilities);
+
+        Assert.Equal(McpCapabilityEnablePlan.RebuildFromCurrentSettings, plan);
+    }
+
+    [Fact]
+    public void PlanCapabilityEnable_GatewayClientWithCompleteSetReusesCurrentRegistration()
+    {
+        var plan = McpRuntimeStatePolicy.PlanCapabilityEnable(
+            hasGatewayClient: true,
+            hasCapabilities: true);
+
+        Assert.Equal(McpCapabilityEnablePlan.ReuseCurrent, plan);
+    }
+
+    [Fact]
+    public void PlanCapabilityEnable_GatewayClientWithEmptySetRebuilds()
+    {
+        var plan = McpRuntimeStatePolicy.PlanCapabilityEnable(
+            hasGatewayClient: true,
+            hasCapabilities: false);
+
+        Assert.Equal(McpCapabilityEnablePlan.RebuildFromCurrentSettings, plan);
+    }
+
     [Fact]
     public void PlanStartupNotification_WhenDisabled_Dismisses()
     {

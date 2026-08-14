@@ -146,11 +146,27 @@ public sealed class TrayMenuPopupCompositionTests
         return File.ReadAllText(path);
     }
 
-    private static string ReadStateBuilder()
+    private static string ReadRenderer()
     {
         var path = Path.Combine(
             TestRepositoryPaths.GetRepositoryRoot(),
-            "src", "OpenClaw.Tray.WinUI", "Services", "TrayMenuStateBuilder.cs");
+            "src", "OpenClaw.Tray.WinUI", "Services", "TrayMenuRenderer.cs");
+        return File.ReadAllText(path);
+    }
+
+    private static string ReadTrayController()
+    {
+        var path = Path.Combine(
+            TestRepositoryPaths.GetRepositoryRoot(),
+            "src", "OpenClaw.Tray.WinUI", "Services", "TrayController.cs");
+        return File.ReadAllText(path);
+    }
+
+    private static string ReadPresenter()
+    {
+        var path = Path.Combine(
+            TestRepositoryPaths.GetRepositoryRoot(),
+            "src", "OpenClaw.Tray.WinUI", "Presentation", "TrayMenuPresenter.cs");
         return File.ReadAllText(path);
     }
 
@@ -179,7 +195,7 @@ public sealed class TrayMenuPopupCompositionTests
     [Fact]
     public void BuildTrayMenuPopup_UsesThemeBrushes()
     {
-        var src = ReadStateBuilder();
+        var src = ReadRenderer();
         Assert.Contains("SystemFillColorSuccessBrush", src);
         Assert.Contains("SystemFillColorCautionBrush", src);
         Assert.Contains("SystemFillColorNeutralBrush", src);
@@ -189,12 +205,12 @@ public sealed class TrayMenuPopupCompositionTests
     [Fact]
     public void BuildTrayMenuPopup_SectionOrder_GatewayThenDevicesThenSessions()
     {
-        var src = ReadStateBuilder();
-        var gateway = src.IndexOf("// ── Gateway Section ──", StringComparison.Ordinal);
-        var devices = src.IndexOf("// ── Connected Devices (moved above Sessions) ──", StringComparison.Ordinal);
-        var sessions = src.IndexOf("// ── Sessions (now below Devices) ──", StringComparison.Ordinal);
-        var actions = src.IndexOf("// ── Actions ──", StringComparison.Ordinal);
-        var footer = src.IndexOf("// ── Footer ──", StringComparison.Ordinal);
+        var src = ReadPresenter();
+        var gateway = src.IndexOf("items.Add(BuildGatewayCard(", StringComparison.Ordinal);
+        var devices = src.IndexOf("items.Add(BuildDeviceCard(", StringComparison.Ordinal);
+        var sessions = src.IndexOf("items.Add(BuildSessionsSummary(", StringComparison.Ordinal);
+        var actions = src.IndexOf("items.Add(Action(\"Dashboard\"", StringComparison.Ordinal);
+        var footer = src.IndexOf("\"Companion Settings...\"", StringComparison.Ordinal);
 
         Assert.True(gateway > 0, "Gateway section marker missing");
         Assert.True(devices > gateway, "Devices must follow Gateway");
@@ -206,22 +222,22 @@ public sealed class TrayMenuPopupCompositionTests
     [Fact]
     public void BuildTrayMenuPopup_EmitsPermissionsSubmenuForLocalDevice()
     {
-        var src = ReadStateBuilder();
-        Assert.Contains("BuildPermissionsFlyoutItems", src);
-        Assert.Contains("FluentIconCatalog.Permissions", src);
+        var src = ReadPresenter();
+        Assert.Contains("BuildPermissions(settings)", src);
+        Assert.Contains("Icon = TrayMenuIconIdentity.Permissions", src);
     }
 
     [Fact]
     public void BuildTrayMenuPopup_RoutesAboutAction()
     {
-        Assert.Contains("\"About\", FluentIconCatalog.Build(FluentIconCatalog.About), \"about\"", ReadStateBuilder());
+        Assert.Contains("Action(\"About\", TrayMenuIconIdentity.About, \"about\")", ReadPresenter());
         Assert.Contains("case \"about\":", ReadAppXaml());
     }
 
     [Fact]
     public void BuildTrayMenuPopup_BatchesUpdates()
     {
-        var src = ReadAppXaml();
+        var src = ReadTrayController();
         Assert.Contains("menu.BeginUpdate();", src);
         Assert.Contains("menu.EndUpdate();", src);
     }
@@ -271,17 +287,19 @@ public sealed class TrayMenuPopupCompositionTests
     public void HubWindow_NavigateTo_Normalizes_LegacyNodesTag_BeforeSelectingNavItem()
     {
         var src = ReadHubWindowXaml();
+        var registry = File.ReadAllText(Path.Combine(
+            TestRepositoryPaths.GetRepositoryRoot(),
+            "src", "OpenClaw.Tray.WinUI", "Presentation", "HubPageRegistry.cs"));
 
         // Legacy "nodes" deep links must still land on the Instances rail
-        // item. The normalization rule lives in NormalizeNavTag, which
-        // NavigateTo applies before handing the tag to NavigateInternal
+        // item. NavigateTo applies the registry normalization before NavigateInternal
         // (which is what actually highlights the rail item via
         // FindNavItemForTag and calls Frame.Navigate).
-        var aliasIndex = src.IndexOf("if (tag == \"nodes\") return \"instances\";", StringComparison.Ordinal);
-        var funnelIndex = src.IndexOf("NavigateInternal(NormalizeNavTag(tag))", StringComparison.Ordinal);
+        var aliasIndex = registry.IndexOf("\"nodes\" => \"instances\"", StringComparison.Ordinal);
+        var funnelIndex = src.IndexOf("NavigateInternal(HubPageRegistry.NormalizeTag(tag, _currentAgentId))", StringComparison.Ordinal);
         var selectIndex = src.IndexOf("FindNavItemForTag(NavView.MenuItems, tag)", StringComparison.Ordinal);
 
-        Assert.True(aliasIndex >= 0, "NormalizeNavTag must keep legacy 'nodes' deep links pointing at 'instances'.");
+        Assert.True(aliasIndex >= 0, "HubPageRegistry must keep legacy 'nodes' deep links pointing at 'instances'.");
         Assert.True(funnelIndex >= 0, "NavigateTo must normalize the tag before routing through NavigateInternal.");
         Assert.True(selectIndex >= 0, "NavigateInternal must select a nav item by tag before falling back to direct navigation.");
     }

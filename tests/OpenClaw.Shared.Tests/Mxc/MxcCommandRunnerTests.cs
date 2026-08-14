@@ -10,13 +10,15 @@ public class MxcCommandRunnerTests
 {
     private static SettingsData NewSettings(
         bool sandboxEnabled = true,
-        bool blockHostFallbackWhenMxcUnavailable = false)
+        bool blockHostFallbackWhenMxcUnavailable = false,
+        bool allowWindowsUi = false)
     {
         return new SettingsData
         {
             SystemRunSandboxEnabled = sandboxEnabled,
             SystemRunBlockHostFallbackWhenMxcUnavailable = blockHostFallbackWhenMxcUnavailable,
             SystemRunAllowOutbound = false,
+            SystemRunAllowWindowsUi = allowWindowsUi,
         };
     }
 
@@ -600,6 +602,27 @@ public class MxcCommandRunnerTests
     }
 
     [Fact]
+    public async Task RunAsync_PowerShellDirectArgvUiUnsupported_ReturnsExplicitDeny()
+    {
+        var executor = new FakeSandboxExecutor
+        {
+            ThrowsArbitrary = new NotSupportedException("PowerShell-family shells require UI access"),
+        };
+        var fallback = new FakeCommandRunner();
+        var runner = NewRunner(executor, fallback, NewSettings(sandboxEnabled: true));
+
+        var result = await runner.RunAsync(new CommandRequest
+        {
+            Argv = ["powershell.exe", "-NoProfile", "-Command", "Write-Output hi"],
+        });
+
+        Assert.Equal(-1, result.ExitCode);
+        Assert.Contains("cannot execute PowerShell-family shells", result.Stderr);
+        Assert.Contains("Allow Windows UI APIs", result.Stderr);
+        Assert.Null(fallback.LastRequest);
+    }
+
+    [Fact]
     public async Task RunAsync_OtherNotSupportedException_ReturnsExplicitDeny_DoesNotFallBack()
     {
         var executor = new FakeSandboxExecutor
@@ -965,6 +988,22 @@ public class MxcCommandRunnerTests
     }
 
     [Fact]
+    public async Task RunAsync_SandboxRequestAllowsWindowsUiWhenOperatorOptsIn()
+    {
+        var executor = new FakeSandboxExecutor();
+        var fallback = new FakeCommandRunner();
+        var runner = NewRunner(
+            executor,
+            fallback,
+            NewSettings(sandboxEnabled: true, allowWindowsUi: true));
+
+        await runner.RunAsync(new CommandRequest { Command = "Write-Output hi", Shell = "powershell" });
+
+        Assert.NotNull(executor.LastRequest);
+        Assert.True(executor.LastRequest!.Policy.Ui!.AllowWindows);
+    }
+
+    [Fact]
     public async Task RunAsync_HostFallbackUsesNormalizedEffectiveShellForUnsupportedExplicitShell()
     {
         var executor = new FakeSandboxExecutor();
@@ -988,6 +1027,7 @@ public class MxcCommandRunnerTests
         var fallback = new FakeCommandRunner();
         var settings = NewSettings(sandboxEnabled: true);
         settings.SystemRunAllowOutbound = true;
+        settings.SystemRunAllowWindowsUi = true;
         settings.SandboxClipboard = SandboxClipboardMode.Both;
         settings.SandboxDocumentsAccess = SandboxFolderAccess.ReadOnly;
         settings.SandboxCustomFolders = new()
@@ -1002,12 +1042,14 @@ public class MxcCommandRunnerTests
         var requestLog = Assert.Single(logger.DebugMessages, m => m.Contains("system.run sandbox request", StringComparison.Ordinal));
         Assert.Contains("sandboxSettings={enabled=True", requestLog);
         Assert.Contains("allowOutbound=True", requestLog);
+        Assert.Contains("allowWindowsUi=True", requestLog);
         Assert.Contains("clipboard=Both", requestLog);
         Assert.Contains("customFolderCount=1", requestLog);
         Assert.Contains("settingsDirectoryPath=<set>", requestLog);
         Assert.Contains("policy={readonlyCount=", requestLog);
         Assert.Contains("readwriteCount=1", requestLog);
         Assert.Contains("networkAllowOutbound=True", requestLog);
+        Assert.Contains("uiAllowWindows=True", requestLog);
         Assert.DoesNotContain("sandboxSettingsJson=", requestLog);
         Assert.DoesNotContain("policyJson=", requestLog);
         Assert.DoesNotContain("C:\\Code\\repo", requestLog, StringComparison.OrdinalIgnoreCase);

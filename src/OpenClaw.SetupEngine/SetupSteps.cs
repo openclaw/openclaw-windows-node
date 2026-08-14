@@ -3,6 +3,7 @@ using System.Net;
 using System.Net.Http;
 using System.Net.Sockets;
 using System.Runtime.InteropServices;
+using System.Security.Cryptography;
 using System.Text.Json;
 using OpenClaw.Connection;
 using OpenClaw.Shared;
@@ -1260,6 +1261,10 @@ public sealed class ValidateWslLockdownStep : SetupStep
 
 public sealed class InstallCliStep : SetupStep
 {
+    internal const string StagedValidationPackageReference =
+        "file:/var/lib/openclaw/setup-package/openclaw-current.tgz";
+    private const string StagedValidationPackageDirectory = "/var/lib/openclaw/setup-package";
+
     public override string Id => "install-cli";
     public override string DisplayName => "Install OpenClaw CLI";
     public override RetryPolicy Retry => new(MaxAttempts: 2, InitialDelay: TimeSpan.FromSeconds(5));
@@ -1268,6 +1273,8 @@ public sealed class InstallCliStep : SetupStep
     {
         var distro = ctx.DistroName!;
         var user = ctx.Config.Wsl.User;
+        var installVersion = ctx.Config.Gateway.Version;
+        var validationPackageStaged = false;
 
         // Download and run install script (URL configurable)
         var installUrl = ctx.Config.Gateway.InstallUrl ?? GatewayReleasePolicy.DefaultInstallUrl;
@@ -1279,87 +1286,109 @@ public sealed class InstallCliStep : SetupStep
             return StepResult.Fail($"Installer URL must be HTTPS: {installUrl}");
         }
 
-        string installScript;
         var officialInstaller = GatewayReleasePolicy.IsOfficialInstallerUrl(installUrl);
+        if (ctx.Config.Gateway.ValidationPackagePath is { } validationPackagePath)
+        {
+            var stageResult = await StageValidationPackageAsync(
+                ctx,
+                distro,
+                validationPackagePath,
+                ct);
+            if (!stageResult.IsSuccess)
+                return stageResult;
+
+            installVersion = StagedValidationPackageReference;
+            validationPackageStaged = true;
+        }
+
         try
         {
-            installScript = BuildInstallCommand(
-                installUrl,
-                ctx.Config.Gateway.Version,
-                officialInstaller ? GatewayReleasePolicy.NodeVersion : null);
-        }
-        catch (ArgumentException ex)
-        {
-            return StepResult.Fail(ex.Message);
-        }
-
-        var result = await ctx.Commands.RunInWslAsync(distro, installScript, TimeSpan.FromMinutes(5), ct: ct);
-
-        if (result.ExitCode != 0)
-            return StepResult.Fail($"CLI install failed (exit {result.ExitCode}): {result.Stderr}");
-
-        var verifyCommands = new (string Command, string? ExecutablePath)[]
-        {
-            ("openclaw --version", null),
-            ($"/home/{user}/.openclaw/bin/openclaw --version", $"/home/{user}/.openclaw/bin/openclaw"),
-            ("/opt/openclaw/bin/openclaw --version", "/opt/openclaw/bin/openclaw"),
-            ("/usr/local/bin/openclaw --version", "/usr/local/bin/openclaw")
-        };
-
-        foreach (var (cmd, executablePath) in verifyCommands)
-        {
-            var verify = await ctx.Commands.RunInWslAsync(distro, cmd, TimeSpan.FromSeconds(15), ct: ct);
-            if (verify.ExitCode == 0 && !string.IsNullOrWhiteSpace(verify.Stdout))
+            string installScript;
+            try
             {
-                var selectedVersion = ctx.Config.Gateway.Version!;
-                if (!GatewayReleaseVersion.TryExtract(verify.Stdout, out var installedVersion) ||
-                    !string.Equals(installedVersion, selectedVersion, StringComparison.Ordinal))
-                {
-                    var actual = string.IsNullOrWhiteSpace(installedVersion) ? "unparseable" : installedVersion;
-                    var failure = new GatewayCompatibilityException(
-                        GatewayCompatibilityFailureKind.InstalledVersionMismatch,
-                        $"Gateway compatibility check failed: selected version {selectedVersion}, installed CLI reported {actual}.");
-                    return StepResult.Terminal(failure.Message, failure);
-                }
+                installScript = BuildInstallCommand(
+                    installUrl,
+                    installVersion,
+                    officialInstaller ? GatewayReleasePolicy.NodeVersion : null);
+            }
+            catch (ArgumentException ex)
+            {
+                return StepResult.Fail(ex.Message);
+            }
 
-                if (executablePath != null)
-                {
-                    var pathResult = await EnsureCliOnDefaultPathAsync(ctx, distro, executablePath, ct);
-                    if (!pathResult.IsSuccess)
-                        return pathResult;
-                }
+            var result = await ctx.Commands.RunInWslAsync(distro, installScript, TimeSpan.FromMinutes(5), ct: ct);
 
-                if (officialInstaller)
+            if (result.ExitCode != 0)
+                return StepResult.Fail($"CLI install failed (exit {result.ExitCode}): {result.Stderr}");
+
+            var verifyCommands = new (string Command, string? ExecutablePath)[]
+            {
+                ("openclaw --version", null),
+                ($"/home/{user}/.openclaw/bin/openclaw --version", $"/home/{user}/.openclaw/bin/openclaw"),
+                ("/opt/openclaw/bin/openclaw --version", "/opt/openclaw/bin/openclaw"),
+                ("/usr/local/bin/openclaw --version", "/usr/local/bin/openclaw")
+            };
+
+            foreach (var (cmd, executablePath) in verifyCommands)
+            {
+                var verify = await ctx.Commands.RunInWslAsync(distro, cmd, TimeSpan.FromSeconds(15), ct: ct);
+                if (verify.ExitCode == 0 && !string.IsNullOrWhiteSpace(verify.Stdout))
                 {
-                    var expectedRuntimeVersion = $"v{GatewayReleasePolicy.NodeVersion}";
-                    var runtimeCommand = $"/home/{user}/.openclaw/tools/node/bin/node --version";
-                    var runtime = await ctx.Commands.RunInWslAsync(
-                        distro,
-                        runtimeCommand,
-                        TimeSpan.FromSeconds(15),
-                        ct: ct);
-                    var actualRuntimeVersion = runtime.Stdout.Trim();
-                    if (runtime.ExitCode != 0 ||
-                        !string.Equals(actualRuntimeVersion, expectedRuntimeVersion, StringComparison.Ordinal))
+                    var selectedVersion = ctx.Config.Gateway.Version!;
+                    if (!GatewayReleaseVersion.TryExtract(verify.Stdout, out var installedVersion) ||
+                        !string.Equals(installedVersion, selectedVersion, StringComparison.Ordinal))
                     {
-                        var actual = string.IsNullOrWhiteSpace(actualRuntimeVersion)
-                            ? "missing"
-                            : actualRuntimeVersion;
+                        var actual = string.IsNullOrWhiteSpace(installedVersion) ? "unparseable" : installedVersion;
                         var failure = new GatewayCompatibilityException(
-                            GatewayCompatibilityFailureKind.InstalledRuntimeMismatch,
-                            $"Gateway compatibility check failed: selected Node runtime {expectedRuntimeVersion}, installed runtime reported {actual}.");
+                            GatewayCompatibilityFailureKind.InstalledVersionMismatch,
+                            $"Gateway compatibility check failed: selected version {selectedVersion}, installed CLI reported {actual}.");
                         return StepResult.Terminal(failure.Message, failure);
                     }
 
-                    ctx.Logger.Info($"Gateway Node runtime: {actualRuntimeVersion}");
+                    if (executablePath != null)
+                    {
+                        var pathResult = await EnsureCliOnDefaultPathAsync(ctx, distro, executablePath, ct);
+                        if (!pathResult.IsSuccess)
+                            return pathResult;
+                    }
+
+                    if (officialInstaller)
+                    {
+                        var expectedRuntimeVersion = $"v{GatewayReleasePolicy.NodeVersion}";
+                        var runtimeCommand = $"/home/{user}/.openclaw/tools/node/bin/node --version";
+                        var runtime = await ctx.Commands.RunInWslAsync(
+                            distro,
+                            runtimeCommand,
+                            TimeSpan.FromSeconds(15),
+                            ct: ct);
+                        var actualRuntimeVersion = runtime.Stdout.Trim();
+                        if (runtime.ExitCode != 0 ||
+                            !string.Equals(actualRuntimeVersion, expectedRuntimeVersion, StringComparison.Ordinal))
+                        {
+                            var actual = string.IsNullOrWhiteSpace(actualRuntimeVersion)
+                                ? "missing"
+                                : actualRuntimeVersion;
+                            var failure = new GatewayCompatibilityException(
+                                GatewayCompatibilityFailureKind.InstalledRuntimeMismatch,
+                                $"Gateway compatibility check failed: selected Node runtime {expectedRuntimeVersion}, installed runtime reported {actual}.");
+                            return StepResult.Terminal(failure.Message, failure);
+                        }
+
+                        ctx.Logger.Info($"Gateway Node runtime: {actualRuntimeVersion}");
+                    }
+
+                    ctx.Logger.Info($"OpenClaw CLI version: {verify.Stdout.Trim()}");
+                    return StepResult.Ok($"CLI installed: {verify.Stdout.Trim()}");
                 }
-
-                ctx.Logger.Info($"OpenClaw CLI version: {verify.Stdout.Trim()}");
-                return StepResult.Ok($"CLI installed: {verify.Stdout.Trim()}");
             }
-        }
 
-        return StepResult.Fail("CLI installed but not found in any known location");
+            return StepResult.Fail("CLI installed but not found in any known location");
+        }
+        finally
+        {
+            if (validationPackageStaged)
+                await CleanupStagedValidationPackageAsync(ctx, distro);
+        }
     }
 
     internal static string BuildInstallCommand(
@@ -1388,6 +1417,144 @@ public sealed class InstallCliStep : SetupStep
         }
 
         return $"curl -fsSL --proto '=https' --tlsv1.2 '{escapedUrl}' | bash -s -- --version '{escapedVersion}'{runtimeArgument}";
+    }
+
+    internal static bool TryValidateCandidatePackagePath(
+        string candidatePackagePath,
+        out string normalizedPath,
+        out string? error)
+    {
+        normalizedPath = "";
+        error = null;
+
+        if (!Path.IsPathFullyQualified(candidatePackagePath) ||
+            !candidatePackagePath.EndsWith(".tgz", StringComparison.OrdinalIgnoreCase))
+        {
+            error = "Gateway candidate package must name an absolute Windows .tgz file.";
+            return false;
+        }
+
+        var root = Path.GetPathRoot(candidatePackagePath);
+        if (string.IsNullOrWhiteSpace(root) || root.Length < 2 || root[1] != ':')
+        {
+            error = "Gateway candidate package must be on a local Windows drive.";
+            return false;
+        }
+
+        try
+        {
+            normalizedPath = Path.GetFullPath(candidatePackagePath);
+            if (!File.Exists(normalizedPath))
+            {
+                error = "Gateway candidate package does not exist.";
+                return false;
+            }
+
+            if (new FileInfo(normalizedPath).Length == 0)
+            {
+                error = "Gateway candidate package must not be empty.";
+                return false;
+            }
+        }
+        catch (Exception ex) when (
+            ex is ArgumentException
+            or IOException
+            or NotSupportedException
+            or UnauthorizedAccessException)
+        {
+            normalizedPath = "";
+            error = $"Gateway candidate package could not be read: {ex.Message}";
+            return false;
+        }
+
+        return true;
+    }
+
+    private static async Task<StepResult> StageValidationPackageAsync(
+        SetupContext ctx,
+        string distro,
+        string candidatePackagePath,
+        CancellationToken ct)
+    {
+        if (!TryValidateCandidatePackagePath(candidatePackagePath, out var sourcePath, out var validationError))
+            return StepResult.Fail(validationError ?? "Gateway candidate package is invalid.");
+
+        var prepare = await ctx.Commands.RunInWslAsync(
+            distro,
+            $"install -d -m 0755 {StagedValidationPackageDirectory}",
+            TimeSpan.FromSeconds(30),
+            ct: ct,
+            user: "root");
+        if (prepare.ExitCode != 0)
+            return StepResult.Fail($"Could not prepare gateway candidate staging directory: {prepare.Stderr}");
+
+        var stagedSuccessfully = false;
+        try
+        {
+            var stagedPath = StagedValidationPackageReference["file:".Length..];
+            var sourceHash = ComputeSha256(sourcePath);
+            await using var source = File.OpenRead(sourcePath);
+            var copy = await ctx.Commands.RunAsync(
+                WslConstants.WslExePath,
+                [
+                    "-d", distro,
+                    "-u", "root",
+                    "--", "bash", "-c",
+                    $"set -e; cat > {stagedPath}; chmod 0644 {stagedPath}; sha256sum {stagedPath} | cut -d ' ' -f1"
+                ],
+                TimeSpan.FromMinutes(2),
+                ct: ct,
+                stdinStream: source);
+
+            if (copy.ExitCode != 0)
+                return StepResult.Fail($"Could not copy gateway candidate package into WSL: {copy.Stderr}");
+
+            if (!string.Equals(sourceHash, copy.Stdout.Trim(), StringComparison.OrdinalIgnoreCase))
+                return StepResult.Fail("Gateway candidate package changed while it was copied into WSL.");
+
+            ctx.Logger.Info("Copied verified gateway candidate package into the isolated WSL instance.");
+            stagedSuccessfully = true;
+            return StepResult.Ok();
+        }
+        catch (Exception ex) when (
+            ex is IOException
+            or UnauthorizedAccessException)
+        {
+            return StepResult.Fail($"Could not copy gateway candidate package into WSL: {ex.Message}");
+        }
+        finally
+        {
+            if (!stagedSuccessfully)
+                await CleanupStagedValidationPackageAsync(ctx, distro);
+        }
+    }
+
+    private static async Task CleanupStagedValidationPackageAsync(
+        SetupContext ctx,
+        string distro)
+    {
+        using var cleanupCts = new CancellationTokenSource(TimeSpan.FromSeconds(15));
+        try
+        {
+            var cleanup = await ctx.Commands.RunInWslAsync(
+                distro,
+                $"rm -rf -- {StagedValidationPackageDirectory}",
+                TimeSpan.FromSeconds(15),
+                ct: cleanupCts.Token,
+                user: "root");
+            if (cleanup.ExitCode != 0)
+                ctx.Logger.Warn($"Could not remove staged gateway candidate package: {cleanup.Stderr}");
+        }
+        catch (OperationCanceledException) when (cleanupCts.IsCancellationRequested)
+        {
+            ctx.Logger.Warn("Timed out removing staged gateway candidate package.");
+        }
+    }
+
+    private static string ComputeSha256(string path)
+    {
+        using var stream = File.OpenRead(path);
+        return Convert.ToHexString(SHA256.HashData(stream));
     }
 
     private static async Task<StepResult> EnsureCliOnDefaultPathAsync(
@@ -1448,6 +1615,9 @@ public sealed class ConfigureGatewayStep : SetupStep
 {
     internal const string DevicePairPublicUrlKey = "plugins.entries.device-pair.config.publicUrl";
     internal const string DevicePairEnabledKey = "plugins.entries.device-pair.enabled";
+    internal const string LegacyNodeCommandsAllowKey = "gateway.nodes.allowCommands";
+    internal const string NodeCommandsAllowKey = "gateway.nodes.commands.allow";
+    internal const string NodeCommandsConfigMigrationVersion = "2026.7.2";
     // Each `openclaw config set` emitted below spawns the Node CLI fresh inside WSL; on a
     // newly created distro with a cold cache that is ~4-5s apiece. Budget the step by how
     // many config commands we actually emit -- BuildConfigCommands grows with the
@@ -1471,6 +1641,11 @@ public sealed class ConfigureGatewayStep : SetupStep
             return StepResult.Terminal($"Invalid Gateway.Bind value '{gw.Bind}'. Must be 'loopback' or 'lan'.");
         if (TailscaleSetupPolicy.ValidateConfig(ctx.Config) is { } tailscaleConfigError)
             return StepResult.Terminal(tailscaleConfigError);
+        if (HasConflictingNodeCommandsAllowOverrides(gw.ExtraConfig))
+        {
+            return StepResult.Terminal(
+                $"Gateway.ExtraConfig cannot define both {LegacyNodeCommandsAllowKey} and {NodeCommandsAllowKey}.");
+        }
 
         // Generate a shared gateway token
         var token = Guid.NewGuid().ToString("N") + Guid.NewGuid().ToString("N");
@@ -1479,7 +1654,9 @@ public sealed class ConfigureGatewayStep : SetupStep
 
         var allowedCommandsJson = JsonSerializer.Serialize(ctx.Config.Capabilities.GetEnabledCommandIds());
         var escapedAllowedCommands = WslShellQuoting.QuotePosixSingleQuote(allowedCommandsJson);
-        var extraConfigOverridesAllowCommands = gw.ExtraConfig?.ContainsKey("gateway.nodes.allowCommands") == true;
+        var nodeCommandsAllowKey = ResolveNodeCommandsAllowKey(gw.Version);
+        var extraConfigOverridesAllowCommands =
+            gw.ExtraConfig?.Keys.Any(IsNodeCommandsAllowKey) == true;
         if (gw.ExtraConfig is { Count: > 0 })
         {
             foreach (var key in gw.ExtraConfig.Keys)
@@ -1491,9 +1668,9 @@ public sealed class ConfigureGatewayStep : SetupStep
 
         var configCommands = BuildConfigCommands(gw, port, escapedAllowedCommands, ctx.Config.Tailscale);
 
-        ctx.Logger.Info($"Gateway node allowCommands derived from setup capabilities: {allowedCommandsJson}");
+        ctx.Logger.Info($"Gateway node command allowlist ({nodeCommandsAllowKey}) derived from setup capabilities: {allowedCommandsJson}");
         if (extraConfigOverridesAllowCommands)
-            ctx.Logger.Warn("Gateway.ExtraConfig overrides derived gateway.nodes.allowCommands");
+            ctx.Logger.Warn($"Gateway.ExtraConfig overrides derived {nodeCommandsAllowKey}");
         if (GetDefaultDevicePairPublicUrl(gw, port, ctx.Config.Tailscale.Enabled) is { } defaultPublicUrl &&
             gw.ExtraConfig?.ContainsKey(DevicePairPublicUrlKey) != true)
         {
@@ -1532,6 +1709,14 @@ public sealed class ConfigureGatewayStep : SetupStep
         string escapedAllowedCommands,
         TailscaleConfig? tailscale = null)
     {
+        var nodeCommandsAllowKey = ResolveNodeCommandsAllowKey(gw.Version);
+        if (HasConflictingNodeCommandsAllowOverrides(gw.ExtraConfig))
+        {
+            throw new ArgumentException(
+                $"Gateway.ExtraConfig cannot define both {LegacyNodeCommandsAllowKey} and {NodeCommandsAllowKey}.",
+                nameof(gw));
+        }
+
         var configCommands = $"""
             openclaw plugins registry --refresh
             openclaw config set gateway.mode local
@@ -1540,7 +1725,7 @@ public sealed class ConfigureGatewayStep : SetupStep
             openclaw config set gateway.auth.mode {gw.AuthMode}
             openclaw config set gateway.auth.token "$OPENCLAW_GATEWAY_TOKEN"
             openclaw config set gateway.reload.mode {gw.ReloadMode}
-            openclaw config set gateway.nodes.allowCommands {escapedAllowedCommands}
+            openclaw config set {nodeCommandsAllowKey} {escapedAllowedCommands}
             """;
 
         if (tailscale?.Enabled == true)
@@ -1585,12 +1770,40 @@ public sealed class ConfigureGatewayStep : SetupStep
                     throw new ArgumentException($"Invalid Gateway.ExtraConfig key '{key}'. Keys may contain only letters, digits, '.', '_', and '-'.", nameof(gw));
 
                 var escapedValue = WslShellQuoting.QuotePosixSingleQuote(value);
-                configCommands += $"\n            openclaw config set {key} {escapedValue}";
+                var effectiveKey = IsNodeCommandsAllowKey(key)
+                    ? nodeCommandsAllowKey
+                    : key;
+                configCommands += $"\n            openclaw config set {effectiveKey} {escapedValue}";
             }
         }
 
         return configCommands;
     }
+
+    internal static string ResolveNodeCommandsAllowKey(string? gatewayVersion)
+    {
+        var selectedVersion = string.IsNullOrWhiteSpace(gatewayVersion)
+            ? GatewayReleasePolicy.RecommendedVersion
+            : gatewayVersion.Trim();
+        if (!GatewayReleaseVersion.TryParse(selectedVersion, out var parsedVersion))
+            throw new ArgumentException($"Gateway version '{selectedVersion}' is not an exact stable release.", nameof(gatewayVersion));
+        if (!GatewayReleaseVersion.TryParse(NodeCommandsConfigMigrationVersion, out var migrationVersion))
+            throw new InvalidOperationException("Gateway node command config migration version is invalid.");
+
+        return parsedVersion.CompareTo(migrationVersion) >= 0
+            ? NodeCommandsAllowKey
+            : LegacyNodeCommandsAllowKey;
+    }
+
+    internal static bool IsNodeCommandsAllowKey(string key) =>
+        string.Equals(key, LegacyNodeCommandsAllowKey, StringComparison.Ordinal) ||
+        string.Equals(key, NodeCommandsAllowKey, StringComparison.Ordinal);
+
+    internal static bool HasConflictingNodeCommandsAllowOverrides(
+        IReadOnlyDictionary<string, string>? extraConfig) =>
+        extraConfig is not null &&
+        extraConfig.ContainsKey(LegacyNodeCommandsAllowKey) &&
+        extraConfig.ContainsKey(NodeCommandsAllowKey);
 
     // Budget = base + per-command, floored. Scales the WSL timeout with the number of
     // `openclaw config set` invocations the step emits so it cannot silently regress as
@@ -1615,6 +1828,11 @@ public sealed class ConfigureGatewayStep : SetupStep
 
     internal static string? GetDefaultDevicePairPublicUrl(GatewayConfig gw, int port, bool tailscaleEnabled = false) =>
         gw.Bind == "loopback" && !tailscaleEnabled ? $"http://127.0.0.1:{port}" : null;
+
+    internal static string GetEffectiveReloadMode(GatewayConfig gw) =>
+        gw.ExtraConfig?.TryGetValue("gateway.reload.mode", out var overrideMode) == true
+            ? overrideMode
+            : gw.ReloadMode;
 
     internal static bool IsSafeExtraConfigKey(string value)
         => System.Text.RegularExpressions.Regex.IsMatch(value, "^[A-Za-z0-9._-]+$");
@@ -1650,31 +1868,44 @@ public sealed class StartGatewayStep : SetupStep
     public override string DisplayName => "Start gateway";
     public override RetryPolicy Retry => new(MaxAttempts: 3, InitialDelay: TimeSpan.FromSeconds(3));
 
-    public override async Task<StepResult> ExecuteAsync(SetupContext ctx, CancellationToken ct)
+    public override Task<StepResult> ExecuteAsync(SetupContext ctx, CancellationToken ct) =>
+        StartOrRestartAndWaitForHealthAsync(ctx, restart: false, ct);
+
+    internal static Task<StepResult> RestartAndWaitForHealthAsync(
+        SetupContext ctx,
+        CancellationToken ct) =>
+        StartOrRestartAndWaitForHealthAsync(ctx, restart: true, ct);
+
+    private static async Task<StepResult> StartOrRestartAndWaitForHealthAsync(
+        SetupContext ctx,
+        bool restart,
+        CancellationToken ct)
     {
         var distro = ctx.DistroName!;
         var pathCmd = ctx.WslPathPrefix;
+        var action = restart ? "restart" : "start";
 
-        // Check for port conflicts before starting
-        var portCheck = await ctx.Commands.RunInWslAsync(
-            distro, $"ss -tlnp 2>/dev/null | grep ':{ctx.Config.GatewayPort}\\b' || true",
-            TimeSpan.FromSeconds(10), ct: ct);
-
-        if (!string.IsNullOrWhiteSpace(portCheck.Stdout) && portCheck.Stdout.Contains($":{ctx.Config.GatewayPort}"))
+        if (!restart)
         {
-            if (!portCheck.Stdout.Contains("openclaw", StringComparison.OrdinalIgnoreCase))
-            {
-                ctx.Logger.Warn($"Port {ctx.Config.GatewayPort} is in use by another process:\n{portCheck.Stdout.Trim()}");
-                return StepResult.Fail(
-                    $"Port {ctx.Config.GatewayPort} is already in use by another process. Either stop the conflicting process or change GatewayPort in the setup config.");
-            }
+            var portCheck = await ctx.Commands.RunInWslAsync(
+                distro, $"ss -tlnp 2>/dev/null | grep ':{ctx.Config.GatewayPort}\\b' || true",
+                TimeSpan.FromSeconds(10), ct: ct);
 
-            ctx.Logger.Info($"Port {ctx.Config.GatewayPort} appears to be in use by openclaw — proceeding");
+            if (!string.IsNullOrWhiteSpace(portCheck.Stdout) && portCheck.Stdout.Contains($":{ctx.Config.GatewayPort}"))
+            {
+                if (!portCheck.Stdout.Contains("openclaw", StringComparison.OrdinalIgnoreCase))
+                {
+                    ctx.Logger.Warn($"Port {ctx.Config.GatewayPort} is in use by another process:\n{portCheck.Stdout.Trim()}");
+                    return StepResult.Fail(
+                        $"Port {ctx.Config.GatewayPort} is already in use by another process. Either stop the conflicting process or change GatewayPort in the setup config.");
+                }
+
+                ctx.Logger.Info($"Port {ctx.Config.GatewayPort} appears to be in use by openclaw — proceeding");
+            }
         }
 
-        // Start the service
         var start = await ctx.Commands.RunInWslAsync(
-            distro, $"{pathCmd} && openclaw gateway start", TimeSpan.FromSeconds(30), ct: ct);
+            distro, $"{pathCmd} && openclaw gateway {action}", TimeSpan.FromSeconds(30), ct: ct);
 
         if (start.ExitCode != 0)
         {
@@ -1688,17 +1919,28 @@ public sealed class StartGatewayStep : SetupStep
                     TimeSpan.FromSeconds(10),
                     ct: ct);
                 await Task.Delay(2000, ct);
-                start = await ctx.Commands.RunInWslAsync(distro, $"{pathCmd} && openclaw gateway start", TimeSpan.FromSeconds(30), ct: ct);
+                start = await ctx.Commands.RunInWslAsync(
+                    distro,
+                    $"{pathCmd} && openclaw gateway {action}",
+                    TimeSpan.FromSeconds(30),
+                    ct: ct);
                 if (start.ExitCode != 0)
-                    return StepResult.Fail($"Gateway start failed after reset: {start.Stderr}");
+                    return StepResult.Fail($"Gateway {action} failed after reset: {start.Stderr}");
             }
             else
             {
-                return StepResult.Fail($"Gateway start failed (exit {start.ExitCode}): {start.Stderr}");
+                return StepResult.Fail($"Gateway {action} failed (exit {start.ExitCode}): {start.Stderr}");
             }
         }
 
-        // Wait for health endpoint
+        return await WaitForHealthAsync(ctx, ct);
+    }
+
+    internal static async Task<StepResult> WaitForHealthAsync(
+        SetupContext ctx,
+        CancellationToken ct)
+    {
+        var distro = ctx.DistroName!;
         ctx.Logger.Info("Waiting for gateway health endpoint...");
         var healthDeadline = DateTimeOffset.UtcNow.Add(TimeSpan.FromSeconds(ctx.Config.Gateway.HealthTimeoutSeconds));
 

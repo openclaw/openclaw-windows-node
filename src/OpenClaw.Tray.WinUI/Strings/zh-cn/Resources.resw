@@ -4630,6 +4630,42 @@
   <data name="SandboxPage_LocalNetworkDevicesAnd.Text" xml:space="preserve">
     <value>本地网络设备和共享尚未包含在内。</value>
   </data>
+  <data name="SandboxPage_CommandCompatibility.Text" xml:space="preserve">
+    <value>🪟 命令兼容性</value>
+  </data>
+  <data name="SandboxPage_AllowWindowsUi.Header" xml:space="preserve">
+    <value>允许 Windows UI API</value>
+  </data>
+  <data name="SandboxPage_AllowWindowsUi.OffContent" xml:space="preserve">
+    <value>关闭：阻止 Win32k 系统调用</value>
+  </data>
+  <data name="SandboxPage_AllowWindowsUi.OnContent" xml:space="preserve">
+    <value>开启：PowerShell 和类似工具可以启动</value>
+  </data>
+  <data name="SandboxPage_AllowWindowsUi.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>允许沙盒命令使用 Windows UI API</value>
+  </data>
+  <data name="SandboxPage_WindowsUiCompatibilityDescription.Text" xml:space="preserve">
+    <value>PowerShell、whoami、tasklist 及许多其他控制台工具在启动时会使用 Windows UI API。</value>
+  </data>
+  <data name="SandboxPage_WindowsUiWarning.Title" xml:space="preserve">
+    <value>Win32k 边界已禁用</value>
+  </data>
+  <data name="SandboxPage_WindowsUiWarning.Message" xml:space="preserve">
+    <value>文件、网络、剪贴板、超时和命令审批控制仍然有效，但允许使用 Win32k 系统调用。</value>
+  </data>
+  <data name="SandboxPage_AllowWindowsUiDialogTitle" xml:space="preserve">
+    <value>允许 Windows UI API？</value>
+  </data>
+  <data name="SandboxPage_AllowWindowsUiDialogContent" xml:space="preserve">
+    <value>这将允许沙盒命令使用 Windows UI 系统调用。当前 MXC 版本中的 PowerShell、whoami、tasklist 和其他控制台工具需要此权限才能启动。&#xA;&#xA;文件、网络、剪贴板、超时和命令审批控制仍然有效，但 Win32k 系统调用阻止将被禁用。仅在需要更广泛的命令兼容性时启用。</value>
+  </data>
+  <data name="SandboxPage_AllowWindowsUiDialogPrimary" xml:space="preserve">
+    <value>允许 UI API</value>
+  </data>
+  <data name="SandboxPage_AllowWindowsUiDialogCancel" xml:space="preserve">
+    <value>取消</value>
+  </data>
   <data name="SandboxPage_Limits.Text" xml:space="preserve">
     <value>⏱ 限制</value>
   </data>

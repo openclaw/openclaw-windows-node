@@ -217,7 +217,8 @@ public sealed class MxcCommandRunner : IHostFallbackAwareCommandRunner, IDirectA
             {
                 return DenySandboxUnavailable(
                     "Sandboxed system.run cannot execute PowerShell-family shells with the current MXC UI-deny policy. " +
-                    "Retry with shell='cmd' or explicitly disable sandboxing if uncontained host execution is acceptable.",
+                    "Enable 'Allow Windows UI APIs' in Node Sandbox settings, retry with shell='cmd', " +
+                    "or disable sandboxing if uncontained host execution is acceptable.",
                     $"[mxc] system.run denied: PowerShell-family shell unsupported by MXC UI-deny policy: {ex.Message}");
             }
 
@@ -453,7 +454,7 @@ public sealed class MxcCommandRunner : IHostFallbackAwareCommandRunner, IDirectA
             "[mxc] system.run sandbox request " +
             $"executor={_executor.Name}; contained={_executor.IsContained}; " +
             $"sandboxSettings={{enabled={settings.SystemRunSandboxEnabled},blockHostFallbackWhenMxcUnavailable={settings.SystemRunBlockHostFallbackWhenMxcUnavailable}," +
-            $"allowOutbound={settings.SystemRunAllowOutbound},clipboard={settings.SandboxClipboard},documents={settings.SandboxDocumentsAccess?.ToString() ?? "<null>"}," +
+            $"allowOutbound={settings.SystemRunAllowOutbound},allowWindowsUi={settings.SystemRunAllowWindowsUi},clipboard={settings.SandboxClipboard},documents={settings.SandboxDocumentsAccess?.ToString() ?? "<null>"}," +
             $"downloads={settings.SandboxDownloadsAccess?.ToString() ?? "<null>"},desktop={settings.SandboxDesktopAccess?.ToString() ?? "<null>"}," +
             $"customFolderCount={settings.SandboxCustomFolders?.Count ?? 0},timeoutMs={settings.SandboxTimeoutMs},maxOutputBytes={settings.SandboxMaxOutputBytes}," +
             $"settingsDirectoryPath={(string.IsNullOrWhiteSpace(settingsDirectoryPath) ? "<null>" : "<set>")}}}; " +
@@ -484,6 +485,7 @@ public sealed class MxcCommandRunner : IHostFallbackAwareCommandRunner, IDirectA
             systemRunSandboxEnabled = settings.SystemRunSandboxEnabled,
             systemRunBlockHostFallbackWhenMxcUnavailable = settings.SystemRunBlockHostFallbackWhenMxcUnavailable,
             systemRunAllowOutbound = settings.SystemRunAllowOutbound,
+            systemRunAllowWindowsUi = settings.SystemRunAllowWindowsUi,
             sandboxClipboard = settings.SandboxClipboard,
             sandboxDocumentsAccess = settings.SandboxDocumentsAccess,
             sandboxDownloadsAccess = settings.SandboxDownloadsAccess,

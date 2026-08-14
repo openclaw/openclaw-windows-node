@@ -213,6 +213,44 @@ public sealed class ChatTimelinePresentationTests
     }
 
     [Fact]
+    public void ReactorComposer_GatesClickableControlsUntilLayoutIsUsable()
+    {
+        var root = File.ReadAllText(Path.Combine(
+            TestRepositoryPaths.GetRepositoryRoot(),
+            "src",
+            "OpenClaw.Tray.WinUI",
+            "Chat",
+            "OpenClawReactorChatRoot.cs"));
+
+        Assert.Contains("internal static class ComposerAutomationVisibility", root);
+        Assert.Contains("control.IsHitTestVisible = false;", root);
+        Assert.Contains("control.IsLoaded", root);
+        Assert.Contains("control.ActualWidth > 0", root);
+        Assert.Contains("control.ActualHeight > 0", root);
+        Assert.Contains("AccessibilityView.Raw", root);
+        Assert.Contains("AccessibilityView.Control", root);
+        Assert.True(
+            root.Split("AccessibilityView.Raw", StringSplitOptions.None).Length - 1 >= 4);
+        Assert.Contains(".AutomationId(\"ChatComposerInput\")", root);
+        Assert.Contains("AutomationProperties.SetAutomationId(", root);
+        Assert.Contains("RaisePropertyChangedEvent(", root);
+        Assert.Contains("AutomationElementIdentifiers.IsOffscreenProperty", root);
+        Assert.Equal(
+            4,
+            root.Split(
+                "ComposerAutomationVisibility.Prepare(",
+                StringSplitOptions.None).Length - 1);
+        Assert.Contains("\"ChatComposerAttach\"", root);
+        Assert.Contains("\"ChatComposerSpeakerToggle\"", root);
+        Assert.Contains("\"ChatComposerSessionPicker\"", root);
+        Assert.Contains("\"ChatComposerModelPicker\"", root);
+        Assert.Contains("\"ChatComposerReasoningPicker\"", root);
+        Assert.Contains("\"ChatComposerVoice\"", root);
+        Assert.Contains("\"ChatComposerSettings\"", root);
+        Assert.Contains("\"ChatComposerPrimaryAction\"", root);
+    }
+
+    [Fact]
     public void ReactorComposer_BoundsAndAnnouncesQueuedMessages()
     {
         var root = File.ReadAllText(Path.Combine(

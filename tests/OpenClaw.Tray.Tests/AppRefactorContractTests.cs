@@ -40,7 +40,7 @@ public sealed class AppRefactorContractTests
             "await ShowOnboardingAsync();",
             "EnsureNodeService(_settings);",
             "InitializeGatewayClient();",
-            "StartDeepLinkServer();");
+            "await _activationRouter.StartForwardedActivationListenerAsync(this, CancellationToken.None);");
     }
 
     [Fact]
@@ -431,8 +431,8 @@ public sealed class AppRefactorContractTests
         var rawHandler = ExtractMethod(source, "OnGatewayConnectionStatusChanged");
 
         Assert.Contains("ConnectionStatusPresenter.ToLegacyStatus(snap)", managerHandler);
-        Assert.Contains("SyncConnectionToggle(mapped, snap.OverallState)", managerHandler);
-        Assert.Contains("_hubWindow?.UpdateTitleBarStatus(snap, mapped)", managerHandler);
+        Assert.Contains("_trayController?.ApplyConnectionState(mapped, snap.OverallState)", managerHandler);
+        Assert.Contains("_windowManager?.UpdateHubTitleBarStatus(snap, mapped)", managerHandler);
         Assert.Contains("_appState.Status = mapped", managerHandler);
         Assert.DoesNotContain("_appState.Status =", rawHandler);
         Assert.DoesNotContain("SyncConnectionToggle(status)", rawHandler);
@@ -530,16 +530,87 @@ public sealed class AppRefactorContractTests
     public void OnSettingsSaved_AppliesMcpStartupNotificationPlan()
     {
         var source = ReadAppSources();
-        var method = ExtractMethod(source, "OnSettingsSaved");
+        var method = ExtractMethod(source, "ApplyMcpRuntime");
 
-        Assert.Contains("nodeService?.SetMcpEnabled(_settings.EnableMcpServer)", method);
+        Assert.Contains("nodeService?.SetMcpEnabled(settings.EnableMcpServer)", method);
         Assert.Contains("McpRuntimeStatePolicy.PlanStartupNotification", method);
         Assert.Contains("ApplyMcpStartupNotificationPlan", method);
         AssertInOrder(
             method,
-            "nodeService?.SetMcpEnabled(_settings.EnableMcpServer)",
+            "nodeService?.SetMcpEnabled(settings.EnableMcpServer)",
             "ApplyMcpStartupNotificationPlan",
             "McpRuntimeStatePolicy.PlanStartupNotification");
+    }
+
+    [Fact]
+    public void McpOnlyCapabilityReload_RebuildsTheSharedCapabilityList()
+    {
+        var root = TestRepositoryPaths.GetRepositoryRoot();
+        var appSource = ReadAppSources();
+        var nodeServiceSource = File.ReadAllText(Path.Combine(
+            root,
+            "src",
+            "OpenClaw.Tray.WinUI",
+            "Services",
+            "NodeService.cs"));
+
+        var reconnect = ExtractMethod(appSource, "ReconnectWithSyncedBrowserProxyForward");
+        var refresh = ExtractMethod(nodeServiceSource, "RefreshMcpOnlyCapabilities");
+
+        AssertInOrder(
+            reconnect,
+            "SyncActiveGatewayBrowserProxyForward()",
+            "_nodeService?.RefreshMcpOnlyCapabilities()",
+            "_connectionManager?.ReconnectAsync()");
+        Assert.Contains("lock (_clientLock)", refresh);
+        Assert.Contains("if (!_enableMcpServer || _mcpServer == null || _nodeClient != null)", refresh);
+        Assert.Contains("RegisterCapabilities();", refresh);
+    }
+
+    [Fact]
+    public void McpRestart_RebuildsOnlyLocalTransportAndPreservesCapabilityOwners()
+    {
+        var root = TestRepositoryPaths.GetRepositoryRoot();
+        var source = File.ReadAllText(Path.Combine(
+            root,
+            "src",
+            "OpenClaw.Tray.WinUI",
+            "Services",
+            "NodeService.cs"));
+        var enable = ExtractMethod(source, "SetMcpEnabled");
+        var refresh = ExtractMethod(source, "RefreshMcpOnlyCapabilities");
+        var register = ExtractMethod(source, "RegisterCapabilities");
+        var start = ExtractMethod(source, "StartMcpServer");
+
+        AssertInOrder(
+            enable,
+            "lock (_clientLock)",
+            "lock (_capabilitiesLock)",
+            "McpRuntimeStatePolicy.PlanCapabilityEnable",
+            "McpCapabilityEnablePlan.RebuildFromCurrentSettings",
+            "RegisterCapabilities();");
+        Assert.Contains("hasGatewayClient: _nodeClient != null", enable);
+        Assert.Contains("hasCapabilities: _capabilities.Count != 0", enable);
+        Assert.Contains("StartMcpServer();", enable);
+        Assert.Contains("StopMcpServer();", enable);
+
+        Assert.Contains("lock (_clientLock)", refresh);
+        Assert.Contains("RegisterCapabilities();", refresh);
+        AssertInOrder(
+            register,
+            "lock (_capabilitiesLock)",
+            "_capabilities.Clear();",
+            "_execApprovalsV2Handler ??=",
+            "_textToSpeechService ??=",
+            "_voiceService ??=",
+            "} // end lock",
+            "StartMcpServer();");
+
+        Assert.DoesNotContain("_mcpOnlyCapabilities.Clear()", register);
+        AssertInOrder(
+            start,
+            "merged.AddRange(_capabilities)",
+            "merged.AddRange(_mcpOnlyCapabilities)");
     }
 
     [Fact]
@@ -661,14 +732,28 @@ public sealed class AppRefactorContractTests
         var source = ReadAppSources();
         var method = ExtractMethod(source, "OnToastActivated");
 
-        Assert.Contains("ToastArguments.Parse(args.Argument)", method);
-        Assert.Contains("OnUiThread(() =>", method);
-        Assert.Contains("ToastActivationRouter.Route", method);
-        Assert.Contains("OpenDashboard = () => OpenDashboard()", method);
-        Assert.Contains("OpenSettings = ShowSettings", method);
-        Assert.Contains("OpenChat = sessionKey => ShowWebChat(sessionKey)", method);
-        Assert.Contains("OpenActivity = () => ShowHub(\"channels\")", method);
-        Assert.Contains("CopyPairingCommand = command =>", method);
+        AssertInOrder(
+            method,
+            "var activationRouter = _activationRouter;",
+            "activationRouter.PlanToast(args.Argument)",
+            "activationRouter.DispatchPlanAsync(plan, this, CancellationToken.None)");
+        Assert.DoesNotContain("_activationRouter.PlanToast", method);
+        Assert.Contains("ObserveBackgroundFault(", method);
+
+        var routerSource = ReadActivationRouterServiceSource();
+        Assert.Contains("public ActivationPlan PlanToast(string? argument)", routerSource);
+
+        var toastRouteSource = ReadToastActivationRouterSource();
+        Assert.Contains("internal static ActivationRoute? PlanRoute(", toastRouteSource);
+        Assert.Contains("case \"open_dashboard\"", toastRouteSource);
+        Assert.Contains("case \"open_settings\"", toastRouteSource);
+        Assert.Contains("case \"open_chat\"", toastRouteSource);
+        Assert.Contains("case \"open_activity\"", toastRouteSource);
+        Assert.Contains("case \"copy_pairing_command\"", toastRouteSource);
+
+        var sinkSource = ReadAppActivationRouterSource();
+        Assert.Contains("Task IActivationPlanSink.DispatchAsync(ActivationRoute route, CancellationToken cancellationToken)", sinkSource);
+        Assert.Contains("_dispatcherQueue?.TryEnqueue(", sinkSource);
     }
 
     [Fact]
@@ -678,9 +763,9 @@ public sealed class AppRefactorContractTests
         var method = ExtractMethod(source, "ShowWebChat");
 
         Assert.Contains("PendingChatSessionKey = sessionKey;", method);
-        Assert.Contains("_hubWindow.PendingChatSessionKey = sessionKey;", method);
+        Assert.Contains("_windowManager?.SetPendingChatSessionKey(sessionKey);", method);
         Assert.Contains("PendingChatSessionKey = null;", method);
-        Assert.Contains("_hubWindow.PendingChatSessionKey = null;", method);
+        Assert.Contains("_windowManager?.SetPendingChatSessionKey(null);", method);
         AssertInOrder(
             method,
             "if (!string.IsNullOrEmpty(sessionKey))",
@@ -710,15 +795,17 @@ public sealed class AppRefactorContractTests
     public void PermissionsPage_ExecApprovals_UsesAppOwnedStoreWithCas()
     {
         var root = TestRepositoryPaths.GetRepositoryRoot();
-        var source = File.ReadAllText(Path.Combine(root, "src", "OpenClaw.Tray.WinUI", "Pages", "PermissionsPage.xaml.cs"));
+        var pageSource = File.ReadAllText(Path.Combine(root, "src", "OpenClaw.Tray.WinUI", "Pages", "PermissionsPage.xaml.cs"));
+        var viewModelSource = File.ReadAllText(Path.Combine(root, "src", "OpenClaw.Tray.WinUI", "Presentation", "PermissionsPageViewModel.cs"));
 
-        Assert.Contains("CurrentApp.ExecApprovalsStore.GetSnapshotAsync()", source);
-        Assert.Contains("CurrentApp.ExecApprovalsStore.ReplaceAsync(expectedHash, file)", source);
-        Assert.Contains("ExecPolicyMutationKind.AddRule", source);
-        Assert.Contains("ExecPolicyMutationKind.RemoveRule", source);
-        Assert.DoesNotContain("main.Allowlist = _policyRules", source);
-        Assert.DoesNotContain("Path.Combine(CurrentApp.DataDirectoryPath, \"exec-approvals.json\")", source);
-        Assert.DoesNotContain("File.WriteAllText(tmpPath", source);
+        Assert.Contains("_execApprovalsStore.GetSnapshotReadOnlyAsync()", viewModelSource);
+        Assert.Contains("_execApprovalsStore.ReplaceAsync(baseHash, workingFile, _execApprovalsOrigin)", viewModelSource);
+        Assert.Contains("ExecApprovalsMutationKind.AddRule", viewModelSource);
+        Assert.Contains("ExecApprovalsMutationKind.RemoveRule", viewModelSource);
+        Assert.DoesNotContain("CurrentApp.ExecApprovalsStore.GetSnapshot", pageSource);
+        Assert.DoesNotContain("CurrentApp.ExecApprovalsStore.ReplaceAsync", pageSource);
+        Assert.DoesNotContain("Path.Combine(CurrentApp.DataDirectoryPath, \"exec-approvals.json\")", pageSource);
+        Assert.DoesNotContain("File.WriteAllText(tmpPath", pageSource);
     }
 
     [Fact]
@@ -816,16 +903,12 @@ public sealed class AppRefactorContractTests
 
         AssertInOrder(
             addRule,
-            "if (string.IsNullOrEmpty(pattern))",
+            "_viewModel is null",
+            "!await _viewModel.TryAddExecApprovalRuleAsync(NewRulePattern.Text.Trim())",
             "ShowExecAllowlistPatternValidation();",
             "return;",
-            "if (!ExecApprovalsStore.IsValidAllowlistPattern(pattern))",
-            "ShowExecAllowlistPatternValidation();",
-            "return;",
-            "ExecPolicyRuleList.UpsertByPattern(_policyRules, pattern, \"allow\");",
-            "NewRulePattern.Text = \"\";",
-            "HideExecAllowlistPatternValidation();",
-            "RefreshPolicyRulesList();");
+            "NewRulePattern.Text = string.Empty;",
+            "HideExecAllowlistPatternValidation();");
 
         AssertInOrder(
             showValidation,
@@ -880,38 +963,101 @@ public sealed class AppRefactorContractTests
 
         Assert.Contains("AutomationProperties.Name=\"{Binding RemoveRuleAutomationName}\"", xaml);
         Assert.Contains("AutomationProperties.AutomationId=\"{Binding RemoveRuleAutomationId}\"", xaml);
-        Assert.Contains("RemoveRuleAutomationName = $\"Remove allowlist entry {r.Pattern}\"", codeBehind);
-        Assert.Contains("RemoveRuleAutomationId = $\"RemoveExecPolicyRuleButton_{r.Index}\"", codeBehind);
+        Assert.Contains("RemoveRuleAutomationName = $\"Remove allowlist entry {rule.Pattern}\"", codeBehind);
+        Assert.Contains("RemoveRuleAutomationId = $\"RemoveExecPolicyRuleButton_{index}\"", codeBehind);
     }
 
     [Fact]
     public void Shutdown_Order_PreservesAwaitedTeardownBeforeExit()
     {
         var source = ReadAppSources();
-        var method = ExtractMethod(source, "ExitApplicationAsync");
+        var method = ExtractMethod(source, "BuildShutdownPlan");
 
         AssertInOrder(
             method,
-            "_deepLinkCts.Cancel()",
-            "global hotkey",
-            "chat coordinator",
-            "gateway client",
+            "\"activation router\"",
+            "ToastNotificationManagerCompat.OnActivated -= OnToastActivated",
+            "_activationRouter = null",
+            "activationRouter.DisposeAsync()",
+            "\"global hotkey\"",
+            "\"chat coordinator\"",
+            "\"managed-local auto-repair monitor\"",
+            "\"gateway client\"",
             "connectionManager.DisposeAsync()",
-            "node service",
+            "\"node service\"",
             "nodeService.DisposeAsync()",
-            "standalone voice service",
+            "\"standalone voice service\"",
             "standaloneVoiceService.DisposeAsync()",
-            "ssh tunnel service",
-            "tray icon",
-            "single-instance mutex",
-            "deep link token source",
-            "Exit();");
+            "\"ssh tunnel service\"",
+            "\"pairing approval\"",
+            "\"app state observers\"",
+            "\"window manager\"",
+            "\"tray menu window\"",
+            "\"service provider\"",
+            "\"tray icon\"",
+            "\"single-instance mutex\"",
+            "ExitApplication: Exit");
+
+        var exitMethod = ExtractMethod(source, "ExitApplicationAsync");
+        Assert.Contains("var plan = BuildShutdownPlan();", exitMethod);
+        Assert.Contains("_shutdownCoordinator.ShutdownAsync(plan)", exitMethod);
+
+        var coordinatorSource = ReadAppShutdownCoordinatorServiceSource();
+        Assert.Contains("plan.BeginShutdown();", coordinatorSource);
+        AssertInOrder(
+            coordinatorSource,
+            "plan.BeginShutdown();",
+            "foreach (var step in plan.Steps)",
+            "plan.ExitApplication();");
+    }
+
+    [Fact]
+    public void Shutdown_AsyncResourceFieldsClearInFinally_AndActivationDetachesBeforeAwait()
+    {
+        var source = ReadAppSources();
+        var method = ExtractMethod(source, "BuildShutdownPlan");
+
+        AssertInOrder(
+            method,
+            "ToastNotificationManagerCompat.OnActivated -= OnToastActivated;",
+            "ReferenceEquals(_activationRouter, activationRouter)",
+            "_activationRouter = null;",
+            "await activationRouter.DisposeAsync();");
+
+        AssertAsyncResourceClearedInFinally(
+            method,
+            "var autoRepairMonitor = _managedLocalAutoRepairMonitor;",
+            "var connectionManager = _connectionManager;",
+            "await autoRepairMonitor.DisposeAsync();",
+            "ReferenceEquals(_managedLocalAutoRepairMonitor, autoRepairMonitor)",
+            "_managedLocalAutoRepairMonitor = null;");
+        AssertAsyncResourceClearedInFinally(
+            method,
+            "var connectionManager = _connectionManager;",
+            "steps.Add(new AppShutdownStep(\"OpenTelemetry endpoint\"",
+            "await connectionManager.DisposeAsync();",
+            "ReferenceEquals(_connectionManager, connectionManager)",
+            "_connectionManager = null;");
+        AssertAsyncResourceClearedInFinally(
+            method,
+            "var nodeService = _nodeService;",
+            "var standaloneVoiceService = _standaloneVoiceService;",
+            "await nodeService.DisposeAsync();",
+            "ReferenceEquals(_nodeService, nodeService)",
+            "_nodeService = null;");
+        AssertAsyncResourceClearedInFinally(
+            method,
+            "var standaloneVoiceService = _standaloneVoiceService;",
+            "steps.Add(new AppShutdownStep(\"ssh tunnel service\"",
+            "await standaloneVoiceService.DisposeAsync();",
+            "ReferenceEquals(_standaloneVoiceService, standaloneVoiceService)",
+            "_standaloneVoiceService = null;");
     }
 
     [Fact]
     public void Setup_IsHostedInTrayAndUsesSelfRestartAfterCompletion()
     {
-        var source = ReadAppSources();
+        var source = ReadAppSources() + Environment.NewLine + ReadWindowManagerSource();
         var root = TestRepositoryPaths.GetRepositoryRoot();
         var setupWindow = File.ReadAllText(Path.Combine(root, "src", "OpenClaw.SetupEngine.UI", "SetupWindow.xaml.cs"));
         var welcomePage = File.ReadAllText(Path.Combine(root, "src", "OpenClaw.SetupEngine.UI", "Pages", "WelcomePage.xaml.cs"));
@@ -925,13 +1071,13 @@ public sealed class AppRefactorContractTests
         var keepAlivePolicy = File.ReadAllText(Path.Combine(root, "src", "OpenClaw.Tray.WinUI", "Services", "WslKeepAlivePolicy.cs"));
         var setupClassifier = File.ReadAllText(Path.Combine(root, "src", "OpenClaw.Tray.WinUI", "Services", "SetupExistingGatewayClassifier.cs"));
 
-        Assert.Contains("var setupWindow = new SetupWindow(", source);
+        Assert.Contains("setupWindow = new SetupWindow(", source);
         Assert.Contains("dataDir: AppIdentity.ResolveRoamingDataDirectory()", source);
         Assert.Contains("localDataDir: AppIdentity.ResolveSetupLocalDataDirectory()", source);
         Assert.Contains("distroNameOverride: AppIdentity.SetupDistroName", source);
         Assert.Contains("gatewayPortOverride: AppIdentity.SetupGatewayPort", source);
         Assert.Contains("commandLineArgs: SetupWindowArgumentProjection.Project(", source);
-        Assert.Contains("IsDeepLinkArg,", source);
+        Assert.Contains("_callbacks.IsDeepLinkArg,", source);
         Assert.Contains("Environment.ProcessId)", source);
         Assert.Contains("SetupRunLock.TryAcquire(_dataDir", setupWindow);
         Assert.Contains("new SetupContext(", progressPage);
@@ -964,9 +1110,9 @@ public sealed class AppRefactorContractTests
         Assert.Contains("AppIdentity.SetupDistroName", keepAlivePolicy);
         Assert.Contains("AppIdentity.SetupDistroName", setupClassifier);
         Assert.Contains("TrayArtifactCleanup.Run(ctx, preserveLogs, autoStartName, startupTaskName)", setupProgram);
-        Assert.Contains("setupWindow.SetupCompleted += OnSetupCompleted", source);
+        Assert.Contains("setupWindow.SetupCompleted += _callbacks.SetupCompleted", source);
         Assert.Contains("ShowGatewayWizardAsync", source);
-        Assert.Contains("EnsureSetupWindowAsync(startAtGatewayInstalledMilestone: true)", source);
+        Assert.Contains("startAtGatewayInstalledMilestone: true", source);
         Assert.Contains("startAtGatewayInstalledMilestone", setupWindow);
         Assert.Contains("_persistStartupPreferenceOnComplete = false", setupWindow);
         Assert.Contains("_showStartupPreferenceOnComplete = false", setupWindow);
@@ -984,12 +1130,14 @@ public sealed class AppRefactorContractTests
         // Direct onboarding may reuse an already-open idle setup window, but
         // must not cancel an in-progress install running on ProgressPage.
         Assert.Contains("EnsureSetupWindowAsync", source);
-        Assert.Contains("if (!createdNew)", source);
+        Assert.Contains("!created && setupWindow is { IsClosed: false }", source);
         Assert.Contains("RestartAfterSetupAsync", source);
         Assert.Contains("\"--post-setup-restart\"", source);
         Assert.Contains("\"--wait-for-pid\"", source);
         Assert.Contains("\"--post-setup-launch\"", source);
-        Assert.Contains("$\"{AppIdentity.ProtocolScheme}://chat\"", source);
+        var activationRouterSource = ReadActivationRouterServiceSource();
+        Assert.Contains("$\"{_protocolScheme}://chat\"", activationRouterSource);
+        Assert.Contains("input.PostSetupLaunch, \"chat\"", activationRouterSource);
         Assert.Contains("WaitForRestartSourceIfRequested(Environment.GetCommandLineArgs())", source);
         AssertInOrder(source, "WaitForRestartSourceIfRequested(Environment.GetCommandLineArgs())", "_mutex = new Mutex");
         Assert.DoesNotContain("setupWindow.TryNavigateToWizard()", source);
@@ -1036,7 +1184,7 @@ public sealed class AppRefactorContractTests
     public void SetupWindowOwnership_WaitsForCleanupBeforeAllowingAnotherRun()
     {
         var root = TestRepositoryPaths.GetRepositoryRoot();
-        var app = File.ReadAllText(Path.Combine(root, "src", "OpenClaw.Tray.WinUI", "App.xaml.cs"));
+        var windowManager = ReadWindowManagerSource();
         var setupWindow = File.ReadAllText(Path.Combine(root, "src", "OpenClaw.SetupEngine.UI", "SetupWindow.xaml.cs"));
 
         Assert.Contains("public Task CleanupCompleted => _cleanupCompleted.Task", setupWindow);
@@ -1049,16 +1197,17 @@ public sealed class AppRefactorContractTests
             "_cleanupCompleted.TrySetResult(true)");
         Assert.Contains("rollbackOnFailureOverride: false", setupWindow);
         AssertInOrder(
-            app,
-            "while (_setupWindow != null)",
+            windowManager,
+            "while (_setupWindow is not null)",
             "await existingSetupWindow.WaitForInitialContentReadyAsync()",
             "if (!existingSetupWindow.IsClosed)",
             "await existingSetupWindow.CleanupCompleted",
             "_setupWindow = null",
             "new SetupWindow(");
         AssertInOrder(
-            app,
-            "setupWindow.Closed += async",
+            windowManager,
+            "setupWindow.Closed += OnSetupClosed",
+            "CompleteSetupCloseAsync(setupWindow)",
             "await setupWindow.CleanupCompleted",
             "_setupWindow = null");
     }
@@ -1302,7 +1451,7 @@ public sealed class AppRefactorContractTests
 
         Assert.Contains("RemoveUnavailableGatewayBackStackEntries", source);
         Assert.Contains("ContentFrame.BackStack.RemoveAt(i)", source);
-        Assert.Contains("RemoveBackStackEntries(GatewayNavVisibilityDebouncePolicy.IsGatewayPageTag)", source);
+        Assert.Contains("RemoveBackStackEntries(HubPageRegistry.IsGatewayPageTag)", source);
         Assert.Contains("RemoveUnavailableGatewayBackStackEntries();", ExtractMethod(source, "GoBack"));
         Assert.Contains("RemoveUnavailableGatewayBackStackEntries();", ExtractMethod(source, "UpdateGatewayNavVisibility"));
     }
@@ -1435,12 +1584,16 @@ public sealed class AppRefactorContractTests
     [Fact]
     public void TrayIcon_UpdateDelegatesToCoordinator()
     {
-        var source = ReadAppSources();
-        var method = ExtractMethod(source, "UpdateTrayIcon");
+        var appMethod = ExtractMethod(ReadAppSources(), "UpdateTrayIcon");
+        var controller = File.ReadAllText(Path.Combine(
+            TestRepositoryPaths.GetRepositoryRoot(),
+            "src", "OpenClaw.Tray.WinUI", "Services", "TrayController.cs"));
+        var controllerMethod = ExtractMethod(controller, "RefreshIcon");
 
-        Assert.Contains("_trayIconCoordinator?.UpdateTrayIcon()", method);
-        Assert.DoesNotContain("SetIcon(", method);
-        Assert.DoesNotContain("private void ApplyTrayTooltip", source);
+        Assert.Contains("_trayController?.RefreshIcon()", appMethod);
+        Assert.Contains("_trayIconCoordinator?.UpdateTrayIcon()", controllerMethod);
+        Assert.DoesNotContain("SetIcon(", controllerMethod);
+        Assert.DoesNotContain("private void ApplyTrayTooltip", controller);
     }
 
     [Fact]
@@ -1526,7 +1679,7 @@ public sealed class AppRefactorContractTests
     public void AppNotifications_SandboxRiskMessageReflectsStrictFallbackBlocking()
     {
         var source = ReadAppSources();
-        var method = ExtractMethod(source, "PublishSandboxRiskNotification");
+        var method = ExtractMethod(source, "PublishSandboxRiskNotification", parameterHint: "MxcAvailability");
 
         Assert.Contains("SystemRunBlockHostFallbackWhenMxcUnavailable", method);
         Assert.Contains("AppNotification_SandboxUnavailableBlocked_Title", method);
@@ -1648,14 +1801,83 @@ public sealed class AppRefactorContractTests
                 element => element.Element("value")?.Value ?? string.Empty,
                 StringComparer.Ordinal);
 
-    private static string ExtractMethod(string source, string methodName)
+    private static string ReadWindowManagerSource()
     {
-        var match = Regex.Match(
-            source,
-            $@"(?m)^\s*(?:private|protected|public|internal)\s+(?:static\s+)?(?:async\s+)?(?:Task(?:<[^>]+>)?|System\.Threading\.Tasks\.Task|void|bool|int|string\??|object\??|IntPtr|TrayMenuSnapshot|RollbackResult|OpenClaw\.Connection\.GatewayCredential\?)\s+{Regex.Escape(methodName)}\s*\(");
-        Assert.True(match.Success, $"Could not find method {methodName}.");
+        var root = TestRepositoryPaths.GetRepositoryRoot();
+        return File.ReadAllText(Path.Combine(
+            root,
+            "src",
+            "OpenClaw.Tray.WinUI",
+            "Services",
+            "WindowManager.cs"));
+    }
 
-        var brace = source.IndexOf('{', match.Index);
+    private static string ReadActivationRouterServiceSource()
+    {
+        var root = TestRepositoryPaths.GetRepositoryRoot();
+        return File.ReadAllText(Path.Combine(
+            root, "src", "OpenClaw.Tray.WinUI", "Services", "ActivationRouter.cs"));
+    }
+
+    private static string ReadToastActivationRouterSource()
+    {
+        var root = TestRepositoryPaths.GetRepositoryRoot();
+        return File.ReadAllText(Path.Combine(
+            root, "src", "OpenClaw.Tray.WinUI", "Services", "ToastActivationRouter.cs"));
+    }
+
+    private static string ReadAppActivationRouterSource()
+    {
+        var root = TestRepositoryPaths.GetRepositoryRoot();
+        return File.ReadAllText(Path.Combine(
+            root, "src", "OpenClaw.Tray.WinUI", "App.ActivationRouter.cs"));
+    }
+
+    private static string ReadAppShutdownCoordinatorServiceSource()
+    {
+        var root = TestRepositoryPaths.GetRepositoryRoot();
+        return File.ReadAllText(Path.Combine(
+            root, "src", "OpenClaw.Tray.WinUI", "Services", "AppShutdownCoordinator.cs"));
+    }
+
+    private static string ExtractMethod(string source, string methodName, string? parameterHint = null)
+    {
+        var pattern = $@"(?m)^\s*(?:(?:private|protected|public|internal)\s+)?(?:static\s+)?(?:async\s+)?(?:Task(?:<[^>]+>)?|System\.Threading\.Tasks\.Task|void|bool|int|string\??|object\??|IntPtr|TrayMenuSnapshot|RollbackResult|OpenClaw\.Connection\.GatewayCredential\?|AppShutdownPlan)\s+(?:[A-Za-z0-9_]+\.)?{Regex.Escape(methodName)}\s*\(";
+        var matches = Regex.Matches(source, pattern);
+        Assert.True(matches.Count > 0, $"Could not find method {methodName}.");
+
+        // Prefer a block-bodied candidate matching parameterHint (when given): thin
+        // expression-bodied forwarders sharing the same short name (e.g. explicit interface
+        // effect-port implementations) must not shadow the real implementation. Fall back to
+        // the first match when no block-bodied candidate qualifies, preserving prior behavior
+        // for single-match expression-bodied methods.
+        var methodStart = -1;
+        foreach (Match candidate in matches)
+        {
+            var paramStart = source.IndexOf('(', candidate.Index);
+            var paramEnd = source.IndexOf(')', paramStart);
+
+            var afterParams = paramEnd + 1;
+            while (afterParams < source.Length && char.IsWhiteSpace(source[afterParams]))
+                afterParams++;
+            if (afterParams >= source.Length || source[afterParams] != '{')
+                continue;
+
+            if (parameterHint != null)
+            {
+                var parameterList = source.Substring(paramStart, paramEnd - paramStart);
+                if (!parameterList.Contains(parameterHint, StringComparison.Ordinal))
+                    continue;
+            }
+
+            methodStart = candidate.Index;
+            break;
+        }
+
+        if (methodStart < 0)
+            methodStart = matches[0].Index;
+
+        var brace = source.IndexOf('{', methodStart);
         Assert.True(brace >= 0, $"Could not find body for method {methodName}.");
 
         var depth = 0;
@@ -1670,12 +1892,27 @@ public sealed class AppRefactorContractTests
                 depth--;
                 if (depth == 0)
                 {
-                    return source.Substring(match.Index, index - match.Index + 1);
+                    return source.Substring(methodStart, index - methodStart + 1);
                 }
             }
         }
 
         throw new InvalidOperationException($"Could not extract method {methodName}.");
+    }
+
+    private static void AssertAsyncResourceClearedInFinally(
+        string source,
+        string blockStart,
+        string blockEnd,
+        string disposeAwait,
+        string referenceCheck,
+        string fieldClear)
+    {
+        var start = source.IndexOf(blockStart, StringComparison.Ordinal);
+        var end = source.IndexOf(blockEnd, start + blockStart.Length, StringComparison.Ordinal);
+        Assert.True(start >= 0 && end > start, $"Could not isolate shutdown block starting with: {blockStart}");
+        var block = source.Substring(start, end - start);
+        AssertInOrder(block, "try", disposeAwait, "finally", referenceCheck, fieldClear);
     }
 
     private static void AssertInOrder(string source, params string[] markers)

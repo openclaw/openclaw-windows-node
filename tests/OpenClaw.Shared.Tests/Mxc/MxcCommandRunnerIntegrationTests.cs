@@ -108,9 +108,9 @@ public class MxcCommandRunnerIntegrationTests
     }
 
     [IntegrationFact]
-    public async Task SystemRun_DirectArgv_ExecutesInsideAppContainer()
+    public async Task SystemRun_DirectArgvWithWindowsUiAccess_ExecutesInsideAppContainer()
     {
-        var runner = TryBuildRunner();
+        var runner = TryBuildRunner(configure: settings => settings.SystemRunAllowWindowsUi = true);
         if (runner is null) return;
 
         var result = await runner.RunAsync(new CommandRequest

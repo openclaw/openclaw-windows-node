@@ -10,16 +10,17 @@ namespace OpenClawTray.Presentation;
 /// logic that previously lived in the page code-behind: it loads the current values from
 /// <see cref="ISettingsStore"/> on activation, exposes two-way-bindable properties, and persists
 /// each change through the store while preserving the exact auto-save contract
-/// (mutate -> save -> notify) and the two chat side effects.
+/// (mutate -> save -> notify).
 /// </summary>
 /// <remarks>
 /// Echo handling lives in the store, not here: a property change persists through
-/// <see cref="ISettingsStore.Update"/> (which suppresses the self-originated notification), and an
-/// external change arrives via <see cref="ISettingsStore.Changed"/> and reloads the properties
-/// under the <c>_loading</c> guard so it cannot re-persist. View-only side effects (the "Saved"
-/// indicator flash and refreshing the view-owned gateway section) are surfaced as events the page
-/// handles; OS- and WinUI-coupled work (auto-start registration, speaker mute, chat tool-call
-/// visibility) is delegated to <see cref="IAppCommands"/>, so this type stays free of WinUI and OS APIs.
+/// <see cref="ISettingsStore.Update"/>, and the resulting <see cref="ISettingsStore.Changed"/>
+/// event is ignored only when it carries this instance's writer token. Any other change arrives
+/// via <see cref="ISettingsStore.Changed"/> and reloads the properties under the <c>_loading</c>
+/// guard so it cannot re-persist. View-only side effects (the "Saved" indicator flash and
+/// refreshing the view-owned gateway section) are surfaced as events the page handles. OS-coupled
+/// auto-start registration is delegated to <see cref="IAppCommands"/>, so this type stays free of
+/// WinUI and OS APIs.
 /// </remarks>
 internal sealed class SettingsPageViewModel : INavigationAware, IDisposable, INotifyPropertyChanged
 {
@@ -31,9 +32,11 @@ internal sealed class SettingsPageViewModel : INavigationAware, IDisposable, INo
 
     private readonly ISettingsStore _store;
     private readonly IAppCommands _appCommands;
+    private readonly SettingsWriteOrigin _origin;
 
     private bool _loading;
     private bool _subscribed;
+    private long _lastAppliedSettingsVersion = -1;
 
     private bool _autoStart;
     private bool _globalHotkeyEnabled;
@@ -58,6 +61,7 @@ internal sealed class SettingsPageViewModel : INavigationAware, IDisposable, INo
     {
         _store = store ?? throw new ArgumentNullException(nameof(store));
         _appCommands = appCommands ?? throw new ArgumentNullException(nameof(appCommands));
+        _origin = _store.CreateOrigin();
     }
 
     public event PropertyChangedEventHandler? PropertyChanged;
@@ -93,7 +97,7 @@ internal sealed class SettingsPageViewModel : INavigationAware, IDisposable, INo
 
     private async Task ApplyAutoStartAsync(bool value)
     {
-        if (await _appCommands.ApplyAutoStart(value))
+        if (await _appCommands.ApplyAutoStart(_origin, value))
         {
             RaiseSaved();
         }
@@ -223,12 +227,13 @@ internal sealed class SettingsPageViewModel : INavigationAware, IDisposable, INo
     public void Activate(object? parameter)
     {
         IsActive = true;
-        LoadFromStore();
         if (!_subscribed)
         {
             _store.Changed += OnStoreChanged;
             _subscribed = true;
         }
+
+        LoadCurrentFromStore();
     }
 
     public void Deactivate()
@@ -247,16 +252,60 @@ internal sealed class SettingsPageViewModel : INavigationAware, IDisposable, INo
         IsDisposed = true;
     }
 
-    private void OnStoreChanged(object? sender, EventArgs e)
+    private void OnStoreChanged(object? sender, SettingsChangedEventArgs e)
     {
-        LoadFromStore();
-        ExternalChanged?.Invoke(this, EventArgs.Empty);
+        if (!IsActive || !TryAdvanceSettingsVersion(e.Version))
+        {
+            return;
+        }
+
+        if (ApplySettingsSnapshotIfCurrent(e.Snapshot))
+        {
+            if (!ReferenceEquals(e.Origin, _origin))
+            {
+                ExternalChanged?.Invoke(this, EventArgs.Empty);
+            }
+        }
     }
 
     /// <summary>Reloads all bound properties from the store snapshot without persisting.</summary>
-    private void LoadFromStore()
+    private void LoadCurrentFromStore()
     {
-        var s = _store.Current;
+        var snapshot = _store.Current;
+        TryAdvanceSettingsVersion(snapshot.Version);
+        ApplySettingsSnapshotIfCurrent(snapshot);
+    }
+
+    private bool ApplySettingsSnapshotIfCurrent(SettingsSnapshot snapshot)
+    {
+        if (snapshot.Version != Volatile.Read(ref _lastAppliedSettingsVersion))
+        {
+            return false;
+        }
+
+        LoadFromStore(snapshot);
+        return snapshot.Version == Volatile.Read(ref _lastAppliedSettingsVersion);
+    }
+
+    private bool TryAdvanceSettingsVersion(long version)
+    {
+        while (true)
+        {
+            var current = Volatile.Read(ref _lastAppliedSettingsVersion);
+            if (version <= current)
+            {
+                return false;
+            }
+
+            if (Interlocked.CompareExchange(ref _lastAppliedSettingsVersion, version, current) == current)
+            {
+                return true;
+            }
+        }
+    }
+
+    private void LoadFromStore(SettingsSnapshot s)
+    {
         _loading = true;
         try
         {
@@ -294,7 +343,7 @@ internal sealed class SettingsPageViewModel : INavigationAware, IDisposable, INo
             return;
         }
 
-        _store.Update(edit);
+        _store.Update(_origin, edit);
         _appCommands.NotifySettingsSaved();
         RaiseSaved();
     }

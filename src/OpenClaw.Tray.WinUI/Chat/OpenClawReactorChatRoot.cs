@@ -745,13 +745,21 @@ public sealed class ReactorChatComposer : Component<ReactorChatComposerProps>
             : Localized("Chat_Composer_Tooltip_Send", "Send");
         var controlCornerRadius = new CornerRadius(4);
 
-        Element IconButton(string glyph, string automationName, Action onClick, bool enabled = true)
+        Element IconButton(
+            string glyph,
+            string automationName,
+            Action onClick,
+            bool enabled = true,
+            string? automationId = null)
         {
             return Button(
                     TextBlock(glyph).Set(textBlock =>
                     {
                         textBlock.FontFamily = FluentIconCatalog.SymbolThemeFontFamily;
                         textBlock.FontSize = 16;
+                        Microsoft.UI.Xaml.Automation.AutomationProperties.SetAccessibilityView(
+                            textBlock,
+                            Microsoft.UI.Xaml.Automation.Peers.AccessibilityView.Raw);
                     }),
                     onClick)
                 .AutomationName(automationName)
@@ -773,11 +781,25 @@ public sealed class ReactorChatComposer : Component<ReactorChatComposerProps>
                     button.CornerRadius = controlCornerRadius;
                     button.IsEnabled = enabled;
                     button.BorderThickness = new Thickness(0);
+                    if (!string.IsNullOrWhiteSpace(automationId))
+                    {
+                        Microsoft.UI.Xaml.Automation.AutomationProperties.SetAutomationId(
+                            button,
+                            automationId);
+                    }
+                    ComposerAutomationVisibility.Prepare(button);
                     ToolTipService.SetToolTip(button, automationName);
-                });
+                })
+                .OnUnmount(control => ComposerAutomationVisibility.Detach(
+                    (FrameworkElement)control));
         }
 
-        Element PickerButton(string label, string automationName, bool enabled, double maxLabelWidth)
+        Element PickerButton(
+            string label,
+            string automationName,
+            string automationId,
+            bool enabled,
+            double maxLabelWidth)
         {
             return Button(
                     HStack(
@@ -794,6 +816,9 @@ public sealed class ReactorChatComposer : Component<ReactorChatComposerProps>
                             textBlock.FontFamily = FluentIconCatalog.SymbolThemeFontFamily;
                             textBlock.FontSize = 10;
                             textBlock.Margin = new Thickness(2, 4, 0, 0);
+                            Microsoft.UI.Xaml.Automation.AutomationProperties.SetAccessibilityView(
+                                textBlock,
+                                Microsoft.UI.Xaml.Automation.Peers.AccessibilityView.Raw);
                         })),
                     () => { })
                 .AutomationName(automationName)
@@ -814,7 +839,13 @@ public sealed class ReactorChatComposer : Component<ReactorChatComposerProps>
                     button.CornerRadius = controlCornerRadius;
                     button.IsEnabled = enabled;
                     button.BorderThickness = new Thickness(0);
-                });
+                    Microsoft.UI.Xaml.Automation.AutomationProperties.SetAutomationId(
+                        button,
+                        automationId);
+                    ComposerAutomationVisibility.Prepare(button);
+                })
+                .OnUnmount(control => ComposerAutomationVisibility.Detach(
+                    (FrameworkElement)control));
         }
 
         var attachmentRows = props.PendingAttachments
@@ -1122,6 +1153,7 @@ public sealed class ReactorChatComposer : Component<ReactorChatComposerProps>
                 control.Resources["TextControlBorderBrush"] = transparent;
                 control.Resources["TextControlBorderBrushFocused"] = transparent;
                 control.Resources["TextControlBorderBrushPointerOver"] = transparent;
+                ComposerAutomationVisibility.Prepare(control);
             })
             .OnMount(control =>
             {
@@ -1136,6 +1168,7 @@ public sealed class ReactorChatComposer : Component<ReactorChatComposerProps>
                 var textBox = (TextBox)control;
                 textBox.Paste -= pasteHandler.Current;
                 textBox.ContextFlyout = null;
+                ComposerAutomationVisibility.Detach(textBox);
             });
         UseEffect((Func<Action>)(() =>
         {
@@ -1150,6 +1183,7 @@ public sealed class ReactorChatComposer : Component<ReactorChatComposerProps>
             PickerButton(
                 props.CurrentThread.Title,
                 $"{Localized("Chat_Composer_Accessibility_Session", "Session")}: {props.CurrentThread.Title}",
+                "ChatComposerSessionPicker",
                 !props.MessageOptionsDisabled && props.AvailableChannels.Count > 1,
                 props.IsCompact ? 56 : 160),
             props.AvailableChannels
@@ -1167,6 +1201,7 @@ public sealed class ReactorChatComposer : Component<ReactorChatComposerProps>
             PickerButton(
                 modelPickerLabel,
                 $"{Localized("Chat_Composer_Accessibility_Model", "Model")}: {modelPickerLabel}",
+                "ChatComposerModelPicker",
                 !props.MessageOptionsDisabled,
                 props.IsCompact ? 68 : 180),
             modelNames
@@ -1187,6 +1222,7 @@ public sealed class ReactorChatComposer : Component<ReactorChatComposerProps>
             PickerButton(
                 ThinkingLevels[thinkingIndex],
                 $"{Localized("Chat_Composer_Accessibility_Reasoning", "Reasoning")}: {ThinkingLevels[thinkingIndex]}",
+                "ChatComposerReasoningPicker",
                 !props.MessageOptionsDisabled,
                 props.IsCompact ? 54 : 96),
             ThinkingLevels
@@ -1201,7 +1237,8 @@ public sealed class ReactorChatComposer : Component<ReactorChatComposerProps>
             "\uE723",
             Localized("Chat_Composer_Tooltip_Attach", "Attach"),
             () => props.OnAttachClick?.Invoke(),
-            props.OnAttachClick is not null);
+            props.OnAttachClick is not null,
+            "ChatComposerAttach");
         var voiceButton = IconButton(
             isRecording
                 ? "\uE15B"
@@ -1219,25 +1256,35 @@ public sealed class ReactorChatComposer : Component<ReactorChatComposerProps>
                 else
                     StartVoiceRecording();
             },
-            props.OnVoiceRequest is not null);
+            props.OnVoiceRequest is not null,
+            "ChatComposerVoice");
         var speakerButton = IconButton(
             props.IsSpeakerMuted ? "\uE74F" : "\uE767",
             props.IsSpeakerMuted ? "Unmute" : "Mute",
-            props.OnSpeakerToggle);
+            props.OnSpeakerToggle,
+            automationId: "ChatComposerSpeakerToggle");
         Element settingsButton = props.IsCompact || props.OnSettingsClick is null
             ? Empty()
             : IconButton(
                 "\uE713",
                 Localized("Chat_Composer_Tooltip_Settings", "Settings"),
-                props.OnSettingsClick);
+                props.OnSettingsClick,
+                automationId: "ChatComposerSettings");
 
         Element primaryAction = props.TurnActive
-            ? IconButton("\uE71A", actionLabel, props.OnStop)
+            ? IconButton(
+                "\uE71A",
+                actionLabel,
+                props.OnStop,
+                automationId: "ChatComposerPrimaryAction")
             : Button(
                     TextBlock("\uE724").Set(textBlock =>
                     {
                         textBlock.FontFamily = FluentIconCatalog.SymbolThemeFontFamily;
                         textBlock.FontSize = 16;
+                        Microsoft.UI.Xaml.Automation.AutomationProperties.SetAccessibilityView(
+                            textBlock,
+                            Microsoft.UI.Xaml.Automation.Peers.AccessibilityView.Raw);
                     }),
                     Send)
                 .AccentButton()
@@ -1250,12 +1297,18 @@ public sealed class ReactorChatComposer : Component<ReactorChatComposerProps>
                     button.MinHeight = 32;
                     button.Padding = new Thickness(0);
                     button.CornerRadius = controlCornerRadius;
+                    Microsoft.UI.Xaml.Automation.AutomationProperties.SetAutomationId(
+                        button,
+                        "ChatComposerPrimaryAction");
                     button.IsEnabled = props.ConnectionState == "connected"
                         && !isSending
                         && !slashDisplay.IsLoading
                         && (!string.IsNullOrWhiteSpace(text) || props.PendingAttachments.Count > 0);
+                    ComposerAutomationVisibility.Prepare(button);
                     ToolTipService.SetToolTip(button, actionLabel);
-                });
+                })
+                .OnUnmount(control => ComposerAutomationVisibility.Detach(
+                    (FrameworkElement)control));
 
         var leftToolbar = HStack(8, attachButton, sessionPicker, modelPicker, reasoningPicker)
             .HAlign(HorizontalAlignment.Left)
@@ -1905,4 +1958,67 @@ public sealed class ReactorChatComposer : Component<ReactorChatComposerProps>
             ? fallback
             : value;
     }
+}
+
+internal static class ComposerAutomationVisibility
+{
+    public static void Prepare(FrameworkElement control)
+    {
+        Detach(control);
+        if (HasUsableLayout(control))
+        {
+            ApplyReadyState(control);
+            return;
+        }
+
+        control.IsHitTestVisible = false;
+        Microsoft.UI.Xaml.Automation.AutomationProperties.SetAccessibilityView(
+            control,
+            Microsoft.UI.Xaml.Automation.Peers.AccessibilityView.Raw);
+        control.Loaded += OnLoaded;
+        control.SizeChanged += OnSizeChanged;
+    }
+
+    public static void Detach(FrameworkElement control)
+    {
+        control.Loaded -= OnLoaded;
+        control.SizeChanged -= OnSizeChanged;
+    }
+
+    private static void OnLoaded(object sender, RoutedEventArgs args) =>
+        TryEnableHitTesting(sender);
+
+    private static void OnSizeChanged(object sender, SizeChangedEventArgs args) =>
+        TryEnableHitTesting(sender);
+
+    private static void TryEnableHitTesting(object sender)
+    {
+        if (sender is not FrameworkElement control || !HasUsableLayout(control))
+            return;
+
+        ApplyReadyState(control);
+    }
+
+    private static void ApplyReadyState(FrameworkElement control)
+    {
+        Microsoft.UI.Xaml.Automation.AutomationProperties.SetAccessibilityView(
+            control,
+            Microsoft.UI.Xaml.Automation.Peers.AccessibilityView.Control);
+        control.IsHitTestVisible = true;
+        var peer = Microsoft.UI.Xaml.Automation.Peers.FrameworkElementAutomationPeer
+            .FromElement(control)
+            ?? Microsoft.UI.Xaml.Automation.Peers.FrameworkElementAutomationPeer
+                .CreatePeerForElement(control);
+        peer?.RaisePropertyChangedEvent(
+            Microsoft.UI.Xaml.Automation.AutomationElementIdentifiers.IsOffscreenProperty,
+            true,
+            false);
+        Detach(control);
+    }
+
+    private static bool HasUsableLayout(FrameworkElement control) =>
+        control.IsLoaded
+        && control.Visibility == Visibility.Visible
+        && control.ActualWidth > 0
+        && control.ActualHeight > 0;
 }

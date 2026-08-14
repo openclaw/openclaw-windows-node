@@ -227,6 +227,40 @@ public sealed class NodeCapabilityGatingTests : IDisposable
         Assert.Equal(baseline + 2, NodeCapabilityGating.CountMcpServedCapabilities(s));
     }
 
+    [Fact]
+    public void McpOnlyRestart_CameraDisabledWhileStoppedUsesFreshCompleteSet()
+    {
+        var s = NewSettings();
+        Assert.True(NodeCapabilityGating.ShouldRegisterCamera(s));
+        Assert.Equal(6, NodeCapabilityGating.CountMcpServedCapabilities(s));
+
+        s.NodeCameraEnabled = false;
+        var plan = McpRuntimeStatePolicy.PlanCapabilityEnable(
+            hasGatewayClient: false,
+            hasCapabilities: true);
+
+        Assert.Equal(McpCapabilityEnablePlan.RebuildFromCurrentSettings, plan);
+        Assert.False(NodeCapabilityGating.ShouldRegisterCamera(s));
+        Assert.Equal(5, NodeCapabilityGating.CountMcpServedCapabilities(s));
+    }
+
+    [Fact]
+    public void McpOnlyRestart_CameraRestoredWhileStoppedUsesFreshCompleteSet()
+    {
+        var s = NewSettings();
+        s.NodeCameraEnabled = false;
+        Assert.Equal(5, NodeCapabilityGating.CountMcpServedCapabilities(s));
+
+        s.NodeCameraEnabled = true;
+        var plan = McpRuntimeStatePolicy.PlanCapabilityEnable(
+            hasGatewayClient: false,
+            hasCapabilities: true);
+
+        Assert.Equal(McpCapabilityEnablePlan.RebuildFromCurrentSettings, plan);
+        Assert.True(NodeCapabilityGating.ShouldRegisterCamera(s));
+        Assert.Equal(6, NodeCapabilityGating.CountMcpServedCapabilities(s));
+    }
+
     // ── GetLocalNodeCapabilities ──────────────────────────────────────────────
 
     [Fact]

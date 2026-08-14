@@ -30,19 +30,31 @@ public sealed class TrayDashboardSummaryBuilderTests
         AuthFailureMessage = authFailure,
         GatewayUrl = gatewayUrl,
         GatewaySelf = null,
-        Presence = null,
+        Presence = [],
         EnableNodeMode = false,
         NodeIsPaired = false,
         NodeIsPendingApproval = false,
         NodeIsConnected = false,
-        NodePairList = nodePairList,
-        DevicePairList = devicePairList,
-        Nodes = nodes ?? Array.Empty<GatewayNodeInfo>(),
-        Sessions = sessions ?? Array.Empty<SessionInfo>(),
-        Usage = usage,
+        NodePendingPairCount = nodePairList?.Pending.Count ?? 0,
+        DevicePendingPairCount = devicePairList?.Pending.Count ?? 0,
+        Nodes = [.. (nodes ?? Array.Empty<GatewayNodeInfo>()).Select(TrayNodeSnapshot.From)],
+        Sessions = [.. (sessions ?? Array.Empty<SessionInfo>()).Select(TraySessionSnapshot.From)],
+        Usage = TrayUsageSnapshot.From(usage),
         UsageStatus = null,
         UsageCost = null,
-        Settings = settings,
+        Settings = settings is null
+            ? null
+            : new TrayMenuSettingsSnapshot(
+                settings.EnableNodeMode,
+                settings.EnableMcpServer,
+                settings.NodeSystemRunEnabled,
+                settings.NodeBrowserProxyEnabled,
+                settings.NodeCameraEnabled,
+                settings.NodeCanvasEnabled,
+                settings.NodeScreenEnabled,
+                settings.NodeLocationEnabled,
+                settings.NodeTtsEnabled,
+                settings.NodeSttEnabled),
         SetupMenuLabel = "Reconfigure...",
         ShowSetupMenuEntry = true,
         LastUpdated = lastUpdated,
@@ -432,6 +444,38 @@ public sealed class TrayDashboardSummaryBuilderTests
     }
 
     [Fact]
+    public void ActiveSession_AbortedTerminalSnapshotRemainsCurrent()
+    {
+        var sessions = new[]
+        {
+            new SessionInfo
+            {
+                Key = "aborted",
+                DisplayName = "Retrying task",
+                Status = "failed",
+                AbortedLastRun = true,
+                UpdatedAt = FixedNowUtc.AddMinutes(-1),
+            },
+            new SessionInfo
+            {
+                Key = "idle",
+                DisplayName = "Older idle",
+                Status = "idle",
+                UpdatedAt = FixedNowUtc.AddMinutes(-30),
+            },
+        };
+
+        var snapshot = Base(sessions: sessions);
+
+        Assert.True(snapshot.Sessions[0].AbortedLastRun);
+        Assert.True(snapshot.Sessions[0].ToSessionInfo().AbortedLastRun);
+
+        var summary = Build(snapshot);
+
+        Assert.Equal("Retrying task", summary.ActiveSession!.Title);
+    }
+
+    [Fact]
     public void ActiveSession_ComputesContextPercent()
     {
         var sessions = new[]
@@ -508,7 +552,10 @@ public sealed class TrayDashboardSummaryBuilderTests
         {
             Totals = new GatewayCostUsageTotalsInfo { TotalCost = 2.50, TotalTokens = 1234 },
         };
-        var snapshot = Base(ConnectionStatus.Connected, usage: usage) with { UsageCost = usageCost };
+        var snapshot = Base(ConnectionStatus.Connected, usage: usage) with
+        {
+            UsageCost = TrayUsageCostSnapshot.From(usageCost),
+        };
 
         var summary = Build(snapshot);
 

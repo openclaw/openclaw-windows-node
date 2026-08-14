@@ -4677,6 +4677,42 @@ Commands are blocked while sandboxing is unavailable because strict fallback blo
   <data name="SandboxPage_LocalNetworkDevicesAnd.Text" xml:space="preserve">
     <value>Local network devices and shares are not included yet.</value>
   </data>
+  <data name="SandboxPage_CommandCompatibility.Text" xml:space="preserve">
+    <value>🪟 Command compatibility</value>
+  </data>
+  <data name="SandboxPage_AllowWindowsUi.Header" xml:space="preserve">
+    <value>Allow Windows UI APIs</value>
+  </data>
+  <data name="SandboxPage_AllowWindowsUi.OffContent" xml:space="preserve">
+    <value>Off: blocks Win32k system calls</value>
+  </data>
+  <data name="SandboxPage_AllowWindowsUi.OnContent" xml:space="preserve">
+    <value>On: PowerShell and similar tools can start</value>
+  </data>
+  <data name="SandboxPage_AllowWindowsUi.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>Allow Windows UI APIs for sandboxed commands</value>
+  </data>
+  <data name="SandboxPage_WindowsUiCompatibilityDescription.Text" xml:space="preserve">
+    <value>PowerShell, whoami, tasklist, and many other console tools use Windows UI APIs during startup.</value>
+  </data>
+  <data name="SandboxPage_WindowsUiWarning.Title" xml:space="preserve">
+    <value>Win32k boundary disabled</value>
+  </data>
+  <data name="SandboxPage_WindowsUiWarning.Message" xml:space="preserve">
+    <value>File, network, clipboard, timeout, and command approval controls still apply, but Win32k system calls are allowed.</value>
+  </data>
+  <data name="SandboxPage_AllowWindowsUiDialogTitle" xml:space="preserve">
+    <value>Allow Windows UI APIs?</value>
+  </data>
+  <data name="SandboxPage_AllowWindowsUiDialogContent" xml:space="preserve">
+    <value>This lets sandboxed commands use Windows UI system calls. PowerShell, whoami, tasklist, and other console tools need this to start on current MXC versions.&#xA;&#xA;File, network, clipboard, timeout, and command approval controls still apply, but Win32k syscall blocking will be disabled. Only enable this if you need broader command compatibility.</value>
+  </data>
+  <data name="SandboxPage_AllowWindowsUiDialogPrimary" xml:space="preserve">
+    <value>Allow UI APIs</value>
+  </data>
+  <data name="SandboxPage_AllowWindowsUiDialogCancel" xml:space="preserve">
+    <value>Cancel</value>
+  </data>
   <data name="SandboxPage_Limits.Text" xml:space="preserve">
     <value>⏱ Limits</value>
   </data>

@@ -313,6 +313,7 @@ OpenClaw.SetupEngine.Program.Main(["--log-path", "./trace.log"])
 ```
 
 Common flags include `--config`, `--headless`, `--dry-run`, `--rollback-on-failure`, `--no-rollback-on-failure`, `--log-path`, `--gateway-port`, and uninstall safety flags such as `--uninstall` plus `--confirm-destructive`.
+The cross-repository release gate may also pass `--gateway-candidate-package <absolute-tgz>` together with `--validate-gateway-candidate`, headless mode, and rollback-on-failure. This runtime-only input is not deserialized from setup config and does not authorize normal product setup to install an unvalidated release.
 
 SetupEngine option names are case-insensitive. Value options accept either separated
 syntax (`--config custom.json`) or equals syntax (`--config=custom.json`). Unknown

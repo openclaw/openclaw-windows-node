@@ -4631,6 +4631,42 @@ Opdrachten worden geblokkeerd zolang sandboxing niet beschikbaar is, omdat strik
   <data name="SandboxPage_LocalNetworkDevicesAnd.Text" xml:space="preserve">
     <value>Lokale netwerkapparaten en gedeelde mappen zijn nog niet inbegrepen.</value>
   </data>
+  <data name="SandboxPage_CommandCompatibility.Text" xml:space="preserve">
+    <value>🪟 Opdrachtcompatibiliteit</value>
+  </data>
+  <data name="SandboxPage_AllowWindowsUi.Header" xml:space="preserve">
+    <value>Windows UI-API's toestaan</value>
+  </data>
+  <data name="SandboxPage_AllowWindowsUi.OffContent" xml:space="preserve">
+    <value>Uit: blokkeert Win32k-systeemaanroepen</value>
+  </data>
+  <data name="SandboxPage_AllowWindowsUi.OnContent" xml:space="preserve">
+    <value>Aan: PowerShell en vergelijkbare hulpprogramma's kunnen starten</value>
+  </data>
+  <data name="SandboxPage_AllowWindowsUi.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>Windows UI-API's toestaan voor opdrachten in de sandbox</value>
+  </data>
+  <data name="SandboxPage_WindowsUiCompatibilityDescription.Text" xml:space="preserve">
+    <value>PowerShell, whoami, tasklist en veel andere consolehulpprogramma's gebruiken Windows UI-API's tijdens het opstarten.</value>
+  </data>
+  <data name="SandboxPage_WindowsUiWarning.Title" xml:space="preserve">
+    <value>Win32k-grens uitgeschakeld</value>
+  </data>
+  <data name="SandboxPage_WindowsUiWarning.Message" xml:space="preserve">
+    <value>Bestands-, netwerk-, klembord-, time-out- en opdrachtgoedkeuringsregels blijven gelden, maar Win32k-systeemaanroepen zijn toegestaan.</value>
+  </data>
+  <data name="SandboxPage_AllowWindowsUiDialogTitle" xml:space="preserve">
+    <value>Windows UI-API's toestaan?</value>
+  </data>
+  <data name="SandboxPage_AllowWindowsUiDialogContent" xml:space="preserve">
+    <value>Hiermee kunnen opdrachten in de sandbox Windows UI-systeemaanroepen gebruiken. PowerShell, whoami, tasklist en andere consolehulpprogramma's hebben dit nodig om met huidige MXC-versies te starten.&#xA;&#xA;Bestands-, netwerk-, klembord-, time-out- en opdrachtgoedkeuringsregels blijven gelden, maar de blokkering van Win32k-systeemaanroepen wordt uitgeschakeld. Schakel dit alleen in als u bredere opdrachtcompatibiliteit nodig hebt.</value>
+  </data>
+  <data name="SandboxPage_AllowWindowsUiDialogPrimary" xml:space="preserve">
+    <value>UI-API's toestaan</value>
+  </data>
+  <data name="SandboxPage_AllowWindowsUiDialogCancel" xml:space="preserve">
+    <value>Annuleren</value>
+  </data>
   <data name="SandboxPage_Limits.Text" xml:space="preserve">
     <value>⏱ Limieten</value>
   </data>

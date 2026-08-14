@@ -8,10 +8,12 @@ using OpenClaw.Connection;
 using OpenClaw.Shared;
 using OpenClawTray.Helpers;
 using OpenClawTray.Pages;
+using OpenClawTray.Presentation;
 using OpenClawTray.Services;
 using OpenClawTray.ViewModels;
 using System;
 using System.Collections.Generic;
+using System.Collections.Immutable;
 using System.Collections.ObjectModel;
 using System.ComponentModel;
 using System.Linq;
@@ -36,11 +38,12 @@ public sealed partial class HubWindow : WindowEx
     public string CurrentAgentId => _currentAgentId;
     private TaskCompletionSource<bool> _contentReady = CreateCompletedContentReady();
     private AppNotificationService? _appNotificationService;
-    private readonly AppNotificationBannerState _appNotificationBannerState = new();
+    private readonly AppNotificationInfoBarPresenter _appNotificationInfoBarPresenter = new();
     private AppNotificationSnapshot? _lastAppNotificationSnapshot;
-    private AppNotification? _currentAppNotification;
+    private AppNotificationInfoBarPresentation _currentAppNotificationPresentation =
+        AppNotificationInfoBarPresentation.Hidden;
+    private SettingsWriteOrigin? _commandPaletteSettingsOrigin;
     private bool _suppressAppNotificationClosed;
-    private bool _appNotificationActionShowsMore;
 
     private readonly ObservableCollection<NotificationItemViewModel> _bellItems = new();
     private bool _bellListBound;
@@ -185,55 +188,33 @@ public sealed partial class HubWindow : WindowEx
 
         UpdateNotificationsBell(snapshot);
 
-        var bannerActive = snapshot.ActiveNotifications
-            .Where(n => IsBannerSeverity(n.Severity))
-            .ToList();
-        var bannerSnapshot = bannerActive.Count == snapshot.ActiveNotifications.Count
-            ? snapshot
-            : snapshot with { ActiveNotifications = bannerActive };
-
-        var displayedNotificationWasRemoved = _currentAppNotification is not null
-            && AppNotificationInfoBar.IsOpen
-            && !bannerSnapshot.ActiveNotifications.Any(notification =>
-                string.Equals(notification.Id, _currentAppNotification.Id, StringComparison.Ordinal));
-        _currentAppNotification = _appNotificationBannerState.SelectVisibleNotification(
-            bannerSnapshot,
-            revealHiddenIfNeeded: displayedNotificationWasRemoved);
-        if (_currentAppNotification is null)
+        _currentAppNotificationPresentation = _appNotificationInfoBarPresenter.Present(
+            snapshot,
+            _currentAppNotificationPresentation.Notification?.Id,
+            AppNotificationInfoBar.IsOpen,
+            _currentNavTag,
+            LocalizationHelper.GetString("AppNotification_ShowMore"));
+        if (!_currentAppNotificationPresentation.IsVisible)
         {
             HideAppNotificationInfoBar();
             return;
         }
 
-        var notification = _currentAppNotification;
+        var notification = _currentAppNotificationPresentation.Notification!;
         AppNotificationInfoBar.Visibility = Visibility.Visible;
-        AppNotificationInfoBar.Severity = ToInfoBarSeverity(notification.Severity);
+        AppNotificationInfoBar.Severity = ToInfoBarSeverity(_currentAppNotificationPresentation.Severity);
         AppNotificationInfoBar.Title = notification.Title;
         AppNotificationInfoBar.Message = notification.Message;
 
-        // Action-button precedence: if the visible notification is itself
-        // actionable (e.g. a connection issue routes to the Connection page),
-        // surface that action so the user can act on the banner they're
-        // looking at. Only fall back to "Show more" when the visible
-        // notification has no action of its own but others are queued.
-        if (!string.IsNullOrWhiteSpace(notification.ActionLabel) &&
-            !string.IsNullOrWhiteSpace(notification.ActionRoute))
+        var action = _currentAppNotificationPresentation.Action;
+        if (action.Kind != AppNotificationInfoBarActionKind.None)
         {
-            _appNotificationActionShowsMore = false;
-            AppNotificationActionButton.Content = notification.ActionLabel;
+            AppNotificationActionButton.Content = action.Label;
             AppNotificationActionButton.Visibility = Visibility.Visible;
-            UpdateAppNotificationActionEnabledState();
-        }
-        else if (snapshot.HasMultipleActiveNotifications)
-        {
-            _appNotificationActionShowsMore = true;
-            AppNotificationActionButton.Content = LocalizationHelper.GetString("AppNotification_ShowMore");
-            AppNotificationActionButton.Visibility = Visibility.Visible;
-            UpdateAppNotificationActionEnabledState();
+            AppNotificationActionButton.IsEnabled = action.IsEnabled;
         }
         else
         {
-            _appNotificationActionShowsMore = false;
             AppNotificationActionButton.Visibility = Visibility.Collapsed;
             AppNotificationActionButton.IsEnabled = true;
         }
@@ -249,28 +230,27 @@ public sealed partial class HubWindow : WindowEx
         AppNotificationInfoBar.Title = string.Empty;
         AppNotificationInfoBar.Message = string.Empty;
         AppNotificationActionButton.Visibility = Visibility.Collapsed;
-        _appNotificationActionShowsMore = false;
-        _currentAppNotification = null;
+        _currentAppNotificationPresentation = AppNotificationInfoBarPresentation.Hidden;
         _suppressAppNotificationClosed = false;
         AppNotificationActionButton.IsEnabled = true;
     }
 
     private void UpdateAppNotificationActionEnabledState()
     {
-        AppNotificationActionButton.IsEnabled = !_appNotificationActionShowsMore ||
-            !string.Equals(_currentNavTag, "notifications", StringComparison.Ordinal);
+        _currentAppNotificationPresentation = _appNotificationInfoBarPresenter.UpdateCurrentTag(
+            _currentAppNotificationPresentation,
+            _currentNavTag);
+        AppNotificationActionButton.IsEnabled =
+            _currentAppNotificationPresentation.Action.IsEnabled;
     }
 
-    private static InfoBarSeverity ToInfoBarSeverity(AppNotificationSeverity severity) => severity switch
+    private static InfoBarSeverity ToInfoBarSeverity(AppNotificationInfoBarSeverity severity) => severity switch
     {
-        AppNotificationSeverity.Success => InfoBarSeverity.Success,
-        AppNotificationSeverity.Warning => InfoBarSeverity.Warning,
-        AppNotificationSeverity.Error => InfoBarSeverity.Error,
+        AppNotificationInfoBarSeverity.Success => InfoBarSeverity.Success,
+        AppNotificationInfoBarSeverity.Warning => InfoBarSeverity.Warning,
+        AppNotificationInfoBarSeverity.Error => InfoBarSeverity.Error,
         _ => InfoBarSeverity.Informational
     };
-
-    private static bool IsBannerSeverity(AppNotificationSeverity severity) =>
-        severity is AppNotificationSeverity.Error or AppNotificationSeverity.Warning;
 
     private void UpdateNotificationsBell(AppNotificationSnapshot snapshot)
     {
@@ -471,7 +451,7 @@ public sealed partial class HubWindow : WindowEx
             // that were already active. The Notifications page remains the source
             // of truth, and deleting the displayed list item can still reveal a
             // remaining hidden item via RenderAppNotification's fallback path.
-            _appNotificationBannerState.HideActiveNotifications(_lastAppNotificationSnapshot);
+            _appNotificationInfoBarPresenter.HideActiveNotifications(_lastAppNotificationSnapshot);
         }
 
         HideAppNotificationInfoBar();
@@ -479,14 +459,17 @@ public sealed partial class HubWindow : WindowEx
 
     private void OnAppNotificationActionButtonClick(object sender, RoutedEventArgs e)
     {
-        if (_appNotificationActionShowsMore)
+        if (_currentAppNotificationPresentation.Action.Kind ==
+            AppNotificationInfoBarActionKind.ShowMore)
         {
             NavigateTo("notifications");
             return;
         }
 
-        if (_currentAppNotification?.ActionRoute is { Length: > 0 } route)
+        if (_currentAppNotificationPresentation.Action is
+            { Kind: AppNotificationInfoBarActionKind.NotificationRoute, Route.Length: > 0 } action)
         {
+            var route = action.Route;
             if (AppNotificationActionRoutes.TryGetChatSessionKey(route, out var sessionKey))
             {
                 CurrentApp.PendingChatSessionKey = sessionKey;
@@ -500,7 +483,7 @@ public sealed partial class HubWindow : WindowEx
             {
                 NavigateTo(route);
             }
-            _appNotificationService?.Dismiss(_currentAppNotification.Id);
+            _appNotificationService?.Dismiss(_currentAppNotificationPresentation.Notification!.Id);
             return;
         }
     }
@@ -665,28 +648,15 @@ public sealed partial class HubWindow : WindowEx
     /// Cross-page links and the rail both flow through here; the resulting
     /// <see cref="ContentFrame"/> back-stack entry powers the title-bar back button.
     /// </summary>
-    public void NavigateTo(string tag) => NavigateInternal(NormalizeNavTag(tag));
-
-    private string NormalizeNavTag(string tag)
-    {
-        // Map legacy tags — Home page was retired in favor of the Lobby/Cockpit
-        // layout on Connection. Any caller still using "home" or "general"
-        // (deep links, persisted nav state, command palette) lands here.
-        if (tag == "home" || tag == "general") return "connection";
-        if (tag == "about" || tag == "info") return "settings";
-        if (tag == "nodes") return "instances";
-        // Map legacy agent-scoped workspace/cron tags
-        if (tag == "cron") return $"agent:{_currentAgentId}:cron";
-        if (tag == "workspace") return $"agent:{_currentAgentId}:workspace";
-        return tag;
-    }
+    public void NavigateTo(string tag) =>
+        NavigateInternal(HubPageRegistry.NormalizeTag(tag, _currentAgentId));
 
     private void NavigateInternal(string tag)
     {
         if (tag == "debug" && !DiagnosticsGate.IsVisible)
             tag = "settings";
 
-        var pageType = TagToPageType(tag);
+        var pageType = HubPageRegistry.ResolvePageType(tag);
         if (pageType == null) return;
 
         // Identity dedupe: navigation identity = (PageType, normalized tag).
@@ -890,7 +860,7 @@ public sealed partial class HubWindow : WindowEx
             var vis = connected ? Visibility.Visible : Visibility.Collapsed;
             var currentTag = _currentNavTag ?? (NavView?.SelectedItem as NavigationViewItem)?.Tag as string;
             var keepCurrentGatewayPageVisible = !connected &&
-                GatewayNavVisibilityDebouncePolicy.ShouldKeepCurrentPageVisibleDuringDisconnect(currentTag);
+                HubPageRegistry.ShouldKeepCurrentPageVisibleDuringDisconnect(currentTag);
 
             NavChat.Visibility = vis;
             NavSessions.Visibility = vis;
@@ -907,7 +877,7 @@ public sealed partial class HubWindow : WindowEx
                     return;
 
                 RemoveUnavailableGatewayBackStackEntries();
-                if (GatewayNavVisibilityDebouncePolicy.IsGatewayPageTag(currentTag))
+                if (HubPageRegistry.IsGatewayPageTag(currentTag))
                 {
                     foreach (NavigationViewItem item in NavView!.MenuItems.OfType<NavigationViewItem>())
                     {
@@ -932,7 +902,7 @@ public sealed partial class HubWindow : WindowEx
         if (AppModel?.Status == ConnectionStatus.Connected)
             return;
 
-        RemoveBackStackEntries(GatewayNavVisibilityDebouncePolicy.IsGatewayPageTag);
+        RemoveBackStackEntries(HubPageRegistry.IsGatewayPageTag);
     }
 
     private void RemoveBackStackEntries(string tag) =>
@@ -988,7 +958,7 @@ public sealed partial class HubWindow : WindowEx
 
         if (args.SelectedItem is NavigationViewItem item && item.Tag is string tag)
         {
-            NavigateInternal(NormalizeNavTag(tag));
+            NavigateInternal(HubPageRegistry.NormalizeTag(tag, _currentAgentId));
         }
     }
 
@@ -1007,7 +977,7 @@ public sealed partial class HubWindow : WindowEx
         // Keep _currentAgentId aligned with the page that's now visible.
         if (tag != null && tag.StartsWith("agent:"))
         {
-            var newAgent = ParseAgentIdFromTag(tag);
+            var newAgent = HubPageRegistry.ParseAgentId(tag);
             if (newAgent != _currentAgentId)
             {
                 _currentAgentId = newAgent;
@@ -1116,7 +1086,7 @@ public sealed partial class HubWindow : WindowEx
                 }
                 break;
             case InstancesPage instances: instances.Initialize(); break;
-            case PermissionsPage permissions: permissions.Initialize(); break;
+            case PermissionsPage: break;
             case SandboxPage sandbox: sandbox.Initialize(); break;
             case VoiceSettingsPage voice: voice.Initialize(CurrentApp.VoiceService); break;
             case AgentEventsPage agentEvents:
@@ -1156,66 +1126,6 @@ public sealed partial class HubWindow : WindowEx
         _ = filter;
     }
 
-    private static Type? TagToPageType(string? tag) => tag switch
-    {
-        "chat" => typeof(ChatPage),
-        "connection" => typeof(ConnectionPage),
-        "channels" => typeof(ChannelsPage),
-        "nodes" => typeof(InstancesPage),
-        "instances" => typeof(InstancesPage),
-        "config" => typeof(ConfigPage),
-        "usage" => typeof(UsagePage),
-        "bindings" => typeof(BindingsPage),
-        "capabilities" => typeof(PermissionsPage),
-        "voice" => typeof(VoiceSettingsPage),
-        "permissions" => typeof(PermissionsPage),
-        "sandbox" => typeof(SandboxPage),
-        // ActivityPage has been removed; legacy "activity"/"history" deep links
-        // redirect to ChannelsPage via DeepLinkHandler.
-        "activity" => typeof(ChannelsPage),
-        "settings" => typeof(SettingsPage),
-        "notifications" => typeof(NotificationsPage),
-        "debug" => typeof(DebugPage),
-        "info" => typeof(SettingsPage),
-        // Legacy tags
-        "home" => typeof(ConnectionPage),
-        "general" => typeof(ConnectionPage),
-        "conversations" => typeof(SessionsPage), // legacy redirect
-        "sessions" => typeof(SessionsPage),
-        "agentevents" => typeof(AgentEventsPage),
-        "skills" => typeof(SkillsPage),
-        "cron" => typeof(CronPage),
-        "workspace" => typeof(WorkspacePage),
-        "about" => typeof(SettingsPage),
-        // Agent-scoped pages
-        _ when tag?.StartsWith("agent:") == true => ResolveAgentPageType(tag),
-        _ => null
-    };
-
-    private static Type? ResolveAgentPageType(string tag)
-    {
-        var parts = tag.Split(':');
-        // "agent:main" (2 parts) → workspace page for that agent
-        if (parts.Length == 2) return typeof(WorkspacePage);
-        // "agent:main:workspace" etc (3 parts)
-        return parts[2] switch
-        {
-            "sessions" => typeof(SessionsPage),
-            "agentevents" => typeof(AgentEventsPage),
-            "skills" => typeof(SkillsPage),
-            "cron" => typeof(CronPage),
-            "workspace" => typeof(WorkspacePage),
-            _ => null
-        };
-    }
-
-    private static string ParseAgentIdFromTag(string? tag)
-    {
-        if (tag == null || !tag.StartsWith("agent:")) return "main";
-        var parts = tag.Split(':');
-        return parts.Length >= 2 ? parts[1] : "main";
-    }
-
     // ── Command Search (Ctrl+E / Ctrl+K / Ctrl+F) — title bar AutoSuggestBox ──
 
     private void OnRootPreviewKeyDown(object sender, Microsoft.UI.Xaml.Input.KeyRoutedEventArgs e)
@@ -1245,24 +1155,18 @@ public sealed partial class HubWindow : WindowEx
         }
     }
 
-    private List<CommandItem>? _cachedCommands;
+    private ImmutableArray<HubCommand>? _cachedCommands;
 
     private void OnSearchTextChanged(AutoSuggestBox sender, AutoSuggestBoxTextChangedEventArgs args)
     {
         if (args.Reason != AutoSuggestionBoxTextChangeReason.UserInput) return;
         _cachedCommands ??= BuildCommandList();
-        var query = sender.Text?.Trim() ?? "";
-        var filtered = string.IsNullOrEmpty(query)
-            ? _cachedCommands.Take(8).ToList()
-            : _cachedCommands.Where(c => c.Title.Contains(query, StringComparison.OrdinalIgnoreCase)
-                || (c.Subtitle?.Contains(query, StringComparison.OrdinalIgnoreCase) ?? false))
-                .Take(10).ToList();
-        sender.ItemsSource = filtered;
+        sender.ItemsSource = HubPageRegistry.SearchCommands(_cachedCommands.Value, sender.Text);
     }
 
     private void OnSearchSuggestionChosen(AutoSuggestBox sender, AutoSuggestBoxSuggestionChosenEventArgs args)
     {
-        if (args.SelectedItem is CommandItem cmd)
+        if (args.SelectedItem is HubCommand cmd)
         {
             sender.Text = "";
             sender.ItemsSource = null;
@@ -1273,17 +1177,17 @@ public sealed partial class HubWindow : WindowEx
 
     private void OnSearchQuerySubmitted(AutoSuggestBox sender, AutoSuggestBoxQuerySubmittedEventArgs args)
     {
-        if (args.ChosenSuggestion is CommandItem cmd)
+        if (args.ChosenSuggestion is HubCommand cmd)
         {
             sender.Text = "";
             sender.ItemsSource = null;
             _cachedCommands = null;
             ExecuteCommand(cmd);
         }
-        else if (sender.ItemsSource is List<CommandItem> items && items.Count > 0)
+        else if (sender.ItemsSource is IEnumerable<HubCommand> items &&
+            items.FirstOrDefault() is { } first)
         {
             // Enter pressed without selecting — execute first match
-            var first = items[0];
             sender.Text = "";
             sender.ItemsSource = null;
             _cachedCommands = null;
@@ -1291,106 +1195,129 @@ public sealed partial class HubWindow : WindowEx
         }
     }
 
-    internal List<CommandItem> BuildCommandList()
+    internal ImmutableArray<HubCommand> BuildCommandList()
     {
-        var agentId = _currentAgentId;
-        var commands = new List<CommandItem>
-        {
-            // Navigation
-            new() { Icon = "🔌", Title = LocalizationHelper.GetString("Command_GoToConnection_Title"), Subtitle = LocalizationHelper.GetString("Command_GoToConnection_Subtitle"), Tag = "connection" },
-            new() { Icon = "💬", Title = LocalizationHelper.GetString("Command_GoToChat_Title"), Subtitle = LocalizationHelper.GetString("Command_GoToChat_Subtitle"), Tag = "chat" },
-            new() { Icon = "🧠", Title = LocalizationHelper.GetString("Command_GoToSessions_Title"), Subtitle = LocalizationHelper.GetString("Command_GoToSessions_Subtitle"), Tag = "sessions" },
-            new() { Icon = "🧠", Title = LocalizationHelper.GetString("Command_GoToAgentEvents_Title"), Subtitle = LocalizationHelper.GetString("Command_GoToAgentEvents_Subtitle"), Tag = "agentevents" },
-            new() { Icon = "🧠", Title = LocalizationHelper.GetString("Command_GoToSkills_Title"), Subtitle = LocalizationHelper.GetString("Command_GoToSkills_Subtitle"), Tag = "skills" },
-            new() { Icon = "🧠", Title = LocalizationHelper.Format("Command_GoToCron_Title", agentId), Subtitle = LocalizationHelper.GetString("Command_GoToCron_Subtitle"), Tag = $"agent:{agentId}:cron" },
-            new() { Icon = "🧠", Title = LocalizationHelper.Format("Command_GoToWorkspace_Title", agentId), Subtitle = LocalizationHelper.GetString("Command_GoToWorkspace_Subtitle"), Tag = $"agent:{agentId}" },
-            new() { Icon = "📡", Title = LocalizationHelper.GetString("Command_GoToChannels_Title"), Subtitle = LocalizationHelper.GetString("Command_GoToChannels_Subtitle"), Tag = "channels" },
-            new() { Icon = "📡", Title = LocalizationHelper.GetString("Command_GoToInstances_Title"), Subtitle = LocalizationHelper.GetString("Command_GoToInstances_Subtitle"), Tag = "instances" },
-            new() { Icon = "📡", Title = LocalizationHelper.GetString("Command_GoToConfig_Title"), Subtitle = LocalizationHelper.GetString("Command_GoToConfig_Subtitle"), Tag = "config" },
-            new() { Icon = "📡", Title = LocalizationHelper.GetString("Command_GoToUsage_Title"), Subtitle = LocalizationHelper.GetString("Command_GoToUsage_Subtitle"), Tag = "usage" },
-            new() { Icon = "📡", Title = LocalizationHelper.GetString("Command_GoToBindings_Title"), Subtitle = LocalizationHelper.GetString("Command_GoToBindings_Subtitle"), Tag = "bindings" },
-            new() { Icon = "🛡️", Title = LocalizationHelper.GetString("Command_GoToPermissions_Title"), Subtitle = LocalizationHelper.GetString("Command_GoToPermissions_Subtitle"), Tag = "permissions" },
-            new() { Icon = "⚙️", Title = LocalizationHelper.GetString("Command_GoToSettings_Title"), Subtitle = LocalizationHelper.GetString("Command_GoToSettings_Subtitle"), Tag = "settings" },
-            new() { Icon = "🔔", Title = LocalizationHelper.GetString("Command_GoToNotifications_Title"), Subtitle = LocalizationHelper.GetString("Command_GoToNotifications_Subtitle"), Tag = "notifications" },
-
-            // Actions
-            new() { Icon = "💬", Title = LocalizationHelper.GetString("Command_OpenChatWindow_Title"), Subtitle = LocalizationHelper.GetString("Command_OpenChatWindow_Subtitle"), Tag = "chat" },
-            new() { Icon = "🌐", Title = LocalizationHelper.GetString("Command_OpenDashboard_Title"), Subtitle = LocalizationHelper.GetString("Command_OpenDashboard_Subtitle"), Execute = () => ((IAppCommands)Application.Current).OpenDashboard(null) },
-        };
-
-        if (DiagnosticsGate.IsVisible)
-        {
-            commands.Add(new CommandItem { Icon = "🐛", Title = LocalizationHelper.GetString("Command_GoToDiagnostics_Title"), Subtitle = LocalizationHelper.GetString("Command_GoToDiagnostics_Subtitle"), Tag = "debug" });
-        }
-
-        // Toggle commands
         var settings = CurrentApp.Settings;
-        if (settings != null)
-        {
-            var on = LocalizationHelper.GetString("Command_Subtitle_CurrentlyOn");
-            var off = LocalizationHelper.GetString("Command_Subtitle_CurrentlyOff");
-            commands.Add(new CommandItem
-            {
-                Icon = "🔌", Title = LocalizationHelper.GetString("Command_ToggleNodeMode_Title"),
-                Subtitle = settings.EnableNodeMode ? on : off,
-                Execute = () => { settings.EnableNodeMode = !settings.EnableNodeMode; settings.Save(); RaiseSettingsSaved(); }
-            });
-            commands.Add(new CommandItem
-            {
-                Icon = "📷", Title = LocalizationHelper.GetString("Command_ToggleCamera_Title"),
-                Subtitle = settings.NodeCameraEnabled ? on : off,
-                Execute = () => { settings.NodeCameraEnabled = !settings.NodeCameraEnabled; settings.Save(); RaiseSettingsSaved(); }
-            });
-            commands.Add(new CommandItem
-            {
-                Icon = "🎨", Title = LocalizationHelper.GetString("Command_ToggleCanvas_Title"),
-                Subtitle = settings.NodeCanvasEnabled ? on : off,
-                Execute = () => { settings.NodeCanvasEnabled = !settings.NodeCanvasEnabled; settings.Save(); RaiseSettingsSaved(); }
-            });
-            commands.Add(new CommandItem
-            {
-                Icon = "🖥️", Title = LocalizationHelper.GetString("Command_ToggleScreenCapture_Title"),
-                Subtitle = settings.NodeScreenEnabled ? on : off,
-                Execute = () => { settings.NodeScreenEnabled = !settings.NodeScreenEnabled; settings.Save(); RaiseSettingsSaved(); }
-            });
-            commands.Add(new CommandItem
-            {
-                Icon = "🌐", Title = LocalizationHelper.GetString("Command_ToggleBrowserControl_Title"),
-                Subtitle = settings.NodeBrowserProxyEnabled ? on : off,
-                Execute = () => { settings.NodeBrowserProxyEnabled = !settings.NodeBrowserProxyEnabled; settings.Save(); RaiseSettingsSaved(); }
-            });
-        }
+        var toggles = settings is null
+            ? null
+            : new HubCommandToggleState(
+                settings.EnableNodeMode,
+                settings.NodeCameraEnabled,
+                settings.NodeCanvasEnabled,
+                settings.NodeScreenEnabled,
+                settings.NodeBrowserProxyEnabled);
+        var sessions = AppModel?.Sessions?.Select(session => session.Key).ToImmutableArray()
+            ?? ImmutableArray<string>.Empty;
+        var resources = HubPageRegistry.CommandResourceKeys.ToImmutableDictionary(
+            key => key,
+            LocalizationHelper.GetString,
+            StringComparer.Ordinal);
 
-        // Dynamic session commands
-        var sessions = AppModel?.Sessions;
-        if (sessions != null)
-        {
-            foreach (var session in sessions)
-            {
-                var key = session.Key;
-                commands.Add(new CommandItem
-                {
-                    Icon = "🧠", Title = $"Go to session: {key}",
-                    Subtitle = "Open in dashboard",
-                    Execute = () => ((IAppCommands)Application.Current).OpenDashboard($"sessions/{key}")
-                });
-            }
-        }
-
-        return commands;
+        return HubPageRegistry.BuildCommands(new HubCommandContext(
+            _currentAgentId,
+            DiagnosticsGate.IsVisible,
+            toggles,
+            sessions,
+            resources));
     }
 
-    private void ExecuteCommand(CommandItem cmd)
+    private void ToggleCommandPalettePermission(HubSettingToggle toggle)
     {
-        if (cmd.Execute != null)
-        {
-            cmd.Execute();
+        var settings = CurrentApp.SettingsOrNull;
+        if (settings == null)
             return;
-        }
 
-        if (!string.IsNullOrEmpty(cmd.Tag))
+        var settingName = GetSettingName(toggle);
+        var nextValue = !GetCurrentSettingValue(settings, toggle);
+        try
         {
-            NavigateTo(cmd.Tag);
+            if (CurrentApp.SettingsStore is { } store)
+            {
+                _commandPaletteSettingsOrigin ??= store.CreateOrigin();
+                store.Update(_commandPaletteSettingsOrigin, edit =>
+                    ApplySettingValue(edit, toggle, nextValue));
+            }
+            else
+            {
+                Services.Logger.Warn($"[HubWindow] ISettingsStore unavailable for {settingName}. Falling back to SettingsManager.Save.");
+                ApplySettingValue(settings, toggle, nextValue);
+                settings.Save();
+            }
+
+            RaiseSettingsSaved();
+        }
+        catch (Exception ex)
+        {
+            Services.Logger.Warn($"[HubWindow] Failed to persist {settingName}: {ex.Message}");
+        }
+    }
+
+    private static string GetSettingName(HubSettingToggle toggle) => toggle switch
+    {
+        HubSettingToggle.NodeMode => nameof(SettingsManager.EnableNodeMode),
+        HubSettingToggle.Camera => nameof(SettingsManager.NodeCameraEnabled),
+        HubSettingToggle.Canvas => nameof(SettingsManager.NodeCanvasEnabled),
+        HubSettingToggle.ScreenCapture => nameof(SettingsManager.NodeScreenEnabled),
+        HubSettingToggle.BrowserControl => nameof(SettingsManager.NodeBrowserProxyEnabled),
+        _ => throw new ArgumentOutOfRangeException(nameof(toggle))
+    };
+
+    private static bool GetCurrentSettingValue(SettingsManager settings, HubSettingToggle toggle) =>
+        toggle switch
+        {
+            HubSettingToggle.NodeMode => settings.EnableNodeMode,
+            HubSettingToggle.Camera => settings.NodeCameraEnabled,
+            HubSettingToggle.Canvas => settings.NodeCanvasEnabled,
+            HubSettingToggle.ScreenCapture => settings.NodeScreenEnabled,
+            HubSettingToggle.BrowserControl => settings.NodeBrowserProxyEnabled,
+            _ => throw new ArgumentOutOfRangeException(nameof(toggle))
+        };
+
+    private static void ApplySettingValue(
+        ISettingsEditor settings,
+        HubSettingToggle toggle,
+        bool value)
+    {
+        switch (toggle)
+        {
+            case HubSettingToggle.NodeMode: settings.EnableNodeMode = value; break;
+            case HubSettingToggle.Camera: settings.NodeCameraEnabled = value; break;
+            case HubSettingToggle.Canvas: settings.NodeCanvasEnabled = value; break;
+            case HubSettingToggle.ScreenCapture: settings.NodeScreenEnabled = value; break;
+            case HubSettingToggle.BrowserControl: settings.NodeBrowserProxyEnabled = value; break;
+            default: throw new ArgumentOutOfRangeException(nameof(toggle));
+        }
+    }
+
+    private static void ApplySettingValue(
+        SettingsManager settings,
+        HubSettingToggle toggle,
+        bool value)
+    {
+        switch (toggle)
+        {
+            case HubSettingToggle.NodeMode: settings.EnableNodeMode = value; break;
+            case HubSettingToggle.Camera: settings.NodeCameraEnabled = value; break;
+            case HubSettingToggle.Canvas: settings.NodeCanvasEnabled = value; break;
+            case HubSettingToggle.ScreenCapture: settings.NodeScreenEnabled = value; break;
+            case HubSettingToggle.BrowserControl: settings.NodeBrowserProxyEnabled = value; break;
+            default: throw new ArgumentOutOfRangeException(nameof(toggle));
+        }
+    }
+
+    private void ExecuteCommand(HubCommand command)
+    {
+        switch (command.Action.Kind)
+        {
+            case HubCommandActionKind.Navigate when command.Action.Value is { Length: > 0 } tag:
+                NavigateTo(tag);
+                break;
+            case HubCommandActionKind.OpenDashboard:
+                ((IAppCommands)Application.Current).OpenDashboard(command.Action.Value);
+                break;
+            case HubCommandActionKind.ToggleSetting when command.Action.Toggle is { } toggle:
+                ToggleCommandPalettePermission(toggle);
+                break;
         }
     }
 

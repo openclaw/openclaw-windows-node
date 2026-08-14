@@ -14,6 +14,7 @@ public sealed class ProgramArgumentTests : IDisposable
         "--local-data-dir",
         "--distro-name",
         "--gateway-port",
+        "--gateway-candidate-package",
         "--tailscale-auth",
         "--tailscale-hostname",
         "--autostart-name",
@@ -442,6 +443,71 @@ public sealed class ProgramArgumentTests : IDisposable
                 "--config", configPath,
                 "--dry-run",
                 "--validate-gateway-candidate"
+            ]);
+
+        Assert.Equal(2, exitCode);
+    }
+
+    [Fact]
+    public async Task Main_AcceptsUnembeddedCandidatePackageOnlyForHeadlessRollbackValidation()
+    {
+        const string version = "2026.8.1";
+        var configPath = Path.Combine(_tempDir, "external-package-candidate.json");
+        var packagePath = Path.Combine(_tempDir, "openclaw-current.tgz");
+        await File.WriteAllTextAsync(
+            configPath,
+            $"{{\"Gateway\":{{\"Selection\":\"exact\",\"Version\":\"{version}\"}}}}");
+        await File.WriteAllBytesAsync(packagePath, [1, 2, 3]);
+
+        var exitCode = await Program.Main(
+            [
+                "--config", configPath,
+                "--dry-run",
+                "--headless",
+                "--rollback-on-failure",
+                "--validate-gateway-candidate",
+                "--gateway-candidate-package", packagePath
+            ]);
+
+        Assert.Equal(0, exitCode);
+    }
+
+    [Fact]
+    public async Task Main_RejectsCandidatePackageOutsideExplicitValidationMode()
+    {
+        var configPath = Path.Combine(_tempDir, "package-without-validation.json");
+        var packagePath = Path.Combine(_tempDir, "openclaw-current.tgz");
+        await File.WriteAllTextAsync(configPath, "{}");
+        await File.WriteAllBytesAsync(packagePath, [1, 2, 3]);
+
+        var exitCode = await Program.Main(
+            [
+                "--config", configPath,
+                "--dry-run",
+                "--gateway-candidate-package", packagePath
+            ]);
+
+        Assert.Equal(2, exitCode);
+    }
+
+    [Fact]
+    public async Task Main_DoesNotAllowCandidatePackageToOverrideEmbeddedRejection()
+    {
+        var configPath = Path.Combine(_tempDir, "rejected-package-candidate.json");
+        var packagePath = Path.Combine(_tempDir, "openclaw-current.tgz");
+        await File.WriteAllTextAsync(
+            configPath,
+            $"{{\"Gateway\":{{\"Selection\":\"exact\",\"Version\":\"{GatewayReleasePolicy.RuntimeRejectedVersion}\"}}}}");
+        await File.WriteAllBytesAsync(packagePath, [1, 2, 3]);
+
+        var exitCode = await Program.Main(
+            [
+                "--config", configPath,
+                "--dry-run",
+                "--headless",
+                "--rollback-on-failure",
+                "--validate-gateway-candidate",
+                "--gateway-candidate-package", packagePath
             ]);
 
         Assert.Equal(2, exitCode);

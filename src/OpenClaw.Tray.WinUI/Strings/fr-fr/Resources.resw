@@ -4630,6 +4630,42 @@ Les commandes sont bloquées tant que le sandboxing est indisponible, car le blo
   <data name="SandboxPage_LocalNetworkDevicesAnd.Text" xml:space="preserve">
     <value>Les périphériques et partages réseau locaux ne sont pas encore inclus.</value>
   </data>
+  <data name="SandboxPage_CommandCompatibility.Text" xml:space="preserve">
+    <value>🪟 Compatibilité des commandes</value>
+  </data>
+  <data name="SandboxPage_AllowWindowsUi.Header" xml:space="preserve">
+    <value>Autoriser les API d’interface Windows</value>
+  </data>
+  <data name="SandboxPage_AllowWindowsUi.OffContent" xml:space="preserve">
+    <value>Désactivé : bloque les appels système Win32k</value>
+  </data>
+  <data name="SandboxPage_AllowWindowsUi.OnContent" xml:space="preserve">
+    <value>Activé : PowerShell et les outils similaires peuvent démarrer</value>
+  </data>
+  <data name="SandboxPage_AllowWindowsUi.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>Autoriser les API d’interface Windows pour les commandes en bac à sable</value>
+  </data>
+  <data name="SandboxPage_WindowsUiCompatibilityDescription.Text" xml:space="preserve">
+    <value>PowerShell, whoami, tasklist et de nombreux autres outils de console utilisent les API d’interface Windows au démarrage.</value>
+  </data>
+  <data name="SandboxPage_WindowsUiWarning.Title" xml:space="preserve">
+    <value>Limite Win32k désactivée</value>
+  </data>
+  <data name="SandboxPage_WindowsUiWarning.Message" xml:space="preserve">
+    <value>Les contrôles des fichiers, du réseau, du presse-papiers, du délai d’expiration et de l’approbation des commandes restent actifs, mais les appels système Win32k sont autorisés.</value>
+  </data>
+  <data name="SandboxPage_AllowWindowsUiDialogTitle" xml:space="preserve">
+    <value>Autoriser les API d’interface Windows ?</value>
+  </data>
+  <data name="SandboxPage_AllowWindowsUiDialogContent" xml:space="preserve">
+    <value>Cette option permet aux commandes en bac à sable d’utiliser les appels système de l’interface Windows. PowerShell, whoami, tasklist et d’autres outils de console en ont besoin pour démarrer avec les versions actuelles de MXC.&#xA;&#xA;Les contrôles des fichiers, du réseau, du presse-papiers, du délai d’expiration et de l’approbation des commandes restent actifs, mais le blocage des appels système Win32k sera désactivé. Activez cette option uniquement si vous avez besoin d’une compatibilité de commande plus large.</value>
+  </data>
+  <data name="SandboxPage_AllowWindowsUiDialogPrimary" xml:space="preserve">
+    <value>Autoriser les API d’interface</value>
+  </data>
+  <data name="SandboxPage_AllowWindowsUiDialogCancel" xml:space="preserve">
+    <value>Annuler</value>
+  </data>
   <data name="SandboxPage_Limits.Text" xml:space="preserve">
     <value>⏱ Limites</value>
   </data>

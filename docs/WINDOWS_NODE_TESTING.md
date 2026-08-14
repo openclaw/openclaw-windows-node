@@ -179,7 +179,7 @@ Local MCP clients also see MCP-only `app.*` commands such as `app.navigate`, `ap
   ```
 
 ### Full Gateway `system.run` MXC runtime proof
-- The focused E2E below provisions a fresh WSL Gateway, starts an isolated tray instance, sets local exec approval policy, invokes `system.run` through the real Gateway `node.invoke` path, and verifies tray MXC diagnostics show contained `mxc-direct-appc` execution for a bound `hostname.exe` allowlist rule, full-policy shell execution, and denied writes to the tray data directory.
+- The focused E2E below provisions a fresh WSL Gateway, starts an isolated tray instance, enables the explicit Windows UI API sandbox opt-in, sets local exec approval policy, invokes `system.run` through the real Gateway `node.invoke` path, and verifies tray MXC diagnostics show contained `mxc-direct-appc` execution for a bound `hostname.exe` allowlist rule, PowerShell and full-policy shell execution, and denied writes to the tray data directory.
 - Run it when validating the Gateway/Windows node runtime path, not just direct MCP or shared library behavior.
 - GitHub-hosted Actions runners do not provide a working MXC/AppContainer runtime. The regular cloud E2E matrix should report these MXC proofs as skipped while still running the rest of setup-connect. Run the proof on a local MXC-enabled Windows machine. Only set `OPENCLAW_RUN_MXC_E2E=1` in GitHub Actions when using an MXC-enabled self-hosted runner.
 - Use `.\scripts\validate-mxc-e2e.ps1` for normal local validation. It sets `OPENCLAW_RUN_E2E` and `OPENCLAW_RUN_MXC_E2E`, runs the real Gateway MXC proofs, and fails if the MXC proof skips. `-AllowSkip` is only for documenting a non-MXC host, not for merge validation of MXC-related work.
@@ -205,9 +205,9 @@ Local MCP clients also see MCP-only `app.*` commands such as `app.navigate`, `ap
 
 - Expected proof markers:
   - The bound-hostname proof succeeds with a local `**/hostname.exe` rule, logs `promptAttempted=false`, and reaches MXC as `shell=<direct-argv>`.
-  - Gateway response contains `OPENCLAW_GATEWAY_SYSTEM_RUN_MXC_OK` with `exitCode=0`.
+  - Gateway response contains PowerShell output `OPENCLAW_GATEWAY_SYSTEM_RUN_MXC_OK` with `exitCode=0`.
   - The denied-write proof targets a fresh file under the isolated tray data directory, returns non-zero, and leaves that file absent.
-  - `openclaw-tray.log` contains `[mxc] system.run sandbox request` with `executor=mxc-direct-appc` and `contained=True`.
+  - `openclaw-tray.log` contains `[mxc] system.run sandbox request` with `executor=mxc-direct-appc`, `contained=True`, `shell=<direct-argv>`, and `uiAllowWindows=True` for the PowerShell proof.
   - `openclaw-tray.log` contains `[mxc] system.run sandbox result` with `containment=mxc` for both the successful execution and the denied write.
 - E2E artifacts are written under `TestResults\E2E\<run-id>` and skip known secret-bearing files such as gateway records and settings.
 

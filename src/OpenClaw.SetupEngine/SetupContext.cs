@@ -157,6 +157,9 @@ public sealed class GatewayConfig
     public string? InstallUrl { get; set; }
     public string Selection { get; set; } = "recommended";
     public string? Version { get; set; }
+    // Runtime-only input for the explicit headless release-candidate validation lane.
+    [JsonIgnore]
+    public string? ValidationPackagePath { get; set; }
     public int HealthTimeoutSeconds { get; set; } = 90;
     public string ReloadMode { get; set; } = "hybrid";
     public string AuthMode { get; set; } = "token";

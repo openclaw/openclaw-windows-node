@@ -310,7 +310,7 @@ jobs:
         include:
           - name: setup-connect
             timeout_minutes: 45
-            filter: "FullyQualifiedName~OpenClaw.E2ETests.Setup.SetupAndConnectTests|FullyQualifiedName~OpenClaw.E2ETests.Setup.MxcSetupAndConnectTests|FullyQualifiedName~OpenClaw.E2ETests.Setup.MirroredWslPortLeaseTests|FullyQualifiedName~OpenClaw.E2ETests.Setup.SshOwnershipAdversarialProofTests"
+            filter: "FullyQualifiedName~OpenClaw.E2ETests.Setup.SetupAndConnectTests|FullyQualifiedName~OpenClaw.E2ETests.Setup.MxcSetupAndConnectTests|FullyQualifiedName~OpenClaw.E2ETests.Setup.MirroredWslPortLeaseTests|FullyQualifiedName~OpenClaw.E2ETests.Setup.SshOwnershipAdversarialProofTests|FullyQualifiedName~OpenClaw.E2ETests.Setup.TrayExecutableResolutionTests"
           - name: revocation-recovery
             timeout_minutes: 25
             filter: FullyQualifiedName~OpenClaw.E2ETests.Setup.RevocationAndRecoveryTests

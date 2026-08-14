@@ -416,7 +416,7 @@ public sealed class DiagnosticsPageContractTests
     {
         var settingsXaml = Read("src", "OpenClaw.Tray.WinUI", "Pages", "SettingsPage.xaml");
         var settingsCs = Read("src", "OpenClaw.Tray.WinUI", "Pages", "SettingsPage.xaml.cs");
-        var hub = Read("src", "OpenClaw.Tray.WinUI", "Windows", "HubWindow.xaml.cs");
+        var registry = Read("src", "OpenClaw.Tray.WinUI", "Presentation", "HubPageRegistry.cs");
 
         Assert.Contains("SettingsPage_AppInfoExpander", settingsXaml);
         Assert.Contains("SettingsPage_GatewayInfoExpander", settingsXaml);
@@ -425,8 +425,8 @@ public sealed class DiagnosticsPageContractTests
         Assert.Contains("OnGitHubLink", settingsXaml);
         Assert.Contains("OnDashboardLink", settingsXaml);
         Assert.Contains("RefreshGatewayInfo", settingsCs);
-        Assert.Contains("\"info\" => typeof(SettingsPage)", hub);
-        Assert.Contains("\"about\" => typeof(SettingsPage)", hub);
+        Assert.Contains("\"settings\" or \"info\" or \"about\" => HubPageKind.Settings", registry);
+        Assert.Contains("HubPageKind.Settings => typeof(SettingsPage)", registry);
         var repoRoot = TestRepositoryPaths.GetRepositoryRoot();
         Assert.False(File.Exists(Path.Combine(repoRoot, "src", "OpenClaw.Tray.WinUI", "Pages", "AboutPage.xaml")));
         Assert.False(File.Exists(Path.Combine(repoRoot, "src", "OpenClaw.Tray.WinUI", "Pages", "AboutPage.xaml.cs")));
@@ -450,8 +450,9 @@ public sealed class DiagnosticsPageContractTests
         Assert.Contains("Diagnostics", entry);
 
         // Internal route mapping unchanged.
-        var cs = Read("src", "OpenClaw.Tray.WinUI", "Windows", "HubWindow.xaml.cs");
-        Assert.Contains("\"debug\" => typeof(DebugPage)", cs);
+        var registry = Read("src", "OpenClaw.Tray.WinUI", "Presentation", "HubPageRegistry.cs");
+        Assert.Contains("\"debug\" => HubPageKind.Debug", registry);
+        Assert.Contains("HubPageKind.Debug => typeof(DebugPage)", registry);
     }
 
     [Fact]
@@ -703,18 +704,20 @@ public sealed class DiagnosticsPageContractTests
     public void App_GetHubWindowHandle_GuardsAgainstClosedWindow()
     {
         var app = Read("src", "OpenClaw.Tray.WinUI", "App.xaml.cs");
+        var windowManager = Read("src", "OpenClaw.Tray.WinUI", "Services", "WindowManager.cs");
 
         Assert.Contains("public IntPtr GetHubWindowHandle()", app);
-        Assert.Contains("_hubWindow != null && !_hubWindow.IsClosed", app);
+        Assert.Contains("_windowManager?.GetHubWindowHandle() ?? IntPtr.Zero", app);
+        Assert.Contains("_hubWindow is { IsClosed: false }", windowManager);
     }
 
     [Fact]
     public void App_SettingsChanged_DispatchesToUiThread()
     {
-        var app = Read("src", "OpenClaw.Tray.WinUI", "App.xaml.cs");
+        var settingsCoordinator = Read("src", "OpenClaw.Tray.WinUI", "App.SettingsChangeCoordinator.cs");
 
-        Assert.Contains("_dispatcherQueue.HasThreadAccess", app);
-        Assert.Contains("void ApplyUiSettingsAndNotify()", app);
-        Assert.Contains("_dispatcherQueue.TryEnqueue(ApplyUiSettingsAndNotify)", app);
+        Assert.Contains("_dispatcherQueue.HasThreadAccess", settingsCoordinator);
+        Assert.Contains("void ApplyUiSettingsAndNotify()", settingsCoordinator);
+        Assert.Contains("_dispatcherQueue.TryEnqueue(ApplyUiSettingsAndNotify)", settingsCoordinator);
     }
 }

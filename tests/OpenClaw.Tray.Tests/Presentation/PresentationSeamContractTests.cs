@@ -71,23 +71,50 @@ public sealed class PresentationSeamContractTests
     [Fact]
     public void App_ResetsNavigationScope_OnHubClose()
     {
-        var source = ReadAppSources();
+        var source = File.ReadAllText(Path.Combine(
+            TestRepositoryPaths.GetRepositoryRoot(),
+            "src",
+            "OpenClaw.Tray.WinUI",
+            "Services",
+            "WindowManager.cs"));
 
         // Closing the hub must reset the navigation scope so page view models do not
         // outlive their window.
-        Assert.Contains("PageActivator?.Reset()", source);
+        Assert.Contains("_callbacks.GetPageActivator()?.Reset()", source);
     }
 
     [Fact]
     public void App_AppliesToolCallVisibilityFromPersistedSettings()
     {
-        var source = ReadAppSources();
+        var appSource = ReadAppSources();
+        var coordinatorService = File.ReadAllText(Path.Combine(
+            TestRepositoryPaths.GetRepositoryRoot(),
+            "src", "OpenClaw.Tray.WinUI", "Services", "SettingsChangeCoordinator.cs"));
 
-        var settingsSavedIdx = source.IndexOf("private void OnSettingsSaved", StringComparison.Ordinal);
+        var settingsSavedIdx = appSource.IndexOf("private void OnSettingsSaved", StringComparison.Ordinal);
         Assert.True(settingsSavedIdx >= 0, "Expected App to handle persisted settings saves.");
-        var settingsSavedBlock = source.Substring(settingsSavedIdx, Math.Min(500, source.Length - settingsSavedIdx));
-        Assert.Contains("SetToolCallsVisible", settingsSavedBlock);
-        Assert.Contains("_settings.ShowChatToolCalls", settingsSavedBlock);
+        var settingsSavedBlock = appSource.Substring(settingsSavedIdx, Math.Min(300, appSource.Length - settingsSavedIdx));
+        Assert.Contains("_settingsChangeCoordinator?.Apply(_settings.ToSettingsData())", settingsSavedBlock);
+
+        var applyVisibilityIdx = appSource.IndexOf("new SettingsChangeEffects(", StringComparison.Ordinal);
+        Assert.True(applyVisibilityIdx >= 0, "Expected App to own chat tool-call visibility application.");
+        var applyVisibilityBlock = appSource.Substring(
+            applyVisibilityIdx, Math.Min(500, appSource.Length - applyVisibilityIdx));
+        Assert.Contains("SetToolCallsVisible", applyVisibilityBlock);
+        Assert.Contains("settings.ShowChatToolCalls", applyVisibilityBlock);
+
+        Assert.Contains("_effects.ApplyChatToolCallVisibility(settings);", coordinatorService);
+    }
+
+    [Fact]
+    public void App_PublicSpeakerMute_PublishesNullOriginThroughSettingsStore()
+    {
+        var source = ReadAppSources();
+        var publicIdx = source.IndexOf("public void SetChatSpeakerMuted", StringComparison.Ordinal);
+        Assert.True(publicIdx >= 0, "Expected a public SetChatSpeakerMuted for chat and voice surfaces.");
+        var publicBlock = source.Substring(publicIdx, Math.Min(500, source.Length - publicIdx));
+        Assert.Contains("origin: null", publicBlock);
+        Assert.Contains("store.Update(origin, edit => edit.VoiceTtsEnabled = !muted)", publicBlock);
     }
 
     [Fact]

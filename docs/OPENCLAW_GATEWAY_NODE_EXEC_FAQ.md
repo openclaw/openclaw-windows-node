@@ -601,7 +601,7 @@ The Windows app knows:
 
 - whether MXC is available on this host;
 - whether Windows sandboxing is enabled;
-- local filesystem, network, clipboard, timeout, and output policies;
+- local filesystem, network, clipboard, Windows UI API, timeout, and output policies;
 - whether uncontained host fallback is allowed when MXC is unavailable.
 
 The gateway knows that it routed `system.run` to a Windows node and receives the
@@ -647,6 +647,12 @@ By default, Windows enables sandboxing but preserves a compatibility host
 fallback if MXC is unavailable. Enabling **block host fallback when MXC is
 unavailable** changes that case to a deny. The actual result reports whether
 execution used sandbox, host fallback, or host mode.
+
+MXC also blocks Win32k system calls by default. PowerShell, `whoami`, `tasklist`,
+and many other console programs initialize Windows UI APIs even when they do not
+show a window. Enable **Allow Windows UI APIs** on the Node Sandbox page when
+those programs are required. This keeps filesystem, network, clipboard, timeout,
+and command approval controls in force, but removes the Win32k syscall boundary.
 
 **Evidence:** local runner wiring is in
 [`NodeService.cs`](https://github.com/openclaw/openclaw-windows-node/blob/d7d153ca5d409487e06ef584b1de1184520e90e6/src/OpenClaw.Tray.WinUI/Services/NodeService.cs#L589-L679).
