@@ -473,12 +473,14 @@ public sealed class AppRefactorContractTests
     public void UserSshRestart_StaysDelegatedToConnectionManager()
     {
         var source = ReadAppSources();
-        var method = ExtractMethod(source, "RestartSshTunnelAsync");
+        var wrapper = ExtractMethod(source, "RestartSshTunnelAsync");
+        var action = ExtractMethod(source, "RestartSshTunnelCoreAsync");
 
-        Assert.Contains("_connectionManager.RestartSshTunnelAsync()", method);
-        Assert.DoesNotContain("_sshTunnelService", method);
-        Assert.DoesNotContain("EnsureSshTunnelConfigured", method);
-        Assert.DoesNotContain("ReconnectWithSyncedBrowserProxyForward", method);
+        Assert.Contains("_connectionManager.RestartSshTunnelAsync()", wrapper);
+        Assert.Contains("RestartSshTunnelAsync()", action);
+        Assert.DoesNotContain("_sshTunnelService", action);
+        Assert.DoesNotContain("EnsureSshTunnelConfigured", action);
+        Assert.DoesNotContain("ReconnectWithSyncedBrowserProxyForward", action);
     }
 
     [Fact]

@@ -1124,15 +1124,6 @@ public sealed class GatewayConnectionManager : IGatewayConnectionManager
                 if (previousTunnelWasActive && previousTunnelConfig is null)
                     return false;
 
-                SetGatewayConnectionIntent(activeRecord.Id, shouldBeConnected: true);
-                await DisconnectCoreAsync().ConfigureAwait(false);
-                if (restartGeneration != Interlocked.Read(ref _manualSshRestartGeneration) ||
-                    !IsCurrentSshRegistryRecord(activeRecord) ||
-                    _tunnelManager.OwnershipGeneration != previousTunnelGeneration)
-                {
-                    return false;
-                }
-
                 if (previousTunnelWasActive)
                 {
                     var stopped = await _tunnelManager.StopIfOwnedAsync(
@@ -1148,7 +1139,12 @@ public sealed class GatewayConnectionManager : IGatewayConnectionManager
                     return false;
                 }
 
-                if (!IsCurrentSshRegistryRecord(activeRecord))
+                var stoppedTunnelGeneration = _tunnelManager.OwnershipGeneration;
+                SetGatewayConnectionIntent(activeRecord.Id, shouldBeConnected: true);
+                await DisconnectCoreAsync().ConfigureAwait(false);
+                if (restartGeneration != Interlocked.Read(ref _manualSshRestartGeneration) ||
+                    !IsCurrentSshRegistryRecord(activeRecord) ||
+                    _tunnelManager.OwnershipGeneration != stoppedTunnelGeneration)
                 {
                     return false;
                 }
