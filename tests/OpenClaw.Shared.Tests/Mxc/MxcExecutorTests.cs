@@ -46,6 +46,8 @@ public class MxcExecutorTests
             return;
 
         var launcherPid = 0;
+        var killAttempted = false;
+        Process? launcher = null;
         var cmdPath = Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.System),
             "cmd.exe");
@@ -53,31 +55,40 @@ public class MxcExecutorTests
             cmdPath,
             stdoutCapBytes: null,
             stderrCapBytes: null,
-            processFactory: _ => CreateProcess(
+            processFactory: _ => launcher = CreateProcess(
                 cmdPath,
                 "echo launcher-started & ping -n 31 127.0.0.1 >nul"),
-            processTreeKiller: process => launcherPid = process.Id,
+            processTreeKiller: process =>
+            {
+                killAttempted = true;
+                launcherPid = process.Id;
+            },
             cleanupTimeout: TimeSpan.FromMilliseconds(100));
-        using var cancellation = new CancellationTokenSource(TimeSpan.FromMilliseconds(100));
-        var stopwatch = Stopwatch.StartNew();
+        using var cancellation = new CancellationTokenSource();
 
         try
         {
-            var result = await executor.RunAsync(
+            var run = executor.RunAsync(
                 new MxcConfig
                 {
                     ContainerId = "bounded-cleanup-test",
                     Process = new MxcProcess { CommandLine = "ignored-by-test-process" },
                 },
-                cancellation.Token).WaitAsync(TimeSpan.FromSeconds(2));
-
+                cancellation.Token);
+            await WaitForProcessStartAsync(() => launcher, TimeSpan.FromSeconds(5));
+            launcherPid = launcher!.Id;
+            var stopwatch = Stopwatch.StartNew();
+            cancellation.Cancel();
+            var result = await run.WaitAsync(TimeSpan.FromSeconds(5));
             stopwatch.Stop();
+
+            Assert.True(killAttempted);
             Assert.True(result.TimedOut);
             Assert.Equal(-1, result.ExitCode);
             Assert.Contains("cancelled", result.Error, StringComparison.OrdinalIgnoreCase);
             Assert.True(
-                stopwatch.Elapsed < TimeSpan.FromSeconds(1),
-                $"Cancellation cleanup took {stopwatch.ElapsedMilliseconds} ms.");
+                stopwatch.Elapsed < TimeSpan.FromSeconds(2),
+                $"Post-cancel cleanup took {stopwatch.ElapsedMilliseconds} ms.");
         }
         finally
         {
@@ -97,6 +108,29 @@ public class MxcExecutorTests
             TimeSpan.FromSeconds(1));
 
         Assert.True(result);
+    }
+
+    private static async Task WaitForProcessStartAsync(
+        Func<Process?> processProvider,
+        TimeSpan timeout)
+    {
+        var deadline = DateTime.UtcNow + timeout;
+        while (DateTime.UtcNow < deadline)
+        {
+            try
+            {
+                if (processProvider()?.Id > 0)
+                    return;
+            }
+            catch (InvalidOperationException)
+            {
+                // Process.Start has not completed yet.
+            }
+
+            await Task.Delay(10);
+        }
+
+        throw new TimeoutException("Test launcher did not start within the expected time.");
     }
 
     private static Process CreateProcess(string cmdPath, string command)

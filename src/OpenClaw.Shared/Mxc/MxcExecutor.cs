@@ -191,7 +191,7 @@ public sealed class MxcExecutor
                 try { _processTreeKiller(process); }
                 catch (Exception ex) { Trace.WriteLine($"MxcExecutor: process kill (cancellation path) failed: {ex.Message}"); }
                 if (!await WaitForCleanupAsync(processExited.Task, stdoutClosed.Task, stderrClosed.Task, _cleanupTimeout))
-                    Trace.WriteLine("MxcExecutor: cancellation cleanup timed out.");
+                    Trace.WriteLine($"MxcExecutor: cancellation cleanup timed out (pid={process.Id}).");
 
                 sw.Stop();
                 string capturedOut;
@@ -207,8 +207,12 @@ public sealed class MxcExecutor
                 };
             }
 
-            if (!await WaitForCleanupAsync(processExited.Task, stdoutClosed.Task, stderrClosed.Task, _cleanupTimeout))
-                Trace.WriteLine("MxcExecutor: post-exit output drain timed out.");
+            // Normal completion keeps the established lossless drain behavior.
+            // The bounded cleanup exists specifically for cancellation, where
+            // availability takes precedence over waiting indefinitely for a
+            // launcher or inherited pipe handle that ignored termination.
+            try { process.WaitForExit(); }
+            catch (Exception ex) { Trace.WriteLine($"MxcExecutor: post-exit drain failed: {ex.Message}"); }
 
             sw.Stop();
             string outRaw, errRaw;
