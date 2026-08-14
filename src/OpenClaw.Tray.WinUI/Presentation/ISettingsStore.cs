@@ -1,48 +1,58 @@
+using OpenClawTray.Services;
+
 namespace OpenClawTray.Presentation;
 
 /// <summary>
 /// WinUI-free seam over the App-owned settings for presentation code. It exposes an
-/// immutable <see cref="SettingsSnapshot"/> for reads and a single batched
-/// <see cref="Update"/> for writes, and raises <see cref="Changed"/> only for
-/// <b>external</b> changes (a caller's own <see cref="Update"/> is not echoed back).
+/// immutable <see cref="SettingsSnapshot"/> for reads, supports field-scoped writes against
+/// the live <see cref="SettingsManager"/>, and republishes every persisted save as a typed
+/// <see cref="Changed"/> event tagged with the originating writer token when known.
 /// </summary>
-/// <remarks>
-/// This removes the hand-rolled save/echo bookkeeping that page code-behind used to carry
-/// (the <c>_saving</c>/<c>_loading</c> suppression flags). A view model reads
-/// <see cref="Current"/>, writes through <see cref="Update"/>, and refreshes on
-/// <see cref="Changed"/> without risking a save-storm: the store suppresses the
-/// self-originated notification and marshals external ones onto the UI thread.
-/// The auto-save contract itself is unchanged: <see cref="Update"/> mutates the settings
-/// and saves once, exactly as the previous per-toggle code did; callers still invoke
-/// <c>IAppCommands.NotifySettingsSaved()</c> for the reconnect/re-register side effect.
-/// </remarks>
-public interface ISettingsStore
+public interface ISettingsStore : IDisposable
 {
     /// <summary>An immutable snapshot of the current settings values used by the settings surfaces.</summary>
     SettingsSnapshot Current { get; }
 
-    /// <summary>
-    /// Applies <paramref name="edit"/> to the settings and persists once. The store
-    /// suppresses the <see cref="Changed"/> notification that would otherwise echo back to
-    /// the caller from this save, so a two-way-bound view model cannot loop.
-    /// </summary>
-    void Update(Action<ISettingsEditor> edit);
+    /// <summary>Creates an opaque token that identifies one writer instance.</summary>
+    SettingsWriteOrigin CreateOrigin();
 
     /// <summary>
-    /// Marks the calling thread as performing a store-originated write for the scope's lifetime,
-    /// so a <see cref="SettingsManager.Save"/> raised on that thread is treated as self-originated
-    /// and does not echo <see cref="Changed"/>. Used by App-owned writes that persist settings
-    /// directly (auto-start OS registration, speaker mute) instead of through <see cref="Update"/>,
-    /// so they get the same echo suppression. Dispose on the same thread that created it.
+    /// Applies <paramref name="edit"/> to the live settings manager and persists once. The raised
+    /// <see cref="Changed"/> event carries <paramref name="origin"/> so the matching caller can
+    /// ignore its own notification while other active listeners still refresh.
     /// </summary>
-    IDisposable BeginSelfWrite();
+    void Update(SettingsWriteOrigin? origin, Action<ISettingsEditor> edit);
 
     /// <summary>
-    /// Raised after settings change from a source other than this caller's <see cref="Update"/>
-    /// (for example another surface saving, onboarding, or a background save). Always raised on
-    /// the UI thread.
+    /// Raised after settings are persisted. The event includes the persisted version, a detached
+    /// snapshot, and the originating writer token when the save came through this store.
+    /// External saves published directly through <see cref="SettingsManager.Save"/> use
+    /// <see langword="null"/> origin.
     /// </summary>
-    event EventHandler? Changed;
+    event EventHandler<SettingsChangedEventArgs>? Changed;
+}
+
+/// <summary>Opaque per-writer token used to tag change notifications.</summary>
+public sealed class SettingsWriteOrigin
+{
+    internal SettingsWriteOrigin(long id) => Id = id;
+
+    internal long Id { get; }
+}
+
+/// <summary>Typed settings-change payload published by <see cref="ISettingsStore"/>.</summary>
+public sealed class SettingsChangedEventArgs : EventArgs
+{
+    public SettingsChangedEventArgs(SettingsWriteOrigin? origin, SettingsSnapshot snapshot)
+    {
+        Origin = origin;
+        Snapshot = snapshot ?? throw new ArgumentNullException(nameof(snapshot));
+        Version = snapshot.Version;
+    }
+
+    public SettingsWriteOrigin? Origin { get; }
+    public long Version { get; }
+    public SettingsSnapshot Snapshot { get; }
 }
 
 /// <summary>
@@ -71,9 +81,20 @@ public interface ISettingsEditor
     bool NotifyStock { set; }
     bool NotifyInfo { set; }
 
+    bool EnableNodeMode { set; }
+    bool EnableMcpServer { set; }
+    bool NodeSystemRunEnabled { set; }
+    bool NodeBrowserProxyEnabled { set; }
+    bool NodeCameraEnabled { set; }
+    bool NodeCanvasEnabled { set; }
+    bool NodeScreenEnabled { set; }
+    bool NodeLocationEnabled { set; }
+    bool NodeTtsEnabled { set; }
+    bool NodeSttEnabled { set; }
+
     bool ScreenRecordingConsentGiven { set; }
     bool CameraRecordingConsentGiven { set; }
-
+    bool VoiceTtsEnabled { set; }
     bool ShowChatToolCalls { set; }
 }
 
@@ -83,6 +104,7 @@ public interface ISettingsEditor
 /// </summary>
 public sealed record SettingsSnapshot
 {
+    public long Version { get; init; }
     public bool AutoStart { get; init; }
     public bool GlobalHotkeyEnabled { get; init; }
     public bool UseLegacyWebChat { get; init; }
@@ -101,6 +123,22 @@ public sealed record SettingsSnapshot
     public bool NotifyBuild { get; init; }
     public bool NotifyStock { get; init; }
     public bool NotifyInfo { get; init; }
+
+    public bool EnableNodeMode { get; init; }
+    public bool EnableMcpServer { get; init; }
+    public bool NodeSystemRunEnabled { get; init; }
+    public bool NodeBrowserProxyEnabled { get; init; }
+    public bool NodeCameraEnabled { get; init; }
+    public bool NodeCanvasEnabled { get; init; }
+    public bool NodeScreenEnabled { get; init; }
+    public bool NodeLocationEnabled { get; init; }
+    public bool NodeTtsEnabled { get; init; }
+    public bool NodeSttEnabled { get; init; }
+    public string SttModelName { get; init; } = "base";
+    public string TtsProvider { get; init; } = "";
+    public string TtsPiperVoiceId { get; init; } = "";
+    public string TtsElevenLabsApiKey { get; init; } = "";
+    public string TtsElevenLabsVoiceId { get; init; } = "";
 
     public bool ScreenRecordingConsentGiven { get; init; }
     public bool CameraRecordingConsentGiven { get; init; }

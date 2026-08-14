@@ -969,46 +969,67 @@ public sealed class NodeService : IDisposable, IAsyncDisposable
     /// </summary>
     public void SetMcpEnabled(bool enabled)
     {
-        _enableMcpServer = enabled;
-
-        if (enabled)
+        lock (_clientLock)
         {
-            if (_mcpServer != null) return; // already running
+            _enableMcpServer = enabled;
 
-            _logger.Info("[MCP] SetMcpEnabled(true) — starting MCP server");
-            _mcpStartupError = null;
-
-            bool needsCapabilities;
-            lock (_capabilitiesLock) { needsCapabilities = _capabilities.Count == 0; }
-            try
+            if (enabled)
             {
-                if (needsCapabilities)
+                if (_mcpServer != null) return; // already running
+
+                _logger.Info("[MCP] SetMcpEnabled(true) — starting MCP server");
+                _mcpStartupError = null;
+
+                McpCapabilityEnablePlan capabilityPlan;
+                lock (_capabilitiesLock)
                 {
-                    RegisterCapabilities();
+                    capabilityPlan = McpRuntimeStatePolicy.PlanCapabilityEnable(
+                        hasGatewayClient: _nodeClient != null,
+                        hasCapabilities: _capabilities.Count != 0);
                 }
-                else
+
+                try
                 {
-                    StartMcpServer();
+                    if (capabilityPlan == McpCapabilityEnablePlan.RebuildFromCurrentSettings)
+                    {
+                        RegisterCapabilities();
+                    }
+                    else
+                    {
+                        StartMcpServer();
+                    }
+                }
+
+                catch (Exception ex)
+                {
+                    SetMcpStartupFailure(ex, "MCP enable");
+                }
+
+                if (_mcpServer == null && string.IsNullOrWhiteSpace(_mcpStartupError))
+                {
+                    _mcpStartupError = "MCP server startup failed: listener did not start.";
+                    _logger.Error($"[MCP] {_mcpStartupError}");
                 }
             }
-            catch (Exception ex)
+            else
             {
-                SetMcpStartupFailure(ex, "MCP enable");
-            }
-
-            if (_mcpServer == null && string.IsNullOrWhiteSpace(_mcpStartupError))
-            {
-                _mcpStartupError = "MCP server startup failed: listener did not start.";
-                _logger.Error($"[MCP] {_mcpStartupError}");
+                _logger.Info("[MCP] SetMcpEnabled(false) — stopping MCP server");
+                // Always call StopMcpServer to clear stale startup errors even
+                // if the server isn't running. StopMcpServer is lock-protected
+                // and handles _mcpServer == null safely.
+                StopMcpServer();
             }
         }
-        else
+    }
+
+    public void RefreshMcpOnlyCapabilities()
+    {
+        lock (_clientLock)
         {
-            _logger.Info("[MCP] SetMcpEnabled(false) — stopping MCP server");
-            // Always call StopMcpServer to clear stale startup errors even
-            // if the server isn't running. StopMcpServer is lock-protected
-            // and handles _mcpServer == null safely.
-            StopMcpServer();
+            if (!_enableMcpServer || _mcpServer == null || _nodeClient != null)
+                return;
+
+            RegisterCapabilities();
         }
     }
 

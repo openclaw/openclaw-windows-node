@@ -1,28 +1,27 @@
+using System.Threading;
 using OpenClawTray.Services;
 
 namespace OpenClawTray.Presentation;
 
 /// <summary>
 /// Default <see cref="ISettingsStore"/> backed by the App-owned <see cref="SettingsManager"/>.
-/// It does not own the manager's lifetime (App does); it only reads/writes it and republishes
-/// the manager's <c>Saved</c> event as <see cref="Changed"/> with self-origination suppressed
-/// and UI-thread affinity.
+/// It serializes store-managed mutate/save operations, publishes a typed versioned change event
+/// for every save, tags store-managed saves with an explicit writer token, and republishes
+/// external <see cref="SettingsManager.Save"/> calls with <see langword="null"/> origin.
 /// </summary>
-/// <remarks>
-/// Self-origination is tracked with a <c>[ThreadStatic]</c> depth: <see cref="SettingsManager.Save"/>
-/// raises <c>Saved</c> synchronously on the calling thread inside <see cref="Update"/> or a
-/// <see cref="BeginSelfWrite"/> scope, so the handler observes a non-zero depth on that thread and
-/// suppresses the echo. A save from any other source (another surface, onboarding, a background
-/// writer) runs with depth zero and is republished as <see cref="Changed"/>, marshaled onto the UI
-/// thread via <see cref="IUiDispatcher"/>.
-/// </remarks>
 internal sealed class SettingsStore : ISettingsStore
 {
-    [ThreadStatic]
-    private static int t_selfUpdateDepth;
-
     private readonly SettingsManager _settings;
     private readonly IUiDispatcher _dispatcher;
+    private readonly object _updateGate = new();
+    private readonly object _snapshotGate = new();
+    private readonly object _originGate = new();
+
+    private long _nextOriginId;
+    private long _version;
+    private SettingsWriteOrigin? _activeOrigin;
+    private int _activeOriginThreadId;
+    private bool _disposed;
 
     public SettingsStore(SettingsManager settings, IUiDispatcher dispatcher)
     {
@@ -31,10 +30,114 @@ internal sealed class SettingsStore : ISettingsStore
         _settings.Saved += OnManagerSaved;
     }
 
-    public event EventHandler? Changed;
+    public event EventHandler<SettingsChangedEventArgs>? Changed;
 
-    public SettingsSnapshot Current => new()
+    public SettingsSnapshot Current
     {
+        get
+        {
+            ThrowIfDisposed();
+            lock (_snapshotGate)
+            {
+                return CreateSnapshot(_version);
+            }
+        }
+    }
+
+    public SettingsWriteOrigin CreateOrigin()
+    {
+        ThrowIfDisposed();
+        return new SettingsWriteOrigin(Interlocked.Increment(ref _nextOriginId));
+    }
+
+    public void Update(SettingsWriteOrigin? origin, Action<ISettingsEditor> edit)
+    {
+        ThrowIfDisposed();
+        ArgumentNullException.ThrowIfNull(edit);
+
+        lock (_updateGate)
+        {
+            BeginSaveOrigin(origin);
+            try
+            {
+                edit(new Editor(_settings));
+                _settings.Save();
+            }
+            finally
+            {
+                EndSaveOrigin();
+            }
+        }
+    }
+
+    public void Dispose()
+    {
+        if (_disposed)
+        {
+            return;
+        }
+
+        _settings.Saved -= OnManagerSaved;
+        _disposed = true;
+    }
+
+    private void OnManagerSaved(object? sender, EventArgs e)
+    {
+        var origin = ConsumeMatchingOrigin();
+        SettingsChangedEventArgs args;
+        lock (_snapshotGate)
+        {
+            var version = ++_version;
+            args = new SettingsChangedEventArgs(origin, CreateSnapshot(version));
+        }
+
+        if (_dispatcher.HasThreadAccess)
+        {
+            Changed?.Invoke(this, args);
+        }
+        else
+        {
+            _dispatcher.TryEnqueue(() => Changed?.Invoke(this, args));
+        }
+    }
+
+    private void BeginSaveOrigin(SettingsWriteOrigin? origin)
+    {
+        lock (_originGate)
+        {
+            _activeOrigin = origin;
+            _activeOriginThreadId = Environment.CurrentManagedThreadId;
+        }
+    }
+
+    private void EndSaveOrigin()
+    {
+        lock (_originGate)
+        {
+            _activeOrigin = null;
+            _activeOriginThreadId = 0;
+        }
+    }
+
+    private SettingsWriteOrigin? ConsumeMatchingOrigin()
+    {
+        lock (_originGate)
+        {
+            if (_activeOriginThreadId != Environment.CurrentManagedThreadId)
+            {
+                return null;
+            }
+
+            var origin = _activeOrigin;
+            _activeOrigin = null;
+            _activeOriginThreadId = 0;
+            return origin;
+        }
+    }
+
+    private SettingsSnapshot CreateSnapshot(long version) => new()
+    {
+        Version = version,
         AutoStart = _settings.AutoStart,
         GlobalHotkeyEnabled = _settings.GlobalHotkeyEnabled,
         UseLegacyWebChat = _settings.UseLegacyWebChat,
@@ -50,63 +153,29 @@ internal sealed class SettingsStore : ISettingsStore
         NotifyBuild = _settings.NotifyBuild,
         NotifyStock = _settings.NotifyStock,
         NotifyInfo = _settings.NotifyInfo,
+        EnableNodeMode = _settings.EnableNodeMode,
+        EnableMcpServer = _settings.EnableMcpServer,
+        NodeSystemRunEnabled = _settings.NodeSystemRunEnabled,
+        NodeBrowserProxyEnabled = _settings.NodeBrowserProxyEnabled,
+        NodeCameraEnabled = _settings.NodeCameraEnabled,
+        NodeCanvasEnabled = _settings.NodeCanvasEnabled,
+        NodeScreenEnabled = _settings.NodeScreenEnabled,
+        NodeLocationEnabled = _settings.NodeLocationEnabled,
+        NodeTtsEnabled = _settings.NodeTtsEnabled,
+        NodeSttEnabled = _settings.NodeSttEnabled,
+        SttModelName = _settings.SttModelName,
+        TtsProvider = _settings.TtsProvider,
+        TtsPiperVoiceId = _settings.TtsPiperVoiceId,
+        TtsElevenLabsApiKey = _settings.TtsElevenLabsApiKey,
+        TtsElevenLabsVoiceId = _settings.TtsElevenLabsVoiceId,
         ScreenRecordingConsentGiven = _settings.ScreenRecordingConsentGiven,
         CameraRecordingConsentGiven = _settings.CameraRecordingConsentGiven,
         ShowChatToolCalls = _settings.ShowChatToolCalls,
     };
 
-    public void Update(Action<ISettingsEditor> edit)
+    private void ThrowIfDisposed()
     {
-        ArgumentNullException.ThrowIfNull(edit);
-
-        using (BeginSelfWrite())
-        {
-            edit(new Editor(_settings));
-            _settings.Save();
-        }
-    }
-
-    public IDisposable BeginSelfWrite()
-    {
-        t_selfUpdateDepth++;
-        return new SelfWriteScope();
-    }
-
-    private void OnManagerSaved(object? sender, EventArgs e)
-    {
-        // Saved fires synchronously on the thread that called Save(). When that is our own
-        // Update or an App-owned self-write on this thread, the depth is non-zero and the echo
-        // is suppressed.
-        if (t_selfUpdateDepth > 0)
-        {
-            return;
-        }
-
-        if (_dispatcher.HasThreadAccess)
-        {
-            Changed?.Invoke(this, EventArgs.Empty);
-        }
-        else
-        {
-            _dispatcher.TryEnqueue(() => Changed?.Invoke(this, EventArgs.Empty));
-        }
-    }
-
-    /// <summary>Decrements the self-write depth on dispose. Created and disposed on the same thread.</summary>
-    private sealed class SelfWriteScope : IDisposable
-    {
-        private bool _disposed;
-
-        public void Dispose()
-        {
-            if (_disposed)
-            {
-                return;
-            }
-
-            _disposed = true;
-            t_selfUpdateDepth--;
-        }
+        ObjectDisposedException.ThrowIf(_disposed, this);
     }
 
     private sealed class Editor : ISettingsEditor
@@ -130,8 +199,19 @@ internal sealed class SettingsStore : ISettingsStore
         public bool NotifyBuild { set => _settings.NotifyBuild = value; }
         public bool NotifyStock { set => _settings.NotifyStock = value; }
         public bool NotifyInfo { set => _settings.NotifyInfo = value; }
+        public bool EnableNodeMode { set => _settings.EnableNodeMode = value; }
+        public bool EnableMcpServer { set => _settings.EnableMcpServer = value; }
+        public bool NodeSystemRunEnabled { set => _settings.NodeSystemRunEnabled = value; }
+        public bool NodeBrowserProxyEnabled { set => _settings.NodeBrowserProxyEnabled = value; }
+        public bool NodeCameraEnabled { set => _settings.NodeCameraEnabled = value; }
+        public bool NodeCanvasEnabled { set => _settings.NodeCanvasEnabled = value; }
+        public bool NodeScreenEnabled { set => _settings.NodeScreenEnabled = value; }
+        public bool NodeLocationEnabled { set => _settings.NodeLocationEnabled = value; }
+        public bool NodeTtsEnabled { set => _settings.NodeTtsEnabled = value; }
+        public bool NodeSttEnabled { set => _settings.NodeSttEnabled = value; }
         public bool ScreenRecordingConsentGiven { set => _settings.ScreenRecordingConsentGiven = value; }
         public bool CameraRecordingConsentGiven { set => _settings.CameraRecordingConsentGiven = value; }
+        public bool VoiceTtsEnabled { set => _settings.VoiceTtsEnabled = value; }
         public bool ShowChatToolCalls { set => _settings.ShowChatToolCalls = value; }
     }
 }

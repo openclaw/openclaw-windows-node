@@ -242,58 +242,44 @@ public class DeepLinkParserTests
     #region DeepLinkHandler
 
     [Theory]
-    [InlineData("openclaw://settings", nameof(DeepLinkActions.OpenHub))]
-    [InlineData("openclaw://setup", nameof(DeepLinkActions.OpenSetup))]
-    [InlineData("openclaw://chat", nameof(DeepLinkActions.OpenHub))]
-    [InlineData("openclaw://commandcenter", nameof(DeepLinkActions.OpenHub))]
-    [InlineData("openclaw://history", nameof(DeepLinkActions.OpenHub))]
-    [InlineData("openclaw://logs", nameof(DeepLinkActions.OpenLogFile))]
-    [InlineData("openclaw://log-folder", nameof(DeepLinkActions.OpenLogFolder))]
-    [InlineData("openclaw://config", nameof(DeepLinkActions.OpenConfigFolder))]
-    [InlineData("openclaw://diagnostics", nameof(DeepLinkActions.OpenDiagnosticsFolder))]
-    [InlineData("openclaw://support-context", nameof(DeepLinkActions.CopySupportContext))]
-    [InlineData("openclaw://debug-bundle", nameof(DeepLinkActions.CopyDebugBundle))]
-    [InlineData("openclaw://browser-setup", nameof(DeepLinkActions.CopyBrowserSetupGuidance))]
-    [InlineData("openclaw://port-diagnostics", nameof(DeepLinkActions.CopyPortDiagnostics))]
-    [InlineData("openclaw://capability-diagnostics", nameof(DeepLinkActions.CopyCapabilityDiagnostics))]
-    [InlineData("openclaw://node-inventory", nameof(DeepLinkActions.CopyNodeInventory))]
-    [InlineData("openclaw://channel-summary", nameof(DeepLinkActions.CopyChannelSummary))]
-    [InlineData("openclaw://activity-summary", nameof(DeepLinkActions.CopyActivitySummary))]
-    [InlineData("openclaw://extensibility-summary", nameof(DeepLinkActions.CopyExtensibilitySummary))]
-    [InlineData("openclaw://check-updates", nameof(DeepLinkActions.CheckForUpdates))]
-    [InlineData("openclaw://restart-ssh-tunnel", nameof(DeepLinkActions.RestartSshTunnel))]
-    public void Handle_InvokesExpectedAction(string uri, string expectedAction)
+    [InlineData("openclaw://settings", "hub:settings")]
+    [InlineData("openclaw://setup", "setup")]
+    [InlineData("openclaw://chat", "hub:chat")]
+    [InlineData("openclaw://commandcenter", "hub:connection")]
+    [InlineData("openclaw://history", "hub:channels")]
+    [InlineData("openclaw://logs", "log-file")]
+    [InlineData("openclaw://log-folder", "log-folder")]
+    [InlineData("openclaw://config", "config-folder")]
+    [InlineData("openclaw://diagnostics", "diagnostics-folder")]
+    [InlineData("openclaw://support-context", "copy:SupportContext")]
+    [InlineData("openclaw://debug-bundle", "copy:DebugBundle")]
+    [InlineData("openclaw://browser-setup", "copy:BrowserSetupGuidance")]
+    [InlineData("openclaw://port-diagnostics", "copy:PortDiagnostics")]
+    [InlineData("openclaw://capability-diagnostics", "copy:CapabilityDiagnostics")]
+    [InlineData("openclaw://node-inventory", "copy:NodeInventory")]
+    [InlineData("openclaw://channel-summary", "copy:ChannelSummary")]
+    [InlineData("openclaw://activity-summary", "copy:ActivitySummary")]
+    [InlineData("openclaw://extensibility-summary", "copy:ExtensibilitySummary")]
+    [InlineData("openclaw://check-updates", "check-updates")]
+    [InlineData("openclaw://restart-ssh-tunnel", "restart-ssh")]
+    public void PlanRoute_ReturnsExpectedRoute(string uri, string expected)
     {
-        var invoked = "";
-        var actions = new DeepLinkActions
+        var route = DeepLinkHandler.PlanRoute(uri, "openclaw");
+        var actual = route switch
         {
-            OpenHub = _ => invoked = nameof(DeepLinkActions.OpenHub),
-            OpenSetup = () => invoked = nameof(DeepLinkActions.OpenSetup),
-            OpenLogFile = () => invoked = nameof(DeepLinkActions.OpenLogFile),
-            OpenLogFolder = () => invoked = nameof(DeepLinkActions.OpenLogFolder),
-            OpenConfigFolder = () => invoked = nameof(DeepLinkActions.OpenConfigFolder),
-            OpenDiagnosticsFolder = () => invoked = nameof(DeepLinkActions.OpenDiagnosticsFolder),
-            CopySupportContext = () => invoked = nameof(DeepLinkActions.CopySupportContext),
-            CopyDebugBundle = () => invoked = nameof(DeepLinkActions.CopyDebugBundle),
-            CopyBrowserSetupGuidance = () => invoked = nameof(DeepLinkActions.CopyBrowserSetupGuidance),
-            CopyPortDiagnostics = () => invoked = nameof(DeepLinkActions.CopyPortDiagnostics),
-            CopyCapabilityDiagnostics = () => invoked = nameof(DeepLinkActions.CopyCapabilityDiagnostics),
-            CopyNodeInventory = () => invoked = nameof(DeepLinkActions.CopyNodeInventory),
-            CopyChannelSummary = () => invoked = nameof(DeepLinkActions.CopyChannelSummary),
-            CopyActivitySummary = () => invoked = nameof(DeepLinkActions.CopyActivitySummary),
-            CopyExtensibilitySummary = () => invoked = nameof(DeepLinkActions.CopyExtensibilitySummary),
-            OpenActivityStream = _ => invoked = nameof(DeepLinkActions.OpenActivityStream),
-            CheckForUpdates = () =>
-            {
-                invoked = nameof(DeepLinkActions.CheckForUpdates);
-                return Task.CompletedTask;
-            },
-            RestartSshTunnel = () => invoked = nameof(DeepLinkActions.RestartSshTunnel)
+            ActivationRoute.OpenHub r => $"hub:{r.Page}",
+            ActivationRoute.OpenSetup => "setup",
+            ActivationRoute.OpenLogFile => "log-file",
+            ActivationRoute.OpenLogFolder => "log-folder",
+            ActivationRoute.OpenConfigFolder => "config-folder",
+            ActivationRoute.OpenDiagnosticsFolder => "diagnostics-folder",
+            ActivationRoute.CopyDiagnostics r => $"copy:{r.Kind}",
+            ActivationRoute.CheckForUpdates => "check-updates",
+            ActivationRoute.RestartSshTunnel => "restart-ssh",
+            _ => route?.GetType().Name,
         };
 
-        DeepLinkHandler.Handle(uri, actions);
-
-        Assert.Equal(expectedAction, invoked);
+        Assert.Equal(expected, actual);
     }
 
     [Theory]
@@ -305,92 +291,47 @@ public class DeepLinkParserTests
     [InlineData("openclaw://notification-history", "channels")]
     [InlineData("openclaw://commandcenter", "connection")]
     [InlineData("openclaw://command-center", "connection")]
-    public void Handle_HubRouteAliases_OpenExpectedHubTag(string uri, string expectedHubTag)
+    public void PlanRoute_HubAliases_ReturnExpectedPage(string uri, string expectedHubTag)
     {
-        string? hubTag = null;
-        var actions = new DeepLinkActions
-        {
-            OpenHub = tag => hubTag = tag
-        };
-
-        DeepLinkHandler.Handle(uri, actions);
-
-        Assert.Equal(expectedHubTag, hubTag);
+        var route = Assert.IsType<ActivationRoute.OpenHub>(
+            DeepLinkHandler.PlanRoute(uri, "openclaw"));
+        Assert.Equal(expectedHubTag, route.Page);
     }
 
     [Fact]
-    public void Handle_DashboardSubpath_PassesPath()
+    public void PlanRoute_DashboardSubpath_PreservesPath()
     {
-        string? dashboardPath = null;
-        var actions = new DeepLinkActions
-        {
-            OpenDashboard = path => dashboardPath = path
-        };
-
-        DeepLinkHandler.Handle("openclaw://dashboard/skills", actions);
-
-        Assert.Equal("skills", dashboardPath);
+        var route = Assert.IsType<ActivationRoute.OpenDashboard>(
+            DeepLinkHandler.PlanRoute("openclaw://dashboard/skills", "openclaw"));
+        Assert.Equal("skills", route.Path);
     }
 
     [Fact]
-    public void Handle_Activity_RedirectsToChannelsByDefault()
+    public void PlanRoute_Activity_RedirectsByFilter()
     {
-        // ActivityPage was removed; openclaw://activity now routes to the
-        // appropriate hub page based on the filter parameter. With no filter
-        // (or notification/channel), Channels is the destination.
-        string? hubTag = null;
-        var actions = new DeepLinkActions
-        {
-            OpenHub = tag => hubTag = tag
-        };
-
-        DeepLinkHandler.Handle("openclaw://activity?filter=node", actions);
-        Assert.Equal("instances", hubTag);
-
-        hubTag = null;
-        DeepLinkHandler.Handle("openclaw://activity?filter=session", actions);
-        Assert.Equal("sessions", hubTag);
-
-        hubTag = null;
-        DeepLinkHandler.Handle("openclaw://activity", actions);
-        Assert.Equal("channels", hubTag);
+        Assert.Equal("instances", PlanHubPage("openclaw://activity?filter=node"));
+        Assert.Equal("sessions", PlanHubPage("openclaw://activity?filter=session"));
+        Assert.Equal("channels", PlanHubPage("openclaw://activity"));
     }
 
     [Fact]
-    public async Task Handle_Agent_SendsMessage()
+    public void PlanRoute_Agent_PreservesMessage()
     {
-        var sent = new TaskCompletionSource<string>(TaskCreationOptions.RunContinuationsAsynchronously);
-        var actions = new DeepLinkActions
-        {
-            SendMessage = message =>
-            {
-                sent.SetResult(message);
-                return Task.CompletedTask;
-            }
-        };
-
-        DeepLinkHandler.Handle("openclaw://agent?message=ping", actions);
-
-        Assert.Equal("ping", await sent.Task.WaitAsync(TimeSpan.FromSeconds(3)));
+        var route = Assert.IsType<ActivationRoute.SendMessage>(
+            DeepLinkHandler.PlanRoute("openclaw://agent?message=ping", "openclaw"));
+        Assert.Equal("ping", route.Message);
     }
 
     [Fact]
-    public async Task Handle_HealthCheck_RunsAction()
+    public void PlanRoute_HealthCheck_ReturnsHealthRoute()
     {
-        var ran = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
-        var actions = new DeepLinkActions
-        {
-            RunHealthCheck = () =>
-            {
-                ran.SetResult(true);
-                return Task.CompletedTask;
-            }
-        };
-
-        DeepLinkHandler.Handle("openclaw://healthcheck", actions);
-
-        Assert.True(await ran.Task.WaitAsync(TimeSpan.FromSeconds(3)));
+        Assert.IsType<ActivationRoute.RunHealthCheck>(
+            DeepLinkHandler.PlanRoute("openclaw://healthcheck", "openclaw"));
     }
+
+    private static string? PlanHubPage(string uri) =>
+        Assert.IsType<ActivationRoute.OpenHub>(
+            DeepLinkHandler.PlanRoute(uri, "openclaw")).Page;
 
     #endregion
 }

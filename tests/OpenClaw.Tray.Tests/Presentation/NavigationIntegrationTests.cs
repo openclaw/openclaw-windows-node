@@ -1,4 +1,6 @@
 using Microsoft.Extensions.DependencyInjection;
+using OpenClaw.Shared;
+using OpenClaw.Shared.ExecApprovals;
 using OpenClawTray.Presentation;
 using OpenClawTray.Services;
 
@@ -6,9 +8,7 @@ namespace OpenClaw.Tray.Tests.Presentation;
 
 /// <summary>
 /// Behavioral integration proof that composes the real composition root, the navigation
-/// scope manager, and the registered transient page view models — driving the full
-/// lifecycle (open → navigate A/B → close → reopen → shutdown) and asserting the
-/// ownership invariants end to end without hosting HubWindow.
+/// scope manager, and the registered transient page view models.
 /// </summary>
 public sealed class NavigationIntegrationTests
 {
@@ -16,8 +16,13 @@ public sealed class NavigationIntegrationTests
     {
         temp = new TempDir();
         var services = new ServiceCollection();
+        var execApprovalsStore = new ExecApprovalsStore(temp.Path, NullLogger.Instance);
         services.AddOpenClawTrayCore(new AppServiceContext(
-            new RecordingUiDispatcher(), new FakeAppCommands(), new SettingsManager(temp.Path)));
+            new RecordingUiDispatcher(),
+            new FakeAppCommands(),
+            new SettingsManager(temp.Path),
+            execApprovalsStore,
+            new FakePermissionsPageRuntimeHost()));
         return services.BuildServiceProvider(new ServiceProviderOptions
         {
             ValidateScopes = true,
@@ -33,30 +38,24 @@ public sealed class NavigationIntegrationTests
         {
             var manager = provider.GetRequiredService<NavigationScopeManager>();
 
-            // open + navigate A (Settings)
             var a = Assert.IsType<SettingsPageViewModel>(manager.Navigate(typeof(SettingsPageViewModel), "a"));
             Assert.True(a.IsActive);
 
-            // navigate B (Permissions) — A deactivated + disposed before B is active
             var b = Assert.IsType<PermissionsPageViewModel>(manager.Navigate(typeof(PermissionsPageViewModel), "b"));
             Assert.False(a.IsActive);
             Assert.True(a.IsDisposed);
             Assert.True(b.IsActive);
             Assert.False(b.IsDisposed);
 
-            // close (Hub close → Reset) — B deactivated + disposed, nothing current
             manager.Reset();
             Assert.False(b.IsActive);
             Assert.True(b.IsDisposed);
             Assert.Null(manager.CurrentViewModel);
 
-            // reopen — fresh A instance, not the disposed one
             var a2 = Assert.IsType<SettingsPageViewModel>(manager.Navigate(typeof(SettingsPageViewModel), "a2"));
             Assert.NotSame(a, a2);
             Assert.True(a2.IsActive);
 
-            // shutdown — dispose the provider; the container disposes the manager it created,
-            // which tears down the current scope/view model.
             provider.Dispose();
             Assert.True(manager.IsDisposed);
             Assert.True(a2.IsDisposed);
@@ -64,10 +63,37 @@ public sealed class NavigationIntegrationTests
     }
 
     [Fact]
+    public void RegistryPermissionsRoute_UsesTransientActivationLifecycle()
+    {
+        using var provider = BuildRealContainer(out var temp);
+        using (temp)
+        {
+            Assert.Equal(HubPageKind.Permissions, HubPageRegistry.ResolvePage("permissions"));
+            Assert.Equal(HubPageKind.Permissions, HubPageRegistry.ResolvePage("capabilities"));
+
+            var manager = provider.GetRequiredService<NavigationScopeManager>();
+            var first = Assert.IsType<PermissionsPageViewModel>(
+                manager.Navigate(typeof(PermissionsPageViewModel), "permissions"));
+            Assert.True(first.IsActive);
+
+            manager.Navigate(typeof(SettingsPageViewModel), "settings");
+            Assert.False(first.IsActive);
+            Assert.True(first.IsDisposed);
+
+            var reopened = Assert.IsType<PermissionsPageViewModel>(
+                manager.Navigate(typeof(PermissionsPageViewModel), "capabilities"));
+            Assert.NotSame(first, reopened);
+            Assert.True(reopened.IsActive);
+
+            manager.Reset();
+            Assert.False(reopened.IsActive);
+            Assert.True(reopened.IsDisposed);
+        }
+    }
+
+    [Fact]
     public void FrameHandlerSimulation_ContainsActivationException_AndDisposesScope()
     {
-        // Mirror HubWindow.OnContentFrameNavigated: the activator call is wrapped in a
-        // try/catch so an activation throw cannot escape the frame-navigated handler.
         var created = new List<ThrowingActivateViewModel>();
         var services = new ServiceCollection();
         services.AddTransient(_ =>
@@ -87,14 +113,12 @@ public sealed class NavigationIntegrationTests
             }
             catch
             {
-                // Contained — mirrors the HubWindow try/catch-log around the activation hook.
             }
         }
 
         var escaped = Record.Exception(() => FrameHandler(typeof(ThrowingActivateViewModel)));
 
         Assert.Null(escaped);
-        // The half-activated scope was disposed, not leaked.
         Assert.Null(manager.CurrentViewModel);
         Assert.True(Assert.Single(created).Disposed);
     }
@@ -110,8 +134,6 @@ public sealed class NavigationIntegrationTests
 
             provider.Dispose();
 
-            // The manager is disposed with the provider, so a late navigation cannot
-            // create a new scope / resolve a view model from the disposed provider.
             Assert.True(manager.IsDisposed);
             Assert.Throws<ObjectDisposedException>(() => manager.Navigate(typeof(SettingsPageViewModel), null));
         }

@@ -4,19 +4,15 @@ using System.IO;
 using System.Linq;
 using System.Security.Cryptography;
 using System.Text;
-using System.Threading;
-using System.Threading.Tasks;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using System.Threading;
+using System.Threading.Tasks;
 
 namespace OpenClaw.Shared.ExecApprovals;
 
-// Authoritative store for exec-approvals.json.
-// Read path: ResolveReadOnly, LoadFile, EnsureFileAsync. Write path: ReplaceAsync, AddAllowlistEntryAsync, RecordAllowlistUseAsync.
-public sealed class ExecApprovalsStore
+public sealed class ExecApprovalsStore : IExecApprovalsPresentationStore, IDisposable
 {
-    // KebabCaseLower covers all macOS enum values: deny, allowlist, full, off, on-miss, always,
-    // allow-once, allow-always. CamelCase would fail for "on-miss" and "allow-once".
     internal static readonly JsonSerializerOptions JsonOptions = new()
     {
         WriteIndented = true,
@@ -34,6 +30,17 @@ public sealed class ExecApprovalsStore
     private readonly string? _legacyFilePath;
     private readonly IOpenClawLogger _logger;
     private readonly SemaphoreSlim _lock = new(1, 1);
+    private readonly SemaphoreSlim _observeLock = new(1, 1);
+    private readonly object _changeGate = new();
+
+    private EventHandler<ExecApprovalsChangedEventArgs>? _changed;
+    private FileSystemWatcher? _watcher;
+    private string? _watcherObservedPath;
+    private ExecApprovalsSnapshot? _lastValidPresentationSnapshot;
+    private string? _lastObservedSignature;
+    private bool _lastObservedWasFailure;
+    private long _changeSequence;
+    private bool _disposed;
 
     private enum LegacyMigrationStatus
     {
@@ -46,13 +53,30 @@ public sealed class ExecApprovalsStore
     {
         Missing,
         Loaded,
-        Invalid,
+        UntrustedPath,
+        UnsupportedVersion,
+        MalformedJson,
+        ReadFailed,
     }
 
     private readonly record struct LoadFileResult(
         LoadFileStatus Status,
         ExecApprovalsFile? File,
-        string? Hash);
+        string Hash,
+        int? Version,
+        string Message)
+    {
+        public bool IsInvalid => Status is not LoadFileStatus.Missing and not LoadFileStatus.Loaded;
+    }
+
+    private readonly record struct EnsureFileResult(
+        ExecApprovalsFile File,
+        ExecApprovalsSnapshot? PersistedSnapshot);
+
+    private readonly record struct ReadOnlySnapshotLoadResult(
+        ExecApprovalsSnapshot? Snapshot,
+        ExecApprovalsSnapshotFailure? Failure,
+        string Signature);
 
     public ExecApprovalsStore(string dataPath, IOpenClawLogger logger)
         : this(
@@ -84,11 +108,47 @@ public sealed class ExecApprovalsStore
         _logger = logger;
     }
 
-    // ── Public API ────────────────────────────────────────────────────────────
+    public event EventHandler<ExecApprovalsChangedEventArgs>? Changed
+    {
+        add
+        {
+            ThrowIfDisposed();
+            if (value is null)
+            {
+                return;
+            }
 
-    // No side effects; does not create the file.
+            lock (_changeGate)
+            {
+                ThrowIfDisposed();
+                _changed += value;
+                EnsureWatcherStartedNoLock();
+            }
+        }
+        remove
+        {
+            if (value is null)
+            {
+                return;
+            }
+
+            lock (_changeGate)
+            {
+                _changed -= value;
+                if (_changed is null)
+                {
+                    DisposeWatcherNoLock();
+                    _lastObservedSignature = null;
+                    _lastObservedWasFailure = false;
+                }
+            }
+        }
+    }
+
     public ExecApprovalsResolved ResolveReadOnly(string? agentId)
     {
+        ThrowIfDisposed();
+
         if (_legacyFilePath is not null)
         {
             var targetStatus = LoadFile().Status;
@@ -142,6 +202,8 @@ public sealed class ExecApprovalsStore
     private async Task<bool> AddAllowlistEntryCoreAsync(
         string? agentId, string pattern, string? argPattern, string? commandText, string? source)
     {
+        ThrowIfDisposed();
+
         var trimmed = pattern?.Trim();
         if (string.IsNullOrEmpty(trimmed))
         {
@@ -150,7 +212,7 @@ public sealed class ExecApprovalsStore
         }
         var normalizedArgPattern = string.IsNullOrWhiteSpace(argPattern) ? null : argPattern;
         var key = NormalizeAgentId(agentId);
-        bool alreadyPresent = false;
+        var alreadyPresent = false;
         var wrote = await UpdateFileAsync(file =>
         {
             var agents = file.Agents!;
@@ -159,8 +221,8 @@ public sealed class ExecApprovalsStore
                 agent = new ExecApprovalsAgent();
                 agents[key] = agent;
             }
+
             var allowlist = agent.Allowlist ??= [];
-            // Dedup case-insensitive — consistent with NormalizeAllowlistEntries (OrdinalIgnoreCase HashSet).
             if (allowlist.Any(e => string.Equals(
                     e.Pattern?.Trim(), trimmed, StringComparison.OrdinalIgnoreCase)
                 && string.Equals(e.ArgPattern, normalizedArgPattern, StringComparison.Ordinal)))
@@ -168,9 +230,10 @@ public sealed class ExecApprovalsStore
                 alreadyPresent = true;
                 return false;
             }
+
             allowlist.Add(new ExecAllowlistEntry
             {
-                Id = Guid.NewGuid(),  // parity with macOS UUID()
+                Id = Guid.NewGuid(),
                 Pattern = trimmed,
                 ArgPattern = normalizedArgPattern,
                 CommandText = commandText,
@@ -180,6 +243,7 @@ public sealed class ExecApprovalsStore
             });
             return true;
         }).ConfigureAwait(false);
+
         return wrote || alreadyPresent;
     }
 
@@ -210,20 +274,30 @@ public sealed class ExecApprovalsStore
         Guid? entryId,
         string? argPattern)
     {
-        if (string.IsNullOrEmpty(pattern)) return Task.FromResult(false);
+        ThrowIfDisposed();
+
+        if (string.IsNullOrEmpty(pattern))
+        {
+            return Task.FromResult(false);
+        }
+
         var key = NormalizeAgentId(agentId);
-        var buckets = key == "*" ? new[] { "*" } : new[] { key, "*" };
+        var buckets = key == "*" ? ["*"] : new[] { key, "*" };
         return UpdateFileAsync(file =>
         {
             var changed = false;
             foreach (var bucketKey in buckets)
             {
                 if (!file.Agents!.TryGetValue(bucketKey, out var agent) || agent?.Allowlist is null)
+                {
                     continue;
+                }
+
                 foreach (var entry in agent.Allowlist)
                 {
                     if (!IsUsageTarget(entry, pattern, entryId, argPattern))
                         continue;
+
                     entry.LastUsedAt = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
                     entry.LastResolvedPath = resolvedPath;  // Id, Pattern, ArgPattern preserved
                     if (lastUsedCommand is not null)
@@ -231,6 +305,7 @@ public sealed class ExecApprovalsStore
                     changed = true;
                 }
             }
+
             return changed;
         });
     }
@@ -258,75 +333,180 @@ public sealed class ExecApprovalsStore
     // For startup / settings UI. Not used by the evaluator.
     public async Task<ExecApprovalsResolved> ResolveAsync(string? agentId)
     {
+        ThrowIfDisposed();
+
+        ExecApprovalsResolved resolved;
+        ExecApprovalsChangedEventArgs? change = null;
+
         await _lock.WaitAsync().ConfigureAwait(false);
         try
         {
-            var file = await EnsureFileAsync().ConfigureAwait(false);
-            return ResolveFromFile(file, agentId);
+            var result = await EnsureFileAsync().ConfigureAwait(false);
+            resolved = ResolveFromFile(result.File, agentId);
+            if (result.PersistedSnapshot is not null)
+            {
+                change = RecordManagedSnapshot(result.PersistedSnapshot, origin: null);
+            }
         }
         finally
         {
             _lock.Release();
         }
+
+        RaiseChanged(change);
+        return resolved;
     }
 
-    public void MigrateLegacyFileIfNeeded() => TryMigrateLegacyFile();
+    public void MigrateLegacyFileIfNeeded()
+    {
+        ThrowIfDisposed();
+
+        if (TryMigrateLegacyFile() != LegacyMigrationStatus.Migrated)
+        {
+            return;
+        }
+
+        var readOnly = LoadReadOnlySnapshot();
+        if (readOnly.Snapshot is not null && readOnly.Failure is null)
+        {
+            RaiseChanged(RecordManagedSnapshot(readOnly.Snapshot, origin: null));
+        }
+    }
 
     public async Task<ExecApprovalsSnapshot> GetSnapshotAsync()
     {
+        ThrowIfDisposed();
+
+        ExecApprovalsSnapshot snapshot;
+        ExecApprovalsChangedEventArgs? change = null;
+
         await _lock.WaitAsync().ConfigureAwait(false);
         try
         {
             if (TryMigrateLegacyFile() == LegacyMigrationStatus.Blocked)
+            {
                 throw new IOException("Unmigrated exec approvals file is unreadable.");
+            }
 
             var result = LoadFile();
-            if (result.Status == LoadFileStatus.Invalid)
+            if (result.IsInvalid)
+            {
                 throw new IOException("Exec approvals file is malformed, unsupported, or untrusted.");
+            }
 
             if (result.Status == LoadFileStatus.Missing)
             {
-                await SaveFileAsync(NewDefaultFile()).ConfigureAwait(false);
-                result = LoadFile();
+                var file = NewDefaultFile();
+                var savedHash = await SaveFileAsync(file).ConfigureAwait(false);
+                snapshot = CreateSnapshot(file, exists: true, savedHash);
+                change = RecordManagedSnapshot(snapshot, origin: null);
             }
-
-            if (result.Status != LoadFileStatus.Loaded || result.File is null)
+            else if (result.File is not null)
+            {
+                snapshot = CreateSnapshot(result.File, exists: true, result.Hash);
+            }
+            else
+            {
                 throw new IOException("Exec approvals snapshot is unavailable.");
-
-            return CreateSnapshot(result.File, exists: true, result.Hash!);
+            }
         }
         finally
         {
             _lock.Release();
         }
+
+        RaiseChanged(change);
+        return snapshot;
     }
+
+    public Task<ExecApprovalsReadOnlySnapshotResult> GetSnapshotReadOnlyAsync(CancellationToken cancellationToken = default)
+    {
+        ThrowIfDisposed();
+        cancellationToken.ThrowIfCancellationRequested();
+
+        var readOnly = LoadReadOnlySnapshot();
+        ExecApprovalsReadOnlySnapshotResult result;
+
+        lock (_changeGate)
+        {
+            ThrowIfDisposed();
+            if (_changed is null || _lastObservedSignature is null)
+            {
+                _lastObservedSignature = readOnly.Signature;
+                _lastObservedWasFailure = readOnly.Failure is not null;
+            }
+
+            if (readOnly.Snapshot is not null)
+            {
+                _lastValidPresentationSnapshot = CloneSnapshot(readOnly.Snapshot);
+                result = new ExecApprovalsReadOnlySnapshotResult(
+                    CloneSnapshot(readOnly.Snapshot),
+                    null,
+                    null);
+            }
+            else
+            {
+                result = new ExecApprovalsReadOnlySnapshotResult(
+                    null,
+                    readOnly.Failure,
+                    CloneSnapshotOrNull(_lastValidPresentationSnapshot));
+            }
+        }
+
+        return Task.FromResult(result);
+    }
+
+    public ExecApprovalsWriterOrigin CreateWriterOrigin()
+    {
+        ThrowIfDisposed();
+        return new ExecApprovalsWriterOrigin();
+    }
+
+    public Task<ExecApprovalsSnapshot?> ReplaceAsync(
+        string baseHash,
+        ExecApprovalsFile replacement,
+        Func<ExecApprovalsFile, ExecApprovalsFile, string?>? deltaValidator = null)
+        => ReplaceAsync(baseHash, replacement, origin: null, deltaValidator);
 
     public async Task<ExecApprovalsSnapshot?> ReplaceAsync(
         string baseHash,
         ExecApprovalsFile replacement,
+        ExecApprovalsWriterOrigin? origin,
         Func<ExecApprovalsFile, ExecApprovalsFile, string?>? deltaValidator = null)
     {
+        ThrowIfDisposed();
         ArgumentException.ThrowIfNullOrWhiteSpace(baseHash);
         ArgumentNullException.ThrowIfNull(replacement);
+
+        ExecApprovalsSnapshot? snapshot = null;
+        ExecApprovalsChangedEventArgs? change = null;
 
         await _lock.WaitAsync().ConfigureAwait(false);
         try
         {
             if (TryMigrateLegacyFile() == LegacyMigrationStatus.Blocked)
+            {
                 throw new IOException("Unmigrated exec approvals file is unreadable.");
+            }
 
             var result = LoadFile();
-            if (result.Status == LoadFileStatus.Invalid)
+            if (result.IsInvalid)
+            {
                 throw new IOException("Exec approvals file is malformed, unsupported, or untrusted.");
+            }
 
-            var currentHash = result.Hash ?? ComputeMissingHash();
+            var currentHash = result.Hash;
             if (!string.Equals(baseHash.Trim(), currentHash, StringComparison.Ordinal))
+            {
                 return null;
+            }
 
             var currentFile = result.File ?? NewDefaultFile();
             var validationError = deltaValidator?.Invoke(currentFile, replacement);
             if (!string.IsNullOrWhiteSpace(validationError))
+            {
                 throw new ExecApprovalsValidationException(validationError);
+            }
 
             var currentSocket = result.File?.Socket;
             var normalized = Normalize(replacement);
@@ -336,15 +516,35 @@ public sealed class ExecApprovalsStore
             normalized.Socket = MergeSocket(normalized.Socket, currentSocket);
 
             var savedHash = await SaveFileAsync(normalized).ConfigureAwait(false);
-            return CreateSnapshot(normalized, exists: true, savedHash);
+            snapshot = CreateSnapshot(normalized, exists: true, savedHash);
+            change = RecordManagedSnapshot(snapshot, origin);
         }
         finally
         {
             _lock.Release();
         }
+
+        RaiseChanged(change);
+        return snapshot;
     }
 
-    // ── File I/O ──────────────────────────────────────────────────────────────
+    public void Dispose()
+    {
+        lock (_changeGate)
+        {
+            if (_disposed)
+            {
+                return;
+            }
+
+            _disposed = true;
+            _changed = null;
+            DisposeWatcherNoLock();
+        }
+
+        _observeLock.Dispose();
+        _lock.Dispose();
+    }
 
     private LoadFileResult LoadFile()
         => LoadFile(_filePath);
@@ -357,7 +557,12 @@ public sealed class ExecApprovalsStore
             if ((attributes & FileAttributes.Directory) != 0)
             {
                 _logger.Warn("[EXEC-APPROVALS] exec-approvals.json path is a directory; applying default-deny");
-                return new LoadFileResult(LoadFileStatus.Invalid, null, null);
+                return new LoadFileResult(
+                    LoadFileStatus.UntrustedPath,
+                    null,
+                    ComputeFailureSignature("untrusted-path", Path.GetFullPath(filePath)),
+                    Version: null,
+                    "Exec approvals path is a directory.");
             }
         }
         catch (FileNotFoundException)
@@ -371,7 +576,12 @@ public sealed class ExecApprovalsStore
         catch (Exception ex)
         {
             _logger.Warn($"[EXEC-APPROVALS] Failed to inspect exec-approvals.json ({ex.Message}); applying default-deny");
-            return new LoadFileResult(LoadFileStatus.Invalid, null, null);
+            return new LoadFileResult(
+                LoadFileStatus.ReadFailed,
+                null,
+                ComputeFailureSignature("read-failed", $"{ex.GetType().FullName}:{ex.Message}"),
+                Version: null,
+                $"Failed to inspect exec approvals file: {ex.Message}");
         }
 
         // Fail closed if a symlink/junction sits in the store path, or the file has a hard-link
@@ -383,53 +593,101 @@ public sealed class ExecApprovalsStore
             || !ExecApprovalsPathGuard.HasSingleHardLink(filePath))
         {
             _logger.Warn("[EXEC-APPROVALS] exec-approvals.json path is not trustworthy (reparse point or hard link); applying default-deny");
-            return new LoadFileResult(LoadFileStatus.Invalid, null, null);
+            return new LoadFileResult(
+                LoadFileStatus.UntrustedPath,
+                null,
+                ComputeFailureSignature("untrusted-path", Path.GetFullPath(filePath)),
+                Version: null,
+                "Exec approvals file path is not trustworthy.");
         }
+
         try
         {
             var json = File.ReadAllText(filePath);
-            var file = JsonSerializer.Deserialize<ExecApprovalsFile>(json, JsonOptions);
-            if (file is null)
+            var hash = ComputeRawHash(json);
+            try
             {
-                _logger.Warn("[EXEC-APPROVALS] exec-approvals.json deserialized to null; applying default-deny");
-                return new LoadFileResult(LoadFileStatus.Invalid, null, null);
+                var file = JsonSerializer.Deserialize<ExecApprovalsFile>(json, JsonOptions);
+                if (file is null)
+                {
+                    _logger.Warn("[EXEC-APPROVALS] exec-approvals.json deserialized to null; applying default-deny");
+                    return new LoadFileResult(
+                        LoadFileStatus.MalformedJson,
+                        null,
+                        hash,
+                        Version: null,
+                        "Exec approvals file deserialized to null.");
+                }
+
+                if (file.Version != 1)
+                {
+                    var version = file.Version?.ToString() ?? "missing";
+                    _logger.Warn($"[EXEC-APPROVALS] exec-approvals.json has unsupported version {version}; applying default-deny");
+                    return new LoadFileResult(
+                        LoadFileStatus.UnsupportedVersion,
+                        null,
+                        hash,
+                        file.Version,
+                        $"Unsupported exec approvals version {version}.");
+                }
+
+                return new LoadFileResult(
+                    LoadFileStatus.Loaded,
+                    Normalize(file),
+                    hash,
+                    Version: 1,
+                    string.Empty);
             }
-            if (file.Version != 1)
+            catch (JsonException ex)
             {
-                var version = file.Version?.ToString() ?? "missing";
-                _logger.Warn($"[EXEC-APPROVALS] exec-approvals.json has unsupported version {version}; applying default-deny");
-                return new LoadFileResult(LoadFileStatus.Invalid, null, null);
+                _logger.Warn($"[EXEC-APPROVALS] exec-approvals.json is malformed ({ex.Message}); applying default-deny");
+                return new LoadFileResult(
+                    LoadFileStatus.MalformedJson,
+                    null,
+                    hash,
+                    Version: null,
+                    $"Exec approvals file is malformed: {ex.Message}");
             }
-            return new LoadFileResult(
-                LoadFileStatus.Loaded,
-                Normalize(file),
-                ComputeRawHash(json));
-        }
-        catch (JsonException ex)
-        {
-            _logger.Warn($"[EXEC-APPROVALS] exec-approvals.json is malformed ({ex.Message}); applying default-deny");
-            return new LoadFileResult(LoadFileStatus.Invalid, null, null);
         }
         catch (Exception ex)
         {
             _logger.Warn($"[EXEC-APPROVALS] Failed to load exec-approvals.json ({ex.Message}); applying default-deny");
-            return new LoadFileResult(LoadFileStatus.Invalid, null, null);
+            return new LoadFileResult(
+                LoadFileStatus.ReadFailed,
+                null,
+                ComputeFailureSignature("read-failed", $"{ex.GetType().FullName}:{ex.Message}"),
+                Version: null,
+                $"Failed to load exec approvals file: {ex.Message}");
         }
     }
 
     private LoadFileResult MissingOrUntrusted(string filePath)
     {
         if (ExecApprovalsPathGuard.IsPathTrustworthy(filePath))
-            return new LoadFileResult(LoadFileStatus.Missing, null, ComputeMissingHash());
+        {
+            return new LoadFileResult(
+                LoadFileStatus.Missing,
+                null,
+                ComputeMissingHash(),
+                Version: null,
+                string.Empty);
+        }
 
         _logger.Warn("[EXEC-APPROVALS] missing exec-approvals.json path is not trustworthy; applying default-deny");
-        return new LoadFileResult(LoadFileStatus.Invalid, null, null);
+        return new LoadFileResult(
+            LoadFileStatus.UntrustedPath,
+            null,
+            ComputeFailureSignature("untrusted-path", Path.GetFullPath(filePath)),
+            Version: null,
+            "Missing exec approvals file path is not trustworthy.");
     }
 
-    private async Task<ExecApprovalsFile> EnsureFileAsync()
+    private async Task<EnsureFileResult> EnsureFileAsync()
     {
         if (TryMigrateLegacyFile() == LegacyMigrationStatus.Blocked)
-            return UnmigratedLegacyFallbackFile();
+        {
+            return new EnsureFileResult(UnmigratedLegacyFallbackFile(), PersistedSnapshot: null);
+        }
 
         var result = LoadFile();
         if (result.Status == LoadFileStatus.Loaded && result.File is not null)
@@ -440,37 +698,40 @@ public sealed class ExecApprovalsStore
                 file = new ExecApprovalsFile
                 {
                     Version = file.Version,
-                    Socket = file.Socket,
+                    Socket = CloneSocket(file.Socket),
                     Defaults = CopyDefaults(file.Defaults),
                     Agents = [],
                 };
-                await SaveFileAsync(file).ConfigureAwait(false);
+                var savedHash = await SaveFileAsync(file).ConfigureAwait(false);
+                return new EnsureFileResult(file, CreateSnapshot(file, exists: true, savedHash));
             }
-            return file;
+
+            return new EnsureFileResult(file, PersistedSnapshot: null);
         }
 
-        if (result.Status == LoadFileStatus.Invalid)
+        if (result.IsInvalid)
         {
             _logger.Warn($"[EXEC-APPROVALS] Preserving unreadable exec-approvals.json at {_filePath}; using empty in-memory store");
-            return UnmigratedLegacyFallbackFile();
+            return new EnsureFileResult(UnmigratedLegacyFallbackFile(), PersistedSnapshot: null);
         }
 
-        // socket intentionally omitted in Windows v1.
         var newFile = NewDefaultFile();
-        await SaveFileAsync(newFile).ConfigureAwait(false);
+        var hash = await SaveFileAsync(newFile).ConfigureAwait(false);
         _logger.Info($"[EXEC-APPROVALS] Created {_filePath}");
-        return newFile;
+        return new EnsureFileResult(newFile, CreateSnapshot(newFile, exists: true, hash));
     }
 
     private LegacyMigrationStatus TryMigrateLegacyFile()
     {
         if (_legacyFilePath is null)
+        {
             return LegacyMigrationStatus.NotNeeded;
+        }
 
         var targetResult = LoadFile();
         if (targetResult.Status == LoadFileStatus.Loaded)
             return LegacyMigrationStatus.NotNeeded;
-        if (targetResult.Status == LoadFileStatus.Invalid)
+        if (targetResult.IsInvalid)
             return LegacyMigrationStatus.Blocked;
 
         var legacyResult = LoadFile(_legacyFilePath);
@@ -494,6 +755,7 @@ public sealed class ExecApprovalsStore
                 stream.Write(data);
                 stream.Flush(flushToDisk: true);
             }
+
             File.Move(tempPath, _filePath);
             try
             {
@@ -504,17 +766,38 @@ public sealed class ExecApprovalsStore
                 _logger.Warn($"[EXEC-APPROVALS] Migrated approvals to {_filePath}, but could not archive {_legacyFilePath} ({ex.Message})");
                 return LegacyMigrationStatus.Migrated;
             }
+
             _logger.Info($"[EXEC-APPROVALS] Migrated {_legacyFilePath} to {_filePath}; archived source as {archivePath}");
             return LegacyMigrationStatus.Migrated;
         }
         catch (IOException) when (File.Exists(_filePath))
         {
-            try { if (File.Exists(tempPath)) File.Delete(tempPath); } catch { }
+            try
+            {
+                if (File.Exists(tempPath))
+                {
+                    File.Delete(tempPath);
+                }
+            }
+            catch
+            {
+            }
+
             return LegacyMigrationStatus.NotNeeded;
         }
         catch (Exception ex)
         {
-            try { if (File.Exists(tempPath)) File.Delete(tempPath); } catch { }
+            try
+            {
+                if (File.Exists(tempPath))
+                {
+                    File.Delete(tempPath);
+                }
+            }
+            catch
+            {
+            }
+
             _logger.Warn($"[EXEC-APPROVALS] Failed to migrate {_legacyFilePath} to {_filePath} ({ex.Message}); applying default-deny without creating a replacement file");
             return LegacyMigrationStatus.Blocked;
         }
@@ -587,8 +870,12 @@ public sealed class ExecApprovalsStore
         foreach (var value in values)
         {
             var normalized = NormalizePathValue(value);
-            if (normalized is not null) return normalized;
+            if (normalized is not null)
+            {
+                return normalized;
+            }
         }
+
         return null;
     }
 
@@ -611,11 +898,11 @@ public sealed class ExecApprovalsStore
     private async Task<string> SaveFileAsync(ExecApprovalsFile file)
     {
         var dir = Path.GetDirectoryName(_filePath)!;
-        if (!Directory.Exists(dir)) Directory.CreateDirectory(dir);
+        if (!Directory.Exists(dir))
+        {
+            Directory.CreateDirectory(dir);
+        }
 
-        // Refuse to write through a redirected path: a symlink/junction in the store path
-        // (O_NOFOLLOW analogue) or a hard-linked target (nlink==1 analogue) could divert the
-        // policy file to an attacker-observable or attacker-controlled location.
         if (!ExecApprovalsPathGuard.IsPathTrustworthy(_filePath))
         {
             _logger.Error($"[EXEC-APPROVALS] Refusing to write {_filePath}: reparse point in store path");
@@ -633,15 +920,23 @@ public sealed class ExecApprovalsStore
         {
             var json = JsonSerializer.Serialize(file, JsonOptions);
             await File.WriteAllTextAsync(tmp, json).ConfigureAwait(false);
-            // Atomic replace on NTFS via MoveFileExW (MOVEFILE_REPLACE_EXISTING).
             File.Move(tmp, _filePath, overwrite: true);
             return ComputeRawHash(json);
         }
         catch (Exception ex)
         {
             _logger.Error($"[EXEC-APPROVALS] Failed to save {_filePath} ({ex.Message})");
-            // slopwatch-ignore: SW003 Cleanup is best-effort; failure cannot improve caller state and the original outcome is preserved.
-            try { if (File.Exists(tmp)) File.Delete(tmp); } catch { }
+            try
+            {
+                if (File.Exists(tmp))
+                {
+                    File.Delete(tmp);
+                }
+            }
+            catch
+            {
+            }
+
             throw;
         }
     }
@@ -655,13 +950,7 @@ public sealed class ExecApprovalsStore
             _filePath,
             exists,
             hash,
-            new ExecApprovalsFile
-            {
-                Version = 1,
-                Socket = file.Socket,
-                Defaults = WithResolvedDefaults(file.Defaults),
-                Agents = file.Agents ?? [],
-            });
+            CloneFileForSnapshot(file));
     }
 
     private static string ComputeRawHash(string raw) =>
@@ -669,6 +958,9 @@ public sealed class ExecApprovalsStore
 
     private static string ComputeMissingHash() =>
         $"missing:{ComputeRawHash(string.Empty)}";
+
+    private static string ComputeFailureSignature(string prefix, string value) =>
+        $"{prefix}:{ComputeRawHash(value)}";
 
     private static ExecApprovalsFile NewDefaultFile() =>
         new()
@@ -695,71 +987,77 @@ public sealed class ExecApprovalsStore
         var token = replacement?.Token ?? current?.Token;
         return path is null && token is null
             ? null
-            : new ExecApprovalsSocketConfig { Path = path, Token = token };
+            : new ExecApprovalsSocketConfig
+            {
+                Path = path,
+                Token = token,
+            };
     }
 
-    // Best-effort mutate-and-save. Serialized by the store lock.
-    // Never throws. Refuses to overwrite a malformed file.
-    // Returns true if the file was mutated and saved; false if the mutate was a no-op,
-    // the file was malformed/invalid, or any I/O failure occurred.
     private async Task<bool> UpdateFileAsync(Func<ExecApprovalsFile, bool> mutate)
     {
+        ExecApprovalsChangedEventArgs? change = null;
+        var wrote = false;
+
         await _lock.WaitAsync().ConfigureAwait(false);
         try
         {
-            // Migrate before any write: creating the target file here would permanently
-            // block TryMigrateLegacyFile and silently orphan the legacy configuration.
             if (TryMigrateLegacyFile() == LegacyMigrationStatus.Blocked)
             {
-                _logger.Warn("[EXEC-APPROVALS] Refusing to write exec-approvals.json: "
-                    + "unmigrated legacy file is unreadable");
+                _logger.Warn("[EXEC-APPROVALS] Refusing to write exec-approvals.json: unmigrated legacy file is unreadable");
                 return false;
             }
 
             var result = LoadFile();
-            if (result.Status == LoadFileStatus.Invalid)
+            if (result.IsInvalid)
             {
-                _logger.Warn("[EXEC-APPROVALS] Refusing to write exec-approvals.json: "
-                    + "file is malformed or has an unsupported version");
+                _logger.Warn("[EXEC-APPROVALS] Refusing to write exec-approvals.json: file is malformed or has an unsupported version");
                 return false;
             }
+
             var file = result.Status == LoadFileStatus.Loaded && result.File is not null
                 ? result.File
                 : new ExecApprovalsFile { Version = 1, Agents = [] };
-            file.Agents ??= new Dictionary<string, ExecApprovalsAgent>();
+            file.Agents ??= [];
 
-            if (!mutate(file)) return false; // no-op: nothing to persist
+            if (!mutate(file))
+            {
+                return false;
+            }
 
-            await SaveFileAsync(file).ConfigureAwait(false);
-            return true;
+            var savedHash = await SaveFileAsync(file).ConfigureAwait(false);
+            change = RecordManagedSnapshot(CreateSnapshot(file, exists: true, savedHash), origin: null);
+            wrote = true;
         }
         catch (Exception ex)
         {
-            // Any failure (incl. transient IOException on the atomic move) degrades to a
-            // logged warning. The atomic write guarantees the file on disk is never left corrupt.
-            _logger.Warn($"[EXEC-APPROVALS] exec-approvals.json write failed "
-                + $"({ex.Message}); side effect skipped");
-            return false;
+            _logger.Warn($"[EXEC-APPROVALS] exec-approvals.json write failed ({ex.Message}); side effect skipped");
+            wrote = false;
         }
         finally
         {
             _lock.Release();
         }
-    }
 
-    // ── Normalization ─────────────────────────────────────────────────────────
+        RaiseChanged(change);
+        return wrote;
+    }
 
     private static ExecApprovalsFile Normalize(ExecApprovalsFile file)
     {
-        // Trim socket fields; nullify if both are empty after trim.
         var socket = file.Socket is null ? null : NormalizeSocket(file.Socket);
-
-        // Migrate agents["default"] → agents["main"]; "main" wins on conflicting fields.
-        // Null agents stays null here — EnsureFileAsync is responsible for initialization.
         var defaults = CopyDefaults(file.Defaults);
 
         if (file.Agents is null)
-            return new ExecApprovalsFile { Version = 1, Socket = socket, Defaults = defaults, Agents = null };
+        {
+            return new ExecApprovalsFile
+            {
+                Version = 1,
+                Socket = socket,
+                Defaults = defaults,
+                Agents = null,
+            };
+        }
 
         var agents = new Dictionary<string, ExecApprovalsAgent>(file.Agents);
 
@@ -767,43 +1065,64 @@ public sealed class ExecApprovalsStore
         {
             agents.Remove("default");
             agents["main"] = agents.TryGetValue("main", out var mainAgent)
-                ? MergeAgent(fallback: defaultAgent, winner: mainAgent)
+                ? MergeAgent(defaultAgent, mainAgent)
                 : defaultAgent;
         }
 
-        // Normalize allowlist entries (dropInvalid: false — keep non-empty invalids).
         foreach (var key in agents.Keys.ToList())
         {
             var agent = agents[key];
             if (agent.Allowlist is not null)
+            {
                 agents[key] = WithNormalizedAllowlist(agent, dropInvalid: false);
+            }
         }
 
-        return new ExecApprovalsFile { Version = 1, Socket = socket, Defaults = defaults, Agents = agents };
-    }
-
-    private static ExecApprovalsDefaults? CopyDefaults(ExecApprovalsDefaults? d) =>
-        d is null ? null : new ExecApprovalsDefaults
+        return new ExecApprovalsFile
         {
-            Security = d.Security,
-            Ask = d.Ask,
-            AskFallback = d.AskFallback,
-            AutoAllowSkills = d.AutoAllowSkills,
+            Version = 1,
+            Socket = socket,
+            Defaults = defaults,
+            Agents = agents,
         };
-
-    private static ExecApprovalsSocketConfig? NormalizeSocket(ExecApprovalsSocketConfig s)
-    {
-        var path = string.IsNullOrWhiteSpace(s.Path) ? null : s.Path.Trim();
-        var token = string.IsNullOrWhiteSpace(s.Token) ? null : s.Token.Trim();
-        return (path is null && token is null) ? null : new ExecApprovalsSocketConfig { Path = path, Token = token };
     }
 
-    // winner's non-null fields take precedence; allowlists are concatenated (fallback first).
+    private static ExecApprovalsDefaults? CopyDefaults(ExecApprovalsDefaults? defaults) =>
+        defaults is null
+            ? null
+            : new ExecApprovalsDefaults
+            {
+                Security = defaults.Security,
+                Ask = defaults.Ask,
+                AskFallback = defaults.AskFallback,
+                AutoAllowSkills = defaults.AutoAllowSkills,
+            };
+
+    private static ExecApprovalsSocketConfig? NormalizeSocket(ExecApprovalsSocketConfig socket)
+    {
+        var path = string.IsNullOrWhiteSpace(socket.Path) ? null : socket.Path.Trim();
+        var token = string.IsNullOrWhiteSpace(socket.Token) ? null : socket.Token.Trim();
+        return path is null && token is null
+            ? null
+            : new ExecApprovalsSocketConfig
+            {
+                Path = path,
+                Token = token,
+            };
+    }
+
     private static ExecApprovalsAgent MergeAgent(ExecApprovalsAgent fallback, ExecApprovalsAgent winner)
     {
         var allowlist = new List<ExecAllowlistEntry>();
-        if (fallback.Allowlist is not null) allowlist.AddRange(fallback.Allowlist);
-        if (winner.Allowlist is not null) allowlist.AddRange(winner.Allowlist);
+        if (fallback.Allowlist is not null)
+        {
+            allowlist.AddRange(fallback.Allowlist);
+        }
+
+        if (winner.Allowlist is not null)
+        {
+            allowlist.AddRange(winner.Allowlist);
+        }
 
         return new ExecApprovalsAgent
         {
@@ -822,8 +1141,7 @@ public sealed class ExecApprovalsStore
             Ask = agent.Ask,
             AskFallback = agent.AskFallback,
             AutoAllowSkills = agent.AutoAllowSkills,
-            Allowlist = NormalizeAllowlistEntries(agent.Allowlist!, dropInvalid)
-                            is { Count: > 0 } list ? list : null,
+            Allowlist = NormalizeAllowlistEntries(agent.Allowlist!, dropInvalid) is { Count: > 0 } list ? list : null,
         };
 
     // Mirrors macOS normalizeAllowlistEntries.
@@ -837,7 +1155,8 @@ public sealed class ExecApprovalsStore
     // rule for the whole executable. Both are silent authorization widening, so every
     // field is carried.
     internal static List<ExecAllowlistEntry> NormalizeAllowlistEntries(
-        IEnumerable<ExecAllowlistEntry> entries, bool dropInvalid)
+        IEnumerable<ExecAllowlistEntry> entries,
+        bool dropInvalid)
     {
         var seen = new HashSet<(string Pattern, string ArgPattern)>();
         var result = new List<ExecAllowlistEntry>();
@@ -858,10 +1177,9 @@ public sealed class ExecApprovalsStore
                 LastUsedCommand = entry.LastUsedCommand,
             });
         }
+
         return result;
     }
-
-    // ── Cascade resolution ────────────────────────────────────────────────────
 
     private static ExecApprovalsResolved ResolveFromFile(ExecApprovalsFile file, string? agentId)
     {
@@ -877,10 +1195,16 @@ public sealed class ExecApprovalsStore
         var askFallback = agentEntry?.AskFallback ?? wildcardEntry?.AskFallback ?? defaults?.AskFallback ?? ExecSecurity.Deny;
         var autoAllowSkills = agentEntry?.AutoAllowSkills ?? wildcardEntry?.AutoAllowSkills ?? defaults?.AutoAllowSkills ?? false;
 
-        // Allowlist: wildcard first, then agent; then normalize dropInvalid=true.
         var combined = new List<ExecAllowlistEntry>();
-        if (wildcardEntry?.Allowlist is not null) combined.AddRange(wildcardEntry.Allowlist);
-        if (agentEntry?.Allowlist is not null) combined.AddRange(agentEntry.Allowlist);
+        if (wildcardEntry?.Allowlist is not null)
+        {
+            combined.AddRange(wildcardEntry.Allowlist);
+        }
+
+        if (agentEntry?.Allowlist is not null)
+        {
+            combined.AddRange(agentEntry.Allowlist);
+        }
 
         return new ExecApprovalsResolved
         {
@@ -928,6 +1252,444 @@ public sealed class ExecApprovalsStore
     // null/empty agentId → "main". Mirrors macOS. Evaluator does not need to know this.
     private static string NormalizeAgentId(string? agentId) =>
         string.IsNullOrWhiteSpace(agentId) ? "main" : agentId;
+
+    private ReadOnlySnapshotLoadResult LoadReadOnlySnapshot()
+    {
+        LoadFileResult result;
+        if (_legacyFilePath is not null)
+        {
+            result = LoadFile();
+            var legacyStatus = LoadFile(_legacyFilePath).Status;
+            if (result.Status == LoadFileStatus.Missing
+                && legacyStatus != LoadFileStatus.Missing)
+            {
+                var failure = new ExecApprovalsSnapshotFailure(
+                    ExecApprovalsSnapshotFailureKind.LegacyMigrationRequired,
+                    ComputeFailureSignature("legacy-migration-required", Path.GetFullPath(_legacyFilePath)),
+                    Version: null,
+                    "Legacy exec approvals must be migrated before a read-only snapshot is available.");
+                return new ReadOnlySnapshotLoadResult(null, failure, failure.Hash);
+            }
+        }
+        else
+        {
+            result = LoadFile();
+        }
+
+        if (result.Status == LoadFileStatus.Missing)
+        {
+            var snapshot = CreateSnapshot(NewDefaultFile(), exists: false, result.Hash);
+            return new ReadOnlySnapshotLoadResult(snapshot, null, snapshot.Hash);
+        }
+
+        if (result.Status == LoadFileStatus.Loaded && result.File is not null)
+        {
+            var snapshot = CreateSnapshot(result.File, exists: true, result.Hash);
+            return new ReadOnlySnapshotLoadResult(snapshot, null, snapshot.Hash);
+        }
+
+        var typedFailure = CreateFailure(result);
+        return new ReadOnlySnapshotLoadResult(null, typedFailure, typedFailure.Hash);
+    }
+
+    private static ExecApprovalsSnapshotFailure CreateFailure(LoadFileResult result)
+    {
+        var kind = result.Status switch
+        {
+            LoadFileStatus.UntrustedPath => ExecApprovalsSnapshotFailureKind.UntrustedPath,
+            LoadFileStatus.UnsupportedVersion => ExecApprovalsSnapshotFailureKind.UnsupportedVersion,
+            LoadFileStatus.MalformedJson => ExecApprovalsSnapshotFailureKind.MalformedJson,
+            LoadFileStatus.ReadFailed => ExecApprovalsSnapshotFailureKind.ReadFailed,
+            _ => throw new InvalidOperationException($"Unsupported failure status {result.Status}."),
+        };
+
+        return new ExecApprovalsSnapshotFailure(kind, result.Hash, result.Version, result.Message);
+    }
+
+    private ExecApprovalsChangedEventArgs? RecordManagedSnapshot(
+        ExecApprovalsSnapshot snapshot,
+        ExecApprovalsWriterOrigin? origin)
+    {
+        lock (_changeGate)
+        {
+            if (_disposed)
+            {
+                return null;
+            }
+
+            var snapshotCopy = CloneSnapshot(snapshot);
+            var kind = _lastObservedWasFailure
+                ? ExecApprovalsChangeKind.SnapshotRecovered
+                : ExecApprovalsChangeKind.SnapshotUpdated;
+
+            _lastObservedWasFailure = false;
+            _lastValidPresentationSnapshot = CloneSnapshot(snapshot);
+            if (_changed is null)
+            {
+                _lastObservedSignature = null;
+                return null;
+            }
+
+            _lastObservedSignature = snapshot.Hash;
+            EnsureWatcherStartedNoLock();
+
+            return new ExecApprovalsChangedEventArgs(
+                ++_changeSequence,
+                kind,
+                snapshotCopy.Hash,
+                snapshotCopy.File.Version,
+                snapshotCopy,
+                failure: null,
+                lastValidSnapshot: null,
+                origin);
+        }
+    }
+
+    private void EnsureWatcherStartedNoLock()
+    {
+        while (!_disposed && _changed is not null && _watcher is null)
+        {
+            var targetDirectoryPath = Path.GetDirectoryName(_filePath)!;
+            string watcherDirectoryPath;
+            string observedPath;
+            NotifyFilters notifyFilter;
+            if (Directory.Exists(targetDirectoryPath))
+            {
+                watcherDirectoryPath = targetDirectoryPath;
+                observedPath = _filePath;
+                notifyFilter = NotifyFilters.FileName | NotifyFilters.LastWrite | NotifyFilters.CreationTime | NotifyFilters.Size;
+            }
+            else
+            {
+                observedPath = targetDirectoryPath;
+                while (true)
+                {
+                    var parentPath = Path.GetDirectoryName(observedPath);
+                    if (string.IsNullOrWhiteSpace(parentPath))
+                    {
+                        return;
+                    }
+
+                    if (Directory.Exists(parentPath))
+                    {
+                        watcherDirectoryPath = parentPath;
+                        notifyFilter = NotifyFilters.DirectoryName;
+                        break;
+                    }
+
+                    observedPath = parentPath;
+                }
+            }
+
+            try
+            {
+                _watcher = new FileSystemWatcher(watcherDirectoryPath, Path.GetFileName(observedPath))
+                {
+                    IncludeSubdirectories = false,
+                    NotifyFilter = notifyFilter,
+                };
+                _watcherObservedPath = observedPath;
+                _watcher.Changed += OnWatcherChanged;
+                _watcher.Created += OnWatcherChanged;
+                _watcher.Deleted += OnWatcherChanged;
+                _watcher.Renamed += OnWatcherRenamed;
+                _watcher.Error += OnWatcherError;
+                _watcher.EnableRaisingEvents = true;
+            }
+            catch (Exception ex)
+            {
+                _logger.Warn($"[EXEC-APPROVALS] Failed to observe exec-approvals.json changes ({ex.Message})");
+                DisposeWatcherNoLock();
+                return;
+            }
+
+            if (PathsEqual(observedPath, _filePath) || !Directory.Exists(observedPath))
+            {
+                return;
+            }
+
+            DisposeWatcherNoLock();
+        }
+    }
+
+    private void DisposeWatcherNoLock()
+    {
+        if (_watcher is null)
+        {
+            return;
+        }
+
+        _watcher.EnableRaisingEvents = false;
+        _watcher.Changed -= OnWatcherChanged;
+        _watcher.Created -= OnWatcherChanged;
+        _watcher.Deleted -= OnWatcherChanged;
+        _watcher.Renamed -= OnWatcherRenamed;
+        _watcher.Error -= OnWatcherError;
+        _watcher.Dispose();
+        _watcher = null;
+        _watcherObservedPath = null;
+    }
+
+    private void OnWatcherChanged(object sender, FileSystemEventArgs e)
+    {
+        HandleWatcherPathChange(e.FullPath, oldFullPath: null);
+    }
+
+    private void OnWatcherRenamed(object sender, RenamedEventArgs e)
+    {
+        HandleWatcherPathChange(e.FullPath, e.OldFullPath);
+    }
+
+    private void HandleWatcherPathChange(string fullPath, string? oldFullPath)
+    {
+        var shouldObserve = false;
+        lock (_changeGate)
+        {
+            if (_disposed
+                || _changed is null
+                || _watcherObservedPath is null
+                || (!PathsEqual(fullPath, _watcherObservedPath)
+                    && (oldFullPath is null || !PathsEqual(oldFullPath, _watcherObservedPath))))
+            {
+                return;
+            }
+
+            if (!PathsEqual(_watcherObservedPath, _filePath))
+            {
+                DisposeWatcherNoLock();
+                EnsureWatcherStartedNoLock();
+            }
+
+            shouldObserve = Directory.Exists(Path.GetDirectoryName(_filePath)!);
+        }
+
+        if (shouldObserve)
+        {
+            QueueWatcherObservation();
+        }
+    }
+
+    private void OnWatcherError(object sender, ErrorEventArgs e)
+    {
+        var message = e.GetException()?.Message ?? "unknown watcher error";
+        _logger.Warn($"[EXEC-APPROVALS] exec-approvals.json watcher failed ({message})");
+        QueueWatcherObservation();
+    }
+
+    private void QueueWatcherObservation()
+    {
+        lock (_changeGate)
+        {
+            if (_disposed || _changed is null)
+            {
+                return;
+            }
+        }
+
+        _ = Task.Run(ObserveExternalChangeAsync);
+    }
+
+    private async Task ObserveExternalChangeAsync()
+    {
+        var storeLockHeld = false;
+        try
+        {
+            await _observeLock.WaitAsync().ConfigureAwait(false);
+        }
+        catch (ObjectDisposedException)
+        {
+            return;
+        }
+
+        ExecApprovalsChangedEventArgs? change = null;
+        try
+        {
+            await _lock.WaitAsync().ConfigureAwait(false);
+            storeLockHeld = true;
+            var readOnly = await LoadObservedSnapshotAsync().ConfigureAwait(false);
+            lock (_changeGate)
+            {
+                if (_disposed || _changed is null)
+                {
+                    return;
+                }
+
+                if (string.Equals(_lastObservedSignature, readOnly.Signature, StringComparison.Ordinal))
+                {
+                    return;
+                }
+
+                _lastObservedSignature = readOnly.Signature;
+                if (readOnly.Snapshot is not null)
+                {
+                    var snapshot = CloneSnapshot(readOnly.Snapshot);
+                    var kind = _lastObservedWasFailure
+                        ? ExecApprovalsChangeKind.SnapshotRecovered
+                        : ExecApprovalsChangeKind.SnapshotUpdated;
+                    _lastObservedWasFailure = false;
+                    _lastValidPresentationSnapshot = CloneSnapshot(snapshot);
+                    change = new ExecApprovalsChangedEventArgs(
+                        ++_changeSequence,
+                        kind,
+                        snapshot.Hash,
+                        snapshot.File.Version,
+                        snapshot,
+                        failure: null,
+                        lastValidSnapshot: null,
+                        origin: null);
+                }
+                else if (readOnly.Failure is not null)
+                {
+                    _lastObservedWasFailure = true;
+                    change = new ExecApprovalsChangedEventArgs(
+                        ++_changeSequence,
+                        ExecApprovalsChangeKind.SnapshotInvalid,
+                        readOnly.Failure.Hash,
+                        readOnly.Failure.Version,
+                        snapshot: null,
+                        readOnly.Failure,
+                        CloneSnapshotOrNull(_lastValidPresentationSnapshot),
+                        origin: null);
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.Warn($"[EXEC-APPROVALS] Failed to observe exec-approvals.json changes ({ex.Message})");
+        }
+        finally
+        {
+            if (storeLockHeld)
+            {
+                try
+                {
+                    _lock.Release();
+                }
+                catch (ObjectDisposedException)
+                {
+                }
+            }
+
+            try
+            {
+                _observeLock.Release();
+            }
+            catch (ObjectDisposedException)
+            {
+            }
+        }
+
+        RaiseChanged(change);
+    }
+
+    private async Task<ReadOnlySnapshotLoadResult> LoadObservedSnapshotAsync()
+    {
+        var readOnly = LoadReadOnlySnapshot();
+        for (var attempt = 1;
+             attempt <= 3 && readOnly.Failure?.Kind == ExecApprovalsSnapshotFailureKind.ReadFailed;
+             attempt++)
+        {
+            await Task.Delay(TimeSpan.FromMilliseconds(attempt * 25)).ConfigureAwait(false);
+            readOnly = LoadReadOnlySnapshot();
+        }
+
+        return readOnly;
+    }
+
+    private void RaiseChanged(ExecApprovalsChangedEventArgs? args)
+    {
+        if (args is null)
+        {
+            return;
+        }
+
+        Delegate[] handlers;
+        lock (_changeGate)
+        {
+            handlers = _changed?.GetInvocationList() ?? [];
+        }
+
+        foreach (EventHandler<ExecApprovalsChangedEventArgs> handler in handlers)
+        {
+            try
+            {
+                handler(this, args);
+            }
+            catch (Exception ex)
+            {
+                _logger.Warn($"[EXEC-APPROVALS] Changed subscriber {handler.Method.DeclaringType?.Name}.{handler.Method.Name} threw ({ex.Message})");
+            }
+        }
+    }
+
+    private static ExecApprovalsSnapshot? CloneSnapshotOrNull(ExecApprovalsSnapshot? snapshot) =>
+        snapshot is null ? null : CloneSnapshot(snapshot);
+
+    private static ExecApprovalsSnapshot CloneSnapshot(ExecApprovalsSnapshot snapshot) =>
+        new(snapshot.Path, snapshot.Exists, snapshot.Hash, CloneFileForSnapshot(snapshot.File));
+
+    private static ExecApprovalsFile CloneFileForSnapshot(ExecApprovalsFile file) =>
+        new()
+        {
+            Version = 1,
+            Socket = CloneSocket(file.Socket),
+            Defaults = WithResolvedDefaults(file.Defaults),
+            Agents = CloneAgents(file.Agents) ?? [],
+        };
+
+    private static Dictionary<string, ExecApprovalsAgent>? CloneAgents(
+        Dictionary<string, ExecApprovalsAgent>? agents)
+    {
+        if (agents is null)
+        {
+            return null;
+        }
+
+        return agents.ToDictionary(
+            pair => pair.Key,
+            pair => CloneAgent(pair.Value),
+            StringComparer.Ordinal);
+    }
+
+    private static ExecApprovalsAgent CloneAgent(ExecApprovalsAgent agent) =>
+        new()
+        {
+            Security = agent.Security,
+            Ask = agent.Ask,
+            AskFallback = agent.AskFallback,
+            AutoAllowSkills = agent.AutoAllowSkills,
+            Allowlist = agent.Allowlist?.Select(CloneAllowlistEntry).ToList(),
+        };
+
+    private static ExecAllowlistEntry CloneAllowlistEntry(ExecAllowlistEntry entry) =>
+        new()
+        {
+            Id = entry.Id,
+            Pattern = entry.Pattern,
+            ArgPattern = entry.ArgPattern,
+            CommandText = entry.CommandText,
+            Source = entry.Source,
+            LastUsedAt = entry.LastUsedAt,
+            LastResolvedPath = entry.LastResolvedPath,
+            LastUsedCommand = entry.LastUsedCommand,
+        };
+
+    private static ExecApprovalsSocketConfig? CloneSocket(ExecApprovalsSocketConfig? socket) =>
+        socket is null
+            ? null
+            : new ExecApprovalsSocketConfig
+            {
+                Path = socket.Path,
+                Token = socket.Token,
+            };
+
+    private void ThrowIfDisposed()
+    {
+        if (_disposed)
+        {
+            throw new ObjectDisposedException(nameof(ExecApprovalsStore));
+        }
+    }
 }
 
 internal sealed class ExecApprovalsValidationException(string message) : Exception(message);

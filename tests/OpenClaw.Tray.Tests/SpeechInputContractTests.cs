@@ -96,7 +96,9 @@ public sealed class SpeechInputContractTests
         Assert.Contains("ShowHub(\"permissions\")", chatWindow);
         Assert.DoesNotContain("ChatVoiceDialog_TtsSetupRequired", chatWindow);
 
-        Assert.Contains("SpeechSetupReadiness.IsConfiguredTtsProviderSetupRequired", permissionsPage);
+        Assert.Contains("VoiceSettingsHelpPanel.Visibility", permissionsPage);
+        Assert.DoesNotContain("SpeechSetupReadiness.IsConfiguredTtsProviderSetupRequired", permissionsPage);
+        Assert.Contains("SpeechSetupReadiness.IsConfiguredTtsProviderSetupRequired", Read("src", "OpenClaw.Tray.WinUI", "App.xaml.cs"));
         Assert.Contains("SpeechSetupReadiness.IsAutomaticChatTtsEnabled", Read("src", "OpenClaw.Tray.WinUI", "App.xaml.cs"));
         Assert.Contains("IsAutomaticChatTtsEnabled", Read("src", "OpenClaw.Tray.WinUI", "Services", "SpeechSetupReadiness.cs"));
         Assert.Contains("return settings?.NodeTtsEnabled == true;", Read("src", "OpenClaw.Tray.WinUI", "Services", "SpeechSetupReadiness.cs"));

@@ -8,6 +8,7 @@ using OpenClaw.Connection;
 using OpenClaw.Shared;
 using OpenClaw.Shared.Sessions;
 using OpenClawTray.Helpers;
+using OpenClawTray.Presentation;
 using OpenClawTray.Services;
 using System;
 using System.Collections.Generic;
@@ -48,6 +49,7 @@ public sealed partial class ConnectionPage : Page
     private GatewayConnectionSnapshot _lastSnapshot = GatewayConnectionSnapshot.Idle;
     private bool _suppressNodeModeToggle;
     private bool _suppressConnectionToggle;
+    private SettingsWriteOrigin? _nodeModeSettingsOrigin;
     private ConnectionPagePlan _currentPlan = new();
     private GatewayHostAccessPlan _activeHostAccessPlan = GatewayHostAccessPlan.None();
     private bool _gatewayHostActionInProgress;
@@ -3156,16 +3158,45 @@ public sealed partial class ConnectionPage : Page
     private void OnNodeModeToggled(object sender, RoutedEventArgs e)
     {
         if (_suppressNodeModeToggle) return;
-        var settings = CurrentApp.Settings;
-        if (settings == null) return;
-        settings.EnableNodeMode = NodeModeToggle.IsOn;
-        settings.Save();
+        if (!TryPersistNodeModeSetting(NodeModeToggle.IsOn))
+            return;
+
         // Toggling Node mode forces a full reconnect of the gateway WS so
         // the role change registers; mask the brief transient window so the
         // gateway/operator visuals don't flicker through "Disconnected".
         BeginReconnectMask();
         ((IAppCommands)CurrentApp).NotifySettingsSaved();
         RefreshFromSnapshot(_lastSnapshot);
+    }
+
+    private bool TryPersistNodeModeSetting(bool enabled)
+    {
+        try
+        {
+            if (CurrentApp.SettingsStore is { } store)
+            {
+                _nodeModeSettingsOrigin ??= store.CreateOrigin();
+                store.Update(_nodeModeSettingsOrigin, edit => edit.EnableNodeMode = enabled);
+                return true;
+            }
+
+            var settings = CurrentApp.SettingsOrNull;
+            if (settings == null)
+            {
+                Services.Logger.Warn("[ConnectionPage] Could not persist EnableNodeMode because settings are unavailable.");
+                return false;
+            }
+
+            Services.Logger.Warn("[ConnectionPage] ISettingsStore unavailable for EnableNodeMode. Falling back to SettingsManager.Save.");
+            settings.EnableNodeMode = enabled;
+            settings.Save();
+            return true;
+        }
+        catch (Exception ex)
+        {
+            Services.Logger.Warn($"[ConnectionPage] Failed to persist EnableNodeMode: {ex.Message}");
+            return false;
+        }
     }
 
     private static bool IsStableState(OverallConnectionState s) =>

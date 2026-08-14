@@ -117,40 +117,41 @@ public sealed class NodeModeUiStateTests
     public void PermissionsPage_PresentsMcpOnlyNodeStatus()
     {
         var page = ReadSource("src", "OpenClaw.Tray.WinUI", "Pages", "PermissionsPage.xaml.cs");
+        var viewModel = ReadSource("src", "OpenClaw.Tray.WinUI", "Presentation", "PermissionsPageViewModel.cs");
+        var app = ReadSource("src", "OpenClaw.Tray.WinUI", "App.xaml.cs");
 
-        Assert.Contains("EnableMcpServer", page);
+        Assert.Contains("_viewModel.McpEnabled = McpToggle.IsOn;", page);
         Assert.Contains("PermissionsPage_NodeStatus_McpOnly", page);
         Assert.Contains("PermissionsPage_NodeStatus_McpOnlyDetailsFormat", page);
-        Assert.Contains("NodeService.McpServerUrl", page);
-        Assert.Contains("CountMcpServedCapabilities", page);
+        Assert.Contains("\"PermissionsPage_NodeStatus_McpOnly\"", viewModel);
+        Assert.Contains("NodeService.McpServerUrl", app);
+        Assert.Contains("CountMcpServedCapabilities", app);
         Assert.Contains("PermissionsPage_NodeStatus_McpError", page);
-        Assert.Contains("ActiveNodeService", page);
-        Assert.Contains("mcpEnabled && !string.IsNullOrEmpty(mcpStartupError)", page);
+        Assert.Contains("PermissionsNodeStatusKind.McpError", viewModel);
         Assert.Contains("McpStatusText.Text =", page);
     }
 
     [Fact]
     public void PermissionsPage_DrivesNodeStatusFromRoleState_AndSubscribesToChanges()
     {
-        var page = ReadSource("src", "OpenClaw.Tray.WinUI", "Pages", "PermissionsPage.xaml.cs");
+        var viewModel = ReadSource("src", "OpenClaw.Tray.WinUI", "Presentation", "PermissionsPageViewModel.cs");
+        var app = ReadSource("src", "OpenClaw.Tray.WinUI", "App.xaml.cs");
 
-        Assert.Contains("RoleConnectionState", page);
-        Assert.Contains("CurrentSnapshot", page);
-        Assert.Contains("PermissionsPage_NodeStatus_Starting", page);
-        Assert.Contains("StateChanged", page);
-        Assert.Contains("OnConnectionStateChanged", page);
+        Assert.Contains("RoleConnectionState", viewModel);
+        Assert.Contains("PermissionsPage_NodeStatus_Starting", viewModel);
+        Assert.Contains("event EventHandler? IPermissionsPageRuntimeHost.Changed", app);
+        Assert.Contains("PermissionsRuntimeChanged?.Invoke(this, EventArgs.Empty);", app);
+        Assert.Contains("GatewayConnectionSnapshot IPermissionsPageRuntimeHost.ConnectionSnapshot", app);
     }
 
     [Fact]
     public void PermissionsPage_CapabilityToggles_StayActionableInMcpOnly()
     {
-        var page = ReadSource("src", "OpenClaw.Tray.WinUI", "Pages", "PermissionsPage.xaml.cs");
+        var viewModel = ReadSource("src", "OpenClaw.Tray.WinUI", "Presentation", "PermissionsPageViewModel.cs");
 
-        Assert.Contains(
-            "var canServe = (s?.EnableNodeMode ?? false) || (s?.EnableMcpServer ?? false);",
-            page);
-        Assert.Contains("BrowserProxyToggleIndex", page);
-        Assert.Contains("!isBrowserProxyToggle || s?.EnableNodeMode == true", page);
+        Assert.Contains("var featuresEnabled = _nodeModeEnabled || _mcpEnabled;", viewModel);
+        Assert.Contains("PermissionsCapabilityKey.BrowserProxy, _nodeBrowserProxyEnabled, featuresEnabled && _nodeModeEnabled", viewModel);
+        Assert.Contains("new PermissionsCapabilityState(PermissionsCapabilityKey.SystemRun, _nodeSystemRunEnabled, featuresEnabled)", viewModel);
     }
 
     [Fact]
@@ -159,7 +160,7 @@ public sealed class NodeModeUiStateTests
         var page = ReadSource("src", "OpenClaw.Tray.WinUI", "Pages", "PermissionsPage.xaml.cs");
 
         var toggle = ExtractMethodBody(page, "OnMcpToggled");
-        Assert.Contains("UpdateNodeStatus()", toggle);
+        Assert.Contains("_viewModel.McpEnabled = McpToggle.IsOn;", toggle);
     }
 
     [Fact]

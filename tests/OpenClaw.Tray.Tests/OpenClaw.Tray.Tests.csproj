@@ -56,6 +56,14 @@
   <ItemGroup>
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Services\DeepLinkHandler.cs" Link="Services\DeepLinkHandler.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Services\DeepLinkSecurityPolicy.cs" Link="Services\DeepLinkSecurityPolicy.cs" />
+    <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Services\ActivationRoute.cs" Link="Services\ActivationRoute.cs" />
+    <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Services\ActivationPlan.cs" Link="Services\ActivationPlan.cs" />
+    <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Services\ActivationRouter.cs" Link="Services\ActivationRouter.cs" />
+    <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Services\SettingsChangeEffects.cs" Link="Services\SettingsChangeEffects.cs" />
+    <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Services\SettingsChangeCoordinator.cs" Link="Services\SettingsChangeCoordinator.cs" />
+    <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Services\AppShutdownPlan.cs" Link="Services\AppShutdownPlan.cs" />
+    <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Services\AppShutdownCoordinator.cs" Link="Services\AppShutdownCoordinator.cs" />
+    <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Services\SettingsDataExtensions.cs" Link="Services\SettingsDataExtensions.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Services\ConfigEditorModel.cs" Link="Services\ConfigEditorModel.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Services\JsonDiffFormatter.cs" Link="Services\JsonDiffFormatter.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Services\AppState.cs" Link="Services\AppState.cs" />
@@ -106,6 +114,7 @@
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Services\ConnectionDiagnosticsProjection.cs" Link="Services\ConnectionDiagnosticsProjection.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Services\McpRuntimeStatePolicy.cs" Link="Services\McpRuntimeStatePolicy.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Services\UsageCostApplicationPolicy.cs" Link="Services\UsageCostApplicationPolicy.cs" />
+    <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Services\SpeechSetupReadiness.cs" Link="Services\SpeechSetupReadiness.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Helpers\CanvasGatewayUrlRewriter.cs" Link="Helpers\CanvasGatewayUrlRewriter.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Helpers\DiagnosticsGate.cs" Link="Helpers\DiagnosticsGate.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Helpers\TrayTooltipFormatter.cs" Link="Helpers\TrayTooltipFormatter.cs" />
@@ -114,6 +123,7 @@
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Helpers\StatusBadgeIconFactory.cs" Link="Helpers\StatusBadgeIconFactory.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Helpers\Win32FilePickerHelper.cs" Link="Helpers\Win32FilePickerHelper.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\AppIdentity.cs" Link="AppIdentity.cs" />
+    <Compile Include="..\..\src\OpenClaw.Tray.WinUI\AppLogger.cs" Link="AppLogger.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Services\TrayStateSnapshot.cs" Link="Services\TrayStateSnapshot.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Services\TrayTooltipBuilder.cs" Link="Services\TrayTooltipBuilder.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Services\TrayMenuSnapshot.cs" Link="Services\TrayMenuSnapshot.cs" />
@@ -135,6 +145,7 @@
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Pages\WorkspaceFilesModel.cs" Link="Imported\WorkspaceFilesModel.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Services\ConnectionManagerWindowsNodeConnector.cs" Link="Services\ConnectionManagerWindowsNodeConnector.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Services\SetupWindowArgumentProjection.cs" Link="Services\SetupWindowArgumentProjection.cs" />
+    <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Services\WindowSurfaceRequests.cs" Link="Services\WindowSurfaceRequests.cs" />
     <!-- Pulled in for console-log tail tests. Pure logic, no WinUI deps. -->
     <Compile Include="..\..\src\OpenClaw.SetupEngine.UI\WizardConsoleTail.cs" Link="WizardConsoleTail.cs" />
     <Compile Include="..\..\src\OpenClaw.SetupEngine.UI\WizardPayloadHelpers.cs" Link="WizardPayloadHelpers.cs" />
@@ -153,10 +164,17 @@
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Presentation\NavigationScopeManager.cs" Link="Presentation\NavigationScopeManager.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Presentation\AppNavigationService.cs" Link="Presentation\AppNavigationService.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Presentation\SettingsPageViewModel.cs" Link="Presentation\SettingsPageViewModel.cs" />
+    <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Presentation\PermissionsPagePresentationTypes.cs" Link="Presentation\PermissionsPagePresentationTypes.cs" />
+    <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Presentation\PermissionsPageRuntimeSource.cs" Link="Presentation\PermissionsPageRuntimeSource.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Presentation\PermissionsPageViewModel.cs" Link="Presentation\PermissionsPageViewModel.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Presentation\ISettingsStore.cs" Link="Presentation\ISettingsStore.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Presentation\SettingsStore.cs" Link="Presentation\SettingsStore.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Presentation\SettingsAppInfoProjection.cs" Link="Presentation\SettingsAppInfoProjection.cs" />
+    <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Presentation\TrayMenuPresentation.cs" Link="Presentation\TrayMenuPresentation.cs" />
+    <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Presentation\ConnectionTogglePresenter.cs" Link="Presentation\ConnectionTogglePresenter.cs" />
+    <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Presentation\TrayMenuPresenter.cs" Link="Presentation\TrayMenuPresenter.cs" />
+    <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Presentation\HubPageRegistry.cs" Link="Presentation\HubPageRegistry.cs" />
+    <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Presentation\AppNotificationInfoBarPresenter.cs" Link="Presentation\AppNotificationInfoBarPresenter.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Presentation\AppServiceContext.cs" Link="Presentation\AppServiceContext.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Presentation\AppServiceRegistration.cs" Link="Presentation\AppServiceRegistration.cs" />
   </ItemGroup>
