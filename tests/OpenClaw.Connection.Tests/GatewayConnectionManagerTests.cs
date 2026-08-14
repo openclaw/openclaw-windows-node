@@ -405,12 +405,20 @@ public class GatewayConnectionManagerTests : IDisposable
     public async Task RestartSshTunnelAsync_CleanupStopReceivesBoundedCancellation()
     {
         var (manager, tunnel, _, _) = await CreateConnectedSshManagerAsync(
-            restartTimeout: TimeSpan.FromMilliseconds(50));
+            restartTimeout: TimeSpan.FromMilliseconds(50),
+            cleanupTimeout: TimeSpan.FromMilliseconds(50));
         using (manager)
         {
             CancellationToken cleanupToken = default;
+            var stopCalls = 0;
             tunnel.StopIfOwnedAsyncOverride = token =>
             {
+                if (Interlocked.Increment(ref stopCalls) == 1)
+                {
+                    tunnel.SimulateExit();
+                    return Task.FromResult(true);
+                }
+
                 cleanupToken = token;
                 return Task.FromResult(false);
             };
@@ -419,6 +427,34 @@ public class GatewayConnectionManagerTests : IDisposable
                 await manager.RestartSshTunnelAsync()
                     .WaitAsync(TimeSpan.FromSeconds(2)));
             Assert.True(cleanupToken.CanBeCanceled);
+        }
+    }
+
+    [Fact]
+    public async Task RestartSshTunnelAsync_CleanupCancellationDoesNotEscapeAsFault()
+    {
+        var (manager, tunnel, _, _) = await CreateConnectedSshManagerAsync(
+            restartTimeout: TimeSpan.FromMilliseconds(50),
+            cleanupTimeout: TimeSpan.FromMilliseconds(50));
+        using (manager)
+        {
+            var stopCalls = 0;
+            tunnel.StopIfOwnedAsyncOverride = async token =>
+            {
+                if (Interlocked.Increment(ref stopCalls) == 1)
+                {
+                    tunnel.SimulateExit();
+                    return true;
+                }
+
+                await Task.Delay(Timeout.InfiniteTimeSpan, token);
+                return false;
+            };
+
+            Assert.False(
+                await manager.RestartSshTunnelAsync()
+                    .WaitAsync(TimeSpan.FromSeconds(2)));
+            Assert.Equal(2, stopCalls);
         }
     }
 
@@ -605,14 +641,15 @@ public class GatewayConnectionManagerTests : IDisposable
         MockClientFactory Factory,
         SshTunnelConfig TunnelConfig)> CreateConnectedSshManagerAsync(
             TimeSpan? restartTimeout = null,
+            TimeSpan? cleanupTimeout = null,
             string tunnelUser = "user",
             string tunnelHost = "host.example")
     {
-            var tunnelConfig = new SshTunnelConfig(
-                tunnelUser,
-                tunnelHost,
-                18789,
-                45678);
+        var tunnelConfig = new SshTunnelConfig(
+            tunnelUser,
+            tunnelHost,
+            18789,
+            45678);
         _registry.AddOrUpdate(new GatewayRecord
         {
             Id = "gw-restart-user",
@@ -630,7 +667,8 @@ public class GatewayConnectionManagerTests : IDisposable
             _registry,
             NullLogger.Instance,
             tunnelManager: tunnel,
-            manualSshRestartTimeout: restartTimeout);
+            manualSshRestartTimeout: restartTimeout,
+            manualSshRestartCleanupTimeout: cleanupTimeout);
 
         await manager.ConnectAsync("gw-restart-user");
         factory.CreatedClients[0].SimulateHandshake();

@@ -10,7 +10,7 @@ namespace OpenClaw.Connection;
 /// </summary>
 public sealed class SshTunnelService : ISshTunnelManager
 {
-private readonly IOpenClawLogger _logger;
+    private readonly IOpenClawLogger _logger;
     private readonly object _operationLock = new();
     private readonly object _stateLock = new();
     private Process? _process;

@@ -64,6 +64,7 @@ public sealed class GatewayConnectionManager : IGatewayConnectionManager
     private readonly Func<ISshTunnelManager> _validationTunnelFactory;
     private readonly TimeSpan _credentialHandoffTimeout;
     private readonly TimeSpan _manualSshRestartTimeout;
+    private readonly TimeSpan _manualSshRestartCleanupTimeout;
     private readonly SemaphoreSlim _transitionSemaphore = new(1, 1);
     private readonly SemaphoreSlim _nodeStartSemaphore = new(1, 1);
     private readonly object _nodeOperationLock = new();
@@ -144,7 +145,8 @@ public sealed class GatewayConnectionManager : IGatewayConnectionManager
             endpointProvenanceProbe = null,
         Func<ISshTunnelManager>? validationTunnelFactory = null,
         TimeSpan? credentialHandoffTimeout = null,
-        TimeSpan? manualSshRestartTimeout = null)
+        TimeSpan? manualSshRestartTimeout = null,
+        TimeSpan? manualSshRestartCleanupTimeout = null)
     {
         _credentialResolver = credentialResolver ?? throw new ArgumentNullException(nameof(credentialResolver));
         _clientFactory = clientFactory ?? throw new ArgumentNullException(nameof(clientFactory));
@@ -161,10 +163,14 @@ public sealed class GatewayConnectionManager : IGatewayConnectionManager
         _validationTunnelFactory = validationTunnelFactory ?? (() => new SshTunnelService(_logger));
         _credentialHandoffTimeout = credentialHandoffTimeout ?? TimeSpan.FromSeconds(5);
         _manualSshRestartTimeout = manualSshRestartTimeout ?? TimeSpan.FromSeconds(35);
+        _manualSshRestartCleanupTimeout =
+            manualSshRestartCleanupTimeout ?? TimeSpan.FromSeconds(5);
         if (_credentialHandoffTimeout <= TimeSpan.Zero)
             throw new ArgumentOutOfRangeException(nameof(credentialHandoffTimeout));
         if (_manualSshRestartTimeout <= TimeSpan.Zero)
             throw new ArgumentOutOfRangeException(nameof(manualSshRestartTimeout));
+        if (_manualSshRestartCleanupTimeout <= TimeSpan.Zero)
+            throw new ArgumentOutOfRangeException(nameof(manualSshRestartCleanupTimeout));
         _diagnostics = diagnostics ?? new ConnectionDiagnostics(clock: clock);
         _diagnostics.EventRecorded += (_, e) => DiagnosticEvent?.Invoke(this, e);
 
@@ -1288,7 +1294,7 @@ public sealed class GatewayConnectionManager : IGatewayConnectionManager
             connectionGeneration == 0)
             return;
 
-        using var cleanupCts = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+        using var cleanupCts = new CancellationTokenSource(_manualSshRestartCleanupTimeout);
         try
         {
             await _transitionSemaphore.WaitAsync(cleanupCts.Token).ConfigureAwait(false);
@@ -1320,6 +1326,10 @@ public sealed class GatewayConnectionManager : IGatewayConnectionManager
                         cleanupCts.Token)
                     .ConfigureAwait(false);
             }
+        }
+        catch (OperationCanceledException) when (cleanupCts.IsCancellationRequested)
+        {
+            _logger.Warn("[ConnMgr] Timed out cleaning up a failed manual SSH restart.");
         }
         finally
         {
