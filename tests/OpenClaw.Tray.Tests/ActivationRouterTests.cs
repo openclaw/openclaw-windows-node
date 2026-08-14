@@ -139,12 +139,11 @@ public class ActivationRouterTests
     }
 
     [Fact]
-    public void PlanLaunch_InvalidUri_ReturnsReject()
+    public void PlanLaunch_InvalidUri_ReturnsIgnore()
     {
         var router = CreateRouter();
         var plan = router.PlanLaunch(Input(protocolUri: "not-a-uri"));
-        var reject = Assert.IsType<ActivationPlan.Reject>(plan);
-        Assert.Equal(ActivationRejection.InvalidUri, reject.Reason);
+        Assert.IsType<ActivationPlan.Ignore>(plan);
     }
 
     [Fact]
@@ -269,22 +268,6 @@ public class ActivationRouterTests
     }
 
     [Fact]
-    public async Task DispatchPlanAsync_Reject_NeverDispatchesOrConfirms()
-    {
-        var router = CreateRouter();
-        var sink = new FakeSink();
-
-        var applied = await router.DispatchPlanAsync(
-            new ActivationPlan.Reject(ActivationRejection.InvalidUri, "<invalid>"),
-            sink,
-            CancellationToken.None);
-
-        Assert.False(applied);
-        Assert.Empty(sink.Dispatched);
-        Assert.Empty(sink.Confirmations);
-    }
-
-    [Fact]
     public async Task DispatchPlanAsync_Ignore_NeverDispatchesOrConfirms()
     {
         var router = CreateRouter();
@@ -302,7 +285,7 @@ public class ActivationRouterTests
     {
         var router = CreateRouter();
         var sink = new FakeSink();
-        await router.StopAsync(CancellationToken.None);
+        await router.StopAsync();
 
         var applied = await router.DispatchPlanAsync(
             new ActivationPlan.Dispatch(new ActivationRoute.OpenSetup()),
@@ -327,7 +310,7 @@ public class ActivationRouterTests
             CancellationToken.None);
         await sink.ConfirmationStarted.Task.WaitAsync(TimeSpan.FromSeconds(2));
 
-        await router.StopAsync(CancellationToken.None).WaitAsync(TimeSpan.FromSeconds(2));
+        await router.StopAsync().WaitAsync(TimeSpan.FromSeconds(2));
 
         Assert.True(dispatchTask.IsCompleted);
         await Assert.ThrowsAnyAsync<OperationCanceledException>(async () => await dispatchTask);
@@ -394,8 +377,8 @@ public class ActivationRouterTests
         using var cts = new CancellationTokenSource();
         await router.StartForwardedActivationListenerAsync(sink, cts.Token);
 
-        await router.StopAsync(CancellationToken.None);
-        await router.StopAsync(CancellationToken.None);
+        await router.StopAsync();
+        await router.StopAsync();
     }
 
     [Fact]
@@ -446,7 +429,7 @@ public class ActivationRouterTests
             cts.Token));
         await sink.ConfirmationStarted.Task.WaitAsync(cts.Token);
 
-        await listener.StopAsync(CancellationToken.None).WaitAsync(TimeSpan.FromSeconds(2));
+        await listener.StopAsync().WaitAsync(TimeSpan.FromSeconds(2));
 
         sink.ReleaseConfirmation(true);
         Assert.DoesNotContain(sink.Dispatched, route => route is ActivationRoute.SendMessage);

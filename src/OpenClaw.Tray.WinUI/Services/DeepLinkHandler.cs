@@ -1,7 +1,6 @@
 using Microsoft.Win32;
 using System;
 using System.Runtime.Versioning;
-using System.Threading.Tasks;
 
 namespace OpenClawTray.Services;
 
@@ -49,24 +48,6 @@ public static class DeepLinkHandler
     private static bool IsPackagedApp() => OpenClawTray.Helpers.PackageHelper.IsPackaged;
 #endif
 
-    /// <summary>
-    /// Compatibility entry point kept for existing callback-based callers/tests. Production
-    /// activation goes through <see cref="PlanRoute"/> plus App's single
-    /// <c>IActivationPlanSink</c> switch; this method only translates the same plan into the
-    /// legacy <see cref="DeepLinkActions"/> shape so it must not gain its own route mapping.
-    /// </summary>
-    public static void Handle(string uri, DeepLinkActions actions)
-    {
-        var route = PlanRoute(uri, AppIdentity.ProtocolScheme);
-        if (route != null)
-            Apply(route, actions);
-    }
-
-    /// <summary>
-    /// The single deep-link route table. Parses <paramref name="uri"/> and returns the semantic
-    /// <see cref="ActivationRoute"/> for it, or <see langword="null"/> when the URI is invalid or
-    /// its path is unrecognized (both cases are logged here, matching prior behavior).
-    /// </summary>
     internal static ActivationRoute? PlanRoute(string uri, string scheme)
     {
         var result = OpenClaw.Shared.DeepLinkParser.ParseDeepLink(uri, scheme);
@@ -231,147 +212,4 @@ public static class DeepLinkHandler
         }
     }
 
-    private static void Apply(ActivationRoute route, DeepLinkActions actions)
-    {
-        switch (route)
-        {
-            case ActivationRoute.OpenHub r:
-                actions.OpenHub?.Invoke(r.Page);
-                break;
-            case ActivationRoute.OpenSetup:
-                actions.OpenSetup?.Invoke();
-                break;
-            case ActivationRoute.RunHealthCheck:
-                if (actions.RunHealthCheck != null)
-                    _ = RunDeepLinkActionAsync("health check", () => Task.Run(actions.RunHealthCheck));
-                break;
-            case ActivationRoute.CheckForUpdates:
-                if (actions.CheckForUpdates != null)
-                    _ = RunDeepLinkActionAsync("update check", actions.CheckForUpdates);
-                break;
-            case ActivationRoute.OpenLogFile:
-                actions.OpenLogFile?.Invoke();
-                break;
-            case ActivationRoute.OpenLogFolder:
-                actions.OpenLogFolder?.Invoke();
-                break;
-            case ActivationRoute.OpenConfigFolder:
-                actions.OpenConfigFolder?.Invoke();
-                break;
-            case ActivationRoute.OpenDiagnosticsFolder:
-                actions.OpenDiagnosticsFolder?.Invoke();
-                break;
-            case ActivationRoute.CopyDiagnostics r:
-                ApplyCopyDiagnostics(r.Kind, actions);
-                break;
-            case ActivationRoute.RestartSshTunnel:
-                actions.RestartSshTunnel?.Invoke();
-                break;
-            case ActivationRoute.OpenTrayMenu:
-                actions.OpenTrayMenu?.Invoke();
-                break;
-            case ActivationRoute.OpenDashboard r:
-                actions.OpenDashboard?.Invoke(r.Path);
-                break;
-            case ActivationRoute.SendMessage r:
-                if (actions.SendMessage != null)
-                {
-                    _ = RunDeepLinkActionAsync("agent message", async () =>
-                    {
-                        await actions.SendMessage(r.Message);
-                        Logger.Info("DeepLinkHandler: Sent message via deep link");
-                    });
-                }
-                else
-                {
-                    Logger.Warn("Deep link: agent message received but SendMessage handler is not registered");
-                }
-                break;
-            case ActivationRoute.OpenVoice:
-                actions.OpenVoice?.Invoke();
-                break;
-            case ActivationRoute.StopVoice:
-                actions.StopVoice?.Invoke();
-                break;
-        }
-    }
-
-    private static void ApplyCopyDiagnostics(DiagnosticsCopyKind kind, DeepLinkActions actions)
-    {
-        switch (kind)
-        {
-            case DiagnosticsCopyKind.SupportContext:
-                actions.CopySupportContext?.Invoke();
-                break;
-            case DiagnosticsCopyKind.DebugBundle:
-                actions.CopyDebugBundle?.Invoke();
-                break;
-            case DiagnosticsCopyKind.BrowserSetupGuidance:
-                actions.CopyBrowserSetupGuidance?.Invoke();
-                break;
-            case DiagnosticsCopyKind.PortDiagnostics:
-                actions.CopyPortDiagnostics?.Invoke();
-                break;
-            case DiagnosticsCopyKind.CapabilityDiagnostics:
-                actions.CopyCapabilityDiagnostics?.Invoke();
-                break;
-            case DiagnosticsCopyKind.NodeInventory:
-                actions.CopyNodeInventory?.Invoke();
-                break;
-            case DiagnosticsCopyKind.ChannelSummary:
-                actions.CopyChannelSummary?.Invoke();
-                break;
-            case DiagnosticsCopyKind.ActivitySummary:
-                actions.CopyActivitySummary?.Invoke();
-                break;
-            case DiagnosticsCopyKind.ExtensibilitySummary:
-                actions.CopyExtensibilitySummary?.Invoke();
-                break;
-        }
-    }
-
-    private static async Task RunDeepLinkActionAsync(string actionName, Func<Task> action)
-    {
-        try
-        {
-            await action().ConfigureAwait(false);
-        }
-        catch (Exception ex)
-        {
-            Logger.Error($"DeepLinkHandler: Deep link {actionName} failed: {ex.Message}");
-        }
-    }
-}
-
-public class DeepLinkActions
-{
-    public Action? OpenSettings { get; set; }
-    public Action? OpenSetup { get; set; }
-    public Func<Task>? RunHealthCheck { get; set; }
-    public Func<Task>? CheckForUpdates { get; set; }
-    public Action? OpenLogFile { get; set; }
-    public Action? OpenLogFolder { get; set; }
-    public Action? OpenConfigFolder { get; set; }
-    public Action? OpenDiagnosticsFolder { get; set; }
-    public Action? OpenConnectionStatus { get; set; }
-    public Action? CopySupportContext { get; set; }
-    public Action? CopyDebugBundle { get; set; }
-    public Action? CopyBrowserSetupGuidance { get; set; }
-    public Action? CopyPortDiagnostics { get; set; }
-    public Action? CopyCapabilityDiagnostics { get; set; }
-    public Action? CopyNodeInventory { get; set; }
-    public Action? CopyChannelSummary { get; set; }
-    public Action? CopyActivitySummary { get; set; }
-    public Action? CopyExtensibilitySummary { get; set; }
-    public Action? RestartSshTunnel { get; set; }
-    public Action? OpenChat { get; set; }
-    public Action? OpenCommandCenter { get; set; }
-    public Action? OpenTrayMenu { get; set; }
-    public Action<string?>? OpenActivityStream { get; set; }
-    public Action? OpenNotificationHistory { get; set; }
-    public Action<string?>? OpenDashboard { get; set; }
-    public Action<string?>? OpenHub { get; set; }
-    public Func<string, Task>? SendMessage { get; set; }
-    public Action? OpenVoice { get; set; }
-    public Action? StopVoice { get; set; }
 }

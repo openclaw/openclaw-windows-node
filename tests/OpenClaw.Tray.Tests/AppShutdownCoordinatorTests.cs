@@ -174,26 +174,6 @@ public class AppShutdownCoordinatorTests
     }
 
     [Fact]
-    public void IsShuttingDown_FalseBeforeFirstCall()
-    {
-        var coordinator = new AppShutdownCoordinator();
-        Assert.False(coordinator.IsShuttingDown);
-    }
-
-    [Fact]
-    public async Task IsShuttingDown_TrueAfterFirstCallBegins()
-    {
-        var log = new List<string>();
-        var plan = BuildPlan(log, out _, out _, new[] { RecordingStep("a", log) });
-        var coordinator = new AppShutdownCoordinator();
-
-        var task = coordinator.ShutdownAsync(plan);
-        Assert.True(coordinator.IsShuttingDown);
-        await task;
-        Assert.True(coordinator.IsShuttingDown);
-    }
-
-    [Fact]
     public async Task ShutdownAsync_ExitApplicationRunsExactlyOnceAcrossConcurrentCalls()
     {
         var log = new List<string>();

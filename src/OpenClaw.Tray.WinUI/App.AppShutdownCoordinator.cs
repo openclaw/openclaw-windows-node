@@ -182,13 +182,6 @@ public partial class App
             return ValueTask.CompletedTask;
         }));
 
-        steps.Add(new AppShutdownStep("settings coordinator", () =>
-        {
-            _settingsChangeCoordinator?.Dispose();
-            _settingsChangeCoordinator = null;
-            return ValueTask.CompletedTask;
-        }));
-
         // Dispose the DI composition root. The container only owns the presentation
         // infrastructure it created (navigation scope manager + any open page-view-model scope).
         // App-owned services were registered as pre-built instances, so this does not re-dispose
@@ -223,6 +216,7 @@ public partial class App
         return new AppShutdownPlan(
             BeginShutdown: () =>
             {
+                _settingsChangeCoordinator = null;
                 _windowManager?.BeginShutdown();
                 _trayController?.BeginShutdown();
                 Logger.Info("Application exiting");

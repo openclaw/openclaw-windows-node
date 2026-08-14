@@ -1,21 +1,12 @@
 using System;
-using System.Threading;
 using System.Threading.Tasks;
 
 namespace OpenClawTray.Services;
 
-/// <summary>
-/// Reproduces the exact shutdown sequencing of the former <c>App.ExitApplicationAsync</c>/
-/// <c>SafeShutdownStep(Async)</c> pair: a first-wins shared task in place of the old
-/// <c>_isExiting</c> bool guard, then each step's identical log/catch/continue behavior, then one
-/// final <see cref="AppShutdownPlan.ExitApplication"/> call.
-/// </summary>
-internal sealed class AppShutdownCoordinator : IAppShutdownCoordinator
+internal sealed class AppShutdownCoordinator
 {
     private readonly object _gate = new();
     private Task? _shutdownTask;
-
-    public bool IsShuttingDown => Volatile.Read(ref _shutdownTask) != null;
 
     public Task ShutdownAsync(AppShutdownPlan plan)
     {

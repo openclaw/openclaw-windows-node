@@ -96,8 +96,6 @@ public sealed class AppSurfaceCharacterizationTests
             "\"window manager\"",
             "_windowManager = null;",
             "\"tray menu window\"",
-            "\"settings coordinator\"",
-            "_settingsChangeCoordinator = null;",
             "var services = _services;",
             "\"service provider\"",
             "_services = null;",

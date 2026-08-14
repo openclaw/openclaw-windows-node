@@ -1,40 +1,36 @@
 using OpenClaw.Shared;
 using OpenClawTray.Services;
 using System;
-using System.Threading;
-using System.Threading.Tasks;
 
 namespace OpenClawTray;
 
-/// <summary>
-/// App's <see cref="ISettingsConnectionEffects"/>/<see cref="ISettingsRuntimeEffects"/>/
-/// <see cref="ISettingsSurfaceEffects"/> implementations, and the single explicit post-save
-/// trigger (<see cref="OnSettingsSaved"/>) that hands a detached <see cref="SettingsData"/>
-/// snapshot to <see cref="SettingsChangeCoordinator"/>. App never classifies impact or orders
-/// effects itself; every step below is a thin adapter onto an existing App method or field.
-/// </summary>
-public partial class App : ISettingsConnectionEffects, ISettingsRuntimeEffects, ISettingsSurfaceEffects
+public partial class App
 {
     private SettingsChangeCoordinator? _settingsChangeCoordinator;
 
     private void OnSettingsSaved(object? sender, EventArgs e)
     {
-        var settings = _settings;
-        var coordinator = _settingsChangeCoordinator;
-        if (settings == null || coordinator == null)
+        if (_settings == null)
             return;
 
-        ObserveBackgroundFault(
-            coordinator.ApplyAsync(
-                new SettingsChangeRequest(PersistedVersion: null, settings.ToSettingsData()),
-                CancellationToken.None),
-            "[App] Failed to apply saved settings");
+        _settingsChangeCoordinator?.Apply(_settings.ToSettingsData());
     }
 
-    void ISettingsConnectionEffects.SyncActiveGatewayBrowserProxyForward(SettingsData settings) =>
-        SyncActiveGatewayBrowserProxyForward();
+    private SettingsChangeCoordinator CreateSettingsChangeCoordinator(SettingsData initialSettings) =>
+        new(
+            new SettingsChangeEffects(
+                settings => OpenClawTray.Chat.OpenClawReactorChatRoot.SetToolCallsVisible(settings.ShowChatToolCalls),
+                SyncActiveGatewayBrowserProxyForward,
+                PublishSandboxRiskNotificationIfNeeded,
+                PrepareFullReconnect,
+                ReconnectWithSyncedBrowserProxyForward,
+                ApplyMcpRuntime,
+                ApplyGlobalHotkey,
+                ApplyAutoStartAndTelemetry,
+                ApplySettingsSurface),
+            initialSettings);
 
-    void ISettingsConnectionEffects.PrepareFullReconnect(SettingsData settings)
+    private void PrepareFullReconnect(SettingsData settings)
     {
         _appState!.GatewaySelf = null;
         if (!settings.UseSshTunnel)
@@ -48,20 +44,11 @@ public partial class App : ISettingsConnectionEffects, ISettingsRuntimeEffects, 
         _windowManager?.ResetChatForCredentialChange();
     }
 
-    void ISettingsConnectionEffects.ReconnectWithSyncedBrowserProxyForward() =>
-        ReconnectWithSyncedBrowserProxyForward();
-
-    void ISettingsRuntimeEffects.ApplyChatToolCallVisibility(SettingsData settings) =>
-        OpenClawTray.Chat.OpenClawReactorChatRoot.SetToolCallsVisible(settings.ShowChatToolCalls);
-
-    void ISettingsRuntimeEffects.PublishSandboxRiskNotification() =>
-        PublishSandboxRiskNotificationIfNeeded();
-
     // Handle the MCP server lifecycle separately from gateway reconnects because MCP-only mode
     // doesn't involve a gateway at all. SetMcpEnabled checks actual runtime state
     // (_mcpServer != null), so it's safe to call unconditionally. Only create NodeService when
     // MCP is being enabled or the service already exists.
-    void ISettingsRuntimeEffects.ApplyMcpRuntime(SettingsData settings)
+    private void ApplyMcpRuntime(SettingsData settings)
     {
         if (_settings == null || (_nodeService == null && !settings.EnableMcpServer))
             return;
@@ -79,7 +66,7 @@ public partial class App : ISettingsConnectionEffects, ISettingsRuntimeEffects, 
         WireAppCapabilityHandlers();
     }
 
-    void ISettingsRuntimeEffects.ApplyGlobalHotkey(SettingsData settings)
+    private void ApplyGlobalHotkey(SettingsData settings)
     {
         if (settings.GlobalHotkeyEnabled)
         {
@@ -96,7 +83,7 @@ public partial class App : ISettingsConnectionEffects, ISettingsRuntimeEffects, 
         }
     }
 
-    void ISettingsRuntimeEffects.ApplyAutoStartAndTelemetry(SettingsData settings)
+    private void ApplyAutoStartAndTelemetry(SettingsData settings)
     {
         ObserveBackgroundFault(
             AutoStartManager.SetAutoStartAsync(settings.AutoStart),
@@ -106,7 +93,7 @@ public partial class App : ISettingsConnectionEffects, ISettingsRuntimeEffects, 
 
     // Apply UI-only settings and notify ad-hoc listeners. This public entry point can be
     // invoked from background work, while existing listeners update UI directly.
-    void ISettingsSurfaceEffects.ApplyOnUiThread(SettingsData settings)
+    private void ApplySettingsSurface(SettingsData settings)
     {
         void ApplyUiSettingsAndNotify()
         {

@@ -42,7 +42,6 @@ public sealed class AppSurfaceOwnershipContractTests
             shutdown,
             "\"window manager\"",
             "\"tray menu window\"",
-            "\"settings coordinator\"",
             "var services = _services;",
             "\"tray icon\"");
     }
@@ -74,8 +73,8 @@ public sealed class AppSurfaceOwnershipContractTests
         Assert.Contains("return _closeForShutdownTask ??= CloseOwnedWindowsAsync();", manager);
         Assert.Contains("throw new AggregateException", manager);
 
-        Assert.DoesNotContain("IActivationRouter", manager);
-        Assert.DoesNotContain("ISettingsChangeCoordinator", manager);
+        Assert.DoesNotContain("ActivationRouter", manager);
+        Assert.DoesNotContain("SettingsChangeCoordinator", manager);
         Assert.DoesNotContain("AppBootstrapper", manager);
         Assert.DoesNotContain("SettingsChangeImpact", manager);
         Assert.DoesNotContain("DisposeByUserAsync", manager);

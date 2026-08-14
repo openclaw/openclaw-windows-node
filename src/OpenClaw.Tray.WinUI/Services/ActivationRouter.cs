@@ -11,17 +11,7 @@ using OpenClaw.Shared;
 
 namespace OpenClawTray.Services;
 
-/// <summary>
-/// Owns launch/protocol/toast/forwarded activation normalization: resolving the launch-precedence
-/// candidate, planning deep-link and toast routes through the existing single route tables
-/// (<see cref="DeepLinkHandler.PlanRoute"/>, <see cref="ToastActivationRouter.PlanRoute"/>),
-/// running the current-user-scoped IPC listener that receives forwarded deep links, forwarding a
-/// deep link to a running primary instance, and deciding whether a state-changing route needs
-/// confirmation. Never touches a Window, Frame, page, gateway client, NodeService, or connection
-/// manager; App applies every planned route through its single <see cref="IActivationPlanSink"/>
-/// implementation.
-/// </summary>
-internal sealed class ActivationRouter : IActivationRouter
+internal sealed class ActivationRouter : IAsyncDisposable
 {
     private readonly string _protocolScheme;
     private readonly string _pipeName;
@@ -287,7 +277,7 @@ internal sealed class ActivationRouter : IActivationRouter
         }
     }
 
-    public Task StopAsync(CancellationToken cancellationToken)
+    public Task StopAsync()
     {
         TaskCompletionSource completion;
         Task stopTask;
@@ -302,7 +292,6 @@ internal sealed class ActivationRouter : IActivationRouter
             stopTask = _stopTask;
         }
 
-        _ = cancellationToken;
         _ = CompleteStopAsync(completion);
         return stopTask;
     }
@@ -375,7 +364,7 @@ internal sealed class ActivationRouter : IActivationRouter
 
     public async ValueTask DisposeAsync()
     {
-        await StopAsync(CancellationToken.None).ConfigureAwait(false);
+        await StopAsync().ConfigureAwait(false);
     }
 
     private ActivationPlan PlanFromUri(string uri)
@@ -385,7 +374,7 @@ internal sealed class ActivationRouter : IActivationRouter
         {
             var redacted = DeepLinkSecurityPolicy.RedactForLog(uri);
             Logger.Warn($"Rejected invalid deep link: {redacted}");
-            return new ActivationPlan.Reject(ActivationRejection.InvalidUri, redacted);
+            return new ActivationPlan.Ignore();
         }
 
         var route = DeepLinkHandler.PlanRoute(uri, _protocolScheme);

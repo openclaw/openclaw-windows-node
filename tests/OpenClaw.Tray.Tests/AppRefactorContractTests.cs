@@ -981,7 +981,6 @@ public sealed class AppRefactorContractTests
             "\"app state observers\"",
             "\"window manager\"",
             "\"tray menu window\"",
-            "\"settings coordinator\"",
             "\"service provider\"",
             "\"tray icon\"",
             "\"single-instance mutex\"",
