@@ -548,6 +548,21 @@ public class GatewayConnectionManagerTests : IDisposable
     }
 
     [Fact]
+    public async Task RestartSshTunnelAsync_UnownedTunnelFailsWithoutDisconnecting()
+    {
+        var (manager, tunnel, factory, _) = await CreateConnectedSshManagerAsync();
+        using (manager)
+        {
+            tunnel.StopIfOwnedAsyncOverride = _ => Task.FromResult(false);
+
+            Assert.False(await manager.RestartSshTunnelAsync());
+            Assert.Single(factory.CreatedClients);
+            Assert.Equal(RoleConnectionState.Connected, manager.CurrentSnapshot.OperatorState);
+            Assert.True(tunnel.IsActive);
+        }
+    }
+
+    [Fact]
     public async Task RestartSshTunnelAsync_CurrentRecordMutationFails()
     {
         var (manager, tunnel, factory, tunnelConfig) = await CreateConnectedSshManagerAsync();
