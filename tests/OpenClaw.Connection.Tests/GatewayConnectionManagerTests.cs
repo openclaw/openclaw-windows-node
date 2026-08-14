@@ -386,6 +386,30 @@ public class GatewayConnectionManagerTests : IDisposable
     }
 
     [Fact]
+    public async Task RestartSshTunnelAsync_ChangedConfigReplacesPreviouslyOwnedTunnel()
+    {
+        var (manager, tunnel, factory, _) = await CreateConnectedSshManagerAsync();
+        using (manager)
+        {
+            var current = Assert.IsType<GatewayRecord>(_registry.GetActive());
+            var updatedTunnel = Assert.IsType<SshTunnelConfig>(current.SshTunnel) with
+            {
+                Host = "replacement.example",
+                LocalPort = 45679,
+            };
+            _registry.AddOrUpdate(current with { SshTunnel = updatedTunnel });
+
+            var restart = manager.RestartSshTunnelAsync();
+            await WaitUntilAsync(() => factory.CreatedClients.Count == 2);
+            factory.CreatedClients[1].SimulateHandshake();
+
+            Assert.True(await restart.WaitAsync(TimeSpan.FromSeconds(2)));
+            Assert.Equal(updatedTunnel, tunnel.ActiveConfig);
+            Assert.Equal(updatedTunnel, tunnel.StartedConfigs[^1]);
+        }
+    }
+
+    [Fact]
     public async Task RestartSshTunnelAsync_TimeoutFailsAndCleansCapturedGeneration()
     {
         var (manager, tunnel, factory, _) = await CreateConnectedSshManagerAsync(

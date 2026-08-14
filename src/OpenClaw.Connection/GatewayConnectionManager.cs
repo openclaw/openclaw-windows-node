@@ -1120,8 +1120,8 @@ public sealed class GatewayConnectionManager : IGatewayConnectionManager
 
                 var previousTunnelGeneration = _tunnelManager.OwnershipGeneration;
                 var previousTunnelWasActive = _tunnelManager.IsActive;
-                if (previousTunnelWasActive &&
-                    _tunnelManager.ActiveConfig != ownedTunnelConfig)
+                var previousTunnelConfig = _tunnelManager.ActiveConfig;
+                if (previousTunnelWasActive && previousTunnelConfig is null)
                     return false;
 
                 SetGatewayConnectionIntent(activeRecord.Id, shouldBeConnected: true);
@@ -1136,7 +1136,7 @@ public sealed class GatewayConnectionManager : IGatewayConnectionManager
                 if (previousTunnelWasActive)
                 {
                     var stopped = await _tunnelManager.StopIfOwnedAsync(
-                            tunnelConfig,
+                            previousTunnelConfig!,
                             previousTunnelGeneration,
                             restartCts.Token)
                         .ConfigureAwait(false);
@@ -1153,15 +1153,20 @@ public sealed class GatewayConnectionManager : IGatewayConnectionManager
                     return false;
                 }
 
-                await ConnectCoreAsync(
-                        activeRecord.Id,
-                        operation: "reconnect",
-                        restartCts.Token)
-                    .ConfigureAwait(false);
-
-                connectionGeneration = Interlocked.Read(ref _generation);
-                lifecycle = _activeLifecycle;
-                tunnelGeneration = _tunnelManager.OwnershipGeneration;
+                try
+                {
+                    await ConnectCoreAsync(
+                            activeRecord.Id,
+                            operation: "reconnect",
+                            restartCts.Token)
+                        .ConfigureAwait(false);
+                }
+                finally
+                {
+                    connectionGeneration = Interlocked.Read(ref _generation);
+                    lifecycle = _activeLifecycle;
+                    tunnelGeneration = _tunnelManager.OwnershipGeneration;
+                }
                 if (lifecycle is null ||
                     !IsCurrentGatewayAttempt(connectionGeneration, activeRecord.Id) ||
                     !_tunnelManager.IsActive ||
