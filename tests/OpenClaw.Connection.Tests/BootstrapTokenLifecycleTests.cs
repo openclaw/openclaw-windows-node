@@ -81,7 +81,7 @@ public sealed class BootstrapTokenLifecycleTests
     }
 
     [Fact]
-    public async Task SaveFailure_PreservesExistingInMemoryClearBehavior()
+    public async Task SaveFailure_RestoresBootstrapForRetry()
     {
         using var temp = new TempDirectory("openclaw-bootstrap-save-");
         var registry = CreateDurablyPairedRegistry(
@@ -95,8 +95,10 @@ public sealed class BootstrapTokenLifecycleTests
             new GatewayAttemptStamp(1, "gw-1"),
             CancellationToken.None);
 
-        Assert.True(cleared);
-        Assert.Null(registry.GetById("gw-1")?.BootstrapToken);
+        Assert.False(cleared);
+        Assert.Equal(
+            "bootstrap-secret",
+            registry.GetById("gw-1")?.BootstrapToken);
     }
 
     [Fact]
