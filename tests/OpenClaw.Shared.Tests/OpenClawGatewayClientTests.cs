@@ -706,11 +706,11 @@ public class OpenClawGatewayClientTests
 
         await server.CloseSocketAsync(0);
 
-        var exception = await Assert.ThrowsAsync<OperationCanceledException>(
+        var exception = await Assert.ThrowsAsync<GatewayConnectionLostException>(
             async () => await responseTask.WaitAsync(TimeSpan.FromSeconds(2)));
         Assert.Equal(
-            "Gateway connection lost while waiting for wizard response",
-            exception.Message);
+            (int)WebSocketCloseStatus.NormalClosure,
+            exception.CloseStatusCode);
         Assert.Equal(0, helper.GetPendingRequestCount());
     }
 

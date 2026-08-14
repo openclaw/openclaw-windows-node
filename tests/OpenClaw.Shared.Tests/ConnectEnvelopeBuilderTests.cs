@@ -234,7 +234,7 @@ public sealed class ConnectEnvelopeBuilderTests
             var unsafeTask = InvokePrivateTask(client, "SendConnectMessageAsync", Nonce);
             await Assert.ThrowsAsync<InvalidOperationException>(() => unsafeTask);
 
-            await InvokePrivateTask(client, "SendConnectSafeAsync", Nonce);
+            await InvokePrivateTask(client, "SendConnectSafeAsync", Nonce, 0L);
             Assert.Contains(
                 logger.Errors,
                 message => message.Contains("SendConnectMessageAsync threw", StringComparison.Ordinal));
@@ -263,8 +263,13 @@ public sealed class ConnectEnvelopeBuilderTests
             var method = typeof(WindowsNodeClient).GetMethod(
                 "BuildNodeConnectMessage",
                 BindingFlags.Instance | BindingFlags.NonPublic);
-            var json = (string)method!.Invoke(client, [Nonce, ChallengeTimestamp])!;
+            var json = (string)method!.Invoke(
+                client,
+                [Nonce, ChallengeTimestamp, "node-connect-request"])!;
             using var document = JsonDocument.Parse(json);
+            Assert.Equal(
+                "node-connect-request",
+                document.RootElement.GetProperty("id").GetString());
             var device = document.RootElement.GetProperty("params").GetProperty("device");
 
             Assert.False(device.TryGetProperty("signature", out _));

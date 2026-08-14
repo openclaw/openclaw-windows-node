@@ -205,6 +205,33 @@ public sealed class PendingRequestRegistryTests
     }
 
     [Fact]
+    public async Task Drain_WithConnectionLoss_PreservesWizardCloseMetadataOnly()
+    {
+        var registry = OpenRegistry();
+        var chat = registry.RegisterChatSend("chat", "chat.send");
+        var wizard = registry.RegisterWizard("wizard", "wizard.status");
+        var approval = registry.RegisterApproval("approval", "exec.approval.resolve");
+        var connectionLoss = new GatewayConnectionLostException(1012, "service restart");
+
+        registry.Drain(connectionLoss);
+
+        var chatException = await Assert.ThrowsAsync<OperationCanceledException>(
+            async () => await chat.Task);
+        var wizardException = await Assert.ThrowsAsync<GatewayConnectionLostException>(
+            async () => await wizard.Task);
+        var approvalException = await Assert.ThrowsAsync<OperationCanceledException>(
+            async () => await approval.Task);
+        Assert.Equal("Request canceled", chatException.Message);
+        Assert.Same(connectionLoss, wizardException);
+        Assert.Equal(1012, wizardException.CloseStatusCode);
+        Assert.Equal("service restart", wizardException.CloseStatusDescription);
+        Assert.Equal(
+            "Gateway connection lost before exec.approval.resolve response",
+            approvalException.Message);
+        Assert.Equal(0, registry.Count);
+    }
+
+    [Fact]
     public async Task ResponseVersusDrain_ExactlyOneTerminalOutcomeWins()
     {
         var registry = OpenRegistry();
