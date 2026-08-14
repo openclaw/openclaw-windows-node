@@ -239,6 +239,7 @@ public sealed class ConnectEnvelopeBuilderTests
                 CancellationToken.None);
             await Assert.ThrowsAsync<InvalidOperationException>(() => unsafeTask);
 
+            BeginCurrentHandshake(client, 0L);
             await InvokePrivateTask(client, "SendConnectSafeAsync", Nonce, 0L);
             Assert.Contains(
                 logger.Errors,
@@ -479,6 +480,22 @@ public sealed class ConnectEnvelopeBuilderTests
             BindingFlags.Instance | BindingFlags.NonPublic);
         Assert.NotNull(method);
         return (Task)method!.Invoke(instance, arguments)!;
+    }
+
+    private static void BeginCurrentHandshake(
+        OpenClawGatewayClient client,
+        long connectionGeneration)
+    {
+        var gateField = typeof(OpenClawGatewayClient).GetField(
+            "_handshakeChallengeGate",
+            BindingFlags.Instance | BindingFlags.NonPublic);
+        Assert.NotNull(gateField);
+        var gate = gateField!.GetValue(client);
+        Assert.NotNull(gate);
+        var gateType = gate!.GetType();
+        gateType.GetMethod("Reset")!.Invoke(gate, [connectionGeneration]);
+        Assert.True(
+            (bool)gateType.GetMethod("TryBegin")!.Invoke(gate, [connectionGeneration])!);
     }
 
     private static string CreateDataPath()
