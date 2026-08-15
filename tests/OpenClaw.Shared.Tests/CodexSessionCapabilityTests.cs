@@ -857,6 +857,10 @@ public sealed class CodexSessionCapabilityTests
         Assert.True(
             CodexAppServerLimits.Catalog.MaxOperationBytes
                 > CodexAppServerLimits.Catalog.MaxResponseBytes);
+        Assert.Equal(TimeSpan.FromSeconds(60), CodexAppServerLimits.Catalog.RequestTimeout);
+        Assert.Equal(TimeSpan.FromSeconds(60), CodexAppServerLimits.Catalog.IdleTimeout);
+        Assert.Equal(TimeSpan.FromSeconds(20), CodexAppServerLimits.Default.RequestTimeout);
+        Assert.Equal(TimeSpan.FromSeconds(5), CodexAppServerLimits.Default.IdleTimeout);
     }
 
     private static CodexSessionCapability CreateCapability(RecordingCatalogClient client) =>

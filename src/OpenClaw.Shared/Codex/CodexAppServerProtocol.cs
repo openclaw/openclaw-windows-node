@@ -312,6 +312,8 @@ internal sealed record CodexAppServerLimits
         MaxOperationBytes = CodexSessionCatalogService.MaxTranscriptPageBytes
             + CodexSessionCatalogService.MaxJsonRpcEnvelopeBytes
             + CodexSessionCatalogService.MaxCatalogOperationOverheadBytes,
+        RequestTimeout = TimeSpan.FromSeconds(60),
+        IdleTimeout = TimeSpan.FromSeconds(60),
     };
 
     public CodexAppServerLimits(
