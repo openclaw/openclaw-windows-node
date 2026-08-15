@@ -188,8 +188,8 @@ public sealed class MxcExecutor
 
             if (!completed)
             {
-                try { _processTreeKiller(process); }
-                catch (Exception ex) { Trace.WriteLine($"MxcExecutor: process kill (cancellation path) failed: {ex.Message}"); }
+                if (!await KillProcessTreeWithTimeoutAsync(process))
+                    Trace.WriteLine($"MxcExecutor: process kill (cancellation path) timed out or failed (pid={process.Id}).");
                 if (!await WaitForCleanupAsync(processExited.Task, stdoutClosed.Task, stderrClosed.Task, _cleanupTimeout))
                     Trace.WriteLine($"MxcExecutor: cancellation cleanup timed out (pid={process.Id}).");
 
@@ -207,12 +207,11 @@ public sealed class MxcExecutor
                 };
             }
 
-            // Normal completion keeps the established lossless drain behavior.
-            // The bounded cleanup exists specifically for cancellation, where
-            // availability takes precedence over waiting indefinitely for a
-            // launcher or inherited pipe handle that ignored termination.
-            try { process.WaitForExit(); }
-            catch (Exception ex) { Trace.WriteLine($"MxcExecutor: post-exit drain failed: {ex.Message}"); }
+            // The launcher exited, but a descendant may still hold an inherited
+            // stdout/stderr write handle. Bound the drain so a completed launcher
+            // cannot pin the node invocation slot indefinitely.
+            if (!await WaitForCleanupAsync(processExited.Task, stdoutClosed.Task, stderrClosed.Task, _cleanupTimeout))
+                Trace.WriteLine($"MxcExecutor: post-exit output drain timed out (pid={process.Id}).");
 
             sw.Stop();
             string outRaw, errRaw;
@@ -241,6 +240,40 @@ public sealed class MxcExecutor
                 Error = $"Failed to launch wxc-exec.exe: {ex.Message}",
                 DurationMs = sw.ElapsedMilliseconds,
             };
+        }
+    }
+
+    private async Task<bool> KillProcessTreeWithTimeoutAsync(Process process)
+    {
+        var killTask = Task.Factory.StartNew(
+            () =>
+            {
+                try
+                {
+                    _processTreeKiller(process);
+                    return (Exception?)null;
+                }
+                catch (Exception ex)
+                {
+                    return ex;
+                }
+            },
+            CancellationToken.None,
+            TaskCreationOptions.LongRunning,
+            TaskScheduler.Default);
+
+        try
+        {
+            var error = await killTask.WaitAsync(_cleanupTimeout);
+            if (error is null)
+                return true;
+
+            Trace.WriteLine($"MxcExecutor: process kill (cancellation path) failed: {error.Message}");
+            return false;
+        }
+        catch (TimeoutException)
+        {
+            return false;
         }
     }
 
