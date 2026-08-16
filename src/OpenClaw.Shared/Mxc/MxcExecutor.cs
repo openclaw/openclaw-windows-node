@@ -13,7 +13,11 @@ public sealed class MxcExecutor
 {
     private const int DefaultStdoutCapBytes = 40_000;
     private const int DefaultStderrCapBytes = 5_000;
+    internal const int ProcessTreeKillWorkerLimit = 8;
     private static readonly TimeSpan s_defaultCleanupTimeout = TimeSpan.FromMilliseconds(500);
+    private static readonly SemaphoreSlim s_processTreeKillWorkers = new(
+        ProcessTreeKillWorkerLimit,
+        ProcessTreeKillWorkerLimit);
 
     private readonly string _wxcExePath;
     private readonly int _stdoutCapBytes;
@@ -243,28 +247,57 @@ public sealed class MxcExecutor
         }
     }
 
-    private async Task<bool> KillProcessTreeWithTimeoutAsync(Process process)
+    internal async Task<bool> KillProcessTreeWithTimeoutAsync(Process process)
     {
-        var killTask = Task.Factory.StartNew(
-            () =>
-            {
-                try
-                {
-                    _processTreeKiller(process);
-                    return (Exception?)null;
-                }
-                catch (Exception ex)
-                {
-                    return ex;
-                }
-            },
-            CancellationToken.None,
-            TaskCreationOptions.LongRunning,
-            TaskScheduler.Default);
+        var timeoutStarted = Stopwatch.GetTimestamp();
+        if (!await s_processTreeKillWorkers.WaitAsync(_cleanupTimeout))
+        {
+            Trace.WriteLine(
+                $"MxcExecutor: timed out waiting for process kill worker capacity " +
+                $"(limit={ProcessTreeKillWorkerLimit}, pid={process.Id}).");
+            return false;
+        }
 
+        Task<Exception?> killTask;
         try
         {
-            var error = await killTask.WaitAsync(_cleanupTimeout);
+            killTask = Task.Factory.StartNew(
+                () =>
+                {
+                    try
+                    {
+                        _processTreeKiller(process);
+                        return (Exception?)null;
+                    }
+                    catch (Exception ex)
+                    {
+                        return ex;
+                    }
+                    finally
+                    {
+                        s_processTreeKillWorkers.Release();
+                    }
+                },
+                CancellationToken.None,
+                TaskCreationOptions.LongRunning,
+                TaskScheduler.Default);
+        }
+        catch (Exception ex)
+        {
+            s_processTreeKillWorkers.Release();
+            Trace.WriteLine($"MxcExecutor: process kill worker failed to start: {ex.Message}");
+            return false;
+        }
+
+        var remainingTimeout = _cleanupTimeout - Stopwatch.GetElapsedTime(timeoutStarted);
+        try
+        {
+            if (!killTask.IsCompleted && remainingTimeout <= TimeSpan.Zero)
+                return false;
+
+            var error = killTask.IsCompleted
+                ? await killTask
+                : await killTask.WaitAsync(remainingTimeout);
             if (error is null)
                 return true;
 

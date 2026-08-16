@@ -108,6 +108,12 @@ public class MxcExecutorTests
         Process? launcher = null;
         using var killRelease = new ManualResetEventSlim(false);
         var killStarted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var killFinished = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        Action<Process> blockingKiller = _ =>
+        {
+            killStarted.TrySetResult();
+            killRelease.Wait();
+        };
         var cmdPath = Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.System),
             "cmd.exe");
@@ -118,10 +124,10 @@ public class MxcExecutorTests
             processFactory: _ => launcher = CreateProcess(
                 cmdPath,
                 "echo launcher-started & ping -n 31 127.0.0.1 >nul"),
-            processTreeKiller: _ =>
+            processTreeKiller: process =>
             {
-                killStarted.TrySetResult();
-                killRelease.Wait();
+                blockingKiller(process);
+                killFinished.TrySetResult();
             },
             cleanupTimeout: TimeSpan.FromMilliseconds(100));
         using var cancellation = new CancellationTokenSource();
@@ -153,7 +159,150 @@ public class MxcExecutorTests
         finally
         {
             killRelease.Set();
+            await killFinished.Task.WaitAsync(TimeSpan.FromSeconds(5));
             KillProcessTree(launcherPid);
+        }
+    }
+
+    [Fact]
+    public async Task KillProcessTreeWithTimeoutAsync_RepeatedBlockedKillsDoNotExceedProcessWideWorkerLimit()
+    {
+        if (!RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
+            return;
+
+        var killStartedCount = 0;
+        using var killRelease = new ManualResetEventSlim(false);
+        using var killStarted = new CountdownEvent(MxcExecutor.ProcessTreeKillWorkerLimit);
+        using var killFinished = new CountdownEvent(MxcExecutor.ProcessTreeKillWorkerLimit);
+        var cmdPath = Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.System),
+            "cmd.exe");
+        var attemptCount = MxcExecutor.ProcessTreeKillWorkerLimit + 2;
+        var workersFinished = false;
+        using var process = Process.GetCurrentProcess();
+
+        try
+        {
+            var killAttempts = Enumerable.Range(0, attemptCount).Select(_ =>
+            {
+                var executor = new MxcExecutor(
+                    cmdPath,
+                    stdoutCapBytes: null,
+                    stderrCapBytes: null,
+                    processFactory: _ => throw new InvalidOperationException("Not used by this test."),
+                    processTreeKiller: _ =>
+                    {
+                        Interlocked.Increment(ref killStartedCount);
+                        killStarted.Signal();
+                        try
+                        {
+                            killRelease.Wait();
+                        }
+                        finally
+                        {
+                            killFinished.Signal();
+                        }
+                    },
+                    cleanupTimeout: TimeSpan.FromMilliseconds(100));
+                return executor.KillProcessTreeWithTimeoutAsync(process);
+            }).ToArray();
+
+            var results = await Task.WhenAll(killAttempts).WaitAsync(TimeSpan.FromSeconds(5));
+            var workersStarted = killStarted.Wait(TimeSpan.FromSeconds(5));
+
+            Assert.All(results, Assert.False);
+            Assert.True(workersStarted, "Blocked kill workers did not all start within the test bound.");
+            Assert.Equal(
+                MxcExecutor.ProcessTreeKillWorkerLimit,
+                Volatile.Read(ref killStartedCount));
+        }
+        finally
+        {
+            killRelease.Set();
+            workersFinished = killFinished.Wait(TimeSpan.FromSeconds(5));
+        }
+
+        Assert.True(workersFinished, "Blocked kill workers did not exit after the test released them.");
+
+        var recoveredKillStarted = false;
+        var recoveredExecutor = new MxcExecutor(
+            cmdPath,
+            stdoutCapBytes: null,
+            stderrCapBytes: null,
+            processFactory: _ => throw new InvalidOperationException("Not used by this test."),
+            processTreeKiller: _ => recoveredKillStarted = true,
+            cleanupTimeout: TimeSpan.FromMilliseconds(100));
+        var recovered = false;
+        for (var attempt = 0; attempt < 50 && !recovered; attempt++)
+        {
+            recovered = await recoveredExecutor.KillProcessTreeWithTimeoutAsync(process);
+            if (!recovered)
+                await Task.Delay(10);
+        }
+
+        Assert.True(recovered, "Process-wide kill worker capacity did not recover.");
+        Assert.True(recoveredKillStarted);
+    }
+
+    [Fact]
+    public async Task KillProcessTreeWithTimeoutAsync_WaitsForTransientWorkerCapacityWithinCleanupBudget()
+    {
+        if (!RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
+            return;
+
+        using var process = Process.GetCurrentProcess();
+        using var killRelease = new SemaphoreSlim(0, MxcExecutor.ProcessTreeKillWorkerLimit);
+        using var killStarted = new CountdownEvent(MxcExecutor.ProcessTreeKillWorkerLimit);
+        var cmdPath = Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.System),
+            "cmd.exe");
+        var blockingAttempts = Array.Empty<Task<bool>>();
+
+        try
+        {
+            blockingAttempts = Enumerable.Range(0, MxcExecutor.ProcessTreeKillWorkerLimit)
+                .Select(_ =>
+                {
+                    var executor = new MxcExecutor(
+                        cmdPath,
+                        stdoutCapBytes: null,
+                        stderrCapBytes: null,
+                        processFactory: _ => throw new InvalidOperationException("Not used by this test."),
+                        processTreeKiller: _ =>
+                        {
+                            killStarted.Signal();
+                            killRelease.Wait();
+                        },
+                        cleanupTimeout: TimeSpan.FromSeconds(5));
+                    return executor.KillProcessTreeWithTimeoutAsync(process);
+                })
+                .ToArray();
+            Assert.True(
+                killStarted.Wait(TimeSpan.FromSeconds(5)),
+                "Initial kill workers did not occupy the process-wide limit.");
+
+            var queuedKillStarted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+            var queuedExecutor = new MxcExecutor(
+                cmdPath,
+                stdoutCapBytes: null,
+                stderrCapBytes: null,
+                processFactory: _ => throw new InvalidOperationException("Not used by this test."),
+                processTreeKiller: _ => queuedKillStarted.TrySetResult(),
+                cleanupTimeout: TimeSpan.FromSeconds(2));
+            var queuedAttempt = queuedExecutor.KillProcessTreeWithTimeoutAsync(process);
+
+            await Task.Delay(100);
+            Assert.False(queuedKillStarted.Task.IsCompleted);
+            killRelease.Release();
+
+            Assert.True(await queuedAttempt.WaitAsync(TimeSpan.FromSeconds(5)));
+            await queuedKillStarted.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        }
+        finally
+        {
+            killRelease.Release(MxcExecutor.ProcessTreeKillWorkerLimit);
+            try { await Task.WhenAll(blockingAttempts).WaitAsync(TimeSpan.FromSeconds(5)); }
+            catch { }
         }
     }
 
