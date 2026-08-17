@@ -194,6 +194,15 @@ internal sealed partial class ChatComposerController : IDisposable
                     _vm.SetSending(false);
             }
         }
+        catch (OperationCanceledException)
+        {
+            return false;
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Trace.WriteLine($"[chat] composer send failed: {ex}");
+            return false;
+        }
         finally
         {
             // Released unconditionally — including on a throw from the snapshot/

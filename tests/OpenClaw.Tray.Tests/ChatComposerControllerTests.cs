@@ -398,6 +398,40 @@ public sealed class ChatComposerControllerTests
     }
 
     [Fact]
+    public async Task SendAsync_Reset_ConfirmationFault_ReturnsFalseAndRestoresSendingState()
+    {
+        var actions = new ChatComposerHostActions(
+            ConfirmResetAsync: (_, _) => Task.FromException<bool>(
+                new InvalidOperationException("dialog failed")),
+            null, null, null, null);
+        var (vm, controller, port, _) = MakeController(actions);
+        vm.SetDraft("/reset");
+
+        var accepted = await controller.SendAsync();
+
+        Assert.False(accepted);
+        Assert.False(vm.IsSending);
+        Assert.Equal("/reset", vm.Draft);
+        Assert.Equal(0, port.ExecuteLifecycleCallCount);
+    }
+
+    [Fact]
+    public async Task SendAsync_LifecycleFault_ReturnsFalseAndRestoresSendingState()
+    {
+        var (vm, controller, port, _) = MakeController();
+        vm.SetDraft("/new");
+        port.ExecuteLifecycleGate = new TaskCompletionSource<ChatLifecycleCommandResult>();
+        port.ExecuteLifecycleGate.SetException(new InvalidOperationException("lifecycle failed"));
+
+        var accepted = await controller.SendAsync();
+
+        Assert.False(accepted);
+        Assert.False(vm.IsSending);
+        Assert.Equal("/new", vm.Draft);
+        Assert.Equal(1, port.ExecuteLifecycleCallCount);
+    }
+
+    [Fact]
     public async Task SendAsync_Reset_DisposedWhileConfirmationDialogOpen_DoesNotExecute()
     {
         // Guards against a controller disposed (e.g. provider replaced/host torn
