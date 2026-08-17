@@ -236,39 +236,39 @@ public sealed class ChatTimelinePresentationTests
     [Fact]
     public void ReactorComposer_GatesClickableControlsUntilLayoutIsUsable()
     {
-        var root = File.ReadAllText(Path.Combine(
+        var composer = File.ReadAllText(Path.Combine(
             TestRepositoryPaths.GetRepositoryRoot(),
             "src",
             "OpenClaw.Tray.WinUI",
             "Chat",
-            "OpenClawReactorChatRoot.cs"));
+            "ReactorChatComposer.cs"));
 
-        Assert.Contains("internal static class ComposerAutomationVisibility", root);
-        Assert.Contains("control.IsHitTestVisible = false;", root);
-        Assert.Contains("control.IsLoaded", root);
-        Assert.Contains("control.ActualWidth > 0", root);
-        Assert.Contains("control.ActualHeight > 0", root);
-        Assert.Contains("AccessibilityView.Raw", root);
-        Assert.Contains("AccessibilityView.Control", root);
+        Assert.Contains("internal static class ComposerAutomationVisibility", composer);
+        Assert.Contains("control.IsHitTestVisible = false;", composer);
+        Assert.Contains("control.IsLoaded", composer);
+        Assert.Contains("control.ActualWidth > 0", composer);
+        Assert.Contains("control.ActualHeight > 0", composer);
+        Assert.Contains("AccessibilityView.Raw", composer);
+        Assert.Contains("AccessibilityView.Control", composer);
         Assert.True(
-            root.Split("AccessibilityView.Raw", StringSplitOptions.None).Length - 1 >= 4);
-        Assert.Contains(".AutomationId(\"ChatComposerInput\")", root);
-        Assert.Contains("AutomationProperties.SetAutomationId(", root);
-        Assert.Contains("RaisePropertyChangedEvent(", root);
-        Assert.Contains("AutomationElementIdentifiers.IsOffscreenProperty", root);
+            composer.Split("AccessibilityView.Raw", StringSplitOptions.None).Length - 1 >= 4);
+        Assert.Contains(".AutomationId(\"ChatComposerInput\")", composer);
+        Assert.Contains("AutomationProperties.SetAutomationId(", composer);
+        Assert.Contains("RaisePropertyChangedEvent(", composer);
+        Assert.Contains("AutomationElementIdentifiers.IsOffscreenProperty", composer);
         Assert.Equal(
             4,
-            root.Split(
+            composer.Split(
                 "ComposerAutomationVisibility.Prepare(",
                 StringSplitOptions.None).Length - 1);
-        Assert.Contains("\"ChatComposerAttach\"", root);
-        Assert.Contains("\"ChatComposerSpeakerToggle\"", root);
-        Assert.Contains("\"ChatComposerSessionPicker\"", root);
-        Assert.Contains("\"ChatComposerModelPicker\"", root);
-        Assert.Contains("\"ChatComposerReasoningPicker\"", root);
-        Assert.Contains("\"ChatComposerVoice\"", root);
-        Assert.Contains("\"ChatComposerSettings\"", root);
-        Assert.Contains("\"ChatComposerPrimaryAction\"", root);
+        Assert.Contains("\"ChatComposerAttach\"", composer);
+        Assert.Contains("\"ChatComposerSpeakerToggle\"", composer);
+        Assert.Contains("\"ChatComposerSessionPicker\"", composer);
+        Assert.Contains("\"ChatComposerModelPicker\"", composer);
+        Assert.Contains("\"ChatComposerReasoningPicker\"", composer);
+        Assert.Contains("\"ChatComposerVoice\"", composer);
+        Assert.Contains("\"ChatComposerSettings\"", composer);
+        Assert.Contains("\"ChatComposerPrimaryAction\"", composer);
     }
 
     [Fact]
@@ -289,20 +289,17 @@ public sealed class ChatTimelinePresentationTests
     [Fact]
     public void ReactorComposer_ReattachesStableImagePasteHandlerAfterRemount()
     {
-        var root = File.ReadAllText(Path.Combine(
+        var composer = File.ReadAllText(Path.Combine(
             TestRepositoryPaths.GetRepositoryRoot(),
             "src",
             "OpenClaw.Tray.WinUI",
             "Chat",
-            "OpenClawReactorChatRoot.cs"));
-        var composer = root[root.IndexOf(
-            "public sealed class ReactorChatComposer",
-            StringComparison.Ordinal)..];
+            "ReactorChatComposer.cs"));
 
         const string callbackRef =
-            "var onAttachmentPasted = UseRef<Action<ChatAttachment>>(props.OnAttachmentPasted);";
+            "var controllerRef = UseRef(controller);";
         const string callbackAssignment =
-            "onAttachmentPasted.Current = props.OnAttachmentPasted;";
+            "controllerRef.Current = controller;";
         const string handlerRef =
             "var pasteHandler = UseRef<TextControlPasteEventHandler>(async (_, args) =>";
         const string mount =
@@ -330,24 +327,21 @@ public sealed class ChatTimelinePresentationTests
             "Windows.ApplicationModel.DataTransfer.Clipboard.GetContent()",
             pasteHandlerBody);
         Assert.Contains(
-            "await PasteImageFromClipboardAsync(clipboardContent, onAttachmentPasted.Current)",
+            "await controllerRef.Current.PasteImageAsync(clipboardContent);",
             composer);
-        Assert.Contains("onAttachmentPasted(attachment);", composer);
+        Assert.DoesNotContain("TryReadImageFromClipboardAsync", composer);
         Assert.DoesNotContain("pasteHooked", composer);
     }
 
     [Fact]
     public void ReactorComposer_UsesBitmapOnlyContextMenuThatReentersStablePastePath()
     {
-        var root = File.ReadAllText(Path.Combine(
+        var composer = File.ReadAllText(Path.Combine(
             TestRepositoryPaths.GetRepositoryRoot(),
             "src",
             "OpenClaw.Tray.WinUI",
             "Chat",
-            "OpenClawReactorChatRoot.cs"));
-        var composer = root[root.IndexOf(
-            "public sealed class ReactorChatComposer",
-            StringComparison.Ordinal)..];
+            "ReactorChatComposer.cs"));
 
         Assert.Contains("textBox.ContextFlyout = CreateComposerContextFlyout(", composer);
         Assert.Contains("textBox.ContextFlyout = null;", composer);
@@ -383,12 +377,12 @@ public sealed class ChatTimelinePresentationTests
         Assert.DoesNotContain("TryReadImageFromClipboardAsync", menuFactory);
         Assert.Contains("GetBitmapClipboardContent()", menuFactory);
         Assert.Contains(
-            "_ = PasteImageFromClipboardAsync(clipboardContent, getOnAttachmentPasted())",
+            "_ = getController().PasteImageAsync(clipboardContent);",
             menuFactory);
         Assert.Equal(
             1,
             composer.Split(
-                "await PasteImageFromClipboardAsync(clipboardContent, onAttachmentPasted.Current)",
+                "await controllerRef.Current.PasteImageAsync(clipboardContent);",
                 StringSplitOptions.None).Length - 1);
         Assert.Contains("PasteTextFromClipboard(textBox);", menuFactory);
         Assert.Contains("private static void PasteTextFromClipboard(TextBox textBox)", composer);

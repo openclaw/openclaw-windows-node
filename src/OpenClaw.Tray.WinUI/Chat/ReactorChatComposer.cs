@@ -58,7 +58,19 @@ internal sealed class ReactorChatComposer : Component<ReactorChatComposerViewPro
         var inputControl = UseRef<TextBox?>(null);
         var slashPopup = UseRef<Microsoft.UI.Xaml.Controls.Primitives.Popup?>(null);
         var slashPopupContentRef = UseRef<(string Key, FrameworkElement? Content)>((string.Empty, null));
-        var pasteHooked = UseRef(false);
+        var controllerRef = UseRef(controller);
+        controllerRef.Current = controller;
+        var pasteHandler = UseRef<TextControlPasteEventHandler>(async (_, args) =>
+        {
+            if (GetBitmapClipboardContent() is not { } clipboardContent)
+                return;
+
+            // Paste is a synchronous routed event. Suppress the default text paste
+            // before awaiting bitmap extraction so a multi-format clipboard cannot
+            // insert text alongside the image attachment.
+            args.Handled = true;
+            await controllerRef.Current.PasteImageAsync(clipboardContent);
+        });
 
         UseEffect((Func<Action>)(() =>
         {
@@ -143,13 +155,21 @@ internal sealed class ReactorChatComposer : Component<ReactorChatComposerViewPro
             : Localized("Chat_Composer_Tooltip_Send", "Send");
         var controlCornerRadius = new CornerRadius(4);
 
-        Element IconButton(string glyph, string automationName, Action onClick, bool enabled = true)
+        Element IconButton(
+            string glyph,
+            string automationName,
+            Action onClick,
+            bool enabled = true,
+            string? automationId = null)
         {
             return Button(
                     TextBlock(glyph).Set(textBlock =>
                     {
                         textBlock.FontFamily = FluentIconCatalog.SymbolThemeFontFamily;
                         textBlock.FontSize = 16;
+                        Microsoft.UI.Xaml.Automation.AutomationProperties.SetAccessibilityView(
+                            textBlock,
+                            Microsoft.UI.Xaml.Automation.Peers.AccessibilityView.Raw);
                     }),
                     onClick)
                 .AutomationName(automationName)
@@ -171,11 +191,25 @@ internal sealed class ReactorChatComposer : Component<ReactorChatComposerViewPro
                     button.CornerRadius = controlCornerRadius;
                     button.IsEnabled = enabled;
                     button.BorderThickness = new Thickness(0);
+                    if (!string.IsNullOrWhiteSpace(automationId))
+                    {
+                        Microsoft.UI.Xaml.Automation.AutomationProperties.SetAutomationId(
+                            button,
+                            automationId);
+                    }
+                    ComposerAutomationVisibility.Prepare(button);
                     ToolTipService.SetToolTip(button, automationName);
-                });
+                })
+                .OnUnmount(control => ComposerAutomationVisibility.Detach(
+                    (FrameworkElement)control));
         }
 
-        Element PickerButton(string label, string automationName, bool enabled, double maxLabelWidth)
+        Element PickerButton(
+            string label,
+            string automationName,
+            string automationId,
+            bool enabled,
+            double maxLabelWidth)
         {
             return Button(
                     HStack(
@@ -192,6 +226,9 @@ internal sealed class ReactorChatComposer : Component<ReactorChatComposerViewPro
                             textBlock.FontFamily = FluentIconCatalog.SymbolThemeFontFamily;
                             textBlock.FontSize = 10;
                             textBlock.Margin = new Thickness(2, 4, 0, 0);
+                            Microsoft.UI.Xaml.Automation.AutomationProperties.SetAccessibilityView(
+                                textBlock,
+                                Microsoft.UI.Xaml.Automation.Peers.AccessibilityView.Raw);
                         })),
                     () => { })
                 .AutomationName(automationName)
@@ -212,7 +249,13 @@ internal sealed class ReactorChatComposer : Component<ReactorChatComposerViewPro
                     button.CornerRadius = controlCornerRadius;
                     button.IsEnabled = enabled;
                     button.BorderThickness = new Thickness(0);
-                });
+                    Microsoft.UI.Xaml.Automation.AutomationProperties.SetAutomationId(
+                        button,
+                        automationId);
+                    ComposerAutomationVisibility.Prepare(button);
+                })
+                .OnUnmount(control => ComposerAutomationVisibility.Detach(
+                    (FrameworkElement)control));
         }
 
         var attachmentRows = vm.PendingAttachments
@@ -490,26 +533,22 @@ internal sealed class ReactorChatComposer : Component<ReactorChatComposerViewPro
                 control.Resources["TextControlBorderBrush"] = transparent;
                 control.Resources["TextControlBorderBrushFocused"] = transparent;
                 control.Resources["TextControlBorderBrushPointerOver"] = transparent;
-                if (!pasteHooked.Current)
-                {
-                    pasteHooked.Current = true;
-                    control.Paste += async (_, args) =>
-                    {
-                        var clipboardContent = global::Windows.ApplicationModel.DataTransfer.Clipboard.GetContent();
-                        if (clipboardContent is null
-                            || !clipboardContent.Contains(
-                                global::Windows.ApplicationModel.DataTransfer.StandardDataFormats.Bitmap))
-                        {
-                            return;
-                        }
-
-                        // Paste is a synchronous routed event. Suppress the default text paste
-                        // before awaiting bitmap extraction so a multi-format clipboard cannot
-                        // insert text alongside the image attachment.
-                        args.Handled = true;
-                        await controller.PasteImageAsync(clipboardContent);
-                    };
-                }
+                ComposerAutomationVisibility.Prepare(control);
+            })
+            .OnMount(control =>
+            {
+                var textBox = (TextBox)control;
+                textBox.Paste += pasteHandler.Current;
+                textBox.ContextFlyout = CreateComposerContextFlyout(
+                    textBox,
+                    () => controllerRef.Current);
+            })
+            .OnUnmount(control =>
+            {
+                var textBox = (TextBox)control;
+                textBox.Paste -= pasteHandler.Current;
+                textBox.ContextFlyout = null;
+                ComposerAutomationVisibility.Detach(textBox);
             });
         UseEffect((Func<Action>)(() =>
         {
@@ -524,6 +563,7 @@ internal sealed class ReactorChatComposer : Component<ReactorChatComposerViewPro
             PickerButton(
                 inputs.CurrentThread.Title,
                 $"{Localized("Chat_Composer_Accessibility_Session", "Session")}: {inputs.CurrentThread.Title}",
+                "ChatComposerSessionPicker",
                 !inputs.MessageOptionsDisabled && inputs.AvailableChannels.Count > 1,
                 props.IsCompact ? 56 : 160),
             inputs.AvailableChannels
@@ -541,6 +581,7 @@ internal sealed class ReactorChatComposer : Component<ReactorChatComposerViewPro
             PickerButton(
                 modelPickerLabel,
                 $"{Localized("Chat_Composer_Accessibility_Model", "Model")}: {modelPickerLabel}",
+                "ChatComposerModelPicker",
                 !inputs.MessageOptionsDisabled,
                 props.IsCompact ? 68 : 180),
             modelNames
@@ -561,6 +602,7 @@ internal sealed class ReactorChatComposer : Component<ReactorChatComposerViewPro
             PickerButton(
                 ThinkingLevels[thinkingIndex],
                 $"{Localized("Chat_Composer_Accessibility_Reasoning", "Reasoning")}: {ThinkingLevels[thinkingIndex]}",
+                "ChatComposerReasoningPicker",
                 !inputs.MessageOptionsDisabled,
                 props.IsCompact ? 54 : 96),
             ThinkingLevels
@@ -575,7 +617,8 @@ internal sealed class ReactorChatComposer : Component<ReactorChatComposerViewPro
             "\uE723",
             Localized("Chat_Composer_Tooltip_Attach", "Attach"),
             () => props.Session.HostActions.AttachmentPickerRequest?.Invoke(),
-            props.Session.HostActions.AttachmentPickerRequest is not null);
+            props.Session.HostActions.AttachmentPickerRequest is not null,
+            "ChatComposerAttach");
         var voiceButton = IconButton(
             isRecording
                 ? "\uE15B"
@@ -590,25 +633,35 @@ internal sealed class ReactorChatComposer : Component<ReactorChatComposerViewPro
                 else
                     controller.StartVoiceRecording();
             },
-            props.Session.HostActions.VoiceCaptureRequest is not null);
+            props.Session.HostActions.VoiceCaptureRequest is not null,
+            "ChatComposerVoice");
         var speakerButton = IconButton(
             vm.IsSpeakerMuted ? "\uE74F" : "\uE767",
             vm.IsSpeakerMuted ? "Unmute" : "Mute",
-            controller.ToggleSpeakerMuted);
+            controller.ToggleSpeakerMuted,
+            automationId: "ChatComposerSpeakerToggle");
         Element settingsButton = props.IsCompact || props.Session.HostActions.SettingsNavigation is null
             ? Empty()
             : IconButton(
                 "\uE713",
                 Localized("Chat_Composer_Tooltip_Settings", "Settings"),
-                props.Session.HostActions.SettingsNavigation);
+                props.Session.HostActions.SettingsNavigation,
+                automationId: "ChatComposerSettings");
 
         Element primaryAction = inputs.TurnActive
-            ? IconButton("\uE71A", actionLabel, controller.Stop)
+            ? IconButton(
+                "\uE71A",
+                actionLabel,
+                controller.Stop,
+                automationId: "ChatComposerPrimaryAction")
             : Button(
                     TextBlock("\uE724").Set(textBlock =>
                     {
                         textBlock.FontFamily = FluentIconCatalog.SymbolThemeFontFamily;
                         textBlock.FontSize = 16;
+                        Microsoft.UI.Xaml.Automation.AutomationProperties.SetAccessibilityView(
+                            textBlock,
+                            Microsoft.UI.Xaml.Automation.Peers.AccessibilityView.Raw);
                     }),
                     Send)
                 .AccentButton()
@@ -621,9 +674,15 @@ internal sealed class ReactorChatComposer : Component<ReactorChatComposerViewPro
                     button.MinHeight = 32;
                     button.Padding = new Thickness(0);
                     button.CornerRadius = controlCornerRadius;
+                    Microsoft.UI.Xaml.Automation.AutomationProperties.SetAutomationId(
+                        button,
+                        "ChatComposerPrimaryAction");
                     button.IsEnabled = vm.CanSend;
+                    ComposerAutomationVisibility.Prepare(button);
                     ToolTipService.SetToolTip(button, actionLabel);
-                });
+                })
+                .OnUnmount(control => ComposerAutomationVisibility.Detach(
+                    (FrameworkElement)control));
 
         var leftToolbar = HStack(8, attachButton, sessionPicker, modelPicker, reasoningPicker)
             .HAlign(HorizontalAlignment.Left)
@@ -1008,6 +1067,137 @@ internal sealed class ReactorChatComposer : Component<ReactorChatComposerViewPro
         };
     }
 
+    private static global::Windows.ApplicationModel.DataTransfer.DataPackageView? GetBitmapClipboardContent()
+    {
+        try
+        {
+            var content = global::Windows.ApplicationModel.DataTransfer.Clipboard.GetContent();
+            return content is not null
+                && content.Contains(
+                    global::Windows.ApplicationModel.DataTransfer.StandardDataFormats.Bitmap)
+                    ? content
+                    : null;
+        }
+        catch (System.Runtime.InteropServices.COMException ex)
+        {
+            OpenClawTray.Services.Logger.Debug(
+                $"Reactor chat composer: clipboard access failed: {ex.Message}");
+            return null;
+        }
+    }
+
+    private static MenuFlyout CreateComposerContextFlyout(
+        TextBox textBox,
+        Func<ChatComposerController> getController)
+    {
+        var undoItem = CreateStandardMenuItem(
+            Microsoft.UI.Xaml.Input.StandardUICommandKind.Undo,
+            textBox.Undo);
+        var redoItem = CreateStandardMenuItem(
+            Microsoft.UI.Xaml.Input.StandardUICommandKind.Redo,
+            textBox.Redo);
+        var cutItem = CreateStandardMenuItem(
+            Microsoft.UI.Xaml.Input.StandardUICommandKind.Cut,
+            textBox.CutSelectionToClipboard);
+        var copyItem = CreateStandardMenuItem(
+            Microsoft.UI.Xaml.Input.StandardUICommandKind.Copy,
+            textBox.CopySelectionToClipboard);
+        var pasteItem = CreateStandardMenuItem(
+            Microsoft.UI.Xaml.Input.StandardUICommandKind.Paste,
+            () =>
+            {
+                if (GetBitmapClipboardContent() is { } clipboardContent)
+                    _ = getController().PasteImageAsync(clipboardContent);
+                else
+                    PasteTextFromClipboard(textBox);
+            });
+        var selectAllItem = CreateStandardMenuItem(
+            Microsoft.UI.Xaml.Input.StandardUICommandKind.SelectAll,
+            textBox.SelectAll);
+        Microsoft.UI.Xaml.Automation.AutomationProperties.SetAutomationId(
+            pasteItem,
+            "ChatComposerPasteMenuItem");
+
+        var editSeparator = new MenuFlyoutSeparator();
+        var selectAllSeparator = new MenuFlyoutSeparator();
+        var menu = new MenuFlyout();
+        menu.Items.Add(undoItem);
+        menu.Items.Add(redoItem);
+        menu.Items.Add(editSeparator);
+        menu.Items.Add(cutItem);
+        menu.Items.Add(copyItem);
+        menu.Items.Add(pasteItem);
+        menu.Items.Add(selectAllSeparator);
+        menu.Items.Add(selectAllItem);
+        menu.Opening += (_, _) =>
+        {
+            var state = ChatComposerContextMenuState.Project(
+                textBox.CanUndo,
+                textBox.CanRedo,
+                textBox.SelectionLength > 0,
+                ClipboardContainsPasteContent(),
+                !string.IsNullOrEmpty(textBox.Text));
+            undoItem.Visibility = ToVisibility(state.ShowUndo);
+            redoItem.Visibility = ToVisibility(state.ShowRedo);
+            cutItem.Visibility = ToVisibility(state.ShowCut);
+            copyItem.Visibility = ToVisibility(state.ShowCopy);
+            pasteItem.Visibility = ToVisibility(state.ShowPaste);
+            selectAllItem.Visibility = ToVisibility(state.ShowSelectAll);
+            editSeparator.Visibility = ToVisibility(state.ShowEditSeparator);
+            selectAllSeparator.Visibility = ToVisibility(state.ShowSelectAllSeparator);
+        };
+        return menu;
+    }
+
+    private static Visibility ToVisibility(bool visible) =>
+        visible ? Visibility.Visible : Visibility.Collapsed;
+
+    private static MenuFlyoutItem CreateStandardMenuItem(
+        Microsoft.UI.Xaml.Input.StandardUICommandKind kind,
+        Action execute)
+    {
+        var command = new Microsoft.UI.Xaml.Input.StandardUICommand(kind);
+        command.CanExecuteRequested += (_, args) => args.CanExecute = true;
+        command.ExecuteRequested += (_, _) => execute();
+        return new MenuFlyoutItem
+        {
+            Command = command,
+            Visibility = Visibility.Collapsed,
+        };
+    }
+
+    private static bool ClipboardContainsPasteContent()
+    {
+        try
+        {
+            var content = global::Windows.ApplicationModel.DataTransfer.Clipboard.GetContent();
+            return content is not null
+                && (content.Contains(
+                        global::Windows.ApplicationModel.DataTransfer.StandardDataFormats.Bitmap)
+                    || content.Contains(
+                        global::Windows.ApplicationModel.DataTransfer.StandardDataFormats.Text));
+        }
+        catch (System.Runtime.InteropServices.COMException ex)
+        {
+            OpenClawTray.Services.Logger.Debug(
+                $"Reactor chat composer: clipboard access failed: {ex.Message}");
+            return false;
+        }
+    }
+
+    private static void PasteTextFromClipboard(TextBox textBox)
+    {
+        try
+        {
+            textBox.PasteFromClipboard();
+        }
+        catch (System.Runtime.InteropServices.COMException ex)
+        {
+            OpenClawTray.Services.Logger.Debug(
+                $"Reactor chat composer: clipboard text paste failed: {ex.Message}");
+        }
+    }
+
     private static string PlaceholderFor(string connectionState) => connectionState switch
     {
         "connected" => Localized("Chat_Composer_Placeholder_Connected", "Message Assistant (Enter to send)"),
@@ -1025,4 +1215,67 @@ internal sealed class ReactorChatComposer : Component<ReactorChatComposerViewPro
             ? fallback
             : value;
     }
+}
+
+internal static class ComposerAutomationVisibility
+{
+    public static void Prepare(FrameworkElement control)
+    {
+        Detach(control);
+        if (HasUsableLayout(control))
+        {
+            ApplyReadyState(control);
+            return;
+        }
+
+        control.IsHitTestVisible = false;
+        Microsoft.UI.Xaml.Automation.AutomationProperties.SetAccessibilityView(
+            control,
+            Microsoft.UI.Xaml.Automation.Peers.AccessibilityView.Raw);
+        control.Loaded += OnLoaded;
+        control.SizeChanged += OnSizeChanged;
+    }
+
+    public static void Detach(FrameworkElement control)
+    {
+        control.Loaded -= OnLoaded;
+        control.SizeChanged -= OnSizeChanged;
+    }
+
+    private static void OnLoaded(object sender, RoutedEventArgs args) =>
+        TryEnableHitTesting(sender);
+
+    private static void OnSizeChanged(object sender, SizeChangedEventArgs args) =>
+        TryEnableHitTesting(sender);
+
+    private static void TryEnableHitTesting(object sender)
+    {
+        if (sender is not FrameworkElement control || !HasUsableLayout(control))
+            return;
+
+        ApplyReadyState(control);
+    }
+
+    private static void ApplyReadyState(FrameworkElement control)
+    {
+        Microsoft.UI.Xaml.Automation.AutomationProperties.SetAccessibilityView(
+            control,
+            Microsoft.UI.Xaml.Automation.Peers.AccessibilityView.Control);
+        control.IsHitTestVisible = true;
+        var peer = Microsoft.UI.Xaml.Automation.Peers.FrameworkElementAutomationPeer
+            .FromElement(control)
+            ?? Microsoft.UI.Xaml.Automation.Peers.FrameworkElementAutomationPeer
+                .CreatePeerForElement(control);
+        peer?.RaisePropertyChangedEvent(
+            Microsoft.UI.Xaml.Automation.AutomationElementIdentifiers.IsOffscreenProperty,
+            true,
+            false);
+        Detach(control);
+    }
+
+    private static bool HasUsableLayout(FrameworkElement control) =>
+        control.IsLoaded
+        && control.Visibility == Visibility.Visible
+        && control.ActualWidth > 0
+        && control.ActualHeight > 0;
 }
