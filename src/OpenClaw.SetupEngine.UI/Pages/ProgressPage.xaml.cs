@@ -195,7 +195,8 @@ public sealed partial class ProgressPage : Page
                     sw.Elapsed,
                     config.LogPath,
                     errorMsg,
-                    result.CompatibilityFailure);
+                    result.CompatibilityFailure,
+                    canRetryWslInstallation: result.FailedStepId == "wsl-create");
             }
         }
         catch (OperationCanceledException) when (cts.IsCancellationRequested)

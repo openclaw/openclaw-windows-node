@@ -26,6 +26,8 @@ Displays the OpenClaw icon, app title, and a brief description. If an app-owned 
 ### Local setup progress
 Installs and connects a new app-owned `OpenClawGateway` WSL instance from a clean WSL baseline. Setup does not export from or mutate an existing user Ubuntu distro; if WSL cannot create the named app-owned distro directly, setup fails with an actionable update message. When replacing an app-owned local gateway, the removal step is shown as part of progress and can be retried on failure.
 
+If creating the managed WSL distro fails, the failure screen offers **Retry**. Retry restarts the setup pipeline, including its cleanup phase, so it can remove any partial app-owned distro before attempting the WSL installation again.
+
 The managed distro is locked down and is not intended to be a normal interactive Ubuntu profile. For editing `openclaw.json` as the `openclaw` user and using root for protected-file administration, see [Managing the locked-down WSL gateway](WSL_GATEWAY_ADMIN.md).
 
 ### Capabilities and Windows permissions

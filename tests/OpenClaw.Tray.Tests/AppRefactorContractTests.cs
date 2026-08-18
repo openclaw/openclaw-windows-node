@@ -1153,6 +1153,20 @@ public sealed class AppRefactorContractTests
     }
 
     [Fact]
+    public void CompletePage_OffersRetryForFailedWslInstallation()
+    {
+        var root = TestRepositoryPaths.GetRepositoryRoot();
+        var setupWindow = File.ReadAllText(Path.Combine(root, "src", "OpenClaw.SetupEngine.UI", "SetupWindow.xaml.cs"));
+        var complete = File.ReadAllText(Path.Combine(root, "src", "OpenClaw.SetupEngine.UI", "Pages", "CompletePage.xaml.cs"));
+        var progress = File.ReadAllText(Path.Combine(root, "src", "OpenClaw.SetupEngine.UI", "Pages", "ProgressPage.xaml.cs"));
+
+        Assert.Contains("canRetryWslInstallation: result.FailedStepId == \"wsl-create\"", progress);
+        Assert.Contains("public void RetryWslInstallation() => NavigateToProgress();", setupWindow);
+        Assert.Contains("RetryButton.Visibility = args.CanRetryWslInstallation", complete);
+        Assert.Contains("SetupWindow.Active?.RetryWslInstallation();", complete);
+    }
+
+    [Fact]
     public void CapabilitiesPage_PersistsSelectedProfileIntoRuntimeNodeSettings()
     {
         var root = TestRepositoryPaths.GetRepositoryRoot();

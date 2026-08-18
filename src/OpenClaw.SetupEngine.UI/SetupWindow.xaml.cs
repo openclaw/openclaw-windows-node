@@ -273,7 +273,8 @@ public sealed partial class SetupWindow : Window
         TimeSpan elapsed,
         string? logPath,
         string? errorMessage = null,
-        GatewayCompatibilityFailureKind? compatibilityFailure = null)
+        GatewayCompatibilityFailureKind? compatibilityFailure = null,
+        bool canRetryWslInstallation = false)
     {
         var canRetryFallback =
             compatibilityFailure is { } failureKind &&
@@ -291,7 +292,8 @@ public sealed partial class SetupWindow : Window
                 CanRetryGatewayFallback: canRetryFallback,
                 GatewayFallbackVersion: canRetryFallback
                     ? GatewayReleasePolicy.FallbackVersion
-                    : null));
+                    : null,
+                CanRetryWslInstallation: canRetryWslInstallation));
     }
 
     public bool TryRetryWithGatewayFallback(out string? error)
@@ -302,6 +304,8 @@ public sealed partial class SetupWindow : Window
         NavigateToProgress();
         return true;
     }
+
+    public void RetryWslInstallation() => NavigateToProgress();
 
     private void ShowConfigurationError(string errorMessage)
     {
@@ -459,5 +463,6 @@ public sealed record CompletePageArgs(
     bool ShowStartupPreference = true,
     SetupReviewSummary? ReviewSummary = null,
     bool CanRetryGatewayFallback = false,
-    string? GatewayFallbackVersion = null);
+    string? GatewayFallbackVersion = null,
+    bool CanRetryWslInstallation = false);
 public sealed record SetupCompletedEventArgs(bool EnableAutoStart);

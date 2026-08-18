@@ -37,6 +37,7 @@ public sealed partial class CompletePage : Page
                 ErrorCard.Visibility = Visibility.Collapsed;
                 HelpLink.Visibility = Visibility.Collapsed;
                 FallbackButton.Visibility = Visibility.Collapsed;
+                RetryButton.Visibility = Visibility.Collapsed;
                 SummaryPanel.Visibility = Visibility.Visible;
             }
             else
@@ -60,6 +61,9 @@ public sealed partial class CompletePage : Page
                 FallbackButton.Content = string.IsNullOrWhiteSpace(args.GatewayFallbackVersion)
                     ? "Retry with validated fallback"
                     : $"Retry with validated fallback {args.GatewayFallbackVersion}";
+                RetryButton.Visibility = args.CanRetryWslInstallation
+                    ? Visibility.Visible
+                    : Visibility.Collapsed;
 
                 // Show error card with details and log link
                 ErrorCard.Visibility = Visibility.Visible;
@@ -130,6 +134,11 @@ public sealed partial class CompletePage : Page
         FallbackButton.Visibility = Visibility.Collapsed;
         if (!string.IsNullOrWhiteSpace(error))
             ErrorText.Text = $"{ErrorText.Text}{Environment.NewLine}{error}";
+    }
+
+    private void RetryButton_Click(object sender, RoutedEventArgs e)
+    {
+        SetupWindow.Active?.RetryWslInstallation();
     }
 
 }
