@@ -21,6 +21,7 @@ internal static class NativeToolProjector
         ["command", "path", "file_path", "query", "url", "pattern"];
 
     internal const int MaxDisplayValueChars = 240;
+    internal const int MaxPersistedToolArgumentsChars = 64 * 1024;
     private const int MaxIdentityChars = 80;
     private const int ToolOutputMaxChars = 4000;
 
@@ -181,8 +182,11 @@ internal static class NativeToolProjector
             return null;
 
         var json = encoded.GetString();
-        if (string.IsNullOrWhiteSpace(json))
+        if (string.IsNullOrWhiteSpace(json)
+            || json.Length > MaxPersistedToolArgumentsChars)
+        {
             return null;
+        }
 
         try
         {
