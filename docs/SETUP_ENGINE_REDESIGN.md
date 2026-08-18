@@ -57,7 +57,7 @@ src/OpenClaw.SetupEngine.UI/
 ```
 
 The pipeline runs 24 steps (see `SetupStepFactory.BuildDefaultSteps()` in `SetupPipeline.cs` for
-the authoritative order — this doc's step table below predates the 4 Tailscale steps and is not
+the authoritative order. This doc's step table below predates the 4 Tailscale steps and is not
 fully current). UI adds ~10 more files.
 
 ---
