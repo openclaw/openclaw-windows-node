@@ -212,6 +212,42 @@ public class GatewayMediaMessageProjectionTests
     }
 
     [Fact]
+    public void PreviewCache_RejectsDecodedOverflowBeforeStorage()
+    {
+        Assert.False(ChatImagePreviewCache.TryDecodeBoundedBase64(
+            Convert.ToBase64String([1, 2, 3, 4, 5]),
+            maximumBytes: 4,
+            out var bytes));
+        Assert.Empty(bytes);
+    }
+
+    [Fact]
+    public void PreviewCache_EvictsOldestEntriesWithinCountBound()
+    {
+        ChatImagePreviewCache.Clear();
+        try
+        {
+            for (var index = 0; index <= ChatImagePreviewCache.MaximumEntries; index++)
+            {
+                Assert.True(ChatImagePreviewCache.TryStoreBase64(
+                    $"preview-{index}",
+                    Convert.ToBase64String([(byte)index])));
+            }
+
+            Assert.Equal(ChatImagePreviewCache.MaximumEntries, ChatImagePreviewCache.Count);
+            Assert.False(ChatImagePreviewCache.Contains("preview-0"));
+            Assert.True(ChatImagePreviewCache.Contains(
+                $"preview-{ChatImagePreviewCache.MaximumEntries}"));
+            Assert.True(ChatImagePreviewCache.TotalBytes <=
+                ChatImagePreviewCache.MaximumTotalBytes);
+        }
+        finally
+        {
+            ChatImagePreviewCache.Clear();
+        }
+    }
+
+    [Fact]
     public void AttachmentOnlyEcho_AmbiguousMatchingCandidatesAreNotConsumed()
     {
         var incoming = GatewayMediaMessageProjection.Project(

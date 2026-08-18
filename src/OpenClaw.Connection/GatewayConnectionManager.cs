@@ -2565,7 +2565,7 @@ public sealed class GatewayConnectionManager :
             expected.BootstrapToken,
             StringComparison.Ordinal) &&
         current.IsLocal == expected.IsLocal &&
-        current.RequiresV2Signature == expected.RequiresV2Signature &&
+        (current.RequiresV2Signature || !expected.RequiresV2Signature) &&
         string.Equals(
             current.SetupManagedDistroName,
             expected.SetupManagedDistroName,

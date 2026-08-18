@@ -341,3 +341,46 @@ internal sealed record ChatAssistantImageLoadState(
     BitmapImage? Bitmap,
     string SessionKey,
     ChatMediaContentInfo Reference);
+
+internal static class ChatAttachmentBitmapDecoder
+{
+    internal static BitmapImage? TryDecode(byte[] bytes)
+    {
+        try
+        {
+            using var stream = new InMemoryRandomAccessStream();
+            using (var writer = new DataWriter(stream))
+            {
+                writer.WriteBytes(bytes);
+                writer.StoreAsync().AsTask().GetAwaiter().GetResult();
+                writer.DetachStream();
+            }
+
+            stream.Seek(0);
+            var decoder = BitmapDecoder.CreateAsync(stream).AsTask().GetAwaiter().GetResult();
+            if (!ChatAssistantImageDecodePolicy.TryGetDecodeSize(
+                    decoder.PixelWidth,
+                    decoder.PixelHeight,
+                    out var decodeWidth,
+                    out var decodeHeight))
+            {
+                return null;
+            }
+
+            stream.Seek(0);
+            var bitmap = new BitmapImage
+            {
+                DecodePixelType = DecodePixelType.Physical,
+                DecodePixelWidth = decodeWidth,
+                DecodePixelHeight = decodeHeight,
+            };
+            bitmap.SetSource(stream);
+            return bitmap;
+        }
+        catch (Exception ex)
+        {
+            Logger.Warn($"Attachment image decode failed ({ex.GetType().Name}).");
+            return null;
+        }
+    }
+}

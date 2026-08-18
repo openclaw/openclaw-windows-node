@@ -10960,7 +10960,7 @@ public class OpenClawChatDataProviderTests
             "f4f160f1-07b9-4eb5-8de4-2b12c403d0fe-0d950ec0-98f0-4398-a7fe-c9b9131e8b5a-clipboard.png",
             attachment.DisplayFileName);
         Assert.True(attachment.CanAccessPreviewCache);
-        Assert.True(OpenClawChatDataProvider.ImagePreviewCache.ContainsKey(attachment.PreviewCacheKey!));
+        Assert.True(ChatImagePreviewCache.Contains(attachment.PreviewCacheKey!));
 
         sendGate.SetResult();
     }

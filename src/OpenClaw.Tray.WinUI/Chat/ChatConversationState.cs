@@ -1347,6 +1347,8 @@ internal sealed class ChatConversationState
                     _queue.TryConsumeLocalEcho(
                         threadId,
                         resetGate.ConsumeEchoText,
+                        attachmentCorrelationSignature,
+                        hasMediaEnvelope,
                         out var queuedMessageId))
                 {
                     var confirmed = BuildLiveMetaLocked(
@@ -2064,11 +2066,12 @@ internal sealed class ChatConversationState
     internal ChatRemoteUserBackfillTransition? ApplyRemoteUserBackfill(
         string threadId,
         ChatMessageInfo message,
+        GatewayMediaMessageProjectionResult projection,
+        IReadOnlyList<ChatAttachmentPresentation> attachments,
         long expectedResetGeneration,
         bool openResetGate,
         ChatProjectionContext context)
     {
-        var projection = GatewayMediaMessageProjection.Project(message.Text);
         lock (_gate)
         {
             if (GetResetVersionLocked(threadId) != expectedResetGeneration ||
@@ -2076,36 +2079,33 @@ internal sealed class ChatConversationState
             {
                 return null;
             }
-            if (_timelines.TryGetValue(threadId, out var timeline))
-            {
-                for (var i = timeline.Entries.Count - 1; i >= 0; i--)
-                {
-                    if (timeline.Entries[i].Kind != ChatTimelineItemKind.User)
-                        continue;
-                    if (timeline.Entries[i].Text == projection.ReconciliationText)
-                        return null;
-                    break;
-                }
-            }
             var openedLifecycle = openResetGate
                 ? ApplyBufferedLifecycleOpenLocked(
                     threadId,
                     _reset.RecordRemoteUser(threadId),
                     allowRemoteTurn: true)
                 : null;
-            ApplyEventLocked(
+            var metadata = BuildLiveMetaLocked(
                 threadId,
-                new ChatUserMessageEvent(
-                    ChatContentFormatting.TruncateForChatEntry(
-                        projection.ReconciliationText)),
-                BuildLiveMetaLocked(
-                    threadId,
-                    message.Ts,
-                    message.OpenClawId,
-                    message.OpenClawSeq,
-                    attachments: projection.Attachments));
+                message.Ts,
+                message.OpenClawId,
+                message.OpenClawSeq,
+                attachments: attachments);
+            var snapshot = ApplyProjectedRemoteUserMessageLocked(
+                threadId,
+                ChatContentFormatting.TruncateForChatEntry(
+                    projection.HasMediaEnvelope
+                        ? projection.ReconciliationText
+                        : ChatMetadataStore.EscapeUntrustedAttachmentMarkerLines(
+                            message.Text)),
+                GatewayMediaMessageProjection.BuildAttachmentCorrelationSignature(
+                    attachments),
+                metadata,
+                context);
+            if (snapshot is null && openedLifecycle is null)
+                return null;
             return new(
-                BuildSnapshotLocked(context),
+                snapshot ?? BuildSnapshotLocked(context),
                 openedLifecycle,
                 CurrentRuntimeGenerationLocked(threadId));
         }

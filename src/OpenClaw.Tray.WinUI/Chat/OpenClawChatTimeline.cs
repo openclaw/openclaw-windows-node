@@ -369,16 +369,9 @@ public class OpenClawChatTimeline : Component<OpenClawChatTimelineProps>
             return existing;
         try
         {
-            var stream = new global::Windows.Storage.Streams.InMemoryRandomAccessStream();
-            using (var writer = new global::Windows.Storage.Streams.DataWriter(stream))
-            {
-                writer.WriteBytes(bytes);
-                writer.StoreAsync().AsTask().GetAwaiter().GetResult();
-                writer.DetachStream();
-            }
-            stream.Seek(0);
-            var bmp = new Microsoft.UI.Xaml.Media.Imaging.BitmapImage();
-            bmp.SetSource(stream);
+            var bmp = ChatAttachmentBitmapDecoder.TryDecode(bytes);
+            if (bmp is null)
+                return null;
             _bitmapCache.Add(bytes, bmp);
             return bmp;
         }
@@ -1230,7 +1223,6 @@ public class OpenClawChatTimeline : Component<OpenClawChatTimelineProps>
                     var isImage = attachment.IsImage;
                     if (isImage && ChatAttachmentPreviewResolver.TryGetBytes(
                         attachment,
-                        OpenClawChatDataProvider.ImagePreviewCache,
                         out var bytes))
                     {
                         var bmp = TryDecodeBitmap(bytes);

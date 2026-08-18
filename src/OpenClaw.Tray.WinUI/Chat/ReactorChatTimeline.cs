@@ -712,7 +712,6 @@ public sealed class ReactorChatTimeline : Component<ReactorChatTimelineProps>
         if (attachment.IsImage
             && ChatAttachmentPreviewResolver.TryGetBytes(
                 attachment,
-                OpenClawChatDataProvider.ImagePreviewCache,
                 out var bytes)
             && TryDecodeAttachmentBitmap(bytes) is { } bitmap)
         {
@@ -785,16 +784,9 @@ public sealed class ReactorChatTimeline : Component<ReactorChatTimelineProps>
 
         try
         {
-            var stream = new global::Windows.Storage.Streams.InMemoryRandomAccessStream();
-            using (var writer = new global::Windows.Storage.Streams.DataWriter(stream))
-            {
-                writer.WriteBytes(bytes);
-                writer.StoreAsync().AsTask().GetAwaiter().GetResult();
-                writer.DetachStream();
-            }
-            stream.Seek(0);
-            var bitmap = new BitmapImage();
-            bitmap.SetSource(stream);
+            var bitmap = ChatAttachmentBitmapDecoder.TryDecode(bytes);
+            if (bitmap is null)
+                return null;
             s_attachmentBitmaps.Add(bytes, bitmap);
             return bitmap;
         }

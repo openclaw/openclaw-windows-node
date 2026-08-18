@@ -451,7 +451,10 @@ internal sealed class ChatQueueState
         string attachmentCorrelationSignature = "",
         bool hasMediaEnvelope = false)
     {
-        if (string.IsNullOrWhiteSpace(text) ||
+        var normalizedText =
+            GatewayMediaMessageProjection.NormalizeEchoCorrelationText(text);
+        if ((normalizedText.Length == 0 &&
+             string.IsNullOrEmpty(attachmentCorrelationSignature)) ||
             !_localSentTexts.TryGetValue(threadId, out var queue))
         {
             return false;
@@ -464,7 +467,7 @@ internal sealed class ChatQueueState
             .ToArray();
         return ChatAttachmentEchoCorrelation.SelectMatchingMessageId(
             candidates,
-            text.Trim(),
+            normalizedText,
             attachmentCorrelationSignature,
             hasMediaEnvelope) is not null;
     }
@@ -479,6 +482,8 @@ internal sealed class ChatQueueState
         queuedMessageId = string.Empty;
         if (!_localSentTexts.TryGetValue(threadId, out var queue))
             return false;
+        var normalizedEchoText =
+            GatewayMediaMessageProjection.NormalizeEchoCorrelationText(echoText);
 
         var now = DateTimeOffset.Now;
         while (queue.Count > 0 && now - queue.Peek().SentAt > LocalEchoWindow)
@@ -498,7 +503,7 @@ internal sealed class ChatQueueState
             .ToArray();
         var matchedMessageId = ChatAttachmentEchoCorrelation.SelectMatchingMessageId(
             candidates,
-            echoText,
+            normalizedEchoText,
             attachmentCorrelationSignature,
             hasMediaEnvelope);
         if (matchedMessageId is null)

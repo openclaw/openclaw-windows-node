@@ -255,6 +255,33 @@ public class GatewayConnectionManagerTests : IDisposable
     }
 
     [Fact]
+    public async Task ReconnectAuthorization_RejectsRuntimeV2SignatureDowngrade()
+    {
+        SetupGateway("gw-1", "wss://test");
+        _registry.Update("gw-1", record => record with
+        {
+            RequiresV2Signature = true,
+        });
+        _resolver.OperatorCredential = new GatewayCredential(
+            "paired-device-token",
+            false,
+            CredentialResolver.SourceDeviceToken);
+
+        await _manager.ConnectAsync("gw-1");
+        var client = Assert.Single(_factory.CreatedClients);
+        _registry.Update("gw-1", record => record with
+        {
+            RequiresV2Signature = false,
+        });
+
+        var reconnect = await client.DataClient.ReconnectAuthorizationAsync!(
+            CancellationToken.None);
+
+        Assert.False(reconnect.Allowed);
+        Assert.Null(client.AssistantMediaAuthToken);
+    }
+
+    [Fact]
     public async Task OperatorDeviceTokenReceived_RefreshesAssistantMediaAuthWithoutReconnect()
     {
         SetupGateway("gw-1", "wss://test");

@@ -20,8 +20,14 @@ internal sealed class AttachmentMetaMatcher
         _used = new bool[entries.Count];
     }
 
-    public ChatMetadataStore.CachedAttachmentMeta? TryMatch(string text, long historyTsMs)
+    public ChatMetadataStore.CachedAttachmentMeta? TryMatch(
+        string text,
+        string attachmentCorrelationSignature,
+        long historyTsMs)
     {
+        if (string.IsNullOrEmpty(attachmentCorrelationSignature))
+            return null;
+
         for (var i = 0; i < _entries.Count; i++)
         {
             if (_used[i])
@@ -30,6 +36,15 @@ internal sealed class AttachmentMetaMatcher
             var entry = _entries[i];
             if (!string.Equals(entry.Text, text, StringComparison.Ordinal))
                 continue;
+            if (!string.Equals(
+                    GatewayMediaMessageProjection.BuildAttachmentCorrelationSignature(
+                        ChatMetadataStore.CreatePersistedLocalPresentations(
+                            entry.Attachments)),
+                    attachmentCorrelationSignature,
+                    StringComparison.Ordinal))
+            {
+                continue;
+            }
 
             if (historyTsMs > 0 && entry.Ts > 0 &&
                 Math.Abs(historyTsMs - entry.Ts) > MatchWindow.TotalMilliseconds)
@@ -78,6 +93,7 @@ internal sealed class ChatMetadataStore : IDisposable
     internal sealed class CachedAttachmentItem
     {
         public string FileName { get; set; } = "";
+        public string MimeType { get; set; } = "application/octet-stream";
         public bool IsImage { get; set; }
     }
 
@@ -272,10 +288,21 @@ internal sealed class ChatMetadataStore : IDisposable
 
         var items = attachments
             .Where(attachment => !string.IsNullOrWhiteSpace(attachment.FileName))
-            .Select(attachment => new CachedAttachmentItem
+            .Select(attachment =>
             {
-                FileName = NormalizeCachedDisplayText(attachment.FileName),
-                IsImage = string.Equals(attachment.Type, "image", StringComparison.OrdinalIgnoreCase),
+                var mimeType =
+                    GatewayMediaMessageProjection.NormalizeMimeType(
+                        attachment.MimeType);
+                return new CachedAttachmentItem
+                {
+                    FileName = NormalizeCachedDisplayText(attachment.FileName),
+                    MimeType = mimeType,
+                    IsImage = string.Equals(
+                            attachment.Type,
+                            "image",
+                            StringComparison.OrdinalIgnoreCase) ||
+                        mimeType.StartsWith("image/", StringComparison.Ordinal),
+                };
             })
             .ToList();
         if (items.Count == 0)
@@ -675,6 +702,8 @@ internal sealed class ChatMetadataStore : IDisposable
         Attachments = entry.Attachments.Select(attachment => new CachedAttachmentItem
         {
             FileName = NormalizeCachedDisplayText(attachment.FileName),
+            MimeType = GatewayMediaMessageProjection.NormalizeMimeType(
+                attachment.MimeType),
             IsImage = attachment.IsImage,
         }).ToList(),
     };
@@ -714,7 +743,12 @@ internal sealed class ChatMetadataStore : IDisposable
             {
                 entry.Text = NormalizeCachedDisplayText(entry.Text);
                 foreach (var attachment in entry.Attachments)
+                {
                     attachment.FileName = NormalizeCachedDisplayText(attachment.FileName);
+                    attachment.MimeType =
+                        GatewayMediaMessageProjection.NormalizeMimeType(
+                            attachment.MimeType);
+                }
             }
             return cache;
         }
@@ -760,20 +794,17 @@ internal sealed class ChatMetadataStore : IDisposable
                 ? $"\u200B🖼️ {attachment.FileName}"
                 : $"\u200B📎 {attachment.FileName}"));
 
-    internal static string RehydrateAttachmentMarkers(
-        AttachmentMetaMatcher matcher,
-        string text,
-        long historyTsMs)
-    {
-        var match = matcher.TryMatch(text, historyTsMs);
-        if (match is null || match.Attachments.Count == 0)
-            return text;
-
-        var markerLines = BuildAttachmentMarkerLines(match.Attachments);
-        return string.IsNullOrEmpty(text)
-            ? markerLines
-            : $"{text}\n{markerLines}";
-    }
+    internal static IReadOnlyList<ChatAttachmentPresentation>
+        CreatePersistedLocalPresentations(
+            IEnumerable<CachedAttachmentItem> attachments) =>
+        attachments.Select(attachment => new ChatAttachmentPresentation(
+            ChatAttachmentOrigin.Local,
+            GatewayMediaMessageProjection.NormalizeDisplayFileName(
+                attachment.FileName),
+            GatewayMediaMessageProjection.NormalizeMimeType(
+                attachment.MimeType),
+            attachment.IsImage,
+            PreviewCacheKey: null)).ToArray();
 
     internal static string NormalizeCachedDisplayText(string? value)
     {

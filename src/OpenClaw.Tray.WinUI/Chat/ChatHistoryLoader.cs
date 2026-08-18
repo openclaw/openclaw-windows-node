@@ -487,6 +487,18 @@ internal sealed class ChatHistoryLoader : IDisposable
                     if (!before.Contains(entry.Id) && !metadata.ContainsKey(entry.Id))
                         metadata[entry.Id] = entryMetadata;
                 }
+                if (entryMetadata.AssistantContent is not null &&
+                    next.ActiveAssistantId is { } assistantId &&
+                    metadata.TryGetValue(assistantId, out var existingMetadata))
+                {
+                    metadata[assistantId] = existingMetadata with
+                    {
+                        AssistantContent =
+                            ChatAssistantContentProjector.MergeLiveUpdate(
+                                existingMetadata.AssistantContent,
+                                entryMetadata.AssistantContent),
+                    };
+                }
             }
             return next;
         }
@@ -504,6 +516,10 @@ internal sealed class ChatHistoryLoader : IDisposable
             }
 
             var role = message.Role?.ToLowerInvariant() ?? string.Empty;
+            var rawText = replayPart.Text;
+            var userProjection = role == "user"
+                ? GatewayMediaMessageProjection.Project(rawText)
+                : null;
             var entryMetadata = new ChatEntryMetadata(
                 message.Ts > 0
                     ? DateTimeOffset.FromUnixTimeMilliseconds(message.Ts).ToLocalTime()
@@ -517,17 +533,37 @@ internal sealed class ChatHistoryLoader : IDisposable
                 OpenClawSeq: message.OpenClawSeq,
                 OpenClawKind: message.OpenClawKind,
                 CompactionTokensBefore: message.CompactionTokensBefore,
-                CompactionTokensAfter: message.CompactionTokensAfter);
+                CompactionTokensAfter: message.CompactionTokensAfter,
+                AssistantContent: role == "assistant"
+                    ? ChatAssistantContentProjector.Project(
+                        replayPart.AssistantContentParts)
+                    : null);
             var text = ChatContentFormatting.TruncateForChatEntry(
                 ChatMetadataStore.EscapeUntrustedAttachmentMarkerLines(
-                    replayPart.Text));
-            if (role == "user")
-                text = ChatMetadataStore.RehydrateAttachmentMarkers(
-                    attachmentMatcher,
-                    text,
+                    userProjection?.HasMediaEnvelope == true
+                        ? userProjection.ReconciliationText
+                        : rawText));
+            if (userProjection is not null)
+            {
+                var cachedAttachment = attachmentMatcher.TryMatch(
+                    userProjection.ReconciliationText,
+                    userProjection.AttachmentCorrelationSignature,
                     message.Ts);
+                var attachmentPresentations = cachedAttachment is not null
+                    ? ChatMetadataStore.CreatePersistedLocalPresentations(
+                        cachedAttachment.Attachments)
+                    : userProjection.Attachments;
+                entryMetadata = entryMetadata with
+                {
+                    Attachments = attachmentPresentations,
+                };
+            }
             var hasStructuredToolContent =
                 replayPart.ToolContent.Count > 0;
+            var hasUserAttachments =
+                entryMetadata.Attachments is { Count: > 0 };
+            var hasAssistantMedia =
+                entryMetadata.AssistantContent is { Media.Count: > 0 };
 
             if (role == "user" &&
                 _persistence.IsMessageAborted(
@@ -564,12 +600,16 @@ internal sealed class ChatHistoryLoader : IDisposable
             }
 
             if (string.IsNullOrEmpty(text) &&
-                !hasStructuredToolContent)
+                !hasStructuredToolContent &&
+                !hasUserAttachments &&
+                !hasAssistantMedia)
             {
                 continue;
             }
 
-            if (!string.IsNullOrEmpty(text))
+            if (!string.IsNullOrEmpty(text) ||
+                (role == "user" && hasUserAttachments) ||
+                (role == "assistant" && hasAssistantMedia))
             {
                 switch (role)
                 {

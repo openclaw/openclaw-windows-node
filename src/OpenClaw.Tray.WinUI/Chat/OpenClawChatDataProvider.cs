@@ -1,5 +1,4 @@
 using System.Buffers;
-using System.Collections.Concurrent;
 using System.Globalization;
 using System.IO;
 using System.Linq;
@@ -71,12 +70,6 @@ internal static class LocalizationHelper
 public sealed class OpenClawChatDataProvider : IChatDataProvider
 {
     internal const int MaxEntryTextBytes = 256 * 1024;
-    /// <summary>
-    /// Process-wide cache mapping an opaque local preview key to raw image
-    /// bytes. Gateway references never receive keys and cannot read this cache.
-    /// </summary>
-    public static readonly ConcurrentDictionary<string, byte[]> ImagePreviewCache = new();
-
     private readonly IChatGatewayBridge _bridge;
     private readonly ChatTelemetryTracker _telemetry = new();
     private readonly ChatMetadataStore _metadataStore;
@@ -210,8 +203,13 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
                 var presentation = attachmentPresentations[i];
                 if (presentation.CanAccessPreviewCache && !string.IsNullOrEmpty(source.Content))
                 {
-                    try { ImagePreviewCache[presentation.PreviewCacheKey!] = Convert.FromBase64String(source.Content); }
-                    catch (Exception ex) { Logger.Debug($"ChatDataProvider: image attachment base64 decode failed for '{presentation.DisplayFileName}': {ex.Message}"); }
+                    if (!ChatImagePreviewCache.TryStoreBase64(
+                            presentation.PreviewCacheKey!,
+                            source.Content))
+                    {
+                        Logger.Debug(
+                            $"ChatDataProvider: image attachment preview rejected for '{presentation.DisplayFileName}'");
+                    }
                 }
             }
         }
@@ -1686,11 +1684,32 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
                     break;
                 }
             }
-            if (lastUser is null || string.IsNullOrEmpty(lastUser.Text)) return;
+            if (lastUser is null) return;
+            var projection = GatewayMediaMessageProjection.Project(lastUser.Text);
+            if (projection.ReconciliationText.Length == 0 &&
+                projection.Attachments.Count == 0)
+            {
+                return;
+            }
+            var cachedAttachment = _metadataStore
+                .CreateAttachmentMatcher(
+                    history.SessionId,
+                    threadId,
+                    requestResetVersion)
+                .TryMatch(
+                    projection.ReconciliationText,
+                    projection.AttachmentCorrelationSignature,
+                    lastUser.Ts);
+            var projectedAttachments = cachedAttachment is not null
+                ? ChatMetadataStore.CreatePersistedLocalPresentations(
+                    cachedAttachment.Attachments)
+                : projection.Attachments;
 
             var transition = _state.ApplyRemoteUserBackfill(
                 threadId,
                 lastUser,
+                projection,
+                projectedAttachments,
                 requestResetVersion,
                 openResetGateOnSuccess,
                 ProjectionContext());
