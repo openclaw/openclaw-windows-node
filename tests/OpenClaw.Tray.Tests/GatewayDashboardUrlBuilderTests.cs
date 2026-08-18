@@ -4,6 +4,23 @@ namespace OpenClaw.Tray.Tests;
 
 public sealed class GatewayDashboardUrlBuilderTests
 {
+    [Theory]
+    [InlineData(false, false, false)]
+    [InlineData(false, true, true)]
+    [InlineData(true, false, true)]
+    [InlineData(true, true, true)]
+    public void HasBrowserCompatibleCredential_RequiresTailscaleOrSharedToken(
+        bool trustTailscaleAuth,
+        bool usesSharedGatewayToken,
+        bool expected)
+    {
+        Assert.Equal(
+            expected,
+            GatewayDashboardUrlBuilder.HasBrowserCompatibleCredential(
+                trustTailscaleAuth,
+                usesSharedGatewayToken));
+    }
+
     [Fact]
     public void Build_AppendsSharedTokenToDashboardRoot()
     {

@@ -29,6 +29,15 @@ public interface IGatewayConnectionManager : IDisposable, IAsyncDisposable
     Task<bool> RestartSshTunnelAsync(CancellationToken cancellationToken = default) =>
         Task.FromResult(false);
     Task SwitchGatewayAsync(string gatewayId);
+    Task<GatewayTailscaleAuthUpgradeResult> EnableTailscaleDashboardAuthAsync(
+        string gatewayId,
+        CancellationToken cancellationToken = default) =>
+        Task.FromResult(new GatewayTailscaleAuthUpgradeResult(
+            GatewayTailscaleAuthUpgradeOutcome.NotConnected));
+    Task<bool> RevalidateTailscaleDashboardAuthAsync(
+        string gatewayId,
+        CancellationToken cancellationToken = default) =>
+        Task.FromResult(false);
     void SetGatewayConnectionIntent(string gatewayId, bool shouldBeConnected);
     bool IsAutomaticReconnectAllowed(string gatewayId);
 

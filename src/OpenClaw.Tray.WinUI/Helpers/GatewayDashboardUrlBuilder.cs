@@ -2,11 +2,20 @@ namespace OpenClawTray.Helpers;
 
 public static class GatewayDashboardUrlBuilder
 {
+    public const string NoBrowserCompatibleCredentialError =
+        "No browser-compatible gateway credential is available";
+
+    public static bool HasBrowserCompatibleCredential(
+        bool trustTailscaleAuth,
+        bool usesSharedGatewayToken) =>
+        trustTailscaleAuth || usesSharedGatewayToken;
+
     public static string Build(
         string gatewayUrl,
         string? path,
         string? sharedGatewayToken,
-        bool appendSharedGatewayToken)
+        bool appendSharedGatewayToken,
+        bool trustTailscaleAuth = false)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(gatewayUrl);
 
@@ -19,7 +28,7 @@ public static class GatewayDashboardUrlBuilder
             ? baseUrl
             : $"{baseUrl}/{path.TrimStart('/')}";
 
-        if (appendSharedGatewayToken && !string.IsNullOrEmpty(sharedGatewayToken))
+        if (appendSharedGatewayToken && !trustTailscaleAuth && !string.IsNullOrEmpty(sharedGatewayToken))
         {
             var separator = url.Contains('#') ? "&" : "#";
             url = $"{url}{separator}token={Uri.EscapeDataString(sharedGatewayToken)}";

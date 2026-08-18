@@ -224,16 +224,39 @@ public partial class App
             return matches;
         };
 
-        app.DashboardUrlHandler = (path) =>
+        app.DashboardUrlHandler = async (path) =>
         {
-            if (!TryResolveChatCredentials(out var gatewayUrl, out var token, out var credentialSource, out var isBootstrapToken))
+            if (!TryResolveChatCredentials(out var gatewayUrl, out var dashboardCredential, out var credentialSource, out var isBootstrapToken))
                 return new { error = "Gateway URL or credential is not configured" };
+
+            var active = _gatewayRegistry?.GetActive();
+            var activeMatches = active is not null &&
+                string.Equals(active.Url, gatewayUrl, StringComparison.OrdinalIgnoreCase);
+            var trustTailscaleAuth = false;
+            if (active?.TrustTailscaleAuth == true &&
+                activeMatches &&
+                _connectionManager is not null)
+            {
+                trustTailscaleAuth = await _connectionManager
+                    .RevalidateTailscaleDashboardAuthAsync(active.Id);
+            }
+
+            var usesSharedCredential =
+                !isBootstrapToken && credentialSource == CredentialResolver.SourceSharedGatewayToken;
+
+            if (!GatewayDashboardUrlBuilder.HasBrowserCompatibleCredential(
+                    trustTailscaleAuth,
+                    usesSharedCredential))
+            {
+                return new { error = GatewayDashboardUrlBuilder.NoBrowserCompatibleCredentialError };
+            }
 
             var url = GatewayDashboardUrlBuilder.Build(
                 gatewayUrl,
                 path,
-                token,
-                !isBootstrapToken && credentialSource == CredentialResolver.SourceSharedGatewayToken);
+                dashboardCredential,
+                usesSharedCredential,
+                trustTailscaleAuth);
 
             return new
             {

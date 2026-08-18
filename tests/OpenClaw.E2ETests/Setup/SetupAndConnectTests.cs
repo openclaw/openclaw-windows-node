@@ -439,11 +439,12 @@ public class SetupAndConnectTests
             var requestId = await WaitForFirstPendingDeviceRequestIdAsync(pendingBefore);
             Assert.False(string.IsNullOrWhiteSpace(requestId));
 
-            using var dashboardDoc = await externalTray.Client.CallToolExpectSuccessAsync("app.dashboard.url");
-            var dashboard = dashboardDoc.RootElement;
-            Assert.Equal("record.BootstrapToken", dashboard.GetProperty("credentialSource").GetString());
-            Assert.False(dashboard.GetProperty("usesSharedGatewayToken").GetBoolean());
-            Assert.False(dashboard.GetProperty("hasTokenQuery").GetBoolean());
+            using var dashboardDoc = await externalTray.Client.CallToolAsync("app.dashboard.url");
+            var dashboardResult = dashboardDoc.RootElement.GetProperty("result");
+            Assert.True(dashboardResult.GetProperty("isError").GetBoolean());
+            Assert.Equal(
+                "No browser-compatible gateway credential is available",
+                dashboardResult.GetProperty("content")[0].GetProperty("text").GetString());
 
             using var rejectDoc = await RejectDevicePairingFromConnectionPageAsync(requestId);
             handledDeviceRequestIds.Add(requestId);

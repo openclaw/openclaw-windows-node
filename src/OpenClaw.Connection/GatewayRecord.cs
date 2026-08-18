@@ -33,6 +33,12 @@ public sealed record GatewayRecord
     /// <summary>WSL distro name for gateway records provisioned by SetupEngine.</summary>
     public string? SetupManagedDistroName { get; init; }
 
+    /// <summary>
+    /// True when setup or an explicit upgrade granted this managed gateway's
+    /// Dashboard access to verified Tailscale identity authentication.
+    /// </summary>
+    public bool TrustTailscaleAuth { get; init; }
+
     /// <summary>Per-gateway SSH tunnel configuration. Null if no tunnel needed.</summary>
     public SshTunnelConfig? SshTunnel { get; init; }
 
@@ -95,6 +101,7 @@ public static class GatewayRecordEditing
                 // Migrate legacy "Local (<distro>)" ownership to the explicit durable marker.
                 SetupManagedDistroName = managedDistroName,
                 RequiresV2Signature = rebuilt.RequiresV2Signature || existing.RequiresV2Signature,
+                TrustTailscaleAuth = rebuilt.TrustTailscaleAuth || existing.TrustTailscaleAuth,
             };
         }
         else if (existingManagedDistroName is not null)
@@ -104,6 +111,7 @@ public static class GatewayRecordEditing
                 IsLocal = OpenClaw.Shared.LocalGatewayUrlClassifier.IsLocalGatewayUrl(rebuilt.Url),
                 SetupManagedDistroName = null,
                 RequiresV2Signature = false,
+                TrustTailscaleAuth = false,
                 FriendlyName = ParseLegacyManagedDistroName(result.FriendlyName) is not null
                         ? null
                         : result.FriendlyName,

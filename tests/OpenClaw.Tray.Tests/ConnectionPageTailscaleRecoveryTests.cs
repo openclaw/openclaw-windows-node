@@ -6,6 +6,42 @@ namespace OpenClaw.Tray.Tests;
 public sealed class ConnectionPageTailscaleRecoveryTests
 {
     [Fact]
+    public void SavedDashboardLaunch_UsesSharedBrowserCredentialPolicy()
+    {
+        var source = File.ReadAllText(Path.Combine(
+            TestRepositoryPaths.GetRepositoryRoot(),
+            "src",
+            "OpenClaw.Tray.WinUI",
+            "Pages",
+            "ConnectionPage.xaml.cs"));
+        var methodStart = source.IndexOf(
+            "private async Task OnSavedRowOpenDashboardAsync(object sender)",
+            StringComparison.Ordinal);
+        var methodEnd = source.IndexOf(
+            "private void OnEnableTailscaleDashboardAuth(object sender, RoutedEventArgs e)",
+            methodStart,
+            StringComparison.Ordinal);
+        Assert.True(methodStart >= 0 && methodEnd > methodStart);
+        var method = source[methodStart..methodEnd];
+
+        AssertInOrder(
+            method,
+            "var trustTailscaleAuth = rec.TrustTailscaleAuth &&",
+            "await _connectionManager.RevalidateTailscaleDashboardAuthAsync(rec.Id)",
+            "if (trustTailscaleAuth)",
+            "trustTailscaleAuth: true",
+            "LaunchUriAsync(",
+            "return;",
+            "var usesSharedGatewayToken =",
+            "GatewayDashboardUrlBuilder.HasBrowserCompatibleCredential(",
+            "trustTailscaleAuth,",
+            "usesSharedGatewayToken",
+            "return;",
+            "appendSharedGatewayToken: usesSharedGatewayToken",
+            "LaunchUriAsync(");
+    }
+
+    [Fact]
     public void NetworkFailure_ForManagedTailscaleGateway_UsesDedicatedRecoveryPlan()
     {
         var snapshot = new GatewayConnectionSnapshot
@@ -63,5 +99,16 @@ public sealed class ConnectionPageTailscaleRecoveryTests
 
         Assert.Equal(RecoveryCategory.Network, plan.Recovery);
         Assert.NotEqual("Tailscale gateway unavailable", plan.StripHeadline);
+    }
+
+    private static void AssertInOrder(string source, params string[] markers)
+    {
+        var current = -1;
+        foreach (var marker in markers)
+        {
+            var next = source.IndexOf(marker, current + 1, StringComparison.Ordinal);
+            Assert.True(next >= 0, $"Could not find marker after index {current}: {marker}");
+            current = next;
+        }
     }
 }

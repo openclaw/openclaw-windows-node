@@ -613,11 +613,95 @@ public class OpenClawGatewayClientTests
                 error = new { message = "wizard rejected" }
             }));
 
-        var exception = await Assert.ThrowsAsync<InvalidOperationException>(
+        var exception = await Assert.ThrowsAsync<GatewayRequestRejectedException>(
             async () => await responseTask.WaitAsync(TimeSpan.FromSeconds(2)));
 
         Assert.Equal("wizard rejected", exception.Message);
         Assert.Equal(0, helper.GetPendingRequestCount());
+    }
+
+    [Fact]
+    public async Task PatchConfigDetailedAsync_ClassifiesGatewayRejectionAsAuthoritative()
+    {
+        using var server = new LoopbackWebSocketServer();
+        using var identity = new TempDirectory("config-patch-rejection-");
+        await server.StartAsync();
+        var helper = new GatewayClientTestHelper(
+            gatewayUrl: server.WebSocketUrl,
+            identityPath: identity.Path);
+        using var client = helper.Client;
+        await client.ConnectAsync();
+        using var config = JsonDocument.Parse("{}");
+
+        var responseTask = client.PatchConfigDetailedAsync(config.RootElement, "base-hash", 10_000);
+        var request = await server.ReceiveTextAsync().WaitAsync(TimeSpan.FromSeconds(2));
+        var requestId = ReadRequestId(request);
+        await server.SendTextAsync(JsonSerializer.Serialize(new
+        {
+            type = "res",
+            id = requestId,
+            ok = false,
+            error = new { code = "INVALID_REQUEST", message = "patch rejected" },
+        }));
+
+        var result = await responseTask.WaitAsync(TimeSpan.FromSeconds(2));
+
+        Assert.False(result.Ok);
+        Assert.True(result.IsGatewayRejection);
+        Assert.Equal("patch rejected", result.Error);
+    }
+
+    [Fact]
+    public async Task PatchConfigDetailedAsync_DoesNotClassifyUnavailableAsAuthoritative()
+    {
+        using var server = new LoopbackWebSocketServer();
+        using var identity = new TempDirectory("config-patch-unavailable-");
+        await server.StartAsync();
+        var helper = new GatewayClientTestHelper(
+            gatewayUrl: server.WebSocketUrl,
+            identityPath: identity.Path);
+        using var client = helper.Client;
+        await client.ConnectAsync();
+        using var config = JsonDocument.Parse("{}");
+
+        var responseTask = client.PatchConfigDetailedAsync(config.RootElement, "base-hash", 10_000);
+        var request = await server.ReceiveTextAsync().WaitAsync(TimeSpan.FromSeconds(2));
+        var requestId = ReadRequestId(request);
+        await server.SendTextAsync(JsonSerializer.Serialize(new
+        {
+            type = "res",
+            id = requestId,
+            ok = false,
+            error = new { code = "UNAVAILABLE", message = "runtime activation failed" },
+        }));
+
+        var result = await responseTask.WaitAsync(TimeSpan.FromSeconds(2));
+
+        Assert.False(result.Ok);
+        Assert.False(result.IsGatewayRejection);
+        Assert.Equal("runtime activation failed", result.Error);
+    }
+
+    [Fact]
+    public async Task PatchConfigDetailedAsync_DoesNotClassifyTimeoutAsGatewayRejection()
+    {
+        using var server = new LoopbackWebSocketServer();
+        using var identity = new TempDirectory("config-patch-timeout-");
+        await server.StartAsync();
+        var helper = new GatewayClientTestHelper(
+            gatewayUrl: server.WebSocketUrl,
+            identityPath: identity.Path);
+        using var client = helper.Client;
+        await client.ConnectAsync();
+        using var config = JsonDocument.Parse("{}");
+
+        var responseTask = client.PatchConfigDetailedAsync(config.RootElement, "base-hash", 250);
+        await server.ReceiveTextAsync().WaitAsync(TimeSpan.FromSeconds(2));
+        var result = await responseTask.WaitAsync(TimeSpan.FromSeconds(2));
+
+        Assert.False(result.Ok);
+        Assert.False(result.IsGatewayRejection);
+        Assert.Contains("Timed out waiting", result.Error);
     }
 
     [Fact]

@@ -1797,6 +1797,17 @@ public sealed partial class ConnectionPage : Page
         var openDashboard = new MenuFlyoutItem { Text = LocalizationHelper.GetString("ConnectionPage_OpenDashboard"), Tag = row.Id };
         openDashboard.Click += OnSavedRowOpenDashboard;
         flyout.Items.Add(openDashboard);
+        var gatewayRecord = _gatewayRegistry?.GetById(row.Id);
+        if (row.IsActive && GatewayTailscaleAuthUpgradePolicy.CanOffer(gatewayRecord))
+        {
+            var enableTailscaleAuth = new MenuFlyoutItem
+            {
+                Text = "Use Tailscale identity for dashboard",
+                Tag = row.Id,
+            };
+            enableTailscaleAuth.Click += OnEnableTailscaleDashboardAuth;
+            flyout.Items.Add(enableTailscaleAuth);
+        }
         if (row.HasHostTerminal)
         {
             var openTerminal = new MenuFlyoutItem { Text = row.HostTerminalLabel, Tag = row.Id };
@@ -2520,7 +2531,23 @@ public sealed partial class ConnectionPage : Page
         if (rec == null) return;
         try
         {
-            if (!string.IsNullOrWhiteSpace(rec.SharedGatewayToken))
+            var trustTailscaleAuth = rec.TrustTailscaleAuth &&
+                _connectionManager is not null &&
+                await _connectionManager.RevalidateTailscaleDashboardAuthAsync(rec.Id);
+            if (trustTailscaleAuth)
+            {
+                var tailscaleUrl = GatewayDashboardUrlBuilder.Build(
+                    rec.Url,
+                    path: null,
+                    rec.SharedGatewayToken,
+                    appendSharedGatewayToken: false,
+                    trustTailscaleAuth: true);
+                await global::Windows.System.Launcher.LaunchUriAsync(new Uri(tailscaleUrl));
+                return;
+            }
+
+            var usesSharedGatewayToken = !string.IsNullOrWhiteSpace(rec.SharedGatewayToken);
+            if (usesSharedGatewayToken)
             {
                 var provenanceService = CurrentApp.ManagedLocalPortProvenance;
                 if (provenanceService is null)
@@ -2538,17 +2565,67 @@ public sealed partial class ConnectionPage : Page
                 }
             }
 
+            if (!GatewayDashboardUrlBuilder.HasBrowserCompatibleCredential(
+                    trustTailscaleAuth,
+                    usesSharedGatewayToken))
+            {
+                CurrentApp.ShowTransientConnectionError(
+                    "Tailscale authentication is unavailable and no approved browser credential is available");
+                return;
+            }
+
             var url = GatewayDashboardUrlBuilder.Build(
                 rec.Url,
                 path: null,
                 rec.SharedGatewayToken,
-                appendSharedGatewayToken: !string.IsNullOrWhiteSpace(rec.SharedGatewayToken));
+                appendSharedGatewayToken: usesSharedGatewayToken);
             await global::Windows.System.Launcher.LaunchUriAsync(new Uri(url));
         }
         catch (Exception ex)
         {
             Services.Logger.Warn($"[ConnectionPage] Failed to open saved gateway dashboard: {ex.Message}");
         }
+    }
+
+    private void OnEnableTailscaleDashboardAuth(object sender, RoutedEventArgs e) =>
+        AsyncEventHandlerGuard.Run(
+            () => OnEnableTailscaleDashboardAuthAsync(sender),
+            new AppLogger(),
+            nameof(OnEnableTailscaleDashboardAuth));
+
+    private async Task OnEnableTailscaleDashboardAuthAsync(object sender)
+    {
+        if (sender is not MenuFlyoutItem item ||
+            item.Tag is not string gatewayId ||
+            _connectionManager is null)
+        {
+            return;
+        }
+
+        var dialog = new ContentDialog
+        {
+            Title = "Use Tailscale identity for dashboard?",
+            Content = "This enables verified Tailscale identity authentication on this managed gateway. Your saved token, device identity, WSL distro, and pairing remain unchanged.",
+            PrimaryButtonText = "Enable",
+            CloseButtonText = LocalizationHelper.GetString("ConnectionPage_CancelAction"),
+            DefaultButton = ContentDialogButton.Close,
+            XamlRoot = XamlRoot,
+        };
+        if (await dialog.ShowAsync() != ContentDialogResult.Primary)
+            return;
+
+        var result = await _connectionManager.EnableTailscaleDashboardAuthAsync(gatewayId);
+        if (result.IsSuccess)
+        {
+            SetGatewayHostActionStatus("Tailscale dashboard identity enabled.");
+            LoadSavedGateways();
+            return;
+        }
+
+        var detail = string.IsNullOrWhiteSpace(result.Error)
+            ? result.Outcome.ToString()
+            : result.Error;
+        SetGatewayHostActionStatus($"Could not enable Tailscale dashboard identity: {detail}", isError: true);
     }
 
     private void OnSavedRowEdit(object sender, RoutedEventArgs e)

@@ -12,6 +12,8 @@ namespace OpenClaw.SetupEngine;
 
 public sealed class PairOperatorStep : SetupStep
 {
+    private const string AllowTailscaleConfigKey = "gateway.auth.allowTailscale";
+
     public override string Id => "pair-operator";
     public override string DisplayName => "Pair operator connection";
     public override RetryPolicy Retry => new(MaxAttempts: 3, InitialDelay: TimeSpan.FromSeconds(3));
@@ -50,6 +52,7 @@ public sealed class PairOperatorStep : SetupStep
                 BootstrapToken = ctx.BootstrapToken,
                 IsLocal = true,
                 SetupManagedDistroName = ctx.DistroName,
+                TrustTailscaleAuth = ResolveEffectiveTailscaleAuthTrust(ctx.Config),
                 LastConnected = DateTime.UtcNow
             };
 
@@ -164,6 +167,15 @@ public sealed class PairOperatorStep : SetupStep
                 client.Dispose();
             }
         }
+    }
+
+    private static bool ResolveEffectiveTailscaleAuthTrust(SetupConfig config)
+    {
+        if (!config.Tailscale.Enabled || !config.Tailscale.TrustTailscaleAuth)
+            return false;
+
+        return config.Gateway.ExtraConfig?.TryGetValue(AllowTailscaleConfigKey, out var value) != true ||
+            bool.TryParse(value, out var enabled) && enabled;
     }
 
     internal static async Task<StepResult?> EnsurePairingEndpointTrustedAsync(

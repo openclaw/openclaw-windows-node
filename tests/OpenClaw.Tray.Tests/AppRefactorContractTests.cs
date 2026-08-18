@@ -452,6 +452,33 @@ public sealed class AppRefactorContractTests
     }
 
     [Fact]
+    public void DashboardLaunches_UseSharedBrowserCredentialPolicy()
+    {
+        var source = ReadAppSources();
+        var direct = ExtractMethod(source, "OpenDashboard");
+        var revalidated = ExtractMethod(source, "OpenDashboardAfterTailscaleAuthRevalidationAsync");
+
+        AssertInOrder(
+            direct,
+            "if (active?.TrustTailscaleAuth == true",
+            "OpenDashboardAfterTailscaleAuthRevalidationAsync(",
+            "return;",
+            "GatewayDashboardUrlBuilder.HasBrowserCompatibleCredential(",
+            "trustTailscaleAuth: false",
+            "usesSharedGatewayToken: appendBrowserCredential",
+            "return;",
+            "LaunchDashboardUrl(");
+        AssertInOrder(
+            revalidated,
+            "trustTailscaleAuth = await",
+            "GatewayDashboardUrlBuilder.HasBrowserCompatibleCredential(",
+            "trustTailscaleAuth,",
+            "appendBrowserCredential",
+            "return;",
+            "LaunchDashboardUrl(");
+    }
+
+    [Fact]
     public void SshTunnelExit_RecoversActiveRegistryGatewayThroughConnectionManager()
     {
         var source = ReadAppSources();
