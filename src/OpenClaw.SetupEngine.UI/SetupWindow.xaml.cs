@@ -305,7 +305,11 @@ public sealed partial class SetupWindow : Window
         return true;
     }
 
-    public void RetryWslInstallation() => NavigateToProgress();
+    public void RetryWslInstallation()
+    {
+        SetupRetryPolicy.PrepareWslInstallationRetry(_config);
+        NavigateToProgress();
+    }
 
     private void ShowConfigurationError(string errorMessage)
     {
