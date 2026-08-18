@@ -12,7 +12,7 @@ public sealed class ComposerSessionPickerTests
         "src",
         "OpenClaw.Tray.WinUI",
         "Chat",
-        "OpenClawReactorChatRoot.cs"));
+        "ReactorChatComposer.cs"));
 
     [Fact]
     public void SessionPicker_UsesDeclarativeMenuFlyout()
@@ -20,9 +20,9 @@ public sealed class ComposerSessionPickerTests
         var composer = ComposerSource();
 
         Assert.Contains("var sessionPicker = MenuFlyout(", composer);
-        Assert.Contains("props.AvailableChannels", composer);
+        Assert.Contains("inputs.AvailableChannels", composer);
         Assert.Contains(".Select(thread => RadioMenuItem(", composer);
-        Assert.Contains("() => props.OnChannelChanged(thread.Id)", composer);
+        Assert.Contains("() => controller.SelectChannel(thread.Id)", composer);
     }
 
     [Fact]

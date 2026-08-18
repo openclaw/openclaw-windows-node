@@ -179,7 +179,7 @@ public sealed class ReactorToolActivityProofTests
         }
     }
 
-    private static OpenClawChatTimelineProps BuildTimeline(
+    private static ChatTimelinePresentationContext BuildTimeline(
         IReadOnlyList<ChatTimelineItem> entries,
         long generation) =>
         new(
