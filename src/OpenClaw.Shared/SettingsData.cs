@@ -101,6 +101,10 @@ public record class SettingsData
     public string? TtsElevenLabsApiKey { get; set; }
     public string? TtsElevenLabsModel { get; set; }
     public string? TtsElevenLabsVoiceId { get; set; }
+    /// <summary>
+    /// MiniMax API key storage slot. When persisted by the Windows tray's
+    /// SettingsManager this is an opaque dpapi:-prefixed blob, not plaintext.
+    /// </summary>
     public string? TtsMiniMaxApiKey { get; set; }
     public string? TtsMiniMaxModel { get; set; } = "speech-2.8-hd";
     public string? TtsMiniMaxVoiceId { get; set; }

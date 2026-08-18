@@ -17,7 +17,6 @@ public sealed class MiniMaxSynthesisRequest
     public string ModelId { get; set; } = "";
     public string VoiceId { get; set; } = "";
     public string? Region { get; set; }
-    public bool Stream { get; set; }
 }
 
 public sealed class MiniMaxSynthesisResult
@@ -34,6 +33,7 @@ public sealed class MiniMaxTextToSpeechClient : IDisposable
     public const string ChinaRegion = "cn_zh";
     public const string GlobalBaseUrl = "https://api.minimax.io";
     public const string ChinaBaseUrl = "https://api.minimaxi.com";
+    public const int MaxResponseBytes = 32 * 1024 * 1024;
     public static readonly TimeSpan DefaultTimeout = TimeSpan.FromSeconds(60);
 
     public static readonly string[] Models =
@@ -60,20 +60,25 @@ public sealed class MiniMaxTextToSpeechClient : IDisposable
     private readonly bool _ownsHttpClient;
 
     public MiniMaxTextToSpeechClient()
-        : this(new HttpClient(), ownsHttpClient: true)
+        : this(new HttpClient(), ownsHttpClient: true, DefaultTimeout)
     {
     }
 
     public MiniMaxTextToSpeechClient(HttpMessageHandler handler)
-        : this(new HttpClient(handler), ownsHttpClient: true)
+        : this(new HttpClient(handler), ownsHttpClient: true, DefaultTimeout)
     {
     }
 
-    private MiniMaxTextToSpeechClient(HttpClient httpClient, bool ownsHttpClient)
+    internal MiniMaxTextToSpeechClient(HttpMessageHandler handler, TimeSpan timeout)
+        : this(new HttpClient(handler), ownsHttpClient: true, timeout)
+    {
+    }
+
+    private MiniMaxTextToSpeechClient(HttpClient httpClient, bool ownsHttpClient, TimeSpan timeout)
     {
         _httpClient = httpClient;
         _ownsHttpClient = ownsHttpClient;
-        _httpClient.Timeout = DefaultTimeout;
+        _httpClient.Timeout = timeout;
     }
 
     public TimeSpan Timeout => _httpClient.Timeout;
@@ -97,12 +102,16 @@ public sealed class MiniMaxTextToSpeechClient : IDisposable
         var uri = new Uri(new Uri(ResolveBaseUrl(request.Region)), "/v1/t2a_v2");
         using var message = new HttpRequestMessage(HttpMethod.Post, uri);
         message.Headers.Authorization = new AuthenticationHeaderValue("Bearer", request.ApiKey.Trim());
+        using var timeoutSource = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        if (_httpClient.Timeout != System.Threading.Timeout.InfiniteTimeSpan)
+            timeoutSource.CancelAfter(_httpClient.Timeout);
+        var requestToken = timeoutSource.Token;
 
         var body = new Dictionary<string, object?>
         {
             ["model"] = model,
             ["text"] = request.Text,
-            ["stream"] = request.Stream,
+            ["stream"] = false,
             ["voice_setting"] = new Dictionary<string, object?>
             {
                 ["voice_id"] = request.VoiceId.Trim()
@@ -115,8 +124,10 @@ public sealed class MiniMaxTextToSpeechClient : IDisposable
 
         message.Content = new StringContent(JsonSerializer.Serialize(body), Encoding.UTF8, "application/json");
 
-        using var response = await _httpClient.SendAsync(message, cancellationToken).ConfigureAwait(false);
-        var bytes = await response.Content.ReadAsByteArrayAsync(cancellationToken).ConfigureAwait(false);
+        using var response = await _httpClient
+            .SendAsync(message, HttpCompletionOption.ResponseHeadersRead, requestToken)
+            .ConfigureAwait(false);
+        var bytes = await ReadBoundedResponseAsync(response.Content, requestToken).ConfigureAwait(false);
         if (!response.IsSuccessStatusCode)
             throw new InvalidOperationException(BuildFailureMessage(response.StatusCode, bytes));
 
@@ -140,18 +151,81 @@ public sealed class MiniMaxTextToSpeechClient : IDisposable
 
     private static byte[] ExtractAudio(byte[] responseBytes)
     {
-        using var doc = JsonDocument.Parse(responseBytes);
-        if (!doc.RootElement.TryGetProperty("data", out var data) ||
-            !data.TryGetProperty("audio", out var audio) ||
-            audio.ValueKind != JsonValueKind.String)
+        JsonDocument doc;
+        try
         {
-            return [];
+            doc = JsonDocument.Parse(responseBytes);
+        }
+        catch (JsonException ex)
+        {
+            throw new InvalidOperationException("MiniMax returned an invalid JSON response.", ex);
         }
 
-        var value = audio.GetString();
-        return string.IsNullOrWhiteSpace(value)
-            ? []
-            : Convert.FromHexString(value);
+        using (doc)
+        {
+            if (TryGetApplicationErrorCode(doc.RootElement, out var statusCode))
+            {
+                throw new InvalidOperationException(
+                    $"MiniMax TTS returned provider error code {statusCode}.");
+            }
+
+            if (!doc.RootElement.TryGetProperty("data", out var data) ||
+                !data.TryGetProperty("audio", out var audio) ||
+                audio.ValueKind != JsonValueKind.String)
+            {
+                return [];
+            }
+
+            var value = audio.GetString();
+            if (string.IsNullOrWhiteSpace(value))
+                return [];
+
+            try
+            {
+                return Convert.FromHexString(value);
+            }
+            catch (FormatException ex)
+            {
+                throw new InvalidOperationException("MiniMax returned invalid audio data.", ex);
+            }
+        }
+    }
+
+    private static bool TryGetApplicationErrorCode(JsonElement root, out int statusCode)
+    {
+        statusCode = 0;
+        return root.TryGetProperty("base_resp", out var baseResponse) &&
+            baseResponse.ValueKind == JsonValueKind.Object &&
+            baseResponse.TryGetProperty("status_code", out var statusCodeElement) &&
+            statusCodeElement.TryGetInt32(out statusCode) &&
+            statusCode != 0;
+    }
+
+    private static async Task<byte[]> ReadBoundedResponseAsync(
+        HttpContent content,
+        CancellationToken cancellationToken)
+    {
+        if (content.Headers.ContentLength is > MaxResponseBytes)
+            throw new InvalidOperationException($"MiniMax response exceeds {MaxResponseBytes} bytes.");
+
+        var initialCapacity = content.Headers.ContentLength is > 0 and <= MaxResponseBytes
+            ? (int)content.Headers.ContentLength.Value
+            : 0;
+        using var destination = new MemoryStream(initialCapacity);
+        using var source = await content.ReadAsStreamAsync(cancellationToken).ConfigureAwait(false);
+        var buffer = new byte[64 * 1024];
+        while (true)
+        {
+            var read = await source.ReadAsync(buffer.AsMemory(), cancellationToken).ConfigureAwait(false);
+            if (read == 0)
+                break;
+            if (destination.Length + read > MaxResponseBytes)
+                throw new InvalidOperationException($"MiniMax response exceeds {MaxResponseBytes} bytes.");
+
+            await destination.WriteAsync(buffer.AsMemory(0, read), cancellationToken).ConfigureAwait(false);
+        }
+
+        return destination.ToArray();
     }
 
     private static string BuildFailureMessage(System.Net.HttpStatusCode statusCode, byte[] bodyBytes)
