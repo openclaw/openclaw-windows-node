@@ -1160,8 +1160,9 @@ public sealed class AppRefactorContractTests
         var complete = File.ReadAllText(Path.Combine(root, "src", "OpenClaw.SetupEngine.UI", "Pages", "CompletePage.xaml.cs"));
         var progress = File.ReadAllText(Path.Combine(root, "src", "OpenClaw.SetupEngine.UI", "Pages", "ProgressPage.xaml.cs"));
 
-        Assert.Contains("canRetryWslInstallation: result.FailedStepId == \"wsl-create\"", progress);
+        Assert.Contains("canRetryWslInstallation: result.FailedStepId == CreateWslInstanceStep.StepId", progress);
         Assert.Contains("SetupRetryPolicy.PrepareWslInstallationRetry(_config);", setupWindow);
+        Assert.Contains("_appendLogOnNextProgressRun = true;", setupWindow);
         Assert.Contains("RetryButton.Visibility = args.CanRetryWslInstallation", complete);
         Assert.Contains("SetupWindow.Active?.RetryWslInstallation();", complete);
     }

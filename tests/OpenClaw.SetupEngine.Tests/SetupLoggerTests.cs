@@ -182,6 +182,26 @@ public class SetupLoggerTests : IDisposable
     }
 
     [Fact]
+    public void WritesToFile_AppendsWhenRequested()
+    {
+        var path = Path.Combine(_tempDir, "append.jsonl");
+        using (var logger = new SetupLogger(path))
+        {
+            logger.Info("first attempt");
+        }
+
+        using (var logger = new SetupLogger(path, append: true))
+        {
+            logger.Info("retry attempt");
+        }
+
+        var lines = File.ReadAllLines(path);
+        Assert.Equal(2, lines.Length);
+        Assert.Contains("first attempt", lines[0]);
+        Assert.Contains("retry attempt", lines[1]);
+    }
+
+    [Fact]
     public void CommandCompleted_WritesReadableJsonWithoutUnicodeOrNewlineEscapes()
     {
         var path = Path.Combine(_tempDir, "readable.jsonl");

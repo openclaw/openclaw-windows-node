@@ -23,6 +23,7 @@ public sealed partial class SetupWindow : Window
     private bool _isClosed;
     private bool _persistStartupPreferenceOnComplete = true;
     private bool _showStartupPreferenceOnComplete = true;
+    private bool _appendLogOnNextProgressRun;
     private readonly string _dataDir;
     private readonly string _localDataDir;
 
@@ -199,8 +200,12 @@ public sealed partial class SetupWindow : Window
     public void NavigateToGatewayInstalledMilestone() =>
         NavigateTo(typeof(ProgressPage), CreateProgressPageArgs(showMilestoneOnly: true));
 
-    private ProgressPageArgs CreateProgressPageArgs(bool showMilestoneOnly) =>
-        new(_config, showMilestoneOnly, _dataDir, _localDataDir);
+    private ProgressPageArgs CreateProgressPageArgs(bool showMilestoneOnly)
+    {
+        var appendLog = _appendLogOnNextProgressRun;
+        _appendLogOnNextProgressRun = false;
+        return new(_config, showMilestoneOnly, _dataDir, _localDataDir, appendLog);
+    }
 
     public bool TryNavigateToGatewayInstalledMilestone()
     {
@@ -308,6 +313,7 @@ public sealed partial class SetupWindow : Window
     public void RetryWslInstallation()
     {
         SetupRetryPolicy.PrepareWslInstallationRetry(_config);
+        _appendLogOnNextProgressRun = true;
         NavigateToProgress();
     }
 

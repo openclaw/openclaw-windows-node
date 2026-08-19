@@ -15,7 +15,8 @@ internal sealed record ProgressPageArgs(
     SetupConfig Config,
     bool ShowMilestoneOnly,
     string DataDir,
-    string LocalDataDir);
+    string LocalDataDir,
+    bool AppendLog);
 
 public sealed partial class ProgressPage : Page
 {
@@ -28,6 +29,7 @@ public sealed partial class ProgressPage : Page
     private bool _pipelineFinished;
     private string _dataDir = null!;
     private string _localDataDir = null!;
+    private bool _appendLog;
     private Uri? _tailscaleAuthorizationUri;
     private const int MaxLogLines = 200;
 
@@ -62,6 +64,7 @@ public sealed partial class ProgressPage : Page
         _config = args?.Config ?? e.Parameter as SetupConfig ?? new SetupConfig();
         _dataDir = args?.DataDir ?? SetupContext.ResolveDataDir();
         _localDataDir = args?.LocalDataDir ?? SetupContext.ResolveLocalDataDir();
+        _appendLog = args?.AppendLog == true;
         SubtitleText.Text = $"Creating {_config.DistroName} WSL instance";
 
         BuildStepRows();
@@ -141,7 +144,8 @@ public sealed partial class ProgressPage : Page
         try
         {
             _logger = new SetupLogger(config.LogPath,
-                Enum.TryParse<LogLevel>(config.LogLevel, true, out var lvl) ? lvl : LogLevel.Trace);
+                Enum.TryParse<LogLevel>(config.LogLevel, true, out var lvl) ? lvl : LogLevel.Trace,
+                append: _appendLog);
 
             _logger.LogEmitted += OnLogEmitted;
 
@@ -196,7 +200,7 @@ public sealed partial class ProgressPage : Page
                     config.LogPath,
                     errorMsg,
                     result.CompatibilityFailure,
-                    canRetryWslInstallation: result.FailedStepId == "wsl-create");
+                    canRetryWslInstallation: result.FailedStepId == CreateWslInstanceStep.StepId);
             }
         }
         catch (OperationCanceledException) when (cts.IsCancellationRequested)

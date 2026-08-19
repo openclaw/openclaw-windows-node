@@ -741,6 +741,7 @@ public sealed class PreflightPortStep : SetupStep
 
 public sealed class CreateWslInstanceStep : SetupStep
 {
+    public const string StepId = "wsl-create";
     private static readonly TimeSpan DistroVersionVerificationTimeout = TimeSpan.FromMinutes(1);
     private static readonly TimeSpan[] FreshDistroProbeTimeouts =
     [
@@ -749,7 +750,7 @@ public sealed class CreateWslInstanceStep : SetupStep
         TimeSpan.FromSeconds(90),
     ];
 
-    public override string Id => "wsl-create";
+    public override string Id => StepId;
     public override string DisplayName => "Create WSL instance";
     public override bool CanRetry => false;
 
