@@ -15,6 +15,8 @@
     <DefaultLanguage>en-US</DefaultLanguage>
     <Platforms>x64;ARM64</Platforms>
     <RuntimeIdentifiers>win-x64;win-arm64</RuntimeIdentifiers>
+    <!-- WinUIEx 2.9.3 marks its legacy Icon type obsolete, but the WinUI XAML generator still emits Icon.FromFile. -->
+    <WarningsNotAsErrors>$(WarningsNotAsErrors);CS0618</WarningsNotAsErrors>
   </PropertyGroup>
 
   <!-- Dev build identity: allows side-by-side installation with Release.
@@ -77,7 +79,7 @@
     <PackageReference Include="Microsoft.Windows.SDK.BuildTools" Version="$(MicrosoftWindowsSdkBuildToolsVersion)" />
     <PackageReference Include="OpenTelemetry" Version="1.16.0" />
     <PackageReference Include="OpenTelemetry.Exporter.OpenTelemetryProtocol" Version="1.16.0" />
-    <PackageReference Include="WinUIEx" Version="2.9.0" />
+    <PackageReference Include="WinUIEx" Version="2.9.3" />
     <PackageReference Include="Microsoft.Toolkit.Uwp.Notifications" Version="7.1.3" />
     <PackageReference Include="CommunityToolkit.WinUI.Controls.SettingsControls" Version="8.3.260402-preview2" />
     <PackageReference Include="CommunityToolkit.WinUI.Controls.Sizers" Version="8.3.260402-preview2" />
