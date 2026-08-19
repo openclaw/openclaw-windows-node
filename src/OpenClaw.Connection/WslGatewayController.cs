@@ -15,7 +15,8 @@ public sealed record WslGatewayControlResult(
     WslGatewayControlAction Action,
     int ExitCode,
     string StandardOutput,
-    string StandardError)
+    string StandardError,
+    bool TimedOut = false)
 {
     public bool Success => ExitCode == 0;
 
@@ -96,7 +97,8 @@ public sealed class WslGatewayController(IWslCommandRunner commandRunner, IOpenC
             action,
             result.ExitCode,
             result.StandardOutput,
-            result.StandardError);
+            result.StandardError,
+            result.TimedOut);
     }
 
     /// <summary>

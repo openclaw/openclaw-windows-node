@@ -31,6 +31,17 @@ public sealed class WslManagedLocalGatewayRestarter(WslGatewayController control
         if (result.Success)
             return new ManagedLocalGatewayRestartResult(true);
 
+        // A timeout only proves that the host-side wsl.exe client stopped waiting. The in-distro
+        // restart (or a detached update handoff that triggered it) may still be running. Terminating
+        // the whole distro here can kill healthy, long-running maintenance, so fail closed and let
+        // the normal reconnect/repair loop observe the eventual outcome.
+        if (result.TimedOut)
+        {
+            return new ManagedLocalGatewayRestartResult(
+                false,
+                "Gateway restart timed out; skipped forced distro termination because completion is unknown.");
+        }
+
         if (!canContinue())
             return new ManagedLocalGatewayRestartResult(false, "Gateway changed before forced restart.");
 

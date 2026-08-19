@@ -119,6 +119,29 @@ public class WslGatewayControllerTests
     }
 
     [Fact]
+    public async Task Restarter_WhenInPlaceRestartTimesOut_DoesNotForceTerminate()
+    {
+        var runner = new FakeWslCommandRunner
+        {
+            Distros = [new WslDistroInfo("OpenClawGateway", "Running", 2)],
+            Result = new WslCommandResult(
+                -1,
+                string.Empty,
+                "wsl.exe timed out",
+                TimedOut: true),
+        };
+        var controller = new WslGatewayController(runner, NullLogger.Instance);
+        var restarter = new OpenClawTray.Services.WslManagedLocalGatewayRestarter(controller);
+
+        var result = await restarter.RestartAsync("OpenClawGateway", CancellationToken.None);
+
+        Assert.False(result.Success);
+        Assert.Contains("completion is unknown", result.Detail, StringComparison.OrdinalIgnoreCase);
+        Assert.Equal(0, runner.TerminateCount);
+        Assert.Equal(1, runner.InDistroCount);
+    }
+
+    [Fact]
     public async Task Restarter_WhenBothRestartsFail_ReportsFailure()
     {
         var runner = new FakeWslCommandRunner

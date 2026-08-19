@@ -5,7 +5,11 @@ using System.Text;
 
 namespace OpenClaw.Connection;
 
-public sealed record WslCommandResult(int ExitCode, string StandardOutput, string StandardError)
+public sealed record WslCommandResult(
+    int ExitCode,
+    string StandardOutput,
+    string StandardError,
+    bool TimedOut = false)
 {
     public bool Success => ExitCode == 0;
 }
@@ -171,7 +175,7 @@ public sealed class WslExeCommandRunner : IWslCommandRunner
         try { stderr = await stderrTask; } catch { stderr = string.Empty; }
 
         return timedOut
-            ? new WslCommandResult(-1, stdout, "wsl.exe timed out")
+            ? new WslCommandResult(-1, stdout, "wsl.exe timed out", TimedOut: true)
             : new WslCommandResult(process.ExitCode, stdout, stderr);
     }
 }
