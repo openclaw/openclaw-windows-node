@@ -6,7 +6,7 @@ namespace OpenClaw.Tray.Tests;
 public sealed class ConnectionPageTailscaleRecoveryTests
 {
     [Fact]
-    public void SavedDashboardLaunch_UsesSharedBrowserCredentialPolicy()
+    public void SavedDashboardLaunch_DelegatesToSharedDashboardLinkService()
     {
         var source = File.ReadAllText(Path.Combine(
             TestRepositoryPaths.GetRepositoryRoot(),
@@ -24,21 +24,44 @@ public sealed class ConnectionPageTailscaleRecoveryTests
         Assert.True(methodStart >= 0 && methodEnd > methodStart);
         var method = source[methodStart..methodEnd];
 
-        AssertInOrder(
-            method,
-            "var trustTailscaleAuth = rec.TrustTailscaleAuth &&",
-            "await _connectionManager.RevalidateTailscaleDashboardAuthAsync(rec.Id)",
-            "if (trustTailscaleAuth)",
-            "trustTailscaleAuth: true",
-            "LaunchUriAsync(",
-            "return;",
-            "var usesSharedGatewayToken =",
-            "GatewayDashboardUrlBuilder.HasBrowserCompatibleCredential(",
-            "trustTailscaleAuth,",
-            "usesSharedGatewayToken",
-            "return;",
-            "appendSharedGatewayToken: usesSharedGatewayToken",
-            "LaunchUriAsync(");
+        Assert.Contains("OpenDashboardFromLinkServiceAsync", method);
+        Assert.Contains("new GatewayDashboardLinkRequest(", method);
+        Assert.Contains("ValidateSavedDashboardFallbackAsync", method);
+        Assert.DoesNotContain("RevalidateTailscaleDashboardAuthAsync", method);
+        Assert.DoesNotContain("GatewayDashboardUrlBuilder.Build(", method);
+
+        var validationStart = source.IndexOf(
+            "private async Task<bool> ValidateSavedDashboardFallbackAsync(",
+            methodStart,
+            StringComparison.Ordinal);
+        Assert.True(validationStart > methodStart);
+        var validationEnd = source.IndexOf(
+            "private void OnEnableTailscaleDashboardAuth(object sender, RoutedEventArgs e)",
+            validationStart,
+            StringComparison.Ordinal);
+        Assert.True(validationEnd > validationStart);
+        var validation = source[validationStart..validationEnd];
+
+        var tailscaleBypass = validation.IndexOf(
+            "if (result.TrustTailscaleAuth)",
+            StringComparison.Ordinal);
+        var bypassReturn = validation.IndexOf(
+            "return true;",
+            tailscaleBypass,
+            StringComparison.Ordinal);
+        var provenanceLookup = validation.IndexOf(
+            "ManagedLocalPortProvenance",
+            bypassReturn,
+            StringComparison.Ordinal);
+        var credentialAuthorization = validation.IndexOf(
+            "IsStrongCredentialAllowed",
+            provenanceLookup,
+            StringComparison.Ordinal);
+
+        Assert.True(tailscaleBypass >= 0);
+        Assert.True(bypassReturn > tailscaleBypass);
+        Assert.True(provenanceLookup > bypassReturn);
+        Assert.True(credentialAuthorization > provenanceLookup);
     }
 
     [Fact]
@@ -101,14 +124,4 @@ public sealed class ConnectionPageTailscaleRecoveryTests
         Assert.NotEqual("Tailscale gateway unavailable", plan.StripHeadline);
     }
 
-    private static void AssertInOrder(string source, params string[] markers)
-    {
-        var current = -1;
-        foreach (var marker in markers)
-        {
-            var next = source.IndexOf(marker, current + 1, StringComparison.Ordinal);
-            Assert.True(next >= 0, $"Could not find marker after index {current}: {marker}");
-            current = next;
-        }
-    }
 }

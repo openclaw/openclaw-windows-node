@@ -2,14 +2,6 @@ namespace OpenClawTray.Helpers;
 
 public static class GatewayDashboardUrlBuilder
 {
-    public const string NoBrowserCompatibleCredentialError =
-        "No browser-compatible gateway credential is available";
-
-    public static bool HasBrowserCompatibleCredential(
-        bool trustTailscaleAuth,
-        bool usesSharedGatewayToken) =>
-        trustTailscaleAuth || usesSharedGatewayToken;
-
     public static string Build(
         string gatewayUrl,
         string? path,

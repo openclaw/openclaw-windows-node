@@ -1802,7 +1802,7 @@ public sealed partial class ConnectionPage : Page
         {
             var enableTailscaleAuth = new MenuFlyoutItem
             {
-                Text = "Use Tailscale identity for dashboard",
+                Text = LocalizationHelper.GetString("ConnectionPage_TailscaleDashboardAuthMenu"),
                 Tag = row.Id,
             };
             enableTailscaleAuth.Click += OnEnableTailscaleDashboardAuth;
@@ -2531,60 +2531,48 @@ public sealed partial class ConnectionPage : Page
         if (rec == null) return;
         try
         {
-            var trustTailscaleAuth = rec.TrustTailscaleAuth &&
-                _connectionManager is not null &&
-                await _connectionManager.RevalidateTailscaleDashboardAuthAsync(rec.Id);
-            if (trustTailscaleAuth)
-            {
-                var tailscaleUrl = GatewayDashboardUrlBuilder.Build(
-                    rec.Url,
-                    path: null,
-                    rec.SharedGatewayToken,
-                    appendSharedGatewayToken: false,
-                    trustTailscaleAuth: true);
-                await global::Windows.System.Launcher.LaunchUriAsync(new Uri(tailscaleUrl));
-                return;
-            }
-
-            var usesSharedGatewayToken = !string.IsNullOrWhiteSpace(rec.SharedGatewayToken);
-            if (usesSharedGatewayToken)
-            {
-                var provenanceService = CurrentApp.ManagedLocalPortProvenance;
-                if (provenanceService is null)
-                    return;
-                _ = await provenanceService.InspectAsync(rec);
-                var candidate = new GatewayCredential(
-                    rec.SharedGatewayToken!,
-                    IsBootstrapToken: false,
-                    CredentialResolver.SourceSharedGatewayToken);
-                if (!provenanceService.IsStrongCredentialAllowed(rec, candidate))
-                {
-                    CurrentApp.ShowTransientConnectionError(
-                        "Dashboard blocked because the saved gateway address is not owned by the verified managed gateway.");
-                    return;
-                }
-            }
-
-            if (!GatewayDashboardUrlBuilder.HasBrowserCompatibleCredential(
-                    trustTailscaleAuth,
-                    usesSharedGatewayToken))
-            {
-                CurrentApp.ShowTransientConnectionError(
-                    "Tailscale authentication is unavailable and no approved browser credential is available");
-                return;
-            }
-
-            var url = GatewayDashboardUrlBuilder.Build(
+            await CurrentApp.OpenDashboardFromLinkServiceAsync(new GatewayDashboardLinkRequest(
                 rec.Url,
-                path: null,
+                null,
                 rec.SharedGatewayToken,
-                appendSharedGatewayToken: usesSharedGatewayToken);
-            await global::Windows.System.Launcher.LaunchUriAsync(new Uri(url));
+                !string.IsNullOrWhiteSpace(rec.SharedGatewayToken),
+                rec.TrustTailscaleAuth ? rec.Id : null),
+                result => ValidateSavedDashboardFallbackAsync(rec, result));
         }
         catch (Exception ex)
         {
             Services.Logger.Warn($"[ConnectionPage] Failed to open saved gateway dashboard: {ex.Message}");
         }
+    }
+
+    private async Task<bool> ValidateSavedDashboardFallbackAsync(
+        GatewayRecord record,
+        GatewayDashboardLinkResult result)
+    {
+        if (result.TrustTailscaleAuth)
+        {
+            return true;
+        }
+
+        var provenanceService = CurrentApp.ManagedLocalPortProvenance;
+        if (provenanceService is null || string.IsNullOrWhiteSpace(record.SharedGatewayToken))
+        {
+            return false;
+        }
+
+        _ = await provenanceService.InspectAsync(record);
+        var candidate = new GatewayCredential(
+            record.SharedGatewayToken,
+            IsBootstrapToken: false,
+            CredentialResolver.SourceSharedGatewayToken);
+        if (provenanceService.IsStrongCredentialAllowed(record, candidate))
+        {
+            return true;
+        }
+
+        CurrentApp.ShowTransientConnectionError(
+            "Dashboard blocked because the saved gateway address is not owned by the verified managed gateway.");
+        return false;
     }
 
     private void OnEnableTailscaleDashboardAuth(object sender, RoutedEventArgs e) =>
@@ -2604,9 +2592,9 @@ public sealed partial class ConnectionPage : Page
 
         var dialog = new ContentDialog
         {
-            Title = "Use Tailscale identity for dashboard?",
-            Content = "This enables verified Tailscale identity authentication on this managed gateway. Your saved token, device identity, WSL distro, and pairing remain unchanged.",
-            PrimaryButtonText = "Enable",
+            Title = LocalizationHelper.GetString("ConnectionPage_TailscaleDashboardAuthTitle"),
+            Content = LocalizationHelper.GetString("ConnectionPage_TailscaleDashboardAuthBody"),
+            PrimaryButtonText = LocalizationHelper.GetString("ConnectionPage_TailscaleDashboardAuthEnable"),
             CloseButtonText = LocalizationHelper.GetString("ConnectionPage_CancelAction"),
             DefaultButton = ContentDialogButton.Close,
             XamlRoot = XamlRoot,
@@ -2617,7 +2605,7 @@ public sealed partial class ConnectionPage : Page
         var result = await _connectionManager.EnableTailscaleDashboardAuthAsync(gatewayId);
         if (result.IsSuccess)
         {
-            SetGatewayHostActionStatus("Tailscale dashboard identity enabled.");
+            SetGatewayHostActionStatus(LocalizationHelper.GetString("ConnectionPage_TailscaleDashboardAuthEnabled"));
             LoadSavedGateways();
             return;
         }
@@ -2625,7 +2613,9 @@ public sealed partial class ConnectionPage : Page
         var detail = string.IsNullOrWhiteSpace(result.Error)
             ? result.Outcome.ToString()
             : result.Error;
-        SetGatewayHostActionStatus($"Could not enable Tailscale dashboard identity: {detail}", isError: true);
+        SetGatewayHostActionStatus(
+            string.Format(LocalizationHelper.GetString("ConnectionPage_TailscaleDashboardAuthFailedFormat"), detail),
+            isError: true);
     }
 
     private void OnSavedRowEdit(object sender, RoutedEventArgs e)

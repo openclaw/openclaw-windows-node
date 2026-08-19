@@ -452,30 +452,14 @@ public sealed class AppRefactorContractTests
     }
 
     [Fact]
-    public void DashboardLaunches_UseSharedBrowserCredentialPolicy()
+    public void DashboardLinkPolicy_StaysDelegatedToFocusedService()
     {
         var source = ReadAppSources();
-        var direct = ExtractMethod(source, "OpenDashboard");
-        var revalidated = ExtractMethod(source, "OpenDashboardAfterTailscaleAuthRevalidationAsync");
 
-        AssertInOrder(
-            direct,
-            "if (active?.TrustTailscaleAuth == true",
-            "OpenDashboardAfterTailscaleAuthRevalidationAsync(",
-            "return;",
-            "GatewayDashboardUrlBuilder.HasBrowserCompatibleCredential(",
-            "trustTailscaleAuth: false",
-            "usesSharedGatewayToken: appendBrowserCredential",
-            "return;",
-            "LaunchDashboardUrl(");
-        AssertInOrder(
-            revalidated,
-            "trustTailscaleAuth = await",
-            "GatewayDashboardUrlBuilder.HasBrowserCompatibleCredential(",
-            "trustTailscaleAuth,",
-            "appendBrowserCredential",
-            "return;",
-            "LaunchDashboardUrl(");
+        Assert.Contains("GatewayDashboardLinkService", source);
+        Assert.DoesNotContain("OpenDashboardAfterTailscaleAuthRevalidationAsync", source);
+        Assert.DoesNotContain(".RevalidateTailscaleDashboardAuthAsync(active.Id)", source);
+        Assert.DoesNotContain("GatewayDashboardUrlBuilder.Build(", source);
     }
 
     [Fact]

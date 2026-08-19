@@ -81,6 +81,7 @@ public partial class App
         }
 
         var connectionManager = _connectionManager;
+        _gatewayDashboardLinkService = null;
         if (connectionManager is not null)
         {
             steps.Add(new AppShutdownStep("gateway client", async () =>
