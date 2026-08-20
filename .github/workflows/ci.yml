@@ -645,49 +645,73 @@ jobs:
         tenant-id: ${{ secrets.AZURE_TENANT_ID }}
         subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
 
-    - name: Stage x64 OpenClaw Executables for Signing
+    - name: Stage x64 OpenClaw Binaries for Signing
       shell: pwsh
       run: |
         New-Item -ItemType Directory -Path signing-input-x64 -Force | Out-Null
-        New-Item -ItemType HardLink -Path signing-input-x64\OpenClaw.Tray.WinUI.exe -Target artifacts\tray-win-x64\OpenClaw.Tray.WinUI.exe | Out-Null
+        $openClawBinaries = @(
+          "OpenClaw.Tray.WinUI.exe",
+          "OpenClaw.Tray.WinUI.dll",
+          "OpenClaw.Chat.dll",
+          "OpenClaw.Connection.dll",
+          "OpenClaw.SetupEngine.UI.dll",
+          "OpenClaw.SetupEngine.dll",
+          "OpenClaw.Shared.dll",
+          "OpenClawTray.FunctionalUI.dll"
+        )
+        foreach ($binary in $openClawBinaries) {
+          New-Item -ItemType HardLink -Path "signing-input-x64\$binary" -Target "artifacts\tray-win-x64\$binary" | Out-Null
+        }
 
-    - name: Stage ARM64 OpenClaw Executables for Signing
+    - name: Stage ARM64 OpenClaw Binaries for Signing
       shell: pwsh
       run: |
         New-Item -ItemType Directory -Path signing-input-arm64 -Force | Out-Null
-        New-Item -ItemType HardLink -Path signing-input-arm64\OpenClaw.Tray.WinUI.exe -Target artifacts\tray-win-arm64\OpenClaw.Tray.WinUI.exe | Out-Null
+        $openClawBinaries = @(
+          "OpenClaw.Tray.WinUI.exe",
+          "OpenClaw.Tray.WinUI.dll",
+          "OpenClaw.Chat.dll",
+          "OpenClaw.Connection.dll",
+          "OpenClaw.SetupEngine.UI.dll",
+          "OpenClaw.SetupEngine.dll",
+          "OpenClaw.Shared.dll",
+          "OpenClawTray.FunctionalUI.dll"
+        )
+        foreach ($binary in $openClawBinaries) {
+          New-Item -ItemType HardLink -Path "signing-input-arm64\$binary" -Target "artifacts\tray-win-arm64\$binary" | Out-Null
+        }
 
-    - name: Sign x64 OpenClaw Executables
+    - name: Sign x64 OpenClaw Binaries
       uses: azure/artifact-signing-action@v2
       with:
         endpoint: https://eus.codesigning.azure.net/
         signing-account-name: openclaw
         certificate-profile-name: openclaw
         files-folder: signing-input-x64
-        files-folder-filter: exe
+        files-folder-filter: exe,dll
         files-folder-depth: 1
         file-digest: SHA256
         timestamp-rfc3161: http://timestamp.acs.microsoft.com
         timestamp-digest: SHA256
 
-    - name: Sign ARM64 OpenClaw Executables
+    - name: Sign ARM64 OpenClaw Binaries
       uses: azure/artifact-signing-action@v2
       with:
         endpoint: https://eus.codesigning.azure.net/
         signing-account-name: openclaw
         certificate-profile-name: openclaw
         files-folder: signing-input-arm64
-        files-folder-filter: exe
+        files-folder-filter: exe,dll
         files-folder-depth: 1
         file-digest: SHA256
         timestamp-rfc3161: http://timestamp.acs.microsoft.com
         timestamp-digest: SHA256
 
-    - name: Verify x64 Release Executable Signing Policy
+    - name: Verify x64 Release Binary Signing Policy
       shell: pwsh
       run: .\scripts\Test-ReleaseExecutableSignatures.ps1 -PayloadPath artifacts/tray-win-x64 -RequireSignedOpenClaw
 
-    - name: Verify ARM64 Release Executable Signing Policy
+    - name: Verify ARM64 Release Binary Signing Policy
       shell: pwsh
       run: .\scripts\Test-ReleaseExecutableSignatures.ps1 -PayloadPath artifacts/tray-win-arm64 -RequireSignedOpenClaw
 
