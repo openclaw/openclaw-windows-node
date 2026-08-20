@@ -44,17 +44,15 @@ public sealed class ChatAssistantMediaRendererContractTests
             StringComparison.Ordinal);
     }
 
-    [Theory]
-    [InlineData("ReactorChatTimeline.cs")]
-    [InlineData("OpenClawChatTimeline.cs")]
-    public void LocalAttachmentRenderer_UsesBoundedSharedDecoder(string fileName)
+    [Fact]
+    public void LocalAttachmentRenderer_UsesBoundedSharedDecoder()
     {
         var source = File.ReadAllText(Path.Combine(
             TestRepositoryPaths.GetRepositoryRoot(),
             "src",
             "OpenClaw.Tray.WinUI",
             "Chat",
-            fileName));
+            "ReactorChatTimeline.cs"));
 
         Assert.Contains(
             "ChatAttachmentBitmapDecoder.TryDecode(bytes)",

@@ -1,4 +1,5 @@
 using OpenClaw.Chat;
+using OpenClaw.Shared;
 
 namespace OpenClawTray.Chat;
 
@@ -22,4 +23,6 @@ public sealed record ChatTimelinePresentationContext(
     Func<string, Task>? OnReadAloud = null,
     Action? OnStopSpeaking = null,
     int ScrollToBottomToken = 0,
-    Action<string, string>? OnPermissionResponse = null);
+    Action<string, string>? OnPermissionResponse = null,
+    Func<string, ChatMediaContentInfo, CancellationToken, Task<AssistantMediaResolutionResult>>?
+        ResolveAssistantMediaAsync = null);
