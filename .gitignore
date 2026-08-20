@@ -62,6 +62,9 @@ BenchmarkDotNet.Artifacts/
 project.lock.json
 project.fragment.lock.json
 artifacts/
+packaging/gateway-msix/content/openclaw/*
+!packaging/gateway-msix/content/openclaw/.gitkeep
+packaging/gateway-msix/content/runtime/
 
 # ASP.NET Scaffolding
 ScaffoldingReadMe.txt

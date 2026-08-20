@@ -163,6 +163,7 @@ The default local gateway URL is `ws://localhost:18789`.
 | **OpenClaw.SetupEngine.UI** | WinUI setup wizard pages |
 | **OpenClaw.Cli** | Gateway WebSocket validation CLI |
 | **OpenClawTray.FunctionalUI** | Declarative WinUI helpers used by newer surfaces |
+| **OpenClaw Gateway MSIX** | Independent NativeAOT gateway packaging under [`packaging/gateway-msix`](packaging/gateway-msix/README.md) |
 
 ### Prepare the checkout
 
