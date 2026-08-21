@@ -1231,6 +1231,18 @@ public sealed class AppRefactorContractTests
     }
 
     [Fact]
+    public void CompletePage_ShowsFailureMessageOnlyInErrorCard()
+    {
+        var root = TestRepositoryPaths.GetRepositoryRoot();
+        var complete = File.ReadAllText(Path.Combine(root, "src", "OpenClaw.SetupEngine.UI", "Pages", "CompletePage.xaml.cs"));
+
+        Assert.Contains("SubtitleText.Visibility = Visibility.Visible", complete);
+        Assert.Contains("SubtitleText.Visibility = Visibility.Collapsed", complete);
+        Assert.Contains("ErrorText.Text = errorMessage", complete);
+        Assert.DoesNotContain("SubtitleText.Text = helpUrl is null", complete);
+    }
+
+    [Fact]
     public void CompletePage_OffersExactFallbackOnlyThroughTypedCompatibilityPath()
     {
         var root = TestRepositoryPaths.GetRepositoryRoot();
