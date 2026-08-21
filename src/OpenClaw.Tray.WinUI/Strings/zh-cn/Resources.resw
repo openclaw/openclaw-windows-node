@@ -5481,6 +5481,12 @@
   <data name="ConnectionPage_TailscaleDashboardAuthFailedFormat" xml:space="preserve">
     <value>无法启用仪表板的 Tailscale 身份认证：{0}</value>
   </data>
+  <data name="DashboardLink_NoBrowserCompatibleCredential" xml:space="preserve">
+    <value>没有可供浏览器使用的网关凭据</value>
+  </data>
+  <data name="DashboardLink_TailscaleRevalidationFailed" xml:space="preserve">
+    <value>重新验证仪表板的 Tailscale 身份认证失败</value>
+  </data>
   <data name="ConnectionPage_GatewayOptionsA11y" xml:space="preserve">
     <value>{0} 的选项</value>
   </data>

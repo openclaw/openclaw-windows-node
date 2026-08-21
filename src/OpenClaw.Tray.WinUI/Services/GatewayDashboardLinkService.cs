@@ -23,18 +23,21 @@ public sealed record GatewayDashboardLinkResult(
 /// </summary>
 public sealed class GatewayDashboardLinkService
 {
-    internal const string NoBrowserCompatibleCredential =
-        "No browser-compatible gateway credential is available";
-    internal const string RevalidationFailed =
-        "Tailscale dashboard authentication revalidation failed";
+    internal const string NoBrowserCompatibleCredentialKey =
+        "DashboardLink_NoBrowserCompatibleCredential";
+    internal const string RevalidationFailedKey =
+        "DashboardLink_TailscaleRevalidationFailed";
 
     private readonly Func<string, CancellationToken, Task<bool>> _revalidateTailscaleAuth;
+    private readonly Func<string, string> _localize;
 
     public GatewayDashboardLinkService(
-        Func<string, CancellationToken, Task<bool>> revalidateTailscaleAuth)
+        Func<string, CancellationToken, Task<bool>> revalidateTailscaleAuth,
+        Func<string, string> localize)
     {
         _revalidateTailscaleAuth = revalidateTailscaleAuth
             ?? throw new ArgumentNullException(nameof(revalidateTailscaleAuth));
+        _localize = localize ?? throw new ArgumentNullException(nameof(localize));
     }
 
     public async Task<GatewayDashboardLinkResult> BuildAsync(
@@ -59,17 +62,18 @@ public sealed class GatewayDashboardLinkService
             }
             catch (Exception)
             {
-                revalidationError = RevalidationFailed;
+                revalidationError = _localize(RevalidationFailedKey);
             }
         }
 
-        if (!trustTailscaleAuth &&
+        if (!string.IsNullOrWhiteSpace(request.TailscaleGatewayId) &&
+            !trustTailscaleAuth &&
             (!request.AppendBrowserCredential || string.IsNullOrWhiteSpace(request.BrowserCredential)))
         {
             return new GatewayDashboardLinkResult(
                 Url: null,
                 TrustTailscaleAuth: false,
-                Error: NoBrowserCompatibleCredential,
+                Error: _localize(NoBrowserCompatibleCredentialKey),
                 RevalidationError: revalidationError);
         }
 

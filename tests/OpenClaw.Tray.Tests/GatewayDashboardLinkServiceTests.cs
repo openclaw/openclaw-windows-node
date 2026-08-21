@@ -45,21 +45,32 @@ public sealed class GatewayDashboardLinkServiceTests
         Assert.Contains("token=shared-token", result.Url);
     }
 
-    [Theory]
-    [InlineData(null)]
-    [InlineData("gateway-1")]
-    public async Task BuildAsync_WithoutApprovedBrowserCredential_FailsClosed(
-        string? tailscaleGatewayId)
+    [Fact]
+    public async Task BuildAsync_TokenFreeBootstrapRequest_PreservesDashboardUrl()
     {
         var service = CreateService((_, _) => Task.FromResult(false));
 
         var result = await service.BuildAsync(Request(
             appendBrowserCredential: false,
-            tailscaleGatewayId: tailscaleGatewayId));
+            tailscaleGatewayId: null));
+
+        Assert.True(result.Success);
+        Assert.NotNull(result.Url);
+        Assert.DoesNotContain("token=", result.Url);
+    }
+
+    [Fact]
+    public async Task BuildAsync_TailscaleRequestWithoutApprovedBrowserCredential_FailsClosed()
+    {
+        var service = CreateService((_, _) => Task.FromResult(false));
+
+        var result = await service.BuildAsync(Request(
+            appendBrowserCredential: false,
+            tailscaleGatewayId: "gateway-1"));
 
         Assert.False(result.Success);
         Assert.Null(result.Url);
-        Assert.Equal(GatewayDashboardLinkService.NoBrowserCompatibleCredential, result.Error);
+        Assert.Equal("localized:DashboardLink_NoBrowserCompatibleCredential", result.Error);
     }
 
     [Fact]
@@ -72,7 +83,7 @@ public sealed class GatewayDashboardLinkServiceTests
 
         Assert.True(result.Success);
         Assert.Contains("token=shared-token", result.Url);
-        Assert.Equal(GatewayDashboardLinkService.RevalidationFailed, result.RevalidationError);
+        Assert.Equal("localized:DashboardLink_TailscaleRevalidationFailed", result.RevalidationError);
         Assert.DoesNotContain("sensitive", result.RevalidationError);
     }
 
@@ -91,7 +102,7 @@ public sealed class GatewayDashboardLinkServiceTests
 
         Assert.False(result.Success);
         Assert.Null(result.Url);
-        Assert.Equal(GatewayDashboardLinkService.NoBrowserCompatibleCredential, result.Error);
+        Assert.Equal("localized:DashboardLink_NoBrowserCompatibleCredential", result.Error);
     }
 
     [Fact]
@@ -116,12 +127,13 @@ public sealed class GatewayDashboardLinkServiceTests
 
         Assert.True(result.Success);
         Assert.Contains("token=shared-token", result.Url);
-        Assert.Equal(GatewayDashboardLinkService.RevalidationFailed, result.RevalidationError);
+        Assert.Equal("localized:DashboardLink_TailscaleRevalidationFailed", result.RevalidationError);
         Assert.DoesNotContain("sensitive", result.RevalidationError);
     }
 
     private static GatewayDashboardLinkService CreateService(
-        Func<string, CancellationToken, Task<bool>> revalidate) => new(revalidate);
+        Func<string, CancellationToken, Task<bool>> revalidate) =>
+        new(revalidate, key => $"localized:{key}");
 
     private static GatewayDashboardLinkRequest Request(
         bool appendBrowserCredential = true,

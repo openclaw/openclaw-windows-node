@@ -803,7 +803,8 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands, IPer
         _gatewayDashboardLinkService = new GatewayDashboardLinkService(
             (gatewayId, cancellationToken) => _connectionManager.RevalidateTailscaleDashboardAuthAsync(
                 gatewayId,
-                cancellationToken));
+                cancellationToken),
+            LocalizationHelper.GetString);
         _connectionManager.OperatorClientChanged += OnOperatorClientChanged;
         _connectionManager.StateChanged += OnManagerStateChanged;
         _gatewayDirectConnectService = new GatewayDirectConnectService(

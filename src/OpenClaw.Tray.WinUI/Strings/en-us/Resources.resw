@@ -5485,6 +5485,12 @@ Make sure the gateway is running.</value>
   <data name="ConnectionPage_TailscaleDashboardAuthFailedFormat" xml:space="preserve">
     <value>Could not enable Tailscale dashboard identity: {0}</value>
   </data>
+  <data name="DashboardLink_NoBrowserCompatibleCredential" xml:space="preserve">
+    <value>No browser-compatible gateway credential is available</value>
+  </data>
+  <data name="DashboardLink_TailscaleRevalidationFailed" xml:space="preserve">
+    <value>Tailscale dashboard authentication revalidation failed</value>
+  </data>
   <data name="ConnectionPage_GatewayOptionsA11y" xml:space="preserve">
     <value>Options for {0}</value>
   </data>

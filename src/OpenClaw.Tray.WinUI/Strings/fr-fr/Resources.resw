@@ -5481,6 +5481,12 @@ Assurez-vous que la passerelle est en cours d'exécution.</value>
   <data name="ConnectionPage_TailscaleDashboardAuthFailedFormat" xml:space="preserve">
     <value>Impossible d’activer l’identité Tailscale pour le tableau de bord : {0}</value>
   </data>
+  <data name="DashboardLink_NoBrowserCompatibleCredential" xml:space="preserve">
+    <value>Aucun identifiant de passerelle compatible avec le navigateur n’est disponible</value>
+  </data>
+  <data name="DashboardLink_TailscaleRevalidationFailed" xml:space="preserve">
+    <value>La revalidation de l’authentification Tailscale du tableau de bord a échoué</value>
+  </data>
   <data name="ConnectionPage_GatewayOptionsA11y" xml:space="preserve">
     <value>Options pour {0}</value>
   </data>
