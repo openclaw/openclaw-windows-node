@@ -1991,33 +1991,50 @@ public class SetupStepsTests : IDisposable
     }
 
     [Fact]
-    public void LocalAiAvailabilityReasons_CombinesHardwareWslAndNetworkingFailures()
+    public async Task WslViabilityProbe_RefreshesCompletedInspectionWithoutRecreatingOwner()
     {
-        var wsl = new WslViabilityResult(
-            WslViabilityKind.EnvironmentBlocked,
-            "Windows cannot currently start WSL2.",
-            "Enable virtualization and Virtual Machine Platform.");
+        var inspectionCount = 0;
+        var probe = new WslViabilityProbe(() =>
+        {
+            inspectionCount++;
+            return Task.FromResult(inspectionCount == 1
+                ? new WslViabilityResult(
+                    WslViabilityKind.InspectionFailed,
+                    "Inspection failed.",
+                    "Try again.")
+                : new WslViabilityResult(
+                    WslViabilityKind.Ready,
+                    "WSL is ready.",
+                    string.Empty));
+        });
 
+        WslViabilityResult first = await probe.GetAsync();
+        WslViabilityResult cached = await probe.GetAsync();
+        WslViabilityResult refreshed = await probe.GetAsync(refresh: true);
+
+        Assert.Equal(WslViabilityKind.InspectionFailed, first.Kind);
+        Assert.Same(first, cached);
+        Assert.Equal(WslViabilityKind.Ready, refreshed.Kind);
+        Assert.Equal(2, inspectionCount);
+    }
+
+    [Fact]
+    public void LocalAiAvailabilityReasons_CombinesOnlyLocalAiFailures()
+    {
         var result = LocalAiAvailabilityReasons.Build(
             "No qualified NVIDIA GPU was detected.",
-            wsl,
             "The global .wslconfig file is unreadable.");
 
         Assert.NotNull(result);
         Assert.Contains("Hardware: No qualified NVIDIA GPU was detected.", result);
-        Assert.Contains("WSL: Windows cannot currently start WSL2.", result);
         Assert.Contains("WSL networking: The global .wslconfig file is unreadable.", result);
+        Assert.DoesNotContain("Windows cannot currently start WSL2", result);
     }
 
     [Fact]
-    public void LocalAiAvailabilityReasons_DoesNotBlockForInstallableWsl()
+    public void LocalAiAvailabilityReasons_ReturnsNullWithoutLocalAiFailures()
     {
-        var wsl = new WslViabilityResult(
-            WslViabilityKind.Installable,
-            "WSL is not installed yet.",
-            "Setup can install it later.");
-
-        Assert.Null(LocalAiAvailabilityReasons.Build(null, wsl, null));
+        Assert.Null(LocalAiAvailabilityReasons.Build(null, null));
     }
 
     [Fact]
@@ -2566,9 +2583,35 @@ public class SetupStepsTests : IDisposable
         var result = await new PreflightWslStep().ExecuteAsync(ctx, CancellationToken.None);
 
         Assert.Equal(StepOutcome.FailedTerminal, result.Outcome);
+        Assert.Equal(WslViabilityKind.EnvironmentBlocked, ctx.WslViability?.Kind);
+        Assert.StartsWith("Windows cannot currently start WSL2.", result.Message);
         Assert.Contains("virtualization", result.Message, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("Local AI", result.Message, StringComparison.OrdinalIgnoreCase);
         // Don't assert on "BIOS" / "UEFI" here -- the wording flexes by host
         // CPU architecture (this test runs on either x64 or Arm64 dev boxes).
+    }
+
+    [Fact]
+    public async Task PreflightWsl_VirtualizationFailureBlocksWhenLocalAiIsDisabled()
+    {
+        var commands = new FakeCommandRunner(args => args switch
+        {
+            ["--version"] => Ok("WSL version: 2.7.3.0\n"),
+            ["--status"] => Ok(
+                "WSL2 is unable to start since virtualization is not enabled on this machine. "
+                + "Turn on virtualization in firmware settings."),
+            _ => Fail($"unexpected args: {string.Join(' ', args)}"),
+        });
+        var ctx = CreateContext(
+            new SetupConfig { LocalAi = new LocalAiConfig { Enabled = false } },
+            commands);
+
+        var result = await new PreflightWslStep().ExecuteAsync(ctx, CancellationToken.None);
+
+        Assert.False(new PreflightWslStep().CanSkip(ctx));
+        Assert.Equal(StepOutcome.FailedTerminal, result.Outcome);
+        Assert.Equal(WslViabilityKind.EnvironmentBlocked, ctx.WslViability?.Kind);
+        Assert.DoesNotContain("Local AI", result.Message, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]

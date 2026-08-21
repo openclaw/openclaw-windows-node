@@ -54,6 +54,12 @@ public sealed partial class WelcomePage : Page
         if (setupWindow is null || config is null)
             return;
 
+        WslViabilityResult wslViability = await setupWindow.GetWslViabilityAsync();
+        if (!IsLoaded || !ReferenceEquals(SetupWindow.Active, setupWindow))
+            return;
+        if (wslViability.BlocksSetup)
+            return;
+
         var hardware = await setupWindow.GetLocalAiHardwareAsync();
         if (!IsLoaded || !ReferenceEquals(SetupWindow.Active, setupWindow))
             return;
@@ -141,7 +147,10 @@ public sealed partial class WelcomePage : Page
     {
         var config = _config ?? throw new InvalidOperationException("Setup configuration has not been loaded.");
         var setupWindow = SetupWindow.Active;
-        var dataDir = setupWindow?.DataDir ?? SetupContext.ResolveDataDir();
+        if (setupWindow is null)
+            return;
+
+        var dataDir = setupWindow.DataDir;
 
         // The progress ring carries the checking state (its automation name is
         // "Checking existing WSL setup"). Leave the option title alone: replacing it
@@ -152,6 +161,34 @@ public sealed partial class WelcomePage : Page
         var navigating = false;
         try
         {
+            while (true)
+            {
+                WslViabilityResult wslViability =
+                    await setupWindow.GetWslViabilityAsync(refresh: true);
+                if (wslViability.BlocksSetup)
+                {
+                    var readinessRoot = XamlRoot;
+                    if (setupWindow.IsClosed || readinessRoot is null)
+                        return;
+
+                    var retry = await new ContentDialog
+                    {
+                        Title = "WSL2 is not ready",
+                        Content = wslViability.Description,
+                        PrimaryButtonText = "Try again",
+                        CloseButtonText = "Cancel",
+                        DefaultButton = ContentDialogButton.Primary,
+                        XamlRoot = readinessRoot,
+                    }.ShowAsync();
+
+                    if (retry != ContentDialogResult.Primary)
+                        return;
+                    continue;
+                }
+
+                break;
+            }
+
             ExistingConfigDetector.ExistingConfig existing;
             while (true)
             {
@@ -160,13 +197,13 @@ public sealed partial class WelcomePage : Page
                     existing = await Task.Run(() => ExistingConfigDetector.Detect(
                         dataDir,
                         config.DistroName,
-                        setupWindow?.LocalDataDir));
+                        setupWindow.LocalDataDir));
                     break;
                 }
                 catch (InvalidOperationException ex)
                 {
                     var errorRoot = XamlRoot;
-                    if (setupWindow is null or { IsClosed: true } || errorRoot is null)
+                    if (setupWindow.IsClosed || errorRoot is null)
                         return;
 
                     // Inspection failure is usually transient, so offer a way forward
@@ -187,7 +224,7 @@ public sealed partial class WelcomePage : Page
             }
 
             var xamlRoot = XamlRoot;
-            if (setupWindow is null or { IsClosed: true } || xamlRoot is null)
+            if (setupWindow.IsClosed || xamlRoot is null)
                 return;
 
             InstallCheckProgress.IsActive = false;
@@ -225,7 +262,7 @@ public sealed partial class WelcomePage : Page
         }
         finally
         {
-            if (!navigating && setupWindow is { IsClosed: false })
+            if (!navigating && !setupWindow.IsClosed)
             {
                 InstallCheckProgress.IsActive = false;
                 InstallCheckProgress.Visibility = Visibility.Collapsed;

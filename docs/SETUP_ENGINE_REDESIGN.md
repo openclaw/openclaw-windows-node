@@ -272,7 +272,7 @@ Log path defaults to `%APPDATA%\OpenClawTray\Logs\Setup\setup-engine-<yyyyMMdd-H
 
 The WinUI app is a **thin shell** - no business logic, just rendering pipeline state. End-user UI runs default to `RollbackOnFailure=true`; `--no-rollback-on-failure` preserves an explicit debugging opt-out.
 
-### Page Flow: Security → Welcome → Capabilities → Progress → OpenClaw onboard → Complete
+### Page Flow: Security → Welcome → WSL readiness gate → Capabilities → Progress → OpenClaw onboard → Complete
 
 **SecurityNoticePage**
 - Native warning InfoBar for device-trust and setup transparency
