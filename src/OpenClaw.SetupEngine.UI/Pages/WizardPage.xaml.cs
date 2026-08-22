@@ -35,7 +35,6 @@ public sealed partial class WizardPage : Page
     private int _totalProgressPolls;
     private readonly Dictionary<string, int> _stepVisits = new(StringComparer.OrdinalIgnoreCase);
     private readonly List<WizardOptionValue> _options = [];
-    private readonly Stack<JsonElement> _stepHistory = new();
     private volatile bool _expectedTerminalRestart;
     // "More ▾" overflow toggle lives as a sibling of SelectOptions, so track it to remove between steps.
     private Button? _moreOptionsButton;
@@ -378,8 +377,6 @@ public sealed partial class WizardPage : Page
             }
 
             ResetInputs();
-            // Push current payload so Back can re-render this step
-            _stepHistory.Push(payload);
             TitleText.Text = string.IsNullOrWhiteSpace(title) ? DisplayTitleFor(_stepType) : title;
             RenderMessage(message);
             StepCard.MinHeight = _stepType == "note" && string.IsNullOrWhiteSpace(message) ? 140 : 260;
@@ -387,7 +384,6 @@ public sealed partial class WizardPage : Page
             BusyRing.Visibility = Visibility.Collapsed;
             BusyRing.IsActive = false;
             ShowRecoveryActions();
-            WizardBackButton.Visibility = Visibility.Visible;
             StatusText.Text = "A few quick questions to connect your agent";
             PrimaryButton.IsEnabled = !WizardSelection.RequiresAnswer(_stepType);
             SecondaryButton.IsEnabled = true;
@@ -443,7 +439,6 @@ public sealed partial class WizardPage : Page
         PrimaryButton.Content = "Continue";
         SecondaryButton.IsEnabled = false;
         SecondaryButton.Visibility = Visibility.Collapsed;
-        WizardBackButton.Visibility = Visibility.Collapsed;
         ShowRecoveryActions();
     }
 
@@ -465,7 +460,8 @@ public sealed partial class WizardPage : Page
         {
             SelectOptions.Visibility = Visibility.Visible;
 
-            // Reorder: skip options first, then non-more options, filter out "more" and "back" options
+            // The Gateway contract has no rewind operation. Do not expose back options
+            // as local navigation because that would desynchronize the active session.
             var skipOptions = _options.Where(IsSkipOption).ToList();
             var moreOptions = _options.Where(IsMoreOption).ToList();
             var normalOptions = _options.Where(o => !IsSkipOption(o) && !IsMoreOption(o) && !IsBackOption(o)).ToList();
@@ -754,30 +750,12 @@ public sealed partial class WizardPage : Page
                 // Select first item by default
                 if (SelectOptions.Items.Count > 0)
                     SelectOptions.SelectedIndex = 0;
-
-                // Push this expanded payload to step history so Back works
-                _stepHistory.Push(payload);
             }
         }
         catch (Exception ex)
         {
             if (generation != _operationGeneration) return;
             await EnterWizardErrorAsync(ex.Message);
-        }
-    }
-
-    private void WizardBack_Click(object sender, RoutedEventArgs e)
-    {
-        // Pop the current step (that's showing now), then re-render the previous one
-        if (_stepHistory.Count > 1)
-        {
-            _stepHistory.Pop(); // discard current
-            var previousPayload = _stepHistory.Pop(); // will be re-pushed by ApplyPayloadAsync
-            _ = ApplyPayloadAsync(previousPayload);
-        }
-        else
-        {
-            SetupWindow.Active?.NavigateToWelcome(back: true);
         }
     }
 
@@ -790,7 +768,6 @@ public sealed partial class WizardPage : Page
     private async Task StartOverAsync()
     {
         AdvanceOperationGeneration();
-        _stepHistory.Clear();
         HideRecoveryActions();
         SetBusy("Starting over...");
         await CancelCurrentSessionAsync();

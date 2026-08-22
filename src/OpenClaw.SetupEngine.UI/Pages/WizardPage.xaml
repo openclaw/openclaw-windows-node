@@ -92,9 +92,6 @@
                 <Border Width="8" Height="8" CornerRadius="4" VerticalAlignment="Center" Background="{ThemeResource SetupInactiveDotBrush}" />
             </StackPanel>
             <StackPanel Grid.Column="0" Orientation="Horizontal" HorizontalAlignment="Left" Spacing="8">
-                <Button x:Name="WizardBackButton" Content="Back"
-                        MinWidth="100"
-                        Click="WizardBack_Click" />
                 <DropDownButton x:Name="MoreOptionsButton"
                                 Content="More options"
                                 MinWidth="100"

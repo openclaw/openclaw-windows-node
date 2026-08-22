@@ -1420,6 +1420,22 @@ public sealed class AppRefactorContractTests
     }
 
     [Fact]
+    public void WizardBack_IsUnavailableWithoutAuthoritativeGatewayRewind()
+    {
+        var root = TestRepositoryPaths.GetRepositoryRoot();
+        var source = File.ReadAllText(Path.Combine(root, "src", "OpenClaw.SetupEngine.UI", "Pages", "WizardPage.xaml.cs"));
+        var xaml = File.ReadAllText(Path.Combine(root, "src", "OpenClaw.SetupEngine.UI", "Pages", "WizardPage.xaml"));
+
+        Assert.DoesNotContain("WizardBackButton", xaml);
+        Assert.DoesNotContain("WizardBack_Click", source);
+        Assert.DoesNotContain("_stepHistory", source);
+        Assert.DoesNotContain("ApplyPayloadAsync(previousPayload)", source);
+        Assert.Contains("MoreOptionsButton", xaml);
+        Assert.Contains("StartOver_Click", xaml);
+        Assert.Contains("SkipWizard_Click", xaml);
+    }
+
+    [Fact]
     public void WizardCompletion_AppliesWindowsNodeContextBeforeSummary()
     {
         var root = TestRepositoryPaths.GetRepositoryRoot();
