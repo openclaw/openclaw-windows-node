@@ -1,5 +1,4 @@
 using Microsoft.UI.Xaml;
-using Microsoft.UI.Xaml.Automation;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Media;
 using OpenClaw.Shared;
@@ -92,9 +91,6 @@ public sealed partial class LocalAiPage : Page
             _viewModel.IsAvailabilityKnown && !_viewModel.IsLocalAiAvailable
                 ? Visibility.Visible
                 : Visibility.Collapsed;
-        SetOptionAvailability(LocalAiEngineOption, _viewModel.AreOptionsEnabled);
-        SetOptionAvailability(LocalAiModelOption, _viewModel.AreOptionsEnabled);
-        SetOptionAvailability(LocalAiGatewayOption, _viewModel.AreOptionsEnabled);
         StartButton.IsEnabled = _viewModel.CanStart;
         StopButton.IsEnabled = _viewModel.CanStop;
         RestartButton.IsEnabled = _viewModel.CanRestart;
@@ -116,15 +112,6 @@ public sealed partial class LocalAiPage : Page
     {
         LocalAiUnavailableReasonText.Text = _viewModel?.LocalAiUnavailableReason ?? string.Empty;
         LocalAiUnavailableDetailsTip.IsOpen = !LocalAiUnavailableDetailsTip.IsOpen;
-    }
-
-    private static void SetOptionAvailability(Control option, bool isAvailable)
-    {
-        option.IsEnabled = isAvailable;
-        option.Opacity = isAvailable ? 1 : 0.55;
-        AutomationProperties.SetHelpText(
-            option,
-            isAvailable ? string.Empty : "Unavailable because Local AI is not available on this device.");
     }
 
     private static void RunAction(Func<Task<bool>> action, string source) =>

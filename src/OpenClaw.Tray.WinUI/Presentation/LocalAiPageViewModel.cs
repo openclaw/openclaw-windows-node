@@ -120,20 +120,20 @@ internal sealed class LocalAiPageViewModel : INavigationAware, IDisposable, INot
     public bool IsBusy => _isBusy;
     public bool IsAvailabilityKnown => _isAvailabilityKnown;
     public bool IsLocalAiAvailable => _isAvailabilityKnown && _isLocalAiAvailable;
-    public bool AreOptionsEnabled => !_isAvailabilityKnown || _isLocalAiAvailable;
+    public bool IsSetupAvailable => !_isAvailabilityKnown || _isLocalAiAvailable;
     public string? LocalAiUnavailableReason => _localAiUnavailableReason;
-    public bool CanStart => AreOptionsEnabled && !IsBusy && HasManagedInstall &&
+    public bool CanStart => !IsBusy && HasManagedInstall &&
         _runtimeSnapshot.State is LocalAiRuntimeState.Stopped or LocalAiRuntimeState.Failed;
-    public bool CanStop => AreOptionsEnabled && !IsBusy && _runtimeSnapshot.Ownership == LocalAiOwnership.CompanionManaged &&
+    public bool CanStop => !IsBusy && _runtimeSnapshot.Ownership == LocalAiOwnership.CompanionManaged &&
         _runtimeSnapshot.State is LocalAiRuntimeState.Starting or LocalAiRuntimeState.Healthy;
-    public bool CanRestart => AreOptionsEnabled && !IsBusy && _runtimeSnapshot.Ownership == LocalAiOwnership.CompanionManaged &&
+    public bool CanRestart => !IsBusy && _runtimeSnapshot.Ownership == LocalAiOwnership.CompanionManaged &&
         _runtimeSnapshot.State == LocalAiRuntimeState.Healthy;
-    public bool CanOpenLogs => AreOptionsEnabled && !IsBusy && HasManagedInstall;
-    public bool CanRetrySetup => AreOptionsEnabled && !IsBusy && ModelState is
+    public bool CanOpenLogs => !IsBusy && HasManagedInstall;
+    public bool CanRetrySetup => IsSetupAvailable && !IsBusy && ModelState is
         LocalAiModelPresentationState.NotInstalled or LocalAiModelPresentationState.Unknown;
-    public bool CanRepairConnection => AreOptionsEnabled && !IsBusy && GatewayState is not
+    public bool CanRepairConnection => !IsBusy && GatewayState is not
         (LocalAiGatewayPresentationState.Connected or LocalAiGatewayPresentationState.Connecting);
-    public bool CanOpenChat => AreOptionsEnabled && !IsBusy &&
+    public bool CanOpenChat => !IsBusy &&
         GatewayState == LocalAiGatewayPresentationState.Connected &&
         _runtimeSnapshot.State == LocalAiRuntimeState.Healthy &&
         ModelState is LocalAiModelPresentationState.Verified or LocalAiModelPresentationState.Loaded;

@@ -103,8 +103,8 @@ public sealed class LocalAiSetupUxContractTests
         Assert.Contains("x:Name=\"LocalAiEngineOption\"", xaml);
         Assert.Contains("x:Name=\"LocalAiModelOption\"", xaml);
         Assert.Contains("x:Name=\"LocalAiGatewayOption\"", xaml);
-        Assert.Contains("option.IsEnabled = isAvailable", source);
-        Assert.Contains("option.Opacity = isAvailable ? 1 : 0.55", source);
+        Assert.DoesNotContain("SetOptionAvailability(", source);
+        Assert.DoesNotContain("option.IsEnabled = isAvailable", source);
         Assert.Contains("LocalAiUnavailableDetailsTip.IsOpen = !LocalAiUnavailableDetailsTip.IsOpen", source);
     }
 
