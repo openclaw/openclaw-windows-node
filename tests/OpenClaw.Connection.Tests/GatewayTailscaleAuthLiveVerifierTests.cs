@@ -158,6 +158,37 @@ public sealed class GatewayTailscaleAuthLiveVerifierTests
         Assert.Equal(GatewayTailscaleAuthLiveState.NotReady, result);
     }
 
+    [Fact]
+    public async Task VerifyAsync_AcceptsCurrentForegroundServeStatusShape()
+    {
+        var runner = new FakeWslCommandRunner((_, command, _) => Task.FromResult(
+            command.Contains("serve", StringComparer.Ordinal)
+                ? ForegroundServeStatus()
+                : RunningStatus()));
+        var verifier = new GatewayTailscaleAuthLiveVerifier(runner, TimeSpan.FromSeconds(1));
+
+        var result = await verifier.VerifyAsync(ManagedRecord(), 18789, CancellationToken.None);
+
+        Assert.Equal(GatewayTailscaleAuthLiveState.Ready, result);
+    }
+
+    [Theory]
+    [MemberData(nameof(UnsafeForegroundServeStatuses))]
+    public async Task VerifyAsync_FailsClosedForUnsafeForegroundServeStatus(
+        string foreground,
+        string expected)
+    {
+        var runner = new FakeWslCommandRunner((_, command, _) => Task.FromResult(
+            command.Contains("serve", StringComparer.Ordinal)
+                ? new WslCommandResult(0, $"{{\"Foreground\":{foreground}}}", "")
+                : RunningStatus()));
+        var verifier = new GatewayTailscaleAuthLiveVerifier(runner, TimeSpan.FromSeconds(1));
+
+        var result = await verifier.VerifyAsync(ManagedRecord(), 18789, CancellationToken.None);
+
+        Assert.Equal(expected, result.ToString());
+    }
+
     [Theory]
     [InlineData(8443, "", "NotReady")]
     [InlineData(443, "/unrelated", "NotReady")]
@@ -316,6 +347,57 @@ public sealed class GatewayTailscaleAuthLiveVerifierTests
         { new WslCommandResult(1, "", "tailscaled unavailable"), "Unavailable" },
     };
 
+    public static TheoryData<string, string> UnsafeForegroundServeStatuses => new()
+    {
+        { "[]", "Unavailable" },
+        { "{\"config-id\":[]}", "Unavailable" },
+        {
+            """
+            {
+              "config-id": {
+                "Web": {
+                  "host.tail.example:443": {
+                    "Handlers": { "/": { "Proxy": "http://127.0.0.1:18789" } }
+                  }
+                },
+                "AllowFunnel": true
+              }
+            }
+            """,
+            "NotReady"
+        },
+        {
+            """
+            {
+              "gateway": {
+                "Web": {
+                  "host.tail.example:443": {
+                    "Handlers": { "/": { "Proxy": "http://127.0.0.1:18789" } }
+                  }
+                }
+              },
+              "funnel": { "AllowFunnel": true }
+            }
+            """,
+            "NotReady"
+        },
+        {
+            """
+            {
+              "gateway": {
+                "Web": {
+                  "host.tail.example:443": {
+                    "Handlers": { "/": { "Proxy": "http://127.0.0.1:18789" } }
+                  }
+                }
+              },
+              "malformed": []
+            }
+            """,
+            "Unavailable"
+        },
+    };
+
     private static WslCommandResult RunningStatus() => Status("Running", "host.tail.example.");
 
     private static WslCommandResult ServeStatus(
@@ -342,6 +424,25 @@ public sealed class GatewayTailscaleAuthLiveVerifierTests
             """,
             "");
     }
+
+    private static WslCommandResult ForegroundServeStatus() =>
+        new(
+            0,
+            """
+            {
+              "Foreground": {
+                "75980230dda8b0e0": {
+                  "TCP": { "443": { "HTTPS": true } },
+                  "Web": {
+                    "host.tail.example:443": {
+                      "Handlers": { "/": { "Proxy": "http://127.0.0.1:18789" } }
+                    }
+                  }
+                }
+              }
+            }
+            """,
+            "");
 
     private static string GetRepositoryRoot()
     {

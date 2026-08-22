@@ -21,14 +21,27 @@ public static class TailscaleServeStatusPolicy
             using var document = JsonDocument.Parse(status);
             var root = document.RootElement;
             if (root.ValueKind != JsonValueKind.Object ||
-                !HasValidWebShape(root) ||
-                !TryReadFunnelState(root, out var funnelEnabled))
+                !TryCollectServeConfigs(root, out var configs))
             {
                 return false;
             }
 
+            var routesToGateway = false;
+            var funnelEnabled = false;
+            foreach (var config in configs)
+            {
+                if (!HasValidWebShape(config) ||
+                    !TryReadFunnelState(config, out var configFunnelEnabled))
+                {
+                    return false;
+                }
+
+                routesToGateway |= HasGatewayWebProxy(config, port, expectedEndpoint);
+                funnelEnabled |= configFunnelEnabled;
+            }
+
             parsed = new TailscaleServeStatusResult(
-                RoutesToGateway: HasGatewayWebProxy(root, port, expectedEndpoint),
+                RoutesToGateway: routesToGateway,
                 FunnelEnabled: funnelEnabled);
             return true;
         }
@@ -36,6 +49,38 @@ public static class TailscaleServeStatusPolicy
         {
             return false;
         }
+    }
+
+    private static bool TryCollectServeConfigs(
+        JsonElement root,
+        out IReadOnlyList<JsonElement> configs)
+    {
+        var collected = new List<JsonElement> { root };
+        if (!root.TryGetProperty("Foreground", out var foreground))
+        {
+            configs = collected;
+            return true;
+        }
+
+        if (foreground.ValueKind != JsonValueKind.Object)
+        {
+            configs = [];
+            return false;
+        }
+
+        foreach (var entry in foreground.EnumerateObject())
+        {
+            if (entry.Value.ValueKind != JsonValueKind.Object)
+            {
+                configs = [];
+                return false;
+            }
+
+            collected.Add(entry.Value);
+        }
+
+        configs = collected;
+        return true;
     }
 
     private static bool HasValidWebShape(JsonElement root)
