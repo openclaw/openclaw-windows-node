@@ -204,6 +204,24 @@ public class McpHttpServerTests
         finally { server.Dispose(); http.Dispose(); }
     }
 
+    [Theory]
+    [InlineData("[::1]")]
+    [InlineData("[::1]:8765")]
+    public void IsHostAllowed_AcceptsBracketedIpv6Loopback(string host)
+    {
+        Assert.True(McpHttpServer.IsHostAllowed(host));
+    }
+
+    [Theory]
+    [InlineData("[::1]evil")]
+    [InlineData("[::1]:")]
+    [InlineData("[::1]:not-a-port")]
+    [InlineData("[::1]:65536")]
+    public void IsHostAllowed_RejectsMalformedBracketedIpv6Loopback(string host)
+    {
+        Assert.False(McpHttpServer.IsHostAllowed(host));
+    }
+
     [Fact]
     public async Task Post_WithLocalhostHost_Accepted()
     {

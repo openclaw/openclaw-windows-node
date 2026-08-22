@@ -297,8 +297,8 @@ internal sealed class PreparedConnectEnvelope
             method = "connect",
             @params = new
             {
-                minProtocol = 3,
-                maxProtocol = 4,
+                minProtocol = GatewayProtocolContract.MinimumSupportedVersion,
+                maxProtocol = GatewayProtocolContract.MaximumSupportedVersion,
                 client = new
                 {
                     id = SigningArguments.ClientId,

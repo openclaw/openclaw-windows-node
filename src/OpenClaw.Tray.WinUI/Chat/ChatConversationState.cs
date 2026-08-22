@@ -548,7 +548,10 @@ internal sealed class ChatConversationState
         string nonce,
         IReadOnlyList<ChatAttachment>? attachments,
         DateTimeOffset createdAt,
-        ChatProjectionContext context)
+        ChatProjectionContext context,
+        string? timelineText = null,
+        IReadOnlyList<ChatAttachmentPresentation>? attachmentPresentations = null,
+        string attachmentCorrelationSignature = "")
     {
         lock (_gate)
         {
@@ -566,7 +569,10 @@ internal sealed class ChatConversationState
                 text,
                 displayText,
                 nonce,
-                attachments?.ToArray());
+                attachments?.ToArray(),
+                TimelineText: timelineText ?? displayText,
+                AttachmentPresentations: attachmentPresentations,
+                AttachmentCorrelationSignature: attachmentCorrelationSignature);
 
             var sendDirectly = CanSendDirectlyLocked(threadId);
             ChatQueuedSendDispatch? dispatch;
@@ -980,12 +986,13 @@ internal sealed class ChatConversationState
         var entryId = $"e{current.NextId}";
         _timelines[threadId] = ChatTimelineReducer.AddLocalUser(
             current,
-            request.DisplayText,
+            request.EffectiveTimelineText,
             request.LocalNonce);
         GetOrCreateThreadMetaLocked(threadId)[entryId] = BuildLiveMetaLocked(
             threadId,
             isLocalQueuedSend: true,
-            localQueuedMessageId: request.Id);
+            localQueuedMessageId: request.Id,
+            attachments: request.AttachmentPresentations);
         var dispatch = _queue.StartDirect(
             request,
             _history.ResolveSessionId(threadId),
@@ -1061,6 +1068,7 @@ internal sealed class ChatConversationState
         string messageId,
         ChatEntryMetadata? confirmedMeta = null)
     {
+        var request = _queue.FindRequest(threadId, messageId);
         if (!_queue.TryTakeForPromotion(threadId, messageId, out var queued))
             return false;
 
@@ -1068,18 +1076,20 @@ internal sealed class ChatConversationState
         var entryId = $"e{current.NextId}";
         _timelines[threadId] = ChatTimelineReducer.AddLocalUser(
             current,
-            queued.Text,
+            request?.EffectiveTimelineText ?? queued.Text,
             queued.LocalNonce);
         var meta = confirmedMeta is not null && HasGatewayIdentity(confirmedMeta)
             ? confirmedMeta with
             {
                 IsLocalQueuedSend = false,
                 LocalQueuedMessageId = messageId,
+                Attachments = request?.AttachmentPresentations ?? confirmedMeta.Attachments,
             }
             : BuildLiveMetaLocked(
                 threadId,
                 isLocalQueuedSend: true,
-                localQueuedMessageId: messageId);
+                localQueuedMessageId: messageId,
+                attachments: request?.AttachmentPresentations);
         GetOrCreateThreadMetaLocked(threadId)[entryId] = meta;
         return true;
     }
@@ -1147,7 +1157,9 @@ internal sealed class ChatConversationState
         string? localQueuedMessageId = null,
         string? openClawKind = null,
         long? compactionTokensBefore = null,
-        long? compactionTokensAfter = null)
+        long? compactionTokensAfter = null,
+        IReadOnlyList<ChatAttachmentPresentation>? attachments = null,
+        ChatAssistantContentPresentation? assistantContent = null)
     {
         lock (_gate)
         {
@@ -1160,7 +1172,9 @@ internal sealed class ChatConversationState
                 localQueuedMessageId,
                 openClawKind,
                 compactionTokensBefore,
-                compactionTokensAfter);
+                compactionTokensAfter,
+                attachments,
+                assistantContent);
         }
     }
 
@@ -1296,11 +1310,14 @@ internal sealed class ChatConversationState
 
     internal ChatIncomingMessageGate GateIncomingChatMessage(
         ChatMessageInfo message,
-        ChatProjectionContext context)
+        ChatProjectionContext context,
+        GatewayMediaMessageProjectionResult? projection = null)
     {
         var threadId = message.SessionKey!;
         var role = message.Role?.ToLowerInvariant() ?? string.Empty;
-        var text = message.Text ?? string.Empty;
+        var text = projection?.ReconciliationText ?? message.Text ?? string.Empty;
+        var attachmentCorrelationSignature = projection?.AttachmentCorrelationSignature ?? "";
+        var hasMediaEnvelope = projection?.HasMediaEnvelope ?? false;
         lock (_gate)
         {
             _lifecycle.TryGetActiveRun(
@@ -1311,7 +1328,11 @@ internal sealed class ChatConversationState
                     role,
                     text,
                     message.Ts,
-                    _queue.HasPendingLocalEchoText(threadId, text),
+                    _queue.HasPendingLocalEchoText(
+                        threadId,
+                        text,
+                        attachmentCorrelationSignature,
+                        hasMediaEnvelope),
                     activeRunId);
             var openedLifecycle =
                 ApplyBufferedLifecycleOpenLocked(
@@ -1326,6 +1347,8 @@ internal sealed class ChatConversationState
                     _queue.TryConsumeLocalEcho(
                         threadId,
                         resetGate.ConsumeEchoText,
+                        attachmentCorrelationSignature,
+                        hasMediaEnvelope,
                         out var queuedMessageId))
                 {
                     var confirmed = BuildLiveMetaLocked(
@@ -1362,15 +1385,21 @@ internal sealed class ChatConversationState
     internal ChatLocalEchoTransition ConsumeLocalEcho(
         ChatMessageInfo message,
         bool removeQueuedMessage,
-        ChatProjectionContext context)
+        ChatProjectionContext context,
+        GatewayMediaMessageProjectionResult? projection = null)
     {
         var threadId = message.SessionKey!;
-        var text = (message.Text ?? string.Empty).Trim();
+        var text = projection?.ReconciliationText ??
+            (message.Text ?? string.Empty).Trim();
+        var attachmentCorrelationSignature = projection?.AttachmentCorrelationSignature ?? "";
+        var hasMediaEnvelope = projection?.HasMediaEnvelope ?? false;
         lock (_gate)
         {
             if (!_queue.TryConsumeLocalEcho(
                     threadId,
                     text,
+                    attachmentCorrelationSignature,
+                    hasMediaEnvelope,
                     out var queuedMessageId))
             {
                 return new(false, null);
@@ -1397,23 +1426,182 @@ internal sealed class ChatConversationState
     internal ChatLocalEchoTransition ReconcileExistingLocalQueuedUser(
         ChatMessageInfo message,
         string userText,
-        ChatProjectionContext context)
+        ChatProjectionContext context,
+        IReadOnlyList<ChatAttachmentPresentation>? attachments = null,
+        string attachmentCorrelationSignature = "",
+        bool hasMediaEnvelope = false)
     {
+        var threadId = message.SessionKey!;
         lock (_gate)
         {
             var metadata = BuildLiveMetaLocked(
-                message.SessionKey!,
+                threadId,
                 message.Ts,
                 message.OpenClawId,
-                message.OpenClawSeq);
-            var reconciled = TryReconcileExistingLocalQueuedUserEchoLocked(
-                message.SessionKey!,
+                message.OpenClawSeq,
+                attachments: attachments);
+            if (TryReconcileExistingLocalQueuedUserEchoLocked(
+                    threadId,
+                    userText,
+                    attachmentCorrelationSignature,
+                    hasMediaEnvelope,
+                    metadata))
+            {
+                return new(true, BuildSnapshotLocked(context));
+            }
+
+            var remoteSnapshot = ApplyProjectedRemoteUserMessageLocked(
+                threadId,
                 userText,
-                metadata);
-            return new(
-                reconciled,
-                reconciled ? BuildSnapshotLocked(context) : null);
+                attachmentCorrelationSignature,
+                metadata,
+                context);
+            return new(false, remoteSnapshot);
         }
+    }
+
+    // Applies an incoming user message from another client (not a local
+    // echo). Gateway retransmits of the same message (e.g. once with a
+    // partial media resolve, once final) are merged into the existing
+    // timeline row instead of appended as a duplicate, matched first by
+    // gateway identity and — for identity-less rows — by same trailing-entry
+    // text + attachment signature.
+    private ChatDataSnapshot? ApplyProjectedRemoteUserMessageLocked(
+        string threadId,
+        string projectedText,
+        string attachmentCorrelationSignature,
+        ChatEntryMetadata incomingMeta,
+        ChatProjectionContext context)
+    {
+        var timeline = GetOrCreateTimelineLocked(threadId);
+        var threadMeta = GetOrCreateThreadMetaLocked(threadId);
+        ChatTimelineItem? matched = null;
+        ChatEntryMetadata? existingMeta = null;
+
+        if (HasGatewayIdentity(incomingMeta))
+        {
+            for (var i = timeline.Entries.Count - 1; i >= 0; i--)
+            {
+                var candidate = timeline.Entries[i];
+                if (candidate.Kind != ChatTimelineItemKind.User ||
+                    !threadMeta.TryGetValue(candidate.Id, out var candidateMeta) ||
+                    candidateMeta.IsLocalQueuedSend ||
+                    !HasMatchingGatewayIdentity(candidateMeta, incomingMeta))
+                {
+                    continue;
+                }
+
+                matched = candidate;
+                existingMeta = candidateMeta;
+                break;
+            }
+        }
+
+        // Identity-less history/live twins are only safe to correlate
+        // against the current trailing user row. Crossing an
+        // assistant/status boundary would collapse a legitimate later turn
+        // that repeats the same prose.
+        if (matched is null &&
+            timeline.Entries.Count > 0 &&
+            timeline.Entries[^1] is { Kind: ChatTimelineItemKind.User } latestUser &&
+            string.Equals(latestUser.Text, projectedText, StringComparison.Ordinal) &&
+            threadMeta.TryGetValue(latestUser.Id, out var latestMeta) &&
+            !latestMeta.IsLocalQueuedSend &&
+            !HasConflictingGatewayIdentity(latestMeta, incomingMeta) &&
+            string.Equals(
+                GatewayMediaMessageProjection.BuildAttachmentCorrelationSignature(
+                    latestMeta.Attachments),
+                attachmentCorrelationSignature,
+                StringComparison.Ordinal))
+        {
+            matched = latestUser;
+            existingMeta = latestMeta;
+        }
+
+        if (matched is null || existingMeta is null)
+        {
+            ApplyEventLocked(
+                threadId,
+                new ChatUserMessageEvent(projectedText),
+                incomingMeta);
+            return BuildSnapshotLocked(context);
+        }
+
+        var mergedMeta = MergeProjectedUserMetadata(existingMeta, incomingMeta);
+        if (mergedMeta == existingMeta)
+            return null;
+
+        threadMeta[matched.Id] = mergedMeta;
+        return HasRendererVisibleUserMetadataChange(existingMeta, mergedMeta)
+            ? BuildSnapshotLocked(context)
+            : null;
+    }
+
+    private static bool HasMatchingGatewayIdentity(
+        ChatEntryMetadata existing,
+        ChatEntryMetadata incoming) =>
+        (!string.IsNullOrEmpty(incoming.GatewayMessageId) &&
+         string.Equals(
+             existing.GatewayMessageId,
+             incoming.GatewayMessageId,
+             StringComparison.Ordinal)) ||
+        (incoming.OpenClawSeq is not null && existing.OpenClawSeq == incoming.OpenClawSeq);
+
+    private static bool HasConflictingGatewayIdentity(
+        ChatEntryMetadata existing,
+        ChatEntryMetadata incoming) =>
+        (!string.IsNullOrEmpty(existing.GatewayMessageId) &&
+         !string.IsNullOrEmpty(incoming.GatewayMessageId) &&
+         !string.Equals(
+             existing.GatewayMessageId,
+             incoming.GatewayMessageId,
+             StringComparison.Ordinal)) ||
+        (existing.OpenClawSeq is not null &&
+         incoming.OpenClawSeq is not null &&
+         existing.OpenClawSeq != incoming.OpenClawSeq);
+
+    private static ChatEntryMetadata MergeProjectedUserMetadata(
+        ChatEntryMetadata existing,
+        ChatEntryMetadata incoming)
+    {
+        var mergedAttachments = existing.Attachments is { Count: > 0 }
+            ? existing.Attachments
+            : incoming.Attachments;
+        return existing with
+        {
+            Timestamp = existing.Timestamp ?? incoming.Timestamp,
+            Model = existing.Model ?? incoming.Model,
+            GatewayMessageId = string.IsNullOrEmpty(existing.GatewayMessageId)
+                ? incoming.GatewayMessageId
+                : existing.GatewayMessageId,
+            OpenClawSeq = existing.OpenClawSeq ?? incoming.OpenClawSeq,
+            Attachments = mergedAttachments,
+        };
+    }
+
+    private static bool HasRendererVisibleUserMetadataChange(
+        ChatEntryMetadata existing,
+        ChatEntryMetadata merged) =>
+        existing.Timestamp != merged.Timestamp ||
+        !AttachmentPresentationsEqual(existing.Attachments, merged.Attachments);
+
+    private static bool AttachmentPresentationsEqual(
+        IReadOnlyList<ChatAttachmentPresentation>? left,
+        IReadOnlyList<ChatAttachmentPresentation>? right)
+    {
+        var leftCount = left?.Count ?? 0;
+        var rightCount = right?.Count ?? 0;
+        if (leftCount != rightCount)
+            return false;
+        if (leftCount == 0)
+            return true;
+
+        for (var i = 0; i < leftCount; i++)
+        {
+            if (left![i] != right![i])
+                return false;
+        }
+        return true;
     }
 
     internal (ChatEntryMetadata Metadata, string? ActiveRunId) BuildMetadataWithRun(
@@ -1434,16 +1622,29 @@ internal sealed class ChatConversationState
     internal ChatAssistantPreparation PrepareAssistant(
         ChatMessageInfo message,
         string assistantText,
-        ChatProjectionContext context)
+        ChatProjectionContext context,
+        ChatAssistantContentPresentation? assistantContent = null)
     {
         var threadId = message.SessionKey!;
         lock (_gate)
         {
-            var disposition = ClassifyAssistantQueueFrameLocked(
-                threadId,
-                assistantText,
-                message.OpenClawId,
-                message.OpenClawSeq);
+            // A frame carrying only structured/legacy media directives (no
+            // plain text) has nothing for the identified-duplicate/self-echo
+            // classifier to compare against, and it never carries a gateway
+            // identity either (media-only frames are synthesized locally
+            // from ContentParts, not gateway-sequenced) — so it can't be a
+            // resend of an already-rendered turn. Render it directly rather
+            // than routing it through text-based classification.
+            var disposition = assistantText.Length == 0 &&
+                assistantContent is not null &&
+                string.IsNullOrEmpty(message.OpenClawId) &&
+                message.OpenClawSeq is null
+                ? AssistantQueueFrameDisposition.Render
+                : ClassifyAssistantQueueFrameLocked(
+                    threadId,
+                    assistantText,
+                    message.OpenClawId,
+                    message.OpenClawSeq);
             ChatDataSnapshot? promotionSnapshot = null;
             if (disposition == AssistantQueueFrameDisposition.Render &&
                 _queue.IsLocallyInitiated(threadId) &&
@@ -1459,7 +1660,8 @@ internal sealed class ChatConversationState
                 threadId,
                 message.Ts,
                 message.OpenClawId,
-                message.OpenClawSeq);
+                message.OpenClawSeq,
+                assistantContent: assistantContent);
             var hasUsage = message.InputTokens is not null ||
                            message.OutputTokens is not null ||
                            message.ResponseTokens is not null ||
@@ -1864,6 +2066,8 @@ internal sealed class ChatConversationState
     internal ChatRemoteUserBackfillTransition? ApplyRemoteUserBackfill(
         string threadId,
         ChatMessageInfo message,
+        GatewayMediaMessageProjectionResult projection,
+        IReadOnlyList<ChatAttachmentPresentation> attachments,
         long expectedResetGeneration,
         bool openResetGate,
         ChatProjectionContext context)
@@ -1875,34 +2079,33 @@ internal sealed class ChatConversationState
             {
                 return null;
             }
-            if (_timelines.TryGetValue(threadId, out var timeline))
-            {
-                for (var i = timeline.Entries.Count - 1; i >= 0; i--)
-                {
-                    if (timeline.Entries[i].Kind != ChatTimelineItemKind.User)
-                        continue;
-                    if (timeline.Entries[i].Text == message.Text)
-                        return null;
-                    break;
-                }
-            }
             var openedLifecycle = openResetGate
                 ? ApplyBufferedLifecycleOpenLocked(
                     threadId,
                     _reset.RecordRemoteUser(threadId),
                     allowRemoteTurn: true)
                 : null;
-            ApplyEventLocked(
+            var metadata = BuildLiveMetaLocked(
                 threadId,
-                new ChatUserMessageEvent(
-                    ChatContentFormatting.TruncateForChatEntry(message.Text)),
-                BuildLiveMetaLocked(
-                    threadId,
-                    message.Ts,
-                    message.OpenClawId,
-                    message.OpenClawSeq));
+                message.Ts,
+                message.OpenClawId,
+                message.OpenClawSeq,
+                attachments: attachments);
+            var snapshot = ApplyProjectedRemoteUserMessageLocked(
+                threadId,
+                ChatContentFormatting.TruncateForChatEntry(
+                    projection.HasMediaEnvelope
+                        ? projection.ReconciliationText
+                        : ChatMetadataStore.EscapeUntrustedAttachmentMarkerLines(
+                            message.Text)),
+                GatewayMediaMessageProjection.BuildAttachmentCorrelationSignature(
+                    attachments),
+                metadata,
+                context);
+            if (snapshot is null && openedLifecycle is null)
+                return null;
             return new(
-                BuildSnapshotLocked(context),
+                snapshot ?? BuildSnapshotLocked(context),
                 openedLifecycle,
                 CurrentRuntimeGenerationLocked(threadId));
         }
@@ -2079,6 +2282,8 @@ internal sealed class ChatConversationState
     private bool TryReconcileExistingLocalQueuedUserEchoLocked(
         string threadId,
         string text,
+        string attachmentCorrelationSignature,
+        bool hasMediaEnvelope,
         ChatEntryMetadata confirmed)
     {
         if (!HasGatewayIdentity(confirmed) ||
@@ -2087,25 +2292,45 @@ internal sealed class ChatConversationState
         {
             return false;
         }
+
+        var candidates = new List<ChatTimelineItem>();
+        var echoCandidates = new List<ChatPendingEchoCandidate>();
         for (var i = timeline.Entries.Count - 1; i >= 0; i--)
         {
             var entry = timeline.Entries[i];
             if (entry.Kind != ChatTimelineItemKind.User ||
-                !string.Equals(entry.Text, text, StringComparison.Ordinal) ||
                 !metadata.TryGetValue(entry.Id, out var existing) ||
                 !existing.IsLocalQueuedSend ||
                 !IsFreshLocalQueuedPromotion(existing, confirmed))
             {
                 continue;
             }
-            metadata[entry.Id] = confirmed with
-            {
-                IsLocalQueuedSend = false,
-                LocalQueuedMessageId = existing.LocalQueuedMessageId,
-            };
-            return true;
+            candidates.Add(entry);
+            echoCandidates.Add(new ChatPendingEchoCandidate(
+                entry.Id,
+                entry.Text,
+                GatewayMediaMessageProjection.BuildAttachmentCorrelationSignature(
+                    existing.Attachments)));
         }
-        return false;
+
+        var matchedMessageId = ChatAttachmentEchoCorrelation.SelectMatchingMessageId(
+            echoCandidates,
+            text,
+            attachmentCorrelationSignature,
+            hasMediaEnvelope);
+        if (matchedMessageId is null)
+            return false;
+
+        var matched = candidates.First(candidate =>
+            string.Equals(candidate.Id, matchedMessageId, StringComparison.Ordinal));
+        var matchedMeta = metadata[matched.Id];
+        metadata[matched.Id] = confirmed with
+        {
+            IsLocalQueuedSend = false,
+            LocalQueuedMessageId = matchedMeta.LocalQueuedMessageId,
+            Attachments = matchedMeta.Attachments,
+        };
+        return true;
     }
 
     private static bool IsFreshLocalQueuedPromotion(
@@ -2143,6 +2368,7 @@ internal sealed class ChatConversationState
         {
             IsLocalQueuedSend = false,
             LocalQueuedMessageId = messageId,
+            Attachments = match.Value.Attachments,
         };
         return true;
     }
@@ -2317,6 +2543,41 @@ internal sealed class ChatConversationState
             if (!beforeIds.Contains(entry.Id) && !threadMetadata.ContainsKey(entry.Id))
                 threadMetadata[entry.Id] = metadata;
         }
+
+        // Streaming assistant frames reconcile into the SAME entry id
+        // (see ChatTimelineReducer.UpsertAssistant), so the new-entry-only
+        // assignment above never touches it again after creation. Assistant
+        // structured media content can still refine across frames (e.g. a
+        // legacy directive resolved to a structured reference on a later
+        // frame), so merge it into the already-existing reconciled entry's
+        // metadata explicitly.
+        if (metadata.AssistantContent is not null)
+        {
+            for (var i = next.Entries.Count - 1; i >= 0; i--)
+            {
+                var entry = next.Entries[i];
+                if (entry.Kind == ChatTimelineItemKind.User)
+                    break;
+                if (entry.Kind != ChatTimelineItemKind.Assistant)
+                    continue;
+
+                if (beforeIds.Contains(entry.Id) &&
+                    threadMetadata.TryGetValue(entry.Id, out var existingEntryMeta))
+                {
+                    var mergedContent = ChatAssistantContentProjector.MergeLiveUpdate(
+                        existingEntryMeta.AssistantContent,
+                        metadata.AssistantContent);
+                    if (!ReferenceEquals(mergedContent, existingEntryMeta.AssistantContent))
+                    {
+                        threadMetadata[entry.Id] = existingEntryMeta with
+                        {
+                            AssistantContent = mergedContent,
+                        };
+                    }
+                }
+                break;
+            }
+        }
     }
 
     private Dictionary<string, ChatEntryMetadata> GetOrCreateThreadMetaLocked(
@@ -2339,7 +2600,9 @@ internal sealed class ChatConversationState
         string? localQueuedMessageId = null,
         string? openClawKind = null,
         long? compactionTokensBefore = null,
-        long? compactionTokensAfter = null)
+        long? compactionTokensAfter = null,
+        IReadOnlyList<ChatAttachmentPresentation>? attachments = null,
+        ChatAssistantContentPresentation? assistantContent = null)
     {
         var timestamp = tsMs is { } value && value > 0
             ? DateTimeOffset.FromUnixTimeMilliseconds(value).ToLocalTime()
@@ -2353,7 +2616,9 @@ internal sealed class ChatConversationState
             CompactionTokensBefore: compactionTokensBefore,
             CompactionTokensAfter: compactionTokensAfter,
             IsLocalQueuedSend: isLocalQueuedSend,
-            LocalQueuedMessageId: localQueuedMessageId);
+            LocalQueuedMessageId: localQueuedMessageId,
+            Attachments: attachments,
+            AssistantContent: assistantContent);
     }
 
     private ChatOpenedLifecycleTransition? AddResetAcceptedRunIdLocked(

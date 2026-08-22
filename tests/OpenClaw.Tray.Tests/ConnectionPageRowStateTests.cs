@@ -13,6 +13,25 @@ namespace OpenClaw.Tray.Tests;
 public sealed class ConnectionPageRowStateTests
 {
     [Theory]
+    [InlineData(true, false, false, false)]
+    [InlineData(true, false, true, true)]
+    [InlineData(false, false, false, true)]
+    [InlineData(false, true, true, false)]
+    public void ShouldShowConnect_SuppressesOnlyActiveTerminalRetry(
+        bool isActive,
+        bool hasLiveAffordance,
+        bool allowConnectionToggle,
+        bool expected)
+    {
+        Assert.Equal(
+            expected,
+            ConnectionPageRowState.ShouldShowConnect(
+                isActive,
+                hasLiveAffordance,
+                allowConnectionToggle));
+    }
+
+    [Theory]
     [InlineData(OverallConnectionState.Connected)]
     [InlineData(OverallConnectionState.Ready)]
     [InlineData(OverallConnectionState.Degraded)]

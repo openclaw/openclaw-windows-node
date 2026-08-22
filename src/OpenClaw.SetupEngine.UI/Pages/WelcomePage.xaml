@@ -54,6 +54,11 @@
                                            Text="Install a local gateway (WSL)"
                                            Style="{StaticResource BodyStrongTextBlockStyle}"
                                            VerticalAlignment="Center" />
+                                <ProgressRing x:Name="InstallCheckProgress"
+                                              AutomationProperties.AutomationId="WelcomeInstallCheckProgress"
+                                              AutomationProperties.Name="Checking existing WSL setup"
+                                              Width="16" Height="16"
+                                              IsActive="False" Visibility="Collapsed" />
                                 <Border CornerRadius="4" Padding="7,1" VerticalAlignment="Center"
                                         BorderBrush="{ThemeResource AccentTextFillColorPrimaryBrush}" BorderThickness="1">
                                     <TextBlock Text="Recommended"
@@ -65,6 +70,25 @@
                                        Style="{StaticResource CaptionTextBlockStyle}"
                                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"
                                        Text="A private, self-hosted OpenClaw gateway in an isolated Ubuntu WSL instance. We'll show exactly what gets installed before anything runs." />
+                            <StackPanel x:Name="LocalAiAvailabilityPanel"
+                                        AutomationProperties.AutomationId="WelcomeLocalAiAvailable"
+                                        AutomationProperties.LiveSetting="Polite"
+                                        Spacing="2" Margin="0,5,0,0" Visibility="Collapsed">
+                                <StackPanel Orientation="Horizontal" Spacing="6">
+                                    <FontIcon Glyph="&#xE73E;" FontSize="12"
+                                              IsTextScaleFactorEnabled="False"
+                                              Foreground="{ThemeResource SystemFillColorSuccessBrush}" />
+                                    <TextBlock Text="Local AI available"
+                                               Style="{StaticResource CaptionTextBlockStyle}"
+                                               FontWeight="SemiBold"
+                                               Foreground="{ThemeResource SystemFillColorSuccessBrush}" />
+                                </StackPanel>
+                                <TextBlock x:Name="LocalAiAvailabilityText"
+                                           AutomationProperties.AutomationId="WelcomeLocalAiHardware"
+                                           TextWrapping="Wrap"
+                                           Style="{StaticResource CaptionTextBlockStyle}"
+                                           Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                            </StackPanel>
                         </StackPanel>
                     </Grid>
                 </ListViewItem>
@@ -87,7 +111,7 @@
                             <TextBlock TextWrapping="Wrap"
                                        Style="{StaticResource CaptionTextBlockStyle}"
                                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                                       Text="Already run an OpenClaw gateway: here, on another machine, or remote? Pair without installing anything." />
+                                       Text="Already run an OpenClaw gateway: here, on another machine, or remote? Pair without installing a gateway or configuring Local AI on this PC." />
                         </StackPanel>
                     </Grid>
                 </ListViewItem>

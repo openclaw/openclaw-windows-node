@@ -13,7 +13,18 @@ internal sealed record ChatQueuedSendRequest(
     IReadOnlyList<ChatAttachment>? Attachments,
     int DeferredAdmissionRetryCount = 0,
     DateTimeOffset? DeferredAdmissionRetryAfter = null,
-    ChatLifecycleCommandKind? LifecycleCommand = null);
+    ChatLifecycleCommandKind? LifecycleCommand = null,
+    string? TimelineText = null,
+    IReadOnlyList<ChatAttachmentPresentation>? AttachmentPresentations = null,
+    string AttachmentCorrelationSignature = "")
+{
+    // The final timeline entry text never carries the cosmetic attachment
+    // chip lines that DisplayText uses for the queued-message preview list
+    // — structured Attachments render those instead. Falls back to
+    // DisplayText for legacy callers (e.g. lifecycle commands) that never
+    // set TimelineText explicitly.
+    public string EffectiveTimelineText => TimelineText ?? DisplayText;
+}
 
 internal sealed record ChatQueuedSendDispatch(
     ChatQueuedSendRequest Request,

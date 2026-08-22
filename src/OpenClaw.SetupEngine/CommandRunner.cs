@@ -70,7 +70,7 @@ public interface ICommandRunner
 public sealed class CommandRunner : ICommandRunner
 {
     private readonly SetupLogger _logger;
-    private const int DrainTimeoutMs = 5000; // bounded drain for orphan WSL processes
+    private static readonly TimeSpan s_outputDrainGrace = TimeSpan.FromMilliseconds(250);
     private const int MaxCapturedStreamChars = 1_048_576;
 
     public CommandRunner(SetupLogger logger) => _logger = logger;
@@ -119,10 +119,20 @@ public sealed class CommandRunner : ICommandRunner
         using var process = new Process { StartInfo = psi };
         var stdout = new BoundedOutputBuffer(MaxCapturedStreamChars);
         var stderr = new BoundedOutputBuffer(MaxCapturedStreamChars);
+        var stdoutClosed = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var stderrClosed = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var timedOut = false;
 
-        process.OutputDataReceived += (_, e) => { if (e.Data != null) stdout.AppendLine(e.Data); };
-        process.ErrorDataReceived += (_, e) => { if (e.Data != null) stderr.AppendLine(e.Data); };
+        process.OutputDataReceived += (_, e) =>
+        {
+            if (e.Data is null) stdoutClosed.TrySetResult();
+            else stdout.AppendLine(e.Data);
+        };
+        process.ErrorDataReceived += (_, e) =>
+        {
+            if (e.Data is null) stderrClosed.TrySetResult();
+            else stderr.AppendLine(e.Data);
+        };
 
         try
         {
@@ -167,7 +177,7 @@ public sealed class CommandRunner : ICommandRunner
                 }
             }
 
-            await process.WaitForExitAsync(timeoutCts.Token);
+            await WaitForProcessExitOnlyAsync(process, timeoutCts.Token);
         }
         catch (OperationCanceledException) when (!ct.IsCancellationRequested)
         {
@@ -182,10 +192,12 @@ public sealed class CommandRunner : ICommandRunner
             throw;
         }
 
-        // Flush async output handlers. WaitForExitAsync observes process exit, but the
-        // OutputDataReceived/ErrorDataReceived callbacks can still be draining.
-        if (!timedOut)
-            process.WaitForExit(DrainTimeoutMs);
+        // A surviving descendant can keep inherited pipe handles open after the child
+        // exits. Preserve output already in flight without charging the command's full
+        // timeout to an EOF that may never arrive.
+        await Task.WhenAny(
+            Task.WhenAll(stdoutClosed.Task, stderrClosed.Task),
+            Task.Delay(s_outputDrainGrace));
 
         sw.Stop();
         var result = new CommandResult(
@@ -277,6 +289,27 @@ public sealed class CommandRunner : ICommandRunner
             return RunAsync("wsl.exe", args.ToArray(), timeout, env, stdinInput: command, ct: ct);
 
         return RunAsync("wsl.exe", args.ToArray(), timeout, env, ct: ct);
+    }
+
+    private static async Task WaitForProcessExitOnlyAsync(Process process, CancellationToken ct)
+    {
+        var exited = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        void OnExited(object? sender, EventArgs e) => exited.TrySetResult();
+
+        process.EnableRaisingEvents = true;
+        process.Exited += OnExited;
+        try
+        {
+            if (!process.HasExited)
+            {
+                using var registration = ct.Register(() => exited.TrySetCanceled(ct));
+                await exited.Task;
+            }
+        }
+        finally
+        {
+            process.Exited -= OnExited;
+        }
     }
 
     private static void TryKill(Process process)

@@ -25,7 +25,7 @@ internal static class ToolCallCardRenderer
         s_activityBindings = new();
 
     public static Element BuildStandalone(
-        OpenClawChatTimelineProps props,
+        ChatTimelinePresentationContext props,
         ChatTimelineItem entry,
         bool isNested = false)
     {
@@ -162,14 +162,14 @@ internal static class ToolCallCardRenderer
     }
 
     public static Element BuildActivity(
-        OpenClawChatTimelineProps props,
+        ChatTimelinePresentationContext props,
         ChatToolActivityRow activity,
         ChatToolActivityExpansionState expansionState) =>
         Component<ToolActivityCard, ToolActivityCardProps>(
             new ToolActivityCardProps(props, activity, expansionState));
 
     internal static Element BuildActivityCore(
-        OpenClawChatTimelineProps props,
+        ChatTimelinePresentationContext props,
         ChatToolActivityRow activity,
         bool isExpanded,
         Action<bool> onUserExpansionChanged)
@@ -346,7 +346,7 @@ internal static class ToolCallCardRenderer
 }
 
 internal sealed record ToolActivityCardProps(
-    OpenClawChatTimelineProps Timeline,
+    ChatTimelinePresentationContext Timeline,
     ChatToolActivityRow Activity,
     ChatToolActivityExpansionState ExpansionState);
 

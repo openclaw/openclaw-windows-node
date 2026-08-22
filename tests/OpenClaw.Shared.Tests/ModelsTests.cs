@@ -276,7 +276,7 @@ public class GatewaySelfInfoTests
         using var doc = JsonDocument.Parse("""
         {
           "type": "hello-ok",
-          "protocol": 1,
+          "protocol": 4,
           "server": { "version": "0.7.0", "connId": "abc123" },
           "snapshot": {
             "presence": [{ "host": "mac", "ts": 123 }],
@@ -298,7 +298,7 @@ public class GatewaySelfInfoTests
         Assert.True(info.HasAnyDetails);
         Assert.Equal("0.7.0", info.ServerVersion);
         Assert.Equal("abc123", info.ConnectionId);
-        Assert.Equal(1, info.Protocol);
+        Assert.Equal(4, info.Protocol);
         Assert.Equal(125000, info.UptimeMs);
         Assert.Equal("token", info.AuthMode);
         Assert.Equal(4, info.StateVersionPresence);

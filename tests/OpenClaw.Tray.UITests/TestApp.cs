@@ -87,7 +87,6 @@ internal sealed class TestApp : Application
             TryAddBrushResource(resources, key, color);
         }
 
-        AddChatTimelineStyles(resources);
     }
 
     private bool TryGetResources(out ResourceDictionary resources)
@@ -136,38 +135,4 @@ internal sealed class TestApp : Application
         }
     }
 
-    private static void AddChatTimelineStyles(ResourceDictionary resources)
-    {
-        if (!resources.ContainsKey("ChatUserBubbleSelectionStyle"))
-        {
-            resources["ChatUserBubbleSelectionStyle"] = new Style
-            {
-                TargetType = typeof(RichTextBlock),
-            };
-        }
-
-        AddChatBorderStyle(resources, "ChatToolCardBorderStyle");
-        AddChatBorderStyle(resources, "ChatCompactionCardStyle");
-    }
-
-    private static void AddChatBorderStyle(ResourceDictionary resources, string key)
-    {
-        if (resources.ContainsKey(key))
-            return;
-
-        var style = new Style
-        {
-            TargetType = typeof(Border),
-        };
-        style.Setters.Add(new Setter(
-            Border.BackgroundProperty,
-            resources["CardBackgroundFillColorDefaultBrush"]));
-        style.Setters.Add(new Setter(
-            Border.BorderBrushProperty,
-            resources["ControlStrokeColorDefaultBrush"]));
-        style.Setters.Add(new Setter(
-            Border.BorderThicknessProperty,
-            new Thickness(1)));
-        resources[key] = style;
-    }
 }

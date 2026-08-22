@@ -57,6 +57,7 @@ public interface INodeConnectorTelemetryEvents
 {
     event EventHandler TransportConnected;
     event EventHandler<GatewayErrorKind> ConnectionFailure;
+    event EventHandler<GatewayProtocolCompatibility> ProtocolCompatibilityChanged;
 }
 
 public interface INodeConnectorReconnectPolicy

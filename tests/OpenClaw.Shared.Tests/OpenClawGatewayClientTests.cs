@@ -835,7 +835,8 @@ public class OpenClawGatewayClientTests
             "type": "res",
             "id": "req-hello-restart",
             "payload": {
-                "type": "hello-ok"
+                "type": "hello-ok",
+                "protocol": 4
             }
         }
         """);
@@ -855,6 +856,35 @@ public class OpenClawGatewayClientTests
         Assert.Equal("service restart", exception.CloseStatusDescription);
         Assert.False(client.HasHandshakeSnapshot);
         Assert.Equal(0, helper.GetPendingRequestCount());
+    }
+
+    [Fact]
+    public async Task ProtocolMismatch_AbortsTransportAndRejectsSubsequentOperatorSend()
+    {
+        using var server = new LoopbackWebSocketServer();
+        using var identity = new TempDirectory("operator-protocol-mismatch-");
+        await server.StartAsync();
+        var helper = new GatewayClientTestHelper(
+            gatewayUrl: server.WebSocketUrl,
+            identityPath: identity.Path);
+        using var client = helper.Client;
+        await client.ConnectAsync();
+
+        helper.ProcessRawMessage("""
+        {
+          "type": "res",
+          "id": "connect-mismatch",
+          "payload": {
+            "type": "hello-ok",
+            "protocol": 2
+          }
+        }
+        """);
+
+        Assert.False(client.IsConnectedToGateway);
+        Assert.False(helper.ShouldAutoReconnectForTest());
+        await Assert.ThrowsAsync<InvalidOperationException>(
+            () => client.SendChatMessageAsync("blocked after protocol mismatch"));
     }
 
     private static string ReadRequestId(string request)
@@ -1035,6 +1065,7 @@ public class OpenClawGatewayClientTests
           "id": "req-hello-node",
           "payload": {
             "type": "hello-ok",
+            "protocol": 4,
             "auth": {
               "deviceToken": "node-token",
               "role": "node",
@@ -1064,6 +1095,7 @@ public class OpenClawGatewayClientTests
           "id": "req-hello-node",
           "payload": {
             "type": "hello-ok",
+            "protocol": 4,
             "auth": {
               "deviceToken": "node-token",
               "role": "node",
@@ -1084,29 +1116,32 @@ public class OpenClawGatewayClientTests
         Assert.Equal("operator-token", helper.GetStoredOperatorDeviceToken());
     }
 
-    [Fact]
-    public void GuardedValidation_IgnoresUncorrelatedHelloOk()
+    [Theory]
+    [InlineData("""{"type":"hello-ok","protocol":4,"server":{"version":"hostile"}}""")]
+    [InlineData("""{"type":"hello-ok","protocol":5}""")]
+    [InlineData("""{"type":"hello-ok"}""")]
+    public void GuardedValidation_IgnoresUncorrelatedHelloOk(string payloadJson)
     {
         var helper = new GatewayClientTestHelper();
         var handshakeSucceeded = false;
+        var failures = new List<GatewayErrorKind>();
         helper.Client.HandshakeAuthorizationAsync = _ => Task.FromResult(
             new ReconnectAuthorizationResult(true, GatewayErrorKind.Unknown, string.Empty));
         helper.Client.HandshakeSucceeded += (_, _) => handshakeSucceeded = true;
+        helper.Client.ConnectionFailure += (_, failure) => failures.Add(failure);
 
-        helper.ProcessRawMessage("""
+        helper.ProcessRawMessage($$"""
         {
           "type": "res",
           "id": "unsolicited",
-          "payload": {
-            "type": "hello-ok",
-            "protocol": 4,
-            "server": { "version": "hostile" }
-          }
+          "payload": {{payloadJson}}
         }
         """);
 
         Assert.False(handshakeSucceeded);
         Assert.False(helper.Client.HasHandshakeSnapshot);
+        Assert.Empty(failures);
+        Assert.True(helper.ShouldAutoReconnectForTest());
     }
 
     [Fact]
@@ -1318,6 +1353,7 @@ public class OpenClawGatewayClientTests
           "id": "req-hello-operator",
           "payload": {
             "type": "hello-ok",
+            "protocol": 4,
             "auth": {
               "deviceToken": "operator-token",
               "role": "operator",
@@ -1363,6 +1399,7 @@ public class OpenClawGatewayClientTests
               "id": "req-hello-operator",
               "payload": {
                 "type": "hello-ok",
+                "protocol": 4,
                 "auth": {
                   "deviceToken": "operator-token",
                   "role": "operator",
@@ -1376,6 +1413,194 @@ public class OpenClawGatewayClientTests
         Assert.True(handshakeSucceeded);
         Assert.Equal("operator-token", receivedToken?.Token);
         Assert.Equal("operator", receivedToken?.Role);
+    }
+
+    [Theory]
+    [InlineData(3)]
+    [InlineData(4)]
+    [InlineData(5)]
+    public void AcceptedHelloOkProtocol_CompletesHandshakeWithAdditiveSnapshotFields(int protocol)
+    {
+        var helper = new GatewayClientTestHelper();
+        var statuses = new List<ConnectionStatus>();
+        var compatibility = new List<GatewayProtocolCompatibility>();
+        var handshakeCount = 0;
+        helper.Client.StatusChanged += (_, status) => statuses.Add(status);
+        helper.Client.ProtocolCompatibilityChanged += (_, value) => compatibility.Add(value);
+        helper.Client.HandshakeSucceeded += (_, _) => handshakeCount++;
+        helper.TrackPendingRequest("req-protocol", "connect");
+
+        helper.ProcessRawMessage(
+            $$"""
+            {
+              "type": "res",
+              "id": "req-protocol",
+              "ok": true,
+              "payload": {
+                "type": "hello-ok",
+                "protocol": {{protocol}},
+                "snapshot": {
+                  "futureField": {
+                    "nested": true
+                  }
+                }
+              }
+            }
+            """);
+
+        Assert.Equal(1, handshakeCount);
+        Assert.Contains(ConnectionStatus.Connected, statuses);
+        Assert.True(helper.Client.HasHandshakeSnapshot);
+        var accepted = Assert.Single(compatibility);
+        Assert.Equal(GatewayProtocolCompatibilityState.Compatible, accepted.State);
+        Assert.Equal(protocol, accepted.SelectedProtocol);
+        Assert.Null(accepted.GatewayExpectedProtocol);
+    }
+
+    [Theory]
+    [InlineData("""{"type":"hello-ok","protocol":2,"auth":{"deviceToken":"must-not-store"}}""")]
+    [InlineData("""{"type":"hello-ok","auth":{"deviceToken":"must-not-store"}}""")]
+    [InlineData("""{"type":"hello-ok","protocol":null,"auth":{"deviceToken":"must-not-store"}}""")]
+    [InlineData("""{"type":"hello-ok","protocol":"4","auth":{"deviceToken":"must-not-store"}}""")]
+    [InlineData("""{"type":"hello-ok","protocol":4.5,"auth":{"deviceToken":"must-not-store"}}""")]
+    [InlineData("""{"type":"unexpected-success","protocol":4,"auth":{"deviceToken":"must-not-store"}}""")]
+    [InlineData("""null""")]
+    public void InvalidConnectSuccess_FailsBeforeOperatorHandshakeSideEffects(string payloadJson)
+    {
+        var helper = new GatewayClientTestHelper();
+        var statuses = new List<ConnectionStatus>();
+        var failures = new List<GatewayErrorKind>();
+        var handshakeCount = 0;
+        var tokenCount = 0;
+        var gatewaySelfCount = 0;
+        helper.Client.StatusChanged += (_, status) => statuses.Add(status);
+        helper.Client.ConnectionFailure += (_, kind) => failures.Add(kind);
+        helper.Client.HandshakeSucceeded += (_, _) => handshakeCount++;
+        helper.Client.DeviceTokenReceived += (_, _) => tokenCount++;
+        helper.Client.GatewaySelfUpdated += (_, _) => gatewaySelfCount++;
+        helper.TrackPendingRequest("req-invalid-hello", "connect");
+
+        helper.ProcessRawMessage(
+            $$"""
+            {
+              "type": "res",
+              "id": "req-invalid-hello",
+              "ok": true,
+              "payload": {{payloadJson}}
+            }
+            """);
+
+        Assert.Equal([GatewayErrorKind.ProtocolMismatch], failures);
+        Assert.Contains(ConnectionStatus.Error, statuses);
+        Assert.DoesNotContain(ConnectionStatus.Connected, statuses);
+        Assert.Equal(0, handshakeCount);
+        Assert.Equal(0, tokenCount);
+        Assert.Equal(0, gatewaySelfCount);
+        Assert.Null(helper.GetStoredOperatorDeviceToken());
+        Assert.False(helper.Client.HasHandshakeSnapshot);
+        Assert.False(helper.ShouldAutoReconnectForTest());
+    }
+
+    [Fact]
+    public void ProtocolMismatch_IgnoresSubsequentOperatorEvents()
+    {
+        var helper = new GatewayClientTestHelper();
+        var chatMessageCount = 0;
+        helper.Client.ChatMessageReceived += (_, _) => chatMessageCount++;
+        helper.TrackPendingRequest("req-invalid-hello", "connect");
+
+        helper.ProcessRawMessage(
+            """
+            {
+              "type": "res",
+              "id": "req-invalid-hello",
+              "ok": true,
+              "payload": {
+                "type": "hello-ok",
+                "protocol": 2
+              }
+            }
+            """);
+        helper.ProcessRawMessage(
+            """
+            {
+              "type": "event",
+              "event": "session.message",
+              "payload": {
+                "sessionKey": "agent:main:main",
+                "message": {
+                  "role": "assistant",
+                  "content": "must not dispatch"
+                },
+                "state": "final"
+              }
+            }
+            """);
+
+        Assert.Equal(0, chatMessageCount);
+    }
+
+    [Theory]
+    [InlineData("""{"message":"connect rejected","code":"PROTOCOL_MISMATCH"}""")]
+    [InlineData("""{"message":"protocol mismatch: gateway requires version 5"}""")]
+    public void ConnectProtocolMismatch_IsClassifiedAndStopsAutomaticReconnect(string errorJson)
+    {
+        var helper = new GatewayClientTestHelper();
+        var statuses = new List<ConnectionStatus>();
+        var failures = new List<GatewayErrorKind>();
+        helper.Client.StatusChanged += (_, status) => statuses.Add(status);
+        helper.Client.ConnectionFailure += (_, kind) => failures.Add(kind);
+        helper.TrackPendingRequest("req-protocol-mismatch", "connect");
+
+        helper.ProcessRawMessage(
+            $$"""
+            {
+              "type": "res",
+              "id": "req-protocol-mismatch",
+              "ok": false,
+              "error": {{errorJson}}
+            }
+            """);
+
+        Assert.Equal([GatewayErrorKind.ProtocolMismatch], failures);
+        Assert.Contains(ConnectionStatus.Error, statuses);
+        Assert.False(helper.ShouldAutoReconnectForTest());
+        Assert.False(helper.GetUseV2Signature());
+    }
+
+    [Fact]
+    public void StructuredProtocolMismatch_PublishesGatewayExpectation()
+    {
+        var helper = new GatewayClientTestHelper();
+        GatewayProtocolCompatibility? compatibility = null;
+        helper.Client.ProtocolCompatibilityChanged += (_, value) => compatibility = value;
+        helper.TrackPendingRequest("req-protocol-details", "connect");
+
+        helper.ProcessRawMessage(
+            """
+            {
+              "type": "res",
+              "id": "req-protocol-details",
+              "ok": false,
+              "error": {
+                "code": "INVALID_REQUEST",
+                "message": "protocol mismatch",
+                "details": {
+                  "code": "PROTOCOL_MISMATCH",
+                  "clientMinProtocol": 3,
+                  "clientMaxProtocol": 4,
+                  "expectedProtocol": 5,
+                  "minimumProbeProtocol": 3
+                }
+              }
+            }
+            """);
+
+        Assert.NotNull(compatibility);
+        Assert.Equal(GatewayProtocolCompatibilityState.GatewayTooNew, compatibility.State);
+        Assert.Equal(5, compatibility.GatewayExpectedProtocol);
+        Assert.Equal(3, compatibility.GatewayMinimumProtocol);
+        Assert.False(compatibility.Retryable);
     }
 
     [Fact]
@@ -1863,6 +2088,177 @@ public class OpenClawGatewayClientTests
                 Assert.Equal(ChatMessageContentPartKind.Text, part.Kind);
                 Assert.Equal("After", part.Text);
             });
+    }
+
+    [Fact]
+    public void ParseChatHistoryPayload_StructuredMedia_PreservesTypedFieldsAndOrder()
+    {
+        var helper = new GatewayClientTestHelper();
+
+        var history = helper.ParseChatHistoryPayload("""
+        {
+          "messages": [
+            {
+              "role": "assistant",
+              "content": [
+                { "type": "text", "text": "Created it." },
+                {
+                  "type": "image",
+                  "mimeType": "image/png",
+                  "fileName": "banner.png",
+                  "artifactId": "artifact_managed_image_123",
+                  "alt": "OpenClaw banner",
+                  "width": 1200,
+                  "height": 774,
+                  "sizeBytes": 12345
+                },
+                { "type": "text", "text": "Finished." }
+              ],
+              "timestamp": 1
+            }
+          ]
+        }
+        """);
+
+        var message = Assert.Single(history.Messages);
+        Assert.Equal("Created it.\nFinished.", message.Text);
+        Assert.Collection(
+            message.ContentParts,
+            part =>
+            {
+                Assert.Equal(ChatMessageContentPartKind.Text, part.Kind);
+                Assert.Equal("Created it.", part.Text);
+            },
+            part =>
+            {
+                Assert.Equal(ChatMessageContentPartKind.Media, part.Kind);
+                Assert.Equal(ChatMediaContentKind.Image, part.Media?.Kind);
+                Assert.Equal("image/png", part.Media?.MimeType);
+                Assert.Equal("banner.png", part.Media?.FileName);
+                Assert.Equal("artifact_managed_image_123", part.Media?.ArtifactId);
+                Assert.Equal(1200, part.Media?.Width);
+                Assert.Equal(774, part.Media?.Height);
+            },
+            part =>
+            {
+                Assert.Equal(ChatMessageContentPartKind.Text, part.Kind);
+                Assert.Equal("Finished.", part.Text);
+            });
+    }
+
+    [Fact]
+    public void ParseChatHistoryPayload_LegacyMediaOnly_PreservesMessageAndRedactsPath()
+    {
+        var helper = new GatewayClientTestHelper();
+
+        var history = helper.ParseChatHistoryPayload("""
+        {
+          "messages": [
+            {
+              "role": "assistant",
+              "content": "MEDIA:/home/openclaw/.openclaw/workspace/downloads/banner.png",
+              "timestamp": 1
+            }
+          ]
+        }
+        """);
+
+        var message = Assert.Single(history.Messages);
+        Assert.Equal(string.Empty, message.Text);
+        var media = Assert.Single(message.ContentParts).Media;
+        Assert.NotNull(media);
+        Assert.Equal(ChatMediaContentSource.LegacyDirective, media.Source);
+        Assert.Equal("banner.png", media.FileName);
+    }
+
+    [Fact]
+    public void ParseChatHistoryPayload_StringArray_RedactsLegacyMediaPath()
+    {
+        var helper = new GatewayClientTestHelper();
+
+        var history = helper.ParseChatHistoryPayload("""
+        {
+          "messages": [
+            {
+              "role": "assistant",
+              "content": [
+                "Created it.",
+                "MEDIA:/home/openclaw/.openclaw/workspace/downloads/banner.png"
+              ],
+              "timestamp": 1
+            }
+          ]
+        }
+        """);
+
+        var message = Assert.Single(history.Messages);
+        Assert.Equal("Created it.", message.Text);
+        Assert.DoesNotContain("/home/openclaw", message.Text, StringComparison.Ordinal);
+        Assert.Single(
+            message.ContentParts,
+            part => part.Kind == ChatMessageContentPartKind.Media);
+        Assert.Equal(
+            "Created it.",
+            Assert.Single(
+                message.ContentParts,
+                part => part.Kind == ChatMessageContentPartKind.Text).Text);
+    }
+
+    [Fact]
+    public void ParseChatHistoryPayload_SplitFence_KeepsMediaDirectiveAsTextOnly()
+    {
+        var helper = new GatewayClientTestHelper();
+
+        var history = helper.ParseChatHistoryPayload("""
+        {
+          "messages": [
+            {
+              "role": "assistant",
+              "content": [
+                "```",
+                "MEDIA:/home/openclaw/private.png\n```"
+              ],
+              "timestamp": 1
+            }
+          ]
+        }
+        """);
+
+        var message = Assert.Single(history.Messages);
+        var part = Assert.Single(message.ContentParts);
+        Assert.Equal(ChatMessageContentPartKind.Text, part.Kind);
+        Assert.Contains("MEDIA:/home/openclaw/private.png", part.Text, StringComparison.Ordinal);
+        Assert.DoesNotContain(
+            message.ContentParts,
+            contentPart => contentPart.Kind == ChatMessageContentPartKind.Media);
+    }
+
+    [Fact]
+    public void ChatEvent_LegacyMediaOnly_RaisesTypedMessageWithoutRawPath()
+    {
+        var helper = new GatewayClientTestHelper();
+        ChatMessageInfo? received = null;
+        helper.Client.ChatMessageReceived += (_, message) => received = message;
+
+        helper.ProcessRawMessage("""
+        {
+          "type": "event",
+          "event": "chat",
+          "payload": {
+            "sessionKey": "main",
+            "state": "final",
+            "message": {
+              "role": "assistant",
+              "content": "MEDIA:/home/openclaw/.openclaw/workspace/downloads/banner.png"
+            }
+          }
+        }
+        """);
+
+        Assert.NotNull(received);
+        Assert.Equal(string.Empty, received.Text);
+        var media = Assert.Single(received.ContentParts).Media;
+        Assert.Equal("banner.png", media?.FileName);
     }
 
     [Fact]
@@ -4653,7 +5049,8 @@ public class OpenClawGatewayClientTests
             "type": "res",
             "id": "req-hello-1",
             "payload": {
-                "type": "hello-ok"
+                "type": "hello-ok",
+                "protocol": 4
             }
         }
         """);

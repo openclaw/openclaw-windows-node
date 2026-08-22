@@ -7012,4 +7012,91 @@ Make sure the gateway is running.</value>
   <data name="SessionsPage_LastRunStopped" xml:space="preserve">
     <value>Last run stopped</value>
   </data>
+  <data name="ConnectionPage_ProtocolGatewayUpdateRequired" xml:space="preserve">
+    <value>Gateway update required</value>
+  </data>
+  <data name="ConnectionPage_ProtocolGatewayUpdateDetail" xml:space="preserve">
+    <value>This Gateway uses protocol v{0}. This Windows app supports v{1}-v{2}. Its current protocol is v{3}. Update the Gateway to continue.</value>
+  </data>
+  <data name="ConnectionPage_ProtocolWindowsUpdateRequired" xml:space="preserve">
+    <value>Windows app update required</value>
+  </data>
+  <data name="ConnectionPage_ProtocolWindowsUpdateDetail" xml:space="preserve">
+    <value>This Gateway requires protocol v{0}. This Windows app supports v{1}-v{2}. Its current protocol is v{3}. Update the Windows app to continue.</value>
+  </data>
+  <data name="ConnectionPage_ProtocolUnknownMismatch" xml:space="preserve">
+    <value>Gateway version not supported</value>
+  </data>
+  <data name="Chat_AssistantMedia_Preparing" xml:space="preserve">
+    <value>Preparing media</value>
+  </data>
+  <data name="Chat_AssistantMedia_Unavailable" xml:space="preserve">
+    <value>Media unavailable</value>
+  </data>
+  <data name="Chat_AssistantMedia_Retry" xml:space="preserve">
+    <value>Retry</value>
+  </data>
+  <data name="Chat_AssistantMedia_Image" xml:space="preserve">
+    <value>Image</value>
+  </data>
+  <data name="Chat_AssistantMedia_Audio" xml:space="preserve">
+    <value>Audio</value>
+  </data>
+  <data name="Chat_AssistantMedia_Video" xml:space="preserve">
+    <value>Video</value>
+  </data>
+  <data name="Chat_AssistantMedia_File" xml:space="preserve">
+    <value>File</value>
+  </data>
+  <data name="Chat_AssistantMedia_Media" xml:space="preserve">
+    <value>Media</value>
+  </data>
+  <data name="Chat_AssistantMedia_ImagesOmitted" xml:space="preserve">
+    <value>{0} more images not shown</value>
+  </data>
+  <data name="Chat_AssistantMedia_MediaAttachment" xml:space="preserve">
+    <value>Media attachment</value>
+  </data>
+  <data name="Chat_AssistantMedia_OpenImage" xml:space="preserve">
+    <value>Open image {0}</value>
+  </data>
+  <data name="Chat_AssistantMedia_Close" xml:space="preserve">
+    <value>Close</value>
+  </data>
+  <data name="HubWindow_NavigationViewItem_LocalAi.Content" xml:space="preserve"><value>Local AI</value></data>
+  <data name="LocalAiPage_Title.Text" xml:space="preserve"><value>Local AI</value></data>
+  <data name="LocalAiPage_Intro.Text" xml:space="preserve"><value>Run the verified native llama-server privately on this computer. Models load only when requested.</value></data>
+  <data name="LocalAiPage_EngineHeading.Text" xml:space="preserve"><value>llama-server</value></data>
+  <data name="LocalAiPage_VersionLabel.Text" xml:space="preserve"><value>Version</value></data>
+  <data name="LocalAiPage_EndpointLabel.Text" xml:space="preserve"><value>Endpoint</value></data>
+  <data name="LocalAiPage_ProcessLabel.Text" xml:space="preserve"><value>Process</value></data>
+  <data name="LocalAiPage_StartButton.Content" xml:space="preserve"><value>Start router</value></data>
+  <data name="LocalAiPage_StopButton.Content" xml:space="preserve"><value>Stop</value></data>
+  <data name="LocalAiPage_RestartButton.Content" xml:space="preserve"><value>Restart</value></data>
+  <data name="LocalAiPage_OpenLogsButton.Content" xml:space="preserve"><value>Open logs</value></data>
+  <data name="LocalAiPage_ModelHeading.Text" xml:space="preserve"><value>Model</value></data>
+  <data name="LocalAiPage_RetrySetupButton.Content" xml:space="preserve"><value>Retry setup or download</value></data>
+  <data name="LocalAiPage_GatewayHeading.Text" xml:space="preserve"><value>Gateway connection</value></data>
+  <data name="LocalAiPage_RepairConnectionButton.Content" xml:space="preserve"><value>Repair connection</value></data>
+  <data name="LocalAiPage_OpenChatButton.Content" xml:space="preserve"><value>Open chat</value></data>
+  <data name="LocalAiPage_Engine_Running" xml:space="preserve"><value>Running</value></data>
+  <data name="LocalAiPage_Engine_Starting" xml:space="preserve"><value>Starting</value></data>
+  <data name="LocalAiPage_Engine_Stopped" xml:space="preserve"><value>Stopped</value></data>
+  <data name="LocalAiPage_Engine_Error" xml:space="preserve"><value>Error</value></data>
+  <data name="LocalAiPage_Engine_Managed" xml:space="preserve"><value>Managed by OpenClaw</value></data>
+  <data name="LocalAiPage_Engine_NotInstalled" xml:space="preserve"><value>Not installed</value></data>
+  <data name="LocalAiPage_Model_NotInstalled" xml:space="preserve"><value>Not installed</value></data>
+  <data name="LocalAiPage_Model_Unknown" xml:space="preserve"><value>Unknown</value></data>
+  <data name="LocalAiPage_Model_Verified" xml:space="preserve"><value>Downloaded and verified</value></data>
+  <data name="LocalAiPage_Model_Loaded" xml:space="preserve"><value>Loaded on GPU</value></data>
+  <data name="LocalAiPage_Gateway_Connected" xml:space="preserve"><value>Connected</value></data>
+  <data name="LocalAiPage_Gateway_Connecting" xml:space="preserve"><value>Connecting</value></data>
+  <data name="LocalAiPage_Gateway_NeedsAttention" xml:space="preserve"><value>Needs attention</value></data>
+  <data name="LocalAiPage_Gateway_Error" xml:space="preserve"><value>Connection error</value></data>
+  <data name="LocalAiPage_Gateway_Disconnected" xml:space="preserve"><value>Disconnected</value></data>
+  <data name="LocalAiPage_Value_Unknown" xml:space="preserve"><value>Unknown</value></data>
+  <data name="LocalAiPage_Process_NotRunning" xml:space="preserve"><value>Not running</value></data>
+  <data name="LocalAiPage_ModelRecipeFormat" xml:space="preserve"><value>{0} context · {1} KV · Loads on first request</value></data>
+  <data name="Command_GoToLocalAi_Title" xml:space="preserve"><value>Go to Local AI</value></data>
+  <data name="Command_GoToLocalAi_Subtitle" xml:space="preserve"><value>View llama-server, model, and gateway status</value></data>
 </root>

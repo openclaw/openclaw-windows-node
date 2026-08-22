@@ -4,6 +4,8 @@ using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Media;
 using Microsoft.UI.Xaml.Navigation;
 using OpenClaw.Shared;
+using OpenClaw.Shared.Inference;
+using OpenClaw.Shared.Inference.Catalog;
 using OpenClaw.SetupEngine.UI;
 using System.Diagnostics;
 
@@ -18,7 +20,18 @@ public sealed partial class CapabilitiesPage : Page
     private SetupWindow? _setupWindow;
     private Task? _permissionsTask;
     private bool _suppressProfile;
+    private bool _suppressLocalAiToggle;
+    private bool _suppressLocalAiSelection;
+    private bool _suppressLocalAiConsent;
     private bool _skipPermissions;
+    private bool _skipWizardWithoutLocalAi;
+    private bool _localAiSelectionEligible;
+    private bool _localAiNetworkingConsentRequired;
+    private HostHardwareInfo? _localAiHardware;
+    private string? _localAiRecommendedModelId;
+    private long? _localAiSelectedGpuCapacityBytes;
+    private WslGlobalConfigStatus? _localAiNetworkingStatus;
+    private string _localAiUnavailableReason = string.Empty;
     private bool _treatBundledAllOnAsPlaceholder;
     private int _step = 1;
 
@@ -61,6 +74,7 @@ public sealed partial class CapabilitiesPage : Page
         // setup declaration and gateway allowlist aligned with that runtime contract.
         _config.Capabilities.Device = true;
         _skipPermissions = _config.SkipPermissions;
+        _skipWizardWithoutLocalAi = _config.SkipWizard;
         _treatBundledAllOnAsPlaceholder = _config.UsesBundledDefaultConfig;
         BuildToggles();
         _suppressProfile = true;
@@ -81,12 +95,23 @@ public sealed partial class CapabilitiesPage : Page
         _setupWindow = SetupWindow.Active;
         if (_setupWindow is not null)
             _setupWindow.Activated += SetupWindow_Activated;
-        ApplySetupReviewSummary(_config);
         TailscaleToggle.IsOn = _config.Tailscale.Enabled;
         TailscaleTrustAuthToggle.IsOn = _config.Tailscale.TrustTailscaleAuth;
         TailscaleAuthModeSelector.SelectedIndex = _config.Tailscale.AuthMode == TailscaleAuthMode.AuthKey ? 1 : 0;
         UpdateTailscaleOptions();
-        GoToStep(1);
+        var previewPage = SetupPreview.RequestedPage;
+        var localAiReviewPreview = previewPage is "capabilities-review" or "capabilities-review-consent";
+        if (localAiReviewPreview)
+            _config.LocalAi.Enabled = true;
+        AsyncEventHandlerGuard.Run(
+            () => InitializeLocalAiReviewAsync(
+                forceNetworkingConsent: previewPage == "capabilities-review-consent"),
+            NullLogger.Instance,
+            nameof(InitializeLocalAiReviewAsync));
+        ApplySetupReviewSummary(_config);
+        GoToStep(localAiReviewPreview ? 3 : 1);
+        if (localAiReviewPreview)
+            DispatcherQueue.TryEnqueue(() => Scroller.ChangeView(null, 0, null, disableAnimation: true));
     }
 
     protected override void OnNavigatedFrom(NavigationEventArgs e)
@@ -138,6 +163,7 @@ public sealed partial class CapabilitiesPage : Page
         PrimaryButton.Content = step == 3 ? "Install & set up" : "Next";
         // Back is always available — from step 1 it returns to the Welcome screen.
         BackButton.Visibility = Visibility.Visible;
+        UpdatePrimaryButtonState();
 
         ScrollActiveIntoView();
     }
@@ -214,6 +240,12 @@ public sealed partial class CapabilitiesPage : Page
         config.Tailscale.AuthKey = config.Tailscale.AuthMode == TailscaleAuthMode.AuthKey
             ? TailscaleAuthKeyBox.Password
             : null;
+        config.LocalAi.Enabled = LocalAiToggle.IsOn == true;
+        config.SkipWizard = config.LocalAi.Enabled || _skipWizardWithoutLocalAi;
+        config.LocalAi.WslMirroredNetworkingConsent =
+            config.LocalAi.Enabled &&
+            _localAiNetworkingConsentRequired &&
+            LocalAiNetworkingConsentCheckBox.IsChecked == true;
     }
 
     private void ApplySetupReviewSummary(SetupConfig config)
@@ -230,6 +262,337 @@ public sealed partial class CapabilitiesPage : Page
         GatewayEndpointText.Text = summary.GatewayEndpoint;
         ExactCommandsText.Text = summary.ExactCommands;
     }
+
+    private async Task InitializeLocalAiReviewAsync(bool forceNetworkingConsent)
+    {
+        SetupWindow? setupWindow = _setupWindow;
+        Task<HostHardwareInfo> hardwareTask = setupWindow is not null
+            ? setupWindow.GetLocalAiHardwareAsync()
+            : Task.Run(() => new NvmlHostHardwareProbe().Probe());
+        Task<WslViabilityResult> wslTask = setupWindow is not null
+            ? setupWindow.GetWslViabilityAsync()
+            : InspectWslViabilityAsync();
+
+        string? hardwareReason = null;
+        LocalInferenceEligibilityResult? eligibility = null;
+        try
+        {
+            _localAiHardware = await hardwareTask;
+            eligibility = LocalInferenceEligibility.Evaluate(
+                _localAiHardware,
+                _config!.LocalAi.SelectedModelId);
+            _localAiSelectedGpuCapacityBytes = eligibility.DetectedTotalMemoryBytes;
+            _localAiRecommendedModelId = LocalModelCatalog.Models
+                .OrderByDescending(model => model.Weights.SizeBytes)
+                .FirstOrDefault(model =>
+                    _localAiSelectedGpuCapacityBytes is { } capacityBytes &&
+                    LocalInferenceEligibility.GetRequiredMemoryBytes(model) <= capacityBytes)?.Id;
+            if (!eligibility.CanInstall || eligibility.Plan is null || eligibility.SelectedGpu is null)
+                hardwareReason = DescribeLocalAiUnavailable(eligibility);
+        }
+        catch
+        {
+            hardwareReason =
+                "OpenClaw could not read the NVIDIA GPU, driver, CUDA, or memory information. " +
+                "Check the NVIDIA driver installation and try setup again.";
+        }
+
+        WslViabilityResult wslViability;
+        try
+        {
+            wslViability = await wslTask;
+        }
+        catch
+        {
+            wslViability = new(
+                WslViabilityKind.InspectionFailed,
+                "OpenClaw could not safely verify the WSL2 environment.",
+                "Run wsl --status in PowerShell, resolve the reported problem, and try setup again.");
+        }
+
+        string? wslNetworkingReason = null;
+        try
+        {
+            _localAiNetworkingStatus = forceNetworkingConsent
+                ? new(false, false)
+                : CreateWslGlobalConfigManager().Inspect();
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or InvalidDataException)
+        {
+            Debug.WriteLine($"WSL networking inspection failed: {ex}");
+            wslNetworkingReason =
+                "OpenClaw cannot safely read the global .wslconfig file. " +
+                "Check that the file is valid and readable, then try setup again.";
+        }
+
+        if (_setupWindow is null && setupWindow is not null)
+            return;
+
+        string? unavailableReason = LocalAiAvailabilityReasons.Build(
+            hardwareReason,
+            wslViability,
+            wslNetworkingReason);
+        if (unavailableReason is not null)
+        {
+            ShowLocalAiUnavailable(unavailableReason);
+            return;
+        }
+
+        Debug.Assert(eligibility is not null);
+        LocalAiInstallReviewCard.Visibility = Visibility.Visible;
+        LocalAiUnavailablePanel.Visibility = Visibility.Collapsed;
+        LocalAiToggle.Visibility = Visibility.Visible;
+        _localAiSelectionEligible = eligibility.Status == LocalInferenceEligibilityStatus.Eligible;
+        _config!.LocalAi.SelectedModelId ??= eligibility.Plan!.Model.Id;
+        PopulateLocalAiModels();
+        _suppressLocalAiToggle = true;
+        LocalAiToggle.IsOn = _config!.LocalAi.Enabled;
+        _suppressLocalAiToggle = false;
+        UpdateLocalAiOptions(forceNetworkingConsent);
+        ApplySetupReviewSummary(_config);
+    }
+
+    private static async Task<WslViabilityResult> InspectWslViabilityAsync()
+    {
+        using var logger = new SetupLogger(filePath: null);
+        return await WslViabilityInspector.InspectAsync(
+            new CommandRunner(logger),
+            logger,
+            CancellationToken.None);
+    }
+
+    private static WslGlobalConfigManager CreateWslGlobalConfigManager()
+    {
+        var profile = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
+        var configPath = Path.Combine(profile, ".wslconfig");
+        var localDataDir = SetupWindow.Active?.LocalDataDir ?? SetupContext.ResolveLocalDataDir();
+        return new WslGlobalConfigManager(
+            configPath,
+            Path.Combine(localDataDir, "LocalAI", "network-backup"));
+    }
+
+    private void ShowLocalAiUnavailable(string reason)
+    {
+        _localAiSelectionEligible = false;
+        _suppressLocalAiToggle = true;
+        LocalAiToggle.IsOn = false;
+        _suppressLocalAiToggle = false;
+        LocalAiToggle.Visibility = Visibility.Collapsed;
+        LocalAiDetailsPanel.Visibility = Visibility.Collapsed;
+        _localAiUnavailableReason = reason;
+        LocalAiUnavailablePanel.Visibility = Visibility.Visible;
+        LocalAiInstallReviewCard.Visibility = Visibility.Visible;
+        _config!.LocalAi.Enabled = false;
+        _config.SkipWizard = _skipWizardWithoutLocalAi;
+        ApplySetupReviewSummary(_config);
+    }
+
+    private static string DescribeLocalAiUnavailable(LocalInferenceEligibilityResult eligibility) =>
+        eligibility.SelectionFailureCode switch
+        {
+            LocalInferenceSelectionFailureCode.RuntimeUnavailable =>
+                "This Local AI release does not include a native llama-server runtime for the detected Windows architecture.",
+            LocalInferenceSelectionFailureCode.NoNvidiaGpu =>
+                "No NVIDIA GPU was reported by the NVIDIA driver. Install or repair the NVIDIA driver, then try setup again.",
+            LocalInferenceSelectionFailureCode.UnknownModel =>
+                "The selected model is not available in this Local AI release.",
+            _ => eligibility.FailureCode switch
+            {
+                LocalInferenceEligibilityFailureCode.HardwareFactsIncomplete =>
+                    "OpenClaw could not read a stable NVIDIA GPU identifier, memory, driver, or CUDA capability.",
+                LocalInferenceEligibilityFailureCode.InsufficientGpuMemory =>
+                    $"{eligibility.Plan?.Model.DisplayName ?? "The selected model"} requires " +
+                    $"{FormatSize(eligibility.RequiredTotalMemoryBytes)} of GPU memory for model weights, KV cache, and runtime workspace. " +
+                    $"OpenClaw detected {FormatOptionalSize(eligibility.DetectedTotalMemoryBytes)}.",
+                LocalInferenceEligibilityFailureCode.DriverTooOld =>
+                    $"NVIDIA driver {eligibility.SelectedGpu?.DriverVersion ?? "unknown"} was detected. " +
+                    $"Local AI requires version {LocalInferenceEligibility.MinimumNvidiaDriverVersion} or newer.",
+                LocalInferenceEligibilityFailureCode.CudaCapabilityTooLow =>
+                    "The NVIDIA driver does not provide CUDA 13 support. A separate CUDA Toolkit is not required.",
+                _ => "OpenClaw could not verify the Local AI requirements on this system.",
+            },
+        };
+
+    private void LocalAiUnavailableDetails_Click(object sender, RoutedEventArgs e) =>
+        AsyncEventHandlerGuard.Run(
+            ShowLocalAiUnavailableDetailsAsync,
+            NullLogger.Instance,
+            nameof(LocalAiUnavailableDetails_Click));
+
+    private async Task ShowLocalAiUnavailableDetailsAsync()
+    {
+        var xamlRoot = LocalAiInstallReviewCard.XamlRoot;
+        if (xamlRoot is null)
+            return;
+
+        var dialog = new ContentDialog
+        {
+            XamlRoot = xamlRoot,
+            Title = "Why Local AI is unavailable",
+            Content = new TextBlock
+            {
+                Text = _localAiUnavailableReason,
+                TextWrapping = TextWrapping.Wrap,
+            },
+            CloseButtonText = "Close",
+        };
+        await dialog.ShowAsync();
+    }
+
+    private void PopulateLocalAiModels()
+    {
+        _suppressLocalAiSelection = true;
+        LocalAiModelSelector.Items.Clear();
+        int selectedIndex = 0;
+        LocalModelInfo[] fittingModels = LocalModelCatalog.Models
+            .Where(model =>
+                _localAiSelectedGpuCapacityBytes is { } capacityBytes &&
+                LocalInferenceEligibility.GetRequiredMemoryBytes(model) <= capacityBytes)
+            .ToArray();
+        for (int index = 0; index < fittingModels.Length; index++)
+        {
+            LocalModelInfo model = fittingModels[index];
+            bool isRecommended = string.Equals(
+                _localAiRecommendedModelId,
+                model.Id,
+                StringComparison.OrdinalIgnoreCase);
+            LocalAiModelSelector.Items.Add(new ComboBoxItem
+            {
+                Content = $"{model.DisplayName} ({FormatSize(model.Weights.SizeBytes)})" +
+                    (isRecommended ? " - Recommended" : string.Empty),
+                Tag = model.Id,
+            });
+            string? selectedModelId = _config!.LocalAi.SelectedModelId ?? _localAiRecommendedModelId;
+            if (string.Equals(selectedModelId, model.Id, StringComparison.OrdinalIgnoreCase))
+                selectedIndex = index;
+        }
+        LocalAiModelSelector.SelectedIndex = selectedIndex;
+        _suppressLocalAiSelection = false;
+    }
+
+    private void LocalAiToggle_Toggled(object sender, RoutedEventArgs e)
+    {
+        if (_suppressLocalAiToggle || _config is null)
+            return;
+        UpdateLocalAiOptions();
+        ApplySetupReviewSummary(_config);
+    }
+
+    private void LocalAiModelSelector_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (_suppressLocalAiSelection || _config is null ||
+            LocalAiModelSelector.SelectedItem is not ComboBoxItem { Tag: string modelId })
+        {
+            return;
+        }
+        _config.LocalAi.SelectedModelId = modelId;
+        UpdateLocalAiModelDetails();
+        ApplySetupReviewSummary(_config);
+    }
+
+    private void LocalAiNetworkingConsent_Changed(object sender, RoutedEventArgs e)
+    {
+        if (_suppressLocalAiConsent || _config is null)
+            return;
+        _config.LocalAi.WslMirroredNetworkingConsent =
+            LocalAiToggle.IsOn == true &&
+            _localAiNetworkingConsentRequired &&
+            LocalAiNetworkingConsentCheckBox.IsChecked == true;
+        UpdatePrimaryButtonState();
+    }
+
+    private void UpdateLocalAiOptions(bool forceNetworkingConsent = false)
+    {
+        var config = _config!;
+        bool enabled = LocalAiToggle.IsOn == true;
+        config.LocalAi.Enabled = enabled;
+        config.SkipWizard = enabled || _skipWizardWithoutLocalAi;
+        LocalAiDetailsPanel.Visibility = enabled ? Visibility.Visible : Visibility.Collapsed;
+        LocalAiNetworkingInspectionError.Visibility = Visibility.Collapsed;
+        _localAiNetworkingConsentRequired = false;
+
+        if (!enabled)
+        {
+            LocalAiNetworkingConsentPanel.Visibility = Visibility.Collapsed;
+            SetLocalAiNetworkingConsent(false);
+            config.LocalAi.WslMirroredNetworkingConsent = false;
+            UpdatePrimaryButtonState();
+            return;
+        }
+
+        UpdateLocalAiModelDetails();
+        WslGlobalConfigStatus status = forceNetworkingConsent
+            ? new(false, false)
+            : _localAiNetworkingStatus ?? new(false, false);
+        _localAiNetworkingConsentRequired = !status.IsMirrored;
+        LocalAiNetworkingConsentPanel.Visibility = _localAiNetworkingConsentRequired
+            ? Visibility.Visible
+            : Visibility.Collapsed;
+        SetLocalAiNetworkingConsent(false);
+        config.LocalAi.WslMirroredNetworkingConsent = false;
+        UpdatePrimaryButtonState();
+    }
+
+    private void UpdateLocalAiModelDetails()
+    {
+        if (_localAiHardware is null ||
+            LocalAiModelSelector.SelectedItem is not ComboBoxItem { Tag: string modelId })
+        {
+            return;
+        }
+
+        LocalInferenceEligibilityResult eligibility = LocalInferenceEligibility.Evaluate(_localAiHardware, modelId);
+        if (eligibility.Plan is not { } plan || eligibility.SelectedGpu is not { } gpu)
+        {
+            _localAiSelectionEligible = false;
+            LocalAiHardwareStatusText.Text = "This model is not qualified for the detected hardware.";
+            UpdatePrimaryButtonState();
+            return;
+        }
+
+        _localAiSelectionEligible = eligibility.Status == LocalInferenceEligibilityStatus.Eligible;
+        LocalAiHardwareStatusText.Text = eligibility.Status switch
+        {
+            LocalInferenceEligibilityStatus.Eligible =>
+                $"Detected {gpu.Name} with {FormatOptionalSize(eligibility.DetectedTotalMemoryBytes)}. " +
+                $"The selected model requires {FormatSize(eligibility.RequiredTotalMemoryBytes)}.",
+            LocalInferenceEligibilityStatus.EligibleButBusy =>
+                $"Detected {gpu.Name}, but only {FormatOptionalSize(eligibility.AvailableFreeMemoryBytes)} of " +
+                $"{FormatSize(eligibility.RequiredFreeMemoryBytes)} required GPU memory is currently free. " +
+                "Close GPU applications and retry setup.",
+            _ => DescribeLocalAiUnavailable(eligibility),
+        };
+        LocalAiEngineDetailText.Text =
+            "llama-server for Windows; " +
+            $"{FormatSize(plan.Runtime.Artifacts.Sum(artifact => artifact.SizeBytes))} verified download";
+        LocalAiModelDetailText.Text =
+            $"{plan.Model.DisplayName}, {FormatSize(plan.Model.Weights.SizeBytes)} from Hugging Face";
+        LocalAiSettingsDetailText.Text =
+            $"{plan.Model.Recipe.ContextTokens / 1024}K context, FP16 KV cache, full CUDA offload, loads on first request";
+        UpdatePrimaryButtonState();
+    }
+
+    private void SetLocalAiNetworkingConsent(bool value)
+    {
+        _suppressLocalAiConsent = true;
+        LocalAiNetworkingConsentCheckBox.IsChecked = value;
+        _suppressLocalAiConsent = false;
+    }
+
+    private void UpdatePrimaryButtonState()
+    {
+        PrimaryButton.IsEnabled =
+            _step != 3 ||
+            LocalAiToggle.IsOn != true ||
+            (_localAiSelectionEligible &&
+             (!_localAiNetworkingConsentRequired || LocalAiNetworkingConsentCheckBox.IsChecked == true));
+    }
+
+    private static string FormatSize(long bytes) =>
+        $"{bytes / 1_000_000_000d:0.#} GB";
+
+    private static string FormatOptionalSize(long? bytes) =>
+        bytes is { } value ? FormatSize(value) : "an unknown amount";
 
     private void TailscaleToggle_Toggled(object sender, RoutedEventArgs e)
     {

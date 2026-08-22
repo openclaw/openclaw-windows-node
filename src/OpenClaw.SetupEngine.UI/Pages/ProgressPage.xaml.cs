@@ -36,14 +36,20 @@ public sealed partial class ProgressPage : Page
     // Map pipeline step IDs to display groups (N:1)
     private static readonly (string GroupId, string DisplayName, string[] StepIds)[] StepGroups =
     [
-        ("preflight", "Check system", ["validate-distro-path", "preflight-os", "preflight-wsl", "preflight-windows-tailscale"]),
+        ("preflight", "Check system and Local AI compatibility", ["validate-distro-path", "preflight-os", "preflight-local-ai-hardware", "preflight-wsl", "preflight-windows-tailscale"]),
+        ("wsl-platform", "Prepare and verify WSL platform", ["ensure-wsl-platform"]),
+        ("local-ai-engine", "Install verified llama-server", ["acquire-local-ai-runtime"]),
+        ("local-ai-model", "Download verified model from Hugging Face", ["acquire-local-ai-model"]),
+        ("local-ai-verify", "Verify Local AI", ["persist-local-ai-manifest", "start-local-ai-runtime", "capture-local-ai-gpu-baseline", "verify-local-ai-inference", "verify-local-ai-gpu-load"]),
+        ("wsl-networking", "Configure WSL access to Local AI", ["configure-local-ai-wsl-networking"]),
         ("cleanup", "Removing existing gateway", ["cleanup-distro", "cleanup-gateway"]),
         ("port", "Checking gateway port", ["preflight-port"]),
         ("wsl-create", "Installing clean WSL gateway", ["wsl-create"]),
         ("wsl-configure", "Configuring instance", ["wsl-configure", "validate-wsl-lockdown"]),
         ("install-cli", "Installing OpenClaw", ["install-cli"]),
+        ("local-ai-wsl", "Verify WSL access to Local AI", ["verify-local-ai-wsl"]),
         ("tailscale-auth", "Connecting Tailscale", ["install-tailscale", "authorize-tailscale"]),
-        ("configure", "Preparing gateway", ["configure-gateway", "install-service"]),
+        ("configure", "Preparing gateway", ["configure-gateway", "configure-local-ai-gateway", "install-service"]),
         ("start", "Starting gateway", ["start-gateway", "mint-token"]),
         ("tailscale-serve", "Publishing on Tailscale", ["finalize-tailscale-serve"]),
         ("pairing", "Pairing device", ["pair-operator", "pair-node", "verify-e2e"]),
@@ -62,7 +68,10 @@ public sealed partial class ProgressPage : Page
         _config = args?.Config ?? e.Parameter as SetupConfig ?? new SetupConfig();
         _dataDir = args?.DataDir ?? SetupContext.ResolveDataDir();
         _localDataDir = args?.LocalDataDir ?? SetupContext.ResolveLocalDataDir();
-        SubtitleText.Text = $"Creating {_config.DistroName} WSL instance";
+        TitleText.Text = _config.LocalAi.Enabled ? "Setting up OpenClaw and Local AI" : "Setting up OpenClaw";
+        SubtitleText.Text = _config.LocalAi.Enabled
+            ? $"Creating {_config.DistroName}, installing llama-server, and preparing the selected model"
+            : $"Creating {_config.DistroName} WSL instance";
 
         BuildStepRows();
         if (args?.ShowMilestoneOnly == true)
@@ -92,19 +101,30 @@ public sealed partial class ProgressPage : Page
 
     private void RenderProgressPreview()
     {
-        SubtitleText.Text = "Creating OpenClawGateway WSL instance: about 4 minutes left";
+        bool localAiPreview = SetupPreview.RequestedPage == "progress-local-ai";
+        TitleText.Text = localAiPreview ? "Setting up OpenClaw and Local AI" : "Setting up OpenClaw";
+        SubtitleText.Text = localAiPreview
+            ? "Downloading the selected Hugging Face model: about 18 minutes left"
+            : "Creating OpenClawGateway WSL instance: about 4 minutes left";
         var ids = StepGroups.Select(g => g.GroupId).ToArray();
+        int previewRunningIndex = localAiPreview
+            ? Array.IndexOf(ids, "local-ai-model")
+            : 3;
         for (int i = 0; i < ids.Length; i++)
         {
-            var status = i < 3 ? StepStatus.Done : i == 3 ? StepStatus.Running : StepStatus.Idle;
+            var status = i < previewRunningIndex
+                ? StepStatus.Done
+                : i == previewRunningIndex ? StepStatus.Running : StepStatus.Idle;
             if (_rows.TryGetValue(ids[i], out var row))
                 row.SetStatus(status);
         }
+        if (localAiPreview && _rows.TryGetValue("local-ai-model", out var modelRow))
+            modelRow.SetDetail("Downloading Qwen3.6-35B-A3B-UD-Q4_K_M.gguf", 8_701_231_104, 22_663_387_424, SetupDetailProgressUnit.Bytes);
         LogText.Text =
             "[12:04:01] [info] Windows 11 26100 · WSL 2 present\n" +
             "[12:04:03] [info] port 127.0.0.1:18789 available\n" +
             "[12:04:05] [info] wsl --install -d Ubuntu-24.04 --name OpenClawGateway --no-launch\n" +
-            "[12:04:38] [info] downloading distro … 142/200 MB\n" +
+            "[12:04:38] [info] downloading distro image (disk use varies)\n" +
             "[12:04:38] [changed] created %LOCALAPPDATA%\\OpenClawTray\\wsl\\OpenClawGateway\\\n" +
             "[12:04:38] [info] next: install CLI via HTTPS, configure loopback gateway\n";
     }
@@ -113,9 +133,13 @@ public sealed partial class ProgressPage : Page
     {
         foreach (var (groupId, displayName, _) in StepGroups)
         {
-            var row = new StepRow(displayName);
+            var row = new StepRow(
+                displayName,
+                showDetailProgress: groupId is "local-ai-engine" or "local-ai-model");
             _rows[groupId] = row;
             StepsPanel.Children.Add(row.Element);
+            if (_config?.LocalAi.Enabled != true && groupId.StartsWith("local-ai", StringComparison.Ordinal))
+                row.Element.Visibility = Visibility.Collapsed;
         }
     }
 
@@ -157,6 +181,7 @@ public sealed partial class ProgressPage : Page
                 _dataDir,
                 _localDataDir);
             ctx.ExternalAuthorizationPresenter = new ProgressAuthorizationPresenter(DispatcherQueue, ShowTailscaleAuthorization);
+            ctx.DetailProgress = new DirectProgress<SetupDetailProgressEvent>(OnDetailProgress);
 
             var steps = BuildSteps(config);
             _pipeline = new SetupPipeline(steps);
@@ -274,6 +299,17 @@ public sealed partial class ProgressPage : Page
 
     private readonly HashSet<string> _completedSteps = new();
 
+    private void OnDetailProgress(SetupDetailProgressEvent progress)
+    {
+        DispatcherQueue.TryEnqueue(() =>
+        {
+            var group = StepGroups.FirstOrDefault(candidate => candidate.StepIds.Contains(progress.StepId));
+            if (string.IsNullOrWhiteSpace(group.GroupId) || !_rows.TryGetValue(group.GroupId, out var row))
+                return;
+            row.SetDetail(progress.Detail, progress.Completed, progress.Total, progress.Unit);
+        });
+    }
+
     private void OnLogEmitted(object? sender, LogEntry entry)
     {
         DispatcherQueue.TryEnqueue(() =>
@@ -356,6 +392,13 @@ internal sealed class ProgressAuthorizationPresenter(
     }
 }
 
+internal sealed class DirectProgress<T>(Action<T> report) : IProgress<T>
+{
+    private readonly Action<T> _report = report ?? throw new ArgumentNullException(nameof(report));
+
+    public void Report(T value) => _report(value);
+}
+
 // ─── Step Row UI Element ───
 
 internal enum StepStatus { Idle, Running, Done, Failed }
@@ -366,19 +409,36 @@ internal sealed class StepRow
     public StepStatus Status { get; private set; }
 
     private readonly TextBlock _label;
+    private readonly TextBlock _detail;
+    private readonly ProgressBar _detailProgress;
     private readonly ProgressRing _spinner;
     private readonly Border _idleBadge;
     private readonly Border _checkBadge;
     private readonly Border _errorBadge;
     private readonly Border _rowBorder;
 
-    public StepRow(string displayName)
+    public StepRow(string displayName, bool showDetailProgress = false)
     {
         _label = new TextBlock
         {
             Text = displayName,
             FontSize = 14,
             VerticalAlignment = VerticalAlignment.Center,
+        };
+        _detail = new TextBlock
+        {
+            FontSize = 12,
+            Opacity = 0.72,
+            TextWrapping = TextWrapping.Wrap,
+            Visibility = Visibility.Collapsed,
+        };
+        _detailProgress = new ProgressBar
+        {
+            Minimum = 0,
+            Maximum = 1,
+            Height = 4,
+            Margin = new Thickness(0, 3, 0, 0),
+            Visibility = Visibility.Collapsed,
         };
 
         // Bare Windows spinner (no filled disc) — theme-neutral so it reads white
@@ -417,9 +477,16 @@ internal sealed class StepRow
         {
             ColumnDefinitions = { new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) }, new ColumnDefinition { Width = GridLength.Auto } },
         };
-        Grid.SetColumn(_label, 0);
+        var textStack = new StackPanel { Spacing = 1 };
+        textStack.Children.Add(_label);
+        if (showDetailProgress)
+        {
+            textStack.Children.Add(_detail);
+            textStack.Children.Add(_detailProgress);
+        }
+        Grid.SetColumn(textStack, 0);
         Grid.SetColumn(badgeContainer, 1);
-        grid.Children.Add(_label);
+        grid.Children.Add(textStack);
         grid.Children.Add(badgeContainer);
 
         _rowBorder = new Border
@@ -463,6 +530,37 @@ internal sealed class StepRow
             _rowBorder.BorderBrush = new SolidColorBrush(Colors.Transparent);
         }
     }
+
+    public void SetDetail(
+        string detail,
+        long completed,
+        long? total,
+        SetupDetailProgressUnit unit)
+    {
+        string measurement = unit switch
+        {
+            SetupDetailProgressUnit.Bytes when total is > 0 =>
+                $"{FormatBytes(completed)} of {FormatBytes(total.Value)}",
+            SetupDetailProgressUnit.Items when total is > 0 => $"{completed} of {total.Value}",
+            _ => string.Empty,
+        };
+        _detail.Text = string.IsNullOrWhiteSpace(measurement) ? detail : $"{detail}  {measurement}";
+        _detail.Visibility = Visibility.Visible;
+        if (total is > 0)
+        {
+            _detailProgress.Value = Math.Clamp((double)completed / total.Value, 0, 1);
+            _detailProgress.Visibility = Visibility.Visible;
+        }
+        else
+        {
+            _detailProgress.Visibility = Visibility.Collapsed;
+        }
+    }
+
+    private static string FormatBytes(long bytes) =>
+        bytes >= 1_000_000_000
+            ? $"{bytes / 1_000_000_000d:0.0} GB"
+            : $"{bytes / 1_000_000d:0} MB";
 
     private static Border CreateEmptyBadge()
     {

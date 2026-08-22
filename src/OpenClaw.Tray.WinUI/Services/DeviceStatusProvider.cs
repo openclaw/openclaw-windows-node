@@ -6,6 +6,7 @@ using System.Runtime.InteropServices;
 using System.Threading;
 using System.Threading.Tasks;
 using OpenClaw.Shared;
+using OpenClaw.Shared.Inference;
 using Microsoft.Win32;
 
 namespace OpenClawTray.Services;
@@ -95,21 +96,13 @@ public class DeviceStatusProvider : IDeviceStatusProvider
 
     public object GetMemoryInfo()
     {
-        var status = new MEMORYSTATUSEX { dwLength = (uint)Marshal.SizeOf<MEMORYSTATUSEX>() };
-        if (!GlobalMemoryStatusEx(ref status))
-            throw new InvalidOperationException("GlobalMemoryStatusEx failed");
-
-        var totalBytes = (long)status.ullTotalPhys;
-        var availableBytes = (long)status.ullAvailPhys;
-        var usagePercent = totalBytes > 0
-            ? Math.Round((1.0 - (double)availableBytes / totalBytes) * 100, 1)
-            : 0.0;
+        var snapshot = PhysicalMemoryProbe.Read();
 
         return new
         {
-            totalBytes,
-            availableBytes,
-            usagePercent
+            totalBytes = snapshot.TotalBytes,
+            availableBytes = snapshot.AvailableBytes,
+            usagePercent = snapshot.UsagePercent
         };
     }
 
@@ -228,25 +221,4 @@ public class DeviceStatusProvider : IDeviceStatusProvider
         _cpuCounter = null;
     }
 
-    #region P/Invoke
-
-    [StructLayout(LayoutKind.Sequential)]
-    private struct MEMORYSTATUSEX
-    {
-        public uint dwLength;
-        public uint dwMemoryLoad;
-        public ulong ullTotalPhys;
-        public ulong ullAvailPhys;
-        public ulong ullTotalPageFile;
-        public ulong ullAvailPageFile;
-        public ulong ullTotalVirtual;
-        public ulong ullAvailVirtual;
-        public ulong ullAvailExtendedVirtual;
-    }
-
-    [DllImport("kernel32.dll", SetLastError = true)]
-    [return: MarshalAs(UnmanagedType.Bool)]
-    private static extern bool GlobalMemoryStatusEx(ref MEMORYSTATUSEX lpBuffer);
-
-    #endregion
 }

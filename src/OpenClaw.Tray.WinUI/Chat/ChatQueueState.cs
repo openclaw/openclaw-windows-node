@@ -7,7 +7,8 @@ namespace OpenClawTray.Chat;
 internal readonly record struct ChatLocalSentText(
     string Text,
     DateTimeOffset SentAt,
-    string QueuedMessageId);
+    string QueuedMessageId,
+    string AttachmentCorrelationSignature = "");
 
 internal sealed record ChatQueueRetryResult(
     bool Requeued,
@@ -112,7 +113,11 @@ internal sealed class ChatQueueState
         long resetLifecycleSequence,
         long lifecycleStartSequence)
     {
-        EnqueueLocalEcho(request.ThreadId, request.Text, request.Id);
+        EnqueueLocalEcho(
+            request.ThreadId,
+            request.EffectiveTimelineText,
+            request.AttachmentCorrelationSignature,
+            request.Id);
         _locallyInitiatedThreads.Add(request.ThreadId);
         _assistantFallbackPromotedThreads.Add(request.ThreadId);
         return new ChatQueuedSendDispatch(
@@ -178,7 +183,11 @@ internal sealed class ChatQueueState
             };
             if (request.LifecycleCommand is null)
             {
-                EnqueueLocalEcho(threadId, request.Text, request.Id);
+                EnqueueLocalEcho(
+                    threadId,
+                    request.EffectiveTimelineText,
+                    request.AttachmentCorrelationSignature,
+                    request.Id);
                 _locallyInitiatedThreads.Add(threadId);
             }
 
@@ -436,20 +445,45 @@ internal sealed class ChatQueueState
             ? queue.ToArray()
             : [];
 
-    internal bool HasPendingLocalEchoText(string threadId, string text) =>
-        !string.IsNullOrWhiteSpace(text) &&
-        _localSentTexts.TryGetValue(threadId, out var queue) &&
-        queue.Any(pending =>
-            string.Equals(pending.Text, text.Trim(), StringComparison.Ordinal));
+    internal bool HasPendingLocalEchoText(
+        string threadId,
+        string text,
+        string attachmentCorrelationSignature = "",
+        bool hasMediaEnvelope = false)
+    {
+        var normalizedText =
+            GatewayMediaMessageProjection.NormalizeEchoCorrelationText(text);
+        if ((normalizedText.Length == 0 &&
+             string.IsNullOrEmpty(attachmentCorrelationSignature)) ||
+            !_localSentTexts.TryGetValue(threadId, out var queue))
+        {
+            return false;
+        }
+        var candidates = queue
+            .Select(pending => new ChatPendingEchoCandidate(
+                pending.QueuedMessageId,
+                pending.Text,
+                pending.AttachmentCorrelationSignature))
+            .ToArray();
+        return ChatAttachmentEchoCorrelation.SelectMatchingMessageId(
+            candidates,
+            normalizedText,
+            attachmentCorrelationSignature,
+            hasMediaEnvelope) is not null;
+    }
 
     internal bool TryConsumeLocalEcho(
         string threadId,
         string echoText,
+        string attachmentCorrelationSignature,
+        bool hasMediaEnvelope,
         out string queuedMessageId)
     {
         queuedMessageId = string.Empty;
         if (!_localSentTexts.TryGetValue(threadId, out var queue))
             return false;
+        var normalizedEchoText =
+            GatewayMediaMessageProjection.NormalizeEchoCorrelationText(echoText);
 
         var now = DateTimeOffset.Now;
         while (queue.Count > 0 && now - queue.Peek().SentAt > LocalEchoWindow)
@@ -460,23 +494,49 @@ internal sealed class ChatQueueState
             return false;
         }
 
-        var retained = new Queue<ChatLocalSentText>();
-        var matched = false;
-        while (queue.Count > 0)
+        var pending = queue.ToArray();
+        var candidates = pending
+            .Select(candidate => new ChatPendingEchoCandidate(
+                candidate.QueuedMessageId,
+                candidate.Text,
+                candidate.AttachmentCorrelationSignature))
+            .ToArray();
+        var matchedMessageId = ChatAttachmentEchoCorrelation.SelectMatchingMessageId(
+            candidates,
+            normalizedEchoText,
+            attachmentCorrelationSignature,
+            hasMediaEnvelope);
+        if (matchedMessageId is null)
+            return false;
+
+        var retained = new Queue<ChatLocalSentText>(pending.Length);
+        foreach (var candidate in pending)
         {
-            var candidate = queue.Dequeue();
-            if (!matched &&
-                string.Equals(candidate.Text, echoText, StringComparison.Ordinal))
+            if (!string.Equals(
+                    candidate.QueuedMessageId,
+                    matchedMessageId,
+                    StringComparison.Ordinal))
             {
-                queuedMessageId = candidate.QueuedMessageId;
-                matched = true;
-                continue;
+                retained.Enqueue(candidate);
             }
-            retained.Enqueue(candidate);
         }
+        queuedMessageId = matchedMessageId;
         StoreLocalEchoQueue(threadId, retained);
-        return matched;
+        return true;
     }
+
+    // Plain-text overload retained for call sites (e.g. reset-gate dropped
+    // messages) that never carry a media envelope.
+    internal bool TryConsumeLocalEcho(
+        string threadId,
+        string echoText,
+        out string queuedMessageId) =>
+        TryConsumeLocalEcho(
+            threadId,
+            echoText,
+            attachmentCorrelationSignature: "",
+            hasMediaEnvelope: false,
+            out queuedMessageId);
 
     internal void RemovePendingLocalEcho(string threadId, string messageId)
     {
@@ -522,6 +582,7 @@ internal sealed class ChatQueueState
     private void EnqueueLocalEcho(
         string threadId,
         string text,
+        string attachmentCorrelationSignature,
         string messageId)
     {
         RemovePendingLocalEcho(threadId, messageId);
@@ -533,7 +594,8 @@ internal sealed class ChatQueueState
         queue.Enqueue(new ChatLocalSentText(
             text,
             DateTimeOffset.UtcNow,
-            messageId));
+            messageId,
+            attachmentCorrelationSignature));
         while (queue.Count > MaxLocalEchoes)
             queue.Dequeue();
     }

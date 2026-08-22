@@ -7,26 +7,24 @@ public sealed class ChatTimelineRenderIdentityContractTests
     [Fact]
     public void TimelineRows_UseGenerationQualifiedKindedKeys()
     {
-        var timeline = Read("src", "OpenClaw.Tray.WinUI", "Chat", "OpenClawChatTimeline.cs");
+        var timeline = Read("src", "OpenClaw.Tray.WinUI", "Chat", "ReactorChatTimeline.cs");
 
-        Assert.Contains("long TimelineGeneration = 0", timeline);
-        Assert.Contains("string RowKey(ChatTimelineItem entry)", timeline);
-        Assert.Contains("Props.TimelineGeneration", timeline);
+        Assert.Contains("public static string RowKey(ChatTimelinePresentationContext props", timeline);
+        Assert.Contains("props.TimelineGeneration", timeline);
         Assert.Contains("entry.Kind", timeline);
         Assert.Contains("entry.Id", timeline);
+        Assert.Contains(".WithKey(row.Key)", timeline);
         Assert.DoesNotContain(".WithKey(entry.Id)", timeline);
-        Assert.Matches(
-            new Regex(@"WithKey\(RowKey\(entry\)\)"),
-            timeline);
     }
 
     [Fact]
     public void ThinkingIndicator_UsesSyntheticGenerationQualifiedKey()
     {
-        var timeline = Read("src", "OpenClaw.Tray.WinUI", "Chat", "OpenClawChatTimeline.cs");
+        var timeline = Read("src", "OpenClaw.Tray.WinUI", "Chat", "ReactorChatTimeline.cs");
 
-        Assert.Contains("string SyntheticRowKey(string id, ChatTimelineItemKind kind)", timeline);
-        Assert.Contains("SyntheticRowKey(\"__thinking__\", ChatTimelineItemKind.Assistant)", timeline);
+        Assert.Contains("public static string SyntheticRowKey(ChatTimelinePresentationContext props", timeline);
+        Assert.Contains("ReactorChatTimeline.SyntheticRowKey(", timeline);
+        Assert.Contains("\"__thinking__\"", timeline);
     }
 
     [Fact]
@@ -37,7 +35,7 @@ public sealed class ChatTimelineRenderIdentityContractTests
         var state = Read("src", "OpenClaw.Tray.WinUI", "Chat", "ChatConversationState.cs");
         var resetState = Read("src", "OpenClaw.Tray.WinUI", "Chat", "ChatResetState.cs");
         var projector = Read("src", "OpenClaw.Tray.WinUI", "Chat", "ChatSnapshotProjector.cs");
-        var root = Read("src", "OpenClaw.Tray.WinUI", "Chat", "OpenClawChatRoot.cs");
+        var root = Read("src", "OpenClaw.Tray.WinUI", "Chat", "OpenClawReactorChatRoot.cs");
 
         Assert.Contains("IReadOnlyDictionary<string, long>? TimelineGenerations = null", models);
         Assert.Contains("new Dictionary<string, long>(_versions)", resetState);
@@ -46,7 +44,8 @@ public sealed class ChatTimelineRenderIdentityContractTests
         Assert.DoesNotContain("private readonly object _gate", provider);
         Assert.Contains("TimelineGenerations: input.TimelineGenerations", projector);
         Assert.Contains("snapshot.TimelineGenerations", root);
-        Assert.Contains("TimelineGeneration: timelineGeneration", root);
+        Assert.Contains("var timelineProps = new ChatTimelinePresentationContext(", root);
+        Assert.Contains("timelineGeneration,", root);
     }
 
     [Fact]
@@ -57,9 +56,8 @@ public sealed class ChatTimelineRenderIdentityContractTests
         var state = Read("src", "OpenClaw.Tray.WinUI", "Chat", "ChatConversationState.cs");
         var queueState = Read("src", "OpenClaw.Tray.WinUI", "Chat", "ChatQueueState.cs");
         var projector = Read("src", "OpenClaw.Tray.WinUI", "Chat", "ChatSnapshotProjector.cs");
-        var root = Read("src", "OpenClaw.Tray.WinUI", "Chat", "OpenClawChatRoot.cs");
-        var timeline = Read("src", "OpenClaw.Tray.WinUI", "Chat", "OpenClawChatTimeline.cs");
-        var composer = Read("src", "OpenClaw.Tray.WinUI", "Chat", "OpenClawComposer.cs");
+        var root = Read("src", "OpenClaw.Tray.WinUI", "Chat", "OpenClawReactorChatRoot.cs");
+        var composer = Read("src", "OpenClaw.Tray.WinUI", "Chat", "ReactorChatComposer.cs");
 
         Assert.Contains("public record ChatQueuedMessage", models);
         Assert.Contains("QueuedMessagesByThread", models);
@@ -70,72 +68,53 @@ public sealed class ChatTimelineRenderIdentityContractTests
         Assert.Contains("QueuedMessagesByThread: input.QueuedMessages", projector);
         Assert.Contains("snapshot.QueuedMessagesByThread", root);
         Assert.Contains("QueuedMessages: queuedMessages", root);
-        Assert.Contains("OnQueuedMessageCancel:", root);
-        Assert.Contains("IReadOnlyList<ChatQueuedMessage>? QueuedMessages = null", composer);
-        Assert.Contains("Action<string>? OnQueuedMessageCancel = null", composer);
-        Assert.Contains("AvailableHeight: chatSurfaceHeight.Value", root);
-        Assert.Contains("queuedPanel", composer);
-        Assert.Contains("composerInput", composer);
-        Assert.Contains("RenderQueuedMessages", composer);
+        Assert.Contains("var queuedRows = inputs.QueuedMessages", composer);
+        Assert.Contains("Element queuedPanel = queuedRows.Length == 0", composer);
+        Assert.Contains("ScrollView(VStack(4, queuedRows))", composer);
         Assert.Contains("Chat_Composer_QueuedMessageCancel", composer);
-        Assert.Contains("RenderQueueCancelButton", composer);
-        Assert.Contains("ChatQueuedMessageSendState.Sending", composer);
         Assert.Contains("Chat_Composer_QueuedMessageCancelAutomationFormat", composer);
         Assert.Contains("Chat_Composer_QueuedMessageRemoveFailed", composer);
         Assert.Contains("Chat_Composer_QueuedMessageRemoveFailedAutomationFormat", composer);
         Assert.Contains("ChatQueuedMessageRemoveFailed", composer);
         Assert.Contains("ChatQueuedMessageCancel", composer);
-        Assert.Contains("}_{message.Id}", composer);
         Assert.Contains("Chat_Composer_QueuedCountFormat", composer);
         Assert.Contains("Chat_Composer_QueuedMessageAutomationFormat", composer);
         Assert.Contains("Chat_Composer_QueuedMessageFailedAutomationFormat", composer);
         Assert.Contains("Chat_Composer_QueuedMessageFailed", composer);
-        Assert.Contains("composer-queued-section:", composer);
-        Assert.Contains("ComputeQueuedMessagesMaxHeight(Props.IsCompact, Props.AvailableHeight)", composer);
-        Assert.Contains("chatSurfaceHeight.Set(Math.Round(height))", root);
-        Assert.DoesNotContain("FormatQueuedTime", composer);
-        Assert.DoesNotContain("\"Sending\"", composer);
-        Assert.DoesNotContain("QueuedMessages", timeline);
-        Assert.DoesNotContain("queued-section:", timeline);
-        Assert.DoesNotContain("Steer", composer);
+        Assert.Contains("ChatQueuedMessageSendState.Sending", composer);
     }
 
     [Fact]
     public void Composer_DisablesMessageOptionDropdownsWhileTurnOrPendingQueueSendIsActive()
     {
-        var composer = Read("src", "OpenClaw.Tray.WinUI", "Chat", "OpenClawComposer.cs");
-        var root = Read("src", "OpenClaw.Tray.WinUI", "Chat", "OpenClawChatRoot.cs");
+        var root = Read("src", "OpenClaw.Tray.WinUI", "Chat", "OpenClawReactorChatRoot.cs");
+        var composer = Read("src", "OpenClaw.Tray.WinUI", "Chat", "ReactorChatComposer.cs");
 
-        Assert.Contains("var messageOptionControlsEnabled = !Props.MessageOptionsDisabled;", composer);
-        Assert.Contains("MessageOptionsDisabled: turnActiveOverride || hasPendingQueuedSend", root);
+        Assert.Contains("timeline.TurnActive || hasPendingQueuedSend", root);
         Assert.Contains("message.SendState is ChatQueuedMessageSendState.Queued or ChatQueuedMessageSendState.Sending", root);
-        // The redesigned pickers are subtle menu-flyout buttons whose disabled
-        // state is centralized in the PickerButton helper (b.IsEnabled = enabled).
-        // The model and reasoning pickers pass the gate; the session/channel
-        // picker is intentionally left enabled while a turn is active.
-        Assert.Contains("b.IsEnabled = enabled;", composer);
-        Assert.Equal(2, Regex.Matches(composer, @"messageOptionControlsEnabled\);").Count);
-        Assert.DoesNotMatch(
-            new Regex(@"var\s+channelPicker\s*=\s*PickerButton\([\s\S]*?messageOptionControlsEnabled[\s\S]*?var\s+modelPicker", RegexOptions.Multiline),
-            composer);
+        Assert.Contains("button.IsEnabled = enabled;", composer);
+        Assert.Equal(3, Regex.Matches(composer, @"!inputs\.MessageOptionsDisabled").Count);
     }
 
     [Fact]
     public void Composer_PreservesInputAndAttachmentsWhenSendThrows()
     {
-        var root = Read("src", "OpenClaw.Tray.WinUI", "Chat", "OpenClawChatRoot.cs");
+        var controller = Read("src", "OpenClaw.Tray.WinUI", "Chat", "ChatComposerController.cs");
 
+        Assert.Contains("var accepted = await SendCoreAsync(", controller);
+        Assert.Contains("if (accepted)", controller);
+        Assert.Contains("_vm.RemoveSubmittedAttachments(attachments);", controller);
         Assert.Matches(
             new Regex(
-                @"catch \(Exception ex\)\s*\{\s*System\.Diagnostics\.Trace\.WriteLine\(\$""\[chat\] send failed: \{ex\}""\);\s*return false;\s*\}\s*return true;",
+                @"catch \(Exception ex\)\s*\{\s*System\.Diagnostics\.Trace\.WriteLine\(\$""\[chat\] composer send failed: \{ex\}""\);\s*return false;\s*\}",
                 RegexOptions.Multiline),
-            root);
+            controller);
     }
 
     [Fact]
     public void Timeline_DoesNotRenderTemporaryDebugMetadata()
     {
-        var timeline = Read("src", "OpenClaw.Tray.WinUI", "Chat", "OpenClawChatTimeline.cs");
+        var timeline = Read("src", "OpenClaw.Tray.WinUI", "Chat", "ReactorChatTimeline.cs");
 
         Assert.DoesNotContain("BuildDebugMetadata", timeline);
         Assert.DoesNotContain("DEBUG kind=", timeline);

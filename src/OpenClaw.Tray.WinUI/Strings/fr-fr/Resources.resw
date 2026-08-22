@@ -6972,4 +6972,67 @@ Le binaire wxc-exec est introuvable. {1} S'il s'agit d'une build développeur, c
   <data name="SessionsPage_LastRunStopped" xml:space="preserve">
     <value>Dernière exécution arrêtée</value>
   </data>
+  <data name="ConnectionPage_ProtocolGatewayUpdateRequired" xml:space="preserve">
+    <value>Mise à jour de la Gateway requise</value>
+  </data>
+  <data name="ConnectionPage_ProtocolGatewayUpdateDetail" xml:space="preserve">
+    <value>Cette Gateway utilise le protocole v{0}. Cette application Windows prend en charge les protocoles v{1} à v{2}. Le protocole actuel de l’application est v{3}. Mettez à jour la Gateway pour continuer.</value>
+  </data>
+  <data name="ConnectionPage_ProtocolWindowsUpdateRequired" xml:space="preserve">
+    <value>Mise à jour de l’application Windows requise</value>
+  </data>
+  <data name="ConnectionPage_ProtocolWindowsUpdateDetail" xml:space="preserve">
+    <value>Cette Gateway nécessite le protocole v{0}. Cette application Windows prend en charge les protocoles v{1} à v{2}. Son protocole actuel est v{3}. Mettez à jour l’application Windows pour continuer.</value>
+  </data>
+  <data name="ConnectionPage_ProtocolUnknownMismatch" xml:space="preserve">
+    <value>Version de Gateway non prise en charge</value>
+  </data>
+  <data name="Chat_AssistantMedia_Preparing" xml:space="preserve"><value>Préparation du média</value></data>
+  <data name="Chat_AssistantMedia_Unavailable" xml:space="preserve"><value>Média indisponible</value></data>
+  <data name="Chat_AssistantMedia_Retry" xml:space="preserve"><value>Réessayer</value></data>
+  <data name="Chat_AssistantMedia_Image" xml:space="preserve"><value>Illustration</value></data>
+  <data name="Chat_AssistantMedia_Audio" xml:space="preserve"><value>Son</value></data>
+  <data name="Chat_AssistantMedia_Video" xml:space="preserve"><value>Vidéo</value></data>
+  <data name="Chat_AssistantMedia_File" xml:space="preserve"><value>Fichier</value></data>
+  <data name="Chat_AssistantMedia_Media" xml:space="preserve"><value>Média</value></data>
+  <data name="Chat_AssistantMedia_ImagesOmitted" xml:space="preserve"><value>{0} images supplémentaires non affichées</value></data>
+  <data name="Chat_AssistantMedia_MediaAttachment" xml:space="preserve"><value>Pièce jointe multimédia</value></data>
+  <data name="Chat_AssistantMedia_OpenImage" xml:space="preserve"><value>Ouvrir l’image {0}</value></data>
+  <data name="Chat_AssistantMedia_Close" xml:space="preserve"><value>Fermer</value></data>
+  <data name="HubWindow_NavigationViewItem_LocalAi.Content" xml:space="preserve"><value>IA locale</value></data>
+  <data name="LocalAiPage_Title.Text" xml:space="preserve"><value>IA locale</value></data>
+  <data name="LocalAiPage_Intro.Text" xml:space="preserve"><value>Exécutez le llama-server natif vérifié en privé sur cet ordinateur. Les modèles ne sont chargés qu'à la demande.</value></data>
+  <data name="LocalAiPage_EngineHeading.Text" xml:space="preserve"><value>llama-server</value></data>
+  <data name="LocalAiPage_VersionLabel.Text" xml:space="preserve"><value>Version du moteur</value></data>
+  <data name="LocalAiPage_EndpointLabel.Text" xml:space="preserve"><value>Point de terminaison</value></data>
+  <data name="LocalAiPage_ProcessLabel.Text" xml:space="preserve"><value>Processus</value></data>
+  <data name="LocalAiPage_StartButton.Content" xml:space="preserve"><value>Démarrer le routeur</value></data>
+  <data name="LocalAiPage_StopButton.Content" xml:space="preserve"><value>Arrêter</value></data>
+  <data name="LocalAiPage_RestartButton.Content" xml:space="preserve"><value>Redémarrer</value></data>
+  <data name="LocalAiPage_OpenLogsButton.Content" xml:space="preserve"><value>Ouvrir les journaux</value></data>
+  <data name="LocalAiPage_ModelHeading.Text" xml:space="preserve"><value>Modèle</value></data>
+  <data name="LocalAiPage_RetrySetupButton.Content" xml:space="preserve"><value>Réessayer la configuration ou le téléchargement</value></data>
+  <data name="LocalAiPage_GatewayHeading.Text" xml:space="preserve"><value>Connexion à la passerelle</value></data>
+  <data name="LocalAiPage_RepairConnectionButton.Content" xml:space="preserve"><value>Réparer la connexion</value></data>
+  <data name="LocalAiPage_OpenChatButton.Content" xml:space="preserve"><value>Ouvrir la discussion</value></data>
+  <data name="LocalAiPage_Engine_Running" xml:space="preserve"><value>En cours d'exécution</value></data>
+  <data name="LocalAiPage_Engine_Starting" xml:space="preserve"><value>Démarrage</value></data>
+  <data name="LocalAiPage_Engine_Stopped" xml:space="preserve"><value>Arrêté</value></data>
+  <data name="LocalAiPage_Engine_Error" xml:space="preserve"><value>Erreur</value></data>
+  <data name="LocalAiPage_Engine_Managed" xml:space="preserve"><value>Géré par OpenClaw</value></data>
+  <data name="LocalAiPage_Engine_NotInstalled" xml:space="preserve"><value>Non installé</value></data>
+  <data name="LocalAiPage_Model_NotInstalled" xml:space="preserve"><value>Non installé</value></data>
+  <data name="LocalAiPage_Model_Unknown" xml:space="preserve"><value>Inconnu</value></data>
+  <data name="LocalAiPage_Model_Verified" xml:space="preserve"><value>Téléchargé et vérifié</value></data>
+  <data name="LocalAiPage_Model_Loaded" xml:space="preserve"><value>Chargé sur le GPU</value></data>
+  <data name="LocalAiPage_Gateway_Connected" xml:space="preserve"><value>Connecté</value></data>
+  <data name="LocalAiPage_Gateway_Connecting" xml:space="preserve"><value>Connexion</value></data>
+  <data name="LocalAiPage_Gateway_NeedsAttention" xml:space="preserve"><value>Attention requise</value></data>
+  <data name="LocalAiPage_Gateway_Error" xml:space="preserve"><value>Erreur de connexion</value></data>
+  <data name="LocalAiPage_Gateway_Disconnected" xml:space="preserve"><value>Déconnecté</value></data>
+  <data name="LocalAiPage_Value_Unknown" xml:space="preserve"><value>Inconnu</value></data>
+  <data name="LocalAiPage_Process_NotRunning" xml:space="preserve"><value>Non actif</value></data>
+  <data name="LocalAiPage_ModelRecipeFormat" xml:space="preserve"><value>Contexte {0} · KV {1} · Chargement à la première demande</value></data>
+  <data name="Command_GoToLocalAi_Title" xml:space="preserve"><value>Accéder à l'IA locale</value></data>
+  <data name="Command_GoToLocalAi_Subtitle" xml:space="preserve"><value>Afficher l'état de llama-server, du modèle et de la passerelle</value></data>
 </root>

@@ -40,8 +40,8 @@ internal static class AppIdentity
     /// <summary>Loopback gateway port used by embedded setup.</summary>
     public const int SetupGatewayPort = 18790;
 
-    /// <summary>Default gateway URL for this app variant.</summary>
-    public const string SetupGatewayUrl = "ws://localhost:18790";
+    /// <summary>Explicit IPv4 loopback gateway URL used by embedded setup and post-setup startup.</summary>
+    public const string SetupGatewayUrl = "ws://127.0.0.1:18790";
 
     /// <summary>Whether this is a development build.</summary>
     public static bool IsDev => true;
@@ -79,8 +79,8 @@ internal static class AppIdentity
     /// <summary>Loopback gateway port used by embedded setup.</summary>
     public const int SetupGatewayPort = 18789;
 
-    /// <summary>Default gateway URL for this app variant.</summary>
-    public const string SetupGatewayUrl = "ws://localhost:18789";
+    /// <summary>Explicit IPv4 loopback gateway URL used by embedded setup and post-setup startup.</summary>
+    public const string SetupGatewayUrl = "ws://127.0.0.1:18789";
 
     /// <summary>Whether this is a development build.</summary>
     public static bool IsDev => false;

@@ -1221,6 +1221,110 @@ public class SetupStepsTests : IDisposable
     }
 
     [Fact]
+    public async Task PreflightWsl_MissingPlatformIsInstallableWithoutMutation()
+    {
+        var commands = new FakeCommandRunner(args =>
+            args is ["--version"]
+                ? new CommandResult(
+                    1,
+                    "",
+                    "Windows Subsystem for Linux is not installed. See https://aka.ms/wslinstall",
+                    TimeSpan.Zero,
+                    TimedOut: false)
+                : Fail($"unexpected args: {string.Join(' ', args)}"));
+        var ctx = CreateContext(commands: commands);
+
+        var result = await new PreflightWslStep().ExecuteAsync(ctx, CancellationToken.None);
+
+        Assert.Equal(StepOutcome.Success, result.Outcome);
+        Assert.Equal(WslViabilityKind.Installable, ctx.WslViability?.Kind);
+        Assert.Contains("before downloading Local AI", result.Message);
+        Assert.DoesNotContain(commands.Calls, call => call.Arguments.Contains("--install"));
+        Assert.Single(commands.Calls);
+    }
+
+    [Fact]
+    public async Task EnsureWslPlatform_InstallsOnlyAfterReadOnlyPreflight()
+    {
+        var installed = false;
+        var installCalls = 0;
+        var commands = new FakeCommandRunner(args => args switch
+        {
+            ["--version"] when !installed => new CommandResult(
+                1,
+                "",
+                "Windows Subsystem for Linux is not installed. See https://aka.ms/wslinstall",
+                TimeSpan.Zero,
+                TimedOut: false),
+            ["--version"] => Ok("WSL version: 2.7.3.0\n"),
+            ["--status"] => Ok("Default Version: 2\n"),
+            _ => Fail($"unexpected args: {string.Join(' ', args)}"),
+        });
+        var ctx = CreateContext(commands: commands);
+        var step = new EnsureWslPlatformStep((_, _) =>
+        {
+            installCalls++;
+            installed = true;
+            return Task.FromResult(StepResult.Ok("installed"));
+        });
+
+        var result = await step.ExecuteAsync(ctx, CancellationToken.None);
+
+        Assert.Equal(StepOutcome.Success, result.Outcome);
+        Assert.Equal(1, installCalls);
+        Assert.Equal(WslViabilityKind.Ready, ctx.WslViability?.Kind);
+        Assert.Equal(3, commands.Calls.Count);
+    }
+
+    [Fact]
+    public async Task PreflightWsl_UnclassifiedStatusFailureFailsClosed()
+    {
+        var commands = new FakeCommandRunner(args => args switch
+        {
+            ["--version"] => Ok("WSL version: 2.7.3.0\n"),
+            ["--status"] => Fail("Access denied"),
+            _ => Fail($"unexpected args: {string.Join(' ', args)}"),
+        });
+        var ctx = CreateContext(commands: commands);
+
+        var result = await new PreflightWslStep().ExecuteAsync(ctx, CancellationToken.None);
+
+        Assert.Equal(StepOutcome.FailedTerminal, result.Outcome);
+        Assert.Equal(WslViabilityKind.InspectionFailed, ctx.WslViability?.Kind);
+        Assert.Contains("could not safely verify", result.Message);
+    }
+
+    [Fact]
+    public void LocalAiAvailabilityReasons_CombinesHardwareWslAndNetworkingFailures()
+    {
+        var wsl = new WslViabilityResult(
+            WslViabilityKind.EnvironmentBlocked,
+            "Windows cannot currently start WSL2.",
+            "Enable virtualization and Virtual Machine Platform.");
+
+        var result = LocalAiAvailabilityReasons.Build(
+            "No qualified NVIDIA GPU was detected.",
+            wsl,
+            "The global .wslconfig file is unreadable.");
+
+        Assert.NotNull(result);
+        Assert.Contains("Hardware: No qualified NVIDIA GPU was detected.", result);
+        Assert.Contains("WSL: Windows cannot currently start WSL2.", result);
+        Assert.Contains("WSL networking: The global .wslconfig file is unreadable.", result);
+    }
+
+    [Fact]
+    public void LocalAiAvailabilityReasons_DoesNotBlockForInstallableWsl()
+    {
+        var wsl = new WslViabilityResult(
+            WslViabilityKind.Installable,
+            "WSL is not installed yet.",
+            "Setup can install it later.");
+
+        Assert.Null(LocalAiAvailabilityReasons.Build(null, wsl, null));
+    }
+
+    [Fact]
     public async Task CreateWslInstance_UsesDirectFreshInstallAndDoesNotExportBaseDistro()
     {
         var installed = false;
@@ -2858,6 +2962,36 @@ public class SetupStepsTests : IDisposable
         var summary = ExistingConfigDetector.BuildReplacementSummary(config);
 
         Assert.Contains("No existing configuration will be affected", summary);
+    }
+
+    [Theory]
+    [InlineData("OpenClawGateway\nUbuntu-24.04\n", true)]
+    [InlineData("Ubuntu-24.04\n", false)]
+    public void ExistingConfigDetector_InterpretsSuccessfulDistroList(string stdout, bool expected)
+    {
+        var result = new CommandResult(0, stdout, "", TimeSpan.Zero, TimedOut: false);
+
+        Assert.Equal(expected, ExistingConfigDetector.InterpretDistroList(result, "OpenClawGateway"));
+    }
+
+    [Fact]
+    public void ExistingConfigDetector_TreatsUnavailableWslAsNoDistro()
+    {
+        var result = new CommandResult(1, "", "WSL is not installed. See https://aka.ms/wslinstall", TimeSpan.Zero, false);
+
+        Assert.False(ExistingConfigDetector.InterpretDistroList(result, "OpenClawGateway"));
+    }
+
+    [Theory]
+    [InlineData(true, 1, "")]
+    [InlineData(false, 1, "unexpected failure")]
+    public void ExistingConfigDetector_FailsClosedWhenDistroStateIsUnknown(bool timedOut, int exitCode, string stderr)
+    {
+        var result = new CommandResult(exitCode, "", stderr, TimeSpan.Zero, timedOut);
+
+        var error = Assert.Throws<InvalidOperationException>(() =>
+            ExistingConfigDetector.InterpretDistroList(result, "OpenClawGateway"));
+        Assert.Contains("could not safely inspect", error.Message, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]

@@ -7,7 +7,10 @@ public enum OpenClawTelemetryTagKey
     ErrorCategory,
     ErrorType,
     Reason,
-    Status
+    Status,
+    ClientProtocol,
+    GatewayProtocol,
+    ProtocolCompatibility
 }
 
 /// <summary>
@@ -24,6 +27,9 @@ public static class OpenClawTelemetryTags
             OpenClawTelemetryTagKey.ErrorType => "error.type",
             OpenClawTelemetryTagKey.Reason => "openclaw.reason",
             OpenClawTelemetryTagKey.Status => "openclaw.status",
+            OpenClawTelemetryTagKey.ClientProtocol => "openclaw.protocol.client",
+            OpenClawTelemetryTagKey.GatewayProtocol => "openclaw.protocol.gateway",
+            OpenClawTelemetryTagKey.ProtocolCompatibility => "openclaw.protocol.compatibility",
             _ => throw new ArgumentOutOfRangeException(nameof(key), key, "Unknown OpenClaw telemetry tag key.")
         };
 }

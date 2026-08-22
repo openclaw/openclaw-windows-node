@@ -234,7 +234,7 @@ public sealed partial class SettingsPage : Page
         var activeGatewayAccess = GatewayHostAccessClassifier.Classify(CurrentApp.Registry?.GetActive());
 
         _localGatewayInstalled = File.Exists(setupStatePath)
-            || (settings.GatewayUrl?.StartsWith("ws://localhost", StringComparison.OrdinalIgnoreCase) == true);
+            || LocalGatewayUrlClassifier.IsLocalGatewayUrl(settings.GatewayUrl);
 
         OpenClawOnboardCard.Visibility = activeGatewayAccess.CanControlWslGateway
             ? Visibility.Visible : Visibility.Collapsed;

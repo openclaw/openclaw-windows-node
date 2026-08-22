@@ -80,8 +80,27 @@ public class CommandRunnerTests
             stdinStream: input));
     }
 
+    [Fact]
+    public async Task RunAsync_ReturnsWhenDescendantKeepsOutputPipesOpen()
+    {
+        var runner = CreateRunner();
+        var (executable, arguments) = ExitsLeavingPipeHolderCommand();
+        var stopwatch = Stopwatch.StartNew();
+
+        var result = await runner.RunAsync(executable, arguments, TimeSpan.FromSeconds(30));
+
+        Assert.False(result.TimedOut);
+        Assert.Equal(0, result.ExitCode);
+        Assert.InRange(stopwatch.Elapsed, TimeSpan.Zero, TimeSpan.FromSeconds(5));
+    }
+
     private static CommandRunner CreateRunner()
         => new(new SetupLogger(filePath: null, LogLevel.Trace));
+
+    private static (string Executable, string[] Arguments) ExitsLeavingPipeHolderCommand()
+        => OperatingSystem.IsWindows()
+            ? ("cmd.exe", ["/d", "/s", "/c", "start /b ping 127.0.0.1 -n 20"])
+            : ("/bin/sh", ["-c", "sleep 20 & exit 0"]);
 
     private static (string Executable, string[] Arguments) SleepingCommand()
         => OperatingSystem.IsWindows()

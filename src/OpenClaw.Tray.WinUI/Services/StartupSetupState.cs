@@ -91,12 +91,20 @@ internal static class StartupSetupState
         return HasNonDefaultGatewayUrl(settings);
     }
 
-    private static bool HasNonDefaultGatewayUrl(SettingsManager settings) =>
-        !string.IsNullOrWhiteSpace(settings.GatewayUrl)
-        && !string.Equals(
-            settings.GatewayUrl,
-            AppIdentity.SetupGatewayUrl,
-            StringComparison.OrdinalIgnoreCase);
+    private static bool HasNonDefaultGatewayUrl(SettingsManager settings)
+    {
+        if (string.IsNullOrWhiteSpace(settings.GatewayUrl))
+            return false;
+
+        return !string.Equals(
+                settings.GatewayUrl,
+                AppIdentity.SetupGatewayUrl,
+                StringComparison.OrdinalIgnoreCase)
+            && !string.Equals(
+                settings.GatewayUrl,
+                $"ws://localhost:{AppIdentity.SetupGatewayPort}",
+                StringComparison.OrdinalIgnoreCase);
+    }
 
     public static bool CanStartNodeGateway(SettingsManager settings, string dataPath)
     {

@@ -1,0 +1,119 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Page x:Class="OpenClawTray.Pages.LocalAiPage"
+      xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+      xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+    <ScrollViewer VerticalScrollBarVisibility="Auto">
+        <StackPanel Padding="24" Spacing="12" HorizontalAlignment="Stretch" MaxWidth="900">
+            <TextBlock x:Uid="LocalAiPage_Title" Text="Local AI"
+                       Style="{StaticResource TitleTextBlockStyle}"
+                       AutomationProperties.AutomationId="LocalAiPageMarker"/>
+            <TextBlock x:Uid="LocalAiPage_Intro"
+                       Text="Run the verified native llama-server privately on this computer. Models load only when requested."
+                       Style="{StaticResource CaptionTextBlockStyle}"
+                       Foreground="{ThemeResource TextFillColorSecondaryBrush}" TextWrapping="Wrap"/>
+
+            <Border Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                    BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1"
+                    CornerRadius="8" Padding="16" AutomationProperties.AutomationId="LocalAiEngineCard">
+                <StackPanel Spacing="10">
+                    <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="12">
+                        <Ellipse x:Name="EngineStatusDot" Width="12" Height="12" VerticalAlignment="Center"
+                                 Fill="{ThemeResource SystemFillColorNeutralBrush}"
+                                 AutomationProperties.AccessibilityView="Raw"/>
+                        <StackPanel Grid.Column="1" Spacing="2">
+                            <TextBlock x:Uid="LocalAiPage_EngineHeading" Text="llama-server"
+                                       Style="{StaticResource BodyStrongTextBlockStyle}"/>
+                            <TextBlock x:Name="EngineStatusText" AutomationProperties.AutomationId="LocalAiEngineStatus"
+                                       AutomationProperties.LiveSetting="Polite"/>
+                            <TextBlock x:Name="EngineOwnershipText" AutomationProperties.AutomationId="LocalAiEngineOwnership"
+                                       Style="{StaticResource CaptionTextBlockStyle}"
+                                       Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
+                        </StackPanel>
+                        <ProgressRing x:Name="EngineBusyIndicator" Grid.Column="2" Width="20" Height="20"
+                                      IsActive="False" Visibility="Collapsed"
+                                      AutomationProperties.AccessibilityView="Raw"/>
+                    </Grid>
+                    <Grid ColumnDefinitions="Auto,*" RowDefinitions="Auto,Auto,Auto" ColumnSpacing="16" RowSpacing="6">
+                        <TextBlock x:Uid="LocalAiPage_VersionLabel" Text="Version"
+                                   Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
+                        <TextBlock x:Name="EngineVersionText" Grid.Column="1"/>
+                        <TextBlock x:Uid="LocalAiPage_EndpointLabel" Grid.Row="1" Text="Endpoint"
+                                   Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
+                        <TextBlock x:Name="EndpointText" Grid.Row="1" Grid.Column="1" TextWrapping="Wrap"/>
+                        <TextBlock x:Uid="LocalAiPage_ProcessLabel" Grid.Row="2" Text="Process"
+                                   Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
+                        <TextBlock x:Name="ProcessIdText" Grid.Row="2" Grid.Column="1"/>
+                    </Grid>
+                    <TextBlock x:Name="EngineDetailText" TextWrapping="Wrap"
+                               Style="{StaticResource CaptionTextBlockStyle}"
+                               Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
+                    <TextBlock x:Name="ActionErrorText" Visibility="Collapsed" TextWrapping="Wrap"
+                               Foreground="{ThemeResource SystemFillColorCriticalBrush}"
+                               AutomationProperties.AutomationId="LocalAiActionError"
+                               AutomationProperties.LiveSetting="Polite"/>
+                    <StackPanel Orientation="Horizontal" Spacing="8">
+                        <Button x:Name="StartButton" x:Uid="LocalAiPage_StartButton" Content="Start router"
+                                Click="OnStart" AutomationProperties.AutomationId="LocalAiStart"/>
+                        <Button x:Name="StopButton" x:Uid="LocalAiPage_StopButton" Content="Stop"
+                                Click="OnStop" AutomationProperties.AutomationId="LocalAiStop"/>
+                        <Button x:Name="RestartButton" x:Uid="LocalAiPage_RestartButton" Content="Restart"
+                                Click="OnRestart" AutomationProperties.AutomationId="LocalAiRestart"/>
+                        <Button x:Name="OpenLogsButton" x:Uid="LocalAiPage_OpenLogsButton" Content="Open logs"
+                                Click="OnOpenLogs" AutomationProperties.AutomationId="LocalAiOpenLogs"/>
+                    </StackPanel>
+                </StackPanel>
+            </Border>
+
+            <Border Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                    BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1"
+                    CornerRadius="8" Padding="16" AutomationProperties.AutomationId="LocalAiModelCard">
+                <StackPanel Spacing="10">
+                    <TextBlock x:Uid="LocalAiPage_ModelHeading" Text="Model"
+                               Style="{StaticResource BodyStrongTextBlockStyle}"/>
+                    <StackPanel Orientation="Horizontal" Spacing="8">
+                        <Ellipse x:Name="ModelStatusDot" Width="12" Height="12" VerticalAlignment="Center"
+                                 Fill="{ThemeResource SystemFillColorNeutralBrush}"
+                                 AutomationProperties.AccessibilityView="Raw"/>
+                        <TextBlock x:Name="ModelStatusText" AutomationProperties.AutomationId="LocalAiModelStatus"
+                                   AutomationProperties.LiveSetting="Polite"/>
+                    </StackPanel>
+                    <TextBlock x:Name="ModelNameText" AutomationProperties.AutomationId="LocalAiModelName"
+                               TextWrapping="Wrap"/>
+                    <TextBlock x:Name="ModelRecipeText"
+                               Style="{StaticResource CaptionTextBlockStyle}"
+                               Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
+                    <Button x:Name="RetrySetupButton" x:Uid="LocalAiPage_RetrySetupButton"
+                            Content="Retry setup or download" Click="OnRetrySetup" HorizontalAlignment="Left"
+                            AutomationProperties.AutomationId="LocalAiRetrySetup"/>
+                </StackPanel>
+            </Border>
+
+            <Border Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                    BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1"
+                    CornerRadius="8" Padding="16" AutomationProperties.AutomationId="LocalAiGatewayCard">
+                <StackPanel Spacing="10">
+                    <TextBlock x:Uid="LocalAiPage_GatewayHeading" Text="Gateway connection"
+                               Style="{StaticResource BodyStrongTextBlockStyle}"/>
+                    <StackPanel Orientation="Horizontal" Spacing="8">
+                        <Ellipse x:Name="GatewayStatusDot" Width="12" Height="12" VerticalAlignment="Center"
+                                 Fill="{ThemeResource SystemFillColorNeutralBrush}"
+                                 AutomationProperties.AccessibilityView="Raw"/>
+                        <TextBlock x:Name="GatewayStatusText" AutomationProperties.AutomationId="LocalAiGatewayStatus"
+                                   AutomationProperties.LiveSetting="Polite"/>
+                    </StackPanel>
+                    <TextBlock x:Name="GatewayDetailText" TextWrapping="Wrap"
+                               Style="{StaticResource CaptionTextBlockStyle}"
+                               Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
+                    <StackPanel Orientation="Horizontal" Spacing="8">
+                        <Button x:Name="RepairConnectionButton" x:Uid="LocalAiPage_RepairConnectionButton"
+                                Content="Repair connection" Click="OnRepairConnection"
+                                AutomationProperties.AutomationId="LocalAiRepairConnection"/>
+                        <Button x:Name="OpenChatButton" x:Uid="LocalAiPage_OpenChatButton"
+                                Content="Open chat" Click="OnOpenChat"
+                                AutomationProperties.AutomationId="LocalAiOpenChat"/>
+                    </StackPanel>
+                </StackPanel>
+            </Border>
+        </StackPanel>
+    </ScrollViewer>
+</Page>

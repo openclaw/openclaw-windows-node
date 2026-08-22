@@ -233,8 +233,12 @@ public sealed class OpenClawReactorChatRoot : Component<OpenClawReactorChatRootP
             : isEmptyConversation
                 ? ReactorChatTimelineMode.Empty
                 : ReactorChatTimelineMode.Timeline;
+        Func<string, ChatMediaContentInfo, CancellationToken, Task<AssistantMediaResolutionResult>>?
+            mediaResolver = props.Provider is OpenClawChatDataProvider dataProvider
+                ? dataProvider.ResolveAssistantMediaAsync
+                : null;
 
-        var timelineProps = new OpenClawChatTimelineProps(
+        var timelineProps = new ChatTimelinePresentationContext(
             effectiveThread?.Id,
             entries,
             false,
@@ -255,7 +259,8 @@ public sealed class OpenClawReactorChatRoot : Component<OpenClawReactorChatRootP
             scrollToBottomToken,
             effectiveThread is { } permissionThread
                 ? (requestId, action) => OnPermission(permissionThread.Id, requestId, action)
-                : null);
+                : null,
+            mediaResolver);
 
         void SelectThread(string threadId)
         {
@@ -334,7 +339,7 @@ public sealed class OpenClawReactorChatRoot : Component<OpenClawReactorChatRootP
     private static Element RenderLoading() =>
         Component<ReactorChatTimeline, ReactorChatTimelineProps>(new(
             ReactorChatTimelineMode.Loading,
-            new OpenClawChatTimelineProps(null, Array.Empty<ChatTimelineItem>(), false, null),
+            new ChatTimelinePresentationContext(null, Array.Empty<ChatTimelineItem>(), false, null),
             null,
             false));
 

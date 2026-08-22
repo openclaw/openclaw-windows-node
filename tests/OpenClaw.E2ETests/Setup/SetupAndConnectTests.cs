@@ -151,7 +151,7 @@ public class SetupAndConnectTests
         Assert.Equal(expectedCommands, effectiveCommands.Order(StringComparer.OrdinalIgnoreCase).ToArray());
 
         var gateway = _fixture.ReadActiveGatewayRecord();
-        Assert.Equal($"ws://localhost:{_fixture.GatewayPort}", gateway.GatewayUrl);
+        Assert.Equal($"ws://127.0.0.1:{_fixture.GatewayPort}", gateway.GatewayUrl);
 
         var settingsPath = Path.Combine(_fixture.DataDir, "settings.json");
         var gatewaysPath = Path.Combine(_fixture.DataDir, "gateways.json");

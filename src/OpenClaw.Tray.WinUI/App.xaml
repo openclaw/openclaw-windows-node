@@ -37,21 +37,7 @@
                     <SolidColorBrush x:Key="ConnectionCapabilityPillSuccessBrush" Color="{ThemeResource SystemFillColorSuccess}" Opacity="0.14" />
                     <SolidColorBrush x:Key="ConnectionCapabilityPillCautionBrush" Color="{ThemeResource SystemFillColorCaution}" Opacity="0.14" />
                     <SolidColorBrush x:Key="ConnectionCapabilityPillCriticalBrush" Color="{ThemeResource SystemFillColorCritical}" Opacity="0.14" />
-                    <SolidColorBrush x:Key="ChatUserBubbleSelectionHighlightBrush" Color="{ThemeResource SystemAccentColorDark2}" />
-                    <x:Double x:Key="ChatAccessibleBorderThickness">1</x:Double>
                     <x:Boolean x:Key="HubNavigationUseHighContrastIcons">False</x:Boolean>
-
-                    <!-- Composer scrim: the chat timeline dissolves into the composer dock via a
-                         vertical fade from transparent to the base surface fill. FunctionalUI
-                         resolves this as a whole brush per ElementTheme and reads it out of the
-                         visual tree, so the stops use LITERAL colors (a {ThemeResource} color
-                         would re-resolve against the ambient app theme and read light on a dark
-                         page). The values mirror SolidBackgroundFillColorBase (dark #202020) so
-                         the fade lands seamlessly on the dock. -->
-                    <LinearGradientBrush x:Key="ChatComposerFadeBrush" StartPoint="0,0" EndPoint="0,1">
-                        <GradientStop Offset="0" Color="#00202020" />
-                        <GradientStop Offset="1" Color="#FF202020" />
-                    </LinearGradientBrush>
                 </ResourceDictionary>
                 <ResourceDictionary x:Key="Light">
                     <SolidColorBrush x:Key="SetupIndicatorAccentBrush" Color="{ThemeResource SystemAccentColorDark1}" />
@@ -66,15 +52,7 @@
                     <SolidColorBrush x:Key="ConnectionCapabilityPillSuccessBrush" Color="{ThemeResource SystemFillColorSuccess}" Opacity="0.14" />
                     <SolidColorBrush x:Key="ConnectionCapabilityPillCautionBrush" Color="{ThemeResource SystemFillColorCaution}" Opacity="0.14" />
                     <SolidColorBrush x:Key="ConnectionCapabilityPillCriticalBrush" Color="{ThemeResource SystemFillColorCritical}" Opacity="0.14" />
-                    <SolidColorBrush x:Key="ChatUserBubbleSelectionHighlightBrush" Color="{ThemeResource SystemAccentColorDark2}" />
-                    <x:Double x:Key="ChatAccessibleBorderThickness">1</x:Double>
                     <x:Boolean x:Key="HubNavigationUseHighContrastIcons">False</x:Boolean>
-
-                    <!-- Light mirror of ChatComposerFadeBrush (SolidBackgroundFillColorBase light #F3F3F3). -->
-                    <LinearGradientBrush x:Key="ChatComposerFadeBrush" StartPoint="0,0" EndPoint="0,1">
-                        <GradientStop Offset="0" Color="#00F3F3F3" />
-                        <GradientStop Offset="1" Color="#FFF3F3F3" />
-                    </LinearGradientBrush>
                 </ResourceDictionary>
                 <ResourceDictionary x:Key="HighContrast">
                     <SolidColorBrush x:Key="SetupIndicatorAccentBrush" Color="{ThemeResource SystemColorHighlightColor}" />
@@ -89,31 +67,9 @@
                     <SolidColorBrush x:Key="ConnectionCapabilityPillSuccessBrush" Color="{ThemeResource SystemColorWindowColor}" />
                     <SolidColorBrush x:Key="ConnectionCapabilityPillCautionBrush" Color="{ThemeResource SystemColorWindowColor}" />
                     <SolidColorBrush x:Key="ConnectionCapabilityPillCriticalBrush" Color="{ThemeResource SystemColorWindowColor}" />
-                    <SolidColorBrush x:Key="ChatUserBubbleSelectionHighlightBrush" Color="{ThemeResource SystemColorHighlightColor}" />
-                    <x:Double x:Key="ChatAccessibleBorderThickness">2</x:Double>
                     <x:Boolean x:Key="HubNavigationUseHighContrastIcons">True</x:Boolean>
-
-                    <!-- High-contrast follows the system window color so the scrim stays legible. -->
-                    <LinearGradientBrush x:Key="ChatComposerFadeBrush" StartPoint="0,0" EndPoint="0,1">
-                        <GradientStop Offset="0" Color="Transparent" />
-                        <GradientStop Offset="1" Color="{ThemeResource SystemColorWindowColor}" />
-                    </LinearGradientBrush>
                 </ResourceDictionary>
             </ResourceDictionary.ThemeDictionaries>
-
-            <Style x:Key="ChatUserBubbleSelectionStyle" TargetType="RichTextBlock">
-                <Setter Property="SelectionHighlightColor" Value="{ThemeResource ChatUserBubbleSelectionHighlightBrush}"/>
-            </Style>
-            <Style x:Key="ChatToolCardBorderStyle" TargetType="Border">
-                <Setter Property="Background" Value="{ThemeResource CardBackgroundFillColorDefaultBrush}"/>
-                <Setter Property="BorderBrush" Value="{ThemeResource ControlStrokeColorDefaultBrush}"/>
-                <Setter Property="BorderThickness" Value="{ThemeResource ChatAccessibleBorderThickness}"/>
-            </Style>
-            <Style x:Key="ChatCompactionCardStyle" TargetType="Border">
-                <Setter Property="Background" Value="{ThemeResource CardBackgroundFillColorDefaultBrush}"/>
-                <Setter Property="BorderBrush" Value="{ThemeResource ControlStrokeColorDefaultBrush}"/>
-                <Setter Property="BorderThickness" Value="{ThemeResource ChatAccessibleBorderThickness}"/>
-            </Style>
 
             <!-- Hub NavigationView selection indicator follows the user's Windows accent. -->
             <SolidColorBrush x:Key="NavigationViewSelectionIndicatorForeground"

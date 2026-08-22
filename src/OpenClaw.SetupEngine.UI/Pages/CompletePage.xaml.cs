@@ -31,13 +31,23 @@ public sealed partial class CompletePage : Page
                 FailureIcon.Visibility = Visibility.Collapsed;
                 StartupToggle.IsOn = args.DefaultAutoStart;
                 StartupRow.Visibility = args.ShowStartupPreference ? Visibility.Visible : Visibility.Collapsed;
-                GatewaySummaryText.Text = (args.ReviewSummary ?? SetupReviewSummaryBuilder.Build(new SetupConfig())).CompletionGatewaySummary;
+                SetupReviewSummary review = args.ReviewSummary ?? SetupReviewSummaryBuilder.Build(new SetupConfig());
+                GatewaySummaryText.Text = review.CompletionGatewaySummary;
                 TitleText.Text = "All set!";
                 SubtitleText.Text = "OpenClaw is ready to go";
                 ErrorCard.Visibility = Visibility.Collapsed;
                 HelpLink.Visibility = Visibility.Collapsed;
                 FallbackButton.Visibility = Visibility.Collapsed;
                 SummaryPanel.Visibility = Visibility.Visible;
+                LocalAiSummaryCard.Visibility = review.LocalAiEnabled ? Visibility.Visible : Visibility.Collapsed;
+                if (review.LocalAiEnabled)
+                {
+                    LocalAiSummaryTitle.Text = review.LocalAiTitle ?? "Local AI verified";
+                    LocalAiSummaryDescription.Text = review.LocalAiDescription ??
+                        "The native llama-server router is ready. The model loads on the first request.";
+                    SubtitleText.Text = "OpenClaw and Local AI are ready";
+                    LaunchButton.Content = "Open chat";
+                }
             }
             else
             {
@@ -53,6 +63,7 @@ public sealed partial class CompletePage : Page
                 NodeModeBanner.Visibility = Visibility.Collapsed;
                 StartupRow.Visibility = Visibility.Collapsed;
                 SummaryPanel.Visibility = Visibility.Collapsed;
+                LocalAiSummaryCard.Visibility = Visibility.Collapsed;
                 LaunchButton.Content = "Close";
                 FallbackButton.Visibility = args.CanRetryGatewayFallback
                     ? Visibility.Visible

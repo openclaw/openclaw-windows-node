@@ -25,6 +25,7 @@ public sealed class NodeConnector : INodeConnector, INodeConnectorTelemetryEvent
     public event EventHandler<NodeClientCreatedEventArgs>? ClientCreated;
     public event EventHandler? TransportConnected;
     public event EventHandler<GatewayErrorKind>? ConnectionFailure;
+    public event EventHandler<GatewayProtocolCompatibility>? ProtocolCompatibilityChanged;
 
     public NodeConnector(IOpenClawLogger logger, ConnectionDiagnostics? diagnostics = null)
     {
@@ -174,6 +175,8 @@ public sealed class NodeConnector : INodeConnector, INodeConnectorTelemetryEvent
             ForwardIfCurrent(s, generation, EventArgs.Empty, TransportConnected);
         client.ConnectionFailure += (s, e) =>
             ForwardIfCurrent(s, generation, e, ConnectionFailure);
+        client.ProtocolCompatibilityChanged += (s, e) =>
+            ForwardIfCurrent(s, generation, e, ProtocolCompatibilityChanged);
         client.PairingStatusChanged += (s, e) =>
             ForwardIfCurrent(s, generation, e, PairingStatusChanged);
         client.DeviceTokenReceived += (s, e) =>

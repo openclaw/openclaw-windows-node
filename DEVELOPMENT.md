@@ -230,27 +230,26 @@ Useful local scripts:
 
 ## Architecture Overview
 
-### Native chat surface (FunctionalUI + OpenClaw.Chat)
+### Native chat surface (Reactor + OpenClaw.Chat)
 
 The Hub Chat tab (`src/OpenClaw.Tray.WinUI/Pages/ChatPage.xaml`) and the
 tray ChatWindow popup (`src/OpenClaw.Tray.WinUI/Windows/ChatWindow.xaml`)
 render their conversations with native WinUI 3 controls via the in-repo
-`OpenClawTray.FunctionalUI` helper and `OpenClaw.Chat` model/reducer code.
+Reactor components and `OpenClaw.Chat` model/reducer code.
 The standard WebView2-hosted gateway web client remains available as a
 settings-controlled fallback.
 
 **Layering:**
 
 ```
-src/OpenClaw.Tray.WinUI/Chat/    OpenClawChatTimeline · OpenClawComposer · OpenClawSessionHeader
+src/OpenClaw.Tray.WinUI/Chat/    OpenClawReactorChatRoot · ReactorChatTimeline · ReactorChatComposer
                                  OpenClawChatDataProvider (adapts OpenClawGatewayClient → IChatDataProvider)
-                                 OpenClawChatRoot         (FunctionalUI component composing the chat surface)
-                                 FunctionalChatHostExtensions (mounts FunctionalUI into a XAML <Border>)
-                                 IChatGatewayBridge       (testability seam over OpenClawGatewayClient)
+                                 ReactorChatHostExtensions (mounts Reactor into a XAML <Border>)
+                                 IChatGatewayBridge        (testability seam over OpenClawGatewayClient)
         ▲ depends on
 src/OpenClaw.Chat/               ChatThread · ChatTimelineState · IChatDataProvider · ChatTimelineReducer
         ▲ rendered by
-src/OpenClawTray.FunctionalUI/   Component · RenderContext · FunctionalHostControl · WinUI elements
+Reactor.WinUI                    Component · hooks · ReactorHostControl · WinUI elements
 ```
 
 **Lifecycle:**
@@ -259,12 +258,13 @@ src/OpenClawTray.FunctionalUI/   Component · RenderContext · FunctionalHostCon
   created in `InitializeGatewayClient` and disposed inside
   `UnsubscribeGatewayEvents`. Both the Hub Chat tab and the tray ChatWindow
   consume the same provider - opening either surface shows identical state.
-- Each XAML host (`ChatPage`, `ChatWindow`) mounts its own `FunctionalHostControl`
-  with `ContentTarget` pointing at a `<Border x:Name="ChatHost"/>`. The
+- `ReactorChatHostExtensions` mounts a dedicated `ReactorHostControl` for each
+  XAML surface (`ChatPage`, `ChatWindow`) as the child of its
+  `<Border x:Name="ChatHost"/>`. The
   surrounding chrome (NavigationView, popup header) stays XAML.
 - Provider events fire on the WebSocket-receive thread; the provider
   marshals `Changed` / `NotificationRequested` callbacks through a
-  dispatcher post delegate (`DispatcherQueue.AsPost()`), so FunctionalUI
+  dispatcher post delegate (`DispatcherQueue.AsPost()`), so Reactor
   components observe state on the UI thread.
 
 **Adding new chat behavior:** model new events in `OpenClaw.Chat`'s

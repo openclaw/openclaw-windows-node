@@ -202,13 +202,3 @@ dotnet_diagnostic.REACTOR_DIALOG_001.severity = none
 
 [src/OpenClaw.Tray.WinUI/Windows/ChatWindow.xaml.cs]
 dotnet_diagnostic.REACTOR_DIALOG_001.severity = none
-
-[src/OpenClaw.Tray.WinUI/Chat/OpenClawChatRoot.cs]
-dotnet_diagnostic.REACTOR_THEME_004.severity = none
-
-[src/OpenClaw.Tray.WinUI/Chat/OpenClawComposer.cs]
-dotnet_diagnostic.REACTOR_A11Y_001.severity = none
-
-[src/OpenClaw.Tray.WinUI/Chat/OpenClawChatTimeline.cs]
-dotnet_diagnostic.REACTOR_A11Y_001.severity = none
-dotnet_diagnostic.REACTOR_THEME_004.severity = none

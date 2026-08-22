@@ -247,11 +247,7 @@ internal static class WindowsGatewayReachability
         try
         {
             using var http = new HttpClient { Timeout = TimeSpan.FromSeconds(5) };
-            var gatewayUri = new Uri(ctx.GatewayUrl!);
-            var scheme = gatewayUri.Scheme.Equals("wss", StringComparison.OrdinalIgnoreCase)
-                ? Uri.UriSchemeHttps
-                : Uri.UriSchemeHttp;
-            var healthUri = new UriBuilder(gatewayUri) { Scheme = scheme, Port = gatewayUri.Port }.Uri;
+            var healthUri = BuildHealthUri(ctx.GatewayUrl!);
             var resp = await http.GetAsync(healthUri, ct);
             ctx.Logger.Debug($"Gateway health check: HTTP {(int)resp.StatusCode}");
             return StepResult.Ok();
@@ -264,5 +260,14 @@ internal static class WindowsGatewayReachability
         {
             return StepResult.Fail($"Gateway not reachable before {pairingRole} pairing: {ex.Message}");
         }
+    }
+
+    internal static Uri BuildHealthUri(string gatewayUrl)
+    {
+        var gatewayUri = new Uri(gatewayUrl);
+        var scheme = gatewayUri.Scheme.Equals("wss", StringComparison.OrdinalIgnoreCase)
+            ? Uri.UriSchemeHttps
+            : Uri.UriSchemeHttp;
+        return new UriBuilder(gatewayUri) { Scheme = scheme, Port = gatewayUri.Port }.Uri;
     }
 }

@@ -2827,6 +2827,88 @@ public class OpenClawChatDataProviderTests
     }
 
     [Fact]
+    public async Task ChatMessageReceived_NoEnvelopeEchoDoesNotChooseBetweenPlainAndMediaPromotions()
+    {
+        var (bridge, provider, snapshots, _) = CreateProvider(new[] { MainSession() });
+        await provider.LoadAsync();
+
+        bridge.SendResults.Enqueue(new ChatSendResult { RunId = "run-media", Status = "started" });
+        await provider.SendMessageAsync("main", "same", default,
+        [
+            new ChatAttachment
+            {
+               Type = "image",
+               MimeType = "image/png",
+               FileName = "same.png",
+               Content = Convert.ToBase64String([1]),
+            },
+        ]);
+        bridge.RaiseAgent(MakeAgentEvent("lifecycle", """{"phase":"start"}""", runId: "run-media"));
+        bridge.RaiseAgent(MakeAgentEvent("lifecycle", """{"phase":"end"}""", runId: "run-media"));
+
+        bridge.SendResults.Enqueue(new ChatSendResult { RunId = "run-plain", Status = "started" });
+        await provider.SendMessageAsync("main", "same");
+        bridge.RaiseAgent(MakeAgentEvent("lifecycle", """{"phase":"start"}""", runId: "run-plain"));
+        snapshots.Clear();
+
+        bridge.RaiseChat(new ChatMessageInfo
+        {
+            SessionKey = "main",
+            Role = "user",
+            Text = "same",
+            State = "final",
+            OpenClawId = "remote-same",
+            OpenClawSeq = 99,
+        });
+
+        var users = snapshots[^1].Timelines["main"].Entries
+            .Where(entry => entry.Kind == ChatTimelineItemKind.User && entry.Text == "same")
+            .ToArray();
+        Assert.Equal(3, users.Length);
+        var metadata = provider.GetEntryMetadata("main");
+        Assert.Equal(2, users.Count(user => metadata[user.Id].IsLocalQueuedSend));
+        Assert.Single(users, user => metadata[user.Id].GatewayMessageId == "remote-same");
+    }
+
+    [Fact]
+    public async Task ChatMessageReceived_NoEnvelopeEchoDoesNotConsumeSingleMediaPromotion()
+    {
+        var (bridge, provider, snapshots, _) = CreateProvider(new[] { MainSession() });
+        await provider.LoadAsync();
+
+        bridge.SendResults.Enqueue(new ChatSendResult { RunId = "run-media", Status = "started" });
+        await provider.SendMessageAsync("main", "same", default,
+        [
+            new ChatAttachment
+            {
+                Type = "image",
+                MimeType = "image/png",
+                FileName = "same.png",
+                Content = Convert.ToBase64String([1]),
+            },
+        ]);
+        snapshots.Clear();
+
+        bridge.RaiseChat(new ChatMessageInfo
+        {
+            SessionKey = "main",
+            Role = "user",
+            Text = "same",
+            State = "final",
+            OpenClawId = "remote-same",
+            OpenClawSeq = 99,
+        });
+
+        var users = snapshots[^1].Timelines["main"].Entries
+            .Where(entry => entry.Kind == ChatTimelineItemKind.User && entry.Text == "same")
+            .ToArray();
+        Assert.Equal(2, users.Length);
+        var metadata = provider.GetEntryMetadata("main");
+        Assert.Contains(users, user => metadata[user.Id].IsLocalQueuedSend);
+        Assert.Contains(users, user => metadata[user.Id].GatewayMessageId == "remote-same");
+    }
+
+    [Fact]
     public async Task SendMessageAsync_WhenGatewayThrows_DoesNotSuppressFutureRemoteUserEcho()
     {
         var (bridge, provider, snapshots, _) = CreateProvider(new[] { MainSession() });
@@ -3558,6 +3640,63 @@ public class OpenClawChatDataProviderTests
             e.Kind == ChatTimelineItemKind.User && e.Text == "remote no timestamp");
         Assert.Contains(latest.Timelines["main"].Entries, e =>
             e.Kind == ChatTimelineItemKind.Assistant && e.Text == "remote response");
+    }
+
+    [Fact]
+    public async Task SessionResetCompletion_DuplicateBackfillMergesAndOpensBufferedLifecycleGate()
+    {
+        var remoteTimestamp = DateTimeOffset.UtcNow.AddSeconds(5).ToUnixTimeMilliseconds();
+        var (bridge, provider, snapshots, _) = CreateProvider(new[] { MainSession() });
+        bridge.HistoryBehavior = _ => Task.FromResult(new ChatHistoryInfo
+        {
+            SessionKey = "main",
+            Messages =
+            [
+                new ChatMessageInfo
+                {
+                    SessionKey = "main",
+                    Role = "user",
+                    Text = "[media attached: media://inbound/reset.pdf (application/pdf)]\nremote after reset",
+                    Ts = remoteTimestamp,
+                    OpenClawId = "reset-user",
+                    OpenClawSeq = 41,
+                },
+            ],
+        });
+        await provider.LoadAsync();
+        bridge.RaiseSessionCommandCompleted(new SessionCommandResult
+        {
+            Method = "sessions.reset",
+            Ok = true,
+            Key = "main",
+        });
+        snapshots.Clear();
+
+        // Insert the projected row without reset proof, then buffer the
+        // lifecycle start before the reset-aware duplicate backfill arrives.
+        await provider.FetchRemoteUserMessageForTestsAsync("main", openResetGateOnSuccess: false);
+        var pendingStart = MakeAgentEvent("lifecycle", """{"phase":"start"}""", runId: "reset-remote-run");
+        pendingStart.Ts = remoteTimestamp + 1;
+        bridge.RaiseAgent(pendingStart);
+        snapshots.Clear();
+
+        await provider.FetchRemoteUserMessageForTestsAsync("main", openResetGateOnSuccess: true);
+        bridge.RaiseChat(new ChatMessageInfo
+        {
+            SessionKey = "main",
+            Role = "assistant",
+            Text = "reset gate opened",
+            State = "final",
+            Ts = remoteTimestamp + 2,
+        });
+
+        var latest = snapshots[^1].Timelines["main"];
+        var user = Assert.Single(latest.Entries, entry => entry.Kind == ChatTimelineItemKind.User);
+        Assert.Equal("remote after reset", user.Text);
+        Assert.Single(provider.GetEntryMetadata("main")[user.Id].Attachments!);
+        Assert.Contains(latest.Entries, entry =>
+            entry.Kind == ChatTimelineItemKind.Assistant &&
+            entry.Text == "reset gate opened");
     }
 
     [Fact]
@@ -10430,6 +10569,217 @@ public class OpenClawChatDataProviderTests
         Assert.Equal("hello there", entry.Text);
     }
 
+    [Fact]
+    public async Task OnChatMessageReceived_MediaOnlyAssistant_CreatesSafePresentationEntry()
+    {
+        var (bridge, provider, snapshots, _) = CreateProvider(new[] { MainSession() });
+        await provider.LoadAsync();
+        snapshots.Clear();
+
+        bridge.RaiseChat(new ChatMessageInfo
+        {
+            SessionKey = "main",
+            Role = "assistant",
+            Text = string.Empty,
+            State = "final",
+            ContentParts =
+            [
+                new ChatMessageContentPartInfo
+                {
+                    Kind = ChatMessageContentPartKind.Media,
+                    Media = new ChatMediaContentInfo
+                    {
+                        Kind = ChatMediaContentKind.Image,
+                        Source = ChatMediaContentSource.LegacyDirective,
+                        FileName = "banner.png",
+                    },
+                },
+            ],
+        });
+
+        var timeline = snapshots[^1].Timelines["main"];
+        var entry = Assert.Single(timeline.Entries);
+        Assert.Equal(ChatTimelineItemKind.Assistant, entry.Kind);
+        Assert.Equal(string.Empty, entry.Text);
+        var metadata = provider.GetEntryMetadata("main");
+        var media = Assert.Single(metadata[entry.Id].AssistantContent!.Media);
+        Assert.Equal("banner.png", media.DisplayName);
+    }
+
+    [Fact]
+    public async Task OnChatMessageReceived_FinalMedia_MergesIntoStreamingAssistantEntry()
+    {
+        var (bridge, provider, snapshots, _) = CreateProvider(new[] { MainSession() });
+        await provider.LoadAsync();
+        snapshots.Clear();
+
+        bridge.RaiseChat(new ChatMessageInfo
+        {
+            SessionKey = "main",
+            Role = "assistant",
+            Text = "Rendering",
+            State = "delta",
+        });
+        bridge.RaiseChat(new ChatMessageInfo
+        {
+            SessionKey = "main",
+            Role = "assistant",
+            Text = "Rendering complete",
+            State = "final",
+            ContentParts =
+            [
+                new ChatMessageContentPartInfo
+                {
+                    Kind = ChatMessageContentPartKind.Media,
+                    Media = new ChatMediaContentInfo
+                    {
+                        Kind = ChatMediaContentKind.Image,
+                        Source = ChatMediaContentSource.Structured,
+                        ArtifactId = "artifact-1",
+                        FileName = "banner.png",
+                    },
+                },
+            ],
+        });
+
+        var timeline = snapshots[^1].Timelines["main"];
+        var entry = Assert.Single(timeline.Entries, item => item.Kind == ChatTimelineItemKind.Assistant);
+        Assert.Equal("Rendering complete", entry.Text);
+        Assert.False(entry.IsStreaming);
+        var media = Assert.Single(provider.GetEntryMetadata("main")[entry.Id].AssistantContent!.Media);
+        Assert.Equal("artifact-1", media.Reference.ArtifactId);
+    }
+
+    [Fact]
+    public async Task OnChatMessageReceived_StructuredFollowUp_PreservesLegacyMediaReference()
+    {
+        var (bridge, provider, snapshots, _) = CreateProvider(new[] { MainSession() });
+        await provider.LoadAsync();
+        snapshots.Clear();
+
+        bridge.RaiseChat(new ChatMessageInfo
+        {
+            SessionKey = "main",
+            Role = "assistant",
+            Text = string.Empty,
+            ContentParts =
+            [
+                new ChatMessageContentPartInfo
+                {
+                    Kind = ChatMessageContentPartKind.Media,
+                    Media = new ChatMediaContentInfo
+                    {
+                        Kind = ChatMediaContentKind.Image,
+                        Source = ChatMediaContentSource.LegacyDirective,
+                        FileName = "banner.png",
+                    },
+                },
+            ],
+        });
+        bridge.RaiseChat(new ChatMessageInfo
+        {
+            SessionKey = "main",
+            Role = "assistant",
+            Text = string.Empty,
+            ContentParts =
+            [
+                new ChatMessageContentPartInfo
+                {
+                    Kind = ChatMessageContentPartKind.Media,
+                    Media = new ChatMediaContentInfo
+                    {
+                        Kind = ChatMediaContentKind.Image,
+                        Source = ChatMediaContentSource.Structured,
+                        ArtifactId = "artifact-unavailable",
+                    },
+                },
+            ],
+        });
+
+        var timeline = snapshots[^1].Timelines["main"];
+        var entry = Assert.Single(timeline.Entries, item => item.Kind == ChatTimelineItemKind.Assistant);
+        var media = Assert.Single(provider.GetEntryMetadata("main")[entry.Id].AssistantContent!.Media);
+        Assert.Equal(ChatMediaContentSource.LegacyDirective, media.Reference.Source);
+        Assert.Equal("banner.png", media.DisplayName);
+    }
+
+    [Fact]
+    public async Task OnChatMessageReceived_IdentifiedMediaOnlyRetransmit_DoesNotDuplicateEntry()
+    {
+        var (bridge, provider, snapshots, _) = CreateProvider(new[] { MainSession() });
+        await provider.LoadAsync();
+        snapshots.Clear();
+        var message = new ChatMessageInfo
+        {
+            SessionKey = "main",
+            Role = "assistant",
+            Text = string.Empty,
+            State = "final",
+            OpenClawId = "assistant-media-1",
+            ContentParts =
+            [
+                new ChatMessageContentPartInfo
+                {
+                    Kind = ChatMessageContentPartKind.Media,
+                    Media = new ChatMediaContentInfo
+                    {
+                        Kind = ChatMediaContentKind.Image,
+                        Source = ChatMediaContentSource.LegacyDirective,
+                        FileName = "banner.png",
+                    },
+                },
+            ],
+        };
+
+        bridge.RaiseChat(message);
+        bridge.RaiseChat(message);
+
+        var timeline = snapshots[^1].Timelines["main"];
+        Assert.Single(timeline.Entries, item => item.Kind == ChatTimelineItemKind.Assistant);
+    }
+
+    [Fact]
+    public async Task LoadHistoryAsync_StructuredMedia_CreatesSafePresentationEntry()
+    {
+        var (bridge, provider, snapshots, _) = CreateProvider(new[] { MainSession() });
+        bridge.HistoryBehavior = _ => Task.FromResult(new ChatHistoryInfo
+        {
+            SessionKey = "main",
+            Messages =
+            [
+                new ChatMessageInfo
+                {
+                    SessionKey = "main",
+                    Role = "assistant",
+                    ContentParts =
+                    [
+                        new ChatMessageContentPartInfo
+                        {
+                            Kind = ChatMessageContentPartKind.Media,
+                            Media = new ChatMediaContentInfo
+                            {
+                                Kind = ChatMediaContentKind.Image,
+                                Source = ChatMediaContentSource.Structured,
+                                ArtifactId = "artifact-1",
+                                FileName = "banner.png",
+                            },
+                        },
+                    ],
+                },
+            ],
+        });
+        await provider.LoadAsync();
+        snapshots.Clear();
+
+        await provider.LoadHistoryAsync("main");
+
+        var timeline = snapshots[^1].Timelines["main"];
+        var entry = Assert.Single(timeline.Entries, item => item.Kind == ChatTimelineItemKind.Assistant);
+        var media = Assert.Single(provider.GetEntryMetadata("main")[entry.Id].AssistantContent!.Media);
+        Assert.Equal("banner.png", media.DisplayName);
+        Assert.Equal("artifact-1", media.Reference.ArtifactId);
+    }
+
     // ── chat rubber-duck MEDIUM 4: per-message size cap ──
 
     [Fact]
@@ -10568,6 +10918,355 @@ public class OpenClawChatDataProviderTests
     }
 
     [Fact]
+    public async Task ChatMessageReceived_LocalMediaEcho_ReconcilesOneCleanRowAndPreservesLocalPreview()
+    {
+        var sendGate = new TaskCompletionSource();
+        var (bridge, provider, snapshots, _) = CreateProvider(new[] { MainSession() });
+        bridge.SendBehavior = (_, _, _) => sendGate.Task;
+        await provider.LoadAsync();
+
+        _ = provider.SendMessageAsync("main", "Describe this", default,
+        [
+            new ChatAttachment
+            {
+                Type = "image",
+                MimeType = "image/png",
+                FileName = "f4f160f1-07b9-4eb5-8de4-2b12c403d0fe-0d950ec0-98f0-4398-a7fe-c9b9131e8b5a-clipboard.png",
+                Content = Convert.ToBase64String([1, 2, 3]),
+                SizeBytes = 3,
+            },
+        ]);
+        snapshots.Clear();
+
+        bridge.RaiseChat(new ChatMessageInfo
+        {
+            SessionKey = "main",
+            Role = "user",
+            Text = "[media attached: media://inbound/f4f160f1-07b9-4eb5-8de4-2b12c403d0fe-0d950ec0-98f0-4398-a7fe.png (image/png)]\nDescribe this",
+            State = "final",
+            OpenClawId = "gateway-media",
+            OpenClawSeq = 12,
+        });
+
+        var timeline = Assert.Single(snapshots).Timelines["main"];
+        var user = Assert.Single(timeline.Entries, entry => entry.Kind == ChatTimelineItemKind.User);
+        Assert.Equal("Describe this", user.Text);
+        Assert.DoesNotContain("media://", user.Text);
+        var metadata = provider.GetEntryMetadata("main")[user.Id];
+        Assert.Equal("gateway-media", metadata.GatewayMessageId);
+        var attachment = Assert.Single(metadata.Attachments!);
+        Assert.Equal(ChatAttachmentOrigin.Local, attachment.Origin);
+        Assert.Equal(
+            "f4f160f1-07b9-4eb5-8de4-2b12c403d0fe-0d950ec0-98f0-4398-a7fe-c9b9131e8b5a-clipboard.png",
+            attachment.DisplayFileName);
+        Assert.True(attachment.CanAccessPreviewCache);
+        Assert.True(ChatImagePreviewCache.Contains(attachment.PreviewCacheKey!));
+
+        sendGate.SetResult();
+    }
+
+    [Fact]
+    public async Task ChatMessageReceived_AttachmentOnlyMediaEcho_ReconcilesWithoutEmptyTextMatching()
+    {
+        var sendGate = new TaskCompletionSource();
+        var (bridge, provider, snapshots, _) = CreateProvider(new[] { MainSession() });
+        bridge.SendBehavior = (_, _, _) => sendGate.Task;
+        await provider.LoadAsync();
+
+        _ = provider.SendMessageAsync("main", "", default,
+        [
+            new ChatAttachment
+            {
+                Type = "image",
+                MimeType = "image/png",
+                FileName = "f4f160f1-07b9-4eb5-8de4-2b12c403d0fe-0d950ec0-98f0-4398-a7fe-c9b9131e8b5a-clipboard.png",
+                Content = Convert.ToBase64String([1]),
+                SizeBytes = 1,
+            },
+        ]);
+        snapshots.Clear();
+
+        bridge.RaiseChat(new ChatMessageInfo
+        {
+            SessionKey = "main",
+            Role = "user",
+            Text = "[media attached: media://inbound/f4f160f1-07b9-4eb5-8de4-2b12c403d0fe-0d950ec0-98f0-4398-a7fe.png (image/png)]",
+            State = "final",
+            OpenClawId = "gateway-only",
+        });
+
+        var user = Assert.Single(Assert.Single(snapshots).Timelines["main"].Entries);
+        Assert.Equal(string.Empty, user.Text);
+        var metadata = provider.GetEntryMetadata("main")[user.Id];
+        Assert.Equal("gateway-only", metadata.GatewayMessageId);
+        Assert.Equal(
+            "f4f160f1-07b9-4eb5-8de4-2b12c403d0fe-0d950ec0-98f0-4398-a7fe-c9b9131e8b5a-clipboard.png",
+            Assert.Single(metadata.Attachments!).DisplayFileName);
+        sendGate.SetResult();
+    }
+
+    [Fact]
+    public async Task SessionResetCompletion_MediaEchoUsesCorrelationSignatureAcrossResetGate()
+    {
+        var sendGate = new TaskCompletionSource();
+        var (bridge, provider, snapshots, _) = CreateProvider(new[] { MainSession() });
+        bridge.SendBehavior = (_, _, _) => sendGate.Task;
+        await provider.LoadAsync();
+
+        _ = provider.SendMessageAsync("main", "before reset", default,
+        [
+            new ChatAttachment
+            {
+                Type = "image",
+                MimeType = "image/png",
+                FileName = "f4f160f1-07b9-4eb5-8de4-2b12c403d0fe-0d950ec0-98f0-4398-a7fe-c9b9131e8b5a-clipboard.png",
+                Content = Convert.ToBase64String([1]),
+            },
+        ]);
+        bridge.RaiseSessionCommandCompleted(new SessionCommandResult
+        {
+            Method = "sessions.reset",
+            Ok = true,
+            Key = "main",
+        });
+        snapshots.Clear();
+
+        bridge.RaiseChat(new ChatMessageInfo
+        {
+            SessionKey = "main",
+            Role = "user",
+            Text = "[media attached: media://inbound/f4f160f1-07b9-4eb5-8de4-2b12c403d0fe-0d950ec0-98f0-4398-a7fe.png (image/png)]\nbefore reset",
+            Ts = DateTimeOffset.UtcNow.AddSeconds(1).ToUnixTimeMilliseconds(),
+        });
+
+        Assert.Empty((await provider.LoadAsync()).Timelines["main"].Entries);
+        sendGate.SetResult();
+
+        await provider.SendMessageAsync("main", "after reset", default,
+        [
+            new ChatAttachment
+            {
+                Type = "image",
+                MimeType = "image/png",
+                FileName = "after.png",
+                Content = Convert.ToBase64String([2]),
+            },
+        ]);
+        snapshots.Clear();
+
+        bridge.RaiseChat(new ChatMessageInfo
+        {
+            SessionKey = "main",
+            Role = "user",
+            Text = "[media attached: media://inbound/after---7f122605-290a-467c-a5df-8a744c093004.png (image/png)]\nafter reset",
+            Ts = DateTimeOffset.UtcNow.AddSeconds(2).ToUnixTimeMilliseconds(),
+            OpenClawId = "after-reset-media",
+        });
+
+        var user = Assert.Single(snapshots[^1].Timelines["main"].Entries);
+        Assert.Equal("after reset", user.Text);
+        Assert.Equal("after-reset-media", provider.GetEntryMetadata("main")[user.Id].GatewayMessageId);
+    }
+
+    [Fact]
+    public async Task RemoteLifecycleBackfill_MediaEnvelopeBecomesCleanStructuredUserRow()
+    {
+        var (bridge, provider, snapshots, _) = CreateProvider(new[] { MainSession() });
+        bridge.HistoryBehavior = _ => Task.FromResult(new ChatHistoryInfo
+        {
+            SessionKey = "main",
+            Messages =
+            [
+                new ChatMessageInfo
+                {
+                    SessionKey = "main",
+                    Role = "user",
+                    Text = "[media attached: media://inbound/remote.pdf (application/pdf)]\nReview it",
+                    Ts = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds(),
+                },
+            ],
+        });
+        await provider.LoadAsync();
+        snapshots.Clear();
+
+        bridge.RaiseAgent(MakeAgentEvent("lifecycle", """{"phase":"start"}""", runId: "remote-media-run"));
+        for (var i = 0; i < 50 && snapshots.Count == 0; i++)
+            await Task.Delay(10);
+
+        var user = Assert.Single(snapshots[^1].Timelines["main"].Entries, entry => entry.Kind == ChatTimelineItemKind.User);
+        Assert.Equal("Review it", user.Text);
+        var attachment = Assert.Single(provider.GetEntryMetadata("main")[user.Id].Attachments!);
+        Assert.Equal(ChatAttachmentOrigin.GatewayReference, attachment.Origin);
+        Assert.Equal("remote.pdf", attachment.DisplayFileName);
+        Assert.Null(attachment.PreviewCacheKey);
+    }
+
+    [Fact]
+    public async Task RemoteLifecycleBackfill_WhenLiveFrameArrivesLater_MergesOneUserRow()
+    {
+        var (bridge, provider, snapshots, _) = CreateProvider(new[] { MainSession() });
+        bridge.HistoryBehavior = _ => Task.FromResult(new ChatHistoryInfo
+        {
+            SessionKey = "main",
+            Messages =
+            [
+                new ChatMessageInfo
+                {
+                    SessionKey = "main",
+                    Role = "user",
+                    Text = "race",
+                    Ts = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds(),
+                    OpenClawId = "race-user",
+                    OpenClawSeq = 73,
+                },
+            ],
+        });
+        await provider.LoadAsync();
+        snapshots.Clear();
+
+        bridge.RaiseAgent(MakeAgentEvent("lifecycle", """{"phase":"start"}""", runId: "race-run"));
+        for (var i = 0; i < 50; i++)
+        {
+            if (snapshots.Count > 0 &&
+                snapshots[^1].Timelines["main"].Entries.Any(entry =>
+                    entry.Kind == ChatTimelineItemKind.User && entry.Text == "race"))
+            {
+                break;
+            }
+            await Task.Delay(10);
+        }
+        snapshots.Clear();
+
+        bridge.RaiseChat(new ChatMessageInfo
+        {
+            SessionKey = "main",
+            Role = "user",
+            Text = "[media attached: media://inbound/race.png (image/png)]\nrace",
+            State = "final",
+            OpenClawId = "race-user",
+            OpenClawSeq = 73,
+        });
+
+        var latest = snapshots[^1].Timelines["main"];
+        var user = Assert.Single(latest.Entries, entry => entry.Kind == ChatTimelineItemKind.User);
+        Assert.Equal("race", user.Text);
+        Assert.Equal(
+            "race.png",
+            Assert.Single(provider.GetEntryMetadata("main")[user.Id].Attachments!).DisplayFileName);
+    }
+
+    [Fact]
+    public async Task ChatMessageReceived_RepeatedSameTextWithDistinctGatewayIdentityKeepsBothTurns()
+    {
+        var (bridge, provider, snapshots, _) = CreateProvider(new[] { MainSession() });
+        await provider.LoadAsync();
+        snapshots.Clear();
+
+        bridge.RaiseChat(new ChatMessageInfo
+        {
+            SessionKey = "main",
+            Role = "user",
+            Text = "repeat",
+            State = "final",
+            OpenClawId = "repeat-1",
+            OpenClawSeq = 1,
+        });
+        bridge.RaiseChat(new ChatMessageInfo
+        {
+            SessionKey = "main",
+            Role = "user",
+            Text = "repeat",
+            State = "final",
+            OpenClawId = "repeat-2",
+            OpenClawSeq = 2,
+        });
+
+        var users = snapshots[^1].Timelines["main"].Entries
+            .Where(entry => entry.Kind == ChatTimelineItemKind.User && entry.Text == "repeat")
+            .ToArray();
+        Assert.Equal(2, users.Length);
+        var metadata = provider.GetEntryMetadata("main");
+        Assert.Equal(
+            new[] { "repeat-1", "repeat-2" },
+            users.Select(user => metadata[user.Id].GatewayMessageId).ToArray());
+    }
+
+    [Fact]
+    public async Task LoadHistoryAsync_GatewayMediaUsesLocalSidecarPrecedenceWithoutRestoringBytes()
+    {
+        using var tempDir = new TempDirectory();
+        var toolPath = Path.Combine(tempDir.DirectoryPath, "tool-metadata.json");
+        var attachmentPath = Path.Combine(tempDir.DirectoryPath, "attachment-metadata.json");
+        var sentTs = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+        var (_, sender, _, _) = CreateProvider(new[] { MainSession() }, toolPath, attachmentPath);
+        await sender.LoadAsync();
+        await sender.SendMessageAsync("main", "history caption", default,
+        [
+            new ChatAttachment
+            {
+                Type = "image",
+                MimeType = "image/png",
+                FileName = "f4f160f1-07b9-4eb5-8de4-2b12c403d0fe-0d950ec0-98f0-4398-a7fe-c9b9131e8b5a-clipboard.png",
+                Content = Convert.ToBase64String([1, 2]),
+            },
+        ]);
+
+        var (bridge, provider, snapshots, _) = CreateProvider(new[] { MainSession() }, toolPath, attachmentPath);
+        bridge.HistoryBehavior = _ => Task.FromResult(new ChatHistoryInfo
+        {
+            SessionKey = "main",
+            Messages =
+            [
+                new ChatMessageInfo
+                {
+                    Role = "user",
+                    Text = "[media attached: media://inbound/f4f160f1-07b9-4eb5-8de4-2b12c403d0fe-0d950ec0-98f0-4398-a7fe.png (image/png)]\nhistory caption",
+                    Ts = sentTs,
+                },
+            ],
+        });
+
+        await provider.LoadHistoryAsync("main");
+
+        var user = Assert.Single(snapshots[^1].Timelines["main"].Entries);
+        Assert.Equal("history caption", user.Text);
+        var attachment = Assert.Single(provider.GetEntryMetadata("main")[user.Id].Attachments!);
+        Assert.Equal(ChatAttachmentOrigin.Local, attachment.Origin);
+        Assert.Equal(
+            "f4f160f1-07b9-4eb5-8de4-2b12c403d0fe-0d950ec0-98f0-4398-a7fe-c9b9131e8b5a-clipboard.png",
+            attachment.DisplayFileName);
+        Assert.Null(attachment.PreviewCacheKey);
+    }
+
+    [Fact]
+    public async Task LoadHistoryAsync_RemoteMediaEnvelopeFallsBackToGatewayReference()
+    {
+        var (bridge, provider, snapshots, _) = CreateProvider(new[] { MainSession() });
+        bridge.HistoryBehavior = _ => Task.FromResult(new ChatHistoryInfo
+        {
+            SessionKey = "main",
+            Messages =
+            [
+                new ChatMessageInfo
+                {
+                    Role = "user",
+                    Text = "[media attached: media://inbound/report.pdf (application/pdf)]",
+                    Ts = 123,
+                },
+            ],
+        });
+
+        await provider.LoadHistoryAsync("main");
+
+        var user = Assert.Single(snapshots[^1].Timelines["main"].Entries);
+        Assert.Equal(string.Empty, user.Text);
+        var attachment = Assert.Single(provider.GetEntryMetadata("main")[user.Id].Attachments!);
+        Assert.Equal(ChatAttachmentOrigin.GatewayReference, attachment.Origin);
+        Assert.Equal("report.pdf", attachment.DisplayFileName);
+        Assert.Null(attachment.PreviewCacheKey);
+    }
+
+    [Fact]
     public async Task SendMessageAsync_WithAttachment_SendsThroughInterface()
     {
         var (bridge, provider, snapshots, _) = CreateProvider(new[] { MainSession() });
@@ -10588,7 +11287,11 @@ public class OpenClawChatDataProviderTests
         var sentAttachment = Assert.Single(bridge.SentAttachments);
         Assert.NotNull(sentAttachment);
         Assert.Same(attachment, sentAttachment![0]);
-        Assert.Contains("test.txt", snapshots[^1].Timelines["main"].Entries.Single(e => e.Kind == ChatTimelineItemKind.User).Text);
+        var optimistic = snapshots[^1].Timelines["main"].Entries.Single(e => e.Kind == ChatTimelineItemKind.User);
+        Assert.Equal("Check this", optimistic.Text);
+        Assert.Equal(
+            "test.txt",
+            Assert.Single(provider.GetEntryMetadata("main")[optimistic.Id].Attachments!).DisplayFileName);
 
         bridge.RaiseChat(new ChatMessageInfo
         {
@@ -10598,10 +11301,9 @@ public class OpenClawChatDataProviderTests
             State = "final"
         });
 
-        // The display text in the timeline should include the attachment indicator
         var timeline = snapshots[^1].Timelines["main"];
         var userEntry = timeline.Entries.Last(e => e.Kind == ChatTimelineItemKind.User);
-        Assert.Contains("test.txt", userEntry.Text);
+        Assert.Equal("Check this", userEntry.Text);
     }
 
     [Fact]
@@ -10635,9 +11337,9 @@ public class OpenClawChatDataProviderTests
             sentAttachments!,
             a => Assert.Same(fileAttachment, a),
             a => Assert.Same(imageAttachment, a));
-        Assert.Equal(
-            "See both\n\u200B📎 notes.txt\n\u200B🖼️ diagram.png",
-            snapshots[^1].Timelines["main"].Entries.Single(e => e.Kind == ChatTimelineItemKind.User).Text);
+        var optimistic = snapshots[^1].Timelines["main"].Entries.Single(e => e.Kind == ChatTimelineItemKind.User);
+        Assert.Equal("See both", optimistic.Text);
+        Assert.Equal(2, provider.GetEntryMetadata("main")[optimistic.Id].Attachments!.Count);
 
         bridge.RaiseChat(new ChatMessageInfo
         {
@@ -10649,7 +11351,50 @@ public class OpenClawChatDataProviderTests
 
         var timeline = snapshots[^1].Timelines["main"];
         var userEntry = timeline.Entries.Last(e => e.Kind == ChatTimelineItemKind.User);
-        Assert.Equal("See both\n\u200B📎 notes.txt\n\u200B🖼️ diagram.png", userEntry.Text);
+        Assert.Equal("See both", userEntry.Text);
+    }
+
+    [Fact]
+    public async Task SendMessageAsync_OversizedMediaCaptionUsesSameBoundedEchoText()
+    {
+        var (bridge, provider, snapshots, _) = CreateProvider(new[] { MainSession() });
+        await provider.LoadAsync();
+        var caption = new string('x', OpenClawChatDataProvider.MaxEntryTextBytes + 50_000);
+
+        bridge.SendResults.Enqueue(new ChatSendResult { RunId = "run-large", Status = "started" });
+        await provider.SendMessageAsync("main", caption, default,
+        [
+            new ChatAttachment
+            {
+                Type = "image",
+                MimeType = "image/png",
+                FileName = "large.png",
+                Content = Convert.ToBase64String([1]),
+                SizeBytes = 1,
+            },
+        ]);
+
+        var optimistic = Assert.Single(
+            snapshots[^1].Timelines["main"].Entries,
+            entry => entry.Kind == ChatTimelineItemKind.User);
+        Assert.True(
+            System.Text.Encoding.UTF8.GetByteCount(optimistic.Text) <=
+            OpenClawChatDataProvider.MaxEntryTextBytes);
+
+        bridge.RaiseChat(new ChatMessageInfo
+        {
+            SessionKey = "main",
+            Role = "user",
+            Text = $"[media attached: media://inbound/large.png (image/png)]\n{caption}",
+            State = "final",
+            OpenClawId = "large-echo",
+            OpenClawSeq = 1,
+        });
+
+        var user = Assert.Single(
+            snapshots[^1].Timelines["main"].Entries,
+            entry => entry.Kind == ChatTimelineItemKind.User);
+        Assert.Equal("large-echo", provider.GetEntryMetadata("main")[user.Id].GatewayMessageId);
     }
 
     [Fact]
@@ -10681,14 +11426,138 @@ public class OpenClawChatDataProviderTests
             SessionId = "session-1",
             Messages = new[]
             {
-                new ChatMessageInfo { Role = "user", Text = "Check this", State = "final", Ts = sentTs }
+                new ChatMessageInfo
+                {
+                    Role = "user",
+                    Text = "[media attached: media://inbound/test.txt (text/plain)]\nCheck this",
+                    State = "final",
+                    Ts = sentTs,
+                }
             }
         });
 
         await provider2.LoadHistoryAsync("main");
 
         var userEntry = snapshots[^1].Timelines["main"].Entries.Single(e => e.Kind == ChatTimelineItemKind.User);
-        Assert.Equal("Check this\n\u200B📎 test.txt", userEntry.Text);
+        Assert.Equal("Check this", userEntry.Text);
+        Assert.Equal(
+            "test.txt",
+            Assert.Single(provider2.GetEntryMetadata("main")[userEntry.Id].Attachments!).DisplayFileName);
+    }
+
+    [Fact]
+    public async Task AttachmentMetadata_IdentitylessRewrittenLiveEchoDoesNotDuplicateRehydratedHistory()
+    {
+        const string localFileName =
+            "f4f160f1-07b9-4eb5-8de4-2b12c403d0fe-0d950ec0-98f0-4398-a7fe-c9b9131e8b5a-clipboard.png";
+        const string gatewayFileName =
+            "f4f160f1-07b9-4eb5-8de4-2b12c403d0fe-0d950ec0-98f0-4398-a7fe.png";
+        using var tempDir = new TempDirectory();
+        var toolPath = Path.Combine(tempDir.DirectoryPath, "tool-metadata.json");
+        var attachmentPath = Path.Combine(tempDir.DirectoryPath, "attachment-metadata.json");
+        var sentTs = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+
+        var (_, provider1, _, _) = CreateProvider(new[] { MainSession() }, toolPath, attachmentPath);
+        await provider1.LoadAsync();
+        await provider1.SendMessageAsync("main", "Check this", default,
+        [
+            new ChatAttachment
+            {
+                Type = "image",
+                MimeType = "image/png",
+                FileName = localFileName,
+                Content = Convert.ToBase64String([1, 2, 3]),
+                SizeBytes = 3,
+            },
+        ]);
+
+        var gatewayText =
+            $"[media attached: media://inbound/{gatewayFileName} (image/png)]\nCheck this";
+        var (bridge2, provider2, snapshots, _) = CreateProvider(
+            new[] { MainSession() },
+            toolPath,
+            attachmentPath);
+        bridge2.HistoryBehavior = key => Task.FromResult(new ChatHistoryInfo
+        {
+            SessionKey = key ?? "",
+            SessionId = "session-1",
+            Messages =
+            [
+                new ChatMessageInfo
+                {
+                    Role = "user",
+                    Text = gatewayText,
+                    State = "final",
+                    Ts = sentTs,
+                },
+            ],
+        });
+
+        await provider2.LoadHistoryAsync("main");
+        bridge2.RaiseChat(new ChatMessageInfo
+        {
+            SessionKey = "main",
+            Role = "user",
+            Text = gatewayText,
+            State = "final",
+            Ts = sentTs,
+        });
+
+        var user = Assert.Single(
+            snapshots[^1].Timelines["main"].Entries,
+            entry => entry.Kind == ChatTimelineItemKind.User);
+        Assert.Equal(
+            localFileName,
+            Assert.Single(provider2.GetEntryMetadata("main")[user.Id].Attachments!).DisplayFileName);
+    }
+
+    [Fact]
+    public async Task AttachmentMetadata_ConcurrentSavesPreserveEveryCompletedSend()
+    {
+        const int sendCount = 16;
+        using var tempDir = new TempDirectory();
+        var attachmentPath = Path.Combine(tempDir.DirectoryPath, "attachment-metadata.json");
+        var sessions = Enumerable.Range(0, sendCount)
+            .Select(index => new SessionInfo
+            {
+                Key = $"thread-{index}",
+                DisplayName = $"Thread {index}",
+                Status = "active",
+                IsMain = index == 0,
+            })
+            .ToArray();
+        var (bridge, provider, _, _) = CreateProvider(
+            sessions,
+            attachmentMetaCachePath: attachmentPath);
+        await provider.LoadAsync();
+
+        var allStarted = new CountdownEvent(sendCount);
+        var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        bridge.SendBehavior = async (_, _, _) =>
+        {
+            allStarted.Signal();
+            await release.Task;
+        };
+
+        var sends = sessions.Select((session, index) =>
+            provider.SendMessageAsync(session.Key, $"caption-{index}", default,
+            [
+                new ChatAttachment
+                {
+                    Type = "image",
+                    MimeType = "image/png",
+                    FileName = $"file-{index}.png",
+                    Content = Convert.ToBase64String([(byte)index]),
+                    SizeBytes = 1,
+                },
+            ])).ToArray();
+        Assert.True(allStarted.Wait(TimeSpan.FromSeconds(5)));
+        release.SetResult();
+        await Task.WhenAll(sends);
+
+        var persisted = await File.ReadAllTextAsync(attachmentPath);
+        for (var index = 0; index < sendCount; index++)
+            Assert.Contains($"file-{index}.png", persisted, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -10728,14 +11597,22 @@ public class OpenClawChatDataProviderTests
             SessionId = "session-1",
             Messages = new[]
             {
-                new ChatMessageInfo { Role = "user", Text = "See both", State = "final", Ts = sentTs }
+                new ChatMessageInfo
+                {
+                    Role = "user",
+                    Text = "[media attached: media://inbound/notes.txt (text/plain)]\n" +
+                        "[media attached: media://inbound/diagram.png (image/png)]\nSee both",
+                    State = "final",
+                    Ts = sentTs,
+                }
             }
         });
 
         await provider2.LoadHistoryAsync("main");
 
         var userEntry = snapshots[^1].Timelines["main"].Entries.Single(e => e.Kind == ChatTimelineItemKind.User);
-        Assert.Equal("See both\n\u200B📎 notes.txt\n\u200B🖼️ diagram.png", userEntry.Text);
+        Assert.Equal("See both", userEntry.Text);
+        Assert.Equal(2, provider2.GetEntryMetadata("main")[userEntry.Id].Attachments!.Count);
     }
 
     [Fact]
@@ -10767,14 +11644,23 @@ public class OpenClawChatDataProviderTests
             SessionId = "session-1",
             Messages = new[]
             {
-                new ChatMessageInfo { Role = "user", Text = "", State = "final", Ts = sentTs }
+                new ChatMessageInfo
+                {
+                    Role = "user",
+                    Text = "[media attached: media://inbound/screenshot.png (image/png)]",
+                    State = "final",
+                    Ts = sentTs,
+                }
             }
         });
 
         await provider2.LoadHistoryAsync("main");
 
         var userEntry = snapshots[^1].Timelines["main"].Entries.Single(e => e.Kind == ChatTimelineItemKind.User);
-        Assert.Equal("\u200B🖼️ screenshot.png", userEntry.Text);
+        Assert.Equal(string.Empty, userEntry.Text);
+        Assert.Equal(
+            "screenshot.png",
+            Assert.Single(provider2.GetEntryMetadata("main")[userEntry.Id].Attachments!).DisplayFileName);
     }
 
     [Fact]

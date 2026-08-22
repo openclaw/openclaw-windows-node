@@ -75,6 +75,7 @@ public sealed class GatewayConnectionManager :
     private readonly object _disposeLock = new();
     private readonly object _telemetryLock = new();
     private readonly object _operatorFailureLock = new();
+    private readonly object _operatorProtocolCompatibilityLock = new();
     private readonly object _connectionIntentLock = new();
     private readonly HashSet<string> _userDisconnectedGatewayIds = new(StringComparer.Ordinal);
     // Shared exclusive lease serializing destructive gateway lifecycle operations (manual WSL
@@ -99,6 +100,9 @@ public sealed class GatewayConnectionManager :
     private GatewayConnectionSnapshot _lastTelemetrySnapshot = GatewayConnectionSnapshot.Idle;
     private long _pendingOperatorFailureGeneration;
     private GatewayErrorKind? _pendingOperatorFailureKind;
+    private long _pendingOperatorProtocolGeneration;
+    private GatewayProtocolCompatibility _pendingOperatorProtocolCompatibility =
+        GatewayProtocolCompatibility.Unknown;
     private long _manualSshRestartGeneration;
     private CancellationTokenSource? _manualSshRestartCts;
 
@@ -195,6 +199,7 @@ public sealed class GatewayConnectionManager :
             {
                 telemetryEvents.TransportConnected += OnNodeTransportConnected;
                 telemetryEvents.ConnectionFailure += OnNodeConnectionFailure;
+                telemetryEvents.ProtocolCompatibilityChanged += OnNodeProtocolCompatibilityChanged;
             }
         }
     }
@@ -580,7 +585,52 @@ public sealed class GatewayConnectionManager :
             IGatewayClientLifecycle lifecycle;
             try
             {
-                lifecycle = _clientFactory.Create(connectUrl, credential, perGatewayIdentityDir, diagLogger);
+                var httpCredential =
+                    InteractiveGatewayCredentialResolver.ResolveForAssistantMediaHttpSurface(
+                        record,
+                        credential);
+                var interactiveHttpToken = string.Empty;
+                if (httpCredential is not null)
+                {
+                    var httpAuthorization = await AuthorizeCredentialForEndpointAsync(
+                            record,
+                            httpCredential,
+                            _operationCts!.Token)
+                        .ConfigureAwait(false);
+                    if (_disposed ||
+                        Interlocked.Read(ref _generation) != gen ||
+                        _operationCts?.IsCancellationRequested != false)
+                    {
+                        return;
+                    }
+                    if (httpAuthorization.Allowed)
+                    {
+                        interactiveHttpToken = httpCredential.Token;
+                    }
+                    else
+                    {
+                        _diagnostics.Record(
+                            "credentials",
+                            "Interactive HTTP credential was withheld",
+                            httpAuthorization.Detail);
+                    }
+                }
+                else
+                {
+                    _diagnostics.Record(
+                        "credentials",
+                        "Interactive HTTP credential was unavailable");
+                }
+
+                var clientCredential = credential with
+                {
+                    InteractiveHttpToken = interactiveHttpToken,
+                };
+                lifecycle = _clientFactory.Create(
+                    connectUrl,
+                    clientCredential,
+                    perGatewayIdentityDir,
+                    diagLogger);
             }
             catch (DeviceIdentityLoadException ex)
             {
@@ -611,6 +661,11 @@ public sealed class GatewayConnectionManager :
             async Task<ReconnectAuthorizationResult> AuthorizeLiveCredentialHandoffAsync(
                 CancellationToken cancellationToken)
             {
+                // Clear the assistant-media HTTP credential up front so any
+                // in-flight media request never outlives this handoff attempt;
+                // it is only restored below once the fresh credential (or its
+                // interactive HTTP fallback) is re-authorized for this generation.
+                lifecycle.DataClient.SetAssistantMediaAuthToken(null);
                 var authorization = await AuthorizeCredentialHandoffAsync(
                         record,
                         credential,
@@ -632,6 +687,58 @@ public sealed class GatewayConnectionManager :
                             record.Id)
                         .ConfigureAwait(false);
                 }
+
+                if (authorization.Allowed &&
+                    IsCurrentGatewayAttempt(gen, record.Id) &&
+                    IsAutomaticReconnectAllowed(record.Id))
+                {
+                    var currentRecord = _registry.GetById(record.Id);
+                    if (currentRecord is not null)
+                    {
+                        GatewayCredential? currentHttpFallback = null;
+                        if (string.IsNullOrWhiteSpace(currentRecord.SharedGatewayToken))
+                        {
+                            currentHttpFallback = _credentialResolver.ResolveOperator(
+                                currentRecord,
+                                perGatewayIdentityDir);
+                        }
+                        var reconnectHttpCredential =
+                            InteractiveGatewayCredentialResolver.ResolveForAssistantMediaHttpSurface(
+                                currentRecord,
+                                currentHttpFallback);
+                        if (reconnectHttpCredential is null)
+                        {
+                            _diagnostics.Record(
+                                "credentials",
+                                "Interactive HTTP credential was unavailable during reconnect");
+                        }
+                        else
+                        {
+                            var httpAuthorization = await AuthorizeCredentialForEndpointAsync(
+                                    currentRecord,
+                                    reconnectHttpCredential,
+                                    cancellationToken)
+                                .ConfigureAwait(false);
+                            if (IsCurrentGatewayAttempt(gen, record.Id) &&
+                                IsAutomaticReconnectAllowed(record.Id))
+                            {
+                                if (httpAuthorization.Allowed)
+                                {
+                                    lifecycle.DataClient.SetAssistantMediaAuthToken(
+                                        reconnectHttpCredential.Token);
+                                }
+                                else
+                                {
+                                    _diagnostics.Record(
+                                        "credentials",
+                                        "Interactive HTTP credential was withheld during reconnect",
+                                        httpAuthorization.Detail);
+                                }
+                            }
+                        }
+                    }
+                }
+
                 return authorization;
             }
 
@@ -662,6 +769,11 @@ public sealed class GatewayConnectionManager :
             {
                 if (!IsCurrentGatewayAttempt(gen, subscribedGatewayId)) return;
                 RecordOperatorFailureKind(gen, kind);
+            };
+            lifecycle.DataClient.ProtocolCompatibilityChanged += (s, compatibility) =>
+            {
+                if (!IsCurrentGatewayAttempt(gen, subscribedGatewayId)) return;
+                RecordOperatorProtocolCompatibility(gen, compatibility);
             };
             lifecycle.DataClient.TransportConnected += (s, e) =>
             {
@@ -2095,14 +2207,18 @@ public sealed class GatewayConnectionManager :
                     _diagnostics.RecordWebSocketEvent("WebSocket error");
                     if (_stateMachine.Current.OperatorState != RoleConnectionState.PairingRequired)
                     {
+                        _stateMachine.SetOperatorProtocolCompatibility(
+                            ReadOperatorProtocolCompatibility(gen));
                         // AuthenticationFailed and Status=Error are raised back-to-back and handled
                         // asynchronously. If the auth handler already promoted the failure to a more
                         // specific terminal kind (for example LocalPortConflict), never let the later
                         // generic status handler overwrite it with the original token/transport kind.
-                        if (_stateMachine.Current.OperatorState != RoleConnectionState.Error ||
+                        var failureKind = ReadOperatorFailureKind(gen);
+                        if (failureKind == GatewayErrorKind.ProtocolMismatch ||
+                            _stateMachine.Current.OperatorState != RoleConnectionState.Error ||
                             _stateMachine.Current.OperatorErrorKind is null)
                         {
-                            _stateMachine.SetOperatorErrorKind(ReadOperatorFailureKind(gen));
+                            _stateMachine.SetOperatorErrorKind(failureKind);
                             _stateMachine.TryTransition(
                                 ConnectionTrigger.WebSocketError,
                                 "Transport error");
@@ -2111,7 +2227,7 @@ public sealed class GatewayConnectionManager :
                     CompleteOperatorTelemetryAttempt(
                         gen,
                         "failure",
-                        ConnectionErrorCategory.NetworkUnreachable);
+                        MapConnectionErrorCategory(ReadOperatorFailureKind(gen)));
                     break;
                 case ConnectionStatus.Connecting:
                     _diagnostics.RecordWebSocketEvent("WebSocket connecting");
@@ -2188,12 +2304,14 @@ public sealed class GatewayConnectionManager :
                 return;
 
             _diagnostics.Record("error", "Authentication failed", message);
+            _stateMachine.SetOperatorProtocolCompatibility(
+                ReadOperatorProtocolCompatibility(gen));
             _stateMachine.SetOperatorErrorKind(failureKind);
             _stateMachine.TryTransition(ConnectionTrigger.AuthenticationFailed, message);
             CompleteOperatorTelemetryAttempt(
                 gen,
                 "failure",
-                ConnectionErrorCategory.AuthFailure);
+                MapConnectionErrorCategory(failureKind));
             EmitStateChanged();
         }
         finally
@@ -2230,6 +2348,55 @@ public sealed class GatewayConnectionManager :
             _pendingOperatorFailureKind = null;
         }
     }
+
+    private void RecordOperatorProtocolCompatibility(
+        long generation,
+        GatewayProtocolCompatibility compatibility)
+    {
+        lock (_operatorProtocolCompatibilityLock)
+        {
+            _pendingOperatorProtocolGeneration = generation;
+            _pendingOperatorProtocolCompatibility = compatibility;
+        }
+
+        lock (_telemetryLock)
+        {
+            if (_operatorTelemetryAttempt?.Generation == generation)
+                _operatorTelemetryAttempt.ProtocolCompatibility = compatibility;
+        }
+    }
+
+    private GatewayProtocolCompatibility ReadOperatorProtocolCompatibility(long generation)
+    {
+        lock (_operatorProtocolCompatibilityLock)
+        {
+            return _pendingOperatorProtocolGeneration == generation
+                ? _pendingOperatorProtocolCompatibility
+                : GatewayProtocolCompatibility.Unknown;
+        }
+    }
+
+    private static ConnectionErrorCategory MapConnectionErrorCategory(
+        GatewayErrorKind? errorKind) =>
+        errorKind switch
+        {
+            GatewayErrorKind.Auth or
+            GatewayErrorKind.TokenDrift or
+            GatewayErrorKind.DeviceTokenMismatch or
+            GatewayErrorKind.ScopeMismatch => ConnectionErrorCategory.AuthFailure,
+            GatewayErrorKind.PairingRequired => ConnectionErrorCategory.PairingPending,
+            GatewayErrorKind.PairingRejected => ConnectionErrorCategory.PairingRejected,
+            GatewayErrorKind.RateLimited => ConnectionErrorCategory.RateLimited,
+            GatewayErrorKind.Tunnel => ConnectionErrorCategory.SshTunnelFailure,
+            GatewayErrorKind.Network or
+            GatewayErrorKind.Tls => ConnectionErrorCategory.NetworkUnreachable,
+            GatewayErrorKind.Server => ConnectionErrorCategory.ServerClose,
+            GatewayErrorKind.ProtocolMismatch => ConnectionErrorCategory.ProtocolMismatch,
+            GatewayErrorKind.LocalPortConflict => ConnectionErrorCategory.InternalError,
+            GatewayErrorKind.Unknown => ConnectionErrorCategory.InternalError,
+            null => ConnectionErrorCategory.NetworkUnreachable,
+            _ => ConnectionErrorCategory.InternalError
+        };
 
     // Auto credential recovery clears a device token and falls back to a stronger shared/bootstrap
     // credential. Restrict that to trusted endpoints (mirrors the Mac app, which only retries
@@ -2457,7 +2624,7 @@ public sealed class GatewayConnectionManager :
             expected.BootstrapToken,
             StringComparison.Ordinal) &&
         current.IsLocal == expected.IsLocal &&
-        current.RequiresV2Signature == expected.RequiresV2Signature &&
+        (current.RequiresV2Signature || !expected.RequiresV2Signature) &&
         string.Equals(
             current.SetupManagedDistroName,
             expected.SetupManagedDistroName,
@@ -2474,6 +2641,8 @@ public sealed class GatewayConnectionManager :
 
             var prev = _stateMachine.Current.OverallState;
             _diagnostics.Record("state", "Handshake succeeded (hello-ok)");
+            _stateMachine.SetOperatorProtocolCompatibility(
+                ReadOperatorProtocolCompatibility(gen));
             _stateMachine.TryTransition(ConnectionTrigger.HandshakeSucceeded);
             CompleteOperatorTelemetryAttempt(gen, "success");
             var nodeModeIntended = SyncNodeIntentFromSettings();
@@ -2541,23 +2710,66 @@ public sealed class GatewayConnectionManager :
             identityPath,
             token,
             CancellationToken.None).ConfigureAwait(false);
-        if (result.Outcome != DeviceTokenHandlingOutcome.IdentityLoadFailure)
+        if (result.Outcome != DeviceTokenHandlingOutcome.IdentityLoadFailure &&
+            result.Outcome != DeviceTokenHandlingOutcome.Stored)
+        {
             return;
+        }
 
+        var gatewayRecordId = attempt.GatewayRecordId ?? string.Empty;
         await _transitionSemaphore.WaitAsync().ConfigureAwait(false);
         try
         {
-            if (!IsCurrentGatewayAttempt(
-                    attempt.LifecycleGeneration,
-                    attempt.GatewayRecordId ?? string.Empty))
+            if (!IsCurrentGatewayAttempt(attempt.LifecycleGeneration, gatewayRecordId))
             {
                 return;
             }
 
-            _stateMachine.TryTransition(
-                ConnectionTrigger.WebSocketError,
-                DeviceIdentityLoadException.RecoveryMessage);
-            EmitStateChanged();
+            if (result.Outcome == DeviceTokenHandlingOutcome.IdentityLoadFailure)
+            {
+                _stateMachine.TryTransition(
+                    ConnectionTrigger.WebSocketError,
+                    DeviceIdentityLoadException.RecoveryMessage);
+                EmitStateChanged();
+                return;
+            }
+
+            // Stored: refresh the assistant-media HTTP credential bound to the
+            // fresh operator device token when this connection relies on a
+            // device token rather than a shared gateway token.
+            if (!string.Equals(token.Role, "operator", StringComparison.OrdinalIgnoreCase))
+                return;
+
+            var currentRecord = _registry.GetById(gatewayRecordId);
+            if (currentRecord is null ||
+                !string.IsNullOrWhiteSpace(currentRecord.SharedGatewayToken))
+            {
+                return;
+            }
+
+            var deviceCredential = new GatewayCredential(
+                token.Token,
+                IsBootstrapToken: false,
+                CredentialResolver.SourceDeviceToken);
+            var authorization = await AuthorizeCredentialForEndpointAsync(
+                    currentRecord,
+                    deviceCredential,
+                    _operationCts?.Token ?? CancellationToken.None)
+                .ConfigureAwait(false);
+            if (!IsCurrentGatewayAttempt(attempt.LifecycleGeneration, gatewayRecordId))
+                return;
+            if (authorization.Allowed)
+            {
+                _activeLifecycle?.DataClient.SetAssistantMediaAuthToken(token.Token);
+            }
+            else
+            {
+                _activeLifecycle?.DataClient.SetAssistantMediaAuthToken(null);
+                _diagnostics.Record(
+                    "credentials",
+                    "Interactive HTTP device credential was withheld after token refresh",
+                    authorization.Detail);
+            }
         }
         finally
         {
@@ -2803,6 +3015,13 @@ public sealed class GatewayConnectionManager :
         _nodeConnectionCoordinator.HandleConnectionFailure(errorKind);
     }
 
+    private void OnNodeProtocolCompatibilityChanged(
+        object? sender,
+        GatewayProtocolCompatibility compatibility)
+    {
+        _nodeConnectionCoordinator.HandleProtocolCompatibilityChanged(compatibility);
+    }
+
     private void OnNodeDeviceTokenReceived(object? sender, DeviceTokenReceivedEventArgs e)
     {
         _nodeConnectionCoordinator.HandleDeviceTokenReceived(e);
@@ -2961,6 +3180,8 @@ public sealed class GatewayConnectionManager :
             switch (status)
             {
                 case ConnectionStatus.Connected:
+                    _stateMachine.SetNodeProtocolCompatibility(
+                        connector.ProtocolCompatibility);
                     _stateMachine.TryTransition(ConnectionTrigger.NodeConnected);
                     break;
                 case ConnectionStatus.Connecting:
@@ -2972,11 +3193,16 @@ public sealed class GatewayConnectionManager :
                     break;
                 case ConnectionStatus.Error:
                     if (_stateMachine.Current.NodeState != RoleConnectionState.PairingRequired)
+                    {
+                        _stateMachine.SetNodeProtocolCompatibility(
+                            connector.ProtocolCompatibility);
+                        _stateMachine.SetNodeErrorKind(connector.FailureKind);
                         _stateMachine.TryTransition(
                             ConnectionTrigger.NodeError,
                             string.IsNullOrWhiteSpace(_stateMachine.Current.NodeError)
                                 ? "Node transport error"
                                 : _stateMachine.Current.NodeError);
+                    }
                     break;
             }
 
@@ -3018,6 +3244,8 @@ public sealed class GatewayConnectionManager :
             if (!_nodeConnectionCoordinator.IsCurrentNodeAttempt(attempt))
                 return false;
 
+            _stateMachine.SetNodeProtocolCompatibility(
+                connector.ProtocolCompatibility);
             switch (pairing.Status)
             {
                 case PairingStatus.Paired:
@@ -3309,6 +3537,22 @@ public sealed class GatewayConnectionManager :
             OpenClawTelemetryTag.String(OperationTag, attempt.Operation),
             OpenClawTelemetryTag.String(OpenClawTelemetryTagKey.Outcome, outcome)
         };
+        var compatibility = attempt.ProtocolCompatibility;
+        tags.Add(OpenClawTelemetryTag.Number(
+            OpenClawTelemetryTagKey.ClientProtocol,
+            GatewayProtocolContract.CurrentVersion));
+        tags.Add(OpenClawTelemetryTag.String(
+            OpenClawTelemetryTagKey.GatewayProtocol,
+            compatibility.GatewayProtocol switch
+            {
+                < GatewayProtocolContract.MinimumSupportedVersion => "older",
+                > GatewayProtocolContract.MaximumSupportedVersion => "newer",
+                not null => "current",
+                _ => "unknown"
+            }));
+        tags.Add(OpenClawTelemetryTag.String(
+            OpenClawTelemetryTagKey.ProtocolCompatibility,
+            compatibility.NormalizedState));
         if (errorCategory.HasValue)
         {
             tags.Add(OpenClawTelemetryTag.String(
@@ -3469,6 +3713,7 @@ public sealed class GatewayConnectionManager :
             {
                 telemetryEvents.TransportConnected -= OnNodeTransportConnected;
                 telemetryEvents.ConnectionFailure -= OnNodeConnectionFailure;
+                telemetryEvents.ProtocolCompatibilityChanged -= OnNodeProtocolCompatibilityChanged;
             }
         }
         await _devicePairApprovalCoordinator.StopAsync().ConfigureAwait(false);
@@ -3527,6 +3772,8 @@ public sealed class GatewayConnectionManager :
         public Activity? PhaseActivity { get; set; }
         public string? PhaseName { get; set; }
         public long PhaseGeneration { get; set; }
+        public GatewayProtocolCompatibility ProtocolCompatibility { get; set; } =
+            GatewayProtocolCompatibility.Unknown;
     }
 
     private void ObserveBackgroundFault(Task task, string message)

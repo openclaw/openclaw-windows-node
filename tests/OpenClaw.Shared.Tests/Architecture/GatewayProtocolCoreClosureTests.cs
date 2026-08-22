@@ -29,8 +29,14 @@ public sealed class GatewayProtocolCoreClosureTests
         Assert.Contains("ConnectEnvelopeBuilder.PrepareOperator(", operatorClient.Text);
         Assert.Contains("ConnectEnvelopeBuilder.PrepareNode(", nodeClient.Text);
 
-        Assert.Matches(@"\bminProtocol\s*=\s*3\b", builder.Text);
-        Assert.Matches(@"\bmaxProtocol\s*=\s*4\b", builder.Text);
+        Assert.Contains(
+            "minProtocol = GatewayProtocolContract.MinimumSupportedVersion",
+            builder.Text);
+        Assert.Contains(
+            "maxProtocol = GatewayProtocolContract.MaximumSupportedVersion",
+            builder.Text);
+        Assert.DoesNotMatch(@"\bminProtocol\s*=\s*\d+\b", builder.Text);
+        Assert.DoesNotMatch(@"\bmaxProtocol\s*=\s*\d+\b", builder.Text);
         Assert.Matches(@"\.\s*SignConnectPayloadV2\s*\(", builder.Text);
         Assert.Matches(@"\.\s*SignConnectPayloadV3\s*\(", builder.Text);
         Assert.Matches(@"\.\s*BuildConnectPayloadV2\s*\(", builder.Text);

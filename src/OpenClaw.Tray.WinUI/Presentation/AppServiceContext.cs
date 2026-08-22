@@ -1,4 +1,5 @@
 using OpenClaw.Shared.ExecApprovals;
+using OpenClaw.Connection.LocalAi;
 using OpenClawTray.Services;
 
 namespace OpenClawTray.Presentation;
@@ -16,13 +17,15 @@ internal sealed class AppServiceContext
         IAppCommands appCommands,
         SettingsManager settings,
         IExecApprovalsPresentationStore execApprovalsStore,
-        IPermissionsPageRuntimeHost permissionsRuntimeHost)
+        IPermissionsPageRuntimeHost permissionsRuntimeHost,
+        ILocalAiRuntime? localAiRuntime = null)
     {
         Dispatcher = dispatcher ?? throw new ArgumentNullException(nameof(dispatcher));
         AppCommands = appCommands ?? throw new ArgumentNullException(nameof(appCommands));
         Settings = settings ?? throw new ArgumentNullException(nameof(settings));
         ExecApprovalsStore = execApprovalsStore ?? throw new ArgumentNullException(nameof(execApprovalsStore));
         PermissionsRuntimeHost = permissionsRuntimeHost ?? throw new ArgumentNullException(nameof(permissionsRuntimeHost));
+        LocalAiRuntime = localAiRuntime;
     }
 
     public IUiDispatcher Dispatcher { get; }
@@ -30,4 +33,5 @@ internal sealed class AppServiceContext
     public SettingsManager Settings { get; }
     public IExecApprovalsPresentationStore ExecApprovalsStore { get; }
     public IPermissionsPageRuntimeHost PermissionsRuntimeHost { get; }
+    public ILocalAiRuntime? LocalAiRuntime { get; }
 }

@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.Globalization;
 using System.IO;
 using System.Net;
 using System.Security.Cryptography;
@@ -762,7 +763,7 @@ public sealed class McpHttpServer : IDisposable, IAsyncDisposable
             Encoding.UTF8.GetBytes(authToken));
     }
 
-    private static bool IsHostAllowed(string? host)
+    internal static bool IsHostAllowed(string? host)
     {
         if (string.IsNullOrEmpty(host)) return false;
         var trimmed = host.Trim();
@@ -772,7 +773,17 @@ public sealed class McpHttpServer : IDisposable, IAsyncDisposable
             var closeBracket = trimmed.IndexOf(']');
             if (closeBracket < 0) return false;
             var v6 = trimmed.Substring(1, closeBracket - 1);
-            return string.Equals(v6, "::1", StringComparison.Ordinal);
+            if (!string.Equals(v6, "::1", StringComparison.Ordinal)) return false;
+
+            var suffix = trimmed.AsSpan(closeBracket + 1);
+            if (suffix.IsEmpty) return true;
+            return suffix.Length > 1
+                && suffix[0] == ':'
+                && ushort.TryParse(
+                    suffix[1..],
+                    NumberStyles.None,
+                    CultureInfo.InvariantCulture,
+                    out _);
         }
         // IPv4 / hostname: strip trailing :port if present.
         var colon = trimmed.LastIndexOf(':');

@@ -36,6 +36,8 @@ internal static class AppServiceRegistration
         services.AddSingleton(context.Settings);
         services.AddSingleton(context.ExecApprovalsStore);
         services.AddSingleton(context.PermissionsRuntimeHost);
+        if (context.LocalAiRuntime is not null)
+            services.AddSingleton(context.LocalAiRuntime);
         // Settings facade over the App-owned SettingsManager. Container-owned so it can dispose
         // its Saved-event subscription during shutdown.
         services.AddSingleton<ISettingsStore, SettingsStore>();
@@ -51,6 +53,8 @@ internal static class AppServiceRegistration
         // Transient page view models resolved per navigation scope.
         services.AddTransient<SettingsPageViewModel>();
         services.AddTransient<PermissionsPageViewModel>();
+        if (context.LocalAiRuntime is not null)
+            services.AddTransient<LocalAiPageViewModel>();
 
         return services;
     }

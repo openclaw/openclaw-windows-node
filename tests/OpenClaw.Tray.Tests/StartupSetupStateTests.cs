@@ -578,14 +578,18 @@ public class StartupSetupStateTests
         Assert.False(StartupSetupState.RequiresSetup(settings, temp.Path));
     }
 
-    [Fact]
-    public void DefaultGatewayUrl_IsLocalhost18789()
+    [Theory]
+    [InlineData("ws://127.0.0.1:18789")]
+    [InlineData("ws://localhost:18789")]
+    public void DefaultAndLegacyGatewayUrls_DoNotBypassSetup(string gatewayUrl)
     {
-        // StartupSetupState uses "ws://localhost:18789" as the default gateway URL.
-        // A non-default URL indicates the user has configured an external gateway.
-        // This test guards against accidentally changing the constant.
-        var settings = new SettingsManager(Path.GetTempPath()) { GatewayUrl = "ws://localhost:18789" };
-        Assert.True(StartupSetupState.RequiresSetup(settings, Path.GetTempPath()));
+        // Setup uses explicit IPv4 to avoid localhost resolving to IPv6 across
+        // mirrored WSL networking. Preserve the older localhost value only as
+        // a settings-migration alias, not as the runtime connection target.
+        using var temp = TempSettings.Create();
+        var settings = new SettingsManager(temp.Path) { GatewayUrl = gatewayUrl };
+
+        Assert.True(StartupSetupState.RequiresSetup(settings, temp.Path));
     }
 
     private static void StoreDeviceToken(string dataPath)

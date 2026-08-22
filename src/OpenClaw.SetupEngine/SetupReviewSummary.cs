@@ -1,5 +1,7 @@
 namespace OpenClaw.SetupEngine;
 
+using OpenClaw.Shared.Inference.Catalog;
+
 public sealed record SetupReviewSummary(
     string DistroTitle,
     string DistroDescription,
@@ -8,7 +10,12 @@ public sealed record SetupReviewSummary(
     string GatewayDescription,
     string GatewayEndpoint,
     string ExactCommands,
-    string CompletionGatewaySummary);
+    string CompletionGatewaySummary)
+{
+    public bool LocalAiEnabled { get; init; }
+    public string? LocalAiTitle { get; init; }
+    public string? LocalAiDescription { get; init; }
+}
 
 public static class SetupReviewSummaryBuilder
 {
@@ -53,10 +60,22 @@ public static class SetupReviewSummaryBuilder
             : $" --node-version {GatewayReleasePolicy.NodeVersion}";
         var installCommand =
             $"curl -fsSL --proto '=https' --tlsv1.2 <install-url> | bash -s -- --version {release.Version}{runtimeArgument}";
+        LocalModelInfo localAiModel =
+            LocalModelCatalog.Find(config.LocalAi.SelectedModelId) ?? LocalModelCatalog.Default;
+        string[] localAiCommands = config.LocalAi.Enabled
+            ?
+            [
+                "download verified llama-server + CUDA runtime for Windows",
+                $"download {localAiModel.Weights.RelativePath} from Hugging Face revision " +
+                    ((HuggingFaceRevisionSource)localAiModel.Weights.Source).RevisionSha,
+                $"llama-server router on dynamic 127.0.0.1 port; model loads on first request",
+                $"openclaw provider llamacpp -> /v1; primary llamacpp/{localAiModel.Id}",
+            ]
+            : [];
 
-        return new SetupReviewSummary(
+        var summary = new SetupReviewSummary(
             DistroTitle: $"Install an isolated {baseDistro} instance",
-            DistroDescription: $"WSL distro \"{distroName}\" at {installPath}. Separate from any Linux distributions you already have.",
+            DistroDescription: $"WSL distro \"{distroName}\" at {installPath}. Separate from any Linux distributions you already have. Disk use grows dynamically and is typically several GB.",
             InstallerDescription: installerDescription,
             InstallerBadge: installerBadge,
             GatewayDescription: gatewayDescription,
@@ -74,10 +93,23 @@ public static class SetupReviewSummaryBuilder
                             : "install signed Tailscale package · root owns tailscale up/serve"
                         : null,
                     "openclaw gateway install --force   (systemd --user service)",
+                }.Concat(localAiCommands).Concat(new[]
+                {
                     $"writes -> {installPath}",
                     $"writes -> {gatewayDataPath} + identity"
-                }.Where(line => line is not null)),
+                }).Where(line => line is not null)),
             CompletionGatewaySummary: $"{distroName} · {gatewayEndpoint}");
+        return summary with
+        {
+            LocalAiEnabled = config.LocalAi.Enabled,
+            LocalAiTitle = config.LocalAi.Enabled
+                ? $"Local AI verified with {localAiModel.DisplayName}"
+                : null,
+            LocalAiDescription = config.LocalAi.Enabled
+                ? "llama-server · " +
+                    $"{localAiModel.Recipe.ContextTokens / 1024}K context · FP16 KV · full CUDA offload · loads on first request"
+                : null,
+        };
     }
 
     private static string Display(string? value, string fallback)

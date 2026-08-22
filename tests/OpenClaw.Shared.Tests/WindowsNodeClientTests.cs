@@ -10,6 +10,7 @@ using System.Threading.Tasks;
 using OpenClaw.Shared;
 using OpenClaw.Shared.Capabilities;
 using OpenClaw.Shared.Telemetry;
+using OpenClaw.TestSupport;
 using Xunit;
 
 namespace OpenClaw.Shared.Tests;
@@ -412,6 +413,7 @@ public class WindowsNodeClientTests
                     "ok": true,
                     "payload": {
                         "type": "hello-ok",
+                        "protocol": 4,
                         "nodeId": "test-node-id",
                         "auth": {
                             "deviceToken": "test-device-token-abc123"
@@ -460,6 +462,7 @@ public class WindowsNodeClientTests
                       "ok": true,
                       "payload": {
                         "type": "hello-ok",
+                        "protocol": 4,
                         "nodeId": "test-node-id",
                         "auth": {
                           "deviceToken": "test-device-token"
@@ -538,6 +541,7 @@ public class WindowsNodeClientTests
                     "ok": true,
                     "payload": {
                         "type": "hello-ok",
+                        "protocol": 4,
                         "nodeId": "test-node-id"
                     }
                 }
@@ -589,6 +593,7 @@ public class WindowsNodeClientTests
                     "ok": true,
                     "payload": {
                         "type": "hello-ok",
+                        "protocol": 4,
                         "nodeId": "test-node-id"
                     }
                 }
@@ -638,6 +643,7 @@ public class WindowsNodeClientTests
                     "ok": true,
                     "payload": {
                         "type": "hello-ok",
+                        "protocol": 4,
                         "nodeId": "test-node-id"
                     }
                 }
@@ -657,6 +663,366 @@ public class WindowsNodeClientTests
             if (Directory.Exists(dataPath))
                 Directory.Delete(dataPath, true);
         }
+    }
+
+    [Theory]
+    [InlineData(3)]
+    [InlineData(4)]
+    [InlineData(5)]
+    public void HandleResponse_AcceptedHelloOkProtocol_CompletesHandshakeWithAdditiveFields(
+        int protocol)
+    {
+        using var dataPath = new TempDirectory("node-protocol-accepted-");
+        using var client = new WindowsNodeClient(
+            "ws://localhost:18789",
+            "test-token",
+            dataPath.Path);
+        var statuses = new List<ConnectionStatus>();
+        var compatibility = new List<GatewayProtocolCompatibility>();
+        var handshakeCount = 0;
+        client.StatusChanged += (_, status) => statuses.Add(status);
+        client.ProtocolCompatibilityChanged += (_, value) => compatibility.Add(value);
+        client.HandshakeSucceeded += (_, _) => handshakeCount++;
+        using var document = JsonDocument.Parse(
+            $$"""
+            {
+              "type": "res",
+              "ok": true,
+              "payload": {
+                "type": "hello-ok",
+                "protocol": {{protocol}},
+                "nodeId": "test-node-id",
+                "futureField": {
+                  "nested": true
+                }
+              }
+            }
+            """);
+
+        HandleCorrelatedHelloOk(client, document.RootElement);
+
+        Assert.Equal(1, handshakeCount);
+        Assert.Contains(ConnectionStatus.Connected, statuses);
+        Assert.True(client.IsConnected);
+        Assert.Equal("test-node-id", client.NodeId);
+        var accepted = Assert.Single(compatibility);
+        Assert.Equal(GatewayProtocolCompatibilityState.Compatible, accepted.State);
+        Assert.Equal(protocol, accepted.SelectedProtocol);
+        Assert.Null(accepted.GatewayExpectedProtocol);
+    }
+
+    [Theory]
+    [InlineData("""{"type":"res","ok":true,"payload":{"acknowledged":true}}""")]
+    [InlineData("""{"type":"res","ok":true}""")]
+    public void HandleResponse_SuccessfulNonConnectAcknowledgement_AfterHandshakeIsIgnored(
+        string responseJson)
+    {
+        using var dataPath = new TempDirectory("node-non-connect-response-");
+        using var client = new WindowsNodeClient(
+            "ws://localhost:18789",
+            "test-token",
+            dataPath.Path);
+        var failures = new List<GatewayErrorKind>();
+        var statuses = new List<ConnectionStatus>();
+        client.ConnectionFailure += (_, kind) => failures.Add(kind);
+        client.StatusChanged += (_, status) => statuses.Add(status);
+        using var hello = JsonDocument.Parse(
+            """
+            {
+              "type": "res",
+              "ok": true,
+              "payload": {
+                "type": "hello-ok",
+                "protocol": 4,
+                "nodeId": "test-node-id",
+                "auth": {
+                  "deviceToken": "node-device-token"
+                }
+              }
+            }
+            """);
+        HandleCorrelatedHelloOk(client, hello.RootElement);
+        failures.Clear();
+        statuses.Clear();
+        using var acknowledgement = JsonDocument.Parse(responseJson);
+
+        client.HandleResponse(acknowledgement.RootElement);
+
+        Assert.Empty(failures);
+        Assert.Empty(statuses);
+        Assert.True(client.IsConnected);
+        Assert.True(InvokeShouldAutoReconnect(client));
+    }
+
+    [Theory]
+    [InlineData("""{"type":"hello-ok","protocol":2,"auth":{"deviceToken":"must-not-store"}}""")]
+    [InlineData("""{"type":"hello-ok","auth":{"deviceToken":"must-not-store"}}""")]
+    [InlineData("""{"type":"hello-ok","protocol":null,"auth":{"deviceToken":"must-not-store"}}""")]
+    [InlineData("""{"type":"hello-ok","protocol":"4","auth":{"deviceToken":"must-not-store"}}""")]
+    [InlineData("""{"type":"hello-ok","protocol":4.5,"auth":{"deviceToken":"must-not-store"}}""")]
+    [InlineData("""{"type":"unexpected-success","protocol":4,"auth":{"deviceToken":"must-not-store"}}""")]
+    [InlineData("""null""")]
+    public void HandleResponse_InvalidConnectSuccess_FailsBeforeNodeHandshakeSideEffects(
+        string payloadJson)
+    {
+        using var dataPath = new TempDirectory("node-invalid-hello-");
+        using var client = new WindowsNodeClient(
+            "ws://localhost:18789",
+            "test-token",
+            dataPath.Path);
+        var statuses = new List<ConnectionStatus>();
+        var failures = new List<GatewayErrorKind>();
+        var handshakeCount = 0;
+        var tokenCount = 0;
+        var pairingCount = 0;
+        var gatewaySelfCount = 0;
+        client.StatusChanged += (_, status) => statuses.Add(status);
+        client.ConnectionFailure += (_, kind) => failures.Add(kind);
+        client.HandshakeSucceeded += (_, _) => handshakeCount++;
+        client.DeviceTokenReceived += (_, _) => tokenCount++;
+        client.PairingStatusChanged += (_, _) => pairingCount++;
+        client.GatewaySelfUpdated += (_, _) => gatewaySelfCount++;
+        using var document = JsonDocument.Parse(
+            $$"""
+            {
+              "type": "res",
+              "ok": true,
+              "payload": {{payloadJson}}
+            }
+            """);
+
+        HandleCorrelatedHelloOk(client, document.RootElement);
+
+        Assert.Equal([GatewayErrorKind.ProtocolMismatch], failures);
+        Assert.Contains(ConnectionStatus.Error, statuses);
+        Assert.DoesNotContain(ConnectionStatus.Connected, statuses);
+        Assert.Equal(0, handshakeCount);
+        Assert.Equal(0, tokenCount);
+        Assert.Equal(0, pairingCount);
+        Assert.Equal(0, gatewaySelfCount);
+        Assert.Null(GetDeviceIdentity(client).NodeDeviceToken);
+        Assert.False(client.IsConnected);
+        Assert.False(InvokeShouldAutoReconnect(client));
+    }
+
+    [Theory]
+    [InlineData("""{"type":"hello-ok","protocol":5}""")]
+    [InlineData("""{"type":"hello-ok"}""")]
+    public void HandleResponse_UncorrelatedHelloOk_DoesNotLatchProtocolMismatch(
+        string payloadJson)
+    {
+        using var dataPath = new TempDirectory("node-uncorrelated-hello-");
+        using var client = new WindowsNodeClient(
+            "ws://localhost:18789",
+            "test-token",
+            dataPath.Path);
+        var failures = new List<GatewayErrorKind>();
+        var statuses = new List<ConnectionStatus>();
+        client.ConnectionFailure += (_, kind) => failures.Add(kind);
+        client.StatusChanged += (_, status) => statuses.Add(status);
+        using var stale = JsonDocument.Parse(
+            $$"""
+            {
+              "type": "res",
+              "id": "stale-connect",
+              "ok": true,
+              "payload": {{payloadJson}}
+            }
+            """);
+
+        client.HandleResponse(stale.RootElement);
+
+        Assert.Empty(failures);
+        Assert.Empty(statuses);
+        Assert.False(client.IsConnected);
+        Assert.True(InvokeShouldAutoReconnect(client));
+    }
+
+    [Theory]
+    [InlineData("""{"message":"connect rejected","code":"PROTOCOL_MISMATCH"}""")]
+    [InlineData("""{"message":"protocol mismatch: gateway requires version 5"}""")]
+    public void HandleResponse_ProtocolMismatch_IsClassifiedAndStopsAutomaticReconnect(
+        string errorJson)
+    {
+        using var dataPath = new TempDirectory("node-protocol-mismatch-");
+        using var client = new WindowsNodeClient(
+            "ws://localhost:18789",
+            "test-token",
+            dataPath.Path);
+        var statuses = new List<ConnectionStatus>();
+        var failures = new List<GatewayErrorKind>();
+        client.StatusChanged += (_, status) => statuses.Add(status);
+        client.ConnectionFailure += (_, kind) => failures.Add(kind);
+        using var document = JsonDocument.Parse(
+            $$"""
+            {
+              "type": "res",
+              "ok": false,
+              "error": {{errorJson}}
+            }
+            """);
+
+        client.HandleResponse(document.RootElement);
+
+        Assert.Equal([GatewayErrorKind.ProtocolMismatch], failures);
+        Assert.Contains(ConnectionStatus.Error, statuses);
+        Assert.False(InvokeShouldAutoReconnect(client));
+        Assert.False(client.UseV2Signature);
+    }
+
+    [Fact]
+    public void HandleResponse_StructuredProtocolMismatch_PublishesGatewayExpectation()
+    {
+        using var dataPath = new TempDirectory("node-protocol-details-");
+        using var client = new WindowsNodeClient(
+            "ws://localhost:18789",
+            "test-token",
+            dataPath.Path);
+        GatewayProtocolCompatibility? compatibility = null;
+        client.ProtocolCompatibilityChanged += (_, value) => compatibility = value;
+        using var document = JsonDocument.Parse(
+            """
+            {
+              "type": "res",
+              "ok": false,
+              "error": {
+                "code": "INVALID_REQUEST",
+                "message": "protocol mismatch",
+                "details": {
+                  "code": "PROTOCOL_MISMATCH",
+                  "clientMinProtocol": 3,
+                  "clientMaxProtocol": 4,
+                  "expectedProtocol": 2,
+                  "minimumProbeProtocol": 2
+                }
+              }
+            }
+            """);
+
+        client.HandleResponse(document.RootElement);
+
+        Assert.NotNull(compatibility);
+        Assert.Equal(GatewayProtocolCompatibilityState.GatewayTooOld, compatibility.State);
+        Assert.Equal(2, compatibility.GatewayExpectedProtocol);
+        Assert.Equal(2, compatibility.GatewayMinimumProtocol);
+        Assert.False(compatibility.Retryable);
+    }
+
+    [Fact]
+    public async Task ProtocolMismatch_BlocksSubsequentNodeCommandDispatch()
+    {
+        using var dataPath = new TempDirectory("node-protocol-command-block-");
+        using var client = new CapturingWindowsNodeClient(
+            "ws://localhost:18789",
+            "test-token",
+            dataPath.Path);
+        var capability = new MockCapability("mock", "mock.ping");
+        client.RegisterCapability(capability);
+        SetPendingConnectRequestId(client, "test-connect-request");
+
+        await InvokeProcessMessageAsync(
+            client,
+            """
+            {
+              "type": "res",
+              "id": "test-connect-request",
+              "ok": true,
+              "payload": {
+                "type": "hello-ok",
+                "protocol": 2
+              }
+            }
+            """);
+        await InvokeProcessMessageAsync(
+            client,
+            """
+            {
+              "type": "req",
+              "id": "req-after-mismatch",
+              "method": "node.invoke",
+              "params": {
+                "requestId": "invoke-after-mismatch",
+                "command": "mock.ping",
+                "args": {}
+              }
+            }
+            """,
+            authenticated: false);
+        await Task.Delay(50);
+
+        Assert.Equal(0, capability.ExecuteCount);
+        Assert.Empty(client.SentMessages);
+        Assert.False(client.IsConnected);
+        Assert.False(InvokeShouldAutoReconnect(client));
+    }
+
+    [Fact]
+    public async Task ProtocolMismatch_AbortsCurrentTransportAndBlocksCommandDispatch()
+    {
+        using var server = new LoopbackWebSocketServer();
+        using var dataPath = new TempDirectory("node-protocol-transport-abort-");
+        using var client = new WindowsNodeClient(
+            server.WebSocketUrl,
+            "test-token",
+            dataPath.Path);
+        var capability = new MockCapability("mock", "mock.ping");
+        client.RegisterCapability(capability);
+        var mismatchObserved = new TaskCompletionSource(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        client.ConnectionFailure += (_, kind) =>
+        {
+            if (kind == GatewayErrorKind.ProtocolMismatch)
+                mismatchObserved.TrySetResult();
+        };
+
+        await server.StartAsync();
+        await client.ConnectAsync();
+        await server.WaitForAcceptedCountAsync(1, TimeSpan.FromSeconds(2));
+        await server.SendTextAsync(
+            """
+            {
+              "type": "event",
+              "event": "connect.challenge",
+              "payload": {
+                "nonce": "protocol-abort",
+                "ts": 1785824000000
+              }
+            }
+            """);
+        var connectMessage = await server.ReceiveTextAsync()
+            .WaitAsync(TimeSpan.FromSeconds(2));
+        using var connect = JsonDocument.Parse(connectMessage);
+        var requestId = connect.RootElement.GetProperty("id").GetString();
+        Assert.False(string.IsNullOrWhiteSpace(requestId));
+        Assert.Equal(
+            GatewayProtocolContract.MinimumSupportedVersion,
+            connect.RootElement.GetProperty("params").GetProperty("minProtocol").GetInt32());
+        Assert.Equal(
+            GatewayProtocolContract.MaximumSupportedVersion,
+            connect.RootElement.GetProperty("params").GetProperty("maxProtocol").GetInt32());
+
+        await server.SendTextAsync(
+            JsonSerializer.Serialize(new
+            {
+                type = "res",
+                id = requestId,
+                ok = true,
+                payload = new
+                {
+                    type = "hello-ok",
+                    protocol = 2
+                }
+            }));
+        await mismatchObserved.Task.WaitAsync(TimeSpan.FromSeconds(2));
+        await AssertServerObservedDisconnectAsync(server);
+        await InvokeProcessMessageAsync(
+            client,
+            BuildNodeInvokeRequest("invoke-after-transport-abort", "mock.ping"),
+            authenticated: false);
+
+        Assert.False(client.IsConnected);
+        Assert.False(InvokeShouldAutoReconnect(client));
+        Assert.Equal(0, capability.ExecuteCount);
     }
 
     /// <summary>
@@ -1203,6 +1569,7 @@ public class WindowsNodeClientTests
                     "ok": true,
                     "payload": {
                         "type": "hello-ok",
+                        "protocol": 4,
                         "nodeId": "test-node-id"
                     }
                 }
@@ -2312,12 +2679,7 @@ public class WindowsNodeClientTests
         JsonElement response)
     {
         const string requestId = "test-connect-request";
-        var pendingRequestField = typeof(WindowsNodeClient).GetField(
-            "_pendingConnectRequestId",
-            BindingFlags.NonPublic | BindingFlags.Instance);
-        Assert.NotNull(pendingRequestField);
-        pendingRequestField.SetValue(client, requestId);
-        AuthorizeCurrentHandshake(client);
+        SetPendingConnectRequestId(client, requestId);
 
         using var correlated = JsonDocument.Parse(
             JsonSerializer.Serialize(new
@@ -2328,6 +2690,18 @@ public class WindowsNodeClientTests
                 payload = response.GetProperty("payload"),
             }));
         client.HandleResponse(correlated.RootElement);
+    }
+
+    private static void SetPendingConnectRequestId(
+        WindowsNodeClient client,
+        string requestId)
+    {
+        var pendingRequestField = typeof(WindowsNodeClient).GetField(
+            "_pendingConnectRequestId",
+            BindingFlags.NonPublic | BindingFlags.Instance);
+        Assert.NotNull(pendingRequestField);
+        pendingRequestField.SetValue(client, requestId);
+        AuthorizeCurrentHandshake(client);
     }
 
     private static void AuthorizeCurrentHandshake(WindowsNodeClient client)
@@ -2373,6 +2747,15 @@ public class WindowsNodeClientTests
 
     private static DeviceIdentity GetDeviceIdentity(WindowsNodeClient client) =>
         GetPrivateField<DeviceIdentity>(client, "_deviceIdentity");
+
+    private static bool InvokeShouldAutoReconnect(WindowsNodeClient client)
+    {
+        var method = typeof(WindowsNodeClient).GetMethod(
+            "ShouldAutoReconnect",
+            BindingFlags.NonPublic | BindingFlags.Instance);
+        Assert.NotNull(method);
+        return (bool)method!.Invoke(client, [])!;
+    }
 
     private static T GetPrivateField<T>(WindowsNodeClient client, string fieldName)
     {
@@ -3554,6 +3937,29 @@ public class WindowsNodeClientTests
         Assert.NotNull(processMethod);
         var task = (Task)processMethod!.Invoke(client, [json])!;
         await task;
+    }
+
+    private static async Task AssertServerObservedDisconnectAsync(
+        LoopbackWebSocketServer server)
+    {
+        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(2));
+        try
+        {
+            var unexpected = await server.ReceiveTextAsync(timeout.Token);
+            Assert.Fail($"Expected the node transport to close, but received: {unexpected}");
+        }
+        catch (OperationCanceledException)
+        {
+            Assert.Fail("Timed out waiting for the node transport to close.");
+        }
+        catch (System.Net.WebSockets.WebSocketException)
+        {
+            // Abort closes without a WebSocket close handshake.
+        }
+        catch (InvalidOperationException ex)
+        {
+            Assert.Contains("Expected one complete WebSocket text message", ex.Message);
+        }
     }
 
     private static async Task<string> WaitForSentMessageAsync(

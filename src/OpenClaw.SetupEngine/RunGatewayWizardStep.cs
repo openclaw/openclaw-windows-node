@@ -16,7 +16,7 @@ public sealed class RunGatewayWizardStep : SetupStep
     public override string DisplayName => "Run gateway wizard";
     public override bool CanRetry => false;
 
-    public override bool CanSkip(SetupContext ctx) => ctx.Config.SkipWizard;
+    public override bool CanSkip(SetupContext ctx) => ctx.Config.SkipWizard || ctx.Config.LocalAi.Enabled;
 
     public override Task<StepResult> ExecuteAsync(SetupContext ctx, CancellationToken ct)
     {

@@ -4,6 +4,7 @@ using Microsoft.UI.Windowing;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Media;
 using Microsoft.UI.Xaml.Media.Animation;
+using OpenClaw.Shared.Inference;
 using OpenClaw.SetupEngine.UI.Pages;
 using System.Runtime.InteropServices;
 
@@ -25,6 +26,10 @@ public sealed partial class SetupWindow : Window
     private bool _showStartupPreferenceOnComplete = true;
     private readonly string _dataDir;
     private readonly string _localDataDir;
+    private readonly object _localAiHardwareProbeLock = new();
+    private Task<HostHardwareInfo>? _localAiHardwareProbeTask;
+    private readonly object _wslViabilityLock = new();
+    private Task<WslViabilityResult>? _wslViabilityTask;
 
     public static SetupWindow? Active { get; private set; }
 
@@ -193,6 +198,33 @@ public sealed partial class SetupWindow : Window
     public void NavigateToWelcome(bool back = false) => NavigateTo(typeof(WelcomePage), _config, back);
     public bool IsWelcomeInstallSelected => _isWelcomeInstallSelected;
     public void SetWelcomeInstallSelected(bool installSelected) => _isWelcomeInstallSelected = installSelected;
+
+    internal Task<HostHardwareInfo> GetLocalAiHardwareAsync()
+    {
+        lock (_localAiHardwareProbeLock)
+        {
+            return _localAiHardwareProbeTask ??=
+                Task.Run(() => new NvmlHostHardwareProbe().Probe());
+        }
+    }
+
+    internal Task<WslViabilityResult> GetWslViabilityAsync()
+    {
+        lock (_wslViabilityLock)
+        {
+            return _wslViabilityTask ??= InspectWslViabilityAsync();
+        }
+    }
+
+    private static async Task<WslViabilityResult> InspectWslViabilityAsync()
+    {
+        using var logger = new SetupLogger(filePath: null);
+        return await WslViabilityInspector.InspectAsync(
+            new CommandRunner(logger),
+            logger,
+            CancellationToken.None);
+    }
+
     public void NavigateToAdvancedSetup() => NavigateTo(typeof(AdvancedSetupPage), _config);
     public void NavigateToCapabilities() => NavigateTo(typeof(CapabilitiesPage), _config);
     public void NavigateToProgress() => NavigateTo(typeof(ProgressPage), CreateProgressPageArgs(showMilestoneOnly: false));
@@ -330,7 +362,10 @@ public sealed partial class SetupWindow : Window
             "welcome" => typeof(WelcomePage),
             "advanced" => typeof(AdvancedSetupPage),
             "capabilities" => typeof(CapabilitiesPage),
+            "capabilities-review" => typeof(CapabilitiesPage),
+            "capabilities-review-consent" => typeof(CapabilitiesPage),
             "progress" => typeof(ProgressPage),
+            "progress-local-ai" => typeof(ProgressPage),
             "milestone" => typeof(ProgressPage),
             "wizard" => typeof(WizardPage),
             "wizard-error" => typeof(WizardPage),
@@ -340,9 +375,14 @@ public sealed partial class SetupWindow : Window
         },
         page switch
         {
-            "complete" => new CompletePageArgs(true, TimeSpan.FromMinutes(3), null),
+            "complete" => new CompletePageArgs(
+                true,
+                TimeSpan.FromMinutes(3),
+                null,
+                ReviewSummary: SetupReviewSummaryBuilder.Build(_config, _dataDir, _localDataDir)),
             "complete-error" => new CompletePageArgs(false, TimeSpan.FromMinutes(3), null, "Setup could not finish. Review the details, then retry setup when you are ready."),
             "progress" => CreateProgressPageArgs(showMilestoneOnly: false),
+            "progress-local-ai" => CreateProgressPageArgs(showMilestoneOnly: false),
             "milestone" => CreateProgressPageArgs(showMilestoneOnly: true),
             _ => _config,
         });

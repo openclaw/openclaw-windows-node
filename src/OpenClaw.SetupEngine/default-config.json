@@ -36,7 +36,7 @@
   "LogLevel": "trace",
   // Override log file path (null = %APPDATA%\OpenClawTray\Logs\Setup\)
   "LogPath": null,
-  // Override gateway WebSocket URL (null = ws://localhost:{GatewayPort})
+  // Override gateway WebSocket URL (null = ws://127.0.0.1:{GatewayPort})
   "GatewayUrl": null,
   // Optional tailnet-only HTTPS/WSS endpoint for the generated WSL gateway.
   "Tailscale": {
@@ -98,6 +98,21 @@
     "AuthMode": "token",
     // Additional gateway config key/value pairs (applied via `openclaw config set`)
     "ExtraConfig": null
+  },
+
+  // Native Windows llama-server and immutable Hugging Face model acquisition.
+  "LocalAi": {
+    "Enabled": false,
+    // null selects the qualified default. Alternatives are chosen explicitly in onboarding.
+    "SelectedModelId": null,
+    // 0 allocates one free IPv4 loopback port and persists it for later restarts.
+    "Port": 0,
+    // The setup UI sets this only after explaining that applying mirrored mode stops running WSL distros once.
+    "WslMirroredNetworkingConsent": false,
+    "HealthTimeoutSeconds": 15,
+    "AcquisitionTimeoutSeconds": 7200,
+    // Includes first-request model load and a short verification completion.
+    "InferenceTimeoutSeconds": 600
   },
 
   // ─── Node Capabilities ───

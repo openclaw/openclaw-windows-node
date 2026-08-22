@@ -29,28 +29,12 @@ public sealed class ExistingConfigDetector
         var localRecord = all.FirstOrDefault(r => r.IsLocal && r.SshTunnel == null);
         var preserved = all.Where(r => !r.IsLocal || r.SshTunnel != null).ToList();
 
-        var hasDistro = false;
-        try
-        {
-            var psi = new System.Diagnostics.ProcessStartInfo("wsl.exe", "--list --quiet")
-            {
-                RedirectStandardOutput = true,
-                UseShellExecute = false,
-                CreateNoWindow = true,
-            };
-
-            using var proc = System.Diagnostics.Process.Start(psi);
-            if (proc != null)
-            {
-                var output = proc.StandardOutput.ReadToEnd();
-                proc.WaitForExit(5000);
-                hasDistro = WslInstallSupport.ContainsDistro(output, targetDistroName);
-            }
-        }
-        catch (Exception ex)
-        {
-            System.Diagnostics.Debug.WriteLine($"WSL distro detection failed: {ex.Message}");
-        }
+        var logger = new SetupLogger(filePath: null, LogLevel.Warn);
+        var result = new CommandRunner(logger)
+            .RunAsync(WslConstants.WslExePath, ["--list", "--quiet"], TimeSpan.FromSeconds(5))
+            .GetAwaiter()
+            .GetResult();
+        var hasDistro = InterpretDistroList(result, targetDistroName);
 
         var hasIdentity = false;
         if (localRecord != null)
@@ -68,6 +52,19 @@ public sealed class ExistingConfigDetector
             HasIdentityFiles: hasIdentity,
             PreservedGatewayCount: preserved.Count,
             PreservedGatewayNames: preserved.Select(r => r.FriendlyName ?? r.Url).ToList());
+    }
+
+    internal static bool InterpretDistroList(CommandResult result, string targetDistroName)
+    {
+        if (!result.TimedOut && result.ExitCode == 0)
+            return WslInstallSupport.ContainsDistro(result.Stdout, targetDistroName);
+
+        if (!result.TimedOut && WslViabilityInspector.LooksUnavailable(result))
+            return false;
+
+        throw new InvalidOperationException(
+            "OpenClaw could not safely inspect existing WSL distributions. " +
+            "Run `wsl --list --quiet` in PowerShell, resolve the reported problem, and try again.");
     }
 
     /// <summary>

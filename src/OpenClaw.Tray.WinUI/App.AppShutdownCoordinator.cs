@@ -98,6 +98,25 @@ public partial class App
             }));
         }
 
+        // The gateway and chat are consumers of local inference, so stop them first.
+        // App owns this pre-built runtime instance; the DI provider must not dispose it.
+        var localAiRuntime = _localAiRuntime;
+        if (localAiRuntime is not null)
+        {
+            steps.Add(new AppShutdownStep("local AI runtime", async () =>
+            {
+                try
+                {
+                    await localAiRuntime.DisposeAsync();
+                }
+                finally
+                {
+                    if (ReferenceEquals(_localAiRuntime, localAiRuntime))
+                        _localAiRuntime = null;
+                }
+            }));
+        }
+
         steps.Add(new AppShutdownStep("OpenTelemetry endpoint", () =>
         {
             _openTelemetryConnection?.Dispose();

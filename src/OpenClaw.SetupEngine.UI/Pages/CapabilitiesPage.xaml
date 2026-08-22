@@ -73,6 +73,11 @@
                                     </RadioButton>
                                 </RadioButtons>
 
+                                <TextBlock Text="Local AI setup is independent of this choice and does not require Full access."
+                                           Style="{StaticResource CaptionTextBlockStyle}"
+                                           Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                           TextWrapping="Wrap" />
+
                                 <Expander x:Name="CapabilityExpander" Margin="0,4,0,0" HorizontalAlignment="Stretch" HorizontalContentAlignment="Stretch"
                                           Background="Transparent" BorderThickness="0"
                                           Header="Fine-tune individual capabilities (optional)">
@@ -104,10 +109,92 @@
                                         <FontIcon Grid.Column="0" Glyph="&#xE756;" FontSize="18" VerticalAlignment="Center" />
                                         <StackPanel Grid.Column="1" Spacing="2">
                                             <TextBlock x:Name="InstallDistroTitleText" Text="Install an isolated Ubuntu 24.04 instance" Style="{StaticResource BodyStrongTextBlockStyle}" />
-                                            <TextBlock x:Name="InstallDistroDetailText" TextWrapping="Wrap" Style="{StaticResource CaptionTextBlockStyle}" Foreground="{ThemeResource TextFillColorSecondaryBrush}" Text="WSL distro &quot;OpenClawGateway&quot; in your AppData. Separate from any Ubuntu you already have." />
+                                            <TextBlock x:Name="InstallDistroDetailText" TextWrapping="Wrap" Style="{StaticResource CaptionTextBlockStyle}" Foreground="{ThemeResource TextFillColorSecondaryBrush}" Text="WSL distro &quot;OpenClawGateway&quot; in your AppData. Separate from any Ubuntu you already have. Disk use grows dynamically." />
                                         </StackPanel>
-                                        <TextBlock Grid.Column="2" Text="~200 MB" Style="{StaticResource CaptionTextBlockStyle}" Foreground="{ThemeResource TextFillColorTertiaryBrush}" FontFamily="Cascadia Mono, Consolas" VerticalAlignment="Center" />
+                                        <TextBlock Grid.Column="2" Text="Several GB" Style="{StaticResource CaptionTextBlockStyle}" Foreground="{ThemeResource TextFillColorTertiaryBrush}" FontFamily="Cascadia Mono, Consolas" VerticalAlignment="Center" />
                                     </Grid>
+                                </Border>
+                                <Border x:Name="LocalAiInstallReviewCard"
+                                        AutomationProperties.AutomationId="LocalAiInstallReviewCard"
+                                        Visibility="Collapsed"
+                                        Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                                        BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                                        BorderThickness="1" CornerRadius="4" Padding="14,12">
+                                    <StackPanel Spacing="10">
+                                        <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="14">
+                                            <FontIcon Grid.Column="0" Glyph="&#xE950;" FontSize="18" VerticalAlignment="Center" />
+                                            <StackPanel Grid.Column="1" Spacing="2">
+                                                <TextBlock Text="Local AI on this PC" Style="{StaticResource BodyStrongTextBlockStyle}" />
+                                                <TextBlock Text="OpenClaw installs a verified native llama-server and downloads a pinned GGUF model from Hugging Face."
+                                                           TextWrapping="Wrap" Style="{StaticResource CaptionTextBlockStyle}"
+                                                           Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                                            </StackPanel>
+                                            <ToggleSwitch x:Name="LocalAiToggle" Grid.Column="2"
+                                                          AutomationProperties.AutomationId="LocalAiSetupToggle"
+                                                          AutomationProperties.Name="Set up Local AI on this PC"
+                                                          OnContent="" OffContent="" MinWidth="0"
+                                                          Toggled="LocalAiToggle_Toggled" VerticalAlignment="Center" />
+                                        </Grid>
+                                        <InfoBar x:Name="LocalAiUnavailablePanel"
+                                                 AutomationProperties.AutomationId="LocalAiUnavailablePanel"
+                                                 IsOpen="True" IsClosable="False" Severity="Warning"
+                                                 Title="Local AI cannot run on this PC"
+                                                 Visibility="Collapsed">
+                                            <StackPanel Orientation="Horizontal" Spacing="8" Margin="0,-12,0,12">
+                                                <TextBlock Text="One or more Local AI requirements are unavailable."
+                                                           TextWrapping="Wrap" VerticalAlignment="Center" />
+                                                <HyperlinkButton x:Name="LocalAiUnavailableDetailsButton"
+                                                                 AutomationProperties.AutomationId="LocalAiUnavailableDetailsButton"
+                                                                 Content="See why" Padding="0"
+                                                                 HorizontalAlignment="Left"
+                                                                 Click="LocalAiUnavailableDetails_Click" />
+                                            </StackPanel>
+                                        </InfoBar>
+                                        <StackPanel x:Name="LocalAiDetailsPanel" Spacing="6" Margin="32,0,0,0" Visibility="Collapsed">
+                                            <TextBlock x:Name="LocalAiHardwareStatusText"
+                                                       AutomationProperties.AutomationId="LocalAiHardwareStatus"
+                                                       AutomationProperties.LiveSetting="Polite"
+                                                       Style="{StaticResource CaptionTextBlockStyle}"
+                                                       Foreground="{ThemeResource TextFillColorSecondaryBrush}" TextWrapping="Wrap" />
+                                            <TextBlock Text="Model" Style="{StaticResource CaptionTextBlockStyle}"
+                                                       Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                                            <ComboBox x:Name="LocalAiModelSelector"
+                                                      AutomationProperties.AutomationId="LocalAiModelSelector"
+                                                      AutomationProperties.Name="Local AI model"
+                                                      HorizontalAlignment="Stretch"
+                                                      SelectionChanged="LocalAiModelSelector_SelectionChanged" />
+                                            <TextBlock x:Name="LocalAiEngineDetailText"
+                                                       Style="{StaticResource CaptionTextBlockStyle}"
+                                                       Foreground="{ThemeResource TextFillColorSecondaryBrush}" TextWrapping="Wrap" />
+                                            <TextBlock x:Name="LocalAiModelDetailText"
+                                                       Style="{StaticResource CaptionTextBlockStyle}"
+                                                       Foreground="{ThemeResource TextFillColorSecondaryBrush}" TextWrapping="Wrap" />
+                                            <TextBlock x:Name="LocalAiSettingsDetailText"
+                                                       Style="{StaticResource CaptionTextBlockStyle}"
+                                                       Foreground="{ThemeResource TextFillColorSecondaryBrush}" TextWrapping="Wrap" />
+                                            <InfoBar x:Name="LocalAiNetworkingConsentPanel"
+                                                     AutomationProperties.AutomationId="LocalAiNetworkingConsentPanel"
+                                                     AutomationProperties.LiveSetting="Assertive"
+                                                     IsOpen="True" IsClosable="False" Severity="Warning"
+                                                     Title="WSL networking change required" Visibility="Collapsed">
+                                                <StackPanel Spacing="6" Margin="0,0,0,12">
+                                                    <TextBlock Text="Local AI needs mirrored WSL networking. Setup will update your global .wslconfig and stop all running WSL distributions once. No distributions are deleted. Save any work in WSL first."
+                                                               Style="{StaticResource CaptionTextBlockStyle}" TextWrapping="Wrap" />
+                                                    <CheckBox x:Name="LocalAiNetworkingConsentCheckBox"
+                                                              AutomationProperties.AutomationId="LocalAiNetworkingConsentCheckBox"
+                                                              AutomationProperties.Name="Allow the global WSL networking change and one-time WSL shutdown"
+                                                              Content="I understand and allow this global WSL change and one-time shutdown."
+                                                              Checked="LocalAiNetworkingConsent_Changed"
+                                                              Unchecked="LocalAiNetworkingConsent_Changed" />
+                                                </StackPanel>
+                                            </InfoBar>
+                                            <InfoBar x:Name="LocalAiNetworkingInspectionError"
+                                                     AutomationProperties.AutomationId="LocalAiNetworkingInspectionError"
+                                                     AutomationProperties.LiveSetting="Assertive"
+                                                     IsOpen="True" IsClosable="False" Severity="Error"
+                                                     Title="Could not check WSL networking" Visibility="Collapsed" />
+                                        </StackPanel>
+                                    </StackPanel>
                                 </Border>
                                 <Border Background="{ThemeResource CardBackgroundFillColorDefaultBrush}" BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1" CornerRadius="4" Padding="14,12">
                                     <StackPanel Spacing="8">

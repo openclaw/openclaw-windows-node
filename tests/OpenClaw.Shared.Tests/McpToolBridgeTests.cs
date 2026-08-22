@@ -145,6 +145,7 @@ public class McpToolBridgeTests
             new FakeCapability("screen", "screen.snapshot"),
             new FakeCapability("camera", "camera.snap"),
             new FakeCapability("tts", "tts.speak"),
+            new FakeCapability("app-connection", "app.connection.status"),
             new FakeCapability("custom", "custom.unknown"),
         };
         var bridge = CreateBridge(caps);
@@ -163,6 +164,9 @@ public class McpToolBridgeTests
         Assert.Contains("screenshot", byName["screen.snapshot"]);
         Assert.Contains("camera", byName["camera.snap"], System.StringComparison.OrdinalIgnoreCase);
         Assert.Contains("Speak text", byName["tts.speak"]);
+        Assert.Contains("package version", byName["app.connection.status"], System.StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("wire protocol", byName["app.connection.status"], System.StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("compatibility", byName["app.connection.status"], System.StringComparison.OrdinalIgnoreCase);
 
         // Unknown commands keep the generic fallback so newly-added capabilities still render.
         Assert.Equal("custom capability: custom.unknown", byName["custom.unknown"]);

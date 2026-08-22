@@ -121,6 +121,8 @@ internal enum RecoveryCategory
     Tailscale,
     /// <summary>A different or unverified local process owns the managed gateway port.</summary>
     LocalPortConflict,
+    /// <summary>The Gateway and Windows app do not share a supported wire protocol.</summary>
+    ProtocolMismatch,
 }
 
 /// <summary>
@@ -136,9 +138,16 @@ internal sealed record ConnectionPagePlan
     public ConnectionAccent StripAccent { get; init; } = ConnectionAccent.Neutral;
     public string StripHeadline { get; init; } = "Not connected";
     public string StripSub { get; init; } = "";
+    public string? StripHeadlineResourceKey { get; init; }
+    public string? StripSubResourceKey { get; init; }
+    public int? ProtocolExpectedVersion { get; init; }
+    public int ProtocolMinimumVersion { get; init; } = GatewayProtocolContract.MinimumSupportedVersion;
+    public int ProtocolMaximumVersion { get; init; } = GatewayProtocolContract.MaximumSupportedVersion;
+    public int ProtocolCurrentVersion { get; init; } = GatewayProtocolContract.CurrentVersion;
     public bool StripShowProgress { get; init; }
     public string? StripPrimaryLabel { get; init; }
     public ConnectionPrimaryAction StripPrimaryAction { get; init; } = ConnectionPrimaryAction.None;
+    public bool AllowConnectionToggle { get; init; } = true;
 
     // ─── Operator card ───
     public OperatorCardState OperatorCard { get; init; } = OperatorCardState.Hidden;
@@ -162,10 +171,13 @@ internal sealed record ConnectionPagePlan
         new Dictionary<string, bool>(StringComparer.OrdinalIgnoreCase);
     /// <summary>For OnNodeError — sanitized error string.</summary>
     public string? NodeErrorDetail { get; init; }
+    public string? NodeErrorDetailResourceKey { get; init; }
 
     // ─── Recovery sub-screen ───
     public RecoveryCategory Recovery { get; init; } = RecoveryCategory.None;
     public string? RecoveryDetail { get; init; }
+    public string? RecoveryHeaderResourceKey { get; init; }
+    public IReadOnlyList<string> RecoveryBulletResourceKeys { get; init; } = Array.Empty<string>();
     /// <summary>For RecoveryCategory.Pairing — the CLI command the user should run.</summary>
     public string? RecoveryApproveCommand { get; init; }
 
@@ -225,6 +237,16 @@ internal sealed record ConnectionPagePlan
         int savedGatewayCount,
         string displayName)
     {
+        if (snap.ProtocolCompatibility.IsMismatch &&
+            snap.ProtocolCompatibilityRole == GatewayProtocolCompatibilityRole.Node &&
+            snap.OverallState == OverallConnectionState.Degraded)
+        {
+            return BuildNodeProtocolMismatchCockpit(snap, activeRecord, self, settings, displayName);
+        }
+
+        if (snap.ProtocolCompatibility.IsMismatch)
+            return BuildProtocolMismatchRecovery(snap, activeRecord, displayName);
+
         // ─── Derived layout ───
         return snap.OverallState switch
         {
@@ -260,6 +282,70 @@ internal sealed record ConnectionPagePlan
             _ => BuildIdle(savedGatewayCount, activeRecord, settings),
         };
     }
+
+    private static ConnectionPagePlan BuildProtocolMismatchRecovery(
+        GatewayConnectionSnapshot snap,
+        GatewayRecord? rec,
+        string name)
+    {
+        var compatibility = snap.ProtocolCompatibility;
+        var (headerKey, detailKey) = GetProtocolMismatchResourceKeys(compatibility);
+        var url = ConnectionCardPlanSanitizer.SanitizeGatewayUrl(rec?.Url ?? snap.GatewayUrl);
+
+        return new ConnectionPagePlan
+        {
+            Mode = ConnectionPageMode.Recovery,
+            Recovery = RecoveryCategory.ProtocolMismatch,
+            StripGlyph = OpenClawTray.Helpers.FluentIconCatalog.StatusErr,
+            StripAccent = ConnectionAccent.Critical,
+            StripHeadlineResourceKey = headerKey,
+            StripSubResourceKey = detailKey,
+            StripPrimaryLabel = null,
+            StripPrimaryAction = ConnectionPrimaryAction.None,
+            AllowConnectionToggle = true,
+            ProtocolExpectedVersion = compatibility.GatewayExpectedProtocol,
+            RecoveryHeaderResourceKey = headerKey,
+            RecoveryBulletResourceKeys = detailKey is null ? [] : [detailKey],
+            ActiveGatewayDisplayName = name,
+            ActiveGatewayDetailLine = url,
+            ActiveGatewayHasSshTunnel = rec?.SshTunnel != null,
+            RelevantGatewayId = rec?.Id
+        };
+    }
+
+    private static ConnectionPagePlan BuildNodeProtocolMismatchCockpit(
+        GatewayConnectionSnapshot snap,
+        GatewayRecord? rec,
+        GatewaySelfInfo? self,
+        SettingsManager? settings,
+        string name)
+    {
+        var compatibility = snap.ProtocolCompatibility;
+        var (headerKey, detailKey) = GetProtocolMismatchResourceKeys(compatibility);
+        return BuildCockpitDegraded(snap, rec, self, settings, name) with
+        {
+            StripHeadlineResourceKey = headerKey,
+            StripSubResourceKey = detailKey,
+            StripPrimaryLabel = null,
+            StripPrimaryAction = ConnectionPrimaryAction.None,
+            OperatorCard = OperatorCardState.Active,
+            NodeErrorDetail = null,
+            NodeErrorDetailResourceKey = detailKey ?? headerKey,
+            ProtocolExpectedVersion = compatibility.GatewayExpectedProtocol
+        };
+    }
+
+    private static (string HeaderKey, string? DetailKey) GetProtocolMismatchResourceKeys(
+        GatewayProtocolCompatibility compatibility)
+        => compatibility.State switch
+        {
+            GatewayProtocolCompatibilityState.GatewayTooOld =>
+                ("ConnectionPage_ProtocolGatewayUpdateRequired", "ConnectionPage_ProtocolGatewayUpdateDetail"),
+            GatewayProtocolCompatibilityState.GatewayTooNew when compatibility.GatewayExpectedProtocol.HasValue =>
+                ("ConnectionPage_ProtocolWindowsUpdateRequired", "ConnectionPage_ProtocolWindowsUpdateDetail"),
+            _ =>
+                ("ConnectionPage_ProtocolUnknownMismatch", null)
+        };
 
     // ───────────────────────────────────────────────────────────────────
     // Mode builders
@@ -893,6 +979,7 @@ internal sealed record ConnectionPagePlan
             OpenClaw.Shared.GatewayErrorKind.Tls => RecoveryCategory.Tls,
             OpenClaw.Shared.GatewayErrorKind.Tunnel => RecoveryCategory.Tunnel,
             OpenClaw.Shared.GatewayErrorKind.LocalPortConflict => RecoveryCategory.LocalPortConflict,
+            OpenClaw.Shared.GatewayErrorKind.ProtocolMismatch => RecoveryCategory.ProtocolMismatch,
             OpenClaw.Shared.GatewayErrorKind.Server => RecoveryCategory.Server,
             OpenClaw.Shared.GatewayErrorKind.RateLimited => RecoveryCategory.RateLimited,
             OpenClaw.Shared.GatewayErrorKind.PairingRejected => RecoveryCategory.Auth,

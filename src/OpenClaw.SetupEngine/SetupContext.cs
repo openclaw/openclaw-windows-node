@@ -2,7 +2,10 @@ using System.Diagnostics.CodeAnalysis;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using OpenClaw.Connection;
+using OpenClaw.Connection.LocalAi;
 using OpenClaw.Shared;
+using OpenClaw.Shared.Inference;
+using OpenClaw.Shared.Inference.Catalog;
 
 namespace OpenClaw.SetupEngine;
 
@@ -38,8 +41,9 @@ public sealed class SetupConfig
     public PairingConfig Pairing { get; set; } = new();
     public WindowsNodeContextConfig WindowsNodeContext { get; set; } = new();
     public TailscaleConfig Tailscale { get; set; } = new();
+    public LocalAiConfig LocalAi { get; set; } = new();
 
-    public string EffectiveGatewayUrl => GatewayUrl ?? $"ws://localhost:{GatewayPort}";
+    public string EffectiveGatewayUrl => GatewayUrl ?? $"ws://127.0.0.1:{GatewayPort}";
 
     public static SetupConfig LoadFromFile(string path)
     {
@@ -129,6 +133,20 @@ public sealed class SetupConfig
 }
 
 // ─── WSL Configuration ───
+
+// Native local inference is disabled for programmatic and backward-compatible
+// configs. The bundled product config explicitly enables it for onboarding.
+public sealed class LocalAiConfig
+{
+    public bool Enabled { get; set; }
+    public string? SelectedModelId { get; set; }
+    /// <summary>Managed llama-server port. Zero selects a free loopback port during setup.</summary>
+    public int Port { get; set; }
+    public bool WslMirroredNetworkingConsent { get; set; }
+    public int HealthTimeoutSeconds { get; set; } = 15;
+    public int AcquisitionTimeoutSeconds { get; set; } = 7_200;
+    public int InferenceTimeoutSeconds { get; set; } = 600;
+}
 
 public sealed class WslConfig
 {
@@ -459,8 +477,23 @@ public sealed class SetupContext
     public string? WindowsTailnetDnsSuffix { get; set; }
     public string? TailscaleDnsName { get; set; }
     public IExternalAuthorizationPresenter? ExternalAuthorizationPresenter { get; set; }
+    public IProgress<SetupDetailProgressEvent>? DetailProgress { get; set; }
     public Func<GatewayRecord, CancellationToken, Task<GatewayEndpointProvenance>>?
         EndpointProvenanceProbe { get; set; }
+    internal WslViabilityResult? WslViability { get; set; }
+    public HostHardwareInfo? LocalAiHardware { get; set; }
+    public LocalInferenceEligibilityResult? LocalAiEligibility { get; set; }
+    public int? LocalAiPort { get; set; }
+    internal LlamaRuntimeInstallResult? LocalAiRuntimeInstall { get; set; }
+    internal HuggingFaceModelInstallResult? LocalAiModelInstall { get; set; }
+    internal LocalAiResolvedInstall? LocalAiResolvedInstall { get; set; }
+    internal bool LocalAiManifestCreatedThisRun { get; set; }
+    internal ILocalAiRuntime? LocalAiRuntime { get; set; }
+    internal HostHardwareInfo? LocalAiGpuBaseline { get; set; }
+    internal LlamaServerInferenceVerification? LocalAiInferenceVerification { get; set; }
+    internal LocalAiGpuLoadEvidence? LocalAiGpuLoadEvidence { get; set; }
+    internal LocalAiGatewayPriorState? LocalAiGatewayPriorState { get; set; }
+    internal bool IsUninstalling { get; set; }
 
     // Data directory for gateway registry and identity files
     public string DataDir { get; }

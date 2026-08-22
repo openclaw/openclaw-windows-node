@@ -386,7 +386,7 @@ public class McpToolBridge
         ["app.chat.queue.cancel"] =
             "Cancel/remove one native chat outgoing queue entry before it is sent. Args: queuedMessageId (string, required), threadId/sessionKey (string, required; use the threadId returned by app.chat.queue.list or app.chat.snapshot). Only Queued/Failed entries can be removed; Sending entries may already have reached the gateway. Returns { canceled, threadId, queuedMessageId, remainingCount, error? }.",
         ["app.connection.status"] =
-            "READ-ONLY local MCP connection diagnostics. No args. Returns effective mode/state, active gateway metadata, operator/node credential resolution, MCP runtime state, browser proxy caveat, pending approval actions, retry hints, and recent diagnostic events.",
+            "READ-ONLY local MCP connection diagnostics. No args. Returns effective mode/state, installed Gateway package version, selected wire protocol and normalized compatibility details, active gateway metadata, operator/node credential resolution, MCP runtime state, browser proxy caveat, pending approval actions, retry hints, and recent diagnostic events.",
         ["app.connection.gateways"] =
             "READ-ONLY saved gateway diagnostics. No args. Returns { activeGatewayId, count, gateways[] } with per-gateway id/name/url, active flag, lastConnected, credential presence booleans, SSH/browser-proxy configuration, and no token values.",
         ["app.connection.applySetupCode"] =

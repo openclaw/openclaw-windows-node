@@ -242,17 +242,17 @@ public sealed class SessionTitleFormatterTests
             "src",
             "OpenClaw.Tray.WinUI",
             "Chat",
-            "OpenClawChatRoot.cs"));
-        Assert.Contains("t.IsVisibleInSessionPicker(effectiveThread?.Id)", chatRoot, StringComparison.Ordinal);
-        Assert.Contains("t.AgentId", chatRoot, StringComparison.Ordinal);
-
-        var composer = File.ReadAllText(Path.Combine(
+            "OpenClawReactorChatRoot.cs"));
+        var chatComposer = File.ReadAllText(Path.Combine(
             TestRepositoryPaths.GetRepositoryRoot(),
             "src",
             "OpenClaw.Tray.WinUI",
             "Chat",
-            "OpenClawComposer.cs"));
-        Assert.Contains("ToolTipService.SetToolTip(b, session.Title)", composer, StringComparison.Ordinal);
+            "ReactorChatComposer.cs"));
+        Assert.Contains("SessionVisibilityFilter.VisibleChatPickerThreads(threads, effectiveThread.Id)", chatRoot, StringComparison.Ordinal);
+        Assert.Contains("thread.IsVisibleInSessionPicker(effectiveThread.Id)", chatRoot, StringComparison.Ordinal);
+        Assert.Contains("inputs.CurrentThread.Title", chatComposer, StringComparison.Ordinal);
+        Assert.Contains("thread.Title", chatComposer, StringComparison.Ordinal);
     }
 
     [Fact]

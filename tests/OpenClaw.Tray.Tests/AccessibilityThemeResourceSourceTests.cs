@@ -9,7 +9,7 @@ public sealed class AccessibilityThemeResourceSourceTests
         var connectionXaml = ReadSource("src", "OpenClaw.Tray.WinUI", "Pages", "ConnectionPage.xaml");
         var hub = ReadSource("src", "OpenClaw.Tray.WinUI", "Windows", "HubWindow.xaml.cs");
         var hubXaml = ReadSource("src", "OpenClaw.Tray.WinUI", "Windows", "HubWindow.xaml");
-        var timeline = ReadSource("src", "OpenClaw.Tray.WinUI", "Chat", "OpenClawChatTimeline.cs");
+        var timeline = ReadSource("src", "OpenClaw.Tray.WinUI", "Chat", "ReactorChatTimeline.cs");
         var resources = ReadSource("src", "OpenClaw.Tray.WinUI", "App.xaml");
 
         Assert.DoesNotContain("AccessibilitySettings", connection);
@@ -21,8 +21,8 @@ public sealed class AccessibilityThemeResourceSourceTests
         Assert.DoesNotContain("TryDetectHighContrast", timeline);
 
         Assert.Contains("ConnectionCapabilityPillActiveBorderStyle", connection);
-        Assert.Contains("ChatUserBubbleSelectionStyle", timeline);
-        Assert.Contains("ChatToolCardBorderStyle", timeline);
+        Assert.Contains("Theme.Ref(\"CardBackgroundFillColorDefaultBrush\")", timeline);
+        Assert.Contains("Theme.Ref(\"ControlStrokeColorDefaultBrush\")", timeline);
         Assert.Contains("ConnectionCapabilityPillSuccessBrush", connectionXaml);
         Assert.Contains("ImageIcon Source=\"{StaticResource Chat_Icon}\"", hubXaml);
         Assert.Contains("new ImageIcon", hub);
@@ -44,9 +44,7 @@ public sealed class AccessibilityThemeResourceSourceTests
         Assert.DoesNotContain("Style = (Style)Resources[textStyleKey]", stateIconBlock);
         Assert.Contains("<ResourceDictionary x:Key=\"HighContrast\">", resources);
         Assert.Contains("SystemColorWindowColor", resources);
-        Assert.Contains("ChatUserBubbleSelectionHighlightBrush", resources);
         Assert.Contains("SystemColorHighlightColor", resources);
-        Assert.Contains("<x:Double x:Key=\"ChatAccessibleBorderThickness\">2</x:Double>", resources);
         Assert.Contains("<x:Boolean x:Key=\"HubNavigationUseHighContrastIcons\">True</x:Boolean>", resources);
     }
 

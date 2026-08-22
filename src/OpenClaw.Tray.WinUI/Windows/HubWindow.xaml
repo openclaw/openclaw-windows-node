@@ -467,6 +467,9 @@
             <NavigationViewItemSeparator x:Name="NavGatewaySeparator"/>
 
             <NavigationViewItemHeader x:Uid="HubWindow_NavigationViewItemHeader_129" Content="This Computer"/>
+            <NavigationViewItem x:Uid="HubWindow_NavigationViewItem_LocalAi" Tag="local-ai" Content="Local AI">
+                <NavigationViewItem.Icon><FontIcon Glyph="&#xE950;" AutomationProperties.AccessibilityView="Raw"/></NavigationViewItem.Icon>
+            </NavigationViewItem>
             <NavigationViewItem x:Uid="HubWindow_NavigationViewItem_Voice" Tag="voice" Content="Voice &amp; Audio">
                 <NavigationViewItem.Icon><ImageIcon Source="{StaticResource Voice_Icon}" AutomationProperties.AccessibilityView="Raw"/></NavigationViewItem.Icon>
             </NavigationViewItem>

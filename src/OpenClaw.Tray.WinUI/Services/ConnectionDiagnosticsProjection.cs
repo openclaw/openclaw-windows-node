@@ -18,7 +18,8 @@ internal static class ConnectionDiagnosticsProjection
         string? mcpError,
         bool nodeBrowserProxyEnabled,
         IReadOnlyList<ConnectionDiagnosticEvent> recentDiagnostics,
-        int diagnosticEventCount)
+        int diagnosticEventCount,
+        GatewaySelfInfo? gatewaySelf = null)
     {
         var snapshot = currentSnapshot ?? GatewayConnectionSnapshot.Idle;
         var legacyStatus = ConnectionStatusPresenter.ToLegacyStatus(snapshot);
@@ -30,11 +31,18 @@ internal static class ConnectionDiagnosticsProjection
         var nodeSessionLive = BrowserProxyActivation.IsNodeSessionLive(snapshot.NodeState);
 
         return new ConnectionStatusDiagnostics(
-            SchemaVersion: 1,
+            SchemaVersion: 2,
             ConnectionState: snapshot.OverallState.ToString(),
             EffectiveMode: GetEffectiveMode(enableNodeMode, enableMcpServer),
             LegacyConnectionStatus: legacyStatus.ToString(),
-            Gateway: BuildGateway(activeGateway, snapshot, isActive: true, nodeBrowserProxyEnabled, nodeSessionLive),
+            Gateway: BuildGateway(
+                activeGateway,
+                snapshot,
+                isActive: true,
+                nodeBrowserProxyEnabled,
+                nodeSessionLive,
+                gatewaySelf?.ServerVersion),
+            Protocol: BuildProtocol(snapshot, gatewaySelf),
             Operator: new OperatorConnectionDiagnostics(
                 State: snapshot.OperatorState.ToString(),
                 Connected: snapshot.OperatorState == RoleConnectionState.Connected,
@@ -91,7 +99,8 @@ internal static class ConnectionDiagnosticsProjection
                 isActive: string.Equals(g.Id, activeGatewayId, StringComparison.Ordinal),
                 nodeBrowserProxyEnabled,
                 // Only the active gateway can carry live-session remediation.
-                nodeSessionLive: string.Equals(g.Id, activeGatewayId, StringComparison.Ordinal) && nodeSessionLive))
+                nodeSessionLive: string.Equals(g.Id, activeGatewayId, StringComparison.Ordinal) && nodeSessionLive,
+                packageVersion: null))
             .OfType<GatewayDiagnostics>()
             .ToArray();
 
@@ -119,7 +128,8 @@ internal static class ConnectionDiagnosticsProjection
         GatewayConnectionSnapshot? currentSnapshot,
         bool isActive,
         bool nodeBrowserProxyEnabled,
-        bool nodeSessionLive)
+        bool nodeSessionLive,
+        string? packageVersion)
     {
         var id = gateway?.Id ?? currentSnapshot?.GatewayId;
         var url = GatewayUrlHelper.SanitizeForDisplay(gateway?.Url ?? currentSnapshot?.GatewayUrl);
@@ -141,6 +151,7 @@ internal static class ConnectionDiagnosticsProjection
             RequiresV2Signature: gateway?.RequiresV2Signature,
             HasSharedGatewayToken: !string.IsNullOrWhiteSpace(gateway?.SharedGatewayToken),
             HasBootstrapToken: !string.IsNullOrWhiteSpace(gateway?.BootstrapToken),
+            PackageVersion: packageVersion,
             BrowserControlPort: gateway?.BrowserControlPort,
             BrowserProxyCaveat: BuildBrowserProxyCaveat(gateway, nodeBrowserProxyEnabled, isActive, nodeSessionLive),
             SshTunnel: gateway?.SshTunnel is null ? null : new GatewaySshTunnelDiagnostics(
@@ -151,6 +162,35 @@ internal static class ConnectionDiagnosticsProjection
                 SshPort: gateway.SshTunnel.SshPort,
                 IncludeBrowserProxyForward: gateway.SshTunnel.IncludeBrowserProxyForward));
     }
+
+    private static ProtocolDiagnostics BuildProtocol(
+        GatewayConnectionSnapshot snapshot,
+        GatewaySelfInfo? gatewaySelf)
+    {
+        var compatibility = snapshot.ProtocolCompatibility;
+        return new ProtocolDiagnostics(
+            SelectedProtocol: compatibility.SelectedProtocol ??
+                (compatibility.IsMismatch ? null : gatewaySelf?.Protocol),
+            CurrentProtocol: GatewayProtocolContract.CurrentVersion,
+            MinimumSupportedProtocol: GatewayProtocolContract.MinimumSupportedVersion,
+            MaximumSupportedProtocol: GatewayProtocolContract.MaximumSupportedVersion,
+            Compatibility: compatibility.NormalizedState,
+            Source: snapshot.ProtocolCompatibilityRole?.ToString().ToLowerInvariant(),
+            GatewayExpectedProtocol: compatibility.GatewayExpectedProtocol,
+            GatewayMinimumProtocol: compatibility.GatewayMinimumProtocol,
+            Retryable: compatibility.Retryable,
+            Operator: ToRoleProtocolDiagnostics(snapshot.OperatorProtocolCompatibility),
+            Node: ToRoleProtocolDiagnostics(snapshot.NodeProtocolCompatibility));
+    }
+
+    private static RoleProtocolDiagnostics ToRoleProtocolDiagnostics(
+        GatewayProtocolCompatibility compatibility) =>
+        new(
+            Compatibility: compatibility.NormalizedState,
+            SelectedProtocol: compatibility.SelectedProtocol,
+            GatewayExpectedProtocol: compatibility.GatewayExpectedProtocol,
+            GatewayMinimumProtocol: compatibility.GatewayMinimumProtocol,
+            Retryable: compatibility.Retryable);
 
     private static BrowserProxyDiagnostics BuildBrowserProxy(
         GatewayRecord? gateway,
@@ -300,6 +340,7 @@ internal sealed record ConnectionStatusDiagnostics(
     [property: JsonPropertyName("effectiveMode")] string EffectiveMode,
     [property: JsonPropertyName("legacyConnectionStatus")] string LegacyConnectionStatus,
     [property: JsonPropertyName("gateway")] GatewayDiagnostics? Gateway,
+    [property: JsonPropertyName("protocol")] ProtocolDiagnostics Protocol,
     [property: JsonPropertyName("operator")] OperatorConnectionDiagnostics Operator,
     [property: JsonPropertyName("node")] NodeConnectionDiagnostics Node,
     [property: JsonPropertyName("mcp")] McpConnectionDiagnostics Mcp,
@@ -323,9 +364,30 @@ internal sealed record GatewayDiagnostics(
     [property: JsonPropertyName("requiresV2Signature")] bool? RequiresV2Signature,
     [property: JsonPropertyName("hasSharedGatewayToken")] bool HasSharedGatewayToken,
     [property: JsonPropertyName("hasBootstrapToken")] bool HasBootstrapToken,
+    [property: JsonPropertyName("packageVersion")] string? PackageVersion,
     [property: JsonPropertyName("browserControlPort")] int? BrowserControlPort,
     [property: JsonPropertyName("browserProxyCaveat")] string? BrowserProxyCaveat,
     [property: JsonPropertyName("sshTunnel")] GatewaySshTunnelDiagnostics? SshTunnel);
+
+internal sealed record ProtocolDiagnostics(
+    [property: JsonPropertyName("selectedProtocol")] int? SelectedProtocol,
+    [property: JsonPropertyName("currentProtocol")] int CurrentProtocol,
+    [property: JsonPropertyName("minimumSupportedProtocol")] int MinimumSupportedProtocol,
+    [property: JsonPropertyName("maximumSupportedProtocol")] int MaximumSupportedProtocol,
+    [property: JsonPropertyName("compatibility")] string Compatibility,
+    [property: JsonPropertyName("source")] string? Source,
+    [property: JsonPropertyName("gatewayExpectedProtocol")] int? GatewayExpectedProtocol,
+    [property: JsonPropertyName("gatewayMinimumProtocol")] int? GatewayMinimumProtocol,
+    [property: JsonPropertyName("retryable")] bool Retryable,
+    [property: JsonPropertyName("operator")] RoleProtocolDiagnostics Operator,
+    [property: JsonPropertyName("node")] RoleProtocolDiagnostics Node);
+
+internal sealed record RoleProtocolDiagnostics(
+    [property: JsonPropertyName("compatibility")] string Compatibility,
+    [property: JsonPropertyName("selectedProtocol")] int? SelectedProtocol,
+    [property: JsonPropertyName("gatewayExpectedProtocol")] int? GatewayExpectedProtocol,
+    [property: JsonPropertyName("gatewayMinimumProtocol")] int? GatewayMinimumProtocol,
+    [property: JsonPropertyName("retryable")] bool Retryable);
 
 internal sealed record GatewaySshTunnelDiagnostics(
     [property: JsonPropertyName("user")] string User,

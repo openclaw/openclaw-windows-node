@@ -68,7 +68,9 @@ internal interface INodeConnectionStateSource
 internal readonly record struct NodeConnectorSnapshot(
     bool IsConnected,
     PairingStatus PairingStatus,
-    string? NodeDeviceId);
+    string? NodeDeviceId,
+    GatewayProtocolCompatibility ProtocolCompatibility,
+    GatewayErrorKind? FailureKind);
 
 internal enum NodeAutomaticStartDisposition
 {
@@ -152,6 +154,9 @@ internal sealed class NodeConnectionCoordinator : INodePairReconnectPort
     private long _startGuardVersion;
     private CancellationTokenSource? _operationCts;
     private string? _tokenRecoveryAttemptedGatewayId;
+    private GatewayProtocolCompatibility _protocolCompatibility =
+        GatewayProtocolCompatibility.Unknown;
+    private GatewayErrorKind? _failureKind;
     private TelemetryAttempt? _telemetryAttempt;
     private int _stopped;
 
@@ -397,6 +402,8 @@ internal sealed class NodeConnectionCoordinator : INodePairReconnectPort
                     operationToken = operationCts.Token;
                     var nodeGeneration = Interlocked.Increment(ref _nodeGeneration);
                     attempt = new NodeAttemptStamp(gatewayAttempt, nodeGeneration);
+                    _protocolCompatibility = GatewayProtocolCompatibility.Unknown;
+                    _failureKind = null;
                     _operationCts = operationCts;
                 }
 
@@ -745,6 +752,7 @@ internal sealed class NodeConnectionCoordinator : INodePairReconnectPort
 
         lock (_operationLock)
         {
+            _failureKind = errorKind;
             Interlocked.CompareExchange(
                 ref _startLifecycleGeneration,
                 -1,
@@ -763,6 +771,27 @@ internal sealed class NodeConnectionCoordinator : INodePairReconnectPort
             // proxy task is tracked and still drains on shutdown. Rationale and the
             // regression proofs live in NodeConnectionCoordinatorTests.
             TrackBackground(Task.Run(() => HandleDeviceTokenMismatchAsync(attempt)));
+        }
+    }
+
+    internal void HandleProtocolCompatibilityChanged(
+        GatewayProtocolCompatibility compatibility)
+    {
+        var attempt = CaptureCurrentAttempt();
+        if (!IsCurrentNodeAttempt(attempt))
+            return;
+
+        lock (_operationLock)
+        {
+            if (!IsCurrentNodeAttempt(attempt))
+                return;
+            _protocolCompatibility = compatibility;
+        }
+
+        lock (_telemetryLock)
+        {
+            if (_telemetryAttempt?.Generation == attempt.NodeGeneration)
+                _telemetryAttempt.ProtocolCompatibility = compatibility;
         }
     }
 
@@ -1058,11 +1087,18 @@ internal sealed class NodeConnectionCoordinator : INodePairReconnectPort
         return version;
     }
 
-    private NodeConnectorSnapshot CaptureConnectorSnapshot() =>
-        new(
-            _nodeConnector?.IsConnected == true,
-            _nodeConnector?.PairingStatus ?? PairingStatus.Unknown,
-            _nodeConnector?.NodeDeviceId);
+    private NodeConnectorSnapshot CaptureConnectorSnapshot()
+    {
+        lock (_operationLock)
+        {
+            return new(
+                _nodeConnector?.IsConnected == true,
+                _nodeConnector?.PairingStatus ?? PairingStatus.Unknown,
+                _nodeConnector?.NodeDeviceId,
+                _protocolCompatibility,
+                _failureKind);
+        }
+    }
 
     private void TrackBackground(Task task)
     {
@@ -1291,6 +1327,22 @@ internal sealed class NodeConnectionCoordinator : INodePairReconnectPort
             OpenClawTelemetryTag.String(OperationTag, attempt.Operation),
             OpenClawTelemetryTag.String(OpenClawTelemetryTagKey.Outcome, outcome)
         };
+        var compatibility = attempt.ProtocolCompatibility;
+        tags.Add(OpenClawTelemetryTag.Number(
+            OpenClawTelemetryTagKey.ClientProtocol,
+            GatewayProtocolContract.CurrentVersion));
+        tags.Add(OpenClawTelemetryTag.String(
+            OpenClawTelemetryTagKey.GatewayProtocol,
+            compatibility.GatewayProtocol switch
+            {
+                < GatewayProtocolContract.MinimumSupportedVersion => "older",
+                > GatewayProtocolContract.MaximumSupportedVersion => "newer",
+                not null => "current",
+                _ => "unknown"
+            }));
+        tags.Add(OpenClawTelemetryTag.String(
+            OpenClawTelemetryTagKey.ProtocolCompatibility,
+            compatibility.NormalizedState));
         if (errorCategory.HasValue)
         {
             tags.Add(OpenClawTelemetryTag.String(
@@ -1364,7 +1416,8 @@ internal sealed class NodeConnectionCoordinator : INodePairReconnectPort
             GatewayErrorKind.Network or
             GatewayErrorKind.Tls => ConnectionErrorCategory.NetworkUnreachable,
             GatewayErrorKind.Server => ConnectionErrorCategory.ServerClose,
-            _ => ConnectionErrorCategory.ProtocolMismatch
+            GatewayErrorKind.ProtocolMismatch => ConnectionErrorCategory.ProtocolMismatch,
+            _ => ConnectionErrorCategory.InternalError
         };
 
     private static bool HasPersistedIdentityFailure(
@@ -1391,6 +1444,8 @@ internal sealed class NodeConnectionCoordinator : INodePairReconnectPort
         public Activity? PhaseActivity { get; set; }
         public string? PhaseName { get; set; }
         public long PhaseGeneration { get; set; }
+        public GatewayProtocolCompatibility ProtocolCompatibility { get; set; } =
+            GatewayProtocolCompatibility.Unknown;
     }
 
     private sealed class NodeStartGuardLease

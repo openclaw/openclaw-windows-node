@@ -10,6 +10,7 @@ internal enum HubPageKind
 {
     Chat,
     Connection,
+    LocalAi,
     Channels,
     Instances,
     Config,
@@ -88,6 +89,8 @@ internal static class HubPageRegistry
     [
         "Command_GoToConnection_Title",
         "Command_GoToConnection_Subtitle",
+        "Command_GoToLocalAi_Title",
+        "Command_GoToLocalAi_Subtitle",
         "Command_GoToChat_Title",
         "Command_GoToChat_Subtitle",
         "Command_GoToSessions_Title",
@@ -145,6 +148,7 @@ internal static class HubPageRegistry
     {
         "chat" => HubPageKind.Chat,
         "connection" => HubPageKind.Connection,
+        "local-ai" => HubPageKind.LocalAi,
         "channels" => HubPageKind.Channels,
         "nodes" or "instances" => HubPageKind.Instances,
         "config" => HubPageKind.Config,
@@ -220,6 +224,7 @@ internal static class HubPageRegistry
     {
         HubPageKind.Chat => typeof(ChatPage),
         HubPageKind.Connection => typeof(ConnectionPage),
+        HubPageKind.LocalAi => typeof(LocalAiPage),
         HubPageKind.Channels => typeof(ChannelsPage),
         HubPageKind.Instances => typeof(InstancesPage),
         HubPageKind.Config => typeof(ConfigPage),
@@ -245,6 +250,7 @@ internal static class HubPageRegistry
         var commands = ImmutableArray.CreateBuilder<HubCommand>();
 
         AddNavigation(commands, context, "🔌", "Command_GoToConnection", "connection");
+        AddNavigation(commands, context, "AI", "Command_GoToLocalAi", "local-ai");
         AddNavigation(commands, context, "💬", "Command_GoToChat", "chat");
         AddNavigation(commands, context, "🧠", "Command_GoToSessions", "sessions");
         AddNavigation(commands, context, "🧠", "Command_GoToAgentEvents", "agentevents");

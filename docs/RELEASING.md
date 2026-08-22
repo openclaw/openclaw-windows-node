@@ -20,7 +20,7 @@ build/sign/publish release artifacts.
 
    ```powershell
    Select-String .\.github\workflows\ci.yml -Pattern `
-     "Verify Release Executable Signing Policy", `
+     "Verify Release Binary Signing Policy", `
      "OpenClaw.Tray.WinUI.exe", `
      "build-msix:", `
      "MSIX distribution is paused"
@@ -89,14 +89,21 @@ installers and signed portable update payloads. This pause is independent of
 whether a tag is stable or alpha. Re-enable MSIX only with packaged
 camera/microphone consent validation and release coverage.
 
-## Executable signing policy
+## Binary signing policy
 
-Only OpenClaw-owned executables should be signed by the OpenClaw release signing
+Only OpenClaw-owned binaries should be signed by the OpenClaw release signing
 identity.
 
-OpenClaw-owned executables:
+OpenClaw-owned binaries:
 
 - `OpenClaw.Tray.WinUI.exe`
+- `OpenClaw.Tray.WinUI.dll`
+- `OpenClaw.Chat.dll`
+- `OpenClaw.Connection.dll`
+- `OpenClaw.SetupEngine.UI.dll`
+- `OpenClaw.SetupEngine.dll`
+- `OpenClaw.Shared.dll`
+- `OpenClawTray.FunctionalUI.dll`
 
 Third-party/runtime executables that must not be OpenClaw-signed:
 
@@ -106,8 +113,11 @@ Third-party/runtime executables that must not be OpenClaw-signed:
 - `SetupEngine\RestartAgent.exe`
 
 CI enforces this with `scripts\Test-ReleaseExecutableSignatures.ps1`. The
-verifier fails closed on unknown `.exe` files so future payload changes are
-reviewed deliberately.
+verifier inspects every shipped `.exe` and `.dll`, fails closed on unknown
+executables and unknown OpenClaw-named binaries, and rejects an OpenClaw
+signature on third-party/runtime binaries. When release signing is required,
+every allowlisted OpenClaw binary must have a valid signature from the expected
+OpenClaw release signer; a valid signature from another publisher is rejected.
 
 CI also checks native runtime dependencies before release packaging. Both the
 x64 and ARM64 portable payloads must ship `vcruntime140.dll` in the payload
@@ -146,13 +156,13 @@ Do not add `AZURE_CLIENT_SECRET` back to the release workflow. The Entra app
 registration should have a federated credential for:
 `repo:openclaw/openclaw-windows-node:environment:release-signing`.
 
-## How CI signs payload executables
+## How CI signs payload binaries
 
 The release workflow does not recursively sign every `.exe`. Instead it creates
 temporary signing input directories with hardlinks to only the OpenClaw-owned
-executables from the x64 and ARM64 payloads, then runs Azure Artifact Signing on
-those allowlists. Because these are NTFS hardlinks, signing the staged file
-signs the real payload file.
+executables and DLLs from the x64 and ARM64 payloads, then runs Azure Artifact
+Signing on those allowlists. Because these are NTFS hardlinks, signing the
+staged file signs the real payload file.
 
 After signing, CI verifies the actual payload directory, not the staging folder.
 If hardlink signing does not affect the payload, the verifier fails before
@@ -180,8 +190,8 @@ The release job should:
 
 1. Download x64/ARM64 tray payload artifacts.
 2. Authenticate to Azure with OIDC in the `release-signing` environment.
-3. Sign only the OpenClaw-owned EXEs in both payloads.
-4. Verify executable signing policy.
+3. Sign only the OpenClaw-owned EXEs and DLLs in both payloads.
+4. Verify binary signing policy.
 5. Create the portable x64 and ARM64 ZIPs.
 6. Build Inno installers.
 7. Sign installers.
@@ -206,6 +216,7 @@ Expected:
 - Installer EXEs are signed.
 - In ZIP payload:
   - `OpenClaw.Tray.WinUI.exe` is OpenClaw-signed.
+  - All listed OpenClaw-owned DLLs are OpenClaw-signed.
   - `wxc-exec.exe`, `createdump.exe`, and `RestartAgent.exe` are not
     OpenClaw-signed.
 

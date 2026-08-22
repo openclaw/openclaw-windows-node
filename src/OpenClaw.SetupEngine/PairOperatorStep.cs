@@ -598,7 +598,7 @@ public sealed class PairOperatorStep : SetupStep
 
             if (string.IsNullOrWhiteSpace(token)) return;
 
-            var gatewayUrl = ctx.GatewayUrl ?? "ws://localhost:18789";
+            var gatewayUrl = ctx.GatewayUrl ?? "ws://127.0.0.1:18789";
             var httpBase = gatewayUrl
                 .Replace("ws://", "http://", StringComparison.OrdinalIgnoreCase)
                 .Replace("wss://", "https://", StringComparison.OrdinalIgnoreCase)

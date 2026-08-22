@@ -44,6 +44,9 @@ public class LocalizationValidationTests
         "VoiceOverlayWindow_winexWindowEx_2.Title",
         // Brand name — identical across all locales.
         "ConnectionPage_TopologyTailscale",
+        // Native engine executable/product name. Keep the exact llama-server
+        // spelling in every locale so it matches diagnostics and process names.
+        "LocalAiPage_EngineHeading.Text",
         // Product/feature name — "OpenClaw Onboard" is kept identical across
         // all locales (the card's description and button are translated).
         "SettingsPage_OnboardWizard_Header.Text",
