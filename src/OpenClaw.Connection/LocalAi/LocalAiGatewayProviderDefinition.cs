@@ -86,12 +86,9 @@ public static class LocalAiGatewayProviderDefinition
     private static string BuildProviderJson(LocalAiResolvedInstall install, string apiKey)
     {
         ArgumentNullException.ThrowIfNull(install);
+        LocalModelInfo model = GetQualifiedModel(install);
         Uri endpoint = install.Endpoint
             ?? throw new InvalidOperationException("The verified Local AI endpoint is required.");
-        LocalModelInfo model = LocalModelCatalog.Find(install.Manifest.ModelCatalogId)
-            ?? throw new InvalidDataException("The managed Local AI model is no longer qualified.");
-        if (!string.Equals(model.Id, install.Manifest.ModelAlias, StringComparison.Ordinal))
-            throw new InvalidDataException("The managed Local AI model alias does not match the qualified catalog.");
 
         var value = new
         {
@@ -122,7 +119,17 @@ public static class LocalAiGatewayProviderDefinition
     public static string BuildPrimaryModel(LocalAiResolvedInstall install)
     {
         ArgumentNullException.ThrowIfNull(install);
+        _ = GetQualifiedModel(install);
         return $"llamacpp/{install.Manifest.ModelAlias}";
+    }
+
+    private static LocalModelInfo GetQualifiedModel(LocalAiResolvedInstall install)
+    {
+        LocalModelInfo model = LocalModelCatalog.Find(install.Manifest.ModelCatalogId)
+            ?? throw new InvalidDataException("The managed Local AI model is no longer qualified.");
+        if (!string.Equals(model.Id, install.Manifest.ModelAlias, StringComparison.Ordinal))
+            throw new InvalidDataException("The managed Local AI model alias does not match the qualified catalog.");
+        return model;
     }
 
     public static void ValidateFallbackModel(string? model)

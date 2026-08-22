@@ -64,6 +64,112 @@ public sealed class LocalAiGatewayProviderCoordinatorTests
     }
 
     [Fact]
+    public async Task Quiesce_NoProviderWithoutEndpoint_Succeeds()
+    {
+        LocalAiResolvedInstall install = InstallWithoutEndpoint(28_765);
+        var commands = new FakeWslCommandRunner(providerJson: null);
+        var coordinator = CreateCoordinator(commands);
+
+        LocalAiEndpointLifecycleResult result = await coordinator.QuiesceAsync(install);
+
+        Assert.True(result.Success);
+        Assert.Null(commands.ProviderJson);
+        Assert.Null(commands.PrimaryModel);
+        Assert.DoesNotContain(commands.Calls, call => call.Contains("unset"));
+    }
+
+    [Fact]
+    public async Task Quiesce_ExistingProviderWithoutEndpoint_PreservesProviderAndFailsClosed()
+    {
+        LocalAiResolvedInstall runningInstall = Install(28_765);
+        string provider = LocalAiGatewayProviderDefinition.BuildProviderJson(runningInstall);
+        var commands = new FakeWslCommandRunner(
+            provider,
+            LocalAiGatewayProviderDefinition.BuildPrimaryModel(runningInstall));
+        var coordinator = CreateCoordinator(commands);
+
+        LocalAiEndpointLifecycleResult result = await coordinator.QuiesceAsync(
+            InstallWithoutEndpoint(28_765));
+
+        Assert.False(result.Success);
+        Assert.Contains("verified Local AI endpoint is required", result.Detail, StringComparison.Ordinal);
+        Assert.Equal(provider, commands.ProviderJson);
+        Assert.Equal(LocalAiGatewayProviderDefinition.BuildPrimaryModel(runningInstall), commands.PrimaryModel);
+        Assert.DoesNotContain(commands.Calls, call => call.Contains("unset"));
+    }
+
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task Quiesce_NoProviderWithUnqualifiedManagedModel_PreservesPrimaryAndFailsClosed(
+        bool unknownCatalog)
+    {
+        LocalAiResolvedInstall valid = InstallWithoutEndpoint(28_765);
+        LocalAiResolvedInstall tampered = valid with
+        {
+            Manifest = valid.Manifest with
+            {
+                ModelCatalogId = unknownCatalog ? "missing-model" : valid.Manifest.ModelCatalogId,
+                ModelAlias = unknownCatalog ? valid.Manifest.ModelAlias : "tampered-model",
+            },
+        };
+        string primary = $"llamacpp/{tampered.Manifest.ModelAlias}";
+        var commands = new FakeWslCommandRunner(providerJson: null, primary);
+        var coordinator = CreateCoordinator(commands);
+
+        LocalAiEndpointLifecycleResult result = await coordinator.QuiesceAsync(tampered);
+
+        Assert.False(result.Success);
+        Assert.Contains("qualified", result.Detail, StringComparison.Ordinal);
+        Assert.Null(commands.ProviderJson);
+        Assert.Equal(primary, commands.PrimaryModel);
+        Assert.DoesNotContain(commands.Calls, call => call.Contains("unset"));
+        Assert.DoesNotContain(commands.Calls, call => call.Contains("/bin/sh"));
+    }
+
+    [Fact]
+    public async Task Quiesce_NoProviderWithoutEndpoint_UnsetsManagedPrimary()
+    {
+        LocalAiResolvedInstall install = InstallWithoutEndpoint(28_765);
+        var commands = new FakeWslCommandRunner(
+            providerJson: null,
+            LocalAiGatewayProviderDefinition.BuildPrimaryModel(install));
+        var coordinator = CreateCoordinator(commands);
+
+        LocalAiEndpointLifecycleResult result = await coordinator.QuiesceAsync(install);
+
+        Assert.True(result.Success);
+        Assert.Null(commands.ProviderJson);
+        Assert.Null(commands.PrimaryModel);
+        Assert.Contains(commands.Calls, call =>
+            call.Contains("unset") &&
+            call.Contains(LocalAiGatewayProviderDefinition.PrimaryModelPath));
+    }
+
+    [Fact]
+    public async Task Quiesce_NoProviderWithoutEndpoint_RestoresFallbackPrimary()
+    {
+        LocalAiResolvedInstall install = InstallWithoutEndpoint(28_765, "openai/gpt-5");
+        var commands = new FakeWslCommandRunner(
+            providerJson: null,
+            LocalAiGatewayProviderDefinition.BuildPrimaryModel(install))
+        {
+            PrimaryAfterApply = "openai/gpt-5",
+        };
+        var coordinator = CreateCoordinator(commands);
+
+        LocalAiEndpointLifecycleResult result = await coordinator.QuiesceAsync(install);
+
+        Assert.True(result.Success);
+        Assert.Null(commands.ProviderJson);
+        Assert.Equal("openai/gpt-5", commands.PrimaryModel);
+        Assert.Contains(commands.Calls, call => call.Contains("/bin/sh"));
+        Assert.DoesNotContain(commands.Calls, call =>
+            call.Contains("unset") &&
+            call.Contains(LocalAiGatewayProviderDefinition.ProviderPath));
+    }
+
+    [Fact]
     public async Task Publish_UsesVerifiedEndpointAndNonDefaultManagedDistro()
     {
         LocalAiResolvedInstall install = Install(28_766);
@@ -320,6 +426,18 @@ public sealed class LocalAiGatewayProviderCoordinatorTests
             ContextLength = LocalModelCatalog.NativeContextTokens,
         };
         return new(manifest, "llama-server.exe", "model.gguf", endpoint);
+    }
+
+    private static LocalAiResolvedInstall InstallWithoutEndpoint(
+        int port,
+        string? fallbackModel = null)
+    {
+        LocalAiResolvedInstall install = Install(port, fallbackModel);
+        return install with
+        {
+            Manifest = install.Manifest with { Endpoint = null },
+            Endpoint = null,
+        };
     }
 
     private static string RedactApiKey(string value) => value.Replace(
