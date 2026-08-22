@@ -56,4 +56,26 @@
     <ProjectReference Include="..\..\src\OpenClaw.Shared\OpenClaw.Shared.csproj" />
   </ItemGroup>
 
+  <Target Name="CopyLocalAiPageXbfForUiProof" AfterTargets="Build">
+    <MSBuild Projects="..\..\src\OpenClaw.Tray.WinUI\OpenClaw.Tray.WinUI.csproj"
+             Targets="GetTargetPath"
+             Properties="Configuration=$(Configuration);Platform=$(Platform);RuntimeIdentifier=$(RuntimeIdentifier)">
+      <Output TaskParameter="TargetOutputs" ItemName="_TrayWinUiTargetPath" />
+    </MSBuild>
+    <PropertyGroup>
+      <_TrayWinUiTargetDir>@(_TrayWinUiTargetPath->'%(RootDir)%(Directory)')</_TrayWinUiTargetDir>
+      <_LocalAiPageXbf>$(_TrayWinUiTargetDir)Pages\LocalAiPage.xbf</_LocalAiPageXbf>
+    </PropertyGroup>
+    <Error Condition="!Exists('$(_LocalAiPageXbf)')"
+           Text="LocalAiPage.xbf was not produced at '$(_LocalAiPageXbf)'." />
+    <Copy SourceFiles="$(_LocalAiPageXbf)"
+          DestinationFolder="$(TargetDir)Pages"
+          SkipUnchangedFiles="true">
+      <Output TaskParameter="CopiedFiles" ItemName="_CopiedLocalAiPageXbf" />
+    </Copy>
+    <ItemGroup>
+      <FileWrites Include="@(_CopiedLocalAiPageXbf)" />
+    </ItemGroup>
+  </Target>
+
 </Project>
