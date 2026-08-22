@@ -123,6 +123,21 @@ public sealed class GatewayTailscaleAuthLiveVerifierTests
             verifier.VerifyAsync(ManagedRecord(), 18789, cancellation.Token));
     }
 
+    [Fact]
+    public async Task StandardInputCompatibilityDefault_PropagatesPreCancellation()
+    {
+        IWslCommandRunner runner = new LegacyWslCommandRunner();
+        using var cancellation = new CancellationTokenSource();
+        cancellation.Cancel();
+
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() =>
+            runner.RunInDistroWithStandardInputAsync(
+                "OpenClawGateway",
+                ["/bin/bash", "-s"],
+                "exit 0",
+                cancellation.Token));
+    }
+
     [Theory]
     [InlineData("other.tail.example.", 18789, false, "NotReady")]
     [InlineData("host.tail.example.", 19999, false, "NotReady")]
@@ -192,16 +207,20 @@ public sealed class GatewayTailscaleAuthLiveVerifierTests
         Assert.Equal(GatewayTailscaleAuthLiveState.Ready, result);
         Assert.Equal(3, runner.ProbeCalls);
         Assert.Equal("/bin/bash", runner.Commands[2][0]);
-        Assert.Contains("systemctl --user show openclaw-gateway", runner.Commands[2][2], StringComparison.Ordinal);
-        Assert.Equal(2, runner.Commands[2][2].Split("systemctl", StringSplitOptions.None).Length - 1);
-        Assert.Contains(":18789", runner.Commands[2][2], StringComparison.Ordinal);
-        Assert.Contains(":35225", runner.Commands[2][2], StringComparison.Ordinal);
-        Assert.Contains("/proc/$pid_before/cgroup", runner.Commands[2][2], StringComparison.Ordinal);
-        Assert.Contains("--bg=false", runner.Commands[2][2], StringComparison.Ordinal);
-        Assert.Contains("tailscale-route-owner.worker.js", runner.Commands[2][2], StringComparison.Ordinal);
-        Assert.Contains("--openclaw-tailscale-route-owner", runner.Commands[2][2], StringComparison.Ordinal);
-        Assert.Contains("/proc/$matched_pid/stat", runner.Commands[2][2], StringComparison.Ordinal);
-        Assert.Contains("candidate_count\" -eq 1", runner.Commands[2][2], StringComparison.Ordinal);
+        Assert.Equal("-s", runner.Commands[2][1]);
+        Assert.Single(runner.StandardInputs);
+        var script = runner.StandardInputs[0];
+        Assert.DoesNotContain('\r', script);
+        Assert.Contains("systemctl --user show openclaw-gateway", script, StringComparison.Ordinal);
+        Assert.Equal(2, script.Split("systemctl", StringSplitOptions.None).Length - 1);
+        Assert.Contains(":18789", script, StringComparison.Ordinal);
+        Assert.Contains(":35225", script, StringComparison.Ordinal);
+        Assert.Contains("/proc/$pid_before/cgroup", script, StringComparison.Ordinal);
+        Assert.Contains("--bg=false", script, StringComparison.Ordinal);
+        Assert.Contains("tailscale-route-owner.worker.js", script, StringComparison.Ordinal);
+        Assert.Contains("--openclaw-tailscale-route-owner", script, StringComparison.Ordinal);
+        Assert.Contains("/proc/$matched_pid/stat", script, StringComparison.Ordinal);
+        Assert.Contains("candidate_count\" -eq 1", script, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -698,6 +717,7 @@ public sealed class GatewayTailscaleAuthLiveVerifierTests
         public string? DistroName { get; private set; }
         public List<IReadOnlyList<string>> Commands { get; } = [];
         public List<IReadOnlyList<string>> HostArguments { get; } = [];
+        public List<string> StandardInputs { get; } = [];
 
         public Task<WslCommandResult> RunInDistroAsync(
             string name,
@@ -709,6 +729,17 @@ public sealed class GatewayTailscaleAuthLiveVerifierTests
             DistroName = name;
             Commands.Add(command);
             return runInDistro(name, command, cancellationToken);
+        }
+
+        public Task<WslCommandResult> RunInDistroWithStandardInputAsync(
+            string name,
+            IReadOnlyList<string> command,
+            string standardInput,
+            CancellationToken cancellationToken = default,
+            IReadOnlyDictionary<string, string>? environment = null)
+        {
+            StandardInputs.Add(standardInput);
+            return RunInDistroAsync(name, command, cancellationToken, environment);
         }
 
         public Task<WslCommandResult> RunAsync(
@@ -741,6 +772,36 @@ public sealed class GatewayTailscaleAuthLiveVerifierTests
         public Task<WslCommandResult> UnregisterDistroAsync(
             string name,
             CancellationToken cancellationToken = default) =>
+            throw new NotSupportedException();
+    }
+
+    private sealed class LegacyWslCommandRunner : IWslCommandRunner
+    {
+        public Task<WslCommandResult> RunAsync(
+            IReadOnlyList<string> arguments,
+            CancellationToken cancellationToken = default,
+            IReadOnlyDictionary<string, string>? environment = null) =>
+            throw new NotSupportedException();
+
+        public Task<IReadOnlyList<WslDistroInfo>> ListDistrosAsync(
+            CancellationToken cancellationToken = default) =>
+            throw new NotSupportedException();
+
+        public Task<WslCommandResult> TerminateDistroAsync(
+            string name,
+            CancellationToken cancellationToken = default) =>
+            throw new NotSupportedException();
+
+        public Task<WslCommandResult> UnregisterDistroAsync(
+            string name,
+            CancellationToken cancellationToken = default) =>
+            throw new NotSupportedException();
+
+        public Task<WslCommandResult> RunInDistroAsync(
+            string name,
+            IReadOnlyList<string> command,
+            CancellationToken cancellationToken = default,
+            IReadOnlyDictionary<string, string>? environment = null) =>
             throw new NotSupportedException();
     }
 }

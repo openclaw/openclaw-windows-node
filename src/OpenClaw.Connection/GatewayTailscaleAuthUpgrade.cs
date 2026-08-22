@@ -212,9 +212,14 @@ internal sealed class GatewayTailscaleAuthLiveVerifier : IGatewayTailscaleAuthLi
         WslCommandResult ownershipResult;
         try
         {
-            ownershipResult = await _commandRunner.RunInDistroAsync(
+            var ownershipScript = BuildManagedIngressOwnershipScript(
+                    gatewayPort,
+                    managedIngressPort)
+                .Replace("\r", string.Empty, StringComparison.Ordinal);
+            ownershipResult = await _commandRunner.RunInDistroWithStandardInputAsync(
                     distroName,
-                    BuildManagedIngressOwnershipCommand(gatewayPort, managedIngressPort),
+                    ["/bin/bash", "-s"],
+                    ownershipScript,
                     timeout.Token)
                 .ConfigureAwait(false);
         }
@@ -243,7 +248,7 @@ internal sealed class GatewayTailscaleAuthLiveVerifier : IGatewayTailscaleAuthLi
         IReadOnlyList<string> command) =>
         ["-d", distroName, "--user", "root", "--", .. command];
 
-    private static IReadOnlyList<string> BuildManagedIngressOwnershipCommand(
+    private static string BuildManagedIngressOwnershipScript(
         int gatewayPort,
         int managedIngressPort)
     {
@@ -329,7 +334,7 @@ internal sealed class GatewayTailscaleAuthLiveVerifier : IGatewayTailscaleAuthLi
               /usr/bin/printf not-owned
             fi
             """;
-        return ["/bin/bash", "-lc", script];
+        return script;
     }
 }
 
