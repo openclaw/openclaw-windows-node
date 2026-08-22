@@ -200,15 +200,137 @@ internal sealed class GatewayTailscaleAuthLiveVerifier : IGatewayTailscaleAuthLi
             return GatewayTailscaleAuthLiveState.Unavailable;
         }
 
-        return serveStatus.RoutesToGateway && !serveStatus.FunnelEnabled
-            ? GatewayTailscaleAuthLiveState.Ready
-            : GatewayTailscaleAuthLiveState.NotReady;
+        if (serveStatus.FunnelEnabled)
+            return GatewayTailscaleAuthLiveState.NotReady;
+        if (serveStatus.ForegroundProxyPort is not { } managedIngressPort)
+        {
+            return serveStatus.RoutesToGateway
+                ? GatewayTailscaleAuthLiveState.Ready
+                : GatewayTailscaleAuthLiveState.NotReady;
+        }
+
+        WslCommandResult ownershipResult;
+        try
+        {
+            ownershipResult = await _commandRunner.RunInDistroAsync(
+                    distroName,
+                    BuildManagedIngressOwnershipCommand(gatewayPort, managedIngressPort),
+                    timeout.Token)
+                .ConfigureAwait(false);
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch
+        {
+            return GatewayTailscaleAuthLiveState.Unavailable;
+        }
+
+        if (!ownershipResult.Success)
+            return GatewayTailscaleAuthLiveState.Unavailable;
+
+        return ownershipResult.StandardOutput.Trim() switch
+        {
+            "owned" => GatewayTailscaleAuthLiveState.Ready,
+            "not-owned" => GatewayTailscaleAuthLiveState.NotReady,
+            _ => GatewayTailscaleAuthLiveState.Unavailable,
+        };
     }
 
     private static IReadOnlyList<string> BuildRootProbeArguments(
         string distroName,
         IReadOnlyList<string> command) =>
         ["-d", distroName, "--user", "root", "--", .. command];
+
+    private static IReadOnlyList<string> BuildManagedIngressOwnershipCommand(
+        int gatewayPort,
+        int managedIngressPort)
+    {
+        var script = $$"""
+            pid_before=$(/usr/bin/systemctl --user show openclaw-gateway -p MainPID --value 2>/dev/null)
+            case "$pid_before" in ''|*[!0-9]*) /usr/bin/printf unavailable; exit 0;; esac
+            test "$pid_before" -gt 0 || { /usr/bin/printf unavailable; exit 0; }
+            main_cgroup=$(/usr/bin/awk -F: '$1 == "0" { print $3 }' "/proc/$pid_before/cgroup" 2>/dev/null)
+            main_start_before=$(/usr/bin/awk '{ print $22 }' "/proc/$pid_before/stat" 2>/dev/null)
+            main_exe=$(/usr/bin/readlink -f "/proc/$pid_before/exe" 2>/dev/null)
+            test -n "$main_cgroup" && test -n "$main_start_before" && test -n "$main_exe" || { /usr/bin/printf unavailable; exit 0; }
+            listener_pattern='(^|[[:space:]])127\.0\.0\.1:({{gatewayPort}}|{{managedIngressPort}})([[:space:]]|$)'
+            listeners_raw_before=$(/usr/bin/ss -H -ltnp 2>/dev/null) || { /usr/bin/printf unavailable; exit 0; }
+            listeners_before=$(/usr/bin/printf '%s\n' "$listeners_raw_before" | /usr/bin/grep -E "$listener_pattern" || true)
+            candidate_count=0
+            matched_pid=''
+            matched_start=''
+            matched_parent=''
+            matched_parent_start=''
+            matched_worker=''
+            matched_worker_start=''
+            for proc in /proc/[0-9]*; do
+              unset argv
+              declare -a argv=()
+              while IFS= read -r -d '' arg; do argv+=("$arg"); done < "$proc/cmdline" 2>/dev/null
+              test "${#argv[@]}" -eq 5 || continue
+              test "${argv[0]}" = /usr/bin/tailscale && test "${argv[1]}" = serve && test "${argv[2]}" = --yes && test "${argv[3]}" = --bg=false && test "${argv[4]}" = {{managedIngressPort}} || continue
+              candidate_pid=${proc##*/}
+              candidate_exe=$(/usr/bin/readlink -f "$proc/exe" 2>/dev/null)
+              candidate_cgroup=$(/usr/bin/awk -F: '$1 == "0" { print $3 }' "$proc/cgroup" 2>/dev/null)
+              candidate_start=$(/usr/bin/awk '{ print $22 }' "$proc/stat" 2>/dev/null)
+              candidate_parent=$(/usr/bin/awk '/^PPid:/ { print $2 }' "$proc/status" 2>/dev/null)
+              test "$candidate_exe" = /usr/bin/tailscale && test "$candidate_cgroup" = "$main_cgroup" && test -n "$candidate_start" || continue
+              route_owner=$candidate_parent
+              parent_exe=$(/usr/bin/readlink -f "/proc/$candidate_parent/exe" 2>/dev/null)
+              if test "$parent_exe" = /usr/bin/sudo; then
+                unset sudo_argv
+                declare -a sudo_argv=()
+                while IFS= read -r -d '' arg; do sudo_argv+=("$arg"); done < "/proc/$candidate_parent/cmdline" 2>/dev/null
+                test "${#sudo_argv[@]}" -eq 7 && test "${sudo_argv[0]}" = sudo && test "${sudo_argv[1]}" = -n && test "${sudo_argv[2]}" = /usr/bin/tailscale && test "${sudo_argv[3]}" = serve && test "${sudo_argv[4]}" = --yes && test "${sudo_argv[5]}" = --bg=false && test "${sudo_argv[6]}" = {{managedIngressPort}} || continue
+                parent_cgroup=$(/usr/bin/awk -F: '$1 == "0" { print $3 }' "/proc/$candidate_parent/cgroup" 2>/dev/null)
+                test "$parent_cgroup" = "$main_cgroup" || continue
+                route_owner=$(/usr/bin/awk '/^PPid:/ { print $2 }' "/proc/$candidate_parent/status" 2>/dev/null)
+              fi
+              worker_exe=$(/usr/bin/readlink -f "/proc/$route_owner/exe" 2>/dev/null)
+              worker_cgroup=$(/usr/bin/awk -F: '$1 == "0" { print $3 }' "/proc/$route_owner/cgroup" 2>/dev/null)
+              worker_parent=$(/usr/bin/awk '/^PPid:/ { print $2 }' "/proc/$route_owner/status" 2>/dev/null)
+              worker_start=$(/usr/bin/awk '{ print $22 }' "/proc/$route_owner/stat" 2>/dev/null)
+              test "$worker_exe" = "$main_exe" && test "$worker_cgroup" = "$main_cgroup" && test "$worker_parent" = "$pid_before" && test -n "$worker_start" || continue
+              unset worker_argv
+              declare -a worker_argv=()
+              while IFS= read -r -d '' arg; do worker_argv+=("$arg"); done < "/proc/$route_owner/cmdline" 2>/dev/null
+              test "${#worker_argv[@]}" -eq 4 || continue
+              case "${worker_argv[1]}" in */dist/infra/tailscale-route-owner.worker.js) ;; *) continue;; esac
+              test "${worker_argv[2]}" = --openclaw-tailscale-route-owner || continue
+              expected_direct='{"argv":["/usr/bin/tailscale","serve","--yes","--bg=false","{{managedIngressPort}}"]}'
+              expected_sudo='{"argv":["sudo","-n","/usr/bin/tailscale","serve","--yes","--bg=false","{{managedIngressPort}}"]}'
+              test "${worker_argv[3]}" = "$expected_direct" || test "${worker_argv[3]}" = "$expected_sudo" || continue
+              candidate_count=$((candidate_count + 1))
+              matched_pid=$candidate_pid
+              matched_start=$candidate_start
+              matched_parent=$candidate_parent
+              matched_parent_start=$(/usr/bin/awk '{ print $22 }' "/proc/$candidate_parent/stat" 2>/dev/null)
+              matched_worker=$route_owner
+              matched_worker_start=$worker_start
+            done
+            pid_after=$(/usr/bin/systemctl --user show openclaw-gateway -p MainPID --value 2>/dev/null)
+            main_start_after=$(/usr/bin/awk '{ print $22 }' "/proc/$pid_before/stat" 2>/dev/null)
+            main_exe_after=$(/usr/bin/readlink -f "/proc/$pid_before/exe" 2>/dev/null)
+            listeners_raw_after=$(/usr/bin/ss -H -ltnp 2>/dev/null) || { /usr/bin/printf unavailable; exit 0; }
+            listeners_after=$(/usr/bin/printf '%s\n' "$listeners_raw_after" | /usr/bin/grep -E "$listener_pattern" || true)
+            test "$pid_before" = "$pid_after" && test "$main_start_before" = "$main_start_after" && test "$main_exe" = "$main_exe_after" && test "$listeners_before" = "$listeners_after" || { /usr/bin/printf unavailable; exit 0; }
+            gateway_owner=$(/usr/bin/printf '%s\n' "$listeners_after" | /usr/bin/grep -E '(^|[[:space:]])127\.0\.0\.1:{{gatewayPort}}([[:space:]]|$)' | /usr/bin/grep -F "pid=$pid_before,")
+            ingress_owner=$(/usr/bin/printf '%s\n' "$listeners_after" | /usr/bin/grep -E '(^|[[:space:]])127\.0\.0\.1:{{managedIngressPort}}([[:space:]]|$)' | /usr/bin/grep -F "pid=$pid_before,")
+            candidate_start_after=$(/usr/bin/awk '{ print $22 }' "/proc/$matched_pid/stat" 2>/dev/null)
+            candidate_parent_after=$(/usr/bin/awk '/^PPid:/ { print $2 }' "/proc/$matched_pid/status" 2>/dev/null)
+            parent_start_after=$(/usr/bin/awk '{ print $22 }' "/proc/$matched_parent/stat" 2>/dev/null)
+            worker_start_after=$(/usr/bin/awk '{ print $22 }' "/proc/$matched_worker/stat" 2>/dev/null)
+            worker_parent_after=$(/usr/bin/awk '/^PPid:/ { print $2 }' "/proc/$matched_worker/status" 2>/dev/null)
+            if test -n "$gateway_owner" && test -n "$ingress_owner" && test "$candidate_count" -eq 1 && test "$matched_start" = "$candidate_start_after" && test "$matched_parent" = "$candidate_parent_after" && test "$matched_parent_start" = "$parent_start_after" && test "$matched_worker_start" = "$worker_start_after" && test "$worker_parent_after" = "$pid_before"; then
+              /usr/bin/printf owned
+            else
+              /usr/bin/printf not-owned
+            fi
+            """;
+        return ["/bin/bash", "-lc", script];
+    }
 }
 
 internal sealed class GatewayTailscaleAuthUpgradeService

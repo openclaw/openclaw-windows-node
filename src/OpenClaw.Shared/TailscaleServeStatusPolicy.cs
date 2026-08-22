@@ -2,7 +2,10 @@ using System.Text.Json;
 
 namespace OpenClaw.Shared;
 
-public sealed record TailscaleServeStatusResult(bool RoutesToGateway, bool FunnelEnabled);
+public sealed record TailscaleServeStatusResult(
+    bool RoutesToGateway,
+    bool FunnelEnabled,
+    int? ForegroundProxyPort = null);
 
 public static class TailscaleServeStatusPolicy
 {
@@ -28,21 +31,65 @@ public static class TailscaleServeStatusPolicy
 
             var routesToGateway = false;
             var funnelEnabled = false;
+            int? matchedProxyPort = null;
+            int? foregroundProxyPort = null;
+            var foregroundMatchCount = 0;
+            var unsafeMatchingRoute = false;
             foreach (var config in configs)
             {
-                if (!HasValidWebShape(config) ||
-                    !TryReadFunnelState(config, out var configFunnelEnabled))
+                if (!HasValidWebShape(config.Value) ||
+                    !TryReadFunnelState(config.Value, out var configFunnelEnabled))
                 {
                     return false;
                 }
-
-                routesToGateway |= HasGatewayWebProxy(config, port, expectedEndpoint);
                 funnelEnabled |= configFunnelEnabled;
+
+                var routeMatch = TryGetGatewayWebProxyPort(
+                    config.Value,
+                    expectedEndpoint,
+                    out var proxyPort,
+                    out var isLiteralIpv4Loopback);
+                if (routeMatch == GatewayWebProxyMatch.Invalid)
+                {
+                    unsafeMatchingRoute = true;
+                    continue;
+                }
+
+                if (routeMatch == GatewayWebProxyMatch.Valid &&
+                    config.IsForeground &&
+                    !isLiteralIpv4Loopback)
+                {
+                    unsafeMatchingRoute = true;
+                    continue;
+                }
+
+                if (routeMatch == GatewayWebProxyMatch.Valid)
+                {
+                    if (matchedProxyPort is { } existingPort && existingPort != proxyPort)
+                        return false;
+
+                    matchedProxyPort = proxyPort;
+                    routesToGateway |= proxyPort == port;
+                    if (config.IsForeground)
+                    {
+                        foregroundMatchCount++;
+                        if (foregroundMatchCount > 1)
+                            return false;
+                        foregroundProxyPort = proxyPort;
+                    }
+                }
+            }
+
+            if (unsafeMatchingRoute)
+            {
+                routesToGateway = false;
+                foregroundProxyPort = null;
             }
 
             parsed = new TailscaleServeStatusResult(
                 RoutesToGateway: routesToGateway,
-                FunnelEnabled: funnelEnabled);
+                FunnelEnabled: funnelEnabled,
+                ForegroundProxyPort: foregroundProxyPort);
             return true;
         }
         catch (JsonException)
@@ -53,9 +100,9 @@ public static class TailscaleServeStatusPolicy
 
     private static bool TryCollectServeConfigs(
         JsonElement root,
-        out IReadOnlyList<JsonElement> configs)
+        out IReadOnlyList<ServeConfig> configs)
     {
-        var collected = new List<JsonElement> { root };
+        var collected = new List<ServeConfig> { new(root, IsForeground: false) };
         if (!root.TryGetProperty("Foreground", out var foreground))
         {
             configs = collected;
@@ -76,7 +123,7 @@ public static class TailscaleServeStatusPolicy
                 return false;
             }
 
-            collected.Add(entry.Value);
+            collected.Add(new ServeConfig(entry.Value, IsForeground: true));
         }
 
         configs = collected;
@@ -117,14 +164,24 @@ public static class TailscaleServeStatusPolicy
         return true;
     }
 
-    private static bool HasGatewayWebProxy(JsonElement root, int port, Uri? expectedEndpoint)
+    private static GatewayWebProxyMatch TryGetGatewayWebProxyPort(
+        JsonElement root,
+        Uri? expectedEndpoint,
+        out int proxyPort,
+        out bool isLiteralIpv4Loopback)
     {
+        proxyPort = 0;
+        isLiteralIpv4Loopback = false;
         if (!root.TryGetProperty("Web", out var web) || web.ValueKind != JsonValueKind.Object)
-            return false;
+            return GatewayWebProxyMatch.None;
 
+        var found = false;
         foreach (var webEndpoint in web.EnumerateObject())
         {
-            if (!EndpointMatches(webEndpoint.Name, expectedEndpoint) ||
+            if (!EndpointMatches(webEndpoint.Name, expectedEndpoint))
+                continue;
+
+            if (found ||
                 webEndpoint.Value.ValueKind != JsonValueKind.Object ||
                 !webEndpoint.Value.TryGetProperty("Handlers", out var handlers) ||
                 handlers.ValueKind != JsonValueKind.Object ||
@@ -133,14 +190,21 @@ public static class TailscaleServeStatusPolicy
                 !rootHandler.TryGetProperty("Proxy", out var proxy) ||
                 proxy.ValueKind != JsonValueKind.String)
             {
-                continue;
+                return GatewayWebProxyMatch.Invalid;
             }
 
-            if (IsLoopbackGatewayProxy(proxy.GetString(), port))
-                return true;
+            if (!TryReadLoopbackGatewayProxyPort(
+                proxy.GetString(),
+                out proxyPort,
+                out isLiteralIpv4Loopback))
+            {
+                return GatewayWebProxyMatch.Invalid;
+            }
+
+            found = true;
         }
 
-        return false;
+        return found ? GatewayWebProxyMatch.Valid : GatewayWebProxyMatch.None;
     }
 
     private static bool EndpointMatches(string endpoint, Uri? expectedEndpoint)
@@ -215,18 +279,41 @@ public static class TailscaleServeStatusPolicy
         }
     }
 
-    private static bool IsLoopbackGatewayProxy(string? proxy, int port) =>
-        proxy is not null &&
-        Uri.TryCreate(proxy, UriKind.Absolute, out var uri) &&
-        uri.Scheme.Equals(Uri.UriSchemeHttp, StringComparison.OrdinalIgnoreCase) &&
-        uri.Port == port &&
-        HasCanonicalRootPathAndNoSuffix(proxy) &&
-        !HasUserInfoDelimiter(proxy) &&
-        string.IsNullOrEmpty(uri.UserInfo) &&
-        string.IsNullOrEmpty(uri.Query) &&
-        string.IsNullOrEmpty(uri.Fragment) &&
-        (uri.Host.Equals("127.0.0.1", StringComparison.OrdinalIgnoreCase) ||
-         uri.Host.Equals("localhost", StringComparison.OrdinalIgnoreCase));
+    private static bool TryReadLoopbackGatewayProxyPort(
+        string? proxy,
+        out int port,
+        out bool isLiteralIpv4Loopback)
+    {
+        port = 0;
+        isLiteralIpv4Loopback = false;
+        if (proxy is null ||
+            !Uri.TryCreate(proxy, UriKind.Absolute, out var uri) ||
+            !uri.Scheme.Equals(Uri.UriSchemeHttp, StringComparison.OrdinalIgnoreCase) ||
+            uri.Port is <= 0 or > 65535 ||
+            !HasCanonicalRootPathAndNoSuffix(proxy) ||
+            HasUserInfoDelimiter(proxy) ||
+            !string.IsNullOrEmpty(uri.UserInfo) ||
+            !string.IsNullOrEmpty(uri.Query) ||
+            !string.IsNullOrEmpty(uri.Fragment) ||
+            (!uri.Host.Equals("127.0.0.1", StringComparison.OrdinalIgnoreCase) &&
+             !uri.Host.Equals("localhost", StringComparison.OrdinalIgnoreCase)))
+        {
+            return false;
+        }
+
+        port = uri.Port;
+        isLiteralIpv4Loopback = uri.Host.Equals("127.0.0.1", StringComparison.OrdinalIgnoreCase);
+        return true;
+    }
+
+    private readonly record struct ServeConfig(JsonElement Value, bool IsForeground);
+
+    private enum GatewayWebProxyMatch
+    {
+        None,
+        Valid,
+        Invalid,
+    }
 
     private static bool HasUserInfoDelimiter(string value)
     {

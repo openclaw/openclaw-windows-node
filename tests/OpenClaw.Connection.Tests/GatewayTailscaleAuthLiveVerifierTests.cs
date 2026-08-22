@@ -164,12 +164,111 @@ public sealed class GatewayTailscaleAuthLiveVerifierTests
         var runner = new FakeWslCommandRunner((_, command, _) => Task.FromResult(
             command.Contains("serve", StringComparer.Ordinal)
                 ? ForegroundServeStatus()
-                : RunningStatus()));
+                : command.FirstOrDefault() == "/bin/bash"
+                    ? new WslCommandResult(0, "owned", "")
+                    : RunningStatus()));
         var verifier = new GatewayTailscaleAuthLiveVerifier(runner, TimeSpan.FromSeconds(1));
 
         var result = await verifier.VerifyAsync(ManagedRecord(), 18789, CancellationToken.None);
 
         Assert.Equal(GatewayTailscaleAuthLiveState.Ready, result);
+        Assert.Equal(3, runner.ProbeCalls);
+    }
+
+    [Fact]
+    public async Task VerifyAsync_AcceptsManagedForegroundIngressOwnedByGatewayService()
+    {
+        const int managedIngressPort = 35225;
+        var runner = new FakeWslCommandRunner((_, command, _) => Task.FromResult(
+            command.Contains("serve", StringComparer.Ordinal)
+                ? ForegroundServeStatus(proxyPort: managedIngressPort)
+                : command.FirstOrDefault() == "/bin/bash"
+                    ? new WslCommandResult(0, "owned", "")
+                    : RunningStatus()));
+        var verifier = new GatewayTailscaleAuthLiveVerifier(runner, TimeSpan.FromSeconds(1));
+
+        var result = await verifier.VerifyAsync(ManagedRecord(), 18789, CancellationToken.None);
+
+        Assert.Equal(GatewayTailscaleAuthLiveState.Ready, result);
+        Assert.Equal(3, runner.ProbeCalls);
+        Assert.Equal("/bin/bash", runner.Commands[2][0]);
+        Assert.Contains("systemctl --user show openclaw-gateway", runner.Commands[2][2], StringComparison.Ordinal);
+        Assert.Equal(2, runner.Commands[2][2].Split("systemctl", StringSplitOptions.None).Length - 1);
+        Assert.Contains(":18789", runner.Commands[2][2], StringComparison.Ordinal);
+        Assert.Contains(":35225", runner.Commands[2][2], StringComparison.Ordinal);
+        Assert.Contains("/proc/$pid_before/cgroup", runner.Commands[2][2], StringComparison.Ordinal);
+        Assert.Contains("--bg=false", runner.Commands[2][2], StringComparison.Ordinal);
+        Assert.Contains("tailscale-route-owner.worker.js", runner.Commands[2][2], StringComparison.Ordinal);
+        Assert.Contains("--openclaw-tailscale-route-owner", runner.Commands[2][2], StringComparison.Ordinal);
+        Assert.Contains("/proc/$matched_pid/stat", runner.Commands[2][2], StringComparison.Ordinal);
+        Assert.Contains("candidate_count\" -eq 1", runner.Commands[2][2], StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task VerifyAsync_RejectsForegroundIngressNotOwnedByGatewayService()
+    {
+        var runner = new FakeWslCommandRunner((_, command, _) => Task.FromResult(
+            command.Contains("serve", StringComparer.Ordinal)
+                ? ForegroundServeStatus(proxyPort: 35225)
+                : command.FirstOrDefault() == "/bin/bash"
+                    ? new WslCommandResult(0, "not-owned", "")
+                    : RunningStatus()));
+        var verifier = new GatewayTailscaleAuthLiveVerifier(runner, TimeSpan.FromSeconds(1));
+
+        var result = await verifier.VerifyAsync(ManagedRecord(), 18789, CancellationToken.None);
+
+        Assert.Equal(GatewayTailscaleAuthLiveState.NotReady, result);
+    }
+
+    [Theory]
+    [InlineData(0, "unavailable")]
+    [InlineData(0, "unexpected")]
+    [InlineData(1, "")]
+    public async Task VerifyAsync_FailsClosedWhenManagedIngressOwnershipIsUnavailable(
+        int exitCode,
+        string output)
+    {
+        var runner = new FakeWslCommandRunner((_, command, _) => Task.FromResult(
+            command.Contains("serve", StringComparer.Ordinal)
+                ? ForegroundServeStatus(proxyPort: 35225)
+                : command.FirstOrDefault() == "/bin/bash"
+                    ? new WslCommandResult(exitCode, output, "")
+                    : RunningStatus()));
+        var verifier = new GatewayTailscaleAuthLiveVerifier(runner, TimeSpan.FromSeconds(1));
+
+        var result = await verifier.VerifyAsync(ManagedRecord(), 18789, CancellationToken.None);
+
+        Assert.Equal(GatewayTailscaleAuthLiveState.Unavailable, result);
+    }
+
+    [Fact]
+    public async Task VerifyAsync_RejectsManagedForegroundIngressWhenFunnelIsEnabled()
+    {
+        var runner = new FakeWslCommandRunner((_, command, _) => Task.FromResult(
+            command.Contains("serve", StringComparer.Ordinal)
+                ? ForegroundServeStatus(proxyPort: 35225, funnelEnabled: true)
+                : RunningStatus()));
+        var verifier = new GatewayTailscaleAuthLiveVerifier(runner, TimeSpan.FromSeconds(1));
+
+        var result = await verifier.VerifyAsync(ManagedRecord(), 18789, CancellationToken.None);
+
+        Assert.Equal(GatewayTailscaleAuthLiveState.NotReady, result);
+        Assert.Equal(2, runner.ProbeCalls);
+    }
+
+    [Fact]
+    public async Task VerifyAsync_RejectsForegroundLocalhostProxyOutsideCoreContract()
+    {
+        var runner = new FakeWslCommandRunner((_, command, _) => Task.FromResult(
+            command.Contains("serve", StringComparer.Ordinal)
+                ? ForegroundServeStatus(proxyPort: 35225, proxyHost: "localhost")
+                : RunningStatus()));
+        var verifier = new GatewayTailscaleAuthLiveVerifier(runner, TimeSpan.FromSeconds(1));
+
+        var result = await verifier.VerifyAsync(ManagedRecord(), 18789, CancellationToken.None);
+
+        Assert.Equal(GatewayTailscaleAuthLiveState.NotReady, result);
+        Assert.Equal(2, runner.ProbeCalls);
     }
 
     [Theory]
@@ -187,6 +286,7 @@ public sealed class GatewayTailscaleAuthLiveVerifierTests
         var result = await verifier.VerifyAsync(ManagedRecord(), 18789, CancellationToken.None);
 
         Assert.Equal(expected, result.ToString());
+        Assert.Equal(2, runner.ProbeCalls);
     }
 
     [Theory]
@@ -396,6 +496,111 @@ public sealed class GatewayTailscaleAuthLiveVerifierTests
             """,
             "Unavailable"
         },
+        {
+            """
+            {
+              "first": {
+                "Web": {
+                  "host.tail.example:443": {
+                    "Handlers": { "/": { "Proxy": "http://127.0.0.1:35225" } }
+                  }
+                }
+              },
+              "second": {
+                "Web": {
+                  "host.tail.example:443": {
+                    "Handlers": { "/": { "Proxy": "http://127.0.0.1:35225" } }
+                  }
+                }
+              }
+            }
+            """,
+            "Unavailable"
+        },
+        {
+            """
+            {
+              "first": {
+                "Web": {
+                  "host.tail.example:443": {
+                    "Handlers": { "/": { "Proxy": "http://127.0.0.1:35225" } }
+                  }
+                }
+              },
+              "second": {
+                "Web": {
+                  "host.tail.example:443": {
+                    "Handlers": { "/": { "Proxy": "http://127.0.0.1:35226" } }
+                  }
+                }
+              }
+            }
+            """,
+            "Unavailable"
+        },
+        {
+            """
+            {
+              "first": {
+                "Web": {
+                  "host.tail.example:443": {
+                    "Handlers": { "/": { "Proxy": "http://127.0.0.1:35225" } }
+                  }
+                }
+              },
+              "second": {
+                "Web": {
+                  "host.tail.example:443": {
+                    "Handlers": { "/": { "Proxy": "http://10.0.0.1:35226" } }
+                  }
+                }
+              }
+            }
+            """,
+            "NotReady"
+        },
+        {
+            """
+            {
+              "literal": {
+                "Web": {
+                  "host.tail.example:443": {
+                    "Handlers": { "/": { "Proxy": "http://127.0.0.1:35225" } }
+                  }
+                }
+              },
+              "localhost": {
+                "Web": {
+                  "host.tail.example:443": {
+                    "Handlers": { "/": { "Proxy": "http://localhost:35225" } }
+                  }
+                }
+              }
+            }
+            """,
+            "NotReady"
+        },
+        {
+            """
+            {
+              "literal": {
+                "Web": {
+                  "host.tail.example:443": {
+                    "Handlers": { "/": { "Proxy": "http://127.0.0.1:35225" } }
+                  }
+                }
+              },
+              "localhost": {
+                "Web": {
+                  "host.tail.example:443": {
+                    "Handlers": { "/": { "Proxy": "http://localhost:35226" } }
+                  }
+                }
+              }
+            }
+            """,
+            "NotReady"
+        },
     };
 
     private static WslCommandResult RunningStatus() => Status("Running", "host.tail.example.");
@@ -425,19 +630,23 @@ public sealed class GatewayTailscaleAuthLiveVerifierTests
             "");
     }
 
-    private static WslCommandResult ForegroundServeStatus() =>
+    private static WslCommandResult ForegroundServeStatus(
+        int proxyPort = 18789,
+        bool funnelEnabled = false,
+        string proxyHost = "127.0.0.1") =>
         new(
             0,
-            """
+            $$"""
             {
               "Foreground": {
                 "75980230dda8b0e0": {
                   "TCP": { "443": { "HTTPS": true } },
                   "Web": {
                     "host.tail.example:443": {
-                      "Handlers": { "/": { "Proxy": "http://127.0.0.1:18789" } }
+                      "Handlers": { "/": { "Proxy": "http://{{proxyHost}}:{{proxyPort}}" } }
                     }
-                  }
+                  },
+                  "AllowFunnel": {{funnelEnabled.ToString().ToLowerInvariant()}}
                 }
               }
             }
@@ -495,7 +704,12 @@ public sealed class GatewayTailscaleAuthLiveVerifierTests
             IReadOnlyList<string> command,
             CancellationToken cancellationToken = default,
             IReadOnlyDictionary<string, string>? environment = null)
-            => throw new NotSupportedException();
+        {
+            ProbeCalls++;
+            DistroName = name;
+            Commands.Add(command);
+            return runInDistro(name, command, cancellationToken);
+        }
 
         public Task<WslCommandResult> RunAsync(
             IReadOnlyList<string> arguments,
