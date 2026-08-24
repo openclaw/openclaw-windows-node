@@ -19,7 +19,7 @@ Launching `openclaw` without arguments prepares the bundled gateway under
 gateway. After preparation, use:
 
 ```powershell
-openclaw setup
+openclaw setup --classic --mode local --no-install-daemon
 openclaw gateway run
 ```
 

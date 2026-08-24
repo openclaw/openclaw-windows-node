@@ -123,8 +123,8 @@ public static class BootstrapConsole
         output.WriteLine();
         output.WriteLine("Next steps:");
         output.WriteLine("  1. Configure OpenClaw:");
-        output.WriteLine("     openclaw setup");
-        output.WriteLine("     or: openclaw onboard --mode local");
+        output.WriteLine(
+            "     openclaw setup --classic --mode local --no-install-daemon");
         output.WriteLine("  2. Start the gateway after setup:");
         output.WriteLine("     openclaw gateway run");
         output.WriteLine();

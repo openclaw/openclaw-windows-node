@@ -151,9 +151,9 @@ internal static class Program
             {
                 ReportProgress(
                     "OpenClaw reported a configuration error (exit code 78). " +
-                    "For first-run setup, run `openclaw setup` or " +
-                    "`openclaw onboard --mode local`, then retry. " +
-                    "The MSIX host automatically skips separate daemon installation.");
+                    "For first-run setup, run " +
+                    "`openclaw setup --classic --mode local --no-install-daemon`, " +
+                    "then retry.");
             }
 
             return exitCode;

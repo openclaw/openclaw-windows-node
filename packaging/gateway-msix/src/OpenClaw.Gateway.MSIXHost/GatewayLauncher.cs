@@ -31,7 +31,8 @@ public static class GatewayLauncher
             {
                 registration = GatewayProcessRegistration.Create(
                     process,
-                    payloadDirectory);
+                    payloadDirectory,
+                    nodePath);
             }
             catch (Exception exception) when (
                 exception is IOException or

@@ -1,4 +1,7 @@
+using System.ComponentModel;
 using System.Diagnostics;
+using System.Runtime.InteropServices;
+using System.Text;
 
 namespace OpenClaw.MSIXHost;
 
@@ -21,12 +24,15 @@ internal sealed class GatewayProcessRegistration : IDisposable
 
     public static GatewayProcessRegistration Create(
         Process process,
-        string installDirectory)
+        string installDirectory,
+        string executablePath)
     {
         string path = GetPath(installDirectory);
         Directory.CreateDirectory(Path.GetDirectoryName(path)!);
         long startTimeUtcTicks = process.StartTime.ToUniversalTime().Ticks;
-        string processPath = process.MainModule?.FileName ??
+        string processPath = Path.IsPathFullyQualified(executablePath)
+            ? Path.GetFullPath(executablePath)
+            : TryGetProcessExecutablePath(process) ??
             throw new InvalidOperationException(
                 "Unable to resolve the OpenClaw gateway process executable.");
         string temporaryPath = path + ".tmp";
@@ -79,7 +85,7 @@ internal sealed class GatewayProcessRegistration : IDisposable
             bool matches;
             try
             {
-                string? actualProcessPath = process.MainModule?.FileName;
+                string? actualProcessPath = TryGetProcessExecutablePath(process);
                 matches =
                     process.StartTime.ToUniversalTime().Ticks == startTimeUtcTicks &&
                     actualProcessPath is not null &&
@@ -150,4 +156,43 @@ internal sealed class GatewayProcessRegistration : IDisposable
 
         return Path.Combine(root, FileName);
     }
+
+    private static string? TryGetProcessExecutablePath(Process process)
+    {
+        try
+        {
+            string? mainModulePath = process.MainModule?.FileName;
+            if (!string.IsNullOrWhiteSpace(mainModulePath))
+            {
+                return mainModulePath;
+            }
+        }
+        catch (Exception exception) when (
+            exception is InvalidOperationException or Win32Exception)
+        {
+        }
+
+        if (!OperatingSystem.IsWindows())
+        {
+            return null;
+        }
+
+        var path = new StringBuilder(32768);
+        uint size = (uint)path.Capacity;
+        return QueryFullProcessImageName(
+            process.SafeHandle.DangerousGetHandle(),
+            0,
+            path,
+            ref size)
+                ? path.ToString()
+                : null;
+    }
+
+    [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool QueryFullProcessImageName(
+        IntPtr process,
+        uint flags,
+        StringBuilder executablePath,
+        ref uint size);
 }

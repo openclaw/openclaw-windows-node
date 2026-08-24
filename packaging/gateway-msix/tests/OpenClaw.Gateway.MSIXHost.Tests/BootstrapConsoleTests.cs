@@ -152,7 +152,10 @@ public sealed class BootstrapConsoleTests : IDisposable
 
         string summary = output.ToString();
         Assert.Contains(expectedStatus, summary, StringComparison.Ordinal);
-        Assert.Contains("openclaw setup", summary, StringComparison.Ordinal);
+        Assert.Contains(
+            "openclaw setup --classic --mode local --no-install-daemon",
+            summary,
+            StringComparison.Ordinal);
         Assert.Contains(
             "openclaw gateway run",
             summary,

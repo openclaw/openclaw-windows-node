@@ -51,6 +51,7 @@
       <SubType>Designer</SubType>
     </AppxManifest>
     <Content Include="Images\**\*.png" />
+    <InternalsVisibleTo Include="OpenClaw.Gateway.MSIXHost.Tests" />
   </ItemGroup>
 
   <Target Name="GenerateVersionedAppxManifest"
