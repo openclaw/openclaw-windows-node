@@ -23,6 +23,10 @@ public sealed class GatewayLauncherTests : IDisposable
         Assert.True(startInfo.RedirectStandardError);
         Assert.Equal(_payloadDirectory, startInfo.WorkingDirectory);
         Assert.Equal(
+            "external",
+            startInfo.Environment["OPENCLAW_SUPERVISOR_MODE"]);
+        Assert.Equal("1", startInfo.Environment["OPENCLAW_NO_AUTO_UPDATE"]);
+        Assert.Equal(
             [
                 Path.Combine(_payloadDirectory, "openclaw.mjs"),
                 "gateway",
@@ -103,66 +107,32 @@ public sealed class GatewayLauncherTests : IDisposable
 
         Assert.False(startInfo.RedirectStandardError);
         Assert.Equal(
+            "external",
+            startInfo.Environment["OPENCLAW_SUPERVISOR_MODE"]);
+        Assert.Equal("1", startInfo.Environment["OPENCLAW_NO_AUTO_UPDATE"]);
+        Assert.Equal(
             [Path.Combine(_payloadDirectory, "openclaw.mjs"), .. arguments],
             startInfo.ArgumentList);
     }
 
     [Theory]
-    [InlineData("setup")]
-    [InlineData("onboard")]
-    public void CreateStartInfoSkipsDaemonInstallationDuringSetup(string command)
-    {
-        var startInfo = GatewayLauncher.CreateStartInfo(
-            "node",
-            _payloadDirectory,
-            [command, "--mode", "local"]);
-
-        Assert.Equal(
-            [
-                Path.Combine(_payloadDirectory, "openclaw.mjs"),
-                command,
-                "--mode",
-                "local",
-                "--skip-daemon"
-            ],
-            startInfo.ArgumentList);
-    }
-
-    [Fact]
-    public void CreateStartInfoPreservesExplicitDaemonSkip()
-    {
-        var startInfo = GatewayLauncher.CreateStartInfo(
-            "node",
-            _payloadDirectory,
-            ["setup", "--no-install-daemon"]);
-
-        Assert.Equal(
-            [
-                Path.Combine(_payloadDirectory, "openclaw.mjs"),
-                "setup",
-                "--no-install-daemon"
-            ],
-            startInfo.ArgumentList);
-    }
-
-    [Theory]
+    [InlineData("update", "--yes")]
+    [InlineData("--update")]
+    [InlineData("gateway", "call", "update.run")]
     [InlineData("gateway", "install")]
     [InlineData("setup", "--install-daemon")]
-    [InlineData("onboard", "--install-daemon")]
-    public void CreateStartInfoRejectsDaemonInstallation(
-        string command,
-        string installArgument)
+    [InlineData("onboard", "--mode", "local")]
+    public void CreateStartInfoForwardsCommandsWithoutInterpretation(
+        params string[] arguments)
     {
-        HostUsageException exception = Assert.Throws<HostUsageException>(() =>
-            GatewayLauncher.CreateStartInfo(
-                "node",
-                _payloadDirectory,
-                [command, installArgument]));
+        var startInfo = GatewayLauncher.CreateStartInfo(
+            "node",
+            _payloadDirectory,
+            arguments);
 
-        Assert.Contains(
-            "not support",
-            exception.Message,
-            StringComparison.OrdinalIgnoreCase);
+        Assert.Equal(
+            [Path.Combine(_payloadDirectory, "openclaw.mjs"), .. arguments],
+            startInfo.ArgumentList);
     }
 
     public void Dispose()

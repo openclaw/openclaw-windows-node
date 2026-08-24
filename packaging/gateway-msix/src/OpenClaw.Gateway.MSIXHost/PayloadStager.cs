@@ -78,159 +78,167 @@ public sealed class PayloadStager(
         string backupDirectory = Path.Combine(installRoot, $".{installName}.previous");
         _log("Waiting for the exclusive installation lock.");
         var lockStopwatch = Stopwatch.StartNew();
-        await using FileStream installLock = await InstallDirectoryLock.AcquireAsync(
+        FileStream installLock = await InstallDirectoryLock.AcquireAsync(
             _installDirectory,
             cancellationToken);
         _log(
             $"Acquired the installation lock after {lockStopwatch.Elapsed.TotalSeconds:F1} seconds.");
 
-        _log("Checking for an interrupted payload update.");
-        RecoverInterruptedPromotion(
-            _installDirectory,
-            temporaryDirectory,
-            backupDirectory);
-
-        if (Directory.Exists(_installDirectory))
-        {
-            string? verifiedPayloadHash = await ReadVerificationMarkerAsync(
-                _installDirectory,
-                cancellationToken);
-            if (!_verifyInstalledPayload)
-            {
-                if (string.Equals(
-                    verifiedPayloadHash,
-                    actualHash,
-                    StringComparison.OrdinalIgnoreCase))
-                {
-                    _log(
-                        "The installed payload marker matches; skipping full per-file verification.");
-                    return new StagedPayload(
-                        _installDirectory,
-                        actualHash,
-                        Reused: true);
-                }
-
-                string? inventoryPayloadHash =
-                    await ReadInstalledInventoryPayloadHashAsync(
-                        _installDirectory,
-                        cancellationToken);
-                if (verifiedPayloadHash is null &&
-                    string.Equals(
-                        inventoryPayloadHash,
-                        actualHash,
-                        StringComparison.OrdinalIgnoreCase) &&
-                    File.Exists(Path.Combine(_installDirectory, "openclaw.mjs")))
-                {
-                    await WriteVerificationMarkerAsync(
-                        _installDirectory,
-                        actualHash,
-                        cancellationToken);
-                    _log(
-                        "Migrated the existing payload inventory to the fast verification marker.");
-                    return new StagedPayload(
-                        _installDirectory,
-                        actualHash,
-                        Reused: true);
-                }
-
-                _log(
-                    "The packaged payload or installed inventory changed; replacing the " +
-                    "installed payload without re-hashing the old version.");
-            }
-            else
-            {
-                _log("Full installed-payload verification was requested.");
-                try
-                {
-                    await VerifyStagedPayloadAsync(
-                        _installDirectory,
-                        actualHash,
-                        fullPayloadPath,
-                        cancellationToken);
-                    await WriteVerificationMarkerAsync(
-                        _installDirectory,
-                        actualHash,
-                        cancellationToken);
-                    _log("The existing installed payload is valid and will be reused.");
-                    return new StagedPayload(
-                        _installDirectory,
-                        actualHash,
-                        Reused: true);
-                }
-                catch (InvalidDataException exception)
-                {
-                    _log(
-                        $"The existing installed payload requires repair: {exception.Message}");
-                }
-            }
-        }
-
-        _log("Extracting the verified payload. First launch can take several minutes.");
-        Directory.CreateDirectory(temporaryDirectory);
-        bool promoted = false;
         try
         {
-            IReadOnlyList<PayloadInventoryEntry> entries = await ReadPayloadAsync(
-                fullPayloadPath,
+            _log("Checking for an interrupted payload update.");
+            RecoverInterruptedPromotion(
+                _installDirectory,
                 temporaryDirectory,
-                cancellationToken);
-            _log($"Extracted and hashed {entries.Count} payload files.");
-            EnsureOpenClawEntryPoint(temporaryDirectory);
+                backupDirectory);
 
-            var inventory = new PayloadInventory(actualHash, entries);
-            string inventoryPath = Path.Combine(temporaryDirectory, InventoryFileName);
-            await using (FileStream inventoryStream = new(
-                inventoryPath,
-                FileMode.CreateNew,
-                FileAccess.Write,
-                FileShare.None))
+            if (Directory.Exists(_installDirectory))
             {
-                await JsonSerializer.SerializeAsync(
-                    inventoryStream,
-                    inventory,
-                    OpenClawJsonContext.Default.PayloadInventory,
+                string? verifiedPayloadHash = await ReadVerificationMarkerAsync(
+                    _installDirectory,
                     cancellationToken);
-            }
-            await WriteVerificationMarkerAsync(
-                temporaryDirectory,
-                actualHash,
-                cancellationToken);
+                if (!_verifyInstalledPayload)
+                {
+                    if (string.Equals(
+                        verifiedPayloadHash,
+                        actualHash,
+                        StringComparison.OrdinalIgnoreCase))
+                    {
+                        _log(
+                            "The installed payload marker matches; skipping full per-file verification.");
+                        return new StagedPayload(
+                            _installDirectory,
+                            actualHash,
+                            Reused: true);
+                    }
 
+                    string? inventoryPayloadHash =
+                        await ReadInstalledInventoryPayloadHashAsync(
+                            _installDirectory,
+                            cancellationToken);
+                    if (verifiedPayloadHash is null &&
+                        string.Equals(
+                            inventoryPayloadHash,
+                            actualHash,
+                            StringComparison.OrdinalIgnoreCase) &&
+                        File.Exists(Path.Combine(_installDirectory, "openclaw.mjs")))
+                    {
+                        await WriteVerificationMarkerAsync(
+                            _installDirectory,
+                            actualHash,
+                            cancellationToken);
+                        _log(
+                            "Migrated the existing payload inventory to the fast verification marker.");
+                        return new StagedPayload(
+                            _installDirectory,
+                            actualHash,
+                            Reused: true);
+                    }
+
+                    _log(
+                        "The packaged payload or installed inventory changed; replacing the " +
+                        "installed payload without re-hashing the old version.");
+                }
+                else
+                {
+                    _log("Full installed-payload verification was requested.");
+                    try
+                    {
+                        await VerifyStagedPayloadAsync(
+                            _installDirectory,
+                            actualHash,
+                            fullPayloadPath,
+                            cancellationToken);
+                        await WriteVerificationMarkerAsync(
+                            _installDirectory,
+                            actualHash,
+                            cancellationToken);
+                        _log("The existing installed payload is valid and will be reused.");
+                        return new StagedPayload(
+                            _installDirectory,
+                            actualHash,
+                            Reused: true);
+                    }
+                    catch (InvalidDataException exception)
+                    {
+                        _log(
+                            $"The existing installed payload requires repair: {exception.Message}");
+                    }
+                }
+            }
+
+            _log("Extracting the verified payload. First launch can take several minutes.");
+            Directory.CreateDirectory(temporaryDirectory);
+            bool promoted = false;
             try
             {
-                _log("Promoting the staged payload into the stable install directory.");
-                if (Directory.Exists(_installDirectory))
+                IReadOnlyList<PayloadInventoryEntry> entries = await ReadPayloadAsync(
+                    fullPayloadPath,
+                    temporaryDirectory,
+                    cancellationToken);
+                _log($"Extracted and hashed {entries.Count} payload files.");
+                EnsureOpenClawEntryPoint(temporaryDirectory);
+
+                var inventory = new PayloadInventory(actualHash, entries);
+                string inventoryPath = Path.Combine(temporaryDirectory, InventoryFileName);
+                await using (FileStream inventoryStream = new(
+                    inventoryPath,
+                    FileMode.CreateNew,
+                    FileAccess.Write,
+                    FileShare.None))
                 {
-                    Directory.Move(_installDirectory, backupDirectory);
+                    await JsonSerializer.SerializeAsync(
+                        inventoryStream,
+                        inventory,
+                        OpenClawJsonContext.Default.PayloadInventory,
+                        cancellationToken);
+                }
+                await WriteVerificationMarkerAsync(
+                    temporaryDirectory,
+                    actualHash,
+                    cancellationToken);
+
+                try
+                {
+                    _log("Promoting the staged payload into the stable install directory.");
+                    if (Directory.Exists(_installDirectory))
+                    {
+                        Directory.Move(_installDirectory, backupDirectory);
+                    }
+
+                    Directory.Move(temporaryDirectory, _installDirectory);
+                    promoted = true;
+                    _log("Payload installation completed.");
+                }
+                catch
+                {
+                    if (!Directory.Exists(_installDirectory) &&
+                        Directory.Exists(backupDirectory))
+                    {
+                        Directory.Move(backupDirectory, _installDirectory);
+                    }
+
+                    throw;
                 }
 
-                Directory.Move(temporaryDirectory, _installDirectory);
-                promoted = true;
-                _log("Payload installation completed.");
+                return new StagedPayload(
+                    _installDirectory,
+                    actualHash,
+                    Reused: false);
             }
-            catch
+            finally
             {
-                if (!Directory.Exists(_installDirectory) &&
-                    Directory.Exists(backupDirectory))
+                DeleteDirectory(temporaryDirectory);
+                if (promoted)
                 {
-                    Directory.Move(backupDirectory, _installDirectory);
+                    DeleteDirectory(backupDirectory);
                 }
-
-                throw;
             }
-
-            return new StagedPayload(
-                _installDirectory,
-                actualHash,
-                Reused: false);
         }
         finally
         {
-            DeleteDirectory(temporaryDirectory);
-            if (promoted)
-            {
-                DeleteDirectory(backupDirectory);
-            }
+            installLock.Dispose();
+            _log("Released the installation lock.");
         }
     }
 

@@ -16,13 +16,17 @@ on:
       openclaw_ref:
         description: openclaw/openclaw tag, branch, or commit to package
         required: true
-        default: d2825c70a5168c19e98ec75babf27476a3c15669
+        default: 0790d9f593ad30c940ed93b5872a8cf6d6f3cf8c
         type: string
-      sign_packages:
-        description: Sign packages with the protected OpenClaw release identity
+      signing_mode:
+        description: Package signing mode
         required: true
-        default: false
-        type: boolean
+        default: unsigned
+        type: choice
+        options:
+          - unsigned
+          - test
+          - official
 
 permissions:
   contents: read
@@ -30,7 +34,7 @@ permissions:
 env:
   NODE_VERSION: 24.16.0
   PNPM_VERSION: 11.15.1
-  OPENCLAW_REF: ${{ github.event_name == 'workflow_dispatch' && inputs.openclaw_ref || 'd2825c70a5168c19e98ec75babf27476a3c15669' }}
+  OPENCLAW_REF: ${{ github.event_name == 'workflow_dispatch' && inputs.openclaw_ref || '0790d9f593ad30c940ed93b5872a8cf6d6f3cf8c' }}
   PACKAGING_ROOT: packaging/gateway-msix
 
 jobs:
@@ -58,6 +62,11 @@ jobs:
           dotnet test .\packaging\gateway-msix\OpenClaw.Gateway.MSIX.slnx
           --configuration Release
           --no-restore
+
+      - name: Test signing policy
+        shell: pwsh
+        run: >
+          .\packaging\gateway-msix\scripts\Test-SigningInputs.Tests.ps1
 
   build-package:
     name: Build OpenClaw npm package
@@ -242,10 +251,109 @@ jobs:
           if-no-files-found: error
           retention-days: 7
 
-  sign-msix:
-    name: Sign Gateway MSIX packages
-    if: ${{ github.event_name == 'workflow_dispatch' && inputs.sign_packages }}
+  test-sign-msix:
+    name: Test-sign Gateway MSIX packages
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.signing_mode == 'test' }}
     needs: build-msix
+    runs-on: windows-latest
+    permissions:
+      actions: read
+      contents: read
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Download unsigned x64 package
+        uses: actions/download-artifact@v8
+        with:
+          name: openclaw-gateway-msix-unsigned-x64
+          path: artifacts\x64
+
+      - name: Download unsigned ARM64 package
+        uses: actions/download-artifact@v8
+        with:
+          name: openclaw-gateway-msix-unsigned-arm64
+          path: artifacts\arm64
+
+      - name: Apply temporary test signature
+        shell: pwsh
+        run: |
+          .\packaging\gateway-msix\scripts\Sign-TestMSIX.ps1 `
+            -ArtifactsDirectory artifacts `
+            -OutputDirectory test-signed
+
+      - name: Upload test-signed x64 MSIX
+        uses: actions/upload-artifact@v7
+        with:
+          name: openclaw-gateway-msix-test-signed-x64
+          path: test-signed\x64\
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: Upload test-signed ARM64 MSIX
+        uses: actions/upload-artifact@v7
+        with:
+          name: openclaw-gateway-msix-test-signed-arm64
+          path: test-signed\arm64\
+          if-no-files-found: error
+          retention-days: 7
+
+  reject-untrusted-official-signing:
+    name: Reject official signing outside main
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.signing_mode == 'official' && github.ref != 'refs/heads/main' }}
+    runs-on: windows-latest
+    steps:
+      - name: Reject untrusted workflow ref
+        shell: pwsh
+        run: |
+          throw (
+            'Official Gateway MSIX signing may be dispatched only from main. ' +
+            'Use unsigned or test mode for other branches.'
+          )
+
+  authorize-signing:
+    name: Authorize official Gateway MSIX signing
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.signing_mode == 'official' && github.ref == 'refs/heads/main' }}
+    needs: build-msix
+    runs-on: windows-latest
+    permissions:
+      actions: read
+      contents: read
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Download unsigned x64 package
+        uses: actions/download-artifact@v8
+        with:
+          name: openclaw-gateway-msix-unsigned-x64
+          path: artifacts\x64
+
+      - name: Download unsigned ARM64 package
+        uses: actions/download-artifact@v8
+        with:
+          name: openclaw-gateway-msix-unsigned-arm64
+          path: artifacts\arm64
+
+      - name: Enforce official signing policy
+        shell: pwsh
+        run: |
+          .\packaging\gateway-msix\scripts\Test-SigningInputs.ps1 `
+            -ArtifactsDirectory artifacts `
+            -PolicyPath .\packaging\gateway-msix\release-policy.json `
+            -RequestedRef '${{ inputs.openclaw_ref }}' `
+            -PackagingCommit '${{ github.sha }}'
+
+  sign-msix:
+    name: Officially sign Gateway MSIX packages
+    if: ${{ needs.authorize-signing.result == 'success' }}
+    needs:
+      - build-msix
+      - authorize-signing
     runs-on: windows-latest
     environment: release-signing
     permissions:

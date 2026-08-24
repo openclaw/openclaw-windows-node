@@ -95,6 +95,8 @@ public static class GatewayLauncher
             RedirectStandardOutput = false,
             RedirectStandardError = openClawArguments.Count == 0
         };
+        startInfo.Environment["OPENCLAW_SUPERVISOR_MODE"] = "external";
+        startInfo.Environment["OPENCLAW_NO_AUTO_UPDATE"] = "1";
         startInfo.ArgumentList.Add(entryPoint);
 
         if (openClawArguments.Count == 0)
@@ -104,62 +106,13 @@ public static class GatewayLauncher
         }
         else
         {
-            foreach (string argument in PrepareOpenClawArguments(openClawArguments))
+            foreach (string argument in openClawArguments)
             {
                 startInfo.ArgumentList.Add(argument);
             }
         }
 
         return startInfo;
-    }
-
-    private static IReadOnlyList<string> PrepareOpenClawArguments(
-        IReadOnlyList<string> arguments)
-    {
-        bool IsArgument(int index, string expected) =>
-            arguments.Count > index &&
-            string.Equals(
-                arguments[index],
-                expected,
-                StringComparison.OrdinalIgnoreCase);
-
-        if (IsArgument(0, "gateway") && IsArgument(1, "install"))
-        {
-            throw new HostUsageException(
-                "The MSIX host runs the Gateway in the foreground and does not " +
-                "support installing OpenClaw's separate Windows Scheduled Task.");
-        }
-
-        bool isSetupCommand = IsArgument(0, "setup") || IsArgument(0, "onboard");
-        if (!isSetupCommand)
-        {
-            return arguments;
-        }
-
-        bool requestsDaemonInstall = arguments.Any(argument =>
-            string.Equals(
-                argument,
-                "--install-daemon",
-                StringComparison.OrdinalIgnoreCase));
-        if (requestsDaemonInstall)
-        {
-            throw new HostUsageException(
-                "Daemon installation is not supported by the MSIX host. " +
-                "Run setup without --install-daemon.");
-        }
-
-        bool alreadySkipsDaemon = arguments.Any(argument =>
-            string.Equals(
-                argument,
-                "--skip-daemon",
-                StringComparison.OrdinalIgnoreCase) ||
-            string.Equals(
-                argument,
-                "--no-install-daemon",
-                StringComparison.OrdinalIgnoreCase));
-        return alreadySkipsDaemon
-            ? arguments
-            : [.. arguments, "--skip-daemon"];
     }
 
     private static bool IsGatewayRun(IReadOnlyList<string> arguments) =>

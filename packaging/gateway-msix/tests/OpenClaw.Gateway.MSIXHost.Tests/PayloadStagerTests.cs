@@ -50,6 +50,39 @@ public sealed class PayloadStagerTests : IDisposable
             message => message.Contains(
                 "skipping full per-file verification",
                 StringComparison.Ordinal));
+        Assert.Equal(
+            2,
+            messages.Count(message =>
+                string.Equals(
+                    message,
+                    "Released the installation lock.",
+                    StringComparison.Ordinal)));
+    }
+
+    [Fact]
+    public async Task StageAsyncReleasesInstallLockBeforeReturningPayload()
+    {
+        PackageFixture fixture = await CreatePackageAsync(
+        [
+            new PaxTarEntry(TarEntryType.RegularFile, "openclaw.mjs")
+            {
+                DataStream = TextStream("console.log('fixture');")
+            }
+        ]);
+        string installDirectory = Path.Combine(_testDirectory, "app");
+        var stager = new PayloadStager(installDirectory);
+
+        await stager.StageAsync(
+            fixture.ArchivePath,
+            fixture.MetadataPath,
+            CancellationToken.None);
+
+        using FileStream acquiredAfterStaging = new(
+            Path.Combine(_testDirectory, ".app.install.lock"),
+            FileMode.OpenOrCreate,
+            FileAccess.ReadWrite,
+            FileShare.None);
+        Assert.True(acquiredAfterStaging.CanWrite);
     }
 
     [Fact]
