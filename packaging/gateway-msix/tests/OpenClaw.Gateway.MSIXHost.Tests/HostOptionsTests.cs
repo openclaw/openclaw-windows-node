@@ -3,46 +3,55 @@ namespace OpenClaw.MSIXHost.Tests;
 public sealed class HostOptionsTests
 {
     [Fact]
-    public void ParseSeparatesHostOptionsFromOpenClawArguments()
+    public void ParseForwardsAllArgumentsUnchanged()
     {
         HostOptions options = HostOptions.Parse(
         [
             "--host-payload", "payload.tar.gz",
             "--host-node", "test-node.exe",
+            "--",
             "gateway", "run", "--port", "12345"
         ]);
 
-        Assert.Equal("payload.tar.gz", options.PayloadPath);
-        Assert.Equal("test-node.exe", options.NodePath);
-        Assert.False(options.VerifyInstalledPayload);
         Assert.Equal(
-            ["gateway", "run", "--port", "12345"],
+            [
+                "--host-payload", "payload.tar.gz",
+                "--host-node", "test-node.exe",
+                "--",
+                "gateway", "run", "--port", "12345"
+            ],
             options.OpenClawArguments);
     }
 
     [Fact]
-    public void ParseEnablesFullInstalledPayloadVerification()
+    public void ParseUsesPackagedAndProfileDefaults()
     {
-        HostOptions options = HostOptions.Parse(
-            ["--host-verify-installed-payload", "setup"]);
+        HostOptions options = HostOptions.Parse([]);
 
-        Assert.True(options.VerifyInstalledPayload);
-        Assert.Equal(["setup"], options.OpenClawArguments);
+        Assert.EndsWith(
+            Path.Combine("payload", $"app-{GetArchitecture()}.tar.gz"),
+            options.PayloadPath,
+            StringComparison.OrdinalIgnoreCase);
+        Assert.EndsWith(
+            Path.Combine("payload", "payload-metadata.json"),
+            options.MetadataPath,
+            StringComparison.OrdinalIgnoreCase);
+        Assert.EndsWith(
+            Path.Combine(".openclaw-msix", "app"),
+            options.InstallDirectory,
+            StringComparison.OrdinalIgnoreCase);
+        Assert.EndsWith(
+            ".openclaw",
+            options.StateDirectory,
+            StringComparison.OrdinalIgnoreCase);
+        Assert.Empty(options.OpenClawArguments);
     }
 
-    [Fact]
-    public void ParseStopsHostOptionProcessingAfterSeparator()
-    {
-        HostOptions options = HostOptions.Parse(
-            ["--", "--host-node", "forwarded"]);
-
-        Assert.Equal(["--host-node", "forwarded"], options.OpenClawArguments);
-    }
-
-    [Fact]
-    public void ParseRejectsHostOptionWithoutValue()
-    {
-        Assert.Throws<HostUsageException>(
-            () => HostOptions.Parse(["--host-payload"]));
-    }
+    private static string GetArchitecture() =>
+        System.Runtime.InteropServices.RuntimeInformation.ProcessArchitecture switch
+        {
+            System.Runtime.InteropServices.Architecture.X64 => "x64",
+            System.Runtime.InteropServices.Architecture.Arm64 => "arm64",
+            _ => throw new PlatformNotSupportedException()
+        };
 }

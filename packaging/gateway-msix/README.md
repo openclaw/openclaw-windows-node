@@ -36,8 +36,8 @@ OpenClaw to stop its gateway. If necessary, it terminates only the recorded
 packaged gateway process, never every `node.exe` process.
 
 All explicit arguments are forwarded unchanged to the bundled OpenClaw CLI
-after payload preparation. The host does not interpret, reject, or rewrite
-OpenClaw commands or options.
+after payload preparation. The host does not reserve, consume, reject, or
+rewrite OpenClaw commands or options.
 
 Every OpenClaw child process runs with
 `OPENCLAW_SUPERVISOR_MODE=external` and `OPENCLAW_NO_AUTO_UPDATE=1`. This makes

@@ -68,7 +68,6 @@ internal static class Program
         static string GetDiagnosticFailure(Exception exception) =>
             exception switch
             {
-                HostUsageException or
                 InvalidDataException or
                 TimeoutException or
                 PlatformNotSupportedException or
@@ -93,24 +92,15 @@ internal static class Program
             }
 
             HostOptions options = HostOptions.Parse(args);
-            if (options.ShowHelp)
-            {
-                WriteDiagnostic("Showing host help.");
-                HostOptions.WriteHelp(Console.Out);
-                return 0;
-            }
-
             bool isBootstrapLaunch = options.OpenClawArguments.Count == 0;
-            bool verifyInstalledPayload = options.VerifyInstalledPayload;
+            bool verifyInstalledPayload = false;
             if (isBootstrapLaunch)
             {
-                BootstrapAction action = verifyInstalledPayload
-                    ? BootstrapAction.PrepareFull
-                    : BootstrapConsole.PromptForAction(
-                        options.InstallDirectory,
-                        options.StateDirectory,
-                        Console.In,
-                        Console.Out);
+                BootstrapAction action = BootstrapConsole.PromptForAction(
+                    options.InstallDirectory,
+                    options.StateDirectory,
+                    Console.In,
+                    Console.Out);
                 if (action is BootstrapAction.ResetGateway or BootstrapAction.ResetAll)
                 {
                     await OpenClawResetter.ResetAsync(
@@ -157,14 +147,6 @@ internal static class Program
             }
 
             return exitCode;
-        }
-        catch (HostUsageException exception)
-        {
-            WriteDiagnostic($"Usage error: {exception.Message}");
-            WriteConsoleError(exception.Message);
-            WriteConsoleError(string.Empty);
-            HostOptions.WriteHelp(Console.Error);
-            return 2;
         }
         catch (Exception exception)
         {
