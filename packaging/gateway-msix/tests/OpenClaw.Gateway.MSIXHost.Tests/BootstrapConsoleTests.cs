@@ -11,7 +11,6 @@ public sealed class BootstrapConsoleTests : IDisposable
 
         BootstrapAction action = BootstrapConsole.PromptForAction(
             Path.Combine(_testDirectory, "missing"),
-            Path.Combine(_testDirectory, "missing-state"),
             new StringReader("r"),
             output);
 
@@ -29,7 +28,6 @@ public sealed class BootstrapConsoleTests : IDisposable
 
         BootstrapAction action = BootstrapConsole.PromptForAction(
             Path.Combine(_testDirectory, "app"),
-            Path.Combine(_testDirectory, "state"),
             new StringReader(response),
             new StringWriter());
 
@@ -45,13 +43,12 @@ public sealed class BootstrapConsoleTests : IDisposable
 
         BootstrapAction action = BootstrapConsole.PromptForAction(
             installDirectory,
-            Path.Combine(_testDirectory, "state"),
             new StringReader($"invalid{Environment.NewLine}r"),
             output);
 
         Assert.Equal(BootstrapAction.PrepareFull, action);
         Assert.Contains(
-            "Enter C, R, G, or A",
+            "Enter C or R",
             output.ToString(),
             StringComparison.Ordinal);
     }
@@ -65,7 +62,6 @@ public sealed class BootstrapConsoleTests : IDisposable
 
         BootstrapConsole.PromptForAction(
             installDirectory,
-            Path.Combine(_testDirectory, "state"),
             new StringReader("c"),
             output);
 
@@ -75,61 +71,6 @@ public sealed class BootstrapConsoleTests : IDisposable
             StringComparison.Ordinal);
         Assert.Contains(
             "openclaw gateway run",
-            output.ToString(),
-            StringComparison.Ordinal);
-    }
-
-    [Fact]
-    public void PromptForActionConfirmsGatewayReset()
-    {
-        string installDirectory = Path.Combine(_testDirectory, "app");
-        Directory.CreateDirectory(installDirectory);
-
-        BootstrapAction action = BootstrapConsole.PromptForAction(
-            installDirectory,
-            Path.Combine(_testDirectory, "state"),
-            new StringReader($"g{Environment.NewLine}yes"),
-            new StringWriter());
-
-        Assert.Equal(BootstrapAction.ResetGateway, action);
-    }
-
-    [Fact]
-    public void PromptForActionDetectsGatewayRootWithoutPreparedApp()
-    {
-        string installDirectory = Path.Combine(
-            _testDirectory,
-            ".openclaw-msix",
-            "app");
-        Directory.CreateDirectory(Path.GetDirectoryName(installDirectory)!);
-
-        BootstrapAction action = BootstrapConsole.PromptForAction(
-            installDirectory,
-            Path.Combine(_testDirectory, "state"),
-            new StringReader($"g{Environment.NewLine}y"),
-            new StringWriter());
-
-        Assert.Equal(BootstrapAction.ResetGateway, action);
-    }
-
-    [Fact]
-    public void PromptForActionRequiresResetPhraseForFullReset()
-    {
-        string installDirectory = Path.Combine(_testDirectory, "app");
-        Directory.CreateDirectory(installDirectory);
-        var output = new StringWriter();
-
-        BootstrapAction action = BootstrapConsole.PromptForAction(
-            installDirectory,
-            Path.Combine(_testDirectory, "state"),
-            new StringReader(
-                $"a{Environment.NewLine}no{Environment.NewLine}" +
-                $"a{Environment.NewLine}RESET"),
-            output);
-
-        Assert.Equal(BootstrapAction.ResetAll, action);
-        Assert.Contains(
-            "Full reset canceled.",
             output.ToString(),
             StringComparison.Ordinal);
     }

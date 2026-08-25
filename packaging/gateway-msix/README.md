@@ -26,14 +26,12 @@ openclaw gateway run
 On later launches, the bootstrapper offers these choices:
 
 - **C**: continue with fast verification (recommended);
-- **R**: fully verify every prepared file and repair if needed;
-- **G**: remove the prepared gateway files while preserving OpenClaw user
-  configuration and state;
-- **A**: remove both the prepared gateway and `%USERPROFILE%\.openclaw`.
+- **R**: fully verify every prepared file and repair if needed.
 
-The destructive full reset requires typing `RESET`. Cleanup first asks
-OpenClaw to stop its gateway. If necessary, it terminates only the recorded
-packaged gateway process, never every `node.exe` process.
+When preparation is required, the host extracts into a temporary directory,
+moves any existing prepared payload aside, and promotes the new payload only
+after extraction and verification succeed. The previous payload is removed
+after successful promotion, preserving rollback if preparation fails.
 
 All explicit arguments are forwarded unchanged to the bundled OpenClaw CLI
 after payload preparation. The host does not reserve, consume, reject, or
@@ -111,7 +109,10 @@ key is stored in the repository.
 
 The prepared gateway and OpenClaw user state are outside the immutable MSIX
 installation directory. Updating or removing the MSIX does not automatically
-delete those directories.
+delete those directories or stop a running Gateway. Use OpenClaw's documented
+[`openclaw uninstall`](https://docs.openclaw.ai/install/uninstall) flow before
+removing the MSIX. The prepared `%USERPROFILE%\.openclaw-msix` directory may
+be removed manually after OpenClaw is stopped.
 
 ## Integrity and isolation boundary
 

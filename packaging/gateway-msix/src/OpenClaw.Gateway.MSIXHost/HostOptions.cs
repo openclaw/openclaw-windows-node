@@ -7,7 +7,6 @@ public sealed record HostOptions(
     string MetadataPath,
     string NodePath,
     string InstallDirectory,
-    string StateDirectory,
     IReadOnlyList<string> OpenClawArguments)
 {
     public static HostOptions Parse(IReadOnlyList<string> arguments)
@@ -31,14 +30,12 @@ public sealed record HostOptions(
             userProfile,
             ".openclaw-msix",
             "app");
-        string stateDirectory = Path.Combine(userProfile, ".openclaw");
 
         return new HostOptions(
             payloadPath,
             metadataPath,
             nodePath,
             installDirectory,
-            stateDirectory,
             arguments.ToArray());
     }
 }

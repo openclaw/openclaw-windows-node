@@ -40,10 +40,6 @@ public sealed class HostOptionsTests
             Path.Combine(".openclaw-msix", "app"),
             options.InstallDirectory,
             StringComparison.OrdinalIgnoreCase);
-        Assert.EndsWith(
-            ".openclaw",
-            options.StateDirectory,
-            StringComparison.OrdinalIgnoreCase);
         Assert.Empty(options.OpenClawArguments);
     }
 

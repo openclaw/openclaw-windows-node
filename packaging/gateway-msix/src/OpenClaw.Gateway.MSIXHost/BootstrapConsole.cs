@@ -3,61 +3,32 @@ namespace OpenClaw.MSIXHost;
 public enum BootstrapAction
 {
     PrepareFast,
-    PrepareFull,
-    ResetGateway,
-    ResetAll
+    PrepareFull
 }
 
 public static class BootstrapConsole
 {
     public static BootstrapAction PromptForAction(
         string installDirectory,
-        string stateDirectory,
         TextReader input,
         TextWriter output)
     {
-        string? installRoot = Path.GetDirectoryName(
-            Path.GetFullPath(installDirectory));
-        bool hasGatewayData =
-            Directory.Exists(installDirectory) ||
-            (installRoot is not null &&
-                string.Equals(
-                    Path.GetFileName(installRoot),
-                    ".openclaw-msix",
-                    StringComparison.OrdinalIgnoreCase) &&
-                Directory.Exists(installRoot));
-        if (!hasGatewayData &&
-            !Directory.Exists(stateDirectory))
+        if (!Directory.Exists(installDirectory))
         {
             return BootstrapAction.PrepareFast;
         }
 
         output.WriteLine();
-        if (Directory.Exists(installDirectory))
-        {
-            output.WriteLine("OpenClaw gateway files were prepared by an earlier launch:");
-            output.WriteLine($"  {installDirectory}");
-            output.WriteLine();
-            output.WriteLine("If OpenClaw is already configured and working, you can close");
-            output.WriteLine("this window and launch it with:");
-            output.WriteLine("  openclaw gateway run");
-        }
-        else if (hasGatewayData)
-        {
-            output.WriteLine("Existing OpenClaw MSIX gateway data was found:");
-            output.WriteLine($"  {installRoot}");
-        }
-        else
-        {
-            output.WriteLine("Existing OpenClaw configuration or user data was found:");
-            output.WriteLine($"  {stateDirectory}");
-        }
+        output.WriteLine("OpenClaw gateway files were prepared by an earlier launch:");
+        output.WriteLine($"  {installDirectory}");
+        output.WriteLine();
+        output.WriteLine("If OpenClaw is already configured and working, you can close");
+        output.WriteLine("this window and launch it with:");
+        output.WriteLine("  openclaw gateway run");
 
         output.WriteLine();
         output.WriteLine("[C] Continue with fast verification [recommended]");
         output.WriteLine("[R] Retry preparation with full verification and repair");
-        output.WriteLine("[G] Reset prepared gateway files, then exit");
-        output.WriteLine("[A] Reset gateway files and all OpenClaw user data, then exit");
 
         while (true)
         {
@@ -74,38 +45,7 @@ public static class BootstrapConsole
                 return BootstrapAction.PrepareFull;
             }
 
-            if (response.Equals("g", StringComparison.OrdinalIgnoreCase))
-            {
-                output.Write(
-                    "Remove the prepared gateway files? The MSIX will remain installed. [y/N]: ");
-                if (IsYes(input.ReadLine()))
-                {
-                    return BootstrapAction.ResetGateway;
-                }
-
-                output.WriteLine("Gateway reset canceled.");
-                continue;
-            }
-
-            if (response.Equals("a", StringComparison.OrdinalIgnoreCase))
-            {
-                output.WriteLine(
-                    "This removes prepared gateway files, configuration, credentials, " +
-                    "agents, and sessions.");
-                output.Write("Type RESET to continue: ");
-                if (string.Equals(
-                    input.ReadLine()?.Trim(),
-                    "RESET",
-                    StringComparison.Ordinal))
-                {
-                    return BootstrapAction.ResetAll;
-                }
-
-                output.WriteLine("Full reset canceled.");
-                continue;
-            }
-
-            output.WriteLine("Enter C, R, G, or A.");
+            output.WriteLine("Enter C or R.");
         }
     }
 
@@ -140,8 +80,4 @@ public static class BootstrapConsole
         output.Write("Press Enter to close this window...");
         input.ReadLine();
     }
-
-    private static bool IsYes(string? value) =>
-        string.Equals(value?.Trim(), "y", StringComparison.OrdinalIgnoreCase) ||
-        string.Equals(value?.Trim(), "yes", StringComparison.OrdinalIgnoreCase);
 }

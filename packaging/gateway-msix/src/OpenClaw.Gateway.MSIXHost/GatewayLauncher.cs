@@ -24,26 +24,6 @@ public static class GatewayLauncher
         using Process process = Process.Start(startInfo) ??
             throw new InvalidOperationException("Unable to start the OpenClaw process.");
         log?.Invoke($"OpenClaw child process started with PID {process.Id}.");
-        GatewayProcessRegistration? registration = null;
-        if (IsGatewayRun(openClawArguments))
-        {
-            try
-            {
-                registration = GatewayProcessRegistration.Create(
-                    process,
-                    payloadDirectory,
-                    nodePath);
-            }
-            catch (Exception exception) when (
-                exception is IOException or
-                UnauthorizedAccessException or
-                InvalidOperationException or
-                System.ComponentModel.Win32Exception)
-            {
-                log?.Invoke(
-                    $"Unable to record the gateway process for reset: {exception.Message}");
-            }
-        }
 
         Task stderrForwarding = startInfo.RedirectStandardError
             ? ForwardStandardErrorAsync(
@@ -67,10 +47,6 @@ public static class GatewayLauncher
             }
 
             throw;
-        }
-        finally
-        {
-            registration?.Dispose();
         }
     }
 
@@ -115,18 +91,6 @@ public static class GatewayLauncher
 
         return startInfo;
     }
-
-    private static bool IsGatewayRun(IReadOnlyList<string> arguments) =>
-        arguments.Count == 0 ||
-        (arguments.Count >= 2 &&
-            string.Equals(
-                arguments[0],
-                "gateway",
-                StringComparison.OrdinalIgnoreCase) &&
-            string.Equals(
-                arguments[1],
-                "run",
-                StringComparison.OrdinalIgnoreCase));
 
     public static async Task ForwardStandardErrorAsync(
         TextReader reader,

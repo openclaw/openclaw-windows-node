@@ -98,21 +98,8 @@ internal static class Program
             {
                 BootstrapAction action = BootstrapConsole.PromptForAction(
                     options.InstallDirectory,
-                    options.StateDirectory,
                     Console.In,
                     Console.Out);
-                if (action is BootstrapAction.ResetGateway or BootstrapAction.ResetAll)
-                {
-                    await OpenClawResetter.ResetAsync(
-                        options.NodePath,
-                        options.InstallDirectory,
-                        options.StateDirectory,
-                        includeUserState: action == BootstrapAction.ResetAll,
-                        ReportProgress,
-                        CancellationToken.None);
-                    return 0;
-                }
-
                 verifyInstalledPayload = action == BootstrapAction.PrepareFull;
             }
 
