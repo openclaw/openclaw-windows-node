@@ -224,16 +224,33 @@ public partial class App
             return matches;
         };
 
-        app.DashboardUrlHandler = (path) =>
+        app.DashboardUrlHandler = async (path) =>
         {
-            if (!TryResolveChatCredentials(out var gatewayUrl, out var token, out var credentialSource, out var isBootstrapToken))
+            if (!TryResolveChatCredentials(out var gatewayUrl, out var dashboardCredential, out var credentialSource, out var isBootstrapToken))
                 return new { error = "Gateway URL or credential is not configured" };
 
-            var url = GatewayDashboardUrlBuilder.Build(
+            var active = _gatewayRegistry?.GetActive();
+            var activeMatches = active is not null &&
+                string.Equals(active.Url, gatewayUrl, StringComparison.OrdinalIgnoreCase);
+            var usesSharedCredential =
+                !isBootstrapToken && credentialSource == CredentialResolver.SourceSharedGatewayToken;
+            var tailscaleGatewayId = active?.TrustTailscaleAuth == true && activeMatches
+                ? active.Id
+                : null;
+            var service = _gatewayDashboardLinkService;
+            if (service is null)
+                return new { error = "Connection manager is not initialized" };
+
+            var result = await service.BuildAsync(new GatewayDashboardLinkRequest(
                 gatewayUrl,
                 path,
-                token,
-                !isBootstrapToken && credentialSource == CredentialResolver.SourceSharedGatewayToken);
+                dashboardCredential,
+                usesSharedCredential,
+                tailscaleGatewayId));
+            if (!result.Success)
+                return new { error = result.Error };
+
+            var url = result.Url!;
 
             return new
             {

@@ -1845,6 +1845,17 @@ public sealed partial class ConnectionPage : Page
         var openDashboard = new MenuFlyoutItem { Text = LocalizationHelper.GetString("ConnectionPage_OpenDashboard"), Tag = row.Id };
         openDashboard.Click += OnSavedRowOpenDashboard;
         flyout.Items.Add(openDashboard);
+        var gatewayRecord = _gatewayRegistry?.GetById(row.Id);
+        if (row.IsActive && GatewayTailscaleAuthUpgradePolicy.CanOffer(gatewayRecord))
+        {
+            var enableTailscaleAuth = new MenuFlyoutItem
+            {
+                Text = LocalizationHelper.GetString("ConnectionPage_TailscaleDashboardAuthMenu"),
+                Tag = row.Id,
+            };
+            enableTailscaleAuth.Click += OnEnableTailscaleDashboardAuth;
+            flyout.Items.Add(enableTailscaleAuth);
+        }
         if (row.HasHostTerminal)
         {
             var openTerminal = new MenuFlyoutItem { Text = row.HostTerminalLabel, Tag = row.Id };
@@ -2568,35 +2579,91 @@ public sealed partial class ConnectionPage : Page
         if (rec == null) return;
         try
         {
-            if (!string.IsNullOrWhiteSpace(rec.SharedGatewayToken))
-            {
-                var provenanceService = CurrentApp.ManagedLocalPortProvenance;
-                if (provenanceService is null)
-                    return;
-                _ = await provenanceService.InspectAsync(rec);
-                var candidate = new GatewayCredential(
-                    rec.SharedGatewayToken!,
-                    IsBootstrapToken: false,
-                    CredentialResolver.SourceSharedGatewayToken);
-                if (!provenanceService.IsStrongCredentialAllowed(rec, candidate))
-                {
-                    CurrentApp.ShowTransientConnectionError(
-                        "Dashboard blocked because the saved gateway address is not owned by the verified managed gateway.");
-                    return;
-                }
-            }
-
-            var url = GatewayDashboardUrlBuilder.Build(
+            await CurrentApp.OpenDashboardFromLinkServiceAsync(new GatewayDashboardLinkRequest(
                 rec.Url,
-                path: null,
+                null,
                 rec.SharedGatewayToken,
-                appendSharedGatewayToken: !string.IsNullOrWhiteSpace(rec.SharedGatewayToken));
-            await global::Windows.System.Launcher.LaunchUriAsync(new Uri(url));
+                !string.IsNullOrWhiteSpace(rec.SharedGatewayToken),
+                rec.TrustTailscaleAuth ? rec.Id : null),
+                result => ValidateSavedDashboardFallbackAsync(rec, result));
         }
         catch (Exception ex)
         {
             Services.Logger.Warn($"[ConnectionPage] Failed to open saved gateway dashboard: {ex.Message}");
         }
+    }
+
+    private async Task<bool> ValidateSavedDashboardFallbackAsync(
+        GatewayRecord record,
+        GatewayDashboardLinkResult result)
+    {
+        if (result.TrustTailscaleAuth)
+        {
+            return true;
+        }
+
+        var provenanceService = CurrentApp.ManagedLocalPortProvenance;
+        if (provenanceService is null || string.IsNullOrWhiteSpace(record.SharedGatewayToken))
+        {
+            return false;
+        }
+
+        _ = await provenanceService.InspectAsync(record);
+        var candidate = new GatewayCredential(
+            record.SharedGatewayToken,
+            IsBootstrapToken: false,
+            CredentialResolver.SourceSharedGatewayToken);
+        if (provenanceService.IsStrongCredentialAllowed(record, candidate))
+        {
+            return true;
+        }
+
+        CurrentApp.ShowTransientConnectionError(
+            "Dashboard blocked because the saved gateway address is not owned by the verified managed gateway.");
+        return false;
+    }
+
+    private void OnEnableTailscaleDashboardAuth(object sender, RoutedEventArgs e) =>
+        AsyncEventHandlerGuard.Run(
+            () => OnEnableTailscaleDashboardAuthAsync(sender),
+            new AppLogger(),
+            nameof(OnEnableTailscaleDashboardAuth));
+
+    private async Task OnEnableTailscaleDashboardAuthAsync(object sender)
+    {
+        if (sender is not MenuFlyoutItem item ||
+            item.Tag is not string gatewayId ||
+            _connectionManager is null)
+        {
+            return;
+        }
+
+        var dialog = new ContentDialog
+        {
+            Title = LocalizationHelper.GetString("ConnectionPage_TailscaleDashboardAuthTitle"),
+            Content = LocalizationHelper.GetString("ConnectionPage_TailscaleDashboardAuthBody"),
+            PrimaryButtonText = LocalizationHelper.GetString("ConnectionPage_TailscaleDashboardAuthEnable"),
+            CloseButtonText = LocalizationHelper.GetString("ConnectionPage_CancelAction"),
+            DefaultButton = ContentDialogButton.Close,
+            XamlRoot = XamlRoot,
+        };
+        if (await dialog.ShowAsync() != ContentDialogResult.Primary)
+            return;
+
+        var result = await _connectionManager.EnableTailscaleDashboardAuthAsync(gatewayId);
+        if (result.IsSuccess)
+        {
+            SetGatewayHostActionStatus(LocalizationHelper.GetString("ConnectionPage_TailscaleDashboardAuthEnabled"));
+            LoadSavedGateways();
+            return;
+        }
+
+        var detail = string.IsNullOrWhiteSpace(result.Error)
+            ? result.Outcome.ToString()
+            : result.Error;
+        SetGatewayHostActionStatus(
+            string.Format(LocalizationHelper.GetString("ConnectionPage_TailscaleDashboardAuthFailedFormat"), detail),
+            isError: true);
     }
 
     private void OnSavedRowEdit(object sender, RoutedEventArgs e)

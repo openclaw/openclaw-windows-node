@@ -115,6 +115,8 @@ public interface IOperatorGatewayClient
     Task<bool> InstallSkillAsync(string skillId);
     Task<bool> SetSkillEnabledAsync(string skillKey, bool enabled);
     Task RequestConfigAsync();
+    Task<JsonElement> RequestConfigDetailedAsync(int timeoutMs = 15000) =>
+        Task.FromException<JsonElement>(new NotSupportedException("Response-aware config.get is not supported by this client."));
     Task RequestConfigSchemaAsync();
     Task<bool> SetConfigAsync(string path, object value);
     Task<bool> PatchConfigAsync(JsonElement fullConfig, string? baseHash);

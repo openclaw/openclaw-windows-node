@@ -5463,6 +5463,30 @@ Assurez-vous que la passerelle est en cours d'exécution.</value>
   <data name="ConnectionPage_OpenDashboard" xml:space="preserve">
     <value>Ouvrir le tableau de bord</value>
   </data>
+  <data name="ConnectionPage_TailscaleDashboardAuthMenu" xml:space="preserve">
+    <value>Utiliser l’identité Tailscale pour le tableau de bord</value>
+  </data>
+  <data name="ConnectionPage_TailscaleDashboardAuthTitle" xml:space="preserve">
+    <value>Utiliser l’identité Tailscale pour le tableau de bord ?</value>
+  </data>
+  <data name="ConnectionPage_TailscaleDashboardAuthBody" xml:space="preserve">
+    <value>Cela active l’authentification vérifiée par identité Tailscale sur cette passerelle gérée. Votre jeton enregistré, l’identité de l’appareil, la distribution WSL et l’association restent inchangés.</value>
+  </data>
+  <data name="ConnectionPage_TailscaleDashboardAuthEnable" xml:space="preserve">
+    <value>Activer</value>
+  </data>
+  <data name="ConnectionPage_TailscaleDashboardAuthEnabled" xml:space="preserve">
+    <value>L’identité Tailscale est activée pour le tableau de bord.</value>
+  </data>
+  <data name="ConnectionPage_TailscaleDashboardAuthFailedFormat" xml:space="preserve">
+    <value>Impossible d’activer l’identité Tailscale pour le tableau de bord : {0}</value>
+  </data>
+  <data name="DashboardLink_NoBrowserCompatibleCredential" xml:space="preserve">
+    <value>Aucun identifiant de passerelle compatible avec le navigateur n’est disponible</value>
+  </data>
+  <data name="DashboardLink_TailscaleRevalidationFailed" xml:space="preserve">
+    <value>La revalidation de l’authentification Tailscale du tableau de bord a échoué</value>
+  </data>
   <data name="ConnectionPage_GatewayOptionsA11y" xml:space="preserve">
     <value>Options pour {0}</value>
   </data>

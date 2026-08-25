@@ -441,9 +441,11 @@ public class SetupAndConnectTests
 
             using var dashboardDoc = await externalTray.Client.CallToolExpectSuccessAsync("app.dashboard.url");
             var dashboard = dashboardDoc.RootElement;
-            Assert.Equal("record.BootstrapToken", dashboard.GetProperty("credentialSource").GetString());
+            var dashboardUrl = dashboard.GetProperty("url").GetString();
+            Assert.NotNull(dashboardUrl);
             Assert.False(dashboard.GetProperty("usesSharedGatewayToken").GetBoolean());
             Assert.False(dashboard.GetProperty("hasTokenQuery").GetBoolean());
+            Assert.DoesNotContain("token=", dashboardUrl, StringComparison.OrdinalIgnoreCase);
 
             using var rejectDoc = await RejectDevicePairingFromConnectionPageAsync(requestId);
             handledDeviceRequestIds.Add(requestId);

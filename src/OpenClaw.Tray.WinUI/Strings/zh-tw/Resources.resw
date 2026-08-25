@@ -5463,6 +5463,30 @@
   <data name="ConnectionPage_OpenDashboard" xml:space="preserve">
     <value>開啟儀表板</value>
   </data>
+  <data name="ConnectionPage_TailscaleDashboardAuthMenu" xml:space="preserve">
+    <value>使用 Tailscale 身分存取儀表板</value>
+  </data>
+  <data name="ConnectionPage_TailscaleDashboardAuthTitle" xml:space="preserve">
+    <value>使用 Tailscale 身分存取儀表板？</value>
+  </data>
+  <data name="ConnectionPage_TailscaleDashboardAuthBody" xml:space="preserve">
+    <value>這會在此受管理的閘道上啟用經過驗證的 Tailscale 身分驗證。已儲存的權杖、裝置身分、WSL 發行版本和配對資訊均維持不變。</value>
+  </data>
+  <data name="ConnectionPage_TailscaleDashboardAuthEnable" xml:space="preserve">
+    <value>啟用</value>
+  </data>
+  <data name="ConnectionPage_TailscaleDashboardAuthEnabled" xml:space="preserve">
+    <value>已啟用儀表板的 Tailscale 身分驗證。</value>
+  </data>
+  <data name="ConnectionPage_TailscaleDashboardAuthFailedFormat" xml:space="preserve">
+    <value>無法啟用儀表板的 Tailscale 身分驗證：{0}</value>
+  </data>
+  <data name="DashboardLink_NoBrowserCompatibleCredential" xml:space="preserve">
+    <value>沒有可供瀏覽器使用的閘道認證</value>
+  </data>
+  <data name="DashboardLink_TailscaleRevalidationFailed" xml:space="preserve">
+    <value>重新驗證儀表板的 Tailscale 身分驗證失敗</value>
+  </data>
   <data name="ConnectionPage_GatewayOptionsA11y" xml:space="preserve">
     <value>{0} 的選項</value>
   </data>

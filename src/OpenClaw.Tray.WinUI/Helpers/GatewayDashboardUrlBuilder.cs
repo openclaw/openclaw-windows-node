@@ -6,7 +6,8 @@ public static class GatewayDashboardUrlBuilder
         string gatewayUrl,
         string? path,
         string? sharedGatewayToken,
-        bool appendSharedGatewayToken)
+        bool appendSharedGatewayToken,
+        bool trustTailscaleAuth = false)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(gatewayUrl);
 
@@ -19,7 +20,7 @@ public static class GatewayDashboardUrlBuilder
             ? baseUrl
             : $"{baseUrl}/{path.TrimStart('/')}";
 
-        if (appendSharedGatewayToken && !string.IsNullOrEmpty(sharedGatewayToken))
+        if (appendSharedGatewayToken && !trustTailscaleAuth && !string.IsNullOrEmpty(sharedGatewayToken))
         {
             var separator = url.Contains('#') ? "&" : "#";
             url = $"{url}{separator}token={Uri.EscapeDataString(sharedGatewayToken)}";

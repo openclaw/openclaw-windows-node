@@ -2707,11 +2707,23 @@ public class SetupStepsTests : IDisposable
               }
             }
             """;
+        const string legacyAnyHandlerStatus = """
+            {
+              "Web": {
+                "openclaw.example.ts.net:443": {
+                  "Handlers": {
+                    "/app": { "Proxy": "http://127.0.0.1:18789/backend" }
+                  }
+                }
+              }
+            }
+            """;
 
         Assert.Equal("https://login.tailscale.com/a/abc_123-now", url!.AbsoluteUri);
         Assert.True(TailscaleSetupPolicy.ServeStatusRoutesToPort(expectedServeStatus, 18789));
         Assert.False(TailscaleSetupPolicy.ServeStatusRoutesToPort(wrongBackendStatus, 18789));
         Assert.False(TailscaleSetupPolicy.ServeStatusRoutesToPort(unrelatedPortStatus, 18789));
+        Assert.True(TailscaleSetupPolicy.ServeStatusRoutesToPort(legacyAnyHandlerStatus, 18789));
         Assert.False(TailscaleSetupPolicy.ServeStatusEnablesFunnel(expectedServeStatus, 18789));
         Assert.True(TailscaleSetupPolicy.ServeStatusEnablesFunnel(funnelStatus, 18789));
     }
@@ -3262,6 +3274,63 @@ public class SetupStepsTests : IDisposable
 
         Assert.Equal(StepOutcome.Failed, result.Outcome);
         Assert.Contains("not reachable", result.Message, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task PairOperatorStep_PersistsExplicitTailscaleIdentityTrust()
+    {
+        var config = new SetupConfig
+        {
+            GatewayPort = GetFreeTcpPort(),
+            Tailscale = new TailscaleConfig
+            {
+                Enabled = true,
+                TrustTailscaleAuth = true,
+            },
+        };
+        var context = CreateContext(config);
+        context.GatewayUrl = "wss://gateway.tailnet.ts.net";
+        context.SharedGatewayToken = "gateway-token";
+        context.DistroName = "OpenClawGateway";
+
+        var result = await new PairOperatorStep().ExecuteAsync(context, CancellationToken.None);
+
+        Assert.Equal(StepOutcome.Failed, result.Outcome);
+        var registry = new GatewayRegistry(_tempDir);
+        registry.Load();
+        Assert.True(registry.GetActive()!.TrustTailscaleAuth);
+    }
+
+    [Fact]
+    public async Task PairOperatorStep_ExtraConfigOverrideDisablesTailscaleIdentityTrust()
+    {
+        var config = new SetupConfig
+        {
+            GatewayPort = GetFreeTcpPort(),
+            Tailscale = new TailscaleConfig
+            {
+                Enabled = true,
+                TrustTailscaleAuth = true,
+            },
+            Gateway = new GatewayConfig
+            {
+                ExtraConfig = new Dictionary<string, string>
+                {
+                    ["gateway.auth.allowTailscale"] = "false",
+                },
+            },
+        };
+        var context = CreateContext(config);
+        context.GatewayUrl = "wss://gateway.tailnet.ts.net";
+        context.SharedGatewayToken = "gateway-token";
+        context.DistroName = "OpenClawGateway";
+
+        var result = await new PairOperatorStep().ExecuteAsync(context, CancellationToken.None);
+
+        Assert.Equal(StepOutcome.Failed, result.Outcome);
+        var registry = new GatewayRegistry(_tempDir);
+        registry.Load();
+        Assert.False(registry.GetActive()!.TrustTailscaleAuth);
     }
 
     [Fact]

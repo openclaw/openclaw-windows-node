@@ -5464,6 +5464,30 @@ Controleer of de gateway actief is.</value>
   <data name="ConnectionPage_OpenDashboard" xml:space="preserve">
     <value>Dashboard openen</value>
   </data>
+  <data name="ConnectionPage_TailscaleDashboardAuthMenu" xml:space="preserve">
+    <value>Tailscale-identiteit gebruiken voor het dashboard</value>
+  </data>
+  <data name="ConnectionPage_TailscaleDashboardAuthTitle" xml:space="preserve">
+    <value>Tailscale-identiteit gebruiken voor het dashboard?</value>
+  </data>
+  <data name="ConnectionPage_TailscaleDashboardAuthBody" xml:space="preserve">
+    <value>Hiermee wordt verificatie via Tailscale-identiteit ingeschakeld op deze beheerde gateway. Uw opgeslagen token, apparaatidentiteit, WSL-distributie en koppeling blijven ongewijzigd.</value>
+  </data>
+  <data name="ConnectionPage_TailscaleDashboardAuthEnable" xml:space="preserve">
+    <value>Inschakelen</value>
+  </data>
+  <data name="ConnectionPage_TailscaleDashboardAuthEnabled" xml:space="preserve">
+    <value>Tailscale-identiteit voor het dashboard is ingeschakeld.</value>
+  </data>
+  <data name="ConnectionPage_TailscaleDashboardAuthFailedFormat" xml:space="preserve">
+    <value>Kan Tailscale-identiteit voor het dashboard niet inschakelen: {0}</value>
+  </data>
+  <data name="DashboardLink_NoBrowserCompatibleCredential" xml:space="preserve">
+    <value>Er is geen gatewayreferentie beschikbaar die geschikt is voor de browser</value>
+  </data>
+  <data name="DashboardLink_TailscaleRevalidationFailed" xml:space="preserve">
+    <value>Herverificatie van Tailscale-authenticatie voor het dashboard is mislukt</value>
+  </data>
   <data name="ConnectionPage_GatewayOptionsA11y" xml:space="preserve">
     <value>Opties voor {0}</value>
   </data>

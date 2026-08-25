@@ -5463,6 +5463,30 @@
   <data name="ConnectionPage_OpenDashboard" xml:space="preserve">
     <value>打开仪表板</value>
   </data>
+  <data name="ConnectionPage_TailscaleDashboardAuthMenu" xml:space="preserve">
+    <value>使用 Tailscale 身份访问仪表板</value>
+  </data>
+  <data name="ConnectionPage_TailscaleDashboardAuthTitle" xml:space="preserve">
+    <value>使用 Tailscale 身份访问仪表板？</value>
+  </data>
+  <data name="ConnectionPage_TailscaleDashboardAuthBody" xml:space="preserve">
+    <value>这将在此托管网关上启用经过验证的 Tailscale 身份认证。已保存的令牌、设备身份、WSL 发行版和配对信息均保持不变。</value>
+  </data>
+  <data name="ConnectionPage_TailscaleDashboardAuthEnable" xml:space="preserve">
+    <value>启用</value>
+  </data>
+  <data name="ConnectionPage_TailscaleDashboardAuthEnabled" xml:space="preserve">
+    <value>已启用仪表板的 Tailscale 身份认证。</value>
+  </data>
+  <data name="ConnectionPage_TailscaleDashboardAuthFailedFormat" xml:space="preserve">
+    <value>无法启用仪表板的 Tailscale 身份认证：{0}</value>
+  </data>
+  <data name="DashboardLink_NoBrowserCompatibleCredential" xml:space="preserve">
+    <value>没有可供浏览器使用的网关凭据</value>
+  </data>
+  <data name="DashboardLink_TailscaleRevalidationFailed" xml:space="preserve">
+    <value>重新验证仪表板的 Tailscale 身份认证失败</value>
+  </data>
   <data name="ConnectionPage_GatewayOptionsA11y" xml:space="preserve">
     <value>{0} 的选项</value>
   </data>

@@ -46,7 +46,7 @@ public class AppCapability : NodeCapabilityBase
     public Func<string, string, object?>? SettingsSetHandler;
     public Func<object?>? MenuHandler;
     public Func<string, object?>? SearchHandler;
-    public Func<string?, object?>? DashboardUrlHandler;
+    public Func<string?, Task<object?>>? DashboardUrlHandler;
     public Func<string?, Task<object?>>? ChatSnapshotHandler;
     public Func<string?, string, Task<object?>>? ChatSendHandler;
     public Func<string?, Task<object?>>? ChatResetHandler;
@@ -69,7 +69,7 @@ public class AppCapability : NodeCapabilityBase
             "app.settings.set" => HandleSettingsSet(request),
             "app.menu" => HandleMenu(),
             "app.search" => HandleSearch(request),
-            "app.dashboard.url" => HandleDashboardUrl(request),
+            "app.dashboard.url" => await HandleDashboardUrl(request),
             "app.chat.snapshot" => await HandleChatSnapshot(request),
             "app.chat.send" => await HandleChatSend(request),
             "app.chat.reset" => await HandleChatReset(request),
@@ -197,11 +197,14 @@ public class AppCapability : NodeCapabilityBase
         return Success(SearchHandler(query));
     }
 
-    private NodeInvokeResponse HandleDashboardUrl(NodeInvokeRequest request)
+    private async Task<NodeInvokeResponse> HandleDashboardUrl(NodeInvokeRequest request)
     {
         if (DashboardUrlHandler == null)
             return Error("Dashboard URL handler not registered");
-        return Success(DashboardUrlHandler(GetStringArg(request.Args, "path")));
+        var result = await DashboardUrlHandler(GetStringArg(request.Args, "path"));
+        if (TryGetErrorPayload(result, out var error))
+            return Error(error);
+        return Success(result);
     }
 
     private async Task<NodeInvokeResponse> HandleChatSnapshot(NodeInvokeRequest request)

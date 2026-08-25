@@ -56,6 +56,7 @@ public sealed class GatewayConnectionManager :
     private readonly ICredentialResolver _credentialResolver;
     private readonly IGatewayClientFactory _clientFactory;
     private readonly GatewayRegistry _registry;
+    private readonly IGatewayTailscaleAuthLiveVerifier _tailscaleAuthLiveVerifier;
     private readonly IOpenClawLogger _logger;
     private readonly IDeviceIdentityStore? _identityStore;
     private readonly INodeConnector? _nodeConnector;
@@ -136,6 +137,8 @@ public sealed class GatewayConnectionManager :
         _clientFactory = clientFactory ?? throw new ArgumentNullException(nameof(clientFactory));
         _registry = registry ?? throw new ArgumentNullException(nameof(registry));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
+        _tailscaleAuthLiveVerifier = new GatewayTailscaleAuthLiveVerifier(
+            new WslExeCommandRunner(_logger));
         _identityStore = identityStore;
         _nodeConnector = nodeConnector;
         _tunnelManager = tunnelManager;
@@ -208,6 +211,62 @@ public sealed class GatewayConnectionManager :
     public IOperatorGatewayClient? OperatorClient => _activeLifecycle?.DataClient;
     /// <summary>Internal access to the concrete client for auto-approve and other manager-internal operations.</summary>
     internal OpenClawGatewayClient? ConcreteOperatorClient => _activeLifecycle?.DataClient;
+
+    public async Task<GatewayTailscaleAuthUpgradeResult> EnableTailscaleDashboardAuthAsync(
+        string gatewayId,
+        CancellationToken cancellationToken = default)
+    {
+        await _transitionSemaphore.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            if (!string.Equals(_activeGatewayRecordId, gatewayId, StringComparison.Ordinal))
+                return new(GatewayTailscaleAuthUpgradeOutcome.NotActive);
+
+            var client = OperatorClient;
+            if (client is null)
+                return new(GatewayTailscaleAuthUpgradeOutcome.NotConnected);
+
+            var service = new GatewayTailscaleAuthUpgradeService(_registry);
+            return await service.EnableAsync(
+                    gatewayId,
+                    new GatewayTailscaleAuthConfigClientAdapter(client),
+                    cancellationToken)
+                .ConfigureAwait(false);
+        }
+        finally
+        {
+            _transitionSemaphore.Release();
+        }
+    }
+
+    public async Task<bool> RevalidateTailscaleDashboardAuthAsync(
+        string gatewayId,
+        CancellationToken cancellationToken = default)
+    {
+        await _transitionSemaphore.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            if (!string.Equals(_activeGatewayRecordId, gatewayId, StringComparison.Ordinal))
+                return false;
+
+            var client = OperatorClient;
+            if (client is null)
+                return false;
+
+            var service = new GatewayTailscaleAuthUpgradeService(
+                _registry,
+                _tailscaleAuthLiveVerifier);
+            return await service.RevalidateAsync(
+                    gatewayId,
+                    new GatewayTailscaleAuthConfigClientAdapter(client),
+                    cancellationToken)
+                .ConfigureAwait(false);
+        }
+        finally
+        {
+            _transitionSemaphore.Release();
+        }
+    }
     public ConnectionDiagnostics Diagnostics => _diagnostics;
 
     // ─── Lifecycle ───

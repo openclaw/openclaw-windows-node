@@ -125,6 +125,45 @@ public class AppCapabilityTests
     }
 
     [Fact]
+    public async Task DashboardUrl_AwaitsAsyncHandler()
+    {
+        var cap = new AppCapability(NullLogger.Instance)
+        {
+            DashboardUrlHandler = path => Task.FromResult<object?>(new { url = $"https://gateway.test/{path}" })
+        };
+        var req = new NodeInvokeRequest
+        {
+            Id = "1",
+            Command = "app.dashboard.url",
+            Args = ParseArgs("{\"path\":\"settings\"}")
+        };
+
+        var res = await cap.ExecuteAsync(req);
+
+        Assert.True(res.Ok);
+    }
+
+    [Fact]
+    public async Task DashboardUrl_PropagatesHandlerError()
+    {
+        var cap = new AppCapability(NullLogger.Instance)
+        {
+            DashboardUrlHandler = _ => Task.FromResult<object?>(new { error = "credential unavailable" })
+        };
+        var req = new NodeInvokeRequest
+        {
+            Id = "1",
+            Command = "app.dashboard.url",
+            Args = ParseArgs("{}")
+        };
+
+        var res = await cap.ExecuteAsync(req);
+
+        Assert.False(res.Ok);
+        Assert.Equal("credential unavailable", res.Error);
+    }
+
+    [Fact]
     public async Task UnknownCommand_ReturnsError()
     {
         var cap = new AppCapability(NullLogger.Instance);
