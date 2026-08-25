@@ -436,10 +436,11 @@ internal static class LocalAiPathPolicy
         }
 
         string root;
+        string candidatePath;
         try
         {
             root = NormalizePath(stagingDirectory);
-            destinationPath = NormalizePath(Path.Combine(
+            candidatePath = NormalizePath(Path.Combine(
                 root,
                 entryName
                     .Replace('/', Path.DirectorySeparatorChar)
@@ -451,19 +452,16 @@ internal static class LocalAiPathPolicy
             return false;
         }
 
-        if (!IsStrictDescendant(destinationPath, root))
+        if (!candidatePath.StartsWith(EnsureTrailingDirectorySeparator(root), PathComparison))
         {
-            destinationPath = "";
             error = $"Local AI archive entry '{entryName}' escapes its staging directory.";
             return false;
         }
 
-        if (!TryValidateExistingPathChain(root, destinationPath, out error))
-        {
-            destinationPath = "";
+        if (!TryValidateExistingPathChain(root, candidatePath, out error))
             return false;
-        }
 
+        destinationPath = candidatePath;
         error = "";
         return true;
     }
