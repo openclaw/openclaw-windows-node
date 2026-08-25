@@ -9,14 +9,15 @@ public class WslGatewayControllerTests
     [InlineData(WslGatewayControlAction.Start, "start")]
     [InlineData(WslGatewayControlAction.Stop, "stop")]
     [InlineData(WslGatewayControlAction.Restart, "restart")]
-    public void Build_UsesBashLoginShellPathPrefixAndGatewayCommand(WslGatewayControlAction action, string verb)
+    public void Build_UsesStdinScriptWithLinuxPathAndGatewayCommand(WslGatewayControlAction action, string verb)
     {
-        var command = WslGatewayControlCommandBuilder.Build(action);
+        var arguments = WslGatewayControlCommandBuilder.BuildArguments();
+        var standardInput = WslGatewayControlCommandBuilder.BuildStandardInput(action);
 
-        Assert.Equal(["bash", "-lc"], command.Take(2).ToArray());
-        Assert.Equal(
-            $"{WslGatewayControlCommandBuilder.OpenClawWslPathPrefix} && openclaw gateway {verb}",
-            command[2]);
+        Assert.Equal(["bash", "-s"], arguments);
+        Assert.Contains(WslGatewayControlCommandBuilder.OpenClawWslPathPrefix, standardInput);
+        Assert.Contains($"openclaw gateway {verb}", standardInput);
+        Assert.Contains("$PATH", standardInput);
     }
 
     [Fact]
@@ -33,7 +34,10 @@ public class WslGatewayControllerTests
 
         Assert.True(result.Success);
         Assert.Equal("OpenClawGateway", runner.LastDistroName);
-        Assert.Equal(WslGatewayControlCommandBuilder.Build(WslGatewayControlAction.Start), runner.LastDistroCommand);
+        Assert.Equal(WslGatewayControlCommandBuilder.BuildArguments(), runner.LastDistroCommand);
+        Assert.Equal(
+            WslGatewayControlCommandBuilder.BuildStandardInput(WslGatewayControlAction.Start),
+            runner.LastStandardInput);
     }
 
     [Fact]
@@ -70,7 +74,10 @@ public class WslGatewayControllerTests
 
         Assert.True(result.Success);
         Assert.Equal("OpenClawGateway", runner.LastDistroName);
-        Assert.Equal(WslGatewayControlCommandBuilder.Build(WslGatewayControlAction.Restart), runner.LastDistroCommand);
+        Assert.Equal(WslGatewayControlCommandBuilder.BuildArguments(), runner.LastDistroCommand);
+        Assert.Equal(
+            WslGatewayControlCommandBuilder.BuildStandardInput(WslGatewayControlAction.Restart),
+            runner.LastStandardInput);
         Assert.DoesNotContain("not registered", result.StandardError);
     }
 
@@ -90,8 +97,11 @@ public class WslGatewayControllerTests
         Assert.Equal(1, runner.TerminateCount);                      // host-side terminate happened first
         Assert.Equal("OpenClawGateway", runner.LastTerminatedDistro);
         Assert.Equal(                                                 // then a cold in-distro restart
-            WslGatewayControlCommandBuilder.Build(WslGatewayControlAction.Restart),
+            WslGatewayControlCommandBuilder.BuildArguments(),
             runner.LastDistroCommand);
+        Assert.Equal(
+            WslGatewayControlCommandBuilder.BuildStandardInput(WslGatewayControlAction.Restart),
+            runner.LastStandardInput);
     }
 
     [Fact]
@@ -169,6 +179,7 @@ public class WslGatewayControllerTests
         public Queue<WslCommandResult>? InDistroResults { get; init; }
         public string? LastDistroName { get; private set; }
         public IReadOnlyList<string>? LastDistroCommand { get; private set; }
+        public string? LastStandardInput { get; private set; }
         public int InDistroCount { get; private set; }
         public int TerminateCount { get; private set; }
         public string? LastTerminatedDistro { get; private set; }
@@ -202,10 +213,12 @@ public class WslGatewayControllerTests
             string name,
             IReadOnlyList<string> command,
             CancellationToken cancellationToken = default,
-            IReadOnlyDictionary<string, string>? environment = null)
+            IReadOnlyDictionary<string, string>? environment = null,
+            string? standardInput = null)
         {
             LastDistroName = name;
             LastDistroCommand = command;
+            LastStandardInput = standardInput;
             InDistroCount++;
             var result = InDistroResults is { Count: > 0 } ? InDistroResults.Dequeue() : Result;
             return Task.FromResult(result);

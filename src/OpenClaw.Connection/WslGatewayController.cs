@@ -1,4 +1,3 @@
-using System.Collections.ObjectModel;
 using OpenClaw.Shared;
 
 namespace OpenClaw.Connection;
@@ -33,14 +32,10 @@ public static class WslGatewayControlCommandBuilder
 {
     internal const string OpenClawWslPathPrefix = "export PATH=\"/home/openclaw/.openclaw/bin:/opt/openclaw/bin:/usr/local/bin:$PATH\"";
 
-    public static IReadOnlyList<string> Build(WslGatewayControlAction action)
-    {
-        return new ReadOnlyCollection<string>([
-            "bash",
-            "-lc",
-            $"{OpenClawWslPathPrefix} && openclaw gateway {ToVerb(action)}"
-        ]);
-    }
+    public static IReadOnlyList<string> BuildArguments() => ["bash", "-s"];
+
+    public static string BuildStandardInput(WslGatewayControlAction action) =>
+        $"set -e\n{OpenClawWslPathPrefix}\nopenclaw gateway {ToVerb(action)}\n";
 
     public static string ToVerb(WslGatewayControlAction action)
     {
@@ -88,8 +83,10 @@ public sealed class WslGatewayController(IWslCommandRunner commandRunner, IOpenC
         logger.Info($"Running OpenClaw gateway {WslGatewayControlCommandBuilder.ToVerb(action)} in WSL distro '{normalizedDistroName}'.");
         var result = await commandRunner.RunInDistroAsync(
             normalizedDistroName,
-            WslGatewayControlCommandBuilder.Build(action),
-            cancellationToken).ConfigureAwait(false);
+            WslGatewayControlCommandBuilder.BuildArguments(),
+            cancellationToken,
+            standardInput: WslGatewayControlCommandBuilder.BuildStandardInput(action))
+            .ConfigureAwait(false);
 
         return new WslGatewayControlResult(
             normalizedDistroName,

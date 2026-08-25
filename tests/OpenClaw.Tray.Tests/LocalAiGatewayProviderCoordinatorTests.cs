@@ -344,7 +344,8 @@ public sealed class LocalAiGatewayProviderCoordinatorTests
             string name,
             IReadOnlyList<string> command,
             CancellationToken cancellationToken = default,
-            IReadOnlyDictionary<string, string>? environment = null)
+            IReadOnlyDictionary<string, string>? environment = null,
+            string? standardInput = null)
         {
             cancellationToken.ThrowIfCancellationRequested();
             Distros.Add(name);

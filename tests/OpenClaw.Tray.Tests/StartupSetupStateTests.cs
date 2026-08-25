@@ -645,7 +645,7 @@ public class StartupSetupStateTests
         public Task<WslCommandResult> UnregisterDistroAsync(string name, CancellationToken cancellationToken = default) =>
             Task.FromResult(new WslCommandResult(0, "", ""));
 
-        public Task<WslCommandResult> RunInDistroAsync(string name, IReadOnlyList<string> command, CancellationToken cancellationToken = default, IReadOnlyDictionary<string, string>? environment = null) =>
+        public Task<WslCommandResult> RunInDistroAsync(string name, IReadOnlyList<string> command, CancellationToken cancellationToken = default, IReadOnlyDictionary<string, string>? environment = null, string? standardInput = null) =>
             Task.FromResult(new WslCommandResult(0, "", ""));
     }
 
@@ -663,7 +663,7 @@ public class StartupSetupStateTests
         public Task<WslCommandResult> UnregisterDistroAsync(string name, CancellationToken cancellationToken = default) =>
             Task.FromResult(new WslCommandResult(0, "", ""));
 
-        public Task<WslCommandResult> RunInDistroAsync(string name, IReadOnlyList<string> command, CancellationToken cancellationToken = default, IReadOnlyDictionary<string, string>? environment = null) =>
+        public Task<WslCommandResult> RunInDistroAsync(string name, IReadOnlyList<string> command, CancellationToken cancellationToken = default, IReadOnlyDictionary<string, string>? environment = null, string? standardInput = null) =>
             Task.FromResult(new WslCommandResult(0, "", ""));
     }
 }
