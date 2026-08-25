@@ -52,6 +52,24 @@ public sealed class CreateWslInstanceStep : SetupStep
         if (!pathCheck.IsSuccess)
             return pathCheck;
 
+        try
+        {
+            await ManagedDistroOwnership.WriteMarkerAsync(
+                ctx.LocalDataDir,
+                distro,
+                installPath,
+                ct);
+        }
+        catch (Exception ex) when (
+            ex is IOException
+            or UnauthorizedAccessException
+            or ArgumentException
+            or NotSupportedException)
+        {
+            return StepResult.Fail(
+                $"OpenClaw could not record ownership before creating WSL distro '{distro}': {ex.Message}");
+        }
+
         Directory.CreateDirectory(Path.GetDirectoryName(installPath)!);
 
         var installArgs = WslInstallSupport.BuildDirectInstallArgs(baseDistro, distro, installPath);
@@ -200,9 +218,13 @@ public sealed class CreateWslInstanceStep : SetupStep
                 cleanupErrors.Add(delete.Message ?? "install directory cleanup failed");
         }
 
-        return cleanupErrors.Count == 0
-            ? ""
-            : $" Partial app-owned distro cleanup also failed: {string.Join("; ", cleanupErrors)}";
+        if (cleanupErrors.Count == 0)
+        {
+            ManagedDistroOwnership.DeleteMarker(ctx.LocalDataDir, distro);
+            return "";
+        }
+
+        return $" Partial app-owned distro cleanup also failed: {string.Join("; ", cleanupErrors)}";
     }
 
     private static async Task<bool> TryUnregisterPartialInstall(SetupContext ctx, string distro, List<string> cleanupErrors, CancellationToken ct)

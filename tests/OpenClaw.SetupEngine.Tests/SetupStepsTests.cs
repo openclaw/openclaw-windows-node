@@ -527,6 +527,357 @@ public class SetupStepsTests : IDisposable
     }
 
     [Fact]
+    public async Task CleanupStaleDistro_PreservesUnownedRegisteredDistro()
+    {
+        var commands = new FakeCommandRunner(args =>
+            args.SequenceEqual(["--list", "--quiet"])
+                ? Ok("OpenClawGateway\n")
+                : Fail($"unexpected args: {string.Join(' ', args)}"));
+        var ctx = CreateContext(
+            new SetupConfig
+            {
+                CleanBeforeRun = true,
+                DistroName = "OpenClawGateway",
+            },
+            commands);
+
+        var result = await new CleanupStaleDistroStep().ExecuteAsync(
+            ctx,
+            CancellationToken.None);
+
+        Assert.Equal(StepOutcome.FailedTerminal, result.Outcome);
+        Assert.Contains("not proven to be managed by OpenClaw", result.Message);
+        Assert.Contains("explicitly confirm", result.Message);
+        Assert.Collection(
+            commands.Calls,
+            call => Assert.Equal(["--list", "--quiet"], call.Arguments));
+    }
+
+    [Fact]
+    public async Task CleanupStaleDistro_PreservesUnownedOrphanDirectory()
+    {
+        var distroPath = Path.Combine(_localTempDir, "wsl", "OpenClawGateway");
+        Directory.CreateDirectory(distroPath);
+        var sentinel = Path.Combine(distroPath, "keep.txt");
+        File.WriteAllText(sentinel, "keep");
+        var commands = new FakeCommandRunner(args =>
+            args.SequenceEqual(["--list", "--quiet"])
+                ? Ok("")
+                : Fail($"unexpected args: {string.Join(' ', args)}"));
+        var ctx = CreateContext(
+            new SetupConfig
+            {
+                CleanBeforeRun = true,
+                DistroName = "OpenClawGateway",
+            },
+            commands);
+
+        var result = await new CleanupStaleDistroStep().ExecuteAsync(
+            ctx,
+            CancellationToken.None);
+
+        Assert.Equal(StepOutcome.FailedTerminal, result.Outcome);
+        Assert.True(File.Exists(sentinel));
+        Assert.Collection(
+            commands.Calls,
+            call => Assert.Equal(["--list", "--quiet"], call.Arguments));
+    }
+
+    [Fact]
+    public void CleanupStaleDistro_AllowsCliDestructiveConfirmation()
+    {
+        var ctx = CreateContext(new SetupConfig
+        {
+            ConfirmDestructive = true,
+            DistroName = "OpenClawGateway",
+        });
+
+        var result = CleanupStaleDistroStep.EnsureDestructiveCleanupAllowed(
+            ctx,
+            "OpenClawGateway");
+
+        Assert.Null(result);
+    }
+
+    [Fact]
+    public void CleanupStaleDistro_AllowsUiConfirmationOnlyForMatchingDistro()
+    {
+        var config = new SetupConfig
+        {
+            ConfirmedDestructiveDistroName = "OpenClawGateway",
+            DistroName = "OpenClawGateway",
+        };
+        var ctx = CreateContext(config);
+
+        Assert.Null(CleanupStaleDistroStep.EnsureDestructiveCleanupAllowed(
+            ctx,
+            "OpenClawGateway"));
+
+        config.ConfirmedDestructiveDistroName = "OtherGateway";
+        var mismatch = CleanupStaleDistroStep.EnsureDestructiveCleanupAllowed(
+            ctx,
+            "OpenClawGateway");
+
+        Assert.NotNull(mismatch);
+        Assert.Equal(StepOutcome.FailedTerminal, mismatch!.Outcome);
+    }
+
+    [Fact]
+    public void SetupConfig_UiDestructiveConfirmationIsEphemeral()
+    {
+        var config = new SetupConfig
+        {
+            ConfirmedDestructiveDistroName = "OpenClawGateway",
+        };
+
+        var json = JsonSerializer.Serialize(config);
+
+        Assert.DoesNotContain(nameof(SetupConfig.ConfirmedDestructiveDistroName), json);
+    }
+
+    [Fact]
+    public void CleanupStaleDistro_HeadlessFailureExplainsCliOverride()
+    {
+        var ctx = CreateContext(new SetupConfig
+        {
+            Headless = true,
+            DistroName = "OpenClawGateway",
+        });
+
+        var result = CleanupStaleDistroStep.EnsureDestructiveCleanupAllowed(
+            ctx,
+            "OpenClawGateway");
+
+        Assert.NotNull(result);
+        Assert.Contains("--confirm-destructive", result!.Message);
+    }
+
+    [Fact]
+    public void CleanupStaleDistro_AllowsMatchingSetupStateOwnership()
+    {
+        File.WriteAllText(
+            Path.Combine(_localTempDir, "setup-state.json"),
+            """
+            {
+              "DistroName": "OpenClawGateway",
+              "Phase": 13
+            }
+            """);
+        var ctx = CreateContext(new SetupConfig { DistroName = "OpenClawGateway" });
+
+        var result = CleanupStaleDistroStep.EnsureDestructiveCleanupAllowed(
+            ctx,
+            "OpenClawGateway");
+
+        Assert.Null(result);
+    }
+
+    [Fact]
+    public void ManagedDistroOwnership_RecognizesExactGatewayRegistryBinding()
+    {
+        var registry = new GatewayRegistry(_tempDir);
+        registry.AddOrUpdate(new GatewayRecord
+        {
+            Id = "managed-local",
+            Url = "ws://localhost:18789",
+            IsLocal = true,
+            SetupManagedDistroName = "OpenClawGateway",
+        });
+        registry.Save();
+
+        Assert.True(ManagedDistroOwnership.HasEvidence(
+            _tempDir,
+            _localTempDir,
+            "OpenClawGateway"));
+        Assert.False(ManagedDistroOwnership.HasEvidence(
+            _tempDir,
+            _localTempDir,
+            "OtherGateway"));
+    }
+
+    [Fact]
+    public async Task ManagedDistroOwnership_RequiresExactCanonicalMarkerPath()
+    {
+        var wrongPath = Path.Combine(_localTempDir, "wsl", "OtherGateway");
+        await ManagedDistroOwnership.WriteMarkerAsync(
+            _localTempDir,
+            "OpenClawGateway",
+            wrongPath,
+            CancellationToken.None);
+
+        Assert.False(ManagedDistroOwnership.HasEvidence(
+            _tempDir,
+            _localTempDir,
+            "OpenClawGateway"));
+    }
+
+    [Fact]
+    public async Task ManagedDistroOwnership_DeletesMarkerOnlyForMatchingDistro()
+    {
+        var installPath = Path.Combine(
+            _localTempDir,
+            "wsl",
+            "OtherGateway");
+        await ManagedDistroOwnership.WriteMarkerAsync(
+            _localTempDir,
+            "OtherGateway",
+            installPath,
+            CancellationToken.None);
+
+        ManagedDistroOwnership.DeleteMarker(
+            _localTempDir,
+            "OpenClawGateway");
+
+        Assert.True(ManagedDistroOwnership.HasEvidence(
+            _tempDir,
+            _localTempDir,
+            "OtherGateway"));
+    }
+
+    [Fact]
+    public async Task CleanupStaleDistro_DeletesOwnedOrphanAndScopedMarker()
+    {
+        var installPath = Path.Combine(
+            _localTempDir,
+            "wsl",
+            "OpenClawGateway");
+        Directory.CreateDirectory(installPath);
+        File.WriteAllText(Path.Combine(installPath, "ext4.vhdx"), "stale");
+        await ManagedDistroOwnership.WriteMarkerAsync(
+            _localTempDir,
+            "OpenClawGateway",
+            installPath,
+            CancellationToken.None);
+        var commands = new FakeCommandRunner(args =>
+            args.SequenceEqual(["--list", "--quiet"])
+                ? Ok("")
+                : Fail($"unexpected args: {string.Join(' ', args)}"));
+        var ctx = CreateContext(commands: commands);
+
+        var result = await new CleanupStaleDistroStep().ExecuteAsync(
+            ctx,
+            CancellationToken.None);
+
+        Assert.True(result.IsSuccess, result.Message);
+        Assert.False(Directory.Exists(installPath));
+        Assert.False(ManagedDistroOwnership.HasEvidence(
+            _tempDir,
+            _localTempDir,
+            "OpenClawGateway"));
+    }
+
+    [Fact]
+    public async Task CleanupStaleDistro_DeletesMarkerAfterConfirmedAbsence()
+    {
+        var installPath = Path.Combine(
+            _localTempDir,
+            "wsl",
+            "OpenClawGateway");
+        await ManagedDistroOwnership.WriteMarkerAsync(
+            _localTempDir,
+            "OpenClawGateway",
+            installPath,
+            CancellationToken.None);
+        var commands = new FakeCommandRunner(args =>
+            args.SequenceEqual(["--list", "--quiet"])
+                ? Ok("")
+                : Fail($"unexpected args: {string.Join(' ', args)}"));
+        var ctx = CreateContext(commands: commands);
+
+        var result = await new CleanupStaleDistroStep().ExecuteAsync(
+            ctx,
+            CancellationToken.None);
+
+        Assert.True(result.IsSuccess, result.Message);
+        Assert.False(ManagedDistroOwnership.HasEvidence(
+            _tempDir,
+            _localTempDir,
+            "OpenClawGateway"));
+    }
+
+    [Fact]
+    public async Task CleanupStaleDistro_PreservesMarkerWhenInventoryIsUnknown()
+    {
+        var installPath = Path.Combine(
+            _localTempDir,
+            "wsl",
+            "OpenClawGateway");
+        await ManagedDistroOwnership.WriteMarkerAsync(
+            _localTempDir,
+            "OpenClawGateway",
+            installPath,
+            CancellationToken.None);
+        var commands = new FakeCommandRunner(args =>
+            args.SequenceEqual(["--list", "--quiet"])
+                ? Fail("synthetic inventory failure")
+                : Fail($"unexpected args: {string.Join(' ', args)}"));
+        var ctx = CreateContext(commands: commands);
+
+        var result = await new CleanupStaleDistroStep().ExecuteAsync(
+            ctx,
+            CancellationToken.None);
+
+        Assert.True(result.IsSuccess, result.Message);
+        Assert.True(ManagedDistroOwnership.HasEvidence(
+            _tempDir,
+            _localTempDir,
+            "OpenClawGateway"));
+    }
+
+    [Fact]
+    public async Task CreateWslInstance_ClaimsOwnershipBeforeInstallStarts()
+    {
+        var markerExistedDuringInstall = false;
+        var commands = new FakeCommandRunner(args =>
+        {
+            if (args.SequenceEqual(["--list", "--quiet"]))
+                return Ok("");
+            if (args.Contains("--install"))
+            {
+                markerExistedDuringInstall = ManagedDistroOwnership.HasEvidence(
+                    _tempDir,
+                    _localTempDir,
+                    "OpenClawGateway");
+                return Fail("synthetic install failure");
+            }
+
+            return Fail($"unexpected args: {string.Join(' ', args)}");
+        });
+        var ctx = CreateContext(
+            new SetupConfig { DistroName = "OpenClawGateway" },
+            commands);
+
+        var result = await new CreateWslInstanceStep().ExecuteAsync(
+            ctx,
+            CancellationToken.None);
+
+        Assert.Equal(StepOutcome.Failed, result.Outcome);
+        Assert.True(markerExistedDuringInstall);
+        Assert.False(ManagedDistroOwnership.HasEvidence(
+            _tempDir,
+            _localTempDir,
+            "OpenClawGateway"));
+    }
+
+    [Fact]
+    public void ManagedDistroOwnership_RejectsMismatchedSetupState()
+    {
+        File.WriteAllText(
+            Path.Combine(_localTempDir, "setup-state.json"),
+            """
+            {
+              "DistroName": "DifferentGateway",
+              "Phase": 13
+            }
+            """);
+
+        Assert.False(ManagedDistroOwnership.HasEvidence(
+            _tempDir,
+            _localTempDir,
+            "OpenClawGateway"));
+    }
+
+    [Fact]
     public async Task DeleteDistroDirectory_RejectsPathOutsideExpectedImmediateChild()
     {
         var target = Path.Combine(_localTempDir, "sentinel");
@@ -1361,6 +1712,10 @@ public class SetupStepsTests : IDisposable
         Assert.Contains("--location", installCall.Arguments);
         Assert.Contains(Path.Combine(ctx.LocalDataDir, "wsl", "OpenClawGateway"), installCall.Arguments);
         Assert.Contains("--web-download", installCall.Arguments);
+        Assert.True(ManagedDistroOwnership.HasEvidence(
+            _tempDir,
+            _localTempDir,
+            "OpenClawGateway"));
     }
 
     [Fact]
@@ -2942,6 +3297,8 @@ public class SetupStepsTests : IDisposable
             LocalGatewayId: null,
             LocalGatewayUrl: null,
             HasDistro: false,
+            HasDistroDataDirectory: false,
+            DistroIsAppOwned: false,
             DistroName: null,
             HasIdentityFiles: false,
             PreservedGatewayCount: 0,
@@ -2990,6 +3347,8 @@ public class SetupStepsTests : IDisposable
             LocalGatewayId: "local-gw",
             LocalGatewayUrl: "ws://localhost:18789",
             HasDistro: true,
+            HasDistroDataDirectory: true,
+            DistroIsAppOwned: true,
             DistroName: "OpenClaw",
             HasIdentityFiles: false,
             PreservedGatewayCount: 0,
@@ -3009,6 +3368,8 @@ public class SetupStepsTests : IDisposable
             LocalGatewayId: "local-gw",
             LocalGatewayUrl: "ws://localhost:18789",
             HasDistro: false,
+            HasDistroDataDirectory: false,
+            DistroIsAppOwned: false,
             DistroName: null,
             HasIdentityFiles: false,
             PreservedGatewayCount: 2,
@@ -3029,6 +3390,8 @@ public class SetupStepsTests : IDisposable
             LocalGatewayId: "local-gw",
             LocalGatewayUrl: "ws://localhost:18789",
             HasDistro: false,
+            HasDistroDataDirectory: false,
+            DistroIsAppOwned: false,
             DistroName: null,
             HasIdentityFiles: true,
             PreservedGatewayCount: 0,
@@ -3037,6 +3400,49 @@ public class SetupStepsTests : IDisposable
         var summary = ExistingConfigDetector.BuildReplacementSummary(config);
 
         Assert.Contains("Device identity files for the local gateway will be regenerated", summary);
+    }
+
+    [Fact]
+    public void BuildReplacementSummary_UnownedDistro_RequiresExplicitReplacement()
+    {
+        var config = new ExistingConfigDetector.ExistingConfig(
+            HasLocalGateway: false,
+            LocalGatewayId: null,
+            LocalGatewayUrl: null,
+            HasDistro: true,
+            HasDistroDataDirectory: true,
+            DistroIsAppOwned: false,
+            DistroName: "OpenClawGateway",
+            HasIdentityFiles: false,
+            PreservedGatewayCount: 0,
+            PreservedGatewayNames: []);
+
+        var summary = ExistingConfigDetector.BuildReplacementSummary(config);
+
+        Assert.Contains("not proven to be app-owned", summary);
+        Assert.Contains("permanently delete and recreate", summary);
+        Assert.True(ExistingConfigDetector.RequiresDestructiveConfirmation(config));
+    }
+
+    [Fact]
+    public void BuildReplacementSummary_UnownedOrphanDirectory_NamesTarget()
+    {
+        var config = new ExistingConfigDetector.ExistingConfig(
+            HasLocalGateway: false,
+            LocalGatewayId: null,
+            LocalGatewayUrl: null,
+            HasDistro: false,
+            HasDistroDataDirectory: true,
+            DistroIsAppOwned: false,
+            DistroName: "OpenClawGateway",
+            HasIdentityFiles: false,
+            PreservedGatewayCount: 0,
+            PreservedGatewayNames: []);
+
+        var summary = ExistingConfigDetector.BuildReplacementSummary(config);
+
+        Assert.Contains("WSL data for 'OpenClawGateway'", summary);
+        Assert.True(ExistingConfigDetector.RequiresDestructiveConfirmation(config));
     }
 
     [Fact]

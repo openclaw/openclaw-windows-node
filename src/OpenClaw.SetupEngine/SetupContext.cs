@@ -25,6 +25,8 @@ public sealed class SetupConfig
     public bool CleanBeforeRun { get; set; }
     public bool DryRun { get; set; }
     public bool ConfirmDestructive { get; set; }
+    [JsonIgnore]
+    public string? ConfirmedDestructiveDistroName { get; set; }
     public string LogLevel { get; set; } = "trace";
     public string? LogPath { get; set; }
     public string? GatewayUrl { get; set; }

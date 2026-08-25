@@ -12,6 +12,8 @@ public sealed class ExistingConfigDetector
         string? LocalGatewayId,
         string? LocalGatewayUrl,
         bool HasDistro,
+        bool HasDistroDataDirectory,
+        bool DistroIsAppOwned,
         string? DistroName,
         bool HasIdentityFiles,
         int PreservedGatewayCount,
@@ -20,8 +22,12 @@ public sealed class ExistingConfigDetector
     /// <summary>
     /// Detect existing local configuration by checking the gateway registry and WSL distros.
     /// </summary>
-    public static ExistingConfig Detect(string dataDir, string targetDistroName)
+    public static ExistingConfig Detect(
+        string dataDir,
+        string targetDistroName,
+        string? localDataDir = null)
     {
+        localDataDir ??= SetupContext.ResolveLocalDataDir();
         var registry = new GatewayRegistry(dataDir);
         registry.Load();
         var all = registry.GetAll();
@@ -35,6 +41,16 @@ public sealed class ExistingConfigDetector
             .GetAwaiter()
             .GetResult();
         var hasDistro = InterpretDistroList(result, targetDistroName);
+        var hasDistroDataDirectory =
+            DistroInstallPathPolicy.TryGetManagedInstallPath(
+                localDataDir,
+                targetDistroName,
+                out var distroDataDirectory,
+                out _) &&
+            Directory.Exists(distroDataDirectory);
+        var distroIsAppOwned =
+            (hasDistro || hasDistroDataDirectory) &&
+            ManagedDistroOwnership.HasEvidence(dataDir, localDataDir, targetDistroName);
 
         var hasIdentity = false;
         if (localRecord != null)
@@ -48,7 +64,9 @@ public sealed class ExistingConfigDetector
             LocalGatewayId: localRecord?.Id,
             LocalGatewayUrl: localRecord?.Url,
             HasDistro: hasDistro,
-            DistroName: hasDistro ? targetDistroName : null,
+            HasDistroDataDirectory: hasDistroDataDirectory,
+            DistroIsAppOwned: distroIsAppOwned,
+            DistroName: hasDistro || hasDistroDataDirectory ? targetDistroName : null,
             HasIdentityFiles: hasIdentity,
             PreservedGatewayCount: preserved.Count,
             PreservedGatewayNames: preserved.Select(r => r.FriendlyName ?? r.Url).ToList());
@@ -72,13 +90,23 @@ public sealed class ExistingConfigDetector
     /// </summary>
     public static string BuildReplacementSummary(ExistingConfig config)
     {
-        if (!config.HasLocalGateway && !config.HasDistro)
+        if (!config.HasLocalGateway && !config.HasDistro && !config.HasDistroDataDirectory)
             return "A new local WSL gateway will be created. No existing configuration will be affected.";
 
         var lines = new List<string>();
 
         if (config.HasDistro)
-            lines.Add($"• WSL distro '{config.DistroName}' will be deleted and recreated");
+        {
+            lines.Add(config.DistroIsAppOwned
+                ? $"• App-owned WSL distro '{config.DistroName}' will be deleted and recreated"
+                : $"• WSL distro '{config.DistroName}' is not proven to be app-owned. Continuing will permanently delete and recreate it");
+        }
+        else if (config.HasDistroDataDirectory)
+        {
+            lines.Add(config.DistroIsAppOwned
+                ? $"• App-owned WSL data for '{config.DistroName}' will be deleted"
+                : $"• WSL data for '{config.DistroName}' is not proven to be app-owned. Continuing will permanently delete it");
+        }
         if (config.HasLocalGateway)
             lines.Add("• Local gateway record will be replaced");
         if (config.HasIdentityFiles)
@@ -94,4 +122,8 @@ public sealed class ExistingConfigDetector
 
         return string.Join("\n", lines);
     }
+
+    public static bool RequiresDestructiveConfirmation(ExistingConfig config) =>
+        !config.DistroIsAppOwned &&
+        (config.HasDistro || config.HasDistroDataDirectory);
 }

@@ -179,7 +179,7 @@ Executed sequentially. Each step is a small class (30–120 lines) in its own fi
 | 2 | `PreflightOsStep` | Validate Windows 64-bit, version ≥ 22H2 |
 | 3 | `PreflightWslStep` | Verify WSL is installed and supports direct named clean installs |
 | 4 | `PreflightWindowsTailscaleStep` | Validate optional Windows Tailscale prerequisites |
-| 5 | `CleanupStaleDistroStep` | Unregister leftover app-owned WSL distro and remove its VHD directory if `CleanBeforeRun` |
+| 5 | `CleanupStaleDistroStep` | Unregister leftover WSL distro and remove its VHD directory only when `CleanBeforeRun` is enabled and app ownership or explicit destructive confirmation is present |
 | 6 | `CleanupStaleGatewayStep` | Stop orphaned gateway service, remove config |
 | 7 | `PreflightPortStep` | Check gateway port is available |
 | 8 | `CreateWslInstanceStep` | Directly install a fresh app-owned WSL distro; never export a user's Ubuntu distro |

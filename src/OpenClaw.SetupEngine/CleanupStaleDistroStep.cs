@@ -37,14 +37,25 @@ public sealed class CleanupStaleDistroStep : SetupStep
             // Distro not registered, but disk directory may still exist from prior crash
             if (Directory.Exists(wslDir))
             {
+                if (EnsureDestructiveCleanupAllowed(ctx, distro) is { } ownershipFailure)
+                    return ownershipFailure;
+
                 ctx.Logger.Info($"Removing orphaned WSL directory: {wslDir}");
                 var delete = await DeleteDistroDirectoryWithRetries(ctx, distro, wslDir, ct);
                 if (!delete.IsSuccess)
                     return delete;
+
+                ManagedDistroOwnership.DeleteMarker(ctx.LocalDataDir, distro);
             }
+            else
+                ManagedDistroOwnership.DeleteMarker(ctx.LocalDataDir, distro);
+
             ctx.Logger.Decision("No stale distro found", "skip cleanup");
             return StepResult.Ok("No stale distro to clean");
         }
+
+        if (EnsureDestructiveCleanupAllowed(ctx, distro) is { } distroOwnershipFailure)
+            return distroOwnershipFailure;
 
         ctx.Logger.Decision($"Found existing distro '{distro}'", "terminating and unregistering");
 
@@ -68,6 +79,8 @@ public sealed class CleanupStaleDistroStep : SetupStep
             if (!delete.IsSuccess)
                 return delete;
 
+            ManagedDistroOwnership.DeleteMarker(ctx.LocalDataDir, distro);
+
             // Wait for port to be released
             ctx.Logger.Info("Waiting for port release after distro termination...");
             await PreflightPortStep.WaitForPortFreeAsync(ctx.Config.GatewayPort, ctx.Config.Gateway.Bind, ctx.Logger, ct);
@@ -75,6 +88,33 @@ public sealed class CleanupStaleDistroStep : SetupStep
         }
 
         return StepResult.Fail($"Failed to unregister distro: {unregister.Stderr}");
+    }
+
+    internal static StepResult? EnsureDestructiveCleanupAllowed(
+        SetupContext ctx,
+        string distroName)
+    {
+        if (ctx.Config.ConfirmDestructive ||
+            string.Equals(
+                ctx.Config.ConfirmedDestructiveDistroName,
+                distroName,
+                StringComparison.OrdinalIgnoreCase) ||
+            ManagedDistroOwnership.HasEvidence(
+                ctx.DataDir,
+                ctx.LocalDataDir,
+                distroName))
+        {
+            return null;
+        }
+
+        ctx.Logger.Decision(
+            $"Existing WSL distro or data '{distroName}' is not proven app-owned",
+            "preserve existing data");
+        var recovery = ctx.Config.Headless
+            ? "Rerun SetupEngine with --confirm-destructive to delete it."
+            : "Return to the start of OpenClaw setup and explicitly confirm its permanent replacement.";
+        return StepResult.Terminal(
+            $"Existing WSL distro or data for '{distroName}' is not proven to be managed by OpenClaw and was preserved. {recovery}");
     }
 
     internal static async Task<StepResult> DeleteDistroDirectoryWithRetries(

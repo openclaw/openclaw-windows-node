@@ -155,7 +155,10 @@ public sealed partial class WelcomePage : Page
             ExistingConfigDetector.ExistingConfig existing;
             try
             {
-                existing = await Task.Run(() => ExistingConfigDetector.Detect(dataDir, config.DistroName));
+                existing = await Task.Run(() => ExistingConfigDetector.Detect(
+                    dataDir,
+                    config.DistroName,
+                    setupWindow?.LocalDataDir));
             }
             catch (InvalidOperationException ex)
             {
@@ -181,14 +184,20 @@ public sealed partial class WelcomePage : Page
             InstallCheckProgress.IsActive = false;
             InstallCheckProgress.Visibility = Visibility.Collapsed;
             var summary = ExistingConfigDetector.BuildReplacementSummary(existing);
+            var requiresDestructiveConfirmation =
+                ExistingConfigDetector.RequiresDestructiveConfirmation(existing);
 
             var dialog = new ContentDialog
             {
-                Title = existing.HasLocalGateway || existing.HasDistro
-                    ? "Replace existing WSL gateway?"
-                    : "Install a new WSL gateway?",
+                Title = requiresDestructiveConfirmation
+                    ? $"Permanently delete WSL distro '{config.DistroName}'?"
+                    : existing.HasLocalGateway || existing.HasDistro || existing.HasDistroDataDirectory
+                        ? "Replace existing WSL gateway?"
+                        : "Install a new WSL gateway?",
                 Content = summary,
-                PrimaryButtonText = "Continue",
+                PrimaryButtonText = requiresDestructiveConfirmation
+                    ? "Delete and replace"
+                    : "Continue",
                 CloseButtonText = "Cancel",
                 DefaultButton = ContentDialogButton.Close,
                 XamlRoot = xamlRoot,
@@ -197,6 +206,10 @@ public sealed partial class WelcomePage : Page
             var result = await dialog.ShowAsync();
             if (result != ContentDialogResult.Primary)
                 return;
+
+            config.ConfirmedDestructiveDistroName = requiresDestructiveConfirmation
+                ? config.DistroName
+                : null;
 
             navigating = true;
             setupWindow.NavigateToCapabilities();
