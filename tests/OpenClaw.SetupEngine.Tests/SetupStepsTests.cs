@@ -3672,6 +3672,22 @@ public class SetupStepsTests : IDisposable
         Assert.False(ExistingConfigDetector.InterpretDistroList(result, "OpenClawGateway"));
     }
 
+    [Fact]
+    public void ExistingConfigDetector_KeepsConclusiveUnavailableAnswerWhenRunAlsoTimedOut()
+    {
+        // A run can time out after wsl.exe already reported that WSL is not installed.
+        // That output still proves no distro can exist, so the answer stays usable
+        // instead of failing closed and dead-ending the setup flow.
+        var result = new CommandResult(
+            -1,
+            "",
+            "WSL is not installed. See https://aka.ms/wslinstall",
+            TimeSpan.FromSeconds(5),
+            TimedOut: true);
+
+        Assert.False(ExistingConfigDetector.InterpretDistroList(result, "OpenClawGateway"));
+    }
+
     [Theory]
     [InlineData(true, 1, "")]
     [InlineData(false, 1, "unexpected failure")]

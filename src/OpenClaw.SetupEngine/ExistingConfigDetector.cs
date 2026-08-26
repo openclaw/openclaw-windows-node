@@ -86,7 +86,11 @@ public sealed class ExistingConfigDetector
         if (!result.TimedOut && result.ExitCode == 0)
             return WslInstallSupport.ContainsDistro(result.Stdout, targetDistroName);
 
-        if (!result.TimedOut && WslViabilityInspector.LooksUnavailable(result))
+        // A conclusive "WSL is not installed" answer stays usable even when the run
+        // also timed out. The output already proves no distro can exist, so failing
+        // closed here would reject evidence the inspector itself treats as the
+        // installable path rather than a blocker.
+        if (WslViabilityInspector.LooksUnavailable(result))
             return false;
 
         throw new InvalidOperationException(

@@ -1584,18 +1584,24 @@ public sealed class AppRefactorContractTests
         var method = ExtractMethod(source, "StartInstallAsync");
 
         Assert.Contains("NextButton.IsEnabled = false", method);
-        Assert.Contains("InstallTitle.Text = CheckingButtonText", method);
         Assert.Contains("InstallCheckProgress.IsActive = true", method);
         Assert.Contains("InstallCheckProgress.Visibility = Visibility.Visible", method);
-        Assert.Contains("CheckingButtonText", method);
         Assert.Contains("var setupWindow = SetupWindow.Active", method);
         Assert.Contains("await Task.Run(() => ExistingConfigDetector.Detect", method);
         Assert.Contains("setupWindow is null or { IsClosed: true } || xamlRoot is null", method);
         Assert.Contains("setupWindow is { IsClosed: false }", method);
-        Assert.Contains("InstallTitle.Text = InstallButtonText", method);
         Assert.Contains("InstallCheckProgress.IsActive = false", method);
         Assert.Contains("InstallCheckProgress.Visibility = Visibility.Collapsed", method);
         Assert.Contains("NextButton.IsEnabled = true", method);
+
+        // The busy state is carried by the progress ring alone. Overwriting the option
+        // title hid which option was being acted on for as long as the check ran.
+        Assert.DoesNotContain("InstallTitle.Text", method);
+
+        // A failed inspection must stay recoverable instead of ending the flow on the
+        // recommended option with no way forward.
+        Assert.Contains("PrimaryButtonText = \"Try again\"", method);
+
         Assert.Contains("AutomationProperties.AutomationId=\"WelcomeInstallCheckProgress\"", File.ReadAllText(
             Path.Combine(root, "src", "OpenClaw.SetupEngine.UI", "Pages", "WelcomePage.xaml")));
         AssertInOrder(
