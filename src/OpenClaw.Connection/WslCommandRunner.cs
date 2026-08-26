@@ -5,9 +5,15 @@ using System.Text;
 
 namespace OpenClaw.Connection;
 
-public sealed record WslCommandResult(int ExitCode, string StandardOutput, string StandardError)
+public sealed record WslCommandResult(
+    int ExitCode,
+    string StandardOutput,
+    string StandardError,
+    bool TimedOut = false,
+    bool OutcomeIndeterminate = false)
 {
     public bool Success => ExitCode == 0;
+    public bool IsIndeterminate => TimedOut || OutcomeIndeterminate;
 }
 
 public sealed record WslDistroInfo(string Name, string State, int Version);
@@ -153,7 +159,11 @@ public sealed class WslExeCommandRunner : IWslCommandRunner
         }
         catch (Exception ex)
         {
-            return new WslCommandResult(-1, string.Empty, $"Failed to start wsl.exe: {ex.Message}");
+            return new WslCommandResult(
+                -1,
+                string.Empty,
+                $"Failed to start wsl.exe: {ex.Message}",
+                OutcomeIndeterminate: true);
         }
 
         using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
@@ -172,7 +182,6 @@ public sealed class WslExeCommandRunner : IWslCommandRunner
                     await process.StandardInput.WriteAsync(
                         standardInput.AsMemory(),
                         timeoutCts.Token);
-                    process.StandardInput.Close();
                 }
                 catch (IOException)
                 {
@@ -182,6 +191,12 @@ public sealed class WslExeCommandRunner : IWslCommandRunner
                 catch (ObjectDisposedException)
                 {
                     // The process closed stdin while failing. Preserve its result.
+                }
+                finally
+                {
+                    try { process.StandardInput.Close(); }
+                    catch (IOException) { }
+                    catch (ObjectDisposedException) { }
                 }
             }
 
@@ -205,7 +220,7 @@ public sealed class WslExeCommandRunner : IWslCommandRunner
         try { stderr = await stderrTask; } catch { stderr = string.Empty; }
 
         return timedOut
-            ? new WslCommandResult(-1, stdout, "wsl.exe timed out")
+            ? new WslCommandResult(-1, stdout, "wsl.exe timed out", TimedOut: true)
             : new WslCommandResult(process.ExitCode, stdout, stderr);
     }
 }

@@ -14,9 +14,12 @@ public sealed record WslGatewayControlResult(
     WslGatewayControlAction Action,
     int ExitCode,
     string StandardOutput,
-    string StandardError)
+    string StandardError,
+    bool TimedOut = false,
+    bool OutcomeIndeterminate = false)
 {
     public bool Success => ExitCode == 0;
+    public bool IsIndeterminate => TimedOut || OutcomeIndeterminate;
 
     public string OutputSummary
     {
@@ -93,7 +96,9 @@ public sealed class WslGatewayController(IWslCommandRunner commandRunner, IOpenC
             action,
             result.ExitCode,
             result.StandardOutput,
-            result.StandardError);
+            result.StandardError,
+            result.TimedOut,
+            result.OutcomeIndeterminate);
     }
 
     /// <summary>
@@ -113,12 +118,17 @@ public sealed class WslGatewayController(IWslCommandRunner commandRunner, IOpenC
         }
 
         var normalizedDistroName = distroName.Trim();
+        cancellationToken.ThrowIfCancellationRequested();
         logger.Info($"Force-terminating WSL distro '{normalizedDistroName}' before restart (in-place restart failed).");
 
         // Terminate is best-effort: a "not running" distro still returns success, and any failure here
         // should not stop the cold restart below from surfacing the real error.
         // slopwatch-ignore: SW003 Terminate is best-effort; its failure cannot improve the caller state and the restart below is authoritative.
-        try { await commandRunner.TerminateDistroAsync(normalizedDistroName, cancellationToken).ConfigureAwait(false); }
+        try
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            await commandRunner.TerminateDistroAsync(normalizedDistroName, cancellationToken).ConfigureAwait(false);
+        }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { throw; }
         catch (Exception ex) { logger.Warn($"Force-terminate of '{normalizedDistroName}' failed (continuing to restart): {ex.Message}"); }
 
