@@ -48,9 +48,18 @@ public sealed class ExistingConfigDetector
                 out var distroDataDirectory,
                 out _) &&
             Directory.Exists(distroDataDirectory);
-        var distroIsAppOwned =
-            (hasDistro || hasDistroDataDirectory) &&
-            ManagedDistroOwnership.HasEvidence(dataDir, localDataDir, targetDistroName);
+        var distroIsAppOwned = hasDistro
+            ? ManagedDistroOwnership.HasRegisteredDistroEvidence(
+                dataDir,
+                localDataDir,
+                targetDistroName,
+                distroDataDirectory,
+                new WindowsWslRegistrationInspector(),
+                out _)
+            : hasDistroDataDirectory &&
+              ManagedDistroOwnership.HasPathBoundMarkerEvidence(
+                  localDataDir,
+                  targetDistroName);
 
         var hasIdentity = false;
         if (localRecord != null)

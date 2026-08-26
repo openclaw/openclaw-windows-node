@@ -220,7 +220,10 @@ public sealed class CreateWslInstanceStep : SetupStep
 
         if (cleanupErrors.Count == 0)
         {
-            ManagedDistroOwnership.DeleteMarker(ctx.LocalDataDir, distro);
+            ManagedDistroOwnership.DeleteMarker(
+                ctx.LocalDataDir,
+                distro,
+                installPath);
             return "";
         }
 

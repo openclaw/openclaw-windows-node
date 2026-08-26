@@ -27,7 +27,7 @@ internal static class ManagedDistroOwnership
             return true;
         }
 
-        if (HasValidMarker(localDataDir, distroName))
+        if (HasPathBoundMarkerEvidence(localDataDir, distroName))
             return true;
 
         var setupStatePath = Path.Combine(localDataDir, "setup-state.json");
@@ -54,6 +54,41 @@ internal static class ManagedDistroOwnership
         }
     }
 
+    internal static bool HasRegisteredDistroEvidence(
+        string dataDir,
+        string localDataDir,
+        string distroName,
+        string expectedInstallPath,
+        IWslRegistrationInspector registrationInspector,
+        [NotNullWhen(false)] out string? failure)
+    {
+        if (!HasEvidence(dataDir, localDataDir, distroName))
+        {
+            failure = "No durable OpenClaw ownership evidence matches the distro name.";
+            return false;
+        }
+
+        var registration = registrationInspector.Inspect(distroName);
+        if (registration.Status != WslRegistrationInspectionStatus.Found ||
+            string.IsNullOrWhiteSpace(registration.BasePath))
+        {
+            failure = registration.Detail ??
+                "The current WSL registration could not be bound to OpenClaw's managed install path.";
+            return false;
+        }
+
+        if (!DistroInstallPathPolicy.PathsReferToSameLocation(
+                registration.BasePath,
+                expectedInstallPath))
+        {
+            failure = "The current WSL registration is bound to a different base path.";
+            return false;
+        }
+
+        failure = null;
+        return true;
+    }
+
     internal static async Task WriteMarkerAsync(
         string localDataDir,
         string distroName,
@@ -72,20 +107,41 @@ internal static class ManagedDistroOwnership
             cancellationToken);
     }
 
-    internal static void DeleteMarker(string localDataDir, string distroName)
+    internal static bool DeleteMarker(
+        string localDataDir,
+        string distroName,
+        string expectedInstallPath)
     {
         var markerPath = MarkerPath(localDataDir);
-        if (TryReadMarker(localDataDir, out var marker) &&
-            string.Equals(
-                marker.DistroName,
+        if (!TryReadMarker(localDataDir, out var marker) ||
+            !MarkerMatches(
+                localDataDir,
                 distroName,
-                StringComparison.OrdinalIgnoreCase))
+                expectedInstallPath,
+                marker))
+        {
+            return false;
+        }
+
+        try
         {
             File.Delete(markerPath);
+            return true;
+        }
+        catch (Exception ex) when (
+            ex is IOException
+            or UnauthorizedAccessException
+            or System.Security.SecurityException)
+        {
+            System.Diagnostics.Debug.WriteLine(
+                $"Managed distro marker could not be deleted: {ex.Message}");
+            return false;
         }
     }
 
-    private static bool HasValidMarker(string localDataDir, string distroName)
+    internal static bool HasPathBoundMarkerEvidence(
+        string localDataDir,
+        string distroName)
     {
         if (!DistroInstallPathPolicy.TryGetManagedInstallPath(
                 localDataDir,
@@ -97,16 +153,40 @@ internal static class ManagedDistroOwnership
             return false;
         }
 
+        return MarkerMatches(
+            localDataDir,
+            distroName,
+            expectedInstallPath,
+            marker);
+    }
+
+    private static bool MarkerMatches(
+        string localDataDir,
+        string distroName,
+        string expectedInstallPath,
+        ManagedDistroMarker marker)
+    {
+        if (!DistroInstallPathPolicy.TryGetManagedInstallPath(
+                localDataDir,
+                distroName,
+                out var policyInstallPath,
+                out _))
+        {
+            return false;
+        }
+
         try
         {
             return string.Equals(
                     marker.DistroName,
                     distroName,
                     StringComparison.OrdinalIgnoreCase) &&
-                string.Equals(
-                    Path.GetFullPath(marker.InstallPath),
-                    Path.GetFullPath(expectedInstallPath),
-                    StringComparison.OrdinalIgnoreCase);
+                DistroInstallPathPolicy.PathsReferToSameLocation(
+                    expectedInstallPath,
+                    policyInstallPath) &&
+                DistroInstallPathPolicy.PathsReferToSameLocation(
+                    marker.InstallPath,
+                    policyInstallPath);
         }
         catch (Exception ex) when (
             ex is IOException
@@ -141,6 +221,7 @@ internal static class ManagedDistroOwnership
         catch (Exception ex) when (
             ex is IOException
             or UnauthorizedAccessException
+            or System.Security.SecurityException
             or JsonException
             or ArgumentException
             or NotSupportedException)
