@@ -31,8 +31,9 @@ public static class MxcPolicyBuilder
 {
     /// <summary>
     /// Policy schema version emitted to <c>wxc-exec</c>. @microsoft/mxc-sdk
-    /// 0.7.0 emits and accepts the 0.7.0-alpha contract used by
-    /// processcontainer/AppContainer execution on Windows build 26100+.
+    /// 0.8.0 continues to accept the 0.7.0-alpha contract used by OpenClaw.
+    /// Keep the policy contract stable while taking native executor fixes;
+    /// adopting the 0.8 directional network schema is a separate behavior change.
     /// </summary>
     public const string SupportedPolicyVersion = "0.7.0-alpha";
 

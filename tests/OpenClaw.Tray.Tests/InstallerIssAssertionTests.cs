@@ -347,9 +347,9 @@ public sealed class InstallerIssAssertionTests
         var iss = File.ReadAllText(Path.Combine(repositoryRoot, "installer.iss"));
 
         Assert.Contains(@"""@microsoft/mxc-sdk""", packageJson);
-        Assert.Contains(@"""@microsoft/mxc-sdk"": ""^0.7.0""", packageJson);
+        Assert.Contains(@"""@microsoft/mxc-sdk"": ""^0.8.0""", packageJson);
         Assert.Contains(@"""node_modules/@microsoft/mxc-sdk""", packageLock);
-        Assert.Contains(@"""version"": ""0.7.0""", packageLock);
+        Assert.Contains(@"""version"": ""0.8.0""", packageLock);
         Assert.Contains("RestoreMxcNodeBridge", trayProject);
         Assert.Contains(@"Inputs=""$(OpenClawRepoRoot)package-lock.json""", trayProject);
         Assert.Contains(@"<MxcSdkRestoreStamp>$(OpenClawRepoRoot)node_modules\.openclaw-mxc-sdk-$(MxcSdkExpectedVersion).stamp</MxcSdkRestoreStamp>", trayProject);
