@@ -268,7 +268,7 @@ public sealed class LocalAiInstallRecoveryTests
     }
 
     [Fact]
-    public async Task ArtifactInstall_RejectsPinnedZipTraversalWithoutWritingOutsideRoot()
+    public async Task ArtifactInstall_RejectsPinnedZipUnsafeEntryNameWithoutWritingOutsideRoot()
     {
         using var temp = new TempDirectory();
         byte[] archiveBytes = CreateZip(("../../../outside.txt", "outside"u8.ToArray()));
@@ -297,15 +297,34 @@ public sealed class LocalAiInstallRecoveryTests
         Assert.False(File.Exists(outsidePath));
     }
 
-    [Fact]
-    public void ArchiveDestination_RejectsTraversal()
+    [Theory]
+    [InlineData("../outside.txt")]
+    [InlineData("..\\outside.txt")]
+    public void ArchiveDestination_RejectsTraversalWithEitherSeparator(string entryName)
     {
         using var temp = new TempDirectory();
         string stagingDirectory = Path.Combine(temp.Path, "staging");
 
         bool resolved = LocalAiPathPolicy.TryResolveArchiveEntryDestination(
             stagingDirectory,
-            "../outside.txt",
+            entryName,
+            out string destinationPath,
+            out string error);
+
+        Assert.False(resolved);
+        Assert.Empty(destinationPath);
+        Assert.Contains("escapes its staging directory", error, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void ArchiveDestination_RejectsCanonicalizedPrefixCollision()
+    {
+        using var temp = new TempDirectory();
+        string stagingDirectory = Path.Combine(temp.Path, "staging");
+
+        bool resolved = LocalAiPathPolicy.TryResolveArchiveEntryDestination(
+            stagingDirectory,
+            "../staging-sibling/outside.txt",
             out string destinationPath,
             out string error);
 
@@ -332,6 +351,34 @@ public sealed class LocalAiInstallRecoveryTests
         Assert.False(resolved);
         Assert.Empty(destinationPath);
         Assert.Contains("escapes its staging directory", error, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void ArchiveDestination_RejectsDescendantJunction()
+    {
+        using var temp = new TempDirectory();
+        using var outside = new TempDirectory();
+        string stagingDirectory = Path.Combine(temp.Path, "staging");
+        Directory.CreateDirectory(stagingDirectory);
+        string junction = Path.Combine(stagingDirectory, "linked");
+        CreateJunction(junction, outside.Path);
+        try
+        {
+            bool resolved = LocalAiPathPolicy.TryResolveArchiveEntryDestination(
+                stagingDirectory,
+                "linked/outside.txt",
+                out string destinationPath,
+                out string error);
+
+            Assert.False(resolved);
+            Assert.Empty(destinationPath);
+            Assert.Contains("reparse point", error, StringComparison.Ordinal);
+        }
+        finally
+        {
+            if (Directory.Exists(junction))
+                Directory.Delete(junction);
+        }
     }
 
     [Fact]
