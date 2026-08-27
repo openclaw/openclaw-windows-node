@@ -1420,6 +1420,39 @@ public class SetupStepsTests : IDisposable
     }
 
     [Fact]
+    public async Task EnsureWslPlatform_ElevationCancellationIsNotRetriedByPipeline()
+    {
+        var installCalls = 0;
+        var commands = new FakeCommandRunner(args => args switch
+        {
+            ["--version"] => Ok("WSL version: 2.7.3.0\n"),
+            ["--status"] => new CommandResult(
+                1,
+                "",
+                "Error code: Wsl/WSL_E_WSL_OPTIONAL_COMPONENT_REQUIRED",
+                TimeSpan.Zero,
+                TimedOut: false),
+            _ => Fail($"unexpected args: {string.Join(' ', args)}"),
+        });
+        var ctx = CreateContext(commands: commands);
+        var step = new EnsureWslPlatformStep((_, _) =>
+        {
+            installCalls++;
+            return Task.FromResult(
+                StepResult.Fail("WSL platform install was cancelled at the elevation prompt."));
+        });
+        var pipeline = new SetupPipeline([step]);
+
+        var result = await pipeline.RunAsync(ctx);
+
+        Assert.Equal(PipelineOutcome.Failed, result.Outcome);
+        Assert.Equal(step.Id, result.FailedStepId);
+        Assert.Contains("elevation prompt", result.Message);
+        Assert.Equal(1, installCalls);
+        Assert.Equal(2, commands.Calls.Count);
+    }
+
+    [Fact]
     public async Task PreflightWsl_UnclassifiedStatusFailureFailsClosed()
     {
         var commands = new FakeCommandRunner(args => args switch

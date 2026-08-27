@@ -291,7 +291,7 @@ public sealed class EnsureWslPlatformStep : SetupStep
 
     public override string Id => "ensure-wsl-platform";
     public override string DisplayName => "Prepare WSL platform";
-    public override bool CanRetry => true;
+    public override bool CanRetry => false;
 
     public override async Task<StepResult> ExecuteAsync(SetupContext ctx, CancellationToken ct)
     {
