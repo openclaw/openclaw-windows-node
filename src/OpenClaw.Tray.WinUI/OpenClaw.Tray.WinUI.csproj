@@ -32,6 +32,14 @@
     <AppIdentityMarker>release</AppIdentityMarker>
   </PropertyGroup>
 
+  <!-- Work around dotnet/runtime#129191 in production builds. Explicit DevBuild
+       builds retain debugger support for managed/native interop diagnostics. -->
+  <ItemGroup Condition="'$(Configuration)' == 'Release' and '$(DevBuild)' != 'true'">
+    <RuntimeHostConfigurationOption Include="System.Diagnostics.Debugger.IsSupported"
+                                    Value="false"
+                                    Trim="true" />
+  </ItemGroup>
+
   <!-- Map $(Platform) to $(RuntimeIdentifier) so self-contained WinUI F5/debug produces a launchable EXE. -->
   <PropertyGroup Condition="'$(RuntimeIdentifier)' == '' and '$(Platform)' == 'x64'">
     <RuntimeIdentifier>win-x64</RuntimeIdentifier>
@@ -110,7 +118,7 @@
     <MxcArch Condition="'$(MxcArch)' == '' And '$(PlatformTarget)' == 'ARM64'">arm64</MxcArch>
     <MxcArch Condition="'$(MxcArch)' == '' And '$(RuntimeIdentifier)' == ''">x64</MxcArch>
     <MxcSdkBinDir>$(OpenClawRepoRoot)node_modules\@microsoft\mxc-sdk\bin\$(MxcArch)\</MxcSdkBinDir>
-    <MxcSdkExpectedVersion>0.7.0</MxcSdkExpectedVersion>
+    <MxcSdkExpectedVersion>0.8.0</MxcSdkExpectedVersion>
     <MxcSdkPackageJson>$(OpenClawRepoRoot)node_modules\@microsoft\mxc-sdk\package.json</MxcSdkPackageJson>
     <MxcSdkRestoreStamp>$(OpenClawRepoRoot)node_modules\.openclaw-mxc-sdk-$(MxcSdkExpectedVersion).stamp</MxcSdkRestoreStamp>
   </PropertyGroup>

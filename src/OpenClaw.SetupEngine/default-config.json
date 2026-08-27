@@ -10,7 +10,7 @@
   "Headless": true,
   // Auto-approve all pairing requests during setup
   "AutoApprovePairing": true,
-  // Unregister existing distro + clean gateway state before starting
+  // Clean app-owned or explicitly confirmed distro data before starting
   "CleanBeforeRun": true,
   // Skip Windows permission elevation checks
   "SkipPermissions": false,

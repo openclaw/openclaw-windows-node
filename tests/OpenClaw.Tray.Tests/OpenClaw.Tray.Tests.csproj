@@ -162,6 +162,7 @@
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Services\TrayDashboardSummary.cs" Link="Services\TrayDashboardSummary.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Services\NodeSummaryText.cs" Link="Services\NodeSummaryText.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Services\TextToSpeech\ElevenLabsTextToSpeechClient.cs" Link="Services\TextToSpeech\ElevenLabsTextToSpeechClient.cs" />
+    <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Services\TextToSpeech\MiniMaxTextToSpeechClient.cs" Link="Services\TextToSpeech\MiniMaxTextToSpeechClient.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Services\GatewayDiscoveryService.cs" Link="Services\GatewayDiscoveryService.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\A2UI\Actions\AgentMessageFormatter.cs" Link="A2UI\Actions\AgentMessageFormatter.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\A2UI\Actions\GatewayActionTransport.cs" Link="A2UI\Actions\GatewayActionTransport.cs" />

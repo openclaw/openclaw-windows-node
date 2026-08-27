@@ -161,6 +161,32 @@ public sealed class ConnectionRegressionSourceTests
     }
 
     [Fact]
+    public void SetupKeepaliveRuntime_UsesSharedBoundedCommandLineLookup()
+    {
+        var source = ReadSource("src", "OpenClaw.SetupEngine", "KeepaliveProcessRuntime.cs");
+
+        Assert.Contains(
+            "WindowsTcpListenerSnapshot.GetProcessCommandLine(pid)",
+            source);
+        Assert.DoesNotContain("StandardOutput.ReadToEnd", source);
+    }
+
+    [Fact]
+    public void TrayKeepaliveService_UsesSharedBoundedCommandLineLookup()
+    {
+        var source = ReadSource(
+            "src",
+            "OpenClaw.Tray.WinUI",
+            "Services",
+            "WslGatewayKeepAliveService.cs");
+
+        Assert.Contains(
+            "WindowsTcpListenerSnapshot.GetProcessCommandLine(pid)",
+            source);
+        Assert.DoesNotContain("StandardOutput.ReadToEnd", source);
+    }
+
+    [Fact]
     public void SetupKeepaliveManager_WritesMarkerAfterSuccessfulStart()
     {
         // KeepaliveProcessManager only ever writes the keepalive marker after receiving a

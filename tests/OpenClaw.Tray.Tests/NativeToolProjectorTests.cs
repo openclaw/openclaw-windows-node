@@ -69,6 +69,45 @@ public class NativeToolProjectorTests
     }
 
     [Fact]
+    public void ExtractSafePersistedToolDisplayArgs_DecodesAllowlistedRedactedInput()
+    {
+        var value = JsonSerializer.SerializeToElement(
+            """{"command":"curl https://example.test --token abcdef1234567890ghij","workdir":"C:\\private","content":"must-not-render"}""");
+
+        var args = NativeToolProjector.ExtractSafePersistedToolDisplayArgs(value)!;
+
+        Assert.DoesNotContain(
+            "abcdef1234567890ghij",
+            args["command"]!.GetValue<string>(),
+            StringComparison.Ordinal);
+        Assert.False(args.ContainsKey("workdir"));
+        Assert.False(args.ContainsKey("content"));
+        Assert.DoesNotContain("must-not-render", args.ToJsonString(), StringComparison.Ordinal);
+    }
+
+    [Theory]
+    [InlineData("")]
+    [InlineData("not-json")]
+    [InlineData("[]")]
+    [InlineData("null")]
+    public void ExtractSafePersistedToolDisplayArgs_RejectsMalformedOrNonObjectInput(
+        string encoded)
+    {
+        var value = JsonSerializer.SerializeToElement(encoded);
+
+        Assert.Null(NativeToolProjector.ExtractSafePersistedToolDisplayArgs(value));
+    }
+
+    [Fact]
+    public void ExtractSafePersistedToolDisplayArgs_RejectsOversizedInputBeforeParsing()
+    {
+        var value = JsonSerializer.SerializeToElement(
+            new string('x', NativeToolProjector.MaxPersistedToolArgumentsChars + 1));
+
+        Assert.Null(NativeToolProjector.ExtractSafePersistedToolDisplayArgs(value));
+    }
+
+    [Fact]
     public void ExtractToolCorrelationId_ExplicitToolCallIdIsOpaqueAndWins()
     {
         using var payload = JsonDocument.Parse(

@@ -134,7 +134,7 @@ public static class LlamaServerModelStatusParser
 
 internal interface ILlamaServerClient : IDisposable
 {
-    Task<LlamaServerRouterProbeResult> ProbeRouterAsync(
+    Task<LlamaServerRouterProbeResult> ProbeManagedModelAsync(
         Uri endpoint,
         string modelAlias,
         string expectedModelPath,
@@ -164,7 +164,7 @@ public sealed class LlamaServerClient : ILlamaServerClient
         };
     }
 
-    public async Task<LlamaServerRouterProbeResult> ProbeRouterAsync(
+    public async Task<LlamaServerRouterProbeResult> ProbeManagedModelAsync(
         Uri endpoint,
         string modelAlias,
         string expectedModelPath,
@@ -198,6 +198,14 @@ public sealed class LlamaServerClient : ILlamaServerClient
             return new(true, LocalAiModelAvailabilityState.Unknown, null, "The model status response was invalid.");
         }
     }
+
+    [Obsolete("Use ProbeManagedModelAsync instead.")]
+    public Task<LlamaServerRouterProbeResult> ProbeRouterAsync(
+        Uri endpoint,
+        string modelAlias,
+        string expectedModelPath,
+        CancellationToken cancellationToken = default) =>
+        ProbeManagedModelAsync(endpoint, modelAlias, expectedModelPath, cancellationToken);
 
     private async Task<bool> ProbeHealthAsync(Uri endpoint, CancellationToken cancellationToken)
     {

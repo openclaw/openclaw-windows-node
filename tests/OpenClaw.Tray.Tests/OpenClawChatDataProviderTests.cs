@@ -7326,6 +7326,97 @@ public class OpenClawChatDataProviderTests
         Assert.Equal("/workspace", entry.ToolOutput);
     }
 
+    [Fact]
+    public async Task LoadHistoryAsync_StringEncodedToolArguments_PreservesSafeInput()
+    {
+        var (bridge, provider, snapshots, _) = CreateProvider(new[] { MainSession() });
+        bridge.HistoryBehavior = _ => Task.FromResult(new ChatHistoryInfo
+        {
+            SessionKey = "main",
+            Messages =
+            [
+                new ChatMessageInfo
+                {
+                    Role = "assistant",
+                    State = "final",
+                    Ts = 1,
+                    ToolContent =
+                    [
+                        new ChatToolContentInfo
+                        {
+                            Kind = ChatToolContentKind.Call,
+                            CallId = "call-1",
+                            ToolName = "exec",
+                            Args = JsonSerializer.SerializeToElement(
+                                """{"command":"pwd","workdir":"/workspace"}"""),
+                        },
+                    ],
+                },
+            ],
+        });
+
+        await provider.LoadHistoryAsync("main");
+
+        var entry = Assert.Single(snapshots[^1].Timelines["main"].Entries);
+        Assert.Equal("pwd", entry.ToolArgs?["command"]?.GetValue<string>());
+        Assert.False(entry.ToolArgs?.ContainsKey("workdir"));
+    }
+
+    [Fact]
+    public async Task LoadHistoryAsync_AfterRestart_ReplaysSanitizedArgumentsWithoutLocalPersistence()
+    {
+        using var tempDir = new TempDirectory();
+        var cachePath = Path.Combine(tempDir.DirectoryPath, "tool-metadata.json");
+        static ChatHistoryInfo History() => new()
+        {
+            SessionKey = "main",
+            Messages =
+            [
+                new ChatMessageInfo
+                {
+                    Role = "assistant",
+                    State = "final",
+                    Ts = 1,
+                    ToolContent =
+                    [
+                        new ChatToolContentInfo
+                        {
+                            Kind = ChatToolContentKind.Call,
+                            CallId = "call-1",
+                            ToolName = "exec",
+                            Args = JsonSerializer.SerializeToElement(
+                                """{"command":"curl https://example.test --token abcdef1234567890ghij","workdir":"C:\\private"}"""),
+                        },
+                    ],
+                },
+            ],
+        };
+
+        var first = CreateProvider(
+            new[] { MainSession() },
+            toolMetaCachePath: cachePath);
+        first.bridge.HistoryBehavior = _ => Task.FromResult(History());
+        await first.provider.LoadHistoryAsync("main");
+        await first.provider.DisposeAsync();
+
+        var second = CreateProvider(
+            new[] { MainSession() },
+            toolMetaCachePath: cachePath);
+        second.bridge.HistoryBehavior = _ => Task.FromResult(History());
+        await second.provider.LoadHistoryAsync("main");
+
+        var entry = Assert.Single(second.snapshots[^1].Timelines["main"].Entries);
+        var command = entry.ToolArgs?["command"]?.GetValue<string>();
+        Assert.NotNull(command);
+        Assert.DoesNotContain(
+            "abcdef1234567890ghij",
+            command,
+            StringComparison.Ordinal);
+        Assert.False(entry.ToolArgs?.ContainsKey("workdir"));
+        Assert.False(File.Exists(cachePath));
+        await second.provider.DisposeAsync();
+    }
+
     [Theory]
     [InlineData("toolResult")]
     [InlineData("tool_result")]

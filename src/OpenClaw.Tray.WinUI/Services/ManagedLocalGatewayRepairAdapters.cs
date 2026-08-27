@@ -31,13 +31,27 @@ public sealed class WslManagedLocalGatewayRestarter(WslGatewayController control
         if (result.Success)
             return new ManagedLocalGatewayRestartResult(true);
 
+        // An indeterminate result only proves that the host-side wsl.exe client stopped waiting or
+        // could not start. The in-distro restart (or a detached update handoff that triggered it)
+        // may still be running. Terminating the whole distro here can kill healthy, long-running
+        // maintenance, so fail closed and let the normal reconnect/repair loop observe the outcome.
+        if (result.IsIndeterminate)
+        {
+            var unknownDetail = result.TimedOut
+                ? "Gateway restart timed out"
+                : "Gateway restart outcome is unknown";
+            return new ManagedLocalGatewayRestartResult(
+                false,
+                $"{unknownDetail}; skipped forced distro termination because completion is unknown.");
+        }
+
         if (!canContinue())
             return new ManagedLocalGatewayRestartResult(false, "Gateway changed before forced restart.");
 
-        // The in-place restart failed — the distro/VM may be wedged and unable to run an in-distro
-        // command (an in-distro command also times out to a failure rather than hanging forever).
-        // Escalate to a host-side terminate + cold restart, which recovers a hung WSL instance
-        // (ForceRestartAsync logs the terminate).
+        cancellationToken.ThrowIfCancellationRequested();
+
+        // The in-place restart returned a definitive failure. Escalate to a host-side terminate +
+        // cold restart (ForceRestartAsync logs the terminate).
         result = await _controller
             .ForceRestartAsync(distroName, cancellationToken)
             .ConfigureAwait(false);

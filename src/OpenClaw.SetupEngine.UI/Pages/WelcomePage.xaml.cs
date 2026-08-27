@@ -13,8 +13,6 @@ namespace OpenClaw.SetupEngine.UI.Pages;
 
 public sealed partial class WelcomePage : Page
 {
-    private const string InstallButtonText = "Install a local gateway (WSL)";
-    private const string CheckingButtonText = "Checking existing setup...";
     private SetupConfig? _config;
     private bool _installSelected = true; // default selection
     private bool _suppressSelectionWrite;
@@ -145,50 +143,70 @@ public sealed partial class WelcomePage : Page
         var setupWindow = SetupWindow.Active;
         var dataDir = setupWindow?.DataDir ?? SetupContext.ResolveDataDir();
 
+        // The progress ring carries the checking state (its automation name is
+        // "Checking existing WSL setup"). Leave the option title alone: replacing it
+        // hides which option is being acted on for as long as the check runs.
         NextButton.IsEnabled = false;
-        InstallTitle.Text = CheckingButtonText;
         InstallCheckProgress.IsActive = true;
         InstallCheckProgress.Visibility = Visibility.Visible;
         var navigating = false;
         try
         {
             ExistingConfigDetector.ExistingConfig existing;
-            try
+            while (true)
             {
-                existing = await Task.Run(() => ExistingConfigDetector.Detect(dataDir, config.DistroName));
-            }
-            catch (InvalidOperationException ex)
-            {
-                var errorRoot = XamlRoot;
-                if (setupWindow is not null and { IsClosed: false } && errorRoot is not null)
+                try
                 {
-                    await new ContentDialog
+                    existing = await Task.Run(() => ExistingConfigDetector.Detect(
+                        dataDir,
+                        config.DistroName,
+                        setupWindow?.LocalDataDir));
+                    break;
+                }
+                catch (InvalidOperationException ex)
+                {
+                    var errorRoot = XamlRoot;
+                    if (setupWindow is null or { IsClosed: true } || errorRoot is null)
+                        return;
+
+                    // Inspection failure is usually transient, so offer a way forward
+                    // instead of ending the flow on the recommended option.
+                    var retry = await new ContentDialog
                     {
                         Title = "Could not inspect WSL",
                         Content = ex.Message,
-                        CloseButtonText = "Close",
+                        PrimaryButtonText = "Try again",
+                        CloseButtonText = "Cancel",
+                        DefaultButton = ContentDialogButton.Primary,
                         XamlRoot = errorRoot,
                     }.ShowAsync();
+
+                    if (retry != ContentDialogResult.Primary)
+                        return;
                 }
-                return;
             }
 
             var xamlRoot = XamlRoot;
             if (setupWindow is null or { IsClosed: true } || xamlRoot is null)
                 return;
 
-            InstallTitle.Text = InstallButtonText;
             InstallCheckProgress.IsActive = false;
             InstallCheckProgress.Visibility = Visibility.Collapsed;
             var summary = ExistingConfigDetector.BuildReplacementSummary(existing);
+            var requiresDestructiveConfirmation =
+                ExistingConfigDetector.RequiresDestructiveConfirmation(existing);
 
             var dialog = new ContentDialog
             {
-                Title = existing.HasLocalGateway || existing.HasDistro
-                    ? "Replace existing WSL gateway?"
-                    : "Install a new WSL gateway?",
+                Title = requiresDestructiveConfirmation
+                    ? $"Permanently delete WSL distro '{config.DistroName}'?"
+                    : existing.HasLocalGateway || existing.HasDistro || existing.HasDistroDataDirectory
+                        ? "Replace existing WSL gateway?"
+                        : "Install a new WSL gateway?",
                 Content = summary,
-                PrimaryButtonText = "Continue",
+                PrimaryButtonText = requiresDestructiveConfirmation
+                    ? "Delete and replace"
+                    : "Continue",
                 CloseButtonText = "Cancel",
                 DefaultButton = ContentDialogButton.Close,
                 XamlRoot = xamlRoot,
@@ -198,6 +216,10 @@ public sealed partial class WelcomePage : Page
             if (result != ContentDialogResult.Primary)
                 return;
 
+            config.ConfirmedDestructiveDistroName = requiresDestructiveConfirmation
+                ? config.DistroName
+                : null;
+
             navigating = true;
             setupWindow.NavigateToCapabilities();
         }
@@ -205,7 +227,6 @@ public sealed partial class WelcomePage : Page
         {
             if (!navigating && setupWindow is { IsClosed: false })
             {
-                InstallTitle.Text = InstallButtonText;
                 InstallCheckProgress.IsActive = false;
                 InstallCheckProgress.Visibility = Visibility.Collapsed;
                 NextButton.IsEnabled = true;

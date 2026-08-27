@@ -1,4 +1,3 @@
-using System.Collections.ObjectModel;
 using OpenClaw.Shared;
 
 namespace OpenClaw.Connection;
@@ -15,9 +14,12 @@ public sealed record WslGatewayControlResult(
     WslGatewayControlAction Action,
     int ExitCode,
     string StandardOutput,
-    string StandardError)
+    string StandardError,
+    bool TimedOut = false,
+    bool OutcomeIndeterminate = false)
 {
     public bool Success => ExitCode == 0;
+    public bool IsIndeterminate => TimedOut || OutcomeIndeterminate;
 
     public string OutputSummary
     {
@@ -33,14 +35,10 @@ public static class WslGatewayControlCommandBuilder
 {
     internal const string OpenClawWslPathPrefix = "export PATH=\"/home/openclaw/.openclaw/bin:/opt/openclaw/bin:/usr/local/bin:$PATH\"";
 
-    public static IReadOnlyList<string> Build(WslGatewayControlAction action)
-    {
-        return new ReadOnlyCollection<string>([
-            "bash",
-            "-lc",
-            $"{OpenClawWslPathPrefix} && openclaw gateway {ToVerb(action)}"
-        ]);
-    }
+    public static IReadOnlyList<string> BuildArguments() => ["bash", "-s"];
+
+    public static string BuildStandardInput(WslGatewayControlAction action) =>
+        $"set -e\n{OpenClawWslPathPrefix}\nopenclaw gateway {ToVerb(action)}\n";
 
     public static string ToVerb(WslGatewayControlAction action)
     {
@@ -88,15 +86,19 @@ public sealed class WslGatewayController(IWslCommandRunner commandRunner, IOpenC
         logger.Info($"Running OpenClaw gateway {WslGatewayControlCommandBuilder.ToVerb(action)} in WSL distro '{normalizedDistroName}'.");
         var result = await commandRunner.RunInDistroAsync(
             normalizedDistroName,
-            WslGatewayControlCommandBuilder.Build(action),
-            cancellationToken).ConfigureAwait(false);
+            WslGatewayControlCommandBuilder.BuildArguments(),
+            cancellationToken,
+            standardInput: WslGatewayControlCommandBuilder.BuildStandardInput(action))
+            .ConfigureAwait(false);
 
         return new WslGatewayControlResult(
             normalizedDistroName,
             action,
             result.ExitCode,
             result.StandardOutput,
-            result.StandardError);
+            result.StandardError,
+            result.TimedOut,
+            result.OutcomeIndeterminate);
     }
 
     /// <summary>
@@ -116,12 +118,17 @@ public sealed class WslGatewayController(IWslCommandRunner commandRunner, IOpenC
         }
 
         var normalizedDistroName = distroName.Trim();
+        cancellationToken.ThrowIfCancellationRequested();
         logger.Info($"Force-terminating WSL distro '{normalizedDistroName}' before restart (in-place restart failed).");
 
         // Terminate is best-effort: a "not running" distro still returns success, and any failure here
         // should not stop the cold restart below from surfacing the real error.
         // slopwatch-ignore: SW003 Terminate is best-effort; its failure cannot improve the caller state and the restart below is authoritative.
-        try { await commandRunner.TerminateDistroAsync(normalizedDistroName, cancellationToken).ConfigureAwait(false); }
+        try
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            await commandRunner.TerminateDistroAsync(normalizedDistroName, cancellationToken).ConfigureAwait(false);
+        }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { throw; }
         catch (Exception ex) { logger.Warn($"Force-terminate of '{normalizedDistroName}' failed (continuing to restart): {ex.Message}"); }
 

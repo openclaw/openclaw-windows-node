@@ -2606,6 +2606,9 @@ Use one of these options:
   <data name="VoiceSettingsPage_TtsElevenLabs.Content" xml:space="preserve">
     <value>ElevenLabs (cloud, requires API key)</value>
   </data>
+  <data name="VoiceSettingsPage_TtsMiniMax.Content" xml:space="preserve">
+    <value>MiniMax (cloud, requires API key)</value>
+  </data>
   <data name="VoiceSettingsPage_PiperVoiceCombo.Header" xml:space="preserve">
     <value>Voice</value>
   </data>
@@ -2639,8 +2642,32 @@ Use one of these options:
   <data name="VoiceSettingsPage_ElevenLabsModelBox.Header" xml:space="preserve">
     <value>Model (optional)</value>
   </data>
+  <data name="VoiceSettingsPage_MiniMaxApiKeyBox.Header" xml:space="preserve">
+    <value>API Key</value>
+  </data>
+  <data name="VoiceSettingsPage_MiniMaxVoiceIdBox.Header" xml:space="preserve">
+    <value>Voice ID</value>
+  </data>
+  <data name="VoiceSettingsPage_MiniMaxVoiceIdBox.PlaceholderText" xml:space="preserve">
+    <value>e.g. male-qn-qingse</value>
+  </data>
+  <data name="VoiceSettingsPage_MiniMaxModelBox.Header" xml:space="preserve">
+    <value>Model</value>
+  </data>
+  <data name="VoiceSettingsPage_MiniMaxModelBox.PlaceholderText" xml:space="preserve">
+    <value>speech-2.8-hd</value>
+  </data>
+  <data name="VoiceSettingsPage_MiniMaxRegionCombo.Header" xml:space="preserve">
+    <value>Region</value>
+  </data>
+  <data name="VoiceSettingsPage_MiniMaxRegionGlobal.Content" xml:space="preserve">
+    <value>Global</value>
+  </data>
+  <data name="VoiceSettingsPage_MiniMaxRegionChina.Content" xml:space="preserve">
+    <value>China</value>
+  </data>
   <data name="VoiceSettingsPage_PrivacyNote.Text" xml:space="preserve">
-    <value>All speech processing runs entirely on your device. No audio data is sent to any cloud service.</value>
+    <value>Piper, Windows, and speech recognition run on this device. Cloud TTS providers send response text to their services for synthesis; microphone audio is not sent to them.</value>
   </data>
   <data name="VoiceSettingsPage_StatusModelReady" xml:space="preserve">
     <value>✅ Model ready</value>

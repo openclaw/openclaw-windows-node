@@ -87,6 +87,28 @@ public sealed class ChatToolActivityPresentationTests
         Assert.Equal(standalone.Key, grouped.Key);
     }
 
+    [Fact]
+    public void Project_KeepsFailedToolsVisibleOutsideActivityGroups()
+    {
+        var rows = ChatToolActivityPresentation.Project(
+            [
+                Tool("success-1", "read_file"),
+                Tool("success-2", "write_file"),
+                Tool("failed", "powershell", result: ChatToolCallStatus.Error),
+                Tool("success-3", "web_fetch"),
+                Tool("success-4", "grep"),
+            ],
+            "session",
+            9);
+
+        Assert.Equal(3, rows.Count);
+        Assert.True(rows[0].IsActivityGroup);
+        Assert.False(rows[1].IsActivityGroup);
+        Assert.Equal("failed", rows[1].Entry?.Id);
+        Assert.Equal(ChatToolCallStatus.Error, rows[1].Entry?.ToolResult);
+        Assert.True(rows[2].IsActivityGroup);
+    }
+
     [Theory]
     [InlineData("powershell", ChatToolActivityCategory.Command)]
     [InlineData("system.run", ChatToolActivityCategory.Command)]

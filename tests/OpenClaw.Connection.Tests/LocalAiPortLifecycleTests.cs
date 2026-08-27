@@ -4,6 +4,7 @@ using OpenClaw.Shared.Inference.Catalog;
 using OpenClaw.TestSupport;
 using System.Collections.Immutable;
 using System.Net;
+using System.Text.Json;
 
 namespace OpenClaw.Connection.Tests;
 
@@ -18,6 +19,18 @@ public sealed class LocalAiPortLifecycleTests
     public void PortPolicy_IsConsistent(int port, bool accepted)
     {
         Assert.Equal(accepted, LocalAiPortPolicy.TryValidate(port, out _));
+    }
+
+    [Fact]
+    public void LegacyRouterProbe_RemainsSourceCompatible()
+    {
+        using var client = new LlamaServerClient();
+#pragma warning disable CS0618
+        Func<Uri, string, string, CancellationToken, Task<LlamaServerRouterProbeResult>> legacyProbe =
+            client.ProbeRouterAsync;
+#pragma warning restore CS0618
+
+        Assert.NotNull(legacyProbe);
     }
 
     [Fact]
@@ -45,6 +58,29 @@ public sealed class LocalAiPortLifecycleTests
 
         Assert.Equal("retired-profile-id", saved.Manifest.HardwareProfileId);
         Assert.Equal(LocalModelCatalog.Qwen35BModelId, launch.ModelAlias);
+    }
+
+    [Fact]
+    public async Task RouterPreset_BoundsOmittedGenerationAtGatewayMaximum()
+    {
+        using var temp = new TempDirectory("local-ai-manifest-");
+        var paths = new LocalAiPaths(temp.Path);
+        var store = new LocalAiManifestStore(paths);
+        await store.SaveAsync(ValidManifest() with { Endpoint = "http://127.0.0.1:28765/v1" });
+        LocalAiResolvedInstall saved = (await store.LoadAsync())!;
+
+        LlamaServerRouterLaunchPlan launch = LlamaServerRouterConfiguration.Build(paths, saved);
+        using JsonDocument provider = JsonDocument.Parse(
+            LocalAiGatewayProviderDefinition.BuildProviderJson(saved));
+        int gatewayMaximum = provider.RootElement
+            .GetProperty("models")[0]
+            .GetProperty("maxTokens")
+            .GetInt32();
+
+        Assert.Equal(LocalAiGatewayProviderDefinition.MaximumOutputTokens, gatewayMaximum);
+        Assert.Contains(
+            $"n-predict = {gatewayMaximum}",
+            launch.PresetContent.Split(Environment.NewLine));
     }
 
     [Fact]
@@ -443,7 +479,7 @@ public sealed class LocalAiPortLifecycleTests
     {
         public List<int> ProbedPorts { get; } = [];
 
-        public Task<LlamaServerRouterProbeResult> ProbeRouterAsync(
+        public Task<LlamaServerRouterProbeResult> ProbeManagedModelAsync(
             Uri endpoint,
             string modelAlias,
             string expectedModelPath,

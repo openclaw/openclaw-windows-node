@@ -268,6 +268,139 @@ public sealed class LocalAiInstallRecoveryTests
     }
 
     [Fact]
+    public async Task ArtifactInstall_RejectsPinnedZipUnsafeEntryNameWithoutWritingOutsideRoot()
+    {
+        using var temp = new TempDirectory();
+        byte[] archiveBytes = CreateZip(("../../../outside.txt", "outside"u8.ToArray()));
+        var archive = new LocalAiPinnedArchive(
+            "runtime.zip",
+            new Uri("https://github.com/owner/repo/releases/download/v1/runtime.zip"),
+            archiveBytes.Length,
+            Sha256(archiveBytes));
+        using var client = new HttpClient(new DelegateHandler(_ =>
+            new HttpResponseMessage(HttpStatusCode.OK)
+            {
+                Content = new ByteArrayContent(archiveBytes),
+            }));
+        string outsidePath = Path.Combine(temp.Path, "outside.txt");
+
+        LocalAiArtifactInstallException exception =
+            await Assert.ThrowsAsync<LocalAiArtifactInstallException>(() =>
+                new LocalAiArtifactInstaller(client).InstallAsync(
+                    temp.Path,
+                    TestComponent(),
+                    [archive],
+                    progress: null,
+                    CancellationToken.None));
+
+        Assert.Contains("unsafe path segment", exception.Message, StringComparison.Ordinal);
+        Assert.False(File.Exists(outsidePath));
+    }
+
+    [Theory]
+    [InlineData("../outside.txt")]
+    [InlineData("..\\outside.txt")]
+    public void ArchiveDestination_RejectsTraversalWithEitherSeparator(string entryName)
+    {
+        using var temp = new TempDirectory();
+        string stagingDirectory = Path.Combine(temp.Path, "staging");
+
+        bool resolved = LocalAiPathPolicy.TryResolveArchiveEntryDestination(
+            stagingDirectory,
+            entryName,
+            out string destinationPath,
+            out string error);
+
+        Assert.False(resolved);
+        Assert.Empty(destinationPath);
+        Assert.Contains("escapes its staging directory", error, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void ArchiveDestination_RejectsCanonicalizedPrefixCollision()
+    {
+        using var temp = new TempDirectory();
+        string stagingDirectory = Path.Combine(temp.Path, "staging");
+
+        bool resolved = LocalAiPathPolicy.TryResolveArchiveEntryDestination(
+            stagingDirectory,
+            "../staging-sibling/outside.txt",
+            out string destinationPath,
+            out string error);
+
+        Assert.False(resolved);
+        Assert.Empty(destinationPath);
+        Assert.Contains("escapes its staging directory", error, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void ArchiveDestination_RejectsRootedPath()
+    {
+        using var temp = new TempDirectory();
+        string stagingDirectory = Path.Combine(temp.Path, "staging");
+        string rootedEntry = Path.Combine(
+            Path.GetPathRoot(temp.Path)!,
+            $"openclaw-rooted-{Guid.NewGuid():N}.txt");
+
+        bool resolved = LocalAiPathPolicy.TryResolveArchiveEntryDestination(
+            stagingDirectory,
+            rootedEntry,
+            out string destinationPath,
+            out string error);
+
+        Assert.False(resolved);
+        Assert.Empty(destinationPath);
+        Assert.Contains("escapes its staging directory", error, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void ArchiveDestination_RejectsDescendantJunction()
+    {
+        using var temp = new TempDirectory();
+        using var outside = new TempDirectory();
+        string stagingDirectory = Path.Combine(temp.Path, "staging");
+        Directory.CreateDirectory(stagingDirectory);
+        string junction = Path.Combine(stagingDirectory, "linked");
+        CreateJunction(junction, outside.Path);
+        try
+        {
+            bool resolved = LocalAiPathPolicy.TryResolveArchiveEntryDestination(
+                stagingDirectory,
+                "linked/outside.txt",
+                out string destinationPath,
+                out string error);
+
+            Assert.False(resolved);
+            Assert.Empty(destinationPath);
+            Assert.Contains("reparse point", error, StringComparison.Ordinal);
+        }
+        finally
+        {
+            if (Directory.Exists(junction))
+                Directory.Delete(junction);
+        }
+    }
+
+    [Fact]
+    public void ArchiveDestination_ResolvesValidNestedEntry()
+    {
+        using var temp = new TempDirectory();
+        string stagingDirectory = Path.Combine(temp.Path, "staging");
+
+        bool resolved = LocalAiPathPolicy.TryResolveArchiveEntryDestination(
+            stagingDirectory,
+            "bin/tools/llama-server.exe",
+            out string destinationPath,
+            out string error);
+
+        Assert.True(resolved, error);
+        Assert.Equal(
+            Path.GetFullPath(Path.Combine(stagingDirectory, "bin", "tools", "llama-server.exe")),
+            destinationPath);
+        Assert.Empty(error);
+    }
+
+    [Fact]
     public async Task Reconciler_ReusesOnlyMatchingManifestWithoutMutation()
     {
         using var temp = new TempDirectory();
