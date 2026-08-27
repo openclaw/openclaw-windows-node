@@ -13,6 +13,7 @@ internal sealed class WslViabilityProbe
     {
         lock (_lock)
         {
+            // Share an in-flight inspection; refresh replaces only a completed result.
             if (refresh && _inspectionTask?.IsCompleted == true)
                 _inspectionTask = null;
 
