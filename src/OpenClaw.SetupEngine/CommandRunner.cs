@@ -209,17 +209,7 @@ public sealed class CommandRunner : ICommandRunner
         // stdout and stderr, which every caller that classifies command output then
         // misreads as silence. Wait up to a short cap instead, clamped by whatever
         // remains of the caller's own deadline so the accepted timeout is never exceeded.
-        TimeSpan drainBudget = s_outputDrainGrace;
-        if (!timedOut)
-        {
-            TimeSpan remaining = timeout - sw.Elapsed;
-            if (remaining < TimeSpan.Zero)
-                remaining = TimeSpan.Zero;
-
-            TimeSpan bounded = remaining < s_outputDrainCap ? remaining : s_outputDrainCap;
-            if (bounded > drainBudget)
-                drainBudget = bounded;
-        }
+        TimeSpan drainBudget = GetOutputDrainBudget(timeout, sw.Elapsed, timedOut);
 
         await Task.WhenAny(
             Task.WhenAll(stdoutClosed.Task, stderrClosed.Task),
@@ -235,6 +225,21 @@ public sealed class CommandRunner : ICommandRunner
 
         _logger.CommandCompleted(executable, result, sw.Elapsed);
         return result;
+    }
+
+    internal static TimeSpan GetOutputDrainBudget(
+        TimeSpan timeout,
+        TimeSpan elapsed,
+        bool timedOut)
+    {
+        if (timedOut)
+            return s_outputDrainGrace;
+
+        TimeSpan remaining = timeout - elapsed;
+        if (remaining <= TimeSpan.Zero)
+            return TimeSpan.Zero;
+
+        return remaining < s_outputDrainCap ? remaining : s_outputDrainCap;
     }
 
     /// <summary>
