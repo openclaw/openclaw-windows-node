@@ -4,6 +4,7 @@ using OpenClaw.Shared.Inference.Catalog;
 using OpenClaw.TestSupport;
 using System.Collections.Immutable;
 using System.Net;
+using System.Text.Json;
 
 namespace OpenClaw.Connection.Tests;
 
@@ -57,6 +58,29 @@ public sealed class LocalAiPortLifecycleTests
 
         Assert.Equal("retired-profile-id", saved.Manifest.HardwareProfileId);
         Assert.Equal(LocalModelCatalog.Qwen35BModelId, launch.ModelAlias);
+    }
+
+    [Fact]
+    public async Task RouterPreset_BoundsOmittedGenerationAtGatewayMaximum()
+    {
+        using var temp = new TempDirectory("local-ai-manifest-");
+        var paths = new LocalAiPaths(temp.Path);
+        var store = new LocalAiManifestStore(paths);
+        await store.SaveAsync(ValidManifest() with { Endpoint = "http://127.0.0.1:28765/v1" });
+        LocalAiResolvedInstall saved = (await store.LoadAsync())!;
+
+        LlamaServerRouterLaunchPlan launch = LlamaServerRouterConfiguration.Build(paths, saved);
+        using JsonDocument provider = JsonDocument.Parse(
+            LocalAiGatewayProviderDefinition.BuildProviderJson(saved));
+        int gatewayMaximum = provider.RootElement
+            .GetProperty("models")[0]
+            .GetProperty("maxTokens")
+            .GetInt32();
+
+        Assert.Equal(LocalAiGatewayProviderDefinition.MaximumOutputTokens, gatewayMaximum);
+        Assert.Contains(
+            $"n-predict = {gatewayMaximum}",
+            launch.PresetContent.Split(Environment.NewLine));
     }
 
     [Fact]
