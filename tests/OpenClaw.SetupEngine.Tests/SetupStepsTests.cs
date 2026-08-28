@@ -1973,6 +1973,182 @@ public class SetupStepsTests : IDisposable
     }
 
     [Fact]
+    public async Task EnsureWslPlatform_LeavesReadyWslUnchanged()
+    {
+        var installCalls = 0;
+        var commands = new FakeCommandRunner(args => args switch
+        {
+            ["--version"] => Ok("WSL version: 2.7.3.0\n"),
+            ["--status"] => Ok("Default Version: 2\n"),
+            _ => Fail($"unexpected args: {string.Join(' ', args)}"),
+        });
+        var ctx = CreateContext(commands: commands);
+        var step = new EnsureWslPlatformStep((_, _) =>
+        {
+            installCalls++;
+            return Task.FromResult(StepResult.Ok("initialized"));
+        });
+
+        var result = await step.ExecuteAsync(ctx, CancellationToken.None);
+
+        Assert.Equal(StepOutcome.Success, result.Outcome);
+        Assert.Equal("WSL platform is ready.", result.Message);
+        Assert.Equal(0, installCalls);
+        Assert.Equal(WslViabilityKind.Ready, ctx.WslViability?.Kind);
+        Assert.Equal(2, commands.Calls.Count);
+    }
+
+    [Fact]
+    public async Task PreflightWsl_UninitializedPlatformIsInstallable()
+    {
+        var commands = new FakeCommandRunner(args => args switch
+        {
+            ["--version"] => Ok("WSL version: 2.7.3.0\n"),
+            ["--status"] => new CommandResult(
+                1,
+                "",
+                "This application requires the Windows Subsystem for Linux Optional Component.\n" +
+                "Install it by running: wsl.exe --install --no-distribution\n" +
+                "Error code: Wsl/WSL_E_WSL_OPTIONAL_COMPONENT_REQUIRED",
+                TimeSpan.Zero,
+                TimedOut: false),
+            _ => Fail($"unexpected args: {string.Join(' ', args)}"),
+        });
+        var ctx = CreateContext(commands: commands);
+
+        var result = await new PreflightWslStep().ExecuteAsync(ctx, CancellationToken.None);
+
+        Assert.Equal(StepOutcome.Success, result.Outcome);
+        Assert.Equal(WslViabilityKind.Installable, ctx.WslViability?.Kind);
+        Assert.Contains("not initialized", result.Message);
+        Assert.DoesNotContain(commands.Calls, call => call.Arguments.Contains("--install"));
+    }
+
+    [Fact]
+    public async Task EnsureWslPlatform_InitializesPlatformAndReinspectsReadiness()
+    {
+        var initialized = false;
+        var installCalls = 0;
+        var commands = new FakeCommandRunner(args => args switch
+        {
+            ["--version"] => Ok("WSL version: 2.7.3.0\n"),
+            ["--status"] when !initialized => new CommandResult(
+                1,
+                "",
+                "Error code: Wsl/WSL_E_WSL_OPTIONAL_COMPONENT_REQUIRED",
+                TimeSpan.Zero,
+                TimedOut: false),
+            ["--status"] => Ok("Default Version: 2\n"),
+            _ => Fail($"unexpected args: {string.Join(' ', args)}"),
+        });
+        var ctx = CreateContext(commands: commands);
+        var step = new EnsureWslPlatformStep((_, _) =>
+        {
+            installCalls++;
+            initialized = true;
+            return Task.FromResult(StepResult.Ok("initialized"));
+        });
+
+        var result = await step.ExecuteAsync(ctx, CancellationToken.None);
+
+        Assert.Equal(StepOutcome.Success, result.Outcome);
+        Assert.Equal("WSL platform installed and verified.", result.Message);
+        Assert.Equal(1, installCalls);
+        Assert.Equal(WslViabilityKind.Ready, ctx.WslViability?.Kind);
+        Assert.Equal(4, commands.Calls.Count);
+    }
+
+    [Fact]
+    public async Task EnsureWslPlatform_RequiresRestartWhenInitializationIsStillPending()
+    {
+        var installCalls = 0;
+        var commands = new FakeCommandRunner(args => args switch
+        {
+            ["--version"] => Ok("WSL version: 2.7.3.0\n"),
+            ["--status"] => new CommandResult(
+                1,
+                "",
+                "Error code: Wsl/WSL_E_WSL_OPTIONAL_COMPONENT_REQUIRED",
+                TimeSpan.Zero,
+                TimedOut: false),
+            _ => Fail($"unexpected args: {string.Join(' ', args)}"),
+        });
+        var ctx = CreateContext(commands: commands);
+        var step = new EnsureWslPlatformStep((_, _) =>
+        {
+            installCalls++;
+            return Task.FromResult(StepResult.Ok("initialized"));
+        });
+
+        var result = await step.ExecuteAsync(ctx, CancellationToken.None);
+
+        Assert.Equal(StepOutcome.FailedTerminal, result.Outcome);
+        Assert.Contains("restarted", result.Message, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("Reboot Windows", result.Message);
+        Assert.Equal(1, installCalls);
+        Assert.Equal(WslViabilityKind.Installable, ctx.WslViability?.Kind);
+        Assert.Equal(4, commands.Calls.Count);
+    }
+
+    [Fact]
+    public async Task EnsureWslPlatform_PropagatesElevationCancellationWithoutReinspection()
+    {
+        var commands = new FakeCommandRunner(args => args switch
+        {
+            ["--version"] => Ok("WSL version: 2.7.3.0\n"),
+            ["--status"] => new CommandResult(
+                1,
+                "",
+                "Error code: Wsl/WSL_E_WSL_OPTIONAL_COMPONENT_REQUIRED",
+                TimeSpan.Zero,
+                TimedOut: false),
+            _ => Fail($"unexpected args: {string.Join(' ', args)}"),
+        });
+        var ctx = CreateContext(commands: commands);
+        var step = new EnsureWslPlatformStep((_, _) =>
+            Task.FromResult(StepResult.Fail("WSL platform install was cancelled at the elevation prompt.")));
+
+        var result = await step.ExecuteAsync(ctx, CancellationToken.None);
+
+        Assert.Equal(StepOutcome.Failed, result.Outcome);
+        Assert.Contains("elevation prompt", result.Message);
+        Assert.Equal(2, commands.Calls.Count);
+    }
+
+    [Fact]
+    public async Task EnsureWslPlatform_ElevationCancellationIsNotRetriedByPipeline()
+    {
+        var installCalls = 0;
+        var commands = new FakeCommandRunner(args => args switch
+        {
+            ["--version"] => Ok("WSL version: 2.7.3.0\n"),
+            ["--status"] => new CommandResult(
+                1,
+                "",
+                "Error code: Wsl/WSL_E_WSL_OPTIONAL_COMPONENT_REQUIRED",
+                TimeSpan.Zero,
+                TimedOut: false),
+            _ => Fail($"unexpected args: {string.Join(' ', args)}"),
+        });
+        var ctx = CreateContext(commands: commands);
+        var step = new EnsureWslPlatformStep((_, _) =>
+        {
+            installCalls++;
+            return Task.FromResult(
+                StepResult.Fail("WSL platform install was cancelled at the elevation prompt."));
+        });
+        var pipeline = new SetupPipeline([step]);
+
+        var result = await pipeline.RunAsync(ctx);
+
+        Assert.Equal(PipelineOutcome.Failed, result.Outcome);
+        Assert.Equal(step.Id, result.FailedStepId);
+        Assert.Contains("elevation prompt", result.Message);
+        Assert.Equal(1, installCalls);
+        Assert.Equal(2, commands.Calls.Count);
+    }
+
+    [Fact]
     public async Task PreflightWsl_UnclassifiedStatusFailureFailsClosed()
     {
         var commands = new FakeCommandRunner(args => args switch
@@ -1991,33 +2167,93 @@ public class SetupStepsTests : IDisposable
     }
 
     [Fact]
-    public void LocalAiAvailabilityReasons_CombinesHardwareWslAndNetworkingFailures()
+    public async Task WslViabilityProbe_RefreshesCompletedInspectionWithoutRecreatingOwner()
     {
-        var wsl = new WslViabilityResult(
-            WslViabilityKind.EnvironmentBlocked,
-            "Windows cannot currently start WSL2.",
-            "Enable virtualization and Virtual Machine Platform.");
+        var inspectionCount = 0;
+        var probe = new WslViabilityProbe(() =>
+        {
+            inspectionCount++;
+            return Task.FromResult(inspectionCount == 1
+                ? new WslViabilityResult(
+                    WslViabilityKind.InspectionFailed,
+                    "Inspection failed.",
+                    "Try again.")
+                : new WslViabilityResult(
+                    WslViabilityKind.Ready,
+                    "WSL is ready.",
+                    string.Empty));
+        });
 
+        WslViabilityResult first = await probe.GetAsync();
+        WslViabilityResult cached = await probe.GetAsync();
+        WslViabilityResult refreshed = await probe.GetAsync(refresh: true);
+
+        Assert.Equal(WslViabilityKind.InspectionFailed, first.Kind);
+        Assert.Same(first, cached);
+        Assert.Equal(WslViabilityKind.Ready, refreshed.Kind);
+        Assert.Equal(2, inspectionCount);
+    }
+
+    [Fact]
+    public async Task WslViabilityProbe_RefreshSharesInFlightInspectionThenStartsOneNewInspection()
+    {
+        var firstCompletion = new TaskCompletionSource<WslViabilityResult>(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        var secondCompletion = new TaskCompletionSource<WslViabilityResult>(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        var inspectionCount = 0;
+        var probe = new WslViabilityProbe(() =>
+            Interlocked.Increment(ref inspectionCount) switch
+            {
+                1 => firstCompletion.Task,
+                2 => secondCompletion.Task,
+                _ => throw new InvalidOperationException("Unexpected extra WSL inspection."),
+            });
+
+        Task<WslViabilityResult> first = probe.GetAsync();
+        Task<WslViabilityResult> concurrentRefresh = probe.GetAsync(refresh: true);
+
+        Assert.Same(first, concurrentRefresh);
+        Assert.Equal(1, Volatile.Read(ref inspectionCount));
+
+        firstCompletion.SetResult(new WslViabilityResult(
+            WslViabilityKind.InspectionFailed,
+            "Inspection failed.",
+            "Try again."));
+        Assert.Equal(WslViabilityKind.InspectionFailed, (await first).Kind);
+
+        Task<WslViabilityResult> refreshed = probe.GetAsync(refresh: true);
+        Task<WslViabilityResult> secondConcurrentRefresh = probe.GetAsync(refresh: true);
+
+        Assert.NotSame(first, refreshed);
+        Assert.Same(refreshed, secondConcurrentRefresh);
+        Assert.Equal(2, Volatile.Read(ref inspectionCount));
+
+        secondCompletion.SetResult(new WslViabilityResult(
+            WslViabilityKind.Ready,
+            "WSL is ready.",
+            string.Empty));
+        Assert.Equal(WslViabilityKind.Ready, (await refreshed).Kind);
+        Assert.Equal(2, Volatile.Read(ref inspectionCount));
+    }
+
+    [Fact]
+    public void LocalAiAvailabilityReasons_CombinesOnlyLocalAiFailures()
+    {
         var result = LocalAiAvailabilityReasons.Build(
             "No qualified NVIDIA GPU was detected.",
-            wsl,
             "The global .wslconfig file is unreadable.");
 
         Assert.NotNull(result);
         Assert.Contains("Hardware: No qualified NVIDIA GPU was detected.", result);
-        Assert.Contains("WSL: Windows cannot currently start WSL2.", result);
         Assert.Contains("WSL networking: The global .wslconfig file is unreadable.", result);
+        Assert.DoesNotContain("Windows cannot currently start WSL2", result);
     }
 
     [Fact]
-    public void LocalAiAvailabilityReasons_DoesNotBlockForInstallableWsl()
+    public void LocalAiAvailabilityReasons_ReturnsNullWithoutLocalAiFailures()
     {
-        var wsl = new WslViabilityResult(
-            WslViabilityKind.Installable,
-            "WSL is not installed yet.",
-            "Setup can install it later.");
-
-        Assert.Null(LocalAiAvailabilityReasons.Build(null, wsl, null));
+        Assert.Null(LocalAiAvailabilityReasons.Build(null, null));
     }
 
     [Fact]
@@ -2555,10 +2791,16 @@ public class SetupStepsTests : IDisposable
             if (args is ["--version"])
                 return Ok("WSL version: 2.7.3.0\n");
             if (args is ["--status"])
-                return Ok(
+            {
+                return new CommandResult(
+                    1,
+                    "",
                     "WSL2 is unable to start since virtualization is not enabled on this machine. "
                     + "Please ensure the 'Virtual Machine Platform' optional component is enabled "
-                    + "and virtualization is turned on in your computer's firmware settings.");
+                    + "and virtualization is turned on in your computer's firmware settings.",
+                    TimeSpan.Zero,
+                    TimedOut: false);
+            }
             return Ok();
         });
         var ctx = CreateContext(commands: commands);
@@ -2566,9 +2808,35 @@ public class SetupStepsTests : IDisposable
         var result = await new PreflightWslStep().ExecuteAsync(ctx, CancellationToken.None);
 
         Assert.Equal(StepOutcome.FailedTerminal, result.Outcome);
+        Assert.Equal(WslViabilityKind.EnvironmentBlocked, ctx.WslViability?.Kind);
+        Assert.StartsWith("Windows cannot currently start WSL2.", result.Message);
         Assert.Contains("virtualization", result.Message, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("Local AI", result.Message, StringComparison.OrdinalIgnoreCase);
         // Don't assert on "BIOS" / "UEFI" here -- the wording flexes by host
         // CPU architecture (this test runs on either x64 or Arm64 dev boxes).
+    }
+
+    [Fact]
+    public async Task PreflightWsl_VirtualizationFailureBlocksWhenLocalAiIsDisabled()
+    {
+        var commands = new FakeCommandRunner(args => args switch
+        {
+            ["--version"] => Ok("WSL version: 2.7.3.0\n"),
+            ["--status"] => Ok(
+                "WSL2 is unable to start since virtualization is not enabled on this machine. "
+                + "Turn on virtualization in firmware settings."),
+            _ => Fail($"unexpected args: {string.Join(' ', args)}"),
+        });
+        var ctx = CreateContext(
+            new SetupConfig { LocalAi = new LocalAiConfig { Enabled = false } },
+            commands);
+
+        var result = await new PreflightWslStep().ExecuteAsync(ctx, CancellationToken.None);
+
+        Assert.False(new PreflightWslStep().CanSkip(ctx));
+        Assert.Equal(StepOutcome.FailedTerminal, result.Outcome);
+        Assert.Equal(WslViabilityKind.EnvironmentBlocked, ctx.WslViability?.Kind);
+        Assert.DoesNotContain("Local AI", result.Message, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]
@@ -3684,6 +3952,18 @@ public class SetupStepsTests : IDisposable
             "WSL is not installed. See https://aka.ms/wslinstall",
             TimeSpan.FromSeconds(5),
             TimedOut: true);
+
+        Assert.False(ExistingConfigDetector.InterpretDistroList(result, "OpenClawGateway"));
+    }
+
+    [Theory]
+    [InlineData("Error code: Wsl/WSL_E_WSL_OPTIONAL_COMPONENT_REQUIRED")]
+    [InlineData("This application requires the Windows Subsystem for Linux Optional Component.")]
+    [InlineData("Optional components needed to run WSL are not installed.")]
+    [InlineData("Error: 0x8007019e")]
+    public void ExistingConfigDetector_TreatsUninitializedWslAsNoDistro(string error)
+    {
+        var result = new CommandResult(1, "", error, TimeSpan.Zero, TimedOut: false);
 
         Assert.False(ExistingConfigDetector.InterpretDistroList(result, "OpenClawGateway"));
     }

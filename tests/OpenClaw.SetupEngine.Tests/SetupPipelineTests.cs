@@ -116,8 +116,12 @@ public class SetupPipelineTests
         Assert.IsType<StartKeepaliveStep>(steps[^1]);
 
         var ensureWslIndex = steps.FindIndex(step => step is EnsureWslPlatformStep);
+        var preflightWslIndex = steps.FindIndex(step => step is PreflightWslStep);
+        var localAiHardwareIndex = steps.FindIndex(step => step is PreflightLocalAiHardwareStep);
         var runtimeDownloadIndex = steps.FindIndex(step => step is AcquireLocalAiRuntimeStep);
         var modelDownloadIndex = steps.FindIndex(step => step is AcquireLocalAiModelStep);
+        Assert.True(localAiHardwareIndex < preflightWslIndex);
+        Assert.True(preflightWslIndex < ensureWslIndex);
         Assert.True(ensureWslIndex < runtimeDownloadIndex);
         Assert.True(ensureWslIndex < modelDownloadIndex);
     }
@@ -147,6 +151,8 @@ public class SetupPipelineTests
         ];
 
         Assert.All(localAiSteps, step => Assert.True(step.CanSkip(ctx), step.Id));
+        Assert.False(steps.Single(step => step is PreflightWslStep).CanSkip(ctx));
+        Assert.False(steps.Single(step => step is EnsureWslPlatformStep).CanSkip(ctx));
     }
 
     [Theory]

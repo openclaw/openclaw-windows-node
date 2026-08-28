@@ -3,7 +3,8 @@
       xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
       xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
     <ScrollViewer VerticalScrollBarVisibility="Auto">
-        <StackPanel Padding="24" Spacing="12" HorizontalAlignment="Stretch" MaxWidth="900">
+        <Grid HorizontalAlignment="Stretch">
+            <StackPanel Padding="24" Spacing="12" HorizontalAlignment="Stretch" MaxWidth="900">
             <TextBlock x:Uid="LocalAiPage_Title" Text="Local AI"
                        Style="{StaticResource TitleTextBlockStyle}"
                        AutomationProperties.AutomationId="LocalAiPageMarker"/>
@@ -12,9 +13,54 @@
                        Style="{StaticResource CaptionTextBlockStyle}"
                        Foreground="{ThemeResource TextFillColorSecondaryBrush}" TextWrapping="Wrap"/>
 
-            <Border Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
-                    BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1"
-                    CornerRadius="8" Padding="16" AutomationProperties.AutomationId="LocalAiEngineCard">
+            <InfoBar x:Name="LocalAiUnavailableInfoBar"
+                     x:Uid="LocalAiPage_UnavailableInfoBar"
+                     Title="Local AI is not available"
+                     Severity="Informational"
+                     IsOpen="True" IsClosable="False"
+                     Visibility="Collapsed"
+                     AutomationProperties.AutomationId="LocalAiUnavailableInfoBar"
+                     AutomationProperties.LiveSetting="Polite">
+                <InfoBar.ActionButton>
+                    <HyperlinkButton x:Name="LocalAiUnavailableDetailsButton"
+                                     x:Uid="LocalAiPage_UnavailableDetailsButton"
+                                     Content="See why"
+                                     AutomationProperties.AutomationId="LocalAiUnavailableDetailsButton"
+                                     Click="LocalAiUnavailableDetails_Click"/>
+                </InfoBar.ActionButton>
+            </InfoBar>
+            <StackPanel Orientation="Horizontal" Spacing="8">
+                <ProgressRing x:Name="LocalAiAvailabilityProgressRing"
+                              Width="16"
+                              Height="16"
+                              IsActive="False"
+                              AutomationProperties.AccessibilityView="Raw"/>
+                <HyperlinkButton x:Name="LocalAiRecheckAvailabilityButton"
+                                 x:Uid="LocalAiPage_RecheckAvailabilityButton"
+                                 Content="Recheck"
+                                 HorizontalAlignment="Left"
+                                 AutomationProperties.AutomationId="LocalAiRecheckAvailabilityButton"
+                                 Click="LocalAiRecheckAvailability_Click"
+                                 Visibility="Collapsed"/>
+            </StackPanel>
+            <TeachingTip x:Name="LocalAiUnavailableDetailsTip"
+                         x:Uid="LocalAiPage_UnavailableDetailsTip"
+                         Title="Why Local AI is unavailable"
+                         Target="{x:Bind LocalAiUnavailableDetailsButton}"
+                         PreferredPlacement="Bottom"
+                         IsLightDismissEnabled="True">
+                <TextBlock x:Name="LocalAiUnavailableReasonText"
+                           TextWrapping="Wrap"
+                           MaxWidth="420"/>
+            </TeachingTip>
+
+            <ContentControl x:Name="LocalAiEngineOption"
+                            IsTabStop="False"
+                            HorizontalContentAlignment="Stretch"
+                            AutomationProperties.AutomationId="LocalAiEngineCard">
+                <Border Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                        BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1"
+                        CornerRadius="8" Padding="16">
                 <StackPanel Spacing="10">
                     <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="12">
                         <Ellipse x:Name="EngineStatusDot" Width="12" Height="12" VerticalAlignment="Center"
@@ -62,11 +108,16 @@
                                 Click="OnOpenLogs" AutomationProperties.AutomationId="LocalAiOpenLogs"/>
                     </StackPanel>
                 </StackPanel>
-            </Border>
+                </Border>
+            </ContentControl>
 
-            <Border Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
-                    BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1"
-                    CornerRadius="8" Padding="16" AutomationProperties.AutomationId="LocalAiModelCard">
+            <ContentControl x:Name="LocalAiModelOption"
+                            IsTabStop="False"
+                            HorizontalContentAlignment="Stretch"
+                            AutomationProperties.AutomationId="LocalAiModelCard">
+                <Border Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                        BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1"
+                        CornerRadius="8" Padding="16">
                 <StackPanel Spacing="10">
                     <TextBlock x:Uid="LocalAiPage_ModelHeading" Text="Model"
                                Style="{StaticResource BodyStrongTextBlockStyle}"/>
@@ -85,12 +136,27 @@
                     <Button x:Name="RetrySetupButton" x:Uid="LocalAiPage_RetrySetupButton"
                             Content="Retry setup or download" Click="OnRetrySetup" HorizontalAlignment="Left"
                             AutomationProperties.AutomationId="LocalAiRetrySetup"/>
+                    <StackPanel x:Name="ChangeModelPanel" Spacing="8" Visibility="Collapsed">
+                        <TextBlock x:Uid="LocalAiPage_ChangeModelDescription"
+                                  Text="Opens setup to choose another model. Replacing the existing Local Gateway still requires confirmation."
+                                  Style="{StaticResource CaptionTextBlockStyle}"
+                                  Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                  TextWrapping="Wrap"/>
+                        <Button x:Name="ChangeModelButton" x:Uid="LocalAiPage_ChangeModelButton"
+                               Content="Change model" Click="OnChangeModel" HorizontalAlignment="Left"
+                               AutomationProperties.AutomationId="LocalAiChangeModel"/>
+                    </StackPanel>
                 </StackPanel>
-            </Border>
+                </Border>
+            </ContentControl>
 
-            <Border Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
-                    BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1"
-                    CornerRadius="8" Padding="16" AutomationProperties.AutomationId="LocalAiGatewayCard">
+            <ContentControl x:Name="LocalAiGatewayOption"
+                            IsTabStop="False"
+                            HorizontalContentAlignment="Stretch"
+                            AutomationProperties.AutomationId="LocalAiGatewayCard">
+                <Border Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                        BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1"
+                        CornerRadius="8" Padding="16">
                 <StackPanel Spacing="10">
                     <TextBlock x:Uid="LocalAiPage_GatewayHeading" Text="Gateway connection"
                                Style="{StaticResource BodyStrongTextBlockStyle}"/>
@@ -113,7 +179,9 @@
                                 AutomationProperties.AutomationId="LocalAiOpenChat"/>
                     </StackPanel>
                 </StackPanel>
-            </Border>
-        </StackPanel>
+                </Border>
+            </ContentControl>
+            </StackPanel>
+        </Grid>
     </ScrollViewer>
 </Page>

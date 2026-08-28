@@ -39,6 +39,7 @@
                 <ListViewItem x:Name="InstallChoice"
                               AutomationProperties.AutomationId="WelcomeInstallLocalGatewayChoice"
                               AutomationProperties.Name="Install a local gateway (WSL), recommended"
+                              AutomationProperties.LiveSetting="Polite"
                               HorizontalContentAlignment="Stretch"
                               VerticalContentAlignment="Center"
                               Padding="16,12">
@@ -56,7 +57,7 @@
                                            VerticalAlignment="Center" />
                                 <ProgressRing x:Name="InstallCheckProgress"
                                               AutomationProperties.AutomationId="WelcomeInstallCheckProgress"
-                                              AutomationProperties.Name="Checking existing WSL setup"
+                                              AutomationProperties.Name="Checking WSL readiness and existing setup"
                                               Width="16" Height="16"
                                               IsActive="False" Visibility="Collapsed" />
                                 <Border CornerRadius="4" Padding="7,1" VerticalAlignment="Center"
@@ -65,30 +66,28 @@
                                                Style="{StaticResource CaptionTextBlockStyle}"
                                                Foreground="{ThemeResource AccentTextFillColorPrimaryBrush}" />
                                 </Border>
+                                <Border x:Name="LocalAiAvailabilityBadge"
+                                        AutomationProperties.AutomationId="WelcomeLocalAiAvailable"
+                                        AutomationProperties.AccessibilityView="Raw"
+                                        CornerRadius="4" Padding="7,1" VerticalAlignment="Center"
+                                        BorderBrush="{ThemeResource SystemFillColorSuccessBrush}"
+                                        BorderThickness="1" Visibility="Collapsed">
+                                    <StackPanel Orientation="Horizontal" Spacing="4">
+                                        <FontIcon Glyph="&#xE950;" FontSize="11"
+                                                  IsTextScaleFactorEnabled="False"
+                                                  Foreground="{ThemeResource SystemFillColorSuccessBrush}"
+                                                  AutomationProperties.AccessibilityView="Raw" />
+                                        <TextBlock x:Uid="Onboarding_Welcome_LocalAiAvailableBadge"
+                                                   Text="Local AI available"
+                                                   Style="{StaticResource CaptionTextBlockStyle}"
+                                                   Foreground="{ThemeResource SystemFillColorSuccessBrush}" />
+                                    </StackPanel>
+                                </Border>
                             </StackPanel>
                             <TextBlock TextWrapping="Wrap"
                                        Style="{StaticResource CaptionTextBlockStyle}"
                                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"
                                        Text="A private, self-hosted OpenClaw gateway in an isolated Ubuntu WSL instance. We'll show exactly what gets installed before anything runs." />
-                            <StackPanel x:Name="LocalAiAvailabilityPanel"
-                                        AutomationProperties.AutomationId="WelcomeLocalAiAvailable"
-                                        AutomationProperties.LiveSetting="Polite"
-                                        Spacing="2" Margin="0,5,0,0" Visibility="Collapsed">
-                                <StackPanel Orientation="Horizontal" Spacing="6">
-                                    <FontIcon Glyph="&#xE73E;" FontSize="12"
-                                              IsTextScaleFactorEnabled="False"
-                                              Foreground="{ThemeResource SystemFillColorSuccessBrush}" />
-                                    <TextBlock Text="Local AI available"
-                                               Style="{StaticResource CaptionTextBlockStyle}"
-                                               FontWeight="SemiBold"
-                                               Foreground="{ThemeResource SystemFillColorSuccessBrush}" />
-                                </StackPanel>
-                                <TextBlock x:Name="LocalAiAvailabilityText"
-                                           AutomationProperties.AutomationId="WelcomeLocalAiHardware"
-                                           TextWrapping="Wrap"
-                                           Style="{StaticResource CaptionTextBlockStyle}"
-                                           Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
-                            </StackPanel>
                         </StackPanel>
                     </Grid>
                 </ListViewItem>

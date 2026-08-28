@@ -1058,6 +1058,9 @@ Gebruik een van deze opties:
   <data name="Onboarding_Connection_Later" xml:space="preserve">
     <value>Later configureren</value>
   </data>
+  <data name="Onboarding_LocalAi_RecheckAvailabilityButton.Content" xml:space="preserve">
+    <value>Opnieuw controleren</value>
+  </data>
   <data name="Onboarding_Ready_Title" xml:space="preserve">
     <value>Alles klaar!</value>
   </data>
@@ -7006,6 +7009,12 @@ Het binaire bestand wxc-exec is niet gevonden. {1} Als dit een ontwikkelaarsbuil
   <data name="HubWindow_NavigationViewItem_LocalAi.Content" xml:space="preserve"><value>Lokale AI</value></data>
   <data name="LocalAiPage_Title.Text" xml:space="preserve"><value>Lokale AI</value></data>
   <data name="LocalAiPage_Intro.Text" xml:space="preserve"><value>Voer de geverifieerde native llama-server privé uit op deze computer. Modellen worden alleen op aanvraag geladen.</value></data>
+  <data name="LocalAiPage_UnavailableInfoBar.Title" xml:space="preserve"><value>Lokale AI is niet beschikbaar</value></data>
+  <data name="LocalAiPage_UnavailableDetailsButton.Content" xml:space="preserve"><value>Bekijk waarom</value></data>
+  <data name="LocalAiPage_UnavailableDetailsTip.Title" xml:space="preserve"><value>Waarom lokale AI niet beschikbaar is</value></data>
+  <data name="LocalAiPage_RecheckAvailabilityButton.Content" xml:space="preserve"><value>Opnieuw controleren</value></data>
+  <data name="LocalAiPage_UnavailableRequirementsMessage" xml:space="preserve"><value>Dit apparaat voldoet niet aan een of meer vereisten voor lokale AI.</value></data>
+  <data name="LocalAiPage_UnavailableProbeMessage" xml:space="preserve"><value>OpenClaw kon de vereisten voor lokale AI nu niet verifiëren. Controleer of het NVIDIA-stuurprogramma beschikbaar is en probeer het opnieuw.</value></data>
   <data name="LocalAiPage_EngineHeading.Text" xml:space="preserve"><value>llama-server</value></data>
   <data name="LocalAiPage_VersionLabel.Text" xml:space="preserve"><value>Versie</value></data>
   <data name="LocalAiPage_EndpointLabel.Text" xml:space="preserve"><value>Eindpunt</value></data>
@@ -7016,6 +7025,8 @@ Het binaire bestand wxc-exec is niet gevonden. {1} Als dit een ontwikkelaarsbuil
   <data name="LocalAiPage_OpenLogsButton.Content" xml:space="preserve"><value>Logboeken openen</value></data>
   <data name="LocalAiPage_ModelHeading.Text" xml:space="preserve"><value>AI-model</value></data>
   <data name="LocalAiPage_RetrySetupButton.Content" xml:space="preserve"><value>Installatie of download opnieuw proberen</value></data>
+  <data name="LocalAiPage_ChangeModelDescription.Text" xml:space="preserve"><value>Opent de installatie om een ander model te kiezen. Voor het vervangen van de bestaande lokale gateway blijft bevestiging vereist.</value></data>
+  <data name="LocalAiPage_ChangeModelButton.Content" xml:space="preserve"><value>Model wijzigen</value></data>
   <data name="LocalAiPage_GatewayHeading.Text" xml:space="preserve"><value>Gatewayverbinding</value></data>
   <data name="LocalAiPage_RepairConnectionButton.Content" xml:space="preserve"><value>Verbinding herstellen</value></data>
   <data name="LocalAiPage_OpenChatButton.Content" xml:space="preserve"><value>Chat openen</value></data>
@@ -7039,4 +7050,34 @@ Het binaire bestand wxc-exec is niet gevonden. {1} Als dit een ontwikkelaarsbuil
   <data name="LocalAiPage_ModelRecipeFormat" xml:space="preserve"><value>{0} context · {1} KV · Laden bij eerste aanvraag</value></data>
   <data name="Command_GoToLocalAi_Title" xml:space="preserve"><value>Naar Lokale AI</value></data>
   <data name="Command_GoToLocalAi_Subtitle" xml:space="preserve"><value>Status van llama-server, model en gateway bekijken</value></data>
+  <data name="Onboarding_LocalAi_UnavailableDetailsButton.Content" xml:space="preserve"><value>Bekijk waarom</value></data>
+  <data name="Onboarding_LocalAi_CheckingTitle" xml:space="preserve"><value>Vereisten voor lokale AI worden gecontroleerd</value></data>
+  <data name="Onboarding_LocalAi_CheckingMessage" xml:space="preserve"><value>OpenClaw controleert de NVIDIA-GPU, stuurprogramma, CUDA, geheugen en WSL-vereisten.</value></data>
+  <data name="Onboarding_LocalAi_CheckingHelpText" xml:space="preserve"><value>OpenClaw controleert de vereisten voor lokale AI.</value></data>
+  <data name="Onboarding_LocalAi_ProbeUnknownTitle" xml:space="preserve"><value>Beschikbaarheid van lokale AI kon niet worden geverifieerd</value></data>
+  <data name="Onboarding_LocalAi_ProbeUnknownMessage" xml:space="preserve"><value>OpenClaw kon de vereisten voor lokale AI nu niet verifiëren. Controleer of het NVIDIA-stuurprogramma beschikbaar is en probeer het opnieuw.</value></data>
+  <data name="Onboarding_LocalAi_ProbeUnknownHelpText" xml:space="preserve"><value>OpenClaw kon de vereisten voor lokale AI niet verifiëren. Controleer de beschikbaarheid opnieuw om het nogmaals te proberen.</value></data>
+  <data name="Onboarding_LocalAi_UnavailableTitle" xml:space="preserve"><value>Lokale AI is niet beschikbaar</value></data>
+  <data name="Onboarding_LocalAi_UnavailableMessage" xml:space="preserve"><value>Deze pc voldoet niet aan een of meer vereisten voor lokale AI.</value></data>
+  <data name="Onboarding_LocalAi_UnavailableHelpText" xml:space="preserve"><value>Niet beschikbaar omdat deze pc niet voldoet aan de vereisten voor lokale AI.</value></data>
+  <data name="Onboarding_LocalAi_ProbeFailureReason" xml:space="preserve"><value>OpenClaw kon de informatie over de NVIDIA-GPU, het stuurprogramma, CUDA of het geheugen niet lezen. Controleer of het NVIDIA-stuurprogramma beschikbaar is en controleer de vereisten voor lokale AI opnieuw.</value></data>
+  <data name="Onboarding_LocalAi_UnavailableDetailsDialogTitle" xml:space="preserve"><value>Waarom lokale AI niet beschikbaar is</value></data>
+  <data name="Onboarding_LocalAi_UnavailableDetailsDialogClose" xml:space="preserve"><value>Sluiten</value></data>
+  <data name="LocalAi_Reason_RuntimeUnavailable" xml:space="preserve"><value>Deze release van lokale AI bevat geen native llama-server-runtime voor de gedetecteerde Windows-architectuur.</value></data>
+  <data name="LocalAi_Reason_NoNvidiaGpu" xml:space="preserve"><value>Er is geen NVIDIA-GPU gerapporteerd door het NVIDIA-stuurprogramma. Installeer of herstel het NVIDIA-stuurprogramma en probeer de installatie opnieuw.</value></data>
+  <data name="LocalAi_Reason_UnknownModel" xml:space="preserve"><value>Het geselecteerde model is niet beschikbaar in deze release van lokale AI.</value></data>
+  <data name="LocalAi_Reason_HardwareFactsIncomplete" xml:space="preserve"><value>OpenClaw kon geen stabiele NVIDIA-GPU-id, geheugen, stuurprogramma of CUDA-mogelijkheid lezen.</value></data>
+  <data name="LocalAi_Reason_InsufficientGpuMemory" xml:space="preserve"><value>{0} vereist {1} GPU-geheugen voor modelgewichten, KV-cache en runtime-werkruimte. OpenClaw detecteerde {2}.</value></data>
+  <data name="LocalAi_Reason_DriverTooOld" xml:space="preserve"><value>NVIDIA-stuurprogramma {0} is gedetecteerd. Lokale AI vereist versie {1} of nieuwer.</value></data>
+  <data name="LocalAi_Reason_CudaCapabilityTooLow" xml:space="preserve"><value>Het NVIDIA-stuurprogramma biedt geen ondersteuning voor CUDA 13. Een aparte CUDA Toolkit is niet vereist.</value></data>
+  <data name="LocalAi_Reason_Generic" xml:space="preserve"><value>OpenClaw kon de vereisten voor lokale AI op dit systeem niet verifiëren.</value></data>
+  <data name="LocalAi_Reason_UnknownModelName" xml:space="preserve"><value>Het geselecteerde model</value></data>
+  <data name="LocalAi_Reason_UnknownDriverVersion" xml:space="preserve"><value>onbekend</value></data>
+  <data name="LocalAi_Reason_UnknownMemoryAmount" xml:space="preserve"><value>een onbekende hoeveelheid</value></data>
+  <data name="LocalAi_Reason_GigabytesFormat" xml:space="preserve"><value>{0:0.#} GB</value></data>
+  <data name="Onboarding_Welcome_LocalAiAvailableBadge.Text" xml:space="preserve"><value>Lokale AI beschikbaar</value></data>
+  <data name="Onboarding_LocalAi_WslConfigReadFailureReason" xml:space="preserve"><value>OpenClaw kan het globale .wslconfig-bestand niet veilig lezen. Controleer of het bestand geldig en leesbaar is en probeer de installatie opnieuw.</value></data>
+  <data name="LocalAiPage_UnavailableProbeTitle" xml:space="preserve"><value>Beschikbaarheid van lokale AI kon niet worden geverifieerd</value></data>
+  <data name="LocalAiPage_CheckingTitle" xml:space="preserve"><value>Beschikbaarheid van lokale AI controleren</value></data>
+  <data name="LocalAiPage_CheckingMessage" xml:space="preserve"><value>OpenClaw controleert of dit apparaat lokale AI kan uitvoeren. Dit duurt slechts een moment.</value></data>
 </root>

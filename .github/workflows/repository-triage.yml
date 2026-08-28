@@ -1,0 +1,109 @@
+name: Repository Triage Report
+
+on:
+  schedule:
+    - cron: "23 4 * * *"
+  workflow_dispatch:
+    inputs:
+      operation:
+        description: Report only, or manually remove safely expired active ownership labels
+        required: true
+        type: choice
+        default: report-only
+        options:
+          - report-only
+          - remove-expired-active-ownership
+
+permissions: {}
+
+concurrency:
+  group: repository-triage-${{ github.repository }}
+  cancel-in-progress: false
+
+jobs:
+  report:
+    name: Build read-only triage report
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      checks: read
+      issues: read
+      pull-requests: read
+      statuses: read
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Run deterministic triage tests
+        run: node --test .github/scripts/repository-triage.test.cjs
+
+      - name: Build triage report
+        uses: actions/github-script@v9
+        env:
+          OUTPUT_DIR: ${{ runner.temp }}/repository-triage
+        with:
+          github-token: ${{ github.token }}
+          script: |
+            const triage = require("./.github/scripts/repository-triage.cjs");
+            await triage.run({
+              github,
+              context,
+              core,
+              outputDir: process.env.OUTPUT_DIR,
+              operation: "report-only",
+            });
+
+      - name: Upload triage report
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: repository-triage-report
+          path: ${{ runner.temp }}/repository-triage
+          if-no-files-found: warn
+          retention-days: 30
+
+  remove-expired-active-ownership:
+    name: Remove safely expired active ownership
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.operation == 'remove-expired-active-ownership' }}
+    needs: report
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      checks: read
+      issues: write
+      pull-requests: write
+      statuses: read
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          persist-credentials: false
+
+      - name: Run deterministic triage tests before mutation
+        run: node --test .github/scripts/repository-triage.test.cjs
+
+      - name: Re-check and remove allowlisted expired labels
+        uses: actions/github-script@v9
+        env:
+          OUTPUT_DIR: ${{ runner.temp }}/repository-triage-cleanup
+        with:
+          github-token: ${{ github.token }}
+          script: |
+            const triage = require("./.github/scripts/repository-triage.cjs");
+            await triage.run({
+              github,
+              context,
+              core,
+              outputDir: process.env.OUTPUT_DIR,
+              operation: "remove-expired-active-ownership",
+            });
+
+      - name: Upload cleanup audit
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: repository-triage-cleanup-audit
+          path: ${{ runner.temp }}/repository-triage-cleanup
+          if-no-files-found: warn
+          retention-days: 90

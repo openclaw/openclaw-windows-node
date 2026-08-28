@@ -1057,6 +1057,9 @@
   <data name="Onboarding_Connection_Later" xml:space="preserve">
     <value>稍後設定</value>
   </data>
+  <data name="Onboarding_LocalAi_RecheckAvailabilityButton.Content" xml:space="preserve">
+    <value>重新檢查</value>
+  </data>
   <data name="Onboarding_Ready_Title" xml:space="preserve">
     <value>一切就緒！</value>
   </data>
@@ -7005,6 +7008,12 @@
   <data name="HubWindow_NavigationViewItem_LocalAi.Content" xml:space="preserve"><value>本機 AI</value></data>
   <data name="LocalAiPage_Title.Text" xml:space="preserve"><value>本機 AI</value></data>
   <data name="LocalAiPage_Intro.Text" xml:space="preserve"><value>在這部電腦上私密執行經過驗證的原生 llama-server。模型只會在收到要求時載入。</value></data>
+  <data name="LocalAiPage_UnavailableInfoBar.Title" xml:space="preserve"><value>本機 AI 無法使用</value></data>
+  <data name="LocalAiPage_UnavailableDetailsButton.Content" xml:space="preserve"><value>查看原因</value></data>
+  <data name="LocalAiPage_UnavailableDetailsTip.Title" xml:space="preserve"><value>本機 AI 無法使用的原因</value></data>
+  <data name="LocalAiPage_RecheckAvailabilityButton.Content" xml:space="preserve"><value>重新檢查</value></data>
+  <data name="LocalAiPage_UnavailableRequirementsMessage" xml:space="preserve"><value>此裝置不符合一或多項本機 AI 要求。</value></data>
+  <data name="LocalAiPage_UnavailableProbeMessage" xml:space="preserve"><value>OpenClaw 目前無法驗證本機 AI 要求。請確認 NVIDIA 驅動程式可用後再試一次。</value></data>
   <data name="LocalAiPage_EngineHeading.Text" xml:space="preserve"><value>llama-server</value></data>
   <data name="LocalAiPage_VersionLabel.Text" xml:space="preserve"><value>版本</value></data>
   <data name="LocalAiPage_EndpointLabel.Text" xml:space="preserve"><value>端點</value></data>
@@ -7015,6 +7024,8 @@
   <data name="LocalAiPage_OpenLogsButton.Content" xml:space="preserve"><value>開啟記錄</value></data>
   <data name="LocalAiPage_ModelHeading.Text" xml:space="preserve"><value>模型</value></data>
   <data name="LocalAiPage_RetrySetupButton.Content" xml:space="preserve"><value>重試設定或下載</value></data>
+  <data name="LocalAiPage_ChangeModelDescription.Text" xml:space="preserve"><value>開啟設定以選擇其他模型。取代現有本機閘道仍需確認。</value></data>
+  <data name="LocalAiPage_ChangeModelButton.Content" xml:space="preserve"><value>變更模型</value></data>
   <data name="LocalAiPage_GatewayHeading.Text" xml:space="preserve"><value>閘道連線</value></data>
   <data name="LocalAiPage_RepairConnectionButton.Content" xml:space="preserve"><value>修復連線</value></data>
   <data name="LocalAiPage_OpenChatButton.Content" xml:space="preserve"><value>開啟聊天</value></data>
@@ -7038,4 +7049,34 @@
   <data name="LocalAiPage_ModelRecipeFormat" xml:space="preserve"><value>{0} 內容範圍 · {1} KV · 第一次要求時載入</value></data>
   <data name="Command_GoToLocalAi_Title" xml:space="preserve"><value>前往本機 AI</value></data>
   <data name="Command_GoToLocalAi_Subtitle" xml:space="preserve"><value>檢視 llama-server、模型和閘道狀態</value></data>
+  <data name="Onboarding_LocalAi_UnavailableDetailsButton.Content" xml:space="preserve"><value>查看原因</value></data>
+  <data name="Onboarding_LocalAi_CheckingTitle" xml:space="preserve"><value>正在檢查本機 AI 要求</value></data>
+  <data name="Onboarding_LocalAi_CheckingMessage" xml:space="preserve"><value>OpenClaw 正在檢查 NVIDIA GPU、驅動程式、CUDA、記憶體和 WSL 要求。</value></data>
+  <data name="Onboarding_LocalAi_CheckingHelpText" xml:space="preserve"><value>OpenClaw 正在檢查本機 AI 要求。</value></data>
+  <data name="Onboarding_LocalAi_ProbeUnknownTitle" xml:space="preserve"><value>無法驗證本機 AI 可用性</value></data>
+  <data name="Onboarding_LocalAi_ProbeUnknownMessage" xml:space="preserve"><value>OpenClaw 目前無法驗證本機 AI 要求。請確認 NVIDIA 驅動程式可用後再試一次。</value></data>
+  <data name="Onboarding_LocalAi_ProbeUnknownHelpText" xml:space="preserve"><value>OpenClaw 無法驗證本機 AI 要求。請重新檢查可用性以再試一次。</value></data>
+  <data name="Onboarding_LocalAi_UnavailableTitle" xml:space="preserve"><value>本機 AI 無法使用</value></data>
+  <data name="Onboarding_LocalAi_UnavailableMessage" xml:space="preserve"><value>此電腦不符合一或多項本機 AI 要求。</value></data>
+  <data name="Onboarding_LocalAi_UnavailableHelpText" xml:space="preserve"><value>無法使用,因為此電腦不符合本機 AI 要求。</value></data>
+  <data name="Onboarding_LocalAi_ProbeFailureReason" xml:space="preserve"><value>OpenClaw 無法讀取 NVIDIA GPU、驅動程式、CUDA 或記憶體資訊。請確認 NVIDIA 驅動程式可用,然後重新檢查本機 AI 要求。</value></data>
+  <data name="Onboarding_LocalAi_UnavailableDetailsDialogTitle" xml:space="preserve"><value>本機 AI 無法使用的原因</value></data>
+  <data name="Onboarding_LocalAi_UnavailableDetailsDialogClose" xml:space="preserve"><value>關閉</value></data>
+  <data name="LocalAi_Reason_RuntimeUnavailable" xml:space="preserve"><value>此本機 AI 版本不包含適用於偵測到的 Windows 架構的原生 llama-server 執行階段。</value></data>
+  <data name="LocalAi_Reason_NoNvidiaGpu" xml:space="preserve"><value>NVIDIA 驅動程式未回報任何 NVIDIA GPU。請安裝或修復 NVIDIA 驅動程式,然後再試一次設定。</value></data>
+  <data name="LocalAi_Reason_UnknownModel" xml:space="preserve"><value>所選模型在此本機 AI 版本中無法使用。</value></data>
+  <data name="LocalAi_Reason_HardwareFactsIncomplete" xml:space="preserve"><value>OpenClaw 無法讀取穩定的 NVIDIA GPU 識別碼、記憶體、驅動程式或 CUDA 能力。</value></data>
+  <data name="LocalAi_Reason_InsufficientGpuMemory" xml:space="preserve"><value>{0} 需要 {1} 的 GPU 記憶體,用於模型權重、KV 快取和執行階段工作區。OpenClaw 偵測到 {2}。</value></data>
+  <data name="LocalAi_Reason_DriverTooOld" xml:space="preserve"><value>偵測到 NVIDIA 驅動程式 {0}。本機 AI 需要 {1} 或更新版本。</value></data>
+  <data name="LocalAi_Reason_CudaCapabilityTooLow" xml:space="preserve"><value>NVIDIA 驅動程式不支援 CUDA 13。不需要另外安裝 CUDA Toolkit。</value></data>
+  <data name="LocalAi_Reason_Generic" xml:space="preserve"><value>OpenClaw 無法驗證此系統上的本機 AI 要求。</value></data>
+  <data name="LocalAi_Reason_UnknownModelName" xml:space="preserve"><value>所選模型</value></data>
+  <data name="LocalAi_Reason_UnknownDriverVersion" xml:space="preserve"><value>未知</value></data>
+  <data name="LocalAi_Reason_UnknownMemoryAmount" xml:space="preserve"><value>未知數量</value></data>
+  <data name="LocalAi_Reason_GigabytesFormat" xml:space="preserve"><value>{0:0.#} GB</value></data>
+  <data name="Onboarding_Welcome_LocalAiAvailableBadge.Text" xml:space="preserve"><value>本機 AI 可用</value></data>
+  <data name="Onboarding_LocalAi_WslConfigReadFailureReason" xml:space="preserve"><value>OpenClaw 無法安全讀取全域 .wslconfig 檔案。請確認檔案有效且可讀取,然後再試一次設定。</value></data>
+  <data name="LocalAiPage_UnavailableProbeTitle" xml:space="preserve"><value>無法驗證本機 AI 可用性</value></data>
+  <data name="LocalAiPage_CheckingTitle" xml:space="preserve"><value>正在檢查本機 AI 可用性</value></data>
+  <data name="LocalAiPage_CheckingMessage" xml:space="preserve"><value>OpenClaw 正在檢查此裝置是否可以執行本機 AI。這只需要片刻。</value></data>
 </root>

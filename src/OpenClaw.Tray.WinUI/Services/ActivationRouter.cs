@@ -13,6 +13,8 @@ namespace OpenClawTray.Services;
 
 internal sealed class ActivationRouter : IAsyncDisposable
 {
+    private const int ForwardAttemptCount = 5;
+    private static readonly TimeSpan ForwardRetryDelay = TimeSpan.FromMilliseconds(100);
     private readonly string _protocolScheme;
     private readonly string _pipeName;
     private readonly object _lifecycleGate = new();
@@ -41,11 +43,35 @@ internal sealed class ActivationRouter : IAsyncDisposable
         if (input.SetupShownDuringStartup)
             return new ActivationPlan.Ignore();
 
-        var candidate = ResolveLaunchCandidate(input);
+        var candidate = ResolveExplicitLaunchCandidate(input);
         return candidate == null ? new ActivationPlan.Ignore() : PlanFromUri(candidate);
     }
 
-    public string? ResolveLaunchCandidate(LaunchActivationInput input)
+    [SupportedOSPlatform("windows")]
+    public async Task<bool> ForwardLaunchToPrimaryAsync(
+        LaunchActivationInput input,
+        CancellationToken cancellationToken)
+    {
+        var candidate = ResolveExplicitLaunchCandidate(input);
+        if (candidate == null && IsNoArgumentLaunch(input))
+            candidate = $"{_protocolScheme}://hub";
+
+        if (candidate == null)
+            return false;
+
+        for (var attempt = 1; attempt <= ForwardAttemptCount; attempt++)
+        {
+            if (await ForwardToPrimaryAsync(candidate, cancellationToken).ConfigureAwait(false))
+                return true;
+
+            if (attempt < ForwardAttemptCount)
+                await Task.Delay(ForwardRetryDelay, cancellationToken).ConfigureAwait(false);
+        }
+
+        return false;
+    }
+
+    private string? ResolveExplicitLaunchCandidate(LaunchActivationInput input)
     {
         if (!string.IsNullOrEmpty(input.ProtocolUri))
             return input.ProtocolUri;
@@ -57,6 +83,11 @@ internal sealed class ActivationRouter : IAsyncDisposable
             ? $"{_protocolScheme}://chat"
             : null;
     }
+
+    private static bool IsNoArgumentLaunch(LaunchActivationInput input) =>
+        string.IsNullOrEmpty(input.ProtocolUri) &&
+        input.CommandLineArguments.Count <= 1 &&
+        string.IsNullOrEmpty(input.PostSetupLaunch);
 
     public ActivationPlan PlanToast(string? argument)
     {

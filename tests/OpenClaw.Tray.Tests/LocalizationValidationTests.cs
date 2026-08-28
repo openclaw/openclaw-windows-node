@@ -333,6 +333,10 @@ public class LocalizationValidationTests
         "WorkspacePage_RootFolder",
         "WorkspacePage_SearchResultsPath",
         "WorkspacePage_BrowserTruncated",
+        // "GB" is an internationally recognized SI byte-size abbreviation kept identical
+        // across every supported locale (matches how NodesPage_Label_* technical loanwords
+        // above are handled); only the surrounding sentence is translated per locale.
+        "LocalAi_Reason_GigabytesFormat",
     };
 
     private static readonly HashSet<string> EnUsOnlyFallbackResourceKeys = new(StringComparer.Ordinal);

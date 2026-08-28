@@ -39,17 +39,39 @@ public sealed class WindowsTcpListenerSnapshotTests
     {
         using var process = StartExitingProcess();
         Assert.True(process.WaitForExit(3_000));
-        var outputTask = Task.Run(async () =>
+        var outputSource = new TaskCompletionSource<string>(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        string? output = null;
+        Exception? helperException = null;
+        var helperThread = new Thread(() =>
         {
-            await Task.Delay(100);
-            return "complete output";
-        });
+            try
+            {
+                output = WindowsTcpListenerSnapshot.AwaitRedirectedOutput(
+                    process,
+                    outputSource.Task,
+                    timeoutMs: 5_000);
+            }
+            catch (Exception ex)
+            {
+                helperException = ex;
+            }
+        })
+        {
+            IsBackground = true,
+            Name = "redirected-output-drain-test"
+        };
 
-        var output = WindowsTcpListenerSnapshot.AwaitRedirectedOutput(
-            process,
-            outputTask,
-            timeoutMs: 400);
+        helperThread.Start();
+        Assert.True(
+            SpinWait.SpinUntil(
+                () => helperThread.ThreadState.HasFlag(System.Threading.ThreadState.WaitSleepJoin),
+                TimeSpan.FromSeconds(3)),
+            "Helper never entered the redirected-output drain wait.");
+        outputSource.SetResult("complete output");
 
+        Assert.True(helperThread.Join(TimeSpan.FromSeconds(3)));
+        Assert.Null(helperException);
         Assert.Equal("complete output", output);
     }
 
@@ -76,7 +98,11 @@ public sealed class WindowsTcpListenerSnapshotTests
 
         Assert.Null(output);
         Assert.InRange(stopwatch.Elapsed, TimeSpan.Zero, TimeSpan.FromSeconds(2));
-        await readTask.WaitAsync(TimeSpan.FromSeconds(5));
+        var readException = await Record.ExceptionAsync(
+            () => readTask.WaitAsync(TimeSpan.FromSeconds(5)));
+        Assert.True(
+            readException is null or ObjectDisposedException,
+            $"Abandoned stdout read failed unexpectedly: {readException}");
     }
 
     [Fact]

@@ -20,13 +20,14 @@ namespace OpenClaw.Tray.Tests;
 /// </summary>
 public sealed class ChatComposerControllerTests
 {
-    private static ChatThread MakeThread(string id = "session-1") =>
+    private static ChatThread MakeThread(string id = "session-1", string? thinkingLevel = null) =>
         new()
         {
             Id = id,
             Title = "Test Session",
             Status = ChatThreadStatus.Running,
             Activity = ChatActivity.Idle,
+            ThinkingLevel = thinkingLevel,
         };
 
     private static ChatComposerInputs MakeInputs(long revision = 1, ChatThread? thread = null, string connectionState = "connected") =>
@@ -563,7 +564,26 @@ public sealed class ChatComposerControllerTests
         controller.SetThinkingLevel("high");
 
         Assert.Equal(1, port.SetThinkingLevelCallCount);
+        Assert.Equal(0, port.ClearThinkingLevelCallCount);
         Assert.Equal(("session-1", "high"), port.LastSetThinkingLevelCall);
+    }
+
+    [Fact]
+    public void ClearThinkingLevel_FromOff_DelegatesExplicitClearNotConcreteLevel()
+    {
+        var vm = new ChatComposerViewModel(new RecordingUiDispatcher(), initialSpeakerMuted: false);
+        vm.ApplyInputs(MakeInputs(thread: MakeThread(thinkingLevel: "off")));
+        var port = new FakeChatComposerRuntimePort();
+        var controller = new ChatComposerController(
+            vm,
+            port,
+            new ChatComposerHostActions(null, null, null, null, null));
+
+        controller.ClearThinkingLevel();
+
+        Assert.Equal(1, port.ClearThinkingLevelCallCount);
+        Assert.Equal("session-1", port.LastClearThinkingLevelThreadId);
+        Assert.Equal(0, port.SetThinkingLevelCallCount);
     }
 
     [Fact]
