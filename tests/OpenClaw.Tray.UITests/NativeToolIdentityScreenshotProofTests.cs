@@ -23,8 +23,14 @@ public sealed class NativeToolIdentityScreenshotFixture : IDisposable
 
     public IntPtr HubWindowHandle => _app.HubWindowHandle;
 
-    public Task NavigateAsync(string pageTag, string pageMarkerAutomationId) =>
-        _app.NavigateAsync(pageTag, pageMarkerAutomationId);
+    public Task NavigateAsync(
+        string pageTag,
+        string expectedPageName,
+        string pageMarkerAutomationId) =>
+        _app.NavigateAsync(
+            pageTag,
+            expectedPageName,
+            pageMarkerAutomationId);
 
     public string? CaptureNativeChatVisualIfRequested() =>
         _app.CaptureNativeChatVisualIfRequested();
@@ -52,7 +58,10 @@ public sealed class NativeToolIdentityScreenshotProofTests
     [Trait("Category", "Accessibility")]
     public async Task SyntheticNativeRows_RenderTrustedIdentitySafeInputAndTruthfulFallback()
     {
-        await _app.NavigateAsync("chat", "ChatComposerInput");
+        await _app.NavigateAsync(
+            "chat",
+            "ChatPage",
+            "ChatComposerInput");
 
         var proof = new List<string>
         {

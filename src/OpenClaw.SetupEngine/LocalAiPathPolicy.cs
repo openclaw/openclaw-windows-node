@@ -452,7 +452,7 @@ internal static class LocalAiPathPolicy
             return false;
         }
 
-        // Keep this check inline so CodeQL can track the validated candidate into destinationPath.
+        // Keep the untrusted candidate local until containment and reparse checks establish ownership.
         if (!candidatePath.StartsWith(EnsureTrailingDirectorySeparator(root), PathComparison))
         {
             error = $"Local AI archive entry '{entryName}' escapes its staging directory.";

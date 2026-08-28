@@ -119,6 +119,7 @@ public static class LlamaServerRouterConfiguration
         preset.Append("model = ").AppendLine(modelPath);
         preset.AppendLine("load-on-startup = false");
         preset.Append("ctx-size = ").AppendLine(Invariant(recipe.ContextTokens));
+        preset.Append("n-predict = ").AppendLine(Invariant(LocalAiGatewayProviderDefinition.MaximumOutputTokens));
         preset.Append("parallel = ").AppendLine(Invariant(recipe.ParallelRequests));
         preset.AppendLine("cache-type-k = f16");
         preset.AppendLine("cache-type-v = f16");

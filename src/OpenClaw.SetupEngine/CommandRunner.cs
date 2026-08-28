@@ -71,6 +71,14 @@ public sealed class CommandRunner : ICommandRunner
 {
     private readonly SetupLogger _logger;
     private static readonly TimeSpan s_outputDrainGrace = TimeSpan.FromMilliseconds(250);
+
+    /// <summary>
+    /// Upper bound on how long an exited process is given to reach EOF on its redirected
+    /// pipes. Large enough that a saturated thread pool cannot make a process that did
+    /// write output look silent, small enough that a descendant holding the pipes open
+    /// cannot stall the caller.
+    /// </summary>
+    private static readonly TimeSpan s_outputDrainCap = TimeSpan.FromSeconds(3);
     private const int MaxCapturedStreamChars = 1_048_576;
 
     public CommandRunner(SetupLogger logger) => _logger = logger;
@@ -193,11 +201,19 @@ public sealed class CommandRunner : ICommandRunner
         }
 
         // A surviving descendant can keep inherited pipe handles open after the child
-        // exits. Preserve output already in flight without charging the command's full
-        // timeout to an EOF that may never arrive.
+        // exits, so the EOF wait must stay bounded and cannot simply run to the command
+        // timeout. It also cannot be as tight as a few hundred milliseconds: the
+        // OutputDataReceived callbacks are queued to the thread pool, and on a saturated
+        // pool they can miss that window even though the process already exited and
+        // wrote its output. That surfaced as an exited process being reported with empty
+        // stdout and stderr, which every caller that classifies command output then
+        // misreads as silence. Wait up to a short cap instead, clamped by whatever
+        // remains of the caller's own deadline so the accepted timeout is never exceeded.
+        TimeSpan drainBudget = GetOutputDrainBudget(timeout, sw.Elapsed, timedOut);
+
         await Task.WhenAny(
             Task.WhenAll(stdoutClosed.Task, stderrClosed.Task),
-            Task.Delay(s_outputDrainGrace));
+            Task.Delay(drainBudget));
 
         sw.Stop();
         var result = new CommandResult(
@@ -209,6 +225,21 @@ public sealed class CommandRunner : ICommandRunner
 
         _logger.CommandCompleted(executable, result, sw.Elapsed);
         return result;
+    }
+
+    internal static TimeSpan GetOutputDrainBudget(
+        TimeSpan timeout,
+        TimeSpan elapsed,
+        bool timedOut)
+    {
+        if (timedOut)
+            return s_outputDrainGrace;
+
+        TimeSpan remaining = timeout - elapsed;
+        if (remaining <= TimeSpan.Zero)
+            return TimeSpan.Zero;
+
+        return remaining < s_outputDrainCap ? remaining : s_outputDrainCap;
     }
 
     /// <summary>

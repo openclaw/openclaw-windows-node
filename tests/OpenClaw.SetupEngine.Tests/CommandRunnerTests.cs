@@ -94,6 +94,25 @@ public class CommandRunnerTests
         Assert.InRange(stopwatch.Elapsed, TimeSpan.Zero, TimeSpan.FromSeconds(5));
     }
 
+    [Theory]
+    [InlineData(200, 175, false, 25)]
+    [InlineData(200, 250, false, 0)]
+    [InlineData(5_000, 1_000, false, 3_000)]
+    [InlineData(200, 250, true, 250)]
+    public void OutputDrainBudget_ClampsToDeadlineAndCap(
+        int timeoutMilliseconds,
+        int elapsedMilliseconds,
+        bool timedOut,
+        int expectedMilliseconds)
+    {
+        TimeSpan budget = CommandRunner.GetOutputDrainBudget(
+            TimeSpan.FromMilliseconds(timeoutMilliseconds),
+            TimeSpan.FromMilliseconds(elapsedMilliseconds),
+            timedOut);
+
+        Assert.Equal(TimeSpan.FromMilliseconds(expectedMilliseconds), budget);
+    }
+
     private static CommandRunner CreateRunner()
         => new(new SetupLogger(filePath: null, LogLevel.Trace));
 

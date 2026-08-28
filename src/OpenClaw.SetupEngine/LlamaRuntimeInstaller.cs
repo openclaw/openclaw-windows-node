@@ -277,7 +277,9 @@ internal sealed class WindowsLlamaRuntimeInspector : ILlamaRuntimeInspector
 
     internal static LlamaRuntimeInspection ValidateVersionOutput(string output)
     {
-        bool buildMatches = output.Contains("build 10488", StringComparison.OrdinalIgnoreCase);
+        bool buildMatches = output.Contains(
+            $"build {LlamaRuntimeCatalog.ReleaseTag[1..]}",
+            StringComparison.OrdinalIgnoreCase);
         bool commitMatches = output.Contains(
             LlamaRuntimeCatalog.ReleaseCommitSha[..9],
             StringComparison.OrdinalIgnoreCase);
@@ -286,7 +288,7 @@ internal sealed class WindowsLlamaRuntimeInspector : ILlamaRuntimeInspector
             : new LlamaRuntimeInspection(
                 false,
                 output,
-                "llama-server did not report the pinned b10488 build and source commit.");
+                $"llama-server did not report the pinned {LlamaRuntimeCatalog.ReleaseTag} build and source commit.");
     }
 
     private static void KillProcessTree(Process process)

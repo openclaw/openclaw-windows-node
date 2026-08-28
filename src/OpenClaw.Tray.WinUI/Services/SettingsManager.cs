@@ -132,6 +132,10 @@ public class SettingsManager
     public string TtsElevenLabsApiKey { get => _data.TtsElevenLabsApiKey ?? ""; set => _data = _data with { TtsElevenLabsApiKey = value }; }
     public string TtsElevenLabsModel { get => _data.TtsElevenLabsModel ?? ""; set => _data = _data with { TtsElevenLabsModel = value }; }
     public string TtsElevenLabsVoiceId { get => _data.TtsElevenLabsVoiceId ?? ""; set => _data = _data with { TtsElevenLabsVoiceId = value }; }
+    public string TtsMiniMaxApiKey { get => _data.TtsMiniMaxApiKey ?? ""; set => _data = _data with { TtsMiniMaxApiKey = value }; }
+    public string TtsMiniMaxModel { get => string.IsNullOrWhiteSpace(_data.TtsMiniMaxModel) ? MiniMaxTextToSpeechClient.DefaultModel : _data.TtsMiniMaxModel; set => _data = _data with { TtsMiniMaxModel = value }; }
+    public string TtsMiniMaxVoiceId { get => _data.TtsMiniMaxVoiceId ?? ""; set => _data = _data with { TtsMiniMaxVoiceId = value }; }
+    public string TtsMiniMaxRegion { get => string.IsNullOrWhiteSpace(_data.TtsMiniMaxRegion) ? MiniMaxTextToSpeechClient.GlobalRegion : _data.TtsMiniMaxRegion; set => _data = _data with { TtsMiniMaxRegion = value }; }
     public string TtsWindowsVoiceId { get => _data.TtsWindowsVoiceId ?? ""; set => _data = _data with { TtsWindowsVoiceId = value }; }
     /// <summary>Hub NavigationView pane expanded (true) vs compact (false). Default true.</summary>
     public bool HubNavPaneOpen { get => _data.HubNavPaneOpen; set => _data = _data with { HubNavPaneOpen = value }; }
@@ -275,6 +279,10 @@ public class SettingsManager
         TtsElevenLabsApiKey = "",
         TtsElevenLabsModel = "",
         TtsElevenLabsVoiceId = "",
+        TtsMiniMaxApiKey = "",
+        TtsMiniMaxModel = MiniMaxTextToSpeechClient.DefaultModel,
+        TtsMiniMaxVoiceId = "",
+        TtsMiniMaxRegion = MiniMaxTextToSpeechClient.GlobalRegion,
         TtsWindowsVoiceId = "",
         HubNavPaneOpen = true,
         TtsPiperVoiceId = "en_US-amy-low",
@@ -316,6 +324,10 @@ public class SettingsManager
             TtsElevenLabsApiKey = UnprotectSettingSecret(loaded.TtsElevenLabsApiKey) ?? defaults.TtsElevenLabsApiKey,
             TtsElevenLabsModel = loaded.TtsElevenLabsModel ?? defaults.TtsElevenLabsModel,
             TtsElevenLabsVoiceId = loaded.TtsElevenLabsVoiceId ?? defaults.TtsElevenLabsVoiceId,
+            TtsMiniMaxApiKey = UnprotectSettingSecret(loaded.TtsMiniMaxApiKey) ?? defaults.TtsMiniMaxApiKey,
+            TtsMiniMaxModel = loaded.TtsMiniMaxModel ?? defaults.TtsMiniMaxModel,
+            TtsMiniMaxVoiceId = loaded.TtsMiniMaxVoiceId ?? defaults.TtsMiniMaxVoiceId,
+            TtsMiniMaxRegion = loaded.TtsMiniMaxRegion ?? defaults.TtsMiniMaxRegion,
             TtsWindowsVoiceId = loaded.TtsWindowsVoiceId ?? defaults.TtsWindowsVoiceId,
             TtsPiperVoiceId = string.IsNullOrWhiteSpace(loaded.TtsPiperVoiceId) ? defaults.TtsPiperVoiceId : loaded.TtsPiperVoiceId,
             A2UIImageHosts = loaded.A2UIImageHosts is { Count: > 0 } hosts ? new List<string>(hosts) : new(),
@@ -406,6 +418,10 @@ public class SettingsManager
         TtsElevenLabsApiKey = TtsElevenLabsApiKey,
         TtsElevenLabsModel = string.IsNullOrWhiteSpace(TtsElevenLabsModel) ? null : TtsElevenLabsModel,
         TtsElevenLabsVoiceId = string.IsNullOrWhiteSpace(TtsElevenLabsVoiceId) ? null : TtsElevenLabsVoiceId,
+        TtsMiniMaxApiKey = TtsMiniMaxApiKey,
+        TtsMiniMaxModel = string.IsNullOrWhiteSpace(TtsMiniMaxModel) ? MiniMaxTextToSpeechClient.DefaultModel : TtsMiniMaxModel,
+        TtsMiniMaxVoiceId = string.IsNullOrWhiteSpace(TtsMiniMaxVoiceId) ? null : TtsMiniMaxVoiceId,
+        TtsMiniMaxRegion = string.IsNullOrWhiteSpace(TtsMiniMaxRegion) ? MiniMaxTextToSpeechClient.GlobalRegion : TtsMiniMaxRegion,
         TtsWindowsVoiceId = string.IsNullOrWhiteSpace(TtsWindowsVoiceId) ? null : TtsWindowsVoiceId,
         TtsPiperVoiceId = TtsPiperVoiceId,
         AppTheme = AppTheme,
@@ -460,6 +476,7 @@ public class SettingsManager
             var data = ToSettingsData();
             // Apply DPAPI protection to the API key for on-disk storage only
             data.TtsElevenLabsApiKey = ProtectSettingSecret(data.TtsElevenLabsApiKey);
+            data.TtsMiniMaxApiKey = ProtectSettingSecret(data.TtsMiniMaxApiKey);
 
             var json = data.ToJson();
             File.WriteAllText(_settingsFilePath, json);

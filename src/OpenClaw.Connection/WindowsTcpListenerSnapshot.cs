@@ -53,19 +53,71 @@ public static class WindowsTcpListenerSnapshot
                 return null;
 
             var readTask = process.StandardOutput.ReadToEndAsync();
-            if (!process.WaitForExit(5_000))
-            {
-                try { process.Kill(entireProcessTree: true); } catch { }
-                return null;
-            }
-
-            return readTask.GetAwaiter().GetResult().Trim();
+            var output = AwaitRedirectedOutput(process, readTask, timeoutMs: 5_000);
+            return output?.Trim();
         }
-        catch
+        catch (Exception ex)
         {
+            Trace.WriteLine(
+                $"Windows process command-line lookup failed for PID {processId}: " +
+                $"{ex.GetType().Name}: {ex.Message}");
             return null;
         }
     }
+
+    /// <summary>
+    /// Wait for the child, then drain redirected stdout with the leftover
+    /// timeout. WaitForExit returns when the child exits, but ReadToEnd
+    /// completes only after the write end of the pipe closes. A descendant
+    /// that inherited stdout can keep the pipe open, so unbounded
+    /// GetResult() would hang past the inspection timeout.
+    /// </summary>
+    internal static string? AwaitRedirectedOutput(Process process, Task<string> readTask, int timeoutMs)
+    {
+        const int minDrainMs = 250;
+        var sw = Stopwatch.StartNew();
+        if (!process.WaitForExit(timeoutMs))
+        {
+            Trace.WriteLine(
+                $"Windows process command-line lookup timed out waiting for PID {process.Id}.");
+            try { process.Kill(entireProcessTree: true); } catch { }
+            AbandonRead(process, readTask);
+            return null;
+        }
+
+        var elapsedMs = (int)Math.Min(sw.ElapsedMilliseconds, timeoutMs);
+        var drainBudgetMs = Math.Max(timeoutMs - elapsedMs, minDrainMs);
+        try
+        {
+            if (!readTask.Wait(drainBudgetMs))
+            {
+                Trace.WriteLine(
+                    $"Windows process command-line lookup timed out draining PID {process.Id} stdout.");
+                try { process.Kill(entireProcessTree: true); } catch { }
+                AbandonRead(process, readTask);
+                return null;
+            }
+        }
+        catch (AggregateException)
+        {
+            return null;
+        }
+
+        return readTask.Status == TaskStatus.RanToCompletion ? readTask.Result : null;
+    }
+
+    private static void AbandonRead(Process process, Task readTask)
+    {
+        ObserveQuietly(readTask);
+        try { process.StandardOutput.Dispose(); } catch { }
+    }
+
+    private static void ObserveQuietly(Task task) =>
+        _ = task.ContinueWith(
+            static t => { _ = t.Exception; },
+            CancellationToken.None,
+            TaskContinuationOptions.OnlyOnFaulted | TaskContinuationOptions.ExecuteSynchronously,
+            TaskScheduler.Default);
 
     private static bool CaptureIpv4(List<WindowsTcpListenerInfo> destination)
     {

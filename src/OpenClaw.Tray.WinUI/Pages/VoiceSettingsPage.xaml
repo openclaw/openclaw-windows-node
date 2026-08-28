@@ -220,6 +220,7 @@
                         <ComboBoxItem x:Uid="VoiceSettingsPage_TtsPiper"      Content="Piper (local neural voices)"          Tag="piper"/>
                         <ComboBoxItem x:Uid="VoiceSettingsPage_TtsWindows"    Content="Windows (built-in neural voices)"     Tag="windows"/>
                         <ComboBoxItem x:Uid="VoiceSettingsPage_TtsElevenLabs" Content="ElevenLabs (cloud, requires API key)" Tag="elevenlabs"/>
+                        <ComboBoxItem x:Uid="VoiceSettingsPage_TtsMiniMax" Content="MiniMax (cloud, requires API key)" Tag="minimax"/>
                     </ComboBox>
 
                     <!-- Piper voice picker (local neural TTS via Sherpa-ONNX) -->
@@ -282,6 +283,22 @@
                                  TextChanged="OnElevenLabsModelChanged" Width="300"
                                  PlaceholderText="e.g. eleven_turbo_v2"/>
                     </StackPanel>
+
+                    <StackPanel x:Name="MiniMaxPanel" Spacing="8" Visibility="Collapsed">
+                        <PasswordBox x:Uid="VoiceSettingsPage_MiniMaxApiKeyBox" x:Name="MiniMaxApiKeyBox" Header="API Key"
+                                     PasswordChanged="OnMiniMaxKeyChanged" Width="300"/>
+                        <TextBox x:Uid="VoiceSettingsPage_MiniMaxVoiceIdBox" x:Name="MiniMaxVoiceIdBox" Header="Voice ID"
+                                 TextChanged="OnMiniMaxVoiceIdChanged" Width="300"
+                                 PlaceholderText="e.g. male-qn-qingse"/>
+                        <TextBox x:Uid="VoiceSettingsPage_MiniMaxModelBox" x:Name="MiniMaxModelBox" Header="Model"
+                                 TextChanged="OnMiniMaxModelChanged" Width="300"
+                                 PlaceholderText="speech-2.8-hd"/>
+                        <ComboBox x:Uid="VoiceSettingsPage_MiniMaxRegionCombo" x:Name="MiniMaxRegionCombo" Header="Region"
+                                  SelectionChanged="OnMiniMaxRegionChanged" Width="300">
+                            <ComboBoxItem x:Uid="VoiceSettingsPage_MiniMaxRegionGlobal" Content="Global" Tag="global_en"/>
+                            <ComboBoxItem x:Uid="VoiceSettingsPage_MiniMaxRegionChina" Content="China" Tag="cn_zh"/>
+                        </ComboBox>
+                    </StackPanel>
                 </StackPanel>
             </Border>
 
@@ -291,7 +308,7 @@
                 <StackPanel Orientation="Horizontal" Spacing="8">
                     <FontIcon Glyph="&#xE8D7;" FontSize="16" Foreground="{ThemeResource SystemFillColorCautionBrush}"/>
                     <TextBlock x:Uid="VoiceSettingsPage_PrivacyNote" x:Name="PrivacyNoteText"
-                               Text="All speech processing runs entirely on your device. No audio data is sent to any cloud service."
+                               Text="Piper, Windows, and speech recognition run on this device. Cloud TTS providers send response text to their services for synthesis; microphone audio is not sent to them."
                                Style="{StaticResource CaptionTextBlockStyle}" TextWrapping="Wrap"/>
                 </StackPanel>
             </Border>

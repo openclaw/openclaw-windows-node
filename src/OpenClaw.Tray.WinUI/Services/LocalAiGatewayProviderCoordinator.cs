@@ -41,19 +41,23 @@ internal sealed class LocalAiGatewayProviderCoordinator : ILocalAiEndpointLifecy
         string managedPrimary;
         try
         {
-            _ = LocalAiGatewayProviderDefinition.BuildProviderJson(install);
             managedPrimary = LocalAiGatewayProviderDefinition.BuildPrimaryModel(install);
             LocalAiGatewayProviderDefinition.ValidateFallbackModel(
                 install.Manifest.GatewayFallbackModel);
+            if (current.ProviderExists)
+            {
+                _ = LocalAiGatewayProviderDefinition.BuildProviderJson(install);
+                if (!LocalAiGatewayProviderDefinition.MatchesProviderJson(
+                        current.ProviderJson!,
+                        install))
+                {
+                    return Failed("The llamacpp provider was changed outside the companion; preserving it and refusing to cycle the managed endpoint.");
+                }
+            }
         }
         catch (Exception ex) when (ex is InvalidDataException or InvalidOperationException)
         {
             return Failed(ex.Message);
-        }
-        if (current.ProviderExists &&
-            !LocalAiGatewayProviderDefinition.MatchesProviderJson(current.ProviderJson!, install))
-        {
-            return Failed("The llamacpp provider was changed outside the companion; preserving it and refusing to cycle the managed endpoint.");
         }
 
         bool primaryIsManaged = current.PrimaryExists &&

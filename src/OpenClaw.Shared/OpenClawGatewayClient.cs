@@ -3896,7 +3896,9 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
                     openClawMetadata.TokensAfter,
                     projection.ContentParts);
 
-                if (role == "assistant")
+                if (role == "assistant" &&
+                    (string.IsNullOrWhiteSpace(state) ||
+                     string.Equals(state, "final", StringComparison.OrdinalIgnoreCase)))
                 {
                     // HIGH 4: log shape only.
                     _logger.Info($"Assistant response (legacy): role={role} state={state} len={text.Length}");

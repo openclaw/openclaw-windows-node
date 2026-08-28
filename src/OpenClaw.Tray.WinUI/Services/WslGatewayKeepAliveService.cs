@@ -316,34 +316,7 @@ internal sealed class WslGatewayKeepAliveService(
     }
 
     private static string? GetProcessCommandLine(int pid)
-    {
-        try
-        {
-            var psi = new System.Diagnostics.ProcessStartInfo("powershell.exe",
-                $"-NoProfile -Command \"(Get-CimInstance Win32_Process -Filter 'ProcessId={pid}').CommandLine\"")
-            {
-                RedirectStandardOutput = true,
-                UseShellExecute = false,
-                CreateNoWindow = true
-            };
-            using var p = System.Diagnostics.Process.Start(psi);
-            if (p == null) return null;
-
-            // Drain stdout asynchronously so a large command line cannot deadlock the fixed-size pipe,
-            // and bound the whole inspection: WaitForExit(5000) returns before ReadToEnd could block
-            // forever on a hung CIM/PowerShell. On timeout, kill and report indeterminate (null).
-            var readTask = p.StandardOutput.ReadToEndAsync();
-            if (!p.WaitForExit(5000))
-            {
-                // slopwatch-ignore: SW003 Best-effort kill of a stuck inspection process; failure cannot improve caller state.
-                try { p.Kill(entireProcessTree: true); } catch { }
-                return null;
-            }
-
-            return readTask.GetAwaiter().GetResult()?.Trim();
-        }
-        catch { return null; }
-    }
+        => WindowsTcpListenerSnapshot.GetProcessCommandLine(pid);
 
     private static string ResolveWslExePath()
     {

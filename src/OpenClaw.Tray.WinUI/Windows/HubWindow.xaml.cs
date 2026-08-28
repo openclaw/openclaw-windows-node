@@ -667,6 +667,7 @@ public sealed partial class HubWindow : WindowEx
         if (ContentFrame.SourcePageType == pageType && _currentNavTag == tag)
         {
             _contentReady = CreateCompletedContentReady();
+            AccessibilityNavigationSignal.WritePageReady(pageType.Name);
             return;
         }
 
@@ -678,7 +679,7 @@ public sealed partial class HubWindow : WindowEx
         var ready = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
         _contentReady = ready;
         if (!ContentFrame.Navigate(pageType, tag))
-            CompleteContentReady(ready);
+            CompleteContentReady(ready, pageName: null);
     }
 
     /// <summary>
@@ -993,7 +994,9 @@ public sealed partial class HubWindow : WindowEx
 
         InitializeCurrentPage();
         UpdateAppNotificationActionEnabledState();
-        ArmContentReady(e.Content as FrameworkElement);
+        ArmContentReady(
+            e.Content as FrameworkElement,
+            e.Content?.GetType().Name);
 
         // Navigation activation hook: resolve + assign a DI-backed view model for the
         // navigated page. Pages present in the page->view-model map (currently Settings)
@@ -1019,12 +1022,14 @@ public sealed partial class HubWindow : WindowEx
         _contentReady.TrySetResult(true);
     }
 
-    private void ArmContentReady(FrameworkElement? element)
+    private void ArmContentReady(
+        FrameworkElement? element,
+        string? pageName)
     {
         var ready = _contentReady;
         if (element == null || element.IsLoaded)
         {
-            CompleteContentReady(ready);
+            CompleteContentReady(ready, pageName);
             return;
         }
 
@@ -1032,19 +1037,24 @@ public sealed partial class HubWindow : WindowEx
         loaded = (_, _) =>
         {
             element.Loaded -= loaded;
-            CompleteContentReady(ready);
+            CompleteContentReady(ready, pageName);
         };
         element.Loaded += loaded;
     }
 
-    private void CompleteContentReady(TaskCompletionSource<bool> ready)
+    private void CompleteContentReady(
+        TaskCompletionSource<bool> ready,
+        string? pageName)
     {
         DispatcherQueue.TryEnqueue(
             Microsoft.UI.Dispatching.DispatcherQueuePriority.Low,
             () =>
             {
-                if (ReferenceEquals(_contentReady, ready))
-                    ready.TrySetResult(true);
+                if (ReferenceEquals(_contentReady, ready) &&
+                    ready.TrySetResult(true))
+                {
+                    AccessibilityNavigationSignal.WritePageReady(pageName);
+                }
             });
     }
 

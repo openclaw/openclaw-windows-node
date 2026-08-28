@@ -2560,6 +2560,9 @@ Gebruik een van deze opties:
   <data name="VoiceSettingsPage_TtsElevenLabs.Content" xml:space="preserve">
     <value>ElevenLabs (cloud, API-sleutel vereist)</value>
   </data>
+  <data name="VoiceSettingsPage_TtsMiniMax.Content" xml:space="preserve">
+    <value>MiniMax (cloud, API-sleutel vereist)</value>
+  </data>
   <data name="VoiceSettingsPage_PiperVoiceCombo.Header" xml:space="preserve">
     <value>Stem</value>
   </data>
@@ -2593,8 +2596,32 @@ Gebruik een van deze opties:
   <data name="VoiceSettingsPage_ElevenLabsModelBox.Header" xml:space="preserve">
     <value>Model (optioneel)</value>
   </data>
+  <data name="VoiceSettingsPage_MiniMaxApiKeyBox.Header" xml:space="preserve">
+    <value>API-sleutel</value>
+  </data>
+  <data name="VoiceSettingsPage_MiniMaxVoiceIdBox.Header" xml:space="preserve">
+    <value>Stem-ID</value>
+  </data>
+  <data name="VoiceSettingsPage_MiniMaxVoiceIdBox.PlaceholderText" xml:space="preserve">
+    <value>bijv. male-qn-qingse</value>
+  </data>
+  <data name="VoiceSettingsPage_MiniMaxModelBox.Header" xml:space="preserve">
+    <value>Spraakmodel</value>
+  </data>
+  <data name="VoiceSettingsPage_MiniMaxModelBox.PlaceholderText" xml:space="preserve">
+    <value>speech-2.8-hd</value>
+  </data>
+  <data name="VoiceSettingsPage_MiniMaxRegionCombo.Header" xml:space="preserve">
+    <value>Regio</value>
+  </data>
+  <data name="VoiceSettingsPage_MiniMaxRegionGlobal.Content" xml:space="preserve">
+    <value>Wereldwijd</value>
+  </data>
+  <data name="VoiceSettingsPage_MiniMaxRegionChina.Content" xml:space="preserve">
+    <value>Vasteland van China</value>
+  </data>
   <data name="VoiceSettingsPage_PrivacyNote.Text" xml:space="preserve">
-    <value>Alle spraakverwerking draait volledig op uw apparaat. Er worden geen audiogegevens verzonden naar een cloudservice.</value>
+    <value>Piper, Windows en spraakherkenning worden op dit apparaat uitgevoerd. Cloud-TTS-providers sturen antwoordtekst naar hun services voor synthese; microfoonaudio wordt niet naar hen verzonden.</value>
   </data>
   <data name="VoiceSettingsPage_StatusModelReady" xml:space="preserve">
     <value>✅ Model gereed</value>

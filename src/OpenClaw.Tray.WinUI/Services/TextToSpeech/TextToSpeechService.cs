@@ -20,6 +20,7 @@ public sealed class TextToSpeechService : IDisposable
     private readonly IOpenClawLogger _logger;
     private readonly SettingsManager _settings;
     private readonly ElevenLabsTextToSpeechClient _elevenLabsClient;
+    private readonly MiniMaxTextToSpeechClient _miniMaxClient;
     private readonly PiperVoiceManager _piperVoices;
     private readonly object _piperLock = new();
     private PiperTextToSpeechClient? _piperClient;  // lazily loaded; reused across calls for the same voice
@@ -29,18 +30,20 @@ public sealed class TextToSpeechService : IDisposable
     private TaskCompletionSource<bool>? _activeCompletion;
 
     public TextToSpeechService(IOpenClawLogger logger, SettingsManager settings)
-        : this(logger, settings, new ElevenLabsTextToSpeechClient())
+        : this(logger, settings, new ElevenLabsTextToSpeechClient(), new MiniMaxTextToSpeechClient())
     {
     }
 
     internal TextToSpeechService(
         IOpenClawLogger logger,
         SettingsManager settings,
-        ElevenLabsTextToSpeechClient elevenLabsClient)
+        ElevenLabsTextToSpeechClient elevenLabsClient,
+        MiniMaxTextToSpeechClient miniMaxClient)
     {
         _logger = logger;
         _settings = settings;
         _elevenLabsClient = elevenLabsClient;
+        _miniMaxClient = miniMaxClient;
         // Piper voices live under the same data directory as Whisper models
         // so the user has a single "AI assets" folder to point at.
         _piperVoices = new PiperVoiceManager(SettingsManager.SettingsDirectoryPath, logger);
@@ -94,6 +97,10 @@ public sealed class TextToSpeechService : IDisposable
         {
             await SpeakWithPiperAsync(args, cancellationToken).ConfigureAwait(false);
         }
+        else if (string.Equals(provider, TtsCapability.MiniMaxProvider, StringComparison.OrdinalIgnoreCase))
+        {
+            await SpeakWithMiniMaxAsync(args, cancellationToken).ConfigureAwait(false);
+        }
         else
         {
             throw new InvalidOperationException($"Unsupported TTS provider '{provider}'.");
@@ -106,6 +113,7 @@ public sealed class TextToSpeechService : IDisposable
             RequestedProvider = resolution.RequestedProvider,
             FellBack = resolution.FellBack,
             ContentType = string.Equals(provider, TtsCapability.ElevenLabsProvider, StringComparison.OrdinalIgnoreCase)
+                    || string.Equals(provider, TtsCapability.MiniMaxProvider, StringComparison.OrdinalIgnoreCase)
                 ? "audio/mpeg"
                 : "audio/wav",
             DurationMs = (int)Math.Min(stopwatch.ElapsedMilliseconds, int.MaxValue)
@@ -206,6 +214,19 @@ public sealed class TextToSpeechService : IDisposable
                 : TtsCapability.ReadinessVoiceNotDownloaded;
         }
 
+        if (string.Equals(provider, TtsCapability.MiniMaxProvider, StringComparison.OrdinalIgnoreCase))
+        {
+            if (string.IsNullOrWhiteSpace(_settings.TtsMiniMaxApiKey))
+                return TtsCapability.ReadinessNeedsApiKey;
+
+            var voiceId = !string.IsNullOrWhiteSpace(args?.VoiceId)
+                ? args!.VoiceId
+                : _settings.TtsMiniMaxVoiceId;
+            return string.IsNullOrWhiteSpace(voiceId)
+                ? TtsCapability.ReadinessNeedsVoice
+                : TtsCapability.ReadinessReady;
+        }
+
         return TtsCapability.ReadinessUnavailable;
     }
 
@@ -298,6 +319,35 @@ public sealed class TextToSpeechService : IDisposable
         var wavBytes = await client.GenerateWavAsync(args.Text, speed: 1.0f, cancellationToken).ConfigureAwait(false);
         using var stream = await CreateStreamAsync(wavBytes, cancellationToken).ConfigureAwait(false);
         await PlayStreamAsync(stream, "audio/wav", args.Interrupt, cancellationToken).ConfigureAwait(false);
+    }
+
+    private async Task SpeakWithMiniMaxAsync(TtsSpeakArgs args, CancellationToken cancellationToken)
+    {
+        var apiKey = _settings.TtsMiniMaxApiKey;
+        if (string.IsNullOrWhiteSpace(apiKey))
+            throw new InvalidOperationException("MiniMax API key is required in Settings.");
+
+        var voiceId = string.IsNullOrWhiteSpace(args.VoiceId)
+            ? _settings.TtsMiniMaxVoiceId
+            : args.VoiceId;
+        if (string.IsNullOrWhiteSpace(voiceId))
+            throw new InvalidOperationException("MiniMax voice ID is required in Settings or the tts.speak voiceId argument.");
+
+        var model = string.IsNullOrWhiteSpace(args.Model)
+            ? _settings.TtsMiniMaxModel
+            : args.Model;
+
+        var audio = await _miniMaxClient.SynthesizeAsync(new MiniMaxSynthesisRequest
+        {
+            ApiKey = apiKey,
+            VoiceId = voiceId,
+            Text = args.Text,
+            ModelId = model,
+            Region = _settings.TtsMiniMaxRegion
+        }, cancellationToken).ConfigureAwait(false);
+
+        using var stream = await CreateStreamAsync(audio.AudioBytes, cancellationToken).ConfigureAwait(false);
+        await PlayStreamAsync(stream, audio.ContentType, args.Interrupt, cancellationToken).ConfigureAwait(false);
     }
 
     /// <summary>
@@ -412,6 +462,7 @@ public sealed class TextToSpeechService : IDisposable
         InterruptActivePlayback();
         // Playback may still release the gate after an interrupt during shutdown.
         _elevenLabsClient.Dispose();
+        _miniMaxClient.Dispose();
         lock (_piperLock)
         {
             // slopwatch-ignore: SW003 Cleanup is best-effort; failure cannot improve caller state and the original outcome is preserved.

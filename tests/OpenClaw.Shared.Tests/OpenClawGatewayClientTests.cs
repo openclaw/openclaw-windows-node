@@ -2415,6 +2415,33 @@ public class OpenClawGatewayClientTests
         Assert.Equal(fullMessage, notification.FullMessage);
     }
 
+    [Theory]
+    [InlineData("streaming", false)]
+    [InlineData("final", true)]
+    public void ProcessRawMessage_LegacyAssistantNotification_DependsOnFinalState(
+        string state,
+        bool expectNotification)
+    {
+        var helper = new GatewayClientTestHelper();
+        var notifications = new List<OpenClawNotification>();
+        helper.Client.NotificationReceived += (_, value) => notifications.Add(value);
+
+        helper.ProcessRawMessage($$"""
+        {
+          "type": "event",
+          "event": "session.message",
+          "payload": {
+            "sessionKey": "main",
+            "role": "assistant",
+            "text": "legacy reply",
+            "state": "{{state}}"
+          }
+        }
+        """);
+
+        Assert.Equal(expectNotification ? 1 : 0, notifications.Count);
+    }
+
     [Fact]
     public void ProcessRawMessage_AgentEventLogsRawLengthWithoutPayloadContent()
     {

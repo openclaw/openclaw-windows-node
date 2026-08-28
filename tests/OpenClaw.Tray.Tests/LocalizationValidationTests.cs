@@ -56,6 +56,7 @@ public class LocalizationValidationTests
         // Sample IDs / brand identifiers — same across locales.
         "VoiceSettingsPage_ElevenLabsVoiceIdBox.PlaceholderText",
         "VoiceSettingsPage_ElevenLabsModelBox.PlaceholderText",
+        "VoiceSettingsPage_MiniMaxModelBox.PlaceholderText",
         // Capability command identifier — should match the wire/API name.
         "NotificationsPage_MetadataSystemRun",
         // Punctuation-only layout format; localized parts are supplied by

@@ -35,6 +35,7 @@ public sealed partial class CompletePage : Page
                 GatewaySummaryText.Text = review.CompletionGatewaySummary;
                 TitleText.Text = "All set!";
                 SubtitleText.Text = "OpenClaw is ready to go";
+                SubtitleText.Visibility = Visibility.Visible;
                 ErrorCard.Visibility = Visibility.Collapsed;
                 HelpLink.Visibility = Visibility.Collapsed;
                 FallbackButton.Visibility = Visibility.Collapsed;
@@ -57,9 +58,7 @@ public sealed partial class CompletePage : Page
                 SuccessIcon.Visibility = Visibility.Collapsed;
                 FailureIcon.Visibility = Visibility.Visible;
                 TitleText.Text = "Setup failed";
-                SubtitleText.Text = helpUrl is null
-                    ? args.ErrorMessage ?? "An error occurred during setup"
-                    : "Follow the steps below to resolve the setup issue and retry.";
+                SubtitleText.Visibility = Visibility.Collapsed;
                 NodeModeBanner.Visibility = Visibility.Collapsed;
                 StartupRow.Visibility = Visibility.Collapsed;
                 SummaryPanel.Visibility = Visibility.Collapsed;
