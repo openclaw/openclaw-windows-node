@@ -26,6 +26,9 @@ jobs:
           exit 1
         fi
 
+    - name: Test repository triage automation
+      run: node --test .github/scripts/repository-triage.test.cjs
+
   test:
     needs: repo-hygiene
     if: ${{ !cancelled() }}
