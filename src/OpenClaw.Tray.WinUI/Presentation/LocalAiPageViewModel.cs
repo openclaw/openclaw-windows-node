@@ -138,7 +138,7 @@ internal sealed class LocalAiPageViewModel : INavigationAware, IDisposable, INot
         LocalAiModelPresentationState.NotInstalled or LocalAiModelPresentationState.Unknown;
     public bool HasInstalledModel => ModelState is
         LocalAiModelPresentationState.Verified or LocalAiModelPresentationState.Loaded;
-    public bool CanChangeModel => !IsBusy && HasInstalledModel;
+    public bool CanChangeModel => IsSetupAvailable && !IsBusy && HasInstalledModel;
     public bool CanRepairConnection => !IsBusy && GatewayState is not
         (LocalAiGatewayPresentationState.Connected or LocalAiGatewayPresentationState.Connecting);
     public bool CanOpenChat => !IsBusy &&

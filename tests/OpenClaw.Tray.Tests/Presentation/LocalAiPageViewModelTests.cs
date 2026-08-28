@@ -32,6 +32,7 @@ public sealed class LocalAiPageViewModelTests
 
         Assert.False(viewModel.IsAvailabilityKnown);
         Assert.True(viewModel.IsSetupAvailable);
+        Assert.True(viewModel.CanChangeModel);
 
         await ActivateAndWaitForAvailabilityAsync(viewModel);
 
@@ -44,12 +45,14 @@ public sealed class LocalAiPageViewModelTests
         Assert.True(viewModel.CanRestart);
         Assert.True(viewModel.CanOpenLogs);
         Assert.False(viewModel.CanRetrySetup);
+        Assert.False(viewModel.CanChangeModel);
         Assert.True(viewModel.CanRepairConnection);
         Assert.False(viewModel.CanOpenChat);
         Assert.True(await viewModel.StopAsync());
         Assert.True(await viewModel.RestartAsync());
         Assert.True(viewModel.OpenLogs());
         Assert.False(viewModel.RetrySetup());
+        Assert.False(viewModel.ChangeModel());
         Assert.True(viewModel.RepairConnection());
         Assert.False(viewModel.OpenChat());
         Assert.Equal(1, commands.OpenLocalAiLogsCount);
