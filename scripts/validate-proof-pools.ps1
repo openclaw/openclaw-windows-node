@@ -444,7 +444,7 @@ function Assert-SchemaKeywordValueShapes {
 
 function Assert-SupportedSchemaKeywords {
     param(
-        [Parameter(Mandatory = $true)][object]$ValueSchema,
+        [Parameter(Mandatory = $true)][AllowNull()][object]$ValueSchema,
         [Parameter(Mandatory = $true)][string]$SchemaPath
     )
 

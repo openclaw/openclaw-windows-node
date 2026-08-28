@@ -275,6 +275,11 @@ try {
             Mutate = { param($value) $value.definitions.identifier = 42 }
         },
         @{
+            Name = "null-valued child schema"
+            ExpectedMessage = "Schema node at $/definitions/identifier must be an object"
+            Mutate = { param($value) $value.definitions.identifier = $null }
+        },
+        @{
             Name = "null-valued minItems"
             ExpectedMessage = "must be a nonnegative integer"
             Mutate = { param($value) $value.properties.pools.minItems = $null }
