@@ -4,6 +4,7 @@ using OpenClaw.Shared;
 using OpenClawTray.Dialogs;
 using OpenClawTray.Helpers;
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Runtime.InteropServices;
 using System.Threading;
@@ -22,9 +23,12 @@ internal sealed class UpdateCoordinator(
     SettingsManager? settings,
     Func<XamlRoot?> getXamlRoot,
     Action refreshStatus,
-    Action exit)
+    Action exit,
+    IUpdateCheckBoundary? updateCheckBoundary = null)
 {
     private readonly SettingsManager? _settings = settings;
+    private readonly IUpdateCheckBoundary _updateCheckBoundary =
+        updateCheckBoundary ?? new UpdatumUpdateCheckBoundary(updater);
 
     // Cross-path concurrency for update checks, split into two phases:
     //  - _updateCheckGate: held only during the metadata/network check.
@@ -103,9 +107,15 @@ internal sealed class UpdateCoordinator(
                 CurrentVersion = AppVersionInfo.Version,
                 CheckedAt = DateTime.UtcNow
             };
-            var updateFound = await updater.CheckForUpdatesAsync();
-            if (!updateFound)
-                updateFound = TryActivateStableReleaseFallback();
+            var checkOutcome = await UpdateCheckPipeline.CheckAsync(
+                _updateCheckBoundary,
+                AppVersionInfo.Version);
+            var updateFound = checkOutcome.UpdateFound;
+            if (checkOutcome.ActivatedFallbackTag is not null)
+            {
+                Logger.Info(
+                    $"Using OpenClaw stable correction ordering for update {checkOutcome.ActivatedFallbackTag}");
+            }
 
             if (!updateFound)
             {
@@ -316,30 +326,6 @@ internal sealed class UpdateCoordinator(
 #endif
     }
 
-    private bool TryActivateStableReleaseFallback()
-    {
-        foreach (var release in updater.Releases)
-        {
-            if (release.Draft ||
-                release.Prerelease ||
-                release.PublishedAt is null ||
-                !OpenClawReleaseVersion.IsNewerStableRelease(
-                    release.TagName,
-                    AppVersionInfo.Version) ||
-                updater.GetCompatibleReleaseAsset(release) is null)
-            {
-                continue;
-            }
-
-            updater.ForceTriggerUpdateFromRelease(release);
-            Logger.Info(
-                $"Using OpenClaw stable correction ordering for update {release.TagName}");
-            return true;
-        }
-
-        return false;
-    }
-
     // Re-entrancy guard: the button/menu/deep-link are all fire-and-forget
     // (`_ = CheckForUpdatesUserInitiatedAsync()`), so a double-click would
     // otherwise open two ContentDialogs on the same XamlRoot which throws
@@ -501,6 +487,25 @@ internal sealed class UpdateCoordinator(
         catch (InvalidOperationException)
         {
             // Same as above for other "already-disposed" race variants.
+        }
+    }
+}
+
+internal sealed class UpdatumUpdateCheckBoundary(UpdatumManager updater) : IUpdateCheckBoundary
+{
+    public Task<bool> CheckForUpdatesAsync() => updater.CheckForUpdatesAsync();
+
+    public IEnumerable<UpdateReleaseCandidate> GetReleaseCandidates()
+    {
+        foreach (var release in updater.Releases)
+        {
+            yield return new UpdateReleaseCandidate(
+                release.TagName,
+                release.Draft,
+                release.Prerelease,
+                release.PublishedAt is not null,
+                () => updater.GetCompatibleReleaseAsset(release) is not null,
+                () => updater.ForceTriggerUpdateFromRelease(release));
         }
     }
 }

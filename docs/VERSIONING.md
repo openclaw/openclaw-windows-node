@@ -8,7 +8,15 @@ project files must not hardcode release versions with `<Version>` elements.
 Canonical release tags use:
 
 - Stable: `vX.Y.Z`
+- Stable correction: `vX.Y.Z-N`, where `N` is a positive integer
 - Alpha: `vX.Y.Z-alpha.N`
+
+Numeric correction suffixes are an intentional stable-channel exception to
+SemVer's usual prerelease interpretation. Corrections sort after their
+unsuffixed base release and then by numeric correction: `vX.Y.Z` <
+`vX.Y.Z-1` < `vX.Y.Z-2`. A correction tag must not be published if that exact
+tag already exists or a newer stable/correction release has already been
+published.
 
 `GitVersion.yml` controls how tag history becomes SemVer. The product build
 imports GitVersion through `src\Directory.Build.props`, so normal `dotnet build`,
@@ -28,6 +36,7 @@ release-blocking guard against version drift.
 Tagged releases must resolve to the exact tag SemVer:
 
 - `vX.Y.Z` -> `X.Y.Z`
+- `vX.Y.Z-N` -> `X.Y.Z-N`
 - `vX.Y.Z-alpha.N` -> `X.Y.Z-alpha.N`
 
 Untagged `master` checkouts are still prerelease builds. After an alpha tag,
@@ -63,17 +72,30 @@ diagnostics.
 ## CI release flow
 
 The release workflow computes GitVersion in the `test` job for workflow outputs
-and artifact naming. Product builds themselves also use GitVersion-backed
-MSBuild metadata; CI should not pass a competing hardcoded `-p:Version=...`
-value that could hide drift.
+and artifact naming. It then passes that resolved value to product builds as
+`Version` and `InformationalVersion`, keeping assembly metadata and artifacts on
+one exact identity. CI must not pass a competing hardcoded version literal that
+could hide drift.
+
+GitVersion interprets `X.Y.Z-N` as a prerelease, so numeric stable corrections
+use one narrow exception: the release-version step recognizes the correction
+tag, validates its stable ordering with
+`scripts\Test-OpenClawStableCorrectionRelease.ps1`, and replaces the GitVersion
+workflow outputs with the exact tag-derived value before the build. The build's
+explicit MSBuild version properties are therefore the validated correction tag,
+not an independent version source. Ordinary stable, alpha, and untagged builds
+continue to use the GitVersion result directly.
 
 Release build jobs must check out full git history (`fetch-depth: 0`) so
 GitVersion can see tags.
 
-Tagged CI runs verify that `github.ref_name` and GitVersion's `SemVer` output
-match before build artifacts are published. If a release tag is
-`v0.6.0-alpha.5`, CI must produce `0.6.0-alpha.5`; a derived value such as
-`0.6.0-alpha.6` or `0.6.0-712` is a release-blocking error.
+Tagged CI runs verify that `github.ref_name` and the resolved release version
+match before build artifacts are published. For stable and alpha tags, the
+resolved version must equal GitVersion's `SemVer`. For numeric corrections, the
+resolved version must equal the validated tag even though GitVersion classifies
+the suffix as a prerelease. If a release tag is `v0.6.0-alpha.5`, CI must produce
+`0.6.0-alpha.5`; a derived value such as `0.6.0-alpha.6` or `0.6.0-712` is a
+release-blocking error.
 
 ## Local scripts
 
@@ -99,6 +121,9 @@ For example:
 - Keep release tags and `GitVersion.yml` as the versioning contract.
 - Keep `GitVersion.yml` configured so exact alpha tags resolve to their tag
   SemVer, and keep CI's tag/version verification enabled.
+- Keep numeric correction tags behind the stable-ordering validation in both
+  release resolution and publication; never classify every hyphenated tag as a
+  prerelease without recognizing this exception.
 
 ## References
 
