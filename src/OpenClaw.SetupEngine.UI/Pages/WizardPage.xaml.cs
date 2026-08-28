@@ -111,11 +111,14 @@ public sealed partial class WizardPage : Page
             _errorState = false;
             _finalizationErrorState = false;
             _expectedTerminalRestart = false;
-            HideRecoveryActions();
+            ShowRecoveryActions();
             // Cancel any in-progress server-side wizard session before starting a
             // fresh one, so the gateway doesn't reject wizard.start with "wizard
             // already running" when recovering from a previous error.
             await CancelCurrentSessionAsync();
+            if (generation != _operationGeneration)
+                return;
+
             ClearConsoleBanner();
             _sessionId = "";
             _wizardStepCount = 0;
@@ -124,7 +127,14 @@ public sealed partial class WizardPage : Page
             _lastProgressStepId = "";
             _stepVisits.Clear();
             SetBusy("Connecting to gateway...");
-            _client = await ConnectClientAsync();
+            var client = await ConnectClientAsync();
+            if (generation != _operationGeneration)
+            {
+                await DisconnectAndDisposeClientAsync(client);
+                return;
+            }
+
+            _client = client;
             _client.StatusChanged += OnWizardClientStatusChanged;
             SetBusy("Starting wizard...");
             StartConsoleTail();
@@ -460,8 +470,9 @@ public sealed partial class WizardPage : Page
         {
             SelectOptions.Visibility = Visibility.Visible;
 
-            // The Gateway contract has no rewind operation. Do not expose back options
-            // as local navigation because that would desynchronize the active session.
+            // Gateway Back is an in-band __back/back answer sent through wizard.next,
+            // not a dedicated wizard.back RPC. Companion intentionally filters it
+            // rather than reintroducing client-local navigation.
             var skipOptions = _options.Where(IsSkipOption).ToList();
             var moreOptions = _options.Where(IsMoreOption).ToList();
             var normalOptions = _options.Where(o => !IsSkipOption(o) && !IsMoreOption(o) && !IsBackOption(o)).ToList();
@@ -724,7 +735,7 @@ public sealed partial class WizardPage : Page
 
                 var expandedOptions = WizardAnswerBuilder.ReadOptions(step).ToList();
 
-                // Filter out __back and __more from expanded list
+                // Keep Gateway navigation options out of Companion's visible choices.
                 var filtered = expandedOptions
                     .Where(o => !IsMoreOption(o) && !IsBackOption(o))
                     .ToList();
@@ -767,10 +778,13 @@ public sealed partial class WizardPage : Page
 
     private async Task StartOverAsync()
     {
-        AdvanceOperationGeneration();
+        var generation = AdvanceOperationGeneration();
         HideRecoveryActions();
         SetBusy("Starting over...");
         await CancelCurrentSessionAsync();
+        if (generation != _operationGeneration)
+            return;
+
         await StartWizardAsync();
     }
 
@@ -1560,6 +1574,18 @@ public sealed partial class WizardPage : Page
         // slopwatch-ignore: SW003 Cleanup is best-effort; failure cannot improve caller state and the original outcome is preserved.
         try { await client.DisconnectAsync(); } catch { }
         client.Dispose();
+    }
+
+    private static async Task DisconnectAndDisposeClientAsync(OpenClawGatewayClient client)
+    {
+        try
+        {
+            await client.DisconnectAsync();
+        }
+        finally
+        {
+            client.Dispose();
+        }
     }
 
     private static string DisplayTitleFor(string stepType) => stepType switch

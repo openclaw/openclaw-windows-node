@@ -1420,19 +1420,59 @@ public sealed class AppRefactorContractTests
     }
 
     [Fact]
-    public void WizardBack_IsUnavailableWithoutAuthoritativeGatewayRewind()
+    public void WizardBack_IsUnavailableWithoutDedicatedGatewayBackRpc()
     {
         var root = TestRepositoryPaths.GetRepositoryRoot();
         var source = File.ReadAllText(Path.Combine(root, "src", "OpenClaw.SetupEngine.UI", "Pages", "WizardPage.xaml.cs"));
         var xaml = File.ReadAllText(Path.Combine(root, "src", "OpenClaw.SetupEngine.UI", "Pages", "WizardPage.xaml"));
+        var buildOptions = ExtractMethod(source, "BuildOptions");
+        var expandMore = ExtractMethod(source, "ExpandMoreOptionsAsync");
+        var isBackOption = ExtractMethod(source, "IsBackOption");
 
         Assert.DoesNotContain("WizardBackButton", xaml);
         Assert.DoesNotContain("WizardBack_Click", source);
         Assert.DoesNotContain("_stepHistory", source);
         Assert.DoesNotContain("ApplyPayloadAsync(previousPayload)", source);
+        Assert.DoesNotContain("\"wizard.back\"", source);
+        Assert.Contains("\"__back\"", isBackOption);
+        Assert.Contains("\"back\"", isBackOption);
+        Assert.Contains("!IsBackOption(o)", buildOptions);
+        Assert.Contains("!IsBackOption(o)", expandMore);
+        Assert.Contains("\"wizard.next\"", source);
         Assert.Contains("MoreOptionsButton", xaml);
         Assert.Contains("StartOver_Click", xaml);
         Assert.Contains("SkipWizard_Click", xaml);
+    }
+
+    [Fact]
+    public void WizardStartup_KeepsRecoveryVisibleAndRejectsStaleConnections()
+    {
+        var root = TestRepositoryPaths.GetRepositoryRoot();
+        var source = File.ReadAllText(Path.Combine(root, "src", "OpenClaw.SetupEngine.UI", "Pages", "WizardPage.xaml.cs"));
+        var start = ExtractMethod(source, "StartWizardAsync");
+        var startOver = ExtractMethod(source, "StartOverAsync");
+        var disposeStaleClient = ExtractMethod(source, "DisconnectAndDisposeClientAsync");
+
+        Assert.DoesNotContain("HideRecoveryActions()", start);
+        AssertInOrder(
+            start,
+            "var generation = AdvanceOperationGeneration();",
+            "ShowRecoveryActions();",
+            "await CancelCurrentSessionAsync();",
+            "if (generation != _operationGeneration)",
+            "var client = await ConnectClientAsync();",
+            "if (generation != _operationGeneration)",
+            "await DisconnectAndDisposeClientAsync(client);",
+            "_client = client;",
+            "SendWizardRequestAsync(\"wizard.start\"");
+        AssertInOrder(
+            startOver,
+            "var generation = AdvanceOperationGeneration();",
+            "await CancelCurrentSessionAsync();",
+            "if (generation != _operationGeneration)",
+            "await StartWizardAsync();");
+        Assert.Contains("finally", disposeStaleClient);
+        Assert.Contains("client.Dispose()", disposeStaleClient);
     }
 
     [Fact]
