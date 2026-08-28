@@ -133,6 +133,13 @@ public sealed class LocalAiSetupUxContractTests
         Assert.Contains("LocalAiToggle.IsOn = _config!.LocalAi.Enabled;", checkingMethod);
         Assert.DoesNotContain("_config!.LocalAi.Enabled = false;", checkingMethod);
         Assert.DoesNotContain("_config.SkipWizard = _skipWizardWithoutLocalAi;", checkingMethod);
+
+        // A probe failure is retryable, not definitive: a successful recheck must restore the
+        // user's prior Local AI selection instead of a transient failure having cleared it.
+        string probeUnknownMethod = ExtractMethod(source, "private void ShowLocalAiProbeUnknown");
+        Assert.Contains("LocalAiToggle.IsOn = _config!.LocalAi.Enabled;", probeUnknownMethod);
+        Assert.DoesNotContain("_config!.LocalAi.Enabled = false;", probeUnknownMethod);
+        Assert.DoesNotContain("_config.SkipWizard = _skipWizardWithoutLocalAi;", probeUnknownMethod);
     }
 
     [Fact]
