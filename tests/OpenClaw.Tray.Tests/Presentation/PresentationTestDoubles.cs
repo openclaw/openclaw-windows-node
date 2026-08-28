@@ -64,18 +64,23 @@ internal sealed class FakeAppCommands : IAppCommands, IDisposable
     public List<string> Navigations { get; } = new();
     public IReadOnlyList<string> OperationLog => _operationLog;
     public bool Disposed { get; private set; }
+    public int ReconnectCount { get; private set; }
+    public int ShowChatCount { get; private set; }
+    public int ShowOnboardingCount { get; private set; }
+    public int OpenLocalAiLogsCount { get; private set; }
 
     public void ClearOperationLog() => _operationLog.Clear();
 
     public void OpenDashboard(string? path = null) { }
     public void Navigate(string pageTag) => Navigations.Add(pageTag);
-    public void Reconnect() { }
+    public void Reconnect() => ReconnectCount++;
     public void Disconnect() { }
     public void ShowVoiceOverlay() { }
-    public void ShowChat() { }
+    public void ShowChat() => ShowChatCount++;
     public void CheckForUpdates() { }
     public void ShowOnboarding() => ShowOnboardingCount++;
     public void ShowGatewayWizard() => ShowGatewayWizardCount++;
+    public void OpenLocalAiLogs() => OpenLocalAiLogsCount++;
     public void ShowConnectionStatus() { }
     public void NotifySettingsSaved()
     {
@@ -95,7 +100,6 @@ internal sealed class FakeAppCommands : IAppCommands, IDisposable
     public SettingsWriteOrigin? LastAutoStartOrigin { get; private set; }
     public bool? AutoStartApplied { get; private set; }
     public int AutoStartApplyCount { get; private set; }
-    public int ShowOnboardingCount { get; private set; }
     public int ShowGatewayWizardCount { get; private set; }
 
     /// <summary>Result returned by <see cref="ApplyAutoStart"/> so tests can simulate OS-write failure.</summary>

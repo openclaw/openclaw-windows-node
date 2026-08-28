@@ -101,15 +101,17 @@ public sealed partial class ProgressPage : Page
 
     private void RenderProgressPreview()
     {
-        bool localAiPreview = SetupPreview.RequestedPage == "progress-local-ai";
+        bool localAiPreview =
+            _config?.LocalAi.Enabled == true ||
+            SetupPreview.RequestedPage == "progress-local-ai";
         TitleText.Text = localAiPreview ? "Setting up OpenClaw and Local AI" : "Setting up OpenClaw";
         SubtitleText.Text = localAiPreview
             ? "Downloading the selected Hugging Face model: about 18 minutes left"
             : "Creating OpenClawGateway WSL instance: about 4 minutes left";
         var ids = StepGroups.Select(g => g.GroupId).ToArray();
-        int previewRunningIndex = localAiPreview
-            ? Array.IndexOf(ids, "local-ai-model")
-            : 3;
+        int previewRunningIndex = Array.IndexOf(
+            ids,
+            localAiPreview ? "local-ai-model" : "wsl-create");
         for (int i = 0; i < ids.Length; i++)
         {
             var status = i < previewRunningIndex
@@ -131,17 +133,20 @@ public sealed partial class ProgressPage : Page
 
     private void BuildStepRows()
     {
-        foreach (var (groupId, displayName, _) in StepGroups)
+        foreach (var (groupId, displayName, stepIds) in StepGroups)
         {
             var row = new StepRow(
                 displayName,
                 showDetailProgress: groupId is "local-ai-engine" or "local-ai-model");
             _rows[groupId] = row;
             StepsPanel.Children.Add(row.Element);
-            if (_config?.LocalAi.Enabled != true && groupId.StartsWith("local-ai", StringComparison.Ordinal))
+            if (_config?.LocalAi.Enabled != true && IsLocalAiOnlyGroup(stepIds))
                 row.Element.Visibility = Visibility.Collapsed;
         }
     }
+
+    private static bool IsLocalAiOnlyGroup(string[] stepIds) =>
+        stepIds.All(stepId => stepId.Contains("local-ai", StringComparison.Ordinal));
 
     private void StartPipeline() =>
         AsyncEventHandlerGuard.Run(

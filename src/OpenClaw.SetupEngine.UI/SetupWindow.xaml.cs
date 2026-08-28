@@ -198,12 +198,19 @@ public sealed partial class SetupWindow : Window
     public bool IsWelcomeInstallSelected => _isWelcomeInstallSelected;
     public void SetWelcomeInstallSelected(bool installSelected) => _isWelcomeInstallSelected = installSelected;
 
-    internal Task<HostHardwareInfo> GetLocalAiHardwareAsync()
+    internal Task<HostHardwareInfo> GetLocalAiHardwareAsync(bool forceRefresh = false)
     {
         lock (_localAiHardwareProbeLock)
         {
-            return _localAiHardwareProbeTask ??=
-                Task.Run(() => new NvmlHostHardwareProbe().Probe());
+            if (forceRefresh ||
+                _localAiHardwareProbeTask is null ||
+                _localAiHardwareProbeTask.IsFaulted ||
+                _localAiHardwareProbeTask.IsCanceled)
+            {
+                _localAiHardwareProbeTask = Task.Run(() => new NvmlHostHardwareProbe().Probe());
+            }
+
+            return _localAiHardwareProbeTask;
         }
     }
 

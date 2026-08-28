@@ -1,5 +1,6 @@
 using Microsoft.UI.Composition;
 using Microsoft.UI.Xaml;
+using Microsoft.UI.Xaml.Automation;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Hosting;
 using Microsoft.UI.Xaml.Navigation;
@@ -67,12 +68,13 @@ public sealed partial class WelcomePage : Page
         LocalInferenceEligibilityResult eligibility = LocalInferenceEligibility.Evaluate(
             hardware,
             config.LocalAi.SelectedModelId);
-        if (!eligibility.CanInstall || eligibility.SelectedGpu is not { } gpu)
+        if (!eligibility.CanInstall || eligibility.SelectedGpu is null)
             return;
 
-        LocalAiAvailabilityText.Text =
-            $"{gpu.Name} detected. Install a local gateway to use local AI inference on this PC.";
-        LocalAiAvailabilityPanel.Visibility = Visibility.Visible;
+        LocalAiAvailabilityBadge.Visibility = Visibility.Visible;
+        AutomationProperties.SetName(
+            InstallChoice,
+            "Install a local gateway (WSL), recommended, Local AI available");
     }
 
     private void StartMascotBreatheAnimation()

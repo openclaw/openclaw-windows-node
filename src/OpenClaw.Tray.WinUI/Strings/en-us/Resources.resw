@@ -1080,8 +1080,11 @@ Use one of these options:
   <data name="Onboarding_Connection_Later" xml:space="preserve">
     <value>Configure Later</value>
   </data>
+  <data name="Onboarding_LocalAi_RecheckAvailabilityButton.Content" xml:space="preserve">
+    <value>Recheck</value>
+  </data>
   <data name="Onboarding_Ready_Title" xml:space="preserve">
-    <value>All Set!</value>
+    <value>All set!</value>
   </data>
   <data name="Onboarding_Ready_Subtitle" xml:space="preserve">
     <value>OpenClaw is ready to go. Here are some things to try:</value>
@@ -7069,6 +7072,12 @@ Make sure the gateway is running.</value>
   <data name="HubWindow_NavigationViewItem_LocalAi.Content" xml:space="preserve"><value>Local AI</value></data>
   <data name="LocalAiPage_Title.Text" xml:space="preserve"><value>Local AI</value></data>
   <data name="LocalAiPage_Intro.Text" xml:space="preserve"><value>Run the verified native llama-server privately on this computer. Models load only when requested.</value></data>
+  <data name="LocalAiPage_UnavailableInfoBar.Title" xml:space="preserve"><value>Local AI is not available</value></data>
+  <data name="LocalAiPage_UnavailableDetailsButton.Content" xml:space="preserve"><value>See why</value></data>
+  <data name="LocalAiPage_UnavailableDetailsTip.Title" xml:space="preserve"><value>Why Local AI is unavailable</value></data>
+  <data name="LocalAiPage_RecheckAvailabilityButton.Content" xml:space="preserve"><value>Recheck</value></data>
+  <data name="LocalAiPage_UnavailableRequirementsMessage" xml:space="preserve"><value>This device does not meet one or more Local AI requirements.</value></data>
+  <data name="LocalAiPage_UnavailableProbeMessage" xml:space="preserve"><value>OpenClaw could not verify Local AI requirements right now. Recheck after confirming the NVIDIA driver is available.</value></data>
   <data name="LocalAiPage_EngineHeading.Text" xml:space="preserve"><value>llama-server</value></data>
   <data name="LocalAiPage_VersionLabel.Text" xml:space="preserve"><value>Version</value></data>
   <data name="LocalAiPage_EndpointLabel.Text" xml:space="preserve"><value>Endpoint</value></data>

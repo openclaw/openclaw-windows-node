@@ -1057,6 +1057,9 @@
   <data name="Onboarding_Connection_Later" xml:space="preserve">
     <value>稍後設定</value>
   </data>
+  <data name="Onboarding_LocalAi_RecheckAvailabilityButton.Content" xml:space="preserve">
+    <value>重新檢查</value>
+  </data>
   <data name="Onboarding_Ready_Title" xml:space="preserve">
     <value>一切就緒！</value>
   </data>
@@ -7005,6 +7008,12 @@
   <data name="HubWindow_NavigationViewItem_LocalAi.Content" xml:space="preserve"><value>本機 AI</value></data>
   <data name="LocalAiPage_Title.Text" xml:space="preserve"><value>本機 AI</value></data>
   <data name="LocalAiPage_Intro.Text" xml:space="preserve"><value>在這部電腦上私密執行經過驗證的原生 llama-server。模型只會在收到要求時載入。</value></data>
+  <data name="LocalAiPage_UnavailableInfoBar.Title" xml:space="preserve"><value>本機 AI 無法使用</value></data>
+  <data name="LocalAiPage_UnavailableDetailsButton.Content" xml:space="preserve"><value>查看原因</value></data>
+  <data name="LocalAiPage_UnavailableDetailsTip.Title" xml:space="preserve"><value>本機 AI 無法使用的原因</value></data>
+  <data name="LocalAiPage_RecheckAvailabilityButton.Content" xml:space="preserve"><value>重新檢查</value></data>
+  <data name="LocalAiPage_UnavailableRequirementsMessage" xml:space="preserve"><value>此裝置不符合一或多項本機 AI 要求。</value></data>
+  <data name="LocalAiPage_UnavailableProbeMessage" xml:space="preserve"><value>OpenClaw 目前無法驗證本機 AI 要求。請確認 NVIDIA 驅動程式可用後再試一次。</value></data>
   <data name="LocalAiPage_EngineHeading.Text" xml:space="preserve"><value>llama-server</value></data>
   <data name="LocalAiPage_VersionLabel.Text" xml:space="preserve"><value>版本</value></data>
   <data name="LocalAiPage_EndpointLabel.Text" xml:space="preserve"><value>端點</value></data>

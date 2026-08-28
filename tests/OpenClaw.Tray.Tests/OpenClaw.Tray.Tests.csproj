@@ -182,6 +182,7 @@
     <!-- Pulled in for console-log tail tests. Pure logic, no WinUI deps. -->
     <Compile Include="..\..\src\OpenClaw.SetupEngine.UI\WizardConsoleTail.cs" Link="WizardConsoleTail.cs" />
     <Compile Include="..\..\src\OpenClaw.SetupEngine.UI\WizardPayloadHelpers.cs" Link="WizardPayloadHelpers.cs" />
+    <Compile Include="..\..\src\OpenClaw.SetupEngine.UI\Pages\LocalAiSetupAvailabilityCoordinator.cs" Link="Pages\LocalAiSetupAvailabilityCoordinator.cs" />
   </ItemGroup>
 
   <!-- Phase 2 presentation seam: WinUI-free DI + navigation core, hand-linked so it

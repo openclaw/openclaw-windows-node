@@ -1058,6 +1058,9 @@ Gebruik een van deze opties:
   <data name="Onboarding_Connection_Later" xml:space="preserve">
     <value>Later configureren</value>
   </data>
+  <data name="Onboarding_LocalAi_RecheckAvailabilityButton.Content" xml:space="preserve">
+    <value>Opnieuw controleren</value>
+  </data>
   <data name="Onboarding_Ready_Title" xml:space="preserve">
     <value>Alles klaar!</value>
   </data>
@@ -7006,6 +7009,12 @@ Het binaire bestand wxc-exec is niet gevonden. {1} Als dit een ontwikkelaarsbuil
   <data name="HubWindow_NavigationViewItem_LocalAi.Content" xml:space="preserve"><value>Lokale AI</value></data>
   <data name="LocalAiPage_Title.Text" xml:space="preserve"><value>Lokale AI</value></data>
   <data name="LocalAiPage_Intro.Text" xml:space="preserve"><value>Voer de geverifieerde native llama-server privé uit op deze computer. Modellen worden alleen op aanvraag geladen.</value></data>
+  <data name="LocalAiPage_UnavailableInfoBar.Title" xml:space="preserve"><value>Lokale AI is niet beschikbaar</value></data>
+  <data name="LocalAiPage_UnavailableDetailsButton.Content" xml:space="preserve"><value>Bekijk waarom</value></data>
+  <data name="LocalAiPage_UnavailableDetailsTip.Title" xml:space="preserve"><value>Waarom lokale AI niet beschikbaar is</value></data>
+  <data name="LocalAiPage_RecheckAvailabilityButton.Content" xml:space="preserve"><value>Opnieuw controleren</value></data>
+  <data name="LocalAiPage_UnavailableRequirementsMessage" xml:space="preserve"><value>Dit apparaat voldoet niet aan een of meer vereisten voor lokale AI.</value></data>
+  <data name="LocalAiPage_UnavailableProbeMessage" xml:space="preserve"><value>OpenClaw kon de vereisten voor lokale AI nu niet verifiëren. Controleer of het NVIDIA-stuurprogramma beschikbaar is en probeer het opnieuw.</value></data>
   <data name="LocalAiPage_EngineHeading.Text" xml:space="preserve"><value>llama-server</value></data>
   <data name="LocalAiPage_VersionLabel.Text" xml:space="preserve"><value>Versie</value></data>
   <data name="LocalAiPage_EndpointLabel.Text" xml:space="preserve"><value>Eindpunt</value></data>

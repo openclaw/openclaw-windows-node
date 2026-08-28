@@ -1,8 +1,10 @@
 using OpenClaw.Connection;
 using OpenClaw.Connection.LocalAi;
+using OpenClaw.Shared.Inference;
 using OpenClaw.Shared.Inference.Catalog;
 using OpenClawTray.Services;
 using System.ComponentModel;
+using System.Diagnostics;
 using System.Runtime.CompilerServices;
 
 namespace OpenClawTray.Presentation;
@@ -18,24 +20,32 @@ internal sealed class LocalAiPageViewModel : INavigationAware, IDisposable, INot
     private readonly IPermissionsPageRuntimeSource _gatewaySource;
     private readonly IAppCommands _appCommands;
     private readonly IUiDispatcher _dispatcher;
+    private readonly IHostHardwareProbe _hardwareProbe;
     private LocalAiRuntimeSnapshot _runtimeSnapshot;
     private GatewayConnectionSnapshot _gatewaySnapshot;
     private CancellationTokenSource? _refreshCancellation;
+    private CancellationTokenSource? _availabilityCancellation;
     private bool _subscribed;
     private bool _disposed;
     private bool _isBusy;
     private string? _actionError;
+    private bool _isAvailabilityKnown;
+    private bool _isLocalAiAvailable;
+    private bool _hasAvailabilityProbeError;
+    private string? _localAiUnavailableReason;
 
     public LocalAiPageViewModel(
         ILocalAiRuntime runtime,
         IPermissionsPageRuntimeSource gatewaySource,
         IAppCommands appCommands,
-        IUiDispatcher dispatcher)
+        IUiDispatcher dispatcher,
+        IHostHardwareProbe hardwareProbe)
     {
         _runtime = runtime ?? throw new ArgumentNullException(nameof(runtime));
         _gatewaySource = gatewaySource ?? throw new ArgumentNullException(nameof(gatewaySource));
         _appCommands = appCommands ?? throw new ArgumentNullException(nameof(appCommands));
         _dispatcher = dispatcher ?? throw new ArgumentNullException(nameof(dispatcher));
+        _hardwareProbe = hardwareProbe ?? throw new ArgumentNullException(nameof(hardwareProbe));
         _runtimeSnapshot = runtime.Snapshot;
         _gatewaySnapshot = gatewaySource.Current.ConnectionSnapshot;
     }
@@ -110,6 +120,13 @@ internal sealed class LocalAiPageViewModel : INavigationAware, IDisposable, INot
     public string? GatewayDetail => _gatewaySnapshot.GatewayName ?? _gatewaySnapshot.GatewayUrl;
     public string? ActionError => _actionError;
     public bool IsBusy => _isBusy;
+    public bool IsAvailabilityKnown => _isAvailabilityKnown;
+    public bool IsLocalAiAvailable => _isAvailabilityKnown && _isLocalAiAvailable;
+    public bool HasAvailabilityProbeError => _hasAvailabilityProbeError;
+    public bool ShowAvailabilityInfoBar => (_isAvailabilityKnown && !_isLocalAiAvailable) || _hasAvailabilityProbeError;
+    public bool IsSetupAvailable => !_isAvailabilityKnown || _isLocalAiAvailable;
+    public bool CanRecheckAvailability => _hasAvailabilityProbeError && _availabilityCancellation is null && !IsBusy;
+    public string? LocalAiUnavailableReason => _localAiUnavailableReason;
     public bool CanStart => !IsBusy && HasManagedInstall &&
         _runtimeSnapshot.State is LocalAiRuntimeState.Stopped or LocalAiRuntimeState.Failed;
     public bool CanStop => !IsBusy && _runtimeSnapshot.Ownership == LocalAiOwnership.CompanionManaged &&
@@ -117,7 +134,7 @@ internal sealed class LocalAiPageViewModel : INavigationAware, IDisposable, INot
     public bool CanRestart => !IsBusy && _runtimeSnapshot.Ownership == LocalAiOwnership.CompanionManaged &&
         _runtimeSnapshot.State == LocalAiRuntimeState.Healthy;
     public bool CanOpenLogs => !IsBusy && HasManagedInstall;
-    public bool CanRetrySetup => !IsBusy && ModelState is
+    public bool CanRetrySetup => IsSetupAvailable && !IsBusy && ModelState is
         LocalAiModelPresentationState.NotInstalled or LocalAiModelPresentationState.Unknown;
     public bool HasInstalledModel => ModelState is
         LocalAiModelPresentationState.Verified or LocalAiModelPresentationState.Loaded;
@@ -147,11 +164,13 @@ internal sealed class LocalAiPageViewModel : INavigationAware, IDisposable, INot
         ApplyRuntimeSnapshot(_runtime.Snapshot);
         ApplyGatewaySnapshot(_gatewaySource.Current.ConnectionSnapshot);
         StartRuntimeRefresh();
+        StartAvailabilityRefresh();
     }
 
     public void Deactivate()
     {
         CancelRuntimeRefresh();
+        CancelAvailabilityRefresh();
         if (_subscribed)
         {
             _runtime.StateChanged -= OnRuntimeStateChanged;
@@ -169,6 +188,14 @@ internal sealed class LocalAiPageViewModel : INavigationAware, IDisposable, INot
     public bool ChangeModel() => RunCommand(CanChangeModel, _appCommands.ShowOnboarding);
     public bool RepairConnection() => RunCommand(CanRepairConnection, _appCommands.Reconnect);
     public bool OpenChat() => RunCommand(CanOpenChat, _appCommands.ShowChat);
+    public bool RecheckAvailability()
+    {
+        ThrowIfDisposed();
+        if (!IsActive || _availabilityCancellation is not null)
+            return false;
+        StartAvailabilityRefresh();
+        return true;
+    }
 
     private static bool RunCommand(bool allowed, Action command)
     {
@@ -192,6 +219,91 @@ internal sealed class LocalAiPageViewModel : INavigationAware, IDisposable, INot
         _refreshCancellation = null;
         cancellation?.Cancel();
     }
+
+    private void StartAvailabilityRefresh()
+    {
+        CancelAvailabilityRefresh();
+        _isAvailabilityKnown = false;
+        _isLocalAiAvailable = false;
+        _hasAvailabilityProbeError = false;
+        _localAiUnavailableReason = null;
+        OnPropertyChanged(null);
+        var cancellation = new CancellationTokenSource();
+        _availabilityCancellation = cancellation;
+        _ = RefreshAvailabilityAsync(cancellation);
+    }
+
+    private void CancelAvailabilityRefresh()
+    {
+        CancellationTokenSource? cancellation = _availabilityCancellation;
+        _availabilityCancellation = null;
+        cancellation?.Cancel();
+    }
+
+    private async Task RefreshAvailabilityAsync(CancellationTokenSource cancellation)
+    {
+        try
+        {
+            HostHardwareInfo hardware = await Task.Run(
+                _hardwareProbe.Probe,
+                cancellation.Token).ConfigureAwait(false);
+            LocalInferenceEligibilityResult eligibility = LocalInferenceEligibility.Evaluate(
+                hardware,
+                _runtimeSnapshot.ModelId);
+            bool isAvailable = eligibility.CanInstall;
+            string? unavailableReason = isAvailable
+                ? null
+                : LocalInferenceEligibilityDiagnostics.DescribeUnavailable(eligibility);
+            if (!IsCurrentAvailabilityProbe(cancellation))
+                return;
+            ApplyOnUiThread(() =>
+            {
+                if (!IsCurrentAvailabilityProbe(cancellation))
+                    return;
+                _isAvailabilityKnown = true;
+                _isLocalAiAvailable = isAvailable;
+                _hasAvailabilityProbeError = false;
+                _localAiUnavailableReason = unavailableReason;
+                OnPropertyChanged(null);
+            });
+        }
+        catch (OperationCanceledException) when (cancellation.IsCancellationRequested)
+        {
+        }
+        catch (Exception ex)
+        {
+            Debug.WriteLine($"Local AI availability probe failed: {ex}");
+            const string unavailableReason =
+                "OpenClaw could not read the NVIDIA GPU, driver, CUDA, or memory information. " +
+                "Check the NVIDIA driver installation and try setup again.";
+            if (!IsCurrentAvailabilityProbe(cancellation))
+                return;
+            ApplyOnUiThread(() =>
+            {
+                if (!IsCurrentAvailabilityProbe(cancellation))
+                    return;
+                _isAvailabilityKnown = false;
+                _isLocalAiAvailable = false;
+                _hasAvailabilityProbeError = true;
+                _localAiUnavailableReason = unavailableReason;
+                OnPropertyChanged(null);
+            });
+        }
+        finally
+        {
+            bool completedCurrentProbe = ReferenceEquals(_availabilityCancellation, cancellation);
+            if (completedCurrentProbe)
+                _availabilityCancellation = null;
+            if (completedCurrentProbe)
+            {
+                ApplyOnUiThread(() => OnPropertyChanged(nameof(CanRecheckAvailability)));
+            }
+            cancellation.Dispose();
+        }
+    }
+
+    private bool IsCurrentAvailabilityProbe(CancellationTokenSource cancellation) =>
+        ReferenceEquals(_availabilityCancellation, cancellation);
 
     private async Task RefreshRuntimeSnapshotAsync(CancellationTokenSource cancellation)
     {
