@@ -242,6 +242,11 @@ internal sealed class LocalAiPageViewModel : INavigationAware, IDisposable, INot
 
     private async Task RefreshAvailabilityAsync(CancellationTokenSource cancellation)
     {
+        // The probe result is applied and the cancellation is released together, inside the
+        // single dispatched callback below. Clearing _availabilityCancellation here (before the
+        // dispatched callback runs) would make a queued-but-not-yet-run callback's own
+        // IsCurrentAvailabilityProbe guard fail against itself, silently dropping a real
+        // asynchronous DispatcherQueue completion.
         try
         {
             HostHardwareInfo hardware = await Task.Run(
@@ -254,21 +259,18 @@ internal sealed class LocalAiPageViewModel : INavigationAware, IDisposable, INot
             string? unavailableReason = isAvailable
                 ? null
                 : LocalInferenceEligibilityDiagnostics.DescribeUnavailable(eligibility);
-            if (!IsCurrentAvailabilityProbe(cancellation))
-                return;
-            ApplyOnUiThread(() =>
-            {
-                if (!IsCurrentAvailabilityProbe(cancellation))
-                    return;
-                _isAvailabilityKnown = true;
-                _isLocalAiAvailable = isAvailable;
-                _hasAvailabilityProbeError = false;
-                _localAiUnavailableReason = unavailableReason;
-                OnPropertyChanged(null);
-            });
+            ApplyOnUiThread(() => ApplyAvailabilityResult(
+                cancellation,
+                isAvailabilityKnown: true,
+                isLocalAiAvailable: isAvailable,
+                hasAvailabilityProbeError: false,
+                unavailableReason));
         }
         catch (OperationCanceledException) when (cancellation.IsCancellationRequested)
         {
+            // A newer probe already replaced (or cleared) _availabilityCancellation, so this
+            // probe is stale by definition. Just release the token; do not touch shared state.
+            cancellation.Dispose();
         }
         catch (Exception ex)
         {
@@ -276,30 +278,36 @@ internal sealed class LocalAiPageViewModel : INavigationAware, IDisposable, INot
             const string unavailableReason =
                 "OpenClaw could not read the NVIDIA GPU, driver, CUDA, or memory information. " +
                 "Check the NVIDIA driver installation and try setup again.";
-            if (!IsCurrentAvailabilityProbe(cancellation))
-                return;
-            ApplyOnUiThread(() =>
-            {
-                if (!IsCurrentAvailabilityProbe(cancellation))
-                    return;
-                _isAvailabilityKnown = false;
-                _isLocalAiAvailable = false;
-                _hasAvailabilityProbeError = true;
-                _localAiUnavailableReason = unavailableReason;
-                OnPropertyChanged(null);
-            });
+            ApplyOnUiThread(() => ApplyAvailabilityResult(
+                cancellation,
+                isAvailabilityKnown: false,
+                isLocalAiAvailable: false,
+                hasAvailabilityProbeError: true,
+                unavailableReason));
         }
-        finally
-        {
-            bool completedCurrentProbe = ReferenceEquals(_availabilityCancellation, cancellation);
-            if (completedCurrentProbe)
-                _availabilityCancellation = null;
-            if (completedCurrentProbe)
-            {
-                ApplyOnUiThread(() => OnPropertyChanged(nameof(CanRecheckAvailability)));
-            }
-            cancellation.Dispose();
-        }
+    }
+
+    /// <summary>
+    /// Applies a completed availability probe's result and releases its cancellation together,
+    /// on the UI thread, so the currency check and the state clear cannot race a real
+    /// asynchronous DispatcherQueue callback.
+    /// </summary>
+    private void ApplyAvailabilityResult(
+        CancellationTokenSource cancellation,
+        bool isAvailabilityKnown,
+        bool isLocalAiAvailable,
+        bool hasAvailabilityProbeError,
+        string? unavailableReason)
+    {
+        if (!IsCurrentAvailabilityProbe(cancellation))
+            return;
+        _availabilityCancellation = null;
+        _isAvailabilityKnown = isAvailabilityKnown;
+        _isLocalAiAvailable = isLocalAiAvailable;
+        _hasAvailabilityProbeError = hasAvailabilityProbeError;
+        _localAiUnavailableReason = unavailableReason;
+        OnPropertyChanged(null);
+        cancellation.Dispose();
     }
 
     private bool IsCurrentAvailabilityProbe(CancellationTokenSource cancellation) =>
