@@ -109,6 +109,7 @@ function Publish-ArchitecturePayload {
     )
     if ($PublishVersion) {
         $trayPublishArgs += "-p:Version=$PublishVersion"
+        $trayPublishArgs += "-p:InformationalVersion=$PublishVersion"
     }
 
     dotnet publish @trayPublishArgs

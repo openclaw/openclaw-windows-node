@@ -56,6 +56,51 @@ public sealed class VersioningContractTests
     }
 
     [Fact]
+    public void ReleaseWorkflow_TreatsNumericCorrectionsAsStableExactVersions()
+    {
+        var repoRoot = TestRepositoryPaths.GetRepositoryRoot();
+        var workflow = File.ReadAllText(
+            Path.Combine(repoRoot, ".github", "workflows", "ci.yml"));
+
+        Assert.Contains("- name: Resolve release version", workflow);
+        Assert.Contains(
+            "'^(?<base>(?:0|[1-9]\\d*)\\.(?:0|[1-9]\\d*)\\.(?:0|[1-9]\\d*))-(?<revision>[1-9]\\d*)$'",
+            workflow);
+        Assert.Contains("$semVer = $tagVersion", workflow);
+        Assert.Contains("$isPrerelease = $false", workflow);
+        Assert.Contains(
+            ".\\scripts\\Test-OpenClawStableCorrectionRelease.ps1",
+            workflow);
+        Assert.Contains(
+            "isStableCorrection: ${{ steps.release_version.outputs.isStableCorrection }}",
+            workflow);
+        Assert.Contains(
+            "group: openclaw-windows-node-release",
+            workflow);
+        Assert.Contains(
+            "- name: Revalidate stable correction release ordering",
+            workflow);
+        Assert.Contains(
+            "if: needs.test.outputs.isStableCorrection == 'true'",
+            workflow);
+        Assert.Contains(
+            "semVer: ${{ steps.release_version.outputs.semVer }}",
+            workflow);
+        Assert.Contains(
+            "isPrerelease: ${{ steps.release_version.outputs.isPrerelease }}",
+            workflow);
+        Assert.Contains(
+            "-p:Version=$env:OPENCLAW_BUILD_VERSION",
+            workflow);
+        Assert.Contains(
+            "prerelease: ${{ needs.test.outputs.isPrerelease }}",
+            workflow);
+        Assert.DoesNotContain(
+            "prerelease: ${{ contains(github.ref_name, '-') }}",
+            workflow);
+    }
+
+    [Fact]
     public void BuildScript_PreflightsGitVersionRepositoryHistory()
     {
         var repoRoot = TestRepositoryPaths.GetRepositoryRoot();
@@ -65,6 +110,21 @@ public sealed class VersioningContractTests
         Assert.Contains("rev-parse --is-shallow-repository", buildScript);
         Assert.Contains("GitVersion requires full git history", buildScript);
         Assert.Contains("git fetch --unshallow --tags origin", buildScript);
+    }
+
+    [Fact]
+    public void LocalInstallerBuild_PreservesExplicitInformationalVersion()
+    {
+        var repoRoot = TestRepositoryPaths.GetRepositoryRoot();
+        var buildScript = File.ReadAllText(
+            Path.Combine(repoRoot, "scripts", "build-inno-local.ps1"));
+
+        Assert.Contains(
+            "$trayPublishArgs += \"-p:Version=$PublishVersion\"",
+            buildScript);
+        Assert.Contains(
+            "$trayPublishArgs += \"-p:InformationalVersion=$PublishVersion\"",
+            buildScript);
     }
 
     [Fact]

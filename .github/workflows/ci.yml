@@ -67,15 +67,42 @@ jobs:
       id: gitversion
       uses: gittools/actions/gitversion/execute@v4
 
-    - name: Verify tag version output
-      if: startsWith(github.ref, 'refs/tags/v')
+    - name: Resolve release version
+      id: release_version
       shell: pwsh
+      env:
+        GITVERSION_SEMVER: ${{ steps.gitversion.outputs.semVer }}
+        GITVERSION_MAJOR_MINOR_PATCH: ${{ steps.gitversion.outputs.majorMinorPatch }}
+        GH_TOKEN: ${{ github.token }}
       run: |
-        $expected = "${{ github.ref_name }}" -replace '^v', ''
-        $actual = "${{ steps.gitversion.outputs.semVer }}"
-        if ($actual -ne $expected) {
-          throw "GitVersion SemVer '$actual' did not match tag '$expected'."
+        $semVer = $env:GITVERSION_SEMVER
+        $majorMinorPatch = $env:GITVERSION_MAJOR_MINOR_PATCH
+        $isPrerelease = $semVer.Contains("-")
+        $isStableCorrection = $false
+
+        if ($env:GITHUB_REF.StartsWith("refs/tags/v", [StringComparison]::Ordinal)) {
+          $tagVersion = $env:GITHUB_REF_NAME -replace '^v', ''
+          $correction = [regex]::Match(
+            $tagVersion,
+            '^(?<base>(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)\.(?:0|[1-9]\d*))-(?<revision>[1-9]\d*)$')
+
+          if ($correction.Success) {
+            $validation = .\scripts\Test-OpenClawStableCorrectionRelease.ps1 `
+              -Tag $env:GITHUB_REF_NAME `
+              -GitHubToken $env:GH_TOKEN
+            $semVer = $tagVersion
+            $majorMinorPatch = $validation.BaseVersion
+            $isPrerelease = $false
+            $isStableCorrection = $true
+          } elseif ($semVer -ne $tagVersion) {
+            throw "GitVersion SemVer '$semVer' did not match tag '$tagVersion'."
+          }
         }
+
+        "semVer=$semVer" >> $env:GITHUB_OUTPUT
+        "majorMinorPatch=$majorMinorPatch" >> $env:GITHUB_OUTPUT
+        "isPrerelease=$($isPrerelease.ToString().ToLowerInvariant())" >> $env:GITHUB_OUTPUT
+        "isStableCorrection=$($isStableCorrection.ToString().ToLowerInvariant())" >> $env:GITHUB_OUTPUT
 
     - name: Validate documentation
       shell: pwsh
@@ -299,8 +326,10 @@ jobs:
         if-no-files-found: warn
 
     outputs:
-      semVer: ${{ steps.gitversion.outputs.semVer }}
-      majorMinorPatch: ${{ steps.gitversion.outputs.majorMinorPatch }}
+      semVer: ${{ steps.release_version.outputs.semVer }}
+      majorMinorPatch: ${{ steps.release_version.outputs.majorMinorPatch }}
+      isPrerelease: ${{ steps.release_version.outputs.isPrerelease }}
+      isStableCorrection: ${{ steps.release_version.outputs.isStableCorrection }}
 
   e2etests:
     needs: repo-hygiene
@@ -448,6 +477,8 @@ jobs:
   build:
     needs: [test, e2etests]
     runs-on: ${{ matrix.rid == 'win-arm64' && 'windows-11-arm' || 'windows-latest' }}
+    env:
+      OPENCLAW_BUILD_VERSION: ${{ needs.test.outputs.semVer }}
     strategy:
       matrix:
         rid: [win-x64, win-arm64]
@@ -474,10 +505,10 @@ jobs:
       run: dotnet restore src/OpenClaw.Tray.WinUI -r ${{ matrix.rid }}
 
     - name: Build WinUI Tray App (Release)
-      run: dotnet build src/OpenClaw.Tray.WinUI --no-restore -c Release -r ${{ matrix.rid }}
+      run: dotnet build src/OpenClaw.Tray.WinUI --no-restore -c Release -r ${{ matrix.rid }} -p:Version=$env:OPENCLAW_BUILD_VERSION -p:InformationalVersion=$env:OPENCLAW_BUILD_VERSION
 
     - name: Publish WinUI Tray App
-      run: dotnet publish src/OpenClaw.Tray.WinUI -c Release -r ${{ matrix.rid }} --self-contained --no-restore -o publish
+      run: dotnet publish src/OpenClaw.Tray.WinUI -c Release -r ${{ matrix.rid }} --self-contained --no-restore -o publish -p:Version=$env:OPENCLAW_BUILD_VERSION -p:InformationalVersion=$env:OPENCLAW_BUILD_VERSION
 
     - name: Verify x64 Native Runtime Payload
       if: matrix.rid == 'win-x64'
@@ -617,6 +648,9 @@ jobs:
       actions: read
       contents: write
       id-token: write
+    concurrency:
+      group: openclaw-windows-node-release
+      cancel-in-progress: false
 
     steps:
     - uses: actions/checkout@v7
@@ -773,7 +807,7 @@ jobs:
         copy artifacts/tray-win-x64/* publish-x64/ -Recurse
         .\scripts\Test-ReleaseNativeDependencies.ps1 -PayloadPath publish-x64 -RequireAppLocalVCRuntime -RequireInstallerVCRedist -InstallerVCRedistPath vc_redist.x64.exe
         # Build installer
-        & "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" /DMyAppVersion=${{ needs.test.outputs.majorMinorPatch }} /DMyAppArch=x64 /Dpublish=publish-x64 /DvcRedist=vc_redist.x64.exe installer.iss
+        & "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" /DMyAppVersion=${{ needs.test.outputs.semVer }} /DMyAppArch=x64 /Dpublish=publish-x64 /DvcRedist=vc_redist.x64.exe installer.iss
 
     - name: Build arm64 Installer
       run: |
@@ -785,7 +819,7 @@ jobs:
         #                             LoadLibrary an arm64 DLL.
         .\scripts\Test-ReleaseNativeDependencies.ps1 -PayloadPath publish-arm64 -RequireAppLocalVCRuntime -RequireInstallerVCRedist -InstallerVCRedistPath vc_redist.arm64.exe -SkipNativeLoadProbe
         # Build installer
-        & "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" /DMyAppVersion=${{ needs.test.outputs.majorMinorPatch }} /DMyAppArch=arm64 /Dpublish=publish-arm64 /DvcRedist=vc_redist.arm64.exe installer.iss
+        & "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" /DMyAppVersion=${{ needs.test.outputs.semVer }} /DMyAppArch=arm64 /Dpublish=publish-arm64 /DvcRedist=vc_redist.arm64.exe installer.iss
 
     - name: Sign Installers
       uses: azure/artifact-signing-action@v2
@@ -799,6 +833,17 @@ jobs:
         timestamp-rfc3161: http://timestamp.acs.microsoft.com
         timestamp-digest: SHA256
 
+    - name: Revalidate stable correction release ordering
+      if: needs.test.outputs.isStableCorrection == 'true'
+      shell: pwsh
+      env:
+        GH_TOKEN: ${{ github.token }}
+        RELEASE_TAG: ${{ github.ref_name }}
+      run: >
+        .\scripts\Test-OpenClawStableCorrectionRelease.ps1
+        -Tag $env:RELEASE_TAG
+        -GitHubToken $env:GH_TOKEN
+
     - name: Create Release
       uses: softprops/action-gh-release@v3
       with:
@@ -808,8 +853,8 @@ jobs:
           Output/OpenClawCompanion-Setup-arm64.exe
           OpenClawTray-${{ needs.test.outputs.semVer }}-win-x64.zip
           OpenClawTray-${{ needs.test.outputs.semVer }}-win-arm64.zip
-        prerelease: ${{ contains(github.ref_name, '-') }}
-        make_latest: ${{ contains(github.ref_name, '-') && 'false' || 'true' }}
+        prerelease: ${{ needs.test.outputs.isPrerelease }}
+        make_latest: ${{ needs.test.outputs.isPrerelease == 'true' && 'false' || 'true' }}
         body: |
           ## OpenClaw Windows Hub ${{ github.ref_name }}
 

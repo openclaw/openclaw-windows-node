@@ -104,6 +104,8 @@ internal sealed class UpdateCoordinator(
                 CheckedAt = DateTime.UtcNow
             };
             var updateFound = await updater.CheckForUpdatesAsync();
+            if (!updateFound)
+                updateFound = TryActivateStableReleaseFallback();
 
             if (!updateFound)
             {
@@ -312,6 +314,30 @@ internal sealed class UpdateCoordinator(
             Interlocked.Exchange(ref _updateInstallInProgress, 0);
         }
 #endif
+    }
+
+    private bool TryActivateStableReleaseFallback()
+    {
+        foreach (var release in updater.Releases)
+        {
+            if (release.Draft ||
+                release.Prerelease ||
+                release.PublishedAt is null ||
+                !OpenClawReleaseVersion.IsNewerStableRelease(
+                    release.TagName,
+                    AppVersionInfo.Version) ||
+                updater.GetCompatibleReleaseAsset(release) is null)
+            {
+                continue;
+            }
+
+            updater.ForceTriggerUpdateFromRelease(release);
+            Logger.Info(
+                $"Using OpenClaw stable correction ordering for update {release.TagName}");
+            return true;
+        }
+
+        return false;
     }
 
     // Re-entrancy guard: the button/menu/deep-link are all fire-and-forget
