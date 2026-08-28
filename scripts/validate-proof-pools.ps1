@@ -116,6 +116,115 @@ function Resolve-RepositoryFile {
     return $candidate
 }
 
+function Test-SafeRepositoryCommandElement {
+    param(
+        [Parameter(Mandatory = $true)]
+        [System.Management.Automation.Language.CommandElementAst]$Element
+    )
+
+    if ($Element -is [System.Management.Automation.Language.CommandParameterAst]) {
+        if ($null -eq $Element.Argument) {
+            return $true
+        }
+        return Test-SafeRepositoryCommandElement -Element $Element.Argument
+    }
+    if ($Element -is [System.Management.Automation.Language.StringConstantExpressionAst] -or
+        $Element -is [System.Management.Automation.Language.ConstantExpressionAst]) {
+        return $true
+    }
+    if ($Element -is [System.Management.Automation.Language.ExpandableStringExpressionAst]) {
+        return @($Element.NestedExpressions).Count -eq 0
+    }
+    if ($Element -is [System.Management.Automation.Language.VariableExpressionAst]) {
+        return $Element.VariablePath.UserPath.StartsWith(
+            "env:",
+            [System.StringComparison]::OrdinalIgnoreCase)
+    }
+    return $false
+}
+
+function Test-DirectRepositoryScriptCommand {
+    param(
+        [Parameter(Mandatory = $true)][string]$CommandText,
+        [Parameter(Mandatory = $true)][string]$ExpectedPath
+    )
+
+    $tokens = $null
+    $parseErrors = $null
+    $scriptAst = [System.Management.Automation.Language.Parser]::ParseInput(
+        $CommandText,
+        [ref]$tokens,
+        [ref]$parseErrors)
+    if (@($parseErrors).Count -ne 0) {
+        return $false
+    }
+
+    $requirementsProperty = $scriptAst.PSObject.Properties["ScriptRequirements"]
+    if ($null -ne $requirementsProperty -and
+        $null -ne $requirementsProperty.Value) {
+        return $false
+    }
+    if ($null -ne $scriptAst.ParamBlock -or
+        $null -ne $scriptAst.DynamicParamBlock -or
+        $null -ne $scriptAst.BeginBlock -or
+        $null -ne $scriptAst.ProcessBlock -or
+        @($scriptAst.UsingStatements).Count -ne 0 -or
+        $null -ne $scriptAst.EndBlock.Traps) {
+        return $false
+    }
+    $cleanBlockProperty = $scriptAst.PSObject.Properties["CleanBlock"]
+    if ($null -ne $cleanBlockProperty -and
+        $null -ne $cleanBlockProperty.Value) {
+        return $false
+    }
+
+    $statements = @($scriptAst.EndBlock.Statements)
+    if ($statements.Count -ne 1 -or
+        $statements[0] -isnot [System.Management.Automation.Language.PipelineAst]) {
+        return $false
+    }
+
+    $pipeline = $statements[0]
+    $backgroundProperty = $pipeline.PSObject.Properties["Background"]
+    if ($null -ne $backgroundProperty -and
+        [bool]$backgroundProperty.Value) {
+        return $false
+    }
+
+    $pipelineElements = @($pipeline.PipelineElements)
+    if ($pipelineElements.Count -ne 1 -or
+        $pipelineElements[0] -isnot [System.Management.Automation.Language.CommandAst]) {
+        return $false
+    }
+
+    $directCommand = $pipelineElements[0]
+    if ($directCommand.InvocationOperator -ne
+        [System.Management.Automation.Language.TokenKind]::Unknown) {
+        return $false
+    }
+    if (@($directCommand.Redirections).Count -ne 0) {
+        return $false
+    }
+
+    $commandElements = @($directCommand.CommandElements)
+    if ($commandElements.Count -eq 0) {
+        return $false
+    }
+
+    if (-not [string]::Equals(
+            $commandElements[0].Extent.Text,
+            $ExpectedPath,
+            [System.StringComparison]::OrdinalIgnoreCase)) {
+        return $false
+    }
+    foreach ($commandElement in $commandElements | Select-Object -Skip 1) {
+        if (-not (Test-SafeRepositoryCommandElement -Element $commandElement)) {
+            return $false
+        }
+    }
+    return $true
+}
+
 function Resolve-LocalSchemaReference {
     param(
         [Parameter(Mandatory = $true)][string]$Reference,
@@ -452,12 +561,9 @@ foreach ($pool in $inventory.pools) {
             $expectedRepositoryPath = ".\" + $commandPath
             $isDirectScriptCommand =
                 $commandPath.EndsWith(".ps1", [System.StringComparison]::OrdinalIgnoreCase) -and
-                ($normalizedCommand.Equals(
-                    $expectedRepositoryPath,
-                    [System.StringComparison]::OrdinalIgnoreCase) -or
-                    $normalizedCommand.StartsWith(
-                        $expectedRepositoryPath + " ",
-                        [System.StringComparison]::OrdinalIgnoreCase))
+                (Test-DirectRepositoryScriptCommand `
+                    -CommandText ([string]$command.command) `
+                    -ExpectedPath $expectedRepositoryPath)
             $safeProjectBuildPattern =
                 "^dotnet(?:\.exe)?\s+build\s+" +
                 [regex]::Escape($expectedRepositoryPath) +

@@ -238,29 +238,113 @@ try {
             -ExpectedMessage "must use kind 'proof-test'"
     }
 
-    $inventory = Get-Content -LiteralPath $inventoryPath -Raw | ConvertFrom-Json
-    $inventory.pools[1].authoritativeCommands[0].command =
-        ".\scripts\validate-mxc-e2e.ps1; dotnet test .\tests\Example.Tests.csproj"
-    $chainedTestRunnerPath = Join-Path $tempRoot "chained-test-runner.json"
-    Write-JsonFile -Value $inventory -Path $chainedTestRunnerPath
-    Assert-RejectedByAllModes `
-        -Name "test runner chained after repository script" `
-        -TestInventoryPath $chainedTestRunnerPath `
-        -TestSchemaPath $schemaPath `
-        -ExpectedMessage "must use kind 'proof-test'"
+    $repositoryScriptBypasses = @(
+        @{
+            Name = "semicolon after repository script"
+            Command = ".\scripts\validate-mxc-e2e.ps1 -AllowSkip; Get-Date"
+            ExpectedMessage = "must directly invoke its declared script"
+        },
+        @{
+            Name = "pipeline after repository script"
+            Command = ".\scripts\validate-mxc-e2e.ps1 -AllowSkip | Out-Null"
+            ExpectedMessage = "must directly invoke its declared script"
+        },
+        @{
+            Name = "and-chain after repository script"
+            Command = ".\scripts\validate-mxc-e2e.ps1 -AllowSkip && Get-Date"
+            ExpectedMessage = "must directly invoke its declared script"
+        },
+        @{
+            Name = "or-chain after repository script"
+            Command = ".\scripts\validate-mxc-e2e.ps1 -AllowSkip || Get-Date"
+            ExpectedMessage = "must directly invoke its declared script"
+        },
+        @{
+            Name = "newline after repository script"
+            Command = ".\scripts\validate-mxc-e2e.ps1 -AllowSkip`r`nGet-Date"
+            ExpectedMessage = "must directly invoke its declared script"
+        },
+        @{
+            Name = "background repository script"
+            Command = ".\scripts\validate-mxc-e2e.ps1 -AllowSkip &"
+            ExpectedMessage = "must directly invoke its declared script"
+        },
+        @{
+            Name = "dot-sourced repository script"
+            Command = ". .\scripts\validate-mxc-e2e.ps1 -AllowSkip"
+            ExpectedMessage = "must directly invoke its declared script"
+        },
+        @{
+            Name = "call-operator repository script"
+            Command = "& .\scripts\validate-mxc-e2e.ps1 -AllowSkip"
+            ExpectedMessage = "must directly invoke its declared script"
+        },
+        @{
+            Name = "trap before repository script"
+            Command = "trap { continue }; .\scripts\validate-mxc-e2e.ps1 -AllowSkip"
+            ExpectedMessage = "must directly invoke its declared script"
+        },
+        @{
+            Name = "param block before repository script"
+            Command = "param(`$value = `$(Get-Date))`r`n.\scripts\validate-mxc-e2e.ps1 -AllowSkip"
+            ExpectedMessage = "must directly invoke its declared script"
+        },
+        @{
+            Name = "using statement before repository script"
+            Command = "using module Microsoft.PowerShell.Management`r`n.\scripts\validate-mxc-e2e.ps1 -AllowSkip"
+            ExpectedMessage = "must directly invoke its declared script"
+        },
+        @{
+            Name = "requires directive before repository script"
+            Command = "#Requires -Version 999`r`n.\scripts\validate-mxc-e2e.ps1 -AllowSkip"
+            ExpectedMessage = "must directly invoke its declared script"
+        },
+        @{
+            Name = "subexpression repository argument"
+            Command = ".\scripts\validate-mxc-e2e.ps1 -Label `$(Get-Date)"
+            ExpectedMessage = "must directly invoke its declared script"
+        },
+        @{
+            Name = "parenthesized repository argument"
+            Command = ".\scripts\validate-mxc-e2e.ps1 -Label (Get-Date)"
+            ExpectedMessage = "must directly invoke its declared script"
+        },
+        @{
+            Name = "array repository argument"
+            Command = ".\scripts\validate-mxc-e2e.ps1 -Label `@(Get-Date)"
+            ExpectedMessage = "must directly invoke its declared script"
+        },
+        @{
+            Name = "expandable repository argument"
+            Command = '.\scripts\validate-mxc-e2e.ps1 -Label "$(Get-Date)"'
+            ExpectedMessage = "must directly invoke its declared script"
+        },
+        @{
+            Name = "test runner chained after repository script"
+            Command = ".\scripts\validate-mxc-e2e.ps1; dotnet test .\tests\Example.Tests.csproj"
+            ExpectedMessage = "must use kind 'proof-test'"
+        },
+        @{
+            Name = "MSBuild runner chained after repository script"
+            Command = ".\scripts\validate-mxc-e2e.ps1 && msbuild .\tests\Example.Tests.csproj -t:Restore;VSTest"
+            ExpectedMessage = "must use kind 'proof-test'"
+        }
+    )
+    for ($index = 0; $index -lt $repositoryScriptBypasses.Count; $index++) {
+        $inventory = Get-Content -LiteralPath $inventoryPath -Raw | ConvertFrom-Json
+        $inventory.pools[1].authoritativeCommands[0].command =
+            $repositoryScriptBypasses[$index].Command
+        $repositoryScriptBypassPath =
+            Join-Path $tempRoot "repository-script-bypass-$index.json"
+        Write-JsonFile -Value $inventory -Path $repositoryScriptBypassPath
+        Assert-RejectedByAllModes `
+            -Name $repositoryScriptBypasses[$index].Name `
+            -TestInventoryPath $repositoryScriptBypassPath `
+            -TestSchemaPath $schemaPath `
+            -ExpectedMessage $repositoryScriptBypasses[$index].ExpectedMessage
+    }
 
-    $inventory = Get-Content -LiteralPath $inventoryPath -Raw | ConvertFrom-Json
-    $inventory.pools[1].authoritativeCommands[0].command =
-        ".\scripts\validate-mxc-e2e.ps1 && msbuild .\tests\Example.Tests.csproj -t:Restore;VSTest"
-    $chainedMsBuildPath = Join-Path $tempRoot "chained-msbuild-runner.json"
-    Write-JsonFile -Value $inventory -Path $chainedMsBuildPath
-    Assert-RejectedByAllModes `
-        -Name "MSBuild runner chained after repository script" `
-        -TestInventoryPath $chainedMsBuildPath `
-        -TestSchemaPath $schemaPath `
-        -ExpectedMessage "must use kind 'proof-test'"
-
-    $nonTestVstestCommands = @(
+    $acceptedRepositoryCommands = @(
         @{
             Command = "dotnet build .\src\OpenClaw.Shared\OpenClaw.Shared.csproj -o .\artifacts\vstest"
             Path = "src\OpenClaw.Shared\OpenClaw.Shared.csproj"
@@ -268,19 +352,24 @@ try {
         @{
             Command = ".\scripts\validate-docs.ps1 -OutputDirectory '.\artifacts\vstest'"
             Path = "scripts\validate-docs.ps1"
+        },
+        @{
+            Command = ".\scripts\validate-mxc-e2e.ps1 -Label 'semicolon; pipe | and && or || newline-safe'"
+            Path = "scripts\validate-mxc-e2e.ps1"
         }
     )
-    for ($index = 0; $index -lt $nonTestVstestCommands.Count; $index++) {
+    for ($index = 0; $index -lt $acceptedRepositoryCommands.Count; $index++) {
         $inventory = Get-Content -LiteralPath $inventoryPath -Raw | ConvertFrom-Json
         $inventory.pools[1].authoritativeCommands[0].command =
-            $nonTestVstestCommands[$index].Command
+            $acceptedRepositoryCommands[$index].Command
         $inventory.pools[1].authoritativeCommands[0].path =
-            $nonTestVstestCommands[$index].Path
-        $nonTestVstestPath = Join-Path $tempRoot "non-test-vstest-$index.json"
-        Write-JsonFile -Value $inventory -Path $nonTestVstestPath
+            $acceptedRepositoryCommands[$index].Path
+        $acceptedRepositoryCommandPath =
+            Join-Path $tempRoot "accepted-repository-command-$index.json"
+        Write-JsonFile -Value $inventory -Path $acceptedRepositoryCommandPath
         Assert-AcceptedByAllModes `
-            -Name "non-test VSTest token $index" `
-            -TestInventoryPath $nonTestVstestPath
+            -Name "accepted repository command $index" `
+            -TestInventoryPath $acceptedRepositoryCommandPath
     }
 
     $inventory = Get-Content -LiteralPath $inventoryPath -Raw | ConvertFrom-Json
@@ -324,5 +413,5 @@ try {
     Remove-Item -LiteralPath $tempRoot -Recurse -Force -ErrorAction SilentlyContinue
 }
 
-Write-Host "Proof-pool validator regressions passed: 34 invalid contracts rejected by $($validationModes.Count) validation modes." -ForegroundColor Green
+Write-Host "Proof-pool validator regressions passed: 50 invalid contracts rejected by $($validationModes.Count) validation modes." -ForegroundColor Green
 $global:LASTEXITCODE = 0
