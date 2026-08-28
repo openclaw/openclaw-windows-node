@@ -240,6 +240,10 @@ internal sealed class LocalAiPageViewModel : INavigationAware, IDisposable, INot
         cancellation?.Cancel();
     }
 
+    private const string LocalAiAvailabilityProbeFailureReason =
+        "OpenClaw could not read the NVIDIA GPU, driver, CUDA, or memory information. " +
+        "Check the NVIDIA driver installation and try setup again.";
+
     private async Task RefreshAvailabilityAsync(CancellationTokenSource cancellation)
     {
         // The probe result is applied and the cancellation is released together, inside the
@@ -257,6 +261,20 @@ internal sealed class LocalAiPageViewModel : INavigationAware, IDisposable, INot
             // deprecated, or oversized model) must not report the device itself as unavailable
             // and block retry-setup from switching to a compatible catalog model.
             LocalInferenceEligibilityResult eligibility = LocalInferenceEligibility.Evaluate(hardware);
+            if (eligibility.FailureCode == LocalInferenceEligibilityFailureCode.HardwareFactsIncomplete)
+            {
+                // Incomplete facts (a driver/NVML read that came back partial or transient) are
+                // inconclusive, not a definitive "this device cannot run Local AI". Report it the
+                // same way as a thrown probe failure below so recheck stays available instead of
+                // permanently disabling Local AI on this device.
+                ApplyOnUiThread(() => ApplyAvailabilityResult(
+                    cancellation,
+                    isAvailabilityKnown: false,
+                    isLocalAiAvailable: false,
+                    hasAvailabilityProbeError: true,
+                    LocalAiAvailabilityProbeFailureReason));
+                return;
+            }
             bool isAvailable = eligibility.CanInstall;
             string? unavailableReason = isAvailable
                 ? null
@@ -277,15 +295,12 @@ internal sealed class LocalAiPageViewModel : INavigationAware, IDisposable, INot
         catch (Exception ex)
         {
             Debug.WriteLine($"Local AI availability probe failed: {ex}");
-            const string unavailableReason =
-                "OpenClaw could not read the NVIDIA GPU, driver, CUDA, or memory information. " +
-                "Check the NVIDIA driver installation and try setup again.";
             ApplyOnUiThread(() => ApplyAvailabilityResult(
                 cancellation,
                 isAvailabilityKnown: false,
                 isLocalAiAvailable: false,
                 hasAvailabilityProbeError: true,
-                unavailableReason));
+                LocalAiAvailabilityProbeFailureReason));
         }
     }
 

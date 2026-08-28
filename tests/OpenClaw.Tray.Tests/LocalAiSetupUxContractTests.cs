@@ -87,6 +87,12 @@ public sealed class LocalAiSetupUxContractTests
             "WslGlobalConfigStatus networkingStatus = forceNetworkingConsent",
             "if (!CanApplyLocalAiAvailability(checking.Generation, setupWindow))",
             "_localAiNetworkingStatus = networkingStatus;");
+        AssertInOrder(
+            source,
+            "eligibility = LocalInferenceEligibility.Evaluate(",
+            "if (eligibility.FailureCode == LocalInferenceEligibilityFailureCode.HardwareFactsIncomplete)",
+            "TryApplyProbeFailure(",
+            "ShowLocalAiProbeUnknown(incompleteSnapshot);");
         Assert.Contains("LocalAiOptionContent.IsHitTestVisible = isAvailable", source);
         Assert.Contains("LocalAiOptionContent.Opacity = isAvailable ? 1 : 0.55", source);
         Assert.Contains("LocalAiToggle.IsEnabled = isAvailable", source);

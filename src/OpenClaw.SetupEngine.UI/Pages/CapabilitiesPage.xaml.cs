@@ -292,6 +292,21 @@ public sealed partial class CapabilitiesPage : Page
             eligibility = LocalInferenceEligibility.Evaluate(
                 _localAiHardware,
                 _config!.LocalAi.SelectedModelId);
+            if (eligibility.FailureCode == LocalInferenceEligibilityFailureCode.HardwareFactsIncomplete)
+            {
+                // Incomplete facts (a partial/transient NVML read) are inconclusive, not a
+                // definitive "this device cannot run Local AI". Report it the same way as a
+                // thrown probe failure so recheck stays available instead of the option being
+                // permanently disabled.
+                if (_localAiAvailability.TryApplyProbeFailure(
+                        checking.Generation,
+                        LocalAiProbeFailureReason,
+                        out var incompleteSnapshot))
+                {
+                    ShowLocalAiProbeUnknown(incompleteSnapshot);
+                }
+                return;
+            }
             _localAiSelectedGpuCapacityBytes = eligibility.DetectedTotalMemoryBytes;
             _localAiRecommendedModelId = LocalModelCatalog.Models
                 .OrderByDescending(model => model.Weights.SizeBytes)
