@@ -545,11 +545,11 @@ public sealed class ReactorChatTimeline : Component<ReactorChatTimelineProps>
             .AutomationName(identity?.DisplayName ?? "Assistant");
     }
 
-    private static Element BuildSafeMarkdown(string? text)
+    internal static Element BuildSafeMarkdown(string? text)
     {
         var options = new MarkdownOptions
         {
-            ParserFlags = MarkdownParserFlags.DialectCommonMark | MarkdownParserFlags.NoHtml,
+            ParserFlags = MarkdownParserFlags.Tables | MarkdownParserFlags.NoHtml,
             Image = (alt, _) => Text(
                     string.IsNullOrWhiteSpace(alt) ? "[Image]" : $"[Image: {alt}]",
                     14,
