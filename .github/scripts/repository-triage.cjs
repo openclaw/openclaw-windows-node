@@ -8,12 +8,30 @@ const ACTIVE_OWNERSHIP_EXPIRY_DAYS = 7;
 const CLEANUP_OPERATION = "remove-expired-active-ownership";
 const TRUSTED_ASSOCIATIONS = new Set(["OWNER", "MEMBER", "COLLABORATOR"]);
 const CLEANUP_EXEMPT_LABELS = new Set([
-  "P0",
+  "p0",
   "clawsweeper:needs-security-review",
   "impact:security",
   "merge-risk: 🚨 security-boundary",
   "no-stale",
   "security",
+]);
+const BOT_LOGINS = new Set([
+  "clawsweeper[bot]",
+  "copilot-swe-agent[bot]",
+  "dependabot[bot]",
+  "github-actions[bot]",
+]);
+const OWNERSHIP_ACTIVITY_EVENTS = new Set([
+  "assigned",
+  "commented",
+  "committed",
+  "head_ref_force_pushed",
+  "head_ref_restored",
+  "ready_for_review",
+  "reopened",
+  "review_requested",
+  "reviewed",
+  "unassigned",
 ]);
 
 function labelsOf(item) {
@@ -43,7 +61,7 @@ function authorType(item) {
     item.author?.__typename === "Bot" ||
     item.user?.type === "Bot" ||
     login.endsWith("[bot]") ||
-    ["dependabot", "github-actions", "copilot"].some((name) => login.includes(name))
+    BOT_LOGINS.has(login)
   ) {
     return "bot";
   }
@@ -112,6 +130,7 @@ function classifyPullRequest(pr) {
 
   if (
     files.length > 0 &&
+    !pr.fileDataIncomplete &&
     files.length === pr.changedFiles &&
     files.every(isDocumentationPath)
   ) {
@@ -174,7 +193,15 @@ function classifyIssue(issue) {
 function summarizeChecks(pr) {
   const rollup = pr.statusCheckRollup;
   if (!rollup) {
-    return { state: "NONE", passed: 0, failed: 0, pending: 0, skipped: 0 };
+    const emptySummary = {
+      state: "NONE",
+      passed: 0,
+      failed: 0,
+      pending: 0,
+      skipped: 0,
+    };
+    if (pr.checkDataIncomplete) emptySummary.incomplete = true;
+    return emptySummary;
   }
 
   const summary = {
@@ -184,9 +211,11 @@ function summarizeChecks(pr) {
     pending: 0,
     skipped: 0,
   };
+  if (pr.checkDataIncomplete) summary.incomplete = true;
   const contexts = rollup.contexts?.nodes ?? [];
 
   for (const context of contexts) {
+    if (!context) continue;
     if (context.__typename === "StatusContext") {
       if (context.state === "SUCCESS") summary.passed += 1;
       else if (["FAILURE", "ERROR"].includes(context.state)) summary.failed += 1;
@@ -225,8 +254,20 @@ function proofLabels(pr) {
 }
 
 function extractReferencedIssueNumbers(body, repository) {
-  const text = String(body ?? "");
   const escapedRepository = repository.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const text = String(body ?? "")
+    .replace(/```[\s\S]*?```/g, "")
+    .replace(/`[^`\r\n]*`/g, "")
+    .split(/\r?\n/)
+    .filter((line) => !/^\s*>/.test(line) && !/^( {4}|\t)/.test(line))
+    .join("\n")
+    .replace(
+      new RegExp(
+        `\\b(?:not\\s+related\\s+to|unrelated\\s+to)\\s*:?[ \\t]*(?:#\\d+|${escapedRepository}#\\d+)`,
+        "gi",
+      ),
+      "",
+    );
   const patterns = [
     /\b(?:close[sd]?|fix(?:e[sd])?|resolve[sd]?|related(?:\s+to)?)\s*:?\s*#(\d+)/gi,
     new RegExp(
@@ -253,30 +294,34 @@ function eventActor(event) {
   return event.actor ?? event.user ?? event.author ?? null;
 }
 
-function isTrustedHumanActivity(event) {
-  const eventName = String(event.event ?? "").toLowerCase();
-  if (
-    [
-      "assigned",
-      "committed",
-      "head_ref_force_pushed",
-      "head_ref_restored",
-      "ready_for_review",
-      "unassigned",
-    ].includes(eventName)
-  ) {
-    return true;
-  }
-
+function isAutomationEvent(event) {
   const actor = eventActor(event);
-  if (!actor || actor.type === "Bot" || String(actor.login ?? "").endsWith("[bot]")) {
-    return false;
-  }
-
-  return (
-    ["commented", "reviewed"].includes(eventName) &&
-    TRUSTED_ASSOCIATIONS.has(event.author_association)
+  const login = String(actor?.login ?? "").toLowerCase();
+  return Boolean(
+    event.performed_via_github_app ||
+      actor?.type === "Bot" ||
+      actor?.__typename === "Bot" ||
+      login.endsWith("[bot]") ||
+      BOT_LOGINS.has(login),
   );
+}
+
+function ownershipActivityTrust(event) {
+  const eventName = String(event.event ?? "").toLowerCase();
+  if (!OWNERSHIP_ACTIVITY_EVENTS.has(eventName)) {
+    return "irrelevant";
+  }
+  if (isAutomationEvent(event)) {
+    return "untrusted";
+  }
+  const actor = eventActor(event);
+  if (!actor) {
+    return "unknown";
+  }
+  if (TRUSTED_ASSOCIATIONS.has(event.author_association)) {
+    return "trusted";
+  }
+  return event.author_association ? "untrusted" : "unknown";
 }
 
 function evaluateActiveOwnership(item, timeline, now = new Date()) {
@@ -317,14 +362,19 @@ function evaluateActiveOwnership(item, timeline, now = new Date()) {
   const appliedAt = new Date(eventDate(applied));
   const activities = timeline
     .map((event, index) => ({ event, index }))
-    .filter(({ event, index }) => {
+    .map(({ event, index }) => {
       const timestamp = Date.parse(eventDate(event) ?? "");
       const occurredAfterLabel = Number.isFinite(timestamp)
         ? timestamp > appliedAt.getTime()
         : event.event === "committed" && index > appliedIndex;
-      return occurredAfterLabel && isTrustedHumanActivity(event);
-    });
-  const latestDatedActivity = activities
+      return {
+        event,
+        trust: occurredAfterLabel ? ownershipActivityTrust(event) : "irrelevant",
+      };
+    })
+    .filter(({ trust }) => trust !== "irrelevant");
+  const trustedActivities = activities.filter(({ trust }) => trust === "trusted");
+  const latestDatedActivity = trustedActivities
     .map(({ event }) => eventDate(event))
     .filter(Boolean)
     .map((timestamp) => new Date(timestamp))
@@ -348,22 +398,25 @@ function evaluateActiveOwnership(item, timeline, now = new Date()) {
     };
   }
 
-  const undatedActivity = activities.find(({ event }) => !eventDate(event))?.event;
+  const undatedActivity = trustedActivities.find(({ event }) => !eventDate(event))?.event;
+  const unknownActivity = activities.find(({ trust }) => trust === "unknown")?.event;
 
   const blockers = [];
   if (assignees.length > 0) blockers.push("item still has an assignee");
   if (undatedActivity) {
     blockers.push("trusted activity has no server timestamp");
   }
-  if (
-    eventActor(applied)?.type === "Bot" ||
-    String(eventActor(applied)?.login ?? "").endsWith("[bot]")
-  ) {
+  if (unknownActivity) {
+    blockers.push("ownership activity provenance is unavailable");
+  }
+  if (isAutomationEvent(applied)) {
     blockers.push("label was applied by a bot");
   }
   if (!eventActor(applied)?.login) blockers.push("label actor is unavailable");
   for (const label of labels) {
-    if (CLEANUP_EXEMPT_LABELS.has(label)) blockers.push(`exempt label '${label}' is present`);
+    if (CLEANUP_EXEMPT_LABELS.has(label.toLowerCase())) {
+      blockers.push(`exempt label '${label}' is present`);
+    }
   }
 
   return {
@@ -377,11 +430,14 @@ function evaluateActiveOwnership(item, timeline, now = new Date()) {
   };
 }
 
-function staleBaseState(pr, defaultBranchName) {
+function staleBaseState(pr, defaultBranchName, defaultBranchOid) {
   if (pr.baseRefName !== defaultBranchName) {
     return "n/a";
   }
-  if (pr.mergeStateStatus === "BEHIND") {
+  if (
+    pr.mergeStateStatus === "BEHIND" ||
+    (pr.baseRefOid && defaultBranchOid && pr.baseRefOid !== defaultBranchOid)
+  ) {
     return "yes";
   }
   if (["DIRTY", "UNKNOWN", null, undefined].includes(pr.mergeStateStatus)) {
@@ -428,7 +484,7 @@ function renderReport(data, options = {}) {
       ? `${ownership.owner}${ownership.expired ? `; expired; ${ownership.reason}` : ""}`
       : ownership.owner;
     lines.push(
-      `| [#${pr.number}](${pr.url}) ${escapeMarkdownCell(pr.title)} | ${pr.mergeable ?? "UNKNOWN"} | ${staleBaseState(pr, data.defaultBranchName)} | ${checkText} | ${escapeMarkdownCell(proofLabels(pr).join(", ") || "none")} | ${authorType(pr)} | ${classifyPullRequest(pr).join(", ")} | ${escapeMarkdownCell(ownerText)} | ${bodyLinks.map((number) => `#${number}`).join(", ") || "none"} |`,
+      `| [#${pr.number}](${pr.url}) ${escapeMarkdownCell(pr.title)} | ${pr.mergeable ?? "UNKNOWN"} | ${staleBaseState(pr, data.defaultBranchName, data.defaultBranchOid)} | ${checkText}${checks.incomplete ? " (partial)" : ""} | ${escapeMarkdownCell(proofLabels(pr).join(", ") || "none")} | ${authorType(pr)} | ${classifyPullRequest(pr).join(", ")} | ${escapeMarkdownCell(ownerText)} | ${bodyLinks.map((number) => `#${number}`).join(", ") || "none"} |`,
     );
   }
 
@@ -471,6 +527,14 @@ function renderReport(data, options = {}) {
     for (const entry of options.audit) {
       lines.push(`- ${entry}`);
     }
+
+  }
+
+  if (data.warnings?.length) {
+    lines.push("", "## Collection warnings", "");
+    for (const warning of data.warnings) {
+      lines.push(`- ${escapeMarkdownCell(warning)}`);
+    }
   }
 
   lines.push(
@@ -486,7 +550,12 @@ function renderReport(data, options = {}) {
   return lines.join("\n");
 }
 
-async function fetchPullRequests(github, owner, repo) {
+function apiFailure(scope, error) {
+  const status = Number.isInteger(error?.status) ? `HTTP ${error.status}` : error?.name ?? "API error";
+  return `${scope}: ${status}; this section is partial and no cleanup decision uses the missing data.`;
+}
+
+async function fetchPullRequests(github, owner, repo, warnings) {
   const query = `
     query($owner: String!, $repo: String!, $cursor: String) {
       repository(owner: $owner, name: $repo) {
@@ -525,37 +594,84 @@ async function fetchPullRequests(github, owner, repo) {
   do {
     const result = await github.graphql(query, { owner, repo, cursor });
     const connection = result.repository.pullRequests;
-    pullRequests.push(...connection.nodes);
+    pullRequests.push(...(connection.nodes ?? []).filter(Boolean));
     cursor = connection.pageInfo.hasNextPage ? connection.pageInfo.endCursor : null;
   } while (cursor);
 
   for (const pr of pullRequests) {
+    pr.files ??= {
+      totalCount: pr.changedFiles ?? 0,
+      pageInfo: { hasNextPage: false, endCursor: null },
+      nodes: [],
+    };
+    pr.files.nodes = (pr.files.nodes ?? []).filter(Boolean);
+    pr.files.pageInfo ??= { hasNextPage: false, endCursor: null };
     if (pr.files.pageInfo.hasNextPage) {
-      pr.files.nodes.push(
-        ...(await fetchRemainingPullRequestFiles(
-          github,
-          owner,
-          repo,
-          pr.number,
-          pr.files.pageInfo.endCursor,
-        )),
-      );
+      try {
+        pr.files.nodes.push(
+          ...(await fetchRemainingPullRequestFiles(
+            github,
+            owner,
+            repo,
+            pr.number,
+            pr.files.pageInfo.endCursor,
+          )),
+        );
+      } catch (error) {
+        pr.fileDataIncomplete = true;
+        warnings.push(apiFailure(`PR #${pr.number} file pagination`, error));
+      }
     }
     const contexts = pr.statusCheckRollup?.contexts;
+    if (contexts) contexts.nodes = (contexts.nodes ?? []).filter(Boolean);
     if (contexts?.pageInfo.hasNextPage) {
-      contexts.nodes.push(
-        ...(await fetchRemainingCheckContexts(
-          github,
-          owner,
-          repo,
-          pr.number,
-          contexts.pageInfo.endCursor,
-        )),
-      );
+      try {
+        contexts.nodes.push(
+          ...(await fetchRemainingCheckContexts(
+            github,
+            owner,
+            repo,
+            pr.number,
+            contexts.pageInfo.endCursor,
+          )),
+        );
+      } catch (error) {
+        pr.checkDataIncomplete = true;
+        warnings.push(apiFailure(`PR #${pr.number} check pagination`, error));
+      }
+    }
+
+    if (
+      ["UNKNOWN", null, undefined].includes(pr.mergeable) ||
+      ["UNKNOWN", null, undefined].includes(pr.mergeStateStatus)
+    ) {
+      try {
+        const refreshed = await fetchMergeState(github, owner, repo, pr.number);
+        pr.mergeable = refreshed.mergeable ?? pr.mergeable;
+        pr.mergeStateStatus = refreshed.mergeStateStatus ?? pr.mergeStateStatus;
+        pr.baseRefOid = refreshed.baseRefOid ?? pr.baseRefOid;
+      } catch (error) {
+        warnings.push(apiFailure(`PR #${pr.number} merge-state refresh`, error));
+      }
     }
   }
 
   return pullRequests;
+}
+
+async function fetchMergeState(github, owner, repo, number) {
+  const query = `
+    query($owner: String!, $repo: String!, $number: Int!) {
+      repository(owner: $owner, name: $repo) {
+        pullRequest(number: $number) {
+          baseRefOid
+          mergeable
+          mergeStateStatus
+        }
+      }
+    }`;
+  const result = await github.graphql(query, { owner, repo, number });
+  return result.repository.pullRequest ?? {};
 }
 
 async function fetchRemainingPullRequestFiles(github, owner, repo, number, initialCursor) {
@@ -575,7 +691,7 @@ async function fetchRemainingPullRequestFiles(github, owner, repo, number, initi
   do {
     const result = await github.graphql(query, { owner, repo, number, cursor });
     const connection = result.repository.pullRequest.files;
-    files.push(...connection.nodes);
+    files.push(...(connection.nodes ?? []).filter(Boolean));
     cursor = connection.pageInfo.hasNextPage ? connection.pageInfo.endCursor : null;
   } while (cursor);
   return files;
@@ -604,7 +720,7 @@ async function fetchRemainingCheckContexts(github, owner, repo, number, initialC
   do {
     const result = await github.graphql(query, { owner, repo, number, cursor });
     const connection = result.repository.pullRequest.statusCheckRollup.contexts;
-    contexts.push(...connection.nodes);
+    contexts.push(...(connection.nodes ?? []).filter(Boolean));
     cursor = connection.pageInfo.hasNextPage ? connection.pageInfo.endCursor : null;
   } while (cursor);
   return contexts;
@@ -621,6 +737,9 @@ async function fetchIssues(github, owner, repo) {
             author { __typename login }
             labels(first: 100) { nodes { name } }
             assignees(first: 20) { nodes { login } }
+            closedByPullRequestsReferences(first: 100) {
+              nodes { number state }
+            }
           }
         }
       }
@@ -631,7 +750,7 @@ async function fetchIssues(github, owner, repo) {
   do {
     const result = await github.graphql(query, { owner, repo, cursor });
     const connection = result.repository.issues;
-    issues.push(...connection.nodes);
+    issues.push(...(connection.nodes ?? []).filter(Boolean));
     cursor = connection.pageInfo.hasNextPage ? connection.pageInfo.endCursor : null;
   } while (cursor);
 
@@ -670,34 +789,50 @@ async function collectRepositoryData({ github, owner, repo }) {
   const metaQuery = `
     query($owner: String!, $repo: String!) {
       repository(owner: $owner, name: $repo) {
-        defaultBranchRef { name }
+        defaultBranchRef {
+          name
+          target { ... on Commit { oid } }
+        }
       }
     }`;
-  const [meta, pullRequests, issues] = await Promise.all([
+  const warnings = [];
+  const [meta, issues] = await Promise.all([
     github.graphql(metaQuery, { owner, repo }),
-    fetchPullRequests(github, owner, repo),
     fetchIssues(github, owner, repo),
   ]);
+  const pullRequests = await fetchPullRequests(github, owner, repo, warnings);
   const openPullRequestNumbers = new Set(pullRequests.map((pr) => pr.number));
   const timelineByNumber = new Map();
-  const linkedPrsByIssue = new Map();
+  const linkedPrsByIssue = new Map(
+    issues.map((issue) => [
+      issue.number,
+      new Set(
+        (issue.closedByPullRequestsReferences?.nodes ?? [])
+          .filter((pr) => pr?.state === "OPEN" && openPullRequestNumbers.has(pr.number))
+          .map((pr) => pr.number),
+      ),
+    ]),
+  );
 
   for (const issue of issues) {
-    const timeline = await fetchTimeline(github, owner, repo, issue.number);
-    timelineByNumber.set(`issue:${issue.number}`, timeline);
-    const linked = new Set(
-      timeline
-        .map((event) =>
-          linkedPullRequestNumber(
-            event,
-            openPullRequestNumbers,
-            `${owner}/${repo}`,
-            issue.number,
-          ),
-        )
-        .filter(Boolean),
-    );
-    linkedPrsByIssue.set(issue.number, linked);
+    if (!labelsOf(issue).includes(ACTIVE_OWNERSHIP_LABEL)) {
+      continue;
+    }
+    try {
+      const timeline = await fetchTimeline(github, owner, repo, issue.number);
+      timelineByNumber.set(`issue:${issue.number}`, timeline);
+      for (const event of timeline) {
+        const linked = linkedPullRequestNumber(
+          event,
+          openPullRequestNumbers,
+          `${owner}/${repo}`,
+          issue.number,
+        );
+        if (linked) linkedPrsByIssue.get(issue.number).add(linked);
+      }
+    } catch (error) {
+      warnings.push(apiFailure(`Issue #${issue.number} ownership timeline`, error));
+    }
   }
 
   for (const pr of pullRequests) {
@@ -707,16 +842,25 @@ async function collectRepositoryData({ github, owner, repo }) {
     }
 
     if (labelsOf(pr).includes(ACTIVE_OWNERSHIP_LABEL)) {
-      timelineByNumber.set(`pr:${pr.number}`, await fetchTimeline(github, owner, repo, pr.number));
+      try {
+        timelineByNumber.set(
+          `pr:${pr.number}`,
+          await fetchTimeline(github, owner, repo, pr.number),
+        );
+      } catch (error) {
+        warnings.push(apiFailure(`PR #${pr.number} ownership timeline`, error));
+      }
     }
   }
 
   return {
     repository: `${owner}/${repo}`,
     defaultBranchName: meta.repository.defaultBranchRef?.name ?? null,
+    defaultBranchOid: meta.repository.defaultBranchRef?.target?.oid ?? null,
     pullRequests,
     issues,
     timelineByNumber,
+    warnings,
     linkedPrsByIssue: new Map(
       [...linkedPrsByIssue].map(([number, linked]) => [
         number,
@@ -726,8 +870,12 @@ async function collectRepositoryData({ github, owner, repo }) {
   };
 }
 
-async function removeExpiredActiveOwnership({ github, owner, repo, data, now }) {
+async function removeExpiredActiveOwnership({ github, owner, repo, data, now, onAudit }) {
   const audit = [];
+  const recordAudit = (entry) => {
+    audit.push(entry);
+    onAudit?.(audit);
+  };
   const candidates = [
     ...data.issues.map((item) => ({ item, kind: "issue" })),
     ...data.pullRequests.map((item) => ({ item, kind: "pr" })),
@@ -737,27 +885,29 @@ async function removeExpiredActiveOwnership({ github, owner, repo, data, now }) 
   });
 
   for (const candidate of candidates) {
-    const currentResponse = await github.rest.issues.get({
-      owner,
-      repo,
-      issue_number: candidate.item.number,
-    });
-    const current = currentResponse.data;
-    const currentLabels = labelsOf(current);
-    if (current.state !== "open" || !currentLabels.includes(ACTIVE_OWNERSHIP_LABEL)) {
-      removeActiveOwnershipLabelLocally(candidate.item);
-      audit.push(`#${candidate.item.number}: skipped because the item closed or the label was already absent.`);
-      continue;
-    }
-
-    const timeline = await fetchTimeline(github, owner, repo, candidate.item.number);
-    const ownership = evaluateActiveOwnership(current, timeline, now);
-    if (!ownership.removable) {
-      audit.push(`#${candidate.item.number}: skipped after fresh re-check (${ownership.reason}).`);
-      continue;
-    }
-
+    let attemptedRemoval = false;
     try {
+      const currentResponse = await github.rest.issues.get({
+        owner,
+        repo,
+        issue_number: candidate.item.number,
+      });
+      const current = currentResponse.data;
+      const currentLabels = labelsOf(current);
+      if (current.state !== "open" || !currentLabels.includes(ACTIVE_OWNERSHIP_LABEL)) {
+        removeActiveOwnershipLabelLocally(candidate.item);
+        recordAudit(`#${candidate.item.number}: skipped because the item closed or the label was already absent.`);
+        continue;
+      }
+
+      const timeline = await fetchTimeline(github, owner, repo, candidate.item.number);
+      const ownership = evaluateActiveOwnership(current, timeline, now);
+      if (!ownership.removable) {
+        recordAudit(`#${candidate.item.number}: skipped after fresh re-check (${ownership.reason}).`);
+        continue;
+      }
+
+      attemptedRemoval = true;
       await github.rest.issues.removeLabel({
         owner,
         repo,
@@ -765,19 +915,21 @@ async function removeExpiredActiveOwnership({ github, owner, repo, data, now }) 
         name: ACTIVE_OWNERSHIP_LABEL,
       });
       removeActiveOwnershipLabelLocally(candidate.item);
-      audit.push(`#${candidate.item.number}: removed \`${ACTIVE_OWNERSHIP_LABEL}\` (${ownership.reason}).`);
+      recordAudit(`#${candidate.item.number}: removed \`${ACTIVE_OWNERSHIP_LABEL}\` (${ownership.reason}).`);
     } catch (error) {
-      if (error.status === 404) {
+      if (attemptedRemoval && error.status === 404) {
         removeActiveOwnershipLabelLocally(candidate.item);
-        audit.push(`#${candidate.item.number}: label was already absent during removal.`);
+        recordAudit(`#${candidate.item.number}: label was already absent during removal.`);
         continue;
       }
-      throw error;
+      recordAudit(
+        `#${candidate.item.number}: skipped because fresh ownership verification failed (${apiFailure("candidate", error)}).`,
+      );
     }
   }
 
   if (candidates.length === 0) {
-    audit.push("No expired active ownership labels passed every removal safeguard.");
+    recordAudit("No expired active ownership labels passed every removal safeguard.");
   }
   return audit;
 }
@@ -798,20 +950,8 @@ function removeActiveOwnershipLabelLocally(item) {
   }
 }
 
-async function run({ github, context, core, outputDir, operation = "report-only", now = new Date() }) {
-  if (!["report-only", CLEANUP_OPERATION].includes(operation)) {
-    throw new Error(`Unsupported triage operation '${operation}'.`);
-  }
-
-  const { owner, repo } = context.repo;
-  const data = await collectRepositoryData({ github, owner, repo });
-  let audit = [];
-  if (operation === CLEANUP_OPERATION) {
-    audit = await removeExpiredActiveOwnership({ github, owner, repo, data, now });
-  }
-
+function writeReportArtifacts({ data, now, operation, audit, outputDir }) {
   const report = renderReport(data, { now, operation, audit });
-  fs.mkdirSync(outputDir, { recursive: true });
   const suffix = operation === CLEANUP_OPERATION ? "cleanup" : "report";
   const markdownPath = path.join(outputDir, `repository-triage-${suffix}.md`);
   const jsonPath = path.join(outputDir, `repository-triage-${suffix}.json`);
@@ -826,7 +966,7 @@ async function run({ github, context, core, outputDir, operation = "report-only"
         pullRequests: data.pullRequests.map((pr) => ({
           number: pr.number,
           mergeable: pr.mergeable,
-          staleBase: staleBaseState(pr, data.defaultBranchName),
+          staleBase: staleBaseState(pr, data.defaultBranchName, data.defaultBranchOid),
           checks: summarizeChecks(pr),
           proofLabels: proofLabels(pr),
           authorType: authorType(pr),
@@ -837,6 +977,7 @@ async function run({ github, context, core, outputDir, operation = "report-only"
           lanes: classifyIssue(issue),
           openPullRequests: data.linkedPrsByIssue.get(issue.number) ?? [],
         })),
+        warnings: data.warnings ?? [],
         audit,
       },
       null,
@@ -844,9 +985,51 @@ async function run({ github, context, core, outputDir, operation = "report-only"
     ),
     "utf8",
   );
-  await core.summary.addRaw(report).write();
-  core.info(`Wrote ${markdownPath} and ${jsonPath}.`);
-  return { report, audit, markdownPath, jsonPath };
+  return { report, markdownPath, jsonPath };
+}
+
+async function run({ github, context, core, outputDir, operation = "report-only", now = new Date() }) {
+  if (!["report-only", CLEANUP_OPERATION].includes(operation)) {
+    throw new Error(`Unsupported triage operation '${operation}'.`);
+  }
+
+  const { owner, repo } = context.repo;
+  const data = await collectRepositoryData({ github, owner, repo });
+  fs.mkdirSync(outputDir, { recursive: true });
+  const auditJournalPath = path.join(outputDir, "repository-triage-cleanup-audit.json");
+  const persistAudit = (entries) => {
+    fs.writeFileSync(auditJournalPath, JSON.stringify(entries, null, 2), "utf8");
+  };
+  let audit = [];
+  let cleanupFailure = null;
+  let artifacts;
+  if (operation === CLEANUP_OPERATION) {
+    try {
+      audit = await removeExpiredActiveOwnership({
+        github,
+        owner,
+        repo,
+        data,
+        now,
+        onAudit: persistAudit,
+      });
+    } catch (error) {
+      cleanupFailure = error;
+      audit.push(`Cleanup stopped after an unexpected error (${apiFailure("cleanup", error)}).`);
+      persistAudit(audit);
+    } finally {
+      artifacts = writeReportArtifacts({ data, now, operation, audit, outputDir });
+    }
+  } else {
+    artifacts = writeReportArtifacts({ data, now, operation, audit, outputDir });
+  }
+
+  await core.summary.addRaw(artifacts.report).write();
+  core.info(`Wrote ${artifacts.markdownPath} and ${artifacts.jsonPath}.`);
+  if (cleanupFailure) {
+    throw cleanupFailure;
+  }
+  return { ...artifacts, audit };
 }
 
 module.exports = {

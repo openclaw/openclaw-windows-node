@@ -87,6 +87,14 @@ test("reports check totals and stale base", () => {
     triage.staleBaseState({ baseRefName: "main", mergeStateStatus: "DIRTY" }, "main"),
     "unknown",
   );
+  assert.equal(
+    triage.staleBaseState(
+      { baseRefName: "main", baseRefOid: "old", mergeStateStatus: "CLEAN" },
+      "main",
+      "current",
+    ),
+    "yes",
+  );
   assert.deepEqual(
     triage.proofLabels({
       labels: labels("proof: sufficient", "status: 📣 needs proof", "P2"),
@@ -106,6 +114,23 @@ test("maps closing keywords, explicit references, and cross-references", () => {
   assert.deepEqual(
     triage.extractReferencedIssueNumbers(body, "openclaw/openclaw-windows-node"),
     [42, 44],
+  );
+  assert.deepEqual(
+    triage.extractReferencedIssueNumbers(
+      [
+        "Fixes #1",
+        "> Fixes #2",
+        "```text",
+        "Fixes #3",
+        "```",
+        "`Fixes #4`",
+        "    Fixes #5",
+        "Not related to #6",
+        "Unrelated to openclaw/openclaw-windows-node#7",
+      ].join("\n"),
+      "openclaw/openclaw-windows-node",
+    ),
+    [1],
   );
   assert.equal(
     triage.linkedPullRequestNumber(
@@ -224,6 +249,7 @@ test("collects every nested file and check page before reporting", async () => {
     author: { __typename: "User", login: "bob" },
     labels: labels(),
     assignees: { nodes: [] },
+    closedByPullRequestsReferences: { nodes: [{ number: 10, state: "OPEN" }, null] },
   };
   const github = {
     graphql: async (query) => {
@@ -279,7 +305,11 @@ test("collects every nested file and check page before reporting", async () => {
           },
         };
       }
-      return { repository: { defaultBranchRef: { name: "main" } } };
+      return {
+        repository: {
+          defaultBranchRef: { name: "main", target: { oid: "current-base" } },
+        },
+      };
     },
     rest: { issues: { listEventsForTimeline: async () => ({ data: [] }) } },
     paginate: async () => [
@@ -314,6 +344,185 @@ test("collects every nested file and check page before reporting", async () => {
     skipped: 0,
   });
   assert.deepEqual(data.linkedPrsByIssue.get(20), [10]);
+  assert.equal(data.defaultBranchOid, "current-base");
+});
+
+test("isolates nullable and failed pull request detail collection", async () => {
+  const pullRequests = [
+    {
+      number: 10,
+      title: "docs: partial files",
+      body: "",
+      baseRefName: "main",
+      baseRefOid: "old",
+      mergeable: "UNKNOWN",
+      mergeStateStatus: "UNKNOWN",
+      changedFiles: 2,
+      author: { __typename: "User", login: "alice" },
+      labels: labels(),
+      assignees: { nodes: [] },
+      files: null,
+      statusCheckRollup: null,
+    },
+    {
+      number: 11,
+      title: "fix: partial pagination",
+      body: "",
+      baseRefName: "main",
+      baseRefOid: "current",
+      mergeable: "MERGEABLE",
+      mergeStateStatus: "CLEAN",
+      changedFiles: 2,
+      author: { __typename: "User", login: "bob" },
+      labels: labels(),
+      assignees: { nodes: [] },
+      files: {
+        pageInfo: { hasNextPage: true, endCursor: "next-file" },
+        nodes: [null, { path: "docs/ONE.md" }],
+      },
+      statusCheckRollup: {
+        state: "PENDING",
+        contexts: {
+          pageInfo: { hasNextPage: true, endCursor: "next-check" },
+          nodes: [null],
+        },
+      },
+    },
+  ];
+  const github = {
+    graphql: async (query, variables) => {
+      if (query.includes("issues(states: OPEN")) {
+        return {
+          repository: {
+            issues: {
+              pageInfo: { hasNextPage: false, endCursor: null },
+              nodes: [],
+            },
+          },
+        };
+      }
+      if (query.includes("pullRequests(states: OPEN")) {
+        return {
+          repository: {
+            pullRequests: {
+              pageInfo: { hasNextPage: false, endCursor: null },
+              nodes: [...pullRequests, null],
+            },
+          },
+        };
+      }
+      if (query.includes("pullRequest(number: $number)") && !query.includes("after:")) {
+        assert.equal(variables.number, 10);
+        return {
+          repository: {
+            pullRequest: {
+              baseRefOid: "old",
+              mergeable: "MERGEABLE",
+              mergeStateStatus: "CLEAN",
+            },
+          },
+        };
+      }
+      if (query.includes("after:")) {
+        const error = new Error("temporary failure");
+        error.status = 502;
+        throw error;
+      }
+      return {
+        repository: {
+          defaultBranchRef: { name: "main", target: { oid: "current" } },
+        },
+      };
+    },
+    rest: { issues: { listEventsForTimeline: async () => ({ data: [] }) } },
+    paginate: async () => [],
+  };
+
+  const data = await triage.collectRepositoryData({
+    github,
+    owner: "openclaw",
+    repo: "openclaw-windows-node",
+  });
+
+  assert.equal(data.pullRequests.length, 2);
+  assert.deepEqual(data.pullRequests[0].files.nodes, []);
+  assert.equal(data.pullRequests[0].mergeable, "MERGEABLE");
+  assert.equal(data.pullRequests[1].fileDataIncomplete, true);
+  assert.equal(data.pullRequests[1].checkDataIncomplete, true);
+  assert.deepEqual(triage.classifyPullRequest(data.pullRequests[1]), ["general"]);
+  assert.equal(triage.summarizeChecks(data.pullRequests[1]).incomplete, true);
+  assert.equal(data.warnings.length, 2);
+  assert.match(data.warnings.join("\n"), /HTTP 502/);
+});
+
+test("isolates active ownership timeline failures and keeps canonical issue ownership", async () => {
+  let timelineCalls = 0;
+  const activeIssue = {
+    number: 20,
+    title: "Active issue",
+    body: "",
+    labels: labels(triage.ACTIVE_OWNERSHIP_LABEL),
+    assignees: { nodes: [] },
+    closedByPullRequestsReferences: {
+      nodes: [{ number: 10, state: "OPEN" }, { number: 9, state: "CLOSED" }],
+    },
+  };
+  const github = {
+    graphql: async (query) => {
+      if (query.includes("issues(states: OPEN")) {
+        return {
+          repository: {
+            issues: {
+              pageInfo: { hasNextPage: false, endCursor: null },
+              nodes: [activeIssue],
+            },
+          },
+        };
+      }
+      if (query.includes("pullRequests(states: OPEN")) {
+        return {
+          repository: {
+            pullRequests: {
+              pageInfo: { hasNextPage: false, endCursor: null },
+              nodes: [
+                {
+                  number: 10,
+                  title: "fix: issue",
+                  body: "",
+                  baseRefName: "main",
+                  mergeable: "MERGEABLE",
+                  mergeStateStatus: "CLEAN",
+                  changedFiles: 1,
+                  labels: labels(),
+                  assignees: { nodes: [] },
+                  files: { pageInfo: { hasNextPage: false }, nodes: [{ path: "src/a.cs" }] },
+                },
+              ],
+            },
+          },
+        };
+      }
+      return { repository: { defaultBranchRef: { name: "main", target: { oid: "base" } } } };
+    },
+    rest: { issues: { listEventsForTimeline: async () => ({ data: [] }) } },
+    paginate: async () => {
+      timelineCalls += 1;
+      const error = new Error("timeline unavailable");
+      error.status = 502;
+      throw error;
+    },
+  };
+
+  const data = await triage.collectRepositoryData({
+    github,
+    owner: "openclaw",
+    repo: "openclaw-windows-node",
+  });
+
+  assert.equal(timelineCalls, 1);
+  assert.deepEqual(data.linkedPrsByIssue.get(20), [10]);
+  assert.equal(data.timelineByNumber.has("issue:20"), false);
+  assert.match(data.warnings[0], /Issue #20 ownership timeline: HTTP 502/);
 });
 
 test("expires active ownership only when every safeguard passes", () => {
@@ -380,7 +589,7 @@ test("expires active ownership only when every safeguard passes", () => {
     now,
   );
   assert.equal(unattributedCommit.removable, false);
-  assert.match(unattributedCommit.reason, /no server timestamp/);
+  assert.match(unattributedCommit.reason, /provenance is unavailable/);
 
   const assigned = triage.evaluateActiveOwnership(
     { ...item, assignees: { nodes: [{ login: "maintainer" }] } },
@@ -399,12 +608,86 @@ test("expires active ownership only when every safeguard passes", () => {
   assert.match(exempt.reason, /no-stale/);
 
   const securityExempt = triage.evaluateActiveOwnership(
-    { ...item, labels: labels(triage.ACTIVE_OWNERSHIP_LABEL, "impact:security") },
+    { ...item, labels: labels(triage.ACTIVE_OWNERSHIP_LABEL, "IMPACT:SECURITY") },
     [applied],
     now,
   );
   assert.equal(securityExempt.removable, false);
-  assert.match(securityExempt.reason, /impact:security/);
+  assert.match(securityExempt.reason, /IMPACT:SECURITY/);
+
+  for (const event of ["review_requested", "reopened"]) {
+    const recentActivity = triage.evaluateActiveOwnership(
+      item,
+      [
+        applied,
+        {
+          event,
+          created_at: "2026-08-25T12:00:00Z",
+          actor: { login: "maintainer", type: "User" },
+          author_association: "MEMBER",
+        },
+      ],
+      now,
+    );
+    assert.equal(recentActivity.removable, false);
+    assert.equal(recentActivity.expired, false);
+  }
+
+  for (const event of ["review_requested", "reopened"]) {
+    const automatedActivity = triage.evaluateActiveOwnership(
+      item,
+      [
+        applied,
+        {
+          event,
+          created_at: "2026-08-25T12:00:00Z",
+          actor: { login: "github-actions[bot]", type: "Bot" },
+        },
+      ],
+      now,
+    );
+    assert.equal(automatedActivity.removable, true);
+    assert.equal(automatedActivity.expired, true);
+  }
+
+  const appApplied = triage.evaluateActiveOwnership(
+    item,
+    [{ ...applied, performed_via_github_app: { id: 123, name: "Automation" } }],
+    now,
+  );
+  assert.equal(appApplied.removable, false);
+  assert.match(appApplied.reason, /applied by a bot/);
+
+  const externalForcePush = triage.evaluateActiveOwnership(
+    item,
+    [
+      applied,
+      {
+        event: "head_ref_force_pushed",
+        created_at: "2026-08-25T12:00:00Z",
+        actor: { login: "external-author", type: "User" },
+        author_association: "CONTRIBUTOR",
+      },
+    ],
+    now,
+  );
+  assert.equal(externalForcePush.removable, true);
+  assert.equal(externalForcePush.expired, true);
+
+  const unknownForcePush = triage.evaluateActiveOwnership(
+    item,
+    [
+      applied,
+      {
+        event: "head_ref_force_pushed",
+        created_at: "2026-08-25T12:00:00Z",
+        actor: { login: "unknown-human", type: "User" },
+      },
+    ],
+    now,
+  );
+  assert.equal(unknownForcePush.removable, false);
+  assert.match(unknownForcePush.reason, /provenance is unavailable/);
 });
 
 test("cleanup removes only the allowlisted label and is idempotent", async () => {
@@ -424,6 +707,7 @@ test("cleanup removes only the allowlisted label and is idempotent", async () =>
     },
   ];
   const removed = [];
+  const auditSnapshots = [];
   const github = {
     rest: {
       issues: {
@@ -446,11 +730,13 @@ test("cleanup removes only the allowlisted label and is idempotent", async () =>
     repo: "openclaw-windows-node",
     data,
     now,
+    onAudit: (entries) => auditSnapshots.push([...entries]),
   });
 
   assert.equal(removed.length, 1);
   assert.equal(removed[0].name, triage.ACTIVE_OWNERSHIP_LABEL);
   assert.match(audit[0], /removed/);
+  assert.match(auditSnapshots.at(-1)[0], /removed/);
   assert.equal(triage.evaluateActiveOwnership(item, timeline, now).present, false);
 
   const secondAudit = await triage.removeExpiredActiveOwnership({
@@ -464,6 +750,119 @@ test("cleanup removes only the allowlisted label and is idempotent", async () =>
   assert.match(secondAudit[0], /No expired active ownership labels/);
 });
 
+test("cleanup skips one failed fresh timeline without aborting other candidates", async () => {
+  const now = new Date("2026-08-27T12:00:00Z");
+  const oldLabel = (number) => ({
+    number,
+    state: "open",
+    labels: labels(triage.ACTIVE_OWNERSHIP_LABEL),
+    assignees: { nodes: [] },
+  });
+  const timeline = (number) => [{
+    event: "labeled",
+    created_at: "2026-08-19T12:00:00Z",
+    label: { name: triage.ACTIVE_OWNERSHIP_LABEL },
+    actor: { login: `maintainer-${number}`, type: "User" },
+  }];
+  const items = [oldLabel(12), oldLabel(13)];
+  const removed = [];
+  const github = {
+    rest: {
+      issues: {
+        get: async ({ issue_number: number }) => ({ data: items.find((item) => item.number === number) }),
+        listEventsForTimeline: async ({ issue_number: number }) => ({ data: timeline(number) }),
+        removeLabel: async ({ issue_number: number }) => removed.push(number),
+      },
+    },
+    paginate: async (method, request) => {
+      if (request.issue_number === 12) {
+        const error = new Error("timeline unavailable");
+        error.status = 502;
+        throw error;
+      }
+      return (await method(request)).data;
+    },
+  };
+  const audit = await triage.removeExpiredActiveOwnership({
+    github,
+    owner: "openclaw",
+    repo: "openclaw-windows-node",
+    data: {
+      issues: items,
+      pullRequests: [],
+      timelineByNumber: new Map([
+        ["issue:12", timeline(12)],
+        ["issue:13", timeline(13)],
+      ]),
+    },
+    now,
+  });
+
+  assert.deepEqual(removed, [13]);
+  assert.match(audit[0], /skipped.*HTTP 502/);
+  assert.match(audit[1], /removed/);
+});
+
+test("cleanup does not treat verification 404 as an absent label", async () => {
+  const now = new Date("2026-08-27T12:00:00Z");
+  const item = {
+    number: 12,
+    state: "open",
+    labels: labels(triage.ACTIVE_OWNERSHIP_LABEL),
+    assignees: { nodes: [] },
+  };
+  const timeline = [{
+    event: "labeled",
+    created_at: "2026-08-19T12:00:00Z",
+    label: { name: triage.ACTIVE_OWNERSHIP_LABEL },
+    actor: { login: "maintainer", type: "User" },
+  }];
+  const github = {
+    rest: {
+      issues: {
+        get: async () => {
+          const error = new Error("not found");
+          error.status = 404;
+          throw error;
+        },
+        listEventsForTimeline: async () => ({ data: timeline }),
+        removeLabel: async () => assert.fail("removeLabel must not run"),
+      },
+    },
+    paginate: async () => timeline,
+  };
+
+  const audit = await triage.removeExpiredActiveOwnership({
+    github,
+    owner: "openclaw",
+    repo: "openclaw-windows-node",
+    data: {
+      issues: [item],
+      pullRequests: [],
+      timelineByNumber: new Map([["issue:12", timeline]]),
+    },
+    now,
+  });
+
+  assert.deepEqual(item.labels, labels(triage.ACTIVE_OWNERSHIP_LABEL));
+  assert.match(audit[0], /skipped.*HTTP 404/);
+  assert.doesNotMatch(audit[0], /already absent/);
+});
+
+function workflowJob(workflow, jobName) {
+  const lines = workflow.split(/\r?\n/);
+  const start = lines.findIndex((line) => line === `  ${jobName}:`);
+  assert.notEqual(start, -1, `missing workflow job ${jobName}`);
+  let end = lines.length;
+  for (let index = start + 1; index < lines.length; index += 1) {
+    if (/^  [A-Za-z0-9_-]+:$/.test(lines[index])) {
+      end = index;
+      break;
+    }
+  }
+  return lines.slice(start, end).join("\n");
+}
+
 test("workflow is report-only by default and cleanup is manually gated", () => {
   const workflow = fs.readFileSync(
     path.join(__dirname, "..", "workflows", "repository-triage.yml"),
@@ -474,13 +873,23 @@ test("workflow is report-only by default and cleanup is manually gated", () => {
     "utf8",
   );
 
-  assert.match(workflow, /schedule:/);
-  assert.match(workflow, /default: report-only/);
-  assert.match(workflow, /operation == 'remove-expired-active-ownership'/);
-  assert.match(workflow, /issues: read/);
-  assert.equal(workflow.match(/statuses: read/g)?.length, 2);
-  assert.match(workflow, /issues: write/);
-  assert.match(workflow, /pull-requests: write/);
+  const reportJob = workflowJob(workflow, "report");
+  const cleanupJob = workflowJob(workflow, "remove-expired-active-ownership");
+  assert.match(workflow, /^  schedule:$/m);
+  assert.match(workflow, /^        default: report-only$/m);
+  assert.match(
+    cleanupJob,
+    /^    if: \$\{\{ github\.event_name == 'workflow_dispatch' && inputs\.operation == 'remove-expired-active-ownership' \}\}$/m,
+  );
+  assert.doesNotMatch(reportJob, /^\s+(issues|pull-requests|contents): write$/m);
+  assert.match(reportJob, /^      issues: read$/m);
+  assert.match(reportJob, /^      pull-requests: read$/m);
+  assert.match(cleanupJob, /^      issues: write$/m);
+  assert.match(cleanupJob, /^      pull-requests: write$/m);
+  assert.match(cleanupJob, /ref: \$\{\{ github\.event\.repository\.default_branch \}\}/);
+  assert.match(cleanupJob, /Run deterministic triage tests before mutation/);
+  assert.match(cleanupJob, /persist-credentials: false/);
+  assert.match(cleanupJob, /^        if: \$\{\{ always\(\) \}\}$/m);
   assert.doesNotMatch(implementation, /\.merge\(/);
   assert.doesNotMatch(implementation, /state:\s*["']closed["']/);
   assert.doesNotMatch(implementation, /addLabels|setLabels/);

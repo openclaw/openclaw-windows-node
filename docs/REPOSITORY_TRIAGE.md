@@ -8,7 +8,8 @@ artifacts. Scheduled runs are report-only.
 
 Pull request rows report:
 
-- mergeability and whether GitHub reports the PR head behind the default branch;
+- mergeability and stale-base state, using both GitHub's merge state and the
+  PR base commit compared with the current default-branch commit;
 - aggregate check state and pass, fail, and pending counts;
 - proof labels, including the contributor-facing needs-proof state;
 - human, bot, or repo-assist authorship;
@@ -21,15 +22,23 @@ Issue rows report:
 
 - stale/no-repro, platform-specific, and release/package lanes;
 - active ownership state;
-- open pull requests found through PR text or GitHub cross-reference timeline
-  events.
+- open pull requests found through current PR text, GitHub closing references,
+  or relevant cross-reference timeline events.
 
 When an issue already has an open linked pull request, the report routes it as
-owned by that PR and warns against starting a duplicate fix. A timeline
-cross-reference counts only when the source is an open pull request in this
-repository and its current body still explicitly references the issue. This
-prevents incidental comments and historical edited-away references from
-claiming ownership.
+owned by that PR and warns against starting a duplicate fix. The workflow uses
+GitHub's canonical closing references and current PR bodies for all issues. It
+fetches timelines only for items carrying the active ownership label, avoiding
+a repository-wide timeline crawl. A timeline cross-reference counts only when
+the source is an open pull request in this repository and its current body
+still explicitly references the issue. This prevents incidental comments and
+historical edited-away references from claiming ownership.
+
+Nested PR file and check pagination, lazy merge-state refreshes, and ownership
+timeline requests are isolated per item. A legal null connection or transient
+API failure marks the affected row partial and adds an auditable collection
+warning instead of suppressing the rest of the report. Missing ownership
+history always blocks cleanup.
 
 ## Active ownership expiry
 
@@ -54,9 +63,14 @@ these safeguards pass:
    label (`security`, `impact:security`, `clawsweeper:needs-security-review`, or
    `merge-risk: 🚨 security-boundary`).
 
-The cleanup job fetches the item and timeline again immediately before
-mutation. A concurrent removal is treated as an idempotent success. Every
-removal or skip is written to the job summary and a 90-day audit artifact.
+The cleanup job checks out the repository default branch, runs the deterministic
+tests, then fetches each candidate item and timeline again immediately before
+mutation. One candidate's API failure is recorded as a skip and does not hide
+the other candidates. A concurrent removal is treated as an idempotent success.
+Every removal or skip is journaled incrementally, then written to the job
+summary and a 90-day audit artifact. The artifact upload runs even when the
+cleanup step fails after a mutation, and unexpected failures are rethrown only
+after the durable report files are written.
 
 ## Security and permissions
 

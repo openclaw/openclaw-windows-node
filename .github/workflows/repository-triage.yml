@@ -32,6 +32,8 @@ jobs:
       statuses: read
     steps:
       - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
 
       - name: Run deterministic triage tests
         run: node --test .github/scripts/repository-triage.test.cjs
@@ -73,6 +75,12 @@ jobs:
       statuses: read
     steps:
       - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          persist-credentials: false
+
+      - name: Run deterministic triage tests before mutation
+        run: node --test .github/scripts/repository-triage.test.cjs
 
       - name: Re-check and remove allowlisted expired labels
         uses: actions/github-script@v9
@@ -91,6 +99,7 @@ jobs:
             });
 
       - name: Upload cleanup audit
+        if: ${{ always() }}
         uses: actions/upload-artifact@v7
         with:
           name: repository-triage-cleanup-audit
