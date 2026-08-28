@@ -285,9 +285,10 @@ public sealed partial class CapabilitiesPage : Page
         LocalInferenceEligibilityResult? eligibility = null;
         try
         {
-            _localAiHardware = await hardwareTask;
+            HostHardwareInfo hardware = await hardwareTask;
             if (!CanApplyLocalAiAvailability(checking.Generation, setupWindow))
                 return;
+            _localAiHardware = hardware;
             eligibility = LocalInferenceEligibility.Evaluate(
                 _localAiHardware,
                 _config!.LocalAi.SelectedModelId);
@@ -316,11 +317,12 @@ public sealed partial class CapabilitiesPage : Page
         string? wslNetworkingReason = null;
         try
         {
-            _localAiNetworkingStatus = forceNetworkingConsent
+            WslGlobalConfigStatus networkingStatus = forceNetworkingConsent
                 ? new(false, false)
                 : CreateWslGlobalConfigManager().Inspect();
             if (!CanApplyLocalAiAvailability(checking.Generation, setupWindow))
                 return;
+            _localAiNetworkingStatus = networkingStatus;
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or InvalidDataException)
         {
@@ -388,7 +390,7 @@ public sealed partial class CapabilitiesPage : Page
         ApplyLocalAiAvailabilityChrome(snapshot);
         _localAiSelectionEligible = false;
         _suppressLocalAiToggle = true;
-        LocalAiToggle.IsOn = false;
+        LocalAiToggle.IsOn = _config!.LocalAi.Enabled;
         _suppressLocalAiToggle = false;
         LocalAiToggle.Visibility = Visibility.Visible;
         LocalAiDetailsPanel.Visibility = Visibility.Collapsed;
@@ -396,8 +398,6 @@ public sealed partial class CapabilitiesPage : Page
         SetLocalAiOptionAvailability(
             isAvailable: false,
             "OpenClaw is checking Local AI requirements.");
-        _config!.LocalAi.Enabled = false;
-        _config.SkipWizard = _skipWizardWithoutLocalAi;
         ApplySetupReviewSummary(_config);
         UpdatePrimaryButtonState();
     }

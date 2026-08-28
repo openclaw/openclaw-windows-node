@@ -77,6 +77,16 @@ public sealed class LocalAiSetupUxContractTests
         Assert.Contains("LocalAiRecheckAvailability_Click", source);
         Assert.Contains("GetLocalAiHardwareAsync(forceRefresh: refreshHardwareProbe)", source);
         Assert.Contains("CanApplyLocalAiAvailability(checking.Generation, setupWindow)", source);
+        AssertInOrder(
+            source,
+            "HostHardwareInfo hardware = await hardwareTask;",
+            "if (!CanApplyLocalAiAvailability(checking.Generation, setupWindow))",
+            "_localAiHardware = hardware;");
+        AssertInOrder(
+            source,
+            "WslGlobalConfigStatus networkingStatus = forceNetworkingConsent",
+            "if (!CanApplyLocalAiAvailability(checking.Generation, setupWindow))",
+            "_localAiNetworkingStatus = networkingStatus;");
         Assert.Contains("LocalAiOptionContent.IsHitTestVisible = isAvailable", source);
         Assert.Contains("LocalAiOptionContent.Opacity = isAvailable ? 1 : 0.55", source);
         Assert.Contains("LocalAiToggle.IsEnabled = isAvailable", source);
@@ -84,6 +94,11 @@ public sealed class LocalAiSetupUxContractTests
         Assert.Contains("LocalAiNetworkingConsentCheckBox.IsEnabled = isAvailable", source);
         Assert.Contains("SetLocalAiOptionAvailability(isAvailable: false)", source);
         Assert.Contains("SetLocalAiOptionAvailability(isAvailable: true)", source);
+
+        string checkingMethod = ExtractMethod(source, "private void ShowLocalAiAvailabilityChecking");
+        Assert.Contains("LocalAiToggle.IsOn = _config!.LocalAi.Enabled;", checkingMethod);
+        Assert.DoesNotContain("_config!.LocalAi.Enabled = false;", checkingMethod);
+        Assert.DoesNotContain("_config.SkipWizard = _skipWizardWithoutLocalAi;", checkingMethod);
     }
 
     [Fact]
