@@ -121,6 +121,29 @@ function Assert-SupportedSchemaKeywords {
         }
     }
 
+    $reference = Get-JsonProperty -Value $ValueSchema -Name '$ref'
+    if ($null -ne $reference -and
+        @($ValueSchema.PSObject.Properties).Count -ne 1) {
+        throw "Schema `$ref at $SchemaPath cannot have sibling keywords under Draft-07."
+    }
+    $typeProperty = Get-JsonProperty -Value $ValueSchema -Name "type"
+    $typeSpecificKeywords = @(
+        @{ Type = "object"; Keywords = @("additionalProperties", "required", "properties") },
+        @{ Type = "array"; Keywords = @("items", "minItems", "uniqueItems") },
+        @{ Type = "string"; Keywords = @("minLength", "pattern") }
+    )
+    foreach ($requirement in $typeSpecificKeywords) {
+        foreach ($keyword in $requirement.Keywords) {
+            if ($null -eq (Get-JsonProperty -Value $ValueSchema -Name $keyword)) {
+                continue
+            }
+            if ($null -eq $typeProperty -or
+                [string]$typeProperty.Value -cne $requirement.Type) {
+                throw "Schema keyword '$keyword' at $SchemaPath requires explicit type '$($requirement.Type)'."
+            }
+        }
+    }
+
     foreach ($containerName in @("properties", "definitions")) {
         $container = Get-JsonProperty -Value $ValueSchema -Name $containerName
         if ($null -ne $container) {
@@ -350,12 +373,33 @@ foreach ($pool in $inventory.pools) {
     }
 
     foreach ($command in $pool.authoritativeCommands) {
-        if ([string]$command.command -match "(?i)(^|[;&]\s*)dotnet\s+test\b") {
-            throw "Proof test command '$($pool.id)/$($command.id)' must use scripts\run-proof-tests.ps1 so zero tests cannot pass."
+        $normalizedCommand = ([string]$command.command).
+            Replace([string][char]39, "").
+            Replace([string][char]34, "")
+        $proofTestPattern = "^(?:\`$env:OPENCLAW_RUN_E2E = '1'; )?\.\\scripts\\run-proof-tests\.ps1 -Project '[^']+' -Filter '[^']+' -ResultName '[a-z0-9]+(?:-[a-z0-9]+)*'(?: -RuntimeIdentifier (?:win-x64|win-arm64))?$"
+        $commandPathProperty = Get-JsonProperty -Value $command -Name "path"
+        $commandPath = if ($null -eq $commandPathProperty) {
+            ""
+        } else {
+            [string]$commandPathProperty.Value
         }
-        if ($command.kind -eq "repository" -and
+        $invokesProofRunner =
+            $commandPath -ieq "scripts\run-proof-tests.ps1" -or
+            $normalizedCommand -match "(?i)\brun-proof-tests\.ps1\b"
+        if ($command.kind -eq "proof-test" -or $invokesProofRunner) {
+            if ($command.kind -ne "proof-test") {
+                throw "Proof runner command '$($pool.id)/$($command.id)' must use kind 'proof-test'."
+            }
+            if ($commandPath -cne "scripts\run-proof-tests.ps1" -or
+                [string]$command.command -cnotmatch $proofTestPattern) {
+                throw "Proof test command '$($pool.id)/$($command.id)' must use the restricted scripts\run-proof-tests.ps1 contract."
+            }
+        } elseif ($normalizedCommand -match "(?is)\bdotnet(?:\.exe)?\b.*\btest\b") {
+            throw "Command '$($pool.id)/$($command.id)' must use kind 'proof-test' instead of invoking dotnet directly."
+        }
+        if ($command.kind -in @("repository", "proof-test") -and
             -not $command.PSObject.Properties.Name.Contains("path")) {
-            throw "Repository command '$($pool.id)/$($command.id)' must declare path."
+            throw "Repository-backed command '$($pool.id)/$($command.id)' must declare path."
         }
         if ($command.PSObject.Properties.Name.Contains("path")) {
             $entryPoint = [System.IO.Path]::GetFullPath(
@@ -420,4 +464,3 @@ if ($missingDocumentedIds.Count -gt 0 -or $unknownDocumentedIds.Count -gt 0) {
 }
 
 Write-Host "Proof-pool validation passed: $($inventory.pools.Count) named pools checked." -ForegroundColor Green
-exit 0

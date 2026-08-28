@@ -75,7 +75,7 @@ required closeout lane for code changes.
 | Lane | Entry point | Required when |
 |---|---|---|
 | Required closeout | `.\build.ps1`, Shared tests, Tray tests | Every code change and every agent closeout |
-| Proof-pool inventory | `.\scripts\validate-proof-pools.ps1` | Every inventory or proof scheduling change; also runs through the documentation gate |
+| Proof-pool inventory | `.\scripts\validate-proof-pools.ps1`, `.\scripts\test-proof-pool-validator.ps1`, and `.\scripts\test-validate-docs-proof-pool-flow.ps1` | Every inventory or proof scheduling change; the documentation gate runs schema, malformed-contract, and parent-flow regressions |
 | GitHub-hosted PR/main CI | `.github\workflows\ci.yml` | Every pull request and push to `main`; runs normal E2E shards but skips MXC proofs on hosted runners |
 | Accessibility scan | `.\scripts\run-proof-tests.ps1 -Project 'tests\OpenClaw.Tray.UITests\OpenClaw.Tray.UITests.csproj' -Filter 'Category=Accessibility' -ResultName 'winui-accessibility' -RuntimeIdentifier win-x64` | UI changes and CI quality gate; runs real-process Axe.Windows scans; see `docs\ACCESSIBILITY.md` |
 | Local E2E | `OPENCLAW_RUN_E2E=1` with `OpenClaw.E2ETests` | Gateway setup/connect, recovery, or pairing changes that need real WSL Gateway coverage |

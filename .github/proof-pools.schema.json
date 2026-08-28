@@ -106,6 +106,7 @@
         "kind": {
           "enum": [
             "repository",
+            "proof-test",
             "host",
             "manual"
           ]

@@ -62,10 +62,13 @@ The inventory's `neverCollect` list is a hard boundary, not a suggestion.
 The existing documentation gate validates both JSON files, unique command IDs,
 repository entry points, the PR template heading, and exact inventory-to-table
 ID parity. It runs the built-in schema engine and the PowerShell 5.1-compatible
-fallback so either path fails closed on drift:
+fallback so either path fails closed on drift. Regression cases also reject
+type-less assertion schemas and raw `dotnet test` hidden inside wrappers:
 
 ```powershell
 .\scripts\validate-proof-pools.ps1
+.\scripts\test-proof-pool-validator.ps1
+.\scripts\test-validate-docs-proof-pool-flow.ps1
 .\scripts\validate-docs.ps1
 ```
 

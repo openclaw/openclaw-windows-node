@@ -10,23 +10,29 @@
 #>
 
 param(
-    [string]$RepoRoot = (Split-Path -Parent $PSScriptRoot)
+    [string]$RepoRoot,
+    [switch]$SkipProofPoolFlowRegression
 )
 
 $ErrorActionPreference = "Stop"
+$scriptRoot = Split-Path -Parent $MyInvocation.MyCommand.Path
+if ([string]::IsNullOrWhiteSpace($RepoRoot)) {
+    $RepoRoot = Split-Path -Parent $scriptRoot
+}
 $repoRootPath = [System.IO.Path]::GetFullPath($RepoRoot)
 $errors = [System.Collections.Generic.List[string]]::new()
 
-& (Join-Path $repoRootPath "scripts\validate-proof-pools.ps1") -RepoRoot $repoRootPath
-if ($LASTEXITCODE -ne 0) {
-    exit $LASTEXITCODE
+if (-not $SkipProofPoolFlowRegression) {
+    & (Join-Path $repoRootPath "scripts\test-validate-docs-proof-pool-flow.ps1") `
+        -RepoRoot $repoRootPath
 }
+
+& (Join-Path $repoRootPath "scripts\validate-proof-pools.ps1") -RepoRoot $repoRootPath
 & (Join-Path $repoRootPath "scripts\validate-proof-pools.ps1") `
     -RepoRoot $repoRootPath `
     -ForceFallback
-if ($LASTEXITCODE -ne 0) {
-    exit $LASTEXITCODE
-}
+& (Join-Path $repoRootPath "scripts\test-proof-pool-validator.ps1") `
+    -RepoRoot $repoRootPath
 
 function Add-ValidationError([string]$message) {
     $script:errors.Add($message)

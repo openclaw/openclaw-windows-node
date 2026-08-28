@@ -220,7 +220,7 @@
         },
         {
           "id": "run-local-ai-gpu-tests",
-          "kind": "repository",
+          "kind": "proof-test",
           "path": "scripts\\run-proof-tests.ps1",
           "command": ".\\scripts\\run-proof-tests.ps1 -Project 'tests\\OpenClaw.SetupEngine.Tests\\OpenClaw.SetupEngine.Tests.csproj' -Filter 'FullyQualifiedName~LocalAiGpu' -ResultName 'local-ai-gpu'",
           "purpose": "Run focused local AI GPU setup and restart policy tests before hardware proof.",
@@ -289,7 +289,7 @@
         },
         {
           "id": "run-installer-source-assertions",
-          "kind": "repository",
+          "kind": "proof-test",
           "path": "scripts\\run-proof-tests.ps1",
           "command": ".\\scripts\\run-proof-tests.ps1 -Project 'tests\\OpenClaw.Tray.Tests\\OpenClaw.Tray.Tests.csproj' -Filter 'FullyQualifiedName~InstallerIssAssertionTests' -ResultName 'installer-source'",
           "purpose": "Run current installer source, payload, cleanup, identity, and protocol assertions.",
@@ -359,7 +359,7 @@
       "authoritativeCommands": [
         {
           "id": "run-gateway-product-path",
-          "kind": "repository",
+          "kind": "proof-test",
           "path": "scripts\\run-proof-tests.ps1",
           "command": "$env:OPENCLAW_RUN_E2E = '1'; .\\scripts\\run-proof-tests.ps1 -Project 'tests\\OpenClaw.E2ETests\\OpenClaw.E2ETests.csproj' -Filter 'FullyQualifiedName~OpenClaw.E2ETests.Setup.SetupAndConnectTests' -ResultName 'gateway-setup-connect' -RuntimeIdentifier win-x64",
           "purpose": "Run the current real WSL Gateway setup, bootstrap, pairing, and node invocation E2E class.",
@@ -423,7 +423,7 @@
         },
         {
           "id": "run-accessibility-scan",
-          "kind": "repository",
+          "kind": "proof-test",
           "path": "scripts\\run-proof-tests.ps1",
           "command": ".\\scripts\\run-proof-tests.ps1 -Project 'tests\\OpenClaw.Tray.UITests\\OpenClaw.Tray.UITests.csproj' -Filter 'Category=Accessibility' -ResultName 'winui-accessibility' -RuntimeIdentifier win-x64",
           "purpose": "Run the existing real-process accessibility quality gate for UI changes.",
