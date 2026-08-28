@@ -32,7 +32,7 @@ internal sealed class LocalAiPageViewModel : INavigationAware, IDisposable, INot
     private bool _isAvailabilityKnown;
     private bool _isLocalAiAvailable;
     private bool _hasAvailabilityProbeError;
-    private string? _localAiUnavailableReason;
+    private LocalInferenceUnavailableReason? _localAiUnavailableReason;
 
     public LocalAiPageViewModel(
         ILocalAiRuntime runtime,
@@ -126,7 +126,7 @@ internal sealed class LocalAiPageViewModel : INavigationAware, IDisposable, INot
     public bool ShowAvailabilityInfoBar => (_isAvailabilityKnown && !_isLocalAiAvailable) || _hasAvailabilityProbeError;
     public bool IsSetupAvailable => !_isAvailabilityKnown || _isLocalAiAvailable;
     public bool CanRecheckAvailability => _hasAvailabilityProbeError && _availabilityCancellation is null && !IsBusy;
-    public string? LocalAiUnavailableReason => _localAiUnavailableReason;
+    public LocalInferenceUnavailableReason? LocalAiUnavailableReason => _localAiUnavailableReason;
     public bool CanStart => !IsBusy && HasManagedInstall &&
         _runtimeSnapshot.State is LocalAiRuntimeState.Stopped or LocalAiRuntimeState.Failed;
     public bool CanStop => !IsBusy && _runtimeSnapshot.Ownership == LocalAiOwnership.CompanionManaged &&
@@ -240,9 +240,18 @@ internal sealed class LocalAiPageViewModel : INavigationAware, IDisposable, INot
         cancellation?.Cancel();
     }
 
-    private const string LocalAiAvailabilityProbeFailureReason =
-        "OpenClaw could not read the NVIDIA GPU, driver, CUDA, or memory information. " +
-        "Check the NVIDIA driver installation and try setup again.";
+    /// <summary>
+    /// Locale-neutral placeholder used when the probe itself failed to produce facts (thrown
+    /// exception, or a successful read that came back incomplete). The View resolves this kind
+    /// into localized text; no language-specific text lives on the ViewModel.
+    /// </summary>
+    private static readonly LocalInferenceUnavailableReason ProbeFailureReason = new(
+        LocalInferenceUnavailableReasonKind.HardwareFactsIncomplete,
+        ModelDisplayName: null,
+        RequiredGigabytes: 0,
+        DetectedGigabytes: null,
+        DetectedDriverVersion: null,
+        MinimumDriverVersion: string.Empty);
 
     private async Task RefreshAvailabilityAsync(CancellationTokenSource cancellation)
     {
@@ -272,13 +281,13 @@ internal sealed class LocalAiPageViewModel : INavigationAware, IDisposable, INot
                     isAvailabilityKnown: false,
                     isLocalAiAvailable: false,
                     hasAvailabilityProbeError: true,
-                    LocalAiAvailabilityProbeFailureReason));
+                    ProbeFailureReason));
                 return;
             }
             bool isAvailable = eligibility.CanInstall;
-            string? unavailableReason = isAvailable
+            LocalInferenceUnavailableReason? unavailableReason = isAvailable
                 ? null
-                : LocalInferenceEligibilityDiagnostics.DescribeUnavailable(eligibility);
+                : LocalInferenceEligibilityDiagnostics.GetUnavailableReason(eligibility);
             ApplyOnUiThread(() => ApplyAvailabilityResult(
                 cancellation,
                 isAvailabilityKnown: true,
@@ -300,7 +309,7 @@ internal sealed class LocalAiPageViewModel : INavigationAware, IDisposable, INot
                 isAvailabilityKnown: false,
                 isLocalAiAvailable: false,
                 hasAvailabilityProbeError: true,
-                LocalAiAvailabilityProbeFailureReason));
+                ProbeFailureReason));
         }
     }
 
@@ -314,7 +323,7 @@ internal sealed class LocalAiPageViewModel : INavigationAware, IDisposable, INot
         bool isAvailabilityKnown,
         bool isLocalAiAvailable,
         bool hasAvailabilityProbeError,
-        string? unavailableReason)
+        LocalInferenceUnavailableReason? unavailableReason)
     {
         if (!IsCurrentAvailabilityProbe(cancellation))
             return;

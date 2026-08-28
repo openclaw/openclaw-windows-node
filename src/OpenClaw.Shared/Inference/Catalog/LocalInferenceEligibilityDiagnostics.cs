@@ -1,40 +1,69 @@
 namespace OpenClaw.Shared.Inference.Catalog;
 
+/// <summary>Discriminant for why Local AI is unavailable. Carries no language-specific text;
+/// UI layers turn this into localized copy using their own resource strings.</summary>
+public enum LocalInferenceUnavailableReasonKind
+{
+    RuntimeUnavailable,
+    NoNvidiaGpu,
+    UnknownModel,
+    HardwareFactsIncomplete,
+    InsufficientGpuMemory,
+    DriverTooOld,
+    CudaCapabilityTooLow,
+    Unknown,
+}
+
+/// <summary>
+/// Locale-neutral facts describing why Local AI is unavailable. This type intentionally carries
+/// no English (or any other language) text: <see cref="OpenClaw.Shared"/> stays locale-neutral,
+/// and each UI layer (setup, Hub) formats <see cref="Kind"/> plus these facts into localized
+/// copy using its own resource strings.
+/// </summary>
+public sealed record LocalInferenceUnavailableReason(
+    LocalInferenceUnavailableReasonKind Kind,
+    string? ModelDisplayName,
+    double RequiredGigabytes,
+    double? DetectedGigabytes,
+    string? DetectedDriverVersion,
+    string MinimumDriverVersion);
+
 public static class LocalInferenceEligibilityDiagnostics
 {
-    public static string DescribeUnavailable(LocalInferenceEligibilityResult eligibility)
+    public static LocalInferenceUnavailableReason GetUnavailableReason(LocalInferenceEligibilityResult eligibility)
     {
         ArgumentNullException.ThrowIfNull(eligibility);
 
-        return eligibility.SelectionFailureCode switch
+        LocalInferenceUnavailableReasonKind kind = eligibility.SelectionFailureCode switch
         {
             LocalInferenceSelectionFailureCode.RuntimeUnavailable =>
-                "This Local AI release does not include a native llama-server runtime for the detected Windows architecture.",
+                LocalInferenceUnavailableReasonKind.RuntimeUnavailable,
             LocalInferenceSelectionFailureCode.NoNvidiaGpu =>
-                "No NVIDIA GPU was reported by the NVIDIA driver. Install or repair the NVIDIA driver, then try setup again.",
+                LocalInferenceUnavailableReasonKind.NoNvidiaGpu,
             LocalInferenceSelectionFailureCode.UnknownModel =>
-                "The selected model is not available in this Local AI release.",
+                LocalInferenceUnavailableReasonKind.UnknownModel,
             _ => eligibility.FailureCode switch
             {
                 LocalInferenceEligibilityFailureCode.HardwareFactsIncomplete =>
-                    "OpenClaw could not read a stable NVIDIA GPU identifier, memory, driver, or CUDA capability.",
+                    LocalInferenceUnavailableReasonKind.HardwareFactsIncomplete,
                 LocalInferenceEligibilityFailureCode.InsufficientGpuMemory =>
-                    $"{eligibility.Plan?.Model.DisplayName ?? "The selected model"} requires " +
-                    $"{FormatSize(eligibility.RequiredTotalMemoryBytes)} of GPU memory for model weights, KV cache, and runtime workspace. " +
-                    $"OpenClaw detected {FormatOptionalSize(eligibility.DetectedTotalMemoryBytes)}.",
+                    LocalInferenceUnavailableReasonKind.InsufficientGpuMemory,
                 LocalInferenceEligibilityFailureCode.DriverTooOld =>
-                    $"NVIDIA driver {eligibility.SelectedGpu?.DriverVersion ?? "unknown"} was detected. " +
-                    $"Local AI requires version {LocalInferenceEligibility.MinimumNvidiaDriverVersion} or newer.",
+                    LocalInferenceUnavailableReasonKind.DriverTooOld,
                 LocalInferenceEligibilityFailureCode.CudaCapabilityTooLow =>
-                    "The NVIDIA driver does not provide CUDA 13 support. A separate CUDA Toolkit is not required.",
-                _ => "OpenClaw could not verify the Local AI requirements on this system.",
+                    LocalInferenceUnavailableReasonKind.CudaCapabilityTooLow,
+                _ => LocalInferenceUnavailableReasonKind.Unknown,
             },
         };
+
+        return new LocalInferenceUnavailableReason(
+            kind,
+            eligibility.Plan?.Model.DisplayName,
+            ToGigabytes(eligibility.RequiredTotalMemoryBytes),
+            eligibility.DetectedTotalMemoryBytes is { } detected ? ToGigabytes(detected) : null,
+            eligibility.SelectedGpu?.DriverVersion,
+            LocalInferenceEligibility.MinimumNvidiaDriverVersion.ToString());
     }
 
-    private static string FormatSize(long bytes) =>
-        $"{bytes / 1_000_000_000d:0.#} GB";
-
-    private static string FormatOptionalSize(long? bytes) =>
-        bytes is { } value ? FormatSize(value) : "an unknown amount";
+    private static double ToGigabytes(long bytes) => bytes / 1_000_000_000d;
 }

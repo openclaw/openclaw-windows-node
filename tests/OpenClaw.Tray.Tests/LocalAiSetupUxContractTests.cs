@@ -133,6 +133,139 @@ public sealed class LocalAiSetupUxContractTests
         }
     }
 
+    /// <summary>
+    /// The setup page's unavailable/checking/probe-error InfoBar title, message, and action, its
+    /// accessibility help text, its probe-failure reason, and its "why unavailable" dialog must
+    /// route through SetupLocalization (not hardcoded English) and have matching resw keys in
+    /// every supported locale.
+    /// </summary>
+    [Fact]
+    public void CapabilitiesReview_UnavailableAndProbeErrorCopy_IsLocalizedInEverySupportedLocale()
+    {
+        string root = TestRepositoryPaths.GetRepositoryRoot();
+        string xaml = File.ReadAllText(Path.Combine(
+            root, "src", "OpenClaw.SetupEngine.UI", "Pages", "CapabilitiesPage.xaml"));
+        string source = File.ReadAllText(Path.Combine(
+            root, "src", "OpenClaw.SetupEngine.UI", "Pages", "CapabilitiesPage.xaml.cs"));
+
+        Assert.Contains("x:Uid=\"Onboarding_LocalAi_UnavailableDetailsButton\"", xaml);
+
+        string[] setupResourceCalls =
+        [
+            "SetupLocalization.GetString(\"Onboarding_LocalAi_CheckingTitle\")",
+            "SetupLocalization.GetString(\"Onboarding_LocalAi_CheckingMessage\")",
+            "SetupLocalization.GetString(\"Onboarding_LocalAi_CheckingHelpText\")",
+            "SetupLocalization.GetString(\"Onboarding_LocalAi_ProbeUnknownTitle\")",
+            "SetupLocalization.GetString(\"Onboarding_LocalAi_ProbeUnknownMessage\")",
+            "SetupLocalization.GetString(\"Onboarding_LocalAi_ProbeUnknownHelpText\")",
+            "SetupLocalization.GetString(\"Onboarding_LocalAi_UnavailableTitle\")",
+            "SetupLocalization.GetString(\"Onboarding_LocalAi_UnavailableMessage\")",
+            "SetupLocalization.GetString(\"Onboarding_LocalAi_UnavailableHelpText\")",
+            "SetupLocalization.GetString(\"Onboarding_LocalAi_ProbeFailureReason\")",
+            "SetupLocalization.GetString(\"Onboarding_LocalAi_UnavailableDetailsDialogTitle\")",
+            "SetupLocalization.GetString(\"Onboarding_LocalAi_UnavailableDetailsDialogClose\")",
+        ];
+        foreach (string call in setupResourceCalls)
+            Assert.Contains(call, source);
+
+        // The setup page never hardcodes the English copy it used to.
+        Assert.DoesNotContain("\"OpenClaw is checking Local AI requirements.\"", source);
+        Assert.DoesNotContain(
+            "\"OpenClaw could not verify Local AI requirements. Recheck availability to try again.\"", source);
+        Assert.DoesNotContain(
+            "\"Unavailable because this PC does not meet the Local AI requirements.\"", source);
+        Assert.DoesNotContain("\"Why Local AI is unavailable\"", source);
+
+        string[] resourceKeys =
+        [
+            "Onboarding_LocalAi_UnavailableDetailsButton.Content",
+            "Onboarding_LocalAi_CheckingTitle",
+            "Onboarding_LocalAi_CheckingMessage",
+            "Onboarding_LocalAi_CheckingHelpText",
+            "Onboarding_LocalAi_ProbeUnknownTitle",
+            "Onboarding_LocalAi_ProbeUnknownMessage",
+            "Onboarding_LocalAi_ProbeUnknownHelpText",
+            "Onboarding_LocalAi_UnavailableTitle",
+            "Onboarding_LocalAi_UnavailableMessage",
+            "Onboarding_LocalAi_UnavailableHelpText",
+            "Onboarding_LocalAi_ProbeFailureReason",
+            "Onboarding_LocalAi_UnavailableDetailsDialogTitle",
+            "Onboarding_LocalAi_UnavailableDetailsDialogClose",
+        ];
+        foreach (string locale in new[] { "en-us", "fr-fr", "nl-nl", "zh-cn", "zh-tw" })
+        {
+            string resources = File.ReadAllText(Path.Combine(
+                root, "src", "OpenClaw.Tray.WinUI", "Strings", locale, "Resources.resw"));
+            foreach (string key in resourceKeys)
+                Assert.Contains($"\"{key}\"", resources);
+        }
+    }
+
+    /// <summary>
+    /// The detailed diagnostic reason (why hardware is unavailable — insufficient GPU memory,
+    /// old driver, missing GPU, incomplete facts, etc.) is shared fact-only from
+    /// LocalInferenceEligibilityDiagnostics; both the setup page and the Hub page localize it
+    /// through their own resource-string helpers, with matching keys in every supported locale.
+    /// </summary>
+    [Fact]
+    public void LocalAiUnavailableReason_IsLocaleNeutralInSharedAndLocalizedInBothUiOwners()
+    {
+        string root = TestRepositoryPaths.GetRepositoryRoot();
+        string diagnostics = File.ReadAllText(Path.Combine(
+            root, "src", "OpenClaw.Shared", "Inference", "Catalog", "LocalInferenceEligibilityDiagnostics.cs"));
+        string setupSource = File.ReadAllText(Path.Combine(
+            root, "src", "OpenClaw.SetupEngine.UI", "Pages", "CapabilitiesPage.xaml.cs"));
+        string viewModelSource = File.ReadAllText(Path.Combine(
+            root, "src", "OpenClaw.Tray.WinUI", "Presentation", "LocalAiPageViewModel.cs"));
+        string hubPageSource = File.ReadAllText(Path.Combine(
+            root, "src", "OpenClaw.Tray.WinUI", "Pages", "LocalAiPage.xaml.cs"));
+
+        // Shared stays locale-neutral: facts and a kind enum, no English sentences.
+        Assert.Contains("LocalInferenceUnavailableReasonKind", diagnostics);
+        Assert.Contains("GetUnavailableReason", diagnostics);
+        Assert.DoesNotContain("model weights, KV cache, and runtime workspace", diagnostics);
+        Assert.DoesNotContain("No NVIDIA GPU was reported", diagnostics);
+
+        // The Hub ViewModel is source-linked into this test project without a WinUI resource
+        // host and must stay free of LocalizationHelper/resource-key literals; it only exposes
+        // the locale-neutral reason for the View to format.
+        Assert.DoesNotContain("LocalizationHelper", viewModelSource);
+        Assert.Contains("LocalInferenceUnavailableReason? LocalAiUnavailableReason", viewModelSource);
+
+        // The View (LocalAiPage.xaml.cs) and the setup page each format the reason locally,
+        // through the shared LocalAi_Reason_* keys.
+        string[] reasonKeys =
+        [
+            "LocalAi_Reason_RuntimeUnavailable",
+            "LocalAi_Reason_NoNvidiaGpu",
+            "LocalAi_Reason_UnknownModel",
+            "LocalAi_Reason_HardwareFactsIncomplete",
+            "LocalAi_Reason_InsufficientGpuMemory",
+            "LocalAi_Reason_DriverTooOld",
+            "LocalAi_Reason_CudaCapabilityTooLow",
+            "LocalAi_Reason_Generic",
+            "LocalAi_Reason_UnknownModelName",
+            "LocalAi_Reason_UnknownDriverVersion",
+            "LocalAi_Reason_UnknownMemoryAmount",
+            "LocalAi_Reason_GigabytesFormat",
+        ];
+        foreach (string key in reasonKeys)
+        {
+            Assert.Contains($"\"{key}\"", hubPageSource);
+            Assert.Contains($"\"{key}\"", setupSource);
+        }
+
+        // A thrown probe failure and a successful-but-incomplete read both resolve to
+        // HardwareFactsIncomplete: one shared message, no separate "probe failure" key.
+        foreach (string locale in new[] { "en-us", "fr-fr", "nl-nl", "zh-cn", "zh-tw" })
+        {
+            string resources = File.ReadAllText(Path.Combine(
+                root, "src", "OpenClaw.Tray.WinUI", "Strings", locale, "Resources.resw"));
+            foreach (string key in reasonKeys)
+                Assert.Contains($"\"{key}\"", resources);
+        }
+    }
+
     [Fact]
     public void SetupWindow_LocalAiHardwareProbeCache_CanRefreshAfterFault()
     {

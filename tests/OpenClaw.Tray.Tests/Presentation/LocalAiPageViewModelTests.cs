@@ -39,7 +39,7 @@ public sealed class LocalAiPageViewModelTests
         Assert.True(viewModel.IsAvailabilityKnown);
         Assert.False(viewModel.IsLocalAiAvailable);
         Assert.False(viewModel.IsSetupAvailable);
-        Assert.Contains("NVIDIA GPU", viewModel.LocalAiUnavailableReason);
+        Assert.Equal(LocalInferenceUnavailableReasonKind.NoNvidiaGpu, viewModel.LocalAiUnavailableReason?.Kind);
         Assert.False(viewModel.CanStart);
         Assert.True(viewModel.CanStop);
         Assert.True(viewModel.CanRestart);
@@ -193,7 +193,7 @@ public sealed class LocalAiPageViewModelTests
         Assert.False(viewModel.IsLocalAiAvailable);
         Assert.True(viewModel.HasAvailabilityProbeError);
         Assert.True(viewModel.CanRecheckAvailability);
-        Assert.Contains("could not read", viewModel.LocalAiUnavailableReason, StringComparison.OrdinalIgnoreCase);
+        Assert.Equal(LocalInferenceUnavailableReasonKind.HardwareFactsIncomplete, viewModel.LocalAiUnavailableReason?.Kind);
     }
 
     [Fact]
@@ -223,7 +223,7 @@ public sealed class LocalAiPageViewModelTests
         Assert.True(viewModel.IsSetupAvailable);
         Assert.True(viewModel.CanRetrySetup);
         Assert.True(viewModel.CanRecheckAvailability);
-        Assert.Contains("could not read", viewModel.LocalAiUnavailableReason, StringComparison.OrdinalIgnoreCase);
+        Assert.Equal(LocalInferenceUnavailableReasonKind.HardwareFactsIncomplete, viewModel.LocalAiUnavailableReason?.Kind);
 
         Assert.True(viewModel.RecheckAvailability());
         await WaitForAsync(viewModel, () => viewModel.IsAvailabilityKnown);
@@ -410,7 +410,7 @@ public sealed class LocalAiPageViewModelTests
         Assert.False(viewModel.IsLocalAiAvailable);
         Assert.True(viewModel.HasAvailabilityProbeError);
         Assert.True(viewModel.CanRecheckAvailability);
-        Assert.Contains("could not read", viewModel.LocalAiUnavailableReason, StringComparison.OrdinalIgnoreCase);
+        Assert.Equal(LocalInferenceUnavailableReasonKind.HardwareFactsIncomplete, viewModel.LocalAiUnavailableReason?.Kind);
     }
 
     [Theory]

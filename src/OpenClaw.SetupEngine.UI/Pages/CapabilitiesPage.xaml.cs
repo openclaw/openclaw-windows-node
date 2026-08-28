@@ -382,9 +382,8 @@ public sealed partial class CapabilitiesPage : Page
         ApplySetupReviewSummary(_config);
     }
 
-    private const string LocalAiProbeFailureReason =
-        "OpenClaw could not read the NVIDIA GPU, driver, CUDA, or memory information. " +
-        "Confirm the NVIDIA driver is available, then recheck Local AI requirements.";
+    private static string LocalAiProbeFailureReason =>
+        SetupLocalization.GetString("Onboarding_LocalAi_ProbeFailureReason");
 
     private bool CanApplyLocalAiAvailability(int generation, SetupWindow? setupWindow) =>
         _localAiAvailability.IsCurrent(generation) &&
@@ -412,7 +411,7 @@ public sealed partial class CapabilitiesPage : Page
         LocalAiInstallReviewCard.Visibility = Visibility.Visible;
         SetLocalAiOptionAvailability(
             isAvailable: false,
-            "OpenClaw is checking Local AI requirements.");
+            SetupLocalization.GetString("Onboarding_LocalAi_CheckingHelpText"));
         ApplySetupReviewSummary(_config);
         UpdatePrimaryButtonState();
     }
@@ -429,7 +428,7 @@ public sealed partial class CapabilitiesPage : Page
         LocalAiInstallReviewCard.Visibility = Visibility.Visible;
         SetLocalAiOptionAvailability(
             isAvailable: false,
-            "OpenClaw could not verify Local AI requirements. Recheck availability to try again.");
+            SetupLocalization.GetString("Onboarding_LocalAi_ProbeUnknownHelpText"));
         _config!.LocalAi.Enabled = false;
         _config.SkipWizard = _skipWizardWithoutLocalAi;
         ApplySetupReviewSummary(_config);
@@ -453,8 +452,40 @@ public sealed partial class CapabilitiesPage : Page
         UpdatePrimaryButtonState();
     }
 
-    private static string DescribeLocalAiUnavailable(LocalInferenceEligibilityResult eligibility) =>
-        LocalInferenceEligibilityDiagnostics.DescribeUnavailable(eligibility);
+    private static string DescribeLocalAiUnavailable(LocalInferenceEligibilityResult eligibility)
+    {
+        LocalInferenceUnavailableReason reason = LocalInferenceEligibilityDiagnostics.GetUnavailableReason(eligibility);
+        return reason.Kind switch
+        {
+            LocalInferenceUnavailableReasonKind.RuntimeUnavailable =>
+                SetupLocalization.GetString("LocalAi_Reason_RuntimeUnavailable"),
+            LocalInferenceUnavailableReasonKind.NoNvidiaGpu =>
+                SetupLocalization.GetString("LocalAi_Reason_NoNvidiaGpu"),
+            LocalInferenceUnavailableReasonKind.UnknownModel =>
+                SetupLocalization.GetString("LocalAi_Reason_UnknownModel"),
+            LocalInferenceUnavailableReasonKind.HardwareFactsIncomplete =>
+                SetupLocalization.GetString("LocalAi_Reason_HardwareFactsIncomplete"),
+            LocalInferenceUnavailableReasonKind.InsufficientGpuMemory =>
+                SetupLocalization.Format(
+                    "LocalAi_Reason_InsufficientGpuMemory",
+                    reason.ModelDisplayName ?? SetupLocalization.GetString("LocalAi_Reason_UnknownModelName"),
+                    FormatGigabytes(reason.RequiredGigabytes),
+                    reason.DetectedGigabytes is { } detected
+                        ? FormatGigabytes(detected)
+                        : SetupLocalization.GetString("LocalAi_Reason_UnknownMemoryAmount")),
+            LocalInferenceUnavailableReasonKind.DriverTooOld =>
+                SetupLocalization.Format(
+                    "LocalAi_Reason_DriverTooOld",
+                    reason.DetectedDriverVersion ?? SetupLocalization.GetString("LocalAi_Reason_UnknownDriverVersion"),
+                    reason.MinimumDriverVersion),
+            LocalInferenceUnavailableReasonKind.CudaCapabilityTooLow =>
+                SetupLocalization.GetString("LocalAi_Reason_CudaCapabilityTooLow"),
+            _ => SetupLocalization.GetString("LocalAi_Reason_Generic"),
+        };
+    }
+
+    private static string FormatGigabytes(double gigabytes) =>
+        SetupLocalization.Format("LocalAi_Reason_GigabytesFormat", gigabytes);
 
     private void ApplyLocalAiAvailabilityChrome(LocalAiSetupAvailabilitySnapshot snapshot)
     {
@@ -463,17 +494,19 @@ public sealed partial class CapabilitiesPage : Page
             snapshot.IsAvailable ? Visibility.Collapsed : Visibility.Visible;
         LocalAiUnavailablePanel.Title = snapshot.Status switch
         {
-            LocalAiSetupAvailabilityStatus.Checking => "Checking Local AI requirements",
-            LocalAiSetupAvailabilityStatus.Unknown => "Local AI availability could not be verified",
-            _ => "Local AI is not available",
+            LocalAiSetupAvailabilityStatus.Checking =>
+                SetupLocalization.GetString("Onboarding_LocalAi_CheckingTitle"),
+            LocalAiSetupAvailabilityStatus.Unknown =>
+                SetupLocalization.GetString("Onboarding_LocalAi_ProbeUnknownTitle"),
+            _ => SetupLocalization.GetString("Onboarding_LocalAi_UnavailableTitle"),
         };
         LocalAiUnavailablePanel.Message = snapshot.Status switch
         {
             LocalAiSetupAvailabilityStatus.Checking =>
-                "OpenClaw is checking the NVIDIA GPU, driver, CUDA, memory, and WSL requirements.",
+                SetupLocalization.GetString("Onboarding_LocalAi_CheckingMessage"),
             LocalAiSetupAvailabilityStatus.Unknown =>
-                "OpenClaw could not verify Local AI requirements right now. Recheck after confirming the NVIDIA driver is available.",
-            _ => "This PC does not meet one or more Local AI requirements.",
+                SetupLocalization.GetString("Onboarding_LocalAi_ProbeUnknownMessage"),
+            _ => SetupLocalization.GetString("Onboarding_LocalAi_UnavailableMessage"),
         };
         LocalAiUnavailableDetailsButton.Visibility =
             string.IsNullOrWhiteSpace(_localAiUnavailableReason) ? Visibility.Collapsed : Visibility.Visible;
@@ -498,7 +531,7 @@ public sealed partial class CapabilitiesPage : Page
             LocalAiOptionContent,
             isAvailable
                 ? string.Empty
-                : helpText ?? "Unavailable because this PC does not meet the Local AI requirements.");
+                : helpText ?? SetupLocalization.GetString("Onboarding_LocalAi_UnavailableHelpText"));
     }
 
     private void LocalAiRecheckAvailability_Click(object sender, RoutedEventArgs e) =>
@@ -536,13 +569,13 @@ public sealed partial class CapabilitiesPage : Page
         var dialog = new ContentDialog
         {
             XamlRoot = xamlRoot,
-            Title = "Why Local AI is unavailable",
+            Title = SetupLocalization.GetString("Onboarding_LocalAi_UnavailableDetailsDialogTitle"),
             Content = new TextBlock
             {
                 Text = _localAiUnavailableReason,
                 TextWrapping = TextWrapping.Wrap,
             },
-            CloseButtonText = "Close",
+            CloseButtonText = SetupLocalization.GetString("Onboarding_LocalAi_UnavailableDetailsDialogClose"),
         };
         await dialog.ShowAsync();
     }

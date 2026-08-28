@@ -123,6 +123,7 @@
                                          Visibility="Collapsed">
                                     <InfoBar.ActionButton>
                                         <HyperlinkButton x:Name="LocalAiUnavailableDetailsButton"
+                                                         x:Uid="Onboarding_LocalAi_UnavailableDetailsButton"
                                                          AutomationProperties.AutomationId="LocalAiUnavailableDetailsButton"
                                                          Content="See why"
                                                          Click="LocalAiUnavailableDetails_Click" />

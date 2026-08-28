@@ -2,6 +2,7 @@ using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Media;
 using OpenClaw.Shared;
+using OpenClaw.Shared.Inference.Catalog;
 using OpenClawTray.Helpers;
 using OpenClawTray.Presentation;
 using System.Globalization;
@@ -122,9 +123,48 @@ public sealed partial class LocalAiPage : Page
     private void LocalAiRecheckAvailability_Click(object sender, RoutedEventArgs e) => _viewModel?.RecheckAvailability();
     private void LocalAiUnavailableDetails_Click(object sender, RoutedEventArgs e)
     {
-        LocalAiUnavailableReasonText.Text = _viewModel?.LocalAiUnavailableReason ?? string.Empty;
+        LocalAiUnavailableReasonText.Text = _viewModel?.LocalAiUnavailableReason is { } reason
+            ? DescribeUnavailable(reason)
+            : string.Empty;
         LocalAiUnavailableDetailsTip.IsOpen = !LocalAiUnavailableDetailsTip.IsOpen;
     }
+
+    /// <summary>
+    /// Turns the locale-neutral <see cref="LocalInferenceUnavailableReason"/> the ViewModel
+    /// exposes into localized text. This lives in the View (not the ViewModel) because
+    /// <see cref="LocalizationHelper"/> depends on the packaged app's resource map, which the
+    /// ViewModel's unit tests (source-linked without a WinUI host) cannot resolve.
+    /// </summary>
+    private static string DescribeUnavailable(LocalInferenceUnavailableReason reason) => reason.Kind switch
+    {
+        LocalInferenceUnavailableReasonKind.RuntimeUnavailable =>
+            LocalizationHelper.GetString("LocalAi_Reason_RuntimeUnavailable"),
+        LocalInferenceUnavailableReasonKind.NoNvidiaGpu =>
+            LocalizationHelper.GetString("LocalAi_Reason_NoNvidiaGpu"),
+        LocalInferenceUnavailableReasonKind.UnknownModel =>
+            LocalizationHelper.GetString("LocalAi_Reason_UnknownModel"),
+        LocalInferenceUnavailableReasonKind.HardwareFactsIncomplete =>
+            LocalizationHelper.GetString("LocalAi_Reason_HardwareFactsIncomplete"),
+        LocalInferenceUnavailableReasonKind.InsufficientGpuMemory =>
+            LocalizationHelper.Format(
+                "LocalAi_Reason_InsufficientGpuMemory",
+                reason.ModelDisplayName ?? LocalizationHelper.GetString("LocalAi_Reason_UnknownModelName"),
+                FormatGigabytes(reason.RequiredGigabytes),
+                reason.DetectedGigabytes is { } detected
+                    ? FormatGigabytes(detected)
+                    : LocalizationHelper.GetString("LocalAi_Reason_UnknownMemoryAmount")),
+        LocalInferenceUnavailableReasonKind.DriverTooOld =>
+            LocalizationHelper.Format(
+                "LocalAi_Reason_DriverTooOld",
+                reason.DetectedDriverVersion ?? LocalizationHelper.GetString("LocalAi_Reason_UnknownDriverVersion"),
+                reason.MinimumDriverVersion),
+        LocalInferenceUnavailableReasonKind.CudaCapabilityTooLow =>
+            LocalizationHelper.GetString("LocalAi_Reason_CudaCapabilityTooLow"),
+        _ => LocalizationHelper.GetString("LocalAi_Reason_Generic"),
+    };
+
+    private static string FormatGigabytes(double gigabytes) =>
+        LocalizationHelper.Format("LocalAi_Reason_GigabytesFormat", gigabytes);
 
     private static void RunAction(Func<Task<bool>> action, string source) =>
         AsyncEventHandlerGuard.Run(action, new AppLogger(), source);
