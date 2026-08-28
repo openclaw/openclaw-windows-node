@@ -200,6 +200,52 @@ public sealed class InstallerIssAssertionTests
         Assert.DoesNotContain("<DevBuild>true</DevBuild>", project);
     }
 
+    [Fact]
+    public async Task RunAppLocal_ExplicitArm64Runtime_WinsOverEmulatedX64Shell()
+    {
+        var root = TestRepositoryPaths.GetRepositoryRoot();
+        var script = Path.Combine(root, "run-app-local.ps1");
+        var powershell = Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.Windows),
+            "System32",
+            "WindowsPowerShell",
+            "v1.0",
+            "powershell.exe");
+        var startInfo = new ProcessStartInfo(powershell)
+        {
+            WorkingDirectory = root,
+            RedirectStandardOutput = true,
+            RedirectStandardError = true,
+            UseShellExecute = false,
+            CreateNoWindow = true,
+        };
+        foreach (var argument in new[]
+        {
+            "-NoProfile",
+            "-ExecutionPolicy", "Bypass",
+            "-File", script,
+            "-NoBuild",
+            "-Configuration", "Release",
+            "-RuntimeIdentifier", "win-arm64",
+            "-AllowNonMain",
+            "-DryRun",
+        })
+        {
+            startInfo.ArgumentList.Add(argument);
+        }
+        startInfo.Environment["PROCESSOR_ARCHITECTURE"] = "AMD64";
+
+        using var process = Process.Start(startInfo);
+        Assert.NotNull(process);
+        var standardOutput = process.StandardOutput.ReadToEndAsync();
+        var standardError = process.StandardError.ReadToEndAsync();
+        await process.WaitForExitAsync().WaitAsync(TimeSpan.FromSeconds(30));
+        var result = $"{await standardOutput}{Environment.NewLine}{await standardError}";
+
+        Assert.Contains(@"\win-arm64", result, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain(@"\win-x64", result, StringComparison.OrdinalIgnoreCase);
+    }
+
     [Theory]
     [InlineData("Release", false, false, "win-x64", true)]
     [InlineData("Release", false, true, "win-x64", true)]

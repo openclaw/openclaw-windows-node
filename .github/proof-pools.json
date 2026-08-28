@@ -160,7 +160,7 @@
           "id": "run-arm64-tray",
           "kind": "repository",
           "path": "run-app-local.ps1",
-          "command": ".\\run-app-local.ps1 -NoBuild -Configuration Release -Isolated -AllowNonMain",
+          "command": ".\\run-app-local.ps1 -NoBuild -Configuration Release -RuntimeIdentifier win-arm64 -Isolated -AllowNonMain",
           "purpose": "Launch the current native tray build with isolated state.",
           "evidence": "Capture process architecture and consented screenshots of the tray, Settings, and a WebView2-backed surface."
         }

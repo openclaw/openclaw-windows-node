@@ -330,7 +330,7 @@ function Resolve-LocalSchemaReference {
         }
         $resolved = $property.Value
     }
-    return $resolved
+    return [pscustomobject]@{ Value = $resolved }
 }
 
 function Test-JsonSchemaInteger {
@@ -445,6 +445,7 @@ function Assert-SchemaKeywordValueShapes {
 function Assert-SupportedSchemaKeywords {
     param(
         [Parameter(Mandatory = $true)][AllowNull()][object]$ValueSchema,
+        [Parameter(Mandatory = $true)][object]$RootSchema,
         [Parameter(Mandatory = $true)][string]$SchemaPath
     )
 
@@ -462,6 +463,15 @@ function Assert-SupportedSchemaKeywords {
     if ($null -ne $reference -and
         @($ValueSchema.PSObject.Properties).Count -ne 1) {
         throw "Schema `$ref at $SchemaPath cannot have sibling keywords under Draft-07."
+    }
+    if ($null -ne $reference) {
+        $resolvedReferenceResult = Resolve-LocalSchemaReference `
+            -Reference ([string]$reference.Value) `
+            -RootSchema $RootSchema
+        $resolvedReference = $resolvedReferenceResult.Value
+        if ($resolvedReference -isnot [System.Management.Automation.PSCustomObject]) {
+            throw "Schema `$ref target must resolve to a schema object at ${SchemaPath}: '$($reference.Value)'."
+        }
     }
     $additionalProperties =
         Get-JsonProperty -Value $ValueSchema -Name "additionalProperties"
@@ -494,6 +504,7 @@ function Assert-SupportedSchemaKeywords {
             foreach ($child in @($container.Value.PSObject.Properties)) {
                 Assert-SupportedSchemaKeywords `
                     -ValueSchema $child.Value `
+                    -RootSchema $RootSchema `
                     -SchemaPath "$SchemaPath/$containerName/$($child.Name)"
             }
         }
@@ -503,6 +514,7 @@ function Assert-SupportedSchemaKeywords {
     if ($null -ne $items) {
         Assert-SupportedSchemaKeywords `
             -ValueSchema $items.Value `
+            -RootSchema $RootSchema `
             -SchemaPath "$SchemaPath/items"
     }
 }
@@ -517,12 +529,12 @@ function Assert-JsonSchemaValue {
 
     $reference = Get-JsonProperty -Value $ValueSchema -Name '$ref'
     if ($null -ne $reference) {
-        $resolved = Resolve-LocalSchemaReference `
+        $resolvedResult = Resolve-LocalSchemaReference `
             -Reference ([string]$reference.Value) `
             -RootSchema $RootSchema
         Assert-JsonSchemaValue `
             -Value $Value `
-            -ValueSchema $resolved `
+            -ValueSchema $resolvedResult.Value `
             -RootSchema $RootSchema `
             -JsonPath $JsonPath
         return
@@ -677,7 +689,7 @@ try {
     throw "Proof-pool JSON could not be parsed: $($_.Exception.Message)"
 }
 
-Assert-SupportedSchemaKeywords -ValueSchema $schema -SchemaPath '$'
+Assert-SupportedSchemaKeywords -ValueSchema $schema -RootSchema $schema -SchemaPath '$'
 if ($schema.'$schema' -ne "http://json-schema.org/draft-07/schema#" -or
     $schema.type -ne "object" -or
     $null -eq $schema.definitions) {

@@ -62,6 +62,62 @@ function Write-JsonFile {
         Set-Content -LiteralPath $Path -Encoding UTF8
 }
 
+$script:validationInvocationCount = 0
+
+function Invoke-ValidatorMode {
+    param(
+        [Parameter(Mandatory = $true)][string]$Name,
+        [Parameter(Mandatory = $true)]$Mode,
+        [Parameter(Mandatory = $true)][string]$TestInventoryPath,
+        [Parameter(Mandatory = $true)][string]$TestSchemaPath
+    )
+
+    $script:validationInvocationCount++
+    $safeName = [regex]::Replace(
+        "$Name-$($Mode.Name)",
+        "[^A-Za-z0-9._-]+",
+        "-").Trim("-")
+    $invocationRoot = Join-Path $tempRoot (
+        "invocation-{0:D4}-{1}" -f $script:validationInvocationCount, $safeName)
+    $processTemp = Join-Path $invocationRoot "temp"
+    New-Item -ItemType Directory -Path $processTemp -Force | Out-Null
+    $isolatedInventoryPath = Join-Path $invocationRoot "inventory.json"
+    $isolatedSchemaPath = Join-Path $invocationRoot "schema.json"
+    Copy-Item -LiteralPath $TestInventoryPath -Destination $isolatedInventoryPath
+    Copy-Item -LiteralPath $TestSchemaPath -Destination $isolatedSchemaPath
+
+    $arguments = @(
+        "-NoProfile",
+        "-ExecutionPolicy", "Bypass",
+        "-File", $validatorPath,
+        "-RepoRoot", $repoRootPath,
+        "-InventoryPath", $isolatedInventoryPath,
+        "-SchemaPath", $isolatedSchemaPath
+    ) + $Mode.ExtraArguments
+
+    $previousErrorActionPreference = $ErrorActionPreference
+    $previousTemp = $env:TEMP
+    $previousTmp = $env:TMP
+    try {
+        $ErrorActionPreference = "Continue"
+        $env:TEMP = $processTemp
+        $env:TMP = $processTemp
+        $output = (& $Mode.Executable @arguments 2>&1 | Out-String)
+        $exitCode = $LASTEXITCODE
+        $global:LASTEXITCODE = 0
+    } finally {
+        $ErrorActionPreference = $previousErrorActionPreference
+        $env:TEMP = $previousTemp
+        $env:TMP = $previousTmp
+    }
+
+    return [pscustomobject]@{
+        ExitCode = $exitCode
+        Output = $output
+        Context = "mode='$($Mode.Name)'; inventory='$isolatedInventoryPath'; schema='$isolatedSchemaPath'; temp='$processTemp'"
+    }
+}
+
 function Assert-RejectedByAllModes {
     param(
         [Parameter(Mandatory = $true)][string]$Name,
@@ -72,31 +128,18 @@ function Assert-RejectedByAllModes {
 
     $script:invalidContractCount++
     foreach ($mode in $validationModes) {
-        $arguments = @(
-            "-NoProfile",
-            "-ExecutionPolicy", "Bypass",
-            "-File", $validatorPath,
-            "-RepoRoot", $repoRootPath,
-            "-InventoryPath", $TestInventoryPath,
-            "-SchemaPath", $TestSchemaPath
-        ) + $mode.ExtraArguments
-
-        $previousErrorActionPreference = $ErrorActionPreference
-        try {
-            $ErrorActionPreference = "Continue"
-            $output = (& $mode.Executable @arguments 2>&1 | Out-String)
-            $exitCode = $LASTEXITCODE
-            $global:LASTEXITCODE = 0
-        } finally {
-            $ErrorActionPreference = $previousErrorActionPreference
+        $result = Invoke-ValidatorMode `
+            -Name $Name `
+            -Mode $mode `
+            -TestInventoryPath $TestInventoryPath `
+            -TestSchemaPath $TestSchemaPath
+        if ($result.ExitCode -eq 0) {
+            throw "'$Name' unexpectedly passed. $($result.Context)"
         }
-        if ($exitCode -eq 0) {
-            throw "'$Name' unexpectedly passed in $($mode.Name)."
-        }
-        $normalizedOutput = $output -replace "\s+", " "
+        $normalizedOutput = $result.Output -replace "\s+", " "
         $normalizedExpectedMessage = $ExpectedMessage -replace "\s+", " "
         if ($normalizedOutput -notmatch [regex]::Escape($normalizedExpectedMessage)) {
-            throw "'$Name' failed for the wrong reason in $($mode.Name): $output"
+            throw "'$Name' failed for the wrong reason. $($result.Context)`n$($result.Output)"
         }
     }
 }
@@ -108,26 +151,13 @@ function Assert-AcceptedByAllModes {
     )
 
     foreach ($mode in $validationModes) {
-        $arguments = @(
-            "-NoProfile",
-            "-ExecutionPolicy", "Bypass",
-            "-File", $validatorPath,
-            "-RepoRoot", $repoRootPath,
-            "-InventoryPath", $TestInventoryPath,
-            "-SchemaPath", $schemaPath
-        ) + $mode.ExtraArguments
-
-        $previousErrorActionPreference = $ErrorActionPreference
-        try {
-            $ErrorActionPreference = "Continue"
-            $output = (& $mode.Executable @arguments 2>&1 | Out-String)
-            $exitCode = $LASTEXITCODE
-            $global:LASTEXITCODE = 0
-        } finally {
-            $ErrorActionPreference = $previousErrorActionPreference
-        }
-        if ($exitCode -ne 0) {
-            throw "'$Name' unexpectedly failed in $($mode.Name): $output"
+        $result = Invoke-ValidatorMode `
+            -Name $Name `
+            -Mode $mode `
+            -TestInventoryPath $TestInventoryPath `
+            -TestSchemaPath $schemaPath
+        if ($result.ExitCode -ne 0) {
+            throw "'$Name' unexpectedly failed. $($result.Context)`n$($result.Output)"
         }
     }
 }
@@ -166,6 +196,47 @@ try {
         -TestInventoryPath $inventoryPath `
         -TestSchemaPath $constRefSiblingSchemaPath `
         -ExpectedMessage "cannot have sibling keywords"
+
+    $malformedReferenceTargets = @(
+        @{
+            Name = "scalar ref target"
+            Reference = "#/title"
+            Mutate = { param($value) }
+        },
+        @{
+            Name = "array ref target"
+            Reference = "#/required"
+            Mutate = { param($value) }
+        },
+        @{
+            Name = "null ref target"
+            Reference = "#/properties/schemaVersion/const"
+            Mutate = { param($value) $value.properties.schemaVersion.const = $null }
+        },
+        @{
+            Name = "singleton object array ref target"
+            Reference = "#/definitions/command/properties/kind/enum"
+            Mutate = {
+                param($value)
+                $value.definitions.command.properties.kind.enum = @(
+                    [pscustomobject]@{ type = "string" })
+            }
+        }
+    )
+    for ($index = 0; $index -lt $malformedReferenceTargets.Count; $index++) {
+        $schema = Get-Content -LiteralPath $schemaPath -Raw | ConvertFrom-Json
+        & $malformedReferenceTargets[$index].Mutate $schema
+        $schema.properties.declaration.'$ref' =
+            $malformedReferenceTargets[$index].Reference
+        $malformedReferencePath =
+            Join-Path $tempRoot "malformed-reference-target-$index.schema.json"
+        Write-JsonFile -Value $schema -Path $malformedReferencePath
+        Assert-RejectedByAllModes `
+            -Name $malformedReferenceTargets[$index].Name `
+            -TestInventoryPath $inventoryPath `
+            -TestSchemaPath $malformedReferencePath `
+            -ExpectedMessage "must resolve to a schema object"
+    }
 
     $schema = Get-Content -LiteralPath $schemaPath -Raw | ConvertFrom-Json
     $schema.additionalProperties = [pscustomobject]@{ type = "string" }
