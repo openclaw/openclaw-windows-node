@@ -46,6 +46,7 @@ $validationModes += @(
         ExtraArguments = @()
     }
 )
+$script:invalidContractCount = 0
 
 $tempRoot = Join-Path $env:TEMP (
     "openclaw-proof-pool-validator-" + [guid]::NewGuid().ToString("N"))
@@ -69,6 +70,7 @@ function Assert-RejectedByAllModes {
         [Parameter(Mandatory = $true)][string]$ExpectedMessage
     )
 
+    $script:invalidContractCount++
     foreach ($mode in $validationModes) {
         $arguments = @(
             "-NoProfile",
@@ -199,7 +201,81 @@ try {
         -Name "tuple items" `
         -TestInventoryPath $inventoryPath `
         -TestSchemaPath $tupleItemsPath `
-        -ExpectedMessage "Tuple or non-object items is unsupported"
+        -ExpectedMessage "must be an object"
+
+    $malformedSchemaShapes = @(
+        @{
+            Name = "string-valued required"
+            ExpectedMessage = "must be an array of strings"
+            Mutate = { param($value) $value.required = "pools" }
+        },
+        @{
+            Name = "string-valued enum"
+            ExpectedMessage = "must be a non-empty array"
+            Mutate = { param($value) $value.definitions.command.properties.kind.enum = "repository" }
+        },
+        @{
+            Name = "string-valued uniqueItems"
+            ExpectedMessage = "must be a Boolean"
+            Mutate = { param($value) $value.definitions.stringList.uniqueItems = "true" }
+        },
+        @{
+            Name = "string-valued minItems"
+            ExpectedMessage = "must be a nonnegative integer"
+            Mutate = { param($value) $value.properties.pools.minItems = "1" }
+        },
+        @{
+            Name = "fractional minLength"
+            ExpectedMessage = "must be a nonnegative integer"
+            Mutate = { param($value) $value.definitions.nonEmptyString.minLength = 1.5 }
+        },
+        @{
+            Name = "integer-valued pattern"
+            ExpectedMessage = "must be a string"
+            Mutate = { param($value) $value.definitions.identifier.pattern = 42 }
+        },
+        @{
+            Name = "array-valued properties"
+            ExpectedMessage = "must be an object"
+            Mutate = { param($value) $value.properties = @("pools") }
+        },
+        @{
+            Name = "array-valued definitions"
+            ExpectedMessage = "must be an object"
+            Mutate = { param($value) $value.definitions = @("identifier") }
+        },
+        @{
+            Name = "string-valued items"
+            ExpectedMessage = "must be an object"
+            Mutate = { param($value) $value.definitions.stringList.items = "identifier" }
+        },
+        @{
+            Name = "array-valued type"
+            ExpectedMessage = "must be a supported type string"
+            Mutate = { param($value) $value.definitions.stringList.type = @("array") }
+        },
+        @{
+            Name = "integer-valued ref"
+            ExpectedMessage = "must be a string"
+            Mutate = { param($value) $value.properties.declaration.'$ref' = 42 }
+        },
+        @{
+            Name = "integer-valued schema dialect"
+            ExpectedMessage = "must be a string"
+            Mutate = { param($value) $value.'$schema' = 42 }
+        }
+    )
+    for ($index = 0; $index -lt $malformedSchemaShapes.Count; $index++) {
+        $schema = Get-Content -LiteralPath $schemaPath -Raw | ConvertFrom-Json
+        & $malformedSchemaShapes[$index].Mutate $schema
+        $malformedSchemaPath = Join-Path $tempRoot "malformed-schema-shape-$index.json"
+        Write-JsonFile -Value $schema -Path $malformedSchemaPath
+        Assert-RejectedByAllModes `
+            -Name $malformedSchemaShapes[$index].Name `
+            -TestInventoryPath $inventoryPath `
+            -TestSchemaPath $malformedSchemaPath `
+            -ExpectedMessage $malformedSchemaShapes[$index].ExpectedMessage
+    }
 
     $rawDotnetCommands = @(
         "pwsh -NoProfile -Command '  dotnet test .\tests\Example.Tests.csproj'",
@@ -344,9 +420,24 @@ try {
             -ExpectedMessage $repositoryScriptBypasses[$index].ExpectedMessage
     }
 
+    $inventory = Get-Content -LiteralPath $inventoryPath -Raw | ConvertFrom-Json
+    $inventory.pools[2].authoritativeCommands[0].command =
+        "dotnet build .\src\OpenClaw.Tray.WinUI\OpenClaw.Tray.WinUI.csproj -c Release -r win-arm64 -o `$(whoami)"
+    $dynamicProjectBuildPath = Join-Path $tempRoot "dynamic-project-build.json"
+    Write-JsonFile -Value $inventory -Path $dynamicProjectBuildPath
+    Assert-RejectedByAllModes `
+        -Name "dynamic project-build output" `
+        -TestInventoryPath $dynamicProjectBuildPath `
+        -TestSchemaPath $schemaPath `
+        -ExpectedMessage "must use kind 'proof-test' instead of invoking dotnet directly"
+
     $acceptedRepositoryCommands = @(
         @{
             Command = "dotnet build .\src\OpenClaw.Shared\OpenClaw.Shared.csproj -o .\artifacts\vstest"
+            Path = "src\OpenClaw.Shared\OpenClaw.Shared.csproj"
+        },
+        @{
+            Command = "dotnet.exe build .\src\OpenClaw.Shared\OpenClaw.Shared.csproj --configuration Release --runtime win-x64 --output .\artifacts\vstest"
             Path = "src\OpenClaw.Shared\OpenClaw.Shared.csproj"
         },
         @{
@@ -371,6 +462,38 @@ try {
             -Name "accepted repository command $index" `
             -TestInventoryPath $acceptedRepositoryCommandPath
     }
+
+    foreach ($commandIndex in @(0, 2)) {
+        $inventory = Get-Content -LiteralPath $inventoryPath -Raw | ConvertFrom-Json
+        $inventory.pools[0].authoritativeCommands[$commandIndex] | Add-Member `
+            -NotePropertyName "path" `
+            -NotePropertyValue "scripts\validate-docs.ps1"
+        $nonRepositoryPath = Join-Path $tempRoot "non-repository-path-$commandIndex.json"
+        Write-JsonFile -Value $inventory -Path $nonRepositoryPath
+        Assert-RejectedByAllModes `
+            -Name "path on $($inventory.pools[0].authoritativeCommands[$commandIndex].kind) command" `
+            -TestInventoryPath $nonRepositoryPath `
+            -TestSchemaPath $schemaPath `
+            -ExpectedMessage "may declare path only for repository or proof-test kinds"
+    }
+
+    $inventory = Get-Content -LiteralPath $inventoryPath -Raw | ConvertFrom-Json
+    $inventory.pools[0].requiredCapabilities += "WINDOWS-11"
+    $caseDistinctUniqueItemsPath = Join-Path $tempRoot "case-distinct-unique-items.json"
+    Write-JsonFile -Value $inventory -Path $caseDistinctUniqueItemsPath
+    Assert-AcceptedByAllModes `
+        -Name "case-distinct unique array items" `
+        -TestInventoryPath $caseDistinctUniqueItemsPath
+
+    $inventory = Get-Content -LiteralPath $inventoryPath -Raw | ConvertFrom-Json
+    $inventory.pools[0].requiredCapabilities += "windows-11"
+    $duplicateUniqueItemPath = Join-Path $tempRoot "duplicate-unique-item.json"
+    Write-JsonFile -Value $inventory -Path $duplicateUniqueItemPath
+    Assert-RejectedByAllModes `
+        -Name "exact duplicate array item" `
+        -TestInventoryPath $duplicateUniqueItemPath `
+        -TestSchemaPath $schemaPath `
+        -ExpectedMessage "duplicate"
 
     $inventory = Get-Content -LiteralPath $inventoryPath -Raw | ConvertFrom-Json
     $inventory.pools[0].authoritativeCommands[0].kind = "repository"
@@ -413,5 +536,5 @@ try {
     Remove-Item -LiteralPath $tempRoot -Recurse -Force -ErrorAction SilentlyContinue
 }
 
-Write-Host "Proof-pool validator regressions passed: 50 invalid contracts rejected by $($validationModes.Count) validation modes." -ForegroundColor Green
+Write-Host "Proof-pool validator regressions passed: $script:invalidContractCount invalid contracts rejected by $($validationModes.Count) validation modes." -ForegroundColor Green
 $global:LASTEXITCODE = 0

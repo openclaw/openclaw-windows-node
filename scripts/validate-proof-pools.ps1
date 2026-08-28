@@ -143,10 +143,9 @@ function Test-SafeRepositoryCommandElement {
     return $false
 }
 
-function Test-DirectRepositoryScriptCommand {
+function Get-SingleRepositoryCommandAst {
     param(
-        [Parameter(Mandatory = $true)][string]$CommandText,
-        [Parameter(Mandatory = $true)][string]$ExpectedPath
+        [Parameter(Mandatory = $true)][string]$CommandText
     )
 
     $tokens = $null
@@ -156,13 +155,13 @@ function Test-DirectRepositoryScriptCommand {
         [ref]$tokens,
         [ref]$parseErrors)
     if (@($parseErrors).Count -ne 0) {
-        return $false
+        return $null
     }
 
     $requirementsProperty = $scriptAst.PSObject.Properties["ScriptRequirements"]
     if ($null -ne $requirementsProperty -and
         $null -ne $requirementsProperty.Value) {
-        return $false
+        return $null
     }
     if ($null -ne $scriptAst.ParamBlock -or
         $null -ne $scriptAst.DynamicParamBlock -or
@@ -170,42 +169,54 @@ function Test-DirectRepositoryScriptCommand {
         $null -ne $scriptAst.ProcessBlock -or
         @($scriptAst.UsingStatements).Count -ne 0 -or
         $null -ne $scriptAst.EndBlock.Traps) {
-        return $false
+        return $null
     }
     $cleanBlockProperty = $scriptAst.PSObject.Properties["CleanBlock"]
     if ($null -ne $cleanBlockProperty -and
         $null -ne $cleanBlockProperty.Value) {
-        return $false
+        return $null
     }
 
     $statements = @($scriptAst.EndBlock.Statements)
     if ($statements.Count -ne 1 -or
         $statements[0] -isnot [System.Management.Automation.Language.PipelineAst]) {
-        return $false
+        return $null
     }
 
     $pipeline = $statements[0]
     $backgroundProperty = $pipeline.PSObject.Properties["Background"]
     if ($null -ne $backgroundProperty -and
         [bool]$backgroundProperty.Value) {
-        return $false
+        return $null
     }
 
     $pipelineElements = @($pipeline.PipelineElements)
     if ($pipelineElements.Count -ne 1 -or
         $pipelineElements[0] -isnot [System.Management.Automation.Language.CommandAst]) {
-        return $false
+        return $null
     }
 
     $directCommand = $pipelineElements[0]
     if ($directCommand.InvocationOperator -ne
         [System.Management.Automation.Language.TokenKind]::Unknown) {
-        return $false
+        return $null
     }
     if (@($directCommand.Redirections).Count -ne 0) {
+        return $null
+    }
+    return $directCommand
+}
+
+function Test-DirectRepositoryScriptCommand {
+    param(
+        [Parameter(Mandatory = $true)][string]$CommandText,
+        [Parameter(Mandatory = $true)][string]$ExpectedPath
+    )
+
+    $directCommand = Get-SingleRepositoryCommandAst -CommandText $CommandText
+    if ($null -eq $directCommand) {
         return $false
     }
-
     $commandElements = @($directCommand.CommandElements)
     if ($commandElements.Count -eq 0) {
         return $false
@@ -221,6 +232,81 @@ function Test-DirectRepositoryScriptCommand {
         if (-not (Test-SafeRepositoryCommandElement -Element $commandElement)) {
             return $false
         }
+    }
+    return $true
+}
+
+function Test-SafeRepositoryProjectBuildCommand {
+    param(
+        [Parameter(Mandatory = $true)][string]$CommandText,
+        [Parameter(Mandatory = $true)][string]$ExpectedPath
+    )
+
+    $directCommand = Get-SingleRepositoryCommandAst -CommandText $CommandText
+    if ($null -eq $directCommand) {
+        return $false
+    }
+
+    $elements = @($directCommand.CommandElements)
+    if ($elements.Count -lt 3 -or
+        $elements[0] -isnot [System.Management.Automation.Language.StringConstantExpressionAst] -or
+        $elements[1] -isnot [System.Management.Automation.Language.StringConstantExpressionAst] -or
+        $elements[2] -isnot [System.Management.Automation.Language.StringConstantExpressionAst] -or
+        $elements[0].Value -cnotin @("dotnet", "dotnet.exe") -or
+        $elements[1].Value -cne "build" -or
+        -not [string]::Equals(
+            $elements[2].Value,
+            $ExpectedPath,
+            [System.StringComparison]::OrdinalIgnoreCase)) {
+        return $false
+    }
+
+    $allowedParameters = @(
+        "c", "configuration",
+        "r", "runtime",
+        "o", "output"
+    )
+    $allowedLongParameters = @(
+        "--configuration",
+        "--runtime",
+        "--output"
+    )
+    $index = 3
+    while ($index -lt $elements.Count) {
+        $parameter = $elements[$index]
+        if ($parameter -is [System.Management.Automation.Language.StringConstantExpressionAst] -and
+            $parameter.Value -in $allowedLongParameters) {
+            if ($index + 1 -ge $elements.Count -or
+                $elements[$index + 1] -is [System.Management.Automation.Language.CommandParameterAst] -or
+                -not (Test-SafeRepositoryCommandElement -Element $elements[$index + 1])) {
+                return $false
+            }
+            $index += 2
+            continue
+        }
+        $parameterName = if ($parameter -is
+            [System.Management.Automation.Language.CommandParameterAst]) {
+            $parameter.ParameterName.TrimStart([char]'-')
+        } else {
+            ""
+        }
+        if ($parameter -isnot [System.Management.Automation.Language.CommandParameterAst] -or
+            $parameterName -notin $allowedParameters) {
+            return $false
+        }
+        if ($null -ne $parameter.Argument) {
+            if (-not (Test-SafeRepositoryCommandElement -Element $parameter.Argument)) {
+                return $false
+            }
+            $index++
+            continue
+        }
+        if ($index + 1 -ge $elements.Count -or
+            $elements[$index + 1] -is [System.Management.Automation.Language.CommandParameterAst] -or
+            -not (Test-SafeRepositoryCommandElement -Element $elements[$index + 1])) {
+            return $false
+        }
+        $index += 2
     }
     return $true
 }
@@ -247,6 +333,115 @@ function Resolve-LocalSchemaReference {
     return $resolved
 }
 
+function Test-JsonSchemaInteger {
+    param([Parameter(Mandatory = $true)]$Value)
+
+    $integerTypes = @(
+        [System.Byte],
+        [System.SByte],
+        [System.Int16],
+        [System.UInt16],
+        [System.Int32],
+        [System.UInt32],
+        [System.Int64],
+        [System.UInt64]
+    )
+    return $null -ne $Value -and $Value.GetType() -in $integerTypes
+}
+
+function Assert-SchemaKeywordValueShapes {
+    param(
+        [Parameter(Mandatory = $true)]$SchemaNode,
+        [Parameter(Mandatory = $true)][string]$SchemaPath
+    )
+
+    foreach ($keyword in $SchemaNode.PSObject.Properties) {
+        $value = $keyword.Value
+        switch ($keyword.Name) {
+            { $_ -in @('$ref', '$schema', '$id', 'title', 'description', 'pattern') } {
+                if ($value -isnot [string]) {
+                    throw ("Schema keyword '{0}' at {1} must be a string." -f
+                        $keyword.Name, $SchemaPath)
+                }
+                if ($keyword.Name -ceq "pattern") {
+                    try {
+                        $null = New-Object System.Text.RegularExpressions.Regex $value
+                    } catch {
+                        throw "Schema keyword 'pattern' at $SchemaPath must be a valid regular expression."
+                    }
+                }
+                break
+            }
+            "type" {
+                if ($value -isnot [string] -or
+                    $value -cnotin @("object", "array", "string", "integer", "boolean")) {
+                    throw "Schema keyword 'type' at $SchemaPath must be a supported type string."
+                }
+                break
+            }
+            { $_ -in @("properties", "definitions") } {
+                if ($value -isnot [System.Management.Automation.PSCustomObject]) {
+                    throw ("Schema keyword '{0}' at {1} must be an object." -f
+                        $keyword.Name, $SchemaPath)
+                }
+                break
+            }
+            "items" {
+                if ($value -isnot [System.Management.Automation.PSCustomObject]) {
+                    throw "Schema keyword 'items' at $SchemaPath must be an object."
+                }
+                break
+            }
+            "required" {
+                if ($value -isnot [System.Array]) {
+                    throw "Schema keyword 'required' at $SchemaPath must be an array of strings."
+                }
+                $requiredNames = New-Object 'System.Collections.Generic.HashSet[string]' (
+                    [System.StringComparer]::Ordinal)
+                foreach ($requiredName in @($value)) {
+                    if ($requiredName -isnot [string] -or -not $requiredNames.Add($requiredName)) {
+                        throw "Schema keyword 'required' at $SchemaPath must contain unique strings."
+                    }
+                }
+                break
+            }
+            "enum" {
+                if ($value -isnot [System.Array] -or @($value).Count -eq 0) {
+                    throw "Schema keyword 'enum' at $SchemaPath must be a non-empty array."
+                }
+                $enumValues = New-Object 'System.Collections.Generic.HashSet[string]' (
+                    [System.StringComparer]::Ordinal)
+                foreach ($enumValue in @($value)) {
+                    $serializedValue = ConvertTo-Json -InputObject $enumValue -Depth 100 -Compress
+                    if (-not $enumValues.Add($serializedValue)) {
+                        throw "Schema keyword 'enum' at $SchemaPath must contain unique values."
+                    }
+                }
+                break
+            }
+            "uniqueItems" {
+                if ($value -isnot [bool]) {
+                    throw "Schema keyword 'uniqueItems' at $SchemaPath must be a Boolean."
+                }
+                break
+            }
+            { $_ -in @("minItems", "minLength") } {
+                if (-not (Test-JsonSchemaInteger -Value $value) -or $value -lt 0) {
+                    throw ("Schema keyword '{0}' at {1} must be a nonnegative integer." -f
+                        $keyword.Name, $SchemaPath)
+                }
+                break
+            }
+            "additionalProperties" {
+                if ($value -isnot [bool] -or $value) {
+                    throw "Only additionalProperties=false is supported at $SchemaPath."
+                }
+                break
+            }
+        }
+    }
+}
+
 function Assert-SupportedSchemaKeywords {
     param(
         [Parameter(Mandatory = $true)][object]$ValueSchema,
@@ -258,6 +453,7 @@ function Assert-SupportedSchemaKeywords {
             throw "Unsupported proof-pool schema keyword '$($schemaProperty.Name)' at $SchemaPath."
         }
     }
+    Assert-SchemaKeywordValueShapes -SchemaNode $ValueSchema -SchemaPath $SchemaPath
 
     $reference = Get-JsonProperty -Value $ValueSchema -Name '$ref'
     if ($null -ne $reference -and
@@ -406,13 +602,13 @@ function Assert-JsonSchemaValue {
 
             $uniqueItems = Get-JsonProperty -Value $ValueSchema -Name "uniqueItems"
             if ($null -ne $uniqueItems -and $uniqueItems.Value -eq $true) {
-                $seen = @{}
+                $seen = New-Object 'System.Collections.Generic.HashSet[string]' (
+                    [System.StringComparer]::Ordinal)
                 foreach ($item in $values) {
                     $key = ConvertTo-Json -InputObject $item -Depth 100 -Compress
-                    if ($seen.ContainsKey($key)) {
+                    if (-not $seen.Add($key)) {
                         throw "Proof-pool schema mismatch at ${JsonPath}: duplicate array item."
                     }
-                    $seen[$key] = $true
                 }
             }
 
@@ -481,12 +677,12 @@ try {
     throw "Proof-pool JSON could not be parsed: $($_.Exception.Message)"
 }
 
+Assert-SupportedSchemaKeywords -ValueSchema $schema -SchemaPath '$'
 if ($schema.'$schema' -ne "http://json-schema.org/draft-07/schema#" -or
     $schema.type -ne "object" -or
     $null -eq $schema.definitions) {
     throw "Proof-pool schema must be a draft-07 object schema with definitions."
 }
-Assert-SupportedSchemaKeywords -ValueSchema $schema -SchemaPath '$'
 
 if (-not $ForceFallback -and $testJson -and $testJson.Parameters.ContainsKey("SchemaFile")) {
     $schemaErrors = @()
@@ -564,13 +760,11 @@ foreach ($pool in $inventory.pools) {
                 (Test-DirectRepositoryScriptCommand `
                     -CommandText ([string]$command.command) `
                     -ExpectedPath $expectedRepositoryPath)
-            $safeProjectBuildPattern =
-                "^dotnet(?:\.exe)?\s+build\s+" +
-                [regex]::Escape($expectedRepositoryPath) +
-                "(?:\s+(?:-c|--configuration|-r|--runtime|-o|--output)\s+[^\s;&|]+)*$"
             $isSafeProjectBuild =
                 $commandPath.EndsWith(".csproj", [System.StringComparison]::OrdinalIgnoreCase) -and
-                $normalizedCommand -match $safeProjectBuildPattern
+                (Test-SafeRepositoryProjectBuildCommand `
+                    -CommandText ([string]$command.command) `
+                    -ExpectedPath $expectedRepositoryPath)
             if ($mentionsRawTestTool -and -not $isSafeProjectBuild) {
                 throw "Command '$($pool.id)/$($command.id)' must use kind 'proof-test' instead of invoking dotnet directly."
             }
@@ -583,6 +777,10 @@ foreach ($pool in $inventory.pools) {
         if ($command.kind -in @("repository", "proof-test") -and
             -not $command.PSObject.Properties.Name.Contains("path")) {
             throw "Repository-backed command '$($pool.id)/$($command.id)' must declare path."
+        }
+        if ($command.PSObject.Properties.Name.Contains("path") -and
+            $command.kind -notin @("repository", "proof-test")) {
+            throw "Command '$($pool.id)/$($command.id)' may declare path only for repository or proof-test kinds."
         }
         if ($command.PSObject.Properties.Name.Contains("path")) {
             [void](Resolve-RepositoryFile `
