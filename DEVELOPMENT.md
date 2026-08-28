@@ -491,10 +491,10 @@ Run documentation validation directly with:
 .\scripts\validate-docs.ps1
 ```
 
-`.\build.ps1` runs the same validator before compiling. It checks maintained
-Markdown links and anchors, rejects Mermaid and em dashes, verifies every
-Excalidraw/SVG pair, requires SVG accessibility metadata, and confirms rendered
-labels match the editable source.
+`.\build.ps1` runs the same validator before compiling. It checks the named
+custom Windows proof-pool inventory, maintained Markdown links and anchors,
+rejects Mermaid and em dashes, verifies every Excalidraw/SVG pair, requires SVG
+accessibility metadata, and confirms rendered labels match the editable source.
 
 ## Testing
 
@@ -511,11 +511,14 @@ computer-use, or MCP validation is also appropriate when explicitly requested or
 needed to unblock the work; agents should ask whether to run computer-use or
 provide manual UI proof steps, while still enforcing required automated tests.
 
-PRs should include `## Validation` and `## Real behavior proof` sections. Paste concrete
-after-change output, visible UI evidence for visual changes, `winnode` output or
-raw MCP server JSON-RPC output for node commands, and gateway invoke output for
-gateway-mediated behavior when available; the default PR template includes these
-prompts.
+PRs should include `## Required proof pools`, `## Validation`, and
+`## Real behavior proof` sections. Select stable pool IDs from
+[`docs/PROOF_POOLS.md`](docs/PROOF_POOLS.md), or declare `none` with a reason.
+Pool selection schedules capacity-dependent work but does not claim it ran.
+Paste concrete after-change output, visible UI evidence for visual changes,
+`winnode` output or raw MCP server JSON-RPC output for node commands, and
+gateway invoke output for gateway-mediated behavior when available. The default
+PR template includes these prompts.
 
 ### Running Unit Tests
 

@@ -84,6 +84,16 @@ validation easy to understand, not to restate the diff.
 - [ ] Permissions, privacy, or security
 - [ ] Tests, CI, or docs
 
+## Required proof pools
+
+<!--
+Select every applicable pool ID from docs/PROOF_POOLS.md using:
+- `<pool-id>`: <reason>
+
+Use `none` with a reason only when no capacity-dependent custom Windows proof is
+required. Declaring a pool schedules proof; it does not claim the proof ran.
+-->
+
 ## Validation
 
 <!--
