@@ -59,8 +59,10 @@ The inventory's `neverCollect` list is a hard boundary, not a suggestion.
 
 ## Validate the inventory
 
-The existing documentation gate validates both JSON files, required pool IDs,
-unique command IDs, and repository entry points:
+The existing documentation gate validates both JSON files, unique command IDs,
+repository entry points, the PR template heading, and exact inventory-to-table
+ID parity. It runs the built-in schema engine and the PowerShell 5.1-compatible
+fallback so either path fails closed on drift:
 
 ```powershell
 .\scripts\validate-proof-pools.ps1

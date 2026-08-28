@@ -70,7 +70,7 @@ Policy:
 - For node/MCP changes, prove discovery and invocation with `winnode --list-tools` plus `winnode --command ...`, or raw MCP JSON-RPC `tools/list` plus `tools/call`.
 - For gateway-mediated behavior, prove the real gateway path when available; otherwise state the blocker and keep MCP proof.
 - Run rubber-duck review before PR publication for non-trivial UI, MCP, node-command, setup, pairing, security, permissions, or diagnostics changes.
-- PRs should include `## Validation` and `## Real behavior proof`; proof must directly show the changed behavior from the current PR head. Fill `Not verified / blocked` for focused proof or unavailable dependencies.
+- PRs should include `## Required proof pools`, `## Validation`, and `## Real behavior proof`. Select every applicable pool ID from [`docs/PROOF_POOLS.md`](docs/PROOF_POOLS.md), or declare `none` with a reason. Proof must directly show the changed behavior from the current PR head. Fill `Not verified / blocked` for focused proof or unavailable dependencies.
 
 Every new Windows node call must be exposed, documented, and tested through MCP before completion:
 

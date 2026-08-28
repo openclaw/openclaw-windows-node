@@ -4,15 +4,17 @@
 
 .DESCRIPTION
     Uses PowerShell's built-in JSON Schema support, then applies repository
-    invariants that JSON Schema cannot express: required pool classes, unique
-    command IDs, and existing repository entry points.
+    invariants that JSON Schema cannot express: unique command IDs, existing
+    repository entry points, nonzero test guards, and cross-file documentation
+    parity.
 #>
 
 [CmdletBinding()]
 param(
     [string]$RepoRoot,
     [string]$InventoryPath,
-    [string]$SchemaPath
+    [string]$SchemaPath,
+    [switch]$ForceFallback
 )
 
 Set-StrictMode -Version Latest
@@ -37,6 +39,25 @@ foreach ($path in @($InventoryPath, $SchemaPath)) {
 }
 
 $testJson = Get-Command Test-Json -ErrorAction SilentlyContinue
+$supportedSchemaKeywords = @(
+    '$ref',
+    '$schema',
+    '$id',
+    'title',
+    'description',
+    'type',
+    'const',
+    'enum',
+    'additionalProperties',
+    'required',
+    'properties',
+    'items',
+    'minItems',
+    'uniqueItems',
+    'minLength',
+    'pattern',
+    'definitions'
+)
 
 function Get-JsonProperty {
     param(
@@ -86,6 +107,38 @@ function Resolve-LocalSchemaReference {
         $resolved = $property.Value
     }
     return $resolved
+}
+
+function Assert-SupportedSchemaKeywords {
+    param(
+        [Parameter(Mandatory = $true)][object]$ValueSchema,
+        [Parameter(Mandatory = $true)][string]$SchemaPath
+    )
+
+    foreach ($schemaProperty in @($ValueSchema.PSObject.Properties)) {
+        if ($schemaProperty.Name -cnotin $supportedSchemaKeywords) {
+            throw "Unsupported proof-pool schema keyword '$($schemaProperty.Name)' at $SchemaPath."
+        }
+    }
+
+    foreach ($containerName in @("properties", "definitions")) {
+        $container = Get-JsonProperty -Value $ValueSchema -Name $containerName
+        if ($null -ne $container) {
+            foreach ($child in @($container.Value.PSObject.Properties)) {
+                Assert-SupportedSchemaKeywords `
+                    -ValueSchema $child.Value `
+                    -SchemaPath "$SchemaPath/$containerName/$($child.Name)"
+            }
+        }
+    }
+
+    $items = Get-JsonProperty -Value $ValueSchema -Name "items"
+    if ($null -ne $items -and
+        $items.Value -is [System.Management.Automation.PSCustomObject]) {
+        Assert-SupportedSchemaKeywords `
+            -ValueSchema $items.Value `
+            -SchemaPath "$SchemaPath/items"
+    }
 }
 
 function Assert-JsonSchemaValue {
@@ -219,7 +272,14 @@ function Assert-JsonSchemaValue {
         }
         "integer" {
             $integerTypes = @(
-                [byte], [sbyte], [short], [ushort], [int], [uint], [long], [ulong]
+                [System.Byte],
+                [System.SByte],
+                [System.Int16],
+                [System.UInt16],
+                [System.Int32],
+                [System.UInt32],
+                [System.Int64],
+                [System.UInt64]
             )
             if ($null -eq $Value -or $Value.GetType() -notin $integerTypes) {
                 throw "Proof-pool schema mismatch at ${JsonPath}: expected integer."
@@ -254,10 +314,14 @@ if ($schema.'$schema' -ne "http://json-schema.org/draft-07/schema#" -or
     $null -eq $schema.definitions) {
     throw "Proof-pool schema must be a draft-07 object schema with definitions."
 }
+Assert-SupportedSchemaKeywords -ValueSchema $schema -SchemaPath '$'
 
-if ($testJson -and $testJson.Parameters.ContainsKey("SchemaFile")) {
+if (-not $ForceFallback -and $testJson -and $testJson.Parameters.ContainsKey("SchemaFile")) {
     $schemaErrors = @()
-    $schemaValid = $inventoryText | Test-Json -SchemaFile $SchemaPath -ErrorVariable schemaErrors
+    $schemaValid = $inventoryText | Test-Json `
+        -SchemaFile $SchemaPath `
+        -ErrorAction SilentlyContinue `
+        -ErrorVariable schemaErrors
     if (-not $schemaValid) {
         $details = ($schemaErrors | ForEach-Object { $_.Exception.Message }) -join [Environment]::NewLine
         throw "Proof-pool inventory does not match its schema.$([Environment]::NewLine)$details"
@@ -270,24 +334,10 @@ if ($testJson -and $testJson.Parameters.ContainsKey("SchemaFile")) {
         -JsonPath '$'
 }
 
-$requiredPoolIds = @(
-    "windows-11-sac-on",
-    "windows-wsl-mxc",
-    "windows-11-arm64",
-    "windows-wsl-dgx-blackwell",
-    "windows-clean-installer-upgrade",
-    "windows-wsl-gateway-e2e",
-    "windows-winui-interactive"
-)
 $poolIds = @($inventory.pools | ForEach-Object { $_.id })
 $duplicatePoolIds = @($poolIds | Group-Object | Where-Object Count -gt 1 | ForEach-Object Name)
 if ($duplicatePoolIds.Count -gt 0) {
     throw "Proof-pool IDs must be unique: $($duplicatePoolIds -join ', ')"
-}
-
-$missingPoolIds = @($requiredPoolIds | Where-Object { $_ -notin $poolIds })
-if ($missingPoolIds.Count -gt 0) {
-    throw "Required proof pools are missing: $($missingPoolIds -join ', ')"
 }
 
 foreach ($pool in $inventory.pools) {
@@ -300,6 +350,9 @@ foreach ($pool in $inventory.pools) {
     }
 
     foreach ($command in $pool.authoritativeCommands) {
+        if ([string]$command.command -match "(?i)(^|[;&]\s*)dotnet\s+test\b") {
+            throw "Proof test command '$($pool.id)/$($command.id)' must use scripts\run-proof-tests.ps1 so zero tests cannot pass."
+        }
         if ($command.kind -eq "repository" -and
             -not $command.PSObject.Properties.Name.Contains("path")) {
             throw "Repository command '$($pool.id)/$($command.id)' must declare path."
@@ -313,11 +366,57 @@ foreach ($pool in $inventory.pools) {
                     [System.StringComparison]::OrdinalIgnoreCase)) {
                 throw "Proof-pool entry point escapes the repository for '$($pool.id)/$($command.id)': $($command.path)"
             }
-            if (-not (Test-Path -LiteralPath $entryPoint)) {
-                throw "Proof-pool entry point does not exist for '$($pool.id)/$($command.id)': $($command.path)"
+            if (-not (Test-Path -LiteralPath $entryPoint -PathType Leaf)) {
+                throw "Proof-pool entry point is not a file for '$($pool.id)/$($command.id)': $($command.path)"
             }
         }
     }
+}
+
+$templatePath = Join-Path $repoRootPath ".github\pull_request_template.md"
+$expectedHeading = "## $($inventory.declaration.prBodySection)"
+$templateHeadings = @(
+    [System.IO.File]::ReadAllLines($templatePath) |
+        Where-Object { $_ -ceq $expectedHeading }
+)
+if ($templateHeadings.Count -ne 1) {
+    throw "PR template must contain exactly one declaration heading: $expectedHeading"
+}
+
+$proofPoolDocsPath = Join-Path $repoRootPath "docs\PROOF_POOLS.md"
+$documentedPoolIds = @(
+    [System.IO.File]::ReadAllLines($proofPoolDocsPath) |
+        ForEach-Object {
+            $match = [regex]::Match($_, '^\|\s*`(?<id>[a-z0-9]+(?:-[a-z0-9]+)*)`\s*\|')
+            if ($match.Success) {
+                $match.Groups["id"].Value
+            }
+        }
+)
+$duplicateDocumentedIds = @(
+    $documentedPoolIds |
+        Group-Object |
+        Where-Object Count -gt 1 |
+        ForEach-Object Name
+)
+if ($duplicateDocumentedIds.Count -gt 0) {
+    throw "Proof-pool documentation contains duplicate IDs: $($duplicateDocumentedIds -join ', ')"
+}
+
+$poolIdSet = New-Object "System.Collections.Generic.HashSet[string]" (
+    [System.StringComparer]::Ordinal)
+foreach ($poolId in $poolIds) {
+    [void]$poolIdSet.Add($poolId)
+}
+$documentedPoolIdSet = New-Object "System.Collections.Generic.HashSet[string]" (
+    [System.StringComparer]::Ordinal)
+foreach ($documentedPoolId in $documentedPoolIds) {
+    [void]$documentedPoolIdSet.Add($documentedPoolId)
+}
+$missingDocumentedIds = @($poolIds | Where-Object { -not $documentedPoolIdSet.Contains($_) })
+$unknownDocumentedIds = @($documentedPoolIds | Where-Object { -not $poolIdSet.Contains($_) })
+if ($missingDocumentedIds.Count -gt 0 -or $unknownDocumentedIds.Count -gt 0) {
+    throw "Proof-pool documentation ID drift. Missing: $($missingDocumentedIds -join ', '); unknown: $($unknownDocumentedIds -join ', ')."
 }
 
 Write-Host "Proof-pool validation passed: $($inventory.pools.Count) named pools checked." -ForegroundColor Green

@@ -21,6 +21,12 @@ $errors = [System.Collections.Generic.List[string]]::new()
 if ($LASTEXITCODE -ne 0) {
     exit $LASTEXITCODE
 }
+& (Join-Path $repoRootPath "scripts\validate-proof-pools.ps1") `
+    -RepoRoot $repoRootPath `
+    -ForceFallback
+if ($LASTEXITCODE -ne 0) {
+    exit $LASTEXITCODE
+}
 
 function Add-ValidationError([string]$message) {
     $script:errors.Add($message)

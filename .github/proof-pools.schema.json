@@ -112,7 +112,7 @@
         },
         "path": {
           "type": "string",
-          "pattern": "^(?!.*(?:^|\\\\)\\.\\.(?:\\\\|$))(?:(?:scripts|tests|src)\\\\[^<>:\"|?*]+|run-app-local\\.ps1)$"
+          "pattern": "^(?!.*(?:^|\\\\)\\.\\.(?:\\\\|$))(?:(?:scripts|tests|src)\\\\[^<>:\"|?*\\\\]+(?:\\\\[^<>:\"|?*\\\\]+)*|run-app-local\\.ps1)$"
         },
         "command": {
           "$ref": "#/definitions/nonEmptyString"
