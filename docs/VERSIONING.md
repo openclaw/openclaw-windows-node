@@ -26,10 +26,10 @@ from the same tag history.
 The repository-local tool manifest (`.config\dotnet-tools.json`) and MSBuild
 package reference (`src\Directory.Build.props`) are the authoritative local
 tool/package pins and currently target GitVersion 6.8.2. The CI workflow's
-`gittools/actions/gitversion/setup` step currently pins `6.4.x` for workflow
-output computation; if workflow files are being changed, prefer aligning that
-setup action to `6.8.x`. Until then, CI's tag/SemVer verification remains the
-release-blocking guard against version drift.
+`gittools/actions/gitversion/setup` step tracks the matching `6.8.x` line for
+workflow output computation. Keep the workflow action on the same major/minor
+line as the repository pins so the value injected into product metadata is
+computed by the same GitVersion release.
 
 ## Tagged and untagged builds
 

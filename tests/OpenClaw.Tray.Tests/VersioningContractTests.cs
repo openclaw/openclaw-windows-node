@@ -63,6 +63,8 @@ public sealed class VersioningContractTests
             Path.Combine(repoRoot, ".github", "workflows", "ci.yml"));
 
         Assert.Contains("- name: Resolve release version", workflow);
+        Assert.Contains("versionSpec: '6.8.x'", workflow);
+        Assert.DoesNotContain("versionSpec: '6.4.x'", workflow);
         Assert.Contains(
             "'^(?<base>(?:0|[1-9]\\d*)\\.(?:0|[1-9]\\d*)\\.(?:0|[1-9]\\d*))-(?<revision>[1-9]\\d*)$'",
             workflow);

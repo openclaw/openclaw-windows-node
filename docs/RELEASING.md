@@ -81,12 +81,22 @@ Stable, stable-correction, and alpha tags use the same signed CI release pipelin
   release under OpenClaw correction ordering.
 - `vX.Y.Z-alpha.N` creates a prerelease that stable updater checks do not offer.
 
-The first Windows release that adopts stable correction ordering requires a
-manual upgrade from the matching unsuffixed version. Older Windows clients use
-Updatum's default parser, which removes the numeric correction suffix before
-comparison. Once a correction-aware Windows build is installed, later
-corrections and the next stable base version are compared using OpenClaw release
-ordering.
+Stable correction support begins only with an eligible upstream release tag
+created from `main` after the correction-aware implementation has landed. For
+this rollout, the Windows repository already contains its own annotated
+`v2026.7.1-2` tag, separate from the matching upstream tag, and it points to a
+commit that predates the implementation. It is not a correction-aware artifact
+and must not be moved, rebuilt from a different commit, or reused as a recovery
+release.
+
+If the first post-merge Windows release is another numeric correction, users on
+the matching unsuffixed version need to install that new release manually.
+Older Windows clients use Updatum's default parser, which removes the numeric
+correction suffix before comparison. If the first post-merge release is a newer
+unsuffixed stable version, ordinary Updatum ordering can deliver it without the
+manual correction transition. Once any correction-aware Windows build is
+installed, later corrections and stable base versions are compared using
+OpenClaw release ordering.
 
 ```powershell
 git tag -a vX.Y.Z-alpha.N -m "OpenClaw Windows Hub vX.Y.Z-alpha.N"
