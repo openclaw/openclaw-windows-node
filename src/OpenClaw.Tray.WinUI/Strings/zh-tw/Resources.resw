@@ -7015,6 +7015,8 @@
   <data name="LocalAiPage_OpenLogsButton.Content" xml:space="preserve"><value>開啟記錄</value></data>
   <data name="LocalAiPage_ModelHeading.Text" xml:space="preserve"><value>模型</value></data>
   <data name="LocalAiPage_RetrySetupButton.Content" xml:space="preserve"><value>重試設定或下載</value></data>
+  <data name="LocalAiPage_ChangeModelDescription.Text" xml:space="preserve"><value>開啟設定以選擇其他模型。取代現有本機閘道仍需確認。</value></data>
+  <data name="LocalAiPage_ChangeModelButton.Content" xml:space="preserve"><value>變更模型</value></data>
   <data name="LocalAiPage_GatewayHeading.Text" xml:space="preserve"><value>閘道連線</value></data>
   <data name="LocalAiPage_RepairConnectionButton.Content" xml:space="preserve"><value>修復連線</value></data>
   <data name="LocalAiPage_OpenChatButton.Content" xml:space="preserve"><value>開啟聊天</value></data>

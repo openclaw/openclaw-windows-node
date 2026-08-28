@@ -85,6 +85,16 @@
                     <Button x:Name="RetrySetupButton" x:Uid="LocalAiPage_RetrySetupButton"
                             Content="Retry setup or download" Click="OnRetrySetup" HorizontalAlignment="Left"
                             AutomationProperties.AutomationId="LocalAiRetrySetup"/>
+                    <StackPanel x:Name="ChangeModelPanel" Spacing="8" Visibility="Collapsed">
+                        <TextBlock x:Uid="LocalAiPage_ChangeModelDescription"
+                                  Text="Opens setup to choose another model. Replacing the existing Local Gateway still requires confirmation."
+                                  Style="{StaticResource CaptionTextBlockStyle}"
+                                  Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                  TextWrapping="Wrap"/>
+                        <Button x:Name="ChangeModelButton" x:Uid="LocalAiPage_ChangeModelButton"
+                               Content="Change model" Click="OnChangeModel" HorizontalAlignment="Left"
+                               AutomationProperties.AutomationId="LocalAiChangeModel"/>
+                    </StackPanel>
                 </StackPanel>
             </Border>
 

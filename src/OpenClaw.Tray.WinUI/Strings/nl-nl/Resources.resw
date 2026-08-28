@@ -7016,6 +7016,8 @@ Het binaire bestand wxc-exec is niet gevonden. {1} Als dit een ontwikkelaarsbuil
   <data name="LocalAiPage_OpenLogsButton.Content" xml:space="preserve"><value>Logboeken openen</value></data>
   <data name="LocalAiPage_ModelHeading.Text" xml:space="preserve"><value>AI-model</value></data>
   <data name="LocalAiPage_RetrySetupButton.Content" xml:space="preserve"><value>Installatie of download opnieuw proberen</value></data>
+  <data name="LocalAiPage_ChangeModelDescription.Text" xml:space="preserve"><value>Opent de installatie om een ander model te kiezen. Voor het vervangen van de bestaande lokale gateway blijft bevestiging vereist.</value></data>
+  <data name="LocalAiPage_ChangeModelButton.Content" xml:space="preserve"><value>Model wijzigen</value></data>
   <data name="LocalAiPage_GatewayHeading.Text" xml:space="preserve"><value>Gatewayverbinding</value></data>
   <data name="LocalAiPage_RepairConnectionButton.Content" xml:space="preserve"><value>Verbinding herstellen</value></data>
   <data name="LocalAiPage_OpenChatButton.Content" xml:space="preserve"><value>Chat openen</value></data>

@@ -119,6 +119,9 @@ internal sealed class LocalAiPageViewModel : INavigationAware, IDisposable, INot
     public bool CanOpenLogs => !IsBusy && HasManagedInstall;
     public bool CanRetrySetup => !IsBusy && ModelState is
         LocalAiModelPresentationState.NotInstalled or LocalAiModelPresentationState.Unknown;
+    public bool HasInstalledModel => ModelState is
+        LocalAiModelPresentationState.Verified or LocalAiModelPresentationState.Loaded;
+    public bool CanChangeModel => !IsBusy && HasInstalledModel;
     public bool CanRepairConnection => !IsBusy && GatewayState is not
         (LocalAiGatewayPresentationState.Connected or LocalAiGatewayPresentationState.Connecting);
     public bool CanOpenChat => !IsBusy &&
@@ -163,6 +166,7 @@ internal sealed class LocalAiPageViewModel : INavigationAware, IDisposable, INot
     public Task<bool> RestartAsync() => RunRuntimeActionAsync(CanRestart, _runtime.RestartAsync);
     public bool OpenLogs() => RunCommand(CanOpenLogs, _appCommands.OpenLocalAiLogs);
     public bool RetrySetup() => RunCommand(CanRetrySetup, _appCommands.ShowOnboarding);
+    public bool ChangeModel() => RunCommand(CanChangeModel, _appCommands.ShowOnboarding);
     public bool RepairConnection() => RunCommand(CanRepairConnection, _appCommands.Reconnect);
     public bool OpenChat() => RunCommand(CanOpenChat, _appCommands.ShowChat);
 
