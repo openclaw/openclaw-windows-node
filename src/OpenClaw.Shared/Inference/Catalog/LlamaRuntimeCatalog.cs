@@ -47,11 +47,11 @@ public sealed record LlamaRuntimeVariant
 /// </summary>
 public static class LlamaRuntimeCatalog
 {
-    public const string ReleaseTag = "b10488";
-    public const string ReleaseCommitSha = "9d77fa17254e1dee4b9e92504c91611a60b1359f";
+    public const string ReleaseTag = "b10655";
+    public const string ReleaseCommitSha = "cb300598d5f90189cb69d2702f4930aaf99d32a2";
     public const string ServerExecutableName = "llama-server.exe";
-    public const string X64RuntimeId = "b10488-cuda13-x64";
-    public const string Arm64RuntimeId = "b10488-cuda13-arm64";
+    public const string X64RuntimeId = "b10655-cuda13-x64";
+    public const string Arm64RuntimeId = "b10655-cuda13-arm64";
 
     public static GitHubReleaseSource Source { get; } = new(
         "ggml-org/llama.cpp",
@@ -69,13 +69,13 @@ public static class LlamaRuntimeCatalog
                     new[]
                     {
                         RuntimeArtifact(
-                            "llama-b10488-cuda13-x64",
+                            "llama-b10655-cuda13-x64",
                             ArtifactRole.RuntimeBinary,
-                            "llama-b10488-bin-win-cuda-13.3-x64.zip",
-                            146_824_581,
-                            "f4ea53c2e7f3d295cb9fd092515d50af4969266b4cdae01f03a1cbaa8b4d9af0"),
+                            "llama-b10655-bin-win-cuda-13.3-x64.zip",
+                            146_478_045,
+                            "be61636141327b3ca4d437c17489fd69964838a31a5fe3e97400f0dcd9f669dc"),
                         RuntimeArtifact(
-                            "cudart-b10488-cuda13-x64",
+                            "cudart-b10655-cuda13-x64",
                             ArtifactRole.RuntimeDependency,
                             "cudart-llama-bin-win-cuda-13.3-x64.zip",
                             390_970_417,
@@ -89,13 +89,13 @@ public static class LlamaRuntimeCatalog
                     new[]
                     {
                         RuntimeArtifact(
-                            "llama-b10488-cuda13-arm64",
+                            "llama-b10655-cuda13-arm64",
                             ArtifactRole.RuntimeBinary,
-                            "llama-b10488-bin-win-cuda-13.4-arm64.zip",
-                            140_379_054,
-                            "75554d62f4af8f4150d3b4b0cca7df62d44105e98fb7cd92ab2d177e382b441d"),
+                            "llama-b10655-bin-win-cuda-13.4-arm64.zip",
+                            140_055_278,
+                            "567e61b4129e0d5b0580e5d3ea86b82ab5b6bee745ee02f69b58af799b49a582"),
                         RuntimeArtifact(
-                            "cudart-b10488-cuda13-arm64",
+                            "cudart-b10655-cuda13-arm64",
                             ArtifactRole.RuntimeDependency,
                             "cudart-llama-bin-win-cuda-13.4-arm64.zip",
                             153_318_797,
