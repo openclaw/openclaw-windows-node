@@ -123,7 +123,7 @@ function Invoke-ValidatorMode {
     New-Item -ItemType Directory -Path $processTemp -Force | Out-Null
     $isolatedInventoryPath = Join-Path $invocationInputRoot "inventory.json"
     $isolatedSchemaPath = Join-Path $invocationInputRoot "schema.json"
-    $context = "case='$Name'; mode='$($Mode.Name)'; inventory='$isolatedInventoryPath'; schema='$isolatedSchemaPath'; temp='$processTemp'"
+    $context = "case='$Name'; mode='$($Mode.Name)'; sourceInventory='$TestInventoryPath'; sourceSchema='$TestSchemaPath'; inventory='$isolatedInventoryPath'; schema='$isolatedSchemaPath'; temp='$processTemp'"
     Copy-FileAtomically `
         -Source $TestInventoryPath `
         -Destination $isolatedInventoryPath `
