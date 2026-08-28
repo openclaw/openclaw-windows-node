@@ -11668,50 +11668,64 @@ public class OpenClawChatDataProviderTests
     [Fact]
     public async Task AttachmentMetadata_ConcurrentSavesPreserveEveryCompletedSend()
     {
-        const int sendCount = 16;
         using var tempDir = new TempDirectory();
+        var toolPath = Path.Combine(tempDir.DirectoryPath, "tool-metadata.json");
         var attachmentPath = Path.Combine(tempDir.DirectoryPath, "attachment-metadata.json");
-        var sessions = Enumerable.Range(0, sendCount)
-            .Select(index => new SessionInfo
+        var firstSnapshotCaptured = new TaskCompletionSource(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        using var releaseFirstSnapshot = new ManualResetEventSlim();
+        using var store = new ChatMetadataStore(
+            toolPath,
+            attachmentPath,
+            version =>
             {
-                Key = $"thread-{index}",
-                DisplayName = $"Thread {index}",
-                Status = "active",
-                IsMain = index == 0,
-            })
-            .ToArray();
-        var (bridge, provider, _, _) = CreateProvider(
-            sessions,
-            attachmentMetaCachePath: attachmentPath);
-        await provider.LoadAsync();
+                if (version != 1)
+                    return;
 
-        var allStarted = new CountdownEvent(sendCount);
-        var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-        bridge.SendBehavior = async (_, _, _) =>
+                firstSnapshotCaptured.SetResult();
+                releaseFirstSnapshot.Wait();
+            });
+
+        static ChatAttachment Attachment(string fileName) => new()
         {
-            allStarted.Signal();
-            await release.Task;
+            Type = "image",
+            MimeType = "image/png",
+            FileName = fileName,
+            Content = Convert.ToBase64String([1]),
+            SizeBytes = 1,
         };
 
-        var sends = sessions.Select((session, index) =>
-            provider.SendMessageAsync(session.Key, $"caption-{index}", default,
-            [
-                new ChatAttachment
-                {
-                    Type = "image",
-                    MimeType = "image/png",
-                    FileName = $"file-{index}.png",
-                    Content = Convert.ToBase64String([(byte)index]),
-                    SizeBytes = 1,
-                },
-            ])).ToArray();
-        Assert.True(allStarted.Wait(TimeSpan.FromSeconds(5)));
-        release.SetResult();
-        await Task.WhenAll(sends);
+        var firstSave = Task.Run(() =>
+            store.CacheAttachments(
+                "thread-1",
+                "session-1",
+                0,
+                "first",
+                [Attachment("first.png")],
+                1_000));
+        try
+        {
+            await firstSnapshotCaptured.Task.WaitAsync(TimeSpan.FromSeconds(5));
+            store.CacheAttachments(
+                "thread-2",
+                "session-2",
+                0,
+                "second",
+                [Attachment("second.png")],
+                2_000);
+        }
+        finally
+        {
+            releaseFirstSnapshot.Set();
+        }
 
-        var persisted = await File.ReadAllTextAsync(attachmentPath);
-        for (var index = 0; index < sendCount; index++)
-            Assert.Contains($"file-{index}.png", persisted, StringComparison.Ordinal);
+        await firstSave;
+
+        var cache = JsonSerializer.Deserialize<
+            Dictionary<string, List<ChatMetadataStore.CachedAttachmentMeta>>>(
+                await File.ReadAllTextAsync(attachmentPath));
+        Assert.Equal("first.png", Assert.Single(cache!["session-1"]).Attachments[0].FileName);
+        Assert.Equal("second.png", Assert.Single(cache["session-2"]).Attachments[0].FileName);
     }
 
     [Fact]
