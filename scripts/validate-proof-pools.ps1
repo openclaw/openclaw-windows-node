@@ -87,6 +87,35 @@ function Compare-JsonValue {
     return $leftJson -ceq $rightJson
 }
 
+function Resolve-RepositoryFile {
+    param(
+        [Parameter(Mandatory = $true)][string]$RelativePath,
+        [Parameter(Mandatory = $true)][string]$Context
+    )
+
+    $candidate = [System.IO.Path]::GetFullPath(
+        (Join-Path $repoRootPath $RelativePath))
+    $repoPrefix = $repoRootPath.TrimEnd("\") + "\"
+    if (-not $candidate.StartsWith(
+            $repoPrefix,
+            [System.StringComparison]::OrdinalIgnoreCase) -or
+        -not (Test-Path -LiteralPath $candidate -PathType Leaf)) {
+        throw "$Context is not a repository file: $RelativePath"
+    }
+
+    $currentPath = $repoRootPath
+    $relativeCandidate = $candidate.Substring($repoPrefix.Length)
+    foreach ($segment in $relativeCandidate.Split("\")) {
+        $currentPath = Join-Path $currentPath $segment
+        $item = Get-Item -LiteralPath $currentPath -Force
+        if (($item.Attributes -band [System.IO.FileAttributes]::ReparsePoint) -ne 0) {
+            throw "$Context traverses a reparse point: $RelativePath"
+        }
+    }
+
+    return $candidate
+}
+
 function Resolve-LocalSchemaReference {
     param(
         [Parameter(Mandatory = $true)][string]$Reference,
@@ -126,6 +155,13 @@ function Assert-SupportedSchemaKeywords {
         @($ValueSchema.PSObject.Properties).Count -ne 1) {
         throw "Schema `$ref at $SchemaPath cannot have sibling keywords under Draft-07."
     }
+    $additionalProperties =
+        Get-JsonProperty -Value $ValueSchema -Name "additionalProperties"
+    if ($null -ne $additionalProperties -and
+        ($additionalProperties.Value -isnot [bool] -or
+            [bool]$additionalProperties.Value)) {
+        throw "Only additionalProperties=false is supported at $SchemaPath."
+    }
     $typeProperty = Get-JsonProperty -Value $ValueSchema -Name "type"
     $typeSpecificKeywords = @(
         @{ Type = "object"; Keywords = @("additionalProperties", "required", "properties") },
@@ -156,8 +192,10 @@ function Assert-SupportedSchemaKeywords {
     }
 
     $items = Get-JsonProperty -Value $ValueSchema -Name "items"
-    if ($null -ne $items -and
-        $items.Value -is [System.Management.Automation.PSCustomObject]) {
+    if ($null -ne $items) {
+        if ($items.Value -isnot [System.Management.Automation.PSCustomObject]) {
+            throw "Tuple or non-object items is unsupported at $SchemaPath."
+        }
         Assert-SupportedSchemaKeywords `
             -ValueSchema $items.Value `
             -SchemaPath "$SchemaPath/items"
@@ -217,9 +255,11 @@ function Assert-JsonSchemaValue {
             }
 
             $required = Get-JsonProperty -Value $ValueSchema -Name "required"
-            foreach ($requiredName in @($required.Value)) {
-                if ($null -eq (Get-JsonProperty -Value $Value -Name ([string]$requiredName))) {
-                    throw "Proof-pool schema mismatch at ${JsonPath}: missing '$requiredName'."
+            if ($null -ne $required) {
+                foreach ($requiredName in @($required.Value)) {
+                    if ($null -eq (Get-JsonProperty -Value $Value -Name ([string]$requiredName))) {
+                        throw "Proof-pool schema mismatch at ${JsonPath}: missing '$requiredName'."
+                    }
                 }
             }
 
@@ -376,7 +416,7 @@ foreach ($pool in $inventory.pools) {
         $normalizedCommand = ([string]$command.command).
             Replace([string][char]39, "").
             Replace([string][char]34, "")
-        $proofTestPattern = "^(?:\`$env:OPENCLAW_RUN_E2E = '1'; )?\.\\scripts\\run-proof-tests\.ps1 -Project '[^']+' -Filter '[^']+' -ResultName '[a-z0-9]+(?:-[a-z0-9]+)*'(?: -RuntimeIdentifier (?:win-x64|win-arm64))?$"
+        $proofTestPattern = "^(?:\`$env:OPENCLAW_RUN_E2E = '1'; )?\.\\scripts\\run-proof-tests\.ps1 -Project '(?<project>[^']+)' -Filter '[^']+' -ResultName '[a-z0-9]+(?:-[a-z0-9]+)*'(?: -RuntimeIdentifier (?:win-x64|win-arm64))?$"
         $commandPathProperty = Get-JsonProperty -Value $command -Name "path"
         $commandPath = if ($null -eq $commandPathProperty) {
             ""
@@ -386,15 +426,52 @@ foreach ($pool in $inventory.pools) {
         $invokesProofRunner =
             $commandPath -ieq "scripts\run-proof-tests.ps1" -or
             $normalizedCommand -match "(?i)\brun-proof-tests\.ps1\b"
+        $mentionsRawTestTool =
+            $normalizedCommand -match "(?i)\bdotnet(?:\.exe)?\b" -or
+            $normalizedCommand -match "(?i)\bmsbuild(?:\.exe)?\b" -or
+            $normalizedCommand -match "(?i)\bvstest\.console(?:\.(?:exe|dll))?\b" -or
+            $normalizedCommand -match "(?i)\bvstest\.(?:exe|dll)\b" -or
+            $normalizedCommand -match "(?i)[/-](?:t|target):[^\r\n;&|]*\bVSTest\b"
         if ($command.kind -eq "proof-test" -or $invokesProofRunner) {
             if ($command.kind -ne "proof-test") {
                 throw "Proof runner command '$($pool.id)/$($command.id)' must use kind 'proof-test'."
             }
+            $proofTestMatch = [regex]::Match(
+                [string]$command.command,
+                $proofTestPattern,
+                [System.Text.RegularExpressions.RegexOptions]::CultureInvariant)
             if ($commandPath -cne "scripts\run-proof-tests.ps1" -or
-                [string]$command.command -cnotmatch $proofTestPattern) {
+                -not $proofTestMatch.Success) {
                 throw "Proof test command '$($pool.id)/$($command.id)' must use the restricted scripts\run-proof-tests.ps1 contract."
             }
-        } elseif ($normalizedCommand -match "(?is)\bdotnet(?:\.exe)?\b.*\btest\b") {
+            [void](Resolve-RepositoryFile `
+                -RelativePath $proofTestMatch.Groups["project"].Value `
+                -Context "Proof test project for '$($pool.id)/$($command.id)'")
+        } elseif ($command.kind -eq "repository" -and
+            -not [string]::IsNullOrWhiteSpace($commandPath)) {
+            $expectedRepositoryPath = ".\" + $commandPath
+            $isDirectScriptCommand =
+                $commandPath.EndsWith(".ps1", [System.StringComparison]::OrdinalIgnoreCase) -and
+                ($normalizedCommand.Equals(
+                    $expectedRepositoryPath,
+                    [System.StringComparison]::OrdinalIgnoreCase) -or
+                    $normalizedCommand.StartsWith(
+                        $expectedRepositoryPath + " ",
+                        [System.StringComparison]::OrdinalIgnoreCase))
+            $safeProjectBuildPattern =
+                "^dotnet(?:\.exe)?\s+build\s+" +
+                [regex]::Escape($expectedRepositoryPath) +
+                "(?:\s+(?:-c|--configuration|-r|--runtime|-o|--output)\s+[^\s;&|]+)*$"
+            $isSafeProjectBuild =
+                $commandPath.EndsWith(".csproj", [System.StringComparison]::OrdinalIgnoreCase) -and
+                $normalizedCommand -match $safeProjectBuildPattern
+            if ($mentionsRawTestTool -and -not $isSafeProjectBuild) {
+                throw "Command '$($pool.id)/$($command.id)' must use kind 'proof-test' instead of invoking dotnet directly."
+            }
+            if (-not $isDirectScriptCommand -and -not $isSafeProjectBuild) {
+                throw "Repository command '$($pool.id)/$($command.id)' must directly invoke its declared script or use the restricted project build contract."
+            }
+        } elseif ($mentionsRawTestTool) {
             throw "Command '$($pool.id)/$($command.id)' must use kind 'proof-test' instead of invoking dotnet directly."
         }
         if ($command.kind -in @("repository", "proof-test") -and
@@ -402,17 +479,9 @@ foreach ($pool in $inventory.pools) {
             throw "Repository-backed command '$($pool.id)/$($command.id)' must declare path."
         }
         if ($command.PSObject.Properties.Name.Contains("path")) {
-            $entryPoint = [System.IO.Path]::GetFullPath(
-                (Join-Path $repoRootPath ([string]$command.path)))
-            $repoPrefix = $repoRootPath.TrimEnd("\") + "\"
-            if (-not $entryPoint.StartsWith(
-                    $repoPrefix,
-                    [System.StringComparison]::OrdinalIgnoreCase)) {
-                throw "Proof-pool entry point escapes the repository for '$($pool.id)/$($command.id)': $($command.path)"
-            }
-            if (-not (Test-Path -LiteralPath $entryPoint -PathType Leaf)) {
-                throw "Proof-pool entry point is not a file for '$($pool.id)/$($command.id)': $($command.path)"
-            }
+            [void](Resolve-RepositoryFile `
+                -RelativePath ([string]$command.path) `
+                -Context "Proof-pool entry point for '$($pool.id)/$($command.id)'")
         }
     }
 }

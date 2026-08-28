@@ -78,6 +78,10 @@ jobs:
       shell: pwsh
       run: ./scripts/validate-docs.ps1
 
+    - name: Validate proof-pool regressions
+      shell: pwsh
+      run: ./scripts/test-proof-pool-validator.ps1
+
     - name: Restore dependencies
       run: dotnet restore
 

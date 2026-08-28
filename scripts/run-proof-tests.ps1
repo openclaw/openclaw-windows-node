@@ -89,4 +89,3 @@ $outcomes = @($results | Group-Object { $_.GetAttribute("outcome") })
 $summary = $outcomes | ForEach-Object { "$($_.Name)=$($_.Count)" }
 Write-Host "Proof tests reported: total=$($results.Count); $($summary -join '; ')" -ForegroundColor Green
 Write-Host "Proof TRX: $trxPath"
-exit 0

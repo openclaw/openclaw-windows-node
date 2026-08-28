@@ -63,7 +63,9 @@ The existing documentation gate validates both JSON files, unique command IDs,
 repository entry points, the PR template heading, and exact inventory-to-table
 ID parity. It runs the built-in schema engine and the PowerShell 5.1-compatible
 fallback so either path fails closed on drift. Regression cases also reject
-type-less assertion schemas and raw `dotnet test` hidden inside wrappers:
+type-less assertion schemas, unsupported `additionalProperties` schema objects,
+and raw `dotnet test` hidden inside wrappers. PowerShell 7 coverage runs when
+available; Windows PowerShell 5.1 remains the required fallback:
 
 ```powershell
 .\scripts\validate-proof-pools.ps1
@@ -72,5 +74,7 @@ type-less assertion schemas and raw `dotnet test` hidden inside wrappers:
 .\scripts\validate-docs.ps1
 ```
 
-`.\build.ps1` and CI already run `validate-docs.ps1`, so inventory drift fails
-the normal build and pull request validation path.
+`.\build.ps1` and CI run `validate-docs.ps1`, so inventory drift fails the
+normal build and pull request validation path. CI runs the full
+malformed-contract matrix separately so local builds keep the documentation
+gate fast.

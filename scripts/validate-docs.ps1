@@ -22,17 +22,10 @@ if ([string]::IsNullOrWhiteSpace($RepoRoot)) {
 $repoRootPath = [System.IO.Path]::GetFullPath($RepoRoot)
 $errors = [System.Collections.Generic.List[string]]::new()
 
-if (-not $SkipProofPoolFlowRegression) {
-    & (Join-Path $repoRootPath "scripts\test-validate-docs-proof-pool-flow.ps1") `
-        -RepoRoot $repoRootPath
-}
-
 & (Join-Path $repoRootPath "scripts\validate-proof-pools.ps1") -RepoRoot $repoRootPath
 & (Join-Path $repoRootPath "scripts\validate-proof-pools.ps1") `
     -RepoRoot $repoRootPath `
     -ForceFallback
-& (Join-Path $repoRootPath "scripts\test-proof-pool-validator.ps1") `
-    -RepoRoot $repoRootPath
 
 function Add-ValidationError([string]$message) {
     $script:errors.Add($message)
@@ -296,6 +289,11 @@ if ($errors.Count -gt 0) {
         Write-Host "  - $validationError" -ForegroundColor Red
     }
     exit 1
+}
+
+if (-not $SkipProofPoolFlowRegression) {
+    & (Join-Path $repoRootPath "scripts\test-validate-docs-proof-pool-flow.ps1") `
+        -RepoRoot $repoRootPath
 }
 
 Write-Host "Documentation validation passed: $($markdownFiles.Count) Markdown files checked." -ForegroundColor Green
