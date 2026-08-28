@@ -263,6 +263,21 @@ try {
             Name = "integer-valued schema dialect"
             ExpectedMessage = "must be a string"
             Mutate = { param($value) $value.'$schema' = 42 }
+        },
+        @{
+            Name = "Boolean-valued child schema"
+            ExpectedMessage = "Schema node at $/definitions/identifier must be an object"
+            Mutate = { param($value) $value.definitions.identifier = $true }
+        },
+        @{
+            Name = "integer-valued child schema"
+            ExpectedMessage = "Schema node at $/definitions/identifier must be an object"
+            Mutate = { param($value) $value.definitions.identifier = 42 }
+        },
+        @{
+            Name = "null-valued minItems"
+            ExpectedMessage = "must be a nonnegative integer"
+            Mutate = { param($value) $value.properties.pools.minItems = $null }
         }
     )
     for ($index = 0; $index -lt $malformedSchemaShapes.Count; $index++) {
@@ -428,6 +443,17 @@ try {
     Assert-RejectedByAllModes `
         -Name "dynamic project-build output" `
         -TestInventoryPath $dynamicProjectBuildPath `
+        -TestSchemaPath $schemaPath `
+        -ExpectedMessage "must use kind 'proof-test' instead of invoking dotnet directly"
+
+    $inventory = Get-Content -LiteralPath $inventoryPath -Raw | ConvertFrom-Json
+    $inventory.pools[2].authoritativeCommands[0].command =
+        "dotnet build .\src\OpenClaw.Tray.WinUI\OpenClaw.Tray.WinUI.csproj --OUTPUT .\artifacts\arm64"
+    $invalidCaseProjectBuildPath = Join-Path $tempRoot "invalid-case-project-build.json"
+    Write-JsonFile -Value $inventory -Path $invalidCaseProjectBuildPath
+    Assert-RejectedByAllModes `
+        -Name "invalid-case project-build output option" `
+        -TestInventoryPath $invalidCaseProjectBuildPath `
         -TestSchemaPath $schemaPath `
         -ExpectedMessage "must use kind 'proof-test' instead of invoking dotnet directly"
 

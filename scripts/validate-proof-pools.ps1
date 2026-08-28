@@ -275,7 +275,7 @@ function Test-SafeRepositoryProjectBuildCommand {
     while ($index -lt $elements.Count) {
         $parameter = $elements[$index]
         if ($parameter -is [System.Management.Automation.Language.StringConstantExpressionAst] -and
-            $parameter.Value -in $allowedLongParameters) {
+            $parameter.Value -cin $allowedLongParameters) {
             if ($index + 1 -ge $elements.Count -or
                 $elements[$index + 1] -is [System.Management.Automation.Language.CommandParameterAst] -or
                 -not (Test-SafeRepositoryCommandElement -Element $elements[$index + 1])) {
@@ -291,7 +291,7 @@ function Test-SafeRepositoryProjectBuildCommand {
             ""
         }
         if ($parameter -isnot [System.Management.Automation.Language.CommandParameterAst] -or
-            $parameterName -notin $allowedParameters) {
+            $parameterName -cnotin $allowedParameters) {
             return $false
         }
         if ($null -ne $parameter.Argument) {
@@ -334,7 +334,7 @@ function Resolve-LocalSchemaReference {
 }
 
 function Test-JsonSchemaInteger {
-    param([Parameter(Mandatory = $true)]$Value)
+    param([AllowNull()][AllowEmptyString()]$Value)
 
     $integerTypes = @(
         [System.Byte],
@@ -448,6 +448,9 @@ function Assert-SupportedSchemaKeywords {
         [Parameter(Mandatory = $true)][string]$SchemaPath
     )
 
+    if ($ValueSchema -isnot [System.Management.Automation.PSCustomObject]) {
+        throw "Schema node at $SchemaPath must be an object."
+    }
     foreach ($schemaProperty in @($ValueSchema.PSObject.Properties)) {
         if ($schemaProperty.Name -cnotin $supportedSchemaKeywords) {
             throw "Unsupported proof-pool schema keyword '$($schemaProperty.Name)' at $SchemaPath."
@@ -498,9 +501,6 @@ function Assert-SupportedSchemaKeywords {
 
     $items = Get-JsonProperty -Value $ValueSchema -Name "items"
     if ($null -ne $items) {
-        if ($items.Value -isnot [System.Management.Automation.PSCustomObject]) {
-            throw "Tuple or non-object items is unsupported at $SchemaPath."
-        }
         Assert-SupportedSchemaKeywords `
             -ValueSchema $items.Value `
             -SchemaPath "$SchemaPath/items"
