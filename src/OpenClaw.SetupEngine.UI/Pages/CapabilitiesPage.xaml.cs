@@ -269,9 +269,6 @@ public sealed partial class CapabilitiesPage : Page
         Task<HostHardwareInfo> hardwareTask = setupWindow is not null
             ? setupWindow.GetLocalAiHardwareAsync()
             : Task.Run(() => new NvmlHostHardwareProbe().Probe());
-        Task<WslViabilityResult> wslTask = setupWindow is not null
-            ? setupWindow.GetWslViabilityAsync()
-            : InspectWslViabilityAsync();
 
         string? hardwareReason = null;
         LocalInferenceEligibilityResult? eligibility = null;
@@ -297,19 +294,6 @@ public sealed partial class CapabilitiesPage : Page
                 "Check the NVIDIA driver installation and try setup again.";
         }
 
-        WslViabilityResult wslViability;
-        try
-        {
-            wslViability = await wslTask;
-        }
-        catch
-        {
-            wslViability = new(
-                WslViabilityKind.InspectionFailed,
-                "OpenClaw could not safely verify the WSL2 environment.",
-                "Run wsl --status in PowerShell, resolve the reported problem, and try setup again.");
-        }
-
         string? wslNetworkingReason = null;
         try
         {
@@ -330,7 +314,6 @@ public sealed partial class CapabilitiesPage : Page
 
         string? unavailableReason = LocalAiAvailabilityReasons.Build(
             hardwareReason,
-            wslViability,
             wslNetworkingReason);
         if (unavailableReason is not null)
         {
@@ -350,15 +333,6 @@ public sealed partial class CapabilitiesPage : Page
         _suppressLocalAiToggle = false;
         UpdateLocalAiOptions(forceNetworkingConsent);
         ApplySetupReviewSummary(_config);
-    }
-
-    private static async Task<WslViabilityResult> InspectWslViabilityAsync()
-    {
-        using var logger = new SetupLogger(filePath: null);
-        return await WslViabilityInspector.InspectAsync(
-            new CommandRunner(logger),
-            logger,
-            CancellationToken.None);
     }
 
     private static WslGlobalConfigManager CreateWslGlobalConfigManager()

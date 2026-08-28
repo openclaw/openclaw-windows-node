@@ -118,15 +118,21 @@ internal sealed class ChatMetadataStore : IDisposable
     private readonly object _attachmentSaveGate = new();
     private readonly string _toolCacheFilePath;
     private readonly string _attachmentCacheFilePath;
+    private readonly Action<long>? _attachmentSnapshotCaptured;
     private Dictionary<string, List<CachedToolMeta>> _toolCache;
     private Dictionary<string, List<CachedAttachmentMeta>> _attachmentCache;
     private readonly Dictionary<string, long> _evictedResetGenerations = new(StringComparer.Ordinal);
     private Timer? _toolSaveTimer;
     private long _toolSaveVersion;
+    private long _attachmentSaveVersion;
     private bool _toolCacheDirty;
+    private bool _attachmentCacheDirty;
     private bool _disposed;
 
-    internal ChatMetadataStore(string toolCacheFilePath, string? attachmentCacheFilePath = null)
+    internal ChatMetadataStore(
+        string toolCacheFilePath,
+        string? attachmentCacheFilePath = null,
+        Action<long>? attachmentSnapshotCaptured = null)
     {
         _toolCacheFilePath = !string.IsNullOrWhiteSpace(toolCacheFilePath)
             ? toolCacheFilePath
@@ -134,6 +140,7 @@ internal sealed class ChatMetadataStore : IDisposable
         _attachmentCacheFilePath = !string.IsNullOrWhiteSpace(attachmentCacheFilePath)
             ? attachmentCacheFilePath
             : DefaultAttachmentMetaCacheFilePath(_toolCacheFilePath);
+        _attachmentSnapshotCaptured = attachmentSnapshotCaptured;
         _toolCache = LoadToolMetaCache(_toolCacheFilePath);
         _attachmentCache = LoadAttachmentMetaCache(_attachmentCacheFilePath);
     }
@@ -308,6 +315,7 @@ internal sealed class ChatMetadataStore : IDisposable
         if (items.Count == 0)
             return;
 
+        long saveVersion;
         lock (_gate)
         {
             if (_disposed || IsStaleResetGenerationLocked(threadId, resetGeneration))
@@ -332,9 +340,11 @@ internal sealed class ChatMetadataStore : IDisposable
             });
             if (list.Count > MaxAttachmentEntriesPerSession)
                 list.RemoveRange(0, list.Count - MaxAttachmentEntriesPerSession);
+            _attachmentCacheDirty = true;
+            saveVersion = ++_attachmentSaveVersion;
         }
 
-        SaveAttachmentCache();
+        SaveAttachmentCache(saveVersion);
     }
 
     internal Queue<CachedToolMeta>? GetToolMetadata(
@@ -429,6 +439,7 @@ internal sealed class ChatMetadataStore : IDisposable
     {
         var saveTool = false;
         var saveAttachments = false;
+        long attachmentSaveVersion = 0;
         lock (_gate)
         {
             if (_evictedResetGenerations.TryGetValue(threadId, out var current) &&
@@ -463,12 +474,17 @@ internal sealed class ChatMetadataStore : IDisposable
                 _toolCacheDirty = true;
                 _toolSaveVersion++;
             }
+            if (saveAttachments)
+            {
+                _attachmentCacheDirty = true;
+                attachmentSaveVersion = ++_attachmentSaveVersion;
+            }
         }
 
         if (saveTool)
             SaveToolCache();
         if (saveAttachments)
-            SaveAttachmentCache();
+            SaveAttachmentCache(attachmentSaveVersion);
     }
 
     private bool RemoveOlderToolEntries(
@@ -524,16 +540,18 @@ internal sealed class ChatMetadataStore : IDisposable
     internal void Flush()
     {
         Timer? timer;
+        long attachmentSaveVersion;
         lock (_gate)
         {
             timer = _toolSaveTimer;
             _toolSaveTimer = null;
             _toolSaveVersion++;
+            attachmentSaveVersion = _attachmentSaveVersion;
         }
 
         timer?.Dispose();
         SaveToolCache();
-        SaveAttachmentCache();
+        SaveAttachmentCache(attachmentSaveVersion);
     }
 
     public void Dispose()
@@ -605,24 +623,42 @@ internal sealed class ChatMetadataStore : IDisposable
         }
     }
 
-    private void SaveAttachmentCache()
+    private void SaveAttachmentCache(long expectedVersion)
     {
         try
         {
             Dictionary<string, List<CachedAttachmentMeta>> snapshot;
             lock (_gate)
             {
+                if (expectedVersion != _attachmentSaveVersion ||
+                    !_attachmentCacheDirty)
+                {
+                    return;
+                }
+
                 snapshot = _attachmentCache.ToDictionary(
                     pair => pair.Key,
                     pair => pair.Value.Select(Clone).ToList(),
                     StringComparer.Ordinal);
             }
 
+            _attachmentSnapshotCaptured?.Invoke(expectedVersion);
             EvictOldestSessions(snapshot);
             var json = JsonSerializer.Serialize(snapshot, CacheJsonOptions);
             lock (_attachmentSaveGate)
             {
+                lock (_gate)
+                {
+                    if (expectedVersion != _attachmentSaveVersion)
+                        return;
+                }
+
                 AtomicWrite(_attachmentCacheFilePath, json, "attachment metadata");
+                lock (_gate)
+                {
+                    if (expectedVersion == _attachmentSaveVersion)
+                        _attachmentCacheDirty = false;
+                }
             }
         }
         catch (Exception ex)

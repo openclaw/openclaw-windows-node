@@ -7015,6 +7015,8 @@
   <data name="LocalAiPage_OpenLogsButton.Content" xml:space="preserve"><value>打开日志</value></data>
   <data name="LocalAiPage_ModelHeading.Text" xml:space="preserve"><value>模型</value></data>
   <data name="LocalAiPage_RetrySetupButton.Content" xml:space="preserve"><value>重试设置或下载</value></data>
+  <data name="LocalAiPage_ChangeModelDescription.Text" xml:space="preserve"><value>打开设置以选择其他模型。替换现有本地网关仍需确认。</value></data>
+  <data name="LocalAiPage_ChangeModelButton.Content" xml:space="preserve"><value>更换模型</value></data>
   <data name="LocalAiPage_GatewayHeading.Text" xml:space="preserve"><value>网关连接</value></data>
   <data name="LocalAiPage_RepairConnectionButton.Content" xml:space="preserve"><value>修复连接</value></data>
   <data name="LocalAiPage_OpenChatButton.Content" xml:space="preserve"><value>打开聊天</value></data>

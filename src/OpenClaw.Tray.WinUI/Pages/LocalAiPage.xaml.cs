@@ -93,6 +93,8 @@ public sealed partial class LocalAiPage : Page
         OpenLogsButton.IsEnabled = _viewModel.CanOpenLogs;
         RetrySetupButton.IsEnabled = _viewModel.CanRetrySetup;
         RetrySetupButton.Visibility = _viewModel.CanRetrySetup ? Visibility.Visible : Visibility.Collapsed;
+        ChangeModelButton.IsEnabled = _viewModel.CanChangeModel;
+        ChangeModelPanel.Visibility = _viewModel.HasInstalledModel ? Visibility.Visible : Visibility.Collapsed;
         RepairConnectionButton.IsEnabled = _viewModel.CanRepairConnection;
         OpenChatButton.IsEnabled = _viewModel.CanOpenChat;
     }
@@ -102,6 +104,7 @@ public sealed partial class LocalAiPage : Page
     private void OnRestart(object sender, RoutedEventArgs e) => RunAction(() => _viewModel?.RestartAsync() ?? Task.FromResult(false), nameof(OnRestart));
     private void OnOpenLogs(object sender, RoutedEventArgs e) => _viewModel?.OpenLogs();
     private void OnRetrySetup(object sender, RoutedEventArgs e) => _viewModel?.RetrySetup();
+    private void OnChangeModel(object sender, RoutedEventArgs e) => _viewModel?.ChangeModel();
     private void OnRepairConnection(object sender, RoutedEventArgs e) => _viewModel?.RepairConnection();
     private void OnOpenChat(object sender, RoutedEventArgs e) => _viewModel?.OpenChat();
     private static void RunAction(Func<Task<bool>> action, string source) =>

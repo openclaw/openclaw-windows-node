@@ -441,6 +441,7 @@ public class GatewayProtocolModelsTests
         var patch = new SessionPatch
         {
             Model = SessionPatch.Clear,
+            ThinkingLevel = SessionPatch.Clear,
             ExecNode = SessionPatch.Clear,
             FastMode = SessionPatch.Clear,
             ResponseUsage = SessionPatch.Clear,
@@ -451,14 +452,13 @@ public class GatewayProtocolModelsTests
         var payload = patch.ToPayload("agent:main");
 
         // Cleared fields are present with an explicit null value (not omitted).
-        foreach (var name in new[] { "model", "execNode", "fastMode", "responseUsage", "sendPolicy", "groupActivation" })
+        foreach (var name in new[] { "model", "thinkingLevel", "execNode", "fastMode", "responseUsage", "sendPolicy", "groupActivation" })
         {
             Assert.True(payload.ContainsKey(name), $"expected '{name}' to be present");
             Assert.Null(payload[name]);
         }
 
         // Untouched fields stay omitted.
-        Assert.False(payload.ContainsKey("thinkingLevel"));
         Assert.False(payload.ContainsKey("execHost"));
     }
 
@@ -467,6 +467,9 @@ public class GatewayProtocolModelsTests
     {
         var json = JsonSerializer.Serialize(new SessionPatch { Model = SessionPatch.Clear }.ToPayload("k"));
         Assert.Contains("\"model\":null", json);
+
+        var thinkingJson = JsonSerializer.Serialize(new SessionPatch { ThinkingLevel = SessionPatch.Clear }.ToPayload("k"));
+        Assert.Contains("\"thinkingLevel\":null", thinkingJson);
 
         var fastJson = JsonSerializer.Serialize(new SessionPatch { FastMode = SessionPatch.Clear }.ToPayload("k"));
         Assert.Contains("\"fastMode\":null", fastJson);

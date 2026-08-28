@@ -28,8 +28,7 @@ public sealed partial class SetupWindow : Window
     private readonly string _localDataDir;
     private readonly object _localAiHardwareProbeLock = new();
     private Task<HostHardwareInfo>? _localAiHardwareProbeTask;
-    private readonly object _wslViabilityLock = new();
-    private Task<WslViabilityResult>? _wslViabilityTask;
+    private readonly WslViabilityProbe _wslViabilityProbe = new(InspectWslViabilityAsync);
 
     public static SetupWindow? Active { get; private set; }
 
@@ -208,13 +207,8 @@ public sealed partial class SetupWindow : Window
         }
     }
 
-    internal Task<WslViabilityResult> GetWslViabilityAsync()
-    {
-        lock (_wslViabilityLock)
-        {
-            return _wslViabilityTask ??= InspectWslViabilityAsync();
-        }
-    }
+    internal Task<WslViabilityResult> GetWslViabilityAsync(bool refresh = false) =>
+        _wslViabilityProbe.GetAsync(refresh);
 
     private static async Task<WslViabilityResult> InspectWslViabilityAsync()
     {

@@ -89,6 +89,13 @@ internal sealed class ChatComposerRuntimePort(IChatDataProvider provider) : ICha
         catch (Exception ex) { System.Diagnostics.Trace.WriteLine($"[chat] operation failed: {ex}"); }
     }
 
+    public async Task ClearThinkingLevelAsync(string threadId, CancellationToken cancellationToken)
+    {
+        try { await provider.ClearThinkingLevelAsync(threadId, cancellationToken).ConfigureAwait(true); }
+        catch (OperationCanceledException) { }
+        catch (Exception ex) { System.Diagnostics.Trace.WriteLine($"[chat] operation failed: {ex}"); }
+    }
+
     public async Task EnsureCommandCatalogAsync(CancellationToken cancellationToken)
     {
         try { await provider.EnsureCommandCatalogAsync(cancellationToken).ConfigureAwait(true); }

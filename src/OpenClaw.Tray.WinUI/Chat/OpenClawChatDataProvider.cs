@@ -403,7 +403,7 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
 
         try
         {
-            await AwaitPendingModelPatchAsync(threadId, cancellationToken);
+            await AwaitPendingSessionOptionPatchAsync(threadId, cancellationToken);
             var preparation = _state.PrepareSendAttempt(
                 dispatch,
                 ProjectionContext());
@@ -761,7 +761,7 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
         // string; a blank value here is a no-op rather than a clear. Use
         // ClearModelAsync to revert a session to the gateway default.
         if (string.IsNullOrWhiteSpace(model)) return;
-        await TrackModelPatchAsync(threadId, () => _bridge.PatchSessionModelAsync(threadId, model));
+        await TrackSessionOptionPatchAsync(threadId, () => _bridge.PatchSessionModelAsync(threadId, model));
     }
 
     public async Task ClearModelAsync(string threadId, CancellationToken cancellationToken = default)
@@ -769,12 +769,12 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
         cancellationToken.ThrowIfCancellationRequested();
         // Tri-state clear: removes the session's model override (explicit null)
         // so it tracks the gateway/agent default again.
-        await TrackModelPatchAsync(threadId, () => _bridge.ClearSessionModelAsync(threadId));
+        await TrackSessionOptionPatchAsync(threadId, () => _bridge.ClearSessionModelAsync(threadId));
     }
 
-    private async Task TrackModelPatchAsync(string threadId, Func<Task> patchOperation)
+    private async Task TrackSessionOptionPatchAsync(string threadId, Func<Task> patchOperation)
     {
-        var lease = _state.BeginModelPatch(threadId);
+        var lease = _state.BeginSessionOptionPatch(threadId);
         Exception? failure = null;
         try
         {
@@ -783,7 +783,7 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
                 try { await lease.Previous; }
                 catch (Exception ex)
                 {
-                    Logger.Debug($"ChatDataProvider: continuing model patch after previous patch failed: {ex.Message}");
+                    Logger.Debug($"ChatDataProvider: continuing session option patch after previous patch failed: {ex.Message}");
                 }
             }
             await patchOperation();
@@ -795,20 +795,20 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
         }
         finally
         {
-            _state.CompleteModelPatch(lease, failure);
+            _state.CompleteSessionOptionPatch(lease, failure);
         }
     }
 
-    private async Task AwaitPendingModelPatchAsync(string threadId, CancellationToken cancellationToken)
+    private async Task AwaitPendingSessionOptionPatchAsync(string threadId, CancellationToken cancellationToken)
     {
-        var pending = _state.GetPendingModelPatch(threadId);
+        var pending = _state.GetPendingSessionOptionPatch(threadId);
         if (pending is not null)
         {
             try { await pending.WaitAsync(cancellationToken); }
             catch (OperationCanceledException) { throw; }
             catch (Exception ex)
             {
-                Logger.Debug($"ChatDataProvider: continuing send after model patch failed: {ex.Message}");
+                Logger.Debug($"ChatDataProvider: continuing send after session option patch failed: {ex.Message}");
             }
         }
     }
@@ -816,7 +816,17 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
     public async Task SetThinkingLevelAsync(string threadId, string thinkingLevel, CancellationToken cancellationToken = default)
     {
         cancellationToken.ThrowIfCancellationRequested();
-        await _bridge.PatchSessionThinkingLevelAsync(threadId, thinkingLevel);
+        await TrackSessionOptionPatchAsync(
+            threadId,
+            () => _bridge.PatchSessionThinkingLevelAsync(threadId, thinkingLevel));
+    }
+
+    public async Task ClearThinkingLevelAsync(string threadId, CancellationToken cancellationToken = default)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        await TrackSessionOptionPatchAsync(
+            threadId,
+            () => _bridge.ClearSessionThinkingLevelAsync(threadId));
     }
 
     public async Task EnsureCommandCatalogAsync(CancellationToken cancellationToken = default)

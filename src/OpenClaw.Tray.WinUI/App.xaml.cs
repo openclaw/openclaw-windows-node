@@ -570,16 +570,11 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands, IPer
 
         if (!ownsMutex)
         {
-            // Forward deep link args to running instance (command-line or protocol activation)
-            var deepLink = _activationRouter.ResolveLaunchCandidate(new LaunchActivationInput(
+            await _activationRouter.ForwardLaunchToPrimaryAsync(new LaunchActivationInput(
                 protocolUri,
                 _startupArgs,
                 _postSetupLaunch,
-                SetupShownDuringStartup: false));
-            if (deepLink != null)
-            {
-                await _activationRouter.ForwardToPrimaryAsync(deepLink, CancellationToken.None);
-            }
+                SetupShownDuringStartup: false), CancellationToken.None);
             Exit();
             return;
         }

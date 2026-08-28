@@ -7079,6 +7079,8 @@ Make sure the gateway is running.</value>
   <data name="LocalAiPage_OpenLogsButton.Content" xml:space="preserve"><value>Open logs</value></data>
   <data name="LocalAiPage_ModelHeading.Text" xml:space="preserve"><value>Model</value></data>
   <data name="LocalAiPage_RetrySetupButton.Content" xml:space="preserve"><value>Retry setup or download</value></data>
+  <data name="LocalAiPage_ChangeModelDescription.Text" xml:space="preserve"><value>Opens setup to choose another model. Replacing the existing Local Gateway still requires confirmation.</value></data>
+  <data name="LocalAiPage_ChangeModelButton.Content" xml:space="preserve"><value>Change model</value></data>
   <data name="LocalAiPage_GatewayHeading.Text" xml:space="preserve"><value>Gateway connection</value></data>
   <data name="LocalAiPage_RepairConnectionButton.Content" xml:space="preserve"><value>Repair connection</value></data>
   <data name="LocalAiPage_OpenChatButton.Content" xml:space="preserve"><value>Open chat</value></data>

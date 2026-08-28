@@ -79,6 +79,11 @@ public interface IChatGatewayBridge : IDisposable
     /// </summary>
     Task ClearSessionModelAsync(string sessionKey);
     Task PatchSessionThinkingLevelAsync(string sessionKey, string thinkingLevel);
+    /// <summary>
+    /// Clears the session's thinking-level override with an explicit JSON null,
+    /// restoring the gateway/provider default.
+    /// </summary>
+    Task ClearSessionThinkingLevelAsync(string sessionKey);
     Task<ChatHistoryInfo> RequestChatHistoryAsync(string? sessionKey);
     Task<AssistantMediaResolutionResult> ResolveAssistantMediaAsync(
         string sessionKey,
@@ -218,6 +223,9 @@ public sealed class GatewayClientChatBridge : IChatGatewayBridge
 
     public Task PatchSessionThinkingLevelAsync(string sessionKey, string thinkingLevel) =>
         _client.PatchSessionAsync(sessionKey, new SessionPatch { ThinkingLevel = thinkingLevel });
+
+    public Task ClearSessionThinkingLevelAsync(string sessionKey) =>
+        _client.PatchSessionAsync(sessionKey, new SessionPatch { ThinkingLevel = SessionPatch.Clear });
 
     public Task<CommandCatalog> ListCommandsAsync(CommandCatalogQuery? query = null) =>
         _client.ListCommandsAsync(query);
