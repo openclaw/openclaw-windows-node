@@ -289,7 +289,7 @@ function stripFencedCode(text) {
 function extractReferencedIssueNumbers(body, repository) {
   const escapedRepository = repository.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
   const negatedLinkage =
-    "\\b(?:not\\s+related\\s+to|unrelated\\s+to|(?:(?:(?:do|does|did|will|would|should|can|could)\\s+not|cannot|not)[ \\t-]+(?:close[sd]?|fix(?:e[sd])?|resolve[sd]?)(?:\\s+by)?))\\b[^\\r\\n]*";
+    "\\b(?:not\\s+related\\s+to|unrelated\\s+to|(?:(?:(?:do|does|did|will|would|should|can|could)\\s+not|(?:don|doesn|didn|won|can|couldn|wouldn|shouldn)['\\u2019]t|cannot|not|no\\s+longer)[ \\t-]+(?:close[sd]?|fix(?:e[sd])?|resolve[sd]?)(?:\\s+by)?))\\b[^\\r\\n]*";
   const text = stripFencedCode(body)
     .replace(/`[^`\r\n]*`/g, "")
     .split(/\r?\n/)
