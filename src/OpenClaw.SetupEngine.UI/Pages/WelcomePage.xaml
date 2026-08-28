@@ -76,7 +76,8 @@
                                                   IsTextScaleFactorEnabled="False"
                                                   Foreground="{ThemeResource SystemFillColorSuccessBrush}"
                                                   AutomationProperties.AccessibilityView="Raw" />
-                                        <TextBlock Text="Local AI available"
+                                        <TextBlock x:Uid="Onboarding_Welcome_LocalAiAvailableBadge"
+                                                   Text="Local AI available"
                                                    Style="{StaticResource CaptionTextBlockStyle}"
                                                    Foreground="{ThemeResource SystemFillColorSuccessBrush}" />
                                     </StackPanel>

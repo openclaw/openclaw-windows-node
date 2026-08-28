@@ -21,18 +21,41 @@ internal static class SetupLocalization
 
     public static string GetString(string resourceKey)
     {
+        string? value = TryGetValueAsString(resourceKey);
+        if (!string.IsNullOrEmpty(value))
+            return value;
+
+        // XAML property resources (the ones an x:Uid="Key" binding resolves for a "Key.Property"
+        // entry, e.g. "Onboarding_Welcome_LocalAiAvailableBadge.Text") are stored under a
+        // "Key/Property" path, not a literal dot. Retry that shape so code-behind can share the
+        // same resw entry an x:Uid binding already uses, instead of duplicating the string under
+        // a second key.
+        int propertySeparator = resourceKey.LastIndexOf('.');
+        if (propertySeparator > 0 && propertySeparator < resourceKey.Length - 1)
+        {
+            string propertyResourcePath =
+                $"{resourceKey[..propertySeparator]}/{resourceKey[(propertySeparator + 1)..]}";
+            value = TryGetValueAsString(propertyResourcePath);
+            if (!string.IsNullOrEmpty(value))
+                return value;
+        }
+
+        return resourceKey;
+    }
+
+    private static string? TryGetValueAsString(string resourceKey)
+    {
         try
         {
             ResourceCandidate? candidate = Manager.MainResourceMap.GetValue(
                 $"Resources/{resourceKey}",
                 Manager.CreateResourceContext());
-            string? value = candidate?.ValueAsString;
-            return string.IsNullOrEmpty(value) ? resourceKey : value;
+            return candidate?.ValueAsString;
         }
         catch (Exception ex)
         {
             Debug.WriteLine($"SetupLocalization: resource lookup failed for '{resourceKey}': {ex.Message}");
-            return resourceKey;
+            return null;
         }
     }
 

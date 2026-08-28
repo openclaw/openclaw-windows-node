@@ -7074,4 +7074,5 @@ Le binaire wxc-exec est introuvable. {1} S'il s'agit d'une build développeur, c
   <data name="LocalAi_Reason_UnknownDriverVersion" xml:space="preserve"><value>inconnu</value></data>
   <data name="LocalAi_Reason_UnknownMemoryAmount" xml:space="preserve"><value>une quantité inconnue</value></data>
   <data name="LocalAi_Reason_GigabytesFormat" xml:space="preserve"><value>{0:0.#} GB</value></data>
+  <data name="Onboarding_Welcome_LocalAiAvailableBadge.Text" xml:space="preserve"><value>IA locale disponible</value></data>
 </root>

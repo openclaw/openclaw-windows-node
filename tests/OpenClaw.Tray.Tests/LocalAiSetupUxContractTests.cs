@@ -33,6 +33,34 @@ public sealed class LocalAiSetupUxContractTests
         Assert.Contains("AutomationProperties.SetName(", source);
     }
 
+    /// <summary>
+    /// The Welcome-page badge text and the accessible name it appends when Local AI is
+    /// available must route through SetupLocalization (not hardcoded English), sharing one
+    /// resw entry between the x:Uid-bound visual text and the code-behind accessible name.
+    /// </summary>
+    [Fact]
+    public void WelcomePage_LocalAiAvailableBadgeAndAccessibleName_AreLocalizedInEverySupportedLocale()
+    {
+        string root = TestRepositoryPaths.GetRepositoryRoot();
+        string xaml = File.ReadAllText(Path.Combine(
+            root, "src", "OpenClaw.SetupEngine.UI", "Pages", "WelcomePage.xaml"));
+        string source = File.ReadAllText(Path.Combine(
+            root, "src", "OpenClaw.SetupEngine.UI", "Pages", "WelcomePage.xaml.cs"));
+        string badge = ExtractElement(xaml, "LocalAiAvailabilityBadge", "</Border>");
+
+        Assert.Contains("x:Uid=\"Onboarding_Welcome_LocalAiAvailableBadge\"", badge);
+        Assert.Contains(
+            "SetupLocalization.GetString(\"Onboarding_Welcome_LocalAiAvailableBadge.Text\")", source);
+        Assert.Contains("AutomationProperties.GetName(InstallChoice)", source);
+
+        foreach (string locale in new[] { "en-us", "fr-fr", "nl-nl", "zh-cn", "zh-tw" })
+        {
+            string resources = File.ReadAllText(Path.Combine(
+                root, "src", "OpenClaw.Tray.WinUI", "Strings", locale, "Resources.resw"));
+            Assert.Contains("\"Onboarding_Welcome_LocalAiAvailableBadge.Text\"", resources);
+        }
+    }
+
     [Fact]
     public void CapabilitiesReview_SeparatesReasonActionFromDisabledOptions()
     {

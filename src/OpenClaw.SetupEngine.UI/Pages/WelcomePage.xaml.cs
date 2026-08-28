@@ -74,7 +74,8 @@ public sealed partial class WelcomePage : Page
         LocalAiAvailabilityBadge.Visibility = Visibility.Visible;
         AutomationProperties.SetName(
             InstallChoice,
-            "Install a local gateway (WSL), recommended, Local AI available");
+            $"{AutomationProperties.GetName(InstallChoice)}, " +
+            $"{SetupLocalization.GetString("Onboarding_Welcome_LocalAiAvailableBadge.Text")}");
     }
 
     private void StartMascotBreatheAnimation()

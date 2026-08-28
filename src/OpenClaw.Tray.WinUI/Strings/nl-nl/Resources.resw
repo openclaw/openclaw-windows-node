@@ -7075,4 +7075,5 @@ Het binaire bestand wxc-exec is niet gevonden. {1} Als dit een ontwikkelaarsbuil
   <data name="LocalAi_Reason_UnknownDriverVersion" xml:space="preserve"><value>onbekend</value></data>
   <data name="LocalAi_Reason_UnknownMemoryAmount" xml:space="preserve"><value>een onbekende hoeveelheid</value></data>
   <data name="LocalAi_Reason_GigabytesFormat" xml:space="preserve"><value>{0:0.#} GB</value></data>
+  <data name="Onboarding_Welcome_LocalAiAvailableBadge.Text" xml:space="preserve"><value>Lokale AI beschikbaar</value></data>
 </root>
