@@ -7015,6 +7015,8 @@ Le binaire wxc-exec est introuvable. {1} S'il s'agit d'une build développeur, c
   <data name="LocalAiPage_OpenLogsButton.Content" xml:space="preserve"><value>Ouvrir les journaux</value></data>
   <data name="LocalAiPage_ModelHeading.Text" xml:space="preserve"><value>Modèle</value></data>
   <data name="LocalAiPage_RetrySetupButton.Content" xml:space="preserve"><value>Réessayer la configuration ou le téléchargement</value></data>
+  <data name="LocalAiPage_ChangeModelDescription.Text" xml:space="preserve"><value>Ouvre la configuration pour choisir un autre modèle. Le remplacement de la passerelle locale existante nécessite toujours une confirmation.</value></data>
+  <data name="LocalAiPage_ChangeModelButton.Content" xml:space="preserve"><value>Changer de modèle</value></data>
   <data name="LocalAiPage_GatewayHeading.Text" xml:space="preserve"><value>Connexion à la passerelle</value></data>
   <data name="LocalAiPage_RepairConnectionButton.Content" xml:space="preserve"><value>Réparer la connexion</value></data>
   <data name="LocalAiPage_OpenChatButton.Content" xml:space="preserve"><value>Ouvrir la discussion</value></data>

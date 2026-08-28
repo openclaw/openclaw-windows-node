@@ -78,6 +78,8 @@ public class OpenClawChatDataProviderTests
         public Func<string, string?, string?, Task>? SendBehavior { get; set; }
         public Func<string, string, Task>? PatchSessionModelBehavior { get; set; }
         public Func<string, Task>? ClearSessionModelBehavior { get; set; }
+        public Func<string, string, Task>? PatchSessionThinkingLevelBehavior { get; set; }
+        public Func<string, Task>? ClearSessionThinkingLevelBehavior { get; set; }
         public Func<string?, Task<ChatHistoryInfo>>? HistoryBehavior { get; set; }
         public Func<string, Task>? AbortBehavior { get; set; }
         public SessionInfo[] Sessions { get; set; } = Array.Empty<SessionInfo>();
@@ -194,7 +196,18 @@ public class OpenClawChatDataProviderTests
             return ClearSessionModelBehavior?.Invoke(sessionKey) ?? Task.CompletedTask;
         }
         public List<string> ClearedModelKeys { get; } = new();
-        public Task PatchSessionThinkingLevelAsync(string sessionKey, string thinkingLevel) => Task.CompletedTask;
+        public Task PatchSessionThinkingLevelAsync(string sessionKey, string thinkingLevel)
+        {
+            PatchedThinkingLevels.Add((sessionKey, thinkingLevel));
+            return PatchSessionThinkingLevelBehavior?.Invoke(sessionKey, thinkingLevel) ?? Task.CompletedTask;
+        }
+        public List<(string SessionKey, string ThinkingLevel)> PatchedThinkingLevels { get; } = new();
+        public Task ClearSessionThinkingLevelAsync(string sessionKey)
+        {
+            ClearedThinkingLevelKeys.Add(sessionKey);
+            return ClearSessionThinkingLevelBehavior?.Invoke(sessionKey) ?? Task.CompletedTask;
+        }
+        public List<string> ClearedThinkingLevelKeys { get; } = new();
 
         public Task<ChatHistoryInfo> RequestChatHistoryAsync(string? sessionKey)
         {
@@ -9672,6 +9685,56 @@ public class OpenClawChatDataProviderTests
 
         Assert.Equal(new[] { "main" }, bridge.ClearedModelKeys);
         Assert.Empty(bridge.PatchedModels);
+    }
+
+    [Fact]
+    public async Task SetThinkingLevelAsync_ForwardsConcreteLevelToBridge()
+    {
+        var (bridge, provider, _, _) = CreateProvider(new[] { MainSession() });
+        await provider.LoadAsync();
+
+        await provider.SetThinkingLevelAsync("main", "high");
+
+        Assert.Equal([("main", "high")], bridge.PatchedThinkingLevels);
+        Assert.Empty(bridge.ClearedThinkingLevelKeys);
+    }
+
+    [Fact]
+    public async Task ClearThinkingLevelAsync_ClearsOverrideViaBridge()
+    {
+        var (bridge, provider, _, _) = CreateProvider(new[] { MainSession() });
+        await provider.LoadAsync();
+
+        await provider.ClearThinkingLevelAsync("main");
+
+        Assert.Equal(["main"], bridge.ClearedThinkingLevelKeys);
+        Assert.Empty(bridge.PatchedThinkingLevels);
+    }
+
+    [Fact]
+    public async Task SendMessageAsync_WaitsForInFlightThinkingLevelClearBeforeGatewaySend()
+    {
+        var patchStarted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var releasePatch = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var (bridge, provider, _, _) = CreateProvider(new[] { MainSession() });
+        bridge.ClearSessionThinkingLevelBehavior = _ =>
+        {
+            patchStarted.TrySetResult();
+            return releasePatch.Task;
+        };
+        await provider.LoadAsync();
+
+        var clearTask = provider.ClearThinkingLevelAsync("main");
+        await patchStarted.Task.WaitAsync(TimeSpan.FromSeconds(1));
+        var sendTask = provider.SendMessageAsync("main", "Use default reasoning");
+        await Task.Delay(50);
+
+        Assert.Empty(bridge.SentMessages);
+        releasePatch.SetResult();
+        await Task.WhenAll(clearTask, sendTask);
+
+        Assert.Equal(["main"], bridge.ClearedThinkingLevelKeys);
+        Assert.Equal(["Use default reasoning"], bridge.SentMessages);
     }
 
     [Fact]

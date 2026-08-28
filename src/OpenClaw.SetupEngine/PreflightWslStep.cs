@@ -115,6 +115,14 @@ internal static class WslViabilityInspector
         }
 
         var combined = $"{status.Stdout}\n{status.Stderr}";
+        if (LooksPlatformInstallRequired(status))
+        {
+            return new(
+                WslViabilityKind.Installable,
+                "WSL is not initialized yet.",
+                "Setup can request administrator approval to initialize and verify it before continuing.");
+        }
+
         if (WslInstallSupport.TryGetEnvironmentIssue(combined, out var message))
         {
             logger.Warn($"WSL environment issue detected: {NormalizeWslOutput(combined).Trim()}");
@@ -147,9 +155,19 @@ internal static class WslViabilityInspector
         var text = NormalizeWslOutput($"{result.Stdout}\n{result.Stderr}");
         return text.Contains("aka.ms/wslinstall", StringComparison.OrdinalIgnoreCase)
             || text.Contains("Windows Subsystem for Linux has no installed distributions", StringComparison.OrdinalIgnoreCase)
+            || LooksPlatformInstallRequired(text)
             || text.Contains("not recognized", StringComparison.OrdinalIgnoreCase)
             || text.Contains("not installed", StringComparison.OrdinalIgnoreCase);
     }
+
+    private static bool LooksPlatformInstallRequired(CommandResult result) =>
+        LooksPlatformInstallRequired(NormalizeWslOutput($"{result.Stdout}\n{result.Stderr}"));
+
+    private static bool LooksPlatformInstallRequired(string text) =>
+        text.Contains("WSL_E_WSL_OPTIONAL_COMPONENT_REQUIRED", StringComparison.OrdinalIgnoreCase)
+        || text.Contains("0x8007019e", StringComparison.OrdinalIgnoreCase)
+        || text.Contains("requires the Windows Subsystem for Linux Optional Component", StringComparison.OrdinalIgnoreCase)
+        || text.Contains("Optional components needed to run WSL are not installed", StringComparison.OrdinalIgnoreCase);
 
     private static bool LooksTooOldForVersionCommand(CommandResult result)
     {
@@ -273,7 +291,7 @@ public sealed class EnsureWslPlatformStep : SetupStep
 
     public override string Id => "ensure-wsl-platform";
     public override string DisplayName => "Prepare WSL platform";
-    public override bool CanRetry => true;
+    public override bool CanRetry => false;
 
     public override async Task<StepResult> ExecuteAsync(SetupContext ctx, CancellationToken ct)
     {
@@ -294,8 +312,15 @@ public sealed class EnsureWslPlatformStep : SetupStep
 
         viability = await WslViabilityInspector.InspectAsync(ctx.Commands, ctx.Logger, ct);
         ctx.WslViability = viability;
-        return viability.Kind == WslViabilityKind.Ready
-            ? StepResult.Ok("WSL platform installed and verified.")
-            : StepResult.Terminal(viability.Description);
+        if (viability.Kind == WslViabilityKind.Ready)
+            return StepResult.Ok("WSL platform installed and verified.");
+        if (viability.Kind == WslViabilityKind.Installable)
+        {
+            return StepResult.Terminal(
+                "WSL platform installation completed, but Windows must be restarted before WSL is ready. " +
+                "Reboot Windows, then run setup again.");
+        }
+
+        return StepResult.Terminal(viability.Description);
     }
 }

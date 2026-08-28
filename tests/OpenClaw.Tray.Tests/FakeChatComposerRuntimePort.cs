@@ -55,6 +55,9 @@ internal sealed class FakeChatComposerRuntimePort : IChatComposerRuntimePort
     public (string ThreadId, string Level)? LastSetThinkingLevelCall { get; private set; }
     public CancellationToken? LastSetThinkingLevelToken { get; private set; }
 
+    public int ClearThinkingLevelCallCount { get; private set; }
+    public string? LastClearThinkingLevelThreadId { get; private set; }
+
     public int EnsureCommandCatalogCallCount { get; private set; }
     public CancellationToken? LastEnsureCommandCatalogToken { get; private set; }
 
@@ -122,6 +125,13 @@ internal sealed class FakeChatComposerRuntimePort : IChatComposerRuntimePort
         SetThinkingLevelCallCount++;
         LastSetThinkingLevelCall = (threadId, thinkingLevel);
         LastSetThinkingLevelToken = cancellationToken;
+        return Task.CompletedTask;
+    }
+
+    public Task ClearThinkingLevelAsync(string threadId, CancellationToken cancellationToken)
+    {
+        ClearThinkingLevelCallCount++;
+        LastClearThinkingLevelThreadId = threadId;
         return Task.CompletedTask;
     }
 

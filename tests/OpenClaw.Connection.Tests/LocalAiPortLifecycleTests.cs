@@ -4,6 +4,7 @@ using OpenClaw.Shared.Inference.Catalog;
 using OpenClaw.TestSupport;
 using System.Collections.Immutable;
 using System.Net;
+using System.Text.Json;
 
 namespace OpenClaw.Connection.Tests;
 
@@ -57,6 +58,29 @@ public sealed class LocalAiPortLifecycleTests
 
         Assert.Equal("retired-profile-id", saved.Manifest.HardwareProfileId);
         Assert.Equal(LocalModelCatalog.Qwen35BModelId, launch.ModelAlias);
+    }
+
+    [Fact]
+    public async Task RouterPreset_BoundsOmittedGenerationAtGatewayMaximum()
+    {
+        using var temp = new TempDirectory("local-ai-manifest-");
+        var paths = new LocalAiPaths(temp.Path);
+        var store = new LocalAiManifestStore(paths);
+        await store.SaveAsync(ValidManifest() with { Endpoint = "http://127.0.0.1:28765/v1" });
+        LocalAiResolvedInstall saved = (await store.LoadAsync())!;
+
+        LlamaServerRouterLaunchPlan launch = LlamaServerRouterConfiguration.Build(paths, saved);
+        using JsonDocument provider = JsonDocument.Parse(
+            LocalAiGatewayProviderDefinition.BuildProviderJson(saved));
+        int gatewayMaximum = provider.RootElement
+            .GetProperty("models")[0]
+            .GetProperty("maxTokens")
+            .GetInt32();
+
+        Assert.Equal(LocalAiGatewayProviderDefinition.MaximumOutputTokens, gatewayMaximum);
+        Assert.Contains(
+            $"n-predict = {gatewayMaximum}",
+            launch.PresetContent.Split(Environment.NewLine));
     }
 
     [Fact]
@@ -122,6 +146,258 @@ public sealed class LocalAiPortLifecycleTests
         LocalAiResolvedInstall? saved = await new LocalAiManifestStore(paths).LoadAsync();
         Assert.Equal(0, saved!.Manifest.RequestedPort);
         Assert.Equal(28_765, saved.Endpoint!.Port);
+    }
+
+    [Theory]
+    [InlineData(LocalAiModelAvailabilityState.Unknown, true)]
+    [InlineData(LocalAiModelAvailabilityState.Loaded, false)]
+    public async Task AutomaticPort_DoesNotPersistOrPublishWithoutReadyModelEvidence(
+        LocalAiModelAvailabilityState modelState,
+        bool pathMatches)
+    {
+        using var temp = new TempDirectory("local-ai-port-");
+        LocalAiPaths paths = await PrepareInstallAsync(temp);
+        var events = new List<string>();
+        var platform = new FakePlatform();
+        var host = new FakeProcessHost(platform, events, selectedPort: 28_774);
+        var client = new FakeClient(events, (expectedModelPath, _) => new(
+            true,
+            modelState,
+            pathMatches ? expectedModelPath : expectedModelPath + ".other",
+            "The managed model is not ready."));
+        var lifecycle = new FakeLifecycle(events);
+        await using var runtime = CreateRuntime(
+            paths,
+            host,
+            platform,
+            client,
+            lifecycle,
+            startupTimeout: TimeSpan.FromMilliseconds(2));
+
+        LocalAiRuntimeSnapshot snapshot = await runtime.EnsureStartedAsync();
+
+        Assert.Equal(LocalAiRuntimeState.Failed, snapshot.State);
+        Assert.DoesNotContain(events, value => value.StartsWith("publish:", StringComparison.Ordinal));
+        Assert.True(host.Process!.StopCount > 0);
+        LocalAiResolvedInstall? saved = await new LocalAiManifestStore(paths).LoadAsync();
+        Assert.Null(saved!.Endpoint);
+    }
+
+    [Fact]
+    public async Task Refresh_UpdatesPublicationWhenManagedModelReadinessChanges()
+    {
+        using var temp = new TempDirectory("local-ai-port-");
+        LocalAiPaths paths = await PrepareInstallAsync(temp);
+        var events = new List<string>();
+        var platform = new FakePlatform();
+        var host = new FakeProcessHost(platform, events, selectedPort: 28_773);
+        var client = new FakeClient(events, (expectedModelPath, probeNumber) => probeNumber == 2
+            ? new(
+                true,
+                LocalAiModelAvailabilityState.Loaded,
+                expectedModelPath + ".other",
+                "The managed model path changed.")
+            : new(
+                true,
+                LocalAiModelAvailabilityState.Verified,
+                expectedModelPath,
+                "The managed model is ready."));
+        await using var runtime = CreateRuntime(
+            paths,
+            host,
+            platform,
+            client,
+            new FakeLifecycle(events));
+        LocalAiRuntimeSnapshot started = await runtime.EnsureStartedAsync();
+        Assert.Equal(LocalAiRuntimeState.Healthy, started.State);
+        events.Clear();
+
+        LocalAiRuntimeSnapshot refreshed = await runtime.RefreshAsync();
+
+        Assert.Equal(LocalAiRuntimeState.Starting, refreshed.State);
+        Assert.Equal(LocalAiModelAvailabilityState.Unknown, refreshed.ModelEvidence.State);
+        Assert.Equal(["probe:28773", "quiesce"], events);
+        events.Clear();
+
+        LocalAiRuntimeSnapshot recovered = await runtime.RefreshAsync();
+
+        Assert.Equal(LocalAiRuntimeState.Healthy, recovered.State);
+        Assert.Equal(["probe:28773", "publish:28773"], events);
+    }
+
+    [Theory]
+    [InlineData(RefreshOwnershipLoss.Incomplete, LocalAiRuntimeState.Conflict)]
+    [InlineData(RefreshOwnershipLoss.Conflict, LocalAiRuntimeState.Conflict)]
+    [InlineData(RefreshOwnershipLoss.MissingEndpoint, LocalAiRuntimeState.Starting)]
+    public async Task Refresh_QuiescesPublishedRouteWhenEndpointOwnershipIsLost(
+        RefreshOwnershipLoss ownershipLoss,
+        LocalAiRuntimeState expectedState)
+    {
+        using var temp = new TempDirectory("local-ai-port-");
+        LocalAiPaths paths = await PrepareInstallAsync(temp);
+        var events = new List<string>();
+        var platform = new FakePlatform();
+        var host = new FakeProcessHost(platform, events, selectedPort: 28_775);
+        await using var runtime = CreateRuntime(
+            paths,
+            host,
+            platform,
+            new FakeClient(events),
+            new FakeLifecycle(events));
+        LocalAiRuntimeSnapshot started = await runtime.EnsureStartedAsync();
+        Assert.Equal(LocalAiRuntimeState.Healthy, started.State);
+        events.Clear();
+
+        switch (ownershipLoss)
+        {
+            case RefreshOwnershipLoss.Incomplete:
+                platform.Ipv4Complete = false;
+                break;
+            case RefreshOwnershipLoss.Conflict:
+                platform.Listeners[0] = platform.Listeners[0] with { Address = IPAddress.Any };
+                break;
+            case RefreshOwnershipLoss.MissingEndpoint:
+                platform.Listeners.Clear();
+                break;
+            default:
+                throw new InvalidOperationException("Unknown ownership-loss case.");
+        }
+
+        LocalAiRuntimeSnapshot refreshed = await runtime.RefreshAsync();
+
+        Assert.Equal(expectedState, refreshed.State);
+        Assert.Equal(["quiesce"], events);
+        Assert.False(host.Process!.HasExited);
+    }
+
+    [Fact]
+    public async Task Refresh_QuiesceFailureStopsUnverifiedManagedProcess()
+    {
+        using var temp = new TempDirectory("local-ai-port-");
+        LocalAiPaths paths = await PrepareInstallAsync(temp);
+        var events = new List<string>();
+        var platform = new FakePlatform();
+        var host = new FakeProcessHost(platform, events, selectedPort: 28_776);
+        var client = new FakeClient(events, (expectedModelPath, probeNumber) => probeNumber == 1
+            ? ReadyProbe(expectedModelPath)
+            : new(
+                false,
+                LocalAiModelAvailabilityState.Unknown,
+                null,
+                "The managed model is not ready."));
+        var lifecycle = new FakeLifecycle(events);
+        await using var runtime = CreateRuntime(paths, host, platform, client, lifecycle);
+        LocalAiRuntimeSnapshot started = await runtime.EnsureStartedAsync();
+        Assert.Equal(LocalAiRuntimeState.Healthy, started.State);
+        events.Clear();
+        lifecycle.FailQuiesce = true;
+
+        LocalAiRuntimeSnapshot refreshed = await runtime.RefreshAsync();
+
+        Assert.Equal(LocalAiRuntimeState.Failed, refreshed.State);
+        Assert.Equal(LocalAiOwnership.None, refreshed.Ownership);
+        Assert.Null(refreshed.ProcessId);
+        Assert.True(host.Process!.HasExited);
+        Assert.Equal(["probe:28776", "quiesce", "stop"], events);
+    }
+
+    [Fact]
+    public async Task Refresh_QuiesceExceptionStopsManagedProcessBeforePropagating()
+    {
+        using var temp = new TempDirectory("local-ai-port-");
+        LocalAiPaths paths = await PrepareInstallAsync(temp);
+        var events = new List<string>();
+        var platform = new FakePlatform();
+        var host = new FakeProcessHost(platform, events, selectedPort: 28_779);
+        var lifecycle = new FakeLifecycle(events);
+        await using var runtime = CreateRuntime(
+            paths,
+            host,
+            platform,
+            new FakeClient(events),
+            lifecycle);
+        LocalAiRuntimeSnapshot started = await runtime.EnsureStartedAsync();
+        Assert.Equal(LocalAiRuntimeState.Healthy, started.State);
+        events.Clear();
+        platform.Listeners.Clear();
+        lifecycle.QuiesceException = new IOException("route withdrawal failed");
+
+        IOException error = await Assert.ThrowsAsync<IOException>(() => runtime.RefreshAsync());
+
+        Assert.Equal("route withdrawal failed", error.Message);
+        Assert.Equal(LocalAiRuntimeState.Failed, runtime.Snapshot.State);
+        Assert.Equal(LocalAiOwnership.None, runtime.Snapshot.Ownership);
+        Assert.Null(runtime.Snapshot.ProcessId);
+        Assert.True(host.Process!.HasExited);
+        Assert.Equal(["quiesce", "stop"], events);
+    }
+
+    [Fact]
+    public async Task Refresh_RecoveryRebindsFreshlyVerifiedEndpointBeforePublishing()
+    {
+        using var temp = new TempDirectory("local-ai-port-");
+        LocalAiPaths paths = await PrepareInstallAsync(temp);
+        var events = new List<string>();
+        var platform = new FakePlatform();
+        var host = new FakeProcessHost(platform, events, selectedPort: 28_777);
+        var client = new FakeClient(events, (expectedModelPath, probeNumber) => probeNumber == 2
+            ? new(
+                false,
+                LocalAiModelAvailabilityState.Unknown,
+                null,
+                "The managed model is not ready.")
+            : ReadyProbe(expectedModelPath));
+        var lifecycle = new FakeLifecycle(events);
+        await using var runtime = CreateRuntime(paths, host, platform, client, lifecycle);
+        LocalAiRuntimeSnapshot started = await runtime.EnsureStartedAsync();
+        Assert.Equal(LocalAiRuntimeState.Healthy, started.State);
+        LocalAiRuntimeSnapshot unavailable = await runtime.RefreshAsync();
+        Assert.Equal(LocalAiRuntimeState.Starting, unavailable.State);
+
+        var store = new LocalAiManifestStore(paths);
+        LocalAiResolvedInstall install = (await store.LoadAsync())!;
+        await store.SaveAsync(install.Manifest with { Endpoint = "http://127.0.0.1:29999/v1" });
+        events.Clear();
+
+        LocalAiRuntimeSnapshot recovered = await runtime.RefreshAsync();
+
+        Assert.Equal(LocalAiRuntimeState.Healthy, recovered.State);
+        Assert.Equal(28_777, recovered.Endpoint.Port);
+        Assert.Equal(["probe:28777", "publish:28777"], events);
+        LocalAiResolvedInstall rebound = (await store.LoadAsync())!;
+        Assert.Equal(28_777, rebound.Endpoint!.Port);
+    }
+
+    [Fact]
+    public async Task Refresh_RecoveryPublishFailureRemainsFailedAndQuiesced()
+    {
+        using var temp = new TempDirectory("local-ai-port-");
+        LocalAiPaths paths = await PrepareInstallAsync(temp);
+        var events = new List<string>();
+        var platform = new FakePlatform();
+        var host = new FakeProcessHost(platform, events, selectedPort: 28_778);
+        var client = new FakeClient(events, (expectedModelPath, probeNumber) => probeNumber == 2
+            ? new(
+                false,
+                LocalAiModelAvailabilityState.Unknown,
+                null,
+                "The managed model is not ready.")
+            : ReadyProbe(expectedModelPath));
+        var lifecycle = new FakeLifecycle(events);
+        await using var runtime = CreateRuntime(paths, host, platform, client, lifecycle);
+        LocalAiRuntimeSnapshot started = await runtime.EnsureStartedAsync();
+        Assert.Equal(LocalAiRuntimeState.Healthy, started.State);
+        LocalAiRuntimeSnapshot unavailable = await runtime.RefreshAsync();
+        Assert.Equal(LocalAiRuntimeState.Starting, unavailable.State);
+        events.Clear();
+        lifecycle.FailPublish = true;
+
+        LocalAiRuntimeSnapshot failed = await runtime.RefreshAsync();
+
+        Assert.Equal(LocalAiRuntimeState.Failed, failed.State);
+        Assert.Equal(LocalAiOwnership.CompanionManaged, failed.Ownership);
+        Assert.False(host.Process!.HasExited);
+        Assert.Equal(["probe:28778", "publish:28778"], events);
     }
 
     [Fact]
@@ -304,13 +580,14 @@ public sealed class LocalAiPortLifecycleTests
         FakeProcessHost host,
         FakePlatform platform,
         FakeClient client,
-        ILocalAiEndpointLifecycle lifecycle) => new(
+        ILocalAiEndpointLifecycle lifecycle,
+        TimeSpan? startupTimeout = null) => new(
             new LlamaServerRuntimeOptions
             {
                 Paths = paths,
                 EndpointLifecycle = lifecycle,
                 HealthPollInterval = TimeSpan.FromMilliseconds(1),
-                StartupTimeout = TimeSpan.FromSeconds(1),
+                StartupTimeout = startupTimeout ?? TimeSpan.FromSeconds(1),
                 RestartDelay = TimeSpan.Zero,
             },
             NullLogger.Instance,
@@ -340,54 +617,59 @@ public sealed class LocalAiPortLifecycleTests
         return arguments[index + 1];
     }
 
-    private static LocalAiInstallManifest ValidManifest() => new()
+    private static LlamaServerRouterProbeResult ReadyProbe(string expectedModelPath) => new(
+        true,
+        LocalAiModelAvailabilityState.Verified,
+        expectedModelPath,
+        "The managed model is ready.");
+
+    private static LocalAiInstallManifest ValidManifest()
     {
-        EngineVersion = "b10488",
-        Architecture = "arm64",
-        RuntimeId = "b10488-cuda13-arm64",
-        ModelCatalogId = "qwen3.6-35b-a3b-mtp-q4-k-m",
-        SelectedGpuId = "GPU-01234567-89ab-cdef-0123-456789abcdef",
-        ExecutablePath = Path.Combine("engines", "llama-b10488", "llama-server.exe"),
-        RuntimeAssets =
-        [
-            new LocalAiAssetReceipt
-            {
-                FileName = "llama-b10488-bin-win-cuda-13.4-arm64.zip",
-                SourceUrl = "https://github.com/ggml-org/llama.cpp/releases/download/b10488/llama-b10488-bin-win-cuda-13.4-arm64.zip",
-                SizeBytes = 140_379_054,
-                Sha256 = "75554d62f4af8f4150d3b4b0cca7df62d44105e98fb7cd92ab2d177e382b441d",
-            },
-            new LocalAiAssetReceipt
-            {
-                FileName = "cudart-llama-bin-win-cuda-13.4-arm64.zip",
-                SourceUrl = "https://github.com/ggml-org/llama.cpp/releases/download/b10488/cudart-llama-bin-win-cuda-13.4-arm64.zip",
-                SizeBytes = 153_318_797,
-                Sha256 = "5a40dc7c5fa3d0a80ceeba4f16f9e8d25d87bcf1399c9233588953c43436c33c",
-            },
-        ],
-        ModelPath = Path.Combine("models", "Qwen3.6-35B-A3B-UD-Q4_K_M.gguf"),
-        ModelId = "unsloth/Qwen3.6-35B-A3B-MTP-GGUF@5bc3e238d916f48a861bac2f8a1990a0e9b7e98d",
-        ModelAlias = "qwen3.6-35b-a3b-mtp-q4-k-m",
-        ModelAsset = new LocalAiAssetReceipt
+        LlamaRuntimeVariant runtime = LlamaRuntimeCatalog.Find(
+            System.Runtime.InteropServices.Architecture.Arm64)!;
+        return new LocalAiInstallManifest
         {
-            FileName = "Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
-            SourceUrl = "https://huggingface.co/unsloth/Qwen3.6-35B-A3B-MTP-GGUF/resolve/5bc3e238d916f48a861bac2f8a1990a0e9b7e98d/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf?download=true",
-            SizeBytes = 22_663_387_424,
-            Sha256 = "0b21525e972670ed59e1812e170b27c26355381f0656ecc4e25617ece7dac58b",
-        },
-        RequestedPort = 0,
-        Endpoint = null,
-        ContextLength = 262_144,
-        InstalledAtUtc = DateTimeOffset.Parse("2026-08-18T12:00:00Z"),
-    };
+            EngineVersion = LlamaRuntimeCatalog.ReleaseTag,
+            Architecture = "arm64",
+            RuntimeId = runtime.Id,
+            ModelCatalogId = "qwen3.6-35b-a3b-mtp-q4-k-m",
+            SelectedGpuId = "GPU-01234567-89ab-cdef-0123-456789abcdef",
+            ExecutablePath = Path.Combine(
+                "engines",
+                $"llama-{LlamaRuntimeCatalog.ReleaseTag}",
+                LlamaRuntimeCatalog.ServerExecutableName),
+            RuntimeAssets = runtime.Artifacts.Select(artifact => new LocalAiAssetReceipt
+            {
+                FileName = Path.GetFileName(artifact.RelativePath),
+                SourceUrl = artifact.DownloadUri.AbsoluteUri,
+                SizeBytes = artifact.SizeBytes,
+                Sha256 = artifact.Sha256.Value,
+            }).ToImmutableArray(),
+            ModelPath = Path.Combine("models", "Qwen3.6-35B-A3B-UD-Q4_K_M.gguf"),
+            ModelId = "unsloth/Qwen3.6-35B-A3B-MTP-GGUF@5bc3e238d916f48a861bac2f8a1990a0e9b7e98d",
+            ModelAlias = "qwen3.6-35b-a3b-mtp-q4-k-m",
+            ModelAsset = new LocalAiAssetReceipt
+            {
+                FileName = "Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+                SourceUrl = "https://huggingface.co/unsloth/Qwen3.6-35B-A3B-MTP-GGUF/resolve/5bc3e238d916f48a861bac2f8a1990a0e9b7e98d/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf?download=true",
+                SizeBytes = 22_663_387_424,
+                Sha256 = "0b21525e972670ed59e1812e170b27c26355381f0656ecc4e25617ece7dac58b",
+            },
+            RequestedPort = 0,
+            Endpoint = null,
+            ContextLength = 262_144,
+            InstalledAtUtc = DateTimeOffset.Parse("2026-08-18T12:00:00Z"),
+        };
+    }
 
     private sealed class FakePlatform : ILlamaServerRuntimePlatform
     {
         public DateTimeOffset UtcNow { get; private set; } = DateTimeOffset.Parse("2026-08-18T12:00:00Z");
         public List<WindowsTcpListenerInfo> Listeners { get; } = [];
+        public bool Ipv4Complete { get; set; } = true;
 
         public WindowsTcpListenerSnapshotResult CaptureListeners() =>
-            new([.. Listeners], Ipv4Complete: true, Ipv6Complete: true);
+            new([.. Listeners], Ipv4Complete, Ipv6Complete: true);
 
         public Task DelayAsync(TimeSpan delay, CancellationToken cancellationToken)
         {
@@ -451,8 +733,12 @@ public sealed class LocalAiPortLifecycleTests
         public ValueTask DisposeAsync() => ValueTask.CompletedTask;
     }
 
-    private sealed class FakeClient(List<string> events) : ILlamaServerClient
+    private sealed class FakeClient(
+        List<string> events,
+        Func<string, int, LlamaServerRouterProbeResult>? probeFactory = null) : ILlamaServerClient
     {
+        private int _probeCount;
+
         public List<int> ProbedPorts { get; } = [];
 
         public Task<LlamaServerRouterProbeResult> ProbeManagedModelAsync(
@@ -464,7 +750,8 @@ public sealed class LocalAiPortLifecycleTests
             cancellationToken.ThrowIfCancellationRequested();
             ProbedPorts.Add(endpoint.Port);
             events.Add($"probe:{endpoint.Port}");
-            return Task.FromResult(new LlamaServerRouterProbeResult(
+            int probeNumber = ++_probeCount;
+            return Task.FromResult(probeFactory?.Invoke(expectedModelPath, probeNumber) ?? new LlamaServerRouterProbeResult(
                 true,
                 LocalAiModelAvailabilityState.Verified,
                 expectedModelPath,
@@ -476,14 +763,20 @@ public sealed class LocalAiPortLifecycleTests
 
     private sealed class FakeLifecycle(List<string> events) : ILocalAiEndpointLifecycle
     {
-        public bool FailPublish { get; init; }
+        public bool FailPublish { get; set; }
+        public bool FailQuiesce { get; set; }
+        public Exception? QuiesceException { get; set; }
 
         public Task<LocalAiEndpointLifecycleResult> QuiesceAsync(
             LocalAiResolvedInstall install,
             CancellationToken cancellationToken = default)
         {
             events.Add("quiesce");
-            return Task.FromResult(LocalAiEndpointLifecycleResult.Ok());
+            if (QuiesceException is not null)
+                return Task.FromException<LocalAiEndpointLifecycleResult>(QuiesceException);
+            return Task.FromResult(FailQuiesce
+                ? LocalAiEndpointLifecycleResult.Failed("quiesce failed")
+                : LocalAiEndpointLifecycleResult.Ok());
         }
 
         public Task<LocalAiEndpointLifecycleResult> PublishAsync(
@@ -495,5 +788,12 @@ public sealed class LocalAiPortLifecycleTests
                 ? LocalAiEndpointLifecycleResult.Failed("publish failed")
                 : LocalAiEndpointLifecycleResult.Ok());
         }
+    }
+
+    public enum RefreshOwnershipLoss
+    {
+        Incomplete,
+        Conflict,
+        MissingEndpoint,
     }
 }

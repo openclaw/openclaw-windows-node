@@ -318,6 +318,16 @@ internal sealed partial class ChatComposerController : IDisposable
         FireAndForget(_ => _port.SetThinkingLevelAsync(threadId, level, _lifetimeToken));
     }
 
+    public void ClearThinkingLevel()
+    {
+        if (_disposed)
+            return;
+        if (_vm.Inputs?.CurrentThread.Id is not { } threadId)
+            return;
+
+        FireAndForget(_ => _port.ClearThinkingLevelAsync(threadId, _lifetimeToken));
+    }
+
     /// <summary>Requests a command-catalog refresh. Assigns a monotonic operation ID
     /// and threads the shared lifetime token so the outstanding request is actually
     /// canceled on dispose. Refreshed results flow back only through the root's
