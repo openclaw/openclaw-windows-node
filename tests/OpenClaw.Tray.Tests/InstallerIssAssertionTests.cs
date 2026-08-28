@@ -242,8 +242,8 @@ public sealed class InstallerIssAssertionTests
         await process.WaitForExitAsync().WaitAsync(TimeSpan.FromSeconds(30));
         var result = $"{await standardOutput}{Environment.NewLine}{await standardError}";
 
-        Assert.Contains(@"\win-arm64", result, StringComparison.OrdinalIgnoreCase);
-        Assert.DoesNotContain(@"\win-x64", result, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("Selected runtime: win-arm64", result, StringComparison.Ordinal);
+        Assert.DoesNotContain("Selected runtime: win-x64", result, StringComparison.Ordinal);
     }
 
     [Theory]

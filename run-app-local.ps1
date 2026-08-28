@@ -186,6 +186,7 @@ if ([string]::IsNullOrWhiteSpace($RuntimeIdentifier)) {
 $outputDir = Join-Path $repoRoot "src\OpenClaw.Tray.WinUI\bin\$Configuration\$targetFramework\$RuntimeIdentifier"
 $exePath = Join-Path $outputDir "OpenClaw.Tray.WinUI.exe"
 $identityMarkerPath = Join-Path $outputDir "app-identity.txt"
+Write-Host "Selected runtime: $RuntimeIdentifier"
 
 if (-not (Test-Path $outputDir)) {
     throw "Build output folder not found: $outputDir. Run without -NoBuild first."
