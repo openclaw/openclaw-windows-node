@@ -158,27 +158,6 @@ public class ActivationRouterTests
         Assert.DoesNotContain("secret-value", confirm.Prompt.RedactedInput);
     }
 
-    [Fact]
-    public void ResolveLaunchCandidate_MatchesPlanLaunchPrecedence()
-    {
-        var router = CreateRouter();
-        var input = Input(
-            args: new[] { "app.exe", $"{Scheme}://dashboard" },
-            postSetupLaunch: "chat");
-
-        Assert.Equal($"{Scheme}://dashboard", router.ResolveLaunchCandidate(input));
-    }
-
-    [Fact]
-    public void ResolveLaunchCandidate_IgnoresSetupShownFlag()
-    {
-        // Unlike PlanLaunch, candidate resolution alone does not gate on setup-shown; the
-        // secondary-instance forwarding path needs the raw candidate regardless.
-        var router = CreateRouter();
-        var input = Input(protocolUri: $"{Scheme}://settings", setupShown: true);
-        Assert.Equal($"{Scheme}://settings", router.ResolveLaunchCandidate(input));
-    }
-
     #endregion
 
     #region PlanToast
@@ -350,6 +329,75 @@ public class ActivationRouterTests
         var route = Assert.Single(sink.Dispatched);
         var hub = Assert.IsType<ActivationRoute.OpenHub>(route);
         Assert.Equal("settings", hub.Page);
+    }
+
+    [Fact]
+    public async Task ForwardLaunchToPrimaryAsync_NoArgumentLaunch_DispatchesDefaultHub()
+    {
+        var pipeName = UniquePipeName();
+        await using var listener = new ActivationRouter(Scheme, pipeName);
+        var forwarder = new ActivationRouter(Scheme, pipeName);
+        var sink = new FakeSink();
+
+        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+        await listener.StartForwardedActivationListenerAsync(sink, cts.Token);
+
+        Assert.True(await forwarder.ForwardLaunchToPrimaryAsync(
+            Input(args: new[] { "app.exe" }),
+            cts.Token));
+
+        var deadline = DateTime.UtcNow.AddSeconds(5);
+        while (sink.Dispatched.Count == 0 && DateTime.UtcNow < deadline)
+            await Task.Delay(25, cts.Token);
+
+        var route = Assert.Single(sink.Dispatched);
+        var hub = Assert.IsType<ActivationRoute.OpenHub>(route);
+        Assert.Null(hub.Page);
+    }
+
+    [Fact]
+    public async Task ForwardLaunchToPrimaryAsync_ListenerStartsLate_RetriesAndDispatchesDefaultHub()
+    {
+        var pipeName = UniquePipeName();
+        await using var listener = new ActivationRouter(Scheme, pipeName);
+        var forwarder = new ActivationRouter(Scheme, pipeName);
+        var sink = new FakeSink();
+
+        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+        var forwardTask = forwarder.ForwardLaunchToPrimaryAsync(
+            Input(args: new[] { "app.exe" }),
+            cts.Token);
+        await Task.Delay(1200, cts.Token);
+        await listener.StartForwardedActivationListenerAsync(sink, cts.Token);
+
+        Assert.True(await forwardTask);
+
+        var deadline = DateTime.UtcNow.AddSeconds(5);
+        while (sink.Dispatched.Count == 0 && DateTime.UtcNow < deadline)
+            await Task.Delay(25, cts.Token);
+
+        var route = Assert.Single(sink.Dispatched);
+        var hub = Assert.IsType<ActivationRoute.OpenHub>(route);
+        Assert.Null(hub.Page);
+    }
+
+    [Fact]
+    public async Task ForwardLaunchToPrimaryAsync_UnknownArgument_DoesNotDispatch()
+    {
+        var pipeName = UniquePipeName();
+        await using var listener = new ActivationRouter(Scheme, pipeName);
+        var forwarder = new ActivationRouter(Scheme, pipeName);
+        var sink = new FakeSink();
+
+        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+        await listener.StartForwardedActivationListenerAsync(sink, cts.Token);
+
+        var sent = await forwarder.ForwardLaunchToPrimaryAsync(
+            Input(args: new[] { "app.exe", "--unknown" }),
+            cts.Token);
+
+        Assert.False(sent);
+        Assert.Empty(sink.Dispatched);
     }
 
     [Fact]
