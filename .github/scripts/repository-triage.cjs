@@ -260,25 +260,46 @@ function proofLabels(pr) {
   });
 }
 
+function stripFencedCode(text) {
+  let fence = null;
+  return String(text ?? "")
+    .split(/\r?\n/)
+    .filter((line) => {
+      if (!fence) {
+        const opening = line.match(/^ {0,3}(`{3,}|~{3,})(.*)$/);
+        if (!opening) return true;
+        const [, marker, infoString] = opening;
+        if (marker[0] === "`" && infoString.includes("`")) return true;
+        fence = { character: marker[0], length: marker.length };
+        return false;
+      }
+      const marker = line.match(/^ {0,3}(`{3,}|~{3,})[ \t]*$/)?.[1];
+      if (
+        marker &&
+        marker[0] === fence.character &&
+        marker.length >= fence.length
+      ) {
+        fence = null;
+      }
+      return false;
+    })
+    .join("\n");
+}
+
 function extractReferencedIssueNumbers(body, repository) {
   const escapedRepository = repository.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-  const text = String(body ?? "")
-    .replace(/```[\s\S]*?```/g, "")
+  const negatedLinkage =
+    "\\b(?:not\\s+related\\s+to|unrelated\\s+to|(?:(?:(?:do|does|did|will|would|should|can|could)\\s+not|cannot|not)[ \\t-]+(?:close[sd]?|fix(?:e[sd])?|resolve[sd]?)(?:\\s+by)?))\\b[^\\r\\n]*";
+  const text = stripFencedCode(body)
     .replace(/`[^`\r\n]*`/g, "")
     .split(/\r?\n/)
     .filter((line) => !/^\s*>/.test(line) && !/^( {4}|\t)/.test(line))
     .join("\n")
-    .replace(
-      new RegExp(
-        `\\b(?:not\\s+related\\s+to|unrelated\\s+to)\\s*:?[ \\t]*(?:#\\d+|${escapedRepository}#\\d+)`,
-        "gi",
-      ),
-      "",
-    );
+    .replace(new RegExp(negatedLinkage, "gi"), "");
   const patterns = [
-    /\b(?:close[sd]?|fix(?:e[sd])?|resolve[sd]?|related(?:\s+to)?)\s*:?\s*#(\d+)/gi,
+    /\b(?:close[sd]?|fix(?:e[sd])?|resolve[sd]?|related(?:[ \t]+to)?)[ \t]*:?[ \t]*#(\d+)/gi,
     new RegExp(
-      `\\b(?:close[sd]?|fix(?:e[sd])?|resolve[sd]?|related(?:\\s+to)?)\\s*:?\\s*${escapedRepository}#(\\d+)`,
+      `\\b(?:close[sd]?|fix(?:e[sd])?|resolve[sd]?|related(?:[ \\t]+to)?)[ \\t]*:?[ \\t]*${escapedRepository}#(\\d+)`,
       "gi",
     ),
   ];
