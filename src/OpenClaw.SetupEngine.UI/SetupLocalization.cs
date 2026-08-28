@@ -54,7 +54,11 @@ internal static class SetupLocalization
         }
         catch (Exception ex)
         {
-            Debug.WriteLine($"SetupLocalization: resource lookup failed for '{resourceKey}': {ex.Message}");
+            // Trace.TraceWarning (unlike Debug.WriteLine) is not compiled out in Release: the
+            // TRACE constant is defined in both build configurations by default, and the
+            // default trace listener forwards to OutputDebugString, so this remains visible via
+            // DebugView/ETW in a packaged Release build instead of silently disappearing.
+            Trace.TraceWarning($"SetupLocalization: resource lookup failed for '{resourceKey}': {ex.Message}");
             return null;
         }
     }
@@ -72,7 +76,7 @@ internal static class SetupLocalization
         }
         catch (FormatException)
         {
-            Debug.WriteLine($"SetupLocalization: format failed for '{resourceKey}': template='{template}'");
+            Trace.TraceWarning($"SetupLocalization: format failed for '{resourceKey}': template='{template}'");
             return template;
         }
     }

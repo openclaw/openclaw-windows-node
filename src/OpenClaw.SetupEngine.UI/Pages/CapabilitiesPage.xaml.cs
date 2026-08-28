@@ -289,10 +289,13 @@ public sealed partial class CapabilitiesPage : Page
             if (!CanApplyLocalAiAvailability(checking.Generation, setupWindow))
                 return;
             _localAiHardware = hardware;
-            eligibility = LocalInferenceEligibility.Evaluate(
-                _localAiHardware,
-                _config!.LocalAi.SelectedModelId);
-            if (eligibility.FailureCode == LocalInferenceEligibilityFailureCode.HardwareFactsIncomplete)
+
+            // Gate on device-level eligibility (the best catalog model this hardware can run),
+            // not the currently configured model. A stale/removed SelectedModelId must not make
+            // an otherwise-capable device look unavailable and hide the badge/option; it only
+            // means the configured model needs to fall back to a valid one below.
+            LocalInferenceEligibilityResult deviceEligibility = LocalInferenceEligibility.Evaluate(_localAiHardware);
+            if (deviceEligibility.FailureCode == LocalInferenceEligibilityFailureCode.HardwareFactsIncomplete)
             {
                 // Incomplete facts (a partial/transient NVML read) are inconclusive, not a
                 // definitive "this device cannot run Local AI". Report it the same way as a
@@ -307,18 +310,44 @@ public sealed partial class CapabilitiesPage : Page
                 }
                 return;
             }
-            _localAiSelectedGpuCapacityBytes = eligibility.DetectedTotalMemoryBytes;
+            _localAiSelectedGpuCapacityBytes = deviceEligibility.DetectedTotalMemoryBytes;
             _localAiRecommendedModelId = LocalModelCatalog.Models
                 .OrderByDescending(model => model.Weights.SizeBytes)
                 .FirstOrDefault(model =>
                     _localAiSelectedGpuCapacityBytes is { } capacityBytes &&
                     LocalInferenceEligibility.GetRequiredMemoryBytes(model) <= capacityBytes)?.Id;
-            if (!eligibility.CanInstall || eligibility.Plan is null || eligibility.SelectedGpu is null)
-                hardwareReason = DescribeLocalAiUnavailable(eligibility);
+
+            if (!deviceEligibility.CanInstall || deviceEligibility.Plan is null || deviceEligibility.SelectedGpu is null)
+            {
+                hardwareReason = DescribeLocalAiUnavailable(deviceEligibility);
+            }
+            else
+            {
+                // The device can run Local AI. Reconcile the configured model selection: a
+                // model that no longer exists in the catalog, or exists but this specific
+                // hardware cannot run at all (e.g. the config was moved to a machine with a
+                // smaller GPU), falls back to the recommended (or the device-eligible default)
+                // model instead of leaving setup stuck on a known-incompatible selection. A
+                // merely busy GPU (EligibleButBusy) is not reconciled away: the same model would
+                // still work once the GPU frees up, and CanInstall already covers that case.
+                if (_config!.LocalAi.SelectedModelId is { } selectedModelId &&
+                    !LocalInferenceEligibility.Evaluate(_localAiHardware, selectedModelId).CanInstall)
+                {
+                    _config.LocalAi.SelectedModelId = null;
+                }
+                _config.LocalAi.SelectedModelId ??= _localAiRecommendedModelId ?? deviceEligibility.Plan.Model.Id;
+
+                eligibility = LocalInferenceEligibility.Evaluate(
+                    _localAiHardware,
+                    _config.LocalAi.SelectedModelId);
+            }
         }
         catch (Exception ex)
         {
-            Debug.WriteLine($"Local AI hardware probe failed: {ex}");
+            // Trace.TraceWarning is not compiled out in Release (unlike Debug.WriteLine) and its
+            // default listener forwards to OutputDebugString, so this stays visible via
+            // DebugView/ETW instead of silently disappearing in a packaged build.
+            Trace.TraceWarning($"Local AI hardware probe failed: {ex}");
             if (_localAiAvailability.TryApplyProbeFailure(
                     checking.Generation,
                     LocalAiProbeFailureReason,
@@ -341,10 +370,8 @@ public sealed partial class CapabilitiesPage : Page
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or InvalidDataException)
         {
-            Debug.WriteLine($"WSL networking inspection failed: {ex}");
-            wslNetworkingReason =
-                "OpenClaw cannot safely read the global .wslconfig file. " +
-                "Check that the file is valid and readable, then try setup again.";
+            Trace.TraceWarning($"WSL networking inspection failed: {ex}");
+            wslNetworkingReason = SetupLocalization.GetString("Onboarding_LocalAi_WslConfigReadFailureReason");
         }
 
         if (!CanApplyLocalAiAvailability(checking.Generation, setupWindow))
@@ -412,6 +439,7 @@ public sealed partial class CapabilitiesPage : Page
         SetLocalAiOptionAvailability(
             isAvailable: false,
             SetupLocalization.GetString("Onboarding_LocalAi_CheckingHelpText"));
+        RestoreLocalAiToggleAsPendingStateEscapeHatch();
         ApplySetupReviewSummary(_config);
         UpdatePrimaryButtonState();
     }
@@ -429,8 +457,27 @@ public sealed partial class CapabilitiesPage : Page
         SetLocalAiOptionAvailability(
             isAvailable: false,
             SetupLocalization.GetString("Onboarding_LocalAi_ProbeUnknownHelpText"));
+        RestoreLocalAiToggleAsPendingStateEscapeHatch();
         ApplySetupReviewSummary(_config);
         UpdatePrimaryButtonState();
+    }
+
+    /// <summary>
+    /// SetLocalAiOptionAvailability(isAvailable: false) sets LocalAiOptionContent.IsHitTestVisible
+    /// to false, which suppresses pointer input for its entire subtree regardless of any
+    /// descendant's own IsEnabled value; setting LocalAiToggle.IsEnabled back to true alone would
+    /// not make it clickable. Availability being merely pending (Checking/ProbeUnknown), not yet a
+    /// definitive result, must not remove the user's only way out, so this restores hit-testing on
+    /// the shared container and re-enables just the toggle: turning Local AI off unblocks Continue
+    /// via the existing LocalAiToggle.IsOn != true branch, instead of ever letting Continue itself
+    /// bypass an as-yet-undetermined WSL networking-consent requirement. The other Local AI
+    /// controls (model selector, consent checkbox) stay genuinely non-interactive because their
+    /// own IsEnabled is still false, independent of the container's hit-testability.
+    /// </summary>
+    private void RestoreLocalAiToggleAsPendingStateEscapeHatch()
+    {
+        LocalAiOptionContent.IsHitTestVisible = true;
+        LocalAiToggle.IsEnabled = true;
     }
 
     private void ShowLocalAiUnavailable(LocalAiSetupAvailabilitySnapshot snapshot)
@@ -720,6 +767,12 @@ public sealed partial class CapabilitiesPage : Page
 
     private void UpdatePrimaryButtonState()
     {
+        // Local AI availability being merely pending (Checking/ProbeUnknown) must never let
+        // Continue bypass eligibility or an as-yet-undetermined WSL networking-consent
+        // requirement. ShowLocalAiAvailabilityChecking/ShowLocalAiProbeUnknown keep
+        // LocalAiToggle itself interactive during those states specifically so the user always
+        // has a way out: turning Local AI off satisfies the LocalAiToggle.IsOn != true branch
+        // below immediately, without needing Continue to advance on incomplete information.
         PrimaryButton.IsEnabled =
             _step != 3 ||
             LocalAiToggle.IsOn != true ||

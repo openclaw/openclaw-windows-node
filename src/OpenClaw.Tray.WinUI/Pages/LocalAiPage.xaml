@@ -29,13 +29,20 @@
                                      Click="LocalAiUnavailableDetails_Click"/>
                 </InfoBar.ActionButton>
             </InfoBar>
-            <HyperlinkButton x:Name="LocalAiRecheckAvailabilityButton"
-                             x:Uid="LocalAiPage_RecheckAvailabilityButton"
-                             Content="Recheck"
-                             HorizontalAlignment="Left"
-                             AutomationProperties.AutomationId="LocalAiRecheckAvailabilityButton"
-                             Click="LocalAiRecheckAvailability_Click"
-                             Visibility="Collapsed"/>
+            <StackPanel Orientation="Horizontal" Spacing="8">
+                <ProgressRing x:Name="LocalAiAvailabilityProgressRing"
+                              Width="16"
+                              Height="16"
+                              IsActive="False"
+                              AutomationProperties.AccessibilityView="Raw"/>
+                <HyperlinkButton x:Name="LocalAiRecheckAvailabilityButton"
+                                 x:Uid="LocalAiPage_RecheckAvailabilityButton"
+                                 Content="Recheck"
+                                 HorizontalAlignment="Left"
+                                 AutomationProperties.AutomationId="LocalAiRecheckAvailabilityButton"
+                                 Click="LocalAiRecheckAvailability_Click"
+                                 Visibility="Collapsed"/>
+            </StackPanel>
             <TeachingTip x:Name="LocalAiUnavailableDetailsTip"
                          x:Uid="LocalAiPage_UnavailableDetailsTip"
                          Title="Why Local AI is unavailable"

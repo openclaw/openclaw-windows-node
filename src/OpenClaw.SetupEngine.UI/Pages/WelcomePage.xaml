@@ -39,6 +39,7 @@
                 <ListViewItem x:Name="InstallChoice"
                               AutomationProperties.AutomationId="WelcomeInstallLocalGatewayChoice"
                               AutomationProperties.Name="Install a local gateway (WSL), recommended"
+                              AutomationProperties.LiveSetting="Polite"
                               HorizontalContentAlignment="Stretch"
                               VerticalContentAlignment="Center"
                               Padding="16,12">

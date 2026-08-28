@@ -235,6 +235,96 @@ public sealed class LocalAiPageViewModelTests
         Assert.True(viewModel.IsSetupAvailable);
         Assert.False(viewModel.CanRecheckAvailability);
         Assert.Null(viewModel.LocalAiUnavailableReason);
+
+        // Availability is now a known success (no probe error), so a further recheck request is
+        // not meaningful and must be refused rather than silently re-running the probe.
+        Assert.False(viewModel.RecheckAvailability());
+    }
+
+    /// <summary>
+    /// While an availability probe (initial check or a recheck) is in flight, the Hub must show
+    /// explicit checking progress rather than silently hiding all availability chrome; the
+    /// coordinating InfoBar visibility must stay up until a result (success or failure) applies.
+    /// </summary>
+    [Fact]
+    public async Task IsCheckingAvailability_IsTrueWhileProbeInFlightAndClearsAfterResult()
+    {
+        var runtime = new FakeLocalAiRuntime(LocalAiRuntimeSnapshot.Initial(
+            new Uri("http://127.0.0.1:18080"),
+            DateTimeOffset.UtcNow));
+        using var gatewaySource = new PermissionsPageRuntimeSource(new FakePermissionsPageRuntimeHost());
+        var probeGate = new TaskCompletionSource();
+        using var viewModel = new LocalAiPageViewModel(
+            runtime,
+            gatewaySource,
+            new FakeAppCommands(),
+            new RecordingUiDispatcher(),
+            new GatedHardwareProbe(probeGate.Task, CreateQualifiedHardware));
+
+        Assert.False(viewModel.IsCheckingAvailability);
+
+        viewModel.Activate(null);
+
+        await WaitForConditionAsync(() => viewModel.IsCheckingAvailability, TimeSpan.FromSeconds(5));
+        Assert.True(viewModel.IsCheckingAvailability);
+        Assert.True(viewModel.ShowAvailabilityInfoBar);
+        Assert.False(viewModel.HasAvailabilityProbeError);
+        Assert.False(viewModel.CanRecheckAvailability);
+
+        probeGate.TrySetResult();
+        await WaitForAsync(viewModel, () => viewModel.IsAvailabilityKnown);
+
+        Assert.False(viewModel.IsCheckingAvailability);
+        Assert.True(viewModel.IsLocalAiAvailable);
+        Assert.False(viewModel.ShowAvailabilityInfoBar);
+    }
+
+    /// <summary>
+    /// StartAvailabilityRefresh() must assign the new probe slot before raising its
+    /// PropertyChanged notification, so a UI bound to that event (like the Hub page) reliably
+    /// observes IsCheckingAvailability already true the moment a recheck starts, instead of only
+    /// after the probe has already completed (which could hide the checking/recheck progress UI
+    /// entirely for a fast probe).
+    /// </summary>
+    [Fact]
+    public async Task RecheckAvailability_SynchronouslyNotifiesIsCheckingAvailability()
+    {
+        var runtime = new FakeLocalAiRuntime(LocalAiRuntimeSnapshot.Initial(
+            new Uri("http://127.0.0.1:18080"),
+            DateTimeOffset.UtcNow));
+        using var gatewaySource = new PermissionsPageRuntimeSource(new FakePermissionsPageRuntimeHost());
+        using var viewModel = new LocalAiPageViewModel(
+            runtime,
+            gatewaySource,
+            new FakeAppCommands(),
+            new RecordingUiDispatcher(),
+            new SequencedHardwareProbe(
+                () => throw new InvalidOperationException("probe failed"),
+                CreateQualifiedHardware));
+
+        await ActivateAndWaitForAvailabilityResultAsync(viewModel);
+        Assert.True(viewModel.HasAvailabilityProbeError);
+
+        bool observedCheckingInNotification = false;
+        viewModel.PropertyChanged += (_, _) =>
+        {
+            if (viewModel.IsCheckingAvailability)
+                observedCheckingInNotification = true;
+        };
+
+        Assert.True(viewModel.RecheckAvailability());
+
+        // StartAvailabilityRefresh() runs synchronously up to its own notification (the probe
+        // itself is fire-and-forget), so this must already be true by the time RecheckAvailability
+        // returns -- not just eventually true once the probe happens to finish.
+        Assert.True(observedCheckingInNotification);
+
+        // A generous polling wait (rather than the shared WaitForAsync's fixed 5s event-driven
+        // wait) tolerates thread-pool warm-up jitter from adjacent tests that briefly block a
+        // worker thread (e.g. GatedHardwareProbe/BlockingFirstHardwareProbe); the assertion above
+        // already proves the notification-ordering fix, so this is only draining the recheck's
+        // background probe before the ViewModel is disposed.
+        await WaitForConditionAsync(() => viewModel.IsAvailabilityKnown, TimeSpan.FromSeconds(15));
     }
 
     [Fact]
@@ -411,6 +501,43 @@ public sealed class LocalAiPageViewModelTests
         Assert.True(viewModel.HasAvailabilityProbeError);
         Assert.True(viewModel.CanRecheckAvailability);
         Assert.Equal(LocalInferenceUnavailableReasonKind.HardwareFactsIncomplete, viewModel.LocalAiUnavailableReason?.Kind);
+    }
+
+    /// <summary>
+    /// If the dispatcher refuses the enqueue entirely (e.g. it is shutting down),
+    /// <c>ApplyAvailabilityResultOnUiThread</c> must relinquish the current-probe slot before
+    /// disposing the token, not just dispose it. Otherwise the ViewModel is stuck reporting
+    /// <see cref="LocalAiPageViewModel.IsCheckingAvailability"/> forever, and a later
+    /// deactivate/dispose tries to cancel the already-disposed token and throws
+    /// <see cref="ObjectDisposedException"/>.
+    /// </summary>
+    [Fact]
+    public async Task RejectedEnqueue_ReleasesProbeSlotAndDoesNotThrowOnLaterDeactivate()
+    {
+        var runtime = new FakeLocalAiRuntime(LocalAiRuntimeSnapshot.Initial(
+            new Uri("http://127.0.0.1:18080"),
+            DateTimeOffset.UtcNow));
+        using var gatewaySource = new PermissionsPageRuntimeSource(new FakePermissionsPageRuntimeHost());
+        var dispatcher = new RecordingUiDispatcher { HasThreadAccess = false, RejectEnqueue = true };
+        using var viewModel = new LocalAiPageViewModel(
+            runtime,
+            gatewaySource,
+            new FakeAppCommands(),
+            dispatcher,
+            new FixedHardwareProbe(CreateQualifiedHardware()));
+
+        viewModel.Activate(null);
+
+        await WaitForConditionAsync(() => !viewModel.IsCheckingAvailability, TimeSpan.FromSeconds(5));
+
+        // The probe result was never applied (the dispatcher refused it), but the probe slot
+        // must be released so nothing is stuck "checking" forever.
+        Assert.False(viewModel.IsCheckingAvailability);
+        Assert.False(viewModel.IsAvailabilityKnown);
+
+        // Deactivating must not try to Cancel() an already-disposed token.
+        var exception = Record.Exception(() => viewModel.Deactivate());
+        Assert.Null(exception);
     }
 
     [Theory]
@@ -605,6 +732,17 @@ public sealed class LocalAiPageViewModelTests
         }
 
         public void ReleaseFirstProbe() => _releaseFirstProbe.TrySetResult();
+    }
+
+    /// <summary>Blocks inside <see cref="Probe"/> until <paramref name="release"/> completes, so a
+    /// test can observe the ViewModel's "checking" state before letting the probe resolve.</summary>
+    private sealed class GatedHardwareProbe(Task release, Func<HostHardwareInfo> result) : IHostHardwareProbe
+    {
+        public HostHardwareInfo Probe()
+        {
+            release.GetAwaiter().GetResult();
+            return result();
+        }
     }
 
     /// <summary>Harness for the "installed model" (change-model / retry-setup) scenarios, which

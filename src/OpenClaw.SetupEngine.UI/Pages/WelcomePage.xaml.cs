@@ -1,6 +1,7 @@
 using Microsoft.UI.Composition;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Automation;
+using Microsoft.UI.Xaml.Automation.Peers;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Hosting;
 using Microsoft.UI.Xaml.Navigation;
@@ -17,6 +18,7 @@ public sealed partial class WelcomePage : Page
     private SetupConfig? _config;
     private bool _installSelected = true; // default selection
     private bool _suppressSelectionWrite;
+    private string? _installChoiceBaseAutomationName;
 
     public WelcomePage()
     {
@@ -65,17 +67,26 @@ public sealed partial class WelcomePage : Page
         if (!IsLoaded || !ReferenceEquals(SetupWindow.Active, setupWindow))
             return;
 
-        LocalInferenceEligibilityResult eligibility = LocalInferenceEligibility.Evaluate(
-            hardware,
-            config.LocalAi.SelectedModelId);
+        LocalInferenceEligibilityResult eligibility = LocalInferenceEligibility.Evaluate(hardware);
         if (!eligibility.CanInstall || eligibility.SelectedGpu is null)
             return;
 
         LocalAiAvailabilityBadge.Visibility = Visibility.Visible;
+        // Capture the control's base accessible name once, so repeated detections (e.g. the
+        // page is re-loaded after navigating back) rebuild the announcement from the same
+        // starting point instead of appending the badge suffix again on every call.
+        _installChoiceBaseAutomationName ??= AutomationProperties.GetName(InstallChoice);
         AutomationProperties.SetName(
             InstallChoice,
-            $"{AutomationProperties.GetName(InstallChoice)}, " +
+            $"{_installChoiceBaseAutomationName}, " +
             $"{SetupLocalization.GetString("Onboarding_Welcome_LocalAiAvailableBadge.Text")}");
+        // FromElement returns null until a screen reader (or other AT client) has already
+        // queried this element for a peer. This probe can complete before that happens, so the
+        // live-region announcement would otherwise be silently skipped; force peer creation so
+        // the event always has somewhere to go.
+        AutomationPeer automationPeer = FrameworkElementAutomationPeer.FromElement(InstallChoice)
+            ?? FrameworkElementAutomationPeer.CreatePeerForElement(InstallChoice);
+        automationPeer.RaiseAutomationEvent(AutomationEvents.LiveRegionChanged);
     }
 
     private void StartMascotBreatheAnimation()

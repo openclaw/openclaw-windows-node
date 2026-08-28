@@ -92,10 +92,30 @@ public sealed partial class LocalAiPage : Page
             _viewModel.ShowAvailabilityInfoBar
                 ? Visibility.Visible
                 : Visibility.Collapsed;
-        LocalAiUnavailableInfoBar.Message = LocalizationHelper.GetString(
-            _viewModel.HasAvailabilityProbeError
-                ? "LocalAiPage_UnavailableProbeMessage"
-                : "LocalAiPage_UnavailableRequirementsMessage");
+        LocalAiAvailabilityProgressRing.IsActive = _viewModel.IsCheckingAvailability;
+        LocalAiAvailabilityProgressRing.Visibility = _viewModel.IsCheckingAvailability
+            ? Visibility.Visible
+            : Visibility.Collapsed;
+        if (_viewModel.IsCheckingAvailability)
+        {
+            LocalAiUnavailableInfoBar.Title = LocalizationHelper.GetString("LocalAiPage_CheckingTitle");
+            LocalAiUnavailableInfoBar.Severity = InfoBarSeverity.Informational;
+            LocalAiUnavailableInfoBar.Message = LocalizationHelper.GetString("LocalAiPage_CheckingMessage");
+        }
+        else
+        {
+            LocalAiUnavailableInfoBar.Title = LocalizationHelper.GetString(
+                _viewModel.HasAvailabilityProbeError
+                    ? "LocalAiPage_UnavailableProbeTitle"
+                    : "LocalAiPage_UnavailableInfoBar.Title");
+            LocalAiUnavailableInfoBar.Severity = _viewModel.HasAvailabilityProbeError
+                ? InfoBarSeverity.Warning
+                : InfoBarSeverity.Informational;
+            LocalAiUnavailableInfoBar.Message = LocalizationHelper.GetString(
+                _viewModel.HasAvailabilityProbeError
+                    ? "LocalAiPage_UnavailableProbeMessage"
+                    : "LocalAiPage_UnavailableRequirementsMessage");
+        }
         LocalAiRecheckAvailabilityButton.Visibility = _viewModel.HasAvailabilityProbeError
             ? Visibility.Visible
             : Visibility.Collapsed;

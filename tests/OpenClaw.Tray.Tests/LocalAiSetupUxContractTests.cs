@@ -61,6 +61,23 @@ public sealed class LocalAiSetupUxContractTests
         }
     }
 
+    /// <summary>
+    /// The Welcome-page badge/accessible name must reflect whether this hardware can run
+    /// Local AI at all, not whether the currently configured model is still valid. A stale or
+    /// removed SelectedModelId must not hide the badge for an otherwise-capable device.
+    /// </summary>
+    [Fact]
+    public void WelcomePage_LocalAiBadge_GatesOnDeviceEligibilityNotSelectedModel()
+    {
+        string root = TestRepositoryPaths.GetRepositoryRoot();
+        string source = File.ReadAllText(Path.Combine(
+            root, "src", "OpenClaw.SetupEngine.UI", "Pages", "WelcomePage.xaml.cs"));
+        string method = ExtractMethod(source, "DetectLocalAiAvailabilityAsync");
+
+        Assert.Contains("LocalInferenceEligibility.Evaluate(hardware);", method);
+        Assert.DoesNotContain("config.LocalAi.SelectedModelId", method);
+    }
+
     [Fact]
     public void CapabilitiesReview_SeparatesReasonActionFromDisabledOptions()
     {
@@ -117,8 +134,8 @@ public sealed class LocalAiSetupUxContractTests
             "_localAiNetworkingStatus = networkingStatus;");
         AssertInOrder(
             source,
-            "eligibility = LocalInferenceEligibility.Evaluate(",
-            "if (eligibility.FailureCode == LocalInferenceEligibilityFailureCode.HardwareFactsIncomplete)",
+            "deviceEligibility = LocalInferenceEligibility.Evaluate(",
+            "if (deviceEligibility.FailureCode == LocalInferenceEligibilityFailureCode.HardwareFactsIncomplete)",
             "TryApplyProbeFailure(",
             "ShowLocalAiProbeUnknown(incompleteSnapshot);");
         Assert.Contains("LocalAiOptionContent.IsHitTestVisible = isAvailable", source);
@@ -140,6 +157,39 @@ public sealed class LocalAiSetupUxContractTests
         Assert.Contains("LocalAiToggle.IsOn = _config!.LocalAi.Enabled;", probeUnknownMethod);
         Assert.DoesNotContain("_config!.LocalAi.Enabled = false;", probeUnknownMethod);
         Assert.DoesNotContain("_config.SkipWizard = _skipWizardWithoutLocalAi;", probeUnknownMethod);
+    }
+
+    /// <summary>
+    /// The "is Local AI unavailable" gate and the recommended/selected model must be decided
+    /// from device-level eligibility (the best catalog model this hardware can run), not from
+    /// the currently configured SelectedModelId. A stale/removed model, or one that exists but
+    /// this hardware cannot run at all, must be reconciled to a valid one instead of making an
+    /// otherwise-capable device look unavailable or leaving setup on a known-incompatible model.
+    /// A merely busy GPU (EligibleButBusy) is not reconciled away: CanInstall covers that case
+    /// and the same model would still work once the GPU frees up.
+    /// </summary>
+    [Fact]
+    public void CapabilitiesReview_GatesOnDeviceEligibilityAndReconcilesStaleSelectedModel()
+    {
+        string root = TestRepositoryPaths.GetRepositoryRoot();
+        string source = File.ReadAllText(Path.Combine(
+            root, "src", "OpenClaw.SetupEngine.UI", "Pages", "CapabilitiesPage.xaml.cs"));
+        // "InitializeLocalAiReviewAsync" also appears at its earlier call site
+        // (AsyncEventHandlerGuard.Run(() => InitializeLocalAiReviewAsync(...))), so search for
+        // the method's declaration specifically; otherwise ExtractMethod would grab the body of
+        // whatever method follows the call site instead of the real one.
+        string method = ExtractMethod(source, "private async Task InitializeLocalAiReviewAsync");
+
+        AssertInOrder(
+            method,
+            "LocalInferenceEligibilityResult deviceEligibility = LocalInferenceEligibility.Evaluate(_localAiHardware);",
+            "if (!deviceEligibility.CanInstall || deviceEligibility.Plan is null || deviceEligibility.SelectedGpu is null)",
+            "hardwareReason = DescribeLocalAiUnavailable(deviceEligibility);",
+            "!LocalInferenceEligibility.Evaluate(_localAiHardware, selectedModelId).CanInstall",
+            "_config.LocalAi.SelectedModelId = null;",
+            "_config.LocalAi.SelectedModelId ??= _localAiRecommendedModelId ?? deviceEligibility.Plan.Model.Id;",
+            "eligibility = LocalInferenceEligibility.Evaluate(",
+            "_config.LocalAi.SelectedModelId);");
     }
 
     [Fact]
@@ -199,6 +249,7 @@ public sealed class LocalAiSetupUxContractTests
             "SetupLocalization.GetString(\"Onboarding_LocalAi_ProbeFailureReason\")",
             "SetupLocalization.GetString(\"Onboarding_LocalAi_UnavailableDetailsDialogTitle\")",
             "SetupLocalization.GetString(\"Onboarding_LocalAi_UnavailableDetailsDialogClose\")",
+            "SetupLocalization.GetString(\"Onboarding_LocalAi_WslConfigReadFailureReason\")",
         ];
         foreach (string call in setupResourceCalls)
             Assert.Contains(call, source);
@@ -210,6 +261,7 @@ public sealed class LocalAiSetupUxContractTests
         Assert.DoesNotContain(
             "\"Unavailable because this PC does not meet the Local AI requirements.\"", source);
         Assert.DoesNotContain("\"Why Local AI is unavailable\"", source);
+        Assert.DoesNotContain("OpenClaw cannot safely read the global .wslconfig file.", source);
 
         string[] resourceKeys =
         [
@@ -365,6 +417,132 @@ public sealed class LocalAiSetupUxContractTests
         Assert.Contains("CanRecheckAvailability", source);
         Assert.Contains("LocalAiRecheckAvailability_Click", source);
         Assert.Contains("LocalAiUnavailableDetailsTip.IsOpen = !LocalAiUnavailableDetailsTip.IsOpen", source);
+    }
+
+    /// <summary>
+    /// The Hub InfoBar must distinguish a definitive "device is unavailable" result from a
+    /// merely-unverified probe-error/checking state with a different localized title and
+    /// severity, and must show explicit checking/recheck progress (a progress ring plus a
+    /// "checking" title/message) instead of silently hiding all availability chrome while a
+    /// probe is in flight.
+    /// </summary>
+    [Fact]
+    public void LocalAiPage_DistinguishesDefinitiveUnavailableFromCheckingAndProbeUnknown()
+    {
+        string root = TestRepositoryPaths.GetRepositoryRoot();
+        string xaml = File.ReadAllText(Path.Combine(
+            root, "src", "OpenClaw.Tray.WinUI", "Pages", "LocalAiPage.xaml"));
+        string source = File.ReadAllText(Path.Combine(
+            root, "src", "OpenClaw.Tray.WinUI", "Pages", "LocalAiPage.xaml.cs"));
+
+        Assert.Contains("x:Name=\"LocalAiAvailabilityProgressRing\"", xaml);
+
+        string refreshMethod = ExtractMethod(source, "private void RefreshFromViewModel");
+        Assert.Contains("_viewModel.IsCheckingAvailability", refreshMethod);
+        Assert.Contains("LocalizationHelper.GetString(\"LocalAiPage_CheckingTitle\")", refreshMethod);
+        Assert.Contains("LocalizationHelper.GetString(\"LocalAiPage_CheckingMessage\")", refreshMethod);
+        Assert.Contains("\"LocalAiPage_UnavailableProbeTitle\"", refreshMethod);
+        Assert.Contains("\"LocalAiPage_UnavailableInfoBar.Title\"", refreshMethod);
+        Assert.Contains("InfoBarSeverity.Warning", refreshMethod);
+        Assert.Contains("InfoBarSeverity.Informational", refreshMethod);
+        Assert.Contains("LocalAiAvailabilityProgressRing.IsActive = _viewModel.IsCheckingAvailability", refreshMethod);
+
+        string[] resourceKeys =
+        [
+            "LocalAiPage_CheckingTitle",
+            "LocalAiPage_CheckingMessage",
+            "LocalAiPage_UnavailableProbeTitle",
+        ];
+        foreach (string locale in new[] { "en-us", "fr-fr", "nl-nl", "zh-cn", "zh-tw" })
+        {
+            string resources = File.ReadAllText(Path.Combine(
+                root, "src", "OpenClaw.Tray.WinUI", "Strings", locale, "Resources.resw"));
+            foreach (string key in resourceKeys)
+                Assert.Contains($"\"{key}\"", resources);
+        }
+    }
+
+    /// <summary>
+    /// The Hub's recheck command must enforce its own <c>CanRecheckAvailability</c> gate (not
+    /// just an availability-cancellation-in-flight check), so a caller cannot re-trigger a
+    /// probe outside the states the UI itself allows it in.
+    /// </summary>
+    [Fact]
+    public void LocalAiPageViewModel_RecheckAvailability_EnforcesCanRecheckAvailabilityGate()
+    {
+        string root = TestRepositoryPaths.GetRepositoryRoot();
+        string source = File.ReadAllText(Path.Combine(
+            root, "src", "OpenClaw.Tray.WinUI", "Presentation", "LocalAiPageViewModel.cs"));
+        string method = ExtractMethod(source, "public bool RecheckAvailability");
+
+        Assert.Contains("!IsActive || !CanRecheckAvailability", method);
+    }
+
+    /// <summary>
+    /// Setup step 3 must never dead-end: while Local AI availability is still pending
+    /// (Checking/ProbeUnknown), the toggle must stay interactive even though every other
+    /// Local AI control is disabled, so turning Local AI off is always an escape hatch. Continue
+    /// itself must never bypass eligibility or an as-yet-undetermined WSL networking-consent
+    /// requirement merely because availability hasn't resolved yet — that would let a fast user
+    /// leave step 3 before the consent checkbox is even known to be required.
+    /// </summary>
+    [Fact]
+    public void CapabilitiesReview_PendingAvailabilityIsEscapedByToggleNotByBypassingContinue()
+    {
+        string root = TestRepositoryPaths.GetRepositoryRoot();
+        string source = File.ReadAllText(Path.Combine(
+            root, "src", "OpenClaw.SetupEngine.UI", "Pages", "CapabilitiesPage.xaml.cs"));
+
+        // SetLocalAiOptionAvailability(isAvailable: false) sets LocalAiOptionContent's
+        // IsHitTestVisible to false, which blocks pointer input for its whole subtree regardless
+        // of a descendant's own IsEnabled; the escape hatch must restore hit-testing on that
+        // shared container, not just flip the toggle's own IsEnabled back on.
+        string restoreMethod = ExtractMethod(source, "private void RestoreLocalAiToggleAsPendingStateEscapeHatch");
+        AssertInOrder(
+            restoreMethod,
+            "LocalAiOptionContent.IsHitTestVisible = true;",
+            "LocalAiToggle.IsEnabled = true;");
+
+        string checkingMethod = ExtractMethod(source, "private void ShowLocalAiAvailabilityChecking");
+        AssertInOrder(
+            checkingMethod,
+            "SetLocalAiOptionAvailability(",
+            "RestoreLocalAiToggleAsPendingStateEscapeHatch();");
+
+        string probeUnknownMethod = ExtractMethod(source, "private void ShowLocalAiProbeUnknown");
+        AssertInOrder(
+            probeUnknownMethod,
+            "SetLocalAiOptionAvailability(",
+            "RestoreLocalAiToggleAsPendingStateEscapeHatch();");
+
+        // Continue's gate must not special-case pending availability: it only ever short-circuits
+        // on the toggle being off, or requires a fully resolved, eligible, consented state.
+        string primaryButtonMethod = ExtractMethod(source, "private void UpdatePrimaryButtonState");
+        Assert.DoesNotContain("_localAiAvailability", primaryButtonMethod);
+        Assert.Contains("LocalAiToggle.IsOn != true ||", primaryButtonMethod);
+        Assert.Contains(
+            "(_localAiSelectionEligible &&\r\n             (!_localAiNetworkingConsentRequired || LocalAiNetworkingConsentCheckBox.IsChecked == true));",
+            primaryButtonMethod);
+    }
+
+    /// <summary>
+    /// The Welcome page's accessible-name badge suffix must be idempotent: repeated detections
+    /// (e.g. the page reloads after navigating back) must rebuild the announcement from a
+    /// captured base name instead of appending the suffix again on every call.
+    /// </summary>
+    [Fact]
+    public void WelcomePage_LocalAiBadgeAccessibleName_IsIdempotentAcrossRepeatedDetections()
+    {
+        string root = TestRepositoryPaths.GetRepositoryRoot();
+        string source = File.ReadAllText(Path.Combine(
+            root, "src", "OpenClaw.SetupEngine.UI", "Pages", "WelcomePage.xaml.cs"));
+        string xaml = File.ReadAllText(Path.Combine(
+            root, "src", "OpenClaw.SetupEngine.UI", "Pages", "WelcomePage.xaml"));
+
+        Assert.Contains("_installChoiceBaseAutomationName ??= AutomationProperties.GetName(InstallChoice);", source);
+        Assert.Contains("FrameworkElementAutomationPeer.FromElement(InstallChoice)", source);
+        Assert.Contains("AutomationEvents.LiveRegionChanged", source);
+        Assert.Contains("AutomationProperties.LiveSetting=\"Polite\"", xaml);
     }
 
     private static string ExtractElement(string source, string elementName, string closingTag)
