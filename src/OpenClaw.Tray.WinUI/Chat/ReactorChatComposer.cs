@@ -139,7 +139,8 @@ internal sealed class ReactorChatComposer : Component<ReactorChatComposerViewPro
                 .Select(model => new ChatModelChoice(model, model))
                 .ToArray();
         var selectableModels = modelChoices.Where(model => model.IsSelectable).ToArray();
-        var modelNames = new[] { Localized("Chat_Composer_Reasoning_Default", "Default") }
+        var defaultReasoningLabel = Localized("Chat_Composer_Reasoning_Default", "Default");
+        var modelNames = new[] { defaultReasoningLabel }
             .Concat(selectableModels.Select(ChatModelLabels.BuildMenuLabel))
             .ToArray();
         var modelIndex = string.IsNullOrWhiteSpace(inputs.CurrentThread.Model)
@@ -147,9 +148,12 @@ internal sealed class ReactorChatComposer : Component<ReactorChatComposerViewPro
             : Math.Max(0, Array.FindIndex(
                 selectableModels,
                 model => model.MatchesModel(inputs.CurrentThread.Model, inputs.CurrentThread.ModelProvider)) + 1);
-        var thinkingIndex = Math.Max(0, Array.IndexOf(
-            ThinkingLevels,
-            inputs.CurrentThread.ThinkingLevel ?? "medium"));
+        var thinkingIndex = string.IsNullOrWhiteSpace(inputs.CurrentThread.ThinkingLevel)
+            ? 0
+            : Math.Max(0, Array.IndexOf(ThinkingLevels, inputs.CurrentThread.ThinkingLevel) + 1);
+        var thinkingNames = new[] { defaultReasoningLabel }
+            .Concat(ThinkingLevels)
+            .ToArray();
         var actionLabel = inputs.TurnActive
             ? Localized("Chat_Composer_Tooltip_Stop", "Stop")
             : Localized("Chat_Composer_Tooltip_Send", "Send");
@@ -575,7 +579,7 @@ internal sealed class ReactorChatComposer : Component<ReactorChatComposerViewPro
                 .ToArray());
 
         var modelPickerLabel = modelIndex == 0
-            ? Localized("Chat_Composer_Reasoning_Default", "Default")
+            ? defaultReasoningLabel
             : selectableModels[modelIndex - 1].DisplayName;
         var modelPicker = MenuFlyout(
             PickerButton(
@@ -600,17 +604,23 @@ internal sealed class ReactorChatComposer : Component<ReactorChatComposerViewPro
 
         var reasoningPicker = MenuFlyout(
             PickerButton(
-                ThinkingLevels[thinkingIndex],
-                $"{Localized("Chat_Composer_Accessibility_Reasoning", "Reasoning")}: {ThinkingLevels[thinkingIndex]}",
+                thinkingNames[thinkingIndex],
+                $"{Localized("Chat_Composer_Accessibility_Reasoning", "Reasoning")}: {thinkingNames[thinkingIndex]}",
                 "ChatComposerReasoningPicker",
                 !inputs.MessageOptionsDisabled,
                 props.IsCompact ? 54 : 96),
-            ThinkingLevels
+            thinkingNames
                 .Select((level, index) => RadioMenuItem(
                     level,
                     "chat-thinking-level",
                     index == thinkingIndex,
-                    () => controller.SetThinkingLevel(level)))
+                    () =>
+                    {
+                        if (index == 0)
+                            controller.ClearThinkingLevel();
+                        else
+                            controller.SetThinkingLevel(ThinkingLevels[index - 1]);
+                    }))
                 .ToArray());
 
         var attachButton = IconButton(
