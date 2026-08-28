@@ -49,8 +49,28 @@ $validationModes += @(
 $script:invalidContractCount = 0
 
 $tempRoot = Join-Path $env:TEMP (
-    "openclaw-proof-pool-validator-" + [guid]::NewGuid().ToString("N"))
-New-Item -ItemType Directory -Path $tempRoot | Out-Null
+    "ocppv-" + [guid]::NewGuid().ToString("N").Substring(0, 8))
+$inputRoot = Join-Path $tempRoot "i"
+$processStateRoot = Join-Path $tempRoot "t"
+New-Item -ItemType Directory -Path $inputRoot -Force | Out-Null
+New-Item -ItemType Directory -Path $processStateRoot -Force | Out-Null
+
+function Write-BytesAtomically {
+    param(
+        [Parameter(Mandatory = $true)][byte[]]$Bytes,
+        [Parameter(Mandatory = $true)][string]$Destination,
+        [Parameter(Mandatory = $true)][string]$Context
+    )
+
+    $stagingPath = "$Destination.new"
+    try {
+        [System.IO.File]::WriteAllBytes($stagingPath, $Bytes)
+        [System.IO.File]::Move($stagingPath, $Destination)
+    } catch {
+        Remove-Item -LiteralPath $stagingPath -Force -ErrorAction SilentlyContinue
+        throw "Harness failed to stage $Context atomically at '$Destination': $($_.Exception.Message)"
+    }
+}
 
 function Write-JsonFile {
     param(
@@ -58,11 +78,34 @@ function Write-JsonFile {
         [Parameter(Mandatory = $true)][string]$Path
     )
 
-    ConvertTo-Json -InputObject $Value -Depth 100 |
-        Set-Content -LiteralPath $Path -Encoding UTF8
+    $json = ConvertTo-Json -InputObject $Value -Depth 100
+    Write-BytesAtomically `
+        -Bytes ([System.Text.Encoding]::UTF8.GetBytes($json)) `
+        -Destination $Path `
+        -Context "generated JSON"
+}
+
+function Copy-FileAtomically {
+    param(
+        [Parameter(Mandatory = $true)][string]$Source,
+        [Parameter(Mandatory = $true)][string]$Destination,
+        [Parameter(Mandatory = $true)][string]$Context
+    )
+
+    try {
+        $bytes = [System.IO.File]::ReadAllBytes($Source)
+    } catch {
+        throw "Harness failed to read $Context source '$Source': $($_.Exception.Message)"
+    }
+    Write-BytesAtomically `
+        -Bytes $bytes `
+        -Destination $Destination `
+        -Context $Context
 }
 
 $script:validationInvocationCount = 0
+$script:activeValidatorChildCount = 0
+$script:harnessCompleted = $false
 
 function Invoke-ValidatorMode {
     param(
@@ -73,18 +116,22 @@ function Invoke-ValidatorMode {
     )
 
     $script:validationInvocationCount++
-    $safeName = [regex]::Replace(
-        "$Name-$($Mode.Name)",
-        "[^A-Za-z0-9._-]+",
-        "-").Trim("-")
-    $invocationRoot = Join-Path $tempRoot (
-        "invocation-{0:D4}-{1}" -f $script:validationInvocationCount, $safeName)
-    $processTemp = Join-Path $invocationRoot "temp"
+    $invocationId = "{0:D4}" -f $script:validationInvocationCount
+    $invocationInputRoot = Join-Path $inputRoot $invocationId
+    $processTemp = Join-Path $processStateRoot $invocationId
+    New-Item -ItemType Directory -Path $invocationInputRoot -Force | Out-Null
     New-Item -ItemType Directory -Path $processTemp -Force | Out-Null
-    $isolatedInventoryPath = Join-Path $invocationRoot "inventory.json"
-    $isolatedSchemaPath = Join-Path $invocationRoot "schema.json"
-    Copy-Item -LiteralPath $TestInventoryPath -Destination $isolatedInventoryPath
-    Copy-Item -LiteralPath $TestSchemaPath -Destination $isolatedSchemaPath
+    $isolatedInventoryPath = Join-Path $invocationInputRoot "inventory.json"
+    $isolatedSchemaPath = Join-Path $invocationInputRoot "schema.json"
+    $context = "case='$Name'; mode='$($Mode.Name)'; inventory='$isolatedInventoryPath'; schema='$isolatedSchemaPath'; temp='$processTemp'"
+    Copy-FileAtomically `
+        -Source $TestInventoryPath `
+        -Destination $isolatedInventoryPath `
+        -Context "$context inventory"
+    Copy-FileAtomically `
+        -Source $TestSchemaPath `
+        -Destination $isolatedSchemaPath `
+        -Context "$context schema"
 
     $arguments = @(
         "-NoProfile",
@@ -102,9 +149,20 @@ function Invoke-ValidatorMode {
         $ErrorActionPreference = "Continue"
         $env:TEMP = $processTemp
         $env:TMP = $processTemp
-        $output = (& $Mode.Executable @arguments 2>&1 | Out-String)
-        $exitCode = $LASTEXITCODE
-        $global:LASTEXITCODE = 0
+        foreach ($inputPath in @($isolatedInventoryPath, $isolatedSchemaPath)) {
+            if (-not [System.IO.File]::Exists($inputPath) -or
+                ([System.IO.FileInfo]$inputPath).Length -eq 0) {
+                throw "Harness input is missing or empty immediately before child launch. $context"
+            }
+        }
+        $script:activeValidatorChildCount++
+        try {
+            $output = (& $Mode.Executable @arguments 2>&1 | Out-String)
+            $exitCode = $LASTEXITCODE
+            $global:LASTEXITCODE = 0
+        } finally {
+            $script:activeValidatorChildCount--
+        }
     } finally {
         $ErrorActionPreference = $previousErrorActionPreference
         $env:TEMP = $previousTemp
@@ -114,7 +172,7 @@ function Invoke-ValidatorMode {
     return [pscustomobject]@{
         ExitCode = $exitCode
         Output = $output
-        Context = "mode='$($Mode.Name)'; inventory='$isolatedInventoryPath'; schema='$isolatedSchemaPath'; temp='$processTemp'"
+        Context = $context
     }
 }
 
@@ -634,8 +692,16 @@ try {
         -TestInventoryPath $missingPrefixedProjectPath `
         -TestSchemaPath $schemaPath `
         -ExpectedMessage "is not a repository file"
+    $script:harnessCompleted = $true
 } finally {
-    Remove-Item -LiteralPath $tempRoot -Recurse -Force -ErrorAction SilentlyContinue
+    if ($script:activeValidatorChildCount -ne 0) {
+        throw "Harness cleanup refused while $script:activeValidatorChildCount validator child process(es) remain active. Temp root: '$tempRoot'."
+    }
+    if ($script:harnessCompleted) {
+        Remove-Item -LiteralPath $tempRoot -Recurse -Force -ErrorAction Stop
+    } else {
+        Write-Warning "Proof-pool validator failure artifacts preserved at '$tempRoot'."
+    }
 }
 
 Write-Host "Proof-pool validator regressions passed: $script:invalidContractCount invalid contracts rejected by $($validationModes.Count) validation modes." -ForegroundColor Green
