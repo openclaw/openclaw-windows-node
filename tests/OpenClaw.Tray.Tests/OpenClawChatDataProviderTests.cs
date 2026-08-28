@@ -78,6 +78,8 @@ public class OpenClawChatDataProviderTests
         public Func<string, string?, string?, Task>? SendBehavior { get; set; }
         public Func<string, string, Task>? PatchSessionModelBehavior { get; set; }
         public Func<string, Task>? ClearSessionModelBehavior { get; set; }
+        public Func<string, string, Task>? PatchSessionThinkingLevelBehavior { get; set; }
+        public Func<string, Task>? ClearSessionThinkingLevelBehavior { get; set; }
         public Func<string?, Task<ChatHistoryInfo>>? HistoryBehavior { get; set; }
         public Func<string, Task>? AbortBehavior { get; set; }
         public SessionInfo[] Sessions { get; set; } = Array.Empty<SessionInfo>();
@@ -194,7 +196,18 @@ public class OpenClawChatDataProviderTests
             return ClearSessionModelBehavior?.Invoke(sessionKey) ?? Task.CompletedTask;
         }
         public List<string> ClearedModelKeys { get; } = new();
-        public Task PatchSessionThinkingLevelAsync(string sessionKey, string thinkingLevel) => Task.CompletedTask;
+        public Task PatchSessionThinkingLevelAsync(string sessionKey, string thinkingLevel)
+        {
+            PatchedThinkingLevels.Add((sessionKey, thinkingLevel));
+            return PatchSessionThinkingLevelBehavior?.Invoke(sessionKey, thinkingLevel) ?? Task.CompletedTask;
+        }
+        public List<(string SessionKey, string ThinkingLevel)> PatchedThinkingLevels { get; } = new();
+        public Task ClearSessionThinkingLevelAsync(string sessionKey)
+        {
+            ClearedThinkingLevelKeys.Add(sessionKey);
+            return ClearSessionThinkingLevelBehavior?.Invoke(sessionKey) ?? Task.CompletedTask;
+        }
+        public List<string> ClearedThinkingLevelKeys { get; } = new();
 
         public Task<ChatHistoryInfo> RequestChatHistoryAsync(string? sessionKey)
         {
@@ -7326,6 +7339,97 @@ public class OpenClawChatDataProviderTests
         Assert.Equal("/workspace", entry.ToolOutput);
     }
 
+    [Fact]
+    public async Task LoadHistoryAsync_StringEncodedToolArguments_PreservesSafeInput()
+    {
+        var (bridge, provider, snapshots, _) = CreateProvider(new[] { MainSession() });
+        bridge.HistoryBehavior = _ => Task.FromResult(new ChatHistoryInfo
+        {
+            SessionKey = "main",
+            Messages =
+            [
+                new ChatMessageInfo
+                {
+                    Role = "assistant",
+                    State = "final",
+                    Ts = 1,
+                    ToolContent =
+                    [
+                        new ChatToolContentInfo
+                        {
+                            Kind = ChatToolContentKind.Call,
+                            CallId = "call-1",
+                            ToolName = "exec",
+                            Args = JsonSerializer.SerializeToElement(
+                                """{"command":"pwd","workdir":"/workspace"}"""),
+                        },
+                    ],
+                },
+            ],
+        });
+
+        await provider.LoadHistoryAsync("main");
+
+        var entry = Assert.Single(snapshots[^1].Timelines["main"].Entries);
+        Assert.Equal("pwd", entry.ToolArgs?["command"]?.GetValue<string>());
+        Assert.False(entry.ToolArgs?.ContainsKey("workdir"));
+    }
+
+    [Fact]
+    public async Task LoadHistoryAsync_AfterRestart_ReplaysSanitizedArgumentsWithoutLocalPersistence()
+    {
+        using var tempDir = new TempDirectory();
+        var cachePath = Path.Combine(tempDir.DirectoryPath, "tool-metadata.json");
+        static ChatHistoryInfo History() => new()
+        {
+            SessionKey = "main",
+            Messages =
+            [
+                new ChatMessageInfo
+                {
+                    Role = "assistant",
+                    State = "final",
+                    Ts = 1,
+                    ToolContent =
+                    [
+                        new ChatToolContentInfo
+                        {
+                            Kind = ChatToolContentKind.Call,
+                            CallId = "call-1",
+                            ToolName = "exec",
+                            Args = JsonSerializer.SerializeToElement(
+                                """{"command":"curl https://example.test --token abcdef1234567890ghij","workdir":"C:\\private"}"""),
+                        },
+                    ],
+                },
+            ],
+        };
+
+        var first = CreateProvider(
+            new[] { MainSession() },
+            toolMetaCachePath: cachePath);
+        first.bridge.HistoryBehavior = _ => Task.FromResult(History());
+        await first.provider.LoadHistoryAsync("main");
+        await first.provider.DisposeAsync();
+
+        var second = CreateProvider(
+            new[] { MainSession() },
+            toolMetaCachePath: cachePath);
+        second.bridge.HistoryBehavior = _ => Task.FromResult(History());
+        await second.provider.LoadHistoryAsync("main");
+
+        var entry = Assert.Single(second.snapshots[^1].Timelines["main"].Entries);
+        var command = entry.ToolArgs?["command"]?.GetValue<string>();
+        Assert.NotNull(command);
+        Assert.DoesNotContain(
+            "abcdef1234567890ghij",
+            command,
+            StringComparison.Ordinal);
+        Assert.False(entry.ToolArgs?.ContainsKey("workdir"));
+        Assert.False(File.Exists(cachePath));
+        await second.provider.DisposeAsync();
+    }
+
     [Theory]
     [InlineData("toolResult")]
     [InlineData("tool_result")]
@@ -9584,6 +9688,56 @@ public class OpenClawChatDataProviderTests
     }
 
     [Fact]
+    public async Task SetThinkingLevelAsync_ForwardsConcreteLevelToBridge()
+    {
+        var (bridge, provider, _, _) = CreateProvider(new[] { MainSession() });
+        await provider.LoadAsync();
+
+        await provider.SetThinkingLevelAsync("main", "high");
+
+        Assert.Equal([("main", "high")], bridge.PatchedThinkingLevels);
+        Assert.Empty(bridge.ClearedThinkingLevelKeys);
+    }
+
+    [Fact]
+    public async Task ClearThinkingLevelAsync_ClearsOverrideViaBridge()
+    {
+        var (bridge, provider, _, _) = CreateProvider(new[] { MainSession() });
+        await provider.LoadAsync();
+
+        await provider.ClearThinkingLevelAsync("main");
+
+        Assert.Equal(["main"], bridge.ClearedThinkingLevelKeys);
+        Assert.Empty(bridge.PatchedThinkingLevels);
+    }
+
+    [Fact]
+    public async Task SendMessageAsync_WaitsForInFlightThinkingLevelClearBeforeGatewaySend()
+    {
+        var patchStarted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var releasePatch = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var (bridge, provider, _, _) = CreateProvider(new[] { MainSession() });
+        bridge.ClearSessionThinkingLevelBehavior = _ =>
+        {
+            patchStarted.TrySetResult();
+            return releasePatch.Task;
+        };
+        await provider.LoadAsync();
+
+        var clearTask = provider.ClearThinkingLevelAsync("main");
+        await patchStarted.Task.WaitAsync(TimeSpan.FromSeconds(1));
+        var sendTask = provider.SendMessageAsync("main", "Use default reasoning");
+        await Task.Delay(50);
+
+        Assert.Empty(bridge.SentMessages);
+        releasePatch.SetResult();
+        await Task.WhenAll(clearTask, sendTask);
+
+        Assert.Equal(["main"], bridge.ClearedThinkingLevelKeys);
+        Assert.Equal(["Use default reasoning"], bridge.SentMessages);
+    }
+
+    [Fact]
     public async Task SendMessageAsync_WaitsForInFlightModelPatchBeforeGatewaySend()
     {
         var patchStarted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -11514,50 +11668,64 @@ public class OpenClawChatDataProviderTests
     [Fact]
     public async Task AttachmentMetadata_ConcurrentSavesPreserveEveryCompletedSend()
     {
-        const int sendCount = 16;
         using var tempDir = new TempDirectory();
+        var toolPath = Path.Combine(tempDir.DirectoryPath, "tool-metadata.json");
         var attachmentPath = Path.Combine(tempDir.DirectoryPath, "attachment-metadata.json");
-        var sessions = Enumerable.Range(0, sendCount)
-            .Select(index => new SessionInfo
+        var firstSnapshotCaptured = new TaskCompletionSource(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        using var releaseFirstSnapshot = new ManualResetEventSlim();
+        using var store = new ChatMetadataStore(
+            toolPath,
+            attachmentPath,
+            version =>
             {
-                Key = $"thread-{index}",
-                DisplayName = $"Thread {index}",
-                Status = "active",
-                IsMain = index == 0,
-            })
-            .ToArray();
-        var (bridge, provider, _, _) = CreateProvider(
-            sessions,
-            attachmentMetaCachePath: attachmentPath);
-        await provider.LoadAsync();
+                if (version != 1)
+                    return;
 
-        var allStarted = new CountdownEvent(sendCount);
-        var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-        bridge.SendBehavior = async (_, _, _) =>
+                firstSnapshotCaptured.SetResult();
+                releaseFirstSnapshot.Wait();
+            });
+
+        static ChatAttachment Attachment(string fileName) => new()
         {
-            allStarted.Signal();
-            await release.Task;
+            Type = "image",
+            MimeType = "image/png",
+            FileName = fileName,
+            Content = Convert.ToBase64String([1]),
+            SizeBytes = 1,
         };
 
-        var sends = sessions.Select((session, index) =>
-            provider.SendMessageAsync(session.Key, $"caption-{index}", default,
-            [
-                new ChatAttachment
-                {
-                    Type = "image",
-                    MimeType = "image/png",
-                    FileName = $"file-{index}.png",
-                    Content = Convert.ToBase64String([(byte)index]),
-                    SizeBytes = 1,
-                },
-            ])).ToArray();
-        Assert.True(allStarted.Wait(TimeSpan.FromSeconds(5)));
-        release.SetResult();
-        await Task.WhenAll(sends);
+        var firstSave = Task.Run(() =>
+            store.CacheAttachments(
+                "thread-1",
+                "session-1",
+                0,
+                "first",
+                [Attachment("first.png")],
+                1_000));
+        try
+        {
+            await firstSnapshotCaptured.Task.WaitAsync(TimeSpan.FromSeconds(5));
+            store.CacheAttachments(
+                "thread-2",
+                "session-2",
+                0,
+                "second",
+                [Attachment("second.png")],
+                2_000);
+        }
+        finally
+        {
+            releaseFirstSnapshot.Set();
+        }
 
-        var persisted = await File.ReadAllTextAsync(attachmentPath);
-        for (var index = 0; index < sendCount; index++)
-            Assert.Contains($"file-{index}.png", persisted, StringComparison.Ordinal);
+        await firstSave;
+
+        var cache = JsonSerializer.Deserialize<
+            Dictionary<string, List<ChatMetadataStore.CachedAttachmentMeta>>>(
+                await File.ReadAllTextAsync(attachmentPath));
+        Assert.Equal("first.png", Assert.Single(cache!["session-1"]).Attachments[0].FileName);
+        Assert.Equal("second.png", Assert.Single(cache["session-2"]).Attachments[0].FileName);
     }
 
     [Fact]

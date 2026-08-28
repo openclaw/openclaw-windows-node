@@ -12,6 +12,11 @@ public sealed record LlamaServerInferenceVerification(
 
 public interface ILlamaServerInferenceClient : IDisposable
 {
+    /// <summary>
+    /// Sends one bounded OpenAI-compatible request to the managed endpoint, intentionally triggering
+    /// lazy model loading during setup. Verifies the response plus token and timing evidence without
+    /// returning or logging prompt or response content.
+    /// </summary>
     Task<LlamaServerInferenceVerification> VerifyAsync(
         Uri endpoint,
         string modelAlias,
@@ -45,6 +50,11 @@ public sealed class LlamaServerInferenceClient : ILlamaServerInferenceClient
         };
     }
 
+    /// <summary>
+    /// Sends one bounded OpenAI-compatible request to the managed endpoint, intentionally triggering
+    /// lazy model loading during setup. Verifies the response plus token and timing evidence without
+    /// returning or logging prompt or response content.
+    /// </summary>
     public async Task<LlamaServerInferenceVerification> VerifyAsync(
         Uri endpoint,
         string modelAlias,

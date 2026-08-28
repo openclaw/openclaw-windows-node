@@ -392,22 +392,22 @@ internal sealed class ChatConversationState
         }
     }
 
-    internal ChatModelPatchLease BeginModelPatch(string threadId)
+    internal ChatSessionOptionPatchLease BeginSessionOptionPatch(string threadId)
     {
         lock (_gate)
-            return _presentation.BeginModelPatch(threadId);
+            return _presentation.BeginSessionOptionPatch(threadId);
     }
 
-    internal void CompleteModelPatch(ChatModelPatchLease lease, Exception? error)
+    internal void CompleteSessionOptionPatch(ChatSessionOptionPatchLease lease, Exception? error)
     {
         lock (_gate)
-            _presentation.CompleteModelPatch(lease, error);
+            _presentation.CompleteSessionOptionPatch(lease, error);
     }
 
-    internal Task? GetPendingModelPatch(string threadId)
+    internal Task? GetPendingSessionOptionPatch(string threadId)
     {
         lock (_gate)
-            return _presentation.GetPendingModelPatch(threadId);
+            return _presentation.GetPendingSessionOptionPatch(threadId);
     }
 
     internal bool TryBeginCommandCatalogFetch(out int epoch)

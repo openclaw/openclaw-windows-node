@@ -93,6 +93,68 @@ internal static class DistroInstallPathPolicy
             ? $"{error} {LegacyReplacementGuidance}"
             : error;
 
+    internal static bool TryCanonicalizeAbsolutePath(
+        string path,
+        out string canonicalPath,
+        out string error)
+    {
+        canonicalPath = "";
+        if (string.IsNullOrWhiteSpace(path))
+        {
+            error = "Path is required.";
+            return false;
+        }
+
+        var candidate = path;
+        const string extendedUncPrefix = @"\\?\UNC\";
+        const string extendedPathPrefix = @"\\?\";
+        if (candidate.StartsWith(extendedUncPrefix, StringComparison.OrdinalIgnoreCase))
+        {
+            candidate = @"\\" + candidate[extendedUncPrefix.Length..];
+        }
+        else if (candidate.StartsWith(extendedPathPrefix, StringComparison.OrdinalIgnoreCase))
+        {
+            var unprefixed = candidate[extendedPathPrefix.Length..];
+            if (unprefixed.Length < 3 ||
+                !char.IsAsciiLetter(unprefixed[0]) ||
+                unprefixed[1] != ':' ||
+                unprefixed[2] is not ('\\' or '/'))
+            {
+                error = "Only rooted drive or UNC paths are supported.";
+                return false;
+            }
+
+            candidate = unprefixed;
+        }
+
+        try
+        {
+            if (!Path.IsPathFullyQualified(candidate))
+            {
+                error = "Path must be fully qualified.";
+                return false;
+            }
+
+            canonicalPath = NormalizePath(candidate);
+            error = "";
+            return true;
+        }
+        catch (Exception ex) when (
+            ex is IOException
+            or ArgumentException
+            or NotSupportedException
+            or PathTooLongException)
+        {
+            error = $"Invalid path: {ex.Message}";
+            return false;
+        }
+    }
+
+    internal static bool PathsReferToSameLocation(string left, string right)
+        => TryCanonicalizeAbsolutePath(left, out var canonicalLeft, out _) &&
+           TryCanonicalizeAbsolutePath(right, out var canonicalRight, out _) &&
+           PathEquals(canonicalLeft, canonicalRight);
+
     public static bool TryValidateDeleteTarget(
         string localDataDir,
         string? distroName,

@@ -66,7 +66,10 @@ public sealed class AccessibilityScanTests
         string pageTag,
         string pageMarkerAutomationId)
     {
-        await _app.NavigateAsync(pageTag, pageMarkerAutomationId);
+        await _app.NavigateAsync(
+            pageTag,
+            pageName,
+            pageMarkerAutomationId);
         PageRuleExclusions.TryGetValue(pageName, out var exclusions);
         AxeHelper.AssertNoAccessibilityErrors(
             _app.HubWindowHandle,
@@ -78,7 +81,10 @@ public sealed class AccessibilityScanTests
     [Trait("Category", "Accessibility")]
     public async Task ChatComposerControls_ExposeOnscreenLayoutThroughUia()
     {
-        await _app.NavigateAsync("chat", "ChatComposerInput");
+        await _app.NavigateAsync(
+            "chat",
+            "ChatPage",
+            "ChatComposerInput");
         var hub = AutomationElement.FromHandle(_app.HubWindowHandle);
         foreach (var automationId in new[]
         {

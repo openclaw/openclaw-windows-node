@@ -11,13 +11,13 @@ internal sealed record ChatUsageSnapshot(
     long ContextTokens);
 
 /// <summary>
-/// Owns session/model/catalog presentation inputs, serialized model patches,
+/// Owns session/model/catalog presentation inputs, serialized session-option patches,
 /// keyless diagnostics, and remembered chat selection. The root serializes
 /// every operation and supplies immutable timeline/queue snapshots.
 /// </summary>
 internal sealed class ChatPresentationState
 {
-    private readonly Dictionary<string, Task> _pendingModelPatches = new();
+    private readonly Dictionary<string, Task> _pendingSessionOptionPatches = new();
 
     private SessionInfo[] _sessions = [];
     private bool _sessionsListReceived;
@@ -150,17 +150,17 @@ internal sealed class ChatPresentationState
         _commandsFetchInFlight = false;
     }
 
-    internal ChatModelPatchLease BeginModelPatch(string threadId)
+    internal ChatSessionOptionPatchLease BeginSessionOptionPatch(string threadId)
     {
-        _pendingModelPatches.TryGetValue(threadId, out var previous);
+        _pendingSessionOptionPatches.TryGetValue(threadId, out var previous);
         var completion = new TaskCompletionSource(
             TaskCreationOptions.RunContinuationsAsynchronously);
-        _pendingModelPatches[threadId] = completion.Task;
+        _pendingSessionOptionPatches[threadId] = completion.Task;
         return new(threadId, previous, completion);
     }
 
-    internal void CompleteModelPatch(
-        ChatModelPatchLease lease,
+    internal void CompleteSessionOptionPatch(
+        ChatSessionOptionPatchLease lease,
         Exception? error)
     {
         if (error is null)
@@ -168,15 +168,15 @@ internal sealed class ChatPresentationState
         else
             lease.Completion.TrySetException(error);
 
-        if (_pendingModelPatches.TryGetValue(lease.ThreadId, out var current) &&
+        if (_pendingSessionOptionPatches.TryGetValue(lease.ThreadId, out var current) &&
             ReferenceEquals(current, lease.Completion.Task))
         {
-            _pendingModelPatches.Remove(lease.ThreadId);
+            _pendingSessionOptionPatches.Remove(lease.ThreadId);
         }
     }
 
-    internal Task? GetPendingModelPatch(string threadId) =>
-        _pendingModelPatches.TryGetValue(threadId, out var pending)
+    internal Task? GetPendingSessionOptionPatch(string threadId) =>
+        _pendingSessionOptionPatches.TryGetValue(threadId, out var pending)
             ? pending
             : null;
 

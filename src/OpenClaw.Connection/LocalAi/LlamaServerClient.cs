@@ -6,7 +6,14 @@ public sealed record LlamaServerRouterProbeResult(
     bool IsHealthy,
     LocalAiModelAvailabilityState ModelState,
     string? ReportedModelPath,
-    string? Detail);
+    string? Detail)
+{
+    internal bool IsReadyForManagedModel(string expectedModelPath) =>
+        IsHealthy &&
+        ModelState is LocalAiModelAvailabilityState.Verified or LocalAiModelAvailabilityState.Loaded &&
+        !string.IsNullOrWhiteSpace(ReportedModelPath) &&
+        LlamaServerModelStatusParser.PathsEqual(ReportedModelPath, expectedModelPath);
+}
 
 public sealed record LlamaServerModelStatusEvidence(
     LocalAiModelAvailabilityState State,
@@ -119,7 +126,7 @@ public static class LlamaServerModelStatusParser
         return modelPath;
     }
 
-    private static bool PathsEqual(string left, string right)
+    internal static bool PathsEqual(string left, string right)
     {
         try
         {
@@ -134,7 +141,7 @@ public static class LlamaServerModelStatusParser
 
 internal interface ILlamaServerClient : IDisposable
 {
-    Task<LlamaServerRouterProbeResult> ProbeRouterAsync(
+    Task<LlamaServerRouterProbeResult> ProbeManagedModelAsync(
         Uri endpoint,
         string modelAlias,
         string expectedModelPath,
@@ -164,7 +171,7 @@ public sealed class LlamaServerClient : ILlamaServerClient
         };
     }
 
-    public async Task<LlamaServerRouterProbeResult> ProbeRouterAsync(
+    public async Task<LlamaServerRouterProbeResult> ProbeManagedModelAsync(
         Uri endpoint,
         string modelAlias,
         string expectedModelPath,
@@ -191,13 +198,21 @@ public sealed class LlamaServerClient : ILlamaServerClient
         }
         catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
         {
-            return new(true, LocalAiModelAvailabilityState.Unknown, null, "The model status check timed out.");
+            return new(false, LocalAiModelAvailabilityState.Unknown, null, "The model status check timed out.");
         }
         catch (Exception ex) when (ex is HttpRequestException or IOException or JsonException or InvalidDataException)
         {
-            return new(true, LocalAiModelAvailabilityState.Unknown, null, "The model status response was invalid.");
+            return new(false, LocalAiModelAvailabilityState.Unknown, null, "The model status response was invalid.");
         }
     }
+
+    [Obsolete("Use ProbeManagedModelAsync instead.")]
+    public Task<LlamaServerRouterProbeResult> ProbeRouterAsync(
+        Uri endpoint,
+        string modelAlias,
+        string expectedModelPath,
+        CancellationToken cancellationToken = default) =>
+        ProbeManagedModelAsync(endpoint, modelAlias, expectedModelPath, cancellationToken);
 
     private async Task<bool> ProbeHealthAsync(Uri endpoint, CancellationToken cancellationToken)
     {
@@ -249,9 +264,9 @@ public sealed class LlamaServerClient : ILlamaServerClient
             modelAlias,
             expectedModelPath);
         if (evidence is null)
-            return new(true, LocalAiModelAvailabilityState.NotInstalled, null, "The configured model is not registered.");
+            return new(false, LocalAiModelAvailabilityState.NotInstalled, null, "The configured model is not registered.");
         return new(
-            true,
+            evidence.State is LocalAiModelAvailabilityState.Verified or LocalAiModelAvailabilityState.Loaded,
             evidence.State,
             evidence.ModelPath,
             $"llama-server reports the model as {evidence.ServerStatus}.");

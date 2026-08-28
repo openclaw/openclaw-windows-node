@@ -1873,6 +1873,36 @@ public class OpenClawGatewayClientTests
         Assert.Equal("call-1", Assert.Single(history.Messages[0].ToolContent).CallId);
     }
 
+    [Fact]
+    public void ParseChatHistoryPayload_ToolResult_UsesCallIdAndMessageErrorFallback()
+    {
+        var helper = new GatewayClientTestHelper();
+
+        var history = helper.ParseChatHistoryPayload("""
+        {
+          "messages": [
+            {
+              "role": "toolResult",
+              "isError": true,
+              "content": [
+                {
+                  "type": "tool_result",
+                  "callId": "call-1",
+                  "name": "exec",
+                  "content": "access denied"
+                }
+              ],
+              "timestamp": 2
+            }
+          ]
+        }
+        """);
+
+        var result = Assert.Single(Assert.Single(history.Messages).ToolContent);
+        Assert.Equal("call-1", result.CallId);
+        Assert.True(result.IsError);
+    }
+
     [Theory]
     [InlineData("toolResult")]
     [InlineData("tool_result")]
@@ -2383,6 +2413,33 @@ public class OpenClawGatewayClientTests
         Assert.True(notification!.IsChat);
         Assert.Equal(fullMessage[..200] + "…", notification.Message);
         Assert.Equal(fullMessage, notification.FullMessage);
+    }
+
+    [Theory]
+    [InlineData("streaming", false)]
+    [InlineData("final", true)]
+    public void ProcessRawMessage_LegacyAssistantNotification_DependsOnFinalState(
+        string state,
+        bool expectNotification)
+    {
+        var helper = new GatewayClientTestHelper();
+        var notifications = new List<OpenClawNotification>();
+        helper.Client.NotificationReceived += (_, value) => notifications.Add(value);
+
+        helper.ProcessRawMessage($$"""
+        {
+          "type": "event",
+          "event": "session.message",
+          "payload": {
+            "sessionKey": "main",
+            "role": "assistant",
+            "text": "legacy reply",
+            "state": "{{state}}"
+          }
+        }
+        """);
+
+        Assert.Equal(expectNotification ? 1 : 0, notifications.Count);
     }
 
     [Fact]

@@ -12,6 +12,7 @@ public sealed class TtsCapability : NodeCapabilityBase
     public const string StatusCommand = "tts.status";
     public const string WindowsProvider = "windows";
     public const string ElevenLabsProvider = "elevenlabs";
+    public const string MiniMaxProvider = "minimax";
     /// <summary>
     /// Local neural TTS via Sherpa-ONNX wrapping Piper voices. No network
     /// egress; voice models download once to %LOCALAPPDATA%.
@@ -37,7 +38,7 @@ public sealed class TtsCapability : NodeCapabilityBase
     public const string ReadinessUnavailable = "unavailable";
 
     /// <summary>All known providers, in catalog order (Piper is the default).</summary>
-    public static readonly string[] AllProviders = [PiperProvider, WindowsProvider, ElevenLabsProvider];
+    public static readonly string[] AllProviders = [PiperProvider, WindowsProvider, ElevenLabsProvider, MiniMaxProvider];
 
     private static readonly string[] _commands = [SpeakCommand, StatusCommand];
 

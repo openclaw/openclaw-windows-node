@@ -39,7 +39,10 @@ public sealed class SessionTitleBehaviorProofTests
             $"input key=agent:main:fork displayName=\"{RawTitle}\"",
         };
 
-        await _app.NavigateAsync("sessions", "SessionsPageMarker");
+        await _app.NavigateAsync(
+            "sessions",
+            "SessionsPage",
+            "SessionsPageMarker");
         var observedMainTitle = WaitForTitleCount(RawTitle, expectedCount: 1);
         var observedForkTitle = WaitForTitleCount(ForkTitle, expectedCount: 1);
         proof.Add($"UIA title key=agent:main:main value=\"{observedMainTitle}\"");
@@ -52,7 +55,10 @@ public sealed class SessionTitleBehaviorProofTests
         }
 
         AssertOpenChatRoute(RawTitle, "agent:main:main", proof);
-        await _app.NavigateAsync("sessions", "SessionsPageMarker");
+        await _app.NavigateAsync(
+            "sessions",
+            "SessionsPage",
+            "SessionsPageMarker");
         _ = WaitForTitleCount(ForkTitle, expectedCount: 1);
         AssertOpenChatRoute(ForkTitle, "agent:main:fork", proof);
 
