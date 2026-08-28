@@ -2019,6 +2019,49 @@ public class SetupStepsTests : IDisposable
     }
 
     [Fact]
+    public async Task WslViabilityProbe_RefreshSharesInFlightInspectionThenStartsOneNewInspection()
+    {
+        var firstCompletion = new TaskCompletionSource<WslViabilityResult>(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        var secondCompletion = new TaskCompletionSource<WslViabilityResult>(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        var inspectionCount = 0;
+        var probe = new WslViabilityProbe(() =>
+            Interlocked.Increment(ref inspectionCount) switch
+            {
+                1 => firstCompletion.Task,
+                2 => secondCompletion.Task,
+                _ => throw new InvalidOperationException("Unexpected extra WSL inspection."),
+            });
+
+        Task<WslViabilityResult> first = probe.GetAsync();
+        Task<WslViabilityResult> concurrentRefresh = probe.GetAsync(refresh: true);
+
+        Assert.Same(first, concurrentRefresh);
+        Assert.Equal(1, Volatile.Read(ref inspectionCount));
+
+        firstCompletion.SetResult(new WslViabilityResult(
+            WslViabilityKind.InspectionFailed,
+            "Inspection failed.",
+            "Try again."));
+        Assert.Equal(WslViabilityKind.InspectionFailed, (await first).Kind);
+
+        Task<WslViabilityResult> refreshed = probe.GetAsync(refresh: true);
+        Task<WslViabilityResult> secondConcurrentRefresh = probe.GetAsync(refresh: true);
+
+        Assert.NotSame(first, refreshed);
+        Assert.Same(refreshed, secondConcurrentRefresh);
+        Assert.Equal(2, Volatile.Read(ref inspectionCount));
+
+        secondCompletion.SetResult(new WslViabilityResult(
+            WslViabilityKind.Ready,
+            "WSL is ready.",
+            string.Empty));
+        Assert.Equal(WslViabilityKind.Ready, (await refreshed).Kind);
+        Assert.Equal(2, Volatile.Read(ref inspectionCount));
+    }
+
+    [Fact]
     public void LocalAiAvailabilityReasons_CombinesOnlyLocalAiFailures()
     {
         var result = LocalAiAvailabilityReasons.Build(
