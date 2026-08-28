@@ -435,6 +435,7 @@ public sealed partial class CapabilitiesPage : Page
         _config!.LocalAi.Enabled = false;
         _config.SkipWizard = _skipWizardWithoutLocalAi;
         ApplySetupReviewSummary(_config);
+        UpdatePrimaryButtonState();
     }
 
     private static string DescribeLocalAiUnavailable(LocalInferenceEligibilityResult eligibility) =>

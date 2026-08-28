@@ -252,9 +252,11 @@ internal sealed class LocalAiPageViewModel : INavigationAware, IDisposable, INot
             HostHardwareInfo hardware = await Task.Run(
                 _hardwareProbe.Probe,
                 cancellation.Token).ConfigureAwait(false);
-            LocalInferenceEligibilityResult eligibility = LocalInferenceEligibility.Evaluate(
-                hardware,
-                _runtimeSnapshot.ModelId);
+            // Evaluate device-level eligibility (the best catalog model this hardware can run),
+            // not the currently selected/installed model. A selection-specific failure (unknown,
+            // deprecated, or oversized model) must not report the device itself as unavailable
+            // and block retry-setup from switching to a compatible catalog model.
+            LocalInferenceEligibilityResult eligibility = LocalInferenceEligibility.Evaluate(hardware);
             bool isAvailable = eligibility.CanInstall;
             string? unavailableReason = isAvailable
                 ? null
