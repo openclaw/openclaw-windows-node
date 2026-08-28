@@ -55,11 +55,12 @@ jobs:
             });
 
       - name: Upload triage report
+        if: ${{ always() }}
         uses: actions/upload-artifact@v7
         with:
           name: repository-triage-report
           path: ${{ runner.temp }}/repository-triage
-          if-no-files-found: error
+          if-no-files-found: warn
           retention-days: 30
 
   remove-expired-active-ownership:
@@ -104,5 +105,5 @@ jobs:
         with:
           name: repository-triage-cleanup-audit
           path: ${{ runner.temp }}/repository-triage-cleanup
-          if-no-files-found: error
+          if-no-files-found: warn
           retention-days: 90

@@ -8,8 +8,8 @@ artifacts. Scheduled runs are report-only.
 
 Pull request rows report:
 
-- mergeability and stale-base state, using both GitHub's merge state and the
-  PR base commit compared with the current default-branch commit;
+- mergeability and stale-base state from GitHub's merge state, with one bounded
+  refresh when GitHub initially returns a lazy `UNKNOWN` value;
 - aggregate check state and pass, fail, and pending counts;
 - proof labels, including the contributor-facing needs-proof state;
 - human, bot, or repo-assist authorship;
@@ -57,8 +57,8 @@ these safeguards pass:
 4. Label application history and a non-bot label actor are available.
 5. The item has no assignee.
 6. The latest dated trusted owner, member, or collaborator activity is at least
-   7 full days old. A post-label commit without a server timestamp blocks
-   removal because its inactivity age cannot be proven.
+   7 full days old. A post-label commit without an attributable actor or server
+   timestamp blocks removal because its inactivity age cannot be proven.
 7. The item does not have `no-stale`, `P0`, or any canonical security taxonomy
    label (`security`, `impact:security`, `clawsweeper:needs-security-review`, or
    `merge-risk: 🚨 security-boundary`).
@@ -70,7 +70,17 @@ the other candidates. A concurrent removal is treated as an idempotent success.
 Every removal or skip is journaled incrementally, then written to the job
 summary and a 90-day audit artifact. The artifact upload runs even when the
 cleanup step fails after a mutation, and unexpected failures are rethrown only
-after the durable report files are written.
+after the durable report files are written. The output directory is created
+before collection begins, and a top-level failure path writes a minimal report
+and cleanup journal before rethrowing the original error. The upload step warns
+rather than replacing an earlier checkout or test failure when no artifact
+exists.
+
+For pull requests, timeline activity resets the inactivity clock only when its
+actor is the maintainer who applied the active-ownership label or GitHub
+explicitly identifies the actor as an owner, member, or collaborator.
+External-author pushes do not claim maintainer ownership. Relevant activity
+with no actor identity blocks cleanup conservatively.
 
 ## Security and permissions
 

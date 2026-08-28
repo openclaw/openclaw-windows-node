@@ -2,6 +2,7 @@
 
 const assert = require("node:assert/strict");
 const fs = require("node:fs");
+const os = require("node:os");
 const path = require("node:path");
 const test = require("node:test");
 
@@ -91,9 +92,8 @@ test("reports check totals and stale base", () => {
     triage.staleBaseState(
       { baseRefName: "main", baseRefOid: "old", mergeStateStatus: "CLEAN" },
       "main",
-      "current",
     ),
-    "yes",
+    "no",
   );
   assert.deepEqual(
     triage.proofLabels({
@@ -127,6 +127,17 @@ test("maps closing keywords, explicit references, and cross-references", () => {
         "    Fixes #5",
         "Not related to #6",
         "Unrelated to openclaw/openclaw-windows-node#7",
+        "    - Fixes #8",
+        "- Nested ownership",
+        "    - Fixes #9",
+        "    - Fixes #10",
+        "- Earlier list",
+        "",
+        "```text",
+        "example",
+        "```",
+        "",
+        "    - Fixes #11",
       ].join("\n"),
       "openclaw/openclaw-windows-node",
     ),
@@ -344,7 +355,6 @@ test("collects every nested file and check page before reporting", async () => {
     skipped: 0,
   });
   assert.deepEqual(data.linkedPrsByIssue.get(20), [10]);
-  assert.equal(data.defaultBranchOid, "current-base");
 });
 
 test("isolates nullable and failed pull request detail collection", async () => {
@@ -354,7 +364,6 @@ test("isolates nullable and failed pull request detail collection", async () => 
       title: "docs: partial files",
       body: "",
       baseRefName: "main",
-      baseRefOid: "old",
       mergeable: "UNKNOWN",
       mergeStateStatus: "UNKNOWN",
       changedFiles: 2,
@@ -369,7 +378,6 @@ test("isolates nullable and failed pull request detail collection", async () => 
       title: "fix: partial pagination",
       body: "",
       baseRefName: "main",
-      baseRefOid: "current",
       mergeable: "MERGEABLE",
       mergeStateStatus: "CLEAN",
       changedFiles: 2,
@@ -416,7 +424,6 @@ test("isolates nullable and failed pull request detail collection", async () => 
         return {
           repository: {
             pullRequest: {
-              baseRefOid: "old",
               mergeable: "MERGEABLE",
               mergeStateStatus: "CLEAN",
             },
@@ -624,7 +631,6 @@ test("expires active ownership only when every safeguard passes", () => {
           event,
           created_at: "2026-08-25T12:00:00Z",
           actor: { login: "maintainer", type: "User" },
-          author_association: "MEMBER",
         },
       ],
       now,
@@ -674,20 +680,20 @@ test("expires active ownership only when every safeguard passes", () => {
   assert.equal(externalForcePush.removable, true);
   assert.equal(externalForcePush.expired, true);
 
-  const unknownForcePush = triage.evaluateActiveOwnership(
+  const unidentifiedForcePush = triage.evaluateActiveOwnership(
     item,
     [
       applied,
       {
         event: "head_ref_force_pushed",
         created_at: "2026-08-25T12:00:00Z",
-        actor: { login: "unknown-human", type: "User" },
+        actor: null,
       },
     ],
     now,
   );
-  assert.equal(unknownForcePush.removable, false);
-  assert.match(unknownForcePush.reason, /provenance is unavailable/);
+  assert.equal(unidentifiedForcePush.removable, false);
+  assert.match(unidentifiedForcePush.reason, /provenance is unavailable/);
 });
 
 test("cleanup removes only the allowlisted label and is idempotent", async () => {
@@ -849,6 +855,96 @@ test("cleanup does not treat verification 404 as an absent label", async () => {
   assert.doesNotMatch(audit[0], /already absent/);
 });
 
+test("cleanup preserves caller-owned audit entries when journaling throws", async () => {
+  const now = new Date("2026-08-27T12:00:00Z");
+  const item = {
+    number: 12,
+    state: "open",
+    labels: labels(triage.ACTIVE_OWNERSHIP_LABEL),
+    assignees: { nodes: [] },
+  };
+  const timeline = [{
+    event: "labeled",
+    created_at: "2026-08-19T12:00:00Z",
+    label: { name: triage.ACTIVE_OWNERSHIP_LABEL },
+    actor: { login: "maintainer", type: "User" },
+  }];
+  const audit = [];
+  const github = {
+    rest: {
+      issues: {
+        get: async () => ({ data: item }),
+        listEventsForTimeline: async () => ({ data: timeline }),
+        removeLabel: async () => {},
+      },
+    },
+    paginate: async () => timeline,
+  };
+
+  await assert.rejects(
+    triage.removeExpiredActiveOwnership({
+      github,
+      owner: "openclaw",
+      repo: "openclaw-windows-node",
+      data: {
+        issues: [item],
+        pullRequests: [],
+        timelineByNumber: new Map([["issue:12", timeline]]),
+      },
+      now,
+      audit,
+      onAudit: () => {
+        throw new Error("journal unavailable");
+      },
+    }),
+    /persist the cleanup audit journal/,
+  );
+
+  assert.equal(audit.length, 1);
+  assert.match(audit[0], /#12: removed/);
+});
+
+test("run writes failure artifacts and cleanup journal before rethrowing", async (t) => {
+  const outputDir = fs.mkdtempSync(path.join(os.tmpdir(), "repository-triage-test-"));
+  fs.rmSync(outputDir, { recursive: true, force: true });
+  t.after(() => fs.rmSync(outputDir, { recursive: true, force: true }));
+  const collectionError = new Error("collection failed");
+  collectionError.status = 502;
+  const github = {
+    graphql: async () => {
+      throw collectionError;
+    },
+  };
+  const core = {
+    summary: {
+      addRaw: () => core.summary,
+      write: async () => {},
+    },
+    info: () => {},
+    warning: () => {},
+  };
+
+  await assert.rejects(
+    triage.run({
+      github,
+      context: { repo: { owner: "openclaw", repo: "openclaw-windows-node" } },
+      core,
+      outputDir,
+      operation: triage.CLEANUP_OPERATION,
+      now: new Date("2026-08-27T12:00:00Z"),
+    }),
+    collectionError,
+  );
+
+  assert.equal(fs.existsSync(outputDir), true);
+  assert.equal(fs.existsSync(path.join(outputDir, "repository-triage-failure.md")), true);
+  assert.equal(fs.existsSync(path.join(outputDir, "repository-triage-failure.json")), true);
+  const journal = JSON.parse(
+    fs.readFileSync(path.join(outputDir, "repository-triage-cleanup-audit.json"), "utf8"),
+  );
+  assert.deepEqual(journal, ["Repository triage failed before completion (HTTP 502)."]);
+});
+
 function workflowJob(workflow, jobName) {
   const lines = workflow.split(/\r?\n/);
   const start = lines.findIndex((line) => line === `  ${jobName}:`);
@@ -884,12 +980,15 @@ test("workflow is report-only by default and cleanup is manually gated", () => {
   assert.doesNotMatch(reportJob, /^\s+(issues|pull-requests|contents): write$/m);
   assert.match(reportJob, /^      issues: read$/m);
   assert.match(reportJob, /^      pull-requests: read$/m);
+  assert.match(reportJob, /^        if: \$\{\{ always\(\) \}\}$/m);
+  assert.match(reportJob, /^          if-no-files-found: warn$/m);
   assert.match(cleanupJob, /^      issues: write$/m);
   assert.match(cleanupJob, /^      pull-requests: write$/m);
   assert.match(cleanupJob, /ref: \$\{\{ github\.event\.repository\.default_branch \}\}/);
   assert.match(cleanupJob, /Run deterministic triage tests before mutation/);
   assert.match(cleanupJob, /persist-credentials: false/);
   assert.match(cleanupJob, /^        if: \$\{\{ always\(\) \}\}$/m);
+  assert.match(cleanupJob, /^          if-no-files-found: warn$/m);
   assert.doesNotMatch(implementation, /\.merge\(/);
   assert.doesNotMatch(implementation, /state:\s*["']closed["']/);
   assert.doesNotMatch(implementation, /addLabels|setLabels/);
