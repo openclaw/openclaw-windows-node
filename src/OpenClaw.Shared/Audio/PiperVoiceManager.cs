@@ -355,18 +355,25 @@ public sealed class PiperVoiceManager
             CreateNoWindow = true,
             RedirectStandardError = true,
         };
+        cancellationToken.ThrowIfCancellationRequested();
         using var proc = System.Diagnostics.Process.Start(psi)
             ?? throw new InvalidOperationException("Could not start tar to extract Piper voice");
 
-        // Cancellation: kill the tar process if requested. Static context — no logger;
-        // best-effort kill, the cancellation surfaces via the awaited WaitForExit.
-        using var reg = cancellationToken.Register(() => { try { proc.Kill(entireProcessTree: true); } catch (Exception ex) { System.Diagnostics.Trace.WriteLine($"PiperVoiceManager: tar cancellation kill failed: {ex.GetType().Name}: {ex.Message}"); } });
-
-        proc.WaitForExit();
-        if (proc.ExitCode != 0)
+        (int ExitCode, string StandardError) result;
+        try
         {
-            var err = proc.StandardError.ReadToEnd();
-            throw new InvalidOperationException($"tar extraction failed (exit {proc.ExitCode}): {err}");
+            result = BoundedProcessWait.Wait(proc, BoundedProcessWait.DefaultTimeoutMs, cancellationToken);
+        }
+        catch (TimeoutException ex)
+        {
+            throw new InvalidOperationException(
+                "tar extraction timed out while unpacking the Piper voice.", ex);
+        }
+
+        if (result.ExitCode != 0)
+        {
+            throw new InvalidOperationException(
+                $"tar extraction failed (exit {result.ExitCode}): {result.StandardError}");
         }
     }
 
