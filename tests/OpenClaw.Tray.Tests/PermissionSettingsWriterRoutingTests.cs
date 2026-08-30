@@ -56,6 +56,7 @@ public sealed class PermissionSettingsWriterRoutingTests
         AssertInOrder(
             persistToggle,
             "TryPersistPermissionSetting(",
+            "_nodeService?.ApplyOllamaPermission(",
             "ReconnectWithSyncedBrowserProxyForward();");
         Assert.DoesNotContain("_settings?.Save(); ReconnectWithSyncedBrowserProxyForward();", persistToggle);
     }
@@ -91,7 +92,7 @@ public sealed class PermissionSettingsWriterRoutingTests
         Assert.Contains("ApplyStoreManagedPermissionSetting(settings, name, permissionValue)", source);
         Assert.Contains("prop.SetValue(_settings, converted);", source);
         Assert.Contains("_settings.Save();", source);
-        Assert.Contains("OnSettingsSaved(this, EventArgs.Empty);", source);
+        Assert.Contains("ApplySettingsSavedAndWait();", source);
 
         var settingsCoordinator = ReadSource(
             "src",
@@ -99,11 +100,35 @@ public sealed class PermissionSettingsWriterRoutingTests
             "App.SettingsChangeCoordinator.cs");
         var settingsSaved = ExtractMethodBodyBySignature(
             settingsCoordinator,
-            "private void OnSettingsSaved(object? sender, EventArgs e)");
-        Assert.Contains("_dispatcherQueue != null", settingsSaved);
-        Assert.DoesNotContain("_dispatcherQueue.HasThreadAccess", settingsSaved);
-        Assert.Contains("_dispatcherQueue.TryEnqueue(Apply)", settingsSaved);
-        AssertInOrder(settingsSaved, "var settings =", "TryEnqueue(Apply)", "return;");
+            "private Task ApplySettingsSavedAsync()");
+        Assert.Contains("_dispatcherQueue == null", settingsSaved);
+        Assert.Contains("_dispatcherQueue.TryEnqueue", settingsSaved);
+        AssertInOrder(
+            settingsSaved,
+            "var settings =",
+            "_nodeService?.ApplyOllamaPermission",
+            "_dispatcherQueue.TryEnqueue");
+        Assert.Contains(
+            "if (_dispatcherQueue?.HasThreadAccess == true)",
+            settingsCoordinator);
+        Assert.Contains(
+            "ApplySettingsSavedAsync().GetAwaiter().GetResult();",
+            settingsCoordinator);
+
+        var nodeService = ReadSource(
+            "src",
+            "OpenClaw.Tray.WinUI",
+            "Services",
+            "NodeService.cs");
+        var applyOllama = ExtractMethodBodyBySignature(
+            nodeService,
+            "public void ApplyOllamaPermission(bool enabled)");
+        AssertInOrder(
+            applyOllama,
+            "_ollamaCapability.Revoke();",
+            "_capabilities.Remove(_ollamaCapability);",
+            "_ollamaCapability = null;");
+        Assert.Contains("_capabilities.Count != 0", applyOllama);
 
         foreach (var settingName in new[]
         {

@@ -1561,6 +1561,8 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands, IPer
             settings => fallbackEdit(settings, value),
             out _))
         {
+            _nodeService?.ApplyOllamaPermission(
+                _settings?.NodeOllamaInferenceEnabled == true);
             ReconnectWithSyncedBrowserProxyForward();
         }
     }

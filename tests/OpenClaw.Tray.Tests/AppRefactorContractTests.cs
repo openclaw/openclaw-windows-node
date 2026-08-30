@@ -522,7 +522,7 @@ public sealed class AppRefactorContractTests
             method,
             "app.SettingsSetHandler = (name, value) =>",
             "_settings.Save();",
-            "OnSettingsSaved(this, EventArgs.Empty);",
+            "ApplySettingsSavedAndWait();",
             "McpRuntimeStatePolicy.GetSettingsSetError",
             "return new { error = runtimeError };",
             "return new { name, value = prop.GetValue(_settings) };");

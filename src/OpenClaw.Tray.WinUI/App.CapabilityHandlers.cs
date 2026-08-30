@@ -175,7 +175,7 @@ public partial class App
                     _settings.Save();
                 }
 
-                OnSettingsSaved(this, EventArgs.Empty);
+                ApplySettingsSavedAndWait();
                 var runtimeError = McpRuntimeStatePolicy.GetSettingsSetError(
                     name,
                     converted,

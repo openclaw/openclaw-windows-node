@@ -9,6 +9,7 @@ using OpenClaw.Connection;
 using OpenClaw.Shared;
 using OpenClaw.Shared.Capabilities;
 using OpenClaw.Shared.ExecApprovals;
+using OpenClaw.Shared.Inference;
 using OpenClaw.Shared.Mcp;
 using OpenClaw.Shared.Mxc;
 using OpenClaw.Shared.Telemetry;
@@ -92,6 +93,7 @@ public sealed class NodeService : IDisposable, IAsyncDisposable
     private SttCapability? _sttCapability;
     private TtsCapability? _ttsCapability;
     private OllamaCapability? _ollamaCapability;
+    private OllamaInferenceBackend? _ollamaBackend;
     private TextToSpeechService? _textToSpeechService;
     private VoiceService? _voiceService;
     private readonly string _dataPath;
@@ -396,12 +398,16 @@ public sealed class NodeService : IDisposable, IAsyncDisposable
             Register(_sttCapability);
         }
 
-        // Keep one instance for the service lifetime so a capability reload
-        // cannot dispose an in-flight local inference request.
         if (NodeCapabilityGating.ShouldRegisterOllama(_settings))
         {
-            _ollamaCapability ??= new OllamaCapability(_logger);
+            _ollamaBackend ??= new OllamaInferenceBackend();
+            _ollamaCapability ??= new OllamaCapability(_logger, _ollamaBackend);
             Register(_ollamaCapability);
+        }
+        else if (_ollamaCapability is not null)
+        {
+            _ollamaCapability.Revoke();
+            _ollamaCapability = null;
         }
 
         // Device metadata/status capability - dispose previous provider on re-registration
@@ -1039,6 +1045,31 @@ public sealed class NodeService : IDisposable, IAsyncDisposable
                 return;
 
             RegisterCapabilities();
+        }
+    }
+
+    public void ApplyOllamaPermission(bool enabled)
+    {
+        lock (_capabilitiesLock)
+        {
+            if (!enabled)
+            {
+                if (_ollamaCapability is null)
+                    return;
+
+                _ollamaCapability.Revoke();
+                _capabilities.Remove(_ollamaCapability);
+                _ollamaCapability = null;
+                return;
+            }
+
+            _ollamaBackend ??= new OllamaInferenceBackend();
+            _ollamaCapability ??= new OllamaCapability(_logger, _ollamaBackend);
+            if (_capabilities.Count != 0 &&
+                !_capabilities.Contains(_ollamaCapability))
+            {
+                _capabilities.Add(_ollamaCapability);
+            }
         }
     }
 
@@ -2490,6 +2521,7 @@ public sealed class NodeService : IDisposable, IAsyncDisposable
         try { _deviceStatusProvider?.Dispose(); } catch (Exception ex) { _logger.Debug($"NodeService: Dispose DeviceStatusProvider failed: {ex.Message}"); }
 
         try { _ollamaCapability?.Dispose(); } catch (Exception ex) { _logger.Debug($"NodeService: Dispose OllamaCapability failed: {ex.Message}"); }
+        try { _ollamaBackend?.Dispose(); } catch (Exception ex) { _logger.Debug($"NodeService: Dispose OllamaInferenceBackend failed: {ex.Message}"); }
 
         if (_canvasWindow != null && !_canvasWindow.IsClosed)
         {

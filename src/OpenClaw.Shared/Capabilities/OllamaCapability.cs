@@ -18,6 +18,7 @@ public sealed class OllamaCapability : NodeCapabilityBase, IDisposable
     private readonly ILocalInferenceBackend _backend;
     private readonly IDisposable? _ownedBackend;
     private readonly SemaphoreSlim _chatGate = new(1, 1);
+    private readonly CancellationTokenSource _revocation = new();
 
     public OllamaCapability(IOpenClawLogger logger)
         : this(logger, new OllamaInferenceBackend(), ownsBackend: true)
@@ -50,17 +51,27 @@ public sealed class OllamaCapability : NodeCapabilityBase, IDisposable
             _ => Task.FromResult(Error($"Unknown command: {request.Command}")),
         };
 
+    public void Revoke() => _revocation.Cancel();
+
     private async Task<NodeInvokeResponse> HandleModelsAsync(CancellationToken cancellationToken)
     {
+        using var execution =
+            CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, _revocation.Token);
         try
         {
+            execution.Token.ThrowIfCancellationRequested();
             IReadOnlyList<LocalInferenceModel> models =
-                await _backend.ListModelsAsync(cancellationToken).ConfigureAwait(false);
+                await _backend.ListModelsAsync(execution.Token).ConfigureAwait(false);
+            execution.Token.ThrowIfCancellationRequested();
             return Success(new
             {
                 provider = _backend.ProviderId,
                 models = models.Select(BuildModelPayload).ToArray(),
             });
+        }
+        catch (OperationCanceledException) when (_revocation.IsCancellationRequested)
+        {
+            return Error("Ollama sharing was disabled.");
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
@@ -80,13 +91,20 @@ public sealed class OllamaCapability : NodeCapabilityBase, IDisposable
         if (!TryReadChatRequest(args, out LocalInferenceChatRequest? chatRequest, out string? error))
             return Error(error!);
 
+        using var execution =
+            CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, _revocation.Token);
+        if (execution.IsCancellationRequested)
+            return Error("Ollama sharing was disabled.");
+
         if (!_chatGate.Wait(0))
             return Error("Ollama inference is already in progress.");
 
         try
         {
+            execution.Token.ThrowIfCancellationRequested();
             LocalInferenceChatResult result =
-                await _backend.ChatAsync(chatRequest!, cancellationToken).ConfigureAwait(false);
+                await _backend.ChatAsync(chatRequest!, execution.Token).ConfigureAwait(false);
+            execution.Token.ThrowIfCancellationRequested();
             var payload = new Dictionary<string, object>
             {
                 ["provider"] = result.Provider,
@@ -110,6 +128,10 @@ public sealed class OllamaCapability : NodeCapabilityBase, IDisposable
                 };
             }
             return Success(payload);
+        }
+        catch (OperationCanceledException) when (_revocation.IsCancellationRequested)
+        {
+            return Error("Ollama sharing was disabled.");
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
@@ -263,6 +285,7 @@ public sealed class OllamaCapability : NodeCapabilityBase, IDisposable
 
     public void Dispose()
     {
+        Revoke();
         _ownedBackend?.Dispose();
     }
 }

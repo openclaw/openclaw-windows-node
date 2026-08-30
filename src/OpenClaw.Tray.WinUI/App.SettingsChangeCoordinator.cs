@@ -9,21 +9,55 @@ public partial class App
     private SettingsChangeCoordinator? _settingsChangeCoordinator;
 
     private void OnSettingsSaved(object? sender, EventArgs e)
+        => ObserveBackgroundFault(
+            ApplySettingsSavedAsync(),
+            "[App] Failed to apply persisted settings");
+
+    private void ApplySettingsSavedAndWait()
     {
-        if (_settings == null)
-            return;
-
-        var settings = _settings.ToSettingsData();
-        void Apply() => _settingsChangeCoordinator?.Apply(settings);
-
-        if (_dispatcherQueue != null)
+        if (_dispatcherQueue?.HasThreadAccess == true)
         {
-            if (!_dispatcherQueue.TryEnqueue(Apply))
-                Logger.Warn("[App] Could not dispatch settings effects to the UI thread.");
-            return;
+            throw new InvalidOperationException(
+                "Synchronous settings application cannot run on the UI thread.");
         }
 
-        Apply();
+        ApplySettingsSavedAsync().GetAwaiter().GetResult();
+    }
+
+    private Task ApplySettingsSavedAsync()
+    {
+        if (_settings == null)
+            return Task.CompletedTask;
+
+        var settings = _settings.ToSettingsData();
+        _nodeService?.ApplyOllamaPermission(settings.NodeOllamaInferenceEnabled);
+        if (_dispatcherQueue == null)
+        {
+            _settingsChangeCoordinator?.Apply(settings);
+            return Task.CompletedTask;
+        }
+
+        var completion = new TaskCompletionSource(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        if (!_dispatcherQueue.TryEnqueue(() =>
+        {
+            try
+            {
+                _settingsChangeCoordinator?.Apply(settings);
+                completion.TrySetResult();
+            }
+            catch (Exception ex)
+            {
+                completion.TrySetException(ex);
+            }
+        }))
+        {
+            completion.TrySetException(
+                new InvalidOperationException(
+                    "Could not dispatch settings effects to the UI thread."));
+        }
+
+        return completion.Task;
     }
 
     private SettingsChangeCoordinator CreateSettingsChangeCoordinator(SettingsData initialSettings) =>

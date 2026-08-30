@@ -1,6 +1,7 @@
 using System.Text.Json;
 using OpenClaw.Shared.Capabilities;
 using OpenClaw.Shared.Inference;
+using OpenClaw.Shared.Mcp;
 
 namespace OpenClaw.Shared.Tests;
 
@@ -135,6 +136,40 @@ public sealed class OllamaCapabilityTests
         Assert.Equal("Ollama inference cancelled.", response.Error);
     }
 
+    [Fact]
+    public async Task CapturedMcpChat_RevocationCancelsBeforeBackendIo()
+    {
+        var backend = new FakeBackend { BlockChat = true };
+        using var capability = new OllamaCapability(NullLogger.Instance, backend);
+        var capabilities = new List<INodeCapability> { capability };
+        var bridge = new McpToolBridge(() => capabilities);
+        string request =
+            """
+            {
+              "jsonrpc": "2.0",
+              "id": 42,
+              "method": "tools/call",
+              "params": {
+                "name": "ollama.chat",
+                "arguments": { "model": "qwen3", "prompt": "must not run" }
+              }
+            }
+            """;
+
+        Task<string?> pending = bridge.HandleRequestAsync(request);
+        await backend.ChatStarted.Task.WaitAsync(TimeSpan.FromSeconds(2));
+        capabilities.Clear();
+        capability.Revoke();
+
+        string response = (await pending.WaitAsync(TimeSpan.FromSeconds(2)))!;
+        using JsonDocument json = JsonDocument.Parse(response);
+        Assert.True(json.RootElement.GetProperty("result").GetProperty("isError").GetBoolean());
+        Assert.Contains(
+            "Ollama sharing was disabled",
+            json.RootElement.GetProperty("result").GetProperty("content")[0].GetProperty("text").GetString());
+        Assert.Equal(0, backend.IoCount);
+    }
+
     private static NodeInvokeRequest Request(string command, string args)
     {
         using JsonDocument json = JsonDocument.Parse(args);
@@ -158,6 +193,7 @@ public sealed class OllamaCapabilityTests
             new(TaskCreationOptions.RunContinuationsAsynchronously);
         public TaskCompletionSource ReleaseChat { get; } =
             new(TaskCreationOptions.RunContinuationsAsynchronously);
+        public int IoCount { get; private set; }
 
         public Task<IReadOnlyList<LocalInferenceModel>> ListModelsAsync(
             CancellationToken cancellationToken = default) =>
@@ -171,6 +207,7 @@ public sealed class OllamaCapabilityTests
             ChatStarted.TrySetResult();
             if (BlockChat)
                 await ReleaseChat.Task.WaitAsync(cancellationToken);
+            IoCount++;
             return ChatResult;
         }
     }
