@@ -36,6 +36,7 @@ internal sealed class PermissionsPageViewModel : INavigationAware, IDisposable, 
     private bool _nodeLocationEnabled;
     private bool _nodeTtsEnabled;
     private bool _nodeSttEnabled;
+    private bool _nodeOllamaInferenceEnabled;
     private IReadOnlyList<PermissionsCapabilityState> _capabilities = Array.Empty<PermissionsCapabilityState>();
     private bool _areFeaturesEnabled;
     private string _featuresDescriptionResourceKey = "PermissionsPage_FeaturesDescription_Disabled";
@@ -209,6 +210,9 @@ internal sealed class PermissionsPageViewModel : INavigationAware, IDisposable, 
                 break;
             case PermissionsCapabilityKey.SpeechToText:
                 PersistCapabilitySetting(ref _nodeSttEnabled, value, edit => edit.NodeSttEnabled = value);
+                break;
+            case PermissionsCapabilityKey.Ollama:
+                PersistCapabilitySetting(ref _nodeOllamaInferenceEnabled, value, edit => edit.NodeOllamaInferenceEnabled = value);
                 break;
         }
     }
@@ -412,6 +416,7 @@ internal sealed class PermissionsPageViewModel : INavigationAware, IDisposable, 
             _nodeLocationEnabled = snapshot.NodeLocationEnabled;
             _nodeTtsEnabled = snapshot.NodeTtsEnabled;
             _nodeSttEnabled = snapshot.NodeSttEnabled;
+            _nodeOllamaInferenceEnabled = snapshot.NodeOllamaInferenceEnabled;
         }
         finally
         {
@@ -467,6 +472,7 @@ internal sealed class PermissionsPageViewModel : INavigationAware, IDisposable, 
             new PermissionsCapabilityState(PermissionsCapabilityKey.Location, _nodeLocationEnabled, featuresEnabled),
             new PermissionsCapabilityState(PermissionsCapabilityKey.TextToSpeech, _nodeTtsEnabled, featuresEnabled),
             new PermissionsCapabilityState(PermissionsCapabilityKey.SpeechToText, _nodeSttEnabled, featuresEnabled),
+            new PermissionsCapabilityState(PermissionsCapabilityKey.Ollama, _nodeOllamaInferenceEnabled, featuresEnabled),
         };
 
     private void ApplyNodeStatus(PermissionsRuntimeSourceSnapshot runtime)

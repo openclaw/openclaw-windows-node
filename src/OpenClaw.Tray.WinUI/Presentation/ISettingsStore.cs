@@ -91,6 +91,7 @@ public interface ISettingsEditor
     bool NodeLocationEnabled { set; }
     bool NodeTtsEnabled { set; }
     bool NodeSttEnabled { set; }
+    bool NodeOllamaInferenceEnabled { set; }
 
     bool ScreenRecordingConsentGiven { set; }
     bool CameraRecordingConsentGiven { set; }
@@ -134,6 +135,7 @@ public sealed record SettingsSnapshot
     public bool NodeLocationEnabled { get; init; }
     public bool NodeTtsEnabled { get; init; }
     public bool NodeSttEnabled { get; init; }
+    public bool NodeOllamaInferenceEnabled { get; init; }
     public string SttModelName { get; init; } = "base";
     public string TtsProvider { get; init; } = "";
     public string TtsPiperVoiceId { get; init; } = "";

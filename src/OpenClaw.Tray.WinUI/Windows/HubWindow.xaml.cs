@@ -415,6 +415,7 @@ public sealed partial class HubWindow : WindowEx
         if (settings.NodeLocationEnabled) count++;
         if (settings.NodeTtsEnabled) count++;
         if (settings.NodeSttEnabled) count++;
+        if (settings.NodeOllamaInferenceEnabled) count++;
         return count;
     }
 

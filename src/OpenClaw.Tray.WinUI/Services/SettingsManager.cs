@@ -128,6 +128,13 @@ public class SettingsManager
     /// <summary>Play audio feedback chimes on listen start/stop.</summary>
     public bool VoiceAudioFeedback { get => _data.VoiceAudioFeedback; set => _data = _data with { VoiceAudioFeedback = value }; }
     public bool NodeTtsEnabled { get => _data.NodeTtsEnabled; set => _data = _data with { NodeTtsEnabled = value }; }
+    /// <summary>
+    /// Opt-in: lets any paired active gateway (local or remote) invoke the
+    /// separately installed Windows Ollama service through this node's
+    /// <c>local-inference</c> capability. Default <c>false</c>. Distinct
+    /// from, and does not change, the app-managed Local AI gateway provider.
+    /// </summary>
+    public bool NodeOllamaInferenceEnabled { get => _data.NodeOllamaInferenceEnabled; set => _data = _data with { NodeOllamaInferenceEnabled = value }; }
     public string TtsProvider { get => string.IsNullOrWhiteSpace(_data.TtsProvider) ? TtsCapability.PiperProvider : _data.TtsProvider; set => _data = _data with { TtsProvider = value }; }
     public string TtsElevenLabsApiKey { get => _data.TtsElevenLabsApiKey ?? ""; set => _data = _data with { TtsElevenLabsApiKey = value }; }
     public string TtsElevenLabsModel { get => _data.TtsElevenLabsModel ?? ""; set => _data = _data with { TtsElevenLabsModel = value }; }
@@ -275,6 +282,7 @@ public class SettingsManager
         VoiceTtsEnabled = true,
         VoiceAudioFeedback = true,
         NodeTtsEnabled = false,
+        NodeOllamaInferenceEnabled = false,
         TtsProvider = TtsCapability.PiperProvider,
         TtsElevenLabsApiKey = "",
         TtsElevenLabsModel = "",

@@ -134,6 +134,7 @@ public partial class App
             "EnableNodeMode", "EnableMcpServer", "PreferStructuredCategories",
             "NodeCanvasEnabled", "NodeScreenEnabled", "NodeCameraEnabled",
             "NodeLocationEnabled", "NodeBrowserProxyEnabled", "NodeTtsEnabled",
+            "NodeOllamaInferenceEnabled",
             "HasSeenActivityStreamTip", "TtsProvider"
         };
 
@@ -442,6 +443,11 @@ public partial class App
                     ? booleanValue
                     : throw new InvalidCastException($"Setting '{name}' must be a boolean.");
                 return true;
+            case nameof(SettingsManager.NodeOllamaInferenceEnabled):
+                value = converted is bool ollamaBooleanValue
+                    ? ollamaBooleanValue
+                    : throw new InvalidCastException($"Setting '{name}' must be a boolean.");
+                return true;
             default:
                 value = false;
                 return false;
@@ -476,6 +482,9 @@ public partial class App
             case nameof(SettingsManager.NodeTtsEnabled):
                 edit.NodeTtsEnabled = value;
                 break;
+            case nameof(SettingsManager.NodeOllamaInferenceEnabled):
+                edit.NodeOllamaInferenceEnabled = value;
+                break;
             default:
                 throw new InvalidOperationException($"Setting '{name}' is not store-managed.");
         }
@@ -508,6 +517,9 @@ public partial class App
                 break;
             case nameof(SettingsManager.NodeTtsEnabled):
                 settings.NodeTtsEnabled = value;
+                break;
+            case nameof(SettingsManager.NodeOllamaInferenceEnabled):
+                settings.NodeOllamaInferenceEnabled = value;
                 break;
             default:
                 throw new InvalidOperationException($"Setting '{name}' is not store-managed.");

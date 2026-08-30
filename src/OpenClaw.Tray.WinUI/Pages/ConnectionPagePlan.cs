@@ -962,6 +962,7 @@ internal sealed record ConnectionPagePlan
         if (s.NodeLocationEnabled) n++;
         if (s.NodeTtsEnabled) n++;
         if (s.NodeSttEnabled) n++;
+        if (s.NodeOllamaInferenceEnabled) n++;
         return n;
     }
 

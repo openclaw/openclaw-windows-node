@@ -349,6 +349,42 @@ The configured/effective view reflects configured defaults only; explicit
 `tts.speak` provider requests stay strict and may not match the default
 snapshot.
 
+## Local model inference (ollama.*)
+
+Runs against a separately installed Windows Ollama service (not the
+app-managed Local AI gateway provider). Any paired active gateway, local
+or remote, may invoke it once enabled. **Requires
+`NodeOllamaInferenceEnabled` in tray Settings > Permissions (opt-in,
+default off).**
+
+### ollama.models
+List locally installed Ollama models. Read-only inventory - no prompt
+or chat content. No params.
+Returns `{ provider, models[{ name, size, modifiedAt, family, parameterSize, quantization, contextWindow, capabilities, loaded }] }`.
+
+### ollama.chat
+Send a single-turn chat prompt to a local Ollama model.
+**Privacy and resource sensitive** - sends prompt content to a locally
+running model and consumes CPU/GPU. Only one chat runs at a time per node;
+a concurrent call while one is in flight returns an error.
+```
+{
+  "model": "string",          // required
+  "prompt": "string",         // required, max 128000 chars
+  "system": "string",         // optional, max 32000 chars
+  "temperature": 0.7,         // optional, 0..2
+  "maxTokens": 512,           // optional, default 512, max 8192
+  "timeoutMs": 120000         // optional, default 120000, max 600000
+}
+```
+Returns `{ provider, model, response, usage?: { promptTokens, completionTokens }, timings?: { loadMs, totalMs } }`.
+
+Newer gateways with the bundled Ollama plugin expose these commands through
+the `node_inference` agent tool. Older gateways can invoke them through the
+generic `nodes` tool after both exact command names are added to
+`gateway.nodes.allowCommands`. Feature-detect the node's effective commands;
+do not infer support from the gateway version.
+
 ## App control (app.*)
 
 Read-only and small write operations targeting the running tray. Used

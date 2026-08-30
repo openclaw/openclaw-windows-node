@@ -38,6 +38,7 @@ public class SettingsRoundTripTests
             CameraRecordingConsentGiven = true,
             NodeLocationEnabled = true,
             NodeBrowserProxyEnabled = false,
+            NodeOllamaInferenceEnabled = true,
             NodeSttEnabled = true,
             SttLanguage = "en-GB",
             SttModelName = "tiny",
@@ -107,6 +108,7 @@ public class SettingsRoundTripTests
         Assert.Equal(original.CameraRecordingConsentGiven, restored.CameraRecordingConsentGiven);
         Assert.Equal(original.NodeLocationEnabled, restored.NodeLocationEnabled);
         Assert.Equal(original.NodeBrowserProxyEnabled, restored.NodeBrowserProxyEnabled);
+        Assert.Equal(original.NodeOllamaInferenceEnabled, restored.NodeOllamaInferenceEnabled);
         Assert.Equal(original.NodeSttEnabled, restored.NodeSttEnabled);
         Assert.Equal(original.SttLanguage, restored.SttLanguage);
         Assert.Equal(original.SttModelName, restored.SttModelName);
@@ -192,6 +194,7 @@ public class SettingsRoundTripTests
         Assert.False(settings.CameraRecordingConsentGiven);
         Assert.True(settings.NodeLocationEnabled);
         Assert.True(settings.NodeBrowserProxyEnabled);
+        Assert.False(settings.NodeOllamaInferenceEnabled);
         Assert.False(settings.NodeSttEnabled);
         Assert.Equal("auto", settings.SttLanguage);
         Assert.False(settings.NodeTtsEnabled);
@@ -441,6 +444,7 @@ public class SettingsRoundTripTests
         Assert.False(settings.CameraRecordingConsentGiven);
         Assert.True(settings.NodeLocationEnabled);
         Assert.True(settings.NodeBrowserProxyEnabled);
+        Assert.False(settings.NodeOllamaInferenceEnabled);
         Assert.False(settings.NodeSttEnabled);
         Assert.Equal("auto", settings.SttLanguage);
         Assert.False(settings.NodeTtsEnabled);

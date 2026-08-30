@@ -36,7 +36,8 @@ public sealed class PermissionSettingsWriterRoutingTests
             "\"Screen capture\"",
             "\"Location\"",
             "\"Voice (TTS)\"",
-            "\"Speech-to-text (STT)\"");
+            "\"Speech-to-text (STT)\"",
+            "\"Ollama\"");
 
         Assert.Contains("ActionId = $\"perm-toggle|{text}\"", source);
         Assert.DoesNotContain("SettingsManager", source);
@@ -102,6 +103,7 @@ public sealed class PermissionSettingsWriterRoutingTests
             "NodeLocationEnabled",
             "NodeBrowserProxyEnabled",
             "NodeTtsEnabled",
+            "NodeOllamaInferenceEnabled",
         })
         {
             Assert.Contains($"nameof(SettingsManager.{settingName})", source);

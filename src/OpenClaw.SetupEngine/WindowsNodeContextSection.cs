@@ -9,6 +9,8 @@ internal static class WindowsNodeContextSection
 This WSL gateway may be paired with the OpenClaw Windows tray node. For Windows desktop, Windows files, screenshots, camera, notifications, browser proxy, or Windows commands, use the `nodes` tool (`status` / `describe`) and target the Windows node instead of assuming the WSL shell can do it.
 
 For Windows shell work, use `exec host=node` / `system.run`; normal gateway exec runs in WSL. If Windows node commands fail, ask the user to check the tray Permissions page: Node mode, System run (or the requested capability), and Exec policy. If settings changed or capabilities look stale, ask the user to reconnect/restart the Windows node or gateway.
+
+The Windows node can also share a separately installed Windows Ollama service when **Share Windows Ollama** is enabled in the tray Permissions page. This is separate from the app-managed Local AI gateway provider. Prefer the `node_inference` tool when it is available. Otherwise, inspect the node's effective commands and use the `nodes` tool `invoke` action with `ollama.models` or `ollama.chat`. Older gateways require both exact commands in `gateway.nodes.allowCommands`.
 """;
 
     public static string ManagedBlock => $"{BeginMarker}\n{Payload.TrimEnd()}\n{EndMarker}";

@@ -163,6 +163,7 @@ internal sealed class SettingsStore : ISettingsStore
         NodeLocationEnabled = _settings.NodeLocationEnabled,
         NodeTtsEnabled = _settings.NodeTtsEnabled,
         NodeSttEnabled = _settings.NodeSttEnabled,
+        NodeOllamaInferenceEnabled = _settings.NodeOllamaInferenceEnabled,
         SttModelName = _settings.SttModelName,
         TtsProvider = _settings.TtsProvider,
         TtsPiperVoiceId = _settings.TtsPiperVoiceId,
@@ -209,6 +210,7 @@ internal sealed class SettingsStore : ISettingsStore
         public bool NodeLocationEnabled { set => _settings.NodeLocationEnabled = value; }
         public bool NodeTtsEnabled { set => _settings.NodeTtsEnabled = value; }
         public bool NodeSttEnabled { set => _settings.NodeSttEnabled = value; }
+        public bool NodeOllamaInferenceEnabled { set => _settings.NodeOllamaInferenceEnabled = value; }
         public bool ScreenRecordingConsentGiven { set => _settings.ScreenRecordingConsentGiven = value; }
         public bool CameraRecordingConsentGiven { set => _settings.CameraRecordingConsentGiven = value; }
         public bool VoiceTtsEnabled { set => _settings.VoiceTtsEnabled = value; }

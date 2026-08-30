@@ -151,6 +151,7 @@ public sealed partial class PermissionsPage : Page
             BuildCapabilityRow(PermissionsCapabilityKey.Location, "📍", "PermissionsPage_Cap_Location_Label", "PermissionsPage_Cap_Location_Description"),
             BuildCapabilityRow(PermissionsCapabilityKey.TextToSpeech, "🔊", "PermissionsPage_Cap_Tts_Label", "PermissionsPage_Cap_Tts_Description"),
             BuildCapabilityRow(PermissionsCapabilityKey.SpeechToText, "🎤", "PermissionsPage_Cap_Stt_Label", "PermissionsPage_Cap_Stt_Description"),
+            BuildCapabilityRow(PermissionsCapabilityKey.Ollama, "🦙", "PermissionsPage_Cap_Ollama_Label", "PermissionsPage_Cap_Ollama_Description"),
         };
     }
 

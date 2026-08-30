@@ -90,6 +90,8 @@ These features need the gateway to send `node.invoke` commands:
 | `stt.transcribe` | Bounded microphone transcription | Requires Speech-to-text enabled in Settings; uses local Whisper.net |
 | `stt.listen` | Voice-activity microphone transcription | Returns when the user stops speaking or timeout expires |
 | `stt.status` | Speech-to-text readiness | Returns Whisper.net model download/readiness state |
+| `ollama.models` | Discover local Ollama chat models | Requires Share Windows Ollama in Permissions; reads the separately installed Ollama service on `127.0.0.1:11434` |
+| `ollama.chat` | Run bounded local Ollama inference | Requires Share Windows Ollama, gateway command approval, and an exact local model returned by `ollama.models` |
 
 ### Cancelling an invocation
 
@@ -119,6 +121,7 @@ When the node connects, it advertises these capabilities:
 - `browser` - Local `browser.proxy` bridge to a browser-control host on gateway port + 2, when enabled in Settings
 - `tts` - Windows speech synthesis or ElevenLabs playback, when enabled in Settings
 - `stt` - Local speech-to-text via Whisper.net, when enabled in Settings
+- `local-inference` - `ollama.models` and `ollama.chat` against a separately installed Windows Ollama service, when explicitly enabled in Permissions
 
 Local MCP clients also see MCP-only `app.*` commands such as `app.navigate`, `app.status`, `app.chat.snapshot`/`app.chat.send`/`app.chat.reset`, and `app.chat.queue.list`/`app.chat.queue.cancel`. Connection diagnostics and setup tools live under `app.connection.*`; use `app.connection.status` to inspect active gateway, operator/node credential state, MCP runtime status, browser proxy caveat, pending approval commands, and recent diagnostics, and `app.connection.gateways` to list saved gateway records without token values. These are local testing and automation hooks registered with the tray's MCP server and are not advertised to the gateway WebSocket.
 
@@ -130,6 +133,7 @@ Local MCP clients also see MCP-only `app.*` commands such as `app.navigate`, `ap
 - **Session Attribution**: Only the optional top-level `sessionKey` stamped by the Gateway on `node.invoke.request` is trusted. Older Gateways omit it, so those invokes remain unattributed; a caller-supplied nested `args.sessionKey` is never used as a fallback.
 - **Command Center Redaction**: recent node invoke activity records command name, status, duration, node id, and privacy class only; it does not store base64 payloads, screenshots, recordings, tokens, or command arguments
 - **Node Mode Toggle**: Must be explicitly enabled by user
+- **Ollama Sharing Toggle**: Off by default; enabling it shares Windows Ollama compute with the active paired local or remote gateway without changing the app-managed Local AI provider
 - **Command Validation**: Only alphanumeric commands with dots/hyphens allowed
 
 ## Troubleshooting

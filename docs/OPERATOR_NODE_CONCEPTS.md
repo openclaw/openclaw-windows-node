@@ -18,6 +18,8 @@ For the complete request, exec approval, protocol, and sandbox flow, see the
 | Pairing | The gateway approval flow that turns a new device or node request into a trusted identity with a stored device token. |
 | Reapproval | A later approval request when a paired node asks for new or changed trust, such as command capability access. |
 | Allowlisted node capability | A node command the gateway is explicitly allowed to invoke, configured in the gateway `allowCommands` list. Windows-side settings and policies can still block the command. |
+| App-managed Local AI | The companion-managed llama-server provider configured directly on the app-managed gateway. It is not a Windows node capability. |
+| Shared Windows Ollama | An optional Windows node capability that lets the active paired local or remote gateway invoke a separately installed Ollama service on this PC. |
 
 ## How the Roles Work Together
 
@@ -50,6 +52,20 @@ Advanced setup is for users who already have a local, remote, or manually
 managed gateway. In that case, the Windows app still uses the same operator and
 node roles; only the gateway location and credentials are different.
 
+### Local AI provider versus shared Windows Ollama
+
+These are independent paths:
+
+- **App-managed Local AI** installs and supervises a qualified llama-server
+  runtime and configures it as a model provider on the app-managed gateway.
+- **Share Windows Ollama** advertises `ollama.models` and `ollama.chat` through
+  the Windows node. The active paired gateway may be local or remote, while the
+  Ollama HTTP service remains bound to Windows loopback.
+
+Enabling one does not enable, reconfigure, stop, or replace the other. Windows
+Ollama sharing is off by default and is controlled only from the Permissions
+page.
+
 ## Pairing, Tokens, and Reapproval
 
 Pairing is gateway-owned. Setup codes, bootstrap tokens, and shared gateway
@@ -75,7 +91,9 @@ gateway default does not bypass the local **Run system tools** switch, Windows
 V2 exec approvals, or sandbox policy. Commands outside the Windows defaults,
 especially `screen.record`, `camera.snap`, `camera.clip`, `stt.transcribe`, and
 `tts.speak`, should be allowlisted only when you want the gateway to request
-that behavior.
+that behavior. On gateways without the bundled Ollama node-inference policy,
+`ollama.models` and `ollama.chat` also require exact
+`gateway.nodes.allowCommands` entries.
 
 ## Where to Go Next
 

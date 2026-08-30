@@ -590,6 +590,9 @@ public class SetupConfigTests : IDisposable
         Assert.StartsWith(WindowsNodeContextSection.BeginMarker + "\n", block);
         Assert.Contains("This WSL gateway may be paired", block);
         Assert.Contains("exec host=node", block);
+        Assert.Contains("Share Windows Ollama", block);
+        Assert.Contains("ollama.models", block);
+        Assert.Contains("separate from the app-managed Local AI gateway provider", block);
         Assert.DoesNotContain("tools.exec.security full", block);
         Assert.DoesNotContain("tools.exec.ask off", block);
         Assert.EndsWith("\n" + WindowsNodeContextSection.EndMarker, block);

@@ -107,6 +107,7 @@ public class SkillMdDriftTests
             new TtsCapability(NullLogger.Instance),
         };
 
+        using var ollamaCapability = new OllamaCapability(NullLogger.Instance);
         var commands = new HashSet<string>(StringComparer.Ordinal);
         foreach (var capability in capabilities)
         {
@@ -114,6 +115,10 @@ public class SkillMdDriftTests
             {
                 commands.Add(command);
             }
+        }
+        foreach (var command in ollamaCapability.Commands)
+        {
+            commands.Add(command);
         }
         return commands;
     }

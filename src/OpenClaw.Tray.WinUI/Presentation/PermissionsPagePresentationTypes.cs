@@ -14,6 +14,7 @@ internal enum PermissionsCapabilityKey
     Location,
     TextToSpeech,
     SpeechToText,
+    Ollama,
 }
 
 internal sealed record PermissionsCapabilityState(

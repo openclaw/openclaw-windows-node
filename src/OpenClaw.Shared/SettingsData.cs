@@ -88,6 +88,16 @@ public record class SettingsData
     /// <summary>Play audio feedback chimes on listen start/stop.</summary>
     public bool VoiceAudioFeedback { get; set; } = true;
     public bool NodeTtsEnabled { get; set; } = false;
+    /// <summary>
+    /// Opt-in switch for the <c>local-inference</c> capability
+    /// (<c>ollama.models</c> / <c>ollama.chat</c>). When <c>true</c>, any
+    /// paired active gateway - local or remote - can invoke the separately
+    /// installed Windows Ollama service through this node. Default
+    /// <c>false</c>: sharing a locally installed inference service is an
+    /// explicit user choice, distinct from the app-managed Local AI gateway
+    /// provider (which is unaffected by this setting).
+    /// </summary>
+    public bool NodeOllamaInferenceEnabled { get; set; } = false;
     public string TtsProvider { get; set; } = OpenClaw.Shared.Capabilities.TtsCapability.PiperProvider;
     /// <summary>Persisted: whether the Hub's NavigationView pane is expanded
     /// (true) or collapsed/compact (false). Default true.</summary>

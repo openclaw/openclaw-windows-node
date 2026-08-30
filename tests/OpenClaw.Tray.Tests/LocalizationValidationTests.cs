@@ -89,6 +89,8 @@ public class LocalizationValidationTests
         "PermissionsPage_Cap_Tts_Description",
         "PermissionsPage_Cap_Stt_Label",
         "PermissionsPage_Cap_Stt_Description",
+        "PermissionsPage_Cap_Ollama_Label",
+        "PermissionsPage_Cap_Ollama_Description",
         "PermissionsPage_Cap_SystemRun_Label",
         "PermissionsPage_Cap_SystemRun_Description",
         "PermissionsPage_NodeStatus_Disabled",

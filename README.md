@@ -93,6 +93,14 @@ policy. Commands outside the Windows gateway defaults, including
 `tts.speak`, require deliberate gateway opt-in. Reapprove and reconnect the
 node after changing the effective command set.
 
+**Share Windows Ollama** in the Permissions page is a separate opt-in. It
+advertises `ollama.models` and `ollama.chat` so the active paired gateway,
+whether local or remote, can use an Ollama service running on Windows loopback.
+It does not change or reuse the app-managed Local AI gateway provider. Older
+gateways require both exact Ollama commands in `gateway.nodes.allowCommands`;
+newer gateways with the bundled Ollama plugin can expose them through the
+`node_inference` agent tool.
+
 </details>
 
 See [Operator and node concepts](docs/OPERATOR_NODE_CONCEPTS.md) for the pairing and trust model, and [Windows node testing](docs/WINDOWS_NODE_TESTING.md) for command-level reference material.

@@ -3371,6 +3371,12 @@ Opdrachten worden geblokkeerd zolang sandboxing niet beschikbaar is, omdat strik
   <data name="PermissionsPage_Cap_Stt_Description" xml:space="preserve">
     <value>Lets agents transcribe microphone audio locally. Download a speech model in Voice &amp; Audio settings before first use.</value>
   </data>
+  <data name="PermissionsPage_Cap_Ollama_Label" xml:space="preserve">
+    <value>Share Windows Ollama</value>
+  </data>
+  <data name="PermissionsPage_Cap_Ollama_Description" xml:space="preserve">
+    <value>Let agents connected through the active local or remote gateway use Ollama models running separately on this PC. This does not change the app-managed Local AI gateway provider.</value>
+  </data>
   <data name="PermissionsPage_Cap_SystemRun_Label" xml:space="preserve">
     <value>System tools</value>
   </data>

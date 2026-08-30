@@ -1538,6 +1538,13 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands, IPer
                     (edit, value) => edit.NodeSttEnabled = value,
                     (settings, value) => settings.NodeSttEnabled = value);
                 break;
+            case "perm-toggle|Ollama":
+                PersistTrayPermission(
+                    nameof(SettingsManager.NodeOllamaInferenceEnabled),
+                    !_settings.NodeOllamaInferenceEnabled,
+                    (edit, value) => edit.NodeOllamaInferenceEnabled = value,
+                    (settings, value) => settings.NodeOllamaInferenceEnabled = value);
+                break;
         }
     }
 
@@ -1629,7 +1636,8 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands, IPer
                     _settings.NodeScreenEnabled,
                     _settings.NodeLocationEnabled,
                     _settings.NodeTtsEnabled,
-                    _settings.NodeSttEnabled),
+                    _settings.NodeSttEnabled,
+                    _settings.NodeOllamaInferenceEnabled),
             SetupMenuLabel = setupMenuLabel,
             ShowSetupMenuEntry = !hasSetupManagedLocalWslGateway,
             LastUpdated = _appState?.LastCheckTime,

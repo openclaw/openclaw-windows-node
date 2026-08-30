@@ -1269,6 +1269,7 @@ public sealed partial class ConnectionPage : Page
             ("location", "PermissionsPage_Cap_Location_Label", FluentIconCatalog.Location, settings.NodeLocationEnabled),
             ("tts",      "PermissionsPage_Cap_Tts_Label",      FluentIconCatalog.Voice,    settings.NodeTtsEnabled),
             ("stt",      "PermissionsPage_Cap_Stt_Label",      FluentIconCatalog.Speech,   settings.NodeSttEnabled),
+            ("local-inference", "PermissionsPage_Cap_Ollama_Label",   FluentIconCatalog.Inference, settings.NodeOllamaInferenceEnabled),
         };
 
         var shown = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
@@ -1456,7 +1457,8 @@ public sealed partial class ConnectionPage : Page
             settings.NodeScreenEnabled ? '1' : '0',
             settings.NodeLocationEnabled ? '1' : '0',
             settings.NodeTtsEnabled ? '1' : '0',
-            settings.NodeSttEnabled ? '1' : '0');
+            settings.NodeSttEnabled ? '1' : '0',
+            settings.NodeOllamaInferenceEnabled ? '1' : '0');
         return $"{state}|{eff}|{pend}|{toggles}|{(hasSharedGatewayToken ? '1' : '0')}|{(nodeSessionLive ? '1' : '0')}|{(requiresRemoteBrowserEndpoint ? '1' : '0')}|{(browserEndpointVerified ? '1' : '0')}";
     }
 

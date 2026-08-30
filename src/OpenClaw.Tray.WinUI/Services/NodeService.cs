@@ -91,6 +91,7 @@ public sealed class NodeService : IDisposable, IAsyncDisposable
     private BrowserProxyCapability? _browserProxyCapability;
     private SttCapability? _sttCapability;
     private TtsCapability? _ttsCapability;
+    private OllamaCapability? _ollamaCapability;
     private TextToSpeechService? _textToSpeechService;
     private VoiceService? _voiceService;
     private readonly string _dataPath;
@@ -393,6 +394,14 @@ public sealed class NodeService : IDisposable, IAsyncDisposable
             _sttCapability.ListenRequested += OnSttListenAsync;
             _sttCapability.StatusRequested += OnSttStatusAsync;
             Register(_sttCapability);
+        }
+
+        // Keep one instance for the service lifetime so a capability reload
+        // cannot dispose an in-flight local inference request.
+        if (NodeCapabilityGating.ShouldRegisterOllama(_settings))
+        {
+            _ollamaCapability ??= new OllamaCapability(_logger);
+            Register(_ollamaCapability);
         }
 
         // Device metadata/status capability - dispose previous provider on re-registration
@@ -1087,6 +1096,8 @@ public sealed class NodeService : IDisposable, IAsyncDisposable
             disabled.AddRange(CommandCenterCommandGroups.DangerousCommands.Where(command => command.StartsWith("tts.", StringComparison.OrdinalIgnoreCase)));
         if (_settings?.NodeSttEnabled != true)
             disabled.AddRange(new[] { "stt.listen", "stt.status" });
+        if (_settings?.NodeOllamaInferenceEnabled != true)
+            disabled.AddRange(new[] { OllamaCapability.ModelsCommand, OllamaCapability.ChatCommand });
         return disabled;
     }
 
@@ -2477,6 +2488,8 @@ public sealed class NodeService : IDisposable, IAsyncDisposable
         try { _navigationPromptGate.Dispose(); } catch (Exception ex) { _logger.Debug($"NodeService: Dispose NavigationPromptGate failed: {ex.Message}"); }
 
         try { _deviceStatusProvider?.Dispose(); } catch (Exception ex) { _logger.Debug($"NodeService: Dispose DeviceStatusProvider failed: {ex.Message}"); }
+
+        try { _ollamaCapability?.Dispose(); } catch (Exception ex) { _logger.Debug($"NodeService: Dispose OllamaCapability failed: {ex.Message}"); }
 
         if (_canvasWindow != null && !_canvasWindow.IsClosed)
         {

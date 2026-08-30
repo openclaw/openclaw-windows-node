@@ -14,7 +14,8 @@ internal sealed record TrayMenuSettingsSnapshot(
     bool NodeScreenEnabled,
     bool NodeLocationEnabled,
     bool NodeTtsEnabled,
-    bool NodeSttEnabled);
+    bool NodeSttEnabled,
+    bool NodeOllamaInferenceEnabled);
 
 internal sealed record TrayGatewaySelfSnapshot(
     string? ServerVersion,

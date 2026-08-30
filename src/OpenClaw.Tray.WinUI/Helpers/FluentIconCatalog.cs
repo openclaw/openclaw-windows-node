@@ -56,6 +56,7 @@ public static class FluentIconCatalog
     public const string Sync = "\uE895";           // Sync — Connecting / Disconnecting transient
     public const string Lock = "\uE192";           // Lock — Setup code / pairing waiting
     public const string Plug = "\uE839";           // Plug/PC1 — Direct connection tile (alias of System; same glyph)
+    public const string Inference = "\uE839";      // PC1 (alias of System/Plug) — Ollama local inference runs on this PC
     public const string MoreOverflow = "\uE712";   // More — saved-row overflow ⋯ button
 
     // ── Channel actions ────────────────────────────────────────────

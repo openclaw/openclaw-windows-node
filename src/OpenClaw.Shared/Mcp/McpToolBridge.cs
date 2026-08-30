@@ -352,6 +352,12 @@ public class McpToolBridge
         ["tts.status"] =
             "Report TTS provider readiness. No args. Returns { configuredProvider, effectiveProvider (the provider that would run now after fallback), willFallBack (bool), providers: [{ provider ('piper'|'windows'|'elevenlabs'|'minimax'), readiness ('ready'|'needs-api-key'|'needs-voice'|'voice-not-downloaded'|'unavailable'), isReady (bool) }] }. Carries no PII (no voice ids, no key fragments, no device names). Requires NodeTtsEnabled.",
 
+        // ollama.* — inference against a separately installed Windows Ollama service.
+        // Default-off; any paired active gateway (local or remote) may invoke it. Requires NodeOllamaInferenceEnabled.
+        ["ollama.models"] =
+            "List locally installed Ollama models. No args. Returns { provider, models: [{ name, size, modifiedAt, family, parameterSize, quantization, contextWindow, capabilities, loaded }] }. Read-only inventory; carries no prompt or chat content. Requires NodeOllamaInferenceEnabled.",
+        ["ollama.chat"] =
+            "Send a single-turn chat prompt to a local Ollama model. Args: model (string, required), prompt (string, required, max 128000 chars), system (string, optional, max 32000 chars), temperature (number, optional, 0..2), maxTokens (int, optional, default 512, max 8192), timeoutMs (int, optional, default 120000, max 600000). Only one chat runs at a time per node; a concurrent call while one is in flight returns an error. Returns { provider, model, response, usage?: { promptTokens, completionTokens }, timings?: { loadMs, totalMs } }. Privacy and resource sensitive (sends prompt content to a locally running model and consumes CPU/GPU). Requires NodeOllamaInferenceEnabled.",
         // app.*
         ["app.navigate"] =
             "Navigate the companion app to a specific page (e.g., 'home', 'sessions', 'settings'). Args: page (string, required). Returns { navigated, page }.",

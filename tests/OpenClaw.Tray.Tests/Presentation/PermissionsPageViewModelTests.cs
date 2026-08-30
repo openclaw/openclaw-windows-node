@@ -58,6 +58,7 @@ public sealed class PermissionsPageViewModelTests
             (PermissionsCapabilityKey.Location, s => s.NodeLocationEnabled),
             (PermissionsCapabilityKey.TextToSpeech, s => s.NodeTtsEnabled),
             (PermissionsCapabilityKey.SpeechToText, s => s.NodeSttEnabled),
+            (PermissionsCapabilityKey.Ollama, s => s.NodeOllamaInferenceEnabled),
         })
         {
             using var harness = PermissionsHarness.CreateReal();
@@ -952,6 +953,9 @@ public sealed class PermissionsPageViewModelTests
                 break;
             case PermissionsCapabilityKey.SpeechToText:
                 edit.NodeSttEnabled = value;
+                break;
+            case PermissionsCapabilityKey.Ollama:
+                edit.NodeOllamaInferenceEnabled = value;
                 break;
         }
     }
