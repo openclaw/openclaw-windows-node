@@ -1,6 +1,8 @@
 using System.Text.Json;
 using OpenClaw.E2ETests;
 using OpenClaw.SetupEngine;
+using OpenClaw.Shared;
+using OpenClaw.Shared.Capabilities;
 
 namespace OpenClaw.E2ETests.Setup;
 
@@ -304,6 +306,119 @@ public class SetupAndConnectTests
         Assert.True(bins.TryGetProperty("cmd", out var cmdPath), $"system.which did not return cmd: {payload.GetRawText()}");
         Assert.Contains("cmd.exe", cmdPath.GetString(), StringComparison.OrdinalIgnoreCase);
         Console.WriteLine($"[E2E] gateway system.which resolved cmd to {cmdPath.GetString()}");
+    }
+
+    [OllamaGatewayE2EFact]
+    public async Task RealGateway_OllamaPermission_AllowsThenRejectsBeforeHttpDispatch()
+    {
+        await using var ollama = FakeOllamaServer.Start();
+        var gateway = _fixture.ReadActiveGatewayRecord();
+        var env = GatewayTokenEnv(gateway.SharedGatewayToken);
+        var nodeId = _fixture.ReadActiveGatewayDeviceId();
+        var allowCommandsKey = ResolveNodeCommandsAllowKey();
+        var originalAllowResult = await _fixture.RunInWslAsync(
+            $"openclaw config get {allowCommandsKey} --json",
+            TimeSpan.FromSeconds(30),
+            env);
+        AssertCommandSucceeded(originalAllowResult, $"read {allowCommandsKey} before Ollama proof");
+        var originalAllowCommands = ParseJsonArrayFromOutput(originalAllowResult.Stdout).ToArray();
+        var proofAllowCommands = originalAllowCommands
+            .Append(OllamaCapability.ModelsCommand)
+            .Append(OllamaCapability.ChatCommand)
+            .Distinct(StringComparer.Ordinal)
+            .ToArray();
+        var allowChanged = false;
+        var permissionEnabled = false;
+
+        try
+        {
+            allowChanged = true;
+            await SetGatewayAllowCommandsAsync(allowCommandsKey, proofAllowCommands, env);
+            await SetOllamaPermissionAsync(enabled: true);
+            permissionEnabled = true;
+
+            await _fixture.WaitForConnectionReady(TimeSpan.FromSeconds(120));
+            if (await ApprovePendingNodeTrustRequestsForHealthyStateAsync(nodeId))
+            {
+                using var reconnect =
+                    await _fixture.Client!.CallToolExpectSuccessAsync("app.connection.reconnectNode");
+                Assert.True(reconnect.RootElement.GetProperty("reconnected").GetBoolean());
+                await _fixture.WaitForConnectionReady(TimeSpan.FromSeconds(120));
+            }
+            await WaitForNodeCommandAsync(
+                nodeId,
+                OllamaCapability.ChatCommand,
+                expectedPresent: true,
+                TimeSpan.FromSeconds(90));
+
+            var enabledInvoke = await InvokeOllamaChatThroughGatewayAsync(
+                nodeId,
+                FakeOllamaServer.Model,
+                env);
+            AssertCommandSucceeded(enabledInvoke, "invoke ollama.chat through real gateway");
+            using (var invokeDoc = JsonDocument.Parse(ExtractJsonObject(enabledInvoke.Stdout)))
+            {
+                if (invokeDoc.RootElement.TryGetProperty("ok", out var ok))
+                    Assert.True(ok.GetBoolean(), "Gateway ollama.chat response was not successful.");
+
+                var payload = ReadNodeInvokePayload(invokeDoc.RootElement);
+                Assert.Equal("ollama", payload.GetProperty("provider").GetString());
+                Assert.Equal(FakeOllamaServer.Model, payload.GetProperty("model").GetString());
+                Assert.Equal(
+                    FakeOllamaServer.ExpectedResponse,
+                    payload.GetProperty("response").GetString());
+                var usage = payload.GetProperty("usage");
+                var timings = payload.GetProperty("timings");
+                Console.WriteLine(
+                    "[E2E] gateway ollama.chat allowed: " +
+                    $"ok=true modelMatched=true responseMatched=true " +
+                    $"promptTokens={usage.GetProperty("promptTokens").GetInt32()} " +
+                    $"completionTokens={usage.GetProperty("completionTokens").GetInt32()} " +
+                    $"totalMs={timings.GetProperty("totalMs").GetDouble():F2}");
+            }
+            Assert.Equal(1, ollama.ChatRequestCount);
+            Assert.NotNull(ollama.LastChatBody);
+
+            await SetOllamaPermissionAsync(enabled: false);
+            permissionEnabled = false;
+            await WaitForNodeCommandAsync(
+                nodeId,
+                OllamaCapability.ChatCommand,
+                expectedPresent: false,
+                TimeSpan.FromSeconds(90));
+
+            int dispatchCountBefore = CountTrayNodeInvocations(OllamaCapability.ChatCommand);
+            int httpCountBefore = ollama.RequestCount;
+            var deniedInvoke = await InvokeOllamaChatThroughGatewayAsync(
+                nodeId,
+                FakeOllamaServer.Model,
+                env);
+            string denial = deniedInvoke.Stdout + "\n" + deniedInvoke.Stderr;
+            Assert.True(
+                deniedInvoke.ExitCode != 0 ||
+                denial.Contains("\"ok\":false", StringComparison.OrdinalIgnoreCase),
+                "Disabled ollama.chat gateway invocation unexpectedly succeeded.");
+            Assert.True(
+                denial.Contains("not support", StringComparison.OrdinalIgnoreCase) ||
+                denial.Contains("not declared", StringComparison.OrdinalIgnoreCase) ||
+                denial.Contains("not allowed", StringComparison.OrdinalIgnoreCase),
+                "Disabled ollama.chat gateway invocation did not report a command-policy rejection.");
+            await Task.Delay(500);
+            int dispatchCountAfter = CountTrayNodeInvocations(OllamaCapability.ChatCommand);
+            Assert.Equal(dispatchCountBefore, dispatchCountAfter);
+            Assert.Equal(httpCountBefore, ollama.RequestCount);
+            Console.WriteLine(
+                "[E2E] gateway ollama.chat denied: " +
+                "commandAbsent=true gatewayRejected=true " +
+                "nodeDispatchUnchanged=true httpRequestCountUnchanged=true");
+        }
+        finally
+        {
+            if (permissionEnabled)
+                await SetOllamaPermissionAsync(enabled: false);
+            if (allowChanged)
+                await SetGatewayAllowCommandsAsync(allowCommandsKey, originalAllowCommands, env);
+        }
     }
 
     [E2EFact]
@@ -701,6 +816,124 @@ public class SetupAndConnectTests
         }
 
         throw new InvalidDataException($"Gateway node.invoke response did not include a payload object: {root.GetRawText()}");
+    }
+
+    private async Task SetGatewayAllowCommandsAsync(
+        string configPath,
+        IReadOnlyList<string> commands,
+        IReadOnlyDictionary<string, string> environment)
+    {
+        string json = JsonSerializer.Serialize(commands);
+        var result = await _fixture.RunInWslAsync(
+            $"openclaw config set {configPath} {ShellSingleQuote(json)} --strict-json",
+            TimeSpan.FromSeconds(60),
+            environment,
+            inputViaStdin: true);
+        AssertCommandSucceeded(result, $"set {configPath} for Ollama proof");
+        var restart = await _fixture.RunInWslAsync(
+            "openclaw gateway restart || (systemctl --user restart openclaw-gateway.service && echo restarted-via-systemctl)",
+            TimeSpan.FromSeconds(60),
+            environment);
+        AssertCommandSucceeded(restart, "restart gateway after Ollama allowlist change");
+        await _fixture.WaitForConnectionReady(TimeSpan.FromSeconds(120));
+    }
+
+    private async Task SetOllamaPermissionAsync(bool enabled)
+    {
+        using var result = await _fixture.Client!.CallToolExpectSuccessAsync(
+            "app.settings.set",
+            new
+            {
+                name = nameof(SettingsData.NodeOllamaInferenceEnabled),
+                value = enabled ? "true" : "false",
+            });
+        Assert.Equal(enabled, result.RootElement.GetProperty("value").GetBoolean());
+    }
+
+    private async Task<OpenClaw.SetupEngine.CommandResult> InvokeOllamaChatThroughGatewayAsync(
+        string nodeId,
+        string model,
+        IReadOnlyDictionary<string, string> environment)
+    {
+        var invokeParams = JsonSerializer.Serialize(new
+        {
+            nodeId,
+            command = OllamaCapability.ChatCommand,
+            @params = new
+            {
+                model,
+                prompt = FakeOllamaServer.ExpectedPrompt,
+                maxTokens = 32,
+                temperature = 0,
+                timeoutMs = 120_000,
+            },
+            timeoutMs = 130_000,
+            idempotencyKey = Guid.NewGuid().ToString("N"),
+        });
+        return await _fixture.RunInWslAsync(
+            $"openclaw gateway call node.invoke --params {ShellSingleQuote(invokeParams)} --json --timeout 140000",
+            TimeSpan.FromSeconds(150),
+            environment,
+            inputViaStdin: true);
+    }
+
+    private async Task WaitForNodeCommandAsync(
+        string nodeId,
+        string command,
+        bool expectedPresent,
+        TimeSpan timeout)
+    {
+        var deadline = DateTime.UtcNow.Add(timeout);
+        string lastResponse = "<none>";
+        while (DateTime.UtcNow < deadline)
+        {
+            using var doc = await _fixture.Client!.CallToolExpectSuccessAsync("app.nodes");
+            lastResponse = doc.RootElement.GetRawText();
+            JsonElement node = doc.RootElement.ValueKind == JsonValueKind.Array
+                ? doc.RootElement.EnumerateArray().FirstOrDefault(candidate =>
+                    string.Equals(
+                        ReadNonEmptyStringProperty(candidate, "NodeId"),
+                        nodeId,
+                        StringComparison.OrdinalIgnoreCase))
+                : default;
+            JsonElement commands = default;
+            bool nodeReady = node.ValueKind == JsonValueKind.Object &&
+                             node.TryGetProperty("IsOnline", out var online) &&
+                             online.GetBoolean() &&
+                             node.TryGetProperty("Commands", out commands);
+            string[] effectiveCommands = nodeReady ? ReadStringArray(commands).ToArray() : [];
+            bool present = effectiveCommands.Contains(command, StringComparer.Ordinal);
+            bool baselinePresent = effectiveCommands.Contains("system.which", StringComparer.Ordinal);
+            if (nodeReady && baselinePresent && present == expectedPresent)
+                return;
+            await Task.Delay(500);
+        }
+
+        throw new TimeoutException(
+            $"Node command '{command}' did not reach expected presence={expectedPresent}. " +
+            $"Last app.nodes response: {lastResponse}");
+    }
+
+    private int CountTrayNodeInvocations(string command)
+    {
+        string path = Path.Combine(_fixture.DataDir, "openclaw-tray.log");
+        if (!File.Exists(path))
+            return 0;
+
+        using var stream = new FileStream(
+            path,
+            FileMode.Open,
+            FileAccess.Read,
+            FileShare.ReadWrite | FileShare.Delete);
+        using var reader = new StreamReader(stream);
+        int count = 0;
+        string marker = $"[NODE] Invoking command: {command}";
+        while (reader.ReadLine() is { } line)
+        {
+            if (line.Contains(marker, StringComparison.Ordinal))
+                count++;
+        }
+        return count;
     }
 
     private static string ShellSingleQuote(string value) =>

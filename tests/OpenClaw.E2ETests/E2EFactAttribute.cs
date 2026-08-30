@@ -18,6 +18,33 @@ public sealed class E2EFactAttribute : FactAttribute
 }
 
 /// <summary>
+/// Ollama Gateway E2E proof is opt-in because hosted runners do not provide a
+/// local model service. The selected model is explicit so a proof cannot
+/// silently download or substitute a different model.
+/// </summary>
+public sealed class OllamaGatewayE2EFactAttribute : FactAttribute
+{
+    public const string EnableEnvVar = "OPENCLAW_RUN_OLLAMA_E2E";
+
+    public OllamaGatewayE2EFactAttribute()
+    {
+        if (!E2ETestGate.IsEnabled)
+        {
+            Skip = $"E2E tests disabled. Set {E2ETestGate.EnvVar}=1 to enable.";
+            return;
+        }
+
+        if (!IsEnabled("GITHUB_ACTIONS") && !IsEnabled(EnableEnvVar))
+            Skip = $"Ollama E2E proof disabled. Set {EnableEnvVar}=1 to enable.";
+    }
+
+    private static bool IsEnabled(string name) =>
+        Environment.GetEnvironmentVariable(name) is { } value &&
+        (string.Equals(value, "1", StringComparison.OrdinalIgnoreCase) ||
+         string.Equals(value, "true", StringComparison.OrdinalIgnoreCase));
+}
+
+/// <summary>
 /// Focused E2E tests that require MXC support must not fail the regular E2E
 /// shard on Windows runners where the Gateway path works but MXC is unavailable.
 /// </summary>
