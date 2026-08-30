@@ -93,6 +93,18 @@ public sealed class PermissionSettingsWriterRoutingTests
         Assert.Contains("_settings.Save();", source);
         Assert.Contains("OnSettingsSaved(this, EventArgs.Empty);", source);
 
+        var settingsCoordinator = ReadSource(
+            "src",
+            "OpenClaw.Tray.WinUI",
+            "App.SettingsChangeCoordinator.cs");
+        var settingsSaved = ExtractMethodBodyBySignature(
+            settingsCoordinator,
+            "private void OnSettingsSaved(object? sender, EventArgs e)");
+        Assert.Contains("_dispatcherQueue != null", settingsSaved);
+        Assert.DoesNotContain("_dispatcherQueue.HasThreadAccess", settingsSaved);
+        Assert.Contains("_dispatcherQueue.TryEnqueue(Apply)", settingsSaved);
+        AssertInOrder(settingsSaved, "var settings =", "TryEnqueue(Apply)", "return;");
+
         foreach (var settingName in new[]
         {
             "EnableNodeMode",

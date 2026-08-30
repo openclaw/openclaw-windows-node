@@ -1003,7 +1003,7 @@ public class NodeCapabilityHealthInfo
                 .ToList(),
             Permissions = new Dictionary<string, bool>(node.Permissions, StringComparer.OrdinalIgnoreCase),
             SafeApprovedCommands = CommandCenterCommandGroups.SafeCompanionCommands
-                .Concat(CommandCenterCommandGroups.OptionalSafeCommands)
+                .Concat(OllamaNodeCommandPolicy.ReadOnlyCommands)
                 .Where(commandSet.Contains)
                 .ToList(),
             PrivacySensitiveApprovedCommands = CommandCenterCommandGroups.DangerousCommands
@@ -1024,7 +1024,7 @@ public class NodeCapabilityHealthInfo
 
             info.PermissionBlockedCommands.Add(command);
             if (CommandCenterCommandGroups.SafeCompanionCommandSet.Contains(command) ||
-                CommandCenterCommandGroups.OptionalSafeCommandSet.Contains(command))
+                OllamaNodeCommandPolicy.ReadOnlyCommandSet.Contains(command))
                 info.MissingSafeAllowlistCommands.Add(command);
             else if (CommandCenterCommandGroups.DangerousCommandSet.Contains(command))
                 info.MissingDangerousAllowlistCommands.Add(command);
@@ -1170,24 +1170,6 @@ public static class CommandCenterCommandGroups
     public static readonly FrozenSet<string> SafeCompanionCommandSet =
         SafeCompanionCommands.ToFrozenSet(StringComparer.OrdinalIgnoreCase);
 
-    /// <summary>
-    /// Safe, read-only commands that are optional per-node (unlike
-    /// <see cref="SafeCompanionCommands"/>, which contribute to
-    /// <see cref="MacNodeParityCommands"/>). <c>ollama.models</c> only lists
-    /// locally installed Ollama models - no side effects - but Ollama itself
-    /// is optional on every platform, so it must not be spliced into Mac
-    /// parity via <see cref="SafeCompanionCommands"/>. It still gets the
-    /// same "safe/read-only" allow-command repair guidance treatment via
-    /// <see cref="NodeCapabilityHealthInfo.MissingSafeAllowlistCommands"/>.
-    /// </summary>
-    public static readonly string[] OptionalSafeCommands =
-    [
-        "ollama.models"
-    ];
-
-    public static readonly FrozenSet<string> OptionalSafeCommandSet =
-        OptionalSafeCommands.ToFrozenSet(StringComparer.OrdinalIgnoreCase);
-
     public static readonly string[] CommonDangerousCommands =
     [
         "camera.snap",
@@ -1203,7 +1185,7 @@ public static class CommandCenterCommandGroups
         "stt.transcribe",
         "stt.listen",
         "stt.status",
-        "ollama.chat"
+        .. OllamaNodeCommandPolicy.SensitiveCommands
     ];
 
     public static readonly FrozenSet<string> DangerousCommandSet =

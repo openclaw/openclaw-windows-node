@@ -13,7 +13,17 @@ public partial class App
         if (_settings == null)
             return;
 
-        _settingsChangeCoordinator?.Apply(_settings.ToSettingsData());
+        var settings = _settings.ToSettingsData();
+        void Apply() => _settingsChangeCoordinator?.Apply(settings);
+
+        if (_dispatcherQueue != null)
+        {
+            if (!_dispatcherQueue.TryEnqueue(Apply))
+                Logger.Warn("[App] Could not dispatch settings effects to the UI thread.");
+            return;
+        }
+
+        Apply();
     }
 
     private SettingsChangeCoordinator CreateSettingsChangeCoordinator(SettingsData initialSettings) =>
