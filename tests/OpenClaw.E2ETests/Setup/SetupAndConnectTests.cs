@@ -337,12 +337,11 @@ public class SetupAndConnectTests
             await SetOllamaPermissionAsync(enabled: true);
             permissionEnabled = true;
 
+            await ReconnectNodeForOllamaPermissionAsync();
             await _fixture.WaitForConnectionReady(TimeSpan.FromSeconds(120));
             if (await ApprovePendingNodeTrustRequestsForHealthyStateAsync(nodeId))
             {
-                using var reconnect =
-                    await _fixture.Client!.CallToolExpectSuccessAsync("app.connection.reconnectNode");
-                Assert.True(reconnect.RootElement.GetProperty("reconnected").GetBoolean());
+                await ReconnectNodeForOllamaPermissionAsync();
                 await _fixture.WaitForConnectionReady(TimeSpan.FromSeconds(120));
             }
             await WaitForNodeCommandAsync(
@@ -379,13 +378,34 @@ public class SetupAndConnectTests
             Assert.Equal(1, ollama.ChatRequestCount);
             Assert.NotNull(ollama.LastChatBody);
 
+            ollama.PauseNextChatResponse();
+            Task<JsonDocument> capturedMcpCall = _fixture.Client!.CallToolExpectSuccessAsync(
+                OllamaCapability.ChatCommand,
+                new
+                {
+                    model = FakeOllamaServer.Model,
+                    prompt = FakeOllamaServer.CapturedPrompt,
+                    maxTokens = 32,
+                    temperature = 0,
+                    timeoutMs = 120_000,
+                });
+            await ollama.WaitForPausedChatAsync(TimeSpan.FromSeconds(15));
+
             await SetOllamaPermissionAsync(enabled: false);
             permissionEnabled = false;
+            await ReconnectNodeForOllamaPermissionAsync();
             await WaitForNodeCommandAsync(
                 nodeId,
                 OllamaCapability.ChatCommand,
                 expectedPresent: false,
                 TimeSpan.FromSeconds(90));
+            InvalidOperationException revoked = await Assert.ThrowsAsync<InvalidOperationException>(
+                async () => await capturedMcpCall.WaitAsync(TimeSpan.FromSeconds(10)));
+            Assert.Contains("Ollama sharing was disabled", revoked.Message, StringComparison.Ordinal);
+            ollama.ReleasePausedChat();
+            Console.WriteLine(
+                "[E2E] local MCP captured ollama.chat revoked: " +
+                "admitted=true loopbackReached=true responseDelivered=false");
 
             int dispatchCountBefore = CountTrayNodeInvocations(OllamaCapability.ChatCommand);
             int httpCountBefore = ollama.RequestCount;
@@ -848,6 +868,13 @@ public class SetupAndConnectTests
                 value = enabled ? "true" : "false",
             });
         Assert.Equal(enabled, result.RootElement.GetProperty("value").GetBoolean());
+    }
+
+    private async Task ReconnectNodeForOllamaPermissionAsync()
+    {
+        using var reconnect =
+            await _fixture.Client!.CallToolExpectSuccessAsync("app.connection.reconnectNode");
+        Assert.True(reconnect.RootElement.GetProperty("reconnected").GetBoolean());
     }
 
     private async Task<OpenClaw.SetupEngine.CommandResult> InvokeOllamaChatThroughGatewayAsync(

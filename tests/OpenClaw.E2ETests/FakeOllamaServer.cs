@@ -9,6 +9,7 @@ internal sealed class FakeOllamaServer : IAsyncDisposable
 {
     public const string Model = "proof-model";
     public const string ExpectedPrompt = "Reply with exactly: WINDOWS_GATEWAY_OLLAMA_OK";
+    public const string CapturedPrompt = "Reply with exactly: THIS_RESPONSE_MUST_BE_REVOKED";
     public const string ExpectedResponse = "WINDOWS_GATEWAY_OLLAMA_OK";
     private const int OllamaPort = 11_434;
 
@@ -18,6 +19,8 @@ internal sealed class FakeOllamaServer : IAsyncDisposable
     private int _requestCount;
     private int _chatRequestCount;
     private string? _lastChatBody;
+    private TaskCompletionSource? _pausedChatReached;
+    private TaskCompletionSource? _pausedChatRelease;
 
     private FakeOllamaServer()
     {
@@ -32,6 +35,21 @@ internal sealed class FakeOllamaServer : IAsyncDisposable
 
     public static FakeOllamaServer Start() => new();
 
+    public void PauseNextChatResponse()
+    {
+        _pausedChatReached = new TaskCompletionSource(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        _pausedChatRelease = new TaskCompletionSource(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+    }
+
+    public Task WaitForPausedChatAsync(TimeSpan timeout) =>
+        (_pausedChatReached?.Task ??
+         throw new InvalidOperationException("No paused chat was configured."))
+        .WaitAsync(timeout);
+
+    public void ReleasePausedChat() => _pausedChatRelease?.TrySetResult();
+
     private async Task AcceptLoopAsync()
     {
         try
@@ -40,7 +58,15 @@ internal sealed class FakeOllamaServer : IAsyncDisposable
             {
                 using TcpClient client =
                     await _listener.AcceptTcpClientAsync(_shutdown.Token).ConfigureAwait(false);
-                await HandleClientAsync(client, _shutdown.Token).ConfigureAwait(false);
+                try
+                {
+                    await HandleClientAsync(client, _shutdown.Token).ConfigureAwait(false);
+                }
+                catch (IOException) when (!_shutdown.IsCancellationRequested)
+                {
+                    // A revoked MCP request closes its HTTP connection before
+                    // the controlled response is released.
+                }
             }
         }
         catch (OperationCanceledException) when (_shutdown.IsCancellationRequested)
@@ -98,7 +124,7 @@ internal sealed class FakeOllamaServer : IAsyncDisposable
                 """{"models":[{"name":"proof-model","capabilities":["completion"],"details":{"context_length":4096}}]}""",
             "/api/ps" => """{"models":[]}""",
             "/api/show" => BuildShowResponse(body),
-            "/api/chat" => BuildChatResponse(body),
+            "/api/chat" => await BuildChatResponseAsync(body).ConfigureAwait(false),
             _ => throw new InvalidDataException($"Ollama proof server received unexpected path '{path}'."),
         };
 
@@ -120,7 +146,7 @@ internal sealed class FakeOllamaServer : IAsyncDisposable
         return """{"capabilities":["completion"],"model_info":{"proof.context_length":4096}}""";
     }
 
-    private string BuildChatResponse(string body)
+    private async Task<string> BuildChatResponseAsync(string body)
     {
         using JsonDocument request = JsonDocument.Parse(body);
         if (request.RootElement.GetProperty("model").GetString() != Model)
@@ -131,11 +157,25 @@ internal sealed class FakeOllamaServer : IAsyncDisposable
             .Last()
             .GetProperty("content")
             .GetString();
-        if (prompt != ExpectedPrompt)
+        if (prompt is not (ExpectedPrompt or CapturedPrompt))
             throw new InvalidDataException("Ollama proof server received an unexpected prompt.");
 
         Volatile.Write(ref _lastChatBody, body);
         Interlocked.Increment(ref _chatRequestCount);
+        if (_pausedChatReached is { } reached &&
+            _pausedChatRelease is { } release)
+        {
+            reached.TrySetResult();
+            try
+            {
+                await release.Task.WaitAsync(_shutdown.Token).ConfigureAwait(false);
+            }
+            finally
+            {
+                _pausedChatReached = null;
+                _pausedChatRelease = null;
+            }
+        }
         return
             """{"model":"proof-model","message":{"role":"assistant","content":"WINDOWS_GATEWAY_OLLAMA_OK"},"prompt_eval_count":7,"eval_count":4,"load_duration":1000000,"total_duration":5000000}""";
     }
