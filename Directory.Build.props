@@ -2,7 +2,7 @@
 
   <PropertyGroup>
     <MicrosoftWindowsAppSDKVersion>2.4.0</MicrosoftWindowsAppSDKVersion>
-    <MicrosoftWindowsSdkBuildToolsVersion>10.0.28000.2526</MicrosoftWindowsSdkBuildToolsVersion>
+    <MicrosoftWindowsSdkBuildToolsVersion>10.0.28000.2705</MicrosoftWindowsSdkBuildToolsVersion>
   </PropertyGroup>
 
 </Project>
