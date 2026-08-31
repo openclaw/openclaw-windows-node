@@ -339,15 +339,9 @@ public class SetupAndConnectTests
 
             await ReconnectNodeForOllamaPermissionAsync();
             await _fixture.WaitForConnectionReady(TimeSpan.FromSeconds(120));
-            if (await ApprovePendingNodeTrustRequestsForHealthyStateAsync(nodeId))
-            {
-                await ReconnectNodeForOllamaPermissionAsync();
-                await _fixture.WaitForConnectionReady(TimeSpan.FromSeconds(120));
-            }
-            await WaitForNodeCommandAsync(
+            await ApproveNodeCommandUntilEffectiveAsync(
                 nodeId,
                 OllamaCapability.ChatCommand,
-                expectedPresent: true,
                 TimeSpan.FromSeconds(90));
 
             var enabledInvoke = await InvokeOllamaChatThroughGatewayAsync(
@@ -939,6 +933,66 @@ public class SetupAndConnectTests
         throw new TimeoutException(
             $"Node command '{command}' did not reach expected presence={expectedPresent}. " +
             $"Last app.nodes response: {lastResponse}");
+    }
+
+    private async Task ApproveNodeCommandUntilEffectiveAsync(
+        string nodeId,
+        string command,
+        TimeSpan timeout)
+    {
+        var approvedRequestIds = new HashSet<string>(StringComparer.Ordinal);
+        var deadline = DateTime.UtcNow.Add(timeout);
+        string lastNodes = "<none>";
+        string lastApprovals = "<none>";
+        while (DateTime.UtcNow < deadline)
+        {
+            using (var approvals = await ReadPendingApprovalsFromConnectionPageAsync())
+            {
+                lastApprovals = approvals.RootElement.GetRawText();
+                bool approvedAny = false;
+                foreach (var request in ReadPendingNodeApprovals(approvals.RootElement)
+                             .Where(request =>
+                                 string.Equals(request.NodeId, nodeId, StringComparison.OrdinalIgnoreCase) &&
+                                 approvedRequestIds.Add(request.RequestId)))
+                {
+                    using var approve =
+                        await ApproveNodePairingFromConnectionPageAsync(request.RequestId);
+                    Console.WriteLine(
+                        "[E2E] approved pending Ollama node command trust request.");
+                    approvedAny = true;
+                }
+
+                if (approvedAny)
+                {
+                    await ReconnectNodeForOllamaPermissionAsync();
+                    await _fixture.WaitForConnectionReady(TimeSpan.FromSeconds(120));
+                }
+            }
+
+            using var nodes = await _fixture.Client!.CallToolExpectSuccessAsync("app.nodes");
+            lastNodes = nodes.RootElement.GetRawText();
+            JsonElement node = nodes.RootElement.ValueKind == JsonValueKind.Array
+                ? nodes.RootElement.EnumerateArray().FirstOrDefault(candidate =>
+                    string.Equals(
+                        ReadNonEmptyStringProperty(candidate, "NodeId"),
+                        nodeId,
+                        StringComparison.OrdinalIgnoreCase))
+                : default;
+            if (node.ValueKind == JsonValueKind.Object &&
+                node.TryGetProperty("IsOnline", out var online) &&
+                online.GetBoolean() &&
+                node.TryGetProperty("Commands", out var commands) &&
+                ReadStringArray(commands).Contains(command, StringComparer.Ordinal))
+            {
+                return;
+            }
+
+            await Task.Delay(500);
+        }
+
+        throw new TimeoutException(
+            $"Node command '{command}' did not become approved and effective. " +
+            $"Last approvals: {lastApprovals}. Last app.nodes response: {lastNodes}");
     }
 
     private int CountTrayNodeInvocations(string command)
