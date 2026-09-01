@@ -101,8 +101,14 @@ public sealed class PermissionSettingsWriterRoutingTests
         var settingsSaved = ExtractMethodBodyBySignature(
             settingsCoordinator,
             "private Task ApplySettingsSavedAsync()");
-        Assert.Contains("_dispatcherQueue == null", settingsSaved);
-        Assert.Contains("_dispatcherQueue.TryEnqueue", settingsSaved);
+        AssertInOrder(
+            settingsSaved,
+            "void ApplyLatestSettings()",
+            "_settings.ToSettingsData()",
+            "_dispatcherQueue == null || _dispatcherQueue.HasThreadAccess",
+            "ApplyLatestSettings();",
+            "_dispatcherQueue.TryEnqueue");
+        Assert.DoesNotContain("var settings = _settings.ToSettingsData();", settingsSaved);
         Assert.DoesNotContain("_nodeService?.ApplyOllamaPermission", settingsSaved);
         Assert.Contains(
             "settings => _nodeService?.ApplyOllamaPermission(settings.NodeOllamaInferenceEnabled)",

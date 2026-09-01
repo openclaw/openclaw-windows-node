@@ -28,10 +28,13 @@ public partial class App
     {
         if (_settings == null)
             return Task.CompletedTask;
-        var settings = _settings.ToSettingsData();
-        if (_dispatcherQueue == null)
+
+        void ApplyLatestSettings() =>
+            _settingsChangeCoordinator?.Apply(_settings.ToSettingsData());
+
+        if (_dispatcherQueue == null || _dispatcherQueue.HasThreadAccess)
         {
-            _settingsChangeCoordinator?.Apply(settings);
+            ApplyLatestSettings();
             return Task.CompletedTask;
         }
 
@@ -41,7 +44,7 @@ public partial class App
         {
             try
             {
-                _settingsChangeCoordinator?.Apply(settings);
+                ApplyLatestSettings();
                 completion.TrySetResult();
             }
             catch (Exception ex)
