@@ -28,9 +28,7 @@ public partial class App
     {
         if (_settings == null)
             return Task.CompletedTask;
-
         var settings = _settings.ToSettingsData();
-        _nodeService?.ApplyOllamaPermission(settings.NodeOllamaInferenceEnabled);
         if (_dispatcherQueue == null)
         {
             _settingsChangeCoordinator?.Apply(settings);
@@ -63,6 +61,7 @@ public partial class App
     private SettingsChangeCoordinator CreateSettingsChangeCoordinator(SettingsData initialSettings) =>
         new(
             new SettingsChangeEffects(
+                settings => _nodeService?.ApplyOllamaPermission(settings.NodeOllamaInferenceEnabled),
                 settings => OpenClawTray.Chat.OpenClawReactorChatRoot.SetToolCallsVisible(settings.ShowChatToolCalls),
                 SyncActiveGatewayBrowserProxyForward,
                 PublishSandboxRiskNotificationIfNeeded,

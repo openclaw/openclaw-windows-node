@@ -103,11 +103,19 @@ public sealed class PermissionSettingsWriterRoutingTests
             "private Task ApplySettingsSavedAsync()");
         Assert.Contains("_dispatcherQueue == null", settingsSaved);
         Assert.Contains("_dispatcherQueue.TryEnqueue", settingsSaved);
+        Assert.DoesNotContain("_nodeService?.ApplyOllamaPermission", settingsSaved);
+        Assert.Contains(
+            "settings => _nodeService?.ApplyOllamaPermission(settings.NodeOllamaInferenceEnabled)",
+            settingsCoordinator);
+        var coordinatorService = ReadSource(
+            "src",
+            "OpenClaw.Tray.WinUI",
+            "Services",
+            "SettingsChangeCoordinator.cs");
         AssertInOrder(
-            settingsSaved,
-            "var settings =",
-            "_nodeService?.ApplyOllamaPermission",
-            "_dispatcherQueue.TryEnqueue");
+            coordinatorService,
+            "_effects.ApplyOllamaPermission(settings);",
+            "_effects.ApplyChatToolCallVisibility(settings);");
         Assert.Contains(
             "if (_dispatcherQueue?.HasThreadAccess == true)",
             settingsCoordinator);
