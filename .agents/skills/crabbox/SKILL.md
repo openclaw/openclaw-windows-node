@@ -1,6 +1,6 @@
 ---
 name: crabbox
-description: Use Crabbox from macOS, Linux, or native Windows controllers to run OpenClaw Windows node builds, tests, and targeted proof on remote native Windows or WSL2 hosts, including Azure or brokered AWS leases and static SSH hosts. Use when remote Windows validation is needed or the user asks for Crabbox validation. Always report the actual provider and lease id.
+description: Use Crabbox from macOS, Linux, or native Windows controllers to run OpenClaw Windows node builds, tests, and targeted proof on remote native Windows or WSL2 hosts, including Azure or brokered AWS leases and static SSH hosts. Use when remote Windows validation is needed or the user asks for Crabbox validation. Always report the actual provider, lease id, run URL, command, and result.
 ---
 
 # Crabbox
@@ -28,19 +28,25 @@ it and Azure auth is already configured. Do not use WSL2 as proof for native
 WinUI, MSIX, Windows App SDK, PowerShell, registry, or Windows process behavior.
 Do not use Linux Testbox for this repo's required closeout validation.
 
+Routine use of an already configured Crabbox environment is part of completing
+requested remote validation. This includes task-owned leases, temporary state,
+and clean task-owned checkouts or worktrees. Preserve user-managed checkouts,
+branches, unrelated edits, trust boundaries, credentials, production access,
+budgets, and publication controls. A dirty, missing, or occupied checkout is a
+reason to create an isolated task-owned checkout, not to overwrite it.
+
 ## First checks
 
 Run from the repository root. Crabbox sync mirrors the current checkout,
 including tracked and relevant untracked changes.
 
-Prefer the sibling development binary when present because a PATH shim may be
-stale:
+Use an installed, verified Crabbox binary by default. Do not assume a sibling
+source checkout is trusted or overwrite its unrelated work. When the task is to
+test or repair Crabbox itself, verify its canonical upstream and build it from a
+clean task-owned checkout instead.
 
 ```sh
-export CRABBOX="$(command -v crabbox || true)"
-if [ -x ../crabbox/bin/crabbox ]; then
-  export CRABBOX=../crabbox/bin/crabbox
-fi
+export CRABBOX="$(command -v crabbox)"
 export CRABBOX_PROVIDER="${CRABBOX_PROVIDER:-azure}"
 test -n "$CRABBOX"
 "$CRABBOX" --version
@@ -61,15 +67,11 @@ starting a lease. Use explicit provider and target flags; this repository has no
 
 ### Native Windows controller
 
-When the Crabbox CLI itself runs on Windows, use PowerShell and prefer a sibling
-development binary over a possibly stale PATH install:
+When the Crabbox CLI itself runs on Windows, use PowerShell and verify the
+installed binary:
 
 ```powershell
-$Crabbox = if (Test-Path ..\crabbox\bin\crabbox.exe) {
-    (Resolve-Path ..\crabbox\bin\crabbox.exe).Path
-} else {
-    (Get-Command crabbox.exe -ErrorAction Stop).Source
-}
+$Crabbox = (Get-Command crabbox.exe -ErrorAction Stop).Source
 $CrabboxProvider = "azure"
 
 Get-Command ssh, tar, git -ErrorAction Stop
@@ -111,6 +113,12 @@ if (Get-Command wsl.exe -ErrorAction SilentlyContinue) {
     Get-Command rsync.exe -ErrorAction Stop
 }
 ```
+
+Use Actions hydration only when the repository already owns a suitable workflow.
+Local hydration supports WSL2 targets. Native Windows requires
+`crabbox actions hydrate --github-runner`; WSL2 may also use that mode when the
+workflow needs full GitHub Actions semantics. Otherwise use normal `warmup` and
+`run` loops.
 
 Translate later POSIX here-doc examples into a PowerShell here-string when
 calling `--script-stdin` from Windows:
@@ -168,7 +176,8 @@ secretless fork CI, or review the exact head and diff before syncing it.
 
 ## Warm and reuse native Windows
 
-Warm one lease early for tasks that will need several build/test iterations:
+Do not warm a lease speculatively. When the first remote validation command is
+ready, warm one lease and reuse it for tasks that need several iterations:
 
 ```sh
 "$CRABBOX" warmup \
@@ -184,13 +193,14 @@ Warm one lease early for tasks that will need several build/test iterations:
 For UI work, add `--desktop` to this warmup from the start and use the returned
 id as both `<lease-id>` and `<desktop-lease-id>`. Managed leases cannot gain
 desktop capability after acquisition. Do not add `--desktop` to WSL2; managed
-WSL2 has no separate VNC desktop.
+WSL2 has no separate VNC desktop. Do not silently change providers merely to
+gain desktop support; report the capability blocker instead.
 
-Save the returned raw lease id. Report the provider and id exactly as Crabbox
-returns them. Reuse the lease with `--id <lease-id>`, but let each run sync the
-current checkout. Use `--no-sync` only for an intentional rerun of unchanged
-source. If the remote tree looks stale, retry with `--full-resync` before
-replacing the lease.
+Save the returned raw lease id. Report the provider, id, run URL, exact command,
+and result exactly as Crabbox returns them. Reuse the lease with
+`--id <lease-id>`, but let each run sync the current checkout. Use `--no-sync`
+only for an intentional rerun of unchanged source. If the remote tree looks
+stale, retry with `--full-resync` before replacing the lease.
 
 ## Run required validation
 
@@ -392,10 +402,11 @@ for a handoff window:
 
 Run only the unique stop commands for leases actually created. If providers
 differed, use each lease's actual provider instead of the current variable. Do
-not stop shared or pre-existing leases. In the handoff or PR body, record:
+not stop shared or pre-existing leases. `crabbox stop` does not accept
+`--timing-json`. In the handoff or PR body, record:
 
 - source head SHA and whether the checkout was dirty
-- actual provider, target, Windows mode, and raw lease id
+- actual provider, target, Windows mode, raw lease id, and run URL
 - exact commands and pass/fail counts
 - focused real-behavior proof, or an explicit blocker
 - cleanup result
