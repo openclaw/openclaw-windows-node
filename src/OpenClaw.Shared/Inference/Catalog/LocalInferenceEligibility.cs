@@ -43,8 +43,10 @@ public static class LocalInferenceEligibility
     public const long RuntimeWorkspaceReserveBytes = LocalModelCatalog.RuntimeWorkspaceReserveBytes;
     public static Version MinimumNvidiaDriverVersion { get; } = new(615, 0);
 
-    public static long GetRequiredMemoryBytes(LocalModelInfo model) =>
-        LocalInferenceQualificationPolicy.GetRequiredMemoryBytes(model);
+    public static long GetRequiredMemoryBytes(
+        LocalModelInfo model,
+        LocalInferenceRunProfile profile) =>
+        LocalInferenceQualificationPolicy.GetRequiredMemoryBytes(model, profile);
 
     public static LocalInferenceEligibilityResult Evaluate(
         HostHardwareInfo hardware,
@@ -61,7 +63,7 @@ public static class LocalInferenceEligibility
         }
 
         LocalInferencePlan plan = selection.Plan;
-        long requiredMemoryBytes = GetRequiredMemoryBytes(plan.Model);
+        long requiredMemoryBytes = GetRequiredMemoryBytes(plan.Model, plan.Profile);
         CandidateAssessment? selected = hardware.NvidiaGpus
             .Select(gpu => Assess(gpu, plan.Runtime, requiredMemoryBytes))
             .OrderBy(candidate => StatusRank(candidate.Status))

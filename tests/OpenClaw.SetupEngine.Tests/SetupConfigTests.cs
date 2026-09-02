@@ -1,5 +1,6 @@
 using System.Text.Json;
 using System.Runtime.Versioning;
+using OpenClaw.Shared.Inference.Catalog;
 
 namespace OpenClaw.SetupEngine.Tests;
 
@@ -400,6 +401,7 @@ public class SetupConfigTests : IDisposable
         {
             Environment.SetEnvironmentVariable("OPENCLAW_TRAY_DATA_DIR", Path.Combine(_tempDir, "roaming"));
             Environment.SetEnvironmentVariable("OPENCLAW_TRAY_LOCAL_DATA_DIR", Path.Combine(_tempDir, "local"));
+            LocalModelInfo qwen35B = LocalModelCatalog.Find(LocalModelCatalog.Qwen35BModelId)!;
             var config = new SetupConfig
             {
                 DistroName = "CustomClaw",
@@ -411,7 +413,12 @@ public class SetupConfigTests : IDisposable
                     InstallUrl = "https://example.test/install.sh",
                     Version = GatewayReleasePolicy.SecurityFloor
                 },
-                LocalAi = { Enabled = true }
+                LocalAi =
+                {
+                    Enabled = true,
+                    SelectedModelId = qwen35B.Id,
+                    SelectedProfileId = LocalModelCatalog.GetProfiles(qwen35B)[1].Id,
+                }
             };
 
             var summary = SetupReviewSummaryBuilder.Build(config);
@@ -426,7 +433,13 @@ public class SetupConfigTests : IDisposable
             Assert.Contains("CustomClaw", summary.ExactCommands);
             Assert.Contains("19999", summary.ExactCommands);
             Assert.Equal("CustomClaw · LAN:19999", summary.CompletionGatewaySummary);
-            Assert.StartsWith("llama-server · ", summary.LocalAiDescription, StringComparison.Ordinal);
+            Assert.StartsWith(
+                "llama-server for Windows · loads on first request · ",
+                summary.LocalAiDescription,
+                StringComparison.Ordinal);
+            Assert.Contains("256K context", summary.LocalAiDescription, StringComparison.Ordinal);
+            Assert.Contains("Q8_0 target and MTP draft KV", summary.LocalAiDescription, StringComparison.Ordinal);
+            Assert.DoesNotContain("full CUDA offload", summary.LocalAiDescription, StringComparison.Ordinal);
             Assert.DoesNotContain("immutable revision", summary.LocalAiDescription, StringComparison.Ordinal);
             Assert.DoesNotContain("llama-server b", summary.LocalAiDescription, StringComparison.Ordinal);
         }

@@ -111,7 +111,7 @@ public sealed class LocalAiPortHandoffTests
                 GpuVendor.Nvidia,
                 "NVIDIA RTX Spark N1X (6144-core Blackwell RTX GPU)",
                 GpuVisibleMemoryBytes: 25_702_694_912,
-                FreeGpuVisibleMemoryBytes: 25_000_000_000,
+                FreeGpuVisibleMemoryBytes: 25_702_694_912,
                 DriverVersion: "616.00",
                 CudaMajorVersion: 13,
                 StableId: "GPU-SPARK"),

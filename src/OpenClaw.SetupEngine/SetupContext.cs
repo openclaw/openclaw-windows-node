@@ -142,6 +142,9 @@ public sealed class LocalAiConfig
 {
     public bool Enabled { get; set; }
     public string? SelectedModelId { get; set; }
+    /// <summary>Runtime-only effective profile selected from detected GPU capacity.</summary>
+    [JsonIgnore]
+    public string? SelectedProfileId { get; set; }
     /// <summary>Managed llama-server port. Zero selects a free loopback port during setup.</summary>
     public int Port { get; set; }
     public bool WslMirroredNetworkingConsent { get; set; }

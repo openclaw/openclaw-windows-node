@@ -5,6 +5,7 @@ using OpenClaw.TestSupport;
 using System.Collections.Immutable;
 using System.Net;
 using System.Text.Json;
+using System.Text.Json.Nodes;
 
 namespace OpenClaw.Connection.Tests;
 
@@ -52,11 +53,19 @@ public sealed class LocalAiPortLifecycleTests
         var paths = new LocalAiPaths(temp.Path);
         var store = new LocalAiManifestStore(paths);
         await store.SaveAsync(ValidManifest() with { HardwareProfileId = "retired-profile-id" });
+        JsonObject legacyJson = (JsonNode.Parse(await File.ReadAllTextAsync(paths.ManifestPath)) as JsonObject)!;
+        legacyJson.Remove("keyCachePrecision");
+        legacyJson.Remove("valueCachePrecision");
+        legacyJson.Remove("draftKeyCachePrecision");
+        legacyJson.Remove("draftValueCachePrecision");
+        await File.WriteAllTextAsync(paths.ManifestPath, legacyJson.ToJsonString());
 
         LocalAiResolvedInstall saved = (await store.LoadAsync())!;
         LlamaServerRouterLaunchPlan launch = LlamaServerRouterConfiguration.Build(paths, saved);
 
         Assert.Equal("retired-profile-id", saved.Manifest.HardwareProfileId);
+        Assert.Equal(KvCachePrecision.F16, saved.Manifest.KeyCachePrecision);
+        Assert.Contains("cache-type-k = f16", launch.PresetContent);
         Assert.Equal(LocalModelCatalog.Qwen35BModelId, launch.ModelAlias);
     }
 
@@ -81,6 +90,11 @@ public sealed class LocalAiPortLifecycleTests
         Assert.Contains(
             $"n-predict = {gatewayMaximum}",
             launch.PresetContent.Split(Environment.NewLine));
+        Assert.Contains("ctx-size = 262144", launch.PresetContent.Split(Environment.NewLine));
+        Assert.Contains("cache-type-k = q8_0", launch.PresetContent.Split(Environment.NewLine));
+        Assert.Contains("cache-type-v = q8_0", launch.PresetContent.Split(Environment.NewLine));
+        Assert.Contains("cache-type-k-draft = q8_0", launch.PresetContent.Split(Environment.NewLine));
+        Assert.Contains("cache-type-v-draft = q8_0", launch.PresetContent.Split(Environment.NewLine));
     }
 
     [Fact]
@@ -93,6 +107,8 @@ public sealed class LocalAiPortLifecycleTests
         string json = await File.ReadAllTextAsync(paths.ManifestPath);
 
         Assert.DoesNotContain("hardwareProfileId", json, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("\"keyCachePrecision\": \"q8_0\"", json, StringComparison.Ordinal);
+        Assert.Contains("\"draftValueCachePrecision\": \"q8_0\"", json, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -658,6 +674,10 @@ public sealed class LocalAiPortLifecycleTests
             RequestedPort = 0,
             Endpoint = null,
             ContextLength = 262_144,
+            KeyCachePrecision = KvCachePrecision.Q8_0,
+            ValueCachePrecision = KvCachePrecision.Q8_0,
+            DraftKeyCachePrecision = KvCachePrecision.Q8_0,
+            DraftValueCachePrecision = KvCachePrecision.Q8_0,
             InstalledAtUtc = DateTimeOffset.Parse("2026-08-18T12:00:00Z"),
         };
     }

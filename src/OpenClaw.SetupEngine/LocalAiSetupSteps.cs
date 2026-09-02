@@ -52,6 +52,7 @@ public sealed class PreflightLocalAiHardwareStep : SetupStep
             ctx.Config.LocalAi.SelectedModelId);
         ctx.LocalAiHardware = hardware;
         ctx.LocalAiEligibility = eligibility;
+        ctx.Config.LocalAi.SelectedProfileId = eligibility.Plan?.Profile.Id;
 
         if (eligibility.Status == LocalInferenceEligibilityStatus.Unsupported)
         {
@@ -557,7 +558,11 @@ public sealed class PersistLocalAiManifestStep : SetupStep
             },
             RequestedPort = requestedPort,
             Endpoint = null,
-            ContextLength = plan.Model.Recipe.ContextTokens,
+            ContextLength = plan.Profile.ContextTokens,
+            KeyCachePrecision = plan.Profile.KeyCachePrecision,
+            ValueCachePrecision = plan.Profile.ValueCachePrecision,
+            DraftKeyCachePrecision = plan.Profile.DraftKeyCachePrecision,
+            DraftValueCachePrecision = plan.Profile.DraftValueCachePrecision,
         };
 
         var store = new LocalAiManifestStore(paths);

@@ -587,6 +587,7 @@ public sealed class LocalAiInstallRecoveryTests
         return new LocalInferencePlan(
             runtime,
             LocalModelCatalog.Default,
+            LocalModelCatalog.GetProfiles(LocalModelCatalog.Default)[0],
             LocalInferenceModelSelectionOrigin.Default);
     }
 
@@ -638,7 +639,11 @@ public sealed class LocalAiInstallRecoveryTests
                 Sha256 = plan.Model.Weights.Sha256.Value,
             },
             Endpoint = "http://127.0.0.1:18803/v1",
-            ContextLength = plan.Model.Recipe.ContextTokens,
+            ContextLength = plan.Profile.ContextTokens,
+            KeyCachePrecision = plan.Profile.KeyCachePrecision,
+            ValueCachePrecision = plan.Profile.ValueCachePrecision,
+            DraftKeyCachePrecision = plan.Profile.DraftKeyCachePrecision,
+            DraftValueCachePrecision = plan.Profile.DraftValueCachePrecision,
         };
     }
 
@@ -659,16 +664,12 @@ public sealed class LocalAiInstallRecoveryTests
             "Q4",
             artifact,
             new LocalModelRunRecipe(
-                1024,
-                KvCachePrecision.F16,
-                KvCachePrecision.F16,
                 128,
                 128,
                 1,
                 1,
                 1,
                 128,
-                8L * 1024 * 1024 * 1024,
                 true,
                 true,
                 SpeculativeDecodingMode.DraftMtp,

@@ -121,7 +121,7 @@ public sealed partial class ProgressPage : Page
                 row.SetStatus(status);
         }
         if (localAiPreview && _rows.TryGetValue("local-ai-model", out var modelRow))
-            modelRow.SetDetail("Downloading Qwen3.6-35B-A3B-UD-Q4_K_M.gguf", 8_701_231_104, 22_663_387_424, SetupDetailProgressUnit.Bytes);
+            modelRow.SetDetail("Downloading Qwen3.8-27B-UD-Q4_K_M.gguf", 6_322_405_376, 16_464_440_224, SetupDetailProgressUnit.Bytes);
         LogText.Text =
             "[12:04:01] [info] Windows 11 26100 · WSL 2 present\n" +
             "[12:04:03] [info] port 127.0.0.1:18789 available\n" +

@@ -119,6 +119,11 @@ internal sealed class LocalAiInstallReconciler
             !string.Equals(manifest.Architecture, expectedArchitecture, StringComparison.Ordinal) ||
             !string.Equals(manifest.RuntimeId, plan.Runtime.Id, StringComparison.Ordinal) ||
             !string.Equals(manifest.ModelCatalogId, plan.Model.Id, StringComparison.Ordinal) ||
+            manifest.ContextLength != plan.Profile.ContextTokens ||
+            manifest.KeyCachePrecision != plan.Profile.KeyCachePrecision ||
+            manifest.ValueCachePrecision != plan.Profile.ValueCachePrecision ||
+            manifest.DraftKeyCachePrecision != plan.Profile.DraftKeyCachePrecision ||
+            manifest.DraftValueCachePrecision != plan.Profile.DraftValueCachePrecision ||
             !string.Equals(manifest.SelectedGpuId, selectedGpuId, StringComparison.Ordinal))
         {
             throw new InvalidDataException(

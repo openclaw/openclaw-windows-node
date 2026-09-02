@@ -78,8 +78,10 @@ internal sealed class LocalAiPageViewModel : INavigationAware, IDisposable, INot
     public string? EngineDetail => _runtimeSnapshot.Detail;
     public string? ModelName => LocalModelCatalog.Find(_runtimeSnapshot.ModelId)?.DisplayName ??
         _runtimeSnapshot.ModelId;
-    public const string ContextLengthText = "256K";
-    public const string KvCacheText = "FP16";
+    public string ContextLengthText => _runtimeSnapshot.ContextLength is { } tokens
+        ? FormatContext(tokens)
+        : "Unknown";
+    public string KvCacheText => FormatKvCache(_runtimeSnapshot);
 
     public LocalAiModelPresentationState ModelState => _runtimeSnapshot.ModelEvidence.State switch
     {
@@ -520,6 +522,26 @@ internal sealed class LocalAiPageViewModel : INavigationAware, IDisposable, INot
     {
         _gatewaySnapshot = snapshot;
         OnPropertyChanged(null);
+    }
+
+    private static string FormatContext(int tokens) =>
+        tokens % 1024 == 0
+            ? $"{tokens / 1024}K"
+            : tokens % 1000 == 0
+                ? $"{tokens / 1000}K"
+                : $"{tokens:N0} tokens";
+
+    private static string FormatKvCache(LocalAiRuntimeSnapshot snapshot)
+    {
+        if (snapshot.KeyCachePrecision is not { } targetPrecision ||
+            snapshot.DraftKeyCachePrecision is not { } draftPrecision)
+        {
+            return "Unknown";
+        }
+
+        string target = LocalModelCatalog.ToDisplayCacheType(targetPrecision);
+        string draft = LocalModelCatalog.ToDisplayCacheType(draftPrecision);
+        return target == draft ? $"{target} target + MTP draft" : $"{target} target + {draft} MTP draft";
     }
 
     public void Dispose()
