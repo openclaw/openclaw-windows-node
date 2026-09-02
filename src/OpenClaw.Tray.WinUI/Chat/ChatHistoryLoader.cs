@@ -793,7 +793,8 @@ internal sealed class ChatHistoryLoader : IDisposable
                     {
                         _ = ChatMetadataStore.TryMatchCachedToolByCallId(
                             cachedTools,
-                            callId);
+                            callId,
+                            message.Ts);
                     }
                     timeline = Apply(
                         timeline,
@@ -828,7 +829,8 @@ internal sealed class ChatHistoryLoader : IDisposable
                     var cached = hasVerifiedCallId
                         ? ChatMetadataStore.TryMatchCachedToolByCallId(
                             cachedTools,
-                            resolvedCallId)
+                            resolvedCallId,
+                            message.Ts)
                         : ChatMetadataStore.TryMatchCachedTool(
                             cachedTools,
                             message.Ts);

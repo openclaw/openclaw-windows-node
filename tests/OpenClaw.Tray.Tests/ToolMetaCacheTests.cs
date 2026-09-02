@@ -144,7 +144,8 @@ public class ToolMetaCacheTests
 
         var match = ChatMetadataStore.TryMatchCachedToolByCallId(
             cache,
-            "call-b");
+            "call-b",
+            historyTsMs: 200);
 
         Assert.Equal("bash", match!.ToolName);
         Assert.Equal("middle", match.Label);
@@ -164,11 +165,35 @@ public class ToolMetaCacheTests
 
         var match = ChatMetadataStore.TryMatchCachedToolByCallId(
             cache,
-            "missing");
+            "missing",
+            historyTsMs: 200);
 
         Assert.Null(match);
         Assert.Equal(
             ["call-a", "call-b"],
+            cache.Select(entry => entry.ToolCallId));
+    }
+
+    [Fact]
+    public void TryMatchByCallId_ReusedIdChoosesNearestTimestampAndPreservesOrder()
+    {
+        var cache = new Queue<ChatMetadataStore.CachedToolMeta>(
+        [
+            new() { Ts = 0, ToolName = "read", Label = "old", ToolCallId = "same" },
+            new() { Ts = 200, ToolName = "write", Label = "other", ToolCallId = "other" },
+            new() { Ts = 300, ToolName = "bash", Label = "current", ToolCallId = "same" },
+            new() { Ts = 400, ToolName = "edit", Label = "last", ToolCallId = "last" },
+        ]);
+
+        var match = ChatMetadataStore.TryMatchCachedToolByCallId(
+            cache,
+            "same",
+            historyTsMs: 290);
+
+        Assert.Equal("bash", match!.ToolName);
+        Assert.Equal("current", match.Label);
+        Assert.Equal(
+            ["same", "other", "last"],
             cache.Select(entry => entry.ToolCallId));
     }
 

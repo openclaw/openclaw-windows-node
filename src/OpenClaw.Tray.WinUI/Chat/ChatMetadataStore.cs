@@ -574,7 +574,8 @@ internal sealed class ChatMetadataStore : IDisposable
 
     internal static CachedToolMeta? TryMatchCachedToolByCallId(
         Queue<CachedToolMeta>? cache,
-        string? toolCallId)
+        string? toolCallId,
+        long historyTsMs)
     {
         if (cache is null ||
             cache.Count == 0 ||
@@ -583,28 +584,45 @@ internal sealed class ChatMetadataStore : IDisposable
             return null;
         }
 
-        CachedToolMeta? match = null;
         var entryCount = cache.Count;
+        var entries = new CachedToolMeta[entryCount];
+        var matchIndex = -1;
+        var bestTimestampDistance = double.PositiveInfinity;
         for (var index = 0; index < entryCount; index++)
         {
             var candidate = cache.Dequeue();
-            if (match is null &&
-                !string.IsNullOrWhiteSpace(candidate.ToolCallId) &&
-                string.Equals(
+            entries[index] = candidate;
+            if (string.IsNullOrWhiteSpace(candidate.ToolCallId) ||
+                !string.Equals(
                     candidate.ToolCallId,
                     toolCallId,
                     StringComparison.Ordinal))
             {
-                match = candidate;
                 continue;
             }
 
-            cache.Enqueue(candidate);
+            var timestampDistance =
+                historyTsMs > 0 && candidate.Ts > 0
+                    ? Math.Abs((double)candidate.Ts - historyTsMs)
+                    : double.PositiveInfinity;
+            if (matchIndex < 0 ||
+                timestampDistance < bestTimestampDistance)
+            {
+                matchIndex = index;
+                bestTimestampDistance = timestampDistance;
+            }
         }
 
-        if (match is null)
+        for (var index = 0; index < entryCount; index++)
+        {
+            if (index != matchIndex)
+                cache.Enqueue(entries[index]);
+        }
+
+        if (matchIndex < 0)
             return null;
 
+        var match = entries[matchIndex];
         match.ToolName = NormalizeCachedDisplayText(match.ToolName);
         match.Label = NormalizeCachedDisplayText(match.Label);
         match.ToolArgs = NormalizeCachedToolArgs(match.ToolArgs);
