@@ -174,6 +174,8 @@ public sealed class TrayAppFixture : IAsyncLifetime
             AutoStart = false,
             GlobalHotkeyEnabled = false,
             ShowNotifications = false,
+            ScreenRecordingConsentGiven = true,
+            CameraRecordingConsentGiven = true,
             HasSeenActivityStreamTip = true,
         };
         File.WriteAllText(Path.Combine(DataDir, "settings.json"), settings.ToJson());
