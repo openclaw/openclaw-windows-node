@@ -32,13 +32,25 @@ internal static class LocalAiGatewayConfigBuilder
         return JsonSerializer.Serialize(operations);
     }
 
-    public static string BuildRestoreBatchJson(LocalAiGatewayPriorState prior)
+    public static string BuildRestoreBatchJson(
+        LocalAiGatewayPriorState prior,
+        LocalAiResolvedInstall? replacementPriorInstall = null)
     {
         ArgumentNullException.ThrowIfNull(prior);
-        var operations = new List<object>(1);
+        var operations = new List<object>(2);
+        if (replacementPriorInstall is not null)
+        {
+            using JsonDocument provider = JsonDocument.Parse(
+                LocalAiGatewayProviderDefinition.BuildProviderJson(replacementPriorInstall));
+            operations.Add(new
+            {
+                path = ProviderPath,
+                value = (object)provider.RootElement.Clone(),
+            });
+        }
         // Setup accepts a pre-existing provider only when it already matches the
-        // managed definition. Do not replay its CLI-redacted API key on rollback.
-        // The exact current provider is retained below when it existed beforehand.
+        // managed definition. During a model replacement, rebuild the old provider
+        // from its trusted manifest rather than replaying a CLI-redacted API key.
         if (prior.PrimaryModelExisted)
         {
             using JsonDocument primary = JsonDocument.Parse(prior.PrimaryModelJson!);
@@ -91,15 +103,30 @@ public sealed class ConfigureLocalAiGatewayStep : SetupStep
         string? fallbackModel;
         if (prior.ProviderExisted)
         {
-            if (install.Endpoint is null ||
-                !LocalAiGatewayProviderDefinition.MatchesProviderJson(prior.ProviderJson!, install) ||
-                !prior.PrimaryModelExisted ||
-                !JsonEquals(prior.PrimaryModelJson!, expectedPrimary))
+            bool matchesCurrentInstall = install.Endpoint is not null &&
+                LocalAiGatewayProviderDefinition.MatchesProviderJson(prior.ProviderJson!, install) &&
+                prior.PrimaryModelExisted &&
+                JsonEquals(prior.PrimaryModelJson!, expectedPrimary);
+            LocalAiResolvedInstall? replacementPriorInstall = ctx.ReplacedLocalAiInstall;
+            bool matchesReplacementPrior = replacementPriorInstall?.Endpoint is not null &&
+                LocalAiGatewayProviderDefinition.MatchesProviderJson(
+                    prior.ProviderJson!, replacementPriorInstall) &&
+                prior.PrimaryModelExisted &&
+                JsonEquals(
+                    prior.PrimaryModelJson!,
+                    JsonSerializer.Serialize(
+                        LocalAiGatewayProviderDefinition.BuildPrimaryModel(replacementPriorInstall)));
+            if (!matchesCurrentInstall && !matchesReplacementPrior)
             {
                 return StepResult.Fail(
                     "The existing llamacpp gateway route is not the exact companion-managed configuration; preserving it.");
             }
-            fallbackModel = install.Manifest.GatewayFallbackModel;
+            ctx.LocalAiGatewayReplacementPriorInstall = matchesReplacementPrior
+                ? replacementPriorInstall
+                : null;
+            fallbackModel = matchesReplacementPrior
+                ? replacementPriorInstall!.Manifest.GatewayFallbackModel
+                : install.Manifest.GatewayFallbackModel;
         }
         else if (prior.PrimaryModelExisted)
         {
@@ -191,7 +218,9 @@ public sealed class ConfigureLocalAiGatewayStep : SetupStep
             return;
         }
 
-        string restoreBatch = LocalAiGatewayConfigBuilder.BuildRestoreBatchJson(prior);
+        string restoreBatch = LocalAiGatewayConfigBuilder.BuildRestoreBatchJson(
+            prior,
+            ctx.LocalAiGatewayReplacementPriorInstall);
         if (restoreBatch != "[]")
         {
             CommandResult restore = await ApplyBatchAsync(ctx, restoreBatch, "LOCAL_AI_GATEWAY_RESTORED", ct);

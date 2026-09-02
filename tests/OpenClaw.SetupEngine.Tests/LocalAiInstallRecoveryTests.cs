@@ -5,6 +5,7 @@ using System.Net.Http.Headers;
 using System.Runtime.InteropServices;
 using System.Security.Cryptography;
 using OpenClaw.Connection.LocalAi;
+using OpenClaw.Shared.Inference;
 using OpenClaw.Shared.Inference.Catalog;
 
 namespace OpenClaw.SetupEngine.Tests;
@@ -503,6 +504,95 @@ public sealed class LocalAiInstallRecoveryTests
                 .ReconcileAsync(temp.Path, plan, "GPU-1", CancellationToken.None));
 
         Assert.True(File.Exists(paths.ManifestPath));
+    }
+
+    [Fact]
+    public async Task Reconciler_DifferentSelectedModel_ReusesRuntimeAndRequestsReplacement()
+    {
+        using var temp = new TempDirectory();
+        LocalInferencePlan installedPlan = CatalogPlan();
+        LocalInferencePlan selectedPlan = new(
+            installedPlan.Runtime,
+            LocalModelCatalog.ExplicitAlternatives[0],
+            LocalInferenceModelSelectionOrigin.Explicit);
+        const string gpuId = "GPU-0";
+        var paths = new LocalAiPaths(temp.Path);
+        LocalAiInstallManifest manifest = CreateManifest(temp.Path, installedPlan, gpuId);
+        await new LocalAiManifestStore(paths).SaveAsync(manifest);
+        var reconciler = new LocalAiInstallReconciler(
+            new ValidRuntimeInspector(),
+            new AcceptingModelVerifier());
+
+        LocalAiReconcileResult result = await reconciler.ReconcileAsync(
+            temp.Path,
+            selectedPlan,
+            gpuId,
+            CancellationToken.None);
+
+        Assert.False(result.Reused);
+        Assert.Null(result.ResolvedInstall);
+        Assert.NotNull(result.RuntimeInstall);
+        Assert.False(result.RuntimeInstall.CreatedThisRun);
+        Assert.Null(result.ModelInstall);
+        Assert.Equal(manifest.ModelCatalogId, result.ReplacedInstall!.Manifest.ModelCatalogId);
+        Assert.True(File.Exists(paths.ManifestPath));
+    }
+
+    [Fact]
+    public async Task PersistReplacement_RollbackRestoresPreviousManifestAndRouterPreset()
+    {
+        using var temp = new TempDirectory();
+        LocalInferencePlan installedPlan = CatalogPlan();
+        LocalInferencePlan selectedPlan = new(
+            installedPlan.Runtime,
+            LocalModelCatalog.ExplicitAlternatives[0],
+            LocalInferenceModelSelectionOrigin.Explicit);
+        const string gpuId = "GPU-0";
+        var paths = new LocalAiPaths(temp.Path);
+        await new LocalAiManifestStore(paths).SaveAsync(CreateManifest(temp.Path, installedPlan, gpuId));
+        LocalAiResolvedInstall previous = (await new LocalAiManifestStore(paths).LoadAsync())!;
+        byte[] previousPreset = "previous preset"u8.ToArray();
+        await File.WriteAllBytesAsync(paths.RouterPresetPath, previousPreset);
+        SetupContext context = CreateContext(temp.Path, confirmDestructive: false);
+        context.Config.LocalAi.Enabled = true;
+        context.LocalAiEligibility = new LocalInferenceEligibilityResult(
+            LocalInferenceEligibilityStatus.Eligible,
+            LocalInferenceEligibilityFailureCode.None,
+            LocalInferenceSelectionFailureCode.None,
+            selectedPlan,
+            new GpuInfo(GpuVendor.Nvidia, "GPU", 64L * 1024 * 1024 * 1024, StableId: gpuId),
+            0,
+            0,
+            0,
+            0);
+        context.LocalAiPort = previous.Manifest.RequestedPort;
+        context.LocalAiRuntimeInstall = new LlamaRuntimeInstallResult(
+            Path.GetDirectoryName(previous.ExecutablePath)!,
+            previous.ExecutablePath,
+            LlamaRuntimeInstallDisposition.ReusedVerified,
+            CreatedThisRun: false,
+            previous.Manifest.RuntimeAssets.Select(asset =>
+                new LocalAiVerifiedArchive(asset.FileName, asset.SizeBytes, asset.Sha256)).ToArray(),
+            Rollback: null);
+        (string replacementModelPath, _) = ResolveModelPaths(
+            temp.Path,
+            LlamaRuntimeInstaller.Component(selectedPlan.Runtime),
+            selectedPlan.Model);
+        context.LocalAiModelInstall = new HuggingFaceModelInstallResult(
+            replacementModelPath,
+            HuggingFaceModelInstallDisposition.Downloaded,
+            CreatedThisRun: true);
+        context.ReplacedLocalAiInstall = previous;
+        var step = new PersistLocalAiManifestStep();
+
+        StepResult result = await step.ExecuteAsync(context, CancellationToken.None);
+        await File.WriteAllTextAsync(paths.RouterPresetPath, "replacement preset");
+        await step.RollbackAsync(context, CancellationToken.None);
+
+        Assert.Equal(StepOutcome.Success, result.Outcome);
+        LocalAiResolvedInstall restored = (await new LocalAiManifestStore(paths).LoadAsync())!;
+        Assert.Equal(installedPlan.Model.Id, restored.Manifest.ModelCatalogId);
+        Assert.Equal(previousPreset, await File.ReadAllBytesAsync(paths.RouterPresetPath));
     }
 
     [Fact]

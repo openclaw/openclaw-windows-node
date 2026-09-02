@@ -38,7 +38,7 @@ public sealed partial class ProgressPage : Page
     [
         ("preflight", "Check system and Local AI compatibility", ["validate-distro-path", "preflight-os", "preflight-local-ai-hardware", "preflight-wsl", "preflight-windows-tailscale"]),
         ("wsl-platform", "Prepare and verify WSL platform", ["ensure-wsl-platform"]),
-        ("local-ai-engine", "Install verified llama-server", ["acquire-local-ai-runtime"]),
+        ("local-ai-engine", "Install verified llama-server", ["reconcile-local-ai-installation", "acquire-local-ai-runtime"]),
         ("local-ai-model", "Download verified model from Hugging Face", ["acquire-local-ai-model"]),
         ("local-ai-verify", "Verify Local AI", ["persist-local-ai-manifest", "start-local-ai-runtime", "capture-local-ai-gpu-baseline", "verify-local-ai-inference", "verify-local-ai-gpu-load"]),
         ("wsl-networking", "Configure WSL access to Local AI", ["configure-local-ai-wsl-networking"]),

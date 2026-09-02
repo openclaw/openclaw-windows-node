@@ -262,13 +262,18 @@ public sealed class ReconcileLocalAiInstallationStep : SetupStep
             LocalAiReconcileResult result = await _reconciler
                 .ReconcileAsync(ctx.LocalDataDir, plan, selectedGpuId, ct)
                 .ConfigureAwait(false);
-            if (!result.Reused)
-                return StepResult.Skip("No completed managed Local AI installation was found.");
-
             ctx.LocalAiResolvedInstall = result.ResolvedInstall;
             ctx.LocalAiRuntimeInstall = result.RuntimeInstall;
             ctx.LocalAiModelInstall = result.ModelInstall;
-            ctx.LocalAiPort = result.ResolvedInstall!.Manifest.RequestedPort;
+            ctx.ReplacedLocalAiInstall = result.ReplacedInstall;
+            if (!result.Reused && result.ReplacedInstall is null)
+                return StepResult.Skip("No completed managed Local AI installation was found.");
+            if (result.ResolvedInstall is not null)
+                ctx.LocalAiPort = result.ResolvedInstall.Manifest.RequestedPort;
+            else if (result.ReplacedInstall is not null)
+                ctx.LocalAiPort = result.ReplacedInstall.Manifest.RequestedPort;
+            if (!result.Reused)
+                return StepResult.Skip("The selected model changed; the existing llama-server runtime will be reused.");
             return StepResult.Ok("Reused the verified managed Local AI installation.");
         }
         catch (OperationCanceledException) when (ct.IsCancellationRequested)
@@ -518,7 +523,7 @@ public sealed class PersistLocalAiManifestStep : SetupStep
             return StepResult.Terminal(portError ?? "The requested Local AI port is invalid.");
 
         var paths = new LocalAiPaths(ctx.LocalDataDir);
-        if (File.Exists(paths.ManifestPath))
+        if (File.Exists(paths.ManifestPath) && ctx.ReplacedLocalAiInstall is null)
             return StepResult.Terminal("A managed Local AI installation receipt already exists.");
 
         ImmutableArray<LocalAiAssetReceipt> runtimeAssets;
@@ -563,6 +568,13 @@ public sealed class PersistLocalAiManifestStep : SetupStep
         var store = new LocalAiManifestStore(paths);
         try
         {
+            if (ctx.ReplacedLocalAiInstall is not null)
+            {
+                ctx.ReplacedLocalAiRouterPresetExisted = File.Exists(paths.RouterPresetPath);
+                ctx.ReplacedLocalAiRouterPreset = ctx.ReplacedLocalAiRouterPresetExisted
+                    ? await File.ReadAllBytesAsync(paths.RouterPresetPath, ct)
+                    : null;
+            }
             await store.SaveAsync(manifest, ct);
             ctx.LocalAiResolvedInstall = store.ResolveAndValidate(manifest);
             ctx.LocalAiManifestCreatedThisRun = true;
@@ -602,11 +614,52 @@ public sealed class PersistLocalAiManifestStep : SetupStep
             return;
 
         var paths = new LocalAiPaths(ctx.LocalDataDir);
-        await new LocalAiManifestStore(paths).DeleteAsync(ct);
+        var store = new LocalAiManifestStore(paths);
+        if (ctx.ReplacedLocalAiInstall is { } replacedInstall)
+            await store.SaveAsync(replacedInstall.Manifest, ct);
+        else
+            await store.DeleteAsync(ct);
         ct.ThrowIfCancellationRequested();
-        File.Delete(paths.RouterPresetPath);
-        ctx.LocalAiResolvedInstall = null;
+        if (ctx.ReplacedLocalAiRouterPresetExisted)
+        {
+            await WriteFileAtomicallyAsync(
+                paths,
+                paths.RouterPresetPath,
+                ctx.ReplacedLocalAiRouterPreset
+                    ?? throw new InvalidDataException("The previous Local AI router preset snapshot is missing."),
+                ct);
+        }
+        else
+        {
+            File.Delete(paths.RouterPresetPath);
+        }
+        ctx.LocalAiResolvedInstall = ctx.ReplacedLocalAiInstall;
+        ctx.ReplacedLocalAiInstall = null;
+        ctx.ReplacedLocalAiRouterPreset = null;
+        ctx.ReplacedLocalAiRouterPresetExisted = false;
         ctx.LocalAiManifestCreatedThisRun = false;
+    }
+
+    private static async Task WriteFileAtomicallyAsync(
+        LocalAiPaths paths,
+        string destinationPath,
+        byte[] content,
+        CancellationToken cancellationToken)
+    {
+        string temporaryPath = Path.Combine(
+            paths.RootDirectory,
+            $".{Path.GetFileName(destinationPath)}.{Guid.NewGuid():N}.tmp");
+        try
+        {
+            _ = paths.ResolveContainedPath(Path.GetFileName(temporaryPath), nameof(temporaryPath));
+            await File.WriteAllBytesAsync(temporaryPath, content, cancellationToken);
+            File.Move(temporaryPath, destinationPath, overwrite: true);
+        }
+        finally
+        {
+            try { File.Delete(temporaryPath); }
+            catch { }
+        }
     }
 
     private static ImmutableArray<LocalAiAssetReceipt> BuildRuntimeReceipts(

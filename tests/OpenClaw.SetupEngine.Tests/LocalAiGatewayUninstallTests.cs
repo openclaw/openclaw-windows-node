@@ -1,4 +1,5 @@
 using OpenClaw.Connection.LocalAi;
+using OpenClaw.Shared.Inference;
 using OpenClaw.Shared.Inference.Catalog;
 using OpenClaw.TestSupport;
 using System.Text;
@@ -8,6 +9,48 @@ namespace OpenClaw.SetupEngine.Tests;
 
 public sealed class LocalAiGatewayUninstallTests
 {
+    [Fact]
+    public async Task ModelReplacement_TransitionsExactManagedRouteAndRollbackRestoresIt()
+    {
+        using var temp = new TempDirectory("local-ai-gateway-replacement-");
+        LocalAiResolvedInstall previous = await SaveManifestAsync(temp.Path, "openai/gpt-5");
+        LocalAiInstallManifest replacementManifest = previous.Manifest with
+        {
+            ModelCatalogId = LocalModelCatalog.Qwen27BModelId,
+            ModelAlias = LocalModelCatalog.Qwen27BModelId,
+            GatewayFallbackModel = null,
+        };
+        LocalAiResolvedInstall replacement = previous with { Manifest = replacementManifest };
+        string previousProvider = LocalAiGatewayProviderDefinition.BuildProviderJson(previous);
+        string previousPrimary = JsonSerializer.Serialize(
+            LocalAiGatewayProviderDefinition.BuildPrimaryModel(previous));
+        var commands = new GatewayStateCommandRunner(previousProvider, previousPrimary);
+        SetupContext context = CreateContext(temp.Path, commands);
+        context.Config.LocalAi.Enabled = true;
+        context.LocalAiResolvedInstall = replacement;
+        context.ReplacedLocalAiInstall = previous;
+        context.LocalAiEligibility = LocalInferenceEligibility.Evaluate(
+            CreateQualifiedHardware(),
+            LocalModelCatalog.Qwen27BModelId);
+        var step = new ConfigureLocalAiGatewayStep();
+
+        StepResult result = await step.ExecuteAsync(context, CancellationToken.None);
+
+        Assert.Equal(StepOutcome.Success, result.Outcome);
+        Assert.Equal(
+            LocalAiGatewayProviderDefinition.BuildProviderJson(context.LocalAiResolvedInstall!),
+            commands.ProviderJson);
+        Assert.Equal(
+            JsonSerializer.Serialize(LocalAiGatewayProviderDefinition.BuildPrimaryModel(replacement)),
+            commands.PrimaryJson);
+        Assert.Equal("openai/gpt-5", context.LocalAiResolvedInstall!.Manifest.GatewayFallbackModel);
+
+        await step.RollbackAsync(context, CancellationToken.None);
+
+        Assert.Equal(previousProvider, commands.ProviderJson);
+        Assert.Equal(previousPrimary, commands.PrimaryJson);
+    }
+
     [Fact]
     public async Task FreshProcessUninstall_RemovesExactManagedProviderAndPrimary()
     {
@@ -129,6 +172,22 @@ public sealed class LocalAiGatewayUninstallTests
             localDataDir: localDataDirectory);
     }
 
+    private static HostHardwareInfo CreateQualifiedHardware() => new(
+        System.Runtime.InteropServices.Architecture.Arm64,
+        128L * 1024 * 1024 * 1024,
+        100L * 1024 * 1024 * 1024,
+        [
+            new GpuInfo(
+                GpuVendor.Nvidia,
+                "NVIDIA RTX Spark N1X (6144-core Blackwell RTX GPU)",
+                GpuVisibleMemoryBytes: 64L * 1024 * 1024 * 1024,
+                FreeGpuVisibleMemoryBytes: 60L * 1024 * 1024 * 1024,
+                DriverVersion: "616.00",
+                CudaMajorVersion: 13,
+                StableId: "GPU-SPARK"),
+        ],
+        VulkanAvailable: false);
+
     private static async Task<LocalAiResolvedInstall> SaveManifestAsync(
         string localDataDirectory,
         string? fallbackModel = null)
@@ -216,6 +275,31 @@ public sealed class LocalAiGatewayUninstallTests
                 return Task.FromResult(new CommandResult(
                     0,
                     "LOCAL_AI_PRIMARY_RESTORED",
+                    "",
+                    TimeSpan.Zero,
+                    TimedOut: false));
+            }
+            if (command.Contains("LOCAL_AI_GATEWAY_CONFIGURED", StringComparison.Ordinal) ||
+                command.Contains("LOCAL_AI_GATEWAY_RESTORED", StringComparison.Ordinal))
+            {
+                string encoded = Assert.Single(environment!).Value;
+                string batch = Encoding.UTF8.GetString(Convert.FromBase64String(encoded));
+                using JsonDocument document = JsonDocument.Parse(batch);
+                foreach (JsonElement operation in document.RootElement.EnumerateArray())
+                {
+                    string path = operation.GetProperty("path").GetString()!;
+                    string value = operation.GetProperty("value").GetRawText();
+                    if (path == LocalAiGatewayProviderDefinition.ProviderPath)
+                        ProviderJson = value;
+                    else if (path == LocalAiGatewayProviderDefinition.PrimaryModelPath)
+                        PrimaryJson = value;
+                }
+                string marker = command.Contains("LOCAL_AI_GATEWAY_CONFIGURED", StringComparison.Ordinal)
+                    ? "LOCAL_AI_GATEWAY_CONFIGURED"
+                    : "LOCAL_AI_GATEWAY_RESTORED";
+                return Task.FromResult(new CommandResult(
+                    0,
+                    marker,
                     "",
                     TimeSpan.Zero,
                     TimedOut: false));
