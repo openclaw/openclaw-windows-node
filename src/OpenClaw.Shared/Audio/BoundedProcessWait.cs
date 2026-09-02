@@ -1,132 +1,164 @@
+using System.ComponentModel;
 using System.Diagnostics;
 
 namespace OpenClaw.Shared.Audio;
 
+internal sealed record BoundedProcessResult(
+    int ExitCode,
+    string StandardOutput,
+    string StandardError);
+
 /// <summary>
-/// Wait for a short-lived child with a budget, drain redirected stderr
-/// asynchronously, and kill the process tree on timeout or cancel.
-/// Synchronous WaitForExit with stderr redirected and unread can hang
-/// when the child never exits or fills the pipe.
+/// Waits for a short-lived child and its redirected output using one deadline.
+/// Timeout and cancellation cleanup is best effort, bounded, and observes any
+/// read failures caused by closing inherited pipe handles.
 /// </summary>
 internal static class BoundedProcessWait
 {
-    internal const int DefaultTimeoutMs = 120_000;
-    private const int MinDrainMs = 250;
-    private const int KillWaitMs = 1_000;
+    internal static readonly TimeSpan DefaultTimeout = TimeSpan.FromSeconds(120);
+    internal static readonly TimeSpan CleanupTimeout = TimeSpan.FromSeconds(1);
 
-    internal static (int ExitCode, string StandardError) Wait(
+    internal static async Task<BoundedProcessResult> WaitAsync(
         Process process,
-        int timeoutMs,
+        TimeSpan timeout,
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(process);
-        ArgumentOutOfRangeException.ThrowIfNegative(timeoutMs);
+        if (timeout <= TimeSpan.Zero)
+            throw new ArgumentOutOfRangeException(nameof(timeout), "Timeout must be positive.");
 
-        var stderrTask = TryStartStderrDrain(process);
-        using var reg = cancellationToken.Register(() => TryKillTree(process));
-        if (cancellationToken.IsCancellationRequested)
-        {
-            TryKillTree(process);
-            AbandonRead(process, stderrTask);
-            cancellationToken.ThrowIfCancellationRequested();
-        }
+        var stdoutTask = StartDrain(process, standardOutput: true);
+        var stderrTask = StartDrain(process, standardOutput: false);
+        var exitTask = process.WaitForExitAsync(CancellationToken.None);
+        var completionTask = Task.WhenAll(exitTask, stdoutTask, stderrTask);
 
-        var sw = Stopwatch.StartNew();
-        if (!process.WaitForExit(timeoutMs))
-        {
-            TryKillTree(process);
-            AbandonRead(process, stderrTask);
-            throw new TimeoutException($"Process did not exit within {timeoutMs}ms.");
-        }
-
-        if (cancellationToken.IsCancellationRequested)
-        {
-            AbandonRead(process, stderrTask);
-            cancellationToken.ThrowIfCancellationRequested();
-        }
-
-        var elapsedMs = (int)Math.Min(sw.ElapsedMilliseconds, timeoutMs);
-        var drainBudgetMs = Math.Max(timeoutMs - elapsedMs, MinDrainMs);
-        var stderr = DrainStderr(stderrTask, process, drainBudgetMs);
+        using var timeoutSource = new CancellationTokenSource(timeout);
+        using var deadlineSource = CancellationTokenSource.CreateLinkedTokenSource(
+            cancellationToken,
+            timeoutSource.Token);
 
         try
         {
-            return (process.HasExited ? process.ExitCode : -1, stderr);
+            await completionTask.WaitAsync(deadlineSource.Token).ConfigureAwait(false);
         }
-        catch (InvalidOperationException)
+        catch (OperationCanceledException) when (
+            cancellationToken.IsCancellationRequested || timeoutSource.IsCancellationRequested)
         {
-            return (-1, stderr);
+            await CleanupAsync(process, exitTask, stdoutTask, stderrTask).ConfigureAwait(false);
+
+            if (cancellationToken.IsCancellationRequested)
+                throw new OperationCanceledException(cancellationToken);
+
+            throw new TimeoutException($"Process did not exit and drain output within {timeout.TotalMilliseconds:F0}ms.");
         }
+
+        return new BoundedProcessResult(
+            process.ExitCode,
+            await stdoutTask.ConfigureAwait(false),
+            await stderrTask.ConfigureAwait(false));
     }
 
-    private static Task<string>? TryStartStderrDrain(Process process)
+    private static Task<string> StartDrain(Process process, bool standardOutput)
     {
-        try
+        if (standardOutput)
         {
-            if (process.StartInfo.RedirectStandardError)
-                return process.StandardError.ReadToEndAsync();
-        }
-        catch (InvalidOperationException)
-        {
+            return process.StartInfo.RedirectStandardOutput
+                ? process.StandardOutput.ReadToEndAsync()
+                : Task.FromResult(string.Empty);
         }
 
-        return null;
+        return process.StartInfo.RedirectStandardError
+            ? process.StandardError.ReadToEndAsync()
+            : Task.FromResult(string.Empty);
     }
 
-    private static string DrainStderr(Task<string>? stderrTask, Process process, int drainBudgetMs)
+    private static async Task CleanupAsync(
+        Process process,
+        Task exitTask,
+        Task stdoutTask,
+        Task stderrTask)
     {
-        if (stderrTask is null)
-            return string.Empty;
+        var killTask = Task.Run(() => TryKillTree(process));
+        ObserveFault(killTask);
+        ObserveFault(exitTask);
+        ObserveFault(stdoutTask);
+        ObserveFault(stderrTask);
 
-        try
-        {
-            if (!stderrTask.Wait(drainBudgetMs))
-            {
-                TryKillTree(process);
-                AbandonRead(process, stderrTask);
-                return string.Empty;
-            }
+        DisposeRedirectedReaders(process);
 
-            return stderrTask.Status == TaskStatus.RanToCompletion
-                ? stderrTask.Result
-                : string.Empty;
-        }
-        catch (AggregateException)
-        {
-            return string.Empty;
-        }
+        var cleanupTask = Task.WhenAll(killTask, exitTask, stdoutTask, stderrTask);
+        ObserveFault(cleanupTask);
+        await Task.WhenAny(cleanupTask, Task.Delay(CleanupTimeout)).ConfigureAwait(false);
     }
 
     private static void TryKillTree(Process process)
     {
-        try { process.Kill(entireProcessTree: true); }
-        catch (Exception ex)
+        try
         {
-            Trace.WriteLine($"BoundedProcessWait.TryKillTree: {ex.GetType().Name}: {ex.Message}");
+            // Process can only enumerate and terminate descendants while the
+            // root is alive. Closing our readers still bounds inherited pipes.
+            if (!process.HasExited)
+                process.Kill(entireProcessTree: true);
         }
-
-        try { process.WaitForExit(KillWaitMs); }
-        catch (Exception ex)
+        catch (InvalidOperationException ex)
         {
-            Trace.WriteLine($"BoundedProcessWait.WaitForExit: {ex.GetType().Name}: {ex.Message}");
+            TraceCleanupFailure("kill", ex);
+        }
+        catch (Win32Exception ex)
+        {
+            TraceCleanupFailure("kill", ex);
+        }
+        catch (NotSupportedException ex)
+        {
+            TraceCleanupFailure("kill", ex);
         }
     }
 
-    private static void AbandonRead(Process process, Task? readTask)
+    private static void DisposeRedirectedReaders(Process process)
     {
-        if (readTask is not null)
+        if (process.StartInfo.RedirectStandardOutput)
         {
-            _ = readTask.ContinueWith(
-                static t => { _ = t.Exception; },
-                CancellationToken.None,
-                TaskContinuationOptions.OnlyOnFaulted | TaskContinuationOptions.ExecuteSynchronously,
-                TaskScheduler.Default);
+            try
+            {
+                process.StandardOutput.Dispose();
+            }
+            catch (InvalidOperationException ex)
+            {
+                TraceCleanupFailure("stdout close", ex);
+            }
+            catch (IOException ex)
+            {
+                TraceCleanupFailure("stdout close", ex);
+            }
         }
 
-        try { process.StandardError.Dispose(); }
-        catch (Exception ex)
+        if (process.StartInfo.RedirectStandardError)
         {
-            Trace.WriteLine($"BoundedProcessWait.AbandonRead: {ex.GetType().Name}: {ex.Message}");
+            try
+            {
+                process.StandardError.Dispose();
+            }
+            catch (InvalidOperationException ex)
+            {
+                TraceCleanupFailure("stderr close", ex);
+            }
+            catch (IOException ex)
+            {
+                TraceCleanupFailure("stderr close", ex);
+            }
         }
     }
+
+    internal static void ObserveFault(Task task)
+    {
+        _ = task.ContinueWith(
+            static completed => { _ = completed.Exception; },
+            CancellationToken.None,
+            TaskContinuationOptions.OnlyOnFaulted | TaskContinuationOptions.ExecuteSynchronously,
+            TaskScheduler.Default);
+    }
+
+    private static void TraceCleanupFailure(string operation, Exception exception) =>
+        Trace.WriteLine(
+            $"BoundedProcessWait: {operation} failed: {exception.GetType().Name}: {exception.Message}");
 }

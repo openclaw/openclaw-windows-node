@@ -1,4 +1,6 @@
+using System.Collections.Concurrent;
 using System.Diagnostics;
+using System.Reflection;
 using OpenClaw.Shared.Audio;
 
 namespace OpenClaw.Shared.Tests;
@@ -6,103 +8,237 @@ namespace OpenClaw.Shared.Tests;
 public sealed class BoundedProcessWaitTests
 {
     [Fact]
-    public async Task Wait_TimesOutAndKillsWhenProcessDoesNotExit()
+    public async Task WaitAsync_ReturnsCompleteOutput_WhenProcessSucceeds()
     {
-        var (fileName, arguments) = LongRunningCommand();
-        using var process = Process.Start(new ProcessStartInfo
-        {
-            FileName = fileName,
-            Arguments = arguments,
-            RedirectStandardError = true,
-            UseShellExecute = false,
-            CreateNoWindow = true,
-        });
-        Assert.NotNull(process);
+        using var process = StartFixture("success");
 
-        var helper = Task.Run(() =>
-            BoundedProcessWait.Wait(process, timeoutMs: 400));
-
-        var completed = await Task.WhenAny(helper, Task.Delay(TimeSpan.FromSeconds(3)));
-        Assert.Same(helper, completed);
-        await Assert.ThrowsAsync<TimeoutException>(() => helper);
-        Assert.True(process.HasExited);
-    }
-
-    [Fact]
-    public async Task Wait_ThrowsWhenCanceledAndKillsProcess()
-    {
-        var (fileName, arguments) = LongRunningCommand();
-        using var process = Process.Start(new ProcessStartInfo
-        {
-            FileName = fileName,
-            Arguments = arguments,
-            RedirectStandardError = true,
-            UseShellExecute = false,
-            CreateNoWindow = true,
-        });
-        Assert.NotNull(process);
-
-        using var cts = new CancellationTokenSource();
-        var helper = Task.Run(
-            () => BoundedProcessWait.Wait(process, timeoutMs: 30_000, cts.Token),
-            CancellationToken.None);
-        cts.Cancel();
-
-        var completed = await Task.WhenAny(helper, Task.Delay(TimeSpan.FromSeconds(3)));
-        Assert.Same(helper, completed);
-        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => helper);
-        Assert.True(process.HasExited);
-    }
-
-    [Fact]
-    public void Wait_ReturnsExitCodeAndStderrFromFailingProcess()
-    {
-        var (fileName, arguments) = FailWithStderrCommand("extract-failed");
-        using var process = Process.Start(new ProcessStartInfo
-        {
-            FileName = fileName,
-            Arguments = arguments,
-            RedirectStandardError = true,
-            UseShellExecute = false,
-            CreateNoWindow = true,
-        });
-        Assert.NotNull(process);
-
-        var result = BoundedProcessWait.Wait(process, timeoutMs: 5_000);
-
-        Assert.NotEqual(0, result.ExitCode);
-        Assert.Contains("extract-failed", result.StandardError);
-    }
-
-    [Fact]
-    public void Wait_ReturnsZeroFromExitingProcess()
-    {
-        using var process = StartExitingProcess();
-        Assert.NotNull(process);
-
-        var result = BoundedProcessWait.Wait(process, timeoutMs: 5_000);
+        var result = await BoundedProcessWait.WaitAsync(process, TimeSpan.FromSeconds(5));
 
         Assert.Equal(0, result.ExitCode);
-        Assert.Equal(string.Empty, result.StandardError);
+        Assert.Equal("stdout-first-stdout-last", result.StandardOutput);
+        Assert.Equal("stderr-first-stderr-last", result.StandardError);
     }
 
-    private static Process StartExitingProcess() =>
-        Process.Start(new ProcessStartInfo
+    [Fact]
+    public async Task WaitAsync_TimesOutAndKillsProcess()
+    {
+        using var process = StartFixture("hold", "30000");
+        var stopwatch = Stopwatch.StartNew();
+
+        await Assert.ThrowsAsync<TimeoutException>(
+            () => BoundedProcessWait.WaitAsync(process, TimeSpan.FromMilliseconds(200)));
+
+        stopwatch.Stop();
+        Assert.True(process.HasExited);
+        Assert.True(
+            stopwatch.Elapsed < TimeSpan.FromSeconds(3),
+            $"Timeout cleanup took {stopwatch.ElapsedMilliseconds} ms.");
+    }
+
+    [Fact]
+    public async Task WaitAsync_CancellationKillsProcessWithoutUsingTimeoutBudget()
+    {
+        using var process = StartFixture("hold", "30000");
+        using var cancellation = new CancellationTokenSource();
+        var wait = BoundedProcessWait.WaitAsync(
+            process,
+            BoundedProcessWait.DefaultTimeout,
+            cancellation.Token);
+        await Task.Delay(100);
+        var stopwatch = Stopwatch.StartNew();
+
+        cancellation.Cancel();
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => wait);
+
+        stopwatch.Stop();
+        Assert.True(process.HasExited);
+        Assert.True(
+            stopwatch.Elapsed < TimeSpan.FromSeconds(3),
+            $"Cancellation cleanup took {stopwatch.ElapsedMilliseconds} ms.");
+    }
+
+    [Fact]
+    public async Task WaitAsync_AlreadyCanceledTokenStillKillsStartedProcess()
+    {
+        using var process = StartFixture("hold", "30000");
+        using var cancellation = new CancellationTokenSource();
+        cancellation.Cancel();
+
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(
+            () => BoundedProcessWait.WaitAsync(
+                process,
+                BoundedProcessWait.DefaultTimeout,
+                cancellation.Token));
+
+        Assert.True(process.HasExited);
+    }
+
+    [Fact]
+    public async Task WaitAsync_PreservesOutputWrittenLateWithinDeadline()
+    {
+        using var process = StartFixture("late-output", "250");
+
+        var result = await BoundedProcessWait.WaitAsync(process, TimeSpan.FromSeconds(3));
+
+        Assert.Equal("late-stdout", result.StandardOutput);
+        Assert.Equal("late-stderr", result.StandardError);
+    }
+
+    [Fact]
+    public async Task WaitAsync_CancellationDoesNotWaitForInheritedPipeHandles()
+    {
+        var pidFile = Path.GetTempFileName();
+        var childPid = 0;
+        try
         {
-            FileName = OperatingSystem.IsWindows() ? "cmd.exe" : "/bin/sh",
-            Arguments = OperatingSystem.IsWindows() ? "/d /c exit 0" : "-c \"exit 0\"",
+            using var process = StartFixture("inherit-handles", "30000", pidFile);
+            using var cancellation = new CancellationTokenSource();
+            var wait = BoundedProcessWait.WaitAsync(
+                process,
+                BoundedProcessWait.DefaultTimeout,
+                cancellation.Token);
+            await process.WaitForExitAsync().WaitAsync(TimeSpan.FromSeconds(5));
+            Assert.False(wait.IsCompleted);
+            childPid = await ReadChildPidAsync(pidFile);
+            var stopwatch = Stopwatch.StartNew();
+
+            cancellation.Cancel();
+            await Assert.ThrowsAnyAsync<OperationCanceledException>(() => wait);
+
+            stopwatch.Stop();
+            Assert.True(
+                stopwatch.Elapsed < TimeSpan.FromSeconds(3),
+                $"Inherited-handle cancellation took {stopwatch.ElapsedMilliseconds} ms.");
+        }
+        finally
+        {
+            KillProcessTree(childPid);
+            File.Delete(pidFile);
+        }
+    }
+
+    [Fact]
+    public void ObserveFault_ConsumesAbandonedTaskException()
+    {
+        var marker = Guid.NewGuid().ToString();
+        var unobserved = new ConcurrentQueue<Exception>();
+        EventHandler<UnobservedTaskExceptionEventArgs> handler = (_, args) =>
+        {
+            foreach (var exception in args.Exception.Flatten().InnerExceptions)
+            {
+                if (exception.Message == marker)
+                    unobserved.Enqueue(exception);
+            }
+
+            args.SetObserved();
+        };
+        TaskScheduler.UnobservedTaskException += handler;
+
+        try
+        {
+            var taskReference = CreateObservedFault(marker);
+            for (var attempt = 0; attempt < 10 && taskReference.IsAlive; attempt++)
+            {
+                GC.Collect();
+                GC.WaitForPendingFinalizers();
+                GC.Collect();
+                Thread.Sleep(10);
+            }
+
+            Assert.False(taskReference.IsAlive);
+            Assert.Empty(unobserved);
+        }
+        finally
+        {
+            TaskScheduler.UnobservedTaskException -= handler;
+        }
+    }
+
+    private static WeakReference CreateObservedFault(string marker)
+    {
+        var task = Task.FromException(new InvalidOperationException(marker));
+        BoundedProcessWait.ObserveFault(task);
+        return new WeakReference(task);
+    }
+
+    private static Process StartFixture(params string[] arguments)
+    {
+        var startInfo = new ProcessStartInfo
+        {
+            FileName = FindTestHost(),
+            RedirectStandardOutput = true,
             RedirectStandardError = true,
             UseShellExecute = false,
             CreateNoWindow = true,
-        })!;
+        };
+        startInfo.ArgumentList.Add("--process-fixture");
+        foreach (var argument in arguments)
+            startInfo.ArgumentList.Add(argument);
 
-    private static (string FileName, string Arguments) LongRunningCommand() =>
-        OperatingSystem.IsWindows()
-            ? ("cmd.exe", "/d /c ping 127.0.0.1 -n 20")
-            : ("/bin/sh", "-c \"sleep 20\"");
+        return Process.Start(startInfo)
+            ?? throw new InvalidOperationException("Could not start process fixture.");
+    }
 
-    private static (string FileName, string Arguments) FailWithStderrCommand(string text) =>
-        OperatingSystem.IsWindows()
-            ? ("cmd.exe", $"/d /c echo {text} 1>&2 & exit 7")
-            : ("/bin/sh", $"-c \"printf '%s\\n' '{text}' >&2; exit 7\"");
+    private static string FindTestHost()
+    {
+        var current = new DirectoryInfo(AppContext.BaseDirectory);
+        while (current is not null
+            && !File.Exists(Path.Combine(current.FullName, "openclaw-windows-node.slnx")))
+        {
+            current = current.Parent;
+        }
+
+        Assert.NotNull(current);
+        var configuration = Assembly.GetExecutingAssembly()
+            .GetCustomAttribute<AssemblyConfigurationAttribute>()?
+            .Configuration;
+        Assert.False(string.IsNullOrWhiteSpace(configuration));
+        var executableName = OperatingSystem.IsWindows()
+            ? "OpenClaw.Shared.TestHost.exe"
+            : "OpenClaw.Shared.TestHost";
+        var hostPath = Path.Combine(
+            current.FullName,
+            "tests",
+            "OpenClaw.Shared.TestHost",
+            "bin",
+            configuration,
+            "net10.0",
+            executableName);
+        Assert.True(File.Exists(hostPath), $"Process test host was not built: {hostPath}");
+        return hostPath;
+    }
+
+    private static async Task<int> ReadChildPidAsync(string pidFile)
+    {
+        var deadline = DateTime.UtcNow + TimeSpan.FromSeconds(5);
+        while (DateTime.UtcNow < deadline)
+        {
+            var text = await File.ReadAllTextAsync(pidFile);
+            if (int.TryParse(text, out var processId))
+                return processId;
+
+            await Task.Delay(10);
+        }
+
+        throw new TimeoutException("Inherited-handle fixture did not publish its child PID.");
+    }
+
+    private static void KillProcessTree(int processId)
+    {
+        if (processId <= 0)
+            return;
+
+        try
+        {
+            using var process = Process.GetProcessById(processId);
+            process.Kill(entireProcessTree: true);
+            process.WaitForExit(2_000);
+        }
+        catch (ArgumentException)
+        {
+        }
+        catch (InvalidOperationException)
+        {
+        }
+    }
 }
