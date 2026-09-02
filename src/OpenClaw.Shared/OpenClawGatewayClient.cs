@@ -1869,6 +1869,19 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
         }
     }
 
+    /// <summary>
+    /// Fetches the installed Gateway's effective update channel. RPC failures
+    /// propagate so the update coordinator can apply its explicit fail-safe.
+    /// </summary>
+    public async Task<GatewayUpdateStatus?> GetUpdateStatusAsync(int timeoutMs = 5000)
+    {
+        if (!IsConnected)
+            return null;
+
+        var response = await SendWizardRequestAsync("update.status", new { }, timeoutMs);
+        return GatewayUpdateStatusParser.Parse(response);
+    }
+
     /// <summary>Log out / unlink a channel. Sends <c>channels.logout { channel }</c>.</summary>
     public async Task<bool> LogoutChannelAsync(string channelName, int timeoutMs = 12000)
     {

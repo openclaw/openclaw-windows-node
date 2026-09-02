@@ -370,6 +370,9 @@
   <data name="Update_Message_Skipped_Dev" xml:space="preserve">
     <value>开发版本已禁用更新检查。</value>
   </data>
+  <data name="Update_Message_Skipped_ExtendedStable" xml:space="preserve">
+    <value>已连接的网关使用 extended-stable，因此不会提供此普通 Windows 版本更新。</value>
+  </data>
   <data name="Update_OK" xml:space="preserve">
     <value>确定</value>
   </data>

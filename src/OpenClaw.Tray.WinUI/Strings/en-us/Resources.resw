@@ -398,6 +398,9 @@
   <data name="Update_Message_Skipped_Dev" xml:space="preserve">
     <value>Update checks are disabled in development builds.</value>
   </data>
+  <data name="Update_Message_Skipped_ExtendedStable" xml:space="preserve">
+    <value>The connected Gateway uses extended-stable, so this ordinary Windows release update is not offered.</value>
+  </data>
   <data name="Update_OK" xml:space="preserve">
     <value>OK</value>
   </data>

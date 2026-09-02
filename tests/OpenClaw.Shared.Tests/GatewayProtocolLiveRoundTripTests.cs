@@ -70,7 +70,12 @@ public sealed class GatewayProtocolLiveRoundTripTests : IDisposable
             // when many test classes run in parallel).
             const int rpc = 20000;
 
-            // ── 1. commands.list (typed catalog read) ──
+            // ── 1. update.status (authoritative effective update channel) ──
+            var updateStatus = await client.GetUpdateStatusAsync(timeoutMs: rpc);
+            Assert.Equal("extended-stable", updateStatus?.EffectiveChannel);
+            Assert.Contains("\"method\":\"update.status\"", server.FrameFor("update.status"));
+
+            // ── 2. commands.list (typed catalog read) ──
             var catalog = await client.ListCommandsAsync(timeoutMs: rpc);
             Assert.True(catalog.IsSupported);
             var cmd = Assert.Single(catalog.Commands);
@@ -78,13 +83,13 @@ public sealed class GatewayProtocolLiveRoundTripTests : IDisposable
             var arg = Assert.Single(cmd.Args);
             Assert.Equal("gpt-5", Assert.Single(arg.Choices).Value);
 
-            // ── 2. sessions.files.get (read; param must be sessionKey, response nested under "file") ──
+            // ── 3. sessions.files.get (read; param must be sessionKey, response nested under "file") ──
             var file = await client.GetSessionFileAsync(key, "src/a.cs", timeoutMs: rpc);
             Assert.True(file.Found);
             Assert.Equal("hello world", file.Content);
             Assert.Contains("\"sessionKey\"", server.FrameFor("sessions.files.get"));
 
-            // ── 3. chat.history (real client transcript export path) ──
+            // ── 4. chat.history (real client transcript export path) ──
             var history = await client.RequestChatHistoryAsync(key, timeoutMs: rpc);
             Assert.Equal("sid-1", history.SessionId);
             var message = Assert.Single(history.Messages);
@@ -92,7 +97,7 @@ public sealed class GatewayProtocolLiveRoundTripTests : IDisposable
             Assert.Equal("done", message.Text);
             Assert.Contains("\"sessionKey\"", server.FrameFor("chat.history"));
 
-            // ── 4. sessions.compaction.list + branch (param key/checkpointId; branch returns sourceKey + new key) ──
+            // ── 5. sessions.compaction.list + branch (param key/checkpointId; branch returns sourceKey + new key) ──
             var checkpoints = await client.ListCompactionCheckpointsAsync(key, timeoutMs: rpc);
             Assert.True(checkpoints.IsSupported);
             Assert.Equal("cp1", Assert.Single(checkpoints.Checkpoints).Id);
@@ -103,7 +108,7 @@ public sealed class GatewayProtocolLiveRoundTripTests : IDisposable
             Assert.Equal("agent:main:branch-1", branch.ResultSessionKey);
             Assert.Contains("\"checkpointId\"", server.FrameFor("sessions.compaction.branch"));
 
-            // ── 5. sessions.patch SET then CLEAR (the tri-state proof) ──
+            // ── 6. sessions.patch SET then CLEAR (the tri-state proof) ──
             // PatchSessionAsync is fire-and-tracked (returns on send, not on
             // response), so wait for the captured frame to arrive on the server.
             var setOk = await client.PatchSessionAsync(key, new SessionPatch { Model = "gpt-5", FastMode = SessionFastMode.Auto });
@@ -118,6 +123,37 @@ public sealed class GatewayProtocolLiveRoundTripTests : IDisposable
             Assert.Contains("\"model\":null", clearFrame);
 
             PrintProof(server);
+        }
+        finally
+        {
+            await client.DisconnectAsync();
+        }
+    }
+
+    [Fact]
+    public async Task UpdateStatus_GatewayError_PropagatesForCallerFailSafe()
+    {
+        using var server = new LoopbackGatewayServer();
+        server.OnMethod(
+            "update.status",
+            _ => LoopbackResponse.Fail("unauthorized update.status"));
+        var client = new OpenClawGatewayClient(
+            server.WebSocketUrl,
+            "test-token",
+            new TestLogger(),
+            tokenIsBootstrapToken: false,
+            bootstrapPairAsNode: false,
+            identityPath: _identityDir);
+
+        try
+        {
+            await ConnectAndWaitAsync(client, server);
+
+            var exception = await Assert.ThrowsAsync<InvalidOperationException>(
+                () => client.GetUpdateStatusAsync(timeoutMs: 20_000));
+
+            Assert.Contains("unauthorized update.status", exception.Message);
+            Assert.Contains("\"method\":\"update.status\"", server.FrameFor("update.status"));
         }
         finally
         {
@@ -222,6 +258,18 @@ public sealed class GatewayProtocolLiveRoundTripTests : IDisposable
         // (health/sessions.list/subscribe/usage/nodes/agents), keeping this test
         // lightweight so it does not add scheduler/socket contention that could
         // destabilize other timing-sensitive socket tests under parallel load.
+
+        server.OnMethod("update.status", parameters =>
+        {
+            Assert.Equal(JsonValueKind.Object, parameters.ValueKind);
+            Assert.Empty(parameters.EnumerateObject());
+            return new
+            {
+                sentinel = (object?)null,
+                updateAvailable = (object?)null,
+                effectiveChannel = "extended-stable"
+            };
+        });
 
         server.OnMethod("commands.list", _ => new
         {

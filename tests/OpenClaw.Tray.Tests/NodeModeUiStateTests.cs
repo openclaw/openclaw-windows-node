@@ -97,7 +97,9 @@ public sealed class NodeModeUiStateTests
     public void App_GatewayNodeConnection_GatedOnNodeModeOnly_NotMcp()
     {
         var app = ReadSource("src", "OpenClaw.Tray.WinUI", "App.xaml.cs");
-        var connectMethod = ExtractMethodBody(app, "bool TryConnectGatewayIfCredentialAvailable");
+        var connectMethod = ExtractMethodBody(
+            app,
+            "StartupGatewayConnectKind TryConnectGatewayIfCredentialAvailable");
 
         Assert.Contains("isNodeEnabled: IsGatewayNodeEnabled", app);
 

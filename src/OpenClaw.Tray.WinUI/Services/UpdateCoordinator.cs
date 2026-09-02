@@ -1,5 +1,6 @@
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
+using OpenClaw.Connection;
 using OpenClaw.Shared;
 using OpenClawTray.Dialogs;
 using OpenClawTray.Helpers;
@@ -21,6 +22,7 @@ internal sealed class UpdateCoordinator(
     UpdatumManager updater,
     AppState appState,
     SettingsManager? settings,
+    Func<IOperatorGatewayClient?> getGatewayClient,
     Func<XamlRoot?> getXamlRoot,
     Action refreshStatus,
     Action exit,
@@ -29,6 +31,8 @@ internal sealed class UpdateCoordinator(
     private readonly SettingsManager? _settings = settings;
     private readonly IUpdateCheckBoundary _updateCheckBoundary =
         updateCheckBoundary ?? new UpdatumUpdateCheckBoundary(updater);
+    private readonly Func<IOperatorGatewayClient?> _getGatewayClient =
+        getGatewayClient ?? throw new ArgumentNullException(nameof(getGatewayClient));
 
     // Cross-path concurrency for update checks, split into two phases:
     //  - _updateCheckGate: held only during the metadata/network check.
@@ -41,6 +45,7 @@ internal sealed class UpdateCoordinator(
     private int _updateInstallInProgress;
 #endif
     private int _manualUpdateCheckInFlight;
+    private int _automaticUpdateCheckStarted;
 
     public static UpdateCommandCenterInfo BuildInitialInfo() => new()
     {
@@ -72,7 +77,8 @@ internal sealed class UpdateCoordinator(
                 Status = "Skipped",
                 CurrentVersion = AppVersionInfo.Version,
                 CheckedAt = DateTime.UtcNow,
-                Detail = "development build"
+                Detail = LocalizationHelper.GetString(
+                    "Update_Message_Skipped_Dev")
             };
             _updateCheckGate.Release();
             return true;
@@ -87,7 +93,8 @@ internal sealed class UpdateCoordinator(
                 Status = "Skipped",
                 CurrentVersion = AppVersionInfo.Version,
                 CheckedAt = DateTime.UtcNow,
-                Detail = "debug build"
+                Detail = LocalizationHelper.GetString(
+                    "Update_Message_Skipped_Debug")
             };
             return true;
         }
@@ -130,6 +137,35 @@ internal sealed class UpdateCoordinator(
                 return true;
             }
 
+            var gatewayStatus = await TryGetGatewayUpdateStatusAsync(
+                _getGatewayClient());
+            if (CompanionUpdateSuppressionPolicy.ShouldSuppress(
+                    gatewayStatus,
+                    checkOutcome))
+            {
+                Logger.Info(
+                    "Skipping ordinary companion update: Gateway is on extended-stable");
+                appState.UpdateInfo = new UpdateCommandCenterInfo
+                {
+                    Status = "Skipped",
+                    CurrentVersion = AppVersionInfo.Version,
+                    CheckedAt = DateTime.UtcNow,
+                    Detail = LocalizationHelper.GetString(
+                        "Update_Message_Skipped_ExtendedStable")
+                };
+                return true;
+            }
+
+            if (checkOutcome.IsSecurityCritical &&
+                string.Equals(
+                    gatewayStatus?.EffectiveChannel,
+                    "extended-stable",
+                    StringComparison.OrdinalIgnoreCase))
+            {
+                Logger.Info(
+                    "Offering security-critical companion update despite extended-stable Gateway");
+            }
+
             var release = updater.LatestRelease!;
             if (string.IsNullOrEmpty(release.TagName))
             {
@@ -148,7 +184,7 @@ internal sealed class UpdateCoordinator(
             }
 
             releaseTag = release.TagName;
-            changelog = updater.GetChangelog(true) ?? "No release notes available.";
+            changelog = updater.GetChangelog(5, false) ?? "No release notes available.";
             Logger.Info($"Update available: {releaseTag}");
             appState.UpdateInfo = new UpdateCommandCenterInfo
             {
@@ -326,6 +362,39 @@ internal sealed class UpdateCoordinator(
 #endif
     }
 
+    /// <summary>
+    /// Runs the automatic check once, after either an authenticated Gateway
+    /// handshake or a terminal path where Gateway status is unavailable.
+    /// </summary>
+    public async Task CheckForAutomaticUpdatesAfterGatewayResolutionAsync()
+    {
+        if (Interlocked.Exchange(ref _automaticUpdateCheckStarted, 1) != 0)
+            return;
+
+        if (!await CheckForUpdatesAsync())
+            exit();
+    }
+
+    private static async Task<GatewayUpdateStatus?> TryGetGatewayUpdateStatusAsync(
+        IOperatorGatewayClient? gatewayClient)
+    {
+        if (gatewayClient is null)
+            return null;
+
+        if (!OperatorScopeHelper.HasAdminScope(
+                gatewayClient.GrantedOperatorScopes))
+        {
+            Logger.Info(
+                "Gateway update channel unavailable: operator token lacks operator.admin; using companion updater");
+            return null;
+        }
+
+        return await GatewayUpdateStatusLookup.TryGetAsync(
+            () => gatewayClient.GetUpdateStatusAsync(),
+            ex => Logger.Info(
+                $"Gateway update channel unavailable; using companion updater: {ex.Message}"));
+    }
+
     // Re-entrancy guard: the button/menu/deep-link are all fire-and-forget
     // (`_ = CheckForUpdatesUserInitiatedAsync()`), so a double-click would
     // otherwise open two ContentDialogs on the same XamlRoot which throws
@@ -381,6 +450,7 @@ internal sealed class UpdateCoordinator(
                         await ShowUpdateInfoDialogAsync(
                             "Skipped",
                             LocalizationHelper.GetString("Update_Title_Skipped"),
+                            info.Detail ??
                             LocalizationHelper.GetString(
                                 AppIdentity.IsDev
                                     ? "Update_Message_Skipped_Dev"
@@ -495,17 +565,53 @@ internal sealed class UpdatumUpdateCheckBoundary(UpdatumManager updater) : IUpda
 {
     public Task<bool> CheckForUpdatesAsync() => updater.CheckForUpdatesAsync();
 
+    public UpdateReleaseCandidate? GetSelectedRelease() =>
+        updater.LatestRelease is { } release
+            ? CreateCandidate(release)
+            : null;
+
     public IEnumerable<UpdateReleaseCandidate> GetReleaseCandidates()
     {
         foreach (var release in updater.Releases)
-        {
-            yield return new UpdateReleaseCandidate(
-                release.TagName,
-                release.Draft,
-                release.Prerelease,
-                release.PublishedAt is not null,
-                () => updater.GetCompatibleReleaseAsset(release) is not null,
-                () => updater.ForceTriggerUpdateFromRelease(release));
-        }
+            yield return CreateCandidate(release);
     }
+
+    public bool IsReleaseHistoryComplete(string currentVersion)
+    {
+        var fetchCapacity =
+            UpdatumManager.GitHubApiOptions.PageSize *
+            UpdatumManager.GitHubApiOptions.PageCount;
+        if (updater.Releases.Count < fetchCapacity)
+            return true;
+
+        if (!OpenClawReleaseVersion.TryParseStable(
+                currentVersion,
+                out var installedVersion))
+        {
+            return false;
+        }
+
+        foreach (var release in updater.Releases)
+        {
+            if (OpenClawReleaseVersion.TryParseStable(
+                    release.TagName,
+                    out var releaseVersion) &&
+                releaseVersion.CompareTo(installedVersion) <= 0)
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private UpdateReleaseCandidate CreateCandidate(Octokit.Release release) => new(
+        release.TagName,
+        release.Name,
+        release.Body,
+        release.Draft,
+        release.Prerelease,
+        release.PublishedAt is not null,
+        () => updater.GetCompatibleReleaseAsset(release) is not null,
+        () => updater.ForceTriggerUpdateFromRelease(release));
 }

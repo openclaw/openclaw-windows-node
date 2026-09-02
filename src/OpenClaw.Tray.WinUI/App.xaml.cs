@@ -43,11 +43,20 @@ namespace OpenClawTray;
 
 public partial class App : Application, OpenClawTray.Services.IAppCommands, IPermissionsPageRuntimeHost
 {
-    internal static readonly UpdatumManager AppUpdater = new("openclaw", "openclaw-windows-node")
+    internal static readonly UpdatumManager AppUpdater = CreateAppUpdater();
+
+    private static UpdatumManager CreateAppUpdater()
     {
-        FetchOnlyLatestRelease = true,
-        InstallUpdateSingleFileExecutableName = "OpenClaw.Tray.WinUI",
-    };
+        UpdatumManager.GitHubApiOptions.PageSize = 100;
+        UpdatumManager.GitHubApiOptions.PageCount = 1;
+        return new UpdatumManager("openclaw", "openclaw-windows-node")
+        {
+            // Suppression must inspect every eligible release above the installed
+            // version so a newer ordinary release cannot mask a security release.
+            FetchOnlyLatestRelease = false,
+            InstallUpdateSingleFileExecutableName = "OpenClaw.Tray.WinUI",
+        };
+    }
 
     private ITrayController? _trayController;
     private IWindowManager? _windowManager;
@@ -636,6 +645,7 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands, IPer
             AppUpdater,
             _appState,
             _settings,
+            () => _connectionManager?.OperatorClient,
             () => _windowManager?.DialogXamlRoot,
             refreshStatus: UpdateStatusDetailWindow,
             exit: Exit);
@@ -693,19 +703,6 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands, IPer
         // in-progress download/extraction. We still control shutdown
         // explicitly via Application.Exit().
         DispatcherShutdownMode = DispatcherShutdownMode.OnExplicitShutdown;
-
-        // Check for updates before launching. Skip in test instances — no UI dialogs,
-        // no network calls, no startup delay.
-        if (DataDirOverride is null &&
-            Environment.GetEnvironmentVariable("OPENCLAW_SKIP_UPDATE_CHECK") != "1")
-        {
-            var shouldLaunch = await _updateCoordinator.CheckForUpdatesAsync();
-            if (!shouldLaunch)
-            {
-                Exit();
-                return;
-            }
-        }
 
         // Register toast activation handler
         ToastNotificationManagerCompat.OnActivated += OnToastActivated;
@@ -924,7 +921,16 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands, IPer
             isAutomaticRepairAllowed: gatewayId => _connectionManager?.IsAutomaticReconnectAllowed(gatewayId) ?? false);
         _managedLocalAutoRepairMonitor.Start();
 
-        InitializeGatewayClient();
+        var startupConnectKind = InitializeGatewayClient();
+        if (AutomaticUpdateCheckPolicy.PlanStartup(startupConnectKind) ==
+            AutomaticUpdateCheckStartupPlan.AwaitOperatorHandshakeWithDeadline)
+        {
+            StartAutomaticUpdateCheckGatewayDeadline();
+        }
+        else
+        {
+            StartAutomaticUpdateCheckWithoutGateway();
+        }
 
         // Pre-warm chat window (WebView2 init takes 1-3s, do it now so left-click is instant)
         if (_settings != null &&
@@ -1741,9 +1747,11 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands, IPer
 
     #region Gateway Client
 
-    private void InitializeGatewayClient(bool useBootstrapHandoffAuth = false)
+    private StartupGatewayConnectKind InitializeGatewayClient(
+        bool useBootstrapHandoffAuth = false)
     {
-        if (_settings == null || _connectionManager == null || _gatewayRegistry == null) return;
+        if (_settings == null || _connectionManager == null || _gatewayRegistry == null)
+            return StartupGatewayConnectKind.None;
         // SSH tunnel lifecycle is now handled by the connection manager.
 
         var gatewayUrl = _settings.GetEffectiveGatewayUrl();
@@ -1752,31 +1760,35 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands, IPer
         var activeRecord = _gatewayRegistry.GetActive();
         if (activeRecord != null)
         {
-            if (!TryConnectGatewayIfCredentialAvailable(activeRecord, "startup"))
+            var connectKind =
+                TryConnectGatewayIfCredentialAvailable(activeRecord, "startup");
+            if (connectKind == StartupGatewayConnectKind.None)
             {
                 // Still start MCP-only node if enabled — the active record may be stale
                 // and MCP-only mode must work without gateway credentials.
                 TryStartLocalMcpOnlyNode();
             }
-            return;
+            return connectKind;
         }
 
         TryMigrateLegacyGatewaySettings(gatewayUrl, new AppLogger());
         activeRecord = _gatewayRegistry.GetActive();
         if (activeRecord != null)
         {
-            if (!TryConnectGatewayIfCredentialAvailable(activeRecord, "legacy migration"))
+            var connectKind =
+                TryConnectGatewayIfCredentialAvailable(activeRecord, "legacy migration");
+            if (connectKind == StartupGatewayConnectKind.None)
                 TryStartLocalMcpOnlyNode();
-            return;
+            return connectKind;
         }
 
         if (string.IsNullOrWhiteSpace(gatewayUrl))
         {
             if (TryStartLocalMcpOnlyNode())
-                return;
+                return StartupGatewayConnectKind.None;
 
             Logger.Info("Gateway URL not configured — skipping client initialization");
-            return;
+            return StartupGatewayConnectKind.None;
         }
 
         // Bridge: create/update a GatewayRecord from current settings URL.
@@ -1801,16 +1813,16 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands, IPer
                 Logger.Error($"Stored device identity load failed during startup: {ex.InnerException?.Message}");
                 ShowTransientConnectionError(ex.Message);
                 TryStartLocalMcpOnlyNode();
-                return;
+                return StartupGatewayConnectKind.None;
             }
 
             if (!hasStoredDeviceToken)
             {
                 if (TryStartLocalMcpOnlyNode())
-                    return;
+                    return StartupGatewayConnectKind.None;
 
                 Logger.Info("No stored device token — skipping startup connect (use Setup Code)");
-                return;
+                return StartupGatewayConnectKind.None;
             }
 
             var recordId = Guid.NewGuid().ToString();
@@ -1859,18 +1871,23 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands, IPer
 
         // Delegate to connection manager — it creates the client, fires OperatorClientChanged,
         // and our handler re-wires the 27 event subscriptions
-        if (!TryConnectGatewayIfCredentialAvailable(migratedRecord, "startup bridge"))
+        var migratedConnectKind =
+            TryConnectGatewayIfCredentialAvailable(migratedRecord, "startup bridge");
+        if (migratedConnectKind == StartupGatewayConnectKind.None)
             TryStartLocalMcpOnlyNode();
+        return migratedConnectKind;
     }
 
     /// <summary>
     /// Connects only when the active gateway has a usable operator credential:
     /// device token, shared gateway token, or bootstrap token.
     /// </summary>
-    private bool TryConnectGatewayIfCredentialAvailable(GatewayRecord record, string context)
+    private StartupGatewayConnectKind TryConnectGatewayIfCredentialAvailable(
+        GatewayRecord record,
+        string context)
     {
         if (_connectionManager == null || _gatewayRegistry == null)
-            return false;
+            return StartupGatewayConnectKind.None;
 
         record = SyncGatewayBrowserProxyForward(record);
         var resolver = new CredentialResolver(DeviceIdentityFileReader.Instance);
@@ -1884,7 +1901,7 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands, IPer
         {
             Logger.Error($"Stored device identity load failed during {context}: {ex.InnerException?.Message}");
             ShowTransientConnectionError(ex.Message);
-            return false;
+            return StartupGatewayConnectKind.None;
         }
 
         if (credential == null)
@@ -1898,7 +1915,7 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands, IPer
             {
                 Logger.Error($"Stored node identity load failed during {context}: {ex.InnerException?.Message}");
                 ShowTransientConnectionError(ex.Message);
-                return false;
+                return StartupGatewayConnectKind.None;
             }
 
             if (nodeCredential != null && IsGatewayNodeEnabled())
@@ -1908,11 +1925,11 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands, IPer
                 ObserveBackgroundFault(
                     _connectionManager.ConnectNodeOnlyAsync(record.Id),
                     $"[App] Startup node-only gateway connect failed during {context}");
-                return true;
+                return StartupGatewayConnectKind.NodeOnly;
             }
 
             Logger.Info($"Active gateway has no usable credential — skipping {context} connect");
-            return false;
+            return StartupGatewayConnectKind.None;
         }
 
         var connectionKind = record.LastConnected.HasValue
@@ -1924,7 +1941,7 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands, IPer
             $"[App] Startup gateway connect failed during {context}");
         if (!IsGatewayNodeEnabled())
             TryStartLocalMcpOnlyNode();
-        return true;
+        return StartupGatewayConnectKind.Operator;
     }
 
     private void ReconnectWithSyncedBrowserProxyForward()
@@ -2186,6 +2203,16 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands, IPer
     /// </summary>
     private void OnOperatorClientChanged(object? sender, OperatorClientChangedEventArgs e)
     {
+        // Subscribe before UI dispatch. A local Gateway can complete hello-ok
+        // before the remaining UI-side client wiring runs.
+        if (e.OldClient != null)
+            e.OldClient.HandshakeSucceeded -= OnGatewayUpdateCheckHandshakeSucceeded;
+        if (e.NewClient != null)
+        {
+            e.NewClient.HandshakeSucceeded -= OnGatewayUpdateCheckHandshakeSucceeded;
+            e.NewClient.HandshakeSucceeded += OnGatewayUpdateCheckHandshakeSucceeded;
+        }
+
         if (_dispatcherQueue is { HasThreadAccess: false } dispatcher)
         {
             if (!dispatcher.TryEnqueue(() => OnOperatorClientChanged(sender, e)))
@@ -2220,6 +2247,53 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands, IPer
         // Update UI references
         if (_appState != null)
             _appState.GatewaySelf = null;
+    }
+
+    private void OnGatewayUpdateCheckHandshakeSucceeded(object? sender, EventArgs e)
+    {
+        if (sender is not IOperatorGatewayClient client ||
+            !ReferenceEquals(client, _connectionManager?.OperatorClient) ||
+            DataDirOverride is not null ||
+            Environment.GetEnvironmentVariable("OPENCLAW_SKIP_UPDATE_CHECK") == "1")
+        {
+            return;
+        }
+
+        OnUiThread(
+            () => _ = _updateCoordinator?
+                .CheckForAutomaticUpdatesAfterGatewayResolutionAsync());
+    }
+
+    private void StartAutomaticUpdateCheckWithoutGateway()
+    {
+        if (DataDirOverride is not null ||
+            Environment.GetEnvironmentVariable("OPENCLAW_SKIP_UPDATE_CHECK") == "1")
+        {
+            return;
+        }
+
+        OnUiThread(
+            () => _ = _updateCoordinator?
+                .CheckForAutomaticUpdatesAfterGatewayResolutionAsync());
+    }
+
+    private void StartAutomaticUpdateCheckGatewayDeadline()
+    {
+        if (DataDirOverride is not null ||
+            Environment.GetEnvironmentVariable("OPENCLAW_SKIP_UPDATE_CHECK") == "1")
+        {
+            return;
+        }
+
+        ObserveBackgroundFault(
+            RunAutomaticUpdateCheckGatewayDeadlineAsync(),
+            "[Update] Gateway status resolution deadline failed");
+    }
+
+    private async Task RunAutomaticUpdateCheckGatewayDeadlineAsync()
+    {
+        await Task.Delay(AutomaticUpdateCheckPolicy.GatewayResolutionDeadline);
+        StartAutomaticUpdateCheckWithoutGateway();
     }
 
     private void RaiseChatProviderChanged()
@@ -2260,6 +2334,12 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands, IPer
         else
         {
             _lastManagerConnectedSideEffectsKey = null;
+        }
+
+        if (AutomaticUpdateCheckPolicy.IsGatewayStatusTerminallyUnavailable(
+                snap.OperatorState))
+        {
+            StartAutomaticUpdateCheckWithoutGateway();
         }
     }
 

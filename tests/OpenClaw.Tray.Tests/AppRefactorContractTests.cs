@@ -32,15 +32,41 @@ public sealed class AppRefactorContractTests
             "AppUserModelIdRegistrar.RegisterCurrentProcess(AppIdentity.AppUserModelId);",
             "appUserModelIdRegistration.Attempted",
             "_settings = new SettingsManager();",
-            "CheckForUpdatesAsync();",
             "ToastNotificationManagerCompat.OnActivated += OnToastActivated;",
             "InitializeTrayIcon();",
             "_gatewayRegistry = new GatewayRegistry",
             "_connectionManager = new GatewayConnectionManager",
             "await ShowOnboardingAsync();",
             "EnsureNodeService(_settings);",
-            "InitializeGatewayClient();",
+            "var startupConnectKind = InitializeGatewayClient();",
+            "StartAutomaticUpdateCheckGatewayDeadline();",
+            "StartAutomaticUpdateCheckWithoutGateway();",
             "await _activationRouter.StartForwardedActivationListenerAsync(this, CancellationToken.None);");
+    }
+
+    [Fact]
+    public void AutomaticUpdates_UseCurrentConnectionManagerClientWithoutParallelOwnership()
+    {
+        var source = ReadAppSources();
+        var clientChanged = ExtractMethod(source, "OnOperatorClientChanged");
+        var handshake = ExtractMethod(source, "OnGatewayUpdateCheckHandshakeSucceeded");
+
+        Assert.Contains(
+            "e.NewClient.HandshakeSucceeded += OnGatewayUpdateCheckHandshakeSucceeded",
+            clientChanged);
+        Assert.Contains(
+            "ReferenceEquals(client, _connectionManager?.OperatorClient)",
+            handshake);
+        Assert.Contains(
+            "CheckForAutomaticUpdatesAfterGatewayResolutionAsync",
+            handshake);
+        Assert.Contains("FetchOnlyLatestRelease = false", source);
+        Assert.Contains("GitHubApiOptions.PageSize = 100", source);
+        Assert.Contains("GitHubApiOptions.PageCount = 1", source);
+        Assert.DoesNotContain("_updateCheckClient", source);
+        Assert.DoesNotMatch(
+            new Regex(@"\bnew\s+OpenClawGatewayClient\s*\(", RegexOptions.Multiline),
+            source);
     }
 
     [Fact]
@@ -405,7 +431,7 @@ public sealed class AppRefactorContractTests
             "catch (DeviceIdentityLoadException ex)",
             "ShowTransientConnectionError(ex.Message)",
             "TryStartLocalMcpOnlyNode()",
-            "return;");
+            "return StartupGatewayConnectKind.None;");
         Assert.Contains("Active gateway has no usable credential", source);
     }
 
@@ -696,7 +722,12 @@ public sealed class AppRefactorContractTests
         Assert.Contains("catch (DeviceIdentityLoadException ex)", connectMethod);
         Assert.Contains("ShowTransientConnectionError(ex.Message)", connectMethod);
         Assert.Equal(2, Regex.Matches(connectMethod, "catch \\(DeviceIdentityLoadException ex\\)").Count);
-        Assert.Equal(2, Regex.Matches(connectMethod, "ShowTransientConnectionError\\(ex.Message\\);\\s*return false;").Count);
+        Assert.Equal(
+            2,
+            Regex.Matches(
+                connectMethod,
+                "ShowTransientConnectionError\\(ex.Message\\);\\s*return StartupGatewayConnectKind\\.None;")
+                .Count);
         Assert.Contains("GatewayCredentialResolutionStatus.Unreadable", resolutionMethod);
         Assert.Contains("GatewayCredentialResolutionStatus.Corrupt", resolutionMethod);
         Assert.Contains("throw new DeviceIdentityLoadException", resolutionMethod);
@@ -2042,7 +2073,7 @@ public sealed class AppRefactorContractTests
 
     private static string ExtractMethod(string source, string methodName, string? parameterHint = null)
     {
-        var pattern = $@"(?m)^\s*(?:(?:private|protected|public|internal)\s+)?(?:static\s+)?(?:async\s+)?(?:Task(?:<[^>]+>)?|System\.Threading\.Tasks\.Task|void|bool|int|string\??|object\??|IntPtr|TrayMenuSnapshot|RollbackResult|OpenClaw\.Connection\.GatewayCredential\?|AppShutdownPlan)\s+(?:[A-Za-z0-9_]+\.)?{Regex.Escape(methodName)}\s*\(";
+        var pattern = $@"(?m)^\s*(?:(?:private|protected|public|internal)\s+)?(?:static\s+)?(?:async\s+)?(?:Task(?:<[^>]+>)?|System\.Threading\.Tasks\.Task|void|bool|int|string\??|object\??|IntPtr|TrayMenuSnapshot|RollbackResult|OpenClaw\.Connection\.GatewayCredential\?|AppShutdownPlan|StartupGatewayConnectKind)\s+(?:[A-Za-z0-9_]+\.)?{Regex.Escape(methodName)}\s*\(";
         var matches = Regex.Matches(source, pattern);
         Assert.True(matches.Count > 0, $"Could not find method {methodName}.");
 

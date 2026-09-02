@@ -138,6 +138,12 @@ public interface IOperatorGatewayClient
     Task<bool> StopChannelAsync(string channelName);
     /// <summary>Fetch the rich channels.status snapshot from the gateway. Mac/web canonical wire method.</summary>
     Task<ChannelsStatusSnapshot?> GetChannelsStatusAsync(bool probe = false, int timeoutMs = 12000);
+    /// <summary>
+    /// Fetches the Gateway's effective update track (<c>update.status</c>). The
+    /// default preserves compatibility with clients for older Gateways.
+    /// </summary>
+    Task<GatewayUpdateStatus?> GetUpdateStatusAsync(int timeoutMs = 5000) =>
+        Task.FromResult<GatewayUpdateStatus?>(null);
     /// <summary>Log out / unlink a channel (whatsapp, telegram). Sends channels.logout { channel }.</summary>
     Task<bool> LogoutChannelAsync(string channelName, int timeoutMs = 12000);
     /// <summary>Begin a QR linking flow (whatsapp, signal). Sends web.login.start { force, timeoutMs }.</summary>

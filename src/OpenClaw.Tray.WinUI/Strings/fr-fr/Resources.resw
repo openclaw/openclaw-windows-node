@@ -370,6 +370,9 @@
   <data name="Update_Message_Skipped_Dev" xml:space="preserve">
     <value>La vérification des mises à jour est désactivée dans les versions de développement.</value>
   </data>
+  <data name="Update_Message_Skipped_ExtendedStable" xml:space="preserve">
+    <value>La passerelle connectée utilise le canal extended-stable. Cette mise à jour Windows ordinaire n’est donc pas proposée.</value>
+  </data>
   <data name="Update_OK" xml:space="preserve">
     <value>OK</value>
   </data>

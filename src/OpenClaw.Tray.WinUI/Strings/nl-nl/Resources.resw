@@ -371,6 +371,9 @@
   <data name="Update_Message_Skipped_Dev" xml:space="preserve">
     <value>Updatecontroles zijn uitgeschakeld in ontwikkelbuilds.</value>
   </data>
+  <data name="Update_Message_Skipped_ExtendedStable" xml:space="preserve">
+    <value>De verbonden gateway gebruikt extended-stable. Daarom wordt deze gewone Windows-update niet aangeboden.</value>
+  </data>
   <data name="Update_OK" xml:space="preserve">
     <value>OK</value>
   </data>

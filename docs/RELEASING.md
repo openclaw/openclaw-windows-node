@@ -81,6 +81,13 @@ Stable, stable-correction, and alpha tags use the same signed CI release pipelin
   release under OpenClaw correction ordering.
 - `vX.Y.Z-alpha.N` creates a prerelease that stable updater checks do not offer.
 
+Windows companion updates are ordinarily suppressed when the authenticated
+Gateway reports the `extended-stable` effective channel. A security-critical
+Windows release must include `<!-- openclaw-update: security-critical -->` in
+its GitHub release body. Release names or bodies containing `security`, a CVE
+identifier, or a GHSA identifier are also treated as security-critical and are
+offered regardless of the Gateway channel.
+
 Stable correction support begins only with an eligible upstream release tag
 created from `main` after the correction-aware implementation has landed. For
 this rollout, the Windows repository already contains its own annotated

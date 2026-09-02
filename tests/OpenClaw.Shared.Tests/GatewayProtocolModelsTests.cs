@@ -36,6 +36,7 @@ public class GatewayProtocolModelsTests
             ("CreateSessionAsync", new[] { typeof(SessionCreateRequest), typeof(int) }),
             ("ResetSessionDetailedAsync", new[] { typeof(string), typeof(int) }),
             ("CompactSessionDetailedAsync", new[] { typeof(string), typeof(int) }),
+            ("GetUpdateStatusAsync", new[] { typeof(int) }),
         };
 
         foreach (var (name, args) in newMembers)
@@ -48,6 +49,21 @@ public class GatewayProtocolModelsTests
     }
 
     private static JsonElement Parse(string json) => JsonDocument.Parse(json).RootElement;
+
+    [Fact]
+    public void GatewayUpdateStatusParser_PreservesOptionalEffectiveChannel()
+    {
+        var extendedStable = GatewayUpdateStatusParser.Parse(
+            Parse("""{"effectiveChannel":"extended-stable"}"""));
+        var missing = GatewayUpdateStatusParser.Parse(
+            Parse("""{"updateAvailable":null}"""));
+        var malformed = GatewayUpdateStatusParser.Parse(
+            Parse("""{"effectiveChannel":42}"""));
+
+        Assert.Equal("extended-stable", extendedStable.EffectiveChannel);
+        Assert.Null(missing.EffectiveChannel);
+        Assert.Null(malformed.EffectiveChannel);
+    }
 
     [Fact]
     public void ParseSessionCreateResult_RequiresAndPreservesGatewayKey()

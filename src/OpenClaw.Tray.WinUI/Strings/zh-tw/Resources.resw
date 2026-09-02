@@ -370,6 +370,9 @@
   <data name="Update_Message_Skipped_Dev" xml:space="preserve">
     <value>開發版本已停用更新檢查。</value>
   </data>
+  <data name="Update_Message_Skipped_ExtendedStable" xml:space="preserve">
+    <value>已連線的閘道使用 extended-stable，因此不會提供此一般 Windows 版本更新。</value>
+  </data>
   <data name="Update_OK" xml:space="preserve">
     <value>確定</value>
   </data>
