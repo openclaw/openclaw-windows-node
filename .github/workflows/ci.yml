@@ -112,6 +112,10 @@ jobs:
       shell: pwsh
       run: ./scripts/test-proof-pool-validator.ps1
 
+    - name: Validate stable correction release ordering regressions
+      shell: pwsh
+      run: ./scripts/test-stable-correction-release-validator.ps1
+
     - name: Restore dependencies
       run: dotnet restore
 

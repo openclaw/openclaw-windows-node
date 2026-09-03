@@ -130,6 +130,69 @@ public sealed class VersioningContractTests
     }
 
     [Fact]
+    public void StableCorrectionValidator_HasNoUpstreamReleaseApiDependency()
+    {
+        var repoRoot = TestRepositoryPaths.GetRepositoryRoot();
+        var validator = File.ReadAllText(Path.Combine(
+            repoRoot,
+            "scripts",
+            "Test-OpenClawStableCorrectionRelease.ps1"));
+
+        Assert.DoesNotContain("repos/openclaw/openclaw/", validator);
+        Assert.DoesNotContain("releases/tags/$Tag", validator);
+        Assert.Contains(
+            "repos/openclaw/openclaw-windows-node/releases/latest",
+            validator);
+        Assert.Contains("[string]$CurrentWindowsTag", validator);
+    }
+
+    [Fact]
+    public void StableCorrectionValidator_RequiresSameLineMonotonicCorrection()
+    {
+        var repoRoot = TestRepositoryPaths.GetRepositoryRoot();
+        var validator = File.ReadAllText(Path.Combine(
+            repoRoot,
+            "scripts",
+            "Test-OpenClawStableCorrectionRelease.ps1"));
+
+        Assert.Contains(
+            "'^v(?:0|[1-9]\\d*)\\.(?:0|[1-9]\\d*)\\.(?:0|[1-9]\\d*)-[1-9]\\d*$'",
+            validator);
+        Assert.Contains("function Assert-SameLineStableCorrection", validator);
+        Assert.Contains("if ($candidateBase -ne $currentBase)", validator);
+        Assert.Contains("if ($candidateParts[3] -eq $currentParts[3])", validator);
+        Assert.Contains("if ($candidateParts[3] -lt $currentParts[3])", validator);
+        Assert.Contains("must never be moved or reused", validator);
+        Assert.DoesNotContain("function Assert-NewerStableRelease", validator);
+    }
+
+    [Fact]
+    public void ReleaseWorkflow_RevalidatesCorrectionOrderingAfterSigningBeforePublish()
+    {
+        var repoRoot = TestRepositoryPaths.GetRepositoryRoot();
+        var workflow = File.ReadAllText(
+            Path.Combine(repoRoot, ".github", "workflows", "ci.yml"));
+
+        var signIndex = workflow.IndexOf("- name: Sign Installers", StringComparison.Ordinal);
+        var revalidateIndex = workflow.IndexOf(
+            "- name: Revalidate stable correction release ordering",
+            StringComparison.Ordinal);
+        var publishIndex = workflow.IndexOf("- name: Create Release", StringComparison.Ordinal);
+
+        Assert.True(signIndex >= 0, "Release workflow must sign installers.");
+        Assert.True(revalidateIndex > signIndex, "Correction ordering must be revalidated after signing.");
+        Assert.True(publishIndex > revalidateIndex, "Correction ordering must be revalidated before publication.");
+
+        Assert.Contains(
+            "make_latest: ${{ needs.test.outputs.isPrerelease == 'true' && 'false' || 'true' }}",
+            workflow);
+        Assert.Contains("$majorMinorPatch = $validation.BaseVersion", workflow);
+        Assert.Contains(
+            "./scripts/test-stable-correction-release-validator.ps1",
+            workflow);
+    }
+
+    [Fact]
     public void ActiveCodeAndTests_DoNotContainStaleReleaseVersion()
     {
         var repoRoot = TestRepositoryPaths.GetRepositoryRoot();

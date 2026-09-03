@@ -31,7 +31,7 @@ build/sign/publish release artifacts.
 
    ```powershell
    # Stable: vX.Y.Z
-   # Stable correction matching the OpenClaw monorepo: vX.Y.Z-N
+   # Stable correction on the current Windows latest line: vX.Y.Z-N
    # Prerelease: vX.Y.Z-alpha.N
    $tag = "vX.Y.Z"
    if ((git rev-parse HEAD) -ne (git rev-parse origin/main)) {
@@ -72,31 +72,51 @@ Stable, stable-correction, and alpha tags use the same signed CI release pipelin
 
 - `vX.Y.Z` creates a normal release eligible to become latest.
 - `vX.Y.Z-N` creates a stable correction release eligible to become latest. The
-  numeric correction suffix intentionally follows the OpenClaw monorepo release
-  convention and is not treated as a SemVer prerelease. Only publish a
-  correction for the current latest stable line; publishing one for an older
-  line would incorrectly move GitHub's Latest release marker backward. CI
-  enforces both constraints: the exact tag must already be a published stable
-  `openclaw/openclaw` release, and it must advance the current Windows latest
-  release under OpenClaw correction ordering.
+  numeric correction suffix intentionally follows the OpenClaw release
+  convention and is not treated as a SemVer prerelease. Windows Hub release tags
+  are their own version domain: a correction is a correction of the Windows
+  latest release, not a mirror of any other repository's release. CI enforces
+  that in `scripts\Test-OpenClawStableCorrectionRelease.ps1`, which requires the
+  candidate to stay on the same `X.Y.Z` base line as the current Windows latest
+  release and to carry a strictly greater numeric correction. Same, older, and
+  different-line corrections fail closed, so GitHub's Latest release marker can
+  never move backward and a published tag can never be reused.
 - `vX.Y.Z-alpha.N` creates a prerelease that stable updater checks do not offer.
 
-Stable correction support begins only with an eligible upstream release tag
-created from `main` after the correction-aware implementation has landed. For
-this rollout, the Windows repository already contains its own annotated
-`v2026.7.1-2` tag, separate from the matching upstream tag, and it points to a
-commit that predates the implementation. It is not a correction-aware artifact
-and must not be moved, rebuilt from a different commit, or reused as a recovery
-release.
+The validator has no dependency on another repository's release API. Run it
+offline against an explicit current release to preview a decision:
 
-If the first post-merge Windows release is another numeric correction, users on
-the matching unsuffixed version need to install that new release manually.
-Older Windows clients use Updatum's default parser, which removes the numeric
-correction suffix before comparison. If the first post-merge release is a newer
-unsuffixed stable version, ordinary Updatum ordering can deliver it without the
-manual correction transition. Once any correction-aware Windows build is
-installed, later corrections and stable base versions are compared using
-OpenClaw release ordering.
+```powershell
+# Accepted: same 2026.7.1 line, correction 3 > 2
+.\scripts\Test-OpenClawStableCorrectionRelease.ps1 `
+  -Tag v2026.7.1-3 -CurrentWindowsTag v2026.7.1-2
+
+# Rejected: reuse of a published tag
+.\scripts\Test-OpenClawStableCorrectionRelease.ps1 `
+  -Tag v2026.7.1-2 -CurrentWindowsTag v2026.7.1-2
+```
+
+`scripts\test-stable-correction-release-validator.ps1` runs the full accept and
+reject matrix deterministically and is also enforced in CI.
+
+The live `v2026.7.1-2` annotated tag dereferences to commit `f46400aa`, which is
+the correction-aware implementation ("Support upstream stable correction release
+versions", #1266). Release run 33221425381 built and signed that release's
+assets, so `v2026.7.1-2` is the current correction-aware Windows latest release.
+Never move, rebuild, or reuse that tag; the next correction on this line is a new
+`v2026.7.1-3` tag.
+
+Clients on older unsuffixed `2026.7.1` builds predate the correction-aware
+update path. They use Updatum's default parser, which drops the numeric
+correction suffix before comparison, so they may need a manual transition to a
+correction release. Clients already on `2026.7.1-2` are correction-aware: even
+though Updatum 1.3.4's default parsing does not rank `2026.7.1-3` above
+`2026.7.1-2`, the `OpenClawReleaseVersion` fallback in the update check pipeline
+compares releases under OpenClaw correction ordering and discovers `2026.7.1-3`.
+
+Gateway versions are a separate, independently pinned domain. A Windows Hub
+correction release does not change `GatewayReleasePolicy.RecommendedVersion` or
+its evidence gates; see [`adr/0001-gateway-release-policy.md`](adr/0001-gateway-release-policy.md).
 
 ```powershell
 git tag -a vX.Y.Z-alpha.N -m "OpenClaw Windows Hub vX.Y.Z-alpha.N"

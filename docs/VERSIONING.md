@@ -14,9 +14,16 @@ Canonical release tags use:
 Numeric correction suffixes are an intentional stable-channel exception to
 SemVer's usual prerelease interpretation. Corrections sort after their
 unsuffixed base release and then by numeric correction: `vX.Y.Z` <
-`vX.Y.Z-1` < `vX.Y.Z-2`. A correction tag must not be published if that exact
-tag already exists or a newer stable/correction release has already been
-published.
+`vX.Y.Z-1` < `vX.Y.Z-2`. A correction must stay on the current Windows latest
+release line and strictly advance that line's correction number. A correction
+tag must not be published if that exact tag already exists or a newer
+stable/correction release has already been published.
+
+Windows Hub release tags are an independent version domain. They are not
+validated against, or required to match, any other repository's releases. The
+Gateway package version is pinned separately by
+`GatewayReleasePolicy.RecommendedVersion` under its own evidence gates, and a
+Windows Hub correction release never changes that pin.
 
 `GitVersion.yml` controls how tag history becomes SemVer. The product build
 imports GitVersion through `src\Directory.Build.props`, so normal `dotnet build`,
@@ -86,6 +93,15 @@ explicit MSBuild version properties are therefore the validated correction tag,
 not an independent version source. Ordinary stable, alpha, and untagged builds
 continue to use the GitVersion result directly.
 
+That validator resolves only this repository's latest release and then requires
+the candidate to share its `X.Y.Z` base line and carry a strictly greater
+correction. It performs no other repository's release lookup, and
+`-CurrentWindowsTag` runs the same decision offline.
+`scripts\test-stable-correction-release-validator.ps1` covers the accept and
+reject matrix deterministically in CI. The release job revalidates the same
+ordering after signing and before publication, so a correction that stopped
+being the next release while the build ran cannot be published as latest.
+
 Release build jobs must check out full git history (`fetch-depth: 0`) so
 GitVersion can see tags.
 
@@ -124,6 +140,8 @@ For example:
 - Keep numeric correction tags behind the stable-ordering validation in both
   release resolution and publication; never classify every hyphenated tag as a
   prerelease without recognizing this exception.
+- Keep the correction validator free of other repositories' release APIs. Windows
+  Hub release tags and the pinned Gateway version are separate domains.
 
 ## References
 
