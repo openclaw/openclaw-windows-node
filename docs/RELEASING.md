@@ -80,7 +80,11 @@ Stable, stable-correction, and alpha tags use the same signed CI release pipelin
   candidate to stay on the same `X.Y.Z` base line as the current Windows latest
   release and to carry a strictly greater numeric correction. Same, older, and
   different-line corrections fail closed, so GitHub's Latest release marker can
-  never move backward and a published tag can never be reused.
+  never move backward. The validator also refuses a candidate that already has a
+  published Windows release, and refuses to order against a draft, prerelease,
+  or unpublished latest release, so a published tag can never be reused. Every
+  numeric-suffix tag, including malformed ones such as `-0` and `-03`, is routed
+  through the validator rather than silently classified by GitVersion.
 - `vX.Y.Z-alpha.N` creates a prerelease that stable updater checks do not offer.
 
 The validator has no dependency on another repository's release API. Run it

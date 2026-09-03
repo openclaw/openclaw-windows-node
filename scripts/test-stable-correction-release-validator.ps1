@@ -29,6 +29,8 @@ if (-not (Test-Path -LiteralPath $validatorPath)) {
 
 $script:acceptedCount = 0
 $script:rejectedCount = 0
+$script:classificationCount = 0
+$script:workflowCorrectionPattern = $null
 
 function Assert-CorrectionAccepted {
     param(
@@ -108,6 +110,25 @@ function Assert-InvalidTagRejected {
     Write-Host "  rejected: $Name ($Tag)"
 }
 
+function Assert-WorkflowClassification {
+    param(
+        [Parameter(Mandatory)][string]$Name,
+        [Parameter(Mandatory)][string]$Tag,
+        [Parameter(Mandatory)][bool]$ExpectedRoutedToValidator
+    )
+
+    $tagVersion = $Tag -replace '^v', ''
+    $routed = [regex]::IsMatch($tagVersion, $script:workflowCorrectionPattern)
+    if ($routed -ne $ExpectedRoutedToValidator) {
+        throw ("Case '$Name': tag '$Tag' routed-to-validator was '$routed' " +
+               "but expected '$ExpectedRoutedToValidator'.")
+    }
+
+    $script:classificationCount++
+    $decision = if ($routed) { "validator" } else { "gitversion" }
+    Write-Host "  classified: $Name ($Tag -> $decision)"
+}
+
 Write-Host "Validating correction release source contract..."
 $validatorSource = Get-Content -LiteralPath $validatorPath -Raw
 if ($validatorSource -match 'repos/openclaw/openclaw/') {
@@ -116,6 +137,38 @@ if ($validatorSource -match 'repos/openclaw/openclaw/') {
 if ($validatorSource -notmatch 'repos/openclaw/openclaw-windows-node/releases/latest') {
     throw "Validator must resolve the current Windows latest release tag."
 }
+
+Write-Host "Validating release workflow correction classification..."
+$workflowPath = Join-Path $repoRootPath ".github\workflows\ci.yml"
+$workflowSource = Get-Content -LiteralPath $workflowPath -Raw
+$patternMatch = [regex]::Match(
+    $workflowSource,
+    "(?m)^\s*'(?<pattern>\^\(\?<base>.*?\)-\(\?<revision>.*?\)\`$)'\s*\)")
+if (-not $patternMatch.Success) {
+    throw "Could not read the release workflow correction classification pattern from '$workflowPath'."
+}
+$script:workflowCorrectionPattern = $patternMatch.Groups["pattern"].Value
+
+Assert-WorkflowClassification `
+    -Name "valid correction reaches the validator" `
+    -Tag "v2026.7.1-3" `
+    -ExpectedRoutedToValidator $true
+Assert-WorkflowClassification `
+    -Name "zero correction cannot bypass the validator" `
+    -Tag "v2026.7.1-0" `
+    -ExpectedRoutedToValidator $true
+Assert-WorkflowClassification `
+    -Name "leading-zero correction cannot bypass the validator" `
+    -Tag "v2026.7.1-03" `
+    -ExpectedRoutedToValidator $true
+Assert-WorkflowClassification `
+    -Name "unsuffixed stable tag stays on GitVersion" `
+    -Tag "v2026.7.1" `
+    -ExpectedRoutedToValidator $false
+Assert-WorkflowClassification `
+    -Name "alpha prerelease stays on GitVersion" `
+    -Tag "v2026.7.2-alpha.19" `
+    -ExpectedRoutedToValidator $false
 
 Write-Host "Validating same-line monotonic correction acceptance..."
 Assert-CorrectionAccepted `
@@ -199,6 +252,7 @@ Assert-InvalidTagRejected `
 
 Write-Host (
     "Stable correction release validator regressions passed: " +
-    "$script:acceptedCount accepted, $script:rejectedCount rejected."
+    "$script:acceptedCount accepted, $script:rejectedCount rejected, " +
+    "$script:classificationCount workflow classifications."
 ) -ForegroundColor Green
 $global:LASTEXITCODE = 0

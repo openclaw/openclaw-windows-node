@@ -66,7 +66,7 @@ public sealed class VersioningContractTests
         Assert.Contains("versionSpec: '6.8.x'", workflow);
         Assert.DoesNotContain("versionSpec: '6.4.x'", workflow);
         Assert.Contains(
-            "'^(?<base>(?:0|[1-9]\\d*)\\.(?:0|[1-9]\\d*)\\.(?:0|[1-9]\\d*))-(?<revision>[1-9]\\d*)$'",
+            "'^(?<base>(?:0|[1-9]\\d*)\\.(?:0|[1-9]\\d*)\\.(?:0|[1-9]\\d*))-(?<revision>\\d+)$'",
             workflow);
         Assert.Contains("$semVer = $tagVersion", workflow);
         Assert.Contains("$isPrerelease = $false", workflow);
@@ -163,6 +163,9 @@ public sealed class VersioningContractTests
         Assert.Contains("if ($candidateParts[3] -eq $currentParts[3])", validator);
         Assert.Contains("if ($candidateParts[3] -lt $currentParts[3])", validator);
         Assert.Contains("must never be moved or reused", validator);
+        Assert.Contains("function Assert-WindowsReleaseTagUnpublished", validator);
+        Assert.Contains("is already a published Windows release", validator);
+        Assert.Contains("is a prerelease; refusing to order a correction against it", validator);
         Assert.DoesNotContain("function Assert-NewerStableRelease", validator);
     }
 

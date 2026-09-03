@@ -15,7 +15,10 @@
       current v2026.7.1-2  + candidate v2026.8.0-1 -> rejected (other line)
 
     The validator deliberately has no dependency on any other repository's
-    release API. Pass -CurrentWindowsTag to validate ordering offline.
+    release API. Online runs also refuse a candidate tag that already has a
+    published Windows release, and refuse to order against a draft, prerelease,
+    or unpublished latest release. Pass -CurrentWindowsTag to evaluate the
+    ordering rule offline.
 #>
 
 [CmdletBinding()]
@@ -95,15 +98,78 @@ if (-not [string]::IsNullOrWhiteSpace($GitHubToken)) {
     $headers.Authorization = "Bearer $GitHubToken"
 }
 
-$currentTag = $CurrentWindowsTag
-if ([string]::IsNullOrWhiteSpace($currentTag)) {
-    $currentWindowsRelease = Invoke-RestMethod `
-        -Headers $headers `
+function Get-ExceptionHttpStatus {
+    param([Parameter(Mandatory)][object]$Exception)
+
+    $response = $null
+    if ($null -ne $Exception.PSObject.Properties["Response"]) {
+        $response = $Exception.Response
+    }
+    if ($null -eq $response -or
+        $null -eq $response.PSObject.Properties["StatusCode"]) {
+        return $null
+    }
+
+    return [int]$response.StatusCode
+}
+
+function Assert-WindowsReleaseTagUnpublished {
+    param(
+        [Parameter(Mandatory)][string]$ReleaseTag,
+        [Parameter(Mandatory)][hashtable]$RequestHeaders
+    )
+
+    try {
+        Invoke-RestMethod `
+            -Headers $RequestHeaders `
+            -Uri "https://api.github.com/repos/openclaw/openclaw-windows-node/releases/tags/$ReleaseTag" |
+            Out-Null
+    } catch {
+        $status = Get-ExceptionHttpStatus -Exception $_.Exception
+        if ($status -eq 404) {
+            return
+        }
+
+        throw "Could not determine whether Windows release '$ReleaseTag' already exists: $($_.Exception.Message)"
+    }
+
+    throw "Stable correction '$ReleaseTag' is already a published Windows release; a published tag must never be moved or reused."
+}
+
+function Get-CurrentWindowsReleaseTag {
+    param([Parameter(Mandatory)][hashtable]$RequestHeaders)
+
+    $release = Invoke-RestMethod `
+        -Headers $RequestHeaders `
         -Uri "https://api.github.com/repos/openclaw/openclaw-windows-node/releases/latest"
-    $currentTag = $currentWindowsRelease.tag_name
-    if ([string]::IsNullOrWhiteSpace($currentTag)) {
+
+    $tagName = $null
+    if ($null -ne $release -and
+        $null -ne $release.PSObject.Properties["tag_name"]) {
+        $tagName = $release.tag_name
+    }
+    if ([string]::IsNullOrWhiteSpace($tagName)) {
         throw "Could not resolve the current openclaw/openclaw-windows-node latest release tag."
     }
+
+    if ($release.PSObject.Properties["draft"] -and $release.draft) {
+        throw "Current Windows latest release '$tagName' is a draft; refusing to order a correction against it."
+    }
+    if ($release.PSObject.Properties["prerelease"] -and $release.prerelease) {
+        throw "Current Windows latest release '$tagName' is a prerelease; refusing to order a correction against it."
+    }
+    if ($null -eq $release.PSObject.Properties["published_at"] -or
+        $null -eq $release.published_at) {
+        throw "Current Windows latest release '$tagName' is not published; refusing to order a correction against it."
+    }
+
+    return $tagName
+}
+
+$currentTag = $CurrentWindowsTag
+if ([string]::IsNullOrWhiteSpace($currentTag)) {
+    Assert-WindowsReleaseTagUnpublished -ReleaseTag $Tag -RequestHeaders $headers
+    $currentTag = Get-CurrentWindowsReleaseTag -RequestHeaders $headers
 }
 
 Assert-SameLineStableCorrection `

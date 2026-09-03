@@ -82,9 +82,12 @@ jobs:
 
         if ($env:GITHUB_REF.StartsWith("refs/tags/v", [StringComparison]::Ordinal)) {
           $tagVersion = $env:GITHUB_REF_NAME -replace '^v', ''
+          # Match every numeric suffix, including malformed ones such as -0 and
+          # -03, so the correction validator is the single authority that can
+          # accept or reject them.
           $correction = [regex]::Match(
             $tagVersion,
-            '^(?<base>(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)\.(?:0|[1-9]\d*))-(?<revision>[1-9]\d*)$')
+            '^(?<base>(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)\.(?:0|[1-9]\d*))-(?<revision>\d+)$')
 
           if ($correction.Success) {
             $validation = .\scripts\Test-OpenClawStableCorrectionRelease.ps1 `

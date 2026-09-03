@@ -95,12 +95,16 @@ continue to use the GitVersion result directly.
 
 That validator resolves only this repository's latest release and then requires
 the candidate to share its `X.Y.Z` base line and carry a strictly greater
-correction. It performs no other repository's release lookup, and
-`-CurrentWindowsTag` runs the same decision offline.
+correction. It also rejects a candidate that already has a published Windows
+release. It performs no other repository's release lookup, and
+`-CurrentWindowsTag` evaluates the ordering rule offline.
 `scripts\test-stable-correction-release-validator.ps1` covers the accept and
-reject matrix deterministically in CI. The release job revalidates the same
-ordering after signing and before publication, so a correction that stopped
-being the next release while the build ran cannot be published as latest.
+reject matrix plus the workflow's tag classification deterministically in CI.
+Every numeric-suffix tag is routed to the validator, so malformed corrections
+such as `X.Y.Z-0` cannot be published as an ordinary prerelease instead. The
+release job revalidates the same ordering after signing and before publication,
+so a correction that stopped being the next release while the build ran cannot
+be published as latest.
 
 Release build jobs must check out full git history (`fetch-depth: 0`) so
 GitVersion can see tags.
