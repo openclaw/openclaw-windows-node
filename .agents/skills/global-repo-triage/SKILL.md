@@ -7,8 +7,9 @@ description: "Run complete OpenClaw Windows Node issue and PR triage, including 
 
 Run a complete maintainer triage of `openclaw/openclaw-windows-node`. Read every
 open issue and pull request, identify safe landing lanes, schedule OpenClaw's
-Windows proof pools, and produce the same evidence-backed Markdown report used
-for the August 27 and September 1 maintainer sweeps.
+Windows proof pools, and open the interactive OpenClaw triage canvas. The canvas
+keeps GitHub checks and plan gates current while preserving the evidence-backed
+decision quality established by the August 27 and September 1 reports.
 
 This skill is repository-specific. If the current repository is not
 `openclaw/openclaw-windows-node`, stop and say that this skill applies only to
@@ -30,16 +31,18 @@ Use when the user asks for:
 Create these session artifacts:
 
 ```text
-global-triage-YYYY-MM-DD.md
+global-triage-YYYY-MM-DD.json
 triage-YYYY-MM-DD\issues-summary.csv
 triage-YYYY-MM-DD\prs-summary.csv
 triage-YYYY-MM-DD\pr-<number>.patch
 ```
 
 Keep raw JSON when practical. Do not add triage artifacts to the repository.
-Use `templates\global-triage-report.md` as the report skeleton and
+Use `templates\triage-state.template.json` as the interactive state contract.
+Use `templates\global-triage-report.md` only when the user requests a Markdown
+export. The Markdown examples remain decision-quality references:
 `examples\global-triage-2026-08-27.md` plus
-`examples\global-triage-2026-09-01.md` as quality references.
+`examples\global-triage-2026-09-01.md`.
 
 ## Ground rules
 
@@ -64,6 +67,10 @@ Use `templates\global-triage-report.md` as the report skeleton and
 8. **Do not revive stale architecture wholesale.** Transplant the smallest
    useful fix onto current owners rather than rebasing obsolete god-object or
    pre-ledger branches.
+9. **Canvas actions are requests, not mutations.** The dashboard may refresh
+   read-only GitHub state and send a guarded action request into the current
+   Copilot session. It must never merge, close, label, comment, push, rerun CI,
+   or delete a session directly.
 
 ## Decision vocabulary
 
@@ -232,7 +239,8 @@ use the repository workflow's guarded
 
 ## 7. Review likely landing candidates
 
-Use direct review for small changes. Invoke `hanselman-code-review` for:
+Use direct review for small changes. Invoke the checked-in `autoreview` skill
+with a multi-reviewer panel when available for:
 
 - more than 300 changed lines
 - security, auth, setup, storage, release, signing, installer, shell, MXC,
@@ -241,8 +249,10 @@ Use direct review for small changes. Invoke `hanselman-code-review` for:
 - conflicting GitHub state or disputed findings
 - any candidate below 95% recommendation confidence that might still be taken
 
-Cross-reference both reviewers in the report, then verify each accepted finding
-against the code. Do not paste raw reviewer output as the decision.
+Cross-reference the panel with the primary review, then verify each accepted
+finding against the code. If only one isolated engine is available, record that
+limitation and lower recommendation confidence rather than naming an unavailable
+skill. Do not paste raw reviewer output as the decision.
 
 ## 8. Build the landing and release plan
 
@@ -288,37 +298,61 @@ For release planning:
 - never move or reuse a published tag
 - require x64/ARM64 signed installer and portable ZIP verification
 
-## 9. Write the proven report format
+## 9. Publish the interactive dashboard
 
-The Markdown report must use this order:
+Write `global-triage-YYYY-MM-DD.json` using
+`templates\triage-state.template.json`. Every item needs:
 
-1. `# OpenClaw Windows Node global triage`
-2. Snapshot sentence with exact open issue and PR counts plus collection scope
-3. `## Change since <prior date>`
-4. `## Executive queue`
-5. `## Pull requests`
-6. `## Issues`
-7. `## Active ownership audit`
-8. `## Adversarial review` for selected risky candidates
-9. `## Day plan`
-10. `## Automation and testability`
+- its PR or issue number, title, URL, decision, both confidence values, effort,
+  risk, owner, and concrete next action
+- exact reviewed head SHA for PRs
+- expected required check names
+- review status and proof status
+- every applicable proof-pool ID, validated against
+  `.github\proof-pools.json`
+- dependencies on other items in the same triage
 
-The PR table columns are:
+Populate `report` so the dashboard tabs preserve the report template's
+decision context:
 
-```text
-Item | Type / signal | Decision | Take confidence |
-Recommendation confidence | Effort | Risk | Owner / required validation
-```
+- `changes`
+- `executiveQueue`
+- `ownership`
+- `reviews`
+- `dayPlan`
+- `automation`
 
-The issue table columns are:
+Represent the day plan as ordered steps. A plan step may declare `gates` that
+point to an item's `inventory`, `review`, `checks`, `proof`, or `landing` stage.
+The canvas derives each gated step's live status whenever GitHub checks change.
 
-```text
-Item | Signal | Decision | Take confidence |
-Recommendation confidence | Effort | Risk | Owner / next action
-```
+Then:
 
-Every row needs a concrete owner and next action. Cover all open items, including
-low-priority and declined work.
+1. Call `list_canvas_capabilities` for `openclaw-triage-dashboard`.
+2. Open `openclaw-triage-dashboard` with the JSON object as input and use a
+   stable instance ID such as `global-triage-YYYY-MM-DD`.
+3. Reopen that same instance ID whenever triage decisions, proof status, review
+   status, expected checks, or plan steps change.
+4. Leave the canvas open. It refreshes GitHub PR and issue state at the declared
+   30-to-300-second interval and pushes updates to the panel.
+
+The canvas exposes:
+
+- search and readiness filters
+- live check totals and missing expected jobs
+- item stages and plan-gate status
+- proof, review, exact-head, draft, and mergeability gates
+- `Request next step`, which sends a read-only-by-default request into this
+  session
+- `Prepare merge`, enabled only for an exact-head `TAKE` at 90% or higher with
+  complete review and proof, clean merge state, and all expected checks present
+  and passing
+
+`Prepare merge` must only ask this session to re-fetch evidence and request
+explicit confirmation. The extension never calls a GitHub mutation command.
+
+When the user requests a Markdown export, use the historical section order and
+tables in `templates\global-triage-report.md`. The canvas is the primary handoff.
 
 ## Completion bar
 
@@ -332,4 +366,9 @@ Do not call the triage complete until:
 - proof pools and human hosts are scheduled explicitly
 - a numbered day plan identifies safe parallelism and dependency order
 - release contents and exclusions are explicit when a release is discussed
-- the Markdown report, CSV summaries, and reviewed PR patches are saved
+- the versioned triage-state JSON, CSV summaries, and reviewed PR patches are
+  saved
+- the dashboard opens successfully and its fetched item count matches the state
+  artifact
+- every plan gate references an item and stage in the state artifact
+- merge requests remain chat-routed and confirmation-gated

@@ -1,28 +1,33 @@
 # OpenClaw Windows Node Global Triage
 
-This portable skill reproduces the full maintainer sweep used for
+This skill reproduces the full maintainer sweep used for
 `openclaw/openclaw-windows-node`. It combines the repository's scheduled
 read-only triage report with source review, proof-pool scheduling, active-owner
-auditing, adversarial review, landing order, and release planning.
+auditing, adversarial review, landing order, release planning, and a live
+interactive canvas.
 
 ## Install
 
-Unzip the package so this file exists:
+Repository use is automatic because the skill and canvas extension are checked
+in together:
 
 ```text
-%USERPROFILE%\.copilot\skills\global-repo-triage\SKILL.md
+.agents\skills\global-repo-triage\SKILL.md
+.github\extensions\openclaw-triage-dashboard\extension.mjs
 ```
 
-Restart Copilot if the skill is not discovered immediately.
+For portable user installation, copy both directories to the matching user skill
+and extension locations. Restart Copilot if discovery does not refresh.
 
 ## Recommended prompt
 
 ```text
 Run the OpenClaw Windows Node global triage. Read every open issue and PR,
 compare with the previous report, identify what can safely land today, audit
-active ownership, schedule required proof pools, and save the full Markdown
-report plus execution handoff. Do not mutate GitHub until I approve the queue.
+active ownership, schedule required proof pools, save the evidence artifacts,
+and open the live triage canvas. Do not mutate GitHub until I approve an action.
 ```
 
-The `examples` folder contains the two real reports that established the format.
-
+The canvas refreshes checks and plan gates automatically. `Prepare merge` sends a
+guarded request into the current Copilot session; it does not merge directly.
+The `examples` folder contains the two reports that established decision quality.
