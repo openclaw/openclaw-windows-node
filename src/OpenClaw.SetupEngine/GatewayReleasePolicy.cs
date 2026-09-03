@@ -129,7 +129,7 @@ public static class GatewayReleasePolicy
     public const int ProtocolGeneration = 4;
     public const string NodeVersion = "22.22.3";
     public const string SecurityFloor = "2026.6.11";
-    public const string RecommendedVersion = "2026.8.1";
+    public const string RecommendedVersion = "2026.9.1";
     public const string RuntimeRejectedVersion = "2026.7.1";
     public const string EvidenceRejectedVersion = "2026.7.1-2";
 
@@ -147,9 +147,9 @@ public static class GatewayReleasePolicy
                 RecommendedVersion,
                 GatewayReleaseStatus.Validated,
                 ProtocolGeneration,
-                "sha512-bSaFeaDFnQH/bU1vgKMac6eHkHHPHG0C/uwduXGI3eIS3lyiYSwmDU5ehhBUUhlPeV85tL5/KVwmoH48nX1tWw==",
-                "https://github.com/openclaw/openclaw/releases/tag/v2026.8.1",
-                "Selected 2026-09-03 as the exact managed release while 2026.8.2 has release-blocking onboarding issues"),
+                "sha512-0Ve0631CdgkJDwd4NNG1BawIdF5yCL2sO+Tts8amStw+H6vKURTj0K4rOa4+hFpJk1Dnw5LyKl5twzwX1VtA2w==",
+                "https://github.com/openclaw/openclaw/releases/tag/v2026.9.1",
+                "Selected 2026-09-03 as the exact managed release after its stable npm package and GitHub release were published"),
             [RuntimeRejectedVersion] = new(
                 RuntimeRejectedVersion,
                 GatewayReleaseStatus.Rejected,

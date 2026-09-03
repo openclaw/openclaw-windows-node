@@ -7,7 +7,7 @@ public sealed class GatewayReleasePolicyTests
     [Fact]
     public void EmbeddedPolicy_IsInternallyValid()
     {
-        Assert.Equal("2026.8.1", GatewayReleasePolicy.RecommendedVersion);
+        Assert.Equal("2026.9.1", GatewayReleasePolicy.RecommendedVersion);
         Assert.Empty(GatewayReleasePolicy.ValidateEmbeddedPolicy());
         Assert.Equal(
             GatewayReleaseStatus.Validated,
