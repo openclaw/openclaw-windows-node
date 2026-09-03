@@ -56,9 +56,10 @@ evidence.
 
 ## Current candidate decision
 
-`2026.9.1` is the recommendation. Windows setup installs that exact release
-with Node `22.22.3` and verifies the CLI version, protocol-v4 handshake, and
-server version.
+`2026.9.1` is the recommendation. Windows setup is configured to install that
+exact release with Node `22.22.3`; its verification contract requires the CLI
+version, protocol-v4 handshake, and server version to match. Current-head clean
+installation and onboarding proof for this release is pending.
 
 `2026.6.11` remains a distinct validated fallback at the security floor. It is
 never selected automatically.
