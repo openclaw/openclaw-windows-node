@@ -891,7 +891,7 @@ jobs:
           2. Launch from Start Menu or system tray
           3. Right-click tray icon → Settings to configure
 
-    - name: Retain the latest seven alpha releases
+    - name: Retain alpha releases for 30 days
       if: needs.test.outputs.isPrerelease == 'true' && contains(github.ref_name, '-alpha.')
       shell: bash
       env:
@@ -925,11 +925,10 @@ jobs:
             map(select(
               .draft == false and
               .prerelease == true and
-              (.tag_name | test("^v[0-9]+\\.[0-9]+\\.[0-9]+-alpha\\.[0-9]+$"))
+              (.tag_name | test("^v[0-9]+\\.[0-9]+\\.[0-9]+-alpha\\.[0-9]+$")) and
+              ((.published_at | fromdateiso8601) < (now - (30 * 24 * 60 * 60)))
             ))
             | sort_by(.published_at)
-            | reverse
-            | .[7:]
             | .[]
             | [.id, .tag_name]
             | @tsv

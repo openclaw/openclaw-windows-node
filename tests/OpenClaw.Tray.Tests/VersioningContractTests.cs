@@ -87,8 +87,8 @@ public sealed class VersioningContractTests
         Assert.Contains("workflow_dispatch:", releaseWorkflow);
         Assert.Contains("uses: softprops/action-gh-release@v3", releaseWorkflow);
         Assert.Contains("prerelease: ${{ needs.test.outputs.isPrerelease }}", releaseWorkflow);
-        Assert.Contains("Retain the latest seven alpha releases", releaseWorkflow);
-        Assert.Contains("| .[7:]", releaseWorkflow);
+        Assert.Contains("Retain alpha releases for 30 days", releaseWorkflow);
+        Assert.Contains("now - (30 * 24 * 60 * 60)", releaseWorkflow);
         Assert.Contains("retaining its Git tag", releaseWorkflow);
         Assert.Contains("gh api --method DELETE", releaseWorkflow);
     }
