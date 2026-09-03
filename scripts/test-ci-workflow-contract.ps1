@@ -34,6 +34,28 @@ function Assert-Contains {
     }
 }
 
+function Get-JobBlock {
+    param(
+        [Parameter(Mandatory)][string]$Name
+    )
+
+    $escapedName = [regex]::Escape($Name)
+    $startMatch = [regex]::Match($workflow, "(?m)^  ${escapedName}:\r?$")
+    if (-not $startMatch.Success) {
+        throw "Could not find CI job '$Name'."
+    }
+    $jobHeadingPattern = [regex]::new("(?m)^  [a-zA-Z0-9_-]+:\r?$")
+    $nextMatch = $jobHeadingPattern.Match(
+        $workflow,
+        $startMatch.Index + $startMatch.Length)
+    if (-not $nextMatch.Success) {
+        return $workflow.Substring($startMatch.Index)
+    }
+    return $workflow.Substring(
+        $startMatch.Index,
+        $nextMatch.Index - $startMatch.Index)
+}
+
 Assert-Contains `
     -Text $workflow `
     -Expected "group: `${{ github.workflow }}-`${{ github.event_name == 'pull_request' && format('pr-{0}', github.event.pull_request.number) || format('{0}-{1}', github.ref, github.sha) }}" `
@@ -54,6 +76,84 @@ Assert-Contains `
     -Text $workflow `
     -Expected "OPENCLAW_CI_COLLECT_COVERAGE: `${{ github.event_name != 'pull_request' }}" `
     -Message "Test coverage must be disabled only for pull_request runs."
+
+$classificationJob = Get-JobBlock "change-classification"
+foreach ($token in @(
+    "fetch-depth: 0",
+    "./scripts/Get-CiChangeClassification.ps1",
+    "classification: `${{ steps.classify.outputs.classification }}",
+    "full: `${{ steps.classify.outputs.full }}"
+)) {
+    Assert-Contains `
+        -Text $classificationJob `
+        -Expected $token `
+        -Message "Change classification job is missing '$token'."
+}
+
+$fastValidationJob = Get-JobBlock "fast-validation"
+foreach ($token in @(
+    "Ensure .squad stays untracked",
+    "node --test .github/scripts/repository-triage.test.cjs",
+    "./scripts/validate-docs.ps1",
+    "./scripts/validate-agent-skills.ps1",
+    "./scripts/test-agent-skills-validator.ps1",
+    "./scripts/test-ci-change-classifier.ps1",
+    "./scripts/test-ci-gate-results.ps1",
+    "./scripts/test-ci-workflow-contract.ps1"
+)) {
+    Assert-Contains `
+        -Text $fastValidationJob `
+        -Expected $token `
+        -Message "Always-running fast validation job is missing '$token'."
+}
+
+foreach ($heavyJobName in @("test", "e2etests", "build")) {
+    $heavyJob = Get-JobBlock $heavyJobName
+    Assert-Contains `
+        -Text $heavyJob `
+        -Expected "needs.change-classification.outputs.full == 'true'" `
+        -Message "Heavy job '$heavyJobName' must run only for full validation."
+}
+
+$ciGateJob = Get-JobBlock "ci-gate"
+foreach ($token in @(
+    "name: CI Gate",
+    "if: `${{ always() }}",
+    "needs: [change-classification, fast-validation, test, e2etests, build]",
+    "./scripts/Assert-CiGateResults.ps1",
+    "-ClassificationResult `$env:CLASSIFICATION_RESULT",
+    "-FastValidationResult `$env:FAST_VALIDATION_RESULT",
+    "-TestResult `$env:TEST_RESULT",
+    "-E2eResult `$env:E2E_RESULT",
+    "-BuildResult `$env:BUILD_RESULT"
+)) {
+    Assert-Contains `
+        -Text $ciGateJob `
+        -Expected $token `
+        -Message "Stable CI Gate is missing '$token'."
+}
+
+$releaseJob = Get-JobBlock "release"
+Assert-Contains `
+    -Text $releaseJob `
+    -Expected "needs: [change-classification, fast-validation, test, e2etests, build, ci-gate]" `
+    -Message "Tag release must depend on the stable CI Gate."
+Assert-Contains `
+    -Text $releaseJob `
+    -Expected "needs.ci-gate.result == 'success'" `
+    -Message "Tag release must require the stable CI Gate to succeed."
+
+$testJob = Get-JobBlock "test"
+foreach ($token in @(
+    "./scripts/Get-CiProofPoolRegressionDecision.ps1",
+    "steps.proof_pool_regression.outcome != 'success' || steps.proof_pool_regression.outputs.run != 'false'",
+    "./scripts/test-proof-pool-validator.ps1"
+)) {
+    Assert-Contains `
+        -Text $testJob `
+        -Expected $token `
+        -Message "Full Windows test lane is missing conditional proof-pool regression token '$token'."
+}
 
 $runnerUses = [regex]::Matches(
     $workflow,
@@ -109,6 +209,12 @@ $triggerPaths = @(
     "scripts/test-validate-docs-proof-pool-flow.ps1",
     "scripts/validate-docs.ps1",
     "scripts/Get-CiProofPoolRegressionDecision.ps1",
+    "scripts/Get-CiChangeClassification.ps1",
+    "scripts/test-ci-change-classifier.ps1",
+    "scripts/Assert-CiGateResults.ps1",
+    "scripts/test-ci-gate-results.ps1",
+    "scripts/validate-agent-skills.ps1",
+    "scripts/test-agent-skills-validator.ps1",
     "scripts/test-ci-workflow-contract.ps1"
 )
 
@@ -191,4 +297,4 @@ try {
     }
 }
 
-Write-Host "CI workflow contracts passed: PR cancellation, fail-closed proof routing, conditional coverage, TRX logging, and single-pass Release publish." -ForegroundColor Green
+Write-Host "CI workflow contracts passed: PR cancellation, docs-only routing, stable gate enforcement, fail-closed proof routing, conditional coverage, TRX logging, and single-pass Release publish." -ForegroundColor Green

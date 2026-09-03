@@ -76,7 +76,8 @@ required closeout lane for code changes.
 |---|---|---|
 | Required closeout | `.\build.ps1`, Shared tests, Tray tests | Every code change and every agent closeout |
 | Proof-pool inventory | `.\scripts\validate-proof-pools.ps1`, `.\scripts\test-proof-pool-validator.ps1`, and `.\scripts\test-validate-docs-proof-pool-flow.ps1` | Every inventory or proof scheduling change; the documentation gate runs core schema and parent-flow checks, while CI runs the full malformed-contract matrix |
-| GitHub-hosted PR/main CI | `.github\workflows\ci.yml` | Every pull request and push to `main`; runs normal E2E shards but skips MXC proofs on hosted runners |
+| Agent skills | `.\scripts\validate-agent-skills.ps1` and `.\scripts\test-agent-skills-validator.ps1` | Changes under `.agents\skills`; validates skill metadata, agent-facing prose, and local links |
+| GitHub-hosted PR/main CI | `.github\workflows\ci.yml` | Every pull request and push to `main`; docs-only PRs use the fast path, while all other PRs plus main and tag pushes run the full test, E2E, and release-build lanes |
 | Accessibility scan | `.\scripts\run-proof-tests.ps1 -Project 'tests\OpenClaw.Tray.UITests\OpenClaw.Tray.UITests.csproj' -Filter 'Category=Accessibility' -ResultName 'winui-accessibility' -RuntimeIdentifier win-x64` | UI changes and CI quality gate; runs real-process Axe.Windows scans; see `docs\ACCESSIBILITY.md` |
 | Local E2E | `OPENCLAW_RUN_E2E=1` with `OpenClaw.E2ETests` | Gateway setup/connect, recovery, or pairing changes that need real WSL Gateway coverage |
 | Local MXC E2E | `.\scripts\validate-mxc-e2e.ps1` | MXC sandboxing, `system.run`, exec approvals, Windows node command execution, gateway setup/connect changes that affect MXC |
@@ -88,6 +89,26 @@ Capacity-dependent Windows validation is named in
 [`PROOF_POOLS.md`](./PROOF_POOLS.md). Pull requests declare the exact pool IDs
 they need. A declaration does not claim that the pool ran, and unavailable
 proof must remain reported as blocked.
+
+### CI docs-only fast path
+
+The `change-classification` job selects `docs_only` only for pull requests where
+every changed path is explicitly allowlisted maintained documentation or
+non-executable `.agents\skills` content. Mixed changes, scripts, source, tests,
+workflow or build configuration, package manifests, installer files, unknown
+paths, empty diffs, invalid revisions, and diff failures select `full`.
+Pushes to `main` and release tags always select `full`.
+
+`fast-validation` runs for every workflow invocation. It owns repository
+hygiene, documentation validation, agent-skill validation, classifier
+regressions, and workflow contracts. The heavier malformed proof-contract
+matrix remains in the full Windows `test` lane under its existing conditional
+decision. For a docs-only pull request, the Windows `test`, E2E, and
+release-build matrices are skipped. The always-running **CI Gate** check
+accepts those skips only when the classification is `docs_only`; otherwise it
+requires every full lane to succeed. Classification or fast-validation
+failures always fail **CI Gate**. This stable check avoids required-check names
+disappearing when a pull request uses the fast path.
 
 ## Running tests
 

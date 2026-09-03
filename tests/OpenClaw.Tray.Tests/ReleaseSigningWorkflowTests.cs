@@ -120,7 +120,7 @@ public sealed class ReleaseSigningWorkflowTests
         var workflow = File.ReadAllText(Path.Combine(TestRepositoryPaths.GetRepositoryRoot(), ".github", "workflows", "ci.yml"));
 
         Assert.Contains("if: false # MSIX distribution is paused; ship Inno setup and portable ZIP artifacts only.", workflow);
-        Assert.Contains("needs: [repo-hygiene, test, e2etests, build]", workflow);
+        Assert.Contains("needs: [change-classification, fast-validation, test, e2etests, build, ci-gate]", workflow);
         Assert.DoesNotContain("Download win-x64 MSIX artifact", workflow);
         Assert.DoesNotContain("Download win-arm64 MSIX artifact", workflow);
         Assert.DoesNotContain("Sign Release MSIX Packages", workflow);

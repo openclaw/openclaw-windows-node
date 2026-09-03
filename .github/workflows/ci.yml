@@ -15,10 +15,40 @@ concurrency:
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
-  repo-hygiene:
+  change-classification:
     runs-on: ubuntu-latest
+    outputs:
+      classification: ${{ steps.classify.outputs.classification }}
+      full: ${{ steps.classify.outputs.full }}
     steps:
     - uses: actions/checkout@v7
+      with:
+        fetch-depth: 0
+
+    - name: Classify changed paths
+      id: classify
+      shell: pwsh
+      env:
+        PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+      run: |
+        $classification = ./scripts/Get-CiChangeClassification.ps1 `
+          -EventName $env:GITHUB_EVENT_NAME `
+          -BaseSha $env:PR_BASE_SHA `
+          -HeadSha $env:PR_HEAD_SHA
+        if ($classification -notin @("docs_only", "full")) {
+          throw "Unexpected CI change classification '$classification'."
+        }
+        "classification=$classification" >> $env:GITHUB_OUTPUT
+        "full=$(($classification -eq 'full').ToString().ToLowerInvariant())" >> $env:GITHUB_OUTPUT
+        "CI change classification: $classification" >> $env:GITHUB_STEP_SUMMARY
+
+  fast-validation:
+    runs-on: windows-latest
+    steps:
+    - uses: actions/checkout@v7
+      with:
+        fetch-depth: 0
 
     - name: Ensure .squad stays untracked
       shell: bash
@@ -33,20 +63,41 @@ jobs:
     - name: Test repository triage automation
       run: node --test .github/scripts/repository-triage.test.cjs
 
+    - name: Validate documentation
+      shell: pwsh
+      run: ./scripts/validate-docs.ps1
+
+    - name: Validate agent skills
+      shell: pwsh
+      run: ./scripts/validate-agent-skills.ps1
+
+    - name: Test agent skill validator
+      shell: pwsh
+      run: ./scripts/test-agent-skills-validator.ps1
+
+    - name: Validate CI change classifier
+      shell: pwsh
+      run: ./scripts/test-ci-change-classifier.ps1
+
+    - name: Validate CI Gate result contracts
+      shell: pwsh
+      run: ./scripts/test-ci-gate-results.ps1
+
+    - name: Validate CI workflow contracts
+      shell: pwsh
+      run: ./scripts/test-ci-workflow-contract.ps1
+
+    - name: Validate stable correction release ordering regressions
+      shell: pwsh
+      run: ./scripts/test-stable-correction-release-validator.ps1
+
   test:
-    needs: repo-hygiene
-    if: ${{ !cancelled() }}
+    needs: [change-classification, fast-validation]
+    if: ${{ !cancelled() && needs.change-classification.result == 'success' && needs.fast-validation.result == 'success' && needs.change-classification.outputs.full == 'true' }}
     runs-on: windows-latest
     env:
       OPENCLAW_CI_COLLECT_COVERAGE: ${{ github.event_name != 'pull_request' }}
     steps:
-    - name: Fail if repo hygiene failed
-      if: ${{ needs.repo-hygiene.result != 'success' }}
-      shell: pwsh
-      run: |
-        Write-Error "repo-hygiene failed; see the repo-hygiene job output."
-        exit 1
-
     - uses: actions/checkout@v7
       with:
         fetch-depth: 0
@@ -113,10 +164,6 @@ jobs:
         "isPrerelease=$($isPrerelease.ToString().ToLowerInvariant())" >> $env:GITHUB_OUTPUT
         "isStableCorrection=$($isStableCorrection.ToString().ToLowerInvariant())" >> $env:GITHUB_OUTPUT
 
-    - name: Validate documentation
-      shell: pwsh
-      run: ./scripts/validate-docs.ps1
-
     - name: Select proof-pool regression scope
       id: proof_pool_regression
       continue-on-error: true
@@ -138,14 +185,6 @@ jobs:
       if: ${{ steps.proof_pool_regression.outcome != 'success' || steps.proof_pool_regression.outputs.run != 'false' }}
       shell: pwsh
       run: ./scripts/test-proof-pool-validator.ps1
-
-    - name: Validate CI workflow contracts
-      shell: pwsh
-      run: ./scripts/test-ci-workflow-contract.ps1
-
-    - name: Validate stable correction release ordering regressions
-      shell: pwsh
-      run: ./scripts/test-stable-correction-release-validator.ps1
 
     - name: Restore dependencies
       run: dotnet restore
@@ -326,8 +365,8 @@ jobs:
       isStableCorrection: ${{ steps.release_version.outputs.isStableCorrection }}
 
   e2etests:
-    needs: repo-hygiene
-    if: ${{ !cancelled() }}
+    needs: [change-classification, fast-validation]
+    if: ${{ !cancelled() && needs.change-classification.result == 'success' && needs.fast-validation.result == 'success' && needs.change-classification.outputs.full == 'true' }}
     runs-on: windows-latest
     timeout-minutes: ${{ matrix.timeout_minutes }}
     strategy:
@@ -344,13 +383,6 @@ jobs:
             timeout_minutes: 25
             filter: FullyQualifiedName~OpenClaw.E2ETests.Setup.NetworkRecoveryTests
     steps:
-    - name: Fail if repo hygiene failed
-      if: ${{ needs.repo-hygiene.result != 'success' }}
-      shell: pwsh
-      run: |
-        Write-Error "repo-hygiene failed; see the repo-hygiene job output."
-        exit 1
-
     - uses: actions/checkout@v7
       with:
         fetch-depth: 0
@@ -469,7 +501,8 @@ jobs:
         if-no-files-found: warn
 
   build:
-    needs: [test, e2etests]
+    needs: [change-classification, test, e2etests]
+    if: ${{ !cancelled() && needs.change-classification.outputs.full == 'true' && needs.test.result == 'success' && needs.e2etests.result == 'success' }}
     runs-on: ${{ matrix.rid == 'win-arm64' && 'windows-11-arm' || 'windows-latest' }}
     env:
       OPENCLAW_BUILD_VERSION: ${{ needs.test.outputs.semVer }}
@@ -630,9 +663,34 @@ jobs:
         name: openclaw-msix-${{ matrix.rid }}
         path: ${{ steps.find-msix.outputs.msix_path }}
 
+  ci-gate:
+    name: CI Gate
+    if: ${{ always() }}
+    needs: [change-classification, fast-validation, test, e2etests, build]
+    runs-on: ubuntu-latest
+    steps:
+    - name: Enforce required CI results
+      shell: pwsh
+      env:
+        CLASSIFICATION_RESULT: ${{ needs.change-classification.result }}
+        CLASSIFICATION: ${{ needs.change-classification.outputs.classification }}
+        FAST_VALIDATION_RESULT: ${{ needs.fast-validation.result }}
+        TEST_RESULT: ${{ needs.test.result }}
+        E2E_RESULT: ${{ needs.e2etests.result }}
+        BUILD_RESULT: ${{ needs.build.result }}
+      run: |
+        $validatedMode = ./scripts/Assert-CiGateResults.ps1 `
+          -ClassificationResult $env:CLASSIFICATION_RESULT `
+          -Classification $env:CLASSIFICATION `
+          -FastValidationResult $env:FAST_VALIDATION_RESULT `
+          -TestResult $env:TEST_RESULT `
+          -E2eResult $env:E2E_RESULT `
+          -BuildResult $env:BUILD_RESULT
+        "CI Gate passed $validatedMode validation." >> $env:GITHUB_STEP_SUMMARY
+
   release:
-    needs: [repo-hygiene, test, e2etests, build]
-    if: startsWith(github.ref, 'refs/tags/v') && needs.repo-hygiene.result == 'success' && needs.test.result == 'success' && needs.e2etests.result == 'success' && needs.build.result == 'success' && !cancelled()
+    needs: [change-classification, fast-validation, test, e2etests, build, ci-gate]
+    if: startsWith(github.ref, 'refs/tags/v') && needs.ci-gate.result == 'success' && needs.change-classification.outputs.full == 'true' && needs.fast-validation.result == 'success' && needs.test.result == 'success' && needs.e2etests.result == 'success' && needs.build.result == 'success' && !cancelled()
     runs-on: windows-latest
     environment: release-signing
     permissions:
