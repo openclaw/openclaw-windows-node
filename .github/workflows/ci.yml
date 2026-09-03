@@ -669,6 +669,8 @@ jobs:
     needs: [change-classification, fast-validation, test, e2etests, build]
     runs-on: ubuntu-latest
     steps:
+    - uses: actions/checkout@v7
+
     - name: Enforce required CI results
       shell: pwsh
       env:

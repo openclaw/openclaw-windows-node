@@ -120,6 +120,7 @@ foreach ($token in @(
     "name: CI Gate",
     "if: `${{ always() }}",
     "needs: [change-classification, fast-validation, test, e2etests, build]",
+    "uses: actions/checkout@v7",
     "./scripts/Assert-CiGateResults.ps1",
     "-ClassificationResult `$env:CLASSIFICATION_RESULT",
     "-FastValidationResult `$env:FAST_VALIDATION_RESULT",
