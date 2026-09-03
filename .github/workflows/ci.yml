@@ -10,6 +10,10 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event_name == 'pull_request' && format('pr-{0}', github.event.pull_request.number) || format('{0}-{1}', github.ref, github.sha) }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
   repo-hygiene:
     runs-on: ubuntu-latest
@@ -33,6 +37,8 @@ jobs:
     needs: repo-hygiene
     if: ${{ !cancelled() }}
     runs-on: windows-latest
+    env:
+      OPENCLAW_CI_COLLECT_COVERAGE: ${{ github.event_name != 'pull_request' }}
     steps:
     - name: Fail if repo hygiene failed
       if: ${{ needs.repo-hygiene.result != 'success' }}
@@ -111,9 +117,31 @@ jobs:
       shell: pwsh
       run: ./scripts/validate-docs.ps1
 
+    - name: Select proof-pool regression scope
+      id: proof_pool_regression
+      continue-on-error: true
+      shell: pwsh
+      env:
+        PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+      run: |
+        $decision = ./scripts/Get-CiProofPoolRegressionDecision.ps1 `
+          -EventName $env:GITHUB_EVENT_NAME `
+          -BaseSha $env:PR_BASE_SHA `
+          -HeadSha $env:PR_HEAD_SHA
+        if ($decision -notin @("true", "false")) {
+          throw "Unexpected proof-pool regression decision '$decision'."
+        }
+        "run=$decision" >> $env:GITHUB_OUTPUT
+
     - name: Validate proof-pool regressions
+      if: ${{ steps.proof_pool_regression.outcome != 'success' || steps.proof_pool_regression.outputs.run != 'false' }}
       shell: pwsh
       run: ./scripts/test-proof-pool-validator.ps1
+
+    - name: Validate CI workflow contracts
+      shell: pwsh
+      run: ./scripts/test-ci-workflow-contract.ps1
 
     - name: Validate stable correction release ordering regressions
       shell: pwsh
@@ -122,11 +150,8 @@ jobs:
     - name: Restore dependencies
       run: dotnet restore
 
-    # dotnet-coverage replaces coverlet because the integration tests spawn the
-    # tray exe out-of-process; coverlet only instruments the in-proc test
-    # assembly. Installing once at the job level lets every test step wrap its
-    # `dotnet test` invocation in `dotnet-coverage collect`.
     - name: Install dotnet-coverage
+      if: ${{ github.event_name != 'pull_request' }}
       run: dotnet tool install --global dotnet-coverage
 
     - name: Build Shared Library
@@ -150,71 +175,44 @@ jobs:
       env:
         OPENCLAW_RUN_INTEGRATION: 1
       run: >
-        dotnet-coverage collect
-        --output TestResults\Shared\coverage.cobertura.xml
-        --output-format cobertura
-        "dotnet test tests/OpenClaw.Shared.Tests
-        --no-build
-        -c Debug
-        --verbosity normal
-        --results-directory TestResults\Shared
-        --logger trx;LogFileName=OpenClaw.Shared.Tests.trx"
+        ./scripts/Invoke-CiTest.ps1
+        -Project tests/OpenClaw.Shared.Tests
+        -ResultsDirectory TestResults\Shared
+        -TrxFileName OpenClaw.Shared.Tests.trx
 
     - name: Run Tray Tests
       run: >
-        dotnet-coverage collect
-        --output TestResults\Tray\coverage.cobertura.xml
-        --output-format cobertura
-        "dotnet test tests/OpenClaw.Tray.Tests
-        --no-build
-        -c Debug
-        -r win-x64
-        --verbosity normal
-        --results-directory TestResults\Tray
-        --logger trx;LogFileName=OpenClaw.Tray.Tests.trx"
+        ./scripts/Invoke-CiTest.ps1
+        -Project tests/OpenClaw.Tray.Tests
+        -ResultsDirectory TestResults\Tray
+        -TrxFileName OpenClaw.Tray.Tests.trx
+        -Runtime win-x64
 
     - name: Run Connection Tests
       run: >
-        dotnet-coverage collect
-        --output TestResults\Connection\coverage.cobertura.xml
-        --output-format cobertura
-        "dotnet test tests/OpenClaw.Connection.Tests
-        --no-build
-        -c Debug
-        --verbosity normal
-        --results-directory TestResults\Connection
-        --logger trx;LogFileName=OpenClaw.Connection.Tests.trx"
+        ./scripts/Invoke-CiTest.ps1
+        -Project tests/OpenClaw.Connection.Tests
+        -ResultsDirectory TestResults\Connection
+        -TrxFileName OpenClaw.Connection.Tests.trx
 
     - name: Run WinNode CLI Tests
       run: >
-        dotnet-coverage collect
-        --output TestResults\WinNodeCli\coverage.cobertura.xml
-        --output-format cobertura
-        "dotnet test tests/OpenClaw.WinNode.Cli.Tests
-        --no-build
-        -c Debug
-        --verbosity normal
-        --results-directory TestResults\WinNodeCli
-        --logger trx;LogFileName=OpenClaw.WinNode.Cli.Tests.trx"
+        ./scripts/Invoke-CiTest.ps1
+        -Project tests/OpenClaw.WinNode.Cli.Tests
+        -ResultsDirectory TestResults\WinNodeCli
+        -TrxFileName OpenClaw.WinNode.Cli.Tests.trx
 
     # Tray integration tests gate on OPENCLAW_RUN_INTEGRATION; set it so the
-    # MCP-server / capability tests actually run. dotnet-coverage with no
-    # filter captures coverage for both the test host AND the spawned tray
-    # exe (coverlet could not — see tests/Directory.Build.props comment).
+    # MCP-server and capability tests actually run.
     - name: Run Tray Integration Tests
       env:
         OPENCLAW_RUN_INTEGRATION: 1
       run: >
-        dotnet-coverage collect
-        --output TestResults\TrayIntegration\coverage.cobertura.xml
-        --output-format cobertura
-        "dotnet test tests/OpenClaw.Tray.IntegrationTests
-        --no-build
-        -c Debug
-        -r win-x64
-        --verbosity normal
-        --results-directory TestResults\TrayIntegration
-        --logger trx;LogFileName=OpenClaw.Tray.IntegrationTests.trx"
+        ./scripts/Invoke-CiTest.ps1
+        -Project tests/OpenClaw.Tray.IntegrationTests
+        -ResultsDirectory TestResults\TrayIntegration
+        -TrxFileName OpenClaw.Tray.IntegrationTests.trx
+        -Runtime win-x64
 
     # UI tests need a real visual tree AND a system-registered WindowsAppRuntime
     # framework MSIX. The hosted windows-2025 runner image doesn't preinstall it,
@@ -243,43 +241,28 @@ jobs:
 
     - name: Run Functional UI Tests
       run: >
-        dotnet-coverage collect
-        --output TestResults\FunctionalUI\coverage.cobertura.xml
-        --output-format cobertura
-        "dotnet test tests/OpenClawTray.FunctionalUI.Tests
-        --no-build
-        -c Debug
-        -r win-x64
-        --verbosity normal
-        --results-directory TestResults\FunctionalUI
-        --logger trx;LogFileName=OpenClawTray.FunctionalUI.Tests.trx"
+        ./scripts/Invoke-CiTest.ps1
+        -Project tests/OpenClawTray.FunctionalUI.Tests
+        -ResultsDirectory TestResults\FunctionalUI
+        -TrxFileName OpenClawTray.FunctionalUI.Tests.trx
+        -Runtime win-x64
 
     - name: Run SetupEngine Tests
       run: >
-        dotnet-coverage collect
-        --output TestResults\SetupEngine\coverage.cobertura.xml
-        --output-format cobertura
-        "dotnet test tests/OpenClaw.SetupEngine.Tests
-        --no-build
-        -c Debug
-        -r win-x64
-        --verbosity normal
-        --results-directory TestResults\SetupEngine
-        --logger trx;LogFileName=OpenClaw.SetupEngine.Tests.trx"
+        ./scripts/Invoke-CiTest.ps1
+        -Project tests/OpenClaw.SetupEngine.Tests
+        -ResultsDirectory TestResults\SetupEngine
+        -TrxFileName OpenClaw.SetupEngine.Tests.trx
+        -Runtime win-x64
 
     - name: Run Tray UI Tests
       run: >
-        dotnet-coverage collect
-        --output TestResults\TrayUI\coverage.cobertura.xml
-        --output-format cobertura
-        "dotnet test tests/OpenClaw.Tray.UITests
-        --no-build
-        -c Debug
-        -r win-x64
-        --verbosity normal
-        --results-directory TestResults\TrayUI
-        --logger trx;LogFileName=OpenClaw.Tray.UITests.trx
-        --filter Category!=Accessibility"
+        ./scripts/Invoke-CiTest.ps1
+        -Project tests/OpenClaw.Tray.UITests
+        -ResultsDirectory TestResults\TrayUI
+        -TrxFileName OpenClaw.Tray.UITests.trx
+        -Runtime win-x64
+        -Filter Category!=Accessibility
 
     # Accessibility Insights CI pass: scans each page in the real app process.
     - name: Run Accessibility Tests (Axe.Windows)
@@ -514,9 +497,6 @@ jobs:
 
     - name: Restore WinUI Tray App
       run: dotnet restore src/OpenClaw.Tray.WinUI -r ${{ matrix.rid }}
-
-    - name: Build WinUI Tray App (Release)
-      run: dotnet build src/OpenClaw.Tray.WinUI --no-restore -c Release -r ${{ matrix.rid }} -p:Version=$env:OPENCLAW_BUILD_VERSION -p:InformationalVersion=$env:OPENCLAW_BUILD_VERSION
 
     - name: Publish WinUI Tray App
       run: dotnet publish src/OpenClaw.Tray.WinUI -c Release -r ${{ matrix.rid }} --self-contained --no-restore -o publish -p:Version=$env:OPENCLAW_BUILD_VERSION -p:InformationalVersion=$env:OPENCLAW_BUILD_VERSION
