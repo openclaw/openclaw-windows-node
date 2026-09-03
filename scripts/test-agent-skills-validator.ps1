@@ -89,3 +89,5 @@ See [reference](reference.md).
 }
 
 Write-Host "Agent skill validator regressions passed: valid metadata and broken name/link cases." -ForegroundColor Green
+$global:LASTEXITCODE = 0
+exit 0
