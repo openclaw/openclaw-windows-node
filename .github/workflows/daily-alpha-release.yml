@@ -4,7 +4,6 @@ on:
   schedule:
     - cron: '0 14 * * *'
       timezone: America/Los_Angeles
-  workflow_dispatch:
 
 permissions:
   actions: write
@@ -21,6 +20,7 @@ jobs:
       - uses: actions/checkout@v7
         with:
           fetch-depth: 0
+          ref: ${{ github.event.repository.default_branch }}
 
       - name: Find the previous published release
         id: previous_release
@@ -51,9 +51,20 @@ jobs:
             exit 1
           fi
 
+          current_sha="$(git rev-parse HEAD)"
+          head_non_alpha_tag="$(
+            git tag --points-at "$current_sha" --list 'v*' |
+              grep -Ev '^v[0-9]+\.[0-9]+\.[0-9]+-alpha\.[0-9]+$' |
+              head -n 1 || true
+          )"
+
           echo "tag=$previous_tag" >> "$GITHUB_OUTPUT"
           echo "sha=$previous_sha" >> "$GITHUB_OUTPUT"
-          if [[ "$previous_sha" == "$GITHUB_SHA" ]]; then
+          echo "current_sha=$current_sha" >> "$GITHUB_OUTPUT"
+          if [[ -n "$head_non_alpha_tag" ]]; then
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+            echo "Deferring alpha release because main already has unpublished non-alpha tag $head_non_alpha_tag."
+          elif [[ "$previous_sha" == "$current_sha" ]]; then
             echo "changed=false" >> "$GITHUB_OUTPUT"
             echo "No changes since $previous_tag; skipping today's alpha release."
           else
@@ -77,6 +88,7 @@ jobs:
         id: alpha_tag
         shell: bash
         env:
+          CURRENT_SHA: ${{ steps.previous_release.outputs.current_sha }}
           SEMVER: ${{ steps.gitversion.outputs.semVer }}
         run: |
           set -euo pipefail
@@ -89,15 +101,15 @@ jobs:
           tag="v$SEMVER"
           if git show-ref --verify --quiet "refs/tags/$tag"; then
             tagged_sha="$(git rev-list -n 1 "$tag")"
-            if [[ "$tagged_sha" != "$GITHUB_SHA" ]]; then
-              echo "::error::Existing tag $tag points to $tagged_sha instead of $GITHUB_SHA."
+            if [[ "$tagged_sha" != "$CURRENT_SHA" ]]; then
+              echo "::error::Existing tag $tag points to $tagged_sha instead of $CURRENT_SHA."
               exit 1
             fi
-            echo "Reusing $tag at $GITHUB_SHA."
+            echo "Reusing $tag at $CURRENT_SHA."
           else
-            git tag "$tag" "$GITHUB_SHA"
+            git tag "$tag" "$CURRENT_SHA"
             git push origin "refs/tags/$tag"
-            echo "Created $tag at $GITHUB_SHA."
+            echo "Created $tag at $CURRENT_SHA."
           fi
 
           echo "tag=$tag" >> "$GITHUB_OUTPUT"

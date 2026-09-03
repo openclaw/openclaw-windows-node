@@ -74,7 +74,11 @@ public sealed class VersioningContractTests
         Assert.Contains("timezone: America/Los_Angeles", dailyWorkflow);
         Assert.Contains("actions: write", dailyWorkflow);
         Assert.Contains("contents: write", dailyWorkflow);
-        Assert.Contains("previous_sha\" == \"$GITHUB_SHA", dailyWorkflow);
+        Assert.Contains("ref: ${{ github.event.repository.default_branch }}", dailyWorkflow);
+        Assert.DoesNotContain("workflow_dispatch:", dailyWorkflow);
+        Assert.Contains("head_non_alpha_tag", dailyWorkflow);
+        Assert.Contains("Deferring alpha release because main already has unpublished non-alpha tag", dailyWorkflow);
+        Assert.Contains("previous_sha\" == \"$current_sha", dailyWorkflow);
         Assert.Contains("steps.previous_release.outputs.changed == 'true'", dailyWorkflow);
         Assert.Contains("versionSpec: '6.8.x'", dailyWorkflow);
         Assert.Contains("-alpha\\.[0-9]+", dailyWorkflow);
@@ -83,6 +87,10 @@ public sealed class VersioningContractTests
         Assert.Contains("workflow_dispatch:", releaseWorkflow);
         Assert.Contains("uses: softprops/action-gh-release@v3", releaseWorkflow);
         Assert.Contains("prerelease: ${{ needs.test.outputs.isPrerelease }}", releaseWorkflow);
+        Assert.Contains("Retain the latest seven alpha releases", releaseWorkflow);
+        Assert.Contains("| .[7:]", releaseWorkflow);
+        Assert.Contains("retaining its Git tag", releaseWorkflow);
+        Assert.Contains("gh api --method DELETE", releaseWorkflow);
     }
 
     [Fact]

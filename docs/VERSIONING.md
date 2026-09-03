@@ -92,7 +92,10 @@ then explicitly dispatches this workflow at that tag. The explicit dispatch is
 required because a tag pushed with the workflow's `GITHUB_TOKEN` does not
 itself start another workflow. The normal test, E2E, build, signing, and release
 jobs remain the publication gate; the alpha GitHub Release is created only when
-all validation succeeds.
+all validation succeeds. After publication, CI keeps the seven newest canonical
+alpha GitHub Releases and deletes older alpha release objects and their assets.
+It intentionally retains every Git tag so GitVersion can continue deriving the
+next monotonic alpha version from complete tag history.
 
 GitVersion interprets `X.Y.Z-N` as a prerelease, so numeric stable corrections
 use one narrow exception: the release-version step recognizes the correction

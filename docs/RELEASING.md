@@ -86,6 +86,9 @@ Stable, stable-correction, and alpha tags use the same signed CI release pipelin
   numeric-suffix tag, including malformed ones such as `-0` and `-03`, is routed
   through the validator rather than silently classified by GitVersion.
 - `vX.Y.Z-alpha.N` creates a prerelease that stable updater checks do not offer.
+  CI retains the seven newest canonical alpha GitHub Releases so daily builds do
+  not overwhelm the Releases page. Cleanup removes only the older release
+  objects and assets; their Git tags remain as GitVersion history.
 
 The validator has no dependency on another repository's release API. Run it
 offline against an explicit current release to preview a decision:
