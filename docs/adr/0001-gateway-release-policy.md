@@ -56,10 +56,10 @@ evidence.
 
 ## Current candidate decision
 
-`2026.6.34` is the recommendation. With Node `22.22.3`, the exact package passed
-clean setup, CLI and protocol-v4 server-version checks, operator and node
-pairing, Gateway restart, repeated network recovery, device revocation and
-re-approval, and a real Gateway `node.invoke` call to Windows `system.which`.
+`2026.8.1` is the recommendation. Windows setup installs that exact release
+with Node `22.22.3` and verifies the CLI version, protocol-v4 handshake, and
+server version. The pin is intentionally retained because `2026.8.2` has
+release-blocking onboarding issues.
 
 `2026.6.11` remains a distinct validated fallback at the security floor. It is
 never selected automatically.
@@ -76,6 +76,9 @@ candidate proof.
 `2026.7.1-2` is evidence-rejected because its npm metadata does not publish SLSA
 provenance and its GitHub release does not publish stable release-validation
 evidence.
+
+`2026.8.2` is not promoted because its onboarding behavior is release-blocking
+for the Windows managed-gateway setup flow.
 
 ## Consequences
 

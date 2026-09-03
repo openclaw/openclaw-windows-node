@@ -732,9 +732,10 @@ it implements.
 ### Managed gateway release policy
 
 The Windows setup engine installs exact recommended OpenClaw release
-`2026.6.34` for a new app-managed WSL gateway. Release `2026.6.11` is the
+`2026.8.1` for a new app-managed WSL gateway. Release `2026.6.11` is the
 security floor and distinct validated fallback. Setup never selects that
-fallback automatically.
+fallback automatically. Release `2026.8.2` is not promoted because it has
+release-blocking onboarding issues.
 
 This managed-setup policy does not force every remote gateway to use the
 recommended release. Windows can connect to an existing gateway with a
@@ -806,4 +807,4 @@ Any layer can deny. A later layer cannot widen an earlier deny.
 | Windows local approval | `ExecApprovalsCoordinator`, `ExecApprovalsStore`, `ExecReusableCommandBinder`, `CanonicalCmdCarrier`, `CmdPayloadTokenizer` | comparable node-host exec approval contracts |
 | Windows sandbox | `MxcCommandRunner`, `MxcPolicyBuilder`, `DirectAppContainerExecutor` | separate agent sandbox backend interfaces |
 | Protocol version | connect payloads | `packages/gateway-protocol/src/version.ts` |
-| Managed gateway release | `GatewayReleasePolicy.cs`, setup engine | OpenClaw tags `v2026.6.34` and `v2026.6.11` |
+| Managed gateway release | `GatewayReleasePolicy.cs`, setup engine | OpenClaw tags `v2026.8.1` and `v2026.6.11` |

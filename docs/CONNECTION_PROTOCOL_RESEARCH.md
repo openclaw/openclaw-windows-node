@@ -62,11 +62,12 @@ candidate discovery hints only. Before promoting a newer upstream release,
 verify its tagged protocol source and run exact-version Windows setup,
 pairing, reconnect, recovery, and Gateway-to-node proof.
 
-The current recommendation is exact release `2026.6.34`; `2026.6.11` is the
+The current recommendation is exact release `2026.8.1`; `2026.6.11` is the
 explicit validated fallback. Exact release `2026.7.1` is protocol-v4 compatible
 but runtime-rejected because its clean setup wizard restart did not recover a
 trusted managed endpoint. `2026.7.1-2` is rejected for missing provenance and
-stable release-validation evidence.
+stable release-validation evidence. `2026.8.2` is not promoted because it has
+release-blocking onboarding issues.
 
 The managed gateway release pin is not the WebSocket protocol pin. Windows
 currently advertises `minProtocol: 3` and `maxProtocol: 4`; the gateway reports

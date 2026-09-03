@@ -432,7 +432,7 @@ public sealed class ProgramArgumentTests : IDisposable
     [Fact]
     public async Task Main_RejectsUnembeddedCandidateWithValidationFlag()
     {
-        const string version = "2026.8.1";
+        const string version = "2026.8.2";
         var configPath = Path.Combine(_tempDir, "external-candidate.json");
         await File.WriteAllTextAsync(
             configPath,
@@ -451,7 +451,7 @@ public sealed class ProgramArgumentTests : IDisposable
     [Fact]
     public async Task Main_AcceptsUnembeddedCandidatePackageOnlyForHeadlessRollbackValidation()
     {
-        const string version = "2026.8.1";
+        const string version = "2026.8.2";
         var configPath = Path.Combine(_tempDir, "external-package-candidate.json");
         var packagePath = Path.Combine(_tempDir, "openclaw-current.tgz");
         await File.WriteAllTextAsync(

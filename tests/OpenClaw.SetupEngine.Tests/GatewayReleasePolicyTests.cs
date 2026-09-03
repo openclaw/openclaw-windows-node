@@ -7,6 +7,7 @@ public sealed class GatewayReleasePolicyTests
     [Fact]
     public void EmbeddedPolicy_IsInternallyValid()
     {
+        Assert.Equal("2026.8.1", GatewayReleasePolicy.RecommendedVersion);
         Assert.Empty(GatewayReleasePolicy.ValidateEmbeddedPolicy());
         Assert.Equal(
             GatewayReleaseStatus.Validated,
@@ -20,11 +21,11 @@ public sealed class GatewayReleasePolicyTests
     public void CandidateEligibility_RequiresValidationGateAndNeverUnlocksRejectedRelease()
     {
         var candidate = new GatewayReleaseEvidence(
-            "2026.8.1",
+            "2026.8.2",
             GatewayReleaseStatus.Candidate,
             GatewayReleasePolicy.ProtocolGeneration,
             "sha512-candidate",
-            "https://example.test/v2026.8.1",
+            "https://example.test/v2026.8.2",
             "test candidate");
         var rejected = candidate with
         {
@@ -223,7 +224,7 @@ public sealed class GatewayReleasePolicyTests
     [Fact]
     public void ResolveAndApply_RejectsUnembeddedCandidateEvenWithValidationGate()
     {
-        const string version = "2026.8.1";
+        const string version = "2026.8.2";
         var config = new SetupConfig
         {
             Gateway = new GatewayConfig { Selection = "exact", Version = version }
