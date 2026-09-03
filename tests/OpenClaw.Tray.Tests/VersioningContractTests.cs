@@ -56,6 +56,36 @@ public sealed class VersioningContractTests
     }
 
     [Fact]
+    public void DailyAlphaRelease_IsChangeGatedAndDispatchesTheValidatedReleasePipeline()
+    {
+        var repoRoot = TestRepositoryPaths.GetRepositoryRoot();
+        var dailyWorkflow = File.ReadAllText(Path.Combine(
+            repoRoot,
+            ".github",
+            "workflows",
+            "daily-alpha-release.yml"));
+        var releaseWorkflow = File.ReadAllText(Path.Combine(
+            repoRoot,
+            ".github",
+            "workflows",
+            "ci.yml"));
+
+        Assert.Contains("cron: '0 14 * * *'", dailyWorkflow);
+        Assert.Contains("timezone: America/Los_Angeles", dailyWorkflow);
+        Assert.Contains("actions: write", dailyWorkflow);
+        Assert.Contains("contents: write", dailyWorkflow);
+        Assert.Contains("previous_sha\" == \"$GITHUB_SHA", dailyWorkflow);
+        Assert.Contains("steps.previous_release.outputs.changed == 'true'", dailyWorkflow);
+        Assert.Contains("versionSpec: '6.8.x'", dailyWorkflow);
+        Assert.Contains("-alpha\\.[0-9]+", dailyWorkflow);
+        Assert.Contains("git push origin \"refs/tags/$tag\"", dailyWorkflow);
+        Assert.Contains("gh workflow run ci.yml --ref \"$ALPHA_TAG\"", dailyWorkflow);
+        Assert.Contains("workflow_dispatch:", releaseWorkflow);
+        Assert.Contains("uses: softprops/action-gh-release@v3", releaseWorkflow);
+        Assert.Contains("prerelease: ${{ needs.test.outputs.isPrerelease }}", releaseWorkflow);
+    }
+
+    [Fact]
     public void ReleaseWorkflow_TreatsNumericCorrectionsAsStableExactVersions()
     {
         var repoRoot = TestRepositoryPaths.GetRepositoryRoot();

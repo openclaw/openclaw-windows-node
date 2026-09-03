@@ -84,6 +84,16 @@ and artifact naming. It then passes that resolved value to product builds as
 one exact identity. CI must not pass a competing hardcoded version literal that
 could hide drift.
 
+The daily alpha workflow runs at 2:00 PM in `America/Los_Angeles`. It compares
+the default-branch head with the most recently published GitHub Release and
+does nothing when they are the same commit. When changes exist, it uses the
+same GitVersion 6.8.x line to create the next canonical `vX.Y.Z-alpha.N` tag,
+then explicitly dispatches this workflow at that tag. The explicit dispatch is
+required because a tag pushed with the workflow's `GITHUB_TOKEN` does not
+itself start another workflow. The normal test, E2E, build, signing, and release
+jobs remain the publication gate; the alpha GitHub Release is created only when
+all validation succeeds.
+
 GitVersion interprets `X.Y.Z-N` as a prerelease, so numeric stable corrections
 use one narrow exception: the release-version step recognizes the correction
 tag, validates its stable ordering with

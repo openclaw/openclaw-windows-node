@@ -1,0 +1,114 @@
+name: Daily Alpha Release
+
+on:
+  schedule:
+    - cron: '0 14 * * *'
+      timezone: America/Los_Angeles
+  workflow_dispatch:
+
+permissions:
+  actions: write
+  contents: write
+
+concurrency:
+  group: daily-alpha-release
+  cancel-in-progress: false
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Find the previous published release
+        id: previous_release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+
+          previous_tag="$(
+            gh api --paginate "repos/${GITHUB_REPOSITORY}/releases?per_page=100" |
+              jq -sr '
+                add
+                | map(select(.draft == false and .published_at != null))
+                | sort_by(.published_at)
+                | last
+                | .tag_name // empty
+              '
+          )"
+          if [[ -z "$previous_tag" ]]; then
+            echo "::error::No previous published release was found."
+            exit 1
+          fi
+
+          previous_sha="$(git rev-list -n 1 "$previous_tag")"
+          if [[ -z "$previous_sha" ]]; then
+            echo "::error::Could not resolve previous release tag $previous_tag."
+            exit 1
+          fi
+
+          echo "tag=$previous_tag" >> "$GITHUB_OUTPUT"
+          echo "sha=$previous_sha" >> "$GITHUB_OUTPUT"
+          if [[ "$previous_sha" == "$GITHUB_SHA" ]]; then
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+            echo "No changes since $previous_tag; skipping today's alpha release."
+          else
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+            echo "Changes found after $previous_tag ($previous_sha)."
+          fi
+
+      - name: Install GitVersion
+        if: steps.previous_release.outputs.changed == 'true'
+        uses: gittools/actions/gitversion/setup@v4
+        with:
+          versionSpec: '6.8.x'
+
+      - name: Determine alpha version
+        if: steps.previous_release.outputs.changed == 'true'
+        id: gitversion
+        uses: gittools/actions/gitversion/execute@v4
+
+      - name: Create or reuse alpha tag
+        if: steps.previous_release.outputs.changed == 'true'
+        id: alpha_tag
+        shell: bash
+        env:
+          SEMVER: ${{ steps.gitversion.outputs.semVer }}
+        run: |
+          set -euo pipefail
+
+          if [[ ! "$SEMVER" =~ ^[0-9]+\.[0-9]+\.[0-9]+-alpha\.[0-9]+$ ]]; then
+            echo "::error::GitVersion produced '$SEMVER', not a canonical alpha version."
+            exit 1
+          fi
+
+          tag="v$SEMVER"
+          if git show-ref --verify --quiet "refs/tags/$tag"; then
+            tagged_sha="$(git rev-list -n 1 "$tag")"
+            if [[ "$tagged_sha" != "$GITHUB_SHA" ]]; then
+              echo "::error::Existing tag $tag points to $tagged_sha instead of $GITHUB_SHA."
+              exit 1
+            fi
+            echo "Reusing $tag at $GITHUB_SHA."
+          else
+            git tag "$tag" "$GITHUB_SHA"
+            git push origin "refs/tags/$tag"
+            echo "Created $tag at $GITHUB_SHA."
+          fi
+
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+
+      - name: Dispatch validated release build
+        if: steps.previous_release.outputs.changed == 'true'
+        shell: bash
+        env:
+          ALPHA_TAG: ${{ steps.alpha_tag.outputs.tag }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          gh workflow run ci.yml --ref "$ALPHA_TAG"
+          echo "Dispatched the full validation and GitHub Release pipeline for $ALPHA_TAG."
