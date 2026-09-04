@@ -73,7 +73,7 @@ public class DirectAppContainerExecutorTests
     }
 
     [Fact]
-    public async Task ExecuteAsync_DaclHostPreparationWarning_FailsClosedBeforeLaunch()
+    public async Task ExecuteAsync_DaclTier_IsUnavailableBeforeLaunch()
     {
         var availability = new MxcAvailability(
             isAppContainerAvailable: true,
@@ -82,39 +82,33 @@ public class DirectAppContainerExecutorTests
             wxcExecPath: "C:\\does\\not\\exist\\wxc-exec.exe",
             unsupportedReasons: Array.Empty<string>(),
             isolationTier: "appcontainer-dacl",
-            needsDaclAugmentation: true,
-            warnings:
-            [
-                "Run `wxc-host-prep prepare-system-drive` (elevated) to grant the minimal metadata ACEs.",
-            ]);
+            needsDaclAugmentation: true);
         var executor = new DirectAppContainerExecutor(() => availability, NullLogger.Instance);
 
-        await Assert.ThrowsAsync<SandboxHostPreparationRequiredException>(
+        var ex = await Assert.ThrowsAsync<SandboxUnavailableException>(
             () => executor.ExecuteAsync(NewRequest()));
+        Assert.Contains("requires MXC BaseContainer", ex.Message);
     }
 
     [Theory]
-    [InlineData("base-container", false, false, true)]
-    [InlineData("base-container", true, false, false)]
-    [InlineData("base-container", false, true, false)]
-    [InlineData("appcontainer-bfs", false, false, false)]
-    [InlineData("appcontainer-dacl", false, false, false)]
-    public void CanUseNonCascadingVolumeRootGrants_RequiresStableBaseContainerConfig(
-        string tier,
+    [InlineData("0.7.0-alpha", false, 0, false, true)]
+    [InlineData("0.8.0-alpha", false, 0, false, false)]
+    [InlineData("0.7.0-alpha", true, 0, false, false)]
+    [InlineData("0.7.0-alpha", false, 1, false, false)]
+    [InlineData("0.7.0-alpha", false, 2, false, false)]
+    [InlineData("0.7.0-alpha", false, 0, true, false)]
+    public void IsSystemRunConfigBaseContainerCompatible_RequiresExactEmittedContract(
+        string version,
         bool leastPrivilege,
-        bool hasDeniedPath,
+        int deniedPathMode,
+        bool hasContainment,
         bool expected)
     {
-        var availability = new MxcAvailability(
-            isAppContainerAvailable: true,
-            isIsolationSessionAvailable: false,
-            isWxcExecResolvable: true,
-            wxcExecPath: @"C:\mxc\wxc-exec.exe",
-            unsupportedReasons: Array.Empty<string>(),
-            isolationTier: tier);
         var config = new MxcConfig
         {
+            Version = version,
             ContainerId = "test",
+            Containment = hasContainment ? "process" : null,
             Process = new MxcProcess { CommandLine = "cmd.exe /c echo hi" },
             ProcessContainer = new MxcProcessContainer
             {
@@ -123,15 +117,18 @@ public class DirectAppContainerExecutorTests
             Filesystem = new MxcFilesystem
             {
                 ReadonlyPaths = [@"C:\Users\test\Downloads"],
-                DeniedPaths = hasDeniedPath ? [@"C:\secret"] : null,
+                DeniedPaths = deniedPathMode switch
+                {
+                    1 => Array.Empty<string>(),
+                    2 => [@"C:\secret"],
+                    _ => null,
+                },
             },
         };
 
         Assert.Equal(
             expected,
-            MxcIsolationTierPolicy.CanUseNonCascadingVolumeRootGrants(
-                availability,
-                config));
+            MxcIsolationTierPolicy.IsSystemRunConfigBaseContainerCompatible(config));
     }
 
     [Fact]
@@ -153,7 +150,8 @@ public class DirectAppContainerExecutorTests
             isIsolationSessionAvailable: false,
             isWxcExecResolvable: true,
             wxcExecPath: "C:\\does\\not\\exist\\wxc-exec.exe",
-            unsupportedReasons: Array.Empty<string>());
+            unsupportedReasons: Array.Empty<string>(),
+            isolationTier: "base-container");
 
         var executor = new DirectAppContainerExecutor(
             () => { calls++; return calls == 1 ? unavailable : recoveredButPathMissing; },

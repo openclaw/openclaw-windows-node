@@ -145,17 +145,6 @@ public static class MxcConfigBuilder
         roFromPolicy = FilterOutDenied(roFromPolicy, deniedForFiltering);
         rwFromPolicy = FilterOutDenied(rwFromPolicy, deniedForFiltering);
 
-        // BaseContainer volume-root grants do not cascade. The tier still needs
-        // root metadata access to resolve otherwise-granted absolute paths. Add
-        // the narrow root grants after deny filtering because they do not expose
-        // descendants. Never do this for BFS, whose empty-policy probe can choose
-        // a different tier for the real filesystem policy, or for DACL, whose
-        // directory grants intentionally propagate through the target subtree.
-        AddNonCascadingVolumeRootGrants(
-            context.AddNonCascadingVolumeRootGrants,
-            roFromPolicy,
-            rwFromPolicy);
-
         // process.env — intentionally empty. MXC 0.7 processcontainer currently
         // fails process creation when a non-empty process.env array is supplied,
         // so shell-level bootstrap above carries PATH/scratch temp instead.
@@ -430,14 +419,14 @@ public static class MxcConfigBuilder
             .ToList();
     }
 
-    private static void AddNonCascadingVolumeRootGrants(
-        bool enabled,
-        List<string> readonlyPaths,
-        IReadOnlyList<string> readwritePaths)
+    internal static MxcConfig WithNonCascadingVolumeRootGrants(MxcConfig config)
     {
-        if (!enabled)
-            return;
+        ArgumentNullException.ThrowIfNull(config);
+        if (config.Filesystem is null)
+            return config;
 
+        var readonlyPaths = (config.Filesystem.ReadonlyPaths ?? Array.Empty<string>()).ToList();
+        var readwritePaths = config.Filesystem.ReadwritePaths ?? Array.Empty<string>();
         var roots = readonlyPaths
             .Concat(readwritePaths)
             .Select(TryGetWindowsDriveRoot)
@@ -454,6 +443,14 @@ public static class MxcConfigBuilder
                 readonlyPaths.Add(root);
             }
         }
+
+        return config with
+        {
+            Filesystem = config.Filesystem with
+            {
+                ReadonlyPaths = readonlyPaths.ToArray(),
+            },
+        };
     }
 
     private static string? TryGetWindowsDriveRoot(string path)
@@ -652,8 +649,7 @@ public static class MxcConfigBuilder
 internal sealed record MxcConfigBuildContext(
     string? ContainerId = null,
     string? PathEnvVar = null,
-    Func<string, bool>? ReadonlyGrantIsBackendSafe = null,
-    bool AddNonCascadingVolumeRootGrants = false)
+    Func<string, bool>? ReadonlyGrantIsBackendSafe = null)
 {
     public static MxcConfigBuildContext Default { get; } = new();
 }

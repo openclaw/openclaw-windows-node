@@ -101,16 +101,14 @@ public class MxcConfigBuilderTests
         string scratchDir = P.Scratch,
         string? containerId = null,
         string? pathEnvVar = "",
-        Func<string, bool>? readonlyGrantIsBackendSafe = null,
-        bool addNonCascadingVolumeRootGrants = false) =>
+        Func<string, bool>? readonlyGrantIsBackendSafe = null) =>
         MxcConfigBuilder.Build(
             request,
             scratchDir,
             new MxcConfigBuildContext(
                 ContainerId: containerId,
                 PathEnvVar: pathEnvVar,
-                ReadonlyGrantIsBackendSafe: readonlyGrantIsBackendSafe,
-                AddNonCascadingVolumeRootGrants: addNonCascadingVolumeRootGrants));
+                ReadonlyGrantIsBackendSafe: readonlyGrantIsBackendSafe));
 
     private static string ExpectedSystemCmdExe()
     {
@@ -239,22 +237,20 @@ public class MxcConfigBuilderTests
         Assert.Contains(P.Scratch, config.Filesystem!.ReadwritePaths!);
     }
 
-    [Theory]
-    [InlineData(true)]
-    [InlineData(false)]
-    public void Build_AddsSystemVolumeRootOnlyWhenCallerProvedNonCascading(
-        bool addNonCascadingVolumeRootGrants)
+    [Fact]
+    public void WithNonCascadingVolumeRootGrants_AddsSystemVolumeRoot()
     {
-        var config = BuildConfig(
-            RequestFor(BalancedPolicy()),
-            pathEnvVar: "",
-            addNonCascadingVolumeRootGrants: addNonCascadingVolumeRootGrants);
+        var original = BuildConfig(RequestFor(BalancedPolicy()), pathEnvVar: "");
+        var config = MxcConfigBuilder.WithNonCascadingVolumeRootGrants(original);
 
-        Assert.Equal(
-            addNonCascadingVolumeRootGrants,
-            config.Filesystem!.ReadonlyPaths!.Contains(
-                @"C:\",
-                StringComparer.OrdinalIgnoreCase));
+        Assert.DoesNotContain(
+            @"C:\",
+            original.Filesystem!.ReadonlyPaths!,
+            StringComparer.OrdinalIgnoreCase);
+        Assert.Contains(
+            @"C:\",
+            config.Filesystem!.ReadonlyPaths!,
+            StringComparer.OrdinalIgnoreCase);
     }
 
     [Fact]
@@ -271,10 +267,8 @@ public class MxcConfigBuilderTests
             Ui: new UiPolicy(false, ClipboardPolicy.None, false),
             TimeoutMs: 30_000);
 
-        var config = BuildConfig(
-            RequestFor(policy),
-            pathEnvVar: "",
-            addNonCascadingVolumeRootGrants: true);
+        var original = BuildConfig(RequestFor(policy), pathEnvVar: "");
+        var config = MxcConfigBuilder.WithNonCascadingVolumeRootGrants(original);
 
         Assert.Contains(@"C:\", config.Filesystem!.ReadonlyPaths!, StringComparer.OrdinalIgnoreCase);
         Assert.Contains(@"D:\", config.Filesystem.ReadonlyPaths!, StringComparer.OrdinalIgnoreCase);

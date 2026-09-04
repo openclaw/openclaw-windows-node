@@ -67,17 +67,20 @@ public sealed class DirectAppContainerExecutor : ISandboxExecutor
         var availability = _availabilityProvider();
 
         if (!availability.IsAppContainerAvailable)
+        {
             throw new SandboxUnavailableException(
-                availability.UnsupportedReasons.FirstOrDefault() ?? "AppContainer unavailable");
+                availability.UnsupportedReasons.FirstOrDefault() ??
+                "MXC process containment is unavailable.");
+        }
 
         if (!availability.IsWxcExecResolvable || string.IsNullOrEmpty(availability.WxcExecPath))
             throw new SandboxUnavailableException("wxc-exec.exe not found");
 
-        if (availability.RequiresHostPreparation)
+        if (!availability.CanRunSystemRunSandbox)
         {
-            throw new SandboxHostPreparationRequiredException(
-                "MXC selected the AppContainer DACL fallback but reported missing Windows host preparation. " +
-                "OpenClaw will not automate the current privileged helper or run commands in this state.");
+            throw new SandboxUnavailableException(
+                availability.SystemRunSandboxUnsupportedReasons.FirstOrDefault() ??
+                "OpenClaw Node Sandbox requires MXC BaseContainer without host DACL augmentation.");
         }
 
         var capBytes = request.MaxOutputBytes is > 0 ? request.MaxOutputBytes.Value : DefaultMaxOutputBytes;
@@ -89,16 +92,12 @@ public sealed class DirectAppContainerExecutor : ISandboxExecutor
         try
         {
             var config = MxcConfigBuilder.Build(request, scratchDir);
-            if (MxcIsolationTierPolicy.CanUseNonCascadingVolumeRootGrants(
-                    availability,
-                    config))
+            if (!MxcIsolationTierPolicy.IsSystemRunConfigBaseContainerCompatible(config))
             {
-                config = MxcConfigBuilder.Build(
-                    request,
-                    scratchDir,
-                    new MxcConfigBuildContext(
-                        AddNonCascadingVolumeRootGrants: true));
+                throw new SandboxUnavailableException(
+                    "OpenClaw's emitted system.run policy is not compatible with the admitted MXC BaseContainer contract.");
             }
+            config = MxcConfigBuilder.WithNonCascadingVolumeRootGrants(config);
             var configJson = JsonSerializer.Serialize(config, ConfigJson);
             var launchWorkingDirectory = string.IsNullOrWhiteSpace(config.Process.Cwd)
                 ? null

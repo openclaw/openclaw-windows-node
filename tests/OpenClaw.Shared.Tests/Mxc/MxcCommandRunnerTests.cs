@@ -121,57 +121,6 @@ public class MxcCommandRunnerTests
     }
 
     [Fact]
-    public async Task RunAsync_HostPreparationRequired_DeniesWithoutHostFallback()
-    {
-        var executor = new FakeSandboxExecutor
-        {
-            ThrowsArbitrary = new SandboxHostPreparationRequiredException("host preparation missing"),
-        };
-        var fallback = new FakeCommandRunner
-        {
-            Result = new CommandResult { ExitCode = 0, Stdout = "host-ran" },
-        };
-        var runner = NewRunner(
-            executor,
-            fallback,
-            NewSettings(
-                sandboxEnabled: true,
-                blockHostFallbackWhenMxcUnavailable: false));
-
-        var result = await runner.RunAsync(
-            new CommandRequest { Command = "echo hi", Shell = "cmd" });
-
-        Assert.Equal(-1, result.ExitCode);
-        Assert.Equal(NodeToolExecutionMode.Sandbox, result.ExecutionMode);
-        Assert.Equal(NodeToolErrorCategory.SandboxUnavailable, result.ErrorCategory);
-        Assert.Contains("will not fall back", result.Stderr, StringComparison.OrdinalIgnoreCase);
-        Assert.Null(fallback.LastRequest);
-    }
-
-    [Fact]
-    public async Task RunAsync_HostPreparationRequired_InvalidatesAvailabilityForRecovery()
-    {
-        var invalidations = 0;
-        var runner = new MxcCommandRunner(
-            new FakeSandboxExecutor
-            {
-                ThrowsArbitrary = new SandboxHostPreparationRequiredException("host preparation missing"),
-            },
-            new FakeCommandRunner(),
-            () => NewSettings(sandboxEnabled: true),
-            () => @"C:\test\settings",
-            () => true,
-            () => invalidations++,
-            NullLogger.Instance);
-
-        var result = await runner.RunAsync(
-            new CommandRequest { Command = "echo hi", Shell = "cmd" });
-
-        Assert.Equal(-1, result.ExitCode);
-        Assert.Equal(1, invalidations);
-    }
-
-    [Fact]
     public async Task RunAsync_SandboxEnabled_OmittedShellFallsBackToApprovedHostDefaultWhenExecutorIsUnavailable()
     {
         var executor = new FakeSandboxExecutor { ThrowsUnavailable = true, UnavailableReason = "test reason" };

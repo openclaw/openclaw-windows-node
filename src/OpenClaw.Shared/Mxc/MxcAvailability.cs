@@ -58,8 +58,8 @@ public sealed class MxcAvailability
     /// <summary>
     /// Isolation tier the probe selected for this host (e.g. <c>base-container</c>,
     /// <c>appcontainer-bfs</c>, <c>appcontainer-dacl</c>), or null when unsupported
-    /// / not probed. Informational; <see cref="IsDegradedContainment"/> is the
-    /// derived signal UX should react to.
+    /// / not probed. <see cref="CanRunSystemRunSandbox"/> is the narrower
+    /// OpenClaw process-containment admission signal.
     /// </summary>
     public string? IsolationTier { get; }
 
@@ -75,14 +75,17 @@ public sealed class MxcAvailability
     public IReadOnlyList<string> Warnings { get; }
 
     /// <summary>
-    /// True when MXC selected its DACL fallback but reported missing privileged
-    /// host preparation. OpenClaw must not execute in this state because valid
-    /// filesystem operations can fail or report false success.
+    /// True when this host can run OpenClaw <c>system.run</c> with MXC's
+    /// BaseContainer tier and no host-DACL augmentation.
     /// </summary>
-    public bool RequiresHostPreparation =>
+    public bool CanRunSystemRunSandbox =>
         IsAppContainerAvailable &&
-        MxcIsolationTierPolicy.IsDacl(IsolationTier) &&
-        Warnings.Any(MxcIsolationTierPolicy.IsBlockingHostPreparationWarning);
+        IsWxcExecResolvable &&
+        string.Equals(
+            IsolationTier,
+            MxcIsolationTierPolicy.BaseContainer,
+            StringComparison.Ordinal) &&
+        !NeedsDaclAugmentation;
 
     /// <summary>
     /// Human-readable list of reasons MXC may not be available. Empty when fully supported.
@@ -90,16 +93,33 @@ public sealed class MxcAvailability
     /// </summary>
     public IReadOnlyList<string> UnsupportedReasons { get; }
 
-    /// <summary>Tiers we consider full-strength containment. Anything else that
-    /// still contains (e.g. <c>appcontainer-dacl</c>, or an unrecognized future
-    /// tier string) is treated as degraded so UX can warn without dropping the
-    /// host all the way to uncontained.</summary>
-    private static readonly HashSet<string> FullStrengthTiers =
-        new(StringComparer.OrdinalIgnoreCase)
+    /// <summary>
+    /// Reasons OpenClaw cannot use this probe result for <c>system.run</c>.
+    /// General MXC or session-containment availability remains separate.
+    /// </summary>
+    public IReadOnlyList<string> SystemRunSandboxUnsupportedReasons
+    {
+        get
         {
-            MxcIsolationTierPolicy.BaseContainer,
-            MxcIsolationTierPolicy.AppContainerBfs,
-        };
+            if (CanRunSystemRunSandbox)
+                return Array.Empty<string>();
+
+            if (UnsupportedReasons.Count > 0)
+                return UnsupportedReasons;
+
+            var tier = string.IsNullOrWhiteSpace(IsolationTier)
+                ? "no process-containment tier"
+                : IsolationTier;
+            var dacl = NeedsDaclAugmentation
+                ? " Host DACL augmentation is required."
+                : string.Empty;
+            return
+            [
+                $"OpenClaw Node Sandbox requires MXC BaseContainer without host DACL augmentation. " +
+                $"This PC reports {tier}.{dacl}",
+            ];
+        }
+    }
 
     /// <summary>True iff at least one MXC backend is supported AND
     /// <c>wxc-exec.exe</c> is resolvable. (Without wxc-exec the executor will refuse
@@ -107,18 +127,6 @@ public sealed class MxcAvailability
     public bool HasAnyBackend =>
         (IsAppContainerAvailable || IsIsolationSessionAvailable)
         && IsWxcExecResolvable;
-
-    /// <summary>
-    /// True when MXC is available but only via a weaker, last-resort isolation tier
-    /// (DACL augmentation, or a tier we don't recognize as full-strength). Still
-    /// contained — surface as a warning, not a block; refusing would drop the host
-    /// to fully uncontained execution, which is strictly worse.
-    /// </summary>
-    public bool IsDegradedContainment =>
-        HasAnyBackend
-        && (NeedsDaclAugmentation
-            || string.IsNullOrEmpty(IsolationTier)
-            || !FullStrengthTiers.Contains(IsolationTier));
 
     public MxcAvailability(
         bool isAppContainerAvailable,
@@ -259,8 +267,18 @@ public sealed class MxcAvailability
         {
             using var doc = JsonDocument.Parse(stdout);
             var root = doc.RootElement;
+            if (root.ValueKind != JsonValueKind.Object)
+            {
+                return Error(
+                    "Could not determine MXC sandbox support (wxc-exec --probe returned a non-object JSON value).");
+            }
+
             var warnings = ReadWarnings(root);
 
+            // Explicit unsupported verdicts are already fail-closed and do not
+            // need tier metadata. Validate needsDaclAugmentation only before
+            // accepting a candidate supported result; otherwise an unsupported
+            // host would be re-probed indefinitely as a transient parse error.
             if (TryGetString(root, "error") is { } error)
             {
                 return Unsupported(
@@ -283,16 +301,21 @@ public sealed class MxcAvailability
                     $"Could not determine MXC sandbox support (wxc-exec --probe exited {exitCode}{(detail is null ? "" : $": {Summarize(detail)}")}).");
             }
 
-            if (root.ValueKind != JsonValueKind.Object
-                || !root.TryGetProperty("tier", out var tierEl)
+            if (!root.TryGetProperty("tier", out var tierEl)
                 || tierEl.ValueKind != JsonValueKind.String
                 || string.IsNullOrWhiteSpace(tierEl.GetString()))
             {
                 return Error("Could not determine MXC sandbox support (wxc-exec --probe did not report an isolation tier).");
             }
 
-            var needsDacl = root.TryGetProperty("needsDaclAugmentation", out var d)
-                && d.ValueKind == JsonValueKind.True;
+            if (!root.TryGetProperty("needsDaclAugmentation", out var d) ||
+                d.ValueKind is not (JsonValueKind.True or JsonValueKind.False))
+            {
+                return Error(
+                    "Could not determine MXC sandbox support (wxc-exec --probe did not report a boolean needsDaclAugmentation value).");
+            }
+
+            var needsDacl = d.ValueKind == JsonValueKind.True;
 
             return new MxcProbeResult(MxcProbeOutcome.Supported, tierEl.GetString(), needsDacl, warnings, null);
         }

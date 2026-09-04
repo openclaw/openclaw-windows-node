@@ -1932,7 +1932,7 @@ public sealed class AppRefactorContractTests
             "UpdatePresetHighlight();",
             "UpdateSandboxStatusCard();",
             "UpdateControlsEnabledState();");
-        Assert.Contains("HasAnyBackend: false", definitiveUnavailable);
+        Assert.Contains("CanRunSystemRunSandbox: false", definitiveUnavailable);
         Assert.Contains("ProbeErrored: false", definitiveUnavailable);
         AssertInOrder(
             normalize,
@@ -1961,7 +1961,7 @@ public sealed class AppRefactorContractTests
             "return;");
         Assert.Contains("SandboxEnabledToggle.IsOn = false", reject);
         Assert.Contains("Node Sandbox unavailable", reject);
-        Assert.Contains("usable MXC backend", reject);
+        Assert.Contains("MXC BaseContainer without host DACL augmentation", reject);
     }
 
     private static string ReadCoordinatorSource()

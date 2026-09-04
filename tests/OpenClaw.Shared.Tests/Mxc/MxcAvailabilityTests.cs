@@ -63,7 +63,8 @@ public class MxcAvailabilityTests
         Assert.Single(availability.UnsupportedReasons);
         Assert.True(availability.HasAnyBackend);
         Assert.Empty(availability.Warnings);
-        Assert.False(availability.RequiresHostPreparation);
+        Assert.False(availability.CanRunSystemRunSandbox);
+        Assert.NotEmpty(availability.SystemRunSandboxUnsupportedReasons);
     }
 
     [Fact]
@@ -191,12 +192,51 @@ public class MxcAvailabilityTests
     }
 
     [Theory]
-    [InlineData("base-container", false, false)]
+    [InlineData("[]")]
+    [InlineData("null")]
+    [InlineData("\"text\"")]
+    public void ParseProbeOutput_NonObjectJson_ReportsProbeError(string stdout)
+    {
+        var result = MxcAvailability.ParseProbeOutput(
+            WxcProbeStatus.Completed,
+            exitCode: 0,
+            stdout,
+            stderr: "");
+
+        Assert.Equal(MxcProbeOutcome.ProbeError, result.Outcome);
+        Assert.False(result.Supported);
+        Assert.Contains("non-object JSON", result.FailureReason);
+    }
+
+    [Theory]
+    [InlineData("""{"tier":"base-container"}""")]
+    [InlineData("""{"tier":"base-container","needsDaclAugmentation":null}""")]
+    [InlineData("""{"tier":"base-container","needsDaclAugmentation":"false"}""")]
+    public void ParseProbeOutput_InvalidDaclAugmentationSignal_ReportsProbeError(string stdout)
+    {
+        var result = MxcAvailability.ParseProbeOutput(
+            WxcProbeStatus.Completed,
+            exitCode: 0,
+            stdout,
+            stderr: "");
+
+        Assert.Equal(MxcProbeOutcome.ProbeError, result.Outcome);
+        Assert.False(result.Supported);
+        Assert.Contains("boolean needsDaclAugmentation", result.FailureReason);
+    }
+
+    [Theory]
+    [InlineData("base-container", false, true)]
+    [InlineData("base-container", true, false)]
     [InlineData("appcontainer-bfs", false, false)]
-    [InlineData("appcontainer-dacl", false, true)]
-    [InlineData("base-container", true, true)]   // needsDaclAugmentation forces degraded
-    [InlineData("some-future-tier", false, true)] // unrecognized tier => degraded
-    public void IsDegradedContainment_ReflectsTierAndDaclFlag(string tier, bool needsDacl, bool expectedDegraded)
+    [InlineData("appcontainer-dacl", true, false)]
+    [InlineData("some-future-tier", false, false)]
+    [InlineData("BASE-CONTAINER", false, false)]
+    [InlineData("base-container ", false, false)]
+    public void CanRunSystemRunSandbox_RequiresUnaugmentedBaseContainer(
+        string tier,
+        bool needsDacl,
+        bool expected)
     {
         var availability = new MxcAvailability(
             isAppContainerAvailable: true,
@@ -208,11 +248,14 @@ public class MxcAvailabilityTests
             needsDaclAugmentation: needsDacl);
 
         Assert.True(availability.HasAnyBackend);
-        Assert.Equal(expectedDegraded, availability.IsDegradedContainment);
+        Assert.Equal(expected, availability.CanRunSystemRunSandbox);
+        Assert.Equal(
+            expected,
+            availability.SystemRunSandboxUnsupportedReasons.Count == 0);
     }
 
     [Fact]
-    public void IsDegradedContainment_FalseWhenNoBackend()
+    public void CanRunSystemRunSandbox_FalseWhenNoBackend()
     {
         var availability = new MxcAvailability(
             isAppContainerAvailable: false,
@@ -224,7 +267,7 @@ public class MxcAvailabilityTests
             needsDaclAugmentation: true);
 
         Assert.False(availability.HasAnyBackend);
-        Assert.False(availability.IsDegradedContainment);
+        Assert.False(availability.CanRunSystemRunSandbox);
     }
 
     [Fact]
@@ -240,7 +283,11 @@ public class MxcAvailabilityTests
 
             var availability = MxcAvailability.Probe(
                 NullLogger.Instance,
-                _ => new WxcProbeInvocation(WxcProbeStatus.Completed, 0, "{\"tier\":\"base-container\",\"warnings\":[]}", string.Empty));
+                _ => new WxcProbeInvocation(
+                    WxcProbeStatus.Completed,
+                    0,
+                    "{\"tier\":\"base-container\",\"needsDaclAugmentation\":false,\"warnings\":[]}",
+                    string.Empty));
 
             Assert.True(availability.IsAppContainerAvailable);
             Assert.True(availability.IsWxcExecResolvable);
@@ -248,7 +295,8 @@ public class MxcAvailabilityTests
             Assert.Empty(availability.UnsupportedReasons);
             Assert.False(availability.ProbeErrored);
             Assert.Equal("base-container", availability.IsolationTier);
-            Assert.False(availability.IsDegradedContainment);
+            Assert.True(availability.CanRunSystemRunSandbox);
+            Assert.Empty(availability.SystemRunSandboxUnsupportedReasons);
         }
         finally
         {
@@ -315,7 +363,7 @@ public class MxcAvailabilityTests
     }
 
     [Fact]
-    public void Probe_WhenProbeReportsDaclTier_ReportsDegraded()
+    public void Probe_WhenProbeReportsDaclTier_RejectsSystemRunSandbox()
     {
         if (!OperatingSystem.IsWindows()) return;
 
@@ -333,15 +381,18 @@ public class MxcAvailabilityTests
                     "{\"tier\":\"appcontainer-dacl\",\"needsDaclAugmentation\":true,\"warnings\":[\"fallback\"]}",
                     string.Empty));
 
-            // Still contained (don't downgrade to uncontained), but flagged degraded.
+            // General MXC remains available, but OpenClaw does not admit the
+            // DACL-backed process tier for system.run.
             Assert.True(availability.IsAppContainerAvailable);
             Assert.True(availability.HasAnyBackend);
-            Assert.True(availability.IsDegradedContainment);
+            Assert.False(availability.CanRunSystemRunSandbox);
             Assert.Equal("appcontainer-dacl", availability.IsolationTier);
             Assert.True(availability.NeedsDaclAugmentation);
             Assert.False(availability.ProbeErrored);
-            Assert.False(availability.RequiresHostPreparation);
             Assert.Equal(["fallback"], availability.Warnings);
+            Assert.Contains(
+                "requires MXC BaseContainer",
+                Assert.Single(availability.SystemRunSandboxUnsupportedReasons));
         }
         finally
         {
@@ -350,72 +401,4 @@ public class MxcAvailabilityTests
         }
     }
 
-    [Fact]
-    public void Probe_WhenDaclTierReportsHostPreparationWarning_RequiresPreparation()
-    {
-        if (!OperatingSystem.IsWindows()) return;
-
-        var fakeExe = Path.Combine(Path.GetTempPath(), $"wxc-fake-{Guid.NewGuid():N}.exe");
-        File.WriteAllText(fakeExe, string.Empty);
-        try
-        {
-            Environment.SetEnvironmentVariable(MxcAvailability.WxcExecOverrideEnvVar, fakeExe);
-
-            var availability = MxcAvailability.Probe(
-                NullLogger.Instance,
-                _ => new WxcProbeInvocation(
-                    WxcProbeStatus.Completed,
-                    0,
-                    """
-                    {
-                      "tier": "appcontainer-dacl",
-                      "needsDaclAugmentation": true,
-                      "warnings": [
-                        "Run `wxc-host-prep prepare-system-drive` (elevated) to grant the minimal metadata ACEs."
-                      ]
-                    }
-                    """,
-                    string.Empty));
-
-            Assert.True(availability.HasAnyBackend);
-            Assert.True(availability.RequiresHostPreparation);
-            Assert.Single(availability.Warnings);
-        }
-        finally
-        {
-            Environment.SetEnvironmentVariable(MxcAvailability.WxcExecOverrideEnvVar, null);
-            try { File.Delete(fakeExe); } catch { /* best-effort */ }
-        }
-    }
-
-    [Theory]
-    [InlineData(
-        "appcontainer-dacl",
-        "Run `wxc-host-prep.exe prepare-null-device` (elevated) to reapply the documented security descriptor.",
-        true)]
-    [InlineData(
-        "appcontainer-dacl",
-        "BaseContainer not selected; falling back to AppContainer + DACL.",
-        false)]
-    [InlineData(
-        "base-container",
-        "Run `wxc-host-prep prepare-system-drive` (elevated).",
-        false)]
-    public void RequiresHostPreparation_UsesPinnedDaclWarningContract(
-        string tier,
-        string warning,
-        bool expected)
-    {
-        var availability = new MxcAvailability(
-            isAppContainerAvailable: true,
-            isIsolationSessionAvailable: false,
-            isWxcExecResolvable: true,
-            wxcExecPath: @"C:\mxc\wxc-exec.exe",
-            unsupportedReasons: Array.Empty<string>(),
-            isolationTier: tier,
-            needsDaclAugmentation: true,
-            warnings: [warning]);
-
-        Assert.Equal(expected, availability.RequiresHostPreparation);
-    }
 }
