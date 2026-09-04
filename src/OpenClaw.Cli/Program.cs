@@ -33,6 +33,7 @@ internal sealed class DeferredLogger(IOpenClawLogger inner) : IOpenClawLogger
 
 internal static class Program
 {
+    // Keep the standalone CLI entry point isolated from tray startup behavior.
     private static async Task<int> Main(string[] args)
     {
         if (args.Any(a => a is "--help" or "-h"))
