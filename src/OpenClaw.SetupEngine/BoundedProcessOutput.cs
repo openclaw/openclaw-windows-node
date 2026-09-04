@@ -1,3 +1,4 @@
+using System.ComponentModel;
 using System.Diagnostics;
 using System.Text;
 
@@ -11,6 +12,7 @@ namespace OpenClaw.SetupEngine;
 internal static class BoundedProcessOutput
 {
     internal const int DefaultTimeoutMs = 5_000;
+    internal const int MaxCapturedStreamChars = 1_048_576;
 
     internal static async Task<(int ExitCode, string Output)> ReadAsync(
         ProcessStartInfo startInfo,
@@ -18,8 +20,8 @@ internal static class BoundedProcessOutput
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(startInfo);
-        if (timeoutMs < 0)
-            throw new ArgumentOutOfRangeException(nameof(timeoutMs));
+        if (timeoutMs <= 0)
+            throw new ArgumentOutOfRangeException(nameof(timeoutMs), "Timeout must be positive.");
         cancellationToken.ThrowIfCancellationRequested();
 
         using var process = Process.Start(startInfo);
@@ -27,12 +29,13 @@ internal static class BoundedProcessOutput
             return (-1, string.Empty);
 
         var stdout = startInfo.RedirectStandardOutput
-            ? new RedirectedOutputCapture(process.StandardOutput)
+            ? new RedirectedOutputCapture(process.StandardOutput, MaxCapturedStreamChars)
             : null;
         var stdoutTask = stdout?.Completion ?? Task.CompletedTask;
-        var stderrTask = startInfo.RedirectStandardError
-            ? process.StandardError.ReadToEndAsync()
+        var stderr = startInfo.RedirectStandardError
+            ? new RedirectedOutputCapture(process.StandardError, MaxCapturedStreamChars)
             : null;
+        var stderrTask = stderr?.Completion;
 
         try
         {
@@ -40,7 +43,7 @@ internal static class BoundedProcessOutput
                 process,
                 stdoutTask,
                 timeoutMs,
-                cancellationToken);
+                cancellationToken).ConfigureAwait(false);
             return waitResult.ProcessExited && process.HasExited
                 ? (process.ExitCode, stdout?.Output ?? string.Empty)
                 : (-1, string.Empty);
@@ -48,12 +51,12 @@ internal static class BoundedProcessOutput
         finally
         {
             if (!stdoutTask.IsCompleted)
-                DisposeQuietly(process.StandardOutput);
+                DisposeQuietly(process.StandardOutput, "stdout close");
             ObserveQuietly(stdoutTask);
             if (stderrTask is not null)
             {
                 if (!stderrTask.IsCompleted)
-                    DisposeQuietly(process.StandardError);
+                    DisposeQuietly(process.StandardError, "stderr close");
                 ObserveQuietly(stderrTask);
             }
         }
@@ -67,8 +70,8 @@ internal static class BoundedProcessOutput
     {
         ArgumentNullException.ThrowIfNull(process);
         ArgumentNullException.ThrowIfNull(readTask);
-        if (timeoutMs < 0)
-            throw new ArgumentOutOfRangeException(nameof(timeoutMs));
+        if (timeoutMs <= 0)
+            throw new ArgumentOutOfRangeException(nameof(timeoutMs), "Timeout must be positive.");
 
         var deadline = new MonotonicDeadline(TimeSpan.FromMilliseconds(timeoutMs));
         using var exitSignalCancellation = new CancellationTokenSource();
@@ -77,7 +80,10 @@ internal static class BoundedProcessOutput
         {
             try
             {
-                await WaitWithinDeadlineAsync(exitTask, deadline, cancellationToken);
+                await WaitWithinDeadlineAsync(
+                    exitTask,
+                    deadline,
+                    cancellationToken).ConfigureAwait(false);
             }
             catch (TimeoutException)
             {
@@ -92,7 +98,10 @@ internal static class BoundedProcessOutput
 
             try
             {
-                await WaitWithinDeadlineAsync(readTask, deadline, cancellationToken);
+                await WaitWithinDeadlineAsync(
+                    readTask,
+                    deadline,
+                    cancellationToken).ConfigureAwait(false);
                 return new RedirectedOutputWaitResult(ProcessExited: true, OutputDrained: true);
             }
             catch (TimeoutException)
@@ -102,7 +111,9 @@ internal static class BoundedProcessOutput
             }
             catch (OperationCanceledException)
             {
-                StopAndAbandon(process, readTask);
+                // The immediate process has exited. Closing this reader is the only
+                // available bounded cleanup for a descendant-held pipe.
+                AbandonRead(process, readTask);
                 throw;
             }
         }
@@ -122,7 +133,7 @@ internal static class BoundedProcessOutput
         cancellationToken.ThrowIfCancellationRequested();
         if (task.IsCompleted)
         {
-            await task;
+            await task.ConfigureAwait(false);
             return;
         }
 
@@ -130,15 +141,31 @@ internal static class BoundedProcessOutput
         if (remaining <= TimeSpan.Zero)
             throw new TimeoutException();
 
-        await task.WaitAsync(remaining, cancellationToken);
+        await task.WaitAsync(remaining, cancellationToken).ConfigureAwait(false);
     }
 
     private static void StopAndAbandon(Process process, Task readTask)
     {
-        try { process.Kill(entireProcessTree: true); }
-        catch (Exception ex)
+        try
         {
-            Trace.WriteLine($"BoundedProcessOutput.TryKillTree: {ex.GetType().Name}: {ex.Message}");
+            if (!process.HasExited)
+                process.Kill(entireProcessTree: true);
+        }
+        catch (InvalidOperationException ex)
+        {
+            TraceCleanupFailure("kill", ex);
+        }
+        catch (Win32Exception ex)
+        {
+            TraceCleanupFailure("kill", ex);
+        }
+        catch (NotSupportedException ex)
+        {
+            TraceCleanupFailure("kill", ex);
+        }
+        catch (AggregateException ex)
+        {
+            TraceCleanupFailure("kill", ex);
         }
 
         AbandonRead(process, readTask);
@@ -147,7 +174,7 @@ internal static class BoundedProcessOutput
     private static void AbandonRead(Process process, Task readTask)
     {
         if (!readTask.IsCompleted)
-            DisposeQuietly(process.StandardOutput);
+            DisposeQuietly(process.StandardOutput, "stdout close");
     }
 
     private static async Task WaitForProcessExitOnlyAsync(
@@ -162,7 +189,7 @@ internal static class BoundedProcessOutput
         try
         {
             if (!process.HasExited)
-                await exited.Task.WaitAsync(cancellationToken);
+                await exited.Task.WaitAsync(cancellationToken).ConfigureAwait(false);
         }
         finally
         {
@@ -170,10 +197,24 @@ internal static class BoundedProcessOutput
         }
     }
 
-    private static void DisposeQuietly(IDisposable disposable)
+    private static void DisposeQuietly(IDisposable disposable, string operation)
     {
-        try { disposable.Dispose(); }
-        catch (ObjectDisposedException) { }
+        try
+        {
+            disposable.Dispose();
+        }
+        catch (ObjectDisposedException ex)
+        {
+            TraceCleanupFailure(operation, ex);
+        }
+        catch (IOException ex)
+        {
+            TraceCleanupFailure(operation, ex);
+        }
+        catch (InvalidOperationException ex)
+        {
+            TraceCleanupFailure(operation, ex);
+        }
     }
 
     private static void ObserveQuietly(Task task) =>
@@ -183,6 +224,10 @@ internal static class BoundedProcessOutput
             TaskContinuationOptions.OnlyOnFaulted | TaskContinuationOptions.ExecuteSynchronously,
             TaskScheduler.Default);
 
+    private static void TraceCleanupFailure(string operation, Exception exception) =>
+        Trace.WriteLine(
+            $"BoundedProcessOutput: {operation} failed ({exception.GetType().Name}).");
+
     internal readonly record struct RedirectedOutputWaitResult(
         bool ProcessExited,
         bool OutputDrained);
@@ -190,12 +235,14 @@ internal static class BoundedProcessOutput
     private sealed class RedirectedOutputCapture
     {
         private readonly StreamReader _reader;
+        private readonly int _maxChars;
         private readonly Lock _lock = new();
         private readonly StringBuilder _output = new();
 
-        internal RedirectedOutputCapture(StreamReader reader)
+        internal RedirectedOutputCapture(StreamReader reader, int maxChars)
         {
             _reader = reader;
+            _maxChars = maxChars;
             Completion = CaptureAsync();
         }
 
@@ -213,10 +260,14 @@ internal static class BoundedProcessOutput
         private async Task CaptureAsync()
         {
             var buffer = new char[4_096];
-            while (await _reader.ReadAsync(buffer) is var count && count > 0)
+            while (await _reader.ReadAsync(buffer).ConfigureAwait(false) is var count && count > 0)
             {
                 lock (_lock)
-                    _output.Append(buffer, 0, count);
+                {
+                    var remaining = _maxChars - _output.Length;
+                    if (remaining > 0)
+                        _output.Append(buffer, 0, Math.Min(count, remaining));
+                }
             }
         }
     }

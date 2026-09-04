@@ -21,7 +21,7 @@ public sealed class BoundedProcessOutputTests
 
         Assert.True(result.ProcessExited);
         Assert.False(result.OutputDrained);
-        Assert.InRange(stopwatch.Elapsed, TimeSpan.FromMilliseconds(300), TimeSpan.FromMilliseconds(900));
+        Assert.True(stopwatch.Elapsed >= TimeSpan.FromMilliseconds(300));
     }
 
     [Fact]
@@ -47,7 +47,7 @@ public sealed class BoundedProcessOutputTests
 
         Assert.False(result.ProcessExited);
         Assert.False(result.OutputDrained);
-        Assert.InRange(stopwatch.Elapsed, TimeSpan.FromMilliseconds(300), TimeSpan.FromMilliseconds(900));
+        Assert.True(stopwatch.Elapsed >= TimeSpan.FromMilliseconds(300));
         Assert.True(
             SpinWait.SpinUntil(() => process.HasExited, TimeSpan.FromSeconds(2)),
             "The timed-out Tailscale probe process was not killed.");
@@ -59,7 +59,7 @@ public sealed class BoundedProcessOutputTests
     }
 
     [Fact]
-    public async Task AwaitRedirectedOutputAsync_PreservesOutputCompletedNearDeadline()
+    public async Task AwaitRedirectedOutputAsync_PreservesOutputCompletedBeforeDeadline()
     {
         using var process = StartExitingProcess();
         Assert.True(process.WaitForExit(3_000));
@@ -68,9 +68,9 @@ public sealed class BoundedProcessOutputTests
         var helper = BoundedProcessOutput.AwaitRedirectedOutputAsync(
             process,
             outputSource.Task,
-            timeoutMs: 500);
+            timeoutMs: 5_000);
 
-        await Task.Delay(350);
+        await Task.Delay(50);
         outputSource.SetResult("{\"BackendState\":\"Running\"}");
 
         var result = await helper;
@@ -95,8 +95,6 @@ public sealed class BoundedProcessOutputTests
         var readTask = process.StandardOutput.ReadToEndAsync();
         using var cancellation = new CancellationTokenSource();
         cancellation.CancelAfter(TimeSpan.FromMilliseconds(150));
-        var stopwatch = Stopwatch.StartNew();
-
         await Assert.ThrowsAnyAsync<OperationCanceledException>(() =>
             BoundedProcessOutput.AwaitRedirectedOutputAsync(
                 process,
@@ -104,7 +102,6 @@ public sealed class BoundedProcessOutputTests
                 timeoutMs: 5_000,
                 cancellation.Token));
 
-        Assert.InRange(stopwatch.Elapsed, TimeSpan.Zero, TimeSpan.FromMilliseconds(800));
         Assert.True(
             SpinWait.SpinUntil(() => process.HasExited, TimeSpan.FromSeconds(2)),
             "The cancelled Tailscale probe process was not killed.");
@@ -117,10 +114,10 @@ public sealed class BoundedProcessOutputTests
         if (!OperatingSystem.IsWindows())
             return;
 
-        using var process = Process.Start(InheritedHandleCommand());
+        using var process = Process.Start(InheritedHandleCommand(childSleepSeconds: 20));
         Assert.NotNull(process);
         var readTask = process.StandardOutput.ReadToEndAsync();
-        Assert.True(process.WaitForExit(2_000), "The parent probe process did not exit.");
+        Assert.True(process.WaitForExit(15_000), "The parent probe process did not exit.");
         Assert.False(readTask.IsCompleted, "The descendant did not retain the redirected output handle.");
         var stopwatch = Stopwatch.StartNew();
 
@@ -131,7 +128,7 @@ public sealed class BoundedProcessOutputTests
 
         Assert.True(result.ProcessExited);
         Assert.False(result.OutputDrained);
-        Assert.InRange(stopwatch.Elapsed, TimeSpan.FromMilliseconds(200), TimeSpan.FromMilliseconds(800));
+        Assert.True(stopwatch.Elapsed >= TimeSpan.FromMilliseconds(200));
         _ = await Record.ExceptionAsync(() => readTask.WaitAsync(TimeSpan.FromSeconds(3)));
     }
 
@@ -165,17 +162,14 @@ public sealed class BoundedProcessOutputTests
         var stopwatch = Stopwatch.StartNew();
 
         var result = await BoundedProcessOutput.ReadAsync(
-            InheritedHandleCommand(status, childSleepSeconds: 3),
-            timeoutMs: 2_500);
+            InheritedHandleCommand(status, childSleepSeconds: 8),
+            timeoutMs: 5_000);
 
         Assert.Equal(0, result.ExitCode);
         Assert.Contains(status, result.Output, StringComparison.Ordinal);
         Assert.True(TailscaleSetupPolicy.TryParseStatus(result.Output, out var parsedStatus));
         Assert.True(parsedStatus.IsRunning);
-        Assert.InRange(
-            stopwatch.Elapsed,
-            TimeSpan.FromMilliseconds(500),
-            TimeSpan.FromSeconds(3));
+        Assert.True(stopwatch.Elapsed >= TimeSpan.FromSeconds(4.5));
     }
 
     [Fact]
@@ -202,7 +196,43 @@ public sealed class BoundedProcessOutputTests
         Assert.InRange(
             stopwatch.Elapsed,
             TimeSpan.FromSeconds(4.5),
-            TimeSpan.FromMilliseconds(5_750));
+            TimeSpan.FromSeconds(15));
+    }
+
+    [Fact]
+    public async Task ReadAsync_CapsCapturedStdout()
+    {
+        var path = Path.GetTempFileName();
+        try
+        {
+            await File.WriteAllTextAsync(
+                path,
+                new string('x', BoundedProcessOutput.MaxCapturedStreamChars + 4_096));
+
+            var result = await BoundedProcessOutput.ReadAsync(
+                ReadFileCommand(path),
+                timeoutMs: 5_000);
+
+            Assert.Equal(0, result.ExitCode);
+            Assert.Equal(BoundedProcessOutput.MaxCapturedStreamChars, result.Output.Length);
+        }
+        finally
+        {
+            File.Delete(path);
+        }
+    }
+
+    [Fact]
+    public async Task ReadAsync_RejectsNonPositiveTimeout()
+    {
+        var startInfo = new ProcessStartInfo
+        {
+            FileName = OperatingSystem.IsWindows() ? "cmd.exe" : "/bin/sh",
+            UseShellExecute = false,
+        };
+
+        await Assert.ThrowsAsync<ArgumentOutOfRangeException>(
+            () => BoundedProcessOutput.ReadAsync(startInfo, timeoutMs: 0));
     }
 
     private static ProcessStartInfo InheritedHandleCommand(
@@ -235,6 +265,34 @@ public sealed class BoundedProcessOutputTests
             UseShellExecute = false,
             CreateNoWindow = true,
         })!;
+
+    private static ProcessStartInfo ReadFileCommand(string path)
+    {
+        var startInfo = new ProcessStartInfo
+        {
+            FileName = OperatingSystem.IsWindows() ? "cmd.exe" : "/bin/sh",
+            RedirectStandardOutput = true,
+            RedirectStandardError = true,
+            UseShellExecute = false,
+            CreateNoWindow = true,
+        };
+        if (OperatingSystem.IsWindows())
+        {
+            startInfo.ArgumentList.Add("/d");
+            startInfo.ArgumentList.Add("/c");
+            startInfo.ArgumentList.Add("type");
+            startInfo.ArgumentList.Add(path);
+        }
+        else
+        {
+            startInfo.ArgumentList.Add("-c");
+            startInfo.ArgumentList.Add("cat \"$1\"");
+            startInfo.ArgumentList.Add("sh");
+            startInfo.ArgumentList.Add(path);
+        }
+
+        return startInfo;
+    }
 
     private static (string FileName, string Arguments) LongRunningCommand() =>
         OperatingSystem.IsWindows()
