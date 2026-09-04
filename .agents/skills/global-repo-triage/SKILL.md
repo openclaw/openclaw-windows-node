@@ -68,9 +68,10 @@ export. The Markdown examples remain decision-quality references:
    useful fix onto current owners rather than rebasing obsolete god-object or
    pre-ledger branches.
 9. **Canvas actions are requests, not mutations.** The dashboard may refresh
-   read-only GitHub state and send a guarded action request into the current
-   Copilot session. It must never merge, close, label, comment, push, rerun CI,
-   or delete a session directly.
+   read-only GitHub state and route a guarded action request to one dedicated
+   child project session per item. Reuse that session for later actions on the
+   same PR or issue. The dashboard must never merge, close, label, comment, push,
+   rerun CI, or delete a session directly.
 
 ## Decision vocabulary
 
@@ -342,14 +343,17 @@ The canvas exposes:
 - live check totals and missing expected jobs
 - item stages and plan-gate status
 - proof, review, exact-head, draft, and mergeability gates
-- `Request next step`, which sends a read-only-by-default request into this
-  session
+- `Request next step`, which creates or reuses the item's child project session
+  and sends a read-only-by-default request there
 - `Prepare merge`, enabled only for an exact-head `TAKE` at 90% or higher with
   complete review and proof, clean merge state, and all expected checks present
   and passing
 
-`Prepare merge` must only ask this session to re-fetch evidence and request
-explicit confirmation. The extension never calls a GitHub mutation command.
+`Prepare merge` must only ask the item's child session to re-fetch evidence and
+request explicit confirmation. Every item action uses the same routing rule:
+find the exact `Triage PR #<number>` or `Triage Issue #<number>` session and
+append to it, or create it once when absent. The extension never calls a GitHub
+mutation command.
 
 When the user requests a Markdown export, use the historical section order and
 tables in `templates\global-triage-report.md`. The canvas is the primary handoff.
@@ -371,4 +375,5 @@ Do not call the triage complete until:
 - the dashboard opens successfully and its fetched item count matches the state
   artifact
 - every plan gate references an item and stage in the state artifact
-- merge requests remain chat-routed and confirmation-gated
+- item actions remain child-session-routed and merge requests stay
+  confirmation-gated

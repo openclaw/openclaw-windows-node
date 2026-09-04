@@ -677,8 +677,8 @@ export function renderDashboardHtml(actionToken) {
         next.addEventListener("click", async () => {
           next.disabled = true;
           try {
-            await post("/action", { action: "request_next_action", number: item.number });
-            showNotice("Next-step request sent to this Copilot session.");
+            const result = await post("/action", { action: "request_next_action", number: item.number });
+            showNotice("Routing request queued for " + result.sessionName + ".");
           } catch (error) {
             showNotice(error.message);
           } finally {
@@ -688,16 +688,16 @@ export function renderDashboardHtml(actionToken) {
         const merge = element("button", "control primary", "Prepare merge");
         merge.type = "button";
         merge.disabled = !item.mergeRequest.eligible;
-        merge.title = item.mergeRequest.eligible ? "Request fresh merge verification in chat" : item.mergeRequest.reasons.join("; ");
+        merge.title = item.mergeRequest.eligible ? "Request fresh merge verification in the item session" : item.mergeRequest.reasons.join("; ");
         merge.addEventListener("click", async () => {
           merge.disabled = true;
           try {
-            await post("/action", {
+            const result = await post("/action", {
               action: "request_merge",
               number: item.number,
               headSha: item.live.headRefOid,
             });
-            showNotice("Guarded merge request sent to this Copilot session.");
+            showNotice("Routing request queued for " + result.sessionName + ".");
           } catch (error) {
             showNotice(error.message);
             merge.disabled = false;

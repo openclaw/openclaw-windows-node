@@ -8,6 +8,7 @@ import {
     normalizeTriageInput,
     summarizeChecks,
 } from "./triage-state.mjs";
+import { buildSubsessionRoutingPrompt } from "./triage-actions.mjs";
 import { renderDashboardHtml } from "./triage-ui.mjs";
 
 function inputItem(overrides = {}) {
@@ -211,13 +212,45 @@ test("the renderer exposes live filters and guarded action controls", () => {
     assert.match(html, /EventSource/);
 });
 
+test("item actions route to one reusable child session", () => {
+    const routing = buildSubsessionRoutingPrompt(
+        "openclaw/openclaw-windows-node",
+        { type: "pr", number: 1158 },
+        "Refresh the evidence.",
+    );
+
+    assert.equal(routing.sessionName, "Triage PR #1158");
+    assert.match(routing.prompt, /list_projects/);
+    assert.match(routing.prompt, /project_id/);
+    assert.match(routing.prompt, /list_sessions_and_chats/);
+    assert.match(routing.prompt, /send_session_message/);
+    assert.match(routing.prompt, /create_session/);
+    assert.match(routing.prompt, /Do not create a duplicate session/);
+    assert.match(routing.prompt, /Refresh the evidence/);
+});
+
+test("issue actions use a distinct stable child session name", () => {
+    const routing = buildSubsessionRoutingPrompt(
+        "openclaw/openclaw-windows-node",
+        { type: "issue", number: 42 },
+        "Assess the issue.",
+    );
+
+    assert.equal(routing.sessionName, "Triage Issue #42");
+    assert.match(routing.prompt, /openclaw\/openclaw-windows-node Issue #42/);
+});
+
 test("the extension contains no direct GitHub mutation command", () => {
     const source = readFileSync(new URL("./extension.mjs", import.meta.url), "utf8");
+    const actionSource = readFileSync(new URL("./triage-actions.mjs", import.meta.url), "utf8");
 
-    assert.doesNotMatch(
-        source,
-        /["'](?:pr|issue)["']\s*,\s*["'](?:merge|close|comment|edit|reopen)["']/,
-    );
-    assert.doesNotMatch(source, /["']run["']\s*,\s*["']rerun["']/);
-    assert.doesNotMatch(source, /gh\s+pr\s+merge/i);
+    for (const candidate of [source, actionSource]) {
+        assert.doesNotMatch(
+            candidate,
+            /["'](?:pr|issue)["']\s*,\s*["'](?:merge|close|comment|edit|reopen)["']/,
+        );
+        assert.doesNotMatch(candidate, /["']run["']\s*,\s*["']rerun["']/);
+        assert.doesNotMatch(candidate, /gh\s+pr\s+merge/i);
+    }
+    assert.equal(source.match(/copilotSession\.send/g)?.length, 1);
 });

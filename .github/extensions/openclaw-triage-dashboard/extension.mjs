@@ -15,6 +15,7 @@ import {
     mergeLiveState,
     normalizeTriageInput,
 } from "./triage-state.mjs";
+import { buildSubsessionRoutingPrompt } from "./triage-actions.mjs";
 import { renderDashboardHtml } from "./triage-ui.mjs";
 
 const execFileAsync = promisify(execFile);
@@ -192,7 +193,7 @@ function findItem(entry, number) {
     return entry.state.items.find((item) => item.number === number);
 }
 
-async function requestChatAction(entry, action, input) {
+async function requestItemAction(entry, action, input) {
     const number = Number(input?.number);
     if (!Number.isInteger(number) || number <= 0) {
         throw new CanvasError("invalid_item", "A positive PR or issue number is required");
@@ -202,6 +203,8 @@ async function requestChatAction(entry, action, input) {
         throw new CanvasError("item_not_found", `#${number} is not in this triage`);
     }
 
+    let actionPrompt;
+    let result;
     if (action === "request_merge") {
         await refreshEntry(entry);
         item = findItem(entry, number);
@@ -214,30 +217,35 @@ async function requestChatAction(entry, action, input) {
             requestedHead.toLowerCase() !== String(item.live.headRefOid).toLowerCase()) {
             throw new CanvasError("head_changed", "The requested head no longer matches live GitHub state");
         }
-        await copilotSession.send({
-            prompt:
-                `The user selected Prepare merge for ${entry.triage.repo} PR #${number} at observed head ` +
-                `${requestedHead}. Use the global-repo-triage skill guardrails. Re-fetch the PR, exact head, ` +
-                "required checks, reviews, unresolved threads, proof declarations, real behavior evidence, " +
-                "branch protection, and mergeability. Do not mutate GitHub yet. Present the fresh evidence and " +
-                "ask for explicit confirmation before merging.",
-        });
-        return { queued: true, action, number, headSha: requestedHead };
+        actionPrompt =
+            `The user selected Prepare merge for ${entry.triage.repo} PR #${number} at observed head ` +
+            `${requestedHead}. Use the global-repo-triage skill guardrails. Re-fetch the PR, exact head, ` +
+            "required checks, reviews, unresolved threads, proof declarations, real behavior evidence, " +
+            "branch protection, and mergeability. Do not mutate GitHub yet. Present the fresh evidence and " +
+            "ask for explicit confirmation before merging.";
+        result = { headSha: requestedHead };
+    } else if (action === "request_next_action") {
+        actionPrompt =
+            `The user selected Request next step for ${entry.triage.repo} ${item.type.toUpperCase()} #${number} ` +
+            "from the interactive triage canvas. Invoke the global-repo-triage skill, refresh this item's " +
+            "current GitHub evidence, and continue only the smallest safe next action. Preserve the read-only " +
+            "default for GitHub mutations and ask for confirmation before any merge, close, label, comment, " +
+            "push, rerun, or session deletion.";
+        result = {};
+    } else {
+        throw new CanvasError("unsupported_action", "Unsupported triage action");
     }
 
-    if (action === "request_next_action") {
-        await copilotSession.send({
-            prompt:
-                `The user selected Request next step for ${entry.triage.repo} ${item.type.toUpperCase()} #${number} ` +
-                "from the interactive triage canvas. Invoke the global-repo-triage skill, refresh this item's " +
-                "current GitHub evidence, and continue only the smallest safe next action. Preserve the read-only " +
-                "default for GitHub mutations and ask for confirmation before any merge, close, label, comment, " +
-                "push, rerun, or session deletion.",
-        });
-        return { queued: true, action, number };
-    }
-
-    throw new CanvasError("unsupported_action", "Unsupported triage action");
+    const routing = buildSubsessionRoutingPrompt(entry.triage.repo, item, actionPrompt);
+    await copilotSession.send({ prompt: routing.prompt });
+    return {
+        queued: true,
+        subsessionRoutingQueued: true,
+        sessionName: routing.sessionName,
+        action,
+        number,
+        ...result,
+    };
 }
 
 async function readJsonBody(request) {
@@ -309,7 +317,7 @@ async function handleRequest(entry, request, response) {
         }
         if (request.method === "POST" && url.pathname === "/action") {
             const input = await readJsonBody(request);
-            const result = await requestChatAction(entry, input.action, input);
+            const result = await requestItemAction(entry, input.action, input);
             writeJson(response, 202, result);
             return;
         }
@@ -429,17 +437,17 @@ const dashboard = createCanvas({
         },
         {
             name: "request_next_action",
-            description: "Send a guarded next-step request for one triage item into the current session.",
+            description: "Route a guarded next-step request to the item's dedicated child session.",
             inputSchema: itemActionSchema,
             handler: async (context) => {
                 const entry = instances.get(context.instanceId);
                 if (!entry) throw new CanvasError("instance_not_found", "Triage canvas is not open");
-                return requestChatAction(entry, "request_next_action", context.input);
+                return requestItemAction(entry, "request_next_action", context.input);
             },
         },
         {
             name: "request_merge",
-            description: "Request fresh merge verification and confirmation in the current session.",
+            description: "Route fresh merge verification to the item's dedicated child session.",
             inputSchema: {
                 type: "object",
                 required: ["number", "headSha"],
@@ -452,7 +460,7 @@ const dashboard = createCanvas({
             handler: async (context) => {
                 const entry = instances.get(context.instanceId);
                 if (!entry) throw new CanvasError("instance_not_found", "Triage canvas is not open");
-                return requestChatAction(entry, "request_merge", context.input);
+                return requestItemAction(entry, "request_merge", context.input);
             },
         },
     ],
