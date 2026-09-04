@@ -25,3 +25,14 @@ export function buildSubsessionRoutingPrompt(repo, item, actionPrompt) {
             `Action for the child session:\n${actionPrompt}`,
     };
 }
+
+export async function requireFreshGitHubEvidence(refresh, createError = (_, message) => new Error(message)) {
+    const state = await refresh();
+    if (state.refreshError) {
+        throw createError(
+            "refresh_failed",
+            `Fresh GitHub evidence is required before preparing a merge: ${state.refreshError}`,
+        );
+    }
+    return state;
+}

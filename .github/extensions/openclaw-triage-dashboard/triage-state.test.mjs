@@ -8,7 +8,10 @@ import {
     normalizeTriageInput,
     summarizeChecks,
 } from "./triage-state.mjs";
-import { buildSubsessionRoutingPrompt } from "./triage-actions.mjs";
+import {
+    buildSubsessionRoutingPrompt,
+    requireFreshGitHubEvidence,
+} from "./triage-actions.mjs";
 import {
     buildPlanLanes,
     limitLaneLevels,
@@ -459,6 +462,25 @@ test("issue actions use a distinct stable child session name", () => {
 
     assert.equal(routing.sessionName, "Triage Issue #42");
     assert.match(routing.prompt, /openclaw\/openclaw-windows-node Issue #42/);
+});
+
+test("merge routing stops before sending when fresh GitHub evidence is unavailable", async () => {
+    let sendCount = 0;
+    const requestMerge = async () => {
+        await requireFreshGitHubEvidence(
+            async () => ({ refreshError: "HTTP 503: unavailable" }),
+            (code, message) => Object.assign(new Error(message), { code }),
+        );
+        sendCount += 1;
+    };
+
+    await assert.rejects(
+        requestMerge,
+        (error) =>
+            error.code === "refresh_failed" &&
+            /Fresh GitHub evidence is required/.test(error.message),
+    );
+    assert.equal(sendCount, 0);
 });
 
 test("the extension contains no direct GitHub mutation command", () => {

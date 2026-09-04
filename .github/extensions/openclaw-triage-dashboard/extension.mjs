@@ -15,7 +15,10 @@ import {
     mergeLiveState,
     normalizeTriageInput,
 } from "./triage-state.mjs";
-import { buildSubsessionRoutingPrompt } from "./triage-actions.mjs";
+import {
+    buildSubsessionRoutingPrompt,
+    requireFreshGitHubEvidence,
+} from "./triage-actions.mjs";
 import { renderDashboardHtml } from "./triage-ui.mjs";
 
 const execFileAsync = promisify(execFile);
@@ -206,7 +209,10 @@ async function requestItemAction(entry, action, input) {
     let actionPrompt;
     let result;
     if (action === "request_merge") {
-        await refreshEntry(entry);
+        await requireFreshGitHubEvidence(
+            () => refreshEntry(entry),
+            (code, message) => new CanvasError(code, message),
+        );
         item = findItem(entry, number);
         const eligibility = canRequestMerge(item, item.live);
         if (!eligibility.eligible) {

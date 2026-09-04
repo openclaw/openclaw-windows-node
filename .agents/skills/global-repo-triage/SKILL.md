@@ -32,7 +32,6 @@ Create these session artifacts:
 
 ```text
 global-triage-YYYY-MM-DD.md
-global-triage-YYYY-MM-DD.json
 triage-YYYY-MM-DD\issues-summary.csv
 triage-YYYY-MM-DD\prs-summary.csv
 triage-YYYY-MM-DD\pr-<number>.patch
@@ -332,7 +331,8 @@ low-priority and declined work.
 ## 10. Optionally publish the interactive dashboard
 
 Only produce the interactive canvas when the user requests it in addition to the
-static Markdown report.
+static Markdown report. Create `global-triage-YYYY-MM-DD.json` as its session
+state artifact.
 
 Write `global-triage-YYYY-MM-DD.json` using
 `templates\triage-state.template.json`. Every item needs:
