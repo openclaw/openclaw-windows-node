@@ -170,6 +170,10 @@ foreach ($lane in $testLanes.GetEnumerator()) {
         -Message "Test lane '$($lane.Key)' does not consume its classifier output."
     Assert-Contains `
         -Text $job `
+        -Expected "fetch-depth: 0" `
+        -Message "Test lane '$($lane.Key)' must fetch full history for GitVersion.MsBuild."
+    Assert-Contains `
+        -Text $job `
         -Expected "OPENCLAW_CI_COLLECT_COVERAGE: `${{ github.event_name != 'pull_request' }}" `
         -Message "Test lane '$($lane.Key)' does not preserve push/tag coverage."
     Assert-Contains `
@@ -251,6 +255,7 @@ $e2eLanes = [ordered]@{
 foreach ($lane in $e2eLanes.GetEnumerator()) {
     $job = Get-JobBlock $lane.Key
     foreach ($token in @(
+            "fetch-depth: 0",
             "needs.change-classification.outputs.$($lane.Value.Output) == 'true'",
             "OPENCLAW_RUN_E2E: 1",
             "./scripts/Invoke-CiE2e.ps1",
@@ -290,6 +295,7 @@ foreach ($skipReasonToken in @(
 $metadataJob = Get-JobBlock "metadata"
 foreach ($token in @(
         "needs: change-classification",
+        "fetch-depth: 0",
         "outputs.x64_release == 'true' || needs.change-classification.outputs.arm64_release == 'true'",
         "gittools/actions/gitversion/setup@v4",
         "gittools/actions/gitversion/execute@v4",
@@ -324,6 +330,7 @@ foreach ($build in $releaseBuilds.GetEnumerator()) {
     $job = Get-JobBlock $build.Key
     foreach ($token in @(
             "needs: [change-classification, metadata]",
+            "fetch-depth: 0",
             "needs.change-classification.outputs.$($build.Value.Output) == 'true'",
             "runs-on: $($build.Value.Runner)",
             "OPENCLAW_BUILD_VERSION: `${{ needs.metadata.outputs.semVer }}",
@@ -338,6 +345,12 @@ foreach ($build in $releaseBuilds.GetEnumerator()) {
         -Unexpected "core-tests" `
         -Message "Release builds must start in parallel with tests and E2E."
 }
+
+$buildMsixJob = Get-JobBlock "build-msix"
+Assert-Contains `
+    -Text $buildMsixJob `
+    -Expected "fetch-depth: 0" `
+    -Message "The paused MSIX build must retain full history before it can be re-enabled."
 
 $ciGateJob = Get-JobBlock "ci-gate"
 foreach ($token in @(

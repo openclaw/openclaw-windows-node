@@ -296,6 +296,8 @@ jobs:
       OPENCLAW_TRAY_DATA_DIR: ${{ github.workspace }}\TestData\OpenClawTrayTests
     steps:
     - uses: actions/checkout@v7
+      with:
+        fetch-depth: 0
 
     - name: Setup .NET 10
       uses: actions/setup-dotnet@v6
@@ -375,6 +377,8 @@ jobs:
       OPENCLAW_TRAY_DATA_DIR: ${{ github.workspace }}\TestData\OpenClawTrayUITests
     steps:
     - uses: actions/checkout@v7
+      with:
+        fetch-depth: 0
 
     - name: Setup .NET 10
       uses: actions/setup-dotnet@v6
