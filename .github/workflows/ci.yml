@@ -230,13 +230,38 @@ jobs:
       with:
         dotnet-version: 10.0.x
 
+    - name: Configure core NuGet cache
+      # Keep the core graph out of the repository-wide NuGet cache used by every other lane.
+      shell: pwsh
+      run: '"NUGET_PACKAGES=$env:RUNNER_TEMP\openclaw-core-nuget-packages" >> $env:GITHUB_ENV'
+
     - name: Cache NuGet packages
       continue-on-error: true
       uses: actions/cache@v6
       with:
-        path: ~/.nuget/packages
-        key: nuget-${{ runner.os }}-${{ hashFiles('**/*.csproj', '**/Directory.Packages.props') }}
-        restore-keys: nuget-${{ runner.os }}-
+        path: ${{ env.NUGET_PACKAGES }}
+        # SDK/config and imported MSBuild files can change restore behavior or shared package references.
+        # These project files are the complete transitive graph restored by the core lane.
+        key: >-
+          nuget-core-${{ runner.os }}-${{ hashFiles(
+            'global.json',
+            'NuGet.Config',
+            'Directory.Build.props',
+            'src/Directory.Build.props',
+            'src/Directory.Build.targets',
+            'tests/Directory.Build.props',
+            'tests/OpenClaw.TestSupport/Directory.Build.props',
+            'tests/OpenClaw.Shared.TestHost/Directory.Build.props',
+            'src/OpenClaw.Shared/OpenClaw.Shared.csproj',
+            'src/OpenClaw.Connection/OpenClaw.Connection.csproj',
+            'src/OpenClaw.Cli/OpenClaw.Cli.csproj',
+            'src/OpenClaw.WinNode.Cli/OpenClaw.WinNode.Cli.csproj',
+            'tests/OpenClaw.TestSupport/OpenClaw.TestSupport.csproj',
+            'tests/OpenClaw.Shared.TestHost/OpenClaw.Shared.TestHost.csproj',
+            'tests/OpenClaw.Shared.Tests/OpenClaw.Shared.Tests.csproj',
+            'tests/OpenClaw.Connection.Tests/OpenClaw.Connection.Tests.csproj',
+            'tests/OpenClaw.WinNode.Cli.Tests/OpenClaw.WinNode.Cli.Tests.csproj'
+          ) }}
 
     - name: Restore core test projects
       run: |
