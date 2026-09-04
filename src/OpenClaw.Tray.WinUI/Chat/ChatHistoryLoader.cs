@@ -462,12 +462,19 @@ internal sealed class ChatHistoryLoader : IDisposable
             history.SessionId,
             threadId,
             resetGeneration);
+        var positionalToolMetadataTrusted = true;
         var attachmentMatcher = _metadata.CreateAttachmentMatcher(
             history.SessionId,
             threadId,
             resetGeneration);
         var nextAssistantIsAborted = false;
         var pendingUnkeyedToolCalls = new Queue<string>();
+        var pendingVerifiedCallLookups =
+            new Dictionary<string, int>(StringComparer.Ordinal);
+        var pendingVerifiedResultLookups =
+            new Dictionary<string, int>(StringComparer.Ordinal);
+        var seenVerifiedResults =
+            new HashSet<string>(StringComparer.Ordinal);
         var syntheticToolCallSequence = 0;
         ChatMessageInfo? suppressedAbortedAssistant = null;
 
@@ -521,6 +528,55 @@ internal sealed class ChatHistoryLoader : IDisposable
                 if (reservedToolCallIds.Add(candidate))
                     return candidate;
             }
+        }
+
+        ChatMetadataStore.CachedToolMeta? MatchPositionalToolMetadata(
+            long historyTsMs) =>
+            positionalToolMetadataTrusted
+                ? ChatMetadataStore.TryMatchCachedTool(
+                    cachedTools,
+                    historyTsMs)
+                : null;
+
+        ChatMetadataStore.CachedToolMeta? MatchVerifiedToolMetadata(
+            string toolCallId,
+            long historyTsMs,
+            bool isCall)
+        {
+            var counterpartLookups = isCall
+                ? pendingVerifiedResultLookups
+                : pendingVerifiedCallLookups;
+            if (counterpartLookups.TryGetValue(
+                    toolCallId,
+                    out var counterpartCount))
+            {
+                if (counterpartCount == 1)
+                    counterpartLookups.Remove(toolCallId);
+                else
+                    counterpartLookups[toolCallId] = counterpartCount - 1;
+                if (!isCall)
+                    seenVerifiedResults.Add(toolCallId);
+                return null;
+            }
+
+            if (!isCall && !seenVerifiedResults.Add(toolCallId))
+                return null;
+
+            var lookup = ChatMetadataStore.TryMatchCachedToolByCallId(
+                cachedTools,
+                toolCallId,
+                historyTsMs);
+            var ownLookups = isCall
+                ? pendingVerifiedCallLookups
+                : pendingVerifiedResultLookups;
+            ownLookups.TryGetValue(toolCallId, out var ownCount);
+            ownLookups[toolCallId] = ownCount + 1;
+            if (lookup.Outcome ==
+                ChatMetadataStore.CachedToolLookupOutcome.Unmatched)
+            {
+                positionalToolMetadataTrusted = false;
+            }
+            return lookup.Match;
         }
 
         foreach (var replayPart in replayParts)
@@ -669,9 +725,8 @@ internal sealed class ChatHistoryLoader : IDisposable
                         }
                         else if (NativeToolProjector.LooksLikeFlattenedToolOutput(text))
                         {
-                            var cached = ChatMetadataStore.TryMatchCachedTool(
-                                cachedTools,
-                                message.Ts);
+                            var cached =
+                                MatchPositionalToolMetadata(message.Ts);
                             var assistantHistoryCallId =
                                 AllocateSyntheticToolCallId();
                             var kind = cached?.ToolName ??
@@ -725,9 +780,8 @@ internal sealed class ChatHistoryLoader : IDisposable
                     case "tool_result":
                         if (hasStructuredToolContent)
                             break;
-                        var cachedTool = ChatMetadataStore.TryMatchCachedTool(
-                            cachedTools,
-                            message.Ts);
+                        var cachedTool =
+                            MatchPositionalToolMetadata(message.Ts);
                         var toolResultHistoryCallId =
                             AllocateSyntheticToolCallId();
                         var toolKind = cachedTool?.ToolName ??
@@ -783,18 +837,16 @@ internal sealed class ChatHistoryLoader : IDisposable
                     var callId = toolBlock.CallId;
                     if (string.IsNullOrWhiteSpace(callId))
                     {
-                        _ = ChatMetadataStore.TryMatchCachedTool(
-                            cachedTools,
-                            message.Ts);
+                        _ = MatchPositionalToolMetadata(message.Ts);
                         callId = AllocateSyntheticToolCallId();
                         pendingUnkeyedToolCalls.Enqueue(callId);
                     }
                     else
                     {
-                        _ = ChatMetadataStore.TryMatchCachedToolByCallId(
-                            cachedTools,
+                        _ = MatchVerifiedToolMetadata(
                             callId,
-                            message.Ts);
+                            message.Ts,
+                            isCall: true);
                     }
                     timeline = Apply(
                         timeline,
@@ -824,16 +876,17 @@ internal sealed class ChatHistoryLoader : IDisposable
                     RunId: null,
                     LegacyTurn: timeline.ToolLegacyTurn,
                     ToolCallId: resolvedCallId);
+                var verifiedCached = hasVerifiedCallId
+                    ? MatchVerifiedToolMetadata(
+                        resolvedCallId,
+                        message.Ts,
+                        isCall: false)
+                    : null;
                 if (!timeline.ActiveToolCalls.ContainsKey(correlationKey))
                 {
                     var cached = hasVerifiedCallId
-                        ? ChatMetadataStore.TryMatchCachedToolByCallId(
-                            cachedTools,
-                            resolvedCallId,
-                            message.Ts)
-                        : ChatMetadataStore.TryMatchCachedTool(
-                            cachedTools,
-                            message.Ts);
+                        ? verifiedCached
+                        : MatchPositionalToolMetadata(message.Ts);
                     var toolName =
                         cached?.ToolName ?? toolBlock.ToolName;
                     timeline = Apply(

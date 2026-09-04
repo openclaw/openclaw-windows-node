@@ -142,11 +142,15 @@ public class ToolMetaCacheTests
             new() { Ts = 300, ToolName = "write", Label = "last", ToolCallId = "call-c" },
         ]);
 
-        var match = ChatMetadataStore.TryMatchCachedToolByCallId(
+        var lookup = ChatMetadataStore.TryMatchCachedToolByCallId(
             cache,
             "call-b",
             historyTsMs: 200);
 
+        Assert.Equal(
+            ChatMetadataStore.CachedToolLookupOutcome.Matched,
+            lookup.Outcome);
+        var match = lookup.Match;
         Assert.Equal("bash", match!.ToolName);
         Assert.Equal("middle", match.Label);
         Assert.Equal(
@@ -163,12 +167,15 @@ public class ToolMetaCacheTests
             new() { Ts = 200, ToolCallId = "call-b" },
         ]);
 
-        var match = ChatMetadataStore.TryMatchCachedToolByCallId(
+        var lookup = ChatMetadataStore.TryMatchCachedToolByCallId(
             cache,
             "missing",
             historyTsMs: 200);
 
-        Assert.Null(match);
+        Assert.Equal(
+            ChatMetadataStore.CachedToolLookupOutcome.Unmatched,
+            lookup.Outcome);
+        Assert.Null(lookup.Match);
         Assert.Equal(
             ["call-a", "call-b"],
             cache.Select(entry => entry.ToolCallId));
@@ -185,16 +192,55 @@ public class ToolMetaCacheTests
             new() { Ts = 400, ToolName = "edit", Label = "last", ToolCallId = "last" },
         ]);
 
-        var match = ChatMetadataStore.TryMatchCachedToolByCallId(
+        var lookup = ChatMetadataStore.TryMatchCachedToolByCallId(
             cache,
             "same",
             historyTsMs: 290);
 
+        Assert.Equal(
+            ChatMetadataStore.CachedToolLookupOutcome.Matched,
+            lookup.Outcome);
+        var match = lookup.Match;
         Assert.Equal("bash", match!.ToolName);
         Assert.Equal("current", match.Label);
         Assert.Equal(
             ["same", "other", "last"],
             cache.Select(entry => entry.ToolCallId));
+    }
+
+    [Fact]
+    public void TryMatchByCallId_EmptyCacheReportsNoCandidates()
+    {
+        var lookup = ChatMetadataStore.TryMatchCachedToolByCallId(
+            new Queue<ChatMetadataStore.CachedToolMeta>(),
+            "call-a",
+            historyTsMs: 100);
+
+        Assert.Equal(
+            ChatMetadataStore.CachedToolLookupOutcome.NoCandidates,
+            lookup.Outcome);
+        Assert.Null(lookup.Match);
+    }
+
+    [Fact]
+    public void TryMatchByCallId_MatchBehindNullIdHeadReportsMatched()
+    {
+        var cache = new Queue<ChatMetadataStore.CachedToolMeta>(
+        [
+            new() { Ts = 100, ToolName = "bash" },
+            new() { Ts = 200, ToolName = "read", ToolCallId = "call-b" },
+        ]);
+
+        var lookup = ChatMetadataStore.TryMatchCachedToolByCallId(
+            cache,
+            "call-b",
+            historyTsMs: 200);
+
+        Assert.Equal(
+            ChatMetadataStore.CachedToolLookupOutcome.Matched,
+            lookup.Outcome);
+        Assert.Equal(200, lookup.Match!.Ts);
+        Assert.Null(Assert.Single(cache).ToolCallId);
     }
 
     // ── Constants ──

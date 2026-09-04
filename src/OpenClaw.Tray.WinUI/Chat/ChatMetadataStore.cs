@@ -66,6 +66,17 @@ internal sealed class AttachmentMetaMatcher
 /// </summary>
 internal sealed class ChatMetadataStore : IDisposable
 {
+    internal enum CachedToolLookupOutcome
+    {
+        NoCandidates,
+        Matched,
+        Unmatched,
+    }
+
+    internal readonly record struct CachedToolLookup(
+        CachedToolMeta? Match,
+        CachedToolLookupOutcome Outcome);
+
     private readonly record struct CachedToolCorrelationIdentity(
         string? RunId,
         string ToolCallId,
@@ -572,7 +583,7 @@ internal sealed class ChatMetadataStore : IDisposable
         return match;
     }
 
-    internal static CachedToolMeta? TryMatchCachedToolByCallId(
+    internal static CachedToolLookup TryMatchCachedToolByCallId(
         Queue<CachedToolMeta>? cache,
         string? toolCallId,
         long historyTsMs)
@@ -581,7 +592,7 @@ internal sealed class ChatMetadataStore : IDisposable
             cache.Count == 0 ||
             string.IsNullOrWhiteSpace(toolCallId))
         {
-            return null;
+            return new(null, CachedToolLookupOutcome.NoCandidates);
         }
 
         var entryCount = cache.Count;
@@ -620,13 +631,13 @@ internal sealed class ChatMetadataStore : IDisposable
         }
 
         if (matchIndex < 0)
-            return null;
+            return new(null, CachedToolLookupOutcome.Unmatched);
 
         var match = entries[matchIndex];
         match.ToolName = NormalizeCachedDisplayText(match.ToolName);
         match.Label = NormalizeCachedDisplayText(match.Label);
         match.ToolArgs = NormalizeCachedToolArgs(match.ToolArgs);
-        return match;
+        return new(match, CachedToolLookupOutcome.Matched);
     }
 
     internal void Flush()
