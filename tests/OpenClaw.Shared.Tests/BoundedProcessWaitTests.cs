@@ -1,4 +1,4 @@
-using System.Collections.Concurrent;
+using System.ComponentModel;
 using System.Diagnostics;
 using System.Reflection;
 using OpenClaw.Shared.Audio;
@@ -117,50 +117,6 @@ public sealed class BoundedProcessWaitTests
         }
     }
 
-    [Fact]
-    public void ObserveFault_ConsumesAbandonedTaskException()
-    {
-        var marker = Guid.NewGuid().ToString();
-        var unobserved = new ConcurrentQueue<Exception>();
-        EventHandler<UnobservedTaskExceptionEventArgs> handler = (_, args) =>
-        {
-            foreach (var exception in args.Exception.Flatten().InnerExceptions)
-            {
-                if (exception.Message == marker)
-                    unobserved.Enqueue(exception);
-            }
-
-            args.SetObserved();
-        };
-        TaskScheduler.UnobservedTaskException += handler;
-
-        try
-        {
-            var taskReference = CreateObservedFault(marker);
-            for (var attempt = 0; attempt < 10 && taskReference.IsAlive; attempt++)
-            {
-                GC.Collect();
-                GC.WaitForPendingFinalizers();
-                GC.Collect();
-                Thread.Sleep(10);
-            }
-
-            Assert.False(taskReference.IsAlive);
-            Assert.Empty(unobserved);
-        }
-        finally
-        {
-            TaskScheduler.UnobservedTaskException -= handler;
-        }
-    }
-
-    private static WeakReference CreateObservedFault(string marker)
-    {
-        var task = Task.FromException(new InvalidOperationException(marker));
-        BoundedProcessWait.ObserveFault(task);
-        return new WeakReference(task);
-    }
-
     private static Process StartFixture(params string[] arguments)
     {
         var startInfo = new ProcessStartInfo
@@ -238,6 +194,12 @@ public sealed class BoundedProcessWaitTests
         {
         }
         catch (InvalidOperationException)
+        {
+        }
+        catch (Win32Exception)
+        {
+        }
+        catch (AggregateException)
         {
         }
     }

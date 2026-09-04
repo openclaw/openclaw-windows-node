@@ -34,6 +34,7 @@ namespace OpenClaw.Shared.Audio;
 /// </summary>
 public sealed class PiperVoiceManager
 {
+    private const string InstallMarkerSuffix = ".installing";
     private readonly string _voicesDirectory;
     private readonly IOpenClawLogger _logger;
     // Per-voice single-flight gate: prevents racing the same voice download
@@ -113,9 +114,8 @@ public sealed class PiperVoiceManager
     {
         try
         {
-            return File.Exists(GetModelPath(voiceId))
-                && File.Exists(GetTokensPath(voiceId))
-                && Directory.Exists(GetEspeakDataDir(voiceId));
+            return !File.Exists(GetInstallMarkerPath(voiceId))
+                && HasExpectedVoiceLayout(voiceId);
         }
         catch (Exception ex)
         {
@@ -173,12 +173,16 @@ public sealed class PiperVoiceManager
         }
 
         var voiceDir = Path.Combine(_voicesDirectory, info.VoiceId);
-        Directory.CreateDirectory(voiceDir);
+        var installMarkerPath = GetInstallMarkerPath(info.VoiceId);
         var tarballPath = Path.Combine(voiceDir, $"{info.VoiceId}.tar.bz2.tmp");
+        var hadExpectedLayout = HasExpectedVoiceLayout(info.VoiceId);
+        var extractionVerified = false;
         _logger.Info($"Downloading Piper voice '{info.VoiceId}' from {info.DownloadUrl}");
 
         try
         {
+            Directory.CreateDirectory(voiceDir);
+            File.WriteAllText(installMarkerPath, string.Empty);
             using var httpClient = new HttpClient();
             httpClient.Timeout = TimeSpan.FromMinutes(10);
             using var response = await httpClient.GetAsync(info.DownloadUrl, HttpCompletionOption.ResponseHeadersRead, cancellationToken).ConfigureAwait(false);
@@ -212,12 +216,14 @@ public sealed class PiperVoiceManager
 
             // Verify the extraction produced the files we expect; if not,
             // tear the half-extracted dir down so a retry starts clean.
-            if (!IsVoiceDownloaded(info.VoiceId))
+            if (!HasExpectedVoiceLayout(info.VoiceId))
             {
                 throw new InvalidOperationException(
                     $"Extraction of Piper voice '{info.VoiceId}' did not produce the expected layout.");
             }
 
+            extractionVerified = true;
+            File.Delete(installMarkerPath);
             _logger.Info($"Piper voice '{info.VoiceId}' verified and ready at {voiceDir}");
         }
         catch
@@ -226,7 +232,13 @@ public sealed class PiperVoiceManager
             // leftover partial files.
             try { if (File.Exists(tarballPath)) File.Delete(tarballPath); }
             catch (Exception cleanupEx) { _logger.Debug($"PiperVoiceManager: post-failure tarball cleanup failed: {cleanupEx.Message}"); }
-            try { if (Directory.Exists(voiceDir) && !IsVoiceDownloaded(info.VoiceId)) Directory.Delete(voiceDir, recursive: true); }
+            try
+            {
+                if (!extractionVerified && !hadExpectedLayout && Directory.Exists(voiceDir))
+                    Directory.Delete(voiceDir, recursive: true);
+                if (!Directory.Exists(voiceDir) && File.Exists(installMarkerPath))
+                    File.Delete(installMarkerPath);
+            }
             catch (Exception cleanupEx) { _logger.Debug($"PiperVoiceManager: post-failure voiceDir cleanup failed: {cleanupEx.Message}"); }
             throw;
         }
@@ -236,6 +248,14 @@ public sealed class PiperVoiceManager
             catch (Exception cleanupEx) { _logger.Debug($"PiperVoiceManager: finally tarball cleanup failed: {cleanupEx.Message}"); }
         }
     }
+
+    private string GetInstallMarkerPath(string voiceId) =>
+        $"{GetVoiceDirectory(voiceId)}{InstallMarkerSuffix}";
+
+    private bool HasExpectedVoiceLayout(string voiceId) =>
+        File.Exists(GetModelPath(voiceId))
+        && File.Exists(GetTokensPath(voiceId))
+        && Directory.Exists(GetEspeakDataDir(voiceId));
 
     /// <summary>
     /// Compute SHA-256 of <paramref name="filePath"/> and compare to
@@ -261,8 +281,19 @@ public sealed class PiperVoiceManager
     {
         var info = FindVoice(voiceId);
         var dir = Path.Combine(_voicesDirectory, info.VoiceId);
-        if (!Directory.Exists(dir)) return false;
-        Directory.Delete(dir, recursive: true);
+        var markerPath = GetInstallMarkerPath(info.VoiceId);
+        var deleted = false;
+        if (Directory.Exists(dir))
+        {
+            Directory.Delete(dir, recursive: true);
+            deleted = true;
+        }
+        if (File.Exists(markerPath))
+        {
+            File.Delete(markerPath);
+            deleted = true;
+        }
+        if (!deleted) return false;
         _logger.Info($"Deleted Piper voice '{info.VoiceId}'");
         return true;
     }

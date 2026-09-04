@@ -9,7 +9,7 @@ internal sealed record BoundedProcessResult(
     string StandardError);
 
 /// <summary>
-/// Waits for a short-lived child and its redirected output using one deadline.
+/// Waits for a short-lived child process and its redirected output using one deadline.
 /// Timeout and cancellation cleanup is best effort, bounded, and observes any
 /// read failures caused by closing inherited pipe handles.
 /// </summary>
@@ -50,6 +50,11 @@ internal static class BoundedProcessWait
                 throw new OperationCanceledException(cancellationToken);
 
             throw new TimeoutException($"Process did not exit and drain output within {timeout.TotalMilliseconds:F0}ms.");
+        }
+        catch
+        {
+            await CleanupAsync(process, exitTask, stdoutTask, stderrTask).ConfigureAwait(false);
+            throw;
         }
 
         return new BoundedProcessResult(
