@@ -83,7 +83,7 @@ public sealed class VersioningContractTests
             "- name: Revalidate stable correction release ordering",
             workflow);
         Assert.Contains(
-            "if: needs.test.outputs.isStableCorrection == 'true'",
+            "if: needs.metadata.outputs.isStableCorrection == 'true'",
             workflow);
         Assert.Contains(
             "semVer: ${{ steps.release_version.outputs.semVer }}",
@@ -95,7 +95,7 @@ public sealed class VersioningContractTests
             "-p:Version=$env:OPENCLAW_BUILD_VERSION",
             workflow);
         Assert.Contains(
-            "prerelease: ${{ needs.test.outputs.isPrerelease }}",
+            "prerelease: ${{ needs.metadata.outputs.isPrerelease }}",
             workflow);
         Assert.DoesNotContain(
             "prerelease: ${{ contains(github.ref_name, '-') }}",
@@ -187,7 +187,7 @@ public sealed class VersioningContractTests
         Assert.True(publishIndex > revalidateIndex, "Correction ordering must be revalidated before publication.");
 
         Assert.Contains(
-            "make_latest: ${{ needs.test.outputs.isPrerelease == 'true' && 'false' || 'true' }}",
+            "make_latest: ${{ needs.metadata.outputs.isPrerelease == 'true' && 'false' || 'true' }}",
             workflow);
         Assert.Contains("$majorMinorPatch = $validation.BaseVersion", workflow);
         Assert.Contains(

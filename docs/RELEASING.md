@@ -4,6 +4,14 @@ This repo uses **GitVersion + CI** for release versioning. The canonical release
 flow is **tag-driven**: merge to `main`, tag `main`, and let GitHub Actions
 build/sign/publish release artifacts.
 
+CI computes GitVersion and stable-correction metadata in the independent
+`metadata` job. On `main` and tags, x64 and ARM64 publish jobs start from that
+metadata in parallel with tests and E2E, and the stable **CI Gate** requires all
+selected lanes before a tag can publish. Pull requests do not produce release
+artifacts unless packaging, build, installer, release, workflow, or classifier
+infrastructure changes. Those fail-closed pull requests run the x64 publish
+smoke only; ARM64 publish remains required on `main` and tags.
+
 ## Release checklist
 
 1. Start clean on current `main`.
@@ -224,10 +232,12 @@ release artifacts are created.
 
 For release tags, the **Build and Test** workflow should run:
 
-- `repo-hygiene`
+- `change-classification` with the `full` result
+- `fast-validation`
 - `test`
 - `e2etests` shards: `setup-connect`, `revocation-recovery`, and `network-recovery`
 - `build` matrix entries shown by GitHub as `build (win-x64)` and `build (win-arm64)`
+- `CI Gate`
 - `release`
 
 The `setup-connect` E2E shard contains the MXC proof tests for the gateway ->
@@ -235,7 +245,9 @@ Windows node -> `system.run` path and validates that the expected proof test
 names appear in the TRX output. GitHub-hosted runners may report those MXC
 proofs as skipped when the host is not MXC-capable; use
 `.\scripts\validate-mxc-e2e.ps1` for required local/self-hosted MXC merge
-validation. The `build-msix` job is disabled with `if: false` while MSIX
+validation. Release tags cannot enter the `release` job until **CI Gate**
+confirms classification, fast validation, tests, E2E, and release builds all
+succeeded. The `build-msix` job is disabled with `if: false` while MSIX
 distribution is paused, so it should not appear in the required run list.
 
 The release job should:
