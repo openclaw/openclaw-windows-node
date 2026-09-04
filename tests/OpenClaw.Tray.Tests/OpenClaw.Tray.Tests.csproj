@@ -132,6 +132,7 @@
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Services\CaptureOperationGate.cs" Link="Services\CaptureOperationGate.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Services\CaptureCancellationPolicy.cs" Link="Services\CaptureCancellationPolicy.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Services\SensitiveCaptureExecutor.cs" Link="Services\SensitiveCaptureExecutor.cs" />
+    <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Services\ConsentPromptTimeoutGate.cs" Link="Services\ConsentPromptTimeoutGate.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Services\BrowserProxyTunnelState.cs" Link="Services\BrowserProxyTunnelState.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Services\CommandCenterTopologyTunnelResolver.cs" Link="Services\CommandCenterTopologyTunnelResolver.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Services\CommandCenterTunnelInfoBuilder.cs" Link="Services\CommandCenterTunnelInfoBuilder.cs" />

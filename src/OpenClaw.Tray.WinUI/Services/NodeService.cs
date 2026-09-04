@@ -2314,16 +2314,43 @@ public sealed class NodeService : IDisposable, IAsyncDisposable
         var clearPrompt = true;
         try
         {
-            var dialogTask = ShowCaptureConsentDialogAsync(type);
+            var dialogTask = ShowCaptureConsentDialogAsync(type, out var closeDialog);
+            var consentTimeout = TimeSpan.FromMilliseconds(
+                Math.Max(1000, _settings?.CaptureConsentTimeoutMs ?? 120_000));
+
+            // Bind the fail-closed timeout to the prompt itself, not to this
+            // caller's cancellationToken: the prompt (and ownedConsentPrompt)
+            // are shared with any other concurrent caller of the same
+            // consent type via _screen/_camera/_locationConsentInFlight, so
+            // the timeout must keep running even if this owning caller is
+            // canceled/disconnects first. Layering .WaitAsync(cancellationToken)
+            // below lets this caller stop waiting on its own cancellation
+            // without tearing down the shared bounded task other waiters (or
+            // the abandoned-prompt observer below) still depend on.
+            var boundedConsentTask = ConsentPromptTimeoutGate.WithTimeout(
+                dialogTask,
+                consentTimeout,
+                onTimedOut: () =>
+                {
+                    _logger.Warn(
+                        $"[CaptureConsent] {type} consent prompt timed out after " +
+                        $"{consentTimeout.TotalSeconds:F0}s with no response; denying (fail-closed).");
+                    closeDialog();
+                });
+
             bool consented;
             try
             {
-                consented = await dialogTask.WaitAsync(cancellationToken);
+                // Fail closed if nobody answers within consentTimeout: an
+                // unattended caller (local MCP, an automated agent, a hosted
+                // test) must never hang the underlying request forever waiting
+                // on a window no human can see or click.
+                consented = await boundedConsentTask.WaitAsync(cancellationToken);
             }
             catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
             {
                 clearPrompt = false;
-                ObserveAbandonedConsentPrompt(dialogTask, type, ownedConsentPrompt!);
+                ObserveAbandonedConsentPrompt(boundedConsentTask, type, ownedConsentPrompt!);
                 throw;
             }
 
@@ -2432,16 +2459,73 @@ public sealed class NodeService : IDisposable, IAsyncDisposable
         }
     }
 
-    private Task<bool> ShowCaptureConsentDialogAsync(CaptureConsentType type)
+    private Task<bool> ShowCaptureConsentDialogAsync(CaptureConsentType type, out Action closeDialog)
     {
         var dialogTcs = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var dialogGate = new object();
+        Dialogs.RecordingConsentDialog? dialog = null;
+        var closeRequested = false;
+
+        // Lets EnsureCaptureConsentAsync force this prompt closed on timeout
+        // (fail-closed denial) instead of leaving an unattended window open
+        // forever. Best-effort: if the dialog hasn't been created yet, the
+        // creation callback below checks closeRequested and skips showing it.
+        closeDialog = () =>
+        {
+            Dialogs.RecordingConsentDialog? toClose;
+            lock (dialogGate)
+            {
+                closeRequested = true;
+                toClose = dialog;
+            }
+            if (toClose == null) return;
+            _dispatcherQueue.TryEnqueue(() =>
+            {
+                try { toClose.Close(); }
+                catch (Exception ex) { _logger.Debug($"[CaptureConsent] Timed-out dialog close failed: {ex.Message}"); }
+            });
+        };
 
         if (!_dispatcherQueue.TryEnqueue(async () =>
         {
             try
             {
-                var dialog = new Dialogs.RecordingConsentDialog(type);
-                var consented = await dialog.ShowAsync();
+                var created = new Dialogs.RecordingConsentDialog(type);
+                bool alreadyTimedOut;
+                lock (dialogGate)
+                {
+                    alreadyTimedOut = closeRequested;
+                    dialog = created;
+                }
+                if (alreadyTimedOut)
+                {
+                    // Consent already timed out before the dialog could be
+                    // created; never show a prompt whose answer no longer
+                    // matters.
+                    dialogTcs.TrySetResult(false);
+                    created.Close();
+                    return;
+                }
+
+                var consented = await created.ShowAsync();
+
+                bool timedOutWhileAwaitingAnswer;
+                lock (dialogGate)
+                {
+                    timedOutWhileAwaitingAnswer = closeRequested;
+                }
+                if (timedOutWhileAwaitingAnswer)
+                {
+                    // The consent timeout already committed this prompt to a
+                    // fail-closed denial (and requested the window close)
+                    // before ShowAsync() returned. A click that was already
+                    // in flight at that instant must not persist a "late"
+                    // grant for an outcome the caller already received as
+                    // denied - keep the timeout's result and settings state
+                    // consistent instead of racing a stray late click.
+                    dialogTcs.TrySetResult(false);
+                    return;
+                }
 
                 if (consented && _settings != null)
                 {
