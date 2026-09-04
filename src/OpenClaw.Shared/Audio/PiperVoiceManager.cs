@@ -208,7 +208,7 @@ public sealed class PiperVoiceManager
             await VerifyHashAsync(tarballPath, info.Sha256, info.VoiceId, cancellationToken);
 
             _logger.Info($"Extracting Piper voice '{info.VoiceId}'");
-            ExtractTarBz2(tarballPath, voiceDir, cancellationToken);
+            await ExtractTarBz2Async(tarballPath, voiceDir, cancellationToken).ConfigureAwait(false);
 
             // Verify the extraction produced the files we expect; if not,
             // tear the half-extracted dir down so a retry starts clean.
@@ -283,7 +283,7 @@ public sealed class PiperVoiceManager
     }
 
     /// <summary>
-    /// Probe the bundled OS tar.exe used by <see cref="ExtractTarBz2"/>.
+    /// Probe the bundled OS tar.exe used by <see cref="ExtractTarBz2Async"/>.
     /// Throws a clear error before any network I/O happens so users on
     /// downlevel Windows aren't left with a half-downloaded tarball.
     /// </summary>
@@ -335,7 +335,12 @@ public sealed class PiperVoiceManager
     /// transitive dependency via PiperSharp's ecosystem, but explicit here)
     /// so we don't need to shell out to tar.exe.
     /// </summary>
-    private static void ExtractTarBz2(string archivePath, string destinationDir, CancellationToken cancellationToken)
+    internal static async Task ExtractTarBz2Async(
+        string archivePath,
+        string destinationDir,
+        CancellationToken cancellationToken,
+        string extractorFileName = "tar",
+        TimeSpan? timeout = null)
     {
         // SharpCompress isn't a direct dep of OpenClaw.Shared today; we
         // intentionally use the BCL .tar reader on top of a bzip2 stream
@@ -349,24 +354,38 @@ public sealed class PiperVoiceManager
         // which transparently handles bz2.
         var psi = new System.Diagnostics.ProcessStartInfo
         {
-            FileName = "tar",
+            FileName = extractorFileName,
             ArgumentList = { "-xjf", archivePath, "-C", destinationDir, "--strip-components=1" },
             UseShellExecute = false,
             CreateNoWindow = true,
+            RedirectStandardOutput = true,
             RedirectStandardError = true,
         };
+        cancellationToken.ThrowIfCancellationRequested();
         using var proc = System.Diagnostics.Process.Start(psi)
             ?? throw new InvalidOperationException("Could not start tar to extract Piper voice");
 
-        // Cancellation: kill the tar process if requested. Static context — no logger;
-        // best-effort kill, the cancellation surfaces via the awaited WaitForExit.
-        using var reg = cancellationToken.Register(() => { try { proc.Kill(entireProcessTree: true); } catch (Exception ex) { System.Diagnostics.Trace.WriteLine($"PiperVoiceManager: tar cancellation kill failed: {ex.GetType().Name}: {ex.Message}"); } });
-
-        proc.WaitForExit();
-        if (proc.ExitCode != 0)
+        BoundedProcessResult result;
+        try
         {
-            var err = proc.StandardError.ReadToEnd();
-            throw new InvalidOperationException($"tar extraction failed (exit {proc.ExitCode}): {err}");
+            result = await BoundedProcessWait.WaitAsync(
+                proc,
+                timeout ?? BoundedProcessWait.DefaultTimeout,
+                cancellationToken).ConfigureAwait(false);
+        }
+        catch (TimeoutException ex)
+        {
+            throw new InvalidOperationException(
+                "tar extraction timed out while unpacking the Piper voice.", ex);
+        }
+
+        if (result.ExitCode != 0)
+        {
+            var output = string.IsNullOrWhiteSpace(result.StandardError)
+                ? result.StandardOutput
+                : result.StandardError;
+            throw new InvalidOperationException(
+                $"tar extraction failed (exit {result.ExitCode}): {output}");
         }
     }
 
