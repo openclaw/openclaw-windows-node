@@ -44,6 +44,29 @@ function fail(createError, code, message) {
     throw createError(code, message);
 }
 
+export function itemDependencyBlocker(state, number) {
+    const plan = Array.isArray(state?.plan) ? state.plan : [];
+    const linkedSteps = plan.filter((step) => step.itemNumbers.includes(number));
+    if (linkedSteps.length === 0) {
+        return "";
+    }
+    const planById = new Map(plan.map((step) => [step.id, step]));
+    const runnableStep = linkedSteps.some((step) =>
+        step.dependsOn.every((dependencyId) =>
+            planById.get(dependencyId)?.liveStatus === "done"));
+    if (runnableStep) {
+        return "";
+    }
+    const unresolved = [...new Set(linkedSteps.flatMap((step) =>
+        step.dependsOn
+            .map((dependencyId) => planById.get(dependencyId))
+            .filter((dependency) => dependency?.liveStatus !== "done")
+            .map((dependency) => dependency.title)))];
+    return unresolved.length > 0
+        ? `Complete dependencies first: ${unresolved.join(", ")}`
+        : "Complete plan dependencies first";
+}
+
 export async function requestItemAction(entry, action, input, {
     createError = (code, message) => Object.assign(new Error(message), { code }),
     refresh,
@@ -69,6 +92,10 @@ export async function requestItemAction(entry, action, input, {
         if (!item) {
             fail(createError, "item_not_found", `#${number} is no longer in this triage`);
         }
+        const dependencyBlocker = itemDependencyBlocker(entry.state, number);
+        if (dependencyBlocker) {
+            fail(createError, "plan_dependencies_incomplete", dependencyBlocker);
+        }
         const eligibility = canRequestMerge(item, item.live);
         if (!eligibility.eligible) {
             fail(createError, "merge_not_ready", eligibility.reasons.join("; "));
@@ -86,6 +113,10 @@ export async function requestItemAction(entry, action, input, {
             "ask for explicit confirmation before merging.";
         result = { headSha: requestedHead };
     } else if (action === "request_next_action") {
+        const dependencyBlocker = itemDependencyBlocker(entry.state, number);
+        if (dependencyBlocker) {
+            fail(createError, "plan_dependencies_incomplete", dependencyBlocker);
+        }
         actionPrompt =
             `The user selected Request next step for ${entry.triage.repo} ${item.type.toUpperCase()} #${number} ` +
             "from the interactive triage canvas. Invoke the global-repo-triage skill, refresh this item's " +

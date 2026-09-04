@@ -10,6 +10,7 @@ import {
 } from "./triage-state.mjs";
 import {
     buildSubsessionRoutingPrompt,
+    itemDependencyBlocker,
     requestHostMatches,
     requestItemAction,
     requestTokenMatches,
@@ -500,6 +501,7 @@ test("the renderer exposes live filters and guarded action controls", () => {
     assert.match(html, /Request next step/);
     assert.match(html, /Prepare merge/);
     assert.match(html, /function createItemActions/);
+    assert.match(html, /function itemDependencyBlocker/);
     assert.equal(html.match(/createItemActions\(/g)?.length, 3);
     assert.match(html, /plan-button-groups/);
     assert.match(html, /aria-describedby/);
@@ -557,6 +559,81 @@ test("merge routing stops before sending when fresh GitHub evidence is unavailab
             /Fresh GitHub evidence is required/.test(error.message),
     );
     assert.equal(sendCount, 0);
+});
+
+test("action routing enforces plan dependencies for every entry point", async () => {
+    const triage = normalizeTriageInput({
+        schemaVersion: 1,
+        repo: "openclaw/openclaw-windows-node",
+        title: "Global triage",
+        scope: "All open work",
+        generatedAt: "2026-09-03T22:00:00Z",
+        items: [inputItem()],
+        plan: [
+            {
+                id: "collect-proof",
+                title: "Collect proof",
+                itemNumbers: [],
+                status: "pending",
+            },
+            {
+                id: "land",
+                title: "Land PR",
+                dependsOn: ["collect-proof"],
+                itemNumbers: [1308],
+                status: "pending",
+            },
+        ],
+    });
+    const entry = {
+        triage,
+        state: mergeLiveState(triage, [livePr()], []),
+    };
+    let sendCount = 0;
+    const dependencies = {
+        refresh: async () => entry.state,
+        send: async () => {
+            sendCount += 1;
+        },
+    };
+
+    assert.match(itemDependencyBlocker(entry.state, 1308), /Complete dependencies first: Collect proof/);
+    for (const [action, input] of [
+        ["request_next_action", { number: 1308 }],
+        ["request_merge", { number: 1308, headSha: "abc1234" }],
+    ]) {
+        await assert.rejects(
+            requestItemAction(entry, action, input, dependencies),
+            (error) => error.code === "plan_dependencies_incomplete",
+        );
+    }
+    assert.equal(sendCount, 0);
+
+    assert.equal(itemDependencyBlocker({
+        plan: [
+            {
+                id: "blocked",
+                title: "Blocked path",
+                itemNumbers: [1308],
+                dependsOn: ["collect-proof"],
+                liveStatus: "blocked",
+            },
+            {
+                id: "runnable",
+                title: "Runnable path",
+                itemNumbers: [1308],
+                dependsOn: [],
+                liveStatus: "pending",
+            },
+            {
+                id: "collect-proof",
+                title: "Collect proof",
+                itemNumbers: [],
+                dependsOn: [],
+                liveStatus: "pending",
+            },
+        ],
+    }, 1308), "");
 });
 
 test("action routing rejects unsupported and stale requests before sending", async () => {

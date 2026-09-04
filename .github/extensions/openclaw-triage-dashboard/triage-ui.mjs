@@ -3,6 +3,7 @@ import {
     limitLaneLevels,
     limitPlanRows,
 } from "./triage-plan.mjs";
+import { itemDependencyBlocker } from "./triage-actions.mjs";
 
 export function renderDashboardHtml() {
     return `<!doctype html>
@@ -562,6 +563,7 @@ export function renderDashboardHtml() {
     ${buildPlanLanes.toString()}
     ${limitLaneLevels.toString()}
     ${limitPlanRows.toString()}
+    ${itemDependencyBlocker.toString()}
     let state = null;
     let selectedType = "pr";
     let visiblePlanRowCount = 12;
@@ -1080,7 +1082,12 @@ export function renderDashboardHtml() {
           stages.append(element("span", "stage status-" + value, name + " " + statusLabel(value)));
         }
 
-        const controls = createItemActions(item);
+        const controls = createItemActions(
+          item,
+          false,
+          "item",
+          itemDependencyBlocker(state, item.number),
+        );
         footer.append(stages, controls.actions);
         row.append(footer);
         if (controls.gate) row.append(controls.gate);
