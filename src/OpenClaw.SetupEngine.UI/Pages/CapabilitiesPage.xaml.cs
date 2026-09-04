@@ -850,11 +850,7 @@ public sealed partial class CapabilitiesPage : Page
                     UseShellExecute = false,
                     CreateNoWindow = true,
                 };
-                using var process = Process.Start(psi);
-                if (process is null) return (ExitCode: -1, Output: string.Empty);
-                var output = process.StandardOutput.ReadToEnd();
-                process.WaitForExit(5000);
-                return (ExitCode: process.ExitCode, Output: output);
+                return BoundedProcessOutput.Read(psi, BoundedProcessOutput.DefaultTimeoutMs);
             });
             string? dnsName = null;
             string? tailnetDnsSuffix = null;
