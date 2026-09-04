@@ -40,6 +40,7 @@ if ([string]::IsNullOrWhiteSpace($BaseSha) -or
 $triggerPaths = [System.Collections.Generic.HashSet[string]]::new(
     [System.StringComparer]::OrdinalIgnoreCase)
 @(
+    ".github/workflows/ci.yml",
     ".github/proof-pools.json",
     ".github/proof-pools.schema.json",
     "scripts/validate-proof-pools.ps1",

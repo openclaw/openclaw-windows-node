@@ -4,6 +4,14 @@ This repo uses **GitVersion + CI** for release versioning. The canonical release
 flow is **tag-driven**: merge to `main`, tag `main`, and let GitHub Actions
 build/sign/publish release artifacts.
 
+CI computes GitVersion and stable-correction metadata in the independent
+`metadata` job. On `main` and tags, x64 and ARM64 publish jobs start from that
+metadata in parallel with tests and E2E, and the stable **CI Gate** requires all
+selected lanes before a tag can publish. Pull requests do not produce release
+artifacts unless packaging, build, installer, release, workflow, or classifier
+infrastructure changes. Those fail-closed pull requests run the x64 publish
+smoke only; ARM64 publish remains required on `main` and tags.
+
 ## Release checklist
 
 1. Start clean on current `main`.

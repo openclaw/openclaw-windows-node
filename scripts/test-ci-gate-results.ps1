@@ -17,33 +17,49 @@ if ([string]::IsNullOrWhiteSpace($RepoRoot)) {
 }
 $gatePath = Join-Path $RepoRoot "scripts\Assert-CiGateResults.ps1"
 
-function Invoke-Gate {
-    param(
-        [string]$ClassificationResult = "success",
-        [string]$Classification = "full",
-        [string]$FastValidationResult = "success",
-        [string]$TestResult = "success",
-        [string]$E2eResult = "success",
-        [string]$BuildResult = "success"
-    )
+function New-GateArguments {
+    @{
+        ClassificationResult = "success"
+        Classification = "targeted"
+        FullRequired = "false"
+        FastValidationResult = "success"
+        ProofPoolContractsResult = "success"
+        CoreRequired = "true"
+        CoreResult = "success"
+        TrayRequired = "false"
+        TrayResult = "skipped"
+        UiRequired = "false"
+        UiResult = "skipped"
+        SetupE2eRequired = "false"
+        SetupE2eResult = "skipped"
+        RevocationE2eRequired = "false"
+        RevocationE2eResult = "skipped"
+        NetworkE2eRequired = "false"
+        NetworkE2eResult = "skipped"
+        X64ReleaseRequired = "false"
+        X64ReleaseResult = "skipped"
+        Arm64ReleaseRequired = "false"
+        Arm64ReleaseResult = "skipped"
+        MetadataResult = "skipped"
+    }
+}
 
-    & $gatePath `
-        -ClassificationResult $ClassificationResult `
-        -Classification $Classification `
-        -FastValidationResult $FastValidationResult `
-        -TestResult $TestResult `
-        -E2eResult $E2eResult `
-        -BuildResult $BuildResult
+function Invoke-Gate([hashtable]$Arguments) {
+    & $gatePath @Arguments
 }
 
 function Assert-GateFails {
     param(
-        [Parameter(Mandatory)][hashtable]$Arguments,
+        [Parameter(Mandatory)][hashtable]$Overrides,
         [Parameter(Mandatory)][string]$Scenario
     )
 
+    $arguments = New-GateArguments
+    foreach ($entry in $Overrides.GetEnumerator()) {
+        $arguments[$entry.Key] = $entry.Value
+    }
     try {
-        $result = Invoke-Gate @Arguments
+        $result = Invoke-Gate $arguments
         throw "$Scenario unexpectedly passed with result '$result'."
     } catch {
         if ($_.Exception.Message.StartsWith(
@@ -54,44 +70,96 @@ function Assert-GateFails {
     }
 }
 
-$docsOnly = Invoke-Gate `
-    -Classification docs_only `
-    -TestResult skipped `
-    -E2eResult skipped `
-    -BuildResult skipped
+$targeted = Invoke-Gate (New-GateArguments)
+if ($targeted -ne "targeted") {
+    throw "Expected a core-only targeted gate to pass."
+}
+
+$docsArguments = New-GateArguments
+$docsArguments.Classification = "docs_only"
+$docsArguments.CoreRequired = "false"
+$docsArguments.CoreResult = "skipped"
+$docsOnly = Invoke-Gate $docsArguments
 if ($docsOnly -ne "docs_only") {
     throw "Expected the docs-only gate to pass."
 }
 
-$full = Invoke-Gate
+$uiArguments = New-GateArguments
+$uiArguments.CoreRequired = "false"
+$uiArguments.CoreResult = "skipped"
+$uiArguments.TrayRequired = "true"
+$uiArguments.TrayResult = "success"
+$uiArguments.UiRequired = "true"
+$uiArguments.UiResult = "success"
+$uiTargeted = Invoke-Gate $uiArguments
+if ($uiTargeted -ne "targeted") {
+    throw "Expected the UI-targeted gate to pass."
+}
+
+$fullArguments = New-GateArguments
+$fullArguments.Classification = "full"
+$fullArguments.FullRequired = "true"
+foreach ($prefix in @(
+        "Core",
+        "Tray",
+        "Ui",
+        "SetupE2e",
+        "RevocationE2e",
+        "NetworkE2e",
+        "X64Release",
+        "Arm64Release")) {
+    $fullArguments["${prefix}Required"] = "true"
+    $fullArguments["${prefix}Result"] = "success"
+}
+$fullArguments.MetadataResult = "success"
+$full = Invoke-Gate $fullArguments
 if ($full -ne "full") {
     throw "Expected the full gate to pass."
 }
 
-Assert-GateFails `
-    -Arguments @{ ClassificationResult = "failure" } `
-    -Scenario "Failed classification"
-Assert-GateFails `
-    -Arguments @{ FastValidationResult = "cancelled" } `
-    -Scenario "Cancelled fast validation"
-Assert-GateFails `
-    -Arguments @{
-        Classification = "docs_only"
-        TestResult = "success"
-        E2eResult = "skipped"
-        BuildResult = "skipped"
-    } `
-    -Scenario "Unskipped docs-only test lane"
-Assert-GateFails `
-    -Arguments @{ Classification = "unexpected" } `
-    -Scenario "Unknown classification"
-
-foreach ($lane in @("TestResult", "E2eResult", "BuildResult")) {
-    foreach ($result in @("failure", "cancelled", "skipped")) {
-        Assert-GateFails `
-            -Arguments @{ $lane = $result } `
-            -Scenario "Full $lane result '$result'"
-    }
+$fullPrArguments = New-GateArguments
+$fullPrArguments.Classification = "full"
+$fullPrArguments.FullRequired = "true"
+foreach ($prefix in @(
+        "Core",
+        "Tray",
+        "Ui",
+        "SetupE2e",
+        "RevocationE2e",
+        "NetworkE2e",
+        "X64Release")) {
+    $fullPrArguments["${prefix}Required"] = "true"
+    $fullPrArguments["${prefix}Result"] = "success"
+}
+$fullPrArguments.MetadataResult = "success"
+$fullPr = Invoke-Gate $fullPrArguments
+if ($fullPr -ne "full") {
+    throw "Expected full pull request validation without ARM64 publish to pass."
 }
 
-Write-Host "CI Gate regressions passed: docs-only skips accepted, full successes accepted, and failures/cancellations/unexpected skips rejected." -ForegroundColor Green
+Assert-GateFails -Overrides @{ ClassificationResult = "failure" } -Scenario "Failed classification"
+Assert-GateFails -Overrides @{ FastValidationResult = "cancelled" } -Scenario "Cancelled fast validation"
+Assert-GateFails -Overrides @{ ProofPoolContractsResult = "failure" } -Scenario "Failed proof contracts"
+Assert-GateFails -Overrides @{ CoreRequired = "" } -Scenario "Missing classifier output"
+Assert-GateFails -Overrides @{ CoreResult = "skipped" } -Scenario "Required lane skipped"
+Assert-GateFails -Overrides @{ CoreResult = "cancelled" } -Scenario "Required lane cancelled"
+Assert-GateFails -Overrides @{ CoreResult = "failure" } -Scenario "Required lane failed"
+Assert-GateFails `
+    -Overrides @{ CoreRequired = "false"; CoreResult = "success" } `
+    -Scenario "Unrequired lane ran"
+Assert-GateFails -Overrides @{ Classification = "unexpected" } -Scenario "Unknown classification"
+Assert-GateFails `
+    -Overrides @{ Classification = "docs_only"; CoreRequired = "false" } `
+    -Scenario "Docs lane unexpectedly succeeded"
+Assert-GateFails `
+    -Overrides @{ Classification = "full"; FullRequired = "true" } `
+    -Scenario "Full classification omitted lanes"
+Assert-GateFails `
+    -Overrides @{
+        X64ReleaseRequired = "true"
+        X64ReleaseResult = "success"
+        MetadataResult = "skipped"
+    } `
+    -Scenario "Release omitted metadata"
+
+Write-Host "CI Gate regressions passed: selected lanes require success, intentional skips pass, and malformed or unexpected results fail closed." -ForegroundColor Green

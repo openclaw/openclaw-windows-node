@@ -1,6 +1,6 @@
 <#
 .SYNOPSIS
-    Exercises the fail-closed CI change classifier.
+    Exercises the fail-closed CI impact classifier.
 #>
 
 [CmdletBinding()]
@@ -17,73 +17,222 @@ if ([string]::IsNullOrWhiteSpace($RepoRoot)) {
 }
 $repoRootPath = [System.IO.Path]::GetFullPath($RepoRoot)
 $classifierPath = Join-Path $repoRootPath "scripts\Get-CiChangeClassification.ps1"
+$laneNames = @(
+    "core_tests",
+    "tray_tests",
+    "ui_tests",
+    "setup_e2e",
+    "revocation_e2e",
+    "network_e2e",
+    "x64_release",
+    "arm64_release",
+    "full"
+)
 
-function Assert-Classification {
+function Get-Impact {
     param(
-        [Parameter(Mandatory)][string]$Expected,
-        [Parameter(Mandatory)][string[]]$Paths,
-        [Parameter(Mandatory)][string]$Scenario
+        [string]$EventName = "pull_request",
+        [string[]]$Paths
     )
 
-    $actual = & $classifierPath `
-        -EventName pull_request `
+    $json = & $classifierPath `
+        -EventName $EventName `
         -RepoRoot $repoRootPath `
         -ChangedPaths $Paths
-    if ($actual -ne $Expected) {
-        throw "$Scenario classified as '$actual' instead of '$Expected'."
+    $json | ConvertFrom-Json
+}
+
+function Assert-Impact {
+    param(
+        [Parameter(Mandatory)][string]$Scenario,
+        [Parameter(Mandatory)][string[]]$Paths,
+        [Parameter(Mandatory)][string]$Classification,
+        [string[]]$Required = @(),
+        [string]$EventName = "pull_request"
+    )
+
+    $actual = Get-Impact -EventName $EventName -Paths $Paths
+    if ($actual.classification -ne $Classification) {
+        throw "$Scenario classified as '$($actual.classification)' instead of '$Classification'."
+    }
+
+    foreach ($lane in $laneNames) {
+        $expected = $Required -contains $lane
+        if ([bool]$actual.$lane -ne $expected) {
+            throw "$Scenario expected $lane=$expected but received $($actual.$lane)."
+        }
     }
 }
 
-Assert-Classification `
-    -Expected docs_only `
-    -Paths @(".agents/skills/example/SKILL.md") `
-    -Scenario "Skill-only documentation"
-Assert-Classification `
-    -Expected docs_only `
-    -Paths @("README.md", "docs/TEST_COVERAGE.md", "docs/diagrams/ci.svg") `
-    -Scenario "Maintained documentation"
-Assert-Classification `
-    -Expected full `
-    -Paths @(".agents/skills/example/SKILL.md", "src/OpenClaw.Shared/Example.cs") `
-    -Scenario "Mixed skill and source change"
-
-$unsafePaths = @(
-    ".github/workflows/ci.yml",
-    ".github/dependabot.yml",
-    "scripts/validate-docs.ps1",
-    "Directory.Build.props",
-    "Directory.Build.targets",
-    "Directory.Packages.props",
-    "package.json",
-    "src/OpenClaw.Tray.WinUI/OpenClaw.Tray.WinUI.csproj",
-    "installer/OpenClaw.iss",
-    "src/OpenClaw.Shared/Example.cs",
-    "tests/OpenClaw.Shared.Tests/ExampleTests.cs",
-    ".agents/skills/example/scripts/run.ps1",
-    ".agents/skills/example/scripts/run",
-    "unknown/location/file.txt"
+$allLanes = @($laneNames)
+$fullPrLanes = @($laneNames | Where-Object { $_ -ne "arm64_release" })
+$allProductLanes = @(
+    "core_tests",
+    "tray_tests",
+    "ui_tests",
+    "setup_e2e",
+    "revocation_e2e",
+    "network_e2e"
 )
-foreach ($unsafePath in $unsafePaths) {
-    Assert-Classification `
-        -Expected full `
-        -Paths @($unsafePath) `
-        -Scenario "Unsafe path '$unsafePath'"
+$cases = @(
+    @{
+        Scenario = "Maintained documentation"
+        Paths = @("README.md", "docs/TEST_COVERAGE.md", "docs/diagrams/ci.svg")
+        Classification = "docs_only"
+    },
+    @{
+        Scenario = "Skill-only documentation"
+        Paths = @(".agents/skills/example/SKILL.md")
+        Classification = "docs_only"
+    },
+    @{
+        Scenario = "CLI-only product change"
+        Paths = @("src/OpenClaw.Cli/Program.cs")
+        Classification = "targeted"
+        Required = @("core_tests")
+    },
+    @{
+        Scenario = "WinNode CLI-only product change"
+        Paths = @("src/OpenClaw.WinNode.Cli/Program.cs")
+        Classification = "targeted"
+        Required = @("core_tests")
+    },
+    @{
+        Scenario = "Chat UI change"
+        Paths = @("src/OpenClaw.Chat/ChatModels.cs")
+        Classification = "targeted"
+        Required = @("tray_tests", "ui_tests")
+    },
+    @{
+        Scenario = "Pure XAML change"
+        Paths = @("src/OpenClaw.Tray.WinUI/Pages/SettingsPage.xaml")
+        Classification = "targeted"
+        Required = @("tray_tests", "ui_tests")
+    },
+    @{
+        Scenario = "Tray logic change"
+        Paths = @("src/OpenClaw.Tray.WinUI/Services/TrayTooltipBuilder.cs")
+        Classification = "targeted"
+        Required = @("tray_tests", "ui_tests")
+    },
+    @{
+        Scenario = "Setup engine change"
+        Paths = @("src/OpenClaw.SetupEngine/SetupOrchestrator.cs")
+        Classification = "targeted"
+        Required = @("tray_tests", "setup_e2e")
+    },
+    @{
+        Scenario = "Connection change"
+        Paths = @("src/OpenClaw.Connection/GatewayConnectionManager.cs")
+        Classification = "targeted"
+        Required = @("core_tests", "tray_tests", "setup_e2e", "revocation_e2e", "network_e2e")
+    },
+    @{
+        Scenario = "Broad Shared protocol change"
+        Paths = @("src/OpenClaw.Shared/Gateway/GatewayClient.cs")
+        Classification = "targeted"
+        Required = $allProductLanes
+    },
+    @{
+        Scenario = "Tray MCP change"
+        Paths = @("src/OpenClaw.Tray.WinUI/Services/McpRuntimeStatePolicy.cs")
+        Classification = "targeted"
+        Required = @("tray_tests", "ui_tests", "setup_e2e", "revocation_e2e", "network_e2e")
+    },
+    @{
+        Scenario = "Core test-only change"
+        Paths = @("tests/OpenClaw.WinNode.Cli.Tests/ProgramTests.cs")
+        Classification = "targeted"
+        Required = @("core_tests")
+    },
+    @{
+        Scenario = "UI test-only change"
+        Paths = @("tests/OpenClaw.Tray.UITests/ReactorTests.cs")
+        Classification = "targeted"
+        Required = @("ui_tests")
+    },
+    @{
+        Scenario = "Setup E2E test-only change"
+        Paths = @("tests/OpenClaw.E2ETests/Setup/SetupAndConnectTests.cs")
+        Classification = "targeted"
+        Required = @("setup_e2e")
+    },
+    @{
+        Scenario = "Recognized mixed product change"
+        Paths = @("src/OpenClaw.Cli/Program.cs", "src/OpenClaw.Tray.WinUI/Pages/SettingsPage.xaml")
+        Classification = "targeted"
+        Required = @("core_tests", "tray_tests", "ui_tests")
+    },
+    @{
+        Scenario = "Workflow infrastructure"
+        Paths = @(".github/workflows/ci.yml")
+        Classification = "full"
+        Required = $fullPrLanes
+    },
+    @{
+        Scenario = "Package and build infrastructure"
+        Paths = @("Directory.Packages.props")
+        Classification = "full"
+        Required = $fullPrLanes
+    },
+    @{
+        Scenario = "Installer infrastructure"
+        Paths = @("installer.iss")
+        Classification = "full"
+        Required = $fullPrLanes
+    },
+    @{
+        Scenario = "Classifier contract change"
+        Paths = @("scripts/test-ci-change-classifier.ps1")
+        Classification = "full"
+        Required = $fullPrLanes
+    },
+    @{
+        Scenario = "Unknown path"
+        Paths = @("unknown/location/file.txt")
+        Classification = "full"
+        Required = $fullPrLanes
+    },
+    @{
+        Scenario = "Mixed recognized and unknown paths"
+        Paths = @("src/OpenClaw.Cli/Program.cs", "unknown/location/file.txt")
+        Classification = "full"
+        Required = $fullPrLanes
+    },
+    @{
+        Scenario = "Main push"
+        EventName = "push"
+        Paths = @("src/OpenClaw.Cli/Program.cs")
+        Classification = "full"
+        Required = $allLanes
+    },
+    @{
+        Scenario = "Tag push"
+        EventName = "push"
+        Paths = @("docs/TEST_COVERAGE.md")
+        Classification = "full"
+        Required = $allLanes
+    }
+)
+
+foreach ($case in $cases) {
+    $arguments = @{
+        Scenario = $case.Scenario
+        Paths = $case.Paths
+        Classification = $case.Classification
+    }
+    if ($case.ContainsKey("Required")) {
+        $arguments.Required = $case.Required
+    }
+    if ($case.ContainsKey("EventName")) {
+        $arguments.EventName = $case.EventName
+    }
+    Assert-Impact @arguments
 }
 
-$emptyDecision = & $classifierPath `
-    -EventName pull_request `
-    -RepoRoot $repoRootPath `
-    -ChangedPaths @()
-if ($emptyDecision -ne "full") {
-    throw "An empty explicit path list must classify as full."
-}
-
-$pushDecision = & $classifierPath `
-    -EventName push `
-    -RepoRoot $repoRootPath `
-    -ChangedPaths @(".agents/skills/example/SKILL.md")
-if ($pushDecision -ne "full") {
-    throw "Push and tag workflow invocations must classify as full."
+$emptyImpact = Get-Impact -Paths @()
+if ($emptyImpact.classification -ne "full" -or -not $emptyImpact.full) {
+    throw "An empty explicit path list must select full validation."
 }
 
 $tempRoot = Join-Path ([System.IO.Path]::GetTempPath()) (
@@ -108,32 +257,32 @@ try {
     & git -C $tempRoot add .
     & git -C $tempRoot commit --quiet -m "skill docs"
     $headSha = (& git -C $tempRoot rev-parse HEAD).Trim()
-    $gitDecision = & $classifierPath `
+    $gitImpact = (& $classifierPath `
         -EventName pull_request `
         -BaseSha $baseSha `
         -HeadSha $headSha `
-        -RepoRoot $tempRoot
-    if ($gitDecision -ne "docs_only") {
-        throw "A real skill-only git diff classified as '$gitDecision'."
+        -RepoRoot $tempRoot) | ConvertFrom-Json
+    if ($gitImpact.classification -ne "docs_only") {
+        throw "A real skill-only git diff classified as '$($gitImpact.classification)'."
     }
 
-    $emptyGitDecision = & $classifierPath `
+    $emptyGitImpact = (& $classifierPath `
         -EventName pull_request `
         -BaseSha $headSha `
         -HeadSha $headSha `
-        -RepoRoot $tempRoot
-    if ($emptyGitDecision -ne "full") {
-        throw "An empty git diff must classify as full."
+        -RepoRoot $tempRoot) | ConvertFrom-Json
+    if ($emptyGitImpact.classification -ne "full" -or -not $emptyGitImpact.full) {
+        throw "An empty git diff must select full validation."
     }
 
     foreach ($invalidBase in @("", "missing-base", ("f" * 40))) {
-        $invalidDecision = & $classifierPath `
+        $invalidImpact = (& $classifierPath `
             -EventName pull_request `
             -BaseSha $invalidBase `
             -HeadSha $headSha `
-            -RepoRoot $tempRoot
-        if ($invalidDecision -ne "full") {
-            throw "Invalid revision '$invalidBase' classified as '$invalidDecision'."
+            -RepoRoot $tempRoot) | ConvertFrom-Json
+        if ($invalidImpact.classification -ne "full" -or -not $invalidImpact.full) {
+            throw "Invalid revision '$invalidBase' did not select full validation."
         }
     }
 } finally {
@@ -142,4 +291,4 @@ try {
     }
 }
 
-Write-Host "CI change classifier regressions passed: safe docs fast-path and fail-closed full validation cases." -ForegroundColor Green
+Write-Host "CI impact classifier regressions passed: targeted project lanes and fail-closed full validation cases." -ForegroundColor Green
