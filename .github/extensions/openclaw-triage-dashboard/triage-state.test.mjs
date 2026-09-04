@@ -128,6 +128,17 @@ test("rejects duplicate item numbers across item types", () => {
     }), /items must not contain duplicate numbers/);
 });
 
+test("requires expected checks for pull requests", () => {
+    assert.throws(() => normalizeTriageInput({
+        schemaVersion: 1,
+        repo: "openclaw/openclaw-windows-node",
+        title: "Global triage",
+        scope: "All open work",
+        generatedAt: "2026-09-03T22:00:00Z",
+        items: [inputItem({ expectedChecks: [] })],
+    }), /must name at least one required check/);
+});
+
 test("summarizes failed, pending, skipped, and missing checks", () => {
     const result = summarizeChecks([
         { name: "test", status: "COMPLETED", conclusion: "FAILURE" },
@@ -188,6 +199,29 @@ test("merges live GitHub state into stage and summary projections", () => {
     assert.equal(result.items[0].stages.landing, "done");
 });
 
+test("does not classify issues as landing blocked", () => {
+    const issue = inputItem({
+        type: "issue",
+        number: 42,
+        url: "https://github.com/openclaw/openclaw-windows-node/issues/42",
+        expectedChecks: [],
+        reviewedHeadSha: "",
+    });
+    const triage = normalizeTriageInput({
+        schemaVersion: 1,
+        repo: "openclaw/openclaw-windows-node",
+        title: "Global triage",
+        scope: "All open work",
+        generatedAt: "2026-09-03T22:00:00Z",
+        items: [issue],
+        plan: [],
+    });
+    const result = mergeLiveState(triage, [], [{ number: 42, state: "OPEN" }]);
+
+    assert.equal(result.summary.blocked, 0);
+    assert.equal("landing" in result.items[0].stages, false);
+});
+
 test("updates plan status from linked live gates", () => {
     const triage = normalizeTriageInput({
         schemaVersion: 1,
@@ -208,6 +242,38 @@ test("updates plan status from linked live gates", () => {
 
     assert.equal(result.plan[0].liveStatus, "done");
     assert.equal(result.plan[0].horizon, "today");
+});
+
+test("blocks downstream plan steps until dependencies complete", () => {
+    const triage = normalizeTriageInput({
+        schemaVersion: 1,
+        repo: "openclaw/openclaw-windows-node",
+        title: "Global triage",
+        scope: "All open work",
+        generatedAt: "2026-09-03T22:00:00Z",
+        items: [inputItem()],
+        plan: [
+            {
+                id: "prove",
+                title: "Prove the PR",
+                itemNumbers: [1308],
+                gates: [],
+                status: "pending",
+            },
+            {
+                id: "land",
+                title: "Land the PR",
+                dependsOn: ["prove"],
+                itemNumbers: [1308],
+                gates: [{ itemNumber: 1308, stage: "landing" }],
+                status: "pending",
+            },
+        ],
+    });
+    const result = mergeLiveState(triage, [livePr()], []);
+
+    assert.equal(result.plan[0].liveStatus, "pending");
+    assert.equal(result.plan[1].liveStatus, "blocked");
 });
 
 test("builds sequential and independent dependency lanes", () => {
@@ -362,6 +428,8 @@ test("the renderer exposes live filters and guarded action controls", () => {
     assert.match(html, /aria-describedby/);
     assert.match(html, /Why merge is blocked for/);
     assert.match(html, /Request next step for/);
+    assert.match(html, /if \(item\.type === "pr"\)/);
+    assert.match(html, /Complete dependencies first/);
     assert.match(html, /EventSource/);
 });
 

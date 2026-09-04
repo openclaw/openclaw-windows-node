@@ -741,6 +741,13 @@ export function renderDashboardHtml(actionToken) {
             const metadataItems = linkedItems.length ? linkedItems : [null];
             const footer = element("div", "item-footer plan-node-footer");
             const nextActions = element("div", "plan-actions");
+            const unresolvedDependencies = step.dependsOn
+              .map((dependencyId) => planStepById.get(dependencyId))
+              .filter((dependency) => dependency?.liveStatus !== "done");
+            const dependencyBlocker = unresolvedDependencies.length
+              ? "Complete dependencies first: " +
+                unresolvedDependencies.map((dependency) => dependency.title).join(", ")
+              : "";
             for (const item of metadataItems) {
               const metadata = element("div", "plan-item-meta");
               const action = element("div", "plan-action");
@@ -760,6 +767,7 @@ export function renderDashboardHtml(actionToken) {
                   item,
                   linkedItems.length > 1,
                   "plan-" + step.id,
+                  dependencyBlocker,
                 );
                 buttonGroups.append(controls.actions);
                 if (controls.gate) mergeGates.append(controls.gate);
@@ -935,7 +943,12 @@ export function renderDashboardHtml(actionToken) {
       return result;
     }
 
-    function createItemActions(item, showItemNumber = false, idPrefix = "item") {
+    function createItemActions(
+      item,
+      showItemNumber = false,
+      idPrefix = "item",
+      disabledReason = "",
+    ) {
       const typeLabel = item.type === "pr" ? "Pull request" : "Issue";
       const shortTypeLabel = item.type === "pr" ? "PR" : "Issue";
       const identity = typeLabel + " #" + item.number;
@@ -954,6 +967,8 @@ export function renderDashboardHtml(actionToken) {
       next.id = controlId + "-next";
       next.type = "button";
       next.setAttribute("aria-label", "Request next step for " + identity);
+      next.disabled = Boolean(disabledReason);
+      if (disabledReason) next.title = disabledReason;
       next.addEventListener("click", async () => {
         next.disabled = true;
         try {
@@ -968,38 +983,51 @@ export function renderDashboardHtml(actionToken) {
           next.disabled = false;
         }
       });
-      const merge = element("button", "control primary", "Prepare merge");
-      merge.id = controlId + "-merge";
-      merge.type = "button";
-      merge.setAttribute("aria-label", "Prepare merge for " + identity);
-      merge.disabled = !item.mergeRequest.eligible;
-      merge.title = item.mergeRequest.eligible
-        ? "Request fresh merge verification in the item session"
-        : item.mergeRequest.reasons.join("; ");
-      merge.addEventListener("click", async () => {
-        merge.disabled = true;
-        try {
-          const result = await post("/action", {
-            action: "request_merge",
-            number: item.number,
-            headSha: item.live.headRefOid,
-          });
-          showNotice("Routing request queued for " + result.sessionName + ".");
-        } catch (error) {
-          showNotice(error.message);
-          merge.disabled = false;
-        }
-      });
-      actions.append(next, merge);
+      let merge = null;
+      if (item.type === "pr") {
+        merge = element("button", "control primary", "Prepare merge");
+        merge.id = controlId + "-merge";
+        merge.type = "button";
+        merge.setAttribute("aria-label", "Prepare merge for " + identity);
+        merge.disabled = Boolean(disabledReason) || !item.mergeRequest.eligible;
+        merge.title = disabledReason || (item.mergeRequest.eligible
+          ? "Request fresh merge verification in the item session"
+          : item.mergeRequest.reasons.join("; "));
+        merge.addEventListener("click", async () => {
+          merge.disabled = true;
+          try {
+            const result = await post("/action", {
+              action: "request_merge",
+              number: item.number,
+              headSha: item.live.headRefOid,
+            });
+            showNotice("Routing request queued for " + result.sessionName + ".");
+          } catch (error) {
+            showNotice(error.message);
+            merge.disabled = false;
+          }
+        });
+      }
+      actions.append(next);
+      if (merge) actions.append(merge);
       let gate = null;
-      if (!item.mergeRequest.eligible && item.mergeRequest.reasons.length) {
-        const reasonId = controlId + "-merge-reasons";
-        merge.setAttribute("aria-describedby", reasonId);
+      const reasons = [
+        ...(disabledReason ? [disabledReason] : []),
+        ...(item.type === "pr" && !item.mergeRequest.eligible
+          ? item.mergeRequest.reasons
+          : []),
+      ];
+      if (reasons.length) {
+        const reasonId = controlId + "-action-reasons";
+        next.setAttribute("aria-describedby", reasonId);
+        if (merge) merge.setAttribute("aria-describedby", reasonId);
         gate = element("details", "gate");
         gate.id = reasonId;
         gate.append(
-          element("summary", "", "Why merge is blocked for " + identity),
-          element("p", "", item.mergeRequest.reasons.join("; ")),
+          element("summary", "", disabledReason
+            ? "Why actions are blocked for " + identity
+            : "Why merge is blocked for " + identity),
+          element("p", "", [...new Set(reasons)].join("; ")),
         );
       }
       return { actions, gate };

@@ -94,6 +94,14 @@ function normalizeItem(item, index) {
         assert(KNOWN_PROOF_POOLS.has(pool), `items[${index}].proofPools contains unknown pool ${pool}`);
     }
 
+    const expectedChecks = normalizeStringArray(
+        item.expectedChecks ?? [],
+        `items[${index}].expectedChecks`,
+        30,
+    );
+    assert(type !== "pr" || expectedChecks.length > 0,
+        `items[${index}].expectedChecks must name at least one required check for pull requests`);
+
     return {
         id: `${type}-${number}`,
         type,
@@ -122,11 +130,7 @@ function normalizeItem(item, index) {
             new Set(["blocked", "complete", "required"]),
         ),
         reviewedHeadSha: normalizeOptionalString(item.reviewedHeadSha, `items[${index}].reviewedHeadSha`, 64),
-        expectedChecks: normalizeStringArray(
-            item.expectedChecks ?? [],
-            `items[${index}].expectedChecks`,
-            30,
-        ),
+        expectedChecks,
         dependencies: (item.dependencies ?? []).map((entry, dependencyIndex) =>
             normalizeNumber(entry, `items[${index}].dependencies[${dependencyIndex}]`)),
     };
@@ -326,7 +330,9 @@ export function deriveItemStages(item, live) {
         review: reviewStatus,
         checks: checksStatus,
         proof: proofStatus,
-        landing: canRequestMerge(item, live).eligible ? "done" : "blocked",
+        ...(item.type === "pr"
+            ? { landing: canRequestMerge(item, live).eligible ? "done" : "blocked" }
+            : {}),
     };
 }
 
@@ -376,7 +382,10 @@ export function mergeLiveState(triage, pullRequests, issues, error = "") {
     });
 
     const itemMap = new Map(items.map((item) => [item.number, item]));
-    const plan = triage.plan.map((step) => {
+    const planById = new Map(triage.plan.map((step) => [step.id, step]));
+    const liveStatusById = new Map();
+    const resolvePlanStatus = (step) => {
+        if (liveStatusById.has(step.id)) return liveStatusById.get(step.id);
         const gateStatuses = step.gates.map((gate) => itemMap.get(gate.itemNumber)?.stages[gate.stage] ?? "blocked");
         let liveStatus = step.status;
         if (gateStatuses.length > 0) {
@@ -388,8 +397,16 @@ export function mergeLiveState(triage, pullRequests, issues, error = "") {
                         ? "in_progress"
                         : "pending";
         }
-        return { ...step, liveStatus };
-    });
+        const dependenciesComplete = step.dependsOn.every((dependencyId) =>
+            resolvePlanStatus(planById.get(dependencyId)) === "done");
+        if (!dependenciesComplete) liveStatus = "blocked";
+        liveStatusById.set(step.id, liveStatus);
+        return liveStatus;
+    };
+    const plan = triage.plan.map((step) => ({
+        ...step,
+        liveStatus: resolvePlanStatus(step),
+    }));
 
     return {
         ...triage,
