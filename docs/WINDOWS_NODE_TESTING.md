@@ -177,6 +177,9 @@ Local MCP clients also see MCP-only `app.*` commands such as `app.navigate`, `ap
 ### Local sandbox validation
 - Sandbox integration tests are intended for local Windows development machines and may skip when the required local sandbox prerequisites are unavailable.
 - Build the tray app before running local sandbox validation so the required sandbox helper binaries are present in the app output.
+- MXC path grants use absolute Windows paths. OpenClaw adds each granted volume root as read-only only when the host probe selects BaseContainer and the exact emitted config remains BaseContainer-compatible: no backend `deniedPaths`, proxy/directional networking, denial capture, or least-privilege mode. MXC 0.8's request selector keeps that policy on BaseContainer, whose root grants are documented not to cascade. This supplies the root metadata access needed by common Windows path APIs without exposing child directories.
+- OpenClaw never adds a volume-root policy grant to BFS or the DACL fallback. An empty-policy BFS probe can select a different tier for the real filesystem policy, and DACL directory grants intentionally propagate. If `wxc-exec --probe` reports that the DACL tier needs `wxc-host-prep`, `system.run` is blocked without host fallback. OpenClaw does not automate the privileged helper while [microsoft/mxc#648](https://github.com/microsoft/mxc/issues/648) can rewrite descendant ACLs.
+- The upstream BaseContainer readiness and root-grant behavior is tracked in [microsoft/mxc#1109](https://github.com/microsoft/mxc/issues/1109).
 - For MXC-related merge validation, prefer the formal script below because it sets the required gates and fails if MXC is skipped.
 
   ```powershell

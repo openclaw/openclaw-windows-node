@@ -101,14 +101,16 @@ public class MxcConfigBuilderTests
         string scratchDir = P.Scratch,
         string? containerId = null,
         string? pathEnvVar = "",
-        Func<string, bool>? readonlyGrantIsBackendSafe = null) =>
+        Func<string, bool>? readonlyGrantIsBackendSafe = null,
+        bool addNonCascadingVolumeRootGrants = false) =>
         MxcConfigBuilder.Build(
             request,
             scratchDir,
             new MxcConfigBuildContext(
                 ContainerId: containerId,
                 PathEnvVar: pathEnvVar,
-                ReadonlyGrantIsBackendSafe: readonlyGrantIsBackendSafe));
+                ReadonlyGrantIsBackendSafe: readonlyGrantIsBackendSafe,
+                AddNonCascadingVolumeRootGrants: addNonCascadingVolumeRootGrants));
 
     private static string ExpectedSystemCmdExe()
     {
@@ -235,6 +237,48 @@ public class MxcConfigBuilderTests
     {
         var config = BuildConfig(RequestFor(BalancedPolicy()), pathEnvVar: "");
         Assert.Contains(P.Scratch, config.Filesystem!.ReadwritePaths!);
+    }
+
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public void Build_AddsSystemVolumeRootOnlyWhenCallerProvedNonCascading(
+        bool addNonCascadingVolumeRootGrants)
+    {
+        var config = BuildConfig(
+            RequestFor(BalancedPolicy()),
+            pathEnvVar: "",
+            addNonCascadingVolumeRootGrants: addNonCascadingVolumeRootGrants);
+
+        Assert.Equal(
+            addNonCascadingVolumeRootGrants,
+            config.Filesystem!.ReadonlyPaths!.Contains(
+                @"C:\",
+                StringComparer.OrdinalIgnoreCase));
+    }
+
+    [Fact]
+    public void Build_BaseContainer_AddsEveryGrantedVolumeRoot()
+    {
+        var policy = new SandboxPolicy(
+            Version: MxcPolicyBuilder.SupportedPolicyVersion,
+            Filesystem: new FilesystemPolicy(
+                ReadwritePaths: [@"D:\Workspace"],
+                ReadonlyPaths: [@"E:\Inputs"],
+                DeniedPaths: AlwaysDenied,
+                ClearPolicyOnExit: true),
+            Network: new NetworkPolicy(false, false),
+            Ui: new UiPolicy(false, ClipboardPolicy.None, false),
+            TimeoutMs: 30_000);
+
+        var config = BuildConfig(
+            RequestFor(policy),
+            pathEnvVar: "",
+            addNonCascadingVolumeRootGrants: true);
+
+        Assert.Contains(@"C:\", config.Filesystem!.ReadonlyPaths!, StringComparer.OrdinalIgnoreCase);
+        Assert.Contains(@"D:\", config.Filesystem.ReadonlyPaths!, StringComparer.OrdinalIgnoreCase);
+        Assert.Contains(@"E:\", config.Filesystem.ReadonlyPaths!, StringComparer.OrdinalIgnoreCase);
     }
 
     [Fact]

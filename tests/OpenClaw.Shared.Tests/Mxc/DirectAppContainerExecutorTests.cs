@@ -73,6 +73,68 @@ public class DirectAppContainerExecutorTests
     }
 
     [Fact]
+    public async Task ExecuteAsync_DaclHostPreparationWarning_FailsClosedBeforeLaunch()
+    {
+        var availability = new MxcAvailability(
+            isAppContainerAvailable: true,
+            isIsolationSessionAvailable: false,
+            isWxcExecResolvable: true,
+            wxcExecPath: "C:\\does\\not\\exist\\wxc-exec.exe",
+            unsupportedReasons: Array.Empty<string>(),
+            isolationTier: "appcontainer-dacl",
+            needsDaclAugmentation: true,
+            warnings:
+            [
+                "Run `wxc-host-prep prepare-system-drive` (elevated) to grant the minimal metadata ACEs.",
+            ]);
+        var executor = new DirectAppContainerExecutor(() => availability, NullLogger.Instance);
+
+        await Assert.ThrowsAsync<SandboxHostPreparationRequiredException>(
+            () => executor.ExecuteAsync(NewRequest()));
+    }
+
+    [Theory]
+    [InlineData("base-container", false, false, true)]
+    [InlineData("base-container", true, false, false)]
+    [InlineData("base-container", false, true, false)]
+    [InlineData("appcontainer-bfs", false, false, false)]
+    [InlineData("appcontainer-dacl", false, false, false)]
+    public void CanUseNonCascadingVolumeRootGrants_RequiresStableBaseContainerConfig(
+        string tier,
+        bool leastPrivilege,
+        bool hasDeniedPath,
+        bool expected)
+    {
+        var availability = new MxcAvailability(
+            isAppContainerAvailable: true,
+            isIsolationSessionAvailable: false,
+            isWxcExecResolvable: true,
+            wxcExecPath: @"C:\mxc\wxc-exec.exe",
+            unsupportedReasons: Array.Empty<string>(),
+            isolationTier: tier);
+        var config = new MxcConfig
+        {
+            ContainerId = "test",
+            Process = new MxcProcess { CommandLine = "cmd.exe /c echo hi" },
+            ProcessContainer = new MxcProcessContainer
+            {
+                LeastPrivilege = leastPrivilege,
+            },
+            Filesystem = new MxcFilesystem
+            {
+                ReadonlyPaths = [@"C:\Users\test\Downloads"],
+                DeniedPaths = hasDeniedPath ? [@"C:\secret"] : null,
+            },
+        };
+
+        Assert.Equal(
+            expected,
+            MxcIsolationTierPolicy.CanUseNonCascadingVolumeRootGrants(
+                availability,
+                config));
+    }
+
+    [Fact]
     public async Task ExecuteAsync_ResolvesAvailabilityPerCall_PicksUpRecovery()
     {
         // Simulates a transient startup probe error that later recovers. The executor

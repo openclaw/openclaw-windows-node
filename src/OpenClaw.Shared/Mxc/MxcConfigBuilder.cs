@@ -145,6 +145,17 @@ public static class MxcConfigBuilder
         roFromPolicy = FilterOutDenied(roFromPolicy, deniedForFiltering);
         rwFromPolicy = FilterOutDenied(rwFromPolicy, deniedForFiltering);
 
+        // BaseContainer volume-root grants do not cascade. The tier still needs
+        // root metadata access to resolve otherwise-granted absolute paths. Add
+        // the narrow root grants after deny filtering because they do not expose
+        // descendants. Never do this for BFS, whose empty-policy probe can choose
+        // a different tier for the real filesystem policy, or for DACL, whose
+        // directory grants intentionally propagate through the target subtree.
+        AddNonCascadingVolumeRootGrants(
+            context.AddNonCascadingVolumeRootGrants,
+            roFromPolicy,
+            rwFromPolicy);
+
         // process.env — intentionally empty. MXC 0.7 processcontainer currently
         // fails process creation when a non-empty process.env array is supplied,
         // so shell-level bootstrap above carries PATH/scratch temp instead.
@@ -419,6 +430,46 @@ public static class MxcConfigBuilder
             .ToList();
     }
 
+    private static void AddNonCascadingVolumeRootGrants(
+        bool enabled,
+        List<string> readonlyPaths,
+        IReadOnlyList<string> readwritePaths)
+    {
+        if (!enabled)
+            return;
+
+        var roots = readonlyPaths
+            .Concat(readwritePaths)
+            .Select(TryGetWindowsDriveRoot)
+            .Where(root => root is not null)
+            .Cast<string>()
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+
+        foreach (var root in roots)
+        {
+            if (!readonlyPaths.Contains(root, StringComparer.OrdinalIgnoreCase) &&
+                !readwritePaths.Contains(root, StringComparer.OrdinalIgnoreCase))
+            {
+                readonlyPaths.Add(root);
+            }
+        }
+    }
+
+    private static string? TryGetWindowsDriveRoot(string path)
+    {
+        if (string.IsNullOrWhiteSpace(path) ||
+            path.Length < 3 ||
+            !char.IsAsciiLetter(path[0]) ||
+            path[1] != ':' ||
+            (path[2] != '\\' && path[2] != '/'))
+        {
+            return null;
+        }
+
+        return $"{char.ToUpperInvariant(path[0])}:\\";
+    }
+
     private static bool IsCoveredBy(string candidate, IEnumerable<string> ancestors)
     {
         var nc = NormalizePath(candidate);
@@ -601,7 +652,8 @@ public static class MxcConfigBuilder
 internal sealed record MxcConfigBuildContext(
     string? ContainerId = null,
     string? PathEnvVar = null,
-    Func<string, bool>? ReadonlyGrantIsBackendSafe = null)
+    Func<string, bool>? ReadonlyGrantIsBackendSafe = null,
+    bool AddNonCascadingVolumeRootGrants = false)
 {
     public static MxcConfigBuildContext Default { get; } = new();
 }

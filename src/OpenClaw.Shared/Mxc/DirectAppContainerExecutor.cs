@@ -73,6 +73,13 @@ public sealed class DirectAppContainerExecutor : ISandboxExecutor
         if (!availability.IsWxcExecResolvable || string.IsNullOrEmpty(availability.WxcExecPath))
             throw new SandboxUnavailableException("wxc-exec.exe not found");
 
+        if (availability.RequiresHostPreparation)
+        {
+            throw new SandboxHostPreparationRequiredException(
+                "MXC selected the AppContainer DACL fallback but reported missing Windows host preparation. " +
+                "OpenClaw will not automate the current privileged helper or run commands in this state.");
+        }
+
         var capBytes = request.MaxOutputBytes is > 0 ? request.MaxOutputBytes.Value : DefaultMaxOutputBytes;
         var capInt = capBytes > int.MaxValue ? int.MaxValue : (int)capBytes;
 
@@ -82,6 +89,16 @@ public sealed class DirectAppContainerExecutor : ISandboxExecutor
         try
         {
             var config = MxcConfigBuilder.Build(request, scratchDir);
+            if (MxcIsolationTierPolicy.CanUseNonCascadingVolumeRootGrants(
+                    availability,
+                    config))
+            {
+                config = MxcConfigBuilder.Build(
+                    request,
+                    scratchDir,
+                    new MxcConfigBuildContext(
+                        AddNonCascadingVolumeRootGrants: true));
+            }
             var configJson = JsonSerializer.Serialize(config, ConfigJson);
             var launchWorkingDirectory = string.IsNullOrWhiteSpace(config.Process.Cwd)
                 ? null

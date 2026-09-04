@@ -81,3 +81,12 @@ public sealed class SandboxUnavailableException : Exception
     public SandboxUnavailableException(string reason) : base(reason) { }
     public SandboxUnavailableException(string reason, Exception inner) : base(reason, inner) { }
 }
+
+/// <summary>
+/// Thrown when MXC reports that its selected containment tier needs privileged
+/// host preparation that OpenClaw cannot safely automate.
+/// </summary>
+public sealed class SandboxHostPreparationRequiredException : Exception
+{
+    public SandboxHostPreparationRequiredException(string reason) : base(reason) { }
+}

@@ -175,6 +175,15 @@ public sealed class MxcCommandRunner : IHostFallbackAwareCommandRunner, IDirectA
             result.ErrorCategory = ClassifyProcessResult(result);
             return result;
         }
+        catch (SandboxHostPreparationRequiredException ex)
+        {
+            _invalidateAvailability?.Invoke();
+            return DenySandboxUnavailable(
+                "Sandboxed system.run is blocked because MXC reports missing Windows host preparation. " +
+                "OpenClaw will not fall back to uncontained execution for this unsafe state. " +
+                "Update OpenClaw and MXC before retrying.",
+                $"[mxc] system.run denied: unsafe MXC host preparation state: {ex.Message}");
+        }
         catch (SandboxUnavailableException ex)
         {
             // Invalidate any cached availability — what we thought was available

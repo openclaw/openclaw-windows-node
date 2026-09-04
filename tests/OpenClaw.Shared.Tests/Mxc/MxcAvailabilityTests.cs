@@ -62,6 +62,8 @@ public class MxcAvailabilityTests
         Assert.Equal("C:\\fake\\wxc-exec.exe", availability.WxcExecPath);
         Assert.Single(availability.UnsupportedReasons);
         Assert.True(availability.HasAnyBackend);
+        Assert.Empty(availability.Warnings);
+        Assert.False(availability.RequiresHostPreparation);
     }
 
     [Fact]
@@ -338,6 +340,8 @@ public class MxcAvailabilityTests
             Assert.Equal("appcontainer-dacl", availability.IsolationTier);
             Assert.True(availability.NeedsDaclAugmentation);
             Assert.False(availability.ProbeErrored);
+            Assert.False(availability.RequiresHostPreparation);
+            Assert.Equal(["fallback"], availability.Warnings);
         }
         finally
         {
@@ -346,4 +350,72 @@ public class MxcAvailabilityTests
         }
     }
 
+    [Fact]
+    public void Probe_WhenDaclTierReportsHostPreparationWarning_RequiresPreparation()
+    {
+        if (!OperatingSystem.IsWindows()) return;
+
+        var fakeExe = Path.Combine(Path.GetTempPath(), $"wxc-fake-{Guid.NewGuid():N}.exe");
+        File.WriteAllText(fakeExe, string.Empty);
+        try
+        {
+            Environment.SetEnvironmentVariable(MxcAvailability.WxcExecOverrideEnvVar, fakeExe);
+
+            var availability = MxcAvailability.Probe(
+                NullLogger.Instance,
+                _ => new WxcProbeInvocation(
+                    WxcProbeStatus.Completed,
+                    0,
+                    """
+                    {
+                      "tier": "appcontainer-dacl",
+                      "needsDaclAugmentation": true,
+                      "warnings": [
+                        "Run `wxc-host-prep prepare-system-drive` (elevated) to grant the minimal metadata ACEs."
+                      ]
+                    }
+                    """,
+                    string.Empty));
+
+            Assert.True(availability.HasAnyBackend);
+            Assert.True(availability.RequiresHostPreparation);
+            Assert.Single(availability.Warnings);
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable(MxcAvailability.WxcExecOverrideEnvVar, null);
+            try { File.Delete(fakeExe); } catch { /* best-effort */ }
+        }
+    }
+
+    [Theory]
+    [InlineData(
+        "appcontainer-dacl",
+        "Run `wxc-host-prep.exe prepare-null-device` (elevated) to reapply the documented security descriptor.",
+        true)]
+    [InlineData(
+        "appcontainer-dacl",
+        "BaseContainer not selected; falling back to AppContainer + DACL.",
+        false)]
+    [InlineData(
+        "base-container",
+        "Run `wxc-host-prep prepare-system-drive` (elevated).",
+        false)]
+    public void RequiresHostPreparation_UsesPinnedDaclWarningContract(
+        string tier,
+        string warning,
+        bool expected)
+    {
+        var availability = new MxcAvailability(
+            isAppContainerAvailable: true,
+            isIsolationSessionAvailable: false,
+            isWxcExecResolvable: true,
+            wxcExecPath: @"C:\mxc\wxc-exec.exe",
+            unsupportedReasons: Array.Empty<string>(),
+            isolationTier: tier,
+            needsDaclAugmentation: true,
+            warnings: [warning]);
+
+        Assert.Equal(expected, availability.RequiresHostPreparation);
+    }
 }

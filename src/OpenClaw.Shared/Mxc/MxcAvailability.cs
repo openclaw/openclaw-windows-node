@@ -70,6 +70,21 @@ public sealed class MxcAvailability
     public bool NeedsDaclAugmentation { get; }
 
     /// <summary>
+    /// Operator-visible warnings emitted by <c>wxc-exec --probe</c>.
+    /// </summary>
+    public IReadOnlyList<string> Warnings { get; }
+
+    /// <summary>
+    /// True when MXC selected its DACL fallback but reported missing privileged
+    /// host preparation. OpenClaw must not execute in this state because valid
+    /// filesystem operations can fail or report false success.
+    /// </summary>
+    public bool RequiresHostPreparation =>
+        IsAppContainerAvailable &&
+        MxcIsolationTierPolicy.IsDacl(IsolationTier) &&
+        Warnings.Any(MxcIsolationTierPolicy.IsBlockingHostPreparationWarning);
+
+    /// <summary>
     /// Human-readable list of reasons MXC may not be available. Empty when fully supported.
     /// Surface to UX so users know why the sandbox toggle is disabled.
     /// </summary>
@@ -80,7 +95,11 @@ public sealed class MxcAvailability
     /// tier string) is treated as degraded so UX can warn without dropping the
     /// host all the way to uncontained.</summary>
     private static readonly HashSet<string> FullStrengthTiers =
-        new(StringComparer.OrdinalIgnoreCase) { "base-container", "appcontainer-bfs" };
+        new(StringComparer.OrdinalIgnoreCase)
+        {
+            MxcIsolationTierPolicy.BaseContainer,
+            MxcIsolationTierPolicy.AppContainerBfs,
+        };
 
     /// <summary>True iff at least one MXC backend is supported AND
     /// <c>wxc-exec.exe</c> is resolvable. (Without wxc-exec the executor will refuse
@@ -109,7 +128,8 @@ public sealed class MxcAvailability
         IReadOnlyList<string> unsupportedReasons,
         bool probeErrored = false,
         string? isolationTier = null,
-        bool needsDaclAugmentation = false)
+        bool needsDaclAugmentation = false,
+        IReadOnlyList<string>? warnings = null)
     {
         IsAppContainerAvailable = isAppContainerAvailable;
         IsIsolationSessionAvailable = isIsolationSessionAvailable;
@@ -119,6 +139,7 @@ public sealed class MxcAvailability
         ProbeErrored = probeErrored;
         IsolationTier = isolationTier;
         NeedsDaclAugmentation = needsDaclAugmentation;
+        Warnings = warnings ?? Array.Empty<string>();
     }
 
     /// <summary>
@@ -200,7 +221,8 @@ public sealed class MxcAvailability
             reasons,
             probeErrored: probeErrored,
             isolationTier: probe.Tier,
-            needsDaclAugmentation: probe.NeedsDaclAugmentation);
+            needsDaclAugmentation: probe.NeedsDaclAugmentation,
+            warnings: probe.Warnings);
     }
 
     /// <summary>
