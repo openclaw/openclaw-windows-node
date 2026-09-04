@@ -1939,12 +1939,16 @@ public class SetupStepsTests : IDisposable
     }
 
     [Fact]
-    public void InstallCli_BuildInstallCommand_RejectsMissingExactVersion()
+    public void InstallCli_BuildInstallCommand_DefaultsToInstallerLatest()
     {
-        var error = Assert.Throws<ArgumentException>(
-            () => InstallCliStep.BuildInstallCommand("https://openclaw.ai/install-cli.sh", null));
+        var command = InstallCliStep.BuildInstallCommand(
+            "https://openclaw.ai/install-cli.sh",
+            null,
+            GatewayInstallPolicy.NodeVersion);
 
-        Assert.Contains("exact version", error.Message);
+        Assert.Equal(
+            "curl -fsSL --proto '=https' --tlsv1.2 'https://openclaw.ai/install-cli.sh' | bash -s -- --node-version '22.22.3'",
+            command);
     }
 
     [Fact]
@@ -1953,7 +1957,7 @@ public class SetupStepsTests : IDisposable
         var command = InstallCliStep.BuildInstallCommand(
             "https://openclaw.ai/install-cli.sh",
             "2026.5.22",
-            GatewayReleasePolicy.NodeVersion);
+            GatewayInstallPolicy.NodeVersion);
 
         Assert.Equal(
             "curl -fsSL --proto '=https' --tlsv1.2 'https://openclaw.ai/install-cli.sh' | bash -s -- --version '2026.5.22' --node-version '22.22.3'",
@@ -1966,6 +1970,97 @@ public class SetupStepsTests : IDisposable
         var command = InstallCliStep.BuildInstallCommand("https://openclaw.ai/install-cli's.sh", "2026.5.22'a");
 
         Assert.Equal("curl -fsSL --proto '=https' --tlsv1.2 'https://openclaw.ai/install-cli'\\''s.sh' | bash -s -- --version '2026.5.22'\\''a'", command);
+    }
+
+    [Fact]
+    public async Task InstallCli_LatestInstallRecordsResolvedVersion()
+    {
+        var commands = new FakeCommandRunner(
+            _ => Ok(),
+            (_, command, _) =>
+            {
+                if (command.StartsWith("curl ", StringComparison.Ordinal))
+                    return Ok();
+                if (command.Contains("tools/node/bin/node --version", StringComparison.Ordinal))
+                    return Ok($"v{GatewayInstallPolicy.NodeVersion}");
+                if (command.EndsWith("openclaw --version", StringComparison.Ordinal))
+                    return Ok("OpenClaw 2026.8.1");
+                return Ok();
+            });
+        var config = new SetupConfig();
+        var ctx = CreateContext(config, commands);
+
+        var result = await new InstallCliStep().ExecuteAsync(ctx, CancellationToken.None);
+
+        Assert.True(result.IsSuccess);
+        Assert.Null(config.Gateway.Version);
+        Assert.Equal("2026.8.1", config.Gateway.InstalledVersion);
+        Assert.Contains(
+            commands.WslCalls,
+            call => call.Command.StartsWith("curl ", StringComparison.Ordinal) &&
+                    !call.Command.Contains("--version", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task InstallCli_ChannelInstallRecordsResolvedVersionAndRetainsSelector()
+    {
+        var commands = new FakeCommandRunner(
+            _ => Ok(),
+            (_, command, _) =>
+            {
+                if (command.StartsWith("curl ", StringComparison.Ordinal))
+                    return Ok();
+                if (command.Contains("tools/node/bin/node --version", StringComparison.Ordinal))
+                    return Ok($"v{GatewayInstallPolicy.NodeVersion}");
+                if (command.EndsWith("openclaw --version", StringComparison.Ordinal))
+                    return Ok("OpenClaw 2026.9.2-beta.3");
+                return Ok();
+            });
+        var config = new SetupConfig
+        {
+            Gateway = new GatewayConfig { Version = "beta" }
+        };
+        var ctx = CreateContext(config, commands);
+
+        var result = await new InstallCliStep().ExecuteAsync(ctx, CancellationToken.None);
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal("beta", config.Gateway.Version);
+        Assert.Equal("2026.9.2-beta.3", config.Gateway.InstalledVersion);
+        Assert.Contains(
+            commands.WslCalls,
+            call => call.Command.Contains("--version 'beta'", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task InstallCli_ExactInstallRetainsPinAndRecordsInstalledVersion()
+    {
+        var commands = new FakeCommandRunner(
+            _ => Ok(),
+            (_, command, _) =>
+            {
+                if (command.StartsWith("curl ", StringComparison.Ordinal))
+                    return Ok();
+                if (command.Contains("tools/node/bin/node --version", StringComparison.Ordinal))
+                    return Ok($"v{GatewayInstallPolicy.NodeVersion}");
+                if (command.EndsWith("openclaw --version", StringComparison.Ordinal))
+                    return Ok("OpenClaw 2026.6.34");
+                return Ok();
+            });
+        var config = new SetupConfig
+        {
+            Gateway = new GatewayConfig { Version = "2026.6.34" }
+        };
+        var ctx = CreateContext(config, commands);
+
+        var result = await new InstallCliStep().ExecuteAsync(ctx, CancellationToken.None);
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal("2026.6.34", config.Gateway.Version);
+        Assert.Equal("2026.6.34", config.Gateway.InstalledVersion);
+        Assert.Contains(
+            commands.WslCalls,
+            call => call.Command.Contains("--version '2026.6.34'", StringComparison.Ordinal));
     }
 
     [Fact]
@@ -2012,8 +2107,10 @@ public class SetupStepsTests : IDisposable
             (_, command, _) => command.Contains("--version", StringComparison.Ordinal)
                 ? Ok("OpenClaw 2026.7.1-2")
                 : Ok());
-        var config = new SetupConfig();
-        GatewayReleasePolicy.ResolveAndApply(config);
+        var config = new SetupConfig
+        {
+            Gateway = new GatewayConfig { Version = "2026.6.34" }
+        };
         var ctx = CreateContext(config, commands);
 
         var result = await new InstallCliStep().ExecuteAsync(ctx, CancellationToken.None);
@@ -2035,11 +2132,13 @@ public class SetupStepsTests : IDisposable
                 if (command.Contains("tools/node/bin/node --version", StringComparison.Ordinal))
                     return Ok("v24.15.0");
                 if (command.EndsWith("openclaw --version", StringComparison.Ordinal))
-                    return Ok($"OpenClaw {GatewayReleasePolicy.RecommendedVersion}");
+                    return Ok("OpenClaw 2026.8.1");
                 return Ok();
             });
-        var config = new SetupConfig();
-        GatewayReleasePolicy.ResolveAndApply(config);
+        var config = new SetupConfig
+        {
+            Gateway = new GatewayConfig { Version = "2026.8.1" }
+        };
         var ctx = CreateContext(config, commands);
 
         var result = await new InstallCliStep().ExecuteAsync(ctx, CancellationToken.None);

@@ -68,9 +68,8 @@ public sealed partial class CompletePage : Page
                     ? Visibility.Visible
                     : Visibility.Collapsed;
                 FallbackButton.Content = string.IsNullOrWhiteSpace(args.GatewayFallbackVersion)
-                    ? "Retry with validated fallback"
-                    : $"Retry with validated fallback {args.GatewayFallbackVersion}";
-
+                    ? "Retry with configured fallback"
+                    : $"Retry with configured fallback {args.GatewayFallbackVersion}";
                 // Show error card with details and log link
                 ErrorCard.Visibility = Visibility.Visible;
                 ErrorText.Text = errorMessage;

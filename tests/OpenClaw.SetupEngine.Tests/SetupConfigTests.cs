@@ -33,6 +33,10 @@ public class SetupConfigTests : IDisposable
         Assert.Equal("trace", config.LogLevel);
         Assert.False(config.RollbackOnFailure);
         Assert.Equal("loopback", config.Gateway.Bind);
+        Assert.Null(config.Gateway.Selection);
+        Assert.Null(config.Gateway.Version);
+        Assert.Null(config.Gateway.FallbackVersion);
+        Assert.Null(config.Gateway.InstalledVersion);
         Assert.Equal("hybrid", config.Gateway.ReloadMode);
         Assert.False(config.SkipPermissions);
         Assert.False(config.SkipWizard);
@@ -75,6 +79,26 @@ public class SetupConfigTests : IDisposable
         Assert.DoesNotContain("ValidationPackagePath", json, StringComparison.Ordinal);
         Assert.NotNull(loaded);
         Assert.Null(loaded.Gateway.ValidationPackagePath);
+    }
+
+    [Fact]
+    public void InstalledGatewayVersion_IsRuntimeOnly()
+    {
+        var config = new SetupConfig
+        {
+            Gateway = new GatewayConfig
+            {
+                Version = "latest",
+                FallbackVersion = "2026.6.34",
+                InstalledVersion = "2026.9.1"
+            }
+        };
+
+        var json = JsonSerializer.Serialize(config, SetupConfig.JsonWriteOptions);
+
+        Assert.Contains("\"Version\": \"latest\"", json, StringComparison.Ordinal);
+        Assert.Contains("\"FallbackVersion\": \"2026.6.34\"", json, StringComparison.Ordinal);
+        Assert.DoesNotContain("InstalledVersion", json, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -426,7 +450,7 @@ public class SetupConfigTests : IDisposable
                 {
                     Bind = "lan",
                     InstallUrl = "https://example.test/install.sh",
-                    Version = GatewayReleasePolicy.SecurityFloor
+                    Version = "2026.8.1"
                 },
                 LocalAi =
                 {
@@ -464,6 +488,38 @@ public class SetupConfigTests : IDisposable
             Environment.SetEnvironmentVariable("OPENCLAW_TRAY_DATA_DIR", oldData);
             Environment.SetEnvironmentVariable("OPENCLAW_TRAY_LOCAL_DATA_DIR", oldLocalData);
         }
+    }
+
+    [Fact]
+    public void SetupReviewSummary_DefaultsToNpmLatestWithoutVersionArgument()
+    {
+        var summary = SetupReviewSummaryBuilder.Build(new SetupConfig());
+
+        Assert.Contains("Latest stable OpenClaw package from npm", summary.InstallerDescription);
+        Assert.Equal("npm latest", summary.InstallerBadge);
+        Assert.DoesNotContain("--version", summary.ExactCommands, StringComparison.Ordinal);
+        Assert.Contains("--node-version", summary.ExactCommands, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void SetupReviewSummary_DescribesExactAndChannelSelectorsWithoutCallingThemCandidates()
+    {
+        var exact = SetupReviewSummaryBuilder.Build(new SetupConfig
+        {
+            Gateway = new GatewayConfig { Version = "2026.8.2" }
+        });
+        var beta = SetupReviewSummaryBuilder.Build(new SetupConfig
+        {
+            Gateway = new GatewayConfig { Version = "beta" }
+        });
+
+        Assert.Contains("Exact OpenClaw package 2026.8.2", exact.InstallerDescription);
+        Assert.Equal("2026.8.2", exact.InstallerBadge);
+        Assert.Contains("--version 2026.8.2", exact.ExactCommands);
+        Assert.Contains("OpenClaw beta channel", beta.InstallerDescription);
+        Assert.Equal("npm beta", beta.InstallerBadge);
+        Assert.DoesNotContain("candidate", exact.InstallerDescription, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("candidate", beta.InstallerDescription, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]
