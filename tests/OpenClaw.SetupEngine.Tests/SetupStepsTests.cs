@@ -4715,6 +4715,19 @@ public class SetupStepsTests : IDisposable
     }
 
     [Fact]
+    public void WindowsNodeContext_IsMissingDistroResult_InspectsBothOutputStreams()
+    {
+        var result = new CommandResult(
+            -1,
+            "There is no distribution with the supplied name.",
+            "wsl: warning: ignored setting",
+            TimeSpan.Zero,
+            TimedOut: false);
+
+        Assert.True(WindowsNodeBootstrapContextStep.IsMissingDistroResult(result));
+    }
+
+    [Fact]
     public async Task WindowsNodeContext_Execute_RunsInWslAsConfiguredUserAndResolvesWorkspace()
     {
         var commands = new FakeCommandRunner(
@@ -5144,10 +5157,31 @@ public class SetupStepsTests : IDisposable
     }
 
     [Fact]
+    public async Task WindowsNodeContext_Rollback_SkipsLegacyCleanupWhenDistroIsAbsent()
+    {
+        var commands = new FakeCommandRunner(
+            arguments =>
+            {
+                Assert.Equal(["--list", "--quiet"], arguments);
+                return Ok("Ubuntu\n");
+            });
+        var ctx = CreateContext(commands: commands);
+
+        await new WindowsNodeBootstrapContextStep().RollbackAsync(ctx, CancellationToken.None);
+
+        Assert.Empty(commands.WslCalls);
+        Assert.Single(commands.Calls);
+    }
+
+    [Fact]
     public async Task WindowsNodeContext_Rollback_CleansLegacyEffectiveWorkspaceWithoutStateFile()
     {
         var commands = new FakeCommandRunner(
-            _ => Fail("unexpected RunAsync"),
+            arguments =>
+            {
+                Assert.Equal(["--list", "--quiet"], arguments);
+                return Ok("OpenClawGateway\n");
+            },
             (_, command, _) =>
             {
                 if (command.Contains("getent passwd"))

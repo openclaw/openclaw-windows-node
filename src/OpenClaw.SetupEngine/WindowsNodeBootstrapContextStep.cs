@@ -178,6 +178,21 @@ public sealed class WindowsNodeBootstrapContextStep : SetupStep
         var distro = ctx.DistroName;
         if (string.IsNullOrWhiteSpace(distro))
             return null;
+        var registered = await ctx.Commands.RunAsync(
+            WslConstants.WslExePath,
+            ["--list", "--quiet"],
+            TimeSpan.FromSeconds(15),
+            ct: ct);
+        if (registered.ExitCode != 0)
+        {
+            throw new InvalidOperationException(
+                "Could not inspect WSL distributions while cleaning legacy Windows node context: " +
+                FirstNonEmpty(registered.Stderr, registered.Stdout));
+        }
+
+        if (!WslInstallSupport.ContainsDistro(registered.Stdout, distro))
+            return null;
+
 
         var user = ctx.Config.Wsl.User;
         var (home, result) = await QueryLinuxHomeAsync(ctx, distro, user, ct);
@@ -261,7 +276,7 @@ public sealed class WindowsNodeBootstrapContextStep : SetupStep
         if (result.ExitCode == 0)
             return false;
 
-        var output = FirstNonEmpty(result.Stderr, result.Stdout);
+        var output = string.Concat(result.Stderr, '\n', result.Stdout);
         return output.Contains("There is no distribution with the supplied name", StringComparison.OrdinalIgnoreCase) ||
                output.Contains("WSL_E_DISTRO_NOT_FOUND", StringComparison.OrdinalIgnoreCase);
     }
