@@ -17,10 +17,12 @@ if ([string]::IsNullOrWhiteSpace($RepoRoot)) {
 }
 $repoRootPath = [System.IO.Path]::GetFullPath($RepoRoot)
 $workflowPath = Join-Path $repoRootPath ".github\workflows\ci.yml"
+$codeQlWorkflowPath = Join-Path $repoRootPath ".github\workflows\codeql.yml"
 $selectorPath = Join-Path $repoRootPath "scripts\Get-CiProofPoolRegressionDecision.ps1"
 $runnerPath = Join-Path $repoRootPath "scripts\Invoke-CiTest.ps1"
 $e2eRunnerPath = Join-Path $repoRootPath "scripts\Invoke-CiE2e.ps1"
 $workflow = Get-Content -LiteralPath $workflowPath -Raw
+$codeQlWorkflow = Get-Content -LiteralPath $codeQlWorkflowPath -Raw
 $runner = Get-Content -LiteralPath $runnerPath -Raw
 $e2eRunner = Get-Content -LiteralPath $e2eRunnerPath -Raw
 
@@ -50,25 +52,237 @@ function Assert-NotContains {
 
 function Get-JobBlock {
     param(
-        [Parameter(Mandatory)][string]$Name
+        [Parameter(Mandatory)][string]$Name,
+        [string]$Text = $workflow
     )
 
     $escapedName = [regex]::Escape($Name)
-    $startMatch = [regex]::Match($workflow, "(?m)^  ${escapedName}:\r?$")
+    $startMatch = [regex]::Match($Text, "(?m)^  ${escapedName}:\r?$")
     if (-not $startMatch.Success) {
         throw "Could not find CI job '$Name'."
     }
     $jobHeadingPattern = [regex]::new("(?m)^  [a-zA-Z0-9_-]+:\r?$")
     $nextMatch = $jobHeadingPattern.Match(
-        $workflow,
+        $Text,
         $startMatch.Index + $startMatch.Length)
     if (-not $nextMatch.Success) {
-        return $workflow.Substring($startMatch.Index)
+        return $Text.Substring($startMatch.Index)
     }
-    return $workflow.Substring(
+    return $Text.Substring(
         $startMatch.Index,
         $nextMatch.Index - $startMatch.Index)
 }
+
+function Get-WorkflowTriggerBlock {
+    param(
+        [Parameter(Mandatory)][string]$Text,
+        [Parameter(Mandatory)][string]$Name
+    )
+
+    $escapedName = [regex]::Escape($Name)
+    $startMatch = [regex]::Match($Text, "(?m)^  ${escapedName}:\r?$")
+    if (-not $startMatch.Success) {
+        throw "Could not find workflow trigger '$Name'."
+    }
+
+    $nextMatch = [regex]::Match(
+        $Text.Substring($startMatch.Index + $startMatch.Length),
+        "(?m)^(?:  [a-zA-Z0-9_-]+:|[a-zA-Z0-9_-]+:)\r?$")
+    if (-not $nextMatch.Success) {
+        return $Text.Substring($startMatch.Index)
+    }
+
+    return $Text.Substring(
+        $startMatch.Index,
+        $startMatch.Length + $nextMatch.Index)
+}
+
+function Get-InlineYamlList {
+    param(
+        [Parameter(Mandatory)][string]$Text,
+        [Parameter(Mandatory)][string]$Name
+    )
+
+    $escapedName = [regex]::Escape($Name)
+    $match = [regex]::Match(
+        $Text,
+        "(?m)^\s+${escapedName}:\s*\[(?<values>[^\]]*)\]\s*$")
+    if (-not $match.Success) {
+        throw "Could not find inline YAML list '$Name'."
+    }
+
+    return @($match.Groups["values"].Value.Split(",") |
+        ForEach-Object { $_.Trim().Trim('"', "'") })
+}
+
+function Get-YamlBlockList {
+    param(
+        [Parameter(Mandatory)][string]$Text,
+        [Parameter(Mandatory)][string]$Name
+    )
+
+    $escapedName = [regex]::Escape($Name)
+    $match = [regex]::Match(
+        $Text,
+        "(?ms)^\s+${escapedName}:\s*\r?\n(?<items>(?:\s+-\s+.+\r?\n?)+)")
+    if (-not $match.Success) {
+        throw "Could not find YAML block list '$Name'."
+    }
+
+    return @([regex]::Matches($match.Groups["items"].Value, "(?m)^\s+-\s+['`"]?(?<value>.+?)['`"]?\s*$") |
+        ForEach-Object { $_.Groups["value"].Value })
+}
+
+function Test-PathMatches {
+    param(
+        [Parameter(Mandatory)][string[]]$Patterns,
+        [Parameter(Mandatory)][string]$Path
+    )
+
+    foreach ($pattern in $Patterns) {
+        if ([System.Management.Automation.WildcardPattern]::new(
+                $pattern,
+                [System.Management.Automation.WildcardOptions]::None).IsMatch($Path)) {
+            return $true
+        }
+    }
+
+    return $false
+}
+
+function Test-CodeQlTrigger {
+    param(
+        [Parameter(Mandatory)][ValidateSet("push", "pull_request", "schedule", "workflow_dispatch")]
+        [string]$EventName,
+        [string]$RefName,
+        [string]$Path
+    )
+
+    if ($EventName -in @("schedule", "workflow_dispatch")) {
+        return $true
+    }
+
+    if ($EventName -eq "push") {
+        if ($RefName.StartsWith("refs/tags/", [StringComparison]::Ordinal)) {
+            return $codeQlPushTags.Count -gt 0
+        }
+        if ($RefName -notin $codeQlPushBranches) {
+            return $false
+        }
+        return Test-PathMatches -Patterns $codeQlPushPaths -Path $Path
+    }
+
+    if ($RefName -notin $codeQlPullRequestBranches) {
+        return $false
+    }
+    return Test-PathMatches -Patterns $codeQlPullRequestPaths -Path $Path
+}
+
+$codeQlPush = Get-WorkflowTriggerBlock -Text $codeQlWorkflow -Name "push"
+$codeQlPullRequest = Get-WorkflowTriggerBlock -Text $codeQlWorkflow -Name "pull_request"
+$codeQlPushBranches = @(Get-InlineYamlList -Text $codeQlPush -Name "branches")
+$codeQlPushTags = @(Get-InlineYamlList -Text $codeQlPush -Name "tags")
+$codeQlPushPaths = @(Get-YamlBlockList -Text $codeQlPush -Name "paths")
+$codeQlPullRequestBranches = @(Get-InlineYamlList -Text $codeQlPullRequest -Name "branches")
+$codeQlPullRequestPaths = @(Get-YamlBlockList -Text $codeQlPullRequest -Name "paths")
+
+$expectedCodeQlPaths = @(
+    ".github/codeql/**",
+    ".github/workflows/**",
+    "src/**",
+    "tests/**",
+    "*.sln",
+    "*.slnx",
+    "*.props",
+    "*.targets",
+    "global.json",
+    "NuGet.Config",
+    "package.json",
+    "package-lock.json"
+)
+if (($codeQlPushBranches -join ",") -ne "main,master") {
+    throw "CodeQL branch pushes must be limited to main and master."
+}
+if (($codeQlPushTags -join ",") -ne "**") {
+    throw "CodeQL must preserve scanning for all tag pushes."
+}
+if (($codeQlPullRequestBranches -join ",") -ne "main,master") {
+    throw "CodeQL pull requests must continue to target main and master."
+}
+if (($codeQlPushPaths -join "`n") -cne ($expectedCodeQlPaths -join "`n")) {
+    throw "CodeQL push path filters changed unexpectedly."
+}
+if (($codeQlPullRequestPaths -join "`n") -cne ($expectedCodeQlPaths -join "`n")) {
+    throw "CodeQL pull request path filters changed unexpectedly."
+}
+$codeQlTriggerCases = @(
+    @{ Name = "feature branch code push"; Event = "push"; Ref = "feature/example"; Path = "src/OpenClaw.Shared/Example.cs"; Expected = $false },
+    @{ Name = "main code push"; Event = "push"; Ref = "main"; Path = "src/OpenClaw.Shared/Example.cs"; Expected = $true },
+    @{ Name = "master code push"; Event = "push"; Ref = "master"; Path = "src/OpenClaw.Shared/Example.cs"; Expected = $true },
+    @{ Name = "release tag push"; Event = "push"; Ref = "refs/tags/v2026.9.3"; Path = "docs/release.md"; Expected = $true },
+    @{ Name = "relevant pull request"; Event = "pull_request"; Ref = "main"; Path = "src/OpenClaw.Shared/Example.cs"; Expected = $true },
+    @{ Name = "docs-only pull request"; Event = "pull_request"; Ref = "main"; Path = "docs/example.md"; Expected = $false },
+    @{ Name = "agent-skill-only pull request"; Event = "pull_request"; Ref = "main"; Path = ".agents/skills/example/SKILL.md"; Expected = $false },
+    @{ Name = "scheduled scan"; Event = "schedule"; Ref = ""; Path = ""; Expected = $true },
+    @{ Name = "manual scan"; Event = "workflow_dispatch"; Ref = ""; Path = ""; Expected = $true }
+)
+foreach ($case in $codeQlTriggerCases) {
+    $actual = Test-CodeQlTrigger `
+        -EventName $case.Event `
+        -RefName $case.Ref `
+        -Path $case.Path
+    if ($actual -ne $case.Expected) {
+        throw "CodeQL trigger case '$($case.Name)' expected '$($case.Expected)' but got '$actual'."
+    }
+}
+foreach ($requiredToken in @(
+        "workflow_dispatch:",
+        "schedule:",
+        'cron: "29 6 * * 1"',
+        "profile:",
+        "default: all",
+        "type: choice",
+        'group: codeql-${{ github.workflow }}-',
+        "cancel-in-progress: `${{ github.event_name == 'pull_request' }}",
+        "actions: read",
+        "contents: read",
+        "security-events: write",
+        'if [ "${{ vars.OPENCLAW_CODEQL_ADVANCED_SETUP }}" = "true" ]; then',
+        "inputs.profile == 'csharp'",
+        "languages: csharp",
+        "build-mode: manual",
+        "config-file: ./.github/codeql/codeql-csharp-security.yml",
+        'category: "/codeql/csharp"',
+        "inputs.profile == 'actions'",
+        "languages: actions",
+        "config-file: ./.github/codeql/codeql-actions-security.yml",
+        'category: "/codeql/actions"'
+    )) {
+    Assert-Contains `
+        -Text $codeQlWorkflow `
+        -Expected $requiredToken `
+        -Message "CodeQL workflow is missing required contract '$requiredToken'."
+}
+Assert-NotContains `
+    -Text $codeQlWorkflow `
+    -Unexpected "inputs.advanced_setup" `
+    -Message "CodeQL advanced setup must not bypass the repository-variable gate."
+foreach ($jobName in @("csharp", "actions")) {
+    $codeQlJob = Get-JobBlock -Name $jobName -Text $codeQlWorkflow
+    Assert-Contains `
+        -Text $codeQlJob `
+        -Expected "needs: advanced-setup" `
+        -Message "CodeQL job '$jobName' must depend on the advanced-setup gate."
+    Assert-Contains `
+        -Text $codeQlJob `
+        -Expected "needs.advanced-setup.outputs.enabled == 'true'" `
+        -Message "CodeQL job '$jobName' must remain disabled until the repository variable enables advanced setup."
+}
+$codeQlGateJob = Get-JobBlock -Name "advanced-setup" -Text $codeQlWorkflow
+Assert-Contains `
+    -Text $codeQlGateJob `
+    -Expected 'echo "enabled=false" >> "$GITHUB_OUTPUT"' `
+    -Message "CodeQL gate must explicitly disable advanced analysis when the repository variable is not true."
 
 Assert-Contains `
     -Text $workflow `
@@ -480,4 +694,4 @@ try {
     }
 }
 
-Write-Host "CI workflow contracts passed: conservative lane routing, stable gate enforcement, decoupled metadata/release builds, preserved test inventory, and fail-closed proof routing." -ForegroundColor Green
+Write-Host "CI workflow contracts passed: CodeQL branch/path gating, conservative lane routing, stable gate enforcement, decoupled metadata/release builds, preserved test inventory, and fail-closed proof routing." -ForegroundColor Green
