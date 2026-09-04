@@ -340,7 +340,8 @@ Write `global-triage-YYYY-MM-DD.json` using
 - its PR or issue number, title, URL, decision, both confidence values, effort,
   risk, owner, and concrete next action
 - exact reviewed head SHA for PRs
-- expected required check names
+- expected required check names for PRs; issues must use an empty `expectedChecks`
+  array
 - review status and proof status
 - every applicable proof-pool ID, validated against
   `.github\proof-pools.json`
@@ -358,7 +359,8 @@ Use `plan` as the single ordered execution plan. Set each step's optional
 `horizon` to `today` or `later`; omitted values default to `today`. A plan step
 may declare `dependsOn` with other plan-step IDs and `gates` that point to an
 item's `inventory`, `review`, `checks`, `proof`, or `landing` stage. Dependencies
-must form an acyclic graph. The canvas derives each gated step's live status
+must form an acyclic graph. The `landing` stage applies only to pull requests.
+The canvas derives each gated step's live status
 whenever GitHub checks change. It renders connected steps as dependency lanes
 and independent steps as parallel work. Plan order breaks ties within a lane.
 Do not repeat plan steps in `report`.

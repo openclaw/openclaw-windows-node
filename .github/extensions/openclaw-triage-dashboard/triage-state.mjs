@@ -17,6 +17,8 @@ export const KNOWN_PROOF_POOLS = new Set([
     "windows-winui-interactive",
 ]);
 
+export const SUPPORTED_REPOSITORY = "openclaw/openclaw-windows-node";
+
 const FAILED_CONCLUSIONS = new Set([
     "ACTION_REQUIRED",
     "CANCELLED",
@@ -101,6 +103,8 @@ function normalizeItem(item, index) {
     );
     assert(type !== "pr" || expectedChecks.length > 0,
         `items[${index}].expectedChecks must name at least one required check for pull requests`);
+    assert(type !== "issue" || expectedChecks.length === 0,
+        `items[${index}].expectedChecks must be empty for issues`);
 
     return {
         id: `${type}-${number}`,
@@ -136,12 +140,12 @@ function normalizeItem(item, index) {
     };
 }
 
-function normalizePlanStep(step, index, itemNumbers) {
+function normalizePlanStep(step, index, itemTypes) {
     assert(step && typeof step === "object" && !Array.isArray(step), `plan[${index}] must be an object`);
     const numbers = (step.itemNumbers ?? []).map((entry, itemIndex) =>
         normalizeNumber(entry, `plan[${index}].itemNumbers[${itemIndex}]`));
     for (const number of numbers) {
-        assert(itemNumbers.has(number), `plan[${index}] references item #${number} outside this triage`);
+        assert(itemTypes.has(number), `plan[${index}] references item #${number} outside this triage`);
     }
     const gates = (step.gates ?? []).map((gate, gateIndex) => {
         assert(gate && typeof gate === "object" && !Array.isArray(gate),
@@ -150,15 +154,18 @@ function normalizePlanStep(step, index, itemNumbers) {
             gate.itemNumber,
             `plan[${index}].gates[${gateIndex}].itemNumber`,
         );
-        assert(itemNumbers.has(itemNumber),
+        assert(itemTypes.has(itemNumber),
             `plan[${index}].gates[${gateIndex}] references item #${itemNumber} outside this triage`);
+        const stage = normalizeStatus(
+            gate.stage,
+            `plan[${index}].gates[${gateIndex}].stage`,
+            new Set(["checks", "inventory", "landing", "proof", "review"]),
+        );
+        assert(stage !== "landing" || itemTypes.get(itemNumber) === "pr",
+            `plan[${index}].gates[${gateIndex}] cannot use landing for an issue`);
         return {
             itemNumber,
-            stage: normalizeStatus(
-                gate.stage,
-                `plan[${index}].gates[${gateIndex}].stage`,
-                new Set(["checks", "inventory", "landing", "proof", "review"]),
-            ),
+            stage,
         };
     });
     return {
@@ -185,9 +192,9 @@ function normalizePlanStep(step, index, itemNumbers) {
     };
 }
 
-function normalizePlan(steps, itemNumbers) {
+function normalizePlan(steps, itemTypes) {
     const plan = steps.map((step, index) =>
-        normalizePlanStep(step, index, itemNumbers));
+        normalizePlanStep(step, index, itemTypes));
     const planById = new Map(plan.map((step) => [step.id, step]));
     assert(planById.size === plan.length, "plan must not contain duplicate IDs");
     for (const step of plan) {
@@ -245,6 +252,8 @@ export function normalizeTriageInput(input) {
     assert(input.schemaVersion === 1, "schemaVersion must be 1");
     const repo = normalizeString(input.repo, "repo", 200);
     assert(/^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/.test(repo), "repo must use owner/name format");
+    assert(repo.toLowerCase() === SUPPORTED_REPOSITORY,
+        `repo must be ${SUPPORTED_REPOSITORY}`);
     assert(Array.isArray(input.items) && input.items.length > 0 && input.items.length <= 1_000,
         "items must contain between 1 and 1000 entries");
     const items = input.items.map(normalizeItem);
@@ -252,10 +261,21 @@ export function normalizeTriageInput(input) {
     assert(itemIds.size === items.length, "items must not contain duplicate type/number pairs");
     const itemNumbers = new Set(items.map((item) => item.number));
     assert(itemNumbers.size === items.length, "items must not contain duplicate numbers");
+    for (const item of items) {
+        const parsedUrl = new URL(item.url);
+        const expectedPath = `/${repo}/${item.type === "pr" ? "pull" : "issues"}/${item.number}`;
+        assert(
+            parsedUrl.protocol === "https:" &&
+                parsedUrl.hostname.toLowerCase() === "github.com" &&
+                parsedUrl.pathname.toLowerCase() === expectedPath.toLowerCase(),
+            `items must link to their canonical ${repo} GitHub URL`,
+        );
+    }
     const refreshSeconds = input.refreshSeconds ?? 60;
     assert(Number.isInteger(refreshSeconds) && refreshSeconds >= 30 && refreshSeconds <= 300,
         "refreshSeconds must be an integer from 30 to 300");
-    const plan = normalizePlan(input.plan ?? [], itemNumbers);
+    const itemTypes = new Map(items.map((item) => [item.number, item.type]));
+    const plan = normalizePlan(input.plan ?? [], itemTypes);
 
     return {
         schemaVersion: 1,
@@ -279,9 +299,8 @@ function checkConclusion(check) {
 }
 
 export function summarizeChecks(checks, expectedChecks = []) {
-    const relevant = Array.isArray(checks)
-        ? checks.filter((check) => checkConclusion(check) !== "SKIPPED")
-        : [];
+    const observed = Array.isArray(checks) ? checks : [];
+    const relevant = observed.filter((check) => checkConclusion(check) !== "SKIPPED");
     const failed = relevant.filter((check) => FAILED_CONCLUSIONS.has(checkConclusion(check)));
     const pending = relevant.filter((check) => {
         const conclusion = checkConclusion(check);
@@ -290,7 +309,7 @@ export function summarizeChecks(checks, expectedChecks = []) {
             !COMPLETED_CONCLUSIONS.has(conclusion) &&
             (status !== "COMPLETED" || !conclusion);
     });
-    const names = relevant.map(checkName).filter(Boolean);
+    const names = observed.map(checkName).filter(Boolean);
     const missing = expectedChecks.filter((expected) =>
         !names.some((name) => name.toLowerCase() === expected.toLowerCase()));
 

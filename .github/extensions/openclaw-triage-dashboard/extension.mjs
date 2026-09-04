@@ -11,18 +11,19 @@ import {
     joinSession,
 } from "@github/copilot-sdk/extension";
 import {
-    canRequestMerge,
     mergeLiveState,
     normalizeTriageInput,
 } from "./triage-state.mjs";
 import {
-    buildSubsessionRoutingPrompt,
-    requireFreshGitHubEvidence,
+    requestHostMatches,
+    requestItemAction,
+    requestTokenMatches,
 } from "./triage-actions.mjs";
 import { renderDashboardHtml } from "./triage-ui.mjs";
 
 const execFileAsync = promisify(execFile);
 const instances = new Map();
+const instanceStarts = new Map();
 const extensionDirectory = dirname(fileURLToPath(import.meta.url));
 const repositoryRoot = dirname(dirname(dirname(extensionDirectory)));
 let copilotSession;
@@ -120,7 +121,7 @@ async function collectLiveState(repo, items) {
         item.type === "pr"
             ? !pullRequestNumbers.has(item.number)
             : !issueNumbers.has(item.number));
-    const missingResults = await Promise.all(missing.map(async (item) => {
+    const missingResults = await Promise.allSettled(missing.map(async (item) => {
         const fields = item.type === "pr"
             ? "number,title,url,state,isDraft,mergeable,mergeStateStatus,reviewDecision,headRefOid,updatedAt,labels,statusCheckRollup"
             : "number,title,url,state,stateReason,updatedAt,labels";
@@ -133,9 +134,21 @@ async function collectLiveState(repo, items) {
         return { type: item.type, value };
     }));
     for (const result of missingResults) {
-        (result.type === "pr" ? pullRequests : issues).push(result.value);
+        if (result.status === "fulfilled") {
+            (result.value.type === "pr" ? pullRequests : issues).push(result.value.value);
+        }
     }
-    return { pullRequests, issues };
+    const failedLookups = missingResults
+        .map((result, index) => result.status === "rejected" ? missing[index] : null)
+        .filter(Boolean)
+        .map((item) => `${item.type.toUpperCase()} #${item.number}`);
+    return {
+        pullRequests,
+        issues,
+        refreshWarning: failedLookups.length > 0
+            ? `Live lookup failed for ${failedLookups.join(", ")}. Other items are current.`
+            : "",
+    };
 }
 
 function safeErrorMessage(error) {
@@ -166,92 +179,47 @@ function sendState(entry) {
     }
 }
 
-async function refreshEntry(entry) {
+async function refreshEntry(entry, force = false) {
     if (entry.refreshPromise) {
-        return entry.refreshPromise;
+        if (!force) {
+            return entry.refreshPromise;
+        }
+        await entry.refreshPromise;
+        if (entry.refreshPromise) {
+            return refreshEntry(entry, true);
+        }
     }
-    entry.refreshPromise = (async () => {
+    const refreshPromise = (async () => {
         try {
             const live = await collectLiveState(entry.triage.repo, entry.triage.items);
             entry.pullRequests = live.pullRequests;
             entry.issues = live.issues;
-            entry.state = mergeLiveState(entry.triage, entry.pullRequests, entry.issues);
+            entry.state = {
+                ...mergeLiveState(entry.triage, entry.pullRequests, entry.issues),
+                refreshWarning: live.refreshWarning,
+            };
         } catch (error) {
-            entry.state = mergeLiveState(
-                entry.triage,
-                entry.pullRequests,
-                entry.issues,
-                safeErrorMessage(error),
-            );
-        } finally {
-            entry.refreshPromise = null;
+            entry.state = {
+                ...mergeLiveState(
+                    entry.triage,
+                    entry.pullRequests,
+                    entry.issues,
+                    safeErrorMessage(error),
+                ),
+                refreshWarning: "",
+            };
         }
         sendState(entry);
         return entry.state;
     })();
-    return entry.refreshPromise;
-}
-
-function findItem(entry, number) {
-    return entry.state.items.find((item) => item.number === number);
-}
-
-async function requestItemAction(entry, action, input) {
-    const number = Number(input?.number);
-    if (!Number.isInteger(number) || number <= 0) {
-        throw new CanvasError("invalid_item", "A positive PR or issue number is required");
-    }
-    let item = findItem(entry, number);
-    if (!item) {
-        throw new CanvasError("item_not_found", `#${number} is not in this triage`);
-    }
-
-    let actionPrompt;
-    let result;
-    if (action === "request_merge") {
-        await requireFreshGitHubEvidence(
-            () => refreshEntry(entry),
-            (code, message) => new CanvasError(code, message),
-        );
-        item = findItem(entry, number);
-        const eligibility = canRequestMerge(item, item.live);
-        if (!eligibility.eligible) {
-            throw new CanvasError("merge_not_ready", eligibility.reasons.join("; "));
+    entry.refreshPromise = refreshPromise;
+    try {
+        return await refreshPromise;
+    } finally {
+        if (entry.refreshPromise === refreshPromise) {
+            entry.refreshPromise = null;
         }
-        const requestedHead = String(input?.headSha ?? "");
-        if (!/^[0-9a-f]{7,64}$/i.test(requestedHead) ||
-            requestedHead.toLowerCase() !== String(item.live.headRefOid).toLowerCase()) {
-            throw new CanvasError("head_changed", "The requested head no longer matches live GitHub state");
-        }
-        actionPrompt =
-            `The user selected Prepare merge for ${entry.triage.repo} PR #${number} at observed head ` +
-            `${requestedHead}. Use the global-repo-triage skill guardrails. Re-fetch the PR, exact head, ` +
-            "required checks, reviews, unresolved threads, proof declarations, real behavior evidence, " +
-            "branch protection, and mergeability. Do not mutate GitHub yet. Present the fresh evidence and " +
-            "ask for explicit confirmation before merging.";
-        result = { headSha: requestedHead };
-    } else if (action === "request_next_action") {
-        actionPrompt =
-            `The user selected Request next step for ${entry.triage.repo} ${item.type.toUpperCase()} #${number} ` +
-            "from the interactive triage canvas. Invoke the global-repo-triage skill, refresh this item's " +
-            "current GitHub evidence, and continue only the smallest safe next action. Preserve the read-only " +
-            "default for GitHub mutations and ask for confirmation before any merge, close, label, comment, " +
-            "push, rerun, or session deletion.";
-        result = {};
-    } else {
-        throw new CanvasError("unsupported_action", "Unsupported triage action");
     }
-
-    const routing = buildSubsessionRoutingPrompt(entry.triage.repo, item, actionPrompt);
-    await copilotSession.send({ prompt: routing.prompt });
-    return {
-        queued: true,
-        subsessionRoutingQueued: true,
-        sessionName: routing.sessionName,
-        action,
-        number,
-        ...result,
-    };
 }
 
 async function readJsonBody(request) {
@@ -273,12 +241,12 @@ function writeJson(response, statusCode, value) {
     response.end(JSON.stringify(value));
 }
 
-function tokenMatches(request, entry) {
-    return request.headers["x-triage-token"] === entry.actionToken;
-}
-
 async function handleRequest(entry, request, response) {
     const url = new URL(request.url ?? "/", "http://127.0.0.1");
+    if (!requestHostMatches(request, entry.host)) {
+        writeJson(response, 403, { error: "Request host rejected" });
+        return;
+    }
     if (request.method === "GET" && url.pathname === "/") {
         response.writeHead(200, {
             "Cache-Control": "no-store",
@@ -288,16 +256,24 @@ async function handleRequest(entry, request, response) {
             "Content-Type": "text/html; charset=utf-8",
             "X-Content-Type-Options": "nosniff",
         });
-        response.end(renderDashboardHtml(entry.actionToken));
+        response.end(renderDashboardHtml());
         return;
     }
 
     if (request.method === "GET" && url.pathname === "/state") {
+        if (!requestTokenMatches(request, url, entry.actionToken)) {
+            writeJson(response, 403, { error: "Action token rejected" });
+            return;
+        }
         writeJson(response, 200, entry.state);
         return;
     }
 
     if (request.method === "GET" && url.pathname === "/events") {
+        if (!requestTokenMatches(request, url, entry.actionToken)) {
+            writeJson(response, 403, { error: "Action token rejected" });
+            return;
+        }
         response.writeHead(200, {
             "Cache-Control": "no-cache",
             "Connection": "keep-alive",
@@ -310,7 +286,7 @@ async function handleRequest(entry, request, response) {
         return;
     }
 
-    if (request.method === "POST" && !tokenMatches(request, entry)) {
+    if (request.method === "POST" && !requestTokenMatches(request, url, entry.actionToken)) {
         writeJson(response, 403, { error: "Action token rejected" });
         return;
     }
@@ -323,7 +299,11 @@ async function handleRequest(entry, request, response) {
         }
         if (request.method === "POST" && url.pathname === "/action") {
             const input = await readJsonBody(request);
-            const result = await requestItemAction(entry, input.action, input);
+            const result = await requestItemAction(entry, input.action, input, {
+                createError: (code, message) => new CanvasError(code, message),
+                refresh: () => refreshEntry(entry, true),
+                send: (message) => copilotSession.send(message),
+            });
             writeJson(response, 202, result);
             return;
         }
@@ -341,6 +321,7 @@ async function startInstance(instanceId, triage) {
     const entry = {
         actionToken: randomBytes(24).toString("hex"),
         eventClients: new Set(),
+        host: "",
         issues: [],
         pullRequests: [],
         refreshPromise: null,
@@ -366,14 +347,40 @@ async function startInstance(instanceId, triage) {
     const address = server.address();
     const port = typeof address === "object" && address ? address.port : 0;
     entry.server = server;
-    entry.url = `http://127.0.0.1:${port}/`;
+    entry.host = `127.0.0.1:${port}`;
+    entry.url = `http://${entry.host}/#token=${entry.actionToken}`;
+    instances.set(instanceId, entry);
+    return entry;
+}
+
+async function getOrStartInstance(instanceId, triage) {
+    const existing = instances.get(instanceId);
+    if (existing) {
+        return existing;
+    }
+    let pending = instanceStarts.get(instanceId);
+    if (!pending) {
+        pending = startInstance(instanceId, triage);
+        instanceStarts.set(instanceId, pending);
+    }
+    try {
+        return await pending;
+    } finally {
+        if (instanceStarts.get(instanceId) === pending) {
+            instanceStarts.delete(instanceId);
+        }
+    }
+}
+
+function reconfigureInstance(entry, triage) {
+    entry.triage = triage;
+    entry.state = mergeLiveState(triage, entry.pullRequests, entry.issues);
+    clearInterval(entry.timer);
     entry.timer = setInterval(() => {
         refreshEntry(entry).catch(() => {});
     }, triage.refreshSeconds * 1_000);
     entry.timer.unref();
-    instances.set(instanceId, entry);
-    refreshEntry(entry).catch(() => {});
-    return entry;
+    refreshEntry(entry, true).catch(() => {});
 }
 
 async function closeInstance(instanceId) {
@@ -448,7 +455,11 @@ const dashboard = createCanvas({
             handler: async (context) => {
                 const entry = instances.get(context.instanceId);
                 if (!entry) throw new CanvasError("instance_not_found", "Triage canvas is not open");
-                return requestItemAction(entry, "request_next_action", context.input);
+                return requestItemAction(entry, "request_next_action", context.input, {
+                    createError: (code, message) => new CanvasError(code, message),
+                    refresh: () => refreshEntry(entry, true),
+                    send: (message) => copilotSession.send(message),
+                });
             },
         },
         {
@@ -466,20 +477,18 @@ const dashboard = createCanvas({
             handler: async (context) => {
                 const entry = instances.get(context.instanceId);
                 if (!entry) throw new CanvasError("instance_not_found", "Triage canvas is not open");
-                return requestItemAction(entry, "request_merge", context.input);
+                return requestItemAction(entry, "request_merge", context.input, {
+                    createError: (code, message) => new CanvasError(code, message),
+                    refresh: () => refreshEntry(entry, true),
+                    send: (message) => copilotSession.send(message),
+                });
             },
         },
     ],
     open: async (context) => {
         const triage = normalizeTriageInput(context.input);
-        let entry = instances.get(context.instanceId);
-        if (!entry) {
-            entry = await startInstance(context.instanceId, triage);
-        } else {
-            entry.triage = triage;
-            entry.state = mergeLiveState(triage, entry.pullRequests, entry.issues);
-            refreshEntry(entry).catch(() => {});
-        }
+        const entry = await getOrStartInstance(context.instanceId, triage);
+        reconfigureInstance(entry, triage);
         return {
             title: triage.title,
             status: `Live checks every ${triage.refreshSeconds}s`,

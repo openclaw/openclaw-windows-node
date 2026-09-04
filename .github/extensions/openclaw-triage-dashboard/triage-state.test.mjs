@@ -10,6 +10,9 @@ import {
 } from "./triage-state.mjs";
 import {
     buildSubsessionRoutingPrompt,
+    requestHostMatches,
+    requestItemAction,
+    requestTokenMatches,
     requireFreshGitHubEvidence,
 } from "./triage-actions.mjs";
 import {
@@ -117,6 +120,25 @@ test("rejects non-HTTP item links", () => {
     }), /valid HTTP or HTTPS URL/);
 });
 
+test("binds inputs and item links to the OpenClaw repository", () => {
+    const base = {
+        schemaVersion: 1,
+        title: "Global triage",
+        scope: "All open work",
+        generatedAt: "2026-09-03T22:00:00Z",
+    };
+    assert.throws(() => normalizeTriageInput({
+        ...base,
+        repo: "attacker/other-repo",
+        items: [inputItem()],
+    }), /repo must be openclaw\/openclaw-windows-node/);
+    assert.throws(() => normalizeTriageInput({
+        ...base,
+        repo: "openclaw/openclaw-windows-node",
+        items: [inputItem({ url: "https://example.com/pull/1308" })],
+    }), /canonical openclaw\/openclaw-windows-node GitHub URL/);
+});
+
 test("rejects duplicate item numbers across item types", () => {
     assert.throws(() => normalizeTriageInput({
         schemaVersion: 1,
@@ -126,7 +148,13 @@ test("rejects duplicate item numbers across item types", () => {
         generatedAt: "2026-09-03T22:00:00Z",
         items: [
             inputItem({ type: "pr", number: 42 }),
-            inputItem({ type: "issue", number: 42 }),
+            inputItem({
+                type: "issue",
+                number: 42,
+                url: "https://github.com/openclaw/openclaw-windows-node/issues/42",
+                expectedChecks: [],
+                reviewedHeadSha: "",
+            }),
         ],
     }), /items must not contain duplicate numbers/);
 });
@@ -142,16 +170,59 @@ test("requires expected checks for pull requests", () => {
     }), /must name at least one required check/);
 });
 
+test("rejects check requirements and landing gates for issues", () => {
+    const issue = inputItem({
+        type: "issue",
+        number: 42,
+        url: "https://github.com/openclaw/openclaw-windows-node/issues/42",
+        expectedChecks: ["CI Gate"],
+        reviewedHeadSha: "",
+    });
+    const base = {
+        schemaVersion: 1,
+        repo: "openclaw/openclaw-windows-node",
+        title: "Global triage",
+        scope: "All open work",
+        generatedAt: "2026-09-03T22:00:00Z",
+    };
+    assert.throws(() => normalizeTriageInput({
+        ...base,
+        items: [issue],
+    }), /expectedChecks must be empty for issues/);
+    assert.throws(() => normalizeTriageInput({
+        ...base,
+        items: [{ ...issue, expectedChecks: [] }],
+        plan: [{
+            id: "close-issue",
+            title: "Close issue",
+            itemNumbers: [42],
+            gates: [{ itemNumber: 42, stage: "landing" }],
+            status: "pending",
+        }],
+    }), /cannot use landing for an issue/);
+});
+
 test("summarizes failed, pending, skipped, and missing checks", () => {
     const result = summarizeChecks([
         { name: "test", status: "COMPLETED", conclusion: "FAILURE" },
         { name: "build", status: "IN_PROGRESS", conclusion: "" },
         { name: "optional", status: "COMPLETED", conclusion: "SKIPPED" },
-    ], ["test", "build", "security"]);
+    ], ["test", "build", "optional", "security"]);
 
     assert.equal(result.failed, 1);
     assert.equal(result.pending, 1);
     assert.deepEqual(result.missing, ["security"]);
+});
+
+test("recognizes lane-skipped expected checks as observed", () => {
+    const result = summarizeChecks([
+        { name: "CI Gate", status: "COMPLETED", conclusion: "SUCCESS" },
+        { name: "Core and CLI tests", status: "COMPLETED", conclusion: "SKIPPED" },
+    ], ["CI Gate", "Core and CLI tests"]);
+
+    assert.deepEqual(result.missing, []);
+    assert.equal(result.failed, 0);
+    assert.equal(result.pending, 0);
 });
 
 test("treats legacy error statuses as failed checks", () => {
@@ -396,6 +467,9 @@ test("the checked-in skill template satisfies the canvas contract", () => {
 
     assert.equal(result.schemaVersion, 1);
     assert.equal(result.plan[0].gates[0].stage, "checks");
+    assert.equal(result.items[1].type, "issue");
+    assert.deepEqual(result.items[1].expectedChecks, []);
+    assert.equal(result.plan[1].gates[0].stage, "inventory");
 });
 
 test("the renderer exposes live filters and guarded action controls", () => {
@@ -449,6 +523,8 @@ test("item actions route to one reusable child session", () => {
     assert.match(routing.prompt, /list_sessions_and_chats/);
     assert.match(routing.prompt, /send_session_message/);
     assert.match(routing.prompt, /create_session/);
+    assert.match(routing.prompt, /If more than one matching session exists, stop/);
+    assert.match(routing.prompt, /interactive mode/);
     assert.match(routing.prompt, /Do not create a duplicate session/);
     assert.match(routing.prompt, /Refresh the evidence/);
 });
@@ -483,6 +559,82 @@ test("merge routing stops before sending when fresh GitHub evidence is unavailab
     assert.equal(sendCount, 0);
 });
 
+test("action routing rejects unsupported and stale requests before sending", async () => {
+    const triage = normalizeTriageInput({
+        schemaVersion: 1,
+        repo: "openclaw/openclaw-windows-node",
+        title: "Global triage",
+        scope: "All open work",
+        generatedAt: "2026-09-03T22:00:00Z",
+        items: [inputItem({ reviewedHeadSha: "abc1234" })],
+    });
+    const entry = {
+        triage,
+        state: mergeLiveState(triage, [livePr({ headRefOid: "abc1234" })], []),
+    };
+    let sendCount = 0;
+    const dependencies = {
+        refresh: async () => entry.state,
+        send: async () => {
+            sendCount += 1;
+        },
+    };
+
+    await assert.rejects(
+        requestItemAction(entry, "delete_item", { number: 1308 }, dependencies),
+        (error) => error.code === "unsupported_action",
+    );
+    await assert.rejects(
+        requestItemAction(entry, "request_merge", { number: 1308, headSha: "different" }, dependencies),
+        (error) => error.code === "head_changed",
+    );
+    assert.equal(sendCount, 0);
+});
+
+test("action routing sends exactly once after fresh exact-head verification", async () => {
+    const triage = normalizeTriageInput({
+        schemaVersion: 1,
+        repo: "openclaw/openclaw-windows-node",
+        title: "Global triage",
+        scope: "All open work",
+        generatedAt: "2026-09-03T22:00:00Z",
+        items: [inputItem({ reviewedHeadSha: "abc1234" })],
+    });
+    const entry = {
+        triage,
+        state: mergeLiveState(triage, [livePr({ headRefOid: "abc1234" })], []),
+    };
+    const sent = [];
+    const result = await requestItemAction(entry, "request_merge", {
+        number: 1308,
+        headSha: "abc1234",
+    }, {
+        refresh: async () => entry.state,
+        send: async (message) => sent.push(message),
+    });
+
+    assert.equal(result.queued, true);
+    assert.equal(sent.length, 1);
+    assert.match(sent[0].prompt, /Do not mutate GitHub yet/);
+});
+
+test("loopback request guards require the bound host and action token", () => {
+    const request = {
+        headers: {
+            host: "127.0.0.1:32123",
+            "x-triage-token": "secret",
+        },
+    };
+    assert.equal(requestHostMatches(request, "127.0.0.1:32123"), true);
+    assert.equal(requestHostMatches(request, "rebound.example:32123"), false);
+    assert.equal(requestTokenMatches(request, new URL("http://127.0.0.1/action"), "secret"), true);
+    assert.equal(requestTokenMatches(
+        { headers: { host: "127.0.0.1:32123" } },
+        new URL("http://127.0.0.1/events?token=secret"),
+        "secret",
+    ), true);
+});
+
 test("the extension contains no direct GitHub mutation command", () => {
     const source = readFileSync(new URL("./extension.mjs", import.meta.url), "utf8");
     const actionSource = readFileSync(new URL("./triage-actions.mjs", import.meta.url), "utf8");
@@ -495,5 +647,5 @@ test("the extension contains no direct GitHub mutation command", () => {
         assert.doesNotMatch(candidate, /["']run["']\s*,\s*["']rerun["']/);
         assert.doesNotMatch(candidate, /gh\s+pr\s+merge/i);
     }
-    assert.equal(source.match(/copilotSession\.send/g)?.length, 1);
+    assert.equal(actionSource.match(/await send\(/g)?.length, 1);
 });

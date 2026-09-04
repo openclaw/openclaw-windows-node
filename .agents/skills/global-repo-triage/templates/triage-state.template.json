@@ -28,6 +28,25 @@
         "build (win-arm64)"
       ],
       "dependencies": []
+    },
+    {
+      "type": "issue",
+      "number": 1309,
+      "title": "Example issue",
+      "url": "https://github.com/openclaw/openclaw-windows-node/issues/1309",
+      "decision": "NEEDS_INFO",
+      "takeConfidence": 60,
+      "recommendationConfidence": 95,
+      "effort": "Unknown",
+      "risk": "Low",
+      "owner": "Author",
+      "nextAction": "Clarify the expected behavior.",
+      "proofPools": [],
+      "proofStatus": "blocked",
+      "reviewStatus": "blocked",
+      "reviewedHeadSha": "",
+      "expectedChecks": [],
+      "dependencies": []
     }
   ],
   "report": {
@@ -75,6 +94,23 @@
         {
           "itemNumber": 1308,
           "stage": "checks"
+        }
+      ],
+      "status": "pending"
+    },
+    {
+      "id": "clarify-1309",
+      "title": "Clarify issue #1309",
+      "detail": "The plan follows issue inventory and review state.",
+      "dependsOn": [],
+      "horizon": "later",
+      "itemNumbers": [
+        1309
+      ],
+      "gates": [
+        {
+          "itemNumber": 1309,
+          "stage": "inventory"
         }
       ],
       "status": "pending"

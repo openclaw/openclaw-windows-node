@@ -4,11 +4,7 @@ import {
     limitPlanRows,
 } from "./triage-plan.mjs";
 
-function escapeScriptValue(value) {
-    return JSON.stringify(value).replaceAll("<", "\\u003c");
-}
-
-export function renderDashboardHtml(actionToken) {
+export function renderDashboardHtml() {
     return `<!doctype html>
 <html>
 <head>
@@ -558,7 +554,11 @@ export function renderDashboardHtml(actionToken) {
   </main>
   <div id="notice" class="notice hidden" role="status"></div>
   <script>
-    const actionToken = ${escapeScriptValue(actionToken)};
+    const actionParameters = new URLSearchParams(window.location.hash.slice(1));
+    const fragmentToken = actionParameters.get("token") || "";
+    if (fragmentToken) sessionStorage.setItem("triageActionToken", fragmentToken);
+    const actionToken = fragmentToken || sessionStorage.getItem("triageActionToken") || "";
+    window.history.replaceState(null, "", window.location.pathname);
     ${buildPlanLanes.toString()}
     ${limitLaneLevels.toString()}
     ${limitPlanRows.toString()}
@@ -1098,8 +1098,9 @@ export function renderDashboardHtml(actionToken) {
       document.getElementById("updated").textContent = "Live " +
         new Date(state.liveUpdatedAt).toLocaleTimeString();
       const error = document.getElementById("error");
-      error.textContent = state.refreshError || "";
-      error.classList.toggle("hidden", !state.refreshError);
+      const refreshMessage = state.refreshError || state.refreshWarning || "";
+      error.textContent = refreshMessage;
+      error.classList.toggle("hidden", !refreshMessage);
       renderMetrics(state.summary);
       document.getElementById("type-pr-count").textContent =
         String(state.items.filter((item) => item.type === "pr").length);
@@ -1113,7 +1114,7 @@ export function renderDashboardHtml(actionToken) {
     }
 
     async function loadState() {
-      const response = await fetch("/state", { cache: "no-store" });
+      const response = await fetch("/state?token=" + encodeURIComponent(actionToken), { cache: "no-store" });
       if (!response.ok) throw new Error("Unable to load triage state");
       render(await response.json());
     }
@@ -1154,7 +1155,7 @@ export function renderDashboardHtml(actionToken) {
       }
     });
 
-    const events = new EventSource("/events");
+    const events = new EventSource("/events?token=" + encodeURIComponent(actionToken));
     events.addEventListener("state", (event) => render(JSON.parse(event.data)));
     events.addEventListener("error", () => showNotice("Live updates disconnected. Use Refresh now to retry."));
     loadState().catch((error) => showNotice(error.message));
