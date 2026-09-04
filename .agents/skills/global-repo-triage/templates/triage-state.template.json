@@ -37,9 +37,6 @@
         "items": "#1308"
       }
     ],
-    "executiveQueue": [
-      "Land PR #1308 after its exact-head checks pass."
-    ],
     "ownership": [
       {
         "item": "#1308",
@@ -53,9 +50,6 @@
         "decision": "TAKE_AFTER_CHECKS",
         "summary": "No actionable source finding remains. Exact-head checks are the final gate."
       }
-    ],
-    "dayPlan": [
-      "Wait for exact-head checks on PR #1308, then request guarded merge preparation."
     ],
     "automation": [
       {
@@ -72,6 +66,8 @@
       "id": "land-1308",
       "title": "Land PR #1308 after exact-head checks",
       "detail": "The plan status follows the PR check gate.",
+      "dependsOn": [],
+      "horizon": "today",
       "itemNumbers": [
         1308
       ],

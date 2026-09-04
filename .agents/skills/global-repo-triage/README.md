@@ -28,7 +28,8 @@ active ownership, schedule required proof pools, save the evidence artifacts,
 and open the live triage canvas. Do not mutate GitHub until I approve an action.
 ```
 
-The canvas refreshes checks and plan gates automatically. Item actions create or
-reuse one dedicated child project session per PR or issue. `Prepare merge` sends
-a guarded request to that session; it does not merge directly.
+The canvas refreshes checks and plan gates automatically. Its Plan tab is the
+single ordered source for execution priorities. Item actions create or reuse one
+dedicated child project session per PR or issue. `Prepare merge` sends a guarded
+request to that session; it does not merge directly.
 The `examples` folder contains the two reports that established decision quality.

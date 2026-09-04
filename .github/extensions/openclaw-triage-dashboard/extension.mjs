@@ -423,7 +423,7 @@ const itemActionSchema = {
 const dashboard = createCanvas({
     id: "openclaw-triage-dashboard",
     displayName: "OpenClaw triage",
-    description: "Shows live OpenClaw triage checks, landing-plan progress, proof gates, and guarded actions.",
+    description: "Shows live OpenClaw triage checks, execution-plan progress, proof gates, and guarded actions.",
     inputSchema,
     actions: [
         {

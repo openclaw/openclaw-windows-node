@@ -161,6 +161,16 @@ function normalizePlanStep(step, index, itemNumbers) {
         id: normalizeString(step.id, `plan[${index}].id`, 100),
         title: normalizeString(step.title, `plan[${index}].title`, 500),
         detail: normalizeOptionalString(step.detail, `plan[${index}].detail`),
+        dependsOn: normalizeStringArray(
+            step.dependsOn ?? [],
+            `plan[${index}].dependsOn`,
+            100,
+        ),
+        horizon: normalizeStatus(
+            step.horizon ?? "today",
+            `plan[${index}].horizon`,
+            new Set(["later", "today"]),
+        ),
         itemNumbers: numbers,
         gates,
         status: normalizeStatus(
@@ -169,6 +179,34 @@ function normalizePlanStep(step, index, itemNumbers) {
             new Set(["blocked", "done", "in_progress", "pending"]),
         ),
     };
+}
+
+function normalizePlan(steps, itemNumbers) {
+    const plan = steps.map((step, index) =>
+        normalizePlanStep(step, index, itemNumbers));
+    const planById = new Map(plan.map((step) => [step.id, step]));
+    assert(planById.size === plan.length, "plan must not contain duplicate IDs");
+    for (const step of plan) {
+        for (const dependency of step.dependsOn) {
+            assert(dependency !== step.id, `plan step ${step.id} must not depend on itself`);
+            assert(planById.has(dependency),
+                `plan step ${step.id} depends on unknown step ${dependency}`);
+        }
+    }
+    const visiting = new Set();
+    const visited = new Set();
+    const visit = (step) => {
+        if (visited.has(step.id)) return;
+        assert(!visiting.has(step.id), `plan contains a dependency cycle at ${step.id}`);
+        visiting.add(step.id);
+        for (const dependency of step.dependsOn) {
+            visit(planById.get(dependency));
+        }
+        visiting.delete(step.id);
+        visited.add(step.id);
+    };
+    for (const step of plan) visit(step);
+    return plan;
 }
 
 function normalizeReportEntry(entry, field, index, keys) {
@@ -209,9 +247,11 @@ export function normalizeTriageInput(input) {
     const itemIds = new Set(items.map((item) => item.id));
     assert(itemIds.size === items.length, "items must not contain duplicate type/number pairs");
     const itemNumbers = new Set(items.map((item) => item.number));
+    assert(itemNumbers.size === items.length, "items must not contain duplicate numbers");
     const refreshSeconds = input.refreshSeconds ?? 60;
     assert(Number.isInteger(refreshSeconds) && refreshSeconds >= 30 && refreshSeconds <= 300,
         "refreshSeconds must be an integer from 30 to 300");
+    const plan = normalizePlan(input.plan ?? [], itemNumbers);
 
     return {
         schemaVersion: 1,
@@ -221,7 +261,7 @@ export function normalizeTriageInput(input) {
         generatedAt: normalizeString(input.generatedAt, "generatedAt", 100),
         refreshSeconds,
         items,
-        plan: (input.plan ?? []).map((step, index) => normalizePlanStep(step, index, itemNumbers)),
+        plan,
         report: normalizeReport(input.report),
     };
 }

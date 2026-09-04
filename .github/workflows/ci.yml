@@ -26,8 +26,8 @@ jobs:
           exit 1
         fi
 
-    - name: Test repository triage automation
-      run: node --test .github/scripts/repository-triage.test.cjs
+    - name: Test repository triage automation and dashboard
+      run: node --test .github/scripts/repository-triage.test.cjs .github/extensions/openclaw-triage-dashboard/triage-state.test.mjs
 
   test:
     needs: repo-hygiene

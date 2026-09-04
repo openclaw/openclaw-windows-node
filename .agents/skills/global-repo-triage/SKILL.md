@@ -101,7 +101,7 @@ Read:
 Confirm the deterministic triage implementation is healthy:
 
 ```powershell
-node --test .github\scripts\repository-triage.test.cjs
+node --test .github\scripts\repository-triage.test.cjs .github\extensions\openclaw-triage-dashboard\triage-state.test.mjs
 ```
 
 Prefer the latest successful scheduled `Repository Triage Report` artifact as
@@ -317,15 +317,18 @@ Populate `report` so the dashboard tabs preserve the report template's
 decision context:
 
 - `changes`
-- `executiveQueue`
 - `ownership`
 - `reviews`
-- `dayPlan`
 - `automation`
 
-Represent the day plan as ordered steps. A plan step may declare `gates` that
-point to an item's `inventory`, `review`, `checks`, `proof`, or `landing` stage.
-The canvas derives each gated step's live status whenever GitHub checks change.
+Use `plan` as the single ordered execution plan. Set each step's optional
+`horizon` to `today` or `later`; omitted values default to `today`. A plan step
+may declare `dependsOn` with other plan-step IDs and `gates` that point to an
+item's `inventory`, `review`, `checks`, `proof`, or `landing` stage. Dependencies
+must form an acyclic graph. The canvas derives each gated step's live status
+whenever GitHub checks change. It renders connected steps as dependency lanes
+and independent steps as parallel work. Plan order breaks ties within a lane.
+Do not repeat plan steps in `report`.
 
 Then:
 
@@ -368,7 +371,7 @@ Do not call the triage complete until:
 - issue-to-PR ownership and duplicate risks are mapped
 - active ownership is audited
 - proof pools and human hosts are scheduled explicitly
-- a numbered day plan identifies safe parallelism and dependency order
+- the ordered plan identifies safe parallelism and dependency order
 - release contents and exclusions are explicit when a release is discussed
 - the versioned triage-state JSON, CSV summaries, and reviewed PR patches are
   saved
