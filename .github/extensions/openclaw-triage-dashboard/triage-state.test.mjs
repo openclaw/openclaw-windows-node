@@ -9,6 +9,12 @@ import {
     summarizeChecks,
 } from "./triage-state.mjs";
 import { buildSubsessionRoutingPrompt } from "./triage-actions.mjs";
+import {
+    buildPlanLanes,
+    limitLaneLevels,
+    limitPlanLanes,
+    limitPlanRows,
+} from "./triage-plan.mjs";
 import { renderDashboardHtml } from "./triage-ui.mjs";
 
 function inputItem(overrides = {}) {
@@ -61,6 +67,8 @@ test("normalizes a versioned triage dashboard input", () => {
             id: "land-1308",
             title: "Land #1308",
             detail: "After checks.",
+            dependsOn: [],
+            horizon: "later",
             itemNumbers: [1308],
             gates: [{ itemNumber: 1308, stage: "landing" }],
             status: "pending",
@@ -69,6 +77,8 @@ test("normalizes a versioned triage dashboard input", () => {
 
     assert.equal(result.items[0].id, "pr-1308");
     assert.equal(result.refreshSeconds, 60);
+    assert.equal(result.plan[0].horizon, "later");
+    assert.deepEqual(result.plan[0].dependsOn, []);
     assert.equal(result.report.dayPlan.length, 0);
 });
 
@@ -102,6 +112,20 @@ test("rejects non-HTTP item links", () => {
         generatedAt: "2026-09-03T22:00:00Z",
         items: [inputItem({ url: "javascript:alert(1)" })],
     }), /valid HTTP or HTTPS URL/);
+});
+
+test("rejects duplicate item numbers across item types", () => {
+    assert.throws(() => normalizeTriageInput({
+        schemaVersion: 1,
+        repo: "openclaw/openclaw-windows-node",
+        title: "Global triage",
+        scope: "All open work",
+        generatedAt: "2026-09-03T22:00:00Z",
+        items: [
+            inputItem({ type: "pr", number: 42 }),
+            inputItem({ type: "issue", number: 42 }),
+        ],
+    }), /items must not contain duplicate numbers/);
 });
 
 test("summarizes failed, pending, skipped, and missing checks", () => {
@@ -183,6 +207,114 @@ test("updates plan status from linked live gates", () => {
     const result = mergeLiveState(triage, [livePr()], []);
 
     assert.equal(result.plan[0].liveStatus, "done");
+    assert.equal(result.plan[0].horizon, "today");
+});
+
+test("builds sequential and independent dependency lanes", () => {
+    const lanes = buildPlanLanes([
+        { id: "prove", dependsOn: [], title: "Prove", liveStatus: "pending" },
+        { id: "decide", dependsOn: ["prove"], title: "Decide", liveStatus: "blocked" },
+        { id: "port", dependsOn: [], title: "Port", liveStatus: "pending" },
+    ]);
+
+    assert.equal(lanes[0].kind, "sequential");
+    assert.deepEqual(lanes[0].levels.map((level) => level.map((step) => step.id)), [["prove"], ["decide"]]);
+    assert.equal(lanes[1].kind, "independent");
+    assert.equal(lanes[1].levels[0][0].id, "port");
+});
+
+test("builds stable branched dependency levels", () => {
+    const lanes = buildPlanLanes([
+        { id: "root", dependsOn: [], title: "Root", liveStatus: "done" },
+        { id: "left", dependsOn: ["root"], title: "Left", liveStatus: "pending" },
+        { id: "right", dependsOn: ["root"], title: "Right", liveStatus: "pending" },
+        { id: "join", dependsOn: ["left", "right"], title: "Join", liveStatus: "blocked" },
+    ]);
+
+    assert.equal(lanes.length, 1);
+    assert.equal(lanes[0].kind, "parallel");
+    assert.deepEqual(
+        lanes[0].levels.map((level) => level.map((step) => step.id)),
+        [["root"], ["left", "right"], ["join"]],
+    );
+    assert.deepEqual(lanes[0].levels[2][0].dependsOn, ["left", "right"]);
+});
+
+test("limits large plans by both workstream and step count", () => {
+    const lanes = Array.from({ length: 20 }, (_, index) => ({
+        id: `lane-${index}`,
+        levels: [[{ id: `step-${index}` }]],
+    }));
+    const laneWindow = limitPlanLanes(lanes, 12);
+    assert.equal(laneWindow.lanes.length, 12);
+    assert.equal(laneWindow.hiddenCount, 8);
+
+    const levels = Array.from({ length: 20 }, (_, index) => [[{ id: `chain-${index}` }]])
+        .flat();
+    const levelWindow = limitLaneLevels(levels, 12);
+    assert.equal(levelWindow.levels.flat().length, 12);
+    assert.equal(levelWindow.hiddenCount, 8);
+
+    const rowWindow = limitPlanRows([
+        { id: "large", levels: [Array.from({ length: 20 }, (_, index) => ({ id: `a-${index}` }))] },
+        { id: "other", levels: [[{ id: "b-0" }]] },
+    ], 12);
+    assert.equal(rowWindow.lanes.length, 1);
+    assert.equal(rowWindow.lanes[0].levels.flat().length, 12);
+    assert.equal(rowWindow.hiddenCount, 9);
+});
+
+test("uses legacy queue and day-plan guidance only when no structured plan exists", () => {
+    const lanes = buildPlanLanes(
+        [],
+        ["Shared task", "Day task"],
+        ["Queue task", "Shared task"],
+    );
+
+    assert.equal(lanes.length, 3);
+    assert.deepEqual(
+        lanes.map((lane) => lane.levels[0][0].title),
+        ["Queue task", "Shared task", "Day task"],
+    );
+    assert.equal(lanes[0].levels[0][0].legacy, true);
+});
+
+test("rejects unknown and cyclic plan dependencies", () => {
+    const base = {
+        schemaVersion: 1,
+        repo: "openclaw/openclaw-windows-node",
+        title: "Global triage",
+        scope: "All open work",
+        generatedAt: "2026-09-03T22:00:00Z",
+        items: [inputItem()],
+    };
+    assert.throws(() => normalizeTriageInput({
+        ...base,
+        plan: [{
+            id: "one",
+            title: "One",
+            itemNumbers: [1308],
+            dependsOn: ["missing"],
+            status: "pending",
+        }],
+    }), /depends on unknown step missing/);
+    assert.throws(() => normalizeTriageInput({
+        ...base,
+        plan: [
+            { id: "one", title: "One", itemNumbers: [1308], dependsOn: ["two"], status: "pending" },
+            { id: "two", title: "Two", itemNumbers: [1308], dependsOn: ["one"], status: "pending" },
+        ],
+    }), /dependency cycle/);
+    assert.throws(() => normalizeTriageInput({
+        ...base,
+        plan: [{
+            id: "one",
+            title: "One",
+            itemNumbers: [1308],
+            dependsOn: ["one"],
+            status: "pending",
+        }],
+    }), /must not depend on itself/);
 });
 
 test("the checked-in skill template satisfies the canvas contract", () => {
@@ -206,9 +338,30 @@ test("the renderer exposes live filters and guarded action controls", () => {
     assert.match(html, /Filter by verdict/);
     assert.match(html, /Sort: confidence/);
     assert.match(html, /role="tablist"/);
+    assert.match(html, /data-tab="plan"/);
+    assert.doesNotMatch(html, /data-tab="day-plan"/);
+    assert.doesNotMatch(html, /data-tab="queue"/);
+    assert.match(html, /aria-labelledby="tab-plan-button"/);
+    assert.match(html, /<h2 class="sr-only">Plan<\/h2>/);
+    assert.match(html, /take"/);
+    assert.match(html, /Depends on/);
+    assert.match(html, /No linked action/);
+    assert.doesNotMatch(html, /Compact view/);
+    assert.match(html, /Show next/);
+    assert.match(html, /plan rows/);
+    assert.match(html, /limitPlanRows/);
+    assert.match(html, /limitLaneLevels/);
+    assert.match(html, /plan-node-decision/);
+    assert.match(html, /Can run in parallel/);
     assert.match(html, /data-tab="automation"/);
     assert.match(html, /Request next step/);
     assert.match(html, /Prepare merge/);
+    assert.match(html, /function createItemActions/);
+    assert.equal(html.match(/createItemActions\(/g)?.length, 3);
+    assert.match(html, /plan-button-groups/);
+    assert.match(html, /aria-describedby/);
+    assert.match(html, /Why merge is blocked for/);
+    assert.match(html, /Request next step for/);
     assert.match(html, /EventSource/);
 });
 

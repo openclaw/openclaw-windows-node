@@ -1,3 +1,9 @@
+import {
+    buildPlanLanes,
+    limitLaneLevels,
+    limitPlanRows,
+} from "./triage-plan.mjs";
+
 function escapeScriptValue(value) {
     return JSON.stringify(value).replaceAll("<", "\\u003c");
 }
@@ -207,19 +213,148 @@ export function renderDashboardHtml(actionToken) {
     @media (prefers-reduced-motion: reduce) {
       .icon-control:disabled svg { animation: none; }
     }
-    .plan, .items {
+    .items {
       border: 1px solid var(--github-border);
       border-radius: 6px;
       overflow: hidden;
     }
     .items { border-top: 0; border-radius: 0 0 6px 6px; }
-    .plan-row, .item {
+    .item {
       border-bottom: 1px solid var(--github-border-muted);
       padding: 12px 16px;
     }
-    .plan-row:last-child, .item:last-child { border-bottom: 0; }
-    .plan-row { display: grid; grid-template-columns: 84px 1fr; align-items: start; gap: 10px; }
-    .plan-row p { margin-top: 1px; }
+    .item:last-child { border-bottom: 0; }
+    .plan {
+      display: block;
+    }
+    .plan-overview {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      margin-bottom: 10px;
+      flex-wrap: wrap;
+    }
+    .plan-summary { color: var(--github-muted); font-size: 12px; }
+    .plan-lane {
+      overflow: hidden;
+      border: 1px solid var(--github-border);
+      border-radius: 6px;
+      background: var(--github-bg);
+    }
+    .plan-lane + .plan-lane { margin-top: 16px; }
+    .plan-lane-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      padding: 8px 12px;
+      border-bottom: 1px solid var(--github-border);
+      background: var(--github-inset);
+      font-size: var(--text-body-medium, 14px);
+    }
+    .plan-lane-header h3 { margin: 0; font-size: inherit; }
+    .plan-lane-kind { color: var(--github-muted); font-size: 12px; }
+    .lane-level {
+      position: relative;
+      display: block;
+    }
+    .plan-node {
+      position: relative;
+      min-width: 0;
+      padding: 12px 16px 12px 40px;
+      border-bottom: 1px solid var(--github-border-muted);
+    }
+    .lane-level:last-child .plan-node:last-child { border-bottom: 0; }
+    .plan-node::before {
+      position: absolute;
+      top: 17px;
+      left: 20px;
+      width: 10px;
+      height: 10px;
+      border: 2px solid var(--github-muted);
+      border-radius: 50%;
+      background: var(--github-bg);
+      content: "";
+      z-index: 1;
+    }
+    .plan-status-done::before {
+      border-color: var(--github-open);
+      background: color-mix(in srgb, var(--github-open) 18%, var(--github-bg));
+    }
+    .plan-status-in_progress::before, .plan-status-pending::before {
+      border-color: var(--github-accent);
+      background: color-mix(in srgb, var(--github-accent) 18%, var(--github-bg));
+    }
+    .plan-status-blocked::before {
+      border-color: var(--github-danger);
+      background: color-mix(in srgb, var(--github-danger) 16%, var(--github-bg));
+    }
+    .plan-lane:not(.plan-lane-independent) .plan-node::after {
+      position: absolute;
+      top: 27px;
+      bottom: -13px;
+      left: 25px;
+      width: 2px;
+      background: var(--github-border);
+      content: "";
+    }
+    .plan-lane:not(.plan-lane-independent) .lane-level:last-child .plan-node:last-child::after {
+      display: none;
+    }
+    .plan-node-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+    }
+    .plan-node-heading-main { display: flex; align-items: center; gap: 6px; min-width: 0; }
+    .plan-node-title { color: inherit; font-weight: 600; text-decoration: none; }
+    .plan-node-title[href]:hover { color: var(--github-accent); }
+    .plan-node-decision {
+      display: flex;
+      align-items: flex-end;
+      flex-direction: column;
+      flex-shrink: 0;
+      color: var(--github-muted);
+      white-space: nowrap;
+    }
+    .plan-node-decision a { color: inherit; text-decoration: none; }
+    .plan-node-decision a:hover { color: var(--github-accent); }
+    .plan-node-meta {
+      display: flex;
+      gap: 4px 12px;
+      margin-top: 4px;
+      flex-wrap: wrap;
+      color: var(--github-muted);
+      font-size: 12px;
+    }
+    .plan-node p { margin: 3px 0 0; }
+    .plan-dependencies {
+      display: contents;
+      color: var(--github-muted);
+      font-size: 12px;
+    }
+    .dependency-edge {
+      display: inline;
+    }
+    .plan-actions { margin-top: 6px; }
+    .plan-item-meta + .plan-item-meta { margin-top: 8px; }
+    .plan-node-footer { margin-top: 6px; }
+    .plan-button-groups { display: flex; gap: 8px; flex-wrap: wrap; }
+    .action-item-number { align-self: center; color: var(--github-muted); font-size: 12px; }
+    .plan-action {
+      display: flex;
+      gap: 6px;
+      margin-top: 4px;
+    }
+    .plan-action strong { flex: 0 0 auto; color: var(--github-muted); }
+    .plan-more {
+      display: flex;
+      grid-column: 1 / -1;
+      justify-content: center;
+      gap: 8px;
+    }
     .report-box {
       border: 1px solid var(--github-border);
       border-radius: 6px;
@@ -281,6 +416,16 @@ export function renderDashboardHtml(actionToken) {
       background: color-mix(in srgb, var(--github-danger) 10%, transparent);
       color: var(--github-danger);
     }
+    .label-accent {
+      border-color: color-mix(in srgb, var(--github-accent) 30%, transparent);
+      background: color-mix(in srgb, var(--github-accent) 12%, transparent);
+      color: var(--github-accent);
+    }
+    .label-neutral {
+      border-color: color-mix(in srgb, var(--github-muted) 30%, transparent);
+      background: color-mix(in srgb, var(--github-muted) 10%, transparent);
+      color: var(--github-muted);
+    }
     .status-done { color: var(--true-color-green, #1a7f37); }
     .status-in_progress, .status-pending { color: var(--true-color-blue, #0969da); }
     .status-blocked { color: var(--true-color-red, #cf222e); }
@@ -327,7 +472,8 @@ export function renderDashboardHtml(actionToken) {
       header { display: block; }
       .item-head, .item-heading-main { flex-wrap: wrap; }
       .item-decision { margin-left: auto; }
-      .plan-row { grid-template-columns: 1fr; gap: 6px; }
+      .plan-node-head { align-items: flex-start; flex-direction: column; gap: 4px; }
+      .plan-node-decision { align-items: flex-start; white-space: normal; }
       .report-row { grid-template-columns: 1fr; gap: 4px; }
       .item-footer { align-items: flex-start; flex-direction: column; }
       .list-header { align-items: flex-start; flex-direction: column; gap: 6px; }
@@ -354,12 +500,10 @@ export function renderDashboardHtml(actionToken) {
     <div id="error" class="error hidden" role="alert"></div>
     <nav class="tabs" role="tablist" aria-label="Triage report sections">
       <button class="tab" role="tab" aria-selected="true" aria-controls="tab-items" data-tab="items">Items <span id="count-items" class="tab-count">0</span></button>
-      <button class="tab" role="tab" aria-selected="false" aria-controls="tab-landing" data-tab="landing">Landing plan <span id="count-landing" class="tab-count">0</span></button>
+      <button id="tab-plan-button" class="tab" role="tab" aria-selected="false" aria-controls="tab-plan" data-tab="plan">Plan <span id="count-plan" class="tab-count">0</span></button>
       <button class="tab" role="tab" aria-selected="false" aria-controls="tab-changes" data-tab="changes">Changes <span id="count-changes" class="tab-count">0</span></button>
-      <button class="tab" role="tab" aria-selected="false" aria-controls="tab-queue" data-tab="queue">Queue <span id="count-queue" class="tab-count">0</span></button>
       <button class="tab" role="tab" aria-selected="false" aria-controls="tab-ownership" data-tab="ownership">Ownership <span id="count-ownership" class="tab-count">0</span></button>
       <button class="tab" role="tab" aria-selected="false" aria-controls="tab-reviews" data-tab="reviews">Reviews <span id="count-reviews" class="tab-count">0</span></button>
-      <button class="tab" role="tab" aria-selected="false" aria-controls="tab-day-plan" data-tab="day-plan">Day plan <span id="count-day-plan" class="tab-count">0</span></button>
       <button class="tab" role="tab" aria-selected="false" aria-controls="tab-automation" data-tab="automation">Automation <span id="count-automation" class="tab-count">0</span></button>
     </nav>
     <section id="tab-items" class="tab-panel" role="tabpanel">
@@ -403,21 +547,24 @@ export function renderDashboardHtml(actionToken) {
       </div>
       <div id="items" class="items"></div>
     </section>
-    <section id="tab-landing" class="tab-panel hidden" role="tabpanel">
+    <section id="tab-plan" class="tab-panel hidden" role="tabpanel" aria-labelledby="tab-plan-button">
+      <h2 class="sr-only">Plan</h2>
       <div id="plan" class="plan"></div>
     </section>
     <section id="tab-changes" class="tab-panel hidden" role="tabpanel"><div id="changes" class="report-box"></div></section>
-    <section id="tab-queue" class="tab-panel hidden" role="tabpanel"><div id="queue" class="report-box"></div></section>
     <section id="tab-ownership" class="tab-panel hidden" role="tabpanel"><div id="ownership" class="report-box"></div></section>
     <section id="tab-reviews" class="tab-panel hidden" role="tabpanel"><div id="reviews" class="report-box"></div></section>
-    <section id="tab-day-plan" class="tab-panel hidden" role="tabpanel"><div id="day-plan" class="report-box"></div></section>
     <section id="tab-automation" class="tab-panel hidden" role="tabpanel"><div id="automation" class="report-box"></div></section>
   </main>
   <div id="notice" class="notice hidden" role="status"></div>
   <script>
     const actionToken = ${escapeScriptValue(actionToken)};
+    ${buildPlanLanes.toString()}
+    ${limitLaneLevels.toString()}
+    ${limitPlanRows.toString()}
     let state = null;
     let selectedType = "pr";
+    let visiblePlanRowCount = 12;
 
     function element(tag, className, text) {
       const node = document.createElement(tag);
@@ -465,6 +612,19 @@ export function renderDashboardHtml(actionToken) {
       return { label: "Maintainer review", variant: "attention" };
     }
 
+    function planStatusVariant(status) {
+      if (status === "done") return "success";
+      if (status === "blocked") return "danger";
+      if (status === "in_progress" || status === "pending") return "accent";
+      return "neutral";
+    }
+
+    function restorePlanFocus(preferredId, secondaryId) {
+      (document.getElementById(preferredId) ??
+        document.getElementById(secondaryId) ??
+        document.getElementById("tab-plan-button"))?.focus();
+    }
+
     function renderMetrics(summary) {
       const root = document.getElementById("metrics");
       root.textContent = summary.total + " items · " +
@@ -474,21 +634,175 @@ export function renderDashboardHtml(actionToken) {
         summary.blocked + " blocked";
     }
 
-    function renderPlan(plan) {
+    function renderPlan(plan, legacyDayPlan, legacyQueue, items) {
       const root = document.getElementById("plan");
       root.replaceChildren();
-      if (!plan.length) {
-        root.append(element("p", "plan-row muted", "No landing plan was supplied."));
+      const lanes = buildPlanLanes(plan, legacyDayPlan, legacyQueue);
+      if (!lanes.length) {
+        root.append(element("p", "plan-empty muted", "No plan was supplied."));
         return;
       }
-      for (const step of plan) {
-        const row = element("div", "plan-row");
-        row.append(element("span", "badge status-" + step.liveStatus, statusLabel(step.liveStatus)));
-        const body = element("div");
-        body.append(element("strong", "", step.title));
-        if (step.detail) body.append(element("p", "muted", step.detail));
-        row.append(body);
-        root.append(row);
+      const itemByNumber = new Map(items.map((item) => [item.number, item]));
+      const planStepById = new Map(plan.map((step) => [step.id, step]));
+      const allSteps = lanes.flatMap((lane) => lane.levels.flat());
+      const overview = element("div", "plan-overview");
+      const summary = element("div", "plan-summary");
+      const summaryParts = [
+        allSteps.length + " steps",
+        lanes.length + " workstreams",
+      ];
+      for (const status of ["in_progress", "blocked", "pending", "done"]) {
+        const count = allSteps.filter((step) => step.liveStatus === status).length;
+        if (!count) continue;
+        summaryParts.push(count + " " + statusLabel(status));
+      }
+      summary.textContent = summaryParts.join(" · ");
+      overview.append(summary);
+      root.append(overview);
+
+      const rowWindow = limitPlanRows(lanes, visiblePlanRowCount);
+      for (const lane of rowWindow.lanes) {
+        const container = element("article", "plan-lane plan-lane-" + lane.kind);
+        const header = element("header", "plan-lane-header");
+        header.append(
+          element("h3", "", lane.title),
+          element(
+            "span",
+            "plan-lane-kind",
+            lane.kind === "independent"
+              ? "Can run in parallel"
+              : lane.totalSteps + " linked steps",
+          ),
+        );
+        container.append(header);
+        for (const steps of lane.levels) {
+          const level = element("div", "lane-level");
+          for (const step of steps) {
+            const node = element(
+              "div",
+              "plan-node plan-status-" + step.liveStatus,
+            );
+            const head = element("div", "plan-node-head");
+            const headingMain = element("div", "plan-node-heading-main");
+            const linkedItems = step.itemNumbers
+              .map((number) => itemByNumber.get(number))
+              .filter(Boolean);
+            const title = element("span", "plan-node-title", step.title);
+            headingMain.append(
+              element(
+                "span",
+                "badge label-" + planStatusVariant(step.liveStatus),
+                statusLabel(step.liveStatus),
+              ),
+              title,
+            );
+            const decision = element("div", "plan-node-decision");
+            if (linkedItems.length) {
+              for (const item of linkedItems) {
+                const itemDecision = element("div", "");
+                const itemLink = element("a", "", "#" + item.number);
+                itemLink.href = item.url;
+                itemLink.target = "_blank";
+                itemLink.rel = "noreferrer";
+                itemDecision.append(
+                  itemLink,
+                  document.createTextNode(
+                    " " + item.decision + " · " + item.takeConfidence + "% take",
+                  ),
+                );
+                decision.append(itemDecision);
+              }
+            } else {
+              decision.textContent = "No linked item";
+            }
+            head.append(
+              headingMain,
+              decision,
+            );
+            node.append(head);
+            const meta = element("div", "plan-node-meta");
+            if (step.horizon) {
+              meta.append(element("span", "", step.horizon === "today" ? "Today" : "Later"));
+            }
+            if (step.dependsOn.length) {
+              const dependencies = element("div", "plan-dependencies");
+              for (const dependencyId of step.dependsOn) {
+                const dependency = planStepById.get(dependencyId);
+                dependencies.append(element(
+                  "div",
+                  "dependency-edge",
+                  "Depends on " + (dependency?.title ?? dependencyId),
+                ));
+              }
+              meta.append(dependencies);
+            }
+            if (meta.childNodes.length) node.append(meta);
+            if (step.detail) node.append(element("p", "muted", step.detail));
+            const metadataItems = linkedItems.length ? linkedItems : [null];
+            const footer = element("div", "item-footer plan-node-footer");
+            const nextActions = element("div", "plan-actions");
+            for (const item of metadataItems) {
+              const metadata = element("div", "plan-item-meta");
+              const action = element("div", "plan-action");
+              action.append(
+                element("strong", "", item ? "Next for #" + item.number + ":" : "Next:"),
+                element("span", "", item?.nextAction ?? "No linked action"),
+              );
+              metadata.append(action);
+              nextActions.append(metadata);
+            }
+            footer.append(nextActions);
+            const mergeGates = element("div", "");
+            if (linkedItems.length) {
+              const buttonGroups = element("div", "plan-button-groups");
+              for (const item of linkedItems) {
+                const controls = createItemActions(
+                  item,
+                  linkedItems.length > 1,
+                  "plan-" + step.id,
+                );
+                buttonGroups.append(controls.actions);
+                if (controls.gate) mergeGates.append(controls.gate);
+              }
+              footer.append(buttonGroups);
+            }
+            node.append(footer);
+            if (mergeGates.childNodes.length) node.append(mergeGates);
+            level.append(node);
+          }
+          container.append(level);
+        }
+        root.append(container);
+      }
+      if (rowWindow.hiddenCount > 0 || visiblePlanRowCount > 12) {
+        const laneControls = element("div", "plan-more");
+        if (rowWindow.hiddenCount > 0) {
+          const moreRows = element(
+            "button",
+            "control",
+            "Show next " + Math.min(12, rowWindow.hiddenCount) + " plan rows",
+          );
+          moreRows.id = "plan-more-rows";
+          moreRows.type = "button";
+          moreRows.addEventListener("click", () => {
+            visiblePlanRowCount += 12;
+            renderPlan(plan, legacyDayPlan, legacyQueue, items);
+            restorePlanFocus("plan-more-rows", "plan-fewer-rows");
+          });
+          laneControls.append(moreRows);
+        }
+        if (visiblePlanRowCount > 12) {
+          const fewerRows = element("button", "control", "Show first 12 plan rows");
+          fewerRows.id = "plan-fewer-rows";
+          fewerRows.type = "button";
+          fewerRows.addEventListener("click", () => {
+            visiblePlanRowCount = 12;
+            renderPlan(plan, legacyDayPlan, legacyQueue, items);
+            restorePlanFocus("plan-more-rows", "plan-fewer-rows");
+          });
+          laneControls.append(fewerRows);
+        }
+        root.append(laneControls);
       }
     }
 
@@ -532,7 +846,6 @@ export function renderDashboardHtml(actionToken) {
 
     function renderReport(report) {
       renderRecords("changes", report.changes, "change", [["items", "Items"]], "No change summary was supplied.");
-      renderNumbered("queue", report.executiveQueue, "No executive queue was supplied.");
       renderRecords("ownership", report.ownership, "item", [["assessment", "Assessment"]], "No ownership audit was supplied.");
       renderRecords(
         "reviews",
@@ -541,7 +854,6 @@ export function renderDashboardHtml(actionToken) {
         [["title", "Title"], ["decision", "Decision"], ["summary", "Assessment"]],
         "No adversarial review summary was supplied.",
       );
-      renderNumbered("day-plan", report.dayPlan, "No day plan was supplied.");
       renderRecords(
         "automation",
         report.automation,
@@ -551,12 +863,11 @@ export function renderDashboardHtml(actionToken) {
       );
       const counts = {
         items: state.items.length,
-        landing: state.plan.length,
+        plan: buildPlanLanes(state.plan, report.dayPlan, report.executiveQueue)
+          .reduce((total, lane) => total + lane.levels.flat().length, 0),
         changes: report.changes.length,
-        queue: report.executiveQueue.length,
         ownership: report.ownership.length,
         reviews: report.reviews.length,
-        "day-plan": report.dayPlan.length,
         automation: report.automation.length,
       };
       for (const [name, count] of Object.entries(counts)) {
@@ -624,6 +935,76 @@ export function renderDashboardHtml(actionToken) {
       return result;
     }
 
+    function createItemActions(item, showItemNumber = false, idPrefix = "item") {
+      const typeLabel = item.type === "pr" ? "Pull request" : "Issue";
+      const shortTypeLabel = item.type === "pr" ? "PR" : "Issue";
+      const identity = typeLabel + " #" + item.number;
+      const controlId = idPrefix + "-" + item.type + "-" + item.number;
+      const actions = element("div", "actions");
+      actions.setAttribute("role", "group");
+      actions.setAttribute("aria-label", identity + " actions");
+      if (showItemNumber) {
+        actions.append(element(
+          "span",
+          "action-item-number",
+          shortTypeLabel + " #" + item.number,
+        ));
+      }
+      const next = element("button", "control", "Request next step");
+      next.id = controlId + "-next";
+      next.type = "button";
+      next.setAttribute("aria-label", "Request next step for " + identity);
+      next.addEventListener("click", async () => {
+        next.disabled = true;
+        try {
+          const result = await post("/action", {
+            action: "request_next_action",
+            number: item.number,
+          });
+          showNotice("Routing request queued for " + result.sessionName + ".");
+        } catch (error) {
+          showNotice(error.message);
+        } finally {
+          next.disabled = false;
+        }
+      });
+      const merge = element("button", "control primary", "Prepare merge");
+      merge.id = controlId + "-merge";
+      merge.type = "button";
+      merge.setAttribute("aria-label", "Prepare merge for " + identity);
+      merge.disabled = !item.mergeRequest.eligible;
+      merge.title = item.mergeRequest.eligible
+        ? "Request fresh merge verification in the item session"
+        : item.mergeRequest.reasons.join("; ");
+      merge.addEventListener("click", async () => {
+        merge.disabled = true;
+        try {
+          const result = await post("/action", {
+            action: "request_merge",
+            number: item.number,
+            headSha: item.live.headRefOid,
+          });
+          showNotice("Routing request queued for " + result.sessionName + ".");
+        } catch (error) {
+          showNotice(error.message);
+          merge.disabled = false;
+        }
+      });
+      actions.append(next, merge);
+      let gate = null;
+      if (!item.mergeRequest.eligible && item.mergeRequest.reasons.length) {
+        const reasonId = controlId + "-merge-reasons";
+        merge.setAttribute("aria-describedby", reasonId);
+        gate = element("details", "gate");
+        gate.id = reasonId;
+        gate.append(
+          element("summary", "", "Why merge is blocked for " + identity),
+          element("p", "", item.mergeRequest.reasons.join("; ")),
+        );
+      }
+      return { actions, gate };
+    }
+
     function renderItems(items) {
       const root = document.getElementById("items");
       root.replaceChildren();
@@ -671,55 +1052,19 @@ export function renderDashboardHtml(actionToken) {
           stages.append(element("span", "stage status-" + value, name + " " + statusLabel(value)));
         }
 
-        const actions = element("div", "actions");
-        const next = element("button", "control", "Request next step");
-        next.type = "button";
-        next.addEventListener("click", async () => {
-          next.disabled = true;
-          try {
-            const result = await post("/action", { action: "request_next_action", number: item.number });
-            showNotice("Routing request queued for " + result.sessionName + ".");
-          } catch (error) {
-            showNotice(error.message);
-          } finally {
-            next.disabled = false;
-          }
-        });
-        const merge = element("button", "control primary", "Prepare merge");
-        merge.type = "button";
-        merge.disabled = !item.mergeRequest.eligible;
-        merge.title = item.mergeRequest.eligible ? "Request fresh merge verification in the item session" : item.mergeRequest.reasons.join("; ");
-        merge.addEventListener("click", async () => {
-          merge.disabled = true;
-          try {
-            const result = await post("/action", {
-              action: "request_merge",
-              number: item.number,
-              headSha: item.live.headRefOid,
-            });
-            showNotice("Routing request queued for " + result.sessionName + ".");
-          } catch (error) {
-            showNotice(error.message);
-            merge.disabled = false;
-          }
-        });
-        actions.append(next, merge);
-        footer.append(stages, actions);
+        const controls = createItemActions(item);
+        footer.append(stages, controls.actions);
         row.append(footer);
-        if (!item.mergeRequest.eligible && item.mergeRequest.reasons.length) {
-          const gate = element("details", "gate");
-          gate.append(
-            element("summary", "", "Why merge is blocked"),
-            element("p", "", item.mergeRequest.reasons.join("; ")),
-          );
-          row.append(gate);
-        }
+        if (controls.gate) row.append(controls.gate);
         root.append(row);
       }
     }
 
     function render(nextState) {
       state = nextState;
+      const planFocusId = document.activeElement?.id?.startsWith("plan-")
+        ? document.activeElement.id
+        : null;
       document.getElementById("title").textContent = state.title;
       document.getElementById("scope").textContent = state.scope;
       document.getElementById("updated").textContent = "Live " +
@@ -732,7 +1077,8 @@ export function renderDashboardHtml(actionToken) {
         String(state.items.filter((item) => item.type === "pr").length);
       document.getElementById("type-issue-count").textContent =
         String(state.items.filter((item) => item.type === "issue").length);
-      renderPlan(state.plan);
+      renderPlan(state.plan, state.report.dayPlan, state.report.executiveQueue, state.items);
+      if (planFocusId) restorePlanFocus(planFocusId);
       renderReport(state.report);
       renderVerdictOptions(state.items);
       renderItems(state.items);
