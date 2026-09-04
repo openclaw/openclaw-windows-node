@@ -5379,10 +5379,10 @@ Certifique-se de que o Gateway está em execução.</value>
     <value>{0}/{1} canais</value>
   </data>
   <data name="ConnectionPage_CostToday" xml:space="preserve">
-    <value>R${0} hoje</value>
+    <value>US$ {0} hoje</value>
   </data>
   <data name="ConnectionPage_CostTodayZero" xml:space="preserve">
-    <value>R$0,00 hoje</value>
+    <value>US$ 0,00 hoje</value>
   </data>
   <data name="ConnectionPage_SharedTokenChip" xml:space="preserve">
     <value>Token compartilhado</value>
@@ -7118,7 +7118,7 @@ O binário wxc-exec não pôde ser localizado. {1} Se esta for uma build de dese
   <data name="LocalAi_Reason_CudaCapabilityTooLow" xml:space="preserve"><value>O driver NVIDIA não oferece suporte a CUDA 13. Não é necessário um CUDA Toolkit separado.</value></data>
   <data name="LocalAi_Reason_DriverTooOld" xml:space="preserve"><value>O driver NVIDIA {0} foi detectado. A IA local requer a versão {1} ou mais recente.</value></data>
   <data name="LocalAi_Reason_Generic" xml:space="preserve"><value>O OpenClaw não conseguiu verificar os requisitos da IA local neste sistema.</value></data>
-  <data name="LocalAi_Reason_GigabytesFormat" xml:space="preserve"><value>{0:0.#} GB</value></data>
+  <data name="LocalAi_Reason_GigabytesFormat" xml:space="preserve"><value>{0:0.#} GiB</value></data>
   <data name="LocalAi_Reason_HardwareFactsIncomplete" xml:space="preserve"><value>O OpenClaw não conseguiu ler um identificador estável, a memória, o driver ou a capacidade CUDA da GPU NVIDIA.</value></data>
   <data name="LocalAi_Reason_InsufficientGpuMemory" xml:space="preserve"><value>{0} requer {1} de memória da GPU para pesos do modelo, cache KV e espaço de trabalho do runtime. O OpenClaw detectou {2}.</value></data>
   <data name="LocalAi_Reason_NoNvidiaGpu" xml:space="preserve"><value>Nenhuma GPU NVIDIA foi informada pelo driver NVIDIA. Instale ou repare o driver NVIDIA e tente configurar novamente.</value></data>
@@ -7153,7 +7153,8 @@ O binário wxc-exec não pôde ser localizado. {1} Se esta for uma build de dese
   <data name="Onboarding_LocalAi_UnavailableMessage" xml:space="preserve"><value>Este PC não atende a um ou mais requisitos da IA local.</value></data>
   <data name="Onboarding_LocalAi_UnavailableTitle" xml:space="preserve"><value>A IA local não está disponível</value></data>
   <data name="Onboarding_LocalAi_WslConfigReadFailureReason" xml:space="preserve"><value>O OpenClaw não consegue ler com segurança o arquivo .wslconfig global. Verifique se o arquivo é válido e pode ser lido e tente configurar novamente.</value></data>
-  <data name="Onboarding_Welcome_LocalAiAvailableBadge.Text" xml:space="preserve"><value>IA local disponível</value></data>
+  <data name="Onboarding_Welcome_LocalAiAvailableBadge.Text" xml:space="preserve"><value>Compatível com IA local</value></data>
+  <data name="Onboarding_Welcome_LocalAiAvailabilityDetail" xml:space="preserve"><value>A GPU {0} pode executar IA local neste PC.</value></data>
   <data name="VoiceSettingsPage_MiniMaxApiKeyBox.Header" xml:space="preserve"><value>Chave da API</value></data>
   <data name="VoiceSettingsPage_MiniMaxModelBox.Header" xml:space="preserve"><value>Modelo</value></data>
   <data name="VoiceSettingsPage_MiniMaxModelBox.PlaceholderText" xml:space="preserve"><value>speech-2.8-hd</value></data>
