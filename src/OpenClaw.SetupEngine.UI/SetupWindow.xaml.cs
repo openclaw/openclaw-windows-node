@@ -207,7 +207,7 @@ public sealed partial class SetupWindow : Window
                 _localAiHardwareProbeTask.IsFaulted ||
                 _localAiHardwareProbeTask.IsCanceled)
             {
-                _localAiHardwareProbeTask = Task.Run(() => new NvmlHostHardwareProbe().Probe());
+                _localAiHardwareProbeTask = Task.Run(() => new CudaHostHardwareProbe().Probe());
             }
 
             return _localAiHardwareProbeTask;
@@ -306,7 +306,8 @@ public sealed partial class SetupWindow : Window
         TimeSpan elapsed,
         string? logPath,
         string? errorMessage = null,
-        GatewayCompatibilityFailureKind? compatibilityFailure = null)
+        GatewayCompatibilityFailureKind? compatibilityFailure = null,
+        LocalAiFailureDetail? detail = null)
     {
         var canRetryFallback =
             compatibilityFailure is { } failureKind &&
@@ -324,7 +325,8 @@ public sealed partial class SetupWindow : Window
                 CanRetryGatewayFallback: canRetryFallback,
                 GatewayFallbackVersion: canRetryFallback
                     ? GatewayReleasePolicy.FallbackVersion
-                    : null));
+                    : null,
+                Detail: detail));
     }
 
     public bool TryRetryWithGatewayFallback(out string? error)
@@ -500,5 +502,6 @@ public sealed record CompletePageArgs(
     bool ShowStartupPreference = true,
     SetupReviewSummary? ReviewSummary = null,
     bool CanRetryGatewayFallback = false,
-    string? GatewayFallbackVersion = null);
+    string? GatewayFallbackVersion = null,
+    LocalAiFailureDetail? Detail = null);
 public sealed record SetupCompletedEventArgs(bool EnableAutoStart);

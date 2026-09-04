@@ -115,6 +115,10 @@
                         <TextBlock x:Name="ErrorText" TextWrapping="Wrap"
                                    FontSize="13" FontFamily="Cascadia Code,Consolas,monospace"
                                    Foreground="{ThemeResource SystemFillColorCriticalBrush}" />
+                        <TextBlock x:Name="ServerDiagnosticsText" TextWrapping="Wrap"
+                                   Visibility="Collapsed"
+                                   FontSize="12" FontFamily="Cascadia Code,Consolas,monospace"
+                                   Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
                         <HyperlinkButton x:Name="HelpLink"
                                          Visibility="Collapsed"
                                          Padding="0"
@@ -122,13 +126,17 @@
                         <HyperlinkButton x:Name="ViewLogLink" Content="View full log →"
                                          Click="ViewLog_Click" Padding="0"
                                          FontSize="13" />
+                        <HyperlinkButton x:Name="ViewServerLogLink"
+                                         Visibility="Collapsed"
+                                         Click="ViewServerLog_Click" Padding="0"
+                                         FontSize="13" />
                     </StackPanel>
                 </Border>
 
                 <InfoBar x:Name="NodeModeBanner"
                          IsOpen="True" IsClosable="False" Severity="Informational"
                          Title="Node mode enabled"
-                         Message="This PC will operate as a remote compute node. The gateway can invoke screen capture, camera, and system commands on this machine." />
+                         Message="The gateway can use this PC for screen capture, camera, and system commands." />
 
                 <Border x:Name="StartupRow"
                         Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
