@@ -29,6 +29,7 @@ public sealed partial class SetupWindow : Window
     private readonly object _localAiHardwareProbeLock = new();
     private Task<HostHardwareInfo>? _localAiHardwareProbeTask;
     private readonly WslViabilityProbe _wslViabilityProbe = new(InspectWslViabilityAsync);
+    private bool _startAtLocalAiRecoveryReview;
 
     public static SetupWindow? Active { get; private set; }
 
@@ -47,6 +48,7 @@ public sealed partial class SetupWindow : Window
         _setupLock is not null &&
         RootFrame.Content is not ProgressPage { IsPipelineRunning: true } &&
         RootFrame.Content is not WizardPage;
+    public bool CanNavigateToLocalAiRecoveryReview => CanNavigateToGatewayInstalledMilestone;
 
     [DllImport("user32.dll")]
     private static extern uint GetDpiForWindow(IntPtr hwnd);
@@ -54,6 +56,7 @@ public sealed partial class SetupWindow : Window
     public SetupWindow(
         string? configPath = null,
         bool startAtGatewayInstalledMilestone = false,
+        bool startAtLocalAiRecoveryReview = false,
         string? dataDir = null,
         string? localDataDir = null,
         string? distroNameOverride = null,
@@ -62,6 +65,7 @@ public sealed partial class SetupWindow : Window
     {
         _dataDir = dataDir ?? SetupContext.ResolveDataDir();
         _localDataDir = localDataDir ?? SetupContext.ResolveLocalDataDir();
+        _startAtLocalAiRecoveryReview = startAtLocalAiRecoveryReview;
         InitializeComponent();
         Active = this;
 
@@ -189,6 +193,8 @@ public sealed partial class SetupWindow : Window
 
         if (startAtGatewayInstalledMilestone)
             NavigateToGatewayInstalledMilestone();
+        else if (startAtLocalAiRecoveryReview)
+            NavigateToCapabilities();
         else
             NavigateTo(typeof(SecurityNoticePage), _config);
     }
@@ -227,13 +233,16 @@ public sealed partial class SetupWindow : Window
     }
 
     public void NavigateToAdvancedSetup() => NavigateTo(typeof(AdvancedSetupPage), _config);
-    public void NavigateToCapabilities() => NavigateTo(typeof(CapabilitiesPage), _config);
+    public void NavigateToCapabilities() =>
+        NavigateTo(
+            typeof(CapabilitiesPage),
+            new CapabilitiesPageArgs(_config, _startAtLocalAiRecoveryReview));
     public void NavigateToProgress() => NavigateTo(typeof(ProgressPage), CreateProgressPageArgs(showMilestoneOnly: false));
     public void NavigateToGatewayInstalledMilestone() =>
         NavigateTo(typeof(ProgressPage), CreateProgressPageArgs(showMilestoneOnly: true));
 
     private ProgressPageArgs CreateProgressPageArgs(bool showMilestoneOnly) =>
-        new(_config, showMilestoneOnly, _dataDir, _localDataDir);
+        new(_config, showMilestoneOnly, _startAtLocalAiRecoveryReview, _dataDir, _localDataDir);
 
     public bool TryNavigateToGatewayInstalledMilestone()
     {
@@ -243,6 +252,18 @@ public sealed partial class SetupWindow : Window
         _persistStartupPreferenceOnComplete = false;
         _showStartupPreferenceOnComplete = false;
         NavigateToGatewayInstalledMilestone();
+        return true;
+    }
+
+    public bool TryNavigateToLocalAiRecoveryReview()
+    {
+        if (!CanNavigateToLocalAiRecoveryReview)
+            return false;
+
+        _startAtLocalAiRecoveryReview = true;
+        _config.LocalAi.Enabled = true;
+        _config.SkipWizard = true;
+        NavigateToCapabilities();
         return true;
     }
 

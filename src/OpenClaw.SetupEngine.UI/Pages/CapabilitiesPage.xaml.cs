@@ -74,7 +74,8 @@ public sealed partial class CapabilitiesPage : Page
 
     protected override void OnNavigatedTo(NavigationEventArgs e)
     {
-        _config = e.Parameter as SetupConfig ?? new SetupConfig();
+        var args = e.Parameter as CapabilitiesPageArgs;
+        _config = args?.Config ?? e.Parameter as SetupConfig ?? new SetupConfig();
         // The tray always registers device.info/status with Node Mode. Keep the
         // setup declaration and gateway allowlist aligned with that runtime contract.
         _config.Capabilities.Device = true;
@@ -105,7 +106,9 @@ public sealed partial class CapabilitiesPage : Page
         TailscaleAuthModeSelector.SelectedIndex = _config.Tailscale.AuthMode == TailscaleAuthMode.AuthKey ? 1 : 0;
         UpdateTailscaleOptions();
         var previewPage = SetupPreview.RequestedPage;
-        var localAiReviewPreview = previewPage is "capabilities-review" or "capabilities-review-consent";
+        var localAiReviewPreview =
+            args?.StartAtLocalAiReview == true ||
+            previewPage is "capabilities-review" or "capabilities-review-consent";
         _forceLocalAiNetworkingConsent = previewPage == "capabilities-review-consent";
         if (localAiReviewPreview)
             _config.LocalAi.Enabled = true;

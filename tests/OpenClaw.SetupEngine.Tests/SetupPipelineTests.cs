@@ -127,6 +127,23 @@ public class SetupPipelineTests
     }
 
     [Fact]
+    public void BuildLocalAiRecoverySteps_PreservesExistingWslGateway()
+    {
+        var steps = SetupStepFactory.BuildLocalAiRecoverySteps();
+
+        Assert.DoesNotContain(steps, step => step is CleanupStaleDistroStep);
+        Assert.DoesNotContain(steps, step => step is CleanupStaleGatewayStep);
+        Assert.DoesNotContain(steps, step => step is CreateWslInstanceStep);
+        Assert.DoesNotContain(steps, step => step is ConfigureWslInstanceStep);
+        Assert.DoesNotContain(steps, step => step is InstallCliStep);
+        Assert.Contains(steps, step => step is AcquireLocalAiRuntimeStep);
+        Assert.Contains(steps, step => step is AcquireLocalAiModelStep);
+        Assert.Contains(steps, step => step is VerifyLocalAiWslStep);
+        Assert.IsType<ConfigureLocalAiGatewayStep>(steps[^2]);
+        Assert.IsType<RestartGatewayStep>(steps[^1]);
+    }
+
+    [Fact]
     public void LocalAiDisabled_SkipsEveryLocalAiMutation()
     {
         var ctx = CreateContext(new SetupConfig
