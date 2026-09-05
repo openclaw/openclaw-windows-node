@@ -295,10 +295,8 @@ public sealed class EnsureWslPlatformStep : SetupStep
 
     public override async Task<StepResult> ExecuteAsync(SetupContext ctx, CancellationToken ct)
     {
-        WslViabilityResult viability = await WslViabilityInspector.InspectAsync(
-            ctx.Commands,
-            ctx.Logger,
-            ct);
+        WslViabilityResult viability = ctx.WslViability
+            ?? await WslViabilityInspector.InspectAsync(ctx.Commands, ctx.Logger, ct);
         ctx.WslViability = viability;
 
         if (viability.Kind == WslViabilityKind.Ready)
