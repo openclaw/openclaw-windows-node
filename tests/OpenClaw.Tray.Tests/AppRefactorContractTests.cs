@@ -1326,6 +1326,30 @@ public sealed class AppRefactorContractTests
     }
 
     [Fact]
+    public void CompletePage_OffersTypedRestartChoiceWithoutForcingApplicationsClosed()
+    {
+        var root = TestRepositoryPaths.GetRepositoryRoot();
+        var xaml = File.ReadAllText(Path.Combine(root, "src", "OpenClaw.SetupEngine.UI", "Pages", "CompletePage.xaml"));
+        var complete = File.ReadAllText(Path.Combine(root, "src", "OpenClaw.SetupEngine.UI", "Pages", "CompletePage.xaml.cs"));
+        var progress = File.ReadAllText(Path.Combine(root, "src", "OpenClaw.SetupEngine.UI", "Pages", "ProgressPage.xaml.cs"));
+        var setupWindow = File.ReadAllText(Path.Combine(root, "src", "OpenClaw.SetupEngine.UI", "SetupWindow.xaml.cs"));
+        var deferRestart = ExtractMethod(complete, "RestartLaterButton_Click");
+
+        Assert.Contains("restartRequired: result.RequiresRestart", progress);
+        Assert.Contains("if (args.RequiresRestart)", complete);
+        Assert.Contains("OpenClaw needs to restart Windows to continue the installation. Would you like to restart now?", complete);
+        Assert.Contains("Content=\"Yes, restart now\"", xaml);
+        Assert.Contains("Content=\"No, I'm not ready yet\"", xaml);
+        Assert.Contains("Path.Combine(Environment.SystemDirectory, \"shutdown.exe\")", complete);
+        Assert.Contains("ArgumentList = { \"/r\", \"/t\", \"0\" }", complete);
+        Assert.DoesNotContain("\"/f\"", complete);
+        Assert.Contains("SetupWindow.Active?.Close()", deferRestart);
+        Assert.DoesNotContain("Process.", deferRestart);
+        Assert.Contains("public bool RequiresRestart { get; init; }", setupWindow);
+        Assert.DoesNotContain("LocalAiFailureDetail? Detail = null,\n    bool RequiresRestart", setupWindow.Replace("\r\n", "\n"));
+    }
+
+    [Fact]
     public void CapabilitiesPage_PersistsSelectedProfileIntoRuntimeNodeSettings()
     {
         var root = TestRepositoryPaths.GetRepositoryRoot();

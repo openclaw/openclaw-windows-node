@@ -316,7 +316,7 @@ public sealed class EnsureWslPlatformStep : SetupStep
             return StepResult.Ok("WSL platform installed and verified.");
         if (viability.Kind is WslViabilityKind.Installable or WslViabilityKind.EnvironmentBlocked)
         {
-            return StepResult.Terminal(
+            return StepResult.RestartRequired(
                 "WSL platform installation completed, but Windows must be restarted before WSL is ready. " +
                 "Reboot Windows, then run setup again.");
         }

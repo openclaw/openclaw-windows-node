@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Text.RegularExpressions;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
@@ -54,6 +55,31 @@ public sealed partial class CompletePage : Page
             else
             {
                 var errorMessage = args.ErrorMessage ?? "Unknown error";
+
+                if (args.RequiresRestart)
+                {
+                    SuccessIcon.Visibility = Visibility.Collapsed;
+                    FailureIcon.Visibility = Visibility.Collapsed;
+                    RestartIcon.Visibility = Visibility.Visible;
+                    TitleText.Text = "Restart required";
+                    SubtitleText.Text = "OpenClaw needs to restart Windows to continue the installation. Would you like to restart now?";
+                    SubtitleText.TextWrapping = TextWrapping.Wrap;
+                    SubtitleText.TextAlignment = TextAlignment.Center;
+                    SubtitleText.Visibility = Visibility.Visible;
+                    NodeModeBanner.Visibility = Visibility.Collapsed;
+                    StartupRow.Visibility = Visibility.Collapsed;
+                    SummaryPanel.Visibility = Visibility.Collapsed;
+                    LocalAiSummaryCard.Visibility = Visibility.Collapsed;
+                    ErrorCard.Visibility = Visibility.Collapsed;
+                    HelpLink.Visibility = Visibility.Collapsed;
+                    FallbackButton.Visibility = Visibility.Collapsed;
+                    LaunchButton.Visibility = Visibility.Collapsed;
+                    StepIndicator.Visibility = Visibility.Collapsed;
+                    RestartLaterButton.Visibility = Visibility.Visible;
+                    RestartNowButton.Visibility = Visibility.Visible;
+                    return;
+                }
+
                 // Local AI failures (identified by Detail) carry llama-server's own error text in
                 // errorMessage. That text is diagnostic evidence, not a curated OpenClaw message,
                 // so it must never be scanned for a URL to turn into a clickable help link.
@@ -61,6 +87,7 @@ public sealed partial class CompletePage : Page
 
                 SuccessIcon.Visibility = Visibility.Collapsed;
                 FailureIcon.Visibility = Visibility.Visible;
+                RestartIcon.Visibility = Visibility.Collapsed;
                 TitleText.Text = "Setup failed";
                 SubtitleText.Visibility = Visibility.Collapsed;
                 NodeModeBanner.Visibility = Visibility.Collapsed;
@@ -186,6 +213,35 @@ public sealed partial class CompletePage : Page
         FallbackButton.Visibility = Visibility.Collapsed;
         if (!string.IsNullOrWhiteSpace(error))
             ErrorText.Text = $"{ErrorText.Text}{Environment.NewLine}{error}";
+    }
+
+    private void RestartLaterButton_Click(object sender, RoutedEventArgs e)
+    {
+        SetupWindow.Active?.Close();
+    }
+
+    private void RestartNowButton_Click(object sender, RoutedEventArgs e)
+    {
+        try
+        {
+            var startInfo = new ProcessStartInfo
+            {
+                FileName = Path.Combine(Environment.SystemDirectory, "shutdown.exe"),
+                UseShellExecute = false,
+                CreateNoWindow = true,
+                ArgumentList = { "/r", "/t", "0" },
+            };
+            Process.Start(startInfo);
+            RestartNowButton.IsEnabled = false;
+            RestartLaterButton.IsEnabled = false;
+            SubtitleText.Text = "Windows is restarting...";
+        }
+        catch (Exception ex)
+        {
+            ErrorText.Text = $"Windows could not be restarted: {ex.Message}";
+            ErrorCard.Visibility = Visibility.Visible;
+            ViewLogLink.Visibility = Visibility.Collapsed;
+        }
     }
 
 }

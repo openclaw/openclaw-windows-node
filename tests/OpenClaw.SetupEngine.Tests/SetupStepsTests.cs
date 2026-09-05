@@ -2248,6 +2248,7 @@ public class SetupStepsTests : IDisposable
         var result = await step.ExecuteAsync(ctx, CancellationToken.None);
 
         Assert.Equal(StepOutcome.FailedTerminal, result.Outcome);
+        Assert.True(result.RequiresRestart);
         Assert.Contains("restarted", result.Message, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("Reboot Windows", result.Message);
         Assert.Equal(1, installCalls);
@@ -2284,6 +2285,7 @@ public class SetupStepsTests : IDisposable
         var result = await step.ExecuteAsync(ctx, CancellationToken.None);
 
         Assert.Equal(StepOutcome.FailedTerminal, result.Outcome);
+        Assert.True(result.RequiresRestart);
         Assert.Contains("Reboot Windows", result.Message);
         Assert.DoesNotContain("firmware", result.Message, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("BIOS", result.Message, StringComparison.OrdinalIgnoreCase);
