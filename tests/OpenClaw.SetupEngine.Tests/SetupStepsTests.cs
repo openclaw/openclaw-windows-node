@@ -2105,6 +2105,81 @@ public class SetupStepsTests : IDisposable
     }
 
     [Fact]
+    public async Task WslPipeline_ReusesPreflightResultBeforeInstallingMissingPlatform()
+    {
+        var installed = false;
+        var commands = new FakeCommandRunner(args => args switch
+        {
+            ["--version"] when !installed => new CommandResult(
+                1,
+                "",
+                "Windows Subsystem for Linux is not installed. See https://aka.ms/wslinstall",
+                TimeSpan.Zero,
+                TimedOut: false),
+            ["--version"] => Ok("WSL version: 2.7.3.0\n"),
+            ["--status"] => Ok("Default Version: 2\n"),
+            _ => Fail($"unexpected args: {string.Join(' ', args)}"),
+        });
+        var ctx = CreateContext(commands: commands);
+        var ensure = new EnsureWslPlatformStep((_, _) =>
+        {
+            installed = true;
+            return Task.FromResult(StepResult.Ok("installed"));
+        });
+        var pipeline = new SetupPipeline([new PreflightWslStep(), ensure]);
+
+        var result = await pipeline.RunAsync(ctx);
+
+        Assert.Equal(PipelineOutcome.Success, result.Outcome);
+        Assert.Equal(2, commands.Calls.Count(call => call.Arguments is ["--version"]));
+        Assert.Single(commands.Calls, call => call.Arguments is ["--status"]);
+    }
+
+    [Fact]
+    public async Task WslPipeline_ReusesReadyPreflightResultWithoutReinspection()
+    {
+        var installCalls = 0;
+        var commands = new FakeCommandRunner(args => args switch
+        {
+            ["--version"] => Ok("WSL version: 2.7.3.0\n"),
+            ["--status"] => Ok("Default Version: 2\n"),
+            _ => Fail($"unexpected args: {string.Join(' ', args)}"),
+        });
+        var ctx = CreateContext(commands: commands);
+        var ensure = new EnsureWslPlatformStep((_, _) =>
+        {
+            installCalls++;
+            return Task.FromResult(StepResult.Ok("installed"));
+        });
+        var pipeline = new SetupPipeline([new PreflightWslStep(), ensure]);
+
+        var result = await pipeline.RunAsync(ctx);
+
+        Assert.Equal(PipelineOutcome.Success, result.Outcome);
+        Assert.Equal(0, installCalls);
+        Assert.Single(commands.Calls, call => call.Arguments is ["--version"]);
+        Assert.Single(commands.Calls, call => call.Arguments is ["--status"]);
+    }
+
+    [Fact]
+    public async Task WslPipeline_BoundsHungVersionInspectionToOneProbe()
+    {
+        var commands = new FakeCommandRunner(args => args is ["--version"]
+            ? new CommandResult(-1, "", "", TimeSpan.FromSeconds(5), TimedOut: true)
+            : Fail($"unexpected args: {string.Join(' ', args)}"));
+        var ctx = CreateContext(commands: commands);
+        var pipeline = new SetupPipeline(
+            [new PreflightWslStep(), new EnsureWslPlatformStep((_, _) =>
+                Task.FromResult(StepResult.Ok("installed")))]);
+
+        var result = await pipeline.RunAsync(ctx);
+
+        Assert.Equal(PipelineOutcome.Failed, result.Outcome);
+        Assert.Equal("preflight-wsl", result.FailedStepId);
+        Assert.Single(commands.Calls, call => call.Arguments is ["--version"]);
+    }
+
+    [Fact]
     public async Task EnsureWslPlatform_InstallsOnlyAfterReadOnlyPreflight()
     {
         var installed = false;
