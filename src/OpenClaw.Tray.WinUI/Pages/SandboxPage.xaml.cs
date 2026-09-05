@@ -295,7 +295,8 @@ public sealed partial class SandboxPage : Page
             && availability.IsWxcExecResolvable
             && !availability.IsAppContainerAvailable;
 
-        var isSetupIssue = !availability.IsWxcExecResolvable;
+        var isSetupIssue = !availability.ProbeSuppressedBySkuGate
+            && !availability.IsWxcExecResolvable;
         var blockHostFallback = sandboxEnabled
             && (CurrentApp.Settings?.SystemRunBlockHostFallbackWhenMxcUnavailable ?? false);
         var unavailableBehavior = L(blockHostFallback
@@ -340,7 +341,12 @@ public sealed partial class SandboxPage : Page
 
     private bool IsSandboxDefinitivelyUnavailable()
     {
-        return _cachedAvailability is { CanRunSystemRunSandbox: false, ProbeErrored: false };
+        return _cachedAvailability is
+        {
+            CanRunSystemRunSandbox: false,
+            ProbeErrored: false,
+            ProbeSuppressedBySkuGate: false,
+        };
     }
 
     private bool NormalizeSandboxToggleForAvailability()

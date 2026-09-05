@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.Runtime.InteropServices;
 using System.Text;
 using System.Text.Json;
 
@@ -44,6 +45,7 @@ public sealed class MxcAvailability
     public bool IsIsolationSessionAvailable { get; }
     public bool IsWxcExecResolvable { get; }
     public string? WxcExecPath { get; }
+    public bool ProbeSuppressedBySkuGate { get; }
 
     /// <summary>
     /// True when the availability verdict came from a <em>probe error</em>
@@ -137,7 +139,8 @@ public sealed class MxcAvailability
         bool probeErrored = false,
         string? isolationTier = null,
         bool needsDaclAugmentation = false,
-        IReadOnlyList<string>? warnings = null)
+        IReadOnlyList<string>? warnings = null,
+        bool probeSuppressedBySkuGate = false)
     {
         IsAppContainerAvailable = isAppContainerAvailable;
         IsIsolationSessionAvailable = isIsolationSessionAvailable;
@@ -148,6 +151,7 @@ public sealed class MxcAvailability
         IsolationTier = isolationTier;
         NeedsDaclAugmentation = needsDaclAugmentation;
         Warnings = warnings ?? Array.Empty<string>();
+        ProbeSuppressedBySkuGate = probeSuppressedBySkuGate;
     }
 
     /// <summary>
@@ -166,20 +170,43 @@ public sealed class MxcAvailability
     /// </summary>
     internal static MxcAvailability Probe(
         IOpenClawLogger? logger,
-        Func<string, WxcProbeInvocation>? probeRunner)
+        Func<string, WxcProbeInvocation>? probeRunner,
+        Func<bool?>? windowsServerProvider = null,
+        Func<bool>? windowsProvider = null,
+        Func<(bool Resolvable, string? Path)>? wxcResolver = null)
     {
         var log = logger ?? NullLogger.Instance;
         var reasons = new List<string>();
 
-        if (!OperatingSystem.IsWindows())
+        if (!(windowsProvider?.Invoke() ?? OperatingSystem.IsWindows()))
         {
             reasons.Add("MXC requires Windows.");
             return new MxcAvailability(false, false, false, null, reasons);
         }
 
+        var isWindowsServer = (windowsServerProvider ?? DetectWindowsServerSku)();
+        if (isWindowsServer != false)
+        {
+            var reason = isWindowsServer == true
+                ? "Windows Server does not support OpenClaw MXC containment."
+                : "OpenClaw could not verify that this is a supported Windows client SKU.";
+            reasons.Add(reason);
+            log.Warn(
+                $"[mxc] availability: supported=false sku=" +
+                $"{(isWindowsServer == true ? "windows_server" : "unknown")} probe=skipped");
+            return new MxcAvailability(
+                false,
+                false,
+                false,
+                null,
+                reasons,
+                probeErrored: isWindowsServer is null,
+                probeSuppressedBySkuGate: true);
+        }
+
         // wxc-exec is the source of truth for host support, so resolve it first.
         // Without the binary we cannot probe and therefore report unavailable.
-        var (wxcResolvable, wxcPath) = ResolveWxcExec();
+        var (wxcResolvable, wxcPath) = (wxcResolver ?? ResolveWxcExec)();
         if (!wxcResolvable || string.IsNullOrEmpty(wxcPath))
         {
             reasons.Add($"wxc-exec.exe not found. Set {WxcExecOverrideEnvVar} or build the tray app to copy it into the output folder.");
@@ -231,6 +258,84 @@ public sealed class MxcAvailability
             isolationTier: probe.Tier,
             needsDaclAugmentation: probe.NeedsDaclAugmentation,
             warnings: probe.Warnings);
+    }
+
+    internal static bool? DetectWindowsServerSku()
+    {
+        try
+        {
+            // Managed equivalent of VersionHelpers.h IsWindowsServer(). A false
+            // workstation comparison with ERROR_OLD_WIN_VERSION means Server.
+            var versionInfo = new OsVersionInfoEx
+            {
+                OsVersionInfoSize = (uint)Marshal.SizeOf<OsVersionInfoEx>(),
+                ServicePack = string.Empty,
+                ProductType = NativeMethods.VerNtWorkstation,
+            };
+            var conditionMask = NativeMethods.VerSetConditionMask(
+                0,
+                NativeMethods.VerProductType,
+                NativeMethods.VerEqual);
+
+            if (NativeMethods.VerifyVersionInfo(
+                    ref versionInfo,
+                    NativeMethods.VerProductType,
+                    conditionMask))
+            {
+                return false;
+            }
+
+            return Marshal.GetLastWin32Error() == NativeMethods.ErrorOldWinVersion
+                ? true
+                : null;
+        }
+        catch (Exception ex) when (ex is DllNotFoundException
+            or EntryPointNotFoundException
+            or BadImageFormatException
+            or MarshalDirectiveException)
+        {
+            return null;
+        }
+    }
+
+    [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
+    private struct OsVersionInfoEx
+    {
+        public uint OsVersionInfoSize;
+        public uint MajorVersion;
+        public uint MinorVersion;
+        public uint BuildNumber;
+        public uint PlatformId;
+
+        [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 128)]
+        public string? ServicePack;
+
+        public ushort ServicePackMajor;
+        public ushort ServicePackMinor;
+        public ushort SuiteMask;
+        public byte ProductType;
+        public byte Reserved;
+    }
+
+    private static class NativeMethods
+    {
+        internal const uint VerProductType = 0x00000080;
+        internal const byte VerEqual = 1;
+        internal const byte VerNtWorkstation = 1;
+        internal const int ErrorOldWinVersion = 1150;
+
+        [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        internal static extern bool VerifyVersionInfo(
+            ref OsVersionInfoEx versionInfo,
+            uint typeMask,
+            ulong conditionMask);
+
+        [DllImport("kernel32.dll")]
+        internal static extern ulong VerSetConditionMask(
+            ulong conditionMask,
+            uint typeMask,
+            byte condition);
     }
 
     /// <summary>

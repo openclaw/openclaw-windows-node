@@ -1934,6 +1934,7 @@ public sealed class AppRefactorContractTests
             "UpdateControlsEnabledState();");
         Assert.Contains("CanRunSystemRunSandbox: false", definitiveUnavailable);
         Assert.Contains("ProbeErrored: false", definitiveUnavailable);
+        Assert.Contains("ProbeSuppressedBySkuGate: false", definitiveUnavailable);
         AssertInOrder(
             normalize,
             "settings.SystemRunSandboxEnabled",
@@ -1942,6 +1943,19 @@ public sealed class AppRefactorContractTests
         Assert.Contains("settings.SystemRunSandboxEnabled = false", normalize);
         Assert.Contains("SandboxEnabledToggle.IsOn = false", normalize);
         Assert.Contains("Save();", normalize);
+    }
+
+    [Fact]
+    public void SandboxPage_SkuSuppressionIsNotClassifiedAsMissingComponents()
+    {
+        var source = ReadSandboxPageSource();
+        var actionBar = ExtractMethod(source, "UpdateUnavailableActionBar");
+
+        AssertInOrder(
+            actionBar,
+            "var isSetupIssue",
+            "!availability.ProbeSuppressedBySkuGate",
+            "!availability.IsWxcExecResolvable");
     }
 
     [Fact]
