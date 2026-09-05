@@ -2256,6 +2256,41 @@ public class SetupStepsTests : IDisposable
     }
 
     [Fact]
+    public async Task EnsureWslPlatform_RequiresRestartWhenPostInstallStatusLooksLikeFirmwareFailure()
+    {
+        var installed = false;
+        var commands = new FakeCommandRunner(args => args switch
+        {
+            ["--version"] => Ok("WSL version: 2.7.13.0\n"),
+            ["--status"] when !installed => new CommandResult(
+                1,
+                "",
+                "Error code: Wsl/WSL_E_WSL_OPTIONAL_COMPONENT_REQUIRED",
+                TimeSpan.Zero,
+                TimedOut: false),
+            ["--status"] => Ok(
+                "WSL2 is unable to start since virtualization is not enabled on this machine. "
+                + "Please ensure the 'Virtual Machine Platform' optional component is enabled "
+                + "and virtualization is turned on in your computer's firmware settings."),
+            _ => Fail($"unexpected args: {string.Join(' ', args)}"),
+        });
+        var ctx = CreateContext(commands: commands);
+        var step = new EnsureWslPlatformStep((_, _) =>
+        {
+            installed = true;
+            return Task.FromResult(StepResult.Ok("installed"));
+        });
+
+        var result = await step.ExecuteAsync(ctx, CancellationToken.None);
+
+        Assert.Equal(StepOutcome.FailedTerminal, result.Outcome);
+        Assert.Contains("Reboot Windows", result.Message);
+        Assert.DoesNotContain("firmware", result.Message, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("BIOS", result.Message, StringComparison.OrdinalIgnoreCase);
+        Assert.Equal(4, commands.Calls.Count);
+    }
+
+    [Fact]
     public async Task EnsureWslPlatform_PropagatesElevationCancellationWithoutReinspection()
     {
         var commands = new FakeCommandRunner(args => args switch
