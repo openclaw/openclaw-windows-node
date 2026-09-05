@@ -341,13 +341,34 @@ internal sealed class WindowManager : IWindowManager
 
     public async Task ShowOnboardingAsync()
     {
-        await EnsureSetupWindowAsync(startAtGatewayInstalledMilestone: false);
+        await EnsureSetupWindowAsync(
+            startAtGatewayInstalledMilestone: false,
+            startAtLocalAiRecoveryReview: false);
+    }
+
+    public async Task ShowLocalAiSetupRecoveryAsync()
+    {
+        var (setupWindow, created) = await EnsureSetupWindowAsync(
+            startAtGatewayInstalledMilestone: false,
+            startAtLocalAiRecoveryReview: true);
+        if (!_isShuttingDown && !created && setupWindow is { IsClosed: false })
+        {
+            if (setupWindow.TryNavigateToLocalAiRecoveryReview())
+            {
+                Logger.Info("Setup window already open; switched to Local AI recovery review");
+            }
+            else
+            {
+                Logger.Info("Setup window already open; leaving current setup page visible to avoid interrupting active setup");
+            }
+        }
     }
 
     public async Task ShowGatewayWizardAsync()
     {
         var (setupWindow, created) = await EnsureSetupWindowAsync(
-            startAtGatewayInstalledMilestone: true);
+            startAtGatewayInstalledMilestone: true,
+            startAtLocalAiRecoveryReview: false);
         if (!_isShuttingDown && !created && setupWindow is { IsClosed: false })
         {
             if (setupWindow.TryNavigateToGatewayInstalledMilestone())
@@ -362,7 +383,8 @@ internal sealed class WindowManager : IWindowManager
     }
 
     private async Task<(SetupWindow? Window, bool Created)> EnsureSetupWindowAsync(
-        bool startAtGatewayInstalledMilestone)
+        bool startAtGatewayInstalledMilestone,
+        bool startAtLocalAiRecoveryReview)
     {
         if (_isShuttingDown || _callbacks.GetSettings() is null)
         {
@@ -409,6 +431,7 @@ internal sealed class WindowManager : IWindowManager
         {
             setupWindow = new SetupWindow(
                 startAtGatewayInstalledMilestone: startAtGatewayInstalledMilestone,
+                startAtLocalAiRecoveryReview: startAtLocalAiRecoveryReview,
                 dataDir: AppIdentity.ResolveRoamingDataDirectory(),
                 localDataDir: AppIdentity.ResolveSetupLocalDataDirectory(),
                 distroNameOverride: AppIdentity.SetupDistroName,
