@@ -2257,6 +2257,33 @@ public class SetupStepsTests : IDisposable
     }
 
     [Fact]
+    public async Task EnsureWslPlatform_PreservesRestartRequiredFromInstaller()
+    {
+        var commands = new FakeCommandRunner(args => args switch
+        {
+            ["--version"] => Ok("WSL version: 2.7.3.0\n"),
+            ["--status"] => new CommandResult(
+                1,
+                "",
+                "Error code: Wsl/WSL_E_WSL_OPTIONAL_COMPONENT_REQUIRED",
+                TimeSpan.Zero,
+                TimedOut: false),
+            _ => Fail($"unexpected args: {string.Join(' ', args)}"),
+        });
+        var ctx = CreateContext(commands: commands);
+        var installerResult = StepResult.RestartRequired("installer requires restart");
+        var step = new EnsureWslPlatformStep((_, _) => Task.FromResult(installerResult));
+
+        var result = await step.ExecuteAsync(ctx, CancellationToken.None);
+
+        Assert.Same(installerResult, result);
+        Assert.Equal(StepOutcome.FailedTerminal, result.Outcome);
+        Assert.True(result.RequiresRestart);
+        Assert.Equal("installer requires restart", result.Message);
+        Assert.Equal(2, commands.Calls.Count);
+    }
+
+    [Fact]
     public async Task EnsureWslPlatform_RequiresRestartWhenPostInstallStatusLooksLikeFirmwareFailure()
     {
         var installed = false;

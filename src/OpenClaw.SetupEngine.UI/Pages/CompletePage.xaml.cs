@@ -1,4 +1,3 @@
-using System.Diagnostics;
 using System.Text.RegularExpressions;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
@@ -6,6 +5,7 @@ using Microsoft.UI.Xaml.Media;
 using Microsoft.UI.Xaml.Navigation;
 using OpenClaw.SetupEngine;
 using OpenClaw.SetupEngine.UI;
+using OpenClaw.Shared;
 using Windows.UI;
 
 namespace OpenClaw.SetupEngine.UI.Pages;
@@ -13,6 +13,7 @@ namespace OpenClaw.SetupEngine.UI.Pages;
 public sealed partial class CompletePage : Page
 {
     private static readonly Regex s_urlRegex = new(@"https?://[^\s)]+", RegexOptions.Compiled | RegexOptions.IgnoreCase);
+    private static readonly WindowsRestartLauncher s_windowsRestartLauncher = new();
     private string? _logPath;
     private string? _serverLogDirectory;
 
@@ -222,26 +223,30 @@ public sealed partial class CompletePage : Page
 
     private void RestartNowButton_Click(object sender, RoutedEventArgs e)
     {
-        try
-        {
-            var startInfo = new ProcessStartInfo
-            {
-                FileName = Path.Combine(Environment.SystemDirectory, "shutdown.exe"),
-                UseShellExecute = false,
-                CreateNoWindow = true,
-                ArgumentList = { "/r", "/t", "0" },
-            };
-            Process.Start(startInfo);
-            RestartNowButton.IsEnabled = false;
-            RestartLaterButton.IsEnabled = false;
-            SubtitleText.Text = "Windows is restarting...";
-        }
-        catch (Exception ex)
-        {
-            ErrorText.Text = $"Windows could not be restarted: {ex.Message}";
-            ErrorCard.Visibility = Visibility.Visible;
-            ViewLogLink.Visibility = Visibility.Collapsed;
-        }
+        AsyncEventHandlerGuard.Run(
+            RestartWindowsAsync,
+            NullLogger.Instance,
+            nameof(RestartNowButton_Click),
+            ShowRestartError);
+    }
+
+    private async Task RestartWindowsAsync()
+    {
+        RestartNowButton.IsEnabled = false;
+        RestartLaterButton.IsEnabled = false;
+        SubtitleText.Text = "Windows is restarting...";
+
+        await s_windowsRestartLauncher.RestartAsync();
+    }
+
+    private void ShowRestartError(Exception ex)
+    {
+        ErrorText.Text = $"Windows could not be restarted: {ex.Message}";
+        ErrorCard.Visibility = Visibility.Visible;
+        ViewLogLink.Visibility = Visibility.Collapsed;
+        RestartNowButton.IsEnabled = true;
+        RestartLaterButton.IsEnabled = true;
+        SubtitleText.Text = "OpenClaw needs to restart Windows to continue the installation. Would you like to restart now?";
     }
 
 }
