@@ -108,6 +108,7 @@ public sealed class ConfigureLocalAiGatewayStep : SetupStep
             prior.PrimaryModelExisted &&
             JsonEquals(prior.PrimaryModelJson!, expectedPrimary);
         string? fallbackModel;
+        bool recoveryProviderTransition = false;
         if (prior.ProviderExisted)
         {
             bool matchesCurrentInstall = install.Endpoint is not null &&
@@ -132,8 +133,7 @@ public sealed class ConfigureLocalAiGatewayStep : SetupStep
                 return StepResult.Fail(
                     "The existing llamacpp gateway route is not the exact companion-managed configuration; preserving it.");
             }
-            if (matchesRecoveryInstall)
-                ctx.LocalAiRecoveryProviderTransition = true;
+            recoveryProviderTransition = matchesRecoveryInstall;
             fallbackModel = install.Manifest.GatewayFallbackModel;
         }
         else if (retainedManagedPrimary)
@@ -153,6 +153,11 @@ public sealed class ConfigureLocalAiGatewayStep : SetupStep
         else
         {
             fallbackModel = null;
+        }
+        if (ctx.LocalAiRecoveryOriginalInstall is not null &&
+            (recoveryProviderTransition || !prior.ProviderExisted))
+        {
+            ctx.LocalAiRecoveryProviderTransition = true;
         }
         ctx.LocalAiGatewayPriorState ??= prior;
 
@@ -241,11 +246,11 @@ public sealed class ConfigureLocalAiGatewayStep : SetupStep
             ? ctx.LocalAiRecoveryOriginalInstall
             : null;
         if (recoveryOriginal is not null &&
-            current.ProviderExisted &&
-            prior.ProviderExisted &&
-            LocalAiGatewayProviderDefinition.MatchesProviderJson(
-                current.ProviderJson!,
-                recoveryOriginal) &&
+            current.ProviderExisted == prior.ProviderExisted &&
+            (!current.ProviderExisted ||
+                LocalAiGatewayProviderDefinition.MatchesProviderJson(
+                    current.ProviderJson!,
+                    recoveryOriginal)) &&
             current.PrimaryModelExisted == prior.PrimaryModelExisted &&
             (!current.PrimaryModelExisted ||
                 JsonEquals(current.PrimaryModelJson!, prior.PrimaryModelJson!)))
@@ -268,7 +273,7 @@ public sealed class ConfigureLocalAiGatewayStep : SetupStep
         }
 
         string restoreBatch;
-        if (recoveryOriginal is not null)
+        if (recoveryOriginal is not null && prior.ProviderExisted)
         {
             restoreBatch = LocalAiGatewayConfigBuilder.BuildRecoveryRestoreBatchJson(
                 prior,
@@ -294,8 +299,6 @@ public sealed class ConfigureLocalAiGatewayStep : SetupStep
                 ctx.Logger.Warn("Restoring the previous Local AI gateway settings failed.");
                 return;
             }
-            if (recoveryOriginal is not null)
-                ctx.LocalAiRecoveryReceiptRollbackAllowed = true;
         }
 
         var unset = new List<string>(2);
@@ -310,8 +313,21 @@ public sealed class ConfigureLocalAiGatewayStep : SetupStep
                 ctx.DistroName!, script, TimeSpan.FromMinutes(2), ct: ct,
                 user: ctx.Config.Wsl.User, inputViaStdin: true);
             if (result.ExitCode != 0 || result.TimedOut)
+            {
+                if (recoveryOriginal is not null)
+                {
+                    await ReconcileFailedRecoveryRestoreAsync(
+                        ctx,
+                        prior,
+                        recoveryOriginal,
+                        ct).ConfigureAwait(false);
+                }
                 ctx.Logger.Warn("Removing setup-created Local AI gateway settings failed.");
+                return;
+            }
         }
+        if (recoveryOriginal is not null)
+            ctx.LocalAiRecoveryReceiptRollbackAllowed = true;
     }
 
     private static async Task ReconcileFailedRecoveryRestoreAsync(
@@ -343,11 +359,11 @@ public sealed class ConfigureLocalAiGatewayStep : SetupStep
         }
 
         bool originalRestored =
-            observed.ProviderExisted &&
-            prior.ProviderExisted &&
-            LocalAiGatewayProviderDefinition.MatchesProviderJson(
-                observed.ProviderJson!,
-                recoveryOriginal) &&
+            observed.ProviderExisted == prior.ProviderExisted &&
+            (!observed.ProviderExisted ||
+                LocalAiGatewayProviderDefinition.MatchesProviderJson(
+                    observed.ProviderJson!,
+                    recoveryOriginal)) &&
             observed.PrimaryModelExisted == prior.PrimaryModelExisted &&
             (!observed.PrimaryModelExisted ||
                 JsonEquals(observed.PrimaryModelJson!, prior.PrimaryModelJson!));
