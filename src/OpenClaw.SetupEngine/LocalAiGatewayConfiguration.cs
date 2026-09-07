@@ -86,7 +86,6 @@ public sealed class ConfigureLocalAiGatewayStep : SetupStep
     {
         if (ctx.LocalAiResolvedInstall is null || ctx.LocalAiEligibility?.Plan is null)
             return StepResult.Terminal("Local AI gateway configuration requires a qualified install receipt.");
-        ctx.LocalAiRecoveryProviderTransition = false;
 
         CommandResult snapshotResult = await CaptureStateAsync(ctx, ct);
         if (snapshotResult.ExitCode != 0 || snapshotResult.TimedOut)
@@ -133,7 +132,8 @@ public sealed class ConfigureLocalAiGatewayStep : SetupStep
                 return StepResult.Fail(
                     "The existing llamacpp gateway route is not the exact companion-managed configuration; preserving it.");
             }
-            ctx.LocalAiRecoveryProviderTransition = matchesRecoveryInstall;
+            if (matchesRecoveryInstall)
+                ctx.LocalAiRecoveryProviderTransition = true;
             fallbackModel = install.Manifest.GatewayFallbackModel;
         }
         else if (retainedManagedPrimary)
@@ -154,6 +154,7 @@ public sealed class ConfigureLocalAiGatewayStep : SetupStep
         {
             fallbackModel = null;
         }
+        ctx.LocalAiGatewayPriorState ??= prior;
 
         ctx.LocalAiGatewayPriorState = retainedManagedPrimary
             ? prior with
@@ -242,8 +243,6 @@ public sealed class ConfigureLocalAiGatewayStep : SetupStep
             (!current.PrimaryModelExisted ||
                 JsonEquals(current.PrimaryModelJson!, prior.PrimaryModelJson!)))
         {
-            if (await RestoreRecoveryManifestAsync(ctx, recoveryOriginal, ct).ConfigureAwait(false))
-                ctx.LocalAiRecoveryProviderTransition = false;
             return;
         }
 
@@ -279,12 +278,6 @@ public sealed class ConfigureLocalAiGatewayStep : SetupStep
             }
         }
 
-        if (recoveryOriginal is not null)
-        {
-            if (await RestoreRecoveryManifestAsync(ctx, recoveryOriginal, ct).ConfigureAwait(false))
-                ctx.LocalAiRecoveryProviderTransition = false;
-        }
-
         var unset = new List<string>(2);
         if (!prior.PrimaryModelExisted)
             unset.Add($"openclaw config unset {LocalAiGatewayConfigBuilder.PrimaryModelPath}");
@@ -298,26 +291,6 @@ public sealed class ConfigureLocalAiGatewayStep : SetupStep
                 user: ctx.Config.Wsl.User, inputViaStdin: true);
             if (result.ExitCode != 0 || result.TimedOut)
                 ctx.Logger.Warn("Removing setup-created Local AI gateway settings failed.");
-        }
-    }
-
-    private static async Task<bool> RestoreRecoveryManifestAsync(
-        SetupContext ctx,
-        LocalAiResolvedInstall recoveryOriginal,
-        CancellationToken ct)
-    {
-        try
-        {
-            var store = new LocalAiManifestStore(new LocalAiPaths(ctx.LocalDataDir));
-            await store.SaveAsync(recoveryOriginal.Manifest, ct).ConfigureAwait(false);
-            ctx.LocalAiResolvedInstall = store.ResolveAndValidate(recoveryOriginal.Manifest);
-            return true;
-        }
-        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or InvalidDataException)
-        {
-            ctx.Logger.Warn(
-                $"Restoring the previous Local AI endpoint receipt failed ({ex.GetType().Name}).");
-            return false;
         }
     }
 
