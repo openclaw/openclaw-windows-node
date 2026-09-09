@@ -17,7 +17,7 @@ A comprehensive guide for building, running, and contributing to the OpenClaw Wi
 
 ### Required
 
-- **.NET 10 SDK** - [Download here](https://dotnet.microsoft.com/download)
+- **.NET SDK 10.0.400 or newer** - [Download here](https://dotnet.microsoft.com/download)
 - **Windows 10/11** - WinUI 3 and Windows App SDK require Windows 10 version 1903 or later
 - **Node.js LTS with npm** - Required by the WinUI build to restore JavaScript build assets
 - **Windows 10 SDK** - Required for WinUI builds

@@ -195,16 +195,23 @@ if (-not $dotnetVersion) {
 } else {
     Write-Success ".NET SDK: $dotnetVersion"
     
-    # Check for .NET 10 (needed for all projects)
+    # Reactor preview.14 source generators require Roslyn 5.9, first shipped
+    # in the .NET 10.0.400 feature band.
+    $minimumNet10Sdk = [version]"10.0.400"
     $sdks = & dotnet --list-sdks 2>$null
-    $hasNet10 = $sdks | Where-Object { $_ -match "^10\." }
+    $hasNet10 = $sdks |
+        ForEach-Object {
+            $match = [regex]::Match($_, "^(\d+\.\d+\.\d+)")
+            if ($match.Success) { [version]$match.Groups[1].Value }
+        } |
+        Where-Object { $_.Major -eq 10 -and $_ -ge $minimumNet10Sdk }
     
     if (-not $hasNet10) {
-        Write-Error ".NET 10 SDK not found (required for all projects)"
-        Write-Info "Download preview from: https://dotnet.microsoft.com/download/dotnet/10.0"
-        $issues += "Missing .NET 10 SDK"
+        Write-Error ".NET SDK 10.0.400 or newer not found (required for all projects)"
+        Write-Info "Download from: https://dotnet.microsoft.com/download/dotnet/10.0"
+        $issues += "Missing .NET SDK 10.0.400 or newer"
     } else {
-        Write-Success ".NET 10 SDK available"
+        Write-Success ".NET SDK 10.0.400 or newer available"
     }
 }
 
