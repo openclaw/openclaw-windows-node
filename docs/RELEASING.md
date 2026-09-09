@@ -102,6 +102,17 @@ Stable, stable-correction, and alpha tags use the same signed CI release pipelin
   remain as GitVersion history. If the new release is not yet visible through
   the Releases API, cleanup defers until the next alpha publication.
 
+An authenticated Gateway on `extended-stable` may defer an ordinary Windows
+companion update only when the official GitHub release body contains exactly
+one explicit classification marker:
+
+- `<!-- openclaw-update: ordinary -->` permits extended-stable deferral.
+- `<!-- openclaw-update: security-critical -->` keeps the update visible.
+
+Add the applicable marker when reviewing the generated release notes. Missing,
+duplicated, conflicting, or malformed markers are unverified and keep the
+update visible. Release names and prose are not scanned for security keywords.
+
 The validator has no dependency on another repository's release API. Run it
 offline against an explicit current release to preview a decision:
 

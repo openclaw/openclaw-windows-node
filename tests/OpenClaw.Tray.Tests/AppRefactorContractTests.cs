@@ -32,7 +32,6 @@ public sealed class AppRefactorContractTests
             "AppUserModelIdRegistrar.RegisterCurrentProcess(AppIdentity.AppUserModelId);",
             "appUserModelIdRegistration.Attempted",
             "_settings = new SettingsManager();",
-            "CheckForUpdatesAsync();",
             "ToastNotificationManagerCompat.OnActivated += OnToastActivated;",
             "InitializeTrayIcon();",
             "_gatewayRegistry = new GatewayRegistry",
@@ -40,7 +39,19 @@ public sealed class AppRefactorContractTests
             "await ShowOnboardingAsync();",
             "EnsureNodeService(_settings);",
             "InitializeGatewayClient();",
+            "CheckForUpdatesAsync();",
             "await _activationRouter.StartForwardedActivationListenerAsync(this, CancellationToken.None);");
+    }
+
+    [Fact]
+    public void ExtendedStableUpdatePolicy_RemainsOutsideAppCompositionRoot()
+    {
+        var source = ReadAppSources();
+
+        Assert.Contains("() => _connectionManager?.OperatorClient,", source);
+        AssertInOrder(source, "InitializeGatewayClient();", "CheckForUpdatesAsync();");
+        Assert.DoesNotContain("extended-stable", source);
+        Assert.DoesNotContain("GetUpdateStatusAsync", source);
     }
 
     [Fact]
