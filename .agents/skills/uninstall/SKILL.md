@@ -35,6 +35,17 @@ distro or Tailscale session actually in use).
 
    $identity = (Get-Content "$outDir\app-identity.txt" -Raw).Trim()
    if ($identity -ne 'dev') { throw "Build output identity is '$identity', not 'dev' - rebuild with -DevBuild." }
+
+   $pathOverrides = 'OPENCLAW_TRAY_DATA_DIR',
+       'OPENCLAW_TRAY_LOCALAPPDATA_DIR',
+       'OPENCLAW_TRAY_LOCAL_DATA_DIR',
+       'OPENCLAW_STATE_DIR'
+   $activeOverrides = $pathOverrides | Where-Object {
+       -not [string]::IsNullOrWhiteSpace([Environment]::GetEnvironmentVariable($_))
+   }
+   if ($activeOverrides) {
+       throw "Refusing destructive uninstall while path overrides are set: $($activeOverrides -join ', ')"
+   }
    ```
 
 2. **Stop only the dev instance, by PID.** A background `OpenClaw.Tray.WinUI.exe`
@@ -65,7 +76,9 @@ distro or Tailscale session actually in use).
    Review the "Would rollback: ..." lines for each of the ~37 steps. Note the
    `--data-dir` / `--distro-name` printed at the top; dev-branch builds use
    `OpenClawTray-Dev` / `OpenClawGateway-Dev`, separate from a real install's
-   `OpenClawTray` / `OpenClawGateway`.
+   `OpenClawTray` / `OpenClawGateway`. Confirm that the printed data directories
+   are exactly `%APPDATA%\OpenClawTray-Dev` and
+   `%LOCALAPPDATA%\OpenClawTray-Dev`. Stop if they point anywhere else.
 
 4. **Check for real state the dry-run doesn't surface**, e.g. a live WSL distro:
 
