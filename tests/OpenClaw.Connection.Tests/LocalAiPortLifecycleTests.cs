@@ -221,6 +221,41 @@ public sealed class LocalAiPortLifecycleTests
     }
 
     [Fact]
+    public async Task Restart_PortRelocationFailureRestoresTerminalRouting()
+    {
+        using var temp = new TempDirectory("local-ai-port-");
+        LocalAiPaths paths = await PrepareInstallAsync(temp);
+        var store = new LocalAiManifestStore(paths);
+        LocalAiResolvedInstall install = (await store.LoadAsync())!;
+        await store.SaveAsync(install.Manifest with { Endpoint = "http://127.0.0.1:28765/v1" });
+
+        var events = new List<string>();
+        var platform = new FakePlatform();
+        platform.Listeners.Add(new WindowsTcpListenerInfo(
+            IPAddress.Loopback,
+            28_765,
+            9001,
+            "other-process",
+            @"C:\other\server.exe",
+            platform.UtcNow.UtcDateTime));
+        var host = new FakeProcessHost(platform, events, selectedPort: 28_771) { SuppressListener = true };
+        await using var runtime = CreateRuntime(
+            paths,
+            host,
+            platform,
+            new FakeClient(events),
+            new FakeLifecycle(events),
+            startupTimeout: TimeSpan.FromMilliseconds(5));
+
+        LocalAiRuntimeSnapshot snapshot = await runtime.EnsureStartedAsync();
+
+        Assert.Equal(LocalAiRuntimeState.Failed, snapshot.State);
+        Assert.Equal(
+            ["quiesce:EndpointCycle", "start", "quiesce:Teardown", "stop"],
+            events);
+    }
+
+    [Fact]
     public async Task Restart_WithdrawsRetainedRouteWhenStartupNeverBecomesHealthy()
     {
         // Nothing will answer the retained route, so it must not be left published.
@@ -380,7 +415,12 @@ public sealed class LocalAiPortLifecycleTests
         await store.SaveAsync(install.Manifest with { Endpoint = "http://127.0.0.1:28765/v1" });
 
         var events = new List<string>();
-        var platform = new FakePlatform { YieldOnDelay = true };
+        using var cancellation = new CancellationTokenSource();
+        var platform = new FakePlatform
+        {
+            YieldOnDelay = true,
+            AfterDelay = cancellation.Cancel,
+        };
         var host = new FakeProcessHost(platform, events, selectedPort: 28_765) { SuppressListener = true };
         await using var runtime = CreateRuntime(
             paths,
@@ -390,12 +430,43 @@ public sealed class LocalAiPortLifecycleTests
             new FakeLifecycle(events),
             startupTimeout: TimeSpan.FromSeconds(30));
 
-        using var cancellation = new CancellationTokenSource(TimeSpan.FromMilliseconds(20));
         await Assert.ThrowsAnyAsync<OperationCanceledException>(
             () => runtime.EnsureStartedAsync(cancellation.Token));
 
         Assert.Equal(LocalAiRuntimeState.Stopped, runtime.Snapshot.State);
         Assert.Equal(["start", "quiesce:Teardown", "stop"], events);
+    }
+
+    [Fact]
+    public async Task Restart_CancellationDuringPresetPreparationRestoresTerminalRouting()
+    {
+        using var temp = new TempDirectory("local-ai-port-");
+        LocalAiPaths paths = await PrepareInstallAsync(temp);
+        var store = new LocalAiManifestStore(paths);
+        LocalAiResolvedInstall install = (await store.LoadAsync())!;
+        await store.SaveAsync(install.Manifest with { Endpoint = "http://127.0.0.1:28765/v1" });
+
+        var events = new List<string>();
+        using var cancellation = new CancellationTokenSource();
+        var platform = new FakePlatform
+        {
+            AfterCapture = cancellation.Cancel,
+        };
+        var lifecycle = new FakeLifecycle(events);
+        var host = new FakeProcessHost(platform, events, selectedPort: 28_765);
+        await using var runtime = CreateRuntime(
+            paths,
+            host,
+            platform,
+            new FakeClient(events),
+            lifecycle);
+
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(
+            () => runtime.EnsureStartedAsync(cancellation.Token));
+
+        Assert.Equal(LocalAiRuntimeState.Stopped, runtime.Snapshot.State);
+        Assert.Equal(["quiesce:Teardown"], events);
+        Assert.Null(host.LastSpec);
     }
 
     [Theory]
@@ -731,7 +802,7 @@ public sealed class LocalAiPortLifecycleTests
         LocalAiRuntimeSnapshot snapshot = await runtime.EnsureStartedAsync();
 
         Assert.Equal(LocalAiRuntimeState.Failed, snapshot.State);
-        Assert.Equal(["quiesce:EndpointCycle"], events);
+        Assert.Equal(["quiesce:EndpointCycle", "quiesce:Teardown"], events);
         Assert.Null(host.LastSpec);
     }
 
@@ -759,7 +830,7 @@ public sealed class LocalAiPortLifecycleTests
 
         Assert.Equal(LocalAiRuntimeState.Conflict, snapshot.State);
         Assert.Empty(client.ProbedPorts);
-        Assert.Equal(["quiesce:EndpointCycle", "start", "stop"], events);
+        Assert.Equal(["quiesce:EndpointCycle", "start", "quiesce:Teardown", "stop"], events);
         LocalAiResolvedInstall? saved = await new LocalAiManifestStore(paths).LoadAsync();
         Assert.Null(saved!.Endpoint);
     }
@@ -1028,9 +1099,16 @@ public sealed class LocalAiPortLifecycleTests
         public DateTimeOffset UtcNow { get; private set; } = DateTimeOffset.Parse("2026-08-18T12:00:00Z");
         public List<WindowsTcpListenerInfo> Listeners { get; } = [];
         public bool Ipv4Complete { get; set; } = true;
+        public Action? AfterCapture { get; init; }
+        public Action? AfterDelay { get; init; }
 
-        public WindowsTcpListenerSnapshotResult CaptureListeners() =>
-            new([.. Listeners], Ipv4Complete, Ipv6Complete: true);
+        public WindowsTcpListenerSnapshotResult CaptureListeners()
+        {
+            WindowsTcpListenerSnapshotResult result =
+                new([.. Listeners], Ipv4Complete, Ipv6Complete: true);
+            AfterCapture?.Invoke();
+            return result;
+        }
 
         public bool YieldOnDelay { get; init; }
 
@@ -1039,6 +1117,8 @@ public sealed class LocalAiPortLifecycleTests
             cancellationToken.ThrowIfCancellationRequested();
             if (YieldOnDelay)
                 await Task.Yield();
+            AfterDelay?.Invoke();
+            cancellationToken.ThrowIfCancellationRequested();
             UtcNow += delay;
         }
     }
