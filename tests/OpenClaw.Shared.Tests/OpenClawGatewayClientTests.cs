@@ -840,6 +840,48 @@ public class OpenClawGatewayClientTests
     }
 
     [Fact]
+    public void OperatorConnect_BootstrapProfileRejection_RetriesOnceWithBoundedScopes()
+    {
+        var helper = new GatewayClientTestHelper(tokenIsBootstrapToken: true);
+        helper.SetDeviceTokenForTest(null);
+
+        Assert.Contains("operator.admin", helper.GetRequestedOperatorScopes());
+
+        helper.TrackPendingRequest("req-bootstrap-full", "connect");
+        helper.ProcessRawMessage("""
+        {
+          "type": "res",
+          "id": "req-bootstrap-full",
+          "ok": false,
+          "error": {
+            "code": "AUTH_BOOTSTRAP_TOKEN_INVALID",
+            "message": "bootstrap token invalid"
+          }
+        }
+        """);
+
+        Assert.False(helper.Client.IsAuthFailed);
+        Assert.Equal(
+            ["operator.approvals", "operator.read", "operator.talk.secrets", "operator.write"],
+            helper.GetRequestedOperatorScopes());
+
+        helper.TrackPendingRequest("req-bootstrap-bounded", "connect");
+        helper.ProcessRawMessage("""
+        {
+          "type": "res",
+          "id": "req-bootstrap-bounded",
+          "ok": false,
+          "error": {
+            "code": "AUTH_BOOTSTRAP_TOKEN_INVALID",
+            "message": "bootstrap token invalid"
+          }
+        }
+        """);
+
+        Assert.True(helper.Client.IsAuthFailed);
+    }
+
+    [Fact]
     public void OperatorConnect_FreshBootstrapDevice_StartsWithV2Signature()
     {
         var tmpDir = Path.Combine(Path.GetTempPath(), $"oca-gw-test-{Guid.NewGuid():N}");

@@ -31,6 +31,13 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
         "operator.talk.secrets",
         "operator.write"
     ];
+    private static readonly string[] s_operatorBoundedBootstrapScopes =
+    [
+        "operator.approvals",
+        "operator.read",
+        "operator.talk.secrets",
+        "operator.write"
+    ];
 
     // Tracked state
     private readonly Dictionary<string, SessionInfo> _sessions = new();
@@ -104,6 +111,7 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
     private readonly bool _bootstrapPairAsNode;
     private readonly bool _ignoreStoredDeviceToken;
     private readonly bool _persistHandshakeDeviceTokens;
+    private bool _useBoundedBootstrapScopes;
 
     /// <summary>True when the gateway reported "pairing required" for this device.</summary>
     public bool IsPairingRequired => Volatile.Read(ref _pairingRequiredAwaitingApproval);
@@ -2047,7 +2055,9 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
             if (!_tokenIsBootstrapToken)
                 return s_operatorScopes;
 
-            return s_operatorBootstrapScopes;
+            return _useBoundedBootstrapScopes
+                ? s_operatorBoundedBootstrapScopes
+                : s_operatorBootstrapScopes;
         }
 
         return _deviceIdentity.DeviceTokenScopes is { Count: > 0 } scopes
@@ -2263,7 +2273,7 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
         if (root.TryGetProperty("ok", out var okProp) &&
             okProp.ValueKind == JsonValueKind.False)
         {
-            HandleRequestError(requestMethod, root);
+            HandleRequestError(requestMethod, root, sourceConnectionGeneration);
             return;
         }
 
@@ -2602,7 +2612,10 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
             _ => null
         };
 
-    private void HandleRequestError(string? method, JsonElement root)
+    private void HandleRequestError(
+        string? method,
+        JsonElement root,
+        long sourceConnectionGeneration)
     {
         var message = TryGetErrorMessage(root) ?? "request failed";
         var detailCode = method == "connect" ? TryGetErrorDetailCode(root) : null;
@@ -2621,6 +2634,18 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
             var rawJson = root.ToString() ?? "";
             if (rawJson.Length > 500) rawJson = rawJson[..500] + "...";
             _logger.Info($"[HANDSHAKE] Raw error response: {rawJson}");
+        }
+
+        if (method == "connect" &&
+            _tokenIsBootstrapToken &&
+            !_useBoundedBootstrapScopes &&
+            string.Equals(GetConnectRole(), OperatorRole, StringComparison.Ordinal) &&
+            IsBootstrapTokenInvalid(message, topLevelCode, detailCode))
+        {
+            _useBoundedBootstrapScopes = true;
+            _logger.Warn("[HANDSHAKE] Full bootstrap profile rejected; retrying once with bounded scopes.");
+            AbortCurrentWebSocket(sourceConnectionGeneration);
+            return;
         }
 
         if (method == "connect" &&
@@ -2946,6 +2971,16 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
                errorMessage.Contains("too many failed", StringComparison.OrdinalIgnoreCase) ||
                errorMessage.Contains("bootstrap token invalid", StringComparison.OrdinalIgnoreCase);
     }
+
+    private static bool IsBootstrapTokenInvalid(
+        string message,
+        string? topLevelCode,
+        string? detailCode) =>
+        message.Contains("bootstrap token invalid", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(topLevelCode, "AUTH_BOOTSTRAP_TOKEN_INVALID", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(topLevelCode, "bootstrap_token_invalid", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(detailCode, "AUTH_BOOTSTRAP_TOKEN_INVALID", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(detailCode, "bootstrap_token_invalid", StringComparison.OrdinalIgnoreCase);
 
     private static bool IsTerminalAuthDetailCode(string? code) => code is
         "AUTH_TOKEN_MISMATCH" or "AUTH_BOOTSTRAP_TOKEN_INVALID" or
