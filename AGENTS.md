@@ -38,6 +38,7 @@ Notes:
 - Apply the label only to work that is actively moving. Do not use it for queued, parked, or indefinitely blocked items.
 - Remove the label when active work pauses, ownership returns to the author, or the item closes or merges.
 - This maintainer-ownership label may coexist with contributor-facing status labels such as `status: 📣 needs proof`.
+- When referring to a pull request, include its title in parentheses after the number, for example `#1312 (improve(setup): install latest stable Gateway from npm)`.
 
 ## Targeted Validation Paths
 

@@ -149,8 +149,6 @@ public static class GatewayInstallPolicy
     public const string NodeVersion = "24.19.0";
     public const string RecommendedTag = "latest";
     public const string FallbackTag = "extended-stable";
-    private const string LegacyCustomInstallerRecommendedVersion = "2026.6.34";
-    private const string LegacyCustomInstallerFallbackVersion = "2026.6.11";
 
     private static readonly HashSet<string> s_supportedTags = new(
         ["latest", "next", "beta", "extended-stable", "dev"],
@@ -166,7 +164,7 @@ public static class GatewayInstallPolicy
 
         var gateway = config.Gateway;
         var customInstaller = !IsOfficialInstallerUrl(gateway.InstallUrl);
-        var requestedVersion = ResolveLegacySelection(gateway, customInstaller);
+        var requestedVersion = ResolveLegacySelection(gateway);
         gateway.InstalledVersion = null;
 
         if (customInstaller)
@@ -297,7 +295,7 @@ public static class GatewayInstallPolicy
         return true;
     }
 
-    private static string? ResolveLegacySelection(GatewayConfig gateway, bool customInstaller)
+    private static string? ResolveLegacySelection(GatewayConfig gateway)
     {
         var selection = gateway.Selection?.Trim();
         var version = gateway.Version?.Trim();
@@ -308,9 +306,7 @@ public static class GatewayInstallPolicy
 
         if (selection.Equals("recommended", StringComparison.OrdinalIgnoreCase))
             return string.IsNullOrWhiteSpace(version)
-                ? customInstaller
-                    ? LegacyCustomInstallerRecommendedVersion
-                    : RecommendedTag
+                ? RecommendedTag
                 : version;
 
         if (selection.Equals("exact", StringComparison.OrdinalIgnoreCase))
@@ -322,11 +318,7 @@ public static class GatewayInstallPolicy
         if (selection.Equals("fallback", StringComparison.OrdinalIgnoreCase))
         {
             if (string.IsNullOrWhiteSpace(version))
-            {
-                return customInstaller
-                    ? LegacyCustomInstallerFallbackVersion
-                    : FallbackTag;
-            }
+                return FallbackTag;
 
             RequireExactVersion(
                 version,

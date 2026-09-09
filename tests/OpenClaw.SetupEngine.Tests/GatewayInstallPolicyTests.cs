@@ -110,11 +110,10 @@ public sealed class GatewayInstallPolicyTests
     }
 
     [Theory]
-    [InlineData("recommended", "2026.6.34")]
-    [InlineData("fallback", "2026.6.11")]
-    public void ValidateAndApply_CustomInstallerPreservesVersionlessLegacyPin(
-        string selection,
-        string expectedVersion)
+    [InlineData("recommended")]
+    [InlineData("fallback")]
+    public void ValidateAndApply_CustomInstallerRejectsVersionlessLegacySelection(
+        string selection)
     {
         var config = new SetupConfig
         {
@@ -125,10 +124,32 @@ public sealed class GatewayInstallPolicyTests
             }
         };
 
+        var error = Assert.Throws<GatewayCompatibilityException>(
+            () => GatewayInstallPolicy.ValidateAndApply(config));
+
+        Assert.Equal(GatewayCompatibilityFailureKind.InvalidPolicy, error.Kind);
+    }
+
+    [Theory]
+    [InlineData("recommended")]
+    [InlineData("fallback")]
+    public void ValidateAndApply_CustomInstallerPreservesExplicitLegacyVersion(
+        string selection)
+    {
+        var config = new SetupConfig
+        {
+            Gateway = new GatewayConfig
+            {
+                InstallUrl = "https://example.test/install.sh",
+                Selection = selection,
+                Version = "2026.6.34"
+            }
+        };
+
         GatewayInstallPolicy.ValidateAndApply(config);
 
         Assert.Null(config.Gateway.Selection);
-        Assert.Equal(expectedVersion, config.Gateway.Version);
+        Assert.Equal("2026.6.34", config.Gateway.Version);
     }
 
     [Fact]

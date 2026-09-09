@@ -333,9 +333,9 @@ name an exact stable release to offer after a typed compatibility failure.
 Legacy `recommended`, `exact`, and `fallback` selections are migrated when the
 configuration is loaded. Legacy recommendation and fallback configurations
 without a recorded version follow the upstream `latest` and `extended-stable`
-tags. Explicit legacy versions remain exact. Versionless legacy custom-installer
-configurations retain their old exact pins because custom installers cannot resolve
-npm tags. The cross-repository release gate may pass
+tags. Explicit legacy versions remain exact. Custom installers still require an
+explicit exact version because they cannot resolve npm tags. The cross-repository
+release gate may pass
 `--gateway-candidate-package <absolute-tgz>` with
 `--validate-gateway-candidate`, headless mode, and rollback-on-failure. The
 package input is runtime-only and does not change normal npm setup.
