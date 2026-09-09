@@ -1197,6 +1197,10 @@ internal sealed class ReactorChatComposer : Component<ReactorChatComposerViewPro
 
 internal static class ComposerAutomationVisibility
 {
+    // Intentional Reactor escape hatch. Readiness depends on post-layout measurements
+    // and temporary Loaded/SizeChanged subscriptions, so it cannot be represented by
+    // static modifiers alone. Prepare runs on every render, detaches stale handlers,
+    // and reapplies the correct pooled-control state before subscribing when needed.
     public static void Prepare(FrameworkElement control)
     {
         Detach(control);

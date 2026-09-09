@@ -183,18 +183,12 @@ if (-not (Test-WindowsHost)) {
 Write-Success "Windows detected"
 
 # Check .NET SDK
-$dotnetVersion = $null
-try {
-    $dotnetVersion = & dotnet --version 2>$null
-} catch {}
-
-if (-not $dotnetVersion) {
+$dotnet = Get-Command dotnet -ErrorAction SilentlyContinue
+if (-not $dotnet) {
     Write-Error ".NET SDK not found"
     Write-Info "Download from: https://dotnet.microsoft.com/download"
     $issues += "Missing .NET SDK"
 } else {
-    Write-Success ".NET SDK: $dotnetVersion"
-    
     # Reactor preview.14 source generators require Roslyn 5.9, first shipped
     # in the .NET 10.0.400 feature band.
     $minimumNet10Sdk = [version]"10.0.400"
@@ -211,6 +205,10 @@ if (-not $dotnetVersion) {
         Write-Info "Download from: https://dotnet.microsoft.com/download/dotnet/10.0"
         $issues += "Missing .NET SDK 10.0.400 or newer"
     } else {
+        $dotnetVersion = & dotnet --version 2>$null
+        if ($LASTEXITCODE -eq 0 -and $dotnetVersion) {
+            Write-Success ".NET SDK: $dotnetVersion"
+        }
         Write-Success ".NET SDK 10.0.400 or newer available"
     }
 }
