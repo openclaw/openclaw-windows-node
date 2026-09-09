@@ -135,7 +135,12 @@ set_app_paths() {
 }
 
 dotnet_sdk_ready() {
-  guest_user_ps '@(dotnet.exe --list-sdks | ForEach-Object { if ($_ -match "^(\d+\.\d+\.\d+)") { [version]$matches[1] } } | Where-Object { $_.Major -eq 10 -and $_ -ge [version]"10.0.400" }).Count -gt 0' |
+  local check
+  check="$(cat <<'POWERSHELL'
+@(dotnet.exe --list-sdks | ForEach-Object { if ($_ -match '^(\d+\.\d+\.\d+)') { [version]$matches[1] } } | Where-Object { $_.Major -eq 10 -and $_ -ge [version]'10.0.400' }).Count -gt 0
+POWERSHELL
+)"
+  guest_user_ps "$check" |
     grep -q True
 }
 
