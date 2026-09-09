@@ -128,8 +128,8 @@ $cases = @(
         Required = @("tray_tests", "setup_e2e")
     },
     @{
-        Scenario = "Gateway release policy change"
-        Paths = @("src/OpenClaw.SetupEngine/GatewayReleasePolicy.cs")
+        Scenario = "Gateway install policy change"
+        Paths = @("src/OpenClaw.SetupEngine/GatewayInstallPolicy.cs")
         Classification = "targeted"
         Required = @("tray_tests", "setup_e2e", "revocation_e2e", "network_e2e")
     },

@@ -173,6 +173,10 @@
         </ScrollViewer>
 
         <Grid Grid.Row="1" ColumnDefinitions="Auto,*,Auto" Margin="0,16,0,0">
+            <Button x:Name="FallbackButton" Grid.Column="0"
+                    Content="Retry with configured fallback"
+                    Visibility="Collapsed"
+                    Click="FallbackButton_Click" />
             <Button x:Name="RestartLaterButton" Grid.Column="0"
                     Content="No, I'm not ready yet"
                     Visibility="Collapsed"

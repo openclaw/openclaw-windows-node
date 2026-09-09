@@ -154,7 +154,7 @@ function Add-PathImpact {
     )
 
     if ($Path.Equals(
-            "src/OpenClaw.SetupEngine/GatewayReleasePolicy.cs",
+            "src/OpenClaw.SetupEngine/GatewayInstallPolicy.cs",
             [StringComparison]::OrdinalIgnoreCase)) {
         Add-Lanes -Impact $Impact -Tray -SetupE2e -RevocationE2e -NetworkE2e
         return $true

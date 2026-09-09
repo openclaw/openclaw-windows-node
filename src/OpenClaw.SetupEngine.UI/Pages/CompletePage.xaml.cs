@@ -41,6 +41,7 @@ public sealed partial class CompletePage : Page
                 SubtitleText.Visibility = Visibility.Visible;
                 ErrorCard.Visibility = Visibility.Collapsed;
                 HelpLink.Visibility = Visibility.Collapsed;
+                FallbackButton.Visibility = Visibility.Collapsed;
                 SummaryPanel.Visibility = Visibility.Visible;
                 LocalAiSummaryCard.Visibility = review.LocalAiEnabled ? Visibility.Visible : Visibility.Collapsed;
                 if (review.LocalAiEnabled)
@@ -72,6 +73,7 @@ public sealed partial class CompletePage : Page
                     LocalAiSummaryCard.Visibility = Visibility.Collapsed;
                     ErrorCard.Visibility = Visibility.Collapsed;
                     HelpLink.Visibility = Visibility.Collapsed;
+                    FallbackButton.Visibility = Visibility.Collapsed;
                     LaunchButton.Visibility = Visibility.Collapsed;
                     StepIndicator.Visibility = Visibility.Collapsed;
                     RestartLaterButton.Visibility = Visibility.Visible;
@@ -94,6 +96,13 @@ public sealed partial class CompletePage : Page
                 SummaryPanel.Visibility = Visibility.Collapsed;
                 LocalAiSummaryCard.Visibility = Visibility.Collapsed;
                 LaunchButton.Content = "Close";
+                FallbackButton.Visibility = args.CanRetryGatewayFallback
+                    ? Visibility.Visible
+                    : Visibility.Collapsed;
+                FallbackButton.Content = string.IsNullOrWhiteSpace(args.GatewayFallbackVersion)
+                    ? "Retry with configured fallback"
+                    : $"Retry with fallback {args.GatewayFallbackVersion}";
+
                 // Show error card with details and log link
                 ErrorCard.Visibility = Visibility.Visible;
                 ErrorText.Text = errorMessage;
@@ -191,6 +200,20 @@ public sealed partial class CompletePage : Page
     private void ViewLog_Click(object sender, RoutedEventArgs e)
     {
         LogFileLauncher.RevealInExplorer(_logPath);
+    }
+
+    private void FallbackButton_Click(object sender, RoutedEventArgs e)
+    {
+        string? error = null;
+        if (SetupWindow.Active is { } window &&
+            window.TryRetryWithGatewayFallback(out error))
+        {
+            return;
+        }
+
+        FallbackButton.Visibility = Visibility.Collapsed;
+        if (!string.IsNullOrWhiteSpace(error))
+            ErrorText.Text = $"{ErrorText.Text}{Environment.NewLine}{error}";
     }
 
     private void RestartLaterButton_Click(object sender, RoutedEventArgs e)

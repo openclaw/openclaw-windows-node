@@ -334,6 +334,9 @@ public static class Program
             PipelineOutcome.Cancelled => $"═══ {label} CANCELLED ═══",
             _ => "═══ UNKNOWN STATE ═══"
         });
+        if (result.CompatibilityFailure is { } failureKind)
+            Console.WriteLine($"\n{BuildCompatibilityFallbackMessage(config, failureKind)}");
+
         Console.WriteLine($"\nLog: {config.LogPath}");
         Console.WriteLine($"Journal: {journalPath}");
 
@@ -365,11 +368,27 @@ public static class Program
             compatibilityFailure = result.CompatibilityFailure?.ToString(),
             installedGatewayVersion = config.Gateway.InstalledVersion,
             gatewayProtocolGeneration = GatewayInstallPolicy.ProtocolGeneration,
+            fallbackGatewayVersion =
+                result.CompatibilityFailure is { } failureKind &&
+                GatewayInstallPolicy.CanRetryWithFallback(config, failureKind)
+                    ? config.Gateway.FallbackVersion
+                    : null,
             logPath = config.LogPath,
             journalPath
         };
         return System.Text.Json.JsonSerializer.Serialize(jsonResult, SetupConfig.JsonWriteOptions);
     }
+
+    internal static string BuildCompatibilityFallbackMessage(
+        SetupConfig config,
+        GatewayCompatibilityFailureKind failureKind)
+    {
+        var fallback = config.Gateway.FallbackVersion?.Trim();
+        return !GatewayInstallPolicy.CanRetryWithFallback(config, failureKind)
+            ? "No configured Gateway fallback is available for this compatibility failure."
+            : $"To retry with configured fallback {fallback}, set Gateway.Version to \"{fallback}\" and rerun setup.";
+    }
+
     private static List<SetupStep> BuildSteps(SetupConfig config)
         => SetupStepFactory.BuildDefaultSteps();
 

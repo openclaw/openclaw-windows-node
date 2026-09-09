@@ -506,4 +506,66 @@ public sealed class ProgramArgumentTests : IDisposable
         Assert.True(document.RootElement.TryGetProperty("requiresRestart", out var requiresRestart));
         Assert.True(requiresRestart.GetBoolean());
     }
+
+    [Fact]
+    public void SerializeJsonOutput_IncludesConfiguredFallbackForCompatibilityFailure()
+    {
+        var config = new SetupConfig
+        {
+            Gateway = new GatewayConfig
+            {
+                Version = "latest",
+                FallbackVersion = "2026.8.1",
+                InstalledVersion = "2026.9.1"
+            }
+        };
+        var result = new PipelineResult(PipelineOutcome.Failed, "pair-operator")
+        {
+            CompatibilityFailure = GatewayCompatibilityFailureKind.ProtocolMismatch
+        };
+
+        var json = Program.SerializeJsonOutput(result, config, "journal.json");
+
+        using var document = JsonDocument.Parse(json);
+        Assert.Equal(
+            "2026.8.1",
+            document.RootElement.GetProperty("fallbackGatewayVersion").GetString());
+    }
+
+    [Fact]
+    public void CompatibilityFallbackMessage_NamesConfiguredExactVersion()
+    {
+        var config = new SetupConfig
+        {
+            Gateway = new GatewayConfig
+            {
+                Version = "latest",
+                FallbackVersion = "2026.8.1",
+                InstalledVersion = "2026.9.1"
+            }
+        };
+
+        var message = Program.BuildCompatibilityFallbackMessage(
+            config,
+            GatewayCompatibilityFailureKind.ServerVersionMismatch);
+
+        Assert.Contains("2026.8.1", message, StringComparison.Ordinal);
+        Assert.Contains("Gateway.Version", message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void CompatibilityFallbackMessage_DoesNotOfferFallbackForRuntimeMismatch()
+    {
+        var config = new SetupConfig
+        {
+            Gateway = new GatewayConfig { FallbackVersion = "2026.8.1" }
+        };
+
+        var message = Program.BuildCompatibilityFallbackMessage(
+            config,
+            GatewayCompatibilityFailureKind.InstalledRuntimeMismatch);
+
+        Assert.DoesNotContain("To retry", message, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("No configured Gateway fallback", message, StringComparison.Ordinal);
+    }
 }
