@@ -344,4 +344,27 @@ public sealed class GatewayInstallPolicyTests
             config,
             GatewayCompatibilityFailureKind.ProtocolMismatch));
     }
+
+    [Fact]
+    public void ConfiguredFallback_DoesNotReplaceCustomInstallerVersion()
+    {
+        var config = new SetupConfig
+        {
+            Gateway = new GatewayConfig
+            {
+                InstallUrl = "https://example.test/install.sh",
+                Version = "2026.9.1",
+                InstalledVersion = "2026.9.1",
+                FallbackVersion = "2026.6.34"
+            }
+        };
+
+        Assert.False(GatewayInstallPolicy.CanRetryWithFallback(
+            config,
+            GatewayCompatibilityFailureKind.ProtocolMismatch));
+        Assert.False(GatewayInstallPolicy.TryApplyFallback(config, out var error));
+        Assert.Contains("Custom Gateway installers", error, StringComparison.Ordinal);
+        Assert.Equal("2026.9.1", config.Gateway.Version);
+        Assert.Equal("2026.9.1", config.Gateway.InstalledVersion);
+    }
 }
