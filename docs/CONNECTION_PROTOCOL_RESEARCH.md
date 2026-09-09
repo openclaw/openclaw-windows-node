@@ -282,10 +282,8 @@ Upstream default setup-code profile for `wss://` or same-host loopback:
 `openclaw qr --limited` and plaintext LAN setup codes use the limited profile,
 which omits `operator.admin`. The setup-code payload does not identify the
 profile. Its opaque bootstrap token carries the server-enforced scope boundary,
-so Windows requests only the bounded scopes shared by both profiles:
-`operator.approvals`, `operator.read`, `operator.talk.secrets`, and
-`operator.write`. After bootstrap handoff, normal shared-token or device-token
-finalization may request the full operator scope set when the gateway permits it.
+so clients request the full bootstrap scope set and the gateway strips admin
+when the issued token is limited.
 
 Expected flow:
 

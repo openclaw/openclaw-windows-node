@@ -25,6 +25,7 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
     ];
     private static readonly string[] s_operatorBootstrapScopes =
     [
+        "operator.admin",
         "operator.approvals",
         "operator.read",
         "operator.talk.secrets",
@@ -2041,9 +2042,8 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
         if (!HasUsableOperatorDeviceToken)
         {
             // Shared gateway token (non-bootstrap) → request admin scope.
-            // Bootstrap tokens are opaque and can carry limited profiles, so keep
-            // the initial request bounded. Later shared-token finalization can
-            // request the full operator scope set when the gateway permits it.
+            // Bootstrap tokens carry their own server-enforced profile. Full
+            // setup tokens grant admin; limited tokens strip it.
             if (!_tokenIsBootstrapToken)
                 return s_operatorScopes;
 
