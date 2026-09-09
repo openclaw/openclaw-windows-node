@@ -237,6 +237,66 @@ public sealed class GatewayInstallPolicyTests
     }
 
     [Fact]
+    public void ValidateHandshake_WizardOnlyAdoptsAuthenticatedServerVersion()
+    {
+        var config = new SetupConfig
+        {
+            Gateway = new GatewayConfig { Version = "latest" }
+        };
+
+        var error = GatewayInstallPolicy.ValidateHandshake(
+            config,
+            new GatewaySelfInfo
+            {
+                Protocol = GatewayInstallPolicy.ProtocolGeneration,
+                ServerVersion = "2026.9.1"
+            },
+            allowInstalledVersionDiscovery: true);
+
+        Assert.Null(error);
+        Assert.Equal("2026.9.1", config.Gateway.InstalledVersion);
+    }
+
+    [Fact]
+    public void ValidateHandshake_WizardOnlyRejectsConfiguredVersionMismatch()
+    {
+        var config = new SetupConfig
+        {
+            Gateway = new GatewayConfig { Version = "2026.8.1" }
+        };
+
+        var error = GatewayInstallPolicy.ValidateHandshake(
+            config,
+            new GatewaySelfInfo
+            {
+                Protocol = GatewayInstallPolicy.ProtocolGeneration,
+                ServerVersion = "2026.9.1"
+            },
+            allowInstalledVersionDiscovery: true);
+
+        Assert.Equal(GatewayCompatibilityFailureKind.InstalledVersionMismatch, error?.Kind);
+        Assert.Null(config.Gateway.InstalledVersion);
+    }
+
+    [Fact]
+    public void ValidateHandshake_WizardOnlyRejectsNonPackageServerVersion()
+    {
+        var config = new SetupConfig();
+
+        var error = GatewayInstallPolicy.ValidateHandshake(
+            config,
+            new GatewaySelfInfo
+            {
+                Protocol = GatewayInstallPolicy.ProtocolGeneration,
+                ServerVersion = "dev"
+            },
+            allowInstalledVersionDiscovery: true);
+
+        Assert.Equal(GatewayCompatibilityFailureKind.InvalidPolicy, error?.Kind);
+        Assert.Null(config.Gateway.InstalledVersion);
+    }
+
+    [Fact]
     public void ConfiguredFallback_IsOfferedOnlyForTypedCompatibilityFailures()
     {
         var config = new SetupConfig

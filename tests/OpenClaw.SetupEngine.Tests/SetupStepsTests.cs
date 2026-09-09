@@ -2049,7 +2049,7 @@ public class SetupStepsTests : IDisposable
                     ? Ok()
                     : throw new InvalidOperationException($"Unexpected command: {command}"));
         var config = new SetupConfig();
-        GatewayReleasePolicy.ResolveAndApply(config);
+        GatewayInstallPolicy.ValidateAndApply(config);
         var ctx = CreateContext(config, commands);
 
         var result = await new InstallCliStep().ExecuteAsync(ctx, CancellationToken.None);

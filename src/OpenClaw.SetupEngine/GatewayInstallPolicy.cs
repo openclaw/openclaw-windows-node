@@ -203,7 +203,8 @@ public static class GatewayInstallPolicy
 
     public static GatewayCompatibilityException? ValidateHandshake(
         SetupConfig config,
-        GatewaySelfInfo? gatewaySelf)
+        GatewaySelfInfo? gatewaySelf,
+        bool allowInstalledVersionDiscovery = false)
     {
         if (gatewaySelf?.Protocol != ProtocolGeneration)
         {
@@ -214,6 +215,30 @@ public static class GatewayInstallPolicy
         }
 
         var installedVersion = config.Gateway.InstalledVersion;
+        if (string.IsNullOrWhiteSpace(installedVersion) &&
+            allowInstalledVersionDiscovery)
+        {
+            var observedVersion = gatewaySelf.ServerVersion?.Trim();
+            if (!GatewayPackageVersion.IsExact(observedVersion))
+            {
+                return Failure(
+                    GatewayCompatibilityFailureKind.InvalidPolicy,
+                    "Gateway compatibility check failed: the existing server did not report an exact package version.");
+            }
+
+            var requestedVersion = config.Gateway.Version?.Trim();
+            if (GatewayPackageVersion.IsExact(requestedVersion) &&
+                !string.Equals(requestedVersion, observedVersion, StringComparison.Ordinal))
+            {
+                return Failure(
+                    GatewayCompatibilityFailureKind.InstalledVersionMismatch,
+                    $"Gateway compatibility check failed: configured version {requestedVersion}, server reported {observedVersion}.");
+            }
+
+            installedVersion = observedVersion;
+            config.Gateway.InstalledVersion = observedVersion;
+        }
+
         if (string.IsNullOrWhiteSpace(installedVersion))
         {
             return Failure(
