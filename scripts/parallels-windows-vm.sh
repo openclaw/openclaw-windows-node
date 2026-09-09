@@ -154,8 +154,12 @@ ensure_dotnet() {
   say "Installing .NET SDK 10.0.400 or newer"
   run_windows_installer prlctl exec "$VM_NAME" "$installer" /install /quiet /norestart
   finish_installer_reboot
-  wait_for_check '.NET SDK' 'dotnet.exe --list-sdks | findstr /B 10.'
-  dotnet_sdk_ready || die ".NET SDK 10.0.400 or newer is unavailable after installation"
+  local attempt
+  for ((attempt = 1; attempt <= 120; attempt++)); do
+    dotnet_sdk_ready && return
+    sleep 3
+  done
+  die ".NET SDK 10.0.400 or newer is unavailable after installation"
 }
 
 ensure_windows_sdk() {
