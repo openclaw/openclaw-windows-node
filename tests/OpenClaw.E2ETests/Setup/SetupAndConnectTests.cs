@@ -193,12 +193,34 @@ public class SetupAndConnectTests
             installResult = await new InstallGatewayServiceStep().ExecuteAsync(
                 context,
                 CancellationToken.None);
+            Assert.True(installResult.IsSuccess, installResult.Message);
+
+            var listenerDeadline = DateTimeOffset.UtcNow.AddSeconds(30);
+            OpenClaw.SetupEngine.CommandResult? listeners = null;
+            while (DateTimeOffset.UtcNow < listenerDeadline)
+            {
+                listeners = await _fixture.RunInWslAsync(
+                    $"ss -H -ltnp 'sport = :{_fixture.GatewayPort}'",
+                    TimeSpan.FromSeconds(15));
+                if (listeners.ExitCode == 0 &&
+                    !string.IsNullOrWhiteSpace(listeners.Stdout))
+                {
+                    break;
+                }
+
+                await Task.Delay(250);
+            }
+            var observedListeners = Assert.IsType<OpenClaw.SetupEngine.CommandResult>(listeners);
+            AssertCommandSucceeded(observedListeners, "wait for installed gateway listener");
+            Assert.False(
+                string.IsNullOrWhiteSpace(observedListeners.Stdout),
+                "The installed gateway service did not open its configured listener.");
+
             startResult = await new StartGatewayStep().ExecuteAsync(
                 context,
                 CancellationToken.None);
         }
 
-        Assert.True(installResult.IsSuccess, installResult.Message);
         Assert.True(startResult.IsSuccess, startResult.Message);
 
         var mainPid = await _fixture.RunInWslAsync(
