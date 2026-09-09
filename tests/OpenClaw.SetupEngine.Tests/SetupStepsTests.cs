@@ -4081,14 +4081,14 @@ public class SetupStepsTests : IDisposable
     }
 
     [Theory]
-    [InlineData("node", "321", true)]
-    [InlineData("openclaw-gateway", "321", true)]
-    [InlineData("node", "999", false)]
-    [InlineData("other-openclaw", "999", false)]
-    [InlineData("python3", "0", false)]
-    [InlineData("node", "", false)]
+    [InlineData("node", "321", true, null)]
+    [InlineData("openclaw-gateway", "321", true, null)]
+    [InlineData("node", "999", false, "already in use by another process")]
+    [InlineData("other-openclaw", "999", false, "already in use by another process")]
+    [InlineData("python3", "0", false, "valid MainPID")]
+    [InlineData("node", "", false, "valid MainPID")]
     public async Task StartGateway_AfterFreePortAndInstall_RequiresServiceOwnedListener(
-        string processName, string mainPid, bool expectedSuccess)
+        string processName, string mainPid, bool expectedSuccess, string? expectedFailure)
     {
         var port = GetFreeTcpPort();
         var installed = false;
@@ -4123,25 +4123,43 @@ public class SetupStepsTests : IDisposable
         Assert.All(commands.WslCalls, call => Assert.Equal(ctx.DistroName, call.DistroName));
         if (!expectedSuccess)
         {
-            Assert.Contains($"Port {port} is already in use by another process.", result.Message);
-            Assert.Contains($"Owning process: {processName}.", result.Message);
+            Assert.Contains(expectedFailure!, result.Message);
             Assert.DoesNotContain(commands.WslCalls, call => call.Command.Contains("openclaw gateway start") || call.Command.Contains("curl -s"));
         }
     }
 
     [Theory]
-    [InlineData("", "0", 0, true)]
-    [InlineData("LISTEN 0 511 127.0.0.1:18789 *:*", "321", 0, false)]
-    [InlineData("LISTEN 0 511 127.0.0.1:18789 *:* users:((\"node\",pid=321,fd=22))\nLISTEN 0 511 [::1]:18789 *:* users:((\"python3\",pid=999,fd=23))", "321", 0, false)]
-    [InlineData("LISTEN 0 511 127.0.0.1:18789 *:* users:((\"node\",pid=321,fd=22),(\"python3\",pid=999,fd=23))", "321", 0, false)]
-    [InlineData("", "321", 1, false)]
+    [InlineData("", "0", 0, 0, true, null)]
+    [InlineData("LISTEN 0 511 127.0.0.1:18789 *:* users:((\"node\",pid=321,fd=22))\nLISTEN 0 511 [::1]:18789 *:* users:((\"node\",pid=321,fd=23))", "321", 0, 0, true, null)]
+    [InlineData("LISTEN 0 511 127.0.0.1:18789 *:*", "321", 0, 0, false, "Could not determine which process owns")]
+    [InlineData("LISTEN 0 511 127.0.0.1:18789 *:* users:((\"node\",pid=321,fd=22))\nLISTEN 0 511 [::1]:18789 *:* users:((\"python3\",pid=999,fd=23))", "321", 0, 0, false, "Listener PIDs outside openclaw-gateway.service: 999")]
+    [InlineData("LISTEN 0 511 127.0.0.1:18789 *:* users:((\"node\",pid=321,fd=22),(\"python3\",pid=999,fd=23))", "321", 0, 0, false, "Listener PIDs outside openclaw-gateway.service: 999")]
+    [InlineData("LISTEN 0 511 127.0.0.1:18789 *:* users:((\"node\",pid=321,fd=22))", "321", 1, 0, false, "ss unavailable")]
+    [InlineData("LISTEN 0 511 127.0.0.1:18789 *:* users:((\"node\",pid=321,fd=22))", "321", 0, 1, false, "service unavailable")]
+    [InlineData("LISTEN 0 511 127.0.0.1:18789 *:* users:((\"node\",pid=321,fd=22))", "abc", 0, 0, false, "valid MainPID: abc")]
+    [InlineData("LISTEN 0 511 127.0.0.1:18789 *:* users:((\"node\",pid=321,fd=22))", "-1", 0, 0, false, "valid MainPID: -1")]
     public async Task StartGateway_PortInspection_RejectsUnownedOrUnreadableListeners(
-        string listeners, string mainPid, int inspectionExitCode, bool expectedSuccess)
+        string listeners,
+        string mainPid,
+        int inspectionExitCode,
+        int serviceExitCode,
+        bool expectedSuccess,
+        string? expectedMessage)
     {
         var commands = new FakeCommandRunner(_ => Ok(), (_, command, _) => command switch
         {
-            var value when value.StartsWith("ss -H") => new CommandResult(inspectionExitCode, listeners, "", TimeSpan.Zero, false),
-            var value when value.StartsWith("systemctl --user show") => Ok(mainPid),
+            var value when value.StartsWith("ss -H") => new CommandResult(
+                inspectionExitCode,
+                listeners,
+                inspectionExitCode == 0 ? "" : "ss unavailable",
+                TimeSpan.Zero,
+                false),
+            var value when value.StartsWith("systemctl --user show") => new CommandResult(
+                serviceExitCode,
+                mainPid,
+                serviceExitCode == 0 ? "" : "service unavailable",
+                TimeSpan.Zero,
+                false),
             var value when value.Contains("openclaw gateway start") => Ok(),
             var value when value.Contains("curl -s") => Ok("200"),
             _ => throw new InvalidOperationException($"Unexpected command: {command}"),
@@ -4152,6 +4170,8 @@ public class SetupStepsTests : IDisposable
         var result = await new StartGatewayStep().ExecuteAsync(ctx, CancellationToken.None);
 
         Assert.Equal(expectedSuccess, result.IsSuccess);
+        if (!expectedSuccess)
+            Assert.Contains(expectedMessage!, result.Message);
     }
 
     [Fact]

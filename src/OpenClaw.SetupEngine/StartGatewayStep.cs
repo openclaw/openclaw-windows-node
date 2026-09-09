@@ -32,7 +32,11 @@ public sealed class StartGatewayStep : SetupStep
                 TimeSpan.FromSeconds(10), ct: ct);
 
             if (portCheck.ExitCode != 0)
-                return StepResult.Fail($"Could not inspect gateway port {ctx.Config.GatewayPort} (exit {portCheck.ExitCode}).");
+            {
+                return StepResult.Fail(
+                    $"Could not inspect gateway port {ctx.Config.GatewayPort} " +
+                    $"(exit {portCheck.ExitCode}){FormatCommandDetail(portCheck)}.");
+            }
 
             if (!string.IsNullOrWhiteSpace(portCheck.Stdout))
             {
@@ -40,17 +44,50 @@ public sealed class StartGatewayStep : SetupStep
                 var service = await ctx.Commands.RunInWslAsync(
                     distro, "systemctl --user show openclaw-gateway.service -p MainPID --value",
                     TimeSpan.FromSeconds(10), ct: ct);
+                if (service.ExitCode != 0)
+                {
+                    return StepResult.Fail(
+                        "Could not inspect openclaw-gateway.service MainPID " +
+                        $"(exit {service.ExitCode}){FormatCommandDetail(service)}.");
+                }
+
+                if (!int.TryParse(service.Stdout.Trim(), out var pid) || pid <= 0)
+                {
+                    return StepResult.Fail(
+                        "openclaw-gateway.service is not running with a valid MainPID" +
+                        $"{FormatCommandDetail(service)}.");
+                }
+
                 var listeners = portCheck.Stdout.Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
-                if (service.ExitCode != 0 || !int.TryParse(service.Stdout.Trim(), out var pid) || pid <= 0 ||
-                    listeners.Any(line => Regex.Matches(line, @"pid=(\d+),") is var owners &&
-                        (owners.Count == 0 || owners.Any(owner => owner.Groups[1].Value != pid.ToString()))))
+                var listenerOwners = listeners
+                    .Select(line => Regex.Matches(line, @"pid=(\d+),")
+                        .Select(owner => owner.Groups[1].Value)
+                        .ToArray())
+                    .ToArray();
+                if (listenerOwners.Any(owners => owners.Length == 0))
+                {
+                    return StepResult.Fail(
+                        $"Could not determine which process owns gateway port {ctx.Config.GatewayPort}. " +
+                        "Verify the WSL listener and openclaw-gateway.service status, then retry setup.");
+                }
+
+                var expectedPid = pid.ToString();
+                var foreignPids = listenerOwners
+                    .SelectMany(owners => owners)
+                    .Where(ownerPid => !string.Equals(ownerPid, expectedPid, StringComparison.Ordinal))
+                    .Distinct(StringComparer.Ordinal)
+                    .ToArray();
+                if (foreignPids.Length > 0)
                 {
                     var names = string.Join(", ", Regex.Matches(portCheck.Stdout, "\\(\\\"([^\\\"]+)\\\",")
                         .Select(owner => owner.Groups[1].Value).Distinct());
                     var ownerDetail = names.Length > 0 ? $" Owning process: {names}." : "";
-                    ctx.Logger.Warn($"Port {ctx.Config.GatewayPort} is in use by another process.{ownerDetail}");
-                    return StepResult.Fail(
-                        $"Port {ctx.Config.GatewayPort} is already in use by another process.{ownerDetail} Either stop the conflicting process or change GatewayPort in the setup config.");
+                    var failure =
+                        $"Port {ctx.Config.GatewayPort} is already in use by another process. " +
+                        $"Listener PIDs outside openclaw-gateway.service: {string.Join(", ", foreignPids)}." +
+                        ownerDetail;
+                    ctx.Logger.Warn(failure);
+                    return StepResult.Fail($"{failure} Either stop the conflicting process or change GatewayPort in the setup config.");
                 }
 
                 ctx.Logger.Info($"Port {ctx.Config.GatewayPort} is owned by openclaw-gateway.service (PID {pid}). Post-install port check succeeded.");
@@ -87,6 +124,18 @@ public sealed class StartGatewayStep : SetupStep
         }
 
         return await WaitForHealthAsync(ctx, ct);
+    }
+
+    private static string FormatCommandDetail(CommandResult result)
+    {
+        var detail = string.IsNullOrWhiteSpace(result.Stderr)
+            ? result.Stdout.Trim()
+            : result.Stderr.Trim();
+        if (string.IsNullOrWhiteSpace(detail))
+            return "";
+
+        detail = detail.ReplaceLineEndings(" ");
+        return $": {(detail.Length <= 240 ? detail : detail[..240] + "...")}";
     }
 
     internal static async Task<StepResult> WaitForHealthAsync(

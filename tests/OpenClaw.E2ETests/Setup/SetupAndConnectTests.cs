@@ -172,27 +172,10 @@ public class SetupAndConnectTests
     [E2EFact]
     public async Task FullSetup_AlreadyRunningGateway_IsRecognizedAsServiceOwned()
     {
-        var listeners = await _fixture.RunInWslAsync(
-            $"ss -H -ltnp 'sport = :{_fixture.GatewayPort}'",
-            TimeSpan.FromSeconds(15));
-        AssertCommandSucceeded(listeners, "inspect running gateway listeners");
-
-        var mainPid = await _fixture.RunInWslAsync(
-            "systemctl --user show openclaw-gateway.service -p MainPID --value",
-            TimeSpan.FromSeconds(15));
-        AssertCommandSucceeded(mainPid, "read gateway service MainPID");
-
-        var parsedMainPid = mainPid.Stdout.Trim();
-        Assert.True(int.TryParse(parsedMainPid, out var pid) && pid > 0, $"Invalid gateway MainPID: {parsedMainPid}");
-        var listenerPids = Regex.Matches(listeners.Stdout, @"pid=(\d+),")
-            .Select(match => int.Parse(match.Groups[1].Value))
-            .ToArray();
-        Assert.NotEmpty(listenerPids);
-        Assert.All(listenerPids, listenerPid => Assert.Equal(pid, listenerPid));
-
         var proofLogPath = Path.Combine(_fixture.ArtifactDir, "service-owned-gateway-start.jsonl");
         var config = SetupConfig.LoadFromFile(_fixture.ConfigPath);
-        StepResult result;
+        StepResult installResult;
+        StepResult startResult;
         using (var logger = new SetupLogger(proofLogPath, LogLevel.Trace))
         using (var journal = new TransactionJournal(filePath: null, logger))
         {
@@ -207,10 +190,24 @@ public class SetupAndConnectTests
             {
                 DistroName = _fixture.DistroName,
             };
-            result = await new StartGatewayStep().ExecuteAsync(context, CancellationToken.None);
+            installResult = await new InstallGatewayServiceStep().ExecuteAsync(
+                context,
+                CancellationToken.None);
+            startResult = await new StartGatewayStep().ExecuteAsync(
+                context,
+                CancellationToken.None);
         }
 
-        Assert.True(result.IsSuccess, result.Message);
+        Assert.True(installResult.IsSuccess, installResult.Message);
+        Assert.True(startResult.IsSuccess, startResult.Message);
+
+        var mainPid = await _fixture.RunInWslAsync(
+            "systemctl --user show openclaw-gateway.service -p MainPID --value",
+            TimeSpan.FromSeconds(15));
+        AssertCommandSucceeded(mainPid, "read gateway service MainPID");
+        var parsedMainPid = mainPid.Stdout.Trim();
+        Assert.True(int.TryParse(parsedMainPid, out var pid) && pid > 0, $"Invalid gateway MainPID: {parsedMainPid}");
+
         var proofLog = await File.ReadAllTextAsync(proofLogPath);
         Assert.Contains(
             $"Port {_fixture.GatewayPort} is owned by openclaw-gateway.service (PID {pid}).",
