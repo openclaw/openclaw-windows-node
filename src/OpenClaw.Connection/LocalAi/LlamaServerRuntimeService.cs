@@ -455,11 +455,14 @@ public sealed class LlamaServerRuntimeService : ILocalAiRuntime
         if (!ownership.IsComplete)
         {
             // Incomplete enumeration cannot prove that the child owns only the
-            // intended endpoint. Withdraw routing first, then stop it.
+            // intended endpoint. Remove the provider while retaining the local
+            // primary, then stop the child so this trust failure cannot route
+            // requests to a cloud fallback.
             LocalAiRuntimeSnapshot? failure = await QuiesceOrStopAsync(
                     install,
-                    LocalAiQuiesceReason.Teardown,
+                    LocalAiQuiesceReason.EndpointCycle,
                     stopAfterQuiesce: true,
+                    preserveManagedPrimaryOnFailure: true,
                     cancellationToken)
                 .ConfigureAwait(false);
             return failure ?? Publish(
@@ -471,8 +474,9 @@ public sealed class LlamaServerRuntimeService : ILocalAiRuntime
         {
             LocalAiRuntimeSnapshot? failure = await QuiesceOrStopAsync(
                     install,
-                    LocalAiQuiesceReason.Teardown,
+                    LocalAiQuiesceReason.EndpointCycle,
                     stopAfterQuiesce: true,
+                    preserveManagedPrimaryOnFailure: true,
                     cancellationToken)
                 .ConfigureAwait(false);
             return failure ?? Publish(
@@ -486,6 +490,7 @@ public sealed class LlamaServerRuntimeService : ILocalAiRuntime
                     install,
                     LocalAiQuiesceReason.EndpointCycle,
                     stopAfterQuiesce: false,
+                    preserveManagedPrimaryOnFailure: false,
                     cancellationToken)
                 .ConfigureAwait(false);
             return failure ?? Publish(
@@ -513,28 +518,41 @@ public sealed class LlamaServerRuntimeService : ILocalAiRuntime
                             install,
                             LocalAiQuiesceReason.EndpointCycle,
                             stopAfterQuiesce: false,
+                            preserveManagedPrimaryOnFailure: false,
                             cancellationToken)
                         .ConfigureAwait(false);
                     if (failure is not null)
                         return failure;
                 }
 
-                install = await BindVerifiedEndpointAsync(
-                        install,
-                        ownership.Endpoint,
-                        cancellationToken)
-                    .ConfigureAwait(false);
-                LocalAiEndpointLifecycleResult published = await _options.EndpointLifecycle
-                    .PublishAsync(install, cancellationToken)
-                    .ConfigureAwait(false);
+                LocalAiEndpointLifecycleResult published;
+                try
+                {
+                    install = await BindVerifiedEndpointAsync(
+                            install,
+                            ownership.Endpoint,
+                            cancellationToken)
+                        .ConfigureAwait(false);
+                    published = await _options.EndpointLifecycle
+                        .PublishAsync(install, cancellationToken)
+                        .ConfigureAwait(false);
+                }
+                catch (Exception ex)
+                {
+                    await FailStartupAsync(
+                            LocalAiRuntimeState.Failed,
+                            $"The verified Local AI endpoint could not be republished: {Sanitize(ex.Message)}",
+                            _install ?? install)
+                        .ConfigureAwait(false);
+                    throw;
+                }
                 if (!published.Success)
                 {
-                    return Publish(
-                        LocalAiRuntimeState.Failed,
-                        LocalAiOwnership.CompanionManaged,
-                        published.Detail ?? "The verified Local AI endpoint could not be republished.",
-                        _managedProcess.ProcessId,
-                        _managedProcess.StartedAtUtc);
+                    return await FailStartupAsync(
+                            LocalAiRuntimeState.Failed,
+                            published.Detail ?? "The verified Local AI endpoint could not be republished.",
+                            _install ?? install)
+                        .ConfigureAwait(false);
                 }
             }
 
@@ -545,6 +563,7 @@ public sealed class LlamaServerRuntimeService : ILocalAiRuntime
                 install,
                 LocalAiQuiesceReason.EndpointCycle,
                 stopAfterQuiesce: false,
+                preserveManagedPrimaryOnFailure: false,
                 cancellationToken)
             .ConfigureAwait(false);
         if (quiesceFailure is not null)
@@ -562,6 +581,7 @@ public sealed class LlamaServerRuntimeService : ILocalAiRuntime
         LocalAiResolvedInstall install,
         LocalAiQuiesceReason reason,
         bool stopAfterQuiesce,
+        bool preserveManagedPrimaryOnFailure,
         CancellationToken cancellationToken)
     {
         LocalAiEndpointLifecycleResult quiesced;
@@ -573,8 +593,12 @@ public sealed class LlamaServerRuntimeService : ILocalAiRuntime
         }
         catch
         {
-            bool withdrawn = await WithdrawRouteAsync(
+            LocalAiQuiesceReason recoveryReason = preserveManagedPrimaryOnFailure
+                ? LocalAiQuiesceReason.EndpointCycle
+                : LocalAiQuiesceReason.Teardown;
+            bool withdrawn = await RetryQuiesceAsync(
                         install,
+                        recoveryReason,
                         "after refresh withdrawal was interrupted")
                     .ConfigureAwait(false);
             if (withdrawn)
@@ -601,6 +625,22 @@ public sealed class LlamaServerRuntimeService : ILocalAiRuntime
             ++_generation;
             await DisposeManagedProcessAsync(CancellationToken.None).ConfigureAwait(false);
             return null;
+        }
+
+        if (preserveManagedPrimaryOnFailure)
+        {
+            bool retried = await RetryQuiesceAsync(
+                    install,
+                    LocalAiQuiesceReason.EndpointCycle,
+                    "after refresh endpoint-cycle withdrawal failed")
+                .ConfigureAwait(false);
+            if (retried)
+            {
+                ++_generation;
+                await DisposeManagedProcessAsync(CancellationToken.None).ConfigureAwait(false);
+                return null;
+            }
+            return await PublishRefreshCleanupFailureAsync(quiesced.Detail).ConfigureAwait(false);
         }
 
         bool teardownSucceeded = reason != LocalAiQuiesceReason.Teardown &&
@@ -709,9 +749,42 @@ public sealed class LlamaServerRuntimeService : ILocalAiRuntime
         if (_install is null && !await TryLoadInstallAsync(cancellationToken).ConfigureAwait(false))
             return Snapshot;
 
-        LocalAiEndpointLifecycleResult quiesced = await _options.EndpointLifecycle
-            .QuiesceAsync(_install!, reason, cancellationToken)
-            .ConfigureAwait(false);
+        LocalAiEndpointLifecycleResult quiesced;
+        try
+        {
+            quiesced = await _options.EndpointLifecycle
+                .QuiesceAsync(_install!, reason, cancellationToken)
+                .ConfigureAwait(false);
+        }
+        catch
+        {
+            if (reason == LocalAiQuiesceReason.Teardown)
+            {
+                bool withdrawn = await WithdrawRouteAsync(
+                        _install!,
+                        "after explicit stop withdrawal was interrupted")
+                    .ConfigureAwait(false);
+                if (withdrawn)
+                {
+                    ++_generation;
+                    await DisposeManagedProcessAsync(CancellationToken.None).ConfigureAwait(false);
+                    PublishTerminalCleanupFailure("Local AI stop was interrupted.");
+                }
+                else if (_managedProcess is { HasExited: false })
+                {
+                    PublishManagedFailure(
+                        "Local AI stop was interrupted, but gateway routing could not be safely disabled; the managed listener remains running.");
+                }
+                else
+                {
+                    ++_generation;
+                    await DisposeManagedProcessAsync(CancellationToken.None).ConfigureAwait(false);
+                    PublishTerminalCleanupFailure(
+                        "Local AI stop was interrupted, but gateway routing could not be safely disabled.");
+                }
+            }
+            throw;
+        }
         if (!quiesced.Success)
         {
             if (reason == LocalAiQuiesceReason.EndpointCycle)
@@ -823,11 +896,21 @@ public sealed class LlamaServerRuntimeService : ILocalAiRuntime
     /// Failures are logged and never mask the original startup outcome.
     /// </summary>
     private async Task<bool> WithdrawRouteAsync(LocalAiResolvedInstall install, string context)
+        => await RetryQuiesceAsync(
+                install,
+                LocalAiQuiesceReason.Teardown,
+                context)
+            .ConfigureAwait(false);
+
+    private async Task<bool> RetryQuiesceAsync(
+        LocalAiResolvedInstall install,
+        LocalAiQuiesceReason reason,
+        string context)
     {
         try
         {
             LocalAiEndpointLifecycleResult withdrawn = await _options.EndpointLifecycle
-                .QuiesceAsync(install, LocalAiQuiesceReason.Teardown, CancellationToken.None)
+                .QuiesceAsync(install, reason, CancellationToken.None)
                 .ConfigureAwait(false);
             if (!withdrawn.Success)
             {

@@ -11,7 +11,7 @@ namespace OpenClaw.SetupEngine.Tests;
 public sealed class LocalAiGatewayUninstallTests
 {
     [Fact]
-    public async Task Repair_AcceptsCompanionPrimaryRetainedDuringEndpointCycle()
+    public async Task Repair_RollbackRestoresFallbackAfterRetainedEndpointCycle()
     {
         using var temp = new TempDirectory("local-ai-gateway-repair-");
         LocalAiResolvedInstall install = await SaveManifestAsync(temp.Path, "openai/gpt-5");
@@ -30,6 +30,32 @@ public sealed class LocalAiGatewayUninstallTests
         Assert.Equal(managedPrimary, commands.PrimaryJson);
         LocalAiResolvedInstall repaired = (await new LocalAiManifestStore(new LocalAiPaths(temp.Path)).LoadAsync())!;
         Assert.Equal("openai/gpt-5", repaired.Manifest.GatewayFallbackModel);
+
+        await new ConfigureLocalAiGatewayStep().RollbackAsync(context, CancellationToken.None);
+
+        Assert.Null(commands.ProviderJson);
+        Assert.Equal(JsonSerializer.Serialize("openai/gpt-5"), commands.PrimaryJson);
+    }
+
+    [Fact]
+    public async Task Repair_RollbackUnsetsPrimaryAfterRetainedEndpointCycleWithoutFallback()
+    {
+        using var temp = new TempDirectory("local-ai-gateway-repair-");
+        LocalAiResolvedInstall install = await SaveManifestAsync(temp.Path);
+        string managedPrimary = JsonSerializer.Serialize(
+            LocalAiGatewayProviderDefinition.BuildPrimaryModel(install));
+        var commands = new GatewayStateCommandRunner(providerJson: null, managedPrimary);
+        SetupContext context = CreateContext(temp.Path, commands);
+        context.LocalAiResolvedInstall = install;
+        context.LocalAiEligibility = LocalInferenceEligibility.Evaluate(CreateSparkHardware());
+        var step = new ConfigureLocalAiGatewayStep();
+
+        StepResult result = await step.ExecuteAsync(context, CancellationToken.None);
+        await step.RollbackAsync(context, CancellationToken.None);
+
+        Assert.Equal(StepOutcome.Success, result.Outcome);
+        Assert.Null(commands.ProviderJson);
+        Assert.Null(commands.PrimaryJson);
     }
 
     [Fact]
@@ -270,6 +296,19 @@ public sealed class LocalAiGatewayUninstallTests
                 return Task.FromResult(new CommandResult(
                     0,
                     "LOCAL_AI_PRIMARY_RESTORED",
+                    "",
+                    TimeSpan.Zero,
+                    TimedOut: false));
+            }
+            if (command.Contains("LOCAL_AI_GATEWAY_RESTORED", StringComparison.Ordinal))
+            {
+                string encoded = Assert.Single(environment!).Value;
+                string batch = Encoding.UTF8.GetString(Convert.FromBase64String(encoded));
+                using JsonDocument document = JsonDocument.Parse(batch);
+                PrimaryJson = document.RootElement[0].GetProperty("value").GetRawText();
+                return Task.FromResult(new CommandResult(
+                    0,
+                    "LOCAL_AI_GATEWAY_RESTORED",
                     "",
                     TimeSpan.Zero,
                     TimedOut: false));

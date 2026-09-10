@@ -78,7 +78,6 @@ public sealed class ConfigureLocalAiGatewayStep : SetupStep
         try
         {
             prior = ParseSnapshot(snapshotResult.Stdout);
-            ctx.LocalAiGatewayPriorState = prior;
         }
         catch (Exception ex) when (ex is FormatException or JsonException or InvalidDataException)
         {
@@ -124,6 +123,16 @@ public sealed class ConfigureLocalAiGatewayStep : SetupStep
         {
             fallbackModel = null;
         }
+
+        ctx.LocalAiGatewayPriorState = retainedManagedPrimary
+            ? prior with
+            {
+                PrimaryModelExisted = fallbackModel is not null,
+                PrimaryModelJson = fallbackModel is null
+                    ? null
+                    : JsonSerializer.Serialize(fallbackModel),
+            }
+            : prior;
 
         if (!string.Equals(
                 install.Manifest.GatewayFallbackModel,
