@@ -9,9 +9,15 @@
     "designSource": "self",
     "owner": "OpenClaw Windows (openclaw/openclaw-windows-node)",
     "syncProcess": "Tokens are captured by manual inspection of the app's WinUI 3 XAML/C# Fluent resources; re-inspect and update this file when the app's ThemeResource mappings or SystemAccentColor usage change.",
+    "tooling": {
+      "name": "winapp (WinAppCli)",
+      "source": "https://github.com/microsoft/WinAppCli",
+      "role": "The Windows App Development CLI is the single build/packaging tool for both port targets below. Both the WinUI 3 (XAML) shell and the Reactor chat surface now build, package, and generate app identity, manifests, and certificates through winapp, so treat it as the port authority's build toolchain."
+    },
     "port": {
       "authoritySource": "Native WinUI 3 / C# (Windows Fluent)",
       "syncSource": "https://github.com/microsoft/win-dev-skills",
+      "toolingSource": "https://github.com/microsoft/WinAppCli",
       "helperAgent": "win-dev-skills"
     },
     "portOverrides": [
@@ -20,6 +26,7 @@
         "components": ["ChatBubble", "ChatComposer", "ChatThread"],
         "authoritySource": "Reactor (Microsoft.UI.Reactor)",
         "syncSource": "https://github.com/microsoft/microsoft-ui-reactor",
+        "toolingSource": "https://github.com/microsoft/WinAppCli",
         "helperAgent": ""
       }
     ]
