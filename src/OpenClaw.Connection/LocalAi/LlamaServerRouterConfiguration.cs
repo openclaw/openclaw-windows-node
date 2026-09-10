@@ -44,7 +44,7 @@ public static class LlamaServerRouterConfiguration
         LocalModelInfo model = LocalModelCatalog.FindInstalled(manifest.ModelCatalogId)
             ?? throw new InvalidDataException("The managed local AI model is no longer qualified.");
 
-        LocalInferenceRunProfile profile = ValidateQualifiedReceipt(manifest, runtime, model);
+        LocalInferenceRunProfile profile = ResolveQualifiedReceipt(manifest, runtime, model);
 
         string presetPath = paths.ResolveContainedPath(
             Path.GetRelativePath(paths.RootDirectory, paths.RouterPresetPath),
@@ -73,7 +73,24 @@ public static class LlamaServerRouterConfiguration
             model.Id);
     }
 
-    private static LocalInferenceRunProfile ValidateQualifiedReceipt(
+    private static LocalInferenceRunProfile ResolveQualifiedReceipt(
+        LocalAiInstallManifest manifest,
+        LlamaRuntimeVariant runtime,
+        LocalModelInfo model)
+    {
+        ValidateArtifactReceipts(manifest, runtime, model);
+        return LocalModelCatalog.FindProfile(
+            model,
+            manifest.ContextLength,
+            manifest.KeyCachePrecision,
+            manifest.ValueCachePrecision,
+            manifest.DraftKeyCachePrecision,
+            manifest.DraftValueCachePrecision)
+            ?? throw new InvalidDataException(
+                "The managed local AI context and KV cache receipt do not match a qualified catalog profile.");
+    }
+
+    internal static void ValidateArtifactReceipts(
         LocalAiInstallManifest manifest,
         LlamaRuntimeVariant runtime,
         LocalModelInfo model)
@@ -94,16 +111,6 @@ public static class LlamaServerRouterConfiguration
             throw new InvalidDataException("The managed local AI model recipe receipt does not match the qualified catalog.");
         }
 
-        LocalInferenceRunProfile profile = LocalModelCatalog.FindProfile(
-            model,
-            manifest.ContextLength,
-            manifest.KeyCachePrecision,
-            manifest.ValueCachePrecision,
-            manifest.DraftKeyCachePrecision,
-            manifest.DraftValueCachePrecision)
-            ?? throw new InvalidDataException(
-                "The managed local AI context and KV cache receipt do not match a qualified catalog profile.");
-
         if (manifest.RuntimeAssets.Length != runtime.Artifacts.Count ||
             runtime.Artifacts.Any(artifact => !manifest.RuntimeAssets.Any(receipt =>
                 string.Equals(receipt.FileName, Path.GetFileName(artifact.RelativePath), StringComparison.Ordinal) &&
@@ -123,8 +130,6 @@ public static class LlamaServerRouterConfiguration
         {
             throw new InvalidDataException("The managed model artifact receipt does not match the qualified catalog.");
         }
-
-        return profile;
     }
 
     private static string BuildPreset(

@@ -11,6 +11,7 @@
 //   await using var _ = runtime; // StopAsync/RestartAsync/RefreshAsync also available on ILocalAiRuntime
 // </summary>
 using OpenClaw.Shared;
+using OpenClaw.Shared.Inference.Catalog;
 using System.Net;
 using System.Text;
 
@@ -64,6 +65,7 @@ public sealed class LlamaServerRuntimeService : ILocalAiRuntime
     private readonly object _snapshotGate = new();
     private LocalAiRuntimeSnapshot _snapshot;
     private ILocalAiManagedProcess? _managedProcess;
+    private FileStream? _verifiedModelHandle;
     private LocalAiResolvedInstall? _install;
     private long _generation;
     private int _restartAttempts;
@@ -314,7 +316,7 @@ public sealed class LlamaServerRuntimeService : ILocalAiRuntime
         LlamaServerRouterLaunchPlan launchPlan;
         try
         {
-            ValidateInstalledFiles(install);
+            await ValidateInstalledFilesAsync(install, cancellationToken).ConfigureAwait(false);
             LocalAiPortPolicy.Validate(requestedPort);
             launchPlan = LlamaServerRouterConfiguration.Build(
                 _options.Paths,
@@ -461,7 +463,7 @@ public sealed class LlamaServerRuntimeService : ILocalAiRuntime
 
         try
         {
-            ValidateInstalledFiles(_install!);
+            ValidateInstalledFilesForStatus(_install!);
         }
         catch (InvalidDataException ex)
         {
@@ -794,7 +796,33 @@ public sealed class LlamaServerRuntimeService : ILocalAiRuntime
         return false;
     }
 
-    private static void ValidateInstalledFiles(LocalAiResolvedInstall install)
+    private async Task ValidateInstalledFilesAsync(
+        LocalAiResolvedInstall install,
+        CancellationToken cancellationToken)
+    {
+        DisposeVerifiedModelHandle();
+        ValidateInstalledFilesForStatus(install);
+
+        if (install.Manifest.SchemaVersion != LocalAiInstallManifest.HubCacheReceiptSchemaVersion)
+            return;
+
+        _verifiedModelHandle =
+            await HuggingFaceHubCache.TryOpenVerifiedCacheFileAsync(
+                    install.Manifest.ModelCacheRoot!,
+                    install.ModelPath,
+                    install.Manifest.ModelAsset.SizeBytes,
+                    new Sha256Digest(install.Manifest.ModelAsset.Sha256),
+                    progress: null,
+                    cancellationToken)
+                .ConfigureAwait(false);
+        if (_verifiedModelHandle is null)
+        {
+            throw new InvalidDataException(
+                "The shared Hugging Face cache model is unsafe or no longer matches its receipt.");
+        }
+    }
+
+    private static void ValidateInstalledFilesForStatus(LocalAiResolvedInstall install)
     {
         if (!File.Exists(install.ExecutablePath))
             throw new InvalidDataException("The managed llama-server executable is missing.");
@@ -1078,6 +1106,7 @@ public sealed class LlamaServerRuntimeService : ILocalAiRuntime
         if (_managedProcess is not null)
             await _managedProcess.DisposeAsync().ConfigureAwait(false);
         _managedProcess = null;
+        DisposeVerifiedModelHandle();
         return PublishTerminalCleanupFailure(detail ?? fallbackDetail);
     }
 
@@ -1116,7 +1145,10 @@ public sealed class LlamaServerRuntimeService : ILocalAiRuntime
         ILocalAiManagedProcess? process = _managedProcess;
         _managedProcess = null;
         if (process is null)
+        {
+            DisposeVerifiedModelHandle();
             return;
+        }
         bool preserved = false;
         try
         {
@@ -1157,7 +1189,10 @@ public sealed class LlamaServerRuntimeService : ILocalAiRuntime
         finally
         {
             if (!preserved)
+            {
                 await process.DisposeAsync().ConfigureAwait(false);
+                DisposeVerifiedModelHandle();
+            }
         }
     }
 
@@ -1188,6 +1223,7 @@ public sealed class LlamaServerRuntimeService : ILocalAiRuntime
                 _managedProcess = null;
                 if (exited is not null)
                     await exited.DisposeAsync().ConfigureAwait(false);
+                DisposeVerifiedModelHandle();
 
                 bool willRestart = !_explicitStopRequested &&
                     _restartAttempts < _options.MaxRestartAttempts;
@@ -1554,6 +1590,12 @@ public sealed class LlamaServerRuntimeService : ILocalAiRuntime
     }
 
     private void ThrowIfDisposed() => ObjectDisposedException.ThrowIf(_disposed, this);
+
+    private void DisposeVerifiedModelHandle()
+    {
+        _verifiedModelHandle?.Dispose();
+        _verifiedModelHandle = null;
+    }
 
     private static LlamaServerRuntimeOptions ValidateOptions(LlamaServerRuntimeOptions options)
     {

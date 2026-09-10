@@ -4,6 +4,7 @@ using OpenClaw.Shared.Inference.Catalog;
 using OpenClaw.TestSupport;
 using System.Collections.Immutable;
 using System.Net;
+using System.Security.Cryptography;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 
@@ -138,6 +139,63 @@ public sealed class LocalAiPortLifecycleTests
 
         await Assert.ThrowsAsync<InvalidDataException>(() =>
             store.SaveAsync(ValidManifest() with { GatewayFallbackModel = fallbackModel }));
+    }
+
+    [Fact]
+    public async Task Runtime_RejectsSchemaFourCacheContentBeforeProcessStart()
+    {
+        using var temp = new TempDirectory("local-ai-cache-runtime-");
+        var paths = new LocalAiPaths(temp.Path);
+        byte[] expected = "expected-cache-model"u8.ToArray();
+        byte[] tampered = "tampered-cache-model"u8.ToArray();
+        Assert.Equal(expected.Length, tampered.Length);
+        LocalAiInstallManifest manifest = ValidManifest();
+        string cacheRoot = temp.Combine("hf-cache");
+        const string repositoryId = "unsloth/Qwen3.6-35B-A3B-MTP-GGUF";
+        const string revision = "5bc3e238d916f48a861bac2f8a1990a0e9b7e98d";
+        Assert.True(HuggingFaceHubCache.TryGetSnapshotPaths(
+            cacheRoot,
+            repositoryId,
+            revision,
+            "Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+            out string cachedModelPath,
+            out _,
+            out string error), error);
+        manifest = manifest with
+        {
+            SchemaVersion = LocalAiInstallManifest.HubCacheReceiptSchemaVersion,
+            ModelCacheRoot = cacheRoot,
+            CachedModelPath = cachedModelPath,
+            ModelAsset = manifest.ModelAsset with
+            {
+                SizeBytes = expected.Length,
+                Sha256 = Convert.ToHexString(SHA256.HashData(expected)).ToLowerInvariant(),
+            },
+        };
+        string executable = paths.ResolveContainedPath(
+            manifest.ExecutablePath,
+            nameof(manifest.ExecutablePath));
+        Directory.CreateDirectory(Path.GetDirectoryName(executable)!);
+        Directory.CreateDirectory(Path.GetDirectoryName(cachedModelPath)!);
+        await File.WriteAllTextAsync(executable, "test executable");
+        await File.WriteAllBytesAsync(cachedModelPath, tampered);
+        await new LocalAiManifestStore(paths).SaveAsync(manifest);
+        var events = new SynchronizedEventLog();
+        var platform = new FakePlatform();
+        var host = new FakeProcessHost(platform, events, selectedPort: 28_765);
+        await using var runtime = CreateRuntime(
+            paths,
+            host,
+            platform,
+            new FakeClient(events),
+            new FakeLifecycle(events));
+
+        LocalAiRuntimeSnapshot snapshot = await runtime.EnsureStartedAsync();
+
+        Assert.Equal(LocalAiRuntimeState.Failed, snapshot.State);
+        Assert.Contains("no longer matches", snapshot.Detail, StringComparison.Ordinal);
+        Assert.DoesNotContain("start", events);
+        Assert.Null(host.LastSpec);
     }
 
     [Fact]

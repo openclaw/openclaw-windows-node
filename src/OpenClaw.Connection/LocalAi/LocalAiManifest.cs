@@ -137,7 +137,16 @@ public sealed record LocalAiAssetReceipt
 
 public sealed record LocalAiInstallManifest
 {
+    /// <summary>
+    /// Legacy app-owned model layout. Kept readable so existing installs and
+    /// downgrade recovery continue to use their original weights in place.
+    /// </summary>
     public const int CurrentSchemaVersion = 3;
+    /// <summary>
+    /// Standard Hugging Face hub-cache layout. A schema-4 receipt is selected
+    /// only after its cache path is structurally validated; callers that execute
+    /// the model must also verify the pinned content before use.
+    /// </summary>
     public const int HubCacheReceiptSchemaVersion = 4;
     public const string SupportedEngine = "llama-server";
 
@@ -158,16 +167,13 @@ public sealed record LocalAiInstallManifest
     public required ImmutableArray<LocalAiAssetReceipt> RuntimeAssets { get; init; }
     public required string ModelPath { get; init; }
     /// <summary>
-    /// Schema-4 migration receipt for the standard Hugging Face hub cache root.
-    /// The legacy <see cref="ModelPath"/> remains authoritative until the model
-    /// acquisition layer switches normal installs and reconciliation to the cache.
+    /// Schema-4 receipt for the standard Hugging Face hub cache root.
     /// </summary>
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public string? ModelCacheRoot { get; init; }
     /// <summary>
-    /// Schema-4 migration receipt for the verified snapshot copy. Layer 3 may
-    /// promote this path to the active model path after its installer and rollback
-    /// behavior are cache-aware.
+    /// Schema-4 receipt for the verified snapshot copy. Schema-3 manifests keep
+    /// <see cref="ModelPath"/> active; schema-4 manifests select this path.
     /// </summary>
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public string? CachedModelPath { get; init; }
@@ -309,8 +315,8 @@ public sealed class LocalAiManifestStore
 
     /// <summary>
     /// Copies a canonical schema-3 model into the standard Hugging Face cache and
-    /// records a transitional schema-4 receipt. The active legacy model path is
-    /// intentionally unchanged until the installer and reconciler become cache-aware.
+    /// records a schema-4 receipt whose verified cache snapshot becomes active.
+    /// Passive manifest loads never invoke this operation.
     /// </summary>
     public async Task<LocalAiResolvedInstall?> MigrateLegacyModelToHubCacheAsync(
         IProgress<LocalAiModelMigrationProgress>? progress = null,
@@ -557,13 +563,13 @@ public sealed class LocalAiManifestStore
         if (!string.Equals(Path.GetFileName(executable), "llama-server.exe", StringComparison.OrdinalIgnoreCase))
             throw new InvalidDataException("The managed local AI executable must be llama-server.exe.");
 
-        var model = _paths.ResolveContainedPath(manifest.ModelPath, nameof(manifest.ModelPath));
-        if (!string.Equals(Path.GetExtension(model), ".gguf", StringComparison.OrdinalIgnoreCase))
-            throw new InvalidDataException("The managed local AI model must be a GGUF file.");
-        if (!string.Equals(Path.GetFileName(model), manifest.ModelAsset.FileName, StringComparison.Ordinal))
-            throw new InvalidDataException("The managed model path must match its asset receipt filename.");
-
         ValidateHubCacheReceipt(manifest, provenance);
+        string legacyModel = _paths.ResolveContainedPath(manifest.ModelPath, nameof(manifest.ModelPath));
+        ValidateModelPath(legacyModel, manifest.ModelAsset, "legacy-compatible");
+        string model = manifest.SchemaVersion == LocalAiInstallManifest.HubCacheReceiptSchemaVersion
+            ? ResolveHubCacheModelPath(manifest)
+            : legacyModel;
+        ValidateModelPath(model, manifest.ModelAsset, "active");
 
         LocalAiPortPolicy.Validate(manifest.RequestedPort);
         LocalAiGatewayModelPolicy.ValidateFallbackModel(manifest.GatewayFallbackModel);
@@ -590,6 +596,23 @@ public sealed class LocalAiManifestStore
         }
 
         return new LocalAiResolvedInstall(manifest, executable, model, endpoint);
+    }
+
+    private static void ValidateModelPath(
+        string path,
+        LocalAiAssetReceipt asset,
+        string description)
+    {
+        if (!string.Equals(Path.GetExtension(path), ".gguf", StringComparison.OrdinalIgnoreCase))
+        {
+            throw new InvalidDataException(
+                $"The managed {description} Local AI model must be a GGUF file.");
+        }
+        if (!string.Equals(Path.GetFileName(path), asset.FileName, StringComparison.Ordinal))
+        {
+            throw new InvalidDataException(
+                $"The managed {description} model path must match its asset receipt filename.");
+        }
     }
 
     private static void ValidatePlanIdentifier(string? identifier, string fieldName)
@@ -719,6 +742,9 @@ public sealed class LocalAiManifestStore
                     : error);
         }
     }
+
+    private static string ResolveHubCacheModelPath(LocalAiInstallManifest manifest) =>
+        WindowsPathSafety.NormalizePath(manifest.CachedModelPath!);
 
     internal sealed record HuggingFaceModelProvenance(
         string RepositoryId,

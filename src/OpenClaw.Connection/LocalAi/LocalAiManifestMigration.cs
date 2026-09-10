@@ -10,7 +10,7 @@ namespace OpenClaw.Connection.LocalAi;
 
 /// <summary>
 /// Copies schema-3 model weights into a standard Hugging Face snapshot path and
-/// records the verified destination without changing the active legacy model path.
+/// records the verified destination. Passive manifest reads never invoke this path.
 /// </summary>
 internal static class LocalAiManifestMigration
 {
@@ -439,7 +439,7 @@ internal static class LocalAiManifestMigration
             throw new InvalidDataException("The verified legacy Local AI model changed during cache migration.");
     }
 
-    private static void EnsureSufficientFreeSpace(
+    internal static void EnsureSufficientFreeSpace(
         string destinationDirectory,
         long requiredBytes)
     {
@@ -491,6 +491,71 @@ internal static class LocalAiManifestMigration
             throw new InvalidDataException(
                 "The Hugging Face cache volume capacity could not be inspected safely.",
                 ex);
+        }
+    }
+
+    internal static string ResolveFinalDirectoryPathForComparison(string path)
+    {
+        if (!OperatingSystem.IsWindows())
+        {
+            throw new PlatformNotSupportedException(
+                "Local AI cache ownership validation requires Windows directory handles.");
+        }
+
+        string current = WindowsPathSafety.NormalizePath(path);
+        var missingSegments = new Stack<string>();
+        while (true)
+        {
+            FileAttributes attributes;
+            try
+            {
+                attributes = File.GetAttributes(current);
+            }
+            catch (Exception ex) when (ex is FileNotFoundException or DirectoryNotFoundException)
+            {
+                string? parent = Path.GetDirectoryName(current);
+                string segment = Path.GetFileName(current);
+                if (string.IsNullOrEmpty(parent) || string.IsNullOrEmpty(segment))
+                {
+                    throw new InvalidDataException(
+                        $"The directory path '{path}' has no existing ancestor that can be validated.",
+                        ex);
+                }
+
+                missingSegments.Push(segment);
+                current = parent;
+                continue;
+            }
+            catch (Exception ex) when (
+                ex is IOException or UnauthorizedAccessException or System.Security.SecurityException)
+            {
+                throw new InvalidDataException(
+                    $"The directory path '{path}' could not be safely inspected: {ex.Message}",
+                    ex);
+            }
+
+            if ((attributes & FileAttributes.Directory) == 0)
+                throw new InvalidDataException($"The directory path '{current}' is an existing file.");
+
+            using SafeFileHandle handle = CreateFileW(
+                current,
+                0,
+                FileShare.ReadWrite | FileShare.Delete,
+                IntPtr.Zero,
+                OpenExisting,
+                FileFlagBackupSemantics,
+                IntPtr.Zero);
+            if (handle.IsInvalid)
+            {
+                throw CreateNativeIOException(
+                    $"The directory path '{current}' could not be opened safely.",
+                    Marshal.GetLastWin32Error());
+            }
+
+            string resolved = GetFinalPathFromHandle(handle);
+            while (missingSegments.TryPop(out string? segment))
+                resolved = Path.Combine(resolved, segment);
+            return WindowsPathSafety.NormalizePath(resolved);
         }
     }
 
@@ -571,7 +636,7 @@ internal static class LocalAiManifestMigration
     /// Roots every cache mutation in directory handles whose identities are checked
     /// against the configured cache root, so path swaps cannot redirect file writes.
     /// </summary>
-    private sealed class SafeCacheDirectory : IDisposable
+    internal sealed class SafeCacheDirectory : IDisposable
     {
         private readonly SafeFileHandle _cacheRootHandle;
         private readonly SafeFileHandle _directoryHandle;
@@ -655,7 +720,7 @@ internal static class LocalAiManifestMigration
             int status = OpenRelativeFile(
                 _directoryHandle,
                 fileName,
-                GenericRead | DeleteAccess | SynchronizeAccess,
+                GenericRead | GenericWrite | DeleteAccess | SynchronizeAccess,
                 FileOpen,
                 out SafeFileHandle? handle);
             if (status != 0)
@@ -668,16 +733,23 @@ internal static class LocalAiManifestMigration
                     error);
             }
 
-            var file = new CacheMigrationFile(handle!, FileAccess.Read, this);
+            var file = new CacheMigrationFile(handle!, FileAccess.ReadWrite, this);
             try
             {
                 BY_HANDLE_FILE_INFORMATION info = GetHandleInformation(handle!);
-                if ((info.FileAttributes & (uint)FileAttributes.ReparsePoint) != 0 ||
-                    info.NumberOfLinks != 1)
+                if ((info.FileAttributes & (uint)FileAttributes.ReparsePoint) != 0)
                 {
-                    file.Delete();
-                    file.Dispose();
-                    return null;
+                    file.Commit();
+                    throw new InvalidDataException(
+                        $"The Hugging Face cache partial '{Path.Combine(_destinationPath, fileName)}' " +
+                        "is a reparse point. Remove it manually and retry setup.");
+                }
+                if (info.NumberOfLinks != 1)
+                {
+                    file.Commit();
+                    throw new InvalidDataException(
+                        $"The Hugging Face cache partial '{Path.Combine(_destinationPath, fileName)}' " +
+                        "has multiple hard links. Remove it manually and retry setup.");
                 }
 
                 RequireContainedFile(handle!, fileName);
@@ -685,6 +757,7 @@ internal static class LocalAiManifestMigration
             }
             catch
             {
+                file.Commit();
                 file.Dispose();
                 throw;
             }
@@ -1015,7 +1088,7 @@ internal static class LocalAiManifestMigration
         }
     }
 
-    private sealed class CacheMigrationFile : IAsyncDisposable, IDisposable
+    internal sealed class CacheMigrationFile : IAsyncDisposable, IDisposable
     {
         private readonly SafeCacheDirectory _directory;
         private bool _deleteOnDispose = true;
