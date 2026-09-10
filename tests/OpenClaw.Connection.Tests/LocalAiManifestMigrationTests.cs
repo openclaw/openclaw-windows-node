@@ -305,7 +305,7 @@ public sealed class LocalAiManifestMigrationTests
     }
 
     [Fact]
-    public async Task Migration_RejectsTemporaryContentChangedBeforePromotion()
+    public async Task Migration_RejectsAttemptedTemporaryChangeAndRemovesOwnedPartial()
     {
         using var temp = new TempDirectory("local-ai-cache-migration-");
         MigrationFixture fixture = await CreateFixtureAsync(
@@ -327,9 +327,39 @@ public sealed class LocalAiManifestMigrationTests
         Assert.Equal(
             LocalAiInstallManifest.CurrentSchemaVersion,
             await ReadPersistedSchemaVersionAsync(fixture.Paths.ManifestPath));
+        Assert.False(File.Exists(fixture.CachedModelPath));
+        Assert.DoesNotContain(
+            Directory.EnumerateFiles(Path.GetDirectoryName(fixture.CachedModelPath)!),
+            path => Path.GetFileName(path).StartsWith(".openclaw-migration-", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task Migration_RejectsDestinationDirectorySwapWithoutWritingOutsideCache()
+    {
+        using var temp = new TempDirectory("local-ai-cache-migration-");
+        string? preservedDirectory = null;
+        string outsideDirectory = temp.Combine("outside-cache");
+        Directory.CreateDirectory(outsideDirectory);
+        MigrationFixture fixture = await CreateFixtureAsync(
+            temp,
+            beforeMigrationPromotion: (destinationPath, _) =>
+            {
+                string destinationDirectory = Path.GetDirectoryName(destinationPath)!;
+                preservedDirectory = destinationDirectory + "-preserved";
+                Directory.Move(destinationDirectory, preservedDirectory);
+                Assert.True(TryCreateJunction(destinationDirectory, outsideDirectory));
+                return Task.CompletedTask;
+            });
+
+        InvalidDataException error = await Assert.ThrowsAsync<InvalidDataException>(
+            () => fixture.Store.MigrateLegacyModelToHubCacheAsync());
+
+        Assert.Contains("promoted safely", error.Message, StringComparison.Ordinal);
+        Assert.Empty(Directory.EnumerateFiles(outsideDirectory));
+        Assert.NotNull(preservedDirectory);
         Assert.Equal(
-            Enumerable.Repeat((byte)0x7f, FixtureContent.Length).ToArray(),
-            await File.ReadAllBytesAsync(fixture.CachedModelPath));
+            LocalAiInstallManifest.CurrentSchemaVersion,
+            await ReadPersistedSchemaVersionAsync(fixture.Paths.ManifestPath));
     }
 
     [Fact]
@@ -507,11 +537,17 @@ public sealed class LocalAiManifestMigrationTests
     }
 
     private static bool TryCreateHardLink(string linkPath, string existingPath)
+        => RunMklink($"/H \"{linkPath}\" \"{existingPath}\"");
+
+    private static bool TryCreateJunction(string linkPath, string targetPath)
+        => RunMklink($"/J \"{linkPath}\" \"{targetPath}\"");
+
+    private static bool RunMklink(string arguments)
     {
         using var process = Process.Start(new ProcessStartInfo
         {
             FileName = Environment.GetEnvironmentVariable("COMSPEC") ?? "cmd.exe",
-            Arguments = $"/d /c mklink /H \"{linkPath}\" \"{existingPath}\"",
+            Arguments = $"/d /c mklink {arguments}",
             CreateNoWindow = true,
             UseShellExecute = false,
             RedirectStandardOutput = true,
