@@ -52,6 +52,23 @@ internal sealed class AutoStartRefusedException : InvalidOperationException
 internal static class AutoStartReconciliation
 {
     /// <summary>
+    /// Decides whether a startup reconciliation result may still be persisted.
+    /// </summary>
+    /// <param name="captured">The preference read when reconciliation began.</param>
+    /// <param name="current">The preference as it stands now, after the Windows query.</param>
+    /// <param name="reconciled">The value reconciliation arrived at.</param>
+    /// <remarks>
+    /// Reconciliation reads the stored preference, then awaits a StartupTask query. The
+    /// mutation gate keeps the Settings toggle from interleaving with that sequence, but
+    /// settings can still be written by origins that never take the gate. Persisting the
+    /// result unconditionally would apply a decision derived from a value that has since been
+    /// replaced, so a preference that moved while the query was in flight is left alone and
+    /// the reconciliation result is discarded.
+    /// </remarks>
+    internal static bool ShouldPersistReconciledValue(bool captured, bool current, bool reconciled)
+        => current == captured && reconciled != captured;
+
+    /// <summary>
     /// Reconciles the persisted preference against the real Windows startup state and
     /// returns the value the app should now report and store.
     /// </summary>

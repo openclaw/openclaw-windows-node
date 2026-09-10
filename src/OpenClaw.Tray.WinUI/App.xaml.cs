@@ -222,6 +222,12 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands, IPer
     private SettingsWriteOrigin? _appCapabilityPermissionWriteOrigin;
     private SettingsWriteOrigin? _trayAutoStartWriteOrigin;
 
+    /// <summary>
+    /// Serializes auto-start mutations so startup reconciliation and a user toggle cannot
+    /// interleave their read-decide-write sequences against Windows and settings.
+    /// </summary>
+    private readonly SemaphoreSlim _autoStartMutationGate = new(1, 1);
+
     // FrozenDictionary for O(1) case-insensitive notification type → setting lookup — no per-call allocation.
     private static readonly System.Collections.Frozen.FrozenDictionary<string, Func<SettingsManager, bool>> s_notifTypeMap =
         new Dictionary<string, Func<SettingsManager, bool>>(StringComparer.OrdinalIgnoreCase)
@@ -4031,6 +4037,7 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands, IPer
     private async Task<bool> ApplyAutoStartCore(SettingsWriteOrigin? origin, bool autoStart)
     {
         if (_settings == null) return false;
+        await _autoStartMutationGate.WaitAsync();
         try
         {
             if (SettingsStore is { } store)
@@ -4062,32 +4069,60 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands, IPer
             }
             return false;
         }
+        finally
+        {
+            _autoStartMutationGate.Release();
+        }
     }
 
     /// <summary>
     /// Aligns the stored auto-start preference with the state Windows actually reports,
     /// so the Settings toggle never claims auto-start is on while nothing launches at logon.
     /// </summary>
+    /// <remarks>
+    /// Runs under <see cref="_autoStartMutationGate"/> so the query-then-set sequence cannot
+    /// interleave with a user toggle: a toggle raised while this is in flight is applied after
+    /// it, and therefore wins. The preference is re-read before persisting as well, to cover
+    /// writes that reach settings without passing through the gate. The saved event is raised
+    /// after the gate is released, because subscribers apply auto-start themselves and must
+    /// not re-enter a non-reentrant gate.
+    /// </remarks>
     private async Task ReconcileAutoStartOnStartupAsync()
     {
         if (_settings == null) return;
 
-        var configured = _settings.AutoStart;
-        var effective = await AutoStartManager.ReconcileAutoStartAsync(configured);
-        if (effective == configured) return;
-
-        Logger.Info($"Auto-start setting corrected from {configured} to {effective} to match Windows.");
-        if (SettingsStore is { } store)
+        var persisted = false;
+        await _autoStartMutationGate.WaitAsync();
+        try
         {
-            store.Update(null, edit => edit.AutoStart = effective);
+            var configured = _settings.AutoStart;
+            var effective = await AutoStartManager.ReconcileAutoStartAsync(configured);
+
+            if (!AutoStartReconciliation.ShouldPersistReconciledValue(configured, _settings.AutoStart, effective))
+                return;
+
+            Logger.Info($"Auto-start setting corrected from {configured} to {effective} to match Windows.");
+            if (SettingsStore is { } store)
+            {
+                store.Update(null, edit => edit.AutoStart = effective);
+            }
+            else
+            {
+                _settings.AutoStart = effective;
+                _settings.Save();
+            }
+
+            persisted = true;
         }
-        else
+        finally
         {
-            _settings.AutoStart = effective;
-            _settings.Save();
+            _autoStartMutationGate.Release();
         }
 
-        OnSettingsSaved(this, EventArgs.Empty);
+        if (persisted)
+        {
+            OnSettingsSaved(this, EventArgs.Empty);
+        }
     }
 
     private void OpenLogFile()

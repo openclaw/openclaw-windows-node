@@ -213,4 +213,65 @@ public sealed class AutoStartReconciliationTests
 
         Assert.Equal(windowsEnabled, result);
     }
+
+    /// <summary>
+    /// Startup reconciliation reads the stored preference, then awaits a StartupTask query.
+    /// If the preference is rewritten while that query is in flight, persisting the result of
+    /// the stale read would undo the newer value, so it is re-checked first.
+    /// </summary>
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public void PreferenceChangedDuringQuery_DiscardsReconciledValue(bool captured)
+    {
+        var shouldPersist = AutoStartReconciliation.ShouldPersistReconciledValue(
+            captured: captured,
+            current: !captured,
+            reconciled: !captured);
+
+        Assert.False(shouldPersist);
+    }
+
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public void PreferenceUnchanged_PersistsDifferingReconciledValue(bool captured)
+    {
+        var shouldPersist = AutoStartReconciliation.ShouldPersistReconciledValue(
+            captured: captured,
+            current: captured,
+            reconciled: !captured);
+
+        Assert.True(shouldPersist);
+    }
+
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public void ReconciledValueMatchesPreference_PersistsNothing(bool captured)
+    {
+        var shouldPersist = AutoStartReconciliation.ShouldPersistReconciledValue(
+            captured: captured,
+            current: captured,
+            reconciled: captured);
+
+        Assert.False(shouldPersist);
+    }
+
+    /// <summary>
+    /// The reconciled value agreeing with where the preference landed is not a reason to
+    /// write it: the newer write already persisted that value through its own path.
+    /// </summary>
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public void PreferenceChangedToReconciledValue_StillDiscards(bool captured)
+    {
+        var shouldPersist = AutoStartReconciliation.ShouldPersistReconciledValue(
+            captured: captured,
+            current: !captured,
+            reconciled: captured);
+
+        Assert.False(shouldPersist);
+    }
 }

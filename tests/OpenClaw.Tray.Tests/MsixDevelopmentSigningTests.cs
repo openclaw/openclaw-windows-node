@@ -255,6 +255,14 @@ public sealed class MsixDevelopmentSigningTests
         // A refusal from Windows (DisabledByUser / DisabledByPolicy) must be persisted as
         // false rather than retried silently, so the toggle tells the truth.
         Assert.Contains("edit.AutoStart = effective", app);
+
+        // Reconciliation reads the preference, then awaits a StartupTask query. Both mutation
+        // paths take the gate so their read-decide-write sequences cannot interleave, and the
+        // result is re-checked against the current preference before it is persisted, to cover
+        // writes that reach settings without taking the gate. Without both, a stale decision
+        // silently overwrites the newer choice, or is pushed to Windows on the user's behalf.
+        Assert.Contains("_autoStartMutationGate", app);
+        Assert.Contains("AutoStartReconciliation.ShouldPersistReconciledValue(configured, _settings.AutoStart, effective)", app);
     }
 
     [Fact]
