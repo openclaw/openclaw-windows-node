@@ -4,6 +4,7 @@ import test from "node:test";
 import {
     applyAdversarialReview,
     canRequestMerge,
+    mergeAdversarialReviews,
     mergeLiveState,
     KNOWN_PROOF_POOLS,
     normalizeTriageInput,
@@ -407,6 +408,53 @@ test("removes closed items and their completed plan work from open inventory", (
     assert.equal(result.scope, "1 open non-draft pull requests");
 });
 
+test("keeps closed-unmerged plan prerequisites blocked", () => {
+    const triage = normalizeTriageInput({
+        schemaVersion: 1,
+        repo: "openclaw/openclaw-windows-node",
+        title: "Global triage",
+        scope: "2 open non-draft pull requests",
+        generatedAt: "2026-09-03T22:00:00Z",
+        items: [
+            inputItem(),
+            inputItem({
+                number: 1309,
+                url: "https://github.com/openclaw/openclaw-windows-node/pull/1309",
+                dependencies: [1308],
+            }),
+        ],
+        plan: [
+            {
+                id: "land",
+                title: "Land the prerequisite",
+                itemNumbers: [1308],
+                gates: [{ itemNumber: 1308, stage: "landing" }],
+                status: "pending",
+            },
+            {
+                id: "follow-up",
+                title: "Continue with the dependent PR",
+                dependsOn: ["land"],
+                itemNumbers: [1309],
+                gates: [{ itemNumber: 1309, stage: "review" }],
+                status: "pending",
+            },
+        ],
+    });
+    const result = reconcileOpenInventory(triage, [
+        livePr({ state: "CLOSED" }),
+        livePr({ number: 1309 }),
+    ], []);
+    const projected = mergeLiveState(result, [livePr({ number: 1309 })], []);
+
+    assert.deepEqual(result.items.map((item) => item.number), [1309]);
+    assert.deepEqual(result.items[0].dependencies, [1308]);
+    assert.deepEqual(result.plan.map((step) => step.id), ["land", "follow-up"]);
+    assert.equal(result.plan[0].status, "blocked");
+    assert.equal(projected.plan[0].liveStatus, "blocked");
+    assert.equal(projected.plan[1].liveStatus, "blocked");
+});
+
 test("keeps items when exact live state is unavailable", () => {
     const triage = normalizeTriageInput({
         schemaVersion: 1,
@@ -418,8 +466,13 @@ test("keeps items when exact live state is unavailable", () => {
         plan: [],
     });
 
-    assert.equal(reconcileOpenInventory(triage, [], []).items.length, 1);
-    assert.equal(reconcileOpenInventory(triage, [{ number: 1308 }], []).items.length, 1);
+    const missing = reconcileOpenInventory(triage, [], []);
+    const incomplete = reconcileOpenInventory(triage, [{ number: 1308 }], []);
+
+    assert.equal(missing.items.length, 1);
+    assert.equal(incomplete.items.length, 1);
+    assert.equal(missing.scope, "0 open non-draft pull requests");
+    assert.equal(incomplete.scope, "0 open non-draft pull requests");
 });
 
 test("normalizes legacy counts even when inventory membership is unchanged", () => {
@@ -674,6 +727,46 @@ test("updates plan status from linked live gates", () => {
 
     assert.equal(result.plan[0].liveStatus, "done");
     assert.equal(result.plan[0].horizon, "today");
+});
+
+test("reprojects plan and summary after an exact-head adversarial review", () => {
+    const triage = normalizeTriageInput({
+        schemaVersion: 1,
+        repo: "openclaw/openclaw-windows-node",
+        title: "Global triage",
+        scope: "All open work",
+        generatedAt: "2026-09-03T22:00:00Z",
+        items: [inputItem({
+            decision: "NEEDS_INFO",
+            takeConfidence: 0,
+            recommendationConfidence: 0,
+            reviewStatus: "required",
+        })],
+        plan: [{
+            id: "review",
+            title: "Review the PR",
+            itemNumbers: [1308],
+            gates: [{ itemNumber: 1308, stage: "review" }],
+            status: "pending",
+        }],
+    });
+    const liveState = mergeLiveState(triage, [livePr()], []);
+    const result = mergeAdversarialReviews(liveState, [{
+        prNumber: 1308,
+        reviewedHeadSha: "abc123",
+        status: "complete",
+        opusStatus: "complete",
+        codexStatus: "complete",
+        finalDecision: "TAKE",
+        takeConfidence: 96,
+        recommendationConfidence: 99,
+        nextAction: "Merge after fresh verification.",
+    }]);
+
+    assert.equal(liveState.plan[0].liveStatus, "pending");
+    assert.equal(result.items[0].stages.review, "done");
+    assert.equal(result.plan[0].liveStatus, "done");
+    assert.equal(result.summary.ready, 1);
 });
 
 test("blocks downstream plan steps until dependencies complete", () => {
@@ -1192,7 +1285,7 @@ test("live GitHub collection and session review data are reflected in the canvas
     assert.match(source, /final_decision, take_confidence, recommendation_confidence,/);
     assert.match(source, /SELECT id, pr_number, issue, opus_severity, codex_severity,/);
     assert.match(source, /finding\.disposition\.startsWith\("accepted"\)/);
-    assert.match(source, /applyAdversarialReview\(item, adversarialReview\)/);
+    assert.match(source, /mergeAdversarialReviews\(state, sessionData\.adversarialReviews\)/);
     assert.match(source, /entry\.taskTimer = setInterval\(\(\) => refreshSessionData\(entry\), 2_000\)/);
     assert.match(
         source,
