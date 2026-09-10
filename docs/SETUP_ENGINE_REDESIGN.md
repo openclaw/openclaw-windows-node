@@ -226,9 +226,13 @@ uninstall reads do not migrate it. Setup reconciliation is the explicit
 promotion gate: it verifies and copies the legacy model, atomically records a
 schema-4 cache receipt, then selects the verified snapshot path as active.
 Fresh installs write schema 4 directly while retaining the legacy relative
-`ModelPath` and a verified app-owned compatibility copy for downgrade and
-recovery. Rollback may remove a compatibility copy created by the current
-transaction, but it never removes the verified shared-cache source.
+`ModelPath` and a verified app-owned compatibility copy for recovery and for
+rollback to schema-4-aware transitional builds containing #1388
+(feat(local-ai): add verified legacy model cache migration). Schema-3-only
+releases do not understand a schema-4 `state.json`; the retained model bytes
+alone do not make a direct downgrade to those releases compatible. Rollback
+may remove a compatibility copy created by the current transaction, but it
+never removes the verified shared-cache source.
 
 Completed cache files and pre-existing resumable partials are shared state.
 Setup rollback and uninstall do not delete them. Unsafe links, reparse points,

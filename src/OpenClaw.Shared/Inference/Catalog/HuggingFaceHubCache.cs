@@ -7,6 +7,29 @@ using System.Text;
 namespace OpenClaw.Shared.Inference.Catalog;
 
 /// <summary>
+/// Owns a verified Hugging Face cache file and the physical path resolved from
+/// that same open handle.
+/// </summary>
+public sealed class VerifiedHuggingFaceCacheFile : IDisposable, IAsyncDisposable
+{
+    internal VerifiedHuggingFaceCacheFile(FileStream stream, string resolvedPath)
+    {
+        Stream = stream ?? throw new ArgumentNullException(nameof(stream));
+        ResolvedPath = string.IsNullOrWhiteSpace(resolvedPath)
+            ? throw new ArgumentException("The resolved cache path is required.", nameof(resolvedPath))
+            : resolvedPath;
+    }
+
+    public FileStream Stream { get; }
+
+    public string ResolvedPath { get; }
+
+    public void Dispose() => Stream.Dispose();
+
+    public ValueTask DisposeAsync() => Stream.DisposeAsync();
+}
+
+/// <summary>
 /// Resolves and validates paths in the standard Hugging Face hub cache layout.
 /// </summary>
 /// <remarks>
@@ -260,7 +283,8 @@ public static class HuggingFaceHubCache
             return true;
         }
         catch (Exception ex) when (
-            ex is IOException or
+            ex is ArgumentException or
+                IOException or
                 UnauthorizedAccessException or
                 System.Security.SecurityException or
                 NotSupportedException)
@@ -346,6 +370,47 @@ public static class HuggingFaceHubCache
         {
             if (!returnStream)
                 await stream!.DisposeAsync().ConfigureAwait(false);
+        }
+    }
+
+    /// <summary>
+    /// Returns a verified open cache file together with the physical path resolved
+    /// from that same handle. The caller can pass <see cref="VerifiedHuggingFaceCacheFile.ResolvedPath"/>
+    /// to a native reader while retaining the returned handle, preventing a later
+    /// snapshot-link replacement from changing the file identity the reader opens.
+    /// </summary>
+    public static async Task<VerifiedHuggingFaceCacheFile?> TryOpenVerifiedCacheEntryAsync(
+        string cacheRoot,
+        string candidatePath,
+        long expectedSizeBytes,
+        Sha256Digest expectedSha256,
+        IProgress<long>? progress = null,
+        CancellationToken cancellationToken = default)
+    {
+        FileStream? stream = await TryOpenVerifiedCacheFileAsync(
+                cacheRoot,
+                candidatePath,
+                expectedSizeBytes,
+                expectedSha256,
+                progress,
+                cancellationToken)
+            .ConfigureAwait(false);
+        if (stream is null)
+            return null;
+
+        try
+        {
+            string resolvedPath = GetFinalPathFromHandle(stream.SafeFileHandle, candidatePath);
+            return new VerifiedHuggingFaceCacheFile(stream, resolvedPath);
+        }
+        catch (Exception ex) when (
+            ex is IOException or
+                UnauthorizedAccessException or
+                System.Security.SecurityException or
+                NotSupportedException)
+        {
+            await stream.DisposeAsync().ConfigureAwait(false);
+            return null;
         }
     }
 

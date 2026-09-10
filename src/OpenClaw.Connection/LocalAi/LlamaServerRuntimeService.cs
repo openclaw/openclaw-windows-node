@@ -46,6 +46,57 @@ internal sealed class SystemLlamaServerRuntimePlatform : ILlamaServerRuntimePlat
     public Task DelayAsync(TimeSpan delay, CancellationToken cancellationToken) => Task.Delay(delay, cancellationToken);
 }
 
+internal sealed class LocalAiVerifiedModelLease : IDisposable
+{
+    private readonly IDisposable _handle;
+
+    public LocalAiVerifiedModelLease(IDisposable handle, string resolvedPath)
+    {
+        _handle = handle ?? throw new ArgumentNullException(nameof(handle));
+        ResolvedPath = string.IsNullOrWhiteSpace(resolvedPath)
+            ? throw new ArgumentException("The resolved model path is required.", nameof(resolvedPath))
+            : resolvedPath;
+    }
+
+    public string ResolvedPath { get; }
+
+    public void Dispose() => _handle.Dispose();
+}
+
+internal interface ILocalAiModelFileVerifier
+{
+    Task<LocalAiVerifiedModelLease?> TryOpenAsync(
+        string cacheRoot,
+        string candidatePath,
+        long expectedSizeBytes,
+        Sha256Digest expectedSha256,
+        CancellationToken cancellationToken);
+}
+
+internal sealed class HuggingFaceLocalAiModelFileVerifier : ILocalAiModelFileVerifier
+{
+    public async Task<LocalAiVerifiedModelLease?> TryOpenAsync(
+        string cacheRoot,
+        string candidatePath,
+        long expectedSizeBytes,
+        Sha256Digest expectedSha256,
+        CancellationToken cancellationToken)
+    {
+        VerifiedHuggingFaceCacheFile? verified =
+            await HuggingFaceHubCache.TryOpenVerifiedCacheEntryAsync(
+                    cacheRoot,
+                    candidatePath,
+                    expectedSizeBytes,
+                    expectedSha256,
+                    progress: null,
+                    cancellationToken)
+                .ConfigureAwait(false);
+        return verified is null
+            ? null
+            : new LocalAiVerifiedModelLease(verified, verified.ResolvedPath);
+    }
+}
+
 /// <summary>
 /// Owns the native llama-server router for the lifetime of the Windows companion.
 /// The router starts without a model; the first inference request triggers the
@@ -59,13 +110,15 @@ public sealed class LlamaServerRuntimeService : ILocalAiRuntime
     private readonly ILocalAiManagedProcessHost _processHost;
     private readonly ILlamaServerRuntimePlatform _platform;
     private readonly ILlamaServerClient _client;
+    private readonly ILocalAiModelFileVerifier _modelFileVerifier;
     private readonly SemaphoreSlim _operationGate = new(1, 1);
     private readonly object _exitTasksGate = new();
     private readonly HashSet<Task> _exitTasks = [];
     private readonly object _snapshotGate = new();
     private LocalAiRuntimeSnapshot _snapshot;
     private ILocalAiManagedProcess? _managedProcess;
-    private FileStream? _verifiedModelHandle;
+    private LocalAiVerifiedModelLease? _verifiedModel;
+    private string? _runtimeModelPath;
     private LocalAiResolvedInstall? _install;
     private long _generation;
     private int _restartAttempts;
@@ -82,7 +135,8 @@ public sealed class LlamaServerRuntimeService : ILocalAiRuntime
             logger ?? NullLogger.Instance,
             new WindowsLocalAiManagedProcessHost(logger ?? NullLogger.Instance),
             new SystemLlamaServerRuntimePlatform(),
-            new LlamaServerClient())
+            new LlamaServerClient(),
+            new HuggingFaceLocalAiModelFileVerifier())
     {
     }
 
@@ -91,13 +145,15 @@ public sealed class LlamaServerRuntimeService : ILocalAiRuntime
         IOpenClawLogger logger,
         ILocalAiManagedProcessHost processHost,
         ILlamaServerRuntimePlatform platform,
-        ILlamaServerClient client)
+        ILlamaServerClient client,
+        ILocalAiModelFileVerifier? modelFileVerifier = null)
     {
         _options = ValidateOptions(options);
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
         _processHost = processHost ?? throw new ArgumentNullException(nameof(processHost));
         _platform = platform ?? throw new ArgumentNullException(nameof(platform));
         _client = client ?? throw new ArgumentNullException(nameof(client));
+        _modelFileVerifier = modelFileVerifier ?? new HuggingFaceLocalAiModelFileVerifier();
         _manifestStore = new LocalAiManifestStore(options.Paths);
         _snapshot = LocalAiRuntimeSnapshot.Initial(options.InitialEndpoint, platform.UtcNow);
     }
@@ -318,9 +374,10 @@ public sealed class LlamaServerRuntimeService : ILocalAiRuntime
         {
             await ValidateInstalledFilesAsync(install, cancellationToken).ConfigureAwait(false);
             LocalAiPortPolicy.Validate(requestedPort);
-            launchPlan = LlamaServerRouterConfiguration.Build(
+            launchPlan = LlamaServerRouterConfiguration.BuildForVerifiedRuntime(
                 _options.Paths,
                 install,
+                GetRuntimeModelPath(install),
                 requestedPort);
             await WritePresetAtomicallyAsync(launchPlan, cancellationToken).ConfigureAwait(false);
         }
@@ -388,13 +445,14 @@ public sealed class LlamaServerRuntimeService : ILocalAiRuntime
                 }
                 if (ownership.Endpoint is not null)
                 {
+                    string runtimeModelPath = GetRuntimeModelPath(install);
                     LlamaServerRouterProbeResult probe = await _client.ProbeManagedModelAsync(
                             ownership.Endpoint,
                             install.Manifest.ModelAlias,
-                            install.ModelPath,
+                            runtimeModelPath,
                             cancellationToken)
                         .ConfigureAwait(false);
-                    if (probe.IsReadyForManagedModel(install.ModelPath))
+                    if (probe.IsReadyForManagedModel(runtimeModelPath))
                     {
                         LocalAiInstallManifest verifiedManifest = install.Manifest with
                         {
@@ -540,13 +598,14 @@ public sealed class LlamaServerRuntimeService : ILocalAiRuntime
                 _managedProcess.StartedAtUtc);
         }
 
+        string runtimeModelPath = GetRuntimeModelPath(install);
         LlamaServerRouterProbeResult probe = await _client.ProbeManagedModelAsync(
                 ownership.Endpoint,
                 install.Manifest.ModelAlias,
-                install.ModelPath,
+                runtimeModelPath,
                 cancellationToken)
             .ConfigureAwait(false);
-        if (probe.IsReadyForManagedModel(install.ModelPath))
+        if (probe.IsReadyForManagedModel(runtimeModelPath))
         {
             bool endpointChanged = install.Endpoint != ownership.Endpoint;
             if (_snapshot.State != LocalAiRuntimeState.Healthy || endpointChanged)
@@ -804,28 +863,40 @@ public sealed class LlamaServerRuntimeService : ILocalAiRuntime
         ValidateInstalledFilesForStatus(install);
 
         if (install.Manifest.SchemaVersion != LocalAiInstallManifest.HubCacheReceiptSchemaVersion)
+        {
+            _runtimeModelPath = install.ModelPath;
             return;
+        }
 
-        _verifiedModelHandle =
-            await HuggingFaceHubCache.TryOpenVerifiedCacheFileAsync(
+        _verifiedModel =
+            await _modelFileVerifier.TryOpenAsync(
                     install.Manifest.ModelCacheRoot!,
                     install.ModelPath,
                     install.Manifest.ModelAsset.SizeBytes,
                     new Sha256Digest(install.Manifest.ModelAsset.Sha256),
-                    progress: null,
                     cancellationToken)
                 .ConfigureAwait(false);
-        if (_verifiedModelHandle is null)
+        if (_verifiedModel is null)
         {
+            _runtimeModelPath = null;
             throw new InvalidDataException(
                 "The shared Hugging Face cache model is unsafe or no longer matches its receipt.");
         }
+
+        _runtimeModelPath = _verifiedModel.ResolvedPath;
     }
 
     private static void ValidateInstalledFilesForStatus(LocalAiResolvedInstall install)
     {
         if (!File.Exists(install.ExecutablePath))
             throw new InvalidDataException("The managed llama-server executable is missing.");
+        if (install.Manifest.SchemaVersion == LocalAiInstallManifest.HubCacheReceiptSchemaVersion)
+        {
+            if (!File.Exists(install.ModelPath))
+                throw new InvalidDataException("The managed GGUF model is missing.");
+            return;
+        }
+
         var model = new FileInfo(install.ModelPath);
         if (!model.Exists || model.Length != install.Manifest.ModelAsset.SizeBytes)
             throw new InvalidDataException("The managed GGUF model is missing or has an unexpected size.");
@@ -1593,8 +1664,18 @@ public sealed class LlamaServerRuntimeService : ILocalAiRuntime
 
     private void DisposeVerifiedModelHandle()
     {
-        _verifiedModelHandle?.Dispose();
-        _verifiedModelHandle = null;
+        _verifiedModel?.Dispose();
+        _verifiedModel = null;
+        _runtimeModelPath = null;
+    }
+
+    private string GetRuntimeModelPath(LocalAiResolvedInstall install)
+    {
+        if (_runtimeModelPath is not null)
+            return _runtimeModelPath;
+        if (install.Manifest.SchemaVersion == LocalAiInstallManifest.HubCacheReceiptSchemaVersion)
+            throw new InvalidOperationException("The verified shared-cache model identity is unavailable.");
+        return install.ModelPath;
     }
 
     private static LlamaServerRuntimeOptions ValidateOptions(LlamaServerRuntimeOptions options)

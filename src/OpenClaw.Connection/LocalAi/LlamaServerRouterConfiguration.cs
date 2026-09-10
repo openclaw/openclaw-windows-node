@@ -30,10 +30,25 @@ public static class LlamaServerRouterConfiguration
     public static LlamaServerRouterLaunchPlan Build(
         LocalAiPaths paths,
         LocalAiResolvedInstall install,
-        int? listenPort = null)
+        int? listenPort = null) =>
+        BuildCore(paths, install, install.ModelPath, listenPort);
+
+    internal static LlamaServerRouterLaunchPlan BuildForVerifiedRuntime(
+        LocalAiPaths paths,
+        LocalAiResolvedInstall install,
+        string verifiedModelPath,
+        int? listenPort = null) =>
+        BuildCore(paths, install, verifiedModelPath, listenPort);
+
+    private static LlamaServerRouterLaunchPlan BuildCore(
+        LocalAiPaths paths,
+        LocalAiResolvedInstall install,
+        string modelPath,
+        int? listenPort)
     {
         ArgumentNullException.ThrowIfNull(paths);
         ArgumentNullException.ThrowIfNull(install);
+        ArgumentException.ThrowIfNullOrWhiteSpace(modelPath);
 
         LocalAiInstallManifest manifest = install.Manifest;
         int port = listenPort ?? manifest.RequestedPort;
@@ -69,7 +84,7 @@ public static class LlamaServerRouterConfiguration
                 .WithComparers(StringComparer.OrdinalIgnoreCase)
                 .Add("CUDA_VISIBLE_DEVICES", manifest.SelectedGpuId),
             presetPath,
-            BuildPreset(model, profile, install.ModelPath),
+            BuildPreset(model, profile, modelPath),
             model.Id);
     }
 
