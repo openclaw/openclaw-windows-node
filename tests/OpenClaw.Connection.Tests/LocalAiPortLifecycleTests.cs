@@ -1691,6 +1691,43 @@ public sealed class LocalAiPortLifecycleTests
     }
 
     [Fact]
+    public async Task Stop_ProcessShutdownExceptionPublishesRetryableFailure()
+    {
+        using var temp = new TempDirectory("local-ai-port-");
+        LocalAiPaths paths = await PrepareInstallAsync(temp);
+        var events = new SynchronizedEventLog();
+        var platform = new FakePlatform();
+        var host = new FakeProcessHost(platform, events, selectedPort: 28_769);
+        await using var runtime = CreateRuntime(
+            paths,
+            host,
+            platform,
+            new FakeClient(events),
+            new FakeLifecycle(events));
+        LocalAiRuntimeSnapshot started = await runtime.EnsureStartedAsync();
+        Assert.Equal(LocalAiRuntimeState.Healthy, started.State);
+        host.Process!.StopException = new IOException("process shutdown failed");
+        events.Clear();
+
+        IOException error = await Assert.ThrowsAsync<IOException>(() => runtime.StopAsync());
+
+        Assert.Equal("process shutdown failed", error.Message);
+        Assert.Equal(LocalAiRuntimeState.Failed, runtime.Snapshot.State);
+        Assert.Equal(LocalAiOwnership.CompanionManaged, runtime.Snapshot.Ownership);
+        Assert.False(host.Process.HasExited);
+        Assert.Contains("managed listener remains running", runtime.Snapshot.Detail, StringComparison.Ordinal);
+        Assert.Equal(["quiesce:Teardown", "stop"], events);
+
+        host.Process.StopException = null;
+        events.Clear();
+        LocalAiRuntimeSnapshot stopped = await runtime.StopAsync();
+
+        Assert.Equal(LocalAiRuntimeState.Stopped, stopped.State);
+        Assert.True(host.Process.HasExited);
+        Assert.Equal(["quiesce:Teardown", "stop"], events);
+    }
+
+    [Fact]
     public async Task Stop_FailedWithdrawalLatchesIntentAndPreventsAutomaticRestart()
     {
         using var temp = new TempDirectory("local-ai-port-");
@@ -2441,6 +2478,7 @@ public sealed class LocalAiPortLifecycleTests
         public bool HasExited { get; private set; }
         public int StopCount { get; private set; }
         public Action? AfterStop { get; set; }
+        public Exception? StopException { get; set; }
 
         /// <summary>Marks the child as exited without going through StopAsync.</summary>
         public void MarkExited() => HasExited = true;
@@ -2450,6 +2488,8 @@ public sealed class LocalAiPortLifecycleTests
             cancellationToken.ThrowIfCancellationRequested();
             events.Add("stop");
             StopCount++;
+            if (StopException is not null)
+                throw StopException;
             HasExited = true;
             platform.Listeners.Clear();
             AfterStop?.Invoke();

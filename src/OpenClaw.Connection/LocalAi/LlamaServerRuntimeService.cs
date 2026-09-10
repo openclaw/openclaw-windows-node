@@ -152,6 +152,25 @@ public sealed class LlamaServerRuntimeService : ILocalAiRuntime
                 (_gatewayRouteRequiresResolution || _managedProcess is { HasExited: false });
             return stopped;
         }
+        catch (Exception ex)
+        {
+            bool processStillRunning = _managedProcess is { HasExited: false };
+            _explicitStopRequested = _gatewayRouteRequiresResolution || processStillRunning;
+            if (Snapshot.State == LocalAiRuntimeState.Stopping)
+            {
+                string outcome = ex is OperationCanceledException ? "canceled" : "interrupted";
+                if (processStillRunning)
+                {
+                    PublishManagedFailure(
+                        $"Local AI stop was {outcome}; the managed listener remains running.");
+                }
+                else
+                {
+                    PublishTerminalCleanupFailure($"Local AI stop was {outcome}.");
+                }
+            }
+            throw;
+        }
         finally
         {
             _operationGate.Release();
@@ -1106,13 +1125,24 @@ public sealed class LlamaServerRuntimeService : ILocalAiRuntime
         _managedProcess = null;
         if (process is null)
             return;
+        bool preserveForRetry = false;
         try
         {
             await process.StopAsync(_options.ShutdownTimeout, cancellationToken).ConfigureAwait(false);
         }
+        catch
+        {
+            if (!process.HasExited)
+            {
+                _managedProcess = process;
+                preserveForRetry = true;
+            }
+            throw;
+        }
         finally
         {
-            await process.DisposeAsync().ConfigureAwait(false);
+            if (!preserveForRetry)
+                await process.DisposeAsync().ConfigureAwait(false);
         }
     }
 
