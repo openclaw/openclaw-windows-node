@@ -550,10 +550,6 @@ public sealed class LocalAiPortLifecycleTests
     [Fact]
     public async Task Restart_ExhaustedAutomaticRestoresEndInTeardownNotEndpointCycle()
     {
-        // The first unexpected exit schedules a restart and is an endpoint
-        // cycle. Once the retry budget is spent, the next exit is terminal and
-        // must restore gateway routing (teardown) rather than retain a managed
-        // primary whose provider is gone.
         using var temp = new TempDirectory("local-ai-port-");
         LocalAiPaths paths = await PrepareInstallAsync(temp);
         var store = new LocalAiManifestStore(paths);
@@ -809,8 +805,6 @@ public sealed class LocalAiPortLifecycleTests
     [Fact]
     public async Task Restart_CancellationWithdrawsRetainedRouteBeforeDisposingChild()
     {
-        // A canceled startup is terminal for the attempt: the retained route is
-        // withdrawn before the child's listener disappears.
         using var temp = new TempDirectory("local-ai-port-");
         LocalAiPaths paths = await PrepareInstallAsync(temp);
         var store = new LocalAiManifestStore(paths);
@@ -2399,13 +2393,10 @@ public sealed class LocalAiPortLifecycleTests
         public FakeProcess? Process { get; private set; }
         public Action<LocalAiManagedProcessExit>? LastExitCallback { get; private set; }
 
-        /// <summary>Starts the child without ever opening a listener, so startup times out.</summary>
         public bool SuppressListener { get; init; }
 
-        /// <summary>Throws from StartProcessAsync, simulating a process-launch failure.</summary>
         public bool ThrowOnStart { get; init; }
 
-        /// <summary>Fires the exit callback during StartProcessAsync, simulating an immediate child exit.</summary>
         public bool ImmediateExit { get; init; }
 
         public Task<ILocalAiManagedProcess> StartProcessAsync(
@@ -2452,7 +2443,6 @@ public sealed class LocalAiPortLifecycleTests
         public Action? AfterStop { get; set; }
         public Exception? StopException { get; set; }
 
-        /// <summary>Marks the child as exited without going through StopAsync.</summary>
         public void MarkExited() => HasExited = true;
 
         public Task StopAsync(TimeSpan timeout, CancellationToken cancellationToken)
