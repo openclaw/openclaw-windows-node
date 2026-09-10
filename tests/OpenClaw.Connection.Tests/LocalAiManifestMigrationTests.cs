@@ -39,7 +39,7 @@ public sealed class LocalAiManifestMigrationTests
             new InlineProgress<LocalAiModelMigrationProgress>(progress.Add)))!;
 
         Assert.Equal(LocalAiInstallManifest.HubCacheReceiptSchemaVersion, migrated.Manifest.SchemaVersion);
-        Assert.Equal(fixture.LegacyModelPath, migrated.ModelPath);
+        Assert.Equal(fixture.CachedModelPath, migrated.ModelPath);
         Assert.Equal(fixture.CacheRoot, migrated.Manifest.ModelCacheRoot);
         Assert.Equal(fixture.CachedModelPath, migrated.Manifest.CachedModelPath);
         Assert.Equal(fixture.Content, await File.ReadAllBytesAsync(fixture.CachedModelPath));
@@ -185,7 +185,7 @@ public sealed class LocalAiManifestMigrationTests
     }
 
     [Fact]
-    public async Task Migration_ReplacesHardLinkedPartialWithoutChangingItsOtherLink()
+    public async Task Migration_RejectsHardLinkedPartialWithoutChangingEitherLink()
     {
         using var temp = new TempDirectory("local-ai-cache-migration-");
         MigrationFixture fixture = await CreateFixtureAsync(temp);
@@ -199,11 +199,16 @@ public sealed class LocalAiManifestMigrationTests
         await File.WriteAllBytesAsync(outside, outsideContent);
         Assert.True(TryCreateHardLink(partial, outside));
 
-        LocalAiResolvedInstall migrated = (await fixture.Store.MigrateLegacyModelToHubCacheAsync())!;
+        InvalidDataException error = await Assert.ThrowsAsync<InvalidDataException>(
+            () => fixture.Store.MigrateLegacyModelToHubCacheAsync());
 
-        Assert.Equal(LocalAiInstallManifest.HubCacheReceiptSchemaVersion, migrated.Manifest.SchemaVersion);
+        Assert.Contains("multiple hard links", error.Message, StringComparison.Ordinal);
         Assert.Equal(outsideContent, await File.ReadAllBytesAsync(outside));
-        Assert.Equal(fixture.Content, await File.ReadAllBytesAsync(fixture.CachedModelPath));
+        Assert.Equal(outsideContent, await File.ReadAllBytesAsync(partial));
+        Assert.False(File.Exists(fixture.CachedModelPath));
+        Assert.Equal(
+            LocalAiInstallManifest.CurrentSchemaVersion,
+            await ReadPersistedSchemaVersionAsync(fixture.Paths.ManifestPath));
     }
 
     [Fact]
@@ -496,6 +501,23 @@ public sealed class LocalAiManifestMigrationTests
             () => fixture.Store.LoadAsync());
 
         Assert.Contains("cache migration receipt", error.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task Load_RejectsSchemaFourWithInvalidLegacyCompatibilityPath()
+    {
+        using var temp = new TempDirectory("local-ai-cache-migration-");
+        MigrationFixture fixture = await CreateFixtureAsync(temp);
+        _ = await fixture.Store.MigrateLegacyModelToHubCacheAsync();
+        JsonObject persisted =
+            (JsonNode.Parse(await File.ReadAllTextAsync(fixture.Paths.ManifestPath)) as JsonObject)!;
+        persisted["modelPath"] = "models/not-the-receipted-model.gguf";
+        await File.WriteAllTextAsync(fixture.Paths.ManifestPath, persisted.ToJsonString());
+
+        InvalidDataException error = await Assert.ThrowsAsync<InvalidDataException>(
+            () => fixture.Store.LoadAsync());
+
+        Assert.Contains("legacy-compatible", error.Message, StringComparison.Ordinal);
     }
 
     [Fact]

@@ -74,6 +74,16 @@ public sealed class LocalAiPortHandoffTests
         Assert.NotNull(saved);
         Assert.Equal(0, saved.Manifest.RequestedPort);
         Assert.Null(saved.Endpoint);
+        Assert.Equal(LocalAiInstallManifest.HubCacheReceiptSchemaVersion, saved.Manifest.SchemaVersion);
+        Assert.Equal(context.LocalAiModelInstall.CacheRoot, saved.Manifest.ModelCacheRoot);
+        Assert.Equal(context.LocalAiModelInstall.ModelPath, saved.Manifest.CachedModelPath);
+        Assert.Equal(context.LocalAiModelInstall.ModelPath, saved.ModelPath);
+        Assert.NotEqual(saved.Manifest.ModelPath, saved.Manifest.CachedModelPath);
+        Assert.Equal(
+            context.LocalAiModelInstall.LegacyModelPath,
+            new LocalAiPaths(temp.Path).ResolveContainedPath(
+                saved.Manifest.ModelPath,
+                nameof(saved.Manifest.ModelPath)));
     }
 
     [Fact]
@@ -192,10 +202,42 @@ public sealed class LocalAiPortHandoffTests
 
     private static HuggingFaceModelInstallResult ModelInstall(
         string localDataDirectory,
-        LocalModelInfo model) => new(
-            Path.Combine(localDataDirectory, "LocalAI", "models", model.Weights.RelativePath),
+        LocalModelInfo model)
+    {
+        string cacheRoot = Path.Combine(localDataDirectory, "hf-cache");
+        HuggingFaceRevisionSource source = Assert.IsType<HuggingFaceRevisionSource>(
+            model.Weights.Source);
+        Assert.True(HuggingFaceHubCache.TryGetSnapshotPaths(
+            cacheRoot,
+            source.RepositoryId,
+            source.RevisionSha,
+            model.Weights.RelativePath,
+            out string modelPath,
+            out _,
+            out string error), error);
+        LocalAiComponentIdentity component = LlamaRuntimeInstaller.Component(
+            LlamaRuntimeCatalog.Find(Architecture.Arm64)!);
+        Assert.True(LocalAiPathPolicy.TryResolve(
+            localDataDirectory,
+            component,
+            out LocalAiSetupPaths paths,
+            out error), error);
+        Assert.True(LocalAiPathPolicy.TryGetModelPaths(
+            paths,
+            source.RepositoryId,
+            source.RevisionSha,
+            model.Weights.RelativePath,
+            out string legacyModelPath,
+            out _,
+            out error), error);
+        return new(
+            modelPath,
+            cacheRoot,
             HuggingFaceModelInstallDisposition.Downloaded,
-            CreatedThisRun: true);
+            CreatedThisRun: true,
+            legacyModelPath,
+            LegacyCreatedThisRun: true);
+    }
 
     private sealed class FakeHardwareProbe(HostHardwareInfo hardware) : IHostHardwareProbe
     {

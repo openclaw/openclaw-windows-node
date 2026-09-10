@@ -8,6 +8,7 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <InternalsVisibleTo Include="OpenClaw.SetupEngine" />
     <InternalsVisibleTo Include="OpenClaw.Connection.Tests" />
     <InternalsVisibleTo Include="OpenClaw.Tray.Tests" />
     <InternalsVisibleTo Include="OpenClaw.SetupEngine.Tests" />

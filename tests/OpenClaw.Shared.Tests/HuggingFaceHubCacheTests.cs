@@ -271,12 +271,17 @@ public sealed class HuggingFaceHubCacheTests
         await File.WriteAllBytesAsync(blobPath, content);
         File.CreateSymbolicLink(snapshotPath, Path.GetRelativePath(snapshots, blobPath));
 
-        await using FileStream? verified = await HuggingFaceHubCache.TryOpenVerifiedCacheFileAsync(
+        await using VerifiedHuggingFaceCacheFile? verified =
+            await HuggingFaceHubCache.TryOpenVerifiedCacheEntryAsync(
             cache.Path,
             snapshotPath,
             content.Length,
             digest);
         Assert.NotNull(verified);
+        Assert.Equal(
+            WindowsPathSafety.NormalizePath(blobPath),
+            verified.ResolvedPath,
+            ignoreCase: true);
 
         File.Delete(snapshotPath);
         string outsidePath = Path.Combine(outside.Path, "model.gguf");

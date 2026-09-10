@@ -264,17 +264,32 @@ public sealed class ReconcileLocalAiInstallationStep : SetupStep
 
         try
         {
+            var migrationProgress = new SynchronousProgress<LocalAiModelMigrationProgress>(value =>
+                ctx.DetailProgress?.Report(new SetupDetailProgressEvent(
+                    Id,
+                    value.Phase switch
+                    {
+                        LocalAiModelMigrationPhase.VerifyingLegacyModel =>
+                            "Verifying the existing Local AI model",
+                        LocalAiModelMigrationPhase.CopyingToCache =>
+                            "Copying the existing Local AI model to the Hugging Face cache",
+                        _ => "Verifying the Hugging Face cache copy",
+                    },
+                    value.CompletedBytes,
+                    value.TotalBytes,
+                    SetupDetailProgressUnit.Bytes)));
             LocalAiReconcileResult result = await _reconciler
                 .ReconcileAsync(
                     ctx.LocalDataDir,
                     plan,
                     selectedGpuId,
                     ct,
+                    migrationProgress,
                     allowIncompleteInstallation:
                         !string.IsNullOrWhiteSpace(ctx.Config.LocalAiRecoveryGatewayId))
                 .ConfigureAwait(false);
             if (!string.IsNullOrWhiteSpace(ctx.Config.LocalAiRecoveryGatewayId) &&
-                (result.ResolvedInstall ?? result.OriginalInstall) is { } originalInstall)
+                (result.OriginalInstall ?? result.ResolvedInstall) is { } originalInstall)
             {
                 ctx.LocalAiRecoveryOriginalInstall = originalInstall;
                 ctx.LocalAiRecoveryReceiptRollbackAllowed = true;
@@ -457,7 +472,9 @@ public sealed class AcquireLocalAiModelStep : SetupStep
             var progress = new SynchronousProgress<HuggingFaceModelInstallProgress>(value =>
                 ctx.DetailProgress?.Report(new SetupDetailProgressEvent(
                     Id,
-                    $"Downloading {plan.Model.Weights.RelativePath}",
+                    value.Phase == HuggingFaceModelInstallPhase.Verifying
+                        ? $"Verifying {plan.Model.Weights.RelativePath}"
+                        : $"Downloading {plan.Model.Weights.RelativePath}",
                     value.CompletedBytes,
                     value.TotalBytes,
                     SetupDetailProgressUnit.Bytes)));
@@ -485,6 +502,7 @@ public sealed class AcquireLocalAiModelStep : SetupStep
             ex is HuggingFaceModelInstallException
             or IOException
             or UnauthorizedAccessException
+            or InvalidDataException
             or HttpRequestException)
         {
             return StepResult.Fail($"Hugging Face model installation failed: {ex.Message}", ex);
@@ -529,7 +547,11 @@ public sealed class PersistLocalAiManifestStep : SetupStep
             ctx.LocalAiEligibility.SelectedGpu is not { StableId: { Length: > 0 } gpuId } ||
             ctx.LocalAiPort is not { } requestedPort ||
             ctx.LocalAiRuntimeInstall is not { } runtimeInstall ||
-            ctx.LocalAiModelInstall is not { } modelInstall)
+            ctx.LocalAiModelInstall is not
+            {
+                CacheRoot: { Length: > 0 },
+                LegacyModelPath: { Length: > 0 },
+            } modelInstall)
         {
             return StepResult.Terminal(
                 "The Local AI installation receipt requires completed hardware, runtime, and model steps.");
@@ -546,6 +568,34 @@ public sealed class PersistLocalAiManifestStep : SetupStep
             File.Exists(paths.ManifestPath);
         if (File.Exists(paths.ManifestPath) && !replacesRecoveryReceipt)
             return StepResult.Terminal("A managed Local AI installation receipt already exists.");
+        LocalAiComponentIdentity component = LlamaRuntimeInstaller.Component(plan.Runtime);
+        if (!LocalAiPathPolicy.TryResolve(
+                ctx.LocalDataDir,
+                component,
+                out LocalAiSetupPaths setupPaths,
+                out string modelPathError) ||
+            !LocalAiPathPolicy.TryGetModelPaths(
+                setupPaths,
+                modelSource.RepositoryId,
+                modelSource.RevisionSha,
+                plan.Model.Weights.RelativePath,
+                out string legacyModelPath,
+                out _,
+                out modelPathError))
+        {
+            return StepResult.Terminal(
+                string.IsNullOrWhiteSpace(modelPathError)
+                    ? "The legacy-compatible Local AI model path is invalid."
+                    : modelPathError);
+        }
+        if (!string.Equals(
+                legacyModelPath,
+                modelInstall.LegacyModelPath,
+                StringComparison.OrdinalIgnoreCase))
+        {
+            return StepResult.Terminal(
+                "The Local AI model compatibility path does not match the selected recipe.");
+        }
 
         ImmutableArray<LocalAiAssetReceipt> runtimeAssets;
         try
@@ -559,6 +609,7 @@ public sealed class PersistLocalAiManifestStep : SetupStep
 
         LocalAiInstallManifest manifest = new()
         {
+            SchemaVersion = LocalAiInstallManifest.HubCacheReceiptSchemaVersion,
             EngineVersion = LlamaRuntimeCatalog.ReleaseTag,
             Architecture = plan.Runtime.Architecture switch
             {
@@ -571,7 +622,9 @@ public sealed class PersistLocalAiManifestStep : SetupStep
             SelectedGpuId = gpuId,
             ExecutablePath = Path.GetRelativePath(paths.RootDirectory, runtimeInstall.ExecutablePath),
             RuntimeAssets = runtimeAssets,
-            ModelPath = Path.GetRelativePath(paths.RootDirectory, modelInstall.ModelPath),
+            ModelPath = Path.GetRelativePath(paths.RootDirectory, modelInstall.LegacyModelPath),
+            ModelCacheRoot = modelInstall.CacheRoot,
+            CachedModelPath = modelInstall.ModelPath,
             ModelId = $"{modelSource.RepositoryId}@{modelSource.RevisionSha}",
             ModelAlias = plan.Model.Id,
             ModelAsset = new LocalAiAssetReceipt
@@ -593,6 +646,7 @@ public sealed class PersistLocalAiManifestStep : SetupStep
         {
             manifest = originalInstall.Manifest with
             {
+                SchemaVersion = manifest.SchemaVersion,
                 EngineVersion = manifest.EngineVersion,
                 Architecture = manifest.Architecture,
                 RuntimeId = manifest.RuntimeId,
@@ -601,6 +655,8 @@ public sealed class PersistLocalAiManifestStep : SetupStep
                 ExecutablePath = manifest.ExecutablePath,
                 RuntimeAssets = manifest.RuntimeAssets,
                 ModelPath = manifest.ModelPath,
+                ModelCacheRoot = manifest.ModelCacheRoot,
+                CachedModelPath = manifest.CachedModelPath,
                 ModelId = manifest.ModelId,
                 ModelAlias = manifest.ModelAlias,
                 ModelAsset = manifest.ModelAsset,

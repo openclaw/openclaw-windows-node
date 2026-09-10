@@ -1,3 +1,4 @@
+using OpenClaw.Connection.LocalAi;
 using OpenClaw.Shared.Inference.Catalog;
 using System.Net;
 using System.Net.Http.Headers;
@@ -11,7 +12,16 @@ internal enum HuggingFaceModelInstallDisposition
     ReusedVerified,
 }
 
-internal sealed record HuggingFaceModelInstallProgress(long CompletedBytes, long TotalBytes)
+internal enum HuggingFaceModelInstallPhase
+{
+    Downloading,
+    Verifying,
+}
+
+internal sealed record HuggingFaceModelInstallProgress(
+    long CompletedBytes,
+    long TotalBytes,
+    HuggingFaceModelInstallPhase Phase = HuggingFaceModelInstallPhase.Downloading)
 {
     public double Fraction => TotalBytes > 0
         ? Math.Clamp((double)CompletedBytes / TotalBytes, 0, 1)
@@ -20,8 +30,11 @@ internal sealed record HuggingFaceModelInstallProgress(long CompletedBytes, long
 
 internal sealed record HuggingFaceModelInstallResult(
     string ModelPath,
+    string? CacheRoot,
     HuggingFaceModelInstallDisposition Disposition,
-    bool CreatedThisRun);
+    bool CreatedThisRun,
+    string? LegacyModelPath = null,
+    bool LegacyCreatedThisRun = false);
 
 internal class HuggingFaceModelInstallException : Exception
 {
@@ -64,8 +77,8 @@ internal interface IHuggingFaceModelAcquirer
 /// <summary>
 /// Downloads one immutable Hugging Face GGUF, verifies its exact byte count and
 /// SHA-256 digest, and atomically promotes it beside its partial file. A partial
-/// left by process termination is resumed with an HTTP range request. Any
-/// observed setup failure or cancellation removes the partial file.
+/// left by process termination is resumed with an HTTP range request. Shared
+/// cache artifacts and resumable partials survive rollback and cancellation.
 /// </summary>
 internal sealed class HuggingFaceModelInstaller : IHuggingFaceModelAcquirer
 {
@@ -76,17 +89,22 @@ internal sealed class HuggingFaceModelInstaller : IHuggingFaceModelAcquirer
 
     private readonly HttpClient _httpClient;
     private readonly Func<TimeSpan, CancellationToken, Task> _retryDelay;
+    private readonly Func<string> _cacheRootResolver;
 
     public HuggingFaceModelInstaller(HttpClient httpClient) =>
-        (_httpClient, _retryDelay) =
-            (httpClient ?? throw new ArgumentNullException(nameof(httpClient)), Task.Delay);
+        (_httpClient, _retryDelay, _cacheRootResolver) =
+            (httpClient ?? throw new ArgumentNullException(nameof(httpClient)),
+             Task.Delay,
+             HuggingFaceHubCache.ResolveCacheRoot);
 
     internal HuggingFaceModelInstaller(
         HttpClient httpClient,
-        Func<TimeSpan, CancellationToken, Task> retryDelay) =>
-        (_httpClient, _retryDelay) =
+        Func<TimeSpan, CancellationToken, Task> retryDelay,
+        Func<string>? cacheRootResolver = null) =>
+        (_httpClient, _retryDelay, _cacheRootResolver) =
             (httpClient ?? throw new ArgumentNullException(nameof(httpClient)),
-             retryDelay ?? throw new ArgumentNullException(nameof(retryDelay)));
+             retryDelay ?? throw new ArgumentNullException(nameof(retryDelay)),
+             cacheRootResolver ?? HuggingFaceHubCache.ResolveCacheRoot);
 
     public event EventHandler<HuggingFaceModelInstallProgress>? ProgressChanged;
 
@@ -106,15 +124,22 @@ internal sealed class HuggingFaceModelInstaller : IHuggingFaceModelAcquirer
                 "The Local AI model must be an immutable Hugging Face weights artifact.");
         }
 
-        if (!LocalAiPathPolicy.TryResolve(localDataDirectory, component, out LocalAiSetupPaths paths, out string pathError) ||
-            !LocalAiPathPolicy.TryGetModelPaths(
-                paths,
+        string cacheRoot = _cacheRootResolver();
+        if (!TryValidateCacheRootOwnershipBoundary(
+                localDataDirectory,
+                cacheRoot,
+                out string cacheRootError))
+        {
+            throw new HuggingFaceModelInstallException(cacheRootError);
+        }
+        if (!HuggingFaceHubCache.TryGetSnapshotPaths(
+                cacheRoot,
                 source.RepositoryId,
                 source.RevisionSha,
                 model.Weights.RelativePath,
                 out string modelPath,
                 out string partialPath,
-                out pathError))
+                out string pathError))
         {
             throw new HuggingFaceModelInstallException(pathError);
         }
@@ -124,60 +149,110 @@ internal sealed class HuggingFaceModelInstaller : IHuggingFaceModelAcquirer
         if (Directory.Exists(partialPath))
             throw new HuggingFaceModelInstallException("The managed Local AI partial model path is an existing directory.");
 
-        if (File.Exists(modelPath))
+        var expectedSha256 = model.Weights.Sha256;
+        await using (FileStream? verified =
+            await HuggingFaceHubCache.TryOpenVerifiedCacheFileAsync(
+                    cacheRoot,
+                    modelPath,
+                    model.Weights.SizeBytes,
+                    expectedSha256,
+                    new VerificationProgress(this, progress, model.Weights.SizeBytes),
+                    cancellationToken)
+                .ConfigureAwait(false))
         {
-            if (await VerifyFileAsync(modelPath, model.Weights, cancellationToken).ConfigureAwait(false))
+            if (verified is not null)
             {
+                (string legacyModelPath, bool legacyCreatedThisRun) =
+                    await EnsureLegacyCompatibilityCopyAsync(
+                            localDataDirectory,
+                            component,
+                            model,
+                            verified,
+                            progress,
+                            cancellationToken)
+                        .ConfigureAwait(false);
                 return new HuggingFaceModelInstallResult(
                     modelPath,
+                    cacheRoot,
                     HuggingFaceModelInstallDisposition.ReusedVerified,
-                    CreatedThisRun: false);
+                    CreatedThisRun: false,
+                    legacyModelPath,
+                    legacyCreatedThisRun);
             }
-
-            if (!LocalAiPathPolicy.TryValidateManagedDeleteTarget(
-                    localDataDirectory,
-                    modelPath,
-                    out string invalidModelPath,
-                    out pathError))
-            {
-                throw new HuggingFaceModelInstallException(pathError);
-            }
-            File.Delete(invalidModelPath);
         }
 
-        Directory.CreateDirectory(Path.GetDirectoryName(modelPath)!);
-        var promoted = false;
-        var preservePartial = false;
+        if (PathEntryExists(modelPath))
+        {
+            throw new HuggingFaceModelInstallException(
+                $"The Hugging Face cache destination '{modelPath}' is unsafe or does not match " +
+                "the pinned model. Remove it manually and retry setup.");
+        }
+
+        string destinationDirectory = Path.GetDirectoryName(modelPath)
+            ?? throw new HuggingFaceModelInstallException(
+                "The Hugging Face cache destination has no parent directory.");
+        string destinationFileName = Path.GetFileName(modelPath);
+        string partialFileName = Path.GetFileName(partialPath);
+        LocalAiManifestMigration.SafeCacheDirectory? directory = null;
+        LocalAiManifestMigration.CacheMigrationFile? partial = null;
+        bool partialExistedBeforeInstall = false;
+        HuggingFaceModelInstallDisposition disposition = HuggingFaceModelInstallDisposition.Downloaded;
         try
         {
-            bool verifiedCompletePartial = File.Exists(partialPath) &&
-                new FileInfo(partialPath).Length == model.Weights.SizeBytes &&
-                await VerifyFileAsync(partialPath, model.Weights, cancellationToken).ConfigureAwait(false);
-            if (!verifiedCompletePartial)
-            {
-                if (File.Exists(partialPath) &&
-                    new FileInfo(partialPath).Length >= model.Weights.SizeBytes)
-                {
-                    TryDeletePartial(localDataDirectory, partialPath);
-                }
+            directory = LocalAiManifestMigration.SafeCacheDirectory.OpenOrCreate(
+                cacheRoot,
+                destinationDirectory);
+            partial = directory.TryOpenExisting(partialFileName);
+            partialExistedBeforeInstall = partial is not null;
 
-                await DownloadAndVerifyAsync(
+            bool partialVerified = partial is not null &&
+                partial.Stream.Length == model.Weights.SizeBytes &&
+                await VerifyOpenFileAsync(
+                        partial.Stream,
                         model.Weights,
-                        localDataDirectory,
-                        partialPath,
                         progress,
                         cancellationToken)
                     .ConfigureAwait(false);
+            if (partial is not null &&
+                partial.Stream.Length >= model.Weights.SizeBytes &&
+                !partialVerified)
+            {
+                partial.Stream.SetLength(0);
+                partial.Stream.Position = 0;
+            }
+
+            if (!partialVerified)
+            {
+                partial ??= directory.CreateNew(partialFileName);
+                if (partial.Stream.Length == 0 &&
+                    await TryCopyVerifiedBlobAsync(
+                            cacheRoot,
+                            source.RepositoryId,
+                            model.Weights,
+                            partial.Stream,
+                            progress,
+                            cancellationToken)
+                        .ConfigureAwait(false))
+                {
+                    disposition = HuggingFaceModelInstallDisposition.ReusedVerified;
+                }
+                else
+                {
+                    await DownloadAndVerifyAsync(
+                            model.Weights,
+                            partial.Stream,
+                            progress,
+                            cancellationToken)
+                        .ConfigureAwait(false);
+                }
             }
 
             cancellationToken.ThrowIfCancellationRequested();
-            if (!LocalAiPathPolicy.TryResolve(
-                    localDataDirectory,
-                    component,
-                    out LocalAiSetupPaths revalidatedPaths,
-                    out pathError) ||
-                !LocalAiPathPolicy.TryGetModelPaths(
-                    revalidatedPaths,
+            LocalAiManifestMigration.CacheMigrationFile activePartial = partial
+                ?? throw new HuggingFaceModelInstallException(
+                    "The Hugging Face cache partial was not created.");
+            if (!HuggingFaceHubCache.TryGetSnapshotPaths(
+                    cacheRoot,
                     source.RepositoryId,
                     source.RevisionSha,
                     model.Weights.RelativePath,
@@ -193,54 +268,121 @@ internal sealed class HuggingFaceModelInstaller : IHuggingFaceModelAcquirer
                         : pathError);
             }
 
-            if (File.Exists(modelPath))
+            if (!await VerifyOpenFileAsync(
+                    activePartial.Stream,
+                    model.Weights,
+                    progress,
+                    cancellationToken).ConfigureAwait(false))
             {
                 throw new HuggingFaceModelInstallException(
-                    "The Local AI model target appeared while the download was in progress.");
+                    "The Hugging Face cache partial does not match the pinned model.");
             }
 
-            File.Move(partialPath, modelPath);
-            promoted = true;
+            try
+            {
+                activePartial.Promote(destinationFileName);
+            }
+            catch (IOException ex)
+            {
+                if (partialExistedBeforeInstall)
+                    activePartial.Commit();
+                activePartial.Dispose();
+                partial = null;
+                await using FileStream? winner =
+                    await HuggingFaceHubCache.TryOpenVerifiedCacheFileAsync(
+                            cacheRoot,
+                            modelPath,
+                            model.Weights.SizeBytes,
+                            expectedSha256,
+                            new VerificationProgress(this, progress, model.Weights.SizeBytes),
+                            cancellationToken)
+                        .ConfigureAwait(false);
+                if (winner is null)
+                {
+                    throw new HuggingFaceModelInstallException(
+                        "The Hugging Face cache destination changed before promotion.",
+                        ex);
+                }
+
+                (string legacyModelPath, bool legacyCreatedThisRun) =
+                    await EnsureLegacyCompatibilityCopyAsync(
+                            localDataDirectory,
+                            component,
+                            model,
+                            winner,
+                            progress,
+                            cancellationToken)
+                        .ConfigureAwait(false);
+                return new HuggingFaceModelInstallResult(
+                    modelPath,
+                    cacheRoot,
+                    HuggingFaceModelInstallDisposition.ReusedVerified,
+                    CreatedThisRun: false,
+                    legacyModelPath,
+                    legacyCreatedThisRun);
+            }
+
+            if (partialExistedBeforeInstall)
+                activePartial.Commit();
+            directory.RequirePromotedFile(activePartial.Stream.SafeFileHandle, destinationFileName);
+            activePartial.Commit();
+            (string createdLegacyModelPath, bool createdLegacyThisRun) =
+                await EnsureLegacyCompatibilityCopyAsync(
+                        localDataDirectory,
+                        component,
+                        model,
+                        activePartial.Stream,
+                        progress,
+                        cancellationToken)
+                    .ConfigureAwait(false);
             return new HuggingFaceModelInstallResult(
                 modelPath,
-                HuggingFaceModelInstallDisposition.Downloaded,
-                CreatedThisRun: true);
+                cacheRoot,
+                disposition,
+                CreatedThisRun: true,
+                createdLegacyModelPath,
+                createdLegacyThisRun);
         }
         catch (OperationCanceledException)
         {
-            preservePartial = File.Exists(partialPath);
+            partial?.Commit();
             throw;
         }
         catch (Exception exception) when (
             exception is IOException or HttpRequestException or TransientHuggingFaceModelInstallException)
         {
-            preservePartial = File.Exists(partialPath);
+            partial?.Commit();
+            throw;
+        }
+        catch (HuggingFaceModelInstallException) when (partialExistedBeforeInstall)
+        {
+            // A later run can truncate and retry a non-resumable complete partial.
+            // Preserve bytes that existed before this setup transaction.
+            partial?.Commit();
             throw;
         }
         finally
         {
-            if (!promoted && !preservePartial)
-                TryDeletePartial(localDataDirectory, partialPath);
+            partial?.Dispose();
+            directory?.Dispose();
         }
     }
 
     public void RemoveInstalledModel(string localDataDirectory, HuggingFaceModelInstallResult install)
     {
         ArgumentNullException.ThrowIfNull(install);
-        if (!install.CreatedThisRun)
+        // Final hub-cache artifacts are shared and survive rollback/uninstall.
+        if (!install.LegacyCreatedThisRun || string.IsNullOrWhiteSpace(install.LegacyModelPath))
             return;
-
         if (!LocalAiPathPolicy.TryValidateManagedDeleteTarget(
                 localDataDirectory,
-                install.ModelPath,
+                install.LegacyModelPath,
                 out string deletePath,
                 out string error))
         {
             throw new InvalidDataException(error);
         }
-
-        if (File.Exists(deletePath))
-            File.Delete(deletePath);
+        File.Delete(deletePath);
     }
 
     public void RemovePartialModel(
@@ -250,46 +392,31 @@ internal sealed class HuggingFaceModelInstaller : IHuggingFaceModelAcquirer
     {
         ArgumentNullException.ThrowIfNull(component);
         ArgumentNullException.ThrowIfNull(model);
-        if (model.Weights.Source is not HuggingFaceRevisionSource source)
-            throw new InvalidDataException("The Local AI model does not have immutable Hugging Face provenance.");
-        if (!LocalAiPathPolicy.TryResolve(
+        // Partials live in a shared cache and may predate this setup transaction.
+        // The installer removes only a newly created invalid partial before returning.
+        if (model.Weights.Source is not HuggingFaceRevisionSource source ||
+            !LocalAiPathPolicy.TryResolve(
                 localDataDirectory,
                 component,
                 out LocalAiSetupPaths paths,
-                out string error) ||
+                out _) ||
             !LocalAiPathPolicy.TryGetModelPaths(
                 paths,
                 source.RepositoryId,
                 source.RevisionSha,
                 model.Weights.RelativePath,
+                out string legacyModelPath,
                 out _,
-                out string partialPath,
-                out error))
+                out _))
         {
-            throw new InvalidDataException(
-                string.IsNullOrWhiteSpace(error) ? "The Local AI partial model path is invalid." : error);
+            return;
         }
-
-        if (Directory.Exists(partialPath))
-            throw new InvalidDataException("The Local AI partial model path is an existing directory.");
-        if (File.Exists(partialPath))
-        {
-            if (!LocalAiPathPolicy.TryValidateManagedDeleteTarget(
-                    localDataDirectory,
-                    partialPath,
-                    out string deletePath,
-                    out error))
-            {
-                throw new InvalidDataException(error);
-            }
-            File.Delete(deletePath);
-        }
+        CleanupLegacyCompatibilityPartials(localDataDirectory, legacyModelPath);
     }
 
     private async Task DownloadAndVerifyAsync(
         PinnedArtifact artifact,
-        string localDataDirectory,
-        string partialPath,
+        FileStream partial,
         IProgress<HuggingFaceModelInstallProgress>? progress,
         CancellationToken cancellationToken)
     {
@@ -299,8 +426,7 @@ internal sealed class HuggingFaceModelInstaller : IHuggingFaceModelAcquirer
             {
                 await DownloadAndVerifyAttemptAsync(
                         artifact,
-                        localDataDirectory,
-                        partialPath,
+                        partial,
                         progress,
                         cancellationToken)
                     .ConfigureAwait(false);
@@ -319,17 +445,20 @@ internal sealed class HuggingFaceModelInstaller : IHuggingFaceModelAcquirer
 
     private async Task DownloadAndVerifyAttemptAsync(
         PinnedArtifact artifact,
-        string localDataDirectory,
-        string partialPath,
+        FileStream partial,
         IProgress<HuggingFaceModelInstallProgress>? progress,
         CancellationToken cancellationToken)
     {
-        long resumeOffset = File.Exists(partialPath) ? new FileInfo(partialPath).Length : 0;
+        long resumeOffset = partial.Length;
         if (resumeOffset < 0 || resumeOffset >= artifact.SizeBytes)
         {
-            TryDeletePartial(localDataDirectory, partialPath);
+            partial.SetLength(0);
             resumeOffset = 0;
         }
+
+        using var hash = IncrementalHash.CreateHash(HashAlgorithmName.SHA256);
+        if (resumeOffset > 0)
+            await HashExistingPartialAsync(partial, hash, cancellationToken).ConfigureAwait(false);
 
         using HttpResponseMessage response = await SendWithValidatedRedirectsAsync(
                 artifact.DownloadUri,
@@ -361,6 +490,8 @@ internal sealed class HuggingFaceModelInstaller : IHuggingFaceModelAcquirer
         else
         {
             resumeOffset = 0;
+            partial.SetLength(0);
+            hash.GetHashAndReset();
         }
 
         long expectedBodyBytes = artifact.SizeBytes - resumeOffset;
@@ -370,18 +501,8 @@ internal sealed class HuggingFaceModelInstaller : IHuggingFaceModelAcquirer
                 $"The Hugging Face response declared {contentLength} bytes; expected {expectedBodyBytes} bytes.");
         }
 
-        using var hash = IncrementalHash.CreateHash(HashAlgorithmName.SHA256);
-        if (append)
-            await HashExistingPartialAsync(partialPath, hash, cancellationToken).ConfigureAwait(false);
-
         await using var source = await response.Content.ReadAsStreamAsync(cancellationToken).ConfigureAwait(false);
-        await using var destination = new FileStream(
-            partialPath,
-            append ? FileMode.Append : FileMode.Create,
-            FileAccess.Write,
-            FileShare.None,
-            BufferSize,
-            FileOptions.Asynchronous | FileOptions.SequentialScan | FileOptions.WriteThrough);
+        partial.Position = resumeOffset;
 
         long completed = resumeOffset;
         long lastReported = completed;
@@ -397,7 +518,7 @@ internal sealed class HuggingFaceModelInstaller : IHuggingFaceModelAcquirer
             if (completed > artifact.SizeBytes)
                 throw new HuggingFaceModelInstallException("The Hugging Face response exceeded the pinned model size.");
             hash.AppendData(buffer, 0, read);
-            await destination.WriteAsync(buffer.AsMemory(0, read), cancellationToken).ConfigureAwait(false);
+            await partial.WriteAsync(buffer.AsMemory(0, read), cancellationToken).ConfigureAwait(false);
 
             if (completed - lastReported >= ProgressIntervalBytes)
             {
@@ -406,8 +527,8 @@ internal sealed class HuggingFaceModelInstaller : IHuggingFaceModelAcquirer
             }
         }
 
-        await destination.FlushAsync(cancellationToken).ConfigureAwait(false);
-        destination.Flush(flushToDisk: true);
+        await partial.FlushAsync(cancellationToken).ConfigureAwait(false);
+        partial.Flush(flushToDisk: true);
         if (completed != artifact.SizeBytes)
         {
             throw new HuggingFaceModelInstallException(
@@ -507,25 +628,256 @@ internal sealed class HuggingFaceModelInstaller : IHuggingFaceModelAcquirer
         (int)statusCode is >= 500 and <= 599;
 
     private static async Task HashExistingPartialAsync(
-        string partialPath,
+        FileStream partial,
         IncrementalHash hash,
         CancellationToken cancellationToken)
     {
-        await using var stream = new FileStream(
-            partialPath,
-            FileMode.Open,
-            FileAccess.Read,
-            FileShare.Read,
-            BufferSize,
-            FileOptions.Asynchronous | FileOptions.SequentialScan);
+        partial.Position = 0;
         var buffer = new byte[BufferSize];
+        while (true)
+        {
+            int read = await partial.ReadAsync(buffer, cancellationToken).ConfigureAwait(false);
+            if (read == 0)
+            {
+                partial.Position = partial.Length;
+                return;
+            }
+            hash.AppendData(buffer, 0, read);
+        }
+    }
+
+    private async Task<bool> TryCopyVerifiedBlobAsync(
+        string cacheRoot,
+        string repositoryId,
+        PinnedArtifact artifact,
+        FileStream destination,
+        IProgress<HuggingFaceModelInstallProgress>? progress,
+        CancellationToken cancellationToken)
+    {
+        if (!HuggingFaceHubCache.TryGetBlobPath(
+                cacheRoot,
+                repositoryId,
+                artifact.Sha256,
+                out string blobPath,
+                out _))
+        {
+            return false;
+        }
+
+        await using FileStream? source =
+            await HuggingFaceHubCache.TryOpenVerifiedCacheFileAsync(
+                    cacheRoot,
+                    blobPath,
+                    artifact.SizeBytes,
+                    artifact.Sha256,
+                    new VerificationProgress(this, progress, artifact.SizeBytes),
+                    cancellationToken)
+                .ConfigureAwait(false);
+        if (source is null)
+            return false;
+
+        destination.SetLength(0);
+        destination.Position = 0;
+        var buffer = new byte[BufferSize];
+        long completed = 0;
+        Report(progress, completed, artifact.SizeBytes, HuggingFaceModelInstallPhase.Downloading);
+        while (true)
+        {
+            int read = await source.ReadAsync(buffer, cancellationToken).ConfigureAwait(false);
+            if (read == 0)
+                break;
+            await destination.WriteAsync(buffer.AsMemory(0, read), cancellationToken)
+                .ConfigureAwait(false);
+            completed += read;
+            Report(progress, completed, artifact.SizeBytes, HuggingFaceModelInstallPhase.Downloading);
+        }
+        await destination.FlushAsync(cancellationToken).ConfigureAwait(false);
+        destination.Flush(flushToDisk: true);
+        destination.Position = 0;
+        return completed == artifact.SizeBytes;
+    }
+
+    private async Task<(string Path, bool CreatedThisRun)> EnsureLegacyCompatibilityCopyAsync(
+        string localDataDirectory,
+        LocalAiComponentIdentity component,
+        LocalModelInfo model,
+        FileStream verifiedSource,
+        IProgress<HuggingFaceModelInstallProgress>? progress,
+        CancellationToken cancellationToken)
+    {
+        HuggingFaceRevisionSource source = (HuggingFaceRevisionSource)model.Weights.Source;
+        if (!LocalAiPathPolicy.TryResolve(
+                localDataDirectory,
+                component,
+                out LocalAiSetupPaths paths,
+                out string error) ||
+            !LocalAiPathPolicy.TryGetModelPaths(
+                paths,
+                source.RepositoryId,
+                source.RevisionSha,
+                model.Weights.RelativePath,
+                out string legacyModelPath,
+                out _,
+                out error))
+        {
+            throw new HuggingFaceModelInstallException(error);
+        }
+        CleanupLegacyCompatibilityPartials(localDataDirectory, legacyModelPath);
+
+        if (Directory.Exists(legacyModelPath))
+        {
+            throw new HuggingFaceModelInstallException(
+                "The legacy-compatible Local AI model path is an existing directory.");
+        }
+        if (File.Exists(legacyModelPath))
+        {
+            if (await VerifyFileAsync(legacyModelPath, model.Weights, cancellationToken)
+                    .ConfigureAwait(false))
+            {
+                return (legacyModelPath, false);
+            }
+
+            if (!LocalAiPathPolicy.TryValidateManagedDeleteTarget(
+                    localDataDirectory,
+                    legacyModelPath,
+                    out string invalidLegacyModelPath,
+                    out error))
+            {
+                throw new HuggingFaceModelInstallException(error);
+            }
+            File.Delete(invalidLegacyModelPath);
+        }
+
+        Directory.CreateDirectory(Path.GetDirectoryName(legacyModelPath)!);
+        LocalAiManifestMigration.EnsureSufficientFreeSpace(
+            Path.GetDirectoryName(legacyModelPath)!,
+            model.Weights.SizeBytes);
+        string temporaryPath = legacyModelPath + $".compat-{Guid.NewGuid():N}.partial";
+        try
+        {
+            await using var temporary = new FileStream(
+                temporaryPath,
+                FileMode.CreateNew,
+                FileAccess.ReadWrite,
+                FileShare.None,
+                BufferSize,
+                FileOptions.Asynchronous | FileOptions.SequentialScan);
+            verifiedSource.Position = 0;
+            await verifiedSource.CopyToAsync(temporary, BufferSize, cancellationToken)
+                .ConfigureAwait(false);
+            await temporary.FlushAsync(cancellationToken).ConfigureAwait(false);
+            temporary.Flush(flushToDisk: true);
+            if (!await VerifyOpenFileAsync(
+                    temporary,
+                    model.Weights,
+                    progress,
+                    cancellationToken).ConfigureAwait(false))
+            {
+                throw new HuggingFaceModelInstallException(
+                    "The legacy-compatible Local AI model copy does not match the pinned model.");
+            }
+
+            if (!LocalAiPathPolicy.TryResolve(
+                    localDataDirectory,
+                    component,
+                    out LocalAiSetupPaths revalidatedPaths,
+                    out error) ||
+                !LocalAiPathPolicy.TryGetModelPaths(
+                    revalidatedPaths,
+                    source.RepositoryId,
+                    source.RevisionSha,
+                    model.Weights.RelativePath,
+                    out string revalidatedLegacyModelPath,
+                    out _,
+                    out error) ||
+                !string.Equals(
+                    legacyModelPath,
+                    revalidatedLegacyModelPath,
+                    StringComparison.OrdinalIgnoreCase))
+            {
+                throw new HuggingFaceModelInstallException(
+                    string.IsNullOrWhiteSpace(error)
+                        ? "The legacy-compatible Local AI model path changed before promotion."
+                        : error);
+            }
+            if (PathEntryExists(legacyModelPath))
+            {
+                throw new HuggingFaceModelInstallException(
+                    "The legacy-compatible Local AI model path appeared before promotion.");
+            }
+
+            temporary.Close();
+            File.Move(temporaryPath, legacyModelPath);
+            return (legacyModelPath, true);
+        }
+        finally
+        {
+            if (File.Exists(temporaryPath))
+            {
+                try
+                {
+                    File.Delete(temporaryPath);
+                }
+                catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+                {
+                    // Cleanup must not replace the actionable acquisition failure.
+                }
+            }
+        }
+    }
+
+    private static void CleanupLegacyCompatibilityPartials(
+        string localDataDirectory,
+        string legacyModelPath)
+    {
+        string directory = Path.GetDirectoryName(legacyModelPath)!;
+        if (!Directory.Exists(directory))
+            return;
+
+        string pattern = Path.GetFileName(legacyModelPath) + ".compat-*.partial";
+        foreach (string candidate in Directory.EnumerateFiles(directory, pattern))
+        {
+            if (!LocalAiPathPolicy.TryValidateManagedDeleteTarget(
+                    localDataDirectory,
+                    candidate,
+                    out string deletePath,
+                    out string error))
+            {
+                throw new InvalidDataException(error);
+            }
+            File.Delete(deletePath);
+        }
+    }
+
+    private async Task<bool> VerifyOpenFileAsync(
+        FileStream stream,
+        PinnedArtifact artifact,
+        IProgress<HuggingFaceModelInstallProgress>? progress,
+        CancellationToken cancellationToken)
+    {
+        if (stream.Length != artifact.SizeBytes)
+            return false;
+
+        stream.Position = 0;
+        using var hash = IncrementalHash.CreateHash(HashAlgorithmName.SHA256);
+        var buffer = new byte[BufferSize];
+        long completed = 0;
+        Report(progress, completed, artifact.SizeBytes, HuggingFaceModelInstallPhase.Verifying);
         while (true)
         {
             int read = await stream.ReadAsync(buffer, cancellationToken).ConfigureAwait(false);
             if (read == 0)
-                return;
+                break;
             hash.AppendData(buffer, 0, read);
+            completed += read;
+            Report(progress, completed, artifact.SizeBytes, HuggingFaceModelInstallPhase.Verifying);
         }
+
+        stream.Position = 0;
+        return completed == artifact.SizeBytes &&
+            CryptographicOperations.FixedTimeEquals(
+                hash.GetHashAndReset(),
+                Convert.FromHexString(artifact.Sha256.Value));
     }
 
     internal static async Task<bool> VerifyFileAsync(
@@ -550,30 +902,89 @@ internal sealed class HuggingFaceModelInstaller : IHuggingFaceModelAcquirer
     private void Report(
         IProgress<HuggingFaceModelInstallProgress>? progress,
         long completed,
-        long total)
+        long total,
+        HuggingFaceModelInstallPhase phase = HuggingFaceModelInstallPhase.Downloading)
     {
-        var value = new HuggingFaceModelInstallProgress(completed, total);
+        var value = new HuggingFaceModelInstallProgress(completed, total, phase);
         progress?.Report(value);
         ProgressChanged?.Invoke(this, value);
     }
 
-    private static void TryDeletePartial(string localDataDirectory, string partialPath)
+    private static bool PathEntryExists(string path)
     {
         try
         {
-            if (LocalAiPathPolicy.TryValidateManagedDeleteTarget(
-                    localDataDirectory,
-                    partialPath,
-                    out string deletePath,
-                    out _) &&
-                File.Exists(deletePath))
+            _ = File.GetAttributes(path);
+            return true;
+        }
+        catch (Exception ex) when (ex is FileNotFoundException or DirectoryNotFoundException)
+        {
+            try
             {
-                File.Delete(deletePath);
+                return new FileInfo(path).LinkTarget is not null;
+            }
+            catch (Exception linkException) when (
+                linkException is IOException or
+                    UnauthorizedAccessException or
+                    NotSupportedException)
+            {
+                return true;
             }
         }
-        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+    }
+
+    internal static bool TryValidateCacheRootOwnershipBoundary(
+        string localDataDirectory,
+        string cacheRoot,
+        out string error)
+    {
+        string managedRoot;
+        string normalizedCacheRoot;
+        try
         {
-            // Best-effort cleanup must not mask the acquisition result.
+            managedRoot = LocalAiManifestMigration.ResolveFinalDirectoryPathForComparison(
+                new LocalAiPaths(localDataDirectory).RootDirectory);
+            normalizedCacheRoot = LocalAiManifestMigration.ResolveFinalDirectoryPathForComparison(
+                cacheRoot);
         }
+        catch (Exception ex) when (
+            ex is ArgumentException or
+                IOException or
+                InvalidDataException or
+                NotSupportedException or
+                UnauthorizedAccessException or
+                System.Security.SecurityException)
+        {
+            error = $"The Hugging Face cache root is invalid: {ex.Message}";
+            return false;
+        }
+
+        string relative = Path.GetRelativePath(managedRoot, normalizedCacheRoot);
+        bool isManagedRootOrDescendant =
+            string.Equals(relative, ".", StringComparison.Ordinal) ||
+            (!Path.IsPathRooted(relative) &&
+             !string.Equals(relative, "..", StringComparison.Ordinal) &&
+             !relative.StartsWith(
+                 $"..{Path.DirectorySeparatorChar}",
+                 StringComparison.Ordinal));
+        if (!isManagedRootOrDescendant)
+        {
+            error = "";
+            return true;
+        }
+
+        error =
+            $"The Hugging Face cache root '{normalizedCacheRoot}' must be outside the " +
+            $"app-owned Local AI directory '{managedRoot}' so uninstall cannot remove shared cache artifacts.";
+        return false;
+    }
+
+    private sealed class VerificationProgress(
+        HuggingFaceModelInstaller owner,
+        IProgress<HuggingFaceModelInstallProgress>? progress,
+        long totalBytes) : IProgress<long>
+    {
+        public void Report(long value) =>
+            owner.Report(progress, value, totalBytes, HuggingFaceModelInstallPhase.Verifying);
     }
 }

@@ -4,6 +4,7 @@ using OpenClaw.Shared.Inference.Catalog;
 using OpenClaw.TestSupport;
 using System.Collections.Immutable;
 using System.Net;
+using System.Security.Cryptography;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 
@@ -138,6 +139,146 @@ public sealed class LocalAiPortLifecycleTests
 
         await Assert.ThrowsAsync<InvalidDataException>(() =>
             store.SaveAsync(ValidManifest() with { GatewayFallbackModel = fallbackModel }));
+    }
+
+    [Fact]
+    public async Task Runtime_RejectsSchemaFourCacheContentBeforeProcessStart()
+    {
+        using var temp = new TempDirectory("local-ai-cache-runtime-");
+        var paths = new LocalAiPaths(temp.Path);
+        byte[] expected = "expected-cache-model"u8.ToArray();
+        byte[] tampered = "tampered-cache-model"u8.ToArray();
+        Assert.Equal(expected.Length, tampered.Length);
+        LocalAiInstallManifest manifest = ValidManifest();
+        string cacheRoot = temp.Combine("hf-cache");
+        const string repositoryId = "unsloth/Qwen3.6-35B-A3B-MTP-GGUF";
+        const string revision = "5bc3e238d916f48a861bac2f8a1990a0e9b7e98d";
+        Assert.True(HuggingFaceHubCache.TryGetSnapshotPaths(
+            cacheRoot,
+            repositoryId,
+            revision,
+            "Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+            out string cachedModelPath,
+            out _,
+            out string error), error);
+        manifest = manifest with
+        {
+            SchemaVersion = LocalAiInstallManifest.HubCacheReceiptSchemaVersion,
+            ModelCacheRoot = cacheRoot,
+            CachedModelPath = cachedModelPath,
+            ModelAsset = manifest.ModelAsset with
+            {
+                SizeBytes = expected.Length,
+                Sha256 = Convert.ToHexString(SHA256.HashData(expected)).ToLowerInvariant(),
+            },
+        };
+        string executable = paths.ResolveContainedPath(
+            manifest.ExecutablePath,
+            nameof(manifest.ExecutablePath));
+        Directory.CreateDirectory(Path.GetDirectoryName(executable)!);
+        Directory.CreateDirectory(Path.GetDirectoryName(cachedModelPath)!);
+        await File.WriteAllTextAsync(executable, "test executable");
+        await File.WriteAllBytesAsync(cachedModelPath, tampered);
+        await new LocalAiManifestStore(paths).SaveAsync(manifest);
+        var events = new SynchronizedEventLog();
+        var platform = new FakePlatform();
+        var host = new FakeProcessHost(platform, events, selectedPort: 28_765);
+        await using var runtime = CreateRuntime(
+            paths,
+            host,
+            platform,
+            new FakeClient(events),
+            new FakeLifecycle(events));
+
+        LocalAiRuntimeSnapshot snapshot = await runtime.EnsureStartedAsync();
+
+        Assert.Equal(LocalAiRuntimeState.Failed, snapshot.State);
+        Assert.Contains("no longer matches", snapshot.Detail, StringComparison.Ordinal);
+        Assert.DoesNotContain("start", events);
+        Assert.Null(host.LastSpec);
+    }
+
+    [ConnectionSymbolicLinkFact]
+    public async Task Runtime_BindsNativeModelPathToVerifiedBlobAfterSnapshotLinkReplacement()
+    {
+        using var temp = new TempDirectory("local-ai-cache-runtime-link-");
+        using var outside = new TempDirectory("local-ai-cache-runtime-outside-");
+        var paths = new LocalAiPaths(temp.Path);
+        byte[] content = "verified-cache-model"u8.ToArray();
+        LocalAiInstallManifest manifest = ValidManifest();
+        string cacheRoot = temp.Combine("hf-cache");
+        const string repositoryId = "unsloth/Qwen3.6-35B-A3B-MTP-GGUF";
+        const string revision = "5bc3e238d916f48a861bac2f8a1990a0e9b7e98d";
+        Assert.True(HuggingFaceHubCache.TryGetSnapshotPaths(
+            cacheRoot,
+            repositoryId,
+            revision,
+            "Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+            out string cachedModelPath,
+            out _,
+            out string error), error);
+        Assert.True(HuggingFaceHubCache.TryGetBlobPath(
+            cacheRoot,
+            repositoryId,
+            new Sha256Digest(manifest.ModelAsset.Sha256),
+            out string blobPath,
+            out error), error);
+        manifest = manifest with
+        {
+            SchemaVersion = LocalAiInstallManifest.HubCacheReceiptSchemaVersion,
+            ModelCacheRoot = cacheRoot,
+            CachedModelPath = cachedModelPath,
+        };
+
+        string executable = paths.ResolveContainedPath(
+            manifest.ExecutablePath,
+            nameof(manifest.ExecutablePath));
+        Directory.CreateDirectory(Path.GetDirectoryName(executable)!);
+        Directory.CreateDirectory(Path.GetDirectoryName(cachedModelPath)!);
+        Directory.CreateDirectory(Path.GetDirectoryName(blobPath)!);
+        await File.WriteAllTextAsync(executable, "test executable");
+        await File.WriteAllBytesAsync(blobPath, content);
+        File.CreateSymbolicLink(
+            cachedModelPath,
+            Path.GetRelativePath(Path.GetDirectoryName(cachedModelPath)!, blobPath));
+        await new LocalAiManifestStore(paths).SaveAsync(manifest);
+
+        string outsidePath = outside.Combine("replacement.gguf");
+        await File.WriteAllBytesAsync(outsidePath, content);
+        string? probedModelPath = null;
+        var events = new SynchronizedEventLog();
+        var platform = new FakePlatform();
+        var host = new FakeProcessHost(platform, events, selectedPort: 28_765)
+        {
+            BeforeStart = _ =>
+            {
+                string preset = File.ReadAllText(paths.RouterPresetPath);
+                Assert.Contains($"model = {blobPath}", preset, StringComparison.OrdinalIgnoreCase);
+                File.Delete(cachedModelPath);
+                File.CreateSymbolicLink(cachedModelPath, outsidePath);
+            },
+        };
+        var client = new FakeClient(events, (expectedModelPath, _) =>
+        {
+            probedModelPath = expectedModelPath;
+            return ReadyProbe(expectedModelPath);
+        });
+        await using var runtime = CreateRuntime(
+            paths,
+            host,
+            platform,
+            client,
+            new FakeLifecycle(events),
+            modelFileVerifier: new FakeModelFileVerifier(blobPath));
+
+        LocalAiRuntimeSnapshot snapshot = await runtime.EnsureStartedAsync();
+
+        Assert.True(
+            snapshot.State == LocalAiRuntimeState.Healthy,
+            $"Expected a healthy runtime but got {snapshot.State}: {snapshot.Detail}");
+        Assert.Equal(blobPath, probedModelPath, ignoreCase: true);
+        Assert.Contains("start", events);
+        Assert.NotNull(host.LastSpec);
     }
 
     [Fact]
@@ -2250,7 +2391,8 @@ public sealed class LocalAiPortLifecycleTests
         ILocalAiEndpointLifecycle lifecycle,
         TimeSpan? startupTimeout = null,
         int maxRestartAttempts = 2,
-        TimeSpan? shutdownTimeout = null) => new(
+        TimeSpan? shutdownTimeout = null,
+        ILocalAiModelFileVerifier? modelFileVerifier = null) => new(
             new LlamaServerRuntimeOptions
             {
                 Paths = paths,
@@ -2264,7 +2406,8 @@ public sealed class LocalAiPortLifecycleTests
             NullLogger.Instance,
             host,
             platform,
-            client);
+            client,
+            modelFileVerifier);
 
     private static async Task<LocalAiPaths> PrepareInstallAsync(TempDirectory temp)
     {
@@ -2527,6 +2670,8 @@ public sealed class LocalAiPortLifecycleTests
 
         public bool ImmediateExit { get; init; }
 
+        public Action<LocalAiProcessStartSpec>? BeforeStart { get; init; }
+
         public Task<ILocalAiManagedProcess> StartProcessAsync(
             LocalAiProcessStartSpec spec,
             Action<LocalAiManagedProcessExit> exited,
@@ -2535,8 +2680,9 @@ public sealed class LocalAiPortLifecycleTests
             cancellationToken.ThrowIfCancellationRequested();
             if (ThrowOnStart)
                 throw new IOException("The managed llama-server process could not be launched.");
-            events.Add("start");
             LastSpec = spec;
+            BeforeStart?.Invoke(spec);
+            events.Add("start");
             LastExitCallback = exited;
             Process = new FakeProcess(4201, platform.UtcNow, platform, events);
             if (ImmediateExit)
@@ -2620,6 +2766,21 @@ public sealed class LocalAiPortLifecycleTests
         }
 
         public void Dispose() { }
+    }
+
+    private sealed class FakeModelFileVerifier(string resolvedPath) : ILocalAiModelFileVerifier
+    {
+        public Task<LocalAiVerifiedModelLease?> TryOpenAsync(
+            string cacheRoot,
+            string candidatePath,
+            long expectedSizeBytes,
+            Sha256Digest expectedSha256,
+            CancellationToken cancellationToken)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            return Task.FromResult<LocalAiVerifiedModelLease?>(
+                new LocalAiVerifiedModelLease(new MemoryStream(), resolvedPath));
+        }
     }
 
     private sealed class FakeLifecycle(SynchronizedEventLog events) : ILocalAiEndpointLifecycle
