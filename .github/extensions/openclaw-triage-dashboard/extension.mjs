@@ -12,8 +12,8 @@ import {
     joinSession,
 } from "@github/copilot-sdk/extension";
 import {
-    applyAdversarialReview,
     CANVAS_INPUT_SCHEMA,
+    mergeAdversarialReviews,
     mergeLiveState,
     normalizeCanvasInput,
     reconcileOpenInventory,
@@ -306,20 +306,8 @@ function readSessionData() {
 
 function mergeSessionData(state) {
     const sessionData = readSessionData();
-    const reviewByNumber = new Map(sessionData.adversarialReviews
-        .map((review) => [review.prNumber, review]));
-    const items = state.items.map((item) => {
-        const adversarialReview = item.type === "pr"
-            ? reviewByNumber.get(item.number) ?? null
-            : null;
-        return applyAdversarialReview(item, adversarialReview);
-    });
     return {
-        ...state,
-        adversarialReviews: items
-            .map((item) => item.adversarialReview)
-            .filter(Boolean),
-        items,
+        ...mergeAdversarialReviews(state, sessionData.adversarialReviews),
         sessionDataError: sessionData.error,
         sessionTasks: sessionData.tasks,
     };
