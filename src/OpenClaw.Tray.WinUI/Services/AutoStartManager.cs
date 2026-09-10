@@ -20,6 +20,14 @@ public static class AutoStartManager
     // install the user has not agreed to replace. Detecting a legacy install, obtaining
     // consent, and removing its registrations belong to a migration flow that asks first.
 
+    /// <summary>
+    /// Reports whether auto-start is currently enabled.
+    /// </summary>
+    /// <remarks>
+    /// Display only, same caveat as <see cref="IsAutoStartEnabledAsync"/>: a packaged
+    /// query that fails reads as false, so this value must never be persisted to
+    /// <c>SettingsData.AutoStart</c>.
+    /// </remarks>
     public static bool IsAutoStartEnabled()
     {
         if (PackageHelper.IsPackaged)
@@ -54,10 +62,40 @@ public static class AutoStartManager
             ? SetPackagedAutoStartAsync(enable)
             : Task.Run(() => SetUnpackagedAutoStart(enable));
 
+    /// <summary>
+    /// Reports whether auto-start is currently enabled.
+    /// </summary>
+    /// <remarks>
+    /// Suitable for display only. A packaged query that fails is reported as false, so
+    /// this value must never be persisted to <c>SettingsData.AutoStart</c>: doing so
+    /// turns a transient Windows failure into a permanent loss of the user's preference.
+    /// Use <see cref="ReconcileAutoStartAsync"/> or
+    /// <see cref="ResolveAutoStartAfterFailedChangeAsync"/> when the result will be stored.
+    /// </remarks>
     public static Task<bool> IsAutoStartEnabledAsync() =>
         PackageHelper.IsPackaged
             ? IsPackagedAutoStartEnabledAsync()
             : Task.Run(IsAutoStartEnabled);
+
+    /// <summary>
+    /// Returns the auto-start value to persist after a change attempt threw, rolling the
+    /// caller's optimistic write back only when Windows gives a definite answer.
+    /// </summary>
+    /// <remarks>
+    /// See <see cref="AutoStartReconciliation.ResolveAfterFailedChangeAsync"/> for the
+    /// policy. Unpackaged builds read the registry and scheduled task directly, which is
+    /// a local read with no transient-failure mode worth modelling.
+    /// </remarks>
+    public static Task<bool> ResolveAutoStartAfterFailedChangeAsync(bool requested, Exception failure)
+    {
+        if (!PackageHelper.IsPackaged)
+            return Task.Run(IsAutoStartEnabled);
+
+        return AutoStartReconciliation.ResolveAfterFailedChangeAsync(
+            requested,
+            failure,
+            QueryPackagedAutoStartAsync);
+    }
 
     /// <summary>
     /// Reconciles the persisted auto-start preference against the real Windows startup
@@ -71,38 +109,18 @@ public static class AutoStartManager
     /// user can also flip the task in Settings &gt; Apps &gt; Startup at any time.
     ///
     /// Windows is treated as the source of truth: the stored intent is applied when it
-    /// can be, and whatever Windows reports afterwards is what gets persisted. Enabling
-    /// is a request that Windows may refuse (DisabledByUser / DisabledByPolicy), and a
-    /// refusal must not be retried silently forever, so it is surfaced as false.
+    /// can be, and whatever Windows reports afterwards is what gets persisted.
+    /// <see cref="AutoStartReconciliation.ReconcileAsync"/> owns the decision itself.
     /// </remarks>
-    public static async Task<bool> ReconcileAutoStartAsync(bool configured)
+    public static Task<bool> ReconcileAutoStartAsync(bool configured)
     {
         if (!PackageHelper.IsPackaged)
-            return configured;
+            return Task.FromResult(configured);
 
-        try
-        {
-            var actual = await IsPackagedAutoStartEnabledAsync();
-            if (actual == configured)
-                return configured;
-
-            if (!configured)
-            {
-                // Windows says enabled while the app setting says off, which happens when
-                // the user enables the entry in Startup Apps. Report the truth instead of
-                // fighting Windows; the in-app toggle still pushes changes the other way.
-                Logger.Info("Auto-start is enabled in Windows; adopting that state.");
-                return true;
-            }
-
-            await SetPackagedAutoStartAsync(true);
-            return true;
-        }
-        catch (Exception ex)
-        {
-            Logger.Warn($"Auto-start could not be reconciled, reporting disabled: {ex.Message}");
-            return false;
-        }
+        return AutoStartReconciliation.ReconcileAsync(
+            configured,
+            QueryPackagedAutoStartAsync,
+            SetPackagedAutoStartAsync);
     }
 
     private static void SetUnpackagedAutoStart(bool enable)
@@ -159,17 +177,22 @@ public static class AutoStartManager
         }
     }
 
-    private static async Task<bool> IsPackagedAutoStartEnabledAsync()
+    private static async Task<bool> IsPackagedAutoStartEnabledAsync() =>
+        await QueryPackagedAutoStartAsync() == AutoStartState.Enabled;
+
+    private static async Task<AutoStartState> QueryPackagedAutoStartAsync()
     {
         try
         {
             var startupTask = await StartupTask.GetAsync(AppIdentity.PackageStartupTaskId);
-            return startupTask.State is StartupTaskState.Enabled or StartupTaskState.EnabledByPolicy;
+            return startupTask.State is StartupTaskState.Enabled or StartupTaskState.EnabledByPolicy
+                ? AutoStartState.Enabled
+                : AutoStartState.Disabled;
         }
         catch (Exception ex)
         {
             Logger.Warn($"Failed to query packaged auto-start: {ex.Message}");
-            return false;
+            return AutoStartState.Unknown;
         }
     }
 
@@ -196,7 +219,7 @@ public static class AutoStartManager
             return;
         }
 
-        throw new InvalidOperationException(state switch
+        throw new AutoStartRefusedException(state switch
         {
             StartupTaskState.DisabledByUser =>
                 "Windows startup is disabled by the user. Re-enable OpenClaw Companion in Settings > Apps > Startup.",

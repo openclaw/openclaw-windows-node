@@ -4050,7 +4050,7 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands, IPer
         catch (Exception ex)
         {
             Logger.Error($"ApplyAutoStart failed: {ex.Message}");
-            var effectiveAutoStart = await AutoStartManager.IsAutoStartEnabledAsync();
+            var effectiveAutoStart = await AutoStartManager.ResolveAutoStartAfterFailedChangeAsync(autoStart, ex);
             if (SettingsStore is { } store)
             {
                 store.Update(origin, edit => edit.AutoStart = effectiveAutoStart);

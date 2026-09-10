@@ -225,7 +225,10 @@ public sealed class MsixDevelopmentSigningTests
             root, "src", "OpenClaw.Tray.WinUI", "App.xaml.cs"));
         Assert.DoesNotContain("MigrateLegacyAutoStartAsync", app);
         Assert.Contains("await ApplyAutoStartCore(origin, !_settings.AutoStart);", app);
-        Assert.Contains("await AutoStartManager.IsAutoStartEnabledAsync()", app);
+        // The rollback after a failed change must not persist a raw query result: a failed
+        // query reads as "disabled" and would erase the preference the user just set.
+        Assert.Contains("await AutoStartManager.ResolveAutoStartAfterFailedChangeAsync(autoStart, ex)", app);
+        Assert.DoesNotContain("AutoStartManager.IsAutoStartEnabledAsync()", app);
     }
 
     [Fact]

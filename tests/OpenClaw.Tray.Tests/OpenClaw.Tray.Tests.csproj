@@ -106,6 +106,7 @@
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Services\DiagnosticsLogTailReader.cs" Link="Services\DiagnosticsLogTailReader.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Services\DiagnosticsBundleBuilder.cs" Link="Services\DiagnosticsBundleBuilder.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Services\SettingsManager.cs" Link="Services\SettingsManager.cs" />
+    <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Services\AutoStartReconciliation.cs" Link="Services\AutoStartReconciliation.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Services\OpenTelemetryEndpointProtocol.cs" Link="Services\OpenTelemetryEndpointProtocol.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Services\OpenTelemetryEndpointOptions.cs" Link="Services\OpenTelemetryEndpointOptions.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Services\OpenTelemetryLogPolicy.cs" Link="Services\OpenTelemetryLogPolicy.cs" />
