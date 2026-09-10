@@ -107,6 +107,8 @@ internal sealed class ChatConversationState
     {
         lock (_gate)
         {
+            if (_disposed)
+                return null;
             return _presentation.RememberSelectedThread(threadId);
         }
     }
@@ -350,6 +352,8 @@ internal sealed class ChatConversationState
     {
         lock (_gate)
         {
+            if (_disposed)
+                return new(BuildSnapshotLocked(context), []);
             var previousUsage = _presentation.SnapshotUsage();
             _presentation.ReplaceSessions(sessions);
             var currentSessions = _presentation.SessionSnapshot();
@@ -387,6 +391,8 @@ internal sealed class ChatConversationState
     {
         lock (_gate)
         {
+            if (_disposed)
+                return BuildSnapshotLocked(context);
             _presentation.ApplyModels(models);
             return BuildSnapshotLocked(context);
         }
@@ -437,7 +443,8 @@ internal sealed class ChatConversationState
     {
         lock (_gate)
         {
-            return _presentation.IsCommandCatalogEpochCurrent(epoch)
+            return !_disposed &&
+                   _presentation.IsCommandCatalogEpochCurrent(epoch)
                 ? BuildSnapshotLocked(context)
                 : null;
         }
