@@ -6214,6 +6214,92 @@ public class OpenClawChatDataProviderTests
     }
 
     [Fact]
+    public async Task DisposeAsync_WaitsForPublishPostInvocation()
+    {
+        var bridge = new FakeBridge { Sessions = [MainSession()] };
+        using var postEntered = new ManualResetEventSlim();
+        using var releasePost = new ManualResetEventSlim();
+        var queued = new ConcurrentQueue<Action>();
+        var provider = new OpenClawChatDataProvider(
+            bridge,
+            post: callback =>
+            {
+                postEntered.Set();
+                Assert.True(releasePost.Wait(TimeSpan.FromSeconds(10)));
+                queued.Enqueue(callback);
+            });
+
+        var publishTask = Task.Factory.StartNew(
+            () => bridge.RaiseStatus(ConnectionStatus.Connecting),
+            CancellationToken.None,
+            TaskCreationOptions.LongRunning,
+            TaskScheduler.Default);
+        Assert.True(postEntered.Wait(TimeSpan.FromSeconds(10)));
+        var disposeTask = Task.Run(async () => await provider.DisposeAsync());
+        Assert.True(
+            SpinWait.SpinUntil(
+                () => provider.PublishDisposedForTests,
+                TimeSpan.FromSeconds(10)));
+        Assert.False(disposeTask.IsCompleted);
+        Assert.False(bridge.IsDisposed);
+
+        releasePost.Set();
+        await publishTask;
+        await disposeTask;
+
+        Assert.True(bridge.IsDisposed);
+        AssertSingleQueuedAction(queued)();
+    }
+
+    [Fact]
+    public async Task DisposeAsync_WaitsForFencedCallbackPostInvocation()
+    {
+        var bridge = new FakeBridge
+        {
+            Sessions = [MainSession()],
+            CurrentStatus = ConnectionStatus.Connected,
+            CommandCatalogResult = new CommandCatalog
+            {
+                IsSupported = true,
+                Commands = [new GatewayCommand { Name = "status", NativeName = "/status" }],
+            },
+        };
+        using var postEntered = new ManualResetEventSlim();
+        using var releasePost = new ManualResetEventSlim();
+        var queued = new ConcurrentQueue<Action>();
+        var provider = new OpenClawChatDataProvider(
+            bridge,
+            post: callback =>
+            {
+                postEntered.Set();
+                Assert.True(releasePost.Wait(TimeSpan.FromSeconds(10)));
+                queued.Enqueue(callback);
+            });
+
+        var catalogTask = Task.Factory.StartNew(
+                () => provider.EnsureCommandCatalogAsync(),
+                CancellationToken.None,
+                TaskCreationOptions.LongRunning,
+                TaskScheduler.Default)
+            .Unwrap();
+        Assert.True(postEntered.Wait(TimeSpan.FromSeconds(10)));
+        var disposeTask = Task.Run(async () => await provider.DisposeAsync());
+        Assert.True(
+            SpinWait.SpinUntil(
+                () => provider.PublishDisposedForTests,
+                TimeSpan.FromSeconds(10)));
+        Assert.False(disposeTask.IsCompleted);
+        Assert.False(bridge.IsDisposed);
+
+        releasePost.Set();
+        await catalogTask;
+        await disposeTask;
+
+        Assert.True(bridge.IsDisposed);
+        AssertSingleQueuedAction(queued)();
+    }
+
+    [Fact]
     public async Task DisposeAsync_WaitsForInFlightHistoryNotificationCallback()
     {
         var bridge = new FakeBridge

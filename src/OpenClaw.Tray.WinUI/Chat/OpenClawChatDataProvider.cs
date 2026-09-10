@@ -1919,7 +1919,7 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
     {
         try
         {
-            _post!(DrainPendingPublish);
+            TryPostFenced(DrainPendingPublish);
         }
         catch
         {
@@ -2115,25 +2115,29 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
             return;
         }
 
-        lock (_publishGate)
+        TryPostFenced(() => Deliver(callback));
+    }
+
+    private bool TryPostFenced(Action callback)
+    {
+        if (!TryBeginDelivery(out var threadId))
+            return false;
+
+        try
         {
-            if (_publishDisposed)
-                return;
+            _post!(callback);
+            return true;
         }
-        _post(() => Deliver(callback));
+        finally
+        {
+            EndDelivery(threadId);
+        }
     }
 
     private void Deliver(Action callback)
     {
-        var threadId = Environment.CurrentManagedThreadId;
-        lock (_publishGate)
-        {
-            if (_publishDisposed)
-                return;
-            _activeDeliveries++;
-            _deliveryDepthByThread[threadId] =
-                _deliveryDepthByThread.GetValueOrDefault(threadId) + 1;
-        }
+        if (!TryBeginDelivery(out var threadId))
+            return;
 
         try
         {
@@ -2141,16 +2145,35 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
         }
         finally
         {
-            lock (_publishGate)
-            {
-                _activeDeliveries--;
-                var depth = _deliveryDepthByThread[threadId] - 1;
-                if (depth == 0)
-                    _deliveryDepthByThread.Remove(threadId);
-                else
-                    _deliveryDepthByThread[threadId] = depth;
-                Monitor.PulseAll(_publishGate);
-            }
+            EndDelivery(threadId);
+        }
+    }
+
+    private bool TryBeginDelivery(out int threadId)
+    {
+        threadId = Environment.CurrentManagedThreadId;
+        lock (_publishGate)
+        {
+            if (_publishDisposed)
+                return false;
+            _activeDeliveries++;
+            _deliveryDepthByThread[threadId] =
+                _deliveryDepthByThread.GetValueOrDefault(threadId) + 1;
+            return true;
+        }
+    }
+
+    private void EndDelivery(int threadId)
+    {
+        lock (_publishGate)
+        {
+            _activeDeliveries--;
+            var depth = _deliveryDepthByThread[threadId] - 1;
+            if (depth == 0)
+                _deliveryDepthByThread.Remove(threadId);
+            else
+                _deliveryDepthByThread[threadId] = depth;
+            Monitor.PulseAll(_publishGate);
         }
     }
 
