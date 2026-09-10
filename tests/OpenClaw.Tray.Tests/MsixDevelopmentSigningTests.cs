@@ -294,6 +294,25 @@ public sealed class MsixDevelopmentSigningTests
     }
 
     [Fact]
+    public void PackageDisplayNames_MatchThePartnerCenterReservation()
+    {
+        var root = TestRepositoryPaths.GetRepositoryRoot();
+        var manifest = File.ReadAllText(Path.Combine(
+            root, "src", "OpenClaw.Tray.WinUI", "Package.appxmanifest"));
+        var project = File.ReadAllText(Path.Combine(
+            root, "src", "OpenClaw.Tray.WinUI", "OpenClaw.Tray.WinUI.csproj"));
+
+        // "OpenClaw" is the reserved Partner Center name, and these strings are what the
+        // Store listing, the Start menu tile, and Startup Apps display. Package identity is
+        // Identity/@Name plus @Publisher, so display names are labels only and changing them
+        // breaks nothing, which is precisely why a silent revert would otherwise go unnoticed.
+        Assert.Contains("<DisplayName>OpenClaw</DisplayName>", manifest);
+        Assert.Contains(@"DisplayName=""OpenClaw""", manifest);
+        Assert.DoesNotContain("OpenClaw Companion", manifest);
+        Assert.Contains(@"DisplayName=""OpenClaw (Dev)""", project);
+    }
+
+    [Fact]
     public void PackagedBuildsDeferUpdatesToTheStore()
     {
         var root = TestRepositoryPaths.GetRepositoryRoot();

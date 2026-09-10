@@ -278,7 +278,7 @@
       DevBuild="$(DevBuild)"
       IdentityName="OpenClawFoundation.OpenClaw.Dev"
       Publisher="$(OpenClawDevMsixPublisher)"
-      DisplayName="OpenClaw Companion (Dev)"
+      DisplayName="OpenClaw (Dev)"
       ProtocolName="openclaw-dev"
       ToastActivatorClsid="C536D4AD-19BE-4F7A-B227-AB97629BF299" />
     <ItemGroup>
