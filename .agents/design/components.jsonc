@@ -1,0 +1,471 @@
+// components.jsonc — the UI patterns the OpenClaw Windows team has decided on, as data.
+//
+// This is a framework-agnostic relational element tree with token-bound Auto Layout
+// and optional parent-relative freeform positioning. It renders live in the Colophon
+// and Prototype canvases and ports cleanly because layout intent is semantic, not
+// executable CSS. This is DESIGN INTENT for the canvas preview — not shipping code.
+//
+// To ship, port these patterns into the app using the port targets in design.json
+// `authority`: most surfaces ship as native WinUI 3 / C# (port via
+// github.com/microsoft/win-dev-skills), while the chat surface (ChatBubble,
+// ChatComposer, ChatThread) ships via Reactor (github.com/microsoft/microsoft-ui-reactor).
+// Don't ship this verbatim; bind Fluent ThemeResource keys, never the preview hex.
+//
+// Every object node has a stable, unique `id`. Node kinds:
+//   element   { "id", "el", "class"?, "attrs"?, "layout"?, "position"?, "margin"?, "appearance"?, "children"? }
+//   component { "id", "component", "props"?, "layout"?, "position"?, "margin"?, "appearance"? }
+//   string    "literal"  or  "{prop}"  for prop interpolation
+//
+// Auto Layout: layout.mode vertical|horizontal|grid|freeform|none; gap/padding/margin
+// reference design.json spacing tokens ("1".."8"), never raw px; align/justify/columns/
+// wrap/grow; width/height "fill"|"hug"|number. Freeform (v3): a layout.mode "freeform"
+// parent establishes a coordinate system; direct children may set
+// position { mode:"absolute", x, y } in px relative to that parent.
+//
+// Appearance inherits from the parent/class; add only intentional, token-bound
+// overrides: fontFamily display|body|mono; textStyle (typography scale name);
+// color/background/borderColor (color-token name); radius/shadow (token name); textAlign.
+{
+  "meta": {
+    "version": 3,
+    "updatedBy": "copilot",
+    "note": "Windows Fluent UI for OpenClaw — ported from the v1 raw-CSS components.jsonc to v3 Auto Layout. WinUI-derived pixel padding is snapped to the nearest 4px spacing token; per-component notes record the source values and any approximation."
+  },
+  "components": [
+    {
+      "name": "Button",
+      "note": "Primary action. One per view — it's where the eye should land. Padding mirrors WinUI's default ButtonPadding (11,5,11,6), snapped to spacing tokens 3 (12≈11) and 1 (4≈5/6). In-app MinWidth 100px keeps short labels (OK / Connect) from cramping and gives side-by-side buttons a consistent footprint; that minimum has no spacing-token equivalent, so it stays a port note and the preview hugs its label.",
+      "props": { "children": "Save changes", "variant": "primary" },
+      "root": {
+        "id": "button-root",
+        "el": "button",
+        "class": "ds-btn ds-btn-{variant}",
+        "layout": {
+          "mode": "horizontal",
+          "padding": { "x": "3", "y": "1" },
+          "align": "center",
+          "justify": "center",
+          "width": "hug"
+        },
+        "children": ["{children}"]
+      }
+    },
+    {
+      "name": "Field",
+      "note": "Text input with a quiet label above it — the field is the subject. Input padding mirrors WinUI TextControlThemePadding (10,5,6,6), snapped to tokens 2 (8≈10/6 horizontal) and 1 (4≈5/6 vertical). In-app MinHeight 32px lines a field up with a Button on the same row; that minimum stays a port note.",
+      "props": { "label": "Gateway address", "placeholder": "127.0.0.1:18789" },
+      "root": {
+        "id": "field-root",
+        "el": "label",
+        "class": "ds-field",
+        "layout": { "mode": "vertical", "gap": "2", "width": "fill" },
+        "children": [
+          {
+            "id": "field-label",
+            "el": "span",
+            "class": "ds-field-label",
+            "children": ["{label}"]
+          },
+          {
+            "id": "field-input",
+            "el": "input",
+            "class": "ds-input",
+            "attrs": { "placeholder": "{placeholder}" },
+            "layout": { "padding": { "x": "2", "y": "1" }, "width": "fill" }
+          }
+        ]
+      }
+    },
+    {
+      "name": "Card",
+      "note": "Content card. Flat by default — a 1px hairline border, not a drop shadow. Padding mirrors the WinUI Gallery card (16,12) as tokens 4 (16) and 3 (12) exactly, with the `md` radius and a `line`-colored border supplied by the ds-card class. Never nest a card inside a card.",
+      "props": { "title": "Windows node", "body": "Paired · 6 capabilities exposed over MCP." },
+      "root": {
+        "id": "card-root",
+        "el": "article",
+        "class": "ds-card",
+        "layout": {
+          "mode": "vertical",
+          "gap": "2",
+          "padding": { "x": "4", "y": "3" },
+          "width": "fill"
+        },
+        "children": [
+          {
+            "id": "card-title",
+            "el": "h3",
+            "class": "ds-card-title",
+            "children": ["{title}"]
+          },
+          {
+            "id": "card-body",
+            "el": "p",
+            "class": "ds-card-body",
+            "children": ["{body}"]
+          },
+          {
+            "id": "card-link",
+            "el": "a",
+            "class": "ds-link",
+            "attrs": { "href": "#" },
+            "margin": { "top": "1" },
+            "children": ["Open report →"]
+          }
+        ]
+      }
+    },
+    {
+      "name": "Badge",
+      "note": "Status pill. Uses semantic color tokens, never a raw hex. Padding tokens 3/1 give the pill a compact footprint; the `pill` radius and tone color come from the ds-badge class.",
+      "props": { "children": "Connected", "tone": "positive" },
+      "root": {
+        "id": "badge-root",
+        "el": "span",
+        "class": "ds-badge ds-badge-{tone}",
+        "layout": {
+          "mode": "horizontal",
+          "padding": { "x": "3", "y": "1" },
+          "align": "center",
+          "width": "hug"
+        },
+        "children": ["{children}"]
+      }
+    },
+    {
+      "name": "ComposerPicker",
+      "note": "Subtle inline picker — text label + chevron, no border until hover in the app. Used for the model and reasoning-effort selectors; reads as a quiet dropdown, not a button. 32px control height with `small` (13/18) muted text and the `sm` radius. (Preview shows the rest state; the transparent rest border is intentionally omitted rather than bound to a token.)",
+      "props": { "label": "Model" },
+      "root": {
+        "id": "composer-picker-root",
+        "el": "button",
+        "attrs": { "type": "button" },
+        "layout": {
+          "mode": "horizontal",
+          "gap": "1",
+          "padding": { "x": "2" },
+          "align": "center",
+          "height": 32,
+          "width": "hug"
+        },
+        "appearance": {
+          "fontFamily": "body",
+          "textStyle": "small",
+          "color": "muted",
+          "radius": "sm"
+        },
+        "children": [
+          {
+            "id": "composer-picker-label",
+            "el": "span",
+            "children": ["{label}"]
+          },
+          {
+            "id": "composer-picker-chevron",
+            "el": "svg",
+            "attrs": { "width": "12", "height": "12", "viewBox": "0 0 24 24", "fill": "none", "aria-hidden": "true", "stroke": "currentColor", "stroke-width": "2", "stroke-linecap": "round", "stroke-linejoin": "round" },
+            "children": [
+              { "id": "composer-picker-chevron-path", "el": "path", "attrs": { "d": "M6 9l6 6 6-6" } }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "name": "ChatBubble",
+      "note": "Assistant chat bubble: a 36×36 avatar (subtle `surface` fill, hairline `line` border, `pill` radius) to the LEFT of a bubble on a `surface` fill with a `line` border. The `bubble` radius (16px) is friendlier than the 8/12px control radii; padding tokens 4/3 mirror the v1 12/16. Footer reads timestamp · usage · Copy — the same used/context (pct%) string ChatUsageFormatter produces. Mirrors OpenClawChatTimeline; ships via Reactor. Bubble max-width min(80%, 520px) is a Reactor port note (no token equivalent). (User messages ride the accent on the right in-app; this previews the assistant variant.)",
+      "props": {
+        "time": "2:14 PM",
+        "usage": "12.5K/200K (6%)",
+        "children": "Paired to the gateway — 6 Windows node capabilities are live."
+      },
+      "root": {
+        "id": "chat-bubble-root",
+        "el": "div",
+        "layout": { "mode": "horizontal", "gap": "2", "align": "start" },
+        "children": [
+          {
+            "id": "chat-bubble-avatar",
+            "el": "div",
+            "attrs": { "aria-hidden": "true" },
+            "layout": { "mode": "horizontal", "align": "center", "justify": "center", "width": 36, "height": 36 },
+            "appearance": { "background": "surface", "borderColor": "line", "color": "muted", "radius": "pill" },
+            "children": [
+              {
+                "id": "chat-bubble-avatar-glyph",
+                "el": "svg",
+                "attrs": { "width": "18", "height": "18", "viewBox": "0 0 24 24", "fill": "currentColor", "aria-hidden": "true" },
+                "children": [
+                  { "id": "chat-bubble-avatar-path", "el": "path", "attrs": { "d": "M12 2.5l1.7 5.1a4 4 0 0 0 2.7 2.7l5.1 1.7-5.1 1.7a4 4 0 0 0-2.7 2.7L12 21.5l-1.7-5.1a4 4 0 0 0-2.7-2.7L2.5 12l5.1-1.7a4 4 0 0 0 2.7-2.7L12 2.5z" } }
+                ]
+              }
+            ]
+          },
+          {
+            "id": "chat-bubble-stack",
+            "el": "div",
+            "layout": { "mode": "vertical", "gap": "1", "align": "start" },
+            "children": [
+              {
+                "id": "chat-bubble-message",
+                "el": "div",
+                "layout": { "mode": "vertical", "padding": { "x": "4", "y": "3" } },
+                "appearance": { "fontFamily": "body", "textStyle": "body", "background": "surface", "color": "ink", "borderColor": "line", "radius": "bubble" },
+                "children": ["{children}"]
+              },
+              {
+                "id": "chat-bubble-footer",
+                "el": "div",
+                "layout": { "mode": "horizontal", "gap": "2", "padding": { "x": "2" }, "align": "center" },
+                "appearance": { "fontFamily": "body", "textStyle": "caption", "color": "muted" },
+                "children": [
+                  { "id": "chat-bubble-time", "el": "span", "children": ["{time}"] },
+                  { "id": "chat-bubble-dot", "el": "span", "attrs": { "aria-hidden": "true" }, "children": ["·"] },
+                  { "id": "chat-bubble-usage", "el": "span", "children": ["{usage}"] },
+                  {
+                    "id": "chat-bubble-copy",
+                    "el": "button",
+                    "attrs": { "type": "button", "title": "Copy", "aria-label": "Copy message" },
+                    "layout": { "mode": "horizontal", "align": "center", "justify": "center", "width": 20, "height": 20 },
+                    "appearance": { "color": "muted", "radius": "sm" },
+                    "children": [
+                      {
+                        "id": "chat-bubble-copy-glyph",
+                        "el": "svg",
+                        "attrs": { "width": "14", "height": "14", "viewBox": "0 0 24 24", "fill": "none", "aria-hidden": "true", "stroke": "currentColor", "stroke-width": "2", "stroke-linecap": "round", "stroke-linejoin": "round" },
+                        "children": [
+                          { "id": "chat-bubble-copy-rect", "el": "rect", "attrs": { "x": "9", "y": "9", "width": "11", "height": "11", "rx": "2" } },
+                          { "id": "chat-bubble-copy-path", "el": "path", "attrs": { "d": "M6 15H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v1" } }
+                        ]
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "name": "ChatComposer",
+      "note": "Chat input. A rounded `surface` panel (`md` radius) with a hairline `line` border wrapping a borderless, transparent, auto-growing textarea over a toolbar. Left cluster = Add, model picker, reasoning-effort picker; right cluster = mic + Send. Only Send spends the accent; every other control stays subtle so the toolbar reads as quiet chrome. Textarea min 56 / max 200px growth is a Reactor port note. (Preview shows the rest state.)",
+      "props": {
+        "placeholder": "Message OpenClaw…",
+        "model": "Claude Opus 4.8",
+        "effort": "High"
+      },
+      "root": {
+        "id": "chat-composer-root",
+        "el": "div",
+        "layout": { "mode": "vertical", "gap": "2", "padding": "2", "width": "fill" },
+        "appearance": { "background": "surface", "borderColor": "line", "radius": "md" },
+        "children": [
+          {
+            "id": "chat-composer-input",
+            "el": "textarea",
+            "attrs": { "rows": "2", "placeholder": "{placeholder}" },
+            "layout": { "padding": "2", "width": "fill" },
+            "appearance": { "fontFamily": "body", "textStyle": "body", "color": "ink" }
+          },
+          {
+            "id": "chat-composer-toolbar",
+            "el": "div",
+            "layout": { "mode": "horizontal", "gap": "2", "align": "center", "justify": "space-between", "width": "fill" },
+            "children": [
+              {
+                "id": "chat-composer-left",
+                "el": "div",
+                "layout": { "mode": "horizontal", "gap": "1", "align": "center" },
+                "children": [
+                  {
+                    "id": "chat-composer-add",
+                    "el": "button",
+                    "attrs": { "type": "button", "title": "Add context", "aria-label": "Add context" },
+                    "layout": { "mode": "horizontal", "align": "center", "justify": "center", "width": 32, "height": 32 },
+                    "appearance": { "color": "muted", "radius": "sm" },
+                    "children": [
+                      {
+                        "id": "chat-composer-add-glyph",
+                        "el": "svg",
+                        "attrs": { "width": "18", "height": "18", "viewBox": "0 0 24 24", "fill": "none", "aria-hidden": "true", "stroke": "currentColor", "stroke-width": "2", "stroke-linecap": "round", "stroke-linejoin": "round" },
+                        "children": [
+                          { "id": "chat-composer-add-path", "el": "path", "attrs": { "d": "M12 5v14M5 12h14" } }
+                        ]
+                      }
+                    ]
+                  },
+                  { "id": "chat-composer-model", "component": "ComposerPicker", "props": { "label": "{model}" } },
+                  { "id": "chat-composer-effort", "component": "ComposerPicker", "props": { "label": "{effort}" } }
+                ]
+              },
+              {
+                "id": "chat-composer-right",
+                "el": "div",
+                "layout": { "mode": "horizontal", "gap": "1", "align": "center" },
+                "children": [
+                  {
+                    "id": "chat-composer-mic",
+                    "el": "button",
+                    "attrs": { "type": "button", "title": "Dictate", "aria-label": "Dictate" },
+                    "layout": { "mode": "horizontal", "align": "center", "justify": "center", "width": 32, "height": 32 },
+                    "appearance": { "color": "muted", "radius": "sm" },
+                    "children": [
+                      {
+                        "id": "chat-composer-mic-glyph",
+                        "el": "svg",
+                        "attrs": { "width": "18", "height": "18", "viewBox": "0 0 24 24", "fill": "none", "aria-hidden": "true", "stroke": "currentColor", "stroke-width": "2", "stroke-linecap": "round", "stroke-linejoin": "round" },
+                        "children": [
+                          { "id": "chat-composer-mic-rect", "el": "rect", "attrs": { "x": "9", "y": "3", "width": "6", "height": "11", "rx": "3" } },
+                          { "id": "chat-composer-mic-path", "el": "path", "attrs": { "d": "M5 11a7 7 0 0 0 14 0M12 18v3" } }
+                        ]
+                      }
+                    ]
+                  },
+                  {
+                    "id": "chat-composer-send",
+                    "el": "button",
+                    "attrs": { "type": "button", "title": "Send", "aria-label": "Send" },
+                    "layout": { "mode": "horizontal", "align": "center", "justify": "center", "width": 32, "height": 32 },
+                    "appearance": { "background": "accent", "color": "accentInk", "radius": "sm" },
+                    "children": [
+                      {
+                        "id": "chat-composer-send-glyph",
+                        "el": "svg",
+                        "attrs": { "width": "18", "height": "18", "viewBox": "0 0 24 24", "fill": "none", "aria-hidden": "true", "stroke": "currentColor", "stroke-width": "2", "stroke-linecap": "round", "stroke-linejoin": "round" },
+                        "children": [
+                          { "id": "chat-composer-send-path", "el": "path", "attrs": { "d": "M12 19V5M5 12l7-7 7 7" } }
+                        ]
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "name": "ChatThread",
+      "note": "A short thread: the \"does chat hang together\" check — a user turn (accent bubble on the right) and an assistant turn (with its Copy affordance + context-usage readout), then the composer. Thread max-width 560px is a Reactor port note.",
+      "root": {
+        "id": "chat-thread-root",
+        "el": "div",
+        "layout": { "mode": "vertical", "gap": "3", "width": "fill" },
+        "children": [
+          {
+            "id": "chat-thread-user",
+            "el": "div",
+            "layout": { "mode": "horizontal", "justify": "end", "width": "fill" },
+            "children": [
+              {
+                "id": "chat-thread-user-stack",
+                "el": "div",
+                "layout": { "mode": "vertical", "gap": "1", "align": "end" },
+                "children": [
+                  {
+                    "id": "chat-thread-user-bubble",
+                    "el": "div",
+                    "layout": { "mode": "vertical", "padding": { "x": "4", "y": "3" } },
+                    "appearance": { "fontFamily": "body", "textStyle": "body", "background": "accent", "color": "accentInk", "radius": "bubble" },
+                    "children": ["Can you list the Windows node capabilities?"]
+                  },
+                  {
+                    "id": "chat-thread-user-footer",
+                    "el": "div",
+                    "layout": { "mode": "horizontal", "gap": "2", "padding": { "x": "2" }, "align": "center" },
+                    "appearance": { "fontFamily": "body", "textStyle": "caption", "color": "muted" },
+                    "children": [
+                      { "id": "chat-thread-user-time", "el": "span", "children": ["2:14 PM"] }
+                    ]
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "id": "chat-thread-assistant",
+            "component": "ChatBubble",
+            "props": { "time": "2:14 PM", "usage": "12.5K/200K (6%)", "children": "Paired to the gateway — 6 capabilities are live, including system.run and clipboard access." }
+          },
+          { "id": "chat-thread-composer", "component": "ChatComposer" }
+        ]
+      }
+    },
+    {
+      "name": "ExampleScreen",
+      "note": "A representative Connection screen composed from the pieces above — the \"does it hang together\" check for the whole system. The status board is a freeform layer so the two cards can overlap into a Fluent-style dashboard, exercising v3 absolute positioning alongside Auto Layout.",
+      "root": {
+        "id": "example-screen-root",
+        "el": "section",
+        "class": "ds-screen",
+        "layout": { "mode": "vertical", "gap": "5", "width": "fill" },
+        "children": [
+          {
+            "id": "example-screen-head",
+            "el": "header",
+            "class": "ds-screen-head",
+            "layout": { "mode": "horizontal", "gap": "4", "align": "start", "justify": "space-between", "width": "fill" },
+            "children": [
+              {
+                "id": "example-screen-heading",
+                "el": "div",
+                "layout": { "mode": "vertical", "gap": "1" },
+                "children": [
+                  { "id": "example-screen-eyebrow", "el": "p", "class": "ds-eyebrow", "children": ["Connection"] },
+                  { "id": "example-screen-title", "el": "h2", "class": "ds-screen-title", "children": ["OpenClaw Windows Hub"] }
+                ]
+              },
+              {
+                "id": "example-screen-status",
+                "component": "Badge",
+                "props": { "tone": "positive", "children": "Connected" }
+              }
+            ]
+          },
+          {
+            "id": "example-screen-board",
+            "el": "div",
+            "class": "ds-grid",
+            "layout": { "mode": "freeform", "width": "fill", "height": 176 },
+            "children": [
+              {
+                "id": "example-screen-gateway",
+                "component": "Card",
+                "position": { "mode": "absolute", "x": 0, "y": 0 },
+                "props": { "title": "Gateway", "body": "Paired to OpenClawGateway · last seen just now." },
+                "layout": { "width": 280, "height": 148 }
+              },
+              {
+                "id": "example-screen-node",
+                "component": "Card",
+                "position": { "mode": "absolute", "x": 248, "y": 28 },
+                "props": { "title": "Windows node", "body": "6 capabilities exposed over MCP." },
+                "layout": { "width": 280, "height": 148 }
+              }
+            ]
+          },
+          {
+            "id": "example-screen-row",
+            "el": "div",
+            "class": "ds-row",
+            "layout": { "mode": "horizontal", "gap": "4", "align": "end", "wrap": true, "width": "fill" },
+            "children": [
+              {
+                "id": "example-screen-field",
+                "component": "Field",
+                "props": { "label": "Gateway address", "placeholder": "127.0.0.1:18789" },
+                "layout": { "grow": true }
+              },
+              {
+                "id": "example-screen-connect",
+                "component": "Button",
+                "props": { "children": "Connect", "variant": "primary" }
+              }
+            ]
+          }
+        ]
+      }
+    }
+  ]
+}
