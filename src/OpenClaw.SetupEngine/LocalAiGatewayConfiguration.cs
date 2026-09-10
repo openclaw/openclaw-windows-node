@@ -81,6 +81,10 @@ public sealed class ConfigureLocalAiGatewayStep : SetupStep
     public override string Id => "configure-local-ai-gateway";
     public override string DisplayName => "Connect gateway to Local AI";
     public override bool CanSkip(SetupContext ctx) => !ctx.Config.LocalAi.Enabled;
+    public override TimeSpan GetRollbackTimeout(SetupContext ctx) =>
+        ctx.LocalAiRecoveryOriginalInstall is null
+            ? base.GetRollbackTimeout(ctx)
+            : TimeSpan.FromSeconds(Math.Max(ctx.Config.RollbackTimeoutSeconds, 420));
 
     public override async Task<StepResult> ExecuteAsync(SetupContext ctx, CancellationToken ct)
     {
@@ -159,17 +163,17 @@ public sealed class ConfigureLocalAiGatewayStep : SetupStep
         {
             ctx.LocalAiRecoveryProviderTransition = true;
         }
-        ctx.LocalAiGatewayPriorState ??= prior;
-
-        ctx.LocalAiGatewayPriorState = retainedManagedPrimary
-            ? prior with
-            {
-                PrimaryModelExisted = fallbackModel is not null,
-                PrimaryModelJson = fallbackModel is null
-                    ? null
-                    : JsonSerializer.Serialize(fallbackModel),
-            }
-            : prior;
+        LocalAiGatewayPriorState rollbackPrior =
+            retainedManagedPrimary && ctx.LocalAiRecoveryOriginalInstall is null
+                ? prior with
+                {
+                    PrimaryModelExisted = fallbackModel is not null,
+                    PrimaryModelJson = fallbackModel is null
+                        ? null
+                        : JsonSerializer.Serialize(fallbackModel),
+                }
+                : prior;
+        ctx.LocalAiGatewayPriorState ??= rollbackPrior;
 
         if (!string.Equals(
                 install.Manifest.GatewayFallbackModel,

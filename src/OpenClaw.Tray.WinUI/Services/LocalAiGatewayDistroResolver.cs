@@ -29,7 +29,9 @@ internal enum LocalAiSetupRoute
 internal sealed record LocalAiRecoveryTarget(
     string GatewayId,
     string DistroName,
-    int GatewayPort);
+    int GatewayPort,
+    string? ModelCatalogId,
+    int? RequestedLocalAiPort);
 
 internal sealed record LocalAiSetupResolution(
     LocalAiSetupRoute Route,
@@ -43,7 +45,9 @@ internal static class LocalAiSetupRoutePolicy
         string? localGatewayId,
         bool hasDistro,
         bool hasDistroDataDirectory,
-        bool distroIsAppOwned)
+        bool distroIsAppOwned,
+        string? installedModelCatalogId = null,
+        int? installedRequestedLocalAiPort = null)
     {
         if (owners.Count == 1)
         {
@@ -53,14 +57,19 @@ internal static class LocalAiSetupRoutePolicy
                 hasDistro &&
                 distroIsAppOwned &&
                 Uri.TryCreate(owner.Url, UriKind.Absolute, out var uri) &&
-                uri.Port is > 0 and <= 65535)
+                uri.Port is > 0 and <= 65535 &&
+                GatewayRecordEditing.AreEquivalentLoopbackEndpoints(
+                    owner.Url,
+                    $"ws://127.0.0.1:{uri.Port}"))
             {
                 return new(
                     LocalAiSetupRoute.Recovery,
                     new LocalAiRecoveryTarget(
                         owner.Id,
                         GatewayRecordEditing.ResolveManagedDistroName(owner)!.Trim(),
-                        uri.Port));
+                        uri.Port,
+                        installedModelCatalogId,
+                        installedRequestedLocalAiPort));
             }
 
             return new(LocalAiSetupRoute.Blocked);

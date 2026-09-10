@@ -26,6 +26,40 @@ public static class LocalAiRecoveryPolicy
             expectedGatewayUrl);
 }
 
+internal sealed record LocalAiRecoveryConfigurationBaseline(
+    bool LocalAiEnabled,
+    string? LocalAiSelectedModelId,
+    int LocalAiPort,
+    bool RollbackOnFailure,
+    bool SkipWizard,
+    string DistroName,
+    int GatewayPort,
+    string? GatewayUrl)
+{
+    public static LocalAiRecoveryConfigurationBaseline Capture(SetupConfig config) =>
+        new(
+            config.LocalAi.Enabled,
+            config.LocalAi.SelectedModelId,
+            config.LocalAi.Port,
+            config.RollbackOnFailure,
+            config.SkipWizard,
+            config.DistroName,
+            config.GatewayPort,
+            config.GatewayUrl);
+
+    public void Restore(SetupConfig config)
+    {
+        config.LocalAi.Enabled = LocalAiEnabled;
+        config.LocalAi.SelectedModelId = LocalAiSelectedModelId;
+        config.LocalAi.Port = LocalAiPort;
+        config.RollbackOnFailure = RollbackOnFailure;
+        config.SkipWizard = SkipWizard;
+        config.DistroName = DistroName;
+        config.GatewayPort = GatewayPort;
+        config.GatewayUrl = GatewayUrl;
+    }
+}
+
 public sealed class ValidateLocalAiRecoveryGatewayStep : SetupStep
 {
     private readonly Func<string, string, string?, string?, ExistingConfigDetector.ExistingConfig> _detect;
@@ -77,8 +111,8 @@ public sealed class ValidateLocalAiRecoveryGatewayStep : SetupStep
         if (owners.Length != 1 ||
             !string.Equals(owners[0].Id, expectedGatewayId, StringComparison.Ordinal) ||
             !string.Equals(
-                GatewayRecordEditing.ResolveManagedDistroName(owners[0]),
-                ctx.Config.DistroName,
+                GatewayRecordEditing.ResolveManagedDistroName(owners[0])?.Trim(),
+                ctx.Config.DistroName.Trim(),
                 StringComparison.OrdinalIgnoreCase) ||
             !GatewayRecordEditing.AreEquivalentLoopbackEndpoints(
                 owners[0].Url,
@@ -139,6 +173,11 @@ public sealed class PreserveLocalAiRecoveryGatewayStep : SetupStep
     public override string Id => "preserve-local-ai-recovery-gateway";
     public override string DisplayName => "Preserve gateway during Local AI recovery";
     public override bool CanRetry => false;
+    // A cold WSL restart can consume two CLI attempts plus the full health window.
+    public override TimeSpan GetRollbackTimeout(SetupContext ctx) =>
+        TimeSpan.FromSeconds(Math.Max(
+            Math.Max(1, ctx.Config.RollbackTimeoutSeconds),
+            Math.Max(1, ctx.Config.Gateway.HealthTimeoutSeconds) + 75));
 
     public override Task<StepResult> ExecuteAsync(SetupContext ctx, CancellationToken ct) =>
         Task.FromResult(StepResult.Ok("Gateway recovery guard armed."));

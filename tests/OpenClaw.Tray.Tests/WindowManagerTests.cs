@@ -56,6 +56,8 @@ public sealed class WindowManagerTests
         Assert.Contains("public async Task ShowLocalAiSetupAsync()", manager);
         Assert.Contains("LocalAiGatewayDistroResolver.FindOwners(", manager);
         Assert.Contains("ExistingConfigDetector.Detect(", manager);
+        Assert.Contains("new LocalAiManifestStore(", manager);
+        Assert.Contains("install?.Manifest.ModelCatalogId", manager);
         Assert.Contains("LocalAiSetupRoutePolicy.Decide(", manager);
         AssertInOrder(
             manager,
@@ -83,8 +85,20 @@ public sealed class WindowManagerTests
             "public void NavigateToWelcome(bool back = false)",
             "ResetLocalAiRecoveryMode();",
             "NavigateTo(typeof(WelcomePage), _config, back);");
+        AssertInOrder(
+            setupWindow,
+            "public bool TryNavigateToGatewayInstalledMilestone()",
+            "ResetLocalAiRecoveryMode();",
+            "NavigateToGatewayInstalledMilestone();");
         Assert.Contains("_config.LocalAi.Enabled = true;", setupWindow);
         Assert.Contains("_config.SkipWizard = true;", setupWindow);
+        Assert.Contains("_config.RollbackOnFailure = true;", setupWindow);
+        Assert.Contains("_config.LocalAi.SelectedModelId = localAiRecoveryModelId;", setupWindow);
+        Assert.Contains("_localAiRecoveryBaseline.Restore(_config);", setupWindow);
+        Assert.Contains("localAiRecoveryModelId: localAiRecoveryTarget?.ModelCatalogId", manager);
+        Assert.Contains(
+            "localAiRecoveryRequestedPort: localAiRecoveryTarget?.RequestedLocalAiPort",
+            manager);
 
         var capabilities = File.ReadAllText(Path.Combine(
             TestRepositoryPaths.GetRepositoryRoot(),
@@ -98,6 +112,18 @@ public sealed class WindowManagerTests
             "if (_localAiRecoveryOnly)",
             "SetupWindow.Active?.NavigateToWelcome(back: true);",
             "return;");
+        Assert.Contains(
+            "LocalAiModelSelector.IsEnabled = isAvailable && !_localAiRecoveryModelPinned;",
+            capabilities);
+        Assert.Contains(
+            "LocalAiToggle.IsEnabled = isAvailable && !_localAiRecoveryOnly;",
+            capabilities);
+        AssertInOrder(
+            capabilities,
+            "if (_localAiRecoveryModelPinned)",
+            "eligibility = selectedEligibility;",
+            "else if (!selectedEligibility.CanInstall)",
+            "_config.LocalAi.SelectedModelId = null;");
     }
 
     [Fact]

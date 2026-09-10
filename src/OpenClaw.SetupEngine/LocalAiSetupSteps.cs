@@ -195,11 +195,11 @@ public sealed class ConfigureLocalAiWslNetworkingStep : SetupStep
             case WslGlobalConfigRestoreResult.InvalidBackup:
                 throw new InvalidDataException("The Local AI WSL configuration backup is invalid.");
             case WslGlobalConfigRestoreResult.Restored:
+                if (!string.IsNullOrWhiteSpace(ctx.Config.LocalAiRecoveryGatewayId))
+                    ctx.LocalAiRecoveryStoppedWsl = true;
                 CommandResult shutdown = await ShutdownWslAsync(ctx, ct);
                 if (shutdown.ExitCode != 0 || shutdown.TimedOut)
                     throw new InvalidOperationException("WSL could not be stopped to apply the restored configuration.");
-                if (!string.IsNullOrWhiteSpace(ctx.Config.LocalAiRecoveryGatewayId))
-                    ctx.LocalAiRecoveryStoppedWsl = true;
                 return;
             default:
                 throw new InvalidOperationException($"Unknown WSL configuration restore result: {restore}.");
@@ -265,20 +265,33 @@ public sealed class ReconcileLocalAiInstallationStep : SetupStep
         try
         {
             LocalAiReconcileResult result = await _reconciler
-                .ReconcileAsync(ctx.LocalDataDir, plan, selectedGpuId, ct)
+                .ReconcileAsync(
+                    ctx.LocalDataDir,
+                    plan,
+                    selectedGpuId,
+                    ct,
+                    allowIncompleteInstallation:
+                        !string.IsNullOrWhiteSpace(ctx.Config.LocalAiRecoveryGatewayId))
                 .ConfigureAwait(false);
+            if (!string.IsNullOrWhiteSpace(ctx.Config.LocalAiRecoveryGatewayId) &&
+                (result.ResolvedInstall ?? result.OriginalInstall) is { } originalInstall)
+            {
+                ctx.LocalAiRecoveryOriginalInstall = originalInstall;
+                ctx.LocalAiRecoveryReceiptRollbackAllowed = true;
+            }
             if (!result.Reused)
-                return StepResult.Skip("No completed managed Local AI installation was found.");
+            {
+                ctx.LocalAiRuntimeInstall = result.RuntimeInstall;
+                ctx.LocalAiModelInstall = result.ModelInstall;
+                return StepResult.Skip(result.OriginalInstall is null
+                    ? "No completed managed Local AI installation was found."
+                    : "The existing Local AI receipt was retained while incomplete assets are repaired.");
+            }
 
             ctx.LocalAiResolvedInstall = result.ResolvedInstall;
             ctx.LocalAiRuntimeInstall = result.RuntimeInstall;
             ctx.LocalAiModelInstall = result.ModelInstall;
             ctx.LocalAiPort = result.ResolvedInstall!.Manifest.RequestedPort;
-            if (!string.IsNullOrWhiteSpace(ctx.Config.LocalAiRecoveryGatewayId))
-            {
-                ctx.LocalAiRecoveryOriginalInstall = result.ResolvedInstall;
-                ctx.LocalAiRecoveryReceiptRollbackAllowed = true;
-            }
             return StepResult.Ok("Reused the verified managed Local AI installation.");
         }
         catch (OperationCanceledException) when (ct.IsCancellationRequested)
@@ -528,7 +541,10 @@ public sealed class PersistLocalAiManifestStep : SetupStep
             return StepResult.Terminal(portError ?? "The requested Local AI port is invalid.");
 
         var paths = new LocalAiPaths(ctx.LocalDataDir);
-        if (File.Exists(paths.ManifestPath))
+        bool replacesRecoveryReceipt =
+            ctx.LocalAiRecoveryOriginalInstall is not null &&
+            File.Exists(paths.ManifestPath);
+        if (File.Exists(paths.ManifestPath) && !replacesRecoveryReceipt)
             return StepResult.Terminal("A managed Local AI installation receipt already exists.");
 
         ImmutableArray<LocalAiAssetReceipt> runtimeAssets;
@@ -541,7 +557,7 @@ public sealed class PersistLocalAiManifestStep : SetupStep
             return StepResult.Terminal(ex.Message, ex);
         }
 
-        var manifest = new LocalAiInstallManifest
+        LocalAiInstallManifest manifest = new()
         {
             EngineVersion = LlamaRuntimeCatalog.ReleaseTag,
             Architecture = plan.Runtime.Architecture switch
@@ -573,13 +589,37 @@ public sealed class PersistLocalAiManifestStep : SetupStep
             DraftKeyCachePrecision = plan.Profile.DraftKeyCachePrecision,
             DraftValueCachePrecision = plan.Profile.DraftValueCachePrecision,
         };
+        if (ctx.LocalAiRecoveryOriginalInstall is { } originalInstall)
+        {
+            manifest = originalInstall.Manifest with
+            {
+                EngineVersion = manifest.EngineVersion,
+                Architecture = manifest.Architecture,
+                RuntimeId = manifest.RuntimeId,
+                ModelCatalogId = manifest.ModelCatalogId,
+                SelectedGpuId = manifest.SelectedGpuId,
+                ExecutablePath = manifest.ExecutablePath,
+                RuntimeAssets = manifest.RuntimeAssets,
+                ModelPath = manifest.ModelPath,
+                ModelId = manifest.ModelId,
+                ModelAlias = manifest.ModelAlias,
+                ModelAsset = manifest.ModelAsset,
+                RequestedPort = manifest.RequestedPort,
+                Endpoint = null,
+                ContextLength = manifest.ContextLength,
+                KeyCachePrecision = manifest.KeyCachePrecision,
+                ValueCachePrecision = manifest.ValueCachePrecision,
+                DraftKeyCachePrecision = manifest.DraftKeyCachePrecision,
+                DraftValueCachePrecision = manifest.DraftValueCachePrecision,
+            };
+        }
 
         var store = new LocalAiManifestStore(paths);
         try
         {
             await store.SaveAsync(manifest, ct);
             ctx.LocalAiResolvedInstall = store.ResolveAndValidate(manifest);
-            ctx.LocalAiManifestCreatedThisRun = true;
+            ctx.LocalAiManifestCreatedThisRun = !replacesRecoveryReceipt;
             return StepResult.Ok("Recorded the verified llama-server and Hugging Face installation.");
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or InvalidDataException)

@@ -116,6 +116,54 @@ public sealed class LocalAiWslNetworkingConsentTests
         Assert.True(context.LocalAiRecoveryStoppedWsl);
     }
 
+    [Theory]
+    [InlineData(0, false)]
+    [InlineData(1, false)]
+    [InlineData(-1, true)]
+    public async Task Rollback_RecoveryShutdown_ArmsGatewayRestartBeforeCommandCompletes(
+        int exitCode,
+        bool timedOut)
+    {
+        using var temp = new TempDirectory("local-ai-recovery-rollback-shutdown-");
+        var commands = new SuccessfulCommandRunner(new CommandResult(
+            exitCode,
+            string.Empty,
+            exitCode == 0 ? string.Empty : "failed",
+            TimeSpan.Zero,
+            timedOut));
+        SetupContext context = CreateContext(temp.Path, consent: true, commands);
+        context.Config.LocalAiRecoveryGatewayId = "gateway-id";
+        var step = new ConfigureLocalAiWslNetworkingStep(_ => new RestoredManager());
+
+        if (exitCode == 0 && !timedOut)
+        {
+            await step.RollbackAsync(context, CancellationToken.None);
+        }
+        else
+        {
+            await Assert.ThrowsAsync<InvalidOperationException>(
+                () => step.RollbackAsync(context, CancellationToken.None));
+        }
+
+        Assert.True(context.LocalAiRecoveryStoppedWsl);
+    }
+
+    [Fact]
+    public async Task Rollback_RecoveryShutdownCancellation_StillArmsGatewayRestart()
+    {
+        using var temp = new TempDirectory("local-ai-recovery-rollback-cancel-");
+        using var cts = new CancellationTokenSource();
+        var commands = new CancelingCommandRunner(cts);
+        SetupContext context = CreateContext(temp.Path, consent: true, commands);
+        context.Config.LocalAiRecoveryGatewayId = "gateway-id";
+        var step = new ConfigureLocalAiWslNetworkingStep(_ => new RestoredManager());
+
+        await Assert.ThrowsAsync<OperationCanceledException>(
+            () => step.RollbackAsync(context, cts.Token));
+
+        Assert.True(context.LocalAiRecoveryStoppedWsl);
+    }
+
     private static SetupContext CreateContext(
         string localDataDirectory,
         bool consent,
@@ -271,5 +319,16 @@ public sealed class LocalAiWslNetworkingConsentTests
 
         public WslGlobalConfigRestoreResult RestoreIfUnchanged() =>
             WslGlobalConfigRestoreResult.NoBackup;
+    }
+
+    private sealed class RestoredManager : IWslGlobalConfigManager
+    {
+        public WslGlobalConfigStatus Inspect() => new(Exists: true, IsMirrored: true);
+
+        public WslGlobalConfigApplyResult ApplyMirroredNetworking() =>
+            new(Changed: false, RollbackMetadata: null);
+
+        public WslGlobalConfigRestoreResult RestoreIfUnchanged() =>
+            WslGlobalConfigRestoreResult.Restored;
     }
 }

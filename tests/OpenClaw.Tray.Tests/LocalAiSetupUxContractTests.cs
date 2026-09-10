@@ -236,10 +236,14 @@ public sealed class LocalAiSetupUxContractTests
             "LocalInferenceEligibilityResult deviceEligibility = LocalInferenceEligibility.Evaluate(_localAiHardware);",
             "if (!deviceEligibility.CanInstall || deviceEligibility.Plan is null || deviceEligibility.SelectedGpu is null)",
             "hardwareReason = DescribeLocalAiUnavailable(deviceEligibility);",
-            "!LocalInferenceEligibility.Evaluate(_localAiHardware, selectedModelId).CanInstall",
+            "LocalInferenceEligibilityResult selectedEligibility =",
+            "LocalInferenceEligibility.Evaluate(_localAiHardware, selectedModelId);",
+            "if (_localAiRecoveryModelPinned)",
+            "eligibility = selectedEligibility;",
+            "else if (!selectedEligibility.CanInstall)",
             "_config.LocalAi.SelectedModelId = null;",
             "_config.LocalAi.SelectedModelId ??= _localAiRecommendedModelId ?? deviceEligibility.Plan.Model.Id;",
-            "eligibility = LocalInferenceEligibility.Evaluate(",
+            "eligibility ??= LocalInferenceEligibility.Evaluate(",
             "_config.LocalAi.SelectedModelId);");
     }
 
@@ -531,11 +535,12 @@ public sealed class LocalAiSetupUxContractTests
 
     /// <summary>
     /// Setup step 3 must never dead-end: while Local AI availability is still pending
-    /// (Checking/ProbeUnknown), the toggle must stay interactive even though every other
-    /// Local AI control is disabled, so turning Local AI off is always an escape hatch. Continue
-    /// itself must never bypass eligibility or an as-yet-undetermined WSL networking-consent
-    /// requirement merely because availability hasn't resolved yet — that would let a fast user
-    /// leave step 3 before the consent checkbox is even known to be required.
+    /// (Checking/ProbeUnknown), the toggle must stay interactive outside recovery even though
+    /// every other Local AI control is disabled, so turning Local AI off is an escape hatch.
+    /// Recovery requires Local AI and keeps the toggle disabled. Continue itself must never bypass
+    /// eligibility or an as-yet-undetermined WSL networking-consent requirement merely because
+    /// availability hasn't resolved yet — that would let a fast user leave step 3 before the
+    /// consent checkbox is even known to be required.
     /// </summary>
     [Fact]
     public void CapabilitiesReview_PendingAvailabilityIsEscapedByToggleNotByBypassingContinue()
@@ -552,7 +557,7 @@ public sealed class LocalAiSetupUxContractTests
         AssertInOrder(
             restoreMethod,
             "LocalAiOptionContent.IsHitTestVisible = true;",
-            "LocalAiToggle.IsEnabled = true;");
+            "LocalAiToggle.IsEnabled = !_localAiRecoveryOnly;");
 
         string checkingMethod = ExtractMethod(source, "private void ShowLocalAiAvailabilityChecking");
         AssertInOrder(

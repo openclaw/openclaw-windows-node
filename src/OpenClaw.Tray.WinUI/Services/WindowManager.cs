@@ -2,6 +2,7 @@ using Microsoft.UI.Dispatching;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using OpenClaw.Connection;
+using OpenClaw.Connection.LocalAi;
 using OpenClaw.SetupEngine;
 using OpenClaw.Shared;
 using OpenClawTray.Helpers;
@@ -394,13 +395,18 @@ internal sealed class WindowManager : IWindowManager
                 distroName,
                 AppIdentity.ResolveSetupLocalDataDirectory(),
                 owners.Count == 1 ? owners[0].Id : null));
+            LocalAiResolvedInstall? install = await new LocalAiManifestStore(
+                    new LocalAiPaths(AppIdentity.ResolveSetupLocalDataDirectory()))
+                .LoadAsync();
             return LocalAiSetupRoutePolicy.Decide(
                 owners,
                 existing.HasLocalGateway,
                 existing.LocalGatewayId,
                 existing.HasDistro,
                 existing.HasDistroDataDirectory,
-                existing.DistroIsAppOwned);
+                existing.DistroIsAppOwned,
+                install?.Manifest.ModelCatalogId,
+                install?.Manifest.RequestedPort);
         }
         catch (Exception ex)
         {
@@ -495,6 +501,8 @@ internal sealed class WindowManager : IWindowManager
                 localAiRecoveryGatewayId: localAiRecoveryTarget?.GatewayId,
                 localAiRecoveryDistroName: localAiRecoveryTarget?.DistroName,
                 localAiRecoveryGatewayPort: localAiRecoveryTarget?.GatewayPort,
+                localAiRecoveryModelId: localAiRecoveryTarget?.ModelCatalogId,
+                localAiRecoveryRequestedPort: localAiRecoveryTarget?.RequestedLocalAiPort,
                 commandLineArgs: SetupWindowArgumentProjection.Project(
                     _callbacks.GetStartupArgs(),
                     _callbacks.IsDeepLinkArg,

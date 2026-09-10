@@ -216,6 +216,19 @@ public class SetupPipelineTests
     }
 
     [Fact]
+    public async Task ValidateLocalAiRecoveryGateway_TrimsEffectiveDistroName()
+    {
+        var context = CreateContext(LocalAiRecoveryConfig());
+        var step = new ValidateLocalAiRecoveryGatewayStep(
+            (_, _, _, _) => ExistingLocalAiGateway(hasDistro: true, appOwned: true),
+            _ => [ManagedGatewayRecord() with { SetupManagedDistroName = " OpenClawGateway " }]);
+
+        var result = await step.ExecuteAsync(context, CancellationToken.None);
+
+        Assert.Equal(StepOutcome.Success, result.Outcome);
+    }
+
+    [Fact]
     public async Task PreserveLocalAiRecoveryGateway_RestartsAfterWslShutdown()
     {
         var context = CreateContext(LocalAiRecoveryConfig());
@@ -231,6 +244,34 @@ public class SetupPipelineTests
 
         Assert.Equal(1, restartCalls);
         Assert.False(context.LocalAiRecoveryStoppedWsl);
+    }
+
+    [Fact]
+    public async Task PreserveLocalAiRecoveryGateway_UsesGatewayRestartRollbackBudget()
+    {
+        SetupConfig config = LocalAiRecoveryConfig();
+        config.RollbackOnFailure = true;
+        config.RollbackTimeoutSeconds = 1;
+        config.Gateway.HealthTimeoutSeconds = 1;
+        var context = CreateContext(config);
+        context.LocalAiRecoveryStoppedWsl = true;
+        var pipeline = new SetupPipeline([
+            new PreserveLocalAiRecoveryGatewayStep(async (_, ct) =>
+            {
+                await Task.Delay(TimeSpan.FromMilliseconds(1_100), ct);
+                return StepResult.Ok("restarted");
+            }),
+            new MockStep("failure", (_, _) => Task.FromResult(StepResult.Fail("fail"))),
+        ]);
+
+        PipelineResult result = await pipeline.RunAsync(context);
+
+        Assert.Equal(PipelineOutcome.Failed, result.Outcome);
+        Assert.False(context.LocalAiRecoveryStoppedWsl);
+        Assert.Contains(
+            context.Journal.Entries,
+            entry => entry.StepId == "preserve-local-ai-recovery-gateway" &&
+                     entry.Event == "rollback_ok");
     }
 
     [Fact]

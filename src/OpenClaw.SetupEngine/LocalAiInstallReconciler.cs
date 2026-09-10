@@ -7,9 +7,11 @@ internal sealed record LocalAiReconcileResult(
     bool Reused,
     LocalAiResolvedInstall? ResolvedInstall,
     LlamaRuntimeInstallResult? RuntimeInstall,
-    HuggingFaceModelInstallResult? ModelInstall)
+    HuggingFaceModelInstallResult? ModelInstall,
+    LocalAiResolvedInstall? OriginalInstall = null)
 {
-    public static LocalAiReconcileResult NotInstalled { get; } = new(false, null, null, null);
+    public static LocalAiReconcileResult NotInstalled { get; } =
+        new(false, null, null, null);
 }
 
 internal interface ILocalAiModelFileVerifier
@@ -27,9 +29,9 @@ internal sealed class LocalAiModelFileVerifier : ILocalAiModelFileVerifier
 }
 
 /// <summary>
-/// Reuses only an installation claimed by a complete manifest that still
-/// matches the selected immutable catalog recipe and passes on-disk checks.
-/// Unclaimed paths remain the responsibility of the individual acquirers.
+/// Reuses an installation only when its manifest, runtime, and model still match
+/// the selected immutable recipe. Recovery may retain a matching receipt while
+/// the individual acquirers repair incomplete runtime or model assets.
 /// </summary>
 internal sealed class LocalAiInstallReconciler
 {
@@ -53,7 +55,8 @@ internal sealed class LocalAiInstallReconciler
         string localDataDirectory,
         LocalInferencePlan plan,
         string selectedGpuId,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        bool allowIncompleteInstallation = false)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(localDataDirectory);
         ArgumentNullException.ThrowIfNull(plan);
@@ -75,18 +78,24 @@ internal sealed class LocalAiInstallReconciler
         LlamaRuntimeInspection inspection = await _runtimeInspector
             .InspectAsync(Path.GetDirectoryName(install.ExecutablePath)!, cancellationToken)
             .ConfigureAwait(false);
-        if (!inspection.IsValid)
+        bool modelIsValid = await _modelVerifier
+            .VerifyAsync(install.ModelPath, plan.Model.Weights, cancellationToken)
+            .ConfigureAwait(false);
+        if (!inspection.IsValid || !modelIsValid)
         {
-            throw new InvalidDataException(
-                inspection.Error ?? "The managed llama-server runtime no longer passes validation.");
-        }
+            if (!allowIncompleteInstallation)
+            {
+                throw new InvalidDataException(!inspection.IsValid
+                    ? inspection.Error ?? "The managed llama-server runtime no longer passes validation."
+                    : "The managed Local AI model no longer matches its pinned size and SHA-256 digest.");
+            }
 
-        if (!await _modelVerifier
-                .VerifyAsync(install.ModelPath, plan.Model.Weights, cancellationToken)
-                .ConfigureAwait(false))
-        {
-            throw new InvalidDataException(
-                "The managed Local AI model no longer matches its pinned size and SHA-256 digest.");
+            return new LocalAiReconcileResult(
+                Reused: false,
+                ResolvedInstall: null,
+                RuntimeInstall: inspection.IsValid ? CreateRuntimeInstall(install) : null,
+                ModelInstall: modelIsValid ? CreateModelInstall(install) : null,
+                OriginalInstall: install);
         }
 
         if (migrateLegacyGpuId)
@@ -99,22 +108,32 @@ internal sealed class LocalAiInstallReconciler
             install = manifestStore.ResolveAndValidate(migratedManifest);
         }
 
-        IReadOnlyList<LocalAiVerifiedArchive> verifiedArchives = install.Manifest.RuntimeAssets
-            .Select(asset => new LocalAiVerifiedArchive(asset.FileName, asset.SizeBytes, asset.Sha256))
-            .ToArray();
-        var runtimeInstall = new LlamaRuntimeInstallResult(
+        return new LocalAiReconcileResult(
+            true,
+            install,
+            CreateRuntimeInstall(install),
+            CreateModelInstall(install));
+    }
+
+    private static LlamaRuntimeInstallResult CreateRuntimeInstall(LocalAiResolvedInstall install) =>
+        new(
             Path.GetDirectoryName(install.ExecutablePath)!,
             install.ExecutablePath,
             LlamaRuntimeInstallDisposition.ReusedVerified,
             CreatedThisRun: false,
-            verifiedArchives,
+            install.Manifest.RuntimeAssets
+                .Select(asset => new LocalAiVerifiedArchive(
+                    asset.FileName,
+                    asset.SizeBytes,
+                    asset.Sha256))
+                .ToArray(),
             Rollback: null);
-        var modelInstall = new HuggingFaceModelInstallResult(
+
+    private static HuggingFaceModelInstallResult CreateModelInstall(LocalAiResolvedInstall install) =>
+        new(
             install.ModelPath,
             HuggingFaceModelInstallDisposition.ReusedVerified,
             CreatedThisRun: false);
-        return new LocalAiReconcileResult(true, install, runtimeInstall, modelInstall);
-    }
 
     private static void ValidateRecipeMatch(
         LocalAiResolvedInstall install,

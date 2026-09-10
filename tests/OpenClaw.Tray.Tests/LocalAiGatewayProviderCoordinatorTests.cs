@@ -447,12 +447,16 @@ public sealed class LocalAiGatewayProviderCoordinatorTests
             localGatewayId: owner.Id,
             hasDistro: true,
             hasDistroDataDirectory: true,
-            distroIsAppOwned: true);
+            distroIsAppOwned: true,
+            installedModelCatalogId: LocalModelCatalog.Qwen38_27BModelId,
+            installedRequestedLocalAiPort: 28888);
 
         Assert.Equal(LocalAiSetupRoute.Recovery, resolution.Route);
         Assert.Equal("managed", resolution.RecoveryTarget?.GatewayId);
         Assert.Equal("CustomGateway", resolution.RecoveryTarget?.DistroName);
         Assert.Equal(29999, resolution.RecoveryTarget?.GatewayPort);
+        Assert.Equal(LocalModelCatalog.Qwen38_27BModelId, resolution.RecoveryTarget?.ModelCatalogId);
+        Assert.Equal(28888, resolution.RecoveryTarget?.RequestedLocalAiPort);
     }
 
     [Fact]
@@ -474,10 +478,52 @@ public sealed class LocalAiGatewayProviderCoordinatorTests
             localGatewayId: owner.Id,
             hasDistro: true,
             hasDistroDataDirectory: true,
-            distroIsAppOwned: true);
+            distroIsAppOwned: true,
+            installedModelCatalogId: LocalModelCatalog.Qwen38_27BModelId);
 
         Assert.Equal(LocalAiSetupRoute.Recovery, resolution.Route);
         Assert.Equal("LegacyGateway", resolution.RecoveryTarget?.DistroName);
+    }
+
+    [Theory]
+    [InlineData("http://127.0.0.1:18789")]
+    [InlineData("ws://127.0.0.1:18789/path")]
+    [InlineData("ws://127.0.0.1:18789?query=1")]
+    public void LocalAiSetupRoute_BlocksNonCanonicalManagedEndpoint(string url)
+    {
+        GatewayRecord owner = ManagedRecord("managed", "OpenClawGateway") with
+        {
+            Url = url,
+        };
+
+        LocalAiSetupResolution resolution = LocalAiSetupRoutePolicy.Decide(
+            [owner],
+            hasLocalGateway: true,
+            localGatewayId: owner.Id,
+            hasDistro: true,
+            hasDistroDataDirectory: true,
+            distroIsAppOwned: true,
+            installedModelCatalogId: LocalModelCatalog.Qwen38_27BModelId);
+
+        Assert.Equal(LocalAiSetupRoute.Blocked, resolution.Route);
+    }
+
+    [Fact]
+    public void LocalAiSetupRoute_RecoversManagedGatewayWithoutAnInstalledModelReceipt()
+    {
+        GatewayRecord owner = ManagedRecord("managed", "OpenClawGateway");
+
+        LocalAiSetupResolution resolution = LocalAiSetupRoutePolicy.Decide(
+            [owner],
+            hasLocalGateway: true,
+            localGatewayId: owner.Id,
+            hasDistro: true,
+            hasDistroDataDirectory: true,
+            distroIsAppOwned: true);
+
+        Assert.Equal(LocalAiSetupRoute.Recovery, resolution.Route);
+        Assert.Null(resolution.RecoveryTarget?.ModelCatalogId);
+        Assert.Null(resolution.RecoveryTarget?.RequestedLocalAiPort);
     }
 
     [Fact]

@@ -5,6 +5,7 @@ using System.Net.Http.Headers;
 using System.Runtime.InteropServices;
 using System.Security.Cryptography;
 using OpenClaw.Connection.LocalAi;
+using OpenClaw.Shared.Inference;
 using OpenClaw.Shared.Inference.Catalog;
 
 namespace OpenClaw.SetupEngine.Tests;
@@ -536,6 +537,117 @@ public sealed class LocalAiInstallRecoveryTests
     }
 
     [Fact]
+    public async Task Reconciler_RecoveryRetainsReceiptWhileMissingModelIsRepaired()
+    {
+        using var temp = new TempDirectory();
+        LocalInferencePlan plan = CatalogPlan();
+        const string gpuId = "GPU-0";
+        var paths = new LocalAiPaths(temp.Path);
+        var store = new LocalAiManifestStore(paths);
+        LocalAiInstallManifest manifest = CreateManifest(temp.Path, plan, gpuId);
+        await store.SaveAsync(manifest);
+        var reconciler = new LocalAiInstallReconciler(
+            new ValidRuntimeInspector(),
+            new RejectingModelVerifier());
+
+        LocalAiReconcileResult result = await reconciler.ReconcileAsync(
+            temp.Path,
+            plan,
+            gpuId,
+            CancellationToken.None,
+            allowIncompleteInstallation: true);
+
+        Assert.False(result.Reused);
+        Assert.NotNull(result.OriginalInstall);
+        Assert.Equal(manifest.Endpoint, result.OriginalInstall!.Manifest.Endpoint);
+        Assert.NotNull(result.RuntimeInstall);
+        Assert.Null(result.ModelInstall);
+        Assert.True(File.Exists(paths.ManifestPath));
+    }
+
+    [Fact]
+    public async Task ReconcileStep_RecoveryPinsIncompleteReceiptAsRollbackBaseline()
+    {
+        using var temp = new TempDirectory();
+        LocalInferencePlan plan = CatalogPlan();
+        const string gpuId = "GPU-0";
+        LocalAiInstallManifest manifest = CreateManifest(temp.Path, plan, gpuId);
+        await new LocalAiManifestStore(new LocalAiPaths(temp.Path)).SaveAsync(manifest);
+        var context = CreateContext(temp.Path, confirmDestructive: false);
+        context.Config.LocalAi.Enabled = true;
+        context.Config.LocalAiRecoveryGatewayId = "gateway-id";
+        context.LocalAiEligibility = new LocalInferenceEligibilityResult(
+            LocalInferenceEligibilityStatus.Eligible,
+            LocalInferenceEligibilityFailureCode.None,
+            LocalInferenceSelectionFailureCode.None,
+            plan,
+            new GpuInfo(GpuVendor.Nvidia, "Test GPU", StableId: gpuId),
+            RequiredTotalMemoryBytes: 0,
+            DetectedTotalMemoryBytes: 0,
+            RequiredFreeMemoryBytes: 0,
+            AvailableFreeMemoryBytes: 0);
+        var step = new ReconcileLocalAiInstallationStep(new LocalAiInstallReconciler(
+            new ValidRuntimeInspector(),
+            new RejectingModelVerifier()));
+
+        StepResult result = await step.ExecuteAsync(context, CancellationToken.None);
+
+        Assert.Equal(StepOutcome.Skipped, result.Outcome);
+        Assert.Equal(manifest.Endpoint, context.LocalAiRecoveryOriginalInstall?.Manifest.Endpoint);
+        Assert.True(context.LocalAiRecoveryReceiptRollbackAllowed);
+        Assert.NotNull(context.LocalAiRuntimeInstall);
+        Assert.Null(context.LocalAiModelInstall);
+    }
+
+    [Fact]
+    public async Task RecoveryPipeline_RewritesIncompleteReceiptAfterModelRepair()
+    {
+        using var temp = new TempDirectory();
+        LocalInferencePlan plan = CatalogPlan();
+        const string gpuId = "GPU-0";
+        LocalAiInstallManifest manifest = CreateManifest(temp.Path, plan, gpuId) with
+        {
+            RequestedPort = 18803,
+            GatewayFallbackModel = "openai/gpt-5",
+        };
+        var store = new LocalAiManifestStore(new LocalAiPaths(temp.Path));
+        await store.SaveAsync(manifest);
+        LocalAiResolvedInstall original = (await store.LoadAsync())!;
+        var context = CreateContext(temp.Path, confirmDestructive: false);
+        context.Config.LocalAi.Enabled = true;
+        context.Config.LocalAiRecoveryGatewayId = "gateway-id";
+        context.LocalAiPort = manifest.RequestedPort;
+        context.LocalAiEligibility = new LocalInferenceEligibilityResult(
+            LocalInferenceEligibilityStatus.Eligible,
+            LocalInferenceEligibilityFailureCode.None,
+            LocalInferenceSelectionFailureCode.None,
+            plan,
+            new GpuInfo(GpuVendor.Nvidia, "Test GPU", StableId: gpuId),
+            RequiredTotalMemoryBytes: 0,
+            DetectedTotalMemoryBytes: 0,
+            RequiredFreeMemoryBytes: 0,
+            AvailableFreeMemoryBytes: 0);
+        var pipeline = new SetupPipeline(
+        [
+            new ReconcileLocalAiInstallationStep(new LocalAiInstallReconciler(
+                new ValidRuntimeInspector(),
+                new RejectingModelVerifier())),
+            new CompleteModelRepairStep(original.ModelPath),
+            new PersistLocalAiManifestStep(),
+        ]);
+
+        PipelineResult result = await pipeline.RunAsync(context);
+
+        Assert.Equal(PipelineOutcome.Success, result.Outcome);
+        LocalAiResolvedInstall repaired = (await store.LoadAsync())!;
+        Assert.Null(repaired.Endpoint);
+        Assert.Equal(manifest.RequestedPort, repaired.Manifest.RequestedPort);
+        Assert.Equal(manifest.GatewayFallbackModel, repaired.Manifest.GatewayFallbackModel);
+        Assert.Equal(manifest.InstalledAtUtc, repaired.Manifest.InstalledAtUtc);
+        Assert.False(context.LocalAiManifestCreatedThisRun);
+    }
+
+    [Fact]
     public async Task FreshProcessUninstall_RemovesCanonicalLocalAiRoot()
     {
         using var temp = new TempDirectory();
@@ -867,6 +979,29 @@ public sealed class LocalAiInstallRecoveryTests
             string path,
             PinnedArtifact artifact,
             CancellationToken cancellationToken) => Task.FromResult(true);
+    }
+
+    private sealed class RejectingModelVerifier : ILocalAiModelFileVerifier
+    {
+        public Task<bool> VerifyAsync(
+            string path,
+            PinnedArtifact artifact,
+            CancellationToken cancellationToken) => Task.FromResult(false);
+    }
+
+    private sealed class CompleteModelRepairStep(string modelPath) : SetupStep
+    {
+        public override string Id => "complete-model-repair";
+        public override string DisplayName => "Complete model repair";
+
+        public override Task<StepResult> ExecuteAsync(SetupContext ctx, CancellationToken ct)
+        {
+            ctx.LocalAiModelInstall = new HuggingFaceModelInstallResult(
+                modelPath,
+                HuggingFaceModelInstallDisposition.Downloaded,
+                CreatedThisRun: true);
+            return Task.FromResult(StepResult.Ok("Model repaired."));
+        }
     }
 
     private sealed class TempDirectory : IDisposable
