@@ -240,7 +240,8 @@ public sealed class LlamaServerRuntimeService : ILocalAiRuntime
             return await FailStartupAsync(
                     LocalAiRuntimeState.Conflict,
                     "TCP listener ownership could not be determined.",
-                    install)
+                    install,
+                    stopUnsafeListener: true)
                 .ConfigureAwait(false);
         }
 
@@ -358,7 +359,8 @@ public sealed class LlamaServerRuntimeService : ILocalAiRuntime
                     return await FailStartupAsync(
                             LocalAiRuntimeState.Conflict,
                             ownership.ConflictDetail,
-                            install)
+                            install,
+                            stopUnsafeListener: true)
                         .ConfigureAwait(false);
                 }
                 if (ownership.Endpoint is not null)
@@ -480,7 +482,7 @@ public sealed class LlamaServerRuntimeService : ILocalAiRuntime
                     install,
                     LocalAiQuiesceReason.EndpointCycle,
                     stopAfterQuiesce: true,
-                    preserveManagedPrimaryOnFailure: true,
+                    stopUnsafeProcessOnFailure: true,
                     cancellationToken)
                 .ConfigureAwait(false);
             return failure ?? Publish(
@@ -494,7 +496,7 @@ public sealed class LlamaServerRuntimeService : ILocalAiRuntime
                     install,
                     LocalAiQuiesceReason.EndpointCycle,
                     stopAfterQuiesce: true,
-                    preserveManagedPrimaryOnFailure: true,
+                    stopUnsafeProcessOnFailure: true,
                     cancellationToken)
                 .ConfigureAwait(false);
             return failure ?? Publish(
@@ -508,7 +510,7 @@ public sealed class LlamaServerRuntimeService : ILocalAiRuntime
                     install,
                     LocalAiQuiesceReason.EndpointCycle,
                     stopAfterQuiesce: false,
-                    preserveManagedPrimaryOnFailure: false,
+                    stopUnsafeProcessOnFailure: false,
                     cancellationToken)
                 .ConfigureAwait(false);
             return failure ?? Publish(
@@ -536,7 +538,7 @@ public sealed class LlamaServerRuntimeService : ILocalAiRuntime
                             install,
                             LocalAiQuiesceReason.EndpointCycle,
                             stopAfterQuiesce: false,
-                            preserveManagedPrimaryOnFailure: false,
+                            stopUnsafeProcessOnFailure: false,
                             cancellationToken)
                         .ConfigureAwait(false);
                     if (failure is not null)
@@ -618,7 +620,7 @@ public sealed class LlamaServerRuntimeService : ILocalAiRuntime
                 install,
                 LocalAiQuiesceReason.EndpointCycle,
                 stopAfterQuiesce: false,
-                preserveManagedPrimaryOnFailure: false,
+                stopUnsafeProcessOnFailure: false,
                 cancellationToken)
             .ConfigureAwait(false);
         if (quiesceFailure is not null)
@@ -636,14 +638,14 @@ public sealed class LlamaServerRuntimeService : ILocalAiRuntime
         LocalAiResolvedInstall install,
         LocalAiQuiesceReason reason,
         bool stopAfterQuiesce,
-        bool preserveManagedPrimaryOnFailure,
+        bool stopUnsafeProcessOnFailure,
         CancellationToken cancellationToken)
     {
-        if (preserveManagedPrimaryOnFailure && !stopAfterQuiesce)
+        if (stopUnsafeProcessOnFailure && !stopAfterQuiesce)
         {
             throw new ArgumentException(
-                "Managed-primary preservation is only valid when the untrusted endpoint will be stopped.",
-                nameof(preserveManagedPrimaryOnFailure));
+                "Unsafe-process cleanup is only valid when the endpoint will be stopped.",
+                nameof(stopUnsafeProcessOnFailure));
         }
 
         LocalAiEndpointLifecycleResult quiesced;
@@ -654,7 +656,7 @@ public sealed class LlamaServerRuntimeService : ILocalAiRuntime
         }
         catch
         {
-            LocalAiQuiesceReason recoveryReason = preserveManagedPrimaryOnFailure
+            LocalAiQuiesceReason recoveryReason = stopUnsafeProcessOnFailure
                 ? LocalAiQuiesceReason.EndpointCycle
                 : LocalAiQuiesceReason.Teardown;
             bool withdrawn = await RetryQuiesceAsync(
@@ -670,6 +672,13 @@ public sealed class LlamaServerRuntimeService : ILocalAiRuntime
                     LocalAiRuntimeState.Failed,
                     LocalAiOwnership.None,
                     "The Local AI gateway provider withdrawal did not complete.");
+            }
+            else if (stopUnsafeProcessOnFailure)
+            {
+                ++_generation;
+                await DisposeManagedProcessAsync(CancellationToken.None).ConfigureAwait(false);
+                PublishTerminalCleanupFailure(
+                    "The Local AI gateway provider withdrawal did not complete; the untrusted managed listener was stopped.");
             }
             else
             {
@@ -688,7 +697,7 @@ public sealed class LlamaServerRuntimeService : ILocalAiRuntime
             return null;
         }
 
-        if (preserveManagedPrimaryOnFailure)
+        if (stopUnsafeProcessOnFailure)
         {
             bool retried = await RetryQuiesceAsync(
                     install,
@@ -704,7 +713,10 @@ public sealed class LlamaServerRuntimeService : ILocalAiRuntime
                 }
                 return null;
             }
-            return await PublishRefreshCleanupFailureAsync(quiesced.Detail).ConfigureAwait(false);
+            ++_generation;
+            await DisposeManagedProcessAsync(CancellationToken.None).ConfigureAwait(false);
+            return PublishTerminalCleanupFailure(
+                $"{quiesced.Detail ?? "The Local AI gateway provider could not be safely disabled."} The untrusted managed listener was stopped.");
         }
 
         bool teardownSucceeded = reason != LocalAiQuiesceReason.Teardown &&
@@ -910,12 +922,20 @@ public sealed class LlamaServerRuntimeService : ILocalAiRuntime
     private async Task<LocalAiRuntimeSnapshot> FailStartupAsync(
         LocalAiRuntimeState state,
         string detail,
-        LocalAiResolvedInstall? routeToWithdraw = null)
+        LocalAiResolvedInstall? routeToWithdraw = null,
+        bool stopUnsafeListener = false)
     {
         bool withdrawalFailed = routeToWithdraw is not null &&
             !await WithdrawRouteAsync(routeToWithdraw, "after a failed start").ConfigureAwait(false);
         if (withdrawalFailed && _managedProcess is { HasExited: false })
         {
+            if (stopUnsafeListener)
+            {
+                ++_generation;
+                await DisposeManagedProcessAsync(CancellationToken.None).ConfigureAwait(false);
+                return PublishTerminalCleanupFailure(
+                    $"{detail} The Local AI route could not be safely disabled; the untrusted managed listener was stopped.");
+            }
             return PublishManagedFailure(
                 $"{detail} The Local AI route could not be safely disabled; the managed listener remains running.");
         }

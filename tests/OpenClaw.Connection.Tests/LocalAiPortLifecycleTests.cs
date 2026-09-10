@@ -1187,6 +1187,43 @@ public sealed class LocalAiPortLifecycleTests
     }
 
     [Fact]
+    public async Task Startup_UnsafeListenerStopsWhenTeardownFails()
+    {
+        using var temp = new TempDirectory("local-ai-port-");
+        LocalAiPaths paths = await PrepareInstallAsync(temp);
+        var events = new SynchronizedEventLog();
+        var platform = new FakePlatform();
+        var lifecycle = new FakeLifecycle(events)
+        {
+            QuiesceHandler = (call, _, _) => Task.FromResult(
+                call == 2
+                    ? LocalAiEndpointLifecycleResult.Failed("terminal teardown failed")
+                    : LocalAiEndpointLifecycleResult.Ok()),
+        };
+        var host = new FakeProcessHost(
+            platform,
+            events,
+            selectedPort: 28_785,
+            listenerAddress: IPAddress.Any);
+        await using var runtime = CreateRuntime(
+            paths,
+            host,
+            platform,
+            new FakeClient(events),
+            lifecycle);
+
+        LocalAiRuntimeSnapshot failed = await runtime.EnsureStartedAsync();
+
+        Assert.Equal(LocalAiRuntimeState.Failed, failed.State);
+        Assert.Equal(LocalAiOwnership.None, failed.Ownership);
+        Assert.True(host.Process!.HasExited);
+        Assert.Contains("untrusted managed listener was stopped", failed.Detail, StringComparison.Ordinal);
+        Assert.Equal(
+            ["quiesce:EndpointCycle", "start", "quiesce:Teardown", "stop"],
+            events);
+    }
+
+    [Fact]
     public async Task Startup_PreservedListenerRemainsSupervisedAfterTeardownFailure()
     {
         using var temp = new TempDirectory("local-ai-port-");
@@ -1329,6 +1366,43 @@ public sealed class LocalAiPortLifecycleTests
         Assert.False(host.Process.HasExited);
         Assert.Equal(
             ["quiesce:EndpointCycle", "quiesce:Teardown"],
+            events);
+    }
+
+    [Fact]
+    public async Task Refresh_UnsafeListenerStopsWhenEndpointCycleCleanupFails()
+    {
+        using var temp = new TempDirectory("local-ai-port-");
+        LocalAiPaths paths = await PrepareInstallAsync(temp);
+        var events = new SynchronizedEventLog();
+        var platform = new FakePlatform();
+        var lifecycle = new FakeLifecycle(events)
+        {
+            QuiesceHandler = (call, _, _) => Task.FromResult(
+                call is 2 or 3
+                    ? LocalAiEndpointLifecycleResult.Failed("endpoint-cycle cleanup failed")
+                    : LocalAiEndpointLifecycleResult.Ok()),
+        };
+        var host = new FakeProcessHost(platform, events, selectedPort: 28_779);
+        await using var runtime = CreateRuntime(
+            paths,
+            host,
+            platform,
+            new FakeClient(events),
+            lifecycle);
+        LocalAiRuntimeSnapshot started = await runtime.EnsureStartedAsync();
+        Assert.Equal(LocalAiRuntimeState.Healthy, started.State);
+        platform.Ipv4Complete = false;
+        events.Clear();
+
+        LocalAiRuntimeSnapshot failed = await runtime.RefreshAsync();
+
+        Assert.Equal(LocalAiRuntimeState.Failed, failed.State);
+        Assert.Equal(LocalAiOwnership.None, failed.Ownership);
+        Assert.True(host.Process!.HasExited);
+        Assert.Contains("untrusted managed listener was stopped", failed.Detail, StringComparison.Ordinal);
+        Assert.Equal(
+            ["quiesce:EndpointCycle", "quiesce:EndpointCycle", "stop"],
             events);
     }
 
