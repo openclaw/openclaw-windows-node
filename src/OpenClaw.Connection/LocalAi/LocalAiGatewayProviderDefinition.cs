@@ -1,3 +1,14 @@
+// <summary>
+// Canonical gateway configuration for the companion-owned llama.cpp provider: builds the
+// provider config JSON (models.providers.llamacpp) and primary-model identifier for the gateway,
+// and compares CLI-reported (secret-redacted) provider JSON against the managed definition.
+// </summary>
+// Usage:
+//   // Requires a resolved install with a verified loopback Endpoint.
+//   string providerJson = LocalAiGatewayProviderDefinition.BuildProviderJson(install);
+//   string batchJson = LocalAiGatewayProviderDefinition.BuildProviderBatchJson(install);
+//   // batchJson atomically writes ProviderPath and PrimaryModelPath with valid JSON values.
+//   bool matches = LocalAiGatewayProviderDefinition.MatchesProviderJson(cliOutputJson, install);
 using OpenClaw.Shared.Inference.Catalog;
 using System.Text.Json;
 

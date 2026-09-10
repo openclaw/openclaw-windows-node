@@ -1,3 +1,21 @@
+// <summary>
+// Bounded, loopback-only health and model-state client for the managed llama-server router.
+// Parses router model metadata (path from status.args or top-level path) into
+// LlamaServerModelStatusEvidence, and LlamaServerClient polls /health plus model state to
+// produce LlamaServerRouterProbeResult used to decide when the managed endpoint is ready.
+// Usage:
+//   using var client = new LlamaServerClient();
+//   LlamaServerRouterProbeResult probe = await client.ProbeManagedModelAsync(
+//       endpoint: new Uri("http://127.0.0.1:18803/v1"),
+//       modelAlias: "local-model",
+//       expectedModelPath: install.ModelPath,
+//       cancellationToken);
+//   if (probe.IsHealthy &&
+//       probe.ModelState is LocalAiModelAvailabilityState.Verified or LocalAiModelAvailabilityState.Loaded)
+//   {
+//       // The public probe evidence is ready; the runtime service also validates the exact model path.
+//   }
+// </summary>
 using System.Text.Json;
 
 namespace OpenClaw.Connection.LocalAi;

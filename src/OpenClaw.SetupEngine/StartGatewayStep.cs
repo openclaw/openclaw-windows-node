@@ -1,12 +1,4 @@
-using System.Diagnostics;
-using System.Net;
-using System.Net.Http;
-using System.Net.Sockets;
-using System.Runtime.InteropServices;
-using System.Security.Cryptography;
-using System.Text.Json;
-using OpenClaw.Connection;
-using OpenClaw.Shared;
+using System.Text.RegularExpressions;
 
 namespace OpenClaw.SetupEngine;
 
@@ -36,19 +28,69 @@ public sealed class StartGatewayStep : SetupStep
         if (!restart)
         {
             var portCheck = await ctx.Commands.RunInWslAsync(
-                distro, $"ss -tlnp 2>/dev/null | grep ':{ctx.Config.GatewayPort}\\b' || true",
+                distro, $"ss -H -ltnp 'sport = :{ctx.Config.GatewayPort}'",
                 TimeSpan.FromSeconds(10), ct: ct);
 
-            if (!string.IsNullOrWhiteSpace(portCheck.Stdout) && portCheck.Stdout.Contains($":{ctx.Config.GatewayPort}"))
+            if (portCheck.ExitCode != 0)
             {
-                if (!portCheck.Stdout.Contains("openclaw", StringComparison.OrdinalIgnoreCase))
+                return StepResult.Fail(
+                    $"Could not inspect gateway port {ctx.Config.GatewayPort} " +
+                    $"(exit {portCheck.ExitCode}){FormatCommandDetail(portCheck)}.");
+            }
+
+            if (!string.IsNullOrWhiteSpace(portCheck.Stdout))
+            {
+                // Installation may already start the service. Process names (including node) are not ownership proof.
+                var service = await ctx.Commands.RunInWslAsync(
+                    distro, "systemctl --user show openclaw-gateway.service -p MainPID --value",
+                    TimeSpan.FromSeconds(10), ct: ct);
+                if (service.ExitCode != 0)
                 {
-                    ctx.Logger.Warn($"Port {ctx.Config.GatewayPort} is in use by another process:\n{portCheck.Stdout.Trim()}");
                     return StepResult.Fail(
-                        $"Port {ctx.Config.GatewayPort} is already in use by another process. Either stop the conflicting process or change GatewayPort in the setup config.");
+                        "Could not inspect openclaw-gateway.service MainPID " +
+                        $"(exit {service.ExitCode}){FormatCommandDetail(service)}.");
                 }
 
-                ctx.Logger.Info($"Port {ctx.Config.GatewayPort} appears to be in use by openclaw — proceeding");
+                if (!int.TryParse(service.Stdout.Trim(), out var pid) || pid <= 0)
+                {
+                    return StepResult.Fail(
+                        "openclaw-gateway.service is not running with a valid MainPID" +
+                        $"{FormatCommandDetail(service)}.");
+                }
+
+                var listeners = portCheck.Stdout.Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+                var listenerOwners = listeners
+                    .Select(line => Regex.Matches(line, @"pid=(\d+),")
+                        .Select(owner => owner.Groups[1].Value)
+                        .ToArray())
+                    .ToArray();
+                if (listenerOwners.Any(owners => owners.Length == 0))
+                {
+                    return StepResult.Fail(
+                        $"Could not determine which process owns gateway port {ctx.Config.GatewayPort}. " +
+                        "Verify the WSL listener and openclaw-gateway.service status, then retry setup.");
+                }
+
+                var expectedPid = pid.ToString();
+                var foreignPids = listenerOwners
+                    .SelectMany(owners => owners)
+                    .Where(ownerPid => !string.Equals(ownerPid, expectedPid, StringComparison.Ordinal))
+                    .Distinct(StringComparer.Ordinal)
+                    .ToArray();
+                if (foreignPids.Length > 0)
+                {
+                    var names = string.Join(", ", Regex.Matches(portCheck.Stdout, "\\(\\\"([^\\\"]+)\\\",")
+                        .Select(owner => owner.Groups[1].Value).Distinct());
+                    var ownerDetail = names.Length > 0 ? $" Owning process: {names}." : "";
+                    var failure =
+                        $"Port {ctx.Config.GatewayPort} is already in use by another process. " +
+                        $"Listener PIDs outside openclaw-gateway.service: {string.Join(", ", foreignPids)}." +
+                        ownerDetail;
+                    ctx.Logger.Warn(failure);
+                    return StepResult.Fail($"{failure} Either stop the conflicting process or change GatewayPort in the setup config.");
+                }
+
+                ctx.Logger.Info($"Port {ctx.Config.GatewayPort} is owned by openclaw-gateway.service (PID {pid}). Post-install port check succeeded.");
             }
         }
 
@@ -82,6 +124,18 @@ public sealed class StartGatewayStep : SetupStep
         }
 
         return await WaitForHealthAsync(ctx, ct);
+    }
+
+    private static string FormatCommandDetail(CommandResult result)
+    {
+        var detail = string.IsNullOrWhiteSpace(result.Stderr)
+            ? result.Stdout.Trim()
+            : result.Stderr.Trim();
+        if (string.IsNullOrWhiteSpace(detail))
+            return "";
+
+        detail = detail.ReplaceLineEndings(" ");
+        return $": {(detail.Length <= 240 ? detail : detail[..240] + "...")}";
     }
 
     internal static async Task<StepResult> WaitForHealthAsync(
@@ -148,7 +202,11 @@ public sealed class StartGatewayStep : SetupStep
         var distro = ctx.DistroName!;
 
         // Check if distro is running before trying systemctl stop
-        var list = await ctx.Commands.RunAsync(WslConstants.WslExePath, ["--list", "--quiet"], TimeSpan.FromSeconds(15), ct: ct);
+        var list = await ctx.Commands.RunAsyncAllowingInheritedPipeHandleEscape(
+            WslConstants.WslExePath,
+            ["--list", "--quiet"],
+            TimeSpan.FromSeconds(15),
+            ct: ct);
         if (!WslInstallSupport.ContainsDistro(list.Stdout, distro))
         {
             ctx.Logger.Info("[Uninstall] Distro not registered — skipping gateway stop");
@@ -156,7 +214,11 @@ public sealed class StartGatewayStep : SetupStep
         }
 
         // Check distro state — only stop if Running
-        var verbose = await ctx.Commands.RunAsync(WslConstants.WslExePath, ["--list", "--verbose"], TimeSpan.FromSeconds(15), ct: ct);
+        var verbose = await ctx.Commands.RunAsyncAllowingInheritedPipeHandleEscape(
+            WslConstants.WslExePath,
+            ["--list", "--verbose"],
+            TimeSpan.FromSeconds(15),
+            ct: ct);
         var isRunning = WslInstallSupport.Normalize(verbose.Stdout)
             .Split(['\r', '\n'], StringSplitOptions.RemoveEmptyEntries)
             .Any(line => line.Contains(distro, StringComparison.OrdinalIgnoreCase)

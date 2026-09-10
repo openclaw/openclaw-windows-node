@@ -821,7 +821,7 @@ public class OpenClawGatewayClientTests
     }
 
     [Fact]
-    public void OperatorConnect_FreshDevice_RequestsBootstrapHandoffScopes()
+    public void OperatorConnect_FreshDevice_RequestsFullBootstrapProfileScopes()
     {
         var helper = new GatewayClientTestHelper(tokenIsBootstrapToken: true);
         helper.SetDeviceTokenForTest(null);
@@ -830,13 +830,55 @@ public class OpenClawGatewayClientTests
         var auth = helper.BuildAuthPayload();
 
         Assert.Equal(
-            ["operator.approvals", "operator.read", "operator.talk.secrets", "operator.write"],
+            ["operator.admin", "operator.approvals", "operator.read", "operator.talk.secrets", "operator.write"],
             scopes);
-        Assert.DoesNotContain("operator.admin", scopes);
+        Assert.Contains("operator.admin", scopes);
         Assert.DoesNotContain("operator.pairing", scopes);
         Assert.Equal("test-token", auth["bootstrapToken"]);
         Assert.False(auth.ContainsKey("token"));
         Assert.False(auth.ContainsKey("deviceToken"));
+    }
+
+    [Fact]
+    public void OperatorConnect_BootstrapProfileRejection_RetriesOnceWithBoundedScopes()
+    {
+        var helper = new GatewayClientTestHelper(tokenIsBootstrapToken: true);
+        helper.SetDeviceTokenForTest(null);
+
+        Assert.Contains("operator.admin", helper.GetRequestedOperatorScopes());
+
+        helper.TrackPendingRequest("req-bootstrap-full", "connect");
+        helper.ProcessRawMessage("""
+        {
+          "type": "res",
+          "id": "req-bootstrap-full",
+          "ok": false,
+          "error": {
+            "code": "AUTH_BOOTSTRAP_TOKEN_INVALID",
+            "message": "bootstrap token invalid"
+          }
+        }
+        """);
+
+        Assert.False(helper.Client.IsAuthFailed);
+        Assert.Equal(
+            ["operator.approvals", "operator.read", "operator.talk.secrets", "operator.write"],
+            helper.GetRequestedOperatorScopes());
+
+        helper.TrackPendingRequest("req-bootstrap-bounded", "connect");
+        helper.ProcessRawMessage("""
+        {
+          "type": "res",
+          "id": "req-bootstrap-bounded",
+          "ok": false,
+          "error": {
+            "code": "AUTH_BOOTSTRAP_TOKEN_INVALID",
+            "message": "bootstrap token invalid"
+          }
+        }
+        """);
+
+        Assert.True(helper.Client.IsAuthFailed);
     }
 
     [Fact]

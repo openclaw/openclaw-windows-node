@@ -38,6 +38,7 @@ Notes:
 - Apply the label only to work that is actively moving. Do not use it for queued, parked, or indefinitely blocked items.
 - Remove the label when active work pauses, ownership returns to the author, or the item closes or merges.
 - This maintainer-ownership label may coexist with contributor-facing status labels such as `status: 📣 needs proof`.
+- When referring to a pull request, include its title in parentheses after the number, for example `#1312 (improve(setup): install latest stable Gateway from npm)`.
 
 ## Targeted Validation Paths
 
@@ -52,6 +53,12 @@ When changing MXC sandboxing, `system.run`, exec approvals, Windows node command
 ```
 
 The script sets `OPENCLAW_RUN_E2E` and `OPENCLAW_RUN_MXC_E2E` itself, then runs the real WSL Gateway -> Windows node -> `system.run` MXC E2E proofs. It fails if the MXC proof skips. Use `-AllowSkip` only to document that the current host is not MXC-capable; do not report an `-AllowSkip` run as merge validation for MXC-related work.
+
+## Coding rules
+
+- Keep methods focused and reduce nested control flow when it improves readability.
+- Prefer existing repository patterns and simple, idiomatic C# over speculative abstractions.
+- Document non-obvious ownership, invariants, and public usage. Avoid boilerplate comments that only repeat the code.
 
 ## UI, MCP, and PR Proof
 
@@ -76,7 +83,7 @@ Every new Windows node call must be exposed, documented, and tested through MCP 
 
 1. Register the capability/command in the tray node capability registry.
 2. Add/update `McpToolBridge.CommandDescriptions`.
-3. Update `src/OpenClaw.WinNode.Cli/skill.md`.
+3. Update `.agents/skills/winnode/SKILL.md`.
 4. Add/update capability, MCP bridge, `winnode`, and UI/gateway tests as appropriate.
 5. Run required validation plus `dotnet test .\tests\OpenClaw.WinNode.Cli.Tests\OpenClaw.WinNode.Cli.Tests.csproj --no-restore` when `winnode`, MCP output, or command docs change.
 

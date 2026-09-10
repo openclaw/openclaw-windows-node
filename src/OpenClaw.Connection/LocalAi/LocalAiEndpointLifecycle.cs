@@ -6,6 +6,12 @@ public sealed record LocalAiEndpointLifecycleResult(bool Success, string? Detail
     public static LocalAiEndpointLifecycleResult Failed(string detail) => new(false, detail);
 }
 
+public enum LocalAiQuiesceReason
+{
+    EndpointCycle,
+    Teardown,
+}
+
 /// <summary>
 /// Coordinates consumers of the app-owned endpoint with native process changes.
 /// Implementations must remove managed routing before a listener can disappear,
@@ -15,6 +21,7 @@ public interface ILocalAiEndpointLifecycle
 {
     Task<LocalAiEndpointLifecycleResult> QuiesceAsync(
         LocalAiResolvedInstall install,
+        LocalAiQuiesceReason reason = LocalAiQuiesceReason.Teardown,
         CancellationToken cancellationToken = default);
 
     Task<LocalAiEndpointLifecycleResult> PublishAsync(
@@ -28,6 +35,7 @@ internal sealed class NullLocalAiEndpointLifecycle : ILocalAiEndpointLifecycle
 
     public Task<LocalAiEndpointLifecycleResult> QuiesceAsync(
         LocalAiResolvedInstall install,
+        LocalAiQuiesceReason reason = LocalAiQuiesceReason.Teardown,
         CancellationToken cancellationToken = default)
     {
         cancellationToken.ThrowIfCancellationRequested();

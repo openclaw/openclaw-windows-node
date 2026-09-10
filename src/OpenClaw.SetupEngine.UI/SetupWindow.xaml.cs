@@ -160,7 +160,7 @@ public sealed partial class SetupWindow : Window
         }
         try
         {
-            GatewayReleasePolicy.ResolveAndApply(_config);
+            GatewayInstallPolicy.ValidateAndApply(_config);
         }
         catch (GatewayCompatibilityException ex)
         {
@@ -307,11 +307,12 @@ public sealed partial class SetupWindow : Window
         string? logPath,
         string? errorMessage = null,
         GatewayCompatibilityFailureKind? compatibilityFailure = null,
-        LocalAiFailureDetail? detail = null)
+        LocalAiFailureDetail? detail = null,
+        bool restartRequired = false)
     {
         var canRetryFallback =
             compatibilityFailure is { } failureKind &&
-            GatewayReleasePolicy.CanRetryWithFallback(_config, failureKind);
+            GatewayInstallPolicy.CanRetryWithFallback(_config, failureKind);
         NavigateTo(
             typeof(CompletePage),
             new CompletePageArgs(
@@ -324,14 +325,17 @@ public sealed partial class SetupWindow : Window
                 ReviewSummary: SetupReviewSummaryBuilder.Build(_config, _dataDir, _localDataDir),
                 CanRetryGatewayFallback: canRetryFallback,
                 GatewayFallbackVersion: canRetryFallback
-                    ? GatewayReleasePolicy.FallbackVersion
+                    ? _config.Gateway.FallbackVersion
                     : null,
-                Detail: detail));
+                Detail: detail)
+            {
+                RequiresRestart = restartRequired,
+            });
     }
 
     public bool TryRetryWithGatewayFallback(out string? error)
     {
-        if (!GatewayReleasePolicy.TryApplyFallback(_config, out error))
+        if (!GatewayInstallPolicy.TryApplyFallback(_config, out error))
             return false;
 
         NavigateToProgress();
@@ -503,5 +507,8 @@ public sealed record CompletePageArgs(
     SetupReviewSummary? ReviewSummary = null,
     bool CanRetryGatewayFallback = false,
     string? GatewayFallbackVersion = null,
-    LocalAiFailureDetail? Detail = null);
+    LocalAiFailureDetail? Detail = null)
+{
+    public bool RequiresRestart { get; init; }
+}
 public sealed record SetupCompletedEventArgs(bool EnableAutoStart);

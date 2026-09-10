@@ -428,7 +428,8 @@ public sealed class PairOperatorStep : SetupStep
         SetupContext ctx,
         TimeSpan timeout,
         CancellationToken ct,
-        bool retryGatewayStartupDisconnects = false)
+        bool retryGatewayStartupDisconnects = false,
+        bool allowInstalledVersionDiscovery = false)
     {
         var tcs = new TaskCompletionSource<ConnectionOutcome>();
         ctx.ObservedGatewaySelf = null;
@@ -439,9 +440,10 @@ public sealed class PairOperatorStep : SetupStep
             ctx.Logger.Debug($"Operator connection status: {status}");
             if (status == ConnectionStatus.Connected)
             {
-                var compatibilityFailure = GatewayReleasePolicy.ValidateHandshake(
+                var compatibilityFailure = GatewayInstallPolicy.ValidateHandshake(
                     ctx.Config,
-                    ctx.ObservedGatewaySelf);
+                    ctx.ObservedGatewaySelf,
+                    allowInstalledVersionDiscovery);
                 if (compatibilityFailure is null)
                 {
                     tcs.TrySetResult(ConnectionOutcome.Connected);

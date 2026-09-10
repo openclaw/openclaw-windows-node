@@ -178,8 +178,15 @@ public sealed class GatewayConfig
 {
     public string Bind { get; set; } = "loopback";
     public string? InstallUrl { get; set; }
-    public string Selection { get; set; } = "recommended";
+    // Compatibility input from the former recommended/fallback/exact policy.
+    // ValidateAndApply translates it into Version and then clears it.
+    public string? Selection { get; set; }
+    // Upstream installer selector: null defaults to latest; tags and exact package versions are supported.
     public string? Version { get; set; }
+    // Optional exact stable version offered after a typed compatibility failure.
+    public string? FallbackVersion { get; set; }
+    [JsonIgnore]
+    public string? InstalledVersion { get; set; }
     // Runtime-only input for the explicit headless release-candidate validation lane.
     [JsonIgnore]
     public string? ValidationPackagePath { get; set; }
@@ -187,8 +194,6 @@ public sealed class GatewayConfig
     public string ReloadMode { get; set; } = "hybrid";
     public string AuthMode { get; set; } = "token";
     public Dictionary<string, string>? ExtraConfig { get; set; }
-    [JsonIgnore]
-    public GatewayReleaseResolution? ResolvedRelease { get; set; }
 }
 
 // ─── Capabilities Configuration ───
@@ -462,12 +467,16 @@ public sealed record StepResult(
     Exception? Error = null,
     LocalAiFailureDetail? Detail = null)
 {
+    public bool RequiresRestart { get; init; }
+
     public static StepResult Ok(string? message = null) => new(StepOutcome.Success, message);
     public static StepResult Skip(string reason) => new(StepOutcome.Skipped, reason);
     public static StepResult Fail(string message, Exception? ex = null, LocalAiFailureDetail? detail = null) =>
         new(StepOutcome.Failed, message, ex, detail);
     public static StepResult Terminal(string message, Exception? ex = null, LocalAiFailureDetail? detail = null) =>
         new(StepOutcome.FailedTerminal, message, ex, detail);
+    public static StepResult RestartRequired(string message) =>
+        new(StepOutcome.FailedTerminal, message) { RequiresRestart = true };
 
     public bool IsSuccess => Outcome is StepOutcome.Success or StepOutcome.Skipped;
 }

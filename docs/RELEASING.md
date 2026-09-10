@@ -133,9 +133,11 @@ though Updatum 1.3.4's default parsing does not rank `2026.7.1-3` above
 `2026.7.1-2`, the `OpenClawReleaseVersion` fallback in the update check pipeline
 compares releases under OpenClaw correction ordering and discovers `2026.7.1-3`.
 
-Gateway versions are a separate, independently pinned domain. A Windows Hub
-correction release does not change `GatewayReleasePolicy.RecommendedVersion` or
-its evidence gates; see [`adr/0001-gateway-release-policy.md`](adr/0001-gateway-release-policy.md).
+Gateway versions are a separate domain. Managed setup resolves npm `latest`
+independently and verifies that the protocol-v4 handshake reports the installed
+package version. A Windows Hub correction release does not select a Gateway
+package version; see
+[`adr/0001-gateway-release-policy.md`](adr/0001-gateway-release-policy.md).
 
 ```powershell
 git tag -a vX.Y.Z-alpha.N -m "OpenClaw Windows Hub vX.Y.Z-alpha.N"
@@ -190,9 +192,12 @@ CI also checks native runtime dependencies before release packaging. Both the
 x64 and ARM64 portable payloads must ship `vcruntime140.dll` in the payload
 root for the native speech stack. Both build legs source their loose VC runtime
 DLLs from the Visual Studio install on the CI runner (resolved via `vswhere` in
-`src\Directory.Build.targets`). This ensures the bundled CRT is new enough for
-`onnxruntime` - the `VCRuntime.CefSharp.140` NuGet is only used as a dev-time
-convenience for local `dotnet build` (not publish). The release validation
+the repo-root `Directory.Build.targets`, consumed by `src\Directory.Build.targets`).
+This ensures the bundled CRT is new enough for `onnxruntime`. Local x64 builds
+and test hosts use the same resolution whenever the Visual Studio install's
+current redist is at least 14.38 and contains the requested architecture; the
+`VCRuntime.CefSharp.140` NuGet (14.29) is the warned fallback when that compatible
+runtime is missing, stale, or architecture-incomplete. The release validation
 script enforces a minimum VC++ runtime version floor (currently 14.38) to
 prevent regressions, and the x64 verifier load-probes the native TTS stack
 (`onnxruntime.dll`, `sherpa-onnx.dll`, and `sherpa-onnx-c-api.dll`) from the

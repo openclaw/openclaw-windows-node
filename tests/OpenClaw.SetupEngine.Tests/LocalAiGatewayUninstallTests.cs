@@ -1,6 +1,8 @@
 using OpenClaw.Connection.LocalAi;
+using OpenClaw.Shared.Inference;
 using OpenClaw.Shared.Inference.Catalog;
 using OpenClaw.TestSupport;
+using System.Runtime.InteropServices;
 using System.Text;
 using System.Text.Json;
 
@@ -8,6 +10,54 @@ namespace OpenClaw.SetupEngine.Tests;
 
 public sealed class LocalAiGatewayUninstallTests
 {
+    [Fact]
+    public async Task Repair_RollbackRestoresFallbackAfterRetainedEndpointCycle()
+    {
+        using var temp = new TempDirectory("local-ai-gateway-repair-");
+        LocalAiResolvedInstall install = await SaveManifestAsync(temp.Path, "openai/gpt-5");
+        string managedPrimary = JsonSerializer.Serialize(
+            LocalAiGatewayProviderDefinition.BuildPrimaryModel(install));
+        var commands = new GatewayStateCommandRunner(providerJson: null, managedPrimary);
+        SetupContext context = CreateContext(temp.Path, commands);
+        context.LocalAiResolvedInstall = install;
+        context.LocalAiEligibility = LocalInferenceEligibility.Evaluate(CreateSparkHardware());
+
+        StepResult result = await new ConfigureLocalAiGatewayStep()
+            .ExecuteAsync(context, CancellationToken.None);
+
+        Assert.Equal(StepOutcome.Success, result.Outcome);
+        Assert.Equal(LocalAiGatewayProviderDefinition.BuildProviderJson(install), commands.ProviderJson);
+        Assert.Equal(managedPrimary, commands.PrimaryJson);
+        LocalAiResolvedInstall repaired = (await new LocalAiManifestStore(new LocalAiPaths(temp.Path)).LoadAsync())!;
+        Assert.Equal("openai/gpt-5", repaired.Manifest.GatewayFallbackModel);
+
+        await new ConfigureLocalAiGatewayStep().RollbackAsync(context, CancellationToken.None);
+
+        Assert.Null(commands.ProviderJson);
+        Assert.Equal(JsonSerializer.Serialize("openai/gpt-5"), commands.PrimaryJson);
+    }
+
+    [Fact]
+    public async Task Repair_RollbackUnsetsPrimaryAfterRetainedEndpointCycleWithoutFallback()
+    {
+        using var temp = new TempDirectory("local-ai-gateway-repair-");
+        LocalAiResolvedInstall install = await SaveManifestAsync(temp.Path);
+        string managedPrimary = JsonSerializer.Serialize(
+            LocalAiGatewayProviderDefinition.BuildPrimaryModel(install));
+        var commands = new GatewayStateCommandRunner(providerJson: null, managedPrimary);
+        SetupContext context = CreateContext(temp.Path, commands);
+        context.LocalAiResolvedInstall = install;
+        context.LocalAiEligibility = LocalInferenceEligibility.Evaluate(CreateSparkHardware());
+        var step = new ConfigureLocalAiGatewayStep();
+
+        StepResult result = await step.ExecuteAsync(context, CancellationToken.None);
+        await step.RollbackAsync(context, CancellationToken.None);
+
+        Assert.Equal(StepOutcome.Success, result.Outcome);
+        Assert.Null(commands.ProviderJson);
+        Assert.Null(commands.PrimaryJson);
+    }
+
     [Fact]
     public async Task FreshProcessUninstall_RemovesExactManagedProviderAndPrimary()
     {
@@ -118,7 +168,7 @@ public sealed class LocalAiGatewayUninstallTests
 
     private static SetupContext CreateContext(string localDataDirectory, ICommandRunner commands)
     {
-        var config = new SetupConfig();
+        var config = new SetupConfig { LocalAi = new LocalAiConfig { Enabled = true } };
         var logger = new SetupLogger(filePath: null);
         return new SetupContext(
             config,
@@ -128,6 +178,22 @@ public sealed class LocalAiGatewayUninstallTests
             CancellationToken.None,
             localDataDir: localDataDirectory);
     }
+
+    private static HostHardwareInfo CreateSparkHardware() => new(
+        Architecture.Arm64,
+        128L * 1024 * 1024 * 1024,
+        100L * 1024 * 1024 * 1024,
+        [
+            new GpuInfo(
+                GpuVendor.Nvidia,
+                "NVIDIA RTX Spark N1X (6144-core Blackwell RTX GPU)",
+                GpuVisibleMemoryBytes: 48L * 1024 * 1024 * 1024,
+                FreeGpuVisibleMemoryBytes: 40L * 1024 * 1024 * 1024,
+                DriverVersion: "616.00",
+                CudaMajorVersion: 13,
+                StableId: "GPU-SPARK"),
+        ],
+        VulkanAvailable: false);
 
     private static async Task<LocalAiResolvedInstall> SaveManifestAsync(
         string localDataDirectory,
@@ -207,6 +273,20 @@ public sealed class LocalAiGatewayUninstallTests
         {
             ct.ThrowIfCancellationRequested();
             WslCalls.Add(command);
+            if (command.Contains("LOCAL_AI_GATEWAY_CONFIGURED", StringComparison.Ordinal))
+            {
+                string encoded = Assert.Single(environment!).Value;
+                string batch = Encoding.UTF8.GetString(Convert.FromBase64String(encoded));
+                using JsonDocument document = JsonDocument.Parse(batch);
+                ProviderJson = document.RootElement[0].GetProperty("value").GetRawText();
+                PrimaryJson = document.RootElement[1].GetProperty("value").GetRawText();
+                return Task.FromResult(new CommandResult(
+                    0,
+                    "LOCAL_AI_GATEWAY_CONFIGURED",
+                    "",
+                    TimeSpan.Zero,
+                    TimedOut: false));
+            }
             if (command.Contains("LOCAL_AI_PRIMARY_RESTORED", StringComparison.Ordinal))
             {
                 string encoded = Assert.Single(environment!).Value;
@@ -216,6 +296,19 @@ public sealed class LocalAiGatewayUninstallTests
                 return Task.FromResult(new CommandResult(
                     0,
                     "LOCAL_AI_PRIMARY_RESTORED",
+                    "",
+                    TimeSpan.Zero,
+                    TimedOut: false));
+            }
+            if (command.Contains("LOCAL_AI_GATEWAY_RESTORED", StringComparison.Ordinal))
+            {
+                string encoded = Assert.Single(environment!).Value;
+                string batch = Encoding.UTF8.GetString(Convert.FromBase64String(encoded));
+                using JsonDocument document = JsonDocument.Parse(batch);
+                PrimaryJson = document.RootElement[0].GetProperty("value").GetRawText();
+                return Task.FromResult(new CommandResult(
+                    0,
+                    "LOCAL_AI_GATEWAY_RESTORED",
                     "",
                     TimeSpan.Zero,
                     TimedOut: false));

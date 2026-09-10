@@ -14,7 +14,7 @@ The Windows Node feature allows the tray app to receive commands from the OpenCl
 
 ## Companion-App Setup Guidance
 
-For app-owned local WSL setup, after OpenClaw onboard completes or is explicitly skipped, setup runs the pinned gateway CLI's non-interactive baseline initializer against the final runtime workspace and then injects fixed Windows-node guidance into that workspace's `AGENTS.md`. The injected block is setup-owned and idempotently replaced between managed markers, preserving user-authored content and file permissions outside those markers and leaving OpenClaw source files unchanged.
+For app-owned local WSL setup, after OpenClaw onboard completes or is explicitly skipped, setup runs the installed gateway CLI's non-interactive baseline initializer against the final runtime workspace and then injects fixed Windows-node guidance into that workspace's `AGENTS.md`. The injected block is setup-owned and idempotently replaced between managed markers, preserving user-authored content and file permissions outside those markers and leaving OpenClaw source files unchanged.
 
 **Note on the apply script's WSL invocation.** The `WindowsNodeBootstrapContextStep` apply and rollback scripts are piped to `bash -s` via stdin (`RunInWslAsync(..., inputViaStdin: true)`) rather than the default `bash -c` argv path. This is required because `wsl.exe` performs shell variable expansion on argv before invoking bash, which would drop user-defined `$var` references in the multi-line script (`workspace='...'` followed by `mkdir -p "$workspace"` becomes `mkdir -p ""`). See `docs/WSL_EXE_ARGV_PITFALL.md` for the full writeup.
 
@@ -30,7 +30,7 @@ Short version: run required tests, collect a closeout proof pass with `.\run-app
 
 ### New command MCP contract
 
-Every new Windows node call must be exposed through local MCP and `winnode`: register the capability, update `McpToolBridge.CommandDescriptions`, update `src/OpenClaw.WinNode.Cli/skill.md`, add focused tests, and prove discovery/invocation with `winnode` or raw MCP JSON-RPC.
+Every new Windows node call must be exposed through local MCP and `winnode`: register the capability, update `McpToolBridge.CommandDescriptions`, update `.agents/skills/winnode/SKILL.md`, add focused tests, and prove discovery/invocation with `winnode` or raw MCP JSON-RPC.
 
 ### 1. Settings Toggle
 - Verify the toggle appears in Settings under "ADVANCED"
@@ -177,6 +177,11 @@ Local MCP clients also see MCP-only `app.*` commands such as `app.navigate`, `ap
 ### Local sandbox validation
 - Sandbox integration tests are intended for local Windows development machines and may skip when the required local sandbox prerequisites are unavailable.
 - Build the tray app before running local sandbox validation so the required sandbox helper binaries are present in the app output.
+- MXC path grants use absolute Windows paths. OpenClaw adds each granted volume root as read-only only when the host probe selects BaseContainer and the exact emitted config remains BaseContainer-compatible: no backend `deniedPaths`, proxy/directional networking, denial capture, or least-privilege mode. MXC 0.8's request selector keeps that policy on BaseContainer, whose root grants are documented not to cascade. This supplies the root metadata access needed by common Windows path APIs without exposing child directories.
+- OpenClaw supports MXC sandboxing for `system.run` only when `wxc-exec --probe` reports `tier: "base-container"` and `needsDaclAugmentation: false`. BFS, DACL, unknown, and augmented tiers are treated as unavailable for the Node Sandbox. General MXC and `isolation_session` diagnostics remain separate from this process-containment decision.
+- OpenClaw classifies the Windows SKU before resolving or launching `wxc-exec`. Windows Server is explicitly unsupported because the current MXC probe can crash there. An indeterminate SKU check also fails closed and skips the native probe. This suppression does not erase the user's sandbox preference, so the existing host-fallback or strict-block policy remains visible and recoverable after an OS/runtime fix.
+- OpenClaw never invokes `wxc-host-prep` and never adds a volume-root policy grant to BFS or the DACL fallback. DACL directory grants intentionally propagate, and [microsoft/mxc#648](https://github.com/microsoft/mxc/issues/648) documents unsafe descendant ACL rewriting in the current privileged helper.
+- The upstream BaseContainer readiness and root-grant behavior is tracked in [microsoft/mxc#1109](https://github.com/microsoft/mxc/issues/1109).
 - For MXC-related merge validation, prefer the formal script below because it sets the required gates and fails if MXC is skipped.
 
   ```powershell

@@ -31,6 +31,7 @@ internal sealed class LocalAiGatewayProviderCoordinator : ILocalAiEndpointLifecy
 
     public async Task<LocalAiEndpointLifecycleResult> QuiesceAsync(
         LocalAiResolvedInstall install,
+        LocalAiQuiesceReason reason = LocalAiQuiesceReason.Teardown,
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(install);
@@ -70,7 +71,8 @@ internal sealed class LocalAiGatewayProviderCoordinator : ILocalAiEndpointLifecy
         }
 
         string? expectedPrimary = current.PrimaryModel;
-        if (primaryIsManaged)
+        bool retainManagedPrimary = reason == LocalAiQuiesceReason.EndpointCycle;
+        if (primaryIsManaged && !retainManagedPrimary)
         {
             expectedPrimary = install.Manifest.GatewayFallbackModel;
             LocalAiEndpointLifecycleResult primaryResult = expectedPrimary is null
@@ -131,9 +133,12 @@ internal sealed class LocalAiGatewayProviderCoordinator : ILocalAiEndpointLifecy
         }
 
         string? fallbackModel = install.Manifest.GatewayFallbackModel;
-        if (current.PrimaryExists != (fallbackModel is not null) ||
-            (fallbackModel is not null &&
-                !string.Equals(current.PrimaryModel, fallbackModel, StringComparison.Ordinal)))
+        bool retainedManagedPrimary = current.PrimaryExists &&
+            string.Equals(current.PrimaryModel, managedPrimary, StringComparison.Ordinal);
+        if (!retainedManagedPrimary &&
+            (current.PrimaryExists != (fallbackModel is not null) ||
+                (fallbackModel is not null &&
+                    !string.Equals(current.PrimaryModel, fallbackModel, StringComparison.Ordinal))))
         {
             return Failed("The gateway primary model changed while Local AI was stopped; preserving it instead of overwriting it.");
         }
@@ -143,7 +148,7 @@ internal sealed class LocalAiGatewayProviderCoordinator : ILocalAiEndpointLifecy
             return Failed(applied.Detail!);
         if (!applied.Result!.Success)
         {
-            LocalAiEndpointLifecycleResult cleanup = await QuiesceAsync(install, cancellationToken)
+            LocalAiEndpointLifecycleResult cleanup = await QuiesceAsync(install, LocalAiQuiesceReason.Teardown, cancellationToken)
                 .ConfigureAwait(false);
             return PublicationFailed(
                 "The verified Local AI route could not be published to the app-owned gateway.",
@@ -156,7 +161,7 @@ internal sealed class LocalAiGatewayProviderCoordinator : ILocalAiEndpointLifecy
             !verified.PrimaryExists ||
             !string.Equals(verified.PrimaryModel, managedPrimary, StringComparison.Ordinal))
         {
-            LocalAiEndpointLifecycleResult cleanup = await QuiesceAsync(install, cancellationToken)
+            LocalAiEndpointLifecycleResult cleanup = await QuiesceAsync(install, LocalAiQuiesceReason.Teardown, cancellationToken)
                 .ConfigureAwait(false);
             return PublicationFailed(
                 "The app-owned gateway did not retain the verified Local AI route.",

@@ -16,8 +16,15 @@ namespace OpenClaw.SetupEngine;
 
 public sealed class InstallCliStep : SetupStep
 {
+    internal const int DownloadMaxTimeSeconds = 60;
+    internal static readonly TimeSpan InstallerCommandTimeout = TimeSpan.FromMinutes(5);
+    internal const string InstallerTempDirectoryPreview =
+        "/tmp/openclaw-installer-<32-hex-random>";
     internal const string StagedValidationPackageReference =
         "file:/var/lib/openclaw/setup-package/openclaw-current.tgz";
+    private const string InstallerTempDirectoryPrefix = "/tmp/openclaw-installer-";
+    private const string InstallerTempDirectoryPreviewSource =
+        "/tmp/openclaw-installer-00000000000000000000000000000000";
     private const string StagedValidationPackageDirectory = "/var/lib/openclaw/setup-package";
 
     public override string Id => "install-cli";
@@ -28,11 +35,12 @@ public sealed class InstallCliStep : SetupStep
     {
         var distro = ctx.DistroName!;
         var user = ctx.Config.Wsl.User;
-        var installVersion = ctx.Config.Gateway.Version;
+        var requestedVersion = ctx.Config.Gateway.Version;
+        var installVersion = requestedVersion;
         var validationPackageStaged = false;
 
         // Download and run install script (URL configurable)
-        var installUrl = ctx.Config.Gateway.InstallUrl ?? GatewayReleasePolicy.DefaultInstallUrl;
+        var installUrl = ctx.Config.Gateway.InstallUrl ?? GatewayInstallPolicy.DefaultInstallUrl;
 
         // Validate URL is HTTPS to prevent downgrade attacks
         if (!Uri.TryCreate(installUrl, UriKind.Absolute, out var parsedUrl) ||
@@ -41,7 +49,7 @@ public sealed class InstallCliStep : SetupStep
             return StepResult.Fail($"Installer URL must be HTTPS: {installUrl}");
         }
 
-        var officialInstaller = GatewayReleasePolicy.IsOfficialInstallerUrl(installUrl);
+        var officialInstaller = GatewayInstallPolicy.IsOfficialInstallerUrl(installUrl);
         if (ctx.Config.Gateway.ValidationPackagePath is { } validationPackagePath)
         {
             var stageResult = await StageValidationPackageAsync(
@@ -59,22 +67,60 @@ public sealed class InstallCliStep : SetupStep
         try
         {
             string installScript;
+            var installerTempDirectory =
+                $"/tmp/openclaw-installer-{Guid.NewGuid():N}";
             try
             {
                 installScript = BuildInstallCommand(
                     installUrl,
                     installVersion,
-                    officialInstaller ? GatewayReleasePolicy.NodeVersion : null);
+                    officialInstaller ? GatewayInstallPolicy.NodeVersion : null,
+                    installerTempDirectory);
             }
             catch (ArgumentException ex)
             {
                 return StepResult.Fail(ex.Message);
             }
 
-            var result = await ctx.Commands.RunInWslAsync(distro, installScript, TimeSpan.FromMinutes(5), ct: ct);
+            CommandResult result;
+            string? cleanupError = null;
+            try
+            {
+                result = await ctx.Commands.RunInWslAsync(
+                    distro,
+                    installScript,
+                    InstallerCommandTimeout,
+                    ct: ct,
+                    inputViaStdin: true);
+            }
+            finally
+            {
+                cleanupError = await CleanupInstallerTempDirectoryAsync(
+                    ctx,
+                    distro,
+                    installerTempDirectory);
+            }
+
+            if (result.TimedOut)
+            {
+                var stderr = string.IsNullOrWhiteSpace(result.Stderr) ? "" : $" {result.Stderr.Trim()}";
+                var cleanup = FormatCleanupError(cleanupError);
+                return StepResult.Fail(
+                    $"CLI installer command timed out after {InstallerCommandTimeout.TotalMinutes:0} minutes.{stderr}{cleanup}");
+            }
 
             if (result.ExitCode != 0)
-                return StepResult.Fail($"CLI install failed (exit {result.ExitCode}): {result.Stderr}");
+            {
+                var diagnostic = string.IsNullOrWhiteSpace(result.Stderr)
+                    ? result.Stdout.Trim()
+                    : result.Stderr.Trim();
+                var cleanup = FormatCleanupError(cleanupError);
+                return StepResult.Fail(
+                    $"CLI install failed (exit {result.ExitCode}): {diagnostic}{cleanup}");
+            }
+
+            if (cleanupError is not null)
+                return StepResult.Fail($"CLI installer cleanup failed: {cleanupError}");
 
             var verifyCommands = new (string Command, string? ExecutablePath)[]
             {
@@ -89,16 +135,24 @@ public sealed class InstallCliStep : SetupStep
                 var verify = await ctx.Commands.RunInWslAsync(distro, cmd, TimeSpan.FromSeconds(15), ct: ct);
                 if (verify.ExitCode == 0 && !string.IsNullOrWhiteSpace(verify.Stdout))
                 {
-                    var selectedVersion = ctx.Config.Gateway.Version!;
-                    if (!GatewayReleaseVersion.TryExtract(verify.Stdout, out var installedVersion) ||
-                        !string.Equals(installedVersion, selectedVersion, StringComparison.Ordinal))
+                    if (!GatewayPackageVersion.TryExtract(verify.Stdout, out var installedVersion))
                     {
-                        var actual = string.IsNullOrWhiteSpace(installedVersion) ? "unparseable" : installedVersion;
                         var failure = new GatewayCompatibilityException(
                             GatewayCompatibilityFailureKind.InstalledVersionMismatch,
-                            $"Gateway compatibility check failed: selected version {selectedVersion}, installed CLI reported {actual}.");
+                            "Gateway compatibility check failed: installed CLI version was not a stable release.");
                         return StepResult.Terminal(failure.Message, failure);
                     }
+
+                    if (GatewayPackageVersion.IsExact(requestedVersion) &&
+                        !string.Equals(installedVersion, requestedVersion, StringComparison.Ordinal))
+                    {
+                        var failure = new GatewayCompatibilityException(
+                            GatewayCompatibilityFailureKind.InstalledVersionMismatch,
+                            $"Gateway compatibility check failed: requested version {requestedVersion}, installed CLI reported {installedVersion}.");
+                        return StepResult.Terminal(failure.Message, failure);
+                    }
+
+                    ctx.Config.Gateway.InstalledVersion = installedVersion;
 
                     if (executablePath != null)
                     {
@@ -109,7 +163,7 @@ public sealed class InstallCliStep : SetupStep
 
                     if (officialInstaller)
                     {
-                        var expectedRuntimeVersion = $"v{GatewayReleasePolicy.NodeVersion}";
+                        var expectedRuntimeVersion = $"v{GatewayInstallPolicy.NodeVersion}";
                         var runtimeCommand = $"/home/{user}/.openclaw/tools/node/bin/node --version";
                         var runtime = await ctx.Commands.RunInWslAsync(
                             distro,
@@ -149,17 +203,21 @@ public sealed class InstallCliStep : SetupStep
     internal static string BuildInstallCommand(
         string installUrl,
         string? requestedVersion,
-        string? nodeVersion = null)
+        string? nodeVersion = null,
+        string? installerTempDirectory = null)
     {
         var escapedUrl = WslShellQuoting.EscapePosixSingleQuoteInner(installUrl);
-        if (string.IsNullOrWhiteSpace(requestedVersion))
-            throw new ArgumentException("Gateway release policy must resolve an exact version before installation.");
+        var versionArgument = "";
+        if (!string.IsNullOrWhiteSpace(requestedVersion))
+        {
+            var trimmedVersion = requestedVersion.Trim();
+            if (trimmedVersion.Contains('\n') || trimmedVersion.Contains('\r'))
+                throw new ArgumentException("Gateway version cannot contain newlines.");
 
-        var trimmedVersion = requestedVersion.Trim();
-        if (trimmedVersion.Contains('\n') || trimmedVersion.Contains('\r'))
-            throw new ArgumentException("Gateway version cannot contain newlines.");
+            var escapedVersion = WslShellQuoting.EscapePosixSingleQuoteInner(trimmedVersion);
+            versionArgument = $" --version '{escapedVersion}'";
+        }
 
-        var escapedVersion = WslShellQuoting.EscapePosixSingleQuoteInner(trimmedVersion);
         var runtimeArgument = "";
         if (!string.IsNullOrWhiteSpace(nodeVersion))
         {
@@ -170,9 +228,103 @@ public sealed class InstallCliStep : SetupStep
             var escapedNodeVersion = WslShellQuoting.EscapePosixSingleQuoteInner(trimmedNodeVersion);
             runtimeArgument = $" --node-version '{escapedNodeVersion}'";
         }
+        var transferDeadlineArguments = GatewayInstallPolicy.IsOfficialInstallerUrl(installUrl)
+            ? $" --connect-timeout 15 --max-time {DownloadMaxTimeSeconds}"
+            : "";
 
-        return $"curl -fsSL --proto '=https' --tlsv1.2 '{escapedUrl}' | bash -s -- --version '{escapedVersion}'{runtimeArgument}";
+        installerTempDirectory ??= $"{InstallerTempDirectoryPrefix}{Guid.NewGuid():N}";
+        if (!installerTempDirectory.StartsWith(InstallerTempDirectoryPrefix, StringComparison.Ordinal))
+        {
+            throw new ArgumentException("CLI installer temporary directory is invalid.");
+        }
+
+        var suffix = installerTempDirectory[InstallerTempDirectoryPrefix.Length..];
+        if (suffix.Length != 32 || suffix.Any(character => !Uri.IsHexDigit(character)))
+            throw new ArgumentException("CLI installer temporary directory is invalid.");
+
+        return $"""
+            set -euo pipefail
+            umask 077
+            installer_dir='{installerTempDirectory}'
+            mkdir -m 0700 -- "$installer_dir"
+            installer="$installer_dir/installer.sh"
+            trap 'rm -rf -- "$installer_dir"' EXIT
+            curl -fsSL{transferDeadlineArguments} \
+              --proto '=https' \
+              --tlsv1.2 \
+              --output "$installer" \
+              '{escapedUrl}'
+            if ! test -s "$installer"; then
+              echo 'CLI installer download was empty.' >&2
+              exit 65
+            fi
+            bash -s --{versionArgument}{runtimeArgument} < "$installer"
+            """;
     }
+
+    internal static string BuildInstallCommandPreview(
+        string installUrl,
+        string? requestedVersion,
+        string? nodeVersion = null)
+    {
+        var command = BuildInstallCommand(
+            installUrl,
+            requestedVersion,
+            nodeVersion,
+            InstallerTempDirectoryPreviewSource);
+        var assignment = $"installer_dir='{InstallerTempDirectoryPreviewSource}'";
+        var assignmentIndex = command.IndexOf(assignment, StringComparison.Ordinal);
+        if (assignmentIndex < 0)
+            throw new InvalidOperationException("CLI installer preview could not locate the temporary directory.");
+
+        return string.Concat(
+            command.AsSpan(0, assignmentIndex),
+            $"installer_dir='{InstallerTempDirectoryPreview}'",
+            command.AsSpan(assignmentIndex + assignment.Length));
+    }
+
+    private static async Task<string?> CleanupInstallerTempDirectoryAsync(
+        SetupContext ctx,
+        string distro,
+        string installerTempDirectory)
+    {
+        using var cleanupCts = new CancellationTokenSource(TimeSpan.FromSeconds(15));
+        try
+        {
+            var cleanup = await ctx.Commands.RunInWslAsync(
+                distro,
+                $"rm -rf -- {installerTempDirectory}",
+                TimeSpan.FromSeconds(15),
+                ct: cleanupCts.Token);
+            return cleanup.ExitCode == 0 && !cleanup.TimedOut
+                ? null
+                : string.IsNullOrWhiteSpace(cleanup.Stderr)
+                    ? $"exit {cleanup.ExitCode}"
+                    : $"exit {cleanup.ExitCode}: {cleanup.Stderr.Trim()}";
+        }
+        catch (OperationCanceledException) when (cleanupCts.IsCancellationRequested)
+        {
+            return "timed out after 15 seconds";
+        }
+        catch (OperationCanceledException ex)
+        {
+            ctx.Logger.Warn($"CLI installer cleanup was cancelled ({ex.GetType().Name}).");
+            return "was cancelled";
+        }
+        catch (Exception ex) when (
+            ex is IOException
+            or InvalidOperationException
+            or NotSupportedException
+            or UnauthorizedAccessException
+            or System.ComponentModel.Win32Exception)
+        {
+            ctx.Logger.Warn($"CLI installer cleanup failed ({ex.GetType().Name}).");
+            return $"failed ({ex.GetType().Name})";
+        }
+    }
+
+    private static string FormatCleanupError(string? cleanupError)
+        => cleanupError is null ? "" : $" Cleanup also failed: {cleanupError}";
 
     internal static bool TryValidateCandidatePackagePath(
         string candidatePackagePath,

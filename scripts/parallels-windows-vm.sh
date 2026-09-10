@@ -134,17 +134,32 @@ set_app_paths() {
   GUEST_REPO_PS="$(powershell_literal_content "$GUEST_CHECKOUT")"
 }
 
+dotnet_sdk_ready() {
+  local check
+  check="$(cat <<'POWERSHELL'
+@(dotnet.exe --list-sdks | ForEach-Object { if ($_ -match '^(\d+\.\d+\.\d+)') { [version]$matches[1] } } | Where-Object { $_.Major -eq 10 -and $_ -ge [version]'10.0.400' }).Count -gt 0
+POWERSHELL
+)"
+  guest_user_ps "$check" |
+    grep -q True
+}
+
 ensure_dotnet() {
-  guest_user_cmd 'dotnet.exe --list-sdks | findstr /B 10.' >/dev/null 2>&1 && return
+  dotnet_sdk_ready && return
   winget_download Microsoft.DotNet.SDK.10
   local installer
   installer="$(downloaded_installer 'Microsoft .NET SDK 10.0*.exe')"
   [[ -n "$installer" ]] || die "winget did not download the .NET SDK installer"
   installer="$(stage_installer "$installer" DotNetSDK 'Microsoft Corporation' "$WINGET_EXPECTED_HASH")"
-  say "Installing .NET 10 SDK"
+  say "Installing .NET SDK 10.0.400 or newer"
   run_windows_installer prlctl exec "$VM_NAME" "$installer" /install /quiet /norestart
   finish_installer_reboot
-  wait_for_check '.NET 10 SDK' 'dotnet.exe --list-sdks | findstr /B 10.'
+  local attempt
+  for ((attempt = 1; attempt <= 120; attempt++)); do
+    dotnet_sdk_ready && return
+    sleep 3
+  done
+  die ".NET SDK 10.0.400 or newer is unavailable after installation"
 }
 
 ensure_windows_sdk() {
@@ -182,7 +197,7 @@ ensure_guest_checkout() {
 
 verify_app() {
   set_app_paths
-  guest_user_cmd 'dotnet.exe --list-sdks | findstr /B 10.' >/dev/null || die ".NET 10 SDK is unavailable"
+  dotnet_sdk_ready || die ".NET SDK 10.0.400 or newer is unavailable"
   guest_user_ps "Test-Path 'C:/Program Files (x86)/Windows Kits/10/Include/10.0.26100.0/um'" | grep -q True || die "Windows SDK 10.0.26100 is unavailable"
   guest_system_ps "Test-Path 'HKLM:/SOFTWARE/WOW6432Node/Microsoft/EdgeUpdate/Clients/{F3017226-FE2A-4295-8BDF-00C3A9A7E4C5}'" | grep -q True || die "WebView2 is unavailable"
   guest_user_ps "Test-Path '${GUEST_REPO_PS}/scripts/setup-dev.ps1'" | grep -q True || die "guest checkout missing: $GUEST_CHECKOUT"

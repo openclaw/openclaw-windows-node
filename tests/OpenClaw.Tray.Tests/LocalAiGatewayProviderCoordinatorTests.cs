@@ -29,6 +29,135 @@ public sealed class LocalAiGatewayProviderCoordinatorTests
     }
 
     [Fact]
+    public async Task Quiesce_EndpointCycleRetainsManagedPrimaryWhenNoFallbackExists()
+    {
+        LocalAiResolvedInstall install = Install(28_765);
+        string managedPrimary = LocalAiGatewayProviderDefinition.BuildPrimaryModel(install);
+        var commands = new FakeWslCommandRunner(
+            LocalAiGatewayProviderDefinition.BuildProviderJson(install),
+            managedPrimary);
+        var coordinator = CreateCoordinator(commands);
+
+        LocalAiEndpointLifecycleResult result = await coordinator.QuiesceAsync(
+            install,
+            LocalAiQuiesceReason.EndpointCycle);
+
+        Assert.True(result.Success);
+        Assert.Null(commands.ProviderJson);
+        Assert.Equal(managedPrimary, commands.PrimaryModel);
+        Assert.DoesNotContain(
+            commands.Calls,
+            call => call.Contains("unset") &&
+                    call.Contains(LocalAiGatewayProviderDefinition.PrimaryModelPath));
+    }
+
+    [Fact]
+    public async Task Quiesce_FailedEndpointCycleCanBeCompletedAsTeardown()
+    {
+        LocalAiResolvedInstall install = Install(28_765);
+        string managedPrimary = LocalAiGatewayProviderDefinition.BuildPrimaryModel(install);
+        var commands = new FakeWslCommandRunner(
+            LocalAiGatewayProviderDefinition.BuildProviderJson(install),
+            managedPrimary)
+        {
+            FailedReadCalls = [2],
+        };
+        var coordinator = CreateCoordinator(commands);
+
+        LocalAiEndpointLifecycleResult interrupted = await coordinator.QuiesceAsync(
+            install,
+            LocalAiQuiesceReason.EndpointCycle);
+
+        Assert.False(interrupted.Success);
+        Assert.Null(commands.ProviderJson);
+        Assert.Equal(managedPrimary, commands.PrimaryModel);
+
+        LocalAiEndpointLifecycleResult teardown = await coordinator.QuiesceAsync(
+            install,
+            LocalAiQuiesceReason.Teardown);
+
+        Assert.True(teardown.Success);
+        Assert.Null(commands.ProviderJson);
+        Assert.Null(commands.PrimaryModel);
+    }
+
+    [Fact]
+    public async Task Quiesce_EndpointCycleRetainsManagedPrimaryWhenFallbackExists()
+    {
+        LocalAiResolvedInstall install = Install(28_770, "openai/gpt-5");
+        string managedPrimary = LocalAiGatewayProviderDefinition.BuildPrimaryModel(install);
+        var commands = new FakeWslCommandRunner(
+            LocalAiGatewayProviderDefinition.BuildProviderJson(install),
+            managedPrimary);
+        var coordinator = CreateCoordinator(commands);
+
+        LocalAiEndpointLifecycleResult result = await coordinator.QuiesceAsync(
+            install,
+            LocalAiQuiesceReason.EndpointCycle);
+
+        Assert.True(result.Success);
+        Assert.Null(commands.ProviderJson);
+        Assert.Equal(managedPrimary, commands.PrimaryModel);
+    }
+
+    [Fact]
+    public async Task Quiesce_TeardownRestoresRealPriorModel()
+    {
+        LocalAiResolvedInstall install = Install(28_770, "openai/gpt-5");
+        var commands = new FakeWslCommandRunner(
+            LocalAiGatewayProviderDefinition.BuildProviderJson(install),
+            LocalAiGatewayProviderDefinition.BuildPrimaryModel(install))
+        {
+            PrimaryAfterApply = "openai/gpt-5",
+        };
+        var coordinator = CreateCoordinator(commands);
+
+        LocalAiEndpointLifecycleResult result = await coordinator.QuiesceAsync(
+            install,
+            LocalAiQuiesceReason.Teardown);
+
+        Assert.True(result.Success);
+        Assert.Null(commands.ProviderJson);
+        Assert.Equal("openai/gpt-5", commands.PrimaryModel);
+    }
+
+    [Fact]
+    public async Task Publish_AcceptsPrimaryRetainedByAnEndpointCycle()
+    {
+        LocalAiResolvedInstall install = Install(28_765);
+        string managedPrimary = LocalAiGatewayProviderDefinition.BuildPrimaryModel(install);
+        var commands = new FakeWslCommandRunner(providerJson: null, primaryModel: managedPrimary)
+        {
+            ProviderAfterApply = LocalAiGatewayProviderDefinition.BuildProviderJson(install),
+            PrimaryAfterApply = managedPrimary,
+        };
+        var coordinator = CreateCoordinator(commands);
+
+        LocalAiEndpointLifecycleResult result = await coordinator.PublishAsync(install);
+
+        Assert.True(result.Success);
+        Assert.Equal(managedPrimary, commands.PrimaryModel);
+    }
+
+    [Fact]
+    public async Task Publish_AcceptsPrimaryRetainedByEndpointCycleWithFallback()
+    {
+        LocalAiResolvedInstall install = Install(28_765, "openai/gpt-5");
+        string managedPrimary = LocalAiGatewayProviderDefinition.BuildPrimaryModel(install);
+        var commands = new FakeWslCommandRunner(providerJson: null, primaryModel: managedPrimary)
+        {
+            ProviderAfterApply = LocalAiGatewayProviderDefinition.BuildProviderJson(install),
+            PrimaryAfterApply = managedPrimary,
+        };
+        var coordinator = CreateCoordinator(commands);
+
+        LocalAiEndpointLifecycleResult result = await coordinator.PublishAsync(install);
+
+        Assert.True(result.Success);
+        Assert.Equal(managedPrimary, commands.PrimaryModel);
+    }
+
+    [Fact]
     public async Task Quiesce_AcceptsCliRedactedManagedApiKey()
     {
         LocalAiResolvedInstall install = Install(28_765);

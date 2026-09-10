@@ -192,7 +192,12 @@ public sealed class SetupWizardRunner
             if (provenanceCheck is not null)
                 return provenanceCheck;
             client = CreateWizardClient(credential, identityPath, wsLogger);
-            var connection = await PairOperatorStep.WaitForConnectionOrPairing(client, _ctx, TimeSpan.FromSeconds(20), ct);
+            var connection = await PairOperatorStep.WaitForConnectionOrPairing(
+                client,
+                _ctx,
+                TimeSpan.FromSeconds(20),
+                ct,
+                allowInstalledVersionDiscovery: true);
             if (connection == PairOperatorStep.ConnectionOutcome.PairingRequired && _ctx.Config.AutoApprovePairing)
             {
                 _ctx.Logger.Info("Wizard operator pairing required — auto-approving");
@@ -208,7 +213,12 @@ public sealed class SetupWizardRunner
                 if (provenanceCheck is not null)
                     return provenanceCheck;
                 client = CreateWizardClient(credential, identityPath, wsLogger);
-                connection = await PairOperatorStep.WaitForConnectionOrPairing(client, _ctx, TimeSpan.FromSeconds(20), ct);
+                connection = await PairOperatorStep.WaitForConnectionOrPairing(
+                    client,
+                    _ctx,
+                    TimeSpan.FromSeconds(20),
+                    ct,
+                    allowInstalledVersionDiscovery: true);
             }
 
             if (connection != PairOperatorStep.ConnectionOutcome.Connected)
@@ -242,7 +252,8 @@ public sealed class SetupWizardRunner
                 _ctx,
                 TimeSpan.FromSeconds(30),
                 ct,
-                retryGatewayStartupDisconnects: true);
+                retryGatewayStartupDisconnects: true,
+                allowInstalledVersionDiscovery: true);
             if (connection != PairOperatorStep.ConnectionOutcome.Connected)
             {
                 return StepResult.Fail(
@@ -278,7 +289,7 @@ public sealed class SetupWizardRunner
                     !ct.IsCancellationRequested &&
                     isManagedLocalGateway &&
                     GatewayWizardRestartRecoveryPolicy.IsExpectedTerminalRestart(
-                        _ctx.Config.Gateway.Version,
+                        _ctx.Config.Gateway.InstalledVersion,
                         stepId,
                         ex,
                         stepTitle,
@@ -310,7 +321,8 @@ public sealed class SetupWizardRunner
                         _ctx,
                         TimeSpan.FromSeconds(30),
                         ct,
-                        retryGatewayStartupDisconnects: true);
+                        retryGatewayStartupDisconnects: true,
+                        allowInstalledVersionDiscovery: true);
                     if (reconnect != PairOperatorStep.ConnectionOutcome.Connected)
                     {
                         throw new WizardFatalException(
@@ -352,7 +364,8 @@ public sealed class SetupWizardRunner
                         _ctx,
                         TimeSpan.FromSeconds(30),
                         ct,
-                        retryGatewayStartupDisconnects: true);
+                        retryGatewayStartupDisconnects: true,
+                        allowInstalledVersionDiscovery: true);
                     if (reconnect != PairOperatorStep.ConnectionOutcome.Connected)
                         throw new WizardFatalException($"Gateway wizard reconnect failed after restart: {reconnect}");
 

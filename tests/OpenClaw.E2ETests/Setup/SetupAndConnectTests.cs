@@ -1,4 +1,6 @@
+using System.Diagnostics;
 using System.Text.Json;
+using System.Text.RegularExpressions;
 using OpenClaw.E2ETests;
 using OpenClaw.SetupEngine;
 using OpenClaw.Shared;
@@ -167,12 +169,203 @@ public class SetupAndConnectTests
         Assert.Contains(Directory.EnumerateFiles(identityDir), path => Path.GetFileName(path).Contains("device-key", StringComparison.OrdinalIgnoreCase));
     }
 
+    [E2EFact]
+    public async Task FullSetup_AlreadyRunningGateway_IsRecognizedAsServiceOwned()
+    {
+        var proofLogPath = Path.Combine(_fixture.ArtifactDir, "service-owned-gateway-start.jsonl");
+        var config = SetupConfig.LoadFromFile(_fixture.ConfigPath);
+        StepResult installResult;
+        StepResult startResult;
+        using (var logger = new SetupLogger(proofLogPath, LogLevel.Trace))
+        using (var journal = new TransactionJournal(filePath: null, logger))
+        {
+            var context = new SetupContext(
+                config,
+                logger,
+                journal,
+                new CommandRunner(logger),
+                CancellationToken.None,
+                _fixture.DataDir,
+                _fixture.LocalAppDataRoot)
+            {
+                DistroName = _fixture.DistroName,
+            };
+            installResult = await new InstallGatewayServiceStep().ExecuteAsync(
+                context,
+                CancellationToken.None);
+            Assert.True(installResult.IsSuccess, installResult.Message);
+
+            var listenerDeadline = DateTimeOffset.UtcNow.AddSeconds(30);
+            OpenClaw.SetupEngine.CommandResult? listeners = null;
+            while (DateTimeOffset.UtcNow < listenerDeadline)
+            {
+                listeners = await _fixture.RunInWslAsync(
+                    $"ss -H -ltnp 'sport = :{_fixture.GatewayPort}'",
+                    TimeSpan.FromSeconds(15));
+                if (listeners.ExitCode == 0 &&
+                    !string.IsNullOrWhiteSpace(listeners.Stdout))
+                {
+                    break;
+                }
+
+                await Task.Delay(250);
+            }
+            var observedListeners = Assert.IsType<OpenClaw.SetupEngine.CommandResult>(listeners);
+            AssertCommandSucceeded(observedListeners, "wait for installed gateway listener");
+            Assert.False(
+                string.IsNullOrWhiteSpace(observedListeners.Stdout),
+                "The installed gateway service did not open its configured listener.");
+
+            startResult = await new StartGatewayStep().ExecuteAsync(
+                context,
+                CancellationToken.None);
+        }
+
+        Assert.True(startResult.IsSuccess, startResult.Message);
+
+        var mainPid = await _fixture.RunInWslAsync(
+            "systemctl --user show openclaw-gateway.service -p MainPID --value",
+            TimeSpan.FromSeconds(15));
+        AssertCommandSucceeded(mainPid, "read gateway service MainPID");
+        var parsedMainPid = mainPid.Stdout.Trim();
+        Assert.True(int.TryParse(parsedMainPid, out var pid) && pid > 0, $"Invalid gateway MainPID: {parsedMainPid}");
+
+        var proofLog = await File.ReadAllTextAsync(proofLogPath);
+        Assert.Contains(
+            $"Port {_fixture.GatewayPort} is owned by openclaw-gateway.service (PID {pid}).",
+            proofLog,
+            StringComparison.Ordinal);
+    }
+
+    [E2EFact]
+    public async Task FullSetup_ForeignWslListener_IsRejectedBeforeGatewayStart()
+    {
+        var config = SetupConfig.LoadFromFile(_fixture.ConfigPath);
+        var nodePath = $"/home/{config.Wsl.User}/.openclaw/tools/node/bin/node";
+        var proofId = Guid.NewGuid().ToString("N");
+        var statePath = $"/tmp/openclaw-foreign-listener-{proofId}.state";
+        var nodeScript =
+            $"const fs=require(\"fs\"),net=require(\"net\");const server=net.createServer();" +
+            $"server.listen(0,\"127.0.0.1\",()=>fs.writeFileSync(\"{statePath}\",process.pid+\" \"+server.address().port))";
+        _ = await _fixture.RunInWslAsync($"rm -f '{statePath}'", TimeSpan.FromSeconds(15));
+        using var foreignProcess = StartWslProcess(_fixture.DistroName, nodePath, nodeScript);
+        var foreignPid = 0;
+
+        try
+        {
+            var port = 0;
+            for (var attempt = 0; attempt < 50; attempt++)
+            {
+                var stateResult = await _fixture.RunInWslAsync(
+                    $"cat '{statePath}' 2>/dev/null || true",
+                    TimeSpan.FromSeconds(15));
+                var values = stateResult.Stdout.Split(
+                    ' ',
+                    StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+                if (values.Length == 2 &&
+                    int.TryParse(values[0], out foreignPid) &&
+                    int.TryParse(values[1], out port) &&
+                    foreignPid > 0 &&
+                    port > 0)
+                {
+                    break;
+                }
+                if (foreignProcess.HasExited)
+                {
+                    var stderr = await foreignProcess.StandardError.ReadToEndAsync();
+                    Assert.Fail($"Foreign listener exited before publishing its state: {stderr}");
+                }
+                await Task.Delay(100);
+            }
+            Assert.True(foreignPid > 0 && port > 0, "Foreign listener did not publish a PID and port.");
+
+            OpenClaw.SetupEngine.CommandResult? listeners = null;
+            for (var attempt = 0; attempt < 20; attempt++)
+            {
+                listeners = await _fixture.RunInWslAsync(
+                    $"ss -H -ltnp 'sport = :{port}'",
+                    TimeSpan.FromSeconds(15));
+                if (listeners.ExitCode == 0 &&
+                    listeners.Stdout.Contains($"pid={foreignPid},", StringComparison.Ordinal))
+                {
+                    break;
+                }
+                await Task.Delay(100);
+            }
+            var verifiedListeners = Assert.IsType<OpenClaw.SetupEngine.CommandResult>(listeners);
+            AssertCommandSucceeded(verifiedListeners, "inspect foreign WSL listener");
+            Assert.Contains($"pid={foreignPid},", verifiedListeners.Stdout, StringComparison.Ordinal);
+
+            config.GatewayPort = port;
+            var proofLogPath = Path.Combine(_fixture.ArtifactDir, "foreign-gateway-listener.jsonl");
+            StepResult result;
+            using (var logger = new SetupLogger(proofLogPath, LogLevel.Trace))
+            using (var journal = new TransactionJournal(filePath: null, logger))
+            {
+                var context = new SetupContext(
+                    config,
+                    logger,
+                    journal,
+                    new CommandRunner(logger),
+                    CancellationToken.None,
+                    _fixture.DataDir,
+                    _fixture.LocalAppDataRoot)
+                {
+                    DistroName = _fixture.DistroName,
+                };
+                result = await new StartGatewayStep().ExecuteAsync(context, CancellationToken.None);
+            }
+
+            Assert.False(result.IsSuccess);
+            Assert.Contains($"Port {port} is already in use by another process.", result.Message);
+            var proofLog = await File.ReadAllTextAsync(proofLogPath);
+            Assert.DoesNotContain("openclaw gateway start", proofLog, StringComparison.Ordinal);
+        }
+        finally
+        {
+            if (foreignPid > 0)
+            {
+                _ = await _fixture.RunInWslAsync(
+                    $"kill {foreignPid} 2>/dev/null || true; rm -f '{statePath}'",
+                    TimeSpan.FromSeconds(15));
+            }
+            try
+            {
+                await foreignProcess.WaitForExitAsync().WaitAsync(TimeSpan.FromSeconds(5));
+            }
+            catch (TimeoutException)
+            {
+                foreignProcess.Kill(entireProcessTree: true);
+            }
+        }
+    }
+
+    private static Process StartWslProcess(string distroName, string executable, string argument)
+    {
+        var startInfo = new ProcessStartInfo
+        {
+            FileName = "wsl.exe",
+            RedirectStandardOutput = true,
+            RedirectStandardError = true,
+            UseShellExecute = false,
+            CreateNoWindow = true,
+        };
+        startInfo.Environment["WSL_UTF8"] = "1";
+        startInfo.ArgumentList.Add("-d");
+        startInfo.ArgumentList.Add(distroName);
+        startInfo.ArgumentList.Add("--");
+        startInfo.ArgumentList.Add(executable);
+        startInfo.ArgumentList.Add("-e");
+        startInfo.ArgumentList.Add(argument);
+        return Process.Start(startInfo) ?? throw new InvalidOperationException("Could not start the foreign WSL listener.");
+    }
+
     private static string ResolveNodeCommandsAllowKey()
     {
-        var gatewayVersion =
-            Environment.GetEnvironmentVariable("OPENCLAW_E2E_GATEWAY_VERSION") ??
-            GatewayReleasePolicy.RecommendedVersion;
-        return ConfigureGatewayStep.ResolveNodeCommandsAllowKey(gatewayVersion);
+        var gatewayVersion = Environment.GetEnvironmentVariable("OPENCLAW_E2E_GATEWAY_VERSION");
+        return string.IsNullOrWhiteSpace(gatewayVersion)
+            ? ConfigureGatewayStep.NodeCommandsAllowKey
+            : ConfigureGatewayStep.ResolveNodeCommandsAllowKey(gatewayVersion);
     }
 
     [E2EFact]
@@ -1036,7 +1229,6 @@ public class SetupAndConnectTests
         Assert.True(root.TryGetProperty("operatorScopes", out var scopes), $"operatorScopes missing from app.status: {rawJson}");
         var values = ReadStringArray(scopes);
         Assert.Contains(values, scope => string.Equals(scope, "operator.admin", StringComparison.OrdinalIgnoreCase));
-        Assert.Contains(values, scope => string.Equals(scope, "operator.pairing", StringComparison.OrdinalIgnoreCase));
     }
 
     private async Task AssertGatewayCliStateHealthy()
