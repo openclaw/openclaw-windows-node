@@ -174,8 +174,9 @@ public sealed class LlamaServerRuntimeService : ILocalAiRuntime
                 if (restarted.State is LocalAiRuntimeState.Failed or LocalAiRuntimeState.NotInstalled &&
                     restartInstall is not null)
                 {
+                    LocalAiResolvedInstall cleanupInstall = _install ?? restartInstall;
                     bool withdrawn = await WithdrawRouteAsync(
-                        restartInstall,
+                        cleanupInstall,
                         "after restart startup did not complete").ConfigureAwait(false);
                     if (!withdrawn)
                     {
@@ -184,6 +185,12 @@ public sealed class LlamaServerRuntimeService : ILocalAiRuntime
                                 "Local AI restart did not complete and gateway routing could not be safely disabled; the managed listener remains running.")
                             : PublishTerminalCleanupFailure(
                                 "Local AI restart did not complete and gateway routing could not be safely disabled.");
+                    }
+                    if (_managedProcess is { HasExited: false })
+                    {
+                        ++_generation;
+                        await DisposeManagedProcessAsync(CancellationToken.None).ConfigureAwait(false);
+                        return PublishTerminalCleanupFailure("Local AI restart did not complete.");
                     }
                 }
                 return restarted;
@@ -198,11 +205,8 @@ public sealed class LlamaServerRuntimeService : ILocalAiRuntime
             catch (OperationCanceledException)
             {
                 LocalAiResolvedInstall? canceledInstall = restartInstall ?? _install;
-                if (canceledInstall is not null &&
-                    (_managedProcess is not null || Snapshot.State != LocalAiRuntimeState.Stopped))
-                {
+                if (canceledInstall is not null)
                     await CompleteInterruptedRestartAsync(canceledInstall, "canceled").ConfigureAwait(false);
-                }
                 throw;
             }
         }
@@ -701,17 +705,9 @@ public sealed class LlamaServerRuntimeService : ILocalAiRuntime
         if (_install is null && !await TryLoadInstallAsync(cancellationToken).ConfigureAwait(false))
             return Snapshot;
 
-        LocalAiEndpointLifecycleResult quiesced;
-        try
-        {
-            quiesced = await _options.EndpointLifecycle
-                .QuiesceAsync(_install!, reason, cancellationToken)
-                .ConfigureAwait(false);
-        }
-        catch
-        {
-            throw;
-        }
+        LocalAiEndpointLifecycleResult quiesced = await _options.EndpointLifecycle
+            .QuiesceAsync(_install!, reason, cancellationToken)
+            .ConfigureAwait(false);
         if (!quiesced.Success)
         {
             if (reason == LocalAiQuiesceReason.EndpointCycle)
@@ -966,26 +962,42 @@ public sealed class LlamaServerRuntimeService : ILocalAiRuntime
                         }
                         catch (Exception ex)
                         {
-                            await WithdrawRouteAsync(
+                            bool withdrawn = await WithdrawRouteAsync(
                                     _install,
                                     "after automatic-restart withdrawal was interrupted")
                                 .ConfigureAwait(false);
-                            Publish(
-                                LocalAiRuntimeState.Failed,
-                                LocalAiOwnership.None,
-                                $"The Local AI gateway provider withdrawal failed after the router exited: {Sanitize(ex.Message)}");
+                            if (withdrawn)
+                            {
+                                Publish(
+                                    LocalAiRuntimeState.Failed,
+                                    LocalAiOwnership.None,
+                                    $"The Local AI gateway provider withdrawal failed after the router exited: {Sanitize(ex.Message)}");
+                            }
+                            else
+                            {
+                                PublishTerminalCleanupFailure(
+                                    $"The Local AI gateway provider withdrawal failed after the router exited: {Sanitize(ex.Message)} Terminal gateway routing could not be restored.");
+                            }
                             return;
                         }
                         if (!quiesced.Success)
                         {
-                            await WithdrawRouteAsync(
+                            bool withdrawn = await WithdrawRouteAsync(
                                     _install,
                                     "after automatic-restart withdrawal failed")
                                 .ConfigureAwait(false);
-                            Publish(
-                                LocalAiRuntimeState.Failed,
-                                LocalAiOwnership.None,
-                                quiesced.Detail ?? "The Local AI gateway provider could not be safely disabled after the router exited.");
+                            if (withdrawn)
+                            {
+                                Publish(
+                                    LocalAiRuntimeState.Failed,
+                                    LocalAiOwnership.None,
+                                    quiesced.Detail ?? "The Local AI gateway provider could not be safely disabled after the router exited.");
+                            }
+                            else
+                            {
+                                PublishTerminalCleanupFailure(
+                                    $"{quiesced.Detail ?? "The Local AI gateway provider could not be safely disabled after the router exited."} Terminal gateway routing could not be restored.");
+                            }
                             return;
                         }
                     }
