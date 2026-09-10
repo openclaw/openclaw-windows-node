@@ -541,6 +541,10 @@ public sealed class LlamaServerRuntimeService : ILocalAiRuntime
                         .PublishAsync(install, cancellationToken)
                         .ConfigureAwait(false);
                 }
+                catch (OperationCanceledException)
+                {
+                    throw;
+                }
                 catch (Exception ex)
                 {
                     await FailStartupAsync(

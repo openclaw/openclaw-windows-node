@@ -258,6 +258,51 @@ public sealed class LocalAiPortLifecycleTests
     }
 
     [Fact]
+    public async Task Refresh_EndpointChangePublishCancellationPreservesManagedProcess()
+    {
+        using var temp = new TempDirectory("local-ai-port-");
+        LocalAiPaths paths = await PrepareInstallAsync(temp);
+        using var cancellation = new CancellationTokenSource();
+        var events = new SynchronizedEventLog();
+        var platform = new FakePlatform();
+        var lifecycle = new FakeLifecycle(events)
+        {
+            PublishHandler = (_, _) =>
+            {
+                cancellation.Cancel();
+                return Task.FromCanceled<LocalAiEndpointLifecycleResult>(cancellation.Token);
+            },
+        };
+        var host = new FakeProcessHost(platform, events, selectedPort: 28_789);
+        await using var runtime = CreateRuntime(
+            paths,
+            host,
+            platform,
+            new FakeClient(events),
+            lifecycle);
+        lifecycle.PublishHandler = null;
+        LocalAiRuntimeSnapshot started = await runtime.EnsureStartedAsync();
+        Assert.Equal(LocalAiRuntimeState.Healthy, started.State);
+        events.Clear();
+        platform.Listeners[0] = platform.Listeners[0] with { Port = 28_790 };
+        lifecycle.PublishHandler = (_, _) =>
+        {
+            cancellation.Cancel();
+            return Task.FromCanceled<LocalAiEndpointLifecycleResult>(cancellation.Token);
+        };
+
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(
+            () => runtime.RefreshAsync(cancellation.Token));
+
+        Assert.False(host.Process!.HasExited);
+        Assert.Equal(LocalAiRuntimeState.Healthy, runtime.Snapshot.State);
+        Assert.Equal(
+            ["probe:28790", "quiesce:EndpointCycle", "publish:28790"],
+            events);
+        Assert.DoesNotContain("quiesce:Teardown", events);
+    }
+
+    [Fact]
     public async Task Refresh_QuiesceExceptionStopsManagedProcessAfterFallbackTeardown()
     {
         using var temp = new TempDirectory("local-ai-port-");
@@ -2155,6 +2200,8 @@ public sealed class LocalAiPortLifecycleTests
         public bool FailQuiesce { get; set; }
         public Exception? PublishException { get; set; }
         public Exception? QuiesceException { get; set; }
+        public Func<LocalAiResolvedInstall, CancellationToken, Task<LocalAiEndpointLifecycleResult>>?
+            PublishHandler { get; set; }
         public List<Uri?> QuiescedEndpoints { get; } = [];
         public Func<int, LocalAiQuiesceReason, CancellationToken, Task<LocalAiEndpointLifecycleResult>>?
             QuiesceHandler { get; set; }
@@ -2182,6 +2229,8 @@ public sealed class LocalAiPortLifecycleTests
             CancellationToken cancellationToken = default)
         {
             events.Add($"publish:{install.Endpoint!.Port}");
+            if (PublishHandler is not null)
+                return PublishHandler(install, cancellationToken);
             if (PublishException is not null)
                 return Task.FromException<LocalAiEndpointLifecycleResult>(PublishException);
             return Task.FromResult(FailPublish
