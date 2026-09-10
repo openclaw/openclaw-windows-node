@@ -155,7 +155,7 @@
     },
     {
       "name": "ComposerPicker",
-      "note": "Fluent ComboBox. A bordered control (`control` fill, `controlLine` hairline border, `sm`/ControlCornerRadius) showing the current value in `ink` with a right-aligned `muted` chevron (Segoe Fluent \\uE70D, previewed ~12px). 32px min height; horizontal padding tokens 3/2 approximate Fluent ComboBoxPadding. Used for the model, reasoning-effort, and session selectors in the composer; opens a flyout list of single-select (RadioMenuItem) options in-app. ComboBox MinWidth (64px) and the dropdown list are Reactor port notes. (Previously previewed as a borderless subtle picker; realigned to the Fluent ComboBox pattern the user asked for.)",
+      "note": "Subtle inline dropdown. A borderless, transparent picker showing the current value in `muted` secondary text with a trailing `muted` chevron (Segoe Fluent \\uE70D, previewed ~10px). 32px min height; horizontal padding token `2`, gap token `1`. Resting fill is transparent (SubtleFillColorTransparent); hover uses `subtleHover` (SubtleFillColorSecondary) and press uses `subtlePressed` (SubtleFillColorTertiary), so the picker stays quiet in the composer toolbar and never competes with the primary Send action. Used for the model, reasoning-effort, and session selectors; opens a flyout list of single-select (RadioMenuItem) options in-app. The chevron carries a small right/up offset (previewed 2,4,0,0) to sit tight against the value; the flyout list is a Reactor port note.",
       "props": {
         "label": "Model"
       },
@@ -170,22 +170,19 @@
         },
         "layout": {
           "mode": "horizontal",
-          "gap": "3",
+          "gap": "1",
           "padding": {
-            "left": "3",
+            "left": "2",
             "right": "2"
           },
           "align": "center",
-          "justify": "space-between",
           "height": 32,
           "width": "hug"
         },
         "appearance": {
           "fontFamily": "body",
-          "textStyle": "body",
-          "color": "ink",
-          "background": "control",
-          "borderColor": "controlLine",
+          "textStyle": "small",
+          "color": "muted",
           "radius": "sm"
         },
         "children": [
