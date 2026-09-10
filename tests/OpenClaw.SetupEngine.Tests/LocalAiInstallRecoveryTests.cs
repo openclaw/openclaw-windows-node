@@ -6,6 +6,7 @@ using System.Runtime.InteropServices;
 using System.Security.Cryptography;
 using OpenClaw.Connection.LocalAi;
 using OpenClaw.Shared.Inference.Catalog;
+using OpenClaw.TestSupport;
 
 namespace OpenClaw.SetupEngine.Tests;
 
@@ -36,7 +37,7 @@ public sealed class LocalAiInstallRecoveryTests
             return response;
         }));
 
-        var result = await new HuggingFaceModelInstaller(client).InstallAsync(
+        var result = await CreateModelInstaller(client, temp.Path).InstallAsync(
             temp.Path,
             component,
             model,
@@ -46,6 +47,7 @@ public sealed class LocalAiInstallRecoveryTests
         Assert.Equal("bytes=4-", observedRange?.ToString());
         Assert.Equal(modelPath, result.ModelPath);
         Assert.Equal(modelBytes, await File.ReadAllBytesAsync(modelPath));
+        Assert.Equal(modelBytes, await File.ReadAllBytesAsync(result.LegacyModelPath!));
         Assert.False(File.Exists(partialPath));
     }
 
@@ -64,7 +66,7 @@ public sealed class LocalAiInstallRecoveryTests
             Content = new ByteArrayContent(modelBytes),
         }));
 
-        await new HuggingFaceModelInstaller(client).InstallAsync(
+        await CreateModelInstaller(client, temp.Path).InstallAsync(
             temp.Path,
             component,
             model,
@@ -75,7 +77,7 @@ public sealed class LocalAiInstallRecoveryTests
     }
 
     [Fact]
-    public async Task ModelInstall_InvalidRangeDeletesUntrustedPartial()
+    public async Task ModelInstall_InvalidRangePreservesPreexistingPartial()
     {
         using var temp = new TempDirectory();
         byte[] modelBytes = "verified-model"u8.ToArray();
@@ -98,14 +100,14 @@ public sealed class LocalAiInstallRecoveryTests
         }));
 
         await Assert.ThrowsAsync<HuggingFaceModelInstallException>(() =>
-            new HuggingFaceModelInstaller(client).InstallAsync(
+            CreateModelInstaller(client, temp.Path).InstallAsync(
                 temp.Path,
                 component,
                 model,
                 progress: null,
                 CancellationToken.None));
 
-        Assert.False(File.Exists(partialPath));
+        Assert.Equal(modelBytes[..4], await File.ReadAllBytesAsync(partialPath));
     }
 
     [Fact]
@@ -136,7 +138,8 @@ public sealed class LocalAiInstallRecoveryTests
         }));
         var installer = new HuggingFaceModelInstaller(
             client,
-            (_, _) => Task.CompletedTask);
+            (_, _) => Task.CompletedTask,
+            () => CacheRoot(temp.Path));
 
         await Assert.ThrowsAsync<IOException>(() => installer.InstallAsync(
             temp.Path,
@@ -162,7 +165,7 @@ public sealed class LocalAiInstallRecoveryTests
         using var client = new HttpClient(new DelegateHandler(_ =>
             throw new InvalidOperationException("HTTP must not be used for a verified complete partial.")));
 
-        await new HuggingFaceModelInstaller(client).InstallAsync(
+        await CreateModelInstaller(client, temp.Path).InstallAsync(
             temp.Path,
             component,
             model,
@@ -171,6 +174,501 @@ public sealed class LocalAiInstallRecoveryTests
 
         Assert.Equal(modelBytes, await File.ReadAllBytesAsync(modelPath));
         Assert.False(File.Exists(partialPath));
+    }
+
+    [Fact]
+    public async Task ModelInstall_MismatchedCompletePartialIsNotPromotedAndDownloadsFresh()
+    {
+        using var temp = new TempDirectory();
+        byte[] modelBytes = "verified-model"u8.ToArray();
+        byte[] mismatched = Enumerable.Repeat((byte)'x', modelBytes.Length).ToArray();
+        LocalModelInfo model = CreateModel(modelBytes);
+        LocalAiComponentIdentity component = TestComponent();
+        (_, string partialPath) = ResolveModelPaths(temp.Path, component, model);
+        Directory.CreateDirectory(Path.GetDirectoryName(partialPath)!);
+        await File.WriteAllBytesAsync(partialPath, mismatched);
+        int requests = 0;
+        using var client = new HttpClient(new DelegateHandler(_ =>
+        {
+            requests++;
+            return new HttpResponseMessage(HttpStatusCode.OK)
+            {
+                Content = new ByteArrayContent(modelBytes),
+            };
+        }));
+
+        HuggingFaceModelInstallResult result = await CreateModelInstaller(client, temp.Path)
+            .InstallAsync(
+                temp.Path,
+                component,
+                model,
+                progress: null,
+                CancellationToken.None);
+
+        Assert.Equal(1, requests);
+        Assert.Equal(modelBytes, await File.ReadAllBytesAsync(result.ModelPath));
+        Assert.False(File.Exists(partialPath));
+    }
+
+    [Fact]
+    public async Task ModelInstall_ReusesVerifiedSnapshotWithoutHttp()
+    {
+        using var temp = new TempDirectory();
+        byte[] modelBytes = "verified-model"u8.ToArray();
+        LocalModelInfo model = CreateModel(modelBytes);
+        LocalAiComponentIdentity component = TestComponent();
+        (string modelPath, _) = ResolveModelPaths(temp.Path, component, model);
+        Directory.CreateDirectory(Path.GetDirectoryName(modelPath)!);
+        await File.WriteAllBytesAsync(modelPath, modelBytes);
+        using var client = new HttpClient(new DelegateHandler(_ =>
+            throw new InvalidOperationException("HTTP must not be used for a verified snapshot.")));
+
+        HuggingFaceModelInstallResult result = await CreateModelInstaller(client, temp.Path)
+            .InstallAsync(temp.Path, component, model, progress: null, CancellationToken.None);
+
+        Assert.Equal(HuggingFaceModelInstallDisposition.ReusedVerified, result.Disposition);
+        Assert.False(result.CreatedThisRun);
+        Assert.Equal(modelBytes, await File.ReadAllBytesAsync(modelPath));
+        Assert.Equal(modelBytes, await File.ReadAllBytesAsync(result.LegacyModelPath!));
+    }
+
+    [Fact]
+    public async Task ModelInstall_ReusesVerifiedBlobByCopyingFromOpenHandle()
+    {
+        using var temp = new TempDirectory();
+        byte[] modelBytes = "verified-blob-model"u8.ToArray();
+        LocalModelInfo model = CreateModel(modelBytes);
+        LocalAiComponentIdentity component = TestComponent();
+        string cacheRoot = CacheRoot(temp.Path);
+        HuggingFaceRevisionSource source = Assert.IsType<HuggingFaceRevisionSource>(
+            model.Weights.Source);
+        Assert.True(HuggingFaceHubCache.TryGetBlobPath(
+            cacheRoot,
+            source.RepositoryId,
+            model.Weights.Sha256,
+            out string blobPath,
+            out string error), error);
+        Directory.CreateDirectory(Path.GetDirectoryName(blobPath)!);
+        await File.WriteAllBytesAsync(blobPath, modelBytes);
+        using var client = new HttpClient(new DelegateHandler(_ =>
+            throw new InvalidOperationException("HTTP must not be used for a verified blob.")));
+
+        HuggingFaceModelInstallResult result = await CreateModelInstaller(client, temp.Path)
+            .InstallAsync(temp.Path, component, model, progress: null, CancellationToken.None);
+
+        Assert.Equal(HuggingFaceModelInstallDisposition.ReusedVerified, result.Disposition);
+        Assert.True(result.CreatedThisRun);
+        Assert.Equal(modelBytes, await File.ReadAllBytesAsync(result.ModelPath));
+        Assert.Equal(modelBytes, await File.ReadAllBytesAsync(blobPath));
+    }
+
+    [SetupCrossVolumeFact]
+    public async Task ModelInstall_MaterializesLegacyCompatibilityCopyAcrossConfiguredVolume()
+    {
+        string configuredRoot = Environment.GetEnvironmentVariable("OPENCLAW_TEST_HF_CACHE_ROOT")!;
+        using var temp = new TempDirectory();
+        string cacheRoot = Path.Combine(
+            Path.GetFullPath(configuredRoot),
+            $"openclaw-model-install-{Guid.NewGuid():N}");
+        Assert.False(string.Equals(
+            Path.GetPathRoot(temp.Path),
+            Path.GetPathRoot(cacheRoot),
+            StringComparison.OrdinalIgnoreCase));
+        byte[] modelBytes = "verified-cross-volume-model"u8.ToArray();
+        LocalModelInfo model = CreateModel(modelBytes);
+        LocalAiComponentIdentity component = TestComponent();
+        using var client = new HttpClient(new DelegateHandler(_ =>
+            new HttpResponseMessage(HttpStatusCode.OK)
+            {
+                Content = new ByteArrayContent(modelBytes),
+            }));
+        var installer = new HuggingFaceModelInstaller(
+            client,
+            (_, _) => Task.CompletedTask,
+            () => cacheRoot);
+        try
+        {
+            HuggingFaceModelInstallResult result = await installer.InstallAsync(
+                temp.Path,
+                component,
+                model,
+                progress: null,
+                CancellationToken.None);
+
+            Assert.Equal(modelBytes, await File.ReadAllBytesAsync(result.ModelPath));
+            Assert.Equal(modelBytes, await File.ReadAllBytesAsync(result.LegacyModelPath!));
+            Assert.NotEqual(
+                Path.GetPathRoot(result.ModelPath),
+                Path.GetPathRoot(result.LegacyModelPath));
+        }
+        finally
+        {
+            if (Directory.Exists(cacheRoot))
+                Directory.Delete(cacheRoot, recursive: true);
+        }
+    }
+
+    [Fact]
+    public async Task ModelInstall_RejectsMismatchedDestinationWithoutChangingIt()
+    {
+        using var temp = new TempDirectory();
+        byte[] modelBytes = "verified-model"u8.ToArray();
+        byte[] mismatched = Enumerable.Repeat((byte)'x', modelBytes.Length).ToArray();
+        LocalModelInfo model = CreateModel(modelBytes);
+        LocalAiComponentIdentity component = TestComponent();
+        (string modelPath, _) = ResolveModelPaths(temp.Path, component, model);
+        Directory.CreateDirectory(Path.GetDirectoryName(modelPath)!);
+        await File.WriteAllBytesAsync(modelPath, mismatched);
+        using var client = new HttpClient(new DelegateHandler(_ =>
+            throw new InvalidOperationException("HTTP must not replace a mismatched shared artifact.")));
+
+        HuggingFaceModelInstallException error = await Assert.ThrowsAsync<HuggingFaceModelInstallException>(
+            () => CreateModelInstaller(client, temp.Path).InstallAsync(
+                temp.Path,
+                component,
+                model,
+                progress: null,
+                CancellationToken.None));
+
+        Assert.Contains("does not match", error.Message, StringComparison.Ordinal);
+        Assert.Equal(mismatched, await File.ReadAllBytesAsync(modelPath));
+    }
+
+    [Fact]
+    public async Task ModelInstall_ReplacesMismatchedAppOwnedCompatibilityCopy()
+    {
+        using var temp = new TempDirectory();
+        byte[] modelBytes = "verified-model"u8.ToArray();
+        byte[] mismatched = Enumerable.Repeat((byte)'x', modelBytes.Length).ToArray();
+        LocalModelInfo model = CreateModel(modelBytes);
+        LocalAiComponentIdentity component = TestComponent();
+        (string modelPath, _) = ResolveModelPaths(temp.Path, component, model);
+        Directory.CreateDirectory(Path.GetDirectoryName(modelPath)!);
+        await File.WriteAllBytesAsync(modelPath, modelBytes);
+        Assert.True(LocalAiPathPolicy.TryResolve(
+            temp.Path,
+            component,
+            out LocalAiSetupPaths setupPaths,
+            out string error), error);
+        var source = Assert.IsType<HuggingFaceRevisionSource>(model.Weights.Source);
+        Assert.True(LocalAiPathPolicy.TryGetModelPaths(
+            setupPaths,
+            source.RepositoryId,
+            source.RevisionSha,
+            model.Weights.RelativePath,
+            out string legacyModelPath,
+            out _,
+            out error), error);
+        Directory.CreateDirectory(Path.GetDirectoryName(legacyModelPath)!);
+        await File.WriteAllBytesAsync(legacyModelPath, mismatched);
+        using var client = new HttpClient(new DelegateHandler(_ =>
+            throw new InvalidOperationException("HTTP must not run when the cache artifact is verified.")));
+
+        HuggingFaceModelInstallResult result = await CreateModelInstaller(client, temp.Path)
+            .InstallAsync(temp.Path, component, model, progress: null, CancellationToken.None);
+
+        Assert.Equal(modelBytes, await File.ReadAllBytesAsync(legacyModelPath));
+        Assert.Equal(legacyModelPath, result.LegacyModelPath);
+        Assert.True(result.LegacyCreatedThisRun);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task ModelInstall_RejectsCacheRootInsideManagedInstallTree(bool useDescendant)
+    {
+        using var temp = new TempDirectory();
+        byte[] modelBytes = "verified-model"u8.ToArray();
+        LocalModelInfo model = CreateModel(modelBytes);
+        LocalAiComponentIdentity component = TestComponent();
+        string managedRoot = new LocalAiPaths(temp.Path).RootDirectory;
+        string cacheRoot = useDescendant
+            ? Path.Combine(managedRoot, "shared-hf-cache")
+            : managedRoot;
+        using var client = new HttpClient(new DelegateHandler(_ =>
+            throw new InvalidOperationException("HTTP must not run for an unsafe cache root.")));
+        var installer = new HuggingFaceModelInstaller(
+            client,
+            (_, _) => Task.CompletedTask,
+            () => cacheRoot);
+
+        HuggingFaceModelInstallException error =
+            await Assert.ThrowsAsync<HuggingFaceModelInstallException>(() =>
+                installer.InstallAsync(
+                    temp.Path,
+                    component,
+                    model,
+                    progress: null,
+                    CancellationToken.None));
+
+        Assert.Contains("must be outside", error.Message, StringComparison.Ordinal);
+        Assert.False(Directory.Exists(cacheRoot));
+    }
+
+    [Fact]
+    public async Task ModelInstall_RejectsCacheRootAliasToManagedInstallTree()
+    {
+        using var temp = new TempDirectory();
+        byte[] modelBytes = "verified-model"u8.ToArray();
+        LocalModelInfo model = CreateModel(modelBytes);
+        LocalAiComponentIdentity component = TestComponent();
+        string managedRoot = new LocalAiPaths(temp.Path).RootDirectory;
+        Directory.CreateDirectory(managedRoot);
+        string cacheAlias = Path.Combine(temp.Path, "hf-cache-alias");
+        CreateJunction(cacheAlias, managedRoot);
+        using var client = new HttpClient(new DelegateHandler(_ =>
+            throw new InvalidOperationException("HTTP must not run for an aliased cache root.")));
+        var installer = new HuggingFaceModelInstaller(
+            client,
+            (_, _) => Task.CompletedTask,
+            () => cacheAlias);
+        try
+        {
+            HuggingFaceModelInstallException error =
+                await Assert.ThrowsAsync<HuggingFaceModelInstallException>(() =>
+                    installer.InstallAsync(
+                        temp.Path,
+                        component,
+                        model,
+                        progress: null,
+                        CancellationToken.None));
+
+            Assert.Contains("must be outside", error.Message, StringComparison.Ordinal);
+            Assert.Empty(Directory.EnumerateFileSystemEntries(managedRoot));
+        }
+        finally
+        {
+            if (Directory.Exists(cacheAlias))
+                Directory.Delete(cacheAlias);
+        }
+    }
+
+    internal sealed class SetupCrossVolumeFactAttribute : FactAttribute
+    {
+        public SetupCrossVolumeFactAttribute()
+        {
+            if (string.IsNullOrWhiteSpace(
+                    Environment.GetEnvironmentVariable("OPENCLAW_TEST_HF_CACHE_ROOT")))
+            {
+                Skip = "Set OPENCLAW_TEST_HF_CACHE_ROOT to a directory on a distinct volume.";
+            }
+        }
+    }
+
+    [Fact]
+    public async Task ModelInstall_RollbackPreservesVerifiedSharedCacheArtifact()
+    {
+        using var temp = new TempDirectory();
+        byte[] modelBytes = "verified-model"u8.ToArray();
+        LocalModelInfo model = CreateModel(modelBytes);
+        LocalAiComponentIdentity component = TestComponent();
+        using var client = new HttpClient(new DelegateHandler(_ =>
+            new HttpResponseMessage(HttpStatusCode.OK)
+            {
+                Content = new ByteArrayContent(modelBytes),
+            }));
+        HuggingFaceModelInstaller installer = CreateModelInstaller(client, temp.Path);
+        HuggingFaceModelInstallResult result = await installer.InstallAsync(
+            temp.Path,
+            component,
+            model,
+            progress: null,
+            CancellationToken.None);
+
+        installer.RemoveInstalledModel(temp.Path, result);
+
+        Assert.Equal(modelBytes, await File.ReadAllBytesAsync(result.ModelPath));
+        Assert.False(File.Exists(result.LegacyModelPath));
+    }
+
+    [Fact]
+    public async Task ModelInstall_ConcurrentWriterFailsClosedAndWinnerRemainsVerified()
+    {
+        using var temp = new TempDirectory();
+        byte[] modelBytes = "verified-concurrent-model"u8.ToArray();
+        LocalModelInfo model = CreateModel(modelBytes);
+        LocalAiComponentIdentity component = TestComponent();
+        var entered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        using var firstClient = new HttpClient(new AsyncDelegateHandler(_ =>
+            Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK)
+            {
+                Content = new StreamContent(
+                    new BlockingReadStream(modelBytes, entered, release)),
+            })));
+        using var secondClient = new HttpClient(new DelegateHandler(_ =>
+            throw new InvalidOperationException("The losing writer must not start another download.")));
+        HuggingFaceModelInstaller firstInstaller = CreateModelInstaller(firstClient, temp.Path);
+        HuggingFaceModelInstaller secondInstaller = CreateModelInstaller(secondClient, temp.Path);
+
+        Task<HuggingFaceModelInstallResult> winner = firstInstaller.InstallAsync(
+            temp.Path,
+            component,
+            model,
+            progress: null,
+            CancellationToken.None);
+        await entered.Task.WaitAsync(TimeSpan.FromSeconds(10));
+
+        await Assert.ThrowsAsync<IOException>(() => secondInstaller.InstallAsync(
+            temp.Path,
+            component,
+            model,
+            progress: null,
+            CancellationToken.None));
+
+        release.SetResult();
+        HuggingFaceModelInstallResult result = await winner;
+        Assert.Equal(modelBytes, await File.ReadAllBytesAsync(result.ModelPath));
+    }
+
+    [Fact]
+    public async Task ModelInstall_PromotionRaceAcceptsValidWinnerAndPreservesPreexistingPartial()
+    {
+        using var temp = new TempDirectory();
+        byte[] modelBytes = "verified-promotion-winner"u8.ToArray();
+        LocalModelInfo model = CreateModel(modelBytes);
+        LocalAiComponentIdentity component = TestComponent();
+        (string modelPath, string partialPath) = ResolveModelPaths(temp.Path, component, model);
+        byte[] prefix = modelBytes[..5];
+        Directory.CreateDirectory(Path.GetDirectoryName(partialPath)!);
+        await File.WriteAllBytesAsync(partialPath, prefix);
+        using var client = new HttpClient(new DelegateHandler(_ =>
+        {
+            var response = new HttpResponseMessage(HttpStatusCode.PartialContent)
+            {
+                Content = new StreamContent(new EofCallbackStream(
+                    modelBytes[prefix.Length..],
+                    () => File.WriteAllBytes(modelPath, modelBytes))),
+            };
+            response.Content.Headers.ContentRange = new ContentRangeHeaderValue(
+                prefix.Length,
+                modelBytes.Length - 1,
+                modelBytes.Length);
+            return response;
+        }));
+
+        HuggingFaceModelInstallResult result = await CreateModelInstaller(client, temp.Path)
+            .InstallAsync(temp.Path, component, model, progress: null, CancellationToken.None);
+
+        Assert.Equal(HuggingFaceModelInstallDisposition.ReusedVerified, result.Disposition);
+        Assert.Equal(modelBytes, await File.ReadAllBytesAsync(modelPath));
+        Assert.Equal(modelBytes, await File.ReadAllBytesAsync(partialPath));
+    }
+
+    [Fact]
+    public async Task ModelInstall_PromotionRaceWithoutValidWinnerPreservesPreexistingPartial()
+    {
+        using var temp = new TempDirectory();
+        byte[] modelBytes = "verified-promotion-failure"u8.ToArray();
+        byte[] mismatched = Enumerable.Repeat((byte)'x', modelBytes.Length).ToArray();
+        LocalModelInfo model = CreateModel(modelBytes);
+        LocalAiComponentIdentity component = TestComponent();
+        (string modelPath, string partialPath) = ResolveModelPaths(temp.Path, component, model);
+        byte[] prefix = modelBytes[..5];
+        Directory.CreateDirectory(Path.GetDirectoryName(partialPath)!);
+        await File.WriteAllBytesAsync(partialPath, prefix);
+        using var client = new HttpClient(new DelegateHandler(_ =>
+        {
+            var response = new HttpResponseMessage(HttpStatusCode.PartialContent)
+            {
+                Content = new StreamContent(new EofCallbackStream(
+                    modelBytes[prefix.Length..],
+                    () => File.WriteAllBytes(modelPath, mismatched))),
+            };
+            response.Content.Headers.ContentRange = new ContentRangeHeaderValue(
+                prefix.Length,
+                modelBytes.Length - 1,
+                modelBytes.Length);
+            return response;
+        }));
+
+        await Assert.ThrowsAsync<HuggingFaceModelInstallException>(() =>
+            CreateModelInstaller(client, temp.Path).InstallAsync(
+                temp.Path,
+                component,
+                model,
+                progress: null,
+                CancellationToken.None));
+
+        Assert.Equal(modelBytes, await File.ReadAllBytesAsync(partialPath));
+        Assert.Equal(mismatched, await File.ReadAllBytesAsync(modelPath));
+    }
+
+    [Fact]
+    public async Task ModelInstall_ResumedDigestMismatchPreservesPreexistingPartial()
+    {
+        using var temp = new TempDirectory();
+        byte[] modelBytes = "verified-resume-digest"u8.ToArray();
+        LocalModelInfo model = CreateModel(modelBytes);
+        LocalAiComponentIdentity component = TestComponent();
+        (_, string partialPath) = ResolveModelPaths(temp.Path, component, model);
+        byte[] prefix = modelBytes[..5];
+        byte[] badRemainder = Enumerable.Repeat(
+            (byte)'x',
+            modelBytes.Length - prefix.Length).ToArray();
+        Directory.CreateDirectory(Path.GetDirectoryName(partialPath)!);
+        await File.WriteAllBytesAsync(partialPath, prefix);
+        using var client = new HttpClient(new DelegateHandler(_ =>
+        {
+            var response = new HttpResponseMessage(HttpStatusCode.PartialContent)
+            {
+                Content = new ByteArrayContent(badRemainder),
+            };
+            response.Content.Headers.ContentRange = new ContentRangeHeaderValue(
+                prefix.Length,
+                modelBytes.Length - 1,
+                modelBytes.Length);
+            return response;
+        }));
+
+        await Assert.ThrowsAsync<HuggingFaceModelInstallException>(() =>
+            CreateModelInstaller(client, temp.Path).InstallAsync(
+                temp.Path,
+                component,
+                model,
+                progress: null,
+                CancellationToken.None));
+
+        byte[] preserved = await File.ReadAllBytesAsync(partialPath);
+        Assert.Equal(modelBytes.Length, preserved.Length);
+        Assert.Equal(prefix, preserved[..prefix.Length]);
+    }
+
+    [Fact]
+    public async Task ModelInstall_OversizedResponsePreservesPreexistingPartial()
+    {
+        using var temp = new TempDirectory();
+        byte[] modelBytes = "verified-oversized-response"u8.ToArray();
+        LocalModelInfo model = CreateModel(modelBytes);
+        LocalAiComponentIdentity component = TestComponent();
+        (_, string partialPath) = ResolveModelPaths(temp.Path, component, model);
+        byte[] prefix = modelBytes[..5];
+        byte[] oversized = [.. modelBytes[prefix.Length..], (byte)'!'];
+        Directory.CreateDirectory(Path.GetDirectoryName(partialPath)!);
+        await File.WriteAllBytesAsync(partialPath, prefix);
+        using var client = new HttpClient(new DelegateHandler(_ =>
+        {
+            var response = new HttpResponseMessage(HttpStatusCode.PartialContent)
+            {
+                Content = new StreamContent(new MemoryStream(oversized)),
+            };
+            response.Content.Headers.ContentRange = new ContentRangeHeaderValue(
+                prefix.Length,
+                modelBytes.Length - 1,
+                modelBytes.Length);
+            return response;
+        }));
+
+        await Assert.ThrowsAsync<HuggingFaceModelInstallException>(() =>
+            CreateModelInstaller(client, temp.Path).InstallAsync(
+                temp.Path,
+                component,
+                model,
+                progress: null,
+                CancellationToken.None));
+
+        byte[] preserved = await File.ReadAllBytesAsync(partialPath);
+        Assert.Equal(prefix, preserved);
     }
 
     [Fact]
@@ -491,6 +989,79 @@ public sealed class LocalAiInstallRecoveryTests
     }
 
     [Fact]
+    public async Task Reconciler_ExplicitlyMigratesAndAdoptsVerifiedSchemaFourReceipt()
+    {
+        using var temp = new TempDirectory();
+        using var environment = new EnvironmentScope(
+            "HF_HUB_CACHE",
+            CacheRoot(temp.Path));
+        byte[] modelBytes = "verified-reconcile-model"u8.ToArray();
+        byte[] runtimeZip = CreateZip(("llama-server.exe", "server"u8.ToArray()));
+        byte[] dependencyZip = CreateZip(("dependency.dll", "dependency"u8.ToArray()));
+        LocalModelInfo model = CreateModel(modelBytes);
+        LlamaRuntimeVariant runtime = CreateRuntime(runtimeZip, dependencyZip);
+        var profile = new LocalInferenceRunProfile(
+            "test-profile",
+            128,
+            KvCachePrecision.F16,
+            KvCachePrecision.F16,
+            KvCachePrecision.F16,
+            KvCachePrecision.F16,
+            runtimeWorkspaceBytes: 1);
+        var plan = new LocalInferencePlan(
+            runtime,
+            model,
+            profile,
+            LocalInferenceModelSelectionOrigin.Default);
+        var paths = new LocalAiPaths(temp.Path);
+        LocalAiInstallManifest manifest = CreateManifest(temp.Path, plan, "GPU-0");
+        string legacyModelPath = paths.ResolveContainedPath(manifest.ModelPath, "modelPath");
+        Directory.CreateDirectory(Path.GetDirectoryName(legacyModelPath)!);
+        await File.WriteAllBytesAsync(legacyModelPath, modelBytes);
+        await new LocalAiManifestStore(paths).SaveAsync(manifest);
+
+        LocalAiReconcileResult result = await new LocalAiInstallReconciler(
+                new ValidRuntimeInspector(),
+                new LocalAiModelFileVerifier())
+            .ReconcileAsync(temp.Path, plan, "GPU-0", CancellationToken.None);
+
+        LocalAiResolvedInstall resolved = Assert.IsType<LocalAiResolvedInstall>(
+            result.ResolvedInstall);
+        Assert.Equal(LocalAiInstallManifest.HubCacheReceiptSchemaVersion, resolved.Manifest.SchemaVersion);
+        Assert.Equal(resolved.Manifest.CachedModelPath, resolved.ModelPath);
+        Assert.Equal(modelBytes, await File.ReadAllBytesAsync(resolved.ModelPath));
+        Assert.Equal(modelBytes, await File.ReadAllBytesAsync(legacyModelPath));
+    }
+
+    [Fact]
+    public async Task Reconciler_RejectsMigrationCacheRootInsideManagedInstallTree()
+    {
+        using var temp = new TempDirectory();
+        LocalInferencePlan plan = CatalogPlan();
+        const string gpuId = "GPU-0";
+        var paths = new LocalAiPaths(temp.Path);
+        string cacheRoot = Path.Combine(paths.RootDirectory, "shared-hf-cache");
+        using var environment = new EnvironmentScope("HF_HUB_CACHE", cacheRoot);
+        var store = new LocalAiManifestStore(paths);
+        await store.SaveAsync(CreateManifest(temp.Path, plan, gpuId));
+        byte[] original = await File.ReadAllBytesAsync(paths.ManifestPath);
+        var reconciler = new LocalAiInstallReconciler(
+            new ValidRuntimeInspector(),
+            new AcceptingModelVerifier());
+
+        InvalidDataException error = await Assert.ThrowsAsync<InvalidDataException>(() =>
+            reconciler.ReconcileAsync(
+                temp.Path,
+                plan,
+                gpuId,
+                CancellationToken.None));
+
+        Assert.Contains("must be outside", error.Message, StringComparison.Ordinal);
+        Assert.Equal(original, await File.ReadAllBytesAsync(paths.ManifestPath));
+        Assert.False(Directory.Exists(cacheRoot));
+    }
+
+    [Fact]
     public async Task Reconciler_MigratesLegacyCudaPrefixedUuidSelector()
     {
         using var temp = new TempDirectory();
@@ -540,9 +1111,12 @@ public sealed class LocalAiInstallRecoveryTests
     {
         using var temp = new TempDirectory();
         string root = new LocalAiPaths(temp.Path).RootDirectory;
+        string sharedCacheModel = Path.Combine(temp.Path, "hf-cache", "models--owner--repo", "snapshots", new string('a', 40), "model.gguf");
         Directory.CreateDirectory(Path.Combine(root, "engines", "runtime"));
+        Directory.CreateDirectory(Path.GetDirectoryName(sharedCacheModel)!);
         await File.WriteAllTextAsync(Path.Combine(root, "state.json"), "corrupt but app-owned");
         await File.WriteAllTextAsync(Path.Combine(root, "engines", "runtime", "file.bin"), "data");
+        await File.WriteAllTextAsync(sharedCacheModel, "shared");
         SetupContext context = CreateContext(temp.Path, confirmDestructive: true);
 
         PipelineResult result = await new SetupPipeline([new PersistLocalAiManifestStep()])
@@ -550,6 +1124,7 @@ public sealed class LocalAiInstallRecoveryTests
 
         Assert.Equal(PipelineOutcome.Success, result.Outcome);
         Assert.False(Directory.Exists(root));
+        Assert.Equal("shared", await File.ReadAllTextAsync(sharedCacheModel));
     }
 
     [Fact]
@@ -741,21 +1316,24 @@ public sealed class LocalAiInstallRecoveryTests
         LocalModelInfo model)
     {
         var source = Assert.IsType<HuggingFaceRevisionSource>(model.Weights.Source);
-        Assert.True(LocalAiPathPolicy.TryResolve(
-            localDataDirectory,
-            component,
-            out LocalAiSetupPaths paths,
-            out string error), error);
-        Assert.True(LocalAiPathPolicy.TryGetModelPaths(
-            paths,
+        Assert.True(HuggingFaceHubCache.TryGetSnapshotPaths(
+            CacheRoot(localDataDirectory),
             source.RepositoryId,
             source.RevisionSha,
             model.Weights.RelativePath,
             out string modelPath,
             out string partialPath,
-            out error), error);
+            out string error), error);
         return (modelPath, partialPath);
     }
+
+    private static HuggingFaceModelInstaller CreateModelInstaller(
+        HttpClient client,
+        string localDataDirectory) =>
+        new(client, Task.Delay, () => CacheRoot(localDataDirectory));
+
+    private static string CacheRoot(string localDataDirectory) =>
+        Path.Combine(localDataDirectory, "hf-cache");
 
     private static LocalAiComponentIdentity TestComponent() =>
         new("llama-server", "v1", "win-x64");
@@ -815,6 +1393,72 @@ public sealed class LocalAiInstallRecoveryTests
             CancellationToken cancellationToken) => Task.FromResult(handler(request));
     }
 
+    private sealed class AsyncDelegateHandler(
+        Func<HttpRequestMessage, Task<HttpResponseMessage>> handler) : HttpMessageHandler
+    {
+        protected override Task<HttpResponseMessage> SendAsync(
+            HttpRequestMessage request,
+            CancellationToken cancellationToken) => handler(request);
+    }
+
+    private sealed class BlockingReadStream(
+        byte[] bytes,
+        TaskCompletionSource entered,
+        TaskCompletionSource release) : MemoryStream(bytes, writable: false)
+    {
+        private bool _blocked;
+
+        public override async ValueTask<int> ReadAsync(
+            Memory<byte> buffer,
+            CancellationToken cancellationToken = default)
+        {
+            if (!_blocked)
+            {
+                _blocked = true;
+                entered.SetResult();
+                await release.Task.WaitAsync(cancellationToken);
+            }
+            return await base.ReadAsync(buffer, cancellationToken);
+        }
+    }
+
+    private sealed class EofCallbackStream(byte[] bytes, Action callback)
+        : MemoryStream(bytes, writable: false)
+    {
+        private bool _called;
+
+        public override int Read(byte[] buffer, int offset, int count)
+        {
+            int read = base.Read(buffer, offset, count);
+            InvokeOnEof(read);
+            return read;
+        }
+
+        public override int Read(Span<byte> buffer)
+        {
+            int read = base.Read(buffer);
+            InvokeOnEof(read);
+            return read;
+        }
+
+        public override async ValueTask<int> ReadAsync(
+            Memory<byte> buffer,
+            CancellationToken cancellationToken = default)
+        {
+            int read = await base.ReadAsync(buffer, cancellationToken);
+            InvokeOnEof(read);
+            return read;
+        }
+
+        private void InvokeOnEof(int read)
+        {
+            if (read != 0 || _called)
+                return;
+            _called = true;
+            callback();
+        }
+    }
+
     private sealed class ThrowAfterPrefixStream(byte[] bytes, int prefixLength) : Stream
     {
         private int _position;
@@ -864,7 +1508,7 @@ public sealed class LocalAiInstallRecoveryTests
     private sealed class AcceptingModelVerifier : ILocalAiModelFileVerifier
     {
         public Task<bool> VerifyAsync(
-            string path,
+            LocalAiResolvedInstall install,
             PinnedArtifact artifact,
             CancellationToken cancellationToken) => Task.FromResult(true);
     }

@@ -14,16 +14,37 @@ internal sealed record LocalAiReconcileResult(
 
 internal interface ILocalAiModelFileVerifier
 {
-    Task<bool> VerifyAsync(string path, PinnedArtifact artifact, CancellationToken cancellationToken);
+    Task<bool> VerifyAsync(
+        LocalAiResolvedInstall install,
+        PinnedArtifact artifact,
+        CancellationToken cancellationToken);
 }
 
 internal sealed class LocalAiModelFileVerifier : ILocalAiModelFileVerifier
 {
-    public Task<bool> VerifyAsync(
-        string path,
+    public async Task<bool> VerifyAsync(
+        LocalAiResolvedInstall install,
         PinnedArtifact artifact,
-        CancellationToken cancellationToken) =>
-        HuggingFaceModelInstaller.VerifyFileAsync(path, artifact, cancellationToken);
+        CancellationToken cancellationToken)
+    {
+        if (install.Manifest.SchemaVersion != LocalAiInstallManifest.HubCacheReceiptSchemaVersion)
+        {
+            return await HuggingFaceModelInstaller
+                .VerifyFileAsync(install.ModelPath, artifact, cancellationToken)
+                .ConfigureAwait(false);
+        }
+
+        await using FileStream? verified =
+            await HuggingFaceHubCache.TryOpenVerifiedCacheFileAsync(
+                    install.Manifest.ModelCacheRoot!,
+                    install.ModelPath,
+                    artifact.SizeBytes,
+                    artifact.Sha256,
+                    progress: null,
+                    cancellationToken)
+                .ConfigureAwait(false);
+        return verified is not null;
+    }
 }
 
 /// <summary>
@@ -35,25 +56,32 @@ internal sealed class LocalAiInstallReconciler
 {
     private readonly ILlamaRuntimeInspector _runtimeInspector;
     private readonly ILocalAiModelFileVerifier _modelVerifier;
+    private readonly Func<string> _cacheRootResolver;
 
     public LocalAiInstallReconciler()
-        : this(new WindowsLlamaRuntimeInspector(), new LocalAiModelFileVerifier())
+        : this(
+            new WindowsLlamaRuntimeInspector(),
+            new LocalAiModelFileVerifier(),
+            HuggingFaceHubCache.ResolveCacheRoot)
     {
     }
 
     internal LocalAiInstallReconciler(
         ILlamaRuntimeInspector runtimeInspector,
-        ILocalAiModelFileVerifier modelVerifier)
+        ILocalAiModelFileVerifier modelVerifier,
+        Func<string>? cacheRootResolver = null)
     {
         _runtimeInspector = runtimeInspector ?? throw new ArgumentNullException(nameof(runtimeInspector));
         _modelVerifier = modelVerifier ?? throw new ArgumentNullException(nameof(modelVerifier));
+        _cacheRootResolver = cacheRootResolver ?? HuggingFaceHubCache.ResolveCacheRoot;
     }
 
     public async Task<LocalAiReconcileResult> ReconcileAsync(
         string localDataDirectory,
         LocalInferencePlan plan,
         string selectedGpuId,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        IProgress<LocalAiModelMigrationProgress>? migrationProgress = null)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(localDataDirectory);
         ArgumentNullException.ThrowIfNull(plan);
@@ -66,11 +94,30 @@ internal sealed class LocalAiInstallReconciler
             .ConfigureAwait(false);
         if (install is null)
             return LocalAiReconcileResult.NotInstalled;
+        ValidateRecipeMatch(install, plan, selectedGpuId, localDataDirectory);
+        if (install.Manifest.SchemaVersion == LocalAiInstallManifest.CurrentSchemaVersion)
+        {
+            string cacheRoot = _cacheRootResolver();
+            if (!HuggingFaceModelInstaller.TryValidateCacheRootOwnershipBoundary(
+                    localDataDirectory,
+                    cacheRoot,
+                    out string cacheRootError))
+            {
+                throw new InvalidDataException(cacheRootError);
+            }
+
+            var migrationStore = new LocalAiManifestStore(paths, () => cacheRoot);
+            install = await migrationStore
+                .MigrateLegacyModelToHubCacheAsync(migrationProgress, cancellationToken)
+                .ConfigureAwait(false)
+                ?? throw new InvalidDataException(
+                    "The Local AI installation manifest disappeared during cache migration.");
+            ValidateRecipeMatch(install, plan, selectedGpuId, localDataDirectory);
+        }
 
         bool migrateLegacyGpuId =
             !string.Equals(install.Manifest.SelectedGpuId, selectedGpuId, StringComparison.Ordinal) &&
             GpuIdsMatch(install.Manifest.SelectedGpuId, selectedGpuId);
-        ValidateRecipeMatch(install, plan, selectedGpuId, localDataDirectory);
 
         LlamaRuntimeInspection inspection = await _runtimeInspector
             .InspectAsync(Path.GetDirectoryName(install.ExecutablePath)!, cancellationToken)
@@ -82,7 +129,7 @@ internal sealed class LocalAiInstallReconciler
         }
 
         if (!await _modelVerifier
-                .VerifyAsync(install.ModelPath, plan.Model.Weights, cancellationToken)
+                .VerifyAsync(install, plan.Model.Weights, cancellationToken)
                 .ConfigureAwait(false))
         {
             throw new InvalidDataException(
@@ -111,8 +158,13 @@ internal sealed class LocalAiInstallReconciler
             Rollback: null);
         var modelInstall = new HuggingFaceModelInstallResult(
             install.ModelPath,
+            install.Manifest.ModelCacheRoot,
             HuggingFaceModelInstallDisposition.ReusedVerified,
-            CreatedThisRun: false);
+            CreatedThisRun: false,
+            new LocalAiPaths(localDataDirectory).ResolveContainedPath(
+                install.Manifest.ModelPath,
+                nameof(install.Manifest.ModelPath)),
+            LegacyCreatedThisRun: false);
         return new LocalAiReconcileResult(true, install, runtimeInstall, modelInstall);
     }
 
@@ -144,10 +196,6 @@ internal sealed class LocalAiInstallReconciler
                 "The existing managed Local AI installation does not match the selected runtime, GPU, and model recipe.");
         }
 
-        // This performs the complete catalog receipt comparison, including
-        // runtime and model URLs, sizes, hashes, revision, alias, and context.
-        _ = LlamaServerRouterConfiguration.Build(new LocalAiPaths(localDataDirectory), install);
-
         LocalAiComponentIdentity component = LlamaRuntimeInstaller.Component(plan.Runtime);
         if (!LocalAiPathPolicy.TryResolve(
                 localDataDirectory,
@@ -165,16 +213,52 @@ internal sealed class LocalAiInstallReconciler
                     : error);
         }
 
-        if (plan.Model.Weights.Source is not HuggingFaceRevisionSource source ||
-            !LocalAiPathPolicy.TryGetModelPaths(
-                setupPaths,
-                source.RepositoryId,
-                source.RevisionSha,
-                plan.Model.Weights.RelativePath,
-                out string expectedModelPath,
-                out _,
-                out error) ||
-            !string.Equals(install.ModelPath, expectedModelPath, StringComparison.OrdinalIgnoreCase))
+        if (plan.Model.Weights.Source is not HuggingFaceRevisionSource source)
+        {
+            throw new InvalidDataException(
+                "The managed model does not have immutable Hugging Face provenance.");
+        }
+        LlamaServerRouterConfiguration.ValidateArtifactReceipts(
+            manifest,
+            plan.Runtime,
+            plan.Model);
+
+        bool modelPathMatches;
+        if (manifest.SchemaVersion == LocalAiInstallManifest.HubCacheReceiptSchemaVersion)
+        {
+            modelPathMatches =
+                !string.IsNullOrWhiteSpace(manifest.ModelCacheRoot) &&
+                HuggingFaceHubCache.TryGetSnapshotPaths(
+                    manifest.ModelCacheRoot,
+                    source.RepositoryId,
+                    source.RevisionSha,
+                    plan.Model.Weights.RelativePath,
+                    out string expectedModelPath,
+                    out _,
+                    out error) &&
+                string.Equals(
+                    install.ModelPath,
+                    expectedModelPath,
+                    StringComparison.OrdinalIgnoreCase);
+        }
+        else
+        {
+            modelPathMatches =
+                LocalAiPathPolicy.TryGetModelPaths(
+                    setupPaths,
+                    source.RepositoryId,
+                    source.RevisionSha,
+                    plan.Model.Weights.RelativePath,
+                    out string expectedModelPath,
+                    out _,
+                    out error) &&
+                string.Equals(
+                    install.ModelPath,
+                    expectedModelPath,
+                    StringComparison.OrdinalIgnoreCase);
+        }
+
+        if (!modelPathMatches)
         {
             throw new InvalidDataException(
                 string.IsNullOrWhiteSpace(error)
