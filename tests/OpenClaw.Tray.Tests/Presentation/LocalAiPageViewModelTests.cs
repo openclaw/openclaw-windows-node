@@ -174,6 +174,7 @@ public sealed class LocalAiPageViewModelTests
 
         await ActivateAndWaitForAvailabilityAsync(viewModel);
 
+        Assert.Equal(ownership == LocalAiOwnership.None, viewModel.CanStart);
         Assert.True(viewModel.CanStop);
         Assert.True(await viewModel.StopAsync());
         Assert.Equal(1, runtime.StopCount);

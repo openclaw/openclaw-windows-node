@@ -132,7 +132,9 @@ internal sealed class LocalAiPageViewModel : INavigationAware, IDisposable, INot
     public bool CanRecheckAvailability => _hasAvailabilityProbeError && _availabilityCancellation is null && !IsBusy;
     public LocalInferenceUnavailableReason? LocalAiUnavailableReason => _localAiUnavailableReason;
     public bool CanStart => !IsBusy && HasManagedInstall &&
-        _runtimeSnapshot.State is LocalAiRuntimeState.Stopped or LocalAiRuntimeState.Failed;
+        (_runtimeSnapshot.State == LocalAiRuntimeState.Stopped ||
+            (_runtimeSnapshot.State == LocalAiRuntimeState.Failed &&
+                _runtimeSnapshot.Ownership != LocalAiOwnership.CompanionManaged));
     public bool CanStop => !IsBusy && HasManagedInstall &&
         (_runtimeSnapshot.State is LocalAiRuntimeState.Conflict or LocalAiRuntimeState.Failed ||
             (_runtimeSnapshot.Ownership == LocalAiOwnership.CompanionManaged &&
