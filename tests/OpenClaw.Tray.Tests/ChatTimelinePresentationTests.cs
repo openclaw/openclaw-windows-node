@@ -221,7 +221,7 @@ public sealed class ChatTimelinePresentationTests
     }
 
     [Fact]
-    public void ReactorComposer_OffsetsPickerChevronRightAndUp()
+    public void ReactorComposer_StylesPickersAsFluentComboBox()
     {
         var composer = File.ReadAllText(Path.Combine(
             TestRepositoryPaths.GetRepositoryRoot(),
@@ -230,7 +230,13 @@ public sealed class ChatTimelinePresentationTests
             "Chat",
             "ReactorChatComposer.cs"));
 
-        Assert.Contains(".Margin(2, 4, 0, 0)", composer);
+        // Pickers follow the design system's ComposerPicker (Fluent ComboBox):
+        // a bordered ControlFill/ControlStroke control with a trailing muted chevron,
+        // not the old borderless subtle button with an up-offset chevron.
+        Assert.Contains(".Set(\"ButtonBackground\", Theme.ControlFill)", composer);
+        Assert.Contains(".Set(\"ButtonBorderBrush\", Theme.ControlStroke)", composer);
+        Assert.Contains(".Margin(8, 0, 0, 0)", composer);
+        Assert.DoesNotContain(".Margin(2, 4, 0, 0)", composer);
     }
 
     [Fact]

@@ -211,36 +211,49 @@ internal sealed class ReactorChatComposer : Component<ReactorChatComposerViewPro
             bool enabled,
             double maxLabelWidth)
         {
+            // Fluent ComboBox visual per the design system's ComposerPicker: a
+            // bordered ControlFill/ControlStroke control showing the value in primary
+            // text with a right-aligned muted chevron. The Star/Auto grid pins the
+            // chevron to the trailing edge (ComboBox space-between) while the button
+            // still hugs its content up to MinWidth. Selection still opens the caller's
+            // MenuFlyout of RadioMenuItems.
             return Button(
-                    HStack(
-                        4,
+                    Grid(
+                        [GridSize.Star(), GridSize.Auto],
+                        [GridSize.Auto],
                         TextBlock(label)
+                            .Grid(row: 0, column: 0)
+                            .VAlign(VerticalAlignment.Center)
+                            .HAlign(HorizontalAlignment.Left)
                             .MaxWidth(maxLabelWidth)
-                            .FontSize(13)
+                            .FontSize(14)
                             .TextTrimming(TextTrimming.CharacterEllipsis)
                             .TextWrapping(TextWrapping.NoWrap),
                         TextBlock("\uE70D")
-                            .Margin(2, 4, 0, 0)
+                            .Grid(row: 0, column: 1)
+                            .Margin(8, 0, 0, 0)
+                            .VAlign(VerticalAlignment.Center)
                             .AccessibilityView(Microsoft.UI.Xaml.Automation.Peers.AccessibilityView.Raw)
                             .FontFamily(FluentIconCatalog.SymbolThemeFontFamily)
-                            .FontSize(10)),
+                            .FontSize(12)
+                            .Foreground(Theme.SecondaryText)),
                     () => { })
                 .AutomationName(automationName)
-                .Foreground(Theme.SecondaryText)
+                .Foreground(Theme.PrimaryText)
                 .Resources(resources => resources
-                    .Set("ButtonBackground", Theme.Ref("SubtleFillColorTransparentBrush"))
-                    .Set("ButtonBackgroundPointerOver", Theme.SubtleFill)
-                    .Set("ButtonBackgroundPressed", Theme.Ref("SubtleFillColorTertiaryBrush"))
-                    .Set("ButtonBorderBrush", Theme.Ref("SubtleFillColorTransparentBrush"))
-                    .Set("ButtonBorderBrushPointerOver", Theme.Ref("SubtleFillColorTransparentBrush"))
-                    .Set("ButtonBorderBrushPressed", Theme.Ref("SubtleFillColorTransparentBrush")))
+                    .Set("ButtonBackground", Theme.ControlFill)
+                    .Set("ButtonBackgroundPointerOver", Theme.Ref("ControlFillColorSecondaryBrush"))
+                    .Set("ButtonBackgroundPressed", Theme.ControlFillTertiary)
+                    .Set("ButtonBorderBrush", Theme.ControlStroke)
+                    .Set("ButtonBorderBrushPointerOver", Theme.ControlStroke)
+                    .Set("ButtonBorderBrushPressed", Theme.ControlStroke))
                 .Height(32)
                 .MinHeight(32)
-                .MinWidth(0)
-                .Padding(8, 0, 8, 0)
+                .MinWidth(64)
+                .Padding(12, 0, 8, 0)
                 .CornerRadius(controlCornerRadius)
                 .IsEnabled(enabled)
-                .BorderThickness(0)
+                .BorderThickness(1)
                 .AutomationId(automationId)
                 .Set(button => ComposerAutomationVisibility.Prepare(button))
                 .OnUnmount(control => ComposerAutomationVisibility.Detach(
