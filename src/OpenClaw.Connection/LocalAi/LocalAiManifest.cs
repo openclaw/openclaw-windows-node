@@ -14,9 +14,11 @@
 //   string contained = paths.ResolveContainedPath("models/model.gguf", "modelPath"); // traversal-safe
 // </summary>
 using System.Collections.Immutable;
+using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using OpenClaw.Shared.Inference.Catalog;
+using OpenClaw.Shared.IO;
 
 namespace OpenClaw.Connection.LocalAi;
 
@@ -136,6 +138,7 @@ public sealed record LocalAiAssetReceipt
 public sealed record LocalAiInstallManifest
 {
     public const int CurrentSchemaVersion = 3;
+    public const int HubCacheReceiptSchemaVersion = 4;
     public const string SupportedEngine = "llama-server";
 
     public int SchemaVersion { get; init; } = CurrentSchemaVersion;
@@ -154,6 +157,20 @@ public sealed record LocalAiInstallManifest
     public required string ExecutablePath { get; init; }
     public required ImmutableArray<LocalAiAssetReceipt> RuntimeAssets { get; init; }
     public required string ModelPath { get; init; }
+    /// <summary>
+    /// Schema-4 migration receipt for the standard Hugging Face hub cache root.
+    /// The legacy <see cref="ModelPath"/> remains authoritative until the model
+    /// acquisition layer switches normal installs and reconciliation to the cache.
+    /// </summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? ModelCacheRoot { get; init; }
+    /// <summary>
+    /// Schema-4 migration receipt for the verified snapshot copy. Layer 3 may
+    /// promote this path to the active model path after its installer and rollback
+    /// behavior are cache-aware.
+    /// </summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? CachedModelPath { get; init; }
     public required string ModelId { get; init; }
     public required string ModelAlias { get; init; }
     public required LocalAiAssetReceipt ModelAsset { get; init; }
@@ -186,6 +203,18 @@ public sealed record LocalAiResolvedInstall(
     string ExecutablePath,
     string ModelPath,
     Uri? Endpoint);
+
+public enum LocalAiModelMigrationPhase
+{
+    VerifyingLegacyModel,
+    CopyingToCache,
+    VerifyingCacheCopy,
+}
+
+public sealed record LocalAiModelMigrationProgress(
+    LocalAiModelMigrationPhase Phase,
+    long CompletedBytes,
+    long TotalBytes);
 
 /// <summary>Shared validation for setup, manifests, and runtime launch.</summary>
 public static class LocalAiPortPolicy
@@ -247,15 +276,97 @@ public sealed class LocalAiManifestStore
     }
 
     private readonly LocalAiPaths _paths;
+    private readonly Func<string> _cacheRootResolver;
+    private readonly Func<CancellationToken, Task> _beforeMigrationCommit;
+    private readonly Func<string, CancellationToken, Task> _beforeMigrationPromotion;
 
     public LocalAiManifestStore(LocalAiPaths paths) =>
-        _paths = paths ?? throw new ArgumentNullException(nameof(paths));
+        (_paths, _cacheRootResolver, _beforeMigrationCommit, _beforeMigrationPromotion) = (
+            paths ?? throw new ArgumentNullException(nameof(paths)),
+            HuggingFaceHubCache.ResolveCacheRoot,
+            static _ => Task.CompletedTask,
+            static (_, _) => Task.CompletedTask);
+
+    internal LocalAiManifestStore(
+        LocalAiPaths paths,
+        Func<string> cacheRootResolver,
+        Func<CancellationToken, Task>? beforeMigrationCommit = null,
+        Func<string, CancellationToken, Task>? beforeMigrationPromotion = null) =>
+        (_paths, _cacheRootResolver, _beforeMigrationCommit, _beforeMigrationPromotion) = (
+            paths ?? throw new ArgumentNullException(nameof(paths)),
+            cacheRootResolver ?? throw new ArgumentNullException(nameof(cacheRootResolver)),
+            beforeMigrationCommit ?? (static _ => Task.CompletedTask),
+            beforeMigrationPromotion ?? (static (_, _) => Task.CompletedTask));
 
     public async Task<LocalAiResolvedInstall?> LoadAsync(CancellationToken cancellationToken = default)
     {
         if (!File.Exists(_paths.ManifestPath))
             return null;
 
+        LocalAiInstallManifest manifest = await ReadManifestAsync(cancellationToken).ConfigureAwait(false);
+        return ResolveAndValidate(manifest);
+    }
+
+    /// <summary>
+    /// Copies a canonical schema-3 model into the standard Hugging Face cache and
+    /// records a transitional schema-4 receipt. The active legacy model path is
+    /// intentionally unchanged until the installer and reconciler become cache-aware.
+    /// </summary>
+    public async Task<LocalAiResolvedInstall?> MigrateLegacyModelToHubCacheAsync(
+        IProgress<LocalAiModelMigrationProgress>? progress = null,
+        CancellationToken cancellationToken = default)
+    {
+        if (!File.Exists(_paths.ManifestPath))
+            return null;
+
+        byte[] originalManifest = await File
+            .ReadAllBytesAsync(_paths.ManifestPath, cancellationToken)
+            .ConfigureAwait(false);
+        LocalAiInstallManifest manifest = DeserializeManifest(originalManifest);
+        LocalAiResolvedInstall resolved = ResolveAndValidate(manifest);
+        if (manifest.SchemaVersion != LocalAiInstallManifest.CurrentSchemaVersion)
+            return resolved;
+
+        LocalAiInstallManifest migrated = await LocalAiManifestMigration
+            .MigrateAsync(
+                _paths,
+                resolved,
+                _cacheRootResolver(),
+                progress,
+                _beforeMigrationPromotion,
+                cancellationToken)
+            .ConfigureAwait(false);
+        if (ReferenceEquals(migrated, manifest))
+            return resolved;
+
+        await _beforeMigrationCommit(cancellationToken).ConfigureAwait(false);
+        await using FileStream writeLock = await AcquireManifestWriteLockAsync(cancellationToken)
+            .ConfigureAwait(false);
+        byte[] currentManifest;
+        try
+        {
+            currentManifest = await File
+                .ReadAllBytesAsync(_paths.ManifestPath, cancellationToken)
+                .ConfigureAwait(false);
+        }
+        catch (FileNotFoundException)
+        {
+            throw new InvalidDataException(
+                "The local AI installation manifest changed while its cache migration was in progress.");
+        }
+        if (!originalManifest.AsSpan().SequenceEqual(currentManifest))
+        {
+            throw new InvalidDataException(
+                "The local AI installation manifest changed while its cache migration was in progress.");
+        }
+
+        await SaveWithoutLockAsync(migrated, cancellationToken).ConfigureAwait(false);
+        return ResolveAndValidate(migrated);
+    }
+
+    private async Task<LocalAiInstallManifest> ReadManifestAsync(
+        CancellationToken cancellationToken)
+    {
         LocalAiInstallManifest? manifest;
         try
         {
@@ -277,14 +388,44 @@ public sealed class LocalAiManifestStore
             throw new InvalidDataException("The local AI installation manifest is invalid JSON or uses an unsupported format.", ex);
         }
 
-        return ResolveAndValidate(
-            manifest ?? throw new InvalidDataException("The local AI installation manifest is empty."));
+        if (manifest is null)
+            throw new InvalidDataException("The local AI installation manifest is empty.");
+        return manifest;
+    }
+
+    private static LocalAiInstallManifest DeserializeManifest(byte[] content)
+    {
+        try
+        {
+            ReadOnlySpan<byte> json = content;
+            ReadOnlySpan<byte> preamble = Encoding.UTF8.Preamble;
+            if (json.StartsWith(preamble))
+                json = json[preamble.Length..];
+
+            return JsonSerializer.Deserialize<LocalAiInstallManifest>(json, JsonOptions)
+                ?? throw new InvalidDataException("The local AI installation manifest is empty.");
+        }
+        catch (JsonException ex)
+        {
+            throw new InvalidDataException(
+                "The local AI installation manifest is invalid JSON or uses an unsupported format.",
+                ex);
+        }
     }
 
     public async Task SaveAsync(LocalAiInstallManifest manifest, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(manifest);
         _ = ResolveAndValidate(manifest);
+        await using FileStream writeLock = await AcquireManifestWriteLockAsync(cancellationToken)
+            .ConfigureAwait(false);
+        await SaveWithoutLockAsync(manifest, cancellationToken).ConfigureAwait(false);
+    }
+
+    private async Task SaveWithoutLockAsync(
+        LocalAiInstallManifest manifest,
+        CancellationToken cancellationToken)
+    {
         Directory.CreateDirectory(_paths.RootDirectory);
         _ = _paths.ResolveContainedPath(Path.GetFileName(_paths.ManifestPath), nameof(_paths.ManifestPath));
 
@@ -323,18 +464,52 @@ public sealed class LocalAiManifestStore
         }
     }
 
-    public Task DeleteAsync(CancellationToken cancellationToken = default)
+    public async Task DeleteAsync(CancellationToken cancellationToken = default)
     {
-        cancellationToken.ThrowIfCancellationRequested();
+        await using FileStream writeLock = await AcquireManifestWriteLockAsync(cancellationToken)
+            .ConfigureAwait(false);
         File.Delete(_paths.ManifestPath);
-        return Task.CompletedTask;
     }
+
+    private async Task<FileStream> AcquireManifestWriteLockAsync(
+        CancellationToken cancellationToken)
+    {
+        Directory.CreateDirectory(_paths.RootDirectory);
+        string lockPath = _paths.ResolveContainedPath(
+            $".{Path.GetFileName(_paths.ManifestPath)}.lock",
+            "manifestLockPath");
+        while (true)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            try
+            {
+                return new FileStream(
+                    lockPath,
+                    FileMode.OpenOrCreate,
+                    FileAccess.ReadWrite,
+                    FileShare.None,
+                    bufferSize: 1,
+                    FileOptions.Asynchronous);
+            }
+            catch (IOException ex) when (IsSharingViolation(ex))
+            {
+                await Task.Delay(50, cancellationToken).ConfigureAwait(false);
+            }
+        }
+    }
+
+    private static bool IsSharingViolation(IOException exception) =>
+        (exception.HResult & 0xFFFF) is 32 or 33;
 
     public LocalAiResolvedInstall ResolveAndValidate(LocalAiInstallManifest manifest)
     {
         ArgumentNullException.ThrowIfNull(manifest);
-        if (manifest.SchemaVersion != LocalAiInstallManifest.CurrentSchemaVersion)
+        if (manifest.SchemaVersion is not (
+                LocalAiInstallManifest.CurrentSchemaVersion or
+                LocalAiInstallManifest.HubCacheReceiptSchemaVersion))
+        {
             throw new InvalidDataException($"Unsupported local AI manifest schema version {manifest.SchemaVersion}.");
+        }
         if (!string.Equals(manifest.Engine, LocalAiInstallManifest.SupportedEngine, StringComparison.Ordinal))
             throw new InvalidDataException("The local AI manifest engine must be llama-server.");
         if (string.IsNullOrWhiteSpace(manifest.EngineVersion))
@@ -376,7 +551,7 @@ public sealed class LocalAiManifestStore
                 throw new InvalidDataException("The local AI manifest runtime asset filenames must be unique.");
         }
         ValidateAssetReceipt(manifest.ModelAsset, nameof(manifest.ModelAsset));
-        ValidateHuggingFaceModelProvenance(manifest);
+        HuggingFaceModelProvenance provenance = ValidateHuggingFaceModelProvenance(manifest);
 
         var executable = _paths.ResolveContainedPath(manifest.ExecutablePath, nameof(manifest.ExecutablePath));
         if (!string.Equals(Path.GetFileName(executable), "llama-server.exe", StringComparison.OrdinalIgnoreCase))
@@ -387,6 +562,8 @@ public sealed class LocalAiManifestStore
             throw new InvalidDataException("The managed local AI model must be a GGUF file.");
         if (!string.Equals(Path.GetFileName(model), manifest.ModelAsset.FileName, StringComparison.Ordinal))
             throw new InvalidDataException("The managed model path must match its asset receipt filename.");
+
+        ValidateHubCacheReceipt(manifest, provenance);
 
         LocalAiPortPolicy.Validate(manifest.RequestedPort);
         LocalAiGatewayModelPolicy.ValidateFallbackModel(manifest.GatewayFallbackModel);
@@ -451,7 +628,8 @@ public sealed class LocalAiManifestStore
             throw new InvalidDataException($"{fieldName}.Sha256 must be a lowercase SHA-256 digest.");
     }
 
-    private static void ValidateHuggingFaceModelProvenance(LocalAiInstallManifest manifest)
+    private static HuggingFaceModelProvenance ValidateHuggingFaceModelProvenance(
+        LocalAiInstallManifest manifest)
     {
         var revisionSeparator = manifest.ModelId.LastIndexOf('@');
         if (revisionSeparator <= 0 || revisionSeparator == manifest.ModelId.Length - 1)
@@ -478,15 +656,71 @@ public sealed class LocalAiManifestStore
         }
 
         var source = new Uri(manifest.ModelAsset.SourceUrl, UriKind.Absolute);
-        var expectedPath = $"/{repositoryId}/resolve/{revision}/{manifest.ModelAsset.FileName}";
+        var expectedPrefix = $"/{repositoryId}/resolve/{revision}/";
+        string sourcePath = Uri.UnescapeDataString(source.AbsolutePath);
         if (!string.Equals(source.Scheme, Uri.UriSchemeHttps, StringComparison.OrdinalIgnoreCase) ||
             !string.Equals(source.Host, "huggingface.co", StringComparison.OrdinalIgnoreCase) ||
-            !string.Equals(Uri.UnescapeDataString(source.AbsolutePath), expectedPath, StringComparison.Ordinal) ||
+            !sourcePath.StartsWith(expectedPrefix, StringComparison.Ordinal) ||
             source.Query is not ("" or "?download=true"))
         {
             throw new InvalidDataException(
                 "The local AI manifest model source must match its immutable Hugging Face repository, revision, and filename.");
         }
+
+        string relativePath = sourcePath[expectedPrefix.Length..];
+        if (string.IsNullOrWhiteSpace(relativePath) ||
+            !string.Equals(
+                relativePath.Split('/').LastOrDefault(),
+                manifest.ModelAsset.FileName,
+                StringComparison.Ordinal))
+        {
+            throw new InvalidDataException(
+                "The local AI manifest model source must match its immutable Hugging Face repository, revision, and filename.");
+        }
+
+        return new HuggingFaceModelProvenance(repositoryId, revision, relativePath);
     }
 
+    private static void ValidateHubCacheReceipt(
+        LocalAiInstallManifest manifest,
+        HuggingFaceModelProvenance provenance)
+    {
+        if (manifest.SchemaVersion == LocalAiInstallManifest.CurrentSchemaVersion)
+        {
+            if (manifest.ModelCacheRoot is not null || manifest.CachedModelPath is not null)
+            {
+                throw new InvalidDataException(
+                    "Schema-3 local AI manifests cannot contain a Hugging Face cache migration receipt.");
+            }
+
+            return;
+        }
+
+        string error = "";
+        if (string.IsNullOrWhiteSpace(manifest.ModelCacheRoot) ||
+            string.IsNullOrWhiteSpace(manifest.CachedModelPath) ||
+            !HuggingFaceHubCache.TryGetSnapshotPaths(
+                manifest.ModelCacheRoot,
+                provenance.RepositoryId,
+                provenance.Revision,
+                provenance.RelativePath,
+                out string expectedCachedModelPath,
+                out _,
+                out error) ||
+            !string.Equals(
+                manifest.CachedModelPath,
+                expectedCachedModelPath,
+                StringComparison.OrdinalIgnoreCase))
+        {
+            throw new InvalidDataException(
+                string.IsNullOrWhiteSpace(error)
+                    ? "The local AI manifest Hugging Face cache migration receipt is invalid."
+                    : error);
+        }
+    }
+
+    internal sealed record HuggingFaceModelProvenance(
+        string RepositoryId,
+        string Revision,
+        string RelativePath);
 }
