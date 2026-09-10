@@ -686,10 +686,13 @@ public sealed class LlamaServerRuntimeService : ILocalAiRuntime
             {
                 ++_generation;
                 await DisposeManagedProcessAsync(CancellationToken.None).ConfigureAwait(false);
+                string detail = recoveryReason == LocalAiQuiesceReason.Teardown
+                    ? "The Local AI endpoint cycle was interrupted; terminal gateway routing was restored."
+                    : "The Local AI provider was withdrawn after an interrupted endpoint cycle; the managed primary remains selected until Local AI is started or stopped.";
                 Publish(
                     LocalAiRuntimeState.Failed,
                     LocalAiOwnership.None,
-                    "The Local AI endpoint cycle was interrupted; terminal gateway routing was restored.");
+                    detail);
             }
             else if (stopUnsafeProcessOnFailure)
             {

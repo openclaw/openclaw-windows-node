@@ -305,15 +305,25 @@ public sealed class LocalAiPortLifecycleTests
     {
         using var temp = new TempDirectory("local-ai-port-");
         LocalAiPaths paths = await PrepareInstallAsync(temp);
+        using var cancellation = new CancellationTokenSource();
         var events = new SynchronizedEventLog();
         var platform = new FakePlatform();
+        var lifecycle = new FakeLifecycle(events)
+        {
+            QuiesceHandler = (call, _, _) =>
+            {
+                if (call == 2)
+                    cancellation.Cancel();
+                return Task.FromResult(LocalAiEndpointLifecycleResult.Ok());
+            },
+        };
         var host = new FakeProcessHost(platform, events, selectedPort: 28_791);
         await using var runtime = CreateRuntime(
             paths,
             host,
             platform,
             new FakeClient(events),
-            new FakeLifecycle(events),
+            lifecycle,
             shutdownTimeout: TimeSpan.FromMilliseconds(20));
         Assert.Equal(LocalAiRuntimeState.Healthy, (await runtime.EnsureStartedAsync()).State);
         platform.Listeners[0] = platform.Listeners[0] with { Port = 28_792 };
@@ -327,7 +337,6 @@ public sealed class LocalAiPortLifecycleTests
             FileMode.OpenOrCreate,
             FileAccess.ReadWrite,
             FileShare.None);
-        using var cancellation = new CancellationTokenSource(TimeSpan.FromMilliseconds(20));
 
         await Assert.ThrowsAnyAsync<OperationCanceledException>(
             () => runtime.RefreshAsync(cancellation.Token).WaitAsync(TimeSpan.FromSeconds(2)));
