@@ -68,6 +68,7 @@ These are the canonical homes. Do not reintroduce private copies elsewhere.
 | Native tool identity, display arguments, payload extraction, and flattened-history projection | `NativeToolProjector` | authoritative |
 | Managed-local listener provenance and strong-credential authorization | `ManagedLocalGatewayPortProvenanceService` | authoritative |
 | Local AI gateway-record ownership and WSL distro binding | `LocalAiGatewayDistroResolver` | authoritative |
+| Local AI model cache acquisition, explicit legacy migration, and active-path receipt selection | `HuggingFaceModelInstaller` + `LocalAiManifestStore` + `LocalAiInstallReconciler` | authoritative |
 | Exact Gateway wizard terminal-restart compatibility and bounded retry policy | `GatewayWizardRestartRecoveryPolicy` | authoritative |
 | Managed-local automatic repair eligibility and orchestration | `ManagedLocalGatewayAutoRepairMonitor` + `ManagedLocalGatewayRepairCoordinator` | authoritative |
 | Permissions page state, settings commands, and exec-approvals presentation | `PermissionsPageViewModel` | authoritative |
