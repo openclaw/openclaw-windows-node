@@ -495,10 +495,6 @@ public sealed class LlamaServerRuntimeService : ILocalAiRuntime
         EndpointOwnershipObservation ownership = DiscoverOwnedEndpoint(install, _managedProcess);
         if (!ownership.IsComplete)
         {
-            // Incomplete enumeration cannot prove that the child owns only the
-            // intended endpoint. Remove the provider while retaining the local
-            // primary, then stop the child so this trust failure cannot route
-            // requests to a cloud fallback.
             LocalAiRuntimeSnapshot? failure = await QuiesceOrStopAsync(
                     install,
                     LocalAiQuiesceReason.EndpointCycle,

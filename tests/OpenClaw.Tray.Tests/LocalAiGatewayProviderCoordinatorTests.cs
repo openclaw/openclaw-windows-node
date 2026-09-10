@@ -31,9 +31,6 @@ public sealed class LocalAiGatewayProviderCoordinatorTests
     [Fact]
     public async Task Quiesce_EndpointCycleRetainsManagedPrimaryWhenNoFallbackExists()
     {
-        // Unsetting the primary makes the gateway resolve its built-in OpenAI
-        // default, so a prompt sent mid-cycle fails with an unrelated
-        // provider-auth error instead of a Local AI one.
         LocalAiResolvedInstall install = Install(28_765);
         string managedPrimary = LocalAiGatewayProviderDefinition.BuildPrimaryModel(install);
         var commands = new FakeWslCommandRunner(

@@ -70,8 +70,6 @@ internal sealed class LocalAiGatewayProviderCoordinator : ILocalAiEndpointLifecy
             return Failed("The llamacpp primary model was changed outside the companion; preserving it and refusing to cycle the managed endpoint.");
         }
 
-        // Endpoint cycles retain the managed primary so the gateway cannot fall
-        // through to its built-in OpenAI default while the provider is absent.
         string? expectedPrimary = current.PrimaryModel;
         bool retainManagedPrimary = reason == LocalAiQuiesceReason.EndpointCycle;
         if (primaryIsManaged && !retainManagedPrimary)
