@@ -68,6 +68,7 @@ public sealed class LlamaServerRuntimeService : ILocalAiRuntime
     private long _generation;
     private int _restartAttempts;
     private bool _stopping;
+    private bool _explicitStopRequested;
     private bool _disposed;
     private bool _acceptExitTasks = true;
     private int _disposeStarted;
@@ -111,6 +112,7 @@ public sealed class LlamaServerRuntimeService : ILocalAiRuntime
         try
         {
             ThrowIfDisposed();
+            _explicitStopRequested = false;
             _restartAttempts = 0;
             return await EnsureStartedCoreAsync(cancellationToken).ConfigureAwait(false);
         }
@@ -140,6 +142,7 @@ public sealed class LlamaServerRuntimeService : ILocalAiRuntime
         try
         {
             ThrowIfDisposed();
+            _explicitStopRequested = true;
             return await StopCoreAsync(
                     LocalAiQuiesceReason.Teardown,
                     cancellationToken)
@@ -157,6 +160,7 @@ public sealed class LlamaServerRuntimeService : ILocalAiRuntime
         try
         {
             ThrowIfDisposed();
+            _explicitStopRequested = false;
             LocalAiResolvedInstall? restartInstall = _install;
             try
             {
@@ -584,6 +588,13 @@ public sealed class LlamaServerRuntimeService : ILocalAiRuntime
         bool preserveManagedPrimaryOnFailure,
         CancellationToken cancellationToken)
     {
+        if (preserveManagedPrimaryOnFailure && !stopAfterQuiesce)
+        {
+            throw new ArgumentException(
+                "Managed-primary preservation is only valid when the untrusted endpoint will be stopped.",
+                nameof(preserveManagedPrimaryOnFailure));
+        }
+
         LocalAiEndpointLifecycleResult quiesced;
         try
         {
@@ -636,8 +647,11 @@ public sealed class LlamaServerRuntimeService : ILocalAiRuntime
                 .ConfigureAwait(false);
             if (retried)
             {
-                ++_generation;
-                await DisposeManagedProcessAsync(CancellationToken.None).ConfigureAwait(false);
+                if (stopAfterQuiesce)
+                {
+                    ++_generation;
+                    await DisposeManagedProcessAsync(CancellationToken.None).ConfigureAwait(false);
+                }
                 return null;
             }
             return await PublishRefreshCleanupFailureAsync(quiesced.Detail).ConfigureAwait(false);
@@ -1032,7 +1046,8 @@ public sealed class LlamaServerRuntimeService : ILocalAiRuntime
                 // is an endpoint cycle and keeps the managed primary selected,
                 // while exhausted retries are terminal and restore the prior
                 // gateway routing instead of leaving the provider absent.
-                bool willRestart = _restartAttempts < _options.MaxRestartAttempts;
+                bool willRestart = !_explicitStopRequested &&
+                    _restartAttempts < _options.MaxRestartAttempts;
                 if (_install is not null)
                 {
                     if (willRestart)
@@ -1117,7 +1132,7 @@ public sealed class LlamaServerRuntimeService : ILocalAiRuntime
             await _operationGate.WaitAsync().ConfigureAwait(false);
             try
             {
-                if (!_disposed && !_stopping && generation == _generation)
+                if (!_disposed && !_stopping && !_explicitStopRequested && generation == _generation)
                     await EnsureStartedCoreAsync(CancellationToken.None).ConfigureAwait(false);
             }
             finally

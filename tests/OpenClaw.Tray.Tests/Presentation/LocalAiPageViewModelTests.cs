@@ -112,6 +112,38 @@ public sealed class LocalAiPageViewModelTests
     }
 
     [Fact]
+    public async Task FailClosedConflict_AllowsExplicitStopRecovery()
+    {
+        LocalAiRuntimeSnapshot conflict = CreateInstalledSnapshot(LocalAiRuntimeState.Conflict) with
+        {
+            Ownership = LocalAiOwnership.None,
+            ProcessId = null,
+            ProcessStartedAtUtc = null,
+        };
+        var runtime = new FakeLocalAiRuntime(conflict)
+        {
+            StopResult = conflict with
+            {
+                State = LocalAiRuntimeState.Stopped,
+                Ownership = LocalAiOwnership.None,
+            },
+        };
+        using var gatewaySource = new PermissionsPageRuntimeSource(new FakePermissionsPageRuntimeHost());
+        using var viewModel = new LocalAiPageViewModel(
+            runtime,
+            gatewaySource,
+            new FakeAppCommands(),
+            new RecordingUiDispatcher(),
+            new FixedHardwareProbe(HostHardwareInfo.Unknown));
+
+        await ActivateAndWaitForAvailabilityAsync(viewModel);
+
+        Assert.True(viewModel.CanStop);
+        Assert.True(await viewModel.StopAsync());
+        Assert.Equal(1, runtime.StopCount);
+    }
+
+    [Fact]
     public async Task UnsupportedHardware_BlocksFreshSetupRetry()
     {
         var runtime = new FakeLocalAiRuntime(LocalAiRuntimeSnapshot.Initial(
@@ -838,6 +870,7 @@ public sealed class LocalAiPageViewModelTests
         public int StartCount { get; private set; }
         public int StopCount { get; private set; }
         public int RestartCount { get; private set; }
+        public LocalAiRuntimeSnapshot? StopResult { get; init; }
         public event EventHandler<LocalAiRuntimeSnapshotChangedEventArgs>? StateChanged
         {
             add { }
@@ -860,6 +893,7 @@ public sealed class LocalAiPageViewModelTests
         public Task<LocalAiRuntimeSnapshot> StopAsync(CancellationToken cancellationToken = default)
         {
             StopCount++;
+            Snapshot = StopResult ?? Snapshot;
             return Task.FromResult(Snapshot);
         }
 

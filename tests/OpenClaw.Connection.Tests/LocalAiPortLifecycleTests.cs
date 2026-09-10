@@ -1424,6 +1424,78 @@ public sealed class LocalAiPortLifecycleTests
     }
 
     [Fact]
+    public async Task Stop_FailedWithdrawalLatchesIntentAndPreventsAutomaticRestart()
+    {
+        using var temp = new TempDirectory("local-ai-port-");
+        LocalAiPaths paths = await PrepareInstallAsync(temp);
+        var events = new SynchronizedEventLog();
+        var platform = new FakePlatform();
+        var lifecycle = new FakeLifecycle(events)
+        {
+            QuiesceHandler = (call, _, _) => call switch
+            {
+                2 => Task.FromException<LocalAiEndpointLifecycleResult>(
+                    new IOException("stop withdrawal interrupted")),
+                3 => Task.FromResult(LocalAiEndpointLifecycleResult.Failed("stop teardown failed")),
+                _ => Task.FromResult(LocalAiEndpointLifecycleResult.Ok()),
+            },
+        };
+        var host = new FakeProcessHost(platform, events, selectedPort: 28_769);
+        await using var runtime = CreateRuntime(
+            paths,
+            host,
+            platform,
+            new FakeClient(events),
+            lifecycle,
+            maxRestartAttempts: 2);
+        LocalAiRuntimeSnapshot started = await runtime.EnsureStartedAsync();
+        Assert.Equal(LocalAiRuntimeState.Healthy, started.State);
+        events.Clear();
+
+        await Assert.ThrowsAsync<IOException>(() => runtime.StopAsync());
+        Assert.Equal(LocalAiOwnership.CompanionManaged, runtime.Snapshot.Ownership);
+        int settled = events.Count;
+
+        LocalAiRuntimeSnapshot exited = await TriggerExitAndWaitForStateAsync(
+            runtime,
+            host,
+            snapshot => snapshot.Detail?.Contains("exited unexpectedly", StringComparison.Ordinal) == true);
+
+        Assert.Equal(LocalAiRuntimeState.Failed, exited.State);
+        Assert.Equal(["quiesce:Teardown"], events.Skip(settled).ToArray());
+        Assert.DoesNotContain(events.Skip(settled), value => value is "start" || value.StartsWith("publish:", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task Stop_FromFailClosedConflictCompletesTerminalTeardown()
+    {
+        using var temp = new TempDirectory("local-ai-port-");
+        LocalAiPaths paths = await PrepareInstallAsync(temp);
+        var events = new SynchronizedEventLog();
+        var platform = new FakePlatform();
+        var host = new FakeProcessHost(platform, events, selectedPort: 28_769);
+        await using var runtime = CreateRuntime(
+            paths,
+            host,
+            platform,
+            new FakeClient(events),
+            new FakeLifecycle(events));
+        LocalAiRuntimeSnapshot started = await runtime.EnsureStartedAsync();
+        Assert.Equal(LocalAiRuntimeState.Healthy, started.State);
+        platform.Ipv4Complete = false;
+
+        LocalAiRuntimeSnapshot conflict = await runtime.RefreshAsync();
+        Assert.Equal(LocalAiRuntimeState.Conflict, conflict.State);
+        Assert.Equal(LocalAiOwnership.None, conflict.Ownership);
+        events.Clear();
+
+        LocalAiRuntimeSnapshot stopped = await runtime.StopAsync();
+
+        Assert.Equal(LocalAiRuntimeState.Stopped, stopped.State);
+        Assert.Equal(["quiesce:Teardown"], events);
+    }
+
+    [Fact]
     public async Task RestartAsync_UsesEndpointCycleUntilReplacementIsPublished()
     {
         using var temp = new TempDirectory("local-ai-port-");
