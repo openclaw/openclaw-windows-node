@@ -668,9 +668,10 @@ public sealed class LocalAiManifestStore
         }
 
         string relativePath = sourcePath[expectedPrefix.Length..];
-        if (string.IsNullOrWhiteSpace(relativePath) ||
+        string[] relativeSegments = relativePath.Split('/');
+        if (relativeSegments.Any(segment => !WindowsPathSafety.IsSafeSegment(segment)) ||
             !string.Equals(
-                relativePath.Split('/').LastOrDefault(),
+                relativeSegments[^1],
                 manifest.ModelAsset.FileName,
                 StringComparison.Ordinal))
         {

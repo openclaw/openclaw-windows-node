@@ -92,6 +92,7 @@ internal static class LocalAiManifestMigration
             if (temporary is null)
             {
                 source = await OpenLegacySourceIfAvailableAsync(
+                        paths.ModelsDirectory,
                         legacyInstall.ModelPath,
                         manifest.ModelAsset,
                         expectedSha256,
@@ -168,18 +169,6 @@ internal static class LocalAiManifestMigration
                 return CreateMigratedManifest(manifest, cacheRoot, cachedModelPath);
             }
 
-            if (!await IsVerifiedOpenCacheFileAsync(
-                    temporary.Stream,
-                    manifest.ModelAsset,
-                    expectedSha256,
-                    progress,
-                    cancellationToken)
-                .ConfigureAwait(false))
-            {
-                throw new InvalidDataException(
-                    "The promoted Hugging Face cache model does not match its receipt.");
-            }
-
             directory!.RequirePromotedFile(temporary.Stream.SafeFileHandle, destinationFileName);
             temporary.Commit();
             return CreateMigratedManifest(manifest, cacheRoot, cachedModelPath);
@@ -204,15 +193,23 @@ internal static class LocalAiManifestMigration
         CacheMigrationFile? temporary = directory.TryOpenExisting(temporaryFileName);
         if (temporary is null)
             return null;
-        if (await IsVerifiedOpenCacheFileAsync(
-                temporary.Stream,
-                receipt,
-                expectedSha256,
-                progress,
-                cancellationToken)
-            .ConfigureAwait(false))
+        try
         {
-            return temporary;
+            if (await IsVerifiedOpenCacheFileAsync(
+                    temporary.Stream,
+                    receipt,
+                    expectedSha256,
+                    progress,
+                    cancellationToken)
+                .ConfigureAwait(false))
+            {
+                return temporary;
+            }
+        }
+        catch
+        {
+            temporary.Dispose();
+            throw;
         }
 
         temporary.Dispose();
@@ -220,19 +217,19 @@ internal static class LocalAiManifestMigration
     }
 
     private static async Task<FileStream?> OpenLegacySourceIfAvailableAsync(
+        string modelsDirectory,
         string legacyModelPath,
         LocalAiAssetReceipt receipt,
         Sha256Digest expectedSha256,
         IProgress<LocalAiModelMigrationProgress>? progress,
         CancellationToken cancellationToken)
     {
-        if (Directory.Exists(legacyModelPath))
-            throw new InvalidDataException("The legacy Local AI model path is an existing directory.");
-        if (!PathEntryExists(legacyModelPath))
+        FileStream? source = OpenContainedReadFile(modelsDirectory, legacyModelPath);
+        if (source is null)
             return null;
 
         return await OpenVerifiedLegacySourceAsync(
-                legacyModelPath,
+                source,
                 receipt,
                 expectedSha256,
                 progress,
@@ -291,31 +288,12 @@ internal static class LocalAiManifestMigration
         };
 
     private static async Task<FileStream> OpenVerifiedLegacySourceAsync(
-        string sourcePath,
+        FileStream stream,
         LocalAiAssetReceipt receipt,
         Sha256Digest expectedSha256,
         IProgress<LocalAiModelMigrationProgress>? progress,
         CancellationToken cancellationToken)
     {
-        FileStream stream;
-        try
-        {
-            stream = new FileStream(
-                sourcePath,
-                FileMode.Open,
-                FileAccess.Read,
-                FileShare.Read,
-                CopyBufferSize,
-                FileOptions.Asynchronous | FileOptions.SequentialScan);
-        }
-        catch (Exception ex) when (
-            ex is IOException or UnauthorizedAccessException or System.Security.SecurityException)
-        {
-            throw new InvalidDataException(
-                "The legacy Local AI model could not be opened safely for cache migration.",
-                ex);
-        }
-
         bool verified = false;
         try
         {
@@ -616,12 +594,11 @@ internal static class LocalAiManifestMigration
                     "The Hugging Face cache root is an existing file.");
             }
 
-            Directory.CreateDirectory(normalizedRoot);
             SafeFileHandle? rootHandle = null;
             SafeFileHandle? directoryHandle = null;
             try
             {
-                rootHandle = OpenDirectory(normalizedRoot, openReparsePoint: false);
+                rootHandle = OpenAbsoluteDirectory(normalizedRoot, create: true);
                 directoryHandle = rootHandle;
                 string[] segments = Path.GetRelativePath(normalizedRoot, normalizedDestination).Split(
                     [Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar],
@@ -670,17 +647,25 @@ internal static class LocalAiManifestMigration
             }
 
             var file = new CacheMigrationFile(handle!, FileAccess.Read, this);
-            BY_HANDLE_FILE_INFORMATION info = GetHandleInformation(handle!);
-            if ((info.FileAttributes & (uint)FileAttributes.ReparsePoint) != 0 ||
-                info.NumberOfLinks != 1)
+            try
             {
-                file.Delete();
-                file.Dispose();
-                return null;
-            }
+                BY_HANDLE_FILE_INFORMATION info = GetHandleInformation(handle!);
+                if ((info.FileAttributes & (uint)FileAttributes.ReparsePoint) != 0 ||
+                    info.NumberOfLinks != 1)
+                {
+                    file.Delete();
+                    file.Dispose();
+                    return null;
+                }
 
-            RequireContainedFile(handle!, fileName);
-            return file;
+                RequireContainedFile(handle!, fileName);
+                return file;
+            }
+            catch
+            {
+                file.Dispose();
+                throw;
+            }
         }
 
         public CacheMigrationFile CreateNew(string fileName)
@@ -820,7 +805,13 @@ internal static class LocalAiManifestMigration
 
         private static SafeFileHandle OpenOrCreateRelativeDirectory(
             SafeFileHandle parent,
-            string segment)
+            string segment) =>
+            OpenRelativeDirectory(parent, segment, create: true);
+
+        internal static SafeFileHandle OpenRelativeDirectory(
+            SafeFileHandle parent,
+            string segment,
+            bool create)
         {
             ValidateFileName(segment);
             int status = OpenRelative(
@@ -828,7 +819,7 @@ internal static class LocalAiManifestMigration
                 segment,
                 DirectoryAccess | SynchronizeAccess,
                 FileShare.ReadWrite | FileShare.Delete,
-                FileOpenIf,
+                create ? FileOpenIf : FileOpen,
                 FileDirectoryFile | FileSynchronousIoNonAlert | FileOpenReparsePoint,
                 out SafeFileHandle? handle);
             if (status != 0)
@@ -848,10 +839,127 @@ internal static class LocalAiManifestMigration
             return handle!;
         }
 
+        internal static SafeFileHandle OpenAbsoluteDirectory(string path, bool create)
+        {
+            string normalizedPath = WindowsPathSafety.NormalizePath(path);
+            string pathRoot = Path.GetPathRoot(normalizedPath)
+                ?? throw new InvalidDataException("The Windows path has no volume root.");
+            SafeFileHandle root = OpenDirectory(pathRoot, openReparsePoint: true);
+            SafeFileHandle current = root;
+            try
+            {
+                foreach (string segment in Path.GetRelativePath(pathRoot, normalizedPath).Split(
+                             [Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar],
+                             StringSplitOptions.RemoveEmptyEntries))
+                {
+                    SafeFileHandle next = OpenRelativeDirectory(current, segment, create);
+                    if (!ReferenceEquals(current, root))
+                        current.Dispose();
+                    current = next;
+                }
+
+                if (ReferenceEquals(current, root))
+                    return root;
+                root.Dispose();
+                return current;
+            }
+            catch
+            {
+                if (!ReferenceEquals(current, root))
+                    current.Dispose();
+                root.Dispose();
+                throw;
+            }
+        }
+
         private static void ValidateFileName(string fileName)
         {
             if (!WindowsPathSafety.IsSafeSegment(fileName))
                 throw new InvalidDataException("The Hugging Face cache migration file name is unsafe.");
+        }
+    }
+
+    private static FileStream? OpenContainedReadFile(
+        string containedRoot,
+        string candidatePath)
+    {
+        if (!OperatingSystem.IsWindows())
+        {
+            throw new PlatformNotSupportedException(
+                "Local AI Hugging Face cache migration requires Windows handle-relative file operations.");
+        }
+
+        string normalizedRoot = WindowsPathSafety.NormalizePath(containedRoot);
+        string normalizedCandidate = WindowsPathSafety.NormalizePath(candidatePath);
+        if (!WindowsPathSafety.IsStrictDescendant(normalizedCandidate, normalizedRoot))
+            throw new InvalidDataException("The legacy Local AI model escaped its managed model root.");
+
+        using SafeFileHandle root = SafeCacheDirectory.OpenAbsoluteDirectory(
+            normalizedRoot,
+            create: false);
+        string relativePath = Path.GetRelativePath(normalizedRoot, normalizedCandidate);
+        string[] segments = relativePath.Split(
+            [Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar],
+            StringSplitOptions.RemoveEmptyEntries);
+        SafeFileHandle directory = root;
+        try
+        {
+            for (int index = 0; index < segments.Length - 1; index++)
+            {
+                SafeFileHandle next = SafeCacheDirectory.OpenRelativeDirectory(
+                    directory,
+                    segments[index],
+                    create: false);
+                if (!ReferenceEquals(directory, root))
+                    directory.Dispose();
+                directory = next;
+            }
+
+            int status = OpenRelativeFile(
+                directory,
+                segments[^1],
+                GenericRead | SynchronizeAccess,
+                FileOpen,
+                out SafeFileHandle? handle);
+            if (status != 0)
+            {
+                int error = checked((int)RtlNtStatusToDosError(status));
+                if (error is ErrorFileNotFound or ErrorPathNotFound)
+                    return null;
+                throw CreateNativeIOException(
+                    "The legacy Local AI model could not be opened safely for cache migration.",
+                    error);
+            }
+
+            try
+            {
+                BY_HANDLE_FILE_INFORMATION info = GetHandleInformation(handle!);
+                if ((info.FileAttributes & (uint)FileAttributes.ReparsePoint) != 0 ||
+                    info.NumberOfLinks != 1 ||
+                    !WindowsPathSafety.PathEquals(
+                        GetFinalPathFromHandle(handle!),
+                        normalizedCandidate))
+                {
+                    throw new InvalidDataException(
+                        "The legacy Local AI model path is not a safely owned regular file.");
+                }
+
+                return new FileStream(
+                    handle!,
+                    FileAccess.Read,
+                    CopyBufferSize,
+                    isAsync: false);
+            }
+            catch
+            {
+                handle!.Dispose();
+                throw;
+            }
+        }
+        finally
+        {
+            if (!ReferenceEquals(directory, root))
+                directory.Dispose();
         }
     }
 
@@ -1066,7 +1174,7 @@ internal static class LocalAiManifestMigration
     private const uint FileFlagBackupSemantics = 0x02000000;
     private const uint FileFlagOpenReparsePoint = 0x00200000;
     private const uint ObjectCaseInsensitive = 0x00000040;
-    private const uint DirectoryAccess = 0x00000087;
+    private const uint DirectoryAccess = 0x00000081;
     private const int FileDispositionInfo = 4;
     private const int FileRenameInformation = 10;
     private const int ErrorFileNotFound = 2;

@@ -207,6 +207,23 @@ public sealed class LocalAiManifestMigrationTests
             await ReadPersistedSchemaVersionAsync(fixture.Paths.ManifestPath));
     }
 
+    [ConnectionSymbolicLinkFact]
+    public async Task Migration_RejectsLegacyModelSymlinkOutsideManagedModelRoot()
+    {
+        using var temp = new TempDirectory("local-ai-cache-migration-");
+        MigrationFixture fixture = await CreateFixtureAsync(temp);
+        string outsideModel = temp.Combine("outside-model.gguf");
+        await File.WriteAllBytesAsync(outsideModel, fixture.Content);
+        File.Delete(fixture.LegacyModelPath);
+        File.CreateSymbolicLink(fixture.LegacyModelPath, outsideModel);
+
+        await Assert.ThrowsAsync<InvalidDataException>(
+            () => fixture.Store.MigrateLegacyModelToHubCacheAsync());
+
+        Assert.Equal(fixture.Content, await File.ReadAllBytesAsync(outsideModel));
+        Assert.False(File.Exists(fixture.CachedModelPath));
+    }
+
     [Fact]
     public async Task Migration_MissingLegacySourceDoesNotCreateCacheDirectories()
     {
@@ -409,6 +426,32 @@ public sealed class LocalAiManifestMigrationTests
     }
 
     [Fact]
+    public async Task Migration_CancellationWhileVerifyingRecoveredPartialReleasesItForRetry()
+    {
+        using var temp = new TempDirectory("local-ai-cache-migration-");
+        MigrationFixture fixture = await CreateFixtureAsync(temp);
+        string partial = Path.Combine(
+            Path.GetDirectoryName(fixture.CachedModelPath)!,
+            $".openclaw-migration-{fixture.Manifest.ModelAsset.Sha256}.partial");
+        Directory.CreateDirectory(Path.GetDirectoryName(partial)!);
+        await File.WriteAllBytesAsync(partial, fixture.Content);
+        using var cancellation = new CancellationTokenSource();
+
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(
+            () => fixture.Store.MigrateLegacyModelToHubCacheAsync(
+                new InlineProgress<LocalAiModelMigrationProgress>(value =>
+                {
+                    if (value.Phase == LocalAiModelMigrationPhase.VerifyingCacheCopy)
+                        cancellation.Cancel();
+                }),
+                cancellation.Token));
+
+        LocalAiResolvedInstall migrated = (await fixture.Store.MigrateLegacyModelToHubCacheAsync())!;
+        Assert.Equal(LocalAiInstallManifest.HubCacheReceiptSchemaVersion, migrated.Manifest.SchemaVersion);
+        Assert.Equal(fixture.Content, await File.ReadAllBytesAsync(fixture.CachedModelPath));
+    }
+
+    [Fact]
     public async Task Load_RejectsTamperedSchemaFourCacheReceipt()
     {
         using var temp = new TempDirectory("local-ai-cache-migration-");
@@ -438,6 +481,45 @@ public sealed class LocalAiManifestMigrationTests
         LocalAiResolvedInstall migrated = (await fixture.Store.MigrateLegacyModelToHubCacheAsync())!;
 
         Assert.Equal(LocalAiInstallManifest.HubCacheReceiptSchemaVersion, migrated.Manifest.SchemaVersion);
+    }
+
+    [Fact]
+    public async Task Save_RejectsEncodedTraversalInHuggingFaceRelativePath()
+    {
+        using var temp = new TempDirectory("local-ai-cache-migration-");
+        MigrationFixture fixture = await CreateFixtureAsync(temp);
+        LocalAiInstallManifest unsafeManifest = fixture.Manifest with
+        {
+            ModelAsset = fixture.Manifest.ModelAsset with
+            {
+                SourceUrl =
+                    $"https://huggingface.co/{RepositoryId}/resolve/{Revision}/%2e%2e/model.gguf?download=true",
+            },
+        };
+
+        await Assert.ThrowsAsync<InvalidDataException>(
+            () => fixture.Store.SaveAsync(unsafeManifest));
+    }
+
+    [Fact]
+    public async Task Migration_RejectsReparsePointCacheRootWithoutWritingItsTarget()
+    {
+        using var temp = new TempDirectory("local-ai-cache-migration-");
+        string outsideCache = temp.Combine("outside-cache-root");
+        string cacheRoot = temp.Combine("hf-cache-link");
+        Directory.CreateDirectory(outsideCache);
+        Assert.True(TryCreateJunction(cacheRoot, outsideCache));
+        MigrationFixture fixture = await CreateFixtureAsync(
+            temp,
+            cacheRootOverride: cacheRoot);
+
+        await Assert.ThrowsAsync<InvalidDataException>(
+            () => fixture.Store.MigrateLegacyModelToHubCacheAsync());
+
+        Assert.Empty(Directory.EnumerateFileSystemEntries(outsideCache));
+        Assert.Equal(
+            LocalAiInstallManifest.CurrentSchemaVersion,
+            await ReadPersistedSchemaVersionAsync(fixture.Paths.ManifestPath));
     }
 
     [Fact]
