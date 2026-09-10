@@ -165,10 +165,8 @@ public sealed class LocalAiPortLifecycleTests
     }
 
     [Fact]
-    public async Task Restart_ReusesLastVerifiedPortAndNeverWithdrawsThePublishedRoute()
+    public async Task Startup_WithdrawsProviderBeforeBindingFreshAutomaticPort()
     {
-        // The published route stays valid for the whole startup, so the gateway is
-        // never left without a Local AI provider to fall back from.
         using var temp = new TempDirectory("local-ai-port-");
         LocalAiPaths paths = await PrepareInstallAsync(temp);
         var store = new LocalAiManifestStore(paths);
@@ -177,16 +175,18 @@ public sealed class LocalAiPortLifecycleTests
 
         var events = new List<string>();
         var platform = new FakePlatform();
-        var host = new FakeProcessHost(platform, events, selectedPort: 28_765);
+        var host = new FakeProcessHost(platform, events, selectedPort: 28_766);
         var client = new FakeClient(events);
         await using var runtime = CreateRuntime(paths, host, platform, client, new FakeLifecycle(events));
 
         LocalAiRuntimeSnapshot snapshot = await runtime.EnsureStartedAsync();
 
         Assert.Equal(LocalAiRuntimeState.Healthy, snapshot.State);
-        Assert.Equal("28765", ArgumentAfter(host.LastSpec!.Arguments, "--port"));
-        Assert.Equal(["start", "probe:28765", "publish:28765"], events);
-        Assert.DoesNotContain(events, e => e.StartsWith("quiesce", StringComparison.Ordinal));
+        Assert.Equal(28_766, snapshot.Endpoint.Port);
+        Assert.Equal("0", ArgumentAfter(host.LastSpec!.Arguments, "--port"));
+        Assert.Equal(
+            ["quiesce:EndpointCycle", "start", "probe:28766", "publish:28766"],
+            events);
     }
 
     [Fact]
@@ -345,9 +345,8 @@ public sealed class LocalAiPortLifecycleTests
     }
 
     [Fact]
-    public async Task Restart_WithdrawsRetainedRouteWhenStartupNeverBecomesHealthy()
+    public async Task Restart_RestoresTerminalRoutingWhenStartupNeverBecomesHealthy()
     {
-        // Nothing will answer the retained route, so it must not be left published.
         using var temp = new TempDirectory("local-ai-port-");
         LocalAiPaths paths = await PrepareInstallAsync(temp);
         var store = new LocalAiManifestStore(paths);
@@ -369,14 +368,14 @@ public sealed class LocalAiPortLifecycleTests
         LocalAiRuntimeSnapshot snapshot = await runtime.EnsureStartedAsync();
 
         Assert.Equal(LocalAiRuntimeState.Failed, snapshot.State);
-        Assert.Equal(["start", "quiesce:Teardown", "stop"], events);
+        Assert.Equal(
+            ["quiesce:EndpointCycle", "start", "quiesce:Teardown", "stop"],
+            events);
     }
 
     [Fact]
-    public async Task Restart_LaunchExceptionWithdrawsRetainedRouteAsTeardown()
+    public async Task Restart_LaunchExceptionRestoresTerminalRouting()
     {
-        // A launch exception is terminal: the retained route must be withdrawn
-        // before the gateway is left pointing at a port nothing will serve.
         using var temp = new TempDirectory("local-ai-port-");
         LocalAiPaths paths = await PrepareInstallAsync(temp);
         var store = new LocalAiManifestStore(paths);
@@ -396,7 +395,7 @@ public sealed class LocalAiPortLifecycleTests
         LocalAiRuntimeSnapshot snapshot = await runtime.EnsureStartedAsync();
 
         Assert.Equal(LocalAiRuntimeState.Failed, snapshot.State);
-        Assert.Equal(["quiesce:Teardown"], events);
+        Assert.Equal(["quiesce:EndpointCycle", "quiesce:Teardown"], events);
         Assert.Null(host.LastSpec);
         LocalAiResolvedInstall? saved = await new LocalAiManifestStore(paths).LoadAsync();
         Assert.Equal(28_765, saved!.Endpoint!.Port);
@@ -455,6 +454,45 @@ public sealed class LocalAiPortLifecycleTests
                 "publish:28765",
                 "quiesce:Teardown",
             ],
+            events.Skip(settled).ToArray());
+    }
+
+    [Fact]
+    public async Task Restart_AutomaticEndpointCycleFailureCompletesTeardown()
+    {
+        using var temp = new TempDirectory("local-ai-port-");
+        LocalAiPaths paths = await PrepareInstallAsync(temp);
+        var events = new List<string>();
+        var platform = new FakePlatform();
+        var lifecycle = new FakeLifecycle(events)
+        {
+            QuiesceHandler = (call, _, _) => Task.FromResult(
+                call == 2
+                    ? LocalAiEndpointLifecycleResult.Failed("automatic endpoint-cycle failed")
+                    : LocalAiEndpointLifecycleResult.Ok()),
+        };
+        var host = new FakeProcessHost(platform, events, selectedPort: 28_765);
+        await using var runtime = CreateRuntime(
+            paths,
+            host,
+            platform,
+            new FakeClient(events),
+            lifecycle,
+            maxRestartAttempts: 1);
+        LocalAiRuntimeSnapshot started = await runtime.EnsureStartedAsync();
+        Assert.Equal(LocalAiRuntimeState.Healthy, started.State);
+        int settled = events.Count;
+
+        host.Process!.MarkExited();
+        host.LastExitCallback!(new LocalAiManagedProcessExit(
+            host.Process.ProcessId,
+            host.Process.StartedAtUtc,
+            1));
+        await WaitForEventAsync(events, "quiesce:Teardown", settled);
+
+        Assert.Equal(LocalAiRuntimeState.Failed, runtime.Snapshot.State);
+        Assert.Equal(
+            ["quiesce:EndpointCycle", "quiesce:Teardown"],
             events.Skip(settled).ToArray());
     }
 
@@ -523,7 +561,9 @@ public sealed class LocalAiPortLifecycleTests
             () => runtime.EnsureStartedAsync(cancellation.Token));
 
         Assert.Equal(LocalAiRuntimeState.Stopped, runtime.Snapshot.State);
-        Assert.Equal(["start", "quiesce:Teardown", "stop"], events);
+        Assert.Equal(
+            ["quiesce:EndpointCycle", "start", "quiesce:Teardown", "stop"],
+            events);
     }
 
     [Fact]
@@ -554,8 +594,45 @@ public sealed class LocalAiPortLifecycleTests
             () => runtime.EnsureStartedAsync(cancellation.Token));
 
         Assert.Equal(LocalAiRuntimeState.Stopped, runtime.Snapshot.State);
-        Assert.Equal(["quiesce:Teardown"], events);
+        Assert.Equal(["quiesce:EndpointCycle", "quiesce:Teardown"], events);
         Assert.Null(host.LastSpec);
+    }
+
+    [Fact]
+    public async Task Restart_TeardownFailurePreservesLiveManagedListener()
+    {
+        using var temp = new TempDirectory("local-ai-port-");
+        LocalAiPaths paths = await PrepareInstallAsync(temp);
+        var events = new List<string>();
+        var platform = new FakePlatform();
+        var host = new FakeProcessHost(platform, events, selectedPort: 28_765)
+        {
+            SuppressListener = true,
+        };
+        var lifecycle = new FakeLifecycle(events)
+        {
+            QuiesceHandler = (call, _, _) => Task.FromResult(
+                call == 1
+                    ? LocalAiEndpointLifecycleResult.Ok()
+                    : LocalAiEndpointLifecycleResult.Failed("teardown failed")),
+        };
+        await using var runtime = CreateRuntime(
+            paths,
+            host,
+            platform,
+            new FakeClient(events),
+            lifecycle,
+            startupTimeout: TimeSpan.FromMilliseconds(5));
+
+        LocalAiRuntimeSnapshot snapshot = await runtime.EnsureStartedAsync();
+
+        Assert.Equal(LocalAiRuntimeState.Failed, snapshot.State);
+        Assert.Equal(LocalAiOwnership.CompanionManaged, snapshot.Ownership);
+        Assert.Equal(host.Process!.ProcessId, snapshot.ProcessId);
+        Assert.False(host.Process.HasExited);
+        Assert.Equal(
+            ["quiesce:EndpointCycle", "start", "quiesce:Teardown"],
+            events);
     }
 
     [Theory]
@@ -681,7 +758,7 @@ public sealed class LocalAiPortLifecycleTests
     }
 
     [Fact]
-    public async Task Refresh_QuiesceFailureStopsUnverifiedManagedProcess()
+    public async Task Refresh_TeardownFailurePreservesUnverifiedManagedProcess()
     {
         using var temp = new TempDirectory("local-ai-port-");
         LocalAiPaths paths = await PrepareInstallAsync(temp);
@@ -705,14 +782,54 @@ public sealed class LocalAiPortLifecycleTests
         LocalAiRuntimeSnapshot refreshed = await runtime.RefreshAsync();
 
         Assert.Equal(LocalAiRuntimeState.Failed, refreshed.State);
-        Assert.Equal(LocalAiOwnership.None, refreshed.Ownership);
-        Assert.Null(refreshed.ProcessId);
-        Assert.True(host.Process!.HasExited);
-        Assert.Equal(["probe:28776", "quiesce:EndpointCycle", "stop"], events);
+        Assert.Equal(LocalAiOwnership.CompanionManaged, refreshed.Ownership);
+        Assert.Equal(host.Process!.ProcessId, refreshed.ProcessId);
+        Assert.False(host.Process.HasExited);
+        Assert.Equal(
+            ["probe:28776", "quiesce:EndpointCycle", "quiesce:Teardown"],
+            events);
     }
 
     [Fact]
-    public async Task Refresh_QuiesceExceptionStopsManagedProcessBeforePropagating()
+    public async Task Refresh_EndpointCycleFailureUsesTeardownBeforeStopping()
+    {
+        using var temp = new TempDirectory("local-ai-port-");
+        LocalAiPaths paths = await PrepareInstallAsync(temp);
+        var events = new List<string>();
+        var platform = new FakePlatform();
+        var host = new FakeProcessHost(platform, events, selectedPort: 28_776);
+        var client = new FakeClient(events, (expectedModelPath, probeNumber) => probeNumber == 1
+            ? ReadyProbe(expectedModelPath)
+            : new(
+                false,
+                LocalAiModelAvailabilityState.Unknown,
+                null,
+                "The managed model is not ready."));
+        var lifecycle = new FakeLifecycle(events)
+        {
+            QuiesceHandler = (call, _, _) => Task.FromResult(
+                call == 2
+                    ? LocalAiEndpointLifecycleResult.Failed("endpoint-cycle failed")
+                    : LocalAiEndpointLifecycleResult.Ok()),
+        };
+        await using var runtime = CreateRuntime(paths, host, platform, client, lifecycle);
+        LocalAiRuntimeSnapshot started = await runtime.EnsureStartedAsync();
+        Assert.Equal(LocalAiRuntimeState.Healthy, started.State);
+        events.Clear();
+
+        LocalAiRuntimeSnapshot refreshed = await runtime.RefreshAsync();
+
+        Assert.Equal(LocalAiRuntimeState.Failed, refreshed.State);
+        Assert.Equal(LocalAiOwnership.None, refreshed.Ownership);
+        Assert.Null(refreshed.ProcessId);
+        Assert.True(host.Process!.HasExited);
+        Assert.Equal(
+            ["probe:28776", "quiesce:EndpointCycle", "quiesce:Teardown", "stop"],
+            events);
+    }
+
+    [Fact]
+    public async Task Refresh_QuiesceExceptionPreservesManagedProcessWhenTeardownAlsoFails()
     {
         using var temp = new TempDirectory("local-ai-port-");
         LocalAiPaths paths = await PrepareInstallAsync(temp);
@@ -736,10 +853,12 @@ public sealed class LocalAiPortLifecycleTests
 
         Assert.Equal("route withdrawal failed", error.Message);
         Assert.Equal(LocalAiRuntimeState.Failed, runtime.Snapshot.State);
-        Assert.Equal(LocalAiOwnership.None, runtime.Snapshot.Ownership);
-        Assert.Null(runtime.Snapshot.ProcessId);
-        Assert.True(host.Process!.HasExited);
-        Assert.Equal(["quiesce:EndpointCycle", "stop"], events);
+        Assert.Equal(LocalAiOwnership.CompanionManaged, runtime.Snapshot.Ownership);
+        Assert.Equal(host.Process!.ProcessId, runtime.Snapshot.ProcessId);
+        Assert.False(host.Process.HasExited);
+        Assert.Equal(
+            ["quiesce:EndpointCycle", "quiesce:Teardown"],
+            events);
     }
 
     [Fact]
@@ -945,6 +1064,40 @@ public sealed class LocalAiPortLifecycleTests
 
         Assert.Equal(LocalAiRuntimeState.Stopped, stopped.State);
         Assert.Equal(["quiesce:Teardown", "stop"], events);
+    }
+
+    [Fact]
+    public async Task RestartAsync_UsesEndpointCycleUntilReplacementIsPublished()
+    {
+        using var temp = new TempDirectory("local-ai-port-");
+        LocalAiPaths paths = await PrepareInstallAsync(temp);
+        var events = new List<string>();
+        var platform = new FakePlatform();
+        var host = new FakeProcessHost(platform, events, selectedPort: 28_769);
+        await using var runtime = CreateRuntime(
+            paths,
+            host,
+            platform,
+            new FakeClient(events),
+            new FakeLifecycle(events));
+        LocalAiRuntimeSnapshot started = await runtime.EnsureStartedAsync();
+        Assert.Equal(LocalAiRuntimeState.Healthy, started.State);
+        events.Clear();
+
+        LocalAiRuntimeSnapshot restarted = await runtime.RestartAsync();
+
+        Assert.Equal(LocalAiRuntimeState.Healthy, restarted.State);
+        Assert.Equal(
+            [
+                "quiesce:EndpointCycle",
+                "stop",
+                "quiesce:EndpointCycle",
+                "start",
+                "probe:28769",
+                "publish:28769",
+            ],
+            events);
+        Assert.DoesNotContain("quiesce:Teardown", events);
     }
 
     [Fact]
