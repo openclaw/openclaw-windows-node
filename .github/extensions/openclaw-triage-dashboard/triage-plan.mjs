@@ -92,6 +92,14 @@ export function buildPlanLanes(plan, legacyDayPlan = [], legacyQueue = []) {
     });
 }
 
+export function claimUnrenderedItemNumbers(itemNumbers, renderedItemNumbers) {
+    return itemNumbers.filter((number) => {
+        if (renderedItemNumbers.has(number)) return false;
+        renderedItemNumbers.add(number);
+        return true;
+    });
+}
+
 export function limitPlanLanes(lanes, visibleCount) {
     const count = Math.max(1, visibleCount);
     return {
