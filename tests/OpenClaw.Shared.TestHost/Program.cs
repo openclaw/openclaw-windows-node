@@ -106,6 +106,13 @@ static async Task<int> RunProcessFixtureAsync(string[] args)
         return 0;
     }
 
+    if (args is ["hold-silent", var silentHoldText]
+        && int.TryParse(silentHoldText, out var silentHoldMs))
+    {
+        await Task.Delay(silentHoldMs);
+        return 0;
+    }
+
     if (args is ["inherit-handles", var childHoldText, var pidFile]
         && int.TryParse(childHoldText, out var childHoldMs))
     {
@@ -130,7 +137,7 @@ static async Task<int> RunProcessFixtureAsync(string[] args)
         && int.TryParse(sizedChildHoldText, out var sizedChildHoldMs)
         && int.TryParse(outputLengthText, out var outputLength))
     {
-        using var child = StartSelf("--process-fixture", "hold", sizedChildHoldMs.ToString());
+        using var child = StartSelf("--process-fixture", "hold-silent", sizedChildHoldMs.ToString());
         WriteProcessIdentity(sizedPidFile, child);
         Console.Out.Write(new string('o', outputLength));
         Console.Error.Write(new string('e', outputLength));
