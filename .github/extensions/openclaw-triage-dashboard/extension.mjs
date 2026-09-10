@@ -3,6 +3,7 @@ import { existsSync } from "node:fs";
 import { createServer } from "node:http";
 import { homedir } from "node:os";
 import { dirname, isAbsolute, join, relative, resolve } from "node:path";
+import { DatabaseSync } from "node:sqlite";
 import { promisify } from "node:util";
 import { fileURLToPath } from "node:url";
 import {
@@ -11,9 +12,15 @@ import {
     joinSession,
 } from "@github/copilot-sdk/extension";
 import {
+    applyAdversarialReview,
     mergeLiveState,
     normalizeTriageInput,
+    reconcileOpenInventory,
 } from "./triage-state.mjs";
+import {
+    exactLookupResultIsValid,
+    selectExactLookupItems,
+} from "./triage-live.mjs";
 import {
     requestHostMatches,
     requestItemAction,
@@ -104,7 +111,7 @@ async function collectLiveState(repo, items) {
             "--state", "open",
             "--limit", "1000",
             "--json",
-            "number,title,url,state,isDraft,mergeable,mergeStateStatus,reviewDecision,headRefOid,updatedAt,labels,statusCheckRollup",
+            "number,title,url,state,isDraft,mergeable,mergeStateStatus,reviewDecision,headRefOid,updatedAt,author,labels,statusCheckRollup",
         ]),
         runGhJson([
             "issue", "list",
@@ -112,34 +119,42 @@ async function collectLiveState(repo, items) {
             "--state", "open",
             "--limit", "1000",
             "--json",
-            "number,title,url,state,stateReason,updatedAt,labels",
+            "number,title,url,state,stateReason,updatedAt,author,labels",
         ]),
     ]);
-    const pullRequestNumbers = new Set(pullRequests.map((item) => item.number));
-    const issueNumbers = new Set(issues.map((item) => item.number));
-    const missing = items.filter((item) =>
-        item.type === "pr"
-            ? !pullRequestNumbers.has(item.number)
-            : !issueNumbers.has(item.number));
-    const missingResults = await Promise.allSettled(missing.map(async (item) => {
+    const exactLookupItems = selectExactLookupItems(items, pullRequests, issues);
+    const exactLookupResults = await Promise.allSettled(exactLookupItems.map(async (item) => {
         const fields = item.type === "pr"
-            ? "number,title,url,state,isDraft,mergeable,mergeStateStatus,reviewDecision,headRefOid,updatedAt,labels,statusCheckRollup"
-            : "number,title,url,state,stateReason,updatedAt,labels";
+            ? "number,title,url,state,isDraft,mergeable,mergeStateStatus,reviewDecision,headRefOid,updatedAt,author,labels,statusCheckRollup"
+            : "number,title,url,state,stateReason,updatedAt,author,labels";
         const value = await runGhJson([
             item.type, "view",
             String(item.number),
             "--repo", repo,
             "--json", fields,
         ]);
+        if (!exactLookupResultIsValid(item, value)) {
+            throw new Error(`GitHub returned incomplete live state for ${item.type} #${item.number}`);
+        }
         return { type: item.type, value };
     }));
-    for (const result of missingResults) {
+    for (const [resultIndex, result] of exactLookupResults.entries()) {
+        const lookupItem = exactLookupItems[resultIndex];
+        const collection = lookupItem.type === "pr" ? pullRequests : issues;
         if (result.status === "fulfilled") {
-            (result.value.type === "pr" ? pullRequests : issues).push(result.value.value);
+            const index = collection.findIndex((item) => item.number === result.value.value.number);
+            if (index >= 0) {
+                collection[index] = result.value.value;
+            } else {
+                collection.push(result.value.value);
+            }
+        } else {
+            const index = collection.findIndex((item) => item.number === lookupItem.number);
+            if (index >= 0) collection.splice(index, 1);
         }
     }
-    const failedLookups = missingResults
-        .map((result, index) => result.status === "rejected" ? missing[index] : null)
+    const failedLookups = exactLookupResults
+        .map((result, index) => result.status === "rejected" ? exactLookupItems[index] : null)
         .filter(Boolean)
         .map((item) => `${item.type.toUpperCase()} #${item.number}`);
     return {
@@ -179,6 +194,154 @@ function sendState(entry) {
     }
 }
 
+function readSessionData() {
+    const databasePath = copilotSession?.workspacePath
+        ? join(copilotSession.workspacePath, "session.db")
+        : "";
+    if (!databasePath || !existsSync(databasePath)) {
+        return { adversarialReviews: [], error: "", tasks: [] };
+    }
+
+    try {
+        const database = new DatabaseSync(databasePath, { readOnly: true });
+        try {
+            const tableExists = (name) => Boolean(database.prepare(
+                "SELECT 1 AS present FROM sqlite_master WHERE type = 'table' AND name = ?",
+            ).get(name));
+            const tasks = tableExists("todos")
+                ? database.prepare(
+                    `SELECT id, title, status
+                     FROM todos
+                     ORDER BY created_at, id`,
+                ).all().map((task) => ({
+                    id: String(task.id),
+                    status: String(task.status),
+                    title: String(task.title),
+                }))
+                : [];
+            const findings = tableExists("review_findings")
+                ? database.prepare(
+                    `SELECT id, pr_number, issue, opus_severity, codex_severity,
+                            consensus, fix_confidence, disposition
+                     FROM review_findings
+                     ORDER BY pr_number, id`,
+                ).all()
+                : [];
+            const findingsByPullRequest = new Map();
+            for (const finding of findings) {
+                const number = Number(finding.pr_number);
+                const entries = findingsByPullRequest.get(number) ?? [];
+                entries.push({
+                    codexSeverity: String(finding.codex_severity ?? ""),
+                    consensus: String(finding.consensus ?? ""),
+                    disposition: String(finding.disposition ?? ""),
+                    fixConfidence: Number(finding.fix_confidence),
+                    id: String(finding.id),
+                    issue: String(finding.issue),
+                    opusSeverity: String(finding.opus_severity ?? ""),
+                });
+                findingsByPullRequest.set(number, entries);
+            }
+            const reviewColumns = tableExists("adversarial_reviews")
+                ? new Set(database.prepare("PRAGMA table_info(adversarial_reviews)")
+                    .all()
+                    .map((column) => String(column.name)))
+                : new Set();
+            const finalVerdictColumns = [
+                "final_decision",
+                "take_confidence",
+                "recommendation_confidence",
+                "next_action",
+            ];
+            const hasFinalVerdictColumns = finalVerdictColumns.every((column) =>
+                reviewColumns.has(column));
+            const reviewProjection = hasFinalVerdictColumns
+                ? `pr_number, reviewed_head_sha, status, opus_status, codex_status,
+                   final_decision, take_confidence, recommendation_confidence,
+                   next_action, summary, updated_at`
+                : `pr_number, reviewed_head_sha, status, opus_status, codex_status,
+                   summary, updated_at`;
+            const adversarialReviews = reviewColumns.size > 0
+                ? database.prepare(
+                    `SELECT ${reviewProjection}
+                     FROM adversarial_reviews
+                     ORDER BY pr_number DESC`,
+                ).all().map((review) => {
+                    const number = Number(review.pr_number);
+                    const reviewFindings = findingsByPullRequest.get(number) ?? [];
+                    return {
+                        acceptedCount: reviewFindings.filter((finding) =>
+                            finding.disposition.startsWith("accepted")).length,
+                        codexStatus: String(review.codex_status),
+                        finalDecision: review.final_decision,
+                        findings: reviewFindings,
+                        nextAction: review.next_action,
+                        opusStatus: String(review.opus_status),
+                        prNumber: number,
+                        recommendationConfidence: review.recommendation_confidence,
+                        rejectedCount: reviewFindings.filter((finding) =>
+                            finding.disposition.startsWith("rejected")).length,
+                        reviewedHeadSha: String(review.reviewed_head_sha),
+                        status: String(review.status),
+                        summary: String(review.summary),
+                        takeConfidence: review.take_confidence,
+                        updatedAt: String(review.updated_at),
+                    };
+                })
+                : [];
+            return { adversarialReviews, error: "", tasks };
+        } finally {
+            database.close();
+        }
+    } catch (error) {
+        return {
+            adversarialReviews: [],
+            error: `Session data unavailable: ${clientErrorMessage(error)}`,
+            tasks: [],
+        };
+    }
+}
+
+function mergeSessionData(state) {
+    const sessionData = readSessionData();
+    const reviewByNumber = new Map(sessionData.adversarialReviews
+        .map((review) => [review.prNumber, review]));
+    const items = state.items.map((item) => {
+        const adversarialReview = item.type === "pr"
+            ? reviewByNumber.get(item.number) ?? null
+            : null;
+        return applyAdversarialReview(item, adversarialReview);
+    });
+    return {
+        ...state,
+        adversarialReviews: items
+            .map((item) => item.adversarialReview)
+            .filter(Boolean),
+        items,
+        sessionDataError: sessionData.error,
+        sessionTasks: sessionData.tasks,
+    };
+}
+
+function refreshSessionData(entry) {
+    const nextState = mergeSessionData({
+        ...mergeLiveState(
+            entry.triage,
+            entry.pullRequests,
+            entry.issues,
+            entry.state.refreshError,
+        ),
+        refreshWarning: entry.state.refreshWarning,
+    });
+    if (JSON.stringify(nextState.sessionTasks) === JSON.stringify(entry.state.sessionTasks) &&
+        JSON.stringify(nextState.adversarialReviews) === JSON.stringify(entry.state.adversarialReviews) &&
+        nextState.sessionDataError === entry.state.sessionDataError) {
+        return;
+    }
+    entry.state = nextState;
+    sendState(entry);
+}
+
 async function refreshEntry(entry, force = false) {
     if (entry.refreshPromise) {
         if (!force) {
@@ -194,12 +357,14 @@ async function refreshEntry(entry, force = false) {
             const live = await collectLiveState(entry.triage.repo, entry.triage.items);
             entry.pullRequests = live.pullRequests;
             entry.issues = live.issues;
-            entry.state = {
+            entry.triage = reconcileOpenInventory(entry.triage, entry.pullRequests, entry.issues);
+            entry.state = mergeSessionData({
                 ...mergeLiveState(entry.triage, entry.pullRequests, entry.issues),
                 refreshWarning: live.refreshWarning,
-            };
+            });
         } catch (error) {
-            entry.state = {
+            entry.triage = reconcileOpenInventory(entry.triage, entry.pullRequests, entry.issues);
+            entry.state = mergeSessionData({
                 ...mergeLiveState(
                     entry.triage,
                     entry.pullRequests,
@@ -207,7 +372,7 @@ async function refreshEntry(entry, force = false) {
                     safeErrorMessage(error),
                 ),
                 refreshWarning: "",
-            };
+            });
         }
         sendState(entry);
         return entry.state;
@@ -326,7 +491,8 @@ async function startInstance(instanceId, triage) {
         pullRequests: [],
         refreshPromise: null,
         server: null,
-        state: mergeLiveState(triage, [], []),
+        state: mergeSessionData(mergeLiveState(triage, [], [])),
+        taskTimer: null,
         timer: null,
         triage,
         url: "",
@@ -373,13 +539,16 @@ async function getOrStartInstance(instanceId, triage) {
 }
 
 function reconfigureInstance(entry, triage) {
-    entry.triage = triage;
-    entry.state = mergeLiveState(triage, entry.pullRequests, entry.issues);
+    entry.triage = reconcileOpenInventory(triage, entry.pullRequests, entry.issues);
+    entry.state = mergeSessionData(mergeLiveState(entry.triage, entry.pullRequests, entry.issues));
     clearInterval(entry.timer);
+    clearInterval(entry.taskTimer);
     entry.timer = setInterval(() => {
         refreshEntry(entry).catch(() => {});
     }, triage.refreshSeconds * 1_000);
     entry.timer.unref();
+    entry.taskTimer = setInterval(() => refreshSessionData(entry), 2_000);
+    entry.taskTimer.unref();
     refreshEntry(entry, true).catch(() => {});
 }
 
@@ -390,6 +559,7 @@ async function closeInstance(instanceId) {
     }
     instances.delete(instanceId);
     clearInterval(entry.timer);
+    clearInterval(entry.taskTimer);
     for (const client of entry.eventClients) {
         client.end();
     }

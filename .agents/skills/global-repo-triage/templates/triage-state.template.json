@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "repo": "openclaw/openclaw-windows-node",
   "title": "OpenClaw Windows Node global triage",
-  "scope": "All open issues and pull requests as of 2026-09-03.",
+  "scope": "1 open non-draft pull requests. All open issues are also included as of 2026-09-03.",
   "generatedAt": "2026-09-03T22:00:00Z",
   "refreshSeconds": 60,
   "items": [
@@ -51,6 +51,10 @@
   ],
   "report": {
     "changes": [
+      {
+        "change": "Open non-draft PRs",
+        "items": "1 open non-draft PRs"
+      },
       {
         "change": "New pull requests",
         "items": "#1308"

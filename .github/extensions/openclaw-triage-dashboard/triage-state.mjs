@@ -350,7 +350,12 @@ export function deriveItemStages(item, live) {
         checks: checksStatus,
         proof: proofStatus,
         ...(item.type === "pr"
-            ? { landing: canRequestMerge(item, live).eligible ? "done" : "blocked" }
+            ? {
+                landing: String(live?.state ?? "").toUpperCase() === "MERGED" ||
+                    canRequestMerge(item, live).eligible
+                    ? "done"
+                    : "blocked",
+            }
             : {}),
     };
 }
@@ -380,6 +385,188 @@ export function canRequestMerge(item, live) {
         reasons.push("Live head differs from the reviewed head");
     }
     return { eligible: reasons.length === 0, reasons };
+}
+
+export function applyAdversarialReview(item, review) {
+    if (!review || item.type !== "pr") {
+        return { ...item, adversarialReview: null };
+    }
+    const liveHead = String(item.live?.headRefOid ?? "");
+    const reviewedHead = String(review.reviewedHeadSha ?? "");
+    const headMatches = Boolean(liveHead && reviewedHead) &&
+        liveHead.toLowerCase() === reviewedHead.toLowerCase();
+    let mergedItem = {
+        ...item,
+        adversarialReview: {
+            ...review,
+            headMatches: liveHead ? headMatches : null,
+        },
+    };
+    const publishesFinalVerdict = headMatches &&
+        review.status === "complete" &&
+        review.opusStatus === "complete" &&
+        review.codexStatus === "complete" &&
+        DECISIONS.has(review.finalDecision) &&
+        Number.isInteger(review.takeConfidence) &&
+        review.takeConfidence >= 0 &&
+        review.takeConfidence <= 100 &&
+        Number.isInteger(review.recommendationConfidence) &&
+        review.recommendationConfidence >= 0 &&
+        review.recommendationConfidence <= 100 &&
+        typeof review.nextAction === "string" &&
+        review.nextAction.trim().length > 0;
+    if (!publishesFinalVerdict) {
+        return mergedItem;
+    }
+
+    mergedItem = {
+        ...mergedItem,
+        decision: review.finalDecision,
+        nextAction: review.nextAction,
+        recommendationConfidence: review.recommendationConfidence,
+        reviewedHeadSha: review.reviewedHeadSha,
+        reviewStatus: "complete",
+        takeConfidence: review.takeConfidence,
+    };
+    return {
+        ...mergedItem,
+        mergeRequest: canRequestMerge(mergedItem, mergedItem.live),
+        stages: deriveItemStages(mergedItem, mergedItem.live),
+    };
+}
+
+export function reconcileOpenInventory(triage, pullRequests, issues) {
+    const pullRequestMap = new Map((pullRequests ?? []).map((item) => [item.number, item]));
+    const issueMap = new Map((issues ?? []).map((item) => [item.number, item]));
+    const existingNumbers = new Set(triage.items.map((item) => item.number));
+    const planTargetNumbers = new Set(triage.plan.flatMap((step) => [
+        ...step.itemNumbers,
+        ...step.gates.map((gate) => gate.itemNumber),
+    ]));
+    const discoveredPullRequests = (pullRequests ?? [])
+        .filter((item) =>
+            String(item.state).toUpperCase() === "OPEN" &&
+            !item.isDraft &&
+            !existingNumbers.has(item.number))
+        .sort((left, right) => right.number - left.number);
+    const removedNumbers = new Set(triage.items.flatMap((item) => {
+        const live = item.type === "pr" ? pullRequestMap.get(item.number) : issueMap.get(item.number);
+        const state = String(live?.state ?? "").toUpperCase();
+        const outOfScopeDraft = item.type === "pr" &&
+            state === "OPEN" &&
+            live?.isDraft === true &&
+            !planTargetNumbers.has(item.number);
+        return state === "CLOSED" || state === "MERGED" || outOfScopeDraft ? [item.number] : [];
+    }));
+
+    const retainedItems = triage.items
+        .filter((item) => !removedNumbers.has(item.number))
+        .map((item) => ({
+            ...item,
+            dependencies: item.dependencies.filter((number) => !removedNumbers.has(number)),
+        }));
+    const discoveredItems = discoveredPullRequests.map((live) => ({
+        id: `pr-${live.number}`,
+        type: "pr",
+        number: live.number,
+        title: String(live.title || `Pull request #${live.number}`),
+        url: String(live.url || `https://github.com/${triage.repo}/pull/${live.number}`),
+        decision: "NEEDS_INFO",
+        takeConfidence: 0,
+        recommendationConfidence: 0,
+        effort: "Untriaged",
+        risk: "Unknown",
+        owner: "Unassigned",
+        nextAction: "Run global repository triage for this newly discovered pull request.",
+        proofPools: [],
+        proofStatus: "required",
+        reviewStatus: "required",
+        reviewedHeadSha: "",
+        expectedChecks: ["CI Gate"],
+        dependencies: [],
+    }));
+    const items = [...retainedItems, ...discoveredItems].sort((left, right) => {
+        if (left.type !== right.type) return left.type === "pr" ? -1 : 1;
+        return right.number - left.number;
+    });
+    const planCandidates = triage.plan
+        .map((step) => {
+            const referencedRemovedItem = step.itemNumbers.some((number) => removedNumbers.has(number)) ||
+                step.gates.some((gate) => removedNumbers.has(gate.itemNumber));
+            return {
+                ...step,
+                itemNumbers: step.itemNumbers.filter((number) => !removedNumbers.has(number)),
+                gates: step.gates.filter((gate) => !removedNumbers.has(gate.itemNumber)),
+                referencedRemovedItem,
+            };
+        })
+        .filter((step) =>
+            !step.referencedRemovedItem || step.itemNumbers.length > 0 || step.gates.length > 0);
+    const usedPlanIds = new Set(planCandidates.map((step) => step.id));
+    const discoveredPlan = discoveredPullRequests.map((live) => {
+        const baseId = `triage-pr-${live.number}`;
+        let id = baseId;
+        for (let suffix = 2; usedPlanIds.has(id); suffix += 1) {
+            id = `${baseId}-${suffix}`;
+        }
+        usedPlanIds.add(id);
+        return {
+            id,
+            title: `Triage PR #${live.number}`,
+            detail: "Refresh exact-head evidence and assign a triage decision.",
+            dependsOn: [],
+            horizon: "today",
+            itemNumbers: [live.number],
+            gates: [{ itemNumber: live.number, stage: "review" }],
+            status: "pending",
+        };
+    });
+    const retainedPlanIds = new Set([
+        ...planCandidates.map((step) => step.id),
+        ...discoveredPlan.map((step) => step.id),
+    ]);
+    const plan = [...planCandidates.map(({ referencedRemovedItem: _, ...step }) => ({
+        ...step,
+        dependsOn: step.dependsOn.filter((id) => retainedPlanIds.has(id)),
+    })), ...discoveredPlan];
+    const openPullRequestCount = items.filter((item) =>
+        item.type === "pr" && pullRequestMap.get(item.number)?.isDraft !== true).length;
+    const scopeDetail = triage.scope.replace(
+        /^(?:(?:All )?\d+ open non-draft (?:pull requests|PRs)(?:\.\s*|$))+/i,
+        "",
+    ).trim();
+    const scope = `${openPullRequestCount} open non-draft pull requests` +
+        (scopeDetail ? `. ${scopeDetail}` : "");
+    const openPullRequestChange = {
+        change: "Open non-draft PRs",
+        items: `${openPullRequestCount} open non-draft PRs`,
+    };
+    const hasOpenPullRequestChange = triage.report.changes.some((entry) =>
+        entry.change === openPullRequestChange.change);
+    const reconciledReport = {
+        ...triage.report,
+        changes: hasOpenPullRequestChange
+            ? triage.report.changes.map((entry) =>
+                entry.change === openPullRequestChange.change
+                    ? openPullRequestChange
+                    : entry)
+            : [openPullRequestChange, ...triage.report.changes],
+    };
+    const report = triage.plan.length > 0 && plan.length === 0
+        ? {
+            ...reconciledReport,
+            executiveQueue: [],
+            dayPlan: [],
+        }
+        : reconciledReport;
+
+    return {
+        ...triage,
+        scope,
+        items,
+        plan,
+        report,
+    };
 }
 
 export function mergeLiveState(triage, pullRequests, issues, error = "") {
