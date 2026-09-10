@@ -50,6 +50,23 @@ public sealed class LocalAiManifestMigrationTests
     }
 
     [Fact]
+    public async Task Migration_AllowsExistingReadHandleOnActiveLegacyModel()
+    {
+        using var temp = new TempDirectory("local-ai-cache-migration-");
+        MigrationFixture fixture = await CreateFixtureAsync(temp);
+        await using var activeModel = new FileStream(
+            fixture.LegacyModelPath,
+            FileMode.Open,
+            FileAccess.Read,
+            FileShare.Read);
+
+        LocalAiResolvedInstall migrated = (await fixture.Store.MigrateLegacyModelToHubCacheAsync())!;
+
+        Assert.Equal(LocalAiInstallManifest.HubCacheReceiptSchemaVersion, migrated.Manifest.SchemaVersion);
+        Assert.Equal(fixture.Content, await File.ReadAllBytesAsync(fixture.CachedModelPath));
+    }
+
+    [Fact]
     public async Task Load_IsIdempotentAndDoesNotRewriteVerifiedCacheContent()
     {
         using var temp = new TempDirectory("local-ai-cache-migration-");
@@ -230,6 +247,19 @@ public sealed class LocalAiManifestMigrationTests
         using var temp = new TempDirectory("local-ai-cache-migration-");
         MigrationFixture fixture = await CreateFixtureAsync(temp);
         File.Delete(fixture.LegacyModelPath);
+
+        LocalAiResolvedInstall unchanged = (await fixture.Store.MigrateLegacyModelToHubCacheAsync())!;
+
+        Assert.Equal(LocalAiInstallManifest.CurrentSchemaVersion, unchanged.Manifest.SchemaVersion);
+        Assert.False(Directory.Exists(fixture.CacheRoot));
+    }
+
+    [Fact]
+    public async Task Migration_MissingLegacyDirectoryTreeDoesNotCreateCacheDirectories()
+    {
+        using var temp = new TempDirectory("local-ai-cache-migration-");
+        MigrationFixture fixture = await CreateFixtureAsync(temp);
+        Directory.Delete(Path.GetDirectoryName(fixture.LegacyModelPath)!, recursive: true);
 
         LocalAiResolvedInstall unchanged = (await fixture.Store.MigrateLegacyModelToHubCacheAsync())!;
 
@@ -502,6 +532,35 @@ public sealed class LocalAiManifestMigrationTests
     }
 
     [Fact]
+    public async Task Migration_MapsFlatLegacyFileIntoNestedHuggingFaceSnapshotPath()
+    {
+        using var temp = new TempDirectory("local-ai-cache-migration-");
+        MigrationFixture fixture = await CreateFixtureAsync(temp);
+        LocalAiInstallManifest nestedManifest = fixture.Manifest with
+        {
+            ModelAsset = fixture.Manifest.ModelAsset with
+            {
+                SourceUrl =
+                    $"https://huggingface.co/{RepositoryId}/resolve/{Revision}/weights/model.gguf?download=true",
+            },
+        };
+        await fixture.Store.SaveAsync(nestedManifest);
+        Assert.True(HuggingFaceHubCache.TryGetSnapshotPaths(
+            fixture.CacheRoot,
+            RepositoryId,
+            Revision,
+            "weights/model.gguf",
+            out string nestedCachedModelPath,
+            out _,
+            out string error), error);
+
+        LocalAiResolvedInstall migrated = (await fixture.Store.MigrateLegacyModelToHubCacheAsync())!;
+
+        Assert.Equal(nestedCachedModelPath, migrated.Manifest.CachedModelPath);
+        Assert.Equal(fixture.Content, await File.ReadAllBytesAsync(nestedCachedModelPath));
+    }
+
+    [Fact]
     public async Task Migration_RejectsReparsePointCacheRootWithoutWritingItsTarget()
     {
         using var temp = new TempDirectory("local-ai-cache-migration-");
@@ -522,12 +581,10 @@ public sealed class LocalAiManifestMigrationTests
             await ReadPersistedSchemaVersionAsync(fixture.Paths.ManifestPath));
     }
 
-    [Fact]
+    [CrossVolumeFact]
     public async Task Migration_CopiesAcrossConfiguredDistinctVolume()
     {
-        string? configuredRoot = Environment.GetEnvironmentVariable("OPENCLAW_TEST_HF_CACHE_ROOT");
-        if (string.IsNullOrWhiteSpace(configuredRoot))
-            return;
+        string configuredRoot = Environment.GetEnvironmentVariable("OPENCLAW_TEST_HF_CACHE_ROOT")!;
 
         using var temp = new TempDirectory("local-ai-cache-migration-");
         string cacheRoot = Path.Combine(
@@ -700,6 +757,18 @@ internal sealed class ConnectionSymbolicLinkFactAttribute : FactAttribute
             {
                 // A failed capability probe must not fail the test host.
             }
+        }
+    }
+}
+
+internal sealed class CrossVolumeFactAttribute : FactAttribute
+{
+    public CrossVolumeFactAttribute()
+    {
+        if (string.IsNullOrWhiteSpace(
+                Environment.GetEnvironmentVariable("OPENCLAW_TEST_HF_CACHE_ROOT")))
+        {
+            Skip = "Set OPENCLAW_TEST_HF_CACHE_ROOT to a directory on a distinct volume.";
         }
     }
 }
