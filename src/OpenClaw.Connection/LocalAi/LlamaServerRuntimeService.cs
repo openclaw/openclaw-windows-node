@@ -1119,29 +1119,47 @@ public sealed class LlamaServerRuntimeService : ILocalAiRuntime
         PublishTerminalCleanupFailure($"Local AI restart was {outcome}.");
     }
 
-    private async Task DisposeManagedProcessAsync(CancellationToken cancellationToken)
+    private async Task DisposeManagedProcessAsync(
+        CancellationToken cancellationToken,
+        bool preserveForRetry = true)
     {
         ILocalAiManagedProcess? process = _managedProcess;
         _managedProcess = null;
         if (process is null)
             return;
-        bool preserveForRetry = false;
+        bool preserved = false;
         try
         {
             await process.StopAsync(_options.ShutdownTimeout, cancellationToken).ConfigureAwait(false);
         }
         catch
         {
+            if (preserveForRetry)
+            {
+                if (!process.HasExited)
+                {
+                    _managedProcess = process;
+                    preserved = true;
+                }
+                throw;
+            }
             if (!process.HasExited)
             {
-                _managedProcess = process;
-                preserveForRetry = true;
+                try
+                {
+                    await process.StopAsync(_options.ShutdownTimeout, CancellationToken.None)
+                        .ConfigureAwait(false);
+                }
+                catch (Exception ex)
+                {
+                    _logger.Warn(
+                        $"The managed Local AI process could not be stopped during final disposal: {Sanitize(ex.Message)}");
+                }
             }
-            throw;
         }
         finally
         {
-            if (!preserveForRetry)
+            if (!preserved)
                 await process.DisposeAsync().ConfigureAwait(false);
         }
     }
@@ -1522,7 +1540,10 @@ public sealed class LlamaServerRuntimeService : ILocalAiRuntime
                         _logger.Warn($"The Local AI gateway provider could not be disabled during shutdown: {Sanitize(ex.Message)}");
                     }
                 }
-                await DisposeManagedProcessAsync(CancellationToken.None).ConfigureAwait(false);
+                await DisposeManagedProcessAsync(
+                        CancellationToken.None,
+                        preserveForRetry: false)
+                    .ConfigureAwait(false);
                 _disposed = true;
                 _client.Dispose();
             }

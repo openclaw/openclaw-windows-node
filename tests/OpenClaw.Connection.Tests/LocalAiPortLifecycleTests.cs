@@ -1694,6 +1694,32 @@ public sealed class LocalAiPortLifecycleTests
     }
 
     [Fact]
+    public async Task Dispose_ProcessShutdownFailureRetriesAndReleasesProcess()
+    {
+        using var temp = new TempDirectory("local-ai-port-");
+        LocalAiPaths paths = await PrepareInstallAsync(temp);
+        var events = new SynchronizedEventLog();
+        var platform = new FakePlatform();
+        var host = new FakeProcessHost(platform, events, selectedPort: 28_769);
+        var runtime = CreateRuntime(
+            paths,
+            host,
+            platform,
+            new FakeClient(events),
+            new FakeLifecycle(events));
+        LocalAiRuntimeSnapshot started = await runtime.EnsureStartedAsync();
+        Assert.Equal(LocalAiRuntimeState.Healthy, started.State);
+        host.Process!.StopException = new IOException("process shutdown failed");
+        events.Clear();
+
+        await runtime.DisposeAsync();
+
+        Assert.Equal(2, host.Process.StopCount);
+        Assert.Equal(1, host.Process.DisposeCount);
+        Assert.Equal(["quiesce:Teardown", "stop", "stop"], events);
+    }
+
+    [Fact]
     public async Task Stop_FailedWithdrawalLatchesIntentAndPreventsAutomaticRestart()
     {
         using var temp = new TempDirectory("local-ai-port-");
@@ -2440,6 +2466,7 @@ public sealed class LocalAiPortLifecycleTests
         public DateTimeOffset StartedAtUtc { get; } = startedAtUtc;
         public bool HasExited { get; private set; }
         public int StopCount { get; private set; }
+        public int DisposeCount { get; private set; }
         public Action? AfterStop { get; set; }
         public Exception? StopException { get; set; }
 
@@ -2458,7 +2485,11 @@ public sealed class LocalAiPortLifecycleTests
             return Task.CompletedTask;
         }
 
-        public ValueTask DisposeAsync() => ValueTask.CompletedTask;
+        public ValueTask DisposeAsync()
+        {
+            DisposeCount++;
+            return ValueTask.CompletedTask;
+        }
     }
 
     private sealed class FakeClient(
