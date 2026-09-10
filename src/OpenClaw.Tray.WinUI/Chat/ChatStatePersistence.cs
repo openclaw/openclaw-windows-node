@@ -12,8 +12,8 @@ internal sealed class ChatStatePersistence : IDisposable
     private readonly string _lastStatePath;
     private readonly string _abortedIdsPath;
     private readonly TimeSpan _lastStateSaveDelay;
-    private readonly Action? _beforeLastStateSaveForTesting;
-    private readonly Action? _beforeSelectedStateSaveForTesting;
+    private Action? _beforeLastStateSaveForTesting;
+    private Action? _beforeSelectedStateSaveForTesting;
     private readonly Dictionary<string, HashSet<string>> _abortedIds;
     private readonly Dictionary<string, Dictionary<string, long>>
         _abortedIdGenerations;
@@ -51,6 +51,16 @@ internal sealed class ChatStatePersistence : IDisposable
                 StringComparer.Ordinal),
             StringComparer.Ordinal);
     }
+
+#if OPENCLAW_TRAY_TESTS
+    internal void SetTestHooks(
+        Action? beforeLastStateSave,
+        Action? beforeSelectedStateSave)
+    {
+        _beforeLastStateSaveForTesting = beforeLastStateSave;
+        _beforeSelectedStateSaveForTesting = beforeSelectedStateSave;
+    }
+#endif
 
     internal OpenClawChatDataProvider.LastChatState? InitialLastChatState { get; }
 

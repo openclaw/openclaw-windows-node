@@ -281,11 +281,12 @@ public class OpenClawChatDataProviderTests
                 attachmentMetaCacheFilePath: attachmentMetaCachePath,
                 lastChatStateFilePath: lastChatStatePath,
                 lastChatStateSaveDelay: lastChatStateSaveDelay,
-                lastStateSaveReservedForTesting: lastStateSaveReservedForTesting,
-                beforeSelectedStateSaveForTesting: beforeSelectedStateSaveForTesting,
                 historyRetryScheduler: historyRetryScheduler,
                 historyFailureReservedForTesting: historyFailureReservedForTesting,
                 deferredAbortScheduler: deferredAbortScheduler);
+        provider.SetPersistenceTestHooks(
+            lastStateSaveReservedForTesting,
+            beforeSelectedStateSaveForTesting);
         var snapshots = new List<ChatDataSnapshot>();
         var notifications = new List<ChatProviderNotification>();
         provider.Changed += (_, e) => snapshots.Add(e.Snapshot);
@@ -5783,8 +5784,8 @@ public class OpenClawChatDataProviderTests
             lastChatStateFilePath: Path.Combine(
                 temp.DirectoryPath,
                 "last-chat-state.json"),
-            lastChatStateSaveDelay: TimeSpan.Zero,
-            lastStateSaveReservedForTesting: snapshotSaved.Set);
+            lastChatStateSaveDelay: TimeSpan.Zero);
+        provider.SetPersistenceTestHooks(snapshotSaved.Set, null);
         var notifications = new List<ChatProviderNotification>();
         provider.Changed += (_, _) =>
             throw new InvalidOperationException("snapshot subscriber failed");

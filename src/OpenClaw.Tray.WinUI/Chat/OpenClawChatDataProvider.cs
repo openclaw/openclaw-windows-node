@@ -102,6 +102,13 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
 #if OPENCLAW_TRAY_TESTS
     internal Action<ChatDataSnapshot>? BeforePublishForTests { get; set; }
     internal Action? BeforePublishDrainForTests { get; set; }
+    internal void SetPersistenceTestHooks(
+        Action? beforeLastStateSave,
+        Action? beforeSelectedStateSave) =>
+        _persistence.SetTestHooks(
+            beforeLastStateSave,
+            beforeSelectedStateSave);
+
     internal bool PublishDisposedForTests
     {
         get
@@ -133,8 +140,6 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
         string? attachmentMetaCacheFilePath = null,
         string? lastChatStateFilePath = null,
         TimeSpan? lastChatStateSaveDelay = null,
-        Action? lastStateSaveReservedForTesting = null,
-        Action? beforeSelectedStateSaveForTesting = null,
         Func<TimeSpan, CancellationToken, Func<Task>, Task>? historyRetryScheduler = null,
         Action? historyFailureReservedForTesting = null,
         Func<Func<Task>, Task>? deferredAbortScheduler = null)
@@ -148,9 +153,7 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider
             attachmentMetaCacheFilePath);
         _persistence = new ChatStatePersistence(
             lastChatStateFilePath,
-            lastChatStateSaveDelay,
-            beforeLastStateSaveForTesting: lastStateSaveReservedForTesting,
-            beforeSelectedStateSaveForTesting: beforeSelectedStateSaveForTesting);
+            lastChatStateSaveDelay);
         _state = new ChatConversationState(
             bridge.CurrentStatus,
             _persistence.InitialLastChatState,
