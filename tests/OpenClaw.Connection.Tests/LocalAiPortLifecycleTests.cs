@@ -671,6 +671,7 @@ public sealed class LocalAiPortLifecycleTests
 
         FakeProcess process = host.Process!;
         process.MarkExited();
+        platform.Listeners.Clear();
         host.LastExitCallback!(new LocalAiManagedProcessExit(
             process.ProcessId,
             process.StartedAtUtc,
@@ -1224,6 +1225,43 @@ public sealed class LocalAiPortLifecycleTests
     }
 
     [Fact]
+    public async Task Startup_UnverifiableListenerStopsWhenTeardownFails()
+    {
+        using var temp = new TempDirectory("local-ai-port-");
+        LocalAiPaths paths = await PrepareInstallAsync(temp);
+        var events = new SynchronizedEventLog();
+        FakePlatform? platform = null;
+        platform = new FakePlatform
+        {
+            AfterCapture = () => platform!.Ipv4Complete = false,
+        };
+        var lifecycle = new FakeLifecycle(events)
+        {
+            QuiesceHandler = (call, _, _) => Task.FromResult(
+                call == 2
+                    ? LocalAiEndpointLifecycleResult.Failed("terminal teardown failed")
+                    : LocalAiEndpointLifecycleResult.Ok()),
+        };
+        var host = new FakeProcessHost(platform, events, selectedPort: 28_785);
+        await using var runtime = CreateRuntime(
+            paths,
+            host,
+            platform,
+            new FakeClient(events),
+            lifecycle);
+
+        LocalAiRuntimeSnapshot failed = await runtime.EnsureStartedAsync();
+
+        Assert.Equal(LocalAiRuntimeState.Failed, failed.State);
+        Assert.Equal(LocalAiOwnership.None, failed.Ownership);
+        Assert.True(host.Process!.HasExited);
+        Assert.Contains("untrusted managed listener was stopped", failed.Detail, StringComparison.Ordinal);
+        Assert.Equal(
+            ["quiesce:EndpointCycle", "start", "quiesce:Teardown", "stop"],
+            events);
+    }
+
+    [Fact]
     public async Task Startup_PreservedListenerRemainsSupervisedAfterTeardownFailure()
     {
         using var temp = new TempDirectory("local-ai-port-");
@@ -1698,6 +1736,72 @@ public sealed class LocalAiPortLifecycleTests
         Assert.Equal(LocalAiRuntimeState.Failed, exited.State);
         Assert.Equal(["quiesce:Teardown"], events.Skip(settled).ToArray());
         Assert.DoesNotContain(events.Skip(settled), value => value is "start" || value.StartsWith("publish:", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task Stop_DuringAutomaticRestartDelayInvalidatesPendingRestart()
+    {
+        using var temp = new TempDirectory("local-ai-port-");
+        LocalAiPaths paths = await PrepareInstallAsync(temp);
+        var delayEntered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var releaseDelay = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var stopTeardownEntered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var releaseStopTeardown = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var events = new SynchronizedEventLog();
+        var platform = new FakePlatform
+        {
+            AfterDelay = () =>
+            {
+                delayEntered.TrySetResult();
+                releaseDelay.Task.GetAwaiter().GetResult();
+            },
+        };
+        var lifecycle = new FakeLifecycle(events)
+        {
+            QuiesceHandler = async (call, reason, _) =>
+            {
+                if (call == 3 && reason == LocalAiQuiesceReason.Teardown)
+                {
+                    stopTeardownEntered.TrySetResult();
+                    await releaseStopTeardown.Task.ConfigureAwait(false);
+                }
+                return LocalAiEndpointLifecycleResult.Ok();
+            },
+        };
+        var host = new FakeProcessHost(platform, events, selectedPort: 28_769);
+        await using var runtime = CreateRuntime(
+            paths,
+            host,
+            platform,
+            new FakeClient(events),
+            lifecycle,
+            maxRestartAttempts: 1);
+        LocalAiRuntimeSnapshot started = await runtime.EnsureStartedAsync();
+        Assert.Equal(LocalAiRuntimeState.Healthy, started.State);
+        int settled = events.Count;
+
+        FakeProcess process = host.Process!;
+        process.MarkExited();
+        platform.Listeners.Clear();
+        host.LastExitCallback!(new LocalAiManagedProcessExit(
+            process.ProcessId,
+            process.StartedAtUtc,
+            1));
+        await delayEntered.Task.WaitAsync(TimeSpan.FromSeconds(10));
+
+        Task<LocalAiRuntimeSnapshot> stopTask = runtime.StopAsync();
+        await stopTeardownEntered.Task.WaitAsync(TimeSpan.FromSeconds(10));
+        releaseDelay.TrySetResult();
+        releaseStopTeardown.TrySetResult();
+        LocalAiRuntimeSnapshot stopped = await stopTask;
+        LocalAiRuntimeSnapshot refreshed = await runtime.RefreshAsync();
+
+        Assert.Equal(LocalAiRuntimeState.Stopped, stopped.State);
+        Assert.Equal(LocalAiRuntimeState.Stopped, refreshed.State);
+        Assert.DoesNotContain("start", events.Skip(settled));
+        Assert.Equal(
+            ["quiesce:EndpointCycle", "quiesce:Teardown"],
+            events.Skip(settled).ToArray());
     }
 
     [Fact]

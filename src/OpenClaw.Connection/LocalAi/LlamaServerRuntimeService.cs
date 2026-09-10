@@ -148,7 +148,8 @@ public sealed class LlamaServerRuntimeService : ILocalAiRuntime
                     LocalAiQuiesceReason.Teardown,
                     cancellationToken)
                 .ConfigureAwait(false);
-            _explicitStopRequested = stopped.State == LocalAiRuntimeState.Failed;
+            _explicitStopRequested = stopped.State == LocalAiRuntimeState.Failed &&
+                (_gatewayRouteRequiresResolution || _managedProcess is { HasExited: false });
             return stopped;
         }
         finally
@@ -351,7 +352,8 @@ public sealed class LlamaServerRuntimeService : ILocalAiRuntime
                     return await FailStartupAsync(
                             LocalAiRuntimeState.Conflict,
                             "TCP listener ownership could not be determined.",
-                            install)
+                            install,
+                            stopUnsafeListener: true)
                         .ConfigureAwait(false);
                 }
                 if (ownership.ConflictDetail is not null)
@@ -888,6 +890,7 @@ public sealed class LlamaServerRuntimeService : ILocalAiRuntime
 
         if (_managedProcess is null)
         {
+            ++_generation;
             return Publish(
                 LocalAiRuntimeState.Stopped,
                 LocalAiOwnership.None,
