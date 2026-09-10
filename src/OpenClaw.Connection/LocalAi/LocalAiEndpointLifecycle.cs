@@ -1,17 +1,3 @@
-// <summary>
-// Contract for coordinating consumers of the app-owned local AI endpoint with native process
-// changes: QuiesceAsync removes managed routing before a listener can disappear, and
-// PublishAsync publishes routing only after the replacement endpoint is proven healthy.
-// The runtime options use a no-op lifecycle by default.
-// Usage:
-//   var options = new LlamaServerRuntimeOptions
-//   {
-//       Paths = paths,
-//       EndpointLifecycle = gatewayProviderCoordinator,
-//   };
-//   // LlamaServerRuntimeService owns QuiesceAsync/PublishAsync and treats an unsuccessful
-//   // LocalAiEndpointLifecycleResult as a failed runtime transition.
-// </summary>
 namespace OpenClaw.Connection.LocalAi;
 
 public sealed record LocalAiEndpointLifecycleResult(bool Success, string? Detail = null)
@@ -20,23 +6,9 @@ public sealed record LocalAiEndpointLifecycleResult(bool Success, string? Detail
     public static LocalAiEndpointLifecycleResult Failed(string detail) => new(false, detail);
 }
 
-/// <summary>
-/// Why managed routing is being withdrawn. The distinction matters because an
-/// endpoint cycle is followed by a republish, while a teardown is not.
-/// </summary>
 public enum LocalAiQuiesceReason
 {
-    /// <summary>
-    /// The managed endpoint is about to move or restart and will be republished.
-    /// The managed primary model is retained so the gateway cannot resolve its
-    /// built-in default provider while the endpoint is briefly absent.
-    /// </summary>
     EndpointCycle,
-
-    /// <summary>
-    /// Local AI is being stopped for good (stop, shutdown, failed publish).
-    /// The gateway primary model is restored to whatever preceded Local AI.
-    /// </summary>
     Teardown,
 }
 

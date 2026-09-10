@@ -105,8 +105,6 @@ public sealed class ConfigureLocalAiGatewayStep : SetupStep
         }
         else if (retainedManagedPrimary)
         {
-            // A crash during an endpoint cycle can leave this companion's
-            // primary selected after its provider was intentionally removed.
             fallbackModel = install.Manifest.GatewayFallbackModel;
         }
         else if (prior.PrimaryModelExisted)

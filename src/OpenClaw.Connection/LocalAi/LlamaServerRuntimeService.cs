@@ -935,12 +935,6 @@ public sealed class LlamaServerRuntimeService : ILocalAiRuntime
         }
     }
 
-    /// <summary>
-    /// Terminates a startup attempt. When <paramref name="routeToWithdraw"/> is
-    /// set, the gateway is still pointing at a route this attempt left standing
-    /// and no listener will answer it after the child stops, so the route is
-    /// withdrawn before the child is disposed.
-    /// </summary>
     private async Task<LocalAiRuntimeSnapshot> FailStartupAsync(
         LocalAiRuntimeState state,
         string detail,
@@ -996,10 +990,6 @@ public sealed class LlamaServerRuntimeService : ILocalAiRuntime
         Publish(LocalAiRuntimeState.Stopped, LocalAiOwnership.None, "Local AI startup was canceled.");
     }
 
-    /// <summary>
-    /// Restores terminal gateway routing when no restart or publish will follow.
-    /// Failures are logged and never mask the original startup outcome.
-    /// </summary>
     private async Task<bool> WithdrawRouteAsync(LocalAiResolvedInstall install, string context)
         => await RetryQuiesceAsync(
                 install,
@@ -1192,10 +1182,6 @@ public sealed class LlamaServerRuntimeService : ILocalAiRuntime
                 if (exited is not null)
                     await exited.DisposeAsync().ConfigureAwait(false);
 
-                // The quiesce reason depends on what follows: a pending restart
-                // is an endpoint cycle and keeps the managed primary selected,
-                // while exhausted retries are terminal and restore the prior
-                // gateway routing instead of leaving the provider absent.
                 bool willRestart = !_explicitStopRequested &&
                     _restartAttempts < _options.MaxRestartAttempts;
                 restartInstall = _install;

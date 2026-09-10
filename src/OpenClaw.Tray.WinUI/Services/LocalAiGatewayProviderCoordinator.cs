@@ -70,12 +70,8 @@ internal sealed class LocalAiGatewayProviderCoordinator : ILocalAiEndpointLifecy
             return Failed("The llamacpp primary model was changed outside the companion; preserving it and refusing to cycle the managed endpoint.");
         }
 
-        // Unsetting the primary model does not make the gateway idle; it makes the
-        // gateway resolve its built-in default (an OpenAI model), so a request that
-        // lands mid-cycle fails with an unrelated provider-auth error instead of a
-        // Local AI one. Retain the managed primary for every endpoint cycle,
-        // including installs with a cloud fallback. The fallback is restored
-        // only when Local AI is going away for good.
+        // Endpoint cycles retain the managed primary so the gateway cannot fall
+        // through to its built-in OpenAI default while the provider is absent.
         string? expectedPrimary = current.PrimaryModel;
         bool retainManagedPrimary = reason == LocalAiQuiesceReason.EndpointCycle;
         if (primaryIsManaged && !retainManagedPrimary)
@@ -138,8 +134,6 @@ internal sealed class LocalAiGatewayProviderCoordinator : ILocalAiEndpointLifecy
                 : Failed("The Local AI gateway route changed outside the companion; preserving it instead of publishing the managed endpoint.");
         }
 
-        // An endpoint cycle leaves the managed primary in place, so seeing it
-        // here is this companion's own state, not an outside edit.
         string? fallbackModel = install.Manifest.GatewayFallbackModel;
         bool retainedManagedPrimary = current.PrimaryExists &&
             string.Equals(current.PrimaryModel, managedPrimary, StringComparison.Ordinal);
