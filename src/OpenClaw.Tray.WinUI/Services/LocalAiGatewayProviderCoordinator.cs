@@ -73,11 +73,11 @@ internal sealed class LocalAiGatewayProviderCoordinator : ILocalAiEndpointLifecy
         // Unsetting the primary model does not make the gateway idle; it makes the
         // gateway resolve its built-in default (an OpenAI model), so a request that
         // lands mid-cycle fails with an unrelated provider-auth error instead of a
-        // Local AI one. Retain the managed primary unless there is a real prior
-        // model to restore, or Local AI is going away for good.
+        // Local AI one. Retain the managed primary for every endpoint cycle,
+        // including installs with a cloud fallback. The fallback is restored
+        // only when Local AI is going away for good.
         string? expectedPrimary = current.PrimaryModel;
-        bool retainManagedPrimary = reason == LocalAiQuiesceReason.EndpointCycle &&
-            install.Manifest.GatewayFallbackModel is null;
+        bool retainManagedPrimary = reason == LocalAiQuiesceReason.EndpointCycle;
         if (primaryIsManaged && !retainManagedPrimary)
         {
             expectedPrimary = install.Manifest.GatewayFallbackModel;
@@ -138,12 +138,10 @@ internal sealed class LocalAiGatewayProviderCoordinator : ILocalAiEndpointLifecy
                 : Failed("The Local AI gateway route changed outside the companion; preserving it instead of publishing the managed endpoint.");
         }
 
-        // An endpoint cycle leaves the managed primary in place (there is no prior
-        // model to fall back to), so seeing it here is this companion's own state,
-        // not an outside edit.
+        // An endpoint cycle leaves the managed primary in place, so seeing it
+        // here is this companion's own state, not an outside edit.
         string? fallbackModel = install.Manifest.GatewayFallbackModel;
-        bool retainedManagedPrimary = fallbackModel is null &&
-            current.PrimaryExists &&
+        bool retainedManagedPrimary = current.PrimaryExists &&
             string.Equals(current.PrimaryModel, managedPrimary, StringComparison.Ordinal);
         if (!retainedManagedPrimary &&
             (current.PrimaryExists != (fallbackModel is not null) ||

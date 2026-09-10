@@ -88,6 +88,9 @@ public sealed class ConfigureLocalAiGatewayStep : SetupStep
         LocalAiResolvedInstall install = ctx.LocalAiResolvedInstall;
         string expectedPrimary = JsonSerializer.Serialize(
             LocalAiGatewayProviderDefinition.BuildPrimaryModel(install));
+        bool retainedManagedPrimary = !prior.ProviderExisted &&
+            prior.PrimaryModelExisted &&
+            JsonEquals(prior.PrimaryModelJson!, expectedPrimary);
         string? fallbackModel;
         if (prior.ProviderExisted)
         {
@@ -99,6 +102,12 @@ public sealed class ConfigureLocalAiGatewayStep : SetupStep
                 return StepResult.Fail(
                     "The existing llamacpp gateway route is not the exact companion-managed configuration; preserving it.");
             }
+            fallbackModel = install.Manifest.GatewayFallbackModel;
+        }
+        else if (retainedManagedPrimary)
+        {
+            // A crash during an endpoint cycle can leave this companion's
+            // primary selected after its provider was intentionally removed.
             fallbackModel = install.Manifest.GatewayFallbackModel;
         }
         else if (prior.PrimaryModelExisted)

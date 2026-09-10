@@ -396,7 +396,10 @@ public sealed class LlamaServerRuntimeService : ILocalAiRuntime
         }
         catch (OperationCanceledException)
         {
-            await CancelStartupAsync(install, terminalTeardownRequired: true).ConfigureAwait(false);
+            await CancelStartupAsync(
+                    _install ?? install,
+                    terminalTeardownRequired: true)
+                .ConfigureAwait(false);
             throw;
         }
         catch (Exception ex)
@@ -405,7 +408,7 @@ public sealed class LlamaServerRuntimeService : ILocalAiRuntime
             return await FailStartupAsync(
                     LocalAiRuntimeState.Failed,
                     Sanitize(ex.Message),
-                    install)
+                    _install ?? install)
                 .ConfigureAwait(false);
         }
     }
@@ -451,6 +454,8 @@ public sealed class LlamaServerRuntimeService : ILocalAiRuntime
         EndpointOwnershipObservation ownership = DiscoverOwnedEndpoint(install, _managedProcess);
         if (!ownership.IsComplete)
         {
+            // Incomplete enumeration cannot prove that the child owns only the
+            // intended endpoint. Withdraw routing first, then stop it.
             LocalAiRuntimeSnapshot? failure = await QuiesceOrStopAsync(
                     install,
                     LocalAiQuiesceReason.Teardown,
@@ -568,8 +573,7 @@ public sealed class LlamaServerRuntimeService : ILocalAiRuntime
         }
         catch
         {
-            bool withdrawn = reason != LocalAiQuiesceReason.Teardown &&
-                await WithdrawRouteAsync(
+            bool withdrawn = await WithdrawRouteAsync(
                         install,
                         "after refresh withdrawal was interrupted")
                     .ConfigureAwait(false);
