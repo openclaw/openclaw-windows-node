@@ -256,6 +256,95 @@ public sealed class LocalAiPortLifecycleTests
     }
 
     [Fact]
+    public async Task Restart_EndpointCycleFailureRestoresTerminalRouting()
+    {
+        using var temp = new TempDirectory("local-ai-port-");
+        LocalAiPaths paths = await PrepareInstallAsync(temp);
+        var store = new LocalAiManifestStore(paths);
+        LocalAiResolvedInstall install = (await store.LoadAsync())!;
+        await store.SaveAsync(install.Manifest with { Endpoint = "http://127.0.0.1:28765/v1" });
+
+        var events = new List<string>();
+        var platform = new FakePlatform();
+        platform.Listeners.Add(new WindowsTcpListenerInfo(
+            IPAddress.Loopback,
+            28_765,
+            9001,
+            "other-process",
+            @"C:\other\server.exe",
+            platform.UtcNow.UtcDateTime));
+        var lifecycle = new FakeLifecycle(events)
+        {
+            QuiesceHandler = (call, _, _) => Task.FromResult(
+                call == 1
+                    ? LocalAiEndpointLifecycleResult.Failed("endpoint-cycle verification failed")
+                    : LocalAiEndpointLifecycleResult.Ok()),
+        };
+        var host = new FakeProcessHost(platform, events, selectedPort: 28_771);
+        await using var runtime = CreateRuntime(
+            paths,
+            host,
+            platform,
+            new FakeClient(events),
+            lifecycle);
+
+        LocalAiRuntimeSnapshot snapshot = await runtime.EnsureStartedAsync();
+
+        Assert.Equal(LocalAiRuntimeState.Failed, snapshot.State);
+        Assert.Equal(
+            ["quiesce:EndpointCycle", "quiesce:Teardown"],
+            events);
+        Assert.Null(host.LastSpec);
+    }
+
+    [Fact]
+    public async Task Restart_EndpointCycleCancellationRestoresTerminalRouting()
+    {
+        using var temp = new TempDirectory("local-ai-port-");
+        LocalAiPaths paths = await PrepareInstallAsync(temp);
+        var store = new LocalAiManifestStore(paths);
+        LocalAiResolvedInstall install = (await store.LoadAsync())!;
+        await store.SaveAsync(install.Manifest with { Endpoint = "http://127.0.0.1:28765/v1" });
+
+        var events = new List<string>();
+        var platform = new FakePlatform();
+        platform.Listeners.Add(new WindowsTcpListenerInfo(
+            IPAddress.Loopback,
+            28_765,
+            9001,
+            "other-process",
+            @"C:\other\server.exe",
+            platform.UtcNow.UtcDateTime));
+        using var cancellation = new CancellationTokenSource();
+        var lifecycle = new FakeLifecycle(events)
+        {
+            QuiesceHandler = (call, _, _) =>
+            {
+                if (call != 1)
+                    return Task.FromResult(LocalAiEndpointLifecycleResult.Ok());
+                cancellation.Cancel();
+                return Task.FromCanceled<LocalAiEndpointLifecycleResult>(cancellation.Token);
+            },
+        };
+        var host = new FakeProcessHost(platform, events, selectedPort: 28_771);
+        await using var runtime = CreateRuntime(
+            paths,
+            host,
+            platform,
+            new FakeClient(events),
+            lifecycle);
+
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(
+            () => runtime.EnsureStartedAsync(cancellation.Token));
+
+        Assert.Equal(LocalAiRuntimeState.Stopped, runtime.Snapshot.State);
+        Assert.Equal(
+            ["quiesce:EndpointCycle", "quiesce:Teardown"],
+            events);
+        Assert.Null(host.LastSpec);
+    }
+
+    [Fact]
     public async Task Restart_WithdrawsRetainedRouteWhenStartupNeverBecomesHealthy()
     {
         // Nothing will answer the retained route, so it must not be left published.
@@ -1234,6 +1323,9 @@ public sealed class LocalAiPortLifecycleTests
         public bool FailPublish { get; set; }
         public bool FailQuiesce { get; set; }
         public Exception? QuiesceException { get; set; }
+        public Func<int, LocalAiQuiesceReason, CancellationToken, Task<LocalAiEndpointLifecycleResult>>?
+            QuiesceHandler { get; set; }
+        private int _quiesceCount;
 
         public Task<LocalAiEndpointLifecycleResult> QuiesceAsync(
             LocalAiResolvedInstall install,
@@ -1241,6 +1333,9 @@ public sealed class LocalAiPortLifecycleTests
             CancellationToken cancellationToken = default)
         {
             events.Add($"quiesce:{reason}");
+            int call = ++_quiesceCount;
+            if (QuiesceHandler is not null)
+                return QuiesceHandler(call, reason, cancellationToken);
             if (QuiesceException is not null)
                 return Task.FromException<LocalAiEndpointLifecycleResult>(QuiesceException);
             return Task.FromResult(FailQuiesce

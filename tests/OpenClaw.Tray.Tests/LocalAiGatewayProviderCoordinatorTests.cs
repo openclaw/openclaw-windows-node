@@ -55,6 +55,36 @@ public sealed class LocalAiGatewayProviderCoordinatorTests
     }
 
     [Fact]
+    public async Task Quiesce_FailedEndpointCycleCanBeCompletedAsTeardown()
+    {
+        LocalAiResolvedInstall install = Install(28_765);
+        string managedPrimary = LocalAiGatewayProviderDefinition.BuildPrimaryModel(install);
+        var commands = new FakeWslCommandRunner(
+            LocalAiGatewayProviderDefinition.BuildProviderJson(install),
+            managedPrimary)
+        {
+            FailedReadCalls = [2],
+        };
+        var coordinator = CreateCoordinator(commands);
+
+        LocalAiEndpointLifecycleResult interrupted = await coordinator.QuiesceAsync(
+            install,
+            LocalAiQuiesceReason.EndpointCycle);
+
+        Assert.False(interrupted.Success);
+        Assert.Null(commands.ProviderJson);
+        Assert.Equal(managedPrimary, commands.PrimaryModel);
+
+        LocalAiEndpointLifecycleResult teardown = await coordinator.QuiesceAsync(
+            install,
+            LocalAiQuiesceReason.Teardown);
+
+        Assert.True(teardown.Success);
+        Assert.Null(commands.ProviderJson);
+        Assert.Null(commands.PrimaryModel);
+    }
+
+    [Fact]
     public async Task Quiesce_EndpointCycleStillRestoresRealPriorModel()
     {
         LocalAiResolvedInstall install = Install(28_770, "openai/gpt-5");

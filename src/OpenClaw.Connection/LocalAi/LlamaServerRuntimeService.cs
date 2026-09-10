@@ -214,15 +214,33 @@ public sealed class LlamaServerRuntimeService : ILocalAiRuntime
         bool terminalTeardownRequired = retainedRoute is not null;
         if (retainedRoute is null)
         {
-            LocalAiEndpointLifecycleResult quiesced = await _options.EndpointLifecycle
-                .QuiesceAsync(install, LocalAiQuiesceReason.EndpointCycle, cancellationToken)
-                .ConfigureAwait(false);
+            LocalAiEndpointLifecycleResult quiesced;
+            try
+            {
+                quiesced = await _options.EndpointLifecycle
+                    .QuiesceAsync(install, LocalAiQuiesceReason.EndpointCycle, cancellationToken)
+                    .ConfigureAwait(false);
+            }
+            catch (OperationCanceledException)
+            {
+                await CancelStartupAsync(install, terminalTeardownRequired: true).ConfigureAwait(false);
+                throw;
+            }
+            catch
+            {
+                await WithdrawRouteAsync(
+                        install,
+                        "after endpoint-cycle withdrawal was interrupted")
+                    .ConfigureAwait(false);
+                throw;
+            }
             if (!quiesced.Success)
             {
-                return Publish(
-                    LocalAiRuntimeState.Failed,
-                    LocalAiOwnership.None,
-                    quiesced.Detail ?? "The Local AI gateway provider could not be safely disabled.");
+                return await FailStartupAsync(
+                        LocalAiRuntimeState.Failed,
+                        quiesced.Detail ?? "The Local AI gateway provider could not be safely disabled.",
+                        install)
+                    .ConfigureAwait(false);
             }
             terminalTeardownRequired = true;
         }
@@ -306,11 +324,6 @@ public sealed class LlamaServerRuntimeService : ILocalAiRuntime
                             install.ModelPath,
                             cancellationToken)
                         .ConfigureAwait(false);
-                    if (!probe.IsReadyForManagedModel(install.ModelPath))
-                    {
-                        // A failed probe means the retained route is about to lose
-                        // its listener; the eventual timeout path must withdraw it.
-                    }
                     if (probe.IsReadyForManagedModel(install.ModelPath))
                     {
                         if (retainedRoute is not null && retainedRoute != ownership.Endpoint)
