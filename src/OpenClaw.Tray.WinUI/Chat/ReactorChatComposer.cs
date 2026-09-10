@@ -211,12 +211,6 @@ internal sealed class ReactorChatComposer : Component<ReactorChatComposerViewPro
             bool enabled,
             double maxLabelWidth)
         {
-            // Subtle inline picker per the design system's ComposerPicker: a
-            // borderless, transparent control showing the current value in muted
-            // secondary text with a trailing muted chevron. Hover/press use the
-            // subtle fills so the picker stays quiet in the composer toolbar and
-            // never competes with the primary Send action. Selection still opens the
-            // caller's MenuFlyout of RadioMenuItems.
             return Button(
                     HStack(
                         4,

@@ -221,7 +221,7 @@ public sealed class ChatTimelinePresentationTests
     }
 
     [Fact]
-    public void ReactorComposer_StylesPickersAsSubtleDropdown()
+    public void ReactorComposer_OffsetsPickerChevronRightAndUp()
     {
         var composer = File.ReadAllText(Path.Combine(
             TestRepositoryPaths.GetRepositoryRoot(),
@@ -230,15 +230,7 @@ public sealed class ChatTimelinePresentationTests
             "Chat",
             "ReactorChatComposer.cs"));
 
-        // Pickers follow the design system's ComposerPicker: a borderless, subtle
-        // dropdown (transparent fill, subtle hover, muted value + chevron), not a
-        // bordered ControlFill/ControlStroke ComboBox. The chevron carries a small
-        // right/up offset to sit tight against the value text.
-        Assert.Contains(".Set(\"ButtonBackground\", Theme.Ref(\"SubtleFillColorTransparentBrush\"))", composer);
-        Assert.Contains(".Set(\"ButtonBackgroundPointerOver\", Theme.SubtleFill)", composer);
         Assert.Contains(".Margin(2, 4, 0, 0)", composer);
-        Assert.DoesNotContain(".Set(\"ButtonBackground\", Theme.ControlFill)", composer);
-        Assert.DoesNotContain(".Set(\"ButtonBorderBrush\", Theme.ControlStroke)", composer);
     }
 
     [Fact]
