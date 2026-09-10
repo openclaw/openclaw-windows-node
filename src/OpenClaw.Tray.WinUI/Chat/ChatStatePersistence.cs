@@ -12,6 +12,8 @@ internal sealed class ChatStatePersistence : IDisposable
     private readonly string _lastStatePath;
     private readonly string _abortedIdsPath;
     private readonly TimeSpan _lastStateSaveDelay;
+    private readonly Action? _beforeLastStateSaveForTesting;
+    private readonly Action? _beforeSelectedStateSaveForTesting;
     private readonly Dictionary<string, HashSet<string>> _abortedIds;
     private readonly Dictionary<string, Dictionary<string, long>>
         _abortedIdGenerations;
@@ -24,12 +26,17 @@ internal sealed class ChatStatePersistence : IDisposable
     internal ChatStatePersistence(
         string? lastStatePath = null,
         TimeSpan? lastStateSaveDelay = null,
-        string? abortedIdsPath = null)
+        string? abortedIdsPath = null,
+        Action? beforeLastStateSaveForTesting = null,
+        Action? beforeSelectedStateSaveForTesting = null)
     {
         _lastStatePath = !string.IsNullOrWhiteSpace(lastStatePath)
             ? lastStatePath
             : ChatMetadataStore.LastChatStateFilePath;
         _lastStateSaveDelay = lastStateSaveDelay ?? TimeSpan.FromSeconds(2);
+        _beforeLastStateSaveForTesting = beforeLastStateSaveForTesting;
+        _beforeSelectedStateSaveForTesting =
+            beforeSelectedStateSaveForTesting;
         _abortedIdsPath = !string.IsNullOrWhiteSpace(abortedIdsPath)
             ? abortedIdsPath
             : ChatMetadataStore.AbortedIdsFilePath;
@@ -204,39 +211,29 @@ internal sealed class ChatStatePersistence : IDisposable
 
     internal void SaveSelectedState(OpenClawChatDataProvider.LastChatState state)
     {
-        Timer? timer;
-        lock (_gate)
-        {
-            timer = _lastStateSaveTimer;
-            _lastStateSaveTimer = null;
-            _lastStateSaveVersion++;
-            _lastState = state;
-        }
-        timer?.Dispose();
-        SaveLastChatState(state, _lastStatePath);
-    }
-
-    internal void DebounceSnapshot(ChatDataSnapshot snapshot)
-    {
-        var defaultThread = snapshot.DefaultThreadId is { } defaultId
-            ? Array.Find(snapshot.Threads, thread => thread.Id == defaultId)
-            : snapshot.Threads.FirstOrDefault();
-        if (defaultThread is null && snapshot.AvailableModels.Length == 0)
-            return;
-
+        _beforeSelectedStateSaveForTesting?.Invoke();
         lock (_gate)
         {
             if (_disposed)
                 return;
-            var previous = _lastState;
-            var state = new OpenClawChatDataProvider.LastChatState
-            {
-                DefaultThreadId = snapshot.DefaultThreadId ?? previous?.DefaultThreadId,
-                ThreadTitle = defaultThread?.Title ?? previous?.ThreadTitle,
-                Model = defaultThread?.Model ?? previous?.Model,
-                ModelProvider = defaultThread?.ModelProvider ?? previous?.ModelProvider,
-                AvailableModels = snapshot.AvailableModels.ToArray(),
-            };
+            var timer = _lastStateSaveTimer;
+            _lastStateSaveTimer = null;
+            _lastStateSaveVersion++;
+            _lastState = state;
+            timer?.Dispose();
+            SaveLastChatStateLocked(state);
+        }
+    }
+
+    internal void DebounceSnapshot(ChatDataSnapshot snapshot)
+    {
+        lock (_gate)
+        {
+            if (_disposed)
+                return;
+            var state = CreateLastChatState(snapshot, _lastState);
+            if (state is null)
+                return;
             _lastState = state;
             var version = ++_lastStateSaveVersion;
             _lastStateSaveTimer?.Dispose();
@@ -246,6 +243,27 @@ internal sealed class ChatStatePersistence : IDisposable
                 _lastStateSaveDelay,
                 Timeout.InfiniteTimeSpan);
         }
+    }
+
+    internal void SaveFinalSnapshot(ChatDataSnapshot snapshot)
+    {
+        Timer? timer;
+        lock (_gate)
+        {
+            if (_disposed)
+                return;
+            _disposed = true;
+            var state = CreateLastChatState(snapshot, _lastState);
+            _lastStateSaveVersion++;
+            timer = _lastStateSaveTimer;
+            _lastStateSaveTimer = null;
+            if (state is not null)
+            {
+                _lastState = state;
+                SaveLastChatStateLocked(state);
+            }
+        }
+        timer?.Dispose();
     }
 
     public void Dispose()
@@ -362,10 +380,37 @@ internal sealed class ChatStatePersistence : IDisposable
         {
             if (_disposed || version != _lastStateSaveVersion)
                 return;
-            SaveLastChatState(state, _lastStatePath);
+            SaveLastChatStateLocked(state);
             _lastStateSaveTimer?.Dispose();
             _lastStateSaveTimer = null;
         }
+    }
+
+    private void SaveLastChatStateLocked(
+        OpenClawChatDataProvider.LastChatState state)
+    {
+        _beforeLastStateSaveForTesting?.Invoke();
+        SaveLastChatState(state, _lastStatePath);
+    }
+
+    private static OpenClawChatDataProvider.LastChatState? CreateLastChatState(
+        ChatDataSnapshot snapshot,
+        OpenClawChatDataProvider.LastChatState? previous)
+    {
+        var defaultThread = snapshot.DefaultThreadId is { } defaultId
+            ? Array.Find(snapshot.Threads, thread => thread.Id == defaultId)
+            : snapshot.Threads.FirstOrDefault();
+        if (defaultThread is null && snapshot.AvailableModels.Length == 0)
+            return null;
+
+        return new OpenClawChatDataProvider.LastChatState
+        {
+            DefaultThreadId = snapshot.DefaultThreadId ?? previous?.DefaultThreadId,
+            ThreadTitle = defaultThread?.Title ?? previous?.ThreadTitle,
+            Model = defaultThread?.Model ?? previous?.Model,
+            ModelProvider = defaultThread?.ModelProvider ?? previous?.ModelProvider,
+            AvailableModels = snapshot.AvailableModels.ToArray(),
+        };
     }
 
     private static void SaveLastChatState(
