@@ -543,6 +543,37 @@ public sealed class LlamaServerRuntimeService : ILocalAiRuntime
                 }
                 catch (OperationCanceledException)
                 {
+                    try
+                    {
+                        install = await BindVerifiedEndpointAsync(
+                                install,
+                                ownership.Endpoint,
+                                CancellationToken.None)
+                            .ConfigureAwait(false);
+                        LocalAiEndpointLifecycleResult recovered = await _options.EndpointLifecycle
+                            .PublishAsync(install, CancellationToken.None)
+                            .ConfigureAwait(false);
+                        if (recovered.Success)
+                        {
+                            PublishHealthy(probe);
+                        }
+                        else
+                        {
+                            await FailStartupAsync(
+                                    LocalAiRuntimeState.Failed,
+                                    recovered.Detail ?? "The canceled Local AI endpoint refresh could not restore gateway routing.",
+                                    install)
+                                .ConfigureAwait(false);
+                        }
+                    }
+                    catch (Exception recoveryException)
+                    {
+                        await FailStartupAsync(
+                                LocalAiRuntimeState.Failed,
+                                $"The canceled Local AI endpoint refresh could not restore gateway routing: {Sanitize(recoveryException.Message)}",
+                                _install ?? install)
+                            .ConfigureAwait(false);
+                    }
                     throw;
                 }
                 catch (Exception ex)
@@ -1034,6 +1065,7 @@ public sealed class LlamaServerRuntimeService : ILocalAiRuntime
 
     private async Task HandleManagedProcessExitedAsync(long generation, LocalAiManagedProcessExit exit)
     {
+        LocalAiResolvedInstall? restartInstall = null;
         try
         {
             await _operationGate.WaitAsync().ConfigureAwait(false);
@@ -1052,6 +1084,7 @@ public sealed class LlamaServerRuntimeService : ILocalAiRuntime
                 // gateway routing instead of leaving the provider absent.
                 bool willRestart = !_explicitStopRequested &&
                     _restartAttempts < _options.MaxRestartAttempts;
+                restartInstall = _install;
                 if (_install is not null)
                 {
                     if (willRestart)
@@ -1137,7 +1170,15 @@ public sealed class LlamaServerRuntimeService : ILocalAiRuntime
             try
             {
                 if (!_disposed && !_stopping && !_explicitStopRequested && generation == _generation)
-                    await EnsureStartedCoreAsync(CancellationToken.None).ConfigureAwait(false);
+                {
+                    LocalAiRuntimeSnapshot restarted = await EnsureStartedCoreAsync(CancellationToken.None)
+                        .ConfigureAwait(false);
+                    if (restarted.State is LocalAiRuntimeState.Failed or LocalAiRuntimeState.NotInstalled &&
+                        restartInstall is not null)
+                    {
+                        await CompleteAutomaticRestartFailureAsync(restartInstall).ConfigureAwait(false);
+                    }
+                }
             }
             finally
             {
@@ -1147,6 +1188,36 @@ public sealed class LlamaServerRuntimeService : ILocalAiRuntime
         catch (Exception ex)
         {
             _logger.Error("Managed llama-server automatic restart failed.", ex);
+        }
+    }
+
+    private async Task CompleteAutomaticRestartFailureAsync(LocalAiResolvedInstall restartInstall)
+    {
+        LocalAiResolvedInstall cleanupInstall = _install ?? restartInstall;
+        bool withdrawn = await WithdrawRouteAsync(
+                cleanupInstall,
+                "after automatic restart startup did not complete")
+            .ConfigureAwait(false);
+        if (!withdrawn)
+        {
+            if (_managedProcess is { HasExited: false })
+            {
+                PublishManagedFailure(
+                    "Automatic Local AI restart did not complete and gateway routing could not be safely disabled; the managed listener remains running.");
+            }
+            else
+            {
+                PublishTerminalCleanupFailure(
+                    "Automatic Local AI restart did not complete and gateway routing could not be safely disabled.");
+            }
+            return;
+        }
+
+        if (_managedProcess is { HasExited: false })
+        {
+            ++_generation;
+            await DisposeManagedProcessAsync(CancellationToken.None).ConfigureAwait(false);
+            PublishTerminalCleanupFailure("Automatic Local AI restart did not complete.");
         }
     }
 

@@ -265,14 +265,7 @@ public sealed class LocalAiPortLifecycleTests
         using var cancellation = new CancellationTokenSource();
         var events = new SynchronizedEventLog();
         var platform = new FakePlatform();
-        var lifecycle = new FakeLifecycle(events)
-        {
-            PublishHandler = (_, _) =>
-            {
-                cancellation.Cancel();
-                return Task.FromCanceled<LocalAiEndpointLifecycleResult>(cancellation.Token);
-            },
-        };
+        var lifecycle = new FakeLifecycle(events);
         var host = new FakeProcessHost(platform, events, selectedPort: 28_789);
         await using var runtime = CreateRuntime(
             paths,
@@ -280,15 +273,18 @@ public sealed class LocalAiPortLifecycleTests
             platform,
             new FakeClient(events),
             lifecycle);
-        lifecycle.PublishHandler = null;
         LocalAiRuntimeSnapshot started = await runtime.EnsureStartedAsync();
         Assert.Equal(LocalAiRuntimeState.Healthy, started.State);
         events.Clear();
         platform.Listeners[0] = platform.Listeners[0] with { Port = 28_790 };
-        lifecycle.PublishHandler = (_, _) =>
+        lifecycle.PublishHandler = (_, token) =>
         {
-            cancellation.Cancel();
-            return Task.FromCanceled<LocalAiEndpointLifecycleResult>(cancellation.Token);
+            if (token.CanBeCanceled)
+            {
+                cancellation.Cancel();
+                return Task.FromCanceled<LocalAiEndpointLifecycleResult>(cancellation.Token);
+            }
+            return Task.FromResult(LocalAiEndpointLifecycleResult.Ok());
         };
 
         await Assert.ThrowsAnyAsync<OperationCanceledException>(
@@ -297,7 +293,7 @@ public sealed class LocalAiPortLifecycleTests
         Assert.False(host.Process!.HasExited);
         Assert.Equal(LocalAiRuntimeState.Healthy, runtime.Snapshot.State);
         Assert.Equal(
-            ["probe:28790", "quiesce:EndpointCycle", "publish:28790"],
+            ["probe:28790", "quiesce:EndpointCycle", "publish:28790", "publish:28790"],
             events);
         Assert.DoesNotContain("quiesce:Teardown", events);
     }
@@ -639,6 +635,53 @@ public sealed class LocalAiPortLifecycleTests
         Assert.Equal(
             ["quiesce:EndpointCycle", "quiesce:Teardown"],
             events.Skip(settled).ToArray());
+    }
+
+    [Fact]
+    public async Task Restart_AutomaticNotInstalledOutcomeCompletesTerminalTeardown()
+    {
+        using var temp = new TempDirectory("local-ai-port-");
+        LocalAiPaths paths = await PrepareInstallAsync(temp);
+        var teardown = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var events = new SynchronizedEventLog();
+        var platform = new FakePlatform
+        {
+            AfterDelay = () => File.Delete(paths.ManifestPath),
+        };
+        var lifecycle = new FakeLifecycle(events)
+        {
+            QuiesceHandler = (call, _, _) =>
+            {
+                if (call == 3)
+                    teardown.TrySetResult();
+                return Task.FromResult(LocalAiEndpointLifecycleResult.Ok());
+            },
+        };
+        var host = new FakeProcessHost(platform, events, selectedPort: 28_765);
+        await using var runtime = CreateRuntime(
+            paths,
+            host,
+            platform,
+            new FakeClient(events),
+            lifecycle,
+            maxRestartAttempts: 1);
+        LocalAiRuntimeSnapshot started = await runtime.EnsureStartedAsync();
+        Assert.Equal(LocalAiRuntimeState.Healthy, started.State);
+        int settled = events.Count;
+
+        FakeProcess process = host.Process!;
+        process.MarkExited();
+        host.LastExitCallback!(new LocalAiManagedProcessExit(
+            process.ProcessId,
+            process.StartedAtUtc,
+            1));
+        await teardown.Task.WaitAsync(TimeSpan.FromSeconds(10));
+
+        Assert.Equal(LocalAiRuntimeState.NotInstalled, runtime.Snapshot.State);
+        Assert.Equal(
+            ["quiesce:EndpointCycle", "quiesce:Teardown"],
+            events.Skip(settled).ToArray());
+        Assert.DoesNotContain("start", events.Skip(settled));
     }
 
     [Fact]
