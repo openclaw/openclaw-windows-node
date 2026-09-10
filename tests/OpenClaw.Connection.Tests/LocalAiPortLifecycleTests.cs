@@ -685,6 +685,59 @@ public sealed class LocalAiPortLifecycleTests
     }
 
     [Fact]
+    public async Task Restart_AutomaticStartupExceptionCompletesTerminalTeardown()
+    {
+        using var temp = new TempDirectory("local-ai-port-");
+        LocalAiPaths paths = await PrepareInstallAsync(temp);
+        var teardown = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var events = new SynchronizedEventLog();
+        bool failListenerCapture = false;
+        var platform = new FakePlatform
+        {
+            AfterCapture = () =>
+            {
+                if (failListenerCapture)
+                    throw new InvalidOperationException("listener capture failed");
+            },
+        };
+        var lifecycle = new FakeLifecycle(events)
+        {
+            QuiesceHandler = (_, reason, _) =>
+            {
+                if (reason == LocalAiQuiesceReason.Teardown)
+                    teardown.TrySetResult();
+                return Task.FromResult(LocalAiEndpointLifecycleResult.Ok());
+            },
+        };
+        var host = new FakeProcessHost(platform, events, selectedPort: 28_765);
+        await using var runtime = CreateRuntime(
+            paths,
+            host,
+            platform,
+            new FakeClient(events),
+            lifecycle,
+            maxRestartAttempts: 1);
+        LocalAiRuntimeSnapshot started = await runtime.EnsureStartedAsync();
+        Assert.Equal(LocalAiRuntimeState.Healthy, started.State);
+        int settled = events.Count;
+        failListenerCapture = true;
+
+        FakeProcess process = host.Process!;
+        process.MarkExited();
+        host.LastExitCallback!(new LocalAiManagedProcessExit(
+            process.ProcessId,
+            process.StartedAtUtc,
+            1));
+        await teardown.Task.WaitAsync(TimeSpan.FromSeconds(10));
+
+        Assert.Equal(LocalAiRuntimeState.Failed, runtime.Snapshot.State);
+        Assert.Equal(
+            ["quiesce:EndpointCycle", "quiesce:Teardown"],
+            events.Skip(settled).ToArray());
+        Assert.DoesNotContain("start", events.Skip(settled));
+    }
+
+    [Fact]
     public async Task Restart_AutomaticEndpointCycleFailureCompletesTeardown()
     {
         using var temp = new TempDirectory("local-ai-port-");
@@ -983,6 +1036,15 @@ public sealed class LocalAiPortLifecycleTests
                 : [$"quiesce:{expectedReason}"],
             events);
         Assert.Equal(expectedExited, host.Process!.HasExited);
+        if (expectedExited)
+        {
+            events.Clear();
+
+            LocalAiRuntimeSnapshot retained = await runtime.RefreshAsync();
+
+            Assert.Equal(expectedState, retained.State);
+            Assert.Empty(events);
+        }
     }
 
     [Fact]
@@ -1475,6 +1537,11 @@ public sealed class LocalAiPortLifecycleTests
 
         Assert.Equal(LocalAiRuntimeState.Stopped, stopped.State);
         Assert.Equal(["quiesce:Teardown", "stop"], events);
+
+        File.Delete(paths.ManifestPath);
+        LocalAiRuntimeSnapshot refreshed = await runtime.RefreshAsync();
+
+        Assert.Equal(LocalAiRuntimeState.NotInstalled, refreshed.State);
     }
 
     [Fact]

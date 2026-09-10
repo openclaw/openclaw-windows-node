@@ -69,6 +69,7 @@ public sealed class LlamaServerRuntimeService : ILocalAiRuntime
     private int _restartAttempts;
     private bool _stopping;
     private bool _explicitStopRequested;
+    private bool _gatewayRouteRequiresResolution;
     private bool _disposed;
     private bool _acceptExitTasks = true;
     private int _disposeStarted;
@@ -143,10 +144,12 @@ public sealed class LlamaServerRuntimeService : ILocalAiRuntime
         {
             ThrowIfDisposed();
             _explicitStopRequested = true;
-            return await StopCoreAsync(
+            LocalAiRuntimeSnapshot stopped = await StopCoreAsync(
                     LocalAiQuiesceReason.Teardown,
                     cancellationToken)
                 .ConfigureAwait(false);
+            _explicitStopRequested = stopped.State == LocalAiRuntimeState.Failed;
+            return stopped;
         }
         finally
         {
@@ -255,8 +258,10 @@ public sealed class LlamaServerRuntimeService : ILocalAiRuntime
         LocalAiEndpointLifecycleResult quiesced;
         try
         {
-            quiesced = await _options.EndpointLifecycle
-                .QuiesceAsync(install, LocalAiQuiesceReason.EndpointCycle, cancellationToken)
+            quiesced = await QuiesceRouteAsync(
+                    install,
+                    LocalAiQuiesceReason.EndpointCycle,
+                    cancellationToken)
                 .ConfigureAwait(false);
         }
         catch (OperationCanceledException)
@@ -373,8 +378,9 @@ public sealed class LlamaServerRuntimeService : ILocalAiRuntime
                         await _manifestStore.SaveAsync(verifiedManifest, cancellationToken).ConfigureAwait(false);
                         _install = _manifestStore.ResolveAndValidate(verifiedManifest);
 
-                        LocalAiEndpointLifecycleResult published = await _options.EndpointLifecycle
-                            .PublishAsync(_install, cancellationToken)
+                        LocalAiEndpointLifecycleResult published = await PublishRouteAsync(
+                                _install,
+                                cancellationToken)
                             .ConfigureAwait(false);
                         if (!published.Success)
                         {
@@ -421,6 +427,11 @@ public sealed class LlamaServerRuntimeService : ILocalAiRuntime
     {
         if (_explicitStopRequested)
             return Snapshot;
+        if (_gatewayRouteRequiresResolution &&
+            (_managedProcess is null || _managedProcess.HasExited))
+        {
+            return Snapshot;
+        }
 
         if (!await TryLoadInstallAsync(cancellationToken).ConfigureAwait(false))
             return Snapshot;
@@ -540,8 +551,9 @@ public sealed class LlamaServerRuntimeService : ILocalAiRuntime
                             ownership.Endpoint,
                             cancellationToken)
                         .ConfigureAwait(false);
-                    published = await _options.EndpointLifecycle
-                        .PublishAsync(install, cancellationToken)
+                    published = await PublishRouteAsync(
+                            install,
+                            cancellationToken)
                         .ConfigureAwait(false);
                 }
                 catch (OperationCanceledException)
@@ -553,8 +565,9 @@ public sealed class LlamaServerRuntimeService : ILocalAiRuntime
                                 ownership.Endpoint,
                                 CancellationToken.None)
                             .ConfigureAwait(false);
-                        LocalAiEndpointLifecycleResult recovered = await _options.EndpointLifecycle
-                            .PublishAsync(install, CancellationToken.None)
+                        LocalAiEndpointLifecycleResult recovered = await PublishRouteAsync(
+                                install,
+                                CancellationToken.None)
                             .ConfigureAwait(false);
                         if (recovered.Success)
                         {
@@ -636,8 +649,7 @@ public sealed class LlamaServerRuntimeService : ILocalAiRuntime
         LocalAiEndpointLifecycleResult quiesced;
         try
         {
-            quiesced = await _options.EndpointLifecycle
-                .QuiesceAsync(install, reason, cancellationToken)
+            quiesced = await QuiesceRouteAsync(install, reason, cancellationToken)
                 .ConfigureAwait(false);
         }
         catch
@@ -804,8 +816,7 @@ public sealed class LlamaServerRuntimeService : ILocalAiRuntime
         LocalAiEndpointLifecycleResult quiesced;
         try
         {
-            quiesced = await _options.EndpointLifecycle
-                .QuiesceAsync(_install!, reason, cancellationToken)
+            quiesced = await QuiesceRouteAsync(_install!, reason, cancellationToken)
                 .ConfigureAwait(false);
         }
         catch
@@ -961,8 +972,10 @@ public sealed class LlamaServerRuntimeService : ILocalAiRuntime
     {
         try
         {
-            LocalAiEndpointLifecycleResult withdrawn = await _options.EndpointLifecycle
-                .QuiesceAsync(install, reason, CancellationToken.None)
+            LocalAiEndpointLifecycleResult withdrawn = await QuiesceRouteAsync(
+                    install,
+                    reason,
+                    CancellationToken.None)
                 .ConfigureAwait(false);
             if (!withdrawn.Success)
             {
@@ -976,6 +989,33 @@ public sealed class LlamaServerRuntimeService : ILocalAiRuntime
             _logger.Warn($"The Local AI route could not be withdrawn {context}: {Sanitize(ex.Message)}");
             return false;
         }
+    }
+
+    private async Task<LocalAiEndpointLifecycleResult> QuiesceRouteAsync(
+        LocalAiResolvedInstall install,
+        LocalAiQuiesceReason reason,
+        CancellationToken cancellationToken)
+    {
+        _gatewayRouteRequiresResolution = true;
+
+        LocalAiEndpointLifecycleResult result = await _options.EndpointLifecycle
+            .QuiesceAsync(install, reason, cancellationToken)
+            .ConfigureAwait(false);
+        if (reason == LocalAiQuiesceReason.Teardown && result.Success)
+            _gatewayRouteRequiresResolution = false;
+        return result;
+    }
+
+    private async Task<LocalAiEndpointLifecycleResult> PublishRouteAsync(
+        LocalAiResolvedInstall install,
+        CancellationToken cancellationToken)
+    {
+        LocalAiEndpointLifecycleResult result = await _options.EndpointLifecycle
+            .PublishAsync(install, cancellationToken)
+            .ConfigureAwait(false);
+        if (result.Success)
+            _gatewayRouteRequiresResolution = false;
+        return result;
     }
 
     private LocalAiRuntimeSnapshot PublishManagedFailure(string detail) =>
@@ -1095,8 +1135,7 @@ public sealed class LlamaServerRuntimeService : ILocalAiRuntime
                         LocalAiEndpointLifecycleResult quiesced;
                         try
                         {
-                            quiesced = await _options.EndpointLifecycle
-                                .QuiesceAsync(
+                            quiesced = await QuiesceRouteAsync(
                                     _install,
                                     LocalAiQuiesceReason.EndpointCycle,
                                     CancellationToken.None)
@@ -1174,8 +1213,18 @@ public sealed class LlamaServerRuntimeService : ILocalAiRuntime
             {
                 if (!_disposed && !_stopping && !_explicitStopRequested && generation == _generation)
                 {
-                    LocalAiRuntimeSnapshot restarted = await EnsureStartedCoreAsync(CancellationToken.None)
-                        .ConfigureAwait(false);
+                    LocalAiRuntimeSnapshot restarted;
+                    try
+                    {
+                        restarted = await EnsureStartedCoreAsync(CancellationToken.None)
+                            .ConfigureAwait(false);
+                    }
+                    catch
+                    {
+                        if (restartInstall is not null)
+                            await CompleteAutomaticRestartFailureAsync(restartInstall).ConfigureAwait(false);
+                        throw;
+                    }
                     if (restarted.State is LocalAiRuntimeState.Failed or LocalAiRuntimeState.NotInstalled &&
                         restartInstall is not null)
                     {

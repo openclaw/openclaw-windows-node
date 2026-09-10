@@ -117,6 +117,7 @@ public sealed class LocalAiPageViewModelTests
         LocalAiRuntimeSnapshot conflict = CreateInstalledSnapshot(LocalAiRuntimeState.Conflict) with
         {
             Ownership = LocalAiOwnership.None,
+            ModelEvidence = LocalAiModelEvidence.Unknown(DateTimeOffset.UtcNow),
             ProcessId = null,
             ProcessStartedAtUtc = null,
         };
@@ -151,6 +152,9 @@ public sealed class LocalAiPageViewModelTests
         LocalAiRuntimeSnapshot failed = CreateInstalledSnapshot(LocalAiRuntimeState.Failed) with
         {
             Ownership = ownership,
+            ModelEvidence = ownership == LocalAiOwnership.None
+                ? LocalAiModelEvidence.Unknown(DateTimeOffset.UtcNow)
+                : CreateInstalledSnapshot().ModelEvidence,
             ProcessId = ownership == LocalAiOwnership.CompanionManaged ? 1234 : null,
             ProcessStartedAtUtc = ownership == LocalAiOwnership.CompanionManaged
                 ? DateTimeOffset.UtcNow
@@ -174,7 +178,7 @@ public sealed class LocalAiPageViewModelTests
 
         await ActivateAndWaitForAvailabilityAsync(viewModel);
 
-        Assert.Equal(ownership == LocalAiOwnership.None, viewModel.CanStart);
+        Assert.False(viewModel.CanStart);
         Assert.True(viewModel.CanStop);
         Assert.True(await viewModel.StopAsync());
         Assert.Equal(1, runtime.StopCount);
