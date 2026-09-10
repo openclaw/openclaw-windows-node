@@ -1,6 +1,7 @@
 using OpenClaw.Shared;
 using System.Diagnostics;
 using System.Reflection;
+using System.Text;
 using System.Text.Json;
 
 if (args is ["--echo-args", .. var echoedArgs])
@@ -69,6 +70,32 @@ static async Task<int> RunProcessFixtureAsync(string[] args)
         return 0;
     }
 
+    if (args is ["bom-output"])
+    {
+        await WriteEncodedAsync(Console.OpenStandardOutput(), Encoding.Unicode, "wide-stdout");
+        await WriteEncodedAsync(Console.OpenStandardError(), Encoding.BigEndianUnicode, "wide-stderr");
+        return 0;
+    }
+
+    if (args is ["fragmented-bom-output"])
+    {
+        var stdout = Console.OpenStandardOutput();
+        await stdout.WriteAsync(new byte[] { 0xFF, 0xFE, 0x00 });
+        await stdout.FlushAsync();
+        await Task.Delay(25);
+        await stdout.WriteAsync(new byte[] { 0x00 });
+        await stdout.WriteAsync(new UTF32Encoding(false, false).GetBytes("utf32-stdout"));
+        await stdout.FlushAsync();
+
+        var stderr = Console.OpenStandardError();
+        await stderr.WriteAsync(new byte[] { 0x00, 0x00, 0xFE });
+        await stderr.FlushAsync();
+        await Task.Delay(25);
+        await stderr.WriteAsync(Encoding.ASCII.GetBytes(new string('x', 4_096)));
+        await stderr.FlushAsync();
+        return 0;
+    }
+
     if (args is ["hold", var holdText] && int.TryParse(holdText, out var holdMs))
     {
         Console.Out.Write("holding-stdout");
@@ -89,8 +116,46 @@ static async Task<int> RunProcessFixtureAsync(string[] args)
         return 0;
     }
 
+    if (args is ["inherit-handles-identity", var identityChildHoldText, var identityPidFile]
+        && int.TryParse(identityChildHoldText, out var identityChildHoldMs))
+    {
+        using var child = StartSelf("--process-fixture", "hold", identityChildHoldMs.ToString());
+        WriteProcessIdentity(identityPidFile, child);
+        Console.Out.Write("parent-stdout");
+        Console.Error.Write("parent-stderr");
+        return 0;
+    }
+
+    if (args is ["inherit-handles-sized", var sizedChildHoldText, var sizedPidFile, var outputLengthText]
+        && int.TryParse(sizedChildHoldText, out var sizedChildHoldMs)
+        && int.TryParse(outputLengthText, out var outputLength))
+    {
+        using var child = StartSelf("--process-fixture", "hold", sizedChildHoldMs.ToString());
+        WriteProcessIdentity(sizedPidFile, child);
+        Console.Out.Write(new string('o', outputLength));
+        Console.Error.Write(new string('e', outputLength));
+        Console.Out.Flush();
+        Console.Error.Flush();
+        return 0;
+    }
+
     Console.Error.WriteLine("Unknown process fixture.");
     return 64;
+}
+
+static async Task WriteEncodedAsync(Stream stream, Encoding encoding, string value)
+{
+    await stream.WriteAsync(encoding.GetPreamble());
+    await stream.WriteAsync(encoding.GetBytes(value));
+    await stream.FlushAsync();
+}
+
+static void WriteProcessIdentity(string path, Process process)
+{
+    var identity = $"{process.Id}|{process.StartTime.ToUniversalTime().Ticks}\n";
+    var temporaryPath = path + ".tmp";
+    File.WriteAllText(temporaryPath, identity);
+    File.Move(temporaryPath, path, overwrite: true);
 }
 
 static Process StartSelf(params string[] arguments)
