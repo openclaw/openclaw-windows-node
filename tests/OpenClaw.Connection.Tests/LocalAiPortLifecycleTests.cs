@@ -1187,13 +1187,22 @@ public sealed class LocalAiPortLifecycleTests
             events);
     }
 
-    [Fact]
-    public async Task Startup_UnsafeListenerStopsWhenTeardownFails()
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task Startup_UnsafeOrUnverifiableListenerStopsWhenTeardownFails(
+        bool incompleteListenerSnapshot)
     {
         using var temp = new TempDirectory("local-ai-port-");
         LocalAiPaths paths = await PrepareInstallAsync(temp);
         var events = new SynchronizedEventLog();
-        var platform = new FakePlatform();
+        FakePlatform? platform = null;
+        platform = new FakePlatform
+        {
+            AfterCapture = incompleteListenerSnapshot
+                ? () => platform!.Ipv4Complete = false
+                : null,
+        };
         var lifecycle = new FakeLifecycle(events)
         {
             QuiesceHandler = (call, _, _) => Task.FromResult(
@@ -1205,44 +1214,7 @@ public sealed class LocalAiPortLifecycleTests
             platform,
             events,
             selectedPort: 28_785,
-            listenerAddress: IPAddress.Any);
-        await using var runtime = CreateRuntime(
-            paths,
-            host,
-            platform,
-            new FakeClient(events),
-            lifecycle);
-
-        LocalAiRuntimeSnapshot failed = await runtime.EnsureStartedAsync();
-
-        Assert.Equal(LocalAiRuntimeState.Failed, failed.State);
-        Assert.Equal(LocalAiOwnership.None, failed.Ownership);
-        Assert.True(host.Process!.HasExited);
-        Assert.Contains("untrusted managed listener was stopped", failed.Detail, StringComparison.Ordinal);
-        Assert.Equal(
-            ["quiesce:EndpointCycle", "start", "quiesce:Teardown", "stop"],
-            events);
-    }
-
-    [Fact]
-    public async Task Startup_UnverifiableListenerStopsWhenTeardownFails()
-    {
-        using var temp = new TempDirectory("local-ai-port-");
-        LocalAiPaths paths = await PrepareInstallAsync(temp);
-        var events = new SynchronizedEventLog();
-        FakePlatform? platform = null;
-        platform = new FakePlatform
-        {
-            AfterCapture = () => platform!.Ipv4Complete = false,
-        };
-        var lifecycle = new FakeLifecycle(events)
-        {
-            QuiesceHandler = (call, _, _) => Task.FromResult(
-                call == 2
-                    ? LocalAiEndpointLifecycleResult.Failed("terminal teardown failed")
-                    : LocalAiEndpointLifecycleResult.Ok()),
-        };
-        var host = new FakeProcessHost(platform, events, selectedPort: 28_785);
+            listenerAddress: incompleteListenerSnapshot ? null : IPAddress.Any);
         await using var runtime = CreateRuntime(
             paths,
             host,
