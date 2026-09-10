@@ -134,7 +134,7 @@ internal sealed class LocalAiPageViewModel : INavigationAware, IDisposable, INot
     public bool CanStart => !IsBusy && HasManagedInstall &&
         _runtimeSnapshot.State is LocalAiRuntimeState.Stopped or LocalAiRuntimeState.Failed;
     public bool CanStop => !IsBusy && HasManagedInstall &&
-        (_runtimeSnapshot.State == LocalAiRuntimeState.Conflict ||
+        (_runtimeSnapshot.State is LocalAiRuntimeState.Conflict or LocalAiRuntimeState.Failed ||
             (_runtimeSnapshot.Ownership == LocalAiOwnership.CompanionManaged &&
                 _runtimeSnapshot.State is LocalAiRuntimeState.Starting or LocalAiRuntimeState.Healthy));
     public bool CanRestart => !IsBusy && _runtimeSnapshot.Ownership == LocalAiOwnership.CompanionManaged &&

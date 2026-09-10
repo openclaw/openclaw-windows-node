@@ -143,6 +143,42 @@ public sealed class LocalAiPageViewModelTests
         Assert.Equal(1, runtime.StopCount);
     }
 
+    [Theory]
+    [InlineData(LocalAiOwnership.None)]
+    [InlineData(LocalAiOwnership.CompanionManaged)]
+    public async Task FailedCleanup_AllowsExplicitStopRecovery(LocalAiOwnership ownership)
+    {
+        LocalAiRuntimeSnapshot failed = CreateInstalledSnapshot(LocalAiRuntimeState.Failed) with
+        {
+            Ownership = ownership,
+            ProcessId = ownership == LocalAiOwnership.CompanionManaged ? 1234 : null,
+            ProcessStartedAtUtc = ownership == LocalAiOwnership.CompanionManaged
+                ? DateTimeOffset.UtcNow
+                : null,
+        };
+        var runtime = new FakeLocalAiRuntime(failed)
+        {
+            StopResult = failed with
+            {
+                State = LocalAiRuntimeState.Stopped,
+                Ownership = LocalAiOwnership.None,
+            },
+        };
+        using var gatewaySource = new PermissionsPageRuntimeSource(new FakePermissionsPageRuntimeHost());
+        using var viewModel = new LocalAiPageViewModel(
+            runtime,
+            gatewaySource,
+            new FakeAppCommands(),
+            new RecordingUiDispatcher(),
+            new FixedHardwareProbe(HostHardwareInfo.Unknown));
+
+        await ActivateAndWaitForAvailabilityAsync(viewModel);
+
+        Assert.True(viewModel.CanStop);
+        Assert.True(await viewModel.StopAsync());
+        Assert.Equal(1, runtime.StopCount);
+    }
+
     [Fact]
     public async Task UnsupportedHardware_BlocksFreshSetupRetry()
     {
