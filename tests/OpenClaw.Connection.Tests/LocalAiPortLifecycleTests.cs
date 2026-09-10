@@ -1219,7 +1219,7 @@ public sealed class LocalAiPortLifecycleTests
     }
 
     [Fact]
-    public async Task Refresh_RecoveryPublishFailureRemainsFailedAndQuiesced()
+    public async Task Refresh_RecoveryPublishFailureCompletesTerminalTeardown()
     {
         using var temp = new TempDirectory("local-ai-port-");
         LocalAiPaths paths = await PrepareInstallAsync(temp);
@@ -1245,9 +1245,11 @@ public sealed class LocalAiPortLifecycleTests
         LocalAiRuntimeSnapshot failed = await runtime.RefreshAsync();
 
         Assert.Equal(LocalAiRuntimeState.Failed, failed.State);
-        Assert.Equal(LocalAiOwnership.CompanionManaged, failed.Ownership);
-        Assert.False(host.Process!.HasExited);
-        Assert.Equal(["probe:28778", "publish:28778"], events);
+        Assert.Equal(LocalAiOwnership.None, failed.Ownership);
+        Assert.True(host.Process!.HasExited);
+        Assert.Equal(
+            ["probe:28778", "publish:28778", "quiesce:Teardown", "stop"],
+            events);
     }
 
     [Fact]
