@@ -579,14 +579,15 @@ public sealed class LlamaServerRuntimeService : ILocalAiRuntime
                 {
                     try
                     {
+                        using var recoveryTimeout = new CancellationTokenSource(_options.ShutdownTimeout);
                         install = await BindVerifiedEndpointAsync(
                                 install,
                                 ownership.Endpoint,
-                                CancellationToken.None)
+                                recoveryTimeout.Token)
                             .ConfigureAwait(false);
                         LocalAiEndpointLifecycleResult recovered = await PublishRouteAsync(
                                 install,
-                                CancellationToken.None)
+                                recoveryTimeout.Token)
                             .ConfigureAwait(false);
                         if (recovered.Success)
                         {
@@ -688,7 +689,7 @@ public sealed class LlamaServerRuntimeService : ILocalAiRuntime
                 Publish(
                     LocalAiRuntimeState.Failed,
                     LocalAiOwnership.None,
-                    "The Local AI gateway provider withdrawal did not complete.");
+                    "The Local AI endpoint cycle was interrupted; terminal gateway routing was restored.");
             }
             else if (stopUnsafeProcessOnFailure)
             {
@@ -1118,7 +1119,7 @@ public sealed class LlamaServerRuntimeService : ILocalAiRuntime
         {
             await process.StopAsync(_options.ShutdownTimeout, cancellationToken).ConfigureAwait(false);
         }
-        catch
+        catch (Exception ex)
         {
             if (preserveForRetry)
             {
@@ -1126,6 +1127,13 @@ public sealed class LlamaServerRuntimeService : ILocalAiRuntime
                 {
                     _managedProcess = process;
                     preserved = true;
+                    PublishManagedFailure(
+                        $"The managed listener remains running because it could not be stopped: {Sanitize(ex.Message)}");
+                }
+                else
+                {
+                    PublishTerminalCleanupFailure(
+                        $"The managed Local AI listener shutdown failed after the process exited: {Sanitize(ex.Message)}");
                 }
                 throw;
             }
@@ -1136,10 +1144,10 @@ public sealed class LlamaServerRuntimeService : ILocalAiRuntime
                     await process.StopAsync(_options.ShutdownTimeout, CancellationToken.None)
                         .ConfigureAwait(false);
                 }
-                catch (Exception ex)
+                catch (Exception stopException)
                 {
                     _logger.Warn(
-                        $"The managed Local AI process could not be stopped during final disposal: {Sanitize(ex.Message)}");
+                        $"The managed Local AI process could not be stopped during final disposal: {Sanitize(stopException.Message)}");
                 }
             }
         }
