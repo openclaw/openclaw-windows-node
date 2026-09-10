@@ -1544,6 +1544,11 @@ public sealed class LocalAiPortLifecycleTests
         Assert.Equal(LocalAiOwnership.CompanionManaged, runtime.Snapshot.Ownership);
         int settled = events.Count;
 
+        LocalAiRuntimeSnapshot refreshed = await runtime.RefreshAsync();
+
+        Assert.Equal(LocalAiRuntimeState.Failed, refreshed.State);
+        Assert.Equal(settled, events.Count);
+
         LocalAiRuntimeSnapshot exited = await TriggerExitAndWaitForStateAsync(
             runtime,
             host,

@@ -419,6 +419,9 @@ public sealed class LlamaServerRuntimeService : ILocalAiRuntime
 
     private async Task<LocalAiRuntimeSnapshot> RefreshCoreAsync(CancellationToken cancellationToken)
     {
+        if (_explicitStopRequested)
+            return Snapshot;
+
         if (!await TryLoadInstallAsync(cancellationToken).ConfigureAwait(false))
             return Snapshot;
 
