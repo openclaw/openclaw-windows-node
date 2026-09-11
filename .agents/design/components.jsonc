@@ -155,7 +155,7 @@
     },
     {
       "name": "ComposerPicker",
-      "note": "Subtle inline dropdown. A borderless, transparent picker showing the current value in `muted` secondary text with a trailing `muted` chevron (Segoe Fluent \\uE70D, previewed ~10px). 32px min height; horizontal padding token `2`, gap token `1`. Resting fill is transparent (SubtleFillColorTransparent); hover uses `subtleHover` (SubtleFillColorSecondary) and press uses `subtlePressed` (SubtleFillColorTertiary), so the picker stays quiet in the composer toolbar and never competes with the primary Send action. Used for the model, reasoning-effort, and session selectors; opens a flyout list of single-select (RadioMenuItem) options in-app. The chevron carries a small right/up offset (previewed 2,4,0,0) to sit tight against the value; the flyout list is a Reactor port note.",
+      "note": "Subtle inline dropdown. A borderless, transparent picker showing the current value in `muted` secondary text with a trailing `muted` chevron (Segoe Fluent \\uE70D, previewed ~10px). 32px min height; horizontal padding token `2`, gap token `1`. Resting fill is transparent (SubtleFillColorTransparent); hover uses `subtleHover` (SubtleFillColorSecondary) and press uses `subtlePressed` (SubtleFillColorTertiary), so the picker stays quiet in the composer toolbar and never competes with the primary Send action. When there is nothing to choose (for example the session picker with a single session) the picker is disabled and its value reads a shade lighter than the enabled muted text. Used for the model, reasoning-effort, and session selectors; opens a flyout list of single-select (RadioMenuItem) options in-app. The chevron carries a small right/up offset (previewed 2,4,0,0) to sit tight against the value; the flyout list is a Reactor port note.",
       "props": {
         "label": "Model"
       },
@@ -473,12 +473,12 @@
     },
     {
       "name": "ChatComposer",
-      "note": "Chat input. A rounded `control` panel (`md` radius) with a hairline `controlLine` border wrapping a borderless, transparent, auto-growing textarea over a toolbar. Left cluster = Add, session picker, model picker, reasoning-effort picker; right cluster = Dictate (mic), Speaker, Settings, and the primary Send. Only Send spends the accent (it swaps to a subtle Stop while a turn is active); every other control stays subtle so the toolbar reads as quiet chrome. Textarea min 56 / max 200px growth and the 12px outer margin are Reactor port notes; the app tightens top padding to 2px below token 1. (Preview shows the rest state.)",
+      "note": "Chat input. A rounded `control` panel (`md` radius) with a hairline `controlLine` border wrapping a borderless, transparent, auto-growing textarea over a toolbar. Left cluster = Add, session picker, model picker, reasoning-effort picker; right cluster = Dictate (mic), Speaker, Settings, and the primary Send. Only Send spends the accent (it swaps to a subtle Stop while a turn is active, and reads disabled/greyed until the textarea has content); every other control stays subtle so the toolbar reads as quiet chrome. Each picker (see ComposerPicker) is a subtle borderless dropdown with muted value text; a picker with nothing to choose (for example the session picker when only one session exists) renders disabled, so its label reads a shade lighter than its enabled neighbours, as with `Main session` in the preview. Textarea min 56 / max 200px growth and the 12px outer margin are Reactor port notes; the app tightens top padding to 2px below token 1. (Preview shows the rest state with the placeholder visible.)",
       "props": {
-        "placeholder": "Message OpenClaw…",
-        "session": "Default",
-        "model": "Claude Opus 4.8",
-        "effort": "High"
+        "placeholder": "Message Assistant (Enter to send)",
+        "session": "Main session",
+        "model": "Claude Sonnet 5",
+        "effort": "Default"
       },
       "root": {
         "id": "chat-composer-root",
