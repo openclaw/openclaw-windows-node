@@ -445,14 +445,28 @@ test("keeps closed-unmerged plan prerequisites blocked", () => {
         livePr({ state: "CLOSED" }),
         livePr({ number: 1309 }),
     ], []);
-    const projected = mergeLiveState(result, [livePr({ number: 1309 })], []);
+    const projected = mergeLiveState(result, [
+        livePr({ state: "CLOSED" }),
+        livePr({ number: 1309 }),
+    ], []);
+    const reopened = reconcileOpenInventory(result, [
+        livePr(),
+        livePr({ number: 1309 }),
+    ], []);
+    const merged = reconcileOpenInventory(reopened, [
+        livePr({ state: "MERGED" }),
+        livePr({ number: 1309 }),
+    ], []);
 
-    assert.deepEqual(result.items.map((item) => item.number), [1309]);
+    assert.deepEqual(result.items.map((item) => item.number), [1309, 1308]);
     assert.deepEqual(result.items[0].dependencies, [1308]);
     assert.deepEqual(result.plan.map((step) => step.id), ["land", "follow-up"]);
-    assert.equal(result.plan[0].status, "blocked");
     assert.equal(projected.plan[0].liveStatus, "blocked");
     assert.equal(projected.plan[1].liveStatus, "blocked");
+    assert.deepEqual(reopened.plan[0].itemNumbers, [1308]);
+    assert.deepEqual(merged.items.map((item) => item.number), [1309]);
+    assert.deepEqual(merged.plan.map((step) => step.id), ["follow-up"]);
+    assert.deepEqual(merged.plan[0].dependsOn, []);
 });
 
 test("keeps items when exact live state is unavailable", () => {
