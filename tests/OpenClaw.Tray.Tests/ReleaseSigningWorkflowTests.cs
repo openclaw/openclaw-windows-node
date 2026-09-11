@@ -115,11 +115,17 @@ public sealed class ReleaseSigningWorkflowTests
     }
 
     [Fact]
-    public void ReleaseWorkflow_PausesMsixDistribution()
+    public void ReleaseWorkflow_EnablesMsixArtifactsButKeepsReleasePublishingPaused()
     {
         var workflow = File.ReadAllText(Path.Combine(TestRepositoryPaths.GetRepositoryRoot(), ".github", "workflows", "ci.yml"));
 
-        Assert.Contains("if: false # MSIX distribution is paused; ship Inno setup and portable ZIP artifacts only.", workflow);
+        Assert.Contains("MSIX release publishing remains paused.", workflow);
+        Assert.Contains("global-json-file: global.json", workflow);
+        Assert.Contains(@".\scripts\Build-StoreMsix.ps1 -Architecture", workflow);
+        Assert.Contains(@".\scripts\Export-DevMsixArtifact.ps1", workflow);
+        Assert.Contains("name: openclaw-msix-store-unsigned-", workflow);
+        Assert.Contains("name: openclaw-msix-dev-", workflow);
+        Assert.Contains("MSIX_RESULT: ${{ needs.build-msix.result }}", workflow);
         Assert.Contains("needs: [change-classification, metadata, build-x64, build-arm64, ci-gate]", workflow);
         Assert.DoesNotContain("Download win-x64 MSIX artifact", workflow);
         Assert.DoesNotContain("Download win-arm64 MSIX artifact", workflow);

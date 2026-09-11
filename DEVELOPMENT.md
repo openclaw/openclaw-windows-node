@@ -276,7 +276,7 @@ is what lets a packaged smoke test run without disturbing a working install:
 | Publisher | local development certificate | Partner Center |
 | Protocol | `openclaw-dev` | `openclaw` |
 | Signing | signed locally | unsigned; the Store signs |
-| Version revision | installed revision + 1 | pinned to `0` |
+| Version revision | installed revision + 1 locally; explicit CI run number | pinned to `0` |
 | Architectures | host only | x64 and ARM64 |
 
 The revision field is the clearest reason the modes cannot merge, because each
@@ -317,6 +317,55 @@ device capabilities.
 Generating the optional `.appxsym` symbol package additionally requires
 `mspdbcmf.exe` from the Visual Studio **Desktop development with C++** workload;
 without it the build logs a warning and skips symbols.
+
+#### CI MSIX downloads
+
+The **Build and Test** workflow builds both x64 and ARM64 MSIX variants whenever
+the change classifier selects a release-build lane. This includes packaging,
+build, and workflow PRs, pushes to `main`/`master`, tags, and manual workflow
+dispatches. Ordinary targeted or documentation-only PRs intentionally skip them.
+MSIX failures block **CI Gate** when selected; a skipped unselected job is valid.
+
+Download the desired ZIP from the workflow run's **Artifacts**, not from GitHub
+Releases:
+
+| Artifact | Contents and purpose |
+|---|---|
+| `openclaw-msix-dev-x64` / `openclaw-msix-dev-arm64` | Signed Dev `.msix`, public `OpenClaw-Dev.cer`, `msix-metadata.json`, and `INSTALL.txt` for opt-in tester installation. |
+| `openclaw-msix-store-unsigned-x64` / `openclaw-msix-store-unsigned-arm64` | Unsigned Store `.msix` and the validated provenance sidecar from `Build-StoreMsix.ps1`. Submission inputs, not directly installable tester packages. |
+
+Each disposable runner uses `setup-dev-msix-cert.ps1` to generate and trust a
+non-exportable Dev certificate. Only its public `.cer` is included. The key and
+runner trust are removed in an always-run cleanup step. No repository signing
+secret or production release-signing environment is used. Each architecture
+and later workflow run can have a different certificate; testers must trust
+the matching signer explicitly. Only install packages from a workflow/source
+you trust, especially when testing unreviewed PR code.
+
+Extract the Dev artifact and follow `INSTALL.txt`: verify package/certificate
+hashes, install the architecture-matched VCLibs dependency described above,
+import the public certificate into `LocalMachine\TrustedPeople` from elevated
+PowerShell, then install the package as the intended user. This uses the
+existing **OpenClaw (Dev)** identity and can upgrade a locally installed Dev
+package; it is not a new independent test identity.
+
+CI passes `-MsixRevision $env:GITHUB_RUN_NUMBER` to the existing
+`build.ps1 -Project WinUI -Configuration Release -Msix Dev` path, with a fresh
+`-MsixOutputDirectory`. Explicit revisions must be 1-65535; overflow fails
+instead of wrapping. Omitting these options preserves local build behavior.
+The same run's reruns keep the same version, not a new upgrade. Version
+ordering is not guaranteed across forks, branches, local builds, or decreasing
+base versions. Do not uninstall/downgrade an existing Dev package just to
+resolve a version conflict without considering its settings and data.
+
+The Store version stays `X.Y.Z.0`. Prerelease and stable-correction suffixes
+can therefore produce the same Store version; CI artifacts do not promise
+unique Store submissions for every tag. Store submission version allocation
+must be resolved before distribution is enabled in #1375.
+
+MSIX release publishing remains paused. This workflow neither submits to
+Partner Center nor retrieves Store-signed packages nor adds MSIX assets to
+GitHub Releases. Existing EXE/ZIP releases are unchanged.
 
 #### The Store package alongside an existing Inno install
 

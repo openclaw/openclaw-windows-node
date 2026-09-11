@@ -648,16 +648,43 @@ foreach ($build in $releaseBuilds.GetEnumerator()) {
 }
 
 $buildMsixJob = Get-JobBlock "build-msix"
-Assert-Contains `
-    -Text $buildMsixJob `
-    -Expected "fetch-depth: 0" `
-    -Message "The paused MSIX build must retain full history before it can be re-enabled."
+foreach ($token in @(
+        "needs: [change-classification, metadata]",
+        "needs.metadata.result == 'success'",
+        "needs.change-classification.outputs.x64_release == 'true' || needs.change-classification.outputs.arm64_release == 'true'",
+        "architecture: [x64, arm64]",
+        "matrix.architecture == 'arm64' && 'windows-11-arm' || 'windows-latest'",
+        "fetch-depth: 0",
+        "global-json-file: global.json",
+        "OPENCLAW_BUILD_VERSION: `${{ needs.metadata.outputs.semVer }}",
+        "DEV_MSIX_REVISION: `${{ github.run_number }}",
+        '.\scripts\Build-StoreMsix.ps1 -Architecture',
+        '.\scripts\setup-dev-msix-cert.ps1',
+        '.\build.ps1 -Project WinUI -Configuration Release -Msix Dev',
+        '-MsixRevision $env:DEV_MSIX_REVISION',
+        '-MsixOutputDirectory "$env:RUNNER_TEMP\openclaw-dev-appx"',
+        '.\scripts\Export-DevMsixArtifact.ps1',
+        '-ExpectedVersion $env:OPENCLAW_BUILD_VERSION',
+        '-CertificateThumbprint $thumbprint',
+        'name: openclaw-msix-store-unsigned-${{ matrix.architecture }}',
+        'name: openclaw-msix-dev-${{ matrix.architecture }}',
+        'msix-metadata.json',
+        'OpenClaw-Dev.cer',
+        'INSTALL.txt',
+        'if-no-files-found: error',
+        '.\scripts\setup-dev-msix-cert.ps1 -Remove'
+    )) {
+    Assert-Contains -Text $buildMsixJob -Expected $token -Message "MSIX artifact lane is missing '$token'."
+}
+foreach ($token in @('if: false', "`n    continue-on-error: true", 'Set-Content global.json', 'msbuild src/', 'Select-Object -First 1', 'Export-PfxCertificate', 'secrets.', 'id-token: write')) {
+    Assert-NotContains -Text $buildMsixJob -Unexpected $token -Message "MSIX artifacts must not contain '$token'."
+}
 
 $ciGateJob = Get-JobBlock "ci-gate"
 foreach ($token in @(
         "name: CI Gate",
         "if: `${{ always() }}",
-        "needs: [change-classification, fast-validation, proof-pool-contracts, metadata, core-tests, tray-tests, ui-tests, setup-e2e, revocation-e2e, network-e2e, build-x64, build-arm64]",
+        "needs: [change-classification, fast-validation, proof-pool-contracts, metadata, core-tests, tray-tests, ui-tests, setup-e2e, revocation-e2e, network-e2e, build-x64, build-arm64, build-msix]",
         "./scripts/Assert-CiGateResults.ps1",
         "-FullRequired `$env:FULL_REQUIRED",
         "-CoreRequired `$env:CORE_REQUIRED",
@@ -668,7 +695,9 @@ foreach ($token in @(
         "-NetworkE2eRequired `$env:NETWORK_E2E_REQUIRED",
         "-X64ReleaseRequired `$env:X64_RELEASE_REQUIRED",
         "-Arm64ReleaseRequired `$env:ARM64_RELEASE_REQUIRED",
-        "-MetadataResult `$env:METADATA_RESULT"
+        "-MetadataResult `$env:METADATA_RESULT",
+        "MSIX_RESULT: `${{ needs.build-msix.result }}",
+        "-MsixResult `$env:MSIX_RESULT"
     )) {
     Assert-Contains -Text $ciGateJob -Expected $token -Message "Stable CI Gate is missing '$token'."
 }
@@ -683,6 +712,8 @@ foreach ($token in @(
     )) {
     Assert-Contains -Text $releaseJob -Expected $token -Message "Tag release is missing '$token'."
 }
+Assert-NotContains -Text $releaseJob -Unexpected ".msix" -Message "MSIX release publishing must remain paused."
+Assert-Contains -Text $workflow -Expected "./scripts/test-msix-ci-artifacts.ps1" -Message "Fast validation must exercise the Dev artifact contracts."
 
 $triggerPaths = @(
     ".github/workflows/ci.yml",

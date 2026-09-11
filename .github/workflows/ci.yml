@@ -110,6 +110,10 @@ jobs:
       shell: pwsh
       run: ./scripts/test-ci-workflow-contract.ps1
 
+    - name: Validate MSIX CI artifacts
+      shell: pwsh
+      run: ./scripts/test-msix-ci-artifacts.ps1
+
     - name: Validate stable correction release ordering regressions
       shell: pwsh
       run: ./scripts/test-stable-correction-release-validator.ps1
@@ -808,37 +812,28 @@ jobs:
         path: publish/
 
   build-msix:
-    needs: [metadata]
-    if: false # MSIX distribution is paused; ship Inno setup and portable ZIP artifacts only.
-    runs-on: ${{ matrix.rid == 'win-arm64' && 'windows-11-arm' || 'windows-latest' }}
-    continue-on-error: true
+    name: MSIX artifacts (${{ matrix.architecture }})
+    needs: [change-classification, metadata]
+    if: ${{ !cancelled() && needs.change-classification.result == 'success' && needs.metadata.result == 'success' && (needs.change-classification.outputs.x64_release == 'true' || needs.change-classification.outputs.arm64_release == 'true') }}
+    # Workflow downloads only. MSIX release publishing remains paused.
+    runs-on: ${{ matrix.architecture == 'arm64' && 'windows-11-arm' || 'windows-latest' }}
+    env:
+      OPENCLAW_BUILD_VERSION: ${{ needs.metadata.outputs.semVer }}
+      DEV_MSIX_REVISION: ${{ github.run_number }}
     strategy:
       fail-fast: false
       matrix:
-        rid: [win-x64, win-arm64]
-        include:
-          - rid: win-x64
-            platform: x64
-          - rid: win-arm64
-            platform: ARM64
+        architecture: [x64, arm64]
 
     steps:
     - uses: actions/checkout@v7
       with:
         fetch-depth: 0
 
-    - name: Setup .NET 10 for VS MSBuild
+    - name: Setup .NET from global.json
       uses: actions/setup-dotnet@v6
       with:
-        dotnet-version: 10.0.100
-
-    - name: Pin .NET SDK for MSIX packaging
-      shell: pwsh
-      run: |
-        $globalJson = Get-Content global.json -Raw | ConvertFrom-Json
-        $globalJson.sdk.rollForward = "disable"
-        $globalJson | ConvertTo-Json -Depth 5 | Set-Content global.json
-        dotnet --version
+        global-json-file: global.json
 
     - name: Cache NuGet packages
       continue-on-error: true
@@ -848,48 +843,62 @@ jobs:
         key: nuget-${{ runner.os }}-${{ hashFiles('**/*.csproj', '**/Directory.Packages.props') }}
         restore-keys: nuget-${{ runner.os }}-
 
-    - name: Setup MSBuild
-      uses: microsoft/setup-msbuild@v3
-
-    - name: Restore
-      run: dotnet restore src/OpenClaw.Tray.WinUI -r ${{ matrix.rid }}
-
-    - name: Build MSIX Package
-      run: >
-        msbuild src/OpenClaw.Tray.WinUI/OpenClaw.Tray.WinUI.csproj
-        /p:Configuration=Release
-        /p:RuntimeIdentifier=${{ matrix.rid }}
-        /p:Platform=${{ matrix.platform }}
-        /p:PackageMsix=true
-        /p:GenerateAppxPackageOnBuild=true
-        /p:AppxPackageSigningEnabled=false
-        /p:AppxBundle=Never
-        /p:UapAppxPackageBuildMode=SideloadOnly
-        /p:AppxPackageDir=AppPackages\
-
-    - name: Find MSIX Package
-      id: find-msix
+    - name: Build and validate unsigned Store MSIX
       shell: pwsh
-      run: |
-        $msix = Get-ChildItem -Path src/OpenClaw.Tray.WinUI/AppPackages -Recurse -Filter "*.msix" -ErrorAction SilentlyContinue | Select-Object -First 1
-        if (-not $msix) {
-          Write-Error "No MSIX package found in AppPackages directory"
-          exit 1
-        }
-        Write-Host "Found: $($msix.FullName)"
-        echo "msix_path=$($msix.FullName)" >> $env:GITHUB_OUTPUT
-        echo "msix_name=$($msix.Name)" >> $env:GITHUB_OUTPUT
+      run: .\scripts\Build-StoreMsix.ps1 -Architecture ${{ matrix.architecture }}
 
-    - name: Upload MSIX Artifact
+    - name: Upload unsigned Store submission artifact
       uses: actions/upload-artifact@v7
       with:
-        name: openclaw-msix-${{ matrix.rid }}
-        path: ${{ steps.find-msix.outputs.msix_path }}
+        name: openclaw-msix-store-unsigned-${{ matrix.architecture }}
+        path: |
+          artifacts/msix/${{ matrix.architecture }}/OpenClawCompanion-${{ matrix.architecture }}.msix
+          artifacts/msix/${{ matrix.architecture }}/msix-metadata.json
+        if-no-files-found: error
+
+    - name: Provision disposable Dev MSIX certificate
+      shell: pwsh
+      run: .\scripts\setup-dev-msix-cert.ps1
+
+    - name: Build signed Dev MSIX
+      shell: pwsh
+      run: >
+        .\build.ps1 -Project WinUI -Configuration Release -Msix Dev
+        -MsixRevision $env:DEV_MSIX_REVISION
+        -MsixOutputDirectory "$env:RUNNER_TEMP\openclaw-dev-appx"
+
+    - name: Validate and stage Dev tester artifact
+      shell: pwsh
+      run: |
+        $thumbprint = (Get-Content "$env:LOCALAPPDATA\OpenClawDevelopment\MSIX\dev-msix-thumbprint.txt" -Raw).Trim()
+        .\scripts\Export-DevMsixArtifact.ps1 `
+          -Architecture ${{ matrix.architecture }} `
+          -PackageDirectory "$env:RUNNER_TEMP\openclaw-dev-appx" `
+          -ExpectedRevision $env:DEV_MSIX_REVISION `
+          -ExpectedVersion $env:OPENCLAW_BUILD_VERSION `
+          -CertificateThumbprint $thumbprint `
+          -OutputDirectory "artifacts\msix-dev\${{ matrix.architecture }}"
+
+    - name: Upload Dev tester artifact
+      uses: actions/upload-artifact@v7
+      with:
+        name: openclaw-msix-dev-${{ matrix.architecture }}
+        path: |
+          artifacts/msix-dev/${{ matrix.architecture }}/OpenClawCompanion-Dev-${{ matrix.architecture }}.msix
+          artifacts/msix-dev/${{ matrix.architecture }}/OpenClaw-Dev.cer
+          artifacts/msix-dev/${{ matrix.architecture }}/msix-metadata.json
+          artifacts/msix-dev/${{ matrix.architecture }}/INSTALL.txt
+        if-no-files-found: error
+
+    - name: Remove disposable Dev MSIX certificate
+      if: ${{ always() }}
+      shell: pwsh
+      run: .\scripts\setup-dev-msix-cert.ps1 -Remove
 
   ci-gate:
     name: CI Gate
     if: ${{ always() }}
-    needs: [change-classification, fast-validation, proof-pool-contracts, metadata, core-tests, tray-tests, ui-tests, setup-e2e, revocation-e2e, network-e2e, build-x64, build-arm64]
+    needs: [change-classification, fast-validation, proof-pool-contracts, metadata, core-tests, tray-tests, ui-tests, setup-e2e, revocation-e2e, network-e2e, build-x64, build-arm64, build-msix]
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v7
@@ -919,6 +928,7 @@ jobs:
         ARM64_RELEASE_REQUIRED: ${{ needs.change-classification.outputs.arm64_release }}
         ARM64_RELEASE_RESULT: ${{ needs.build-arm64.result }}
         METADATA_RESULT: ${{ needs.metadata.result }}
+        MSIX_RESULT: ${{ needs.build-msix.result }}
       run: |
         $validatedMode = ./scripts/Assert-CiGateResults.ps1 `
           -ClassificationResult $env:CLASSIFICATION_RESULT `
@@ -942,7 +952,8 @@ jobs:
           -X64ReleaseResult $env:X64_RELEASE_RESULT `
           -Arm64ReleaseRequired $env:ARM64_RELEASE_REQUIRED `
           -Arm64ReleaseResult $env:ARM64_RELEASE_RESULT `
-          -MetadataResult $env:METADATA_RESULT
+          -MetadataResult $env:METADATA_RESULT `
+          -MsixResult $env:MSIX_RESULT
         "CI Gate passed $validatedMode validation." >> $env:GITHUB_STEP_SUMMARY
 
   release:

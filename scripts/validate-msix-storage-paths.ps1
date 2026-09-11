@@ -75,9 +75,12 @@
 
     CI ARTIFACT
     -----------
-    The MSIX is produced by the build-msix CI job.  Download artifact:
-        gh run download <run_id> --name openclaw-msix-win-x64 --dir ./msix-drop/
-    Then pass the .msix file path to -MsixPath.
+    The build-msix job now produces openclaw-msix-store-unsigned-x64 and
+    openclaw-msix-dev-x64 workflow artifacts. The Store artifact is unsigned
+    and cannot be installed directly. The Dev artifact has a different
+    identity and is not a substitute for this production-identity storage test.
+    Obtain an appropriately signed production-identity MSIX before passing
+    its path to -MsixPath. MSIX release publishing remains paused.
 
 .PARAMETER MsixPath
     Absolute path to the OpenClawTray MSIX file (e.g. OpenClawTray_1.2.3.0_x64.msix)

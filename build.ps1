@@ -41,6 +41,16 @@
     cannot read a repo owned by a different Windows account/group. The script
     will print the manual command instead.
 
+.PARAMETER MsixRevision
+    Explicit Dev package revision (1-65535), for example a CI workflow run
+    number. Omit for the existing installed-revision-plus-one behavior.
+    Only valid with -Msix Dev.
+
+.PARAMETER MsixOutputDirectory
+    Empty directory for Dev packaging output. Relative paths resolve against
+    the repository root. The directory is never cleared automatically.
+    Only valid with -Msix Dev; omission preserves the local AppPackages path.
+
 .EXAMPLE
     .\build.ps1
     .\build.ps1 -Project WinUI -Configuration Release
@@ -67,6 +77,12 @@ param(
     [ValidateSet("Dev", "Store")]
     [string]$Msix,
 
+    [ValidateRange(1, 65535)]
+    [int]$MsixRevision,
+
+    [ValidateNotNullOrEmpty()]
+    [string]$MsixOutputDirectory,
+
     [switch]$NoTrustRepository
 )
 
@@ -77,6 +93,20 @@ Set-Location $repoRoot
 
 $buildDevMsix = ($Msix -eq "Dev")
 $buildStoreMsix = ($Msix -eq "Store")
+
+if (($PSBoundParameters.ContainsKey("MsixRevision") -or
+     $PSBoundParameters.ContainsKey("MsixOutputDirectory")) -and -not $buildDevMsix) {
+    throw "-MsixRevision and -MsixOutputDirectory require -Msix Dev."
+}
+$explicitMsixRevision = $PSBoundParameters.ContainsKey("MsixRevision")
+if ($MsixOutputDirectory) {
+    $MsixOutputDirectory = [IO.Path]::GetFullPath([IO.Path]::Combine($repoRoot, $MsixOutputDirectory))
+    if ((Test-Path -LiteralPath $MsixOutputDirectory) -and
+        (-not (Test-Path -LiteralPath $MsixOutputDirectory -PathType Container) -or
+         @(Get-ChildItem -LiteralPath $MsixOutputDirectory -Force).Count -gt 0)) {
+        throw "The Dev MSIX output directory must be absent or empty: $MsixOutputDirectory"
+    }
+}
 
 if ($buildDevMsix) {
     $DevBuild = $true
@@ -449,14 +479,18 @@ function Build-Project($name, $path, $useRid = $false, $packageMsix = $false) {
     }
     
     if ($packageMsix) {
-        $installedDevPackage = Get-AppxPackage -Name "OpenClawFoundation.OpenClaw.Dev" -ErrorAction SilentlyContinue |
-            Where-Object Publisher -eq "CN=OpenClaw Local Development" |
-            Sort-Object { [version]$_.Version.ToString() } -Descending |
-            Select-Object -First 1
-        $msixRevision = if ($installedDevPackage) {
-            ([version]$installedDevPackage.Version.ToString()).Revision + 1
+        $msixRevision = if ($explicitMsixRevision) {
+            $MsixRevision
         } else {
-            1
+            $installedDevPackage = Get-AppxPackage -Name "OpenClawFoundation.OpenClaw.Dev" -ErrorAction SilentlyContinue |
+                Where-Object Publisher -eq "CN=OpenClaw Local Development" |
+                Sort-Object { [version]$_.Version.ToString() } -Descending |
+                Select-Object -First 1
+            if ($installedDevPackage) {
+                ([version]$installedDevPackage.Version.ToString()).Revision + 1
+            } else {
+                1
+            }
         }
         if ($msixRevision -gt 65535) {
             Write-Error "The installed development MSIX revision is already 65535. Remove the installed OpenClawFoundation.OpenClaw.Dev package before rebuilding."
@@ -482,13 +516,18 @@ function Build-Project($name, $path, $useRid = $false, $packageMsix = $false) {
     }
     if ($packageMsix) {
         $platform = if ($rid -eq "win-arm64") { "ARM64" } else { "x64" }
+        $appxOutput = if ($MsixOutputDirectory) {
+            $MsixOutputDirectory.TrimEnd('\') + '\'
+        } else {
+            "AppPackages\"
+        }
         $dotnetArgs += @(
             "-p:Platform=$platform",
             "-p:PackageMsix=true",
             "-p:GenerateAppxPackageOnBuild=true",
             "-p:AppxBundle=Never",
             "-p:UapAppxPackageBuildMode=SideloadOnly",
-            "-p:AppxPackageDir=AppPackages\"
+            "-p:AppxPackageDir=$appxOutput"
         )
     }
     $result = Invoke-DotNetCaptured $dotnetArgs
@@ -621,14 +660,17 @@ if ($failCount -eq 0) {
         $winUIProjectDirectory = (Split-Path -Parent $winUIProjectPath).Replace("/", "\")
 
         if ($buildDevMsix) {
-            $devMsixPackage = Get-ChildItem (Join-Path $repoRoot "$winUIProjectDirectory\AppPackages") -Recurse -Filter "*.msix" -ErrorAction SilentlyContinue |
+            $packageDirectory = if ($MsixOutputDirectory) { $MsixOutputDirectory } else {
+                Join-Path $repoRoot "$winUIProjectDirectory\AppPackages"
+            }
+            $devMsixPackage = Get-ChildItem $packageDirectory -Recurse -Filter "*.msix" -ErrorAction SilentlyContinue |
                 Sort-Object LastWriteTime -Descending |
                 Select-Object -First 1
             if ($devMsixPackage) {
                 Write-Host "  MSIX:     $($devMsixPackage.FullName)" -ForegroundColor White
                 Write-Host "  Install:  Add-AppxPackage -Path `"$($devMsixPackage.FullName)`" -ForceApplicationShutdown" -ForegroundColor White
             } else {
-                Write-Warning "MSIX packaging succeeded but no .msix was found under $winUIProjectDirectory\AppPackages."
+                Write-Warning "MSIX packaging succeeded but no .msix was found under $packageDirectory."
             }
         }
 
