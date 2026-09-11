@@ -130,3 +130,26 @@ Important current facts:
 - `GatewayConnectionManager` owns operator/node connection state. UI surfaces should observe it or call its reconnect/disconnect APIs instead of constructing parallel gateway clients.
 - Chat/canvas/tray actions must visibly route users to Connection settings when pairing is incomplete or credentials are missing; avoid silent no-ops.
 - MCP-only mode (`EnableMcpServer=true`, `EnableNodeMode=false`) must start local `NodeService` without requiring a gateway credential.
+
+<!-- colophon:start -->
+## Design system
+
+This repository has a living design system at [`.agents/design/`](.agents/design/). These files are the **source of truth for design** (tokens, component intent, and principles) and are framework-agnostic. `components.jsonc` shows design intent for preview; it is **not** shipping code.
+**Read it before creating or changing any UI.** To ship, port the design into this app's implementation using the port target(s) below. Don't copy `components.jsonc` verbatim.
+
+- `.agents/design/design.json` - design tokens: brand, colors, typography, spacing, radii, shadows, principles.
+- `.agents/design/components.jsonc` - the component patterns to reuse (structure, variants, states).
+- `.agents/design/principles.md` - voice, information hierarchy, and do/don't guidance.
+
+Generate UI from these tokens and patterns: use token names (e.g. `accent`, `ink`, spacing step `4`, radius `md`), not raw hex or ad-hoc px; reuse the documented components instead of inventing new ones; honor the brand voice; and avoid the system's listed anti-references. If you need a value the system doesn't cover, add it to `.agents/design/` rather than hard-coding a one-off.
+
+**Port targets**: how a design becomes shipping code here (design stays the source of truth; these say what each surface ships as and which reference/skill to port it with):
+- Default: ships as Native WinUI 3 / C# (Windows Fluent), port via https://github.com/microsoft/win-dev-skills (helper agent: win-dev-skills)
+- area "chat", components ChatBubble, ChatComposer, ChatThread: ships as Reactor (Microsoft.UI.Reactor), port via https://github.com/microsoft/microsoft-ui-reactor (no helper agent yet)
+- Canonical implementation owner: OpenClaw Windows (openclaw/openclaw-windows-node)
+- Examples kept aligned via: Tokens are captured by manual inspection of the app's WinUI 3 XAML/C# Fluent resources; re-inspect and update this file when the app's ThemeResource mappings or SystemAccentColor usage change.
+
+Colors in `design.json` are **preview-only** swatches. When a color has a `resource` (e.g. a WinUI `ThemeResource` key), bind that resource in code, never hard-code the preview hex, so light, dark, and high-contrast themes stay correct. The shipping implementation is canonical; treat `components.jsonc` and the token values as derived visual examples, not a parallel upstream source.
+
+<sub>Managed by [Colophon](https://github.com/karkarl/colophon). Edit `.agents/design/` to change the system; this block only points to it.</sub>
+<!-- colophon:end -->
