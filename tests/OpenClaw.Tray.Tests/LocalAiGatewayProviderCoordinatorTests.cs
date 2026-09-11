@@ -316,9 +316,21 @@ public sealed class LocalAiGatewayProviderCoordinatorTests
         Assert.True(LocalAiGatewayProviderDefinition.MatchesProviderJson(commands.ProviderJson!, install));
         Assert.Equal(LocalAiGatewayProviderDefinition.BuildPrimaryModel(install), commands.PrimaryModel);
         IReadOnlyList<string> apply = Assert.Single(commands.Calls, call => call.Contains("/bin/sh"));
-        string script = apply[^1];
-        Assert.Contains("--dry-run", script, StringComparison.Ordinal);
-        Assert.DoesNotContain('$', script);
+        Assert.Equal("-s", apply[^1]);
+        Assert.DoesNotContain("-c", apply);
+        Assert.DoesNotContain(apply, argument => argument.Contains("base64", StringComparison.Ordinal));
+        string script = Assert.IsType<string>(commands.StandardInputs[
+            commands.Calls.FindIndex(call => call.Contains("/bin/sh"))]);
+        Assert.StartsWith("set -e\n", script, StringComparison.Ordinal);
+        Assert.Contains("batch_file=\"$(mktemp)\"\n", script, StringComparison.Ordinal);
+        Assert.Contains("trap 'rm -f \"$batch_file\"' EXIT\n", script, StringComparison.Ordinal);
+        Assert.Contains("| base64 -d > \"$batch_file\"\n", script, StringComparison.Ordinal);
+        Assert.Contains(
+            "openclaw config set --batch-file \"$batch_file\" --dry-run\n" +
+            "openclaw config set --batch-file \"$batch_file\"\n",
+            script, StringComparison.Ordinal);
+        Assert.DoesNotContain("/dev/stdin", script, StringComparison.Ordinal);
+        Assert.DoesNotContain('\r', script);
         Assert.All(commands.Distros, distro => Assert.Equal("CustomGateway", distro));
     }
 
@@ -399,6 +411,10 @@ public sealed class LocalAiGatewayProviderCoordinatorTests
         int unsetIndex = commands.Calls.FindIndex(call =>
             call.Contains("unset") && call.Contains(LocalAiGatewayProviderDefinition.ProviderPath));
         Assert.True(restoreIndex >= 0 && unsetIndex > restoreIndex);
+        Assert.Equal("-s", commands.Calls[restoreIndex][^1]);
+        string restoreScript = Assert.IsType<string>(commands.StandardInputs[restoreIndex]);
+        Assert.Contains("--batch-file \"$batch_file\" --dry-run", restoreScript, StringComparison.Ordinal);
+        Assert.DoesNotContain("/dev/stdin", restoreScript, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -742,6 +758,7 @@ public sealed class LocalAiGatewayProviderCoordinatorTests
         public HashSet<int> FailedReadCalls { get; init; } = [];
         public Action<int>? CommandObserved { get; init; }
         public List<IReadOnlyList<string>> Calls { get; } = [];
+        public List<string?> StandardInputs { get; } = [];
         public List<string> Distros { get; } = [];
         private int _readCalls;
 
@@ -755,6 +772,7 @@ public sealed class LocalAiGatewayProviderCoordinatorTests
             cancellationToken.ThrowIfCancellationRequested();
             Distros.Add(name);
             Calls.Add(command.ToArray());
+            StandardInputs.Add(standardInput);
             CommandObserved?.Invoke(Calls.Count);
             bool providerRead = command.Contains("get") &&
                 command.Contains(LocalAiGatewayProviderDefinition.ProviderPath);

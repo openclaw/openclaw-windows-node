@@ -1,6 +1,7 @@
 using System.Text;
 using System.Text.Json;
 using OpenClaw.Connection.LocalAi;
+using OpenClaw.Shared;
 
 namespace OpenClaw.SetupEngine;
 
@@ -75,6 +76,7 @@ public sealed class ConfigureLocalAiGatewayStep : SetupStep
     private const string ProviderMarker = "OPENCLAW_LOCAL_AI_PROVIDER_B64=";
     private const string PrimaryMarker = "OPENCLAW_LOCAL_AI_PRIMARY_B64=";
     private const string MissingValue = "MISSING";
+    private const string FailedValuePrefix = "FAILED:";
     private const string BatchVariable = "OPENCLAW_LOCAL_AI_BATCH_B64";
     private const int MaximumSnapshotBytes = 1024 * 1024;
 
@@ -510,12 +512,20 @@ public sealed class ConfigureLocalAiGatewayStep : SetupStep
               error_file="$(mktemp)"
               if openclaw config get "$key" --json >"$temp_file" 2>"$error_file"; then
                 printf '%s%s\n' "$marker" "$(base64 -w0 <"$temp_file")"
-              elif grep -Fq "Config path not found: $key" "$error_file"; then
-                printf '%s{{MissingValue}}\n' "$marker"
               else
-                cat "$error_file" >&2
-                rm -f "$temp_file" "$error_file"
-                return 1
+                config_exit=$?
+                if [ "$config_exit" -eq 1 ]; then
+                  if grep -Fxq -e "Config path not found: $key" \
+                      -e "Config path not found: $key. Run openclaw config validate to inspect config shape." "$error_file"; then
+                    printf '%s{{MissingValue}}\n' "$marker"
+                  else
+                    printf '%s{{FailedValuePrefix}}%s\n' "$marker" "$(base64 -w0 <"$temp_file")"
+                  fi
+                else
+                  cat "$error_file" >&2
+                  rm -f "$temp_file" "$error_file"
+                  return 1
+                fi
               fi
               rm -f "$temp_file" "$error_file"
             }
@@ -554,12 +564,14 @@ public sealed class ConfigureLocalAiGatewayStep : SetupStep
 
     private static LocalAiGatewayPriorState ParseSnapshot(string stdout)
     {
-        (bool providerExists, string? provider) = ParseMarker(stdout, ProviderMarker);
-        (bool primaryExists, string? primary) = ParseMarker(stdout, PrimaryMarker);
+        (bool providerExists, string? provider) = ParseMarker(
+            stdout, ProviderMarker, LocalAiGatewayConfigBuilder.ProviderPath);
+        (bool primaryExists, string? primary) = ParseMarker(
+            stdout, PrimaryMarker, LocalAiGatewayConfigBuilder.PrimaryModelPath);
         return new(providerExists, provider, primaryExists, primary);
     }
 
-    private static (bool Exists, string? Json) ParseMarker(string stdout, string marker)
+    private static (bool Exists, string? Json) ParseMarker(string stdout, string marker, string path)
     {
         string? value = stdout.Split(['\r', '\n'], StringSplitOptions.RemoveEmptyEntries)
             .SingleOrDefault(line => line.StartsWith(marker, StringComparison.Ordinal))?[marker.Length..];
@@ -567,6 +579,9 @@ public sealed class ConfigureLocalAiGatewayStep : SetupStep
             throw new InvalidDataException($"Missing configuration marker '{marker}'.");
         if (string.Equals(value, MissingValue, StringComparison.Ordinal))
             return (false, null);
+        bool commandFailed = value.StartsWith(FailedValuePrefix, StringComparison.Ordinal);
+        if (commandFailed)
+            value = value[FailedValuePrefix.Length..];
         if (value.Length > MaximumSnapshotBytes * 2)
             throw new InvalidDataException("The configuration snapshot is too large.");
 
@@ -574,7 +589,13 @@ public sealed class ConfigureLocalAiGatewayStep : SetupStep
         if (bytes.Length > MaximumSnapshotBytes)
             throw new InvalidDataException("The configuration snapshot is too large.");
         string json = Encoding.UTF8.GetString(bytes);
-        using JsonDocument _ = JsonDocument.Parse(json, new JsonDocumentOptions { MaxDepth = 32 });
+        using JsonDocument document = JsonDocument.Parse(json, new JsonDocumentOptions { MaxDepth = 32 });
+        if (commandFailed)
+        {
+            if (GatewayConfigCliCompatibility.IsUnsetError(document.RootElement, path))
+                return (false, null);
+            throw new InvalidDataException("The gateway configuration read failed.");
+        }
         return (true, json);
     }
 

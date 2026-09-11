@@ -61,15 +61,6 @@ public sealed class PreflightLocalAiHardwareStep : SetupStep
                 $"({eligibility.FailureCode}, {eligibility.SelectionFailureCode})."));
         }
 
-        if (eligibility.Status == LocalInferenceEligibilityStatus.EligibleButBusy)
-        {
-            long requiredMiB = eligibility.RequiredFreeMemoryBytes / (1024 * 1024);
-            long availableMiB = (eligibility.AvailableFreeMemoryBytes ?? 0) / (1024 * 1024);
-            return Task.FromResult(StepResult.Terminal(
-                $"The selected GPU is supported but currently busy. Local AI needs {requiredMiB:N0} MiB free; " +
-                $"{availableMiB:N0} MiB is available. Close GPU applications and retry."));
-        }
-
         if (eligibility.Plan is null || eligibility.SelectedGpu is null)
         {
             return Task.FromResult(StepResult.Terminal(

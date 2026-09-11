@@ -7026,6 +7026,10 @@ public class OpenClawChatDataProviderTests
         });
         for (var i = 0; i < 20 && bridge.SentMessages.Count < 2; i++)
             await Task.Delay(10);
+        await WaitForConditionAsync(() =>
+            GetQueuedMessages(snapshots[^1], "main").Count == 0 &&
+            snapshots[^1].Timelines["main"].Entries.Any(e =>
+                e.Kind == ChatTimelineItemKind.User && e.Text == "second"));
 
         Assert.Equal(new[] { "first", "second" }, bridge.SentMessages);
         Assert.Empty(GetQueuedMessages(snapshots[^1], "main"));

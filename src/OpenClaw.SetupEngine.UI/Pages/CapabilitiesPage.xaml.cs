@@ -422,7 +422,7 @@ public sealed partial class CapabilitiesPage : Page
         LocalAiInstallReviewCard.Visibility = Visibility.Visible;
         LocalAiToggle.Visibility = Visibility.Visible;
         SetLocalAiOptionAvailability(isAvailable: true);
-        _localAiSelectionEligible = eligibility.Status == LocalInferenceEligibilityStatus.Eligible;
+        _localAiSelectionEligible = eligibility.CanInstall;
         _config!.LocalAi.SelectedModelId ??= eligibility.Plan!.Model.Id;
         _config.LocalAi.SelectedProfileId = eligibility.Plan!.Profile.Id;
         PopulateLocalAiModels();
@@ -765,17 +765,13 @@ public sealed partial class CapabilitiesPage : Page
             return;
         }
 
-        _localAiSelectionEligible = eligibility.Status == LocalInferenceEligibilityStatus.Eligible;
+        _localAiSelectionEligible = eligibility.CanInstall;
         _config!.LocalAi.SelectedProfileId = plan.Profile.Id;
         LocalAiHardwareStatusText.Text = eligibility.Status switch
         {
-            LocalInferenceEligibilityStatus.Eligible =>
+            LocalInferenceEligibilityStatus.Eligible or LocalInferenceEligibilityStatus.EligibleButBusy =>
                 $"{FormatMemorySize(eligibility.RequiredTotalMemoryBytes)} required · " +
                 $"{FormatOptionalMemorySize(eligibility.DetectedTotalMemoryBytes)} CUDA-visible on {gpu.Name}",
-            LocalInferenceEligibilityStatus.EligibleButBusy =>
-                $"Detected {gpu.Name}, but only {FormatOptionalMemorySize(eligibility.AvailableFreeMemoryBytes)} of " +
-                $"{FormatMemorySize(eligibility.RequiredFreeMemoryBytes)} required GPU memory is currently free. " +
-                "Close GPU applications and retry setup.",
             _ => DescribeLocalAiUnavailable(eligibility),
         };
         LocalAiEngineDetailText.Text =

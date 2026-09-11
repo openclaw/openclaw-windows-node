@@ -88,7 +88,7 @@
                         <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="14">
                             <FontIcon Grid.Column="0" Glyph="&#xE950;" FontSize="18" VerticalAlignment="Center" />
                             <StackPanel Grid.Column="1" Spacing="2">
-                                <TextBlock x:Name="LocalAiSummaryTitle" Text="Local AI verified"
+                                <TextBlock x:Name="LocalAiSummaryTitle" Text="Local AI installed"
                                            Style="{StaticResource BodyStrongTextBlockStyle}" />
                                 <TextBlock x:Name="LocalAiSummaryDescription"
                                            AutomationProperties.LiveSetting="Polite"

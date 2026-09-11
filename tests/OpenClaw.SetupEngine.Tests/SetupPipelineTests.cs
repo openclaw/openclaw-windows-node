@@ -102,7 +102,7 @@ public class SetupPipelineTests
     {
         var steps = SetupStepFactory.BuildDefaultSteps();
 
-        Assert.Equal(37, steps.Count);
+        Assert.Equal(34, steps.Count);
         Assert.IsType<ValidateDistroInstallPathStep>(steps[0]);
         Assert.IsType<PreflightOsStep>(steps[1]);
         Assert.IsType<PreflightLocalAiHardwareStep>(steps[2]);
@@ -114,12 +114,9 @@ public class SetupPipelineTests
         Assert.IsType<AcquireLocalAiModelStep>(steps[8]);
         Assert.IsType<PersistLocalAiManifestStep>(steps[9]);
         Assert.IsType<StartLocalAiRuntimeStep>(steps[10]);
-        Assert.IsType<CaptureLocalAiGpuBaselineStep>(steps[11]);
-        Assert.IsType<VerifyLocalAiInferenceStep>(steps[12]);
-        Assert.IsType<VerifyLocalAiGpuLoadStep>(steps[13]);
-        Assert.IsType<ConfigureLocalAiWslNetworkingStep>(steps[14]);
-        Assert.IsType<CleanupStaleDistroStep>(steps[15]);
-        Assert.IsType<CleanupStaleGatewayStep>(steps[16]);
+        Assert.IsType<ConfigureLocalAiWslNetworkingStep>(steps[11]);
+        Assert.IsType<CleanupStaleDistroStep>(steps[12]);
+        Assert.IsType<CleanupStaleGatewayStep>(steps[13]);
         Assert.Contains(steps, s => s is ValidateWslLockdownStep);
         var lockdownIndex = steps.FindIndex(s => s is ValidateWslLockdownStep);
         var cliInstallIndex = steps.FindIndex(s => s is InstallCliStep);
@@ -480,9 +477,6 @@ public class SetupPipelineTests
             steps.Single(step => step is AcquireLocalAiModelStep),
             steps.Single(step => step is PersistLocalAiManifestStep),
             steps.Single(step => step is StartLocalAiRuntimeStep),
-            steps.Single(step => step is CaptureLocalAiGpuBaselineStep),
-            steps.Single(step => step is VerifyLocalAiInferenceStep),
-            steps.Single(step => step is VerifyLocalAiGpuLoadStep),
             steps.Single(step => step is ConfigureLocalAiWslNetworkingStep),
             steps.Single(step => step is VerifyLocalAiWslStep),
             steps.Single(step => step is ConfigureLocalAiGatewayStep),
@@ -522,6 +516,29 @@ public class SetupPipelineTests
         IsLocal = true,
         SetupManagedDistroName = "OpenClawGateway",
     };
+
+    [Fact]
+    public void ModelLoadingProof_IsOptInAndNeverPartOfDefaultSetup()
+    {
+        var setup = SetupStepFactory.BuildDefaultSteps();
+        var proof = SetupStepFactory.BuildLocalAiInferenceProofSteps();
+
+        Assert.Collection(proof,
+            step => Assert.IsType<CaptureLocalAiGpuBaselineStep>(step),
+            step => Assert.IsType<VerifyLocalAiInferenceStep>(step),
+            step => Assert.IsType<VerifyLocalAiGpuLoadStep>(step));
+        Assert.All(proof, step => Assert.DoesNotContain(setup, candidate => candidate.Id == step.Id));
+        Assert.All(proof, step => Assert.True(step.CanSkip(CreateContext(new SetupConfig
+        {
+            LocalAi = new LocalAiConfig { Enabled = false }
+        }))));
+
+        string wslProbe = VerifyLocalAiWslStep.BuildProbeScript(49152);
+        Assert.Contains("/health", wslProbe);
+        Assert.Contains("/models?autoload=false", wslProbe);
+        Assert.DoesNotContain("/completion", wslProbe);
+        Assert.DoesNotContain("/models/load", wslProbe);
+    }
 
     [Theory]
     [InlineData(false)]

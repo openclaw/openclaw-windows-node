@@ -5,6 +5,26 @@ namespace OpenClaw.Tray.Tests;
 public sealed class LocalAiSetupUxContractTests
 {
     [Fact]
+    public void LocalAiSetupProgressAndCompletion_DoNotPromiseInferenceVerification()
+    {
+        string root = TestRepositoryPaths.GetRepositoryRoot();
+        string pages = Path.Combine(root, "src", "OpenClaw.SetupEngine.UI", "Pages");
+        string progress = File.ReadAllText(Path.Combine(pages, "ProgressPage.xaml.cs"));
+        string complete = File.ReadAllText(Path.Combine(pages, "CompletePage.xaml.cs"));
+        string completeXaml = File.ReadAllText(Path.Combine(pages, "CompletePage.xaml"));
+
+        Assert.Contains("Prepare Local AI router", progress);
+        Assert.DoesNotContain("capture-local-ai-gpu-baseline", progress);
+        Assert.DoesNotContain("verify-local-ai-inference", progress);
+        Assert.DoesNotContain("verify-local-ai-gpu-load", progress);
+        Assert.Contains("Local AI installed", complete);
+        Assert.Contains("Local AI installed", completeXaml);
+        Assert.Contains("The model loads on the first request.", complete);
+        Assert.DoesNotContain("Local AI verified", complete);
+        Assert.DoesNotContain("Local AI verified", completeXaml);
+    }
+
+    [Fact]
     public void WelcomePage_ShowsLocalAiCompatibilityDetails()
     {
         string root = TestRepositoryPaths.GetRepositoryRoot();

@@ -705,16 +705,25 @@ public sealed class LocalAiPageViewModelTests
             return;
 
         var completion = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-        PropertyChangedEventHandler? handler = null;
-        handler = (_, _) =>
+        PropertyChangedEventHandler handler = (_, _) =>
         {
             if (!condition())
                 return;
-            viewModel.PropertyChanged -= handler;
             completion.TrySetResult();
         };
         viewModel.PropertyChanged += handler;
-        await completion.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        try
+        {
+            // The condition can change after the first check but before subscription.
+            // Recheck once subscribed so that transition cannot be missed.
+            if (condition())
+                completion.TrySetResult();
+            await completion.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        }
+        finally
+        {
+            viewModel.PropertyChanged -= handler;
+        }
     }
 
     private static async Task WaitForConditionAsync(Func<bool> condition, TimeSpan timeout)

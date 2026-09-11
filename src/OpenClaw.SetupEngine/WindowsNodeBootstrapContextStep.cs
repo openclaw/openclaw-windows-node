@@ -407,9 +407,7 @@ public sealed class WindowsNodeBootstrapContextStep : SetupStep
             // Validated releases report an absent key with exit 1. Only that
             // known case may select the default; other read failures must not
             // be persisted by the subsequent `setup --workspace` call.
-            if (!result.Stderr.Contains(
-                    "Config path not found: agents.defaults.workspace",
-                    StringComparison.Ordinal))
+            if (!IsUnsetDefaultWorkspace(result))
                 return null;
 
             raw = $"{home.TrimEnd('/')}/.openclaw/workspace";
@@ -429,6 +427,10 @@ public sealed class WindowsNodeBootstrapContextStep : SetupStep
 
         return ExpandLinuxPath(raw, home);
     }
+
+    private static bool IsUnsetDefaultWorkspace(CommandResult result) =>
+        GatewayConfigCliCompatibility.IsUnsetError(
+            result.ExitCode, result.Stdout, result.Stderr, "agents.defaults.workspace");
 
     internal static string? ExtractDefaultAgentWorkspaceFromAgentsOutput(string stdout)
     {

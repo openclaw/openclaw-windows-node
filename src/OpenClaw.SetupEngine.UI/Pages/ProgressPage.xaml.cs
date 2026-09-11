@@ -43,7 +43,7 @@ public sealed partial class ProgressPage : Page
         ("wsl-platform", "Prepare WSL", ["ensure-wsl-platform"]),
         ("local-ai-engine", "Install Local AI", ["acquire-local-ai-runtime"]),
         ("local-ai-model", "Download AI model", ["acquire-local-ai-model"]),
-        ("local-ai-verify", "Verify Local AI", ["persist-local-ai-manifest", "start-local-ai-runtime", "capture-local-ai-gpu-baseline", "verify-local-ai-inference", "verify-local-ai-gpu-load"]),
+        ("local-ai-verify", "Prepare Local AI router", ["persist-local-ai-manifest", "start-local-ai-runtime"]),
         ("wsl-networking", "Connect WSL to Local AI", ["configure-local-ai-wsl-networking"]),
         ("cleanup", "Remove existing gateway", ["cleanup-distro", "cleanup-gateway"]),
         ("port", "Check gateway port", ["preflight-port"]),

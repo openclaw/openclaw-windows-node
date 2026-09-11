@@ -47,6 +47,17 @@ public sealed record StepProgressEvent(string StepId, string DisplayName, StepOu
 
 public static class SetupStepFactory
 {
+    /// <summary>
+    /// Opt-in inference proof for diagnostics and release validation after the managed
+    /// router is installed. These steps load the model and must not gate installation.
+    /// </summary>
+    public static List<SetupStep> BuildLocalAiInferenceProofSteps() =>
+    [
+        new CaptureLocalAiGpuBaselineStep(),
+        new VerifyLocalAiInferenceStep(),
+        new VerifyLocalAiGpuLoadStep(),
+    ];
+
     public static List<SetupStep> BuildWizardOnlySteps() =>
     [
         new RunGatewayWizardStep(),
@@ -91,9 +102,6 @@ public static class SetupStepFactory
             new AcquireLocalAiModelStep(),
             new PersistLocalAiManifestStep(),
             new StartLocalAiRuntimeStep(),
-            new CaptureLocalAiGpuBaselineStep(),
-            new VerifyLocalAiInferenceStep(),
-            new VerifyLocalAiGpuLoadStep(),
             new ConfigureLocalAiWslNetworkingStep(),
             new CleanupStaleDistroStep(),
             new CleanupStaleGatewayStep(),

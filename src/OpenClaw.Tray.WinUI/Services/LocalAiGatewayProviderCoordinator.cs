@@ -241,11 +241,15 @@ internal sealed class LocalAiGatewayProviderCoordinator : ILocalAiEndpointLifecy
         WslCommandResult direct = routed.Result!;
         if (direct.Success)
             return new(true, true, direct.StandardOutput, null);
-        string missing = $"Config path not found: {path}";
-        return direct.StandardError.Contains(missing, StringComparison.Ordinal)
+        return IsUnsetSetting(direct, path)
             ? new(true, false, null, null)
             : new(false, false, null, $"The app-owned gateway setting '{path}' could not be read.");
     }
+
+    private static bool IsUnsetSetting(WslCommandResult result, string path) =>
+        result.StandardError.Length <= 64 * 1024 &&
+        GatewayConfigCliCompatibility.IsUnsetError(
+            result.ExitCode, result.StandardOutput, result.StandardError, path);
 
     private async Task<LocalAiEndpointLifecycleResult> SetPrimaryAsync(
         string model,
@@ -282,12 +286,19 @@ internal sealed class LocalAiGatewayProviderCoordinator : ILocalAiEndpointLifecy
         CancellationToken cancellationToken)
     {
         string encoded = Convert.ToBase64String(Encoding.UTF8.GetBytes(batch));
+        // Gateway requires a regular batch file. Send this script through stdin
+        // so wsl.exe cannot expand the Linux temporary-file variable in argv.
         string script =
-            $"set -e\nprintf '%s' '{encoded}' | base64 -d | openclaw config set --batch-file /dev/stdin --dry-run\n" +
-            $"printf '%s' '{encoded}' | base64 -d | openclaw config set --batch-file /dev/stdin";
+            "set -e\n" +
+            "batch_file=\"$(mktemp)\"\n" +
+            "trap 'rm -f \"$batch_file\"' EXIT\n" +
+            $"printf '%s' '{encoded}' | base64 -d > \"$batch_file\"\n" +
+            "openclaw config set --batch-file \"$batch_file\" --dry-run\n" +
+            "openclaw config set --batch-file \"$batch_file\"\n";
         return RunInManagedDistroAsync(
-            ["/usr/bin/env", $"PATH={FixedPath}", "/bin/sh", "-c", script],
-            cancellationToken);
+            ["/usr/bin/env", $"PATH={FixedPath}", "/bin/sh", "-s"],
+            cancellationToken,
+            standardInput: script);
     }
 
     private static JsonDocument ParseBounded(string value)
@@ -313,7 +324,8 @@ internal sealed class LocalAiGatewayProviderCoordinator : ILocalAiEndpointLifecy
 
     private async Task<RoutedCommandResult> RunInManagedDistroAsync(
         IReadOnlyList<string> command,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        string? standardInput = null)
     {
         LocalAiGatewayDistroResolution resolution = _distroResolver.Resolve();
         if (!resolution.Success)
@@ -322,7 +334,8 @@ internal sealed class LocalAiGatewayProviderCoordinator : ILocalAiEndpointLifecy
         WslCommandResult result = await _commands.RunInDistroAsync(
                 resolution.DistroName!,
                 command,
-                cancellationToken)
+                cancellationToken,
+                standardInput: standardInput)
             .ConfigureAwait(false);
         return new(result, null);
     }

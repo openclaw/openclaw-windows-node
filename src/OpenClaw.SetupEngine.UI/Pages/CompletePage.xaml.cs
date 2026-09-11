@@ -46,7 +46,7 @@ public sealed partial class CompletePage : Page
                 LocalAiSummaryCard.Visibility = review.LocalAiEnabled ? Visibility.Visible : Visibility.Collapsed;
                 if (review.LocalAiEnabled)
                 {
-                    LocalAiSummaryTitle.Text = review.LocalAiTitle ?? "Local AI verified";
+                    LocalAiSummaryTitle.Text = review.LocalAiTitle ?? "Local AI installed";
                     LocalAiSummaryDescription.Text = review.LocalAiDescription ??
                         "The native llama-server router is ready. The model loads on the first request.";
                     SubtitleText.Text = "OpenClaw and Local AI are ready";
