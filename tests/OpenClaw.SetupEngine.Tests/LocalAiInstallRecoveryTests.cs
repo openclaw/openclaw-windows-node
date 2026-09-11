@@ -5,6 +5,7 @@ using System.Net.Http.Headers;
 using System.Runtime.InteropServices;
 using System.Security.Cryptography;
 using OpenClaw.Connection.LocalAi;
+using OpenClaw.Shared.Inference;
 using OpenClaw.Shared.Inference.Catalog;
 using OpenClaw.TestSupport;
 
@@ -1034,6 +1035,117 @@ public sealed class LocalAiInstallRecoveryTests
     }
 
     [Fact]
+    public async Task Reconciler_RecoveryKeepsSchemaThreeReceiptAsRollbackBaselineAfterMigration()
+    {
+        using var temp = new TempDirectory();
+        using var environment = new EnvironmentScope(
+            "HF_HUB_CACHE",
+            CacheRoot(temp.Path));
+        byte[] modelBytes = "verified-recovery-model"u8.ToArray();
+        byte[] runtimeZip = CreateZip(("llama-server.exe", "server"u8.ToArray()));
+        byte[] dependencyZip = CreateZip(("dependency.dll", "dependency"u8.ToArray()));
+        LocalModelInfo model = CreateModel(modelBytes);
+        LlamaRuntimeVariant runtime = CreateRuntime(runtimeZip, dependencyZip);
+        var plan = new LocalInferencePlan(
+            runtime,
+            model,
+            new LocalInferenceRunProfile(
+                "test-profile",
+                128,
+                KvCachePrecision.F16,
+                KvCachePrecision.F16,
+                KvCachePrecision.F16,
+                KvCachePrecision.F16,
+                runtimeWorkspaceBytes: 1),
+            LocalInferenceModelSelectionOrigin.Default);
+        var paths = new LocalAiPaths(temp.Path);
+        LocalAiInstallManifest manifest = CreateManifest(temp.Path, plan, "GPU-0");
+        string legacyModelPath = paths.ResolveContainedPath(manifest.ModelPath, "modelPath");
+        Directory.CreateDirectory(Path.GetDirectoryName(legacyModelPath)!);
+        await File.WriteAllBytesAsync(legacyModelPath, modelBytes);
+        await new LocalAiManifestStore(paths).SaveAsync(manifest);
+
+        LocalAiReconcileResult result = await new LocalAiInstallReconciler(
+                new ValidRuntimeInspector(),
+                new LocalAiModelFileVerifier())
+            .ReconcileAsync(
+                temp.Path,
+                plan,
+                "GPU-0",
+                CancellationToken.None,
+                allowIncompleteInstallation: true);
+
+        Assert.True(result.Reused);
+        Assert.Equal(
+            LocalAiInstallManifest.HubCacheReceiptSchemaVersion,
+            result.ResolvedInstall?.Manifest.SchemaVersion);
+        Assert.Equal(
+            LocalAiInstallManifest.CurrentSchemaVersion,
+            result.OriginalInstall?.Manifest.SchemaVersion);
+        Assert.Equal(manifest.Endpoint, result.OriginalInstall?.Manifest.Endpoint);
+    }
+
+    [Fact]
+    public async Task Reconciler_RecoveryRepairsMissingSchemaFourCompatibilityCopy()
+    {
+        using var temp = new TempDirectory();
+        byte[] modelBytes = "verified-schema-four-recovery"u8.ToArray();
+        byte[] runtimeZip = CreateZip(("llama-server.exe", "server"u8.ToArray()));
+        byte[] dependencyZip = CreateZip(("dependency.dll", "dependency"u8.ToArray()));
+        LocalModelInfo model = CreateModel(modelBytes);
+        LlamaRuntimeVariant runtime = CreateRuntime(runtimeZip, dependencyZip);
+        var plan = new LocalInferencePlan(
+            runtime,
+            model,
+            new LocalInferenceRunProfile(
+                "test-profile",
+                128,
+                KvCachePrecision.F16,
+                KvCachePrecision.F16,
+                KvCachePrecision.F16,
+                KvCachePrecision.F16,
+                runtimeWorkspaceBytes: 1),
+            LocalInferenceModelSelectionOrigin.Default);
+        var paths = new LocalAiPaths(temp.Path);
+        LocalAiInstallManifest legacyManifest = CreateManifest(temp.Path, plan, "GPU-0");
+        HuggingFaceRevisionSource source =
+            Assert.IsType<HuggingFaceRevisionSource>(plan.Model.Weights.Source);
+        string cacheRoot = CacheRoot(temp.Path);
+        Assert.True(HuggingFaceHubCache.TryGetSnapshotPaths(
+            cacheRoot,
+            source.RepositoryId,
+            source.RevisionSha,
+            plan.Model.Weights.RelativePath,
+            out string cachedModelPath,
+            out _,
+            out string error), error);
+        Directory.CreateDirectory(Path.GetDirectoryName(cachedModelPath)!);
+        await File.WriteAllBytesAsync(cachedModelPath, modelBytes);
+        LocalAiInstallManifest manifest = legacyManifest with
+        {
+            SchemaVersion = LocalAiInstallManifest.HubCacheReceiptSchemaVersion,
+            ModelCacheRoot = cacheRoot,
+            CachedModelPath = cachedModelPath,
+        };
+        await new LocalAiManifestStore(paths).SaveAsync(manifest);
+
+        LocalAiReconcileResult result = await new LocalAiInstallReconciler(
+                new ValidRuntimeInspector(),
+                new LocalAiModelFileVerifier())
+            .ReconcileAsync(
+                temp.Path,
+                plan,
+                "GPU-0",
+                CancellationToken.None,
+                allowIncompleteInstallation: true);
+
+        Assert.False(result.Reused);
+        Assert.NotNull(result.OriginalInstall);
+        Assert.NotNull(result.RuntimeInstall);
+        Assert.Null(result.ModelInstall);
+    }
+
+    [Fact]
     public async Task Reconciler_RejectsMigrationCacheRootInsideManagedInstallTree()
     {
         using var temp = new TempDirectory();
@@ -1104,6 +1216,120 @@ public sealed class LocalAiInstallRecoveryTests
                 .ReconcileAsync(temp.Path, plan, "GPU-1", CancellationToken.None));
 
         Assert.True(File.Exists(paths.ManifestPath));
+    }
+
+    [Fact]
+    public async Task Reconciler_RecoveryRetainsReceiptWhileMissingModelIsRepaired()
+    {
+        using var temp = new TempDirectory();
+        LocalInferencePlan plan = CatalogPlan();
+        const string gpuId = "GPU-0";
+        var paths = new LocalAiPaths(temp.Path);
+        var store = new LocalAiManifestStore(paths);
+        LocalAiInstallManifest manifest = CreateManifest(temp.Path, plan, gpuId);
+        await store.SaveAsync(manifest);
+        var reconciler = new LocalAiInstallReconciler(
+            new ValidRuntimeInspector(),
+            new LocalAiModelFileVerifier());
+
+        LocalAiReconcileResult result = await reconciler.ReconcileAsync(
+            temp.Path,
+            plan,
+            gpuId,
+            CancellationToken.None,
+            allowIncompleteInstallation: true);
+
+        Assert.False(result.Reused);
+        Assert.NotNull(result.OriginalInstall);
+        Assert.Equal(manifest.Endpoint, result.OriginalInstall!.Manifest.Endpoint);
+        Assert.NotNull(result.RuntimeInstall);
+        Assert.Null(result.ModelInstall);
+        Assert.True(File.Exists(paths.ManifestPath));
+    }
+
+    [Fact]
+    public async Task ReconcileStep_RecoveryPinsIncompleteReceiptAsRollbackBaseline()
+    {
+        using var temp = new TempDirectory();
+        LocalInferencePlan plan = CatalogPlan();
+        const string gpuId = "GPU-0";
+        LocalAiInstallManifest manifest = CreateManifest(temp.Path, plan, gpuId);
+        await new LocalAiManifestStore(new LocalAiPaths(temp.Path)).SaveAsync(manifest);
+        var context = CreateContext(temp.Path, confirmDestructive: false);
+        context.Config.LocalAi.Enabled = true;
+        context.Config.LocalAiRecoveryGatewayId = "gateway-id";
+        context.LocalAiEligibility = new LocalInferenceEligibilityResult(
+            LocalInferenceEligibilityStatus.Eligible,
+            LocalInferenceEligibilityFailureCode.None,
+            LocalInferenceSelectionFailureCode.None,
+            plan,
+            new GpuInfo(GpuVendor.Nvidia, "Test GPU", StableId: gpuId),
+            RequiredTotalMemoryBytes: 0,
+            DetectedTotalMemoryBytes: 0,
+            RequiredFreeMemoryBytes: 0,
+            AvailableFreeMemoryBytes: 0);
+        var step = new ReconcileLocalAiInstallationStep(new LocalAiInstallReconciler(
+            new ValidRuntimeInspector(),
+            new RejectingModelVerifier()));
+
+        StepResult result = await step.ExecuteAsync(context, CancellationToken.None);
+
+        Assert.Equal(StepOutcome.Skipped, result.Outcome);
+        Assert.Equal(manifest.Endpoint, context.LocalAiRecoveryOriginalInstall?.Manifest.Endpoint);
+        Assert.True(context.LocalAiRecoveryReceiptRollbackAllowed);
+        Assert.NotNull(context.LocalAiRuntimeInstall);
+        Assert.Null(context.LocalAiModelInstall);
+    }
+
+    [Fact]
+    public async Task RecoveryPipeline_RewritesIncompleteReceiptAfterModelRepair()
+    {
+        using var temp = new TempDirectory();
+        LocalInferencePlan plan = CatalogPlan();
+        const string gpuId = "GPU-0";
+        LocalAiInstallManifest manifest = CreateManifest(temp.Path, plan, gpuId) with
+        {
+            RequestedPort = 18803,
+            GatewayFallbackModel = "openai/gpt-5",
+        };
+        var store = new LocalAiManifestStore(new LocalAiPaths(temp.Path));
+        await store.SaveAsync(manifest);
+        LocalAiResolvedInstall original = (await store.LoadAsync())!;
+        var context = CreateContext(temp.Path, confirmDestructive: false);
+        context.Config.LocalAi.Enabled = true;
+        context.Config.LocalAiRecoveryGatewayId = "gateway-id";
+        context.LocalAiPort = manifest.RequestedPort;
+        context.LocalAiEligibility = new LocalInferenceEligibilityResult(
+            LocalInferenceEligibilityStatus.Eligible,
+            LocalInferenceEligibilityFailureCode.None,
+            LocalInferenceSelectionFailureCode.None,
+            plan,
+            new GpuInfo(GpuVendor.Nvidia, "Test GPU", StableId: gpuId),
+            RequiredTotalMemoryBytes: 0,
+            DetectedTotalMemoryBytes: 0,
+            RequiredFreeMemoryBytes: 0,
+            AvailableFreeMemoryBytes: 0);
+        var pipeline = new SetupPipeline(
+        [
+            new ReconcileLocalAiInstallationStep(new LocalAiInstallReconciler(
+                new ValidRuntimeInspector(),
+                new RejectingModelVerifier())),
+            new CompleteModelRepairStep(temp.Path, plan),
+            new PersistLocalAiManifestStep(),
+        ]);
+
+        PipelineResult result = await pipeline.RunAsync(context);
+
+        Assert.Equal(PipelineOutcome.Success, result.Outcome);
+        LocalAiResolvedInstall repaired = (await store.LoadAsync())!;
+        Assert.Null(repaired.Endpoint);
+        Assert.Equal(manifest.RequestedPort, repaired.Manifest.RequestedPort);
+        Assert.Equal(manifest.GatewayFallbackModel, repaired.Manifest.GatewayFallbackModel);
+        Assert.Equal(manifest.InstalledAtUtc, repaired.Manifest.InstalledAtUtc);
+        Assert.Equal(LocalAiInstallManifest.HubCacheReceiptSchemaVersion, repaired.Manifest.SchemaVersion);
+        Assert.Equal(CacheRoot(temp.Path), repaired.Manifest.ModelCacheRoot);
+        Assert.Equal(repaired.Manifest.CachedModelPath, repaired.ModelPath);
+        Assert.False(context.LocalAiManifestCreatedThisRun);
     }
 
     [Fact]
@@ -1507,10 +1733,72 @@ public sealed class LocalAiInstallRecoveryTests
 
     private sealed class AcceptingModelVerifier : ILocalAiModelFileVerifier
     {
-        public Task<bool> VerifyAsync(
+        public Task<bool> VerifyActiveAsync(
             LocalAiResolvedInstall install,
             PinnedArtifact artifact,
             CancellationToken cancellationToken) => Task.FromResult(true);
+
+        public Task<bool> VerifyLegacyCompatibilityAsync(
+            LocalAiResolvedInstall install,
+            LocalAiPaths paths,
+            PinnedArtifact artifact,
+            CancellationToken cancellationToken) => Task.FromResult(true);
+    }
+
+    private sealed class RejectingModelVerifier : ILocalAiModelFileVerifier
+    {
+        public Task<bool> VerifyActiveAsync(
+            LocalAiResolvedInstall install,
+            PinnedArtifact artifact,
+            CancellationToken cancellationToken) => Task.FromResult(false);
+
+        public Task<bool> VerifyLegacyCompatibilityAsync(
+            LocalAiResolvedInstall install,
+            LocalAiPaths paths,
+            PinnedArtifact artifact,
+            CancellationToken cancellationToken) => Task.FromResult(false);
+    }
+
+    private sealed class CompleteModelRepairStep(string localDataDirectory, LocalInferencePlan plan) : SetupStep
+    {
+        public override string Id => "complete-model-repair";
+        public override string DisplayName => "Complete model repair";
+
+        public override Task<StepResult> ExecuteAsync(SetupContext ctx, CancellationToken ct)
+        {
+            LocalAiComponentIdentity component = LlamaRuntimeInstaller.Component(plan.Runtime);
+            Assert.True(LocalAiPathPolicy.TryResolve(
+                localDataDirectory,
+                component,
+                out LocalAiSetupPaths setupPaths,
+                out string error), error);
+            HuggingFaceRevisionSource source =
+                Assert.IsType<HuggingFaceRevisionSource>(plan.Model.Weights.Source);
+            Assert.True(LocalAiPathPolicy.TryGetModelPaths(
+                setupPaths,
+                source.RepositoryId,
+                source.RevisionSha,
+                plan.Model.Weights.RelativePath,
+                out string legacyModelPath,
+                out _,
+                out error), error);
+            Assert.True(HuggingFaceHubCache.TryGetSnapshotPaths(
+                CacheRoot(localDataDirectory),
+                source.RepositoryId,
+                source.RevisionSha,
+                plan.Model.Weights.RelativePath,
+                out string cachedModelPath,
+                out _,
+                out error), error);
+            ctx.LocalAiModelInstall = new HuggingFaceModelInstallResult(
+                cachedModelPath,
+                CacheRoot(localDataDirectory),
+                HuggingFaceModelInstallDisposition.Downloaded,
+                CreatedThisRun: true,
+                legacyModelPath,
+                LegacyCreatedThisRun: true);
+            return Task.FromResult(StepResult.Ok("Model repaired."));
+        }
     }
 
     private sealed class TempDirectory : IDisposable

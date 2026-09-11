@@ -52,6 +52,23 @@ internal static class LocalAiGatewayConfigBuilder
         LocalAiGatewayProviderDefinition.BuildPrimaryModel(
             context.LocalAiResolvedInstall
                 ?? throw new InvalidOperationException("The Local AI install receipt is required."));
+
+    public static string BuildRecoveryRestoreBatchJson(
+        LocalAiGatewayPriorState prior,
+        LocalAiResolvedInstall originalInstall)
+    {
+        ArgumentNullException.ThrowIfNull(prior);
+        ArgumentNullException.ThrowIfNull(originalInstall);
+        using JsonDocument provider = JsonDocument.Parse(
+            LocalAiGatewayProviderDefinition.BuildProviderJson(originalInstall));
+        using JsonDocument primary = JsonDocument.Parse(prior.PrimaryModelJson!);
+        object[] operations =
+        [
+            new { path = ProviderPath, value = (object)provider.RootElement.Clone() },
+            new { path = PrimaryModelPath, value = (object)primary.RootElement.Clone() },
+        ];
+        return JsonSerializer.Serialize(operations);
+    }
 }
 
 public sealed class ConfigureLocalAiGatewayStep : SetupStep
@@ -66,6 +83,10 @@ public sealed class ConfigureLocalAiGatewayStep : SetupStep
     public override string Id => "configure-local-ai-gateway";
     public override string DisplayName => "Connect gateway to Local AI";
     public override bool CanSkip(SetupContext ctx) => !ctx.Config.LocalAi.Enabled;
+    public override TimeSpan GetRollbackTimeout(SetupContext ctx) =>
+        ctx.LocalAiRecoveryOriginalInstall is null
+            ? base.GetRollbackTimeout(ctx)
+            : TimeSpan.FromSeconds(Math.Max(ctx.Config.RollbackTimeoutSeconds, 420));
 
     public override async Task<StepResult> ExecuteAsync(SetupContext ctx, CancellationToken ct)
     {
@@ -93,16 +114,32 @@ public sealed class ConfigureLocalAiGatewayStep : SetupStep
             prior.PrimaryModelExisted &&
             JsonEquals(prior.PrimaryModelJson!, expectedPrimary);
         string? fallbackModel;
+        bool recoveryProviderTransition = false;
         if (prior.ProviderExisted)
         {
-            if (install.Endpoint is null ||
-                !LocalAiGatewayProviderDefinition.MatchesProviderJson(prior.ProviderJson!, install) ||
+            bool matchesCurrentInstall = install.Endpoint is not null &&
+                LocalAiGatewayProviderDefinition.MatchesProviderJson(prior.ProviderJson!, install);
+            bool matchesRecoveryInstall = false;
+            if (!matchesCurrentInstall &&
+                ctx.LocalAiRecoveryOriginalInstall is { Endpoint: not null } originalInstall)
+            {
+                string originalPrimary = JsonSerializer.Serialize(
+                    LocalAiGatewayProviderDefinition.BuildPrimaryModel(originalInstall));
+                matchesRecoveryInstall =
+                    LocalAiGatewayProviderDefinition.MatchesProviderJson(
+                        prior.ProviderJson!,
+                        originalInstall) &&
+                    JsonEquals(originalPrimary, expectedPrimary);
+            }
+
+            if ((!matchesCurrentInstall && !matchesRecoveryInstall) ||
                 !prior.PrimaryModelExisted ||
                 !JsonEquals(prior.PrimaryModelJson!, expectedPrimary))
             {
                 return StepResult.Fail(
                     "The existing llamacpp gateway route is not the exact companion-managed configuration; preserving it.");
             }
+            recoveryProviderTransition = matchesRecoveryInstall;
             fallbackModel = install.Manifest.GatewayFallbackModel;
         }
         else if (retainedManagedPrimary)
@@ -123,16 +160,22 @@ public sealed class ConfigureLocalAiGatewayStep : SetupStep
         {
             fallbackModel = null;
         }
-
-        ctx.LocalAiGatewayPriorState = retainedManagedPrimary
-            ? prior with
-            {
-                PrimaryModelExisted = fallbackModel is not null,
-                PrimaryModelJson = fallbackModel is null
-                    ? null
-                    : JsonSerializer.Serialize(fallbackModel),
-            }
-            : prior;
+        if (ctx.LocalAiRecoveryOriginalInstall is not null &&
+            (recoveryProviderTransition || !prior.ProviderExisted))
+        {
+            ctx.LocalAiRecoveryProviderTransition = true;
+        }
+        LocalAiGatewayPriorState rollbackPrior =
+            retainedManagedPrimary && ctx.LocalAiRecoveryOriginalInstall is null
+                ? prior with
+                {
+                    PrimaryModelExisted = fallbackModel is not null,
+                    PrimaryModelJson = fallbackModel is null
+                        ? null
+                        : JsonSerializer.Serialize(fallbackModel),
+                }
+                : prior;
+        ctx.LocalAiGatewayPriorState ??= rollbackPrior;
 
         if (!string.Equals(
                 install.Manifest.GatewayFallbackModel,
@@ -180,9 +223,14 @@ public sealed class ConfigureLocalAiGatewayStep : SetupStep
         if (ctx.LocalAiGatewayPriorState is not { } prior)
             return;
 
+        if (ctx.LocalAiRecoveryProviderTransition)
+            ctx.LocalAiRecoveryReceiptRollbackAllowed = false;
+
         CommandResult currentResult = await CaptureStateAsync(ctx, ct);
         if (currentResult.ExitCode != 0 || currentResult.TimedOut)
         {
+            if (ctx.LocalAiRecoveryProviderTransition)
+                ctx.LocalAiRecoveryReceiptRollbackAllowed = false;
             ctx.Logger.Warn("Could not inspect the Local AI gateway configuration during rollback; preserving it.");
             return;
         }
@@ -194,7 +242,26 @@ public sealed class ConfigureLocalAiGatewayStep : SetupStep
         }
         catch (Exception ex) when (ex is FormatException or JsonException or InvalidDataException)
         {
+            if (ctx.LocalAiRecoveryProviderTransition)
+                ctx.LocalAiRecoveryReceiptRollbackAllowed = false;
             ctx.Logger.Warn($"Could not validate Local AI gateway rollback state; preserving it ({ex.GetType().Name}).");
+            return;
+        }
+
+        LocalAiResolvedInstall? recoveryOriginal = ctx.LocalAiRecoveryProviderTransition
+            ? ctx.LocalAiRecoveryOriginalInstall
+            : null;
+        if (recoveryOriginal is not null &&
+            current.ProviderExisted == prior.ProviderExisted &&
+            (!current.ProviderExisted ||
+                LocalAiGatewayProviderDefinition.MatchesProviderJson(
+                    current.ProviderJson!,
+                    recoveryOriginal)) &&
+            current.PrimaryModelExisted == prior.PrimaryModelExisted &&
+            (!current.PrimaryModelExisted ||
+                JsonEquals(current.PrimaryModelJson!, prior.PrimaryModelJson!)))
+        {
+            ctx.LocalAiRecoveryReceiptRollbackAllowed = true;
             return;
         }
 
@@ -205,16 +272,39 @@ public sealed class ConfigureLocalAiGatewayStep : SetupStep
                 ctx.LocalAiResolvedInstall!) ||
             !JsonEquals(current.PrimaryModelJson!, expectedPrimary))
         {
+            if (ctx.LocalAiRecoveryProviderTransition)
+                ctx.LocalAiRecoveryReceiptRollbackAllowed = false;
             ctx.Logger.Warn("Local AI gateway settings changed after setup; preserving the newer values.");
             return;
         }
 
-        string restoreBatch = LocalAiGatewayConfigBuilder.BuildRestoreBatchJson(prior);
+        string restoreBatch;
+        if (recoveryOriginal is not null && prior.ProviderExisted)
+        {
+            restoreBatch = LocalAiGatewayConfigBuilder.BuildRecoveryRestoreBatchJson(
+                prior,
+                recoveryOriginal);
+        }
+        else
+        {
+            restoreBatch = LocalAiGatewayConfigBuilder.BuildRestoreBatchJson(prior);
+        }
         if (restoreBatch != "[]")
         {
             CommandResult restore = await ApplyBatchAsync(ctx, restoreBatch, "LOCAL_AI_GATEWAY_RESTORED", ct);
             if (restore.ExitCode != 0 || restore.TimedOut)
+            {
+                if (recoveryOriginal is not null)
+                {
+                    await ReconcileFailedRecoveryRestoreAsync(
+                        ctx,
+                        prior,
+                        recoveryOriginal,
+                        ct).ConfigureAwait(false);
+                }
                 ctx.Logger.Warn("Restoring the previous Local AI gateway settings failed.");
+                return;
+            }
         }
 
         var unset = new List<string>(2);
@@ -229,8 +319,81 @@ public sealed class ConfigureLocalAiGatewayStep : SetupStep
                 ctx.DistroName!, script, TimeSpan.FromMinutes(2), ct: ct,
                 user: ctx.Config.Wsl.User, inputViaStdin: true);
             if (result.ExitCode != 0 || result.TimedOut)
+            {
+                if (recoveryOriginal is not null)
+                {
+                    await ReconcileFailedRecoveryRestoreAsync(
+                        ctx,
+                        prior,
+                        recoveryOriginal,
+                        ct).ConfigureAwait(false);
+                }
                 ctx.Logger.Warn("Removing setup-created Local AI gateway settings failed.");
+                return;
+            }
         }
+        if (recoveryOriginal is not null)
+            ctx.LocalAiRecoveryReceiptRollbackAllowed = true;
+    }
+
+    private static async Task ReconcileFailedRecoveryRestoreAsync(
+        SetupContext ctx,
+        LocalAiGatewayPriorState prior,
+        LocalAiResolvedInstall recoveryOriginal,
+        CancellationToken ct)
+    {
+        CommandResult observedResult = await CaptureStateAsync(ctx, ct).ConfigureAwait(false);
+        if (observedResult.ExitCode != 0 || observedResult.TimedOut)
+        {
+            ctx.LocalAiRecoveryReceiptRollbackAllowed = false;
+            ctx.Logger.Warn(
+                "The Local AI provider rollback outcome could not be inspected; preserving the replacement receipt.");
+            return;
+        }
+
+        LocalAiGatewayPriorState observed;
+        try
+        {
+            observed = ParseSnapshot(observedResult.Stdout);
+        }
+        catch (Exception ex) when (ex is FormatException or JsonException or InvalidDataException)
+        {
+            ctx.LocalAiRecoveryReceiptRollbackAllowed = false;
+            ctx.Logger.Warn(
+                $"The Local AI provider rollback outcome was invalid; preserving the replacement receipt ({ex.GetType().Name}).");
+            return;
+        }
+
+        bool originalRestored =
+            observed.ProviderExisted == prior.ProviderExisted &&
+            (!observed.ProviderExisted ||
+                LocalAiGatewayProviderDefinition.MatchesProviderJson(
+                    observed.ProviderJson!,
+                    recoveryOriginal)) &&
+            observed.PrimaryModelExisted == prior.PrimaryModelExisted &&
+            (!observed.PrimaryModelExisted ||
+                JsonEquals(observed.PrimaryModelJson!, prior.PrimaryModelJson!));
+        if (originalRestored)
+        {
+            ctx.LocalAiRecoveryReceiptRollbackAllowed = true;
+            return;
+        }
+
+        bool replacementRetained =
+            observed.ProviderExisted &&
+            observed.PrimaryModelExisted &&
+            ctx.LocalAiResolvedInstall is { } replacement &&
+            LocalAiGatewayProviderDefinition.MatchesProviderJson(
+                observed.ProviderJson!,
+                replacement) &&
+            JsonEquals(
+                observed.PrimaryModelJson!,
+                JsonSerializer.Serialize(
+                    LocalAiGatewayProviderDefinition.BuildPrimaryModel(replacement)));
+        ctx.LocalAiRecoveryReceiptRollbackAllowed = false;
+        ctx.Logger.Warn(replacementRetained
+            ? "The replacement Local AI gateway route remains active; preserving its endpoint receipt."
+            : "The Local AI provider rollback was incomplete; preserving the replacement receipt for manual recovery.");
     }
 
     private static async Task RemoveManagedStateForUninstallAsync(

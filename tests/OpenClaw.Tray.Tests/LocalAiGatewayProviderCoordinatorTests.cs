@@ -448,6 +448,164 @@ public sealed class LocalAiGatewayProviderCoordinatorTests
     }
 
     [Fact]
+    public void LocalAiSetupRoute_UsesUniqueManagedOwnerEvenWhenItIsNotActive()
+    {
+        GatewayRecord owner = ManagedRecord("managed", "CustomGateway") with
+        {
+            Url = "ws://127.0.0.1:29999",
+        };
+        IReadOnlyList<GatewayRecord> owners =
+            LocalAiGatewayDistroResolver.FindOwners([owner]);
+
+        LocalAiSetupResolution resolution = LocalAiSetupRoutePolicy.Decide(
+            owners,
+            hasLocalGateway: true,
+            localGatewayId: owner.Id,
+            hasDistro: true,
+            hasDistroDataDirectory: true,
+            distroIsAppOwned: true,
+            installedModelCatalogId: LocalModelCatalog.Qwen38_27BModelId,
+            installedRequestedLocalAiPort: 28888);
+
+        Assert.Equal(LocalAiSetupRoute.Recovery, resolution.Route);
+        Assert.Equal("managed", resolution.RecoveryTarget?.GatewayId);
+        Assert.Equal("CustomGateway", resolution.RecoveryTarget?.DistroName);
+        Assert.Equal(29999, resolution.RecoveryTarget?.GatewayPort);
+        Assert.Equal(LocalModelCatalog.Qwen38_27BModelId, resolution.RecoveryTarget?.ModelCatalogId);
+        Assert.Equal(28888, resolution.RecoveryTarget?.RequestedLocalAiPort);
+    }
+
+    [Fact]
+    public void LocalAiSetupRoute_AcceptsLegacyManagedOwner()
+    {
+        GatewayRecord owner = new()
+        {
+            Id = "legacy-managed",
+            Url = "ws://localhost:18789",
+            IsLocal = true,
+            FriendlyName = "Local (LegacyGateway)",
+        };
+        IReadOnlyList<GatewayRecord> owners =
+            LocalAiGatewayDistroResolver.FindOwners([owner]);
+
+        LocalAiSetupResolution resolution = LocalAiSetupRoutePolicy.Decide(
+            owners,
+            hasLocalGateway: true,
+            localGatewayId: owner.Id,
+            hasDistro: true,
+            hasDistroDataDirectory: true,
+            distroIsAppOwned: true,
+            installedModelCatalogId: LocalModelCatalog.Qwen38_27BModelId);
+
+        Assert.Equal(LocalAiSetupRoute.Recovery, resolution.Route);
+        Assert.Equal("LegacyGateway", resolution.RecoveryTarget?.DistroName);
+    }
+
+    [Theory]
+    [InlineData("http://127.0.0.1:18789")]
+    [InlineData("ws://127.0.0.1:18789/path")]
+    [InlineData("ws://127.0.0.1:18789?query=1")]
+    public void LocalAiSetupRoute_BlocksNonCanonicalManagedEndpoint(string url)
+    {
+        GatewayRecord owner = ManagedRecord("managed", "OpenClawGateway") with
+        {
+            Url = url,
+        };
+
+        LocalAiSetupResolution resolution = LocalAiSetupRoutePolicy.Decide(
+            [owner],
+            hasLocalGateway: true,
+            localGatewayId: owner.Id,
+            hasDistro: true,
+            hasDistroDataDirectory: true,
+            distroIsAppOwned: true,
+            installedModelCatalogId: LocalModelCatalog.Qwen38_27BModelId);
+
+        Assert.Equal(LocalAiSetupRoute.Blocked, resolution.Route);
+    }
+
+    [Fact]
+    public void LocalAiSetupRoute_RecoversManagedGatewayWithoutAnInstalledModelReceipt()
+    {
+        GatewayRecord owner = ManagedRecord("managed", "OpenClawGateway");
+
+        LocalAiSetupResolution resolution = LocalAiSetupRoutePolicy.Decide(
+            [owner],
+            hasLocalGateway: true,
+            localGatewayId: owner.Id,
+            hasDistro: true,
+            hasDistroDataDirectory: true,
+            distroIsAppOwned: true);
+
+        Assert.Equal(LocalAiSetupRoute.Recovery, resolution.Route);
+        Assert.Null(resolution.RecoveryTarget?.ModelCatalogId);
+        Assert.Null(resolution.RecoveryTarget?.RequestedLocalAiPort);
+    }
+
+    [Fact]
+    public void DistroResolver_ResolvesLegacyManagedOwner()
+    {
+        GatewayRecord owner = new()
+        {
+            Id = "legacy-managed",
+            Url = "ws://localhost:18789",
+            IsLocal = true,
+            FriendlyName = "Local (LegacyGateway)",
+        };
+        var resolver = new LocalAiGatewayDistroResolver(CreateRegistry(owner));
+
+        LocalAiGatewayDistroResolution resolution = resolver.Resolve();
+
+        Assert.True(resolution.Success);
+        Assert.Equal("LegacyGateway", resolution.DistroName);
+    }
+
+    [Fact]
+    public void LocalAiSetupRoute_ProvisionsOnlyWhenManagedGatewayIsConclusivelyAbsent()
+    {
+        LocalAiSetupResolution resolution = LocalAiSetupRoutePolicy.Decide(
+            owners: [],
+            hasLocalGateway: false,
+            localGatewayId: null,
+            hasDistro: false,
+            hasDistroDataDirectory: false,
+            distroIsAppOwned: false);
+
+        Assert.Equal(LocalAiSetupRoute.Provision, resolution.Route);
+        Assert.Null(resolution.RecoveryTarget);
+    }
+
+    [Fact]
+    public void LocalAiSetupRoute_BlocksAmbiguousOrStaleOwnership()
+    {
+        IReadOnlyList<GatewayRecord> ambiguousOwners =
+        [
+            ManagedRecord("managed-a", "GatewayA"),
+            ManagedRecord("managed-b", "GatewayB"),
+        ];
+        Assert.Equal(
+            LocalAiSetupRoute.Blocked,
+            LocalAiSetupRoutePolicy.Decide(
+                ambiguousOwners,
+                hasLocalGateway: true,
+                localGatewayId: "managed-a",
+                hasDistro: true,
+                hasDistroDataDirectory: true,
+                distroIsAppOwned: true).Route);
+
+        GatewayRecord staleOwner = ManagedRecord("managed", "OpenClawGateway");
+        Assert.Equal(
+            LocalAiSetupRoute.Blocked,
+            LocalAiSetupRoutePolicy.Decide(
+                [staleOwner],
+                hasLocalGateway: true,
+                localGatewayId: staleOwner.Id,
+                hasDistro: false,
+                hasDistroDataDirectory: true,
+                distroIsAppOwned: true).Route);
+    }
+
+    [Fact]
     public async Task Publish_AmbiguousManagedGatewayOwners_FailsWithoutWslCommand()
     {
         LocalAiResolvedInstall install = Install(28_773);

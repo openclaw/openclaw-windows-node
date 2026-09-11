@@ -4,6 +4,7 @@ using Microsoft.UI.Windowing;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Media;
 using Microsoft.UI.Xaml.Media.Animation;
+using OpenClaw.Connection.LocalAi;
 using OpenClaw.Shared.Inference;
 using OpenClaw.SetupEngine.UI.Pages;
 using System.Runtime.InteropServices;
@@ -29,6 +30,9 @@ public sealed partial class SetupWindow : Window
     private readonly object _localAiHardwareProbeLock = new();
     private Task<HostHardwareInfo>? _localAiHardwareProbeTask;
     private readonly WslViabilityProbe _wslViabilityProbe = new(InspectWslViabilityAsync);
+    private bool _startAtLocalAiRecoveryReview;
+    private bool _pinLocalAiRecoveryModel;
+    private LocalAiRecoveryConfigurationBaseline _localAiRecoveryBaseline = null!;
 
     public static SetupWindow? Active { get; private set; }
 
@@ -47,21 +51,27 @@ public sealed partial class SetupWindow : Window
         _setupLock is not null &&
         RootFrame.Content is not ProgressPage { IsPipelineRunning: true } &&
         RootFrame.Content is not WizardPage;
-
     [DllImport("user32.dll")]
     private static extern uint GetDpiForWindow(IntPtr hwnd);
 
     public SetupWindow(
         string? configPath = null,
         bool startAtGatewayInstalledMilestone = false,
+        bool startAtLocalAiRecoveryReview = false,
         string? dataDir = null,
         string? localDataDir = null,
         string? distroNameOverride = null,
         int? gatewayPortOverride = null,
+        string? localAiRecoveryGatewayId = null,
+        string? localAiRecoveryDistroName = null,
+        int? localAiRecoveryGatewayPort = null,
+        string? localAiRecoveryModelId = null,
+        int? localAiRecoveryRequestedPort = null,
         string[]? commandLineArgs = null)
     {
         _dataDir = dataDir ?? SetupContext.ResolveDataDir();
         _localDataDir = localDataDir ?? SetupContext.ResolveLocalDataDir();
+        _startAtLocalAiRecoveryReview = startAtLocalAiRecoveryReview;
         InitializeComponent();
         Active = this;
 
@@ -168,7 +178,32 @@ public sealed partial class SetupWindow : Window
             return;
         }
         _config.ApplyUiDefaults(rollbackOnFailure: setupArguments.RollbackOnFailure);
-        if (startAtGatewayInstalledMilestone)
+        _localAiRecoveryBaseline = LocalAiRecoveryConfigurationBaseline.Capture(_config);
+        if (startAtLocalAiRecoveryReview)
+        {
+            _config.LocalAiRecoveryGatewayId = localAiRecoveryGatewayId;
+            if (!string.IsNullOrWhiteSpace(localAiRecoveryDistroName))
+                _config.DistroName = localAiRecoveryDistroName;
+            if (localAiRecoveryGatewayPort is > 0 and <= 65535)
+            {
+                _config.GatewayPort = localAiRecoveryGatewayPort.Value;
+                _config.GatewayUrl = null;
+            }
+            if (!string.IsNullOrWhiteSpace(localAiRecoveryModelId))
+            {
+                _config.LocalAi.SelectedModelId = localAiRecoveryModelId;
+                _pinLocalAiRecoveryModel = true;
+            }
+            if (localAiRecoveryRequestedPort is { } requestedPort &&
+                LocalAiPortPolicy.TryValidate(requestedPort, out _))
+            {
+                _config.LocalAi.Port = requestedPort;
+            }
+            _config.LocalAi.Enabled = true;
+            _config.SkipWizard = true;
+            _config.RollbackOnFailure = true;
+        }
+        if (startAtGatewayInstalledMilestone || startAtLocalAiRecoveryReview)
         {
             _persistStartupPreferenceOnComplete = false;
             _showStartupPreferenceOnComplete = false;
@@ -189,12 +224,18 @@ public sealed partial class SetupWindow : Window
 
         if (startAtGatewayInstalledMilestone)
             NavigateToGatewayInstalledMilestone();
+        else if (startAtLocalAiRecoveryReview)
+            NavigateToCapabilities();
         else
             NavigateTo(typeof(SecurityNoticePage), _config);
     }
 
     public void NavigateToSecurityNotice(bool back = false) => NavigateTo(typeof(SecurityNoticePage), _config, back);
-    public void NavigateToWelcome(bool back = false) => NavigateTo(typeof(WelcomePage), _config, back);
+    public void NavigateToWelcome(bool back = false)
+    {
+        ResetLocalAiRecoveryMode();
+        NavigateTo(typeof(WelcomePage), _config, back);
+    }
     public bool IsWelcomeInstallSelected => _isWelcomeInstallSelected;
     public void SetWelcomeInstallSelected(bool installSelected) => _isWelcomeInstallSelected = installSelected;
 
@@ -227,23 +268,43 @@ public sealed partial class SetupWindow : Window
     }
 
     public void NavigateToAdvancedSetup() => NavigateTo(typeof(AdvancedSetupPage), _config);
-    public void NavigateToCapabilities() => NavigateTo(typeof(CapabilitiesPage), _config);
+    public void NavigateToCapabilities() =>
+        NavigateTo(
+            typeof(CapabilitiesPage),
+            new CapabilitiesPageArgs(
+                _config,
+                _startAtLocalAiRecoveryReview,
+                _pinLocalAiRecoveryModel));
     public void NavigateToProgress() => NavigateTo(typeof(ProgressPage), CreateProgressPageArgs(showMilestoneOnly: false));
     public void NavigateToGatewayInstalledMilestone() =>
         NavigateTo(typeof(ProgressPage), CreateProgressPageArgs(showMilestoneOnly: true));
 
     private ProgressPageArgs CreateProgressPageArgs(bool showMilestoneOnly) =>
-        new(_config, showMilestoneOnly, _dataDir, _localDataDir);
+        new(_config, showMilestoneOnly, _startAtLocalAiRecoveryReview, _dataDir, _localDataDir);
 
     public bool TryNavigateToGatewayInstalledMilestone()
     {
         if (!CanNavigateToGatewayInstalledMilestone)
             return false;
 
+        ResetLocalAiRecoveryMode();
         _persistStartupPreferenceOnComplete = false;
         _showStartupPreferenceOnComplete = false;
         NavigateToGatewayInstalledMilestone();
         return true;
+    }
+
+    private void ResetLocalAiRecoveryMode()
+    {
+        if (!_startAtLocalAiRecoveryReview)
+            return;
+
+        _startAtLocalAiRecoveryReview = false;
+        _pinLocalAiRecoveryModel = false;
+        _config.LocalAiRecoveryGatewayId = null;
+        _localAiRecoveryBaseline.Restore(_config);
+        _persistStartupPreferenceOnComplete = true;
+        _showStartupPreferenceOnComplete = true;
     }
 
     public bool TryNavigateToWizard(bool back = false)

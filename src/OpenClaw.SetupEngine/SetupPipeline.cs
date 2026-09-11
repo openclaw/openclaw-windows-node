@@ -12,6 +12,8 @@ public abstract class SetupStep
     public abstract Task<StepResult> ExecuteAsync(SetupContext ctx, CancellationToken ct);
 
     public virtual Task RollbackAsync(SetupContext ctx, CancellationToken ct) => Task.CompletedTask;
+    public virtual TimeSpan GetRollbackTimeout(SetupContext ctx) =>
+        TimeSpan.FromSeconds(Math.Max(1, ctx.Config.RollbackTimeoutSeconds));
     public virtual bool CanSkip(SetupContext ctx) => false;
     public virtual bool CanRetry => true;
     public virtual RetryPolicy Retry => RetryPolicy.Default;
@@ -60,6 +62,29 @@ public static class SetupStepFactory
     [
         new RunGatewayWizardStep(),
         new WindowsNodeBootstrapContextStep(),
+    ];
+
+    public static List<SetupStep> BuildLocalAiRecoverySteps() =>
+    [
+        new PreflightOsStep(),
+        new ValidateLocalAiRecoveryGatewayStep(),
+        new PreserveLocalAiRecoveryGatewayStep(),
+        new PreflightLocalAiHardwareStep(),
+        new PreflightWslStep(),
+        new EnsureWslPlatformStep(reusePreflightResult: true),
+        new ReconcileLocalAiInstallationStep(),
+        new AcquireLocalAiRuntimeStep(),
+        new AcquireLocalAiModelStep(),
+        new PersistLocalAiManifestStep(),
+        new StartLocalAiRuntimeStep(),
+        new CaptureLocalAiGpuBaselineStep(),
+        new VerifyLocalAiInferenceStep(),
+        new VerifyLocalAiGpuLoadStep(),
+        new ValidateLocalAiRecoveryGatewayStep(finalCheck: true),
+        new ConfigureLocalAiWslNetworkingStep(),
+        new VerifyLocalAiWslStep(),
+        new ConfigureLocalAiGatewayStep(),
+        new RestartGatewayStep(),
     ];
 
     public static List<SetupStep> BuildDefaultSteps()
@@ -408,8 +433,9 @@ public sealed class SetupPipeline
 
     private static async Task RunRollbackWithTimeout(SetupStep step, SetupContext ctx, CancellationToken ct)
     {
+        TimeSpan timeout = step.GetRollbackTimeout(ctx);
         using var cts = CancellationTokenSource.CreateLinkedTokenSource(ct);
-        cts.CancelAfter(TimeSpan.FromSeconds(Math.Max(1, ctx.Config.RollbackTimeoutSeconds)));
+        cts.CancelAfter(timeout);
 
         try
         {
@@ -417,7 +443,8 @@ public sealed class SetupPipeline
         }
         catch (OperationCanceledException) when (!ct.IsCancellationRequested)
         {
-            throw new TimeoutException($"Rollback for step '{step.Id}' exceeded {ctx.Config.RollbackTimeoutSeconds}s.");
+            throw new TimeoutException(
+                $"Rollback for step '{step.Id}' exceeded {timeout.TotalSeconds:F0}s.");
         }
     }
 }

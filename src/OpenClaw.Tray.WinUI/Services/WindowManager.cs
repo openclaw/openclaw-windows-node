@@ -2,6 +2,8 @@ using Microsoft.UI.Dispatching;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using OpenClaw.Connection;
+using OpenClaw.Connection.LocalAi;
+using OpenClaw.SetupEngine;
 using OpenClaw.Shared;
 using OpenClawTray.Helpers;
 using OpenClawTray.Presentation;
@@ -341,13 +343,94 @@ internal sealed class WindowManager : IWindowManager
 
     public async Task ShowOnboardingAsync()
     {
-        await EnsureSetupWindowAsync(startAtGatewayInstalledMilestone: false);
+        await EnsureSetupWindowAsync(
+            startAtGatewayInstalledMilestone: false,
+            localAiRecoveryTarget: null);
+    }
+
+    public async Task ShowLocalAiSetupAsync()
+    {
+        var resolution = await ResolveLocalAiSetupRouteAsync();
+        if (resolution.Route == LocalAiSetupRoute.Provision)
+        {
+            Logger.Info("Local AI recovery requires an existing app-managed gateway; opening full setup");
+            await ShowOnboardingAsync();
+            return;
+        }
+        if (resolution.Route == LocalAiSetupRoute.Blocked ||
+            resolution.RecoveryTarget is null)
+        {
+            Logger.Warn("Local AI setup could not safely identify one existing app-managed gateway");
+            _callbacks.GetAppNotificationService()?.Show(new AppNotification
+            {
+                Id = $"local-ai-setup-owner-{Guid.NewGuid():N}",
+                Title = "Local AI setup needs attention",
+                Message = "OpenClaw could not safely identify the managed WSL gateway. Review Connection settings before retrying setup.",
+                Severity = AppNotificationSeverity.Warning,
+                Source = "local-ai",
+                DedupeKey = "local-ai-setup-owner",
+                CreatedAt = DateTimeOffset.UtcNow,
+            });
+            ShowHub("connection");
+            return;
+        }
+
+        await ShowLocalAiSetupRecoveryAsync(resolution.RecoveryTarget);
+    }
+
+    private async Task<LocalAiSetupResolution> ResolveLocalAiSetupRouteAsync()
+    {
+        var registry = _callbacks.GetGatewayRegistry();
+        if (registry is null)
+            return new(LocalAiSetupRoute.Blocked);
+
+        try
+        {
+            var owners = LocalAiGatewayDistroResolver.FindOwners(registry.GetAll());
+            var distroName = owners.Count == 1
+                ? GatewayRecordEditing.ResolveManagedDistroName(owners[0])!.Trim()
+                : AppIdentity.SetupDistroName;
+            var existing = await Task.Run(() => ExistingConfigDetector.Detect(
+                AppIdentity.ResolveRoamingDataDirectory(),
+                distroName,
+                AppIdentity.ResolveSetupLocalDataDirectory(),
+                owners.Count == 1 ? owners[0].Id : null));
+            LocalAiResolvedInstall? install = await new LocalAiManifestStore(
+                    new LocalAiPaths(AppIdentity.ResolveSetupLocalDataDirectory()))
+                .LoadAsync();
+            return LocalAiSetupRoutePolicy.Decide(
+                owners,
+                existing.HasLocalGateway,
+                existing.LocalGatewayId,
+                existing.HasDistro,
+                existing.HasDistroDataDirectory,
+                existing.DistroIsAppOwned,
+                install?.Manifest.ModelCatalogId,
+                install?.Manifest.RequestedPort);
+        }
+        catch (Exception ex)
+        {
+            Logger.Warn($"Local AI recovery gateway inspection failed: {ex.Message}");
+            return new(LocalAiSetupRoute.Blocked);
+        }
+    }
+
+    private async Task ShowLocalAiSetupRecoveryAsync(LocalAiRecoveryTarget target)
+    {
+        var (setupWindow, created) = await EnsureSetupWindowAsync(
+            startAtGatewayInstalledMilestone: false,
+            localAiRecoveryTarget: target);
+        if (!_isShuttingDown && !created && setupWindow is { IsClosed: false })
+        {
+            Logger.Info("Setup window already open; leaving current setup page visible to avoid interrupting active setup");
+        }
     }
 
     public async Task ShowGatewayWizardAsync()
     {
         var (setupWindow, created) = await EnsureSetupWindowAsync(
-            startAtGatewayInstalledMilestone: true);
+            startAtGatewayInstalledMilestone: true,
+            localAiRecoveryTarget: null);
         if (!_isShuttingDown && !created && setupWindow is { IsClosed: false })
         {
             if (setupWindow.TryNavigateToGatewayInstalledMilestone())
@@ -362,7 +445,8 @@ internal sealed class WindowManager : IWindowManager
     }
 
     private async Task<(SetupWindow? Window, bool Created)> EnsureSetupWindowAsync(
-        bool startAtGatewayInstalledMilestone)
+        bool startAtGatewayInstalledMilestone,
+        LocalAiRecoveryTarget? localAiRecoveryTarget)
     {
         if (_isShuttingDown || _callbacks.GetSettings() is null)
         {
@@ -409,10 +493,16 @@ internal sealed class WindowManager : IWindowManager
         {
             setupWindow = new SetupWindow(
                 startAtGatewayInstalledMilestone: startAtGatewayInstalledMilestone,
+                startAtLocalAiRecoveryReview: localAiRecoveryTarget is not null,
                 dataDir: AppIdentity.ResolveRoamingDataDirectory(),
                 localDataDir: AppIdentity.ResolveSetupLocalDataDirectory(),
                 distroNameOverride: AppIdentity.SetupDistroName,
                 gatewayPortOverride: AppIdentity.SetupGatewayPort,
+                localAiRecoveryGatewayId: localAiRecoveryTarget?.GatewayId,
+                localAiRecoveryDistroName: localAiRecoveryTarget?.DistroName,
+                localAiRecoveryGatewayPort: localAiRecoveryTarget?.GatewayPort,
+                localAiRecoveryModelId: localAiRecoveryTarget?.ModelCatalogId,
+                localAiRecoveryRequestedPort: localAiRecoveryTarget?.RequestedLocalAiPort,
                 commandLineArgs: SetupWindowArgumentProjection.Project(
                     _callbacks.GetStartupArgs(),
                     _callbacks.IsDeepLinkArg,

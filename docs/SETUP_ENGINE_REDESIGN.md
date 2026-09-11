@@ -234,6 +234,12 @@ alone do not make a direct downgrade to those releases compatible. Rollback
 may remove a compatibility copy created by the current transaction, but it
 never removes the verified shared-cache source.
 
+Non-destructive Local AI recovery keeps the exact pre-recovery receipt as its
+rollback baseline. A successful repair always writes schema 4 with the verified
+hub-cache snapshot as the active model path, while preserving the legacy
+compatibility path and the prior gateway fallback, install time, and rollback
+metadata.
+
 Completed cache files and pre-existing resumable partials are shared state.
 Setup rollback and uninstall do not delete them. Unsafe links, reparse points,
 hard-linked partials, destination conflicts, receipt mismatches, and concurrent

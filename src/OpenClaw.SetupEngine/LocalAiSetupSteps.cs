@@ -152,6 +152,8 @@ public sealed class ConfigureLocalAiWslNetworkingStep : SetupStep
 
         try
         {
+            if (!string.IsNullOrWhiteSpace(ctx.Config.LocalAiRecoveryGatewayId))
+                ctx.LocalAiRecoveryStoppedWsl = true;
             CommandResult shutdown = await ShutdownWslAsync(ctx, ct);
             if (shutdown.ExitCode != 0 || shutdown.TimedOut)
             {
@@ -184,6 +186,8 @@ public sealed class ConfigureLocalAiWslNetworkingStep : SetupStep
             case WslGlobalConfigRestoreResult.InvalidBackup:
                 throw new InvalidDataException("The Local AI WSL configuration backup is invalid.");
             case WslGlobalConfigRestoreResult.Restored:
+                if (!string.IsNullOrWhiteSpace(ctx.Config.LocalAiRecoveryGatewayId))
+                    ctx.LocalAiRecoveryStoppedWsl = true;
                 CommandResult shutdown = await ShutdownWslAsync(ctx, ct);
                 if (shutdown.ExitCode != 0 || shutdown.TimedOut)
                     throw new InvalidOperationException("WSL could not be stopped to apply the restored configuration.");
@@ -266,10 +270,29 @@ public sealed class ReconcileLocalAiInstallationStep : SetupStep
                     value.TotalBytes,
                     SetupDetailProgressUnit.Bytes)));
             LocalAiReconcileResult result = await _reconciler
-                .ReconcileAsync(ctx.LocalDataDir, plan, selectedGpuId, ct, migrationProgress)
+                .ReconcileAsync(
+                    ctx.LocalDataDir,
+                    plan,
+                    selectedGpuId,
+                    ct,
+                    migrationProgress,
+                    allowIncompleteInstallation:
+                        !string.IsNullOrWhiteSpace(ctx.Config.LocalAiRecoveryGatewayId))
                 .ConfigureAwait(false);
+            if (!string.IsNullOrWhiteSpace(ctx.Config.LocalAiRecoveryGatewayId) &&
+                (result.OriginalInstall ?? result.ResolvedInstall) is { } originalInstall)
+            {
+                ctx.LocalAiRecoveryOriginalInstall = originalInstall;
+                ctx.LocalAiRecoveryReceiptRollbackAllowed = true;
+            }
             if (!result.Reused)
-                return StepResult.Skip("No completed managed Local AI installation was found.");
+            {
+                ctx.LocalAiRuntimeInstall = result.RuntimeInstall;
+                ctx.LocalAiModelInstall = result.ModelInstall;
+                return StepResult.Skip(result.OriginalInstall is null
+                    ? "No completed managed Local AI installation was found."
+                    : "The existing Local AI receipt was retained while incomplete assets are repaired.");
+            }
 
             ctx.LocalAiResolvedInstall = result.ResolvedInstall;
             ctx.LocalAiRuntimeInstall = result.RuntimeInstall;
@@ -531,7 +554,10 @@ public sealed class PersistLocalAiManifestStep : SetupStep
             return StepResult.Terminal(portError ?? "The requested Local AI port is invalid.");
 
         var paths = new LocalAiPaths(ctx.LocalDataDir);
-        if (File.Exists(paths.ManifestPath))
+        bool replacesRecoveryReceipt =
+            ctx.LocalAiRecoveryOriginalInstall is not null &&
+            File.Exists(paths.ManifestPath);
+        if (File.Exists(paths.ManifestPath) && !replacesRecoveryReceipt)
             return StepResult.Terminal("A managed Local AI installation receipt already exists.");
         LocalAiComponentIdentity component = LlamaRuntimeInstaller.Component(plan.Runtime);
         if (!LocalAiPathPolicy.TryResolve(
@@ -572,7 +598,7 @@ public sealed class PersistLocalAiManifestStep : SetupStep
             return StepResult.Terminal(ex.Message, ex);
         }
 
-        var manifest = new LocalAiInstallManifest
+        LocalAiInstallManifest manifest = new()
         {
             SchemaVersion = LocalAiInstallManifest.HubCacheReceiptSchemaVersion,
             EngineVersion = LlamaRuntimeCatalog.ReleaseTag,
@@ -607,13 +633,40 @@ public sealed class PersistLocalAiManifestStep : SetupStep
             DraftKeyCachePrecision = plan.Profile.DraftKeyCachePrecision,
             DraftValueCachePrecision = plan.Profile.DraftValueCachePrecision,
         };
+        if (ctx.LocalAiRecoveryOriginalInstall is { } originalInstall)
+        {
+            manifest = originalInstall.Manifest with
+            {
+                SchemaVersion = manifest.SchemaVersion,
+                EngineVersion = manifest.EngineVersion,
+                Architecture = manifest.Architecture,
+                RuntimeId = manifest.RuntimeId,
+                ModelCatalogId = manifest.ModelCatalogId,
+                SelectedGpuId = manifest.SelectedGpuId,
+                ExecutablePath = manifest.ExecutablePath,
+                RuntimeAssets = manifest.RuntimeAssets,
+                ModelPath = manifest.ModelPath,
+                ModelCacheRoot = manifest.ModelCacheRoot,
+                CachedModelPath = manifest.CachedModelPath,
+                ModelId = manifest.ModelId,
+                ModelAlias = manifest.ModelAlias,
+                ModelAsset = manifest.ModelAsset,
+                RequestedPort = manifest.RequestedPort,
+                Endpoint = null,
+                ContextLength = manifest.ContextLength,
+                KeyCachePrecision = manifest.KeyCachePrecision,
+                ValueCachePrecision = manifest.ValueCachePrecision,
+                DraftKeyCachePrecision = manifest.DraftKeyCachePrecision,
+                DraftValueCachePrecision = manifest.DraftValueCachePrecision,
+            };
+        }
 
         var store = new LocalAiManifestStore(paths);
         try
         {
             await store.SaveAsync(manifest, ct);
             ctx.LocalAiResolvedInstall = store.ResolveAndValidate(manifest);
-            ctx.LocalAiManifestCreatedThisRun = true;
+            ctx.LocalAiManifestCreatedThisRun = !replacesRecoveryReceipt;
             return StepResult.Ok("Recorded the verified llama-server and Hugging Face installation.");
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or InvalidDataException)
@@ -760,8 +813,22 @@ public sealed class StartLocalAiRuntimeStep : SetupStep
         }
     }
 
-    public override Task RollbackAsync(SetupContext ctx, CancellationToken ct) =>
-        DisposeRuntimeAsync(ctx).AsTask();
+    public override Task RollbackAsync(SetupContext ctx, CancellationToken ct)
+    {
+        // During a recovery provider transition, ConfigureLocalAiGatewayStep's rollback (which
+        // runs before this step's rollback) sets LocalAiRecoveryReceiptRollbackAllowed only when
+        // it confirmed the Gateway no longer routes to this runtime's endpoint. If that could not
+        // be confirmed, the Gateway may still be pointed at this runtime; disposing it here would
+        // orphan the active route instead of the intended, coordinated rollback.
+        if (ctx.LocalAiRecoveryProviderTransition && !ctx.LocalAiRecoveryReceiptRollbackAllowed)
+        {
+            ctx.Logger.Warn(
+                "Keeping the replacement llama-server router running because the Gateway configuration " +
+                "rollback could not confirm it no longer routes to this endpoint.");
+            return Task.CompletedTask;
+        }
+        return DisposeRuntimeAsync(ctx).AsTask();
+    }
 
     private static ILocalAiRuntime CreateRuntime(SetupContext ctx)
     {

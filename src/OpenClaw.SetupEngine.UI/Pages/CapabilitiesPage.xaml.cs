@@ -36,6 +36,8 @@ public sealed partial class CapabilitiesPage : Page
     private readonly LocalAiSetupAvailabilityCoordinator _localAiAvailability = new();
     private bool _treatBundledAllOnAsPlaceholder;
     private bool _forceLocalAiNetworkingConsent;
+    private bool _localAiRecoveryOnly;
+    private bool _localAiRecoveryModelPinned;
     private CancellationTokenSource? _tailscaleStatusCancellation;
     private int _tailscaleStatusGeneration;
     private int _step = 1;
@@ -74,7 +76,8 @@ public sealed partial class CapabilitiesPage : Page
 
     protected override void OnNavigatedTo(NavigationEventArgs e)
     {
-        _config = e.Parameter as SetupConfig ?? new SetupConfig();
+        var args = e.Parameter as CapabilitiesPageArgs;
+        _config = args?.Config ?? e.Parameter as SetupConfig ?? new SetupConfig();
         // The tray always registers device.info/status with Node Mode. Keep the
         // setup declaration and gateway allowlist aligned with that runtime contract.
         _config.Capabilities.Device = true;
@@ -105,7 +108,11 @@ public sealed partial class CapabilitiesPage : Page
         TailscaleAuthModeSelector.SelectedIndex = _config.Tailscale.AuthMode == TailscaleAuthMode.AuthKey ? 1 : 0;
         UpdateTailscaleOptions();
         var previewPage = SetupPreview.RequestedPage;
-        var localAiReviewPreview = previewPage is "capabilities-review" or "capabilities-review-consent";
+        var localAiReviewPreview =
+            args?.StartAtLocalAiReview == true ||
+            previewPage is "capabilities-review" or "capabilities-review-consent";
+        _localAiRecoveryOnly = args?.StartAtLocalAiReview == true;
+        _localAiRecoveryModelPinned = args?.PinLocalAiModel == true;
         _forceLocalAiNetworkingConsent = previewPage == "capabilities-review-consent";
         if (localAiReviewPreview)
             _config.LocalAi.Enabled = true;
@@ -214,6 +221,12 @@ public sealed partial class CapabilitiesPage : Page
 
     private void Back_Click(object sender, RoutedEventArgs e)
     {
+        if (_localAiRecoveryOnly)
+        {
+            SetupWindow.Active?.NavigateToWelcome(back: true);
+            return;
+        }
+
         if (_step <= 1)
         {
             // First capability step — step back to the Welcome screen.
@@ -330,16 +343,26 @@ public sealed partial class CapabilitiesPage : Page
                 // model instead of leaving setup stuck on a known-incompatible selection. A
                 // merely busy GPU (EligibleButBusy) is not reconciled away: the same model would
                 // still work once the GPU frees up, and CanInstall already covers that case.
-                if (_config!.LocalAi.SelectedModelId is { } selectedModelId &&
-                    !LocalInferenceEligibility.Evaluate(_localAiHardware, selectedModelId).CanInstall)
+                if (_config!.LocalAi.SelectedModelId is { } selectedModelId)
                 {
-                    _config.LocalAi.SelectedModelId = null;
+                    LocalInferenceEligibilityResult selectedEligibility =
+                        LocalInferenceEligibility.Evaluate(_localAiHardware, selectedModelId);
+                    if (_localAiRecoveryModelPinned)
+                    {
+                        eligibility = selectedEligibility;
+                    }
+                    else if (!selectedEligibility.CanInstall)
+                    {
+                        _config.LocalAi.SelectedModelId = null;
+                    }
                 }
                 _config.LocalAi.SelectedModelId ??= _localAiRecommendedModelId ?? deviceEligibility.Plan.Model.Id;
 
-                eligibility = LocalInferenceEligibility.Evaluate(
-                    _localAiHardware,
-                    _config.LocalAi.SelectedModelId);
+                eligibility ??= LocalInferenceEligibility.Evaluate(
+                        _localAiHardware,
+                        _config.LocalAi.SelectedModelId);
+                if (_localAiRecoveryModelPinned && !eligibility.CanInstall)
+                    hardwareReason = DescribeLocalAiUnavailable(eligibility);
             }
         }
         catch (Exception ex)
@@ -469,16 +492,17 @@ public sealed partial class CapabilitiesPage : Page
     /// descendant's own IsEnabled value; setting LocalAiToggle.IsEnabled back to true alone would
     /// not make it clickable. Availability being merely pending (Checking/ProbeUnknown), not yet a
     /// definitive result, must not remove the user's only way out, so this restores hit-testing on
-    /// the shared container and re-enables just the toggle: turning Local AI off unblocks Continue
-    /// via the existing LocalAiToggle.IsOn != true branch, instead of ever letting Continue itself
-    /// bypass an as-yet-undetermined WSL networking-consent requirement. The other Local AI
-    /// controls (model selector, consent checkbox) stay genuinely non-interactive because their
-    /// own IsEnabled is still false, independent of the container's hit-testability.
+    /// the shared container and re-enables just the toggle outside recovery: turning Local AI off
+    /// unblocks Continue via the existing LocalAiToggle.IsOn != true branch, instead of ever
+    /// letting Continue itself bypass an as-yet-undetermined WSL networking-consent requirement.
+    /// Recovery requires Local AI to remain selected, so its toggle stays disabled. The other
+    /// Local AI controls (model selector, consent checkbox) stay genuinely non-interactive because
+    /// their own IsEnabled is still false, independent of the container's hit-testability.
     /// </summary>
     private void RestoreLocalAiToggleAsPendingStateEscapeHatch()
     {
         LocalAiOptionContent.IsHitTestVisible = true;
-        LocalAiToggle.IsEnabled = true;
+        LocalAiToggle.IsEnabled = !_localAiRecoveryOnly;
     }
 
     private void ShowLocalAiUnavailable(LocalAiSetupAvailabilitySnapshot snapshot)
@@ -570,8 +594,8 @@ public sealed partial class CapabilitiesPage : Page
     {
         LocalAiOptionContent.IsHitTestVisible = isAvailable;
         LocalAiOptionContent.Opacity = isAvailable ? 1 : 0.55;
-        LocalAiToggle.IsEnabled = isAvailable;
-        LocalAiModelSelector.IsEnabled = isAvailable;
+        LocalAiToggle.IsEnabled = isAvailable && !_localAiRecoveryOnly;
+        LocalAiModelSelector.IsEnabled = isAvailable && !_localAiRecoveryModelPinned;
         LocalAiNetworkingConsentCheckBox.IsEnabled = isAvailable;
         AutomationProperties.SetHelpText(
             LocalAiOptionContent,
@@ -777,8 +801,9 @@ public sealed partial class CapabilitiesPage : Page
         // below immediately, without needing Continue to advance on incomplete information.
         PrimaryButton.IsEnabled =
             _step != 3 ||
-            LocalAiToggle.IsOn != true ||
-            (_localAiSelectionEligible &&
+            (!_localAiRecoveryOnly && LocalAiToggle.IsOn != true) ||
+            (LocalAiToggle.IsOn == true &&
+             _localAiSelectionEligible &&
              (!_localAiNetworkingConsentRequired || LocalAiNetworkingConsentCheckBox.IsChecked == true));
     }
 
