@@ -558,6 +558,10 @@ export function reconcileOpenInventory(triage, pullRequests, issues) {
         ...step.itemNumbers,
         ...step.gates.map((gate) => gate.itemNumber),
     ]));
+    const retainedTargetNumbers = new Set([
+        ...planTargetNumbers,
+        ...triage.items.flatMap((item) => item.dependencies),
+    ]);
     const discoveredPullRequests = (pullRequests ?? [])
         .filter((item) =>
             String(item.state).toUpperCase() === "OPEN" &&
@@ -573,9 +577,10 @@ export function reconcileOpenInventory(triage, pullRequests, issues) {
         const outOfScopeDraft = item.type === "pr" &&
             state === "OPEN" &&
             live?.isDraft === true &&
-            !planTargetNumbers.has(item.number);
+            !retainedTargetNumbers.has(item.number);
         const merged = state === "MERGED" || (state === "CLOSED" && Boolean(live?.mergedAt));
-        if (merged || state === "CLOSED" || outOfScopeDraft) {
+        const closedOutOfScope = state === "CLOSED" && !retainedTargetNumbers.has(item.number);
+        if (merged || closedOutOfScope || outOfScopeDraft) {
             removedNumbers.add(item.number);
             (merged ? satisfiedRemovedNumbers : blockedRemovedNumbers).add(item.number);
         }
