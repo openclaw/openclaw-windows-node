@@ -44,6 +44,11 @@ internal static class UpdateReleasePolicy
     internal const string SecurityMarker =
         "<!-- openclaw-update: security-critical -->";
 
+    private static readonly System.Text.RegularExpressions.Regex MarkerShapePattern = new(
+        @"<!--\s*openclaw-update\s*:.*?-->",
+        System.Text.RegularExpressions.RegexOptions.IgnoreCase |
+        System.Text.RegularExpressions.RegexOptions.Compiled);
+
     public static ReleaseSecurityClassification Classify(
         UpdateReleaseCandidate? release)
     {
@@ -59,6 +64,17 @@ internal static class UpdateReleasePolicy
         var securityMarkerCount = CountMarkers(
             release.Body,
             SecurityMarker);
+
+        // Any "openclaw-update:" marker-shaped comment that is not an exact recognized
+        // marker (a typo, unknown classification, or other malformed variant) must fail
+        // classification closed rather than silently disappear from the counts above. A
+        // valid ordinary marker combined with such a malformed marker would otherwise be
+        // misread as an unambiguous "ordinary" release.
+        var totalMarkerLikeCount = MarkerShapePattern.Matches(release.Body).Count;
+        if (totalMarkerLikeCount != ordinaryMarkerCount + securityMarkerCount)
+        {
+            return ReleaseSecurityClassification.Unverified;
+        }
 
         return (ordinaryMarkerCount, securityMarkerCount) switch
         {

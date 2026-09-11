@@ -48,6 +48,15 @@ public sealed class UpdateCheckPipelineTests
     [InlineData(
         "<!-- openclaw-update: ordinary --><!-- openclaw-update: security-critical --><!-- openclaw-update: security-critical -->",
         true)]
+    [InlineData(
+        "<!-- openclaw-update: ordinary --><!-- openclaw-update: security-critica -->",
+        true)]
+    [InlineData(
+        "<!-- openclaw-update: ordinary --><!-- openclaw-update:security-critical -->",
+        true)]
+    [InlineData(
+        "<!--openclaw-update: ordinary--><!-- openclaw-update: unknown -->",
+        true)]
     public void Classify_IncompleteMalformedOrUntrustedMetadata_IsUnverified(
         string? body,
         bool trusted)
