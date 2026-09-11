@@ -10,7 +10,10 @@ metadata in parallel with tests and E2E, and the stable **CI Gate** requires all
 selected lanes before a tag can publish. Pull requests do not produce release
 artifacts unless packaging, build, installer, release, workflow, or classifier
 infrastructure changes. Those fail-closed pull requests run the x64 publish
-smoke only; ARM64 publish remains required on `main` and tags.
+smoke only; ARM64 portable publish remains required on `main` and tags.
+When either release-build lane is selected, CI also builds both architectures
+of Dev-signed and unsigned Store MSIX **workflow artifacts**. CI Gate requires
+that MSIX job to succeed, but no MSIX is attached to GitHub Releases.
 
 ## Release checklist
 
@@ -31,7 +34,7 @@ smoke only; ARM64 publish remains required on `main` and tags.
      "Verify Release Binary Signing Policy", `
      "OpenClaw.Tray.WinUI.exe", `
      "build-msix:", `
-     "MSIX distribution is paused"
+     "MSIX release publishing remains paused"
    ```
 
 3. Create a new stable, stable correction, or prerelease tag from `origin/main`.
@@ -164,10 +167,24 @@ Current release artifacts are:
   - `OpenClawTray-<version>-win-x64.zip`
   - `OpenClawTray-<version>-win-arm64.zip`
 
-MSIX artifacts remain paused while the supported distribution path uses Inno
-installers and signed portable update payloads. This pause is independent of
-whether a tag is stable or alpha. Re-enable MSIX only with packaged
-camera/microphone consent validation and release coverage.
+MSIX release publishing remains paused while the supported release downloads
+use Inno installers and signed portable update payloads. CI workflow downloads
+now include Dev-signed tester MSIX packages (with public certificates and
+instructions) and validated unsigned Store submission packages with provenance.
+They are not official Store-signed release assets.
+
+The pause is independent of whether a tag is stable or alpha. This workflow
+does not submit to Partner Center, retrieve Store-signed packages, or attach
+MSIX assets to GitHub Releases. Those stages remain follow-up work in #1375,
+including packaged consent, native ARM64 and signed lifecycle proof, maintainer
+approval, Store availability, and a verified signed-package retrieval path.
+Existing EXE/ZIP publishing remains unchanged.
+
+Store versions still end in `.0`; different prerelease/correction tags with
+the same `X.Y.Z` base can produce the same Store version. These build artifacts
+are not an automatic submission/version-allocation policy. See
+[CI MSIX downloads](../DEVELOPMENT.md#ci-msix-downloads) for Dev certificate
+handling, workflow revision limits, and installation instructions.
 
 ## Binary signing policy
 
@@ -270,8 +287,9 @@ proofs as skipped when the host is not MXC-capable; use
 `.\scripts\validate-mxc-e2e.ps1` for required local/self-hosted MXC merge
 validation. Release tags cannot enter the `release` job until **CI Gate**
 confirms classification, fast validation, tests, E2E, and release builds all
-succeeded. The `build-msix` job is disabled with `if: false` while MSIX
-distribution is paused, so it should not appear in the required run list.
+succeeded. The `build-msix` job must also succeed whenever release metadata is
+required. It builds workflow artifacts only; MSIX release publishing remains
+paused and the release job does not download or attach those artifacts.
 
 The release job should:
 

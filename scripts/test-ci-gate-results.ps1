@@ -41,6 +41,7 @@ function New-GateArguments {
         Arm64ReleaseRequired = "false"
         Arm64ReleaseResult = "skipped"
         MetadataResult = "skipped"
+        MsixResult = "skipped"
     }
 }
 
@@ -112,6 +113,7 @@ foreach ($prefix in @(
     $fullArguments["${prefix}Result"] = "success"
 }
 $fullArguments.MetadataResult = "success"
+$fullArguments.MsixResult = "success"
 $full = Invoke-Gate $fullArguments
 if ($full -ne "full") {
     throw "Expected the full gate to pass."
@@ -132,6 +134,7 @@ foreach ($prefix in @(
     $fullPrArguments["${prefix}Result"] = "success"
 }
 $fullPrArguments.MetadataResult = "success"
+$fullPrArguments.MsixResult = "success"
 $fullPr = Invoke-Gate $fullPrArguments
 if ($fullPr -ne "full") {
     throw "Expected full pull request validation without ARM64 publish to pass."
@@ -144,6 +147,23 @@ Assert-GateFails -Overrides @{ CoreRequired = "" } -Scenario "Missing classifier
 Assert-GateFails -Overrides @{ CoreResult = "skipped" } -Scenario "Required lane skipped"
 Assert-GateFails -Overrides @{ CoreResult = "cancelled" } -Scenario "Required lane cancelled"
 Assert-GateFails -Overrides @{ CoreResult = "failure" } -Scenario "Required lane failed"
+Assert-GateFails -Overrides @{ MsixResult = "success" } -Scenario "Unselected MSIX lane ran"
+foreach ($result in @("failure", "cancelled", "skipped", "")) {
+    Assert-GateFails -Overrides @{
+        X64ReleaseRequired = "true"
+        X64ReleaseResult = "success"
+        MetadataResult = "success"
+        MsixResult = $result
+    } -Scenario "Selected MSIX lane returned '$result'"
+}
+$arm64Arguments = New-GateArguments
+$arm64Arguments.Arm64ReleaseRequired = "true"
+$arm64Arguments.Arm64ReleaseResult = "success"
+$arm64Arguments.MetadataResult = "success"
+$arm64Arguments.MsixResult = "success"
+if ((Invoke-Gate $arm64Arguments) -ne "targeted") {
+    throw "Expected ARM64 release selection to require successful MSIX artifacts."
+}
 Assert-GateFails `
     -Overrides @{ CoreRequired = "false"; CoreResult = "success" } `
     -Scenario "Unrequired lane ran"
