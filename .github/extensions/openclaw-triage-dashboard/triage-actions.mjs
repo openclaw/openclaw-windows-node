@@ -4,16 +4,72 @@ function itemKind(type) {
     return type === "pr" ? "PR" : "Issue";
 }
 
+function stateReconciliationContract(repo, item) {
+    const baseline = {
+        reviewedHeadSha: item.reviewedHeadSha ?? "",
+        decision: item.decision ?? "",
+        reviewStatus: item.reviewStatus ?? "",
+        proofStatus: item.proofStatus ?? "",
+        takeConfidence: item.takeConfidence ?? null,
+        recommendationConfidence: item.recommendationConfidence ?? null,
+        nextAction: item.nextAction ?? "",
+        expectedChecks: item.expectedChecks ?? [],
+        proofPools: item.proofPools ?? [],
+    };
+    const allowedFields = Object.keys(baseline);
+    const replacementValues = Object.fromEntries(
+        allowedFields.map((field) => [field, `<refreshed ${field} value>`]),
+    );
+
+    return (
+        "\n\nState reconciliation contract:\n" +
+        `Compare refreshed evidence with this dashboard baseline: ${JSON.stringify(baseline)}\n` +
+        "If any baseline field changes, send the parent session that routed this action a message headed " +
+        "TRIAGE_STATE_DELTA " +
+        "with exactly one JSON object using this shape:\n" +
+        JSON.stringify({
+            kind: "triage_state_delta",
+            schemaVersion: 1,
+            repo,
+            item: { type: item.type, number: item.number },
+            changedFields: ["fieldName"],
+            values: replacementValues,
+            evidenceSummary: "Why the refreshed evidence supports each changed value.",
+            githubMutationPerformed: false,
+        }) +
+        `\nchangedFields may contain only: ${allowedFields.join(", ")}. ` +
+        "Replace every example in values with the correctly typed refreshed value for that field. " +
+        "Do not copy the baseline values into values. " +
+        "\nUse send_session_message with the from_project_session_id or from_session_id supplied by the current " +
+        "cross-session message when available, so a reused child replies to the session that routed this action " +
+        "rather than an earlier creator. Otherwise return the " +
+        "TRIAGE_STATE_DELTA block in the child session's final response so the coordinated parent receives it. " +
+        "The parent must apply validated changed values to the saved triage-state JSON and reopen the same " +
+        "dashboard instance ID. This callback updates canvas state only and does not authorize a GitHub mutation."
+    );
+}
+
 export function buildSubsessionRoutingPrompt(repo, item, actionPrompt) {
     const kind = itemKind(item.type);
     const sessionName = `Triage ${kind} #${item.number}`;
     const identity = `${repo} ${kind} #${item.number}`;
-
-    return {
-        sessionName,
-        prompt:
-            `Route this dashboard action to the dedicated child project session for ${identity}. ` +
-            "Do not execute the item work in this parent session.\n\n" +
+    const reconciliationStep = item.type === "pr" ? 6 : 7;
+    const routingSteps = item.type === "pr"
+        ? (
+            "Use the app session tools as follows:\n" +
+            "1. Call list_sessions_and_chats and look in the current repository for sessions linked to " +
+            `PR #${item.number} through source_pr_number/source_pr_repo. Also look for one legacy child ` +
+            `session whose name is "${sessionName}" or ends with that exact stable suffix after a status symbol.\n` +
+            "2. If more than one linked or legacy match exists, stop and report the ambiguity. Do not pick one or " +
+            "create another.\n" +
+            "3. If exactly one match exists, verify its project repository is the exact repository above, then call " +
+            "send_session_message with the action below so the work is appended to that session.\n" +
+            `4. If no match exists, call open_pr_session with repo_full_name "${repo}", pr_number ${item.number}, ` +
+            "coordinate_with_creator enabled, and a kickoff using the action below in interactive mode. This creates " +
+            "an app-native PR-linked session so the sidebar shows the pull request's live status icon.\n" +
+            "5. Do not create a duplicate session. Briefly report whether the child session was created or reused.\n"
+        )
+        : (
             "Use the app session tools as follows:\n" +
             `1. Call list_projects and resolve the project whose GitHub repository is exactly "${repo}". ` +
             "Use that project's ID for any create_session call.\n" +
@@ -24,8 +80,20 @@ export function buildSubsessionRoutingPrompt(repo, item, actionPrompt) {
             "4. If more than one matching session exists, stop and report the ambiguity. Do not pick one or create another.\n" +
             `5. If no matching session exists, call create_session with the resolved project_id, name "${sessionName}", ` +
             "coordinate_with_creator enabled, base_branch unset, and a kickoff using the action below in interactive mode.\n" +
-            "6. Do not create a duplicate session. Briefly report whether the child session was created or reused.\n\n" +
-            `Action for the child session:\n${actionPrompt}`,
+            "6. Do not create a duplicate session. Briefly report whether the child session was created or reused.\n"
+        );
+
+    return {
+        sessionName,
+        prompt:
+            `Route this dashboard action to the dedicated child project session for ${identity}. ` +
+            "Do not execute the item work in this parent session.\n\n" +
+            routingSteps +
+            `${reconciliationStep}. When the child returns a TRIAGE_STATE_DELTA, validate it against the refreshed ` +
+            "evidence, update " +
+            "the saved triage-state JSON, and reopen the same dashboard instance ID. Do not interpret the callback " +
+            "as authorization for a GitHub mutation.\n\n" +
+            `Action for the child session:\n${actionPrompt}${stateReconciliationContract(repo, item)}`,
     };
 }
 

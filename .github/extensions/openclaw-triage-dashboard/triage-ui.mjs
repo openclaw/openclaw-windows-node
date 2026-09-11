@@ -1,5 +1,6 @@
 import {
     buildPlanLanes,
+    claimUnrenderedItemNumbers,
     limitLaneLevels,
     limitPlanRows,
 } from "./triage-plan.mjs";
@@ -41,7 +42,7 @@ export function renderDashboardHtml() {
       outline: 2px solid var(--color-focus-outline, Highlight);
       outline-offset: 2px;
     }
-    main { max-width: 1012px; margin: 0 auto; padding: 24px 16px 48px; }
+    main { max-width: 1440px; margin: 0 auto; padding: 24px 16px 48px; }
     header { display: flex; align-items: baseline; justify-content: space-between; gap: 16px; }
     .header-status { display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
     h1 {
@@ -98,6 +99,59 @@ export function renderDashboardHtml() {
       text-align: center;
     }
     .tab-panel { padding-top: 16px; }
+    .workspace-layout {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) minmax(260px, 320px);
+      gap: 24px;
+      align-items: start;
+    }
+    .workspace-main { min-width: 0; }
+    .session-progress {
+      position: sticky;
+      top: 16px;
+      margin-top: 16px;
+      border-left: 1px solid var(--github-border);
+      padding: 4px 0 4px 20px;
+    }
+    .session-progress h2 { margin: 0 0 10px; }
+    .session-task-list { display: grid; gap: 9px; }
+    .session-task {
+      display: grid;
+      grid-template-columns: 16px minmax(0, 1fr);
+      gap: 9px;
+      align-items: start;
+    }
+    .session-task-icon {
+      display: grid;
+      place-items: center;
+      width: 14px;
+      height: 14px;
+      margin-top: 3px;
+      border: 1.5px solid var(--github-border);
+      border-radius: 50%;
+      color: var(--github-muted);
+      font-size: 9px;
+      font-weight: 700;
+      line-height: 1;
+    }
+    .session-task-done .session-task-icon {
+      border-color: var(--github-open);
+      background: var(--github-open);
+      color: var(--color-white, white);
+    }
+    .session-task-in_progress .session-task-icon {
+      border-color: var(--github-accent);
+      border-top-color: transparent;
+      animation: task-spin 900ms linear infinite;
+    }
+    .session-task-blocked .session-task-icon {
+      border-color: var(--github-danger);
+      color: var(--github-danger);
+    }
+    .session-task-title { min-width: 0; }
+    .session-task-done .session-task-title { color: var(--github-muted); }
+    .session-progress-error { margin-top: 10px; color: var(--github-danger); font-size: 12px; }
+    @keyframes task-spin { to { transform: rotate(360deg); } }
     .metrics {
       display: block;
       margin-bottom: 10px;
@@ -209,6 +263,7 @@ export function renderDashboardHtml() {
     @keyframes refresh-spin { to { transform: rotate(360deg); } }
     @media (prefers-reduced-motion: reduce) {
       .icon-control:disabled svg { animation: none; }
+      .session-task-in_progress .session-task-icon { animation: none; }
     }
     .items {
       border: 1px solid var(--github-border);
@@ -299,47 +354,28 @@ export function renderDashboardHtml() {
     .plan-lane:not(.plan-lane-independent) .lane-level:last-child .plan-node:last-child::after {
       display: none;
     }
-    .plan-node-head {
+    .plan-node-status {
       display: flex;
       align-items: center;
-      justify-content: space-between;
-      gap: 12px;
+      gap: 8px;
+      margin-bottom: 8px;
     }
-    .plan-node-heading-main { display: flex; align-items: center; gap: 6px; min-width: 0; }
-    .plan-node-title { color: inherit; font-weight: 600; text-decoration: none; }
-    .plan-node-title[href]:hover { color: var(--github-accent); }
-    .plan-node-decision {
-      display: flex;
-      align-items: flex-end;
-      flex-direction: column;
-      flex-shrink: 0;
-      color: var(--github-muted);
-      white-space: nowrap;
-    }
-    .plan-node-decision a { color: inherit; text-decoration: none; }
-    .plan-node-decision a:hover { color: var(--github-accent); }
-    .plan-node-meta {
-      display: flex;
-      gap: 4px 12px;
-      margin-top: 4px;
-      flex-wrap: wrap;
+    .plan-blocked-reason {
       color: var(--github-muted);
       font-size: 12px;
     }
-    .plan-node p { margin: 3px 0 0; }
-    .plan-dependencies {
-      display: contents;
-      color: var(--github-muted);
-      font-size: 12px;
+    .plan-step-copy { margin-bottom: 10px; }
+    .plan-step-title { margin: 0; font-size: var(--text-body-medium, 14px); }
+    .plan-step-detail { margin: 3px 0 0; color: var(--github-muted); font-size: 12px; }
+    .plan-linked-item {
+      min-width: 0;
     }
-    .dependency-edge {
-      display: inline;
+    .plan-linked-item + .plan-linked-item {
+      margin-top: 10px;
+      border-top: 1px solid var(--github-border-muted);
+      padding-top: 10px;
     }
-    .plan-actions { margin-top: 6px; }
-    .plan-item-meta + .plan-item-meta { margin-top: 8px; }
-    .plan-node-footer { margin-top: 6px; }
-    .plan-button-groups { display: flex; gap: 8px; flex-wrap: wrap; }
-    .action-item-number { align-self: center; color: var(--github-muted); font-size: 12px; }
+    .plan-linked-item .item-body { max-width: none; }
     .plan-action {
       display: flex;
       gap: 6px;
@@ -385,7 +421,7 @@ export function renderDashboardHtml() {
       line-height: var(--leading-body-medium, 20px);
       white-space: nowrap;
     }
-    .badges, .stages, .actions { display: flex; flex-wrap: wrap; gap: 5px; }
+    .badges, .github-labels, .stages, .actions { display: flex; flex-wrap: wrap; gap: 5px; }
     .badge, .stage {
       display: inline-flex;
       align-items: center;
@@ -423,6 +459,22 @@ export function renderDashboardHtml() {
       background: color-mix(in srgb, var(--github-muted) 10%, transparent);
       color: var(--github-muted);
     }
+    .github-labels { margin-top: 6px; }
+    .github-label { font-weight: 500; }
+    .adversarial-review {
+      margin-top: 6px;
+      border-top: 1px solid var(--github-border-muted);
+      padding-top: 6px;
+      font-size: var(--text-caption, 12px);
+    }
+    .adversarial-review summary { cursor: pointer; font-weight: var(--font-weight-semibold, 600); }
+    .review-summary { margin-top: 4px; color: var(--github-muted); }
+    .review-finding-list { display: grid; gap: 6px; margin-top: 6px; }
+    .review-finding { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 8px; }
+    .review-finding-status { font-weight: var(--font-weight-semibold, 600); }
+    .review-finding-accepted { color: var(--github-danger); }
+    .review-finding-rejected { color: var(--github-muted); }
+    .review-head-stale { color: var(--github-danger); }
     .status-done { color: var(--true-color-green, #1a7f37); }
     .status-in_progress, .status-pending { color: var(--true-color-blue, #0969da); }
     .status-blocked { color: var(--true-color-red, #cf222e); }
@@ -464,13 +516,20 @@ export function renderDashboardHtml() {
       white-space: nowrap;
       border: 0;
     }
+    @media (max-width: 1000px) {
+      .workspace-layout { grid-template-columns: minmax(0, 1fr); }
+      .session-progress {
+        position: static;
+        border-top: 1px solid var(--github-border);
+        border-left: 0;
+        padding: 16px 0 0;
+      }
+    }
     @media (max-width: 700px) {
       main { padding: 14px 12px 40px; }
       header { display: block; }
       .item-head, .item-heading-main { flex-wrap: wrap; }
       .item-decision { margin-left: auto; }
-      .plan-node-head { align-items: flex-start; flex-direction: column; gap: 4px; }
-      .plan-node-decision { align-items: flex-start; white-space: normal; }
       .report-row { grid-template-columns: 1fr; gap: 4px; }
       .item-footer { align-items: flex-start; flex-direction: column; }
       .list-header { align-items: flex-start; flex-direction: column; gap: 6px; }
@@ -495,6 +554,8 @@ export function renderDashboardHtml() {
       </div>
     </header>
     <div id="error" class="error hidden" role="alert"></div>
+    <div class="workspace-layout">
+    <div class="workspace-main">
     <nav class="tabs" role="tablist" aria-label="Triage report sections">
       <button class="tab" role="tab" aria-selected="true" aria-controls="tab-items" data-tab="items">Items <span id="count-items" class="tab-count">0</span></button>
       <button id="tab-plan-button" class="tab" role="tab" aria-selected="false" aria-controls="tab-plan" data-tab="plan">Plan <span id="count-plan" class="tab-count">0</span></button>
@@ -552,6 +613,13 @@ export function renderDashboardHtml() {
     <section id="tab-ownership" class="tab-panel hidden" role="tabpanel"><div id="ownership" class="report-box"></div></section>
     <section id="tab-reviews" class="tab-panel hidden" role="tabpanel"><div id="reviews" class="report-box"></div></section>
     <section id="tab-automation" class="tab-panel hidden" role="tabpanel"><div id="automation" class="report-box"></div></section>
+    </div>
+    <aside class="session-progress" aria-labelledby="session-progress-title">
+      <h2 id="session-progress-title">Session progress</h2>
+      <div id="session-tasks" class="session-task-list"></div>
+      <p id="session-tasks-error" class="session-progress-error hidden" role="status"></p>
+    </aside>
+    </div>
   </main>
   <div id="notice" class="notice hidden" role="status"></div>
   <script>
@@ -561,6 +629,7 @@ export function renderDashboardHtml() {
     const actionToken = fragmentToken || sessionStorage.getItem("triageActionToken") || "";
     window.history.replaceState(null, "", window.location.pathname);
     ${buildPlanLanes.toString()}
+    ${claimUnrenderedItemNumbers.toString()}
     ${limitLaneLevels.toString()}
     ${limitPlanRows.toString()}
     ${itemDependencyBlocker.toString()}
@@ -614,6 +683,13 @@ export function renderDashboardHtml() {
       return { label: "Maintainer review", variant: "attention" };
     }
 
+    function itemDecisionLabel(item) {
+      if (item.type === "pr" && !item.adversarialReview) {
+        return "NO REVIEW FOUND · -% take";
+      }
+      return item.decision + " · " + item.takeConfidence + "% take";
+    }
+
     function planStatusVariant(status) {
       if (status === "done") return "success";
       if (status === "blocked") return "danger";
@@ -646,6 +722,7 @@ export function renderDashboardHtml() {
       }
       const itemByNumber = new Map(items.map((item) => [item.number, item]));
       const planStepById = new Map(plan.map((step) => [step.id, step]));
+      const renderedItemNumbers = new Set();
       const allSteps = lanes.flatMap((lane) => lane.levels.flat());
       const overview = element("div", "plan-overview");
       const summary = element("div", "plan-summary");
@@ -684,65 +761,12 @@ export function renderDashboardHtml() {
               "div",
               "plan-node plan-status-" + step.liveStatus,
             );
-            const head = element("div", "plan-node-head");
-            const headingMain = element("div", "plan-node-heading-main");
-            const linkedItems = step.itemNumbers
+            const linkedItems = claimUnrenderedItemNumbers(
+              step.itemNumbers,
+              renderedItemNumbers,
+            )
               .map((number) => itemByNumber.get(number))
               .filter(Boolean);
-            const title = element("span", "plan-node-title", step.title);
-            headingMain.append(
-              element(
-                "span",
-                "badge label-" + planStatusVariant(step.liveStatus),
-                statusLabel(step.liveStatus),
-              ),
-              title,
-            );
-            const decision = element("div", "plan-node-decision");
-            if (linkedItems.length) {
-              for (const item of linkedItems) {
-                const itemDecision = element("div", "");
-                const itemLink = element("a", "", "#" + item.number);
-                itemLink.href = item.url;
-                itemLink.target = "_blank";
-                itemLink.rel = "noreferrer";
-                itemDecision.append(
-                  itemLink,
-                  document.createTextNode(
-                    " " + item.decision + " · " + item.takeConfidence + "% take",
-                  ),
-                );
-                decision.append(itemDecision);
-              }
-            } else {
-              decision.textContent = "No linked item";
-            }
-            head.append(
-              headingMain,
-              decision,
-            );
-            node.append(head);
-            const meta = element("div", "plan-node-meta");
-            if (step.horizon) {
-              meta.append(element("span", "", step.horizon === "today" ? "Today" : "Later"));
-            }
-            if (step.dependsOn.length) {
-              const dependencies = element("div", "plan-dependencies");
-              for (const dependencyId of step.dependsOn) {
-                const dependency = planStepById.get(dependencyId);
-                dependencies.append(element(
-                  "div",
-                  "dependency-edge",
-                  "Depends on " + (dependency?.title ?? dependencyId),
-                ));
-              }
-              meta.append(dependencies);
-            }
-            if (meta.childNodes.length) node.append(meta);
-            if (step.detail) node.append(element("p", "muted", step.detail));
-            const metadataItems = linkedItems.length ? linkedItems : [null];
-            const footer = element("div", "item-footer plan-node-footer");
-            const nextActions = element("div", "plan-actions");
             const unresolvedDependencies = step.dependsOn
               .map((dependencyId) => planStepById.get(dependencyId))
               .filter((dependency) => dependency?.liveStatus !== "done");
@@ -750,34 +774,51 @@ export function renderDashboardHtml() {
               ? "Complete dependencies first: " +
                 unresolvedDependencies.map((dependency) => dependency.title).join(", ")
               : "";
-            for (const item of metadataItems) {
-              const metadata = element("div", "plan-item-meta");
-              const action = element("div", "plan-action");
-              action.append(
-                element("strong", "", item ? "Next for #" + item.number + ":" : "Next:"),
-                element("span", "", item?.nextAction ?? "No linked action"),
-              );
-              metadata.append(action);
-              nextActions.append(metadata);
+            const gateBlockers = step.gates.flatMap((gate) => {
+              const item = itemByNumber.get(gate.itemNumber);
+              const stageStatus = item?.stages?.[gate.stage];
+              if (!item || stageStatus === "done") return [];
+              if (gate.stage === "landing" && item.mergeRequest?.reasons?.length) {
+                return ["#" + item.number + " " + item.mergeRequest.reasons.join("; ")];
+              }
+              return [
+                "#" + gate.itemNumber + " " + gate.stage + " is " +
+                  statusLabel(stageStatus ?? "pending"),
+              ];
+            });
+            const status = element("div", "plan-node-status");
+            status.append(element(
+              "span",
+              "badge label-" + planStatusVariant(step.liveStatus),
+              statusLabel(step.liveStatus),
+            ));
+            if (step.liveStatus === "blocked") {
+              status.append(element(
+                "span",
+                "plan-blocked-reason",
+                dependencyBlocker || gateBlockers.join(" · ") || step.detail || "Action is blocked",
+              ));
             }
-            footer.append(nextActions);
-            const mergeGates = element("div", "");
+            node.append(status);
+            const stepCopy = element("div", "plan-step-copy");
+            stepCopy.append(element("h4", "plan-step-title", step.title));
+            if (step.detail) {
+              stepCopy.append(element("p", "plan-step-detail", step.detail));
+            }
+            node.append(stepCopy);
             if (linkedItems.length) {
-              const buttonGroups = element("div", "plan-button-groups");
               for (const item of linkedItems) {
-                const controls = createItemActions(
+                const linkedItem = element("section", "plan-linked-item");
+                const content = createItemCardContent(
                   item,
-                  linkedItems.length > 1,
                   "plan-" + step.id,
                   dependencyBlocker,
                 );
-                buttonGroups.append(controls.actions);
-                if (controls.gate) mergeGates.append(controls.gate);
+                linkedItem.append(content.body);
+                if (content.gate) linkedItem.append(content.gate);
+                node.append(linkedItem);
               }
-              footer.append(buttonGroups);
             }
-            node.append(footer);
-            if (mergeGates.childNodes.length) node.append(mergeGates);
             level.append(node);
           }
           container.append(level);
@@ -840,30 +881,66 @@ export function renderDashboardHtml() {
         return;
       }
       for (const entry of entries) {
-        const row = element("div", "report-row");
-        row.append(element("strong", "", entry[primaryKey] || "—"));
-        const details = element("div", "report-fields");
-        for (const [key, label] of fields) {
-          if (!entry[key]) continue;
-          const field = element("div", "report-field");
-          field.append(element("b", "", label + ": "), document.createTextNode(entry[key]));
-          details.append(field);
-        }
-        row.append(details);
-        root.append(row);
+        appendRecord(root, entry, primaryKey, fields);
       }
     }
 
-    function renderReport(report) {
+    function appendRecord(root, entry, primaryKey, fields) {
+      const row = element("div", "report-row");
+      row.append(element("strong", "", entry[primaryKey] || "—"));
+      const details = element("div", "report-fields");
+      for (const [key, label] of fields) {
+        if (!entry[key]) continue;
+        const field = element("div", "report-field");
+        field.append(element("b", "", label + ": "), document.createTextNode(entry[key]));
+        details.append(field);
+      }
+      row.append(details);
+      root.append(row);
+    }
+
+    function renderAdversarialReviews(reviews, errorMessage, staticReviews) {
+      const root = document.getElementById("reviews");
+      root.replaceChildren();
+      const liveNumbers = new Set((reviews ?? []).map((review) => review.prNumber));
+      const remainingStaticReviews = staticReviews.filter((review) => {
+        const numbers = [...String(review.item ?? "").matchAll(/#(\d+)/g)]
+          .map((match) => Number(match[1]));
+        return numbers.length === 0 || numbers.some((number) => !liveNumbers.has(number));
+      });
+      if (reviews?.length) {
+        for (const review of reviews) {
+          const row = element("div", "report-row");
+          row.append(element("strong", "", "PR #" + review.prNumber));
+          const details = element("div", "report-fields");
+          const reviewDetails = createAdversarialReview(review);
+          reviewDetails.open = true;
+          details.append(reviewDetails);
+          row.append(details);
+          root.append(row);
+        }
+      }
+      for (const review of remainingStaticReviews) {
+        appendRecord(
+          root,
+          review,
+          "item",
+          [["title", "Title"], ["decision", "Decision"], ["summary", "Assessment"]],
+        );
+      }
+      if (!reviews?.length && !remainingStaticReviews.length) {
+        renderEmpty(root, "No adversarial review summary is available.");
+      }
+      if (errorMessage) root.append(element("p", "session-progress-error", errorMessage));
+      document.getElementById("count-reviews").textContent = String(
+        (reviews?.length ?? 0) + remainingStaticReviews.length,
+      );
+    }
+
+    function renderReport(report, adversarialReviews, sessionDataError) {
       renderRecords("changes", report.changes, "change", [["items", "Items"]], "No change summary was supplied.");
       renderRecords("ownership", report.ownership, "item", [["assessment", "Assessment"]], "No ownership audit was supplied.");
-      renderRecords(
-        "reviews",
-        report.reviews,
-        "item",
-        [["title", "Title"], ["decision", "Decision"], ["summary", "Assessment"]],
-        "No adversarial review summary was supplied.",
-      );
+      renderAdversarialReviews(adversarialReviews, sessionDataError, report.reviews);
       renderRecords(
         "automation",
         report.automation,
@@ -877,7 +954,6 @@ export function renderDashboardHtml() {
           .reduce((total, lane) => total + lane.levels.flat().length, 0),
         changes: report.changes.length,
         ownership: report.ownership.length,
-        reviews: report.reviews.length,
         automation: report.automation.length,
       };
       for (const [name, count] of Object.entries(counts)) {
@@ -947,71 +1023,58 @@ export function renderDashboardHtml() {
 
     function createItemActions(
       item,
-      showItemNumber = false,
       idPrefix = "item",
       disabledReason = "",
     ) {
       const typeLabel = item.type === "pr" ? "Pull request" : "Issue";
-      const shortTypeLabel = item.type === "pr" ? "PR" : "Issue";
       const identity = typeLabel + " #" + item.number;
       const controlId = idPrefix + "-" + item.type + "-" + item.number;
       const actions = element("div", "actions");
       actions.setAttribute("role", "group");
       actions.setAttribute("aria-label", identity + " actions");
-      if (showItemNumber) {
-        actions.append(element(
-          "span",
-          "action-item-number",
-          shortTypeLabel + " #" + item.number,
-        ));
-      }
-      const next = element("button", "control", "Request next step");
-      next.id = controlId + "-next";
-      next.type = "button";
-      next.setAttribute("aria-label", "Request next step for " + identity);
-      next.disabled = Boolean(disabledReason);
-      if (disabledReason) next.title = disabledReason;
-      next.addEventListener("click", async () => {
-        next.disabled = true;
+      const prepareMerge = item.type === "pr" && item.mergeRequest.eligible;
+      const action = element(
+        "button",
+        prepareMerge ? "control primary" : "control",
+        prepareMerge ? "Prepare merge" : "Request next step",
+      );
+      action.id = controlId + (prepareMerge ? "-merge" : "-next");
+      action.type = "button";
+      action.setAttribute(
+        "aria-label",
+        (prepareMerge ? "Prepare merge for " : "Request next step for ") + identity,
+      );
+      action.disabled = Boolean(disabledReason);
+      action.title = disabledReason || (prepareMerge
+        ? "Request fresh merge verification in the item session"
+        : "");
+      action.addEventListener("click", async () => {
+        action.disabled = true;
         try {
-          const result = await post("/action", {
-            action: "request_next_action",
-            number: item.number,
-          });
-          showNotice("Routing request queued for " + result.sessionName + ".");
-        } catch (error) {
-          showNotice(error.message);
-        } finally {
-          next.disabled = false;
-        }
-      });
-      let merge = null;
-      if (item.type === "pr") {
-        merge = element("button", "control primary", "Prepare merge");
-        merge.id = controlId + "-merge";
-        merge.type = "button";
-        merge.setAttribute("aria-label", "Prepare merge for " + identity);
-        merge.disabled = Boolean(disabledReason) || !item.mergeRequest.eligible;
-        merge.title = disabledReason || (item.mergeRequest.eligible
-          ? "Request fresh merge verification in the item session"
-          : item.mergeRequest.reasons.join("; "));
-        merge.addEventListener("click", async () => {
-          merge.disabled = true;
-          try {
-            const result = await post("/action", {
+          let result;
+          if (prepareMerge) {
+            result = await post("/action", {
               action: "request_merge",
               number: item.number,
               headSha: item.live.headRefOid,
             });
-            showNotice("Routing request queued for " + result.sessionName + ".");
-          } catch (error) {
-            showNotice(error.message);
-            merge.disabled = false;
+          } else {
+            result = await post("/action", {
+              action: "request_next_action",
+              number: item.number,
+            });
           }
-        });
-      }
-      actions.append(next);
-      if (merge) actions.append(merge);
+          showNotice("Routing request queued for " + result.sessionName + ".");
+        } catch (error) {
+          showNotice(error.message);
+          action.disabled = false;
+        } finally {
+          if (!prepareMerge) {
+            action.disabled = false;
+          }
+        }
+      });
+      actions.append(action);
       let gate = null;
       const reasons = [
         ...(disabledReason ? [disabledReason] : []),
@@ -1021,8 +1084,7 @@ export function renderDashboardHtml() {
       ];
       if (reasons.length) {
         const reasonId = controlId + "-action-reasons";
-        next.setAttribute("aria-describedby", reasonId);
-        if (merge) merge.setAttribute("aria-describedby", reasonId);
+        action.setAttribute("aria-describedby", reasonId);
         gate = element("details", "gate");
         gate.id = reasonId;
         gate.append(
@@ -1033,6 +1095,143 @@ export function renderDashboardHtml() {
         );
       }
       return { actions, gate };
+    }
+
+    function githubLabelStyle(color) {
+      if (!/^[0-9a-f]{6}$/i.test(color || "")) return null;
+      const red = Number.parseInt(color.slice(0, 2), 16);
+      const green = Number.parseInt(color.slice(2, 4), 16);
+      const blue = Number.parseInt(color.slice(4, 6), 16);
+      return {
+        background: "#" + color,
+        foreground: ((red * 299 + green * 587 + blue * 114) / 1000) >= 140
+          ? "#1f2328"
+          : "#ffffff",
+      };
+    }
+
+    function createGitHubLabels(item) {
+      const labels = Array.isArray(item.live?.labels)
+        ? item.live.labels.filter((label) => label?.name)
+        : [];
+      if (!labels.length) return null;
+
+      const root = element("div", "github-labels");
+      root.setAttribute("aria-label", "GitHub labels");
+      for (const label of labels) {
+        const chip = element("span", "badge github-label label-neutral", String(label.name));
+        const style = githubLabelStyle(label.color);
+        if (style) {
+          chip.style.backgroundColor = style.background;
+          chip.style.borderColor = style.background;
+          chip.style.color = style.foreground;
+        }
+        if (label.description) chip.title = String(label.description);
+        root.append(chip);
+      }
+      return root;
+    }
+
+    function findingSeverity(finding) {
+      const ranks = { CRITICAL: 4, HIGH: 3, MEDIUM: 2, LOW: 1 };
+      return [finding.opusSeverity, finding.codexSeverity]
+        .filter((severity) => ranks[severity])
+        .sort((left, right) => ranks[right] - ranks[left])[0] || "UNRATED";
+    }
+
+    function createAdversarialReview(review) {
+      const stale = review.headMatches === false;
+      const details = element("details", "adversarial-review");
+      const counts = review.acceptedCount + " accepted · " +
+        review.rejectedCount + " rejected";
+      details.append(element(
+        "summary",
+        stale ? "review-head-stale" : "",
+        "Adversarial review: " + (stale ? "stale head · " : "") + counts,
+      ));
+      const head = review.reviewedHeadSha
+        ? review.reviewedHeadSha.slice(0, 12)
+        : "not recorded";
+      details.append(element(
+        "p",
+        "review-summary",
+        review.status + " · reviewed " + head + " · Opus " +
+          review.opusStatus + " · Codex " + review.codexStatus,
+      ));
+      if (review.summary) details.append(element("p", "review-summary", review.summary));
+      if (review.findings?.length) {
+        const list = element("div", "review-finding-list");
+        for (const finding of review.findings) {
+          const accepted = finding.disposition.startsWith("accepted");
+          const row = element("div", "review-finding");
+          row.append(
+            element(
+              "span",
+              "review-finding-status review-finding-" + (accepted ? "accepted" : "rejected"),
+              accepted ? "Accepted" : "Rejected",
+            ),
+            element(
+              "span",
+              "",
+              findingSeverity(finding) + " · " + finding.consensus +
+                " consensus · " + finding.fixConfidence + "% fix confidence · " +
+                finding.issue,
+            ),
+          );
+          list.append(row);
+        }
+        details.append(list);
+      }
+      return details;
+    }
+
+    function createItemCardContent(item, idPrefix = "item", disabledReason = "") {
+      const body = document.createDocumentFragment();
+      const itemReadiness = readiness(item);
+      const head = element("div", "item-head");
+      const headingMain = element("div", "item-heading-main");
+      const link = element("a", "item-title", "#" + item.number + " " + item.title);
+      link.href = item.url;
+      link.target = "_blank";
+      link.rel = "noreferrer";
+      headingMain.append(
+        itemIcon(item.type),
+        element("span", "badge label-" + itemReadiness.variant, itemReadiness.label),
+        link,
+      );
+      head.append(
+        headingMain,
+        element("span", "item-decision", itemDecisionLabel(item)),
+      );
+      body.append(head);
+
+      const meta = element("div", "item-meta muted");
+      const author = item.live?.author?.login;
+      meta.append(
+        element("span", "", author ? "Author " + author : "Author unavailable"),
+        element("span", "", "Triage owner " + item.owner),
+        element("span", "", (item.risk || "Unknown") + " risk"),
+        element("span", "", item.live ? String(item.live.mergeStateStatus || item.live.state) : "Live unavailable"),
+      );
+      if (item.checks) {
+        meta.append(element("span", "", item.checks.passed + " passed · " +
+          item.checks.failed + " failed · " + item.checks.pending + " pending"));
+      }
+      body.append(meta);
+      const githubLabels = createGitHubLabels(item);
+      if (githubLabels) body.append(githubLabels);
+      if (item.adversarialReview) body.append(createAdversarialReview(item.adversarialReview));
+      body.append(element("p", "item-body", item.nextAction));
+
+      const footer = element("div", "item-footer");
+      const stages = element("div", "stages");
+      for (const [name, value] of Object.entries(item.stages)) {
+        stages.append(element("span", "stage status-" + value, name + " " + statusLabel(value)));
+      }
+      const controls = createItemActions(item, idPrefix, disabledReason);
+      footer.append(stages, controls.actions);
+      body.append(footer);
+      return { body, gate: controls.gate };
     }
 
     function renderItems(items) {
@@ -1047,52 +1246,38 @@ export function renderDashboardHtml() {
       for (const item of visible) {
         const itemReadiness = readiness(item);
         const row = element("article", "item status-" + itemReadiness.variant);
-        const head = element("div", "item-head");
-        const headingMain = element("div", "item-heading-main");
-        const link = element("a", "item-title", "#" + item.number + " " + item.title);
-        link.href = item.url;
-        link.target = "_blank";
-        link.rel = "noreferrer";
-        headingMain.append(
-          itemIcon(item.type),
-          element("span", "badge label-" + itemReadiness.variant, itemReadiness.label),
-          link,
-        );
-        head.append(
-          headingMain,
-          element("span", "item-decision", item.decision + " · " + item.takeConfidence + "% take"),
-        );
-        row.append(head);
-
-        const meta = element("div", "item-meta muted");
-        meta.append(
-          element("span", "", item.owner),
-          element("span", "", (item.risk || "Unknown") + " risk"),
-          element("span", "", item.live ? String(item.live.mergeStateStatus || item.live.state) : "Live unavailable"),
-        );
-        if (item.checks) {
-          meta.append(element("span", "", item.checks.passed + " passed · " +
-            item.checks.failed + " failed · " + item.checks.pending + " pending"));
-        }
-        row.append(meta, element("p", "item-body", item.nextAction));
-
-        const footer = element("div", "item-footer");
-        const stages = element("div", "stages");
-        for (const [name, value] of Object.entries(item.stages)) {
-          stages.append(element("span", "stage status-" + value, name + " " + statusLabel(value)));
-        }
-
-        const controls = createItemActions(
+        const content = createItemCardContent(
           item,
-          false,
           "item",
           itemDependencyBlocker(state, item.number),
         );
-        footer.append(stages, controls.actions);
-        row.append(footer);
-        if (controls.gate) row.append(controls.gate);
+        row.append(content.body);
+        if (content.gate) row.append(content.gate);
         root.append(row);
       }
+    }
+
+    function renderSessionTasks(tasks, errorMessage) {
+      const root = document.getElementById("session-tasks");
+      root.replaceChildren();
+      if (!tasks?.length) {
+        root.append(element("p", "muted", "No live session tasks."));
+      } else {
+        for (const task of tasks) {
+          const row = element("div", "session-task session-task-" + task.status);
+          const icon = element(
+            "span",
+            "session-task-icon",
+            task.status === "done" ? "✓" : task.status === "blocked" ? "!" : "",
+          );
+          icon.setAttribute("aria-hidden", "true");
+          row.append(icon, element("span", "session-task-title", task.title));
+          root.append(row);
+        }
+      }
+      const error = document.getElementById("session-tasks-error");
+      error.textContent = errorMessage || "";
+      error.classList.toggle("hidden", !errorMessage);
     }
 
     function render(nextState) {
@@ -1115,9 +1300,10 @@ export function renderDashboardHtml() {
         String(state.items.filter((item) => item.type === "issue").length);
       renderPlan(state.plan, state.report.dayPlan, state.report.executiveQueue, state.items);
       if (planFocusId) restorePlanFocus(planFocusId);
-      renderReport(state.report);
+      renderReport(state.report, state.adversarialReviews, state.sessionDataError);
       renderVerdictOptions(state.items);
       renderItems(state.items);
+      renderSessionTasks(state.sessionTasks, state.sessionDataError);
     }
 
     async function loadState() {
@@ -1150,7 +1336,8 @@ export function renderDashboardHtml() {
       });
     }
     document.getElementById("refresh").addEventListener("click", async (event) => {
-      event.currentTarget.disabled = true;
+      const refreshButton = event.currentTarget;
+      refreshButton.disabled = true;
       try {
         const result = await post("/refresh", {});
         render(result.state);
@@ -1158,7 +1345,7 @@ export function renderDashboardHtml() {
       } catch (error) {
         showNotice(error.message);
       } finally {
-        event.currentTarget.disabled = false;
+        refreshButton.disabled = false;
       }
     });
 
