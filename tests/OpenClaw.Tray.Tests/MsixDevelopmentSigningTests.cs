@@ -266,6 +266,36 @@ public sealed class MsixDevelopmentSigningTests
     }
 
     [Fact]
+    public void SettingsSaveAutoStart_UsesSharedGateAndLivePreference()
+    {
+        var root = TestRepositoryPaths.GetRepositoryRoot();
+        var app = File.ReadAllText(Path.Combine(
+            root, "src", "OpenClaw.Tray.WinUI", "App.xaml.cs"));
+        var effects = File.ReadAllText(Path.Combine(
+            root, "src", "OpenClaw.Tray.WinUI", "App.SettingsChangeCoordinator.cs"));
+
+        // Keep the WinUI adapter on the behaviorally tested path, not the saved snapshot.
+        Assert.Contains("AutoStartSettingsApplier.ApplyLatestAsync(", effects);
+        Assert.Contains("_autoStartMutationGate,", effects);
+        Assert.Contains("() => (_settings ?? throw new InvalidOperationException(", effects);
+        Assert.Contains(")).AutoStart,", effects);
+        Assert.Contains("AutoStartManager.SetAutoStartAsync)", effects);
+        Assert.DoesNotContain("settings.AutoStart", effects);
+        Assert.DoesNotContain("AutoStartManager.SetAutoStartAsync(", effects);
+        Assert.Contains("ObserveBackgroundFault(", effects);
+
+        var toggle = app[app.IndexOf("private async Task<bool> ApplyAutoStartCore(", StringComparison.Ordinal)..
+            app.IndexOf("private async Task ReconcileAutoStartOnStartupAsync()", StringComparison.Ordinal)];
+        var reconcile = app[app.IndexOf("private async Task ReconcileAutoStartOnStartupAsync()", StringComparison.Ordinal)..
+            app.IndexOf("private void OpenLogFile()", StringComparison.Ordinal)];
+        foreach (var mutation in new[] { toggle, reconcile })
+        {
+            Assert.Contains("await _autoStartMutationGate.WaitAsync();", mutation);
+            Assert.Contains("_autoStartMutationGate.Release();", mutation);
+        }
+    }
+
+    [Fact]
     public void StoreMsixPackaging_RefusesDebugConfigurations()
     {
         var root = TestRepositoryPaths.GetRepositoryRoot();

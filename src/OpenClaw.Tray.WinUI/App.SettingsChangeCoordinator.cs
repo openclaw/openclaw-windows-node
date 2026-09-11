@@ -132,7 +132,11 @@ public partial class App
     private void ApplyAutoStartAndTelemetry(SettingsData settings)
     {
         ObserveBackgroundFault(
-            AutoStartManager.SetAutoStartAsync(settings.AutoStart),
+            AutoStartSettingsApplier.ApplyLatestAsync(
+                _autoStartMutationGate,
+                () => (_settings ?? throw new InvalidOperationException(
+                    "Settings are unavailable while applying auto-start.")).AutoStart,
+                AutoStartManager.SetAutoStartAsync),
             "[App] Failed to apply auto-start setting");
         ApplyOpenTelemetryEndpointSettings();
     }
