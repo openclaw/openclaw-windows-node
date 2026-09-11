@@ -398,6 +398,9 @@
   <data name="Update_Message_Skipped_Dev" xml:space="preserve">
     <value>A verificação de atualizações está desativada em builds de desenvolvimento.</value>
   </data>
+  <data name="Update_Message_Skipped_ExtendedStable" xml:space="preserve">
+    <value>O Gateway conectado usa extended-stable, portanto esta atualização comum do Windows foi adiada.</value>
+  </data>
   <data name="Update_OK" xml:space="preserve">
     <value>OK</value>
   </data>

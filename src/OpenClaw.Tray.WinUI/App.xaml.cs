@@ -636,6 +636,7 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands, IPer
             AppUpdater,
             _appState,
             _settings,
+            () => _connectionManager?.OperatorClient,
             () => _windowManager?.DialogXamlRoot,
             refreshStatus: UpdateStatusDetailWindow,
             exit: Exit);
@@ -693,19 +694,6 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands, IPer
         // in-progress download/extraction. We still control shutdown
         // explicitly via Application.Exit().
         DispatcherShutdownMode = DispatcherShutdownMode.OnExplicitShutdown;
-
-        // Check for updates before launching. Skip in test instances — no UI dialogs,
-        // no network calls, no startup delay.
-        if (DataDirOverride is null &&
-            Environment.GetEnvironmentVariable("OPENCLAW_SKIP_UPDATE_CHECK") != "1")
-        {
-            var shouldLaunch = await _updateCoordinator.CheckForUpdatesAsync();
-            if (!shouldLaunch)
-            {
-                Exit();
-                return;
-            }
-        }
 
         // Register toast activation handler
         ToastNotificationManagerCompat.OnActivated += OnToastActivated;
@@ -925,6 +913,19 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands, IPer
         _managedLocalAutoRepairMonitor.Start();
 
         InitializeGatewayClient();
+
+        // Resolve the existing connection-manager-owned client before checking
+        // whether its authenticated Gateway channel suppresses an ordinary update.
+        if (DataDirOverride is null &&
+            Environment.GetEnvironmentVariable("OPENCLAW_SKIP_UPDATE_CHECK") != "1")
+        {
+            var shouldLaunch = await _updateCoordinator.CheckForUpdatesAsync();
+            if (!shouldLaunch)
+            {
+                Exit();
+                return;
+            }
+        }
 
         // Pre-warm chat window (WebView2 init takes 1-3s, do it now so left-click is instant)
         if (_settings != null &&
