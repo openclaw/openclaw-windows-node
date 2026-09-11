@@ -822,8 +822,22 @@ public sealed class StartLocalAiRuntimeStep : SetupStep
         }
     }
 
-    public override Task RollbackAsync(SetupContext ctx, CancellationToken ct) =>
-        DisposeRuntimeAsync(ctx).AsTask();
+    public override Task RollbackAsync(SetupContext ctx, CancellationToken ct)
+    {
+        // During a recovery provider transition, ConfigureLocalAiGatewayStep's rollback (which
+        // runs before this step's rollback) sets LocalAiRecoveryReceiptRollbackAllowed only when
+        // it confirmed the Gateway no longer routes to this runtime's endpoint. If that could not
+        // be confirmed, the Gateway may still be pointed at this runtime; disposing it here would
+        // orphan the active route instead of the intended, coordinated rollback.
+        if (ctx.LocalAiRecoveryProviderTransition && !ctx.LocalAiRecoveryReceiptRollbackAllowed)
+        {
+            ctx.Logger.Warn(
+                "Keeping the replacement llama-server router running because the Gateway configuration " +
+                "rollback could not confirm it no longer routes to this endpoint.");
+            return Task.CompletedTask;
+        }
+        return DisposeRuntimeAsync(ctx).AsTask();
+    }
 
     private static ILocalAiRuntime CreateRuntime(SetupContext ctx)
     {

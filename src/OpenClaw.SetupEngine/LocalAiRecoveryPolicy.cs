@@ -160,15 +160,20 @@ public sealed class ValidateLocalAiRecoveryGatewayStep : SetupStep
 public sealed class PreserveLocalAiRecoveryGatewayStep : SetupStep
 {
     private readonly Func<SetupContext, CancellationToken, Task<StepResult>> _restart;
+    private readonly Func<LocalAiResolvedInstall, CancellationToken, Task<bool>> _probeOriginalEndpoint;
 
     public PreserveLocalAiRecoveryGatewayStep()
-        : this(StartGatewayStep.RestartAndWaitForHealthAsync)
+        : this(StartGatewayStep.RestartAndWaitForHealthAsync, ProbeOriginalEndpointAsync)
     {
     }
 
     internal PreserveLocalAiRecoveryGatewayStep(
-        Func<SetupContext, CancellationToken, Task<StepResult>> restart) =>
+        Func<SetupContext, CancellationToken, Task<StepResult>> restart,
+        Func<LocalAiResolvedInstall, CancellationToken, Task<bool>>? probeOriginalEndpoint = null)
+    {
         _restart = restart ?? throw new ArgumentNullException(nameof(restart));
+        _probeOriginalEndpoint = probeOriginalEndpoint ?? ProbeOriginalEndpointAsync;
+    }
 
     public override string Id => "preserve-local-ai-recovery-gateway";
     public override string DisplayName => "Preserve gateway during Local AI recovery";
@@ -191,6 +196,12 @@ public sealed class PreserveLocalAiRecoveryGatewayStep : SetupStep
             {
                 ctx.Logger.Warn(
                     "The previous Local AI endpoint receipt was not restored because gateway provider rollback did not complete.");
+            }
+            else if (!await _probeOriginalEndpoint(originalInstall, ct).ConfigureAwait(false))
+            {
+                ctx.Logger.Warn(
+                    "The previous Local AI endpoint could not be verified as healthy; preserving the replacement " +
+                    "receipt instead of restoring a receipt for an endpoint that is not confirmed reachable.");
             }
             else
             {
@@ -227,5 +238,26 @@ public sealed class PreserveLocalAiRecoveryGatewayStep : SetupStep
                 "The previous Local AI endpoint receipt could not be restored.",
                 receiptError);
         }
+    }
+
+    /// <summary>
+    /// Confirms the original (pre-recovery) llama-server endpoint is actually alive before the
+    /// Gateway is pointed back at it. A stale manifest receipt alone cannot tell us whether the
+    /// original process is still running.
+    /// </summary>
+    private static async Task<bool> ProbeOriginalEndpointAsync(
+        LocalAiResolvedInstall original,
+        CancellationToken ct)
+    {
+        if (original.Endpoint is null)
+            return true;
+
+        using var client = new LlamaServerClient();
+        LlamaServerRouterProbeResult probe = await client.ProbeManagedModelAsync(
+            original.Endpoint,
+            original.Manifest.ModelAlias,
+            original.ModelPath,
+            ct).ConfigureAwait(false);
+        return probe.IsHealthy;
     }
 }

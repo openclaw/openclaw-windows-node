@@ -254,8 +254,9 @@ public sealed class LocalAiGatewayUninstallTests
 
         StepResult result = await step.ExecuteAsync(context, CancellationToken.None);
         await step.RollbackAsync(context, CancellationToken.None);
-        await new PreserveLocalAiRecoveryGatewayStep((_, _) =>
-                Task.FromResult(StepResult.Ok("not needed")))
+        await new PreserveLocalAiRecoveryGatewayStep(
+                (_, _) => Task.FromResult(StepResult.Ok("not needed")),
+                (_, _) => Task.FromResult(true))
             .RollbackAsync(context, CancellationToken.None);
 
         Assert.Equal(StepOutcome.Success, result.Outcome);
@@ -289,8 +290,9 @@ public sealed class LocalAiGatewayUninstallTests
 
         StepResult result = await step.ExecuteAsync(context, CancellationToken.None);
         await step.RollbackAsync(context, CancellationToken.None);
-        await new PreserveLocalAiRecoveryGatewayStep((_, _) =>
-                Task.FromResult(StepResult.Ok("not needed")))
+        await new PreserveLocalAiRecoveryGatewayStep(
+                (_, _) => Task.FromResult(StepResult.Ok("not needed")),
+                (_, _) => Task.FromResult(true))
             .RollbackAsync(context, CancellationToken.None);
 
         Assert.Equal(StepOutcome.Success, result.Outcome);
@@ -326,8 +328,9 @@ public sealed class LocalAiGatewayUninstallTests
 
         StepResult result = await step.ExecuteAsync(context, CancellationToken.None);
         await step.RollbackAsync(context, CancellationToken.None);
-        await new PreserveLocalAiRecoveryGatewayStep((_, _) =>
-                Task.FromResult(StepResult.Ok("not needed")))
+        await new PreserveLocalAiRecoveryGatewayStep(
+                (_, _) => Task.FromResult(StepResult.Ok("not needed")),
+                (_, _) => Task.FromResult(true))
             .RollbackAsync(context, CancellationToken.None);
 
         Assert.Equal(StepOutcome.Failed, result.Outcome);
@@ -363,8 +366,9 @@ public sealed class LocalAiGatewayUninstallTests
             ProviderJson: null,
             PrimaryModelExisted: true,
             PrimaryModelJson: JsonSerializer.Serialize("openai/gpt-5"));
-        var step = new PreserveLocalAiRecoveryGatewayStep((_, _) =>
-            Task.FromResult(StepResult.Ok("not needed")));
+        var step = new PreserveLocalAiRecoveryGatewayStep(
+            (_, _) => Task.FromResult(StepResult.Ok("not needed")),
+            (_, _) => Task.FromResult(true));
 
         await step.RollbackAsync(context, CancellationToken.None);
 
@@ -401,8 +405,9 @@ public sealed class LocalAiGatewayUninstallTests
         StepResult first = await step.ExecuteAsync(context, CancellationToken.None);
         StepResult second = await step.ExecuteAsync(context, CancellationToken.None);
         await step.RollbackAsync(context, CancellationToken.None);
-        await new PreserveLocalAiRecoveryGatewayStep((_, _) =>
-                Task.FromResult(StepResult.Ok("not needed")))
+        await new PreserveLocalAiRecoveryGatewayStep(
+                (_, _) => Task.FromResult(StepResult.Ok("not needed")),
+                (_, _) => Task.FromResult(true))
             .RollbackAsync(context, CancellationToken.None);
 
         Assert.Equal(StepOutcome.Failed, first.Outcome);
@@ -486,8 +491,9 @@ public sealed class LocalAiGatewayUninstallTests
         commands.LoseRestoreAcknowledgementOnce = true;
         var pipeline = new SetupPipeline(
         [
-            new PreserveLocalAiRecoveryGatewayStep((_, _) =>
-                Task.FromResult(StepResult.Ok("not needed"))),
+            new PreserveLocalAiRecoveryGatewayStep(
+                (_, _) => Task.FromResult(StepResult.Ok("not needed")),
+                (_, _) => Task.FromResult(true)),
             new DelegatingRollbackStep("configured", configure.RollbackAsync),
             new DelegatingRollbackStep(
                 "fail",
