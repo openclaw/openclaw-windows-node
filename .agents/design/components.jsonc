@@ -162,6 +162,7 @@
       "root": {
         "id": "composer-picker-root",
         "el": "button",
+        "class": "ds-btn",
         "attrs": {
           "type": "button",
           "role": "combobox",
@@ -357,6 +358,7 @@
                   {
                     "id": "chat-bubble-copy",
                     "el": "button",
+                    "class": "ds-btn",
                     "attrs": {
                       "type": "button",
                       "title": "Copy",
@@ -414,6 +416,7 @@
                   {
                     "id": "chat-bubble-readaloud",
                     "el": "button",
+                    "class": "ds-btn",
                     "attrs": {
                       "type": "button",
                       "title": "Read aloud",
@@ -536,6 +539,7 @@
                   {
                     "id": "chat-composer-add",
                     "el": "button",
+                    "class": "ds-btn",
                     "attrs": {
                       "type": "button",
                       "title": "Add context",
@@ -614,6 +618,7 @@
                   {
                     "id": "chat-composer-mic",
                     "el": "button",
+                    "class": "ds-btn",
                     "attrs": {
                       "type": "button",
                       "title": "Dictate",
@@ -671,6 +676,7 @@
                   {
                     "id": "chat-composer-speaker",
                     "el": "button",
+                    "class": "ds-btn",
                     "attrs": {
                       "type": "button",
                       "title": "Read responses aloud",
@@ -724,6 +730,7 @@
                   {
                     "id": "chat-composer-settings",
                     "el": "button",
+                    "class": "ds-btn",
                     "attrs": {
                       "type": "button",
                       "title": "Chat settings",
@@ -779,6 +786,7 @@
                   {
                     "id": "chat-composer-send",
                     "el": "button",
+                    "class": "ds-btn",
                     "attrs": {
                       "type": "button",
                       "title": "Send",
@@ -908,6 +916,7 @@
                       {
                         "id": "chat-thread-user-copy",
                         "el": "button",
+                        "class": "ds-btn",
                         "attrs": {
                           "type": "button",
                           "title": "Copy",
