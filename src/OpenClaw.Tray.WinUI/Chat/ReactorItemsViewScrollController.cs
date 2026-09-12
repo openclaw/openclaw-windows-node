@@ -3,6 +3,7 @@ using Microsoft.UI.Reactor.Core;
 using Microsoft.UI.Reactor.Core.V1Protocol;
 using Microsoft.UI.Reactor.Input;
 using Microsoft.UI.Xaml;
+using Microsoft.UI.Xaml.Controls;
 using System.Runtime.CompilerServices;
 using WinUIAnnotatedScrollBar = Microsoft.UI.Xaml.Controls.AnnotatedScrollBar;
 using WinUIItemsView = Microsoft.UI.Xaml.Controls.ItemsView;
@@ -253,7 +254,7 @@ file sealed class InitialTailPositioner : IDisposable
 
     private bool StartTailRequest(TailNavigationRequest request)
     {
-        if (itemsView.ScrollView is not { IsLoaded: true })
+        if (itemsView.ScrollView is not { IsLoaded: true } scrollView)
             return false;
 
         if (!TailNavigationPolicy.CanExecute(
@@ -266,11 +267,12 @@ file sealed class InitialTailPositioner : IDisposable
         }
 
         _following = true;
-        itemsView.StartBringItemIntoView(request.Index, new BringIntoViewOptions
-        {
-            AnimationDesired = false,
-            VerticalAlignmentRatio = 1.0,
-        });
+        // Work around microsoft/microsoft-ui-xaml#11865 without retaining a row
+        // as a bring-into-view anchor across history replacement.
+        scrollView.ScrollTo(
+            scrollView.HorizontalOffset,
+            scrollView.ScrollableHeight,
+            new ScrollingScrollOptions(ScrollingAnimationMode.Disabled, ScrollingSnapPointsMode.Ignore));
         return true;
     }
 
