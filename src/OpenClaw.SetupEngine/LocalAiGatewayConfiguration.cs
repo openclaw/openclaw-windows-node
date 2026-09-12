@@ -113,38 +113,67 @@ public sealed class ConfigureLocalAiGatewayStep : SetupStep
         bool retainedManagedPrimary = !prior.ProviderExisted &&
             prior.PrimaryModelExisted &&
             JsonEquals(prior.PrimaryModelJson!, expectedPrimary);
+        LocalAiResolvedInstall? recoveryInstall = ctx.LocalAiRecoveryOriginalInstall;
+        bool retainedRecoveryPrimary = !retainedManagedPrimary &&
+            !prior.ProviderExisted &&
+            prior.PrimaryModelExisted &&
+            recoveryInstall is not null &&
+            JsonEquals(
+                prior.PrimaryModelJson!,
+                JsonSerializer.Serialize(LocalAiGatewayProviderDefinition.BuildPrimaryModel(recoveryInstall)));
         string? fallbackModel;
         bool recoveryProviderTransition = false;
         if (prior.ProviderExisted)
         {
             bool matchesCurrentInstall = install.Endpoint is not null &&
                 LocalAiGatewayProviderDefinition.MatchesProviderJson(prior.ProviderJson!, install);
+            LocalAiResolvedInstall? pendingRoute = MatchPendingRoute(
+                ctx.LocalAiRecoveryPendingInstall,
+                prior.ProviderJson!);
+            bool matchesPendingInstall = !matchesCurrentInstall &&
+                pendingRoute is not null && prior.PrimaryModelExisted &&
+                JsonEquals(prior.PrimaryModelJson!, expectedPrimary);
             bool matchesRecoveryInstall = false;
-            if (!matchesCurrentInstall &&
+            if (!matchesCurrentInstall && !matchesPendingInstall &&
                 ctx.LocalAiRecoveryOriginalInstall is { Endpoint: not null } originalInstall)
             {
                 string originalPrimary = JsonSerializer.Serialize(
                     LocalAiGatewayProviderDefinition.BuildPrimaryModel(originalInstall));
                 matchesRecoveryInstall =
+                    prior.PrimaryModelExisted &&
                     LocalAiGatewayProviderDefinition.MatchesProviderJson(
                         prior.ProviderJson!,
                         originalInstall) &&
-                    JsonEquals(originalPrimary, expectedPrimary);
+                    JsonEquals(prior.PrimaryModelJson!, originalPrimary);
             }
 
-            if ((!matchesCurrentInstall && !matchesRecoveryInstall) ||
+            if ((!matchesCurrentInstall && !matchesPendingInstall && !matchesRecoveryInstall) ||
                 !prior.PrimaryModelExisted ||
-                !JsonEquals(prior.PrimaryModelJson!, expectedPrimary))
+                (matchesCurrentInstall && !JsonEquals(prior.PrimaryModelJson!, expectedPrimary)))
             {
                 return StepResult.Fail(
                     "The existing llamacpp gateway route is not the exact companion-managed configuration; preserving it.");
             }
-            recoveryProviderTransition = matchesRecoveryInstall;
+            if (matchesCurrentInstall && install.Manifest.ReplacedManifest is not null)
+            {
+                // A previous process already published the replacement. Rollback must
+                // preserve that live route instead of reconstructing the older one.
+                ctx.LocalAiRecoveryOriginalInstall = null;
+                ctx.LocalAiRecoveryProviderTransition = true;
+                ctx.LocalAiRecoveryReceiptRollbackAllowed = false;
+            }
+            else if (matchesPendingInstall)
+            {
+                ctx.LocalAiRecoveryOriginalInstall = pendingRoute;
+            }
+            recoveryProviderTransition = matchesRecoveryInstall || matchesPendingInstall;
             fallbackModel = install.Manifest.GatewayFallbackModel;
         }
-        else if (retainedManagedPrimary)
+        else if (retainedManagedPrimary || retainedRecoveryPrimary)
         {
-            fallbackModel = install.Manifest.GatewayFallbackModel;
+            fallbackModel = retainedRecoveryPrimary
+                ? recoveryInstall!.Manifest.GatewayFallbackModel
+                : install.Manifest.GatewayFallbackModel;
         }
         else if (prior.PrimaryModelExisted)
         {
@@ -420,6 +449,47 @@ public sealed class ConfigureLocalAiGatewayStep : SetupStep
         LocalAiGatewayPriorState current = ParseSnapshot(currentResult.Stdout);
         if (!current.ProviderExisted && !current.PrimaryModelExisted)
             return;
+
+        var store = new LocalAiManifestStore(new LocalAiPaths(ctx.LocalDataDir));
+        foreach (string previousEndpoint in install.Manifest.PreviousEndpoints)
+        {
+            LocalAiResolvedInstall previous = store.ResolveAndValidate(install.Manifest with
+            {
+                Endpoint = previousEndpoint,
+            });
+            if (current.ProviderExisted && current.PrimaryModelExisted &&
+                LocalAiGatewayProviderDefinition.MatchesProviderJson(current.ProviderJson!, previous) &&
+                JsonEquals(
+                    current.PrimaryModelJson!,
+                    JsonSerializer.Serialize(LocalAiGatewayProviderDefinition.BuildPrimaryModel(previous))))
+            {
+                install = previous;
+                break;
+            }
+        }
+
+        if (install.Manifest.ReplacedManifest is { } replacedManifest)
+        {
+            LocalAiResolvedInstall replaced = store.ResolveAndValidate(replacedManifest);
+            bool previousProvider = current.ProviderExisted &&
+                replaced.Endpoint is not null &&
+                LocalAiGatewayProviderDefinition.MatchesProviderJson(current.ProviderJson!, replaced);
+            bool previousPrimary = current.PrimaryModelExisted &&
+                JsonEquals(
+                    current.PrimaryModelJson!,
+                    JsonSerializer.Serialize(LocalAiGatewayProviderDefinition.BuildPrimaryModel(replaced)));
+            if (previousProvider || previousPrimary)
+            {
+                if ((current.ProviderExisted && !previousProvider) ||
+                    (current.PrimaryModelExisted && !previousPrimary))
+                {
+                    throw new InvalidDataException(
+                        "Local AI gateway settings contain a mixed model replacement route; preserving them.");
+                }
+                install = replaced;
+            }
+        }
+
         if (install.Endpoint is null)
         {
             throw new InvalidDataException(
@@ -603,6 +673,26 @@ public sealed class ConfigureLocalAiGatewayStep : SetupStep
     {
         using JsonDocument document = JsonDocument.Parse(batchJson);
         return document.RootElement[index].GetProperty("value").GetRawText();
+    }
+
+    private static LocalAiResolvedInstall? MatchPendingRoute(
+        LocalAiResolvedInstall? pending,
+        string providerJson)
+    {
+        if (pending?.Endpoint is not null &&
+            LocalAiGatewayProviderDefinition.MatchesProviderJson(providerJson, pending))
+            return pending;
+        foreach (string endpoint in pending?.Manifest.PreviousEndpoints ?? [])
+        {
+            LocalAiResolvedInstall previous = pending! with
+            {
+                Manifest = pending.Manifest with { Endpoint = endpoint },
+                Endpoint = new Uri(endpoint),
+            };
+            if (LocalAiGatewayProviderDefinition.MatchesProviderJson(providerJson, previous))
+                return previous;
+        }
+        return null;
     }
 
     private static bool JsonEquals(string left, string right)

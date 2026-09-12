@@ -283,7 +283,10 @@ public sealed class ReconcileLocalAiInstallationStep : SetupStep
                 (result.OriginalInstall ?? result.ResolvedInstall) is { } originalInstall)
             {
                 ctx.LocalAiRecoveryOriginalInstall = originalInstall;
-                ctx.LocalAiRecoveryReceiptRollbackAllowed = true;
+                ctx.LocalAiRecoveryPendingInstall = result.PendingReplacement;
+                bool pendingReplacement = result.PendingReplacement is not null;
+                ctx.LocalAiRecoveryProviderTransition = pendingReplacement;
+                ctx.LocalAiRecoveryReceiptRollbackAllowed = !pendingReplacement;
             }
             if (!result.Reused)
             {
@@ -503,6 +506,11 @@ public sealed class AcquireLocalAiModelStep : SetupStep
     public override Task RollbackAsync(SetupContext ctx, CancellationToken ct)
     {
         ct.ThrowIfCancellationRequested();
+        if (ctx.LocalAiRecoveryProviderTransition &&
+            !ctx.LocalAiRecoveryReceiptRollbackAllowed)
+        {
+            return Task.CompletedTask;
+        }
         if (ctx.LocalAiModelInstall is { } install)
         {
             _acquirer.RemoveInstalledModel(ctx.LocalDataDir, install);
@@ -635,6 +643,10 @@ public sealed class PersistLocalAiManifestStep : SetupStep
         };
         if (ctx.LocalAiRecoveryOriginalInstall is { } originalInstall)
         {
+            bool replacingModel = !string.Equals(
+                originalInstall.Manifest.ModelCatalogId,
+                manifest.ModelCatalogId,
+                StringComparison.Ordinal);
             manifest = originalInstall.Manifest with
             {
                 SchemaVersion = manifest.SchemaVersion,
@@ -658,6 +670,15 @@ public sealed class PersistLocalAiManifestStep : SetupStep
                 ValueCachePrecision = manifest.ValueCachePrecision,
                 DraftKeyCachePrecision = manifest.DraftKeyCachePrecision,
                 DraftValueCachePrecision = manifest.DraftValueCachePrecision,
+                GatewayFallbackModel = ctx.LocalAiRecoveryPendingInstall is { } pendingInstall
+                    ? pendingInstall.Manifest.GatewayFallbackModel
+                    : originalInstall.Manifest.GatewayFallbackModel,
+                InstalledAtUtc = ctx.LocalAiRecoveryPendingInstall?.Manifest.InstalledAtUtc ??
+                    originalInstall.Manifest.InstalledAtUtc,
+                ReplacedManifest = replacingModel
+                    ? originalInstall.Manifest.ReplacedManifest ?? originalInstall.Manifest
+                    : null,
+                PreviousEndpoints = ReplacementEndpointHistory(ctx.LocalAiRecoveryPendingInstall),
             };
         }
 
@@ -667,6 +688,11 @@ public sealed class PersistLocalAiManifestStep : SetupStep
             await store.SaveAsync(manifest, ct);
             ctx.LocalAiResolvedInstall = store.ResolveAndValidate(manifest);
             ctx.LocalAiManifestCreatedThisRun = !replacesRecoveryReceipt;
+            if (manifest.ReplacedManifest is not null)
+            {
+                ctx.LocalAiRecoveryProviderTransition = true;
+                ctx.LocalAiRecoveryReceiptRollbackAllowed = false;
+            }
             return StepResult.Ok("Recorded the verified llama-server and Hugging Face installation.");
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or InvalidDataException)
@@ -742,6 +768,50 @@ public sealed class PersistLocalAiManifestStep : SetupStep
         }
 
         return receipts.MoveToImmutable();
+    }
+
+    private static ImmutableArray<string> ReplacementEndpointHistory(LocalAiResolvedInstall? pending)
+    {
+        if (pending?.Endpoint is null ||
+            pending.Manifest.PreviousEndpoints.Contains(pending.Endpoint.AbsoluteUri, StringComparer.Ordinal))
+        {
+            return pending?.Manifest.PreviousEndpoints ?? [];
+        }
+        return pending.Manifest.PreviousEndpoints.Add(pending.Endpoint.AbsoluteUri);
+    }
+}
+
+/// <summary>Commits a model replacement after its Gateway route has restarted successfully.</summary>
+public sealed class FinalizeLocalAiModelReplacementStep : SetupStep
+{
+    public override string Id => "finalize-local-ai-model-replacement";
+    public override string DisplayName => "Finalizing Local AI model replacement";
+    public override bool CanRetry => false;
+    public override RetryPolicy Retry => RetryPolicy.None;
+    public override bool CanSkip(SetupContext ctx) =>
+        ctx.LocalAiResolvedInstall?.Manifest.ReplacedManifest is null;
+
+    public override async Task<StepResult> ExecuteAsync(SetupContext ctx, CancellationToken ct)
+    {
+        LocalAiResolvedInstall install = ctx.LocalAiResolvedInstall!;
+        LocalAiInstallManifest committed = install.Manifest with
+        {
+            ReplacedManifest = null,
+            PreviousEndpoints = [],
+        };
+        try
+        {
+            var store = new LocalAiManifestStore(new LocalAiPaths(ctx.LocalDataDir));
+            await store.SaveAsync(committed, ct).ConfigureAwait(false);
+            ctx.LocalAiResolvedInstall = store.ResolveAndValidate(committed);
+            ctx.LocalAiRecoveryProviderTransition = false;
+            ctx.LocalAiRecoveryReceiptRollbackAllowed = false;
+            return StepResult.Ok("Local AI model replacement is committed.");
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or InvalidDataException)
+        {
+            return StepResult.Fail("The Local AI model replacement could not be finalized.", ex);
+        }
     }
 }
 

@@ -8,7 +8,8 @@ internal sealed record LocalAiReconcileResult(
     LocalAiResolvedInstall? ResolvedInstall,
     LlamaRuntimeInstallResult? RuntimeInstall,
     HuggingFaceModelInstallResult? ModelInstall,
-    LocalAiResolvedInstall? OriginalInstall = null)
+    LocalAiResolvedInstall? OriginalInstall = null,
+    LocalAiResolvedInstall? PendingReplacement = null)
 {
     public static LocalAiReconcileResult NotInstalled { get; } =
         new(false, null, null, null);
@@ -125,7 +126,39 @@ internal sealed class LocalAiInstallReconciler
             .ConfigureAwait(false);
         if (install is null)
             return LocalAiReconcileResult.NotInstalled;
-        LocalAiResolvedInstall originalInstall = install;
+        LocalAiResolvedInstall originalInstall = install.Manifest.ReplacedManifest is { } replacedManifest
+            ? manifestStore.ResolveAndValidate(replacedManifest)
+            : install;
+        LocalAiResolvedInstall? pendingReplacement = install.Manifest.ReplacedManifest is null ? null : install;
+        bool replacingModel = !string.Equals(
+            install.Manifest.ModelCatalogId,
+            plan.Model.Id,
+            StringComparison.Ordinal);
+        if (install.Manifest.ReplacedManifest is not null && replacingModel)
+        {
+            throw new InvalidDataException(
+                "Complete the pending Local AI model replacement before selecting another model.");
+        }
+        if (replacingModel)
+        {
+            if (!allowIncompleteInstallation)
+            {
+                throw new InvalidDataException(
+                    "The existing managed Local AI installation does not match the selected runtime, GPU, and model recipe.");
+            }
+
+            ValidateReplacementSource(install, plan, selectedGpuId, localDataDirectory);
+            LlamaRuntimeInspection replacementRuntime = await _runtimeInspector
+                .InspectAsync(Path.GetDirectoryName(install.ExecutablePath)!, cancellationToken)
+                .ConfigureAwait(false);
+            return new LocalAiReconcileResult(
+                Reused: false,
+                ResolvedInstall: null,
+                RuntimeInstall: replacementRuntime.IsValid ? CreateRuntimeInstall(install) : null,
+                ModelInstall: null,
+                OriginalInstall: originalInstall,
+                PendingReplacement: pendingReplacement);
+        }
         ValidateRecipeMatch(install, plan, selectedGpuId, localDataDirectory);
 
         bool migrateLegacyGpuId =
@@ -173,7 +206,8 @@ internal sealed class LocalAiInstallReconciler
                 ResolvedInstall: null,
                 RuntimeInstall: inspection.IsValid ? CreateRuntimeInstall(install) : null,
                 ModelInstall: modelIsValid ? CreateModelInstall(install, localDataDirectory) : null,
-                OriginalInstall: originalInstall);
+                OriginalInstall: originalInstall,
+                PendingReplacement: pendingReplacement);
         }
 
         install = await MigrateLegacyModelAsync(
@@ -201,7 +235,43 @@ internal sealed class LocalAiInstallReconciler
             install,
             CreateRuntimeInstall(install),
             CreateModelInstall(install, localDataDirectory),
-            OriginalInstall: allowIncompleteInstallation ? originalInstall : null);
+            OriginalInstall: allowIncompleteInstallation ? originalInstall : null,
+            PendingReplacement: pendingReplacement);
+    }
+
+    private static void ValidateReplacementSource(
+        LocalAiResolvedInstall install,
+        LocalInferencePlan plan,
+        string selectedGpuId,
+        string localDataDirectory)
+    {
+        // Validate the existing receipt against its own catalog model before using it
+        // as durable rollback provenance for the newly selected model.
+        _ = LlamaServerRouterConfiguration.Build(new LocalAiPaths(localDataDirectory), install);
+
+        string expectedArchitecture = plan.Runtime.Architecture switch
+        {
+            System.Runtime.InteropServices.Architecture.X64 => "x64",
+            System.Runtime.InteropServices.Architecture.Arm64 => "arm64",
+            _ => throw new InvalidDataException("The selected Local AI runtime architecture is unsupported."),
+        };
+        LocalAiComponentIdentity component = LlamaRuntimeInstaller.Component(plan.Runtime);
+        if (!string.Equals(install.Manifest.RuntimeId, plan.Runtime.Id, StringComparison.Ordinal) ||
+            !string.Equals(install.Manifest.Architecture, expectedArchitecture, StringComparison.Ordinal) ||
+            !GpuIdsMatch(install.Manifest.SelectedGpuId, selectedGpuId) ||
+            !LocalAiPathPolicy.TryResolve(
+                localDataDirectory,
+                component,
+                out LocalAiSetupPaths setupPaths,
+                out _) ||
+            !string.Equals(
+                Path.GetDirectoryName(install.ExecutablePath),
+                setupPaths.InstallDirectory,
+                StringComparison.OrdinalIgnoreCase))
+        {
+            throw new InvalidDataException(
+                "The existing managed Local AI installation cannot reuse the selected runtime and GPU.");
+        }
     }
 
     private static LlamaRuntimeInstallResult CreateRuntimeInstall(LocalAiResolvedInstall install) =>
