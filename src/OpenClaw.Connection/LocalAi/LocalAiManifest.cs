@@ -196,6 +196,14 @@ public sealed record LocalAiInstallManifest
     /// managed llama.cpp model. Null means no prior primary model was configured.
     /// </summary>
     public string? GatewayFallbackModel { get; init; }
+    /// <summary>
+    /// The last committed receipt while a recovery flow replaces its model.
+    /// Cleared only after the Gateway has restarted on the replacement route.
+    /// </summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public LocalAiInstallManifest? ReplacedManifest { get; init; }
+    /// <summary>Earlier verified replacement endpoints that may still be published to the Gateway.</summary>
+    public ImmutableArray<string> PreviousEndpoints { get; init; } = [];
     public required int ContextLength { get; init; }
     public KvCachePrecision KeyCachePrecision { get; init; } = KvCachePrecision.F16;
     public KvCachePrecision ValueCachePrecision { get; init; } = KvCachePrecision.F16;
@@ -574,28 +582,57 @@ public sealed class LocalAiManifestStore
         LocalAiPortPolicy.Validate(manifest.RequestedPort);
         LocalAiGatewayModelPolicy.ValidateFallbackModel(manifest.GatewayFallbackModel);
 
-        Uri? endpoint = null;
-        if (manifest.Endpoint is not null)
+        if (manifest.ReplacedManifest is { } replaced)
         {
-            if (!Uri.TryCreate(manifest.Endpoint, UriKind.Absolute, out endpoint) ||
-                endpoint.Scheme != Uri.UriSchemeHttp ||
-                !string.Equals(endpoint.Host, "127.0.0.1", StringComparison.Ordinal) ||
-                endpoint.IsDefaultPort ||
-                endpoint.Port is <= 0 or > 65535 ||
-                endpoint.Port == 80 ||
-                !string.IsNullOrEmpty(endpoint.UserInfo) ||
-                !string.IsNullOrEmpty(endpoint.Query) ||
-                !string.IsNullOrEmpty(endpoint.Fragment) ||
-                !string.Equals(endpoint.AbsolutePath, "/v1", StringComparison.Ordinal))
+            if (replaced.ReplacedManifest is not null ||
+                string.Equals(replaced.ModelCatalogId, manifest.ModelCatalogId, StringComparison.Ordinal) ||
+                !string.Equals(replaced.Engine, manifest.Engine, StringComparison.Ordinal) ||
+                !string.Equals(replaced.EngineVersion, manifest.EngineVersion, StringComparison.Ordinal) ||
+                !string.Equals(replaced.Architecture, manifest.Architecture, StringComparison.Ordinal) ||
+                !string.Equals(replaced.RuntimeId, manifest.RuntimeId, StringComparison.Ordinal) ||
+                !string.Equals(replaced.ExecutablePath, manifest.ExecutablePath, StringComparison.Ordinal) ||
+                !replaced.RuntimeAssets.SequenceEqual(manifest.RuntimeAssets) ||
+                replaced.RequestedPort != manifest.RequestedPort)
             {
-                throw new InvalidDataException("The local AI endpoint must be an HTTP IPv4 loopback /v1 address with an explicit non-reserved port.");
+                throw new InvalidDataException("The local AI model replacement receipt is invalid.");
             }
-
-            if (manifest.RequestedPort != LocalAiPortPolicy.Automatic && endpoint.Port != manifest.RequestedPort)
-                throw new InvalidDataException("The verified Local AI endpoint does not match its requested fixed port.");
+            _ = ResolveAndValidate(replaced);
+        }
+        else if (!manifest.PreviousEndpoints.IsDefaultOrEmpty)
+        {
+            throw new InvalidDataException("Previous Local AI endpoints require a pending model replacement.");
         }
 
+        Uri? endpoint = ValidateEndpoint(manifest.Endpoint, manifest.RequestedPort);
+        HashSet<string> previousEndpoints = manifest.PreviousEndpoints.ToHashSet(StringComparer.Ordinal);
+        if (previousEndpoints.Count != manifest.PreviousEndpoints.Length)
+        {
+            throw new InvalidDataException("Previous Local AI endpoints must be unique.");
+        }
+        foreach (string previousEndpoint in previousEndpoints)
+            _ = ValidateEndpoint(previousEndpoint, manifest.RequestedPort);
+
         return new LocalAiResolvedInstall(manifest, executable, model, endpoint);
+    }
+
+    private static Uri? ValidateEndpoint(string? value, int requestedPort)
+    {
+        if (value is null)
+            return null;
+        if (!Uri.TryCreate(value, UriKind.Absolute, out Uri? endpoint) ||
+            endpoint.Scheme != Uri.UriSchemeHttp ||
+            !string.Equals(endpoint.Host, "127.0.0.1", StringComparison.Ordinal) ||
+            endpoint.IsDefaultPort || endpoint.Port is <= 0 or > 65535 || endpoint.Port == 80 ||
+            !string.IsNullOrEmpty(endpoint.UserInfo) ||
+            !string.IsNullOrEmpty(endpoint.Query) ||
+            !string.IsNullOrEmpty(endpoint.Fragment) ||
+            !string.Equals(endpoint.AbsolutePath, "/v1", StringComparison.Ordinal))
+        {
+            throw new InvalidDataException("The local AI endpoint must be an HTTP IPv4 loopback /v1 address with an explicit non-reserved port.");
+        }
+        if (requestedPort != LocalAiPortPolicy.Automatic && endpoint.Port != requestedPort)
+            throw new InvalidDataException("The verified Local AI endpoint does not match its requested fixed port.");
+        return endpoint;
     }
 
     private static void ValidateModelPath(
