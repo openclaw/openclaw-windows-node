@@ -1974,36 +1974,37 @@ public sealed class AppRefactorContractTests
     }
 
     [Fact]
-    public void SandboxPage_NormalizesDefinitiveUnavailableMxcOff()
+    public void SandboxPage_PreservesSandboxIntentWhenUnavailable()
     {
         var source = ReadSandboxPageSource();
         var refresh = ExtractMethod(source, "RefreshAvailabilityAsync");
         var loadState = ExtractMethod(source, "LoadState");
         var definitiveUnavailable = ExtractMethod(source, "IsSandboxDefinitivelyUnavailable");
-        var normalize = ExtractMethod(source, "NormalizeSandboxToggleForAvailability");
+        var reject = ExtractMethod(source, "RejectSandboxEnableWhenUnavailableAsync");
 
+        // The page renders the availability-driven state, but never rewrites the
+        // user's saved sandbox intent on its behalf.
         AssertInOrder(
             refresh,
-            "NormalizeSandboxToggleForAvailability();",
             "UpdateSandboxStatusCard();",
             "UpdateControlsEnabledState();");
         AssertInOrder(
             loadState,
-            "NormalizeSandboxToggleForAvailability();",
             "UpdatePresetHighlight();",
             "UpdateSandboxStatusCard();",
             "UpdateControlsEnabledState();");
         Assert.Contains("CanRunSystemRunSandbox: false", definitiveUnavailable);
         Assert.Contains("ProbeErrored: false", definitiveUnavailable);
         Assert.Contains("ProbeSuppressedBySkuGate: false", definitiveUnavailable);
-        AssertInOrder(
-            normalize,
-            "settings.SystemRunSandboxEnabled",
-            "settings.SystemRunBlockHostFallbackWhenMxcUnavailable",
-            "settings.SystemRunSandboxEnabled = false");
-        Assert.Contains("settings.SystemRunSandboxEnabled = false", normalize);
-        Assert.Contains("SandboxEnabledToggle.IsOn = false", normalize);
-        Assert.Contains("Save();", normalize);
+
+        // Regression guard: availability must never silently persist sandbox-off.
+        Assert.DoesNotContain("NormalizeSandboxToggleForAvailability", source);
+        Assert.DoesNotContain("settings.SystemRunSandboxEnabled = false", source);
+
+        // Rejecting an explicit turn-on still resets the toggle visual, but must
+        // not write settings — the stored intent stays whatever the user chose.
+        Assert.Contains("SandboxEnabledToggle.IsOn = false", reject);
+        Assert.DoesNotContain("Save();", reject);
     }
 
     [Fact]

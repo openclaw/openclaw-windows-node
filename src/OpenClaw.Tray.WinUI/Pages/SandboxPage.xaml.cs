@@ -65,7 +65,6 @@ public sealed partial class SandboxPage : Page
             // await resumed us on the UI thread (DispatcherQueue sync context), so it
             // is safe to touch controls here. Always re-render — on both the happy
             // path and the failure path — so the page never stays in "Checking…".
-            NormalizeSandboxToggleForAvailability();
             UpdateSandboxStatusCard();
             UpdateControlsEnabledState();
         }
@@ -190,7 +189,6 @@ public sealed partial class SandboxPage : Page
             _suppress = false;
         }
 
-        NormalizeSandboxToggleForAvailability();
         UpdateWindowsUiWarning();
         UpdatePresetHighlight();
         UpdateSandboxStatusCard();
@@ -347,30 +345,6 @@ public sealed partial class SandboxPage : Page
             ProbeErrored: false,
             ProbeSuppressedBySkuGate: false,
         };
-    }
-
-    private bool NormalizeSandboxToggleForAvailability()
-    {
-        if (!IsSandboxDefinitivelyUnavailable())
-            return false;
-        if (CurrentApp.Settings is not { } settings || !settings.SystemRunSandboxEnabled)
-            return false;
-        if (settings.SystemRunBlockHostFallbackWhenMxcUnavailable)
-            return false;
-
-        _suppress = true;
-        try
-        {
-            settings.SystemRunSandboxEnabled = false;
-            SandboxEnabledToggle.IsOn = false;
-        }
-        finally
-        {
-            _suppress = false;
-        }
-
-        Save();
-        return true;
     }
 
     private void OnUnavailableActionClick(object sender, RoutedEventArgs e) =>
