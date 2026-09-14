@@ -65,7 +65,6 @@ public sealed partial class SandboxPage : Page
             // await resumed us on the UI thread (DispatcherQueue sync context), so it
             // is safe to touch controls here. Always re-render — on both the happy
             // path and the failure path — so the page never stays in "Checking…".
-            NormalizeSandboxToggleForAvailability();
             UpdateSandboxStatusCard();
             UpdateControlsEnabledState();
         }
@@ -190,7 +189,6 @@ public sealed partial class SandboxPage : Page
             _suppress = false;
         }
 
-        NormalizeSandboxToggleForAvailability();
         UpdateWindowsUiWarning();
         UpdatePresetHighlight();
         UpdateSandboxStatusCard();
@@ -347,30 +345,6 @@ public sealed partial class SandboxPage : Page
             ProbeErrored: false,
             ProbeSuppressedBySkuGate: false,
         };
-    }
-
-    private bool NormalizeSandboxToggleForAvailability()
-    {
-        if (!IsSandboxDefinitivelyUnavailable())
-            return false;
-        if (CurrentApp.Settings is not { } settings || !settings.SystemRunSandboxEnabled)
-            return false;
-        if (settings.SystemRunBlockHostFallbackWhenMxcUnavailable)
-            return false;
-
-        _suppress = true;
-        try
-        {
-            settings.SystemRunSandboxEnabled = false;
-            SandboxEnabledToggle.IsOn = false;
-        }
-        finally
-        {
-            _suppress = false;
-        }
-
-        Save();
-        return true;
     }
 
     private void OnUnavailableActionClick(object sender, RoutedEventArgs e) =>
@@ -631,14 +605,14 @@ public sealed partial class SandboxPage : Page
         var newValue = SandboxEnabledToggle.IsOn;
         var oldValue = s.SystemRunSandboxEnabled;
 
-        if (newValue
+        // Turning the sandbox on while this host cannot contain commands is a
+        // valid preference, not an error: it is stored and takes effect as soon
+        // as containment becomes available. Explain the current limitation after
+        // saving instead of refusing the change, so the choice stays the user's.
+        var explainUnavailable = newValue
             && !oldValue
             && IsSandboxDefinitivelyUnavailable()
-            && !s.SystemRunBlockHostFallbackWhenMxcUnavailable)
-        {
-            await RejectSandboxEnableWhenUnavailableAsync();
-            return;
-        }
+            && !s.SystemRunBlockHostFallbackWhenMxcUnavailable;
 
         // Confirm before turning sandbox OFF — this is the high-risk transition.
         if (!newValue && oldValue)
@@ -694,17 +668,13 @@ public sealed partial class SandboxPage : Page
         UpdateSandboxStatusCard();
         UpdateControlsEnabledState();
         Save();
+
+        if (explainUnavailable)
+            await ExplainSandboxEnabledWhileUnavailableAsync();
     }
 
-    private async Task RejectSandboxEnableWhenUnavailableAsync()
+    private async Task ExplainSandboxEnabledWhileUnavailableAsync()
     {
-        _suppress = true;
-        try { SandboxEnabledToggle.IsOn = false; }
-        finally { _suppress = false; }
-
-        UpdateSandboxStatusCard();
-        UpdateControlsEnabledState();
-
         if (_dialogOpen)
             return;
 
@@ -713,11 +683,11 @@ public sealed partial class SandboxPage : Page
             : L("SandboxPage_UnavailableDefaultReason");
         var dialog = new ContentDialog
         {
-            Title = "Node Sandbox unavailable",
+            Title = "Node Sandbox is on, but this PC cannot contain commands yet",
             Content =
-                "Node Sandbox can't be turned on because this PC does not provide MXC BaseContainer without host DACL augmentation.\n\n" +
+                "Your preference is saved. This PC does not provide MXC BaseContainer without host DACL augmentation, so containment is unavailable right now.\n\n" +
                 $"{reasonText}\n\n" +
-                "Agent-started commands will keep using the host execution path until MXC is available.",
+                "Agent-started commands keep using the host execution path until MXC is available. Requests that set custom environment variables are refused while the sandbox is on.",
             CloseButtonText = "OK",
             DefaultButton = ContentDialogButton.Close,
             XamlRoot = this.XamlRoot,
@@ -730,7 +700,8 @@ public sealed partial class SandboxPage : Page
         }
         catch (System.Runtime.InteropServices.COMException)
         {
-            // Another dialog is already open. The toggle has already been restored.
+            // Another dialog is already open. The preference is already saved and
+            // the page keeps showing the unavailable state without this dialog.
         }
         finally
         {
