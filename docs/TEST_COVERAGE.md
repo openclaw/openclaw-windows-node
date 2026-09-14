@@ -50,6 +50,7 @@ authoritative runtime totals.
 ### OpenClaw.Tray.Tests
 
 - **Tray UI and state** - app state, menu display/position/sizing, tray tooltip formatting, activity streams, async list loading, diagnostics contracts, markup regressions, and chat timeline/markdown handling.
+- **Chat scroll lifetime** - `ChatTimelinePresentationTests` guards the workaround for [microsoft/microsoft-ui-xaml#11865](https://github.com/microsoft/microsoft-ui-xaml/issues/11865): automatic tail navigation must not use `ItemsView.StartBringItemIntoView`, which can retain a recycled row as an invalid anchor and throw `E_INVALIDARG` during subsequent layout. Tail requests use non-animated `ScrollView` extent navigation with stable bottom anchoring. Runtime proof should repeatedly switch between large, mixed-height histories, verify the final message is visible, and check that a scrolled-up reader is not pulled to the bottom by new messages.
 - **Connection and pairing** - connection manager node connector tests, connection page approval/channel metrics/row state, operator and Windows tray node pairing approval, and gateway action transport.
 - **Settings and startup** - settings round-trip/isolation, consent and settings save, auto-start defaults, startup setup state, existing config guard policy, and local setup progress stage mapping.
 - **Onboarding and local gateway setup** - onboarding completion/chat bootstrapper/existing config guard, wizard flow/selection/error/step parsing, setup code decoding, local gateway setup diagnostics, uninstall, WSL keep-alive, and auto-pair flags.
