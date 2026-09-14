@@ -37,7 +37,7 @@ public sealed class LocalAiPortHandoffTests
     [Fact]
     public async Task Preflight_StopsBeforeAnyDownloadWhenCapacityIsUnknown()
     {
-        // A GPU whose dedicated-memory bound could not be resolved has no
+        // A GPU whose CUDA memory could not be read has no
         // trustworthy admission capacity, so setup must stop before downloading.
         SetupContext context = CreateContext(new LocalAiConfig { Enabled = true, Port = 0 });
         var step = new PreflightLocalAiHardwareStep(

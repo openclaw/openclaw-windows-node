@@ -209,6 +209,19 @@ name such as `node` or `openclaw` alone is insufficient. Conflicts retain the
 port-in-use error and include owning process names when available. Missing
 listener ownership or a failed listener inspection does not bypass the check.
 
+### Local AI GPU admission
+
+Local AI uses the CUDA driver's `cuMemGetInfo` total and free memory directly
+for model qualification. DXGI and NVML dedicated-memory figures are not admission
+caps: on the 48 GB RTX Spark SKU they can describe only the 16 GB carveout,
+incorrectly excluding a supported unified-memory device. No separate shared or
+host-memory estimate is added to the CUDA readings. Missing CUDA facts remain
+retryable rather than becoming a definitive no-GPU verdict.
+
+This qualification is not a guarantee of successful inference. Default setup
+does not run inference to validate the selected model; the explicit inference
+proof and recovery pipelines still do. Runtime failures remain runtime errors.
+
 ### Local AI Hugging Face cache rollout
 
 Normal Local AI model acquisition writes verified GGUF files to the standard

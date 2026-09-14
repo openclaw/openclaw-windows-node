@@ -37,8 +37,6 @@ internal static class NvcudaDriver
     internal const int CudaUuidSize = 16;
 
     private const int DeviceNameCapacity = 256;
-    private const int LuidSize = 8;
-    private const uint SingleNodeMask = 1;
 
     /// <summary>
     /// Classifies CUDA driver availability. Only <see cref="CudaDriverAvailability.Absent"/>
@@ -100,24 +98,6 @@ internal static class NvcudaDriver
                 ReadOnlySpan<byte> bytes = MemoryMarshal.AsBytes(
                     MemoryMarshal.CreateReadOnlySpan(ref uuid, 1));
                 return ToCudaVisibleDevicesSelector(bytes);
-            },
-            null);
-
-    /// <summary>
-    /// The adapter LUID the Windows display stack uses for this CUDA device.
-    /// It is the exact join key to the DXGI adapter that owns the device memory.
-    /// A device that spans more than one node returns null, because adapter-wide
-    /// capacity would overstate what a single node can serve.
-    /// </summary>
-    internal static long? TryReadDeviceLuid(int device) =>
-        TryNative(
-            () =>
-            {
-                var luid = new byte[LuidSize];
-                return CuDeviceGetLuid(luid, out uint deviceNodeMask, device) == CudaSuccess &&
-                        deviceNodeMask == SingleNodeMask
-                    ? BitConverter.ToInt64(luid)
-                    : (long?)null;
             },
             null);
 
@@ -223,10 +203,6 @@ internal static class NvcudaDriver
     [DefaultDllImportSearchPaths(DllImportSearchPath.System32)]
     [DllImport("nvcuda.dll", EntryPoint = "cuDeviceGetUuid_v2", CallingConvention = CallingConvention.StdCall)]
     private static extern int CuDeviceGetUuid(out CudaUuid uuid, int device);
-
-    [DefaultDllImportSearchPaths(DllImportSearchPath.System32)]
-    [DllImport("nvcuda.dll", EntryPoint = "cuDeviceGetLuid", CallingConvention = CallingConvention.StdCall)]
-    private static extern int CuDeviceGetLuid([Out] byte[] luid, out uint deviceNodeMask, int device);
 
     [DefaultDllImportSearchPaths(DllImportSearchPath.System32)]
     [DllImport("nvcuda.dll", EntryPoint = "cuCtxCreate_v2", CallingConvention = CallingConvention.StdCall)]
