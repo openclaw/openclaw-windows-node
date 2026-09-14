@@ -123,9 +123,8 @@ public sealed class WhisperModelManager
 
         try
         {
-            using var httpClient = new HttpClient();
-            httpClient.Timeout = TimeSpan.FromMinutes(30);
-            using var response = await httpClient.GetAsync(info.DownloadUrl, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
+            using var httpClient = AllowedAssetDownload.CreateClient(TimeSpan.FromMinutes(30));
+            using var response = await AllowedAssetDownload.GetAsync(httpClient, info.DownloadUrl, cancellationToken);
             response.EnsureSuccessStatusCode();
 
             var totalBytes = response.Content.Headers.ContentLength ?? info.ApproximateSizeBytes;
