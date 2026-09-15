@@ -23,6 +23,7 @@ public sealed class ReactorChatMarkdownContractTests
         Assert.Contains("Image = (alt, _) => Text(", timeline, StringComparison.Ordinal);
         Assert.Contains("LinkBuilder = (children, _) => HStack(children)", timeline, StringComparison.Ordinal);
         Assert.Contains("HtmlBlock = raw => Text(", timeline, StringComparison.Ordinal);
+        Assert.Contains("ListItem = BuildWrappingMarkdownListItem", timeline, StringComparison.Ordinal);
         Assert.Contains(
             ".AutomationName(BuildAccessibleAssistantText(entry.Text, metadata?.AssistantContent))",
             timeline,

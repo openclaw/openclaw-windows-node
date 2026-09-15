@@ -94,8 +94,10 @@
 
   <ItemGroup>
     <PackageReference Include="Microsoft.Extensions.DependencyInjection" Version="10.0.0" />
-    <PackageReference Include="Microsoft.UI.Reactor" Version="0.1.0-preview.15" />
-    <PackageReference Include="Microsoft.UI.Reactor.Advanced" Version="0.1.0-preview.15" />
+    <!-- Keep both on preview.12 until the WinUI ItemsView fix ships and is validated.
+         Retirement gates and Markdown ListItem workaround: openclaw/openclaw-windows-node#1424. -->
+    <PackageReference Include="Microsoft.UI.Reactor" Version="0.1.0-preview.12" />
+    <PackageReference Include="Microsoft.UI.Reactor.Advanced" Version="0.1.0-preview.12" />
     <PackageReference Include="Microsoft.WindowsAppSDK" Version="$(MicrosoftWindowsAppSDKVersion)" />
     <PackageReference Include="Microsoft.Windows.SDK.BuildTools" Version="$(MicrosoftWindowsSdkBuildToolsVersion)" />
     <PackageReference Include="OpenTelemetry" Version="1.16.0" />

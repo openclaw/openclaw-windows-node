@@ -28,6 +28,31 @@ For changes touching tray UX, Settings, onboarding, chat/canvas, Command Center,
 
 Short version: run required tests, collect a closeout proof pass with `.\run-app-local.ps1 -Isolated` when UI is involved, use computer-use or developer-provided screenshots/output for the active changed UI state, prove MCP with `winnode` or raw JSON-RPC, prove gateway paths when available, and include current-head concrete output under `## Real behavior proof`. Mid-development computer-use/MCP/rubber-duck validation is fine when explicitly requested or needed to unblock work.
 
+### Reactor preview.12 compatibility proof
+
+Both Reactor packages are temporarily pinned to `0.1.0-preview.12` while
+[microsoft/microsoft-ui-xaml#11865](https://github.com/microsoft/microsoft-ui-xaml/issues/11865)
+awaits a released and validated fix. `ReactorChatTimeline.BuildSafeMarkdown`
+uses `MarkdownOptions.ListItem` to replace the default horizontal list row with
+an Auto-marker/Star-content Grid, preserving the existing marker, content and
+spacing. This locally supplies the wrapping fix from
+[microsoft/microsoft-ui-reactor#1197](https://github.com/microsoft/microsoft-ui-reactor/pull/1197)
+without adopting preview.13's row eviction behavior.
+
+Run `ReactorMarkdownListProofTests` in `OpenClaw.Tray.UITests` on the host's
+native architecture. These mounted tests check ordered/unordered wrapping at
+240 DIPs, reflow at 600 DIPs, and nested/loose list content and formatting.
+Keep the existing table and disposal proof in the focused run.
+
+Before release or removing the pin, also exercise repeated session switching
+while a bring-into-view request is pending, using 240 mixed-height messages.
+Verify that message 240 is actually visible, not just that the current scroll
+extent was reached. Verify streaming tail-follow and arrivals while scrolled
+up. Do not substitute extent-only scrolling: the alternative workaround
+stopped near message 233 in the reported scenario.
+[Tracking issue #1424](https://github.com/openclaw/openclaw-windows-node/issues/1424)
+owns the package upgrade and removal gates.
+
 ### New command MCP contract
 
 Every new Windows node call must be exposed through local MCP and `winnode`: register the capability, update `McpToolBridge.CommandDescriptions`, update `.agents/skills/winnode/SKILL.md`, add focused tests, and prove discovery/invocation with `winnode` or raw MCP JSON-RPC.

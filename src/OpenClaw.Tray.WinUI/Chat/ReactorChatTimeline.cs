@@ -550,6 +550,7 @@ public sealed class ReactorChatTimeline : Component<ReactorChatTimelineProps>
         var options = new MarkdownOptions
         {
             ParserFlags = MarkdownParserFlags.Tables | MarkdownParserFlags.NoHtml,
+            ListItem = BuildWrappingMarkdownListItem,
             Image = (alt, _) => Text(
                     string.IsNullOrWhiteSpace(alt) ? "[Image]" : $"[Image: {alt}]",
                     14,
@@ -565,9 +566,19 @@ public sealed class ReactorChatTimeline : Component<ReactorChatTimelineProps>
                 .IsTextSelectionEnabled(true),
         };
 
-        // Fully qualified: the markdown factory ships in Microsoft.UI.Reactor.Advanced, and importing
-        // that namespace would make the simple name `Factories` ambiguous with Microsoft.UI.Reactor.Factories.
-        return Microsoft.UI.Reactor.Advanced.Factories.Markdown(ChatMarkdownSanitizer.Sanitize(text), options);
+        return Microsoft.UI.Reactor.Factories.Markdown(ChatMarkdownSanitizer.Sanitize(text), options);
+    }
+
+    private static Element BuildWrappingMarkdownListItem(Element defaultElement)
+    {
+        // preview.12 measures list content at infinite width in an HStack. Use the
+        // Auto/Star layout from microsoft/microsoft-ui-reactor#1197 until #1424 retires the pin.
+        if (defaultElement is not StackElement { Orientation: Orientation.Horizontal, Children.Length: 2 } row)
+            throw new InvalidOperationException("Unexpected Reactor Markdown list item shape. Review the preview.12 workaround.");
+
+        return Grid([GridSize.Auto, GridSize.Star()], [],
+            row.Children[0],
+            row.Children[1].Grid(column: 1)) with { ColumnSpacing = row.Spacing };
     }
 
     private static Element BuildAssistantFooter(
@@ -652,7 +663,7 @@ public sealed class ReactorChatTimeline : Component<ReactorChatTimelineProps>
             .OnLostFocus((_, _) => onLostFocus())
             .Opacity(isVisible ? 1 : 0)
             .IsTabStop(true)
-            .IsHitTestVisible(isVisible);
+            .Set(button => button.IsHitTestVisible = isVisible);
     }
 
     private static (string Message, IReadOnlyList<ChatAttachmentPresentation> Attachments) ParseAttachments(string? text)
@@ -1024,7 +1035,7 @@ public sealed class ReactorChatTimeline : Component<ReactorChatTimelineProps>
     {
         return Border(child)
             .Opacity(isHovered ? 1 : 0)
-            .IsHitTestVisible(false);
+            .Set(border => border.IsHitTestVisible = false);
     }
 
     private static TextBlockElement Text(
