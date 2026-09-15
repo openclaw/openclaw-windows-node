@@ -93,7 +93,7 @@ public sealed class GatewayInstallPolicyTests
     [InlineData("""{"Gateway":{"Selection":"recommended","Version":"2026.6.34"}}""", "2026.6.34")]
     [InlineData("""{"Gateway":{"Selection":"exact","Version":"2026.6.34"}}""", "2026.6.34")]
     [InlineData("""{"Gateway":{"Version":"2026.6.34"}}""", "2026.6.34")]
-    [InlineData("""{"Gateway":{"Selection":"fallback"}}""", GatewayInstallPolicy.FallbackTag)]
+    [InlineData("""{"Gateway":{"Selection":"fallback"}}""", GatewayInstallPolicy.LegacyFallbackVersion)]
     [InlineData("""{"Gateway":{"Selection":"fallback","Version":"2026.6.11"}}""", "2026.6.11")]
     public void ValidateAndApply_MigratesLegacySelection(
         string json,
