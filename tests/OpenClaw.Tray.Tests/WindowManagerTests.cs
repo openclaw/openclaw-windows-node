@@ -113,16 +113,14 @@ public sealed class WindowManagerTests
             "SetupWindow.Active?.NavigateToWelcome(back: true);",
             "return;");
         Assert.Contains(
-            "LocalAiModelSelector.IsEnabled = isAvailable && !_localAiRecoveryModelPinned;",
+            "LocalAiModelSelector.IsEnabled = isAvailable;",
             capabilities);
         Assert.Contains(
             "LocalAiToggle.IsEnabled = isAvailable && !_localAiRecoveryOnly;",
             capabilities);
         AssertInOrder(
             capabilities,
-            "if (_localAiRecoveryModelPinned)",
-            "eligibility = selectedEligibility;",
-            "else if (!selectedEligibility.CanInstall)",
+            "if (!selectedEligibility.CanInstall)",
             "_config.LocalAi.SelectedModelId = null;");
     }
 

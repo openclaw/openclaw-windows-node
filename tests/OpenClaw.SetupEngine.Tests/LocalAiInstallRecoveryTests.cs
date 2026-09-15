@@ -1219,7 +1219,43 @@ public sealed class LocalAiInstallRecoveryTests
     }
 
     [Fact]
-    public async Task Reconciler_RecoveryRetainsReceiptWhileMissingModelIsRepaired()
+    public async Task Reconciler_RecoveryReusesRuntimeWhenSelectedModelChanges()
+    {
+        using var temp = new TempDirectory();
+        LocalInferencePlan installed = CatalogPlan();
+        LocalModelInfo replacementModel = LocalModelCatalog.Models.First(
+            model => model.Id != installed.Model.Id);
+        var replacement = new LocalInferencePlan(
+            installed.Runtime,
+            replacementModel,
+            LocalModelCatalog.GetProfiles(replacementModel)[0],
+            LocalInferenceModelSelectionOrigin.Explicit);
+        const string gpuId = "GPU-0";
+        var paths = new LocalAiPaths(temp.Path);
+        LocalAiInstallManifest manifest = CreateManifest(temp.Path, installed, gpuId);
+        await new LocalAiManifestStore(paths).SaveAsync(manifest);
+
+        LocalAiReconcileResult result = await new LocalAiInstallReconciler(
+                new ValidRuntimeInspector(),
+                new AcceptingModelVerifier())
+            .ReconcileAsync(
+                temp.Path,
+                replacement,
+                gpuId,
+                CancellationToken.None,
+                allowIncompleteInstallation: true);
+
+        Assert.False(result.Reused);
+        Assert.False(result.RuntimeInstall!.CreatedThisRun);
+        Assert.Null(result.ModelInstall);
+        Assert.Equal(manifest.ModelCatalogId, result.OriginalInstall?.Manifest.ModelCatalogId);
+        Assert.Null((await new LocalAiManifestStore(paths).LoadAsync())!.Manifest.ReplacedManifest);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task Reconciler_RecoveryRetainsReceiptWhileMissingModelIsRepaired(bool pendingReplacement)
     {
         using var temp = new TempDirectory();
         LocalInferencePlan plan = CatalogPlan();
@@ -1227,6 +1263,16 @@ public sealed class LocalAiInstallRecoveryTests
         var paths = new LocalAiPaths(temp.Path);
         var store = new LocalAiManifestStore(paths);
         LocalAiInstallManifest manifest = CreateManifest(temp.Path, plan, gpuId);
+        if (pendingReplacement)
+        {
+            LocalModelInfo priorModel = LocalModelCatalog.Models.First(model => model.Id != plan.Model.Id);
+            var priorPlan = new LocalInferencePlan(
+                plan.Runtime,
+                priorModel,
+                LocalModelCatalog.GetProfiles(priorModel)[0],
+                LocalInferenceModelSelectionOrigin.Explicit);
+            manifest = manifest with { ReplacedManifest = CreateManifest(temp.Path, priorPlan, gpuId) };
+        }
         await store.SaveAsync(manifest);
         var reconciler = new LocalAiInstallReconciler(
             new ValidRuntimeInspector(),
@@ -1244,7 +1290,34 @@ public sealed class LocalAiInstallRecoveryTests
         Assert.Equal(manifest.Endpoint, result.OriginalInstall!.Manifest.Endpoint);
         Assert.NotNull(result.RuntimeInstall);
         Assert.Null(result.ModelInstall);
+        Assert.Equal(pendingReplacement, result.PendingReplacement is not null);
         Assert.True(File.Exists(paths.ManifestPath));
+    }
+
+    [Fact]
+    public async Task FinalizeReplacement_ClearsRollbackReceipt()
+    {
+        using var temp = new TempDirectory();
+        LocalAiInstallManifest original = CreateManifest(temp.Path, CatalogPlan(), "GPU-0");
+        LocalAiInstallManifest pending = original with
+        {
+            ModelCatalogId = "replacement-model",
+            ModelAlias = "replacement-model",
+            ReplacedManifest = original,
+            PreviousEndpoints = [original.Endpoint!],
+        };
+        var store = new LocalAiManifestStore(new LocalAiPaths(temp.Path));
+        await store.SaveAsync(pending);
+        SetupContext context = CreateContext(temp.Path, confirmDestructive: false);
+        context.LocalAiResolvedInstall = store.ResolveAndValidate(pending);
+
+        StepResult result = await new FinalizeLocalAiModelReplacementStep()
+            .ExecuteAsync(context, CancellationToken.None);
+
+        Assert.Equal(StepOutcome.Success, result.Outcome);
+        LocalAiInstallManifest committed = (await store.LoadAsync())!.Manifest;
+        Assert.Null(committed.ReplacedManifest);
+        Assert.Empty(committed.PreviousEndpoints);
     }
 
     [Fact]
@@ -1281,8 +1354,10 @@ public sealed class LocalAiInstallRecoveryTests
         Assert.Null(context.LocalAiModelInstall);
     }
 
-    [Fact]
-    public async Task RecoveryPipeline_RewritesIncompleteReceiptAfterModelRepair()
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task RecoveryPipeline_RewritesIncompleteReceiptAfterModelRepair(bool pendingReplacement)
     {
         using var temp = new TempDirectory();
         LocalInferencePlan plan = CatalogPlan();
@@ -1292,6 +1367,19 @@ public sealed class LocalAiInstallRecoveryTests
             RequestedPort = 18803,
             GatewayFallbackModel = "openai/gpt-5",
         };
+        if (pendingReplacement)
+        {
+            LocalModelInfo priorModel = LocalModelCatalog.Models.First(model => model.Id != plan.Model.Id);
+            var priorPlan = new LocalInferencePlan(
+                plan.Runtime,
+                priorModel,
+                LocalModelCatalog.GetProfiles(priorModel)[0],
+                LocalInferenceModelSelectionOrigin.Explicit);
+            manifest = manifest with
+            {
+                ReplacedManifest = CreateManifest(temp.Path, priorPlan, gpuId) with { RequestedPort = 18803 },
+            };
+        }
         var store = new LocalAiManifestStore(new LocalAiPaths(temp.Path));
         await store.SaveAsync(manifest);
         LocalAiResolvedInstall original = (await store.LoadAsync())!;
