@@ -252,12 +252,13 @@ public sealed class GatewayProtocolLiveRoundTripTests : IDisposable
 
     private static void ConfigureResponders(LoopbackGatewayServer server)
     {
-        // NOTE: intentionally NO hello-ok responder. The new methods only require
-        // an open socket (IsConnectedToGateway), not the full handshake. Skipping
-        // hello-ok avoids the client's post-handshake auto-request storm
-        // (health/sessions.list/subscribe/usage/nodes/agents), keeping this test
-        // lightweight so it does not add scheduler/socket contention that could
-        // destabilize other timing-sensitive socket tests under parallel load.
+        // NOTE: no per-test connect responder is registered here —
+        // ConnectAndWaitAsync installs the challenge/connect/hello-ok handshake
+        // (required since #1418 made the readiness gate handshake-aware). The
+        // handshake's post-hello-ok auto-request burst (health/sessions.list/
+        // subscribe/usage/nodes/agents) answers with the default {} payload,
+        // which is inert for every parser; per-method frame assertions filter
+        // it out.
 
         server.OnMethod("update.status", parameters =>
         {
@@ -349,8 +350,116 @@ public sealed class GatewayProtocolLiveRoundTripTests : IDisposable
         server.OnMethod("sessions.patch", _ => new { key = "agent:main:main" });
     }
 
+        /// <summary>
+        /// PR 1425 review proof (P2): a session mutation submitted while
+        /// hello-ok is still pending must report not-sent (false) — a boolean
+        /// "success" would tell the tray the mutation was accepted when no
+        /// frame ever reached the gateway. Asserts the wire stayed silent.
+        /// </summary>
+        [Fact]
+        public async Task HandshakeGate_SuppressedMutation_ReportsNotSentNotSuccess()
+        {
+            using var server = new LoopbackGatewayServer();
+            server.SilenceMethod("connect");
+            server.SendGreetingOnAccept(LoopbackGatewayServer.ChallengeFrame);
+            using var client = new OpenClawGatewayClient(
+                server.WebSocketUrl,
+                "test-token",
+                identityPath: _identityDir);
+
+            await client.ConnectAsync();
+            var connect = await server.WaitFrameAsync("connect", occurrence: 0, timeoutMs: 5_000);
+            _output.WriteLine("[trace] socket open; challenge delivered; connect request captured (unanswered): " + connect);
+            Assert.False(client.IsConnectedToGateway);
+
+            var submitted = await client.ResetSessionAsync("agent:main:main");
+            _output.WriteLine("[trace] ResetSessionAsync while handshake pending returned: " + submitted);
+            Assert.False(submitted);
+            Assert.Throws<InvalidOperationException>(() => server.FrameFor("sessions.reset"));
+            _output.WriteLine("[trace] no sessions.reset frame observed on the wire");
+        }
+
+        /// <summary>
+        /// PR 1425 review proof (needs-proof): captured transport trace of the
+        /// withheld-then-completes path, including a real server-initiated
+        /// disconnect and auto-reconnect — early mutation suppressed before the
+        /// handshake, challenge/connect/hello-ok completes, the same mutation
+        /// goes out and returns true, the socket is closed by the gateway, the
+        /// gate reopens on the fresh socket, and the mutation succeeds again.
+        /// The fresh socket comes from the client's real auto-reconnect path
+        /// (receive-loop exit -> ReconnectWithBackoffAsync). Frame log lines
+        /// via ITestOutputHelper are the redacted captured trace.
+        /// </summary>
+        [Fact]
+        public async Task HandshakeGate_Reconnect_SuppressesEarlyMutationThenSendsAfterHelloOk()
+        {
+            using var server = new LoopbackGatewayServer();
+            using var client = new OpenClawGatewayClient(
+                server.WebSocketUrl,
+                "test-token",
+                identityPath: _identityDir);
+
+            await client.ConnectAsync();
+            Assert.False(client.IsConnectedToGateway);
+            var suppressed = await client.ResetSessionAsync("agent:main:main");
+            Assert.False(suppressed);
+            Assert.Throws<InvalidOperationException>(() => server.FrameFor("sessions.reset"));
+            Assert.Throws<InvalidOperationException>(() => server.FrameFor("connect"));
+            _output.WriteLine("[trace] socket #1 open, challenge withheld: sessions.reset suppressed (submission=false); no frame reached the wire");
+
+            server.EnableHandshake();
+            await server.SendTextToCurrentSocketAsync(LoopbackGatewayServer.ChallengeFrame);
+            var connect1 = await server.WaitFrameAsync("connect", occurrence: 0, timeoutMs: 5_000);
+            _output.WriteLine("[trace] challenge delivered; connect captured (unanswered): " + connect1);
+            for (var i = 0; i < 200 && !client.IsConnectedToGateway; i++)
+                await Task.Delay(50);
+            Assert.True(client.IsConnectedToGateway);
+
+            Assert.True(await client.ResetSessionAsync("agent:main:main"));
+            var reset1 = await server.WaitFrameAsync("sessions.reset", occurrence: 0, timeoutMs: 5_000);
+            _output.WriteLine("[trace] hello-ok processed; sessions.reset on the wire: " + reset1);
+
+            // Real server-initiated drop, mirroring a gateway restart: a
+            // one-way Close frame. The gate must hold from drop observation
+            // onward.
+            await server.CloseOutputOnCurrentSocketAsync("gateway restart");
+            _output.WriteLine("[trace] server sent one-way Close frame on socket #1; client drop observation begins");
+            for (var i = 0; i < 120 && client.IsConnectedToGateway; i++)
+                await Task.Delay(50);
+            Assert.False(client.IsConnectedToGateway);
+            _output.WriteLine("[trace] client observed drop: handshake snapshot cleared, readiness false");
+
+            // The same mutation submitted during the disconnected window must
+            // also report not-sent, with nothing reaching the wire.
+            Assert.False(await client.ResetSessionAsync("agent:main:main"));
+            Assert.Throws<InvalidOperationException>(() => server.FrameFor("sessions.reset", occurrence: 1));
+            _output.WriteLine("[trace] sessions.reset during disconnected window: withheld (submission=false)");
+
+            // The client's real auto-reconnect path (receive-loop exit ->
+            // ReconnectWithBackoffAsync, 1s+ backoff) must re-run the dance on
+            // a fresh socket: challenge is auto-sent on accept, and the gate
+            // reopens only after the fresh hello-ok.
+            var connect2 = await server.WaitFrameAsync("connect", occurrence: 1, timeoutMs: 15_000);
+            _output.WriteLine("[trace] socket #2 accepted; challenge auto-resent; connect captured: " + connect2);
+            for (var i = 0; i < 200 && !client.IsConnectedToGateway; i++)
+                await Task.Delay(50);
+            Assert.True(client.IsConnectedToGateway);
+
+            Assert.True(await client.ResetSessionAsync("agent:main:main"));
+            var reset2 = await server.WaitFrameAsync("sessions.reset", occurrence: 1, timeoutMs: 5_000);
+            _output.WriteLine("[trace] gate reopened after reconnect; sessions.reset on the wire: " + reset2);
+            Assert.Contains("sessions.reset", reset2);
+        }
+
     private static async Task ConnectAndWaitAsync(OpenClawGatewayClient client, LoopbackGatewayServer server)
     {
+        // #1418: the readiness gate (IsConnectedToGateway) now requires the
+        // hello-ok handshake, so the loopback gateway performs the real
+        // challenge → connect → hello-ok dance. The handshake also arms the
+        // post-handshake auto-request burst (health/sessions/usage/nodes/
+        // agents); FrameFor/WaitFrameAsync filter by method, so those extra
+        // frames never collide with a test's own method assertions.
+        server.EnableHandshake();
         var connected = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
         void OnStatus(object? _, ConnectionStatus s)
         {
@@ -360,11 +469,9 @@ public sealed class GatewayProtocolLiveRoundTripTests : IDisposable
         try
         {
             await client.ConnectAsync();
-            // The new methods only require an open socket (IsConnectedToGateway),
-            // not the full hello-ok handshake. Poll readiness with a generous
-            // ceiling so a load-starved runner doesn't cause a false failure;
-            // the loop exits as soon as the socket is open. The Connected event
-            // (hello-ok) is a fast-path signal but not required.
+            // Poll readiness with a generous ceiling so a load-starved runner
+            // doesn't cause a false failure; the loop exits as soon as the
+            // challenge → connect → hello-ok dance completes.
             var deadline = DateTime.UtcNow.AddSeconds(20);
             while (!client.IsConnectedToGateway && DateTime.UtcNow < deadline)
             {
@@ -406,6 +513,9 @@ public sealed class GatewayProtocolLiveRoundTripTests : IDisposable
         private readonly Task _loop;
         private readonly Dictionary<string, Func<JsonElement, object>> _responders = new(StringComparer.Ordinal);
         private readonly ConcurrentQueue<(string Method, string Frame)> _frames = new();
+        private volatile string? _greeting;
+        private WebSocket? _currentSocket;
+        private readonly HashSet<string> _silentMethods = new(StringComparer.Ordinal);
 
         public int Port { get; }
         public string WebSocketUrl => $"ws://127.0.0.1:{Port}/";
@@ -439,6 +549,83 @@ public sealed class GatewayProtocolLiveRoundTripTests : IDisposable
         }
 
         public void OnMethod(string method, Func<JsonElement, object> responder) => _responders[method] = responder;
+
+        /// <summary>Sends a raw server frame immediately after the WebSocket is
+        /// accepted, before reading anything from the client. Used for the
+        /// connect.challenge event that gates the client's connect request.</summary>
+        public void SendGreetingOnAccept(string frame) => _greeting = frame;
+
+        /// <summary>Challenge frame sent on accept in the handshake; also sent
+        /// manually mid-connection by the withheld-handshake trace tests.</summary>
+        public const string ChallengeFrame =
+            "{\"type\":\"event\",\"event\":\"connect.challenge\",\"payload\":{\"nonce\":\"trace-challenge\",\"ts\":1785824000000}}";
+
+        /// <summary>Makes the server capture requests for a method but send no
+        /// response, so the client's pending request stays open. Used to
+        /// withhold hello-ok deterministically instead of an unregistered
+        /// responder's auto-{} reply (whose client-side handling is untested).</summary>
+        public void SilenceMethod(string method) => _silentMethods.Add(method);
+
+        /// <summary>Sends a raw server frame on the current client socket
+        /// (used to deliver the challenge and hello-ok mid-connection).</summary>
+        public async Task SendTextToCurrentSocketAsync(string frame)
+        {
+            var socket = Volatile.Read(ref _currentSocket);
+            if (socket is null || socket.State != WebSocketState.Open)
+                throw new InvalidOperationException("No open client socket to send on.");
+            var bytes = Encoding.UTF8.GetBytes(frame);
+            await socket.SendAsync(
+                new ArraySegment<byte>(bytes),
+                WebSocketMessageType.Text,
+                endOfMessage: true,
+                CancellationToken.None);
+        }
+
+        /// <summary>Server-initiated abort of the current client socket,
+        /// mirroring a hard network drop. Abort (not a graceful close): a
+        /// close handshake would race the client's own close handling on the
+        /// same socket.</summary>
+        public void AbortCurrentSocket()
+        {
+            var socket = Volatile.Read(ref _currentSocket);
+            socket?.Abort();
+        }
+
+        /// <summary>Server-initiated one-way Close frame on the current
+        /// client socket (mirrors a gateway-restart disconnect). Half-close
+        /// only: CloseOutputAsync sends the Close frame without waiting for
+        /// the client's ack, so the client observes a deterministic in-band
+        /// drop and its real auto-reconnect path takes over.</summary>
+        public async Task CloseOutputOnCurrentSocketAsync(string reason)
+        {
+            var socket = Volatile.Read(ref _currentSocket);
+            if (socket is null || socket.State != WebSocketState.Open)
+                throw new InvalidOperationException("No open client socket to close.");
+            await socket.CloseOutputAsync(
+                WebSocketCloseStatus.EndpointUnavailable,
+                reason,
+                CancellationToken.None);
+        }
+
+        /// <summary>
+        /// Installs the #1418 handshake: sends connect.challenge on accept and
+        /// answers the client's connect request with a minimal valid hello-ok
+        /// (protocol 4). Required because the operator readiness gate now
+        /// demands a completed handshake before application RPCs.
+        /// </summary>
+        public void EnableHandshake()
+        {
+            // Same wire shape as the challenge frames used by
+            // OpenClawGatewayClientTests. Serialized as a literal because
+            // `event` is a C# keyword and cannot be an anonymous-type member;
+            // the loopback responder never validates timestamp freshness, so a
+            // fixed ts keeps the frame deterministic.
+            SendGreetingOnAccept(
+                """
+                {"type":"event","event":"connect.challenge","payload":{"nonce":"rt-challenge","ts":1785824000000}}
+                """);
+            OnMethod("connect", _ => new { type = "hello-ok", protocol = 4 });
+        }
 
         public IEnumerable<string> AllFrames
         {
@@ -508,6 +695,17 @@ public sealed class GatewayProtocolLiveRoundTripTests : IDisposable
             catch { return; }
 
             var socket = wsCtx.WebSocket;
+            Volatile.Write(ref _currentSocket, socket);
+            var greeting = _greeting;
+            if (!string.IsNullOrEmpty(greeting))
+            {
+                var greetingBytes = Encoding.UTF8.GetBytes(greeting);
+                await socket.SendAsync(
+                    new ArraySegment<byte>(greetingBytes),
+                    WebSocketMessageType.Text,
+                    endOfMessage: true,
+                    CancellationToken.None);
+            }
             var buffer = new byte[16 * 1024];
             var sb = new StringBuilder();
 
@@ -554,6 +752,8 @@ public sealed class GatewayProtocolLiveRoundTripTests : IDisposable
             if (method is null || id is null) return;
 
             _frames.Enqueue((method, frame));
+
+            if (_silentMethods.Contains(method)) return;
 
             object payload = _responders.TryGetValue(method, out var responder)
                 ? responder(parameters)
