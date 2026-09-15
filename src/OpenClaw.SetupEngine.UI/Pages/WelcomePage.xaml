@@ -23,13 +23,15 @@
         </StackPanel>
 
         <ScrollViewer Grid.Row="1" Margin="0,24,0,0"
+                      MaxWidth="560"
+                      HorizontalAlignment="Stretch"
+                      HorizontalContentAlignment="Stretch"
                       IsTabStop="False"
                       VerticalScrollBarVisibility="Auto"
                       HorizontalScrollBarVisibility="Disabled">
             <ListView x:Name="GatewayChoiceSelector"
                       AutomationProperties.Name="Gateway setup method"
                       AutomationProperties.HelpText="Choose one gateway setup method."
-                      MaxWidth="560"
                       HorizontalAlignment="Stretch"
                       HorizontalContentAlignment="Stretch"
                       SelectionMode="Single"

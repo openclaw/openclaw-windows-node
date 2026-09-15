@@ -23,6 +23,11 @@ The setup flow no longer configures remote/manual gateways inline. The Welcome p
 ### Welcome
 Displays the OpenClaw icon, app title, and a brief description. Choosing local gateway setup runs the read-only WSL readiness gate before the Capabilities page or its Local AI decision UI can open. WSL2 environment failures, including disabled hardware virtualization, are shown as WSL readiness failures and block both Local AI and non-Local-AI local gateway setup. The readiness dialog can retry with a fresh inspection after the user resolves the reported problem. If an app-owned local WSL gateway already exists, the primary CTA reads **Install new WSL Gateway** and confirmation warns that the current OpenClaw WSL gateway and distro will be deleted. If only an external gateway exists, the CTA remains **Set up locally** and confirmation explains that the external connection remains available in Connections.
 
+The gateway-choice scroll viewport owns the 560-DIP maximum width and stretches
+its list content. Keep the width constraint on the viewport, not on the nested
+ListView, so the choices share the header's center line as the window resizes.
+Back, Next, and the step indicator remain outside the scrolling area.
+
 ### Local setup progress
 Installs and connects a new app-owned `OpenClawGateway` WSL instance from a clean WSL baseline. If the WSL platform is missing or its optional component is not initialized, setup requests administrator approval to install it, re-inspects readiness, and reports when a Windows restart is required. Setup does not export from or mutate an existing user Ubuntu distro; if WSL cannot create the named app-owned distro directly, setup fails with an actionable update message. Cleanup automatically unregisters a distro only when durable OpenClaw evidence is paired with exactly one readable current-user WSL registration whose canonical base path matches the expected managed install path. Automatic orphan-directory cleanup requires a marker bound to that exact path. An unproven same-named distro or leftover data directory is preserved unless the user explicitly confirms its permanent replacement in the setup UI or passes `--confirm-destructive`. When replacing an app-owned local gateway, the removal step is shown as part of progress and can be retried on failure.
 
@@ -87,6 +92,14 @@ See [DEVELOPMENT.md](../DEVELOPMENT.md#developing--testing-the-onboarding-wizard
 `SettingsManager` loads `%APPDATA%\OpenClawTray\settings.json` by default. Onboarding tests must not use `new SettingsManager()` without an isolated settings directory, because local user settings such as `EnableNodeMode=true` change setup behavior.
 
 Use a temp settings directory for tests that construct `SettingsManager`, or set `OPENCLAW_TRAY_DATA_DIR` before the test process starts.
+
+### Setup image packaging
+
+Setup images use `ms-appx:///OpenClaw.SetupEngine.UI/Assets/Setup/...` URIs.
+Published installer and portable ZIP payloads must include that library-qualified
+directory, not just the tray's loose `Assets/Setup` copies. The tray publish target
+preserves both layouts; `SetupAssetPublishTests` executes that target against a
+clean directory and checks every setup PNG, including nested assets.
 
 ### Key Files
 

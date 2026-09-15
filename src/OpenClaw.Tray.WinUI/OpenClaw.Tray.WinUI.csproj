@@ -352,6 +352,11 @@
     <Copy SourceFiles="@(_SetupAssetPublishSource)"
           DestinationFiles="@(_SetupAssetPublishSource->'$(PublishDir)Assets\Setup\%(RecursiveDir)%(Filename)%(Extension)')"
           SkipUnchangedFiles="true" />
+    <!-- WinUI adds library-qualified assets to build output, but not to the
+         .NET publish item list. Preserve the paths referenced by the setup PRI. -->
+    <Copy SourceFiles="@(_SetupAssetPublishSource)"
+          DestinationFiles="@(_SetupAssetPublishSource->'$(PublishDir)OpenClaw.SetupEngine.UI\Assets\Setup\%(RecursiveDir)%(Filename)%(Extension)')"
+          SkipUnchangedFiles="true" />
   </Target>
 
   <Target Name="CopySetupDefaultConfigToPublish" AfterTargets="Publish" Condition="'$(PublishDir)' != ''">
