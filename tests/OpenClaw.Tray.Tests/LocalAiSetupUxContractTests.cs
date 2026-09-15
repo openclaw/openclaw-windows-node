@@ -5,6 +5,24 @@ namespace OpenClaw.Tray.Tests;
 public sealed class LocalAiSetupUxContractTests
 {
     [Fact]
+    public void LocalAiSidebar_UsesColorChipAsset()
+    {
+        string root = TestRepositoryPaths.GetRepositoryRoot();
+        string tray = Path.Combine(root, "src", "OpenClaw.Tray.WinUI");
+        string xaml = File.ReadAllText(Path.Combine(tray, "Windows", "HubWindow.xaml"));
+        string svg = File.ReadAllText(Path.Combine(tray, "Assets", "SidebarIcons", "LocalAi.svg"));
+
+        Assert.Contains("x:Key=\"LocalAi_Icon\" UriSource=\"ms-appx:///Assets/SidebarIcons/LocalAi.svg\"", xaml);
+        Assert.Contains(
+            "Tag=\"local-ai\" Content=\"Local AI\">\n" +
+            "                <NavigationViewItem.Icon><ImageIcon Source=\"{StaticResource LocalAi_Icon}\" AutomationProperties.AccessibilityView=\"Raw\"/>",
+            xaml.Replace("\r\n", "\n"));
+        Assert.Contains("viewBox=\"0 0 24 24\"", svg);
+        Assert.Contains("<rect x=\"5\" y=\"5\" width=\"14\" height=\"14\" rx=\"3.75\" fill=\"url(#body)\"/>", svg);
+        Assert.DoesNotContain("<circle", svg);
+    }
+
+    [Fact]
     public void LocalAiSetupProgressAndCompletion_DoNotPromiseInferenceVerification()
     {
         string root = TestRepositoryPaths.GetRepositoryRoot();
