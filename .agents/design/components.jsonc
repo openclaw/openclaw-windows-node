@@ -155,15 +155,15 @@
     },
     {
       "name": "ComposerPicker",
-      "note": "Subtle inline dropdown. Ships as a WinUI subtle DropDownButton (a transparent Button that opens a flyout), NOT a bordered ComboBox and NOT a Fluent-web pill/segmented control. Shows the current value in `muted` secondary text (TextFillColorSecondary) with a trailing `muted` chevron (Segoe Fluent \\uE70D, previewed ~10px). 32px min height; horizontal padding token `2`, gap token `1`; `sm` radius = WinUI ControlCornerRadius (4px). Resting fill is fully transparent (SubtleFillColorTransparent, i.e. no visible border or fill); hover uses `subtleHover` (SubtleFillColorSecondary) and press uses `subtlePressed` (SubtleFillColorTertiary), so the picker stays quiet in the composer toolbar and never competes with the primary Send action. When there is nothing to choose (for example the session picker with a single session) the picker is disabled and its value reads a shade lighter than the enabled muted text. Used for the model, reasoning-effort, and session selectors; opens a flyout list of single-select (RadioMenuItem) options in-app. The chevron carries a small right/up offset (previewed 2,4,0,0) to sit tight against the value; the flyout list is a Reactor port note. Preview note: rendered as a `role=combobox` element (not a native `<button>`) so the transparent WinUI rest state shows without the web browser's default button chrome; the web canvas cannot animate the SubtleFill hover/pressed states.",
+      "note": "Subtle inline dropdown. Ships as a WinUI subtle DropDownButton (a transparent Button that opens a flyout), NOT a bordered ComboBox and NOT a Fluent-web pill/segmented control. Shows the current value in `muted` secondary text (TextFillColorSecondary) with a trailing `muted` chevron (Segoe Fluent \\uE70D, previewed ~10px). 32px min height; horizontal padding token `2`, gap token `1`; `sm` radius = WinUI ControlCornerRadius (4px). It is a real `button` whose browser chrome is removed with `control.chrome:none`, so the transparent WinUI rest state (SubtleFillColorTransparent, `$none`) shows with no web button border, and `control.focus` supplies the Windows accent focus rectangle instead of a web focus ring. Hover uses `subtleHover` (SubtleFillColorSecondary) and press uses `subtlePressed` (SubtleFillColorTertiary) through `states`, so the picker stays quiet in the composer toolbar and never competes with the primary Send action. When there is nothing to choose (for example the session picker with a single session) the picker is disabled and its value reads a shade lighter than the enabled muted text. Used for the model, reasoning-effort, and session selectors; `on.click` opens an in-app single-select (RadioMenuItem) flyout. ComposerPickerOptions is a representative shared option list because flyout targets take no props; the real per-picker option sets (sessions, models, effort levels) are supplied by the app and are a Reactor port note.",
       "props": {
         "label": "Model"
       },
       "root": {
         "id": "composer-picker-root",
-        "el": "div",
+        "el": "button",
         "attrs": {
-          "role": "combobox",
+          "type": "button",
           "aria-haspopup": "listbox",
           "aria-label": "{label}"
         },
@@ -182,8 +182,20 @@
           "fontFamily": "body",
           "textStyle": "small",
           "color": "muted",
+          "background": "$none",
           "radius": "sm"
         },
+        "control": {
+          "chrome": "none",
+          "focus": { "kind": "outline", "color": "accent" }
+        },
+        "states": {
+          "hover": { "background": "subtleHover" },
+          "pressed": { "background": "subtlePressed" },
+          "hoverPressed": { "background": "subtlePressed" },
+          "disabled": { "color": "muted", "background": "$none" }
+        },
+        "on": { "click": { "open": "ComposerPickerOptions" } },
         "children": [
           {
             "id": "composer-picker-label",
@@ -217,6 +229,46 @@
                   "d": "M6 9l6 6 6-6"
                 }
               }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "name": "ComposerPickerOptions",
+      "note": "Representative single-select flyout for the subtle composer pickers (model, session, reasoning-effort). Ships as a WinUI Flyout of RadioMenuItem rows on a `surface` (CardBackgroundFillColorDefault) sheet with `md` overlay radius and `md` shadow. Selecting a row closes the flyout; reopening restores defaults. Because `on.click.open` targets take no props, this shows a representative model list; the real per-picker option sets (sessions, models, effort levels) are supplied by the app and are a Reactor port note.",
+      "root": {
+        "id": "composer-picker-options",
+        "el": "div",
+        "attrs": { "role": "group", "aria-label": "Model" },
+        "layout": { "mode": "vertical", "gap": "1", "padding": "1", "width": "hug" },
+        "appearance": { "background": "surface", "color": "ink", "textStyle": "small", "radius": "md", "shadow": "md" },
+        "children": [
+          {
+            "id": "composer-option-sonnet",
+            "el": "label",
+            "layout": { "mode": "horizontal", "gap": "2", "align": "center", "padding": { "x": "2", "y": "1" } },
+            "children": [
+              { "id": "composer-option-sonnet-input", "el": "input", "attrs": { "type": "radio", "name": "composer-model", "value": "sonnet", "checked": true } },
+              "Claude Sonnet 5"
+            ]
+          },
+          {
+            "id": "composer-option-opus",
+            "el": "label",
+            "layout": { "mode": "horizontal", "gap": "2", "align": "center", "padding": { "x": "2", "y": "1" } },
+            "children": [
+              { "id": "composer-option-opus-input", "el": "input", "attrs": { "type": "radio", "name": "composer-model", "value": "opus" } },
+              "Claude Opus 4.8"
+            ]
+          },
+          {
+            "id": "composer-option-gpt",
+            "el": "label",
+            "layout": { "mode": "horizontal", "gap": "2", "align": "center", "padding": { "x": "2", "y": "1" } },
+            "children": [
+              { "id": "composer-option-gpt-input", "el": "input", "attrs": { "type": "radio", "name": "composer-model", "value": "gpt" } },
+              "GPT-5.6"
             ]
           }
         ]
@@ -472,7 +524,7 @@
     },
     {
       "name": "ChatComposer",
-      "note": "Chat input. A rounded `control` panel (`md` radius) with a hairline `controlLine` border wrapping a borderless, transparent, auto-growing textarea over a toolbar. Left cluster = Add, session picker, model picker, reasoning-effort picker; right cluster = Dictate (mic), Speaker, Settings, and the primary Send. Only Send spends the accent (it swaps to a subtle Stop while a turn is active, and reads disabled/greyed until the textarea has content); every other control ships as a WinUI subtle transparent Button (SubtleFillColorTransparent rest, SubtleFillColorSecondary hover, SubtleFillColorTertiary press, ControlCornerRadius) with a `muted` (TextFillColorSecondary) glyph, so the toolbar reads as quiet chrome. Each picker (see ComposerPicker) is a subtle borderless dropdown with muted value text; a picker with nothing to choose (for example the session picker when only one session exists) renders disabled, so its label reads a shade lighter than its enabled neighbours, as with `Main session` in the preview. Textarea min 56 / max 200px growth and the 12px outer margin are Reactor port notes; the app tightens top padding to 2px below token 1. Preview note: the subtle icon controls render as `role=button` elements (not native `<button>`s) so the transparent WinUI rest state shows without the web browser's button chrome; only the filled Send stays a real button. The message input renders as a borderless, typeable `contenteditable` `role=textbox` showing the muted placeholder, so no browser field border appears; a real WinUI TextBox is borderless here (the hairline `controlLine` border belongs to the outer `control` panel only). Preview caveat: the browser draws its own web `:focus` outline ring on the editable region when clicked, which is NOT the Windows focus cue (a real WinUI TextBox shows a bottom accent underline). Suppressing that web ring / substituting the accent underline is a renderer concern owned by the Colophon extension (tracked in karkarl/colophon#14), not something design-only component JSON can express, since `appearance` has no outline key. (Preview shows the rest state with the placeholder visible; click to type.)",
+      "note": "Chat input. A rounded `control` panel (`md` radius) with a hairline `controlLine` border wrapping a borderless, transparent, auto-growing textarea over a toolbar. Left cluster = Add, session picker, model picker, reasoning-effort picker; right cluster = Dictate (mic), Speaker, Settings, and the primary Send. Only Send spends the accent (it swaps to a subtle Stop while a turn is active, and reads disabled/greyed until the textarea has content); every other control ships as a WinUI subtle transparent Button (SubtleFillColorTransparent rest, SubtleFillColorSecondary hover, SubtleFillColorTertiary press, ControlCornerRadius) with a `muted` (TextFillColorSecondary) glyph, so the toolbar reads as quiet chrome. Each picker (see ComposerPicker) is a subtle borderless dropdown with muted value text; a picker with nothing to choose (for example the session picker when only one session exists) renders disabled, so its label reads a shade lighter than its enabled neighbours, as with `Main session` in the preview. Textarea min 56 / max 200px growth and the 12px outer margin are Reactor port notes; the app tightens top padding to 2px below token 1. The subtle icon controls are real `button`s whose browser chrome is removed via `control.chrome:none`, so the transparent WinUI rest state (SubtleFillColorTransparent, `$none`) shows with no web button border; each carries `states` for hover (`subtleHover`) and press (`subtlePressed`) and a `control.focus` accent focus rectangle, and only the filled Send spends the accent. The message input renders as a borderless, typeable `contenteditable` `role=textbox` showing the muted placeholder; `control.chrome:none` removes the browser field chrome and its `:focus` ring, and `control.focus` (kind underline, color accent) substitutes the Windows bottom accent underline a real WinUI TextBox shows. The hairline `controlLine` border belongs to the outer `control` panel only. (Preview shows the rest state with the placeholder visible; click to type.)",
       "props": {
         "placeholder": "Message Assistant (Enter to send)",
         "session": "Main session",
@@ -514,6 +566,10 @@
               "textStyle": "body",
               "color": "muted"
             },
+            "control": {
+              "chrome": "none",
+              "focus": { "kind": "underline", "color": "accent" }
+            },
             "children": [
               "{placeholder}"
             ]
@@ -540,9 +596,9 @@
                 "children": [
                   {
                     "id": "chat-composer-add",
-                    "el": "div",
+                    "el": "button",
                     "attrs": {
-                      "role": "button",
+                      "type": "button",
                       "title": "Add context",
                       "aria-label": "Add context"
                     },
@@ -555,7 +611,17 @@
                     },
                     "appearance": {
                       "color": "muted",
+                      "background": "$none",
                       "radius": "sm"
+                    },
+                    "control": {
+                      "chrome": "none",
+                      "focus": { "kind": "outline", "color": "accent" }
+                    },
+                    "states": {
+                      "hover": { "background": "subtleHover" },
+                      "pressed": { "background": "subtlePressed" },
+                      "hoverPressed": { "background": "subtlePressed" }
                     },
                     "children": [
                       {
@@ -618,9 +684,9 @@
                 "children": [
                   {
                     "id": "chat-composer-mic",
-                    "el": "div",
+                    "el": "button",
                     "attrs": {
-                      "role": "button",
+                      "type": "button",
                       "title": "Dictate",
                       "aria-label": "Dictate"
                     },
@@ -633,7 +699,17 @@
                     },
                     "appearance": {
                       "color": "muted",
+                      "background": "$none",
                       "radius": "sm"
+                    },
+                    "control": {
+                      "chrome": "none",
+                      "focus": { "kind": "outline", "color": "accent" }
+                    },
+                    "states": {
+                      "hover": { "background": "subtleHover" },
+                      "pressed": { "background": "subtlePressed" },
+                      "hoverPressed": { "background": "subtlePressed" }
                     },
                     "children": [
                       {
@@ -675,9 +751,9 @@
                   },
                   {
                     "id": "chat-composer-speaker",
-                    "el": "div",
+                    "el": "button",
                     "attrs": {
-                      "role": "button",
+                      "type": "button",
                       "title": "Read responses aloud",
                       "aria-label": "Read responses aloud"
                     },
@@ -690,7 +766,17 @@
                     },
                     "appearance": {
                       "color": "muted",
+                      "background": "$none",
                       "radius": "sm"
+                    },
+                    "control": {
+                      "chrome": "none",
+                      "focus": { "kind": "outline", "color": "accent" }
+                    },
+                    "states": {
+                      "hover": { "background": "subtleHover" },
+                      "pressed": { "background": "subtlePressed" },
+                      "hoverPressed": { "background": "subtlePressed" }
                     },
                     "children": [
                       {
@@ -728,9 +814,9 @@
                   },
                   {
                     "id": "chat-composer-settings",
-                    "el": "div",
+                    "el": "button",
                     "attrs": {
-                      "role": "button",
+                      "type": "button",
                       "title": "Chat settings",
                       "aria-label": "Chat settings"
                     },
@@ -743,7 +829,17 @@
                     },
                     "appearance": {
                       "color": "muted",
+                      "background": "$none",
                       "radius": "sm"
+                    },
+                    "control": {
+                      "chrome": "none",
+                      "focus": { "kind": "outline", "color": "accent" }
+                    },
+                    "states": {
+                      "hover": { "background": "subtleHover" },
+                      "pressed": { "background": "subtlePressed" },
+                      "hoverPressed": { "background": "subtlePressed" }
                     },
                     "children": [
                       {
