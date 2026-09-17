@@ -236,38 +236,41 @@
     },
     {
       "name": "ComposerPickerOptions",
-      "note": "Representative single-select flyout for the subtle composer pickers (model, session, reasoning-effort). Ships as a WinUI Flyout of RadioMenuItem rows on a `surface` (CardBackgroundFillColorDefault) sheet with `md` overlay radius and `md` shadow. Selecting a row closes the flyout; reopening restores defaults. Because `on.click.open` targets take no props, this shows a representative model list; the real per-picker option sets (sessions, models, effort levels) are supplied by the app and are a Reactor port note.",
+      "note": "Representative single-select flyout for the subtle composer pickers (model, session, reasoning-effort). Ships as a WinUI Flyout of RadioMenuItem rows on a `surface` (CardBackgroundFillColorDefault) sheet with `md` overlay radius and `md` shadow. Each row reserves a leading glyph column; the selected row shows an `accent` checkmark (WinUI RadioMenuItem selection glyph, not a radio dot) while unselected rows keep the column empty so labels stay aligned. Selecting a row closes the flyout; reopening restores defaults. Because `on.click.open` targets take no props, this shows a representative model list; the real per-picker option sets (sessions, models, effort levels) are supplied by the app and are a Reactor port note.",
       "root": {
         "id": "composer-picker-options",
         "el": "div",
-        "attrs": { "role": "group", "aria-label": "Model" },
+        "attrs": { "role": "menu", "aria-label": "Model" },
         "layout": { "mode": "vertical", "gap": "1", "padding": "1", "width": "hug" },
         "appearance": { "background": "surface", "color": "ink", "textStyle": "small", "radius": "md", "shadow": "md" },
         "children": [
           {
             "id": "composer-option-sonnet",
             "el": "label",
+            "attrs": { "role": "menuitemradio", "aria-checked": "true" },
             "layout": { "mode": "horizontal", "gap": "2", "align": "center", "padding": { "x": "2", "y": "1" } },
             "children": [
-              { "id": "composer-option-sonnet-input", "el": "input", "attrs": { "type": "radio", "name": "composer-model", "value": "sonnet", "checked": true } },
+              { "id": "composer-option-sonnet-check", "el": "span", "attrs": { "aria-hidden": "true" }, "layout": { "width": 16 }, "appearance": { "color": "accent", "textAlign": "center" }, "children": ["✓"] },
               "Claude Sonnet 5"
             ]
           },
           {
             "id": "composer-option-opus",
             "el": "label",
+            "attrs": { "role": "menuitemradio", "aria-checked": "false" },
             "layout": { "mode": "horizontal", "gap": "2", "align": "center", "padding": { "x": "2", "y": "1" } },
             "children": [
-              { "id": "composer-option-opus-input", "el": "input", "attrs": { "type": "radio", "name": "composer-model", "value": "opus" } },
+              { "id": "composer-option-opus-check", "el": "span", "attrs": { "aria-hidden": "true" }, "layout": { "width": 16 } },
               "Claude Opus 4.8"
             ]
           },
           {
             "id": "composer-option-gpt",
             "el": "label",
+            "attrs": { "role": "menuitemradio", "aria-checked": "false" },
             "layout": { "mode": "horizontal", "gap": "2", "align": "center", "padding": { "x": "2", "y": "1" } },
             "children": [
-              { "id": "composer-option-gpt-input", "el": "input", "attrs": { "type": "radio", "name": "composer-model", "value": "gpt" } },
+              { "id": "composer-option-gpt-check", "el": "span", "attrs": { "aria-hidden": "true" }, "layout": { "width": 16 } },
               "GPT-5.6"
             ]
           }
