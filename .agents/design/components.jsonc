@@ -236,7 +236,7 @@
     },
     {
       "name": "ComposerPickerOptions",
-      "note": "Representative single-select flyout for the subtle composer pickers (model, session, reasoning-effort). Ships as a WinUI Flyout of RadioMenuItem rows on a `surface` (CardBackgroundFillColorDefault) sheet with `md` overlay radius and `md` shadow. Each row reserves a leading glyph column; the selected row shows an `accent` checkmark (WinUI RadioMenuItem selection glyph, not a radio dot) while unselected rows keep the column empty so labels stay aligned. Selecting a row closes the flyout; reopening restores defaults. Because `on.click.open` targets take no props, this shows a representative model list; the real per-picker option sets (sessions, models, effort levels) are supplied by the app and are a Reactor port note.",
+      "note": "Representative single-select flyout for the subtle composer pickers (model, session, reasoning-effort). Ships as a WinUI Flyout of RadioMenuItem rows on a `surface` (CardBackgroundFillColorDefault) sheet with `md` overlay radius and `md` shadow. Each row reserves a leading glyph column; the selected row shows an `accent` Segoe Fluent Icons CheckMark (glyph U+E73E, WinUI SymbolThemeFontFamily selection glyph, not a radio dot) while unselected rows keep the column empty so labels stay aligned. The check glyph carries a font-family-only raw style because the icon font is outside the display/body/mono token set (documented as the `icon` typography family in design.json); color stays token-bound to `accent`. Selecting a row closes the flyout; reopening restores defaults. Because `on.click.open` targets take no props, this shows a representative model list; the real per-picker option sets (sessions, models, effort levels) are supplied by the app and are a Reactor port note.",
       "root": {
         "id": "composer-picker-options",
         "el": "div",
@@ -250,7 +250,7 @@
             "attrs": { "role": "menuitemradio", "aria-checked": "true" },
             "layout": { "mode": "horizontal", "gap": "2", "align": "center", "padding": { "x": "2", "y": "1" } },
             "children": [
-              { "id": "composer-option-sonnet-check", "el": "span", "attrs": { "aria-hidden": "true" }, "layout": { "width": 16 }, "appearance": { "color": "accent", "textAlign": "center" }, "children": ["✓"] },
+              { "id": "composer-option-sonnet-check", "el": "span", "attrs": { "aria-hidden": "true", "style": "font-family:'Segoe Fluent Icons','Segoe MDL2 Assets',sans-serif" }, "layout": { "width": 16 }, "appearance": { "color": "accent", "textAlign": "center" }, "children": ["\uE73E"] },
               "Claude Sonnet 5"
             ]
           },

@@ -79,6 +79,11 @@
       "weights": [400],
       "usage": "Commands, endpoints, tokens, logs, timestamps. Used heavily across setup and diagnostics surfaces."
     },
+    "icon": {
+      "family": "\"Segoe Fluent Icons\", \"Segoe MDL2 Assets\", sans-serif",
+      "weights": [400],
+      "usage": "Fluent icon glyphs (checkmarks, chevrons, action glyphs). Ships as WinUI FontIcon/SymbolIcon on SymbolThemeFontFamily (Segoe Fluent Icons); e.g. the selection CheckMark is glyph U+E73E. Not for body text."
+    },
     "scale": [
       { "name": "display", "size": "40px", "lineHeight": "50px", "weight": 600, "role": "display", "tracking": "-0.01em" },
       { "name": "title",   "size": "28px", "lineHeight": "36px", "weight": 600, "role": "display" },
