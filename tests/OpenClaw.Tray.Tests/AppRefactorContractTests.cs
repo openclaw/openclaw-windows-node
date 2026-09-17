@@ -1974,31 +1974,36 @@ public sealed class AppRefactorContractTests
     }
 
     [Fact]
-    public void SandboxPage_PreservesSandboxIntentWhenUnavailable()
+    public void SandboxPage_NormalizesDefinitiveUnavailableMxcOff()
     {
         var source = ReadSandboxPageSource();
         var refresh = ExtractMethod(source, "RefreshAvailabilityAsync");
         var loadState = ExtractMethod(source, "LoadState");
         var definitiveUnavailable = ExtractMethod(source, "IsSandboxDefinitivelyUnavailable");
+        var normalize = ExtractMethod(source, "NormalizeSandboxToggleForAvailability");
 
-        // The page renders the availability-driven state, but never rewrites the
-        // user's saved sandbox intent on its behalf.
         AssertInOrder(
             refresh,
+            "NormalizeSandboxToggleForAvailability();",
             "UpdateSandboxStatusCard();",
             "UpdateControlsEnabledState();");
         AssertInOrder(
             loadState,
+            "NormalizeSandboxToggleForAvailability();",
             "UpdatePresetHighlight();",
             "UpdateSandboxStatusCard();",
             "UpdateControlsEnabledState();");
         Assert.Contains("CanRunSystemRunSandbox: false", definitiveUnavailable);
         Assert.Contains("ProbeErrored: false", definitiveUnavailable);
         Assert.Contains("ProbeSuppressedBySkuGate: false", definitiveUnavailable);
-
-        // Regression guard: availability must never silently persist sandbox-off.
-        Assert.DoesNotContain("NormalizeSandboxToggleForAvailability", source);
-        Assert.DoesNotContain("settings.SystemRunSandboxEnabled = false", source);
+        AssertInOrder(
+            normalize,
+            "settings.SystemRunSandboxEnabled",
+            "settings.SystemRunBlockHostFallbackWhenMxcUnavailable",
+            "settings.SystemRunSandboxEnabled = false");
+        Assert.Contains("settings.SystemRunSandboxEnabled = false", normalize);
+        Assert.Contains("SandboxEnabledToggle.IsOn = false", normalize);
+        Assert.Contains("Save();", normalize);
     }
 
     [Fact]
@@ -2006,35 +2011,40 @@ public sealed class AppRefactorContractTests
     {
         var source = ReadSandboxPageSource();
         var actionBar = ExtractMethod(source, "UpdateUnavailableActionBar");
+        var windowsCapability = ExtractMethod(source, "IsWindowsSandboxCapabilityUnavailable");
 
         AssertInOrder(
             actionBar,
             "var isSetupIssue",
             "!availability.ProbeSuppressedBySkuGate",
             "!availability.IsWxcExecResolvable");
+        Assert.Contains("IsWindowsSandboxCapabilityUnavailable(availability)", actionBar);
+        Assert.Contains("!availability.ProbeErrored", windowsCapability);
+        Assert.Contains("availability.IsWxcExecResolvable", windowsCapability);
+        Assert.Contains("!availability.CanRunSystemRunSandbox", windowsCapability);
     }
 
     [Fact]
-    public void SandboxPage_SavesTurningOnWhenMxcIsDefinitivelyUnavailable()
+    public void SandboxPage_RejectsTurningOnWhenMxcIsDefinitivelyUnavailable()
     {
         var source = ReadSandboxPageSource();
         var toggle = ExtractMethod(source, "OnSandboxEnabledToggledAsync");
-        var explain = ExtractMethod(source, "ExplainSandboxEnabledWhileUnavailableAsync");
+        var reject = ExtractMethod(source, "RejectSandboxEnableWhenUnavailableAsync");
 
-        // Turning the sandbox on while containment is unavailable is stored and
-        // then explained. It is never refused and never silently reverted.
         AssertInOrder(
             toggle,
-            "var explainUnavailable",
+            "newValue",
             "!oldValue",
             "IsSandboxDefinitivelyUnavailable()",
             "!s.SystemRunBlockHostFallbackWhenMxcUnavailable",
-            "s.SystemRunSandboxEnabled = newValue;",
-            "Save();",
-            "await ExplainSandboxEnabledWhileUnavailableAsync();");
-        Assert.DoesNotContain("RejectSandboxEnableWhenUnavailableAsync", source);
-        Assert.DoesNotContain("SandboxEnabledToggle.IsOn = false", explain);
-        Assert.Contains("MXC BaseContainer without host DACL augmentation", explain);
+            "await RejectSandboxEnableWhenUnavailableAsync();",
+            "return;");
+        Assert.Contains("SandboxEnabledToggle.IsOn = false", reject);
+        Assert.Contains("Node Sandbox unavailable", reject);
+        Assert.Contains("IsWindowsSandboxCapabilityUnavailable(availability)", reject);
+        Assert.Contains("SandboxPage_WindowsUnsupportedTitle", reject);
+        Assert.Contains("SandboxPage_WindowsUnsupportedMessageFormat", reject);
+        Assert.Contains("SandboxPage_UnavailableBehaviorHostFallback", reject);
     }
 
     private static string ReadCoordinatorSource()
