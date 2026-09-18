@@ -63,6 +63,13 @@ project.lock.json
 project.fragment.lock.json
 artifacts/
 
+# Local Gateway package used by the temporary setup handoff.
+/OpenClawGateway-0.0.0.0-arm64.msix
+/OpenClawGateway-0.0.0.1-arm64.msix
+/OpenClawGateway-0.0.0.1.msixbundle
+/.artifacts/native-shared-wizard/
+/.artifacts/native-shared-wizard-tests/
+
 # ASP.NET Scaffolding
 ScaffoldingReadMe.txt
 

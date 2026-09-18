@@ -29,6 +29,58 @@ readiness; the retried CLI command retains those guards. Restart-intent recordin
 contention is a separate failure and is not retried here. There is no direct
 systemd restart fallback or ownership bypass.
 
+The separate **native Gateway MSIX** Welcome path does not use
+`SetupStepFactory.BuildDefaultSteps()`. `NativeGatewaySetupService` owns its
+dedicated-profile and package preparation. `NativeGatewaySetupSession` owns
+staged-record runtime authorization, reload suspension/restoration, retry/cancel,
+authenticated health/config gates, and final registry publication.
+`WizardPage` is the single hosted WinUI wizard for both WSL and native:
+`wizard.start/next/cancel` transport, upstream prompts, and provider/model cards
+are not duplicated. Native uses the upstream `installDaemon: false` contract.
+`NativeGatewayPackageResolver`
+checks Windows package registration and package-qualified aliases.
+`NativeGatewayMsixInstaller` validates the local development MSIX configured by
+`OPENCLAW_GATEWAY_MSIX_PATH` and
+hands it to Windows App Installer when a package is not installed.
+`NativeGatewayPackageAcquisition` automatically opens it once only for missing
+registration, then waits up to five minutes for verified package readiness.
+Cancellation stops the wait, not Windows deployment. Repair errors and timeouts
+stay visible, with explicit retry rather than repeated installer launches.
+Native setup shares the capability profiles and Windows permissions page with
+WSL but skips WSL/Local AI/Tailscale installation review and probes. The native
+progress page uses shared spinner/checkmark rows and automatically enters the
+Gateway wizard after preparing its runtime. Finalization applies the selected
+Gateway command allowlist before config/health gates, then persists only the
+Companion node/capability settings. Completion does not claim node pairing.
+`NativeGatewaySetupHost` runs captured `clawctl setup`, config validation, and
+health commands, plus an explicitly requested profile-scoped recovery terminal.
+It never launches `openclaw onboard` or WSL.
+`NativeGatewayRuntime` in the Connection project owns the gateway process.
+This path is non-isolated, UI-only, and never downloads an MSIX or bypasses the
+Windows installer. The temporary local source is ARM64-only.
+Existing headless setup arguments continue to select the WSL pipeline.
+See [Native Gateway MSIX](ONBOARDING_WIZARD.md#native-gateway-msix-not-isolated)
+for consent, lifecycle, retry, and acquisition boundaries.
+
+See [Gateway setup responsibilities](GATEWAY_SETUP_RESPONSIBILITIES.md) for the
+Gateway packaging responsibility matrix, its comparison with WSL provisioning,
+and the decided Companion-owned MXC lifecycle. The required isolated path
+preserves identity/configuration across restarts, stops on exit, and deprovisions
+only on explicit removal. Its package activation and listener-provenance contracts
+remain blocked pending integration proof; the non-isolated runtime is not a
+substitute.
+
+The [Welcome recommendation policy](ONBOARDING_WIZARD.md#welcome) now checks
+`wxc-exec --probe` session capability before recommending the existing native
+Gateway. `NativeGatewaySetupEligibility` owns admission and selection policy.
+Unavailable capability offers Windows Update with the pinned SDK's Insider
+baseline (26340.9212); failed probes offer retry/repair instead. WSL is an explicit,
+collapsed alternative shown only when native is unavailable. Welcome has no
+manual recheck button; reopening the page checks again. The separate isolation warning/checkbox is removed by the
+2026-09-18 product decision; general security consent remains. This is not
+session provisioning. Gateway distribution includes x64, ARM64 and MSIX bundle
+artifacts, but the temporary development installer remains ARM64-only.
+
 > **Status note (2026-07-06):** Current default setup includes `WindowsNodeBootstrapContextStep`, which injects Windows-node context into the WSL workspace `AGENTS.md` after onboarding.
 
 ---
@@ -356,7 +408,8 @@ The WinUI app is a **thin shell** - no business logic, just rendering pipeline s
 
 **WelcomePage**
 - OpenClaw icon + "OpenClaw Setup" title bar
-- Install app-owned WSL gateway (recommended) or connect to existing gateway
+- Capability-checked native Gateway first and recommended; Windows Update/retry guidance when unavailable
+- Collapsed WSL alternative or visible connection to an existing gateway
 - Replacement prompt when an app-owned WSL gateway already exists
 
 **CapabilitiesPage**

@@ -15,6 +15,30 @@ public class ManagedLocalGatewayPortProvenanceServiceTests
     };
 
     [Fact]
+    public async Task NativeRecord_NeverUsesWslProvenanceOrCachedCredentialExemption()
+    {
+        var platform = new FakePlatform();
+        var service = new ManagedLocalGatewayPortProvenanceService(platform, NullLogger.Instance);
+        var record = ManagedRecord() with
+        {
+            NativePackageFamilyName = "OpenClaw.Gateway_test",
+            IsLocal = false,
+            SetupManagedDistroName = null,
+            Url = "wss://example.test",
+        };
+
+        var result = await service.InspectAsync(record);
+
+        Assert.Equal(GatewayEndpointProvenanceKind.UnknownListener, result.Kind);
+        Assert.False(service.IsStrongCredentialAllowed(record,
+            new GatewayCredential("shared", false, CredentialResolver.SourceSharedGatewayToken)));
+        Assert.Equal(ManagedLocalPortConflictRepairOutcome.BlockedUnknownOwner,
+            (await service.RepairConflictAsync(record, CancellationToken.None)).Outcome);
+        Assert.Empty(platform.Actions);
+        Assert.Equal(0, platform.ExpectedDistroChecks);
+    }
+
+    [Fact]
     public void EvaluateWslRelayBinary_NonCanonicalPathSkipsSignatureVerification()
     {
         var signatureChecked = false;

@@ -471,8 +471,23 @@ public sealed class SetupWizardRunner
                     return StepResult.Fail($"Gateway wizard repeated step '{parsed.StepId}' too many times. A wizard answer template was written to: {templatePath}");
                 }
 
-                discoveredSteps.Add(WizardTemplateStep.From(parsed));
-                var answerResult = ResolveAnswer(parsed, _ctx.Config.WizardAnswers);
+                var onboarding = WizardOnboardingPolicy.Evaluate(payload.GetProperty("step"));
+                if (onboarding.Action == WizardOnboardingAction.Finish)
+                {
+                    await WizardOptionalSetupHandoff.CompleteAsync(
+                        client.SendWizardRequestAsync, sessionId, payload.GetProperty("step"), ct);
+                    sessionId = "";
+                    _ctx.Logger.Info("Optional Gateway setup deferred; saved configuration and authenticated health verified.");
+                    return StepResult.Ok("Gateway setup verified; optional features can be configured later");
+                }
+                if (onboarding.Action == WizardOnboardingAction.Show)
+                    discoveredSteps.Add(WizardTemplateStep.From(parsed));
+                var answerResult = onboarding.Action switch
+                {
+                    WizardOnboardingAction.Answer => AnswerResolution.Ok(onboarding.Answer!),
+                    WizardOnboardingAction.Acknowledge => AnswerResolution.Continue(),
+                    _ => ResolveAnswer(parsed, _ctx.Config.WizardAnswers),
+                };
                 if (!answerResult.Success)
                 {
                     var templatePath = WriteAnswerTemplate(discoveredSteps, parsed);
@@ -539,7 +554,7 @@ public sealed class SetupWizardRunner
 
     internal static object BuildWizardStartParameters() => new { installDaemon = false };
 
-    internal static bool IsInstallDaemonParameterUnsupported(Exception ex) =>
+    public static bool IsInstallDaemonParameterUnsupported(Exception ex) =>
         ex is InvalidOperationException &&
         ex.Message.Contains(
             "unexpected property 'installDaemon'",

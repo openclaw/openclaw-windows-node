@@ -3,6 +3,7 @@ using System.Text.Json;
 using OpenClaw.Shared;
 using OpenClaw.Shared.Telemetry;
 using OpenClaw.Connection;
+using OpenClaw.Connection.NativeGateway;
 
 namespace OpenClaw.Connection.Tests;
 
@@ -38,6 +39,274 @@ public class GatewayConnectionManagerTests : IDisposable
         Assert.Equal(OverallConnectionState.Idle, _manager.CurrentSnapshot.OverallState);
         Assert.Null(_manager.OperatorClient);
         Assert.Null(_manager.ActiveGatewayUrl);
+    }
+
+    private void SetupNativeGateway()
+    {
+        _registry.AddOrUpdate(new GatewayRecord
+        {
+            Id = "native",
+            Url = "ws://127.0.0.1:18789",
+            IsLocal = true,
+            NativePackageFamilyName = "OpenClaw.Gateway_test",
+        });
+        _registry.SetActive("native");
+        _resolver.OperatorCredential = new("operator-token", false, CredentialResolver.SourceDeviceToken);
+        _resolver.NodeCredential = new("node-token", false, CredentialResolver.SourceNodeDeviceToken);
+    }
+
+    [Fact]
+    public async Task NativeGateway_StartsAndInspectsBeforeCredentialHandoff()
+    {
+        SetupNativeGateway();
+        var runtime = new FakeNativeGatewayRuntime
+        {
+            BeforeEnsure = () => Assert.Empty(_factory.CreatedCredentials),
+            BeforeInspect = () => Assert.Empty(_factory.CreatedCredentials),
+        };
+        await using var manager = new GatewayConnectionManager(
+            _resolver, _factory, _registry, NullLogger.Instance,
+            endpointProvenanceProbe: (_, _) => throw new InvalidOperationException("Native must not probe WSL"),
+            nativeGatewayRuntime: runtime);
+
+        await manager.ConnectAsync();
+
+        Assert.Single(_factory.CreatedCredentials);
+        Assert.Equal(1, runtime.StartCount);
+        Assert.True(runtime.InspectCount > 0);
+    }
+
+    [Theory]
+    [InlineData(GatewayEndpointProvenanceKind.UnknownListener)]
+    [InlineData(GatewayEndpointProvenanceKind.NotApplicable)]
+    [InlineData(GatewayEndpointProvenanceKind.NoListener)]
+    public async Task NativeGateway_UnownedEndpointBlocksEveryCredential(GatewayEndpointProvenanceKind kind)
+    {
+        SetupNativeGateway();
+        var runtime = new FakeNativeGatewayRuntime { Kind = kind };
+        var node = new CountingNodeConnector();
+        await using var manager = new GatewayConnectionManager(
+            _resolver, _factory, _registry, NullLogger.Instance,
+            nodeConnector: node, nativeGatewayRuntime: runtime);
+
+        await manager.ConnectAsync();
+        Assert.Empty(_factory.CreatedCredentials);
+        Assert.Equal(OverallConnectionState.Error, manager.CurrentSnapshot.OverallState);
+        await manager.ConnectNodeOnlyAsync();
+        Assert.Equal(0, node.ConnectCount);
+        Assert.Equal(RoleConnectionState.Error, manager.CurrentSnapshot.NodeState);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task NativeGateway_UnavailableRuntimeBlocksCredentials(bool runtimeThrows)
+    {
+        SetupNativeGateway();
+        var runtime = runtimeThrows
+            ? new FakeNativeGatewayRuntime { StartException = new InvalidOperationException("package unavailable") }
+            : null;
+        await using var manager = new GatewayConnectionManager(
+            _resolver, _factory, _registry, NullLogger.Instance, nativeGatewayRuntime: runtime);
+
+        await manager.ConnectAsync();
+
+        Assert.Empty(_factory.CreatedCredentials);
+        Assert.Equal(GatewayErrorKind.Network, manager.CurrentSnapshot.OperatorErrorKind);
+        Assert.Contains("native Gateway", manager.CurrentSnapshot.OperatorError);
+    }
+
+    [Fact]
+    public async Task NativeGateway_NodeOnlyStartsBeforeNodeCredentialHandoff()
+    {
+        SetupNativeGateway();
+        _resolver.OperatorCredential = null;
+        var node = new CountingNodeConnector();
+        var runtime = new FakeNativeGatewayRuntime { BeforeEnsure = () => Assert.Equal(0, node.ConnectCount) };
+        await using var manager = new GatewayConnectionManager(
+            _resolver, _factory, _registry, NullLogger.Instance,
+            nodeConnector: node, nativeGatewayRuntime: runtime);
+
+        await manager.ConnectNodeOnlyAsync();
+
+        Assert.Equal(1, node.ConnectCount);
+        Assert.Equal(1, runtime.StartCount);
+        Assert.Empty(_factory.CreatedCredentials);
+    }
+
+    [Fact]
+    public async Task NativeGateway_ReconnectRestartsCrashWithoutStoppingHealthyRuntime()
+    {
+        SetupNativeGateway();
+        var runtime = new FakeNativeGatewayRuntime();
+        await using var manager = new GatewayConnectionManager(
+            _resolver, _factory, _registry, NullLogger.Instance, nativeGatewayRuntime: runtime);
+        await manager.ConnectAsync();
+        await manager.ReconnectAsync();
+        Assert.Equal(1, runtime.StartCount);
+        Assert.Equal(0, runtime.StopCount);
+
+        runtime.Running = false;
+        var client = _factory.CreatedClients.Last().DataClient;
+        var authorization = await client.ReconnectAuthorizationAsync!(CancellationToken.None);
+
+        Assert.True(authorization.Allowed);
+        Assert.Equal(2, runtime.StartCount);
+        Assert.Equal(0, runtime.StopCount);
+        runtime.Kind = GatewayEndpointProvenanceKind.UnknownListener;
+        Assert.False((await client.HandshakeAuthorizationAsync!(CancellationToken.None)).Allowed);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task NativeGateway_ExplicitDisconnectStopsRuntime(bool byUser)
+    {
+        SetupNativeGateway();
+        var runtime = new FakeNativeGatewayRuntime();
+        await using var manager = new GatewayConnectionManager(
+            _resolver, _factory, _registry, NullLogger.Instance, nativeGatewayRuntime: runtime);
+        await manager.ConnectAsync();
+        if (byUser)
+            await manager.DisconnectByUserAsync();
+        else
+            await manager.DisconnectAsync();
+
+        Assert.Equal(1, runtime.StopCount);
+        Assert.False(runtime.Running);
+        await manager.ConnectAsync();
+        Assert.Equal(2, runtime.StartCount);
+    }
+
+    [Fact]
+    public async Task NativeGateway_SupersededReconnectCannotRestartAfterDisconnect()
+    {
+        SetupNativeGateway();
+        var runtime = new FakeNativeGatewayRuntime();
+        await using var manager = new GatewayConnectionManager(
+            _resolver, _factory, _registry, NullLogger.Instance, nativeGatewayRuntime: runtime);
+        await manager.ConnectAsync();
+        var client = Assert.Single(_factory.CreatedClients).DataClient;
+        await manager.DisconnectByUserAsync();
+
+        var authorization = await client.ReconnectAuthorizationAsync!(CancellationToken.None);
+
+        Assert.False(authorization.Allowed);
+        Assert.Equal(1, runtime.StartCount);
+        Assert.False(runtime.Running);
+    }
+
+    [Fact]
+    public async Task NativeGateway_RecordMarkerMutationBlocksLiveCredentialHandoff()
+    {
+        SetupNativeGateway();
+        var runtime = new FakeNativeGatewayRuntime();
+        await using var manager = new GatewayConnectionManager(
+            _resolver, _factory, _registry, NullLogger.Instance, nativeGatewayRuntime: runtime);
+        await manager.ConnectAsync();
+        var client = Assert.Single(_factory.CreatedClients).DataClient;
+        _registry.AddOrUpdate(_registry.GetActive()! with { NativePackageFamilyName = null });
+
+        var authorization = await client.HandshakeAuthorizationAsync!(CancellationToken.None);
+
+        Assert.False(authorization.Allowed);
+        Assert.Equal(GatewayErrorKind.LocalPortConflict, authorization.FailureKind);
+    }
+
+    [Fact]
+    public async Task NativeGateway_ActiveRemovalUsesDisconnectBeforeRegistryMutation()
+    {
+        SetupNativeGateway();
+        var runtime = new FakeNativeGatewayRuntime();
+        await using var manager = new GatewayConnectionManager(
+            _resolver, _factory, _registry, NullLogger.Instance, nativeGatewayRuntime: runtime);
+        await manager.ConnectAsync();
+        var client = Assert.Single(_factory.CreatedClients).DataClient;
+
+        // ConnectionPage removes the active saved row only after awaiting this disconnect.
+        await manager.DisconnectAsync();
+        _registry.Remove("native");
+        _registry.Save();
+
+        Assert.Equal(1, runtime.StopCount);
+        Assert.False(runtime.Running);
+        Assert.Null(_registry.GetActive());
+        Assert.False((await client.ReconnectAuthorizationAsync!(CancellationToken.None)).Allowed);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task NativeGateway_RepointingSameRecordStopsPreviousRuntime(bool remainsNative)
+    {
+        SetupNativeGateway();
+        var runtime = new FakeNativeGatewayRuntime();
+        await using var manager = new GatewayConnectionManager(
+            _resolver, _factory, _registry, NullLogger.Instance, nativeGatewayRuntime: runtime);
+        await manager.ConnectAsync();
+        _registry.AddOrUpdate(_registry.GetActive()! with
+        {
+            Url = remainsNative ? "ws://127.0.0.1:18790" : "wss://example.test",
+            NativePackageFamilyName = remainsNative ? "OpenClaw.Gateway_test" : null,
+            IsLocal = remainsNative,
+        });
+
+        await manager.ReconnectAsync();
+
+        Assert.Equal(1, runtime.StopCount);
+        Assert.Equal(remainsNative ? 2 : 1, runtime.StartCount);
+        Assert.Equal(remainsNative, runtime.Running);
+    }
+
+    [Fact]
+    public async Task NativeGateway_SwitchAwayStopsAndShutdownDisposesExactlyOnce()
+    {
+        SetupNativeGateway();
+        _registry.AddOrUpdate(new GatewayRecord { Id = "remote", Url = "wss://example.test" });
+        var runtime = new FakeNativeGatewayRuntime();
+        var manager = new GatewayConnectionManager(
+            _resolver, _factory, _registry, NullLogger.Instance, nativeGatewayRuntime: runtime);
+        await manager.ConnectAsync();
+        await manager.SwitchGatewayAsync("remote");
+        Assert.Equal(1, runtime.StopCount);
+        Assert.Equal(1, runtime.StartCount);
+        await manager.SwitchGatewayAsync("native");
+        Assert.Equal(2, runtime.StartCount);
+
+        await manager.DisposeAsync();
+        await manager.DisposeAsync();
+        Assert.Equal(1, runtime.DisposeCount);
+        Assert.False(runtime.Running);
+    }
+
+    [Fact]
+    public async Task NativeGateway_WslRecordsKeepExistingProvenanceRoute()
+    {
+        _registry.AddOrUpdate(new GatewayRecord
+        {
+            Id = "wsl", Url = "ws://localhost:18789", IsLocal = true,
+            SetupManagedDistroName = "OpenClawGateway",
+        });
+        _registry.SetActive("wsl");
+        _resolver.OperatorCredential = new("shared", false, CredentialResolver.SourceSharedGatewayToken);
+        var runtime = new FakeNativeGatewayRuntime();
+        var probes = 0;
+        await using var manager = new GatewayConnectionManager(
+            _resolver, _factory, _registry, NullLogger.Instance,
+            endpointProvenanceProbe: (_, _) =>
+            {
+                probes++;
+                return Task.FromResult(new GatewayEndpointProvenance(
+                    GatewayEndpointProvenanceKind.ExpectedManagedGateway, 18789));
+            },
+            nativeGatewayRuntime: runtime);
+
+        await manager.ConnectAsync();
+
+        Assert.Single(_factory.CreatedCredentials);
+        Assert.True(probes > 0);
+        Assert.Equal(0, runtime.StartCount);
+        Assert.Equal(0, runtime.InspectCount);
     }
 
     [Fact]
@@ -5154,6 +5423,57 @@ public class GatewayConnectionManagerTests : IDisposable
             {
                 Current.Value = _previousCollector;
             }
+        }
+    }
+
+    private sealed class FakeNativeGatewayRuntime : INativeGatewayRuntime
+    {
+        public Action? BeforeEnsure { get; init; }
+        public Action? BeforeInspect { get; init; }
+        public Exception? StartException { get; init; }
+        public bool Running { get; set; }
+        public int StartCount { get; private set; }
+        public int StopCount { get; private set; }
+        public int DisposeCount { get; private set; }
+        public int InspectCount { get; private set; }
+        public GatewayEndpointProvenanceKind Kind { get; set; } =
+            GatewayEndpointProvenanceKind.ExpectedManagedGateway;
+
+        public Task EnsureRunningAsync(GatewayRecord record, CancellationToken cancellationToken)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            BeforeEnsure?.Invoke();
+            if (StartException is not null)
+                throw StartException;
+            if (!Running)
+            {
+                StartCount++;
+                Running = true;
+            }
+            return Task.CompletedTask;
+        }
+
+        public Task<GatewayEndpointProvenance> InspectAsync(GatewayRecord record, CancellationToken cancellationToken)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            BeforeInspect?.Invoke();
+            InspectCount++;
+            return Task.FromResult(new GatewayEndpointProvenance(Kind, 18789,
+                ProcessId: StartCount, ProcessStartTimeUtc: DateTime.UnixEpoch.AddSeconds(StartCount)));
+        }
+
+        public Task StopAsync(CancellationToken cancellationToken)
+        {
+            StopCount++;
+            Running = false;
+            return Task.CompletedTask;
+        }
+
+        public ValueTask DisposeAsync()
+        {
+            DisposeCount++;
+            Running = false;
+            return ValueTask.CompletedTask;
         }
     }
 

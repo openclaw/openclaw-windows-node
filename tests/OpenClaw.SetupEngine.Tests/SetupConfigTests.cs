@@ -370,6 +370,105 @@ public class SetupConfigTests : IDisposable
                 .GetBoolean());
     }
 
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public void TraySettingsConfig_CapabilityMerge_ChangesOnlyNodeSettings(bool enabled)
+    {
+        var settingsPath = Path.Combine(_tempDir, "settings.json");
+        var registryPath = Path.Combine(_tempDir, "gateways.json");
+        const string registry = """{"ActiveGatewayId":"native","Gateways":[{"Id":"native","DeviceToken":"paired-device-token"}]}""";
+        File.WriteAllText(registryPath, registry);
+        var existing = new Dictionary<string, object?>
+        {
+            ["AutoStart"] = true,
+            ["EnableMcpServer"] = false,
+            ["EnableManagedLocalGatewayAutoRepair"] = false,
+            ["GatewayUrl"] = "ws://localhost:18789",
+            ["Token"] = "legacy-shared-token",
+            ["BootstrapToken"] = "legacy-bootstrap-token",
+            ["CustomKey"] = new { Nested = new[] { "one", "two" }, Enabled = true },
+            ["UnknownNull"] = null,
+            ["EnableNodeMode"] = !enabled,
+            ["NodeSystemRunEnabled"] = !enabled,
+            ["NodeCanvasEnabled"] = enabled,
+            ["NodeScreenEnabled"] = !enabled,
+            ["NodeCameraEnabled"] = enabled,
+            ["NodeLocationEnabled"] = !enabled,
+            ["NodeBrowserProxyEnabled"] = enabled,
+            ["NodeTtsEnabled"] = !enabled,
+            ["NodeSttEnabled"] = enabled,
+        };
+        File.WriteAllText(settingsPath, JsonSerializer.Serialize(existing));
+        var settings = new TraySettingsConfig
+        {
+            EnableNodeMode = enabled,
+            AutoStart = false,
+            EnableManagedLocalGatewayAutoRepair = true,
+        };
+        settings.ApplyCapabilities(new CapabilitiesConfig
+        {
+            System = enabled,
+            Canvas = !enabled,
+            Screen = enabled,
+            Camera = !enabled,
+            Location = enabled,
+            Browser = !enabled,
+            Tts = enabled,
+            Stt = !enabled,
+        });
+
+        settings.MergeCapabilitiesIntoSettingsFile(settingsPath);
+
+        using var result = JsonDocument.Parse(File.ReadAllText(settingsPath));
+        var root = result.RootElement;
+        Assert.Equal(existing.Count, root.EnumerateObject().Count());
+        Assert.Equal(enabled, root.GetProperty("EnableNodeMode").GetBoolean());
+        Assert.Equal(enabled, root.GetProperty("NodeSystemRunEnabled").GetBoolean());
+        Assert.Equal(!enabled, root.GetProperty("NodeCanvasEnabled").GetBoolean());
+        Assert.Equal(enabled, root.GetProperty("NodeScreenEnabled").GetBoolean());
+        Assert.Equal(!enabled, root.GetProperty("NodeCameraEnabled").GetBoolean());
+        Assert.Equal(enabled, root.GetProperty("NodeLocationEnabled").GetBoolean());
+        Assert.Equal(!enabled, root.GetProperty("NodeBrowserProxyEnabled").GetBoolean());
+        Assert.Equal(enabled, root.GetProperty("NodeTtsEnabled").GetBoolean());
+        Assert.Equal(!enabled, root.GetProperty("NodeSttEnabled").GetBoolean());
+        foreach (var key in new[]
+        {
+            "AutoStart", "EnableMcpServer", "EnableManagedLocalGatewayAutoRepair",
+            "GatewayUrl", "Token", "BootstrapToken", "CustomKey", "UnknownNull",
+        })
+        {
+            Assert.True(JsonElement.DeepEquals(
+                JsonSerializer.SerializeToElement(existing[key]), root.GetProperty(key)), key);
+        }
+        Assert.Equal(registry, File.ReadAllText(registryPath));
+    }
+
+    [Fact]
+    public void TraySettingsConfig_CapabilityMerge_CreatesOnlyNodeSettings()
+    {
+        var settingsPath = Path.Combine(_tempDir, "native", "settings.json");
+        var settings = new TraySettingsConfig
+        {
+            AutoStart = true,
+            EnableManagedLocalGatewayAutoRepair = true,
+        };
+
+        settings.MergeCapabilitiesIntoSettingsFile(settingsPath);
+
+        using var result = JsonDocument.Parse(File.ReadAllText(settingsPath));
+        var expectedKeys = new[]
+        {
+            "EnableNodeMode", "NodeSystemRunEnabled", "NodeCanvasEnabled",
+            "NodeScreenEnabled", "NodeCameraEnabled", "NodeLocationEnabled",
+            "NodeBrowserProxyEnabled", "NodeTtsEnabled", "NodeSttEnabled",
+        };
+        Assert.Equal(expectedKeys.Order(), result.RootElement.EnumerateObject().Select(p => p.Name).Order());
+        Assert.All(result.RootElement.EnumerateObject(), property => Assert.True(property.Value.GetBoolean()));
+        Assert.Single(Directory.EnumerateFiles(Path.GetDirectoryName(settingsPath)!));
+        Assert.False(File.Exists(Path.Combine(_tempDir, "gateways.json")));
+    }
+
     [Fact]
     public void TraySettingsConfig_SetupRerun_PreservesExistingAutoRepairKillSwitch()
     {
@@ -616,17 +715,30 @@ public class SetupConfigTests : IDisposable
         Assert.False(result.RootElement.GetProperty("NodeSystemRunEnabled").GetBoolean());
     }
 
-    [Fact]
-    public void TraySettingsConfig_CorruptExistingFile_BacksUpAndThrows()
+    [Theory]
+    [InlineData(false, "{not json")]
+    [InlineData(true, "{not json")]
+    [InlineData(false, "[]")]
+    [InlineData(true, "[]")]
+    public void TraySettingsConfig_CorruptExistingFile_BacksUpAndThrows(bool capabilitiesOnly, string content)
     {
         var settingsPath = Path.Combine(_tempDir, "settings.json");
-        File.WriteAllText(settingsPath, "{not json");
+        File.WriteAllText(settingsPath, content);
 
-        var ex = Assert.Throws<InvalidDataException>(() => new TraySettingsConfig().MergeIntoSettingsFile(settingsPath));
+        var settings = new TraySettingsConfig();
+        var ex = Assert.Throws<InvalidDataException>(() =>
+        {
+            if (capabilitiesOnly)
+                settings.MergeCapabilitiesIntoSettingsFile(settingsPath);
+            else
+                settings.MergeIntoSettingsFile(settingsPath);
+        });
 
         Assert.Contains("settings.json is corrupt", ex.Message);
-        Assert.Equal("{not json", File.ReadAllText(settingsPath));
-        Assert.Single(Directory.EnumerateFiles(_tempDir, "settings.json.corrupt-*.bak"));
+        Assert.IsAssignableFrom<JsonException>(ex.InnerException);
+        Assert.Equal(content, File.ReadAllText(settingsPath));
+        var backup = Assert.Single(Directory.EnumerateFiles(_tempDir, "settings.json.corrupt-*.bak"));
+        Assert.Equal(content, File.ReadAllText(backup));
     }
 
     [Fact]
@@ -636,9 +748,10 @@ public class SetupConfigTests : IDisposable
         File.WriteAllText(settingsPath, "{not json");
 
         Assert.Throws<InvalidDataException>(() => new TraySettingsConfig().MergeIntoSettingsFile(settingsPath));
+        Assert.Throws<InvalidDataException>(() => new TraySettingsConfig().MergeCapabilitiesIntoSettingsFile(settingsPath));
         Assert.Throws<InvalidDataException>(() => TraySettingsConfig.UpdateAutoStartInSettingsFile(settingsPath, autoStart: true));
 
-        Assert.Equal(2, Directory.EnumerateFiles(_tempDir, "settings.json.corrupt-*.bak").Count());
+        Assert.Equal(3, Directory.EnumerateFiles(_tempDir, "settings.json.corrupt-*.bak").Count());
     }
 
     [Fact]
@@ -651,8 +764,13 @@ public class SetupConfigTests : IDisposable
         Assert.True(File.Exists(settingsPath));
         var result = JsonDocument.Parse(File.ReadAllText(settingsPath));
         Assert.True(result.RootElement.GetProperty("EnableNodeMode").GetBoolean());
+        Assert.False(result.RootElement.GetProperty("AutoStart").GetBoolean());
+        Assert.True(result.RootElement.GetProperty("EnableManagedLocalGatewayAutoRepair").GetBoolean());
         Assert.True(result.RootElement.GetProperty("NodeTtsEnabled").GetBoolean());
         Assert.True(result.RootElement.GetProperty("NodeSttEnabled").GetBoolean());
+        Assert.Equal(11, result.RootElement.EnumerateObject().Count());
+        Assert.False(result.RootElement.TryGetProperty("Token", out _));
+        Assert.False(result.RootElement.TryGetProperty("BootstrapToken", out _));
     }
 
     [Fact]

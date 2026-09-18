@@ -7130,4 +7130,39 @@
   <data name="Chat_Composer_Effort_Title" xml:space="preserve"><value>推理強度</value></data>
   <data name="Chat_Composer_Effort_Faster" xml:space="preserve"><value>更快</value></data>
   <data name="Chat_Composer_Effort_Smarter" xml:space="preserve"><value>更深入</value></data>
+  <data name="Onboarding_Native_Title.Text" xml:space="preserve"><value>設定原生 Gateway</value></data>
+  <data name="Onboarding_Native_Description.Text" xml:space="preserve"><value>說明待補充。</value></data>
+  <data name="Onboarding_Native_CheckingSupport" xml:space="preserve"><value>正在檢查原生 Gateway 支援情況...</value></data>
+  <data name="Onboarding_Native_SupportAvailable" xml:space="preserve"><value>此裝置支援原生 Gateway。</value></data>
+  <data name="Onboarding_Native_SupportUnavailable" xml:space="preserve"><value>目前不支援原生 Gateway。請透過 Windows Update 安裝 Windows Insider 組建 {0} 或更新的受支援組建，然後重新開啟此頁面。功能可用性可能因裝置而異。</value></data>
+  <data name="Onboarding_Native_SupportCheckFailed" xml:space="preserve"><value>無法驗證原生 Gateway 支援情況。請重新開啟此頁面以重試。如果檢查持續失敗，請更新或修復 Companion。</value></data>
+  <data name="Onboarding_Native_UnsupportedPlatform" xml:space="preserve"><value>原生 Gateway 設定需要受支援的 Windows 用戶端系統。不支援 Windows Server。</value></data>
+  <data name="Onboarding_Native_WindowsUpdate.Content" xml:space="preserve"><value>開啟 Windows Update</value></data>
+  <data name="Onboarding_Native_Recommended.Text" xml:space="preserve"><value>建議使用</value></data>
+  <data name="Onboarding_Native_Alternatives.Header" xml:space="preserve"><value>其他 Gateway 選項</value></data>
+  <data name="Onboarding_Native_UpdateLaunchFailed" xml:space="preserve"><value>無法開啟 Windows Update。請開啟 Windows 設定，然後選取 Windows Update。</value></data>
+  <data name="Onboarding_Native_Lifecycle.Text" xml:space="preserve"><value>在 Companion 中繼續使用與 WSL 相同的 Gateway 設定精靈。連線前將驗證設定和健康狀態。現有 WSL Gateway 和預設 OpenClaw 設定不會被取代。</value></data>
+  <data name="Onboarding_Native_Acquisition.Text" xml:space="preserve"><value>商店連結可用之前，設定程式會為指定的本機 MSIX 開啟 Windows 應用程式安裝程式。不會下載套件或安裝 Node.js。</value></data>
+  <data name="Onboarding_Native_InstallerOpened" xml:space="preserve"><value>請在 Windows 應用程式安裝程式中完成安裝。套件準備就緒後，Companion 將自動繼續。在此取消設定不會取消 Windows 安裝。</value></data>
+  <data name="Onboarding_Native_ProgressSubtitle.Text" xml:space="preserve"><value>Companion 將準備您的 Gateway 並自動開啟其設定精靈。</value></data>
+  <data name="Onboarding_Native_StepSupport" xml:space="preserve"><value>檢查裝置支援情況</value></data>
+  <data name="Onboarding_Native_StepPackage" xml:space="preserve"><value>安裝或驗證 Gateway 套件</value></data>
+  <data name="Onboarding_Native_StepPrepare" xml:space="preserve"><value>準備您的 Gateway 設定檔</value></data>
+  <data name="Onboarding_Native_StepVerify" xml:space="preserve"><value>啟動並驗證 Gateway</value></data>
+  <data name="Onboarding_Native_Retry.Content" xml:space="preserve"><value>重試設定</value></data>
+  <data name="Onboarding_Native_Preview" xml:space="preserve"><value>僅供預覽。不會安裝任何套件或啟動 Gateway。</value></data>
+  <data name="Onboarding_Native_Review.Text" xml:space="preserve"><value>Companion 將檢查 Gateway 套件，在需要時開啟 Windows 應用程式安裝程式，準備專用設定檔，並開啟 Gateway 設定。Windows 安裝同意和供應商登入仍需您互動操作。此方式不會安裝 WSL、本機 AI 或 Tailscale。</value></data>
+  <data name="Onboarding_Native_FeaturesNote.Text" xml:space="preserve"><value>節點模式連線至 Gateway 並完成配對後，即可使用這些 Windows 功能。Windows 權限和命令核准仍然適用。</value></data>
+  <data name="Onboarding_Native_ConfiguredTitle" xml:space="preserve"><value>原生 Gateway 已設定</value></data>
+  <data name="Onboarding_Native_CapabilitySummary" xml:space="preserve"><value>{0}。您可以在 Companion 設定中變更這些選項。</value></data>
+  <data name="Onboarding_Native_ReviewTitle" xml:space="preserve"><value>已準備好設定您的原生 Gateway</value></data>
+  <data name="Onboarding_Native_Start.Content" xml:space="preserve"><value>設定 Gateway</value></data>
+  <data name="Onboarding_Native_Cancel.Content" xml:space="preserve"><value>取消設定</value></data>
+  <data name="Onboarding_Native_Back.Content" xml:space="preserve"><value>返回</value></data>
+  <data name="Onboarding_Native_Open.Content" xml:space="preserve"><value>開啟 Companion 以連線</value></data>
+  <data name="Onboarding_Native_Checking" xml:space="preserve"><value>正在檢查已安裝的 Gateway 套件及其執行別名...</value></data>
+  <data name="Onboarding_Native_Available" xml:space="preserve"><value>已安裝 Gateway 套件 {0}。</value></data>
+  <data name="Onboarding_Native_InProgress" xml:space="preserve"><value>正在為共用設定精靈準備原生 Gateway。供應商和模型問題將在 Companion 中顯示。</value></data>
+  <data name="Onboarding_Native_Cancelled" xml:space="preserve"><value>設定已取消。已輸入的設定保留在專用原生設定目錄中。未移除任何 Gateway 套件。</value></data>
+  <data name="Onboarding_Native_Configured" xml:space="preserve"><value>已在 {0} 驗證 Gateway 設定和經過驗證的健康狀態。開啟 Companion 啟動 Gateway，並在連線設定中完成裝置配對。您選取的 Windows 功能已儲存。</value></data>
 </root>

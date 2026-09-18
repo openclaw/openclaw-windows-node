@@ -7131,4 +7131,39 @@ Het binaire bestand wxc-exec is niet gevonden. {1} Als dit een ontwikkelaarsbuil
   <data name="Chat_Composer_Effort_Title" xml:space="preserve"><value>Denkinspanning</value></data>
   <data name="Chat_Composer_Effort_Faster" xml:space="preserve"><value>Sneller</value></data>
   <data name="Chat_Composer_Effort_Smarter" xml:space="preserve"><value>Grondiger</value></data>
+  <data name="Onboarding_Native_Title.Text" xml:space="preserve"><value>Een native Gateway instellen</value></data>
+  <data name="Onboarding_Native_Description.Text" xml:space="preserve"><value>Beschrijving volgt binnenkort.</value></data>
+  <data name="Onboarding_Native_CheckingSupport" xml:space="preserve"><value>Ondersteuning voor de native Gateway controleren...</value></data>
+  <data name="Onboarding_Native_SupportAvailable" xml:space="preserve"><value>De native Gateway wordt ondersteund op dit apparaat.</value></data>
+  <data name="Onboarding_Native_SupportUnavailable" xml:space="preserve"><value>De native Gateway wordt niet ondersteund. Installeer Windows Insider-build {0} of een nieuwere ondersteunde build via Windows Update en open deze pagina opnieuw. De beschikbaarheid van deze functie kan per apparaat verschillen.</value></data>
+  <data name="Onboarding_Native_SupportCheckFailed" xml:space="preserve"><value>De ondersteuning voor de native Gateway kon niet worden gecontroleerd. Open deze pagina opnieuw om het nogmaals te proberen. Als de controle blijft mislukken, werk Companion dan bij of herstel de app.</value></data>
+  <data name="Onboarding_Native_UnsupportedPlatform" xml:space="preserve"><value>Voor het instellen van de native Gateway is een ondersteunde Windows-client vereist. Windows Server wordt niet ondersteund.</value></data>
+  <data name="Onboarding_Native_WindowsUpdate.Content" xml:space="preserve"><value>Windows Update openen</value></data>
+  <data name="Onboarding_Native_Recommended.Text" xml:space="preserve"><value>Aanbevolen</value></data>
+  <data name="Onboarding_Native_Alternatives.Header" xml:space="preserve"><value>Andere Gateway-opties</value></data>
+  <data name="Onboarding_Native_UpdateLaunchFailed" xml:space="preserve"><value>Windows Update kon niet worden geopend. Open Windows-instellingen en vervolgens Windows Update.</value></data>
+  <data name="Onboarding_Native_Lifecycle.Text" xml:space="preserve"><value>Ga verder met dezelfde Gateway-wizard als voor WSL, hier in Companion. Configuratie en gezondheid worden vóór het verbinden gecontroleerd. Bestaande WSL-Gateways en uw standaard OpenClaw-profiel worden niet vervangen.</value></data>
+  <data name="Onboarding_Native_Acquisition.Text" xml:space="preserve"><value>Totdat een Store-link beschikbaar is, opent de instelling Windows App Installer voor de ingestelde lokale MSIX. Er worden geen pakketten gedownload en Node.js wordt niet geïnstalleerd.</value></data>
+  <data name="Onboarding_Native_InstallerOpened" xml:space="preserve"><value>Voltooi de installatie in Windows App Installer. Companion gaat automatisch verder zodra het pakket klaar is. Als u de instelling hier annuleert, wordt de Windows-installatie niet geannuleerd.</value></data>
+  <data name="Onboarding_Native_ProgressSubtitle.Text" xml:space="preserve"><value>Companion bereidt uw Gateway voor en opent automatisch de installatiewizard.</value></data>
+  <data name="Onboarding_Native_StepSupport" xml:space="preserve"><value>Apparaatondersteuning controleren</value></data>
+  <data name="Onboarding_Native_StepPackage" xml:space="preserve"><value>Gateway-pakket installeren of controleren</value></data>
+  <data name="Onboarding_Native_StepPrepare" xml:space="preserve"><value>Uw Gateway-profiel voorbereiden</value></data>
+  <data name="Onboarding_Native_StepVerify" xml:space="preserve"><value>De Gateway starten en controleren</value></data>
+  <data name="Onboarding_Native_Retry.Content" xml:space="preserve"><value>Instelling opnieuw proberen</value></data>
+  <data name="Onboarding_Native_Preview" xml:space="preserve"><value>Alleen een voorbeeld. Er wordt geen pakket geïnstalleerd of Gateway gestart.</value></data>
+  <data name="Onboarding_Native_Review.Text" xml:space="preserve"><value>Companion controleert het Gateway-pakket, opent indien nodig Windows App Installer, bereidt een apart profiel voor en opent de Gateway-instelling. Toestemming voor de Windows-installatie en aanmelding bij de provider blijven interactief. Deze methode installeert geen WSL, lokale AI of Tailscale.</value></data>
+  <data name="Onboarding_Native_FeaturesNote.Text" xml:space="preserve"><value>Deze Windows-functies zijn bruikbaar nadat de nodemodus verbinding heeft gemaakt en met de Gateway is gekoppeld. Windows-machtigingen en opdrachtgoedkeuringen blijven van toepassing.</value></data>
+  <data name="Onboarding_Native_ConfiguredTitle" xml:space="preserve"><value>Native Gateway geconfigureerd</value></data>
+  <data name="Onboarding_Native_CapabilitySummary" xml:space="preserve"><value>{0}. U kunt deze keuzes wijzigen in de instellingen van Companion.</value></data>
+  <data name="Onboarding_Native_ReviewTitle" xml:space="preserve"><value>Klaar om uw native Gateway in te stellen</value></data>
+  <data name="Onboarding_Native_Start.Content" xml:space="preserve"><value>Gateway instellen</value></data>
+  <data name="Onboarding_Native_Cancel.Content" xml:space="preserve"><value>Instelling annuleren</value></data>
+  <data name="Onboarding_Native_Back.Content" xml:space="preserve"><value>Terug</value></data>
+  <data name="Onboarding_Native_Open.Content" xml:space="preserve"><value>Companion openen om te verbinden</value></data>
+  <data name="Onboarding_Native_Checking" xml:space="preserve"><value>Het geïnstalleerde Gateway-pakket en de uitvoeringsaliassen controleren...</value></data>
+  <data name="Onboarding_Native_Available" xml:space="preserve"><value>Gateway-pakket {0} is geïnstalleerd.</value></data>
+  <data name="Onboarding_Native_InProgress" xml:space="preserve"><value>De native Gateway wordt voorbereid voor de gedeelde wizard. Vragen over de provider en het model verschijnen hier in Companion.</value></data>
+  <data name="Onboarding_Native_Cancelled" xml:space="preserve"><value>Instelling geannuleerd. Ingevoerde configuratie blijft bewaard in het aparte native profiel. Er is geen Gateway-pakket verwijderd.</value></data>
+  <data name="Onboarding_Native_Configured" xml:space="preserve"><value>Gateway-configuratie en geauthenticeerde gezondheid gecontroleerd op {0}. Open Companion om de Gateway te starten en het apparaat te koppelen in de verbindingsinstellingen. Uw geselecteerde Windows-functies zijn opgeslagen.</value></data>
 </root>

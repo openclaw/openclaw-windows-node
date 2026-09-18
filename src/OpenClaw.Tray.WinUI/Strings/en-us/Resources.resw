@@ -1,4 +1,4 @@
-﻿<?xml version="1.0" encoding="utf-8"?>
+<?xml version="1.0" encoding="utf-8"?>
 <root>
   <xsd:schema id="root" xmlns="" xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:msdata="urn:schemas-microsoft-com:xml-msdata">
     <xsd:element name="root" msdata:IsDataSet="true">
@@ -7194,4 +7194,39 @@ Make sure the gateway is running.</value>
   <data name="Chat_Composer_Effort_Title" xml:space="preserve"><value>Effort</value></data>
   <data name="Chat_Composer_Effort_Faster" xml:space="preserve"><value>Faster</value></data>
   <data name="Chat_Composer_Effort_Smarter" xml:space="preserve"><value>Smarter</value></data>
+  <data name="Onboarding_Native_Title.Text" xml:space="preserve"><value>Set up a native gateway</value></data>
+  <data name="Onboarding_Native_Description.Text" xml:space="preserve"><value>Description coming soon.</value></data>
+  <data name="Onboarding_Native_CheckingSupport" xml:space="preserve"><value>Checking native gateway support...</value></data>
+  <data name="Onboarding_Native_SupportAvailable" xml:space="preserve"><value>Native gateway support is available on this device.</value></data>
+  <data name="Onboarding_Native_SupportUnavailable" xml:space="preserve"><value>Native gateway support is unavailable. Install Windows Insider build {0} or a newer supported build in Windows Update, then reopen this page. Feature availability can vary by device.</value></data>
+  <data name="Onboarding_Native_SupportCheckFailed" xml:space="preserve"><value>Could not verify native gateway support. Reopen this page to retry. If the check keeps failing, update or repair Companion.</value></data>
+  <data name="Onboarding_Native_UnsupportedPlatform" xml:space="preserve"><value>Native gateway setup requires a supported Windows client. Windows Server is not supported.</value></data>
+  <data name="Onboarding_Native_WindowsUpdate.Content" xml:space="preserve"><value>Open Windows Update</value></data>
+  <data name="Onboarding_Native_Recommended.Text" xml:space="preserve"><value>Recommended</value></data>
+  <data name="Onboarding_Native_Alternatives.Header" xml:space="preserve"><value>Other gateway options</value></data>
+  <data name="Onboarding_Native_UpdateLaunchFailed" xml:space="preserve"><value>Could not open Windows Update. Open Windows Settings, then Windows Update.</value></data>
+  <data name="Onboarding_Native_Lifecycle.Text" xml:space="preserve"><value>Continue with the same Gateway setup wizard used for WSL, here in Companion. Companion validates configuration and health before connecting. Existing WSL gateways and your default OpenClaw profile are not replaced.</value></data>
+  <data name="Onboarding_Native_Acquisition.Text" xml:space="preserve"><value>Until a Store link is available, setup opens Windows App Installer for the configured local MSIX. It does not download packages or install Node.js.</value></data>
+  <data name="Onboarding_Native_InstallerOpened" xml:space="preserve"><value>Complete installation in Windows App Installer. Companion will continue automatically when the package is ready. Cancelling setup here does not cancel Windows installation.</value></data>
+  <data name="Onboarding_Native_ProgressSubtitle.Text" xml:space="preserve"><value>Companion will prepare your Gateway and open its setup wizard automatically.</value></data>
+  <data name="Onboarding_Native_StepSupport" xml:space="preserve"><value>Check device support</value></data>
+  <data name="Onboarding_Native_StepPackage" xml:space="preserve"><value>Install or verify Gateway package</value></data>
+  <data name="Onboarding_Native_StepPrepare" xml:space="preserve"><value>Prepare your Gateway profile</value></data>
+  <data name="Onboarding_Native_StepVerify" xml:space="preserve"><value>Start and verify the Gateway</value></data>
+  <data name="Onboarding_Native_Retry.Content" xml:space="preserve"><value>Retry setup</value></data>
+  <data name="Onboarding_Native_Preview" xml:space="preserve"><value>Preview only. No package will be installed or Gateway started.</value></data>
+  <data name="Onboarding_Native_Review.Text" xml:space="preserve"><value>Companion will check the Gateway package, open Windows App Installer if needed, prepare a dedicated profile, and open Gateway setup. Windows installation consent and provider sign-in stay interactive. This path does not install WSL, Local AI, or Tailscale.</value></data>
+  <data name="Onboarding_Native_FeaturesNote.Text" xml:space="preserve"><value>These Windows capabilities become usable after Node Mode connects and pairs with the Gateway. Windows permissions and command approvals still apply.</value></data>
+  <data name="Onboarding_Native_ConfiguredTitle" xml:space="preserve"><value>Native Gateway configured</value></data>
+  <data name="Onboarding_Native_CapabilitySummary" xml:space="preserve"><value>{0}. You can change these choices in Companion Settings.</value></data>
+  <data name="Onboarding_Native_ReviewTitle" xml:space="preserve"><value>Ready to set up your native gateway</value></data>
+  <data name="Onboarding_Native_Start.Content" xml:space="preserve"><value>Set up gateway</value></data>
+  <data name="Onboarding_Native_Cancel.Content" xml:space="preserve"><value>Cancel setup</value></data>
+  <data name="Onboarding_Native_Back.Content" xml:space="preserve"><value>Back</value></data>
+  <data name="Onboarding_Native_Open.Content" xml:space="preserve"><value>Open Companion to connect</value></data>
+  <data name="Onboarding_Native_Checking" xml:space="preserve"><value>Checking the installed Gateway package and its execution aliases...</value></data>
+  <data name="Onboarding_Native_Available" xml:space="preserve"><value>Gateway package {0} is installed.</value></data>
+  <data name="Onboarding_Native_InProgress" xml:space="preserve"><value>Preparing the native Gateway for the shared setup wizard. Provider and model questions will appear here in Companion.</value></data>
+  <data name="Onboarding_Native_Cancelled" xml:space="preserve"><value>Setup cancelled. Any configuration already entered is retained in the dedicated native profile. No Gateway package was removed.</value></data>
+  <data name="Onboarding_Native_Configured" xml:space="preserve"><value>Gateway configuration and authenticated health verified at {0}. Open Companion to start the gateway and finish device pairing in Connection settings. Your selected Windows capabilities have been saved.</value></data>
 </root>

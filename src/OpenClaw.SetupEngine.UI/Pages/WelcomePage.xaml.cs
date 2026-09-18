@@ -10,13 +10,17 @@ using OpenClaw.SetupEngine.UI;
 using OpenClaw.Shared;
 using OpenClaw.Shared.Inference.Catalog;
 using System.Numerics;
+using System.Diagnostics;
 
 namespace OpenClaw.SetupEngine.UI.Pages;
 
 public sealed partial class WelcomePage : Page
 {
     private SetupConfig? _config;
-    private bool _installSelected = true; // default selection
+    private GatewaySetupChoice? _selectedChoice;
+    private NativeGatewayEligibility? _nativeEligibility;
+    private int _probeGeneration;
+    private bool _installInProgress;
     private bool _suppressSelectionWrite;
     private string? _installChoiceBaseAutomationName;
 
@@ -24,30 +28,112 @@ public sealed partial class WelcomePage : Page
     {
         InitializeComponent();
         Loaded += OnLoaded;
+        Unloaded += (_, _) => ++_probeGeneration;
     }
 
     protected override void OnNavigatedTo(NavigationEventArgs e)
     {
         _config = e.Parameter as SetupConfig ?? new SetupConfig();
-        _installSelected = SetupWindow.Active?.IsWelcomeInstallSelected ?? true;
-        _suppressSelectionWrite = true;
-        try
-        {
-            GatewayChoiceSelector.SelectedIndex = _installSelected ? 0 : 1;
-        }
-        finally
-        {
-            _suppressSelectionWrite = false;
-        }
+        _selectedChoice = SetupWindow.Active?.WelcomeGatewayChoice;
+        ApplySelection();
     }
 
     private void OnLoaded(object sender, RoutedEventArgs e)
     {
         StartMascotBreatheAnimation();
         AsyncEventHandlerGuard.Run(
-            DetectLocalAiAvailabilityAsync,
+            CheckNativeSupportAsync,
             NullLogger.Instance,
-            nameof(DetectLocalAiAvailabilityAsync));
+            nameof(CheckNativeSupportAsync));
+    }
+
+    private async Task CheckNativeSupportAsync()
+    {
+        var window = SetupWindow.Active;
+        if (window is null)
+            return;
+        var generation = ++_probeGeneration;
+        _nativeEligibility = null;
+        NativeChoice.IsEnabled = false;
+        NativeRecommendedBadge.Visibility = Visibility.Collapsed;
+        NativeSupportAvailablePanel.Visibility = Visibility.Collapsed;
+        NativeSupportStatusPanel.Visibility = Visibility.Visible;
+        WindowsUpdateButton.Visibility = Visibility.Collapsed;
+        NativeCheckProgress.IsActive = true;
+        NativeCheckProgress.Visibility = Visibility.Visible;
+        NativeSupportStatus.Text = SetupLocalization.GetString("Onboarding_Native_CheckingSupport");
+        ApplySelection();
+
+        NativeGatewayEligibility eligibility;
+        try
+        {
+            eligibility = await window.GetNativeGatewayEligibilityAsync();
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or InvalidOperationException
+                                   or System.ComponentModel.Win32Exception)
+        {
+            Trace.TraceError($"Native Gateway capability check failed: {ex}");
+            eligibility = NativeGatewayEligibility.CheckFailed;
+        }
+        if (generation != _probeGeneration || !IsLoaded || !ReferenceEquals(SetupWindow.Active, window))
+            return;
+
+        _nativeEligibility = eligibility;
+        var available = eligibility == NativeGatewayEligibility.Available;
+        NativeChoice.IsEnabled = available;
+        NativeRecommendedBadge.Visibility = available ? Visibility.Visible : Visibility.Collapsed;
+        NativeSupportAvailablePanel.Visibility = available ? Visibility.Visible : Visibility.Collapsed;
+        NativeSupportStatusPanel.Visibility = available ? Visibility.Collapsed : Visibility.Visible;
+        WindowsUpdateButton.Visibility = eligibility == NativeGatewayEligibility.CapabilityUnavailable
+            ? Visibility.Visible : Visibility.Collapsed;
+        var supportText = available ? NativeSupportAvailableText : NativeSupportStatus;
+        supportText.Text = NativeGatewayEligibilityText.Get(eligibility);
+        AutomationProperties.SetName(NativeChoice,
+            SetupLocalization.GetString("Onboarding_Native_Title.Text") +
+            (available ? ", " + SetupLocalization.GetString("Onboarding_Native_Recommended.Text") : ""));
+        NativeCheckProgress.IsActive = false;
+        NativeCheckProgress.Visibility = Visibility.Collapsed;
+        SetChoice(NativeGatewaySetupEligibility.ResolveSelection(_selectedChoice, eligibility));
+        var peer = FrameworkElementAutomationPeer.FromElement(supportText)
+            ?? FrameworkElementAutomationPeer.CreatePeerForElement(supportText);
+        peer.RaiseAutomationEvent(AutomationEvents.LiveRegionChanged);
+    }
+
+    private void WindowsUpdate_Click(object sender, RoutedEventArgs e) =>
+        AsyncEventHandlerGuard.Run(OpenWindowsUpdateAsync, NullLogger.Instance, nameof(WindowsUpdate_Click));
+
+    private async Task OpenWindowsUpdateAsync()
+    {
+        try
+        {
+            if (!await Windows.System.Launcher.LaunchUriAsync(new Uri("ms-settings:windowsupdate")))
+                ShowWindowsUpdateError();
+        }
+        catch (Exception ex) when (ex is System.Runtime.InteropServices.COMException or InvalidOperationException)
+        {
+            Trace.TraceError($"Opening Windows Update failed: {ex}");
+            ShowWindowsUpdateError();
+        }
+    }
+
+    private void ShowWindowsUpdateError()
+    {
+        Trace.TraceWarning("Windows Update could not be opened from native Gateway setup.");
+        if (IsLoaded)
+        {
+            NativeSupportStatusPanel.Visibility = Visibility.Visible;
+            NativeSupportStatus.Text = SetupLocalization.GetString("Onboarding_Native_UpdateLaunchFailed");
+        }
+    }
+
+    private void AlternativeOptions_Expanding(Expander sender, ExpanderExpandingEventArgs args) =>
+        AsyncEventHandlerGuard.Run(DetectLocalAiAvailabilityAsync, NullLogger.Instance,
+            nameof(AlternativeOptions_Expanding));
+
+    private void AlternativeOptions_Collapsed(Expander sender, ExpanderCollapsedEventArgs args)
+    {
+        if (_selectedChoice == GatewaySetupChoice.Wsl)
+            SetChoice(_nativeEligibility == NativeGatewayEligibility.Available ? GatewaySetupChoice.Native : null);
     }
 
     private async Task DetectLocalAiAvailabilityAsync()
@@ -112,32 +198,58 @@ public sealed partial class WelcomePage : Page
 
     private void GatewayChoice_SelectionChanged(object sender, SelectionChangedEventArgs e)
     {
-        // A single-select ListView can be cleared to no selection (Ctrl+click / automation).
-        // The Welcome choice must always have exactly one option selected, so restore the last
-        // known selection instead of leaving the persisted value stale behind an empty list.
-        if (GatewayChoiceSelector.SelectedIndex is not (0 or 1))
-        {
-            _suppressSelectionWrite = true;
-            try
-            {
-                GatewayChoiceSelector.SelectedIndex = _installSelected ? 0 : 1;
-            }
-            finally
-            {
-                _suppressSelectionWrite = false;
-            }
-
+        if (_suppressSelectionWrite)
             return;
-        }
-
-        if (!_suppressSelectionWrite)
-            SetInstallSelected(GatewayChoiceSelector.SelectedIndex == 0);
+        if (ReferenceEquals(GatewayChoiceSelector.SelectedItem, NativeChoice) &&
+            _nativeEligibility == NativeGatewayEligibility.Available)
+            SetChoice(GatewaySetupChoice.Native);
+        else if (ReferenceEquals(GatewayChoiceSelector.SelectedItem, ConnectChoice))
+            SetChoice(GatewaySetupChoice.Existing);
+        else
+            ApplySelection();
     }
 
-    private void SetInstallSelected(bool installSelected)
+    private void WslChoice_SelectionChanged(object sender, SelectionChangedEventArgs e)
     {
-        _installSelected = installSelected;
-        SetupWindow.Active?.SetWelcomeInstallSelected(installSelected);
+        if (_suppressSelectionWrite)
+            return;
+        if (NativeGatewaySetupEligibility.ShowAlternatives(_nativeEligibility) &&
+            ReferenceEquals(WslChoiceSelector.SelectedItem, InstallChoice))
+            SetChoice(GatewaySetupChoice.Wsl);
+        else
+            ApplySelection();
+    }
+
+    private void SetChoice(GatewaySetupChoice? choice)
+    {
+        _selectedChoice = choice;
+        if (SetupWindow.Active is { } window)
+            window.WelcomeGatewayChoice = choice;
+        ApplySelection();
+    }
+
+    private void ApplySelection()
+    {
+        _suppressSelectionWrite = true;
+        try
+        {
+            GatewayChoiceSelector.SelectedItem = _selectedChoice switch
+            {
+                GatewaySetupChoice.Native => NativeChoice,
+                GatewaySetupChoice.Existing => ConnectChoice,
+                _ => null,
+            };
+            var showAlternatives = NativeGatewaySetupEligibility.ShowAlternatives(_nativeEligibility);
+            AlternativeOptions.Visibility = showAlternatives ? Visibility.Visible : Visibility.Collapsed;
+            WslChoiceSelector.SelectedItem = showAlternatives && _selectedChoice == GatewaySetupChoice.Wsl ? InstallChoice : null;
+            if (showAlternatives && _selectedChoice == GatewaySetupChoice.Wsl)
+                AlternativeOptions.IsExpanded = true;
+            NextButton.IsEnabled = !_installInProgress &&
+                (_selectedChoice == GatewaySetupChoice.Existing ||
+                 (_selectedChoice == GatewaySetupChoice.Wsl && showAlternatives) ||
+                 (_selectedChoice == GatewaySetupChoice.Native && _nativeEligibility == NativeGatewayEligibility.Available));
+        }
+        finally { _suppressSelectionWrite = false; }
     }
 
     private void Back_Click(object sender, RoutedEventArgs e)
@@ -147,14 +259,19 @@ public sealed partial class WelcomePage : Page
 
     private void Next_Click(object sender, RoutedEventArgs e)
     {
-        if (_installSelected)
+        if (_selectedChoice == GatewaySetupChoice.Native && _nativeEligibility == NativeGatewayEligibility.Available)
+        {
+            SetupWindow.Active?.NavigateToNativeCapabilities();
+        }
+        else if (_selectedChoice == GatewaySetupChoice.Wsl &&
+                 NativeGatewaySetupEligibility.ShowAlternatives(_nativeEligibility))
         {
             AsyncEventHandlerGuard.Run(
                 StartInstallAsync,
                 NullLogger.Instance,
                 nameof(Next_Click));
         }
-        else
+        else if (_selectedChoice == GatewaySetupChoice.Existing)
         {
             SetupWindow.Active?.NavigateToAdvancedSetup();
         }
@@ -173,6 +290,9 @@ public sealed partial class WelcomePage : Page
         // "Checking existing WSL setup"). Leave the option title alone: replacing it
         // hides which option is being acted on for as long as the check runs.
         NextButton.IsEnabled = false;
+        _installInProgress = true;
+        GatewayChoiceSelector.IsEnabled = false;
+        AlternativeOptions.IsEnabled = false;
         InstallCheckProgress.IsActive = true;
         InstallCheckProgress.Visibility = Visibility.Visible;
         var navigating = false;
@@ -279,8 +399,11 @@ public sealed partial class WelcomePage : Page
         }
         finally
         {
+            _installInProgress = false;
             if (!navigating && !setupWindow.IsClosed)
             {
+                GatewayChoiceSelector.IsEnabled = true;
+                AlternativeOptions.IsEnabled = true;
                 InstallCheckProgress.IsActive = false;
                 InstallCheckProgress.Visibility = Visibility.Collapsed;
                 NextButton.IsEnabled = true;
