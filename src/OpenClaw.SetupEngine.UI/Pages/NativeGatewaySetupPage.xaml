@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Page
+    x:Class="OpenClaw.SetupEngine.UI.Pages.NativeGatewaySetupPage"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    NavigationCacheMode="Disabled">
+    <Grid Padding="48,28,48,24" RowDefinitions="Auto,*,Auto">
+        <StackPanel Spacing="8" HorizontalAlignment="Center">
+            <Image Source="ms-appx:///OpenClaw.SetupEngine.UI/Assets/Setup/OpenClawMascot.png"
+                   Width="44" Height="44" HorizontalAlignment="Center"
+                   AutomationProperties.AccessibilityView="Raw" />
+            <TextBlock x:Uid="Onboarding_Native_Title" Text="Set up a native gateway"
+                       Style="{StaticResource TitleTextBlockStyle}" TextWrapping="Wrap" TextAlignment="Center" />
+            <TextBlock x:Uid="Onboarding_Native_ProgressSubtitle"
+                       Text="Companion will prepare your Gateway and open its setup wizard automatically."
+                       Style="{StaticResource BodyTextBlockStyle}" TextWrapping="Wrap" TextAlignment="Center"
+                       Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+        </StackPanel>
+        <ScrollViewer Grid.Row="1" Margin="0,24,0,16" IsTabStop="False"
+                      HorizontalScrollBarVisibility="Disabled">
+            <StackPanel Spacing="16">
+                <StackPanel x:Name="StepsPanel" Spacing="4" />
+                <TextBlock x:Name="StatusText" TextWrapping="Wrap" IsTextSelectionEnabled="True"
+                           AutomationProperties.AutomationId="NativeGatewaySetupStatus"
+                           AutomationProperties.LiveSetting="Polite" />
+            </StackPanel>
+        </ScrollViewer>
+        <Grid Grid.Row="2" ColumnDefinitions="*,Auto">
+            <Button x:Name="BackButton" x:Uid="Onboarding_Native_Back" Content="Back" Click="Back_Click" MinWidth="100" />
+            <Button x:Name="CancelButton" Grid.Column="1" x:Uid="Onboarding_Native_Cancel" Content="Cancel setup"
+                    Visibility="Collapsed" Click="Cancel_Click" />
+            <Button x:Name="RetryButton" Grid.Column="1" x:Uid="Onboarding_Native_Retry" Content="Retry setup"
+                    Style="{StaticResource AccentButtonStyle}" Visibility="Collapsed" Click="Retry_Click" />
+        </Grid>
+    </Grid>
+</Page>

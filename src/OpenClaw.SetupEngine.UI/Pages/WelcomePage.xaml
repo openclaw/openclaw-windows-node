@@ -29,6 +29,7 @@
                       IsTabStop="False"
                       VerticalScrollBarVisibility="Auto"
                       HorizontalScrollBarVisibility="Disabled">
+            <StackPanel Spacing="12">
             <ListView x:Name="GatewayChoiceSelector"
                       AutomationProperties.Name="Gateway setup method"
                       AutomationProperties.HelpText="Choose one gateway setup method."
@@ -38,18 +39,108 @@
                       ScrollViewer.VerticalScrollMode="Disabled"
                       ScrollViewer.VerticalScrollBarVisibility="Disabled"
                       SelectionChanged="GatewayChoice_SelectionChanged">
-                <ListViewItem x:Name="InstallChoice"
-                              AutomationProperties.AutomationId="WelcomeInstallLocalGatewayChoice"
-                              AutomationProperties.Name="Install a local gateway (WSL), recommended"
+                      <ListViewItem x:Name="NativeChoice"
+                                    AutomationProperties.AutomationId="WelcomeNativeGatewayChoice"
+                                    AutomationProperties.Name="Set up a native gateway"
+                                    HorizontalContentAlignment="Stretch"
+                                    IsEnabled="False" Padding="16,12">
+                          <Grid ColumnDefinitions="Auto,*" ColumnSpacing="16">
+                              <Border Width="44" Height="44" CornerRadius="6"
+                                      Background="{ThemeResource AccentFillColorDefaultBrush}" VerticalAlignment="Center">
+                                  <FontIcon Glyph="&#xE770;" FontSize="20" IsTextScaleFactorEnabled="False"
+                                            Foreground="{ThemeResource TextOnAccentFillColorPrimaryBrush}" />
+                              </Border>
+                              <StackPanel Grid.Column="1" Spacing="3">
+                                  <Grid x:Name="NativeHeading" ColumnDefinitions="*,Auto" ColumnSpacing="8"
+                                        HorizontalAlignment="Left">
+                                      <TextBlock x:Uid="Onboarding_Native_Title" Text="Set up a native gateway"
+                                                 VerticalAlignment="Center" TextWrapping="Wrap"
+                                                 Style="{StaticResource BodyStrongTextBlockStyle}" />
+                                      <Border x:Name="NativeRecommendedBadge" Grid.Column="1" Visibility="Collapsed"
+                                              VerticalAlignment="Center" CornerRadius="4" Padding="7,1"
+                                              BorderBrush="{ThemeResource AccentTextFillColorPrimaryBrush}" BorderThickness="1">
+                                          <TextBlock x:Uid="Onboarding_Native_Recommended" Text="Recommended"
+                                                     Style="{StaticResource CaptionTextBlockStyle}"
+                                                     Foreground="{ThemeResource AccentTextFillColorPrimaryBrush}" />
+                                      </Border>
+                                  </Grid>
+                                  <TextBlock x:Uid="Onboarding_Native_Description"
+                                             Text="Description coming soon."
+                                             TextWrapping="Wrap" Style="{StaticResource CaptionTextBlockStyle}"
+                                             Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                                  <Grid x:Name="NativeSupportAvailablePanel" Visibility="Collapsed"
+                                        ColumnDefinitions="Auto,*" ColumnSpacing="6" Margin="0,5,0,0">
+                                      <FontIcon Glyph="&#xE73E;" FontSize="11" IsTextScaleFactorEnabled="False"
+                                                VerticalAlignment="Center"
+                                                Foreground="{ThemeResource SystemFillColorSuccessBrush}"
+                                                AutomationProperties.AccessibilityView="Raw" />
+                                      <TextBlock x:Name="NativeSupportAvailableText" Grid.Column="1"
+                                                 TextWrapping="Wrap" Style="{StaticResource CaptionTextBlockStyle}"
+                                                 Foreground="{ThemeResource SystemFillColorSuccessBrush}"
+                                                 AutomationProperties.AutomationId="WelcomeNativeSupportAvailable"
+                                                 AutomationProperties.LiveSetting="Polite" />
+                                  </Grid>
+                              </StackPanel>
+                          </Grid>
+                      </ListViewItem>
+                      <ListViewItem x:Name="ConnectChoice"
+                                    AutomationProperties.AutomationId="WelcomeConnectExistingGatewayChoice"
+                                    AutomationProperties.Name="Connect to an existing gateway"
+                                    HorizontalContentAlignment="Stretch"
+                                    VerticalContentAlignment="Center" Padding="16,12">
+                          <Grid ColumnDefinitions="Auto,*" ColumnSpacing="16">
+                              <Border Width="44" Height="44" CornerRadius="6"
+                                      Background="{ThemeResource SubtleFillColorSecondaryBrush}" VerticalAlignment="Center">
+                                  <FontIcon Glyph="&#xE71B;" FontSize="20" IsTextScaleFactorEnabled="False"
+                                            Foreground="{ThemeResource TextFillColorPrimaryBrush}" />
+                              </Border>
+                              <StackPanel Grid.Column="1" Spacing="3">
+                                  <TextBlock Text="Connect to an existing gateway"
+                                             Style="{StaticResource BodyStrongTextBlockStyle}" />
+                                  <TextBlock TextWrapping="Wrap"
+                                             Style="{StaticResource CaptionTextBlockStyle}"
+                                             Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                             Text="Connect without installing a gateway or Local AI on this PC." />
+                              </StackPanel>
+                          </Grid>
+                      </ListViewItem>
+            </ListView>
+            <StackPanel Spacing="8" Margin="16,0">
+                      <StackPanel x:Name="NativeSupportStatusPanel" Orientation="Horizontal" Spacing="8">
+                          <ProgressRing x:Name="NativeCheckProgress" Width="16" Height="16"
+                                        IsActive="True" AutomationProperties.Name="Checking native gateway support" />
+                          <TextBlock x:Name="NativeSupportStatus" TextWrapping="Wrap" MaxWidth="460"
+                                     AutomationProperties.AutomationId="WelcomeNativeSupportStatus"
+                                     AutomationProperties.LiveSetting="Polite"
+                                     Style="{StaticResource CaptionTextBlockStyle}" />
+                      </StackPanel>
+                      <Button x:Name="WindowsUpdateButton" x:Uid="Onboarding_Native_WindowsUpdate"
+                              Content="Open Windows Update" Visibility="Collapsed"
+                              AutomationProperties.AutomationId="WelcomeWindowsUpdate"
+                              Style="{StaticResource AccentButtonStyle}" Click="WindowsUpdate_Click" />
+            </StackPanel>
+            <Expander x:Name="AlternativeOptions" x:Uid="Onboarding_Native_Alternatives"
+                            Header="Other gateway options" IsExpanded="False" Visibility="Collapsed"
+                            HorizontalAlignment="Stretch" HorizontalContentAlignment="Stretch"
+                            Expanding="AlternativeOptions_Expanding" Collapsed="AlternativeOptions_Collapsed">
+                      <ListView x:Name="WslChoiceSelector" SelectionMode="Single"
+                                AutomationProperties.Name="Alternative gateway setup method"
+                                HorizontalContentAlignment="Stretch"
+                                ScrollViewer.VerticalScrollMode="Disabled"
+                                ScrollViewer.VerticalScrollBarVisibility="Disabled"
+                                SelectionChanged="WslChoice_SelectionChanged">
+                      <ListViewItem x:Name="InstallChoice"
+                                    AutomationProperties.AutomationId="WelcomeInstallLocalGatewayChoice"
+                                    AutomationProperties.Name="Install a local gateway (WSL)"
                               AutomationProperties.LiveSetting="Polite"
                               HorizontalContentAlignment="Stretch"
                               VerticalContentAlignment="Center"
                               Padding="16,12">
                     <Grid ColumnDefinitions="Auto,*" ColumnSpacing="16">
                         <Border Grid.Column="0" Width="44" Height="44" CornerRadius="6"
-                                Background="{ThemeResource AccentFillColorDefaultBrush}" VerticalAlignment="Center">
+                                Background="{ThemeResource SubtleFillColorSecondaryBrush}" VerticalAlignment="Center">
                             <FontIcon Glyph="&#xE756;" FontSize="20" IsTextScaleFactorEnabled="False"
-                                      Foreground="{ThemeResource TextOnAccentFillColorPrimaryBrush}" />
+                                      Foreground="{ThemeResource TextFillColorPrimaryBrush}" />
                         </Border>
                         <StackPanel Grid.Column="1" Spacing="3">
                             <StackPanel Orientation="Horizontal" Spacing="8">
@@ -62,12 +153,6 @@
                                               AutomationProperties.Name="Checking WSL readiness and existing setup"
                                               Width="16" Height="16"
                                               IsActive="False" Visibility="Collapsed" />
-                                <Border CornerRadius="4" Padding="7,1" VerticalAlignment="Center"
-                                        BorderBrush="{ThemeResource AccentTextFillColorPrimaryBrush}" BorderThickness="1">
-                                    <TextBlock Text="Recommended"
-                                               Style="{StaticResource CaptionTextBlockStyle}"
-                                               Foreground="{ThemeResource AccentTextFillColorPrimaryBrush}" />
-                                </Border>
                             </StackPanel>
                             <TextBlock TextWrapping="Wrap"
                                        Style="{StaticResource CaptionTextBlockStyle}"
@@ -96,29 +181,9 @@
                     </Grid>
                 </ListViewItem>
 
-                <ListViewItem x:Name="ConnectChoice"
-                              AutomationProperties.AutomationId="WelcomeConnectExistingGatewayChoice"
-                              AutomationProperties.Name="Connect to an existing gateway"
-                              HorizontalContentAlignment="Stretch"
-                              VerticalContentAlignment="Center"
-                              Padding="16,12">
-                    <Grid ColumnDefinitions="Auto,*" ColumnSpacing="16">
-                        <Border Grid.Column="0" Width="44" Height="44" CornerRadius="6"
-                                Background="{ThemeResource SubtleFillColorSecondaryBrush}" VerticalAlignment="Center">
-                            <FontIcon Glyph="&#xE71B;" FontSize="20" IsTextScaleFactorEnabled="False"
-                                      Foreground="{ThemeResource TextFillColorPrimaryBrush}" />
-                        </Border>
-                        <StackPanel Grid.Column="1" Spacing="3">
-                            <TextBlock Text="Connect to an existing gateway"
-                                       Style="{StaticResource BodyStrongTextBlockStyle}" />
-                            <TextBlock TextWrapping="Wrap"
-                                       Style="{StaticResource CaptionTextBlockStyle}"
-                                       Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                                       Text="Connect without installing a gateway or Local AI on this PC." />
-                        </StackPanel>
-                    </Grid>
-                </ListViewItem>
-            </ListView>
+                </ListView>
+            </Expander>
+            </StackPanel>
         </ScrollViewer>
 
         <Grid Grid.Row="2" ColumnDefinitions="*,Auto" Margin="0,16,0,0">
@@ -138,6 +203,7 @@
                     Click="Back_Click" />
             <Button x:Name="NextButton" AutomationProperties.AutomationId="WelcomeNextButton"
                     Grid.Column="1" Content="Next"
+                    IsEnabled="False"
                     MinWidth="100" HorizontalAlignment="Right"
                     Style="{StaticResource AccentButtonStyle}"
                     Click="Next_Click" />

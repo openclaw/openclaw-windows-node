@@ -807,6 +807,8 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands, IPer
         // SshTunnelService implements ISshTunnelManager directly — no shim needed
         var managedLocalPortProvenance = _managedLocalPortProvenance =
             new ManagedLocalGatewayPortProvenanceService(appLogger);
+        var nativeGatewayRuntime = new OpenClaw.Connection.NativeGateway.NativeGatewayRuntime(
+            _gatewayRegistry, new OpenClaw.SetupEngine.UI.NativeGatewayPackageResolver(), appLogger);
         _connectionManager = new GatewayConnectionManager(
             credentialResolver, clientFactory, _gatewayRegistry, appLogger,
             identityStore: new DeviceIdentityFileStore(appLogger),
@@ -815,7 +817,8 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands, IPer
             diagnostics: diagnostics,
             tunnelManager: _sshTunnelService,
             endpointProvenanceProbe: managedLocalPortProvenance.InspectAsync,
-            validationTunnelFactory: () => new SshTunnelService(appLogger));
+            validationTunnelFactory: () => new SshTunnelService(appLogger),
+            nativeGatewayRuntime: nativeGatewayRuntime);
         _connectionManager.OperatorClientChanged += OnOperatorClientChanged;
         _connectionManager.StateChanged += OnManagerStateChanged;
         _gatewayDirectConnectService = new GatewayDirectConnectService(
@@ -3734,11 +3737,11 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands, IPer
 
     private void OnSetupCompleted(object? sender, SetupCompletedEventArgs e) =>
         AsyncEventHandlerGuard.Run(
-            () => RestartAfterSetupAsync(e.EnableAutoStart),
+            () => RestartAfterSetupAsync(e.EnableAutoStart, e.PreserveStartupPreference),
             new AppLogger(),
             nameof(OnSetupCompleted));
 
-    private async Task RestartAfterSetupAsync(bool enableAutoStart)
+    private async Task RestartAfterSetupAsync(bool enableAutoStart, bool preserveStartupPreference)
     {
         var exePath = ResolveCurrentExecutablePath();
         if (string.IsNullOrWhiteSpace(exePath) || !File.Exists(exePath))
@@ -3749,7 +3752,7 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands, IPer
 
         try
         {
-            if (enableAutoStart)
+            if (enableAutoStart && !preserveStartupPreference)
             {
                 try
                 {

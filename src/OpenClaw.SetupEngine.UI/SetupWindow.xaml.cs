@@ -14,7 +14,10 @@ namespace OpenClaw.SetupEngine.UI;
 public sealed partial class SetupWindow : Window
 {
     private SetupConfig _config = null!;
-    private bool _isWelcomeInstallSelected = true;
+    internal GatewaySetupChoice? WelcomeGatewayChoice { get; set; }
+    private bool _nativeSetupCompleted;
+    internal NativeGatewaySetupDraft? NativeSetupDraft { get; set; }
+    internal NativeGatewaySetupSession? NativeSetupSession { get; private set; }
     private SetupRunLock? _setupLock;
     private readonly CancellationTokenSource _lifetimeCts = new();
     private Task<StepResult>? _contextApplyTask;
@@ -45,11 +48,13 @@ public sealed partial class SetupWindow : Window
     public bool CanNavigateToWizard =>
         !_isClosed &&
         _setupLock is not null &&
+        RootFrame.Content is not NativeGatewaySetupPage { IsBusy: true } &&
         RootFrame.Content is not WizardPage;
     public bool CanNavigateToGatewayInstalledMilestone =>
         !_isClosed &&
         _setupLock is not null &&
         RootFrame.Content is not ProgressPage { IsPipelineRunning: true } &&
+        RootFrame.Content is not NativeGatewaySetupPage { IsBusy: true } &&
         RootFrame.Content is not WizardPage;
     [DllImport("user32.dll")]
     private static extern uint GetDpiForWindow(IntPtr hwnd);
@@ -82,6 +87,11 @@ public sealed partial class SetupWindow : Window
             try
             {
                 _lifetimeCts.Cancel();
+                if (RootFrame.Content is NativeGatewaySetupPage nativePage)
+                    await nativePage.CancelAndWaitAsync();
+                if (RootFrame.Content is WizardPage wizardPage)
+                    await wizardPage.CancelAndWaitAsync();
+                await ReleaseNativeSetupAsync();
                 if (_contextApplyTask is { } contextApplyTask)
                     await contextApplyTask;
             }
@@ -236,8 +246,48 @@ public sealed partial class SetupWindow : Window
         ResetLocalAiRecoveryMode();
         NavigateTo(typeof(WelcomePage), _config, back);
     }
-    public bool IsWelcomeInstallSelected => _isWelcomeInstallSelected;
-    public void SetWelcomeInstallSelected(bool installSelected) => _isWelcomeInstallSelected = installSelected;
+    internal async Task<NativeGatewayEligibility> GetNativeGatewayEligibilityAsync()
+    {
+        using var logger = new SetupLogger(filePath: null);
+        return await Task.Run(() => NativeGatewaySetupEligibility.Probe(new SetupOpenClawLogger(logger)));
+    }
+    internal void NavigateToNativeGatewaySetup() => NavigateTo(typeof(NativeGatewaySetupPage), _config);
+    internal void NavigateToNativeCapabilities() =>
+        NavigateTo(typeof(CapabilitiesPage), new CapabilitiesPageArgs(_config, false, false, NativeGateway: true));
+    internal void NavigateToNativeWizard(NativeGatewaySetupSession session)
+    {
+        NativeSetupSession = session;
+        NavigateTo(typeof(WizardPage), _config);
+    }
+
+    internal async Task ReleaseNativeSetupAsync()
+    {
+        var session = NativeSetupSession;
+        if (session is null)
+            return;
+        await session.DisposeAsync();
+        if (ReferenceEquals(NativeSetupSession, session))
+            NativeSetupSession = null;
+    }
+
+    internal void NavigateToNativeComplete(string gatewayUrl)
+    {
+        _nativeSetupCompleted = true;
+        _persistStartupPreferenceOnComplete = false;
+        _showStartupPreferenceOnComplete = false;
+        NavigateTo(typeof(CompletePage), new CompletePageArgs(
+            Success: true, Elapsed: TimeSpan.Zero, LogPath: null, ShowStartupPreference: false)
+        {
+            NativeGatewayUrl = gatewayUrl,
+            NativeCapabilitySummary = CapabilitiesPage.DescribeCapabilities(_config.Capabilities),
+        });
+    }
+
+    internal void SaveNativeCapabilities()
+    {
+        _config.Settings.ApplyCapabilities(_config.Capabilities);
+        _config.Settings.MergeCapabilitiesIntoSettingsFile(Path.Combine(_dataDir, "settings.json"));
+    }
 
     internal Task<HostHardwareInfo> GetLocalAiHardwareAsync(bool forceRefresh = false)
     {
@@ -428,6 +478,7 @@ public sealed partial class SetupWindow : Window
         page switch
         {
             "welcome" => typeof(WelcomePage),
+            "native" => typeof(NativeGatewaySetupPage),
             "advanced" => typeof(AdvancedSetupPage),
             "capabilities" => typeof(CapabilitiesPage),
             "capabilities-review" => typeof(CapabilitiesPage),
@@ -460,7 +511,7 @@ public sealed partial class SetupWindow : Window
         AdvancedSetupRequested?.Invoke(this, EventArgs.Empty);
     }
 
-    public bool RequestSetupCompleted(bool enableAutoStart)
+    public bool RequestSetupCompleted(bool enableAutoStart, bool preserveStartupPreference = false)
     {
         var handler = SetupCompleted;
         if (handler == null)
@@ -468,7 +519,7 @@ public sealed partial class SetupWindow : Window
 
         try
         {
-            if (_persistStartupPreferenceOnComplete)
+            if (_persistStartupPreferenceOnComplete && !preserveStartupPreference)
             {
                 _config.Settings.AutoStart = enableAutoStart;
                 TraySettingsConfig.UpdateAutoStartInSettingsFile(
@@ -482,7 +533,8 @@ public sealed partial class SetupWindow : Window
             return true;
         }
 
-        handler.Invoke(this, new SetupCompletedEventArgs(enableAutoStart));
+        handler.Invoke(this, new SetupCompletedEventArgs(
+            enableAutoStart, preserveStartupPreference || _nativeSetupCompleted));
         return true;
     }
 
@@ -571,5 +623,7 @@ public sealed record CompletePageArgs(
     LocalAiFailureDetail? Detail = null)
 {
     public bool RequiresRestart { get; init; }
+    public string? NativeGatewayUrl { get; init; }
+    public string? NativeCapabilitySummary { get; init; }
 }
-public sealed record SetupCompletedEventArgs(bool EnableAutoStart);
+public sealed record SetupCompletedEventArgs(bool EnableAutoStart, bool PreserveStartupPreference = false);

@@ -6,6 +6,37 @@ namespace OpenClaw.Tray.Tests;
 
 public class WizardPayloadHelpersTests
 {
+    [Theory]
+    [InlineData("error", "Model catalog could not be loaded.")]
+    [InlineData("cancelled", "The wizard was cancelled.")]
+    [InlineData("done", "Configuration could not be saved.")]
+    [InlineData("error", "this.prompt is not a function")]
+    public void NativeTerminalError_PreservesGatewayErrorInsteadOfMaskingIt(string status, string error)
+    {
+        var payload = JsonSerializer.SerializeToElement(new { done = true, status, error });
+        Assert.Equal(error, WizardPayloadHelpers.GetNativeTerminalError(payload));
+    }
+
+    [Theory]
+    [InlineData("\"error\"")]
+    [InlineData("\"cancelled\"")]
+    [InlineData("null")]
+    [InlineData("42")]
+    public void NativeTerminalError_RejectsNonSuccessWithoutErrorDetail(string status)
+    {
+        var payload = Parse($"{{\"done\":true,\"status\":{status}}}");
+        Assert.Contains("wizard stopped with status", WizardPayloadHelpers.GetNativeTerminalError(payload));
+    }
+
+    [Theory]
+    [InlineData("""{"done":true,"status":"done"}""")]
+    [InlineData("""{"done":true,"status":"done","error":null}""")]
+    [InlineData("""{"done":true}""")]
+    public void NativeTerminalError_PreservesSuccessfulAndLegacyCompletion(string json)
+    {
+        Assert.Null(WizardPayloadHelpers.GetNativeTerminalError(Parse(json)));
+    }
+
     private static JsonElement Parse(string json)
         => JsonDocument.Parse(json).RootElement;
 
