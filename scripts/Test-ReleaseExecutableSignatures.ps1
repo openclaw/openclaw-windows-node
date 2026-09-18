@@ -53,6 +53,7 @@ function Get-BinaryClassification {
         '^OpenClaw\.SetupEngine\.dll$' { return "OpenClawOwned" }
         '^OpenClaw\.Shared\.dll$' { return "OpenClawOwned" }
         '^OpenClawTray\.FunctionalUI\.dll$' { return "OpenClawOwned" }
+        '^tools\\browser-bootstrap\\OpenClaw\.BrowserNativeHost\.(exe|dll)$' { return "OpenClawOwned" }
         '(^|\\)createdump\.exe$' { return "ThirdPartyExcluded" }
         '(^|\\)RestartAgent\.exe$' { return "ThirdPartyExcluded" }
         '^tools\\mxc\\[^\\]+\\wxc-exec\.exe$' { return "ThirdPartyExcluded" }
@@ -127,7 +128,9 @@ foreach ($binary in $binaries) {
     "OpenClaw.SetupEngine.UI.dll",
     "OpenClaw.SetupEngine.dll",
     "OpenClaw.Shared.dll",
-    "OpenClawTray.FunctionalUI.dll"
+    "OpenClawTray.FunctionalUI.dll",
+    "tools\browser-bootstrap\OpenClaw.BrowserNativeHost.exe",
+    "tools\browser-bootstrap\OpenClaw.BrowserNativeHost.dll"
 ) | ForEach-Object {
     $requiredBinary = $_
     if (-not ($binaries | Where-Object RelativePath -eq $requiredBinary)) {

@@ -5,6 +5,7 @@
     <Platform Name="ARM64" />
   </Configurations>
   <Folder Name="/src/">
+    <Project Path="src/OpenClaw.BrowserNativeHost/OpenClaw.BrowserNativeHost.csproj" />
     <Project Path="src/OpenClaw.Cli/OpenClaw.Cli.csproj" />
     <Project Path="src/OpenClaw.WinNode.Cli/OpenClaw.WinNode.Cli.csproj" />
     <Project Path="src/OpenClaw.Shared/OpenClaw.Shared.csproj" />

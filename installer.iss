@@ -129,6 +129,7 @@ Filename: "{app}\{#MyAppExeName}"; Description: "{cm:LaunchProgram,{#StringChang
 [Code]
 var
   VCRuntimeInstallSucceeded: Boolean;
+  BrowserNativeHostRegistered: Boolean;
   LocalGatewayCleanupChoiceInitialized: Boolean;
   LocalGatewayCleanupRequested: Boolean;
   LocalGatewayCleanupSucceeded: Boolean;
@@ -338,10 +339,44 @@ begin
     Log('{#MyStartupTaskName} startup task already absent or unavailable.');
 end;
 
+procedure RegisterBrowserNativeHost;
+var
+  ResultCode: Integer;
+begin
+  BrowserNativeHostRegistered := False;
+#ifndef DevBuild
+  if Exec(ExpandConstant('{app}\tools\browser-bootstrap\OpenClaw.BrowserNativeHost.exe'),
+      '--register', '', SW_HIDE, ewWaitUntilTerminated, ResultCode) then
+    BrowserNativeHostRegistered := ResultCode = 0;
+  if not BrowserNativeHostRegistered then
+    Log('Native browser registration was not ready. No extension installation may be requested.');
+#endif
+end;
+
+procedure CurStepChanged(CurStep: TSetupStep);
+begin
+  // ssPostInstall runs after payload installation and before the [Run] tray launch.
+  // Any Store-request integration must additionally require BrowserNativeHostRegistered.
+  if CurStep = ssPostInstall then
+    RegisterBrowserNativeHost;
+end;
+
+procedure UnregisterBrowserNativeHost;
+var
+  ResultCode: Integer;
+begin
+#ifndef DevBuild
+  if not Exec(ExpandConstant('{app}\tools\browser-bootstrap\OpenClaw.BrowserNativeHost.exe'),
+      '--unregister', '', SW_HIDE, ewWaitUntilTerminated, ResultCode) then
+    Log('Native browser host unregister was unavailable. Foreign registrations are preserved.');
+#endif
+end;
+
 procedure CurUninstallStepChanged(CurUninstallStep: TUninstallStep);
 begin
   if CurUninstallStep = usUninstall then
   begin
+    UnregisterBrowserNativeHost;
     RemoveAppAutoStart;
     EnsureLocalGatewayCleanupChoice;
     RunLocalGatewayCleanup;

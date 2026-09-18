@@ -736,6 +736,10 @@ jobs:
     - name: Publish WinUI Tray App
       run: dotnet publish src/OpenClaw.Tray.WinUI -c Release -r win-x64 --self-contained --no-restore -o publish -p:Version=$env:OPENCLAW_BUILD_VERSION -p:InformationalVersion=$env:OPENCLAW_BUILD_VERSION
 
+    - name: Prove packaged native browser host
+      shell: pwsh
+      run: ./scripts/Test-BrowserNativeHost.ps1 -ExecutablePath publish/tools/browser-bootstrap/OpenClaw.BrowserNativeHost.exe
+
     - name: Verify x64 Native Runtime Payload
       shell: pwsh
       run: .\scripts\Test-ReleaseNativeDependencies.ps1 -PayloadPath publish -RequireAppLocalVCRuntime
@@ -791,6 +795,10 @@ jobs:
 
     - name: Publish WinUI Tray App
       run: dotnet publish src/OpenClaw.Tray.WinUI -c Release -r win-arm64 --self-contained --no-restore -o publish -p:Version=$env:OPENCLAW_BUILD_VERSION -p:InformationalVersion=$env:OPENCLAW_BUILD_VERSION
+
+    - name: Prove packaged native browser host
+      shell: pwsh
+      run: ./scripts/Test-BrowserNativeHost.ps1 -ExecutablePath publish/tools/browser-bootstrap/OpenClaw.BrowserNativeHost.exe
 
     - name: Verify ARM64 Native Runtime Payload
       shell: pwsh
@@ -1023,6 +1031,9 @@ jobs:
         foreach ($binary in $openClawBinaries) {
           New-Item -ItemType HardLink -Path "signing-input-x64\$binary" -Target "artifacts\tray-win-x64\$binary" | Out-Null
         }
+        foreach ($binary in @("OpenClaw.BrowserNativeHost.exe", "OpenClaw.BrowserNativeHost.dll")) {
+          New-Item -ItemType HardLink -Path "signing-input-x64\$binary" -Target "artifacts\tray-win-x64\tools\browser-bootstrap\$binary" | Out-Null
+        }
 
     - name: Stage ARM64 OpenClaw Binaries for Signing
       shell: pwsh
@@ -1040,6 +1051,9 @@ jobs:
         )
         foreach ($binary in $openClawBinaries) {
           New-Item -ItemType HardLink -Path "signing-input-arm64\$binary" -Target "artifacts\tray-win-arm64\$binary" | Out-Null
+        }
+        foreach ($binary in @("OpenClaw.BrowserNativeHost.exe", "OpenClaw.BrowserNativeHost.dll")) {
+          New-Item -ItemType HardLink -Path "signing-input-arm64\$binary" -Target "artifacts\tray-win-arm64\tools\browser-bootstrap\$binary" | Out-Null
         }
 
     - name: Sign x64 OpenClaw Binaries

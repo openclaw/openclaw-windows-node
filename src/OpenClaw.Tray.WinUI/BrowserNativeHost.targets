@@ -1,0 +1,30 @@
+<Project>
+  <PropertyGroup>
+    <BrowserNativeHostProject>$(MSBuildThisFileDirectory)..\OpenClaw.BrowserNativeHost\OpenClaw.BrowserNativeHost.csproj</BrowserNativeHostProject>
+    <BrowserNativeHostRid Condition="'$(RuntimeIdentifier)' != ''">$(RuntimeIdentifier)</BrowserNativeHostRid>
+    <BrowserNativeHostRid Condition="'$(BrowserNativeHostRid)' == '' And '$(Platform)' == 'ARM64'">win-arm64</BrowserNativeHostRid>
+    <BrowserNativeHostRid Condition="'$(BrowserNativeHostRid)' == ''">win-x64</BrowserNativeHostRid>
+    <BrowserNativeHostPayload>$([System.IO.Path]::GetFullPath('$(MSBuildThisFileDirectory)obj\browser-native\$(Configuration)\$(BrowserNativeHostRid)\'))</BrowserNativeHostPayload>
+  </PropertyGroup>
+  <!-- Chrome launches a real self-contained .exe, never a .cmd wrapper or an installed Node runtime. -->
+  <Target Name="BuildBrowserNativeHostPayload" BeforeTargets="GetCopyToOutputDirectoryItems;ComputeFilesToPublish"
+          Condition="'$(DesignTimeBuild)' != 'true'">
+    <MSBuild Projects="$(BrowserNativeHostProject)" Targets="Restore;Publish" BuildInParallel="false"
+             Properties="Configuration=$(Configuration);RuntimeIdentifier=$(BrowserNativeHostRid);SelfContained=true;PublishDir=$(BrowserNativeHostPayload);PackageMsix=false"
+             RemoveProperties="TargetFramework;TargetFrameworks;OutputPath;OutDir;PublishSingleFile;PublishAot;PublishTrimmed" />
+    <ItemGroup>
+      <_BrowserNativeHostFile Include="$(BrowserNativeHostPayload)**\*" />
+      <ContentWithTargetPath Include="@(_BrowserNativeHostFile)">
+        <TargetPath>tools\browser-bootstrap\%(RecursiveDir)%(Filename)%(Extension)</TargetPath>
+        <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+        <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
+      </ContentWithTargetPath>
+      <ResolvedFileToPublish Include="@(_BrowserNativeHostFile)">
+        <RelativePath>tools\browser-bootstrap\%(RecursiveDir)%(Filename)%(Extension)</RelativePath>
+        <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
+      </ResolvedFileToPublish>
+    </ItemGroup>
+    <Error Condition="!Exists('$(BrowserNativeHostPayload)OpenClaw.BrowserNativeHost.exe')"
+           Text="The native browser bootstrap executable was not published." />
+  </Target>
+</Project>
