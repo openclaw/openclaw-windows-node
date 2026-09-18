@@ -89,6 +89,37 @@ The operator client is received through the `OperatorClientChanged` event. The a
 
 Inbound chat and agent timeline events must include the gateway's canonical `sessionKey`. The tray client must not synthesize a literal `main` key for keyless inbound events, because that can merge unrelated events into the wrong timeline. When a keyless chat or agent event arrives, the tray drops it and raises a one-shot diagnostic so the protocol issue is visible without exposing the dropped message contents.
 
+Live `chat` and `session.message` events also retain the payload's optional
+`runId`, separately from message identity. `ChatConversationState` consults
+`ChatLifecycleState` before admitting assistant or tool chat output, so an
+aborted, completed, or mismatched run cannot replace output or end a newer
+turn. Reset admission also checks the supplied run against ignored reset runs.
+The most recent non-aborted lifecycle completion may still receive its final
+text while idle. Suppressed terminals do not change that eligibility, and the
+bounded cache evicts by arrival order rather than suppression priority. The
+terminal cache also suppresses late nonterminal agent output after abort
+cleanup. Late tool repair requires a retained correlation for the same run;
+late approvals must match the pending approval. Known late child/parent repair
+does not reactivate an idle turn. An aborted lifecycle start cannot replace
+the current run. Frames without a run ID retain legacy thread-level handling;
+they cannot be reliably correlated to an older run.
+
+Upstream lifecycle errors may be followed by a same-run retry. The most recent
+non-aborted failed run may restart while idle, before any newer active or
+completed run or accepted assistant final. Explicit execution settlement,
+exhausted fallback, timeout, cancellation and terminal liveness facts remain
+closed, matching upstream
+[`isDefinitiveRunLifecycle`](https://github.com/openclaw/openclaw/blob/eb82ef8b80a05058619557dff09f758a6710d4d5/packages/normalization-core/src/agent-run-terminal-outcome.ts#L145-L235).
+Successful completion and abort fences remain closed to repeated starts.
+
+Chat admission also controls notification delivery. The synchronous provider
+marks rejected `ChatMessageInfo` frames with `SuppressNotification()` before
+the gateway parser emits its separate notification event. That per-frame veto
+is monotonic and does not suppress delivery to other chat subscribers. It
+prevents rejected finals from reaching notification history, toasts or TTS
+without adding another run cache or moving notification ownership into `App`.
+Consumers that do not apply a veto retain the existing notification behavior.
+
 ## Startup wiring (App.xaml.cs)
 
 ```

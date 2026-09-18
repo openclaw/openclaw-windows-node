@@ -45,6 +45,49 @@ internal static class ChatEventMapper
         evt.Data.TryGetProperty("phase", out var phase) &&
         string.Equals(phase.GetString(), "start", StringComparison.OrdinalIgnoreCase);
 
+    internal static bool IsLifecycleError(AgentEventInfo evt) =>
+        string.Equals(evt.Stream, "lifecycle", StringComparison.OrdinalIgnoreCase) &&
+        evt.Data.ValueKind == JsonValueKind.Object &&
+        evt.Data.TryGetProperty("phase", out var phase) &&
+        string.Equals(phase.GetString(), "error", StringComparison.OrdinalIgnoreCase);
+
+    internal static bool IsRetryableLifecycleError(AgentEventInfo evt)
+    {
+        if (!IsLifecycleError(evt))
+            return false;
+        var data = evt.Data;
+        if (IsTrue(data, "executionSettled") || IsTrue(data, "fallbackExhaustedFailure"))
+            return false;
+
+        // Match upstream isDefinitiveRunLifecycle's failed/non-failed projection.
+        // ProviderStarted only distinguishes timeout kinds, not retry eligibility.
+        var status = StringProperty(data, "status").ToLowerInvariant();
+        var stopReason = StringProperty(data, "stopReason");
+        if (string.IsNullOrWhiteSpace(stopReason))
+            stopReason = string.Empty;
+        var timeoutPhase = StringProperty(data, "timeoutPhase").Trim();
+        var timedOut = stopReason == "timeout" ||
+                       status is "timeout" or "timed_out" ||
+                       timeoutPhase is "queue" or "preflight" or "provider" or "post_turn" or "gateway_draining";
+        if (timedOut)
+            return false;
+
+        var aborted = IsTrue(data, "aborted") || status == "aborted";
+        var cancellationStatus = status is "cancelled" or "canceled" or "aborted" or "superseded";
+        if ((aborted || cancellationStatus) &&
+            stopReason is not ("aborted" or "restart" or "rpc" or "stop" or "superseded") &&
+            (stopReason.Length == 0 || cancellationStatus))
+        {
+            stopReason = aborted ? "aborted" : "stop";
+        }
+        var liveness = StringProperty(data, "livenessState").Trim().ToLowerInvariant();
+        return stopReason is not ("aborted" or "restart" or "rpc" or "stop" or "superseded") &&
+               liveness is not ("blocked" or "abandoned");
+    }
+
+    private static bool IsTrue(JsonElement data, string property) =>
+        data.TryGetProperty(property, out var value) && value.ValueKind == JsonValueKind.True;
+
     internal static bool IsTerminalRunEvent(AgentEventInfo evt)
     {
         if (evt.Data.ValueKind != JsonValueKind.Object)
@@ -89,6 +132,11 @@ internal static class ChatEventMapper
             _ => null,
         };
     }
+
+    internal static bool CanReconcileToolAfterRunEnd(
+        AgentEventInfo evt,
+        ChatTimelineState timeline) =>
+        ChatTimelineReducer.CanReconcileToolAfterTurnEnd(timeline, Map(evt).Event);
 
     internal static bool IsTerminalApprovalPhase(string phase)
     {

@@ -44,6 +44,28 @@ public static class ChatTimelineReducer
         };
     }
 
+    /// <summary>
+    /// A completed run may repair a retained tool row or materialize a known
+    /// terminal child, but must not create a new tool activity from a stale frame.
+    /// </summary>
+    public static bool CanReconcileToolAfterTurnEnd(ChatTimelineState state, ChatEvent? evt)
+    {
+        var (runId, toolCallId) = evt switch
+        {
+            ChatToolStartEvent e => (e.RunId, e.ToolCallId),
+            ChatToolPresentationEvent e => (e.RunId, e.ParentToolCallId),
+            ChatToolOutputEvent e => (e.RunId, e.ToolCallId),
+            ChatToolErrorEvent e => (e.RunId, e.ToolCallId),
+            _ => ((string?)null, (string?)null),
+        };
+        if (string.IsNullOrWhiteSpace(runId) || string.IsNullOrWhiteSpace(toolCallId))
+            return false;
+
+        var key = CurrentCorrelationKey(state, runId, toolCallId);
+        return FindToolEntryIndex(state, key, allowTerminalLegacy: true) >= 0 ||
+               state.TerminalToolCorrelations?.ContainsKey(key) == true;
+    }
+
     public static ChatTimelineState Apply(ChatTimelineState state, ChatEvent evt)
     {
         return evt switch
