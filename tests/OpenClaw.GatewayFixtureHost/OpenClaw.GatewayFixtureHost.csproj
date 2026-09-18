@@ -1,0 +1,9 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\OpenClaw.TestSupport\OpenClaw.TestSupport.csproj" />
+    <ProjectReference Include="..\..\src\OpenClaw.Connection\OpenClaw.Connection.csproj" />
+  </ItemGroup>
+</Project>

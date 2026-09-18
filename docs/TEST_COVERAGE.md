@@ -38,6 +38,17 @@ authoritative runtime totals.
 
 ## Coverage highlights
 
+### Fixture-backed application smoke
+
+The [Gateway fixture harness](GATEWAY_FIXTURE_TESTING.md) adds a middle tier:
+the real desktop app and production Gateway/chat stack consume deterministic
+synthetic Gateway responses, with no AI or real WSL Gateway. Protocol tests
+run in Shared; profile/preflight and concurrent-app tests live in Tray
+Integration; native picker/240-message/late-history proofs live in Tray UI.
+Use `.\scripts\test-gateway-fixture.ps1 -AppPath '<built-app.exe>'` for the
+opt-in real-app lane. It rejects skipped or zero-test runs and preserves
+per-run artifacts. Existing MCP-only integration defaults remain unchanged.
+
 ### OpenClaw.Shared.Tests
 
 - **Model and display formatting** - activity glyphs, app version display, session labels, gateway usage/node display, channel status, and rich text helpers.
@@ -75,6 +86,7 @@ required closeout lane for code changes.
 | Lane | Entry point | Required when |
 |---|---|---|
 | Required closeout | `.\build.ps1`, Shared tests, Tray tests | Every code change and every agent closeout |
+| Fixture-backed app smoke | `.\scripts\test-gateway-fixture.ps1 -AppPath '<built-app.exe>'` | Chat session switching/history/scrolling and populated navigation changes; run both Debug and production-shaped Release for runtime regressions |
 | Proof-pool inventory | `.\scripts\validate-proof-pools.ps1`, `.\scripts\test-proof-pool-validator.ps1`, and `.\scripts\test-validate-docs-proof-pool-flow.ps1` | Every inventory or proof scheduling change; the documentation gate runs core schema and parent-flow checks, while CI runs the full malformed-contract matrix |
 | Agent skills | `.\scripts\validate-agent-skills.ps1` and `.\scripts\test-agent-skills-validator.ps1` | Changes under `.agents\skills`; validates skill metadata, agent-facing prose, and local links |
 | GitHub-hosted PR/main CI | `.github\workflows\ci.yml` | Every pull request and push to `main`; explicit conservative impact outputs select the required test, E2E, and release-publish lanes |

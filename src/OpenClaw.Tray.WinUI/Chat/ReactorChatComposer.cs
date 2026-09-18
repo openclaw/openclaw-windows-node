@@ -209,7 +209,8 @@ internal sealed class ReactorChatComposer : Component<ReactorChatComposerViewPro
             string automationName,
             string automationId,
             bool enabled,
-            double maxLabelWidth)
+            double maxLabelWidth,
+            string? itemStatus = null)
         {
             return Button(
                     HStack(
@@ -242,7 +243,12 @@ internal sealed class ReactorChatComposer : Component<ReactorChatComposerViewPro
                 .IsEnabled(enabled)
                 .BorderThickness(0)
                 .AutomationId(automationId)
-                .Set(button => ComposerAutomationVisibility.Prepare(button))
+                .Set(button =>
+                {
+                    ComposerAutomationVisibility.Prepare(button);
+                    if (itemStatus is not null)
+                        Microsoft.UI.Xaml.Automation.AutomationProperties.SetItemStatus(button, itemStatus);
+                })
                 .OnUnmount(control => ComposerAutomationVisibility.Detach(
                     (FrameworkElement)control));
         }
@@ -552,7 +558,9 @@ internal sealed class ReactorChatComposer : Component<ReactorChatComposerViewPro
                 $"{Localized("Chat_Composer_Accessibility_Session", "Session")}: {inputs.CurrentThread.Title}",
                 "ChatComposerSessionPicker",
                 !inputs.MessageOptionsDisabled && inputs.AvailableChannels.Count > 1,
-                props.IsCompact ? 56 : 160),
+                props.IsCompact ? 56 : 160,
+                GatewayFixtureRenderObservation.Create(
+                    props.InputSnapshot, inputs.CurrentThread.Id, GatewayFixtureIsolation.IsEnabled)),
             inputs.AvailableChannels
                 .Select(thread => RadioMenuItem(
                     thread.Title,

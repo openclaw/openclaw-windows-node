@@ -37,6 +37,11 @@
     <AppIdentityMarker>release</AppIdentityMarker>
   </PropertyGroup>
 
+  <!-- Fixture launchers require this marker before starting an app with host-side effects suppressed. -->
+  <ItemGroup>
+    <RuntimeHostConfigurationOption Include="OpenClaw.GatewayFixtureIsolationVersion" Value="1" />
+  </ItemGroup>
+
   <!-- Work around dotnet/runtime#129191 in production builds. Explicit DevBuild
        builds retain debugger support for managed/native interop diagnostics. -->
   <ItemGroup Condition="'$(Configuration)' == 'Release' and '$(DevBuild)' != 'true'">

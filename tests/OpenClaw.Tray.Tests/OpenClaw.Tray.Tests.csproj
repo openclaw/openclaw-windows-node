@@ -36,6 +36,7 @@
   <ItemGroup>
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Chat\IChatGatewayBridge.cs" Link="Chat\IChatGatewayBridge.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Chat\ChatSurfaceResolver.cs" Link="Chat\ChatSurfaceResolver.cs" />
+    <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Chat\GatewayFixtureRenderObservation.cs" Link="Chat\GatewayFixtureRenderObservation.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Chat\DebugChatSurfaceOverrides.cs" Link="Chat\DebugChatSurfaceOverrides.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Chat\ChatEntryMetadata.cs" Link="Chat\ChatEntryMetadata.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Chat\ChatAssistantContentPresentation.cs" Link="Chat\ChatAssistantContentPresentation.cs" />

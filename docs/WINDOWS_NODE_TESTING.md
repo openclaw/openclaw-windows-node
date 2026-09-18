@@ -30,6 +30,15 @@ Short version: run required tests, collect a closeout proof pass with `.\run-app
 
 ### Reactor preview.12 compatibility proof
 
+The [fixture Gateway harness](GATEWAY_FIXTURE_TESTING.md) can populate the real
+app without a running WSL Gateway or AI provider. Run
+`.\scripts\run-gateway-fixture.ps1 -AppPath '<built-app.exe>'` to explore, or
+`.\scripts\test-gateway-fixture.ps1 -AppPath '<built-app.exe>'` for automated
+picker, 240-message final-item, navigation and delayed-history proof. Use a
+non-Dev Release binary as well as Debug; an empty page or MCP snapshot is not
+equivalent to visible native history proof. Streaming still needs separate
+coverage.
+
 Both Reactor packages are temporarily pinned to `0.1.0-preview.12` while
 [microsoft/microsoft-ui-xaml#11865](https://github.com/microsoft/microsoft-ui-xaml/issues/11865)
 awaits a released and validated fix. `ReactorChatTimeline.BuildSafeMarkdown`
