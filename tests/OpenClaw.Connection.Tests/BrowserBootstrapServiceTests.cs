@@ -29,7 +29,7 @@ public class BrowserBootstrapServiceTests
     [Fact]
     public async Task Local_DelegatesToPinnedDistroWithoutReadingGatewayCredentials()
     {
-        var record = Local with { SharedGatewayToken = "never-use", BootstrapToken = "never-use" };
+        var record = Local with { SharedGatewayToken = "test-token-placeholder", BootstrapToken = "test-token-placeholder" };
         var calls = 0;
         var service = new BrowserBootstrapService(() => record, _ => true, (_, _) => Task.FromResult(true),
             (distro, _) => { Assert.Equal("OpenClawGateway", distro); calls++; return Task.FromResult(PairingJson()); });
