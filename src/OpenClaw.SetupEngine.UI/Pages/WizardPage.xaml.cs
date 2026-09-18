@@ -18,6 +18,9 @@ public sealed partial class WizardPage : Page
     private const int MaxSameStepVisits = 3;
 
     private SetupConfig _config = new();
+    private NativeGatewaySetupSession? _nativeSession;
+    private Task? _startTask;
+    private bool _leaving;
     private OpenClawGatewayClient? _client;
     private string _sessionId = "";
     private string _stepId = "";
@@ -29,6 +32,7 @@ public sealed partial class WizardPage : Page
     private bool _sensitive;
     private bool _errorState;
     private bool _finalizationErrorState;
+    private bool _nativeFinalizationInProgress;
     private int _operationGeneration;
     private int _wizardStepCount;
     private int _progressPolls;
@@ -53,12 +57,15 @@ public sealed partial class WizardPage : Page
     protected override void OnNavigatedTo(NavigationEventArgs e)
     {
         _config = e.Parameter as SetupConfig ?? new SetupConfig();
+        _nativeSession = SetupWindow.Active?.NativeSetupSession;
+        if (_nativeSession is not null)
+            SkipWizardMenuItem.Text = SetupLocalization.GetString("Onboarding_Native_Cancel.Content");
         if (SetupPreview.IsActive)
         {
             RenderWizardPreview();
             return;
         }
-        _ = StartWizardAsync();
+        _startTask = StartWizardAsync();
     }
 
     private void RenderWizardPreview()
@@ -100,7 +107,23 @@ public sealed partial class WizardPage : Page
     {
         AdvanceOperationGeneration();
         _expectedTerminalRestart = false;
-        _ = DisconnectAsync();
+        if (_nativeSession is not null)
+            _ = CancelAndWaitAsync();
+        else
+            _ = DisconnectAsync();
+    }
+
+    internal async Task CancelAndWaitAsync()
+    {
+        if (_leaving)
+            return;
+        _leaving = true;
+        AdvanceOperationGeneration();
+        await CancelCurrentSessionAsync();
+        if (_nativeSession is { } native)
+            await native.DisposeAsync();
+        if (_startTask is { } startTask)
+            await startTask;
     }
 
     private async Task StartWizardAsync(bool clearTranscript = true)
@@ -138,7 +161,18 @@ public sealed partial class WizardPage : Page
             _client.StatusChanged += OnWizardClientStatusChanged;
             SetBusy("Starting wizard...");
             StartConsoleTail();
-            var payload = await _client.SendWizardRequestAsync("wizard.start", timeoutMs: 30_000);
+            _nativeSession?.BeginWizard();
+            JsonElement payload;
+            try
+            {
+                payload = await _client.SendWizardRequestAsync("wizard.start",
+                    new { mode = "local", installDaemon = false }, timeoutMs: 30_000);
+            }
+            catch (Exception ex) when (_nativeSession is null &&
+                SetupWizardRunner.IsInstallDaemonParameterUnsupported(ex))
+            {
+                payload = await _client.SendWizardRequestAsync("wizard.start", timeoutMs: 30_000);
+            }
             if (generation != _operationGeneration)
                 return;
 
@@ -157,10 +191,15 @@ public sealed partial class WizardPage : Page
 
     private async Task<OpenClawGatewayClient> ConnectClientAsync()
     {
+        if (_nativeSession is { } native)
+            return await ConnectNativeClientAsync(native);
+
         var dataDir = SetupWindow.Active?.DataDir ?? SetupContext.ResolveDataDir();
         var registry = new GatewayRegistry(dataDir);
         registry.Load();
         var record = registry.GetActive() ?? throw new InvalidOperationException("No active gateway record found.");
+        if (record.NativePackageFamilyName is not null)
+            throw new InvalidOperationException("Native onboarding requires its setup-owned runtime. Return to native Gateway setup.");
         _hostAccessPlan = GatewayHostAccessClassifier.Classify(record);
         var identityPath = registry.GetIdentityDirectory(record.Id);
         var deviceToken = DeviceIdentity.TryReadStoredDeviceToken(identityPath);
@@ -224,7 +263,65 @@ public sealed partial class WizardPage : Page
         return client;
     }
 
-    private static async Task<bool> WaitForConnectAsync(OpenClawGatewayClient client, TimeSpan timeout)
+    private async Task<OpenClawGatewayClient> ConnectNativeClientAsync(NativeGatewaySetupSession native)
+    {
+        await native.PrepareWizardAsync(native.LifetimeToken);
+        native.LifetimeToken.ThrowIfCancellationRequested();
+        if (_leaving)
+            throw new OperationCanceledException("The setup page is closing.");
+        var record = native.Record;
+        var token = DeviceIdentity.TryReadStoredDeviceToken(native.IdentityDirectory)
+            ?? record.SharedGatewayToken
+            ?? throw new InvalidOperationException("No native gateway credential found.");
+        for (var attempt = 0; attempt < 2; attempt++)
+        {
+            var client = new OpenClawGatewayClient(record.Url, token,
+                logger: NullLogger.Instance, identityPath: native.IdentityDirectory) { UseV2Signature = true };
+            // Assign before connecting so close/cancel can dispose an in-flight handshake.
+            _client = client;
+            client.ReconnectAuthorizationAsync = async cancellationToken =>
+            {
+                try
+                {
+                    await native.AuthorizeAsync(cancellationToken);
+                    return ReconnectAuthorizationResult.AllowedResult;
+                }
+                catch (Exception ex)
+                {
+                    return new ReconnectAuthorizationResult(false, GatewayErrorKind.LocalPortConflict, ex.Message);
+                }
+            };
+            client.HandshakeAuthorizationAsync = client.ReconnectAuthorizationAsync;
+            try
+            {
+                if (await WaitForConnectAsync(client, TimeSpan.FromSeconds(20), reportNativePairing: true))
+                    return client;
+                throw new InvalidOperationException("Could not connect to the verified native gateway.");
+            }
+            catch (NativePairingRequiredException ex) when (attempt == 0)
+            {
+                SetBusy("Pairing this Companion with the Gateway...");
+                // Disconnect alone does not cancel a failed handshake's background reconnect.
+                client.Dispose();
+                _client = null;
+                await native.ApproveWizardPairingAsync(ex.RequestId, native.LifetimeToken);
+                native.LifetimeToken.ThrowIfCancellationRequested();
+                if (_leaving)
+                    throw new OperationCanceledException("The setup page is closing.");
+                SetBusy("Connecting to the paired Gateway...");
+            }
+        }
+        throw new InvalidOperationException("The Gateway did not accept this Companion after pairing.");
+    }
+
+    private sealed class NativePairingRequiredException(string? requestId)
+        : InvalidOperationException(NativeGatewaySetupSession.GetPairingGuidance(requestId))
+    {
+        public string? RequestId { get; } = requestId;
+    }
+
+    private static async Task<bool> WaitForConnectAsync(
+        OpenClawGatewayClient client, TimeSpan timeout, bool reportNativePairing = false)
     {
         var tcs = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
 
@@ -232,21 +329,33 @@ public sealed partial class WizardPage : Page
         {
             if (status == ConnectionStatus.Connected)
                 tcs.TrySetResult(true);
-            else if (status is ConnectionStatus.Error or ConnectionStatus.Disconnected)
+            else if (status == ConnectionStatus.Error ||
+                     (status == ConnectionStatus.Disconnected && !reportNativePairing))
                 tcs.TrySetResult(false);
         }
 
+        void OnPairingRequired(object? sender, string? requestId)
+        {
+            if (reportNativePairing)
+                tcs.TrySetException(new NativePairingRequiredException(requestId));
+        }
+
         client.StatusChanged += OnStatusChanged;
+        client.PairingRequired += OnPairingRequired;
         try
         {
-            await client.ConnectAsync();
             using var cts = new CancellationTokenSource(timeout);
             await using var _ = cts.Token.Register(() => tcs.TrySetResult(false));
+            if (reportNativePairing)
+                await client.ConnectAsync().WaitAsync(cts.Token);
+            else
+                await client.ConnectAsync();
             return await tcs.Task;
         }
         finally
         {
             client.StatusChanged -= OnStatusChanged;
+            client.PairingRequired -= OnPairingRequired;
         }
     }
 
@@ -283,13 +392,23 @@ public sealed partial class WizardPage : Page
 
             if (payload.TryGetProperty("done", out var done) && done.ValueKind == JsonValueKind.True)
             {
+                var nativeError = _nativeSession is not null
+                    ? WizardPayloadHelpers.GetNativeTerminalError(payload)
+                    : null;
+                if (nativeError is not null)
+                {
+                    ShowError(SetupLogger.Sanitize(nativeError));
+                    return;
+                }
                 var error = payload.TryGetProperty("error", out var err) ? err.ToString() : "";
-                if (!string.IsNullOrWhiteSpace(error) && !error.Contains("this.prompt is not a function", StringComparison.OrdinalIgnoreCase))
+                if (!string.IsNullOrWhiteSpace(error) &&
+                    (_nativeSession is not null || !error.Contains("this.prompt is not a function", StringComparison.OrdinalIgnoreCase)))
                 {
                     ShowError(error);
                     return;
                 }
 
+                _nativeSession?.MarkWizardCompleted();
                 await DisconnectAsync();
                 if (generation != _operationGeneration || _errorState)
                     return;
@@ -384,6 +503,50 @@ public sealed partial class WizardPage : Page
             {
                 ShowError($"Gateway wizard repeated step '{_stepId}' too many times.");
                 return;
+            }
+
+            var onboarding = WizardOnboardingPolicy.Evaluate(step);
+            if (onboarding.Action != WizardOnboardingAction.Show)
+            {
+                if (payload.TryGetProperty("error", out var stepError) &&
+                    !string.IsNullOrWhiteSpace(stepError.ToString()))
+                {
+                    ShowError(SetupLogger.Sanitize(stepError.ToString()));
+                    return;
+                }
+                var client = _client ?? throw new InvalidOperationException("The wizard connection is unavailable.");
+                if (onboarding.Action == WizardOnboardingAction.Finish)
+                {
+                    SetBusy("Finishing setup. Optional features can be configured later...");
+                    await WizardOptionalSetupHandoff.CompleteAsync(
+                        client.SendWizardRequestAsync, _sessionId, step,
+                        _nativeSession?.LifetimeToken ?? CancellationToken.None);
+                    if (generation != _operationGeneration || _errorState)
+                        return;
+                    _sessionId = "";
+                    _nativeSession?.MarkOptionalSetupDeferred();
+                    await DisconnectAsync();
+                    await CompleteSetupAsync(generation);
+                    return;
+                }
+
+                object next = onboarding.Action == WizardOnboardingAction.Acknowledge
+                    ? WizardNextPayload.Acknowledge(_sessionId, _stepId)
+                    : new
+                    {
+                        sessionId = _sessionId,
+                        answer = new
+                        {
+                            stepId = _stepId,
+                            value = WizardAnswerBuilder.BuildWireValue(
+                                _stepType, onboarding.Answer!, WizardAnswerBuilder.ReadOptions(step))
+                        }
+                    };
+                payload = await client.SendWizardRequestAsync("wizard.next", next,
+                    timeoutMs: WizardTimeouts.ForStep(title, message, _stepId));
+                if (generation != _operationGeneration || _errorState)
+                    return;
+                continue;
             }
 
             ResetInputs();
@@ -778,6 +941,8 @@ public sealed partial class WizardPage : Page
 
     private async Task StartOverAsync()
     {
+        if (_nativeFinalizationInProgress)
+            return;
         var generation = AdvanceOperationGeneration();
         HideRecoveryActions();
         SetBusy("Starting over...");
@@ -1190,7 +1355,8 @@ public sealed partial class WizardPage : Page
         StopConsoleTail();
         var tail = new WizardConsoleTail(
             logger: NullLogger.Instance,
-            distroNameOverride: _config.DistroName);
+            distroNameOverride: _config.DistroName,
+            nativeLogPath: _nativeSession?.ConsoleLogPath);
         _consoleTail = tail;
         var dispatcher = DispatcherQueue;
         tail.Start(message =>
@@ -1384,8 +1550,8 @@ public sealed partial class WizardPage : Page
     {
         ShowError(message);
         _finalizationErrorState = true;
-        StatusText.Text = "Windows integration needs attention";
-        PrimaryButton.Content = "Retry Windows integration";
+        StatusText.Text = _nativeSession is null ? "Windows integration needs attention" : "Native Gateway validation needs attention";
+        PrimaryButton.Content = _nativeSession is null ? "Retry Windows integration" : "Retry Gateway validation";
     }
 
     private async Task EnterWizardErrorAsync(string detail)
@@ -1411,7 +1577,8 @@ public sealed partial class WizardPage : Page
     {
         HideGatewayRecovery();
 
-        if (!_hostAccessPlan.CanControlWslGateway || string.IsNullOrWhiteSpace(_hostAccessPlan.DistroName))
+        if (_nativeSession is null &&
+            (!_hostAccessPlan.CanControlWslGateway || string.IsNullOrWhiteSpace(_hostAccessPlan.DistroName)))
             return;
 
         OpenGatewayTerminalButton.IsEnabled = true;
@@ -1426,6 +1593,20 @@ public sealed partial class WizardPage : Page
 
     private void OpenGatewayTerminal_Click(object sender, RoutedEventArgs e)
     {
+        if (_nativeSession is { } native)
+        {
+            try
+            {
+                native.OpenRecoveryTerminal();
+                StatusText.Text = "Opened this native profile's terminal. After approving pairing, choose Retry. After changing configuration, choose Restart gateway.";
+            }
+            catch (Exception ex)
+            {
+                ErrorText.Text = $"Couldn't open a terminal: {ex.Message}";
+                ErrorText.Visibility = Visibility.Visible;
+            }
+            return;
+        }
         if (!_hostAccessPlan.CanOpenTerminal)
             return;
 
@@ -1449,6 +1630,25 @@ public sealed partial class WizardPage : Page
 
     private async Task RestartGatewayAsync()
     {
+        if (_nativeSession is { } native)
+        {
+            var nativeGeneration = AdvanceOperationGeneration();
+            _errorState = false;
+            SetBusy("Restarting native Gateway...");
+            await CancelCurrentSessionAsync();
+            try
+            {
+                await native.RestartAsync(native.LifetimeToken);
+                if (nativeGeneration == _operationGeneration)
+                    await StartWizardAsync(clearTranscript: false);
+            }
+            catch (Exception ex)
+            {
+                if (nativeGeneration == _operationGeneration)
+                    await EnterWizardErrorAsync($"Restarting the native Gateway failed: {ex.Message}");
+            }
+            return;
+        }
         var distro = _hostAccessPlan.DistroName;
         if (!_hostAccessPlan.CanControlWslGateway || string.IsNullOrWhiteSpace(distro))
             return;
@@ -1507,11 +1707,23 @@ public sealed partial class WizardPage : Page
 
     private async Task SkipWizardAsync()
     {
+        if (_nativeFinalizationInProgress)
+            return;
         var generation = AdvanceOperationGeneration();
         _errorState = false;
         HideRecoveryActions();
         SetBusy("Skipping wizard...");
         await CancelCurrentSessionAsync();
+        if (_nativeSession is not null)
+        {
+            var window = SetupWindow.Active;
+            if (window is null || generation != _operationGeneration)
+                return;
+            await window.ReleaseNativeSetupAsync();
+            if (!window.IsClosed && generation == _operationGeneration)
+                window.NavigateToNativeCapabilities();
+            return;
+        }
         await CompleteSetupAsync(generation);
     }
 
@@ -1524,6 +1736,31 @@ public sealed partial class WizardPage : Page
         if (setupWindow is null or { IsClosed: true })
             return;
 
+        if (_nativeSession is { } native)
+        {
+            _nativeFinalizationInProgress = true;
+            HideRecoveryActions();
+            SetBusy("Validating native Gateway setup...");
+            try
+            {
+                await native.CompleteAsync(native.LifetimeToken, _config!.Capabilities);
+                if (generation != _operationGeneration || setupWindow.IsClosed)
+                    return;
+                setupWindow.SaveNativeCapabilities();
+                await setupWindow.ReleaseNativeSetupAsync();
+                setupWindow.NavigateToNativeComplete(native.Record.Url);
+            }
+            catch (Exception ex)
+            {
+                if (generation == _operationGeneration && !setupWindow.IsClosed)
+                    ShowFinalizationError($"Gateway setup could not be verified: {ex.Message}");
+            }
+            finally
+            {
+                _nativeFinalizationInProgress = false;
+            }
+            return;
+        }
         SetBusy("Finishing Windows integration...");
         var contextResult = await setupWindow.ApplyWindowsNodeContextAsync();
         if (generation != _operationGeneration || setupWindow.IsClosed)

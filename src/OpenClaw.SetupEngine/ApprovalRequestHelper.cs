@@ -83,6 +83,30 @@ internal static partial class ApprovalRequestHelper
         }
     }
 
+    internal static void RequireMatchingDeviceRequest(
+        string json, string requestId, string deviceId, string publicKey)
+    {
+        if (!IsSafeRequestId(requestId))
+            throw new InvalidOperationException("The Gateway returned an unsafe pairing request ID.");
+        using var document = JsonDocument.Parse(json);
+        if (document.RootElement.ValueKind != JsonValueKind.Object ||
+            !document.RootElement.TryGetProperty("pending", out var pending) ||
+            pending.ValueKind != JsonValueKind.Array)
+            throw new InvalidOperationException("The Gateway did not return a pending device request list.");
+
+        var matches = pending.EnumerateArray().Where(item =>
+            item.ValueKind == JsonValueKind.Object &&
+            item.TryGetProperty("requestId", out var id) &&
+            id.ValueKind == JsonValueKind.String && id.GetString() == requestId).ToArray();
+        if (matches.Length != 1 ||
+            !matches[0].TryGetProperty("deviceId", out var device) ||
+            device.ValueKind != JsonValueKind.String || device.GetString() != deviceId ||
+            !matches[0].TryGetProperty("publicKey", out var key) ||
+            key.ValueKind != JsonValueKind.String || key.GetString() != publicKey)
+            throw new InvalidOperationException(
+                "The pending pairing request does not uniquely match this setup's Companion identity.");
+    }
+
     internal static RequestIdParseResult TryReadSinglePendingRequestId(string json)
     {
         var all = TryReadPendingRequestIds(json);
