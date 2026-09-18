@@ -361,3 +361,6 @@ visual-test-output/
 msix-validation-evidence/
 packaging-test-output/
 uninstall-validation-output/
+
+# Local agent validation SDKs, logs and proof scratch
+.openclaw/tmp/
