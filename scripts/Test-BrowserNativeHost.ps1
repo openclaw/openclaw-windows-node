@@ -12,13 +12,16 @@ Set-StrictMode -Version Latest
 $exe = (Resolve-Path -LiteralPath $ExecutablePath).Path
 $key = 'Software\Google\Chrome\NativeMessagingHosts\ai.openclaw.browser_bootstrap'
 $origin = 'chrome-extension://kcdjddhmeafeomebliikmbpblkmkfoig/'
+$extensionKey = 'Software\Google\Chrome\Extensions\kcdjddhmeafeomebliikmbpblkmkfoig'
 $root = [Microsoft.Win32.RegistryKey]::OpenBaseKey('CurrentUser', 'Registry32')
 foreach ($hive in @('CurrentUser', 'LocalMachine')) {
     foreach ($view in @('Registry32', 'Registry64')) {
         $base = [Microsoft.Win32.RegistryKey]::OpenBaseKey($hive, $view)
         try {
-            $existing = $base.OpenSubKey($key)
-            if ($null -ne $existing) { $existing.Dispose(); throw 'Proof refuses an existing native host registration.' }
+            foreach ($probeKey in @($key, $extensionKey)) {
+                $existing = $base.OpenSubKey($probeKey)
+                if ($null -ne $existing) { $existing.Dispose(); throw 'Proof refuses an existing native host or extension registration.' }
+            }
         } finally { $base.Dispose() }
     }
 }
@@ -60,10 +63,27 @@ function Assert-Exit([Diagnostics.Process]$Process) {
 }
 
 $registered = $false
+$requestRegistered = $false
 try {
+    & $exe --request-extension
+    if ($LASTEXITCODE -eq 0) { throw 'Store request succeeded before native registration.' }
+    $early = $root.OpenSubKey($extensionKey)
+    if ($null -ne $early) { $early.Dispose(); throw 'Store registry key appeared before native registration.' }
     & $exe --register
     if ($LASTEXITCODE -ne 0) { throw 'Native registration failed.' }
     $registered = $true
+    & $exe --request-extension
+    if ($LASTEXITCODE -ne 0) { throw 'Owned HKCU Store request failed.' }
+    $requestRegistered = $true
+    $requestKey = $root.OpenSubKey($extensionKey)
+    try {
+        if ($requestKey.GetValue('update_url') -ne 'https://clients2.google.com/service/update2/crx' -or
+            $requestKey.GetValue('openclaw_native_host') -ne $exe -or $requestKey.ValueCount -ne 2) {
+            throw 'Store request registry payload was not exact.'
+        }
+    } finally { $requestKey.Dispose() }
+    & $exe --request-extension
+    if ($LASTEXITCODE -ne 0) { throw 'Owned Store request was not idempotent.' }
     $process = Start-Native 'chrome-extension://aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa/'
     try {
         $reply = Read-Frame $process.StandardOutput.BaseStream
@@ -103,6 +123,35 @@ try {
             $process.Dispose()
         }
     } finally { $pipe.Dispose() }
+    & $exe --remove-extension-request
+    if ($LASTEXITCODE -ne 0) { throw 'Owned Store request cleanup failed.' }
+    $requestRegistered = $false
+    $remainingRequest = $root.OpenSubKey($extensionKey)
+    if ($null -ne $remainingRequest) { $remainingRequest.Dispose(); throw 'Owned Store request remained after cleanup.' }
+    $storeSentinel = 'openclaw-proof-foreign-' + [Guid]::NewGuid().ToString('N')
+    $foreignStore = $root.CreateSubKey($extensionKey)
+    $foreignStore.SetValue('update_url', 'https://clients2.google.com/service/update2/crx')
+    $foreignStore.SetValue('proof_owner', $storeSentinel)
+    $foreignStore.Dispose()
+    try {
+        & $exe --request-extension
+        if ($LASTEXITCODE -eq 0) { throw 'Store request adopted a foreign registry entry.' }
+        & $exe --remove-extension-request
+        if ($LASTEXITCODE -eq 0) { throw 'Store cleanup adopted a foreign registry entry.' }
+        $foreignStore = $root.OpenSubKey($extensionKey)
+        try {
+            if ($foreignStore.ValueCount -ne 2 -or $foreignStore.GetValue('proof_owner') -ne $storeSentinel) {
+                throw 'Foreign Store registry entry changed.'
+            }
+        } finally { $foreignStore.Dispose() }
+    } finally {
+        $foreignStore = $root.OpenSubKey($extensionKey)
+        if ($null -ne $foreignStore) {
+            $owned = $foreignStore.GetValue('proof_owner') -eq $storeSentinel
+            $foreignStore.Dispose()
+            if ($owned) { $root.DeleteSubKey($extensionKey, $false) }
+        }
+    }
     & $exe --unregister
     if ($LASTEXITCODE -ne 0) { throw 'Native unregister failed.' }
     $registered = $false
@@ -130,8 +179,9 @@ try {
             if ($owned) { $root.DeleteSubKey($key, $false) }
         }
     }
-    Write-Host 'NATIVE_BOOTSTRAP_PROOF_OK: binary framing, exact origin, bounded request, current-user IPC, owned cleanup, foreign-entry preservation.'
+    Write-Host 'NATIVE_BOOTSTRAP_PROOF_OK: binary framing, exact origin, bounded request, current-user IPC, native-first HKCU Store request, owned cleanup, foreign-entry preservation.'
 } finally {
+    if ($requestRegistered) { & $exe --remove-extension-request }
     if ($registered) { & $exe --unregister }
     $root.Dispose()
 }

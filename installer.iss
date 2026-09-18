@@ -58,6 +58,7 @@ Compression={#MyCompression}
 SolidCompression={#MySolidCompression}
 WizardStyle=modern
 PrivilegesRequired=lowest
+UsePreviousTasks=yes
 SetupIconFile=src\OpenClaw.Tray.WinUI\Assets\openclaw.ico
 UninstallDisplayIcon={app}\{#MyAppExeName}
 ; Round 2 (Scott #5): block install/uninstall while the tray is running.
@@ -95,6 +96,9 @@ Name: "english"; MessagesFile: "compiler:Default.isl"
 #endif
 
 [Tasks]
+#ifndef DevBuild
+Name: "chromeextension"; Description: "Add the OpenClaw Chrome extension (Chrome approval required)"; GroupDescription: "Browser integration:"
+#endif
 Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{cm:AdditionalIcons}"; Flags: unchecked
 Name: "startupicon"; Description: "Start {#MyAppName} when Windows starts"; GroupDescription: "Startup:"; Flags: unchecked
 
@@ -353,12 +357,32 @@ begin
 #endif
 end;
 
+procedure RequestChromeExtension;
+var
+  ResultCode: Integer;
+begin
+#ifndef DevBuild
+  if not BrowserNativeHostRegistered or not WizardIsTaskSelected('chromeextension') then
+    Exit;
+  if Exec(ExpandConstant('{app}\tools\browser-bootstrap\OpenClaw.BrowserNativeHost.exe'),
+      '--request-extension', '', SW_HIDE, ewWaitUntilTerminated, ResultCode) then
+  begin
+    if ResultCode = 0 then
+      Log('Requested the official Chrome Store extension. Chrome permission approval is still required.')
+    else
+      Log('Chrome extension request was not written. Existing foreign registrations are preserved.');
+  end;
+#endif
+end;
+
 procedure CurStepChanged(CurStep: TSetupStep);
 begin
-  // ssPostInstall runs after payload installation and before the [Run] tray launch.
-  // Any Store-request integration must additionally require BrowserNativeHostRegistered.
+  // Files are installed before native registration, which must succeed before the Store request.
   if CurStep = ssPostInstall then
+  begin
     RegisterBrowserNativeHost;
+    RequestChromeExtension;
+  end;
 end;
 
 procedure UnregisterBrowserNativeHost;
@@ -366,6 +390,8 @@ var
   ResultCode: Integer;
 begin
 #ifndef DevBuild
+  Exec(ExpandConstant('{app}\tools\browser-bootstrap\OpenClaw.BrowserNativeHost.exe'),
+      '--remove-extension-request', '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
   if not Exec(ExpandConstant('{app}\tools\browser-bootstrap\OpenClaw.BrowserNativeHost.exe'),
       '--unregister', '', SW_HIDE, ewWaitUntilTerminated, ResultCode) then
     Log('Native browser host unregister was unavailable. Foreign registrations are preserved.');

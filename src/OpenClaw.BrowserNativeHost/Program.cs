@@ -2,11 +2,14 @@ using System.IO.Pipes;
 using OpenClaw.Shared.Browser;
 
 if (!OperatingSystem.IsWindows()) return 1;
-if (args.Length == 1 && args[0] is "--register" or "--unregister")
+if (args.Length == 1 && args[0] is "--register" or "--unregister" or "--request-extension" or "--remove-extension-request")
 {
     try
     {
-        return BrowserNativeRegistration.Apply(Environment.ProcessPath!, args[0] == "--unregister") ? 0 : 1;
+        var success = args[0] is "--request-extension" or "--remove-extension-request"
+            ? ChromeExtensionInstallRequest.Apply(Environment.ProcessPath!, args[0] == "--remove-extension-request")
+            : BrowserNativeRegistration.Apply(Environment.ProcessPath!, args[0] == "--unregister");
+        return success ? 0 : 1;
     }
     catch { return 1; } // Never emit manifest paths or user data to Chrome's stdout.
 }

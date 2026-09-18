@@ -21,8 +21,13 @@ local runtime. No relay process is started by the Windows helper. The existing
 `ensure_relay` operation is recognized but returns `manual_required` in this lane.
 
 The per-user installer registers the native executable before starting the tray.
-Store-request installation is a separate pending integration; native registration
-alone does not install the extension. A registry entry or manifest belonging to
+After successful native registration, the selected installer task creates an owned
+HKCU external-extension request with the official Chrome Store update URL. Chrome
+still owns download and permission approval. A saved Browser control opt-out blocks
+a new request. The installer also remembers a declined task across upgrades; it does
+not rewrite Chrome removal or disconnect state.
+The tray startup path registers only the helper, so it cannot undo the installer
+opt-out by re-requesting the extension. A registry entry or manifest belonging to
 another installation is preserved. Moving the executable, including a versioned
 MSIX path change, currently requires explicit removal of its old owned native
 registration before registering the new installation. This is not silently
@@ -85,15 +90,15 @@ Successful stdout must be exactly one JSON object, with no progress prose:
 
 ```json
 {
-  "topology": "local",
+  "remote": false,
   "relayPort": 18792,
   "pairingString": "ws://127.0.0.1:18789/browser/extension?gateway=ws%3A%2F%2F127.0.0.1%3A18789#<relay-token>"
 }
 ```
 
-The flag must use the canonical `buildBrowserExtensionPairing` with
-`localTransport: "gateway"`, reject remote-mode/TLS configurations, preserve browser
-opt-out, and never reinterpret a gateway authentication token as a relay token.
+The flag uses the canonical `buildBrowserExtensionPairing` with
+`localTransport: "gateway"`. It must reject remote-mode/TLS configurations, preserve
+browser opt-out, and never reinterpret a gateway authentication token as a relay token.
 The gateway port must come from that same CLI profile. The Windows active record
 port must match. Old CLI versions fail closed; Windows does not scrape human
 output or fall back to reading another profile's secrets.
@@ -112,7 +117,8 @@ dotnet test tests/OpenClaw.Tray.Tests --filter FullyQualifiedName~BrowserBootstr
 The executable proof runs in the x64 and ARM64 publish jobs. It refuses existing
 host registrations, uses synthetic pairing material, validates binary framing,
 exact-origin rejection, oversize rejection, authenticated pipe handoff, owned
-cleanup and preservation of a foreign registry entry. It is not a Chrome/WSL E2E
+cleanup, native-first HKCU Store requests and preservation of foreign native and
+external-extension registry entries. It is not a Chrome/WSL E2E
 proof and must not be represented as one.
 
 Required real behavior proof still needs a disposable Windows installation with

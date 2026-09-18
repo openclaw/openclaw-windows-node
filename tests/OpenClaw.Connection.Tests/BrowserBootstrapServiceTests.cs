@@ -8,13 +8,23 @@ public class BrowserBootstrapServiceTests
 {
     private static readonly byte[] Request = Encoding.UTF8.GetBytes("{\"v\":1,\"op\":\"bootstrap\",\"nonce\":\"AAAAAAAAAAAAAAAAAAAAAA\"}");
     private static GatewayRecord Local => new() { Id = "local", Url = "ws://127.0.0.1:18789", IsLocal = true, SetupManagedDistroName = "OpenClawGateway" };
-    private static string PairingJson(int port = 18789, string topology = "local") => JsonSerializer.Serialize(new
+    private static string PairingJson(int port = 18789, bool remote = false) => JsonSerializer.Serialize(new
     {
-        topology,
+        remote,
         pairingString = $"ws://127.0.0.1:{port}/browser/extension?gateway=ws%3A%2F%2F127.0.0.1%3A{port}#" + new string('a', 64),
         relayPort = 18792
     });
     private static bool IsOk(byte[] bytes) { using var doc = JsonDocument.Parse(bytes); return doc.RootElement.GetProperty("ok").GetBoolean(); }
+
+    [Fact]
+    public async Task FirstInstallBeforeSetup_RemainsRetryable()
+    {
+        var service = new BrowserBootstrapService(() => null, _ => false,
+            (_, _) => throw new InvalidOperationException("Must not probe"),
+            (_, _) => throw new InvalidOperationException("Must not run"));
+        using var result = JsonDocument.Parse(await service.HandleAsync(Request, default));
+        Assert.Equal("pairing_unavailable", result.RootElement.GetProperty("code").GetString());
+    }
 
     [Fact]
     public async Task Local_DelegatesToPinnedDistroWithoutReadingGatewayCredentials()
@@ -80,7 +90,7 @@ public class BrowserBootstrapServiceTests
     {
         Assert.NotEmpty(BrowserBootstrapService.ParsePairing(PairingJson(), 18789));
         Assert.Throws<InvalidDataException>(() => BrowserBootstrapService.ParsePairing(PairingJson(18790), 18789));
-        Assert.Throws<InvalidDataException>(() => BrowserBootstrapService.ParsePairing(PairingJson(topology: "direct-remote"), 18789));
+        Assert.Throws<InvalidDataException>(() => BrowserBootstrapService.ParsePairing(PairingJson(remote: true), 18789));
         Assert.Throws<InvalidDataException>(() => BrowserBootstrapService.ParsePairing(PairingJson().Replace("/browser/extension", "/extension"), 18789));
     }
 

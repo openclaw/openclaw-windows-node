@@ -21,6 +21,9 @@ public sealed class BrowserBootstrapService(
         // Local-gateway transport wakes Browser control itself. Arbitrary relay ports must never start a process.
         if (request.Op != "bootstrap") return BrowserNativeProtocol.Failure("manual_required");
         var record = getActive();
+        // First-install Chrome approval can precede completion of the Companion setup wizard.
+        // Keep that state retryable; manual_required is a durable extension state.
+        if (record is null) return BrowserNativeProtocol.Failure("pairing_unavailable");
         if (!IsManagedLocal(record)) return BrowserNativeProtocol.Failure("manual_required");
         var pinned = record!;
         if (generation != Interlocked.Read(ref _generation) || !Current(pinned) ||
@@ -59,7 +62,8 @@ public sealed class BrowserBootstrapService(
         var root = document.RootElement;
         if (root.ValueKind != JsonValueKind.Object ||
             root.EnumerateObject().GroupBy(p => p.Name).Any(g => g.Count() != 1) ||
-            !root.TryGetProperty("topology", out var topology) || topology.GetString() != "local" ||
+            !root.TryGetProperty("remote", out var remote) || remote.ValueKind != JsonValueKind.False ||
+            !root.TryGetProperty("relayPort", out var relayPort) || !relayPort.TryGetInt32(out var port) || port is < 1 or > 65535 ||
             !root.TryGetProperty("pairingString", out var value) || value.ValueKind != JsonValueKind.String)
             throw new InvalidDataException("pairing_unavailable");
         var pairing = value.GetString()!;

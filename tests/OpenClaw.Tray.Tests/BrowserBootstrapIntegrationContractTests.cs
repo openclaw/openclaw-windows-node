@@ -12,6 +12,11 @@ public class BrowserBootstrapIntegrationContractTests
         Assert.Contains("if CurStep = ssPostInstall then", installer);
         Assert.Contains("RegisterBrowserNativeHost;", installer);
         Assert.Contains("BrowserNativeHostRegistered := ResultCode = 0", installer);
+        Assert.Contains("UsePreviousTasks=yes", installer);
+        Assert.Contains("not WizardIsTaskSelected('chromeextension')", installer);
+        Assert.Contains("--request-extension", installer);
+        Assert.Contains("--remove-extension-request", installer);
+        Assert.Matches(@"RegisterBrowserNativeHost;\r?\n    RequestChromeExtension;", installer);
         Assert.Contains("No extension installation may be requested", installer);
         Assert.Contains("PrivilegesRequired=lowest", installer);
         Assert.Contains("UnregisterBrowserNativeHost;", installer);
