@@ -94,6 +94,43 @@ public class BrowserBootstrapServiceTests
         Assert.Throws<InvalidDataException>(() => BrowserBootstrapService.ParsePairing(PairingJson().Replace("/browser/extension", "/extension"), 18789));
     }
 
+    [Theory]
+    [InlineData("ws://[::1]:18789")]
+    [InlineData("ws://localhost:18789")]
+    public async Task AliasRecord_CannotAuthorizeAnUnownedIpv4Destination(string activeUrl)
+    {
+        var active = Local with { Url = activeUrl };
+        var service = new BrowserBootstrapService(() => active, _ => true,
+            (destination, _) => Task.FromResult(destination.Url == activeUrl),
+            (_, _) => throw new InvalidOperationException("Must not run against unowned IPv4"));
+        Assert.False(IsOk(await service.HandleAsync(Request, default)));
+    }
+
+    [Fact]
+    public async Task BothProvenanceChecks_PinActualDestinationAndDistro()
+    {
+        var active = Local with { Url = "ws://[::1]:18789" };
+        var calls = 0;
+        var service = new BrowserBootstrapService(() => active, _ => true, (destination, _) =>
+        {
+            Assert.Equal("ws://127.0.0.1:18789", destination.Url);
+            Assert.Equal(active.Id, destination.Id);
+            Assert.Equal(active.SetupManagedDistroName, destination.SetupManagedDistroName);
+            calls++;
+            return Task.FromResult(true);
+        }, (_, _) => Task.FromResult(PairingJson()));
+        Assert.True(IsOk(await service.HandleAsync(Request, default)));
+        Assert.Equal(2, calls);
+        Assert.Equal("ws://[::1]:18789", active.Url);
+    }
+
+    [Theory]
+    [InlineData("set -e\necho proof", "set -e\necho proof\n")]
+    [InlineData("set -e\r\necho proof\r\n", "set -e\necho proof\n")]
+    [InlineData("set -e\recho proof", "set -e\necho proof\n")]
+    public void WslInput_NormalizesWindowsCheckoutLineEndings(string input, string expected) =>
+        Assert.Equal(expected, BrowserBootstrapWslCommand.NormalizeStandardInput(input));
+
     [Fact]
     public void Command_UsesCanonicalPairingNotGatewaySecretsOrLifecycle()
     {

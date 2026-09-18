@@ -26,14 +26,16 @@ public sealed class BrowserBootstrapService(
         if (record is null) return BrowserNativeProtocol.Failure("pairing_unavailable");
         if (!IsManagedLocal(record)) return BrowserNativeProtocol.Failure("manual_required");
         var pinned = record!;
+        // The CLI always returns IPv4. Verify that exact destination, not an IPv6/localhost alias.
+        var destination = pinned with { Url = $"ws://127.0.0.1:{new Uri(pinned.Url).Port}" };
         if (generation != Interlocked.Read(ref _generation) || !Current(pinned) ||
-            !await verifyEndpoint(pinned, ct) || !Current(pinned) || generation != Interlocked.Read(ref _generation))
+            !await verifyEndpoint(destination, ct) || !Current(pinned) || generation != Interlocked.Read(ref _generation))
             return BrowserNativeProtocol.Failure("pairing_unavailable");
         var json = await runPairing(pinned.SetupManagedDistroName!, ct);
         var pairing = ParsePairing(json, new Uri(pinned.Url).Port);
         // A disconnect, switch, or preference change while the CLI ran wins over returning credentials.
         if (generation != Interlocked.Read(ref _generation) || !Current(pinned) ||
-            !await verifyEndpoint(pinned, ct) || !Current(pinned) || generation != Interlocked.Read(ref _generation))
+            !await verifyEndpoint(destination, ct) || !Current(pinned) || generation != Interlocked.Read(ref _generation))
             return BrowserNativeProtocol.Failure("pairing_unavailable");
         return BrowserNativeProtocol.Pairing(request.Nonce, pairing);
     }

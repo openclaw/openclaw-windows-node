@@ -33,6 +33,9 @@ public static class BrowserBootstrapWslCommand
         exit 127
         """;
 
+    internal static string NormalizeStandardInput(string script) =>
+        script.Replace("\r\n", "\n", StringComparison.Ordinal).Replace('\r', '\n').TrimEnd('\n') + "\n";
+
     public static async Task<string> RunAsync(string distro, CancellationToken ct)
     {
         var start = new ProcessStartInfo
@@ -58,7 +61,7 @@ public static class BrowserBootstrapWslCommand
         var error = ReadBoundedAsync(process.StandardError, deadline.Token);
         try
         {
-            await process.StandardInput.WriteAsync((Script + "\n").AsMemory(), deadline.Token);
+            await process.StandardInput.WriteAsync(NormalizeStandardInput(Script).AsMemory(), deadline.Token);
             process.StandardInput.Close();
             // Await drains alongside exit so oversized output faults immediately rather than waiting for exit.
             await Task.WhenAll(output, error, process.WaitForExitAsync(deadline.Token));
