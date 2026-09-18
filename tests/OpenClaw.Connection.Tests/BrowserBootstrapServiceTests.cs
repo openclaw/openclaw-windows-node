@@ -82,7 +82,7 @@ public class BrowserBootstrapServiceTests
         Assert.False(BrowserBootstrapService.IsManagedLocal(Local with { IsLocal = false }));
         Assert.False(BrowserBootstrapService.IsManagedLocal(Local with { SetupManagedDistroName = null, FriendlyName = "Local (OpenClawGateway)" }));
         Assert.False(BrowserBootstrapService.IsManagedLocal(Local with { Url = "ws://127.0.0.1:18789/path" }));
-        Assert.False(BrowserBootstrapService.IsManagedLocal(Local with { Url = "ws://127.0.0.1:18789?token=x" }));
+        Assert.False(BrowserBootstrapService.IsManagedLocal(Local with { Url = "ws://127.0.0.1:18789?unexpected=1" }));
     }
 
     [Fact]
