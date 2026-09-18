@@ -17,14 +17,29 @@
       <ContentWithTargetPath Include="@(_BrowserNativeHostFile)">
         <TargetPath>tools\browser-bootstrap\%(RecursiveDir)%(Filename)%(Extension)</TargetPath>
         <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-        <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
+        <CopyToPublishDirectory>Never</CopyToPublishDirectory>
       </ContentWithTargetPath>
+    </ItemGroup>
+    <Error Condition="!Exists('$(BrowserNativeHostPayload)OpenClaw.BrowserNativeHost.exe')"
+           Text="The native browser bootstrap executable was not published." />
+  </Target>
+  <!-- The SDK's ComputeResolvedFilesToPublishList drops same-named runtime assets
+       against the parent runtime even when RelativePath points into a subdirectory.
+       Add this independent self-contained payload only after that resolution. -->
+  <Target Name="AddBrowserNativeHostToPublishItems" AfterTargets="ComputeResolvedFilesToPublishList"
+          DependsOnTargets="BuildBrowserNativeHostPayload" Condition="'$(DesignTimeBuild)' != 'true'">
+    <ItemGroup>
       <ResolvedFileToPublish Include="@(_BrowserNativeHostFile)">
         <RelativePath>tools\browser-bootstrap\%(RecursiveDir)%(Filename)%(Extension)</RelativePath>
         <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
       </ResolvedFileToPublish>
     </ItemGroup>
-    <Error Condition="!Exists('$(BrowserNativeHostPayload)OpenClaw.BrowserNativeHost.exe')"
-           Text="The native browser bootstrap executable was not published." />
+  </Target>
+  <Target Name="VerifyBrowserNativeHostPublished" AfterTargets="Publish" Condition="'$(PublishDir)' != ''">
+    <ItemGroup>
+      <_RequiredBrowserNativeFile Include="OpenClaw.BrowserNativeHost.exe;OpenClaw.BrowserNativeHost.dll;OpenClaw.BrowserNativeHost.runtimeconfig.json;OpenClaw.BrowserNativeHost.deps.json;hostpolicy.dll;hostfxr.dll;System.Private.CoreLib.dll" />
+    </ItemGroup>
+    <Error Condition="!Exists('$(PublishDir)tools\browser-bootstrap\%(_RequiredBrowserNativeFile.Identity)')"
+           Text="The self-contained browser bootstrap payload is missing %(_RequiredBrowserNativeFile.Identity)." />
   </Target>
 </Project>
