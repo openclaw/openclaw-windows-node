@@ -6,6 +6,24 @@
   },
   "components": [
     {
+      "name": "SidebarSubtleStyles",
+      "note": "Prototype-only adapter for the Dashboard scene graph, whose layout hotspots do not expose component states. Reuses ComposerPicker and ChatComposer subtle controls: transparent rest, subtleHover, subtlePressed, sm radius and accent keyboard focus. Scoped to this prototype sidebar so existing components and other screens are unchanged. Native port uses WinUI subtle Button and NavigationViewItem styles, not these prototype selectors.",
+      "root": {
+        "id": "sidebar-subtle-styles",
+        "el": "style",
+        "children": [
+          "[data-proto-node-id='dashboard-sidebar'] .proto-tappable {{ outline: none; border-radius: var(--radius-sm); }}",
+          "[data-proto-node-id='dashboard-sidebar'] .proto-tappable:hover {{ outline: none; background: var(--color-subtleHover); }}",
+          "[data-proto-node-id='dashboard-sidebar'] .proto-tappable:active {{ background: var(--color-subtlePressed); }}",
+          "[data-proto-node-id='dashboard-home-selected']:hover {{ background: var(--color-subtleHover) !important; }}",
+          "[data-proto-node-id='dashboard-home-selected']:active {{ background: var(--color-subtlePressed) !important; }}",
+          "[data-proto-node-id='dashboard-new-session'] .ds-btn {{ width: var(--space-6); height: var(--space-6); min-width: var(--space-6); padding: 0; background: transparent; border: 0; box-shadow: none; color: var(--color-muted); border-radius: var(--radius-sm); }}",
+          "[data-proto-node-id='dashboard-new-session'] .ds-btn:hover, [data-proto-node-id='dashboard-new-session'] .ds-btn:active {{ background: transparent; }}",
+          "[data-proto-node-id='dashboard-new-session'] .ds-btn:focus-visible {{ outline: calc(var(--space-1) / 2) solid var(--color-accent); outline-offset: calc(var(--space-1) / -2); }}"
+        ]
+      }
+    },
+    {
       "name": "Button",
       "note": "Primary action. One per view — it's where the eye should land. Padding mirrors WinUI's default ButtonPadding (11,5,11,6), snapped to spacing tokens 3 (12≈11) and 1 (4≈5/6). In-app MinWidth 100px keeps short labels (OK / Connect) from cramping and gives side-by-side buttons a consistent footprint; that minimum has no spacing-token equivalent, so it stays a port note and the preview hugs its label.",
       "props": {

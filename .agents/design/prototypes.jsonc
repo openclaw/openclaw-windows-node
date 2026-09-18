@@ -1,0 +1,894 @@
+// prototypes.jsonc — click-through prototypes built from this repo's design system.
+// Framework-agnostic scene graph (not shipping code): layout primitives + references to
+// components.jsonc by name + navigation as data. Copilot authors/patches this; review it in
+// the Prototype canvas. Node kinds: layout | component | text | image | spacer. Every node
+// may carry id, on (interactions), visibleWhen/hiddenWhen. Actions: navigate, back,
+// setState, toggle, openModal, closeModal. This file is regenerated with stable key order
+// Layouts: stack, row, grid, scroll, freeform, none. Common fields: width/height
+// (hug, fill, pixels or CSS length), gap, padding/margin (token, pixels or edge box),
+// appearance (sparse component-system overrides). Only direct freeform children may
+// carry position: { mode: "absolute", x, y }. Appearance overrides legacy flat styles.
+// Optional sections: [{ id, name }]. A screen's sectionId assigns it to a sidebar group.
+// on save — use "note" fields for durable annotations.
+{
+  "meta": {
+    "version": 1,
+    "updatedBy": "copilot",
+    "updatedAt": "2026-09-18T17:35:11.636Z",
+    "note": "One-screen Windows Dashboard translation study, replacing the rejected 26-screen draft. Layout source: actual upstream hosted Dashboard at openclaw/openclaw@857173632fc708b8824c3129cad6abe6347eaa79. Retain assistant switcher, pinned pages, sessions, account footer and conversation. Fluent rendering uses existing tokens and ChatBubble/ChatComposer/Button/ComposerPicker patterns. Browser simulation, not WinUI implementation or real Mica."
+  },
+  "state": {
+    "dashboardAgents": false,
+    "dashboardNav": true,
+    "dashboardNew": false
+  },
+  "screens": [
+    {
+      "note": "Single-window translation. Upstream Home is the chat workspace, not a grid of invented status cards. The fixed left NavigationView combines pinned pages and recent sessions. The right content surface contains a restrained session header, centered thread and bottom composer. Window frame previews standard Windows caption controls; paper maps to ApplicationPageBackgroundThemeBrush, surface to CardBackgroundFillColorDefaultBrush. Native Mica and high contrast need later WinUI proof. Click New session, Plan a project, the navigation toggle and the assistant switcher. Other destinations explain the limited test scope; typing and composer pickers are local previews.",
+      "id": "hub",
+      "name": "OpenClaw | Windows Dashboard test",
+      "device": "winui-modern",
+      "fit": "screen",
+      "root": {
+        "id": "dashboard-root",
+        "layout": "stack",
+        "background": "paper",
+        "grow": true,
+        "children": [
+          {
+            "note": "Uses existing Fluent subtle tokens for the scene-graph sidebar hotspots; replaces authoring hover outlines only in this sidebar.",
+            "id": "dashboard-subtle-styles",
+            "component": "SidebarSubtleStyles"
+          },
+          {
+            "id": "dashboard-titlebar",
+            "layout": "row",
+            "padding": "3",
+            "align": "center",
+            "height": "var(--space-7)",
+            "children": [
+              {
+                "id": "dashboard-app-title",
+                "text": "OpenClaw",
+                "style": "body"
+              }
+            ]
+          },
+          {
+            "id": "dashboard-window-body",
+            "layout": "stack",
+            "direction": "horizontal",
+            "gap": "1",
+            "padding": "2",
+            "grow": true,
+            "children": [
+              {
+                "id": "dashboard-sidebar",
+                "layout": "stack",
+                "gap": "2",
+                "padding": "2",
+                "width": "calc(var(--space-8) * 4)",
+                "height": null,
+                "visibleWhen": {
+                  "dashboardNav": true
+                },
+                "children": [
+                  {
+                    "id": "dashboard-assistant-header",
+                    "layout": "stack",
+                    "direction": "horizontal",
+                    "gap": "1",
+                    "padding": "1",
+                    "align": "center",
+                    "children": [
+                      {
+                        "id": "dashboard-assistant",
+                        "layout": "stack",
+                        "direction": "horizontal",
+                        "gap": "2",
+                        "padding": "1",
+                        "align": "center",
+                        "justify": "start",
+                        "radius": "sm",
+                        "grow": true,
+                        "on": {
+                          "tap": {
+                            "toggle": "dashboardAgents"
+                          }
+                        },
+                        "children": [
+                          {
+                            "note": "Circular identity badge, matching the upstream switcher structure with the companion's Agents robot artwork.",
+                            "id": "dashboard-assistant-avatar",
+                            "layout": "stack",
+                            "align": "center",
+                            "justify": "center",
+                            "background": "control",
+                            "radius": "pill",
+                            "width": "var(--space-6)",
+                            "height": "var(--space-6)",
+                            "children": [
+                              {
+                                "note": "Unmodified Windows companion artwork from src\\OpenClaw.Tray.WinUI\\Assets\\SidebarIcons\\Agents.svg. Embedded for offline preview. Native Hub uses these colored SVGs normally and system-foreground FontIcons in high contrast; this image preview does not simulate that native substitution.",
+                                "id": "dashboard-assistant-avatar-image",
+                                "image": "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIyNCIgaGVpZ2h0PSIyNCIgdmlld0JveD0iMCAwIDI0IDI0Ij48ZyBmaWxsPSJub25lIj48cGF0aCBmaWxsPSJ1cmwoI1NWR2N0SGxkYm1EKSIgZD0iTTE3Ljc1MyAxNGEyLjI1IDIuMjUgMCAwIDEgMi4yNSAyLjI1di45MDVBMy43NSAzLjc1IDAgMCAxIDE4LjY5NiAyMEMxNy4xMyAyMS4zNDQgMTQuODkgMjIuMDAxIDEyIDIyLjAwMXMtNS4xMjgtLjY1Ny02LjY5MS0yYTMuNzUgMy43NSAwIDAgMS0xLjMwNS0yLjg0NHYtLjkwN0EyLjI1IDIuMjUgMCAwIDEgNi4yNTQgMTR6Ii8+PHBhdGggZmlsbD0idXJsKCNTVkcyZjdMOGNMVSkiIGQ9Ik0xNy43NTMgMTRhMi4yNSAyLjI1IDAgMCAxIDIuMjUgMi4yNXYuOTA1QTMuNzUgMy43NSAwIDAgMSAxOC42OTYgMjBDMTcuMTMgMjEuMzQ0IDE0Ljg5IDIyLjAwMSAxMiAyMi4wMDFzLTUuMTI4LS42NTctNi42OTEtMmEzLjc1IDMuNzUgMCAwIDEtMS4zMDUtMi44NDR2LS45MDdBMi4yNSAyLjI1IDAgMCAxIDYuMjU0IDE0eiIvPjxwYXRoIGZpbGw9InVybCgjU1ZHQjNYSXBkaG4pIiBkPSJNMTcuNzUzIDE0YTIuMjUgMi4yNSAwIDAgMSAyLjI1IDIuMjV2LjkwNUEzLjc1IDMuNzUgMCAwIDEgMTguNjk2IDIwQzE3LjEzIDIxLjM0NCAxNC44OSAyMi4wMDEgMTIgMjIuMDAxcy01LjEyOC0uNjU3LTYuNjkxLTJhMy43NSAzLjc1IDAgMCAxLTEuMzA1LTIuODQ0di0uOTA3QTIuMjUgMi4yNSAwIDAgMSA2LjI1NCAxNHoiLz48cGF0aCBmaWxsPSJ1cmwoI1NWR0NVZ0xSSFhwKSIgZD0iTTE3Ljc1MyAxNGEyLjI1IDIuMjUgMCAwIDEgMi4yNSAyLjI1di45MDVBMy43NSAzLjc1IDAgMCAxIDE4LjY5NiAyMEMxNy4xMyAyMS4zNDQgMTQuODkgMjIuMDAxIDEyIDIyLjAwMXMtNS4xMjgtLjY1Ny02LjY5MS0yYTMuNzUgMy43NSAwIDAgMS0xLjMwNS0yLjg0NHYtLjkwN0EyLjI1IDIuMjUgMCAwIDEgNi4yNTQgMTR6Ii8+PHBhdGggZmlsbD0idXJsKCNTVkdja0RSVGJOUSkiIGQ9Ik0xNy43NTMgMTRhMi4yNSAyLjI1IDAgMCAxIDIuMjUgMi4yNXYuOTA1QTMuNzUgMy43NSAwIDAgMSAxOC42OTYgMjBDMTcuMTMgMjEuMzQ0IDE0Ljg5IDIyLjAwMSAxMiAyMi4wMDFzLTUuMTI4LS42NTctNi42OTEtMmEzLjc1IDMuNzUgMCAwIDEtMS4zMDUtMi44NDR2LS45MDdBMi4yNSAyLjI1IDAgMCAxIDYuMjU0IDE0eiIvPjxwYXRoIGZpbGw9InVybCgjU1ZHellRbHhkck0pIiBkPSJtMTIgMi41bC0uMTAyLjAwN2EuNzUuNzUgMCAwIDAtLjY0OC43NDNMMTEuMjQzIDVoMS41bC4wMDctMS43NWwtLjAwNy0uMTAyQS43NS43NSAwIDAgMCAxMiAyLjUiLz48cGF0aCBmaWxsPSJ1cmwoI1NWRzA5em1ubmt0KSIgZD0iTTE4IDYuMjVBMi4yNSAyLjI1IDAgMCAwIDE1Ljc1IDRoLTcuNUEyLjI1IDIuMjUgMCAwIDAgNiA2LjI1djMuNUEyLjI1IDIuMjUgMCAwIDAgOC4yNSAxMmg3LjVBMi4yNSAyLjI1IDAgMCAwIDE4IDkuNzV6Ii8+PHBhdGggZmlsbD0idXJsKCNTVkdkRU44S3FDaykiIGQ9Ik0xNC4yNDIgNi41YTEuMjUgMS4yNSAwIDEgMCAwIDIuNDk5YTEuMjUgMS4yNSAwIDAgMCAwLTIuNDk5Ii8+PHBhdGggZmlsbD0idXJsKCNTVkdjdXFjUWJHSikiIGQ9Ik05Ljc1IDYuNWExLjI1IDEuMjUgMCAxIDAgMCAyLjQ5OWExLjI1IDEuMjUgMCAwIDAgMC0yLjQ5OSIvPjxwYXRoIGZpbGw9InVybCgjU1ZHNEticnpEOVIpIiBkPSJtMjMuMDE4IDIwLjk2NWwuNzY1LjI0OGwuMDE1LjAwNGEuMzAzLjMwMyAwIDAgMSAuMTQ3LjQ2YS4zLjMgMCAwIDEtLjE0Ny4xMWwtLjc2NS4yNDhhMS41OCAxLjU4IDAgMCAwLTEgLjk5OWwtLjI0OC43NjRhLjMwMi4zMDIgMCAwIDEtLjU3IDBsLS4yNDktLjc2NGExLjU4IDEuNTggMCAwIDAtLjk5OS0xLjAwMmwtLjc2NS0uMjQ5YS4zMDMuMzAzIDAgMCAxLS4xNDctLjQ2YS4zLjMgMCAwIDEgLjE0Ny0uMTFsLjc2NS0uMjQ4YTEuNTggMS41OCAwIDAgMCAuOTg0LS45OThsLjI0OS0uNzY1YS4zMDIuMzAyIDAgMCAxIC41NyAwbC4yNDkuNzY0YTEuNTggMS41OCAwIDAgMCAuOTk5Ljk5OSIvPjxwYXRoIGZpbGw9InVybCgjU1ZHalJCb0tlOUQpIiBkPSJNMTUuODU0IDE3LjE0NmEyLjg1IDIuODUgMCAwIDEgLjY4NSAxLjExNGwuNDQ4IDEuMzc3YS41NDQuNTQ0IDAgMCAwIDEuMDI2IDBsLjQ0OC0xLjM3N2EyLjg0IDIuODQgMCAwIDEgMS43OTgtMS43OTZsMS4zNzgtLjQ0OGEuNTQ1LjU0NSAwIDAgMCAwLTEuMDI1bC0uMDI4LS4wMDdsLTEuMzc4LS40NDhhMi44NCAyLjg0IDAgMCAxLTEuNzk4LTEuNzk2bC0uNDQ3LTEuMzc3YS41NDQuNTQ0IDAgMCAwLTEuMDI3IDBsLS40NDggMS4zNzdsLS4wMTEuMDM0YTIuODQgMi44NCAwIDAgMS0xLjc1OSAxLjc2MmwtMS4zNzguNDQ4YS41NDUuNTQ1IDAgMCAwIDAgMS4wMjVsMS4zNzguNDQ4Yy40Mi4xNC44LjM3NiAxLjExMy42ODkiLz48ZGVmcz48bGluZWFyR3JhZGllbnQgaWQ9IlNWRzJmN0w4Y0xVIiB4MT0iMTIuMDAzIiB4Mj0iMTUuNjIzIiB5MT0iMTMuMDQ3IiB5Mj0iMjYuNTczIiBncmFkaWVudFVuaXRzPSJ1c2VyU3BhY2VPblVzZSI+PHN0b3Agc3RvcC1jb2xvcj0iIzg4NWVkYiIgc3RvcC1vcGFjaXR5PSIwIi8+PHN0b3Agb2Zmc2V0PSIxIiBzdG9wLWNvbG9yPSIjZTM2MmY4Ii8+PC9saW5lYXJHcmFkaWVudD48bGluZWFyR3JhZGllbnQgaWQ9IlNWR3pZUWx4ZHJNIiB4MT0iMTEuMjA5IiB4Mj0iMTIuOTg0IiB5MT0iMiIgeTI9IjMuODcxIiBncmFkaWVudFVuaXRzPSJ1c2VyU3BhY2VPblVzZSI+PHN0b3Agc3RvcC1jb2xvcj0iIzhiNTJmNCIvPjxzdG9wIG9mZnNldD0iMSIgc3RvcC1jb2xvcj0iIzNkMzViMSIvPjwvbGluZWFyR3JhZGllbnQ+PGxpbmVhckdyYWRpZW50IGlkPSJTVkdkRU44S3FDayIgeDE9IjEzLjU4NSIgeDI9IjE1LjQ3OSIgeTE9IjYuNTk2IiB5Mj0iOS44NjUiIGdyYWRpZW50VW5pdHM9InVzZXJTcGFjZU9uVXNlIj48c3RvcCBzdG9wLWNvbG9yPSIjZmRmZGZkIi8+PHN0b3Agb2Zmc2V0PSIxIiBzdG9wLWNvbG9yPSIjZjlkY2ZhIi8+PC9saW5lYXJHcmFkaWVudD48bGluZWFyR3JhZGllbnQgaWQ9IlNWR2N1cWNRYkdKIiB4MT0iOS4wOTIiIHgyPSIxMC45ODYiIHkxPSI2LjU5NiIgeTI9IjkuODY1IiBncmFkaWVudFVuaXRzPSJ1c2VyU3BhY2VPblVzZSI+PHN0b3Agc3RvcC1jb2xvcj0iI2ZkZmRmZCIvPjxzdG9wIG9mZnNldD0iMSIgc3RvcC1jb2xvcj0iI2Y5ZGNmYSIvPjwvbGluZWFyR3JhZGllbnQ+PGxpbmVhckdyYWRpZW50IGlkPSJTVkc0S2JyekQ5UiIgeDE9IjIwIiB4Mj0iMjMuMDAyIiB5MT0iMTkuNSIgeTI9IjIzLjQ5OSIgZ3JhZGllbnRVbml0cz0idXNlclNwYWNlT25Vc2UiPjxzdG9wIHN0b3AtY29sb3I9IiNmZmE0M2QiLz48c3RvcCBvZmZzZXQ9IjEiIHN0b3AtY29sb3I9IiNmYjU5MzciLz48L2xpbmVhckdyYWRpZW50PjxsaW5lYXJHcmFkaWVudCBpZD0iU1ZHalJCb0tlOUQiIHgxPSIyMC4wNzEiIHgyPSIxMy43NiIgeTE9IjE4LjcxNCIgeTI9IjExLjQ1NyIgZ3JhZGllbnRVbml0cz0idXNlclNwYWNlT25Vc2UiPjxzdG9wIHN0b3AtY29sb3I9IiNmZjhhNjkiLz48c3RvcCBvZmZzZXQ9IjEiIHN0b3AtY29sb3I9IiNmZmNkMGYiLz48L2xpbmVhckdyYWRpZW50PjxyYWRpYWxHcmFkaWVudCBpZD0iU1ZHY3RIbGRibUQiIGN4PSIwIiBjeT0iMCIgcj0iMSIgZ3JhZGllbnRUcmFuc2Zvcm09InJvdGF0ZSgzMC40MDggLTIxLjA3MiA2LjM0MilzY2FsZSgyMi4yNTI3IDM1LjQ0NSkiIGdyYWRpZW50VW5pdHM9InVzZXJTcGFjZU9uVXNlIj48c3RvcCBzdG9wLWNvbG9yPSIjZjA4YWY0Ii8+PHN0b3Agb2Zmc2V0PSIuNTM1IiBzdG9wLWNvbG9yPSIjOWM2Y2ZlIi8+PHN0b3Agb2Zmc2V0PSIxIiBzdG9wLWNvbG9yPSIjNGU0NGRiIi8+PC9yYWRpYWxHcmFkaWVudD48cmFkaWFsR3JhZGllbnQgaWQ9IlNWR0IzWElwZGhuIiBjeD0iMCIgY3k9IjAiIHI9IjEiIGdyYWRpZW50VHJhbnNmb3JtPSJtYXRyaXgoMCAtMy42OTI4NCAyLjA5NjA5IDAgMTcuNTQyIDE3LjY5MykiIGdyYWRpZW50VW5pdHM9InVzZXJTcGFjZU9uVXNlIj48c3RvcCBzdG9wLWNvbG9yPSIjNGU0NGRiIi8+PHN0b3Agb2Zmc2V0PSIxIiBzdG9wLWNvbG9yPSIjNGU0NGRiIiBzdG9wLW9wYWNpdHk9IjAiLz48L3JhZGlhbEdyYWRpZW50PjxyYWRpYWxHcmFkaWVudCBpZD0iU1ZHQ1VnTFJIWHAiIGN4PSIwIiBjeT0iMCIgcj0iMSIgZ3JhZGllbnRUcmFuc2Zvcm09InJvdGF0ZSgyMjUuMDA1IDExLjg3MyA0LjcyNSlzY2FsZSgzLjQ4MTM0IDIuNjExKSIgZ3JhZGllbnRVbml0cz0idXNlclNwYWNlT25Vc2UiPjxzdG9wIHN0b3AtY29sb3I9IiM0ZTQ0ZGIiLz48c3RvcCBvZmZzZXQ9IjEiIHN0b3AtY29sb3I9IiM0ZTQ0ZGIiIHN0b3Atb3BhY2l0eT0iMCIvPjwvcmFkaWFsR3JhZGllbnQ+PHJhZGlhbEdyYWRpZW50IGlkPSJTVkdja0RSVGJOUSIgY3g9IjAiIGN5PSIwIiByPSIxIiBncmFkaWVudFRyYW5zZm9ybT0ibWF0cml4KC01LjUzODI5IDAgMCAtMi4xNzMzOSAxNy41NDIgMTUuODQ2KSIgZ3JhZGllbnRVbml0cz0idXNlclNwYWNlT25Vc2UiPjxzdG9wIHN0b3AtY29sb3I9IiM0ZTQ0ZGIiLz48c3RvcCBvZmZzZXQ9IjEiIHN0b3AtY29sb3I9IiM0ZTQ0ZGIiIHN0b3Atb3BhY2l0eT0iMCIvPjwvcmFkaWFsR3JhZGllbnQ+PHJhZGlhbEdyYWRpZW50IGlkPSJTVkcwOXptbm5rdCIgY3g9IjAiIGN5PSIwIiByPSIxIiBncmFkaWVudFRyYW5zZm9ybT0icm90YXRlKDM3LjY5NSAuMDYzIDIuOTIyKXNjYWxlKDE5Ljk5OTIgMzcuNzgwNikiIGdyYWRpZW50VW5pdHM9InVzZXJTcGFjZU9uVXNlIj48c3RvcCBzdG9wLWNvbG9yPSIjZjA4YWY0Ii8+PHN0b3Agb2Zmc2V0PSIuNTM1IiBzdG9wLWNvbG9yPSIjOWM2Y2ZlIi8+PHN0b3Agb2Zmc2V0PSIxIiBzdG9wLWNvbG9yPSIjNGU0NGRiIi8+PC9yYWRpYWxHcmFkaWVudD48L2RlZnM+PC9nPjwvc3ZnPg==",
+                                "fit": "contain",
+                                "width": "var(--space-5)",
+                                "height": "var(--space-5)",
+                                "alt": ""
+                              }
+                            ]
+                          },
+                          {
+                            "id": "dashboard-assistant-label",
+                            "layout": "stack",
+                            "grow": true,
+                            "children": [
+                              {
+                                "id": "dashboard-assistant-switcher-name",
+                                "text": "Example assistant",
+                                "style": "body"
+                              }
+                            ]
+                          },
+                          {
+                            "id": "dashboard-assistant-chevron",
+                            "text": "⌄",
+                            "color": "muted"
+                          }
+                        ]
+                      },
+                      {
+                        "note": "Compact New session action to the right of the assistant switcher, matching the Mac Dashboard header placement. Its tap starts a new conversation without opening the assistant menu. Native port: accessible name and tooltip New session.",
+                        "id": "dashboard-new-session",
+                        "component": "Button",
+                        "props": {
+                          "children": "+",
+                          "variant": "secondary"
+                        },
+                        "on": {
+                          "tap": {
+                            "setState": {
+                              "dashboardAgents": false,
+                              "dashboardNew": true
+                            }
+                          }
+                        }
+                      }
+                    ]
+                  },
+                  {
+                    "id": "dashboard-agent-options",
+                    "layout": "stack",
+                    "gap": "1",
+                    "padding": "3",
+                    "background": "surface",
+                    "radius": "md",
+                    "visibleWhen": {
+                      "dashboardAgents": true
+                    },
+                    "children": [
+                      {
+                        "id": "dashboard-current-agent",
+                        "layout": "stack",
+                        "padding": "2",
+                        "radius": "sm",
+                        "on": {
+                          "tap": {
+                            "setState": {
+                              "dashboardAgents": false
+                            }
+                          }
+                        },
+                        "children": [
+                          {
+                            "id": "dashboard-current-agent-label",
+                            "text": "✓  Example assistant"
+                          }
+                        ]
+                      },
+                      {
+                        "id": "dashboard-writer-agent",
+                        "layout": "stack",
+                        "padding": "2",
+                        "radius": "sm",
+                        "on": {
+                          "tap": {
+                            "openModal": "limited-scope"
+                          }
+                        },
+                        "children": [
+                          {
+                            "id": "dashboard-writer-agent-label",
+                            "text": "Example writer",
+                            "color": "muted"
+                          }
+                        ]
+                      }
+                    ]
+                  },
+                  {
+                    "id": "dashboard-navigation-scroll",
+                    "layout": "scroll",
+                    "gap": "1",
+                    "grow": true,
+                    "children": [
+                      {
+                        "id": "dashboard-pages-label",
+                        "layout": "stack",
+                        "padding": "2",
+                        "children": [
+                          {
+                            "id": "dashboard-pages-text",
+                            "text": "Pages",
+                            "style": "caption",
+                            "color": "muted"
+                          }
+                        ]
+                      },
+                      {
+                        "id": "dashboard-home-selected",
+                        "layout": "stack",
+                        "direction": "horizontal",
+                        "align": "center",
+                        "background": "subtleHover",
+                        "radius": "sm",
+                        "on": {
+                          "tap": {
+                            "setState": {
+                              "dashboardNew": false
+                            }
+                          }
+                        },
+                        "children": [
+                          {
+                            "id": "dashboard-selection-mark",
+                            "layout": "stack",
+                            "background": "accent",
+                            "radius": "sm",
+                            "width": "var(--space-1)",
+                            "height": "var(--space-5)",
+                            "children": []
+                          },
+                          {
+                            "id": "dashboard-home-row",
+                            "layout": "stack",
+                            "direction": "horizontal",
+                            "gap": "3",
+                            "padding": "2",
+                            "align": "center",
+                            "children": [
+                              {
+                                "note": "Unmodified Windows companion artwork from src\\OpenClaw.Tray.WinUI\\Assets\\SidebarIcons\\Chat.svg. Embedded for offline preview. Native Hub uses these colored SVGs normally and system-foreground FontIcons in high contrast; this image preview does not simulate that native substitution.",
+                                "id": "dashboard-home-icon",
+                                "image": "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIyNCIgaGVpZ2h0PSIyNCIgdmlld0JveD0iMCAwIDI0IDI0Ij48ZyBmaWxsPSJub25lIj48cGF0aCBmaWxsPSJ1cmwoI1NWR2xyVFYxcWZrKSIgZD0iTTEyIDJjNS41MjMgMCAxMCA0LjQ3NyAxMCAxMHMtNC40NzcgMTAtMTAgMTBhOS45NiA5Ljk2IDAgMCAxLTQuNjQ0LTEuMTQybC00LjI5IDEuMTE3YS44NS44NSAwIDAgMS0xLjAzNy0xLjAzNmwxLjExNi00LjI4OUE5Ljk2IDkuOTYgMCAwIDEgMiAxMkMyIDYuNDc3IDYuNDc3IDIgMTIgMiIvPjxwYXRoIGZpbGw9InVybCgjU1ZHVTZncHVkRFQpIiBkPSJNMTMuMjUyIDEzSDguNzVsLS4xMDIuMDA3YS43NS43NSAwIDAgMCAwIDEuNDg2bC4xMDIuMDA3aDQuNTAybC4xMDEtLjAwN2EuNzUuNzUgMCAwIDAgMC0xLjQ4NnptMS45OTgtMy41aC02LjVsLS4xMDIuMDA3YS43NS43NSAwIDAgMCAwIDEuNDg2TDguNzUgMTFoNi41bC4xMDItLjAwN2EuNzUuNzUgMCAwIDAgMC0xLjQ4NnoiLz48ZGVmcz48bGluZWFyR3JhZGllbnQgaWQ9IlNWR2xyVFYxcWZrIiB4MT0iMi43MTQiIHgyPSIyMC4xNzgiIHkxPSI1Ljc1MSIgeTI9IjM1LjUyMSIgZ3JhZGllbnRVbml0cz0idXNlclNwYWNlT25Vc2UiPjxzdG9wIHN0b3AtY29sb3I9IiMwZmFmZmYiLz48c3RvcCBvZmZzZXQ9IjEiIHN0b3AtY29sb3I9IiNjYzIzZDEiLz48L2xpbmVhckdyYWRpZW50PjxsaW5lYXJHcmFkaWVudCBpZD0iU1ZHVTZncHVkRFQiIHgxPSI4LjciIHgyPSI5LjIyNyIgeTE9IjkuNTg4IiB5Mj0iMTUuMDI1IiBncmFkaWVudFVuaXRzPSJ1c2VyU3BhY2VPblVzZSI+PHN0b3Agc3RvcC1jb2xvcj0iI2ZkZmRmZCIvPjxzdG9wIG9mZnNldD0iMSIgc3RvcC1jb2xvcj0iI2NjZWFmZiIvPjwvbGluZWFyR3JhZGllbnQ+PC9kZWZzPjwvZz48L3N2Zz4=",
+                                "fit": "contain",
+                                "width": "calc(var(--space-4) + var(--space-1))",
+                                "height": "calc(var(--space-4) + var(--space-1))",
+                                "alt": ""
+                              },
+                              {
+                                "id": "dashboard-home-label",
+                                "text": "Home"
+                              }
+                            ]
+                          }
+                        ]
+                      },
+                      {
+                        "id": "dashboard-nav-agents",
+                        "layout": "stack",
+                        "direction": "horizontal",
+                        "gap": "3",
+                        "padding": "2",
+                        "align": "center",
+                        "on": {
+                          "tap": {
+                            "openModal": "limited-scope"
+                          }
+                        },
+                        "children": [
+                          {
+                            "id": "dashboard-nav-agents-icon-slot",
+                            "layout": "stack",
+                            "align": "end",
+                            "width": "var(--space-5)",
+                            "children": [
+                              {
+                                "note": "Unmodified Windows companion artwork from src\\OpenClaw.Tray.WinUI\\Assets\\SidebarIcons\\Agents.svg. Embedded for offline preview. Native Hub uses these colored SVGs normally and system-foreground FontIcons in high contrast; this image preview does not simulate that native substitution.",
+                                "id": "dashboard-nav-agents-icon",
+                                "image": "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIyNCIgaGVpZ2h0PSIyNCIgdmlld0JveD0iMCAwIDI0IDI0Ij48ZyBmaWxsPSJub25lIj48cGF0aCBmaWxsPSJ1cmwoI1NWR2N0SGxkYm1EKSIgZD0iTTE3Ljc1MyAxNGEyLjI1IDIuMjUgMCAwIDEgMi4yNSAyLjI1di45MDVBMy43NSAzLjc1IDAgMCAxIDE4LjY5NiAyMEMxNy4xMyAyMS4zNDQgMTQuODkgMjIuMDAxIDEyIDIyLjAwMXMtNS4xMjgtLjY1Ny02LjY5MS0yYTMuNzUgMy43NSAwIDAgMS0xLjMwNS0yLjg0NHYtLjkwN0EyLjI1IDIuMjUgMCAwIDEgNi4yNTQgMTR6Ii8+PHBhdGggZmlsbD0idXJsKCNTVkcyZjdMOGNMVSkiIGQ9Ik0xNy43NTMgMTRhMi4yNSAyLjI1IDAgMCAxIDIuMjUgMi4yNXYuOTA1QTMuNzUgMy43NSAwIDAgMSAxOC42OTYgMjBDMTcuMTMgMjEuMzQ0IDE0Ljg5IDIyLjAwMSAxMiAyMi4wMDFzLTUuMTI4LS42NTctNi42OTEtMmEzLjc1IDMuNzUgMCAwIDEtMS4zMDUtMi44NDR2LS45MDdBMi4yNSAyLjI1IDAgMCAxIDYuMjU0IDE0eiIvPjxwYXRoIGZpbGw9InVybCgjU1ZHQjNYSXBkaG4pIiBkPSJNMTcuNzUzIDE0YTIuMjUgMi4yNSAwIDAgMSAyLjI1IDIuMjV2LjkwNUEzLjc1IDMuNzUgMCAwIDEgMTguNjk2IDIwQzE3LjEzIDIxLjM0NCAxNC44OSAyMi4wMDEgMTIgMjIuMDAxcy01LjEyOC0uNjU3LTYuNjkxLTJhMy43NSAzLjc1IDAgMCAxLTEuMzA1LTIuODQ0di0uOTA3QTIuMjUgMi4yNSAwIDAgMSA2LjI1NCAxNHoiLz48cGF0aCBmaWxsPSJ1cmwoI1NWR0NVZ0xSSFhwKSIgZD0iTTE3Ljc1MyAxNGEyLjI1IDIuMjUgMCAwIDEgMi4yNSAyLjI1di45MDVBMy43NSAzLjc1IDAgMCAxIDE4LjY5NiAyMEMxNy4xMyAyMS4zNDQgMTQuODkgMjIuMDAxIDEyIDIyLjAwMXMtNS4xMjgtLjY1Ny02LjY5MS0yYTMuNzUgMy43NSAwIDAgMS0xLjMwNS0yLjg0NHYtLjkwN0EyLjI1IDIuMjUgMCAwIDEgNi4yNTQgMTR6Ii8+PHBhdGggZmlsbD0idXJsKCNTVkdja0RSVGJOUSkiIGQ9Ik0xNy43NTMgMTRhMi4yNSAyLjI1IDAgMCAxIDIuMjUgMi4yNXYuOTA1QTMuNzUgMy43NSAwIDAgMSAxOC42OTYgMjBDMTcuMTMgMjEuMzQ0IDE0Ljg5IDIyLjAwMSAxMiAyMi4wMDFzLTUuMTI4LS42NTctNi42OTEtMmEzLjc1IDMuNzUgMCAwIDEtMS4zMDUtMi44NDR2LS45MDdBMi4yNSAyLjI1IDAgMCAxIDYuMjU0IDE0eiIvPjxwYXRoIGZpbGw9InVybCgjU1ZHellRbHhkck0pIiBkPSJtMTIgMi41bC0uMTAyLjAwN2EuNzUuNzUgMCAwIDAtLjY0OC43NDNMMTEuMjQzIDVoMS41bC4wMDctMS43NWwtLjAwNy0uMTAyQS43NS43NSAwIDAgMCAxMiAyLjUiLz48cGF0aCBmaWxsPSJ1cmwoI1NWRzA5em1ubmt0KSIgZD0iTTE4IDYuMjVBMi4yNSAyLjI1IDAgMCAwIDE1Ljc1IDRoLTcuNUEyLjI1IDIuMjUgMCAwIDAgNiA2LjI1djMuNUEyLjI1IDIuMjUgMCAwIDAgOC4yNSAxMmg3LjVBMi4yNSAyLjI1IDAgMCAwIDE4IDkuNzV6Ii8+PHBhdGggZmlsbD0idXJsKCNTVkdkRU44S3FDaykiIGQ9Ik0xNC4yNDIgNi41YTEuMjUgMS4yNSAwIDEgMCAwIDIuNDk5YTEuMjUgMS4yNSAwIDAgMCAwLTIuNDk5Ii8+PHBhdGggZmlsbD0idXJsKCNTVkdjdXFjUWJHSikiIGQ9Ik05Ljc1IDYuNWExLjI1IDEuMjUgMCAxIDAgMCAyLjQ5OWExLjI1IDEuMjUgMCAwIDAgMC0yLjQ5OSIvPjxwYXRoIGZpbGw9InVybCgjU1ZHNEticnpEOVIpIiBkPSJtMjMuMDE4IDIwLjk2NWwuNzY1LjI0OGwuMDE1LjAwNGEuMzAzLjMwMyAwIDAgMSAuMTQ3LjQ2YS4zLjMgMCAwIDEtLjE0Ny4xMWwtLjc2NS4yNDhhMS41OCAxLjU4IDAgMCAwLTEgLjk5OWwtLjI0OC43NjRhLjMwMi4zMDIgMCAwIDEtLjU3IDBsLS4yNDktLjc2NGExLjU4IDEuNTggMCAwIDAtLjk5OS0xLjAwMmwtLjc2NS0uMjQ5YS4zMDMuMzAzIDAgMCAxLS4xNDctLjQ2YS4zLjMgMCAwIDEgLjE0Ny0uMTFsLjc2NS0uMjQ4YTEuNTggMS41OCAwIDAgMCAuOTg0LS45OThsLjI0OS0uNzY1YS4zMDIuMzAyIDAgMCAxIC41NyAwbC4yNDkuNzY0YTEuNTggMS41OCAwIDAgMCAuOTk5Ljk5OSIvPjxwYXRoIGZpbGw9InVybCgjU1ZHalJCb0tlOUQpIiBkPSJNMTUuODU0IDE3LjE0NmEyLjg1IDIuODUgMCAwIDEgLjY4NSAxLjExNGwuNDQ4IDEuMzc3YS41NDQuNTQ0IDAgMCAwIDEuMDI2IDBsLjQ0OC0xLjM3N2EyLjg0IDIuODQgMCAwIDEgMS43OTgtMS43OTZsMS4zNzgtLjQ0OGEuNTQ1LjU0NSAwIDAgMCAwLTEuMDI1bC0uMDI4LS4wMDdsLTEuMzc4LS40NDhhMi44NCAyLjg0IDAgMCAxLTEuNzk4LTEuNzk2bC0uNDQ3LTEuMzc3YS41NDQuNTQ0IDAgMCAwLTEuMDI3IDBsLS40NDggMS4zNzdsLS4wMTEuMDM0YTIuODQgMi44NCAwIDAgMS0xLjc1OSAxLjc2MmwtMS4zNzguNDQ4YS41NDUuNTQ1IDAgMCAwIDAgMS4wMjVsMS4zNzguNDQ4Yy40Mi4xNC44LjM3NiAxLjExMy42ODkiLz48ZGVmcz48bGluZWFyR3JhZGllbnQgaWQ9IlNWRzJmN0w4Y0xVIiB4MT0iMTIuMDAzIiB4Mj0iMTUuNjIzIiB5MT0iMTMuMDQ3IiB5Mj0iMjYuNTczIiBncmFkaWVudFVuaXRzPSJ1c2VyU3BhY2VPblVzZSI+PHN0b3Agc3RvcC1jb2xvcj0iIzg4NWVkYiIgc3RvcC1vcGFjaXR5PSIwIi8+PHN0b3Agb2Zmc2V0PSIxIiBzdG9wLWNvbG9yPSIjZTM2MmY4Ii8+PC9saW5lYXJHcmFkaWVudD48bGluZWFyR3JhZGllbnQgaWQ9IlNWR3pZUWx4ZHJNIiB4MT0iMTEuMjA5IiB4Mj0iMTIuOTg0IiB5MT0iMiIgeTI9IjMuODcxIiBncmFkaWVudFVuaXRzPSJ1c2VyU3BhY2VPblVzZSI+PHN0b3Agc3RvcC1jb2xvcj0iIzhiNTJmNCIvPjxzdG9wIG9mZnNldD0iMSIgc3RvcC1jb2xvcj0iIzNkMzViMSIvPjwvbGluZWFyR3JhZGllbnQ+PGxpbmVhckdyYWRpZW50IGlkPSJTVkdkRU44S3FDayIgeDE9IjEzLjU4NSIgeDI9IjE1LjQ3OSIgeTE9IjYuNTk2IiB5Mj0iOS44NjUiIGdyYWRpZW50VW5pdHM9InVzZXJTcGFjZU9uVXNlIj48c3RvcCBzdG9wLWNvbG9yPSIjZmRmZGZkIi8+PHN0b3Agb2Zmc2V0PSIxIiBzdG9wLWNvbG9yPSIjZjlkY2ZhIi8+PC9saW5lYXJHcmFkaWVudD48bGluZWFyR3JhZGllbnQgaWQ9IlNWR2N1cWNRYkdKIiB4MT0iOS4wOTIiIHgyPSIxMC45ODYiIHkxPSI2LjU5NiIgeTI9IjkuODY1IiBncmFkaWVudFVuaXRzPSJ1c2VyU3BhY2VPblVzZSI+PHN0b3Agc3RvcC1jb2xvcj0iI2ZkZmRmZCIvPjxzdG9wIG9mZnNldD0iMSIgc3RvcC1jb2xvcj0iI2Y5ZGNmYSIvPjwvbGluZWFyR3JhZGllbnQ+PGxpbmVhckdyYWRpZW50IGlkPSJTVkc0S2JyekQ5UiIgeDE9IjIwIiB4Mj0iMjMuMDAyIiB5MT0iMTkuNSIgeTI9IjIzLjQ5OSIgZ3JhZGllbnRVbml0cz0idXNlclNwYWNlT25Vc2UiPjxzdG9wIHN0b3AtY29sb3I9IiNmZmE0M2QiLz48c3RvcCBvZmZzZXQ9IjEiIHN0b3AtY29sb3I9IiNmYjU5MzciLz48L2xpbmVhckdyYWRpZW50PjxsaW5lYXJHcmFkaWVudCBpZD0iU1ZHalJCb0tlOUQiIHgxPSIyMC4wNzEiIHgyPSIxMy43NiIgeTE9IjE4LjcxNCIgeTI9IjExLjQ1NyIgZ3JhZGllbnRVbml0cz0idXNlclNwYWNlT25Vc2UiPjxzdG9wIHN0b3AtY29sb3I9IiNmZjhhNjkiLz48c3RvcCBvZmZzZXQ9IjEiIHN0b3AtY29sb3I9IiNmZmNkMGYiLz48L2xpbmVhckdyYWRpZW50PjxyYWRpYWxHcmFkaWVudCBpZD0iU1ZHY3RIbGRibUQiIGN4PSIwIiBjeT0iMCIgcj0iMSIgZ3JhZGllbnRUcmFuc2Zvcm09InJvdGF0ZSgzMC40MDggLTIxLjA3MiA2LjM0MilzY2FsZSgyMi4yNTI3IDM1LjQ0NSkiIGdyYWRpZW50VW5pdHM9InVzZXJTcGFjZU9uVXNlIj48c3RvcCBzdG9wLWNvbG9yPSIjZjA4YWY0Ii8+PHN0b3Agb2Zmc2V0PSIuNTM1IiBzdG9wLWNvbG9yPSIjOWM2Y2ZlIi8+PHN0b3Agb2Zmc2V0PSIxIiBzdG9wLWNvbG9yPSIjNGU0NGRiIi8+PC9yYWRpYWxHcmFkaWVudD48cmFkaWFsR3JhZGllbnQgaWQ9IlNWR0IzWElwZGhuIiBjeD0iMCIgY3k9IjAiIHI9IjEiIGdyYWRpZW50VHJhbnNmb3JtPSJtYXRyaXgoMCAtMy42OTI4NCAyLjA5NjA5IDAgMTcuNTQyIDE3LjY5MykiIGdyYWRpZW50VW5pdHM9InVzZXJTcGFjZU9uVXNlIj48c3RvcCBzdG9wLWNvbG9yPSIjNGU0NGRiIi8+PHN0b3Agb2Zmc2V0PSIxIiBzdG9wLWNvbG9yPSIjNGU0NGRiIiBzdG9wLW9wYWNpdHk9IjAiLz48L3JhZGlhbEdyYWRpZW50PjxyYWRpYWxHcmFkaWVudCBpZD0iU1ZHQ1VnTFJIWHAiIGN4PSIwIiBjeT0iMCIgcj0iMSIgZ3JhZGllbnRUcmFuc2Zvcm09InJvdGF0ZSgyMjUuMDA1IDExLjg3MyA0LjcyNSlzY2FsZSgzLjQ4MTM0IDIuNjExKSIgZ3JhZGllbnRVbml0cz0idXNlclNwYWNlT25Vc2UiPjxzdG9wIHN0b3AtY29sb3I9IiM0ZTQ0ZGIiLz48c3RvcCBvZmZzZXQ9IjEiIHN0b3AtY29sb3I9IiM0ZTQ0ZGIiIHN0b3Atb3BhY2l0eT0iMCIvPjwvcmFkaWFsR3JhZGllbnQ+PHJhZGlhbEdyYWRpZW50IGlkPSJTVkdja0RSVGJOUSIgY3g9IjAiIGN5PSIwIiByPSIxIiBncmFkaWVudFRyYW5zZm9ybT0ibWF0cml4KC01LjUzODI5IDAgMCAtMi4xNzMzOSAxNy41NDIgMTUuODQ2KSIgZ3JhZGllbnRVbml0cz0idXNlclNwYWNlT25Vc2UiPjxzdG9wIHN0b3AtY29sb3I9IiM0ZTQ0ZGIiLz48c3RvcCBvZmZzZXQ9IjEiIHN0b3AtY29sb3I9IiM0ZTQ0ZGIiIHN0b3Atb3BhY2l0eT0iMCIvPjwvcmFkaWFsR3JhZGllbnQ+PHJhZGlhbEdyYWRpZW50IGlkPSJTVkcwOXptbm5rdCIgY3g9IjAiIGN5PSIwIiByPSIxIiBncmFkaWVudFRyYW5zZm9ybT0icm90YXRlKDM3LjY5NSAuMDYzIDIuOTIyKXNjYWxlKDE5Ljk5OTIgMzcuNzgwNikiIGdyYWRpZW50VW5pdHM9InVzZXJTcGFjZU9uVXNlIj48c3RvcCBzdG9wLWNvbG9yPSIjZjA4YWY0Ii8+PHN0b3Agb2Zmc2V0PSIuNTM1IiBzdG9wLWNvbG9yPSIjOWM2Y2ZlIi8+PHN0b3Agb2Zmc2V0PSIxIiBzdG9wLWNvbG9yPSIjNGU0NGRiIi8+PC9yYWRpYWxHcmFkaWVudD48L2RlZnM+PC9nPjwvc3ZnPg==",
+                                "fit": "contain",
+                                "width": "calc(var(--space-4) + var(--space-1))",
+                                "height": "calc(var(--space-4) + var(--space-1))",
+                                "alt": ""
+                              }
+                            ]
+                          },
+                          {
+                            "id": "dashboard-nav-agents-text",
+                            "text": "Agents"
+                          }
+                        ]
+                      },
+                      {
+                        "id": "dashboard-nav-dashboards",
+                        "layout": "stack",
+                        "direction": "horizontal",
+                        "gap": "3",
+                        "padding": "2",
+                        "align": "center",
+                        "on": {
+                          "tap": {
+                            "openModal": "limited-scope"
+                          }
+                        },
+                        "children": [
+                          {
+                            "id": "dashboard-nav-dashboards-icon-slot",
+                            "layout": "stack",
+                            "align": "end",
+                            "width": "var(--space-5)",
+                            "children": [
+                              {
+                                "note": "Unmodified Windows companion artwork from src\\OpenClaw.Tray.WinUI\\Assets\\SidebarIcons\\Usage.svg. Embedded for offline preview. Native Hub uses these colored SVGs normally and system-foreground FontIcons in high contrast; this image preview does not simulate that native substitution.",
+                                "id": "dashboard-nav-dashboards-icon",
+                                "image": "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIyNCIgaGVpZ2h0PSIyNCIgdmlld0JveD0iMCAwIDI0IDI0Ij48ZyBmaWxsPSJub25lIj48cGF0aCBmaWxsPSJ1cmwoI1NWR0VoaWVTZFlRKSIgZD0iTTIwLjUgNS4yNWEyLjI1IDIuMjUgMCAwIDAtNC41IDB2MTMuNWEyLjI1IDIuMjUgMCAwIDAgNC41IDB6Ii8+PHBhdGggZmlsbD0idXJsKCNTVkdDaUhERmNWbCkiIGQ9Ik0xNCA5LjI1YTIuMjUgMi4yNSAwIDAgMC00LjUgMHY5LjVhMi4yNSAyLjI1IDAgMCAwIDQuNSAweiIvPjxwYXRoIGZpbGw9InVybCgjU1ZHcVl1RnhkbHYpIiBkPSJNNy41IDEzLjI1YTIuMjUgMi4yNSAwIDAgMC00LjUgMHY1LjVhMi4yNSAyLjI1IDAgMCAwIDQuNSAweiIvPjxkZWZzPjxsaW5lYXJHcmFkaWVudCBpZD0iU1ZHRWhpZVNkWVEiIHgxPSIxOS45MDgiIHgyPSIzMS45OTQiIHkxPSItMi41MjkiIHkyPSIzLjExMiIgZ3JhZGllbnRVbml0cz0idXNlclNwYWNlT25Vc2UiPjxzdG9wIHN0b3AtY29sb3I9IiMxNmJiZGEiLz48c3RvcCBvZmZzZXQ9IjEiIHN0b3AtY29sb3I9IiMwMDY3YmYiLz48L2xpbmVhckdyYWRpZW50PjxsaW5lYXJHcmFkaWVudCBpZD0iU1ZHQ2lIREZjVmwiIHgxPSI5LjkzNCIgeDI9IjIwLjg1OSIgeTE9IjMuNTgiIHkyPSIxMC4wMTgiIGdyYWRpZW50VW5pdHM9InVzZXJTcGFjZU9uVXNlIj48c3RvcCBzdG9wLWNvbG9yPSIjMTZiYmRhIi8+PHN0b3Agb2Zmc2V0PSIxIiBzdG9wLWNvbG9yPSIjMDA2N2JmIi8+PC9saW5lYXJHcmFkaWVudD48bGluZWFyR3JhZGllbnQgaWQ9IlNWR3FZdUZ4ZGx2IiB4MT0iMi43MTkiIHgyPSIxMS40NzciIHkxPSI1LjM3NSIgeTI9IjEyLjYiIGdyYWRpZW50VW5pdHM9InVzZXJTcGFjZU9uVXNlIj48c3RvcCBzdG9wLWNvbG9yPSIjMTZiYmRhIi8+PHN0b3Agb2Zmc2V0PSIxIiBzdG9wLWNvbG9yPSIjMDA2N2JmIi8+PC9saW5lYXJHcmFkaWVudD48L2RlZnM+PC9nPjwvc3ZnPg==",
+                                "fit": "contain",
+                                "width": "calc(var(--space-4) + var(--space-1))",
+                                "height": "calc(var(--space-4) + var(--space-1))",
+                                "alt": ""
+                              }
+                            ]
+                          },
+                          {
+                            "id": "dashboard-nav-dashboards-text",
+                            "text": "Dashboards"
+                          }
+                        ]
+                      },
+                      {
+                        "id": "dashboard-nav-systems",
+                        "layout": "stack",
+                        "direction": "horizontal",
+                        "gap": "3",
+                        "padding": "2",
+                        "align": "center",
+                        "on": {
+                          "tap": {
+                            "openModal": "limited-scope"
+                          }
+                        },
+                        "children": [
+                          {
+                            "id": "dashboard-nav-systems-icon-slot",
+                            "layout": "stack",
+                            "align": "end",
+                            "width": "var(--space-5)",
+                            "children": [
+                              {
+                                "note": "Unmodified Windows companion artwork from src\\OpenClaw.Tray.WinUI\\Assets\\SidebarIcons\\Connection.svg. Embedded for offline preview. Native Hub uses these colored SVGs normally and system-foreground FontIcons in high contrast; this image preview does not simulate that native substitution.",
+                                "id": "dashboard-nav-systems-icon",
+                                "image": "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIyNCIgaGVpZ2h0PSIyNCIgdmlld0JveD0iMCAwIDI0IDI0Ij48ZyBmaWxsPSJub25lIj48cGF0aCBmaWxsPSJ1cmwoI1NWR01tT0JRZHNMKSIgZD0iTTEyIDIyYzUuNTIzIDAgMTAtNC40NzcgMTAtMTBTMTcuNTIzIDIgMTIgMlMyIDYuNDc3IDIgMTJzNC40NzcgMTAgMTAgMTAiLz48cGF0aCBmaWxsPSJ1cmwoI1NWR2tqeHR2djBxKSIgZmlsbC1ydWxlPSJldmVub2RkIiBkPSJNOS4xMTUgMi40MjJhOS42IDkuNiAwIDAgMC0uODUgMS43MDRjLS40OCAxLjIzLS44MzggMi43MjMtMS4wNDkgNC4zNzRIMi42M3EtLjI3MS43MjUtLjQzIDEuNWg0Ljg3YTI5IDI5IDAgMCAwIC4wODggNWgtNC43cS4yNDYuNzguNjEgMS41aDQuMjk3Yy4yMTUgMS4yNTUuNTIgMi4zOTcuOSAzLjM3NGMuMjQ2LjYzLjUzIDEuMjA1Ljg1IDEuNzA0QTEwIDEwIDAgMCAwIDEyIDIyYTEwIDEwIDAgMCAwIDIuODg1LS40MjJhOS42IDkuNiAwIDAgMCAuODUtMS43MDRjLjM4LS45NzcuNjg1LTIuMTE5LjktMy4zNzRoNC4yOThxLjM2NC0uNzIuNjEtMS41aC00LjdhMjkgMjkgMCAwIDAgLjA4OC01aDQuODdhMTAgMTAgMCAwIDAtLjQzLTEuNWgtNC41ODdjLS4yMS0xLjY1MS0uNTctMy4xNDQtMS4wNS00LjM3NGE5LjYgOS42IDAgMCAwLS44NDktMS43MDRBMTAgMTAgMCAwIDAgMTIgMmExMCAxMCAwIDAgMC0yLjg4NS40MjJNOC43MyA4LjVjLjItMS40Ny41MjItMi43NzQuOTM0LTMuODI5Yy4zNi0uOTIuNzctMS42MTIgMS4xOTQtMi4wNjJDMTEuMjc4IDIuMTYzIDExLjY2MyAyIDEyIDJzLjcyMy4xNjMgMS4xNDMuNjA5Yy40MjMuNDUuODM1IDEuMTQyIDEuMTk0IDIuMDYyYy40MTIgMS4wNTUuNzM0IDIuMzYuOTM0IDMuODI5ek0xMiAyMmMuMzM4IDAgLjcyMy0uMTYzIDEuMTQzLS42MDljLjQyMy0uNDUuODM1LTEuMTQyIDEuMTk0LTIuMDYyYy4zMTYtLjgxLjU4LTEuNzY1Ljc3NS0yLjgyOUg4Ljg4OGMuMTk2IDEuMDY0LjQ2IDIuMDIuNzc1IDIuODI5Yy4zNi45Mi43NyAxLjYxMiAxLjE5NCAyLjA2MmMuNDIuNDQ2LjgwNS42MDkgMS4xNDMuNjA5TTguNSAxMmMwIDEuMDQ4LjA1OCAyLjA1NS4xNjYgM2g2LjY2OGEyNyAyNyAwIDAgMCAuMDk0LTVIOC41NzNhMjcgMjcgMCAwIDAtLjA3MyAyIiBjbGlwLXJ1bGU9ImV2ZW5vZGQiLz48ZGVmcz48cmFkaWFsR3JhZGllbnQgaWQ9IlNWR2tqeHR2djBxIiBjeD0iMCIgY3k9IjAiIHI9IjEiIGdyYWRpZW50VHJhbnNmb3JtPSJyb3RhdGUoMjI0LjY2MiAxMi42NTQgNC43Mzgpc2NhbGUoMTYuMDA4OSAxNi4wMDc4KSIgZ3JhZGllbnRVbml0cz0idXNlclNwYWNlT25Vc2UiPjxzdG9wIHN0b3AtY29sb3I9IiMyNWEyZjAiLz48c3RvcCBvZmZzZXQ9Ii45NzQiIHN0b3AtY29sb3I9IiMzYmQ1ZmYiLz48L3JhZGlhbEdyYWRpZW50PjxsaW5lYXJHcmFkaWVudCBpZD0iU1ZHTW1PQlFkc0wiIHgxPSI2LjQ0NCIgeDI9IjIwLjg4OSIgeTE9IjUuMzMzIiB5Mj0iMTguNjY3IiBncmFkaWVudFVuaXRzPSJ1c2VyU3BhY2VPblVzZSI+PHN0b3Agc3RvcC1jb2xvcj0iIzI5YzNmZiIvPjxzdG9wIG9mZnNldD0iMSIgc3RvcC1jb2xvcj0iIzIwNTJjYiIvPjwvbGluZWFyR3JhZGllbnQ+PC9kZWZzPjwvZz48L3N2Zz4=",
+                                "fit": "contain",
+                                "width": "calc(var(--space-4) + var(--space-1))",
+                                "height": "calc(var(--space-4) + var(--space-1))",
+                                "alt": ""
+                              }
+                            ]
+                          },
+                          {
+                            "id": "dashboard-nav-systems-text",
+                            "text": "Systems"
+                          }
+                        ]
+                      },
+                      {
+                        "id": "dashboard-nav-automations",
+                        "layout": "stack",
+                        "direction": "horizontal",
+                        "gap": "3",
+                        "padding": "2",
+                        "align": "center",
+                        "on": {
+                          "tap": {
+                            "openModal": "limited-scope"
+                          }
+                        },
+                        "children": [
+                          {
+                            "id": "dashboard-nav-automations-icon-slot",
+                            "layout": "stack",
+                            "align": "end",
+                            "width": "var(--space-5)",
+                            "children": [
+                              {
+                                "note": "Unmodified Windows companion artwork from src\\OpenClaw.Tray.WinUI\\Assets\\SidebarIcons\\Cron.svg. Embedded for offline preview. Native Hub uses these colored SVGs normally and system-foreground FontIcons in high contrast; this image preview does not simulate that native substitution.",
+                                "id": "dashboard-nav-automations-icon",
+                                "image": "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIyNCIgaGVpZ2h0PSIyNCIgdmlld0JveD0iMCAwIDI0IDI0Ij48ZyBmaWxsPSJub25lIj48cGF0aCBmaWxsPSJ1cmwoI1NWR3Q1eklrZHFCKSIgZD0iTTIxIDcuNXYxMC4yNUEzLjI1IDMuMjUgMCAwIDEgMTcuNzUgMjFINi4yNUEzLjI1IDMuMjUgMCAwIDEgMyAxNy43NVY3LjVsOS0xeiIvPjxwYXRoIGZpbGw9InVybCgjU1ZHQzRzQmdlOEspIiBkPSJNMjEgNy41djEwLjI1QTMuMjUgMy4yNSAwIDAgMSAxNy43NSAyMUg2LjI1QTMuMjUgMy4yNSAwIDAgMSAzIDE3Ljc1VjcuNWw5LTF6Ii8+PHBhdGggZmlsbD0idXJsKCNTVkdmMWJINGNzdikiIGZpbGwtb3BhY2l0eT0iLjMiIGQ9Ik0yMSA3LjV2MTAuMjVBMy4yNSAzLjI1IDAgMCAxIDE3Ljc1IDIxSDYuMjVBMy4yNSAzLjI1IDAgMCAxIDMgMTcuNzVWNy41bDktMXoiLz48cGF0aCBmaWxsPSJ1cmwoI1NWR1hyS3pzdDNjKSIgZD0iTTE3Ljc1IDNBMy4yNSAzLjI1IDAgMCAxIDIxIDYuMjVWOEgzVjYuMjVBMy4yNSAzLjI1IDAgMCAxIDYuMjUgM3oiLz48cGF0aCBmaWxsPSJ1cmwoI1NWR1JNYUt2dmdCKSIgZD0iTTE3LjUgMTJhNS41IDUuNSAwIDEgMSAwIDExYTUuNSA1LjUgMCAwIDEgMC0xMSIvPjxwYXRoIGZpbGw9InVybCgjU1ZHYnpXOVZiZ1kpIiBmaWxsLXJ1bGU9ImV2ZW5vZGQiIGQ9Ik0xNy41IDE0YS41LjUgMCAwIDEgLjUuNVYxN2gyYS41LjUgMCAwIDEgMCAxaC0yLjVhLjUuNSAwIDAgMS0uNS0uNXYtM2EuNS41IDAgMCAxIC41LS41IiBjbGlwLXJ1bGU9ImV2ZW5vZGQiLz48ZGVmcz48bGluZWFyR3JhZGllbnQgaWQ9IlNWR3Q1eklrZHFCIiB4MT0iOS40MjkiIHgyPSIxNC4xMzciIHkxPSI2LjUiIHkyPSIyMC45MzIiIGdyYWRpZW50VW5pdHM9InVzZXJTcGFjZU9uVXNlIj48c3RvcCBzdG9wLWNvbG9yPSIjYjNlMGZmIi8+PHN0b3Agb2Zmc2V0PSIxIiBzdG9wLWNvbG9yPSIjOGNkMGZmIi8+PC9saW5lYXJHcmFkaWVudD48bGluZWFyR3JhZGllbnQgaWQ9IlNWR0M0c0JnZThLIiB4MT0iMTMuOTI5IiB4Mj0iMTYuNjI1IiB5MT0iMTIuNDMyIiB5Mj0iMjQuMjY3IiBncmFkaWVudFVuaXRzPSJ1c2VyU3BhY2VPblVzZSI+PHN0b3Agc3RvcC1jb2xvcj0iI2RjZjhmZiIgc3RvcC1vcGFjaXR5PSIwIi8+PHN0b3Agb2Zmc2V0PSIxIiBzdG9wLWNvbG9yPSIjZmY2Y2U4IiBzdG9wLW9wYWNpdHk9Ii43Ii8+PC9saW5lYXJHcmFkaWVudD48bGluZWFyR3JhZGllbnQgaWQ9IlNWR1hyS3pzdDNjIiB4MT0iMy43MjMiIHgyPSI1LjM1NiIgeTE9IjMiIHkyPSIxMS41MzciIGdyYWRpZW50VW5pdHM9InVzZXJTcGFjZU9uVXNlIj48c3RvcCBzdG9wLWNvbG9yPSIjMDA5NGYwIi8+PHN0b3Agb2Zmc2V0PSIxIiBzdG9wLWNvbG9yPSIjMjc2NGU3Ii8+PC9saW5lYXJHcmFkaWVudD48bGluZWFyR3JhZGllbnQgaWQ9IlNWR1JNYUt2dmdCIiB4MT0iMTMuODMzIiB4Mj0iMTkuMzMzIiB5MT0iMTEuMzg5IiB5Mj0iMjMuNjExIiBncmFkaWVudFVuaXRzPSJ1c2VyU3BhY2VPblVzZSI+PHN0b3Agc3RvcC1jb2xvcj0iIzFlYzhiMCIvPjxzdG9wIG9mZnNldD0iMSIgc3RvcC1jb2xvcj0iIzI3NjRlNyIvPjwvbGluZWFyR3JhZGllbnQ+PGxpbmVhckdyYWRpZW50IGlkPSJTVkdielc5VmJnWSIgeDE9IjE3LjMwNiIgeDI9IjE2LjM5OCIgeTE9IjE0LjYxMiIgeTI9IjE3Ljg4IiBncmFkaWVudFVuaXRzPSJ1c2VyU3BhY2VPblVzZSI+PHN0b3Agc3RvcC1jb2xvcj0iI2ZkZmRmZCIvPjxzdG9wIG9mZnNldD0iMSIgc3RvcC1jb2xvcj0iI2QxZDFmZiIvPjwvbGluZWFyR3JhZGllbnQ+PHJhZGlhbEdyYWRpZW50IGlkPSJTVkdmMWJINGNzdiIgY3g9IjAiIGN5PSIwIiByPSIxIiBncmFkaWVudFRyYW5zZm9ybT0ibWF0cml4KDAgOC41NjgxOCAtOC4zNTcxNCAwIDE3Ljc4NiAxOS4wMjMpIiBncmFkaWVudFVuaXRzPSJ1c2VyU3BhY2VPblVzZSI+PHN0b3Agb2Zmc2V0PSIuNTM1IiBzdG9wLWNvbG9yPSIjNGE0M2NiIi8+PHN0b3Agb2Zmc2V0PSIxIiBzdG9wLWNvbG9yPSIjNGE0M2NiIiBzdG9wLW9wYWNpdHk9IjAiLz48L3JhZGlhbEdyYWRpZW50PjwvZGVmcz48L2c+PC9zdmc+",
+                                "fit": "contain",
+                                "width": "calc(var(--space-4) + var(--space-1))",
+                                "height": "calc(var(--space-4) + var(--space-1))",
+                                "alt": ""
+                              }
+                            ]
+                          },
+                          {
+                            "id": "dashboard-nav-automations-text",
+                            "text": "Automations"
+                          }
+                        ]
+                      },
+                      {
+                        "id": "dashboard-nav-plugins",
+                        "layout": "stack",
+                        "direction": "horizontal",
+                        "gap": "3",
+                        "padding": "2",
+                        "align": "center",
+                        "on": {
+                          "tap": {
+                            "openModal": "limited-scope"
+                          }
+                        },
+                        "children": [
+                          {
+                            "id": "dashboard-nav-plugins-icon-slot",
+                            "layout": "stack",
+                            "align": "end",
+                            "width": "var(--space-5)",
+                            "children": [
+                              {
+                                "note": "Unmodified Windows companion artwork from src\\OpenClaw.Tray.WinUI\\Assets\\SidebarIcons\\Bindings.svg. Embedded for offline preview. Native Hub uses these colored SVGs normally and system-foreground FontIcons in high contrast; this image preview does not simulate that native substitution.",
+                                "id": "dashboard-nav-plugins-icon",
+                                "image": "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIyNCIgaGVpZ2h0PSIyNCIgdmlld0JveD0iMCAwIDI0IDI0Ij48ZyBmaWxsPSJub25lIj48cGF0aCBmaWxsPSJ1cmwoI1NWR3NRVmI0Y2NVKSIgZmlsbC1ydWxlPSJldmVub2RkIiBkPSJNMSAxMGE1IDUgMCAwIDEgNS01aDdhNSA1IDAgMCAxIDAgMTBINmE1IDUgMCAwIDEtNS01bTUtM2EzIDMgMCAwIDAgMCA2aDdhMyAzIDAgMSAwIDAtNnoiIGNsaXAtcnVsZT0iZXZlbm9kZCIvPjxwYXRoIGZpbGw9InVybCgjU1ZHS085ajNieFkpIiBmaWxsLXJ1bGU9ImV2ZW5vZGQiIGQ9Ik0xIDEwYTUgNSAwIDAgMSA1LTVoN2E1IDUgMCAwIDEgMCAxMEg2YTUgNSAwIDAgMS01LTVtNS0zYTMgMyAwIDAgMCAwIDZoN2EzIDMgMCAxIDAgMC02eiIgY2xpcC1ydWxlPSJldmVub2RkIi8+PHBhdGggZmlsbD0idXJsKCNTVkdEUE8wMGQzcikiIGZpbGwtcnVsZT0iZXZlbm9kZCIgZD0iTTEgMTBhNSA1IDAgMCAxIDUtNWg3YTUgNSAwIDAgMSAwIDEwSDZhNSA1IDAgMCAxLTUtNW01LTNhMyAzIDAgMCAwIDAgNmg3YTMgMyAwIDEgMCAwLTZ6IiBjbGlwLXJ1bGU9ImV2ZW5vZGQiLz48cGF0aCBmaWxsPSJ1cmwoI1NWR3d5TkJ2ZElCKSIgZD0iTTE1LjgzIDlIMTFhNSA1IDAgMCAwIDAgMTBoN2E1IDUgMCAwIDAgMC0xMGgtLjFhNSA1IDAgMCAxIDAgMmguMWEzIDMgMCAxIDEgMCA2aC03YTMgMyAwIDEgMSAwLTZoNC44M2EzIDMgMCAwIDAgMC0yIi8+PHBhdGggZmlsbD0idXJsKCNTVkdyT0RsOWNObCkiIGQ9Ik0xNS44MyA5SDExYTUgNSAwIDAgMCAwIDEwaDdhNSA1IDAgMCAwIDAtMTBoLS4xYTUgNSAwIDAgMSAwIDJoLjFhMyAzIDAgMSAxIDAgNmgtN2EzIDMgMCAxIDEgMC02aDQuODNhMyAzIDAgMCAwIDAtMiIvPjxwYXRoIGZpbGw9InVybCgjU1ZHMDZKNHRicWwpIiBkPSJNMTUuODMgOUgxMWE1IDUgMCAwIDAgMCAxMGg3YTUgNSAwIDAgMCAwLTEwaC0uMWE1IDUgMCAwIDEgMCAyaC4xYTMgMyAwIDEgMSAwIDZoLTdhMyAzIDAgMSAxIDAtNmg0LjgzYTMgMyAwIDAgMCAwLTIiLz48ZGVmcz48cmFkaWFsR3JhZGllbnQgaWQ9IlNWR3NRVmI0Y2NVIiBjeD0iMCIgY3k9IjAiIHI9IjEiIGdyYWRpZW50VHJhbnNmb3JtPSJyb3RhdGUoMzcuNzUgLTYuNDI2IDUuMDkzKXNjYWxlKDE3LjU5MDkgMTUuNzM4NykiIGdyYWRpZW50VW5pdHM9InVzZXJTcGFjZU9uVXNlIj48c3RvcCBzdG9wLWNvbG9yPSIjMGZhZmZmIi8+PHN0b3Agb2Zmc2V0PSIuNDI5IiBzdG9wLWNvbG9yPSIjMzY3YWYyIi8+PHN0b3Agb2Zmc2V0PSIuOTQyIiBzdG9wLWNvbG9yPSIjNTc1MGUyIi8+PHN0b3Agb2Zmc2V0PSIxIiBzdG9wLWNvbG9yPSIjNmY0N2RmIi8+PC9yYWRpYWxHcmFkaWVudD48cmFkaWFsR3JhZGllbnQgaWQ9IlNWR0tPOWozYnhZIiBjeD0iMCIgY3k9IjAiIHI9IjEiIGdyYWRpZW50VHJhbnNmb3JtPSJtYXRyaXgoLTcgMCAwIC03Ljc3Nzg1IDEwLjUgMTQuNSkiIGdyYWRpZW50VW5pdHM9InVzZXJTcGFjZU9uVXNlIj48c3RvcCBvZmZzZXQ9Ii4yMzkiIHN0b3AtY29sb3I9IiMyNjFkODIiIHN0b3Atb3BhY2l0eT0iMCIvPjxzdG9wIG9mZnNldD0iLjQyNCIgc3RvcC1jb2xvcj0iIzI2MWQ4MiIvPjxzdG9wIG9mZnNldD0iLjU2OCIgc3RvcC1jb2xvcj0iIzI2MWQ4MiIvPjxzdG9wIG9mZnNldD0iLjc1NCIgc3RvcC1jb2xvcj0iIzI2MWQ4MiIgc3RvcC1vcGFjaXR5PSIwIi8+PC9yYWRpYWxHcmFkaWVudD48cmFkaWFsR3JhZGllbnQgaWQ9IlNWR3JPRGw5Y05sIiBjeD0iMCIgY3k9IjAiIHI9IjEiIGdyYWRpZW50VHJhbnNmb3JtPSJtYXRyaXgoNyAwIDAgNy43Nzc4NSAxMy41IDkuNSkiIGdyYWRpZW50VW5pdHM9InVzZXJTcGFjZU9uVXNlIj48c3RvcCBvZmZzZXQ9Ii4yNDYiIHN0b3AtY29sb3I9IiMyNzY0ZTciIHN0b3Atb3BhY2l0eT0iMCIvPjxzdG9wIG9mZnNldD0iLjM5NiIgc3RvcC1jb2xvcj0iIzI3NjRlNyIvPjxzdG9wIG9mZnNldD0iLjU3OCIgc3RvcC1jb2xvcj0iIzI3NjRlNyIvPjxzdG9wIG9mZnNldD0iLjc0OCIgc3RvcC1jb2xvcj0iIzI3NjRlNyIgc3RvcC1vcGFjaXR5PSIwIi8+PC9yYWRpYWxHcmFkaWVudD48bGluZWFyR3JhZGllbnQgaWQ9IlNWR0RQTzAwZDNyIiB4MT0iMTciIHgyPSI4LjM4MiIgeTE9IjE1LjUiIHkyPSI1LjY2NyIgZ3JhZGllbnRVbml0cz0idXNlclNwYWNlT25Vc2UiPjxzdG9wIHN0b3AtY29sb3I9IiM1MTU3ZTQiIHN0b3Atb3BhY2l0eT0iMCIvPjxzdG9wIG9mZnNldD0iLjA2NiIgc3RvcC1jb2xvcj0iIzUxNTdlNCIvPjxzdG9wIG9mZnNldD0iLjMxOSIgc3RvcC1jb2xvcj0iIzUxNTdlNCIvPjxzdG9wIG9mZnNldD0iLjYiIHN0b3AtY29sb3I9IiM1MTU3ZTQiIHN0b3Atb3BhY2l0eT0iMCIvPjwvbGluZWFyR3JhZGllbnQ+PGxpbmVhckdyYWRpZW50IGlkPSJTVkd3eU5CdmRJQiIgeDE9Ii41MzYiIHgyPSIxMS4xMTciIHkxPSI0LjE4OCIgeTI9IjI4Ljc3NyIgZ3JhZGllbnRVbml0cz0idXNlclNwYWNlT25Vc2UiPjxzdG9wIHN0b3AtY29sb3I9IiMzNmRmZjEiLz48c3RvcCBvZmZzZXQ9IjEiIHN0b3AtY29sb3I9IiMyNzY0ZTciLz48L2xpbmVhckdyYWRpZW50PjxsaW5lYXJHcmFkaWVudCBpZD0iU1ZHMDZKNHRicWwiIHgxPSI4LjUiIHgyPSIxNi43NyIgeTE9IjUiIHkyPSIxMi4xMDMiIGdyYWRpZW50VW5pdHM9InVzZXJTcGFjZU9uVXNlIj48c3RvcCBzdG9wLWNvbG9yPSIjMzFiM2VlIiBzdG9wLW9wYWNpdHk9Ii4yNDMiLz48c3RvcCBvZmZzZXQ9Ii4yMDgiIHN0b3AtY29sb3I9IiMzMWIzZWUiLz48c3RvcCBvZmZzZXQ9Ii41NjkiIHN0b3AtY29sb3I9IiMzMWIzZWUiLz48c3RvcCBvZmZzZXQ9Ii43NjMiIHN0b3AtY29sb3I9IiMzMWIzZWUiIHN0b3Atb3BhY2l0eT0iMCIvPjwvbGluZWFyR3JhZGllbnQ+PC9kZWZzPjwvZz48L3N2Zz4=",
+                                "fit": "contain",
+                                "width": "calc(var(--space-4) + var(--space-1))",
+                                "height": "calc(var(--space-4) + var(--space-1))",
+                                "alt": ""
+                              }
+                            ]
+                          },
+                          {
+                            "id": "dashboard-nav-plugins-text",
+                            "text": "Plugins"
+                          }
+                        ]
+                      },
+                      {
+                        "id": "dashboard-sessions-heading",
+                        "layout": "row",
+                        "padding": "2",
+                        "children": [
+                          {
+                            "id": "dashboard-sessions-label",
+                            "text": "Sessions",
+                            "style": "caption",
+                            "color": "muted"
+                          }
+                        ]
+                      },
+                      {
+                        "id": "dashboard-session-existing",
+                        "layout": "stack",
+                        "gap": "1",
+                        "padding": "3",
+                        "radius": "sm",
+                        "on": {
+                          "tap": {
+                            "setState": {
+                              "dashboardNew": false
+                            }
+                          }
+                        },
+                        "hiddenWhen": {
+                          "dashboardNew": true
+                        },
+                        "children": [
+                          {
+                            "id": "dashboard-session-title",
+                            "text": "Plan a project"
+                          },
+                          {
+                            "id": "dashboard-session-date",
+                            "text": "Today",
+                            "style": "caption",
+                            "color": "muted"
+                          }
+                        ]
+                      },
+                      {
+                        "id": "dashboard-session-unselected",
+                        "layout": "stack",
+                        "gap": "1",
+                        "padding": "3",
+                        "on": {
+                          "tap": {
+                            "setState": {
+                              "dashboardNew": false
+                            }
+                          }
+                        },
+                        "visibleWhen": {
+                          "dashboardNew": true
+                        },
+                        "children": [
+                          {
+                            "id": "dashboard-session-unselected-title",
+                            "text": "Plan a project"
+                          },
+                          {
+                            "id": "dashboard-session-unselected-date",
+                            "text": "Today",
+                            "style": "caption",
+                            "color": "muted"
+                          }
+                        ]
+                      }
+                    ]
+                  },
+                  {
+                    "id": "dashboard-owner",
+                    "layout": "stack",
+                    "direction": "horizontal",
+                    "gap": "1",
+                    "padding": "1",
+                    "align": "center",
+                    "justify": "start",
+                    "children": [
+                      {
+                        "id": "dashboard-owner-identity",
+                        "layout": "stack",
+                        "direction": "horizontal",
+                        "gap": "2",
+                        "padding": "1",
+                        "align": "center",
+                        "radius": "sm",
+                        "grow": true,
+                        "on": {
+                          "tap": {
+                            "openModal": "limited-scope"
+                          }
+                        },
+                        "children": [
+                          {
+                            "note": "Owner initial fallback in the same circular badge structure as upstream; all surface and text colors are Fluent tokens.",
+                            "id": "dashboard-owner-avatar",
+                            "layout": "stack",
+                            "align": "center",
+                            "justify": "center",
+                            "background": "control",
+                            "radius": "pill",
+                            "width": "var(--space-6)",
+                            "height": "var(--space-6)",
+                            "children": [
+                              {
+                                "id": "dashboard-owner-avatar-initial",
+                                "text": "O",
+                                "style": "body",
+                                "color": "ink"
+                              }
+                            ]
+                          },
+                          {
+                            "id": "dashboard-owner-info",
+                            "layout": "stack",
+                            "gap": "1",
+                            "grow": true,
+                            "children": [
+                              {
+                                "id": "dashboard-owner-name",
+                                "text": "Owner"
+                              },
+                              {
+                                "id": "dashboard-owner-detail",
+                                "text": "Personal workspace",
+                                "style": "caption",
+                                "color": "muted"
+                              }
+                            ]
+                          }
+                        ]
+                      },
+                      {
+                        "id": "dashboard-settings",
+                        "layout": "stack",
+                        "align": "center",
+                        "justify": "center",
+                        "radius": "sm",
+                        "width": "var(--space-6)",
+                        "height": "var(--space-6)",
+                        "on": {
+                          "tap": {
+                            "openModal": "limited-scope"
+                          }
+                        },
+                        "children": [
+                          {
+                            "note": "Unmodified Windows companion artwork from src\\OpenClaw.Tray.WinUI\\Assets\\SidebarIcons\\Settings.svg. Embedded for offline preview. Native Hub uses these colored SVGs normally and system-foreground FontIcons in high contrast; this image preview does not simulate that native substitution.",
+                            "id": "dashboard-settings-image",
+                            "image": "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIyNCIgaGVpZ2h0PSIyNCIgdmlld0JveD0iMCAwIDI0IDI0Ij48ZyBmaWxsPSJub25lIj48cGF0aCBmaWxsPSJ1cmwoI1NWR0NISjBFZDhSKSIgZD0iTTEyLjAxMiAyLjI1Yy43MzQuMDA4IDEuNDY1LjA5MyAyLjE4Mi4yNTNhLjc1Ljc1IDAgMCAxIC41ODIuNjQ5bC4xNyAxLjUyN2ExLjM4NCAxLjM4NCAwIDAgMCAxLjkyNyAxLjExNmwxLjQtLjYxNWEuNzUuNzUgMCAwIDEgLjg1LjE3NGE5LjggOS44IDAgMCAxIDIuMjA1IDMuNzkyYS43NS43NSAwIDAgMS0uMjcyLjgyNWwtMS4yNDEuOTE2YTEuMzggMS4zOCAwIDAgMCAwIDIuMjI2bDEuMjQzLjkxNWEuNzUuNzUgMCAwIDEgLjI3Mi44MjZhOS44IDkuOCAwIDAgMS0yLjIwNCAzLjc5MmEuNzUuNzUgMCAwIDEtLjg0OS4xNzVsLTEuNDA2LS42MTdhMS4zOCAxLjM4IDAgMCAwLTEuOTI2IDEuMTE0bC0uMTcgMS41MjZhLjc1Ljc1IDAgMCAxLS41NzEuNjQ3YTkuNSA5LjUgMCAwIDEtNC40MDYgMGEuNzUuNzUgMCAwIDEtLjU3Mi0uNjQ3bC0uMTY5LTEuNTI0YTEuMzgyIDEuMzgyIDAgMCAwLTEuOTI1LTEuMTFsLTEuNDA2LjYxNmEuNzUuNzUgMCAwIDEtLjg1LS4xNzVhOS44IDkuOCAwIDAgMS0yLjIwMy0zLjc5NmEuNzUuNzUgMCAwIDEgLjI3Mi0uODI2bDEuMjQzLS45MTZhMS4zOCAxLjM4IDAgMCAwIDAtMi4yMjZsLTEuMjQzLS45MTRhLjc1Ljc1IDAgMCAxLS4yNzItLjgyNmE5LjggOS44IDAgMCAxIDIuMjA1LTMuNzkyYS43NS43NSAwIDAgMSAuODUtLjE3NGwxLjQuNjE1YTEuMzg3IDEuMzg3IDAgMCAwIDEuOTMtMS4xMThsLjE3LTEuNTI2YS43NS43NSAwIDAgMSAuNTgzLS42NXExLjA3NC0uMjM4IDIuMjAxLS4yNTJNMTIgOWEzIDMgMCAxIDAgMCA2YTMgMyAwIDAgMCAwLTYiLz48ZGVmcz48bGluZWFyR3JhZGllbnQgaWQ9IlNWR0NISjBFZDhSIiB4MT0iMTYuNjgyIiB4Mj0iNS43ODUiIHkxPSIyMC45OTUiIHkyPSIzLjk5NiIgZ3JhZGllbnRVbml0cz0idXNlclNwYWNlT25Vc2UiPjxzdG9wIHN0b3AtY29sb3I9IiM3MDc3N2QiLz48c3RvcCBvZmZzZXQ9IjEiIHN0b3AtY29sb3I9IiNiOWMwYzciLz48L2xpbmVhckdyYWRpZW50PjwvZGVmcz48L2c+PC9zdmc+",
+                            "fit": "contain",
+                            "width": "calc(var(--space-4) + var(--space-1))",
+                            "height": "calc(var(--space-4) + var(--space-1))",
+                            "alt": "Settings"
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                ]
+              },
+              {
+                "id": "dashboard-main",
+                "layout": "stack",
+                "background": "surface",
+                "radius": "md",
+                "grow": true,
+                "height": null,
+                "children": [
+                  {
+                    "id": "dashboard-session-header",
+                    "layout": "row",
+                    "padding": "4",
+                    "align": "center",
+                    "justify": "space-between",
+                    "children": [
+                      {
+                        "id": "dashboard-heading-left",
+                        "layout": "row",
+                        "gap": "3",
+                        "align": "center",
+                        "children": [
+                          {
+                            "id": "dashboard-nav-toggle",
+                            "component": "Button",
+                            "props": {
+                              "children": "☰",
+                              "variant": "secondary"
+                            },
+                            "on": {
+                              "tap": {
+                                "toggle": "dashboardNav"
+                              }
+                            }
+                          },
+                          {
+                            "id": "dashboard-heading-existing",
+                            "text": "Plan a project",
+                            "style": "heading",
+                            "hiddenWhen": {
+                              "dashboardNew": true
+                            }
+                          },
+                          {
+                            "id": "dashboard-heading-new",
+                            "text": "New session",
+                            "style": "heading",
+                            "visibleWhen": {
+                              "dashboardNew": true
+                            }
+                          }
+                        ]
+                      },
+                      {
+                        "id": "dashboard-heading-state",
+                        "text": "Connected",
+                        "style": "caption",
+                        "color": "positive"
+                      }
+                    ]
+                  },
+                  {
+                    "id": "dashboard-transcript",
+                    "layout": "scroll",
+                    "gap": "5",
+                    "padding": "5",
+                    "grow": true,
+                    "hiddenWhen": {
+                      "dashboardNew": true
+                    },
+                    "children": [
+                      {
+                        "id": "dashboard-thread-center",
+                        "layout": "row",
+                        "justify": "center",
+                        "children": [
+                          {
+                            "id": "dashboard-thread",
+                            "layout": "stack",
+                            "gap": "5",
+                            "width": "min(100%, calc(var(--space-8) * 11 + var(--space-4)))",
+                            "children": [
+                              {
+                                "id": "dashboard-thread-today",
+                                "layout": "row",
+                                "justify": "center",
+                                "children": [
+                                  {
+                                    "id": "dashboard-thread-day",
+                                    "text": "Today",
+                                    "style": "caption",
+                                    "color": "muted"
+                                  }
+                                ]
+                              },
+                              {
+                                "id": "dashboard-user-align",
+                                "layout": "row",
+                                "justify": "flex-end",
+                                "children": [
+                                  {
+                                    "id": "dashboard-user-message",
+                                    "layout": "stack",
+                                    "padding": "3",
+                                    "background": "accentSubtle",
+                                    "radius": "bubble",
+                                    "children": [
+                                      {
+                                        "id": "dashboard-user-text",
+                                        "text": "Help me plan a small project.",
+                                        "color": "accentInk"
+                                      }
+                                    ]
+                                  }
+                                ]
+                              },
+                              {
+                                "id": "dashboard-assistant-name",
+                                "text": "Example assistant",
+                                "style": "caption",
+                                "color": "muted"
+                              },
+                              {
+                                "id": "dashboard-assistant-message",
+                                "component": "ChatBubble",
+                                "props": {
+                                  "children": "Let's start with the goal, the first milestone, and what needs to happen next.",
+                                  "time": "Just now",
+                                  "usage": "Sample conversation"
+                                }
+                              }
+                            ]
+                          }
+                        ]
+                      }
+                    ]
+                  },
+                  {
+                    "id": "dashboard-new-content",
+                    "layout": "stack",
+                    "gap": "4",
+                    "padding": "6",
+                    "align": "center",
+                    "justify": "center",
+                    "grow": true,
+                    "visibleWhen": {
+                      "dashboardNew": true
+                    },
+                    "children": [
+                      {
+                        "id": "dashboard-new-title",
+                        "text": "Example assistant",
+                        "style": "title"
+                      },
+                      {
+                        "id": "dashboard-new-prompt",
+                        "text": "Pick where this session works, then say what to do.",
+                        "style": "body",
+                        "color": "muted"
+                      },
+                      {
+                        "id": "dashboard-workspace-context",
+                        "layout": "row",
+                        "gap": "3",
+                        "align": "center",
+                        "children": [
+                          {
+                            "id": "dashboard-workspace-local",
+                            "text": "Local",
+                            "style": "caption",
+                            "color": "muted"
+                          },
+                          {
+                            "id": "dashboard-workspace-agent",
+                            "text": "Agent workspace",
+                            "style": "caption",
+                            "color": "muted"
+                          }
+                        ]
+                      }
+                    ]
+                  },
+                  {
+                    "id": "dashboard-composer-center",
+                    "layout": "row",
+                    "padding": "3",
+                    "justify": "center",
+                    "children": [
+                      {
+                        "id": "dashboard-composer-width",
+                        "layout": "stack",
+                        "width": "min(100%, calc(var(--space-8) * 11 + var(--space-4)))",
+                        "children": [
+                          {
+                            "id": "dashboard-composer",
+                            "component": "ChatComposer",
+                            "props": {
+                              "effort": "Default",
+                              "model": "GPT-5.5",
+                              "placeholder": "Message Example assistant",
+                              "session": "Main session"
+                            }
+                          }
+                        ]
+                      }
+                    ]
+                  },
+                  {
+                    "id": "dashboard-preview-footer",
+                    "layout": "row",
+                    "padding": "2",
+                    "justify": "center",
+                    "children": [
+                      {
+                        "id": "dashboard-preview-note",
+                        "text": "Mock prototype. Sample data only.",
+                        "style": "caption",
+                        "color": "muted"
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "modals": [
+        {
+          "id": "limited-scope",
+          "root": {
+            "id": "dashboard-scope-root",
+            "layout": "stack",
+            "gap": "4",
+            "padding": "5",
+            "children": [
+              {
+                "id": "dashboard-scope-title",
+                "text": "One screen at a time",
+                "style": "heading"
+              },
+              {
+                "id": "dashboard-scope-description",
+                "text": "This test covers the Dashboard shell and conversation layout. Other pages and Windows implementation are intentionally out of scope.",
+                "color": "muted"
+              },
+              {
+                "id": "dashboard-scope-close",
+                "component": "Button",
+                "props": {
+                  "children": "Back to Dashboard",
+                  "variant": "primary"
+                },
+                "on": {
+                  "tap": {
+                    "closeModal": true
+                  }
+                }
+              }
+            ]
+          },
+          "title": "Main window study"
+        }
+      ]
+    }
+  ],
+  "flows": [
+    {
+      "id": "dashboard-review",
+      "name": "Main Dashboard: Windows translation test",
+      "start": "hub"
+    }
+  ]
+}
