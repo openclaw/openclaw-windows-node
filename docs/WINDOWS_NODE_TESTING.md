@@ -44,6 +44,25 @@ native architecture. These mounted tests check ordered/unordered wrapping at
 240 DIPs, reflow at 600 DIPs, and nested/loose list content and formatting.
 Keep the existing table and disposal proof in the focused run.
 
+`ReactorTimelineTailProofTests` mounts the production timeline without starting
+the app composition root or using Gateway credentials. It alternates cached
+240-message and short histories at 360 and 900 DIPs, checking the actual final
+text's viewport bounds before any manual scrolling. It also checks appended and
+streaming rows, arrivals while reading older messages, and control identity across
+token/revision updates while already at the tail.
+The native ItemsView and its scroll-controller decorator belong to one session
+and timeline generation. Session changes replace them together, so a previous
+conversation's recycler and pending bring-into-view target cannot affect the next
+conversation. Ordinary renders, history revisions, and streaming updates keep
+that control and its scroll-away state.
+
+```powershell
+dotnet test .\tests\OpenClaw.Tray.UITests\OpenClaw.Tray.UITests.csproj -r win-x64 -p:Platform=x64 --filter "FullyQualifiedName~ReactorTimelineTailProofTests|FullyQualifiedName~ReactorMarkdownListProofTests|FullyQualifiedName~ReactorMarkdownTableProofTests|FullyQualifiedName~MountedReactorChatDisposalProofTests"
+```
+
+Use `win-arm64` and `Platform=ARM64` on native ARM64 hosts. These mounted tests
+complement, rather than replace, full-app picker and Gateway-history proof.
+
 Before release or removing the pin, also exercise repeated session switching
 while a bring-into-view request is pending, using 240 mixed-height messages.
 Verify that message 240 is actually visible, not just that the current scroll
