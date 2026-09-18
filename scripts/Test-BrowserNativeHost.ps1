@@ -186,3 +186,5 @@ try {
     if ($registered) { & $exe --unregister }
     $root.Dispose()
 }
+# Expected rejection probes leave LASTEXITCODE=1. Only a fully completed proof reaches here.
+$global:LASTEXITCODE = 0
