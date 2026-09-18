@@ -9,6 +9,7 @@
 param([Parameter(Mandatory)][string]$ExecutablePath)
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
+& (Join-Path $PSScriptRoot 'test-browser-native-framing.ps1')
 $exe = (Resolve-Path -LiteralPath $ExecutablePath).Path
 $key = 'Software\Google\Chrome\NativeMessagingHosts\ai.openclaw.browser_bootstrap'
 $origin = 'chrome-extension://kcdjddhmeafeomebliikmbpblkmkfoig/'
@@ -47,11 +48,11 @@ function Read-Frame([IO.Stream]$Stream) {
     $ct = [Threading.CancellationTokenSource]::new(10000)
     try {
         $header = [byte[]]::new(4)
-        $Stream.ReadExactlyAsync([Memory[byte]]$header, $ct.Token).AsTask().GetAwaiter().GetResult()
+        [void]$Stream.ReadExactlyAsync([Memory[byte]]$header, $ct.Token).AsTask().GetAwaiter().GetResult()
         $length = [BitConverter]::ToUInt32($header, 0)
         if ($length -eq 0 -or $length -gt 4096) { throw 'Invalid response frame length.' }
         $bytes = [byte[]]::new($length)
-        $Stream.ReadExactlyAsync([Memory[byte]]$bytes, $ct.Token).AsTask().GetAwaiter().GetResult()
+        [void]$Stream.ReadExactlyAsync([Memory[byte]]$bytes, $ct.Token).AsTask().GetAwaiter().GetResult()
         [Text.Encoding]::UTF8.GetString($bytes) | ConvertFrom-Json
     } finally { $ct.Dispose() }
 }
