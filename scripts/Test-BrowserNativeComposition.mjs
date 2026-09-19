@@ -3,13 +3,14 @@ import assert from 'node:assert/strict';
 import { spawn, execFileSync } from 'node:child_process';
 import fs from 'node:fs/promises';
 import path from 'node:path';
-import os from 'node:os';
 import crypto from 'node:crypto';
+import { fileURLToPath } from 'node:url';
 
 const producerSha = '6dddf3d2eabf3316d4dcc726109adab7fdccf7ea';
-const consumerSha = '2048e9b7fa3edcf9993925f29defb17af2c52ebf';
+const consumerSha = '57f78c49d47f445b85d4859f038e8447e08983ba';
 const origin = 'chrome-extension://kcdjddhmeafeomebliikmbpblkmkfoig/';
 const nonce = 'AAAAAAAAAAAAAAAAAAAAAA';
+const fixtureConfig = { gateway: { mode: 'local', port: 18789 }, browser: { enabled: true, profiles: { chrome: { driver: 'extension', color: '#0088cc' } } } };
 const [artifact, core, receiptFile] = process.argv.slice(2);
 const receipt = { producerSha, consumerSha, syntheticPairing: false, cases: [], status: 'failed' };
 let stage = 'preflight';
@@ -19,8 +20,8 @@ let attemptedInstall = false;
 const ps = path.join(process.env.SystemRoot ?? 'C:\\Windows', 'System32', 'WindowsPowerShell', 'v1.0', 'powershell.exe');
 const baseEnv = Object.fromEntries(Object.entries(process.env).filter(([key]) => !/^(OPENCLAW_|NODE_)/i.test(key)));
 function powershell(script) {
-  return execFileSync(ps, ['-NoLogo', '-NoProfile', '-NonInteractive', '-EncodedCommand', Buffer.from(script, 'utf16le').toString('base64')],
-    { encoding: 'utf8', timeout: 30000, maxBuffer: 32768, windowsHide: true });
+  return execFileSync(ps, ['-NoLogo', '-NoProfile', '-NonInteractive', '-EncodedCommand', Buffer.from("$ProgressPreference='SilentlyContinue';" + script, 'utf16le').toString('base64')],
+    { encoding: 'utf8', timeout: 30000, maxBuffer: 262144, windowsHide: true });
 }
 function check(name) { receipt.cases.push(name); console.log('COMPOSED_CASE_OK ' + name); }
 function request(action, selected = context) {
@@ -61,11 +62,56 @@ function response(result) {
   return JSON.parse(result.out.subarray(4).toString('utf8'));
 }
 function refused(value, code) { assert.equal(value.ok, false, 'request_not_refused'); assert.equal(value.code, code, 'refusal_code'); assert.equal(value.pairingString, undefined, 'secret_on_refusal'); }
+
+function auditPaths(roles) {
+  const auditFile = fileURLToPath(new URL('./BrowserNativePathAudit.cs', import.meta.url));
+  const encoded = Buffer.from(JSON.stringify({ auditFile, roles })).toString('base64');
+  return JSON.parse(powershell("$ErrorActionPreference='Stop';$r=[Text.Encoding]::UTF8.GetString([Convert]::FromBase64String('" + encoded + "'))|ConvertFrom-Json;Add-Type -Path $r.auditFile;$result=@(foreach($p in $r.roles){$rows=@([BrowserNativePathAudit]::Inspect($p.role,$p.target,[bool]$p.privacy,[bool]$p.directory,[bool]$p.allowMissing));$bad=@($rows|Where-Object{!$_.Accepted});[ordered]@{role=$p.role;accepted=($bad.Count-eq 0);components=$rows.Count;rejections=$bad}});[Console]::Out.Write((ConvertTo-Json -InputObject $result -Depth 8 -Compress))"));
+}
+async function stateSnapshot(root) {
+  const entries = [];
+  async function walk(dir) {
+    for (const name of (await fs.readdir(dir)).sort()) {
+      const file = path.join(dir, name), stat = await fs.lstat(file);
+      assert.ok(!stat.isSymbolicLink(), 'fixture_state_symlink');
+      if (stat.isDirectory()) { assert.ok(entries.length < 256, 'fixture_state_bound'); entries.push([path.relative(root,file),'directory']); await walk(file); }
+      else { assert.ok(stat.size <= 1048576 && entries.length < 256, 'fixture_state_bound'); entries.push([path.relative(root,file),crypto.createHash('sha256').update(await fs.readFile(file)).digest('hex')]); }
+    }
+  }
+  await walk(root); return JSON.stringify(entries); // Held privately; only equality booleans reach receipts.
+}
+async function isolatedContext(root, name) {
+  const stateDir = path.join(root,name); await fs.mkdir(stateDir);
+  const configPath = path.join(stateDir,'openclaw.json');
+  await fs.writeFile(configPath,JSON.stringify(fixtureConfig),{flag:'wx'});
+  return { ...context, stateDir: await fs.realpath(stateDir), configPath: await fs.realpath(configPath) };
+}
+async function observePriorGeneration(installation, priorContext, packet) {
+  const before = await stateSnapshot(priorContext.stateDir);
+  const observed = { responseKind: 'execution_failed', responseOk: false, explicitlyRefused: false, pairingEmitted: false, code: null, stateChanged: false };
+  let result;
+  try { result = await exchange(installation.launcherPath,[origin],packet); }
+  catch { /* Preserve post-launch state evidence even on timeout or transport failure. */ }
+  finally { observed.stateChanged = before !== await stateSnapshot(priorContext.stateDir); }
+  if (!result) return observed;
+  observed.responseKind = result.out.length === 0 ? 'no_response' : 'invalid_response';
+  observed.exitCode = result.code;
+  try {
+    const body = response(result);
+    observed.responseOk = body?.ok === true;
+    observed.pairingEmitted = typeof body?.pairingString === 'string';
+    observed.code = typeof body?.code === 'string' && /^[a-z_]+$/.test(body.code) ? body.code : null;
+    observed.explicitlyRefused = body?.v === 1 && body?.ok === false && observed.code !== null && Object.keys(body).sort().join(',') === 'code,ok,v';
+    observed.responseKind = observed.explicitlyRefused ? 'typed_refusal' : observed.responseOk ? 'success' : 'invalid_response';
+  } catch { /* Only classifications/booleans, never raw responses, enter the receipt. */ }
+  return observed;
+}
+
 try {
   assert.equal(process.platform, 'win32', 'native_Windows_required');
   assert.equal(process.env.GITHUB_ACTIONS, 'true', 'disposable_GitHub_runner_required');
   assert.equal(process.env.RUNNER_ENVIRONMENT, 'github-hosted', 'self_hosted_runner_refused');
-  assert.ok(artifact && core && receiptFile, 'explicit_artifact_core_receipt_required');
+  assert.ok(artifact && core && receiptFile && process.env.COMPOSED_PRIVATE_ROOT, 'explicit_private_artifact_core_receipt_required');
   assert.equal(execFileSync('git', ['-C', core, 'rev-parse', 'HEAD'], { encoding: 'utf8' }).trim(), consumerSha, 'consumer_revision');
   const platform = await fs.readFile(path.join(core, 'extensions/browser/src/browser/extension-windows-platform.ts'), 'utf8');
   assert.ok(platform.includes('S-1-5-80-956008885-3418522649-1831038044-1853292631-2271478464'), 'pinned_TrustedInstaller_ancestor_rule');
@@ -78,7 +124,7 @@ try {
     "[Console]::Out.Write((ConvertTo-Json -Compress @{local=$local;sid=[Security.Principal.WindowsIdentity]::GetCurrent().User.Value}))"));
   stage = 'private-fixture';
   // Windows TEMP may contain an 8.3 alias. The production contract requires canonical paths.
-  const fixture = await fs.realpath(await fs.mkdtemp(path.join(os.tmpdir(), 'OpenClawComposed-')));
+  const fixture = await fs.realpath(await fs.mkdtemp(path.join(process.env.COMPOSED_PRIVATE_ROOT, 'fixture-')));
   const encoded = Buffer.from(fixture).toString('base64');
   powershell("$ErrorActionPreference='Stop';$p=[Text.Encoding]::UTF8.GetString([Convert]::FromBase64String('" + encoded + "'));$sid=[Security.Principal.WindowsIdentity]::GetCurrent().User;$acl=[Security.AccessControl.DirectorySecurity]::new();$acl.SetAccessRuleProtection($true,$false);$acl.SetOwner($sid);foreach($s in @($sid.Value,'S-1-5-18','S-1-5-32-544')){$acl.AddAccessRule([Security.AccessControl.FileSystemAccessRule]::new([Security.Principal.SecurityIdentifier]::new($s),'FullControl','ContainerInherit,ObjectInherit','None','Allow'))};[IO.Directory]::SetAccessControl($p,$acl)");
   executable = path.join(fixture, 'OpenClaw.BrowserBootstrap.exe');
@@ -89,7 +135,7 @@ try {
   assert.equal(await hash(executable), receipt.producerExecutableSha256, 'producer_copy_hash');
   const state = path.join(fixture, 'state'); await fs.mkdir(state);
   const configPath = path.join(state, 'openclaw.json');
-  await fs.writeFile(configPath, JSON.stringify({ gateway: { mode: 'local', port: 18789 }, browser: { enabled: true, profiles: { chrome: { driver: 'extension', color: '#0088cc' } } } }), { flag: 'wx' });
+  await fs.writeFile(configPath, JSON.stringify(fixtureConfig), { flag: 'wx' });
   context = { nodePath: await fs.realpath(process.execPath), cliPath: await fs.realpath(path.join(core, 'openclaw.mjs')), stateDir: await fs.realpath(state), configPath: await fs.realpath(configPath), browserProfile: 'chrome' };
   // Read-only diagnostics distinguish fixture aliases/reparse ancestors from product failures.
   receipt.pathChecks = {};
@@ -100,6 +146,13 @@ try {
     receipt.pathChecks[role] = { canonical: checks.every((entry) => entry.canonical), symbolicAncestors: checks.some((entry) => entry.symbolic) };
   }
   assert.ok(Object.values(receipt.pathChecks).every((entry) => entry.canonical && !entry.symbolicAncestors), 'fixture_path_admission');
+  stage = 'win32-path-audit';
+  receipt.admission = auditPaths([
+    {role:'producer',target:executable}, {role:'node',target:context.nodePath}, {role:'cli',target:context.cliPath},
+    {role:'state',target:context.stateDir,privacy:true,directory:true}, {role:'config',target:context.configPath,privacy:true},
+    {role:'generation-root',target:path.join(known.local,'OpenClawTray','browser-native','generations'),privacy:true,directory:true,allowMissing:true},
+  ]);
+  assert.ok(receipt.admission.every((entry) => entry.accepted), 'win32_admission_failed');
   stage = 'management-before-eof';
   refused(await manage(request('install'), false), 'invalid_request');
   check('management_missing_eof_rejected');
@@ -142,7 +195,37 @@ try {
   stage = 'final-generation-inspection';
   const inspected = await manage(request('inspect')); assert.equal(inspected.installation.generation, installation.generation); assert.equal(inspected.ok, true);
   check('rejections_preserve_original_generation');
-  receipt.status = 'passed';
+  // Investigate registry lifecycle authority without modifying generation files or adding a bypass flag.
+  stage = 'revoked-generation-investigation';
+  const removedOriginal = await manage(request('uninstall')); assert.equal(removedOriginal.ok,true); assert.equal(removedOriginal.registration,'missing');
+  context = await isolatedContext(fixture,'revoked-state');
+  const revokedFresh = await stateSnapshot(context.stateDir);
+  const revokeInstall = await manage(request('install')); assert.equal(revokeInstall.ok,true);
+  receipt.revocationPrepublicationStateChanged = revokedFresh !== await stateSnapshot(context.stateDir);
+  const removedRevoked = await manage(request('uninstall')); assert.equal(removedRevoked.ok,true); assert.equal(removedRevoked.registration,'missing');
+  receipt.revokedGeneration = await observePriorGeneration(revokeInstall.installation,context,packet);
+  const revokedPostState = await manage(request('inspect'));
+  receipt.revokedGeneration.registrationRemainsMissing = revokedPostState.ok && revokedPostState.registration === 'missing';
+  assert.ok(receipt.revokedGeneration.registrationRemainsMissing, 'revoked_registration_reappeared');
+  stage = 'reassigned-generation-investigation';
+  context = await isolatedContext(fixture,'previous-state');
+  const previousContext = context;
+  const previous = await manage(request('install')); assert.equal(previous.ok,true);
+  const removedPrevious = await manage(request('uninstall')); assert.equal(removedPrevious.ok,true); assert.equal(removedPrevious.registration,'missing');
+  context = await isolatedContext(fixture,'replacement-state');
+  const replacement = await manage(request('install')); assert.equal(replacement.ok,true);
+  assert.notEqual(replacement.installation.generation,previous.installation.generation);
+  const replacementBefore = await stateSnapshot(context.stateDir);
+  receipt.reassignedGeneration = await observePriorGeneration(previous.installation,previousContext,packet);
+  receipt.reassignedGeneration.replacementStateChanged = replacementBefore !== await stateSnapshot(context.stateDir);
+  const current = await manage(request('inspect'));
+  assert.equal(current.ok,true); assert.equal(current.installation.generation,replacement.installation.generation);
+  receipt.reassignedGeneration.activeRegistrationPreserved = true;
+  // A positive prior-launcher result is evidence requiring agreed-contract review, not a new revocation policy.
+  const rejectedWithoutEffects = (entry) => entry.explicitlyRefused && !entry.pairingEmitted && !entry.stateChanged;
+  if (receipt.revocationPrepublicationStateChanged || !rejectedWithoutEffects(receipt.revokedGeneration) || !rejectedWithoutEffects(receipt.reassignedGeneration) || receipt.reassignedGeneration.replacementStateChanged) {
+    receipt.status = 'authority_review_required'; process.exitCode = 1;
+  } else { check('revoked_and_reassigned_generations_rejected_without_state_effects'); receipt.status = 'passed'; }
 } catch (error) {
   // Never serialize native stdout, pairing strings, config contents or a child diagnostic.
   receipt.failureStage = stage;

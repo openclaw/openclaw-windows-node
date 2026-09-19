@@ -6,6 +6,8 @@ on:
     paths:
       - .github/workflows/browser-native-composed-proof.yml
       - scripts/Test-BrowserNativeComposition.mjs
+      - scripts/Initialize-BrowserNativeComposition.ps1
+      - scripts/BrowserNativePathAudit.cs
 
 permissions:
   contents: read
@@ -23,7 +25,7 @@ jobs:
       - uses: actions/checkout@v7
         with:
           repository: openclaw/openclaw
-          ref: 2048e9b7fa3edcf9993925f29defb17af2c52ebf
+          ref: 57f78c49d47f445b85d4859f038e8447e08983ba
           path: consumer
           persist-credentials: false
       - uses: actions/setup-node@v4
@@ -50,13 +52,19 @@ jobs:
           github-token: ${{ github.token }}
           path: artifact
           merge-multiple: true
+      - name: Audit original runtime ACLs and create private exact installation
+        shell: pwsh
+        run: |
+          if ((git -C producer rev-parse HEAD:src).Trim() -cne 'ea2e65d057b0efaea8dbddc229548a9f34843196') { throw 'Producer product source changed; artifact pin must be reviewed.' }
+          ./producer/scripts/Initialize-BrowserNativeComposition.ps1 -Consumer "${{ github.workspace }}/consumer" -Receipt "${{ runner.temp }}/composed-path-audit.json"
+          if ($LASTEXITCODE -ne 0) { throw 'Private runtime preparation failed; see redacted path audit.' }
       - name: Build exact canonical runtime without changing its source
-        working-directory: consumer
+        working-directory: ${{ env.COMPOSED_PRIVATE_CORE }}
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
-          if ((git rev-parse HEAD).Trim() -cne '2048e9b7fa3edcf9993925f29defb17af2c52ebf') { throw 'Consumer revision mismatch.' }
-          pnpm install --frozen-lockfile
+          if ((git rev-parse HEAD).Trim() -cne '57f78c49d47f445b85d4859f038e8447e08983ba') { throw 'Consumer revision mismatch.' }
+          pnpm install --frozen-lockfile --store-dir "$env:COMPOSED_PRIVATE_ROOT/store" --package-import-method=copy
           if ($LASTEXITCODE -ne 0) { throw 'Pinned consumer dependency install failed.' }
           pnpm build:docker
           if ($LASTEXITCODE -ne 0) { throw 'Pinned consumer runtime build failed.' }
@@ -65,13 +73,15 @@ jobs:
       - name: Execute real management generation admission pairing and rejection chain
         shell: pwsh
         run: |
-          node producer/scripts/Test-BrowserNativeComposition.mjs "${{ github.workspace }}/artifact" "${{ github.workspace }}/consumer" "${{ runner.temp }}/composed-native-receipt.json"
+          & $env:COMPOSED_PRIVATE_NODE producer/scripts/Test-BrowserNativeComposition.mjs "${{ github.workspace }}/artifact" $env:COMPOSED_PRIVATE_CORE "${{ runner.temp }}/composed-native-receipt.json"
           if ($LASTEXITCODE -ne 0) { throw 'Composed native proof failed; see redacted receipt.' }
       - name: Retain redacted terminal receipt only
         if: always()
         uses: actions/upload-artifact@v7
         with:
           name: browser-native-composed-receipt
-          path: ${{ runner.temp }}/composed-native-receipt.json
+          path: |
+            ${{ runner.temp }}/composed-native-receipt.json
+            ${{ runner.temp }}/composed-path-audit.json
           if-no-files-found: warn
           retention-days: 7
