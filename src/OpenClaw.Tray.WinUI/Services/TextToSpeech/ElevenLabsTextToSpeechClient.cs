@@ -1,4 +1,5 @@
 using System;
+using System.IO;
 using System.Net;
 using System.Net.Http;
 using System.Net.Http.Headers;
@@ -28,6 +29,7 @@ public sealed class ElevenLabsTextToSpeechClient : IDisposable
 {
     private const string DefaultBaseUrl = "https://api.elevenlabs.io";
     public const int MaxTextLength = TtsCapability.MaxTextLength;
+    internal const int MaxResponseBytes = 32 * 1024 * 1024;
     internal static readonly TimeSpan DefaultTimeout = TimeSpan.FromSeconds(30);
     private readonly HttpClient _httpClient;
     private readonly bool _ownsHttpClient;
@@ -82,7 +84,7 @@ public sealed class ElevenLabsTextToSpeechClient : IDisposable
             httpRequest,
             HttpCompletionOption.ResponseHeadersRead,
             cancellationToken).ConfigureAwait(false);
-        var bytes = await response.Content.ReadAsByteArrayAsync(cancellationToken).ConfigureAwait(false);
+        var bytes = await ReadBoundedResponseAsync(response.Content, cancellationToken).ConfigureAwait(false);
 
         if (!response.IsSuccessStatusCode)
             throw new InvalidOperationException(BuildFailureMessage(response.StatusCode, bytes));
@@ -94,6 +96,33 @@ public sealed class ElevenLabsTextToSpeechClient : IDisposable
             AudioBytes = bytes,
             ContentType = response.Content.Headers.ContentType?.MediaType ?? "audio/mpeg"
         };
+    }
+
+    private static async Task<byte[]> ReadBoundedResponseAsync(
+        HttpContent content,
+        CancellationToken cancellationToken)
+    {
+        if (content.Headers.ContentLength is > MaxResponseBytes)
+            throw new InvalidOperationException($"ElevenLabs response exceeds {MaxResponseBytes} bytes.");
+
+        var initialCapacity = content.Headers.ContentLength is > 0 and <= MaxResponseBytes
+            ? (int)content.Headers.ContentLength.Value
+            : 0;
+        using var destination = new MemoryStream(initialCapacity);
+        using var source = await content.ReadAsStreamAsync(cancellationToken).ConfigureAwait(false);
+        var buffer = new byte[64 * 1024];
+        while (true)
+        {
+            var read = await source.ReadAsync(buffer.AsMemory(), cancellationToken).ConfigureAwait(false);
+            if (read == 0)
+                break;
+            if (destination.Length + read > MaxResponseBytes)
+                throw new InvalidOperationException($"ElevenLabs response exceeds {MaxResponseBytes} bytes.");
+
+            await destination.WriteAsync(buffer.AsMemory(0, read), cancellationToken).ConfigureAwait(false);
+        }
+
+        return destination.ToArray();
     }
 
     internal static string BuildFailureMessage(HttpStatusCode statusCode, byte[] bodyBytes)
