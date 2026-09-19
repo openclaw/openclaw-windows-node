@@ -19,7 +19,6 @@ jobs:
       OPENCLAW_REPO_ROOT: ${{ github.workspace }}
       OPENCLAW_RUN_E2E: '1'
       OPENCLAW_BROWSER_WSL_TRACE: '1'
-      OPENCLAW_WSL_TRACE_RECEIPT: ${{ runner.temp }}/browser-wsl-guest-receipt.json
     steps:
       - uses: actions/checkout@v7
         with:
@@ -30,6 +29,7 @@ jobs:
         run: |
           git diff --exit-code 783f178ca5579d057d4799fceb5cec5e8c4d69f8 HEAD -- src .github/workflows/browser-native-composed-proof.yml scripts/Test-BrowserNativeComposition.mjs scripts/Initialize-BrowserNativeComposition.ps1
           if ($LASTEXITCODE -ne 0) { throw 'Frozen production/native proof changed.' }
+          "OPENCLAW_WSL_TRACE_RECEIPT=$env:RUNNER_TEMP/browser-wsl-guest-receipt.json" >> $env:GITHUB_ENV
       - uses: actions/setup-dotnet@v6
         with:
           dotnet-version: '10.0.x'
