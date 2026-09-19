@@ -3,11 +3,15 @@ $ErrorActionPreference = 'Stop'
 $ProgressPreference = 'SilentlyContinue'
 $result = [ordered]@{ status='failed'; stage='preflight'; consumerSha='57f78c49d47f445b85d4859f038e8447e08983ba' }
 try {
+    $result.host = @{ windows=[bool]$IsWindows; githubActions=($env:GITHUB_ACTIONS -ceq 'true'); githubHosted=($env:RUNNER_ENVIRONMENT -ceq 'github-hosted') }
     if ($env:GITHUB_ACTIONS -cne 'true' -or $env:RUNNER_ENVIRONMENT -cne 'github-hosted' -or !$IsWindows) { throw 'Disposable Windows required' }
+    $result.stage = 'audit-helper-compilation'
     Add-Type -Path (Join-Path $PSScriptRoot 'BrowserNativePathAudit.cs')
+    $result.stage = 'canonical-node'
     $node = (Get-Command node.exe -CommandType Application).Source
     $node = (& $node -e 'process.stdout.write(require("node:fs").realpathSync(process.execPath))')
     if ($LASTEXITCODE -ne 0) { throw 'Node canonicalization failed' }
+    $result.stage = 'canonical-cli'
     $cli = (& $node -e 'process.stdout.write(require("node:fs").realpathSync(process.argv[1]))' (Join-Path $Consumer 'openclaw.mjs'))
     if ($LASTEXITCODE -ne 0) { throw 'CLI canonicalization failed' }
     $result.stage = 'original-path-audit'
@@ -48,6 +52,10 @@ try {
     $result.status = 'passed'
 } catch {
     $result.failure = 'private_runtime_preparation_failed'
+    $result.exceptionType = $_.Exception.GetType().Name
+    $result.errorId = if ($_.FullyQualifiedErrorId -cmatch '^[A-Za-z_][A-Za-z0-9_.]*(,[A-Za-z_][A-Za-z0-9_.]*)?$') { $_.FullyQualifiedErrorId } else { 'withheld' }
+    $result.compilerCodes = @([regex]::Matches($_.Exception.Message,'\bCS[0-9]{4}\b') | ForEach-Object { $_.Value } | Select-Object -Unique)
+    # Exception messages, invocation details and private paths/SIDs remain withheld.
 } finally {
     $result | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath $Receipt -Encoding utf8
     # Receipt contains roles, ancestor distances, rule names and permission bits, never paths or SIDs.
