@@ -54,6 +54,7 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands, IPer
     private GatewayConnectionManager? _connectionManager;
     private GatewayDirectConnectService? _gatewayDirectConnectService;
     private GatewayRegistry? _gatewayRegistry;
+    private BrowserBootstrapHost? _browserBootstrapHost;
     private OpenClawTray.Services.ManagedLocalGatewayAutoRepairMonitor? _managedLocalAutoRepairMonitor;
     private ManagedLocalGatewayPortProvenanceService? _managedLocalPortProvenance;
     private OpenClawTray.Chat.OpenClawChatCoordinator? _chatCoordinator;
@@ -818,6 +819,12 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands, IPer
             validationTunnelFactory: () => new SshTunnelService(appLogger));
         _connectionManager.OperatorClientChanged += OnOperatorClientChanged;
         _connectionManager.StateChanged += OnManagerStateChanged;
+        // Release identity only: isolated/dev instances must never claim Chrome's production host.
+        if (!AppIdentity.IsDev && string.IsNullOrEmpty(Environment.GetEnvironmentVariable("OPENCLAW_TRAY_DATA_DIR")))
+        {
+            _browserBootstrapHost = new BrowserBootstrapHost(_gatewayRegistry, _connectionManager, _settings, managedLocalPortProvenance);
+            _browserBootstrapHost.Start();
+        }
         _gatewayDirectConnectService = new GatewayDirectConnectService(
             _connectionManager,
             _gatewayRegistry,

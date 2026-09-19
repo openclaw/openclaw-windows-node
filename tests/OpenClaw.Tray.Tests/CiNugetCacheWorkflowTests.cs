@@ -9,6 +9,7 @@ public sealed class CiNugetCacheWorkflowTests
         "tests/OpenClaw.Shared.Tests/OpenClaw.Shared.Tests.csproj",
         "tests/OpenClaw.Connection.Tests/OpenClaw.Connection.Tests.csproj",
         "tests/OpenClaw.WinNode.Cli.Tests/OpenClaw.WinNode.Cli.Tests.csproj",
+        "tests/OpenClaw.BrowserBootstrap.Tests/OpenClaw.BrowserBootstrap.Tests.csproj",
     ];
 
     [Fact]
@@ -63,7 +64,7 @@ public sealed class CiNugetCacheWorkflowTests
         var cacheStep = ExtractStep(coreJob, "Cache NuGet packages", "Restore core test projects");
 
         var projectGraph = GetProjectGraph(root);
-        Assert.Equal(9, projectGraph.Count);
+        Assert.Equal(12, projectGraph.Count);
 
         foreach (var buildInput in GetBuildInputs(root, projectGraph))
             Assert.Contains($"'{buildInput}'", cacheStep, StringComparison.Ordinal);
@@ -98,7 +99,7 @@ public sealed class CiNugetCacheWorkflowTests
                 var include = reference.Attribute("Include")?.Value;
                 Assert.False(string.IsNullOrWhiteSpace(include), $"ProjectReference has no Include in {project}");
 
-                var referencedPath = Path.GetFullPath(Path.Combine(projectDirectory, include));
+                var referencedPath = Path.GetFullPath(Path.Combine(projectDirectory, include.Replace('\\', Path.DirectorySeparatorChar)));
                 pending.Push(Path.GetRelativePath(root, referencedPath).Replace('\\', '/'));
             }
         }
@@ -168,7 +169,7 @@ public sealed class CiNugetCacheWorkflowTests
             if (string.IsNullOrWhiteSpace(project) || project.Contains("$(", StringComparison.Ordinal))
                 continue;
 
-            var importedPath = Path.GetFullPath(Path.Combine(buildDirectory, project));
+            var importedPath = Path.GetFullPath(Path.Combine(buildDirectory, project.Replace('\\', Path.DirectorySeparatorChar)));
             if (File.Exists(importedPath))
                 AddBuildFileAndImports(root, importedPath, inputs);
         }

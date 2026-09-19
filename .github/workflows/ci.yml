@@ -110,6 +110,10 @@ jobs:
       shell: pwsh
       run: ./scripts/test-ci-workflow-contract.ps1
 
+    - name: Compile browser management Pascal include
+      shell: pwsh
+      run: ./scripts/Test-BrowserBootstrapCompile.ps1
+
     - name: Validate MSIX CI artifacts
       shell: pwsh
       run: ./scripts/test-msix-ci-artifacts.ps1
@@ -266,6 +270,11 @@ jobs:
             'tests/OpenClaw.TestSupport/Directory.Build.props',
             'tests/OpenClaw.Shared.TestHost/Directory.Build.props',
             'src/OpenClaw.Shared/OpenClaw.Shared.csproj',
+            'src/OpenClaw.BrowserBootstrap/OpenClaw.BrowserBootstrap.csproj',
+            'src/OpenClaw.BrowserBootstrap.Contracts/OpenClaw.BrowserBootstrap.Contracts.csproj',
+            'src/OpenClaw.BrowserBootstrap/Directory.Build.targets',
+            'src/OpenClaw.BrowserBootstrap.Contracts/Directory.Build.targets',
+            'tests/OpenClaw.BrowserBootstrap.Tests/OpenClaw.BrowserBootstrap.Tests.csproj',
             'src/OpenClaw.Connection/OpenClaw.Connection.csproj',
             'src/OpenClaw.Cli/OpenClaw.Cli.csproj',
             'src/OpenClaw.WinNode.Cli/OpenClaw.WinNode.Cli.csproj',
@@ -281,6 +290,7 @@ jobs:
         dotnet restore tests/OpenClaw.Shared.Tests
         dotnet restore tests/OpenClaw.Connection.Tests
         dotnet restore tests/OpenClaw.WinNode.Cli.Tests
+        dotnet restore tests/OpenClaw.BrowserBootstrap.Tests
 
     - name: Install dotnet-coverage
       if: ${{ github.event_name != 'pull_request' }}
@@ -291,6 +301,7 @@ jobs:
         dotnet build tests/OpenClaw.Shared.Tests -c Debug --no-restore
         dotnet build tests/OpenClaw.Connection.Tests -c Debug --no-restore
         dotnet build tests/OpenClaw.WinNode.Cli.Tests -c Debug --no-restore
+        dotnet build tests/OpenClaw.BrowserBootstrap.Tests -c Debug --no-restore
 
     - name: Run Shared Tests
       env:
@@ -307,6 +318,13 @@ jobs:
         -Project tests/OpenClaw.Connection.Tests
         -ResultsDirectory TestResults\Connection
         -TrxFileName OpenClaw.Connection.Tests.trx
+
+    - name: Run Browser Bootstrap Contract Tests
+      run: >
+        ./scripts/Invoke-CiTest.ps1
+        -Project tests/OpenClaw.BrowserBootstrap.Tests
+        -ResultsDirectory TestResults\BrowserBootstrap
+        -TrxFileName OpenClaw.BrowserBootstrap.Tests.trx
 
     - name: Run WinNode CLI Tests
       run: >
@@ -736,6 +754,21 @@ jobs:
     - name: Publish WinUI Tray App
       run: dotnet publish src/OpenClaw.Tray.WinUI -c Release -r win-x64 --self-contained --no-restore -o publish -p:Version=$env:OPENCLAW_BUILD_VERSION -p:InformationalVersion=$env:OPENCLAW_BUILD_VERSION
 
+    - name: Prove packaged native browser host
+      shell: pwsh
+      run: ./scripts/Test-BrowserNativeHost.ps1 -ExecutablePath publish/tools/browser-bootstrap/OpenClaw.BrowserBootstrap.exe
+
+    - name: Compile bounded installer management transport
+      shell: pwsh
+      run: |
+        $compiler = "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe"
+        if (-not (Test-Path -LiteralPath $compiler)) { choco install innosetup -y --no-progress; if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE } }
+        & $compiler /DMyAppVersion=0.0.0 /DMyAppArch=x64 /Dpublish=publish /DMyCompression=none /DMySolidCompression=no "/O$env:RUNNER_TEMP\browser-installer-compile" installer.iss
+        if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+        # Only a dedicated fixture installation on the disposable hosted runner is executed.
+        ./scripts/Test-BrowserBootstrapInstaller.ps1 -ExecutablePath publish/tools/browser-bootstrap/OpenClaw.BrowserBootstrap.exe -CompilerPath $compiler
+        if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
     - name: Verify x64 Native Runtime Payload
       shell: pwsh
       run: .\scripts\Test-ReleaseNativeDependencies.ps1 -PayloadPath publish -RequireAppLocalVCRuntime
@@ -791,6 +824,10 @@ jobs:
 
     - name: Publish WinUI Tray App
       run: dotnet publish src/OpenClaw.Tray.WinUI -c Release -r win-arm64 --self-contained --no-restore -o publish -p:Version=$env:OPENCLAW_BUILD_VERSION -p:InformationalVersion=$env:OPENCLAW_BUILD_VERSION
+
+    - name: Prove packaged native browser host
+      shell: pwsh
+      run: ./scripts/Test-BrowserNativeHost.ps1 -ExecutablePath publish/tools/browser-bootstrap/OpenClaw.BrowserBootstrap.exe
 
     - name: Verify ARM64 Native Runtime Payload
       shell: pwsh
@@ -1017,11 +1054,14 @@ jobs:
           "OpenClaw.Connection.dll",
           "OpenClaw.SetupEngine.UI.dll",
           "OpenClaw.SetupEngine.dll",
-          "OpenClaw.Shared.dll",
+          "OpenClaw.Shared.dll", "OpenClaw.BrowserBootstrap.Contracts.dll",
           "OpenClawTray.FunctionalUI.dll"
         )
         foreach ($binary in $openClawBinaries) {
           New-Item -ItemType HardLink -Path "signing-input-x64\$binary" -Target "artifacts\tray-win-x64\$binary" | Out-Null
+        }
+        foreach ($binary in @("OpenClaw.BrowserBootstrap.exe")) {
+          New-Item -ItemType HardLink -Path "signing-input-x64\$binary" -Target "artifacts\tray-win-x64\tools\browser-bootstrap\$binary" | Out-Null
         }
 
     - name: Stage ARM64 OpenClaw Binaries for Signing
@@ -1035,11 +1075,14 @@ jobs:
           "OpenClaw.Connection.dll",
           "OpenClaw.SetupEngine.UI.dll",
           "OpenClaw.SetupEngine.dll",
-          "OpenClaw.Shared.dll",
+          "OpenClaw.Shared.dll", "OpenClaw.BrowserBootstrap.Contracts.dll",
           "OpenClawTray.FunctionalUI.dll"
         )
         foreach ($binary in $openClawBinaries) {
           New-Item -ItemType HardLink -Path "signing-input-arm64\$binary" -Target "artifacts\tray-win-arm64\$binary" | Out-Null
+        }
+        foreach ($binary in @("OpenClaw.BrowserBootstrap.exe")) {
+          New-Item -ItemType HardLink -Path "signing-input-arm64\$binary" -Target "artifacts\tray-win-arm64\tools\browser-bootstrap\$binary" | Out-Null
         }
 
     - name: Sign x64 OpenClaw Binaries

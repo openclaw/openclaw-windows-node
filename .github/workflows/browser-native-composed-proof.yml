@@ -1,0 +1,101 @@
+name: Browser native composed proof
+
+on:
+  push:
+    branches: [openclaw/automatic-chrome-extension-pairing]
+    paths:
+      - .github/workflows/browser-native-composed-proof.yml
+      - scripts/Test-BrowserNativeComposition.mjs
+      - scripts/Initialize-BrowserNativeComposition.ps1
+      - scripts/BrowserNativePathAudit.cs
+      - scripts/Control-BrowserNativeProofChild.ps1
+      - scripts/BrowserNativeProofTiming.mjs
+      - scripts/BrowserNativeProofTiming.test.mjs
+      - src/OpenClaw.BrowserBootstrap/**
+      - src/OpenClaw.BrowserBootstrap.Contracts/**
+      - src/OpenClaw.Shared/Browser/**
+      - tests/OpenClaw.BrowserBootstrap.Tests/**
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  composed-native:
+    runs-on: windows-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          path: producer
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/checkout@v7
+        with:
+          repository: openclaw/openclaw
+          ref: 57f78c49d47f445b85d4859f038e8447e08983ba
+          path: consumer
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24.16.0'
+      - uses: pnpm/action-setup@v4
+        with:
+          version: '12.4.0'
+          run_install: false
+      - uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: '10.0.x'
+      - name: Verify proof ordering instrumentation
+        shell: pwsh
+        run: node --test producer/scripts/BrowserNativeProofTiming.test.mjs
+      - name: Build and identify the current reviewed producer
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          if ((git -C producer rev-parse HEAD).Trim() -cne $env:GITHUB_SHA) { throw 'Producer source identity mismatch.' }
+          dotnet test producer/tests/OpenClaw.BrowserBootstrap.Tests/OpenClaw.BrowserBootstrap.Tests.csproj -c Release
+          if ($LASTEXITCODE -ne 0) { throw 'Current producer tests failed.' }
+          dotnet publish producer/src/OpenClaw.BrowserBootstrap/OpenClaw.BrowserBootstrap.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -o artifact/tools/browser-bootstrap
+          if ($LASTEXITCODE -ne 0) { throw 'Current producer build failed.' }
+          $image = Get-FileHash artifact/tools/browser-bootstrap/OpenClaw.BrowserBootstrap.exe -Algorithm SHA256
+          @{producerSha=$env:GITHUB_SHA;executableSha256=$image.Hash.ToLowerInvariant()} | ConvertTo-Json -Compress | Set-Content artifact/producer-source.json -Encoding utf8NoBOM
+      - name: Retain the new producer artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: browser-native-producer-${{ github.sha }}
+          path: artifact/
+          retention-days: 7
+      - name: Audit original runtime ACLs and create private exact installation
+        shell: pwsh
+        run: |
+          if ((git -C producer rev-parse HEAD).Trim() -cne $env:GITHUB_SHA) { throw 'Producer checkout changed.' }
+          ./producer/scripts/Initialize-BrowserNativeComposition.ps1 -Consumer "${{ github.workspace }}/consumer" -Receipt "${{ runner.temp }}/composed-path-audit.json"
+          if ($LASTEXITCODE -ne 0) { throw 'Private runtime preparation failed; see redacted path audit.' }
+      - name: Build exact canonical runtime without changing its source
+        working-directory: ${{ env.COMPOSED_PRIVATE_CORE }}
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          if ((git rev-parse HEAD).Trim() -cne '57f78c49d47f445b85d4859f038e8447e08983ba') { throw 'Consumer revision mismatch.' }
+          pnpm install --frozen-lockfile --store-dir "$env:COMPOSED_PRIVATE_ROOT/store" --package-import-method=copy
+          if ($LASTEXITCODE -ne 0) { throw 'Pinned consumer dependency install failed.' }
+          pnpm build:docker
+          if ($LASTEXITCODE -ne 0) { throw 'Pinned consumer runtime build failed.' }
+          git diff --exit-code
+          if ($LASTEXITCODE -ne 0) { throw 'Consumer tracked source changed during build.' }
+      - name: Execute real management generation admission pairing and rejection chain
+        shell: pwsh
+        run: |
+          & $env:COMPOSED_PRIVATE_NODE producer/scripts/Test-BrowserNativeComposition.mjs "${{ github.workspace }}/artifact" $env:COMPOSED_PRIVATE_CORE "${{ runner.temp }}/composed-native-receipt.json"
+          if ($LASTEXITCODE -ne 0) { throw 'Composed native proof failed; see redacted receipt.' }
+      - name: Retain redacted terminal receipt only
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: browser-native-composed-receipt
+          path: |
+            ${{ runner.temp }}/composed-native-receipt.json
+            ${{ runner.temp }}/composed-path-audit.json
+          if-no-files-found: warn
+          retention-days: 7
