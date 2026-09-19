@@ -1,5 +1,5 @@
-; Shared by installer AND uninstaller. Fixed argv, bounded stdin/stdout, no shell or JSON command-line interpolation.
-; Native process containment and EOF completion are distinct from Chrome's EOF revocation.
+// Shared by installer AND uninstaller. Fixed argv, bounded stdin/stdout, no shell or JSON command-line interpolation.
+// Native process containment and EOF completion are distinct from Chrome's EOF revocation.
 function BBCreatePipe(var R, W: NativeInt; SA: AnsiString; Size: Cardinal): Boolean;
   external 'CreatePipe@kernel32.dll stdcall';
 function BBHandleFlags(H: NativeInt; Mask, Flags: Cardinal): Boolean;
