@@ -1,0 +1,75 @@
+name: Browser WSL guest component trace
+
+on:
+  push:
+    branches: [openclaw/automatic-chrome-extension-pairing]
+    paths:
+      - .github/workflows/browser-wsl-guest-trace.yml
+      - scripts/BrowserWslGuestTrace.py
+      - tests/OpenClaw.E2ETests/Setup/BrowserWslGuestTraceTests.cs
+
+permissions:
+  contents: read
+
+jobs:
+  guest-trace:
+    runs-on: windows-latest
+    timeout-minutes: 40
+    env:
+      OPENCLAW_REPO_ROOT: ${{ github.workspace }}
+      OPENCLAW_RUN_E2E: '1'
+      OPENCLAW_BROWSER_WSL_TRACE: '1'
+      OPENCLAW_WSL_TRACE_RECEIPT: ${{ runner.temp }}/browser-wsl-guest-receipt.json
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Verify frozen production and accepted native proof
+        shell: pwsh
+        run: |
+          git diff --exit-code 783f178ca5579d057d4799fceb5cec5e8c4d69f8 HEAD -- src .github/workflows/browser-native-composed-proof.yml scripts/Test-BrowserNativeComposition.mjs scripts/Initialize-BrowserNativeComposition.ps1
+          if ($LASTEXITCODE -ne 0) { throw 'Frozen production/native proof changed.' }
+      - uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: '10.0.x'
+      - name: Build existing managed WSL setup fixture
+        shell: pwsh
+        run: |
+          dotnet restore src/OpenClaw.Tray.WinUI -r win-x64
+          if ($LASTEXITCODE -ne 0) { throw 'Tray restore failed.' }
+          dotnet restore tests/OpenClaw.E2ETests -r win-x64
+          if ($LASTEXITCODE -ne 0) { throw 'Fixture restore failed.' }
+          dotnet build src/OpenClaw.Tray.WinUI -c Debug -r win-x64 --no-restore
+          if ($LASTEXITCODE -ne 0) { throw 'Tray build failed.' }
+          dotnet build tests/OpenClaw.E2ETests -c Debug -r win-x64 --no-restore
+          if ($LASTEXITCODE -ne 0) { throw 'Fixture build failed.' }
+      - name: Trace exact owner in disposable managed WSL fixture
+        shell: pwsh
+        run: |
+          # Existing setup diagnostics may include synthetic fixture credentials.
+          # Neither raw test output, TRX output sections nor fixture files are uploaded.
+          $privateLog = Join-Path $env:RUNNER_TEMP 'wsl-trace-private-test.log'
+          $privateResults = Join-Path $env:RUNNER_TEMP 'wsl-trace-private-results'
+          dotnet test tests/OpenClaw.E2ETests --no-build -c Debug -r win-x64 --filter FullyQualifiedName~BrowserWslGuestTraceTests --results-directory $privateResults --logger 'trx;LogFileName=trace.trx' *> $privateLog
+          $testExit = $LASTEXITCODE
+          if (!(Test-Path $env:OPENCLAW_WSL_TRACE_RECEIPT)) { throw 'No terminal component receipt. Setup/build capability must be diagnosed privately.' }
+          [xml]$trx = Get-Content (Join-Path $privateResults 'trace.trx')
+          $cases = @($trx.TestRun.Results.UnitTestResult)
+          if ($cases.Count -ne 1 -or $cases[0].outcome -ne 'Passed' -or $testExit -ne 0) { throw 'Component trace did not execute and finish all owned cleanup.' }
+          Write-Host 'Component trace collected; this is not a guest-settlement pass.'
+      - name: Retain only explicitly redacted component receipt
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: browser-wsl-guest-component-receipt
+          path: ${{ env.OPENCLAW_WSL_TRACE_RECEIPT }}
+          if-no-files-found: warn
+          retention-days: 7
+      - name: Evaluate guest settlement separately from trace execution
+        shell: pwsh
+        run: |
+          $r = Get-Content $env:OPENCLAW_WSL_TRACE_RECEIPT -Raw | ConvertFrom-Json
+          if ($r.status -ne 'trace_complete_not_a_settlement_pass' -or $r.cases.Count -ne 6) { throw 'Trace incomplete.' }
+          if (@($r.cases | Where-Object { $_.settlementVerdict -like 'RED_*' -or $_.settlementVerdict -like 'UNKNOWN_*' }).Count -gt 0) { throw 'RED or UNKNOWN: guest settlement is not established. Inspect redacted receipt.' }
+          Write-Host 'No recorded guest process was running at postcheck. Identity presence and zombie state remain in the receipt; absence, reaping and pre-completion ordering are not certified.'
