@@ -7,10 +7,15 @@ try {
     if ($env:GITHUB_ACTIONS -cne 'true' -or $env:RUNNER_ENVIRONMENT -cne 'github-hosted' -or !$IsWindows) { throw 'Disposable Windows required' }
     $result.stage = 'audit-helper-compilation'
     Add-Type -Path (Join-Path $PSScriptRoot 'BrowserNativePathAudit.cs')
+    $result.stage = 'node-discovery'
+    # Use the same installed launcher used by setup-node and the prior working harness.
+    $node = (& node --print process.execPath)
+    if ($LASTEXITCODE -ne 0 -or [string]::IsNullOrWhiteSpace($node)) { throw 'Installed Node discovery failed' }
     $result.stage = 'canonical-node'
-    $node = (Get-Command node.exe -CommandType Application).Source
     $node = (& $node -e 'process.stdout.write(require("node:fs").realpathSync(process.execPath))')
     if ($LASTEXITCODE -ne 0) { throw 'Node canonicalization failed' }
+    $result.nodeVersion = (& $node --version)
+    if ($LASTEXITCODE -ne 0 -or $result.nodeVersion -cne 'v24.16.0') { throw 'Installed Node version mismatch' }
     $result.stage = 'canonical-cli'
     $cli = (& $node -e 'process.stdout.write(require("node:fs").realpathSync(process.argv[1]))' (Join-Path $Consumer 'openclaw.mjs'))
     if ($LASTEXITCODE -ne 0) { throw 'CLI canonicalization failed' }
