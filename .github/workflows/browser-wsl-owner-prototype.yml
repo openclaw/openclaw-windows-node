@@ -1,0 +1,78 @@
+name: Browser WSL owner prototype
+
+on:
+  push:
+    branches: [openclaw/automatic-chrome-extension-pairing]
+    paths:
+      - .github/workflows/browser-wsl-owner-prototype.yml
+      - scripts/BrowserWslOwnerPrototype.cjs
+      - scripts/BrowserWslOwnerPrototype.test.cjs
+      - tests/OpenClaw.E2ETests/Prototype/BrowserOwnerProtocolTests.cs
+
+permissions:
+  contents: read
+
+jobs:
+  owner-prototype:
+    runs-on: windows-latest
+    timeout-minutes: 40
+    env:
+      OPENCLAW_REPO_ROOT: ${{ github.workspace }}
+      OPENCLAW_RUN_E2E: '1'
+      OPENCLAW_BROWSER_WSL_PROTOTYPE: '1'
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Verify frozen production and accepted native proof
+        shell: pwsh
+        run: |
+          git diff --exit-code 783f178ca5579d057d4799fceb5cec5e8c4d69f8 HEAD -- src .github/workflows/browser-native-composed-proof.yml scripts/Test-BrowserNativeComposition.mjs scripts/Initialize-BrowserNativeComposition.ps1
+          if ($LASTEXITCODE -ne 0) { throw 'Frozen production/native proof changed.' }
+          "OPENCLAW_WSL_PROTOTYPE_RECEIPT=$env:RUNNER_TEMP/browser-wsl-owner-prototype.json" >> $env:GITHUB_ENV
+      - uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: '10.0.x'
+      - name: Check private protocol without running Linux service work
+        shell: pwsh
+        run: node --test scripts/BrowserWslOwnerPrototype.test.cjs
+      - name: Build existing managed WSL setup fixture
+        shell: pwsh
+        run: |
+          dotnet restore src/OpenClaw.Tray.WinUI -r win-x64
+          if ($LASTEXITCODE -ne 0) { throw 'Tray restore failed.' }
+          dotnet restore tests/OpenClaw.E2ETests -r win-x64
+          if ($LASTEXITCODE -ne 0) { throw 'Fixture restore failed.' }
+          dotnet build src/OpenClaw.Tray.WinUI -c Debug -r win-x64 --no-restore
+          if ($LASTEXITCODE -ne 0) { throw 'Tray build failed.' }
+          dotnet build tests/OpenClaw.E2ETests -c Debug -r win-x64 --no-restore
+          if ($LASTEXITCODE -ne 0) { throw 'Fixture build failed.' }
+      - name: Exercise private protocol and transient user service in disposable WSL
+        shell: pwsh
+        run: |
+          # Existing setup diagnostics may include synthetic fixture credentials.
+          # Neither raw test output, TRX output sections nor fixture files are uploaded.
+          $privateLog = Join-Path $env:RUNNER_TEMP 'wsl-prototype-private-test.log'
+          $privateResults = Join-Path $env:RUNNER_TEMP 'wsl-prototype-private-results'
+          dotnet test tests/OpenClaw.E2ETests --no-build -c Debug -r win-x64 --filter FullyQualifiedName~BrowserWslOwnerPrototypeTests --results-directory $privateResults --logger 'trx;LogFileName=trace.trx' *> $privateLog
+          $testExit = $LASTEXITCODE
+          if (!(Test-Path $env:OPENCLAW_WSL_PROTOTYPE_RECEIPT)) { throw 'No terminal component receipt. Setup/build capability must be diagnosed privately.' }
+          [xml]$trx = Get-Content (Join-Path $privateResults 'trace.trx')
+          $cases = @($trx.TestRun.Results.UnitTestResult)
+          if ($cases.Count -ne 1 -or $cases[0].outcome -ne 'Passed' -or $testExit -ne 0) { throw 'Component trace did not execute and finish all owned cleanup.' }
+          Write-Host 'Prototype receipt collected; production wiring has not changed.'
+      - name: Retain only explicitly redacted component receipt
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: browser-wsl-owner-prototype-receipt
+          path: ${{ env.OPENCLAW_WSL_PROTOTYPE_RECEIPT }}
+          if-no-files-found: warn
+          retention-days: 7
+      - name: Evaluate the prototype checkpoint, not production completion
+        shell: pwsh
+        run: |
+          $r = Get-Content $env:OPENCLAW_WSL_PROTOTYPE_RECEIPT -Raw | ConvertFrom-Json
+          if ($r.status -ne 'prototype_checkpoint_passed' -or $r.cases.Count -ne 19) { throw 'Prototype checkpoint incomplete. No production wiring is authorized by a failed checkpoint.' }
+          Write-Host 'Private protocol/systemd checkpoint only. Missing acknowledgments remain UNKNOWN/BUSY; no bounded early-loss recovery is claimed.'
