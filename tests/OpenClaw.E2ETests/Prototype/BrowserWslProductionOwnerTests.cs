@@ -111,7 +111,7 @@ public sealed class BrowserWslProductionOwnerTests
             finally{Interlocked.Exchange(ref commandEnd,clock.ElapsedTicks);}
         });
         _=run.ContinueWith(t=>_=t.Exception,TaskContinuationOptions.OnlyOnFaulted);
-        JsonElement unit=default;bool unknown=false;
+        JsonElement unit=default;bool unknown=false;string stage="unit_observation";int? clientPid=null;bool clientKilled=false;int queryExit=-1,queryMatches=-1;
         try
         {
             unit=await WaitUnit(fixture,p=>p.GetProperty("present").GetBoolean()&&(!held||p.GetProperty("processes").GetArrayLength()>=3),TimeSpan.FromSeconds(12));
@@ -119,14 +119,15 @@ public sealed class BrowserWslProductionOwnerTests
             Assert.StartsWith("openclaw-browser-bootstrap-",unitName);
             var ids=unit.GetProperty("processes").EnumerateArray().Select(p=>new{pid=p.GetProperty("pid").GetInt32(),start=p.GetProperty("start").GetInt64(),session=p.GetProperty("session").GetInt32()}).ToArray();
             if(held)Assert.True(ids.Select(p=>p.session).Distinct().Count()>=2);
-            var retirement=ownership.Retire();
+            stage="retirement_started";var retirement=ownership.Retire();
             Assert.Equal(0,Interlocked.Read(ref ownership.ManagementMutationTicks));
             if(name=="caller_cancel")caller.Cancel();
             if(name=="forced_client_exit")
             {
-                var pid=FindProductionClient(fixture.DistroName);
-                using var process=Process.GetProcessById(pid);process.Kill();await process.WaitForExitAsync();
-                await retirement.WaitAsync(TimeSpan.FromSeconds(40));
+                stage="exact_client_selection";
+                using var process=await FindProductionClientAsync(fixture.DistroName,(exit,matches)=>{queryExit=exit;queryMatches=matches;});clientPid=process.Id;
+                stage="client_termination";process.Kill();await process.WaitForExitAsync();clientKilled=true;
+                stage="retirement_outcome";await retirement.WaitAsync(TimeSpan.FromSeconds(40));
                 Assert.Equal("busy",ownership.ManagementCode);Assert.False(run.IsCompleted);Assert.Equal(0,Interlocked.Read(ref commandEnd));
                 Assert.Equal(0,ownership.ActivationReleasedTicks);Assert.Equal(0,ownership.RuntimeLeaseReleaseTicks);Assert.Equal(0,ownership.ManagementMutationTicks);
                 unknown=true;
@@ -139,11 +140,18 @@ public sealed class BrowserWslProductionOwnerTests
                 if(held){Assert.Equal("cancelled",outcome);Assert.Null(pairing);}else{Assert.Equal("returned",outcome);_=BrowserBootstrapService.ParsePairing(pairing!,fixture.GatewayPort);}
                 if(name=="deadline")Assert.InRange(commandEnd*1000/Stopwatch.Frequency,14500,17000);
             }
-            var empty=await WaitUnit(fixture,p=>!p.GetProperty("present").GetBoolean()||p.GetProperty("processes").GetArrayLength()==0,TimeSpan.FromSeconds(5),unitName);
+            stage="guest_postcheck";var empty=await WaitUnit(fixture,p=>!p.GetProperty("present").GetBoolean()||p.GetProperty("processes").GetArrayLength()==0,TimeSpan.FromSeconds(5),unitName);
             _cases.Add(new{name,identities=ids,commandEndTicks=commandEnd,clockFrequency=Stopwatch.Frequency,outcome,
                 ownership.RuntimeLeaseReleaseTicks,ownership.ActivationReleaseBeginTicks,ownership.ActivationReleasedTicks,ownership.ManagementMutationTicks,ownership.ManagementCompletionTicks,ownership.ManagementCode,
-                actualOwnerExecuted=true,guestAcknowledgmentRequiredByOwner=!unknown,unknownRetainsActivation=unknown,resultReturned=pairing is not null,
+                clientPid,clientKilled,queryExit,queryMatches,actualOwnerExecuted=true,guestAcknowledgmentRequiredByOwner=!unknown,unknownRetainsActivation=unknown,resultReturned=pairing is not null,
                 observedPostcheckEmpty=empty.GetProperty("processes").GetArrayLength()==0,canonicalPairingValidated=name=="real_cli",syntheticCli=name!="real_cli"});
+        }
+        catch(Exception e)
+        {
+            _cases.Add(new{name,failed=true,stage,errorType=e.GetType().Name,clientPid,clientKilled,queryExit,queryMatches,outcome,
+                commandEndTicks=Interlocked.Read(ref commandEnd),runCompleted=run.IsCompleted,ownership.ManagementCode,
+                ownership.RuntimeLeaseReleaseTicks,ownership.ActivationReleasedTicks,ownership.ManagementMutationTicks,ownership.ManagementCompletionTicks});
+            throw;
         }
         finally
         {
@@ -157,13 +165,40 @@ public sealed class BrowserWslProductionOwnerTests
         var buffer=new char[1024];var total=0;int count;
         while((count=await reader.ReadAsync(buffer))!=0)if((total+=count)>16384)throw new InvalidDataException("Bounded proof drain");
     }
-    private static int FindProductionClient(string distro)
+    private static async Task<Process> FindProductionClientAsync(string distro,Action<int,int> report)
     {
         var ps=Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.System),"WindowsPowerShell","v1.0","powershell.exe");
-        var script="$p=@(Get-CimInstance Win32_Process -Filter \"Name='wsl.exe'\" | Where-Object {$_.CommandLine -like '*--distribution "+distro+"*--exec /bin/bash --noprofile --norc -s*'});if($p.Count-ne 1){throw 'owner client identity'};[Console]::Out.Write($p[0].ProcessId)";
+        Assert.Matches("^OpenClawE2E-[a-f0-9]{8}$",distro);
+        var image=Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.System),"wsl.exe");
+        var arguments="--distribution "+distro+" --exec /bin/bash --noprofile --norc -s";
+        var expected=Convert.ToBase64String(JsonSerializer.SerializeToUtf8Bytes(new {parent=Environment.ProcessId,quoted="\""+image+"\" "+arguments,unquoted=image+" "+arguments}));
+        var script="$e=[Text.Encoding]::UTF8.GetString([Convert]::FromBase64String('"+expected+"'))|ConvertFrom-Json;Get-CimInstance Win32_Process -Filter ('ParentProcessId='+$e.parent+' AND Name=\"wsl.exe\"') | Where-Object {$_.CommandLine-ceq$e.quoted-or$_.CommandLine-ceq$e.unquoted} | ForEach-Object {$_.ProcessId}";
         var start=new ProcessStartInfo(ps){UseShellExecute=false,CreateNoWindow=true,RedirectStandardOutput=true,RedirectStandardError=true};
         foreach(var a in new[]{"-NoLogo","-NoProfile","-NonInteractive","-EncodedCommand",Convert.ToBase64String(Encoding.Unicode.GetBytes(script))})start.ArgumentList.Add(a);
-        using var process=Process.Start(start)!;var output=process.StandardOutput.ReadToEnd();process.WaitForExit(5000);Assert.Equal(0,process.ExitCode);return int.Parse(output.Trim());
+        using var process=Process.Start(start)!;
+        var output=ReadLookupOutput(process.StandardOutput);var error=DrainBoundedError(process.StandardError);
+        try
+        {
+            await Task.WhenAll(process.WaitForExitAsync(),output,error).WaitAsync(TimeSpan.FromSeconds(5));
+            var matches=(await output).Split(['\r','\n'],StringSplitOptions.RemoveEmptyEntries).Select(int.Parse).ToArray();
+            report(process.ExitCode,matches.Length);Assert.Equal(0,process.ExitCode);Assert.Single(matches);
+            var owned=Process.GetProcessById(matches[0]);_=owned.Handle;
+            if(!string.Equals(owned.MainModule!.FileName,image,StringComparison.OrdinalIgnoreCase)){owned.Dispose();throw new InvalidDataException("Owned image changed");}
+            return owned;
+        }
+        finally
+        {
+            if(!process.HasExited)process.Kill(entireProcessTree:true);
+            await process.WaitForExitAsync().WaitAsync(TimeSpan.FromSeconds(2));
+            await Task.WhenAll(output,error).WaitAsync(TimeSpan.FromSeconds(2));
+        }
+    }
+    private static async Task<string> ReadLookupOutput(StreamReader reader)
+    {
+        var result=new StringBuilder();var buffer=new char[128];int count;
+        while((count=await reader.ReadAsync(buffer))!=0)
+        {if(result.Length+count>4096)throw new InvalidDataException("Lookup output bound");result.Append(buffer,0,count);}
+        return result.ToString();
     }
     private static async Task<string> Guest(E2ESetupFixture f,string script)
     {var r=await f.RunInWslAsync("set -euo pipefail\n"+script,TimeSpan.FromSeconds(15),inputViaStdin:true);Assert.False(r.TimedOut);Assert.Equal(0,r.ExitCode);return r.Stdout;}
