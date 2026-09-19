@@ -7,6 +7,7 @@
     <BrowserBootstrapPayload>$([System.IO.Path]::GetFullPath('$(MSBuildThisFileDirectory)obj\browser-bootstrap\$(Configuration)\$(BrowserBootstrapRid)\'))</BrowserBootstrapPayload>
   </PropertyGroup>
   <Target Name="BuildBrowserBootstrapPayload" BeforeTargets="GetCopyToOutputDirectoryItems;ComputeFilesToPublish" Condition="'$(DesignTimeBuild)' != 'true'">
+    <Error Condition="!Exists('$(MSBuildThisFileDirectory)..\OpenClaw.BrowserBootstrap\Properties\PublishProfiles\Windows.pubxml')" Text="The required single-file browser bootstrap publish profile is missing." />
     <MSBuild Projects="$(BrowserBootstrapProject)" Targets="Restore;Publish" BuildInParallel="false"
       Properties="Configuration=$(Configuration);RuntimeIdentifier=$(BrowserBootstrapRid);SelfContained=true;PublishProfile=Windows;PublishDir=$(BrowserBootstrapPayload);PackageMsix=false"
       RemoveProperties="TargetFramework;TargetFrameworks;OutputPath;OutDir;PublishSingleFile;PublishAot;PublishTrimmed" />

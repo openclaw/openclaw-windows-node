@@ -6,6 +6,20 @@ namespace OpenClaw.Tray.Tests;
 
 public class BrowserBootstrapPublishTests
 {
+    [Fact]
+    public void RequiredPublishProfileBundlesTheStandaloneExecutable()
+    {
+        var root=TestRepositoryPaths.GetRepositoryRoot();
+        var profile=XDocument.Load(Path.Combine(root,"src","OpenClaw.BrowserBootstrap","Properties","PublishProfiles","Windows.pubxml"));
+        foreach(var name in new[]{"SelfContained","PublishSingleFile","IncludeNativeLibrariesForSelfExtract"})
+            Assert.Equal("true",profile.Descendants(name).Single().Value);
+        var target=XDocument.Load(Path.Combine(root,"src","OpenClaw.Tray.WinUI","BrowserBootstrap.targets"));
+        var build=target.Root!.Elements("Target").Single(x=>(string?)x.Attribute("Name")=="BuildBrowserBootstrapPayload");
+        Assert.Equal("Error",build.Elements().First().Name.LocalName);
+        Assert.Contains("Windows.pubxml",(string?)build.Elements().First().Attribute("Condition"));
+        Assert.Contains("PublishProfile=Windows",(string?)build.Element("MSBuild")!.Attribute("Properties"));
+    }
+
     [Theory][InlineData(false)][InlineData(true)]
     public async Task ProductionPublishTarget_CopiesOnlySingleExeOrFails(bool missing)
     {
