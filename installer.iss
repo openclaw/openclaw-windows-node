@@ -133,10 +133,11 @@ Filename: "{app}\{#MyAppExeName}"; Description: "{cm:LaunchProgram,{#StringChang
 [Code]
 var
   VCRuntimeInstallSucceeded: Boolean;
-  BrowserNativeHostRegistered: Boolean;
   LocalGatewayCleanupChoiceInitialized: Boolean;
   LocalGatewayCleanupRequested: Boolean;
   LocalGatewayCleanupSucceeded: Boolean;
+
+#include "scripts\BrowserBootstrapManagement.iss"
 
 #if vcRedist != ""
 procedure InstallVCRuntime;
@@ -310,6 +311,13 @@ begin
   if not LocalGatewayCleanupSucceeded then
     Exit;
 
+  { Native generations may retain foreign files or orphan Store references. They are not installer garbage. }
+  if DirExists(ExpandConstant('{localappdata}\OpenClawTray\browser-native')) then
+  begin
+    Log('Retained native generations require ownership-aware cleanup; preserving generated app state.');
+    Exit;
+  end;
+
   if DelTree(ExpandConstant('{app}'), True, True, True) then
     Log('Deleted generated app state from {app}.')
   else
@@ -343,58 +351,28 @@ begin
     Log('{#MyStartupTaskName} startup task already absent or unavailable.');
 end;
 
-procedure RegisterBrowserNativeHost;
+procedure RegisterBrowserIntegration;
 var
-  ResultCode: Integer;
-begin
-  BrowserNativeHostRegistered := False;
-#ifndef DevBuild
-  if Exec(ExpandConstant('{app}\tools\browser-bootstrap\OpenClaw.BrowserNativeHost.exe'),
-      '--register', '', SW_HIDE, ewWaitUntilTerminated, ResultCode) then
-    BrowserNativeHostRegistered := ResultCode = 0;
-  if not BrowserNativeHostRegistered then
-    Log('Native browser registration was not ready. No extension installation may be requested.');
-#endif
-end;
-
-procedure RequestChromeExtension;
-var
-  ResultCode: Integer;
+  StoreAction: String;
 begin
 #ifndef DevBuild
-  if not BrowserNativeHostRegistered or not WizardIsTaskSelected('chromeextension') then
-    Exit;
-  if Exec(ExpandConstant('{app}\tools\browser-bootstrap\OpenClaw.BrowserNativeHost.exe'),
-      '--request-extension', '', SW_HIDE, ewWaitUntilTerminated, ResultCode) then
-  begin
-    if ResultCode = 0 then
-      Log('Requested the official Chrome Store extension. Chrome permission approval is still required.')
-    else
-      Log('Chrome extension request was not written. Existing foreign registrations are preserved.');
-  end;
+  StoreAction := 'preserve';
+  if WizardIsTaskSelected('chromeextension') then StoreAction := 'request';
+  if not RunBrowserManagement('install', StoreAction) then
+    Log('Browser setup was refused or its outcome is uncertain. Existing registrations and pairing are preserved.');
 #endif
 end;
 
 procedure CurStepChanged(CurStep: TSetupStep);
 begin
-  // Files are installed before native registration, which must succeed before the Store request.
-  if CurStep = ssPostInstall then
-  begin
-    RegisterBrowserNativeHost;
-    RequestChromeExtension;
-  end;
+  if CurStep = ssPostInstall then RegisterBrowserIntegration;
 end;
 
 procedure UnregisterBrowserNativeHost;
-var
-  ResultCode: Integer;
 begin
 #ifndef DevBuild
-  Exec(ExpandConstant('{app}\tools\browser-bootstrap\OpenClaw.BrowserNativeHost.exe'),
-      '--remove-extension-request', '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
-  if not Exec(ExpandConstant('{app}\tools\browser-bootstrap\OpenClaw.BrowserNativeHost.exe'),
-      '--unregister', '', SW_HIDE, ewWaitUntilTerminated, ResultCode) then
-    Log('Native browser host unregister was unavailable. Foreign registrations are preserved.');
+  if not RunBrowserManagement('uninstall', 'remove') then
+    Log('Browser cleanup was refused or its outcome is uncertain. Retained generations must not be deleted.');
 #endif
 end;
 

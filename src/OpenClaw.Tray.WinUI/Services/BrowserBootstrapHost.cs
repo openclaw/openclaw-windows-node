@@ -13,6 +13,8 @@ internal sealed class BrowserBootstrapHost : IAsyncDisposable
     private readonly SettingsManager _settings;
     private readonly BrowserBootstrapService _service;
     private readonly BrowserBootstrapPipeServer _pipe;
+    private readonly CancellationTokenSource _stop = new();
+    private Task? _registration;
 
     public BrowserBootstrapHost(GatewayRegistry registry, IGatewayConnectionManager manager,
         SettingsManager settings, ManagedLocalGatewayPortProvenanceService provenance)
@@ -40,8 +42,9 @@ internal sealed class BrowserBootstrapHost : IAsyncDisposable
         {
             try
             {
-                BrowserNativeRegistration.Apply(Path.Combine(AppContext.BaseDirectory,
-                    "tools", "browser-bootstrap", "OpenClaw.BrowserNativeHost.exe"));
+                _registration = BrowserManagementClient.RunAsync(Path.Combine(AppContext.BaseDirectory,
+                    "tools", "browser-bootstrap", "OpenClaw.BrowserBootstrap.exe"),
+                    BrowserManagementClient.Companion("install", "preserve"), _stop.Token);
             }
             catch (Exception) { /* Optional integration must not prevent tray startup. */ }
         }
@@ -58,6 +61,9 @@ internal sealed class BrowserBootstrapHost : IAsyncDisposable
     public async ValueTask DisposeAsync()
     {
         _service.Invalidate();
+        await _stop.CancelAsync();
+        if (_registration is not null) await _registration;
+        _stop.Dispose();
         _registry.Changed -= OnRegistryChanged;
         _manager.StateChanged -= OnStateChanged;
         _settings.Saved -= OnSettingsSaved;

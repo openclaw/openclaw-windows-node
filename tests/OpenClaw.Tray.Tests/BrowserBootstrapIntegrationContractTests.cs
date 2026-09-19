@@ -10,14 +10,21 @@ public class BrowserBootstrapIntegrationContractTests
     {
         var installer = Read("installer.iss");
         Assert.Contains("if CurStep = ssPostInstall then", installer);
-        Assert.Contains("RegisterBrowserNativeHost;", installer);
-        Assert.Contains("BrowserNativeHostRegistered := ResultCode = 0", installer);
+        Assert.Contains("RegisterBrowserIntegration;", installer);
         Assert.Contains("UsePreviousTasks=yes", installer);
-        Assert.Contains("not WizardIsTaskSelected('chromeextension')", installer);
-        Assert.Contains("--request-extension", installer);
-        Assert.Contains("--remove-extension-request", installer);
-        Assert.Matches(@"RegisterBrowserNativeHost;\r?\n    RequestChromeExtension;", installer);
-        Assert.Contains("No extension installation may be requested", installer);
+        Assert.Contains("WizardIsTaskSelected('chromeextension')", installer);
+        Assert.Contains("RunBrowserManagement('install', StoreAction)", installer);
+        Assert.Contains("RunBrowserManagement('uninstall', 'remove')", installer);
+        var transport=Read("scripts","BrowserBootstrapManagement.iss");
+        Assert.Contains(" --manage",transport);
+        Assert.Contains("BBWrite(InW, Input",transport);
+        Assert.Contains("BBDispose(InW)",transport);
+        Assert.Contains("32768",transport);
+        Assert.Contains("60000",transport);
+        Assert.Contains("KILL_ON_JOB_CLOSE",transport);
+        Assert.Contains("BBReceipt(Output, ExitCode",transport);
+        Assert.DoesNotContain("--register",installer);
+        Assert.DoesNotContain("--request-extension",installer);
         Assert.Contains("PrivilegesRequired=lowest", installer);
         Assert.Contains("UnregisterBrowserNativeHost;", installer);
         Assert.DoesNotContain("ExtensionInstallForcelist", installer);
@@ -43,15 +50,16 @@ public class BrowserBootstrapIntegrationContractTests
     [Fact]
     public void Packaging_RequiresRealExeAndBothArchitecturesProveIt()
     {
-        var targets = Read("src", "OpenClaw.Tray.WinUI", "BrowserNativeHost.targets");
+        var targets = Read("src", "OpenClaw.Tray.WinUI", "BrowserBootstrap.targets");
         Assert.Contains("SelfContained=true", targets);
         Assert.Contains("win-x64", targets);
         Assert.Contains("win-arm64", targets);
-        Assert.Contains("OpenClaw.BrowserNativeHost.exe", targets);
+        Assert.Contains("OpenClaw.BrowserBootstrap.exe", targets);
         var workflow = Read(".github", "workflows", "ci.yml");
         Assert.Equal(2, workflow.Split("- name: Prove packaged native browser host").Length - 1);
-        Assert.Contains("OpenClaw.BrowserNativeHost.dll", workflow);
+        Assert.DoesNotContain("OpenClaw.BrowserNativeHost.dll", workflow);
+        Assert.Contains("OpenClaw.BrowserBootstrap.Contracts.dll", workflow);
         Assert.Contains("Test-BrowserNativeHost.ps1", workflow);
-        Assert.Contains("tools\\browser-bootstrap\\OpenClaw.BrowserNativeHost.exe", Read("scripts", "Test-ReleaseExecutableSignatures.ps1"));
+        Assert.Contains("tools\\browser-bootstrap\\OpenClaw.BrowserBootstrap.exe", Read("scripts", "Test-ReleaseExecutableSignatures.ps1"));
     }
 }

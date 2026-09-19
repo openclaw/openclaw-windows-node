@@ -29,14 +29,25 @@ public class BrowserBootstrapPipeTests
     }
 
     [Fact]
-    public void Manifest_RequiresExactExecutableOriginAndSchema()
+    public async Task Disconnect_CancelsTheActualHandlerBeforeDelivery()
     {
-        var path = Path.GetFullPath("OpenClaw.BrowserNativeHost.exe");
-        var manifest = BrowserNativeRegistration.BuildManifest(path);
-        Assert.True(BrowserNativeRegistration.ManifestMatches(manifest, path));
-        Assert.False(BrowserNativeRegistration.ManifestMatches(manifest, path + "other"));
-        Assert.False(BrowserNativeRegistration.ManifestMatches(manifest.Replace(BrowserNativeProtocol.ExtensionId, new string('a', 32)), path));
-        Assert.False(BrowserNativeRegistration.ManifestMatches(manifest.Replace("\"stdio\"", "\"http\""), path));
-        Assert.False(BrowserNativeRegistration.ManifestMatches(manifest[..^1] + ",\"type\":\"stdio\"}", path));
+        var name = "OpenClaw.BrowserBootstrap.Test." + Guid.NewGuid().ToString("N");
+        var started = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var cancelled = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        await using var server = new BrowserBootstrapPipeServer(async (_, ct) =>
+        {
+            started.TrySetResult();
+            try { await Task.Delay(Timeout.Infinite, ct); }
+            catch (OperationCanceledException) { cancelled.TrySetResult(); throw; }
+            return BrowserNativeProtocol.Failure("pairing_unavailable");
+        }, name);
+        server.Start();
+        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+        var pipe = new NamedPipeClientStream(".", name, PipeDirection.InOut, PipeOptions.Asynchronous | PipeOptions.CurrentUserOnly);
+        await pipe.ConnectAsync(timeout.Token);
+        await BrowserNativeProtocol.WriteAsync(pipe, Encoding.UTF8.GetBytes("{\"v\":1}"), timeout.Token);
+        await started.Task.WaitAsync(timeout.Token);
+        pipe.Dispose();
+        await cancelled.Task.WaitAsync(timeout.Token);
     }
 }

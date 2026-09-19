@@ -1,0 +1,30 @@
+<Project>
+  <PropertyGroup>
+    <BrowserBootstrapProject>$(MSBuildThisFileDirectory)..\OpenClaw.BrowserBootstrap\OpenClaw.BrowserBootstrap.csproj</BrowserBootstrapProject>
+    <BrowserBootstrapRid Condition="'$(RuntimeIdentifier)' != ''">$(RuntimeIdentifier)</BrowserBootstrapRid>
+    <BrowserBootstrapRid Condition="'$(BrowserBootstrapRid)' == '' And '$(Platform)' == 'ARM64'">win-arm64</BrowserBootstrapRid>
+    <BrowserBootstrapRid Condition="'$(BrowserBootstrapRid)' == ''">win-x64</BrowserBootstrapRid>
+    <BrowserBootstrapPayload>$([System.IO.Path]::GetFullPath('$(MSBuildThisFileDirectory)obj\browser-bootstrap\$(Configuration)\$(BrowserBootstrapRid)\'))</BrowserBootstrapPayload>
+  </PropertyGroup>
+  <Target Name="BuildBrowserBootstrapPayload" BeforeTargets="GetCopyToOutputDirectoryItems;ComputeFilesToPublish" Condition="'$(DesignTimeBuild)' != 'true'">
+    <MSBuild Projects="$(BrowserBootstrapProject)" Targets="Restore;Publish" BuildInParallel="false"
+      Properties="Configuration=$(Configuration);RuntimeIdentifier=$(BrowserBootstrapRid);SelfContained=true;PublishProfile=Windows;PublishDir=$(BrowserBootstrapPayload);PackageMsix=false"
+      RemoveProperties="TargetFramework;TargetFrameworks;OutputPath;OutDir;PublishSingleFile;PublishAot;PublishTrimmed" />
+    <ItemGroup>
+      <ContentWithTargetPath Include="$(BrowserBootstrapPayload)OpenClaw.BrowserBootstrap.exe">
+        <TargetPath>tools\browser-bootstrap\OpenClaw.BrowserBootstrap.exe</TargetPath>
+        <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory><CopyToPublishDirectory>Never</CopyToPublishDirectory>
+      </ContentWithTargetPath>
+    </ItemGroup>
+    <Error Condition="!Exists('$(BrowserBootstrapPayload)OpenClaw.BrowserBootstrap.exe')" Text="The self-contained browser bootstrap executable was not published." />
+  </Target>
+  <!-- Add the independent payload after parent SDK conflict resolution. -->
+  <Target Name="AddBrowserBootstrapToPublishItems" AfterTargets="ComputeResolvedFilesToPublishList" DependsOnTargets="BuildBrowserBootstrapPayload" Condition="'$(DesignTimeBuild)' != 'true'">
+    <ItemGroup><ResolvedFileToPublish Include="$(BrowserBootstrapPayload)OpenClaw.BrowserBootstrap.exe">
+      <RelativePath>tools\browser-bootstrap\OpenClaw.BrowserBootstrap.exe</RelativePath><CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
+    </ResolvedFileToPublish></ItemGroup>
+  </Target>
+  <Target Name="VerifyBrowserBootstrapPublished" AfterTargets="Publish" Condition="'$(PublishDir)' != ''">
+    <Error Condition="!Exists('$(PublishDir)tools\browser-bootstrap\OpenClaw.BrowserBootstrap.exe')" Text="The single-file browser bootstrap executable is missing." />
+  </Target>
+</Project>

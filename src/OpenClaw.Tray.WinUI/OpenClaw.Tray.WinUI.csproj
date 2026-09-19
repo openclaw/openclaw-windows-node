@@ -439,5 +439,5 @@
     <Copy SourceFiles="$(OpenClawSetupDefaultConfig)" DestinationFiles="$(PublishDir)default-config.json" SkipUnchangedFiles="true" Condition="Exists('$(OpenClawSetupDefaultConfig)')" />
   </Target>
 
-  <Import Project="BrowserNativeHost.targets" />
+  <Import Project="BrowserBootstrap.targets" />
 </Project>

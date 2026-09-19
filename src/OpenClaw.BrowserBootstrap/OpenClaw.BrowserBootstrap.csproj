@@ -1,0 +1,4 @@
+<Project Sdk="Microsoft.NET.Sdk">
+<PropertyGroup><OutputType>Exe</OutputType><TargetFramework>net10.0</TargetFramework><ImplicitUsings>enable</ImplicitUsings><Nullable>enable</Nullable><AssemblyName>OpenClaw.BrowserBootstrap</AssemblyName></PropertyGroup>
+<ItemGroup><ProjectReference Include="../OpenClaw.BrowserBootstrap.Contracts/OpenClaw.BrowserBootstrap.Contracts.csproj"/><Compile Include="../OpenClaw.Shared/Browser/BrowserNativeProtocol.cs" Link="BrowserNativeProtocol.cs"/><InternalsVisibleTo Include="OpenClaw.BrowserBootstrap.Tests"/></ItemGroup>
+</Project>

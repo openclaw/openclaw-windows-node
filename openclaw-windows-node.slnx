@@ -5,7 +5,7 @@
     <Platform Name="ARM64" />
   </Configurations>
   <Folder Name="/src/">
-    <Project Path="src/OpenClaw.BrowserNativeHost/OpenClaw.BrowserNativeHost.csproj" />
+    <Project Path="src/OpenClaw.BrowserBootstrap/OpenClaw.BrowserBootstrap.csproj" />
     <Project Path="src/OpenClaw.Cli/OpenClaw.Cli.csproj" />
     <Project Path="src/OpenClaw.WinNode.Cli/OpenClaw.WinNode.Cli.csproj" />
     <Project Path="src/OpenClaw.Shared/OpenClaw.Shared.csproj" />
@@ -44,4 +44,6 @@
       <Platform Solution="*|ARM64" Project="ARM64" />
     </Project>
   </Folder>
+  <Project Path="src/OpenClaw.BrowserBootstrap.Contracts/OpenClaw.BrowserBootstrap.Contracts.csproj" />
+  <Project Path="tests/OpenClaw.BrowserBootstrap.Tests/OpenClaw.BrowserBootstrap.Tests.csproj" />
 </Solution>
