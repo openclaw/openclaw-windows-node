@@ -5,8 +5,9 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import crypto from 'node:crypto';
 import { fileURLToPath } from 'node:url';
+import { recordCompletion } from './BrowserNativeProofTiming.mjs';
 
-const producerSha = '6dddf3d2eabf3316d4dcc726109adab7fdccf7ea';
+const producerSha = process.env.GITHUB_SHA;
 const consumerSha = '57f78c49d47f445b85d4859f038e8447e08983ba';
 const origin = 'chrome-extension://kcdjddhmeafeomebliikmbpblkmkfoig/';
 const nonce = 'AAAAAAAAAAAAAAAAAAAAAA';
@@ -27,24 +28,68 @@ function check(name) { receipt.cases.push(name); console.log('COMPOSED_CASE_OK '
 function request(action, selected = context) {
   return { v: 1, action, mode: 'native-windows-cli', context: selected, expectedOrigins: [origin], store: 'preserve' };
 }
-async function exchange(file, args, input, { end = false, timeout = 65000, env = baseEnv } = {}) {
+async function exchange(file, args, input, { end = false, timeout = 65000, env = baseEnv, onSpawn } = {}) {
   return await new Promise((resolve, reject) => {
     const child = spawn(file, args, { env, windowsHide: true, stdio: ['pipe', 'pipe', 'pipe'] });
-    let out = Buffer.alloc(0), errBytes = 0, finished = false;
+    let out = Buffer.alloc(0), errBytes = 0, finished = false, firstFrameAt = null;
+    function terminateOwnedTree() {
+      if(child.pid){try{execFileSync(path.join(process.env.SystemRoot,'System32','taskkill.exe'),['/PID',String(child.pid),'/T','/F'],{stdio:'ignore',timeout:5000});}catch{}}
+    }
+    child.once('spawn',async()=>{
+      try {
+        if(onSpawn)await onSpawn(child);
+        if(finished)return;
+        child.stdin.write(input);
+        if(end)child.stdin.end();
+      } catch {
+        terminateOwnedTree();finish(new Error('owned_control_failed'));
+      }
+    });
     const timer = setTimeout(() => {
       // Owned PID only, never a process-name/global kill. No caller command interpolation.
-      if (child.pid) { try { execFileSync(path.join(process.env.SystemRoot, 'System32', 'taskkill.exe'), ['/PID', String(child.pid), '/T', '/F'], { stdio: 'ignore', timeout: 5000 }); } catch {} }
+      terminateOwnedTree();
       finish(new Error('bounded_process_timeout'));
     }, timeout);
     function finish(error, value) { if (finished) return; finished = true; clearTimeout(timer); error ? reject(error) : resolve(value); }
     child.once('error', () => finish(new Error('process_start_failed')));
-    child.stdout.on('data', (part) => { out = Buffer.concat([out, part]); if (out.length > 1048576) { child.kill(); finish(new Error('output_bound')); } });
-    child.stderr.on('data', (part) => { errBytes += part.length; if (errBytes > 32768) { child.kill(); finish(new Error('stderr_bound')); } });
-    child.once('close', (code) => finish(null, { code, out, errBytes }));
+    child.stdout.on('data', (part) => { out = Buffer.concat([out, part]); if(firstFrameAt===null && out.length>=4 && out.length>=4+out.readUInt32LE(0))firstFrameAt=performance.now(); if (out.length > 1048576) { terminateOwnedTree(); finish(new Error('output_bound')); } });
+    child.stderr.on('data', (part) => { errBytes += part.length; if (errBytes > 32768) { terminateOwnedTree(); finish(new Error('stderr_bound')); } });
+    child.once('close', (code) => finish(null, { code, out, errBytes, firstFrameAt }));
     child.stdin.on('error', () => {});
-    child.stdin.write(input);
-    if (end) child.stdin.end();
   });
+}
+async function withFrozenNative(installation, packet, fixture, operation) {
+  const dir=await fs.mkdtemp(path.join(fixture,'owned-control-'));
+  const helper=spawn(ps,['-NoLogo','-NoProfile','-NonInteractive','-File',fileURLToPath(new URL('./Control-BrowserNativeProofChild.ps1',import.meta.url)),'-ControlDirectory',dir],{env:baseEnv,windowsHide:true,stdio:['ignore','ignore','ignore']});
+  const helperTimer=setTimeout(()=>{if(helper.pid){try{execFileSync(path.join(process.env.SystemRoot,'System32','taskkill.exe'),['/PID',String(helper.pid),'/T','/F'],{stdio:'ignore',timeout:5000});}catch{}}},40000);
+  const helperDone=new Promise(resolve=>{helper.once('error',()=>{clearTimeout(helperTimer);resolve(-1);});helper.once('close',code=>{clearTimeout(helperTimer);resolve(code);});});
+  let helperCode;void helperDone.then(code=>{helperCode=code;});
+  const marker=async name=>{try{await fs.access(path.join(dir,name));return true;}catch{return false;}};
+  async function waitMarker(name) {
+    const until=performance.now()+15000;
+    while(!await marker(name)) {
+      if(await marker('failed') || helperCode!==undefined || performance.now()>until)throw new Error('owned_child_control_failed');
+      await new Promise(resolve=>setTimeout(resolve,20));
+    }
+  }
+  let native,work;
+  try {
+    await waitMarker('ready');
+    work=exchange(installation.launcherPath,[origin],packet,{onSpawn:async child=>{
+      native=child;
+      await fs.writeFile(path.join(dir,'input.tmp'),JSON.stringify({nativePid:child.pid,launcher:installation.launcherPath,node:context.nodePath}));
+      await fs.rename(path.join(dir,'input.tmp'),path.join(dir,'input.json'));
+      await waitMarker('watching');
+    }});
+    void work.catch(()=>{});
+    await waitMarker('suspended');
+    return await operation({work,resume:()=>fs.writeFile(path.join(dir,'resume'),'1'),disconnect:()=>native.stdin.end()});
+  } finally {
+    await fs.writeFile(path.join(dir,'resume'),'1');
+    if(work)await work.catch(()=>{});
+    const code=await helperDone;
+    assert.equal(code,0,'owned_child_control_cleanup');
+  }
 }
 async function manage(value, end = true) {
   const result = await exchange(executable, ['--manage'], Buffer.from(JSON.stringify(value)), { end });
@@ -122,6 +167,10 @@ try {
     "foreach($h in @([Microsoft.Win32.RegistryHive]::CurrentUser,[Microsoft.Win32.RegistryHive]::LocalMachine)){foreach($v in @([Microsoft.Win32.RegistryView]::Registry32,[Microsoft.Win32.RegistryView]::Registry64)){$r=[Microsoft.Win32.RegistryKey]::OpenBaseKey($h,$v);try{foreach($p in $paths){$k=$r.OpenSubKey($p);if($null-ne $k){$k.Dispose();throw 'Existing product registration'}}}finally{$r.Dispose()}}}; " +
     "$root=Join-Path $local 'OpenClawTray\\browser-native\\generations';if(Test-Path -LiteralPath $root){throw 'Existing product generations'}; " +
     "[Console]::Out.Write((ConvertTo-Json -Compress @{local=$local;sid=[Security.Principal.WindowsIdentity]::GetCurrent().User.Value}))"));
+  assert.match(producerSha ?? '', /^[0-9a-f]{40}$/, 'producer_revision_required');
+  const producerSource = JSON.parse(await fs.readFile(path.join(artifact,'producer-source.json'),'utf8'));
+  assert.equal(producerSource.producerSha,producerSha,'new_producer_source_mismatch');
+  assert.equal(execFileSync('git',['-C',fileURLToPath(new URL('../',import.meta.url)),'rev-parse','HEAD'],{encoding:'utf8'}).trim(),producerSha,'producer_checkout_mismatch');
   stage = 'private-fixture';
   // Windows TEMP may contain an 8.3 alias. The production contract requires canonical paths.
   const fixture = await fs.realpath(await fs.mkdtemp(path.join(process.env.COMPOSED_PRIVATE_ROOT, 'fixture-')));
@@ -132,6 +181,7 @@ try {
   await fs.copyFile(source, executable, fs.constants.COPYFILE_EXCL);
   const hash = async (file) => crypto.createHash('sha256').update(await fs.readFile(file)).digest('hex');
   receipt.producerExecutableSha256 = await hash(source);
+  assert.equal(receipt.producerExecutableSha256,producerSource.executableSha256,'new_producer_image_mismatch');
   assert.equal(await hash(executable), receipt.producerExecutableSha256, 'producer_copy_hash');
   const state = path.join(fixture, 'state'); await fs.mkdir(state);
   const configPath = path.join(state, 'openclaw.json');
@@ -233,7 +283,58 @@ try {
   const rejectedWithoutEffects = (entry) => entry.explicitlyRefused && !entry.pairingEmitted && !entry.stateChanged;
   if (receipt.revocationPrepublicationStateChanged || !rejectedWithoutEffects(receipt.revokedGeneration) || !rejectedWithoutEffects(receipt.reassignedGeneration) || receipt.reassignedGeneration.replacementStateChanged) {
     receipt.status = 'authority_review_required'; process.exitCode = 1;
-  } else { check('revoked_and_reassigned_generations_rejected_without_state_effects'); receipt.status = 'passed'; }
+  } else {
+    check('revoked_and_reassigned_generations_rejected_without_state_effects');
+    stage='real-inflight-retirement';
+    await withFrozenNative(replacement.installation,packet,fixture,async control=>{
+      const [inspection,retirement]=await Promise.all([manage(request('inspect')),manage(request('uninstall'))]);
+      for(const value of [inspection,retirement]) {
+        refused(value,'busy');
+        assert.equal(value.registration,null);assert.equal(value.installation,null);
+      }
+      receipt.inflight={inspectionBusy:true,retirementBusy:true};
+      // The child is proved live and paused. Try retirement concurrently with release;
+      // a bounded busy result is explicitly not counted as completed retirement.
+      const pendingRetirement=recordCompletion(manage(request('uninstall')));
+      await control.resume();
+      const result=await control.work;
+      assert.equal(response(result).ok,true,'admitted_operation_not_settled');
+      let completion=await pendingRetirement;
+      let removed=completion.value;
+      if(!removed.ok) {
+        refused(removed,'busy');
+        const stillActive=await manage(request('inspect'));assert.equal(stillActive.installation.generation,replacement.installation.generation);
+        completion=await recordCompletion(manage(request('uninstall')));removed=completion.value;
+      }
+      const retirementComplete=completion.completedAt;
+      assert.equal(removed.ok,true);assert.equal(removed.registration,'missing');
+      assert.ok(result.firstFrameAt!==null && result.firstFrameAt<=retirementComplete,'credential_after_completed_retirement');
+      receipt.inflight.responseBeforeCompletedRetirement=true;
+    });
+    check('real_inflight_owner_serializes_inspection_retirement_and_response');
+    stage='real-inflight-eof';
+    context=await isolatedContext(fixture,'inflight-eof-state');
+    const eofBefore=await stateSnapshot(context.stateDir);
+    const eofInstalled=await manage(request('install'));assert.equal(eofInstalled.ok,true);
+    assert.equal(await stateSnapshot(context.stateDir),eofBefore,'prepublication_state_effect');
+    await withFrozenNative(eofInstalled.installation,packet,fixture,async control=>{
+      assert.equal(await stateSnapshot(context.stateDir),eofBefore,'eof_fixture_already_effectful');
+      control.disconnect();
+      const cancelled=await control.work;
+      assert.equal(cancelled.code,0);assert.equal(cancelled.out.length,0);assert.equal(cancelled.errBytes,0);
+    });
+    assert.equal(await stateSnapshot(context.stateDir),eofBefore,'state_effect_after_inflight_eof');
+    const eofRemoved=await manage(request('uninstall'));assert.equal(eofRemoved.ok,true);assert.equal(eofRemoved.registration,'missing');
+    check('real_inflight_eof_joins_owned_node_without_pairing_or_state_effect');
+    stage='retired-parser-variants';
+    for(const raw of [JSON.stringify({v:1,op:'bootstrap',nonce,extra:true}),JSON.stringify({v:1,op:'bootstrap',nonce}).replace(':1,',':1.0,'),JSON.stringify({v:1,op:'bootstrap',nonce}).replace(':1,',':1e0,')]) {
+      const payload=Buffer.from(raw),header=Buffer.alloc(4);header.writeUInt32LE(payload.length);
+      refused(response(await exchange(eofInstalled.installation.launcherPath,[origin],Buffer.concat([header,payload]))),'manifest_invalid');
+    }
+    assert.equal(await stateSnapshot(context.stateDir),eofBefore,'retired_variant_state_effect');
+    check('retired_valid_nonce_parser_variants_cannot_bypass_activation');
+    receipt.status='passed';
+  }
 } catch (error) {
   // Never serialize native stdout, pairing strings, config contents or a child diagnostic.
   receipt.failureStage = stage;

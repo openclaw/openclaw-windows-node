@@ -58,8 +58,10 @@ public sealed class BrowserBootstrapPipeServer(Func<byte[], CancellationToken, T
         {
             await lifetime.CancelAsync();
             if (disconnected is not null)
-                _ = disconnected.ContinueWith(t => _ = t.Exception, CancellationToken.None,
-                    TaskContinuationOptions.OnlyOnFaulted | TaskContinuationOptions.ExecuteSynchronously, TaskScheduler.Default);
+            {
+                try { await disconnected; }
+                catch (OperationCanceledException) when (lifetime.IsCancellationRequested) { }
+            }
         }
     }
     private static async Task WatchDisconnectAsync(Stream pipe, CancellationTokenSource lifetime)

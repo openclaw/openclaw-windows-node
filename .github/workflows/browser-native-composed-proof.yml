@@ -8,6 +8,13 @@ on:
       - scripts/Test-BrowserNativeComposition.mjs
       - scripts/Initialize-BrowserNativeComposition.ps1
       - scripts/BrowserNativePathAudit.cs
+      - scripts/Control-BrowserNativeProofChild.ps1
+      - scripts/BrowserNativeProofTiming.mjs
+      - scripts/BrowserNativeProofTiming.test.mjs
+      - src/OpenClaw.BrowserBootstrap/**
+      - src/OpenClaw.BrowserBootstrap.Contracts/**
+      - src/OpenClaw.Shared/Browser/**
+      - tests/OpenClaw.BrowserBootstrap.Tests/**
 
 permissions:
   contents: read
@@ -35,27 +42,33 @@ jobs:
         with:
           version: '12.4.0'
           run_install: false
-      - name: Verify immutable producer artifact and successful source run
+      - uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: '10.0.x'
+      - name: Verify proof ordering instrumentation
         shell: pwsh
-        env:
-          GH_TOKEN: ${{ github.token }}
+        run: node --test producer/scripts/BrowserNativeProofTiming.test.mjs
+      - name: Build and identify the current reviewed producer
+        shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
-          $run = gh api repos/openclaw/openclaw-windows-node/actions/runs/35416240545 | ConvertFrom-Json
-          if ($LASTEXITCODE -ne 0 -or $run.head_sha -cne '6dddf3d2eabf3316d4dcc726109adab7fdccf7ea' -or $run.conclusion -cne 'success') { throw 'Producer run identity mismatch.' }
-          $artifact = gh api repos/openclaw/openclaw-windows-node/actions/artifacts/10576101237 | ConvertFrom-Json
-          if ($LASTEXITCODE -ne 0 -or $artifact.expired -or $artifact.name -cne 'openclaw-tray-win-x64' -or $artifact.workflow_run.id -ne 35416240545 -or $artifact.digest -cne 'sha256:9beb60bac258eaf752e27fad6a60ddfbfcc79df130cc65d5e7b09c86fe26a859') { throw 'Producer artifact identity mismatch.' }
-      - uses: actions/download-artifact@v8
+          if ((git -C producer rev-parse HEAD).Trim() -cne $env:GITHUB_SHA) { throw 'Producer source identity mismatch.' }
+          dotnet test producer/tests/OpenClaw.BrowserBootstrap.Tests/OpenClaw.BrowserBootstrap.Tests.csproj -c Release
+          if ($LASTEXITCODE -ne 0) { throw 'Current producer tests failed.' }
+          dotnet publish producer/src/OpenClaw.BrowserBootstrap/OpenClaw.BrowserBootstrap.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -o artifact/tools/browser-bootstrap
+          if ($LASTEXITCODE -ne 0) { throw 'Current producer build failed.' }
+          $image = Get-FileHash artifact/tools/browser-bootstrap/OpenClaw.BrowserBootstrap.exe -Algorithm SHA256
+          @{producerSha=$env:GITHUB_SHA;executableSha256=$image.Hash.ToLowerInvariant()} | ConvertTo-Json -Compress | Set-Content artifact/producer-source.json -Encoding utf8NoBOM
+      - name: Retain the new producer artifact
+        uses: actions/upload-artifact@v7
         with:
-          artifact-ids: '10576101237'
-          run-id: '35416240545'
-          github-token: ${{ github.token }}
-          path: artifact
-          merge-multiple: true
+          name: browser-native-producer-${{ github.sha }}
+          path: artifact/
+          retention-days: 7
       - name: Audit original runtime ACLs and create private exact installation
         shell: pwsh
         run: |
-          if ((git -C producer rev-parse HEAD:src).Trim() -cne 'ea2e65d057b0efaea8dbddc229548a9f34843196') { throw 'Producer product source changed; artifact pin must be reviewed.' }
+          if ((git -C producer rev-parse HEAD).Trim() -cne $env:GITHUB_SHA) { throw 'Producer checkout changed.' }
           ./producer/scripts/Initialize-BrowserNativeComposition.ps1 -Consumer "${{ github.workspace }}/consumer" -Receipt "${{ runner.temp }}/composed-path-audit.json"
           if ($LASTEXITCODE -ne 0) { throw 'Private runtime preparation failed; see redacted path audit.' }
       - name: Build exact canonical runtime without changing its source

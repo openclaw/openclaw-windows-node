@@ -127,10 +127,21 @@ internal sealed class GenerationStore(WindowsAuthority authority)
         var info=new ProcessStartInfo(exe){UseShellExecute=false,CreateNoWindow=true,RedirectStandardInput=true,RedirectStandardOutput=true,RedirectStandardError=true};
         info.ArgumentList.Add(origin);info.ArgumentList.Add("--parent-window=0");
         using var child=Process.Start(info)??throw new ContractException("transport_failed");
+        ProbeProcessTree? tree=null;
         using var timeout=CancellationTokenSource.CreateLinkedTokenSource(ct);timeout.CancelAfter(TimeSpan.FromSeconds(15));
+        using var stop=timeout.Token.Register(()=>
+        {
+            try{tree?.Terminate();}catch(System.ComponentModel.Win32Exception){}
+            try{if(!child.HasExited)child.Kill(true);}catch(InvalidOperationException){}catch(System.ComponentModel.Win32Exception){}
+        });
         try
         {
-            var request=ManagementContract.Serialize(new{v=1,op="bootstrap",nonce=invalid?"!":Convert.ToBase64String(new byte[16]).TrimEnd('=')});
+            if(!OperatingSystem.IsWindows())throw new ContractException("platform_unsupported");
+            // The launcher cannot start Node before ReadAsync receives this frame.
+            // Assign the tree before releasing that existing protocol gate, not after fork.
+            tree=new ProbeProcessTree(child);
+            timeout.Token.ThrowIfCancellationRequested();
+            var request=NativeKeylessProbe.Request(invalid);
             await BrowserNativeProtocol.WriteAsync(child.StandardInput.BaseStream,request,timeout.Token); // Do not close Chrome stdin.
             var response=await BrowserNativeProtocol.ReadAsync(child.StandardOutput.BaseStream,4096,timeout.Token);
             var expected=BrowserNativeProtocol.Failure(invalid?"invalid_request":"origin_forbidden");
@@ -139,7 +150,28 @@ internal sealed class GenerationStore(WindowsAuthority authority)
                 await child.StandardError.BaseStream.ReadAsync(extra,timeout.Token)!=0)throw new ContractException("transport_failed");
             await child.WaitForExitAsync(timeout.Token);if(child.ExitCode!=0)throw new ContractException("transport_failed");
         }
-        finally{if(!child.HasExited)child.Kill(true);using var end=new CancellationTokenSource(TimeSpan.FromSeconds(2));await child.WaitForExitAsync(end.Token);}
+        finally
+        {
+            stop.Dispose(); // Join the callback before closing any process/job handle.
+            using var end=new CancellationTokenSource(TimeSpan.FromSeconds(2));
+            try
+            {
+                try{if(OperatingSystem.IsWindows())tree?.Terminate();if(!child.HasExited)child.Kill(true);}catch(InvalidOperationException){}
+            }
+            finally
+            {
+                try{await BrowserBootstrapProcessLifetime.JoinAsync(child,end.Token);}
+                finally
+                {
+                    child.Dispose();
+                    if(OperatingSystem.IsWindows() && tree is not null)
+                    {
+                        try{await BrowserBootstrapProcessLifetime.AwaitOwnedAsync(tree.JoinAsync(),end.Token);}
+                        finally{tree.Dispose();}
+                    }
+                }
+            }
+        }
     }
     public static string Hash(byte[] data)=>Convert.ToHexStringLower(SHA256.HashData(data));
     private sealed class Leases(List<IDisposable> leases):IDisposable{public void Dispose(){foreach(var l in leases)l.Dispose();}}

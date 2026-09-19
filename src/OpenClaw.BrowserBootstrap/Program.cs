@@ -41,7 +41,8 @@ internal static class Program
                 return response.Ok?0:1;
             }
             if(!OperatingSystem.IsWindows())return 1;
-            var authority=new WindowsAuthority();var generations=new GenerationStore(authority);
+            var platform=new WindowsRegistrationPlatform();var generations=platform.Generations;
+            var activation=new NativeRegistrationRuntime(platform);
             var exe=Environment.ProcessPath??throw new IOException();
             var manifest=Path.Combine(Path.GetDirectoryName(exe)!,ManagementContract.ManifestName);
             using var timeout=new CancellationTokenSource(TimeSpan.FromSeconds(30));
@@ -51,7 +52,7 @@ internal static class Program
                 var g=generations.Read(manifest);
                 if(!ManagementContract.PathEquals(g.Installation.LauncherPath,exe))throw new ContractException("binding_invalid");
                 return g;
-            },generations.RuntimeLease,timeout.Token);
+            },generations.RuntimeLease,activation,timeout.Token);
             return 0;
         }
         catch{return 1;} // No stdout/stderr diagnostics outside a complete typed response.

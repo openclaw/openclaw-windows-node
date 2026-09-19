@@ -12,10 +12,11 @@ public class NativeCancellationTests
         var request=ManagementContractTests.Request() with {Mode=mode};
         if(mode==ManagementContract.Companion)request=request with {Context=null};
         var generation=RegistrationServiceTests.Make(request);
+        using var platform=new NativeRegistrationRuntimeTests.Platform(generation);
         using var input=new DisconnectableFrame();using var output=new MemoryStream();
         var entered=new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var cancelled=new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-        var run=NativeTransport.RunAsync(input,output,[ManagementContract.Origin],()=>generation,_=>new Lease(),default,
+        var run=NativeTransport.RunAsync(input,output,[ManagementContract.Origin],()=>generation,_=>new Lease(),new(platform),default,
             async (_,_,_,ct)=>{entered.SetResult();try{await Task.Delay(Timeout.Infinite,ct);}catch(OperationCanceledException){cancelled.SetResult();throw;}return [];});
         await entered.Task.WaitAsync(TimeSpan.FromSeconds(2));input.Disconnect();
         await cancelled.Task.WaitAsync(TimeSpan.FromSeconds(2));await run.WaitAsync(TimeSpan.FromSeconds(2));
@@ -24,8 +25,10 @@ public class NativeCancellationTests
     [Fact]public async Task UnsafeRuntimeNeverStartsBackend()
     {
         var generation=RegistrationServiceTests.Make(ManagementContractTests.Request());
+        using var platform=new NativeRegistrationRuntimeTests.Platform(generation);
+        platform.Admit=_=>throw new ContractException("unsafe_acl");
         using var input=new DisconnectableFrame();using var output=new MemoryStream();var starts=0;
-        await NativeTransport.RunAsync(input,output,[ManagementContract.Origin],()=>generation,_=>throw new ContractException("unsafe_acl"),default,
+        await NativeTransport.RunAsync(input,output,[ManagementContract.Origin],()=>generation,_=>throw new ContractException("unsafe_acl"),new(platform),default,
             (_,_,_,_)=>{starts++;return Task.FromResult(Array.Empty<byte>());});
         Assert.Equal(0,starts);
         Assert.Contains("manifest_invalid",Encoding.UTF8.GetString(output.ToArray()));
@@ -33,10 +36,11 @@ public class NativeCancellationTests
     [Fact]public async Task RevokedBackendCannotPublishEvenIfItIgnoresCancellation()
     {
         var generation=RegistrationServiceTests.Make(ManagementContractTests.Request());
+        using var platform=new NativeRegistrationRuntimeTests.Platform(generation);
         using var input=new DisconnectableFrame();using var output=new MemoryStream();
         var entered=new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var release=new TaskCompletionSource<byte[]>(TaskCreationOptions.RunContinuationsAsynchronously);
-        var run=NativeTransport.RunAsync(input,output,[ManagementContract.Origin],()=>generation,_=>new Lease(),default,
+        var run=NativeTransport.RunAsync(input,output,[ManagementContract.Origin],()=>generation,_=>new Lease(),new(platform),default,
             (_,_,_,_)=>{entered.SetResult();return release.Task;});
         await entered.Task.WaitAsync(TimeSpan.FromSeconds(2));input.Disconnect();
         await input.Disconnected.WaitAsync(TimeSpan.FromSeconds(2));

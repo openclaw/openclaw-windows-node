@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using System.Text;
+using OpenClaw.Shared.Browser;
 
 namespace OpenClaw.Connection;
 
@@ -57,6 +58,12 @@ public static class BrowserBootstrapWslCommand
         using var process = Process.Start(start) ?? throw new IOException("pairing_unavailable");
         using var deadline = CancellationTokenSource.CreateLinkedTokenSource(ct);
         deadline.CancelAfter(TimeSpan.FromSeconds(15));
+        using var stop = deadline.Token.Register(() =>
+        {
+            try { if (!process.HasExited) process.Kill(entireProcessTree: true); }
+            catch (InvalidOperationException) { }
+            catch (System.ComponentModel.Win32Exception) { }
+        });
         var output = ReadBoundedAsync(process.StandardOutput, deadline.Token);
         var error = ReadBoundedAsync(process.StandardError, deadline.Token);
         try
@@ -70,10 +77,28 @@ public static class BrowserBootstrapWslCommand
         }
         finally
         {
-            if (!process.HasExited)
+            using var cleanup = new CancellationTokenSource(TimeSpan.FromSeconds(2));
+            try
             {
-                try { process.Kill(entireProcessTree: true); }
-                catch (InvalidOperationException) { }
+                try
+                {
+                    if (!process.HasExited)
+                    {
+                        try { process.Kill(entireProcessTree: true); }
+                        catch (InvalidOperationException) { }
+                    }
+                }
+                finally { await BrowserBootstrapProcessLifetime.JoinAsync(process, cleanup.Token); }
+            }
+            finally
+            {
+                try { await BrowserBootstrapProcessLifetime.AwaitOwnedAsync(Task.WhenAll(output, error), cleanup.Token); }
+                catch (OperationCanceledException) when (deadline.IsCancellationRequested && output.IsCompleted && error.IsCompleted) { }
+                // Windows process/drain settlement is not Linux guest settlement proof.
+                _ = output.ContinueWith(t => _ = t.Exception, CancellationToken.None,
+                    TaskContinuationOptions.OnlyOnFaulted | TaskContinuationOptions.ExecuteSynchronously, TaskScheduler.Default);
+                _ = error.ContinueWith(t => _ = t.Exception, CancellationToken.None,
+                    TaskContinuationOptions.OnlyOnFaulted | TaskContinuationOptions.ExecuteSynchronously, TaskScheduler.Default);
             }
         }
     }

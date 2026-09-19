@@ -10,7 +10,7 @@ namespace OpenClaw.BrowserBootstrap;
 
 /// <summary>Sole native and Store registry writer. No alternate TS/PowerShell mutation backend.</summary>
 [SupportedOSPlatform("windows")]
-internal sealed class WindowsRegistrationPlatform : IRegistrationPlatform
+internal sealed class WindowsRegistrationPlatform : IRegistrationPlatform, INativeRegistrationPlatform
 {
     internal const string StoreKey = @"Software\Google\Chrome\Extensions\kcdjddhmeafeomebliikmbpblkmkfoig";
     internal const string StoreOwner = "openclaw_native_host", UpdateUrl = "https://clients2.google.com/service/update2/crx";
@@ -20,6 +20,8 @@ internal sealed class WindowsRegistrationPlatform : IRegistrationPlatform
     private readonly string[] nativeKeys=NativeKeys;
     internal WindowsRegistrationPlatform(){authority=new();Generations=new(authority);}
     public IDisposable Acquire()=>authority.Lock();
+    public IDisposable LeaseRuntime(Generation generation)=>Generations.RuntimeLease(generation);
+    public NativeInventory ObserveNative()=>ObserveNative(null);
     public void ValidateRuntime(Generation generation){using var lease=Generations.RuntimeLease(generation);}
     public Generation Prepare(ManagementRequest request,CancellationToken ct)=>Generations.Prepare(request,ct,ObserveNative().Generations);
     internal sealed record Value(string Name,RegistryValueKind Kind,string? Text);
@@ -41,7 +43,7 @@ internal sealed class WindowsRegistrationPlatform : IRegistrationPlatform
     private Row[] Rows(string[] paths)=>(from path in paths from hive in new[]{RegistryHive.CurrentUser,RegistryHive.LocalMachine} from view in Views select ReadRow(hive,view,path)).ToArray();
     private static bool Same(Row a,Row b)=>a.Hive==b.Hive&&a.View==b.View&&a.Path==b.Path&&a.Exists==b.Exists&&a.Values.SequenceEqual(b.Values);
     public Inventory Observe(ManagementRequest request)=>new(ObserveNative(),ObserveStore(request));
-    private NativeInventory ObserveNative(Row[]? snapshot=null)
+    private NativeInventory ObserveNative(Row[]? snapshot)
     {
         try
         {
