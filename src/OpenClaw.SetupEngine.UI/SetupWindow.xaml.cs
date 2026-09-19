@@ -31,7 +31,6 @@ public sealed partial class SetupWindow : Window
     private Task<HostHardwareInfo>? _localAiHardwareProbeTask;
     private readonly WslViabilityProbe _wslViabilityProbe = new(InspectWslViabilityAsync);
     private bool _startAtLocalAiRecoveryReview;
-    private bool _pinLocalAiRecoveryModel;
     private LocalAiRecoveryConfigurationBaseline _localAiRecoveryBaseline = null!;
 
     public static SetupWindow? Active { get; private set; }
@@ -190,10 +189,7 @@ public sealed partial class SetupWindow : Window
                 _config.GatewayUrl = null;
             }
             if (!string.IsNullOrWhiteSpace(localAiRecoveryModelId))
-            {
                 _config.LocalAi.SelectedModelId = localAiRecoveryModelId;
-                _pinLocalAiRecoveryModel = true;
-            }
             if (localAiRecoveryRequestedPort is { } requestedPort &&
                 LocalAiPortPolicy.TryValidate(requestedPort, out _))
             {
@@ -273,8 +269,7 @@ public sealed partial class SetupWindow : Window
             typeof(CapabilitiesPage),
             new CapabilitiesPageArgs(
                 _config,
-                _startAtLocalAiRecoveryReview,
-                _pinLocalAiRecoveryModel));
+                _startAtLocalAiRecoveryReview));
     public void NavigateToProgress() => NavigateTo(typeof(ProgressPage), CreateProgressPageArgs(showMilestoneOnly: false));
     public void NavigateToGatewayInstalledMilestone() =>
         NavigateTo(typeof(ProgressPage), CreateProgressPageArgs(showMilestoneOnly: true));
@@ -300,7 +295,6 @@ public sealed partial class SetupWindow : Window
             return;
 
         _startAtLocalAiRecoveryReview = false;
-        _pinLocalAiRecoveryModel = false;
         _config.LocalAiRecoveryGatewayId = null;
         _localAiRecoveryBaseline.Restore(_config);
         _persistStartupPreferenceOnComplete = true;
