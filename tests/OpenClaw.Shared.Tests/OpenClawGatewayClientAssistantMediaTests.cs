@@ -19,6 +19,7 @@ public sealed class OpenClawGatewayClientAssistantMediaTests
             "test-token",
             identityPath: identity.Path);
         await client.ConnectAsync();
+        CompleteHandshakeForTest(client);
 
         var resolution = client.ResolveAssistantMediaAsync(
             "main",
@@ -80,6 +81,7 @@ public sealed class OpenClawGatewayClientAssistantMediaTests
             assistantMediaAuthToken: "shared-http-token",
             assistantMediaHandler: handler);
         await client.ConnectAsync();
+        CompleteHandshakeForTest(client);
 
         var media = new ChatMediaContentInfo
         {
@@ -121,6 +123,7 @@ public sealed class OpenClawGatewayClientAssistantMediaTests
             identityPath: identity.Path,
             assistantMediaHandler: handler);
         await client.ConnectAsync();
+        CompleteHandshakeForTest(client);
 
         var result = await client.ResolveAssistantMediaAsync(
             "main",
@@ -155,6 +158,7 @@ public sealed class OpenClawGatewayClientAssistantMediaTests
             assistantMediaAuthToken: "shared-token-1",
             assistantMediaHandler: handler);
         await client.ConnectAsync();
+        CompleteHandshakeForTest(client);
         var media = new ChatMediaContentInfo
         {
             Kind = ChatMediaContentKind.Image,
@@ -230,6 +234,23 @@ public sealed class OpenClawGatewayClientAssistantMediaTests
         Assert.Equal(expected, resolved);
         if (expected)
             Assert.Equal("gateway.example", uri.Host);
+    }
+
+    /// <summary>
+    /// Satisfies the #1418 readiness gate (IsConnectedToGateway requires the
+    /// hello-ok snapshot) without a wire handshake: media resolution leases
+    /// gate on that property. Mechanical tests set the snapshot flag directly
+    /// so the post-handshake auto-request burst cannot race their HTTP handler
+    /// sequencing; the real handshake path is covered by
+    /// GatewayProtocolLiveRoundTripTests.
+    /// </summary>
+    private static void CompleteHandshakeForTest(OpenClawGatewayClient client)
+    {
+        var field = typeof(OpenClawGatewayClient).GetField(
+            "_hasHandshakeSnapshot",
+            System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic);
+        Assert.NotNull(field);
+        field!.SetValue(client, true);
     }
 
     private static HttpResponseMessage JsonResponse(string json) =>

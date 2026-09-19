@@ -116,6 +116,23 @@ public class OpenClawGatewayClientTests
             method!.Invoke(_client, Array.Empty<object>());
         }
 
+        /// <summary>
+        /// Marks the hello-ok handshake snapshot complete without a wire
+        /// handshake. Mechanical wizard/transport tests use this to satisfy the
+        /// #1418 readiness gate without arming the post-handshake auto-request
+        /// burst, which would race their frame reads; the real
+        /// challenge → connect → hello-ok path is covered by
+        /// GatewayProtocolLiveRoundTripTests and the ProcessRawMessage tests.
+        /// </summary>
+        public void CompleteHandshakeForTest()
+        {
+            var field = typeof(OpenClawGatewayClient).GetField(
+                "_hasHandshakeSnapshot",
+                System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic);
+            Assert.NotNull(field);
+            field!.SetValue(_client, true);
+        }
+
         public void ProcessRawMessage(string json)
         {
             var method = typeof(OpenClawGatewayClient).GetMethod(
@@ -468,6 +485,15 @@ public class OpenClawGatewayClientTests
 
         public string? GetPairingRequiredRequestId() => _client.PairingRequiredRequestId;
 
+        public bool IsTransportConnectedForTest()
+        {
+            var property = typeof(WebSocketClientBase).GetProperty(
+                "IsConnected",
+                System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic);
+            Assert.NotNull(property);
+            return (bool)property!.GetValue(_client)!;
+        }
+
         public bool ShouldAutoReconnectForTest()
         {
             var method = typeof(OpenClawGatewayClient).GetMethod(
@@ -565,6 +591,7 @@ public class OpenClawGatewayClientTests
             identityPath: identity.Path);
         using var client = helper.Client;
         await client.ConnectAsync();
+        helper.CompleteHandshakeForTest();
 
         var responseTask = client.SendWizardRequestAsync("wizard.start", timeoutMs: 10_000);
         var request = await server.ReceiveTextAsync().WaitAsync(TimeSpan.FromSeconds(2));
@@ -599,6 +626,7 @@ public class OpenClawGatewayClientTests
             identityPath: identity.Path);
         using var client = helper.Client;
         await client.ConnectAsync();
+        helper.CompleteHandshakeForTest();
 
         var responseTask = client.SendWizardRequestAsync("wizard.next", timeoutMs: 10_000);
         var request = await server.ReceiveTextAsync().WaitAsync(TimeSpan.FromSeconds(2));
@@ -631,6 +659,7 @@ public class OpenClawGatewayClientTests
             identityPath: identity.Path);
         using var client = helper.Client;
         await client.ConnectAsync();
+        helper.CompleteHandshakeForTest();
 
         var responseTask = client.SendWizardRequestAsync("wizard.status", timeoutMs: 250);
         await server.ReceiveTextAsync().WaitAsync(TimeSpan.FromSeconds(2));
@@ -652,6 +681,7 @@ public class OpenClawGatewayClientTests
             identityPath: identity.Path);
         using var client = helper.Client;
         await client.ConnectAsync();
+        helper.CompleteHandshakeForTest();
 
         var timedOutTask = client.SendWizardRequestAsync("wizard.status", timeoutMs: 250);
         var timedOutRequest = await server.ReceiveTextAsync().WaitAsync(TimeSpan.FromSeconds(2));
@@ -698,6 +728,7 @@ public class OpenClawGatewayClientTests
             identityPath: identity.Path);
         using var client = helper.Client;
         await client.ConnectAsync();
+        helper.CompleteHandshakeForTest();
 
         var responseTask = client.SendWizardRequestAsync("wizard.cancel", timeoutMs: 10_000);
         await server.ReceiveTextAsync().WaitAsync(TimeSpan.FromSeconds(2));
@@ -720,6 +751,7 @@ public class OpenClawGatewayClientTests
             identityPath: identity.Path);
         using var client = helper.Client;
         await client.ConnectAsync();
+        helper.CompleteHandshakeForTest();
 
         var responseTask = client.SendWizardRequestAsync("wizard.next", timeoutMs: 10_000);
         await server.ReceiveTextAsync().WaitAsync(TimeSpan.FromSeconds(2));
@@ -801,6 +833,87 @@ public class OpenClawGatewayClientTests
         Assert.False(helper.ShouldAutoReconnectForTest());
         await Assert.ThrowsAsync<InvalidOperationException>(
             () => client.SendChatMessageAsync("blocked after protocol mismatch"));
+    }
+
+    [Fact]
+    public async Task TrackedRequest_BeforeHandshake_SuppressedWithoutClosingSocket()
+    {
+        using var server = new LoopbackWebSocketServer();
+        using var identity = new TempDirectory("pre-handshake-tracked-");
+        await server.StartAsync();
+        var helper = new GatewayClientTestHelper(
+            gatewayUrl: server.WebSocketUrl,
+            identityPath: identity.Path);
+        using var client = helper.Client;
+        await client.ConnectAsync();
+        Assert.False(client.HasHandshakeSnapshot);
+
+        await client.RequestNodesAsync();
+
+        // #1418: a tracked RPC sent before hello-ok must be dropped, not
+        // written to the wire — the gateway answers such a frame with a 1008
+        // PolicyViolation close. Nothing may reach the server, and the
+        // transport must stay alive with auto-reconnect armed.
+        try
+        {
+            await server.ReceiveTextAsync().WaitAsync(TimeSpan.FromMilliseconds(300));
+            Assert.Fail("A frame reached the wire before hello-ok; the gateway would 1008-close this socket.");
+        }
+        catch (TimeoutException)
+        {
+            // expected: the suppressed request never reached the loopback server
+        }
+
+        Assert.True(helper.IsTransportConnectedForTest());
+        Assert.True(helper.ShouldAutoReconnectForTest());
+    }
+
+    [Fact]
+    public async Task WizardRequest_BeforeHandshake_ThrowsPendingErrorAndKeepsSocket()
+    {
+        using var server = new LoopbackWebSocketServer();
+        using var identity = new TempDirectory("pre-handshake-wizard-");
+        await server.StartAsync();
+        var helper = new GatewayClientTestHelper(
+            gatewayUrl: server.WebSocketUrl,
+            identityPath: identity.Path);
+        using var client = helper.Client;
+        await client.ConnectAsync();
+        Assert.False(client.IsConnectedToGateway);
+
+        var exception = await Assert.ThrowsAsync<InvalidOperationException>(
+            () => client.SendWizardRequestAsync("wizard.start", timeoutMs: 1_000));
+
+        // Distinct from the closed-socket message: the transport is healthy,
+        // only the handshake is pending, and the socket must survive.
+        Assert.Contains("handshake", exception.Message, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("not open", exception.Message, StringComparison.OrdinalIgnoreCase);
+        Assert.True(helper.IsTransportConnectedForTest());
+        Assert.False(client.HasHandshakeSnapshot);
+    }
+
+    [Fact]
+    public async Task IsConnectedToGateway_RequiresHelloOkSnapshot_AndClearsOnDisconnect()
+    {
+        using var server = new LoopbackWebSocketServer();
+        using var identity = new TempDirectory("handshake-gate-");
+        await server.StartAsync();
+        var helper = new GatewayClientTestHelper(
+            gatewayUrl: server.WebSocketUrl,
+            identityPath: identity.Path);
+        using var client = helper.Client;
+        await client.ConnectAsync();
+
+        // Transport open but hello-ok pending: operator readiness stays false.
+        Assert.True(helper.IsTransportConnectedForTest());
+        Assert.False(client.IsConnectedToGateway);
+
+        helper.CompleteHandshakeForTest();
+        Assert.True(client.IsConnectedToGateway);
+
+        helper.OnDisconnected();
+        Assert.False(client.HasHandshakeSnapshot);
+        Assert.False(client.IsConnectedToGateway);
     }
 
     private static string ReadRequestId(string request)

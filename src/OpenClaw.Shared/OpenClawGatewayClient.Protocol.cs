@@ -820,6 +820,13 @@ public partial class OpenClawGatewayClient
             _logger.Warn($"{method} unsupported on gateway");
             return null;
         }
+        catch (InvalidOperationException ex) when (
+            ex.Message.Contains(HandshakePendingError, StringComparison.Ordinal))
+        {
+            // #1418: before hello-ok these payload reads are unavailable, not
+            // failures; callers treat null the same as an unsupported gateway.
+            return null;
+        }
     }
 
     private static JsonElement? TryGetArray(JsonElement parent, string property)
