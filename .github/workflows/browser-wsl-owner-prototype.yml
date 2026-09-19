@@ -14,18 +14,82 @@ permissions:
   contents: read
 
 jobs:
+  canonical-consumer:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    outputs:
+      version: ${{ steps.identity.outputs.version }}
+      sha256: ${{ steps.identity.outputs.sha256 }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          repository: openclaw/openclaw
+          ref: 63f5d867fb67242ea6322f866b0e4f732d4e801c
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24.19.0'
+      - uses: pnpm/action-setup@v4
+        with:
+          version: '12.4.0'
+          run_install: false
+      - name: Build the immutable canonical CLI, not the published release CLI
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = 63f5d867fb67242ea6322f866b0e4f732d4e801c
+          pnpm install --frozen-lockfile
+          node scripts/package-openclaw-for-docker.mjs --allow-unreleased-changelog --output-dir "$RUNNER_TEMP/canonical-consumer" --output-name openclaw-current.tgz
+          git diff --exit-code
+      - name: Bind the candidate package bytes to their immutable source
+        id: identity
+        shell: bash
+        run: |
+          set -euo pipefail
+          node - <<'JS'
+          const fs=require('fs'),crypto=require('crypto'),path=require('path');
+          const dir=path.join(process.env.RUNNER_TEMP,'canonical-consumer');
+          const version=require('./package.json').version;
+          const sha256=crypto.createHash('sha256').update(fs.readFileSync(path.join(dir,'openclaw-current.tgz'))).digest('hex');
+          fs.writeFileSync(path.join(dir,'package-candidate.json'),JSON.stringify({sourceSha:'63f5d867fb67242ea6322f866b0e4f732d4e801c',version,sha256}));
+          fs.appendFileSync(process.env.GITHUB_OUTPUT,'version='+version+'\nsha256='+sha256+'\n');
+          JS
+      - uses: actions/upload-artifact@v7
+        with:
+          name: wsl-prototype-canonical-consumer
+          path: ${{ runner.temp }}/canonical-consumer/
+          retention-days: 7
   owner-prototype:
+    needs: canonical-consumer
     runs-on: windows-latest
     timeout-minutes: 40
     env:
       OPENCLAW_REPO_ROOT: ${{ github.workspace }}
       OPENCLAW_RUN_E2E: '1'
       OPENCLAW_BROWSER_WSL_PROTOTYPE: '1'
+      OPENCLAW_WSL_PROTOTYPE_CONSUMER_SHA: 63f5d867fb67242ea6322f866b0e4f732d4e801c
+      OPENCLAW_E2E_GATEWAY_VERSION: ${{ needs.canonical-consumer.outputs.version }}
     steps:
       - uses: actions/checkout@v7
         with:
           fetch-depth: 0
           persist-credentials: false
+      - uses: actions/download-artifact@v8
+        with:
+          name: wsl-prototype-canonical-consumer
+          path: ${{ runner.temp }}/canonical-consumer
+      - name: Verify the candidate for the existing fixture package interface
+        shell: pwsh
+        env:
+          EXPECTED_SHA256: ${{ needs.canonical-consumer.outputs.sha256 }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $package = Join-Path $env:RUNNER_TEMP 'canonical-consumer/openclaw-current.tgz'
+          $metadata = Get-Content (Join-Path $env:RUNNER_TEMP 'canonical-consumer/package-candidate.json') -Raw | ConvertFrom-Json
+          $actual = (Get-FileHash $package -Algorithm SHA256).Hash.ToLowerInvariant()
+          if ($actual -cne $env:EXPECTED_SHA256 -or $metadata.sha256 -cne $actual -or $metadata.sourceSha -cne $env:OPENCLAW_WSL_PROTOTYPE_CONSUMER_SHA -or $metadata.version -cne $env:OPENCLAW_E2E_GATEWAY_VERSION) { throw 'Canonical package identity mismatch.' }
+          "OPENCLAW_E2E_GATEWAY_PACKAGE_TGZ=$package" >> $env:GITHUB_ENV
+          "OPENCLAW_WSL_PROTOTYPE_PACKAGE_SHA256=$actual" >> $env:GITHUB_ENV
       - name: Verify frozen production and accepted native proof
         shell: pwsh
         run: |

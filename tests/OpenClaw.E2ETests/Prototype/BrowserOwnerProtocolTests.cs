@@ -25,6 +25,7 @@ public sealed class BrowserWslOwnerPrototypeTests
     private readonly List<string> _errors = [];
     private string _source = "", _node = "";
     private long _gatewayPid;
+    private bool _canonicalCapabilityVerified;
 
     [BrowserWslPrototypeFact]
     public async Task PrivateProtocolAndTransientScope_PrecedeProductionWiring()
@@ -45,6 +46,9 @@ public sealed class BrowserWslOwnerPrototypeTests
             var lines = preflight.Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
             _node = lines[0]; _gatewayPid = long.Parse(lines[1]);
             Assert.StartsWith("/", _node); Assert.True(_gatewayPid > 1);
+            // The public release CLI can predate this consumer contract. Never substitute it silently.
+            var capability = await Guest(fixture, "export PATH=/home/openclaw/.openclaw/tools/node/bin:/usr/local/bin:/usr/bin:/bin; for cli in /home/openclaw/.openclaw/bin/openclaw /opt/openclaw/bin/openclaw /usr/local/bin/openclaw; do if test -x \"$cli\"; then if \"$cli\" browser extension pair --help 2>/dev/null | grep -F -- --local-gateway >/dev/null; then printf capability_verified; exit 0; fi; exit 1; fi; done; exit 1");
+            Assert.Equal("capability_verified", capability.Trim()); _canonicalCapabilityVerified = true;
             foreach (var name in Cases)
             {
                 try { await RunCase(fixture, name); }
@@ -62,6 +66,10 @@ public sealed class BrowserWslOwnerPrototypeTests
             {
                 schema = 1, sourceSha = Environment.GetEnvironmentVariable("GITHUB_SHA"),
                 prototypeSha256 = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(_source))).ToLowerInvariant(),
+                consumerSha = Environment.GetEnvironmentVariable("OPENCLAW_WSL_PROTOTYPE_CONSUMER_SHA"),
+                candidatePackageSha256 = Environment.GetEnvironmentVariable("OPENCLAW_WSL_PROTOTYPE_PACKAGE_SHA256"),
+                candidateVersion = Environment.GetEnvironmentVariable("OPENCLAW_E2E_GATEWAY_VERSION"),
+                canonicalCapabilityVerified = _canonicalCapabilityVerified,
                 productionUnchanged = true, publicProtocolUnchanged = true, scope = "private protocol/systemd prototype, not production owner repair or whole-Companion proof",
                 cases = _cases, errors = _errors, gatewayUnchanged, ownedFixtureDisposed = removed,
                 payloadLimitUtf16 = 16384, privateResultFrameBound = 90000,
@@ -214,6 +222,10 @@ public sealed class BrowserWslOwnerPrototypeTests
             var expectedUnknown = name.StartsWith("loss_", StringComparison.Ordinal) && name != "loss_after_settled" || name is "late_start_job" or "collision" or "manager_epoch_replaced";
             Assert.Equal(!expectedUnknown, settled);
             if (settled) Assert.True(settledMs <= 17000, "Prototype exceeded unchanged request plus soft cleanup budget.");
+            if (name is "cancel" or "eof" or "deadline_setsid" or "wrong_epoch" or "duplicate_permit" or "oversized" or "out_of_order")
+            {
+                Assert.False(resultSeen); Assert.Equal("cancelled", outcome);
+            }
             if (name == "real_cli") Assert.True(canonicalValid);
             if (name == "payload_capacity") Assert.True(capacityPreserved);
             _cases.Add(new { name, requestId = id, windowsPid = process.Id, readyMs, permitMs, resultMs, settledMs,
