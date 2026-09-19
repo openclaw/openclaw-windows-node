@@ -134,7 +134,13 @@ public class BrowserBootstrapServiceTests
     [Fact]
     public void Command_UsesCanonicalPairingNotGatewaySecretsOrLifecycle()
     {
-        Assert.Contains("browser extension pair --json --local-gateway", BrowserBootstrapWslCommand.Script);
+        var script = BrowserBootstrapWslCommand.BuildInput(new string('a', 32));
+        var encoded = System.Text.RegularExpressions.Regex.Match(script, "printf '%s' '([A-Za-z0-9+/=]+)'").Groups[1].Value;
+        var program = Encoding.UTF8.GetString(Convert.FromBase64String(encoded));
+        Assert.Contains("[process.argv[1],'browser','extension','pair','--json','--local-gateway']", program);
+        Assert.DoesNotContain("exec \"$cli\"", script);
+        Assert.DoesNotContain("\r", script);
+        Assert.DoesNotContain("DelayMs", program);
         Assert.Contains("unset OPENCLAW_PROFILE OPENCLAW_STATE_DIR OPENCLAW_CONFIG_PATH", BrowserBootstrapWslCommand.Script);
         Assert.DoesNotContain("gateway start", BrowserBootstrapWslCommand.Script);
         Assert.DoesNotContain("auth.token", BrowserBootstrapWslCommand.Script);

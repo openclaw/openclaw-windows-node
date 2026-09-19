@@ -1,0 +1,149 @@
+name: Browser WSL production owner proof
+
+on:
+  push:
+    branches: [openclaw/automatic-chrome-extension-pairing]
+    paths:
+      - .github/workflows/browser-wsl-owner-proof.yml
+      - src/OpenClaw.Connection/BrowserBootstrapWsl*
+      - src/OpenClaw.Connection/OpenClaw.Connection.csproj
+      - tests/OpenClaw.Connection.Tests/BrowserBootstrap*
+      - tests/OpenClaw.E2ETests/Prototype/BrowserWslProductionOwnerTests.cs
+
+permissions:
+  contents: read
+
+jobs:
+  canonical-consumer:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    outputs:
+      version: ${{ steps.identity.outputs.version }}
+      sha256: ${{ steps.identity.outputs.sha256 }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          repository: openclaw/openclaw
+          ref: 63f5d867fb67242ea6322f866b0e4f732d4e801c
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24.19.0'
+      - uses: pnpm/action-setup@v4
+        with:
+          # The immutable consumer packageManager includes its integrity-qualified version.
+          # Do not provide a second, conflicting action version.
+          run_install: false
+      - name: Build the immutable canonical CLI, not the published release CLI
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = 63f5d867fb67242ea6322f866b0e4f732d4e801c
+          pnpm install --frozen-lockfile
+          node scripts/package-openclaw-for-docker.mjs --allow-unreleased-changelog --output-dir "$RUNNER_TEMP/canonical-consumer" --output-name openclaw-current.tgz
+          git diff --exit-code
+      - name: Bind the candidate package bytes to their immutable source
+        id: identity
+        shell: bash
+        run: |
+          set -euo pipefail
+          node - <<'JS'
+          const fs=require('fs'),crypto=require('crypto'),path=require('path');
+          const dir=path.join(process.env.RUNNER_TEMP,'canonical-consumer');
+          const version=require('./package.json').version;
+          const sha256=crypto.createHash('sha256').update(fs.readFileSync(path.join(dir,'openclaw-current.tgz'))).digest('hex');
+          fs.writeFileSync(path.join(dir,'package-candidate.json'),JSON.stringify({sourceSha:'63f5d867fb67242ea6322f866b0e4f732d4e801c',version,sha256}));
+          fs.appendFileSync(process.env.GITHUB_OUTPUT,'version='+version+'\nsha256='+sha256+'\n');
+          JS
+      - uses: actions/upload-artifact@v7
+        with:
+          name: wsl-owner-canonical-consumer
+          path: ${{ runner.temp }}/canonical-consumer/
+          retention-days: 7
+  owner-prototype:
+    needs: canonical-consumer
+    runs-on: windows-latest
+    timeout-minutes: 40
+    env:
+      OPENCLAW_REPO_ROOT: ${{ github.workspace }}
+      OPENCLAW_RUN_E2E: '1'
+      OPENCLAW_BROWSER_WSL_OWNER_PROOF: '1'
+      OPENCLAW_WSL_PROTOTYPE_CONSUMER_SHA: 63f5d867fb67242ea6322f866b0e4f732d4e801c
+      OPENCLAW_E2E_GATEWAY_VERSION: ${{ needs.canonical-consumer.outputs.version }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/download-artifact@v8
+        with:
+          name: wsl-owner-canonical-consumer
+          path: ${{ runner.temp }}/canonical-consumer
+      - name: Verify the candidate for the existing fixture package interface
+        shell: pwsh
+        env:
+          EXPECTED_SHA256: ${{ needs.canonical-consumer.outputs.sha256 }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $package = Join-Path $env:RUNNER_TEMP 'canonical-consumer/openclaw-current.tgz'
+          $metadata = Get-Content (Join-Path $env:RUNNER_TEMP 'canonical-consumer/package-candidate.json') -Raw | ConvertFrom-Json
+          $actual = (Get-FileHash $package -Algorithm SHA256).Hash.ToLowerInvariant()
+          if ($actual -cne $env:EXPECTED_SHA256 -or $metadata.sha256 -cne $actual -or $metadata.sourceSha -cne $env:OPENCLAW_WSL_PROTOTYPE_CONSUMER_SHA -or $metadata.version -cne $env:OPENCLAW_E2E_GATEWAY_VERSION) { throw 'Canonical package identity mismatch.' }
+          "OPENCLAW_E2E_GATEWAY_PACKAGE_TGZ=$package" >> $env:GITHUB_ENV
+          "OPENCLAW_WSL_PROTOTYPE_PACKAGE_SHA256=$actual" >> $env:GITHUB_ENV
+      - name: Verify frozen production and accepted native proof
+        shell: pwsh
+        run: |
+          git diff --exit-code edd93f4998528cc0362443067db95a1c822e4cf1 HEAD -- src/OpenClaw.BrowserBootstrap src/OpenClaw.BrowserBootstrap.Contracts src/OpenClaw.Shared/Browser .github/workflows/browser-native-composed-proof.yml scripts/Test-BrowserNativeComposition.mjs scripts/Initialize-BrowserNativeComposition.ps1
+          if ($LASTEXITCODE -ne 0) { throw 'Frozen production/native proof changed.' }
+          "OPENCLAW_WSL_OWNER_RECEIPT=$env:RUNNER_TEMP/browser-wsl-production-owner.json" >> $env:GITHUB_ENV
+      - uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: '10.0.x'
+      - name: Check private protocol without running Linux service work
+        shell: pwsh
+        run: node --test scripts/BrowserWslOwnerPrototype.test.cjs
+      - name: Build existing managed WSL setup fixture
+        shell: pwsh
+        run: |
+          dotnet restore src/OpenClaw.Tray.WinUI -r win-x64
+          if ($LASTEXITCODE -ne 0) { throw 'Tray restore failed.' }
+          dotnet restore tests/OpenClaw.E2ETests -r win-x64
+          if ($LASTEXITCODE -ne 0) { throw 'Fixture restore failed.' }
+          dotnet build src/OpenClaw.Tray.WinUI -c Debug -r win-x64 --no-restore
+          if ($LASTEXITCODE -ne 0) { throw 'Tray build failed.' }
+          dotnet build tests/OpenClaw.E2ETests -c Debug -r win-x64 --no-restore
+          if ($LASTEXITCODE -ne 0) { throw 'Fixture build failed.' }
+      - name: Verify the actual stdin newline normalization
+        shell: pwsh
+        run: |
+          dotnet test tests/OpenClaw.E2ETests --no-build -c Debug -r win-x64 --filter FullyQualifiedName~BrowserPrototypeTransportTests
+          if ($LASTEXITCODE -ne 0) { throw 'Prototype stdin transport regression failed.' }
+      - name: Exercise actual WSL owner and retirement retention in disposable WSL
+        shell: pwsh
+        run: |
+          # Existing setup diagnostics may include synthetic fixture credentials.
+          # Neither raw test output, TRX output sections nor fixture files are uploaded.
+          $privateLog = Join-Path $env:RUNNER_TEMP 'wsl-owner-private-test.log'
+          $privateResults = Join-Path $env:RUNNER_TEMP 'wsl-owner-private-results'
+          dotnet test tests/OpenClaw.E2ETests --no-build -c Debug -r win-x64 --filter FullyQualifiedName~BrowserWslProductionOwnerTests --results-directory $privateResults --logger 'trx;LogFileName=trace.trx' *> $privateLog
+          $testExit = $LASTEXITCODE
+          if (!(Test-Path $env:OPENCLAW_WSL_OWNER_RECEIPT)) { throw 'No terminal component receipt. Setup/build capability must be diagnosed privately.' }
+          [xml]$trx = Get-Content (Join-Path $privateResults 'trace.trx')
+          $cases = @($trx.TestRun.Results.UnitTestResult)
+          if ($cases.Count -ne 1 -or $cases[0].outcome -ne 'Passed' -or $testExit -ne 0) { throw 'Component trace did not execute and finish all owned cleanup.' }
+          Write-Host 'Actual production-owner receipt collected; full native/consumer pairing remains separately required.'
+      - name: Retain only explicitly redacted component receipt
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: browser-wsl-production-owner-receipt
+          path: ${{ env.OPENCLAW_WSL_OWNER_RECEIPT }}
+          if-no-files-found: warn
+          retention-days: 7
+      - name: Evaluate actual owner proof
+        shell: pwsh
+        run: |
+          $r = Get-Content $env:OPENCLAW_WSL_OWNER_RECEIPT -Raw | ConvertFrom-Json
+          if ($r.status -ne 'production_owner_proof_passed' -or $r.cases.Count -ne 6) { throw 'Actual production-owner proof incomplete.' }
+          Write-Host 'Actual owner requires guest acknowledgment; missing acknowledgment must keep activation and retirement blocked.'
