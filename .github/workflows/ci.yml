@@ -110,6 +110,10 @@ jobs:
       shell: pwsh
       run: ./scripts/test-ci-workflow-contract.ps1
 
+    - name: Compile browser management Pascal include
+      shell: pwsh
+      run: ./scripts/Test-BrowserBootstrapCompile.ps1
+
     - name: Validate MSIX CI artifacts
       shell: pwsh
       run: ./scripts/test-msix-ci-artifacts.ps1

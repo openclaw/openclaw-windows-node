@@ -1,33 +1,33 @@
 // Shared by installer AND uninstaller. Fixed argv, bounded stdin/stdout, no shell or JSON command-line interpolation.
 // Native process containment and EOF completion are distinct from Chrome's EOF revocation.
-function BBCreatePipe(var R, W: NativeInt; SA: AnsiString; Size: Cardinal): Boolean;
+function BBCreatePipe(var R, W: INT_PTR; SA: AnsiString; Size: Cardinal): Boolean;
   external 'CreatePipe@kernel32.dll stdcall';
-function BBHandleFlags(H: NativeInt; Mask, Flags: Cardinal): Boolean;
+function BBHandleFlags(H: INT_PTR; Mask, Flags: Cardinal): Boolean;
   external 'SetHandleInformation@kernel32.dll stdcall';
-function BBClose(H: NativeInt): Boolean;
+function BBClose(H: INT_PTR): Boolean;
   external 'CloseHandle@kernel32.dll stdcall';
-function BBCreateProcess(App: String; Cmd: String; ProcessSA, ThreadSA: NativeInt; Inherit: Boolean;
-  Flags: Cardinal; Env: NativeInt; Directory: String; Startup, ProcessInfo: AnsiString): Boolean;
+function BBCreateProcess(App: String; Cmd: String; ProcessSA, ThreadSA: INT_PTR; Inherit: Boolean;
+  Flags: Cardinal; Env: INT_PTR; Directory: String; Startup, ProcessInfo: AnsiString): Boolean;
   external 'CreateProcessW@kernel32.dll stdcall';
-function BBWrite(H: NativeInt; Data: AnsiString; Count: Cardinal; var Written: Cardinal; Overlapped: NativeInt): Boolean;
+function BBWrite(H: INT_PTR; Data: AnsiString; Count: Cardinal; var Written: Cardinal; Overlapped: INT_PTR): Boolean;
   external 'WriteFile@kernel32.dll stdcall';
-function BBRead(H: NativeInt; Data: AnsiString; Count: Cardinal; var ReadCount: Cardinal; Overlapped: NativeInt): Boolean;
+function BBRead(H: INT_PTR; Data: AnsiString; Count: Cardinal; var ReadCount: Cardinal; Overlapped: INT_PTR): Boolean;
   external 'ReadFile@kernel32.dll stdcall';
-function BBPeek(H: NativeInt; Buffer: NativeInt; BufferSize: Cardinal; ReadBytes: NativeInt; var Available: Cardinal; LeftBytes: NativeInt): Boolean;
+function BBPeek(H: INT_PTR; Buffer: INT_PTR; BufferSize: Cardinal; ReadBytes: INT_PTR; var Available: Cardinal; LeftBytes: INT_PTR): Boolean;
   external 'PeekNamedPipe@kernel32.dll stdcall';
-function BBWait(H: NativeInt; Milliseconds: Cardinal): Cardinal;
+function BBWait(H: INT_PTR; Milliseconds: Cardinal): Cardinal;
   external 'WaitForSingleObject@kernel32.dll stdcall';
-function BBExit(H: NativeInt; var Code: Cardinal): Boolean;
+function BBExit(H: INT_PTR; var Code: Cardinal): Boolean;
   external 'GetExitCodeProcess@kernel32.dll stdcall';
-function BBResume(H: NativeInt): Cardinal;
+function BBResume(H: INT_PTR): Cardinal;
   external 'ResumeThread@kernel32.dll stdcall';
-function BBTerminate(H: NativeInt; Code: Cardinal): Boolean;
+function BBTerminate(H: INT_PTR; Code: Cardinal): Boolean;
   external 'TerminateProcess@kernel32.dll stdcall';
-function BBJob(Security, Name: NativeInt): NativeInt;
+function BBJob(Security, Name: INT_PTR): INT_PTR;
   external 'CreateJobObjectW@kernel32.dll stdcall';
-function BBJobLimits(Job: NativeInt; InfoClass: Integer; Info: AnsiString; Size: Cardinal): Boolean;
+function BBJobLimits(Job: INT_PTR; InfoClass: Integer; Info: AnsiString; Size: Cardinal): Boolean;
   external 'SetInformationJobObject@kernel32.dll stdcall';
-function BBAssign(Job, Process: NativeInt): Boolean;
+function BBAssign(Job, Process: INT_PTR): Boolean;
   external 'AssignProcessToJobObject@kernel32.dll stdcall';
 function BBTick: Int64;
   external 'GetTickCount64@kernel32.dll stdcall';
@@ -47,12 +47,12 @@ begin
   for I := Bytes - 1 downto 0 do Result := (Result shl 8) or Ord(Buffer[Offset + I + 1]);
 end;
 
-procedure BBDispose(var H: NativeInt);
+procedure BBDispose(var H: INT_PTR);
 begin
   if H <> 0 then begin BBClose(H); H := 0; end;
 end;
 
-function BBDrain(H: NativeInt; Limit: Integer; var Data: AnsiString; var Eof: Boolean): Boolean;
+function BBDrain(H: INT_PTR; Limit: Integer; var Data: AnsiString; var Eof: Boolean): Boolean;
 var Available, ReadCount: Cardinal; Chunk: AnsiString; Count: Integer;
 begin
   Result := False;
@@ -211,7 +211,7 @@ end;
 
 function RunBrowserManagement(Action, Store: String): Boolean;
 var
-  InR, InW, OutR, OutW, ErrR, ErrW, Job, ProcessH, ThreadH: NativeInt;
+  InR, InW, OutR, OutW, ErrR, ErrW, Job, ProcessH, ThreadH: INT_PTR;
   PointerSize, StartupSize, SABytes, InfoBytes: Integer;
   SA, Startup, PI, Limits, Input, Output, Errors: AnsiString;
   Written, ExitCode: Cardinal;
