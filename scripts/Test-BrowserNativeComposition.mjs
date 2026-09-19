@@ -10,7 +10,7 @@ const producerSha = '6dddf3d2eabf3316d4dcc726109adab7fdccf7ea';
 const consumerSha = '57f78c49d47f445b85d4859f038e8447e08983ba';
 const origin = 'chrome-extension://kcdjddhmeafeomebliikmbpblkmkfoig/';
 const nonce = 'AAAAAAAAAAAAAAAAAAAAAA';
-const fixtureConfig = { gateway: { mode: 'local', port: 18789 }, browser: { enabled: true, profiles: { chrome: { driver: 'extension', color: '#0088cc' } } } };
+const fixtureConfig = { gateway: { mode: 'local', port: 18789 }, browser: { enabled: true, profiles: { chrome: { driver: 'extension' } } } };
 const [artifact, core, receiptFile] = process.argv.slice(2);
 const receipt = { producerSha, consumerSha, syntheticPairing: false, cases: [], status: 'failed' };
 let stage = 'preflight';
@@ -21,7 +21,7 @@ const ps = path.join(process.env.SystemRoot ?? 'C:\\Windows', 'System32', 'Windo
 const baseEnv = Object.fromEntries(Object.entries(process.env).filter(([key]) => !/^(OPENCLAW_|NODE_)/i.test(key)));
 function powershell(script) {
   return execFileSync(ps, ['-NoLogo', '-NoProfile', '-NonInteractive', '-EncodedCommand', Buffer.from("$ProgressPreference='SilentlyContinue';" + script, 'utf16le').toString('base64')],
-    { encoding: 'utf8', timeout: 30000, maxBuffer: 262144, windowsHide: true });
+    { encoding: 'utf8', timeout: 30000, maxBuffer: 262144, windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'] });
 }
 function check(name) { receipt.cases.push(name); console.log('COMPOSED_CASE_OK ' + name); }
 function request(action, selected = context) {
@@ -112,7 +112,7 @@ try {
   assert.equal(process.env.GITHUB_ACTIONS, 'true', 'disposable_GitHub_runner_required');
   assert.equal(process.env.RUNNER_ENVIRONMENT, 'github-hosted', 'self_hosted_runner_refused');
   assert.ok(artifact && core && receiptFile && process.env.COMPOSED_PRIVATE_ROOT, 'explicit_private_artifact_core_receipt_required');
-  assert.equal(execFileSync('git', ['-C', core, 'rev-parse', 'HEAD'], { encoding: 'utf8' }).trim(), consumerSha, 'consumer_revision');
+  assert.equal(execFileSync('git', ['-C', core, 'rev-parse', 'HEAD'], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }).trim(), consumerSha, 'consumer_revision');
   const platform = await fs.readFile(path.join(core, 'extensions/browser/src/browser/extension-windows-platform.ts'), 'utf8');
   assert.ok(platform.includes('S-1-5-80-956008885-3418522649-1831038044-1853292631-2271478464'), 'pinned_TrustedInstaller_ancestor_rule');
   // Refuse all existing product registration/generations. Do not adopt or erase them.
@@ -153,6 +153,11 @@ try {
     {role:'generation-root',target:path.join(known.local,'OpenClawTray','browser-native','generations'),privacy:true,directory:true,allowMissing:true},
   ]);
   assert.ok(receipt.admission.every((entry) => entry.accepted), 'win32_admission_failed');
+  stage = 'canonical-config-validation';
+  const configValidationScript = 'const {readConfigFileSnapshot}=await import("openclaw/plugin-sdk/health");const s=await readConfigFileSnapshot({observe:false,pluginValidation:"core-only"});process.stdout.write(JSON.stringify({valid:s.valid}));';
+  receipt.configValidation = JSON.parse(execFileSync(context.nodePath, ['--input-type=module', '-e', configValidationScript], { cwd: core, env: { ...baseEnv, OPENCLAW_STATE_DIR: context.stateDir, OPENCLAW_CONFIG_PATH: context.configPath }, encoding: 'utf8', timeout: 30000, maxBuffer: 32768, windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'] }));
+  assert.equal(receipt.configValidation.valid, true, 'fixture_config_invalid');
+  check('canonical_read_only_config_validation');
   stage = 'management-before-eof';
   refused(await manage(request('install'), false), 'invalid_request');
   check('management_missing_eof_rejected');
@@ -167,7 +172,10 @@ try {
   const packet = frame({ v: 1, op: 'bootstrap', nonce });
   stage = 'composed-bootstrap';
   const paired = response(await exchange(installation.launcherPath, [origin], packet));
+  receipt.bootstrapResponse = { versionValid: paired.v === 1, ok: paired.ok === true, nonceMatches: paired.nonce === nonce, pairingPresent: typeof paired.pairingString === 'string', code: ['manifest_invalid','pairing_unavailable','manual_required','invalid_request','origin_forbidden','invalid_frame','relay_unavailable'].includes(paired.code) ? paired.code : null };
+  assert.equal(paired.v, 1, 'native_response_version');
   assert.equal(paired.ok, true, 'canonical_pairing_failed'); assert.equal(paired.nonce, nonce);
+  stage = 'pairing-response-validation';
   const pairing = new URL(paired.pairingString);
   assert.equal(pairing.protocol, 'ws:'); assert.equal(pairing.hostname, '127.0.0.1');
   assert.equal(pairing.pathname, '/browser/extension'); assert.ok(pairing.hash.length >= 33, 'host_local_relay_secret_missing');
@@ -229,6 +237,8 @@ try {
 } catch (error) {
   // Never serialize native stdout, pairing strings, config contents or a child diagnostic.
   receipt.failureStage = stage;
+  const location = error instanceof Error ? error.stack?.match(/Test-BrowserNativeComposition\.mjs:(\d+):(\d+)/) : undefined;
+  if (location) receipt.failureLocation = { line: Number(location[1]), column: Number(location[2]) };
   receipt.failure = error instanceof Error && /^management_install_[a-z_]+$/.test(error.message) ? error.message : (error?.code === 'ERR_ASSERTION' ? 'assertion_failed' : 'execution_failed');
   process.exitCode = 1;
 } finally {
