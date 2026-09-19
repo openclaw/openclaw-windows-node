@@ -6,7 +6,8 @@ on:
     paths:
       - .github/workflows/browser-wsl-guest-trace.yml
       - scripts/BrowserWslGuestTrace.py
-      - tests/OpenClaw.E2ETests/Setup/BrowserWslGuestTraceTests.cs
+      - tests/OpenClaw.E2ETests/Setup/BrowserWsl*.cs
+      - tests/OpenClaw.E2ETests/OpenClaw.E2ETests.csproj
 
 permissions:
   contents: read
@@ -72,4 +73,4 @@ jobs:
           $r = Get-Content $env:OPENCLAW_WSL_TRACE_RECEIPT -Raw | ConvertFrom-Json
           if ($r.status -ne 'trace_complete_not_a_settlement_pass' -or $r.cases.Count -ne 6) { throw 'Trace incomplete.' }
           if (@($r.cases | Where-Object { $_.settlementVerdict -like 'RED_*' -or $_.settlementVerdict -like 'UNKNOWN_*' }).Count -gt 0) { throw 'RED or UNKNOWN: guest settlement is not established. Inspect redacted receipt.' }
-          Write-Host 'No recorded guest process was running at postcheck. Identity presence and zombie state remain in the receipt; absence, reaping and pre-completion ordering are not certified.'
+          Write-Host 'Persistent pidfd observer receipt is authoritative. Exit-notification precedence is not a reaping or whole-Companion claim.'

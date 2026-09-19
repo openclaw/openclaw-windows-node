@@ -13,6 +13,12 @@
     <RuntimeIdentifiers>win-x64;win-arm64</RuntimeIdentifiers>
   </PropertyGroup>
 
+  <!-- Source-linked unchanged owners expose their existing internal platform seams only in this test assembly. -->
+  <ItemGroup>
+    <Compile Include="../../src/OpenClaw.BrowserBootstrap/NativeRegistrationRuntime.cs" Link="TraceOwners/NativeRegistrationRuntime.cs" />
+    <Compile Include="../../src/OpenClaw.BrowserBootstrap/RegistrationService.cs" Link="TraceOwners/RegistrationService.cs" />
+  </ItemGroup>
+
   <ItemGroup>
     <ProjectReference Include="..\..\src\OpenClaw.SetupEngine\OpenClaw.SetupEngine.csproj" />
     <ProjectReference Include="..\..\src\OpenClaw.Shared\OpenClaw.Shared.csproj" />

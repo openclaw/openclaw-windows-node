@@ -118,7 +118,7 @@ public sealed class BrowserWslGuestTraceTests
             var wsl = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.System), "wsl.exe");
             var receipt = new
             {
-                schema = 1,
+                schema = 2,
                 sourceSha = Environment.GetEnvironmentVariable("GITHUB_SHA"),
                 productionPin = "783f178ca5579d057d4799fceb5cec5e8c4d69f8",
                 scope = "unchanged WSL command and current-user pipe; controlled guest CLI, not real credentials or full Companion",
@@ -151,139 +151,180 @@ public sealed class BrowserWslGuestTraceTests
     {
         await Guest(fixture, $"mkdir '{_root}/{name}'; printf '%s' '{name}' > '{_root}/case'");
         var clock = Stopwatch.StartNew();
-        var commandEnd = new TaskCompletionSource<long>(TaskCreationOptions.RunContinuationsAsynchronously);
-        var handlerEnd = new TaskCompletionSource<long>(TaskCreationOptions.RunContinuationsAsynchronously);
-        var observations = new List<object>();
-        string? commandOutcome = null;
-        string? clientOutcome = null;
-        long? clientEnd = null;
-        long? retirementEnd = null;
+        long commandEndTicks = 0, handlerEndTicks = 0, clientEndTicks = 0, pipeDisposedTicks = 0;
+        var commandSignal = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        string? commandOutcome = null, clientOutcome = null;
         var pipeName = "OpenClaw.WslTrace." + Guid.NewGuid().ToString("N");
+        using var ownership = new BrowserWslNativeOwnership(clock);
         var server = new BrowserBootstrapPipeServer(async (request, ct) =>
         {
             try
             {
                 _ = BrowserNativeProtocol.ParseRequest(request);
-                try
+                var command = BrowserBootstrapWslCommand.RunAsync(fixture.DistroName, ct);
+                _ = command.ContinueWith(_ =>
                 {
-                    _ = await BrowserBootstrapWslCommand.RunAsync(fixture.DistroName, ct);
-                    commandOutcome = "returned";
-                }
+                    Interlocked.Exchange(ref commandEndTicks, clock.ElapsedTicks);
+                    commandSignal.TrySetResult();
+                }, CancellationToken.None, TaskContinuationOptions.ExecuteSynchronously, TaskScheduler.Default);
+                try { _ = await command; commandOutcome = "returned"; }
                 catch (Exception ex) { commandOutcome = ex.GetType().Name; throw; }
-                finally { commandEnd.TrySetResult(clock.ElapsedMilliseconds); }
-                return BrowserNativeProtocol.Failure("pairing_unavailable"); // No fixture output crosses IPC.
+                return BrowserNativeProtocol.Failure("pairing_unavailable");
             }
-            finally { handlerEnd.TrySetResult(clock.ElapsedMilliseconds); }
+            finally { Interlocked.Exchange(ref handlerEndTicks, clock.ElapsedTicks); }
         }, pipeName);
         server.Start();
         using var cancellation = new CancellationTokenSource();
         using var budget = new CancellationTokenSource(TimeSpan.FromSeconds(40));
         using var pipe = new NamedPipeClientStream(".", pipeName, PipeDirection.InOut, PipeOptions.Asynchronous | PipeOptions.CurrentUserOnly);
-        Task? retirement = null;
-        Task? client = null;
-        object? windowsIdentity = null;
-        JsonElement afterBoundary = default;
+        BrowserWslPersistentObserver? observer = null;
+        Task? client = null, pipeRetirement = null, management = null;
         bool cleanupSettled = false;
-        bool completedBeforeCleanup = false;
-        bool survivor = false;
         try
         {
             await pipe.ConnectAsync(budget.Token);
-            client = ObserveClient();
+            client = ownership.Run(ObserveClient);
+            JsonElement initial;
             var readyDeadline = DateTime.UtcNow.AddSeconds(10);
-            while (true)
+            do
             {
-                var observation = await Observe(fixture);
-                observations.Add(new { atMs = clock.ElapsedMilliseconds, boundary = "startup", guest = observation });
-                if (Ready(observation)) break;
-                Assert.False(commandEnd.Task.IsCompleted, "Current owner returned before the controlled guest entered.");
-                Assert.True(DateTime.UtcNow < readyDeadline, "Controlled guest failed to enter.");
+                initial = await Observe(fixture); // Startup only. Never used for ordering or post-boundary proof.
+                if (Ready(initial)) break;
+                Assert.False(commandSignal.Task.IsCompleted, "Owner ended before fixture readiness.");
+                Assert.True(DateTime.UtcNow < readyDeadline, "Fixture did not become ready.");
                 await Task.Delay(75, budget.Token);
-            }
+            } while (true);
             using var windowsOwner = await FindOwner(fixture.DistroName);
-            var ownerStart = windowsOwner.StartTime.ToUniversalTime().Ticks;
-            windowsIdentity = new { pid = windowsOwner.Id, startUtcTicks = ownerStart, exactSelectedDistroArgv = true };
-            var actionMs = clock.ElapsedMilliseconds;
+            var windowsStart = windowsOwner.StartTime.ToUniversalTime().Ticks;
+            observer = new BrowserWslPersistentObserver(fixture.DistroName, _root, clock);
+            var armed = await observer.Ready.WaitAsync(TimeSpan.FromSeconds(5));
+            var identities = armed.Data.GetProperty("identities").EnumerateArray().ToArray();
+            Assert.Equal(3, identities.Length);
+            foreach (var process in identities)
+            {
+                var original = initial.GetProperty("records").EnumerateArray().Single(p => p.GetProperty("role").GetString() == process.GetProperty("role").GetString());
+                Assert.Equal(original.GetProperty("pid").GetInt32(), process.GetProperty("pid").GetInt32());
+                Assert.Equal(original.GetProperty("start").GetInt64(), process.GetProperty("start").GetInt64());
+                Assert.NotEqual(process.GetProperty("group").GetInt32(), armed.Data.GetProperty("observer").GetProperty("group").GetInt32());
+            }
+            Assert.False(commandSignal.Task.IsCompleted, "Observer was not armed before owner completion.");
+            // Real serialization starts while activation is held. No platform callback waits for observation.
+            var managementRequestedTicks = clock.ElapsedTicks;
+            management = ownership.Retire();
+            var actionTicks = clock.ElapsedTicks;
+            Assert.True(armed.ReceivedTicks < actionTicks);
             switch (name)
             {
                 case "normal": await Guest(fixture, $"touch '{_root}/{name}/release'"); break;
                 case "ipc_eof": pipe.Dispose(); break;
                 case "client_cancel": cancellation.Cancel(); break;
                 case "forced_client_exit":
-                    Assert.Equal(ownerStart, windowsOwner.StartTime.ToUniversalTime().Ticks);
-                    windowsOwner.Kill(); // Only the exact production-launched Windows client, not wslhost/distro.
+                    Assert.Equal(windowsStart, windowsOwner.StartTime.ToUniversalTime().Ticks);
+                    windowsOwner.Kill();
                     break;
-                case "pipe_retirement": retirement = DisposeServer(); break;
-                case "deadline": break; // Exercise unchanged 15-second owner deadline.
+                case "pipe_retirement":
+                    pipeRetirement = server.DisposeAsync().AsTask();
+                    _ = pipeRetirement.ContinueWith(_ => Interlocked.Exchange(ref pipeDisposedTicks, clock.ElapsedTicks),
+                        CancellationToken.None, TaskContinuationOptions.ExecuteSynchronously, TaskScheduler.Default);
+                    break;
+                case "deadline": break;
                 default: throw new InvalidOperationException("Unknown trace case.");
             }
-            // Independent /proc observations are deliberately outside the request handler.
-            // A trace bound does not authorize retirement: cleanup is separately labeled.
-            var observationDeadline = DateTime.UtcNow.AddSeconds(25);
-            while (DateTime.UtcNow < observationDeadline)
+            var observationEnd = Stopwatch.GetTimestamp() + 25 * Stopwatch.Frequency;
+            await Task.WhenAny(commandSignal.Task, Task.Delay(TimeSpan.FromSeconds(25)));
+            var first = await observer.Challenge(1);
+            var remaining = Math.Max(0, (observationEnd - Stopwatch.GetTimestamp()) / (double)Stopwatch.Frequency);
+            var owners = Task.WhenAll(client, management, pipeRetirement ?? Task.CompletedTask);
+            await Task.WhenAny(owners, Task.Delay(TimeSpan.FromSeconds(remaining)));
+            var second = await observer.Challenge(2);
+            var events = observer.Events;
+            foreach (var item in events.Where(e => e.Data.GetProperty("type").GetString() == "exit"))
             {
-                var begin = clock.ElapsedMilliseconds;
-                var observation = await Observe(fixture);
-                var end = clock.ElapsedMilliseconds;
-                observations.Add(new { beginMs = begin, endMs = end, boundary = "inflight", guest = observation });
-                if (commandEnd.Task.IsCompleted && (client.IsCompleted || name == "ipc_eof") &&
-                    (retirement is null || retirement.IsCompleted)) break;
-                await Task.Delay(100, budget.Token);
+                var bound = identities.Single(p => p.GetProperty("role").GetString() == item.Data.GetProperty("role").GetString());
+                Assert.Equal(bound.GetProperty("pid").GetInt32(), item.Data.GetProperty("pid").GetInt32());
+                Assert.Equal(bound.GetProperty("start").GetInt64(), item.Data.GetProperty("start").GetInt64());
             }
-            completedBeforeCleanup = commandEnd.Task.IsCompleted && handlerEnd.Task.IsCompleted;
-            var postBegin = clock.ElapsedMilliseconds;
-            afterBoundary = await Observe(fixture);
-            var postEnd = clock.ElapsedMilliseconds;
-            survivor = completedBeforeCleanup && Running(afterBoundary);
-            observations.Add(new { beginMs = postBegin, endMs = postEnd, boundary = "before_test_cleanup", guest = afterBoundary });
+            var exits = events.Where(e => e.Data.GetProperty("type").GetString() == "exit").ToArray();
+            Assert.Equal(exits.Length, exits.Select(e => e.Data.GetProperty("role").GetString()).Distinct().Count());
+            bool Before(long boundary) => boundary > 0 && exits.Length == 3 && exits.All(e => e.ReceivedTicks < boundary);
+            bool RunningChallenge(BrowserWslPersistentObserver.Event item)
+            {
+                var records = item.Data.GetProperty("records").EnumerateArray().ToArray();
+                Assert.Equal(3, records.Length);
+                foreach (var record in records)
+                {
+                    var bound = identities.Single(p => p.GetProperty("role").GetString() == record.GetProperty("role").GetString());
+                    Assert.Equal(bound.GetProperty("pid").GetInt32(), record.GetProperty("pid").GetInt32());
+                    Assert.Equal(bound.GetProperty("start").GetInt64(), record.GetProperty("start").GetInt64());
+                }
+                return records.Any(p => p.GetProperty("identityPresent").GetBoolean() && p.GetProperty("running").GetBoolean());
+            }
+            var commandBoundary = Interlocked.Read(ref commandEndTicks);
+            var releaseBoundary = Interlocked.Read(ref ownership.ActivationReleaseBeginTicks);
+            var mutationBoundary = Interlocked.Read(ref ownership.ManagementMutationTicks);
+            var managementBoundary = Interlocked.Read(ref ownership.ManagementCompletionTicks);
+            var commandSurvivor = commandBoundary > 0 && first.SentTicks > commandBoundary && RunningChallenge(first.Response);
+            var retirementSurvivor = managementBoundary > 0 && second.SentTicks > managementBoundary && RunningChallenge(second.Response);
             _cases.Add(new
             {
-                name, windowsIdentity, actionMs,
-                commandEndMs = commandEnd.Task.IsCompletedSuccessfully ? (long?)commandEnd.Task.Result : null,
-                handlerEndMs = handlerEnd.Task.IsCompletedSuccessfully ? (long?)handlerEnd.Task.Result : null,
-                clientEndMs = clientEnd, retirementEndMs = retirementEnd,
-                commandOutcome, clientOutcome, ownerCompletedBeforeTestCleanup = completedBeforeCleanup,
-                guestRunningAfterOwnerCompletion = survivor,
-                settlementVerdict = survivor ? "RED_guest_survives_owner_completion" :
-                    completedBeforeCleanup && !Running(afterBoundary) ? "guest_not_running_at_postcheck_ordering_not_proven" : "UNKNOWN_owner_or_guest_unsettled",
-                observations
+                name, clockFrequency = Stopwatch.Frequency,
+                windowsIdentity = new { pid = windowsOwner.Id, startUtcTicks = windowsStart, exactSelectedDistroArgv = true },
+                observerReady = armed, actionTicks, managementRequestedTicks,
+                commandCompletionHookTicks = commandBoundary, handlerEndTicks = Interlocked.Read(ref handlerEndTicks),
+                pipeClientCompletionHookTicks = Interlocked.Read(ref clientEndTicks), pipeDisposalHookTicks = Interlocked.Read(ref pipeDisposedTicks),
+                runtimeLeaseReleaseTicks = Interlocked.Read(ref ownership.RuntimeLeaseReleaseTicks),
+                activationReleaseBeginTicks = releaseBoundary, activationReleasedTicks = Interlocked.Read(ref ownership.ActivationReleasedTicks),
+                managementMutationTicks = mutationBoundary, managementCompletionTicks = managementBoundary,
+                ownership.ManagementCode, commandOutcome, clientOutcome,
+                nativeBoundaryScope = "source-linked unchanged NativeRegistrationRuntime/RegistrationService; synthetic platform facts and real mutex; no shipping helper/registry/Chrome-frame claim",
+                completionHookMethod = "ExecuteSynchronously requested, registered while command alive; activation release stamped synchronously before ReleaseMutex; no observer wait in owner callbacks",
+                exitEvents = exits,
+                firstChallenge = new { first.SentTicks, first.Response }, secondChallenge = new { second.SentTicks, second.Response },
+                allExitNotificationsBeforeCommandHook = Before(commandBoundary),
+                allExitNotificationsBeforeActivationRelease = Before(releaseBoundary),
+                allExitNotificationsBeforeManagementMutation = Before(mutationBoundary),
+                causalPostCommandSurvivor = commandSurvivor, causalPostManagementSurvivor = retirementSurvivor,
+                provenance = initial.GetProperty("provenance"),
+                settlementVerdict = commandSurvivor || retirementSurvivor ? "RED_causal_post_boundary_survivor" :
+                    Before(commandBoundary) && Before(releaseBoundary) && Before(mutationBoundary) ? "OBSERVED_exit_notification_precedence" : "UNKNOWN_boundary_ordering"
             });
         }
         finally
         {
-            // Retain the red/unknown boundary BEFORE intervention; kill only matched test identities.
+            // Neither observer shutdown nor request cleanup can improve a captured pre-cleanup verdict.
+            Exception? observerFailure = null;
+            try { if (observer is not null) await observer.DisposeAsync(); }
+            catch (Exception ex) { observerFailure = ex; }
             await Guest(fixture, $"/usr/bin/python3 '{_root}/guest.py' cleanup >/dev/null");
             cancellation.Cancel();
             pipe.Dispose();
             var cleanupDeadline = DateTime.UtcNow.AddSeconds(8);
             do
             {
-                var remaining = await Observe(fixture);
-                if (!Running(remaining)) { cleanupSettled = true; break; }
+                if (!Running(await Observe(fixture))) { cleanupSettled = true; break; }
                 await Task.Delay(100);
             } while (DateTime.UtcNow < cleanupDeadline);
             if (client is not null) await client.WaitAsync(TimeSpan.FromSeconds(10));
-            if (retirement is not null) await retirement.WaitAsync(TimeSpan.FromSeconds(10));
+            if (management is not null) await management.WaitAsync(TimeSpan.FromSeconds(10));
+            if (pipeRetirement is not null) await pipeRetirement.WaitAsync(TimeSpan.FromSeconds(10));
             else await server.DisposeAsync().AsTask().WaitAsync(TimeSpan.FromSeconds(10));
-            Assert.True(cleanupSettled, "Owned guest fixture did not settle after identity-scoped cleanup.");
-            Assert.True(handlerEnd.Task.IsCompleted, "Pipe handler did not settle after fixture cleanup.");
+            Assert.True(cleanupSettled, "Owned guest cleanup did not settle.");
+            Assert.True(handlerEndTicks > 0, "Handler did not complete after cleanup.");
+            if (observerFailure is not null) throw new IOException("Observer cleanup failed.", observerFailure);
         }
 
         async Task ObserveClient()
         {
             try
             {
-                _ = await BrowserBootstrapPipeClient.ExchangeAsync(pipe,
+                var exchange = BrowserBootstrapPipeClient.ExchangeAsync(pipe,
                     Encoding.UTF8.GetBytes("{\"v\":1,\"op\":\"bootstrap\",\"nonce\":\"AAAAAAAAAAAAAAAAAAAAAA\"}"), cancellation.Token);
+                _ = exchange.ContinueWith(_ => Interlocked.Exchange(ref clientEndTicks, clock.ElapsedTicks),
+                    CancellationToken.None, TaskContinuationOptions.ExecuteSynchronously, TaskScheduler.Default);
+                _ = await exchange;
                 clientOutcome = "response_and_server_eof";
             }
             catch (Exception ex) { clientOutcome = ex.GetType().Name; }
-            finally { clientEnd = clock.ElapsedMilliseconds; }
-        }
-        async Task DisposeServer()
-        {
-            await server.DisposeAsync();
-            retirementEnd = clock.ElapsedMilliseconds;
         }
     }
 

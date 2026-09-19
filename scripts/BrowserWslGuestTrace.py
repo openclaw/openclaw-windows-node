@@ -7,6 +7,7 @@ import os
 import pathlib
 import pwd
 import signal
+import selectors
 import subprocess
 import sys
 import time
@@ -113,6 +114,74 @@ def cleanup():
     observe()
 
 
+def monitor():
+    """One independent process, pre-armed pidfds, bounded stdout events and challenges."""
+    folder = current_case()
+    selector = selectors.DefaultSelector()
+    bound = []
+    announced = set()
+    try:
+        for role in ("owner", "worker", "leaf"):
+            original = json.loads((folder / (role + ".json")).read_text())
+            descriptor = os.pidfd_open(original["pid"])
+            bound.append((role, original, descriptor))
+            now = identity(original["pid"])
+            if now is None or now["start"] != original["start"] or now["state"] in ("Z", "X"):
+                raise RuntimeError("observer did not bind a live matching identity")
+            if os.getpgrp() == original["group"]:
+                raise RuntimeError("observer shares request process group")
+            selector.register(descriptor, selectors.EVENT_READ, role)
+        selector.register(sys.stdin.fileno(), selectors.EVENT_READ, "input")
+        print(json.dumps({"type": "ready", "observer": identity(os.getpid()),
+                          "identities": [{"role": role, **original} for role, original, _ in bound]}), flush=True)
+        buffer = b""
+        challenges = 0
+        deadline = time.monotonic() + 55
+        while time.monotonic() < deadline:
+            events = selector.select(timeout=max(0, deadline - time.monotonic()))
+            # Deliver exit notifications before commands when both descriptors are readable.
+            for key, _ in events:
+                if key.data == "input":
+                    continue
+                role, original, _ = next(item for item in bound if item[0] == key.data)
+                if role not in announced:
+                    print(json.dumps({"type": "exit", "role": role, "pid": original["pid"],
+                                      "start": original["start"]}), flush=True)
+                    announced.add(role)
+                    selector.unregister(key.fd)
+            if not any(key.data == "input" for key, _ in events):
+                continue
+            part = os.read(sys.stdin.fileno(), 1024)
+            if not part:
+                return
+            buffer += part
+            if len(buffer) > 4096:
+                raise RuntimeError("observer command bound")
+            while b"\n" in buffer:
+                raw, buffer = buffer.split(b"\n", 1)
+                command = json.loads(raw)
+                if command == {"op": "stop"}:
+                    print('{"type":"stopped"}', flush=True)
+                    return
+                challenges += 1
+                if challenges > 2 or command != {"op": "challenge", "id": challenges}:
+                    raise RuntimeError("observer challenge schema")
+                records = []
+                for role, original, _ in bound:
+                    now = identity(original["pid"])
+                    matches = now is not None and now["start"] == original["start"]
+                    records.append({"role": role, "pid": original["pid"], "start": original["start"],
+                                    "identityPresent": matches,
+                                    "running": matches and now["state"] not in ("Z", "X"),
+                                    "state": now["state"] if matches else "absent"})
+                print(json.dumps({"type": "challenge", "id": challenges, "records": records}), flush=True)
+        raise RuntimeError("observer lifetime bound")
+    finally:
+        selector.close()
+        for _, _, descriptor in bound:
+            os.close(descriptor)
+
+
 if __name__ == "__main__":
     mode = sys.argv[1]
     if mode in ("owner", "worker", "leaf"):
@@ -121,5 +190,7 @@ if __name__ == "__main__":
         observe()
     elif mode == "cleanup":
         cleanup()
+    elif mode == "monitor":
+        monitor()
     else:
         raise RuntimeError("invalid fixture operation")
