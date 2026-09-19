@@ -77,7 +77,8 @@ try {
     "$root=Join-Path $local 'OpenClawTray\\browser-native\\generations';if(Test-Path -LiteralPath $root){throw 'Existing product generations'}; " +
     "[Console]::Out.Write((ConvertTo-Json -Compress @{local=$local;sid=[Security.Principal.WindowsIdentity]::GetCurrent().User.Value}))"));
   stage = 'private-fixture';
-  const fixture = await fs.mkdtemp(path.join(os.tmpdir(), 'OpenClawComposed-'));
+  // Windows TEMP may contain an 8.3 alias. The production contract requires canonical paths.
+  const fixture = await fs.realpath(await fs.mkdtemp(path.join(os.tmpdir(), 'OpenClawComposed-')));
   const encoded = Buffer.from(fixture).toString('base64');
   powershell("$ErrorActionPreference='Stop';$p=[Text.Encoding]::UTF8.GetString([Convert]::FromBase64String('" + encoded + "'));$sid=[Security.Principal.WindowsIdentity]::GetCurrent().User;$acl=[Security.AccessControl.DirectorySecurity]::new();$acl.SetAccessRuleProtection($true,$false);$acl.SetOwner($sid);foreach($s in @($sid.Value,'S-1-5-18','S-1-5-32-544')){$acl.AddAccessRule([Security.AccessControl.FileSystemAccessRule]::new([Security.Principal.SecurityIdentifier]::new($s),'FullControl','ContainerInherit,ObjectInherit','None','Allow'))};[IO.Directory]::SetAccessControl($p,$acl)");
   executable = path.join(fixture, 'OpenClaw.BrowserBootstrap.exe');
@@ -89,7 +90,16 @@ try {
   const state = path.join(fixture, 'state'); await fs.mkdir(state);
   const configPath = path.join(state, 'openclaw.json');
   await fs.writeFile(configPath, JSON.stringify({ gateway: { mode: 'local', port: 18789 }, browser: { enabled: true, profiles: { chrome: { driver: 'extension', color: '#0088cc' } } } }), { flag: 'wx' });
-  context = { nodePath: await fs.realpath(process.execPath), cliPath: await fs.realpath(path.join(core, 'openclaw.mjs')), stateDir: state, configPath, browserProfile: 'chrome' };
+  context = { nodePath: await fs.realpath(process.execPath), cliPath: await fs.realpath(path.join(core, 'openclaw.mjs')), stateDir: await fs.realpath(state), configPath: await fs.realpath(configPath), browserProfile: 'chrome' };
+  // Read-only diagnostics distinguish fixture aliases/reparse ancestors from product failures.
+  receipt.pathChecks = {};
+  for (const [role, target] of Object.entries({ producer: executable, node: context.nodePath, cli: context.cliPath, state: context.stateDir, config: context.configPath })) {
+    const chain = [];
+    for (let cursor = target; ; cursor = path.dirname(cursor)) { chain.push(cursor); if (path.dirname(cursor) === cursor) break; }
+    const checks = await Promise.all(chain.map(async (entry) => ({ canonical: (await fs.realpath(entry)).toLowerCase() === entry.toLowerCase(), symbolic: (await fs.lstat(entry)).isSymbolicLink() })));
+    receipt.pathChecks[role] = { canonical: checks.every((entry) => entry.canonical), symbolicAncestors: checks.some((entry) => entry.symbolic) };
+  }
+  assert.ok(Object.values(receipt.pathChecks).every((entry) => entry.canonical && !entry.symbolicAncestors), 'fixture_path_admission');
   stage = 'management-before-eof';
   refused(await manage(request('install'), false), 'invalid_request');
   check('management_missing_eof_rejected');
@@ -117,7 +127,7 @@ try {
   refused(await manage(request('install', { ...context, browserProfile: 'Chrome!' })), 'invalid_request');
   check('management_context_and_profile_rejection');
   const nativeArgs = [context.cliPath, 'browser', 'extension', 'native-host', '--manifest', installation.manifestPath, '--launcher', installation.launcherPath, '--expected-origin', origin, '--browser-profile'];
-  const env = { ...baseEnv, OPENCLAW_STATE_DIR: state, OPENCLAW_CONFIG_PATH: configPath, OPENCLAW_NO_RESPAWN: '1' };
+  const env = { ...baseEnv, OPENCLAW_STATE_DIR: context.stateDir, OPENCLAW_CONFIG_PATH: context.configPath, OPENCLAW_NO_RESPAWN: '1' };
   stage = 'ts-profile-rejection';
   refused(response(await exchange(context.nodePath, [...nativeArgs, 'other', origin], packet, { env })), 'manifest_invalid');
   check('actual_ts_profile_rejection');
