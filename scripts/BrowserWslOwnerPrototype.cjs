@@ -113,6 +113,7 @@ async function gate(s) {
 }
 async function broker(s, source) {
   if(!/^[a-f0-9]{32}$/.test(s.requestId))throw Error('request_id');
+  process.stderr.write("OC_PROTO_BROKER_STARTED\n");
   // Single writer: each request uses a fresh name exactly once; no participant/recovery restarts it.
   // Show/StopUnit is not an atomic invocation-conditional API. An actor controlling this same
   // user-manager and trusted CLI/config could replace any unit between commands; that actor is

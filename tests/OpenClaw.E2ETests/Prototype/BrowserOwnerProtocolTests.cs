@@ -101,11 +101,18 @@ public sealed class BrowserWslOwnerPrototypeTests
         string? failure = null, outcome = null; int processCountBeforeLoss = 0; bool setsidObserved = false, epochRefused = false;
         bool replacement = name == "manager_epoch_replaced";
         object? normalDetachedIdentity = null;
-        if (collision) await Guest(fixture, $"systemd-run --user --quiet --unit='{unit}' --property='Description=Fixture collision {id}' /bin/sleep 60");
+        string? collisionInvocation = null;
+        if (collision)
+        {
+            await Guest(fixture, $"systemd-run --user --quiet --unit='{unit}' --property='Description=Fixture collision {id}' /bin/sleep 60");
+            collisionInvocation = (await Probe(fixture, unit)).GetProperty("invocation").GetString();
+        }
         using var process = Process.Start(start)!;
         var errors = Drain(process.StandardError.BaseStream);
         try
         {
+            script = NormalizeInput(script);
+            Assert.DoesNotContain("\r", script);
             await process.StandardInput.WriteAsync(script.AsMemory(), budget.Token);
             await process.StandardInput.FlushAsync(budget.Token); // Intentionally keep stdin open across bash -> inline broker.
             if (beforeReadyLoss)
@@ -188,9 +195,16 @@ public sealed class BrowserWslOwnerPrototypeTests
                     }
                 }
             }
-            await process.WaitForExitAsync(budget.Token); await errors.WaitAsync(budget.Token);
+            await process.WaitForExitAsync(budget.Token);
+            var brokerStarted = await errors.WaitAsync(budget.Token);
+            Assert.True(brokerStarted, "Prototype broker entry not observed.");
             var post = await WaitUnit(fixture, unit, p => collision || replacement ? p.GetProperty("present").GetBoolean() : p.GetProperty("processes").GetArrayLength() == 0, budget.Token);
             if (collision || replacement) Assert.False(post.GetProperty("owned").GetBoolean());
+            if (collision)
+            {
+                Assert.Equal(43, process.ExitCode);
+                Assert.Equal(collisionInvocation, post.GetProperty("invocation").GetString());
+            }
             if (replacement)
             {
                 Assert.NotEqual(ready!.Value.GetProperty("invocationId").GetString(), post.GetProperty("invocation").GetString());
@@ -203,7 +217,7 @@ public sealed class BrowserWslOwnerPrototypeTests
             if (name == "real_cli") Assert.True(canonicalValid);
             if (name == "payload_capacity") Assert.True(capacityPreserved);
             _cases.Add(new { name, requestId = id, windowsPid = process.Id, readyMs, permitMs, resultMs, settledMs,
-                stdinHandoffVerified = ready.HasValue, resultSeen, resultReleased = settled && resultSeen && outcome == "completed", outcome,
+                stdinHandoffVerified = ready.HasValue, scriptInputNormalized = true, brokerStarted, resultSeen, resultReleased = settled && resultSeen && outcome == "completed", outcome,
                 positiveSettlement = settled, retirementAllowed = settled, expectedUnknown,
                 classification = settled ? "positive_settlement" : "UNKNOWN_BUSY_no_ack_no_retirement",
                 canonicalValid, capacityPreserved, processCountBeforeLoss, setsidObserved, normalDetachedIdentity,
@@ -216,7 +230,7 @@ public sealed class BrowserWslOwnerPrototypeTests
             failure = ex.GetType().Name;
             _cases.Add(new { name, protocolCasePassed = false, failureType = failure,
                 processExited = process.HasExited, exitCode = process.HasExited ? (int?)process.ExitCode : null,
-                readySeen = ready.HasValue, resultSeen, positiveSettlement = settled, retirementAllowed = false,
+                readySeen = ready.HasValue, brokerStarted = errors.IsCompletedSuccessfully && errors.Result, resultSeen, positiveSettlement = settled, retirementAllowed = false,
                 prototypeOnly = true });
             throw;
         }
@@ -266,8 +280,18 @@ public sealed class BrowserWslOwnerPrototypeTests
         Assert.Matches("^[a-f0-9]{32}$", value.GetProperty("invocationId").GetString()!);
         return value.Clone();
     }
-    private static async Task Drain(Stream stream)
-    { var bytes = new byte[1024]; var total = 0; int read; while ((read = await stream.ReadAsync(bytes)) != 0) if ((total += read) > 8192) throw new InvalidDataException(); }
+    internal static string NormalizeInput(string script) => script.Replace("\r\n", "\n", StringComparison.Ordinal).Replace('\r', '\n').TrimEnd('\n') + "\n";
+    private static async Task<bool> Drain(Stream stream)
+    {
+        var bytes = new byte[1024]; var total = 0; var text = new StringBuilder(); int read;
+        while ((read = await stream.ReadAsync(bytes)) != 0)
+        {
+            if ((total += read) > 8192) throw new InvalidDataException();
+            text.Append(Encoding.UTF8.GetString(bytes, 0, read));
+        }
+        // Only this fixed marker leaves the private error drain. Never retain raw stderr.
+        return text.ToString().Split('\n').Contains("OC_PROTO_BROKER_STARTED", StringComparer.Ordinal);
+    }
     private static async Task<string> Guest(E2ESetupFixture fixture, string script)
     {
         var result = await fixture.RunInWslAsync("set -euo pipefail\n" + script, TimeSpan.FromSeconds(10), inputViaStdin: true);

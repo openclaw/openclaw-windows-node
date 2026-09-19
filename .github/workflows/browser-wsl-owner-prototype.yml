@@ -8,6 +8,7 @@ on:
       - scripts/BrowserWslOwnerPrototype.cjs
       - scripts/BrowserWslOwnerPrototype.test.cjs
       - tests/OpenClaw.E2ETests/Prototype/BrowserOwnerProtocolTests.cs
+      - tests/OpenClaw.E2ETests/Prototype/BrowserPrototypeTransportTests.cs
 
 permissions:
   contents: read
@@ -48,6 +49,11 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw 'Tray build failed.' }
           dotnet build tests/OpenClaw.E2ETests -c Debug -r win-x64 --no-restore
           if ($LASTEXITCODE -ne 0) { throw 'Fixture build failed.' }
+      - name: Verify the actual stdin newline normalization
+        shell: pwsh
+        run: |
+          dotnet test tests/OpenClaw.E2ETests --no-build -c Debug -r win-x64 --filter FullyQualifiedName~BrowserPrototypeTransportTests
+          if ($LASTEXITCODE -ne 0) { throw 'Prototype stdin transport regression failed.' }
       - name: Exercise private protocol and transient user service in disposable WSL
         shell: pwsh
         run: |
