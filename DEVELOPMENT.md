@@ -356,15 +356,83 @@ CI passes `-MsixRevision $env:GITHUB_RUN_NUMBER` to the existing
 `build.ps1 -Project WinUI -Configuration Release -Msix Dev` path, with a fresh
 `-MsixOutputDirectory`. Explicit revisions must be 1-65535; overflow fails
 instead of wrapping. Omitting these options preserves local build behavior.
-The same run's reruns keep the same version, not a new upgrade. Version
-ordering is not guaranteed across forks, branches, local builds, or decreasing
-base versions. Do not uninstall/downgrade an existing Dev package just to
+Tagged-release reruns reuse their reserved package base. PR/main previews use
+the latest published stable Windows release line from the canonical upstream
+repository and do not consume numbers. For example, while Latest is
+`v2026.9.4`, previews use the `2026.9.4` allocation range and currently produce
+Store `2026.9.401.0`; a future official `v2026.9.5` release still starts in the
+`500-599` range. A preview candidate can advance after another official release
+reserves a number. Version ordering is not guaranteed across forks, branches,
+local builds, or decreasing base versions.
+Do not uninstall/downgrade an existing Dev package just to
 resolve a version conflict without considering its settings and data.
+When `-MsixBaseVersion` is omitted, local `-Msix Dev` builds compare the
+application-derived base with the installed Dev package and reuse the installed
+three-part base when it is higher. The fourth component still increments from
+the installed revision. This keeps ordinary local builds upgrade-compatible
+after installing an encoded CI Dev package without changing GitVersion.
 
-The Store version stays `X.Y.Z.0`. Prerelease and stable-correction suffixes
-can therefore produce the same Store version; CI artifacts do not promise
-unique Store submissions for every tag. Store submission version allocation
-must be resolved before distribution is enabled in #1375.
+CI allocates a separate MSIX base without changing the application's GitVersion,
+assembly metadata, EXE/ZIP versions, or GitHub release tags. For app `X.Y.Z`,
+the third package component starts at `Z * 100` and advances within that patch's
+100-number range. For example:
+
+| App release line | MSIX Store versions |
+|---|---|
+| `2026.9.4`, including its alpha/correction tags | `2026.9.400.0` through `2026.9.499.0` |
+| `2026.9.5`, including its alpha/correction tags | `2026.9.500.0` through `2026.9.599.0` |
+| `2026.10.1`, including its alpha/correction tags | `2026.10.100.0` through `2026.10.199.0` |
+
+The already-used `2026.9.400.0` is recorded in
+`.github/msix-version-baseline.json`, so the next official `2026.9.4` packaging
+release gets `2026.9.401.0`. Correction suffixes do not occupy their own digit.
+All tags on the same app patch share the counter, including revisions 10, 11,
+and onward. Exhaustion fails rather than entering the next patch's range.
+Every component must fit `uint16`; patch 655 has only the remaining 65500-65535
+slots, and larger patches cannot be encoded.
+
+Only `push` or `workflow_dispatch` builds of `v*` tags in the upstream repository
+reserve versions. A separate write-scoped job allocates once before the
+architecture matrix. PRs, ordinary main builds, and fork builds resolve Latest
+from `openclaw/openclaw-windows-node`, then read the next candidate from that
+same canonical reservation ledger. They are marked `preview` in
+`msixVersionAllocation` in each metadata sidecar and are not official release
+or Store-submission versions.
+Both Store architectures share the reserved base and end in `.0`. Both Dev
+architectures use the same base with the CI run number as the final component.
+
+The allocator records reservations as append-only annotated Git tags under
+`msix-package/<app-base>/<package-counter>`. Concurrent claims use atomic
+create-ref requests; reruns of the same source tag/commit reuse their record.
+Failed builds keep their reservations, so numbers are never recycled.
+Do not delete, move, or repurpose reservation tags, including during alpha
+release cleanup. Repository maintainers should protect this namespace against
+updates/deletion while permitting the official workflow to create refs.
+See [MSIX version allocation](docs/RELEASING.md#msix-version-allocation).
+
+For an encoded local preview, save the readonly resolver result outside tracked
+source, then pass it through the validated builder:
+
+```powershell
+$info = .\scripts\Resolve-MsixPackageVersion.ps1 `
+  -SourceVersion (.\scripts\Get-OpenClawMsixPreviewSourceVersion.ps1) `
+  -SourceCommit (git rev-parse HEAD) `
+  -SourceRef "refs/heads/$(git branch --show-current)" `
+  -Repository openclaw/openclaw-windows-node
+$info | ConvertTo-Json -Depth 4 |
+  Set-Content "$env:TEMP\openclaw-msix-preview.json" -Encoding utf8
+.\scripts\Build-StoreMsix.ps1 -Architecture x64 `
+  -VersionInfoPath "$env:TEMP\openclaw-msix-preview.json"
+.\build.ps1 -Project WinUI -Configuration Release -Msix Dev `
+  -MsixBaseVersion $info.packageBaseVersion
+```
+
+`VersionInfoPath` validates the source commit and expected actual package
+version before writing metadata. `MsixBaseVersion` changes only the package
+manifest base; it does not override the app's assembly versions.
+Ordinary local builds that omit these options preserve their previous
+unallocated version calculation. Store distribution remains gated by #1375;
+this allocator does not submit packages to Partner Center.
 
 Canonical `vX.Y.Z-alpha.N` releases also attach the **unsigned Store** MSIX
 files and architecture-specific metadata, for manual upload to Partner Center.

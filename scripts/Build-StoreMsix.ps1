@@ -36,6 +36,11 @@
     which is cleaned on each run. A caller-supplied directory is never deleted;
     the build fails if it already exists and is not empty.
 
+.PARAMETER VersionInfoPath
+    Optional repository-relative or absolute allocator JSON path. Validates
+    provenance and overrides only the package manifest base, not GitVersion
+    assembly metadata. Omission preserves unallocated local build behavior.
+
 .EXAMPLE
     .\scripts\Build-StoreMsix.ps1 -Architecture x64
     .\scripts\Build-StoreMsix.ps1 -Architecture arm64
@@ -53,7 +58,10 @@ param(
     [ValidateSet('Release')]
     [string]$Configuration = 'Release',
 
-    [string]$OutputDirectory
+    [string]$OutputDirectory,
+
+    [ValidateNotNullOrEmpty()]
+    [string]$VersionInfoPath
 )
 
 Set-StrictMode -Version Latest
@@ -127,6 +135,18 @@ function Test-PackageVersion {
     }
 }
 
+$versionInfo = $null
+$versionArguments = @()
+if ($VersionInfoPath) {
+    . (Join-Path $PSScriptRoot 'MsixVersioning.ps1')
+    $currentCommit = (& git -C $repositoryRoot rev-parse HEAD) -join ''
+    if ($LASTEXITCODE -ne 0) { throw 'Unable to resolve source for the MSIX allocation.' }
+    $versionInfo = Read-MsixVersionInfo `
+        -Path ([IO.Path]::GetFullPath([IO.Path]::Combine($repositoryRoot, $VersionInfoPath))) `
+        -SourceCommit $currentCommit
+    $versionArguments = @("-p:MsixPackageBaseVersion=$($versionInfo.packageBaseVersion)")
+}
+
 # The tracked manifest is the single source of truth for the release identity.
 # A packaged build that drifts from it is a packaging bug, not a new identity.
 [xml]$sourceManifest = Get-Content -LiteralPath $sourceManifestPath -Raw
@@ -191,6 +211,7 @@ try {
                 -p:UapAppxPackageBuildMode=SideloadOnly `
                 -p:AppxPackageSigningEnabled=false `
                 "-p:AppxPackageDir=$appxOutput" `
+                @versionArguments `
                 --nologo
         }
 
@@ -281,6 +302,9 @@ try {
     $packagedIdentity = $packagedManifest.Package.Identity
     $packageVersion = [string]$packagedIdentity.Version
     Test-PackageVersion -Version $packageVersion
+    if ($versionInfo -and $packageVersion -ne $versionInfo.storePackageVersion) {
+        throw "MSIX package version '$packageVersion' does not match the allocated version '$($versionInfo.storePackageVersion)'."
+    }
 
     if ([string]$packagedIdentity.Name -ne $expectedIdentityName) {
         throw (
@@ -309,6 +333,10 @@ try {
     if ($LASTEXITCODE -ne 0) {
         throw 'Unable to inspect the current source tree.'
     }
+    if ($versionInfo -and ($sourceCommit -ne $versionInfo.sourceCommit -or
+        ($versionInfo.allocation -eq 'reserved' -and $sourceTreeDirty))) {
+        throw 'A reserved MSIX requires its exact clean source commit.'
+    }
 
     $msixHash = (
         Get-FileHash -LiteralPath $msixPath -Algorithm SHA256
@@ -325,13 +353,17 @@ try {
         identityName = $expectedIdentityName
         packageVersion = $packageVersion
         publisher = $expectedPublisher
-    } | ConvertTo-Json |
+        msixVersionAllocation = $versionInfo
+    } | ConvertTo-Json -Depth 4 |
         Set-Content `
             -LiteralPath (Join-Path $OutputDirectory 'msix-metadata.json') `
             -Encoding utf8
 
     Write-Host "Created unsigned MSIX: $msixPath"
     Write-Host "  Identity: $expectedIdentityName $packageVersion $Architecture"
+    if ($versionInfo -and $versionInfo.allocation -eq 'preview') {
+        Write-Host '  Preview only: this package version has not been reserved for an official release.'
+    }
 }
 finally {
     Remove-DirectoryIfPresent -Path $workRoot

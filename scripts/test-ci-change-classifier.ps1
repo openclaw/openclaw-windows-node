@@ -76,6 +76,12 @@ $allProductLanes = @(
 )
 $cases = @(
     @{
+        Scenario = "MSIX allocation baseline"
+        Paths = @(".github/msix-version-baseline.json")
+        Classification = "full"
+        Required = $fullPrLanes
+    },
+    @{
         Scenario = "Maintained documentation"
         Paths = @("README.md", "docs/TEST_COVERAGE.md", "docs/diagrams/ci.svg")
         Classification = "docs_only"

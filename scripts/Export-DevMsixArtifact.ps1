@@ -14,7 +14,8 @@ param(
     [Parameter(Mandatory)][ValidateRange(1, 65535)][int]$ExpectedRevision,
     [Parameter(Mandatory)][string]$ExpectedVersion,
     [Parameter(Mandatory)][ValidatePattern('^[0-9a-fA-F]{40}$')][string]$CertificateThumbprint,
-    [Parameter(Mandatory)][string]$OutputDirectory
+    [Parameter(Mandatory)][string]$OutputDirectory,
+    [ValidateNotNullOrEmpty()][string]$VersionInfoPath
 )
 
 Set-StrictMode -Version Latest
@@ -33,6 +34,18 @@ if ($baseVersion -notmatch '^\d+\.\d+\.\d+$') {
     throw "Expected a three-part base version: $ExpectedVersion"
 }
 $expectedPackageVersion = "$baseVersion.$ExpectedRevision"
+$versionInfo = $null
+if ($VersionInfoPath) {
+    . (Join-Path $PSScriptRoot 'MsixVersioning.ps1')
+    $currentCommit = (& git -C $repositoryRoot rev-parse HEAD) -join ''
+    if ($LASTEXITCODE -ne 0) { throw 'Unable to resolve source for the MSIX allocation.' }
+    $versionInfo = Read-MsixVersionInfo `
+        -Path ([IO.Path]::GetFullPath([IO.Path]::Combine($repositoryRoot, $VersionInfoPath))) `
+        -SourceCommit $currentCommit
+    if ($baseVersion -ne $versionInfo.packageBaseVersion) {
+        throw 'The expected Dev base does not match the MSIX allocation.'
+    }
+}
 $packages = @(Get-ChildItem -LiteralPath $PackageDirectory -Filter '*.msix' -File -Recurse)
 if ($packages.Count -ne 1) {
     throw "Expected one Dev MSIX in '$PackageDirectory'; found $($packages.Count)."
@@ -76,6 +89,10 @@ if ($LASTEXITCODE -ne 0 -or $sourceCommit -notmatch '^[0-9a-fA-F]{40}$') {
 }
 $sourceTreeDirty = [bool](& git -C $repositoryRoot status --porcelain)
 if ($LASTEXITCODE -ne 0) { throw 'Unable to inspect the current source tree.' }
+if ($versionInfo -and ($sourceCommit -ne $versionInfo.sourceCommit -or
+    ($versionInfo.allocation -eq 'reserved' -and $sourceTreeDirty))) {
+    throw 'A reserved MSIX requires its exact clean source commit.'
+}
 
 $packageName = "OpenClaw-Dev-$Architecture.msix"
 New-Item -ItemType Directory -Path $OutputDirectory -Force | Out-Null
@@ -102,8 +119,10 @@ $certificateHash = (Get-FileHash -LiteralPath $certificatePath -Algorithm SHA256
     certificateExpiresUtc = $certificate.NotAfter.ToUniversalTime().ToString('O')
     workflowRunId = $env:GITHUB_RUN_ID
     workflowRunAttempt = $env:GITHUB_RUN_ATTEMPT
-} | ConvertTo-Json | Set-Content -LiteralPath (Join-Path $OutputDirectory 'msix-metadata.json') -Encoding utf8
+    msixVersionAllocation = $versionInfo
+} | ConvertTo-Json -Depth 4 | Set-Content -LiteralPath (Join-Path $OutputDirectory 'msix-metadata.json') -Encoding utf8
 
+$allocationNote = if ($versionInfo) { $versionInfo.allocation } else { 'unallocated local build' }
 @"
 OpenClaw (Dev) CI tester package ($Architecture)
 
@@ -114,6 +133,7 @@ later runs and the other architecture may have different certificates.
 
 Source: $sourceCommit
 Package version: $($identity.Version)
+MSIX version allocation: $allocationNote
 Package SHA-256: $packageHash
 Certificate thumbprint: $($certificate.Thumbprint)
 Certificate SHA-256: $certificateHash
@@ -136,8 +156,10 @@ Certificate SHA-256: $certificateHash
    another isolated Dev installation.
 
 CI uses the workflow run number as the Dev revision, bounded to 1-65535.
-Rerunning the same workflow run keeps the same package version and is not a
-new upgrade. Versions from other branches, forks, or local builds may be newer.
+Tagged release reruns reuse their reserved base. PR and main previews do not
+reserve versions; their candidate base can change after an official allocation.
+Preview packages are not official release or Store-submission versions.
+Versions from other branches, forks, or local builds may be newer.
 Do not uninstall or downgrade an existing Dev installation merely to bypass a
 version error without first considering its retained settings and data.
 

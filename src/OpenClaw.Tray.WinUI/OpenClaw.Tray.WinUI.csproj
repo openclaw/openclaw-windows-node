@@ -156,7 +156,11 @@
     <Task>
       <Code Type="Fragment" Language="cs">
         <![CDATA[
-        if (!System.Text.RegularExpressions.Regex.IsMatch(FourPartVersion, @"^\d+\.\d+\.\d+\.\d+$")) {
+        System.Version packageVersion;
+        if (!System.Text.RegularExpressions.Regex.IsMatch(FourPartVersion, @"^[1-9]\d*\.(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$") ||
+            !System.Version.TryParse(FourPartVersion, out packageVersion) ||
+            packageVersion.Major > 65535 || packageVersion.Minor > 65535 ||
+            packageVersion.Build > 65535 || packageVersion.Revision > 65535) {
             Log.LogError("GenerateOpenClawAppxManifest: '" + FourPartVersion + "' is not a valid four-part MSIX version.");
             return false;
         }
@@ -263,6 +267,8 @@
       <_AppxBaseVersion Condition="'$(_VersionDotCount)' == '3'">$([System.Text.RegularExpressions.Regex]::Replace('$(_StrippedVersion)', '\.\d+$', ''))</_AppxBaseVersion>
       <_AppxBaseVersion Condition="'$(_VersionDotCount)' == '2'">$(_StrippedVersion)</_AppxBaseVersion>
       <_AppxBaseVersion Condition="'$(_VersionDotCount)' == '1'">$(_StrippedVersion).0</_AppxBaseVersion>
+      <!-- CI allocates the package base independently of the application's GitVersion. -->
+      <_AppxBaseVersion Condition="'$(MsixPackageBaseVersion)' != ''">$(MsixPackageBaseVersion)</_AppxBaseVersion>
       <_AppxRevision Condition="'$(DevBuild)' == 'true' and '$(MsixRevision)' != ''">$(MsixRevision)</_AppxRevision>
       <_AppxRevision Condition="'$(DevBuild)' == 'true' and '$(_AppxRevision)' == '' and '$(GitVersion_CommitsSinceVersionSource)' != ''">$(GitVersion_CommitsSinceVersionSource)</_AppxRevision>
       <_AppxRevision Condition="'$(DevBuild)' == 'true' and '$(_AppxRevision)' == ''">1</_AppxRevision>

@@ -51,6 +51,12 @@
     the repository root. The directory is never cleared automatically.
     Only valid with -Msix Dev; omission preserves the local AppPackages path.
 
+.PARAMETER MsixBaseVersion
+    Explicit three-part package base from the CI MSIX allocator. Only valid
+    with -Msix Dev. Does not override the application's GitVersion or assembly
+    metadata. When omitted, a local build reuses an installed Dev package's
+    higher three-part base so Windows accepts the build as an upgrade.
+
 .EXAMPLE
     .\build.ps1
     .\build.ps1 -Project WinUI -Configuration Release
@@ -83,6 +89,16 @@ param(
     [ValidateNotNullOrEmpty()]
     [string]$MsixOutputDirectory,
 
+    [ValidatePattern('^[1-9]\d*\.(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)$')]
+    [ValidateScript({
+        foreach ($part in $_.Split('.')) {
+            [uint16]$value = 0
+            if (-not [uint16]::TryParse($part, [ref]$value)) { return $false }
+        }
+        return $true
+    })]
+    [string]$MsixBaseVersion,
+
     [switch]$NoTrustRepository
 )
 
@@ -99,6 +115,9 @@ if (($PSBoundParameters.ContainsKey("MsixRevision") -or
     throw "-MsixRevision and -MsixOutputDirectory require -Msix Dev."
 }
 $explicitMsixRevision = $PSBoundParameters.ContainsKey("MsixRevision")
+if ($PSBoundParameters.ContainsKey("MsixBaseVersion") -and -not $buildDevMsix) {
+    throw "-MsixBaseVersion requires -Msix Dev."
+}
 if ($MsixOutputDirectory) {
     $MsixOutputDirectory = [IO.Path]::GetFullPath([IO.Path]::Combine($repoRoot, $MsixOutputDirectory))
     if ((Test-Path -LiteralPath $MsixOutputDirectory) -and
@@ -470,6 +489,37 @@ function Invoke-DotNetCaptured($arguments) {
     }
 }
 
+function Get-InstalledDevMsixPackage {
+    Get-AppxPackage -Name "OpenClawFoundation.OpenClaw.Dev" -ErrorAction SilentlyContinue |
+        Where-Object Publisher -eq "CN=OpenClaw Local Development" |
+        Sort-Object { [version]$_.Version.ToString() } -Descending |
+        Select-Object -First 1
+}
+
+function Get-CurrentAppBaseVersion {
+    $version = & (Join-Path $repoRoot "scripts\Get-OpenClawVersion.ps1") -Variable MajorMinorPatch
+    if ($LASTEXITCODE -ne 0 -or $version -notmatch '^[1-9]\d*\.(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)$') {
+        throw "Could not resolve the current three-part application version for Dev MSIX packaging."
+    }
+
+    return $version.Trim()
+}
+
+function Select-LocalDevMsixBaseVersion($installedPackageVersion, $appBaseVersion) {
+    if ($null -eq $installedPackageVersion) {
+        return $null
+    }
+
+    $installed = [version]$installedPackageVersion.ToString()
+    $installedBase = [version]::new($installed.Major, $installed.Minor, $installed.Build)
+    $appBase = [version]$appBaseVersion
+    if ($installedBase -le $appBase) {
+        return $null
+    }
+
+    return "$($installed.Major).$($installed.Minor).$($installed.Build)"
+}
+
 function Build-Project($name, $path, $useRid = $false, $packageMsix = $false) {
     Write-Host "`nBuilding $name..." -ForegroundColor White
     
@@ -479,13 +529,23 @@ function Build-Project($name, $path, $useRid = $false, $packageMsix = $false) {
     }
     
     if ($packageMsix) {
+        $installedDevPackage = if (-not $explicitMsixRevision -or -not $MsixBaseVersion) {
+            Get-InstalledDevMsixPackage
+        } else {
+            $null
+        }
+        $effectiveMsixBaseVersion = if ($MsixBaseVersion) {
+            $MsixBaseVersion
+        } elseif ($installedDevPackage) {
+            Select-LocalDevMsixBaseVersion `
+                -installedPackageVersion $installedDevPackage.Version `
+                -appBaseVersion (Get-CurrentAppBaseVersion)
+        } else {
+            $null
+        }
         $msixRevision = if ($explicitMsixRevision) {
             $MsixRevision
         } else {
-            $installedDevPackage = Get-AppxPackage -Name "OpenClawFoundation.OpenClaw.Dev" -ErrorAction SilentlyContinue |
-                Where-Object Publisher -eq "CN=OpenClaw Local Development" |
-                Sort-Object { [version]$_.Version.ToString() } -Descending |
-                Select-Object -First 1
             if ($installedDevPackage) {
                 ([version]$installedDevPackage.Version.ToString()).Revision + 1
             } else {
@@ -529,6 +589,9 @@ function Build-Project($name, $path, $useRid = $false, $packageMsix = $false) {
             "-p:UapAppxPackageBuildMode=SideloadOnly",
             "-p:AppxPackageDir=$appxOutput"
         )
+        if ($effectiveMsixBaseVersion) {
+            $dotnetArgs += "-p:MsixPackageBaseVersion=$effectiveMsixBaseVersion"
+        }
     }
     $result = Invoke-DotNetCaptured $dotnetArgs
     $exitCode = $LASTEXITCODE

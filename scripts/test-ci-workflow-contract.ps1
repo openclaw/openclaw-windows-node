@@ -604,6 +604,8 @@ foreach ($token in @(
         "majorMinorPatch: `${{ steps.release_version.outputs.majorMinorPatch }}",
         "isPrerelease: `${{ steps.release_version.outputs.isPrerelease }}",
         "isStableCorrection: `${{ steps.release_version.outputs.isStableCorrection }}",
+        "msixVersionInfo: `${{ steps.msix_preview.outputs.versionInfo }}",
+        "msixSourceVersion: `${{ steps.msix_preview.outputs.sourceVersion }}",
         "Test-OpenClawStableCorrectionRelease.ps1"
     )) {
     Assert-Contains -Text $metadataJob -Expected $token -Message "Metadata job is missing '$token'."
@@ -649,8 +651,9 @@ foreach ($build in $releaseBuilds.GetEnumerator()) {
 
 $buildMsixJob = Get-JobBlock "build-msix"
 foreach ($token in @(
-        "needs: [change-classification, metadata]",
+        "needs: [change-classification, metadata, reserve-msix-version]",
         "needs.metadata.result == 'success'",
+        "(needs.reserve-msix-version.result == 'success' || needs.reserve-msix-version.result == 'skipped')",
         "needs.change-classification.outputs.x64_release == 'true' || needs.change-classification.outputs.arm64_release == 'true'",
         "architecture: [x64, arm64]",
         "matrix.architecture == 'arm64' && 'windows-11-arm' || 'windows-latest'",
@@ -664,7 +667,14 @@ foreach ($token in @(
         '-MsixRevision $env:DEV_MSIX_REVISION',
         '-MsixOutputDirectory "$env:RUNNER_TEMP\openclaw-dev-appx"',
         '.\scripts\Export-DevMsixArtifact.ps1',
-        '-ExpectedVersion $env:OPENCLAW_BUILD_VERSION',
+        'MSIX_VERSION_INFO: ${{ needs.reserve-msix-version.outputs.versionInfo || needs.metadata.outputs.msixVersionInfo }}',
+        'MSIX_SOURCE_VERSION: ${{ needs.reserve-msix-version.outputs.sourceVersion || needs.metadata.outputs.msixSourceVersion }}',
+        '-ExpectedVersion $info.packageBaseVersion',
+        '-MsixBaseVersion $info.packageBaseVersion',
+        '-VersionInfoPath "$env:RUNNER_TEMP\openclaw-msix-version.json"',
+        'Assert-MsixVersionInfo',
+        '-SourceCommit $env:GITHUB_SHA -SourceVersion $env:MSIX_SOURCE_VERSION',
+        'refusing to build with a fallback version',
         '-CertificateThumbprint $thumbprint',
         'name: openclaw-msix-store-unsigned-${{ matrix.architecture }}',
         'name: openclaw-msix-dev-${{ matrix.architecture }}',
@@ -678,8 +688,69 @@ foreach ($token in @(
     )) {
     Assert-Contains -Text $buildMsixJob -Expected $token -Message "MSIX artifact lane is missing '$token'."
 }
-foreach ($token in @('if: false', "`n    continue-on-error: true", 'Set-Content global.json', 'msbuild src/', 'Select-Object -First 1', 'Export-PfxCertificate', 'secrets.', 'id-token: write')) {
+foreach ($token in @('if: false', "`n    continue-on-error: true", 'Set-Content global.json', 'msbuild src/', 'Select-Object -First 1', 'Export-PfxCertificate', 'secrets.', 'id-token: write', 'contents: write', '-Reserve')) {
     Assert-NotContains -Text $buildMsixJob -Unexpected $token -Message "MSIX artifacts must not contain '$token'."
+}
+
+$reserveMsixJob = Get-JobBlock 'reserve-msix-version'
+foreach ($token in @(
+    'needs: [change-classification, metadata]',
+    "needs.metadata.result == 'success'",
+    "github.repository == 'openclaw/openclaw-windows-node'",
+    "startsWith(github.ref, 'refs/tags/v')",
+    "(github.event_name == 'push' || github.event_name == 'workflow_dispatch')",
+    'contents: write', 'persist-credentials: false',
+    'versionInfo: ${{ steps.reserve.outputs.versionInfo }}',
+    'sourceVersion: ${{ steps.reserve.outputs.sourceVersion }}',
+    '-SourceRef $env:GITHUB_REF -Repository $env:GITHUB_REPOSITORY -Reserve'
+)) {
+    Assert-Contains -Text $reserveMsixJob -Expected $token -Message "Official MSIX allocation is missing '$token'."
+}
+Assert-NotContains -Text $metadataJob -Unexpected 'contents: write' -Message 'Preview metadata must remain read-only.'
+Assert-NotContains -Text $metadataJob -Unexpected '-Reserve' -Message 'Preview metadata must not allocate releases.'
+$previewStep = Get-StepBlock -Text $metadataJob -Name 'Resolve MSIX preview version'
+foreach ($token in @(
+    '.\scripts\Get-OpenClawMsixPreviewSourceVersion.ps1',
+    '-Repository openclaw/openclaw-windows-node',
+    '-GitHubToken $env:GH_TOKEN',
+    '"sourceVersion=$sourceVersion" >> $env:GITHUB_OUTPUT'
+)) {
+    Assert-Contains -Text $previewStep -Expected $token -Message "MSIX preview source contract is missing '$token'."
+}
+Assert-NotContains -Text $previewStep -Unexpected '$env:GITHUB_REPOSITORY' -Message 'Fork previews must read the canonical upstream reservation ledger.'
+Assert-NotContains -Text $previewStep -Unexpected '${{ steps.release_version.outputs.semVer }}' -Message 'PR/main MSIX previews must not use the development GitVersion line.'
+
+# Evaluate the actual context guards, including the complement used for previews.
+function Convert-MsixGuard {
+    param([string]$Text)
+    $guard = [regex]::Match($Text, '(?m)^\s+if: \$\{\{\s*(?<condition>.*?)\s*\}\}\s*$')
+    if (-not $guard.Success) { throw 'Missing MSIX workflow context guard.' }
+    $condition = $guard.Groups['condition'].Value.
+        Replace('!cancelled()', '(-not $cancelled)').
+        Replace("startsWith(github.ref, 'refs/tags/v')", '$ref.StartsWith(''refs/tags/v'')').
+        Replace('needs.metadata.result', '$metadataResult').
+        Replace('github.repository', '$repository').
+        Replace('github.event_name', '$eventName').
+        Replace('==', '-eq').Replace('&&', '-and').Replace('||', '-or').Replace('!(', '-not (')
+    [scriptblock]::Create('param($repository,$ref,$eventName,$metadataResult,$cancelled)' + "`n($condition)")
+}
+$reserveGuard = Convert-MsixGuard $reserveMsixJob
+$previewGuard = Convert-MsixGuard $previewStep
+foreach ($repository in @('openclaw/openclaw-windows-node', 'contributor/openclaw-windows-node')) {
+    foreach ($ref in @('refs/tags/v2026.9.4', 'refs/tags/v2026.9.4-1', 'refs/tags/v2026.9.4-alpha.1', 'refs/heads/main', 'refs/pull/1/merge', 'refs/tags/msix-package/2026.9.4/401')) {
+        foreach ($eventName in @('push', 'workflow_dispatch', 'pull_request', 'pull_request_target')) {
+            $official = $repository -eq 'openclaw/openclaw-windows-node' -and
+                $ref.StartsWith('refs/tags/v') -and $eventName -in @('push', 'workflow_dispatch')
+            if ((& $reserveGuard $repository $ref $eventName 'success' $false) -ne $official -or
+                (& $previewGuard $repository $ref $eventName 'success' $false) -ne (-not $official)) {
+                throw "Incorrect MSIX allocation scope: $repository, $ref, $eventName"
+            }
+            if ((& $reserveGuard $repository $ref $eventName 'failure' $false) -or
+                (& $reserveGuard $repository $ref $eventName 'success' $true)) {
+                throw 'Failed or cancelled metadata must not reserve MSIX versions.'
+            }
+        }
+    }
 }
 
 $ciGateJob = Get-JobBlock "ci-gate"
@@ -706,7 +777,8 @@ foreach ($token in @(
 
 $releaseJob = Get-JobBlock "release"
 foreach ($token in @(
-        "needs: [change-classification, metadata, build-x64, build-arm64, ci-gate]",
+        "needs: [change-classification, metadata, reserve-msix-version, build-x64, build-arm64, ci-gate]",
+        "needs.reserve-msix-version.result == 'success'",
         "needs.ci-gate.result == 'success'",
         "needs.metadata.outputs.semVer",
         "needs.metadata.outputs.isPrerelease",
@@ -723,6 +795,8 @@ Assert-Contains -Text $alphaDownload -Expected 'pattern: openclaw-msix-store-uns
 Assert-NotContains -Text $alphaDownload -Unexpected 'openclaw-msix-dev-' -Message "Dev packages must stay workflow-only."
 Assert-Contains -Text $alphaStage -Expected '-ExpectedSourceCommit $env:GITHUB_SHA' -Message "Release staging must bind artifacts to the tag's source."
 Assert-Contains -Text $alphaStage -Expected '-Version $env:RELEASE_VERSION' -Message "Release staging must validate the alpha version."
+Assert-Contains -Text $alphaStage -Expected '-VersionInfoPath "$env:RUNNER_TEMP\openclaw-msix-version.json"' -Message 'Release staging must require its exact reserved MSIX version.'
+Assert-Contains -Text $alphaStage -Expected 'MSIX_VERSION_INFO: ${{ needs.reserve-msix-version.outputs.versionInfo }}' -Message 'Release staging must not accept a preview.'
 $createRelease = Get-StepBlock -Text $releaseJob -Name 'Create Release'
 Assert-Contains -Text $createRelease -Expected '${{ steps.msix_alpha.outputs.files }}' -Message "Only the gated alpha stage may add MSIX release files."
 Assert-Contains -Text $createRelease -Expected '${{ steps.msix_alpha.outputs.notes }}' -Message "Only alpha release notes may mention MSIX downloads."
@@ -732,6 +806,8 @@ Assert-NotContains -Text $createRelease -Unexpected 'OpenClaw-x64.msix' -Message
 Assert-NotContains -Text $createRelease -Unexpected 'OpenClaw-arm64.msix' -Message "MSIX must not be an unconditional stable release asset."
 Assert-Contains -Text $workflow -Expected "./scripts/test-msix-ci-artifacts.ps1" -Message "Fast validation must exercise the Dev artifact contracts."
 Assert-Contains -Text $workflow -Expected "./scripts/test-msix-alpha-release.ps1" -Message "Fast validation must exercise alpha release staging."
+Assert-Contains -Text $workflow -Expected "./scripts/test-msix-versioning.ps1" -Message 'Fast validation must exercise allocation races and boundaries.'
+Assert-Contains -Text $workflow -Expected "./scripts/test-msix-preview-source-version.ps1" -Message 'Fast validation must exercise latest-stable MSIX preview selection.'
 
 $triggerPaths = @(
     ".github/workflows/ci.yml",

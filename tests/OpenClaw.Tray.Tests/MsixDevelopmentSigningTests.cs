@@ -53,6 +53,10 @@ public sealed class MsixDevelopmentSigningTests
         Assert.Contains("[ValidateRange(1, 65535)]", buildScript);
         Assert.Contains("$explicitMsixRevision", buildScript);
         Assert.Contains("-MsixRevision and -MsixOutputDirectory require -Msix Dev.", buildScript);
+        Assert.Contains("-MsixBaseVersion requires -Msix Dev.", buildScript);
+        Assert.Contains("Select-LocalDevMsixBaseVersion", buildScript);
+        Assert.Contains("Get-CurrentAppBaseVersion", buildScript);
+        Assert.Contains("-p:MsixPackageBaseVersion=$effectiveMsixBaseVersion", buildScript);
         Assert.Contains("The Dev MSIX output directory must be absent or empty:", buildScript);
         Assert.Contains("([version]$installedDevPackage.Version.ToString()).Revision + 1", buildScript);
         Assert.Contains("setup-dev-msix-cert.ps1", buildScript);
@@ -118,6 +122,27 @@ public sealed class MsixDevelopmentSigningTests
         Assert.DoesNotContain("DevBuild", packagingScript);
         Assert.DoesNotContain("PackageCertificate", packagingScript);
         Assert.DoesNotContain("MsixRevision", packagingScript);
+        Assert.Contains("Read-MsixVersionInfo", packagingScript);
+        Assert.Contains("-p:MsixPackageBaseVersion=", packagingScript);
+        Assert.Contains("msixVersionAllocation = $versionInfo", packagingScript);
+        Assert.DoesNotContain("UpdateVersionProperties=false", packagingScript);
+        Assert.DoesNotContain("UpdateAssemblyInfo=false", packagingScript);
+    }
+
+    [Fact]
+    public void MsixPackageAllocation_DoesNotOverrideApplicationVersionMetadata()
+    {
+        var root = TestRepositoryPaths.GetRepositoryRoot();
+        var project = File.ReadAllText(Path.Combine(
+            root, "src", "OpenClaw.Tray.WinUI", "OpenClaw.Tray.WinUI.csproj"));
+        var buildScript = File.ReadAllText(Path.Combine(root, "build.ps1"));
+
+        Assert.Contains("<_AppxBaseVersion Condition=\"'$(MsixPackageBaseVersion)' != ''\">$(MsixPackageBaseVersion)</_AppxBaseVersion>", project);
+        Assert.Contains("packageVersion.Build > 65535", project);
+        Assert.DoesNotContain("<Version>$(MsixPackageBaseVersion)</Version>", project);
+        Assert.DoesNotContain("-p:Version=$MsixBaseVersion", buildScript);
+        Assert.DoesNotContain("UpdateVersionProperties=false", buildScript);
+        Assert.DoesNotContain("UpdateAssemblyInfo=false", buildScript);
     }
 
     [Fact]

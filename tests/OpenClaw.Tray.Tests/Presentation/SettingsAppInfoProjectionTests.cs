@@ -22,6 +22,23 @@ public sealed class SettingsAppInfoProjectionTests
     }
 
     [Theory]
+    [InlineData(null, "v2026.9.5-PullRequest1448.9")]
+    [InlineData("", "v2026.9.5-PullRequest1448.9")]
+    [InlineData("   ", "v2026.9.5-PullRequest1448.9")]
+    [InlineData("2026.9.401.0", "2026.9.401.0")]
+    [InlineData(" 2026.9.401.123 ", "2026.9.401.123")]
+    public void ResolveDisplayVersion_PrefersPackageIdentityVersion(
+        string? packageVersion,
+        string expected)
+    {
+        Assert.Equal(
+            expected,
+            SettingsAppInfoProjection.ResolveDisplayVersion(
+                "v2026.9.5-PullRequest1448.9",
+                packageVersion));
+    }
+
+    [Theory]
     [InlineData(null, "stable")]
     [InlineData("", "stable")]
     [InlineData("   ", "stable")]

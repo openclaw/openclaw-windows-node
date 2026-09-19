@@ -14,7 +14,8 @@ param(
     [Parameter(Mandatory)]
     [ValidatePattern('^(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)-alpha\.(?:0|[1-9]\d*)$')]
     [string]$Version,
-    [Parameter(Mandatory)][ValidatePattern('^[0-9a-fA-F]{40}$')][string]$ExpectedSourceCommit
+    [Parameter(Mandatory)][ValidatePattern('^[0-9a-fA-F]{40}$')][string]$ExpectedSourceCommit,
+    [Parameter(Mandatory)][ValidateNotNullOrEmpty()][string]$VersionInfoPath
 )
 
 Set-StrictMode -Version Latest
@@ -29,7 +30,11 @@ if ((Test-Path -LiteralPath $OutputDirectory) -and
 }
 
 [xml]$manifest = Get-Content -LiteralPath (Join-Path $repositoryRoot 'src\OpenClaw.Tray.WinUI\Package.appxmanifest') -Raw
-$expectedVersion = ($Version -replace '-alpha\.\d+$', '') + '.0'
+. (Join-Path $PSScriptRoot 'MsixVersioning.ps1')
+$versionInfo = Read-MsixVersionInfo `
+    -Path ([IO.Path]::GetFullPath([IO.Path]::Combine($repositoryRoot, $VersionInfoPath))) `
+    -SourceCommit $ExpectedSourceCommit -SourceVersion $Version -RequireReserved
+$expectedVersion = $versionInfo.storePackageVersion
 $packages = foreach ($architecture in @('x64', 'arm64')) {
     $directory = Join-Path $ArtifactDirectory "openclaw-msix-store-unsigned-$architecture"
     $packageName = "OpenClaw-$architecture.msix"
@@ -43,6 +48,16 @@ $packages = foreach ($architecture in @('x64', 'arm64')) {
 
     $metadataPath = Join-Path $directory 'msix-metadata.json'
     $metadata = Get-Content -LiteralPath $metadataPath -Raw | ConvertFrom-Json
+    if (-not $metadata.PSObject.Properties['msixVersionAllocation']) {
+        throw "The $architecture Store artifact is missing its release allocation."
+    }
+    $packageAllocation = Assert-MsixVersionInfo -VersionInfo $metadata.msixVersionAllocation `
+        -SourceCommit $ExpectedSourceCommit -SourceVersion $Version -RequireReserved
+    foreach ($property in $versionInfo.PSObject.Properties) {
+        if ($packageAllocation.($property.Name) -cne $property.Value) {
+            throw "The $architecture Store artifact does not match the expected release allocation."
+        }
+    }
     if ($metadata.sourceTreeDirty -isnot [bool] -or $metadata.sourceTreeDirty -or
         $metadata.sourceCommit -ne $ExpectedSourceCommit) {
         throw "The $architecture Store artifact does not belong to the expected clean source commit."
@@ -86,9 +101,9 @@ metadata files record the source commit, package version, and SHA-256.
 Upload the MSIX files manually to Partner Center; Microsoft signs accepted
 Store submissions. This workflow does not submit or retrieve Store packages.
 
-The Windows package version is $expectedVersion. Different alpha tags with
-the same base version produce the same Store version, so verify it against
-previous submissions before uploading. Stable releases do not include these
+The Windows package version is $expectedVersion, reserved for $Version.
+Different official tags share the app patch's packaging counter; reruns of
+this tag reuse its reservation. Stable releases do not include these
 experimental submission assets. Dev-signed tester downloads remain in Actions.
 "@
 }

@@ -126,7 +126,7 @@ public sealed class ReleaseSigningWorkflowTests
         Assert.Contains("name: openclaw-msix-store-unsigned-", workflow);
         Assert.Contains("name: openclaw-msix-dev-", workflow);
         Assert.Contains("MSIX_RESULT: ${{ needs.build-msix.result }}", workflow);
-        Assert.Contains("needs: [change-classification, metadata, build-x64, build-arm64, ci-gate]", workflow);
+        Assert.Contains("needs: [change-classification, metadata, reserve-msix-version, build-x64, build-arm64, ci-gate]", workflow);
         Assert.DoesNotContain("Download win-x64 MSIX artifact", workflow);
         Assert.DoesNotContain("Download win-arm64 MSIX artifact", workflow);
         Assert.DoesNotContain("Sign Release MSIX Packages", workflow);
