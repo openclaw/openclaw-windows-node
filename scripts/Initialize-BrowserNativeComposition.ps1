@@ -1,7 +1,7 @@
 param([Parameter(Mandatory)][string]$Consumer, [Parameter(Mandatory)][string]$Receipt)
 $ErrorActionPreference = 'Stop'
 $ProgressPreference = 'SilentlyContinue'
-$result = [ordered]@{ status='failed'; stage='preflight'; consumerSha='57f78c49d47f445b85d4859f038e8447e08983ba' }
+$result = [ordered]@{ status='failed'; stage='preflight'; consumerSha='57201e3e26968ff686bae61d5de8e4e54308a6b6' }
 try {
     $result.host = @{ windows=[bool]$IsWindows; githubActions=($env:GITHUB_ACTIONS -ceq 'true'); githubHosted=($env:RUNNER_ENVIRONMENT -ceq 'github-hosted') }
     if ($env:GITHUB_ACTIONS -cne 'true' -or $env:RUNNER_ENVIRONMENT -cne 'github-hosted' -or !$IsWindows) { throw 'Disposable Windows required' }

@@ -6,6 +6,7 @@ on:
     paths:
       - .github/workflows/browser-native-composed-proof.yml
       - scripts/Test-BrowserNativeComposition.mjs
+      - scripts/Test-BrowserNativeSavedProfile.mjs
       - scripts/Initialize-BrowserNativeComposition.ps1
       - scripts/BrowserNativePathAudit.cs
       - scripts/Control-BrowserNativeProofChild.ps1
@@ -33,7 +34,7 @@ jobs:
       - uses: actions/checkout@v7
         with:
           repository: openclaw/openclaw
-          ref: 57f78c49d47f445b85d4859f038e8447e08983ba
+          ref: 57201e3e26968ff686bae61d5de8e4e54308a6b6
           path: consumer
           persist-credentials: false
       - uses: actions/setup-node@v4
@@ -77,7 +78,7 @@ jobs:
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
-          if ((git rev-parse HEAD).Trim() -cne '57f78c49d47f445b85d4859f038e8447e08983ba') { throw 'Consumer revision mismatch.' }
+          if ((git rev-parse HEAD).Trim() -cne '57201e3e26968ff686bae61d5de8e4e54308a6b6') { throw 'Consumer revision mismatch.' }
           pnpm install --frozen-lockfile --store-dir "$env:COMPOSED_PRIVATE_ROOT/store" --package-import-method=copy
           if ($LASTEXITCODE -ne 0) { throw 'Pinned consumer dependency install failed.' }
           pnpm build:docker
