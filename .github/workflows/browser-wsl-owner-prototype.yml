@@ -31,7 +31,8 @@ jobs:
           node-version: '24.19.0'
       - uses: pnpm/action-setup@v4
         with:
-          version: '12.4.0'
+          # The immutable consumer packageManager includes its integrity-qualified version.
+          # Do not provide a second, conflicting action version.
           run_install: false
       - name: Build the immutable canonical CLI, not the published release CLI
         shell: bash
