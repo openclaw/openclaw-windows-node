@@ -148,8 +148,7 @@ public static class GatewayInstallPolicy
     public const int ProtocolGeneration = 4;
     public const string NodeVersion = "24.19.0";
     public const string RecommendedTag = "latest";
-    public const string FallbackTag = "extended-stable";
-
+    public const string LegacyFallbackVersion = "2026.9.4";
     private static readonly HashSet<string> s_supportedTags = new(
         ["latest", "next", "beta", "extended-stable", "dev"],
         StringComparer.OrdinalIgnoreCase);
@@ -318,7 +317,7 @@ public static class GatewayInstallPolicy
         if (selection.Equals("fallback", StringComparison.OrdinalIgnoreCase))
         {
             if (string.IsNullOrWhiteSpace(version))
-                return FallbackTag;
+                return LegacyFallbackVersion;
 
             RequireExactVersion(
                 version,
