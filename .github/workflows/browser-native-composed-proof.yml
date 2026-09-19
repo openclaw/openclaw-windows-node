@@ -28,6 +28,7 @@ jobs:
       - uses: actions/checkout@v7
         with:
           path: producer
+          fetch-depth: 0
           persist-credentials: false
       - uses: actions/checkout@v7
         with:

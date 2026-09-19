@@ -132,6 +132,10 @@ try {
             $incoming=Read-Frame $pipe
             if ($incoming.nonce -ne 'AAAAAAAAAAAAAAAAAAAAAA') { throw 'Native request nonce changed.' }
             Write-Frame $pipe ([Text.Encoding]::UTF8.GetBytes('{"v":1,"ok":true,"nonce":"AAAAAAAAAAAAAAAAAAAAAA","pairingString":"synthetic-proof-only"}'))
+            # This synchronous fixture handler has settled. Match the production server
+            # closure before waiting for the native owner to publish its final frame.
+            $pipe.Dispose()
+            Write-Host 'IPC_PROOF handler_settled_connection_closed'
             $reply=Read-Frame $native.StandardOutput.BaseStream
             if (-not $reply.ok -or $reply.pairingString -ne 'synthetic-proof-only') { throw 'Native pipe reply failed.' }
             Assert-Exit $native
