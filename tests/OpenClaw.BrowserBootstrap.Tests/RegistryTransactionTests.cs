@@ -27,6 +27,25 @@ public class RegistryTransactionTests
         Assert.ThrowsAny<Exception>(()=>authority.CheckAcl(sd,false,registry:true,protectedAncestor:true));
     }
     [WindowsRegistryFact]
+    public void UncontendedTransactionsCreateUpdateAndRemoveOwnedValues()
+    {
+        if(!OperatingSystem.IsWindows())return;
+        var path=@"Software\OpenClawBootstrapTests\"+Guid.NewGuid().ToString("N");
+        using var root=RegistryKey.OpenBaseKey(RegistryHive.CurrentUser,RegistryView.Registry32);
+        try
+        {
+            var platform=new WindowsRegistrationPlatform();
+            var missing=new WindowsRegistrationPlatform.Row(RegistryHive.CurrentUser,RegistryView.Registry32,path,false,[]);
+            platform.MutateAtomically(missing,new("",RegistryValueKind.String,"owned"),default);
+            var owned=missing with{Exists=true,Values=[new("",RegistryValueKind.String,"owned")]};
+            platform.MutateAtomically(owned,new("",RegistryValueKind.String,"updated"),default);
+            using(var key=root.OpenSubKey(path))Assert.Equal("updated",key!.GetValue(""));
+            platform.MutateAtomically(owned with{Values=[new("",RegistryValueKind.String,"updated")]},null,default);
+            using var after=root.OpenSubKey(path);Assert.Null(after);
+        }
+        finally{root.DeleteSubKeyTree(path,false);}
+    }
+    [WindowsRegistryFact]
     public void ForeignChangeBeforeTransactionalAdmissionIsPreserved()
     {
         if(!OperatingSystem.IsWindows())return;

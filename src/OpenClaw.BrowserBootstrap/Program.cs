@@ -61,7 +61,11 @@ internal static class Program
         var buffer=new byte[ManagementContract.Limit+1];var size=0;
         while(true)
         {
-            var n=await input.ReadAsync(buffer.AsMemory(size),ct);
+            // Windows standard-input reads do not interrupt an outstanding synchronous pipe read.
+            // Bound the await itself; this one-shot process exits after the typed failure response.
+            var read=input.ReadAsync(buffer.AsMemory(size),ct).AsTask();
+            _=read.ContinueWith(t=>_=t.Exception,CancellationToken.None,TaskContinuationOptions.OnlyOnFaulted|TaskContinuationOptions.ExecuteSynchronously,TaskScheduler.Default);
+            var n=await read.WaitAsync(ct);
             if(n==0)return buffer[..size];
             size+=n;if(size>ManagementContract.Limit)throw new ContractException("invalid_request");
         }

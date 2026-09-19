@@ -95,6 +95,20 @@ public class ManagementContractTests
         Assert.Throws<ContractException>(()=>ManagementContract.ResponseBytes(r with{Ok=false}));
         Assert.Throws<ContractException>(()=>ManagementContract.ResponseBytes(r with{Registration="owned"}));
     }
+    [Fact]
+    public async Task ManagementDeadlineDoesNotDependOnUnderlyingReadCancellation()
+    {
+        using var input=new UncancellableReadStream();
+        using var deadline=new CancellationTokenSource(TimeSpan.FromMilliseconds(25));
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(()=>Program.ReadManagementAsync(input,deadline.Token).WaitAsync(TimeSpan.FromSeconds(2)));
+        input.Complete();
+    }
+    private sealed class UncancellableReadStream:MemoryStream
+    {
+        private readonly TaskCompletionSource<int> read=new(TaskCreationOptions.RunContinuationsAsynchronously);
+        public override ValueTask<int> ReadAsync(Memory<byte> buffer,CancellationToken cancellationToken=default)=>new(read.Task);
+        public void Complete()=>read.TrySetResult(0);
+    }
     [Fact]public async Task ManagementEofRequiredAndBounded()
     {
         Assert.Equal(Encoding.UTF8.GetBytes(Native),await Program.ReadManagementAsync(new MemoryStream(Encoding.UTF8.GetBytes(Native)),default));

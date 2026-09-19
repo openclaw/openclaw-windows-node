@@ -40,6 +40,7 @@ function Start-Native([string]$File, [string[]]$Arguments) {
     return [Diagnostics.Process]::Start($start)
 }
 function Invoke-Management([string]$Json, [bool]$CloseInput=$true) {
+    Write-Host ('MANAGEMENT_PROOF action={0} closeInput={1}' -f ($Json | ConvertFrom-Json).action,$CloseInput)
     $p=Start-Native $script:exe @('--manage')
     $ct=[Threading.CancellationTokenSource]::new(60000)
     try {

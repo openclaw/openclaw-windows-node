@@ -206,6 +206,11 @@ internal sealed class WindowsRegistrationPlatform : IRegistrationPlatform
                 if(removed!=0)throw new ContractException(removed==5?"unsafe_acl":"io_error");
             }
             else key.SetValue(value.Name,value.Text!,value.Kind);
+            // TxR reads are not a snapshot lock. A foreign write can win after our first
+            // comparison but before we stage the mutation. Our staged changes remain
+            // invisible to this non-transacted read; compare again while holding the
+            // transactional write conflict boundary, before allowing commit.
+            if(!Same(expected,ReadRow(expected.Hive,expected.View,expected.Path)))throw new ContractException("foreign_registration");
             ct.ThrowIfCancellationRequested();
             if(!CommitTransaction(transaction))throw new ContractException("io_error");
         }
