@@ -9,6 +9,7 @@ on:
       - src/OpenClaw.Connection/OpenClaw.Connection.csproj
       - tests/OpenClaw.Connection.Tests/BrowserBootstrap*
       - tests/OpenClaw.E2ETests/Prototype/BrowserWslProductionOwnerTests.cs
+      - tests/OpenClaw.E2ETests/Prototype/BrowserWslLookupDiagnosticsTests.cs
 
 permissions:
   contents: read
@@ -117,7 +118,7 @@ jobs:
       - name: Verify the actual stdin newline normalization
         shell: pwsh
         run: |
-          dotnet test tests/OpenClaw.E2ETests --no-build -c Debug -r win-x64 --filter FullyQualifiedName~BrowserPrototypeTransportTests
+          dotnet test tests/OpenClaw.E2ETests --no-build -c Debug -r win-x64 --filter 'FullyQualifiedName~BrowserPrototypeTransportTests|FullyQualifiedName~BrowserWslLookupDiagnosticsTests'
           if ($LASTEXITCODE -ne 0) { throw 'Prototype stdin transport regression failed.' }
       - name: Exercise actual WSL owner and retirement retention in disposable WSL
         shell: pwsh

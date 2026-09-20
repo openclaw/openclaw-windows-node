@@ -3,6 +3,12 @@
 import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
 import path from 'node:path';
+// Return only assertion class and fixture coordinates, never messages or actual/expected values.
+export function savedProfileFailure(error) {
+  const location=error instanceof Error?error.stack?.match(/Test-BrowserNativeSavedProfile\.mjs:(\d+):(\d+)/):undefined;
+  return {kind:error?.code==='ERR_ASSERTION'?'assertion_failed':'execution_failed',
+    ...(location?{line:Number(location[1]),column:Number(location[2])}:{})};
+}
 export async function savedProfileAcceptance(h) {
   const {fixture,context,executable,baseEnv,exchange,manage,powershell,frame,response,origin,nonce,check,receipt}=h;
   assert.equal(process.platform,'win32');assert.equal(process.env.RUNNER_ENVIRONMENT,'github-hosted');
@@ -31,16 +37,22 @@ export async function savedProfileAcceptance(h) {
     return {binding,request,inspected,root:path.dirname(dir)};
   }
   const bootstrap=async d=>response(await exchange(d.inspected.installation.launcherPath,[origin],frame({v:1,op:'bootstrap',nonce})));
-  let installed=false;
+  let installed=false,primaryFailed=false;
+  let stage='seed';
   try {
     // The seed uses the canonical CLI, so normal origin/runtime selection is preserved.
     installed=true;
     const seed=await cli(['install','--browser-profile','work','--no-store','--wait-ms','0']);
     assert.ok(seed.body?.registrations.some(r=>r.state==='owned'&&r.browserProfile==='work'));
     let active=await descriptor();assert.equal(active.inspected.store,'missing');
+    stage='initial_pairing';
     const initialPair=await bootstrap(active);assert.equal(initialPair.ok,true);
-    assert.equal(new URL(initialPair.pairingString).port,'19444');
+    const pairingUrl=new URL(initialPair.pairingString);
+    assert.equal(pairingUrl.port,'18789');
+    assert.equal(pairingUrl.pathname,'/browser/extension');
+    assert.equal(pairingUrl.searchParams.get('profile'),'work');
     for(const action of ['inspect','verify','install']) {
+      stage='selector_free_'+action;
       const before=await descriptor(),dirs=new Set(await fs.readdir(before.root));
       const result=await cli(['setup','--action',action,'--wait-ms','0']);
       assert.equal(result.code,0);assert.equal(result.body.target.profile,'work');assert.equal(result.body.target.relayPort,19444);
@@ -52,6 +64,7 @@ export async function savedProfileAcceptance(h) {
     }
     check('canonical_cli_saved_work_profile_recovered_without_pairing_or_optout_changes');
     async function unchangedFailure(name,args,overrides={}) {
+      stage=name;
       const before=await descriptor(),dirs=JSON.stringify((await fs.readdir(before.root)).sort());
       const result=await cli(args,overrides);assert.ok(result.code!==0||result.body?.phase==='blocked',name);
       const after=await descriptor();assert.equal(after.inspected.installation.generation,before.inspected.installation.generation,name);
@@ -63,11 +76,14 @@ export async function savedProfileAcceptance(h) {
     await unchangedFailure('different_state',['setup','--action','install','--wait-ms','0'],{env:{OPENCLAW_STATE_DIR:otherState}});
     const otherConfig=path.join(stateDir,'other-config.json');await fs.writeFile(otherConfig,configBytes);
     await unchangedFailure('different_config',['setup','--action','install','--wait-ms','0'],{env:{OPENCLAW_CONFIG_PATH:otherConfig}});
-    const otherNode=path.join(fixture,'other-canonical-node.exe');await fs.copyFile(current.nodePath,otherNode,fs.constants.COPYFILE_EXCL);
+    const alternateRuntimeDirectory=await fs.mkdtemp(path.join(fixture,'alternate-runtime-'));
+    const otherNode=path.join(alternateRuntimeDirectory,'node.exe');await fs.copyFile(current.nodePath,otherNode,fs.constants.COPYFILE_EXCL);
     await unchangedFailure('runtime_drift',['setup','--action','install','--wait-ms','0'],{node:otherNode});
+    stage='wrong_mode';
     active=await descriptor();const wrongMode=await manage({...active.request,action:'install',mode:'companion-managed-wsl',context:null,expectedOrigins:[origin]});
     assert.equal(wrongMode.ok,false);assert.equal((await descriptor()).inspected.installation.generation,active.inspected.installation.generation);
     check('saved_profile_explicit_context_mode_and_runtime_drift_fail_closed');
+    stage='absent_saved_profile';
     const before=await descriptor(),dirs=JSON.stringify((await fs.readdir(before.root)).sort());
     try {
       await fs.writeFile(configPath,JSON.stringify({...config,browser:{...config.browser,profiles:{chrome:config.browser.profiles.chrome}}}));
@@ -76,6 +92,7 @@ export async function savedProfileAcceptance(h) {
     } finally { await fs.writeFile(configPath,configBytes); }
     assert.equal((await descriptor()).inspected.installation.generation,before.inspected.installation.generation);
     check('absent_configured_saved_profile_does_not_fall_back_or_mutate');
+    stage='unverified_binding';
     // Corrupt only the task-owned immutable binding and restore exact bytes; no production bypass.
     active=await descriptor();
     const bindingPath=active.inspected.installation.bindingPath;
@@ -90,6 +107,7 @@ export async function savedProfileAcceptance(h) {
     assert.equal((await descriptor()).inspected.installation.generation,generationBefore);
     assert.equal((await bootstrap(await descriptor())).pairingString,initialPair.pairingString);
     check('unverified_binding_never_authorizes_automatic_repair');
+    stage='unknown_busy_inventory';
     if(!h.withFrozenNative)throw Error('Actual native ownership fixture required for unknown/cancel proof');
     active=await descriptor();
     await h.withFrozenNative(active.inspected.installation,frame({v:1,op:'bootstrap',nonce}),fixture,async control=>{
@@ -101,6 +119,7 @@ export async function savedProfileAcceptance(h) {
     assert.equal((await descriptor()).inspected.installation.generation,generationBefore);
     check('unknown_busy_inventory_cannot_select_profile_or_mutate');
     active=await descriptor();
+    stage='mixed_generations';
     let retained;
     for(const name of await fs.readdir(active.root)) {
       const file=path.join(active.root,name,'OpenClaw.BrowserBootstrap.binding.json');
@@ -119,6 +138,7 @@ export async function savedProfileAcceptance(h) {
     } finally { replaceChromium(retained,currentManifest); }
     assert.equal((await descriptor()).inspected.installation.generation,generationBefore);
     check('mixed_registered_generations_fail_closed_without_automatic_mutation');
+    stage='cancelled_setup';
     await h.withFrozenNative(active.inspected.installation,frame({v:1,op:'bootstrap',nonce}),fixture,async control=>{
       const cancelled=await cli(['setup','--action','install','--wait-ms','0'],{onSpawn:async child=>{
         const payload=Buffer.from(JSON.stringify({pid:child.pid,node:current.nodePath,helper:executable})).toString('base64');
@@ -129,6 +149,7 @@ export async function savedProfileAcceptance(h) {
     });
     assert.equal((await descriptor()).inspected.installation.generation,generationBefore);
     check('cancelled_selector_free_setup_joins_owned_management_child_without_mutation');
+    stage='store_preservation';
     // Explicit Store request is separate from the opt-out case; repair must preserve it.
     await cli(['install','--browser-profile','work','--wait-ms','0']);
     assert.equal((await descriptor()).inspected.store,'requested');
@@ -136,6 +157,7 @@ export async function savedProfileAcceptance(h) {
     assert.equal(preserve.body.target.profile,'work');assert.equal(preserve.body.installation.installRequested,true);
     assert.equal((await bootstrap(await descriptor())).pairingString,initialPair.pairingString);
     check('selector_free_repair_preserves_explicit_store_request');
+    stage='retired_profile_selection';
     const retireWork=await cli(['uninstall-host','--browser-profile','work','--remove-store']);
     assert.equal(retireWork.code,0);assert.ok(Array.isArray(retireWork.body?.refused));assert.equal(retireWork.body.refused.length,0);
     current={...current,browserProfile:'chrome'};
@@ -146,8 +168,13 @@ export async function savedProfileAcceptance(h) {
     assert.equal((await descriptor()).inspected.installation.generation,currentChrome.inspected.installation.generation);
     check('retained_work_generations_never_override_current_chrome_selection');
     receipt.savedProfile={workRelay19444:true,pairingPreserved:true,optOutPreserved:true,requestedStorePreserved:true,retiredSelectionRefused:true};
+  } catch(error) {
+    primaryFailed=true;
+    receipt.savedProfileFailure={stage,...savedProfileFailure(error)};
+    throw error;
   } finally {
     if(installed) {
+      try {
       const cleanup=await cli(['uninstall-host','--browser-profile',current.browserProfile,'--remove-store']);
       assert.equal(cleanup.code,0,'saved_profile_cleanup_exit');
       assert.ok(Array.isArray(cleanup.body?.refused),'saved_profile_cleanup_receipt');
@@ -155,6 +182,11 @@ export async function savedProfileAcceptance(h) {
       const after=await manage({v:1,action:'inspect',mode:'native-windows-cli',context:current,expectedOrigins:[origin],store:'preserve'});
       assert.equal(after.ok,true);assert.equal(after.registration,'missing');assert.equal(after.store,'missing');
       receipt.savedProfileCleanup={registrationMissing:true,storeMissing:true};
+      } catch(error) {
+        receipt.savedProfileCleanup={failed:true,...savedProfileFailure(error)};
+        // Preserve the initial failure when cleanup also fails; both remain in the receipt.
+        if(!primaryFailed)throw error;
+      }
     }
   }
 }

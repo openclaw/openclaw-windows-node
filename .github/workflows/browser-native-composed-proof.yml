@@ -12,6 +12,7 @@ on:
       - scripts/Control-BrowserNativeProofChild.ps1
       - scripts/BrowserNativeProofTiming.mjs
       - scripts/BrowserNativeProofTiming.test.mjs
+      - scripts/BrowserNativeSavedProfile.test.mjs
       - src/OpenClaw.BrowserBootstrap/**
       - src/OpenClaw.BrowserBootstrap.Contracts/**
       - src/OpenClaw.Shared/Browser/**
@@ -49,7 +50,7 @@ jobs:
           dotnet-version: '10.0.x'
       - name: Verify proof ordering instrumentation
         shell: pwsh
-        run: node --test producer/scripts/BrowserNativeProofTiming.test.mjs
+        run: node --test producer/scripts/BrowserNativeProofTiming.test.mjs producer/scripts/BrowserNativeSavedProfile.test.mjs
       - name: Build and identify the current reviewed producer
         shell: pwsh
         run: |
