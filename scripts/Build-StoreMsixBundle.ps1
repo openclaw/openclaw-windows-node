@@ -56,7 +56,7 @@ if ($segments.Count -ne 4) {
 }
 foreach ($segment in $segments) {
     [uint16]$value = 0
-    if (-not [uint16]::TryParse($segment, [ref]$value) -or $value -gt 65534) {
+    if (-not [uint16]::TryParse($segment, [ref]$value)) {
         throw "Invalid MSIX bundle version component: $segment"
     }
 }

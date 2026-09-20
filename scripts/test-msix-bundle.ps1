@@ -55,6 +55,15 @@ exit 0
         }
     }
 
+    $maximumBundle = Join-Path $temporaryRoot 'OpenClaw-maximum.msixbundle'
+    & $builder -X64Package $x64Package -Arm64Package $arm64Package `
+        -PackageVersion '2026.9.65535.0' -OutputPath $maximumBundle -MakeAppxPath $fakeMakeAppx
+    $arguments = Get-Content -LiteralPath $argumentsPath -Raw
+    if (-not $arguments.Contains('/bv 2026.9.65535.0', [StringComparison]::OrdinalIgnoreCase) -or
+        -not (Test-Path -LiteralPath $maximumBundle -PathType Leaf)) {
+        throw 'The bundle builder did not accept the allocator maximum 2026.9.65535.0.'
+    }
+
     Assert-Fails { & $builder -X64Package $x64Package -Arm64Package $x64Package `
         -PackageVersion '2026.9.401.0' -OutputPath (Join-Path $temporaryRoot 'duplicate.msixbundle') `
         -MakeAppxPath $fakeMakeAppx } 'must be different'
@@ -64,6 +73,9 @@ exit 0
     Assert-Fails { & $builder -X64Package $x64Package -Arm64Package $arm64Package `
         -PackageVersion '2026.9.401.1' -OutputPath (Join-Path $temporaryRoot 'revision.msixbundle') `
         -MakeAppxPath $fakeMakeAppx } 'must end in .0'
+    Assert-Fails { & $builder -X64Package $x64Package -Arm64Package $arm64Package `
+        -PackageVersion '2026.9.65536.0' -OutputPath (Join-Path $temporaryRoot 'overflow.msixbundle') `
+        -MakeAppxPath $fakeMakeAppx } 'invalid msix bundle version component'
     Assert-Fails { & $builder -X64Package $x64Package -Arm64Package $arm64Package `
         -PackageVersion '2026.9.401.0' -OutputPath $bundle -MakeAppxPath $fakeMakeAppx } 'already exists'
 
