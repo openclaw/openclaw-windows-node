@@ -174,7 +174,6 @@ jobs:
       majorMinorPatch: ${{ steps.release_version.outputs.majorMinorPatch }}
       isPrerelease: ${{ steps.release_version.outputs.isPrerelease }}
       isStableCorrection: ${{ steps.release_version.outputs.isStableCorrection }}
-      isMsixAlpha: ${{ steps.release_version.outputs.isMsixAlpha }}
       msixVersionInfo: ${{ steps.msix_preview.outputs.versionInfo }}
       msixSourceVersion: ${{ steps.msix_preview.outputs.sourceVersion }}
     steps:
@@ -235,9 +234,6 @@ jobs:
         "majorMinorPatch=$majorMinorPatch" >> $env:GITHUB_OUTPUT
         "isPrerelease=$($isPrerelease.ToString().ToLowerInvariant())" >> $env:GITHUB_OUTPUT
         "isStableCorrection=$($isStableCorrection.ToString().ToLowerInvariant())" >> $env:GITHUB_OUTPUT
-        $isMsixAlpha = $isPrerelease -and ($env:GITHUB_REF -cmatch '^refs/tags/v(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)-alpha\.(?:0|[1-9]\d*)$')
-        "isMsixAlpha=$($isMsixAlpha.ToString().ToLowerInvariant())" >> $env:GITHUB_OUTPUT
-
     - name: Resolve MSIX preview version
       id: msix_preview
       if: ${{ !(github.repository == 'openclaw/openclaw-windows-node' && startsWith(github.ref, 'refs/tags/v') && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')) }}
@@ -1301,16 +1297,14 @@ jobs:
         -Tag $env:RELEASE_TAG
         -GitHubToken $env:GH_TOKEN
 
-    - name: Download alpha Store MSIX artifacts
-      if: needs.metadata.outputs.isMsixAlpha == 'true'
+    - name: Download Store MSIX release artifacts
       uses: actions/download-artifact@v8
       with:
         pattern: openclaw-msix-store-unsigned-*
-        path: artifacts/msix-alpha
+        path: artifacts/msix-release
 
-    - name: Stage alpha Store MSIX release assets
-      if: needs.metadata.outputs.isMsixAlpha == 'true'
-      id: msix_alpha
+    - name: Stage Store MSIX release assets
+      id: msix_release
       shell: pwsh
       env:
         RELEASE_VERSION: ${{ needs.metadata.outputs.semVer }}
@@ -1321,13 +1315,13 @@ jobs:
         }
         $env:MSIX_VERSION_INFO | Set-Content -LiteralPath "$env:RUNNER_TEMP\openclaw-msix-version.json" -Encoding utf8
         $assets = .\scripts\Stage-StoreMsixReleaseAssets.ps1 `
-          -ArtifactDirectory 'artifacts\msix-alpha' `
-          -OutputDirectory 'msix-alpha-release' `
+          -ArtifactDirectory 'artifacts\msix-release' `
+          -OutputDirectory 'msix-release' `
           -Version $env:RELEASE_VERSION `
           -VersionInfoPath "$env:RUNNER_TEMP\openclaw-msix-version.json" `
           -ExpectedSourceCommit $env:GITHUB_SHA
-        @('files<<MSIX_ALPHA_FILES'; $assets.Files; 'MSIX_ALPHA_FILES') >> $env:GITHUB_OUTPUT
-        @('notes<<MSIX_ALPHA_NOTES'; $assets.Notes; 'MSIX_ALPHA_NOTES') >> $env:GITHUB_OUTPUT
+        @('files<<MSIX_RELEASE_FILES'; $assets.Files; 'MSIX_RELEASE_FILES') >> $env:GITHUB_OUTPUT
+        @('notes<<MSIX_RELEASE_NOTES'; $assets.Notes; 'MSIX_RELEASE_NOTES') >> $env:GITHUB_OUTPUT
 
     - name: Create Release
       uses: softprops/action-gh-release@v3
@@ -1338,7 +1332,7 @@ jobs:
           Output/OpenClawCompanion-Setup-arm64.exe
           OpenClawTray-${{ needs.metadata.outputs.semVer }}-win-x64.zip
           OpenClawTray-${{ needs.metadata.outputs.semVer }}-win-arm64.zip
-          ${{ steps.msix_alpha.outputs.files }}
+          ${{ steps.msix_release.outputs.files }}
         fail_on_unmatched_files: true
         prerelease: ${{ needs.metadata.outputs.isPrerelease }}
         make_latest: ${{ needs.metadata.outputs.isPrerelease == 'true' && 'false' || 'true' }}
@@ -1351,7 +1345,7 @@ jobs:
           - **Portable x64**: `OpenClawTray-${{ needs.metadata.outputs.semVer }}-win-x64.zip`
           - **Portable ARM64**: `OpenClawTray-${{ needs.metadata.outputs.semVer }}-win-arm64.zip`
 
-          ${{ steps.msix_alpha.outputs.notes }}
+          ${{ steps.msix_release.outputs.notes }}
 
           ### Features
           - 🦞 System tray integration with gateway status

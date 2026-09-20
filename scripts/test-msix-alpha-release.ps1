@@ -1,6 +1,6 @@
 <#
 .SYNOPSIS
-    Exercises alpha-only Store asset staging and workflow release selection.
+    Exercises Store asset staging for tag releases and alpha scheduling.
 .DESCRIPTION
     Uses synthetic package bytes and metadata. Real package-content validation
     remains in Build-StoreMsix.ps1; no build, signing, or release API is invoked.
@@ -31,13 +31,15 @@ function Assert-Fails {
 }
 
 function New-Fixture {
+    param([string]$Version = '2026.7.2-alpha.4')
+
     $script:scenario++
     $inputPath = Join-Path $temporaryRoot "input-$scenario"
     $allocation = [ordered]@{
         schemaVersion = 1
-        sourceVersion = '2026.7.2-alpha.4'
+        sourceVersion = $Version
         sourceCommit = $sourceCommit
-        sourceRef = 'refs/tags/v2026.7.2-alpha.4'
+        sourceRef = "refs/tags/v$Version"
         repository = 'openclaw/openclaw-windows-node'
         baseVersion = '2026.7.2'
         packageBaseVersion = '2026.7.202'
@@ -97,7 +99,7 @@ function New-Fixture {
     @{
         ArtifactDirectory = $inputPath
         OutputDirectory = Join-Path $temporaryRoot "output-$scenario"
-        Version = '2026.7.2-alpha.4'
+        Version = $Version
         ExpectedSourceCommit = $sourceCommit
         VersionInfoPath = $allocationPath
     }
@@ -140,10 +142,14 @@ try {
     }
     Assert-Fails { & $stager @arguments } 'absent or empty'
 
-    foreach ($version in @('2026.7.2', '2026.7.2-3', '2026.7.2-beta.1', '2026.7.2-alpha', '2026.7.2-alpha.01', '2026.7.2-alpha.1+meta')) {
+    foreach ($version in @('2026.7.2', '2026.7.2-3', '2026.7.2-beta.1')) {
+        $arguments = New-Fixture -Version $version
+        & $stager @arguments | Out-Null
+    }
+    foreach ($version in @('v2026.7.2', '2026.7', '2026.7.2-alpha.01', '2026.7.2+meta+extra')) {
         $arguments = New-Fixture
         $arguments.Version = $version
-        Assert-Fails { & $stager @arguments } 'cannot validate argument'
+        Assert-Fails { & $stager @arguments } 'MSIX'
     }
     foreach ($mutation in @(
         @{ Field = 'sourceCommit'; Value = ('b' * 40); Error = 'expected clean source' },
@@ -221,28 +227,6 @@ try {
     $allocation | ConvertTo-Json | Set-Content -LiteralPath $arguments.VersionInfoPath
     Assert-Fails { & $stager @arguments } 'MSIX'
 
-    # Execute the actual metadata selector rather than a test-only copy of its regex.
-    $workflow = Get-Content -LiteralPath (Join-Path $RepoRoot '.github\workflows\ci.yml') -Raw
-    $selectorLine = [regex]::Match($workflow, '(?m)^\s*\$isMsixAlpha = .+$')
-    if (-not $selectorLine.Success) { throw 'The workflow is missing its alpha-only selector.' }
-    $selector = [scriptblock]::Create($selectorLine.Value + "`n`$isMsixAlpha")
-    foreach ($case in @(
-        @{ Ref = 'refs/tags/v2026.7.2-alpha.4'; Prerelease = $true; Expected = $true },
-        @{ Ref = 'refs/tags/v2026.7.2-alpha.0'; Prerelease = $true; Expected = $true },
-        @{ Ref = 'refs/tags/v2026.7.2-alpha.4'; Prerelease = $false; Expected = $false },
-        @{ Ref = 'refs/tags/v2026.7.2'; Prerelease = $false; Expected = $false },
-        @{ Ref = 'refs/tags/v2026.7.2-3'; Prerelease = $false; Expected = $false },
-        @{ Ref = 'refs/tags/v2026.7.2-beta.1'; Prerelease = $true; Expected = $false },
-        @{ Ref = 'refs/tags/v2026.7.2-alpha.04'; Prerelease = $true; Expected = $false },
-        @{ Ref = 'refs/tags/v2026.7.2-Alpha.4'; Prerelease = $true; Expected = $false },
-        @{ Ref = 'refs/tags/v2026.7.2-alpha.4+build'; Prerelease = $true; Expected = $false },
-        @{ Ref = 'refs/heads/v2026.7.2-alpha.4'; Prerelease = $true; Expected = $false },
-        @{ Ref = 'refs/pull/1403/merge'; Prerelease = $true; Expected = $false }
-    )) {
-        $env:GITHUB_REF = $case.Ref
-        $isPrerelease = $case.Prerelease
-        if ((& $selector) -ne $case.Expected) { throw "Incorrect alpha selection for $($case.Ref)." }
-    }
     $daily = Get-Content -LiteralPath (Join-Path $RepoRoot '.github\workflows\daily-alpha-release.yml') -Raw
     $scheduleBlock = [regex]::Match($daily, '(?ms)^        run: \|\r?\n(?<script>.*?)(?=^      - )')
     if (-not $scheduleBlock.Success) { throw 'The daily alpha workflow is missing its schedule selector.' }
@@ -273,7 +257,7 @@ try {
             throw "Incorrect schedule selection for $($case.Event), $($case.Schedule), $($case.Offset)."
         }
     }
-    Write-Host 'Store MSIX alpha release tests passed: manual/scheduled dispatch, alpha-only selection, exact unsigned assets, provenance, hashes, version checks, and no partial staging.'
+    Write-Host 'Store MSIX release tests passed: stable/correction/prerelease staging, alpha scheduling, exact unsigned assets, provenance, hashes, version checks, and no partial staging.'
 }
 finally {
     $env:GITHUB_REF = $oldRef

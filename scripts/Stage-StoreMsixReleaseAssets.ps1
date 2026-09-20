@@ -1,6 +1,6 @@
 <#
 .SYNOPSIS
-    Stages validated unsigned Store MSIX packages for an alpha GitHub release.
+    Stages validated unsigned Store MSIX packages for a GitHub release.
 .DESCRIPTION
     Checks both architectures' provenance and hashes, then verifies that the
     multi-architecture bundle embeds those exact packages before copying files.
@@ -13,8 +13,7 @@ param(
     [Parameter(Mandatory)][string]$ArtifactDirectory,
     [Parameter(Mandatory)][string]$OutputDirectory,
     [Parameter(Mandatory)]
-    [ValidatePattern('^(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)-alpha\.(?:0|[1-9]\d*)$')]
-    [string]$Version,
+    [ValidateNotNullOrEmpty()][string]$Version,
     [Parameter(Mandatory)][ValidatePattern('^[0-9a-fA-F]{40}$')][string]$ExpectedSourceCommit,
     [Parameter(Mandatory)][ValidateNotNullOrEmpty()][string]$VersionInfoPath
 )
@@ -27,7 +26,7 @@ $OutputDirectory = [IO.Path]::GetFullPath([IO.Path]::Combine($repositoryRoot, $O
 if ((Test-Path -LiteralPath $OutputDirectory) -and
     (-not (Test-Path -LiteralPath $OutputDirectory -PathType Container) -or
      @(Get-ChildItem -LiteralPath $OutputDirectory -Force).Count -gt 0)) {
-    throw "The alpha release output directory must be absent or empty: $OutputDirectory"
+    throw "The release output directory must be absent or empty: $OutputDirectory"
 }
 
 [xml]$manifest = Get-Content -LiteralPath (Join-Path $repositoryRoot 'src\OpenClaw.Tray.WinUI\Package.appxmanifest') -Raw
@@ -163,7 +162,7 @@ $files += foreach ($package in $packages) {
 [pscustomobject]@{
     Files = @($files)
     Notes = @"
-### Unsigned Store submission packages (alpha only)
+### Unsigned Store submission packages
 
 OpenClaw.msixbundle is the recommended unsigned Partner Center submission
 input. It contains the exact x64 and ARM64 packages selected by Windows.
@@ -174,7 +173,6 @@ this workflow does not submit or retrieve Store packages.
 
 The Windows package version is $expectedVersion, reserved for $Version.
 Different official tags share the app patch's packaging counter; reruns of
-this tag reuse its reservation. Stable releases do not include these
-experimental submission assets. Dev-signed tester downloads remain in Actions.
+this tag reuse its reservation. Dev-signed tester downloads remain in Actions.
 "@
 }

@@ -13,10 +13,9 @@ infrastructure changes. Those fail-closed pull requests run the x64 publish
 smoke only; ARM64 portable publish remains required on `main` and tags.
 When either release-build lane is selected, CI also builds both architectures
 of Dev-signed and unsigned Store MSIX **workflow artifacts**. CI Gate requires
-that MSIX job to succeed. Canonical alpha releases also attach the unsigned
-Store MSIX bundle, standalone packages, and metadata for manual Partner Center
-submission.
-Stable releases do not include MSIX assets; Dev-signed packages stay in Actions.
+that MSIX job to succeed. Every tag release also attaches the unsigned Store
+MSIX bundle, standalone packages, and metadata for manual Partner Center
+submission. Dev-signed packages stay in Actions.
 
 ## Release checklist
 
@@ -37,8 +36,7 @@ Stable releases do not include MSIX assets; Dev-signed packages stay in Actions.
      "Verify Release Binary Signing Policy", `
      "OpenClaw.Tray.WinUI.exe", `
      "build-msix:", `
-     "isMsixAlpha:", `
-     "Stage alpha Store MSIX release assets"
+     "Stage Store MSIX release assets"
    ```
 
 3. Create a new stable, stable correction, or prerelease tag from `origin/main`.
@@ -174,7 +172,7 @@ Current release artifacts are:
   - `OpenClawTray-<version>-win-x64.zip`
   - `OpenClawTray-<version>-win-arm64.zip`
 
-Canonical alpha releases additionally contain:
+Every stable, correction, and prerelease additionally contains:
 
 - `OpenClaw.msixbundle` (recommended Partner Center submission input)
 - `OpenClaw-x64.msix` and `OpenClaw-arm64.msix`
@@ -184,19 +182,18 @@ Canonical alpha releases additionally contain:
 These are **unsigned Store submission inputs, not installers**. Upload the
 bundle to Partner Center for one architecture-selecting submission. The
 standalone packages remain available for inspection or fallback. Microsoft
-signs accepted Store submissions. The alpha release step checks both
+signs accepted Store submissions. The release step checks both
 architectures' clean source provenance, identity, version, and package hashes,
 then proves that the bundle embeds those exact bytes. It fails rather than
 publishing a partial or mismatched set.
 
-Stable, stable-correction, and non-alpha prereleases retain the existing
-EXE/ZIP asset set and do not receive MSIX download notes. Dev-signed tester
-MSIX packages, public certificates, and instructions remain Actions artifacts
-only. No production signing step is applied to the unsigned Store packages.
+Dev-signed tester MSIX packages, public certificates, and instructions remain
+Actions artifacts only. No production signing step is applied to the unsigned
+Store packages.
 
 Store distribution remains paused: automatic Partner Center submission,
 Store-signed retrieval and publication, and official lifecycle acceptance
-remain follow-up work in #1375. Alpha submission artifacts do not clear those
+remain follow-up work in #1375. Release submission artifacts do not clear those
 rollout gates.
 
 Store versions still end in `.0`. Official tagged builds now reserve distinct
@@ -268,20 +265,20 @@ source commit/ref, package base, allocation kind, and reservation ref.
 Preview candidates never reserve a number and can change between reruns;
 they must not be treated as official Store submissions.
 
-The alpha stager requires `-VersionInfoPath` for the exact reserved result. It
-checks the app alpha version, source commit, reserved allocation, package
+The release stager requires `-VersionInfoPath` for the exact reserved result. It
+checks the app version, source commit, reserved allocation, package
 version, and both architectures' metadata before copying any assets:
 
 ```powershell
 .\scripts\Stage-StoreMsixReleaseAssets.ps1 `
-  -ArtifactDirectory 'artifacts\msix-alpha' `
-  -OutputDirectory 'msix-alpha-release' `
+  -ArtifactDirectory 'artifacts\msix-release' `
+  -OutputDirectory 'msix-release' `
   -Version $appVersion -ExpectedSourceCommit $sourceCommit `
   -VersionInfoPath $reservedVersionInfoPath
 ```
 
-This does not change stable/alpha asset selection, bypass CI Gate or signing
-approvals, move existing application tags, or automate Store submission.
+This does not bypass CI Gate or signing approvals, move existing application
+tags, or automate Store submission.
 
 ## Manual alpha releases
 
@@ -412,9 +409,8 @@ validation. Release tags cannot enter the `release` job until **CI Gate**
 confirms classification, fast validation, tests, E2E, and release builds all
 succeeded. The `build-msix` and `build-msix-bundle` jobs must also succeed
 whenever release metadata is required. The release job downloads and attaches
-its unsigned Store bundle, standalone packages, and metadata only for canonical
-alpha tags. Stable releases and Dev tester distribution do not gain MSIX
-release attachments.
+its unsigned Store bundle, standalone packages, and metadata for every
+canonical tag. Dev tester distribution stays workflow-only.
 
 The release job should:
 
@@ -425,10 +421,10 @@ The release job should:
 5. Create the portable x64 and ARM64 ZIPs.
 6. Build Inno installers.
 7. Sign installers.
-8. For canonical alpha tags only, stage the validated unsigned Store MSIX
+8. Stage the validated unsigned Store MSIX
    bundle, standalone packages, and metadata.
 9. Create a GitHub release whose prerelease flag matches the tag, with installer
-   and portable ZIP assets plus any gated alpha submission assets.
+   and portable ZIP assets plus the Store submission assets.
 
 ## Post-release verification
 
