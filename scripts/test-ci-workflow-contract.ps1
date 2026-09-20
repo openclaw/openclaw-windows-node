@@ -692,6 +692,28 @@ foreach ($token in @('if: false', "`n    continue-on-error: true", 'Set-Content 
     Assert-NotContains -Text $buildMsixJob -Unexpected $token -Message "MSIX artifacts must not contain '$token'."
 }
 
+$buildMsixBundleJob = Get-JobBlock 'build-msix-bundle'
+foreach ($token in @(
+    'name: Multi-architecture Store MSIX bundle',
+    'needs: [change-classification, metadata, reserve-msix-version, build-msix]',
+    "needs.build-msix.result == 'success'",
+    'name: openclaw-msix-store-unsigned-x64',
+    'name: openclaw-msix-store-unsigned-arm64',
+    '.\scripts\Build-StoreMsixBundle.ps1',
+    '-PackageVersion ''${{ steps.version.outputs.packageVersion }}''',
+    '-OutputPath artifacts\msix\bundle\OpenClaw.msixbundle',
+    'name: openclaw-msix-store-unsigned-bundle',
+    'path: artifacts/msix/bundle/OpenClaw.msixbundle',
+    'Assert-MsixVersionInfo',
+    '-SourceCommit $env:GITHUB_SHA -SourceVersion $env:MSIX_SOURCE_VERSION',
+    'refusing to bundle with a fallback version'
+)) {
+    Assert-Contains -Text $buildMsixBundleJob -Expected $token -Message "MSIX bundle lane is missing '$token'."
+}
+foreach ($token in @('secrets.', 'id-token: write', 'contents: write', '-Reserve')) {
+    Assert-NotContains -Text $buildMsixBundleJob -Unexpected $token -Message "MSIX bundle lane must not contain '$token'."
+}
+
 $reserveMsixJob = Get-JobBlock 'reserve-msix-version'
 foreach ($token in @(
     'needs: [change-classification, metadata]',
@@ -757,7 +779,7 @@ $ciGateJob = Get-JobBlock "ci-gate"
 foreach ($token in @(
         "name: CI Gate",
         "if: `${{ always() }}",
-        "needs: [change-classification, fast-validation, proof-pool-contracts, metadata, core-tests, tray-tests, ui-tests, setup-e2e, revocation-e2e, network-e2e, build-x64, build-arm64, build-msix]",
+        "needs: [change-classification, fast-validation, proof-pool-contracts, metadata, core-tests, tray-tests, ui-tests, setup-e2e, revocation-e2e, network-e2e, build-x64, build-arm64, build-msix, build-msix-bundle]",
         "./scripts/Assert-CiGateResults.ps1",
         "-FullRequired `$env:FULL_REQUIRED",
         "-CoreRequired `$env:CORE_REQUIRED",
@@ -770,15 +792,18 @@ foreach ($token in @(
         "-Arm64ReleaseRequired `$env:ARM64_RELEASE_REQUIRED",
         "-MetadataResult `$env:METADATA_RESULT",
         "MSIX_RESULT: `${{ needs.build-msix.result }}",
-        "-MsixResult `$env:MSIX_RESULT"
+        "-MsixResult `$env:MSIX_RESULT",
+        "MSIX_BUNDLE_RESULT: `${{ needs.build-msix-bundle.result }}",
+        "-MsixBundleResult `$env:MSIX_BUNDLE_RESULT"
     )) {
     Assert-Contains -Text $ciGateJob -Expected $token -Message "Stable CI Gate is missing '$token'."
 }
 
 $releaseJob = Get-JobBlock "release"
 foreach ($token in @(
-        "needs: [change-classification, metadata, reserve-msix-version, build-x64, build-arm64, ci-gate]",
+        "needs: [change-classification, metadata, reserve-msix-version, build-x64, build-arm64, build-msix-bundle, ci-gate]",
         "needs.reserve-msix-version.result == 'success'",
+        "needs.build-msix-bundle.result == 'success'",
         "needs.ci-gate.result == 'success'",
         "needs.metadata.outputs.semVer",
         "needs.metadata.outputs.isPrerelease",

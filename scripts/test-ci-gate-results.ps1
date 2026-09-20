@@ -42,6 +42,7 @@ function New-GateArguments {
         Arm64ReleaseResult = "skipped"
         MetadataResult = "skipped"
         MsixResult = "skipped"
+        MsixBundleResult = "skipped"
     }
 }
 
@@ -114,6 +115,7 @@ foreach ($prefix in @(
 }
 $fullArguments.MetadataResult = "success"
 $fullArguments.MsixResult = "success"
+$fullArguments.MsixBundleResult = "success"
 $full = Invoke-Gate $fullArguments
 if ($full -ne "full") {
     throw "Expected the full gate to pass."
@@ -135,6 +137,7 @@ foreach ($prefix in @(
 }
 $fullPrArguments.MetadataResult = "success"
 $fullPrArguments.MsixResult = "success"
+$fullPrArguments.MsixBundleResult = "success"
 $fullPr = Invoke-Gate $fullPrArguments
 if ($fullPr -ne "full") {
     throw "Expected full pull request validation without ARM64 publish to pass."
@@ -148,19 +151,29 @@ Assert-GateFails -Overrides @{ CoreResult = "skipped" } -Scenario "Required lane
 Assert-GateFails -Overrides @{ CoreResult = "cancelled" } -Scenario "Required lane cancelled"
 Assert-GateFails -Overrides @{ CoreResult = "failure" } -Scenario "Required lane failed"
 Assert-GateFails -Overrides @{ MsixResult = "success" } -Scenario "Unselected MSIX lane ran"
+Assert-GateFails -Overrides @{ MsixBundleResult = "success" } -Scenario "Unselected MSIX bundle lane ran"
 foreach ($result in @("failure", "cancelled", "skipped", "")) {
     Assert-GateFails -Overrides @{
         X64ReleaseRequired = "true"
         X64ReleaseResult = "success"
         MetadataResult = "success"
         MsixResult = $result
+        MsixBundleResult = "success"
     } -Scenario "Selected MSIX lane returned '$result'"
+    Assert-GateFails -Overrides @{
+        X64ReleaseRequired = "true"
+        X64ReleaseResult = "success"
+        MetadataResult = "success"
+        MsixResult = "success"
+        MsixBundleResult = $result
+    } -Scenario "Selected MSIX bundle lane returned '$result'"
 }
 $arm64Arguments = New-GateArguments
 $arm64Arguments.Arm64ReleaseRequired = "true"
 $arm64Arguments.Arm64ReleaseResult = "success"
 $arm64Arguments.MetadataResult = "success"
 $arm64Arguments.MsixResult = "success"
+$arm64Arguments.MsixBundleResult = "success"
 if ((Invoke-Gate $arm64Arguments) -ne "targeted") {
     throw "Expected ARM64 release selection to require successful MSIX artifacts."
 }

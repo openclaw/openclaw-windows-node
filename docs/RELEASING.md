@@ -14,7 +14,8 @@ smoke only; ARM64 portable publish remains required on `main` and tags.
 When either release-build lane is selected, CI also builds both architectures
 of Dev-signed and unsigned Store MSIX **workflow artifacts**. CI Gate requires
 that MSIX job to succeed. Canonical alpha releases also attach the unsigned
-Store MSIX packages and metadata for manual Partner Center submission.
+Store MSIX bundle, standalone packages, and metadata for manual Partner Center
+submission.
 Stable releases do not include MSIX assets; Dev-signed packages stay in Actions.
 
 ## Release checklist
@@ -175,16 +176,18 @@ Current release artifacts are:
 
 Canonical alpha releases additionally contain:
 
+- `OpenClaw.msixbundle` (recommended Partner Center submission input)
 - `OpenClaw-x64.msix` and `OpenClaw-arm64.msix`
 - `OpenClaw-x64.msix-metadata.json` and
   `OpenClaw-arm64.msix-metadata.json`
 
-These are **unsigned Store submission inputs, not installers**. Download the
-MSIX files and upload them manually to Partner Center. Microsoft signs accepted
-Store submissions. The alpha release step checks both architectures' clean
-source provenance, identity, version, and package hashes before staging the
-unchanged bytes built by `Build-StoreMsix.ps1`. It fails rather than publishing
-a partial or mismatched set.
+These are **unsigned Store submission inputs, not installers**. Upload the
+bundle to Partner Center for one architecture-selecting submission. The
+standalone packages remain available for inspection or fallback. Microsoft
+signs accepted Store submissions. The alpha release step checks both
+architectures' clean source provenance, identity, version, and package hashes,
+then proves that the bundle embeds those exact bytes. It fails rather than
+publishing a partial or mismatched set.
 
 Stable, stable-correction, and non-alpha prereleases retain the existing
 EXE/ZIP asset set and do not receive MSIX download notes. Dev-signed tester
@@ -407,10 +410,11 @@ proofs as skipped when the host is not MXC-capable; use
 `.\scripts\validate-mxc-e2e.ps1` for required local/self-hosted MXC merge
 validation. Release tags cannot enter the `release` job until **CI Gate**
 confirms classification, fast validation, tests, E2E, and release builds all
-succeeded. The `build-msix` job must also succeed whenever release metadata is
-required. The release job downloads and attaches its unsigned Store packages
-only for canonical alpha tags. Stable releases and Dev tester distribution
-do not gain MSIX release attachments.
+succeeded. The `build-msix` and `build-msix-bundle` jobs must also succeed
+whenever release metadata is required. The release job downloads and attaches
+its unsigned Store bundle, standalone packages, and metadata only for canonical
+alpha tags. Stable releases and Dev tester distribution do not gain MSIX
+release attachments.
 
 The release job should:
 
@@ -422,7 +426,7 @@ The release job should:
 6. Build Inno installers.
 7. Sign installers.
 8. For canonical alpha tags only, stage the validated unsigned Store MSIX
-   packages and metadata.
+   bundle, standalone packages, and metadata.
 9. Create a GitHub release whose prerelease flag matches the tag, with installer
    and portable ZIP assets plus any gated alpha submission assets.
 

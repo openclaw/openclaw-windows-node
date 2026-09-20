@@ -114,6 +114,10 @@ jobs:
       shell: pwsh
       run: ./scripts/test-msix-ci-artifacts.ps1
 
+    - name: Validate Store MSIX bundle construction
+      shell: pwsh
+      run: ./scripts/test-msix-bundle.ps1
+
     - name: Validate MSIX version allocation
       shell: pwsh
       run: ./scripts/test-msix-versioning.ps1
@@ -976,10 +980,63 @@ jobs:
       shell: pwsh
       run: .\scripts\setup-dev-msix-cert.ps1 -Remove
 
+  build-msix-bundle:
+    name: Multi-architecture Store MSIX bundle
+    needs: [change-classification, metadata, reserve-msix-version, build-msix]
+    if: ${{ !cancelled() && needs.change-classification.result == 'success' && needs.metadata.result == 'success' && (needs.reserve-msix-version.result == 'success' || needs.reserve-msix-version.result == 'skipped') && needs.build-msix.result == 'success' && (needs.change-classification.outputs.x64_release == 'true' || needs.change-classification.outputs.arm64_release == 'true') }}
+    runs-on: windows-latest
+    env:
+      MSIX_VERSION_INFO: ${{ needs.reserve-msix-version.outputs.versionInfo || needs.metadata.outputs.msixVersionInfo }}
+      MSIX_SOURCE_VERSION: ${{ needs.reserve-msix-version.outputs.sourceVersion || needs.metadata.outputs.msixSourceVersion }}
+    steps:
+    - uses: actions/checkout@v7
+      with:
+        fetch-depth: 0
+
+    - name: Download unsigned x64 Store package
+      uses: actions/download-artifact@v8
+      with:
+        name: openclaw-msix-store-unsigned-x64
+        path: artifacts/msix/x64
+
+    - name: Download unsigned ARM64 Store package
+      uses: actions/download-artifact@v8
+      with:
+        name: openclaw-msix-store-unsigned-arm64
+        path: artifacts/msix/arm64
+
+    - name: Validate shared MSIX version allocation
+      id: version
+      shell: pwsh
+      run: |
+        if ([string]::IsNullOrWhiteSpace($env:MSIX_VERSION_INFO)) {
+          throw 'Missing MSIX version allocation; refusing to bundle with a fallback version.'
+        }
+        . .\scripts\MsixVersioning.ps1
+        $info = Assert-MsixVersionInfo -VersionInfo ($env:MSIX_VERSION_INFO | ConvertFrom-Json) `
+          -SourceCommit $env:GITHUB_SHA -SourceVersion $env:MSIX_SOURCE_VERSION
+        "packageVersion=$($info.storePackageVersion)" >> $env:GITHUB_OUTPUT
+
+    - name: Compose unsigned multi-architecture Store MSIX bundle
+      shell: pwsh
+      run: |
+        .\scripts\Build-StoreMsixBundle.ps1 `
+          -X64Package artifacts\msix\x64\OpenClaw-x64.msix `
+          -Arm64Package artifacts\msix\arm64\OpenClaw-arm64.msix `
+          -PackageVersion '${{ steps.version.outputs.packageVersion }}' `
+          -OutputPath artifacts\msix\bundle\OpenClaw.msixbundle
+
+    - name: Upload unsigned multi-architecture Store submission artifact
+      uses: actions/upload-artifact@v7
+      with:
+        name: openclaw-msix-store-unsigned-bundle
+        path: artifacts/msix/bundle/OpenClaw.msixbundle
+        if-no-files-found: error
+
   ci-gate:
     name: CI Gate
     if: ${{ always() }}
-    needs: [change-classification, fast-validation, proof-pool-contracts, metadata, core-tests, tray-tests, ui-tests, setup-e2e, revocation-e2e, network-e2e, build-x64, build-arm64, build-msix]
+    needs: [change-classification, fast-validation, proof-pool-contracts, metadata, core-tests, tray-tests, ui-tests, setup-e2e, revocation-e2e, network-e2e, build-x64, build-arm64, build-msix, build-msix-bundle]
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v7
@@ -1010,6 +1067,7 @@ jobs:
         ARM64_RELEASE_RESULT: ${{ needs.build-arm64.result }}
         METADATA_RESULT: ${{ needs.metadata.result }}
         MSIX_RESULT: ${{ needs.build-msix.result }}
+        MSIX_BUNDLE_RESULT: ${{ needs.build-msix-bundle.result }}
       run: |
         $validatedMode = ./scripts/Assert-CiGateResults.ps1 `
           -ClassificationResult $env:CLASSIFICATION_RESULT `
@@ -1034,12 +1092,13 @@ jobs:
           -Arm64ReleaseRequired $env:ARM64_RELEASE_REQUIRED `
           -Arm64ReleaseResult $env:ARM64_RELEASE_RESULT `
           -MetadataResult $env:METADATA_RESULT `
-          -MsixResult $env:MSIX_RESULT
+          -MsixResult $env:MSIX_RESULT `
+          -MsixBundleResult $env:MSIX_BUNDLE_RESULT
         "CI Gate passed $validatedMode validation." >> $env:GITHUB_STEP_SUMMARY
 
   release:
-    needs: [change-classification, metadata, reserve-msix-version, build-x64, build-arm64, ci-gate]
-    if: startsWith(github.ref, 'refs/tags/v') && needs.ci-gate.result == 'success' && needs.change-classification.outputs.full == 'true' && needs.metadata.result == 'success' && needs.reserve-msix-version.result == 'success' && needs.build-x64.result == 'success' && needs.build-arm64.result == 'success' && !cancelled()
+    needs: [change-classification, metadata, reserve-msix-version, build-x64, build-arm64, build-msix-bundle, ci-gate]
+    if: startsWith(github.ref, 'refs/tags/v') && needs.ci-gate.result == 'success' && needs.change-classification.outputs.full == 'true' && needs.metadata.result == 'success' && needs.reserve-msix-version.result == 'success' && needs.build-x64.result == 'success' && needs.build-arm64.result == 'success' && needs.build-msix-bundle.result == 'success' && !cancelled()
     runs-on: windows-latest
     environment: release-signing
     permissions:

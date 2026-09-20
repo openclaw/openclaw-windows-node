@@ -22,8 +22,8 @@
     was dirty, the package version, publisher, and the package SHA-256.
 
 .PARAMETER Architecture
-    Target architecture: x64 or arm64. Defaults to x64. The Store serves a
-    separate package per architecture; upload both to one submission.
+    Target architecture: x64 or arm64. Defaults to x64. CI combines both
+    packages into the recommended multi-architecture Store submission bundle.
 
 .PARAMETER Configuration
     Build configuration. Release is the only accepted value: Store

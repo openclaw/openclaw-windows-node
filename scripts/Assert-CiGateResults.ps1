@@ -27,7 +27,8 @@ param(
     [Parameter(Mandatory)][string]$Arm64ReleaseRequired,
     [Parameter(Mandatory)][string]$Arm64ReleaseResult,
     [Parameter(Mandatory)][string]$MetadataResult,
-    [Parameter(Mandatory)][string]$MsixResult
+    [Parameter(Mandatory)][string]$MsixResult,
+    [Parameter(Mandatory)][string]$MsixBundleResult
 )
 
 Set-StrictMode -Version Latest
@@ -127,5 +128,6 @@ Assert-LaneResult "ARM64 release publish" $required.arm64_release $Arm64ReleaseR
 $metadataRequired = $required.x64_release -or $required.arm64_release
 Assert-LaneResult "release metadata" $metadataRequired $MetadataResult
 Assert-LaneResult "MSIX workflow artifacts" $metadataRequired $MsixResult
+Assert-LaneResult "multi-architecture MSIX bundle" $metadataRequired $MsixBundleResult
 
 $Classification

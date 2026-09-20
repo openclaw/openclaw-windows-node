@@ -305,7 +305,9 @@ runtime, the in-process SetupEngine UI, and the architecture-matched
 the loose Visual C++ runtime files that the Inno payload ships but the MSIX
 resolves through its VCLibs framework dependency).
 
-Upload both `.msix` files to the same Partner Center submission. `Identity/@Name`,
+CI combines both packages into `OpenClaw.msixbundle`, the recommended single
+Partner Center submission input. The standalone `.msix` files remain available
+for architecture-specific inspection or fallback. `Identity/@Name`,
 `Identity/@Publisher`, and `Properties/PublisherDisplayName` in
 `src\OpenClaw.Tray.WinUI\Package.appxmanifest` already hold the reserved
 Partner Center values and must keep matching **Product management > Product
@@ -320,7 +322,8 @@ without it the build logs a warning and skips symbols.
 
 #### CI MSIX downloads
 
-The **Build and Test** workflow builds both x64 and ARM64 MSIX variants whenever
+The **Build and Test** workflow builds both x64 and ARM64 MSIX variants and a
+multi-architecture bundle whenever
 the change classifier selects a release-build lane. This includes packaging,
 build, and workflow PRs, pushes to `main`/`master`, tags, and manual workflow
 dispatches. Ordinary targeted or documentation-only PRs intentionally skip them.

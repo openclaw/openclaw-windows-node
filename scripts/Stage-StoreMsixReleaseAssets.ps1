@@ -2,7 +2,8 @@
 .SYNOPSIS
     Stages validated unsigned Store MSIX packages for an alpha GitHub release.
 .DESCRIPTION
-    Checks both architectures' provenance and hashes before copying any files.
+    Checks both architectures' provenance and hashes, then verifies that the
+    multi-architecture bundle embeds those exact packages before copying files.
     Build-StoreMsix.ps1 owns package-content validation; this script preserves
     those exact bytes and never signs packages or submits them to Partner Center.
     Returns Files and Notes for the existing release publisher.
@@ -76,12 +77,81 @@ $packages = foreach ($architecture in @('x64', 'arm64')) {
         throw "The $architecture Store package hash does not match its metadata."
     }
 
-    [pscustomobject]@{ Path = $packagePath; Name = $packageName; Metadata = $metadataPath }
+    [pscustomobject]@{
+        Architecture = $architecture
+        Path = $packagePath
+        Name = $packageName
+        Metadata = $metadataPath
+        Sha256 = $metadata.sha256
+    }
 }
 
-# A bad second architecture must not leave a publishable partial set.
+$bundleDirectory = Join-Path $ArtifactDirectory 'openclaw-msix-store-unsigned-bundle'
+$bundleName = 'OpenClaw.msixbundle'
+$bundleEntries = @(Get-ChildItem -LiteralPath $bundleDirectory -Force)
+if ($bundleEntries.Count -ne 1 -or $bundleEntries[0].PSIsContainer -or
+    $bundleEntries[0].LinkType -or $bundleEntries[0].Name -ne $bundleName) {
+    throw 'Expected exactly the unsigned multi-architecture Store MSIX bundle.'
+}
+$bundlePath = $bundleEntries[0].FullName
+
+Add-Type -AssemblyName System.IO.Compression.FileSystem
+$bundle = [IO.Compression.ZipFile]::OpenRead($bundlePath)
+try {
+    $bundleManifestEntry = @($bundle.Entries | Where-Object {
+        $_.FullName -ceq 'AppxMetadata/AppxBundleManifest.xml'
+    })
+    if ($bundleManifestEntry.Count -ne 1) {
+        throw 'The Store MSIX bundle is missing its unique bundle manifest.'
+    }
+    $reader = [IO.StreamReader]::new($bundleManifestEntry[0].Open())
+    try { [xml]$bundleManifest = $reader.ReadToEnd() }
+    finally { $reader.Dispose() }
+
+    $identity = $bundleManifest.Bundle.Identity
+    if ([string]$identity.Name -ne [string]$manifest.Package.Identity.Name -or
+        [string]$identity.Publisher -ne [string]$manifest.Package.Identity.Publisher -or
+        [string]$identity.Version -ne $expectedVersion) {
+        throw 'The Store MSIX bundle identity or version does not match its packages.'
+    }
+
+    $manifestPackages = @($bundleManifest.Bundle.Packages.Package)
+    if ($manifestPackages.Count -ne 2) {
+        throw 'The Store MSIX bundle must contain exactly x64 and ARM64 packages.'
+    }
+    foreach ($package in $packages) {
+        $manifestPackage = @($manifestPackages | Where-Object {
+            [string]$_.Architecture -eq $package.Architecture -and
+            [string]$_.FileName -eq $package.Name
+        })
+        $packageEntry = @($bundle.Entries | Where-Object { $_.FullName -ceq $package.Name })
+        if ($manifestPackage.Count -ne 1 -or $packageEntry.Count -ne 1) {
+            throw "The Store MSIX bundle is missing its $($package.Architecture) package."
+        }
+
+        $stream = $packageEntry[0].Open()
+        $sha = [Security.Cryptography.SHA256]::Create()
+        try {
+            $embeddedHash = ([BitConverter]::ToString($sha.ComputeHash($stream))).Replace('-', '')
+        }
+        finally {
+            $sha.Dispose()
+            $stream.Dispose()
+        }
+        if ($embeddedHash -ne $package.Sha256) {
+            throw "The Store MSIX bundle changed the $($package.Architecture) package bytes."
+        }
+    }
+}
+finally {
+    $bundle.Dispose()
+}
+
+# A bad architecture or bundle must not leave a publishable partial set.
 New-Item -ItemType Directory -Path $OutputDirectory -Force | Out-Null
-$files = foreach ($package in $packages) {
+$files = @($bundlePath | Copy-Item -Destination (Join-Path $OutputDirectory $bundleName) -PassThru |
+    Select-Object -ExpandProperty FullName)
+$files += foreach ($package in $packages) {
     $packageDestination = Join-Path $OutputDirectory $package.Name
     $metadataDestination = Join-Path $OutputDirectory "$($package.Name)-metadata.json"
     Copy-Item -LiteralPath $package.Path -Destination $packageDestination
@@ -95,11 +165,12 @@ $files = foreach ($package in $packages) {
     Notes = @"
 ### Unsigned Store submission packages (alpha only)
 
-OpenClaw-x64.msix and OpenClaw-arm64.msix are unsigned
-Partner Center submission inputs, not installers. Their architecture-specific
-metadata files record the source commit, package version, and SHA-256.
-Upload the MSIX files manually to Partner Center; Microsoft signs accepted
-Store submissions. This workflow does not submit or retrieve Store packages.
+OpenClaw.msixbundle is the recommended unsigned Partner Center submission
+input. It contains the exact x64 and ARM64 packages selected by Windows.
+The standalone OpenClaw-x64.msix and OpenClaw-arm64.msix files and their
+metadata remain available for architecture-specific inspection or fallback.
+These files are not installers. Microsoft signs accepted Store submissions;
+this workflow does not submit or retrieve Store packages.
 
 The Windows package version is $expectedVersion, reserved for $Version.
 Different official tags share the app patch's packaging counter; reruns of
