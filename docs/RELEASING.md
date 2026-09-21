@@ -338,6 +338,19 @@ executables and unknown OpenClaw-named binaries, and rejects an OpenClaw
 signature on third-party/runtime binaries. When release signing is required,
 every allowlisted OpenClaw binary must have a valid signature from the expected
 OpenClaw release signer; a valid signature from another publisher is rejected.
+The signature must also have an Authenticode timestamp so it remains verifiable
+after the signing certificate expires. After signing the final installers, CI
+runs the same verifier with `-InstallerPath Output`, requiring both architecture
+outputs and rejecting missing, invalid, untimestamped, or unexpected binaries.
+
+Run `scripts\test-release-executable-signatures.ps1` for offline policy regressions.
+On Windows, `-PublishedFixtures` also checks pinned `v2026.9.4` installer and ZIP
+hashes, verifies their real signatures, and rejects tampered copies and a trusted
+binary from another publisher. It uses temporary files and never signs or
+installs an artifact. In **Build and Test**, opt into `verify_release_signatures`
+on a branch to run this proof and the required agent build/tests. The option is
+off by default and the proof steps reject tag refs. The existing tag-triggered
+release flow is unchanged.
 
 CI also checks native runtime dependencies before release packaging. Both the
 x64 and ARM64 portable payloads must ship `vcruntime140.dll` in the payload
@@ -425,9 +438,10 @@ The release job should:
 5. Create the portable x64 and ARM64 ZIPs.
 6. Build Inno installers.
 7. Sign installers.
-8. For canonical alpha tags only, stage the validated unsigned Store MSIX
+8. Verify both final installers have valid, timestamped OpenClaw signatures.
+9. For canonical alpha tags only, stage the validated unsigned Store MSIX
    bundle, standalone packages, and metadata.
-9. Create a GitHub release whose prerelease flag matches the tag, with installer
+10. Create a GitHub release whose prerelease flag matches the tag, with installer
    and portable ZIP assets plus any gated alpha submission assets.
 
 ## Post-release verification
