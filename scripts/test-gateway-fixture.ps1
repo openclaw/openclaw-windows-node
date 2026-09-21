@@ -59,7 +59,7 @@ function Invoke-FixtureTests {
     }
 }
 
-Invoke-FixtureTests 'tests\OpenClaw.Tray.IntegrationTests\OpenClaw.Tray.IntegrationTests.csproj' 'FullyQualifiedName~GatewayFixtureProfileTests|FullyQualifiedName~GatewayFixtureAppTests' 'fixture-profile-app'
+Invoke-FixtureTests 'tests\OpenClaw.Tray.IntegrationTests\OpenClaw.Tray.IntegrationTests.csproj' 'FullyQualifiedName~GatewayFixtureProfileTests|FullyQualifiedName~GatewayFixtureRunTests|FullyQualifiedName~GatewayFixtureAppTests' 'fixture-profile-app'
 Invoke-FixtureTests 'tests\OpenClaw.Tray.UITests\OpenClaw.Tray.UITests.csproj' 'FullyQualifiedName~GatewayFixtureUiTests' 'fixture-ui'
 Write-Host "Fixture smoke passed. Results: $resultsDirectory"
 exit 0

@@ -191,25 +191,42 @@ public sealed class GatewayFixtureRun : IAsyncDisposable
         return payload.Clone();
     }
 
-    public async Task WaitForAsync(
+    public Task WaitForAsync(
         Func<Task<bool>> condition,
         string description,
+        TimeSpan? timeout = null,
+        CancellationToken cancellationToken = default) =>
+        WaitForConditionAsync(condition, description, ArtifactsDirectory, EnsureRunning, timeout, cancellationToken);
+
+    internal static async Task WaitForConditionAsync(
+        Func<Task<bool>> condition,
+        string description,
+        string artifactsDirectory,
+        Action ensureRunning,
         TimeSpan? timeout = null,
         CancellationToken cancellationToken = default)
     {
         var watch = Stopwatch.StartNew();
         var limit = timeout ?? TimeSpan.FromSeconds(20);
+        var timeoutMessage = $"Timed out waiting for {description}. Artifacts: {artifactsDirectory}";
         while (watch.Elapsed < limit)
         {
             cancellationToken.ThrowIfCancellationRequested();
-            EnsureRunning();
+            ensureRunning();
             var remaining = limit - watch.Elapsed;
             if (remaining <= TimeSpan.Zero) break;
-            if (await condition().WaitAsync(remaining, cancellationToken))
-                return;
+            try
+            {
+                if (await condition().WaitAsync(remaining, cancellationToken))
+                    return;
+            }
+            catch (TimeoutException ex)
+            {
+                throw new TimeoutException(timeoutMessage, ex);
+            }
             await Task.Delay(100, cancellationToken);
         }
-        throw new TimeoutException($"Timed out waiting for {description}. Artifacts: {ArtifactsDirectory}");
+        throw new TimeoutException(timeoutMessage);
     }
 
     public void EnsureRunning()

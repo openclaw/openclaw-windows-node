@@ -1,6 +1,7 @@
 using System.Net;
 using System.Net.Sockets;
 using System.Security.Cryptography;
+using System.Text;
 using System.Text.Json;
 using OpenClaw.TestSupport;
 using OpenClaw.TestSupport.Gateway;
@@ -362,6 +363,55 @@ public sealed class GatewayFixtureProtocolTests
         Assert.Equal(0, server.ActiveConnectionCount);
         await Assert.ThrowsAnyAsync<OperationCanceledException>(() => server.HandshakeCompleted);
         Assert.Empty(server.Requests);
+    }
+
+    [Theory]
+    [InlineData("\r\n\r\n")]
+    [InlineData("POST / HTTP/1.1\r\nSec-WebSocket-Key: PRIVATE-UPGRADE-DATA\r\n\r\n")]
+    [InlineData("GET / HTTP/1.1\r\n\r\n")]
+    public Task Upgrade_MalformedHeadersAreRecordedWithoutPoisoningServerOrShutdown(string headers) =>
+        AssertRejectedUpgradeAsync(headers, "error:INVALID_UPGRADE");
+
+    [Fact]
+    public Task Upgrade_OversizedHeadersAreRecordedWithoutPoisoningServerOrShutdown() =>
+        AssertRejectedUpgradeAsync(new string('x', 16 * 1024), "error:INVALID_UPGRADE");
+
+    [Theory]
+    [InlineData("")]
+    [InlineData("GET / HTTP/1.1\r\n")]
+    public Task Upgrade_DisconnectedPeerIsRecordedWithoutPoisoningServerOrShutdown(string headers) =>
+        AssertRejectedUpgradeAsync(headers, "error:UPGRADE_DISCONNECTED");
+
+    private static async Task AssertRejectedUpgradeAsync(string headers, string outcome)
+    {
+        var token = CreateToken();
+        await using var server = await FixtureGatewayServer.StartAsync(GatewayScenario.CreateBrowse(), token);
+        using var deadline = new CancellationTokenSource(Deadline);
+        using (var peer = new TcpClient())
+        {
+            await peer.ConnectAsync(IPAddress.Loopback, server.Endpoint.Port, deadline.Token);
+            var stream = peer.GetStream();
+            await stream.WriteAsync(Encoding.ASCII.GetBytes(headers), deadline.Token);
+            peer.Client.Shutdown(SocketShutdown.Send);
+            Assert.Equal(0, await stream.ReadAsync(new byte[1], deadline.Token));
+        }
+
+        await server.WaitForRequestAsync("<upgrade>", cancellationToken: deadline.Token);
+        await using (var connected = await ConnectedClient.OpenAsync(server, token))
+        {
+            Assert.Equal(GatewayScenario.MainSessionKey,
+                (await connected.Client.RequestChatHistoryAsync()).SessionKey);
+        }
+        await server.DisposeAsync().AsTask().WaitAsync(Deadline);
+
+        var rejected = Assert.Single(server.UnexpectedRequests);
+        Assert.Equal("<upgrade>", rejected.Method);
+        Assert.Null(rejected.SessionKey);
+        Assert.Equal(outcome, rejected.Outcome);
+        Assert.Equal(0, server.ActiveConnectionCount);
+        var diagnostic = JsonSerializer.Serialize(server.Requests);
+        Assert.DoesNotContain(token, diagnostic);
+        Assert.DoesNotContain("PRIVATE-UPGRADE-DATA", diagnostic);
     }
 
     private static string CreateToken() => Convert.ToHexString(RandomNumberGenerator.GetBytes(32));

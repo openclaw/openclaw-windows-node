@@ -52,7 +52,7 @@ For screenshots, use the already installed Windows App CLI:
 .\scripts\test-gateway-fixture.ps1 -AppPath $app -Screenshots
 ```
 
-The script runs profile/preflight tests, real-process MCP tests, and native UI
+The script runs profile/preflight and polling tests, real-process MCP tests, and native UI
 tests. It rejects failed, skipped, missing-report and zero-test runs. It needs
 a Windows desktop and the same WinUI prerequisites as the existing UI suite.
 There is no skip-as-success fallback when the desktop is unavailable.
@@ -161,6 +161,12 @@ runtime configuration, architecture, nonsecret endpoints and outcome. The
 server records request methods and results, and unexpected requests fail the
 smoke. Isolated logs redact the run's credentials. Profile files, Gateway
 registries and identity files are not copied into artifacts.
+
+Polling timeouts retain the wait description and artifact directory, including
+when an individual probe times out. Malformed or disconnected HTTP-upgrade peers
+are recorded as unexpected `<upgrade>` requests without retaining headers.
+They do not prevent other clients from connecting or make server cleanup throw;
+the unexpected-request assertions still surface them as smoke failures.
 
 Add new behavior at the server boundary. Do not introduce fixture providers,
 demo branches in pages, bypasses in the connection manager, or a second chat

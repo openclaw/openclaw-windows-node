@@ -246,6 +246,14 @@ public sealed class FixtureGatewayServer : IAsyncDisposable
             catch (OperationCanceledException) when (connection.IsCancellationRequested) { }
             catch (WebSocketException) when (socket?.State is WebSocketState.Aborted or WebSocketState.Closed) { }
             catch (IOException) when (connection.IsCancellationRequested) { }
+            catch (InvalidDataException) when (socket is null)
+            {
+                Complete(Record("<upgrade>", null), "error:INVALID_UPGRADE", unexpected: true);
+            }
+            catch (IOException) when (socket is null)
+            {
+                Complete(Record("<upgrade>", null), "error:UPGRADE_DISCONNECTED", unexpected: true);
+            }
             finally
             {
                 await connection.CancelAsync();
@@ -406,7 +414,7 @@ public sealed class FixtureGatewayServer : IAsyncDisposable
             throw new InvalidDataException("Fixture WebSocket headers exceeded 16 KiB.");
         var lines = Encoding.ASCII.GetString(headers.ToArray()).Split("\r\n", StringSplitOptions.RemoveEmptyEntries);
         var key = lines.FirstOrDefault(line => line.StartsWith("Sec-WebSocket-Key:", StringComparison.OrdinalIgnoreCase))?.Split(':', 2)[1].Trim();
-        if (!lines[0].StartsWith("GET / HTTP/1.1", StringComparison.Ordinal) || string.IsNullOrWhiteSpace(key))
+        if (lines.Length == 0 || !lines[0].StartsWith("GET / HTTP/1.1", StringComparison.Ordinal) || string.IsNullOrWhiteSpace(key))
             throw new InvalidDataException("Expected a loopback WebSocket upgrade.");
         var accept = Convert.ToBase64String(SHA1.HashData(Encoding.ASCII.GetBytes(key + "258EAFA5-E914-47DA-95CA-C5AB0DC85B11")));
         var response = $"HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Accept: {accept}\r\n\r\n";
