@@ -7,6 +7,11 @@ on:
   pull_request:
     branches: [ main, master ]
   workflow_dispatch:
+    inputs:
+      verify_release_signatures:
+        description: Verify pinned published signatures and run agent validation on a branch without signing or releasing.
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -133,6 +138,40 @@ jobs:
     - name: Validate stable correction release ordering regressions
       shell: pwsh
       run: ./scripts/test-stable-correction-release-validator.ps1
+
+    - name: Validate release signature regressions
+      shell: pwsh
+      run: ./scripts/test-release-executable-signatures.ps1
+
+    - name: Verify published release signatures without publishing
+      if: github.event_name == 'workflow_dispatch' && inputs.verify_release_signatures && github.ref_type == 'branch'
+      shell: pwsh
+      run: |
+        if (-not $env:GITHUB_REF.StartsWith('refs/heads/', [StringComparison]::Ordinal)) {
+          throw 'Signature proof must run on a branch, never a release tag.'
+        }
+        ./scripts/test-release-executable-signatures.ps1 -PublishedFixtures
+
+    - name: Setup .NET for agent signing proof validation
+      if: github.event_name == 'workflow_dispatch' && inputs.verify_release_signatures && github.ref_type == 'branch'
+      uses: actions/setup-dotnet@v6
+      with:
+        global-json-file: global.json
+
+    - name: Run agent signing proof validation
+      if: github.event_name == 'workflow_dispatch' && inputs.verify_release_signatures && github.ref_type == 'branch'
+      shell: pwsh
+      env:
+        OPENCLAW_REPO_ROOT: ${{ github.workspace }}
+        OPENCLAW_TRAY_DATA_DIR: ${{ runner.temp }}/openclaw-signature-proof-tray
+      run: |
+        ./build.ps1
+        if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+        # Fresh runners must restore test projects before tests can execute.
+        dotnet test ./tests/OpenClaw.Shared.Tests/OpenClaw.Shared.Tests.csproj
+        if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+        dotnet test ./tests/OpenClaw.Tray.Tests/OpenClaw.Tray.Tests.csproj
+        if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
   proof-pool-contracts:
     name: Proof-pool contracts
@@ -1289,6 +1328,10 @@ jobs:
         file-digest: SHA256
         timestamp-rfc3161: http://timestamp.acs.microsoft.com
         timestamp-digest: SHA256
+
+    - name: Verify Final Installer Signatures
+      shell: pwsh
+      run: .\scripts\Test-ReleaseExecutableSignatures.ps1 -InstallerPath Output
 
     - name: Revalidate stable correction release ordering
       if: needs.metadata.outputs.isStableCorrection == 'true'
