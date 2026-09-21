@@ -90,7 +90,11 @@ public sealed class AccessibilityScanTests
         {
             "ChatComposerInput",
             "ChatComposerAttach",
-            "ChatComposerSpeakerToggle",
+            "ChatComposerSessionPicker",
+            "ChatComposerModelPicker",
+            "ChatComposerReasoningPicker",
+            "ChatComposerVoice",
+            "ChatComposerPrimaryAction",
         })
         {
             var element = await WaitForOnscreenLayoutAsync(hub, automationId);
