@@ -377,7 +377,8 @@ $testLanes = [ordered]@{
         Projects = @(
             "tests/OpenClaw.Shared.Tests",
             "tests/OpenClaw.Connection.Tests",
-            "tests/OpenClaw.WinNode.Cli.Tests"
+            "tests/OpenClaw.WinNode.Cli.Tests",
+            "tests/OpenClaw.BrowserBootstrap.Tests"
         )
         Artifact = "test-results-core"
     }
@@ -517,8 +518,9 @@ foreach ($token in @(
 $runnerUses = [regex]::Matches(
     $workflow,
     "(?m)^\s+\./scripts/Invoke-CiTest\.ps1\s*$").Count
-if ($runnerUses -ne 8) {
-    throw "Expected all 8 non-E2E test projects to use Invoke-CiTest.ps1, found $runnerUses."
+$expectedRunnerUses = ($testLanes.Values | ForEach-Object { $_.Projects.Count } | Measure-Object -Sum).Sum
+if ($runnerUses -ne $expectedRunnerUses) {
+    throw "Expected all $expectedRunnerUses non-E2E test projects to use Invoke-CiTest.ps1, found $runnerUses."
 }
 if ($workflow -match "(?m)^\s+dotnet-coverage collect\s*$") {
     throw "Workflow test steps must not invoke dotnet-coverage directly."

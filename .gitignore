@@ -182,6 +182,8 @@ publish/
 # Note: Comment the next line if you want to checkin your web deploy settings,
 # but database connection strings (with potential passwords) will be unencrypted
 *.pubxml
+# Required credential-free native bootstrap packaging contract.
+!src/OpenClaw.BrowserBootstrap/Properties/PublishProfiles/Windows.pubxml
 *.publishproj
 
 # Microsoft Azure Web App publish settings. Comment the next line if you want to
@@ -361,3 +363,6 @@ visual-test-output/
 msix-validation-evidence/
 packaging-test-output/
 uninstall-validation-output/
+
+# Local agent validation SDKs, logs and proof scratch
+.openclaw/tmp/

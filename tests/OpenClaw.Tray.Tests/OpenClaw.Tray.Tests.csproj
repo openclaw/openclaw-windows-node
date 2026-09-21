@@ -221,4 +221,7 @@
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Presentation\AppServiceRegistration.cs" Link="Presentation\AppServiceRegistration.cs" />
   </ItemGroup>
 
+  <ItemGroup>
+    <Compile Include="../../src/OpenClaw.Tray.WinUI/Services/BrowserBootstrapHost.cs" Link="Services/BrowserBootstrapHost.cs" />
+  </ItemGroup>
 </Project>

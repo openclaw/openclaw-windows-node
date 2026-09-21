@@ -80,6 +80,16 @@ public partial class App
             }));
         }
 
+        var browserBootstrapHost = _browserBootstrapHost;
+        if (browserBootstrapHost is not null)
+        {
+            steps.Add(new AppShutdownStep("browser bootstrap", async () =>
+            {
+                _browserBootstrapHost = null;
+                await browserBootstrapHost.DisposeAsync();
+            }));
+        }
+
         var connectionManager = _connectionManager;
         if (connectionManager is not null)
         {

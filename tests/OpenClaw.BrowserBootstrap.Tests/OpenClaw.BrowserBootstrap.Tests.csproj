@@ -1,0 +1,1 @@
+<Project Sdk="Microsoft.NET.Sdk"><ItemGroup><ProjectReference Include="../../src/OpenClaw.BrowserBootstrap/OpenClaw.BrowserBootstrap.csproj"/><ProjectReference Include="../OpenClaw.TestSupport/OpenClaw.TestSupport.csproj"/></ItemGroup></Project>
