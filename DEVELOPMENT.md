@@ -276,7 +276,7 @@ is what lets a packaged smoke test run without disturbing a working install:
 | Publisher | local development certificate | Partner Center |
 | Protocol | `openclaw-dev` | `openclaw` |
 | Signing | signed locally | unsigned; the Store signs |
-| Version revision | installed revision + 1 | pinned to `0` |
+| Version revision | installed revision + 1 locally; explicit CI run number | pinned to `0` |
 | Architectures | host only | x64 and ARM64 |
 
 The revision field is the clearest reason the modes cannot merge, because each
@@ -291,7 +291,7 @@ Partner Center rejects any submission whose revision is non-zero.
 `-Msix Store` forces `-Configuration Release`, refuses to combine with
 `-DevBuild`, and delegates to `scripts\Build-StoreMsix.ps1` once
 per architecture. Each run produces one unsigned self-contained package at
-`artifacts\msix\<arch>\OpenClawCompanion-<arch>.msix` alongside an
+`artifacts\msix\<arch>\OpenClaw-<arch>.msix` alongside an
 `msix-metadata.json` provenance sidecar recording the source commit, whether
 the tree was dirty, the package version, publisher, and the package SHA-256.
 
@@ -305,7 +305,9 @@ runtime, the in-process SetupEngine UI, and the architecture-matched
 the loose Visual C++ runtime files that the Inno payload ships but the MSIX
 resolves through its VCLibs framework dependency).
 
-Upload both `.msix` files to the same Partner Center submission. `Identity/@Name`,
+CI combines both packages into `OpenClaw.msixbundle`, the recommended single
+Partner Center submission input. The standalone `.msix` files remain available
+for architecture-specific inspection or fallback. `Identity/@Name`,
 `Identity/@Publisher`, and `Properties/PublisherDisplayName` in
 `src\OpenClaw.Tray.WinUI\Package.appxmanifest` already hold the reserved
 Partner Center values and must keep matching **Product management > Product
@@ -317,6 +319,146 @@ device capabilities.
 Generating the optional `.appxsym` symbol package additionally requires
 `mspdbcmf.exe` from the Visual Studio **Desktop development with C++** workload;
 without it the build logs a warning and skips symbols.
+
+#### CI MSIX downloads
+
+The **Build and Test** workflow builds both x64 and ARM64 MSIX variants and a
+multi-architecture bundle whenever
+the change classifier selects a release-build lane. This includes packaging,
+build, and workflow PRs, pushes to `main`/`master`, tags, and manual workflow
+dispatches. Ordinary targeted or documentation-only PRs intentionally skip them.
+MSIX failures block **CI Gate** when selected; a skipped unselected job is valid.
+
+Download the desired ZIP from the workflow run's **Artifacts**:
+
+| Artifact | Contents and purpose |
+|---|---|
+| `openclaw-msix-dev-x64` / `openclaw-msix-dev-arm64` | Signed `OpenClaw-Dev-<arch>.msix`, public `OpenClaw-Dev.cer`, `msix-metadata.json`, and `INSTALL.txt` for opt-in tester installation. |
+| `openclaw-msix-store-unsigned-x64` / `openclaw-msix-store-unsigned-arm64` | Unsigned `OpenClaw-<arch>.msix` and the validated provenance sidecar from `Build-StoreMsix.ps1`. Submission inputs, not directly installable tester packages. |
+
+These MSIX filenames use `OpenClaw`, not the previous `OpenClawCompanion`
+prefix. Only the download filenames changed: package identities, versions,
+and EXE installer filenames are unchanged. Existing downloads are not renamed.
+
+Each disposable runner uses `setup-dev-msix-cert.ps1` to generate and trust a
+non-exportable Dev certificate. Only its public `.cer` is included. The key and
+runner trust are removed in an always-run cleanup step. No repository signing
+secret or production release-signing environment is used. Each architecture
+and later workflow run can have a different certificate; testers must trust
+the matching signer explicitly. Only install packages from a workflow/source
+you trust, especially when testing unreviewed PR code.
+
+Extract the Dev artifact and follow `INSTALL.txt`: verify package/certificate
+hashes, install the architecture-matched VCLibs dependency described above,
+import the public certificate into `LocalMachine\TrustedPeople` from elevated
+PowerShell, then install the package as the intended user. This uses the
+existing **OpenClaw (Dev)** identity and can upgrade a locally installed Dev
+package; it is not a new independent test identity.
+
+CI passes `-MsixRevision $env:GITHUB_RUN_NUMBER` to the existing
+`build.ps1 -Project WinUI -Configuration Release -Msix Dev` path, with a fresh
+`-MsixOutputDirectory`. Explicit revisions must be 1-65535; overflow fails
+instead of wrapping. Omitting these options preserves local build behavior.
+Tagged-release reruns reuse their reserved package base. PR/main previews use
+the latest published stable Windows release line from the canonical upstream
+repository and do not consume numbers. For example, while Latest is
+`v2026.9.4`, previews use the `2026.9.4` allocation range and currently produce
+Store `2026.9.402.0`; a future official `v2026.9.5` release still starts in the
+`500-599` range. A preview candidate can advance after another official release
+reserves a number. Version ordering is not guaranteed across forks, branches,
+local builds, or decreasing base versions.
+Do not uninstall/downgrade an existing Dev package just to
+resolve a version conflict without considering its settings and data.
+When `-MsixBaseVersion` is omitted, local `-Msix Dev` builds compare the
+application-derived base with the installed Dev package and reuse the installed
+three-part base when it is higher. The fourth component still increments from
+the installed revision. This keeps ordinary local builds upgrade-compatible
+after installing an encoded CI Dev package without changing GitVersion.
+
+CI allocates a separate MSIX base without changing the application's GitVersion,
+assembly metadata, EXE/ZIP versions, or GitHub release tags. For app `X.Y.Z`,
+the third package component starts at `Z * 100` and advances within that patch's
+100-number range. For example:
+
+| App release line | MSIX Store versions |
+|---|---|
+| `2026.9.4`, including its alpha/correction tags | `2026.9.400.0` through `2026.9.499.0` |
+| `2026.9.5`, including its alpha/correction tags | `2026.9.500.0` through `2026.9.599.0` |
+| `2026.10.1`, including its alpha/correction tags | `2026.10.100.0` through `2026.10.199.0` |
+
+The already-used `2026.9.400.0` is recorded with its workflow and artifact
+provenance in `.github/msix-version-baseline.json`. The canonical ledger also
+contains reservation `msix-package/2026.9.4/401`, so the next unreserved
+`2026.9.4` packaging candidate is `2026.9.402.0`. Correction suffixes do not
+occupy their own digit.
+
+All tags on the same app patch share the counter, including revisions 10, 11,
+and onward. Exhaustion fails rather than entering the next patch's range.
+Every component must fit `uint16`; patch 655 has only the remaining 65500-65535
+slots, and larger patches cannot be encoded.
+
+Only `push` or `workflow_dispatch` builds of `v*` tags in the upstream repository
+reserve versions. A separate write-scoped job allocates once before the
+architecture matrix. PRs, ordinary main builds, and fork builds resolve Latest
+from `openclaw/openclaw-windows-node`, then read the next candidate from that
+same canonical reservation ledger. They are marked `preview` in
+`msixVersionAllocation` in each metadata sidecar and are not official release
+or Store-submission versions.
+Both Store architectures share the reserved base and end in `.0`. Both Dev
+architectures use the same base with the CI run number as the final component.
+
+The allocator records reservations as append-only annotated Git tags under
+`msix-package/<app-base>/<package-counter>`. Concurrent claims use atomic
+create-ref requests; reruns of the same source tag/commit reuse their record.
+Failed builds keep their reservations, so numbers are never recycled.
+Do not delete, move, or repurpose reservation tags, including during alpha
+release cleanup. The repository's active `Protect MSIX package reservations`
+ruleset blocks deletion and non-fast-forward updates under this namespace while
+permitting the official workflow to create refs. Preserve that ruleset as part
+of the release contract.
+See [MSIX version allocation](docs/RELEASING.md#msix-version-allocation).
+
+For an encoded local preview, save the readonly resolver result outside tracked
+source, then pass it through the validated builder:
+
+```powershell
+$info = .\scripts\Resolve-MsixPackageVersion.ps1 `
+  -SourceVersion (.\scripts\Get-OpenClawMsixPreviewSourceVersion.ps1) `
+  -SourceCommit (git rev-parse HEAD) `
+  -SourceRef "refs/heads/$(git branch --show-current)" `
+  -Repository openclaw/openclaw-windows-node
+$info | ConvertTo-Json -Depth 4 |
+  Set-Content "$env:TEMP\openclaw-msix-preview.json" -Encoding utf8
+.\scripts\Build-StoreMsix.ps1 -Architecture x64 `
+  -VersionInfoPath "$env:TEMP\openclaw-msix-preview.json"
+.\build.ps1 -Project WinUI -Configuration Release -Msix Dev `
+  -MsixBaseVersion $info.packageBaseVersion
+```
+
+`VersionInfoPath` validates the source commit and expected actual package
+version before writing metadata. `MsixBaseVersion` changes only the package
+manifest base; it does not override the app's assembly versions.
+Ordinary local builds that omit these options preserve their previous
+unallocated version calculation. Store distribution remains gated by #1375;
+this allocator does not submit packages to Partner Center.
+
+Canonical `vX.Y.Z-alpha.N` releases also attach the **unsigned Store** MSIX
+files and architecture-specific metadata, for manual upload to Partner Center.
+They do not attach the Dev-signed packages or certificates. These public
+pre-releases are not Latest and are not hidden from GitHub's Releases list.
+Stable releases retain only the existing EXE/ZIP downloads and do not mention
+MSIX submission assets in their generated download notes.
+
+To request a new alpha from current `main`, manually run **Daily Alpha
+Release**. Its existing checks choose the GitVersion alpha tag, skip a commit
+that already has a published release, and dispatch **Build and Test** on the
+tag. It does not release the feature branch selected in the UI. Running
+**Build and Test** directly on a branch still produces workflow artifacts
+only. See [manual alpha releases](docs/RELEASING.md#manual-alpha-releases).
+
+Store distribution remains paused. This workflow neither submits to Partner
+Center nor retrieves or publishes Store-signed packages. An alpha release
+label does not change the Store package version or make the package installable.
 
 #### The Store package alongside an existing Inno install
 

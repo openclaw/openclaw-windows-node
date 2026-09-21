@@ -2034,12 +2034,17 @@ public sealed class AppRefactorContractTests
     {
         var source = ReadSandboxPageSource();
         var actionBar = ExtractMethod(source, "UpdateUnavailableActionBar");
+        var windowsCapability = ExtractMethod(source, "IsWindowsSandboxCapabilityUnavailable");
 
         AssertInOrder(
             actionBar,
             "var isSetupIssue",
             "!availability.ProbeSuppressedBySkuGate",
             "!availability.IsWxcExecResolvable");
+        Assert.Contains("IsWindowsSandboxCapabilityUnavailable(availability)", actionBar);
+        Assert.Contains("!availability.ProbeErrored", windowsCapability);
+        Assert.Contains("availability.IsWxcExecResolvable", windowsCapability);
+        Assert.Contains("!availability.CanRunSystemRunSandbox", windowsCapability);
     }
 
     [Fact]
@@ -2059,7 +2064,10 @@ public sealed class AppRefactorContractTests
             "return;");
         Assert.Contains("SandboxEnabledToggle.IsOn = false", reject);
         Assert.Contains("Node Sandbox unavailable", reject);
-        Assert.Contains("MXC BaseContainer without host DACL augmentation", reject);
+        Assert.Contains("IsWindowsSandboxCapabilityUnavailable(availability)", reject);
+        Assert.Contains("SandboxPage_WindowsUnsupportedTitle", reject);
+        Assert.Contains("SandboxPage_WindowsUnsupportedMessageFormat", reject);
+        Assert.Contains("SandboxPage_UnavailableBehaviorHostFallback", reject);
     }
 
     private static string ReadCoordinatorSource()
