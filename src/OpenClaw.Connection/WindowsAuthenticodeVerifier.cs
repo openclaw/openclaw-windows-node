@@ -13,7 +13,23 @@ internal readonly record struct AuthenticodeTrustResult(bool IsTrusted, string? 
 
 internal static class WindowsAuthenticodeVerifier
 {
-    public static AuthenticodeTrustResult VerifyMicrosoftSignedFile(string path)
+    internal const string OpenClawPublisherSubject =
+        "CN=OpenClaw Foundation, O=OpenClaw Foundation, L=Mill Valley, S=California, C=US";
+
+    public static AuthenticodeTrustResult VerifyMicrosoftSignedFile(string path) =>
+        VerifySignedFile(path, HasMicrosoftPublisherIdentity, "WSL relay", "Microsoft Corporation", false);
+
+    public static AuthenticodeTrustResult VerifyOpenClawSignedFile(string path) =>
+        VerifySignedFile(path,
+            subject => string.Equals(subject, OpenClawPublisherSubject, StringComparison.OrdinalIgnoreCase),
+            "OpenClaw update", "OpenClaw Foundation", true);
+
+    private static AuthenticodeTrustResult VerifySignedFile(
+        string path,
+        Func<string, bool> hasExpectedPublisher,
+        string purpose,
+        string publisher,
+        bool requireTimestamp)
     {
         try
         {
@@ -25,23 +41,29 @@ internal static class WindowsAuthenticodeVerifier
             if (signature.State != SignatureState.SignedAndTrusted)
             {
                 return AuthenticodeTrustResult.Rejected(
-                    $"WSL relay Authenticode verification failed ({signature.State}).");
+                    $"{purpose} Authenticode verification failed ({signature.State}).");
             }
             if (signingCertificate is null)
             {
                 return AuthenticodeTrustResult.Rejected(
-                    "WSL relay Authenticode signer could not be read.");
+                    $"{purpose} Authenticode signer could not be read.");
             }
-
-            return HasMicrosoftPublisherIdentity(signingCertificate.Subject)
-                ? AuthenticodeTrustResult.Trusted()
-                : AuthenticodeTrustResult.Rejected(
-                    "WSL relay Authenticode signer is not Microsoft Corporation.");
+            if (!hasExpectedPublisher(signingCertificate.Subject))
+            {
+                return AuthenticodeTrustResult.Rejected(
+                    $"{purpose} Authenticode signer is not {publisher}.");
+            }
+            if (requireTimestamp && timestampCertificate is null)
+            {
+                return AuthenticodeTrustResult.Rejected(
+                    $"{purpose} signature has no Authenticode timestamp.");
+            }
+            return AuthenticodeTrustResult.Trusted();
         }
         catch
         {
             return AuthenticodeTrustResult.Rejected(
-                "WSL relay Authenticode verification could not complete.");
+                $"{purpose} Authenticode verification could not complete.");
         }
     }
 

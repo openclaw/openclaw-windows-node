@@ -1,16 +1,21 @@
 <#
 .SYNOPSIS
-    Tests release signing policy without signing or installing any files.
+    Tests release signing policy without signing or changing installed applications.
 
 .PARAMETER PublishedFixtures
     Also verify immutable v2026.9.4 release assets and task-owned tampered copies
     with Windows Authenticode. Downloads about 550 MB into temporary storage.
+
+.PARAMETER UpdateProofHost
+    Optional dedicated C# proof host DLL. Verifies the same ZIP downloads and
+    exercises Updatum only in a disposable child app, with relaunch disabled.
 #>
 [CmdletBinding()]
-param([switch]$PublishedFixtures)
+param([switch]$PublishedFixtures, [string]$UpdateProofHost)
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
+if ($UpdateProofHost -and -not $PublishedFixtures) { throw "Update proof requires published fixtures." }
 $validator = Join-Path $PSScriptRoot "Test-ReleaseExecutableSignatures.ps1"
 $expectedSubject = "CN=OpenClaw Foundation, O=OpenClaw Foundation, L=Mill Valley, S=California, C=US"
 $ownedNames = @(
@@ -184,6 +189,10 @@ try {
                 Assert-Policy -Name "$name actual Windows signature policy" -Arguments $arguments
                 Assert-TamperedFileRejected -Path (Join-Path $payload $ownedNames[0]) -Arguments $arguments `
                     -Name "$name rejects tampered apphost"
+                if ($UpdateProofHost) {
+                    dotnet $UpdateProofHost verify $destination "sha256:$hash"
+                    if ($LASTEXITCODE -ne 0) { throw "Native update package proof failed: $name" }
+                }
             }
         }
         $arguments = @{ InstallerPath = $installerRoot }

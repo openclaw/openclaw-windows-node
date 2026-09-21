@@ -237,7 +237,8 @@ public sealed class UpdateCheckPipelineTests
             Prerelease: false,
             Published: true,
             hasCompatibleAsset ?? (() => true),
-            activate ?? (() => { }));
+            activate ?? (() => { }),
+            () => throw new InvalidOperationException("A metadata-only check must not prepare installation."));
 
     private sealed class FakeUpdateCheckBoundary : IUpdateCheckBoundary
     {
