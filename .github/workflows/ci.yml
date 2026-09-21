@@ -143,6 +143,12 @@ jobs:
       shell: pwsh
       run: ./scripts/test-release-executable-signatures.ps1
 
+    - name: Setup .NET for agent signing proof validation
+      if: github.event_name == 'workflow_dispatch' && inputs.verify_release_signatures && github.ref_type == 'branch'
+      uses: actions/setup-dotnet@v6
+      with:
+        global-json-file: global.json
+
     - name: Verify published release signatures without publishing
       if: github.event_name == 'workflow_dispatch' && inputs.verify_release_signatures && github.ref_type == 'branch'
       shell: pwsh
@@ -150,13 +156,13 @@ jobs:
         if (-not $env:GITHUB_REF.StartsWith('refs/heads/', [StringComparison]::Ordinal)) {
           throw 'Signature proof must run on a branch, never a release tag.'
         }
-        ./scripts/test-release-executable-signatures.ps1 -PublishedFixtures
-
-    - name: Setup .NET for agent signing proof validation
-      if: github.event_name == 'workflow_dispatch' && inputs.verify_release_signatures && github.ref_type == 'branch'
-      uses: actions/setup-dotnet@v6
-      with:
-        global-json-file: global.json
+        $proofId = [Guid]::NewGuid().ToString('N')
+        $proofOutput = Join-Path $env:RUNNER_TEMP "openclaw-update-proof-host-$proofId"
+        dotnet publish ./tests/OpenClaw.Update.TestHost/OpenClaw.Update.TestHost.csproj `
+          -c Release -r win-x64 --self-contained false -p:UpdateProofId=$proofId -o $proofOutput
+        if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+        $proofHost = Join-Path $proofOutput "OpenClaw.Update.TestHost.$proofId.dll"
+        ./scripts/test-release-executable-signatures.ps1 -PublishedFixtures -UpdateProofHost $proofHost
 
     - name: Run agent signing proof validation
       if: github.event_name == 'workflow_dispatch' && inputs.verify_release_signatures && github.ref_type == 'branch'
@@ -169,6 +175,8 @@ jobs:
         if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
         # Fresh runners must restore test projects before tests can execute.
         dotnet test ./tests/OpenClaw.Shared.Tests/OpenClaw.Shared.Tests.csproj
+        if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+        dotnet test ./tests/OpenClaw.Connection.Tests/OpenClaw.Connection.Tests.csproj
         if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
         dotnet test ./tests/OpenClaw.Tray.Tests/OpenClaw.Tray.Tests.csproj
         if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }

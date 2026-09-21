@@ -355,11 +355,16 @@ outputs and rejecting missing, invalid, untimestamped, or unexpected binaries.
 Run `scripts\test-release-executable-signatures.ps1` for offline policy regressions.
 On Windows, `-PublishedFixtures` also checks pinned `v2026.9.4` installer and ZIP
 hashes, verifies their real signatures, and rejects tampered copies and a trusted
-binary from another publisher. It uses temporary files and never signs or
-installs an artifact. In **Build and Test**, opt into `verify_release_signatures`
-on a branch to run this proof and the required agent build/tests. The option is
-off by default and the proof steps reject tag refs. The existing tag-triggered
-release flow is unchanged.
+binary from another publisher. In **Build and Test**, opt into
+`verify_release_signatures` on a branch to run this proof and the required agent
+build/tests. That dispatch also builds a dedicated C# proof host, verifies the
+same ZIPs through the runtime verifier, and lets Updatum copy them only into a
+disposable child application with relaunch disabled. It records the actual
+Windows token privilege level. Timestamp-removed fixtures can fail native trust
+because their signer has expired; this is not proof of an otherwise trusted
+untimestamped signature. No proof signs files or changes an installed application.
+The option is off by default and the proof steps reject tag refs. The existing
+tag-triggered release flow is unchanged.
 
 CI also checks native runtime dependencies before release packaging. Both the
 x64 and ARM64 portable payloads must ship `vcruntime140.dll` in the payload

@@ -84,7 +84,7 @@ public sealed class ReleaseSigningWorkflowTests
     {
         var workflow = File.ReadAllText(Path.Combine(TestRepositoryPaths.GetRepositoryRoot(), ".github", "workflows", "ci.yml"));
         var start = workflow.IndexOf("    - name: Verify published release signatures without publishing", StringComparison.Ordinal);
-        var end = workflow.IndexOf("    - name: Setup .NET for agent signing proof validation", start, StringComparison.Ordinal);
+        var end = workflow.IndexOf("    - name: Run agent signing proof validation", start, StringComparison.Ordinal);
         var step = workflow[start..end];
 
         Assert.Contains("verify_release_signatures:", workflow);

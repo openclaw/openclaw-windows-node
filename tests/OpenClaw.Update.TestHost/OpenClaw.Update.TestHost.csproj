@@ -1,0 +1,18 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <IsTestProject>false</IsTestProject>
+    <!-- Updatum also kills AssemblyName.exe. Give this proof a unique identity,
+         without changing the names of its referenced production assemblies. -->
+    <AssemblyName>OpenClaw.Update.TestHost.$(UpdateProofId)</AssemblyName>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\OpenClaw.Connection\OpenClaw.Connection.csproj" />
+    <PackageReference Include="Updatum" Version="1.3.4" />
+    <PackageReference Include="System.Security.Cryptography.Pkcs" Version="10.0.12" />
+  </ItemGroup>
+  <Target Name="RequireProofIdentity" BeforeTargets="Build">
+    <Error Condition="'$(UpdateProofId)' == ''" Text="Pass a unique UpdateProofId for isolated updater proof." />
+  </Target>
+</Project>
