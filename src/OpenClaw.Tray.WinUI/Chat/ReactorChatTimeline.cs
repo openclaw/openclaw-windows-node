@@ -167,6 +167,8 @@ public sealed class ReactorChatTimeline : Component<ReactorChatTimelineProps>
                     rows.Count,
                     initialTailRequestKey,
                     displayedTailKey)
+                // A conversation owns its native recycler and pending bring-into-view target.
+                .WithKey($"timeline:{props.Timeline.SessionId ?? "none"}|{props.Timeline.TimelineGeneration}")
                 .Grid(column: 0)
                 .AutomationName("Chat messages")
                 .HAlign(HorizontalAlignment.Stretch)
