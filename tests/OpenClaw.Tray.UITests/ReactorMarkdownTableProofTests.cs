@@ -39,11 +39,12 @@ public sealed class ReactorMarkdownTableProofTests
         Border? proofSurface = null;
         UIElement? root = null;
         Element? element = null;
+        ChatThemeProofScope? themeScope = null;
         try
         {
             await _ui.RunOnUIAsync(() =>
             {
-                TestApp.EnsureFluentBrushFallbacks(Application.Current.Resources);
+                themeScope = new ChatThemeProofScope("Light");
                 host = new ReactorHostControl
                 {
                     Width = 320,
@@ -103,6 +104,8 @@ public sealed class ReactorMarkdownTableProofTests
                     FindLogical<RichTextBlock>(root!),
                     text => CollectText(text).Contains("literal | pipe", StringComparison.Ordinal));
                 Assert.Contains("---|---", CollectText(code), StringComparison.Ordinal);
+                Assert.Equal(13, code.FontSize);
+                Assert.Equal(18, code.LineHeight);
                 Assert.Single(
                     FindLogical<Grid>(root!),
                     grid => grid.ColumnDefinitions.Count == 2 && grid.RowDefinitions.Count == 6);
@@ -119,6 +122,7 @@ public sealed class ReactorMarkdownTableProofTests
                     proofSurface!.Child = null;
                     host.Content = null;
                     host.Dispose();
+                    themeScope?.Dispose();
                 });
             }
         }

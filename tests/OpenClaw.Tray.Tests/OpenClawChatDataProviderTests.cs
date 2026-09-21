@@ -10976,6 +10976,50 @@ public class OpenClawChatDataProviderTests
     }
 
     [Fact]
+    public async Task ThinkingProfiles_ProjectClearAndInvalidateCapabilitiesAcrossConnections()
+    {
+        var session = MainSession();
+        session.Model = "m";
+        session.Provider = "p";
+        session.ThinkingLevel = "off";
+        var context = new ThinkingContext(new("p", "m", "r"), new([new("off", "Off")], "off"));
+        session.ThinkingContext = context;
+        session.ThinkingDefaults = context;
+        var (bridge, provider, snapshots, _) = CreateProvider([session]);
+        await using (provider)
+        {
+            await provider.LoadAsync();
+            bridge.RaiseStatus(ConnectionStatus.Connected);
+            bridge.RaiseModels(new ModelsListInfo
+            {
+                Models = [new ModelInfo { Id = "m", Provider = "p", ThinkingContext = context }],
+            });
+            var before = snapshots[^1];
+            var thread = Assert.Single(before.Threads);
+            Assert.Equal("off", thread.ThinkingLevel);
+            Assert.Same(context, thread.ThinkingContext);
+            var cleared = session.Clone();
+            cleared.ThinkingLevel = null;
+            bridge.RaiseSessions([cleared]);
+            Assert.Null(Assert.Single(snapshots[^1].Threads).ThinkingLevel);
+            Assert.Equal("off", thread.ThinkingLevel);
+            Assert.Same(context.Profile, ChatThinkingProfile.Resolve(
+                Assert.Single(snapshots[^1].Threads), snapshots[^1].ModelChoices));
+            await provider.SetModelAsync("main", "p/new");
+            Assert.Empty(bridge.PatchedThinkingLevels);
+            Assert.Empty(bridge.ClearedThinkingLevelKeys);
+            bridge.RaiseStatus(ConnectionStatus.Disconnected);
+            bridge.RaiseStatus(ConnectionStatus.Connected);
+            var reconnected = snapshots[^1];
+            Assert.Null(Assert.Single(reconnected.Threads).ThinkingContext);
+            Assert.Null(Assert.Single(reconnected.Threads).ThinkingDefaults);
+            Assert.Null(Assert.Single(reconnected.ModelChoices!).ThinkingContext);
+            Assert.Null(ChatThinkingProfile.Resolve(Assert.Single(reconnected.Threads), reconnected.ModelChoices));
+            Assert.Same(context, thread.ThinkingContext);
+        }
+    }
+
+    [Fact]
     public async Task SetThinkingLevelAsync_ForwardsConcreteLevelToBridge()
     {
         var (bridge, provider, _, _) = CreateProvider(new[] { MainSession() });

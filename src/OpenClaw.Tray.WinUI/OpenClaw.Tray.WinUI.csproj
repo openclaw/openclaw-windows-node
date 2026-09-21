@@ -118,6 +118,7 @@
 
   <ItemGroup>
     <Content Include="Assets\**\*" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="THIRD_PARTY_NOTICES.md" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
     <None Include="..\OpenClaw.SetupEngine\default-config.json"
              Link="default-config.json"
              CopyToOutputDirectory="PreserveNewest" />

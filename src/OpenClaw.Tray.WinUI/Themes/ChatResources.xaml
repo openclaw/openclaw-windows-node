@@ -1,0 +1,147 @@
+<ResourceDictionary
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+    <ResourceDictionary.ThemeDictionaries>
+        <ResourceDictionary x:Key="Default">
+            <SolidColorBrush x:Key="ChatPickerAccentBrush" Color="{ThemeResource SystemAccentColorLight2}" />
+            <SolidColorBrush x:Key="ChatCanvasBrush" Color="{ThemeResource SolidBackgroundFillColorBase}" />
+            <SolidColorBrush x:Key="ChatComposerBrush" Color="{ThemeResource LayerFillColorDefault}" />
+            <SolidColorBrush x:Key="ChatCardBrush" Color="{ThemeResource CardBackgroundFillColorDefault}" />
+            <SolidColorBrush x:Key="ChatStrokeBrush" Color="{ThemeResource ControlStrokeColorDefault}" />
+            <SolidColorBrush x:Key="ChatTextBrush" Color="{ThemeResource TextFillColorPrimary}" />
+            <SolidColorBrush x:Key="ChatSecondaryTextBrush" Color="{ThemeResource TextFillColorSecondary}" />
+            <SolidColorBrush x:Key="ChatUserBrush" Color="{ThemeResource SystemAccentColorLight2}" Opacity="0.12" />
+            <SolidColorBrush x:Key="ChatUserTextBrush" Color="{ThemeResource TextFillColorPrimary}" />
+            <SolidColorBrush x:Key="ChatCopySuccessBrush" Color="{ThemeResource SystemFillColorSuccess}" />
+            <Style x:Key="ChatRichTextStyle" TargetType="RichTextBlock">
+                <Setter Property="Foreground" Value="{ThemeResource ChatTextBrush}" />
+            </Style>
+            <Style x:Key="ChatCodeTextStyle" TargetType="RichTextBlock">
+                <Setter Property="Foreground" Value="{ThemeResource ChatSecondaryTextBrush}" />
+            </Style>
+            <Style x:Key="ChatEffortStrokeStyle" TargetType="Path">
+                <Setter Property="Stroke" Value="{ThemeResource ChatTextBrush}" />
+                <Setter Property="StrokeThickness" Value="2" />
+                <Setter Property="StrokeStartLineCap" Value="Round" />
+                <Setter Property="StrokeEndLineCap" Value="Round" />
+                <Setter Property="StrokeLineJoin" Value="Round" />
+            </Style>
+            <Style x:Key="ChatEffortDialStyle" TargetType="Path">
+                <Setter Property="Stroke" Value="{ThemeResource ChatSecondaryTextBrush}" />
+                <Setter Property="StrokeThickness" Value="2" />
+                <Setter Property="StrokeStartLineCap" Value="Round" />
+                <Setter Property="StrokeEndLineCap" Value="Round" />
+                <Setter Property="StrokeLineJoin" Value="Round" />
+                <Setter Property="Opacity" Value="0.55" />
+            </Style>
+            <Style x:Key="ChatEffortHubStyle" TargetType="Ellipse">
+                <Setter Property="Fill" Value="{ThemeResource ChatTextBrush}" />
+            </Style>
+        </ResourceDictionary>
+        <ResourceDictionary x:Key="Light">
+            <SolidColorBrush x:Key="ChatPickerAccentBrush" Color="{ThemeResource SystemAccentColorDark1}" />
+            <SolidColorBrush x:Key="ChatCanvasBrush" Color="{ThemeResource SolidBackgroundFillColorBase}" />
+            <SolidColorBrush x:Key="ChatComposerBrush" Color="{ThemeResource LayerFillColorDefault}" />
+            <SolidColorBrush x:Key="ChatCardBrush" Color="{ThemeResource CardBackgroundFillColorDefault}" />
+            <SolidColorBrush x:Key="ChatStrokeBrush" Color="{ThemeResource ControlStrokeColorDefault}" />
+            <SolidColorBrush x:Key="ChatTextBrush" Color="{ThemeResource TextFillColorPrimary}" />
+            <SolidColorBrush x:Key="ChatSecondaryTextBrush" Color="{ThemeResource TextFillColorSecondary}" />
+            <SolidColorBrush x:Key="ChatUserBrush" Color="{ThemeResource SystemAccentColorDark1}" Opacity="0.08" />
+            <SolidColorBrush x:Key="ChatUserTextBrush" Color="{ThemeResource TextFillColorPrimary}" />
+            <SolidColorBrush x:Key="ChatCopySuccessBrush" Color="{ThemeResource SystemFillColorSuccess}" />
+            <Style x:Key="ChatRichTextStyle" TargetType="RichTextBlock">
+                <Setter Property="Foreground" Value="{ThemeResource ChatTextBrush}" />
+            </Style>
+            <Style x:Key="ChatCodeTextStyle" TargetType="RichTextBlock">
+                <Setter Property="Foreground" Value="{ThemeResource ChatSecondaryTextBrush}" />
+            </Style>
+            <Style x:Key="ChatEffortStrokeStyle" TargetType="Path">
+                <Setter Property="Stroke" Value="{ThemeResource ChatTextBrush}" />
+                <Setter Property="StrokeThickness" Value="2" />
+                <Setter Property="StrokeStartLineCap" Value="Round" />
+                <Setter Property="StrokeEndLineCap" Value="Round" />
+                <Setter Property="StrokeLineJoin" Value="Round" />
+            </Style>
+            <Style x:Key="ChatEffortDialStyle" TargetType="Path">
+                <Setter Property="Stroke" Value="{ThemeResource ChatSecondaryTextBrush}" />
+                <Setter Property="StrokeThickness" Value="2" />
+                <Setter Property="StrokeStartLineCap" Value="Round" />
+                <Setter Property="StrokeEndLineCap" Value="Round" />
+                <Setter Property="StrokeLineJoin" Value="Round" />
+                <Setter Property="Opacity" Value="0.55" />
+            </Style>
+            <Style x:Key="ChatEffortHubStyle" TargetType="Ellipse">
+                <Setter Property="Fill" Value="{ThemeResource ChatTextBrush}" />
+            </Style>
+        </ResourceDictionary>
+        <ResourceDictionary x:Key="HighContrast">
+            <SolidColorBrush x:Key="ChatPickerAccentBrush" Color="{ThemeResource SystemColorWindowTextColor}" />
+            <SolidColorBrush x:Key="ChatCanvasBrush" Color="{ThemeResource SystemColorWindowColor}" />
+            <SolidColorBrush x:Key="ChatComposerBrush" Color="{ThemeResource SystemColorWindowColor}" />
+            <SolidColorBrush x:Key="ChatCardBrush" Color="{ThemeResource SystemColorWindowColor}" />
+            <SolidColorBrush x:Key="ChatStrokeBrush" Color="{ThemeResource SystemColorWindowTextColor}" />
+            <SolidColorBrush x:Key="ChatTextBrush" Color="{ThemeResource SystemColorWindowTextColor}" />
+            <SolidColorBrush x:Key="ChatSecondaryTextBrush" Color="{ThemeResource SystemColorWindowTextColor}" />
+            <SolidColorBrush x:Key="ChatUserBrush" Color="{ThemeResource SystemColorHighlightColor}" />
+            <SolidColorBrush x:Key="ChatUserTextBrush" Color="{ThemeResource SystemColorHighlightTextColor}" />
+            <SolidColorBrush x:Key="ChatCopySuccessBrush" Color="{ThemeResource SystemColorWindowTextColor}" />
+            <Style x:Key="ChatRichTextStyle" TargetType="RichTextBlock">
+                <Setter Property="Foreground" Value="{ThemeResource ChatTextBrush}" />
+            </Style>
+            <Style x:Key="ChatCodeTextStyle" TargetType="RichTextBlock">
+                <Setter Property="Foreground" Value="{ThemeResource ChatSecondaryTextBrush}" />
+            </Style>
+            <Style x:Key="ChatEffortStrokeStyle" TargetType="Path">
+                <Setter Property="Stroke" Value="{ThemeResource ChatTextBrush}" />
+                <Setter Property="StrokeThickness" Value="2" />
+                <Setter Property="StrokeStartLineCap" Value="Round" />
+                <Setter Property="StrokeEndLineCap" Value="Round" />
+                <Setter Property="StrokeLineJoin" Value="Round" />
+            </Style>
+            <Style x:Key="ChatEffortDialStyle" TargetType="Path">
+                <Setter Property="Stroke" Value="{ThemeResource ChatSecondaryTextBrush}" />
+                <Setter Property="StrokeThickness" Value="2" />
+                <Setter Property="StrokeStartLineCap" Value="Round" />
+                <Setter Property="StrokeEndLineCap" Value="Round" />
+                <Setter Property="StrokeLineJoin" Value="Round" />
+                <Setter Property="Opacity" Value="0.55" />
+            </Style>
+            <Style x:Key="ChatEffortHubStyle" TargetType="Ellipse">
+                <Setter Property="Fill" Value="{ThemeResource ChatTextBrush}" />
+            </Style>
+        </ResourceDictionary>
+    </ResourceDictionary.ThemeDictionaries>
+    <ControlTemplate x:Key="ChatModelPickerControlTemplate" TargetType="Control">
+        <ContentPresenter x:Name="PickerRoot" />
+    </ControlTemplate>
+    <DataTemplate x:Key="ChatModelItemTemplate">
+        <Grid ColumnSpacing="12" MinHeight="32">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="Auto" />
+            </Grid.ColumnDefinitions>
+            <TextBlock Text="{Binding Title}" Style="{ThemeResource BodyTextBlockStyle}"
+                       TextTrimming="CharacterEllipsis" VerticalAlignment="Center" />
+            <TextBlock Grid.Column="1" Text="{Binding Description}"
+                       Style="{ThemeResource CaptionTextBlockStyle}" MaxWidth="112"
+                       TextWrapping="Wrap" VerticalAlignment="Center" />
+        </Grid>
+    </DataTemplate>
+    <DataTemplate x:Key="ChatModelGroupHeaderTemplate">
+        <TextBlock Text="{Binding Label}" Style="{ThemeResource CaptionTextBlockStyle}"
+                   Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                   Margin="12,8,12,4" AutomationProperties.HeadingLevel="Level2" />
+    </DataTemplate>
+    <Style x:Key="ChatPickerAccentTextStyle" TargetType="TextBlock">
+        <Setter Property="Foreground" Value="{ThemeResource ChatPickerAccentBrush}" />
+    </Style>
+    <Style x:Key="ChatPickerFlyoutStyle" TargetType="FlyoutPresenter">
+        <Setter Property="Padding" Value="0" />
+        <Setter Property="MinWidth" Value="0" />
+        <Setter Property="CornerRadius" Value="12" />
+    </Style>
+    <Style x:Key="ChatPickerMenuStyle" TargetType="MenuFlyoutPresenter">
+        <Setter Property="Padding" Value="4" />
+        <Setter Property="CornerRadius" Value="12" />
+    </Style>
+</ResourceDictionary>

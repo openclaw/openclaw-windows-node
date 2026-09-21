@@ -28,6 +28,7 @@ public sealed class ChatComposerControllerTests
             Status = ChatThreadStatus.Running,
             Activity = ChatActivity.Idle,
             ThinkingLevel = thinkingLevel,
+            ThinkingContext = new(new(), new([new("high", "high"), new("custom-adaptive", "Custom")])),
         };
 
     private static ChatComposerInputs MakeInputs(long revision = 1, ChatThread? thread = null, string connectionState = "connected") =>
@@ -532,6 +533,38 @@ public sealed class ChatComposerControllerTests
         Assert.Equal(("session-1", "gpt-5"), port.LastSetModelCall);
     }
 
+    [Theory]
+    [InlineData("disconnected", false)]
+    [InlineData("connecting", false)]
+    [InlineData("connected", true)]
+    public void SessionOptions_RejectStaleUnavailableActionsAndResumeAfterReconnect(string state, bool disabled)
+    {
+        var (vm, controller, port, _) = MakeController();
+        using (controller)
+        using (vm)
+        {
+            vm.ApplyInputs(MakeInputs(revision: 2, connectionState: state) with { MessageOptionsDisabled = disabled });
+            controller.SetModel("provider/model");
+            controller.ClearModel();
+            controller.SetThinkingLevel("custom-adaptive");
+            controller.ClearThinkingLevel();
+            Assert.Equal(0, port.SetModelCallCount);
+            Assert.Equal(0, port.ClearModelCallCount);
+            Assert.Equal(0, port.SetThinkingLevelCallCount);
+            Assert.Equal(0, port.ClearThinkingLevelCallCount);
+
+            vm.ApplyInputs(MakeInputs(revision: 3));
+            controller.SetModel("provider/model");
+            controller.ClearModel();
+            controller.SetThinkingLevel("custom-adaptive");
+            controller.ClearThinkingLevel();
+            Assert.Equal(1, port.SetModelCallCount);
+            Assert.Equal(1, port.ClearModelCallCount);
+            Assert.Equal(("session-1", "custom-adaptive"), port.LastSetThinkingLevelCall);
+            Assert.Equal(1, port.ClearThinkingLevelCallCount);
+        }
+    }
+
     [Fact]
     public void ClearModel_CallsExplicitClearNotSet()
     {
@@ -568,6 +601,42 @@ public sealed class ChatComposerControllerTests
         Assert.Equal(1, port.SetThinkingLevelCallCount);
         Assert.Equal(0, port.ClearThinkingLevelCallCount);
         Assert.Equal(("session-1", "high"), port.LastSetThinkingLevelCall);
+    }
+
+    [Fact]
+    public void ThinkingOptions_RejectStaleUnsupportedChoiceAndAllowExplicitResetWhenUnknown()
+    {
+        var (vm, controller, port, _) = MakeController();
+        using (controller)
+        using (vm)
+        {
+            vm.ApplyInputs(MakeInputs(2, MakeThread(thinkingLevel: "high") with
+            {
+                ThinkingContext = new(new(), new([new("off", "Off")])),
+            }));
+            controller.SetThinkingLevel("high");
+            controller.SetThinkingLevel("low");
+            Assert.Equal(0, port.SetThinkingLevelCallCount);
+            controller.SetThinkingLevel("off");
+            Assert.Equal(("session-1", "off"), port.LastSetThinkingLevelCall);
+
+            vm.ApplyInputs(MakeInputs(3, MakeThread(thinkingLevel: "high") with { ThinkingContext = null }));
+            Assert.True(vm.Inputs!.CanChangeThinking);
+            controller.SetThinkingLevel("off");
+            Assert.Equal(1, port.SetThinkingLevelCallCount);
+            controller.ClearThinkingLevel();
+            Assert.Equal(1, port.ClearThinkingLevelCallCount);
+            controller.SetModel("new/model");
+            controller.ClearModel();
+            Assert.Equal(1, port.SetModelCallCount);
+            Assert.Equal(1, port.ClearModelCallCount);
+            Assert.Equal(1, port.SetThinkingLevelCallCount);
+            Assert.Equal(1, port.ClearThinkingLevelCallCount);
+
+            vm.ApplyInputs(MakeInputs(4, MakeThread() with { ThinkingContext = null }));
+            Assert.False(vm.Inputs!.CanChangeThinking);
+            Assert.True(vm.Inputs.CanChangeSessionOptions);
+        }
     }
 
     [Fact]

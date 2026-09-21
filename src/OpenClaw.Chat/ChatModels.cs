@@ -1,3 +1,5 @@
+using OpenClaw.Shared;
+
 namespace OpenClaw.Chat;
 
 public enum ChatThreadStatus
@@ -126,6 +128,8 @@ public record ChatThread
     public string? Model { get; init; }
     public string? ModelProvider { get; init; }
     public string? ThinkingLevel { get; init; }
+    public ThinkingContext? ThinkingContext { get; init; }
+    public ThinkingContext? ThinkingDefaults { get; init; }
     public long InputTokens { get; init; }
     public long OutputTokens { get; init; }
     public long TotalTokens { get; init; }

@@ -299,6 +299,8 @@ public class SessionInfo
     public int? SpawnDepth { get; set; }
     public string? SessionId { get; set; }
     public string? ThinkingLevel { get; set; }
+    public ThinkingContext? ThinkingContext { get; set; }
+    public ThinkingContext? ThinkingDefaults { get; set; }
     public string? VerboseLevel { get; set; }
     public bool SystemSent { get; set; }
     public bool AbortedLastRun { get; set; }
@@ -2227,6 +2229,8 @@ public class ModelInfo
     public string? Provider { get; set; }
     public int? ContextWindow { get; set; }
     public int? ContextTokens { get; set; }
+    public bool? Reasoning { get; set; }
+    public ThinkingContext? ThinkingContext { get; set; }
 
     /// <summary>True when the model's provider is configured on the gateway.</summary>
     public bool IsConfigured { get; set; }

@@ -33,7 +33,9 @@ public sealed record ReactorChatTimelineProps(
     bool SuggestionsDisabled = false,
     ReactorChatIdentity? AssistantIdentity = null,
     Action<string>? OnOpenCheckpoints = null,
-    long HistoryRevision = 0);
+    long HistoryRevision = 0,
+    double ViewportWidth = 800,
+    Func<string, bool>? TryCopyText = null);
 
 public sealed record ReactorChatIdentity(
     string? DisplayName = null,
@@ -51,6 +53,8 @@ public sealed class ReactorChatTimeline : Component<ReactorChatTimelineProps>
         var props = Props;
         var (speakingEntryId, setSpeakingEntryId) = UseState<string?>(null, threadSafe: true);
         var (hoveredEntryId, setHoveredEntryId) = UseState<string?>(null, threadSafe: true);
+        var (viewportWidth, setViewportWidth) = UseState(800d);
+        var (navigationVisible, setNavigationVisible) = UseState(false);
         var speechOperation = UseRef(0);
         var mounted = UseRef(true);
         var toolActivityExpansionState = UseRef<ChatToolActivityExpansionState>(new());
@@ -100,7 +104,7 @@ public sealed class ReactorChatTimeline : Component<ReactorChatTimelineProps>
             }
         }
 
-        var rows = BuildRows(props);
+        var rows = BuildRows(props with { ViewportWidth = viewportWidth });
         var initialTailRequestKey =
             $"{props.Timeline.SessionId ?? "none"}|{props.Timeline.TimelineGeneration}|{props.HistoryRevision}|{props.Timeline.ScrollToBottomToken}";
         var displayedTailKey = rows.Count > 0 ? rows[^1].Key : null;
@@ -129,6 +133,8 @@ public sealed class ReactorChatTimeline : Component<ReactorChatTimelineProps>
                             SetEntryHovered,
                             toolActivityExpansionState.Current))
                         .Background(Theme.Ref("SubtleFillColorTransparentBrush"))
+                        .MaxWidth(ChatVisuals.ReadingWidth - 2 * ChatVisuals.ProseInset + 2 * AvatarGutter(row))
+                        .Margin(ChatVisuals.Gutter(viewportWidth) + ChatVisuals.ProseInset - AvatarGutter(row), 0)
                         .OnPointerEntered((_, _) => SetEntryHovered(row.Entry?.Id ?? row.Key, true))
                         .OnPointerExited((_, _) => SetEntryHovered(row.Entry?.Id ?? row.Key, false))
                         .HAlign(HorizontalAlignment.Stretch))
@@ -158,7 +164,7 @@ public sealed class ReactorChatTimeline : Component<ReactorChatTimelineProps>
             IsItemInvokedEnabled = false,
         };
         return Grid(
-            [GridSize.Star(), GridSize.Auto],
+            [GridSize.Star()],
             [GridSize.Star()],
             itemsView
                 .BindVerticalScrollController(
@@ -168,16 +174,26 @@ public sealed class ReactorChatTimeline : Component<ReactorChatTimelineProps>
                     initialTailRequestKey,
                     displayedTailKey)
                 .Grid(column: 0)
+                .Margin(0, ChatVisuals.TranscriptTopInset, 0, 0)
                 .AutomationName("Chat messages")
                 .HAlign(HorizontalAlignment.Stretch)
                 .VAlign(VerticalAlignment.Stretch),
             AnnotatedScrollBar()
                 .Ref(annotatedScrollBarRef)
-                .Width(32)
-                .Grid(column: 1)
+                .Width(ChatVisuals.RailWidth(viewportWidth))
+                .MinWidth(0)
+                .Opacity(navigationVisible ? 1 : 0)
+                .OnGotFocus((_, _) => setNavigationVisible(true))
+                .OnLostFocus((_, _) => setNavigationVisible(false))
+                .Grid(column: 0)
+                .HAlign(HorizontalAlignment.Right)
                 .AutomationName("Chat message navigation"))
             .HAlign(HorizontalAlignment.Stretch)
-            .VAlign(VerticalAlignment.Stretch);
+            .VAlign(VerticalAlignment.Stretch)
+            .OnPointerEntered((_, _) => setNavigationVisible(true))
+            .OnPointerExited((_, _) => setNavigationVisible(false))
+            .OnMount(control => ChatVisuals.Observe(control, setViewportWidth))
+            .OnUnmount(ChatVisuals.StopObserving);
     }
 
     public static string RowKey(ChatTimelinePresentationContext props, ChatTimelineItem entry) =>
@@ -187,6 +203,10 @@ public sealed class ReactorChatTimeline : Component<ReactorChatTimelineProps>
                 props.TimelineGeneration,
                 entry.Id)
             : $"thread:{props.SessionId ?? "none"}|generation:{props.TimelineGeneration}|kind:{entry.Kind}|id:{entry.Id}";
+
+    private static double AvatarGutter(ReactorTimelineRow row) =>
+        row.Entry?.Kind == ChatTimelineItemKind.Assistant && row.Props.ViewportWidth >= ChatVisuals.AvatarBreakpoint
+            ? ChatVisuals.AvatarSlot : 0;
 
     public static string SyntheticRowKey(ChatTimelinePresentationContext props, string id, ChatTimelineItemKind kind) =>
         $"thread:{props.SessionId ?? "none"}|generation:{props.TimelineGeneration}|kind:{kind}|synthetic:{id}";
@@ -249,7 +269,7 @@ public sealed class ReactorChatTimeline : Component<ReactorChatTimelineProps>
         Action<string, bool> setEntryHovered,
         ChatToolActivityExpansionState toolActivityExpansionState) => row.Kind switch
     {
-        ReactorTimelineRowKind.Loading => BuildLoading(),
+        ReactorTimelineRowKind.Loading => BuildLoading(row),
         ReactorTimelineRowKind.Empty => BuildEmpty(row),
         ReactorTimelineRowKind.LoadEarlier => BuildLoadEarlier(row),
         ReactorTimelineRowKind.Thinking => BuildThinking(row),
@@ -268,25 +288,28 @@ public sealed class ReactorChatTimeline : Component<ReactorChatTimelineProps>
         _ => Empty(),
     };
 
-    private static Element BuildLoading()
+    private static Element BuildLoading(ReactorTimelineRow row)
     {
+        var available = Math.Max(32, ChatVisuals.ProseWidth(row.Props.ViewportWidth));
         var placeholders = new[] { 260d, 180d, 320d, 140d }
             .Select(width => Border(Empty())
-                .Width(width)
-                .Height(32)
-                .CornerRadius(12)
-                .Background(BrushFor(
-                    "SubtleFillColorSecondaryBrush",
-                    Color.FromArgb(0x38, 0x80, 0x80, 0x80)))
+                .Width(Math.Min(width, available))
+                .Height(12)
+                .CornerRadius(4)
+                .Background(Theme.Ref("SubtleFillColorSecondaryBrush"))
                 .HAlign(width is 180d or 140d
                     ? HorizontalAlignment.Right
                     : HorizontalAlignment.Left))
             .Cast<Element>()
             .ToArray();
 
-        return VStack(12, placeholders)
-            .Margin(52, 24, 52, 24)
-            .HAlign(HorizontalAlignment.Stretch);
+        return VStack(12,
+                Text(LocalizedOrDefault("Chat_Timeline_Loading", "Loading messages..."), 12,
+                    FontWeights.Normal, "ChatSecondaryTextBrush"),
+                VStack(12, placeholders))
+            .Margin(0, 32)
+            .HAlign(HorizontalAlignment.Stretch)
+            .LiveRegion(Microsoft.UI.Xaml.Automation.Peers.AutomationLiveSetting.Polite);
     }
 
     private static Element BuildEmpty(ReactorTimelineRow row)
@@ -294,14 +317,15 @@ public sealed class ReactorChatTimeline : Component<ReactorChatTimelineProps>
         var children = new List<Element>
         {
             Image("ms-appx:///Assets/Square44x44Logo.targetsize-256_altform-unplated.png")
-                .Size(64, 64)
+                .Size(40, 40)
                 .AutomationName("OpenClaw")
                 .HAlign(HorizontalAlignment.Center),
             Text(
                     LocalizedOrDefault("Chat_ZeroState_WelcomeTitle", "Welcome to OpenClaw"),
-                    24,
+                    20,
                     FontWeights.SemiBold)
-                .HAlign(HorizontalAlignment.Center),
+                .TextAlignment(TextAlignment.Center)
+                .HAlign(HorizontalAlignment.Stretch),
             Text(
                     LocalizedOrDefault("Chat_ZeroState_WelcomeSubtitle", "How can I help you today?"),
                     14,
@@ -317,15 +341,17 @@ public sealed class ReactorChatTimeline : Component<ReactorChatTimelineProps>
             "Give me a quick tour of OpenClaw",
         })
         {
-            children.Add(Button(suggestion, () => row.Props.OnSuggestionPicked?.Invoke(suggestion))
+            children.Add(Button(TextBlock(suggestion).TextWrapping(TextWrapping.Wrap).TextAlignment(TextAlignment.Center),
+                    () => row.Props.OnSuggestionPicked?.Invoke(suggestion))
                 .IsEnabled(!row.Props.SuggestionsDisabled)
+                .MinHeight(40)
                 .HAlign(HorizontalAlignment.Stretch)
                 .AutomationName(suggestion));
         }
 
         return VStack(12, children.ToArray())
-            .Margin(24, 52, 24, 24)
-            .MaxWidth(520)
+            .Margin(0, 48, 0, 24)
+            .MaxWidth(400)
             .HAlign(HorizontalAlignment.Center)
             .VAlign(VerticalAlignment.Center);
     }
@@ -348,7 +374,7 @@ public sealed class ReactorChatTimeline : Component<ReactorChatTimelineProps>
                 FontWeights.Normal,
                 "TextFillColorSecondaryBrush")
             .FontStyle(global::Windows.UI.Text.FontStyle.Italic)
-            .Margin(64, 8, 24, 8);
+            .Margin(0, 12);
     }
 
     private static Element BuildEntry(
@@ -397,15 +423,13 @@ public sealed class ReactorChatTimeline : Component<ReactorChatTimelineProps>
                     messageText,
                     14,
                     FontWeights.Normal,
-                    "TextOnAccentFillColorPrimaryBrush")
+                    "ChatUserTextBrush")
                 .IsTextSelectionEnabled(true));
         }
 
         var bubble = Border(VStack(8, content.ToArray()))
-            .Background(BrushFor(
-                "AccentFillColorSecondaryBrush",
-                Color.FromArgb(0xFF, 0x4C, 0x66, 0xCC)))
-            .CornerRadius(16)
+            .Background(Theme.Ref("ChatUserBrush"))
+            .CornerRadius(ChatVisuals.SurfaceRadius)
             .Padding(16, 12)
             .MaxWidth(720)
             .HAlign(HorizontalAlignment.Right);
@@ -417,10 +441,10 @@ public sealed class ReactorChatTimeline : Component<ReactorChatTimelineProps>
                         row.Props.Timeline.ShowToolCalls
                             ? UserMetadata(row, entry, isHovered)
                             : Empty(),
-                        CopyAction(accessibleText, isHovered, setEntryHovered, entry.Id))
+                        CopyAction(accessibleText, setEntryHovered, entry.Id, row.Key, row.Props.TryCopyText))
                     .Margin(16, 2, 4, 0)
                     .HAlign(HorizontalAlignment.Right))
-            .Margin(72, 4, 20, 4)
+            .Margin(32, 8, 0, row.Props.ViewportWidth < ChatVisuals.FooterBreakpoint ? 4 : 8)
             .HAlign(HorizontalAlignment.Stretch)
             .AutomationName(accessibleText);
     }
@@ -436,7 +460,7 @@ public sealed class ReactorChatTimeline : Component<ReactorChatTimelineProps>
         var content = new List<Element>();
         ChatEntryMetadata? metadata = null;
         if (!string.IsNullOrWhiteSpace(entry.Text))
-            content.Add(BuildSafeMarkdown(entry.Text));
+            content.Add(BuildSafeMarkdown(entry.Text, row.Props.TryCopyText));
         if (row.Props.Timeline.EntryMetadata?.TryGetValue(entry.Id, out var resolvedMetadata) == true)
             metadata = resolvedMetadata;
         if (metadata?.AssistantContent is { Media.Count: > 0 } assistantContent)
@@ -461,21 +485,13 @@ public sealed class ReactorChatTimeline : Component<ReactorChatTimelineProps>
         if (content.Count == 0)
             content.Add(BuildSafeMarkdown(string.Empty));
 
-        var bubble = Border(VStack(8, content.ToArray()))
-            .Background(BrushFor(
-                "SubtleFillColorSecondaryBrush",
-                Color.FromArgb(0x24, 0x80, 0x80, 0x80)))
-            .BorderBrush(BrushFor(
-                "ControlStrokeColorDefaultBrush",
-                Color.FromArgb(0x40, 0x80, 0x80, 0x80)))
-            .BorderThickness(1)
-            .CornerRadius(16)
-            .Padding(16, 12)
-            .MaxWidth(720)
-            .HAlign(HorizontalAlignment.Left);
+        var bubble = Border(VStack(ChatVisuals.BlockGap, content.ToArray()))
+            .Padding(0, 4)
+            .HAlign(HorizontalAlignment.Stretch);
 
+        var turnInset = row.Props.ViewportWidth < ChatVisuals.FooterBreakpoint ? 8 : 12;
         return Grid(
-                [GridSize.Auto, GridSize.Star()],
+                [GridSize.Auto, GridSize.Star(), GridSize.Auto],
                 [GridSize.Auto],
                 BuildAssistantAvatarSlot(row)
                     .Grid(column: 0)
@@ -492,10 +508,14 @@ public sealed class ReactorChatTimeline : Component<ReactorChatTimelineProps>
                             setEntryHovered,
                             includeMetadata: row.IsAssistantRunEnd && row.Props.Timeline.ShowToolCalls))
                     .HAlign(HorizontalAlignment.Stretch)
-                    .Grid(column: 1))
-            .Margin(20, row.IsAssistantRunStart ? 6 : 1, 72, row.IsAssistantRunEnd ? 6 : 1)
+                    .Grid(column: 1),
+                Border(Empty()).Width(AvatarGutter(row))
+                    .Set(border => border.IsHitTestVisible = false)
+                    .AccessibilityView(Microsoft.UI.Xaml.Automation.Peers.AccessibilityView.Raw)
+                    .Grid(column: 2))
+            .Margin(0, row.IsAssistantRunStart ? turnInset : 4, 0, row.IsAssistantRunEnd ? turnInset : 4)
             .HAlign(HorizontalAlignment.Stretch)
-            .AutomationName(BuildAccessibleAssistantText(entry.Text, metadata?.AssistantContent));
+            .AutomationName($"{row.Props.AssistantIdentity?.DisplayName ?? row.Props.Timeline.AssistantSenderLabel}: {BuildAccessibleAssistantText(entry.Text, metadata?.AssistantContent)}");
     }
 
     private static string BuildAccessibleAssistantText(
@@ -518,6 +538,9 @@ public sealed class ReactorChatTimeline : Component<ReactorChatTimelineProps>
 
     private static Element BuildAssistantAvatarSlot(ReactorTimelineRow row)
     {
+        if (row.Props.ViewportWidth < ChatVisuals.AvatarBreakpoint)
+            return Empty();
+
         if (!row.IsAssistantRunStart)
             return Border(Empty())
                 .Size(36, 36)
@@ -545,10 +568,13 @@ public sealed class ReactorChatTimeline : Component<ReactorChatTimelineProps>
             .AutomationName(identity?.DisplayName ?? "Assistant");
     }
 
-    internal static Element BuildSafeMarkdown(string? text)
+    internal static Element BuildSafeMarkdown(string? text, Func<string, bool>? tryCopy = null)
     {
         var options = new MarkdownOptions
         {
+            Heading = ChatMarkdownPresentation.Heading,
+            Paragraph = ChatMarkdownPresentation.Paragraph,
+            CodeBlock = (code, language) => ChatMarkdownPresentation.CodeBlock(code, language, tryCopy: tryCopy),
             ParserFlags = MarkdownParserFlags.Tables | MarkdownParserFlags.NoHtml,
             ListItem = BuildWrappingMarkdownListItem,
             Image = (alt, _) => Text(
@@ -566,7 +592,8 @@ public sealed class ReactorChatTimeline : Component<ReactorChatTimelineProps>
                 .IsTextSelectionEnabled(true),
         };
 
-        return Microsoft.UI.Reactor.Factories.Markdown(ChatMarkdownSanitizer.Sanitize(text), options);
+        return ChatMarkdownPresentation.MessageBlocks(
+            Microsoft.UI.Reactor.Factories.Markdown(ChatMarkdownSanitizer.Sanitize(text), options));
     }
 
     private static Element BuildWrappingMarkdownListItem(Element defaultElement)
@@ -591,10 +618,10 @@ public sealed class ReactorChatTimeline : Component<ReactorChatTimelineProps>
         bool includeMetadata)
     {
         var children = new List<Element>();
-        if (includeMetadata)
-            children.Add(HoverMetadata(Footer(row, entry, HorizontalAlignment.Left), isHovered));
-
-        children.Add(CopyAction(entry.Text, isHovered, setEntryHovered, entry.Id));
+        var sender = row.Props.AssistantIdentity?.DisplayName ?? row.Props.Timeline.AssistantSenderLabel;
+        var metadataText = includeMetadata ? FooterText(row, entry) : string.Empty;
+        var identity = string.IsNullOrWhiteSpace(metadataText) ? sender : $"{sender} · {metadataText}";
+        children.Add(CopyAction(entry.Text, setEntryHovered, entry.Id, row.Key, row.Props.TryCopyText));
 
         if (row.Props.Timeline.OnReadAloud is not null || row.Props.Timeline.OnStopSpeaking is not null)
         {
@@ -610,25 +637,34 @@ public sealed class ReactorChatTimeline : Component<ReactorChatTimelineProps>
                 () => setEntryHovered(entry.Id, false)));
         }
 
-        return HStack(8, children.ToArray())
-            .Margin(4, 2, 16, 0)
-            .HAlign(HorizontalAlignment.Left);
+        return Grid(
+                [GridSize.Auto, GridSize.Star()],
+                [GridSize.Auto],
+                Text(identity, 12, FontWeights.Normal, "ChatSecondaryTextBrush")
+                    .MaxWidth(Math.Max(80, ChatVisuals.ProseWidth(row.Props.ViewportWidth)
+                        - children.Count * 36 - 8))
+                    .TextTrimming(TextTrimming.CharacterEllipsis)
+                    .TextWrapping(TextWrapping.NoWrap)
+                    .VAlign(VerticalAlignment.Center)
+                    .ToolTip(identity)
+                    .Grid(column: 0),
+                HStack(4, children.ToArray()).Margin(8, 0, 0, 0)
+                    .HAlign(HorizontalAlignment.Left).Grid(column: 1))
+            .Margin(0, 4, 0, 0)
+            .HAlign(HorizontalAlignment.Stretch);
     }
 
     private static Element CopyAction(
         string? text,
-        bool isVisible,
         Action<string, bool> setEntryHovered,
-        string entryId)
+        string entryId,
+        string identity,
+        Func<string, bool>? tryCopy)
     {
         var label = LocalizedOrDefault("Chat_Assistant_Action_Copy", "Copy");
-        return CompactIconAction(
-            "\uE8C8",
-            label,
-            () => ClipboardHelper.CopyText(text ?? string.Empty, flush: true),
-            isVisible,
-            () => setEntryHovered(entryId, true),
-            () => setEntryHovered(entryId, false));
+        return Component<ChatCopyButton, ChatCopyButtonProps>(new(
+            identity, text ?? string.Empty, label, tryCopy,
+            focused => setEntryHovered(entryId, focused)));
     }
 
     private static Element CompactIconAction(
@@ -641,14 +677,15 @@ public sealed class ReactorChatTimeline : Component<ReactorChatTimelineProps>
     {
         return Button(
                 TextBlock(glyph)
-                    .FontSize(12)
+                    .FontSize(14)
                     .FontFamily(FluentIconCatalog.SymbolThemeFontFamily)
+                    .Set(text => text.IsTextScaleFactorEnabled = false)
                     .Foreground(Theme.SecondaryText),
                 onClick)
-            .Width(20)
-            .Height(20)
-            .MinWidth(20)
-            .MinHeight(20)
+            .Width(32)
+            .Height(32)
+            .MinWidth(32)
+            .MinHeight(32)
             .Padding(0)
             .Resources(resources => resources
                 .Set("ButtonBackground", Theme.Ref("SubtleFillColorTransparentBrush"))
@@ -661,9 +698,9 @@ public sealed class ReactorChatTimeline : Component<ReactorChatTimelineProps>
             .ToolTip(label)
             .OnGotFocus((_, _) => onGotFocus())
             .OnLostFocus((_, _) => onLostFocus())
-            .Opacity(isVisible ? 1 : 0)
+            .Opacity(isVisible ? 1 : 0.7)
             .IsTabStop(true)
-            .Set(button => button.IsHitTestVisible = isVisible);
+            .Set(button => button.IsHitTestVisible = true);
     }
 
     private static (string Message, IReadOnlyList<ChatAttachmentPresentation> Attachments) ParseAttachments(string? text)
@@ -730,14 +767,16 @@ public sealed class ReactorChatTimeline : Component<ReactorChatTimelineProps>
             var pixelWidth = bitmap.PixelWidth > 0 ? bitmap.PixelWidth : (int)maxWidth;
             var pixelHeight = bitmap.PixelHeight > 0 ? bitmap.PixelHeight : (int)maxHeight;
             var scale = Math.Min(Math.Min(maxWidth / pixelWidth, maxHeight / pixelHeight), 1.0);
-            return Border(Empty())
-                .Background(new ImageBrush
+            return Viewbox(Border(Empty())
+                    .Background(new ImageBrush { ImageSource = bitmap, Stretch = Stretch.Uniform })
+                    .Size(pixelWidth * scale, pixelHeight * scale)
+                    .CornerRadius(8))
+                .Set(viewbox =>
                 {
-                    ImageSource = bitmap,
-                    Stretch = Stretch.UniformToFill,
+                    viewbox.Stretch = Stretch.Uniform;
+                    viewbox.StretchDirection = StretchDirection.DownOnly;
                 })
-                .Size(pixelWidth * scale, pixelHeight * scale)
-                .CornerRadius(8)
+                .MaxWidth(pixelWidth * scale).MaxHeight(pixelHeight * scale)
                 .HAlign(HorizontalAlignment.Right)
                 .AutomationName(attachment.DisplayFileName);
         }
@@ -746,8 +785,9 @@ public sealed class ReactorChatTimeline : Component<ReactorChatTimelineProps>
                 attachment.IsImage ? "\uEB9F" : "\uE8A5",
                 16,
                 FontWeights.Normal,
-                "TextOnAccentFillColorPrimaryBrush")
+                "ChatTextBrush")
             .FontFamily(FluentIconCatalog.SymbolThemeFontFamily)
+            .Set(text => text.IsTextScaleFactorEnabled = false)
             .Center();
         var glyphBackground = Border(glyph)
             .Size(32, 32)
@@ -755,9 +795,9 @@ public sealed class ReactorChatTimeline : Component<ReactorChatTimelineProps>
             .Background(Theme.Ref("SubtleFillColorSecondaryBrush"));
         var name = Text(
                 attachment.DisplayFileName,
-                13,
+                14,
                 FontWeights.Normal,
-                "TextOnAccentFillColorPrimaryBrush")
+                "ChatTextBrush")
             .TextWrapping(TextWrapping.NoWrap)
             .TextTrimming(TextTrimming.CharacterEllipsis)
             .MaxWidth(240)
@@ -765,19 +805,23 @@ public sealed class ReactorChatTimeline : Component<ReactorChatTimelineProps>
 
         var mimeType = Text(
                 attachment.MimeType,
-                11,
+                12,
                 FontWeights.Normal,
-                "TextOnAccentFillColorSecondaryBrush")
+                "ChatSecondaryTextBrush")
             .TextWrapping(TextWrapping.NoWrap)
             .TextTrimming(TextTrimming.CharacterEllipsis)
             .MaxWidth(240);
 
-        return Border(HStack(8, glyphBackground, VStack(1, name, mimeType)))
-            .Padding(8, 6, 12, 6)
-            .CornerRadius(6)
+        return Border(Grid(
+                [GridSize.Auto, GridSize.Star()],
+                [GridSize.Auto],
+                glyphBackground.Margin(0, 0, 8, 0).Grid(column: 0),
+                VStack(4, name, mimeType).Grid(column: 1)))
+            .Padding(8)
+            .CornerRadius(8)
             .BorderThickness(1)
-            .BorderBrush(Theme.Ref("ControlStrokeColorDefaultBrush"))
-            .Background(Theme.Ref("SubtleFillColorSecondaryBrush"))
+            .BorderBrush(Theme.Ref("ChatStrokeBrush"))
+            .Background(Theme.Ref("ChatCardBrush"))
             .AutomationName($"{attachment.DisplayFileName}, {attachment.MimeType}");
     }
 
@@ -813,7 +857,7 @@ public sealed class ReactorChatTimeline : Component<ReactorChatTimelineProps>
                 content)
             .HAlign(HorizontalAlignment.Stretch)
             .HorizontalContentAlignment(HorizontalAlignment.Stretch)
-            .Margin(52, 4);
+            .Margin(0, ChatVisuals.BlockGap / 2);
     }
 
     private static Element BuildPermission(ReactorTimelineRow row, ChatTimelineItem entry)
@@ -852,7 +896,7 @@ public sealed class ReactorChatTimeline : Component<ReactorChatTimelineProps>
                         .AutomationName(label);
                 })
                 .ToArray();
-            children.Add(HStack(8, actions));
+            children.Add(row.Props.ViewportWidth < ChatVisuals.FooterBreakpoint ? VStack(8, actions) : HStack(8, actions));
             children.Add(Text(
                 LocalizedOrDefault(
                     "Chat_Permission_Caption",
@@ -872,7 +916,7 @@ public sealed class ReactorChatTimeline : Component<ReactorChatTimelineProps>
         }
 
         return Border(VStack(8, children.ToArray()))
-            .Margin(52, 8)
+            .Margin(0, 8)
             .Padding(16)
             .Background(BrushFor(
                 "CardBackgroundFillColorDefaultBrush",
@@ -932,19 +976,11 @@ public sealed class ReactorChatTimeline : Component<ReactorChatTimelineProps>
                 FontWeights.Normal,
                 isError ? "SystemFillColorCriticalBrush" : "TextFillColorSecondaryBrush")
             .TextAlignment(TextAlignment.Center))
-            .Margin(40, 4)
-            .Padding(10, 4)
+            .Margin(0, 8)
+            .Padding(12, 8)
             .HAlign(HorizontalAlignment.Center)
             .CornerRadius(12)
-            .Background(BrushFor(
-                isError
-                    ? "SystemFillColorCriticalBackgroundBrush"
-                    : "SubtleFillColorTertiaryBrush",
-                Color.FromArgb(
-                    isError ? (byte)0x2E : (byte)0x24,
-                    isError ? (byte)0xC8 : (byte)0x80,
-                    isError ? (byte)0x32 : (byte)0x80,
-                    isError ? (byte)0x32 : (byte)0x80)));
+            .Background(Theme.Ref(isError ? "SystemFillColorCriticalBackgroundBrush" : "SubtleFillColorTertiaryBrush"));
     }
 
     private static Element BuildCompaction(
@@ -982,10 +1018,9 @@ public sealed class ReactorChatTimeline : Component<ReactorChatTimelineProps>
             .AutomationName(presentation.AutomationName);
     }
 
-    private static Element Footer(
+    private static string FooterText(
         ReactorTimelineRow row,
-        ChatTimelineItem entry,
-        HorizontalAlignment horizontalAlignment)
+        ChatTimelineItem entry)
     {
         ChatEntryMetadata? metadata = null;
         if (row.Props.Timeline.EntryMetadata?.TryGetValue(entry.Id, out var resolvedMetadata) == true)
@@ -997,15 +1032,9 @@ public sealed class ReactorChatTimeline : Component<ReactorChatTimelineProps>
             && row.Props.Timeline.ShowToolCalls
             ? row.Props.Timeline.DefaultUsageSummary
             : null;
-        return Text(
-                string.Join(
+        return string.Join(
                     " · ",
-                    new[] { time, model, usageSummary }.Where(static value => !string.IsNullOrWhiteSpace(value))),
-                11,
-                FontWeights.Normal,
-                "TextFillColorSecondaryBrush")
-            .Margin(16, 2, 16, 0)
-            .HAlign(horizontalAlignment);
+                    new[] { time, model, usageSummary }.Where(static value => !string.IsNullOrWhiteSpace(value)));
     }
 
     private static Element UserMetadata(
@@ -1047,7 +1076,12 @@ public sealed class ReactorChatTimeline : Component<ReactorChatTimelineProps>
             .TextWrapping(TextWrapping.Wrap)
             .FontSize(fontSize)
             .FontWeight(weight ?? FontWeights.Normal)
-            .Foreground(BrushFor(foregroundResource, Microsoft.UI.Colors.Black));
+            .Foreground(Theme.Ref(foregroundResource))
+            .Set(block =>
+            {
+                block.LineHeight = fontSize * 1.5;
+                block.LineStackingStrategy = LineStackingStrategy.MaxHeight;
+            });
 
     private static string PermissionActionLabel(string action) =>
         string.Equals(action, ChatPermissionActionKeys.AllowOnce, StringComparison.OrdinalIgnoreCase)

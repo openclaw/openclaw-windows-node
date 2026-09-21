@@ -3245,6 +3245,122 @@ public class OpenClawGatewayClientTests
         Assert.True(Assert.Single(helper.GetSessionList()).IsMain);
     }
 
+    [Theory]
+    [InlineData("""[{"key":"agent:main:main","status":"idle"}]""")]
+    [InlineData("""{"agent:main:main":{"status":"idle"}}""")]
+    public void ParseSessions_AuthoritativeThinkingOmissionClearsOnlyThinkingOverride(string refreshed)
+    {
+        var helper = new GatewayClientTestHelper();
+        using var client = helper.Client;
+        helper.ParseSessionsPayload("""[{"key":"agent:main:main","thinkingLevel":"off","model":"retained-model","verboseLevel":"on"}]""");
+        var previous = Assert.Single(helper.GetSessionList());
+
+        helper.ParseSessionsPayload(refreshed);
+
+        var current = Assert.Single(helper.GetSessionList());
+        Assert.Null(current.ThinkingLevel);
+        Assert.Equal("retained-model", current.Model);
+        Assert.Equal("on", current.VerboseLevel);
+        Assert.Equal("off", previous.ThinkingLevel);
+    }
+
+    [Theory]
+    [InlineData("""[{"key":"agent:main:main","thinkingLevel":null}]""", null)]
+    [InlineData("""{"agent:main:main":{"thinkingLevel":null}}""", null)]
+    [InlineData("""[{"key":"agent:main:main","thinkingLevel":"off"}]""", "off")]
+    public void ParseSessions_ExplicitThinkingValueIsAuthoritative(string refreshed, string? expected)
+    {
+        var helper = new GatewayClientTestHelper();
+        using var client = helper.Client;
+        helper.ParseSessionsPayload("""[{"key":"agent:main:main","thinkingLevel":"high"}]""");
+
+        helper.ParseSessionsPayload(refreshed);
+
+        Assert.Equal(expected, Assert.Single(helper.GetSessionList()).ThinkingLevel);
+    }
+
+    [Fact]
+    public void TrackedSessionActivity_SparseUpdatePreservesThinkingOverride()
+    {
+        var helper = new GatewayClientTestHelper();
+        using var client = helper.Client;
+        helper.ParseSessionsPayload("""[{"key":"agent:main:main","thinkingLevel":"off"}]""");
+        var update = typeof(OpenClawGatewayClient).GetMethod("UpdateTrackedSession",
+            System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)!;
+
+        update.Invoke(client, ["agent:main:main", true, "working"]);
+
+        var session = Assert.Single(helper.GetSessionList());
+        Assert.Equal("off", session.ThinkingLevel);
+        Assert.Equal("working", session.CurrentActivity);
+    }
+
+    [Fact]
+    public void ParseSessions_LegacyStatusOnlyEntryDoesNotPretendToClearThinkingMetadata()
+    {
+        var helper = new GatewayClientTestHelper();
+        using var client = helper.Client;
+        helper.ParseSessionsPayload("""[{"key":"agent:main:main","thinkingLevel":"off"}]""");
+
+        helper.ParseSessionsPayload("""{"agent:main:main":"idle"}""");
+
+        var session = Assert.Single(helper.GetSessionList());
+        Assert.Equal("off", session.ThinkingLevel);
+        Assert.Equal("idle", session.Status);
+    }
+
+    [Fact]
+    public void ParseSessions_ThinkingProfilesAndDefaultsSurviveOmissionNotIdentityChanges()
+    {
+        var helper = new GatewayClientTestHelper();
+        using var client = helper.Client;
+        helper.ParseSessionsPayload("""
+            {"defaults":{"model":"m","modelProvider":"p","thinkingLevels":[{"id":"off","label":"Off"}]},
+             "sessions":[{"key":"agent:main:main","model":"m","modelProvider":"p","thinkingLevel":"off",
+                          "thinkingLevels":[{"id":"high","label":"High"}]}]}
+            """);
+        var previous = Assert.Single(helper.GetSessionList());
+        Assert.Equal("off", Assert.Single(previous.ThinkingDefaults!.Profile!.Levels!.Value).Id);
+        Assert.Equal("high", Assert.Single(previous.ThinkingContext!.Profile!.Levels!.Value).Id);
+        helper.ParseSessionsPayload("""
+            {"defaults":{"model":"m","modelProvider":"p"},
+             "sessions":[{"key":"agent:main:main","model":"m","modelProvider":"p"}]}
+            """);
+        var cleared = Assert.Single(helper.GetSessionList());
+        Assert.Null(cleared.ThinkingLevel);
+        Assert.Equal("off", previous.ThinkingLevel);
+        Assert.Equal("high", Assert.Single(cleared.ThinkingContext!.Profile!.Levels!.Value).Id);
+        Assert.Equal("off", Assert.Single(cleared.ThinkingDefaults!.Profile!.Levels!.Value).Id);
+        helper.ParseSessionsPayload("""
+            {"defaults":{"model":"other","modelProvider":"p"},
+             "sessions":{"agent:main:main":{"model":"other","modelProvider":"p"}}}
+            """);
+        var changed = Assert.Single(helper.GetSessionList());
+        Assert.Null(changed.ThinkingContext!.Profile);
+        Assert.Null(changed.ThinkingDefaults!.Profile);
+    }
+
+    [Fact]
+    public async Task ThinkingProfiles_NewConnectionCannotReusePreviousGatewayMetadata()
+    {
+        var helper = new GatewayClientTestHelper();
+        using var client = helper.Client;
+        const string payload = """
+            {"defaults":{"model":"m","modelProvider":"p","thinkingLevels":[]},
+             "sessions":[{"key":"agent:main:main","thinkingLevels":[{"id":"off","label":"Off"}]}]}
+            """;
+        helper.ParseSessionsPayload(payload);
+        var connected = typeof(OpenClawGatewayClient).GetMethod("OnConnectedAsync",
+            System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)!;
+        await (Task)connected.Invoke(client, null)!;
+        helper.ParseSessionsPayload("""
+            {"defaults":{"model":"m","modelProvider":"p"},"sessions":[{"key":"agent:main:main"}]}
+            """);
+        var session = Assert.Single(helper.GetSessionList());
+        Assert.Null(session.ThinkingContext!.Profile);
+        Assert.Null(session.ThinkingDefaults!.Profile);
+    }
+
     [Fact]
     public void ParseSessions_EmptyArray_ClearsPreviousSessions()
     {

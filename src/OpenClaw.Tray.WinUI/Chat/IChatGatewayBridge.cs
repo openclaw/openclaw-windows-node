@@ -132,6 +132,8 @@ public sealed class GatewayClientChatBridge : IChatGatewayBridge
         _statusChangedHandler = (s, e) =>
         {
             _currentStatus = e;
+            if (e != ConnectionStatus.Connected)
+                _currentModels = null;
             StatusChanged?.Invoke(s, e);
             // Fetch the available models list whenever we connect so the
             // chat composer dropdown is populated without needing to open

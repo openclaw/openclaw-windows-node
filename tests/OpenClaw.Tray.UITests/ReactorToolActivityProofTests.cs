@@ -40,11 +40,12 @@ public sealed class ReactorToolActivityProofTests
         UIElement? root = null;
         Element? currentElement = null;
         var disposing = false;
+        ChatThemeProofScope? themeScope = null;
         try
         {
             await _ui.RunOnUIAsync(() =>
             {
-                TestApp.EnsureFluentBrushFallbacks(Application.Current.Resources);
+                themeScope = new ChatThemeProofScope("Light");
                 // Reconcile native controls without attaching them to the VSTest visual tree,
                 // where applying the unpackaged Expander template crashes Microsoft.UI.Xaml.
                 host = new ReactorHostControl();
@@ -174,6 +175,7 @@ public sealed class ReactorToolActivityProofTests
                     }
                     host.Content = null;
                     host.Dispose();
+                    themeScope?.Dispose();
                 });
             }
         }

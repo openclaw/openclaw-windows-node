@@ -7116,4 +7116,18 @@
   <data name="LocalAiPage_UnavailableProbeTitle" xml:space="preserve"><value>无法验证本地 AI 可用性</value></data>
   <data name="LocalAiPage_CheckingTitle" xml:space="preserve"><value>正在检查本地 AI 可用性</value></data>
   <data name="LocalAiPage_CheckingMessage" xml:space="preserve"><value>OpenClaw 正在检查此设备是否可以运行本地 AI。这只需要片刻。</value></data>
+  <data name="Chat_Code_Copy" xml:space="preserve"><value>复制代码</value></data>
+  <data name="Chat_Code_Label" xml:space="preserve"><value>代码块</value></data>
+  <data name="Chat_Model_Current" xml:space="preserve"><value>当前模型</value></data>
+  <data name="Chat_Model_Other" xml:space="preserve"><value>其他模型</value></data>
+  <data name="Chat_Model_NoMatches" xml:space="preserve"><value>没有匹配的模型</value></data>
+  <data name="Chat_Model_Search" xml:space="preserve"><value>搜索模型</value></data>
+  <data name="Chat_Attachment_Remove" xml:space="preserve"><value>移除附件</value></data>
+  <data name="Chat_Timeline_Loading" xml:space="preserve"><value>正在加载消息...</value></data>
+  <data name="Chat_Composer_QueuedCountSingle" xml:space="preserve"><value>1 条排队消息</value></data>
+  <data name="Chat_Copy_Copied" xml:space="preserve"><value>已复制</value></data>
+  <data name="Chat_Copy_Failed" xml:space="preserve"><value>复制失败</value></data>
+  <data name="Chat_Composer_Effort_Title" xml:space="preserve"><value>推理强度</value></data>
+  <data name="Chat_Composer_Effort_Faster" xml:space="preserve"><value>更快</value></data>
+  <data name="Chat_Composer_Effort_Smarter" xml:space="preserve"><value>更深入</value></data>
 </root>

@@ -7180,4 +7180,18 @@ Make sure the gateway is running.</value>
   <data name="LocalAiPage_UnavailableProbeTitle" xml:space="preserve"><value>Local AI availability could not be verified</value></data>
   <data name="LocalAiPage_CheckingTitle" xml:space="preserve"><value>Checking Local AI availability</value></data>
   <data name="LocalAiPage_CheckingMessage" xml:space="preserve"><value>OpenClaw is verifying whether this device can run Local AI. This only takes a moment.</value></data>
+  <data name="Chat_Code_Copy" xml:space="preserve"><value>Copy code</value></data>
+  <data name="Chat_Code_Label" xml:space="preserve"><value>Code block</value></data>
+  <data name="Chat_Model_Current" xml:space="preserve"><value>Current model</value></data>
+  <data name="Chat_Model_Other" xml:space="preserve"><value>Other models</value></data>
+  <data name="Chat_Model_NoMatches" xml:space="preserve"><value>No matching models</value></data>
+  <data name="Chat_Model_Search" xml:space="preserve"><value>Search models</value></data>
+  <data name="Chat_Attachment_Remove" xml:space="preserve"><value>Remove attachment</value></data>
+  <data name="Chat_Timeline_Loading" xml:space="preserve"><value>Loading messages...</value></data>
+  <data name="Chat_Composer_QueuedCountSingle" xml:space="preserve"><value>1 queued message</value></data>
+  <data name="Chat_Copy_Copied" xml:space="preserve"><value>Copied</value></data>
+  <data name="Chat_Copy_Failed" xml:space="preserve"><value>Copy failed</value></data>
+  <data name="Chat_Composer_Effort_Title" xml:space="preserve"><value>Effort</value></data>
+  <data name="Chat_Composer_Effort_Faster" xml:space="preserve"><value>Faster</value></data>
+  <data name="Chat_Composer_Effort_Smarter" xml:space="preserve"><value>Smarter</value></data>
 </root>

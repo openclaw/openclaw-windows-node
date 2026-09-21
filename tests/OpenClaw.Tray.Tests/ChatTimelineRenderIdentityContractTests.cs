@@ -93,7 +93,11 @@ public sealed class ChatTimelineRenderIdentityContractTests
         Assert.Contains("timeline.TurnActive || hasPendingQueuedSend", root);
         Assert.Contains("message.SendState is ChatQueuedMessageSendState.Queued or ChatQueuedMessageSendState.Sending", root);
         Assert.Contains(".IsEnabled(enabled)", composer);
-        Assert.Equal(3, Regex.Matches(composer, @"!inputs\.MessageOptionsDisabled").Count);
+        Assert.Equal(2, Regex.Matches(composer, @"inputs\.CanChangeSessionOptions").Count);
+        Assert.Contains("inputs.CanChangeThinking", composer);
+        Assert.Contains("CanChangeThinking => CanChangeSessionOptions",
+            Read("src", "OpenClaw.Tray.WinUI", "Chat", "ChatComposerInputs.cs"));
+        Assert.Contains("!inputs.MessageOptionsDisabled && inputs.AvailableChannels.Count > 1", composer);
     }
 
     [Fact]

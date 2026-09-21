@@ -83,10 +83,10 @@ internal static class ToolCallCardRenderer
         }
 
         return Border(expander)
-            .Margin(isNested ? 0 : 68, isNested ? 0 : 4, isNested ? 0 : 40, isNested ? 0 : 4)
-            .Padding(isNested ? 0 : 12, isNested ? 0 : 8, isNested ? 0 : 12, isNested ? 0 : 8)
-            .BorderThickness(isNested ? 0 : 1)
-            .CornerRadius(isNested ? 4 : 12)
+            .Margin(0, isNested ? 0 : 8)
+            .Padding(0)
+            .BorderThickness(0)
+            .CornerRadius(ChatVisuals.SurfaceRadius)
             .Background(BrushFor(
                 isNested
                     ? "SubtleFillColorTransparentBrush"
@@ -108,10 +108,10 @@ internal static class ToolCallCardRenderer
         var body = RichTextBlock(content)
             .Set(text =>
             {
+                text.Style = (Style)Application.Current.Resources["ChatRichTextStyle"];
                 text.TextWrapping = TextWrapping.Wrap;
                 text.FontSize = 12;
                 text.FontWeight = FontWeights.Normal;
-                text.Foreground = BrushFor("TextFillColorSecondaryBrush", Microsoft.UI.Colors.Black);
                 text.FontFamily = new FontFamily("Cascadia Code, Consolas");
                 text.IsTextSelectionEnabled = true;
             });
@@ -202,16 +202,16 @@ internal static class ToolCallCardRenderer
             .WithKey(activity.Key);
 
         return Border(expander)
-            .Margin(68, 4, 40, 4)
-            .Padding(8, 4)
+            .Margin(0, 8)
+            .Padding(0)
             .Background(BrushFor(
                 "CardBackgroundFillColorDefaultBrush",
                 Color.FromArgb(0x24, 0x80, 0x80, 0x80)))
             .BorderBrush(BrushFor(
                 "ControlStrokeColorDefaultBrush",
                 Color.FromArgb(0x40, 0x80, 0x80, 0x80)))
-            .BorderThickness(1)
-            .CornerRadius(12);
+            .BorderThickness(0)
+            .CornerRadius(ChatVisuals.SurfaceRadius);
     }
 
     internal static string FormatSummary(ChatToolActivitySummary summary)

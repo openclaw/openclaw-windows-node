@@ -135,6 +135,43 @@ public sealed class ChatComposerViewModelTests
         Assert.Equal(1, vm.Inputs!.Revision);
     }
 
+    [Theory]
+    [InlineData("session")]
+    [InlineData("defaults")]
+    [InlineData("catalog")]
+    [InlineData("channel")]
+    public void ApplyInputs_IdenticalAdvertisedProfilesDoNotNotifyButChangedLabelsDo(string source)
+    {
+        ChatComposerInputs Snapshot(long revision, bool changed = false)
+        {
+            var context = new ThinkingContext(new("p", "m", "r"),
+                new([new("off", "Off"), new("high", changed ? "Reason deeply" : "High")], "off"));
+            var inputs = MakeInputs(revision);
+            return source switch
+            {
+                "session" => inputs with { CurrentThread = inputs.CurrentThread with { ThinkingContext = context } },
+                "defaults" => inputs with { CurrentThread = inputs.CurrentThread with { ThinkingDefaults = context } },
+                "catalog" => inputs with { ModelChoices = [new("m", "Model", "p", ThinkingContext: context)] },
+                "channel" => inputs with { AvailableChannels = [MakeThread("other") with { ThinkingContext = context }] },
+                _ => throw new System.ArgumentOutOfRangeException(nameof(source)),
+            };
+        }
+
+        using var vm = new ChatComposerViewModel(new RecordingUiDispatcher(), initialSpeakerMuted: false);
+        var notifications = 0;
+        vm.PropertyChanged += (_, _) => notifications++;
+        vm.ApplyInputs(Snapshot(1));
+        var renderRevision = vm.RenderRevision;
+
+        vm.ApplyInputs(Snapshot(2));
+
+        Assert.Equal(1, notifications);
+        Assert.Equal(renderRevision, vm.RenderRevision);
+        vm.ApplyInputs(Snapshot(3, changed: true));
+        Assert.Equal(2, notifications);
+        Assert.Equal(renderRevision + 1, vm.RenderRevision);
+    }
+
     [Fact]
     public void ApplyInputs_NewerEquivalentProjection_AdvancesStaleWatermark()
     {

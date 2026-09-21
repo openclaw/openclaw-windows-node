@@ -144,6 +144,17 @@ internal sealed class ChatPresentationState
 
     internal void LeaveConnected()
     {
+        _modelChoices = _modelChoices.Select(choice => choice with
+        {
+            ThinkingContext = null, Reasoning = null,
+        }).ToArray();
+        _sessions = _sessions.Select(session =>
+        {
+            var copy = session.Clone();
+            copy.ThinkingContext = null;
+            copy.ThinkingDefaults = null;
+            return copy;
+        }).ToArray();
         _sessionsListReceived = false;
         _commandsEpoch++;
         _commandCatalog = null;

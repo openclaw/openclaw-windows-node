@@ -26,13 +26,14 @@ public sealed class ReactorMarkdownListProofTests
     {
         await _ui.ResetContainerAsync();
         ReactorHostControl? host = null;
+        ChatThemeProofScope? themeScope = null;
         UIElement? root = null;
         double narrowHeight = 0;
         try
         {
             await _ui.RunOnUIAsync(() =>
             {
-                TestApp.EnsureFluentBrushFallbacks(Application.Current.Resources);
+                themeScope = new ChatThemeProofScope("Light");
                 host = new ReactorHostControl { Width = 240, VerticalAlignment = VerticalAlignment.Top };
                 root = host.Reconciler.Mount(
                     ReactorChatTimeline.BuildSafeMarkdown(prefix + LongText), static () => { });
@@ -79,6 +80,7 @@ public sealed class ReactorMarkdownListProofTests
                     host.Content = null;
                     host.Dispose();
                 });
+            await _ui.RunOnUIAsync(() => themeScope?.Dispose());
         }
     }
 
@@ -87,11 +89,12 @@ public sealed class ReactorMarkdownListProofTests
     {
         await _ui.ResetContainerAsync();
         ReactorHostControl? host = null;
+        ChatThemeProofScope? themeScope = null;
         try
         {
             await _ui.RunOnUIAsync(() =>
             {
-                TestApp.EnsureFluentBrushFallbacks(Application.Current.Resources);
+                themeScope = new ChatThemeProofScope("Light");
                 host = new ReactorHostControl { Width = 280, VerticalAlignment = VerticalAlignment.Top };
                 var root = host.Reconciler.Mount(ReactorChatTimeline.BuildSafeMarkdown(
                     "- **outer bold**\n\n  second paragraph\n\n  - nested item\n\n" +
@@ -129,6 +132,7 @@ public sealed class ReactorMarkdownListProofTests
                     host.Content = null;
                     host.Dispose();
                 });
+            await _ui.RunOnUIAsync(() => themeScope?.Dispose());
         }
     }
 

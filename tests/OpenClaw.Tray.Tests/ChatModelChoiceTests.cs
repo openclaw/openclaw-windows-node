@@ -5,6 +5,36 @@ namespace OpenClaw.Tray.Tests;
 
 public class ChatModelChoiceTests
 {
+    [Theory]
+    [InlineData("github-copilot", "GitHub")]
+    [InlineData(" GITHUB-COPILOT ", "GitHub")]
+    [InlineData("openai", "OpenAI")]
+    [InlineData("anthropic", "Anthropic")]
+    [InlineData("google", "Google")]
+    [InlineData("llama-cpp", "llama.cpp")]
+    [InlineData("lmstudio", "LM Studio")]
+    [InlineData("longcat", "LongCat")]
+    [InlineData("moonshot", "Moonshot AI")]
+    [InlineData("opencode", "OpenCode")]
+    [InlineData("openrouter", "OpenRouter")]
+    [InlineData("qwen", "Qwen Cloud")]
+    [InlineData("zai", "Z.AI")]
+    [InlineData("custom_vendor-name", "Custom Vendor Name")]
+    [InlineData("my-API", "My API")]
+    [InlineData(null, "")]
+    [InlineData("", "")]
+    public void FormatProviderName_UsesWebBrandLabelsAndReadableFallback(string? id, string expected) =>
+        Assert.Equal(expected, ChatModelLabels.FormatProviderName(id));
+
+    [Fact]
+    public void FormatProviderName_DoesNotChangeSelectionIdentity()
+    {
+        var choice = new ChatModelChoice("claude-opus-4.7", "Claude Opus 4.7", "github-copilot");
+        Assert.Equal("GitHub", ChatModelLabels.FormatProviderName(choice.Provider));
+        Assert.Equal("github-copilot/claude-opus-4.7", choice.SelectionId);
+        Assert.Equal("github-copilot", choice.Provider);
+    }
+
     // ── FromModelsList mapping ───────────────────────────────────────────
 
     [Fact]

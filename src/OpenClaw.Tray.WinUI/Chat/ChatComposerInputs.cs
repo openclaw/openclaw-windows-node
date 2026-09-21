@@ -34,6 +34,10 @@ internal sealed record ChatComposerInputs(
     bool CommandsSupported)
 {
     internal long Revision { get; init; }
+    internal bool CanChangeSessionOptions => ConnectionState == "connected" && !MessageOptionsDisabled;
+    internal ThinkingProfile? ThinkingProfile => ChatThinkingProfile.Resolve(CurrentThread, ModelChoices);
+    internal bool CanChangeThinking => CanChangeSessionOptions
+        && (ThinkingProfile?.Levels is { Length: > 0 } || !string.IsNullOrEmpty(CurrentThread.ThinkingLevel));
 
     internal bool HasSameProjection(ChatComposerInputs other) =>
         string.Equals(ConnectionState, other.ConnectionState, StringComparison.Ordinal)

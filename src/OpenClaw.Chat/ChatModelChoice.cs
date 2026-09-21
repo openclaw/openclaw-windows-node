@@ -22,6 +22,8 @@ using OpenClaw.Shared;
 /// </param>
 /// <param name="IsDefault">True when the gateway marks this model as the default.</param>
 /// <param name="HasConfiguredFlag">True when the gateway explicitly reported configuration state.</param>
+/// <param name="Reasoning">Optional catalog flag, not a list of supported thinking levels.</param>
+/// <param name="ThinkingContext">Advertised thinking profile and its exact catalog identity.</param>
 public sealed record ChatModelChoice(
     string Id,
     string DisplayName,
@@ -32,7 +34,9 @@ public sealed record ChatModelChoice(
     bool IsAvailable = true,
     bool RequiresAuth = false,
     bool IsDefault = false,
-    bool HasConfiguredFlag = false)
+    bool HasConfiguredFlag = false,
+    bool? Reasoning = null,
+    ThinkingContext? ThinkingContext = null)
 {
     /// <summary>
     /// Provider-qualified identity used for picker tags and <c>sessions.patch</c>
@@ -70,7 +74,9 @@ public sealed record ChatModelChoice(
                 IsAvailable: m.IsAvailable,
                 RequiresAuth: m.RequiresAuth,
                 IsDefault: m.IsDefault,
-                HasConfiguredFlag: m.HasConfiguredFlag);
+                HasConfiguredFlag: m.HasConfiguredFlag,
+                Reasoning: m.Reasoning,
+                ThinkingContext: m.ThinkingContext);
             if (!seen.Add(choice.SelectionId)) continue;
             list.Add(choice);
         }
@@ -150,6 +156,32 @@ public sealed record ChatModelChoice(
 /// </summary>
 public static class ChatModelLabels
 {
+    /// <summary>
+    /// Provider branding follows the published web UI. This is display-only;
+    /// provider-qualified model identities must retain the original provider id.
+    /// </summary>
+    public static string FormatProviderName(string? provider)
+    {
+        var id = provider?.Trim() ?? string.Empty;
+        return id.ToLowerInvariant() switch
+        {
+            "anthropic" => "Anthropic",
+            "google" => "Google",
+            "github-copilot" => "GitHub",
+            "llama-cpp" => "llama.cpp",
+            "lmstudio" => "LM Studio",
+            "longcat" => "LongCat",
+            "openai" => "OpenAI",
+            "moonshot" => "Moonshot AI",
+            "opencode" => "OpenCode",
+            "openrouter" => "OpenRouter",
+            "qwen" => "Qwen Cloud",
+            "zai" => "Z.AI",
+            _ => string.Join(" ", id.Split(['-', '_'], StringSplitOptions.RemoveEmptyEntries)
+                .Select(part => char.ToUpperInvariant(part[0]) + part[1..])),
+        };
+    }
+
     /// <summary>
     /// True when <paramref name="modelId"/> represents "no explicit model
     /// override" — i.e. the session is tracking the gateway/agent default.

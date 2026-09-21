@@ -7116,4 +7116,18 @@ Le binaire wxc-exec est introuvable. {1} S'il s'agit d'une build développeur, c
   <data name="LocalAiPage_UnavailableProbeTitle" xml:space="preserve"><value>La disponibilité de l'IA locale n'a pas pu être vérifiée</value></data>
   <data name="LocalAiPage_CheckingTitle" xml:space="preserve"><value>Vérification de la disponibilité de l'IA locale</value></data>
   <data name="LocalAiPage_CheckingMessage" xml:space="preserve"><value>OpenClaw vérifie si cet appareil peut exécuter l'IA locale. Cela ne prend qu'un instant.</value></data>
+  <data name="Chat_Code_Copy" xml:space="preserve"><value>Copier le code</value></data>
+  <data name="Chat_Code_Label" xml:space="preserve"><value>Bloc de code</value></data>
+  <data name="Chat_Model_Current" xml:space="preserve"><value>Modèle actuel</value></data>
+  <data name="Chat_Model_Other" xml:space="preserve"><value>Autres modèles</value></data>
+  <data name="Chat_Model_NoMatches" xml:space="preserve"><value>Aucun modèle correspondant</value></data>
+  <data name="Chat_Model_Search" xml:space="preserve"><value>Rechercher des modèles</value></data>
+  <data name="Chat_Attachment_Remove" xml:space="preserve"><value>Supprimer la pièce jointe</value></data>
+  <data name="Chat_Timeline_Loading" xml:space="preserve"><value>Chargement des messages...</value></data>
+  <data name="Chat_Composer_QueuedCountSingle" xml:space="preserve"><value>1 message en attente</value></data>
+  <data name="Chat_Copy_Copied" xml:space="preserve"><value>Copié</value></data>
+  <data name="Chat_Copy_Failed" xml:space="preserve"><value>Échec de la copie</value></data>
+  <data name="Chat_Composer_Effort_Title" xml:space="preserve"><value>Niveau d'effort</value></data>
+  <data name="Chat_Composer_Effort_Faster" xml:space="preserve"><value>Plus rapide</value></data>
+  <data name="Chat_Composer_Effort_Smarter" xml:space="preserve"><value>Plus approfondi</value></data>
 </root>
