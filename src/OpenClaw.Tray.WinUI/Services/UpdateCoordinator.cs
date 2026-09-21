@@ -5,7 +5,6 @@ using OpenClawTray.Dialogs;
 using OpenClawTray.Helpers;
 using System;
 using System.Collections.Generic;
-using System.IO;
 using System.Runtime.InteropServices;
 using System.Threading;
 using System.Threading.Tasks;
@@ -120,6 +119,7 @@ internal sealed class UpdateCoordinator(
 #else
         string releaseTag;
         string changelog;
+        IPreparedUpdateInstallation installation;
         try
         {
             Logger.Info("Checking for updates...");
@@ -171,8 +171,8 @@ internal sealed class UpdateCoordinator(
                 return true;
             }
 
-            var release = updater.LatestRelease!;
-            if (string.IsNullOrEmpty(release.TagName))
+            var release = checkOutcome.SelectedRelease;
+            if (string.IsNullOrEmpty(release?.TagName))
             {
                 // Defensive: AppUpdater says an update is available but the
                 // release has no tag. Don't silently claim "up to date" —
@@ -191,15 +191,6 @@ internal sealed class UpdateCoordinator(
             releaseTag = release.TagName;
             changelog = updater.GetChangelog(true) ?? "No release notes available.";
             Logger.Info($"Update available: {releaseTag}");
-            appState.UpdateInfo = new UpdateCommandCenterInfo
-            {
-                Status = "Available",
-                CurrentVersion = AppVersionInfo.Version,
-                LatestVersion = releaseTag,
-                CheckedAt = DateTime.UtcNow,
-                Detail = "prompted"
-            };
-
             if (!string.IsNullOrWhiteSpace(_settings?.SkippedUpdateTag) &&
                 string.Equals(_settings.SkippedUpdateTag, releaseTag, StringComparison.OrdinalIgnoreCase) &&
                 !userInitiated)
@@ -217,6 +208,17 @@ internal sealed class UpdateCoordinator(
                 };
                 return true;
             }
+            // Freeze the selected release and asset before user interaction.
+            // Another metadata check must not change what this prompt installs.
+            installation = await release.PrepareInstallationAsync();
+            appState.UpdateInfo = new UpdateCommandCenterInfo
+            {
+                Status = "Available",
+                CurrentVersion = AppVersionInfo.Version,
+                LatestVersion = releaseTag,
+                CheckedAt = DateTime.UtcNow,
+                Detail = "prompted"
+            };
         }
         catch (OperationCanceledException)
         {
@@ -309,7 +311,7 @@ internal sealed class UpdateCoordinator(
                     _settings.SkippedUpdateTag = string.Empty;
                     _settings.Save();
                 }
-                var installed = await DownloadAndInstallUpdateAsync();
+                var installed = await DownloadAndInstallUpdateAsync(installation);
                 if (!installed)
                 {
                     appState.UpdateInfo = new UpdateCommandCenterInfo
@@ -541,7 +543,7 @@ internal sealed class UpdateCoordinator(
         }
     }
 
-    private async Task<bool> DownloadAndInstallUpdateAsync()
+    private async Task<bool> DownloadAndInstallUpdateAsync(IPreparedUpdateInstallation installation)
     {
         DownloadProgressDialog? progressDialog = null;
         try
@@ -549,25 +551,16 @@ internal sealed class UpdateCoordinator(
             progressDialog = new DownloadProgressDialog(updater);
             progressDialog.ShowAsync(); // Fire and forget
 
-            var downloadedAsset = await updater.DownloadUpdateAsync();
-
-            TryCloseProgressDialog(progressDialog);
-
-            if (downloadedAsset == null || !File.Exists(downloadedAsset.FilePath))
+            return await installation.DownloadAndInstallAsync(() =>
             {
-                Logger.Error("Update download failed or file missing");
-                return false;
-            }
-
-            Logger.Info("Installing update and restarting...");
-            await updater.InstallUpdateAsync(downloadedAsset);
-            return true;
+                TryCloseProgressDialog(progressDialog);
+                Logger.Info("Installing verified update and restarting...");
+            });
         }
-        catch (Exception ex)
+        finally
         {
-            Logger.Error($"Update failed: {ex.Message}");
+            // Let the outer update flow preserve verification errors in Failed.Detail.
             TryCloseProgressDialog(progressDialog);
-            return false;
         }
     }
 
@@ -591,30 +584,4 @@ internal sealed class UpdateCoordinator(
             // Same as above for other "already-disposed" race variants.
         }
     }
-}
-
-internal sealed class UpdatumUpdateCheckBoundary(UpdatumManager updater) : IUpdateCheckBoundary
-{
-    public Task<bool> CheckForUpdatesAsync() => updater.CheckForUpdatesAsync();
-
-    public UpdateReleaseCandidate? GetSelectedRelease() =>
-        updater.LatestRelease is { } release
-            ? CreateCandidate(release)
-            : null;
-
-    public IEnumerable<UpdateReleaseCandidate> GetReleaseCandidates()
-    {
-        foreach (var release in updater.Releases)
-            yield return CreateCandidate(release);
-    }
-
-    private UpdateReleaseCandidate CreateCandidate(Octokit.Release release) => new(
-        release.TagName,
-        release.Body,
-        HasTrustedMetadata: true,
-        release.Draft,
-        release.Prerelease,
-        release.PublishedAt is not null,
-        () => updater.GetCompatibleReleaseAsset(release) is not null,
-        () => updater.ForceTriggerUpdateFromRelease(release));
 }

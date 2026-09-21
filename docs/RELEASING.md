@@ -174,6 +174,15 @@ Current release artifacts are:
   - `OpenClawTray-<version>-win-x64.zip`
   - `OpenClawTray-<version>-win-arm64.zip`
 
+Portable update checks bind the prompt to one release and architecture-specific
+asset. Before installation, the client requires GitHub's SHA-256 asset digest,
+the matching download size, and trusted, timestamped OpenClaw Foundation
+signatures on the eight owned payload binaries listed below. Third-party files
+retain their own publishers. An unavailable digest, mismatched download, or
+rejected signature leaves the running app in place and records the reason in
+the update status. Maintainers must publish a corrected release rather than ask
+operators to bypass verification. Store packages remain serviced by Windows.
+
 Canonical alpha releases additionally contain:
 
 - `OpenClaw.msixbundle` (recommended Partner Center submission input)

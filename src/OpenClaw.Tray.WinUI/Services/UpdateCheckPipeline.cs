@@ -14,7 +14,13 @@ internal sealed record UpdateReleaseCandidate(
     bool Prerelease,
     bool Published,
     Func<bool> HasCompatibleAsset,
-    Action Activate);
+    Action Activate,
+    Func<Task<IPreparedUpdateInstallation>> PrepareInstallationAsync);
+
+internal interface IPreparedUpdateInstallation
+{
+    Task<bool> DownloadAndInstallAsync(Action readyToInstall);
+}
 
 internal interface IUpdateCheckBoundary
 {
