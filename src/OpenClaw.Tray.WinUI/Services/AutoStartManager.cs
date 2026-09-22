@@ -48,6 +48,8 @@ public static class AutoStartManager
 
     public static void SetAutoStart(bool enable)
     {
+        ThrowIfFixtureMutation();
+
         if (PackageHelper.IsPackaged)
         {
             SetPackagedAutoStartAsync(enable).GetAwaiter().GetResult();
@@ -57,10 +59,14 @@ public static class AutoStartManager
         SetUnpackagedAutoStart(enable);
     }
 
-    public static Task SetAutoStartAsync(bool enable) =>
-        PackageHelper.IsPackaged
+    public static Task SetAutoStartAsync(bool enable)
+    {
+        ThrowIfFixtureMutation();
+
+        return PackageHelper.IsPackaged
             ? SetPackagedAutoStartAsync(enable)
             : Task.Run(() => SetUnpackagedAutoStart(enable));
+    }
 
     /// <summary>
     /// Reports whether auto-start is currently enabled.
@@ -88,6 +94,9 @@ public static class AutoStartManager
     /// </remarks>
     public static Task<bool> ResolveAutoStartAfterFailedChangeAsync(bool requested, Exception failure)
     {
+        if (GatewayFixtureIsolation.IsEnabled)
+            return Task.FromResult(false);
+
         if (!PackageHelper.IsPackaged)
             return Task.Run(IsAutoStartEnabled);
 
@@ -114,6 +123,8 @@ public static class AutoStartManager
     /// </remarks>
     public static Task<bool> ReconcileAutoStartAsync(bool configured)
     {
+        ThrowIfFixtureMutation();
+
         if (!PackageHelper.IsPackaged)
             return Task.FromResult(configured);
 
@@ -123,8 +134,24 @@ public static class AutoStartManager
             SetPackagedAutoStartAsync);
     }
 
+    private static void ThrowIfFixtureMutation()
+    {
+        try
+        {
+            AutoStartReconciliation.ThrowIfFixtureMutation();
+        }
+        catch (AutoStartRefusedException ex)
+        {
+            Logger.Warn(ex.Message);
+            throw;
+        }
+    }
+
     private static void SetUnpackagedAutoStart(bool enable)
     {
+        // Outside the legacy best-effort catch so fixture refusals cannot look successful.
+        ThrowIfFixtureMutation();
+
         try
         {
             if (enable)
@@ -198,6 +225,8 @@ public static class AutoStartManager
 
     private static async Task SetPackagedAutoStartAsync(bool enable)
     {
+        ThrowIfFixtureMutation();
+
         var startupTask = await StartupTask.GetAsync(AppIdentity.PackageStartupTaskId);
         if (!enable)
         {

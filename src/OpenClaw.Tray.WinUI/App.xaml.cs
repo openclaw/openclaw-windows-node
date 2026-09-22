@@ -290,6 +290,9 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands, IPer
 
     public App()
     {
+        // Validate before restart handling, logging, settings, or run-marker writes.
+        _ = GatewayFixtureIsolation.Get();
+
         WaitForRestartSourceIfRequested(Environment.GetCommandLineArgs());
         StartupInputConfigurator.Configure();
 
@@ -702,8 +705,10 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands, IPer
         // explicitly via Application.Exit().
         DispatcherShutdownMode = DispatcherShutdownMode.OnExplicitShutdown;
 
-        // Register toast activation handler
-        ToastNotificationManagerCompat.OnActivated += OnToastActivated;
+        // Touching the toolkit initializes installed COM/AUMID registration, even
+        // when notification display is disabled in this profile.
+        if (!GatewayFixtureIsolation.IsEnabled)
+            ToastNotificationManagerCompat.OnActivated += OnToastActivated;
 
         _sshTunnelService = new SshTunnelService(new AppLogger());
         _sshTunnelService.TunnelExited += OnSshTunnelExited;
@@ -4092,6 +4097,11 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands, IPer
     private async Task ReconcileAutoStartOnStartupAsync()
     {
         if (_settings == null) return;
+        if (GatewayFixtureIsolation.IsEnabled)
+        {
+            Logger.Info("Gateway fixture mode: skipping Windows auto-start reconciliation.");
+            return;
+        }
 
         var persisted = false;
         await _autoStartMutationGate.WaitAsync();

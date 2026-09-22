@@ -93,7 +93,15 @@ public sealed class VersioningContractTests
         Assert.DoesNotContain("uses: gittools/actions/gitversion/setup@v", dailyWorkflow);
         Assert.DoesNotContain("uses: gittools/actions/gitversion/execute@v", dailyWorkflow);
         Assert.Contains("ref: ${{ github.event.repository.default_branch }}", dailyWorkflow);
-        Assert.DoesNotContain("workflow_dispatch:", dailyWorkflow);
+        Assert.Contains("workflow_dispatch:", dailyWorkflow);
+        Assert.Contains("EVENT_NAME: ${{ github.event_name }}", dailyWorkflow);
+        Assert.Contains("if [[ \"$EVENT_NAME\" == \"workflow_dispatch\" ]]; then", dailyWorkflow);
+        Assert.Contains("Manually checking the default branch for a new alpha release.", dailyWorkflow);
+        var versionStep = Regex.Match(
+            dailyWorkflow,
+            @"(?ms)^      - name: Determine alpha version\r?\n(?<body>.*?)(?=^      - |\z)");
+        Assert.True(versionStep.Success, "The daily workflow must calculate the default-branch version.");
+        Assert.Contains("disableNormalization: true", versionStep.Groups["body"].Value);
         Assert.Contains("head_non_alpha_tag", dailyWorkflow);
         Assert.Contains("published_head_tag", dailyWorkflow);
         Assert.Contains("Deferring alpha release because main already has unpublished non-alpha tag", dailyWorkflow);

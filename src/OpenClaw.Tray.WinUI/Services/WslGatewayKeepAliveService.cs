@@ -1,4 +1,5 @@
 using OpenClaw.Connection;
+using OpenClaw.Shared;
 using OpenClawTray;
 using System;
 using System.Collections.Generic;
@@ -29,6 +30,14 @@ internal sealed class WslGatewayKeepAliveService(
     /// </summary>
     public async Task TryEnsureAsync()
     {
+        // This must precede BOTH the start path and stale cleanup. A loopback fixture
+        // is not a local WSL gateway, and an invalid context must fail before any IO.
+        if (GatewayFixtureIsolation.IsEnabled)
+        {
+            Logger.Info("[WslKeepAlive] Gateway fixture mode: skipping keepalive start and stale cleanup.");
+            return;
+        }
+
         try
         {
             var settings = _getSettings();

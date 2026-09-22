@@ -4,7 +4,7 @@ using System.Text;
 using System.Text.Json;
 using System.Threading.Tasks;
 
-namespace OpenClaw.Tray.IntegrationTests;
+namespace OpenClaw.TestSupport;
 
 /// <summary>
 /// Tiny JSON-RPC over HTTP client for the MCP endpoint. Exposes the two methods

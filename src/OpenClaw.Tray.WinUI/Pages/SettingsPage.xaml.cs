@@ -119,7 +119,8 @@ public sealed partial class SettingsPage : Page
 
     private void PopulateAppInfo()
     {
-        AppInfoVersionText.Text = AppVersionInfo.DisplayVersion;
+        AppInfoVersionText.Text = SettingsAppInfoProjection.ResolveDisplayVersion(
+            AppVersionInfo.DisplayVersion, PackageHelper.PackageVersion);
         var windowsAppSdk = SettingsAppInfoProjection.ResolveWindowsAppSdkDisplayName(
             Assembly.GetEntryAssembly()?.GetName().Name, AppContext.BaseDirectory);
         AppInfoRuntimeText.Text = SettingsAppInfoProjection.BuildRuntimeStack(

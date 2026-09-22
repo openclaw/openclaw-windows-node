@@ -1,4 +1,5 @@
 using Microsoft.Toolkit.Uwp.Notifications;
+using OpenClaw.Shared;
 using OpenClawTray.Services;
 using System;
 using System.Collections.Generic;
@@ -38,7 +39,10 @@ public partial class App
         var activationRouter = _activationRouter;
         steps.Add(new AppShutdownStep("activation router", async () =>
         {
-            ToastNotificationManagerCompat.OnActivated -= OnToastActivated;
+            // Even removing an unregistered handler triggers the toolkit's static
+            // initializer, which writes installed notification registration.
+            if (!GatewayFixtureIsolation.IsEnabled)
+                ToastNotificationManagerCompat.OnActivated -= OnToastActivated;
             if (ReferenceEquals(_activationRouter, activationRouter))
                 _activationRouter = null;
             if (activationRouter is not null)

@@ -35,6 +35,33 @@ public sealed class ReactorChatLayoutProofTests(UIThreadFixture ui)
         "Would you like me to turn this into a schedule?";
 
     [Fact]
+    public async Task SessionPicker_FixtureObservationSurvivesCompactLayoutChanges()
+    {
+        using var directory = new OpenClaw.TestSupport.TempDirectory();
+        using var environment = new OpenClaw.TestSupport.EnvironmentScope()
+            .Set("OPENCLAW_GATEWAY_FIXTURE", "1")
+            .Set("OPENCLAW_TRAY_DATA_DIR", directory.Combine("data"))
+            .Set("OPENCLAW_TRAY_LOCAL_DATA_DIR", directory.Combine("local"))
+            .Set("OPENCLAW_TRAY_LOCALAPPDATA_DIR", null);
+        await WithChatAsync(800, async (surface, _, _, provider) =>
+        {
+            var snapshot = await provider.LoadAsync();
+            var expected = GatewayFixtureRenderObservation.Create(snapshot, snapshot.DefaultThreadId, fixtureEnabled: true);
+            foreach (var width in new[] { 800, 320, 800 })
+            {
+                await ui.RunOnUIAsync(() => surface.Width = width);
+                await SettleAsync();
+                await ui.RunOnUIAsync(() =>
+                {
+                    var picker = FindControl<Button>(surface, "ChatComposerSessionPicker");
+                    Assert.Equal(expected, AutomationProperties.GetItemStatus(picker));
+                    Assert.Contains("Session", AutomationProperties.GetName(picker), StringComparison.Ordinal);
+                });
+            }
+        });
+    }
+
+    [Fact]
     public async Task ProductionRoot_RevealsHostLayerAndUsesCardComposerFill()
     {
         await WithChatAsync(800, async (surface, host, _, _) =>

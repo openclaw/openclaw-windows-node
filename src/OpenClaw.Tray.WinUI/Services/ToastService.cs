@@ -1,4 +1,5 @@
 using Microsoft.Toolkit.Uwp.Notifications;
+using OpenClaw.Shared;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -25,6 +26,10 @@ internal sealed class ToastService : IToastNotificationPublisher
     /// <summary>Shows a toast with optional dedup by tag + device ID.</summary>
     public void ShowToast(ToastContentBuilder builder, string? toastTag = null, string? deviceId = null)
     {
+        // Showing a toast also lazily initializes the toolkit's OS registration.
+        if (GatewayFixtureIsolation.IsEnabled)
+            return;
+
         if (!ShouldShowToast(toastTag, deviceId))
             return;
 

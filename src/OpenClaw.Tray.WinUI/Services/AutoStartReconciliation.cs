@@ -21,7 +21,7 @@ internal enum AutoStartState
 }
 
 /// <summary>
-/// Thrown when Windows explicitly refuses to enable the packaged startup task.
+/// Thrown when Windows or fixture isolation explicitly refuses an auto-start change.
 /// </summary>
 /// <remarks>
 /// Distinct from a transient failure: a refusal (DisabledByUser / DisabledByPolicy) is a
@@ -51,6 +51,19 @@ internal sealed class AutoStartRefusedException : InvalidOperationException
 /// </remarks>
 internal static class AutoStartReconciliation
 {
+    /// <summary>
+    /// A fixture preference must never be applied to the installed Windows registration.
+    /// Invalid fixture contexts throw before callers can query Windows or initialize logging.
+    /// </summary>
+    internal static void ThrowIfFixtureMutation()
+    {
+        if (GatewayFixtureIsolation.IsEnabled)
+        {
+            throw new AutoStartRefusedException(
+                "Windows auto-start changes are unavailable in Gateway fixture mode. Installed startup registration was not changed.");
+        }
+    }
+
     /// <summary>
     /// Decides whether a startup reconciliation result may still be persisted.
     /// </summary>
@@ -89,6 +102,8 @@ internal static class AutoStartReconciliation
         Func<Task<AutoStartState>> queryAsync,
         Func<bool, Task> setEnabledAsync)
     {
+        ThrowIfFixtureMutation();
+
         var actual = await QueryOrUnknownAsync(queryAsync);
         if (actual == AutoStartState.Unknown)
         {
@@ -147,6 +162,11 @@ internal static class AutoStartReconciliation
         Exception failure,
         Func<Task<AutoStartState>> queryAsync)
     {
+        // The fixture cannot register itself for startup. Report disabled without
+        // looking up the installed application's state after a rejected toggle.
+        if (GatewayFixtureIsolation.IsEnabled)
+            return false;
+
         if (failure is AutoStartRefusedException)
         {
             Logger.Warn($"Windows refused the auto-start change, reporting disabled: {failure.Message}");

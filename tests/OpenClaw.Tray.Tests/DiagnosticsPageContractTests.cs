@@ -425,6 +425,8 @@ public sealed class DiagnosticsPageContractTests
         Assert.Contains("OnGitHubLink", settingsXaml);
         Assert.Contains("OnDashboardLink", settingsXaml);
         Assert.Contains("RefreshGatewayInfo", settingsCs);
+        Assert.Contains("SettingsAppInfoProjection.ResolveDisplayVersion(", settingsCs);
+        Assert.Contains("PackageHelper.PackageVersion", settingsCs);
         Assert.Contains("\"settings\" or \"info\" or \"about\" => HubPageKind.Settings", registry);
         Assert.Contains("HubPageKind.Settings => typeof(SettingsPage)", registry);
         var repoRoot = TestRepositoryPaths.GetRepositoryRoot();

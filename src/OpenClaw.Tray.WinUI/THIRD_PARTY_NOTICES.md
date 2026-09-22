@@ -2,7 +2,14 @@
 
 The colorful sidebar SVG files in `Assets/SidebarIcons/` are derived from the
 **Fluent UI System Icons** project by Microsoft, color variant
-(20 selected icons from the full `fluent-color` set in the Iconify ecosystem).
+(selected icons from the full `fluent-color` set in the Iconify ecosystem).
+
+`LocalAi.svg` is a custom color adaptation of Fluent's
+`developer-board-24-filled`, not an official `fluent-color` variant. It retains
+the chip silhouette and pins, removes the circular center detail, and adds a
+solid blue/teal gradient body with metallic pins. This is the Local AI sidebar
+icon, rendered through `SvgImageSource` / `ImageIcon` like the other sidebar
+assets. The existing monochrome glyph catalog still applies to other surfaces.
 
 - Upstream repositories:
   - <https://github.com/microsoft/fluentui-system-icons> (sidebar icons)
@@ -26,6 +33,7 @@ The colorful sidebar SVG files in `Assets/SidebarIcons/` are derived from the
 | `Config.svg` | `options-24` |
 | `Usage.svg` | `data-bar-vertical-ascending-24` |
 | `Cron.svg` | `calendar-clock-24` |
+| `LocalAi.svg` | `developer-board-24-filled` (custom colors and solid center) |
 | `Voice.svg` | `mic-24` |
 | `Settings.svg` | `settings-24` |
 | `Permissions.svg` | `lock-shield-24` |

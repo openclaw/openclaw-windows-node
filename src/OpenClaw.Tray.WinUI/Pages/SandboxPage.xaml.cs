@@ -291,9 +291,7 @@ public sealed partial class SandboxPage : Page
 
         // wxc-exec is present and the probe gave a definitive negative → the Windows
         // host itself doesn't support the sandbox (vs. a missing binary).
-        var isWindowsIssue = !isProbeError
-            && availability.IsWxcExecResolvable
-            && !availability.IsAppContainerAvailable;
+        var isWindowsIssue = IsWindowsSandboxCapabilityUnavailable(availability);
 
         var isSetupIssue = !availability.ProbeSuppressedBySkuGate
             && !availability.IsWxcExecResolvable;
@@ -348,6 +346,11 @@ public sealed partial class SandboxPage : Page
             ProbeSuppressedBySkuGate: false,
         };
     }
+
+    private static bool IsWindowsSandboxCapabilityUnavailable(OpenClaw.Shared.Mxc.MxcAvailability availability) =>
+        !availability.ProbeErrored
+        && availability.IsWxcExecResolvable
+        && !availability.CanRunSystemRunSandbox;
 
     private bool NormalizeSandboxToggleForAvailability()
     {
@@ -711,13 +714,17 @@ public sealed partial class SandboxPage : Page
         var reasonText = _cachedAvailability?.SystemRunSandboxUnsupportedReasons.Count > 0
             ? string.Join("\n", _cachedAvailability.SystemRunSandboxUnsupportedReasons)
             : L("SandboxPage_UnavailableDefaultReason");
+        var isWindowsIssue = _cachedAvailability is { } availability
+            && IsWindowsSandboxCapabilityUnavailable(availability);
+        var unavailableBehavior = L("SandboxPage_UnavailableBehaviorHostFallback");
         var dialog = new ContentDialog
         {
-            Title = "Node Sandbox unavailable",
-            Content =
-                "Node Sandbox can't be turned on because this PC does not provide MXC BaseContainer without host DACL augmentation.\n\n" +
-                $"{reasonText}\n\n" +
-                "Agent-started commands will keep using the host execution path until MXC is available.",
+            Title = isWindowsIssue
+                ? L("SandboxPage_WindowsUnsupportedTitle")
+                : "Node Sandbox unavailable",
+            Content = isWindowsIssue
+                ? Lf("SandboxPage_WindowsUnsupportedMessageFormat", reasonText, unavailableBehavior)
+                : $"{reasonText}\n\n{unavailableBehavior}",
             CloseButtonText = "OK",
             DefaultButton = ContentDialogButton.Close,
             XamlRoot = this.XamlRoot,

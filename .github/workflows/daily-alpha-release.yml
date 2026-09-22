@@ -1,6 +1,7 @@
 name: Daily Alpha Release
 
 on:
+  workflow_dispatch:
   schedule:
     - cron: '0 21 * * *'
     - cron: '0 22 * * *'
@@ -21,9 +22,16 @@ jobs:
         id: pacific_schedule
         shell: bash
         env:
+          EVENT_NAME: ${{ github.event_name }}
           SCHEDULE: ${{ github.event.schedule }}
         run: |
           set -euo pipefail
+
+          if [[ "$EVENT_NAME" == "workflow_dispatch" ]]; then
+            echo "run=true" >> "$GITHUB_OUTPUT"
+            echo "Manually checking the default branch for a new alpha release."
+            exit 0
+          fi
 
           pacific_offset="$(TZ=America/Los_Angeles date +%z)"
           case "$pacific_offset" in
@@ -117,6 +125,9 @@ jobs:
         if: steps.pacific_schedule.outputs.run == 'true' && steps.previous_release.outputs.changed == 'true'
         id: gitversion
         uses: gittools/actions/gitversion/execute@7417b1089e2c7de93510f1901d656ddf60bb024f # v4.7.0
+        with:
+          # Checkout already selected the full default branch. Ignore a manual dispatch's source ref.
+          disableNormalization: true
 
       - name: Create or reuse alpha tag
         if: steps.pacific_schedule.outputs.run == 'true' && steps.previous_release.outputs.changed == 'true'

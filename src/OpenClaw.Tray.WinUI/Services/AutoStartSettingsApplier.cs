@@ -1,3 +1,4 @@
+using OpenClaw.Shared;
 using System;
 using System.Threading;
 using System.Threading.Tasks;
@@ -11,6 +12,13 @@ internal static class AutoStartSettingsApplier
         Func<bool> readPreference,
         Func<bool, Task> setEnabledAsync)
     {
+        // Every preference save schedules this background refresh. Fixture-local
+        // preferences may be saved without touching Windows; explicit auto-start
+        // toggles still go through AutoStartManager and visibly refuse mutation.
+        // Validate before waiting or reading so malformed fixture contexts fail closed.
+        if (GatewayFixtureIsolation.IsEnabled)
+            return;
+
         await mutationGate.WaitAsync();
         try
         {

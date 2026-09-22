@@ -12,6 +12,8 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\src\OpenClaw.Shared\OpenClaw.Shared.csproj" />
+    <ProjectReference Include="..\OpenClaw.GatewayFixtureHost\OpenClaw.GatewayFixtureHost.csproj" />
+    <Using Include="OpenClaw.TestSupport" />
   </ItemGroup>
 
 </Project>
