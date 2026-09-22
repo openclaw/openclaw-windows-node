@@ -350,7 +350,12 @@ export function deriveItemStages(item, live) {
         checks: checksStatus,
         proof: proofStatus,
         ...(item.type === "pr"
-            ? { landing: canRequestMerge(item, live).eligible ? "done" : "blocked" }
+            ? {
+                landing: String(live?.state ?? "").toUpperCase() === "MERGED" ||
+                    canRequestMerge(item, live).eligible
+                    ? "done"
+                    : "blocked",
+            }
             : {}),
     };
 }
@@ -382,24 +387,55 @@ export function canRequestMerge(item, live) {
     return { eligible: reasons.length === 0, reasons };
 }
 
-export function mergeLiveState(triage, pullRequests, issues, error = "") {
-    const pullRequestMap = new Map((pullRequests ?? []).map((item) => [item.number, item]));
-    const issueMap = new Map((issues ?? []).map((item) => [item.number, item]));
-    const items = triage.items.map((item) => {
-        const live = item.type === "pr" ? pullRequestMap.get(item.number) : issueMap.get(item.number);
-        const checks = item.type === "pr"
-            ? summarizeChecks(live?.statusCheckRollup, item.expectedChecks)
-            : null;
-        const mergeRequest = canRequestMerge(item, live);
-        return {
-            ...item,
-            live: live ?? null,
-            checks,
-            stages: deriveItemStages(item, live),
-            mergeRequest,
-        };
-    });
+export function applyAdversarialReview(item, review) {
+    if (!review || item.type !== "pr") {
+        return { ...item, adversarialReview: null };
+    }
+    const liveHead = String(item.live?.headRefOid ?? "");
+    const reviewedHead = String(review.reviewedHeadSha ?? "");
+    const headMatches = Boolean(liveHead && reviewedHead) &&
+        liveHead.toLowerCase() === reviewedHead.toLowerCase();
+    let mergedItem = {
+        ...item,
+        adversarialReview: {
+            ...review,
+            headMatches: liveHead ? headMatches : null,
+        },
+    };
+    const publishesFinalVerdict = headMatches &&
+        review.status === "complete" &&
+        review.opusStatus === "complete" &&
+        review.codexStatus === "complete" &&
+        DECISIONS.has(review.finalDecision) &&
+        Number.isInteger(review.takeConfidence) &&
+        review.takeConfidence >= 0 &&
+        review.takeConfidence <= 100 &&
+        Number.isInteger(review.recommendationConfidence) &&
+        review.recommendationConfidence >= 0 &&
+        review.recommendationConfidence <= 100 &&
+        typeof review.nextAction === "string" &&
+        review.nextAction.trim().length > 0;
+    if (!publishesFinalVerdict) {
+        return mergedItem;
+    }
 
+    mergedItem = {
+        ...mergedItem,
+        decision: review.finalDecision,
+        nextAction: review.nextAction,
+        recommendationConfidence: review.recommendationConfidence,
+        reviewedHeadSha: review.reviewedHeadSha,
+        reviewStatus: "complete",
+        takeConfidence: review.takeConfidence,
+    };
+    return {
+        ...mergedItem,
+        mergeRequest: canRequestMerge(mergedItem, mergedItem.live),
+        stages: deriveItemStages(mergedItem, mergedItem.live),
+    };
+}
+
+function projectDerivedState(triage, items, error, liveUpdatedAt) {
     const itemMap = new Map(items.map((item) => [item.number, item]));
     const planById = new Map(triage.plan.map((step) => [step.id, step]));
     const liveStatusById = new Map();
@@ -431,7 +467,7 @@ export function mergeLiveState(triage, pullRequests, issues, error = "") {
         ...triage,
         items,
         plan,
-        liveUpdatedAt: new Date().toISOString(),
+        liveUpdatedAt,
         refreshError: error,
         summary: {
             total: items.length,
@@ -441,4 +477,204 @@ export function mergeLiveState(triage, pullRequests, issues, error = "") {
             needsProof: items.filter((item) => !PROOF_COMPLETE.has(item.proofStatus)).length,
         },
     };
+}
+
+export function mergeAdversarialReviews(state, reviews) {
+    const reviewByNumber = new Map((reviews ?? []).map((review) => [review.prNumber, review]));
+    const items = state.items.map((item) => {
+        const review = item.type === "pr" ? reviewByNumber.get(item.number) ?? null : null;
+        return applyAdversarialReview(item, review);
+    });
+    const projected = projectDerivedState(
+        state,
+        items,
+        state.refreshError,
+        state.liveUpdatedAt,
+    );
+    return {
+        ...projected,
+        adversarialReviews: items
+            .map((item) => item.adversarialReview)
+            .filter(Boolean),
+    };
+}
+
+export function reconcileOpenInventory(triage, pullRequests, issues) {
+    const pullRequestMap = new Map((pullRequests ?? []).map((item) => [item.number, item]));
+    const issueMap = new Map((issues ?? []).map((item) => [item.number, item]));
+    const existingNumbers = new Set(triage.items.map((item) => item.number));
+    const planTargetNumbers = new Set(triage.plan.flatMap((step) => [
+        ...step.itemNumbers,
+        ...step.gates.map((gate) => gate.itemNumber),
+    ]));
+    const retainedTargetNumbers = new Set([
+        ...planTargetNumbers,
+        ...triage.items.flatMap((item) => item.dependencies),
+    ]);
+    const discoveredPullRequests = (pullRequests ?? [])
+        .filter((item) =>
+            String(item.state).toUpperCase() === "OPEN" &&
+            !item.isDraft &&
+            !existingNumbers.has(item.number))
+        .sort((left, right) => right.number - left.number);
+    const removedNumbers = new Set();
+    const satisfiedRemovedNumbers = new Set();
+    const blockedRemovedNumbers = new Set();
+    for (const item of triage.items) {
+        const live = item.type === "pr" ? pullRequestMap.get(item.number) : issueMap.get(item.number);
+        const state = String(live?.state ?? "").toUpperCase();
+        const outOfScopeDraft = item.type === "pr" &&
+            state === "OPEN" &&
+            live?.isDraft === true &&
+            !retainedTargetNumbers.has(item.number);
+        const merged = state === "MERGED" || (state === "CLOSED" && Boolean(live?.mergedAt));
+        const closedOutOfScope = state === "CLOSED" && !retainedTargetNumbers.has(item.number);
+        if (merged || closedOutOfScope || outOfScopeDraft) {
+            removedNumbers.add(item.number);
+            (merged ? satisfiedRemovedNumbers : blockedRemovedNumbers).add(item.number);
+        }
+    }
+
+    const retainedItems = triage.items
+        .filter((item) => !removedNumbers.has(item.number))
+        .map((item) => ({
+            ...item,
+            dependencies: item.dependencies.filter((number) => !satisfiedRemovedNumbers.has(number)),
+        }));
+    const discoveredItems = discoveredPullRequests.map((live) => ({
+        id: `pr-${live.number}`,
+        type: "pr",
+        number: live.number,
+        title: String(live.title || `Pull request #${live.number}`),
+        url: String(live.url || `https://github.com/${triage.repo}/pull/${live.number}`),
+        decision: "NEEDS_INFO",
+        takeConfidence: 0,
+        recommendationConfidence: 0,
+        effort: "Untriaged",
+        risk: "Unknown",
+        owner: "Unassigned",
+        nextAction: "Run global repository triage for this newly discovered pull request.",
+        proofPools: [],
+        proofStatus: "required",
+        reviewStatus: "required",
+        reviewedHeadSha: "",
+        expectedChecks: ["CI Gate"],
+        dependencies: [],
+    }));
+    const items = [...retainedItems, ...discoveredItems].sort((left, right) => {
+        if (left.type !== right.type) return left.type === "pr" ? -1 : 1;
+        return right.number - left.number;
+    });
+    const planCandidates = triage.plan
+        .map((step) => {
+            const referencedRemovedItem = step.itemNumbers.some((number) => removedNumbers.has(number)) ||
+                step.gates.some((gate) => removedNumbers.has(gate.itemNumber));
+            const referencedBlockedItem = step.itemNumbers.some((number) => blockedRemovedNumbers.has(number)) ||
+                step.gates.some((gate) => blockedRemovedNumbers.has(gate.itemNumber));
+            return {
+                ...step,
+                itemNumbers: step.itemNumbers.filter((number) => !removedNumbers.has(number)),
+                gates: step.gates.filter((gate) => !removedNumbers.has(gate.itemNumber)),
+                referencedRemovedItem,
+                referencedBlockedItem,
+                status: referencedBlockedItem ? "blocked" : step.status,
+            };
+        })
+        .filter((step) =>
+            step.referencedBlockedItem ||
+            !step.referencedRemovedItem ||
+            step.itemNumbers.length > 0 ||
+            step.gates.length > 0);
+    const usedPlanIds = new Set(planCandidates.map((step) => step.id));
+    const discoveredPlan = discoveredPullRequests.map((live) => {
+        const baseId = `triage-pr-${live.number}`;
+        let id = baseId;
+        for (let suffix = 2; usedPlanIds.has(id); suffix += 1) {
+            id = `${baseId}-${suffix}`;
+        }
+        usedPlanIds.add(id);
+        return {
+            id,
+            title: `Triage PR #${live.number}`,
+            detail: "Refresh exact-head evidence and assign a triage decision.",
+            dependsOn: [],
+            horizon: "today",
+            itemNumbers: [live.number],
+            gates: [{ itemNumber: live.number, stage: "review" }],
+            status: "pending",
+        };
+    });
+    const retainedPlanIds = new Set([
+        ...planCandidates.map((step) => step.id),
+        ...discoveredPlan.map((step) => step.id),
+    ]);
+    const plan = [...planCandidates.map(({
+        referencedRemovedItem: _,
+        referencedBlockedItem: __,
+        ...step
+    }) => ({
+        ...step,
+        dependsOn: step.dependsOn.filter((id) => retainedPlanIds.has(id)),
+    })), ...discoveredPlan];
+    const openPullRequestCount = items.filter((item) =>
+        item.type === "pr" &&
+        String(pullRequestMap.get(item.number)?.state ?? "").toUpperCase() === "OPEN" &&
+        pullRequestMap.get(item.number)?.isDraft === false).length;
+    const scopeDetail = triage.scope.replace(
+        /^(?:(?:All )?\d+ open non-draft (?:pull requests|PRs)(?:\.\s*|$))+/i,
+        "",
+    ).trim();
+    const scope = `${openPullRequestCount} open non-draft pull requests` +
+        (scopeDetail ? `. ${scopeDetail}` : "");
+    const openPullRequestChange = {
+        change: "Open non-draft PRs",
+        items: `${openPullRequestCount} open non-draft PRs`,
+    };
+    const hasOpenPullRequestChange = triage.report.changes.some((entry) =>
+        entry.change === openPullRequestChange.change);
+    const reconciledReport = {
+        ...triage.report,
+        changes: hasOpenPullRequestChange
+            ? triage.report.changes.map((entry) =>
+                entry.change === openPullRequestChange.change
+                    ? openPullRequestChange
+                    : entry)
+            : [openPullRequestChange, ...triage.report.changes],
+    };
+    const report = triage.plan.length > 0 && plan.length === 0
+        ? {
+            ...reconciledReport,
+            executiveQueue: [],
+            dayPlan: [],
+        }
+        : reconciledReport;
+
+    return {
+        ...triage,
+        scope,
+        items,
+        plan,
+        report,
+    };
+}
+
+export function mergeLiveState(triage, pullRequests, issues, error = "") {
+    const pullRequestMap = new Map((pullRequests ?? []).map((item) => [item.number, item]));
+    const issueMap = new Map((issues ?? []).map((item) => [item.number, item]));
+    const items = triage.items.map((item) => {
+        const live = item.type === "pr" ? pullRequestMap.get(item.number) : issueMap.get(item.number);
+        const checks = item.type === "pr"
+            ? summarizeChecks(live?.statusCheckRollup, item.expectedChecks)
+            : null;
+        const mergeRequest = canRequestMerge(item, live);
+        return {
+            ...item,
+            live: live ?? null,
+            checks,
+            stages: deriveItemStages(item, live),
+            mergeRequest,
+        };
+    });
+
+    return projectDerivedState(triage, items, error, new Date().toISOString());
 }
