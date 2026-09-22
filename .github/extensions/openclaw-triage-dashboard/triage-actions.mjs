@@ -44,6 +44,13 @@ function fail(createError, code, message) {
     throw createError(code, message);
 }
 
+export function requireTriageState(state, createError = (code, message) => Object.assign(new Error(message), { code })) {
+    if (state.isBootstrap) {
+        fail(createError, "triage_not_loaded",
+            "No triage state loaded. Open a new dashboard with a versioned triage-state object first.");
+    }
+}
+
 export function itemDependencyBlocker(state, number) {
     const plan = Array.isArray(state?.plan) ? state.plan : [];
     const linkedSteps = plan.filter((step) => step.itemNumbers.includes(number));
@@ -72,6 +79,7 @@ export async function requestItemAction(entry, action, input, {
     refresh,
     send,
 } = {}) {
+    requireTriageState(entry.state, createError);
     const number = Number(input?.number);
     if (!Number.isInteger(number) || number <= 0) {
         fail(createError, "invalid_item", "A positive PR or issue number is required");

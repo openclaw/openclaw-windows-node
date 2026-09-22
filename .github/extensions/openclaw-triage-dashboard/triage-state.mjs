@@ -19,6 +19,57 @@ export const KNOWN_PROOF_POOLS = new Set([
 
 export const SUPPORTED_REPOSITORY = "openclaw/openclaw-windows-node";
 
+export const TRIAGE_INPUT_SCHEMA = {
+    type: "object",
+    required: ["schemaVersion", "repo", "title", "scope", "generatedAt", "items"],
+    properties: {
+        schemaVersion: { const: 1 },
+        repo: { type: "string" },
+        title: { type: "string" },
+        scope: { type: "string" },
+        generatedAt: { type: "string" },
+        refreshSeconds: { type: "integer", minimum: 30, maximum: 300 },
+        items: { type: "array", minItems: 1, maxItems: 1000 },
+        plan: { type: "array", maxItems: 1000 },
+        report: {
+            type: "object",
+            properties: {
+                changes: { type: "array", maxItems: 100 },
+                executiveQueue: { type: "array", maxItems: 100 },
+                ownership: { type: "array", maxItems: 100 },
+                reviews: { type: "array", maxItems: 100 },
+                dayPlan: { type: "array", maxItems: 100 },
+                automation: { type: "array", maxItems: 100 },
+            },
+            additionalProperties: false,
+        },
+    },
+    additionalProperties: false,
+};
+
+export const CANVAS_INPUT_SCHEMA = {
+    anyOf: [
+        { type: "null" },
+        { type: "object", maxProperties: 0 },
+        TRIAGE_INPUT_SCHEMA,
+    ],
+};
+
+export function normalizeCanvasInput(input) {
+    if (input == null ||
+        (typeof input === "object" && !Array.isArray(input) && Object.keys(input).length === 0)) {
+        return {
+            isBootstrap: true,
+            repo: SUPPORTED_REPOSITORY,
+            title: "OpenClaw triage",
+            scope: "No triage state loaded",
+            items: [],
+            plan: [],
+        };
+    }
+    return normalizeTriageInput(input);
+}
+
 const FAILED_CONCLUSIONS = new Set([
     "ACTION_REQUIRED",
     "CANCELLED",

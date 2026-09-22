@@ -330,6 +330,18 @@ low-priority and declined work.
 
 ## 10. Optionally publish the interactive dashboard
 
+The checked-in canvas also supports direct opening before state is available:
+
+```json
+{ "canvasId": "openclaw-triage-dashboard", "instanceId": "triage-bootstrap" }
+```
+
+Omitted input, `null`, or `{}` opens an inert bootstrap surface with instructions.
+It does not load files or examples, query GitHub, poll, or route item actions.
+This is not a completed triage report. Nonempty input must still be a valid
+schema-versioned state with at least one item; malformed state is not converted
+into a bootstrap surface.
+
 Only produce the interactive canvas when the user requests it in addition to the
 static Markdown report. Create `global-triage-YYYY-MM-DD.json` as its session
 state artifact.
@@ -368,12 +380,19 @@ Do not repeat plan steps in `report`.
 Then:
 
 1. Call `list_canvas_capabilities` for `openclaw-triage-dashboard`.
-2. Open `openclaw-triage-dashboard` with the JSON object as input and use a
-   stable instance ID such as `global-triage-YYYY-MM-DD`.
-3. Reopen that same instance ID whenever triage decisions, proof status, review
-   status, expected checks, or plan steps change.
+2. Read the saved artifact and open `openclaw-triage-dashboard` with the parsed
+   JSON object as `input`, not a file path. Use a fresh instance ID such as
+   `global-triage-YYYY-MM-DD-v1`, distinct from any bootstrap panel.
+3. When triage decisions, proof status, review status, expected checks, or plan
+   steps change, save the revised artifact and open it under a fresh instance ID
+   (for example `global-triage-YYYY-MM-DD-v2`). Reopening an existing ID may only
+   focus/reload that panel, not replace its input.
 4. Leave the canvas open. It refreshes GitHub PR and issue state at the declared
    30-to-300-second interval and pushes updates to the panel.
+
+The same explicit-input path loads an existing state artifact. The extension
+does not discover files automatically, and the template's illustrative decisions
+must never be treated as reviewed evidence.
 
 The canvas exposes:
 
