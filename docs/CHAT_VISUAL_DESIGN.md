@@ -181,6 +181,11 @@ resets after two seconds. Known clipboard access failures are logged and show
 Copy failed instead. Repeated clicks restart the reset; content changes and
 unmount cancel stale timers. Legacy `ClipboardHelper.CopyText` callers keep
 their existing throwing behavior.
+Code-copy automation IDs use `ChatCopy_code_<instance>` with a per-mount suffix,
+so even identical snippets are independently addressable. The suffix survives
+feedback and content rerenders, but is not a persistent conversation identifier.
+Automation should discover the button in its code frame before retaining its ID.
+Message-copy IDs remain based on the existing row identity.
 
 Attachment, queue, recording, loading, thinking and error presentations use the
 same resources and bounded layouts. Markdown sanitization, disabled HTML,

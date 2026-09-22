@@ -66,7 +66,7 @@ internal static class ChatMarkdownPresentation
                         .Grid(column: 0),
                     Component<ChatCopyButton, ChatCopyButtonProps>(new(
                             "code", code, copyLabel,
-                            tryCopy))
+                            tryCopy, UseInstanceAutomationId: true))
                         .Grid(column: 1)),
                 ScrollViewer((RichTextBlock(code) with { FontSize = ChatVisuals.CodeSize })
                         .Set(text =>

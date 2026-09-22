@@ -159,7 +159,7 @@ public sealed class ReactorChatLayoutProofTests(UIThreadFixture ui)
         {
             await ui.RunOnUIAsync(() =>
             {
-                Invoke(FindControl<Button>(surface, "ChatCopy_code"));
+                Invoke(Assert.Single(CodeCopyButtons(surface)));
                 Invoke(Assert.Single(FindDescendants<Button>(host), button =>
                     AutomationProperties.GetAutomationId(button).Contains("kind:Assistant", StringComparison.Ordinal)));
             });
@@ -167,12 +167,74 @@ public sealed class ReactorChatLayoutProofTests(UIThreadFixture ui)
             await ui.RunOnUIAsync(() =>
             {
                 var expected = success ? "Copied" : "Copy failed";
-                Assert.Equal(expected, AutomationProperties.GetName(FindControl<Button>(surface, "ChatCopy_code")));
+                Assert.Equal(expected, AutomationProperties.GetName(Assert.Single(CodeCopyButtons(surface))));
                 Assert.Equal(2, copied.Count);
                 Assert.Contains(AssistantMessage, copied);
             });
             await CaptureAsync(surface, success ? "Copied-message-and-code-800" : "Copy-failed-message-and-code-800");
         }, "parity", text => { copied.Add(text); return success; });
+    }
+
+    [Fact]
+    public async Task CodeCopyAutomationIds_AreDistinctAndStableAcrossFeedbackAndContentUpdates()
+    {
+        await WithChatAsync(800, async (surface, host, _, _) =>
+        {
+            Action<string>? update = null;
+            var writes = new List<string>();
+            await ui.RunOnUIAsync(() => host.Mount(_ =>
+                Component<CodeCopiesProbe, CodeCopiesProbeProps>(new(
+                    text => { writes.Add(text); return true; }, setter => update = setter))));
+            await SettleAsync();
+            var ids = await ui.RunOnUIAsync(() =>
+            {
+                var buttons = CodeCopyButtons(surface);
+                Assert.Equal(4, buttons.Length);
+                var values = buttons.Select(AutomationProperties.GetAutomationId).ToArray();
+                Assert.Equal(values.Length, values.Distinct(StringComparer.Ordinal).Count());
+                Invoke(FindControl<Button>(surface, values[1]));
+                return Task.FromResult(values);
+            });
+            await SettleAsync();
+            await ui.RunOnUIAsync(() =>
+            {
+                Assert.Equal(ids, CodeCopyButtons(surface).Select(AutomationProperties.GetAutomationId));
+                Assert.Equal("Copied", AutomationProperties.GetName(FindControl<Button>(surface, ids[1])));
+                foreach (var id in new[] { ids[0], ids[2], ids[3] })
+                    Assert.Equal("Copy code", AutomationProperties.GetName(FindControl<Button>(surface, id)));
+                update!("updated");
+            });
+            await SettleAsync();
+            await ui.RunOnUIAsync(() =>
+            {
+                Assert.Equal(ids, CodeCopyButtons(surface).Select(AutomationProperties.GetAutomationId));
+                Assert.All(CodeCopyButtons(surface), button =>
+                    Assert.Equal("Copy code", AutomationProperties.GetName(button)));
+                foreach (var id in ids)
+                    Invoke(FindControl<Button>(surface, id));
+            });
+            Assert.Equal(new[] { "same", "updated", "updated", "different", "updated" }, writes);
+        });
+    }
+
+    private static Button[] CodeCopyButtons(DependencyObject root) =>
+        FindDescendants<Button>(root).Where(button =>
+            AutomationProperties.GetAutomationId(button).StartsWith("ChatCopy_code_", StringComparison.Ordinal)).ToArray();
+
+    private sealed record CodeCopiesProbeProps(Func<string, bool> TryCopy, Action<Action<string>> Ready);
+
+    private sealed class CodeCopiesProbe : Component<CodeCopiesProbeProps>
+    {
+        public override Microsoft.UI.Reactor.Core.Element Render()
+        {
+            var (text, setText) = UseState("same");
+            UseEffect((Func<Action>)(() => { Props.Ready(setText); return () => { }; }), Array.Empty<object>());
+            return VStack(
+                ChatMarkdownPresentation.CodeBlock(text, "text", Props.TryCopy),
+                ChatMarkdownPresentation.CodeBlock(text, "text", Props.TryCopy),
+                ChatMarkdownPresentation.CodeBlock("different", "text", Props.TryCopy),
+                VStack(ChatMarkdownPresentation.CodeBlock(text, "text", Props.TryCopy)));
+        }
     }
 
     [Fact]

@@ -16,7 +16,8 @@ internal sealed record ChatCopyButtonProps(
     string Label,
     Func<string, bool>? TryCopy = null,
     Action<bool>? FocusChanged = null,
-    TimeSpan? ResetAfter = null);
+    TimeSpan? ResetAfter = null,
+    bool UseInstanceAutomationId = false);
 
 /// <summary>Per-button, content-fenced feedback. No clipboard contents are retained beyond the view props.</summary>
 internal sealed class ChatCopyButton : Component<ChatCopyButtonProps>
@@ -27,6 +28,9 @@ internal sealed class ChatCopyButton : Component<ChatCopyButtonProps>
     public override Element Render()
     {
         var props = Props;
+        var instanceId = UseRef<string?>(null);
+        if (props.UseInstanceAutomationId)
+            instanceId.Current ??= Guid.NewGuid().ToString("N");
         var current = UseRef(props);
         current.Current = props;
         var mounted = UseRef(true);
@@ -110,7 +114,8 @@ internal sealed class ChatCopyButton : Component<ChatCopyButtonProps>
                 Status.Failed => "SystemFillColorCriticalBrush",
                 _ => "ChatSecondaryTextBrush",
             }))
-            .AutomationId("ChatCopy_" + props.Identity)
+            .AutomationId("ChatCopy_" + props.Identity
+                + (props.UseInstanceAutomationId ? "_" + instanceId.Current : string.Empty))
             .AutomationName(label)
             .ToolTip(label)
             .LiveRegion(AutomationLiveSetting.Polite)
