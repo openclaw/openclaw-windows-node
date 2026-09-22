@@ -49,6 +49,11 @@
             </StackPanel>
         </Grid>
 
+        <!-- One content layer, including disconnected/loading states. The header stays on Mica. -->
+        <Border x:Name="ContentBackground" Grid.Row="1"
+                Background="{ThemeResource NavigationViewContentBackground}"
+                IsHitTestVisible="False"/>
+
         <!-- Native chat host -->
         <Border x:Name="ChatHost" Grid.Row="1"/>
 

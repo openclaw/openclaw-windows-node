@@ -50,8 +50,8 @@ aliases. Global Send and Quick Send metaphors are unchanged.
 
 | Resource | Native source |
 |---|---|
-| `ChatCanvasBrush` | `SolidBackgroundFillColorBase` |
-| `ChatComposerBrush` | `LayerFillColorDefault` |
+| `ChatCanvasBrush` | Transparent; system window in HC |
+| `ChatComposerBrush` | `CardBackgroundFillColorDefault` |
 | `ChatCardBrush` | `CardBackgroundFillColorDefault` |
 | `ChatStrokeBrush` | `ControlStrokeColorDefault` |
 | `ChatTextBrush` | `TextFillColorPrimary` |
@@ -65,6 +65,14 @@ aliases. Global Send and Quick Send metaphors are unchanged.
 
 HC maps surfaces, strokes and text to system window/button/highlight colors.
 An HC resource simulation is not evidence that Windows HC mode was enabled.
+
+Window layering follows WinUI Gallery: the Hub title bar and expanded navigation
+pane reveal Mica, while `NavigationViewContentBackground` supplies one content
+layer (`LayerFillColorDefaultBrush` in Light/Dark, system window in HC).
+The embedded chat canvas is transparent so it neither hides nor doubles that
+layer. The standalone chat window also uses Mica and paints the same navigation
+content resource once below its header, including disconnected/loading states.
+The composer and code cards use the card fill above that content layer.
 
 ## Controls and states
 

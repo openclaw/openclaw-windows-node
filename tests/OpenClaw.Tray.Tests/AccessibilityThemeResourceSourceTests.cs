@@ -3,6 +3,45 @@ namespace OpenClaw.Tray.Tests;
 public sealed class AccessibilityThemeResourceSourceTests
 {
     [Fact]
+    public void ChatShell_UsesOneGalleryContentLayerAndPreservesHighContrast()
+    {
+        // Retirement: replace when both production window shells can be mounted in native tests.
+        var hub = System.Xml.Linq.XElement.Parse(ReadSource("src", "OpenClaw.Tray.WinUI", "Windows", "HubWindow.xaml"));
+        var popup = System.Xml.Linq.XElement.Parse(ReadSource("src", "OpenClaw.Tray.WinUI", "Windows", "ChatWindow.xaml"));
+        var resources = System.Xml.Linq.XElement.Parse(ReadSource("src", "OpenClaw.Tray.WinUI", "Themes", "ChatResources.xaml"));
+        System.Xml.Linq.XNamespace x = "http://schemas.microsoft.com/winfx/2006/xaml";
+        Assert.Single(hub.Descendants(), element => element.Name.LocalName == "MicaBackdrop");
+        Assert.Contains("SystemBackdrop = new MicaBackdrop();",
+            ReadSource("src", "OpenClaw.Tray.WinUI", "Windows", "ChatWindow.xaml.cs"));
+        foreach (var shell in new[] { hub, popup })
+        {
+            var title = shell.Descendants().Single(element =>
+                (string?)element.Attribute(x + "Name") == (shell == hub ? "AppTitleBar" : "ChatTitleBar"));
+            Assert.Null(title.Attribute("Background"));
+        }
+        var layer = Assert.Single(popup.Descendants(), element =>
+            (string?)element.Attribute("Background") == "{ThemeResource NavigationViewContentBackground}");
+        Assert.Equal("1", (string?)layer.Attribute("Grid.Row"));
+        Assert.Null(layer.Attribute("Visibility"));
+        Assert.Equal("False", (string?)layer.Attribute("IsHitTestVisible"));
+        Assert.DoesNotContain(hub.Descendants(), element =>
+            (string?)element.Attribute("Background") == "{ThemeResource NavigationViewContentBackground}");
+        foreach (var theme in resources.Descendants().Where(element =>
+            element.Name.LocalName == "ResourceDictionary" && element.Attribute(x + "Key") is not null))
+        {
+            var canvas = theme.Elements().Single(element => (string?)element.Attribute(x + "Key") == "ChatCanvasBrush");
+            var highContrast = (string?)theme.Attribute(x + "Key") == "HighContrast";
+            Assert.Equal(highContrast ? "{ThemeResource SystemColorWindowColor}" : "Transparent",
+                (string?)canvas.Attribute("Color"));
+            if (!highContrast)
+            {
+                var composer = theme.Elements().Single(element => (string?)element.Attribute(x + "Key") == "ChatComposerBrush");
+                Assert.Equal("{ThemeResource CardBackgroundFillColorDefault}", (string?)composer.Attribute("Color"));
+            }
+        }
+    }
+
+    [Fact]
     public void TrayThemeChanges_AreOwnedByXamlResourcesInsteadOfAccessibilitySettings()
     {
         var connection = ReadSource("src", "OpenClaw.Tray.WinUI", "Pages", "ConnectionPage.xaml.cs");

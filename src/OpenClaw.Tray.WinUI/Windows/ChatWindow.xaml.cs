@@ -166,7 +166,7 @@ public sealed partial class ChatWindow : WindowEx
 
     private void ApplySystemBackdrop()
     {
-        SystemBackdrop = new DesktopAcrylicBackdrop();
+        SystemBackdrop = new MicaBackdrop();
     }
 
     private void ApplyChatSurface()

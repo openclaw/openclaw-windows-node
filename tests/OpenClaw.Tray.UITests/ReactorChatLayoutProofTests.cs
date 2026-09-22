@@ -34,6 +34,39 @@ public sealed class ReactorChatLayoutProofTests(UIThreadFixture ui)
         "```text\n09:00  Focus time\n11:00  Messages and reviews\n14:00  Collaborative work\n```\n\n" +
         "Would you like me to turn this into a schedule?";
 
+    [Fact]
+    public async Task ProductionRoot_RevealsHostLayerAndUsesCardComposerFill()
+    {
+        await WithChatAsync(800, async (surface, host, _, _) =>
+        {
+            await ui.RunOnUIAsync(() =>
+            {
+                var root = Assert.IsType<Border>(host.Content);
+                var layout = Assert.IsType<Grid>(root.Child);
+                Assert.Null(root.Background);
+                Assert.Equal(0, Assert.IsType<SolidColorBrush>(layout.Background).Color.A);
+                Assert.NotNull(surface.Background);
+                var input = FindControl<TextBox>(surface, "ChatComposerInput");
+                var composer = Ancestors(input).OfType<Border>().First(border =>
+                    border.MaxWidth == ChatVisuals.ReadingWidth);
+                var reference = (Border)Microsoft.UI.Xaml.Markup.XamlReader.Load(
+                    "<Border xmlns=\"http://schemas.microsoft.com/winfx/2006/xaml/presentation\" " +
+                    "Background=\"{ThemeResource CardBackgroundFillColorDefaultBrush}\" Width=\"0\" Height=\"0\" />");
+                layout.Children.Add(reference);
+                try
+                {
+                    Assert.Equal(Assert.IsType<SolidColorBrush>(reference.Background).Color,
+                        Assert.IsType<SolidColorBrush>(composer.Background).Color);
+                }
+                finally
+                {
+                    layout.Children.Remove(reference);
+                }
+            });
+            await CaptureAsync(surface, "Gallery-layering-800");
+        });
+    }
+
     [Theory]
     [InlineData(320)]
     [InlineData(480)]
@@ -1368,16 +1401,16 @@ public sealed class ReactorChatLayoutProofTests(UIThreadFixture ui)
                 host = new ReactorHostControl(logger: renderErrors) { RequestedTheme = themeScope.ElementTheme };
                 host.Mount(_ => Component<OpenClawReactorChatRoot, OpenClawReactorChatRootProps>(
                     new(provider, session, IsCompact: width < 640, TryCopyText: tryCopy)));
-                surface = new Border
-                {
-                    Width = width,
-                    Height = 720,
-                    HorizontalAlignment = HorizontalAlignment.Left,
-                    VerticalAlignment = VerticalAlignment.Top,
-                    RequestedTheme = themeScope.ElementTheme,
-                    Child = host,
-                };
-                proofWindow = new Window { Content = surface };
+                surface = (Border)Microsoft.UI.Xaml.Markup.XamlReader.Load(
+                    "<Border xmlns=\"http://schemas.microsoft.com/winfx/2006/xaml/presentation\" " +
+                    "Background=\"{ThemeResource NavigationViewContentBackground}\" />");
+                surface.Width = width;
+                surface.Height = 720;
+                surface.HorizontalAlignment = HorizontalAlignment.Left;
+                surface.VerticalAlignment = VerticalAlignment.Top;
+                surface.RequestedTheme = themeScope.ElementTheme;
+                surface.Child = host;
+                proofWindow = new Window { Content = surface, SystemBackdrop = new MicaBackdrop() };
                 _captureWindow = proofWindow;
                 var windowPosition = ui.IsSlow ? 80 : -32000;
                 var captureHeight = Environment.GetEnvironmentVariable("OPENCLAW_NATIVE_COMPOSITOR_CAPTURE") == "1" ? 1100 : 900;
