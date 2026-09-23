@@ -114,8 +114,9 @@ public static class GatewayTerminalLaunchCommandBuilder
 
     private static GatewayTerminalLaunchCommand BuildSshCommand(GatewayHostAccessPlan accessPlan, string? windowsTerminalPath)
     {
-        var user = RequireValue(accessPlan.SshUser, "SSH user is required.");
-        var host = RequireValue(accessPlan.SshHost, "SSH host is required.");
+        var user = RequireValue(accessPlan.SshUser, "SSH user is required.").Trim();
+        var host = RequireValue(accessPlan.SshHost, "SSH host is required.").Trim();
+        SshTunnelCommandLine.ValidateUserAndHost(user, host);
         var endpoint = $"{user}@{host}";
 
         if (!string.IsNullOrWhiteSpace(windowsTerminalPath))
