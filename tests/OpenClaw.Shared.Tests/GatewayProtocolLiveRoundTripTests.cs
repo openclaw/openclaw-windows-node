@@ -81,6 +81,67 @@ public sealed class GatewayProtocolLiveRoundTripTests : IDisposable
         }
     }
 
+    [Theory]
+    [InlineData("commands.list")]
+    [InlineData("sessions.files.list")]
+    [InlineData("sessions.files.get")]
+    [InlineData("sessions.compaction.list")]
+    [InlineData("sessions.compaction.get")]
+    public async Task PayloadReader_HelloOkPending_ReturnsUnavailableThenSucceeds(string method)
+    {
+        using var server = new LoopbackGatewayServer();
+        server.SilenceMethod("connect");
+        ConfigureResponders(server);
+        using var client = new OpenClawGatewayClient(
+            server.WebSocketUrl, "test-token", identityPath: _identityDir);
+
+        const string key = "agent:main:main";
+        const int timeoutMs = 20_000;
+        Func<Task<bool>> read = method switch
+        {
+            "commands.list" => async () => (await client.ListCommandsAsync(timeoutMs: timeoutMs)).IsSupported,
+            "sessions.files.list" => async () => (await client.ListSessionFilesAsync(key, timeoutMs: timeoutMs)).IsSupported,
+            "sessions.files.get" => async () => (await client.GetSessionFileAsync(key, "src/a.cs", timeoutMs)).IsSupported,
+            "sessions.compaction.list" => async () => (await client.ListCompactionCheckpointsAsync(key, timeoutMs)).IsSupported,
+            "sessions.compaction.get" => async () => (await client.GetCompactionCheckpointAsync(key, "cp1", timeoutMs)).IsSupported,
+            _ => throw new ArgumentOutOfRangeException(nameof(method))
+        };
+
+        await client.ConnectAsync();
+        using var connect = JsonDocument.Parse(
+            await server.WaitFrameAsync("connect", occurrence: 0, timeoutMs: timeoutMs));
+        Assert.False(client.IsConnectedToGateway);
+        Assert.False(await read());
+        Assert.Single(server.AllFrames);
+        Assert.False(server.HasFrame(method));
+        _output.WriteLine($"[trace] {method}: connect captured, hello-ok withheld; IsSupported=false; no application frame");
+
+        var connected = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        client.StatusChanged += (_, status) =>
+        {
+            if (status == ConnectionStatus.Connected)
+                connected.TrySetResult();
+        };
+        await server.SendTextToCurrentSocketAsync(JsonSerializer.Serialize(new
+        {
+            type = "res",
+            id = connect.RootElement.GetProperty("id").GetString(),
+            ok = true,
+            payload = new { type = "hello-ok", protocol = GatewayProtocolContract.CurrentVersion }
+        }));
+        await connected.Task.WaitAsync(TimeSpan.FromMilliseconds(timeoutMs));
+        Assert.True(client.IsConnectedToGateway);
+        Assert.True(await read());
+        Assert.True(server.HasFrame(method));
+        Assert.Throws<InvalidOperationException>(() => server.FrameFor(method, occurrence: 1));
+        _output.WriteLine($"[trace] {method}: hello-ok accepted on same socket; IsSupported=true; exactly one request/response completed");
+
+        await client.DisconnectAsync();
+        var exception = await Assert.ThrowsAsync<InvalidOperationException>(() => read());
+        Assert.Equal("Gateway connection is not open", exception.Message);
+        _output.WriteLine($"[trace] {method}: disconnected read still throws; only handshake-pending reads return unavailable");
+    }
+
     [Fact]
     public async Task NewProtocolMethods_RealWebSocketRoundTrip_SendCorrectWireFramesAndParseResponses()
     {
@@ -330,6 +391,13 @@ public sealed class GatewayProtocolLiveRoundTripTests : IDisposable
             }
         });
 
+        server.OnMethod("sessions.files.list", _ => new
+        {
+            sessionKey = "agent:main:main",
+            root = "/work/repo",
+            files = new[] { new { path = "src/a.cs", name = "a.cs", kind = "modified" } }
+        });
+
         server.OnMethod("sessions.files.get", _ => new
         {
             sessionKey = "agent:main:main",
@@ -368,6 +436,13 @@ public sealed class GatewayProtocolLiveRoundTripTests : IDisposable
             {
                 new { checkpointId = "cp1", sessionKey = "agent:main:main", sessionId = "sid-1", createdAt = 1700000000000L, reason = "manual" }
             }
+        });
+
+        server.OnMethod("sessions.compaction.get", _ => new
+        {
+            ok = true,
+            key = "agent:main:main",
+            checkpoint = new { checkpointId = "cp1", sessionKey = "agent:main:main", sessionId = "sid-1", createdAt = 1700000000000L, reason = "manual" }
         });
 
         server.OnMethod("sessions.compaction.branch", _ => new

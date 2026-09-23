@@ -328,7 +328,7 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
             throw new InvalidOperationException("Gateway connection is not open");
 
         if (!TryGetReadyConnectionGeneration(out var connectionGeneration))
-            throw new InvalidOperationException($"Gateway handshake has not completed; cannot send {method}.");
+            throw new InvalidOperationException($"{HandshakePendingError}; refusing to send '{method}'");
 
         return connectionGeneration;
     }
