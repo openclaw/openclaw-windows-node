@@ -84,7 +84,11 @@ public static class LlamaServerRouterConfiguration
                 .WithComparers(StringComparer.OrdinalIgnoreCase)
                 .Add("CUDA_VISIBLE_DEVICES", manifest.SelectedGpuId),
             presetPath,
-            BuildPreset(model, profile, modelPath),
+            // TODO(rtx-spark-dflash): DraftDFlash recipes need their pinned
+            // draft checkpoint acquired and verified alongside the primary
+            // weights before a real path can be threaded through here; see
+            // BuildPreset's draftModelPath parameter.
+            BuildPreset(model, profile, modelPath, draftModelPath: null),
             model.Id);
     }
 
@@ -150,12 +154,17 @@ public static class LlamaServerRouterConfiguration
     private static string BuildPreset(
         LocalModelInfo model,
         LocalInferenceRunProfile profile,
-        string modelPath)
+        string modelPath,
+        string? draftModelPath)
     {
         if (modelPath.IndexOfAny(['\r', '\n']) >= 0)
             throw new InvalidDataException("The managed model path cannot be represented safely in a llama-server preset.");
+        if (draftModelPath is not null && draftModelPath.IndexOfAny(['\r', '\n']) >= 0)
+            throw new InvalidDataException("The managed draft model path cannot be represented safely in a llama-server preset.");
 
         LocalModelRunRecipe recipe = model.Recipe;
+        if (recipe.SpeculativeDecoding == SpeculativeDecodingMode.DraftDFlash && draftModelPath is null)
+            throw new InvalidDataException("Draft-flash decoding requires a resolved draft model path.");
         ModelSamplingPreset sampling = recipe.Sampling;
         var preset = new StringBuilder();
         preset.AppendLine("version = 1");
@@ -178,9 +187,24 @@ public static class LlamaServerRouterConfiguration
         preset.AppendLine("main-gpu = 0");
         preset.AppendLine("fit = off");
         preset.AppendLine("load-mode = dio");
-        preset.AppendLine("spec-type = draft-mtp");
-        preset.Append("spec-draft-n-max = ").AppendLine(Invariant(recipe.SpeculativeDraftMaxTokens));
-        preset.AppendLine("spec-draft-backend-sampling = true");
+        switch (recipe.SpeculativeDecoding)
+        {
+            case SpeculativeDecodingMode.DraftMtp:
+                preset.AppendLine("spec-type = draft-mtp");
+                preset.Append("spec-draft-n-max = ").AppendLine(Invariant(recipe.SpeculativeDraftMaxTokens));
+                preset.AppendLine("spec-draft-backend-sampling = true");
+                break;
+            case SpeculativeDecodingMode.DraftDFlash:
+                preset.AppendLine("spec-type = draft-dflash");
+                preset.Append("spec-draft-model = ").AppendLine(draftModelPath);
+                preset.Append("spec-draft-n-max = ").AppendLine(Invariant(recipe.SpeculativeDraftMaxTokens));
+                preset.AppendLine("spec-draft-backend-sampling = true");
+                break;
+            case SpeculativeDecodingMode.None:
+                break;
+            default:
+                throw new ArgumentOutOfRangeException(nameof(recipe.SpeculativeDecoding));
+        }
         preset.Append("temperature = ").AppendLine(Invariant(sampling.Temperature));
         preset.Append("top-k = ").AppendLine(Invariant(sampling.TopK));
         preset.Append("top-p = ").AppendLine(Invariant(sampling.TopP));
