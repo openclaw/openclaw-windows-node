@@ -657,7 +657,8 @@ public sealed class SetupWizardRunner
                 _ctx.DistroName!,
                 command,
                 remaining,
-                ct: CancellationToken.None);
+                ct: CancellationToken.None,
+                inputViaStdin: true);
             lastResult = result;
             if (result.ExitCode == 0
                 || !IsStartupMigrationLeaseContention(result))
