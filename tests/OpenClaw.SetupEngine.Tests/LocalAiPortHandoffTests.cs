@@ -139,8 +139,11 @@ public sealed class LocalAiPortHandoffTests
             new GpuInfo(
                 GpuVendor.Nvidia,
                 "NVIDIA RTX Spark N1X (6144-core Blackwell RTX GPU)",
-                GpuVisibleMemoryBytes: 25_702_694_912,
-                FreeGpuVisibleMemoryBytes: 25_702_694_912,
+                // A real 48GB-SKU RTX Spark's measured cuMemGetInfo total, so this
+                // fixture routes through the fixed SKU table instead of landing
+                // below the smallest (32GB) recommended tier.
+                GpuVisibleMemoryBytes: 48_585_498_624,
+                FreeGpuVisibleMemoryBytes: 48_585_498_624,
                 DriverVersion: "616.00",
                 CudaMajorVersion: 13,
                 StableId: "GPU-SPARK"),
