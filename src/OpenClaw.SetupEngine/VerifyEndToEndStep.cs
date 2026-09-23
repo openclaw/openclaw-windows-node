@@ -273,11 +273,13 @@ public sealed class VerifyEndToEndStep : SetupStep
             if (result == PairOperatorStep.ConnectionOutcome.PairingRequired)
             {
                 ctx.Logger.Info("Metadata-upgrade detected — auto-approving for tray");
+                var requestId = client.PairingRequiredRequestId;
+                ctx.OperatorDeviceId ??= identity.DeviceId;
                 await client.DisconnectAsync();
                 client.Dispose();
                 client = null;
 
-                var approveResult = await PairOperatorStep.AutoApprovePairing(ctx, ct);
+                var approveResult = await PairOperatorStep.AutoApprovePairing(ctx, requestId, ct);
                 if (!approveResult.IsSuccess)
                     return StepResult.Fail($"Operator finalization approval failed: {approveResult.Message}");
 

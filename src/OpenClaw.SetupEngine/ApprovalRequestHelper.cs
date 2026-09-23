@@ -83,6 +83,71 @@ internal static partial class ApprovalRequestHelper
         }
     }
 
+    internal static RequestIdParseResult TrySelectPendingRequestForDevice(string json, string? deviceId)
+    {
+        if (string.IsNullOrWhiteSpace(deviceId))
+            return RequestIdParseResult.NotFound("Operator device ID is missing, so no pending request can be bound to the socket setup opened.");
+
+        if (string.IsNullOrWhiteSpace(json))
+            return RequestIdParseResult.NotFound("Pending approval output was empty.");
+
+        var wantedDeviceId = deviceId.Trim();
+        try
+        {
+            using var doc = JsonDocument.Parse(json);
+            if (!doc.RootElement.TryGetProperty("pending", out var pending) ||
+                pending.ValueKind is JsonValueKind.Null or JsonValueKind.Undefined)
+            {
+                return RequestIdParseResult.NotFound("No pending approval request was found.");
+            }
+
+            if (pending.ValueKind != JsonValueKind.Array)
+                return RequestIdParseResult.NotFound("Pending approval output did not contain an array.");
+
+            string? match = null;
+            foreach (var item in pending.EnumerateArray())
+            {
+                if (!item.TryGetProperty("deviceId", out var deviceElement) ||
+                    deviceElement.ValueKind != JsonValueKind.String)
+                {
+                    continue;
+                }
+
+                var candidateDeviceId = deviceElement.GetString()?.Trim();
+                if (!string.Equals(candidateDeviceId, wantedDeviceId, StringComparison.OrdinalIgnoreCase))
+                    continue;
+
+                if (item.TryGetProperty("role", out var roleElement) &&
+                    roleElement.ValueKind == JsonValueKind.String)
+                {
+                    var role = roleElement.GetString()?.Trim();
+                    if (!string.IsNullOrEmpty(role) &&
+                        !string.Equals(role, "operator", StringComparison.OrdinalIgnoreCase))
+                    {
+                        continue;
+                    }
+                }
+
+                var parsed = TryReadRequestId(item);
+                if (!parsed.Success)
+                    return RequestIdParseResult.NotFound(parsed.Error ?? "Pending approval request did not include a safe request ID.");
+
+                if (match is not null)
+                    return RequestIdParseResult.NotFound("Multiple pending approval requests match the socket setup opened; refusing to auto-approve an ambiguous request.");
+
+                match = parsed.RequestId;
+            }
+
+            return match is null
+                ? RequestIdParseResult.NotFound("No pending approval request matched the socket setup opened.")
+                : RequestIdParseResult.Found(match);
+        }
+        catch (JsonException ex)
+        {
+            return RequestIdParseResult.NotFound($"Pending approval output was not valid JSON: {ex.Message}");
+        }
+    }
+
     internal static RequestIdParseResult TryReadSinglePendingRequestId(string json)
     {
         var all = TryReadPendingRequestIds(json);

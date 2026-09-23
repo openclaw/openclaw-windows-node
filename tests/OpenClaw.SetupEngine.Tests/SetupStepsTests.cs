@@ -5306,6 +5306,57 @@ public class SetupStepsTests : IDisposable
     // in docs/ARCHITECTURE.md).
 
     [Fact]
+    public async Task AutoApprovePairing_WithoutRequestId_ApprovesOnlyTheRequestForTheOpenedSocket()
+    {
+        const string socketDeviceId = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+        const string otherDeviceId = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb";
+        const string socketRequestId = "setup-socket-req";
+        const string newerRequestId = "attacker-latest-req";
+        var commands = new FakeCommandRunner(
+            _ => Ok(),
+            (_, command, _) =>
+            {
+                if (command.Contains("devices list", StringComparison.Ordinal))
+                {
+                    return Ok(
+                        "{\"pending\":[" +
+                        "{\"requestId\":\"" + socketRequestId + "\",\"deviceId\":\"" + socketDeviceId + "\",\"role\":\"operator\",\"ts\":1}," +
+                        "{\"requestId\":\"" + newerRequestId + "\",\"deviceId\":\"" + otherDeviceId + "\",\"role\":\"operator\",\"ts\":2}" +
+                        "]}");
+                }
+
+                if (command.Contains("approve --latest", StringComparison.Ordinal))
+                {
+                    return Ok("{\"selected\":{\"requestId\":\"" + newerRequestId + "\",\"role\":\"operator\"}}");
+                }
+
+                if (command.Contains("devices approve", StringComparison.Ordinal))
+                    return Ok("{\"requestId\":\"" + socketRequestId + "\"}");
+
+                return Fail($"unexpected wsl command: {command}");
+            });
+        var ctx = CreateContext(commands: commands);
+        ctx.DistroName = "test-distro";
+        ctx.SharedGatewayToken = "shared-token";
+        ctx.OperatorDeviceId = socketDeviceId;
+
+        var result = await PairOperatorStep.AutoApprovePairing(ctx, CancellationToken.None);
+
+        Assert.True(result.IsSuccess, result.Message);
+        Assert.Contains(socketRequestId, result.Message);
+        Assert.DoesNotContain(newerRequestId, result.Message);
+        Assert.DoesNotContain(
+            commands.WslCalls,
+            call => call.Command.Contains("approve --latest", StringComparison.Ordinal));
+        var approve = Assert.Single(
+            commands.WslCalls.Select((call, index) => (call, index)),
+            item => item.call.Command.Contains("devices approve", StringComparison.Ordinal));
+        Assert.Equal(
+            socketRequestId,
+            commands.WslEnvironments[approve.index]! [ApprovalRequestHelper.RequestIdEnvironmentVariable]);
+    }
+
+    [Fact]
     public async Task AutoApprovePairing_ReturnsTerminalForDevicePairPluginNotFound()
     {
         var ctx = CreatePairingContext(DevicePairPluginNotFoundOutput);

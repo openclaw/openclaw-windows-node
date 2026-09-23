@@ -203,10 +203,25 @@ public sealed class SetupWizardRunner
             if (connection == PairOperatorStep.ConnectionOutcome.PairingRequired && _ctx.Config.AutoApprovePairing)
             {
                 _ctx.Logger.Info("Wizard operator pairing required — auto-approving");
+                var requestId = client.PairingRequiredRequestId;
+                if (string.IsNullOrWhiteSpace(_ctx.OperatorDeviceId))
+                {
+                    try
+                    {
+                        var identity = new DeviceIdentity(identityPath);
+                        identity.Initialize();
+                        _ctx.OperatorDeviceId = identity.DeviceId;
+                    }
+                    catch (DeviceIdentityLoadException ex)
+                    {
+                        return SetupIdentityFailure.Terminal(_ctx, "wizard operator pairing", ex);
+                    }
+                }
+
                 await client.DisconnectAsync();
                 client.Dispose();
 
-                var approval = await PairOperatorStep.AutoApprovePairing(_ctx, ct);
+                var approval = await PairOperatorStep.AutoApprovePairing(_ctx, requestId, ct);
                 if (!approval.IsSuccess)
                     return approval;
 
