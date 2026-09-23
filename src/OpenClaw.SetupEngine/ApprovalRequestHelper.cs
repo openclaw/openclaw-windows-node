@@ -84,6 +84,12 @@ internal static partial class ApprovalRequestHelper
     }
 
     internal static RequestIdParseResult TrySelectPendingRequestForDevice(string json, string? deviceId)
+        => TrySelectPendingRequestForDevice(json, deviceId, matchNodeId: false);
+
+    internal static RequestIdParseResult TrySelectPendingRequestForDevice(
+        string json,
+        string? deviceId,
+        bool matchNodeId)
     {
         if (string.IsNullOrWhiteSpace(deviceId))
             return RequestIdParseResult.NotFound("Operator device ID is missing, so no pending request can be bound to the socket setup opened.");
@@ -107,26 +113,11 @@ internal static partial class ApprovalRequestHelper
             string? match = null;
             foreach (var item in pending.EnumerateArray())
             {
-                if (!item.TryGetProperty("deviceId", out var deviceElement) ||
-                    deviceElement.ValueKind != JsonValueKind.String)
-                {
-                    continue;
-                }
-
-                var candidateDeviceId = deviceElement.GetString()?.Trim();
-                if (!string.Equals(candidateDeviceId, wantedDeviceId, StringComparison.OrdinalIgnoreCase))
+                if (!PendingItemMatchesDevice(item, wantedDeviceId, matchNodeId))
                     continue;
 
-                if (item.TryGetProperty("role", out var roleElement) &&
-                    roleElement.ValueKind == JsonValueKind.String)
-                {
-                    var role = roleElement.GetString()?.Trim();
-                    if (!string.IsNullOrEmpty(role) &&
-                        !string.Equals(role, "operator", StringComparison.OrdinalIgnoreCase))
-                    {
-                        continue;
-                    }
-                }
+                if (!RoleMatchesSelection(item, matchNodeId))
+                    continue;
 
                 var parsed = TryReadRequestId(item);
                 if (!parsed.Success)
@@ -146,6 +137,54 @@ internal static partial class ApprovalRequestHelper
         {
             return RequestIdParseResult.NotFound($"Pending approval output was not valid JSON: {ex.Message}");
         }
+    }
+
+    internal static bool IsNothingToDrain(RequestIdParseResult parsed)
+    {
+        if (parsed.Success || string.IsNullOrWhiteSpace(parsed.Error))
+            return false;
+
+        return parsed.Error.Contains("No pending approval request was found.", StringComparison.Ordinal)
+            || parsed.Error.Contains("No pending approval request matched the socket setup opened.", StringComparison.Ordinal)
+            || parsed.Error.Contains("Operator device ID is missing", StringComparison.Ordinal);
+    }
+
+    private static bool PendingItemMatchesDevice(JsonElement item, string wantedDeviceId, bool matchNodeId)
+    {
+        var matched = false;
+        if (item.TryGetProperty("deviceId", out var deviceElement) &&
+            deviceElement.ValueKind == JsonValueKind.String &&
+            string.Equals(deviceElement.GetString()?.Trim(), wantedDeviceId, StringComparison.OrdinalIgnoreCase))
+        {
+            matched = true;
+        }
+
+        if (matchNodeId &&
+            item.TryGetProperty("nodeId", out var nodeElement) &&
+            nodeElement.ValueKind == JsonValueKind.String &&
+            string.Equals(nodeElement.GetString()?.Trim(), wantedDeviceId, StringComparison.OrdinalIgnoreCase))
+        {
+            matched = true;
+        }
+
+        return matched;
+    }
+
+    private static bool RoleMatchesSelection(JsonElement item, bool matchNodeId)
+    {
+        if (!item.TryGetProperty("role", out var roleElement) ||
+            roleElement.ValueKind != JsonValueKind.String)
+        {
+            return true;
+        }
+
+        var role = roleElement.GetString()?.Trim();
+        if (string.IsNullOrEmpty(role))
+            return true;
+
+        return matchNodeId
+            ? !string.Equals(role, "operator", StringComparison.OrdinalIgnoreCase)
+            : string.Equals(role, "operator", StringComparison.OrdinalIgnoreCase);
     }
 
     internal static RequestIdParseResult TryReadSinglePendingRequestId(string json)

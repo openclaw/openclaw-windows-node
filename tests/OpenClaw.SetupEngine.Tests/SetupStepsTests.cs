@@ -5357,6 +5357,88 @@ public class SetupStepsTests : IDisposable
     }
 
     [Fact]
+    public async Task LaterDrain_DoesNotApproveADifferentPendingRequest()
+    {
+        const string socketDeviceId = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+        const string otherDeviceId = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb";
+        const string socketRequestId = "setup-socket-req";
+        const string otherRequestId = "attacker-latest-req";
+        const string socketNodeRequestId = "setup-node-req";
+        const string otherNodeRequestId = "attacker-node-req";
+        var deviceLists = 0;
+        var nodeLists = 0;
+        var commands = new FakeCommandRunner(
+            _ => Ok(),
+            (_, command, _) =>
+            {
+                if (command.Contains("devices list", StringComparison.Ordinal))
+                {
+                    deviceLists++;
+                    var pending = deviceLists == 1
+                        ? "{\"pending\":[" +
+                          "{\"requestId\":\"" + socketRequestId + "\",\"deviceId\":\"" + socketDeviceId + "\",\"role\":\"operator\"}," +
+                          "{\"requestId\":\"" + otherRequestId + "\",\"deviceId\":\"" + otherDeviceId + "\",\"role\":\"operator\"}" +
+                          "]}"
+                        : "{\"pending\":[{\"requestId\":\"" + otherRequestId + "\",\"deviceId\":\"" + otherDeviceId + "\",\"role\":\"operator\"}]}";
+                    return Ok(pending);
+                }
+
+                if (command.Contains("nodes list", StringComparison.Ordinal))
+                {
+                    nodeLists++;
+                    var pending = nodeLists == 1
+                        ? "{\"pending\":[" +
+                          "{\"requestId\":\"" + socketNodeRequestId + "\",\"nodeId\":\"" + socketDeviceId + "\",\"role\":\"node\"}," +
+                          "{\"requestId\":\"" + otherNodeRequestId + "\",\"nodeId\":\"" + otherDeviceId + "\",\"role\":\"node\"}" +
+                          "]}"
+                        : "{\"pending\":[{\"requestId\":\"" + otherNodeRequestId + "\",\"nodeId\":\"" + otherDeviceId + "\",\"role\":\"node\"}]}";
+                    return Ok(pending);
+                }
+
+                if (command.Contains("approve --latest", StringComparison.Ordinal))
+                    return Ok("{\"selected\":{\"requestId\":\"" + otherRequestId + "\"}}");
+
+                if (command.Contains("devices approve", StringComparison.Ordinal) ||
+                    command.Contains("nodes approve", StringComparison.Ordinal))
+                {
+                    return Ok("{}");
+                }
+
+                return Fail($"unexpected wsl command: {command}");
+            });
+        var ctx = CreateContext(commands: commands);
+        ctx.DistroName = "test-distro";
+        ctx.SharedGatewayToken = "shared-token";
+        ctx.OperatorDeviceId = socketDeviceId;
+
+        var deviceResult = await VerifyEndToEndStep.DrainPendingDeviceApprovalsAsync(ctx, CancellationToken.None);
+        var nodeResult = await VerifyEndToEndStep.DrainPendingNodeApprovalsAsync(ctx, CancellationToken.None);
+
+        Assert.True(deviceResult.IsSuccess, deviceResult.Message);
+        Assert.True(nodeResult.IsSuccess, nodeResult.Message);
+        Assert.DoesNotContain(
+            commands.WslCalls,
+            call => call.Command.Contains("approve --latest", StringComparison.Ordinal));
+        AssertApprovedRequest(commands, "devices approve", socketRequestId);
+        AssertApprovedRequest(commands, "nodes approve", socketNodeRequestId);
+        Assert.DoesNotContain(
+            commands.WslEnvironments,
+            env => env is not null &&
+                env.TryGetValue(ApprovalRequestHelper.RequestIdEnvironmentVariable, out var requestId) &&
+                (requestId == otherRequestId || requestId == otherNodeRequestId));
+    }
+
+    private static void AssertApprovedRequest(FakeCommandRunner commands, string commandText, string requestId)
+    {
+        var approve = Assert.Single(
+            commands.WslCalls.Select((call, index) => (call, index)),
+            item => item.call.Command.Contains(commandText, StringComparison.Ordinal));
+        Assert.Equal(
+            requestId,
+            commands.WslEnvironments[approve.index]! [ApprovalRequestHelper.RequestIdEnvironmentVariable]);
+    }
+
+    [Fact]
     public async Task AutoApprovePairing_ReturnsTerminalForDevicePairPluginNotFound()
     {
         var ctx = CreatePairingContext(DevicePairPluginNotFoundOutput);
