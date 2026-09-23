@@ -165,6 +165,23 @@ public sealed class NativeGatewayRuntime : INativeGatewayRuntime
         }
     }
 
+    public GatewayEndpointProvenance Inspect(GatewayRecord record)
+    {
+        var endpoint = NativeGatewayPaths.ValidateRecord(record);
+        if (!_gate.Wait(0))
+            return new(GatewayEndpointProvenanceKind.UnknownListener, endpoint.Port,
+                Detail: "Native Gateway startup or shutdown is in progress. Retry after it finishes.");
+        try
+        {
+            ObjectDisposedException.ThrowIf(_disposed != 0, this);
+            return InspectCore(record, endpoint);
+        }
+        finally
+        {
+            _gate.Release();
+        }
+    }
+
     public async Task<GatewayEndpointProvenance> InspectAsync(GatewayRecord record, CancellationToken cancellationToken)
     {
         await _gate.WaitAsync(cancellationToken).ConfigureAwait(false);

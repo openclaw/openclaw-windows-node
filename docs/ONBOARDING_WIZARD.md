@@ -243,6 +243,10 @@ inside the card below its description, with a decorative green checkmark and a
 screen-reader announcement. The requested description is **Install a local,
 MXC contained OpenClaw gateway**; this copy change does not implement MXC
 session containment, which remains outstanding for the current signed-in-user runtime.
+If a resumed native setup profile's port has been taken by another process,
+Retry selects a new port without replacing the profile, credentials or identity.
+Unexpected launch/cleanup failures show an explicit failure and Retry action;
+Companion never takes over or stops the conflicting process.
 The WSL title is **Install a local WSL gateway**. Checking, unavailable and error
 messages remain outside the disabled card so retry/update actions stay usable.
 

@@ -87,6 +87,7 @@ These are the canonical homes. Do not reintroduce private copies elsewhere.
 | Optional-tail cancellation acknowledgement and saved-config/authenticated-health gates | `WizardOptionalSetupHandoff` | authoritative |
 | Native terminal TUI onboarding and pre-wizard registry publication | `NativeGatewaySetupHost` / `NativeGatewaySetupService` | closed |
 | Native Gateway credential preflight and retry authorization | `NativeGatewayEndpointSecurity` | authoritative |
+| HTTP/dashboard/web-chat credential handoff routing and fresh native inspection | `InteractiveGatewayEndpointAuthorizer`, borrowing the manager-owned runtime | authoritative |
 | Local AI gateway-record ownership and WSL distro binding | `LocalAiGatewayDistroResolver` | authoritative |
 | Local AI model cache acquisition, explicit legacy migration, and active-path receipt selection | `HuggingFaceModelInstaller` + `LocalAiManifestStore` + `LocalAiInstallReconciler` | authoritative |
 | Exact Gateway wizard terminal-restart compatibility and bounded retry policy | `GatewayWizardRestartRecoveryPolicy` | authoritative |
@@ -240,6 +241,15 @@ separate profile at `<Companion data>\gateways\<gateway-id>\native-gateway`,
 with its own `openclaw.json`, generated authentication token and agent workspace.
 The draft is not yet a published `GatewayRegistry` record.
 
+Retry re-reads the draft instead of keeping a stale in-memory port. If an
+unpublished draft's port is occupied, `NativeGatewaySetupService` selects another
+loopback port and updates only the port in the descriptor and configuration.
+Gateway ID, identity, authentication token and provider settings are preserved.
+A durable `PreviousPort` intent in the descriptor allows either interrupted
+write to finish on the next attempt. Published records are never rotated by
+this recovery. Runtime ownership checks still reject listeners that race startup;
+no conflicting process is adopted or terminated.
+
 `NativeGatewayPaths` supplies explicit `OPENCLAW_STATE_DIR` and
 `OPENCLAW_CONFIG_PATH` for package commands, rather than using the user's default
 Gateway profile. Launch paths are mapped through `ResolveDataPath` to physical
@@ -292,6 +302,16 @@ solution uses local retained-handle attribution with the existing package.
 Companion owns the launcher lifetime, while the launcher owns Node cleanup.
 `NativeGatewayEndpointSecurity` and setup authorization use this verification
 before credential-bearing connections, including reconnects.
+
+`InteractiveGatewayEndpointAuthorizer` routes dashboard and web-chat HTTP
+credential handoffs to the same runtime's fresh, double-snapshot inspection.
+Its synchronous UI callback never starts a Gateway or waits for a busy lifecycle
+gate; busy, stopped, disposed or replaced workloads fail closed. It does not
+trust cached proof or connected status. App only composes this non-owning adapter;
+process inspection stays in `NativeGatewayRuntime`. Non-native handoffs retain
+`ManagedLocalGatewayPortProvenanceService` authorization. Typed native listener
+conflicts retain `LocalPortConflict` classification instead of becoming generic
+network failures.
 
 This is same-user supervision, not an MXC sandbox or a security boundary against
 malicious same-user code. There is a narrow crash window between suspended

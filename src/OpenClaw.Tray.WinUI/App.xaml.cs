@@ -52,6 +52,7 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands, IPer
     private ITrayController? _trayController;
     private IWindowManager? _windowManager;
     private GatewayConnectionManager? _connectionManager;
+    internal InteractiveGatewayEndpointAuthorizer? InteractiveEndpointAuthorizer { get; private set; }
     private GatewayDirectConnectService? _gatewayDirectConnectService;
     private GatewayRegistry? _gatewayRegistry;
     private OpenClawTray.Services.ManagedLocalGatewayAutoRepairMonitor? _managedLocalAutoRepairMonitor;
@@ -814,6 +815,8 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands, IPer
             new ManagedLocalGatewayPortProvenanceService(appLogger);
         var nativeGatewayRuntime = new OpenClaw.Connection.NativeGateway.NativeGatewayRuntime(
             _gatewayRegistry, new OpenClaw.SetupEngine.UI.NativeGatewayPackageResolver(), appLogger);
+        InteractiveEndpointAuthorizer = new InteractiveGatewayEndpointAuthorizer(
+            nativeGatewayRuntime, managedLocalPortProvenance.IsStrongCredentialAllowed, appLogger);
         _connectionManager = new GatewayConnectionManager(
             credentialResolver, clientFactory, _gatewayRegistry, appLogger,
             identityStore: new DeviceIdentityFileStore(appLogger),
@@ -3876,7 +3879,7 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands, IPer
             _settings.LegacyToken,
             _settings.LegacyBootstrapToken,
             (record, candidate) =>
-                _managedLocalPortProvenance?.IsStrongCredentialAllowed(record, candidate) == true,
+                InteractiveEndpointAuthorizer?.IsCredentialAllowed(record, candidate) == true,
             out var credential) ||
             credential == null)
         {

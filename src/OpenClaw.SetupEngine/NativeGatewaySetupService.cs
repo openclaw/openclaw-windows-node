@@ -2,6 +2,7 @@ using System.Net;
 using System.Net.Sockets;
 using System.Security.Cryptography;
 using System.Text.Json;
+using System.Text.Json.Nodes;
 using OpenClaw.Connection;
 using OpenClaw.Connection.NativeGateway;
 using OpenClaw.Shared;
@@ -42,7 +43,11 @@ public interface INativeGatewaySetupHost
         CancellationToken cancellationToken);
 }
 
-public sealed record NativeGatewaySetupDraft(string GatewayId, int Port, string PackageFamilyName);
+public sealed record NativeGatewaySetupDraft(string GatewayId, int Port, string PackageFamilyName)
+{
+    // Durable intent makes a port-only config/descriptor update recoverable across a crash.
+    public int? PreviousPort { get; init; }
+}
 
 /// <summary>
 /// Configures only a new, dedicated native gateway profile. This never runs the WSL
@@ -71,16 +76,86 @@ public sealed class NativeGatewaySetupService(
             {
                 if (saved.PackageFamilyName != package.PackageFamilyName)
                     throw new InvalidOperationException("The installed Gateway package does not match the saved setup profile.");
-                return saved;
+                return ResumeDraft(saved, draftPath);
             }
         }
-        using var listener = new TcpListener(IPAddress.Loopback, 0);
-        listener.Start();
-        var port = ((IPEndPoint)listener.LocalEndpoint).Port;
+        var port = SelectAvailablePort();
         var draft = new NativeGatewaySetupDraft(Guid.NewGuid().ToString("N"), port, package.PackageFamilyName);
         Directory.CreateDirectory(Path.GetDirectoryName(draftPath)!);
         AtomicFile.WriteAllText(draftPath, JsonSerializer.Serialize(draft));
         return draft;
+    }
+
+    private NativeGatewaySetupDraft ResumeDraft(NativeGatewaySetupDraft draft, string draftPath)
+    {
+        if (draft.PreviousPort is not null)
+            draft = FinishPortChange(draft, draftPath);
+        if (IsPortAvailable(draft.Port))
+            return draft;
+
+        var configPath = NativeGatewayPaths.GetConfigPath(registry, draft.GatewayId);
+        if (File.Exists(configPath))
+            _ = ReadConfiguredRecord(draft, File.ReadAllText(configPath));
+        var pending = draft with { Port = SelectAvailablePort(), PreviousPort = draft.Port };
+        AtomicFile.WriteAllText(draftPath, JsonSerializer.Serialize(pending));
+        System.Diagnostics.Trace.TraceInformation("Native setup is replacing an unavailable draft port.");
+        return FinishPortChange(pending, draftPath);
+    }
+
+    private NativeGatewaySetupDraft FinishPortChange(NativeGatewaySetupDraft draft, string draftPath)
+    {
+        var previousPort = draft.PreviousPort
+            ?? throw new InvalidOperationException("The native setup port change has no previous port.");
+        ArgumentOutOfRangeException.ThrowIfLessThan(previousPort, 1);
+        ArgumentOutOfRangeException.ThrowIfGreaterThan(previousPort, 65535);
+        var configPath = NativeGatewayPaths.GetConfigPath(registry, draft.GatewayId);
+        if (File.Exists(configPath))
+        {
+            var json = File.ReadAllText(configPath);
+            using var document = JsonDocument.Parse(json);
+            if (!document.RootElement.TryGetProperty("gateway", out var gateway) ||
+                gateway.ValueKind != JsonValueKind.Object ||
+                !gateway.TryGetProperty("port", out var port) || !port.TryGetInt32(out var currentPort) ||
+                (currentPort != previousPort && currentPort != draft.Port))
+                throw new InvalidOperationException("Native Gateway configuration changed during port recovery. Restore the draft configuration before retrying.");
+            _ = ReadConfiguredRecord(draft with { Port = currentPort }, json);
+            var config = JsonNode.Parse(json)!.AsObject();
+            config["gateway"]!["port"] = draft.Port;
+            AtomicFile.WriteAllText(configPath, config.ToJsonString());
+        }
+        var completed = draft with { PreviousPort = null };
+        AtomicFile.WriteAllText(draftPath, JsonSerializer.Serialize(completed));
+        return completed;
+    }
+
+    private static int SelectAvailablePort()
+    {
+        for (var attempt = 0; attempt < 10; attempt++)
+        {
+            using var listener = new TcpListener(IPAddress.Loopback, 0) { ExclusiveAddressUse = true };
+            listener.Start();
+            var port = ((IPEndPoint)listener.LocalEndpoint).Port;
+            if (!Socket.OSSupportsIPv6 || CanBind(IPAddress.IPv6Loopback, port))
+                return port;
+        }
+        throw new IOException("Could not select an available native Gateway port. Close conflicting listeners and retry.");
+    }
+
+    private static bool IsPortAvailable(int port) =>
+        CanBind(IPAddress.Loopback, port) && (!Socket.OSSupportsIPv6 || CanBind(IPAddress.IPv6Loopback, port));
+
+    private static bool CanBind(IPAddress address, int port)
+    {
+        using var listener = new TcpListener(address, port) { ExclusiveAddressUse = true };
+        try
+        {
+            listener.Start();
+            return true;
+        }
+        catch (SocketException ex) when (ex.SocketErrorCode is SocketError.AddressAlreadyInUse or SocketError.AccessDenied)
+        {
+            return false;
+        }
     }
 
     internal static string GetDraftPath(GatewayRegistry registry) =>
@@ -90,6 +165,8 @@ public sealed class NativeGatewaySetupService(
         NativeGatewaySetupDraft draft,
         CancellationToken cancellationToken)
     {
+        if (draft.PreviousPort is not null)
+            throw new InvalidOperationException("Resume the native setup draft to finish port recovery before preparing the Gateway.");
         ArgumentOutOfRangeException.ThrowIfLessThan(draft.Port, 1);
         ArgumentOutOfRangeException.ThrowIfGreaterThan(draft.Port, 65535);
         var package = await packageResolver.ResolveAsync(cancellationToken);

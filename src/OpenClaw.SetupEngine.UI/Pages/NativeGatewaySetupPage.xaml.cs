@@ -66,7 +66,7 @@ public sealed partial class NativeGatewaySetupPage : Page
             RetryButton.Visibility = Visibility.Visible;
         }
         catch (Exception ex) when (ex is InvalidOperationException or IOException or UnauthorizedAccessException
-                                   or Win32Exception or COMException or JsonException or TimeoutException)
+                                   or Win32Exception or COMException or JsonException or TimeoutException or AggregateException)
         {
             Trace.TraceError($"Native Gateway setup: {ex}");
             _rows[_currentStep].SetStatus(StepStatus.Failed);
@@ -120,7 +120,7 @@ public sealed partial class NativeGatewaySetupPage : Page
             _resolver,
             new NativeGatewaySetupHost(ReportProgress, ReportStage),
             () => new NativeGatewayRuntime(registry, _resolver, appLogger));
-        window.NativeSetupDraft ??= await service.CreateDraftAsync(cancellationToken);
+        window.NativeSetupDraft = await service.CreateDraftAsync(cancellationToken);
         StatusText.Text = SetupLocalization.GetString("Onboarding_Native_InProgress");
         var session = await service.PrepareAsync(window.NativeSetupDraft, cancellationToken);
         if (window.IsClosed || cancellationToken.IsCancellationRequested)

@@ -48,4 +48,6 @@ public interface INativeGatewayRuntime : IAsyncDisposable
     Task EnsureRunningAsync(GatewayRecord record, CancellationToken cancellationToken);
     Task StopAsync(CancellationToken cancellationToken);
     Task<GatewayEndpointProvenance> InspectAsync(GatewayRecord record, CancellationToken cancellationToken);
+    /// <summary>Fresh ownership inspection without starting or waiting for a lifecycle operation. Busy runtimes deny handoff.</summary>
+    GatewayEndpointProvenance Inspect(GatewayRecord record);
 }

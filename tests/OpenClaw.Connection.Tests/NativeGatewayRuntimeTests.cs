@@ -38,6 +38,92 @@ public sealed class NativeGatewayRuntimeTests : IAsyncDisposable
             : [], true, true);
 
     [Fact]
+    public async Task HttpCredentials_RequireFreshOwnedListenerWithoutWslFallback()
+    {
+        var record = _record with { SharedGatewayToken = "fixture-shared-token" };
+        _registry.AddOrUpdate(record);
+        _registry.SetActive(record.Id);
+        var authorizer = new InteractiveGatewayEndpointAuthorizer(_runtime,
+            (_, _) => throw new InvalidOperationException("Native HTTP must not use WSL authorization."),
+            NullLogger.Instance);
+
+        bool Resolve(out InteractiveGatewayCredential? credential) =>
+            InteractiveGatewayCredentialResolver.TryResolve(
+                _registry, _directory.Path, DeviceIdentityFileReader.Instance, record.Url,
+                "legacy-must-not-leak", null, authorizer.IsCredentialAllowed, out credential);
+
+        Assert.False(Resolve(out var credential));
+        Assert.Null(credential);
+        Assert.Empty(_host.Processes);
+        await _runtime.EnsureRunningAsync(record, default);
+        Assert.True(Resolve(out credential));
+        Assert.Equal(record.SharedGatewayToken, credential!.Token);
+        Assert.Equal(record.Url, credential.GatewayUrl);
+
+        _snapshot = () => new([UnknownListener()], true, true);
+        Assert.False(Resolve(out credential));
+        Assert.Null(credential);
+        Assert.Single(_host.Processes);
+    }
+
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public void HttpCredentials_NonNativePreservesExistingAuthorization(bool allowed)
+    {
+        var called = false;
+        var credential = new GatewayCredential("fixture", false, CredentialResolver.SourceSharedGatewayToken);
+        var nonNative = _record with { NativePackageFamilyName = null };
+        var authorizer = new InteractiveGatewayEndpointAuthorizer(_runtime, (record, candidate) =>
+        {
+            Assert.Same(nonNative, record);
+            Assert.Same(credential, candidate);
+            called = true;
+            return allowed;
+        }, NullLogger.Instance);
+
+        Assert.Equal(allowed, authorizer.IsCredentialAllowed(nonNative, credential));
+        Assert.True(called);
+        Assert.Empty(_host.Processes);
+    }
+
+    [Fact]
+    public async Task HttpInspection_DeniesBusyRuntimeWithoutWaitingOrStarting()
+    {
+        _host.AfterStart = _ =>
+        {
+            var result = _runtime.Inspect(_record);
+            Assert.Equal(GatewayEndpointProvenanceKind.UnknownListener, result.Kind);
+            Assert.Contains("in progress", result.Detail);
+        };
+        await _runtime.EnsureRunningAsync(_record, default);
+        Assert.Equal(GatewayEndpointProvenanceKind.ExpectedManagedGateway, _runtime.Inspect(_record).Kind);
+        Assert.Single(_host.Processes);
+    }
+
+    [Fact]
+    public async Task HttpInspection_DeniesDifferentRecordAndChangedSecondSnapshot()
+    {
+        await _runtime.EnsureRunningAsync(_record, default);
+        Assert.Equal(GatewayEndpointProvenanceKind.UnknownListener,
+            _runtime.Inspect(_record with { Id = "different-profile" }).Kind);
+        var snapshots = 0;
+        _snapshot = () => ++snapshots == 1 ? Snapshot() : new([UnknownListener()], true, true);
+        Assert.Equal(GatewayEndpointProvenanceKind.UnknownListener, _runtime.Inspect(_record).Kind);
+        Assert.Equal(2, snapshots);
+    }
+
+    [Fact]
+    public async Task HttpCredentials_DenyDisposedRuntime()
+    {
+        await _runtime.EnsureRunningAsync(_record, default);
+        await _runtime.DisposeAsync();
+        var authorizer = new InteractiveGatewayEndpointAuthorizer(_runtime, (_, _) => true, NullLogger.Instance);
+        Assert.False(authorizer.IsCredentialAllowed(_record,
+            new GatewayCredential("fixture", false, CredentialResolver.SourceDeviceToken)));
+    }
+
+    [Fact]
     public async Task Ensure_IsIdempotentAndResolvesPackageEveryTime()
     {
         await _runtime.EnsureRunningAsync(_record, default);

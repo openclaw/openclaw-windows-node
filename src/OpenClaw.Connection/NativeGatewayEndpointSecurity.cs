@@ -40,6 +40,11 @@ internal static class NativeGatewayEndpointSecurity
         {
             throw;
         }
+        catch (NativeGatewayListenerException ex)
+        {
+            return new(false, GatewayErrorKind.LocalPortConflict,
+                ex.Provenance.Detail ?? ex.Message);
+        }
         catch (Exception)
         {
             return new(false, GatewayErrorKind.Network,

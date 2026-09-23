@@ -6,6 +6,41 @@ namespace OpenClaw.Tray.Tests;
 public sealed class NativeGatewaySetupUxContractTests
 {
     [Fact]
+    public void HttpSurfaces_UseSharedNativeAwareAuthorizerInsteadOfWslOnlyGate()
+    {
+        var root = TestRepositoryPaths.GetRepositoryRoot();
+        var tray = Path.Combine(root, "src", "OpenClaw.Tray.WinUI");
+        var app = File.ReadAllText(Path.Combine(tray, "App.xaml.cs"));
+        Assert.Contains("new InteractiveGatewayEndpointAuthorizer(", app);
+        Assert.Contains("nativeGatewayRuntime, managedLocalPortProvenance.IsStrongCredentialAllowed, appLogger", app);
+        foreach (var path in new[] { "App.xaml.cs", Path.Combine("Pages", "ChatPage.xaml.cs"),
+                     Path.Combine("Pages", "ConnectionPage.xaml.cs") })
+        {
+            var source = File.ReadAllText(Path.Combine(tray, path));
+            Assert.Contains("InteractiveEndpointAuthorizer", source);
+            Assert.Contains("IsCredentialAllowed(", source);
+            Assert.DoesNotContain(".IsStrongCredentialAllowed(", source);
+        }
+    }
+
+    [Fact]
+    public void NativeSetup_RetryRechecksDraftPortAndRendersAggregateLaunchFailure()
+    {
+        var source = File.ReadAllText(Path.Combine(TestRepositoryPaths.GetRepositoryRoot(),
+            "src", "OpenClaw.SetupEngine.UI", "Pages", "NativeGatewaySetupPage.xaml.cs"));
+        Assert.Contains("window.NativeSetupDraft = await service.CreateDraftAsync(cancellationToken)", source);
+        Assert.DoesNotContain("window.NativeSetupDraft ??=", source);
+        var catchStart = source.IndexOf("catch (Exception ex)", StringComparison.Ordinal);
+        var finallyStart = source.IndexOf("finally", catchStart, StringComparison.Ordinal);
+        var failure = source[catchStart..finallyStart];
+        Assert.Contains("or AggregateException", failure);
+        Assert.Contains("Trace.TraceError", failure);
+        Assert.Contains("SetStatus(StepStatus.Failed)", failure);
+        Assert.Contains("SetupLogger.Sanitize(ex.Message)", failure);
+        Assert.Contains("RetryButton.Visibility = Visibility.Visible", failure);
+    }
+
+    [Fact]
     public void NativeSetup_IsDistinctFromWslAndRechecksCapabilityWithoutIsolationWarning()
     {
         var root = TestRepositoryPaths.GetRepositoryRoot();

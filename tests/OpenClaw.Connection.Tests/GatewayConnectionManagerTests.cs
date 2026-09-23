@@ -117,6 +117,24 @@ public class GatewayConnectionManagerTests : IDisposable
     }
 
     [Fact]
+    public async Task NativeGateway_StartPortConflictPreservesErrorKindAndWithholdsCredentials()
+    {
+        SetupNativeGateway();
+        var runtime = new FakeNativeGatewayRuntime
+        {
+            StartException = new NativeGatewayListenerException(new(
+                GatewayEndpointProvenanceKind.UnknownListener, 18789,
+                Detail: "Another process owns the native Gateway port."))
+        };
+        await using var manager = new GatewayConnectionManager(
+            _resolver, _factory, _registry, NullLogger.Instance, nativeGatewayRuntime: runtime);
+        await manager.ConnectAsync();
+        Assert.Empty(_factory.CreatedCredentials);
+        Assert.Equal(GatewayErrorKind.LocalPortConflict, manager.CurrentSnapshot.OperatorErrorKind);
+        Assert.Contains("Another process", manager.CurrentSnapshot.OperatorError);
+    }
+
+    [Fact]
     public async Task NativeGateway_NodeOnlyStartsBeforeNodeCredentialHandoff()
     {
         SetupNativeGateway();
@@ -5428,6 +5446,9 @@ public class GatewayConnectionManagerTests : IDisposable
 
     private sealed class FakeNativeGatewayRuntime : INativeGatewayRuntime
     {
+        public GatewayEndpointProvenance Inspect(GatewayRecord record) =>
+            new(Kind, new Uri(record.Url).Port);
+
         public Action? BeforeEnsure { get; init; }
         public Action? BeforeInspect { get; init; }
         public Exception? StartException { get; init; }

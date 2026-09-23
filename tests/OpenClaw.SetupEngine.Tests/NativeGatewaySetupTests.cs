@@ -1,3 +1,5 @@
+using System.Net;
+using System.Net.Sockets;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using OpenClaw.Connection;
@@ -10,6 +12,92 @@ namespace OpenClaw.SetupEngine.Tests;
 public sealed class NativeGatewaySetupTests
 {
     private const string Family = "OpenClaw.Gateway_123456789abcd";
+
+    [Fact]
+    public async Task Draft_OccupiedPortRotatesWithoutReplacingProfileOrCredentials()
+    {
+        using var fixture = new Fixture();
+        var draft = await fixture.Service.CreateDraftAsync(default);
+        await using (var session = await fixture.Service.PrepareAsync(draft, default)) { }
+        var configPath = NativeGatewayPaths.GetConfigPath(fixture.Registry, draft.GatewayId);
+        var config = JsonNode.Parse(File.ReadAllText(configPath))!.AsObject();
+        config["models"] = JsonNode.Parse("""{"custom":"preserved"}""");
+        File.WriteAllText(configPath, config.ToJsonString());
+        var identityPath = Path.Combine(fixture.Registry.GetIdentityDirectory(draft.GatewayId), "identity-marker.txt");
+        File.WriteAllText(identityPath, "paired-fixture-identity");
+        using var occupant = new TcpListener(IPAddress.Loopback, draft.Port) { ExclusiveAddressUse = true };
+        occupant.Start();
+
+        var resumed = await fixture.Service.CreateDraftAsync(default);
+
+        Assert.NotEqual(draft.Port, resumed.Port);
+        Assert.Equal(draft.GatewayId, resumed.GatewayId);
+        Assert.Equal(draft.PackageFamilyName, resumed.PackageFamilyName);
+        Assert.Null(resumed.PreviousPort);
+        config["gateway"]!["port"] = resumed.Port;
+        Assert.True(JsonNode.DeepEquals(config, JsonNode.Parse(File.ReadAllText(configPath))));
+        Assert.Equal("paired-fixture-identity", File.ReadAllText(identityPath));
+        Assert.Equal(resumed, JsonSerializer.Deserialize<NativeGatewaySetupDraft>(
+            File.ReadAllText(NativeGatewaySetupService.GetDraftPath(fixture.Registry))));
+        Assert.Empty(fixture.Registry.GetAll());
+        await using var prepared = await fixture.Service.PrepareAsync(resumed, default);
+        Assert.Equal(resumed.Port, new Uri(prepared.Record.Url).Port);
+        Assert.Equal(config["gateway"]!["auth"]!["token"]!.GetValue<string>(), prepared.Record.SharedGatewayToken);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task Draft_InterruptedPortChangeCompletesBothFiles(bool configAlreadyUpdated)
+    {
+        using var fixture = new Fixture();
+        var draft = await fixture.Service.CreateDraftAsync(default);
+        await using (var session = await fixture.Service.PrepareAsync(draft, default)) { }
+        using var oldOccupant = new TcpListener(IPAddress.Loopback, draft.Port) { ExclusiveAddressUse = true };
+        oldOccupant.Start();
+        using var candidate = new TcpListener(IPAddress.Loopback, 0) { ExclusiveAddressUse = true };
+        candidate.Start();
+        var nextPort = ((IPEndPoint)candidate.LocalEndpoint).Port;
+        candidate.Stop();
+        var pending = draft with { Port = nextPort, PreviousPort = draft.Port };
+        var draftPath = NativeGatewaySetupService.GetDraftPath(fixture.Registry);
+        var configPath = NativeGatewayPaths.GetConfigPath(fixture.Registry, draft.GatewayId);
+        var config = JsonNode.Parse(File.ReadAllText(configPath))!.AsObject();
+        if (configAlreadyUpdated)
+        {
+            config["gateway"]!["port"] = nextPort;
+            File.WriteAllText(configPath, config.ToJsonString());
+        }
+        File.WriteAllText(draftPath, JsonSerializer.Serialize(pending));
+
+        var resumed = await fixture.Service.CreateDraftAsync(default);
+
+        Assert.Equal(draft.GatewayId, resumed.GatewayId);
+        Assert.NotEqual(draft.Port, resumed.Port);
+        Assert.Null(resumed.PreviousPort);
+        config["gateway"]!["port"] = resumed.Port;
+        Assert.True(JsonNode.DeepEquals(config, JsonNode.Parse(File.ReadAllText(configPath))));
+        Assert.Equal(resumed, JsonSerializer.Deserialize<NativeGatewaySetupDraft>(File.ReadAllText(draftPath)));
+    }
+
+    [Fact]
+    public async Task Draft_PortRecoveryDoesNotOverwriteUnexpectedConfigChanges()
+    {
+        using var fixture = new Fixture();
+        var draft = await fixture.Service.CreateDraftAsync(default);
+        await using (var session = await fixture.Service.PrepareAsync(draft, default)) { }
+        var configPath = NativeGatewayPaths.GetConfigPath(fixture.Registry, draft.GatewayId);
+        var config = JsonNode.Parse(File.ReadAllText(configPath))!.AsObject();
+        config["gateway"]!["bind"] = "lan";
+        var changed = config.ToJsonString();
+        File.WriteAllText(configPath, changed);
+        using var occupant = new TcpListener(IPAddress.Loopback, draft.Port) { ExclusiveAddressUse = true };
+        occupant.Start();
+        await Assert.ThrowsAsync<InvalidOperationException>(() => fixture.Service.CreateDraftAsync(default));
+        Assert.Equal(changed, File.ReadAllText(configPath));
+        Assert.Equal(draft, JsonSerializer.Deserialize<NativeGatewaySetupDraft>(
+            File.ReadAllText(NativeGatewaySetupService.GetDraftPath(fixture.Registry))));
+    }
 
     [Fact]
     public async Task PublishedSession_CannotRestartWizardButCanRetryCompletion()
@@ -720,6 +808,9 @@ public sealed class NativeGatewaySetupTests
 
     private sealed class Runtime(List<string> events) : INativeGatewayRuntime
     {
+        public GatewayEndpointProvenance Inspect(GatewayRecord record) =>
+            new(Provenance, new Uri(record.Url).Port);
+
         public GatewayEndpointProvenanceKind Provenance { get; set; } = GatewayEndpointProvenanceKind.ExpectedManagedGateway;
         public Action Stop { get; set; } = () => { };
         public Task EnsureRunningAsync(GatewayRecord record, CancellationToken cancellationToken)
