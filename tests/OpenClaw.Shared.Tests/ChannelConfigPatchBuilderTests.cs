@@ -190,6 +190,56 @@ public class ChannelConfigPatchBuilderTests
             result.Patch!.Value.GetProperty("channels").GetProperty("telegram").GetProperty("botToken").GetString());
     }
 
+    [Fact]
+    public void BuildPatch_BlocksRedactedSiblingInsideTargetChannel()
+    {
+        // Only the edited leaf and channels.{id}.enabled are replaced.
+        // An untouched placeholder in the same channel must not be sent back.
+        var existing = Json("""
+            {
+              "channels": {
+                "slack": {
+                  "botToken": "xoxb-old",
+                  "appToken": "[REDACTED]",
+                  "enabled": true
+                }
+              }
+            }
+            """);
+
+        var result = ChannelConfigPatchBuilder.BuildPatch(
+            existing, "slack",
+            Updates(("channels.slack.botToken", "xoxb-new")));
+
+        Assert.Null(result.Patch);
+        Assert.NotNull(result.BlockedReason);
+        Assert.Equal("channels.slack.appToken", result.BlockedPath);
+    }
+
+    [Fact]
+    public void BuildPatch_BlocksRedactedAccountBotTokenInsideTargetChannel()
+    {
+        var existing = Json("""
+            {
+              "channels": {
+                "slack": {
+                  "botToken": "xoxb-old",
+                  "accounts": { "work": { "botToken": "<redacted>" } },
+                  "enabled": true
+                }
+              }
+            }
+            """);
+
+        var result = ChannelConfigPatchBuilder.BuildPatch(
+            existing, "slack",
+            Updates(("channels.slack.botToken", "xoxb-new")));
+
+        Assert.Null(result.Patch);
+        Assert.NotNull(result.BlockedReason);
+        Assert.Equal("channels.slack.accounts.work.botToken", result.BlockedPath);
+    }
+
     [Theory]
     [InlineData("***")]
     [InlineData("<redacted>")]
