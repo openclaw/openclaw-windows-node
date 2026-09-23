@@ -14,7 +14,7 @@ public sealed class AppRefactorContractTests
         var teardown = ExtractMethod(source, "DisposeEnabledAsync");
 
         // Retire when teardown can be invoked without starting real WSL/tray cleanup.
-        // Behavioral argument coverage lives in E2ESetupFixtureIsolationTests.
+        // Behavioral argument coverage lives in SetupAndConnectTestsUninstallIsolation.
         Assert.Contains(
             "Program.Main(BuildUninstallArguments(_configPath, _distroName, uninstallLogPath))",
             teardown);

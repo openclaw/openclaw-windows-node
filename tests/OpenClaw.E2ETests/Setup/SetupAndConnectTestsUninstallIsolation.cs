@@ -2,7 +2,8 @@ using OpenClaw.Shared;
 
 namespace OpenClaw.E2ETests.Setup;
 
-public sealed class E2ESetupFixtureIsolationTests
+// The SetupAndConnectTests prefix includes these fixture-free guards in the existing CI filter.
+public sealed class SetupAndConnectTestsUninstallIsolation
 {
     [Fact]
     public void BuildUninstallArguments_KeepsFullCleanupWithFixtureOwnedStartupNames()
