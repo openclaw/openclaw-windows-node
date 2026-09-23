@@ -52,7 +52,17 @@ public sealed record GpuInfo(
     long? FreeSharedGpuMemoryBytes = null,
     string? DriverVersion = null,
     int? CudaMajorVersion = null,
-    string? StableId = null);
+    string? StableId = null)
+{
+    /// <summary>
+    /// True for an RTX Spark unified-memory adapter (e.g. "NVIDIA RTX Spark
+    /// N1X"), identified by its driver-reported name. RTX Spark is routed
+    /// through a fixed SKU recipe table instead of the generic capacity
+    /// fit-test; see <c>RtxSparkInferenceSelector</c>.
+    /// </summary>
+    public bool IsRtxSpark =>
+        Name.Contains("RTX Spark", StringComparison.OrdinalIgnoreCase);
+}
 
 /// <summary>
 /// Snapshot of the host's inference-relevant hardware. Every probed field is
