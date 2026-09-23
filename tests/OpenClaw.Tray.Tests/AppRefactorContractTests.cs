@@ -6,6 +6,21 @@ namespace OpenClaw.Tray.Tests;
 public sealed class AppRefactorContractTests
 {
     [Fact]
+    public void E2ESetupTeardown_UsesFixtureOwnedUninstallArguments()
+    {
+        var root = TestRepositoryPaths.GetRepositoryRoot();
+        var source = File.ReadAllText(Path.Combine(
+            root, "tests", "OpenClaw.E2ETests", "Setup", "E2ESetupFixture.cs"));
+        var teardown = ExtractMethod(source, "DisposeEnabledAsync");
+
+        // Retire when teardown can be invoked without starting real WSL/tray cleanup.
+        // Behavioral argument coverage lives in E2ESetupFixtureIsolationTests.
+        Assert.Contains(
+            "Program.Main(BuildUninstallArguments(_configPath, _distroName, uninstallLogPath))",
+            teardown);
+    }
+
+    [Fact]
     public void Startup_UsesConnectionManagerAsOnlyGatewayClientOwner()
     {
         var source = ReadAppSources();
