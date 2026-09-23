@@ -7130,8 +7130,9 @@ Le binaire wxc-exec est introuvable. {1} S'il s'agit d'une build développeur, c
   <data name="Chat_Composer_Effort_Title" xml:space="preserve"><value>Niveau d'effort</value></data>
   <data name="Chat_Composer_Effort_Faster" xml:space="preserve"><value>Plus rapide</value></data>
   <data name="Chat_Composer_Effort_Smarter" xml:space="preserve"><value>Plus approfondi</value></data>
-  <data name="Onboarding_Native_Title.Text" xml:space="preserve"><value>Configurer un Gateway natif</value></data>
-  <data name="Onboarding_Native_Description.Text" xml:space="preserve"><value>Description à venir.</value></data>
+  <data name="Onboarding_Native_Title.Text" xml:space="preserve"><value>Installer un Gateway natif local</value></data>
+  <data name="Onboarding_Native_Description.Text" xml:space="preserve"><value>Installer un Gateway OpenClaw local, contenu dans une session</value></data>
+  <data name="Onboarding_Wsl_Title.Text" xml:space="preserve"><value>Installer un Gateway WSL local</value></data>
   <data name="Onboarding_Native_CheckingSupport" xml:space="preserve"><value>Vérification de la prise en charge du Gateway natif...</value></data>
   <data name="Onboarding_Native_SupportAvailable" xml:space="preserve"><value>Le Gateway natif est pris en charge sur cet appareil.</value></data>
   <data name="Onboarding_Native_SupportUnavailable" xml:space="preserve"><value>Le Gateway natif n'est pas pris en charge. Installez la build Windows Insider {0} ou une build plus récente prise en charge via Windows Update, puis rouvrez cette page. La disponibilité de cette fonctionnalité peut varier selon l'appareil.</value></data>

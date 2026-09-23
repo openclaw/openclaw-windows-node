@@ -209,7 +209,7 @@ Windows Server/unknown SKU suppression remains in the shared probe. Missing or
 invalid session metadata does not invalidate a usable process sandbox, but it
 cannot authorize native onboarding.
 
-A positive result enables and initially selects the first **Set up a native
+A positive result enables and initially selects the first **Install a local native
 gateway** card with the accent highlight and **Recommended** badge. A negative
 capability result offers Windows Update; reopening the page rechecks support. The pinned SDK documents
 Insider build **26340.9212** as its baseline. This is update guidance, not a
@@ -218,14 +218,15 @@ The native boolean cannot distinguish every OS API failure from missing support.
 Missing executables, malformed results and probe errors instead offer retry or
 Companion repair, not an assertion that Windows must be updated.
 
-**Other gateway options** is hidden while checking or when native is available.
-Otherwise it appears collapsed and contains WSL. There is no Welcome-page
-**Check again** button. WSL readiness,
-Local AI checks and destructive-replacement confirmation retain their existing
-owners; WSL is never selected implicitly after a failed native probe. A late
-probe result preserves an existing-gateway choice, but replaces a saved WSL
-selection with native when native becomes available so a hidden option cannot
-remain actionable. Re-entering the
+The Welcome page always presents native Gateway first, WSL second and
+**Connect to an existing gateway** third in one single-selection list. WSL is
+visible and selectable during the native probe and for every probe outcome,
+without an expander. There is no Welcome-page **Check again** button.
+WSL/Local AI discovery starts on page load; fresh WSL readiness and
+destructive-replacement confirmation still run before its capabilities page.
+WSL is never selected implicitly after a failed native probe. A late probe
+result preserves explicit WSL and existing-gateway selections, including choices
+restored on Back navigation. Re-entering the
 page rechecks support, stale results cannot mutate an unloaded page, and native
 package setup rechecks capability before preparing a profile.
 `ms-settings:windowsupdate` only opens Settings; Companion does not enroll the

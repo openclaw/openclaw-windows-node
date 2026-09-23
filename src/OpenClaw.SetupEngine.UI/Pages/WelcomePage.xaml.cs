@@ -27,6 +27,7 @@ public sealed partial class WelcomePage : Page
     public WelcomePage()
     {
         InitializeComponent();
+        AutomationProperties.SetName(InstallChoice, SetupLocalization.GetString("Onboarding_Wsl_Title.Text"));
         Loaded += OnLoaded;
         Unloaded += (_, _) => ++_probeGeneration;
     }
@@ -45,6 +46,10 @@ public sealed partial class WelcomePage : Page
             CheckNativeSupportAsync,
             NullLogger.Instance,
             nameof(CheckNativeSupportAsync));
+        AsyncEventHandlerGuard.Run(
+            DetectLocalAiAvailabilityAsync,
+            NullLogger.Instance,
+            nameof(DetectLocalAiAvailabilityAsync));
     }
 
     private async Task CheckNativeSupportAsync()
@@ -126,16 +131,6 @@ public sealed partial class WelcomePage : Page
         }
     }
 
-    private void AlternativeOptions_Expanding(Expander sender, ExpanderExpandingEventArgs args) =>
-        AsyncEventHandlerGuard.Run(DetectLocalAiAvailabilityAsync, NullLogger.Instance,
-            nameof(AlternativeOptions_Expanding));
-
-    private void AlternativeOptions_Collapsed(Expander sender, ExpanderCollapsedEventArgs args)
-    {
-        if (_selectedChoice == GatewaySetupChoice.Wsl)
-            SetChoice(_nativeEligibility == NativeGatewayEligibility.Available ? GatewaySetupChoice.Native : null);
-    }
-
     private async Task DetectLocalAiAvailabilityAsync()
     {
         SetupWindow? setupWindow = SetupWindow.Active;
@@ -203,19 +198,10 @@ public sealed partial class WelcomePage : Page
         if (ReferenceEquals(GatewayChoiceSelector.SelectedItem, NativeChoice) &&
             _nativeEligibility == NativeGatewayEligibility.Available)
             SetChoice(GatewaySetupChoice.Native);
+        else if (ReferenceEquals(GatewayChoiceSelector.SelectedItem, InstallChoice))
+            SetChoice(GatewaySetupChoice.Wsl);
         else if (ReferenceEquals(GatewayChoiceSelector.SelectedItem, ConnectChoice))
             SetChoice(GatewaySetupChoice.Existing);
-        else
-            ApplySelection();
-    }
-
-    private void WslChoice_SelectionChanged(object sender, SelectionChangedEventArgs e)
-    {
-        if (_suppressSelectionWrite)
-            return;
-        if (NativeGatewaySetupEligibility.ShowAlternatives(_nativeEligibility) &&
-            ReferenceEquals(WslChoiceSelector.SelectedItem, InstallChoice))
-            SetChoice(GatewaySetupChoice.Wsl);
         else
             ApplySelection();
     }
@@ -236,17 +222,12 @@ public sealed partial class WelcomePage : Page
             GatewayChoiceSelector.SelectedItem = _selectedChoice switch
             {
                 GatewaySetupChoice.Native => NativeChoice,
+                GatewaySetupChoice.Wsl => InstallChoice,
                 GatewaySetupChoice.Existing => ConnectChoice,
                 _ => null,
             };
-            var showAlternatives = NativeGatewaySetupEligibility.ShowAlternatives(_nativeEligibility);
-            AlternativeOptions.Visibility = showAlternatives ? Visibility.Visible : Visibility.Collapsed;
-            WslChoiceSelector.SelectedItem = showAlternatives && _selectedChoice == GatewaySetupChoice.Wsl ? InstallChoice : null;
-            if (showAlternatives && _selectedChoice == GatewaySetupChoice.Wsl)
-                AlternativeOptions.IsExpanded = true;
             NextButton.IsEnabled = !_installInProgress &&
-                (_selectedChoice == GatewaySetupChoice.Existing ||
-                 (_selectedChoice == GatewaySetupChoice.Wsl && showAlternatives) ||
+                (_selectedChoice is GatewaySetupChoice.Existing or GatewaySetupChoice.Wsl ||
                  (_selectedChoice == GatewaySetupChoice.Native && _nativeEligibility == NativeGatewayEligibility.Available));
         }
         finally { _suppressSelectionWrite = false; }
@@ -263,8 +244,7 @@ public sealed partial class WelcomePage : Page
         {
             SetupWindow.Active?.NavigateToNativeCapabilities();
         }
-        else if (_selectedChoice == GatewaySetupChoice.Wsl &&
-                 NativeGatewaySetupEligibility.ShowAlternatives(_nativeEligibility))
+        else if (_selectedChoice == GatewaySetupChoice.Wsl)
         {
             AsyncEventHandlerGuard.Run(
                 StartInstallAsync,
@@ -292,7 +272,6 @@ public sealed partial class WelcomePage : Page
         NextButton.IsEnabled = false;
         _installInProgress = true;
         GatewayChoiceSelector.IsEnabled = false;
-        AlternativeOptions.IsEnabled = false;
         InstallCheckProgress.IsActive = true;
         InstallCheckProgress.Visibility = Visibility.Visible;
         var navigating = false;
@@ -403,7 +382,6 @@ public sealed partial class WelcomePage : Page
             if (!navigating && !setupWindow.IsClosed)
             {
                 GatewayChoiceSelector.IsEnabled = true;
-                AlternativeOptions.IsEnabled = true;
                 InstallCheckProgress.IsActive = false;
                 InstallCheckProgress.Visibility = Visibility.Collapsed;
                 NextButton.IsEnabled = true;

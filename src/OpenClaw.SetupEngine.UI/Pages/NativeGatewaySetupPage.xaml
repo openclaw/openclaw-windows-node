@@ -9,7 +9,7 @@
             <Image Source="ms-appx:///OpenClaw.SetupEngine.UI/Assets/Setup/OpenClawMascot.png"
                    Width="44" Height="44" HorizontalAlignment="Center"
                    AutomationProperties.AccessibilityView="Raw" />
-            <TextBlock x:Uid="Onboarding_Native_Title" Text="Set up a native gateway"
+            <TextBlock x:Uid="Onboarding_Native_Title" Text="Install a local native gateway"
                        Style="{StaticResource TitleTextBlockStyle}" TextWrapping="Wrap" TextAlignment="Center" />
             <TextBlock x:Uid="Onboarding_Native_ProgressSubtitle"
                        Text="Companion will prepare your Gateway and open its setup wizard automatically."

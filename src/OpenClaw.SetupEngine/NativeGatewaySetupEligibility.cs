@@ -34,11 +34,7 @@ public static class NativeGatewaySetupEligibility
 
     public static GatewaySetupChoice? ResolveSelection(
         GatewaySetupChoice? selected, NativeGatewayEligibility eligibility) =>
-        selected == GatewaySetupChoice.Existing ||
-        (selected == GatewaySetupChoice.Wsl && ShowAlternatives(eligibility))
+        selected is GatewaySetupChoice.Existing or GatewaySetupChoice.Wsl
             ? selected
             : eligibility == NativeGatewayEligibility.Available ? GatewaySetupChoice.Native : null;
-
-    public static bool ShowAlternatives(NativeGatewayEligibility? eligibility) =>
-        eligibility.HasValue && eligibility != NativeGatewayEligibility.Available;
 }

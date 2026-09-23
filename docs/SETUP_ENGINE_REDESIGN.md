@@ -79,8 +79,9 @@ The [Welcome recommendation policy](ONBOARDING_WIZARD.md#welcome) now checks
 `wxc-exec --probe` session capability before recommending the existing native
 Gateway. `NativeGatewaySetupEligibility` owns admission and selection policy.
 Unavailable capability offers Windows Update with the pinned SDK's Insider
-baseline (26340.9212); failed probes offer retry/repair instead. WSL is an explicit,
-collapsed alternative shown only when native is unavailable. Welcome has no
+baseline (26340.9212); failed probes offer retry/repair instead. WSL is always
+visible as the second option after native, with existing-gateway connection third.
+Explicit WSL and existing-gateway choices survive late native probe results. Welcome has no
 manual recheck button; reopening the page checks again. The separate isolation warning/checkbox is removed by the
 2026-09-18 product decision; general security consent remains. This is not
 session provisioning. Gateway distribution includes x64, ARM64 and MSIX bundle

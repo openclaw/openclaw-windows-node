@@ -65,15 +65,15 @@ It does not suppress that exception or repair the upstream full-wizard finalizer
 See the [implementation results and limitations](GATEWAY_SETUP_RESPONSIBILITIES.md#package-aware-implementation-results)
 for launch, shutdown, verification details and the pre-assignment crash window.
 
-**Set up a native gateway** is the first Welcome choice and is recommended after
+**Install a local native gateway** is the first Welcome choice and is recommended after
 the native capability check succeeds. By the 2026-09-18 product decision, this
 continues to run the existing Gateway MSIX with the signed-in Windows user's
 access. The separate isolation warning and acknowledgment checkbox are removed;
 the general security notice and provider/onboarding consent remain explicit.
 This UI gate does not provision an MXC session or change the runtime identity.
 Native and WSL use the **same WinUI `WizardPage`**, not separate provider/model
-wizards. WSL is offered under collapsed **Other gateway options** only when
-native setup is unavailable.
+wizards. WSL is always shown as the second Welcome choice after native,
+followed by **Connect to an existing gateway**.
 
 Companion checks current-user registration for the Store package
 `OpenClawFoundation.OpenClawGateway` and publisher
@@ -232,16 +232,18 @@ The setup flow no longer configures remote/manual gateways inline. The Welcome p
 
 ### Welcome
 The page checks `wxc-exec --probe` asynchronously before recommending the first
-**Set up a native gateway** card. It requires the reported
+**Install a local native gateway** card. It requires the reported
 `probes.isolationSessionAvailable` boolean, not a process sandbox tier, build
 comparison or `IsolationProxy.exe` file. On success the native card is enabled,
 selected with the accent highlight and marked **Recommended**. An explicit
-existing-gateway selection is not overridden by a late probe result. A saved WSL
-selection switches to native if support becomes available, because WSL is then hidden.
+WSL or existing-gateway selection is not overridden by a late probe result.
+Back navigation preserves those explicit choices even when native is supported.
 The badge sits to the right of the title. Successful capability status appears
 inside the card below its description, with a decorative green checkmark and a
-screen-reader announcement. The description is temporarily **Description coming
-soon.** while product copy is being reviewed. Checking, unavailable and error
+screen-reader announcement. The requested description is **Install a local,
+session-contained OpenClaw gateway**; this copy change does not implement MXC
+session containment, which remains outstanding for the current signed-in-user runtime.
+The WSL title is **Install a local WSL gateway**. Checking, unavailable and error
 messages remain outside the disabled card so retry/update actions stay usable.
 
 When capability is unavailable, **Open Windows Update** opens
@@ -254,14 +256,13 @@ offer retry/Companion repair rather than misleading update advice. Windows Serve
 remains unsupported without invoking the native probe. No update-channel or
 feature-policy changes are automatic.
 
-**Other gateway options** is hidden during the probe and when native is available.
-For unsupported or failed checks it appears collapsed and exposes WSL when expanded.
-Expanding it starts the existing WSL/Local AI discovery; choosing WSL retains the
-fresh readiness gate and destructive-replacement confirmation before Capabilities.
-Collapsing a selected WSL option clears that hidden selection (or returns to
-native when eligible). Back navigation preserves explicit choices. Native package
-setup independently rechecks capability before configuration. The ordinary
-**Connect to an existing gateway** choice remains visible throughout.
+The single-selection list always shows native first, WSL second and
+**Connect to an existing gateway** third. WSL is visible and selectable while
+native capability is being checked, when it succeeds, and when it fails or is
+unavailable. There is no **Other gateway options** expander. Page load starts the
+existing WSL/Local AI discovery; choosing WSL retains the fresh readiness gate
+and destructive-replacement confirmation before Capabilities. Native package
+setup independently rechecks capability before configuration.
 
 The gateway-choice scroll viewport owns the 560-DIP maximum width and stretches
 its list content. Keep the width constraint on the viewport, not on the nested

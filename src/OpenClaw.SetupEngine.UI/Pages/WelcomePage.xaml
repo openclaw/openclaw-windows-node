@@ -41,7 +41,7 @@
                       SelectionChanged="GatewayChoice_SelectionChanged">
                       <ListViewItem x:Name="NativeChoice"
                                     AutomationProperties.AutomationId="WelcomeNativeGatewayChoice"
-                                    AutomationProperties.Name="Set up a native gateway"
+                                    AutomationProperties.Name="Install a local native gateway"
                                     HorizontalContentAlignment="Stretch"
                                     IsEnabled="False" Padding="16,12">
                           <Grid ColumnDefinitions="Auto,*" ColumnSpacing="16">
@@ -53,7 +53,7 @@
                               <StackPanel Grid.Column="1" Spacing="3">
                                   <Grid x:Name="NativeHeading" ColumnDefinitions="*,Auto" ColumnSpacing="8"
                                         HorizontalAlignment="Left">
-                                      <TextBlock x:Uid="Onboarding_Native_Title" Text="Set up a native gateway"
+                                      <TextBlock x:Uid="Onboarding_Native_Title" Text="Install a local native gateway"
                                                  VerticalAlignment="Center" TextWrapping="Wrap"
                                                  Style="{StaticResource BodyStrongTextBlockStyle}" />
                                       <Border x:Name="NativeRecommendedBadge" Grid.Column="1" Visibility="Collapsed"
@@ -65,7 +65,7 @@
                                       </Border>
                                   </Grid>
                                   <TextBlock x:Uid="Onboarding_Native_Description"
-                                             Text="Description coming soon."
+                                             Text="Install a local, session-contained OpenClaw gateway"
                                              TextWrapping="Wrap" Style="{StaticResource CaptionTextBlockStyle}"
                                              Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
                                   <Grid x:Name="NativeSupportAvailablePanel" Visibility="Collapsed"
@@ -83,6 +83,57 @@
                               </StackPanel>
                           </Grid>
                       </ListViewItem>
+                      <ListViewItem x:Name="InstallChoice"
+                                    AutomationProperties.AutomationId="WelcomeInstallLocalGatewayChoice"
+                                    AutomationProperties.Name="Install a local WSL gateway"
+                              AutomationProperties.LiveSetting="Polite"
+                              HorizontalContentAlignment="Stretch"
+                              VerticalContentAlignment="Center"
+                              Padding="16,12">
+                    <Grid ColumnDefinitions="Auto,*" ColumnSpacing="16">
+                        <Border Grid.Column="0" Width="44" Height="44" CornerRadius="6"
+                                Background="{ThemeResource SubtleFillColorSecondaryBrush}" VerticalAlignment="Center">
+                            <FontIcon Glyph="&#xE756;" FontSize="20" IsTextScaleFactorEnabled="False"
+                                      Foreground="{ThemeResource TextFillColorPrimaryBrush}" />
+                        </Border>
+                        <StackPanel Grid.Column="1" Spacing="3">
+                            <StackPanel Orientation="Horizontal" Spacing="8">
+                                <TextBlock x:Name="InstallTitle" x:Uid="Onboarding_Wsl_Title"
+                                           Text="Install a local WSL gateway"
+                                           Style="{StaticResource BodyStrongTextBlockStyle}"
+                                           VerticalAlignment="Center" />
+                                <ProgressRing x:Name="InstallCheckProgress"
+                                              AutomationProperties.AutomationId="WelcomeInstallCheckProgress"
+                                              AutomationProperties.Name="Checking WSL readiness and existing setup"
+                                              Width="16" Height="16"
+                                              IsActive="False" Visibility="Collapsed" />
+                            </StackPanel>
+                            <TextBlock TextWrapping="Wrap"
+                                       Style="{StaticResource CaptionTextBlockStyle}"
+                                       Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                       Text="Install a private OpenClaw gateway in WSL." />
+                            <StackPanel x:Name="LocalAiAvailabilityPanel"
+                                        AutomationProperties.AutomationId="WelcomeLocalAiAvailable"
+                                        AutomationProperties.AccessibilityView="Raw"
+                                        Margin="0,8,0,0" Spacing="4" Visibility="Collapsed">
+                                <StackPanel Orientation="Horizontal" Spacing="4">
+                                    <FontIcon Glyph="&#xE73E;" FontSize="11"
+                                              IsTextScaleFactorEnabled="False"
+                                              Foreground="{ThemeResource SystemFillColorSuccessBrush}"
+                                              AutomationProperties.AccessibilityView="Raw" />
+                                    <TextBlock x:Uid="Onboarding_Welcome_LocalAiAvailableBadge"
+                                               Text="Local AI supported"
+                                               Style="{StaticResource CaptionTextBlockStyle}"
+                                               Foreground="{ThemeResource SystemFillColorSuccessBrush}" />
+                                </StackPanel>
+                                <TextBlock x:Name="LocalAiAvailabilityText"
+                                           TextWrapping="Wrap"
+                                           Style="{StaticResource CaptionTextBlockStyle}"
+                                           Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                            </StackPanel>
+                        </StackPanel>
+                    </Grid>
+                </ListViewItem>
                       <ListViewItem x:Name="ConnectChoice"
                                     AutomationProperties.AutomationId="WelcomeConnectExistingGatewayChoice"
                                     AutomationProperties.Name="Connect to an existing gateway"
@@ -119,70 +170,6 @@
                               AutomationProperties.AutomationId="WelcomeWindowsUpdate"
                               Style="{StaticResource AccentButtonStyle}" Click="WindowsUpdate_Click" />
             </StackPanel>
-            <Expander x:Name="AlternativeOptions" x:Uid="Onboarding_Native_Alternatives"
-                            Header="Other gateway options" IsExpanded="False" Visibility="Collapsed"
-                            HorizontalAlignment="Stretch" HorizontalContentAlignment="Stretch"
-                            Expanding="AlternativeOptions_Expanding" Collapsed="AlternativeOptions_Collapsed">
-                      <ListView x:Name="WslChoiceSelector" SelectionMode="Single"
-                                AutomationProperties.Name="Alternative gateway setup method"
-                                HorizontalContentAlignment="Stretch"
-                                ScrollViewer.VerticalScrollMode="Disabled"
-                                ScrollViewer.VerticalScrollBarVisibility="Disabled"
-                                SelectionChanged="WslChoice_SelectionChanged">
-                      <ListViewItem x:Name="InstallChoice"
-                                    AutomationProperties.AutomationId="WelcomeInstallLocalGatewayChoice"
-                                    AutomationProperties.Name="Install a local gateway (WSL)"
-                              AutomationProperties.LiveSetting="Polite"
-                              HorizontalContentAlignment="Stretch"
-                              VerticalContentAlignment="Center"
-                              Padding="16,12">
-                    <Grid ColumnDefinitions="Auto,*" ColumnSpacing="16">
-                        <Border Grid.Column="0" Width="44" Height="44" CornerRadius="6"
-                                Background="{ThemeResource SubtleFillColorSecondaryBrush}" VerticalAlignment="Center">
-                            <FontIcon Glyph="&#xE756;" FontSize="20" IsTextScaleFactorEnabled="False"
-                                      Foreground="{ThemeResource TextFillColorPrimaryBrush}" />
-                        </Border>
-                        <StackPanel Grid.Column="1" Spacing="3">
-                            <StackPanel Orientation="Horizontal" Spacing="8">
-                                <TextBlock x:Name="InstallTitle"
-                                           Text="Install a local gateway (WSL)"
-                                           Style="{StaticResource BodyStrongTextBlockStyle}"
-                                           VerticalAlignment="Center" />
-                                <ProgressRing x:Name="InstallCheckProgress"
-                                              AutomationProperties.AutomationId="WelcomeInstallCheckProgress"
-                                              AutomationProperties.Name="Checking WSL readiness and existing setup"
-                                              Width="16" Height="16"
-                                              IsActive="False" Visibility="Collapsed" />
-                            </StackPanel>
-                            <TextBlock TextWrapping="Wrap"
-                                       Style="{StaticResource CaptionTextBlockStyle}"
-                                       Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                                       Text="Install a private OpenClaw gateway in WSL." />
-                            <StackPanel x:Name="LocalAiAvailabilityPanel"
-                                        AutomationProperties.AutomationId="WelcomeLocalAiAvailable"
-                                        AutomationProperties.AccessibilityView="Raw"
-                                        Margin="0,8,0,0" Spacing="4" Visibility="Collapsed">
-                                <StackPanel Orientation="Horizontal" Spacing="4">
-                                    <FontIcon Glyph="&#xE73E;" FontSize="11"
-                                              IsTextScaleFactorEnabled="False"
-                                              Foreground="{ThemeResource SystemFillColorSuccessBrush}"
-                                              AutomationProperties.AccessibilityView="Raw" />
-                                    <TextBlock x:Uid="Onboarding_Welcome_LocalAiAvailableBadge"
-                                               Text="Local AI supported"
-                                               Style="{StaticResource CaptionTextBlockStyle}"
-                                               Foreground="{ThemeResource SystemFillColorSuccessBrush}" />
-                                </StackPanel>
-                                <TextBlock x:Name="LocalAiAvailabilityText"
-                                           TextWrapping="Wrap"
-                                           Style="{StaticResource CaptionTextBlockStyle}"
-                                           Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
-                            </StackPanel>
-                        </StackPanel>
-                    </Grid>
-                </ListViewItem>
-
-                </ListView>
-            </Expander>
             </StackPanel>
         </ScrollViewer>
 

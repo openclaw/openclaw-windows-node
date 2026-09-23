@@ -7130,8 +7130,9 @@
   <data name="Chat_Composer_Effort_Title" xml:space="preserve"><value>推理强度</value></data>
   <data name="Chat_Composer_Effort_Faster" xml:space="preserve"><value>更快</value></data>
   <data name="Chat_Composer_Effort_Smarter" xml:space="preserve"><value>更深入</value></data>
-  <data name="Onboarding_Native_Title.Text" xml:space="preserve"><value>设置原生 Gateway</value></data>
-  <data name="Onboarding_Native_Description.Text" xml:space="preserve"><value>说明待补充。</value></data>
+  <data name="Onboarding_Native_Title.Text" xml:space="preserve"><value>安装本地原生 Gateway</value></data>
+  <data name="Onboarding_Native_Description.Text" xml:space="preserve"><value>安装限定在会话内的本地 OpenClaw Gateway</value></data>
+  <data name="Onboarding_Wsl_Title.Text" xml:space="preserve"><value>安装本地 WSL Gateway</value></data>
   <data name="Onboarding_Native_CheckingSupport" xml:space="preserve"><value>正在检查原生 Gateway 支持情况...</value></data>
   <data name="Onboarding_Native_SupportAvailable" xml:space="preserve"><value>此设备支持原生 Gateway。</value></data>
   <data name="Onboarding_Native_SupportUnavailable" xml:space="preserve"><value>目前不支持原生 Gateway。请通过 Windows 更新安装 Windows Insider 内部版本 {0} 或更新的受支持版本，然后重新打开此页面。功能可用性可能因设备而异。</value></data>

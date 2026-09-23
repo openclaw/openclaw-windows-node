@@ -41,21 +41,11 @@ public sealed class NativeGatewaySetupEligibilityTests
     [InlineData(GatewaySetupChoice.Native, NativeGatewayEligibility.CheckFailed, null)]
     [InlineData(GatewaySetupChoice.Existing, NativeGatewayEligibility.Available, GatewaySetupChoice.Existing)]
     [InlineData(GatewaySetupChoice.Existing, NativeGatewayEligibility.CheckFailed, GatewaySetupChoice.Existing)]
-    [InlineData(GatewaySetupChoice.Wsl, NativeGatewayEligibility.Available, GatewaySetupChoice.Native)]
+    [InlineData(GatewaySetupChoice.Wsl, NativeGatewayEligibility.Available, GatewaySetupChoice.Wsl)]
     [InlineData(GatewaySetupChoice.Wsl, NativeGatewayEligibility.CapabilityUnavailable, GatewaySetupChoice.Wsl)]
     [InlineData(GatewaySetupChoice.Wsl, NativeGatewayEligibility.CheckFailed, GatewaySetupChoice.Wsl)]
     [InlineData(GatewaySetupChoice.Wsl, NativeGatewayEligibility.UnsupportedPlatform, GatewaySetupChoice.Wsl)]
-    public void Selection_PreservesVisibleChoicesAndNeverLeavesHiddenWslSelected(
+    public void Selection_PreservesExplicitWslAndExistingChoicesRegardlessOfNativeSupport(
         GatewaySetupChoice? selected, NativeGatewayEligibility eligibility, GatewaySetupChoice? expected) =>
         Assert.Equal(expected, NativeGatewaySetupEligibility.ResolveSelection(selected, eligibility));
-
-    [Theory]
-    [InlineData(null, false)]
-    [InlineData(NativeGatewayEligibility.Available, false)]
-    [InlineData(NativeGatewayEligibility.CapabilityUnavailable, true)]
-    [InlineData(NativeGatewayEligibility.CheckFailed, true)]
-    [InlineData(NativeGatewayEligibility.UnsupportedPlatform, true)]
-    public void Alternatives_AppearOnlyAfterNativeCannotBeOffered(
-        NativeGatewayEligibility? eligibility, bool expected) =>
-        Assert.Equal(expected, NativeGatewaySetupEligibility.ShowAlternatives(eligibility));
 }
