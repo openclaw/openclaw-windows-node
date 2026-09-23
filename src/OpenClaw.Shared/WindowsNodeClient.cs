@@ -869,14 +869,20 @@ public class WindowsNodeClient : WebSocketClientBase
         if (root.TryGetProperty("ok", out var okProp) &&
             okProp.ValueKind == JsonValueKind.False)
         {
-            if (isConnectResponse &&
-                !_handshakeChallengeGate.IsAuthorized(sourceConnectionGeneration))
+            if (!isConnectResponse)
+            {
+                _logger.Warn(
+                    $"[NODE] Ignoring non-connect failed reply id={responseId ?? "none"}");
+                return;
+            }
+
+            if (!_handshakeChallengeGate.IsAuthorized(sourceConnectionGeneration))
             {
                 _logger.Warn("[HANDSHAKE] Ignoring stale node connect denial.");
                 return;
             }
-            if (isConnectResponse)
-                Volatile.Write(ref _pendingConnectRequestId, null);
+
+            Volatile.Write(ref _pendingConnectRequestId, null);
             HandleRequestError(root);
             return;
         }

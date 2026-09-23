@@ -148,7 +148,7 @@ public class WindowsNodeClientTests
                     }
                   }
                   """);
-            client.HandleResponse(document.RootElement);
+            HandleCorrelatedConnectError(client, document.RootElement);
 
             Assert.Equal(expectedKind, actualKind);
         }
@@ -181,7 +181,7 @@ public class WindowsNodeClientTests
                   }
                   """);
 
-            client.HandleResponse(document.RootElement);
+            HandleCorrelatedConnectError(client, document.RootElement);
 
             Assert.Equal(GatewayErrorKind.DeviceTokenMismatch, actualKind);
         }
@@ -221,7 +221,7 @@ public class WindowsNodeClientTests
                   }
                   """);
 
-            client.HandleResponse(document.RootElement);
+            HandleCorrelatedConnectError(client, document.RootElement);
 
             Assert.Equal(GatewayErrorKind.Auth, actualKind);
             Assert.Contains(ConnectionStatus.Error, statuses);
@@ -267,7 +267,7 @@ public class WindowsNodeClientTests
                   }
                   """);
 
-            client.HandleResponse(document.RootElement);
+            HandleCorrelatedConnectError(client, document.RootElement);
 
             Assert.Equal(GatewayErrorKind.Auth, actualKind);
             Assert.False(client.UseV2Signature);
@@ -305,7 +305,7 @@ public class WindowsNodeClientTests
                   }
                   """);
 
-            client.HandleResponse(document.RootElement);
+            HandleCorrelatedConnectError(client, document.RootElement);
 
             Assert.Null(actualKind);
             Assert.False(client.UseV2Signature);
@@ -337,7 +337,7 @@ public class WindowsNodeClientTests
                 }
                 """);
 
-            client.HandleResponse(document.RootElement);
+            HandleCorrelatedConnectError(client, document.RootElement);
 
             Assert.NotEqual(GatewayErrorKind.DeviceTokenMismatch, actualKind);
             Assert.True(GetPrivateField<bool>(client, "_rateLimited"));
@@ -371,7 +371,7 @@ public class WindowsNodeClientTests
                 }
                 """);
 
-            client.HandleResponse(document.RootElement);
+            HandleCorrelatedConnectError(client, document.RootElement);
 
             Assert.Null(actualKind);
         }
@@ -755,6 +755,75 @@ public class WindowsNodeClientTests
     }
 
     [Theory]
+    [InlineData("node.invoke.result", """{"message":"Device approval required","code":"NOT_PAIRED"}""")]
+    [InlineData("node.event", """{"message":"rate limit exceeded","code":"AUTH_RATE_LIMITED"}""")]
+    [InlineData("node.invoke.result", """{"message":"token mismatch","code":"AUTH_TOKEN_MISMATCH"}""")]
+    public void HandleResponse_NonConnectFailure_DoesNotSetConnectionErrorOrStopReconnect(
+        string method,
+        string errorJson)
+    {
+        using var dataPath = new TempDirectory("node-non-connect-failure-");
+        var logger = new TestLogger();
+        using var client = new WindowsNodeClient(
+            "ws://localhost:18789",
+            "test-token",
+            dataPath.Path,
+            logger);
+        var statuses = new List<ConnectionStatus>();
+        var failures = new List<GatewayErrorKind>();
+        var pairing = new List<PairingStatusEventArgs>();
+        client.StatusChanged += (_, status) => statuses.Add(status);
+        client.ConnectionFailure += (_, kind) => failures.Add(kind);
+        client.PairingStatusChanged += (_, args) => pairing.Add(args);
+        using var hello = JsonDocument.Parse(
+            """
+            {
+              "type": "res",
+              "ok": true,
+              "payload": {
+                "type": "hello-ok",
+                "protocol": 4,
+                "nodeId": "test-node-id",
+                "auth": {
+                  "deviceToken": "node-device-token"
+                }
+              }
+            }
+            """);
+        HandleCorrelatedHelloOk(client, hello.RootElement);
+        Assert.True(client.IsConnected);
+        Assert.True(InvokeShouldAutoReconnect(client));
+        statuses.Clear();
+        failures.Clear();
+        pairing.Clear();
+        logger.Logs.Clear();
+        using var rejection = JsonDocument.Parse(
+            $$"""
+            {
+              "type": "res",
+              "id": "invoke-result-1",
+              "ok": false,
+              "method": "{{method}}",
+              "error": {{errorJson}}
+            }
+            """);
+
+        client.HandleResponse(rejection.RootElement);
+
+        Assert.Empty(statuses);
+        Assert.Empty(failures);
+        Assert.Empty(pairing);
+        Assert.True(client.IsConnected);
+        Assert.False(client.IsPendingApproval);
+        Assert.True(InvokeShouldAutoReconnect(client));
+        Assert.False(GetPrivateField<bool>(client, "_pairingBlocked"));
+        Assert.False(GetPrivateField<bool>(client, "_rateLimited"));
+        Assert.Contains(
+            logger.Logs,
+            line => line.Contains("invoke-result-1", StringComparison.Ordinal));
+    }
+
+    [Theory]
     [InlineData("""{"type":"hello-ok","protocol":2,"auth":{"deviceToken":"must-not-store"}}""")]
     [InlineData("""{"type":"hello-ok","auth":{"deviceToken":"must-not-store"}}""")]
     [InlineData("""{"type":"hello-ok","protocol":null,"auth":{"deviceToken":"must-not-store"}}""")]
@@ -862,7 +931,7 @@ public class WindowsNodeClientTests
             }
             """);
 
-        client.HandleResponse(document.RootElement);
+        HandleCorrelatedConnectError(client, document.RootElement);
 
         Assert.Equal([GatewayErrorKind.ProtocolMismatch], failures);
         Assert.Contains(ConnectionStatus.Error, statuses);
@@ -899,7 +968,7 @@ public class WindowsNodeClientTests
             }
             """);
 
-        client.HandleResponse(document.RootElement);
+        HandleCorrelatedConnectError(client, document.RootElement);
 
         Assert.NotNull(compatibility);
         Assert.Equal(GatewayProtocolCompatibilityState.GatewayTooOld, compatibility.State);
@@ -1053,11 +1122,7 @@ public class WindowsNodeClientTests
                 }
                 """;
             var root = JsonDocument.Parse(json).RootElement;
-
-            var handleResponseMethod = typeof(WindowsNodeClient).GetMethod(
-                "HandleResponse",
-                BindingFlags.NonPublic | BindingFlags.Instance);
-            handleResponseMethod!.Invoke(client, [root]);
+            HandleCorrelatedConnectError(client, root);
 
             Assert.Contains(ConnectionStatus.Error, statusChanges);
         }
@@ -1098,11 +1163,7 @@ public class WindowsNodeClientTests
                 }
                 """;
             var root = JsonDocument.Parse(json).RootElement;
-
-            var handleResponseMethod = typeof(WindowsNodeClient).GetMethod(
-                "HandleResponse",
-                BindingFlags.NonPublic | BindingFlags.Instance);
-            handleResponseMethod!.Invoke(client, [root]);
+            HandleCorrelatedConnectError(client, root);
 
             Assert.Single(pairingEvents);
             Assert.Equal(PairingStatus.Pending, pairingEvents[0].Status);
@@ -1150,7 +1211,7 @@ public class WindowsNodeClientTests
                 }
                 """);
 
-            client.HandleResponse(document.RootElement);
+            HandleCorrelatedConnectError(client, document.RootElement);
 
             Assert.Single(pairingEvents);
             Assert.Equal("nested-123", pairingEvents[0].RequestId);
@@ -1190,11 +1251,7 @@ public class WindowsNodeClientTests
                 }
                 """;
             var root = JsonDocument.Parse(json).RootElement;
-
-            var handleResponseMethod = typeof(WindowsNodeClient).GetMethod(
-                "HandleResponse",
-                BindingFlags.NonPublic | BindingFlags.Instance);
-            handleResponseMethod!.Invoke(client, [root]);
+            HandleCorrelatedConnectError(client, root);
 
             Assert.Single(pairingEvents);
             Assert.Equal(PairingApprovalKind.DevicePair, pairingEvents[0].ApprovalKind);
@@ -1237,10 +1294,7 @@ public class WindowsNodeClientTests
                 }
                 """).RootElement;
 
-            var handleResponseMethod = typeof(WindowsNodeClient).GetMethod(
-                "HandleResponse",
-                BindingFlags.NonPublic | BindingFlags.Instance);
-            handleResponseMethod!.Invoke(client, [root]);
+            HandleCorrelatedConnectError(client, root);
 
             Assert.Empty(pairingEvents);
             Assert.True(client.IsPendingApproval);
@@ -2689,6 +2743,32 @@ public class WindowsNodeClientTests
                 ok = true,
                 payload = response.GetProperty("payload"),
             }));
+        client.HandleResponse(correlated.RootElement);
+    }
+
+    private static void HandleCorrelatedConnectError(
+        WindowsNodeClient client,
+        JsonElement response)
+    {
+        const string requestId = "test-connect-request";
+        SetPendingConnectRequestId(client, requestId);
+        using var original = JsonDocument.Parse(response.GetRawText());
+        using var stream = new MemoryStream();
+        using (var writer = new Utf8JsonWriter(stream))
+        {
+            writer.WriteStartObject();
+            writer.WriteString("id", requestId);
+            foreach (var property in original.RootElement.EnumerateObject())
+            {
+                if (property.NameEquals("id"))
+                    continue;
+                property.WriteTo(writer);
+            }
+
+            writer.WriteEndObject();
+        }
+
+        using var correlated = JsonDocument.Parse(stream.ToArray());
         client.HandleResponse(correlated.RootElement);
     }
 
