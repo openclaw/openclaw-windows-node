@@ -245,7 +245,7 @@ internal sealed class GatewayDirectConnectService
         }
     }
 
-    private static GatewayRecord BuildCandidate(
+    internal static GatewayRecord BuildCandidate(
         GatewayDirectConnectRequest request,
         GatewayRecord? existing,
         string recordId,
@@ -262,7 +262,9 @@ internal sealed class GatewayDirectConnectService
                     ? existing?.SharedGatewayToken
                     : null
                 : request.SharedToken,
-            BootstrapToken = null,
+            BootstrapToken = string.IsNullOrWhiteSpace(request.SharedToken) && preserveExistingSharedToken
+                ? existing?.BootstrapToken
+                : null,
             SshTunnel = request.SshTunnel,
             LastConnected = existing?.LastConnected,
         }.PreserveAdvancedFields(existing);

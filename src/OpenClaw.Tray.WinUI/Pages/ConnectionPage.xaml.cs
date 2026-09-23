@@ -2843,15 +2843,26 @@ public sealed partial class ConnectionPage : Page
             ? LocalizationHelper.GetString("ConnectionPage_Connecting")
             : LocalizationHelper.GetString("ConnectionPage_StartingSshTunnel");
 
+        var editing = _editingGatewayId is null
+            ? null
+            : _gatewayRegistry?.GetById(_editingGatewayId);
+        var storedSharedToken = string.IsNullOrWhiteSpace(editing?.SharedGatewayToken)
+            ? null
+            : editing.SharedGatewayToken.Trim();
+        var submittedToken = string.IsNullOrWhiteSpace(token) ? null : token;
+        var sharedTokenUnchanged = editing is not null &&
+            string.Equals(submittedToken, storedSharedToken, StringComparison.Ordinal);
+
         try
         {
             var result = await _gatewayDirectConnectService.ConnectAsync(
                 new GatewayDirectConnectRequest(
                     url,
-                    token,
+                    sharedTokenUnchanged ? null : token,
                     friendly,
                     sshConfig,
-                    _editingGatewayId));
+                    _editingGatewayId,
+                    PreserveExistingSharedTokenWhenMissing: sharedTokenUnchanged));
             if (result.Outcome == GatewayDirectConnectOutcome.Failed)
             {
                 AddResultText.Text = $"✗ {result.Error}";
