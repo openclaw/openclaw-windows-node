@@ -7206,8 +7206,8 @@ Make sure the gateway is running.</value>
   <data name="Onboarding_Native_Alternatives.Header" xml:space="preserve"><value>Other gateway options</value></data>
   <data name="Onboarding_Native_UpdateLaunchFailed" xml:space="preserve"><value>Could not open Windows Update. Open Windows Settings, then Windows Update.</value></data>
   <data name="Onboarding_Native_Lifecycle.Text" xml:space="preserve"><value>Continue with the same Gateway setup wizard used for WSL, here in Companion. Companion validates configuration and health before connecting. Existing WSL gateways and your default OpenClaw profile are not replaced.</value></data>
-  <data name="Onboarding_Native_Acquisition.Text" xml:space="preserve"><value>Until a Store link is available, setup opens Windows App Installer for the configured local MSIX. It does not download packages or install Node.js.</value></data>
-  <data name="Onboarding_Native_InstallerOpened" xml:space="preserve"><value>Complete installation in Windows App Installer. Companion will continue automatically when the package is ready. Cancelling setup here does not cancel Windows installation.</value></data>
+  <data name="Onboarding_Native_Acquisition.Text" xml:space="preserve"><value>If the Gateway is not installed, setup opens its Microsoft Store listing. Complete installation there; Companion will continue automatically after verifying the package.</value></data>
+  <data name="Onboarding_Native_InstallerOpened" xml:space="preserve"><value>Complete installation from Microsoft Store. Companion will continue automatically when the package is ready. Cancelling setup here does not cancel Store installation.</value></data>
   <data name="Onboarding_Native_ProgressSubtitle.Text" xml:space="preserve"><value>Companion will prepare your Gateway and open its setup wizard automatically.</value></data>
   <data name="Onboarding_Native_StepSupport" xml:space="preserve"><value>Check device support</value></data>
   <data name="Onboarding_Native_StepPackage" xml:space="preserve"><value>Install or verify Gateway package</value></data>
@@ -7215,7 +7215,7 @@ Make sure the gateway is running.</value>
   <data name="Onboarding_Native_StepVerify" xml:space="preserve"><value>Start and verify the Gateway</value></data>
   <data name="Onboarding_Native_Retry.Content" xml:space="preserve"><value>Retry setup</value></data>
   <data name="Onboarding_Native_Preview" xml:space="preserve"><value>Preview only. No package will be installed or Gateway started.</value></data>
-  <data name="Onboarding_Native_Review.Text" xml:space="preserve"><value>Companion will check the Gateway package, open Windows App Installer if needed, prepare a dedicated profile, and open Gateway setup. Windows installation consent and provider sign-in stay interactive. This path does not install WSL, Local AI, or Tailscale.</value></data>
+  <data name="Onboarding_Native_Review.Text" xml:space="preserve"><value>Companion will check the Gateway package, open its Microsoft Store listing if needed, prepare a dedicated profile, and open Gateway setup. Store installation and provider sign-in stay interactive. This path does not install WSL, Local AI, or Tailscale.</value></data>
   <data name="Onboarding_Native_FeaturesNote.Text" xml:space="preserve"><value>These Windows capabilities become usable after Node Mode connects and pairs with the Gateway. Windows permissions and command approvals still apply.</value></data>
   <data name="Onboarding_Native_ConfiguredTitle" xml:space="preserve"><value>Native Gateway configured</value></data>
   <data name="Onboarding_Native_CapabilitySummary" xml:space="preserve"><value>{0}. You can change these choices in Companion Settings.</value></data>

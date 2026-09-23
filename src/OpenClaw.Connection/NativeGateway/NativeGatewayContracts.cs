@@ -12,16 +12,25 @@ public sealed class NativeGatewayPackageNotInstalledException : InvalidOperation
 {
     public NativeGatewayPackageNotInstalledException()
         : base("A supported OpenClaw Gateway MSIX is not registered for this Windows user. " +
-            "Complete installation in Windows App Installer, then retry native setup.")
+            "Complete installation from Microsoft Store, then retry native setup.")
     {
     }
 }
 
-/// <summary>Resolves only an already installed, trusted OpenClaw.Gateway package. Never installs it.</summary>
+/// <summary>Resolves only an already installed, trusted OpenClaw Gateway package. Never installs it.</summary>
 public interface INativeGatewayPackageResolver
 {
     /// <exception cref="NativeGatewayPackageNotInstalledException">No matching package is registered.</exception>
     Task<NativeGatewayPackage> ResolveAsync(CancellationToken cancellationToken);
+
+    /// <summary>Resolves a saved profile's exact family without selecting a different installed Gateway.</summary>
+    async Task<NativeGatewayPackage> ResolveAsync(string expectedFamily, CancellationToken cancellationToken)
+    {
+        NativeGatewayPaths.ValidateFamilyName(expectedFamily);
+        var package = await ResolveAsync(cancellationToken);
+        NativeGatewayPaths.ValidatePackage(package, expectedFamily);
+        return package;
+    }
 
     /// <summary>
     /// Maps Companion's logical data path to the physical path visible to another package

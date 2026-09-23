@@ -5,7 +5,7 @@ namespace OpenClaw.SetupEngine.Tests;
 public sealed class NativeGatewayPackageAcquisitionTests
 {
     private static readonly NativeGatewayPackage Package = new(
-        "OpenClaw.Gateway_123456789abcd", "1.0.0.0", @"qualified\openclaw.exe", @"qualified\clawctl.exe");
+        "OpenClawFoundation.OpenClawGateway_123456789abcd", "1.0.0.0", @"qualified\openclaw.exe", @"qualified\clawctl.exe");
 
     [Fact]
     public async Task PresentPackage_DoesNotOpenInstallerOrReportWaiting()
@@ -67,11 +67,11 @@ public sealed class NativeGatewayPackageAcquisitionTests
     }
 
     [Fact]
-    public async Task MissingInstallerSource_StopsImmediately()
+    public async Task StoreLaunchFailure_StopsImmediately()
     {
         var resolver = new Resolver(_ => Missing());
-        var failure = new FileNotFoundException("Installer source missing");
-        var actual = await Assert.ThrowsAsync<FileNotFoundException>(() =>
+        var failure = new InvalidOperationException("Store listing could not be opened");
+        var actual = await Assert.ThrowsAsync<InvalidOperationException>(() =>
             NativeGatewayPackageAcquisition.EnsureAsync(resolver, _ => throw failure,
                 () => throw new InvalidOperationException("Must not wait")));
         Assert.Same(failure, actual);
@@ -152,7 +152,7 @@ public sealed class NativeGatewayPackageAcquisitionTests
 
         Assert.Equal(1, installerCalls);
         Assert.True(resolver.Calls >= 2);
-        Assert.Contains("Complete or cancel Windows App Installer", exception.Message);
+        Assert.Contains("Complete installation from Microsoft Store", exception.Message);
         Assert.Contains("retry native setup", exception.Message);
     }
 

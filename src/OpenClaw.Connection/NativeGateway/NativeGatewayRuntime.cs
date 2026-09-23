@@ -89,7 +89,7 @@ public sealed class NativeGatewayRuntime : INativeGatewayRuntime
 
             // Resolve on every request, even idempotent reuse. Package removal or replacement
             // must not silently keep authorizing a listener under stale package metadata.
-            var package = await _packageResolver.ResolveAsync(linked.Token).ConfigureAwait(false);
+            var package = await _packageResolver.ResolveAsync(record.NativePackageFamilyName!, linked.Token).ConfigureAwait(false);
             NativeGatewayPaths.ValidatePackage(package, record.NativePackageFamilyName!);
             linked.Token.ThrowIfCancellationRequested();
             if (_process is { HasExited: false } &&

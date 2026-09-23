@@ -2,13 +2,13 @@ using OpenClaw.Connection.NativeGateway;
 
 namespace OpenClaw.SetupEngine;
 
-/// <summary>Hands missing packages to Windows App Installer and waits for verified registration.</summary>
+/// <summary>Hands missing packages to Microsoft Store and waits for verified registration.</summary>
 public static class NativeGatewayPackageAcquisition
 {
     /// <summary>
     /// Resolves before opening the installer, opens it at most once, and retries only missing
     /// registration. The total deadline includes resolution and installer handoff.
-    /// Cancellation stops waiting, not Windows App Installer or its consent flow.
+    /// Cancellation stops waiting, not Microsoft Store or its consent flow.
     /// </summary>
     public static async Task<NativeGatewayPackage> EnsureAsync(
         INativeGatewayPackageResolver resolver,
@@ -61,7 +61,7 @@ public static class NativeGatewayPackageAcquisition
         {
             throw new TimeoutException(
                 "Timed out waiting for a verified OpenClaw Gateway package. " +
-                "Complete or cancel Windows App Installer, then retry native setup.", exception);
+                "Complete installation from Microsoft Store, then retry native setup.", exception);
         }
 
         async Task<NativeGatewayPackage> ResolveAsync()

@@ -1,149 +1,61 @@
-using System.IO.Compression;
-using System.Xml.Linq;
-using OpenClaw.TestSupport;
-
 namespace OpenClaw.SetupEngine.Tests;
 
-[Collection(EnvironmentVariableCollection.Name)]
 public sealed class NativeGatewayMsixInstallerTests
 {
     [Fact]
-    public async Task DefaultSource_UsesConfiguredLocalPackage()
+    public async Task Open_HandsTheFixedStoreListingToWindowsExactlyOnce()
     {
-        using var temp = new TempDirectory();
-        var path = CreatePackage(temp);
-        var previous = Environment.GetEnvironmentVariable(NativeGatewayMsixInstaller.PackagePathEnvironmentVariable);
-        try
-        {
-            Environment.SetEnvironmentVariable(NativeGatewayMsixInstaller.PackagePathEnvironmentVariable, path);
-            var installer = new NativeGatewayMsixInstaller();
-            Assert.Equal(path, installer.PackagePath);
-            var calls = 0;
-            await installer.OpenAsync((received, _) =>
-            {
-                Assert.Equal(path, received);
-                calls++;
-                return Task.FromResult(true);
-            }, CancellationToken.None);
-            Assert.Equal(1, calls);
-        }
-        finally
-        {
-            Environment.SetEnvironmentVariable(NativeGatewayMsixInstaller.PackagePathEnvironmentVariable, previous);
-        }
-    }
-
-    [Theory]
-    [InlineData(null)]
-    [InlineData("")]
-    [InlineData(" ")]
-    public async Task UnconfiguredSource_ExplainsConfigurationWithoutOpeningInstaller(string? value)
-    {
-        var previous = Environment.GetEnvironmentVariable(NativeGatewayMsixInstaller.PackagePathEnvironmentVariable);
-        try
-        {
-            Environment.SetEnvironmentVariable(NativeGatewayMsixInstaller.PackagePathEnvironmentVariable, value);
-            var error = await Assert.ThrowsAsync<InvalidOperationException>(() =>
-                new NativeGatewayMsixInstaller().OpenAsync(MustNotLaunch, CancellationToken.None));
-            Assert.Contains(NativeGatewayMsixInstaller.PackagePathEnvironmentVariable, error.Message);
-            Assert.Contains("restart Companion", error.Message);
-        }
-        finally
-        {
-            Environment.SetEnvironmentVariable(NativeGatewayMsixInstaller.PackagePathEnvironmentVariable, previous);
-        }
-    }
-
-    [Fact]
-    public void ExplicitSource_TakesPrecedenceOverEnvironment()
-    {
-        var previous = Environment.GetEnvironmentVariable(NativeGatewayMsixInstaller.PackagePathEnvironmentVariable);
-        try
-        {
-            Environment.SetEnvironmentVariable(NativeGatewayMsixInstaller.PackagePathEnvironmentVariable, "environment.msix");
-            Assert.Equal("explicit.msix", new NativeGatewayMsixInstaller("explicit.msix").PackagePath);
-        }
-        finally
-        {
-            Environment.SetEnvironmentVariable(NativeGatewayMsixInstaller.PackagePathEnvironmentVariable, previous);
-        }
-    }
-
-    [Fact]
-    public async Task Open_HandsTheLocalPackageToTheInstallerExactlyOnce()
-    {
-        using var temp = new TempDirectory();
-        var path = CreatePackage(temp);
+        using var cts = new CancellationTokenSource();
         var calls = 0;
-        await new NativeGatewayMsixInstaller(path).OpenAsync((received, ct) =>
+        await new NativeGatewayMsixInstaller().OpenAsync((uri, ct) =>
         {
-            Assert.Equal(path, received);
-            Assert.False(ct.IsCancellationRequested);
+            Assert.Equal("https://apps.microsoft.com/detail/9nv70lv3d6xc?hl=en-US&gl=US", uri.AbsoluteUri);
+            Assert.Equal(cts.Token, ct);
             calls++;
             return Task.FromResult(true);
-        }, CancellationToken.None);
+        }, cts.Token);
         Assert.Equal(1, calls);
     }
 
     [Fact]
-    public async Task MissingFile_DoesNotOpenAnInstallerOrDownloadAnything()
+    public async Task ShellDeclinesLaunch_ProvidesStoreLinkAndRetryGuidance()
     {
-        using var temp = new TempDirectory();
-        await Assert.ThrowsAsync<FileNotFoundException>(() =>
-            new NativeGatewayMsixInstaller(temp.Combine("missing.msix")).OpenAsync(
-                MustNotLaunch, CancellationToken.None));
-    }
-
-    [Theory]
-    [InlineData("Another.Package", NativeGatewayMsixInstaller.Publisher, "arm64")]
-    [InlineData(NativeGatewayMsixInstaller.PackageName, "CN=Unrelated", "arm64")]
-    [InlineData(NativeGatewayMsixInstaller.PackageName, NativeGatewayMsixInstaller.Publisher, "x64")]
-    public async Task WrongPackage_RejectsBeforeOpeningInstaller(string name, string publisher, string architecture)
-    {
-        using var temp = new TempDirectory();
-        var path = CreatePackage(temp, name, publisher, architecture);
-        await Assert.ThrowsAsync<InvalidDataException>(() =>
-            new NativeGatewayMsixInstaller(path).OpenAsync(MustNotLaunch, CancellationToken.None));
+        var error = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            new NativeGatewayMsixInstaller().OpenAsync((_, _) => Task.FromResult(false), CancellationToken.None));
+        Assert.Contains(NativeGatewayMsixInstaller.StoreUri.AbsoluteUri, error.Message);
+        Assert.Contains("retry native setup", error.Message);
     }
 
     [Fact]
-    public async Task ShellDeclinesLaunch_IsNotReportedAsInstallationSuccess()
+    public async Task ShellFailure_IsPropagated()
     {
-        using var temp = new TempDirectory();
-        var path = CreatePackage(temp);
-        await Assert.ThrowsAsync<InvalidOperationException>(() =>
-            new NativeGatewayMsixInstaller(path).OpenAsync((_, _) => Task.FromResult(false), CancellationToken.None));
+        var failure = new InvalidOperationException("URI handler failed");
+        var error = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            new NativeGatewayMsixInstaller().OpenAsync((_, _) => throw failure, CancellationToken.None));
+        Assert.Same(failure, error);
     }
 
     [Fact]
-    public async Task Cancellation_DoesNotOpenInstaller()
+    public async Task Cancellation_DoesNotOpenStore()
     {
-        using var temp = new TempDirectory();
-        var path = CreatePackage(temp);
         using var cts = new CancellationTokenSource();
         cts.Cancel();
         await Assert.ThrowsAnyAsync<OperationCanceledException>(() =>
-            new NativeGatewayMsixInstaller(path).OpenAsync(MustNotLaunch, cts.Token));
+            new NativeGatewayMsixInstaller().OpenAsync((_, _) =>
+                throw new Xunit.Sdk.XunitException("The Store must not be opened."), cts.Token));
     }
 
-    private static Task<bool> MustNotLaunch(string path, CancellationToken ct) =>
-        throw new Xunit.Sdk.XunitException("The installer must not be invoked.");
-
-    private static string CreatePackage(
-        TempDirectory temp,
-        string name = NativeGatewayMsixInstaller.PackageName,
-        string publisher = NativeGatewayMsixInstaller.Publisher,
-        string architecture = "arm64")
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task CancelledHandoff_DoesNotReportSuccess(bool unresponsive)
     {
-        var path = temp.Combine("synthetic.msix");
-        using var archive = ZipFile.Open(path, ZipArchiveMode.Create);
-        using var stream = archive.CreateEntry("AppxManifest.xml").Open();
-        XNamespace ns = "http://schemas.microsoft.com/appx/manifest/foundation/windows10";
-        new XDocument(new XElement(ns + "Package",
-            new XElement(ns + "Identity",
-                new XAttribute("Name", name),
-                new XAttribute("Publisher", publisher),
-                new XAttribute("ProcessorArchitecture", architecture)))).Save(stream);
-        return path;
+        using var cts = new CancellationTokenSource();
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() =>
+            new NativeGatewayMsixInstaller().OpenAsync((_, _) =>
+            {
+                cts.Cancel();
+                return unresponsive ? new TaskCompletionSource<bool>().Task : Task.FromResult(true);
+            }, cts.Token));
     }
 }

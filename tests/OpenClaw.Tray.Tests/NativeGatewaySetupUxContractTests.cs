@@ -29,7 +29,10 @@ public sealed class NativeGatewaySetupUxContractTests
         Assert.Contains("StepStatus.Done", source);
         Assert.Contains("StepStatus.Failed", source);
         Assert.Contains("NativeGatewaySetupService", source);
-        Assert.Contains("Windows.System.Launcher.LaunchFileAsync(file)", source);
+        Assert.Contains("Windows.System.Launcher.LaunchUriAsync(uri)", source);
+        Assert.DoesNotContain("LaunchFileAsync", source);
+        Assert.DoesNotContain("Architecture.Arm64", source);
+        Assert.DoesNotContain("StorageFile", source);
         Assert.Contains("Onboarding_Native_InstallerOpened", source);
         Assert.Contains("NavigateToNativeWizard(session)", source);
         Assert.Contains("new NativeGatewaySetupHost(ReportProgress, ReportStage)", source);
@@ -291,7 +294,11 @@ public sealed class NativeGatewaySetupUxContractTests
             "NativeGatewayPackageResolver.cs");
         var source = File.ReadAllText(path);
         Assert.Contains("FindPackagesForUser(string.Empty)", source);
-        Assert.Contains("package.Id.Publisher == Publisher", source);
+        Assert.Contains("NativeGatewayPackageIdentity.IsTrusted(package.Id.Name, package.Id.Publisher)", source);
+        Assert.Contains("(expectedFamily is null || package.Id.FamilyName == expectedFamily)", source);
+        Assert.Contains("ResolveCoreAsync(null, cancellationToken)", source);
+        Assert.Contains("ResolveCoreAsync(expectedFamily, cancellationToken)", source);
+        Assert.Contains("packages.Length > 1", source);
         Assert.Contains("package.Status.VerifyIsOK()", source);
         Assert.Contains("\"Microsoft\", \"WindowsApps\", family", source);
         Assert.DoesNotContain("AddPackageAsync", source);

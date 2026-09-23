@@ -107,7 +107,7 @@
                                 <StackPanel x:Name="NativeReviewContent" Spacing="12" Visibility="Collapsed">
                                     <TextBlock x:Uid="Onboarding_Native_Review"
                                                TextWrapping="Wrap"
-                                               Text="Companion will check the Gateway package, open Windows App Installer if needed, prepare a dedicated profile, and open Gateway setup. Windows installation consent and provider sign-in stay interactive. This path does not install WSL, Local AI, or Tailscale." />
+                                               Text="Companion will check the Gateway package, open its Microsoft Store listing if needed, prepare a dedicated profile, and open Gateway setup. Store installation and provider sign-in stay interactive. This path does not install WSL, Local AI, or Tailscale." />
                                     <TextBlock x:Uid="Onboarding_Native_FeaturesNote"
                                                TextWrapping="Wrap"
                                                Foreground="{ThemeResource TextFillColorSecondaryBrush}"

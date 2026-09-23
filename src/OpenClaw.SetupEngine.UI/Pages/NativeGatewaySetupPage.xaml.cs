@@ -66,7 +66,7 @@ public sealed partial class NativeGatewaySetupPage : Page
             RetryButton.Visibility = Visibility.Visible;
         }
         catch (Exception ex) when (ex is InvalidOperationException or IOException or UnauthorizedAccessException
-                                   or Win32Exception or COMException or JsonException or TimeoutException or System.Xml.XmlException)
+                                   or Win32Exception or COMException or JsonException or TimeoutException)
         {
             Trace.TraceError($"Native Gateway setup: {ex}");
             _rows[_currentStep].SetStatus(StepStatus.Failed);
@@ -136,14 +136,10 @@ public sealed partial class NativeGatewaySetupPage : Page
 
     private async Task InstallAsync(CancellationToken cancellationToken)
     {
-        if (RuntimeInformation.OSArchitecture != Architecture.Arm64)
-            throw new InvalidOperationException("The configured local Gateway MSIX requires an ARM64 Windows device.");
-
-        await _installer.OpenAsync(async (path, ct) =>
+        await _installer.OpenAsync(async (uri, ct) =>
         {
-            var file = await Windows.Storage.StorageFile.GetFileFromPathAsync(path);
             ct.ThrowIfCancellationRequested();
-            return await Windows.System.Launcher.LaunchFileAsync(file);
+            return await Windows.System.Launcher.LaunchUriAsync(uri);
         }, cancellationToken);
     }
 

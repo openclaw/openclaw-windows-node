@@ -6,16 +6,20 @@ namespace OpenClaw.SetupEngine.UI;
 /// <summary>Uses current-user package registration, never an npm/PATH alias.</summary>
 public sealed class NativeGatewayPackageResolver : INativeGatewayPackageResolver
 {
-    public const string PackageName = NativeGatewayMsixInstaller.PackageName;
-    public const string Publisher = NativeGatewayMsixInstaller.Publisher;
-
     public Task<NativeGatewayPackage> ResolveAsync(CancellationToken cancellationToken) =>
+        ResolveCoreAsync(null, cancellationToken);
+
+    public Task<NativeGatewayPackage> ResolveAsync(string expectedFamily, CancellationToken cancellationToken) =>
+        ResolveCoreAsync(expectedFamily, cancellationToken);
+
+    private static Task<NativeGatewayPackage> ResolveCoreAsync(
+        string? expectedFamily, CancellationToken cancellationToken) =>
         Task.Run(() =>
         {
             cancellationToken.ThrowIfCancellationRequested();
             var packages = new PackageManager().FindPackagesForUser(string.Empty)
-                .Where(package => package.Id.Name == PackageName &&
-                    package.Id.Publisher == Publisher &&
+                .Where(package => NativeGatewayPackageIdentity.IsTrusted(package.Id.Name, package.Id.Publisher) &&
+                    (expectedFamily is null || package.Id.FamilyName == expectedFamily) &&
                     !package.IsFramework && !package.IsResourcePackage)
                 .ToArray();
             if (packages.Length == 0)

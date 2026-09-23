@@ -45,6 +45,7 @@ public sealed class NativeGatewayRuntimeTests : IAsyncDisposable
 
         Assert.Single(_host.Processes);
         Assert.Equal(2, _resolver.Calls);
+        Assert.Equal(Family, _resolver.ExpectedFamily);
         var spec = Assert.Single(_host.Specs);
         Assert.Equal(_resolver.Package.OpenClawAliasPath, spec.ExecutablePath);
         Assert.Equal(Family, spec.PackageFamilyName);
@@ -57,6 +58,36 @@ public sealed class NativeGatewayRuntimeTests : IAsyncDisposable
         Assert.Equal("1", spec.Environment["OPENCLAW_NO_AUTO_UPDATE"]);
         Assert.Equal(GatewayEndpointProvenanceKind.ExpectedManagedGateway,
             (await _runtime.InspectAsync(_record, default)).Kind);
+    }
+
+    [Fact]
+    public async Task StorePackage_UsesQualifiedAliasesAndPreservesOwnedListenerVerification()
+    {
+        const string storeFamily = "OpenClawFoundation.OpenClawGateway_123456789abcd";
+        var aliases = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+            "Microsoft", "WindowsApps", storeFamily);
+        _resolver.Package = new(storeFamily, "1.0.0.0",
+            Path.Combine(aliases, "openclaw.exe"), Path.Combine(aliases, "clawctl.exe"));
+        var record = _record with { NativePackageFamilyName = storeFamily };
+
+        await _runtime.EnsureRunningAsync(record, default);
+
+        var spec = Assert.Single(_host.Specs);
+        Assert.Equal(storeFamily, spec.PackageFamilyName);
+        Assert.Equal(storeFamily, _resolver.ExpectedFamily);
+        Assert.Equal(_resolver.Package.OpenClawAliasPath, spec.ExecutablePath);
+        Assert.Equal(GatewayEndpointProvenanceKind.ExpectedManagedGateway,
+            (await _runtime.InspectAsync(record, default)).Kind);
+        await _runtime.StopAsync(default);
+        Assert.True(Assert.Single(_host.Processes).Disposed);
+    }
+
+    [Fact]
+    public async Task StoreRecord_CannotSilentlySwitchToDevelopmentPackage()
+    {
+        await Assert.ThrowsAsync<InvalidOperationException>(() => _runtime.EnsureRunningAsync(
+            _record with { NativePackageFamilyName = "OpenClawFoundation.OpenClawGateway_123456789abcd" }, default));
+        Assert.Empty(_host.Processes);
     }
 
     [Fact]
@@ -335,6 +366,9 @@ public sealed class NativeGatewayRuntimeTests : IAsyncDisposable
     [InlineData("Other.Gateway_123456789abcd")]
     [InlineData("OpenClaw.Gateway_..\\escape")]
     [InlineData("OpenClaw.Gateway_short")]
+    [InlineData("OpenClawFoundation.OpenClawGateway_..\\escape")]
+    [InlineData("OpenClawFoundation.OpenClawGateway_short")]
+    [InlineData("Other.OpenClawFoundation.OpenClawGateway_123456789abcd")]
     public async Task InvalidFamily_IsRejected(string? family)
     {
         await Assert.ThrowsAsync<ArgumentException>(() => _runtime.EnsureRunningAsync(
@@ -357,6 +391,12 @@ public sealed class NativeGatewayRuntimeTests : IAsyncDisposable
         public Func<string, string>? DataPathResolver { get; set; }
         public string ResolveDataPath(string path) => DataPathResolver?.Invoke(path) ?? path;
         public int Calls { get; private set; }
+        public string? ExpectedFamily { get; private set; }
+        public Task<NativeGatewayPackage> ResolveAsync(string expectedFamily, CancellationToken cancellationToken)
+        {
+            ExpectedFamily = expectedFamily;
+            return ResolveAsync(cancellationToken);
+        }
         public Task<NativeGatewayPackage> ResolveAsync(CancellationToken cancellationToken)
         {
             Calls++;

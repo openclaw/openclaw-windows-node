@@ -7142,8 +7142,8 @@
   <data name="Onboarding_Native_Alternatives.Header" xml:space="preserve"><value>其他 Gateway 選項</value></data>
   <data name="Onboarding_Native_UpdateLaunchFailed" xml:space="preserve"><value>無法開啟 Windows Update。請開啟 Windows 設定，然後選取 Windows Update。</value></data>
   <data name="Onboarding_Native_Lifecycle.Text" xml:space="preserve"><value>在 Companion 中繼續使用與 WSL 相同的 Gateway 設定精靈。連線前將驗證設定和健康狀態。現有 WSL Gateway 和預設 OpenClaw 設定不會被取代。</value></data>
-  <data name="Onboarding_Native_Acquisition.Text" xml:space="preserve"><value>商店連結可用之前，設定程式會為指定的本機 MSIX 開啟 Windows 應用程式安裝程式。不會下載套件或安裝 Node.js。</value></data>
-  <data name="Onboarding_Native_InstallerOpened" xml:space="preserve"><value>請在 Windows 應用程式安裝程式中完成安裝。套件準備就緒後，Companion 將自動繼續。在此取消設定不會取消 Windows 安裝。</value></data>
+  <data name="Onboarding_Native_Acquisition.Text" xml:space="preserve"><value>如果尚未安裝 Gateway，設定程式會開啟其 Microsoft Store 頁面。請在該頁面完成安裝；驗證套件後，Companion 將自動繼續。</value></data>
+  <data name="Onboarding_Native_InstallerOpened" xml:space="preserve"><value>請透過 Microsoft Store 完成安裝。套件準備就緒後，Companion 將自動繼續。在此取消設定不會取消商店安裝。</value></data>
   <data name="Onboarding_Native_ProgressSubtitle.Text" xml:space="preserve"><value>Companion 將準備您的 Gateway 並自動開啟其設定精靈。</value></data>
   <data name="Onboarding_Native_StepSupport" xml:space="preserve"><value>檢查裝置支援情況</value></data>
   <data name="Onboarding_Native_StepPackage" xml:space="preserve"><value>安裝或驗證 Gateway 套件</value></data>
@@ -7151,7 +7151,7 @@
   <data name="Onboarding_Native_StepVerify" xml:space="preserve"><value>啟動並驗證 Gateway</value></data>
   <data name="Onboarding_Native_Retry.Content" xml:space="preserve"><value>重試設定</value></data>
   <data name="Onboarding_Native_Preview" xml:space="preserve"><value>僅供預覽。不會安裝任何套件或啟動 Gateway。</value></data>
-  <data name="Onboarding_Native_Review.Text" xml:space="preserve"><value>Companion 將檢查 Gateway 套件，在需要時開啟 Windows 應用程式安裝程式，準備專用設定檔，並開啟 Gateway 設定。Windows 安裝同意和供應商登入仍需您互動操作。此方式不會安裝 WSL、本機 AI 或 Tailscale。</value></data>
+  <data name="Onboarding_Native_Review.Text" xml:space="preserve"><value>Companion 將檢查 Gateway 套件，在需要時開啟其 Microsoft Store 頁面，準備專用設定檔，並開啟 Gateway 設定。商店安裝和供應商登入仍需您互動操作。此方式不會安裝 WSL、本機 AI 或 Tailscale。</value></data>
   <data name="Onboarding_Native_FeaturesNote.Text" xml:space="preserve"><value>節點模式連線至 Gateway 並完成配對後，即可使用這些 Windows 功能。Windows 權限和命令核准仍然適用。</value></data>
   <data name="Onboarding_Native_ConfiguredTitle" xml:space="preserve"><value>原生 Gateway 已設定</value></data>
   <data name="Onboarding_Native_CapabilitySummary" xml:space="preserve"><value>{0}。您可以在 Companion 設定中變更這些選項。</value></data>

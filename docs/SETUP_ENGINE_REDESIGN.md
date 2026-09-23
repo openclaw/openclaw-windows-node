@@ -39,9 +39,14 @@ authenticated health/config gates, and final registry publication.
 are not duplicated. Native uses the upstream `installDaemon: false` contract.
 `NativeGatewayPackageResolver`
 checks Windows package registration and package-qualified aliases.
-`NativeGatewayMsixInstaller` validates the local development MSIX configured by
-`OPENCLAW_GATEWAY_MSIX_PATH` and
-hands it to Windows App Installer when a package is not installed.
+`NativeGatewayMsixInstaller` opens the
+[OpenClaw Gateway Microsoft Store listing](https://apps.microsoft.com/detail/9nv70lv3d6xc?hl=en-US&gl=US)
+when a package is not installed. Microsoft Store owns architecture selection,
+installation consent and deployment; no local MSIX path is required.
+`NativeGatewayPackageIdentity` pins the exact Store name/publisher pair and retains
+the original development identity for existing installations. Multiple matching
+registrations fail explicitly for new setup. Existing runtime profiles resolve only
+their saved family, allowing both packages to coexist without an implicit migration.
 `NativeGatewayPackageAcquisition` automatically opens it once only for missing
 registration, then waits up to five minutes for verified package readiness.
 Cancellation stops the wait, not Windows deployment. Repair errors and timeouts
@@ -56,8 +61,8 @@ Companion node/capability settings. Completion does not claim node pairing.
 health commands, plus an explicitly requested profile-scoped recovery terminal.
 It never launches `openclaw onboard` or WSL.
 `NativeGatewayRuntime` in the Connection project owns the gateway process.
-This path is non-isolated, UI-only, and never downloads an MSIX or bypasses the
-Windows installer. The temporary local source is ARM64-only.
+This path is non-isolated and UI-only. Companion never downloads an MSIX itself
+or bypasses Microsoft Store installation.
 Existing headless setup arguments continue to select the WSL pipeline.
 See [Native Gateway MSIX](ONBOARDING_WIZARD.md#native-gateway-msix-not-isolated)
 for consent, lifecycle, retry, and acquisition boundaries.

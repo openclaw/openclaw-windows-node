@@ -76,9 +76,9 @@ public static class NativeGatewayPaths
     internal static void ValidateFamilyName(string? familyName)
     {
         if (familyName is null || !Regex.IsMatch(familyName,
-            @"\AOpenClaw\.Gateway_[a-z0-9]{13}\z", RegexOptions.CultureInvariant))
+            @"\A(?:OpenClaw\.Gateway|OpenClawFoundation\.OpenClawGateway)_[a-z0-9]{13}\z", RegexOptions.CultureInvariant))
         {
-            throw new ArgumentException("An installed OpenClaw.Gateway package family is required.");
+            throw new ArgumentException("An installed OpenClaw Gateway package family is required.");
         }
     }
 

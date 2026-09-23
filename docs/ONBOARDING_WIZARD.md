@@ -1,7 +1,7 @@
 # Onboarding Wizard
 
-The onboarding wizard can install an app-owned WSL gateway, hand a local native
-Gateway MSIX to Windows App Installer and configure it, or connect to an existing gateway.
+The onboarding wizard can install an app-owned WSL gateway, acquire a native
+Gateway MSIX through Microsoft Store and configure it, or connect to an existing gateway.
 
 ### Shortened local onboarding (native and WSL)
 
@@ -75,23 +75,25 @@ Native and WSL use the **same WinUI `WizardPage`**, not separate provider/model
 wizards. WSL is offered under collapsed **Other gateway options** only when
 native setup is unavailable.
 
-Companion checks current-user registration for `OpenClaw.Gateway` and the
-OpenClaw Foundation publisher, package health, and the package-qualified
+Companion checks current-user registration for the Store package
+`OpenClawFoundation.OpenClawGateway` and publisher
+`CN=4BA40A7A-B719-4C40-BF91-84AF4F1136FC`, package health, and the package-qualified
 `clawctl.exe` and `openclaw.exe` aliases. It does not resolve an npm installation
 from `PATH`. Native setup uses the same Windows capabilities and permission
 selection as WSL, followed by a native-specific review without WSL, Local AI or
 Tailscale provisioning. After confirming the review, progress runs automatically.
-A missing package opens Windows App Installer; unhealthy registration or
-unavailable aliases show an explicit repair error. Until a Store product ID is
-available, set `OPENCLAW_GATEWAY_MSIX_PATH` to the local Gateway MSIX before
-launching Companion. No machine-specific source path is built into the app.
-An absent or blank setting produces actionable configuration guidance instead
-of opening an installer. Already installed healthy packages do not need this setting.
+A missing package opens the
+[OpenClaw Gateway Microsoft Store listing](https://apps.microsoft.com/detail/9nv70lv3d6xc?hl=en-US&gl=US);
+unhealthy registration or unavailable aliases show an explicit repair error.
+No local MSIX path or environment-variable configuration is required.
+The original `OpenClaw.Gateway` / OpenClaw Foundation development publisher pair
+is still accepted for existing installations. If both identities are installed,
+new setup reports duplicate registrations instead of guessing which to use. Existing
+profiles resolve their original package family even when both packages are installed;
+there is no implicit migration.
 
-This development source is ARM64-only and is not a portable distribution channel.
-Setup verifies the local package manifest's name, publisher and architecture
-before opening it. Windows App Installer owns signature validation, user consent,
-and deployment. Opening the installer is not reported as a successful install:
+Microsoft Store owns architecture/package selection, signature validation, user
+consent, and deployment. Opening the listing is not reported as a successful install:
 Companion waits for actual package registration and verified aliases, then
 automatically prepares the profile and opens the shared Gateway wizard.
 The wait is cancellable and limited to five minutes. Cancelling in Companion does

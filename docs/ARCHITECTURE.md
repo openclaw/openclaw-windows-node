@@ -72,7 +72,8 @@ These are the canonical homes. Do not reintroduce private copies elsewhere.
 | Settings page load/persist view logic | `SettingsPageViewModel` | authoritative |
 | Native tool identity, display arguments, payload extraction, and flattened-history projection | `NativeToolProjector` | authoritative |
 | Managed-local listener provenance and strong-credential authorization | `ManagedLocalGatewayPortProvenanceService` | authoritative |
-| Native Gateway MSIX manifest preflight and Windows App Installer handoff | `NativeGatewayMsixInstaller` | authoritative |
+| Native Gateway Microsoft Store listing handoff | `NativeGatewayMsixInstaller` | authoritative |
+| Trusted Store and existing development Gateway registration identities | `NativeGatewayPackageIdentity` | authoritative |
 | Current-user Gateway package registration, health and package-qualified alias discovery | `NativeGatewayPackageResolver` | authoritative |
 | Missing-package acquisition, one installer handoff and bounded registration wait | `NativeGatewayPackageAcquisition` | authoritative |
 | Shared Windows capability and permission selection, with runtime-specific install review | `CapabilitiesPage` | authoritative |
@@ -135,11 +136,12 @@ move package resolution, process inspection or setup finalization back into it.
 
 ### Package installation and discovery
 
-`NativeGatewayMsixInstaller.OpenAsync` preflights the local MSIX manifest's
-package name, publisher and ARM64 architecture, then asks Windows to open it in
-App Installer. Manifest inspection is not signature verification: Windows owns
-signature validation, deployment and installation consent. Opening App Installer
-does not mean installation succeeded.
+`NativeGatewayMsixInstaller.OpenAsync` asks Windows to open the fixed
+[OpenClaw Gateway Microsoft Store listing](https://apps.microsoft.com/detail/9nv70lv3d6xc?hl=en-US&gl=US)
+with `Launcher.LaunchUriAsync`. Microsoft Store owns architecture/package selection,
+signature validation, deployment and installation consent. Opening the listing
+does not mean installation succeeded. There is no local source path, environment
+override, direct download, or ARM64-only installer gate.
 
 `NativeGatewayPackageResolver.ResolveAsync` subsequently requires exactly one
 matching current-user package registration, verifies package health, and resolves
@@ -148,16 +150,25 @@ substitute a generic PATH/npm command, copied executable or guessed WindowsApps
 installation path. `NativeGatewaySetupHost` invokes `clawctl setup` to prepare
 the packaged runtime; that command does not perform Gateway onboarding.
 
-The current installer reads its local ARM64 development MSIX location from
-`OPENCLAW_GATEWAY_MSIX_PATH`, with no machine-specific path in source. Explicit
-constructor paths take precedence; missing configuration fails with actionable
-guidance. Healthy installed packages need no installer source. Store acquisition,
-portable package selection and MXC session provisioning are not implemented.
+`NativeGatewayPackageIdentity` accepts the Store manifest's exact pair:
+`OpenClawFoundation.OpenClawGateway` and
+`CN=4BA40A7A-B719-4C40-BF91-84AF4F1136FC`
+([packaging manifest](https://github.com/openclaw/openclaw-windows-packaging/blob/96770f14d73edfcba41964c08cd2f64f39420278/src/OpenClaw.Launcher/Package.appxmanifest)).
+The original `OpenClaw.Gateway` / OpenClaw Foundation development publisher pair
+remains accepted for already installed packages and saved profiles. Names and
+publishers cannot be mixed. New setup with both identities installed produces an
+explicit duplicate-registration error, not an implicit migration or preferred-package
+fallback. The runtime resolver selects the saved profile's exact family, so an
+existing Gateway remains usable when both packages are installed. Runtime records
+remain pinned to their saved package family; Store
+installation does not rewrite a development profile's identity. Package-family
+syntax checks admit both names, while registration and exact family matching
+remain mandatory before launching. MXC session provisioning is not implemented.
 
 After native capability/permission review, `NativeGatewaySetupPage` starts
 automatically. It rechecks device support, then calls
 `NativeGatewayPackageAcquisition.EnsureAsync`. Only the typed
-`NativeGatewayPackageNotInstalledException` opens App Installer, once per attempt.
+`NativeGatewayPackageNotInstalledException` opens the Store listing, once per attempt.
 Healthy registration skips installation; duplicate registration, unhealthy packages
 and missing aliases fail explicitly instead of triggering reinstall loops.
 The cancellable acquisition deadline is five minutes, with one-second polling.
