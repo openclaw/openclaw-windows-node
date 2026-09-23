@@ -2546,6 +2546,43 @@ public sealed class LocalAiPortLifecycleTests
         };
     }
 
+    /// <summary>
+    /// A managed install recorded before the llama-server runtime bump must keep
+    /// launching against its own pinned receipt. Updating the app must not strand an
+    /// installed model until a separate setup repair runs.
+    /// </summary>
+    [Fact]
+    public async Task Router_LaunchesRetiredRuntimeInstallAfterVersionBump()
+    {
+        using var temp = new TempDirectory("local-ai-legacy-runtime-");
+        var paths = new LocalAiPaths(temp.Path);
+        LlamaRuntimeVariant retired = LlamaRuntimeCatalog.FindInstalled("b10655-cuda13-arm64")!;
+        LocalAiInstallManifest manifest = ValidManifest() with
+        {
+            EngineVersion = retired.ReleaseTag,
+            RuntimeId = retired.Id,
+            ExecutablePath = Path.Combine(
+                "engines",
+                $"llama-{retired.ReleaseTag}",
+                LlamaRuntimeCatalog.ServerExecutableName),
+            RuntimeAssets = retired.Artifacts.Select(artifact => new LocalAiAssetReceipt
+            {
+                FileName = Path.GetFileName(artifact.RelativePath),
+                SourceUrl = artifact.DownloadUri.AbsoluteUri,
+                SizeBytes = artifact.SizeBytes,
+                Sha256 = artifact.Sha256.Value,
+            }).ToImmutableArray(),
+        };
+        var store = new LocalAiManifestStore(paths);
+        await store.SaveAsync(manifest);
+
+        LocalAiResolvedInstall saved = (await store.LoadAsync())!;
+        LlamaServerRouterLaunchPlan launch = LlamaServerRouterConfiguration.Build(paths, saved);
+
+        Assert.NotEqual(LlamaRuntimeCatalog.ReleaseTag, retired.ReleaseTag);
+        Assert.Equal("qwen3.6-35b-a3b-mtp-q4-k-m", launch.ModelAlias);
+    }
+
     private static LocalAiInstallManifest ValidManifest()
     {
         LlamaRuntimeVariant runtime = LlamaRuntimeCatalog.Find(

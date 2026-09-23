@@ -1146,6 +1146,55 @@ public sealed class LocalAiInstallRecoveryTests
     }
 
     [Fact]
+    public async Task Reconciler_UpgradesRetiredRuntimeReceiptInsteadOfFailingSetup()
+    {
+        // An install recorded before the runtime bump must upgrade, not end setup with an
+        // uninstall instruction. The runtime is dropped so the acquirer installs the new
+        // pin; the verified model is kept so an upgrade does not re-download it.
+        using var temp = new TempDirectory();
+        LocalInferencePlan plan = CatalogPlan();
+        const string gpuId = "GPU-0";
+        var paths = new LocalAiPaths(temp.Path);
+        LlamaRuntimeVariant retired = LlamaRuntimeCatalog.FindInstalled("b10655-cuda13-x64")!;
+        Assert.True(LocalAiPathPolicy.TryResolve(
+            temp.Path,
+            LlamaRuntimeInstaller.Component(retired),
+            out LocalAiSetupPaths retiredPaths,
+            out string retiredError), retiredError);
+        LocalAiInstallManifest manifest = CreateManifest(temp.Path, plan, gpuId) with
+        {
+            EngineVersion = retired.ReleaseTag,
+            RuntimeId = retired.Id,
+            ExecutablePath = Path.GetRelativePath(
+                paths.RootDirectory,
+                Path.Combine(retiredPaths.InstallDirectory, LlamaRuntimeCatalog.ServerExecutableName)),
+            RuntimeAssets = retired.Artifacts.Select(artifact => new LocalAiAssetReceipt
+            {
+                FileName = Path.GetFileName(artifact.RelativePath),
+                SourceUrl = artifact.DownloadUri.AbsoluteUri,
+                SizeBytes = artifact.SizeBytes,
+                Sha256 = artifact.Sha256.Value,
+            }).ToImmutableArray(),
+        };
+        await new LocalAiManifestStore(paths).SaveAsync(manifest);
+        var reconciler = new LocalAiInstallReconciler(
+            new ValidRuntimeInspector(),
+            new AcceptingModelVerifier());
+
+        LocalAiReconcileResult result = await reconciler.ReconcileAsync(
+            temp.Path,
+            plan,
+            gpuId,
+            CancellationToken.None);
+
+        Assert.False(result.Reused);
+        Assert.Null(result.RuntimeInstall);
+        Assert.NotNull(result.ModelInstall);
+        Assert.NotNull(result.OriginalInstall);
+        Assert.Equal(retired.ReleaseTag, result.OriginalInstall!.Manifest.EngineVersion);
+    }
+
+    [Fact]
     public async Task Reconciler_RejectsMigrationCacheRootInsideManagedInstallTree()
     {
         using var temp = new TempDirectory();

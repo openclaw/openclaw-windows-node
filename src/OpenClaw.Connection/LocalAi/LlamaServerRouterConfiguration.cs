@@ -53,8 +53,10 @@ public static class LlamaServerRouterConfiguration
         LocalAiInstallManifest manifest = install.Manifest;
         int port = listenPort ?? manifest.RequestedPort;
         LocalAiPortPolicy.Validate(port);
-        LlamaRuntimeVariant runtime = LlamaRuntimeCatalog.Variants.SingleOrDefault(
-            candidate => string.Equals(candidate.Id, manifest.RuntimeId, StringComparison.Ordinal))
+        // FindInstalled, not Variants: an installation recorded before the last
+        // runtime bump must keep launching until setup upgrades it, instead of being
+        // stranded the moment the catalog moves to a newer pinned release.
+        LlamaRuntimeVariant runtime = LlamaRuntimeCatalog.FindInstalled(manifest.RuntimeId)
             ?? throw new InvalidDataException("The managed llama-server runtime is no longer qualified.");
         LocalModelInfo model = LocalModelCatalog.FindInstalled(manifest.ModelCatalogId)
             ?? throw new InvalidDataException("The managed local AI model is no longer qualified.");
@@ -124,7 +126,7 @@ public static class LlamaServerRouterConfiguration
         {
             throw new InvalidDataException("The managed local AI architecture and runtime receipt do not match.");
         }
-        if (!string.Equals(manifest.EngineVersion, LlamaRuntimeCatalog.ReleaseTag, StringComparison.Ordinal) ||
+        if (!string.Equals(manifest.EngineVersion, runtime.ReleaseTag, StringComparison.Ordinal) ||
             !string.Equals(manifest.ModelAlias, model.Id, StringComparison.Ordinal))
         {
             throw new InvalidDataException("The managed local AI model recipe receipt does not match the qualified catalog.");

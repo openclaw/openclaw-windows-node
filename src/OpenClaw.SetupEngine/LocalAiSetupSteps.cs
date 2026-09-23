@@ -287,6 +287,11 @@ public sealed class ReconcileLocalAiInstallationStep : SetupStep
             }
             if (!result.Reused)
             {
+                // A retained baseline receipt (gateway recovery, or a pending runtime
+                // upgrade) is what lets the manifest step replace the existing receipt
+                // instead of refusing because one is already present.
+                if (result.OriginalInstall is { } retainedReceipt)
+                    ctx.LocalAiRecoveryOriginalInstall ??= retainedReceipt;
                 ctx.LocalAiRuntimeInstall = result.RuntimeInstall;
                 ctx.LocalAiModelInstall = result.ModelInstall;
                 return StepResult.Skip(result.OriginalInstall is null
