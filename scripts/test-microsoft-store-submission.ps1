@@ -75,6 +75,7 @@ function Reset-Fixture {
     $global:OpenClawStoreTest_draft = $null
     $global:OpenClawStoreTest_pendingId = $null
     $global:OpenClawStoreTest_tokenLifetime = 3600
+    $global:OpenClawStoreTest_commitStatus = 'CommitStarted'
     $global:OpenClawStoreTest_replaceAfterUpload = $false
     $global:OpenClawStoreTest_driftAfterUpload = $false
     $global:OpenClawStoreTest_mutatePackagesAfterUpload = $false
@@ -136,7 +137,7 @@ $httpInvoker = {
     if ($Method -eq 'Post' -and $Uri -ceq "$applicationPath/submissions/draft-2/Commit") {
         if ($global:OpenClawStoreTest_pendingId -cne 'draft-2') { throw 'Draft ownership changed before commit.' }
         $global:OpenClawStoreTest_pendingId = $null
-        return [pscustomobject]@{ Status = 'CommitStarted' }
+        return [pscustomobject]@{ Status = $global:OpenClawStoreTest_commitStatus }
     }
     if ($Method -eq 'Delete' -and $Uri -ceq "$applicationPath/submissions/draft-2") {
         if ($global:OpenClawStoreTest_pendingId -ceq 'draft-2') { $global:OpenClawStoreTest_pendingId = $null }
@@ -243,6 +244,14 @@ try {
     Assert-Fails -MessagePattern 'package mutation state changed' -Action { Invoke-Submission }
     if ($null -ne $global:OpenClawStoreTest_pendingId -or $global:OpenClawStoreTest_calls -match '/Commit$') {
         throw 'Package drift did not delete only the automation-owned draft.'
+    }
+
+    Reset-Fixture
+    $global:OpenClawStoreTest_commitStatus = 'CommitFailed'
+    Assert-Fails -MessagePattern 'did not accept the submission commit' -Action { Invoke-Submission }
+    if ($null -ne $global:OpenClawStoreTest_pendingId -or
+        @($global:OpenClawStoreTest_calls | Where-Object { $_ -match '/Commit$' }).Count -ne 1) {
+        throw 'Rejected commit status did not fail and clean up the owned draft.'
     }
 
     Reset-Fixture

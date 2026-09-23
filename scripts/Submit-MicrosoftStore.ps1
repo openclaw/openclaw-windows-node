@@ -274,7 +274,9 @@ try {
     $commit = Invoke-StoreApi -Method Post `
         -Path "/v1.0/my/applications/$encodedApplicationId/submissions/$encodedDraftId/Commit"
     $commitStatus = [string](Get-RequiredProperty $commit 'Status')
-    Assert-NonEmptyValue -Name 'Store commit status' -Value $commitStatus
+    if ($commitStatus -cne 'CommitStarted') {
+        throw "Store did not accept the submission commit: $commitStatus"
+    }
     $committed = $true
 
     if (-not [string]::IsNullOrWhiteSpace($EvidencePath)) {
