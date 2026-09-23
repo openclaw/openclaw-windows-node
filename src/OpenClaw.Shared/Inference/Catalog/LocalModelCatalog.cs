@@ -1,3 +1,4 @@
+using System.Collections.Immutable;
 using System.Collections.ObjectModel;
 
 namespace OpenClaw.Shared.Inference.Catalog;
@@ -422,6 +423,19 @@ public static class LocalModelCatalog
 
     /// <summary>True when the id resolves only to a retired catalog entry.</summary>
     public static bool IsLegacy(string? id) => Find(id) is null && FindInstalled(id) is not null;
+
+    /// <summary>
+    /// The recipe's additional pinned artifacts beyond its primary weights, in the
+    /// fixed order every acquirer, manifest, and launch path must agree on. Today that
+    /// is the DFlash draft checkpoint, when the recipe pins one.
+    /// </summary>
+    public static ImmutableArray<PinnedArtifact> AdditionalArtifacts(LocalModelInfo model)
+    {
+        ArgumentNullException.ThrowIfNull(model);
+        return model.Recipe.DraftWeights is { } draftWeights
+            ? [draftWeights]
+            : ImmutableArray<PinnedArtifact>.Empty;
+    }
 
     private static LocalInferenceRunProfile[] CreateProfiles(LocalModelInfo model) =>
     [

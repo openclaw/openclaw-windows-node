@@ -216,12 +216,12 @@ internal static class LocalInferenceQualificationPolicy
     {
         ArgumentNullException.ThrowIfNull(model);
         ArgumentNullException.ThrowIfNull(profile);
-        long draftWeightsBytes = model.Recipe.DraftWeights?.SizeBytes ?? 0;
+        long weightsBytes = SaturatingAdd(
+            model.Weights.SizeBytes,
+            model.Recipe.DraftWeights?.SizeBytes ?? 0);
         return SaturatingAdd(
             SaturatingAdd(
-                SaturatingAdd(
-                    SaturatingAdd(model.Weights.SizeBytes, draftWeightsBytes),
-                    GetKvCacheMemoryBytes(model.Recipe, profile)),
+                SaturatingAdd(weightsBytes, GetKvCacheMemoryBytes(model.Recipe, profile)),
                 GetDraftKvCacheMemoryBytes(model.Recipe, profile)),
             profile.RuntimeWorkspaceBytes);
     }
