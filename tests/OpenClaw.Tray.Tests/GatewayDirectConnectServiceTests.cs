@@ -303,6 +303,38 @@ public sealed class GatewayDirectConnectServiceTests : IDisposable
     }
 
     [Fact]
+    public void ShouldPreserveUnchangedSharedToken_RequiresSameCredentialRealm()
+    {
+        var ssh = new SshTunnelConfig("user", "bastion.example", 18789, 45678, SshPort: 22);
+        var previous = AddPreviousGateway() with
+        {
+            SharedGatewayToken = "existing-token",
+            SshTunnel = ssh,
+        };
+        _registry.AddOrUpdate(previous);
+        _registry.Save();
+
+        Assert.False(GatewayDirectConnectService.ShouldPreserveUnchangedSharedToken(
+            previous,
+            "existing-token",
+            "wss://updated.example",
+            ssh,
+            _registry));
+        Assert.False(GatewayDirectConnectService.ShouldPreserveUnchangedSharedToken(
+            previous,
+            "existing-token",
+            previous.Url,
+            ssh with { SshPort = 2222 },
+            _registry));
+        Assert.True(GatewayDirectConnectService.ShouldPreserveUnchangedSharedToken(
+            previous,
+            "existing-token",
+            previous.Url,
+            ssh,
+            _registry));
+    }
+
+    [Fact]
     public async Task Connect_EndpointChangeFailure_RestoresOldRealmAndDeletesCandidateIdentity()
     {
         var previous = AddPreviousGateway();
