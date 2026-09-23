@@ -191,6 +191,7 @@ try {
         apiBaseUri = $apiBase
         oauthScope = 'https://manage.devcenter.microsoft.com/.default'
         commitSubmission = $true
+        submissionWriterPolicy = 'exclusive-github-environment'
         pendingSubmissionPolicy = 'reject'
         failedDraftPolicy = 'delete-owned'
         packageRolloutPercentage = 100

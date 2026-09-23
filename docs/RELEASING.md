@@ -219,11 +219,20 @@ Configure that environment before the next stable release:
 3. Add an Entra federated credential for:
    `repo:openclaw/openclaw-windows-node:environment:microsoft-store`
    with audience `api://AzureADTokenExchange`.
+   This must be the application's only credential: do not add client secrets,
+   certificates, or additional federated subjects, and do not share the Entra
+   application with another publisher.
 4. Associate the Entra application with the Partner Center account and grant
    it access to the existing OpenClaw product.
 5. Ensure that product has a published submission and no pending draft.
 6. Record Store channel acceptance in the release PR before enabling the first
    production submission.
+
+The Store identity is an exclusive writer. Only this serialized GitHub
+environment may use it, and operators must not edit an API-created draft in
+Partner Center. Microsoft documents that a Partner Center edit invalidates
+further API update or commit operations; if that happens, let the workflow
+delete its own failed draft and rerun after the product has no pending draft.
 
 The git-controlled policy is [`store-submission.json`](../store-submission.json).
 It pins the API origin and scope, OIDC audience, rollout percentage, timeout,

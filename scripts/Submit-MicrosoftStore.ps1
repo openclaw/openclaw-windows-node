@@ -101,7 +101,7 @@ catch { throw "Unable to parse Store submission policy: $($_.Exception.Message)"
 
 $requiredProperties = @(
     'schemaVersion', 'environment', 'oidcAudience', 'apiBaseUri', 'oauthScope',
-    'commitSubmission', 'pendingSubmissionPolicy', 'failedDraftPolicy',
+    'commitSubmission', 'submissionWriterPolicy', 'pendingSubmissionPolicy', 'failedDraftPolicy',
     'packageRolloutPercentage', 'uploadTimeoutSeconds', 'minimumAccessTokenLifetimeSeconds'
 )
 foreach ($property in $requiredProperties) {
@@ -118,6 +118,7 @@ if ([string]$policy.apiBaseUri -cne 'https://manage.devcenter.microsoft.com' -or
     throw 'Store submission policy has an unsupported API boundary.'
 }
 if ([bool]$policy.commitSubmission -ne $true -or
+    [string]$policy.submissionWriterPolicy -cne 'exclusive-github-environment' -or
     [string]$policy.pendingSubmissionPolicy -cne 'reject' -or
     [string]$policy.failedDraftPolicy -cne 'delete-owned') {
     throw 'Store submission policy must commit safely and reject unowned drafts.'
