@@ -1,3 +1,4 @@
+using System.Collections.Immutable;
 using System.Diagnostics.CodeAnalysis;
 using System.Text.Json;
 using System.Text.Json.Serialization;
@@ -515,6 +516,13 @@ public sealed class SetupContext
     public int? LocalAiPort { get; set; }
     internal LlamaRuntimeInstallResult? LocalAiRuntimeInstall { get; set; }
     internal HuggingFaceModelInstallResult? LocalAiModelInstall { get; set; }
+    /// <summary>
+    /// Verified additional model assets (a DFlash draft checkpoint and/or
+    /// in catalog order. Empty for every recipe
+    /// that has neither.
+    /// </summary>
+    internal ImmutableArray<HuggingFaceAdditionalAssetInstallResult> LocalAiAdditionalModelInstalls { get; set; } =
+        ImmutableArray<HuggingFaceAdditionalAssetInstallResult>.Empty;
     internal LocalAiResolvedInstall? LocalAiResolvedInstall { get; set; }
     internal LocalAiResolvedInstall? LocalAiRecoveryOriginalInstall { get; set; }
     internal bool LocalAiRecoveryProviderTransition { get; set; }

@@ -30,8 +30,8 @@ internal interface ILocalAiModelFileVerifier
         CancellationToken cancellationToken);
 
     /// <summary>
-    /// Verifies one schema-5 additional model asset (a DFlash draft checkpoint,
-    /// or an extra split-GGUF shard) still matches its pinned receipt in the
+    /// Verifies one schema-5 additional model asset (a DFlash draft checkpoint)
+    /// still matches its pinned receipt in the
     /// shared hub cache. Additional assets have no legacy app-owned copy, so
     /// unlike <see cref="VerifyActiveAsync"/> there is no separate schema-3 path.
     /// </summary>
