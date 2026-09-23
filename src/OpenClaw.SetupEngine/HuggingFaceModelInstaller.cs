@@ -57,12 +57,33 @@ internal sealed class TransientHuggingFaceModelInstallException : HuggingFaceMod
     }
 }
 
+/// <summary>A verified additional model asset (DFlash draft checkpoint).</summary>
+internal sealed record HuggingFaceAdditionalAssetInstallResult(
+    string ModelPath,
+    string CacheRoot,
+    HuggingFaceModelInstallDisposition Disposition,
+    bool CreatedThisRun);
+
 internal interface IHuggingFaceModelAcquirer
 {
     Task<HuggingFaceModelInstallResult> InstallAsync(
         string localDataDirectory,
         LocalAiComponentIdentity component,
         LocalModelInfo model,
+        IProgress<HuggingFaceModelInstallProgress>? progress,
+        CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Verifies or acquires one additional model asset (a DFlash draft
+    /// checkpoint) into the same hub cache
+    /// <see cref="InstallAsync"/> uses for the primary weights. Unlike the
+    /// primary weights, additional assets have no legacy app-owned
+    /// compatibility copy -- every recipe that uses one is new since the hub
+    /// cache became the primary store.
+    /// </summary>
+    Task<HuggingFaceAdditionalAssetInstallResult> InstallAdditionalAssetAsync(
+        string localDataDirectory,
+        PinnedArtifact artifact,
         IProgress<HuggingFaceModelInstallProgress>? progress,
         CancellationToken cancellationToken);
 
@@ -80,7 +101,7 @@ internal interface IHuggingFaceModelAcquirer
 /// left by process termination is resumed with an HTTP range request. Shared
 /// cache artifacts and resumable partials survive rollback and cancellation.
 /// </summary>
-internal sealed class HuggingFaceModelInstaller : IHuggingFaceModelAcquirer
+internal sealed partial class HuggingFaceModelInstaller : IHuggingFaceModelAcquirer
 {
     private const int BufferSize = 1024 * 1024;
     private const int ProgressIntervalBytes = 4 * 1024 * 1024;
