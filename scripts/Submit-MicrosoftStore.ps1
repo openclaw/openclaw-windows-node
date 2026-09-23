@@ -3,71 +3,32 @@ param(
     [Parameter(Mandatory)][string]$BundlePath,
     [Parameter(Mandatory)][string]$ApplicationId,
     [Parameter(Mandatory)][guid]$TenantId,
-    [Parameter(Mandatory)][string]$SellerId,
     [Parameter(Mandatory)][guid]$ClientId,
     [Parameter(Mandatory)][string]$ClientAssertionFile,
     [string]$PolicyPath = (Join-Path (Split-Path $PSScriptRoot -Parent) 'store-submission.json'),
     [string]$EvidencePath,
-    [string]$MSStoreCommand = 'msstore'
+    [scriptblock]$HttpInvoker,
+    [scriptblock]$UploadInvoker
 )
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
 function Assert-NonEmptyValue {
-    param(
-        [Parameter(Mandatory)][string]$Name,
-        [AllowEmptyString()][string]$Value
-    )
-
-    if ([string]::IsNullOrWhiteSpace($Value)) {
-        throw "$Name must not be empty."
-    }
+    param([Parameter(Mandatory)][string]$Name, [AllowEmptyString()][string]$Value)
+    if ([string]::IsNullOrWhiteSpace($Value)) { throw "$Name must not be empty." }
 }
 
-function Invoke-MSStore {
-    param(
-        [Parameter(Mandatory)][string[]]$Arguments,
-        [Parameter(Mandatory)][string]$Operation,
-        [switch]$CaptureOutput
-    )
-
-    $output = @(& $MSStoreCommand @Arguments)
-    $exitCode = $LASTEXITCODE
-    if ($exitCode -ne 0) {
-        throw "Microsoft Store CLI $Operation failed with exit code $exitCode."
-    }
-    if ($CaptureOutput) {
-        return ($output -join "`n")
-    }
-    foreach ($line in $output) {
-        Write-Output $line
-    }
-}
-
-function ConvertFrom-MSStoreJson {
-    param(
-        [Parameter(Mandatory)][string]$Json,
-        [Parameter(Mandatory)][string]$Operation
-    )
-
-    if ([string]::IsNullOrWhiteSpace($Json)) {
-        throw "Microsoft Store CLI $Operation returned no JSON."
-    }
-    try {
-        return $Json | ConvertFrom-Json
-    }
-    catch {
-        throw "Microsoft Store CLI $Operation returned invalid JSON: $($_.Exception.Message)"
-    }
+function Get-RequiredProperty {
+    param([Parameter(Mandatory)][object]$Object, [Parameter(Mandatory)][string]$Name)
+    $property = $Object.PSObject.Properties[$Name]
+    if ($null -eq $property) { throw "Store response is missing '$Name'." }
+    return $property.Value
 }
 
 function ConvertTo-CanonicalValue {
     param([AllowNull()][object]$Value)
-
-    if ($null -eq $Value -or $Value -is [string] -or $Value -is [ValueType]) {
-        return $Value
-    }
+    if ($null -eq $Value -or $Value -is [string] -or $Value -is [ValueType]) { return $Value }
     if ($Value -is [Collections.IDictionary]) {
         $dictionary = [ordered]@{}
         foreach ($key in @($Value.Keys | Sort-Object)) {
@@ -79,7 +40,6 @@ function ConvertTo-CanonicalValue {
         $items = @($Value | ForEach-Object { ConvertTo-CanonicalValue $_ })
         return ,$items
     }
-
     $properties = [ordered]@{}
     foreach ($property in @($Value.PSObject.Properties | Sort-Object Name)) {
         $properties[$property.Name] = ConvertTo-CanonicalValue $property.Value
@@ -89,46 +49,24 @@ function ConvertTo-CanonicalValue {
 
 function Get-SubmissionMetadataHash {
     param([Parameter(Mandatory)][psobject]$Submission)
-
     $metadata = [ordered]@{}
     foreach ($name in @(
-        'ApplicationCategory'
-        'Pricing'
-        'Visibility'
-        'TargetPublishMode'
-        'TargetPublishDate'
-        'Listings'
-        'HardwarePreferences'
-        'AutomaticBackupEnabled'
-        'CanInstallOnRemovableMedia'
-        'IsGameDvrEnabled'
-        'GamingOptions'
-        'HasExternalInAppProducts'
-        'MeetAccessibilityGuidelines'
-        'NotesForCertification'
-        'EnterpriseLicensing'
-        'AllowMicrosoftDecideAppAvailabilityToFutureDeviceFamilies'
-        'AllowTargetFutureDeviceFamilies'
-        'FriendlyName'
-        'Trailers'
+        'ApplicationCategory', 'Pricing', 'Visibility', 'TargetPublishMode',
+        'TargetPublishDate', 'Listings', 'HardwarePreferences',
+        'AutomaticBackupEnabled', 'CanInstallOnRemovableMedia', 'IsGameDvrEnabled',
+        'GamingOptions', 'HasExternalInAppProducts', 'MeetAccessibilityGuidelines',
+        'NotesForCertification', 'EnterpriseLicensing',
+        'AllowMicrosoftDecideAppAvailabilityToFutureDeviceFamilies',
+        'AllowTargetFutureDeviceFamilies', 'FriendlyName', 'Trailers'
     )) {
-        $property = $Submission.PSObject.Properties[$name]
-        if ($null -eq $property) {
-            throw "Store submission JSON is missing preserved field '$name'."
-        }
-        $metadata[$name] = ConvertTo-CanonicalValue $property.Value
+        $metadata[$name] = ConvertTo-CanonicalValue (Get-RequiredProperty $Submission $name)
     }
-
     $json = $metadata | ConvertTo-Json -Depth 100 -Compress
-    $bytes = [Text.Encoding]::UTF8.GetBytes($json)
-    $hash = [Security.Cryptography.SHA256]::HashData($bytes)
+    $hash = [Security.Cryptography.SHA256]::HashData([Text.Encoding]::UTF8.GetBytes($json))
     return [Convert]::ToHexString($hash).ToLowerInvariant()
 }
 
 Assert-NonEmptyValue -Name 'ApplicationId' -Value $ApplicationId
-Assert-NonEmptyValue -Name 'SellerId' -Value $SellerId
-Assert-NonEmptyValue -Name 'MSStoreCommand' -Value $MSStoreCommand
-
 if (-not (Test-Path -LiteralPath $BundlePath -PathType Leaf)) {
     throw "MSIX bundle does not exist: $BundlePath"
 }
@@ -136,171 +74,225 @@ $resolvedBundle = (Resolve-Path -LiteralPath $BundlePath).Path
 if ([IO.Path]::GetExtension($resolvedBundle) -cne '.msixbundle') {
     throw "Store submission requires one .msixbundle: $resolvedBundle"
 }
-if ((Get-Item -LiteralPath $resolvedBundle).Length -eq 0) {
-    throw "MSIX bundle is empty: $resolvedBundle"
-}
-
+if ((Get-Item -LiteralPath $resolvedBundle).Length -eq 0) { throw "MSIX bundle is empty: $resolvedBundle" }
 if (-not (Test-Path -LiteralPath $ClientAssertionFile -PathType Leaf)) {
     throw "OIDC client assertion file does not exist: $ClientAssertionFile"
 }
-$resolvedAssertion = (Resolve-Path -LiteralPath $ClientAssertionFile).Path
-if ([string]::IsNullOrWhiteSpace([IO.File]::ReadAllText($resolvedAssertion))) {
-    throw 'OIDC client assertion file is empty.'
-}
-
+$assertion = [IO.File]::ReadAllText((Resolve-Path -LiteralPath $ClientAssertionFile).Path).Trim()
+if ([string]::IsNullOrWhiteSpace($assertion)) { throw 'OIDC client assertion file is empty.' }
 if (-not (Test-Path -LiteralPath $PolicyPath -PathType Leaf)) {
     throw "Store submission policy does not exist: $PolicyPath"
 }
-try {
-    $policy = Get-Content -LiteralPath $PolicyPath -Raw | ConvertFrom-Json
-}
-catch {
-    throw "Unable to parse Store submission policy: $($_.Exception.Message)"
-}
+try { $policy = Get-Content -LiteralPath $PolicyPath -Raw | ConvertFrom-Json }
+catch { throw "Unable to parse Store submission policy: $($_.Exception.Message)" }
 
 $requiredProperties = @(
-    'schemaVersion'
-    'environment'
-    'oidcAudience'
-    'msstoreCliVersion'
-    'commitSubmission'
-    'pendingSubmissionPolicy'
-    'packageRolloutPercentage'
-    'uploadTimeoutSeconds'
+    'schemaVersion', 'environment', 'oidcAudience', 'apiBaseUri', 'oauthScope',
+    'commitSubmission', 'pendingSubmissionPolicy', 'failedDraftPolicy',
+    'packageRolloutPercentage', 'uploadTimeoutSeconds', 'minimumAccessTokenLifetimeSeconds'
 )
 foreach ($property in $requiredProperties) {
     if ($policy.PSObject.Properties.Name -notcontains $property) {
         throw "Store submission policy is missing '$property'."
     }
 }
-if ([int]$policy.schemaVersion -ne 1) {
-    throw "Unsupported Store submission policy schema: $($policy.schemaVersion)"
+if ([int]$policy.schemaVersion -ne 1 -or [string]$policy.environment -cne 'microsoft-store' -or
+    [string]$policy.oidcAudience -cne 'api://AzureADTokenExchange') {
+    throw 'Store submission policy has an unsupported identity boundary.'
 }
-if ([string]$policy.environment -cne 'microsoft-store') {
-    throw 'Store submission policy must use the microsoft-store environment.'
+if ([string]$policy.apiBaseUri -cne 'https://manage.devcenter.microsoft.com' -or
+    [string]$policy.oauthScope -cne 'https://manage.devcenter.microsoft.com/.default') {
+    throw 'Store submission policy has an unsupported API boundary.'
 }
-if ([string]$policy.oidcAudience -cne 'api://AzureADTokenExchange') {
-    throw 'Store submission policy must use the Azure token-exchange audience.'
-}
-if ([string]$policy.msstoreCliVersion -notmatch '^v\d+\.\d+\.\d+$') {
-    throw 'Store submission policy must pin an exact MSStore CLI version.'
-}
-if ([bool]$policy.commitSubmission -ne $true) {
-    throw 'Store submission policy must commit the Partner Center update.'
-}
-if ([string]$policy.pendingSubmissionPolicy -cne 'reject') {
-    throw 'Store submission policy must reject pending drafts.'
+if ([bool]$policy.commitSubmission -ne $true -or
+    [string]$policy.pendingSubmissionPolicy -cne 'reject' -or
+    [string]$policy.failedDraftPolicy -cne 'delete-owned') {
+    throw 'Store submission policy must commit safely and reject unowned drafts.'
 }
 $rollout = [float]$policy.packageRolloutPercentage
-if ($rollout -lt 0 -or $rollout -gt 100) {
-    throw 'Store package rollout percentage must be between 0 and 100.'
-}
 $uploadTimeout = [long]$policy.uploadTimeoutSeconds
-if ($uploadTimeout -lt 100 -or $uploadTimeout -gt 100000) {
-    throw 'Store upload timeout must be between 100 and 100000 seconds.'
+$minimumLifetime = [long]$policy.minimumAccessTokenLifetimeSeconds
+if ($rollout -lt 0 -or $rollout -gt 100) { throw 'Store package rollout percentage must be between 0 and 100.' }
+if ($uploadTimeout -lt 100 -or $uploadTimeout -gt 100000 -or
+    $minimumLifetime -lt ($uploadTimeout + 300)) {
+    throw 'Store access-token lifetime must cover upload timeout plus five minutes.'
 }
 
-$previousAssertion = [Environment]::GetEnvironmentVariable('MSSTORE_CLIENT_ASSERTION')
-$previousAssertionFile = [Environment]::GetEnvironmentVariable('MSSTORE_CLIENT_ASSERTION_FILE')
-try {
-    [Environment]::SetEnvironmentVariable('MSSTORE_CLIENT_ASSERTION', $null)
-    [Environment]::SetEnvironmentVariable('MSSTORE_CLIENT_ASSERTION_FILE', $resolvedAssertion)
+if ($null -eq $HttpInvoker) {
+    $HttpInvoker = {
+        param($Method, $Uri, $Headers, $Body, $ContentType)
+        $parameters = @{ Method = $Method; Uri = $Uri; ErrorAction = 'Stop' }
+        if ($null -ne $Headers) { $parameters.Headers = $Headers }
+        if ($null -ne $Body) { $parameters.Body = $Body }
+        if (-not [string]::IsNullOrWhiteSpace($ContentType)) { $parameters.ContentType = $ContentType }
+        Invoke-RestMethod @parameters
+    }
+}
+if ($null -eq $UploadInvoker) {
+    $UploadInvoker = {
+        param($Uri, $Path, $TimeoutSeconds)
+        Invoke-WebRequest -Method Put -Uri $Uri -InFile $Path -TimeoutSec $TimeoutSeconds `
+            -ContentType 'application/zip' -Headers @{ 'x-ms-blob-type' = 'BlockBlob' } | Out-Null
+    }
+}
 
-    Invoke-MSStore -Operation 'configuration' -Arguments @(
-        'reconfigure'
-        '--tenantId'
-        $TenantId.ToString()
-        '--sellerId'
-        $SellerId
-        '--clientId'
-        $ClientId.ToString()
-        '--clientAssertion'
+$tokenEndpoint = "https://login.microsoftonline.com/$TenantId/oauth2/v2.0/token"
+$tokenResponse = & $HttpInvoker 'Post' $tokenEndpoint $null ([ordered]@{
+    client_id = $ClientId.ToString()
+    scope = [string]$policy.oauthScope
+    client_assertion = $assertion
+    client_assertion_type = 'urn:ietf:params:oauth:client-assertion-type:jwt-bearer'
+    grant_type = 'client_credentials'
+}) 'application/x-www-form-urlencoded'
+$accessToken = [string](Get-RequiredProperty $tokenResponse 'access_token')
+$expiresIn = [long](Get-RequiredProperty $tokenResponse 'expires_in')
+if ([string]::IsNullOrWhiteSpace($accessToken) -or $expiresIn -lt $minimumLifetime) {
+    throw 'Microsoft Store access token is missing or too short-lived for the upload.'
+}
+if ($env:GITHUB_ACTIONS -eq 'true') { Write-Output "::add-mask::$accessToken" }
+
+$apiBase = [string]$policy.apiBaseUri
+$encodedApplicationId = [Uri]::EscapeDataString($ApplicationId)
+$apiHeaders = @{ Authorization = "Bearer $accessToken"; TenantId = $TenantId.ToString() }
+function Invoke-StoreApi {
+    param(
+        [Parameter(Mandatory)][string]$Method,
+        [Parameter(Mandatory)][string]$Path,
+        [AllowNull()][object]$Body = $null
     )
+    $json = if ($null -eq $Body) { $null } else { $Body | ConvertTo-Json -Depth 100 -Compress }
+    return & $HttpInvoker $Method ($apiBase + $Path) $apiHeaders $json 'application/json'
+}
+function Assert-OwnedDraft {
+    param([Parameter(Mandatory)][string]$SubmissionId)
+    $application = Invoke-StoreApi -Method Get -Path "/v1.0/my/applications/$encodedApplicationId"
+    $pending = Get-RequiredProperty $application 'PendingApplicationSubmission'
+    if ($null -eq $pending -or [string](Get-RequiredProperty $pending 'Id') -cne $SubmissionId) {
+        throw 'The Store pending submission is no longer the automation-owned draft.'
+    }
+}
 
-    $application = ConvertFrom-MSStoreJson `
-        -Operation 'application preflight' `
-        -Json (Invoke-MSStore `
-            -Operation 'application preflight' `
-            -CaptureOutput `
-            -Arguments @('apps', 'get', $ApplicationId))
-    if ([string]$application.Id -cne $ApplicationId) {
+$draftId = $null
+$committed = $false
+$temporaryDirectory = $null
+try {
+    $application = Invoke-StoreApi -Method Get -Path "/v1.0/my/applications/$encodedApplicationId"
+    if ([string](Get-RequiredProperty $application 'Id') -cne $ApplicationId) {
         throw 'Microsoft Store application preflight returned the wrong product.'
     }
-    if ($null -ne $application.PendingApplicationSubmission) {
-        throw (
-            'Partner Center already has a pending submission. ' +
-            'Finish or delete that draft before automated publication.'
-        )
+    if ($null -ne (Get-RequiredProperty $application 'PendingApplicationSubmission')) {
+        throw 'Partner Center already has a pending submission; automation will not replace it.'
     }
-    if ([string]::IsNullOrWhiteSpace([string]$application.LastPublishedApplicationSubmission.Id)) {
-        throw 'The Partner Center product must have a published submission.'
+    $publishedInfo = Get-RequiredProperty $application 'LastPublishedApplicationSubmission'
+    if ($null -eq $publishedInfo) { throw 'The Partner Center product must have a published submission.' }
+    $publishedId = [string](Get-RequiredProperty $publishedInfo 'Id')
+    Assert-NonEmptyValue -Name 'Published submission ID' -Value $publishedId
+    $encodedPublishedId = [Uri]::EscapeDataString($publishedId)
+    $published = Invoke-StoreApi -Method Get `
+        -Path "/v1.0/my/applications/$encodedApplicationId/submissions/$encodedPublishedId"
+    $publishedMetadataHash = Get-SubmissionMetadataHash $published
+
+    $draft = Invoke-StoreApi -Method Post `
+        -Path "/v1.0/my/applications/$encodedApplicationId/submissions?isMinimalResponse=true"
+    $draftId = [string](Get-RequiredProperty $draft 'Id')
+    Assert-NonEmptyValue -Name 'Draft submission ID' -Value $draftId
+    $encodedDraftId = [Uri]::EscapeDataString($draftId)
+    Assert-OwnedDraft -SubmissionId $draftId
+    $draft = Invoke-StoreApi -Method Get `
+        -Path "/v1.0/my/applications/$encodedApplicationId/submissions/$encodedDraftId"
+    if ([string](Get-RequiredProperty $draft 'Id') -cne $draftId) {
+        throw 'Store returned a different draft than the automation created.'
+    }
+    $uploadUri = [string](Get-RequiredProperty $draft 'FileUploadUrl')
+    Assert-NonEmptyValue -Name 'Draft upload URL' -Value $uploadUri
+
+    $packages = @(Get-RequiredProperty $draft 'ApplicationPackages')
+    foreach ($package in $packages) { $package.FileStatus = 'PendingDelete' }
+    $packages += [pscustomobject]@{
+        FileName = [IO.Path]::GetFileName($resolvedBundle)
+        FileStatus = 'PendingUpload'
+    }
+    $draft.ApplicationPackages = $packages
+    $deliveryOptions = Get-RequiredProperty $draft 'PackageDeliveryOptions'
+    if ($null -ne $deliveryOptions) {
+        $packageRollout = Get-RequiredProperty $deliveryOptions 'PackageRollout'
+        if ($null -ne $packageRollout) {
+            $packageRollout.IsPackageRollout = $true
+            $packageRollout.PackageRolloutPercentage = $rollout
+        }
     }
 
-    $publishedSubmission = ConvertFrom-MSStoreJson `
-        -Operation 'published submission snapshot' `
-        -Json (Invoke-MSStore `
-            -Operation 'published submission snapshot' `
-            -CaptureOutput `
-            -Arguments @('submission', 'get', $ApplicationId))
-    $publishedMetadataHash = Get-SubmissionMetadataHash $publishedSubmission
+    $draft = Invoke-StoreApi -Method Put `
+        -Path "/v1.0/my/applications/$encodedApplicationId/submissions/$encodedDraftId" `
+        -Body $draft
+    if ([string](Get-RequiredProperty $draft 'Id') -cne $draftId) {
+        throw 'Store updated a different draft than the automation owns.'
+    }
+    Assert-OwnedDraft -SubmissionId $draftId
 
-    Invoke-MSStore -Operation 'publication' -Arguments @(
-        'publish'
-        $resolvedBundle
-        '--appId'
-        $ApplicationId
-        '--packageRolloutPercentage'
-        $rollout.ToString([Globalization.CultureInfo]::InvariantCulture)
-        '--uploadTimeout'
-        $uploadTimeout.ToString([Globalization.CultureInfo]::InvariantCulture)
-        '--noCommit'
-    )
+    $temporaryDirectory = Join-Path ([IO.Path]::GetTempPath()) (
+        "openclaw-store-upload-$([guid]::NewGuid().ToString('N'))")
+    $uploadDirectory = Join-Path $temporaryDirectory 'payload'
+    $uploadArchive = Join-Path $temporaryDirectory 'Upload.zip'
+    New-Item -ItemType Directory -Path $uploadDirectory -Force | Out-Null
+    Copy-Item -LiteralPath $resolvedBundle -Destination $uploadDirectory
+    [IO.Compression.ZipFile]::CreateFromDirectory($uploadDirectory, $uploadArchive)
+    & $UploadInvoker $uploadUri $uploadArchive $uploadTimeout
 
-    $draftSubmission = ConvertFrom-MSStoreJson `
-        -Operation 'draft submission verification' `
-        -Json (Invoke-MSStore `
-            -Operation 'draft submission verification' `
-            -CaptureOutput `
-            -Arguments @('submission', 'get', $ApplicationId))
-    $draftMetadataHash = Get-SubmissionMetadataHash $draftSubmission
+    Assert-OwnedDraft -SubmissionId $draftId
+    $verifiedDraft = Invoke-StoreApi -Method Get `
+        -Path "/v1.0/my/applications/$encodedApplicationId/submissions/$encodedDraftId"
+    if ([string](Get-RequiredProperty $verifiedDraft 'Id') -cne $draftId) {
+        throw 'Store verification returned an unowned draft.'
+    }
+    $draftMetadataHash = Get-SubmissionMetadataHash $verifiedDraft
     if ($draftMetadataHash -cne $publishedMetadataHash) {
-        throw (
-            'The Store draft did not preserve published product metadata. ' +
-            'The draft was left uncommitted for inspection.'
-        )
+        throw 'The Store draft did not preserve published product metadata.'
     }
-
-    Invoke-MSStore -Operation 'submission commit' -Arguments @(
-        'submission'
-        'publish'
-        $ApplicationId
-    )
+    Assert-OwnedDraft -SubmissionId $draftId
+    $commit = Invoke-StoreApi -Method Post `
+        -Path "/v1.0/my/applications/$encodedApplicationId/submissions/$encodedDraftId/Commit"
+    $commitStatus = [string](Get-RequiredProperty $commit 'Status')
+    Assert-NonEmptyValue -Name 'Store commit status' -Value $commitStatus
+    $committed = $true
 
     if (-not [string]::IsNullOrWhiteSpace($EvidencePath)) {
         $resolvedEvidence = [IO.Path]::GetFullPath($EvidencePath)
-        $evidenceDirectory = Split-Path $resolvedEvidence -Parent
-        if (-not [string]::IsNullOrEmpty($evidenceDirectory)) {
-            New-Item -Path $evidenceDirectory -ItemType Directory -Force | Out-Null
-        }
+        New-Item -Path (Split-Path $resolvedEvidence -Parent) -ItemType Directory -Force | Out-Null
         [ordered]@{
             schemaVersion = 1
             applicationId = $ApplicationId
             bundleFileName = [IO.Path]::GetFileName($resolvedBundle)
             bundleSha256 = (Get-FileHash -LiteralPath $resolvedBundle -Algorithm SHA256).Hash.ToLowerInvariant()
-            msstoreCliVersion = [string]$policy.msstoreCliVersion
-            pendingSubmissionPolicy = [string]$policy.pendingSubmissionPolicy
-            publishedSubmissionId = [string]$publishedSubmission.Id
-            draftSubmissionId = [string]$draftSubmission.Id
+            publishedSubmissionId = $publishedId
+            draftSubmissionId = $draftId
             publishedMetadataSha256 = $publishedMetadataHash
             draftMetadataSha256 = $draftMetadataHash
+            commitStatus = $commitStatus
             packageRolloutPercentage = $rollout
             submittedAtUtc = [DateTimeOffset]::UtcNow.ToString('O')
-        } |
-            ConvertTo-Json |
-            Set-Content -LiteralPath $resolvedEvidence -Encoding utf8
+        } | ConvertTo-Json | Set-Content -LiteralPath $resolvedEvidence -Encoding utf8
     }
 }
+catch {
+    $failure = $_
+    if (-not $committed -and -not [string]::IsNullOrWhiteSpace($draftId)) {
+        try {
+            $encodedDraftId = [Uri]::EscapeDataString($draftId)
+            Invoke-StoreApi -Method Delete `
+                -Path "/v1.0/my/applications/$encodedApplicationId/submissions/$encodedDraftId" |
+                Out-Null
+        }
+        catch {
+            Write-Warning "Could not delete automation-owned draft '$draftId': $($_.Exception.Message)"
+        }
+    }
+    throw $failure
+}
 finally {
-    [Environment]::SetEnvironmentVariable('MSSTORE_CLIENT_ASSERTION', $previousAssertion)
-    [Environment]::SetEnvironmentVariable('MSSTORE_CLIENT_ASSERTION_FILE', $previousAssertionFile)
+    if ($null -ne $temporaryDirectory) {
+        Remove-Item -LiteralPath $temporaryDirectory -Recurse -Force -ErrorAction SilentlyContinue
+    }
+    $assertion = $null
+    $accessToken = $null
 }

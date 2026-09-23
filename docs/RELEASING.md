@@ -204,17 +204,16 @@ Microsoft-managed asynchronous stages.
 
 ## Microsoft Store publication setup
 
-The `submit-microsoft-store` job uses the official Microsoft Store Developer
-CLI with a short-lived GitHub OIDC assertion. It stores no client secret. The
-job runs in the `microsoft-store` GitHub environment after `release`, and only
-for non-prerelease `v*` tags.
+The `submit-microsoft-store` job uses the official packaged-app submission API
+with a short-lived GitHub OIDC assertion exchanged once for a Dev Center access
+token. It stores no client secret. The job runs in the `microsoft-store` GitHub
+environment after `release`, and only for non-prerelease `v*` tags.
 
 Configure that environment before the next stable release:
 
 1. Limit deployment tags to `v*`; do not permit branch deployments.
 2. Set these environment variables (they are identifiers, not credentials):
    - `MSSTORE_TENANT_ID`
-   - `MSSTORE_SELLER_ID`
    - `MSSTORE_CLIENT_ID`
    - `MSSTORE_APPLICATION_ID`
 3. Add an Entra federated credential for:
@@ -223,13 +222,17 @@ Configure that environment before the next stable release:
 4. Associate the Entra application with the Partner Center account and grant
    it access to the existing OpenClaw product.
 5. Ensure that product has a published submission and no pending draft.
-6. Keep the Store product free; the current Store Developer CLI supports
-   automated app updates for free products.
+6. Record Store channel acceptance in the release PR before enabling the first
+   production submission.
 
 The git-controlled policy is [`store-submission.json`](../store-submission.json).
-It pins the CLI version, OIDC audience, rollout percentage, timeout, environment,
-and pending-draft behavior. `scripts\Submit-MicrosoftStore.ps1` validates those
-values, the product, and the published metadata before committing an update.
+It pins the API origin and scope, OIDC audience, rollout percentage, timeout,
+minimum access-token lifetime, environment, and draft ownership behavior.
+`scripts\Submit-MicrosoftStore.ps1` rejects existing drafts, creates a new draft
+without deleting anything, updates and commits that exact submission ID, and
+deletes only its own draft if a pre-commit check fails. It refuses to commit if
+another Partner Center writer replaces the draft or if published metadata
+changes.
 The workflow uploads a 90-day evidence artifact containing the submitted bundle
 hash and Store submission identifiers. It never includes the OIDC assertion.
 

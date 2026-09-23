@@ -2,9 +2,12 @@
   "schemaVersion": 1,
   "environment": "microsoft-store",
   "oidcAudience": "api://AzureADTokenExchange",
-  "msstoreCliVersion": "v0.4.3",
+  "apiBaseUri": "https://manage.devcenter.microsoft.com",
+  "oauthScope": "https://manage.devcenter.microsoft.com/.default",
   "commitSubmission": true,
   "pendingSubmissionPolicy": "reject",
+  "failedDraftPolicy": "delete-owned",
   "packageRolloutPercentage": 100,
-  "uploadTimeoutSeconds": 1800
+  "uploadTimeoutSeconds": 1800,
+  "minimumAccessTokenLifetimeSeconds": 2400
 }

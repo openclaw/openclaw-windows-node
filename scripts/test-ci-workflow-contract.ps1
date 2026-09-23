@@ -845,14 +845,11 @@ foreach ($token in @(
         'id-token: write',
         'name: openclaw-msix-store-unsigned-bundle',
         'path: store',
-        'microsoft/microsoft-store-apppublisher@cc9910a8d59f2eb55cbb83df0a3800cf3b5300e0 # v1.4',
-        'version: v0.4.3',
         '.\scripts\New-GitHubOidcRequestUri.ps1',
         '& chmod 600 $assertionPath',
         '.\scripts\Submit-MicrosoftStore.ps1',
         '-BundlePath .\store\OpenClaw.msixbundle',
         'MSSTORE_TENANT_ID: ${{ vars.MSSTORE_TENANT_ID }}',
-        'MSSTORE_SELLER_ID: ${{ vars.MSSTORE_SELLER_ID }}',
         'MSSTORE_CLIENT_ID: ${{ vars.MSSTORE_CLIENT_ID }}',
         'MSSTORE_APPLICATION_ID: ${{ vars.MSSTORE_APPLICATION_ID }}',
         'name: openclaw-node-store-submission-evidence',
@@ -862,6 +859,8 @@ foreach ($token in @(
 }
 Assert-NotContains -Text $storeSubmissionJob -Unexpected 'openclaw-msix-store-unsigned-x64' -Message 'Store submission must not upload a standalone x64 package with the bundle.'
 Assert-NotContains -Text $storeSubmissionJob -Unexpected 'openclaw-msix-store-unsigned-arm64' -Message 'Store submission must not upload a standalone ARM64 package with the bundle.'
+Assert-NotContains -Text $storeSubmissionJob -Unexpected 'microsoft-store-apppublisher' -Message 'Store submission must use submission-ID-bound API operations, not mutable high-level publication.'
+Assert-NotContains -Text $storeSubmissionJob -Unexpected 'MSSTORE_SELLER_ID' -Message 'Packaged Store API publication does not need a seller ID.'
 Assert-Contains -Text $workflow -Expected "./scripts/test-msix-ci-artifacts.ps1" -Message "Fast validation must exercise the Dev artifact contracts."
 Assert-Contains -Text $workflow -Expected "./scripts/test-msix-alpha-release.ps1" -Message "Fast validation must exercise Store release staging."
 Assert-Contains -Text $workflow -Expected "./scripts/test-microsoft-store-submission.ps1" -Message 'Fast validation must exercise Microsoft Store publication contracts.'
