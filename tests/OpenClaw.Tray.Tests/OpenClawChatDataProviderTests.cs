@@ -11426,7 +11426,7 @@ public class OpenClawChatDataProviderTests
     }
 
     [Fact]
-    public async Task ChatMessageReceived_AssistantFinal_AccumulatesUsageAcrossAssistantMessages()
+    public async Task ChatMessageReceived_AssistantFinal_UsesLatestRequestUsageAcrossAssistantMessages()
     {
         var session = new SessionInfo
         {
@@ -11479,7 +11479,7 @@ public class OpenClawChatDataProviderTests
 
         var meta = provider.GetEntryMetadata("main");
         Assert.Equal(27, meta[entries[0].Id].ResponseTokens);
-        Assert.Equal(52, meta[entries[1].Id].ResponseTokens);
+        Assert.Equal(25, meta[entries[1].Id].ResponseTokens);
         Assert.Equal(144_000, meta[entries[1].Id].ContextTokens);
     }
 
@@ -11507,6 +11507,101 @@ public class OpenClawChatDataProviderTests
         var entry = Assert.Single((await provider.LoadAsync()).Timelines["main"].Entries);
         var meta = provider.GetEntryMetadata("main");
         Assert.Equal(27, meta[entry.Id].ResponseTokens);
+    }
+
+    [Fact]
+    public async Task ChatMessageReceived_AssistantFinal_DoesNotReplaceNewerUsageWithCachedSession()
+    {
+        var session = MainSession();
+        session.InputTokens = 1_500;
+        session.OutputTokens = 500;
+        session.TotalTokens = 2_000;
+        session.ContextTokens = 5_000;
+        var (bridge, provider, _, _) = CreateProvider(new[] { session });
+        await provider.LoadAsync();
+
+        bridge.RaiseChat(new ChatMessageInfo
+        {
+            SessionKey = "main",
+            Role = "assistant",
+            Text = "newer",
+            State = "final",
+            Ts = 1714600005000,
+            InputTokens = 1_000,
+            OutputTokens = 500,
+            ResponseTokens = 1_500,
+        });
+
+        var entry = Assert.Single((await provider.LoadAsync()).Timelines["main"].Entries);
+        var meta = provider.GetEntryMetadata("main");
+        Assert.Equal(1_500, meta[entry.Id].ResponseTokens);
+        Assert.Equal(5_000, meta[entry.Id].ContextTokens);
+
+        bridge.RaiseSessions(new[]
+        {
+            new SessionInfo
+            {
+                Key = "main",
+                IsMain = true,
+                DisplayName = "Main session",
+                InputTokens = 1_500,
+                OutputTokens = 500,
+                TotalTokens = 2_000,
+                ContextTokens = 5_000,
+            }
+        });
+
+        meta = provider.GetEntryMetadata("main");
+        Assert.Equal(2_000, meta[entry.Id].ResponseTokens);
+    }
+
+    [Fact]
+    public async Task SessionsUpdated_ClearsStalePercentWhenAuthoritativeUsageMatchesContribution()
+    {
+        var session = MainSession();
+        session.InputTokens = 1_500;
+        session.OutputTokens = 500;
+        session.TotalTokens = 2_000;
+        session.ContextTokens = 5_000;
+        var (bridge, provider, _, _) = CreateProvider(new[] { session });
+        await provider.LoadAsync();
+
+        bridge.RaiseChat(new ChatMessageInfo
+        {
+            SessionKey = "main",
+            Role = "assistant",
+            Text = "final",
+            State = "final",
+            Ts = 1714600005000,
+            InputTokens = 1_500,
+            OutputTokens = 500,
+            ResponseTokens = 2_000,
+            ContextPercent = 100,
+        });
+
+        var entry = Assert.Single((await provider.LoadAsync()).Timelines["main"].Entries);
+        var meta = provider.GetEntryMetadata("main");
+        Assert.Equal("5.0K/5.0K (100%)", ChatUsageFormatter.Format(meta[entry.Id]));
+
+        bridge.RaiseSessions(new[]
+        {
+            new SessionInfo
+            {
+                Key = "main",
+                IsMain = true,
+                DisplayName = "Main session",
+                InputTokens = 1_500,
+                OutputTokens = 500,
+                TotalTokens = 2_000,
+                ContextTokens = 5_000,
+            }
+        });
+
+        meta = provider.GetEntryMetadata("main");
+        Assert.Equal(2_000, meta[entry.Id].ResponseTokens);
+        Assert.Null(meta[entry.Id].ContextPercent);
+        Assert.Null(meta[entry.Id].UsageContributionTokens);
+        Assert.Equal("2.0K/5.0K (40%)", ChatUsageFormatter.Format(meta[entry.Id]));
     }
 
     [Fact]
@@ -11585,7 +11680,7 @@ public class OpenClawChatDataProviderTests
     }
 
     [Fact]
-    public async Task SessionsUpdated_DoesNotLowerExistingAssistantUsageSnapshot()
+    public async Task SessionsUpdated_CanLowerExistingAssistantUsageSnapshot()
     {
         var (bridge, provider, _, _) = CreateProvider(new[] { MainSession() });
         await provider.LoadAsync();
@@ -11600,6 +11695,7 @@ public class OpenClawChatDataProviderTests
             InputTokens = 5_000,
             OutputTokens = 1_900,
             ResponseTokens = 6_900,
+            ContextPercent = 100,
         });
 
         var entry = Assert.Single((await provider.LoadAsync()).Timelines["main"].Entries);
@@ -11618,8 +11714,10 @@ public class OpenClawChatDataProviderTests
         });
 
         var meta = provider.GetEntryMetadata("main");
-        Assert.Equal(6_900, meta[entry.Id].ResponseTokens);
+        Assert.Equal(4_100, meta[entry.Id].ResponseTokens);
         Assert.Equal(400_000, meta[entry.Id].ContextTokens);
+        Assert.Null(meta[entry.Id].ContextPercent);
+        Assert.Equal("4.1K/400.0K (1%)", ChatUsageFormatter.Format(meta[entry.Id]));
 
         bridge.RaiseSessions(new[]
         {
@@ -11635,7 +11733,7 @@ public class OpenClawChatDataProviderTests
         });
 
         meta = provider.GetEntryMetadata("main");
-        Assert.Equal(6_900, meta[entry.Id].ResponseTokens);
+        Assert.Equal(4_100, meta[entry.Id].ResponseTokens);
         Assert.Equal(400_000, meta[entry.Id].ContextTokens);
     }
 
