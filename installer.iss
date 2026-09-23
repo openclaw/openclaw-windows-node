@@ -143,6 +143,7 @@ var
   LocalGatewayCleanupChoiceInitialized: Boolean;
   LocalGatewayCleanupRequested: Boolean;
   LocalGatewayCleanupSucceeded: Boolean;
+  LocalGatewayCleanupScriptPath: String;
   MigrationOperationHandle: THandle;
   MigrationOperationLocked: Boolean;
   MigrationOperationUnavailable: Boolean;
@@ -499,6 +500,8 @@ begin
     Exit;
   end;
 
+  LocalGatewayCleanupScriptPath := TempScriptPath;
+
   Params :=
     '-NoProfile -ExecutionPolicy Bypass -File ' + AddQuotes(TempScriptPath) +
     ' -AppRoot ' + AddQuotes(ExpandConstant('{app}')) +
@@ -603,24 +606,56 @@ begin
   end;
 end;
 
+procedure DeleteConfirmedDistroChild;
+var
+  ResultCode: Integer;
+  Started: Boolean;
+  Params: String;
+begin
+  if (LocalGatewayCleanupScriptPath = '') or (not FileExists(LocalGatewayCleanupScriptPath)) then
+  begin
+    Log('Ownership uncertain: local gateway cleanup script is unavailable; leaving WSL distro children in place.');
+    Exit;
+  end;
+
+  Params :=
+    '-NoProfile -ExecutionPolicy Bypass -File ' + AddQuotes(LocalGatewayCleanupScriptPath) +
+    ' -RemoveConfirmedDistroChild' +
+    ' -AppRoot ' + AddQuotes(ExpandConstant('{tmp}')) +
+    ' -DataDirectoryName ' + AddQuotes('{#MyInstallDir}') +
+    ' -DistroName ' + AddQuotes('{#MyDistroName}');
+
+  Log('Deleting only the confirmed {#MyDistroName} child under the generated-data root.');
+  Started :=
+    Exec(
+      ExpandConstant('{sys}\WindowsPowerShell\v1.0\powershell.exe'),
+      Params,
+      '',
+      SW_HIDE,
+      ewWaitUntilTerminated,
+      ResultCode);
+  if (not Started) or (ResultCode <> 0) then
+    Log('Confirmed distro child cleanup did not finish; leaving uncertain WSL children in place. Exit code: ' + IntToStr(ResultCode) + '.');
+end;
+
 procedure DeleteGeneratedAppState;
 var
   AppDir: String;
-  FolderName: String;
+  GeneratedRoot: String;
 begin
   if not LocalGatewayCleanupSucceeded then
     Exit;
 
+  DeleteConfirmedDistroChild;
+
   AppDir := RemoveBackslashUnlessRoot(ExpandConstant('{app}'));
-  FolderName := ExtractFileName(AppDir);
-  if (CompareText(FolderName, 'OpenClawTray') <> 0) and
-     (CompareText(FolderName, 'OpenClawTray-Dev') <> 0) then
+  GeneratedRoot := RemoveBackslashUnlessRoot(ExpandConstant('{localappdata}\{#MyInstallDir}'));
+  if CompareText(AppDir, GeneratedRoot) <> 0 then
   begin
-    Log('Refusing to delete generated app state because the install folder is not OpenClawTray or OpenClawTray-Dev.');
+    Log('Ownership uncertain: {app} is not the generated-data root; leaving generated children in place.');
     Exit;
   end;
 
-  DeleteGeneratedChild('wsl');
   DeleteGeneratedChild('Logs');
   DeleteGeneratedChild('wsl-keepalive');
   DeleteGeneratedChild('WebView2');

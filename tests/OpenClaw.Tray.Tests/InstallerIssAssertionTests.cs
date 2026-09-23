@@ -88,12 +88,13 @@ public sealed class InstallerIssAssertionTests
         Assert.Matches(@"    RemoveAppAutoStart;\r?\n    EnsureLocalGatewayCleanupChoice;", iss);
         Assert.Contains("CurUninstallStep = usPostUninstall", iss);
         Assert.DoesNotContain("DelTree(ExpandConstant('{app}'), True, True, True)", iss);
-        Assert.Contains("Refusing to delete generated app state", iss);
-        Assert.Contains("CompareText(FolderName, 'OpenClawTray')", iss);
-        Assert.Contains("CompareText(FolderName, 'OpenClawTray-Dev')", iss);
+        Assert.Contains("Ownership uncertain: {app} is not the generated-data root", iss);
+        Assert.Contains("ExpandConstant('{localappdata}\\{#MyInstallDir}')", iss);
+        Assert.Contains("-RemoveConfirmedDistroChild", iss);
+        Assert.Contains("Deleting only the confirmed {#MyDistroName} child under the generated-data root.", iss);
+        Assert.DoesNotContain("DeleteGeneratedChild('wsl');", iss);
         foreach (var child in new[]
         {
-            "wsl",
             "Logs",
             "wsl-keepalive",
             "WebView2",
@@ -144,6 +145,84 @@ public sealed class InstallerIssAssertionTests
         Assert.DoesNotContain("OpenClaw.SetupEngine.UI.exe", script);
         Assert.DoesNotContain("--headless", script);
         Assert.DoesNotContain("--confirm-destructive", script);
+    }
+
+    [Fact]
+    public async Task Uninstall_DeletesOnlyConfirmedDistroChildAndKeepsUncertainPaths()
+    {
+        var root = TestRepositoryPaths.GetRepositoryRoot();
+        var script = Path.Combine(root, "scripts", "Uninstall-LocalGateway.ps1");
+        var temp = Directory.CreateTempSubdirectory("openclaw-uninstall-distro-");
+        try
+        {
+            var localAppData = Path.Combine(temp.FullName, "local");
+            var generatedRoot = Path.Combine(localAppData, "OpenClawTray");
+            var configured = Path.Combine(generatedRoot, "wsl", "OpenClawGateway");
+            var siblingVhdx = Path.Combine(generatedRoot, "wsl", "SiblingDistro", "ext4.vhdx");
+            var lookalike = Path.Combine(temp.FullName, "custom", "OpenClawTray");
+            var uncertainVhdx = Path.Combine(lookalike, "wsl", "OpenClawGateway", "ext4.vhdx");
+            Directory.CreateDirectory(configured);
+            Directory.CreateDirectory(Path.GetDirectoryName(siblingVhdx)!);
+            Directory.CreateDirectory(Path.GetDirectoryName(uncertainVhdx)!);
+            File.WriteAllText(Path.Combine(configured, "ext4.vhdx"), "configured");
+            File.WriteAllText(siblingVhdx, "sibling");
+            File.WriteAllText(uncertainVhdx, "uncertain");
+
+            var powershell = Path.Combine(
+                Environment.GetFolderPath(Environment.SpecialFolder.Windows),
+                "System32",
+                "WindowsPowerShell",
+                "v1.0",
+                "powershell.exe");
+            var startInfo = new ProcessStartInfo(powershell)
+            {
+                WorkingDirectory = root,
+                RedirectStandardOutput = true,
+                RedirectStandardError = true,
+                UseShellExecute = false,
+                CreateNoWindow = true,
+            };
+            foreach (var argument in new[]
+            {
+                "-NoProfile",
+                "-ExecutionPolicy", "Bypass",
+                "-File", script,
+                "-RemoveConfirmedDistroChild",
+                "-AppRoot", lookalike,
+                "-DataDirectoryName", "OpenClawTray",
+                "-DistroName", "OpenClawGateway",
+            })
+            {
+                startInfo.ArgumentList.Add(argument);
+            }
+
+            startInfo.Environment["OPENCLAW_TRAY_LOCALAPPDATA_DIR"] = localAppData;
+            startInfo.Environment["OPENCLAW_TRAY_LOCAL_DATA_DIR"] = "";
+            startInfo.Environment["OPENCLAW_TRAY_DATA_DIR"] = "";
+
+            using var process = Process.Start(startInfo);
+            Assert.NotNull(process);
+            var standardOutput = process.StandardOutput.ReadToEndAsync();
+            var standardError = process.StandardError.ReadToEndAsync();
+            await process.WaitForExitAsync().WaitAsync(TimeSpan.FromSeconds(30));
+            var result = $"{await standardOutput}{Environment.NewLine}{await standardError}";
+            var logPath = Path.Combine(lookalike, "uninstall-gateway-wsl.log");
+            var log = File.Exists(logPath) ? File.ReadAllText(logPath) : "";
+
+            Assert.True(
+                process.ExitCode == 0,
+                $"Confirmed distro cleanup failed with exit code {process.ExitCode}.{Environment.NewLine}{result}{Environment.NewLine}{log}");
+            Assert.False(Directory.Exists(configured));
+            Assert.True(File.Exists(siblingVhdx));
+            Assert.True(File.Exists(uncertainVhdx));
+            Assert.Contains(Path.GetDirectoryName(siblingVhdx)!, log, StringComparison.OrdinalIgnoreCase);
+            Assert.Contains("Ownership uncertain", log, StringComparison.OrdinalIgnoreCase);
+            Assert.Contains(lookalike, log, StringComparison.OrdinalIgnoreCase);
+        }
+        finally
+        {
+            temp.Delete(recursive: true);
+        }
     }
 
     [Fact]
