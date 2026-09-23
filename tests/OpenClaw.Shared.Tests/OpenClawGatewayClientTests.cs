@@ -126,11 +126,7 @@ public class OpenClawGatewayClientTests
         /// </summary>
         public void CompleteHandshakeForTest()
         {
-            var field = typeof(OpenClawGatewayClient).GetField(
-                "_hasHandshakeSnapshot",
-                System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic);
-            Assert.NotNull(field);
-            field!.SetValue(_client, true);
+            MarkHandshakeReady();
         }
 
         public void ProcessRawMessage(string json)
@@ -480,6 +476,19 @@ public class OpenClawGatewayClientTests
             Assert.True((bool)gateType.GetMethod("TryAuthorize")!.Invoke(gate, [generation])!);
         }
 
+        public void MarkHandshakeReady(string mainSessionKey = "agent:main:main")
+        {
+            var generationProperty = typeof(WebSocketClientBase).GetProperty(
+                "CurrentConnectionGeneration",
+                System.Reflection.BindingFlags.NonPublic |
+                System.Reflection.BindingFlags.Instance);
+            var generation = (long)generationProperty!.GetValue(_client)!;
+            SetPrivateField("_mainSessionKeyIsCanonical", true);
+            SetPrivateField("_mainSessionKey", mainSessionKey);
+            SetPrivateField("_handshakeConnectionGeneration", generation);
+            SetPrivateField("_hasHandshakeSnapshot", true);
+        }
+
         public bool GetPairingRequiredFlag() =>
             GetPrivateField<bool>("_pairingRequiredAwaitingApproval");
 
@@ -591,7 +600,7 @@ public class OpenClawGatewayClientTests
             identityPath: identity.Path);
         using var client = helper.Client;
         await client.ConnectAsync();
-        helper.CompleteHandshakeForTest();
+        helper.MarkHandshakeReady();
 
         var responseTask = client.SendWizardRequestAsync("wizard.start", timeoutMs: 10_000);
         var request = await server.ReceiveTextAsync().WaitAsync(TimeSpan.FromSeconds(2));
@@ -626,7 +635,7 @@ public class OpenClawGatewayClientTests
             identityPath: identity.Path);
         using var client = helper.Client;
         await client.ConnectAsync();
-        helper.CompleteHandshakeForTest();
+        helper.MarkHandshakeReady();
 
         var responseTask = client.SendWizardRequestAsync("wizard.next", timeoutMs: 10_000);
         var request = await server.ReceiveTextAsync().WaitAsync(TimeSpan.FromSeconds(2));
@@ -659,7 +668,7 @@ public class OpenClawGatewayClientTests
             identityPath: identity.Path);
         using var client = helper.Client;
         await client.ConnectAsync();
-        helper.CompleteHandshakeForTest();
+        helper.MarkHandshakeReady();
 
         var responseTask = client.SendWizardRequestAsync("wizard.status", timeoutMs: 250);
         await server.ReceiveTextAsync().WaitAsync(TimeSpan.FromSeconds(2));
@@ -681,7 +690,7 @@ public class OpenClawGatewayClientTests
             identityPath: identity.Path);
         using var client = helper.Client;
         await client.ConnectAsync();
-        helper.CompleteHandshakeForTest();
+        helper.MarkHandshakeReady();
 
         var timedOutTask = client.SendWizardRequestAsync("wizard.status", timeoutMs: 250);
         var timedOutRequest = await server.ReceiveTextAsync().WaitAsync(TimeSpan.FromSeconds(2));
@@ -728,7 +737,7 @@ public class OpenClawGatewayClientTests
             identityPath: identity.Path);
         using var client = helper.Client;
         await client.ConnectAsync();
-        helper.CompleteHandshakeForTest();
+        helper.MarkHandshakeReady();
 
         var responseTask = client.SendWizardRequestAsync("wizard.cancel", timeoutMs: 10_000);
         await server.ReceiveTextAsync().WaitAsync(TimeSpan.FromSeconds(2));
@@ -751,7 +760,7 @@ public class OpenClawGatewayClientTests
             identityPath: identity.Path);
         using var client = helper.Client;
         await client.ConnectAsync();
-        helper.CompleteHandshakeForTest();
+        helper.MarkHandshakeReady();
 
         var responseTask = client.SendWizardRequestAsync("wizard.next", timeoutMs: 10_000);
         await server.ReceiveTextAsync().WaitAsync(TimeSpan.FromSeconds(2));
@@ -908,7 +917,7 @@ public class OpenClawGatewayClientTests
         Assert.True(helper.IsTransportConnectedForTest());
         Assert.False(client.IsConnectedToGateway);
 
-        helper.CompleteHandshakeForTest();
+        helper.MarkHandshakeReady();
         Assert.True(client.IsConnectedToGateway);
 
         helper.OnDisconnected();

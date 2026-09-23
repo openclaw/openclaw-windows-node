@@ -48,6 +48,40 @@ public sealed class GatewayProtocolLiveRoundTripTests : IDisposable
     }
 
     [Fact]
+    public async Task ApplicationRpc_BeforeHelloOk_DoesNotReachWire()
+    {
+        using var server = new LoopbackGatewayServer(sendHandshakeChallenge: false);
+        var logger = new TestLogger();
+        var client = new OpenClawGatewayClient(
+            server.WebSocketUrl, "test-token", logger,
+            tokenIsBootstrapToken: false, bootstrapPairAsNode: false,
+            identityPath: _identityDir);
+
+        try
+        {
+            await client.ConnectAsync();
+            Assert.False(client.IsConnectedToGateway);
+
+            await client.RequestNodesAsync();
+            await Task.Delay(250);
+            Assert.False(server.HasFrame("node.list"));
+
+            var status = await client.GetUpdateStatusAsync(timeoutMs: 1_000);
+            Assert.Null(status);
+            Assert.False(server.HasFrame("update.status"));
+
+            var exception = await Assert.ThrowsAsync<InvalidOperationException>(
+                () => client.SendWizardRequestAsync("update.status", new { }, timeoutMs: 1_000));
+            Assert.Contains("Gateway handshake has not completed", exception.Message);
+            Assert.False(server.HasFrame("update.status"));
+        }
+        finally
+        {
+            await client.DisconnectAsync();
+        }
+    }
+
+    [Fact]
     public async Task NewProtocolMethods_RealWebSocketRoundTrip_SendCorrectWireFramesAndParseResponses()
     {
         using var server = new LoopbackGatewayServer();
@@ -133,7 +167,7 @@ public sealed class GatewayProtocolLiveRoundTripTests : IDisposable
     [Fact]
     public async Task UpdateStatus_GatewayError_PropagatesForCallerFailOpen()
     {
-        using var server = new LoopbackGatewayServer();
+        using var server = new LoopbackGatewayServer(sendHandshakeChallenge: false);
         server.OnMethod(
             "update.status",
             _ => LoopbackResponse.Fail("unauthorized update.status"));
@@ -164,7 +198,7 @@ public sealed class GatewayProtocolLiveRoundTripTests : IDisposable
     [Fact]
     public async Task CronRunDetailed_FallsBackToLegacyIdPayload_WhenJobIdPayloadIsRejected()
     {
-        using var server = new LoopbackGatewayServer();
+        using var server = new LoopbackGatewayServer(sendHandshakeChallenge: false);
         var requestCount = 0;
         var observedParameters = new ConcurrentQueue<JsonElement>();
         server.OnMethod("cron.run", parameters =>
@@ -393,7 +427,7 @@ public sealed class GatewayProtocolLiveRoundTripTests : IDisposable
         [Fact]
         public async Task HandshakeGate_Reconnect_SuppressesEarlyMutationThenSendsAfterHelloOk()
         {
-            using var server = new LoopbackGatewayServer();
+            using var server = new LoopbackGatewayServer(sendHandshakeChallenge: false);
             using var client = new OpenClawGatewayClient(
                 server.WebSocketUrl,
                 "test-token",
@@ -520,8 +554,27 @@ public sealed class GatewayProtocolLiveRoundTripTests : IDisposable
         public int Port { get; }
         public string WebSocketUrl => $"ws://127.0.0.1:{Port}/";
 
-        public LoopbackGatewayServer()
+        private readonly bool _sendHandshakeChallenge;
+
+        public LoopbackGatewayServer(bool sendHandshakeChallenge = true)
         {
+            _sendHandshakeChallenge = sendHandshakeChallenge;
+            _responders["connect"] = _ => new
+            {
+                type = "hello-ok",
+                protocol = GatewayProtocolContract.CurrentVersion,
+                sessionDefaults = new
+                {
+                    mainKey = "main",
+                    mainSessionKey = "agent:main:main"
+                },
+                auth = new
+                {
+                    deviceId = "operator-test",
+                    scopes = new[] { "operator.read", "operator.write" }
+                }
+            };
+
             // FindFreePort + HttpListener.Start has a TOCTOU race: another process
             // can grab the port between probe and bind, especially when many test
             // classes run in parallel. Retry on a fresh port a few times.
@@ -656,6 +709,8 @@ public sealed class GatewayProtocolLiveRoundTripTests : IDisposable
             throw new InvalidOperationException($"Timed out waiting for method '{method}' occurrence {occurrence}");
         }
 
+        public bool HasFrame(string method) => TryGetFrame(method, occurrence: 0, out _);
+
         private bool TryGetFrame(string method, int occurrence, out string frame)
         {
             var seen = 0;
@@ -711,6 +766,9 @@ public sealed class GatewayProtocolLiveRoundTripTests : IDisposable
 
             try
             {
+                if (_sendHandshakeChallenge)
+                    await SendHandshakeChallengeAsync(socket);
+
                 while (socket.State == WebSocketState.Open && !_cts.IsCancellationRequested)
                 {
                     sb.Clear();
@@ -766,6 +824,26 @@ public sealed class GatewayProtocolLiveRoundTripTests : IDisposable
                 : JsonSerializer.Serialize(new { type = "res", id, ok = true, payload });
             var bytes = Encoding.UTF8.GetBytes(response);
             await socket.SendAsync(new ArraySegment<byte>(bytes), WebSocketMessageType.Text, endOfMessage: true, CancellationToken.None);
+        }
+
+        private static async Task SendHandshakeChallengeAsync(WebSocket socket)
+        {
+            var challenge = JsonSerializer.Serialize(new
+            {
+                type = "event",
+                @event = "connect.challenge",
+                payload = new
+                {
+                    nonce = "test-nonce",
+                    ts = 1700000000000L
+                }
+            });
+            var bytes = Encoding.UTF8.GetBytes(challenge);
+            await socket.SendAsync(
+                new ArraySegment<byte>(bytes),
+                WebSocketMessageType.Text,
+                endOfMessage: true,
+                CancellationToken.None);
         }
 
         private static int FindFreePort()
