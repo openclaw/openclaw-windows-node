@@ -76,6 +76,7 @@ function Reset-Fixture {
     $global:OpenClawStoreTest_pendingId = $null
     $global:OpenClawStoreTest_tokenLifetime = 3600
     $global:OpenClawStoreTest_commitStatus = 'CommitStarted'
+    $global:OpenClawStoreTest_commitThrows = $false
     $global:OpenClawStoreTest_replaceAfterUpload = $false
     $global:OpenClawStoreTest_driftAfterUpload = $false
     $global:OpenClawStoreTest_mutatePackagesAfterUpload = $false
@@ -136,7 +137,10 @@ $httpInvoker = {
     }
     if ($Method -eq 'Post' -and $Uri -ceq "$applicationPath/submissions/draft-2/Commit") {
         if ($global:OpenClawStoreTest_pendingId -cne 'draft-2') { throw 'Draft ownership changed before commit.' }
-        $global:OpenClawStoreTest_pendingId = $null
+        if ($global:OpenClawStoreTest_commitThrows) { throw 'Commit response was lost.' }
+        if ($global:OpenClawStoreTest_commitStatus -ceq 'CommitStarted') {
+            $global:OpenClawStoreTest_pendingId = $null
+        }
         return [pscustomobject]@{ Status = $global:OpenClawStoreTest_commitStatus }
     }
     if ($Method -eq 'Delete' -and $Uri -ceq "$applicationPath/submissions/draft-2") {
@@ -194,7 +198,7 @@ try {
         commitSubmission = $true
         submissionWriterPolicy = 'exclusive-github-environment'
         pendingSubmissionPolicy = 'reject'
-        failedDraftPolicy = 'delete-owned'
+        failedDraftPolicy = 'delete-owned-before-commit'
         packageRolloutPercentage = 100
         uploadTimeoutSeconds = 1800
         minimumAccessTokenLifetimeSeconds = 2400
@@ -252,6 +256,22 @@ try {
     if ($null -ne $global:OpenClawStoreTest_pendingId -or
         @($global:OpenClawStoreTest_calls | Where-Object { $_ -match '/Commit$' }).Count -ne 1) {
         throw 'Rejected commit status did not fail and clean up the owned draft.'
+    }
+
+    Reset-Fixture
+    $global:OpenClawStoreTest_commitStatus = 'PendingCommit'
+    Assert-Fails -MessagePattern 'did not accept the submission commit' -Action { Invoke-Submission }
+    if ($global:OpenClawStoreTest_pendingId -cne 'draft-2' -or
+        $global:OpenClawStoreTest_calls -match 'Delete .*/submissions/draft-2$') {
+        throw 'Ambiguous commit status deleted the submission with an unknown outcome.'
+    }
+
+    Reset-Fixture
+    $global:OpenClawStoreTest_commitThrows = $true
+    Assert-Fails -MessagePattern 'Commit response was lost' -Action { Invoke-Submission }
+    if ($global:OpenClawStoreTest_pendingId -cne 'draft-2' -or
+        $global:OpenClawStoreTest_calls -match 'Delete .*/submissions/draft-2$') {
+        throw 'Ambiguous commit transport failure deleted the submission with an unknown outcome.'
     }
 
     Reset-Fixture

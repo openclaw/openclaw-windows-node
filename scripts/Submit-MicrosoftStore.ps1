@@ -120,7 +120,7 @@ if ([string]$policy.apiBaseUri -cne 'https://manage.devcenter.microsoft.com' -or
 if ([bool]$policy.commitSubmission -ne $true -or
     [string]$policy.submissionWriterPolicy -cne 'exclusive-github-environment' -or
     [string]$policy.pendingSubmissionPolicy -cne 'reject' -or
-    [string]$policy.failedDraftPolicy -cne 'delete-owned') {
+    [string]$policy.failedDraftPolicy -cne 'delete-owned-before-commit') {
     throw 'Store submission policy must commit safely and reject unowned drafts.'
 }
 $rollout = [float]$policy.packageRolloutPercentage
@@ -188,6 +188,7 @@ function Assert-OwnedDraft {
 
 $draftId = $null
 $committed = $false
+$draftDeletionAllowed = $true
 $temporaryDirectory = $null
 try {
     $application = Invoke-StoreApi -Method Get -Path "/v1.0/my/applications/$encodedApplicationId"
@@ -271,10 +272,18 @@ try {
         throw 'The Store draft package mutation state changed after upload.'
     }
     Assert-OwnedDraft -SubmissionId $draftId
+    # Once the commit request leaves this process, a transport failure is
+    # ambiguous: Partner Center may have accepted it even if no response
+    # arrived. Never delete that submission unless Partner Center explicitly
+    # reports a terminal rejection.
+    $draftDeletionAllowed = $false
     $commit = Invoke-StoreApi -Method Post `
         -Path "/v1.0/my/applications/$encodedApplicationId/submissions/$encodedDraftId/Commit"
     $commitStatus = [string](Get-RequiredProperty $commit 'Status')
     if ($commitStatus -cne 'CommitStarted') {
+        if ($commitStatus -cin @('CommitFailed', 'Canceled')) {
+            $draftDeletionAllowed = $true
+        }
         throw "Store did not accept the submission commit: $commitStatus"
     }
     $committed = $true
@@ -301,7 +310,8 @@ try {
 }
 catch {
     $failure = $_
-    if (-not $committed -and -not [string]::IsNullOrWhiteSpace($draftId)) {
+    if ($draftDeletionAllowed -and -not $committed -and
+        -not [string]::IsNullOrWhiteSpace($draftId)) {
         try {
             $encodedDraftId = [Uri]::EscapeDataString($draftId)
             Invoke-StoreApi -Method Delete `

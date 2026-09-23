@@ -242,6 +242,10 @@ without deleting anything, updates and commits that exact submission ID, and
 deletes only its own draft if a pre-commit check fails. It refuses to commit if
 another Partner Center writer replaces the draft or if published metadata
 changes.
+After the commit request starts, an unknown response is never cleaned up
+automatically because Partner Center may already have accepted the commit.
+Inspect the submission before retrying. Explicit terminal rejections such as
+`CommitFailed` or `Canceled` remain eligible for owned-draft cleanup.
 The workflow uploads a 90-day evidence artifact containing the submitted bundle
 hash and Store submission identifiers. It never includes the OIDC assertion.
 

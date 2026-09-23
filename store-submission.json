@@ -7,7 +7,7 @@
   "commitSubmission": true,
   "submissionWriterPolicy": "exclusive-github-environment",
   "pendingSubmissionPolicy": "reject",
-  "failedDraftPolicy": "delete-owned",
+  "failedDraftPolicy": "delete-owned-before-commit",
   "packageRolloutPercentage": 100,
   "uploadTimeoutSeconds": 1800,
   "minimumAccessTokenLifetimeSeconds": 2400
