@@ -7195,7 +7195,7 @@ Make sure the gateway is running.</value>
   <data name="Chat_Composer_Effort_Faster" xml:space="preserve"><value>Faster</value></data>
   <data name="Chat_Composer_Effort_Smarter" xml:space="preserve"><value>Smarter</value></data>
   <data name="Onboarding_Native_Title.Text" xml:space="preserve"><value>Install a local native gateway</value></data>
-  <data name="Onboarding_Native_Description.Text" xml:space="preserve"><value>Install a local, session-contained OpenClaw gateway</value></data>
+  <data name="Onboarding_Native_Description.Text" xml:space="preserve"><value>Install a local, MXC contained OpenClaw gateway</value></data>
   <data name="Onboarding_Wsl_Title.Text" xml:space="preserve"><value>Install a local WSL gateway</value></data>
   <data name="Onboarding_Native_CheckingSupport" xml:space="preserve"><value>Checking native gateway support...</value></data>
   <data name="Onboarding_Native_SupportAvailable" xml:space="preserve"><value>Native gateway support is available on this device.</value></data>

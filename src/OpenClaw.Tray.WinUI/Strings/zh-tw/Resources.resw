@@ -7131,7 +7131,7 @@
   <data name="Chat_Composer_Effort_Faster" xml:space="preserve"><value>更快</value></data>
   <data name="Chat_Composer_Effort_Smarter" xml:space="preserve"><value>更深入</value></data>
   <data name="Onboarding_Native_Title.Text" xml:space="preserve"><value>安裝本機原生 Gateway</value></data>
-  <data name="Onboarding_Native_Description.Text" xml:space="preserve"><value>安裝限定於工作階段內的本機 OpenClaw Gateway</value></data>
+  <data name="Onboarding_Native_Description.Text" xml:space="preserve"><value>安裝受 MXC 約束的本機 OpenClaw Gateway</value></data>
   <data name="Onboarding_Wsl_Title.Text" xml:space="preserve"><value>安裝本機 WSL Gateway</value></data>
   <data name="Onboarding_Native_CheckingSupport" xml:space="preserve"><value>正在檢查原生 Gateway 支援情況...</value></data>
   <data name="Onboarding_Native_SupportAvailable" xml:space="preserve"><value>此裝置支援原生 Gateway。</value></data>

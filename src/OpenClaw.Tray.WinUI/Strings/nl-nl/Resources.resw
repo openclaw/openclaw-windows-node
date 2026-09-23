@@ -7132,7 +7132,7 @@ Het binaire bestand wxc-exec is niet gevonden. {1} Als dit een ontwikkelaarsbuil
   <data name="Chat_Composer_Effort_Faster" xml:space="preserve"><value>Sneller</value></data>
   <data name="Chat_Composer_Effort_Smarter" xml:space="preserve"><value>Grondiger</value></data>
   <data name="Onboarding_Native_Title.Text" xml:space="preserve"><value>Een lokale native Gateway installeren</value></data>
-  <data name="Onboarding_Native_Description.Text" xml:space="preserve"><value>Een lokale OpenClaw Gateway installeren die binnen een sessie is ingesloten</value></data>
+  <data name="Onboarding_Native_Description.Text" xml:space="preserve"><value>Een lokale OpenClaw Gateway installeren die door MXC wordt ingesloten</value></data>
   <data name="Onboarding_Wsl_Title.Text" xml:space="preserve"><value>Een lokale WSL Gateway installeren</value></data>
   <data name="Onboarding_Native_CheckingSupport" xml:space="preserve"><value>Ondersteuning voor de native Gateway controleren...</value></data>
   <data name="Onboarding_Native_SupportAvailable" xml:space="preserve"><value>De native Gateway wordt ondersteund op dit apparaat.</value></data>

@@ -7185,7 +7185,7 @@ O binário wxc-exec não pôde ser localizado. {1} Se esta for uma build de dese
   <data name="Chat_Composer_Effort_Faster" xml:space="preserve"><value>Mais rápido</value></data>
   <data name="Chat_Composer_Effort_Smarter" xml:space="preserve"><value>Mais detalhado</value></data>
   <data name="Onboarding_Native_Title.Text" xml:space="preserve"><value>Instalar um Gateway nativo local</value></data>
-  <data name="Onboarding_Native_Description.Text" xml:space="preserve"><value>Instalar um Gateway OpenClaw local, contido em uma sessão</value></data>
+  <data name="Onboarding_Native_Description.Text" xml:space="preserve"><value>Instalar um Gateway OpenClaw local, contido pelo MXC</value></data>
   <data name="Onboarding_Wsl_Title.Text" xml:space="preserve"><value>Instalar um Gateway WSL local</value></data>
   <data name="Onboarding_Native_CheckingSupport" xml:space="preserve"><value>Verificando o suporte ao Gateway nativo...</value></data>
   <data name="Onboarding_Native_SupportAvailable" xml:space="preserve"><value>O suporte ao Gateway nativo está disponível neste dispositivo.</value></data>

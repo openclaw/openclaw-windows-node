@@ -113,7 +113,7 @@ public sealed class NativeGatewaySetupUxContractTests
             Assert.Equal(expected, (string?)choice.Attribute("AutomationProperties.Name"));
             Assert.Equal(expected, resources[uid + ".Text"]);
         }
-        Assert.Equal("Install a local, session-contained OpenClaw gateway", resources["Onboarding_Native_Description.Text"]);
+        Assert.Equal("Install a local, MXC contained OpenClaw gateway", resources["Onboarding_Native_Description.Text"]);
         var source = File.ReadAllText(Path.Combine(pages, "WelcomePage.xaml.cs"));
         Assert.Contains("AutomationProperties.SetName(InstallChoice, SetupLocalization.GetString(\"Onboarding_Wsl_Title.Text\"))", source);
     }
@@ -135,7 +135,7 @@ public sealed class NativeGatewaySetupUxContractTests
         Assert.Equal("1", (string?)badge.Attribute("Grid.Column"));
         var description = heading.ElementsAfterSelf().First();
         Assert.Equal("Onboarding_Native_Description", (string?)description.Attribute(names + "Uid"));
-        Assert.Equal("Install a local, session-contained OpenClaw gateway", (string?)description.Attribute("Text"));
+        Assert.Equal("Install a local, MXC contained OpenClaw gateway", (string?)description.Attribute("Text"));
         var success = description.ElementsAfterSelf().First();
         Assert.Equal("NativeSupportAvailablePanel", (string?)success.Attribute(names + "Name"));
         Assert.Equal("Collapsed", (string?)success.Attribute("Visibility"));

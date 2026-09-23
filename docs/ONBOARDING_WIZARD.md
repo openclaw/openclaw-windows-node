@@ -241,7 +241,7 @@ Back navigation preserves those explicit choices even when native is supported.
 The badge sits to the right of the title. Successful capability status appears
 inside the card below its description, with a decorative green checkmark and a
 screen-reader announcement. The requested description is **Install a local,
-session-contained OpenClaw gateway**; this copy change does not implement MXC
+MXC contained OpenClaw gateway**; this copy change does not implement MXC
 session containment, which remains outstanding for the current signed-in-user runtime.
 The WSL title is **Install a local WSL gateway**. Checking, unavailable and error
 messages remain outside the disabled card so retry/update actions stay usable.
