@@ -330,9 +330,18 @@ public sealed partial class CapabilitiesPage : Page
                 ? deviceEligibility.Plan?.Model.Id
                 : null;
 
-            if (!deviceEligibility.CanInstall || deviceEligibility.Plan is null || deviceEligibility.SelectedGpu is null)
+            // A SKU with no recommended default (RTX Spark 32 GB) still runs an already
+            // configured model. Gate availability on that configured selection when there is
+            // one, so rerunning setup does not switch Local AI off on a working machine.
+            // _localAiRecommendedModelId stays null so nothing is labelled Recommended.
+            LocalInferenceEligibilityResult availability =
+                LocalInferenceEligibility.EvaluateForConfiguredAvailability(
+                    _localAiHardware,
+                    _config!.LocalAi.SelectedModelId);
+
+            if (!availability.CanInstall || availability.Plan is null || availability.SelectedGpu is null)
             {
-                hardwareReason = DescribeLocalAiUnavailable(deviceEligibility);
+                hardwareReason = DescribeLocalAiUnavailable(availability);
             }
             else
             {
@@ -343,7 +352,7 @@ public sealed partial class CapabilitiesPage : Page
                 // model instead of leaving setup stuck on a known-incompatible selection. A
                 // merely busy GPU (EligibleButBusy) is not reconciled away: the same model would
                 // still work once the GPU frees up, and CanInstall already covers that case.
-                if (_config!.LocalAi.SelectedModelId is { } selectedModelId)
+                if (_config.LocalAi.SelectedModelId is { } selectedModelId)
                 {
                     LocalInferenceEligibilityResult selectedEligibility =
                         LocalInferenceEligibility.Evaluate(_localAiHardware, selectedModelId);
@@ -356,7 +365,7 @@ public sealed partial class CapabilitiesPage : Page
                         _config.LocalAi.SelectedModelId = null;
                     }
                 }
-                _config.LocalAi.SelectedModelId ??= _localAiRecommendedModelId ?? deviceEligibility.Plan.Model.Id;
+                _config.LocalAi.SelectedModelId ??= _localAiRecommendedModelId ?? availability.Plan.Model.Id;
 
                 eligibility ??= LocalInferenceEligibility.Evaluate(
                         _localAiHardware,

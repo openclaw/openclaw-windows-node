@@ -16,6 +16,8 @@ public enum LocalInferenceSelectionFailureCode
     RuntimeUnavailable = 1,
     NoNvidiaGpu = 2,
     UnknownModel = 3,
+    /// <summary>RTX Spark detected, but this memory SKU has no recommended local model.</summary>
+    NotRecommendedForSku = 4,
 }
 
 /// <summary>Whether a caller accepted the catalog default or named a model explicitly.</summary>
@@ -26,11 +28,19 @@ public enum LocalInferenceModelSelectionOrigin
 }
 
 /// <summary>A complete, immutable native inference choice.</summary>
+/// <param name="BoundGpuStableId">
+/// The adapter this recipe was chosen for, when the choice is only valid on that
+/// adapter. RTX Spark recipes come from a fixed per-device SKU table, so the recipe
+/// and the GPU that runs it must be the same adapter; eligibility restricts its
+/// candidates to this id. Null means any qualifying NVIDIA GPU may run the plan,
+/// which is the generic discrete-GPU behavior.
+/// </param>
 public sealed record LocalInferencePlan(
     LlamaRuntimeVariant Runtime,
     LocalModelInfo Model,
     LocalInferenceRunProfile Profile,
-    LocalInferenceModelSelectionOrigin ModelSelectionOrigin);
+    LocalInferenceModelSelectionOrigin ModelSelectionOrigin,
+    string? BoundGpuStableId = null);
 
 /// <summary>The deterministic result of selecting from the pinned local inference catalog.</summary>
 public sealed record LocalInferenceSelectionResult
@@ -60,7 +70,14 @@ public sealed record LocalInferenceSelectionResult
 /// <summary>
 /// Pure selection from a hardware snapshot and optional model ID. The CPU
 /// architecture chooses only the native runtime. GPU names and CPU/GPU SKU
-/// pairings are not part of qualification.
+/// pairings are not part of qualification for discrete GPUs -- the one
+/// deliberate exception is RTX Spark's default pick, routed through
+/// <see cref="RtxSparkInferenceSelector"/> because its unified-memory SKU
+/// cannot be identified by capacity fit-testing alone (see NVIDIA's fixed
+/// SKU-to-recipe table). An explicitly requested model ID uses the same
+/// capacity fit-test on every GPU, except when the request is the Spark SKU's
+/// own recommendation round-tripped through setup, which keeps that SKU's
+/// pinned profile and adapter binding.
 /// </summary>
 public static class LocalInferenceSelector
 {
@@ -81,9 +98,42 @@ public static class LocalInferenceSelector
         LocalModelInfo? model;
         LocalInferenceRunProfile profile;
         LocalInferenceModelSelectionOrigin modelSelectionOrigin;
+        string? boundGpuStableId = null;
+        GpuInfo? sparkGpu = hardware.NvidiaGpus.FirstOrDefault(
+            gpu => gpu.IsRtxSpark && LocalInferenceQualificationPolicy.HasCompleteFacts(gpu));
+        var sparkPick = sparkGpu is null
+            ? null
+            : RtxSparkInferenceSelector.SelectDefault(sparkGpu);
         if (string.IsNullOrWhiteSpace(requestedModelId))
         {
-            (model, profile) = SelectDefaultModelAndProfile(hardware, runtime);
+            if (sparkPick is not null)
+            {
+                // Bind the plan to this adapter: the SKU table answers "what should
+                // THIS Spark run", so the recipe is only valid on the Spark that
+                // produced it, never on some other GPU eligibility might rank higher.
+                (model, profile) = sparkPick.Value;
+                boundGpuStableId = sparkGpu!.StableId;
+            }
+            else
+            {
+                // Either no Spark, or a Spark SKU with no recommended model. In the
+                // latter case the Spark is excluded rather than failing the whole
+                // host, so a discrete GPU alongside it can still qualify normally.
+                HostHardwareInfo genericHardware = sparkGpu is null
+                    ? hardware
+                    : hardware with
+                    {
+                        Gpus = hardware.Gpus.Where(gpu => !gpu.IsRtxSpark).ToArray(),
+                    };
+                if (!genericHardware.HasNvidiaGpu)
+                {
+                    return LocalInferenceSelectionResult.Unsupported(
+                        LocalInferenceSelectionFailureCode.NotRecommendedForSku);
+                }
+
+                (model, profile) = SelectDefaultModelAndProfile(genericHardware, runtime);
+            }
+
             modelSelectionOrigin = LocalInferenceModelSelectionOrigin.Default;
         }
         else
@@ -91,13 +141,30 @@ public static class LocalInferenceSelector
             model = LocalModelCatalog.Find(requestedModelId);
             if (model is null)
                 return LocalInferenceSelectionResult.Unsupported(LocalInferenceSelectionFailureCode.UnknownModel);
-            profile = SelectBestFittingProfile(hardware, runtime, model) ??
-                LocalModelCatalog.GetProfiles(model)[^1];
+            if (sparkPick is { } recommended &&
+                string.Equals(recommended.Model.Id, model.Id, StringComparison.OrdinalIgnoreCase))
+            {
+                // Setup persists the recommended model id and passes it back here, so
+                // the SKU's own recommendation arrives as an explicit request. Re-deriving
+                // its profile through the generic fit-test would silently discard the
+                // pinned profile the SKU table specifies (the 64 GB tier's reduced context
+                // is not the largest that merely fits) and drop the adapter binding.
+                // A request for any other model is a real user override and still uses
+                // the generic fit-test below.
+                profile = recommended.Profile;
+                boundGpuStableId = sparkGpu!.StableId;
+            }
+            else
+            {
+                profile = SelectBestFittingProfile(hardware, runtime, model) ??
+                    LocalModelCatalog.GetProfiles(model)[^1];
+            }
+
             modelSelectionOrigin = LocalInferenceModelSelectionOrigin.Explicit;
         }
 
         return LocalInferenceSelectionResult.Selected(
-            new LocalInferencePlan(runtime, model, profile, modelSelectionOrigin));
+            new LocalInferencePlan(runtime, model, profile, modelSelectionOrigin, boundGpuStableId));
     }
 
     private static (LocalModelInfo Model, LocalInferenceRunProfile Profile) SelectDefaultModelAndProfile(
@@ -149,9 +216,12 @@ internal static class LocalInferenceQualificationPolicy
     {
         ArgumentNullException.ThrowIfNull(model);
         ArgumentNullException.ThrowIfNull(profile);
+        long draftWeightsBytes = model.Recipe.DraftWeights?.SizeBytes ?? 0;
         return SaturatingAdd(
             SaturatingAdd(
-                SaturatingAdd(model.Weights.SizeBytes, GetKvCacheMemoryBytes(model.Recipe, profile)),
+                SaturatingAdd(
+                    SaturatingAdd(model.Weights.SizeBytes, draftWeightsBytes),
+                    GetKvCacheMemoryBytes(model.Recipe, profile)),
                 GetDraftKvCacheMemoryBytes(model.Recipe, profile)),
             profile.RuntimeWorkspaceBytes);
     }
@@ -182,8 +252,12 @@ internal static class LocalInferenceQualificationPolicy
         ArgumentNullException.ThrowIfNull(recipe);
         ArgumentNullException.ThrowIfNull(profile);
 
-        // The pinned Qwen MTP artifacts contain one draft attention layer with
-        // the same KV head count and head dimension as the target model.
+        if (recipe.SpeculativeDecoding == SpeculativeDecodingMode.None)
+            return 0;
+
+        // The pinned Qwen MTP and DFlash draft artifacts contain one draft
+        // attention layer with the same KV head count and head dimension as
+        // the target model.
         long bytesPerToken = SaturatingAdd(
             SaturatingMultiply(
                 recipe.KeyValueHeadCount,
