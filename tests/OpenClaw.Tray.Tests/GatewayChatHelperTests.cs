@@ -14,6 +14,7 @@ public class GatewayChatHelperTests
 
         Assert.True(ok);
         Assert.StartsWith("http://localhost:18789", url);
+        Assert.Equal("/chat", new Uri(url).AbsolutePath);
     }
 
     [Fact]
@@ -24,6 +25,7 @@ public class GatewayChatHelperTests
 
         Assert.True(ok);
         Assert.StartsWith("https://gateway.example.com", url);
+        Assert.Equal("/chat", new Uri(url).AbsolutePath);
     }
 
     #endregion
@@ -38,6 +40,7 @@ public class GatewayChatHelperTests
 
         Assert.True(ok);
         Assert.Contains("token=a%20b%26c%3Dd", url);
+        Assert.Equal("/chat", new Uri(url).AbsolutePath);
     }
 
     #endregion
@@ -51,7 +54,7 @@ public class GatewayChatHelperTests
             "ws://localhost:18789", "tok", out var url, out _, sessionKey: "sess123");
 
         Assert.True(ok);
-        Assert.Contains("&session=sess123", url);
+        Assert.Equal("http://localhost:18789/chat?token=tok&session=sess123", url);
     }
 
     [Fact]
@@ -61,6 +64,7 @@ public class GatewayChatHelperTests
             "ws://localhost:18789", "tok", out var url, out _, sessionKey: null);
 
         Assert.True(ok);
+        Assert.Equal("http://localhost:18789/chat?token=tok", url);
         Assert.DoesNotContain("session=", url);
     }
 
@@ -71,6 +75,7 @@ public class GatewayChatHelperTests
             "ws://localhost:18789", "tok", out var url, out _, sessionKey: "");
 
         Assert.True(ok);
+        Assert.Equal("http://localhost:18789/chat?token=tok", url);
         Assert.DoesNotContain("session=", url);
     }
 
@@ -96,6 +101,7 @@ public class GatewayChatHelperTests
 
         Assert.True(ok);
         Assert.StartsWith("http://localhost", url);
+        Assert.Equal("/chat", new Uri(url).AbsolutePath);
     }
 
     [Fact]
@@ -106,6 +112,7 @@ public class GatewayChatHelperTests
 
         Assert.True(ok);
         Assert.StartsWith("http://127.0.0.1:18789", url);
+        Assert.Equal("/chat", new Uri(url).AbsolutePath);
     }
 
     #endregion
@@ -130,6 +137,51 @@ public class GatewayChatHelperTests
 
         Assert.False(ok);
         Assert.NotEmpty(error);
+    }
+
+    #endregion
+
+    #region TryBuildChatUrl — chat route boundary
+
+    // The Control UI only honours the released ?session= identity at the chat
+    // route root. A root-path link drops it and restores the browser's last
+    // selected session, so the deep link must target /chat.
+
+    [Fact]
+    public void TryBuildChatUrl_TargetsChatRouteWithoutSessionKey()
+    {
+        var ok = GatewayChatUrlBuilder.TryBuildChatUrl(
+            "ws://127.0.0.1:18789", "tok", out var url, out _);
+
+        Assert.True(ok);
+        Assert.Equal("http://127.0.0.1:18789/chat?token=tok", url);
+        Assert.DoesNotContain("18789/?", url);
+    }
+
+    [Fact]
+    public void TryBuildChatUrl_SessionKeyRidesOnChatRoute()
+    {
+        var ok = GatewayChatUrlBuilder.TryBuildChatUrl(
+            "ws://127.0.0.1:18789", "tok", out var url, out _,
+            sessionKey: "agent:main:session-1789313422342");
+
+        Assert.True(ok);
+        Assert.Equal(
+            "http://127.0.0.1:18789/chat?token=tok&session=agent%3Amain%3Asession-1789313422342",
+            url);
+        Assert.Equal("/chat", new Uri(url).AbsolutePath);
+    }
+
+    [Fact]
+    public void TryBuildChatUrl_MainSessionKeyStillTargetsChatRoute()
+    {
+        var ok = GatewayChatUrlBuilder.TryBuildChatUrl(
+            "ws://127.0.0.1:18789", "tok", out var url, out _,
+            sessionKey: "agent:main:main");
+
+        Assert.True(ok);
+        Assert.Equal("http://127.0.0.1:18789/chat?token=tok&session=agent%3Amain%3Amain", url);
+        Assert.DoesNotContain("18789/?token=", url);
     }
 
     #endregion
