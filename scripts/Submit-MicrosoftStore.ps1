@@ -57,7 +57,7 @@ function Get-SubmissionMetadataHash {
         'GamingOptions', 'HasExternalInAppProducts', 'MeetAccessibilityGuidelines',
         'NotesForCertification', 'EnterpriseLicensing',
         'AllowMicrosoftDecideAppAvailabilityToFutureDeviceFamilies',
-        'AllowTargetFutureDeviceFamilies', 'FriendlyName', 'Trailers'
+        'AllowTargetFutureDeviceFamilies', 'Trailers'
     )) {
         $metadata[$name] = ConvertTo-CanonicalValue (Get-RequiredProperty $Submission $name)
     }
@@ -224,6 +224,8 @@ try {
     $packages += [pscustomobject]@{
         FileName = [IO.Path]::GetFileName($resolvedBundle)
         FileStatus = 'PendingUpload'
+        minimumDirectXVersion = 'None'
+        minimumSystemRam = 'None'
     }
     $draft.ApplicationPackages = $packages
     $deliveryOptions = Get-RequiredProperty $draft 'PackageDeliveryOptions'

@@ -113,6 +113,7 @@ $httpInvoker = {
         if ($null -ne $global:OpenClawStoreTest_pendingId) { throw 'Store refused to create a second draft.' }
         $global:OpenClawStoreTest_draft = Copy-Object $global:OpenClawStoreTest_published
         $global:OpenClawStoreTest_draft.Id = 'draft-2'
+        $global:OpenClawStoreTest_draft.FriendlyName = 'Generated draft 2'
         $global:OpenClawStoreTest_pendingId = 'draft-2'
         return Copy-Object $global:OpenClawStoreTest_draft
     }
@@ -122,7 +123,14 @@ $httpInvoker = {
     }
     if ($Method -eq 'Put' -and $Uri -ceq "$applicationPath/submissions/draft-2") {
         if ($global:OpenClawStoreTest_pendingId -cne 'draft-2') { throw 'Draft ownership changed before update.' }
-        $global:OpenClawStoreTest_draft = $Body | ConvertFrom-Json
+        $request = $Body | ConvertFrom-Json
+        $pendingUpload = @($request.ApplicationPackages | Where-Object { $_.FileStatus -ceq 'PendingUpload' })
+        if ($pendingUpload.Count -ne 1 -or
+            [string]$pendingUpload[0].minimumDirectXVersion -cne 'None' -or
+            [string]$pendingUpload[0].minimumSystemRam -cne 'None') {
+            throw 'Pending package omitted required compatibility fields.'
+        }
+        $global:OpenClawStoreTest_draft = $request
         return Copy-Object $global:OpenClawStoreTest_draft
     }
     if ($Method -eq 'Post' -and $Uri -ceq "$applicationPath/submissions/draft-2/Commit") {
