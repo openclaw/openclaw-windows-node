@@ -10,7 +10,8 @@ public static class GatewayChatUrlBuilder
 {
     /// <summary>
     /// Build the HTTP(S) chat URL from a WebSocket gateway URL.
-    /// Converts ws:// → http://, wss:// → https://, appends token and optional session key.
+    /// Converts ws:// to http://, wss:// to https://, targets the Control UI chat
+    /// route, and appends the token and optional session key.
     /// </summary>
     public static bool TryBuildChatUrl(
         string gatewayUrl,
@@ -46,7 +47,12 @@ public static class GatewayChatUrlBuilder
         };
 
         var baseUrl = builder.Uri.GetLeftPart(UriPartial.Authority);
-        url = $"{baseUrl}?token={Uri.EscapeDataString(token)}";
+
+        // Target the chat route. The Control UI honours the released ?session=
+        // identity only at the chat route root (/chat). At / it drops the
+        // parameter and restores the browser's last selected session, so every
+        // session card deep link opened the main session instead.
+        url = $"{baseUrl}/chat?token={Uri.EscapeDataString(token)}";
 
         if (!string.IsNullOrEmpty(sessionKey))
             url += $"&session={Uri.EscapeDataString(sessionKey)}";
