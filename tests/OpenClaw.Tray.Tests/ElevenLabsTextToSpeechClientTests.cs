@@ -100,6 +100,28 @@ public class ElevenLabsTextToSpeechClientTests
     }
 
     [Fact]
+    public async Task SynthesizeAsync_RejectsOversizedResponse()
+    {
+        var handler = new CapturingHandler(new HttpResponseMessage(HttpStatusCode.OK)
+        {
+            Content = new ByteArrayContent(new byte[ElevenLabsTextToSpeechClient.MaxResponseBytes + 1])
+            {
+                Headers = { ContentType = new("audio/mpeg") }
+            }
+        });
+        var client = new ElevenLabsTextToSpeechClient(handler, "https://example.test");
+
+        var ex = await Assert.ThrowsAsync<InvalidOperationException>(() => client.SynthesizeAsync(new ElevenLabsSynthesisRequest
+        {
+            ApiKey = "key-123",
+            VoiceId = "voice-1",
+            Text = "Hello"
+        }));
+
+        Assert.Contains(ElevenLabsTextToSpeechClient.MaxResponseBytes.ToString(), ex.Message);
+    }
+
+    [Fact]
     public void Constructor_SetsRequestTimeout()
     {
         var handler = new CapturingHandler(new HttpResponseMessage(HttpStatusCode.OK)
