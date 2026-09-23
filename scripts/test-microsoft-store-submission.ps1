@@ -77,6 +77,7 @@ function Reset-Fixture {
     $global:OpenClawStoreTest_tokenLifetime = 3600
     $global:OpenClawStoreTest_replaceAfterUpload = $false
     $global:OpenClawStoreTest_driftAfterUpload = $false
+    $global:OpenClawStoreTest_mutatePackagesAfterUpload = $false
     $global:OpenClawStoreTest_uploadHash = $null
     $global:OpenClawStoreTest_uploadedEntries = @()
 }
@@ -149,6 +150,12 @@ $uploadInvoker = {
     if ($global:OpenClawStoreTest_driftAfterUpload) {
         $global:OpenClawStoreTest_draft.Listings.'en-us'.description = 'Unexpected replacement'
     }
+    if ($global:OpenClawStoreTest_mutatePackagesAfterUpload) {
+        $global:OpenClawStoreTest_draft.ApplicationPackages += [pscustomobject]@{
+            FileName = 'competing.msix'
+            FileStatus = 'PendingUpload'
+        }
+    }
     if ($global:OpenClawStoreTest_replaceAfterUpload) { $global:OpenClawStoreTest_pendingId = 'competing-draft' }
 }
 
@@ -196,7 +203,8 @@ try {
     $evidence = Get-Content -LiteralPath (Join-Path $testRoot 'evidence.json') -Raw | ConvertFrom-Json
     if ([string]$evidence.draftSubmissionId -cne 'draft-2' -or
         [string]$evidence.commitStatus -cne 'CommitStarted' -or
-        [string]$evidence.publishedMetadataSha256 -cne [string]$evidence.draftMetadataSha256) {
+        [string]$evidence.publishedMetadataSha256 -cne [string]$evidence.draftMetadataSha256 -or
+        [string]$evidence.preparedMutationSha256 -cne [string]$evidence.verifiedMutationSha256) {
         throw 'Store evidence did not bind the verified and committed draft.'
     }
 
@@ -219,6 +227,13 @@ try {
     Assert-Fails -MessagePattern 'did not preserve published product metadata' -Action { Invoke-Submission }
     if ($null -ne $global:OpenClawStoreTest_pendingId -or $global:OpenClawStoreTest_calls -match '/Commit$') {
         throw 'Metadata drift did not delete only the automation-owned draft.'
+    }
+
+    Reset-Fixture
+    $global:OpenClawStoreTest_mutatePackagesAfterUpload = $true
+    Assert-Fails -MessagePattern 'package mutation state changed' -Action { Invoke-Submission }
+    if ($null -ne $global:OpenClawStoreTest_pendingId -or $global:OpenClawStoreTest_calls -match '/Commit$') {
+        throw 'Package drift did not delete only the automation-owned draft.'
     }
 
     Reset-Fixture
