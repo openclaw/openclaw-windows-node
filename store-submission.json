@@ -1,0 +1,10 @@
+{
+  "schemaVersion": 1,
+  "environment": "microsoft-store",
+  "oidcAudience": "api://AzureADTokenExchange",
+  "msstoreCliVersion": "v0.4.3",
+  "commitSubmission": true,
+  "pendingSubmissionPolicy": "reject",
+  "packageRolloutPercentage": 100,
+  "uploadTimeoutSeconds": 1800
+}
