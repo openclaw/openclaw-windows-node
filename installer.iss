@@ -586,15 +586,55 @@ begin
   Log('User continued uninstall after local gateway cleanup failed; generated state will be preserved.');
 end;
 
+procedure DeleteGeneratedChild(const ChildName: String);
+var
+  ChildPath: String;
+begin
+  ChildPath := AddBackslash(ExpandConstant('{app}')) + ChildName;
+  if DirExists(ChildPath) then
+  begin
+    if not DelTree(ChildPath, True, True, True) then
+      Log('Generated directory could not be deleted: ' + ChildName);
+  end
+  else if FileExists(ChildPath) then
+  begin
+    if not DeleteFile(ChildPath) then
+      Log('Generated file could not be deleted: ' + ChildName);
+  end;
+end;
+
 procedure DeleteGeneratedAppState;
+var
+  AppDir: String;
+  FolderName: String;
 begin
   if not LocalGatewayCleanupSucceeded then
     Exit;
 
-  if DelTree(ExpandConstant('{app}'), True, True, True) then
-    Log('Deleted generated app state from {app}.')
-  else
-    Log('Generated app state in {app} could not be fully deleted; continuing uninstall.');
+  AppDir := RemoveBackslashUnlessRoot(ExpandConstant('{app}'));
+  FolderName := ExtractFileName(AppDir);
+  if (CompareText(FolderName, 'OpenClawTray') <> 0) and
+     (CompareText(FolderName, 'OpenClawTray-Dev') <> 0) then
+  begin
+    Log('Refusing to delete generated app state because the install folder is not OpenClawTray or OpenClawTray-Dev.');
+    Exit;
+  end;
+
+  DeleteGeneratedChild('wsl');
+  DeleteGeneratedChild('Logs');
+  DeleteGeneratedChild('wsl-keepalive');
+  DeleteGeneratedChild('WebView2');
+  DeleteGeneratedChild('canvas');
+  DeleteGeneratedChild('native-cli');
+  DeleteGeneratedChild('setup-state.json');
+  DeleteGeneratedChild('run.marker');
+  DeleteGeneratedChild('exec-approvals.json');
+  DeleteGeneratedChild('exec-policy.json');
+  DeleteGeneratedChild('openclaw-tray.log');
+  DeleteGeneratedChild('uninstall-gateway-result.json');
+  DeleteGeneratedChild('uninstall-gateway-error.log');
+  DeleteGeneratedChild('uninstall-gateway-wsl.log');
+  Log('Deleted generated app state children from {app}.');
 end;
 
 procedure RemoveAppAutoStart;

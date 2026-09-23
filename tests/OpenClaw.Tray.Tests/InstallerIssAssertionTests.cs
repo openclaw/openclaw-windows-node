@@ -87,7 +87,30 @@ public sealed class InstallerIssAssertionTests
         Assert.Contains("procedure RemoveAppAutoStart;", iss);
         Assert.Matches(@"    RemoveAppAutoStart;\r?\n    EnsureLocalGatewayCleanupChoice;", iss);
         Assert.Contains("CurUninstallStep = usPostUninstall", iss);
-        Assert.Contains("DelTree(ExpandConstant('{app}'), True, True, True)", iss);
+        Assert.DoesNotContain("DelTree(ExpandConstant('{app}'), True, True, True)", iss);
+        Assert.Contains("Refusing to delete generated app state", iss);
+        Assert.Contains("CompareText(FolderName, 'OpenClawTray')", iss);
+        Assert.Contains("CompareText(FolderName, 'OpenClawTray-Dev')", iss);
+        foreach (var child in new[]
+        {
+            "wsl",
+            "Logs",
+            "wsl-keepalive",
+            "WebView2",
+            "canvas",
+            "native-cli",
+            "setup-state.json",
+            "run.marker",
+            "exec-approvals.json",
+            "exec-policy.json",
+            "openclaw-tray.log",
+            "uninstall-gateway-result.json",
+            "uninstall-gateway-error.log",
+            "uninstall-gateway-wsl.log",
+        })
+        {
+            Assert.Contains($"DeleteGeneratedChild('{child}');", iss);
+        }
         Assert.DoesNotContain("Start-Sleep -Seconds 3", iss);
         Assert.DoesNotContain("--uninstall --confirm-destructive", iss);
         Assert.DoesNotContain("[UninstallDelete]", iss);
