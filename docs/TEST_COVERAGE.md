@@ -152,6 +152,13 @@ settings remain isolated through `OPENCLAW_TRAY_DATA_DIR`, integration tests
 retain `OPENCLAW_RUN_INTEGRATION=1`, UI tests install WindowsAppRuntime, and
 every test project continues to publish TRX output.
 
+The Tray UI step uses a five-minute VSTest hang watchdog and a fifteen-minute
+outer step timeout. A hung test fails the step and leaves a test-sequence
+artifact for diagnosis instead of waiting for GitHub's six-hour job limit.
+Memory dumps are disabled because they can contain credentials or user data.
+Other `Invoke-CiTest.ps1` callers retain their existing timeout behavior unless
+they opt in with `-HangTimeoutSeconds`.
+
 `fast-validation` still runs for every invocation and owns repository hygiene,
 documentation, agent-skill, classifier, gate, workflow, and release-ordering
 contracts. The heavyweight malformed proof-pool matrix moved to the independent
