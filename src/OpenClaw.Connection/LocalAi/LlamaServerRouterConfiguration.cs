@@ -31,19 +31,27 @@ public static class LlamaServerRouterConfiguration
         LocalAiPaths paths,
         LocalAiResolvedInstall install,
         int? listenPort = null) =>
-        BuildCore(paths, install, install.ModelPath, listenPort);
+        BuildCore(paths, install, install.ModelPath, verifiedDraftModelPath: null, listenPort);
 
+    /// <param name="verifiedDraftModelPath">
+    /// The draft checkpoint's handle-resolved physical path, from the same verification
+    /// that opened it. Passing the persisted snapshot path instead would let a
+    /// snapshot-link replacement change the file llama-server finally opens, which is
+    /// exactly what resolving the primary model through its own handle prevents.
+    /// </param>
     internal static LlamaServerRouterLaunchPlan BuildForVerifiedRuntime(
         LocalAiPaths paths,
         LocalAiResolvedInstall install,
         string verifiedModelPath,
+        string? verifiedDraftModelPath,
         int? listenPort = null) =>
-        BuildCore(paths, install, verifiedModelPath, listenPort);
+        BuildCore(paths, install, verifiedModelPath, verifiedDraftModelPath, listenPort);
 
     private static LlamaServerRouterLaunchPlan BuildCore(
         LocalAiPaths paths,
         LocalAiResolvedInstall install,
         string modelPath,
+        string? verifiedDraftModelPath,
         int? listenPort)
     {
         ArgumentNullException.ThrowIfNull(paths);
@@ -62,6 +70,7 @@ public static class LlamaServerRouterConfiguration
             ?? throw new InvalidDataException("The managed local AI model is no longer qualified.");
 
         LocalInferenceRunProfile profile = ResolveQualifiedReceipt(manifest, runtime, model);
+        string? draftModelPath = ResolveDraftModelPath(manifest, model, verifiedDraftModelPath);
 
         string presetPath = paths.ResolveContainedPath(
             Path.GetRelativePath(paths.RootDirectory, paths.RouterPresetPath),
@@ -86,11 +95,7 @@ public static class LlamaServerRouterConfiguration
                 .WithComparers(StringComparer.OrdinalIgnoreCase)
                 .Add("CUDA_VISIBLE_DEVICES", manifest.SelectedGpuId),
             presetPath,
-            // TODO(rtx-spark-dflash): DraftDFlash recipes need their pinned
-            // draft checkpoint acquired and verified alongside the primary
-            // weights before a real path can be threaded through here; see
-            // BuildPreset's draftModelPath parameter.
-            BuildPreset(model, profile, modelPath, draftModelPath: null),
+            BuildPreset(model, profile, modelPath, draftModelPath),
             model.Id);
     }
 
@@ -151,6 +156,49 @@ public static class LlamaServerRouterConfiguration
         {
             throw new InvalidDataException("The managed model artifact receipt does not match the qualified catalog.");
         }
+
+        ImmutableArray<PinnedArtifact> expectedAdditionalArtifacts = LocalModelCatalog.AdditionalArtifacts(model);
+        if (manifest.AdditionalModelAssetsOrEmpty.Length != expectedAdditionalArtifacts.Length ||
+            manifest.AdditionalModelPathsOrEmpty.Length != expectedAdditionalArtifacts.Length)
+        {
+            throw new InvalidDataException(
+                "The managed additional model asset receipts do not match the qualified catalog.");
+        }
+        for (int i = 0; i < expectedAdditionalArtifacts.Length; i++)
+        {
+            PinnedArtifact artifact = expectedAdditionalArtifacts[i];
+            LocalAiAssetReceipt receipt = manifest.AdditionalModelAssetsOrEmpty[i];
+            if (!string.Equals(receipt.FileName, Path.GetFileName(artifact.RelativePath), StringComparison.Ordinal) ||
+                receipt.SizeBytes != artifact.SizeBytes ||
+                !string.Equals(receipt.Sha256, artifact.Sha256.Value, StringComparison.Ordinal) ||
+                !string.Equals(receipt.SourceUrl, artifact.DownloadUri.AbsoluteUri, StringComparison.Ordinal))
+            {
+                throw new InvalidDataException(
+                    "The managed additional model asset receipts do not match the qualified catalog.");
+            }
+        }
+    }
+
+    /// <summary>
+    /// The DFlash draft checkpoint's path for the preset. Prefers the handle-resolved
+    /// physical path supplied by the caller that verified and still holds the file, so a
+    /// snapshot-link replacement cannot change the identity llama-server opens. Falls
+    /// back to the persisted receipt path only for callers that do not verify first
+    /// (<see cref="Build"/>, used for inspection rather than launch). Null for recipes
+    /// with no separate draft checkpoint. Callers must validate the manifest via
+    /// <see cref="ValidateArtifactReceipts"/> first, which guarantees
+    /// <c>AdditionalModelPaths</c> has one entry per catalog-pinned artifact.
+    /// </summary>
+    private static string? ResolveDraftModelPath(
+        LocalAiInstallManifest manifest,
+        LocalModelInfo model,
+        string? verifiedDraftModelPath)
+    {
+        if (model.Recipe.DraftWeights is null)
+            return null;
+        return string.IsNullOrWhiteSpace(verifiedDraftModelPath)
+            ? manifest.AdditionalModelPathsOrEmpty[^1]
+            : verifiedDraftModelPath;
     }
 
     private static string BuildPreset(
