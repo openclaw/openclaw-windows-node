@@ -786,16 +786,28 @@ function Remove-ConfirmedDistroChild {
 
 function Remove-GatewayDirectory {
     Enter-DestructivePhase
-    $gatewayDirectory = Join-Path $AppRoot "wsl\$DistroName"
+    $generatedRoot = Resolve-LocalDataDir
+    if (-not (Test-SameFullPath $AppRoot $generatedRoot)) {
+        Add-CleanupWarning "Ownership uncertain: AppRoot '$AppRoot' is not the generated-data root '$generatedRoot'; skipping filesystem cleanup there."
+        return
+    }
+
+    $wslRoot = Join-Path $AppRoot 'wsl'
+    $gatewayDirectory = [System.IO.Path]::GetFullPath((Join-Path $wslRoot $DistroName)).TrimEnd('\')
+    if (-not (Test-SameFullPath ([System.IO.Path]::GetDirectoryName($gatewayDirectory)) $wslRoot)) {
+        throw "Refusing to delete '$gatewayDirectory': it is not an immediate child of '$wslRoot'."
+    }
 
     if (-not (Test-Path -LiteralPath $gatewayDirectory)) {
         Write-GatewayLog "Gateway directory does not exist: $gatewayDirectory"
         return
     }
 
-    $gatewayItem = Get-Item -LiteralPath $gatewayDirectory -Force -ErrorAction Stop
-    if (($gatewayItem.Attributes -band [System.IO.FileAttributes]::ReparsePoint) -ne 0) {
-        throw "Refusing to recursively delete reparse point '$gatewayDirectory'."
+    foreach ($path in @($AppRoot, $wslRoot, $gatewayDirectory)) {
+        $item = Get-Item -LiteralPath $path -Force -ErrorAction Stop
+        if (($item.Attributes -band [System.IO.FileAttributes]::ReparsePoint) -ne 0) {
+            throw "Refusing to recursively delete reparse point '$path'."
+        }
     }
 
     $lastError = $null
