@@ -247,6 +247,97 @@ public sealed class A2UIDataModelStoreTests
         });
     }
 
+    [Theory]
+    [InlineData("seed", false)]
+    [InlineData("seed", true)]
+    [InlineData("reset", false)]
+    [InlineData("reset", true)]
+    [InlineData("valueArray", false)]
+    [InlineData("valueArray", true)]
+    public async Task ApplyDataModelUpdate_ExistingLargeArrayElement_RemainsWritable(string source, bool nested)
+    {
+        await _ui.RunOnUIAsync(() =>
+        {
+            var harness = BuildHarness(_ui);
+            var entry = new DataModelEntry
+            {
+                Key = "items",
+                ValueArray = Enumerable.Range(0, 1026).Select(_ => new DataModelEntry
+                {
+                    Key = string.Empty,
+                    ValueMap = new[] { new DataModelEntry { Key = "name", ValueString = "keep" } },
+                }).ToArray(),
+            };
+            var seed = new JsonObject { ["items"] = entry.ToJsonNode() };
+            switch (source)
+            {
+                case "seed":
+                    harness.DataModel.GetOrCreate("s", seed);
+                    break;
+                case "reset":
+                    harness.DataModel.GetOrCreate("s");
+                    harness.DataModel.Reset("s", seed);
+                    break;
+                case "valueArray":
+                    harness.DataModel.ApplyDataModelUpdate("s", null, new[] { entry });
+                    break;
+            }
+
+            var pointer = nested ? "/items/1025/name" : "/items/1025";
+            harness.DataModel.ApplyDataModelUpdate("s", nested ? "/items/1025" : "/items", new[]
+            {
+                new DataModelEntry { Key = nested ? "name" : "1025", ValueString = "updated" },
+            });
+
+            Assert.Equal("updated", harness.DataModel.Read("s", pointer)!.GetValue<string>());
+            harness.DataModel.GetOrCreate("s").Write(pointer, JsonValue.Create("two-way"));
+            Assert.Equal("two-way", harness.DataModel.Read("s", pointer)!.GetValue<string>());
+            Assert.Equal("keep", harness.DataModel.Read("s", "/items/0/name")!.GetValue<string>());
+            Assert.Equal(1026, Assert.IsType<JsonArray>(harness.DataModel.Read("s", "/items")).Count);
+
+            harness.DataModel.ApplyDataModelUpdate("s", nested ? "/items/1026" : "/items", new[]
+            {
+                new DataModelEntry { Key = nested ? "name" : "1026", ValueString = "rejected" },
+            });
+            Assert.Equal(1026, Assert.IsType<JsonArray>(harness.DataModel.Read("s", "/items")).Count);
+            Assert.Null(harness.DataModel.Read("s", "/items/1026"));
+        });
+    }
+
+    [Theory]
+    [InlineData("1024", 1025)]
+    [InlineData("1025", 1)]
+    [InlineData("-1", 1)]
+    [InlineData("2147483648", 1)]
+    public async Task ApplyDataModelUpdate_ArrayIndex_GrowthIsBounded(string index, int expectedCount)
+    {
+        await _ui.RunOnUIAsync(() =>
+        {
+            var harness = BuildHarness(_ui);
+            harness.DataModel.GetOrCreate("s", JsonNode.Parse("""{"items":[{"name":"keep"}]}""")!.AsObject());
+
+            harness.DataModel.ApplyDataModelUpdate("s", "/items/" + index, new[]
+            {
+                new DataModelEntry { Key = "name", ValueString = "rejected" },
+            });
+
+            Assert.Equal(expectedCount, Assert.IsType<JsonArray>(harness.DataModel.Read("s", "/items")).Count);
+            Assert.Equal("keep", harness.DataModel.Read("s", "/items/0/name")!.GetValue<string>());
+            Assert.Null(harness.DataModel.Read("s", "/items/" + index + "/name"));
+
+            harness.DataModel.ApplyDataModelUpdate("s", "/items", new[]
+            {
+                new DataModelEntry { Key = index, ValueString = "terminal" },
+            });
+            Assert.Equal(expectedCount, Assert.IsType<JsonArray>(harness.DataModel.Read("s", "/items")).Count);
+            Assert.Equal("keep", harness.DataModel.Read("s", "/items/0/name")!.GetValue<string>());
+            if (index == "1024")
+                Assert.Equal("terminal", harness.DataModel.Read("s", "/items/1024")!.GetValue<string>());
+            else
+                Assert.Null(harness.DataModel.Read("s", "/items/" + index));
+        });
+    }
+
     /// <summary>Build an entry whose value is <paramref name="depth"/> nested valueArrays.</summary>
     private static DataModelEntry DeepArrayEntry(string key, int depth)
     {

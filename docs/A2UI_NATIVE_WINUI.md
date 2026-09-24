@@ -171,6 +171,12 @@ A2UI surfaces carry a JSON data model. Components reference paths into that mode
 
 `DataModelStore` holds one `JsonObject` per surface, mutated via JSON Pointer (RFC 6901) patches. Use `System.Text.Json.Nodes` for in-place edits (already a dependency).
 
+Pointer-driven array growth is limited to indexes 0 through 1024, including
+intermediate path segments. Updates that would grow an array beyond that bound
+are ignored. Existing elements in larger arrays supplied by a seed, reset, or
+`valueArray` remain readable and writable, including nested and two-way binding
+updates. Numeric object keys are not subject to this array-growth limit.
+
 ### 6.2 Binding
 
 Bindings are **one-way for display** components, **two-way for interactive** components. Implement via:
