@@ -195,6 +195,27 @@ public class LocalCommandRunnerIntegrationTests
     }
 
     [IntegrationFact]
+    public async Task Run_ConcurrentShortCommands_DrainBothStreamsBeforeReturning()
+    {
+        var runner = new LocalCommandRunner();
+        await Task.WhenAll(Enumerable.Range(0, 32).Select(async index =>
+        {
+            var expected = $"hello_from_test_{index}";
+            var result = await runner.RunAsync(new CommandRequest
+            {
+                Command = "echo %TEST_OPENCLAW_VAR%& echo %TEST_OPENCLAW_VAR% 1>&2",
+                Shell = "cmd",
+                TimeoutMs = 10000,
+                Env = new() { { "TEST_OPENCLAW_VAR", expected } },
+            });
+            Assert.False(result.TimedOut);
+            Assert.Equal(0, result.ExitCode);
+            Assert.Equal(expected, result.Stdout);
+            Assert.Equal(expected, result.Stderr);
+        }));
+    }
+
+    [IntegrationFact]
     public async Task Run_InvalidCommand_ReturnsError()
     {
         var runner = new LocalCommandRunner();

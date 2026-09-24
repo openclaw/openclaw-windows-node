@@ -85,9 +85,23 @@ public class LocalCommandRunner : ICommandRunner
         var stdoutBuilder = new StringBuilder();
         var stderrBuilder = new StringBuilder();
         var outputLock = new object();
-        
-        process.OutputDataReceived += (_, e) => { if (e.Data != null) { lock (outputLock) { stdoutBuilder.AppendLine(e.Data); } } };
-        process.ErrorDataReceived += (_, e) => { if (e.Data != null) { lock (outputLock) { stderrBuilder.AppendLine(e.Data); } } };
+        var stdoutCompleted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var stderrCompleted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        process.OutputDataReceived += (_, e) =>
+        {
+            if (e.Data is null)
+                stdoutCompleted.TrySetResult();
+            else
+                lock (outputLock) { stdoutBuilder.AppendLine(e.Data); }
+        };
+        process.ErrorDataReceived += (_, e) =>
+        {
+            if (e.Data is null)
+                stderrCompleted.TrySetResult();
+            else
+                lock (outputLock) { stderrBuilder.AppendLine(e.Data); }
+        };
         
         // Use the Exited event rather than WaitForExitAsync to detect process exit.
         // WaitForExitAsync (.NET 6+) internally calls WaitForExit() which blocks until
@@ -130,7 +144,7 @@ public class LocalCommandRunner : ICommandRunner
                 
                 try
                 {
-                    await exitTcs.Task.WaitAsync(timeoutCts.Token);
+                    await exitTcs.Task.WaitAsync(timeoutCts.Token).ConfigureAwait(false);
                 }
                 catch (OperationCanceledException) when (!ct.IsCancellationRequested)
                 {
@@ -141,7 +155,7 @@ public class LocalCommandRunner : ICommandRunner
             }
             else
             {
-                await exitTcs.Task.WaitAsync(ct);
+                await exitTcs.Task.WaitAsync(ct).ConfigureAwait(false);
             }
         }
         catch (OperationCanceledException)
@@ -150,16 +164,11 @@ public class LocalCommandRunner : ICommandRunner
             throw;
         }
         
-        // Drain remaining buffered output. After the process exits its data is already in
-        // the pipe buffer; the async reader delivers it nearly instantly. We run WaitForExit()
-        // on a background thread with a 500 ms deadline so we don't block forever if orphaned
-        // child processes have inherited the pipe write handle and are still running.
-        var drainTask = Task.Run(() =>
-        {
-            try { process.WaitForExit(); }
-            catch (Exception drainEx) { _logger.Debug($"LocalCommandRunner: WaitForExit during output drain threw: {drainEx.Message}"); }
-        });
-        if (await Task.WhenAny(drainTask, Task.Delay(OutputDrainTimeoutMs, CancellationToken.None)) != drainTask)
+        // Wait on reader EOF, not a blocking worker that competes with the reader callbacks.
+        // Descendant-held pipes still have a bounded grace period after the direct child exits.
+        var drainTask = Task.WhenAll(stdoutCompleted.Task, stderrCompleted.Task);
+        if (await Task.WhenAny(drainTask, Task.Delay(OutputDrainTimeoutMs, CancellationToken.None))
+            .ConfigureAwait(false) != drainTask)
         {
             _logger.Warn("[EXEC] Output drain timed out; child processes may hold the pipe open");
         }
