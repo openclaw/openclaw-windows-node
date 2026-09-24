@@ -167,6 +167,46 @@ but ordinary product code no longer waits for the matrix. The three existing
 E2E shards are unchanged in scope and have separate job conditions; no E2E
 shards were added.
 
+### WSL latest versus packaged native Gateway proof
+
+The WSL E2E fixture installs npm `latest` by default.
+`OPENCLAW_E2E_GATEWAY_VERSION` selects explicit candidate validation, not a native
+package test. Running the packaging repository's pinned npm version in WSL does
+not prove Microsoft Store acquisition, package identity, MXC session setup, or
+the packaged Gateway lifecycle.
+
+Actual package E2E needs a disposable Windows account/host with a successful
+MXC session capability probe and a verified installable MSIX from
+[`openclaw-windows-packaging`](https://github.com/openclaw/openclaw-windows-packaging).
+Record the packaging commit, release policy, payload commit/version, architecture,
+package name/family/publisher/version, and verified artifact digest. An older
+development registration or unsigned Store-submission archive is not proof of
+the current released package.
+
+The current packaging contract owns an agent-session Gateway through
+`clawctl setup` and `clawctl gateway-service start/status/restart/stop`.
+Configuration belongs inside that session's profile. Companion's existing
+host-child native runtime and same-user listener ancestry checks are a different
+contract and cannot be relabeled as proof of the isolated package. The integration
+must demonstrate authenticated Companion connectivity and ownership/lifecycle
+behavior against the real session endpoint before claiming native E2E coverage.
+Missing package provenance, installation consent/isolation, capable runner, or
+session endpoint integration is a blocker, not a passing skip or an npm fallback.
+
+Investigation snapshot (2026-09-24): packaging commit
+`3f2e3268ca0961a08a12e31a25b0c2c174548955` selects upstream `2026.9.4` and MSIX
+revision 4 (`2026.9.404.0`) with the Store identity
+`OpenClawFoundation.OpenClawGateway`. Its
+[producer run](https://github.com/openclaw/openclaw-windows-packaging/actions/runs/36033664419)
+failed verified-release-tag admission and produced no artifacts; the corresponding
+release was unavailable. The published revision-3 package uses the old identity,
+so it cannot stand in for revision-4 Store proof. The hosted Windows image in that
+run was build 26100, below packaging's MXC fallback minimum 26340.9212, with no
+successful session capability proof. A matching signed package, a disposable
+session-capable test account/runner, and the Companion lifecycle integration
+described above remain prerequisites. The existing developer package/profile
+must not be replaced or repurposed to make this test pass.
+
 Release metadata is produced by the small `metadata` job only when release
 publish validation is required. It preserves GitVersion `semVer`,
 `majorMinorPatch`, `isPrerelease`, `isStableCorrection`, and stable-correction
