@@ -679,7 +679,7 @@ public sealed partial class CapabilitiesPage : Page
             LocalAiModelSelector.Items.Add(new ComboBoxItem
             {
                 Content = $"{SetupReviewSummaryBuilder.DisplayModelName(model)} " +
-                    $"({FormatSize(model.Weights.SizeBytes)}, " +
+                    $"({FormatSize(LocalModelCatalog.TotalDownloadSizeBytes(model))}, " +
                     $"{FormatContext(plan.Profile.ContextTokens)}, " +
                     $"{LocalModelCatalog.ToDisplayCacheType(plan.Profile.KeyCachePrecision)} KV)" +
                     (isRecommended ? " (Recommended)" : string.Empty),
@@ -789,7 +789,7 @@ public sealed partial class CapabilitiesPage : Page
             "loads on first request";
         LocalAiModelDetailText.Text =
             $"{SetupReviewSummaryBuilder.DisplayModelName(plan.Model)}, " +
-            $"{FormatSize(plan.Model.Weights.SizeBytes)} from Hugging Face";
+            $"{FormatSize(LocalModelCatalog.TotalDownloadSizeBytes(plan.Model))} from Hugging Face";
         UpdatePrimaryButtonState();
     }
 

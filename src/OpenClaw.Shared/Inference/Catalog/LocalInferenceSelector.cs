@@ -171,16 +171,28 @@ public static class LocalInferenceSelector
         HostHardwareInfo hardware,
         LlamaRuntimeVariant runtime)
     {
-        foreach (LocalModelInfo candidate in LocalModelCatalog.Models
+        // A priority-0, explicit-alternative model (currently only the
+        // experimental 96GB Flash-Next recipe) is offered solely by
+        // RtxSparkInferenceSelector for its one intended SKU, never picked as
+        // a generic dGPU default or fallback -- excluded here so a large
+        // enough non-Spark GPU (or a Spark GPU IsRtxSpark fails to detect)
+        // can't land on it by tie-break/fallback ordering. Priority-0 models
+        // that aren't explicit alternatives (the other Spark-only recipes)
+        // keep their existing, unrelated reachability.
+        IEnumerable<LocalModelInfo> genericDefaultCandidates = LocalModelCatalog.Models
+            .Where(model => model.RecommendationPriority > 0 || !model.IsExplicitAlternative);
+        foreach (LocalModelInfo candidate in genericDefaultCandidates
                      .OrderByDescending(model => model.RecommendationPriority)
-                     .ThenByDescending(model => model.Weights.SizeBytes))
+                     .ThenByDescending(LocalModelCatalog.TotalDownloadSizeBytes))
         {
             LocalInferenceRunProfile? profile = SelectBestFittingProfile(hardware, runtime, candidate);
             if (profile is not null)
                 return (candidate, profile);
         }
 
-        LocalModelInfo fallback = LocalModelCatalog.Models.OrderBy(model => model.Weights.SizeBytes).First();
+        LocalModelInfo fallback = genericDefaultCandidates
+            .OrderBy(LocalModelCatalog.TotalDownloadSizeBytes)
+            .First();
         return (fallback, LocalModelCatalog.GetProfiles(fallback)[^1]);
     }
 

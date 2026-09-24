@@ -255,9 +255,14 @@ public static class LocalModelCatalog
                 IsExplicitAlternative: true,
                 SupportsVision: false,
                 RecommendationPriority: 200),
-            // RTX Spark SKU recipes below. RecommendationPriority: 0 keeps them
-            // out of the generic dGPU default pick; only RtxSparkInferenceSelector
-            // offers them, keyed off the detected Spark unified-memory SKU.
+            // RTX Spark SKU recipes below, offered by RtxSparkInferenceSelector
+            // keyed off the detected Spark unified-memory SKU. RecommendationPriority: 0
+            // alone does not exclude a model from the generic dGPU default pick --
+            // it only loses every tie-break against a positive-priority model that
+            // fits. LocalInferenceSelector.SelectDefaultModelAndProfile separately
+            // excludes IsExplicitAlternative models at this priority (see its
+            // comment) so the always-alternative-only ones can't still win by
+            // tie-break/fallback ordering among themselves.
             new LocalModelInfo(
                 Qwen35B_IQ4XSModelId,
                 "Qwen3.6 35B-A3B (UD-IQ4_XS)",
@@ -423,6 +428,19 @@ public static class LocalModelCatalog
 
     /// <summary>True when the id resolves only to a retired catalog entry.</summary>
     public static bool IsLegacy(string? id) => Find(id) is null && FindInstalled(id) is not null;
+
+    /// <summary>
+    /// Everything setup downloads and llama-server loads for this recipe: the pinned
+    /// weights plus the DFlash draft checkpoint, if any. Use this for ranking, capacity
+    /// checks, and user-facing download-size disclosure -- the draft checkpoint is a
+    /// separate pinned artifact, not part of the target model's own weights, but it is
+    /// still bytes the user consents to, setup fetches, and the runtime loads.
+    /// </summary>
+    public static long TotalDownloadSizeBytes(LocalModelInfo model)
+    {
+        ArgumentNullException.ThrowIfNull(model);
+        return model.Weights.SizeBytes + (model.Recipe.DraftWeights?.SizeBytes ?? 0);
+    }
 
     /// <summary>
     /// The recipe's additional pinned artifacts beyond its primary weights, in the
