@@ -298,6 +298,24 @@ public abstract class SetupStep
 public sealed record StepResult(StepOutcome Outcome, string? Message = null, Exception? Exception = null);
 ```
 
+### Headless E2E guarded-restart diagnostics
+
+The disposable `E2ESetupFixture` runs the same CLI entry point with an internal
+failure observer. If the wizard step fails specifically at the guarded
+post-wizard Gateway restart, the observer awaits a fixed, read-only
+`systemctl --user show` probe **before** the normal owned-fixture rollback.
+The resulting `gateway-restart-diagnostic.json` contains only an allowlisted
+refusal category and coarse unit/state/PID-presence/start-identity-availability
+facts. Failed or timed-out probes produce an explicit probe status, not raw
+command output. The original setup failure and rollback are unchanged.
+
+The public Gateway CLI does not expose the rejected owner-lease predicate,
+so `ownerPredicate=not_exposed_by_gateway_cli` is intentional. An
+`unverified` serving owner must not be interpreted as coordinator contention
+without the separately observed typed contention error. This fixture-only
+diagnostic neither retries the guarded restart nor preserves the distro after
+rollback.
+
 ---
 
 ## Key Components

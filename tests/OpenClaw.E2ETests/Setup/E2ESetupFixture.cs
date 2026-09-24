@@ -165,7 +165,10 @@ public sealed class E2ESetupFixture : IAsyncLifetime
             setupArguments.Add(candidatePackage);
         }
 
-        var exitCode = await Program.Main([.. setupArguments]);
+        var exitCode = await Program.RunWithFailureDiagnosticAsync(
+            [.. setupArguments],
+            (ctx, stepId, result) => GatewayRestartFailureDiagnostic.CaptureAsync(
+                ctx, stepId, result, Path.Combine(ArtifactDir, "gateway-restart-diagnostic.json")));
 
         if (exitCode != 0)
         {
