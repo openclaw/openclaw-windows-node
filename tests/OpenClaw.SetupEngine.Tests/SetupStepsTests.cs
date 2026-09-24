@@ -5582,7 +5582,7 @@ public class SetupStepsTests : IDisposable
     {
         var ctx = CreateContext(commands: commands);
         ctx.DistroName = "test-distro";
-        ctx.SharedGatewayToken = "shared-token";
+        ctx.SharedGatewayToken = "test-auth-token";
         ctx.OperatorDeviceId = PairingSocketDeviceId;
         return ctx;
     }
