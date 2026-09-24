@@ -806,8 +806,9 @@ public partial class OpenClawGatewayClient
 
     /// <summary>
     /// Sends a request/response RPC and returns its payload, or <c>null</c> when
-    /// the gateway reports the method is unknown (older gateway). All other
-    /// failures (connection not open, gateway error, timeout) propagate.
+    /// hello-ok is pending or the gateway reports the method is unknown (older
+    /// gateway). All other failures (connection not open, gateway error, timeout)
+    /// propagate.
     /// </summary>
     private async Task<JsonElement?> TryRequestPayloadAsync(string method, object? parameters, int timeoutMs)
     {
