@@ -304,7 +304,11 @@ public sealed class PairNodeStep : SetupStep
                 return StepResult.Fail($"Could not list pending node pairing requests (exit {pending.ExitCode}): {pendingOutput}");
             }
 
-            var parsed = ApprovalRequestHelper.TryReadSinglePendingRequestId(pending.Stdout.Trim());
+            // Both setup sockets use the same per-gateway identity. NodeDeviceId is display-only.
+            var parsed = ApprovalRequestHelper.TrySelectPendingRequestForDevice(
+                pending.Stdout.Trim(),
+                ctx.OperatorDeviceId,
+                matchNodeId: true);
             if (!parsed.Success)
             {
                 ctx.Logger.Warn($"Could not select node pairing request: {parsed.Error}");

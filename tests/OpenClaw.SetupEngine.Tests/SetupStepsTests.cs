@@ -19,6 +19,7 @@ public class SetupStepsTests : IDisposable
     private readonly ITestOutputHelper _output;
     private const string DevicePairPluginNotFoundOutput = "plugins.entries.device-pair: plugin not found: device-pair";
     private const string OtherPluginNotFoundOutput = "plugins.entries.other-plugin: plugin not found: other-plugin";
+    private const string PairingSocketDeviceId = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
 
     public SetupStepsTests(ITestOutputHelper output)
     {
@@ -5459,6 +5460,131 @@ public class SetupStepsTests : IDisposable
         Assert.Equal(StepOutcome.Failed, result.Outcome);
         Assert.Contains("Device approval failed", result.Message);
         Assert.DoesNotContain(ApprovalRequestHelper.PluginNotFoundMessage, result.Message);
+    }
+
+    [Fact]
+    public async Task AutoApproveNodePairing_WithoutRequestId_RejectsSoleForeignNode()
+    {
+        const string foreignDeviceId = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb";
+        var commands = NodePairingCommands($$"""
+            {"pending":[{"requestId":"foreign-request","nodeId":"{{foreignDeviceId}}","role":"node"}]}
+            """);
+        var ctx = CreateNodePairingContext(commands);
+        ctx.NodeDeviceId = foreignDeviceId[..16];
+
+        var result = await PairNodeStep.AutoApproveNodePairing(ctx, null, CancellationToken.None);
+
+        Assert.Equal(StepOutcome.Failed, result.Outcome);
+        Assert.Contains("No pending approval request matched", result.Message);
+        Assert.Single(commands.WslCalls);
+    }
+
+    [Theory]
+    [InlineData("nodeId", false)]
+    [InlineData("nodeId", true)]
+    [InlineData("deviceId", false)]
+    [InlineData("deviceId", true)]
+    public async Task AutoApproveNodePairing_WithoutRequestId_SelectsFullSetupIdentity(
+        string identityField, bool includeForeign)
+    {
+        var foreign = includeForeign
+            ? """,{"requestId":"foreign-request","nodeId":"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb","role":"node"}"""
+            : "";
+        var commands = NodePairingCommands($$"""
+            {"pending":[{"requestId":"setup-request","{{identityField}}":"{{PairingSocketDeviceId}}","role":"node"}{{foreign}}]}
+            """);
+        var ctx = CreateNodePairingContext(commands);
+        ctx.NodeDeviceId = "bbbbbbbbbbbbbbbb";
+
+        var result = await PairNodeStep.AutoApproveNodePairing(ctx, null, CancellationToken.None);
+
+        Assert.True(result.IsSuccess, result.Message);
+        Assert.Equal(2, commands.WslCalls.Count);
+        Assert.Contains("nodes list --json", commands.WslCalls[0].Command);
+        AssertApprovedRequest(commands, "nodes approve", "setup-request");
+    }
+
+    [Theory]
+    [InlineData(null)]
+    [InlineData("")]
+    [InlineData(" ")]
+    public async Task AutoApproveNodePairing_WithoutRequestId_RejectsMissingSetupIdentity(string? deviceId)
+    {
+        var commands = NodePairingCommands($$"""
+            {"pending":[{"requestId":"setup-request","nodeId":"{{PairingSocketDeviceId}}","role":"node"}]}
+            """);
+        var ctx = CreateNodePairingContext(commands);
+        ctx.OperatorDeviceId = deviceId;
+        ctx.NodeDeviceId = PairingSocketDeviceId[..16];
+
+        var result = await PairNodeStep.AutoApproveNodePairing(ctx, null, CancellationToken.None);
+
+        Assert.Equal(StepOutcome.Failed, result.Outcome);
+        Assert.Contains("device ID is missing", result.Message);
+        Assert.Single(commands.WslCalls);
+    }
+
+    [Theory]
+    [InlineData("""{"pending":[{"requestId":"short-id-request","nodeId":"aaaaaaaaaaaaaaaa"}]}""", "No pending approval request matched")]
+    [InlineData("""{"pending":[{"requestId":"missing-id-request"}]}""", "No pending approval request matched")]
+    [InlineData("""{"pending":[{"requestId":"one","nodeId":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"},{"requestId":"two","nodeId":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}]}""", "Multiple pending approval requests match")]
+    [InlineData("""{"pending":[{"requestId":"unsafe;request","nodeId":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}]}""", "unsafe characters")]
+    public async Task AutoApproveNodePairing_WithoutRequestId_RejectsUnboundOrAmbiguousRequest(
+        string pendingJson, string expectedError)
+    {
+        var commands = NodePairingCommands(pendingJson);
+        var ctx = CreateNodePairingContext(commands);
+
+        var result = await PairNodeStep.AutoApproveNodePairing(ctx, null, CancellationToken.None);
+
+        Assert.Equal(StepOutcome.Failed, result.Outcome);
+        Assert.Contains(expectedError, result.Message);
+        Assert.Single(commands.WslCalls);
+    }
+
+    [Fact]
+    public async Task AutoApproveNodePairing_WithSocketRequestId_ApprovesExactDeviceRequestWithoutListing()
+    {
+        var commands = NodePairingCommands("""{"pending":[]}""");
+        var ctx = CreateNodePairingContext(commands);
+        ctx.OperatorDeviceId = null;
+
+        var result = await PairNodeStep.AutoApproveNodePairing(ctx, "socket-request", CancellationToken.None);
+
+        Assert.True(result.IsSuccess, result.Message);
+        Assert.Single(commands.WslCalls);
+        AssertApprovedRequest(commands, "devices approve", "socket-request");
+    }
+
+    [Fact]
+    public async Task AutoApproveNodePairing_WithUnsafeSocketRequestId_DoesNotListOrApprove()
+    {
+        var commands = NodePairingCommands("""{"pending":[]}""");
+        var ctx = CreateNodePairingContext(commands);
+
+        var result = await PairNodeStep.AutoApproveNodePairing(ctx, "unsafe;request", CancellationToken.None);
+
+        Assert.Equal(StepOutcome.Failed, result.Outcome);
+        Assert.Contains("unsafe characters", result.Message);
+        Assert.Empty(commands.WslCalls);
+    }
+
+    private static FakeCommandRunner NodePairingCommands(string pendingJson) =>
+        new(
+            _ => Fail("unexpected RunAsync"),
+            (_, command, _) => command.Contains("nodes list --json", StringComparison.Ordinal)
+                ? Ok(pendingJson)
+                : command.Contains(" approve ", StringComparison.Ordinal)
+                    ? Ok("{}")
+                    : Fail($"unexpected wsl command: {command}"));
+
+    private SetupContext CreateNodePairingContext(FakeCommandRunner commands)
+    {
+        var ctx = CreateContext(commands: commands);
+        ctx.DistroName = "test-distro";
+        ctx.SharedGatewayToken = "shared-token";
+        ctx.OperatorDeviceId = PairingSocketDeviceId;
+        return ctx;
     }
 
     [Fact]
