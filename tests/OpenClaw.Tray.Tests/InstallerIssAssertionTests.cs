@@ -244,7 +244,9 @@ public sealed class InstallerIssAssertionTests
     [InlineData("generated", "not-found", 0, true)]
     [InlineData("generated", "failed", 7, false)]
     [InlineData("root-junction", "unregistered", 1, false)]
+    [InlineData("root-junction", "unregistered-empty", 1, false)]
     [InlineData("wsl-junction", "unregistered", 1, false)]
+    [InlineData("wsl-junction", "unregistered-empty", 1, false)]
     [InlineData("child-junction", "unregistered", 1, false)]
     public async Task Uninstall_PrimaryPhase_BindsDeletionToGeneratedRoot_WithModeledTransport(
         string layout, string scenario, int expectedExitCode, bool deleted)
@@ -273,6 +275,12 @@ public sealed class InstallerIssAssertionTests
         {
             Directory.CreateDirectory(Path.GetDirectoryName(path)!);
             File.WriteAllText(path, "owned sentinel");
+        }
+        var targetHasChild = scenario != "unregistered-empty";
+        if (!targetHasChild)
+        {
+            File.Delete(junctionVhd);
+            Directory.Delete(Path.GetDirectoryName(junctionVhd)!);
         }
 
         var harnessPath = temp.Combine("primary-phase.ps1");
@@ -382,8 +390,12 @@ public sealed class InstallerIssAssertionTests
         }
         var output = $"{await stdout}{Environment.NewLine}{await stderr}";
         Assert.True(process.ExitCode == expectedExitCode, $"Exit {process.ExitCode}: {output}");
-        Assert.Equal(!deleted, File.Exists(configuredVhd));
-        Assert.Equal("owned sentinel", File.ReadAllText(junctionVhd));
+        Assert.Equal(!deleted && targetHasChild, File.Exists(configuredVhd));
+        Assert.Equal(targetHasChild, File.Exists(junctionVhd));
+        if (targetHasChild)
+        {
+            Assert.Equal("owned sentinel", File.ReadAllText(junctionVhd));
+        }
         var preservedWslRoot = layout switch
         {
             "root-junction" => Path.Combine(appRoot + "-before-junction", "wsl"),

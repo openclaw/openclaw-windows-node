@@ -798,16 +798,17 @@ function Remove-GatewayDirectory {
         throw "Refusing to delete '$gatewayDirectory': it is not an immediate child of '$wslRoot'."
     }
 
-    if (-not (Test-Path -LiteralPath $gatewayDirectory)) {
-        Write-GatewayLog "Gateway directory does not exist: $gatewayDirectory"
-        return
-    }
-
     foreach ($path in @($AppRoot, $wslRoot, $gatewayDirectory)) {
+        if (-not (Test-Path -LiteralPath $path)) { continue }
         $item = Get-Item -LiteralPath $path -Force -ErrorAction Stop
         if (($item.Attributes -band [System.IO.FileAttributes]::ReparsePoint) -ne 0) {
             throw "Refusing to recursively delete reparse point '$path'."
         }
+    }
+
+    if (-not (Test-Path -LiteralPath $gatewayDirectory)) {
+        Write-GatewayLog "Gateway directory does not exist: $gatewayDirectory"
+        return
     }
 
     $lastError = $null
