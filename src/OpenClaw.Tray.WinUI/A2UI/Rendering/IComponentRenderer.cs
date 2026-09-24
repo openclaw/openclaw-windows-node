@@ -159,7 +159,7 @@ public sealed class RenderContext
         return null;
     }
 
-    /// <summary>Mark a path as secret for the lifetime of the current render. No-op if no secret store is wired.</summary>
+    /// <summary>Mark a path as secret for the lifetime of the surface. No-op if no secret store is wired.</summary>
     public void MarkSecretPath(string? path)
     {
         if (SecretPaths == null) return;
