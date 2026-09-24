@@ -20,6 +20,7 @@ public sealed class DataModelStore
     internal const int MaxValueMapDepth = 32;
     internal const int MaxKeyLength = 256;
     internal const int MaxStringValueLength = 64 * 1024;
+    internal const int MaxArrayIndex = 1024;
 
     private readonly object _lock = new();
     private readonly Dictionary<string, SurfaceModel> _surfaces = new(StringComparer.Ordinal);
@@ -221,6 +222,8 @@ public sealed class DataModelStore
                 }
                 else if (parent is JsonArray pa)
                 {
+                    if (idx > MaxArrayIndex)
+                        return;
                     while (pa.Count <= idx) pa.Add(null);
                     pa[idx] = value;
                 }
@@ -255,6 +258,7 @@ public sealed class DataModelStore
                 else if (cursor is JsonArray arr)
                 {
                     if (!TryParseArrayIndex(tok, out var ai)) return (null, null, false, -1);
+                    if (createMissing && ai > MaxArrayIndex) return (null, null, false, -1);
                     while (createMissing && arr.Count <= ai) arr.Add(null);
                     if (ai < 0 || ai >= arr.Count) return (null, null, false, -1);
                     cursor = arr[ai];
