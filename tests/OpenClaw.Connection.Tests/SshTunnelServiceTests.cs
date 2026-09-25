@@ -1,5 +1,6 @@
 using OpenClaw.Shared;
 using System.Net;
+using System.Net.Sockets;
 
 namespace OpenClaw.Connection.Tests;
 
@@ -335,6 +336,50 @@ public sealed class SshTunnelServiceTests
         Assert.True(SshTunnelService.ValidateListenerOwnership(owned, 45678, 4321, startedAt));
         Assert.Throws<InvalidOperationException>(
             () => SshTunnelService.ValidateListenerOwnership(unrelated, 45678, 4321, startedAt));
+    }
+
+    [Fact]
+    public async Task EnsureSettingsOwnedForwardReadyAsync_RejectsForeignLocalListener()
+    {
+        using var listener = new TcpListener(IPAddress.Loopback, 0);
+        listener.Start();
+        var port = ((IPEndPoint)listener.LocalEndpoint).Port;
+        using var service = new SshTunnelService(NullLogger.Instance);
+
+        var ready = await service.EnsureSettingsOwnedForwardReadyAsync(
+            new SshTunnelConfig("user", "host", 18789, port),
+            CancellationToken.None);
+
+        Assert.False(ready);
+        Assert.False(service.IsRunning);
+        Assert.NotEqual(TunnelStatus.Up, service.Status);
+        Assert.Contains(port.ToString(), service.LastError);
+        Assert.Contains("already owned", service.LastError);
+    }
+
+    [Fact]
+    public async Task EnsureSettingsOwnedForwardReadyAsync_RejectsForeignBrowserProxyListener()
+    {
+        using var proxy = new TcpListener(IPAddress.Loopback, 0);
+        proxy.Start();
+        var proxyPort = ((IPEndPoint)proxy.LocalEndpoint).Port;
+        var localPort = proxyPort - 2;
+        using var service = new SshTunnelService(NullLogger.Instance);
+
+        var ready = await service.EnsureSettingsOwnedForwardReadyAsync(
+            new SshTunnelConfig(
+                "user",
+                "host",
+                18789,
+                localPort,
+                IncludeBrowserProxyForward: true),
+            CancellationToken.None);
+
+        Assert.False(ready);
+        Assert.False(service.IsRunning);
+        Assert.NotEqual(TunnelStatus.Up, service.Status);
+        Assert.NotNull(service.LastError);
+        Assert.Contains("already owned", service.LastError);
     }
 
     [Fact]

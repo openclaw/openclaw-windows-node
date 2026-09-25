@@ -3907,8 +3907,16 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands, IPer
 
     private void OpenDashboard(string? path = null)
     {
+        AsyncEventHandlerGuard.Run(
+            () => OpenDashboardAsync(path),
+            new AppLogger(),
+            nameof(OpenDashboard));
+    }
+
+    private async Task OpenDashboardAsync(string? path)
+    {
         if (_settings == null) return;
-        if (!EnsureSshTunnelConfigured())
+        if (!await EnsureDashboardSshForwardOwnedAsync())
         {
             _toastService?.ShowToast(new ToastContentBuilder()
                 .AddText("SSH tunnel")
@@ -4260,57 +4268,63 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands, IPer
 
     #endregion
 
-    private bool EnsureSshTunnelConfigured()
+    private async Task<bool> EnsureDashboardSshForwardOwnedAsync()
     {
         if (_settings == null)
         {
             return false;
         }
 
-        if (_settings.UseSshTunnel)
+        if (!_settings.UseSshTunnel)
         {
-            if (string.IsNullOrWhiteSpace(_settings.SshTunnelUser) ||
-                string.IsNullOrWhiteSpace(_settings.SshTunnelHost) ||
-                _settings.SshTunnelRemotePort is < 1 or > 65535 ||
-                _settings.SshTunnelLocalPort is < 1 or > 65535)
-            {
-                Logger.Warn("SSH tunnel is enabled but settings are incomplete");
-                UpdateTrayIcon();
-                return false;
-            }
+            _sshTunnelService?.Stop();
+            return true;
+        }
 
-            try
-            {
-                _sshTunnelService ??= new SshTunnelService(new AppLogger());
-                var includeBrowserProxy = BrowserProxySshTunnelForwardPolicy.ShouldInclude(
-                    _settings.NodeBrowserProxyEnabled,
-                    _settings.SshTunnelRemotePort,
-                    _settings.SshTunnelLocalPort);
-                _sshTunnelService.EnsureStarted(
+        if (string.IsNullOrWhiteSpace(_settings.SshTunnelUser) ||
+            string.IsNullOrWhiteSpace(_settings.SshTunnelHost) ||
+            _settings.SshTunnelRemotePort is < 1 or > 65535 ||
+            _settings.SshTunnelLocalPort is < 1 or > 65535)
+        {
+            Logger.Warn("SSH tunnel is enabled but settings are incomplete");
+            UpdateTrayIcon();
+            return false;
+        }
+
+        try
+        {
+            _sshTunnelService ??= new SshTunnelService(new AppLogger());
+            var includeBrowserProxy = BrowserProxySshTunnelForwardPolicy.ShouldInclude(
+                _settings.NodeBrowserProxyEnabled,
+                _settings.SshTunnelRemotePort,
+                _settings.SshTunnelLocalPort);
+            var owned = await _sshTunnelService.EnsureSettingsOwnedForwardReadyAsync(
+                new SshTunnelConfig(
                     _settings.SshTunnelUser,
                     _settings.SshTunnelHost,
                     _settings.SshTunnelRemotePort,
                     _settings.SshTunnelLocalPort,
                     includeBrowserProxy,
-                    _settings.SshTunnelSshPort);
-                DiagnosticsJsonlService.Write("tunnel.ensure_started", new
-                {
-                    status = _sshTunnelService.Status.ToString(),
-                    localEndpoint = $"127.0.0.1:{_settings.SshTunnelLocalPort}",
-                    remoteHost = string.IsNullOrWhiteSpace(_settings.SshTunnelHost) ? null : _settings.SshTunnelHost,
-                    remotePort = _settings.SshTunnelRemotePort
-                });
-            }
-            catch (Exception ex)
+                    _settings.SshTunnelSshPort),
+                CancellationToken.None);
+            DiagnosticsJsonlService.Write("tunnel.ensure_started", new
             {
-                Logger.Error($"Failed to start SSH tunnel: {ex.Message}");
+                status = _sshTunnelService.Status.ToString(),
+                localEndpoint = $"127.0.0.1:{_settings.SshTunnelLocalPort}",
+                remoteHost = string.IsNullOrWhiteSpace(_settings.SshTunnelHost) ? null : _settings.SshTunnelHost,
+                remotePort = _settings.SshTunnelRemotePort
+            });
+            if (!owned)
+            {
                 UpdateTrayIcon();
                 return false;
             }
         }
-        else
+        catch (Exception ex)
         {
-            _sshTunnelService?.Stop();
+            Logger.Error($"Failed to start SSH tunnel: {ex.Message}");
+            UpdateTrayIcon();
+            return false;
         }
 
         return true;

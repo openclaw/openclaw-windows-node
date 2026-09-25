@@ -558,6 +558,85 @@ public sealed class SshTunnelService : ISshTunnelManager
     public async Task<string> StartAsync(SshTunnelConfig config, CancellationToken ct) =>
         (await StartOwnedAsync(config, ct).ConfigureAwait(false)).Url;
 
+    public async Task<bool> EnsureSettingsOwnedForwardReadyAsync(
+        SshTunnelConfig config,
+        CancellationToken cancellationToken)
+    {
+        Process? process = null;
+        long generation = 0;
+        try
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            EnsureStartedCore(
+                config,
+                SshTunnelOwner.Settings,
+                tunnel => RejectOccupiedForwardPorts(tunnel));
+
+            var normalizedConfig = config with
+            {
+                User = config.User.Trim(),
+                Host = config.Host.Trim(),
+            };
+            DateTime processStartTimeUtc;
+            lock (_stateLock)
+            {
+                if (!IsRunningLocked() ||
+                    _process is null ||
+                    !Equals(_currentConfig, normalizedConfig))
+                {
+                    throw new InvalidOperationException(
+                        "SSH tunnel changed before listener ownership could be verified.");
+                }
+
+                process = _process;
+                generation = _lifecycleGeneration;
+                processStartTimeUtc = process.StartTime.ToUniversalTime();
+            }
+
+            var processId = process.Id;
+            await WaitForOwnedLocalListenerAsync(
+                config.LocalPort,
+                process,
+                generation,
+                processId,
+                processStartTimeUtc,
+                cancellationToken).ConfigureAwait(false);
+            if (config.IncludeBrowserProxyForward)
+            {
+                await WaitForOwnedLocalListenerAsync(
+                    config.LocalPort + 2,
+                    process,
+                    generation,
+                    processId,
+                    processStartTimeUtc,
+                    cancellationToken).ConfigureAwait(false);
+            }
+
+            return true;
+        }
+        catch (Exception ex)
+        {
+            if (process is not null)
+                StopIfCurrent(process, generation);
+
+            lock (_stateLock)
+            {
+                LastError = ex.Message;
+                Status = TunnelStatus.Failed;
+            }
+
+            _logger.Warn($"SSH dashboard forward is not owned: {ex.Message}");
+            return false;
+        }
+    }
+
+    private static void RejectOccupiedForwardPorts(SshTunnelConfig tunnel)
+    {
+        EnsurePortIsUnoccupied(WindowsTcpListenerSnapshot.Capture(), tunnel.LocalPort);
+        if (tunnel.IncludeBrowserProxyForward)
+            EnsurePortIsUnoccupied(WindowsTcpListenerSnapshot.Capture(), tunnel.LocalPort + 2);
+    }
+
     public async Task<SshTunnelStartResult> StartOwnedAsync(
         SshTunnelConfig config,
         CancellationToken ct)
@@ -569,12 +648,7 @@ public sealed class SshTunnelService : ISshTunnelManager
             EnsureStartedCore(
                 config,
                 SshTunnelOwner.GatewayConnectionManager,
-                tunnel =>
-                {
-                    EnsurePortIsUnoccupied(WindowsTcpListenerSnapshot.Capture(), tunnel.LocalPort);
-                    if (tunnel.IncludeBrowserProxyForward)
-                        EnsurePortIsUnoccupied(WindowsTcpListenerSnapshot.Capture(), tunnel.LocalPort + 2);
-                });
+                RejectOccupiedForwardPorts);
 
             var normalizedConfig = config with
             {

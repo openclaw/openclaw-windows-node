@@ -470,11 +470,36 @@ public sealed class AppRefactorContractTests
     public void Dashboard_SurfacesSshTunnelConfigurationFailure()
     {
         var source = ReadAppSources();
-        var method = ExtractMethod(source, "OpenDashboard");
+        var method = ExtractMethod(source, "OpenDashboardAsync");
 
-        Assert.Contains("if (!EnsureSshTunnelConfigured())", method);
+        Assert.Contains("if (!await EnsureDashboardSshForwardOwnedAsync())", method);
         Assert.Contains("_toastService?.ShowToast", method);
         Assert.Contains("Check SSH tunnel settings and logs.", method);
+        AssertInOrder(
+            method,
+            "await EnsureDashboardSshForwardOwnedAsync()",
+            "GatewayDashboardUrlBuilder.Build(");
+        Assert.DoesNotContain("EnsureStarted(", method);
+    }
+
+    [Fact]
+    public void Dashboard_AwaitsSettingsOwnedForwardBeforeTokenUrl()
+    {
+        var source = ReadAppSources();
+        var gate = ExtractMethod(source, "EnsureDashboardSshForwardOwnedAsync");
+
+        Assert.Contains("if (!_settings.UseSshTunnel)", gate);
+        Assert.Contains("_sshTunnelService?.Stop()", gate);
+        Assert.Contains("return true;", gate);
+        Assert.Contains("EnsureSettingsOwnedForwardReadyAsync(", gate);
+        Assert.Contains("if (!owned)", gate);
+        Assert.DoesNotContain("GatewayDashboardUrlBuilder.Build(", gate);
+        Assert.DoesNotContain("EnsureStarted(", gate);
+        AssertInOrder(
+            gate,
+            "if (!_settings.UseSshTunnel)",
+            "EnsureSettingsOwnedForwardReadyAsync(",
+            "if (!owned)");
     }
 
     [Fact]
