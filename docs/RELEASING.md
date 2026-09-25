@@ -14,8 +14,10 @@ smoke only; ARM64 portable publish remains required on `main` and tags.
 When either release-build lane is selected, CI also builds both architectures
 of Dev-signed and unsigned Store MSIX **workflow artifacts**. CI Gate requires
 that MSIX job to succeed. Every tag release also attaches the unsigned Store
-MSIX bundle, standalone packages, and metadata for manual Partner Center
-submission. Dev-signed packages stay in Actions.
+MSIX bundle, standalone packages, and metadata. After a stable or correction
+GitHub release is published, CI submits only the bundle to Partner Center.
+Prereleases are never submitted to the Store. Dev-signed packages stay in
+Actions.
 
 ## Release checklist
 
@@ -179,10 +181,12 @@ Every stable, correction, and prerelease additionally contains:
 - `OpenClaw-x64.msix-metadata.json` and
   `OpenClaw-arm64.msix-metadata.json`
 
-These are **unsigned Store submission inputs, not installers**. Upload the
-bundle to Partner Center for one architecture-selecting submission. The
-standalone packages remain available for inspection or fallback. Microsoft
-signs accepted Store submissions. The release step checks both
+These are **unsigned Store submission inputs, not installers**. The automated
+Store job uploads only the bundle for one architecture-selecting submission.
+Do not upload the bundle and standalone packages together: Partner Center
+correctly rejects that as duplicate x64 and ARM64 packages. The standalone
+packages remain available for inspection or fallback. Microsoft signs accepted
+Store submissions. The release step checks both
 architectures' clean source provenance, identity, version, and package hashes,
 then proves that the bundle embeds those exact bytes. It fails rather than
 publishing a partial or mismatched set.
@@ -191,10 +195,59 @@ Dev-signed tester MSIX packages, public certificates, and instructions remain
 Actions artifacts only. No production signing step is applied to the unsigned
 Store packages.
 
-Store distribution remains paused: automatic Partner Center submission,
-Store-signed retrieval and publication, and official lifecycle acceptance
-remain follow-up work in #1375. Release submission artifacts do not clear those
-rollout gates.
+Stable and correction releases publish to Partner Center after the GitHub
+release succeeds. The Store submission refuses to replace a pending draft and
+requires an existing published submission. It creates the package update
+without committing, verifies that the draft preserved the published product
+metadata, and only then commits it. Store certification and rollout remain
+Microsoft-managed asynchronous stages.
+
+## Microsoft Store publication setup
+
+The `submit-microsoft-store` job uses the official packaged-app submission API
+with a short-lived GitHub OIDC assertion exchanged once for a Dev Center access
+token. It stores no client secret. The job runs in the `microsoft-store` GitHub
+environment after `release`, and only for non-prerelease `v*` tags.
+
+Configure that environment before the next stable release:
+
+1. Limit deployment tags to `v*`; do not permit branch deployments.
+2. Set these environment variables (they are identifiers, not credentials):
+   - `MSSTORE_TENANT_ID`
+   - `MSSTORE_CLIENT_ID`
+   - `MSSTORE_APPLICATION_ID`
+3. Add an Entra federated credential for:
+   `repo:openclaw/openclaw-windows-node:environment:microsoft-store`
+   with audience `api://AzureADTokenExchange`.
+   This must be the application's only credential: do not add client secrets,
+   certificates, or additional federated subjects, and do not share the Entra
+   application with another publisher.
+4. Associate the Entra application with the Partner Center account and grant
+   it access to the existing OpenClaw product.
+5. Ensure that product has a published submission and no pending draft.
+6. Record Store channel acceptance in the release PR before enabling the first
+   production submission.
+
+The Store identity is an exclusive writer. Only this serialized GitHub
+environment may use it, and operators must not edit an API-created draft in
+Partner Center. Microsoft documents that a Partner Center edit invalidates
+further API update or commit operations; if that happens, let the workflow
+delete its own failed draft and rerun after the product has no pending draft.
+
+The git-controlled policy is [`store-submission.json`](../store-submission.json).
+It pins the API origin and scope, OIDC audience, rollout percentage, timeout,
+minimum access-token lifetime, environment, and draft ownership behavior.
+`scripts\Submit-MicrosoftStore.ps1` rejects existing drafts, creates a new draft
+without deleting anything, updates and commits that exact submission ID, and
+deletes only its own draft if a pre-commit check fails. It refuses to commit if
+another Partner Center writer replaces the draft or if published metadata
+changes.
+After the commit request starts, an unknown response is never cleaned up
+automatically because Partner Center may already have accepted the commit.
+Inspect the submission before retrying. Explicit terminal rejections such as
+`CommitFailed` or `Canceled` remain eligible for owned-draft cleanup.
+The workflow uploads a 90-day evidence artifact containing the submitted bundle
+hash and Store submission identifiers. It never includes the OIDC assertion.
 
 Store versions still end in `.0`. Official tagged builds now reserve distinct
 package versions as described below; reruns reuse the same reservation.
@@ -399,6 +452,7 @@ For release tags, the **Build and Test** workflow should run:
 - `build` matrix entries shown by GitHub as `build (win-x64)` and `build (win-arm64)`
 - `CI Gate`
 - `release`
+- `submit-microsoft-store` for stable and correction tags only
 
 The `setup-connect` E2E shard contains the MXC proof tests for the gateway ->
 Windows node -> `system.run` path and validates that the expected proof test
@@ -425,6 +479,8 @@ The release job should:
    bundle, standalone packages, and metadata.
 9. Create a GitHub release whose prerelease flag matches the tag, with installer
    and portable ZIP assets plus the Store submission assets.
+10. For stable and correction tags, submit only `OpenClaw.msixbundle` to
+    Partner Center after the GitHub release succeeds.
 
 ## Post-release verification
 

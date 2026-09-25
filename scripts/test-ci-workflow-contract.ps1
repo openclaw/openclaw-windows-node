@@ -827,8 +827,43 @@ Assert-Contains -Text $createRelease -Expected '${{ steps.msix_release.outputs.f
 Assert-Contains -Text $createRelease -Expected '${{ steps.msix_release.outputs.notes }}' -Message "Every tag release must include MSIX submission notes."
 Assert-Contains -Text $createRelease -Expected 'fail_on_unmatched_files: true' -Message "Missing release files must fail publication."
 Assert-Contains -Text $createRelease -Expected "make_latest: `${{ needs.metadata.outputs.isPrerelease == 'true' && 'false' || 'true' }}" -Message "Alpha releases must not become Latest."
+
+$storeSubmissionJob = Get-JobBlock 'submit-microsoft-store'
+foreach ($token in @(
+        'name: Submit Node bundle to Microsoft Store',
+        'needs: [metadata, build-msix-bundle, release]',
+        "startsWith(github.ref, 'refs/tags/v')",
+        "needs.metadata.outputs.isPrerelease == 'false'",
+        "needs.build-msix-bundle.result == 'success'",
+        "needs.release.result == 'success'",
+        'environment: microsoft-store',
+        'timeout-minutes: 60',
+        'group: openclaw-windows-node-store-submission',
+        'cancel-in-progress: false',
+        'actions: read',
+        'contents: read',
+        'id-token: write',
+        'name: openclaw-msix-store-unsigned-bundle',
+        'path: store',
+        '.\scripts\New-GitHubOidcRequestUri.ps1',
+        '& chmod 600 $assertionPath',
+        '.\scripts\Submit-MicrosoftStore.ps1',
+        '-BundlePath .\store\OpenClaw.msixbundle',
+        'MSSTORE_TENANT_ID: ${{ vars.MSSTORE_TENANT_ID }}',
+        'MSSTORE_CLIENT_ID: ${{ vars.MSSTORE_CLIENT_ID }}',
+        'MSSTORE_APPLICATION_ID: ${{ vars.MSSTORE_APPLICATION_ID }}',
+        'name: openclaw-node-store-submission-evidence',
+        'Remove short-lived assertion'
+    )) {
+    Assert-Contains -Text $storeSubmissionJob -Expected $token -Message "Store submission job is missing '$token'."
+}
+Assert-NotContains -Text $storeSubmissionJob -Unexpected 'openclaw-msix-store-unsigned-x64' -Message 'Store submission must not upload a standalone x64 package with the bundle.'
+Assert-NotContains -Text $storeSubmissionJob -Unexpected 'openclaw-msix-store-unsigned-arm64' -Message 'Store submission must not upload a standalone ARM64 package with the bundle.'
+Assert-NotContains -Text $storeSubmissionJob -Unexpected 'microsoft-store-apppublisher' -Message 'Store submission must use submission-ID-bound API operations, not mutable high-level publication.'
+Assert-NotContains -Text $storeSubmissionJob -Unexpected 'MSSTORE_SELLER_ID' -Message 'Packaged Store API publication does not need a seller ID.'
 Assert-Contains -Text $workflow -Expected "./scripts/test-msix-ci-artifacts.ps1" -Message "Fast validation must exercise the Dev artifact contracts."
 Assert-Contains -Text $workflow -Expected "./scripts/test-msix-alpha-release.ps1" -Message "Fast validation must exercise Store release staging."
+Assert-Contains -Text $workflow -Expected "./scripts/test-microsoft-store-submission.ps1" -Message 'Fast validation must exercise Microsoft Store publication contracts.'
 Assert-Contains -Text $workflow -Expected "./scripts/test-msix-versioning.ps1" -Message 'Fast validation must exercise allocation races and boundaries.'
 Assert-Contains -Text $workflow -Expected "./scripts/test-msix-preview-source-version.ps1" -Message 'Fast validation must exercise latest-stable MSIX preview selection.'
 

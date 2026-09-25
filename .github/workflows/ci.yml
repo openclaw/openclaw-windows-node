@@ -130,6 +130,10 @@ jobs:
       shell: pwsh
       run: ./scripts/test-msix-alpha-release.ps1
 
+    - name: Validate Microsoft Store submission contracts
+      shell: pwsh
+      run: ./scripts/test-microsoft-store-submission.ps1
+
     - name: Validate stable correction release ordering regressions
       shell: pwsh
       run: ./scripts/test-stable-correction-release-validator.ps1
@@ -1418,3 +1422,127 @@ jobs:
             | @tsv
           ' <<< "$releases_json"
         )
+
+  submit-microsoft-store:
+    name: Submit Node bundle to Microsoft Store
+    needs: [metadata, build-msix-bundle, release]
+    if: >-
+      ${{ startsWith(github.ref, 'refs/tags/v') &&
+          needs.metadata.outputs.isPrerelease == 'false' &&
+          needs.build-msix-bundle.result == 'success' &&
+          needs.release.result == 'success' &&
+          !cancelled() }}
+    runs-on: ubuntu-latest
+    environment: microsoft-store
+    timeout-minutes: 60
+    concurrency:
+      group: openclaw-windows-node-store-submission
+      cancel-in-progress: false
+    permissions:
+      actions: read
+      contents: read
+      id-token: write
+    steps:
+    - uses: actions/checkout@v7
+      with:
+        persist-credentials: false
+
+    - name: Download validated Store bundle
+      uses: actions/download-artifact@v8
+      with:
+        name: openclaw-msix-store-unsigned-bundle
+        path: store
+
+    - name: Validate Microsoft Store environment
+      shell: pwsh
+      env:
+        MSSTORE_TENANT_ID: ${{ vars.MSSTORE_TENANT_ID }}
+        MSSTORE_CLIENT_ID: ${{ vars.MSSTORE_CLIENT_ID }}
+        MSSTORE_APPLICATION_ID: ${{ vars.MSSTORE_APPLICATION_ID }}
+      run: |
+        foreach ($name in @(
+            'MSSTORE_TENANT_ID'
+            'MSSTORE_CLIENT_ID'
+            'MSSTORE_APPLICATION_ID'
+        )) {
+          if ([string]::IsNullOrWhiteSpace([Environment]::GetEnvironmentVariable($name))) {
+            throw "The microsoft-store environment is missing $name."
+          }
+        }
+        foreach ($name in @('MSSTORE_TENANT_ID', 'MSSTORE_CLIENT_ID')) {
+          $value = [Environment]::GetEnvironmentVariable($name)
+          $parsed = [guid]::Empty
+          if (-not [guid]::TryParse($value, [ref]$parsed)) {
+            throw "$name must be a GUID."
+          }
+        }
+    - name: Request short-lived Microsoft Store assertion
+      id: oidc
+      shell: pwsh
+      run: |
+        $policy = Get-Content -LiteralPath .\store-submission.json -Raw |
+          ConvertFrom-Json
+        $requestUrl = $env:ACTIONS_ID_TOKEN_REQUEST_URL
+        $requestToken = $env:ACTIONS_ID_TOKEN_REQUEST_TOKEN
+        if ([string]::IsNullOrWhiteSpace($requestUrl) -or
+            [string]::IsNullOrWhiteSpace($requestToken)) {
+          throw 'GitHub did not provide an OIDC token endpoint.'
+        }
+        $oidcRequestUri = .\scripts\New-GitHubOidcRequestUri.ps1 `
+          -RequestUri $requestUrl `
+          -Audience ([string]$policy.oidcAudience)
+        $response = Invoke-RestMethod `
+          -Headers @{ Authorization = "Bearer $requestToken" } `
+          -Uri $oidcRequestUri
+        $assertion = [string]$response.value
+        if ([string]::IsNullOrWhiteSpace($assertion)) {
+          throw 'GitHub returned an empty OIDC assertion.'
+        }
+        Write-Output "::add-mask::$assertion"
+        $assertionPath = Join-Path $env:RUNNER_TEMP 'msstore-assertion.jwt'
+        [IO.File]::WriteAllText($assertionPath, $assertion)
+        & chmod 600 $assertionPath
+        if ($LASTEXITCODE -ne 0) {
+          throw 'Unable to restrict the OIDC assertion file permissions.'
+        }
+        "assertion_path=$assertionPath" >> $env:GITHUB_OUTPUT
+
+    - name: Submit bundle and commit Store update
+      shell: pwsh
+      env:
+        MSSTORE_TENANT_ID: ${{ vars.MSSTORE_TENANT_ID }}
+        MSSTORE_CLIENT_ID: ${{ vars.MSSTORE_CLIENT_ID }}
+        MSSTORE_APPLICATION_ID: ${{ vars.MSSTORE_APPLICATION_ID }}
+        MSSTORE_ASSERTION_FILE: ${{ steps.oidc.outputs.assertion_path }}
+      run: |
+        .\scripts\Submit-MicrosoftStore.ps1 `
+          -BundlePath .\store\OpenClaw.msixbundle `
+          -ApplicationId $env:MSSTORE_APPLICATION_ID `
+          -TenantId $env:MSSTORE_TENANT_ID `
+          -ClientId $env:MSSTORE_CLIENT_ID `
+          -ClientAssertionFile $env:MSSTORE_ASSERTION_FILE `
+          -PolicyPath .\store-submission.json `
+          -EvidencePath .\evidence\store-submission.json
+
+    - name: Upload Store submission evidence
+      if: ${{ always() }}
+      continue-on-error: true
+      uses: actions/upload-artifact@v7
+      with:
+        name: openclaw-node-store-submission-evidence
+        path: evidence/store-submission.json
+        if-no-files-found: error
+        retention-days: 90
+
+    - name: Remove short-lived assertion
+      if: ${{ always() }}
+      shell: pwsh
+      env:
+        MSSTORE_ASSERTION_FILE: ${{ steps.oidc.outputs.assertion_path }}
+      run: |
+        if (-not [string]::IsNullOrWhiteSpace($env:MSSTORE_ASSERTION_FILE)) {
+          Remove-Item `
+            -LiteralPath $env:MSSTORE_ASSERTION_FILE `
+            -Force `
+            -ErrorAction SilentlyContinue
+        }
