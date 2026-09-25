@@ -662,6 +662,41 @@ public sealed class NativeGatewaySetupTests
         Assert.Equal(session.Record.Id, reloaded.ActiveGatewayId);
     }
 
+    [Theory]
+    [InlineData("{not json", "contains invalid JSON")]
+    [InlineData("null", "must be a JSON object")]
+    [InlineData("[]", "must be a JSON object")]
+    [InlineData("42", "must be a JSON object")]
+    [InlineData("{}", "section 'gateway' must be a JSON object")]
+    [InlineData("""{"gateway":null}""", "section 'gateway' must be a JSON object")]
+    [InlineData("""{"gateway":[]}""", "section 'gateway' must be a JSON object")]
+    [InlineData("""{"gateway":"invalid"}""", "section 'gateway' must be a JSON object")]
+    public async Task SuspendReload_RejectsMalformedConfigBeforeWritingOrStarting(
+        string invalidConfig, string expectedMessage)
+    {
+        using var fixture = new Fixture();
+        await using var session = await fixture.PrepareAsync();
+        var original = File.ReadAllText(fixture.ConfigPath);
+        var backupPath = fixture.ConfigPath + ".setup-reload.json";
+        var backup = File.ReadAllText(backupPath);
+        File.WriteAllText(fixture.ConfigPath, invalidConfig);
+        fixture.Events.Clear();
+        try
+        {
+            var error = await Assert.ThrowsAsync<InvalidDataException>(() =>
+                session.PrepareAsync(CancellationToken.None));
+            Assert.Contains(expectedMessage, error.Message);
+            Assert.Equal(invalidConfig, File.ReadAllText(fixture.ConfigPath));
+            Assert.Equal(backup, File.ReadAllText(backupPath));
+            Assert.Empty(fixture.Events);
+            Assert.Empty(fixture.Registry.GetAll());
+        }
+        finally
+        {
+            File.WriteAllText(fixture.ConfigPath, original);
+        }
+    }
+
     [Fact]
     public async Task CancelledPreparation_DoesNotStartOrPersist()
     {

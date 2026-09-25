@@ -246,8 +246,9 @@ public sealed class NativeGatewaySetupSession(
 
     private void SuspendReload()
     {
-        var config = JsonNode.Parse(File.ReadAllText(ConfigPath))!.AsObject();
-        var gateway = config["gateway"]!.AsObject();
+        var config = ReadConfigurationObject();
+        var gateway = config["gateway"] as JsonObject
+            ?? throw new InvalidDataException("Native Gateway configuration section 'gateway' must be a JSON object.");
         var reload = gateway["reload"] as JsonObject;
         // A durable, credential-free backup also survives a Companion crash.
         if (!File.Exists(ReloadBackupPath))
